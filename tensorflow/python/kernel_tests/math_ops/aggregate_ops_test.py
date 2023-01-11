@@ -59,17 +59,12 @@ class AddNTest(test.TestCase):
         for count in range(1, self._MAX_N + 1):
           data = [self._buildData((2, 2), dtype) for _ in range(count)]
           actual = self.evaluate(math_ops.add_n(data))
-          if dtype==dtypes.bfloat16:
-            data_fp32 = [elem.astype(np.float32) for elem in data]
-            expected = np.sum(np.vstack(
-                [np.expand_dims(d, 0) for d in data_fp32]), axis=0)
-            expected = expected.astype(dtypes.bfloat16.as_numpy_dtype)
-          else:
-            expected = np.sum(np.vstack(
-                [np.expand_dims(d, 0) for d in data]), axis=0)
-          tol = 5e-3 if dtype == dtypes.float16 else 5e-7
-          tol = 5e-2 if dtype == dtypes.bfloat16 else tol
-          self.assertAllClose(expected, actual, rtol=tol, atol=tol)
+          expected = np.sum(np.vstack(
+              [np.expand_dims(d, 0) for d in data]), axis=0)
+          self.assertAllCloseAccordingToType(
+              expected, actual, rtol=2e-6, atol=2e-6,
+              float_rtol=2e-6, float_atol=2e-6, half_rtol=5e-3, half_atol=5e-3,
+              bfloat16_rtol=2e-2, bfloat16_atol=2e-2)
 
   @test_util.run_deprecated_v1
   def testUnknownShapes(self):
@@ -80,17 +75,12 @@ class AddNTest(test.TestCase):
         for count in range(1, self._MAX_N + 1):
           data_ph = array_ops.placeholder(dtype=dtype)
           actual = sess.run(math_ops.add_n([data_ph] * count), {data_ph: data})
-          if dtype==dtypes.bfloat16:
-            data_fp32 = [element_tf.astype(np.float32) for element_tf in data]
-            expected = np.sum(np.vstack([np.expand_dims(data_fp32, 0)] * count),
+          expected = np.sum(np.vstack([np.expand_dims(data, 0)] * count),
                             axis=0)
-            expected = expected.astype(dtypes.bfloat16.as_numpy_dtype)
-          else:
-            expected = np.sum(np.vstack([np.expand_dims(data, 0)] * count),
-                            axis=0)
-          tol = 5e-3 if dtype == dtypes.float16 else 5e-7
-          tol = 5e-2 if dtype == dtypes.bfloat16 else tol
-          self.assertAllClose(expected, actual, rtol=tol, atol=tol)
+          self.assertAllCloseAccordingToType(
+              expected, actual, rtol=2e-6, atol=2e-6,
+              float_rtol=2e-6, float_atol=2e-6, half_rtol=5e-3, half_atol=5e-3,
+              bfloat16_rtol=2e-2, bfloat16_atol=2e-2)
 
   @test_util.run_deprecated_v1
   def testVariant(self):
