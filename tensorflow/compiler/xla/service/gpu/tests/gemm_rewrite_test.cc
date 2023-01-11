@@ -1067,7 +1067,7 @@ ENTRY test {
   // This is a type combination which is not supported by cublasLt, expect
   // GemmRewriter to choose legacy cublas.
   EXPECT_THAT(module->entry_computation()->root_instruction(),
-              GmockMatch(m::CustomCall("__cublas$gemm")));
+              GmockMatch(m::CustomCall({"__cublas$gemm"})));
 }
 
 TEST_P(ParameterizedGemmRewriteTest, UpcastingC64ToC128) {
@@ -1090,7 +1090,7 @@ ENTRY test {
   // This is a type combination which is not supported by cublasLt, expect
   // GemmRewriter to choose legacy cublas.
   EXPECT_THAT(module->entry_computation()->root_instruction(),
-              GmockMatch(m::CustomCall("__cublas$gemm")));
+              GmockMatch(m::CustomCall({"__cublas$gemm"})));
 }
 
 TEST_P(ParameterizedGemmRewriteTest, UpcastingF16ToF32) {
@@ -1113,7 +1113,7 @@ ENTRY test {
   // This is a type combination which is not supported by cublasLt, expect
   // GemmRewriter to choose legacy cublas.
   EXPECT_THAT(module->entry_computation()->root_instruction(),
-              GmockMatch(m::CustomCall("__cublas$gemm")));
+              GmockMatch(m::CustomCall({"__cublas$gemm"})));
 }
 
 TEST_P(ParameterizedGemmRewriteTest, UpcastingF16ToF64) {
@@ -1136,7 +1136,7 @@ ENTRY test {
   // This is a type combination which is not supported by cublasLt, expect
   // GemmRewriter to choose legacy cublas.
   EXPECT_THAT(module->entry_computation()->root_instruction(),
-              GmockMatch(m::CustomCall("__cublas$gemm")));
+              GmockMatch(m::CustomCall({"__cublas$gemm"})));
 }
 
 TEST_P(ParameterizedGemmRewriteTest, UpcastingF32ToF64) {
@@ -1159,7 +1159,7 @@ ENTRY test {
   // This is a type combination which is not supported by cublasLt, expect
   // GemmRewriter to choose legacy cublas.
   EXPECT_THAT(module->entry_computation()->root_instruction(),
-              GmockMatch(m::CustomCall("__cublas$gemm")));
+              GmockMatch(m::CustomCall({"__cublas$gemm"})));
 }
 
 INSTANTIATE_TEST_SUITE_P(CublasTestsBothLegacyAndLt,
@@ -1474,7 +1474,7 @@ ENTRY test {
       module->entry_computation()->root_instruction(),
       GmockMatch(
           m::Bitcast(
-              m::CustomCall("__cublas$gemm", m::Parameter(0), m::Parameter(1),
+              m::CustomCall({"__cublas$gemm"}, m::Parameter(0), m::Parameter(1),
                             m::Bitcast(m::Parameter(2)).WithShape(F32, {2, 2})))
               .WithShape(F32, {4})));
 }
@@ -3549,7 +3549,7 @@ ENTRY test {
   EXPECT_THAT(
       module->entry_computation()->root_instruction(),
       GmockMatch(
-          m::Bitcast(m::CustomCall("__cublas$lt$matmul",
+          m::Bitcast(m::CustomCall({"__cublas$lt$matmul"},
                                    m::Parameter(0).WithShape(BF16, {8, 16}),
                                    m::Parameter(1).WithShape(BF16, {16, 8}),
                                    m::Parameter(2).WithShape(BF16, {2, 4, 8})))
@@ -3959,7 +3959,7 @@ ENTRY test {
   EXPECT_TRUE(changed);
 
   EXPECT_THAT(module->entry_computation()->root_instruction(),
-              GmockMatch(m::Add(m::Bitcast(m::CustomCall("__cublas$lt$matmul",
+              GmockMatch(m::Add(m::Bitcast(m::CustomCall({"__cublas$lt$matmul"},
                                                          m::Parameter(0),
                                                          m::Parameter(1))
                                                .WithShape(F32, {2, 2}))

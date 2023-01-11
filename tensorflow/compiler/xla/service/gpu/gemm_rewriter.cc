@@ -142,11 +142,11 @@ HloInstruction *MaybeConstantFoldBias(HloInstruction *bias) {
 }
 
 auto Gemm(HloInstruction **instr) {
-  return m::CustomCall(instr, kGemmCallTarget);
+  return m::CustomCall(instr, {kGemmCallTarget});
 }
 
 auto CublasLtMatmul(HloInstruction **instr) {
-  return m::CustomCall(instr, kCublasLtMatmulCallTarget);
+  return m::CustomCall(instr, {kCublasLtMatmulCallTarget});
 }
 
 auto GemmOrCublasLtMatmul(HloInstruction **instr) {
@@ -250,7 +250,7 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     // through 3 detailed above and rewrite into a Custom Call.
     if (Match(instr,
               m::CustomCall(
-                  kCublasLtMatmulCallTarget,
+                  {kCublasLtMatmulCallTarget},
                   m::AnyOf<HloInstruction>(
                       m::MultiplyAnyOrder(&a_binary, m::Convert(m::Op(&a)),
                                           m::Broadcast(m::Op(&a_scale))),
@@ -276,9 +276,9 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     // possibly type converted FP8 operands into a Custom Call.
     if (Match(instr,
               m::AnyOf<HloInstruction>(
-                  m::CustomCall(kCublasLtMatmulCallTarget,
+                  m::CustomCall({kCublasLtMatmulCallTarget},
                                 m::Convert(m::Op(&a)), m::Convert(m::Op(&b))),
-                  m::CustomCall(kCublasLtMatmulCallTarget, m::Op(&a),
+                  m::CustomCall({kCublasLtMatmulCallTarget}, m::Op(&a),
                                 m::Op(&b))))) {
       TF_ASSIGN_OR_RETURN(bool created_call, CreateF8CustomCall(instr, a, b));
       if (created_call) {
@@ -517,19 +517,19 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     // values before scaling, and adapt the Custom Call.
     if (Match(instr,
               m::Convert(
-                  m::Clamp(
-                      m::Broadcast(m::ConstantScalar(&clamp_lower)),
-                      m::AnyOf<HloInstruction>(
-                          m::Divide(&binary,
-                                    m::CustomCall(&existing_gemm,
-                                                  kCublasLtMatmulF8CallTarget),
-                                    m::Broadcast(m::Op(&d_scale))),
-                          m::MultiplyAnyOrder(
-                              &binary,
-                              m::CustomCall(&existing_gemm,
-                                            kCublasLtMatmulF8CallTarget),
-                              m::Broadcast(m::Op(&d_scale)))),
-                      m::Broadcast(m::ConstantScalar(&clamp_upper)))
+                  m::Clamp(m::Broadcast(m::ConstantScalar(&clamp_lower)),
+                           m::AnyOf<HloInstruction>(
+                               m::Divide(
+                                   &binary,
+                                   m::CustomCall(&existing_gemm,
+                                                 {kCublasLtMatmulF8CallTarget}),
+                                   m::Broadcast(m::Op(&d_scale))),
+                               m::MultiplyAnyOrder(
+                                   &binary,
+                                   m::CustomCall(&existing_gemm,
+                                                 {kCublasLtMatmulF8CallTarget}),
+                                   m::Broadcast(m::Op(&d_scale)))),
+                           m::Broadcast(m::ConstantScalar(&clamp_upper)))
                       .WithOneUser()))) {
       return F8ConvertD(
           instr, existing_gemm, d_scale, clamp_lower, clamp_upper,
