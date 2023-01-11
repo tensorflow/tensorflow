@@ -44,10 +44,11 @@ limitations under the License.
 #include "tensorflow/core/data/service/export.pb.h"
 #include "tensorflow/core/data/service/grpc_util.h"
 #include "tensorflow/core/data/service/journal.h"
+#include "tensorflow/core/data/service/snapshot/path_utils.h"
 #include "tensorflow/core/data/service/validate_utils.h"
 #include "tensorflow/core/data/service/worker.grpc.pb.h"
+#include "tensorflow/core/data/snapshot_utils.h"
 #include "tensorflow/core/data/standalone.h"
-#include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/metrics.h"
 #include "tensorflow/core/framework/node_def.pb.h"
@@ -56,7 +57,6 @@ limitations under the License.
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/path.h"
-#include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/random.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/statusor.h"
@@ -64,7 +64,6 @@ limitations under the License.
 #include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/protobuf/data_service.pb.h"
 #include "tensorflow/core/protobuf/service_config.pb.h"
-#include "tensorflow/core/public/session_options.h"
 
 namespace tensorflow {
 namespace data {
@@ -182,16 +181,17 @@ DataServiceDispatcherImpl::~DataServiceDispatcherImpl() {
   {
     mutex_lock l(mu_);
     cancelled_ = true;
-    iteration_gc_thread_cv_.notify_all();
+    maintenance_thread_cv_.notify_all();
   }
-  iteration_gc_thread_.reset();
+  maintenance_thread_.reset();
 }
 
+// TODO(b/250921378): Recover snapshots.
 Status DataServiceDispatcherImpl::Start() {
   mutex_lock l(mu_);
   if (config_.job_gc_timeout_ms() >= 0) {
-    iteration_gc_thread_ = absl::WrapUnique(env_->StartThread(
-        {}, "iteration-gc-thread", [&] { IterationGcThread(); }));
+    maintenance_thread_ = absl::WrapUnique(env_->StartThread(
+        {}, "maintenance-thread", [&] { MaintenanceThread(); }));
   }
   if (config_.work_dir().empty()) {
     if (config_.fault_tolerant_mode()) {
@@ -284,7 +284,7 @@ Status DataServiceDispatcherImpl::RestoreSplitProviders(
 
 Status DataServiceDispatcherImpl::FindTasksToDelete(
     const absl::flat_hash_set<int64_t>& current_tasks,
-    const std::vector<std::shared_ptr<const Task>> assigned_tasks,
+    const std::vector<std::shared_ptr<const Task>>& assigned_tasks,
     WorkerHeartbeatResponse* response) {
   absl::flat_hash_set<int64_t> assigned_ids;
   for (const auto& assigned : assigned_tasks) {
@@ -329,6 +329,40 @@ Status DataServiceDispatcherImpl::FindNewTasks(
   return OkStatus();
 }
 
+Status DataServiceDispatcherImpl::CreateSnapshotStream(
+    absl::string_view snapshot_directory, absl::string_view worker_address,
+    SnapshotState& snapshot_state) {
+  for (int64_t source_index = 0;
+       source_index < snapshot_state.split_providers.size(); ++source_index) {
+    TF_RETURN_IF_ERROR(env_->RecursivelyCreateDir(SourceDirectory(
+        snapshot_directory, snapshot_state.streams.size(), source_index)));
+  }
+  snapshot_state.streams.push_back(
+      StreamState(snapshot_state.split_providers.size(), worker_address));
+  return OkStatus();
+}
+
+Status DataServiceDispatcherImpl::PopulateSnapshotInfo(
+    absl::string_view worker_address, WorkerHeartbeatResponse* response) {
+  for (auto& [snapshot_directory, snapshot_state] : snapshots_) {
+    WorkerHeartbeatResponse::Snapshot* snapshot = response->add_snapshots();
+    snapshot->set_directory(snapshot_directory);
+    if (auto it = snapshot_state.assigned_streams.find(worker_address);
+        it != snapshot_state.assigned_streams.end()) {
+      snapshot->set_stream_index(it->second);
+      continue;
+    }
+    if (snapshot_state.mode != SnapshotState::Mode::kActive) continue;
+    // TODO(mpcallanan): Handle orphaned streams.
+    TF_RETURN_IF_ERROR(CreateSnapshotStream(snapshot_directory, worker_address,
+                                            snapshot_state));
+    snapshot->set_stream_index(snapshot_state.streams.size() - 1);
+    VLOG(1) << "creating stream #" << snapshot->stream_index()
+            << " and assigning to worker " << worker_address;
+  }
+  return OkStatus();
+}
+
 Status DataServiceDispatcherImpl::WorkerHeartbeat(
     const WorkerHeartbeatRequest* request, WorkerHeartbeatResponse* response) {
   TF_RETURN_IF_ERROR(CheckStarted());
@@ -363,6 +397,7 @@ Status DataServiceDispatcherImpl::WorkerHeartbeat(
       FindTasksToDelete(current_tasks, assigned_tasks, response));
   TF_RETURN_IF_ERROR(
       FindNewTasks(worker_address, current_tasks, assigned_tasks, response));
+  TF_RETURN_IF_ERROR(PopulateSnapshotInfo(worker_address, response));
 
   VLOG(4) << "Finished worker heartbeat for worker at address "
           << request->worker_address();
@@ -459,10 +494,18 @@ Status DataServiceDispatcherImpl::MakeSplitProviders(
   TF_RETURN_IF_ERROR(state_.DatasetFromId(dataset_id, dataset));
   std::shared_ptr<const DatasetDef> dataset_def;
   TF_RETURN_IF_ERROR(GetDatasetDef(*dataset, dataset_def));
+  TF_RETURN_IF_ERROR(MakeSplitProviders(*dataset_def, split_providers));
+  return OkStatus();
+}
+
+Status DataServiceDispatcherImpl::MakeSplitProviders(
+    const DatasetDef& dataset_def,
+    std::vector<std::unique_ptr<SplitProvider>>& split_providers)
+    TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
   standalone::Dataset::Params params;
   std::unique_ptr<standalone::Dataset> standalone_dataset;
-  TF_RETURN_IF_ERROR(standalone::Dataset::FromGraph(
-      params, dataset_def->graph(), &standalone_dataset));
+  TF_RETURN_IF_ERROR(standalone::Dataset::FromGraph(params, dataset_def.graph(),
+                                                    &standalone_dataset));
   TF_RETURN_IF_ERROR(standalone_dataset->MakeSplitProviders(&split_providers));
   return OkStatus();
 }
@@ -1039,6 +1082,146 @@ Status DataServiceDispatcherImpl::GetWorkers(const GetWorkersRequest* request,
   return OkStatus();
 }
 
+StatusOr<SnapshotState*> DataServiceDispatcherImpl::CreateSnapshotState(
+    const std::string& snapshot_directory, const DatasetDef& dataset_def) {
+  auto [it, ignore] = snapshots_.insert({snapshot_directory, SnapshotState()});
+  TF_RETURN_IF_ERROR(
+      MakeSplitProviders(dataset_def, it->second.split_providers));
+  return &it->second;
+}
+
+Status DataServiceDispatcherImpl::Snapshot(const SnapshotRequest* request,
+                                           SnapshotResponse* response) {
+  TF_RETURN_IF_ERROR(CheckStarted());
+  mutex_lock l(mu_);
+
+  if (snapshots_.contains(request->directory())) {
+    return errors::InvalidArgument("a snapshot at \"", request->directory(),
+                                   "\" is already started or completed");
+  }
+
+  TF_RETURN_IF_ERROR(snapshot_util::WriteMetadataFile(
+      env_, request->directory(), &request->metadata()));
+  TF_RETURN_IF_ERROR(WriteTextProto(
+      env_, DatasetDefFilePath(request->directory()), request->dataset()));
+
+  Update update;
+  SnapshotUpdate* snapshot = update.mutable_snapshot();
+  snapshot->set_directory(request->directory());
+  TF_RETURN_IF_ERROR(Apply(update));
+
+  TF_RETURN_IF_ERROR(
+      CreateSnapshotState(request->directory(), request->dataset()).status());
+
+  return OkStatus();
+}
+
+Status DataServiceDispatcherImpl::ValidateGetSnapshotSplitRequest(
+    const GetSnapshotSplitRequest& request) {
+  auto snapshot_state_it = snapshots_.find(request.directory());
+  if (snapshot_state_it == snapshots_.end()) {
+    return errors::InvalidArgument(
+        "the dispatcher does not know of a snapshot at ", request.directory());
+  }
+  SnapshotState& snapshot_state = snapshot_state_it->second;
+  if (snapshot_state.mode == SnapshotState::Mode::kDone) {
+    return errors::InvalidArgument(
+        "the dispatcher considers all splits for the snapshot at ",
+        request.directory(), "to have already been processed");
+  }
+
+  if (request.stream_index() >= snapshot_state.streams.size()) {
+    return errors::InvalidArgument("the dispatcher does not know of a stream ",
+                                   absl::StrCat(request.stream_index()),
+                                   " for the snapshot at ",
+                                   request.directory());
+  }
+  StreamState& stream_state = snapshot_state.streams[request.stream_index()];
+  if (stream_state.mode == StreamState::Mode::kDone) {
+    return errors::InvalidArgument("the dispatcher considers the stream ",
+                                   absl::StrCat(request.stream_index()),
+                                   "for the snapshot at ", request.directory(),
+                                   " to be done");
+  }
+
+  if (request.source_index() >= stream_state.sources.size()) {
+    return errors::InvalidArgument(absl::StrCat(
+        "the dispatcher does not know of a dataset source at index ",
+        request.source_index(), " for the stream at ", request.stream_index(),
+        " for the snapshot at ", request.directory()));
+  }
+  if (stream_state.sources[request.source_index()].done) {
+    return errors::InvalidArgument(absl::StrCat(
+        "the dispatcher considers the source at index ", request.source_index(),
+        " for the stream at ", request.stream_index(), " for the snapshot at ",
+        request.directory(), " to be done"));
+  }
+
+  return OkStatus();
+}
+
+Status DataServiceDispatcherImpl::GetSnapshotSplit(
+    const GetSnapshotSplitRequest* request,
+    GetSnapshotSplitResponse* response) {
+  TF_RETURN_IF_ERROR(CheckStarted());
+  mutex_lock l(mu_);
+
+  TF_RETURN_IF_ERROR(ValidateGetSnapshotSplitRequest(*request));
+
+  SnapshotState& snapshot_state = snapshots_[request->directory()];
+  if (snapshot_state.mode == SnapshotState::Mode::kWindingDown) {
+    response->set_end_of_splits(true);
+    return OkStatus();
+  }
+
+  Tensor split;
+  bool end_of_splits = true;
+  SplitProvider* split_provider =
+      snapshot_state.split_providers[request->source_index()].get();
+  DCHECK(split_provider != nullptr);
+  TF_RETURN_IF_ERROR(split_provider->GetNext(&split, &end_of_splits));
+
+  StreamState& stream_state = snapshot_state.streams[request->stream_index()];
+  SourceState& source_state = stream_state.sources[request->source_index()];
+  if (end_of_splits) {
+    source_state.done = true;
+    stream_state.active_sources.erase(request->source_index());
+    if (stream_state.active_sources.empty()) {
+      stream_state.mode = StreamState::Mode::kDone;
+      snapshot_state.assigned_streams.erase(stream_state.worker_address);
+    }
+    snapshot_state.mode = snapshot_state.assigned_streams.empty()
+                              ? SnapshotState::Mode::kDone
+                              : SnapshotState::Mode::kWindingDown;
+
+    response->set_end_of_splits(true);
+    return OkStatus();
+  }
+
+  std::string unassigned_split_path;
+  if (!env_->LocalTempFilename(&unassigned_split_path)) {
+    return errors::Internal("failed to write split");
+  }
+
+  snapshot_util::TFRecordWriter writer(unassigned_split_path,
+                                       tsl::io::compression::kNone);
+  TF_RETURN_IF_ERROR(writer.Initialize(env_));
+  TF_RETURN_IF_ERROR(writer.WriteTensors({split}));
+
+  std::string assigned_split_path =
+      SplitPath(request->directory(), request->stream_index(),
+                request->source_index(), source_state.next_local_split_index,
+                snapshot_state.next_global_split_index);
+  TF_RETURN_IF_ERROR(
+      env_->RenameFile(unassigned_split_path, assigned_split_path));
+  ++source_state.next_local_split_index;
+  ++snapshot_state.next_global_split_index;
+
+  split.AsProtoTensorContent(response->mutable_split());
+
+  return OkStatus();
+}
+
 Status DataServiceDispatcherImpl::PopulateTaskDef(
     std::shared_ptr<const Task> task, TaskDef* task_def) const
     TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
@@ -1113,13 +1296,13 @@ Status DataServiceDispatcherImpl::Apply(const Update& update)
   return state_.Apply(update);
 }
 
-void DataServiceDispatcherImpl::IterationGcThread() {
+void DataServiceDispatcherImpl::MaintenanceThread() {
   int64_t next_check_micros = 0;
   while (true) {
     mutex_lock l(mu_);
     while (!cancelled_ && env_->NowMicros() < next_check_micros) {
       int64_t remaining_micros = next_check_micros - env_->NowMicros();
-      iteration_gc_thread_cv_.wait_for(
+      maintenance_thread_cv_.wait_for(
           l, std::chrono::microseconds(remaining_micros));
     }
     if (cancelled_) {

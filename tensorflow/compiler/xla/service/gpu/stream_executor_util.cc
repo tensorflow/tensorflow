@@ -318,7 +318,8 @@ absl::Mutex& GetGpuMutex(const se::StreamExecutor* stream_exec) {
 
 StatusOr<std::unique_ptr<se::KernelBase>> CreateKernel(
     absl::string_view kernel_name, uint64_t num_args, absl::string_view ptx,
-    absl::Span<const uint8_t> cubin_data, se::StreamExecutor* stream_exec) {
+    absl::Span<const uint8_t> cubin_data, se::StreamExecutor* stream_exec,
+    uint32_t shared_mem_bytes) {
   se::MultiKernelLoaderSpec loader_spec(num_args);
   loader_spec.AddCudaPtxInMemory(ptx, kernel_name);
 
@@ -329,15 +330,21 @@ StatusOr<std::unique_ptr<se::KernelBase>> CreateKernel(
 
   auto kernel_base = std::make_unique<se::KernelBase>(stream_exec);
   TF_RETURN_IF_ERROR(stream_exec->GetKernel(loader_spec, kernel_base.get()));
+  se::KernelMetadata m;
+  m.set_shared_memory_bytes(shared_mem_bytes);
+  kernel_base->set_metadata(m);
   return std::move(kernel_base);
 }
 
 template <int n>
 static std::unique_ptr<se::KernelArgsArrayBase> MakeKernelArgs(
-    absl::Span<const se::DeviceMemoryBase> args) {
+    absl::Span<const se::DeviceMemoryBase> args, uint32_t shared_mem_bytes) {
   auto kernel_args = std::make_unique<se::KernelArgsArray<n>>();
   for (const se::DeviceMemoryBase& buf : args) {
     kernel_args->add_device_memory_argument(buf);
+  }
+  if (shared_mem_bytes > 0) {
+    kernel_args->add_shared_bytes(shared_mem_bytes);
   }
   return kernel_args;
 }
@@ -345,6 +352,8 @@ static std::unique_ptr<se::KernelArgsArrayBase> MakeKernelArgs(
 Status ExecuteKernelOnStream(const se::KernelBase& kernel,
                              absl::Span<const se::DeviceMemoryBase> args,
                              const LaunchDimensions& dims, se::Stream* stream) {
+  int shared_mem_bytes = 0;
+  kernel.metadata().shared_memory_bytes(&shared_mem_bytes);
   static constexpr int kKernelArgsLimit = 1024;
   std::unique_ptr<se::KernelArgsArrayBase> kernel_args;
   // The KernelArgsArray structure requires at a minimum 48 * args.size()
@@ -352,11 +361,11 @@ Status ExecuteKernelOnStream(const se::KernelBase& kernel,
   // specializations for smaller sizes. 64 arguments are likely to fit in a
   // 4KiB page.
   if (args.size() <= 64) {
-    kernel_args = MakeKernelArgs<64>(args);
+    kernel_args = MakeKernelArgs<64>(args, shared_mem_bytes);
   } else if (args.size() <= 256) {
-    kernel_args = MakeKernelArgs<256>(args);
+    kernel_args = MakeKernelArgs<256>(args, shared_mem_bytes);
   } else {
-    kernel_args = MakeKernelArgs<kKernelArgsLimit>(args);
+    kernel_args = MakeKernelArgs<kKernelArgsLimit>(args, shared_mem_bytes);
   }
 
   LaunchDimensions::Dim3D thread_counts = dims.thread_counts_per_block();

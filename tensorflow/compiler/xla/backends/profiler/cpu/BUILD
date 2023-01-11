@@ -103,7 +103,9 @@ cc_library(
 cc_library(
     name = "metadata_utils",
     hdrs = ["metadata_utils.h"],
-    visibility = ["//tensorflow/core/profiler:internal"],
+    visibility = [
+        "//tensorflow/core/profiler:internal",
+    ],
     deps = [
         "//tensorflow/compiler/xla/service:hlo_proto_cc",
         "//tensorflow/tsl/profiler/convert:xla_op_utils",

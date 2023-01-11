@@ -35,10 +35,18 @@ def signature(obj, *, follow_wrapped=True):
 Parameter = _inspect.Parameter
 Signature = _inspect.Signature
 
-try:
+if hasattr(_inspect, 'ArgSpec'):
   ArgSpec = _inspect.ArgSpec
-except:
-  pass
+else:
+  ArgSpec = collections.namedtuple(
+      'ArgSpec',
+      [
+          'args',
+          'varargs',
+          'keywords',
+          'defaults',
+      ],
+  )
 
 
 if hasattr(_inspect, 'FullArgSpec'):
@@ -82,21 +90,12 @@ if hasattr(_inspect, 'getfullargspec'):
       from FullArgSpec.
     """
     fullargspecs = getfullargspec(target)
-    if hasattr(_inspect, 'ArgSpec'):
-      argspecs = ArgSpec(
-          args=fullargspecs.args,
-          varargs=fullargspecs.varargs,
-          keywords=fullargspecs.varkw,
-          defaults=fullargspecs.defaults)
-    else:
-      argspecs = FullArgSpec(
-          args=fullargspecs.args,
-          varargs=fullargspecs.varargs,
-          varkw=fullargspecs.varkw,
-          defaults=fullargspecs.defaults,
-          kwonlyargs=[],
-          kwonlydefaults=None,
-          annotations={})
+    argspecs = ArgSpec(
+        args=fullargspecs.args,
+        varargs=fullargspecs.varargs,
+        keywords=fullargspecs.varkw,
+        defaults=fullargspecs.defaults,
+    )
     return argspecs
 else:
   _getargspec = _inspect.getargspec

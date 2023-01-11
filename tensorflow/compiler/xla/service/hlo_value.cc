@@ -18,6 +18,7 @@ limitations under the License.
 #include <algorithm>
 #include <memory>
 #include <utility>
+#include <vector>
 
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_set.h"
@@ -71,7 +72,9 @@ std::ostream& operator<<(std::ostream& out, const HloUse& use) {
 
 HloValue::HloValue(HloValue::Id id, HloInstruction* instruction,
                    const ShapeIndex& index, bool is_phi)
-    : BufferValue(instruction, index, id), is_phi_(is_phi) {
+    : BufferValue(instruction, index, id),
+      uses_([this] { return ComputeUses(); }),
+      is_phi_(is_phi) {
   // The defining position is always the first element in the positions_ vector.
   positions_.push_back(HloPosition{instruction, index});
 }
@@ -153,7 +156,7 @@ void HloValue::SetPositions(absl::Span<const HloPosition> positions) {
       IsRootOf(defining_instruction()->GetModule()->entry_computation());
 }
 
-void HloValue::ComputeUses(std::vector<HloUse>& uses) const {
+std::vector<HloUse> HloValue::ComputeUses() const {
   // Gather the computation roots at which this value appears.
   absl::flat_hash_set<HloInstruction*> root_positions;
   for (const HloPosition& position : positions_) {
@@ -162,6 +165,7 @@ void HloValue::ComputeUses(std::vector<HloUse>& uses) const {
     }
   }
 
+  std::vector<HloUse> uses;
   // Build vector of HloUses for the value.
   for (const HloPosition& position : positions_) {
     for (HloInstruction* user : position.instruction->users()) {
@@ -186,6 +190,7 @@ void HloValue::ComputeUses(std::vector<HloUse>& uses) const {
       }
     }
   }
+  return uses;
 }
 
 bool HloValue::IsRootOf(const HloComputation* computation) const {

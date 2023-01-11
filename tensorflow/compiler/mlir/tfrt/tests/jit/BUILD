@@ -30,6 +30,7 @@ tfrt_cc_test(
     name = "tf_jitrt_benchmark_test",
     srcs = ["tf_jitrt_benchmark_test.cc"],
     deps = [
+        "//tensorflow/compiler/jit:flags",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tfrt:tf_jitrt_pipeline",
         "//tensorflow/compiler/xla/mlir/runtime/transforms:compiler",

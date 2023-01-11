@@ -9,12 +9,18 @@ py_library(
     srcs = ["structured_function.py"],
     srcs_version = "PY3",
     deps = [
+        ":debug_mode",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:function",
         "//tensorflow/python:util",
         "//tensorflow/python/data/util:nest",
         "//tensorflow/python/data/util:structure",
     ],
+)
+
+py_library(
+    name = "debug_mode",
+    srcs = ["debug_mode.py"],
 )
 
 py_library(
@@ -46,6 +52,11 @@ py_library(
 )
 
 py_library(
+    name = "shuffle_op",
+    srcs = ["shuffle_op.py"],
+)
+
+py_library(
     name = "rebatch_op",
     srcs = ["rebatch_op.py"],
     deps = [
@@ -73,6 +84,7 @@ py_library(
         ":cache_op",
         ":concatenate_op",
         ":counter_op",
+        ":debug_mode",
         ":filter_op",
         ":flat_map_op",
         ":from_generator_op",
@@ -96,6 +108,7 @@ py_library(
         ":save_ops",
         ":scan_op",
         ":shard_op",
+        ":shuffle_op",
         ":skip_op",
         ":snapshot_op",
         ":sparse_batch_op",

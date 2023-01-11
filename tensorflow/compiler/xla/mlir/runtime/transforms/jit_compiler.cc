@@ -51,7 +51,7 @@ static bool DebugJitCompiler() {
 #if defined(DEBUG_XLA_RUNTIME_COMPILER)
   return true;
 #endif
-  return false;
+  return VLOG_IS_ON(5);
 }
 
 static bool EnablePassTiming() {

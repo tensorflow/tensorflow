@@ -1,6 +1,7 @@
 # Description: this package contains shim library targets that forward
 # to the TF Lite C and C++ API targets.  See README.md.
 
+load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
 load("//tensorflow/lite:build_def.bzl", "tflite_copts", "tflite_copts_warnings")
 load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite")
 load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
@@ -22,6 +23,19 @@ exports_files(
         "//tensorflow/lite:__subpackages__",
         "@mediapipe//mediapipe/tasks:__subpackages__",
         "@org_tensorflow_lite_support//tensorflow_lite_support:__subpackages__",
+    ],
+)
+
+# Any target that depends on this one, directly or indirectly,
+# will have -DTFLITE_USE_OPAQUE_DELEGATE passed to the C/C++ compiler.
+cc_library(
+    name = "tflite_use_opaque_delegate",
+    compatible_with = get_compatible_with_portable(),
+    defines = [
+        "TFLITE_USE_OPAQUE_DELEGATE",
+    ],
+    visibility = [
+        "//visibility:public",
     ],
 )
 
@@ -82,7 +96,7 @@ cc_library(
         "//tensorflow/lite:allocation",
         "//tensorflow/lite:arena_planner",
         "//tensorflow/lite:external_cpu_backend_context",
-        "//tensorflow/lite:framework_lib",
+        "//tensorflow/lite:framework",
         "//tensorflow/lite:kernel_api",
         "//tensorflow/lite:memory_planner",
         "//tensorflow/lite:minimal_logging",
@@ -91,6 +105,7 @@ cc_library(
         "//tensorflow/lite:type_to_tflitetype",
         "//tensorflow/lite:util",
         "//tensorflow/lite:version",
+        "//tensorflow/lite/core:framework",
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/core/api:verifier",
         "//tensorflow/lite/core/c:common",
@@ -122,7 +137,7 @@ cc_library(
         "//tensorflow/lite:allocation",
         "//tensorflow/lite:arena_planner",
         "//tensorflow/lite:external_cpu_backend_context",
-        "//tensorflow/lite:framework_lib",
+        "//tensorflow/lite:framework",
         "//tensorflow/lite:graph_info",
         "//tensorflow/lite:kernel_api",
         "//tensorflow/lite:memory_planner",
@@ -132,6 +147,7 @@ cc_library(
         "//tensorflow/lite:type_to_tflitetype",
         "//tensorflow/lite:util",
         "//tensorflow/lite:version",
+        "//tensorflow/lite/core:framework",
         "//tensorflow/lite/core:headers",
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/core/api:verifier",
@@ -169,6 +185,7 @@ cc_library(
         "//tensorflow/lite:type_to_tflitetype",
         "//tensorflow/lite:util",
         "//tensorflow/lite:version",
+        "//tensorflow/lite/core:cc_api_stable",
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/core/api:verifier",
         "//tensorflow/lite/core/c:common",
@@ -199,6 +216,7 @@ cc_library(
         "//tensorflow/lite:type_to_tflitetype",
         "//tensorflow/lite:util",
         "//tensorflow/lite:version",
+        "//tensorflow/lite/core:cc_api_experimental",
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/core/api:verifier",
         "//tensorflow/lite/core/c:common",
@@ -214,7 +232,7 @@ cc_library(
         "cc/kernels/register.h",
         # TODO(b/161243354): remove the line below when clients no
         # longer depend on it.
-        "//tensorflow/lite/kernels:builtin_op_kernels.h",
+        "//tensorflow/lite/core/kernels:builtin_op_kernels.h",
         "//tensorflow/lite/kernels:fully_connected.h",
     ],
     visibility = [
@@ -237,7 +255,7 @@ cc_library(
 cc_library(
     name = "create_op_resolver_header",
     srcs = [
-        "//tensorflow/lite:create_op_resolver.h",
+        "//tensorflow/lite/core:create_op_resolver.h",
     ],
     hdrs = [
         "cc/create_op_resolver.h",
@@ -289,7 +307,7 @@ cc_library(
         "@org_tensorflow_lite_support//tensorflow_lite_support:__subpackages__",
     ],
     deps = [
-        "//tensorflow/lite/experimental/acceleration/configuration:delegate_registry",
+        "//tensorflow/lite/core/experimental/acceleration/configuration:delegate_registry",
     ],
 )
 
@@ -310,7 +328,7 @@ cc_library(
         "@org_tensorflow_lite_support//tensorflow_lite_support:__subpackages__",
     ],
     deps = [
-        "//tensorflow/lite/tools:verifier",
+        "//tensorflow/lite/core/tools:verifier",
     ],
 )
 
@@ -322,7 +340,7 @@ cc_library(
         "//tensorflow/lite/java/src/main/native:__pkg__",
     ],
     deps = [
-        "//tensorflow/lite/tools:verifier_internal",
+        "//tensorflow/lite/core/tools:verifier_internal",
     ],
 )
 

@@ -15,9 +15,9 @@ limitations under the License.
 
 #include <functional>
 #include <iostream>
+#include <optional>
 
 #include "absl/strings/str_split.h"
-#include "llvm/ADT/None.h"
 #include "llvm/ADT/Optional.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
@@ -63,7 +63,7 @@ limitations under the License.
 using mlir::MLIRContext;
 using mlir::ModuleOp;
 using mlir::func::FuncOp;
-using stream_executor::port::StatusOr;
+using tsl::StatusOr;
 
 // Debugging flag to print function mapping in the flatbuffer.
 // NOLINTNEXTLINE
@@ -308,7 +308,7 @@ int main(int argc, char **argv) {
   });
 
   std::string result;
-  llvm::Optional<tensorflow::Session *> session = llvm::None;
+  llvm::Optional<tensorflow::Session *> session = std::nullopt;
   if (bundle) session = bundle->GetSession();
   auto status = tensorflow::ConvertTFExecutorToTFLOrFlatbuffer(
       module.value().get(), output_mlir, toco_flags, pass_config, tags,

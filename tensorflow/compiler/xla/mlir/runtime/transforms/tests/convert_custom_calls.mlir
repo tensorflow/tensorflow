@@ -46,14 +46,14 @@ func.func @function_call_to_traced_custom_call(
     %arg0: !rt.execution_context,
     %arg1: memref<?xf32>
 ) -> memref<?xf32> attributes {rt.exported = 0 : i32} {
-  // CHECK: %[[RES:.*]]:2 = rt.trace #rt.hlo_trace<"fusion", "foo", 0>, %[[CTX]]
+  // CHECK: %[[RES:.*]]:2 = rt.trace #rt.hlo_trace<"fusion">, %[[CTX]]
   // CHECK-SAME: -> !rt.status, memref<?xf32> {
   // CHECK-NEXT:   %[[STATUS:.*]], %[[RET:.*]] = call %[[CTX]]["target"]
   // CHECK-NOT:    #rt.hlo_trace
   // CHECK-NEXT:   yield %[[STATUS]], %[[RET]] : !rt.status, memref<?xf32>
   // CHECK-NEXT: }
   // CHECK: rt.is_ok %[[RES]]#0
-  %0 = call @custom_call(%arg1) { rt.trace = #rt.hlo_trace<"fusion", "foo", 0> }
+  %0 = call @custom_call(%arg1) { rt.trace = #rt.hlo_trace<"fusion"> }
     : (memref<?xf32>) -> memref<?xf32>
   return %0 : memref<?xf32>
 }

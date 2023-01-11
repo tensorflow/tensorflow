@@ -54,14 +54,13 @@ struct OutlineXLAFunc : public RewritePattern {
   explicit OutlineXLAFunc(MLIRContext *context, PatternBenefit benefit = 1)
       : RewritePattern(func::FuncOp::getOperationName(), benefit, context) {}
 
-  static void filterFuncAttributes(ArrayRef<NamedAttribute> attrs,
-                                   bool argAttrs,
+  static void filterFuncAttributes(func::FuncOp func, bool argAttrs,
                                    SmallVectorImpl<NamedAttribute> &result) {
-    for (const auto &attr : attrs) {
+    for (const auto &attr : func->getAttrs()) {
       if (attr.getName() == SymbolTable::getSymbolAttrName() ||
-          attr.getName() == FunctionOpInterface::getTypeAttrName() ||
+          attr.getName() == func.getFunctionTypeAttrName() ||
           attr.getName() == "std.varargs" ||
-          (argAttrs && attr.getName() == func::FuncOp::getArgDictAttrName()))
+          (argAttrs && attr.getName() == func.getArgAttrsAttrName()))
         continue;
       result.push_back(attr);
     }
@@ -91,7 +90,7 @@ struct OutlineXLAFunc : public RewritePattern {
                                    ::mlir::xla_framework::BufferType::get(ctx));
     auto func_type = FunctionType::get(ctx, operands, result_array);
     SmallVector<NamedAttribute> attrs;
-    filterFuncAttributes(func->getAttrs(), true, attrs);
+    filterFuncAttributes(func, true, attrs);
     SmallVector<DictionaryAttr> arg_attrs;
     func.getAllArgAttrs(arg_attrs);
 

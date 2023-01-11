@@ -47,6 +47,13 @@ static llvm::cl::opt<bool> splitInputFile(
                    "independently"),
     llvm::cl::init(false));
 
+// NOLINTNEXTLINE
+static llvm::cl::opt<bool> verifyDiagnostics(
+    "verify-diagnostics",
+    llvm::cl::desc("Check that emitted diagnostics match "
+                   "expected-* lines on the corresponding line"),
+    llvm::cl::init(false));
+
 int main(int argc, char** argv) {
   llvm::InitLLVM y(argc, argv);
   int dummyArgc = 1;
@@ -74,11 +81,20 @@ int main(int argc, char** argv) {
   // Processes the memory buffer with a new MLIRContext.
   auto processBuffer = [&](std::unique_ptr<llvm::MemoryBuffer> ownedBuffer,
                            llvm::raw_ostream& os) {
-    llvm::SourceMgr sourceMgr;
-    sourceMgr.AddNewSourceBuffer(std::move(ownedBuffer), llvm::SMLoc());
+    auto sourceMgr = std::make_shared<llvm::SourceMgr>();
+    sourceMgr->AddNewSourceBuffer(std::move(ownedBuffer), llvm::SMLoc());
     mlir::MLIRContext context;
-    mlir::SourceMgrDiagnosticHandler diagnostic_handler(sourceMgr, &context);
-    return (*requested_translation)(sourceMgr, os, &context);
+
+    if (!verifyDiagnostics) {
+      mlir::SourceMgrDiagnosticHandler diagnostic_handler(*sourceMgr, &context);
+      return (*requested_translation)(sourceMgr, os, &context);
+    }
+
+    context.printOpOnDiagnostic(false);
+    mlir::SourceMgrDiagnosticVerifierHandler diagnostic_handler(*sourceMgr,
+                                                                &context);
+    (void)(*requested_translation)(sourceMgr, os, &context);
+    return diagnostic_handler.verify();
   };
 
   if (splitInputFile) {

@@ -36,8 +36,8 @@ limitations under the License.
 #endif
 #endif
 
+#include "tensorflow/lite/core/experimental/acceleration/configuration/delegate_registry.h"
 #include "tensorflow/lite/experimental/acceleration/configuration/configuration_generated.h"
-#include "tensorflow/lite/experimental/acceleration/configuration/delegate_registry.h"
 
 namespace tflite {
 namespace delegates {

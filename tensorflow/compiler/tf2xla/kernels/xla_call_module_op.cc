@@ -22,6 +22,7 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/OwningOpRef.h"  // from @llvm-project
 #include "mlir/IR/SymbolTable.h"  // from @llvm-project
+#include "mlir/IR/Verifier.h"  // from @llvm-project
 #include "mlir/Parser/Parser.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Support/DebugStringHelper.h"  // from @llvm-project
@@ -62,10 +63,11 @@ StatusOr<mlir::Value> ComputeDimensionValue(int version, string dim_arg_spec,
     return errors::InvalidArgument("Syntax error in dim_args_spec '",
                                    dim_arg_spec, "'");
   }
-  if (arg_idx < 0 || arg_idx > arguments.size()) {
+  if (arg_idx < 0 || arg_idx >= arguments.size()) {
     return errors::InvalidArgument(
-        "Invalid argument index ", arg_idx, " when number of arguments is ",
-        arguments.size(), " in dim_arg_spec '", dim_arg_spec, "'");
+        "Invalid argument index ", arg_idx,
+        " when the number of non-dimension arguments is ", arguments.size(),
+        " in dim_arg_spec '", dim_arg_spec, "'");
   }
   mlir::RankedTensorType arg_type =
       arguments[arg_idx].getType().dyn_cast<mlir::RankedTensorType>();
@@ -75,19 +77,30 @@ StatusOr<mlir::Value> ComputeDimensionValue(int version, string dim_arg_spec,
         "' does not have a RankedTensorType");
   }
   if (arg_axis_idx < 0 || arg_axis_idx >= arg_type.getShape().size()) {
-    return errors::InvalidArgument(
-        "Invalid axis index ", arg_axis_idx, " when rank of input is ",
-        arg_type.getShape().size(), " in dim_arg_spec '", dim_arg_spec, "'");
+    return errors::InvalidArgument("Invalid axis index ", arg_axis_idx,
+                                   " when the rank of non-dimension argument ",
+                                   arg_idx, " is ", arg_type.getShape().size(),
+                                   " in dim_arg_spec '", dim_arg_spec, "'");
   }
   mlir::Value val;
+  mlir::Type get_dim_type =
+      mlir::RankedTensorType::get({}, op_builder.getI32Type());
   if (version >= VERSION_START_STABLE_HLO) {
     val = op_builder.create<mlir::stablehlo::GetDimensionSizeOp>(
-        arguments[arg_idx].getLoc(), dim_arg_type, arguments[arg_idx],
+        arguments[arg_idx].getLoc(), get_dim_type, arguments[arg_idx],
         op_builder.getI64IntegerAttr(arg_axis_idx));
+    if (dim_arg_type != get_dim_type) {
+      val = op_builder.create<mlir::stablehlo::ConvertOp>(
+          arguments[arg_idx].getLoc(), dim_arg_type, val);
+    }
   } else {
     val = op_builder.create<mlir::mhlo::GetDimensionSizeOp>(
-        arguments[arg_idx].getLoc(), dim_arg_type, arguments[arg_idx],
+        arguments[arg_idx].getLoc(), get_dim_type, arguments[arg_idx],
         op_builder.getI64IntegerAttr(arg_axis_idx));
+    if (dim_arg_type != get_dim_type) {
+      val = op_builder.create<mlir::mhlo::ConvertOp>(
+          arguments[arg_idx].getLoc(), dim_arg_type, val);
+    }
   }
   return val;
 }
@@ -100,11 +113,12 @@ StatusOr<mlir::Value> ComputeDimensionValue(int version, string dim_arg_spec,
 //
 // where %arg0 and %arg1 are dimension arguments, always first among the
 // arguments, and whose values are computed based on the static shapes of the
-// array arguments (%arg2 and following).
+// non-dimension arguments (%arg2 and following).
 // In the above example, the dim_args_spec array would have two elements, one
 // for %arg0 and one for %arg1. E.g., ['0.0', '0.1'] specifies that %arg0
 // should be set to the size of axis 0 or array argument 0 (%arg2), while
 // %arg1 should be set to the size of axis 1.
+// The dimension arguments must be 0-dimensional tensors of integer type.
 //
 // We create a new "main" function as follows:
 //   func public main(%arg2: f32[?, ?, 8]) {
@@ -132,9 +146,9 @@ Status AddMainWrapper(int version, mlir::ModuleOp module,
     return errors::InvalidArgument("Cannot find 'main' in module");
   }
   if (orig_main.getNumArguments() <= nr_dim_args) {
-    return errors::InvalidArgument("'main' has ", orig_main.getNumArguments(),
-                                   " arguments, but it must have at least ",
-                                   nr_dim_args, " dimension arguments");
+    return errors::InvalidArgument(
+        "The module should have ", nr_dim_args, " dimension arguments, but it ",
+        "has only ", orig_main.getNumArguments(), " total arguments");
   }
   mlir::Block &orig_main_body = orig_main.front();
 
@@ -161,6 +175,17 @@ Status AddMainWrapper(int version, mlir::ModuleOp module,
   std::vector<mlir::Value> call_args(orig_main_body.getNumArguments());
   for (int i = 0; i < orig_main_body.getNumArguments(); ++i) {
     if (i < nr_dim_args) {
+      mlir::Type arg_type = orig_main.getArgument(i).getType();
+      mlir::RankedTensorType arg_ranked_type =
+          arg_type.dyn_cast<mlir::RankedTensorType>();
+      if (!arg_ranked_type ||
+          !arg_ranked_type.getElementType().dyn_cast<mlir::IntegerType>() ||
+          !arg_ranked_type.getShape().empty()) {
+        return errors::InvalidArgument(
+            "Module argument at index ", i,
+            " should be a 0-dimensional integer-tensor dimension argument",
+            " but has type ", debugString(arg_type));
+      }
       TF_ASSIGN_OR_RETURN(call_args[i],
                           ComputeDimensionValue(
                               version, dim_args_spec[i], block_args, op_builder,
@@ -194,7 +219,8 @@ Status AddMainWrapper(int version, mlir::ModuleOp module,
 // inference to refine all dynamic shapes, and to rewrite the dynamic ops,
 // e.g., to replace dynamic_broadcast_in_dim with broadcast_in_dim.
 Status RefineDynamicShapes(XlaOpKernelContext *ctx,
-                           mlir::OwningOpRef<mlir::ModuleOp> *module) {
+                           mlir::OwningOpRef<mlir::ModuleOp> *module,
+                           int nr_dim_args) {
   // Locate the (wrapped) 'main' function.
   // This is the convention used by MlirToXlaComputation.
   mlir::func::FuncOp main = (*module)->lookupSymbol<mlir::func::FuncOp>("main");
@@ -202,17 +228,18 @@ Status RefineDynamicShapes(XlaOpKernelContext *ctx,
     return errors::InvalidArgument("Cannot find 'main' in module");
   }
   mlir::Block &main_body = main.front();
-  int nr_array_arguments = ctx->num_inputs();
-  if (nr_array_arguments != main_body.getNumArguments()) {
+  int non_dimension_arguments = ctx->num_inputs();
+  if (non_dimension_arguments != main_body.getNumArguments()) {
     return errors::InvalidArgument(
-        "Incorrect number of arguments for XlaCallModule. ",
-        "The wrapped module expects ", main_body.getNumArguments(),
-        " arguments, but there are ", nr_array_arguments, " arguments");
+        "Incorrect number of arguments for XlaCallModule: ",
+        non_dimension_arguments, ". The module has ",
+        main_body.getNumArguments() + nr_dim_args, " of which ", nr_dim_args,
+        " were declared to be dimension arguments.");
   }
 
   mlir::Builder builder((*module)->getContext());
-  std::vector<mlir::Type> static_array_input_types(nr_array_arguments);
-  for (int i = 0, end = nr_array_arguments; i < end; ++i) {
+  std::vector<mlir::Type> static_array_input_types(non_dimension_arguments);
+  for (int i = 0, end = non_dimension_arguments; i < end; ++i) {
     TF_ASSIGN_OR_RETURN(xla::Shape xla_shape, ctx->InputXlaShape(i));
     std::vector<int64_t> xla_dimensions(xla_shape.dimensions().begin(),
                                         xla_shape.dimensions().end());
@@ -232,11 +259,24 @@ Status RefineDynamicShapes(XlaOpKernelContext *ctx,
   // This will only change the argument types and will not propagate the
   // additional type information further. For that, we'll need to run
   // shape inference as explained below.
-  main.setType(
-      builder.getFunctionType(static_array_input_types, main.getResultTypes()));
+  auto static_array_output_types = llvm::to_vector(main.getResultTypes());
   for (auto i = 0; i < main_body.getNumArguments(); ++i) {
-    main_body.getArgument(i).setType(static_array_input_types[i]);
+    auto arg = main_body.getArgument(i);
+    arg.setType(static_array_input_types[i]);
+    // If the argument is used by `func.return`, then we also need to
+    // update function result types. It's not great that we need this hack,
+    // but in the future when we have stablehlo.func, stablehlo.return, etc,
+    // this will not be needed.
+    // TODO(burmako): Once https://github.com/openxla/stablehlo/issues/425 is
+    // fixed, clean this up.
+    for (mlir::OpOperand &use : arg.getUses()) {
+      if (auto ret = llvm::dyn_cast<mlir::func::ReturnOp>(use.getOwner())) {
+        static_array_output_types[use.getOperandNumber()] = arg.getType();
+      }
+    }
   }
+  main.setType(builder.getFunctionType(static_array_input_types,
+                                       static_array_output_types));
   // --tf-shape-inference, despite its TF-specific name, seems to be general
   // enough to also work on MHLO. (Although it fails if it doesn't see a
   // tf.versions attribute on the module, which we hackily attach).
@@ -244,6 +284,14 @@ Status RefineDynamicShapes(XlaOpKernelContext *ctx,
       builder.getNamedAttr("producer", builder.getI32IntegerAttr(0));
   (**module)->setAttr("tf.versions", builder.getDictionaryAttr({tf_producer}));
 
+  // Verify the module before running passes on it.
+  // If the module doesn't pass verification, all sorts of weirdness might
+  // happen if we run the pass manager.
+  if (failed(verify(**module))) {
+    VLOG(3) << "XlaCallModule module with verification failed: "
+            << debugString(**module);
+    return errors::InvalidArgument("Module verification failed");
+  }
   mlir::PassManager pm((*module)->getContext());
   if (VLOG_IS_ON(3)) {
     auto print_before = [](mlir::Pass *, mlir::Operation *) { return true; };
@@ -284,7 +332,9 @@ Status LoadAndPreprocessModule(int version,
   if (!*module) {
     return errors::InvalidArgument("Cannot deserialize computation");
   }
-  VLOG(3) << "Parsed serialized module (version " << version << ")\n"
+  VLOG(3) << "Parsed serialized module (version " << version
+          << ", dim_args_spec = [" << absl::StrJoin(dim_args_spec, ", ")
+          << "])\n"
           << debugString(**module);
 
   if (failed((*module)->verifyInvariants())) {
@@ -310,8 +360,12 @@ Status LoadAndPreprocessModule(int version,
     }
   }
 
+  if (*has_dynamic_shapes && dim_args_spec.empty()) {
+    return errors::InvalidArgument(
+        "Module main has dynamic shapes but no dim_args_spec was given");
+  }
   if (!dim_args_spec.empty()) {
-    if (!has_dynamic_shapes) {
+    if (!*has_dynamic_shapes) {
       return errors::InvalidArgument(
           "Module main has dim_args_spec but does not have dynamic shapes");
     }
@@ -347,7 +401,8 @@ class XlaCallModuleOp : public XlaOpKernel {
 
   void Compile(XlaOpKernelContext *ctx) override {
     if (has_dynamic_shapes_) {
-      OP_REQUIRES_OK(ctx, RefineDynamicShapes(ctx, &module_));
+      OP_REQUIRES_OK(ctx,
+                     RefineDynamicShapes(ctx, &module_, dim_args_spec_.size()));
     }
 
     std::vector<xla::XlaOp> inputs(ctx->num_inputs());

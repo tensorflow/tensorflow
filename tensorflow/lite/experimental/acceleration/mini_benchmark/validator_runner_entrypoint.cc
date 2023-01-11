@@ -16,9 +16,6 @@ limitations under the License.
 
 #include <string>
 
-#include "flatbuffers/buffer.h"  // from @flatbuffers
-#include "flatbuffers/vector.h"  // from @flatbuffers
-
 #ifndef _WIN32
 #include <fcntl.h>
 #include <sys/file.h>
@@ -37,12 +34,12 @@ limitations under the License.
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/constants.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/fb_storage.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/file_lock.h"
-#include "tensorflow/lite/experimental/acceleration/mini_benchmark/model_loader.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/set_big_core_affinity.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/status_codes.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/validator.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/validator_runner.h"
 #include "tensorflow/lite/nnapi/sl/include/SupportLibrary.h"
+#include "tensorflow/lite/tools/model_loader.h"
 
 namespace tflite {
 namespace acceleration {
@@ -73,8 +70,8 @@ MinibenchmarkStatus RunValidator(absl::string_view model_path,
   fbb.Finish(
       CreateComputeSettings(fbb, ExecutionPreference_ANY,
                             CreateTFLiteSettings(fbb, &tflite_settings)));
-  std::unique_ptr<ModelLoader> model_loader =
-      CreateModelLoaderFromPath(model_path);
+  std::unique_ptr<tools::ModelLoader> model_loader =
+      tools::CreateModelLoaderFromPath(model_path);
   if (!model_loader) {
     return kMinibenchmarkPreconditionNotMet;
   }

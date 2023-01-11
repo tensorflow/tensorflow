@@ -138,6 +138,21 @@ pytype_strict_library(
 )
 
 pytype_strict_library(
+    name = "numpy_util",
+    srcs = ["numpy_util.py"],
+    deps = [
+        ":api",
+        ":layout",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:sparse_ops",
+        "//tensorflow/python:stateless_random_ops",
+        "//tensorflow/python/eager/polymorphic_function",
+        "//tensorflow/python/types",
+        "//third_party/py/numpy",
+    ],
+)
+
+pytype_strict_library(
     name = "save_restore",
     srcs = ["save_restore.py"],
     srcs_version = "PY3",

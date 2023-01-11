@@ -120,7 +120,7 @@ struct ShapeValue {
 
   ArrayRef<ValueOrConst> scalars() const {
     assert(!is_vector);
-    return llvm::makeArrayRef(shape);
+    return llvm::ArrayRef(shape);
   }
 
   bool isVector() const { return is_vector; }

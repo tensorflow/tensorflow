@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef MLIR_HLO_DIALECT_MHLO_TRANSFORMS_PASSES_H
-#define MLIR_HLO_DIALECT_MHLO_TRANSFORMS_PASSES_H
+#ifndef MLIR_HLO_MHLO_TRANSFORMS_PASSES_H
+#define MLIR_HLO_MHLO_TRANSFORMS_PASSES_H
 
 #include <memory>
 #include <string>
@@ -60,6 +60,10 @@ createLegalizeSparseChloToLinalgPass();
 // Canonicalize reduction ops to be suitable for codegen.
 std::unique_ptr<OperationPass<func::FuncOp>>
 createHloCanonicalizeReductionPass();
+
+// Expand feature rich mhlo ops to simpler mhlo ops.
+std::unique_ptr<OperationPass<func::FuncOp>>
+createMhloExpandOpsSimplifierPass();
 
 // Rewrites scatter into transposes, reshapes and a simpler scatter.
 std::unique_ptr<OperationPass<func::FuncOp>> createHloCanonicalizeScatterPass();
@@ -120,6 +124,14 @@ std::unique_ptr<OperationPass<func::FuncOp>> createMergeAssumingOpsPass();
 // Iteratively reifies all shape computations in the function.
 std::unique_ptr<OperationPass<func::FuncOp>> createShapeReificationPass();
 
+/// Creates a pass to analyze shapes and to use that information for
+/// shape-related optimizations.
+std::unique_ptr<OperationPass<func::FuncOp>>
+createSymbolicShapeOptimizationPass();
+
+// Pass to simplify shape ops.
+std::unique_ptr<OperationPass<func::FuncOp>> createShapeSimplification();
+
 // Fuse shape constraints and merge all assuming regions.
 std::unique_ptr<OperationPass<func::FuncOp>> createConstraintFusionPass();
 
@@ -177,4 +189,4 @@ std::unique_ptr<Pass> createTestUnfuseBatchNormPass();
 }  // namespace mhlo
 }  // namespace mlir
 
-#endif  // MLIR_HLO_DIALECT_MHLO_TRANSFORMS_PASSES_H
+#endif  // MLIR_HLO_MHLO_TRANSFORMS_PASSES_H

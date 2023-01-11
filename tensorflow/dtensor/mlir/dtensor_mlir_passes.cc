@@ -280,6 +280,11 @@ void CreateDTensorMLIRPass(const mlir::TF::StandardPipelineOptions &options,
     pm->addPass(mlir::TFDevice::CreateResourceOpLiftingPass());
     pm->addPass(mlir::TFDevice::CreateClusterOutliningPass());
 
+    // Prepare for XLA SPMD integration for XLA SPMD mesh. If there are layout
+    // operations on XLA SPMD mesh, then convert all of them to appropriate
+    // XLA sharding attributes.
+    pm->addPass(CreateDTensorXlaSpmdIntegration());
+
     // Rename functions with unique names, to avoid collisions in the function
     // library.
     pm->addPass(CreateFunctionRenamingPass());
@@ -297,6 +302,11 @@ void CreateDTensorMLIRPass(const mlir::TF::StandardPipelineOptions &options,
     // expected by TPURewritePass.
     pm->addNestedPass<mlir::func::FuncOp>(
         mlir::TF::CreateCanonicalizeCompileAndReplicateAttributesPass());
+    // Rewrite RecvTPUEmbeddingActivationsOp and SendTPUEmbeddingGradients ops
+    // to internal variants by introducing XlaRecvTPUEmbeddingDeduplicationData
+    // op.
+    pm->addNestedPass<mlir::func::FuncOp>(
+        mlir::TF::CreateRewriteTPUEmbeddingOpsPass());
     // Create TPU Compile and TPU Execute ops for each TPU devices.
     pm->addPass(mlir::TFTPU::CreateTPURewritePass());
     // Convert unified compilation and replication attributes back to legacy

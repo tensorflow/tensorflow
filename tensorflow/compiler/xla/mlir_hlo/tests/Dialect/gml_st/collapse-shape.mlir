@@ -42,8 +42,8 @@ func.func @bcast(%arg0: tensor<2x4x2048xf32>) -> tensor<2x4x2048x4096xf32> {
 // CHECK-2-SAME:     [0, 1], [2]]
 // CHECK-2:        %[[EMPTY:.*]] = tensor.empty()
 // CHECK-2:        %[[BROADCASTED:.*]] = linalg.broadcast
-// CHECK-2:      ins(%[[COLLAPSED]] : tensor<8x2048xf32>)
-// CHECK-2:      outs(%[[EMPTY]] : tensor<8x2048x4096xf32>)
+// CHECK-2-SAME:     ins(%[[COLLAPSED]] : tensor<8x2048xf32>)
+// CHECK-2-SAME:     outs(%[[EMPTY]] : tensor<8x2048x4096xf32>)
 // CHECK-2:      dimensions = [2]
 // CHECK-2:        %[[EXPANDED:.*]] = tensor.expand_shape %[[BROADCASTED]] [
 // CHECK-2-SAME:     [0, 1], [2], [3]]
@@ -80,9 +80,9 @@ func.func @bcast_from_scalar() -> tensor<2x4x2048x4096xf32> {
 // CHECK-1:      func.func @bcast_from_scalar()
 // CHECK-1:        %[[EMPTY:.*]] = tensor.empty() : tensor<16384x4096xf32>
 // CHECK-1:        %[[BROADCAST:.*]] = linalg.broadcast
-// CHECK-1-NEXT:       ins(%{{.*}} : tensor<f32>)
-// CHECK-1-NEXT:       outs(%[[EMPTY]] : tensor<16384x4096xf32>)
-// CHECK-1-NEXT:       dimensions = [1, 0]  
+// CHECK-1-SAME:       ins(%{{.*}} : tensor<f32>)
+// CHECK-1-SAME:       outs(%[[EMPTY]] : tensor<16384x4096xf32>)
+// CHECK-1-SAME:       dimensions = [1, 0]
 // CHECK-1:        %[[EXPANDED:.*]] = tensor.expand_shape %[[BROADCAST]] [
 // CHECK-1-SAME:     [0, 1, 2], [3]]
 // CHECK-1:        return %[[EXPANDED]]
@@ -90,9 +90,9 @@ func.func @bcast_from_scalar() -> tensor<2x4x2048x4096xf32> {
 // CHECK-2:      func.func @bcast_from_scalar()
 // CHECK-2:        %[[EMPTY:.*]] = tensor.empty() : tensor<8x2048x4096xf32>
 // CHECK-2:        %[[BROADCAST:.*]] = linalg.broadcast
-// CHECK-2-NEXT:       ins(%{{.*}} : tensor<f32>
-// CHECK-2-NEXT:       outs(%[[EMPTY]] : tensor<8x2048x4096xf32>)
-// CHECK-2-NEXT:       dimensions = [1, 2, 0]
+// CHECK-2-SAME:       ins(%{{.*}} : tensor<f32>
+// CHECK-2-SAME:       outs(%[[EMPTY]] : tensor<8x2048x4096xf32>)
+// CHECK-2-SAME:       dimensions = [1, 2, 0]
 // CHECK-2:        %[[EXPANDED:.*]] = tensor.expand_shape %[[BROADCAST]] [
 // CHECK-2-SAME:     [0, 1], [2], [3]]
 // CHECK-2:        return %[[EXPANDED]]
@@ -129,12 +129,9 @@ func.func @reduction(%arg0: tensor<2x4x2048x4096xf32>) -> tensor<2x4x2048xf32> {
 // CHECK-1-SAME:     [0, 1, 2], [3]]
 // CHECK-1:        %[[EMPTY:.*]] = tensor.empty()
 // CHECK-1:        %[[FILL:.*]] = linalg.fill ins(%[[CST]] : f32) outs(%[[EMPTY]] : tensor<16384xf32>)
-// CHECK-1:        %[[REDUCED:.*]] = linalg.reduce
-// CHECK-1-NEXT:       ins(%[[COLLAPSED]] : tensor<16384x4096xf32>)
-// CHECK-1-NEXT:       outs(%[[FILL]] : tensor<16384xf32>)
-// CHECK-1:        (%[[IN:.*]]: f32, %[[OUT:.*]]: f32) {
-// CHECK-1:          %[[MAXF:.*]] = arith.maxf %[[OUT]], %[[IN]] : f32
-// CHECK-1:          linalg.yield %[[MAXF]] : f32
+// CHECK-1:        %[[REDUCED:.*]] = linalg.reduce { arith.maxf }
+// CHECK-1-SAME:       ins(%[[COLLAPSED]] : tensor<16384x4096xf32>)
+// CHECK-1-SAME:       outs(%[[FILL]] : tensor<16384xf32>)
 // CHECK-1:        %[[EXPANDED:.*]] = tensor.expand_shape %[[REDUCED]] [
 // CHECK-1-SAME:     [0, 1, 2]]
 // CHECK-1:        return %[[EXPANDED]]
@@ -161,12 +158,9 @@ func.func @cwise(%arg0: tensor<2x4x2048x4096xf32>,
 // CHECK:          %[[COLLAPSED_0:.*]] = tensor.collapse_shape %[[ARG1]] [
 // CHECK-SAME:       [0, 1, 2, 3]]
 // CHECK:          %[[EMPTY:.*]] = tensor.empty()
-// CHECK:          %[[MAP:.*]] = linalg.map
+// CHECK:          %[[MAP:.*]] = linalg.map { arith.subf }
 // CHECK:           ins(%[[COLLAPSED]], %[[COLLAPSED_0]] : tensor<67108864xf32>, tensor<67108864xf32>)
 // CHECK:           outs(%[[EMPTY]] : tensor<67108864xf32>)
-// CHECK:           (%[[IN:.*]]: f32, %[[IN_1:.*]]: f32) {
-// CHECK:              %[[SUBF:.*]] = arith.subf %[[IN]], %[[IN_1]] : f32
-// CHECK:              linalg.yield %[[SUBF]] : f32
 // CHECK:          %[[EXPANDED:.*]] = tensor.expand_shape %[[MAP]] [
 // CHECK-SAME:       [0, 1, 2, 3]]
 // CHECK:          return %[[EXPANDED]]
@@ -177,12 +171,9 @@ func.func @cwise(%arg0: tensor<2x4x2048x4096xf32>,
 // CHECK-1:        %[[COLLAPSED_0:.*]] = tensor.collapse_shape %[[ARG1]] [
 // CHECK-1-SAME:     [0, 1, 2], [3]]
 // CHECK-1:        %[[EMPTY:.*]] = tensor.empty()
-// CHECK-1:        %[[MAP:.*]] = linalg.map
-// CHECK-1-NEXT:       ins(%[[COLLAPSED]], %[[COLLAPSED_0]] : tensor<16384x4096xf32>, tensor<16384x4096xf32>)
-// CHECK-1-NEXT:       outs(%[[EMPTY]] : tensor<16384x4096xf32>)
-// CHECK-1:        (%[[IN:.*]]: f32, %[[IN_1:.*]]: f32) {
-// CHECK-1:          %[[SUBF:.*]] = arith.subf %[[IN]], %[[IN_1]] : f32
-// CHECK-1:          linalg.yield %[[SUBF]] : f32
+// CHECK-1:        %[[MAP:.*]] = linalg.map { arith.subf }
+// CHECK-1-SAME:       ins(%[[COLLAPSED]], %[[COLLAPSED_0]] : tensor<16384x4096xf32>, tensor<16384x4096xf32>)
+// CHECK-1-SAME       outs(%[[EMPTY]] : tensor<16384x4096xf32>)
 // CHECK-1:        %[[EXPANDED:.*]] = tensor.expand_shape %[[MAP]] [
 // CHECK-1-SAME:     [0, 1, 2], [3]]
 // CHECK-1:        return %[[EXPANDED]]
@@ -193,12 +184,9 @@ func.func @cwise(%arg0: tensor<2x4x2048x4096xf32>,
 // CHECK-2:        %[[COLLAPSED_0:.*]] = tensor.collapse_shape %[[ARG1]] [
 // CHECK-2-SAME:     [0, 1], [2], [3]]
 // CHECK-2:        %[[EMPTY:.*]] = tensor.empty()
-// CHECK-2:        %[[MAP:.*]] = linalg.map
-// CHECK-2-NEXT:       ins(%[[COLLAPSED]], %[[COLLAPSED_0]] : tensor<8x2048x4096xf32>, tensor<8x2048x4096xf32>)
-// CHECK-2-NEXT:       outs(%[[EMPTY]] : tensor<8x2048x4096xf32>)
-// CHECK-2:        (%[[IN:.*]]: f32, %[[IN_1:.*]]: f32) {
-// CHECK-2:          %[[SUBF:.*]] = arith.subf %[[IN]], %[[IN_1]] : f32
-// CHECK-2:          linalg.yield %[[SUBF]] : f32
+// CHECK-2:        %[[MAP:.*]] = linalg.map { arith.subf }
+// CHECK-2-SAME:       ins(%[[COLLAPSED]], %[[COLLAPSED_0]] : tensor<8x2048x4096xf32>, tensor<8x2048x4096xf32>)
+// CHECK-2-SAME       outs(%[[EMPTY]] : tensor<8x2048x4096xf32>)
 // CHECK-2:        %[[EXPANDED:.*]] = tensor.expand_shape %[[MAP]] [
 // CHECK-2-SAME:     [0, 1], [2], [3]]
 // CHECK-2:        return %[[EXPANDED]]
@@ -244,27 +232,21 @@ func.func @partial_softmax(%arg0: tensor<2x4x2048x4096xf32>)
 // CHECK-1-SAME:     [0, 1, 2], [3]]
 // CHECK-1:        %[[EMPTY:.*]] = tensor.empty()
 // CHECK-1:        %[[FILL:.*]] = linalg.fill ins(%[[CST]] : f32) outs(%[[EMPTY]] : tensor<16384xf32>)
-// CHECK-1:        %[[REDUCE:.*]] = linalg.reduce
-// CHECK-1-NEXT:       ins(%[[COLLAPSED]] : tensor<16384x4096xf32>)
-// CHECK-1-NEXT:       outs(%[[FILL]] : tensor<16384xf32>)
-// CHECK-1-NEXT:       dimensions = [1]
-// CHECK-1:        (%[[IN:.*]]: f32, %[[OUT:.*]]: f32) {
-// CHECK-1:          %[[MAXF:.*]] = arith.maxf %[[OUT]], %[[IN]] : f32
-// CHECK-1:          linalg.yield %[[MAXF]] : f32
+// CHECK-1:        %[[REDUCE:.*]] = linalg.reduce { arith.maxf }
+// CHECK-1-SAME:       ins(%[[COLLAPSED]] : tensor<16384x4096xf32>)
+// CHECK-1-SAME:       outs(%[[FILL]] : tensor<16384xf32>)
+// CHECK-1-SAME:       dimensions = [1]
 // CHECK-1:        %[[EMPTY_0:.*]] = tensor.empty()
 // CHECK-1:        %[[BROADCAST:.*]] = linalg.broadcast
-// CHECK-1-NEXT:       ins(%[[REDUCE]] : tensor<16384xf32>)
-// CHECK-1-NEXT:       outs(%[[EMPTY_0]] : tensor<16384x4096xf32>)
-// CHECK-1-NEXT:       dimensions = [1]
+// CHECK-1-SAME:       ins(%[[REDUCE]] : tensor<16384xf32>)
+// CHECK-1-SAME:       outs(%[[EMPTY_0]] : tensor<16384x4096xf32>)
+// CHECK-1-SAME:       dimensions = [1]
 // CHECK-1:        %[[COLLAPSED_0:.*]] = tensor.collapse_shape %[[ARG0]] [
 // CHECK-1-SAME:     [0, 1, 2], [3]]
 // CHECK-1:        %[[EMPTY_1:.*]] = tensor.empty()
-// CHECK-1:        %[[MAP:.*]] = linalg.map
-// CHECK-1-NEXT:       ins(%[[COLLAPSED_0]], %[[BROADCAST]] : tensor<16384x4096xf32>, tensor<16384x4096xf32>)
-// CHECK-1-NEXT:       outs(%[[EMPTY_1]] : tensor<16384x4096xf32>)
-// CHECK-1:        (%[[IN_1:.*]]: f32, %[[IN_1_0:.*]]: f32) {
-// CHECK-1:          %[[SUBF:.*]] = arith.subf %[[IN_1]], %[[IN_1_0]] : f32
-// CHECK-1:          linalg.yield %[[SUBF]] : f32
+// CHECK-1:        %[[MAP:.*]] = linalg.map { arith.subf }
+// CHECK-1-SAME:       ins(%[[COLLAPSED_0]], %[[BROADCAST]] : tensor<16384x4096xf32>, tensor<16384x4096xf32>)
+// CHECK-1-SAME:       outs(%[[EMPTY_1]] : tensor<16384x4096xf32>)
 // CHECK-1:        %[[EXPANDED:.*]] = tensor.expand_shape %[[MAP]] [
 // CHECK-1-SAME:     [0, 1, 2], [3]]
 // CHECK-1:        return %[[EXPANDED]]
@@ -275,27 +257,21 @@ func.func @partial_softmax(%arg0: tensor<2x4x2048x4096xf32>)
 // CHECK-2-SAME:     [0, 1], [2], [3]]
 // CHECK-2:        %[[EMPTY:.*]] = tensor.empty()
 // CHECK-2:        %[[FILL:.*]] = linalg.fill ins(%[[CST]] : f32) outs(%[[EMPTY]] : tensor<8x2048xf32>)
-// CHECK-2:        %[[REDUCE:.*]] = linalg.reduce
-// CHECK-2-NEXT:       ins(%[[COLLAPSED]] : tensor<8x2048x4096xf32>)
-// CHECK-2-NEXT:       outs(%[[FILL]] : tensor<8x2048xf32>)
-// CHECK-2-NEXT:       dimensions = [2]
-// CHECK-2:        (%[[IN:.*]]: f32, %[[OUT:.*]]: f32) {
-// CHECK-2:          %[[MAXF:.*]] = arith.maxf %[[OUT]], %[[IN]] : f32
-// CHECK-2:          linalg.yield %[[MAXF]] : f32
+// CHECK-2:        %[[REDUCE:.*]] = linalg.reduce { arith.maxf }
+// CHECK-2-SAME:       ins(%[[COLLAPSED]] : tensor<8x2048x4096xf32>)
+// CHECK-2-SAME:       outs(%[[FILL]] : tensor<8x2048xf32>)
+// CHECK-2-SAME:       dimensions = [2]
 // CHECK-2:        %[[EMPTY_0:.*]] = tensor.empty()
 // CHECK-2:        %[[BROADCAST:.*]] = linalg.broadcast
-// CHECK-2-NEXT:       ins(%[[REDUCE]] : tensor<8x2048xf32>)
-// CHECK-2-NEXT:       outs(%[[EMPTY_0]] : tensor<8x2048x4096xf32>)
-// CHECK-2-NEXT:       dimensions = [2]
+// CHECK-2-SAME:       ins(%[[REDUCE]] : tensor<8x2048xf32>)
+// CHECK-2-SAME:       outs(%[[EMPTY_0]] : tensor<8x2048x4096xf32>)
+// CHECK-2-SAME:       dimensions = [2]
 // CHECK-2:        %[[COLLAPSED_0:.*]] = tensor.collapse_shape %[[ARG0]] [
 // CHECK-2-SAME:     [0, 1], [2], [3]]
 // CHECK-2:        %[[EMPTY_1:.*]] = tensor.empty()
-// CHECK-2:        %[[MAP:.*]] = linalg.map
-// CHECK-2-NEXT:       ins(%[[COLLAPSED_0]], %[[BROADCAST]] : tensor<8x2048x4096xf32>, tensor<8x2048x4096xf32>)
-// CHECK-2-NEXT:       outs(%[[EMPTY_1]] : tensor<8x2048x4096xf32>)
-// CHECK-2:        (%[[IN_1:.*]]: f32, %[[IN_1_0:.*]]: f32) {
-// CHECK-2:          %[[SUBF:.*]] = arith.subf %[[IN_1]], %[[IN_1_0]] : f32
-// CHECK-2:          linalg.yield %[[SUBF]] : f32
+// CHECK-2:        %[[MAP:.*]] = linalg.map { arith.subf }
+// CHECK-2-SAME:       ins(%[[COLLAPSED_0]], %[[BROADCAST]] : tensor<8x2048x4096xf32>, tensor<8x2048x4096xf32>)
+// CHECK-2-SAME:       outs(%[[EMPTY_1]] : tensor<8x2048x4096xf32>)
 // CHECK-2:        %[[EXPANDED:.*]] = tensor.expand_shape %[[MAP]] [
 // CHECK-2-SAME:     [0, 1], [2], [3]]
 // CHECK-2:        return %[[EXPANDED]]

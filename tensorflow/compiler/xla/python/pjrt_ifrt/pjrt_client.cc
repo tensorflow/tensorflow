@@ -20,26 +20,39 @@ limitations under the License.
 #include <optional>
 #include <utility>
 
+#include "absl/memory/memory.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/python/pjrt_ifrt/pjrt_array.h"
+#include "tensorflow/compiler/xla/python/pjrt_ifrt/pjrt_tuple.h"
 #include "tensorflow/tsl/platform/statusor.h"
+#include "tfrt/concurrency/ref_count.h"  // from @tf_runtime
 
 namespace xla {
 namespace ifrt {
 
+char PjRtCompatibleClient::ID = 0;
 char PjRtClient::ID = 0;
 
-std::unique_ptr<ifrt::Client> PjRtClient::Create(
+std::unique_ptr<PjRtClient> PjRtClient::Create(
     std::shared_ptr<xla::PjRtClient> pjrt_client) {
-  return std::unique_ptr<ifrt::Client>(new PjRtClient(std::move(pjrt_client)));
+  return absl::WrapUnique(new PjRtClient(std::move(pjrt_client)));
 }
 
-std::unique_ptr<ifrt::Client> PjRtClient::Create(
-    std::unique_ptr<xla::PjRtClient> pjrt_client) {
-  return Create(std::shared_ptr<xla::PjRtClient>(pjrt_client.release()));
+StatusOr<tsl::RCReference<PjRtCompatibleArray>> PjRtClient::CreatePjRtArray(
+    std::shared_ptr<PjRtBuffer> pjrt_buffer) {
+  TF_ASSIGN_OR_RETURN(auto array,
+                      PjRtArray::Create(this, std::move(pjrt_buffer)));
+  return tsl::RCReference<PjRtCompatibleArray>(std::move(array));
 }
 
-StatusOr<std::unique_ptr<Array>> PjRtClient::MakeArrayFromHostBuffer(
+StatusOr<tsl::RCReference<PjRtCompatibleArray>> PjRtClient::CreatePjRtArray(
+    Shape shape, PjRtBuffers pjrt_buffers) {
+  TF_ASSIGN_OR_RETURN(auto array, PjRtArray::Create(this, std::move(shape),
+                                                    std::move(pjrt_buffers)));
+  return tsl::RCReference<PjRtCompatibleArray>(std::move(array));
+}
+
+StatusOr<tsl::RCReference<Array>> PjRtClient::MakeArrayFromHostBuffer(
     const void* data, DType dtype, Shape shape,
     std::optional<absl::Span<const int64_t>> byte_strides,
     std::shared_ptr<const Sharding> sharding,
@@ -62,9 +75,10 @@ StatusOr<std::unique_ptr<Array>> PjRtClient::MakeArrayFromHostBuffer(
       PjRtArray::PjRtBuffers({std::shared_ptr<PjRtBuffer>(buffer.release())}));
 }
 
-StatusOr<std::unique_ptr<Array>> PjRtClient::AssembleArray(
+StatusOr<tsl::RCReference<Array>>
+PjRtClient::AssembleArrayFromSingleDeviceArrays(
     Shape shape, std::shared_ptr<const Sharding> sharding,
-    absl::Span<Array* const> arrays, ArrayCopySemantics semantics) {
+    absl::Span<tsl::RCReference<Array>> arrays, ArrayCopySemantics semantics) {
   DCHECK(this);
   if (!llvm::isa<const OpaqueSharding>(sharding.get())) {
     return InvalidArgument("Only OpaqueSharding is supported: sharding=%s",
@@ -80,11 +94,12 @@ StatusOr<std::unique_ptr<Array>> PjRtClient::AssembleArray(
   buffers.reserve(arrays.size());
   DType dtype = arrays[0]->dtype();
   for (int i = 0; i < arrays.size(); ++i) {
-    if (!llvm::isa<PjRtArray>(arrays[i])) {
-      return InvalidArgument("Only PjRtArray is supported: arrays[%d]=%s", i,
-                             arrays[i]->DebugString());
+    if (!llvm::isa<PjRtCompatibleArray>(arrays[i].get())) {
+      return InvalidArgument(
+          "Only PjRtCompatibleArray is supported: arrays[%d]=%s", i,
+          arrays[i]->DebugString());
     }
-    const auto* array = static_cast<const PjRtArray*>(arrays[i]);
+    auto* array = static_cast<PjRtCompatibleArray*>(arrays[i].get());
     if (array->dtype() != dtype) {
       return InvalidArgument(
           "Every input must have the same dtype: %s (shard 0) vs. %s (shard "
@@ -113,6 +128,11 @@ StatusOr<std::unique_ptr<Array>> PjRtClient::AssembleArray(
   }
   return PjRtArray::Create(this, dtype, std::move(shape), std::move(sharding),
                            std::move(buffers));
+}
+
+StatusOr<tsl::RCReference<Tuple>> PjRtClient::MakeTuple(
+    absl::Span<tsl::RCReference<Value>> values) {
+  return PjRtTuple::Create(this, values);
 }
 
 }  // namespace ifrt

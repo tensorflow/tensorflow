@@ -2587,3 +2587,44 @@ func.func @collective_reduce_ordering_effect(
   // expected-remark@above {{ID: 6}}
   // expected-remark@above {{Sinks: {5}}}
 }
+
+// -----
+
+// Tests that we create dependencies to a fetch op, even if the fetch op has
+// known effects (in this case due to resource operand) and the resources of
+// other side-effecting ops are independent.
+func.func @fetch_with_resource_operand(
+  // expected-remark@above {{ID: 9}}
+  %arg0: tensor<!tf_type.string>,
+  %arg1: tensor<*x!tf_type.resource<tensor<32xf32>>>,
+  %arg2: tensor<*x!tf_type.resource<tensor<32xf32>>>) {
+  tf_executor.graph {
+    // expected-remark@above {{ID: 7}}
+    %island1 = tf_executor.island {
+        // expected-remark@above {{ID: 2}}
+        // expected-remark@above {{Successors: {6}}}
+        "tf.EnqueueTPUEmbeddingRaggedTensorBatch"(%arg0) {table_ids = [1, 2], device_ordinal = 1} : (tensor<!tf_type.string>) -> ()
+        // expected-remark@above {{ID: 0}}
+        // expected-remark@above {{Successors: {1}}}
+        tf_executor.yield
+        // expected-remark@above {{ID: 1}}
+        // expected-remark@above {{Predecessors: {0}}}
+    }
+    %island2 = tf_executor.island {
+        // expected-remark@above {{ID: 5}}
+        // expected-remark@above {{Successors: {6}}}
+        %read = "tf.ReadVariableOp"(%arg1) : (tensor<*x!tf_type.resource<tensor<32xf32>>>) -> tensor<32xf32>
+        // expected-remark@above {{ID: 3}}
+        // expected-remark@above {{Successors: {4}}}
+        tf_executor.yield
+        // expected-remark@above {{ID: 4}}
+        // expected-remark@above {{Predecessors: {3}}}
+    }
+    tf_executor.fetch %arg2, %island1, %island2 : tensor<*x!tf_type.resource<tensor<32xf32>>>, !tf_executor.control, !tf_executor.control
+    // expected-remark@above {{ID: 6}}
+    // expected-remark@above {{Predecessors: {2,5}}}
+  }
+  func.return
+  // expected-remark@above {{ID: 8}}
+  // expected-remark@above {{Sinks: {7}}}
+}

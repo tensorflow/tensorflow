@@ -60,10 +60,6 @@ int64_t SharedMemoryUsage(const HloInstruction& instr,
 
 inline constexpr int64_t MaxOperandsAndOutputsPerFusion() { return 64; }
 
-bool IsInputFusible(const HloInstruction& instr);
-
-bool IsLoopFusible(const HloInstruction& instr);
-
 // Whether the op tranposes the physical data layout. Fusing such ops may lead
 // to uncoalesced data access and may thus not be beneficial.
 bool IsPhysicallyTransposing(const HloInstruction& instr);
@@ -80,6 +76,10 @@ bool IsReduceInputFusion(const HloInstruction& instr);
 // Whether `instr` is fusible as root of a reduce input fusions, i.e. `instr`
 // is either an unfused reduction-to-vector op or a reduce input fusion.
 bool IsInputFusibleReduction(const HloInstruction& instr);
+
+// Whether `instr` is a nestable variadic reduction
+// or a loop fusion rooted with such.
+bool IsNestableVariadicReduction(const HloInstruction& instr);
 
 // Whether `instr` is fusible as root of a scatter input fusions, i.e. `instr`
 // is either an unfused scatter op or a scatter input fusion.

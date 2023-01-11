@@ -83,14 +83,15 @@ limitations under the License.
 #include "tensorflow/compiler/xla/mlir/runtime/transforms/calling_convention.h"
 #include "tensorflow/compiler/xla/mlir/runtime/transforms/compilation_pipeline_cpu.h"
 #include "tensorflow/compiler/xla/mlir/runtime/transforms/compiler.h"
-#include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Transforms/passes.h"
 #include "tensorflow/compiler/xla/mlir_hlo/lhlo/IR/lhlo_ops.h"
 #include "tensorflow/compiler/xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "tensorflow/compiler/xla/mlir_hlo/mhlo/transforms/passes.h"
+#include "tensorflow/compiler/xla/mlir_hlo/transforms/passes.h"
 #include "tensorflow/compiler/xla/runtime/executable.h"
 #include "tensorflow/compiler/xla/runtime/jit_executable.h"
 #include "tensorflow/compiler/xla/service/algebraic_simplifier.h"
 #include "tensorflow/compiler/xla/service/all_gather_decomposer.h"
+#include "tensorflow/compiler/xla/service/all_reduce_promotion.h"
 #include "tensorflow/compiler/xla/service/all_to_all_decomposer.h"
 #include "tensorflow/compiler/xla/service/batch_dot_simplification.h"
 #include "tensorflow/compiler/xla/service/batchnorm_expander.h"
@@ -122,6 +123,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/cpu/runtime/collectives.h"
 #include "tensorflow/compiler/xla/service/cpu/runtime/custom_call.h"
 #include "tensorflow/compiler/xla/service/cpu/runtime/fft_call.h"
+#include "tensorflow/compiler/xla/service/cpu/runtime/rng.h"
 #include "tensorflow/compiler/xla/service/cpu/runtime/xfeed.h"
 #include "tensorflow/compiler/xla/service/cpu/simple_orc_jit.h"
 #include "tensorflow/compiler/xla/service/cpu/xla_framework.h"
@@ -322,6 +324,7 @@ runtime::JitExecutable::Options GetXlaRuntimeJitExecutableOptions() {
         PopulateXlaCpuCustomCall(registry);
         PopulateXlaXfeedCall(registry);
         PopulateXlaCpuFftCall(registry);
+        PopulateXlaCpuRngCall(registry);
       });
   opts.compiler.create_compilation_pipeline =
       [copts](xla::runtime::PassManager& passes) {
@@ -555,7 +558,9 @@ Status CpuCompiler::RunHloPassesThroughLayoutAssn(
 
   // Expand random number generation.
   pipeline.AddPass<RngExpander>();
-  pipeline.AddPass<RngBitGeneratorExpander>(RandomAlgorithm::RNG_PHILOX);
+  if (!is_mlir_compile) {
+    pipeline.AddPass<RngBitGeneratorExpander>(RandomAlgorithm::RNG_PHILOX);
+  }
 
   // Remove zero-sized HLO from the input so that other passes don't have to
   // handle it.
@@ -580,6 +585,10 @@ Status CpuCompiler::RunHloPassesThroughLayoutAssn(
   pipeline.AddPass<CallInliner>(/*single_call_site=*/true);
   pipeline.AddPass<BatchDotSimplification>();
   pipeline.AddPass<DotDecomposer>();
+  // Promote BF16 all-reduce to F32.
+  const std::pair<PrimitiveType, PrimitiveType> ar_promoted_types[] = {
+      {BF16, F32}};
+  pipeline.AddPass<AllReducePromotion>(ar_promoted_types);
   // Convert BF16 operations to F32 operations so that the CPU backend can
   // support BF16 operations without directly implementing a BF16 lowering for
   // most ops.
@@ -619,8 +628,10 @@ Status CpuCompiler::RunHloPassesThroughLayoutAssn(
   dynamic_padder_options.shape_check_mode =
       DynamicDimensionInference::ShapeCheckMode::kCompileTime;
   pipeline.AddPass<DynamicPadder>(dynamic_padder_options);
-  pipeline.AddPass<SelectAndScatterExpander>();
-  pipeline.AddPass<ScatterExpander>(ScatterExpander::kEliminateAllScatters);
+  if (!is_mlir_compile) {
+    pipeline.AddPass<SelectAndScatterExpander>();
+    pipeline.AddPass<ScatterExpander>(ScatterExpander::kEliminateAllScatters);
+  }
   pipeline.AddPass<ConvCanonicalization>(target_machine_features);
 
   // Run fp16 dots/convs in fp32 and then downcast the result to fp16.
@@ -925,7 +936,6 @@ StatusOr<std::unique_ptr<HloModule>> CpuCompiler::RunHloPasses(
   TF_RETURN_IF_ERROR(RunHloPasses(
       module.get(), /*is_aot_compile=*/false, jit_target_machine.get(),
       /*is_mlir_compile=*/
-      module->config().debug_options().xla_cpu_enable_mlir_lowering() ||
           module->config().debug_options().xla_cpu_use_xla_runtime()));
   return std::move(module);
 }
@@ -1002,6 +1012,8 @@ Status LowerMLIRModule(mlir::ModuleOp mlir_module,
 
   xla::runtime::PassManager xla_pm(&pm);
   HloXlaRuntimePipelineOptions options;
+  options.enable_tiling_and_fusion =
+      GetDebugOptionsFromFlags().xla_cpu_enable_mlir_tiling_and_fusion();
   options.sparse_bufferization = false;
   options.outline_with_xla_framework = true;
   TF_RETURN_IF_ERROR(CreateHloXlaRuntimePipeline(xla_pm, options));
@@ -1226,25 +1238,6 @@ CpuCompiler::CompileLegacyCpuExecutable(std::unique_ptr<HloModule> module) {
   // before a caller computation.
 
   std::string function_name;
-  if (module->config().debug_options().xla_cpu_enable_mlir_lowering()) {
-    TF_ASSIGN_OR_RETURN(
-        auto mlir_module,
-        createMLIRModule(module.get(), mlir_context, assignment.get()));
-    TF_RETURN_IF_ERROR(LowerMLIRModule(*mlir_module, mlir_context));
-
-    function_name = entry_computation->name();
-    // TODO(kramerb): Don't rely on the exact function name.
-    llvm::cast<mlir::LLVM::LLVMFuncOp>(
-        mlir_module->lookupSymbol("main_xla_framework"))
-        .setName(function_name);
-
-    llvm_module = mlir::translateModuleToLLVMIR(*mlir_module, *llvm_context);
-    if (!llvm_module) {
-      return InternalError("Translation to LLVM IR failed");
-    }
-    llvm_module->setDataLayout((*jit)->data_layout());
-    llvm_module->setTargetTriple((*jit)->target_triple().getTriple());
-  } else {
     LLVMTargetMachineFeatures target_machine_features((*jit)->target_machine());
     IrEmitter ir_emitter(
         &mlir_context, *module, *assignment, llvm_module.get(),
@@ -1294,7 +1287,6 @@ CpuCompiler::CompileLegacyCpuExecutable(std::unique_ptr<HloModule> module) {
       return std::string(function_name_vector.begin(),
                          function_name_vector.end());
     }();
-  }
 
   std::string ir_module_string;
   if (embed_ir_in_executable) {
@@ -1342,9 +1334,16 @@ StatusOr<std::unique_ptr<XlaRuntimeCpuExecutable>> GetXlaRuntimeCpuExecutable(
     return InternalError("Failed to compile XLA Runtime program: %s",
                          jit_executable.status().message());
   }
+
+  // Instantiate state for all registered FFI modules.
+  auto ffi_modules_state = runtime::ffi::FfiModulesState::Instantiate();
+  if (!ffi_modules_state.ok())
+    return InternalError("Failed to instantiate FFI modules state: %s",
+                         ffi_modules_state.status().message());
+
   return std::make_unique<XlaRuntimeCpuExecutable>(
       std::make_unique<runtime::JitExecutable>(std::move(*jit_executable)),
-      xla_framework_mapping);
+      xla_framework_mapping, std::move(*ffi_modules_state));
 }
 }  // namespace
 
@@ -1395,6 +1394,13 @@ CpuCompiler::CompileXlaRuntimeCpuExecutable(
   TF_ASSIGN_OR_RETURN(
       auto xla_runtime_executable,
       GetXlaRuntimeCpuExecutable(*mlir_module, "main", xla_framework_mapping));
+
+  if (DumpingEnabledForHloModule(*hlo_module)) {
+    TF_ASSIGN_OR_RETURN(std::string_view obj_file,
+                        xla_runtime_executable->GetObjFile());
+    DumpToFileInDir(*hlo_module, /*file_prefix=*/"", /*file_suffix=*/"o",
+                    obj_file);
+  }
 
   return std::make_unique<CpuExecutable>(
       std::move(hlo_module), std::move(hlo_profile_printer_data),

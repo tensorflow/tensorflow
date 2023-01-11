@@ -19,6 +19,7 @@ limitations under the License.
 #include "mhlo/IR/hlo_ops.h"
 #include "mhlo/transforms/map_stablehlo_to_hlo_op.h"
 #include "mhlo/transforms/rewriters.h"
+#include "mlir/AsmParser/AsmParser.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/Location.h"
@@ -156,6 +157,36 @@ class StablehloToHloOpConverter : public OpConversionPattern<StablehloOpTy> {
     // the dialect conversion infrastructure.
     ValueRange hloOperands = adaptor.getOperands();
 
+    // Extensibility protocol for public MHLO features that are not yet
+    // supported in StableHLO. See hlo_legalize_to_stablehlo.cc for details.
+    if constexpr (std::is_same<StablehloOpTy, stablehlo::CustomCallOp>::value) {
+      if (stablehloOp.getCallTargetName().starts_with("mhlo.")) {
+        // Only call_target_name and backend_config are compatible with
+        // the extensibility protocol.
+        for (NamedAttribute stablehloAttr : stablehloOp->getAttrs()) {
+          auto stablehloName = stablehloAttr.getName().getValue();
+          if (stablehloName != "call_target_name" &&
+              stablehloName != "backend_config")
+            return failure();
+        }
+
+        // Dynamically create the corresponding MHLO op using call_target_name
+        // and backend_config. (It is quite neat that we have an API for this!).
+        OperationState hloOpState(stablehloOp.getLoc(),
+                                  stablehloOp.getCallTargetName());
+        hloOpState.addOperands(hloOperands);
+        hloOpState.addTypes(hloTypes);
+        auto hloAttrs = parseAttribute(stablehloOp.getBackendConfig(),
+                                       stablehloOp.getContext())
+                            .template dyn_cast_or_null<DictionaryAttr>();
+        if (!hloAttrs) return failure();
+        hloOpState.addAttributes(hloAttrs.getValue());
+        Operation* hloOp = rewriter.create(hloOpState);
+        rewriter.replaceOp(stablehloOp, hloOp->getResults());
+        return success();
+      }
+    }
+
     // Convert StableHLO attributes to MHLO equivalents.
     // If an attribute is not defined in StableHLO, then it is unchanged,
     // with the exception of ArrayAttr which is converted recursively.
@@ -185,6 +216,10 @@ class StablehloToHloOpConverter : public OpConversionPattern<StablehloOpTy> {
     for (auto [stablehloRegion, hloRegion] :
          llvm::zip(stablehloOp->getRegions(), hloOp->getRegions())) {
       rewriter.inlineRegionBefore(stablehloRegion, hloRegion, hloRegion.end());
+      if (failed(rewriter.convertRegionTypes(&hloRegion,
+                                             *this->getTypeConverter(),
+                                             /*entryConversion=*/nullptr)))
+        return failure();
     }
     return success();
   }

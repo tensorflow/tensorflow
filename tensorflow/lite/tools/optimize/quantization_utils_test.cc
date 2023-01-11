@@ -820,8 +820,11 @@ TEST_F(QuantizationUtilsTest, SymmetricPerLayerBiasQuantize) {
               weight_scale * input_scale);
   EXPECT_THAT(model->subgraphs[0]->tensors[0]->quantization->zero_point[0], 0);
 
-  EXPECT_THAT(model->buffers[model->subgraphs[0]->tensors[0]->buffer]->data,
-              ElementsAreArray({16, 0, 0, 0, 4, 0, 0, 0}));
+  const uint32_t* d1 = reinterpret_cast<const uint32_t*>(
+      model->buffers[model->subgraphs[0]->tensors[0]->buffer]->data.data());
+  EXPECT_EQ(d1[0], 0x00000010);
+  EXPECT_EQ(d1[1], 0x00000004);
+
   EXPECT_EQ(model->subgraphs[0]->tensors[0]->type, TensorType_INT32);
 }
 
@@ -873,8 +876,12 @@ TEST_F(QuantizationUtilsTest, SymmetricPerChannelBiasQuantize) {
                 model.get(), model->subgraphs[0]->tensors[0].get(), input_scale,
                 weight_scales.data(), 2, &error_reporter_),
             kTfLiteOk);
-  EXPECT_THAT(model->buffers[model->subgraphs[0]->tensors[0]->buffer]->data,
-              ElementsAreArray({16, 0, 0, 0, 2, 0, 0, 0}));
+
+  const uint32_t* d1 = reinterpret_cast<const uint32_t*>(
+      model->buffers[model->subgraphs[0]->tensors[0]->buffer]->data.data());
+  EXPECT_EQ(d1[0], 0x00000010);
+  EXPECT_EQ(d1[1], 0x00000002);
+
   EXPECT_EQ(model->subgraphs[0]->tensors[0]->type, TensorType_INT32);
 }
 

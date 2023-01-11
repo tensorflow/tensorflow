@@ -91,7 +91,7 @@ float GetTolerance(float min, float max) {
   }
 }
 
-#ifdef GTEST_HAS_DEATH_TEST
+#if GTEST_HAS_DEATH_TEST
 TEST(AveragePoolingOpTest, InvalidDimSize) {
   EXPECT_DEATH(
       BasePoolingOpModel<float> m(BuiltinOperator_AVERAGE_POOL_3D,

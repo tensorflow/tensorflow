@@ -13,7 +13,7 @@ opaque delegate. The sample stable delegate supports addition and subtraction
 operations only.
 
 The sample stable delegate implementation uses the new stable delegate API,
-which is based around TfLiteOpaqueDelegateStruct. TfLiteOpaqueDelegateStruct is
+which is based around TfLiteOpaqueDelegate. TfLiteOpaqueDelegate is
 an opaque version of TfLiteDelegate; allows delegation of nodes to alternative
 backends. This is an abstract type that is intended to have the same role as
 TfLiteDelegate from

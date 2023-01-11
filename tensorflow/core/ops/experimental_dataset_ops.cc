@@ -1512,6 +1512,14 @@ REGISTER_OP("DataServiceDatasetV4")
                                                            "output_types"))
     .SetShapeFn(shape_inference::ScalarShape);
 
+REGISTER_OP("DistributedSave")
+    .Input("dataset: variant")
+    .Input("directory: string")
+    .Input("address: string")
+    .Attr("metadata: string = ''")
+    .SetIsStateful()
+    .SetShapeFn(shape_inference::NoOutputs);
+
 REGISTER_OP("RegisterDataset")
     .Input("dataset: variant")
     .Input("address: string")

@@ -27,7 +27,9 @@ limitations under the License.
 #include "tensorflow/compiler/xla/python/ifrt/future.h"
 #include "tensorflow/compiler/xla/python/ifrt/shape.h"
 #include "tensorflow/compiler/xla/python/ifrt/sharding.h"
+#include "tensorflow/compiler/xla/python/ifrt/value.h"
 #include "tensorflow/compiler/xla/status.h"
+#include "tfrt/concurrency/ref_count.h"  // from @tf_runtime
 
 namespace xla {
 namespace ifrt {
@@ -53,7 +55,7 @@ enum class ArrayCopySemantics : int {
 
 // Represents a single logical array from one or more sharded buffers.
 // Implementations must be thread-safe.
-class Array : public llvm::RTTIExtends<Array, llvm::RTTIRoot> {
+class Array : public llvm::RTTIExtends<Array, Value> {
  public:
   Array() = default;
 
@@ -63,17 +65,15 @@ class Array : public llvm::RTTIExtends<Array, llvm::RTTIRoot> {
   Array& operator=(const Array&) = delete;
   Array& operator=(Array&&) = delete;
 
-  virtual Client* client() const = 0;
-
   virtual DType dtype() const = 0;
   virtual const Shape& shape() const = 0;
   virtual const Sharding& sharding() const = 0;
   virtual std::shared_ptr<const Sharding> shared_ptr_sharding() const = 0;
 
   // Breaks an array up into per-device arrays. This is the elimination
-  // counterpart of `Client::AssembleArray()`.
-  virtual StatusOr<std::vector<std::unique_ptr<Array>>> Explode(
-      ArrayCopySemantics semantics) = 0;
+  // counterpart of `Client::AssembleArrayFromSingleDeviceArrays()`.
+  virtual StatusOr<std::vector<tsl::RCReference<Array>>>
+  DisassembleIntoSingleDeviceArrays(ArrayCopySemantics semantics) = 0;
 
   // Fetches the array to host and stores it as unreplicated, unsharded data.
   //
@@ -90,6 +90,18 @@ class Array : public llvm::RTTIExtends<Array, llvm::RTTIRoot> {
   // `data` must remain valid until the returned future becomes ready. It will
   // contain a valid data only if the returned future has an OK. Otherwise, its
   // content is undefined.
+  //
+  // TODO(hyeontaek): Add a `size` argument or change the type of `data` to
+  // `absl::Span<char>` to guard against buffer underflows and overflows.
+  //
+  // TODO(hyeontaek): Clarify memory alignment issues and document them.
+  // Implementations may impose alignment requirements on `data`. They can fail
+  // if the requirements are not satisfied so that they avoid extra memory
+  // copies that could incur performance overhead or extra memory use. The
+  // required alignments may be different across backends (e.g., depending on
+  // they use DMA) and across different `DType` and `Shape`. We may need to add
+  // an API that lets users query the alignment requirement of the specific
+  // implementation.
   ABSL_MUST_USE_RESULT
   virtual Future<Status> CopyToHostBuffer(
       void* data, std::optional<absl::Span<const int64_t>> byte_strides,
@@ -111,32 +123,17 @@ class Array : public llvm::RTTIExtends<Array, llvm::RTTIRoot> {
   //
   // It may fail if the buffer data would be sent from/to an unaddressable
   // device.
-  virtual StatusOr<std::unique_ptr<Array>> Reshard(
+  virtual StatusOr<tsl::RCReference<Array>> Reshard(
       std::shared_ptr<const Sharding> new_sharding,
       ArrayCopySemantics semantics) = 0;
-
-  // Returns a future that becomes ready when the buffer is computed or has an
-  // error.
-  virtual Future<Status> GetReadyFuture() const = 0;
-
-  // Deletes the array from the devices. The operation may be asynchronous. The
-  // returned future will have the result of the deletion on the devices.
-  // Implementations that do not track the completion of the deletion operation
-  // may make the future immediately ready with an OK status.
-  virtual Future<Status> Delete() = 0;
-
-  // Returns whether the array has been enqueued for deletion from the devices.
-  virtual bool IsDeleted() const = 0;
-
-  virtual std::string DebugString() const = 0;
 
   static char ID;  // NOLINT
 };
 
 // Convenience function to create a list of pointer Arrays from a list of
-// unique_ptr Arrays.
+// RCReference<Array>s.
 std::vector<Array*> MakeArrayPointerList(
-    absl::Span<const std::unique_ptr<Array>> arrays);
+    absl::Span<const tsl::RCReference<Array>> arrays);
 
 }  // namespace ifrt
 }  // namespace xla

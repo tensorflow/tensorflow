@@ -699,7 +699,7 @@ func AngleTout(value tf.DataType) AngleAttr {
 //
 // ```
 // # tensor 'input' is [-2.25 + 4.75j, 3.25 + 5.75j]
-// tf.angle(input) ==> [2.0132, 1.056]
+// tf.math.angle(input) ==> [2.0132, 1.056]
 // ```
 //
 // @compatibility(numpy)
@@ -7182,6 +7182,104 @@ func Conv2DBackpropFilter(scope *Scope, input tf.Output, filter_sizes tf.Output,
 	return op.Output(0)
 }
 
+// Conv2DBackpropFilterV2Attr is an optional argument to Conv2DBackpropFilterV2.
+type Conv2DBackpropFilterV2Attr func(optionalAttr)
+
+// Conv2DBackpropFilterV2UseCudnnOnGpu sets the optional use_cudnn_on_gpu attribute to value.
+// If not specified, defaults to true
+func Conv2DBackpropFilterV2UseCudnnOnGpu(value bool) Conv2DBackpropFilterV2Attr {
+	return func(m optionalAttr) {
+		m["use_cudnn_on_gpu"] = value
+	}
+}
+
+// Conv2DBackpropFilterV2ExplicitPaddings sets the optional explicit_paddings attribute to value.
+//
+// value: If `padding` is `"EXPLICIT"`, the list of explicit padding amounts. For the ith
+// dimension, the amount of padding inserted before and after the dimension is
+// `explicit_paddings[2 * i]` and `explicit_paddings[2 * i + 1]`, respectively. If
+// `padding` is not `"EXPLICIT"`, `explicit_paddings` must be empty.
+// If not specified, defaults to {}
+func Conv2DBackpropFilterV2ExplicitPaddings(value []int64) Conv2DBackpropFilterV2Attr {
+	return func(m optionalAttr) {
+		m["explicit_paddings"] = value
+	}
+}
+
+// Conv2DBackpropFilterV2DataFormat sets the optional data_format attribute to value.
+//
+// value: Specify the data format of the input and output data. With the
+// default format "NHWC", the data is stored in the order of:
+//
+//	[batch, in_height, in_width, in_channels].
+//
+// Alternatively, the format could be "NCHW", the data storage order of:
+//
+//	[batch, in_channels, in_height, in_width].
+//
+// If not specified, defaults to "NHWC"
+func Conv2DBackpropFilterV2DataFormat(value string) Conv2DBackpropFilterV2Attr {
+	return func(m optionalAttr) {
+		m["data_format"] = value
+	}
+}
+
+// Conv2DBackpropFilterV2Dilations sets the optional dilations attribute to value.
+//
+// value: 1-D tensor of length 4.  The dilation factor for each dimension of
+// `input`. If set to k > 1, there will be k-1 skipped cells between each filter
+// element on that dimension. The dimension order is determined by the value of
+// `data_format`, see above for details. Dilations in the batch and depth
+// dimensions must be 1.
+// If not specified, defaults to {i:1 i:1 i:1 i:1}
+func Conv2DBackpropFilterV2Dilations(value []int64) Conv2DBackpropFilterV2Attr {
+	return func(m optionalAttr) {
+		m["dilations"] = value
+	}
+}
+
+// Computes the gradients of convolution with respect to the filter.
+//
+// Arguments:
+//
+//	input: 4-D with shape `[batch, in_height, in_width, in_channels]`.
+//	filter: 4-D with shape `[filter_height, filter_width, in_channels, out_channels]`.
+//
+// Only shape of tensor is used.
+//
+//	out_backprop: 4-D with shape `[batch, out_height, out_width, out_channels]`.
+//
+// Gradients w.r.t. the output of the convolution.
+//
+//	strides: The stride of the sliding window for each dimension of the input
+//
+// of the convolution. Must be in the same order as the dimension specified with
+// format.
+//
+//	padding: The type of padding algorithm to use.
+//
+// Returns 4-D with shape
+// `[filter_height, filter_width, in_channels, out_channels]`.  Gradient w.r.t.
+// the `filter` input of the convolution.
+func Conv2DBackpropFilterV2(scope *Scope, input tf.Output, filter tf.Output, out_backprop tf.Output, strides []int64, padding string, optional ...Conv2DBackpropFilterV2Attr) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"strides": strides, "padding": padding}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "Conv2DBackpropFilterV2",
+		Input: []tf.Input{
+			input, filter, out_backprop,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
 // Conv2DBackpropInputAttr is an optional argument to Conv2DBackpropInput.
 type Conv2DBackpropInputAttr func(optionalAttr)
 
@@ -7275,6 +7373,106 @@ func Conv2DBackpropInput(scope *Scope, input_sizes tf.Output, filter tf.Output, 
 		Type: "Conv2DBackpropInput",
 		Input: []tf.Input{
 			input_sizes, filter, out_backprop,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// Conv2DBackpropInputV2Attr is an optional argument to Conv2DBackpropInputV2.
+type Conv2DBackpropInputV2Attr func(optionalAttr)
+
+// Conv2DBackpropInputV2UseCudnnOnGpu sets the optional use_cudnn_on_gpu attribute to value.
+// If not specified, defaults to true
+func Conv2DBackpropInputV2UseCudnnOnGpu(value bool) Conv2DBackpropInputV2Attr {
+	return func(m optionalAttr) {
+		m["use_cudnn_on_gpu"] = value
+	}
+}
+
+// Conv2DBackpropInputV2ExplicitPaddings sets the optional explicit_paddings attribute to value.
+//
+// value: If `padding` is `"EXPLICIT"`, the list of explicit padding amounts. For the ith
+// dimension, the amount of padding inserted before and after the dimension is
+// `explicit_paddings[2 * i]` and `explicit_paddings[2 * i + 1]`, respectively. If
+// `padding` is not `"EXPLICIT"`, `explicit_paddings` must be empty.
+// If not specified, defaults to {}
+func Conv2DBackpropInputV2ExplicitPaddings(value []int64) Conv2DBackpropInputV2Attr {
+	return func(m optionalAttr) {
+		m["explicit_paddings"] = value
+	}
+}
+
+// Conv2DBackpropInputV2DataFormat sets the optional data_format attribute to value.
+//
+// value: Specify the data format of the input and output data. With the
+// default format "NHWC", the data is stored in the order of:
+//
+//	[batch, in_height, in_width, in_channels].
+//
+// Alternatively, the format could be "NCHW", the data storage order of:
+//
+//	[batch, in_channels, in_height, in_width].
+//
+// If not specified, defaults to "NHWC"
+func Conv2DBackpropInputV2DataFormat(value string) Conv2DBackpropInputV2Attr {
+	return func(m optionalAttr) {
+		m["data_format"] = value
+	}
+}
+
+// Conv2DBackpropInputV2Dilations sets the optional dilations attribute to value.
+//
+// value: 1-D tensor of length 4.  The dilation factor for each dimension of
+// `input`. If set to k > 1, there will be k-1 skipped cells between each filter
+// element on that dimension. The dimension order is determined by the value of
+// `data_format`, see above for details. Dilations in the batch and depth
+// dimensions must be 1.
+// If not specified, defaults to {i:1 i:1 i:1 i:1}
+func Conv2DBackpropInputV2Dilations(value []int64) Conv2DBackpropInputV2Attr {
+	return func(m optionalAttr) {
+		m["dilations"] = value
+	}
+}
+
+// Computes the gradients of convolution with respect to the input.
+//
+// Arguments:
+//
+//	input: 4-D with shape `[batch, in_height, in_width, in_channels]`.
+//
+// Only shape of tensor is used.
+//
+//	filter: 4-D with shape
+//
+// `[filter_height, filter_width, in_channels, out_channels]`.
+//
+//	out_backprop: 4-D with shape `[batch, out_height, out_width, out_channels]`.
+//
+// Gradients w.r.t. the output of the convolution.
+//
+//	strides: The stride of the sliding window for each dimension of the input
+//
+// of the convolution. Must be in the same order as the dimension specified with
+// format.
+//
+//	padding: The type of padding algorithm to use.
+//
+// Returns 4-D with shape `[batch, in_height, in_width, in_channels]`.  Gradient
+// w.r.t. the input of the convolution.
+func Conv2DBackpropInputV2(scope *Scope, input tf.Output, filter tf.Output, out_backprop tf.Output, strides []int64, padding string, optional ...Conv2DBackpropInputV2Attr) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"strides": strides, "padding": padding}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "Conv2DBackpropInputV2",
+		Input: []tf.Input{
+			input, filter, out_backprop,
 		},
 		Attrs: attrs,
 	}
@@ -20520,30 +20718,6 @@ func InplaceUpdate(scope *Scope, x tf.Output, i tf.Output, v tf.Output) (y tf.Ou
 	return op.Output(0)
 }
 
-// An op that interleaves the indices tensor value tensor into an xla tuple.
-//
-// An op that interleaves the indices tensor value tensor into an xla tuple.
-//
-// Arguments:
-//
-//	indices: A rank-1 tensor of indices, for example [1, 2, 3, 4]
-//	values: A rank-1 tensor of values. For example (0.1, 0.2, 0.3, 0.5). It must have same length as indices.
-//
-// Returns An xla tuple, for this example, the output should be (1, 0.1, 2, 0.2, 3, 0.3, 4, 0.5)
-func InterleaveTensorsToXLATuple(scope *Scope, indices tf.Output, values tf.Output) (output tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "InterleaveTensorsToXLATuple",
-		Input: []tf.Input{
-			indices, values,
-		},
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
 // Computes the reciprocal of x element-wise.
 //
 // I.e., \\(y = 1 / x\\).
@@ -26343,6 +26517,41 @@ func Merge(scope *Scope, inputs []tf.Output) (output tf.Output, value_index tf.O
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0), op.Output(1)
+}
+
+// An op merges elements of integer and float tensors into deduplication data as
+// XLA tuple.
+//
+// This op merges outputs of SplitDedupDataOp, which gives two 1-D tensors, integer
+// and floating point. With respect to tuple_mask, this op merges values of these
+// two tensors into an XLA tuple, which should be as same as input to
+// SplitDedupDataOp.
+//
+// Arguments:
+//
+//	integer_tensor: A 1-D integer tensor, includes integer elements of deduplication data tuple.
+//	float_tensor: A 1-D float tensor, includes float elements of deduplication data tuple.
+//	tuple_mask: A serialized TensorProto string of output tuple mask. This mask is a 2-D tensor,
+//
+// with first column as tuple element type, and second column as span of this type.
+// For example, an output tuple of (1, 2, 0.1, 3), its mask is [[0, 2], [1, 1], [0,
+// 1]]. We expect only two types of elements: integer(0) and float(1).
+//
+// Returns An XLA tuple merging integer and float elements as deduplication data tuple.
+func MergeDedupData(scope *Scope, integer_tensor tf.Output, float_tensor tf.Output, tuple_mask string) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"tuple_mask": tuple_mask}
+	opspec := tf.OpSpec{
+		Type: "MergeDedupData",
+		Input: []tf.Input{
+			integer_tensor, float_tensor,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
 }
 
 // Merges summaries.
@@ -47066,6 +47275,44 @@ func Split(scope *Scope, axis tf.Output, value tf.Output, num_split int64) (outp
 	return output
 }
 
+// An op splits input deduplication data XLA tuple into integer and floating point
+// tensors.
+//
+// Deduplication data is an XLA tuple, which consists of integer and floating point
+// values. This op is to split these values into two groups for two types, and
+// construct each group as one tensor to return.
+//
+// Arguments:
+//
+//	input: An XLA tuple including integer and float elements as deduplication data tuple.
+//	integer_type: integer_tensor type. Allowed types: int32, int64, uint32, uint64.
+//	float_type: float_tensor type. Allowed types: half, bfloat16, float.
+//	tuple_mask: A serialized TensorProto string of output tuple mask. This mask is a 2-D tensor,
+//
+// with first column as tuple element type, and second column as span of this type.
+// For example, an output tuple of (1, 2, 0.1, 3), its mask is [[0, 2], [1, 1], [0,
+// 1]]. We expect only two types of elements: integer(0) and float(1).
+//
+// Returns:
+//
+//	integer_tensor: A 1-D integer tensor, includes integer elements of deduplication data tuple.
+//	float_tensor: A 1-D float tensor, includes float elements of deduplication data tuple.
+func SplitDedupData(scope *Scope, input tf.Output, integer_type tf.DataType, float_type tf.DataType, tuple_mask string) (integer_tensor tf.Output, float_tensor tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"integer_type": integer_type, "float_type": float_type, "tuple_mask": tuple_mask}
+	opspec := tf.OpSpec{
+		Type: "SplitDedupData",
+		Input: []tf.Input{
+			input,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0), op.Output(1)
+}
+
 // Splits a tensor into `num_split` tensors along one dimension.
 //
 // Arguments:
@@ -47106,52 +47353,6 @@ func SplitV(scope *Scope, value tf.Output, size_splits tf.Output, axis tf.Output
 		return
 	}
 	return output
-}
-
-// SplitXLATupleToTensorsAttr is an optional argument to SplitXLATupleToTensors.
-type SplitXLATupleToTensorsAttr func(optionalAttr)
-
-// SplitXLATupleToTensorsIndicesType sets the optional indices_type attribute to value.
-//
-// value: {int32, int64} = DT_INT32
-// If not specified, defaults to DT_INT32
-func SplitXLATupleToTensorsIndicesType(value tf.DataType) SplitXLATupleToTensorsAttr {
-	return func(m optionalAttr) {
-		m["indices_type"] = value
-	}
-}
-
-// An op that splits an xla tuple to a tensor of indices and a tensor of values.
-//
-// An op that splits an xla tuple to a tensor of indices and a tensor of values.
-//
-// Arguments:
-//
-//	input: An xla tuple. For example (1, 0.1, 2, 0.2, 3, 0.3, 4, 0.4)
-//	values_type: {half, bfloat16, float, int32, uint32, int64}
-//	output_shape: Indices tensor shape. indices and value tensors must have same shape.
-//
-// Returns:
-//
-//	indices: A rank-1 tensor of odd elements of `input`. Such as [1, 2, 3, 4]
-//	values: A rank-1 tensor of even elements of `input`. Such as [0.1, 0.2, 0.3, 0.4].
-func SplitXLATupleToTensors(scope *Scope, input tf.Output, values_type tf.DataType, output_shape tf.Shape, optional ...SplitXLATupleToTensorsAttr) (indices tf.Output, values tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{"values_type": values_type, "output_shape": output_shape}
-	for _, a := range optional {
-		a(attrs)
-	}
-	opspec := tf.OpSpec{
-		Type: "SplitXLATupleToTensors",
-		Input: []tf.Input{
-			input,
-		},
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0), op.Output(1)
 }
 
 // Creates a dataset that executes a SQL query and emits rows of the result set.
@@ -50542,6 +50743,48 @@ func TPUPartitionedInput(scope *Scope, inputs []tf.Output, optional ...TPUPartit
 	return op.Output(0)
 }
 
+// TPUPartitionedInputV2Attr is an optional argument to TPUPartitionedInputV2.
+type TPUPartitionedInputV2Attr func(optionalAttr)
+
+// TPUPartitionedInputV2IsPacked sets the optional is_packed attribute to value.
+//
+// value: Indicates whether the input is a packed resource.
+// If not specified, defaults to false
+func TPUPartitionedInputV2IsPacked(value bool) TPUPartitionedInputV2Attr {
+	return func(m optionalAttr) {
+		m["is_packed"] = value
+	}
+}
+
+// An op that groups a list of partitioned inputs together. Supports ND sharding.
+//
+// Arguments:
+//
+//	inputs: A list of partitioned inputs which must have the same shape.
+//	partition_dims: A list of integers describing how each dimension is partitioned. Emptiness
+//
+// indicates the inputs are replicated.
+//
+// Returns A handle which represents the full shape of partitioned tensors.
+func TPUPartitionedInputV2(scope *Scope, inputs []tf.Output, partition_dims []int64, optional ...TPUPartitionedInputV2Attr) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"partition_dims": partition_dims}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "TPUPartitionedInputV2",
+		Input: []tf.Input{
+			tf.OutputList(inputs),
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
 // TPUPartitionedOutputAttr is an optional argument to TPUPartitionedOutput.
 type TPUPartitionedOutputAttr func(optionalAttr)
 
@@ -50587,6 +50830,44 @@ func TPUPartitionedOutput(scope *Scope, inputs tf.Output, num_splits int64, opti
 	var err error
 	if output, idx, err = makeOutputList(op, idx, "output"); err != nil {
 		scope.UpdateErr("TPUPartitionedOutput", err)
+		return
+	}
+	return output
+}
+
+// An op that demultiplexes a tensor to be sharded by XLA to a list of partitioned
+//
+// outputs outside the XLA computation. Supports ND sharding.
+//
+// Arguments:
+//
+//	inputs: A tensor which represents the full shape of partitioned tensors.
+//
+//	partition_dims: A list of integers describing how each dimension is partitioned. Emptiness
+//
+// indicates the inputs are replicated.
+//
+// Returns A list of partitioned outputs which have the same shape.
+func TPUPartitionedOutputV2(scope *Scope, inputs tf.Output, num_splits int64, partition_dims []int64) (output []tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"num_splits": num_splits, "partition_dims": partition_dims}
+	opspec := tf.OpSpec{
+		Type: "TPUPartitionedOutputV2",
+		Input: []tf.Input{
+			inputs,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	if scope.Err() != nil {
+		return
+	}
+	var idx int
+	var err error
+	if output, idx, err = makeOutputList(op, idx, "output"); err != nil {
+		scope.UpdateErr("TPUPartitionedOutputV2", err)
 		return
 	}
 	return output
@@ -56859,7 +57140,8 @@ func XlaBroadcastHelper(scope *Scope, lhs tf.Output, rhs tf.Output, broadcast_di
 //
 //	args: A list of `Tensor` with possibly different types to be passed as arguments
 //
-// to the HLO module.
+// to the HLO module. These are all non-dimension arguments. The dimension
+// arguments are computed at JIT time.
 //
 //	version: Changes when we change the semantics of the op, to support backwards
 //

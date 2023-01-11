@@ -17,6 +17,8 @@ limitations under the License.
 // the TensorFlow dialect to their functional counterparts, i.e.,
 // tf.IfRegion ->  tf.If and tf.WhileRegion -> tf.While
 
+#include <optional>
+
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/Casting.h"
@@ -185,13 +187,13 @@ void ExtractSingleBlockRegion(Region& region, StringRef name,
 // does not conform to this pattern.
 llvm::Optional<func::CallOp> IsSingleCallRegion(Region& region,
                                                 bool allow_to_bool = false) {
-  if (!llvm::hasSingleElement(region)) return llvm::None;
+  if (!llvm::hasSingleElement(region)) return std::nullopt;
 
   Block& block = region.front();
   auto it = block.rbegin();
   YieldOp yield = dyn_cast<YieldOp>(*it++);
 
-  if (it == block.rend()) return llvm::None;
+  if (it == block.rend()) return std::nullopt;
 
   // Operation which is expected to consume all the call results.
   Operation* call_consumer = yield;
@@ -199,28 +201,28 @@ llvm::Optional<func::CallOp> IsSingleCallRegion(Region& region,
   // Allow a single ToBoolOp between the call and the yield (valid only
   // when the yield has a single operand)
   if (allow_to_bool && yield.getNumOperands() == 1 && isa<ToBoolOp>(*it)) {
-    if (it->getResult(0) != yield.getOperand(0)) return llvm::None;
+    if (it->getResult(0) != yield.getOperand(0)) return std::nullopt;
     call_consumer = cast<ToBoolOp>(*it);
     it++;
-    if (it == block.rend()) return llvm::None;
+    if (it == block.rend()) return std::nullopt;
   }
 
   // Check if there is a Call before the Yield.
   func::CallOp call = dyn_cast<func::CallOp>(*it++);
-  if (!call) return llvm::None;
+  if (!call) return std::nullopt;
 
   // All call results should feed into expected consumer
   // All results of the call should feed into the yield.
   if (call.getNumResults() != call_consumer->getNumOperands())
-    return llvm::None;
+    return std::nullopt;
 
   for (auto res_it : llvm::zip(call.getResults(), call_consumer->getOperands()))
-    if (std::get<0>(res_it) != std::get<1>(res_it)) return llvm::None;
+    if (std::get<0>(res_it) != std::get<1>(res_it)) return std::nullopt;
 
   // There can only be non-truncating cast op's prior to the call.
   for (; it != block.rend(); ++it) {
     CastOp cast = dyn_cast<CastOp>(*it);
-    if (!cast || cast.getTruncate()) return llvm::None;
+    if (!cast || cast.getTruncate()) return std::nullopt;
   }
 
   return call;

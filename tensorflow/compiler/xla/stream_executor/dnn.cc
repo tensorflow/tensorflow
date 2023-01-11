@@ -23,7 +23,9 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
+#include "absl/types/span.h"
 #include "tensorflow/tsl/lib/strings/proto_serialization.h"
+#include "tensorflow/tsl/protobuf/dnn.pb.h"
 
 namespace stream_executor {
 namespace dnn {
@@ -46,6 +48,8 @@ bool ProtoMapsEqual(const google::protobuf::Map<int64_t, int64_t>& x,
 
 }  // namespace
 
+constexpr DataType ToDataType<tsl::float8_e4m3fn>::value;
+constexpr DataType ToDataType<tsl::float8_e5m2>::value;
 constexpr DataType ToDataType<float>::value;
 constexpr DataType ToDataType<double>::value;
 constexpr DataType ToDataType<Eigen::half>::value;
@@ -114,12 +118,12 @@ std::vector<std::pair<int64_t, int64_t>> AlgorithmDesc::TuningKnobs() const {
 }
 
 bool DnnSupport::GetConvolveAlgorithms(
-    CudaComputeCapability cuda_compute_capability,
+    CudaComputeCapability cuda_compute_capability, dnn::DataType input_type,
     std::vector<AlgorithmDesc>* out_algorithms) {
   return false;
 }
 
-port::Status DnnSupport::GetConvolveRunners(
+tsl::Status DnnSupport::GetConvolveRunners(
     bool /* use_cudnn_frontend */, dnn::ConvolutionKind /*kind*/,
     dnn::DataType /*input_type*/, dnn::DataType /*output_type*/,
     Stream* /*stream*/, const dnn::BatchDescriptor& /*input_descriptor*/,
@@ -145,7 +149,7 @@ DnnSupport::ConvolveRunnerFromDesc(
   return port::UnimplementedError("ConvolveRunnerFromDesc not implemented.");
 }
 
-port::Status DnnSupport::GetFusedConvolveRunners(
+tsl::Status DnnSupport::GetFusedConvolveRunners(
     bool use_cudnn_frontend, dnn::ConvolutionKind kind,
     dnn::DataType element_type, dnn::DataType bias_type,
     dnn::DataType output_type, double conv_input_scale, double side_input_scale,
@@ -160,7 +164,7 @@ port::Status DnnSupport::GetFusedConvolveRunners(
   return port::UnimplementedError("GetFusedConvolveRunners not implemented.");
 }
 
-port::Status DnnSupport::GetFusedMatmulRunners(
+tsl::Status DnnSupport::GetFusedMatmulRunners(
     bool use_cudnn_frontend, dnn::DataType element_type,
     dnn::DataType bias_type, dnn::DataType output_type, Stream* stream,
     bool trans_a, bool trans_b, uint64_t m, uint64_t n, uint64_t k, int64_t lda,
@@ -206,13 +210,13 @@ bool DnnSupport::GetRnnAlgorithms(std::vector<AlgorithmDesc>* out_algorithms) {
 }
 
 bool DnnSupport::GetConvolveBackwardDataAlgorithms(
-    CudaComputeCapability cuda_compute_capability,
+    CudaComputeCapability cuda_compute_capability, dnn::DataType input_type,
     std::vector<AlgorithmDesc>* out_algorithms) {
   return false;
 }
 
 bool DnnSupport::GetConvolveBackwardFilterAlgorithms(
-    CudaComputeCapability cuda_compute_capability,
+    CudaComputeCapability cuda_compute_capability, dnn::DataType input_type,
     std::vector<AlgorithmDesc>* out_algorithms) {
   return false;
 }
@@ -614,7 +618,7 @@ int64_t BatchDescriptor::FullyConnectedBiasCount(
 }
 
 BatchDescriptor BatchDescriptor::DepthConcatenateOutputDescriptor(
-    port::ArraySlice<dnn::BatchDescriptor> inputs) {  // non-absl ok
+    absl::Span<const dnn::BatchDescriptor> inputs) {
   if (inputs.empty()) {
     return BatchDescriptor();
   }
@@ -881,7 +885,7 @@ std::string NormalizeDescriptor::ToShortString() const {
                       "_size:", segment_size_);
 }
 
-bool DnnSupport::IsStatusOk(const port::Status& status, bool report_error) {
+bool DnnSupport::IsStatusOk(const tsl::Status& status, bool report_error) {
   if (status.ok()) {
     return true;
   }
@@ -891,7 +895,7 @@ bool DnnSupport::IsStatusOk(const port::Status& status, bool report_error) {
   return false;
 }
 
-port::Status DnnSupport::DoCtcLoss(
+tsl::Status DnnSupport::DoCtcLoss(
     Stream* stream, dnn::DataType element_type,
     const RnnStateTensorDescriptor& probs_desc,
     const DeviceMemoryBase probs_data, absl::Span<const int> labels_data,

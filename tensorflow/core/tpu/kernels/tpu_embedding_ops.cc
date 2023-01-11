@@ -13,6 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/core/tpu/ops/tpu_embedding_ops.h"
+
+#include <cstdint>
 #include <string>
 #include <vector>
 
@@ -20,18 +23,23 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
+#include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/c_api_conversions.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/c_api_decl.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/proto_helper.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/status_helper.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_api.h"
+#include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/op_requires.h"
+#include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/protobuf/tpu/tpu_embedding_configuration.pb.h"
 #include "tensorflow/core/tpu/kernels/tpu_mesh_state_interface.h"
 #include "tensorflow/core/tpu/tpu_configuration.h"
 
 namespace tensorflow {
+
+using xla::LiteralUtil;
 
 namespace {
 
@@ -356,102 +364,214 @@ class SendTPUEmbeddingGradientsOp : public XlaOpKernel {
 REGISTER_XLA_OP(Name("XlaSendTPUEmbeddingGradients").AllowVariantTypes(),
                 SendTPUEmbeddingGradientsOp);
 
-// This TensorFlow op splits xla tuple to index and value tensors
-class SplitXLATupleToTensorsOp : public XlaOpKernel {
+// `XLARecvTPUEmbeddingDeduplicationDataOp` gives an XLA Tuple as results, which
+// can not be returned as static shape results. `SplitDedupDataOp` is to split
+// this XLA tuple into integer and float tensors to return.
+class SplitDedupDataOp : public XlaOpKernel {
  public:
-  explicit SplitXLATupleToTensorsOp(OpKernelConstruction* ctx)
-      : XlaOpKernel(ctx) {}
+  explicit SplitDedupDataOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("tuple_mask", &tuple_mask_string_));
+    OP_REQUIRES(ctx, tuple_mask_tensor_.ParseFromString(tuple_mask_string_),
+                errors::InvalidArgument(
+                    "Malformed `tuple_mask` attr in SplitDedupData Op."));
+  }
 
   void Compile(XlaOpKernelContext* ctx) override {
-    OP_REQUIRES(ctx, ctx->num_inputs() == 1,
-                errors::InvalidArgument(
-                    "SplitXLATupleToTensorsOp must have 1 input but gets ",
-                    ctx->num_inputs()));
+    OP_REQUIRES(
+        ctx, ctx->num_inputs() == 1,
+        errors::InvalidArgument("SplitDedupDataOp must have 1 input but gets ",
+                                ctx->num_inputs()));
     const xla::XlaOp& input_tuple = ctx->Input(0);
     xla::XlaBuilder* builder = ctx->builder();
 
     StatusOr<xla::Shape> tuple_shape = builder->GetShape(input_tuple);
     OP_REQUIRES_OK(ctx, tuple_shape.status());
 
-    int tuple_shapes_size = tuple_shape->tuple_shapes_size();
-    OP_REQUIRES(ctx, tuple_shapes_size % 2 == 0,
-                errors::InvalidArgument("Input tuple size must be even."));
-    int output_size = tuple_shapes_size / 2;
+    const int num_tuple_elements = tuple_shape->tuple_shapes_size();
+    OP_REQUIRES(
+        ctx,
+        tuple_mask_tensor_.tensor_shape().dim(0).size() == num_tuple_elements,
+        errors::InvalidArgument(
+            "Number of elements in `input` tuple does not match with "
+            "`tuple_mask`."));
 
-    std::vector<xla::XlaOp> indices_vec, values_vec;
-    indices_vec.reserve(output_size);
-    values_vec.reserve(output_size);
-
-    for (int i = 0; i < tuple_shapes_size - 1; i = i + 2) {
-      indices_vec.push_back(xla::GetTupleElement(input_tuple, i));
-      values_vec.push_back(xla::GetTupleElement(input_tuple, i + 1));
+    if (num_tuple_elements == 0) {
+      // Returns empty tensors when tuple is empty.
+      ctx->SetOutput(
+          0, xla::ConstantLiteral(
+                 builder, LiteralUtil::CreateFromDimensions(xla::U32, {0})));
+      ctx->SetOutput(
+          1, xla::ConstantLiteral(
+                 builder, LiteralUtil::CreateFromDimensions(xla::F32, {0})));
+      return;
     }
-    // Convert std::vector to XlaOp
-    xla::XlaOp indices = xla::ConcatInDim(builder, indices_vec, 0);
-    xla::XlaOp values = xla::ConcatInDim(builder, values_vec, 0);
-    // output the indices array and value array.
-    ctx->SetOutput(0, indices);
-    ctx->SetOutput(1, values);
+
+    // Split tuple elements in `input_tuple` into two vectors: integers_vec and
+    // floats_vec, corresponding to their mask.
+    std::vector<xla::XlaOp> integers_vec, floats_vec;
+    for (int i = 0; i < num_tuple_elements; ++i) {
+      const xla::XlaOp& element = xla::GetTupleElement(input_tuple, i);
+      const int element_type = tuple_mask_tensor_.int_val(2 * i);
+      OP_REQUIRES(
+          ctx,
+          element_type == DedupTupleElementType::kInteger ||
+              element_type == DedupTupleElementType::kFloat,
+          errors::InvalidArgument(
+              "Elements in first column of tuple_mask_tensor are enums of ",
+              "DedupTupleElementType, which can only be 0 or 1. Where 0 ",
+              "represents integer and 1 represents float. But gets unexpected ",
+              "enum = ", element_type));
+
+      if (element_type == DedupTupleElementType::kInteger) {
+        integers_vec.push_back(element);
+      } else {
+        floats_vec.push_back(element);
+      }
+    }
+
+    // Concatenate elements of integer and floating as return tensors.
+    xla::XlaOp integer_tensor = xla::ConcatInDim(builder,
+                                                 /*operands=*/integers_vec,
+                                                 /*dimension=*/0);
+    xla::XlaOp float_tensor = xla::ConcatInDim(builder,
+                                               /*operands=*/floats_vec,
+                                               /*dimension=*/0);
+    ctx->SetOutput(0, integer_tensor);
+    ctx->SetOutput(1, float_tensor);
   }
 
  private:
-  TF_DISALLOW_COPY_AND_ASSIGN(SplitXLATupleToTensorsOp);
+  std::string tuple_mask_string_;
+  tensorflow::TensorProto tuple_mask_tensor_;
+
+  TF_DISALLOW_COPY_AND_ASSIGN(SplitDedupDataOp);
 };
 
-REGISTER_XLA_OP(Name("SplitXLATupleToTensors").AllowVariantTypes(),
-                SplitXLATupleToTensorsOp);
+REGISTER_XLA_OP(Name("SplitDedupData").AllowVariantTypes(), SplitDedupDataOp);
 
-// This TensorFlow op merges index and value tensors into xla tuple
-class InterleaveTensorsToXLATupleOp : public XlaOpKernel {
+// MergeDedupDataOp merges integer and floating point tensors back to xla tuple.
+class MergeDedupDataOp : public XlaOpKernel {
  public:
-  explicit InterleaveTensorsToXLATupleOp(OpKernelConstruction* ctx)
-      : XlaOpKernel(ctx) {}
+  explicit MergeDedupDataOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("tuple_mask", &tuple_mask_string_));
+    OP_REQUIRES(ctx, tuple_mask_tensor_.ParseFromString(tuple_mask_string_),
+                errors::InvalidArgument(
+                    "Malformed `tuple_mask` attr in MergeDedupData Op"));
+  }
 
   void Compile(XlaOpKernelContext* ctx) override {
-    OP_REQUIRES(ctx, ctx->num_inputs() == 2,
+    OP_REQUIRES(
+        ctx, ctx->num_inputs() == 2,
+        errors::InvalidArgument("MergeDedupDataOp expects 2 inputs, but ",
+                                "gets ", ctx->num_inputs()));
+
+    // `integer_tensor` should be a 1-D tensor.
+    xla::XlaOp integer_tensor = ctx->Input(0);
+    StatusOr<xla::Shape> integer_tensor_shape =
+        ctx->builder()->GetShape(integer_tensor);
+    OP_REQUIRES_OK(ctx, integer_tensor_shape.status());
+    OP_REQUIRES(ctx, integer_tensor_shape->rank() == 1,
                 errors::InvalidArgument(
-                    "InterleaveTensorsToXLATupleOp expects 2 inputs, but gets ",
-                    ctx->num_inputs()));
+                    "Expected rank of integer_vals is 1, but gets, ",
+                    integer_tensor_shape->rank()));
+    const int64_t num_integers = integer_tensor_shape->dimensions(0);
 
-    xla::XlaOp indices = ctx->Input(0);
-    StatusOr<xla::Shape> indices_shape = ctx->builder()->GetShape(indices);
-    OP_REQUIRES_OK(ctx, indices_shape.status());
-    OP_REQUIRES(ctx, indices_shape->rank() == 1,
-                errors::InvalidArgument("Rank of indices must be 1, but gets",
-                                        indices_shape->rank()));
-
-    xla::XlaOp values = ctx->Input(1);
-    StatusOr<xla::Shape> values_shape = ctx->builder()->GetShape(values);
-    OP_REQUIRES_OK(ctx, values_shape.status());
-    OP_REQUIRES(ctx, indices_shape->rank() == 1,
+    // `float_tensor` should be a 1-D tensor.
+    xla::XlaOp float_tensor = ctx->Input(1);
+    StatusOr<xla::Shape> float_tensor_shape =
+        ctx->builder()->GetShape(float_tensor);
+    OP_REQUIRES_OK(ctx, float_tensor_shape.status());
+    OP_REQUIRES(ctx, float_tensor_shape->rank() == 1,
                 errors::InvalidArgument("Expects rank of value is 1, but gets ",
-                                        indices_shape->rank()));
-    OP_REQUIRES(ctx,
-                indices_shape->dimensions(0) == values_shape->dimensions(0),
-                errors::InvalidArgument(
-                    "Lengths of indices and values must be same, but length of "
-                    "indices  = ",
-                    indices_shape->dimensions(0),
-                    "length of values = ", values_shape->dimensions(0)));
+                                        float_tensor_shape->rank()));
+    const int64_t num_floats = float_tensor_shape->dimensions(0);
+
+    // Get total number of elements in deduplication data tuple.
+    auto builder = ctx->builder();
+    const tensorflow::TensorShapeProto& tuple_tensor_shape =
+        tuple_mask_tensor_.tensor_shape();
+    const int64_t num_tuple_elements = tuple_tensor_shape.dim(0).size();
+    if (num_tuple_elements == 0) {
+      OP_REQUIRES(
+          ctx, num_integers == 0 && num_floats == 0,
+          errors::InvalidArgument(
+              "Tuple mask indicates empty tuple, but integer_tensor ",
+              "shape is ", integer_tensor_shape->DebugString(),
+              " float_tensor shape is ", float_tensor_shape->DebugString()));
+      ctx->SetOutput(0, xla::Tuple(builder, {}));
+      return;
+    }
+    OP_REQUIRES(
+        ctx, tuple_tensor_shape.dim_size() == 2,
+        errors::InvalidArgument("Expects rank of tuple mask is 1, but gets ",
+                                tuple_tensor_shape.dim_size()));
 
     std::vector<xla::XlaOp> output_vec;
-    output_vec.reserve(2 * indices_shape->dimensions(0));
-    // Interleave elements of indices and values as output tuple.
-    for (int i = 0; i < indices_shape->dimensions(0); ++i) {
-      output_vec.push_back(xla::Slice(indices, {i}, {i + 1}, {1}));
-      output_vec.push_back(xla::Slice(values, {i}, {i + 1}, {1}));
-    }
+    output_vec.reserve(num_tuple_elements);
 
-    xla::XlaOp output_tuple = xla::Tuple(ctx->builder(), output_vec);
+    // Merge elements of integer and float tensor into a tuple.
+    int integer_offset = 0;
+    int float_offset = 0;
+    for (int i = 0; i < num_tuple_elements; ++i) {
+      const int element_type = tuple_mask_tensor_.int_val(2 * i);
+      const int span_size = tuple_mask_tensor_.int_val(2 * i + 1);
+      OP_REQUIRES(
+          ctx,
+          element_type == DedupTupleElementType::kInteger ||
+              element_type == DedupTupleElementType::kFloat,
+          errors::InvalidArgument(
+              "Elements in first column of tuple_mask_tensor are enums of ",
+              "DedupTupleElementType, which can only be 0 or 1. Where 0 ",
+              "represents integer and 1 represents float. But gets unexpected ",
+              "enum = ", element_type));
+
+      if (element_type == DedupTupleElementType::kInteger) {
+        OP_REQUIRES(ctx, integer_offset < num_integers,
+                    errors::InvalidArgument(
+                        "Offset of integers = ", integer_offset,
+                        " exceeds total number of integers = ", num_integers));
+        xla::XlaOp integer_slice =
+            xla::SliceInDim(integer_tensor,
+                            /*start_index=*/integer_offset,
+                            /*limit_index*/ integer_offset + span_size,
+                            /*stride=*/1, /*dimno=*/0);
+        output_vec.push_back(integer_slice);
+        integer_offset += span_size;
+      } else {
+        OP_REQUIRES(ctx, float_offset < num_floats,
+                    errors::InvalidArgument(
+                        "Offset of integers = ", float_offset,
+                        " exceeds total number of floats = ", num_floats));
+        xla::XlaOp float_slice =
+            xla::SliceInDim(float_tensor,
+                            /*start_index=*/float_offset,
+                            /*limit_index*/ float_offset + span_size,
+                            /*stride=*/1, /*dimno=*/0);
+        output_vec.push_back(float_slice);
+        float_offset += span_size;
+      }
+    }
+    OP_REQUIRES(ctx, integer_offset == num_integers,
+                errors::InvalidArgument(
+                    "Number of integers does not match, expect num_integers = ",
+                    num_integers, " but actually get = ", integer_offset));
+    OP_REQUIRES(ctx, float_offset == num_floats,
+                errors::InvalidArgument(
+                    "Number of floats does not match, expect num_floats = ",
+                    num_floats, " but actually get = ", float_offset));
+
+    xla::XlaOp output_tuple = xla::Tuple(builder, output_vec);
     ctx->SetOutput(0, output_tuple);
   }
 
  private:
-  TF_DISALLOW_COPY_AND_ASSIGN(InterleaveTensorsToXLATupleOp);
+  std::string tuple_mask_string_;
+  tensorflow::TensorProto tuple_mask_tensor_;
+
+  TF_DISALLOW_COPY_AND_ASSIGN(MergeDedupDataOp);
 };
 
-REGISTER_XLA_OP(Name("InterleaveTensorsToXLATuple").AllowVariantTypes(),
-                InterleaveTensorsToXLATupleOp);
+REGISTER_XLA_OP(Name("MergeDedupData").AllowVariantTypes(), MergeDedupDataOp);
 
 }  // anonymous namespace
 }  // namespace tensorflow

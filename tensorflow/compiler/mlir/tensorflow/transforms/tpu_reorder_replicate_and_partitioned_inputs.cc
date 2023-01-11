@@ -43,7 +43,7 @@ LogicalResult ReorderReplicateAndPartitionedInputs(
 
   auto first_partitioned_input = llvm::cast<TF::TPUPartitionedInputOp>(
       replicated_input.getOperand(0).getDefiningOp());
-  llvm::Optional<::llvm::StringRef> xla_sharding =
+  std::optional<::llvm::StringRef> xla_sharding =
       first_partitioned_input.get_XlaSharding();
   int64_t partition_dim = first_partitioned_input.getPartitionDim();
   size_t num_cores_per_replica = first_partitioned_input.getNumOperands();
@@ -51,7 +51,7 @@ LogicalResult ReorderReplicateAndPartitionedInputs(
   for (auto operand : replicated_input.getInputs().drop_front()) {
     auto partitioned_input =
         llvm::cast<TF::TPUPartitionedInputOp>(operand.getDefiningOp());
-    llvm::Optional<::llvm::StringRef> op_xla_sharding =
+    std::optional<::llvm::StringRef> op_xla_sharding =
         partitioned_input.get_XlaSharding();
     int64_t op_partition_dim = partitioned_input.getPartitionDim();
     // Abort if TPUPartitionedInput(s) do not have the same attributes.

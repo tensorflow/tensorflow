@@ -1049,10 +1049,10 @@ def saturate_cast(value, dtype, name=None):
           value = gen_math_ops._clip_by_value(
               value,
               ops.convert_to_tensor(
-                  np.complex(real_out_dtype.min, real_out_dtype.min),
+                  builtins.complex(real_out_dtype.min, real_out_dtype.min),
                   dtype=in_dtype),
               ops.convert_to_tensor(
-                  np.complex(real_out_dtype.max, real_out_dtype.max),
+                  builtins.complex(real_out_dtype.max, real_out_dtype.max),
                   dtype=in_dtype),
               name="clamp")
         return cast(value, dtype, name=name)
@@ -1066,9 +1066,8 @@ def saturate_cast(value, dtype, name=None):
     out_real_dtype = dtype.real_dtype
     if in_dtype.min < out_real_dtype.min or in_dtype.max > out_real_dtype.max:
 
-      # Forward-compatibility required for Brella if output is real:
-      if not dtype.is_complex and not tf_compat.forward_compatible(
-          2022, 12, 16):
+      # Wrap changes to maintain TensorFlow's forward-compatibility window.
+      if not dtype.is_complex and not tf_compat.forward_compatible(2023, 1, 16):
         # Old behavior using max/min.
         if in_dtype.min < dtype.min:
           value = gen_math_ops.maximum(
@@ -4038,8 +4037,8 @@ def add(x, y, name=None):
 
   Args:
     x: A `tf.Tensor`. Must be one of the following types: bfloat16, half,
-      float32, float64, uint8, int8, int16, int32, int64, complex64, complex128,
-      string.
+      float16, float32, float64, uint8, uint16, uint32, uint64, int8, int16,
+      int32, int64, complex64, complex128, string.
     y: A `tf.Tensor`. Must have the same type as x.
     name: A name for the operation (optional)
   """

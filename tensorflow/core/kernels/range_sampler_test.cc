@@ -157,32 +157,56 @@ TEST_F(RangeSamplerTest, FixedUnigramProbabilities) {
   Env* env = Env::Default();
   string fname = io::JoinPath(testing::TmpDir(), "vocab_file");
   TF_CHECK_OK(WriteStringToFile(env, fname, kVocabContent));
-  sampler_.reset(new FixedUnigramSampler(env, 9, fname, 0.8, 0, 1, 0));
+  FixedUnigramSampler* test_sampler = new FixedUnigramSampler(9, 0.8, 0, 1, 0);
+  TF_CHECK_OK(test_sampler->SetDistributionSampler(env, fname));
+  sampler_.reset(test_sampler);
   // 1^0.8+2^0.8+4^0.8+...+256^0.8=197.05
   for (int i = 0; i < 9; i++) {
     ASSERT_NEAR(sampler_->Probability(i), pow(2, i * 0.8) / 197.05, 1e-4);
   }
 }
+TEST_F(RangeSamplerTest, FixedUnigramNoExistingFilename) {
+  Env* env = Env::Default();
+  string fname = "NoExistingFile";
+  FixedUnigramSampler* test_sampler = new FixedUnigramSampler(9, 0.8, 0, 1, 0);
+  Status s = test_sampler->SetDistributionSampler(env, fname);
+  sampler_.reset(test_sampler);
+  EXPECT_TRUE(errors::IsNotFound(s)) << s;
+}
+TEST_F(RangeSamplerTest, FixedUnigramNoMatchingRangeWeights) {
+  Env* env = Env::Default();
+  string fname = io::JoinPath(testing::TmpDir(), "vocab_file");
+  TF_CHECK_OK(WriteStringToFile(env, fname, kVocabContent));
+  FixedUnigramSampler* test_sampler = new FixedUnigramSampler(8, 0.8, 0, 1, 0);
+  Status s = test_sampler->SetDistributionSampler(env, fname);
+  sampler_.reset(test_sampler);
+  EXPECT_TRUE(errors::IsInvalidArgument(s)) << s;
+}
 TEST_F(RangeSamplerTest, FixedUnigramChecksum) {
   Env* env = Env::Default();
   string fname = io::JoinPath(testing::TmpDir(), "vocab_file");
   TF_CHECK_OK(WriteStringToFile(env, fname, kVocabContent));
-  sampler_.reset(new FixedUnigramSampler(env, 9, fname, 0.8, 0, 1, 0));
+  FixedUnigramSampler* test_sampler = new FixedUnigramSampler(9, 0.8, 0, 1, 0);
+  TF_CHECK_OK(test_sampler->SetDistributionSampler(env, fname));
+  sampler_.reset(test_sampler);
   CheckProbabilitiesSumToOne();
 }
-
 TEST_F(RangeSamplerTest, FixedUnigramHistogram) {
   Env* env = Env::Default();
   string fname = io::JoinPath(testing::TmpDir(), "vocab_file");
   TF_CHECK_OK(WriteStringToFile(env, fname, kVocabContent));
-  sampler_.reset(new FixedUnigramSampler(env, 9, fname, 0.8, 0, 1, 0));
+  FixedUnigramSampler* test_sampler = new FixedUnigramSampler(9, 0.8, 0, 1, 0);
+  TF_CHECK_OK(test_sampler->SetDistributionSampler(env, fname));
+  sampler_.reset(test_sampler);
   CheckHistogram(1000, 0.05);
 }
 TEST_F(RangeSamplerTest, FixedUnigramProbabilitiesReserve1) {
   Env* env = Env::Default();
   string fname = io::JoinPath(testing::TmpDir(), "vocab_file");
   TF_CHECK_OK(WriteStringToFile(env, fname, kVocabContent));
-  sampler_.reset(new FixedUnigramSampler(env, 10, fname, 0.8, 1, 1, 0));
+  FixedUnigramSampler* test_sampler = new FixedUnigramSampler(10, 0.8, 1, 1, 0);
+  TF_CHECK_OK(test_sampler->SetDistributionSampler(env, fname));
+  sampler_.reset(test_sampler);
   ASSERT_NEAR(sampler_->Probability(0), 0, 1e-4);
   // 1^0.8+2^0.8+4^0.8+...+256^0.8=197.05
   for (int i = 1; i < 10; i++) {
@@ -193,7 +217,9 @@ TEST_F(RangeSamplerTest, FixedUnigramProbabilitiesReserve2) {
   Env* env = Env::Default();
   string fname = io::JoinPath(testing::TmpDir(), "vocab_file");
   TF_CHECK_OK(WriteStringToFile(env, fname, kVocabContent));
-  sampler_.reset(new FixedUnigramSampler(env, 11, fname, 0.8, 2, 1, 0));
+  FixedUnigramSampler* test_sampler = new FixedUnigramSampler(11, 0.8, 2, 1, 0);
+  TF_CHECK_OK(test_sampler->SetDistributionSampler(env, fname));
+  sampler_.reset(test_sampler);
   ASSERT_NEAR(sampler_->Probability(0), 0, 1e-4);
   ASSERT_NEAR(sampler_->Probability(1), 0, 1e-4);
   // 1^0.8+2^0.8+4^0.8+...+256^0.8=197.05
@@ -203,7 +229,9 @@ TEST_F(RangeSamplerTest, FixedUnigramProbabilitiesReserve2) {
 }
 TEST_F(RangeSamplerTest, FixedUnigramProbabilitiesFromVector) {
   std::vector<float> weights = {1, 2, 4, 8, 16, 32, 64, 128, 256};
-  sampler_.reset(new FixedUnigramSampler(9, weights, 0.8, 0, 1, 0));
+  FixedUnigramSampler* test_sampler = new FixedUnigramSampler(9, 0.8, 0, 1, 0);
+  TF_CHECK_OK(test_sampler->SetDistributionSampler(weights));
+  sampler_.reset(test_sampler);
   // 1^0.8+2^0.8+4^0.8+...+256^0.8=197.05
   for (int i = 0; i < 9; i++) {
     ASSERT_NEAR(sampler_->Probability(i), pow(2, i * 0.8) / 197.05, 1e-4);
@@ -211,17 +239,23 @@ TEST_F(RangeSamplerTest, FixedUnigramProbabilitiesFromVector) {
 }
 TEST_F(RangeSamplerTest, FixedUnigramChecksumFromVector) {
   std::vector<float> weights = {1, 2, 4, 8, 16, 32, 64, 128, 256};
-  sampler_.reset(new FixedUnigramSampler(9, weights, 0.8, 0, 1, 0));
+  FixedUnigramSampler* test_sampler = new FixedUnigramSampler(9, 0.8, 0, 1, 0);
+  TF_CHECK_OK(test_sampler->SetDistributionSampler(weights));
+  sampler_.reset(test_sampler);
   CheckProbabilitiesSumToOne();
 }
 TEST_F(RangeSamplerTest, FixedUnigramHistogramFromVector) {
   std::vector<float> weights = {1, 2, 4, 8, 16, 32, 64, 128, 256};
-  sampler_.reset(new FixedUnigramSampler(9, weights, 0.8, 0, 1, 0));
+  FixedUnigramSampler* test_sampler = new FixedUnigramSampler(9, 0.8, 0, 1, 0);
+  TF_CHECK_OK(test_sampler->SetDistributionSampler(weights));
+  sampler_.reset(test_sampler);
   CheckHistogram(1000, 0.05);
 }
 TEST_F(RangeSamplerTest, FixedUnigramProbabilitiesReserve1FromVector) {
   std::vector<float> weights = {1, 2, 4, 8, 16, 32, 64, 128, 256};
-  sampler_.reset(new FixedUnigramSampler(10, weights, 0.8, 1, 1, 0));
+  FixedUnigramSampler* test_sampler = new FixedUnigramSampler(10, 0.8, 1, 1, 0);
+  TF_CHECK_OK(test_sampler->SetDistributionSampler(weights));
+  sampler_.reset(test_sampler);
   ASSERT_NEAR(sampler_->Probability(0), 0, 1e-4);
   // 1^0.8+2^0.8+4^0.8+...+256^0.8=197.05
   for (int i = 1; i < 10; i++) {
@@ -230,7 +264,9 @@ TEST_F(RangeSamplerTest, FixedUnigramProbabilitiesReserve1FromVector) {
 }
 TEST_F(RangeSamplerTest, FixedUnigramProbabilitiesReserve2FromVector) {
   std::vector<float> weights = {1, 2, 4, 8, 16, 32, 64, 128, 256};
-  sampler_.reset(new FixedUnigramSampler(11, weights, 0.8, 2, 1, 0));
+  FixedUnigramSampler* test_sampler = new FixedUnigramSampler(11, 0.8, 2, 1, 0);
+  TF_CHECK_OK(test_sampler->SetDistributionSampler(weights));
+  sampler_.reset(test_sampler);
   ASSERT_NEAR(sampler_->Probability(0), 0, 1e-4);
   ASSERT_NEAR(sampler_->Probability(1), 0, 1e-4);
   // 1^0.8+2^0.8+4^0.8+...+256^0.8=197.05

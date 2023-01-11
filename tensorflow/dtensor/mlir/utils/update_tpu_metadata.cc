@@ -152,7 +152,8 @@ struct DTensorUpdateTPUMetadata
     mlir::MLIRContext& context = getContext();
     mlir::OpBuilder builder(&context);
     auto module = getOperation();
-    mlir::func::FuncOp main_func = module.lookupSymbol<mlir::func::FuncOp>("main");
+    mlir::func::FuncOp main_func =
+        module.lookupSymbol<mlir::func::FuncOp>("main");
     if (!main_func) return;
 
     auto result = main_func.walk([&](mlir::TF::StatefulPartitionedCallOp op) {

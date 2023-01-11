@@ -15,6 +15,7 @@ limitations under the License.
 
 #include <iterator>
 #include <memory>
+#include <optional>
 #include <utility>
 
 #include "mlir/Dialect/Arith/IR/Arith.h"
@@ -281,7 +282,7 @@ Value emitBottomUpMergeSort(ImplicitLocOpBuilder& b, Value lo, Value hi,
       b.create<scf::YieldOp>(ValueRange{});
     };
     b.create<scf::ForOp>(/*lowerBound=*/zero, /*upperBound=*/size,
-                         /*step=*/insertionSortSize, /*iterArgs=*/llvm::None,
+                         /*step=*/insertionSortSize, /*iterArgs=*/std::nullopt,
                          forBody);
   }
 
@@ -370,11 +371,11 @@ struct Slicer {
         strides(inductionVariables.size() + 1, b.getI64IntegerAttr(1)) {
     sizes[sortDim] = sortDimSize;
     for (size_t i = 0; i < inductionVariables.size() + 1; ++i) {
-      if (i == sortDim) {
+      if ((int64_t)i == sortDim) {
         offsets.push_back(b.getI64IntegerAttr(0));
       } else {
         offsets.push_back(
-            inductionVariables[i - static_cast<int>(i > sortDim)]);
+            inductionVariables[i - static_cast<int>((int64_t)i > sortDim)]);
       }
     }
   }

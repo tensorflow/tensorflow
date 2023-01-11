@@ -43,7 +43,7 @@ StatusOr<std::vector<ReplicaGroup>> ConvertReplicaGroups(
 // Convert a (N, 2) dense attribute to a list of tuples. This is the way padding
 // and source-target pairs are defined in HLO.
 StatusOr<std::vector<std::pair<int64_t, int64_t>>> ConvertNx2Attribute(
-    llvm::Optional<mlir::DenseIntElementsAttr> optional_attr);
+    std::optional<mlir::DenseIntElementsAttr> optional_attr);
 
 StatusOr<FftType> ConvertFftType(llvm::StringRef type_string);
 StatusOr<TriangularSolveOptions::Transpose> ConvertTranspose(
@@ -56,6 +56,6 @@ StatusOr<xla::CustomCallApiVersion> ConvertCustomCallApiVersion(
     mlir::mhlo::CustomCallApiVersion api_version);
 
 StatusOr<std::vector<std::pair<ShapeIndex, std::pair<int64_t, ShapeIndex>>>>
-ConvertCustomCallOutputOperandAliasing(mlir::ArrayAttr aliasArrayAttr);
+ConvertOutputOperandAliasing(mlir::ArrayAttr aliasArrayAttr);
 }  // namespace xla
 #endif  // TENSORFLOW_COMPILER_XLA_TRANSLATE_MHLO_TO_HLO_ATTRIBUTE_EXPORTER_H_

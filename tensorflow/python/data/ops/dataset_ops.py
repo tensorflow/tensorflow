@@ -25,11 +25,11 @@ from tensorflow.core.framework import dataset_metadata_pb2
 from tensorflow.core.framework import dataset_options_pb2
 from tensorflow.core.framework import graph_pb2
 from tensorflow.python import tf2
+from tensorflow.python.data.ops import debug_mode
 from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.data.ops import options as options_lib
 from tensorflow.python.data.ops import structured_function
 from tensorflow.python.data.util import nest
-from tensorflow.python.data.util import random_seed
 from tensorflow.python.data.util import structure
 from tensorflow.python.data.util import traverse
 from tensorflow.python.eager import context
@@ -52,6 +52,7 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_dataset_ops
 from tensorflow.python.ops import gen_experimental_dataset_ops as ged_ops
 from tensorflow.python.ops import gen_io_ops
+from tensorflow.python.ops import gen_parsing_ops
 from tensorflow.python.ops import gen_stateless_random_ops
 from tensorflow.python.ops import logging_ops
 from tensorflow.python.ops import math_ops
@@ -84,18 +85,17 @@ wrap_function = lazy_loader.LazyLoader(
 def_function = lazy_loader.LazyLoader(
     "def_function", globals(),
     "tensorflow.python.eager.def_function")
-# Loaded lazily due to a circular dependency
-# dataset_ops->parsing_ops->dataset_ops
-# TODO(varshaan): Use a regular import.
-parsing_ops = lazy_loader.LazyLoader(
-    "parsing_ops", globals(),
-    "tensorflow.python.ops.parsing_ops")
 # TODO(b/240947712): Clean up the circular dependencies.
 # Loaded lazily due to a circular dependency (dataset_ops ->
 # prefetch_op -> dataset_ops).
 prefetch_op = lazy_loader.LazyLoader(
     "prefetch_op", globals(),
     "tensorflow.python.data.ops.prefetch_op")
+# Loaded lazily due to a circular dependency (dataset_ops ->
+# shuffle_op -> dataset_ops).
+shuffle_op = lazy_loader.LazyLoader(
+    "shuffle_op", globals(),
+    "tensorflow.python.data.ops.shuffle_op")
 
 
 ops.NotDifferentiable("ReduceDataset")
@@ -329,7 +329,7 @@ class DatasetV2(
       if node.name in asset_tracker:
         tensor_proto = node.attr["value"].tensor
         with context.eager_mode(), ops.device("CPU"):
-          node_value = parsing_ops.parse_tensor(
+          node_value = gen_parsing_ops.parse_tensor(
               tensor_proto.SerializeToString(), dtypes.string).numpy()
         asset_tracker[node.name] = ([
             self._track_trackable(asset.Asset(n),
@@ -472,7 +472,7 @@ class DatasetV2(
     return self._options_attr
 
   def _apply_debug_options(self):
-    if DEBUG_MODE:
+    if debug_mode.DEBUG_MODE:
       # Disable autotuning and static optimizations that could introduce
       # parallelism or asynchrony.
       options = options_lib.Options()
@@ -1442,7 +1442,7 @@ class DatasetV2(
     Returns:
       A new `Dataset` with the transformation applied as described above.
     """
-    return ShuffleDataset(
+    return shuffle_op._shuffle(  # pylint: disable=protected-access
         self, buffer_size, seed, reshuffle_each_iteration, name=name)
 
   def cache(self, filename="", name=None):
@@ -4654,6 +4654,9 @@ class DatasetSpec(type_spec.BatchableTypeSpec):
 
     return DatasetSpec(common_element_spec, common_dataset_shape)
 
+  def _tf_data_normalize(self, t):
+    return t
+
   # TODO(b/220385675): Once _element_spec is guaranteed to be TypeSpec, the
   # following functions do not need to be overloaded: is_subtype_of,
   # most_specific_common_supertype, __hash__ and __eq__
@@ -4796,6 +4799,7 @@ batch_op = lazy_loader.LazyLoader(
     "tensorflow.python.data.ops.batch_op")
 BatchDataset = batch_op._BatchDataset  # pylint: disable=protected-access
 PrefetchDataset = prefetch_op._PrefetchDataset  # pylint: disable=protected-access
+ShuffleDataset = shuffle_op._ShuffleDataset  # pylint: disable=protected-access
 
 
 # TODO(b/254291122): Remove.
@@ -4805,46 +4809,6 @@ repeat_op = lazy_loader.LazyLoader(
     "repeat_op", globals(),
     "tensorflow.python.data.ops.repeat_op")
 RepeatDataset = repeat_op._RepeatDataset  # pylint: disable=protected-access
-
-
-class ShuffleDataset(UnaryUnchangedStructureDataset):
-  """A `Dataset` that randomly shuffles the elements of its input."""
-
-  def __init__(self,
-               input_dataset,
-               buffer_size,
-               seed=None,
-               reshuffle_each_iteration=None,
-               name=None):
-    """See `Dataset.shuffle()` for details."""
-    self._input_dataset = input_dataset
-    self._buffer_size = ops.convert_to_tensor(
-        buffer_size, dtype=dtypes.int64, name="buffer_size")
-    self._seed, self._seed2 = random_seed.get_seed(seed)
-    if reshuffle_each_iteration is None:
-      reshuffle_each_iteration = True
-    self._reshuffle_each_iteration = reshuffle_each_iteration
-    self._name = name
-
-    if (tf2.enabled() and
-        (context.executing_eagerly() or ops.inside_function())):
-      variant_tensor = gen_dataset_ops.shuffle_dataset_v3(
-          input_dataset._variant_tensor,  # pylint: disable=protected-access
-          buffer_size=self._buffer_size,
-          seed=self._seed,
-          seed2=self._seed2,
-          seed_generator=gen_dataset_ops.dummy_seed_generator(),
-          reshuffle_each_iteration=self._reshuffle_each_iteration,
-          **self._common_args)
-    else:
-      variant_tensor = gen_dataset_ops.shuffle_dataset(
-          input_dataset._variant_tensor,  # pylint: disable=protected-access
-          buffer_size=self._buffer_size,
-          seed=self._seed,
-          seed2=self._seed2,
-          reshuffle_each_iteration=self._reshuffle_each_iteration,
-          **self._common_args)
-    super(ShuffleDataset, self).__init__(input_dataset, variant_tensor)
 
 
 class _OptionsDataset(UnaryUnchangedStructureDataset):
@@ -5265,62 +5229,3 @@ def _resource_resolver(op, resource_reads, resource_writes):
           resource_writes.add(inp)
 
   return updated
-
-
-DEBUG_MODE = False
-
-
-@tf_export("data.experimental.enable_debug_mode")
-def enable_debug_mode():
-  """Enables debug mode for tf.data.
-
-  Example usage with pdb module:
-  ```
-  import tensorflow as tf
-  import pdb
-
-  tf.data.experimental.enable_debug_mode()
-
-  def func(x):
-    # Python 3.7 and older requires `pdb.Pdb(nosigint=True).set_trace()`
-    pdb.set_trace()
-    x = x + 1
-    return x
-
-  dataset = tf.data.Dataset.from_tensor_slices([1, 2, 3])
-  dataset = dataset.map(func)
-
-  for item in dataset:
-    print(item)
-  ```
-
-  The effect of debug mode is two-fold:
-
-  1) Any transformations that would introduce asynchrony, parallelism, or
-  non-determinism to the input pipeline execution will be forced to execute
-  synchronously, sequentially, and deterministically.
-
-  2) Any user-defined functions passed into tf.data transformations such as
-  `map` will be wrapped in `tf.py_function` so that their body is executed
-  "eagerly" as a Python function as opposed to a traced TensorFlow graph, which
-  is the default behavior. Note that even when debug mode is enabled, the
-  user-defined function is still traced  to infer the shape and type of its
-  outputs; as a consequence, any `print` statements or breakpoints will be
-  triggered once during the tracing before the actual execution of the input
-  pipeline.
-
-  NOTE: As the debug mode setting affects the construction of the tf.data input
-  pipeline, it should be enabled before any tf.data definitions.
-
-  Raises:
-    ValueError: When invoked from graph mode.
-  """
-  if context.executing_eagerly():
-    toggle_debug_mode(True)
-  else:
-    raise ValueError("`enable_debug_mode() is only supported in eager mode.")
-
-
-def toggle_debug_mode(debug_mode):
-  global DEBUG_MODE
-  DEBUG_MODE = debug_mode

@@ -69,7 +69,7 @@ std::string DriverVersionStatusToString(port::StatusOr<DriverVersion> version) {
 port::StatusOr<DriverVersion> StringToDriverVersion(const std::string &value) {
   std::vector<std::string> pieces = absl::StrSplit(value, '.');
   if (pieces.size() < 2 || pieces.size() > 4) {
-    return port::Status(
+    return tsl::Status(
         port::error::INVALID_ARGUMENT,
         absl::StrFormat(
             "expected %%d.%%d, %%d.%%d.%%d, or %%d.%%d.%%d.%%d form "
@@ -81,21 +81,21 @@ port::StatusOr<DriverVersion> StringToDriverVersion(const std::string &value) {
   int minor;
   int patch = 0;
   if (!port::safe_strto32(pieces[0], &major)) {
-    return port::Status(
+    return tsl::Status(
         port::error::INVALID_ARGUMENT,
         absl::StrFormat("could not parse major version number \"%s\" as an "
                         "integer from string \"%s\"",
                         pieces[0], value));
   }
   if (!port::safe_strto32(pieces[1], &minor)) {
-    return port::Status(
+    return tsl::Status(
         port::error::INVALID_ARGUMENT,
         absl::StrFormat("could not parse minor version number \"%s\" as an "
                         "integer from string \"%s\"",
                         pieces[1].c_str(), value.c_str()));
   }
   if (pieces.size() == 3 && !port::safe_strto32(pieces[2], &patch)) {
-    return port::Status(
+    return tsl::Status(
         port::error::INVALID_ARGUMENT,
         absl::StrFormat("could not parse patch version number \"%s\" as an "
                         "integer from string \"%s\"",
@@ -216,7 +216,7 @@ void Diagnostician::LogDiagnosticInformation() {
 // Iterates through loaded DSOs with DlIteratePhdrCallback to find the
 // driver-interfacing DSO version number. Returns it as a string.
 port::StatusOr<DriverVersion> Diagnostician::FindDsoVersion() {
-  port::StatusOr<DriverVersion> result(port::Status(
+  port::StatusOr<DriverVersion> result(tsl::Status(
       port::error::NOT_FOUND,
       "was unable to find libcuda.so DSO loaded into this program"));
 
@@ -286,7 +286,7 @@ port::StatusOr<DriverVersion> Diagnostician::FindKernelModuleVersion(
   static const char *kDriverFilePrelude = "Kernel Module  ";
   size_t offset = driver_version_file_contents.find(kDriverFilePrelude);
   if (offset == std::string::npos) {
-    return port::Status(
+    return tsl::Status(
         port::error::NOT_FOUND,
         absl::StrCat("could not find kernel module information in "
                      "driver version file contents: \"",
@@ -348,7 +348,7 @@ port::StatusOr<DriverVersion> Diagnostician::FindKernelDriverVersion() {
     return cuda::StringToDriverVersion(version);
   }
   CFRelease(kext_infos);
-  auto status = port::Status(
+  auto status = tsl::Status(
       port::error::INTERNAL,
       absl::StrCat(
           "failed to read driver bundle version: ",
@@ -356,13 +356,13 @@ port::StatusOr<DriverVersion> Diagnostician::FindKernelDriverVersion() {
   return status;
 #elif defined(PLATFORM_WINDOWS)
   auto status =
-      port::Status(port::error::UNIMPLEMENTED,
-                   "kernel reported driver version not implemented on Windows");
+      tsl::Status(port::error::UNIMPLEMENTED,
+                  "kernel reported driver version not implemented on Windows");
   return status;
 #else
   FILE *driver_version_file = fopen(kDriverVersionPath, "r");
   if (driver_version_file == nullptr) {
-    return port::Status(
+    return tsl::Status(
         port::error::PERMISSION_DENIED,
         absl::StrCat("could not open driver version path for reading: ",
                      kDriverVersionPath));
@@ -384,7 +384,7 @@ port::StatusOr<DriverVersion> Diagnostician::FindKernelDriverVersion() {
     return FindKernelModuleVersion(contents.begin());
   }
 
-  auto status = port::Status(
+  auto status = tsl::Status(
       port::error::INTERNAL,
       absl::StrCat(
           "failed to read driver version file contents: ", kDriverVersionPath,

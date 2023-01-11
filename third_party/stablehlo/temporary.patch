@@ -1,191 +1,116 @@
-diff --ruN a/stablehlo/stablehlo/dialect/CMakeLists.txt b/stablehlo/stablehlo/dialect/CMakeLists.txt
---- stablehlo/stablehlo/dialect/CMakeLists.txt
-+++ stablehlo/stablehlo/dialect/CMakeLists.txt
-@@ -106,6 +106,7 @@
-   LINK_LIBS PUBLIC
-   MLIRInferTypeOpInterface
-   MLIRIR
-+  StablehloAssemblyFormat
-   StablehloBase
- )
- 
-diff --ruN a/stablehlo/stablehlo/reference/Tensor.cpp b/stablehlo/stablehlo/reference/Tensor.cpp
---- stablehlo/stablehlo/reference/Tensor.cpp
-+++ stablehlo/stablehlo/reference/Tensor.cpp
-@@ -368,24 +368,25 @@
- 
-     // For both f16 and bf16 floating-point types, we use uint16_t as their
-     // storage type because there are no buitin types for those.
--    return Tensor(type,
--                  HeapAsmResourceBlob::allocateAndCopy<uint16_t>(floatValues));
-+    return Tensor(
-+        type,
-+        HeapAsmResourceBlob::allocateAndCopyInferAlign<uint16_t>(floatValues));
+diff --ruN a/stablehlo/stablehlo/dialect/AssemblyFormat.h b/stablehlo/stablehlo/dialect/AssemblyFormat.h
+--- stablehlo/stablehlo/dialect/AssemblyFormat.h
++++ stablehlo/stablehlo/dialect/AssemblyFormat.h
+@@ -59,7 +59,7 @@
+                                     OpTypes... types) {
+   static_assert(sizeof...(types) > 0);  // Must be non empty, must have result
+   SmallVector<Type> typesVec{types...};
+-  ArrayRef<Type> typesRef = makeArrayRef(typesVec);
++  ArrayRef<Type> typesRef = ArrayRef(typesVec);
+   return detail::printSameOperandsAndResultTypeImpl(
+       p, op, typesRef.drop_back(1), typesRef.back());
+ }
+@@ -69,7 +69,7 @@
+                                            OpTypes&... types) {
+   static_assert(sizeof...(types) > 0);  // Must be non empty, must have result
+   SmallVector<Type*> typesVec{&types...};
+-  ArrayRef<Type*> typesRef = makeArrayRef(typesVec);
++  ArrayRef<Type*> typesRef = ArrayRef(typesVec);
+   return detail::parseSameOperandsAndResultTypeImpl(
+       parser, typesRef.drop_back(1), *typesRef.back());
+ }
+diff --ruN a/stablehlo/stablehlo/dialect/TypeInference.cpp b/stablehlo/stablehlo/dialect/TypeInference.cpp
+--- stablehlo/stablehlo/dialect/TypeInference.cpp
++++ stablehlo/stablehlo/dialect/TypeInference.cpp
+@@ -2184,7 +2184,9 @@
    }
  
-   if (elemType.isF32()) {
-     auto floatValues = llvm::to_vector(llvm::map_range(
-         attr.getValues<APFloat>(),
-         [&](APFloat value) -> float { return value.convertToFloat(); }));
--    return Tensor(type,
--                  HeapAsmResourceBlob::allocateAndCopy<float>(floatValues));
-+    return Tensor(type, HeapAsmResourceBlob::allocateAndCopyInferAlign<float>(
-+                            floatValues));
-   }
+   auto getSliceDim = [&sliceSizes](int64_t index) -> int64_t {
+-    return sliceSizes.getValues<int64_t>()[index];
++    return sliceSizes.getValues<int64_t>()[index] == -1
++               ? ShapedType::kDynamic
++               : sliceSizes.getValues<int64_t>()[index];
+   };
  
-   if (elemType.isF64()) {
-     auto floatValues = llvm::to_vector(llvm::map_range(
-         attr.getValues<APFloat>(),
-         [&](APFloat value) -> double { return value.convertToDouble(); }));
--    return Tensor(type,
--                  HeapAsmResourceBlob::allocateAndCopy<double>(floatValues));
-+    return Tensor(type, HeapAsmResourceBlob::allocateAndCopyInferAlign<double>(
-+                            floatValues));
-   }
+   return inferGatherReturnTypeComponents(
+diff --ruN a/stablehlo/stablehlo/integrations/c/StablehloAttributes.cpp b/stablehlo/stablehlo/integrations/c/StablehloAttributes.cpp
+--- stablehlo/stablehlo/integrations/c/StablehloAttributes.cpp
++++ stablehlo/stablehlo/integrations/c/StablehloAttributes.cpp
+@@ -27,9 +27,9 @@
+     const int64_t *insertedWindowDims, intptr_t nScatteredDimsToOperandDims,
+     const int64_t *scatteredDimsToOperandDims, int64_t indexVectorDim) {
+   return wrap(mlir::stablehlo::ScatterDimensionNumbersAttr::get(
+-      unwrap(ctx), llvm::makeArrayRef(updateWindowDims, nUpdateWindowDims),
+-      llvm::makeArrayRef(insertedWindowDims, nInsertedWindowDims),
+-      llvm::makeArrayRef(scatteredDimsToOperandDims,
++      unwrap(ctx), llvm::ArrayRef(updateWindowDims, nUpdateWindowDims),
++      llvm::ArrayRef(insertedWindowDims, nInsertedWindowDims),
++      llvm::ArrayRef(scatteredDimsToOperandDims,
+                          nScatteredDimsToOperandDims),
+       indexVectorDim));
+ }
+@@ -99,9 +99,9 @@
+     intptr_t nStartIndexMap, const int64_t *startIndexMap,
+     int64_t indexVectorDim) {
+   return wrap(mlir::stablehlo::GatherDimensionNumbersAttr::get(
+-      unwrap(ctx), llvm::makeArrayRef(offsetDims, nOffsetDims),
+-      llvm::makeArrayRef(collapsedSliceDims, nCollapsedSliceDims),
+-      llvm::makeArrayRef(startIndexMap, nStartIndexMap), indexVectorDim));
++      unwrap(ctx), llvm::ArrayRef(offsetDims, nOffsetDims),
++      llvm::ArrayRef(collapsedSliceDims, nCollapsedSliceDims),
++      llvm::ArrayRef(startIndexMap, nStartIndexMap), indexVectorDim));
+ }
  
-   // Handle signed integer types.
-@@ -393,32 +394,32 @@
-     auto intValues = llvm::to_vector(llvm::map_range(
-         attr.getValues<APInt>(),
-         [&](APInt value) -> int8_t { return value.getSExtValue(); }));
--    return Tensor(type,
--                  HeapAsmResourceBlob::allocateAndCopy<int8_t>(intValues));
-+    return Tensor(type, HeapAsmResourceBlob::allocateAndCopyInferAlign<int8_t>(
-+                            intValues));
-   }
+ bool stablehloAttributeIsAGatherDimensionNumbers(MlirAttribute attr) {
+@@ -170,10 +170,10 @@
+     const int64_t *rhsContractingDimensions) {
+   return wrap(mlir::stablehlo::DotDimensionNumbersAttr::get(
+       unwrap(ctx),
+-      llvm::makeArrayRef(lhsBatchingDimensions, nLhsBatchingDimensions),
+-      llvm::makeArrayRef(rhsBatchingDimensions, nRhsBatchingDimensions),
+-      llvm::makeArrayRef(lhsContractingDimensions, nLhsContractingDimensions),
+-      llvm::makeArrayRef(rhsContractingDimensions, nRhsContractingDimensions)));
++      llvm::ArrayRef(lhsBatchingDimensions, nLhsBatchingDimensions),
++      llvm::ArrayRef(rhsBatchingDimensions, nRhsBatchingDimensions),
++      llvm::ArrayRef(lhsContractingDimensions, nLhsContractingDimensions),
++      llvm::ArrayRef(rhsContractingDimensions, nRhsContractingDimensions)));
+ }
  
-   if (elemType.isSignlessInteger(16)) {
-     auto intValues = llvm::to_vector(llvm::map_range(
-         attr.getValues<APInt>(),
-         [&](APInt value) -> int16_t { return value.getSExtValue(); }));
--    return Tensor(type,
--                  HeapAsmResourceBlob::allocateAndCopy<int16_t>(intValues));
-+    return Tensor(type, HeapAsmResourceBlob::allocateAndCopyInferAlign<int16_t>(
-+                            intValues));
-   }
+ bool stablehloAttributeIsADotDimensionNumbers(MlirAttribute attr) {
+@@ -253,11 +253,11 @@
+     intptr_t nOutputSpatialDimensions, const int64_t *outputSpatialDimensions) {
+   return wrap(mlir::stablehlo::ConvDimensionNumbersAttr::get(
+       unwrap(ctx), inputBatchDimension, inputFeatureDimension,
+-      llvm::makeArrayRef(inputSpatialDimensions, nInputSpatialDimensions),
++      llvm::ArrayRef(inputSpatialDimensions, nInputSpatialDimensions),
+       kernelInputFeatureDimension, kernelOutputFeatureDimension,
+-      llvm::makeArrayRef(kernelSpatialDimensions, nKernelSpatialDimensions),
++      llvm::ArrayRef(kernelSpatialDimensions, nKernelSpatialDimensions),
+       outputBatchDimension, outputFeatureDimension,
+-      llvm::makeArrayRef(outputSpatialDimensions, nOutputSpatialDimensions)));
++      llvm::ArrayRef(outputSpatialDimensions, nOutputSpatialDimensions)));
+ }
  
-   if (elemType.isSignlessInteger(32)) {
-     auto intValues = llvm::to_vector(llvm::map_range(
-         attr.getValues<APInt>(),
-         [&](APInt value) -> int32_t { return value.getSExtValue(); }));
--    return Tensor(type,
--                  HeapAsmResourceBlob::allocateAndCopy<int32_t>(intValues));
-+    return Tensor(type, HeapAsmResourceBlob::allocateAndCopyInferAlign<int32_t>(
-+                            intValues));
-   }
+ bool stablehloAttributeIsAConvDimensionNumbers(MlirAttribute attr) {
+@@ -360,9 +360,9 @@
+     const int64_t *outputTupleIndices, int64_t operandIndex,
+     intptr_t nOperandTupleIndices, const int64_t *operandTupleIndices) {
+   return wrap(mlir::stablehlo::OutputOperandAliasAttr::get(
+-      unwrap(ctx), llvm::makeArrayRef(outputTupleIndices, nOutputTupleIndices),
++      unwrap(ctx), llvm::ArrayRef(outputTupleIndices, nOutputTupleIndices),
+       operandIndex,
+-      llvm::makeArrayRef(operandTupleIndices, nOperandTupleIndices)));
++      llvm::ArrayRef(operandTupleIndices, nOperandTupleIndices)));
+ }
  
-   if (elemType.isSignlessInteger(64)) {
-     auto intValues = llvm::to_vector(llvm::map_range(
-         attr.getValues<APInt>(),
-         [&](APInt value) -> int64_t { return value.getSExtValue(); }));
--    return Tensor(type,
--                  HeapAsmResourceBlob::allocateAndCopy<int64_t>(intValues));
-+    return Tensor(type, HeapAsmResourceBlob::allocateAndCopyInferAlign<int64_t>(
-+                            intValues));
-   }
+ bool stablehloAttributeIsAOutputOperandAlias(MlirAttribute attr) {
+@@ -586,7 +586,7 @@
+ MlirAttribute stablehloTypeExtensionsGet(MlirContext ctx, intptr_t nBounds,
+                                          const int64_t *bounds) {
+   return wrap(mlir::stablehlo::TypeExtensionsAttr::get(
+-      unwrap(ctx), llvm::makeArrayRef(bounds, nBounds)));
++      unwrap(ctx), llvm::ArrayRef(bounds, nBounds)));
+ }
  
-   // Handle unsigned integer types.
-@@ -426,32 +427,35 @@
-     auto intValues = llvm::to_vector(llvm::map_range(
-         attr.getValues<APInt>(),
-         [&](APInt value) -> uint8_t { return value.getZExtValue(); }));
--    return Tensor(type,
--                  HeapAsmResourceBlob::allocateAndCopy<uint8_t>(intValues));
-+    return Tensor(type, HeapAsmResourceBlob::allocateAndCopyInferAlign<uint8_t>(
-+                            intValues));
-   }
- 
-   if (elemType.isUnsignedInteger(16)) {
-     auto intValues = llvm::to_vector(llvm::map_range(
-         attr.getValues<APInt>(),
-         [&](APInt value) -> uint16_t { return value.getZExtValue(); }));
--    return Tensor(type,
--                  HeapAsmResourceBlob::allocateAndCopy<uint16_t>(intValues));
-+    return Tensor(
-+        type,
-+        HeapAsmResourceBlob::allocateAndCopyInferAlign<uint16_t>(intValues));
-   }
- 
-   if (elemType.isUnsignedInteger(32)) {
-     auto intValues = llvm::to_vector(llvm::map_range(
-         attr.getValues<APInt>(),
-         [&](APInt value) -> uint32_t { return value.getZExtValue(); }));
--    return Tensor(type,
--                  HeapAsmResourceBlob::allocateAndCopy<uint32_t>(intValues));
-+    return Tensor(
-+        type,
-+        HeapAsmResourceBlob::allocateAndCopyInferAlign<uint32_t>(intValues));
-   }
- 
-   if (elemType.isUnsignedInteger(64)) {
-     auto intValues = llvm::to_vector(llvm::map_range(
-         attr.getValues<APInt>(),
-         [&](APInt value) -> uint64_t { return value.getZExtValue(); }));
--    return Tensor(type,
--                  HeapAsmResourceBlob::allocateAndCopy<uint64_t>(intValues));
-+    return Tensor(
-+        type,
-+        HeapAsmResourceBlob::allocateAndCopyInferAlign<uint64_t>(intValues));
-   }
- 
-   // Handle boolean type.
-@@ -459,8 +463,8 @@
-     auto boolValues = llvm::to_vector(
-         llvm::map_range(attr.getValues<bool>(),
-                         [&](bool value) -> uint8_t { return value ? 1 : 0; }));
--    return Tensor(type,
--                  HeapAsmResourceBlob::allocateAndCopy<uint8_t>(boolValues));
-+    return Tensor(type, HeapAsmResourceBlob::allocateAndCopyInferAlign<uint8_t>(
-+                            boolValues));
-   }
- 
-   // Handle complex types.
-@@ -473,9 +477,10 @@
-             return std::complex<float>(value.real().convertToFloat(),
-                                        value.imag().convertToFloat());
-           }));
--      return Tensor(type,
--                    HeapAsmResourceBlob::allocateAndCopy<std::complex<float>>(
--                        complexValues));
-+      return Tensor(
-+          type,
-+          HeapAsmResourceBlob::allocateAndCopyInferAlign<std::complex<float>>(
-+              complexValues));
-     }
-     if (complexElemTy.isF64()) {
-       auto complexValues = llvm::to_vector(llvm::map_range(
-@@ -484,9 +489,10 @@
-             return std::complex<double>(value.real().convertToDouble(),
-                                         value.imag().convertToDouble());
-           }));
--      return Tensor(type,
--                    HeapAsmResourceBlob::allocateAndCopy<std::complex<double>>(
--                        complexValues));
-+      return Tensor(
-+          type,
-+          HeapAsmResourceBlob::allocateAndCopyInferAlign<std::complex<double>>(
-+              complexValues));
-     }
-   }
- 
-diff --ruN a/stablehlo/stablehlo/tests/CMakeLists.txt b/stablehlo/stablehlo/tests/CMakeLists.txt
---- stablehlo/stablehlo/tests/CMakeLists.txt
-+++ stablehlo/stablehlo/tests/CMakeLists.txt
-@@ -53,4 +53,5 @@
-   MLIRShapeDialect
-   MLIRSupport
-   MLIRTransformUtils
-+  StablehloAssemblyFormat
- )
-diff --ruN a/stablehlo/stablehlo/tests/TestUtils.cpp b/stablehlo/stablehlo/tests/TestUtils.cpp
---- stablehlo/stablehlo/tests/TestUtils.cpp
-+++ stablehlo/stablehlo/tests/TestUtils.cpp
-@@ -36,7 +36,6 @@
- #include "mlir/Support/TypeID.h"
- #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
- #include "stablehlo/dialect/AssemblyFormat.h"
--#include "stablehlo/dialect/Base.h"
- 
- namespace mlir {
- namespace hlo {
+ bool stablehloAttributeIsTypeExtensions(MlirAttribute attr) {
 

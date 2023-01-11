@@ -479,24 +479,49 @@ class ShapeUtil {
   // Calls the given visitor function for each subshape of the given shape.
   // Subshapes are visited in DFS pre-order starting with the entire shape
   // (index {}).
-  using VisitorFunction = absl::FunctionRef<void(const Shape& /*subshape*/,
-                                                 const ShapeIndex& /*index*/)>;
-  static void ForEachSubshape(const Shape& shape, const VisitorFunction& func);
-  using MutatingVisitorFunction =
-      absl::FunctionRef<void(Shape* /*subshape*/, const ShapeIndex& /*index*/)>;
-  static void ForEachMutableSubshape(Shape* shape,
-                                     const MutatingVisitorFunction& func);
+  //
+  // The visitor function must have the signature
+  //
+  //   void fn(const Shape& subshape, const ShapeIndex& index), or
+  //   void fn(Shape* subshape, const ShapeIndex& index) (mutable version)
+  template <typename Fn>
+  static void ForEachSubshape(const Shape& shape, Fn&& fn) {
+    ForEachSubshapeWithStatus(shape, [&](const Shape& subshape,
+                                         const ShapeIndex& index) {
+      fn(subshape, index);
+      return OkStatus();
+    }).IgnoreError();
+  }
+  template <typename Fn>
+  static void ForEachMutableSubshape(Shape* shape, Fn&& fn) {
+    ForEachMutableSubshapeWithStatus(shape, [&](Shape* subshape,
+                                                const ShapeIndex& index) {
+      fn(subshape, index);
+      return OkStatus();
+    }).IgnoreError();
+  }
 
   // Variants of ForEach(Mutable)Subshape which propagate Status from the
   // visitor function.
-  using StatusVisitorFunction = absl::FunctionRef<Status(
-      const Shape& /*subshape*/, const ShapeIndex& /*index*/)>;
-  static Status ForEachSubshapeWithStatus(const Shape& shape,
-                                          const StatusVisitorFunction& func);
-  using MutatingStatusVisitorFunction = absl::FunctionRef<Status(
-      Shape* /*subshape*/, const ShapeIndex& /*index*/)>;
-  static Status ForEachMutableSubshapeWithStatus(
-      Shape* shape, const MutatingStatusVisitorFunction& func);
+  //
+  // Visitor function must have the signature
+  //
+  //   Status fn(const Shape& subshape, const ShapeIndex& index), or
+  //   Status fn(Shape* subshape, const ShapeIndex& index) (mutable version)
+  //
+  template <typename Fn>
+  static Status ForEachSubshapeWithStatus(const Shape& shape, Fn&& fn) {
+    return ForEachMutableSubshapeWithStatus(
+        const_cast<Shape*>(&shape),
+        [&](Shape* subshape, const ShapeIndex& index) -> Status {
+          return fn(*const_cast<const Shape*>(subshape), index);
+        });
+  }
+  template <typename Fn>
+  static Status ForEachMutableSubshapeWithStatus(Shape* shape, Fn&& fn) {
+    ShapeIndex index;
+    return ForEachMutableSubshapeWithStatusHelper(shape, fn, &index);
+  }
 
   // Returns true if `shape` (which must be an array) with degenerate dimensions
   // (dimensions with bound 1).
@@ -771,6 +796,23 @@ class ShapeUtil {
   // Validates all of the non-layout properties of the shape -- this is a helper
   // used by both the layout-optional and layout-required public method.
   static Status ValidateShapeWithOptionalLayoutInternal(const Shape& shape);
+
+  // Helper for ForEachSubshape which visits the subshapes of the given shape in
+  // DFS pre-order starting with the index.
+  template <typename Fn>
+  static Status ForEachMutableSubshapeWithStatusHelper(Shape* shape, Fn&& fn,
+                                                       ShapeIndex* index) {
+    TF_RETURN_IF_ERROR(fn(shape, *index));
+    if (shape->IsTuple()) {
+      for (int64_t i = 0; i < ShapeUtil::TupleElementCount(*shape); ++i) {
+        index->push_back(i);
+        TF_RETURN_IF_ERROR(ForEachMutableSubshapeWithStatusHelper(
+            shape->mutable_tuple_shapes(i), fn, index));
+        index->pop_back();
+      }
+    }
+    return OkStatus();
+  }
 
   // Keeps track of the iteration state for the ForEach...Internal routines
   struct ForEachState {

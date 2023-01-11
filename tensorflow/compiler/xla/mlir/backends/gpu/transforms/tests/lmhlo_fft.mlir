@@ -10,6 +10,7 @@ func.func @compute(%arg0: memref<3x5x16x5xcomplex<f32>>,
   // CHECK: call @[[FFT:.*]](%[[ARG0]], %[[ARG1]])
   // CHECK-SAME: fft_length = dense<[16, 8]> : tensor<2xi64>
   // CHECK-SAME: fft_type = #mhlo<fft_type IRFFT>
+  // CHECK-SAME: uid = 0 : i64
   "lmhlo.fft"(%arg0, %arg1) {
     fft_length = dense<[16, 8]> : tensor<2xi64>,
     fft_type = #mhlo<fft_type IRFFT>

@@ -30,16 +30,21 @@ from tensorflow.dtensor.python import accelerator_util
 from tensorflow.dtensor.python import api
 from tensorflow.dtensor.python import config
 from tensorflow.dtensor.python import layout as layout_lib
+from tensorflow.dtensor.python import numpy_util
 from tensorflow.dtensor.python.config import is_gpu_present  # pylint: disable=unused-import
 from tensorflow.dtensor.python.config import is_tpu_present  # pylint: disable=unused-import
 from tensorflow.dtensor.python.config import preferred_device_type  # pylint: disable=unused-import
 from tensorflow.dtensor.python.tests.test_backend_name import DTensorTestUtilBackend
+from tensorflow.python.compat import v2_compat
 from tensorflow.python.eager import context
 from tensorflow.python.framework import config as tf_config
 from tensorflow.python.framework import device as tf_device
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.platform import test as tf_test
 # pylint: enable=g-direct-tensorflow-import
+
+# DTensor only runs with TF V2.
+v2_compat.enable_v2_behavior()
 
 DEFAULT_TOL = 1e-5
 
@@ -285,7 +290,7 @@ class DTensorBaseTest(tf_test.TestCase, parameterized.TestCase):
     # Check global shape.
     self.assertAllEqual(expected_result.shape, result_dtensor.shape)
 
-    result_dtensor = np.block(layout.unravel(unpacked).tolist())
+    result_dtensor = numpy_util.to_numpy(result_dtensor)
 
     # Check value on concatenated result DTensor.
     self.assertAllClose(expected_result, result_dtensor, atol=tol, rtol=tol)

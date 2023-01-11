@@ -1,4 +1,9 @@
-load("//tensorflow:tensorflow.bzl", "if_google", "tf_cc_test")
+load("//tensorflow:tensorflow.bzl", "tf_cc_test", "tf_cuda_cc_test")
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
+load(
+    "//tensorflow/tsl/platform:build_config_root.bzl",
+    "tf_cuda_tests_tags",
+)
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -15,6 +20,7 @@ package_group(
         # copybara:uncomment "//learning/brain/google/xla/...",
         # copybara:uncomment "//learning/brain/tfrc/...",
         # copybara:uncomment "//learning/brain/tfrt/...",
+        "//tensorflow/c/...",
         "//tensorflow/core/common_runtime/next_pluggable_device/...",
         "//tensorflow/core/tfrt/...",
         "//tensorflow/core/tfrt/eager/backends/tpu/...",
@@ -32,10 +38,6 @@ cc_library(
     hdrs = [
         "global_state.h",
     ],
-    compatible_with = if_google([
-        "//buildenv/target:libtpu",
-        "//buildenv/target:gce",
-    ]),
     visibility = [":friends"],
     deps = [
         "//tensorflow/core:framework",
@@ -53,10 +55,6 @@ cc_library(
     hdrs = [
         "async_value_tensor.h",
     ],
-    compatible_with = if_google([
-        "//buildenv/target:libtpu",
-        "//buildenv/target:gce",
-    ]),
     visibility = [":friends"],
     deps = [
         "//tensorflow/compiler/xla/pjrt:pjrt_client",
@@ -74,10 +72,6 @@ cc_library(
     hdrs = [
         "pjrt_state.h",
     ],
-    compatible_with = if_google([
-        "//buildenv/target:libtpu",
-        "//buildenv/target:gce",
-    ]),
     visibility = [":friends"],
     deps = [
         ":global_state",
@@ -96,15 +90,13 @@ cc_library(
     hdrs = [
         "pjrt_util.h",
     ],
-    compatible_with = if_google([
-        "//buildenv/target:libtpu",
-        "//buildenv/target:gce",
-    ]),
     visibility = [":friends"],
     deps = [
         ":global_state",
         ":pjrt_state",
         "//tensorflow/compiler/xla/pjrt:pjrt_client",
+        "//tensorflow/compiler/xla/pjrt/gpu:gpu_helpers",
+        "//tensorflow/compiler/xla/pjrt/gpu:se_gpu_pjrt_client",
         "//tensorflow/core:framework_types_hdr",
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:status",
@@ -127,18 +119,23 @@ tf_cc_test(
     ],
 )
 
-tf_cc_test(
-    name = "pjrt_util_test",
-    srcs = ["pjrt_util_test.cc"],
-    deps = [
-        ":global_state",
-        ":pjrt_state",
-        ":pjrt_util",
-        "//tensorflow/compiler/xla/pjrt:pjrt_client",
-        "//tensorflow/compiler/xla/pjrt:tfrt_cpu_pjrt_client",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:test",
-        "//tensorflow/core/platform:status_matchers",
-        "@com_google_googletest//:gtest_main",
-    ],
-)
+# copybara:uncomment_begin(TODO(b/260802979): kokoro build fails when se_gpu_pjrt_client is added)
+# tf_cuda_cc_test(
+#     name = "pjrt_util_test",
+#     srcs = ["pjrt_util_test.cc"],
+#     tags = tf_cuda_tests_tags(),
+#     deps = [
+#         ":global_state",
+#         ":pjrt_state",
+#         ":pjrt_util",
+#         "//tensorflow/compiler/xla/pjrt:pjrt_client",
+#         "//tensorflow/compiler/xla/pjrt:tfrt_cpu_pjrt_client",
+#         "//tensorflow/compiler/xla/service:gpu_plugin",
+#         "//tensorflow/core:framework",
+#         "//tensorflow/tsl/lib/core:status_test_util",
+#         "//tensorflow/tsl/platform:status_matchers",
+#         "//tensorflow/tsl/platform:test_main",
+#         "//tensorflow/tsl/protobuf:error_codes_proto_impl_cc",
+#     ],
+# )
+# copybara:uncomment_end

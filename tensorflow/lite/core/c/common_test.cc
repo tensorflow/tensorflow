@@ -206,7 +206,7 @@ TEST(TestTfLiteOpaqueDelegate, CreateAndDelete) {
   std::unique_ptr<TfLiteOpaqueDelegateBuilder> opaque_delegate_builder(
       new TfLiteOpaqueDelegateBuilder{});
 
-  struct TfLiteOpaqueDelegateStruct* opaque_delegate =
+  TfLiteOpaqueDelegate* opaque_delegate =
       TfLiteOpaqueDelegateCreate(opaque_delegate_builder.get());
 
   TfLiteOpaqueDelegateDelete(opaque_delegate);

@@ -5,13 +5,14 @@
 
 load(
     "//tensorflow:tensorflow.bzl",
+    "tf_cc_shared_test",
     "tf_cc_test",
 )
 
 # copybara:uncomment package(default_applicable_licenses = ["//tensorflow:license"])
 
 # A trivial fuzzer with no pre-specified corpus.
-tf_cc_test(
+tf_cc_shared_test(
     name = "identity_fuzz",
     srcs = ["identity_fuzz.cc"],
     tags = ["no_oss"],
@@ -21,7 +22,7 @@ tf_cc_test(
         "//tensorflow/core/kernels:array",
         "//tensorflow/security/fuzzing/cc:fuzz_session",
         "@com_google_fuzztest//fuzztest",
-        "@com_google_googletest//:gtest_main",
+        "@com_google_fuzztest//fuzztest:fuzztest_gtest_main",
     ],
 )
 
@@ -35,7 +36,7 @@ tf_cc_test(
         "//tensorflow/core/kernels:array",
         "//tensorflow/security/fuzzing/cc:fuzz_session",
         "@com_google_fuzztest//fuzztest",
-        "@com_google_googletest//:gtest_main",
+        "@com_google_fuzztest//fuzztest:fuzztest_gtest_main",
     ],
 )
 
@@ -49,7 +50,7 @@ tf_cc_test(
         "//tensorflow/core/kernels:array",
         "//tensorflow/security/fuzzing/cc:fuzz_session",
         "@com_google_fuzztest//fuzztest",
-        "@com_google_googletest//:gtest_main",
+        "@com_google_fuzztest//fuzztest:fuzztest_gtest_main",
     ],
 )
 
@@ -64,6 +65,6 @@ tf_cc_test(
         "//tensorflow/core/kernels:matmul_op",
         "//tensorflow/security/fuzzing/cc:fuzz_session",
         "@com_google_fuzztest//fuzztest",
-        "@com_google_googletest//:gtest_main",
+        "@com_google_fuzztest//fuzztest:fuzztest_gtest_main",
     ],
 )

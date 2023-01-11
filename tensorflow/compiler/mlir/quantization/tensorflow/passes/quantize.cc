@@ -52,23 +52,23 @@ namespace quant {
 
 //===----------------------------------------------------------------------===//
 // The actual Quantize Pass.
-//
+//===----------------------------------------------------------------------===//
 namespace {
 
 enum QuantizationTrait { kFullQuantization, kDynamicRangeQuantization };
 
 // Base struct for quantization.
-template <QuantizationTrait quantization_trait, typename ConcretTy,
-          typename RootOp = quantfork::DequantizeCastOp>
+template <QuantizationTrait quantization_trait, typename ConcreteT,
+          typename RootOpT = quantfork::DequantizeCastOp>
 struct TFQuantizationBase
-    : public QuantizationPattern<ConcretTy, quantfork::QuantizeCastOp,
+    : public QuantizationPattern<ConcreteT, quantfork::QuantizeCastOp,
                                  quantfork::DequantizeCastOp,
-                                 /*VERIFIER=*/void, RootOp> {
+                                 /*VerifierT=*/void, RootOpT> {
   explicit TFQuantizationBase(MLIRContext* ctx,
                               const QuantPassSpec& quant_params)
-      : QuantizationPattern<ConcretTy, quantfork::QuantizeCastOp,
+      : QuantizationPattern<ConcreteT, quantfork::QuantizeCastOp,
                             quantfork::DequantizeCastOp,
-                            /*VERIFIER=*/void, RootOp>(ctx, quant_params) {}
+                            /*VerifierT=*/void, RootOpT>(ctx, quant_params) {}
 
   // Custom op quantization is not supported.
   static bool IsQuantizableCustomOp(Operation* op,
@@ -90,11 +90,12 @@ struct TFQuantizationBase
     return quantization_trait == kDynamicRangeQuantization;
   }
 
-  // Weight-only quantization is not supported.
+  // All the quantized ops are supported if the quantization method is weight
+  // only quantization.
   static bool IsWeightOnlyOp(Operation* quantized_op, StringSet& ops_blocklist,
                              bool weight_only_quantization,
                              const CustomMap& custom_op_map) {
-    return false;
+    return weight_only_quantization;
   }
 };
 
@@ -187,6 +188,11 @@ class QuantizeSameScaleOpsPattern
 
       if (target_opset_ == OpSet::XLA &&
           !IsConnectedWithCompsiteFunction(quantizing_op)) {
+        continue;
+      }
+
+      // Same scale op is not supported for Uniform Quantized ops.
+      if (target_opset_ == OpSet::UNIFORM_QUANTIZED) {
         continue;
       }
 
@@ -517,9 +523,12 @@ void QuantizePass::runOnOperation() {
   }
   (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
 
-  RewritePatternSet patterns_2(&getContext());
-  patterns_2.add<RemoveUnusedQdqPattern>(ctx);
-  (void)applyPatternsAndFoldGreedily(func, std::move(patterns_2));
+  // Weight-only quantization requires q-dq patterns.
+  if (!quant_specs_.weight_only_quantization) {
+    RewritePatternSet patterns_2(&getContext());
+    patterns_2.add<RemoveUnusedQdqPattern>(ctx);
+    (void)applyPatternsAndFoldGreedily(func, std::move(patterns_2));
+  }
 }
 }  // namespace
 

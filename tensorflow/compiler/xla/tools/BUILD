@@ -3,11 +3,16 @@
 load("//tensorflow/tsl:tsl.default.bzl", "filegroup")
 load("//tensorflow/tsl/platform:rules_cc.bzl", "cc_library")
 load(
-    "//tensorflow:tensorflow.bzl",
+    "//tensorflow/tsl:tsl.bzl",
     "if_cuda_or_rocm",
-    "tf_cc_test",
 )
-load("//tensorflow/compiler/xla:xla.bzl", "xla_cc_binary", "xla_py_proto_library")
+load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
+load(
+    "//tensorflow/compiler/xla:xla.bzl",
+    "xla_cc_binary",
+    "xla_cc_test",
+    "xla_py_proto_library",
+)
 load(
     "//tensorflow/tsl/platform:build_config.bzl",
     "tf_proto_library",
@@ -113,6 +118,7 @@ xla_cc_binary(
     deps = [
         ":replay_computation_library",
         "//tensorflow/compiler/xla/service:gpu_plugin",
+        "//tensorflow/compiler/xla/stream_executor/cuda:cublas_plugin",
     ],
 )
 
@@ -226,7 +232,7 @@ xla_cc_binary(
     ],
 )
 
-tf_cc_test(
+xla_cc_test(
     name = "hlo_extractor_test",
     srcs = ["hlo_extractor_test.cc"],
     deps = [
@@ -277,6 +283,8 @@ xla_cc_binary(
         "//tensorflow/tsl/util:command_line_flags",
     ] + if_cuda_or_rocm([
         "//tensorflow/compiler/xla/service:gpu_plugin",
+    ]) + if_cuda([
+        "//tensorflow/compiler/xla/stream_executor/cuda:cublas_plugin",
     ]),
 )
 
@@ -292,6 +300,7 @@ cc_library(
     hdrs = ["hlo_module_loader.h"],
     visibility = ["//tensorflow/compiler/xla:friends"],
     deps = [
+        ":run_hlo_module_proto_cc",
         "//tensorflow/compiler/xla:debug_options_flags",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla/hlo/ir:hlo",
@@ -305,7 +314,7 @@ cc_library(
     ],
 )
 
-tf_cc_test(
+xla_cc_test(
     name = "hlo_module_loader_test",
     srcs = ["hlo_module_loader_test.cc"],
     deps = [
@@ -402,6 +411,8 @@ xla_cc_binary(
         "//tensorflow/tsl/util:command_line_flags",
     ] + if_cuda_or_rocm([
         "//tensorflow/compiler/xla/service:gpu_plugin",
+    ]) + if_cuda([
+        "//tensorflow/compiler/xla/stream_executor/cuda:cublas_plugin",
     ]),
 )
 
@@ -422,7 +433,7 @@ cc_library(
     ],
 )
 
-tf_cc_test(
+xla_cc_test(
     name = "hlo_control_flow_flattening_test",
     srcs = ["hlo_control_flow_flattening_test.cc"],
     deps = [

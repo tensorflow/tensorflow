@@ -49,6 +49,10 @@ objc_library(
     srcs = ["coreml_delegate.mm"],
     hdrs = ["coreml_delegate.h"],
     copts = ["-std=c++17"],
+    defines = select({
+        "//tensorflow/lite/delegates:tflite_debug_delegate": ["TFLITE_DEBUG_DELEGATE"],
+        "//conditions:default": [],
+    }),
     module_name = "TensorFlowLiteCCoreML",
     deps = [
         ":coreml_delegate_kernel",

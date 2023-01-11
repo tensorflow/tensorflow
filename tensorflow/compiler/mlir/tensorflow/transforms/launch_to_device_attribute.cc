@@ -14,18 +14,19 @@ limitations under the License.
 ==============================================================================*/
 
 #include <memory>
+#include <vector>
 
-#include "llvm/Support/Casting.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
-#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/Dialect.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/Visitors.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
+#include "tensorflow/compiler/mlir/tensorflow/translate/split_into_island_per_op_pass.h"
 
 namespace mlir {
 namespace TFDevice {
@@ -117,6 +118,18 @@ void LaunchToDeviceAttributePass::runOnOperation() {
   });
 
   if (result.wasInterrupted()) return signalPassFailure();
+
+  if (!legacy_graph_export_) {
+    // Now, split the island into an island per op since we don't want to
+    // violate the invariant imposed by the GraphExport pipeline that every
+    // IslandOp perfectly wraps a single op.
+    auto control_type =
+        mlir::tf_executor::ControlType::get(tf_dialect->getContext());
+    getOperation().walk(
+        [&control_type](mlir::tf_executor::IslandOp curr_island) {
+          mlir::TF::SplitIsland(curr_island, control_type);
+        });
+  }
 }
 
 }  // anonymous namespace

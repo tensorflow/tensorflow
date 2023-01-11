@@ -19,6 +19,8 @@ limitations under the License.
 #include <functional>
 #include <memory>
 #include <string>
+#include <utility>
+#include <vector>
 
 #include "absl/time/time.h"
 #include "grpcpp/channel.h"
@@ -92,7 +94,7 @@ class DistributedRuntimeClient {
     bool shutdown_on_destruction = true;
   };
 
-  virtual ~DistributedRuntimeClient() {}
+  virtual ~DistributedRuntimeClient() = default;
 
   // Connects to the master, and blocks until all clients have successfully
   // connected.
@@ -112,10 +114,26 @@ class DistributedRuntimeClient {
       GlobalTopologyProto* global_topology) = 0;
 
   // The following APIs are thread-safe.
+
+  // Key-value store API.
+  // There are no concurrency guarantees. To avoid a race / impose an ordering
+  // on potentially concurrent ops (e.g. set, delete), use WaitAtBarrier().
   virtual xla::StatusOr<std::string> BlockingKeyValueGet(
       std::string key, absl::Duration timeout) = 0;
 
+  // Get all key-value pairs under a directory (key).
+  // A value is considered to be in the directory if its key is prefixed with
+  // the directory.
+  // This is not a blocking call. If no keys are found, an empty vector is
+  // returned immediately.
+  virtual xla::StatusOr<std::vector<std::pair<std::string, std::string>>>
+  KeyValueDirGet(absl::string_view key) = 0;
+
   virtual xla::Status KeyValueSet(std::string key, std::string value) = 0;
+
+  // Delete the key-value. If the key is a directory, recursively clean
+  // up all key-values under the directory.
+  virtual xla::Status KeyValueDelete(std::string key) = 0;
 
   // Blocks until all nodes are at the barrier or the barrier times out.
   // `barrier_id` should be unique across barriers.

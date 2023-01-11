@@ -771,5 +771,49 @@ TEST_F(InstructionFusionTest, DontTouchSoftmaxCustomCall) {
       GpuInstructionFusion(/*may_duplicate=*/true).Run(module.get()).value());
 }
 
+TEST_F(InstructionFusionTest, IotaIntoVariadicReduction) {
+  auto module = ParseAndReturnVerifiedModule(R"(
+  HloModule m
+
+  f {
+    tmp_0 = f32[] parameter(0)
+    tmp_1 = f32[] parameter(1)
+    tmp_2 = pred[] compare(tmp_0, tmp_1), direction=GE
+    tmp_3 = f32[] select(tmp_2, tmp_0, tmp_1)
+    tmp_4 = pred[] compare(tmp_0, tmp_1), direction=EQ
+    tmp_5 = s32[] parameter(2)
+    tmp_6 = s32[] parameter(3)
+    tmp_7 = s32[] minimum(tmp_5, tmp_6)
+    tmp_8 = s32[] select(tmp_2, tmp_5, tmp_6)
+    tmp_9 = s32[] select(tmp_4, tmp_7, tmp_8)
+    ROOT tmp_10 = (f32[], s32[]) tuple(tmp_3, tmp_9)
+  }
+
+  minmax {
+    tmp_0 = f32[] parameter(0)
+    tmp_1 = f32[] parameter(2)
+    tmp_2 = s32[] parameter(1)
+    tmp_3 = s32[] parameter(3)
+    ROOT tmp_4 = (f32[], s32[]) fusion(tmp_0, tmp_1, tmp_2, tmp_3), kind=kLoop, calls=f
+  }
+
+  ENTRY e {
+    tmp_0 = f32[554112,10]{1,0} parameter(0)
+    tmp_1 = s32[554112,10]{1,0} iota(), iota_dimension=1
+    tmp_2 = f32[] constant(-inf)
+    tmp_3 = s32[] constant(0)
+    ROOT tmp_4 = (f32[554112]{0}, s32[554112]{0}) reduce(tmp_0, tmp_1, tmp_2, tmp_3), dimensions={1}, to_apply=minmax
+  })")
+                    .value();
+
+  EXPECT_TRUE(
+      GpuInstructionFusion(/*may_duplicate=*/false).Run(module.get()).value());
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              op::Fusion(op::Parameter()));
+  EXPECT_THAT(
+      module->entry_computation()->root_instruction()->fused_expression_root(),
+      op::Reduce(op::Parameter(), op::Iota(), op::Constant(), op::Constant()));
+}
+
 }  // namespace gpu
 }  // namespace xla

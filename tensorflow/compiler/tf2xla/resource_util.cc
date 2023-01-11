@@ -32,7 +32,7 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 
-using stream_executor::port::StatusOr;
+using tsl::StatusOr;
 
 const char kIdentityNOp[] = "IdentityN";
 const char kIfOp[] = "If";

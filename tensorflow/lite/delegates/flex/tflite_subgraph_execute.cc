@@ -125,15 +125,11 @@ class TfLiteSubgraphExecute : public OpKernel {
     // Copy input tensors to subgraph.
     SetSubgraphInput(ctx, subgraph_selected, resource->GetFlexDelegate());
 
-    // Cache the invocation result in case it fails so that the shared output
-    // tensors can be passed over to TF for deallocation.
-    TfLiteStatus invoke_result = subgraph_selected.Invoke();
+    OP_REQUIRES(ctx, subgraph_selected.Invoke() == kTfLiteOk,
+                errors::Internal("Failed to invoke tflite subgraph"));
 
     // Copy tflite results.
     CopyTFLiteSubgraphResult(ctx, subgraph_selected);
-
-    OP_REQUIRES(ctx, invoke_result == kTfLiteOk,
-                errors::Internal("Failed to invoke tflite subgraph"));
   }
 
  private:
@@ -359,7 +355,8 @@ class TfLiteSubgraphExecute : public OpKernel {
         tensorflow::TensorShape shape;
         int num_dims = subgraph_output->dims->size;
         for (int i = 0; i < num_dims; ++i) {
-          shape.AddDim(subgraph_output->dims->data[i]);
+          OP_REQUIRES_OK(
+              ctx, shape.AddDimWithStatus(subgraph_output->dims->data[i]));
         }
         tensor = tensorflow::TensorCApi::MakeTensor(
             tflite::flex::GetTensorFlowDataType(subgraph_output->type), shape,

@@ -24,8 +24,8 @@ from absl import app
 from absl import flags
 from absl import logging
 import tensorflow.compat.v2 as tf
-
 from tensorflow.python import pywrap_mlir  # pylint: disable=g-direct-tensorflow-import
+from tensorflow.python.lib.io import file_io
 
 # Use /tmp to make debugging the tests easier (see README.md)
 flags.DEFINE_string('save_model_path', '',
@@ -88,5 +88,9 @@ def do_test(create_module_fn, exported_names=None, show_debug_info=False):
     mlir = pywrap_mlir.experimental_run_pass_pipeline(mlir, 'canonicalize',
                                                       show_debug_info)
     print(mlir)
+    filename = '%s/result.mlirbc' % save_model_path
+    pywrap_mlir.experimental_write_bytecode(filename, mlir)
+    if not file_io.file_exists(filename):
+      raise app.UsageError('Failed to create bytecode output.')
 
   app.run(app_main)

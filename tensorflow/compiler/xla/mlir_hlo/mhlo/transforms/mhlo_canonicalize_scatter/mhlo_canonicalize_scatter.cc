@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <memory>
 #include <numeric>
+#include <optional>
 #include <utility>
 
 #include "llvm/ADT/STLExtras.h"
@@ -205,7 +206,7 @@ struct CanonicalizeScatterPattern : public OpRewritePattern<ScatterOp> {
         rewriter.getContext(),
         /*updateWindowDims=*/
         llvm::to_vector<4>(llvm::seq<int64_t>(1, operandRank + 1)),
-        /*insertedWindowDims=*/llvm::None,
+        /*insertedWindowDims=*/std::nullopt,
         /*scatterDimsToOperandDims=*/
         llvm::to_vector<4>(llvm::seq<int64_t>(0, scatterIndicesVectorSize)),
         /*indexVectorDim=*/1);

@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_EXECUTABLE_RUN_OPTIONS_H_
 #define TENSORFLOW_COMPILER_XLA_EXECUTABLE_RUN_OPTIONS_H_
 
+#include <cstdint>
 #include <functional>
 #include <string>
 
@@ -27,16 +28,25 @@ namespace stream_executor {
 class Stream;
 class Platform;
 class DeviceMemoryAllocator;
+class DeviceMemoryBase;
 }  // namespace stream_executor
 
 namespace Eigen {
 struct ThreadPoolDevice;
 }  // namespace Eigen
 
+namespace tsl {
+class Status;
+}  // namespace tsl
+
 namespace xla {
+
+using ::tsl::Status;  // TENSORFLOW_STATUS_OK
 
 class DeviceAssignment;
 class ExecutionProfile;
+class Shape;
+
 namespace gpu {
 class GpuExecutableRunOptions;
 }  // namespace gpu
@@ -76,6 +86,26 @@ class RunId {
 // callback form.
 using ThenExecuteFunction =
     std::function<void(stream_executor::Stream*, std::function<void()>)>;
+
+// TODO(ezhulenev): Send/Recv API declared below forces blocking the caller
+// thread on the host, because for example when `recv` function is called, data
+// might not be available. Instead send/recv should return events that will
+// become ready when send/recv operation is completed and device memory can be
+// freed (send) or used in subsequent computations (recv). This is also required
+// for efficient implementation of Send/Recv and SendDone/RecvDone operations
+// that would allow overlapping data transfers with compute. Once simple proof
+// of concept send/recv will work, we should revisit these APIs and base them on
+// top of events (and async values?).
+
+// Callback for sending device buffer to a channel.
+using SendDeviceMemoryFunction = std::function<Status(
+    int64_t channel_id, stream_executor::Stream* stream, const Shape& shape,
+    const stream_executor::DeviceMemoryBase& stc)>;
+
+// Callback for receiving device buffer from a channel.
+using RecvDeviceMemoryFunction = std::function<Status(
+    int64_t channel_id, stream_executor::Stream* stream, const Shape& shape,
+    stream_executor::DeviceMemoryBase* dst)>;
 
 // Class containing options for running a LocalExecutable.
 class ExecutableRunOptions {
@@ -148,6 +178,26 @@ class ExecutableRunOptions {
     return then_execute_function_;
   }
 
+  // See documentation on SendDeviceMemoryFunction.
+  ExecutableRunOptions& set_send_device_memory_function(
+      SendDeviceMemoryFunction* f) {
+    send_device_memory_function_ = f;
+    return *this;
+  }
+  SendDeviceMemoryFunction* send_device_memory_function() const {
+    return send_device_memory_function_;
+  }
+
+  // See documentation on RecvDeviceMemoryFunction.
+  ExecutableRunOptions& set_recv_device_memory_function(
+      RecvDeviceMemoryFunction* f) {
+    recv_device_memory_function_ = f;
+    return *this;
+  }
+  RecvDeviceMemoryFunction* recv_device_memory_function() const {
+    return recv_device_memory_function_;
+  }
+
   // GPU-backend specific options. These are kept out-of-line to avoid bloating
   // the size of this dependency for CPU-only AOT builds.
   ExecutableRunOptions& set_gpu_executable_run_options(
@@ -165,6 +215,8 @@ class ExecutableRunOptions {
   int32_t launch_id_ = 0;
   stream_executor::Stream* host_to_device_stream_ = nullptr;
   ThenExecuteFunction* then_execute_function_ = nullptr;
+  SendDeviceMemoryFunction* send_device_memory_function_ = nullptr;
+  RecvDeviceMemoryFunction* recv_device_memory_function_ = nullptr;
   RunId run_id_;
   const gpu::GpuExecutableRunOptions* gpu_executable_run_options_ = nullptr;
 };

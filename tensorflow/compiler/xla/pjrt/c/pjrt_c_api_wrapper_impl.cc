@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/pjrt/c/pjrt_c_api_wrapper_impl.h"
 
+#include <cstddef>
+#include <cstring>
 #include <functional>
 #include <memory>
 #include <optional>
@@ -23,7 +25,9 @@ limitations under the License.
 #include <variant>
 #include <vector>
 
+#include "absl/synchronization/mutex.h"
 #include "tensorflow/compiler/xla/client/xla_computation.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/pjrt/c/pjrt_c_api.h"
 #include "tensorflow/compiler/xla/pjrt/c/pjrt_c_api_helpers.h"
@@ -39,24 +43,9 @@ limitations under the License.
 
 // TODO(b/238999986): Remove this.
 #include "tensorflow/compiler/xla/stream_executor/tpu/c_api_conversions.h"
+#include "tensorflow/compiler/xla/util.h"
 
 namespace pjrt {
-
-xla::Status CheckMatchingStructSizes(absl::string_view struct_name,
-                                     size_t expected_size, size_t actual_size) {
-  if (expected_size != actual_size) {
-    return tsl::errors::InvalidArgument(
-        StructSizeErrorMsg(struct_name, expected_size, actual_size));
-  }
-  return tsl::OkStatus();
-}
-
-std::string StructSizeErrorMsg(absl::string_view struct_name,
-                               size_t expected_size, size_t actual_size) {
-  return absl::StrCat("Unexpected ", struct_name, " size: expected ",
-                      expected_size, ", got ", actual_size,
-                      ". Check installed software versions.");
-}
 
 std::string ProgramFormatErrorMsg(absl::string_view program_format) {
   return absl::StrCat("Unknown program format '", program_format, "'.");
@@ -69,6 +58,57 @@ static PJRT_Device* GetCDevice(const PJRT_Client* client,
   auto iter = c_device_map.find(device);
   CHECK(iter != c_device_map.end());
   return iter->second;
+}
+
+// Performs one-time cost-analysis on an executable if not done already, and
+// populates its cost analysis properties. After this returns successfully,
+// cost analysis properties of the executable can be accessed without mutex.
+static xla::Status PopulateExecutableCostAnalysisIfNeeded(
+    PJRT_Executable* executable) {
+  absl::MutexLock lock(&executable->mutex);
+  if (!executable->cost_analysis_ran) {
+    // Call GetCostAnalysis in the underlying PjRtExecutable
+    using PropertiesMapType =
+        absl::flat_hash_map<std::string, xla::PjRtValueType>;
+    TF_ASSIGN_OR_RETURN(const PropertiesMapType properties,
+                        executable->executable->GetCostAnalysis());
+    // If no output, return empty result
+    if (properties.empty()) {
+      executable->cost_analysis_ran = true;
+      return xla::OkStatus();
+    }
+
+    // Copy each returned property to cost analysis vectors in PJRT_Executable
+    std::vector<PJRT_NamedValue>& cost_analysis_properties =
+        executable->cost_analysis_properties;
+    cost_analysis_properties.resize((properties.size()));
+    std::vector<std::string>& cost_analysis_names =
+        executable->cost_analysis_names;
+    cost_analysis_names.resize(properties.size());
+    size_t i = 0;
+    for (const auto& property : properties) {
+      PJRT_NamedValue& cost_analysis_property = cost_analysis_properties[i];
+      std::string& property_name = cost_analysis_names[i];
+
+      cost_analysis_property.struct_size = PJRT_NamedValue_STRUCT_SIZE;
+      cost_analysis_property.priv = nullptr;
+
+      property_name = property.first;
+      cost_analysis_property.name = property_name.c_str();
+      cost_analysis_property.name_size = property_name.size();
+
+      const xla::PjRtValueType& property_value = property.second;
+      CHECK(std::holds_alternative<float>(property_value))
+          << property_value.index();
+      cost_analysis_property.type = PJRT_NamedValue::PJRT_NamedValue_kFloat;
+      cost_analysis_property.float_value = std::get<float>(property_value);
+      cost_analysis_property.value_size = 1;
+
+      ++i;
+    }
+    executable->cost_analysis_ran = true;
+  }
+  return xla::OkStatus();
 }
 
 // ---------------------------------- Errors -----------------------------------
@@ -200,9 +240,7 @@ static void PopulatePjrtExecutableAddressableDevices(
   const std::vector<PJRT_Device*>& client_devices =
       executable->client->addressable_devices;
 
-  CHECK(client_devices.size() >= num_addressable_devices)
-      << ": client->addressable_devices is not bigger than "
-         "executable->addressable_devices()";
+  CHECK_GE(client_devices.size(), num_addressable_devices);
 
   for (int i = 0; i < num_addressable_devices; ++i) {
     xla::PjRtDevice* cpp_device = cpp_devices[i];
@@ -259,10 +297,7 @@ PJRT_Error* PJRT_Client_Compile(PJRT_Client_Compile_Args* args) {
     PJRT_RETURN_IF_ERROR(
         tsl::errors::InvalidArgument(ProgramFormatErrorMsg(format_str)));
   }
-  // TODO(b/237545405): Implement creation methods for PJRT_Executable.
-  args->executable = new PJRT_Executable{std::move(executable), args->client};
-  PopulatePjrtExecutableAddressableDevices(args->executable);
-  args->executable->populated = true;
+  args->executable = new PJRT_Executable(std::move(executable), args->client);
   return nullptr;
 }
 
@@ -444,13 +479,6 @@ PJRT_Error* PJRT_Executable_AddressableDevices(
       "PJRT_Executable_AddressableDevices_Args",
       PJRT_Executable_AddressableDevices_Args_STRUCT_SIZE, args->struct_size));
 
-  // TODO(b/237545405): Implement creation methods for PJRT_Executable that can
-  // populate addressable_devices on instantiation,  and use this logic there
-  if (!args->executable->populated) {
-    PopulatePjrtExecutableAddressableDevices(args->executable);
-    args->executable->populated = true;
-  }
-
   args->num_addressable_devices = args->executable->addressable_devices.size();
   args->addressable_devices = args->executable->addressable_devices.data();
   return nullptr;
@@ -478,7 +506,7 @@ PJRT_Error* PJRT_Executable_NumOutputs(PJRT_Executable_NumOutputs_Args* args) {
   if (shape.IsTuple()) {
     args->num_outputs = shape.tuple_shapes_size();
   } else {
-    // The output size is 1 is it is not a tuple.
+    // The output size is 1, as it is not a tuple.
     args->num_outputs = 1;
   }
   return nullptr;
@@ -493,6 +521,91 @@ PJRT_Error* PJRT_Executable_SizeOfGeneratedCodeInBytes(
 
   args->size_in_bytes =
       args->executable->executable->SizeOfGeneratedCodeInBytes();
+  return nullptr;
+}
+
+static xla::Status VerifyOptimizedProgramArgs(
+    PJRT_Executable_OptimizedProgram_Args* args) {
+  TF_RETURN_IF_ERROR(CheckMatchingStructSizes(
+      "PJRT_Executable_OptimizedProgram_Args",
+      PJRT_Executable_OptimizedProgram_Args_STRUCT_SIZE, args->struct_size));
+  TF_RETURN_IF_ERROR(CheckMatchingStructSizes(
+      "PJRT_Program", PJRT_Program_STRUCT_SIZE, args->program->struct_size));
+  return xla::OkStatus();
+}
+
+static xla::StatusOr<std::shared_ptr<xla::HloModule>> GetOptimizedProgramModule(
+    const PJRT_Executable_OptimizedProgram_Args* args) {
+  TF_ASSIGN_OR_RETURN(std::vector<std::shared_ptr<xla::HloModule>> hlo_modules,
+                      args->executable->executable->GetHloModules());
+  if (hlo_modules.empty()) {
+    return xla::InvalidArgument(
+        "Can't get the optimized program for executable "
+        "`%s`: HLO modules is empty.",
+        args->executable->executable->name());
+  }
+  if (hlo_modules.size() > 1) {
+    return xla::Unimplemented(
+        "Can't get the optimized program for executable "
+        "`%s`: MPMD execution is not supported by PJRT C API",
+        args->executable->executable->name());
+  }
+  return std::move(hlo_modules[0]);
+}
+
+PJRT_Error* PJRT_Executable_OptimizedProgram(
+    PJRT_Executable_OptimizedProgram_Args* args) {
+  PJRT_RETURN_IF_ERROR(VerifyOptimizedProgramArgs(args));
+  PJRT_Program* program = args->program;
+  program->format = kHloWithConfigFormat.data();
+  program->format_size = kHloWithConfigFormat.size();
+  PJRT_ASSIGN_OR_RETURN(std::shared_ptr<xla::HloModule> hlo_module,
+                        GetOptimizedProgramModule(args));
+  PJRT_ASSIGN_OR_RETURN(xla::HloModuleProtoWithConfig proto,
+                        hlo_module->ToProtoWithConfig());
+  if (program->code == nullptr) {
+    program->code_size = proto.ByteSizeLong();
+    if (program->code_size >= 2ull * 1024 * 1024 * 1024) {
+      return new PJRT_Error{xla::ResourceExhausted(
+          "%s: HLO program serialization would require more than the max "
+          "supported protobuff size of 2 GiB.",
+          __func__)};
+    }
+    return nullptr;
+  } else {
+    if (program->code_size < proto.ByteSizeLong()) {
+      return new PJRT_Error{
+          xla::InvalidArgument("`program->code_size` %d < required bytes %d",
+                               program->code_size, proto.ByteSizeLong()),
+      };
+    }
+    bool succeeded = proto.SerializeToArray(program->code, program->code_size);
+    if (!succeeded) {
+      return new PJRT_Error{
+          xla::ResourceExhausted("%s: HLO program serialization exceeds max "
+                                 "supported protobuff size of 2 GiB.",
+                                 __func__)};
+    }
+    return nullptr;
+  }
+}
+
+PJRT_Error* PJRT_Executable_GetCostAnalysis(
+    PJRT_Executable_GetCostAnalysis_Args* args) {
+  PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes(
+      "PJRT_Executable_GetCostAnalysis_Args",
+      PJRT_Executable_GetCostAnalysis_Args_STRUCT_SIZE, args->struct_size));
+
+  PJRT_RETURN_IF_ERROR(
+      PopulateExecutableCostAnalysisIfNeeded(args->executable));
+
+  // Output cost analysis data in PJRT_Executable
+  args->num_properties = args->executable->cost_analysis_properties.size();
+  if (args->num_properties > 0) {
+    args->properties = args->executable->cost_analysis_properties.data();
+  } else {
+    args->properties = nullptr;
+  }
   return nullptr;
 }
 
@@ -576,24 +689,92 @@ PJRT_Error* PJRT_Executable_Execute(PJRT_Executable_Execute_Args* args) {
           args->num_devices)};
     }
     std::vector<std::unique_ptr<xla::PjRtBuffer>> cpp_buffer_list;
+    std::optional<xla::PjRtFuture<xla::Status>> returned_future;
+    bool fill_future = args->device_complete_events != nullptr;
     if (args->executable->executable->num_partitions() == 1 &&
         args->executable->executable->num_replicas() == 1) {
-      // TODO(b/247013351): Implement portable execution.
-      return new PJRT_Error{xla::Unimplemented(
-          "PJRT_Executabe_Execute doesn't support portable execution; "
-          "execute_device must be null for single-device executables")};
+      PJRT_ASSIGN_OR_RETURN(
+          cpp_buffer_list,
+          args->executable->executable->ExecutePortable(
+              cpp_argument_lists[0], args->execute_device->device, options,
+              returned_future, fill_future));
     } else {
       PJRT_ASSIGN_OR_RETURN(
           cpp_buffer_list,
           args->executable->executable->ExecuteSharded(
-              cpp_argument_lists[0], args->execute_device->device, options));
+              cpp_argument_lists[0], args->execute_device->device, options,
+              returned_future, fill_future));
     }
     for (int i = 0; i < cpp_buffer_list.size(); ++i) {
       args->output_lists[0][i] = new PJRT_Buffer{std::move(cpp_buffer_list[i]),
                                                  args->executable->client};
     }
+    if (fill_future) {
+      args->device_complete_events[0] =
+          new PJRT_Event{std::move((*returned_future))};
+    }
   }
 
+  return nullptr;
+}
+
+PJRT_Error* PJRT_Executable_Serialize(PJRT_Executable_Serialize_Args* args) {
+  PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes(
+      "PJRT_Executable_Serialize_Args",
+      PJRT_Executable_Serialize_Args_STRUCT_SIZE, args->struct_size));
+  const xla::PjRtLoadedExecutable& executable = *args->executable->executable;
+  std::string serialization;
+  const PJRT_Client* client = args->executable->client;
+  PJRT_ASSIGN_OR_RETURN(serialization,
+                        client->client->SerializeExecutable(executable));
+
+  PJRT_SerializedExecutable* serialized_exec = new PJRT_SerializedExecutable;
+  if (serialized_exec == nullptr) {
+    return new PJRT_Error{xla::ResourceExhausted(
+        "Out of memory for `PJRT_Executable_Serialize()`")};
+  }
+  serialized_exec->serialized = std::move(serialization);
+  args->serialized_executable = serialized_exec;
+  return nullptr;
+}
+
+PJRT_Error* PJRT_Executable_Deserialize(
+    PJRT_Executable_Deserialize_Args* args) {
+  PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes(
+      "PJRT_Executable_Deserialize_Args",
+      PJRT_Executable_Deserialize_Args_STRUCT_SIZE, args->struct_size));
+  absl::string_view serialized(args->serialized_executable,
+                               args->serialized_executable_size);
+
+  PJRT_ASSIGN_OR_RETURN(std::unique_ptr<xla::PjRtLoadedExecutable> executable,
+                        args->client->client->DeserializeExecutable(
+                            serialized, /*options=*/std::nullopt));
+
+  args->deserialized_executable =
+      new PJRT_Executable(std::move(executable), args->client);
+  return nullptr;
+}
+
+// -------------------------- Serialized Executables ---------------------------
+
+PJRT_Error* PJRT_SerializedExecutable_Destroy(
+    PJRT_SerializedExecutable_Destroy_Args* args) {
+  PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes(
+      "PJRT_SerializedExecutable_Destroy_Args",
+      PJRT_SerializedExecutable_Destroy_Args_STRUCT_SIZE, args->struct_size));
+  if (args->serialized_executable != nullptr) {
+    delete args->serialized_executable;
+  }
+  return nullptr;
+}
+
+PJRT_Error* PJRT_SerializedExecutable_Data(
+    PJRT_SerializedExecutable_Data_Args* args) {
+  PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes(
+      "PJRT_SerializedExecutable_Data_Args",
+      PJRT_SerializedExecutable_Data_Args_STRUCT_SIZE, args->struct_size));
+  args->data = args->serialized_executable->serialized.c_str();
+  args->data_size = args->serialized_executable->serialized.size();
   return nullptr;
 }
 
@@ -811,4 +992,78 @@ PJRT_Error* PJRT_Event_OnReady(PJRT_Event_OnReady_Args* args) {
   return nullptr;
 }
 
+// Populates `c_device->attributes` with shallow copy of the vendor specific
+// attributes about the device.
+static void PopulatePjrtDeviceAttributes(PJRT_Device* c_device) {
+  CHECK(c_device != nullptr) << ": c device is null";
+  CHECK(c_device->device != nullptr) << ": cpp device is null";
+
+  const absl::flat_hash_map<std::string, xla::PjRtDeviceAttribute>& attributes =
+      c_device->device->Attributes();
+
+  c_device->attributes.resize(attributes.size());
+  int ind = 0;
+  // Doing shallow copy of attribute names and values when it's string or an
+  // array.
+  for (auto const& [name, value] : attributes) {
+    PJRT_NamedValue& cur_attribute = c_device->attributes[ind];
+    cur_attribute.struct_size = PJRT_NamedValue_STRUCT_SIZE;
+    cur_attribute.priv = nullptr;
+    cur_attribute.name = name.c_str();
+    cur_attribute.name_size = name.size();
+    if (const std::string* string_val = std::get_if<std::string>(&value)) {
+      cur_attribute.type = PJRT_NamedValue::PJRT_NamedValue_kString;
+      cur_attribute.string_value = string_val->c_str();
+      cur_attribute.value_size = string_val->size();
+    } else if (const std::vector<int64_t>* vector_val =
+                   std::get_if<std::vector<int64_t>>(&value)) {
+      cur_attribute.type = PJRT_NamedValue::PJRT_NamedValue_kInt64List;
+      cur_attribute.int64_array_value = vector_val->data();
+      cur_attribute.value_size = vector_val->size();
+    } else if (const int64_t* int_value = std::get_if<int64_t>(&value)) {
+      cur_attribute.type = PJRT_NamedValue::PJRT_NamedValue_kInt64;
+      cur_attribute.int64_value = *int_value;
+      cur_attribute.value_size = 1;
+    } else {
+      // Do not allow other types (such as
+      // PJRT_NamedValue::PJRT_NamedValue_kFloat) since device attributes
+      // currently should not return other types.
+      CHECK(false) << "Unexpected attribute type " << value.index() << " for "
+                   << name;
+    }
+    ++ind;
+  }
+}
+
+PJRT_Client* CreateWrapperClient(std::unique_ptr<xla::PjRtClient> cpp_client) {
+  PJRT_Client* c_client = new PJRT_Client{std::move(cpp_client)};
+
+  absl::Span<xla::PjRtDevice* const> cpp_devices = c_client->client->devices();
+  const size_t num_devices = cpp_devices.size();
+  c_client->owned_devices.reserve(num_devices);
+  c_client->devices.reserve(num_devices);
+  c_client->addressable_devices.reserve(
+      c_client->client->addressable_device_count());
+
+  for (xla::PjRtDevice* device : cpp_devices) {
+    c_client->owned_devices.push_back(PJRT_Device{device});
+    PJRT_Device* c_device = &c_client->owned_devices.back();
+    PopulatePjrtDeviceAttributes(c_device);
+    c_client->devices.push_back(c_device);
+    if (device->IsAddressable()) {
+      c_client->addressable_devices.push_back(c_device);
+    }
+    c_client->c_device_from_cpp_device[device] = c_device;
+  }
+  CHECK_EQ(c_client->addressable_devices.size(),
+           c_client->client->addressable_device_count());
+  return c_client;
+}
+
 }  // namespace pjrt
+
+PJRT_Executable::PJRT_Executable(
+    std::unique_ptr<xla::PjRtLoadedExecutable> executable, PJRT_Client* client)
+    : executable(std::move(executable)), client(client) {
+  pjrt::PopulatePjrtExecutableAddressableDevices(this);
+}

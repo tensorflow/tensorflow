@@ -1,6 +1,7 @@
 # Test dependencies for pip tests
-grpcio ~= 1.42.0
+grpcio ~= 1.49.1
 portpicker ~= 1.4.0
-scipy ~= 1.7.3
-jax ~= 0.2.26
-jaxlib ~= 0.1.75
+scipy ~= 1.7.2; python_version < '3.11'
+scipy ~= 1.9.2; python_version >= '3.11' # Earliest version for Python 3.11
+jax ~= 0.3.24
+jaxlib ~= 0.3.24

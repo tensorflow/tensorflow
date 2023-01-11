@@ -1128,6 +1128,9 @@ struct Options {
   // An optional memory space assignment autotuning config, which is used
   // to sort allocated buffers.
   std::optional<std::vector<uint64_t>> autotuning_config = std::nullopt;
+
+  // Scales effective bandwidth for async copies. Valid range is (0, 1].
+  float async_copy_bandwidth_scaling_factor = 1.0;
 };
 
 // A struct representing an asynchronous copy with its logical start and end
@@ -1200,6 +1203,13 @@ class AsynchronousCopyResource {
       bool update_current_resource,
       const std::list<AsynchronousCopy>::iterator* current_copy = nullptr,
       float resource_to_free = 0.0);
+
+  // Same as the public RemoveCopy except it works on the async_copies_
+  // iterator. Assumes copy_it points to the last copy for its start time;
+  // otherwise the public RemoveCopy method is supposed to temporarily remove
+  // these later copies that share the same start time before removing the
+  // requested copy.
+  void RemoveCopy(std::list<AsynchronousCopy>::iterator& copy_it);
 
   // We maintain a linked list of asynchronous copies sorted by the start times.
   // This allows us to efficiently find the copy that starts right after another

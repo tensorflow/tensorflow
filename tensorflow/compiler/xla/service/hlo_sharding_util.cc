@@ -45,6 +45,102 @@ limitations under the License.
 namespace xla {
 namespace hlo_sharding_util {
 
+bool IsSubTilingOrEqualSharding(const Shape& potential_sharded_shape,
+                                const HloSharding& potential_subsharding,
+                                const HloSharding& sharding) {
+  // Some early exit cases.
+  // If any manual sharding return false.
+  if (potential_subsharding.IsManual() || sharding.IsManual()) {
+    return false;
+  }
+  // If the tile we are comparing with is maximal, then we are guaranteed to be
+  // equal or contained in it.
+  if (sharding.IsTileMaximal()) {
+    return true;
+  }
+  // If the subsharding tile is maximal and the sharding we are comparing with
+  // is not then it can't be contained.
+  if (potential_subsharding.IsTileMaximal()) {
+    return false;
+  }
+  // Different tiled ranks can't be compared (something is wrong, are the
+  // shardings for different shapes?)
+  if (potential_subsharding.TiledDataRank() != sharding.TiledDataRank()) {
+    return false;
+  }
+  // Helper to construct the base tile bounds based on a shape and a sharding.
+  auto get_base_tile_for_sharding = [](const Shape& shape,
+                                       const HloSharding& sharding) {
+    absl::InlinedVector<int32_t, 5> base_tile;
+    base_tile.resize(shape.dimensions_size());
+    for (int64_t i = 0; i < shape.dimensions_size(); ++i) {
+      base_tile[i] =
+          CeilOfRatio(shape.dimensions(i), sharding.tile_assignment().dim(i));
+    }
+    return base_tile;
+  };
+  auto potential_base_tile = get_base_tile_for_sharding(potential_sharded_shape,
+                                                        potential_subsharding);
+  auto base_tile =
+      get_base_tile_for_sharding(potential_sharded_shape, sharding);
+  // If the potential_base_tile is bigger than the base_tile on any dimension
+  // then it can't be contained regardless.
+  for (int64_t i = 0; i < potential_base_tile.size(); ++i) {
+    if (potential_base_tile[i] > base_tile[i]) {
+      return false;
+    }
+  }
+  const int32_t num_devices =
+      potential_subsharding.tile_assignment().num_elements();
+  // Need a map here, because the MPMD partitioner sharding annotations can have
+  // non contiguous partition numbers.
+  absl::flat_hash_map<int32_t, std::vector<int32_t>> subsharding_offsets;
+  absl::flat_hash_map<int32_t, std::vector<int32_t>> sharding_offsets;
+  const int32_t indices_count = potential_subsharding.TiledDataRank();
+  // Collect the start offsets for each tile for the subsharding we are
+  // evaluating.
+  potential_subsharding.tile_assignment().Each(
+      [&](absl::Span<const int64_t> indices, int64_t device) {
+        auto& indices_per_device = subsharding_offsets[device];
+        for (int64_t i = 0; i < indices_count; ++i) {
+          indices_per_device.push_back(potential_base_tile[i] * indices[i]);
+        }
+      });
+  // Collect the start offsets for each tile for the sharding we are evaluating
+  // against.
+  sharding.tile_assignment().Each(
+      [&](absl::Span<const int64_t> indices, int64_t device) {
+        auto& indices_per_device = sharding_offsets[device];
+        for (int64_t i = 0; i < indices_count; ++i) {
+          indices_per_device.push_back(base_tile[i] * indices[i]);
+        }
+      });
+  // Compare the start offsets and the end offset of the tiles for each device.
+  for (int i = 0; i < num_devices; ++i) {
+    const int32_t device_id = potential_subsharding.tile_assignment().data()[i];
+    auto& subsharding_offset = subsharding_offsets[device_id];
+    auto& sharding_offset = sharding_offsets[device_id];
+    for (int j = 0; j < indices_count; ++j) {
+      // The subsharding contains data outside of the tile we are comparing
+      // against.
+      if (subsharding_offset[j] < sharding_offset[j]) {
+        return false;
+      }
+      // Skip last tile. It can never go beyond the limit as the shape is the
+      // same for both shardings and sometimes there's padding making one of the
+      // two limits bigger than the other, but it shouldn't be counted.
+      const bool is_last_tile =
+          subsharding_offset[j] + potential_base_tile[j] >=
+          potential_sharded_shape.dimensions(j);
+      if (!is_last_tile && subsharding_offset[j] + potential_base_tile[j] >
+                               sharding_offset[j] + base_tile[j]) {
+        return false;
+      }
+    }
+  }
+  return true;
+}
+
 bool IsShardingMoreSpecific(const HloSharding& lhs, const HloSharding& rhs) {
   CHECK_EQ(lhs.IsTuple(), rhs.IsTuple()) << lhs << " <> " << rhs;
   if (lhs.IsTuple()) {

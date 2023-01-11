@@ -232,6 +232,17 @@ def ShapeReificationPass : Pass<"shape-reification", "func::FuncOp"> {
   let constructor = "createShapeReificationPass()";
 }
 
+def SymbolicShapeOptimization : Pass<"symbolic-shape-optimization", "func::FuncOp"> {
+  let summary = "Analyzes shapes and performs shape-related optimizations";
+  let constructor = "createSymbolicShapeOptimizationPass()";
+}
+
+def ShapeSimplification
+    : Pass<"shape-simplification", "mlir::func::FuncOp"> {
+  let summary = "Simplify shape ops";
+  let constructor = "createShapeSimplification()";
+}
+
 def ConstraintFusionPass : Pass<"constraint-fusion", "func::FuncOp"> {
   let summary = "Fuse shape constraints and merge all assuming regions.";
   let constructor = "createConstraintFusionPass()";
@@ -300,6 +311,12 @@ def RankSpecializationToSCFPass
            "The maximum supported rank after rank specialization. Any argument "
            "of greater rank may result in a runtime failure.">,
   ];
+}
+
+def MhloExpandOpsSimplifierPass
+    : Pass<"mhlo-expand-ops-simplifier", "func::FuncOp"> {
+  let summary = "Expand feature rich mhlo ops into a set of simpler mhlo ops.";
+  let constructor = "createMhloExpandOpsSimplifierPass()";
 }
 
 def CollapseElementwiseMapPass
