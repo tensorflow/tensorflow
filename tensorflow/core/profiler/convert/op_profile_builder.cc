@@ -211,16 +211,18 @@ void PopulateOpMetricsNode(
   // TODO(b/219984562): Use hierarchical roofline.
   // For now, capture both overall and off-chip memory utilization.
   const double mem_bw_utilization = SafeDivide(
-      GibiBytesPerSecondPerCore(op_metrics, MemorySpace::kAllMemories,
+      GibiBytesPerSecondPerCore(op_metrics, MemorySpace::MEMORY_SPACE_ALL,
                                 OpMetrics::MemoryAccessed::UNKNOWN),
       peak_mem_gibibytes_per_second_per_core[MemBwType::MEM_BW_TYPE_ALL]);
   metrics->set_memory_bandwidth_util(mem_bw_utilization);
   metrics->add_bandwidth_utils(mem_bw_utilization);
 
   const double hbm_bw_gibibytes_per_second =
-      GigaToGibi(GigaBytesPerSecondPerCore(op_metrics, MemorySpace::kHbm,
+      GigaToGibi(GigaBytesPerSecondPerCore(op_metrics,
+                                           MemorySpace::MEMORY_SPACE_HBM,
                                            OpMetrics::MemoryAccessed::READ)) +
-      GigaToGibi(GigaBytesPerSecondPerCore(op_metrics, MemorySpace::kHbm,
+      GigaToGibi(GigaBytesPerSecondPerCore(op_metrics,
+                                           MemorySpace::MEMORY_SPACE_HBM,
                                            OpMetrics::MemoryAccessed::WRITE));
   const double hbm_bw_utilization = SafeDivide(
       hbm_bw_gibibytes_per_second,
@@ -230,6 +232,22 @@ void PopulateOpMetricsNode(
 
   metrics->set_raw_hbm_bytes_accessed(GibiToGiga(hbm_bw_gibibytes_per_second) *
                                       PicoToNano(op_metrics.time_ps()));
+
+  const double sram_rd_gibibytes_per_second = GigaToGibi(
+      GigaBytesPerSecondPerCore(op_metrics, MemorySpace::MEMORY_SPACE_ON_CHIP,
+                                OpMetrics::MemoryAccessed::READ));
+  const double sram_rd_bw_utilization = SafeDivide(
+      sram_rd_gibibytes_per_second,
+      peak_mem_gibibytes_per_second_per_core[MemBwType::MEM_BW_TYPE_SRAM_RD]);
+  metrics->add_bandwidth_utils(sram_rd_bw_utilization);
+
+  const double sram_wr_gibibytes_per_second = GigaToGibi(
+      GigaBytesPerSecondPerCore(op_metrics, MemorySpace::MEMORY_SPACE_ON_CHIP,
+                                OpMetrics::MemoryAccessed::WRITE));
+  const double sram_wr_bw_utilization = SafeDivide(
+      sram_wr_gibibytes_per_second,
+      peak_mem_gibibytes_per_second_per_core[MemBwType::MEM_BW_TYPE_SRAM_WR]);
+  metrics->add_bandwidth_utils(sram_wr_bw_utilization);
 }
 
 // Sets the total time on the root node metrics.
