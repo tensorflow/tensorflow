@@ -25,6 +25,7 @@ limitations under the License.
 #include "mlir/Dialect/Arith/Utils/Utils.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
+#include "mlir/Dialect/Linalg/Transforms/Hoisting.h"
 #include "mlir/Dialect/Linalg/Transforms/Transforms.h"
 #include "mlir/Dialect/Vector/IR/VectorOps.h"
 #include "mlir/IR/OpDefinition.h"
@@ -866,6 +867,7 @@ struct VectorizePerfectlyTiledLoopsPass
       (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
     }
 
+    // TODO(vuson): remove these patterns once gml_st.for is retired.
     {
       RewritePatternSet patterns = getDefaultVectorizationPatterns(ctx);
       linalg::populatePadOpVectorizationPatterns(patterns);
@@ -874,8 +876,6 @@ struct VectorizePerfectlyTiledLoopsPass
                    IdentityTransposeOpFoldingPattern>(ctx);
       (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
     }
-
-    // Hoisting transfer_read/transfer_write.
     {
       RewritePatternSet patterns(ctx);
       patterns.add<IdentityMaterializeOpFoldingPattern>(ctx);
@@ -883,6 +883,8 @@ struct VectorizePerfectlyTiledLoopsPass
 
       hoistRedundantVectorTransfersOnTensor(func);
     }
+    // Hoisting transfer_read/transfer_write.
+    linalg::hoistRedundantVectorTransfersOnTensor(func);
   }
 };
 

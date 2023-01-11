@@ -127,10 +127,10 @@ func.func @matmul(%arg0: tensor<?x?xf32>, %arg1: tensor<?x?xf32>)
 // MMT4D-NOT:        linalg.matmul
 // MMT4D:            scf.for {{.*}} = %c0 to %[[DIM0:.*]] step %c1
 // MMT4D:              scf.for {{.*}} = %c0 to %[[DIM1:.*]] step %c1
-// MMT4D:                scf.for {{.*}} = %c0 to %[[DIM2:.*]] step %c1
-// MMT4D:                  vector.transfer_read
+// MMT4D:                vector.transfer_read
+// MMT4D:                %[[KERNEL:.*]] = scf.for {{.*}} = %c0 to %[[DIM2:.*]] step %c1 {{.*}} -> (vector<1x1x8x8xf32>)
 // MMT4D:                  vector.transfer_read
 // MMT4D:                  vector.transfer_read
 // MMT4D:                  %[[CONTRACT:.*]] = vector.contract
-// MMT4D:                  %[[WRITE:.*]] = vector.transfer_write %[[CONTRACT]]
-// MMT4D:                  scf.yield %[[WRITE]]
+// MMT4D:                  scf.yield %[[CONTRACT]]
+// MMT4D:                %[[WRITE:.*]] = vector.transfer_write %[[KERNEL]]
