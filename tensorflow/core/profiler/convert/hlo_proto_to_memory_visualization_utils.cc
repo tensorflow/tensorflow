@@ -903,6 +903,9 @@ void ConvertAllocationTimeline(const HloProtoBufferWrapper& wrapper,
     int pos_y = center_y * scale_y;
     int rect_w = width * scale_x;
     int rect_h = height * scale_y;
+    // Skip when block size is smaller than half a pixel in output size.
+    if (height * scale_y < 0.5) return;
+    rect_h = std::max(rect_h, 1);  // Rounding up.
     std::string rect = absl::StrFormat(
         R"("%d" [tooltip="%s", pos="%d,%d!", width="%d!", height="%d!", color=%s];)",
         node_id++, description, pos_x, pos_y, rect_w, rect_h, color);
@@ -929,6 +932,7 @@ void ConvertAllocationTimeline(const HloProtoBufferWrapper& wrapper,
                lb_colors[node_id % num_lb_colors]);
     }
   }
+  VLOG(1) << "rects:" << rects.size();
   result->set_allocation_timeline(
       absl::StrFormat("graph G {\n node [shape=box,style=filled];\n %s\n}",
                       absl::StrJoin(rects, "\n")));
