@@ -20718,30 +20718,6 @@ func InplaceUpdate(scope *Scope, x tf.Output, i tf.Output, v tf.Output) (y tf.Ou
 	return op.Output(0)
 }
 
-// An op that interleaves the indices tensor value tensor into an xla tuple.
-//
-// An op that interleaves the indices tensor value tensor into an xla tuple.
-//
-// Arguments:
-//
-//	indices: A rank-1 tensor of indices, for example [1, 2, 3, 4]
-//	values: A rank-1 tensor of values. For example (0.1, 0.2, 0.3, 0.5). It must have same length as indices.
-//
-// Returns An xla tuple, for this example, the output should be (1, 0.1, 2, 0.2, 3, 0.3, 4, 0.5)
-func InterleaveTensorsToXLATuple(scope *Scope, indices tf.Output, values tf.Output) (output tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "InterleaveTensorsToXLATuple",
-		Input: []tf.Input{
-			indices, values,
-		},
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
 // Computes the reciprocal of x element-wise.
 //
 // I.e., \\(y = 1 / x\\).
@@ -26541,6 +26517,41 @@ func Merge(scope *Scope, inputs []tf.Output) (output tf.Output, value_index tf.O
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0), op.Output(1)
+}
+
+// An op merges elements of integer and float tensors into deduplication data as
+// XLA tuple.
+//
+// This op merges outputs of SplitDedupDataOp, which gives two 1-D tensors, integer
+// and floating point. With respect to tuple_mask, this op merges values of these
+// two tensors into an XLA tuple, which should be as same as input to
+// SplitDedupDataOp.
+//
+// Arguments:
+//
+//	integer_tensor: A 1-D integer tensor, includes integer elements of deduplication data tuple.
+//	float_tensor: A 1-D float tensor, includes float elements of deduplication data tuple.
+//	tuple_mask: A serialized TensorProto string of output tuple mask. This mask is a 2-D tensor,
+//
+// with first column as tuple element type, and second column as span of this type.
+// For example, an output tuple of (1, 2, 0.1, 3), its mask is [[0, 2], [1, 1], [0,
+// 1]]. We expect only two types of elements: integer(0) and float(1).
+//
+// Returns An XLA tuple merging integer and float elements as deduplication data tuple.
+func MergeDedupData(scope *Scope, integer_tensor tf.Output, float_tensor tf.Output, tuple_mask string) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"tuple_mask": tuple_mask}
+	opspec := tf.OpSpec{
+		Type: "MergeDedupData",
+		Input: []tf.Input{
+			integer_tensor, float_tensor,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
 }
 
 // Merges summaries.
@@ -47264,6 +47275,44 @@ func Split(scope *Scope, axis tf.Output, value tf.Output, num_split int64) (outp
 	return output
 }
 
+// An op splits input deduplication data XLA tuple into integer and floating point
+// tensors.
+//
+// Deduplication data is an XLA tuple, which consists of integer and floating point
+// values. This op is to split these values into two groups for two types, and
+// construct each group as one tensor to return.
+//
+// Arguments:
+//
+//	input: An XLA tuple including integer and float elements as deduplication data tuple.
+//	integer_type: integer_tensor type. Allowed types: int32, int64, uint32, uint64.
+//	float_type: float_tensor type. Allowed types: half, bfloat16, float.
+//	tuple_mask: A serialized TensorProto string of output tuple mask. This mask is a 2-D tensor,
+//
+// with first column as tuple element type, and second column as span of this type.
+// For example, an output tuple of (1, 2, 0.1, 3), its mask is [[0, 2], [1, 1], [0,
+// 1]]. We expect only two types of elements: integer(0) and float(1).
+//
+// Returns:
+//
+//	integer_tensor: A 1-D integer tensor, includes integer elements of deduplication data tuple.
+//	float_tensor: A 1-D float tensor, includes float elements of deduplication data tuple.
+func SplitDedupData(scope *Scope, input tf.Output, integer_type tf.DataType, float_type tf.DataType, tuple_mask string) (integer_tensor tf.Output, float_tensor tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"integer_type": integer_type, "float_type": float_type, "tuple_mask": tuple_mask}
+	opspec := tf.OpSpec{
+		Type: "SplitDedupData",
+		Input: []tf.Input{
+			input,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0), op.Output(1)
+}
+
 // Splits a tensor into `num_split` tensors along one dimension.
 //
 // Arguments:
@@ -47304,52 +47353,6 @@ func SplitV(scope *Scope, value tf.Output, size_splits tf.Output, axis tf.Output
 		return
 	}
 	return output
-}
-
-// SplitXLATupleToTensorsAttr is an optional argument to SplitXLATupleToTensors.
-type SplitXLATupleToTensorsAttr func(optionalAttr)
-
-// SplitXLATupleToTensorsIndicesType sets the optional indices_type attribute to value.
-//
-// value: {int32, int64} = DT_INT32
-// If not specified, defaults to DT_INT32
-func SplitXLATupleToTensorsIndicesType(value tf.DataType) SplitXLATupleToTensorsAttr {
-	return func(m optionalAttr) {
-		m["indices_type"] = value
-	}
-}
-
-// An op that splits an xla tuple to a tensor of indices and a tensor of values.
-//
-// An op that splits an xla tuple to a tensor of indices and a tensor of values.
-//
-// Arguments:
-//
-//	input: An xla tuple. For example (1, 0.1, 2, 0.2, 3, 0.3, 4, 0.4)
-//	values_type: {half, bfloat16, float, int32, uint32, int64}
-//	output_shape: Indices tensor shape. indices and value tensors must have same shape.
-//
-// Returns:
-//
-//	indices: A rank-1 tensor of odd elements of `input`. Such as [1, 2, 3, 4]
-//	values: A rank-1 tensor of even elements of `input`. Such as [0.1, 0.2, 0.3, 0.4].
-func SplitXLATupleToTensors(scope *Scope, input tf.Output, values_type tf.DataType, output_shape tf.Shape, optional ...SplitXLATupleToTensorsAttr) (indices tf.Output, values tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{"values_type": values_type, "output_shape": output_shape}
-	for _, a := range optional {
-		a(attrs)
-	}
-	opspec := tf.OpSpec{
-		Type: "SplitXLATupleToTensors",
-		Input: []tf.Input{
-			input,
-		},
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0), op.Output(1)
 }
 
 // Creates a dataset that executes a SQL query and emits rows of the result set.
