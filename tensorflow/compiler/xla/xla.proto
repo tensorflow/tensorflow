@@ -444,7 +444,12 @@ message DebugOptions {
 
   bool xla_dump_latency_hiding_schedule = 182;
 
-  // Next id: 184
+  // By default, MLIR lowering will use Linalg elementwise fusion. If this flag
+  // is enabled, the pipeline will use tiling, fusion, peeling, vectorization
+  // instead.
+  bool xla_cpu_enable_mlir_tiling_and_fusion = 184;
+
+  // Next id: 185
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.

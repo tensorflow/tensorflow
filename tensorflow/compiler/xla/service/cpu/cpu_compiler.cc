@@ -1012,6 +1012,8 @@ Status LowerMLIRModule(mlir::ModuleOp mlir_module,
 
   xla::runtime::PassManager xla_pm(&pm);
   HloXlaRuntimePipelineOptions options;
+  options.enable_tiling_and_fusion =
+      GetDebugOptionsFromFlags().xla_cpu_enable_mlir_tiling_and_fusion();
   options.sparse_bufferization = false;
   options.outline_with_xla_framework = true;
   TF_RETURN_IF_ERROR(CreateHloXlaRuntimePipeline(xla_pm, options));
