@@ -37,10 +37,15 @@ class NextPluggableDeviceAllocator : public Allocator {
 
   std::string Name() override { return device_allocator_name_; }
 
+  bool AllocatesOpaqueHandle() const override {
+    return allocates_opaque_handle_;
+  }
+
  private:
   const TFNPD_Api* api_;
   int device_ordinal_;
   std::string device_allocator_name_;
+  bool allocates_opaque_handle_;
   TFNPD_DeviceAllocator* device_allocator_;
 };
 
