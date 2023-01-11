@@ -1,1 +1,393 @@
 Auto generated patch. Do not edit or delete it, even if empty.
+diff -ruN --strip-trailing-cr a/llvm/include/llvm/DebugInfo/DWARF/DWARFContext.h b/llvm/include/llvm/DebugInfo/DWARF/DWARFContext.h
+--- a/llvm/include/llvm/DebugInfo/DWARF/DWARFContext.h
++++ b/llvm/include/llvm/DebugInfo/DWARF/DWARFContext.h
+@@ -107,10 +107,6 @@
+     MacroDwoSection
+   };
+ 
+-  // When set parses debug_info.dwo/debug_abbrev.dwo manually and populates CU
+-  // Index, and TU Index for DWARF5.
+-  bool ParseCUTUIndexManually = false;
+-
+ public:
+   DWARFContext(std::unique_ptr<const DWARFObject> DObj,
+                std::string DWPName = "",
+@@ -447,14 +443,6 @@
+   ///       into "SectionedAddress Address"
+   DWARFCompileUnit *getCompileUnitForAddress(uint64_t Address);
+ 
+-  /// Returns whether CU/TU should be populated manually. TU Index populated
+-  /// manually only for DWARF5.
+-  bool getParseCUTUIndexManually() const { return ParseCUTUIndexManually; }
+-
+-  /// Sets whether CU/TU should be populated manually. TU Index populated
+-  /// manually only for DWARF5.
+-  void setParseCUTUIndexManually(bool PCUTU) { ParseCUTUIndexManually = PCUTU; }
+-
+ private:
+   /// Parse a macro[.dwo] or macinfo[.dwo] section.
+   std::unique_ptr<DWARFDebugMacro>
+diff -ruN --strip-trailing-cr a/llvm/include/llvm/DebugInfo/DWARF/DWARFUnitIndex.h b/llvm/include/llvm/DebugInfo/DWARF/DWARFUnitIndex.h
+--- a/llvm/include/llvm/DebugInfo/DWARF/DWARFUnitIndex.h
++++ b/llvm/include/llvm/DebugInfo/DWARF/DWARFUnitIndex.h
+@@ -137,14 +137,12 @@
+   public:
+     const SectionContribution *getContribution(DWARFSectionKind Sec) const;
+     const SectionContribution *getContribution() const;
+-    SectionContribution &getContribution();
+ 
+     const SectionContribution *getContributions() const {
+       return Contributions.get();
+     }
+ 
+     uint64_t getSignature() const { return Signature; }
+-    bool isValid() { return Index; }
+   };
+ 
+ private:
+@@ -185,10 +183,6 @@
+   ArrayRef<Entry> getRows() const {
+     return ArrayRef(Rows.get(), Header.NumBuckets);
+   }
+-
+-  MutableArrayRef<Entry> getMutableRows() {
+-    return makeMutableArrayRef(Rows.get(), Header.NumBuckets);
+-  }
+ };
+ 
+ } // end namespace llvm
+diff -ruN --strip-trailing-cr a/llvm/lib/DebugInfo/DWARF/DWARFContext.cpp b/llvm/lib/DebugInfo/DWARF/DWARFContext.cpp
+--- a/llvm/lib/DebugInfo/DWARF/DWARFContext.cpp
++++ b/llvm/lib/DebugInfo/DWARF/DWARFContext.cpp
+@@ -779,82 +779,14 @@
+   return Success;
+ }
+ 
+-void fixupIndex(const DWARFObject &DObj, DWARFContext &C,
+-                DWARFUnitIndex &Index) {
+-  using EntryType = DWARFUnitIndex::Entry::SectionContribution;
+-  using EntryMap = DenseMap<uint32_t, EntryType>;
+-  EntryMap Map;
+-  if (DObj.getCUIndexSection().empty())
+-    return;
+-
+-  uint64_t Offset = 0;
+-  uint32_t TruncOffset = 0;
+-  DObj.forEachInfoDWOSections([&](const DWARFSection &S) {
+-    if (!(C.getParseCUTUIndexManually() ||
+-          S.Data.size() >= std::numeric_limits<uint32_t>::max()))
+-      return;
+-
+-    DWARFDataExtractor Data(DObj, S, C.isLittleEndian(), 0);
+-    while (Data.isValidOffset(Offset)) {
+-      DWARFUnitHeader Header;
+-      if (!Header.extract(C, Data, &Offset, DWARFSectionKind::DW_SECT_INFO)) {
+-        logAllUnhandledErrors(
+-            createError("Failed to parse CU header in DWP file"), errs());
+-        Map.clear();
+-        break;
+-      }
+-
+-      auto Iter = Map.insert({TruncOffset,
+-                              {Header.getOffset(), Header.getNextUnitOffset() -
+-                                                       Header.getOffset()}});
+-      if (!Iter.second) {
+-        logAllUnhandledErrors(
+-            createError("Collision occured between for truncated offset 0x" +
+-                        Twine::utohexstr(TruncOffset)),
+-            errs());
+-        Map.clear();
+-        return;
+-      }
+-
+-      Offset = Header.getNextUnitOffset();
+-      TruncOffset = Offset;
+-    }
+-  });
+-
+-  if (Map.empty())
+-    return;
+-
+-  for (DWARFUnitIndex::Entry &E : Index.getMutableRows()) {
+-    if (!E.isValid())
+-      continue;
+-    DWARFUnitIndex::Entry::SectionContribution &CUOff = E.getContribution();
+-    auto Iter = Map.find(CUOff.getOffset());
+-    if (Iter == Map.end()) {
+-      logAllUnhandledErrors(createError("Could not find CU offset 0x" +
+-                                        Twine::utohexstr(CUOff.getOffset()) +
+-                                        " in the Map"),
+-                            errs());
+-      break;
+-    }
+-    CUOff.setOffset(Iter->second.getOffset());
+-    if (CUOff.getOffset() != Iter->second.getOffset())
+-      logAllUnhandledErrors(createError("Length of CU in CU index doesn't "
+-                                        "match calculated length at offset 0x" +
+-                                        Twine::utohexstr(CUOff.getOffset())),
+-                            errs());
+-  }
+-
+-  return;
+-}
+-
+ const DWARFUnitIndex &DWARFContext::getCUIndex() {
+   if (CUIndex)
+     return *CUIndex;
+ 
+   DataExtractor CUIndexData(DObj->getCUIndexSection(), isLittleEndian(), 0);
++
+   CUIndex = std::make_unique<DWARFUnitIndex>(DW_SECT_INFO);
+   CUIndex->parse(CUIndexData);
+-  fixupIndex(*DObj, *this, *CUIndex.get());
+   return *CUIndex;
+ }
+ 
+@@ -863,12 +795,9 @@
+     return *TUIndex;
+ 
+   DataExtractor TUIndexData(DObj->getTUIndexSection(), isLittleEndian(), 0);
++
+   TUIndex = std::make_unique<DWARFUnitIndex>(DW_SECT_EXT_TYPES);
+   TUIndex->parse(TUIndexData);
+-  // If we are parsing TU-index and for .debug_types section we don't need
+-  // to do anything.
+-  if (TUIndex->getVersion() != 2)
+-    fixupIndex(*DObj, *this, *TUIndex.get());
+   return *TUIndex;
+ }
+ 
+diff -ruN --strip-trailing-cr a/llvm/lib/DebugInfo/DWARF/DWARFUnitIndex.cpp b/llvm/lib/DebugInfo/DWARF/DWARFUnitIndex.cpp
+--- a/llvm/lib/DebugInfo/DWARF/DWARFUnitIndex.cpp
++++ b/llvm/lib/DebugInfo/DWARF/DWARFUnitIndex.cpp
+@@ -269,11 +269,6 @@
+   return nullptr;
+ }
+ 
+-DWARFUnitIndex::Entry::SectionContribution &
+-DWARFUnitIndex::Entry::getContribution() {
+-  return Contributions[Index->InfoColumn];
+-}
+-
+ const DWARFUnitIndex::Entry::SectionContribution *
+ DWARFUnitIndex::Entry::getContribution() const {
+   return &Contributions[Index->InfoColumn];
+diff -ruN --strip-trailing-cr a/llvm/test/tools/llvm-dwp/X86/cu_tu_units_manual_v5.s b/llvm/test/tools/llvm-dwp/X86/cu_tu_units_manual_v5.s
+--- a/llvm/test/tools/llvm-dwp/X86/cu_tu_units_manual_v5.s
++++ b/llvm/test/tools/llvm-dwp/X86/cu_tu_units_manual_v5.s
+@@ -1,92 +0,0 @@
+-# This test checks if we can correctly parse manull cu and tu index for DWARF5.
+-
+-# RUN: llvm-mc -triple x86_64-unknown-linux %s -filetype=obj -o %t.o \
+-# RUN:         -split-dwarf-file=%t.dwo -dwarf-version=5
+-# RUN: llvm-dwp %t.dwo -o %t.dwp
+-# RUN: llvm-dwarfdump -debug-info -debug-cu-index -debug-tu-index %t.dwp | FileCheck -check-prefix=CHECK %s
+-# RUN: llvm-dwarfdump -debug-info -debug-cu-index -debug-tu-index -manaully-generate-unit-index %t.dwp | FileCheck -check-prefix=CHECK2 %s
+-
+-## Note: In order to check whether the type unit index is generated
+-## there is no need to add the missing DIEs for the structure type of the type unit.
+-
+-# CHECK-DAG: .debug_info.dwo contents:
+-# CHECK: 0x00000000: Type Unit: length = 0x00000017, format = DWARF32, version = 0x0005, unit_type = DW_UT_split_type, abbr_offset = 0x0000, addr_size = 0x08, name = '', type_signature = [[TUID1:.*]], type_offset = 0x0019 (next unit at 0x0000001b)
+-# CHECK: 0x0000001b: Type Unit: length = 0x00000017, format = DWARF32, version = 0x0005, unit_type = DW_UT_split_type, abbr_offset = 0x0000, addr_size = 0x08, name = '', type_signature = [[TUID2:.*]], type_offset = 0x0019 (next unit at 0x00000036)
+-# CHECK: 0x00000036: Compile Unit: length = 0x00000011, format = DWARF32, version = 0x0005, unit_type = DW_UT_split_compile, abbr_offset = 0x0000, addr_size = 0x08, DWO_id = [[CUID1:.*]] (next unit at 0x0000004b)
+-# CHECK-DAG: .debug_cu_index contents:
+-# CHECK: version = 5, units = 1, slots = 2
+-# CHECK: Index Signature          INFO                                     ABBREV
+-# CHECK:     1 [[CUID1]]          [0x0000000000000036, 0x000000000000004b) [0x00000000, 0x00000010)
+-# CHECK-DAG: .debug_tu_index contents:
+-# CHECK: version = 5, units = 2, slots = 4
+-# CHECK: Index Signature          INFO                                     ABBREV
+-# CHECK:     1 [[TUID1]]          [0x0000000000000000, 0x000000000000001b) [0x00000000, 0x00000010)
+-# CHECK:     4 [[TUID2]]          [0x000000000000001b, 0x0000000000000036) [0x00000000, 0x00000010)
+-
+-# CHECK2-DAG: .debug_info.dwo contents:
+-# CHECK2: 0x00000000: Type Unit: length = 0x00000017, format = DWARF32, version = 0x0005, unit_type = DW_UT_split_type, abbr_offset = 0x0000, addr_size = 0x08, name = '', type_signature = [[TUID1:.*]], type_offset = 0x0019 (next unit at 0x0000001b)
+-# CHECK2: 0x0000001b: Type Unit: length = 0x00000017, format = DWARF32, version = 0x0005, unit_type = DW_UT_split_type, abbr_offset = 0x0000, addr_size = 0x08, name = '', type_signature = [[TUID2:.*]], type_offset = 0x0019 (next unit at 0x00000036)
+-# CHECK2: 0x00000036: Compile Unit: length = 0x00000011, format = DWARF32, version = 0x0005, unit_type = DW_UT_split_compile, abbr_offset = 0x0000, addr_size = 0x08, DWO_id = [[CUID1:.*]] (next unit at 0x0000004b)
+-# CHECK2-DAG: .debug_cu_index contents:
+-# CHECK2: version = 5, units = 1, slots = 2
+-# CHECK2: Index Signature           INFO                                     ABBREV
+-# CHECK2:     1 [[CUID1]]           [0x0000000000000036, 0x000000000000004b) [0x00000000, 0x00000010)
+-# CHECK2-DAG: .debug_tu_index contents:
+-# CHECK2: version = 5, units = 2, slots = 4
+-# CHECK2: Index Signature          INFO                                     ABBREV
+-# CHECK2:     1 [[TUID1]]          [0x0000000000000000, 0x000000000000001b) [0x00000000, 0x00000010)
+-# CHECK2:     4 [[TUID2]]          [0x000000000000001b, 0x0000000000000036) [0x00000000, 0x00000010)
+-
+-    .section	.debug_info.dwo,"e",@progbits
+-    .long	.Ldebug_info_dwo_end0-.Ldebug_info_dwo_start0 # Length of Unit
+-.Ldebug_info_dwo_start0:
+-    .short	5                               # DWARF version number
+-    .byte	6                               # DWARF Unit Type (DW_UT_split_type)
+-    .byte	8                               # Address Size (in bytes)
+-    .long	0                               # Offset Into Abbrev. Section
+-    .quad	5657452045627120676             # Type Signature
+-    .long	25                              # Type DIE Offset
+-    .byte	2                               # Abbrev [2] DW_TAG_type_unit
+-    .byte	3                               # Abbrev [3] DW_TAG_structure_type
+-    .byte	0                               # End Of Children Mark
+-.Ldebug_info_dwo_end0:
+-    .section	.debug_info.dwo,"e",@progbits
+-    .long	.Ldebug_info_dwo_end1-.Ldebug_info_dwo_start1 # Length of Unit
+-.Ldebug_info_dwo_start1:
+-    .short	5                               # DWARF version number
+-    .byte	6                               # DWARF Unit Type (DW_UT_split_type)
+-    .byte	8                               # Address Size (in bytes)
+-    .long	0                               # Offset Into Abbrev. Section
+-    .quad	-8528522068957683993            # Type Signature
+-    .long	25                              # Type DIE Offset
+-    .byte	4                               # Abbrev [4] DW_TAG_type_unit
+-    .byte	5                               # Abbrev [5] DW_TAG_structure_type
+-    .byte	0                               # End Of Children Mark
+-.Ldebug_info_dwo_end1:
+-    .section	.debug_info.dwo,"e",@progbits
+-    .long	.Ldebug_info_dwo_end2-.Ldebug_info_dwo_start2 # Length of Unit
+-.Ldebug_info_dwo_start2:
+-    .short	5                               # DWARF version number
+-    .byte	5                               # DWARF Unit Type (DW_UT_split_compile)
+-    .byte	8                               # Address Size (in bytes)
+-    .long	0                               # Offset Into Abbrev. Section
+-    .quad	1152943841751211454
+-    .byte	1                               # Abbrev [1] DW_TAG_compile_unit
+-.Ldebug_info_dwo_end2:
+-    .section	.debug_abbrev.dwo,"e",@progbits
+-    .byte	1                               # Abbreviation Code
+-    .byte	17                              # DW_TAG_compile_unit
+-    .byte	0                               # DW_CHILDREN_no
+-    .byte	0                               # EOM(1)
+-    .byte	0                               # EOM(2)
+-    .byte	2                               # Abbreviation Code
+-    .byte	65                              # DW_TAG_type_unit
+-    .byte	1                               # DW_CHILDREN_yes
+-    .byte	0                               # EOM
+-    .byte	0                               # EOM
+-    .byte	4                               # Abbreviation Code
+-    .byte	65                              # DW_TAG_type_unit
+-    .byte	1                               # DW_CHILDREN_yes
+-    .byte	0                               # EOM
+-    .byte	0                               # EOM
+-    .byte	0                               # EOM
+diff -ruN --strip-trailing-cr a/llvm/test/tools/llvm-dwp/X86/debug_macro_v5.s b/llvm/test/tools/llvm-dwp/X86/debug_macro_v5.s
+--- a/llvm/test/tools/llvm-dwp/X86/debug_macro_v5.s
++++ b/llvm/test/tools/llvm-dwp/X86/debug_macro_v5.s
+@@ -2,8 +2,7 @@
+ 
+ # RUN: llvm-mc -triple x86_64-unknown-linux --filetype=obj --split-dwarf-file=%t.dwo -dwarf-version=5 %s -o %t.o
+ # RUN: llvm-dwp %t.dwo -o %t.dwp 2>&1
+-# RUN: llvm-dwarfdump -debug-macro -debug-cu-index %t.dwp | FileCheck -check-prefix=CHECK %s
+-# RUN: llvm-dwarfdump -debug-macro -debug-cu-index -manaully-generate-unit-index %t.dwp | FileCheck -check-prefix=CHECK2 %s
++# RUN: llvm-dwarfdump -debug-macro -debug-cu-index %t.dwp | FileCheck %s
+ 
+ # CHECK-DAG: .debug_macro.dwo contents:
+ # CHECK: macro header: version = 0x0005, flags = 0x00, format = DWARF32
+@@ -16,9 +15,6 @@
+ # CHECK: Index Signature          INFO                                      ABBREV                   STR_OFFSETS              MACRO
+ # CHECK:     1 0x0000000000000000 [0x0000000000000000, 0x0000000000000019) [0x00000000, 0x00000008) [0x00000000, 0x0000000c) [0x00000000, 0x0000000b)
+ 
+-# CHECK2: Index Signature          INFO                                     ABBREV                   STR_OFFSETS              MACRO
+-# CHECK2:     1 0x0000000000000000 [0x0000000000000000, 0x0000000000000019) [0x00000000, 0x00000008) [0x00000000, 0x0000000c) [0x00000000, 0x0000000b)
+-
+     .section	.debug_info.dwo,"e",@progbits
+     .long	.Ldebug_info_dwo_end0-.Ldebug_info_dwo_start0 # Length of Unit
+ .Ldebug_info_dwo_start0:
+diff -ruN --strip-trailing-cr a/llvm/test/tools/llvm-dwp/X86/type_dedup.test b/llvm/test/tools/llvm-dwp/X86/type_dedup.test
+--- a/llvm/test/tools/llvm-dwp/X86/type_dedup.test
++++ b/llvm/test/tools/llvm-dwp/X86/type_dedup.test
+@@ -1,10 +1,8 @@
+ RUN: llvm-dwp %p/../Inputs/type_dedup/a.dwo %p/../Inputs/type_dedup/b.dwo -o %t
+-RUN: llvm-dwarfdump -v %t | FileCheck -check-prefix=CHECK %s
+-RUN: llvm-dwarfdump -v -manaully-generate-unit-index %t | FileCheck -check-prefix=CHECK2 %s
++RUN: llvm-dwarfdump -v %t | FileCheck %s
+ RUN: llvm-dwp %p/../Inputs/type_dedup/b.dwo -o %tb.dwp
+ RUN: llvm-dwp %p/../Inputs/type_dedup/a.dwo %tb.dwp -o %t
+-RUN: llvm-dwarfdump -v %t | FileCheck -check-prefix=CHECK %s
+-RUN: llvm-dwarfdump -v -manaully-generate-unit-index %t | FileCheck -check-prefix=CHECK2 %s
++RUN: llvm-dwarfdump -v %t | FileCheck %s
+ 
+ a.cpp:
+   struct common { };
+@@ -38,24 +36,3 @@
+ CHECK: 0x00000066:   DW_TAG_structure_type
+ CHECK:                 DW_AT_name {{.*}} "bdistinct"
+ CHECK-NOT: Type Unit
+-
+-CHECK2-LABEL: .debug_types.dwo contents:
+-CHECK2: [[COMMONUOFF:0x[0-9a-f]*]]:
+-CHECK2-LABEL: Type Unit: length = 0x00000020, format = DWARF32, version = 0x0004, abbr_offset =
+-CHECK2:         0x0000, addr_size = 0x08, name = 'common', type_signature = [[COMMONSIG:0x[0-9a-f]*]], type_offset = 0x[[COMMONOFF:.*]] (next unit at [[AUOFF:.*]])
+-CHECK2:                DW_TAG_type_unit
+-CHECK2: [[COMMONOFF]]:   DW_TAG_structure_type
+-CHECK2:                    DW_AT_name {{.*}} "common"
+-CHECK2: [[AUOFF]]:
+-CHECK2-LABEL: Type Unit: length = 0x00000020, format = DWARF32, version = 0x0004, abbr_offset =
+-CHECK2:         0x0000, addr_size = 0x08, name = 'adistinct', type_signature = [[ASIG:0x[0-9a-f]*]], type_offset = 0x[[AOFF:.*]] (next unit at [[BUOFF:.*]])
+-CHECK2:             DW_TAG_type_unit
+-CHECK2: 0x00000042:   DW_TAG_structure_type
+-CHECK2:                 DW_AT_name {{.*}} "adistinct"
+-CHECK2: [[BUOFF]]:
+-CHECK2-LABEL: Type Unit: length = 0x00000020, format = DWARF32, version = 0x0004, abbr_offset =
+-CHECK2:         0x{{.*}}, addr_size = 0x08, name = 'bdistinct', type_signature = [[BSIG:0x[0-9a-f]*]], type_offset = 0x[[BOFF:.*]] (next unit at [[XUOFF:.*]])
+-CHECK2:             DW_TAG_type_unit
+-CHECK2: 0x00000066:   DW_TAG_structure_type
+-CHECK2:                 DW_AT_name {{.*}} "bdistinct"
+-CHECK2-NOT: Type Unit
+diff -ruN --strip-trailing-cr a/llvm/tools/llvm-dwarfdump/llvm-dwarfdump.cpp b/llvm/tools/llvm-dwarfdump/llvm-dwarfdump.cpp
+--- a/llvm/tools/llvm-dwarfdump/llvm-dwarfdump.cpp
++++ b/llvm/tools/llvm-dwarfdump/llvm-dwarfdump.cpp
+@@ -249,13 +249,6 @@
+                      cl::desc("Show the sizes of all debug sections, "
+                               "expressed in bytes."),
+                      cat(DwarfDumpCategory));
+-static cl::opt<bool> ManuallyGenerateUnitIndex(
+-    "manaully-generate-unit-index",
+-    cl::desc("if the input is dwp file, parse .debug_info "
+-             "section and use it to populate "
+-             "DW_SECT_INFO contributions in cu-index. "
+-             "For DWARF5 it also populated TU Index."),
+-    cl::init(false), cl::Hidden, cl::cat(DwarfDumpCategory));
+ static cl::opt<bool>
+     ShowSources("show-sources",
+                 cl::desc("Show the sources across all compilation units."),
+@@ -682,7 +675,6 @@
+       std::unique_ptr<DWARFContext> DICtx = DWARFContext::create(
+           *Obj, DWARFContext::ProcessDebugRelocations::Process, nullptr, "",
+           RecoverableErrorHandler);
+-      DICtx->setParseCUTUIndexManually(ManuallyGenerateUnitIndex);
+       if (!HandleObj(*Obj, *DICtx, Filename, OS))
+         Result = false;
+     }
+diff -ruN --strip-trailing-cr a/utils/bazel/llvm-project-overlay/llvm/BUILD.bazel b/utils/bazel/llvm-project-overlay/llvm/BUILD.bazel
+--- a/utils/bazel/llvm-project-overlay/llvm/BUILD.bazel
++++ b/utils/bazel/llvm-project-overlay/llvm/BUILD.bazel
+@@ -1063,6 +1063,18 @@
+     ],
+ )
+ 
++gentbl(
++    name = "RISCVTargetParserDefGen",
++    tbl_outs = [("-gen-riscv-target-def", "include/llvm/TargetParser/RISCVTargetParserDef.inc")],
++    tblgen = ":llvm-tblgen",
++    td_file = "lib/Target/RISCV/RISCV.td",
++    td_srcs = [
++        ":common_target_td_sources",
++    ] + glob([
++        "lib/Target/RISCV/**/*.td",
++    ]),
++)
++
+ cc_library(
+     name = "TargetParser",
+     srcs = glob([
+@@ -1083,7 +1095,9 @@
+     ]),
+     copts = llvm_copts,
+     includes = ["include"],
+-    textual_hdrs = glob([
++    textual_hdrs = [
++        "include/llvm/TargetParser/RISCVTargetParserDef.inc",
++    ] + glob([
+         "include/llvm/TargetParser/*.def",
+     ]),
+     deps = [
