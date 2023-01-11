@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/python/pjrt_ifrt/pjrt_array.h"
 
 #include <memory>
+#include <numeric>
 #include <optional>
 #include <string>
 #include <utility>
@@ -26,6 +27,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
 #include "tensorflow/compiler/xla/python/ifrt/array.h"
 #include "tensorflow/compiler/xla/python/ifrt/sharding.h"
+#include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 
@@ -34,6 +36,48 @@ namespace ifrt {
 
 char PjRtCompatibleArray::ID = 0;
 char PjRtArray::ID = 0;
+
+namespace {
+
+// Converts byte strides into a shape with a matching layout. Only trivial
+// (compact) striding (a transposition of the underlying dense buffer) are
+// supported.
+StatusOr<xla::Shape> XlaShapeForTrivialByteStrides(
+    PrimitiveType element_type, absl::Span<int64_t const> dims,
+    absl::Span<int64_t const> byte_strides) {
+  CHECK_EQ(dims.size(), byte_strides.size());
+  std::vector<int64_t> minor_to_major(dims.size());
+  std::iota(minor_to_major.rbegin(), minor_to_major.rend(), 0);
+  // Find minor-to-major only if there is no zero dimension size because
+  // minor-to-major is irrelevant with any zero dimension size.
+  if (absl::c_find(dims, 0) == dims.end()) {
+    absl::c_sort(minor_to_major, [&](int a, int b) {
+      if (byte_strides[a] < byte_strides[b]) {
+        return true;
+      }
+      if (byte_strides[a] > byte_strides[b]) {
+        return false;
+      }
+      return dims[a] == 1 && dims[b] != 1;
+    });
+    int64_t byte_stride = ShapeUtil::ByteSizeOfPrimitiveType(element_type);
+    for (int64_t d : minor_to_major) {
+      if (dims[d] != 1 && byte_strides[d] != byte_stride) {
+        return Unimplemented(
+            "Only trivial (compact) byte strides are supported; i.e., byte "
+            "striding represents a transposition of the underlying dense "
+            "buffer but not broadcasting. Dimensions were: [%s], byte strides "
+            "were [%s].",
+            absl::StrJoin(dims, ","), absl::StrJoin(byte_strides, ","));
+      }
+      byte_stride *= dims[d];
+    }
+  }
+  return ShapeUtil::MakeShapeWithDenseLayout(element_type, dims,
+                                             minor_to_major);
+}
+
+}  // namespace
 
 StatusOr<xla::PrimitiveType> ToPrimitiveType(DType dtype) {
   switch (dtype.kind()) {
@@ -192,27 +236,46 @@ Future<Status> PjRtArray::CopyToHostBuffer(
         InvalidArgument("Only single-shard is implemented, but got %d",
                         sharding_->devices().size()));
   }
-  if (byte_strides.has_value()) {
-    return Future<Status>(
-        InvalidArgument("Non-default byte_strides is not yet supported"));
-  }
 
   auto dtype = ToPrimitiveType(dtype_);
   if (!dtype.ok()) {
     return Future<Status>(std::move(dtype).status());
   }
 
-  xla::Shape xla_shape(*dtype, shape_.dims(), /*dynamic_dimensions=*/
-                       absl::InlinedVector<bool, Shape::kInlineDimensionSize>(
-                           /*n=*/shape_.dims().size(), /*v=*/false),
-                       /*tuple_shapes=*/{});
-  xla::LayoutUtil::SetToDefaultLayout(&xla_shape);
-  auto literal = std::make_unique<xla::MutableBorrowingLiteral>(
-      static_cast<char*>(data), xla_shape);
+  PjRtBuffer* pjrt_buffer = pjrt_buffers_.front().get();
+  absl::Span<const int64_t> dims;
+  StatusOr<xla::Shape> dynamic_shape;
+  if (pjrt_buffer->on_device_shape().is_static()) {
+    dims = shape_.dims();
+  } else {
+    // TODO(b/182461453): This is a blocking call. If we further implemented
+    // populating dynamic shape metadata while fetching the literal, we wouldn't
+    // need this static approach.
+    // TODO(hyeontaek): Clean up this dynamic shape access once we formalize
+    // dynamic shape support in IFRT.
+    dynamic_shape = pjrt_buffer->logical_on_device_shape();
+    if (!dynamic_shape.ok()) {
+      return Future<Status>(std::move(dynamic_shape).status());
+    }
+    dims = dynamic_shape->dimensions();
+  }
+
+  std::unique_ptr<xla::MutableBorrowingLiteral> literal;
+  if (byte_strides.has_value()) {
+    auto xla_shape = XlaShapeForTrivialByteStrides(*dtype, dims, *byte_strides);
+    if (!xla_shape.ok()) {
+      return Future<Status>(std::move(xla_shape).status());
+    }
+    literal = std::make_unique<xla::MutableBorrowingLiteral>(
+        static_cast<char*>(data), *xla_shape);
+  } else {
+    auto xla_shape = ShapeUtil::MakeShapeWithDescendingLayout(*dtype, dims);
+    literal = std::make_unique<xla::MutableBorrowingLiteral>(
+        static_cast<char*>(data), xla_shape);
+  }
   auto* literal_ptr = literal.get();
   auto promise = Future<Status>::CreatePromise();
   Future<Status> future(promise);
-  PjRtBuffer* pjrt_buffer = pjrt_buffers_.front().get();
   // TODO(hyeontaek): Handle semantics == kDonateInput.
   pjrt_buffer->ToLiteral(literal_ptr)
       .OnReady([literal = std::move(literal),
