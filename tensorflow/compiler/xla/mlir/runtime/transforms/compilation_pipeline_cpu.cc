@@ -95,6 +95,10 @@ static void CreateDefaultXlaCpuRuntimeCompilationPipeline(
         xla::CreateMathOptimizationPass(opts.math_avx2));
   }
 
+  // Enable math approximations to match XLA's FP accuracy spec.
+  pm.addNestedPass<mlir::func::FuncOp>(
+      xla::CreateMathApproximationPass({"all"}));
+
   // Convert all linalg operations to parallel loops.
   pm.addNestedPass<mlir::func::FuncOp>(
       mlir::createConvertLinalgToParallelLoopsPass());
