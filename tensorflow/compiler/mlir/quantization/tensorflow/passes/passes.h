@@ -16,9 +16,13 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_QUANTIZATION_TENSORFLOW_PASSES_PASSES_H_
 #define TENSORFLOW_COMPILER_MLIR_QUANTIZATION_TENSORFLOW_PASSES_PASSES_H_
 
+#include <memory>
+#include <string>
+
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_config.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/passes/utils.h"
 
@@ -144,6 +148,12 @@ CreateDuplicateShapeDeterminingConstantsPass();
 // tf.AssignVariableOp(tf.VarHandleOp, tf.Const) patterns in the initializer
 // function and replaces tf.Consts with the results of RestoreV2.
 std::unique_ptr<OperationPass<ModuleOp>> CreateInsertRestoreOpPass();
+
+// Creates a pass that marks functions with the attribute `tf._noinline = true`
+// to avoid being inlined by the `InlinerPass`. `noinline_functions` is the name
+// of the functions to mark.
+std::unique_ptr<OperationPass<func::FuncOp>> CreateMarkFunctionsNoinlinePass(
+    ArrayRef<std::string> noinline_functions);
 
 }  // namespace quant
 }  // namespace mlir
