@@ -963,7 +963,7 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
       return func_builder
           ->create<mlir::mhlo::DynamicSliceOp>(
               loc, result_type, operands[0],
-              makeArrayRef(operands).drop_front(), Convert(slice_sizes))
+              llvm::ArrayRef(operands).drop_front(), Convert(slice_sizes))
           .getOperation();
     }
     case HloOpcode::kDynamicUpdateSlice: {
@@ -988,7 +988,7 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
       TF_RETURN_IF_ERROR(
           ConvertShapeToMlirLayout(instruction->shape(), flattened_attr));
       attributes.push_back(builder_->getNamedAttr(
-          "layout", builder_->getArrayAttr(makeArrayRef(flattened_attr))));
+          "layout", builder_->getArrayAttr(llvm::ArrayRef(flattened_attr))));
 
       // Flatten the return-type if they are tuple-typed.
       llvm::SmallVector<Type> flattened_ret_types;
