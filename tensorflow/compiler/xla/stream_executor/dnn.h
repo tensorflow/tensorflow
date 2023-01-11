@@ -886,7 +886,7 @@ class OpRunner<void(Args...)> {
   virtual size_t GetWorkspaceSize() const = 0;
 
   // Convert to an AlgorithmDesc for AoT compilation or autotuning.
-  virtual port::StatusOr<AlgorithmDesc> ToAlgorithmDesc() const = 0;
+  virtual tsl::StatusOr<AlgorithmDesc> ToAlgorithmDesc() const = 0;
 
   // Launch the operation, with the signature determined by `Sig`.
   virtual tsl::Status operator()(Stream*, ProfileResult*,
@@ -1142,7 +1142,7 @@ class DnnSupport {
   virtual tsl::Status Init() = 0;
 
   // Gets the version of the backing library, as a VersionInfo object.
-  virtual port::StatusOr<VersionInfo> GetVersion() {
+  virtual tsl::StatusOr<VersionInfo> GetVersion() {
     return port::UnimplementedError(
         "DnnSupport::GetVersion not implemented on this platform.");
   }
@@ -1456,7 +1456,7 @@ class DnnSupport {
       bool use_fallback, ScratchAllocator* scratch_allocator,
       std::vector<std::unique_ptr<const dnn::ConvRunner>>* out_exec_plans);
 
-  virtual port::StatusOr<std::unique_ptr<const dnn::ConvRunner>>
+  virtual tsl::StatusOr<std::unique_ptr<const dnn::ConvRunner>>
   ConvolveRunnerFromDesc(
       Stream* stream, const dnn::AlgorithmDesc& algorithm_desc,
       dnn::ConvolutionKind kind, dnn::DataType element_type,
@@ -1487,7 +1487,7 @@ class DnnSupport {
       std::vector<std::unique_ptr<const dnn::FusedMatmulRunner>>*
           out_exec_plans);
 
-  virtual port::StatusOr<std::unique_ptr<const dnn::FusedConvRunner>>
+  virtual tsl::StatusOr<std::unique_ptr<const dnn::FusedConvRunner>>
   FusedConvolveRunnerFromDesc(
       Stream* stream, const dnn::AlgorithmDesc& algorithm_desc,
       dnn::ConvolutionKind kind, dnn::DataType element_type,
@@ -2098,7 +2098,7 @@ class DnnSupport {
   //    for dropout layer. The user has to maintain the memory until the model
   //    is no longer in use.
   //  use_padded_io: a bool to specify whether the input is using padded IO.
-  virtual port::StatusOr<std::unique_ptr<dnn::RnnDescriptor>>
+  virtual tsl::StatusOr<std::unique_ptr<dnn::RnnDescriptor>>
   createRnnDescriptor(int num_layers, int hidden_size, int input_size,
                       int cell_size, int batch_size,
                       dnn::RnnInputMode input_mode,
@@ -2120,14 +2120,14 @@ class DnnSupport {
   //  data_size: the size of the state.
   //  seq_lengths: the lengths of sequences in a batch.
   //  data_type: an enum to specify the type for the underlying data.
-  virtual port::StatusOr<std::unique_ptr<dnn::RnnSequenceTensorDescriptor>>
+  virtual tsl::StatusOr<std::unique_ptr<dnn::RnnSequenceTensorDescriptor>>
   createRnnSequenceTensorDescriptor(int max_seq_length, int batch_size,
                                     int data_size, dnn::DataType data_type) {
     return tsl::Status(port::error::UNIMPLEMENTED,
                        "createRnnSequenceTensorDescriptor is unimplemented");
   }
 
-  virtual port::StatusOr<std::unique_ptr<dnn::RnnSequenceTensorDescriptor>>
+  virtual tsl::StatusOr<std::unique_ptr<dnn::RnnSequenceTensorDescriptor>>
   createRnnSequenceTensorDescriptor(int max_seq_length, int batch_size,
                                     int data_size,
                                     const absl::Span<const int>& seq_lengths,
@@ -2138,7 +2138,7 @@ class DnnSupport {
 
   // Create an RNN state descriptor that specifies the input or hidden state.
   // The caller retains the ownership of the returned descriptor.
-  virtual port::StatusOr<std::unique_ptr<dnn::RnnStateTensorDescriptor>>
+  virtual tsl::StatusOr<std::unique_ptr<dnn::RnnStateTensorDescriptor>>
   createRnnStateTensorDescriptor(int num_layer, int batch_size, int data_size,
                                  dnn::DataType data_type) {
     return tsl::Status(port::error::UNIMPLEMENTED,

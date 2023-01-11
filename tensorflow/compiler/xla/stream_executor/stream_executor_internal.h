@@ -191,7 +191,7 @@ class StreamExecutorInterface {
                                  ModuleHandle* module_handle) {
     return port::UnimplementedError("Not Implemented");
   }
-  virtual port::StatusOr<std::shared_ptr<DeviceMemoryBase>>
+  virtual tsl::StatusOr<std::shared_ptr<DeviceMemoryBase>>
   CreateOrShareConstant(Stream* stream, const std::vector<uint8_t>& content) {
     return port::UnimplementedError("Not Implemented");
   }
@@ -299,7 +299,7 @@ class StreamExecutorInterface {
 
   // Creates a new DeviceDescription object. Ownership is transferred to the
   // caller.
-  virtual port::StatusOr<std::unique_ptr<DeviceDescription>>
+  virtual tsl::StatusOr<std::unique_ptr<DeviceDescription>>
   CreateDeviceDescription() const = 0;
 
   // Attempts to register the provided TraceListener with the device-specific

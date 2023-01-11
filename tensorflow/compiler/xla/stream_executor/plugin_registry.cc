@@ -88,7 +88,7 @@ tsl::Status PluginRegistry::RegisterFactoryInternal(
 }
 
 template <typename FACTORY_TYPE>
-port::StatusOr<FACTORY_TYPE> PluginRegistry::GetFactoryInternal(
+tsl::StatusOr<FACTORY_TYPE> PluginRegistry::GetFactoryInternal(
     PluginId plugin_id, const std::map<PluginId, FACTORY_TYPE>& factories,
     const std::map<PluginId, FACTORY_TYPE>& generic_factories) const {
   auto iter = factories.find(plugin_id);
@@ -108,7 +108,7 @@ bool PluginRegistry::SetDefaultFactory(Platform::Id platform_id,
                                        PluginKind plugin_kind,
                                        PluginId plugin_id) {
   if (!HasFactory(platform_id, plugin_kind, plugin_id)) {
-    port::StatusOr<Platform*> status =
+    tsl::StatusOr<Platform*> status =
         MultiPlatformManager::PlatformWithId(platform_id);
     std::string platform_name = "<unregistered platform>";
     if (status.ok()) {
@@ -179,7 +179,7 @@ bool PluginRegistry::HasFactory(Platform::Id platform_id,
 
 // Explicit instantiations to support types exposed in user/public API.
 #define EMIT_PLUGIN_SPECIALIZATIONS(FACTORY_TYPE, FACTORY_VAR, PLUGIN_STRING) \
-  template port::StatusOr<PluginRegistry::FACTORY_TYPE>                       \
+  template tsl::StatusOr<PluginRegistry::FACTORY_TYPE>                        \
   PluginRegistry::GetFactoryInternal<PluginRegistry::FACTORY_TYPE>(           \
       PluginId plugin_id,                                                     \
       const std::map<PluginId, PluginRegistry::FACTORY_TYPE>& factories,      \
@@ -210,7 +210,7 @@ bool PluginRegistry::HasFactory(Platform::Id platform_id,
   }                                                                           \
                                                                               \
   template <>                                                                 \
-  port::StatusOr<PluginRegistry::FACTORY_TYPE> PluginRegistry::GetFactory(    \
+  tsl::StatusOr<PluginRegistry::FACTORY_TYPE> PluginRegistry::GetFactory(     \
       Platform::Id platform_id, PluginId plugin_id) {                         \
     if (plugin_id == PluginConfig::kDefault) {                                \
       plugin_id = default_factories_[platform_id].FACTORY_VAR;                \
@@ -232,7 +232,7 @@ bool PluginRegistry::HasFactory(Platform::Id platform_id,
                                                                               \
   /* TODO(b/22689637): Also temporary WRT MultiPlatformManager */             \
   template <>                                                                 \
-  port::StatusOr<PluginRegistry::FACTORY_TYPE> PluginRegistry::GetFactory(    \
+  tsl::StatusOr<PluginRegistry::FACTORY_TYPE> PluginRegistry::GetFactory(     \
       PlatformKind platform_kind, PluginId plugin_id) {                       \
     auto iter = platform_id_by_kind_.find(platform_kind);                     \
     if (iter == platform_id_by_kind_.end()) {                                 \

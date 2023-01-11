@@ -210,7 +210,7 @@ bool StreamExecutor::UnloadModule(ModuleHandle module_handle) {
   return implementation_->UnloadModule(module_handle);
 }
 
-port::StatusOr<std::shared_ptr<DeviceMemoryBase>>
+tsl::StatusOr<std::shared_ptr<DeviceMemoryBase>>
 StreamExecutor::CreateOrShareConstant(Stream* stream,
                                       const std::vector<uint8_t>& content) {
   return implementation_->CreateOrShareConstant(stream, std::move(content));
@@ -395,7 +395,7 @@ bool StreamExecutor::GetBlasGemmAlgorithms(
   return blas_support->GetBlasGemmAlgorithms(stream, out_algorithms);
 }
 
-port::StatusOr<std::unique_ptr<dnn::RnnDescriptor>>
+tsl::StatusOr<std::unique_ptr<dnn::RnnDescriptor>>
 StreamExecutor::createRnnDescriptor(
     int num_layers, int hidden_size, int input_size, int cell_size,
     int batch_size, dnn::RnnInputMode input_mode,
@@ -414,7 +414,7 @@ StreamExecutor::createRnnDescriptor(
       state_allocator, use_padded_io);
 }
 
-port::StatusOr<std::unique_ptr<dnn::RnnSequenceTensorDescriptor>>
+tsl::StatusOr<std::unique_ptr<dnn::RnnSequenceTensorDescriptor>>
 StreamExecutor::createRnnSequenceTensorDescriptor(int max_seq_length,
                                                   int batch_size, int data_size,
                                                   dnn::DataType data_type) {
@@ -427,7 +427,7 @@ StreamExecutor::createRnnSequenceTensorDescriptor(int max_seq_length,
       max_seq_length, batch_size, data_size, data_type);
 }
 
-port::StatusOr<std::unique_ptr<dnn::RnnSequenceTensorDescriptor>>
+tsl::StatusOr<std::unique_ptr<dnn::RnnSequenceTensorDescriptor>>
 StreamExecutor::createRnnSequenceTensorDescriptor(
     int max_seq_length, int batch_size, int data_size,
     const absl::Span<const int>& seq_lengths, bool time_major,
@@ -442,7 +442,7 @@ StreamExecutor::createRnnSequenceTensorDescriptor(
       data_type);
 }
 
-port::StatusOr<std::unique_ptr<dnn::RnnStateTensorDescriptor>>
+tsl::StatusOr<std::unique_ptr<dnn::RnnStateTensorDescriptor>>
 StreamExecutor::createRnnStateTensorDescriptor(int num_layer, int batch_size,
                                                int data_size,
                                                dnn::DataType data_type) {
@@ -535,7 +535,7 @@ DeviceMemoryBase StreamExecutor::Allocate(uint64_t size, int64_t memory_space) {
   return buf;
 }
 
-port::StatusOr<DeviceMemoryBase> StreamExecutor::GetUntypedSymbol(
+tsl::StatusOr<DeviceMemoryBase> StreamExecutor::GetUntypedSymbol(
     const std::string& symbol_name, ModuleHandle module_handle) {
   // If failed to get the symbol, opaque/bytes are unchanged. Initialize them to
   // be nullptr/0 for consistency with DeviceMemory semantics.
@@ -931,7 +931,7 @@ StreamExecutorMemoryAllocator::StreamExecutorMemoryAllocator(
     : DeviceMemoryAllocator(platform),
       stream_executors_(stream_executors.begin(), stream_executors.end()) {}
 
-port::StatusOr<OwningDeviceMemory> StreamExecutorMemoryAllocator::Allocate(
+tsl::StatusOr<OwningDeviceMemory> StreamExecutorMemoryAllocator::Allocate(
     int device_ordinal, uint64_t size, bool retry_on_failure,
     int64_t memory_space) {
   TF_ASSIGN_OR_RETURN(StreamExecutor * executor,
@@ -961,8 +961,8 @@ tsl::Status StreamExecutorMemoryAllocator::Deallocate(int device_ordinal,
   return ::tsl::OkStatus();
 }
 
-port::StatusOr<StreamExecutor*>
-StreamExecutorMemoryAllocator::GetStreamExecutor(int device_ordinal) const {
+tsl::StatusOr<StreamExecutor*> StreamExecutorMemoryAllocator::GetStreamExecutor(
+    int device_ordinal) const {
   if (device_ordinal < 0) {
     return tsl::errors::InvalidArgument(absl::StrFormat(
         "device ordinal value (%d) must be non-negative", device_ordinal));
@@ -981,7 +981,7 @@ bool StreamExecutorMemoryAllocator::AllowsAsynchronousDeallocation() const {
   return false;
 }
 
-port::StatusOr<Stream*> StreamExecutorMemoryAllocator::GetStream(
+tsl::StatusOr<Stream*> StreamExecutorMemoryAllocator::GetStream(
     int device_ordinal) {
   CHECK(!AllowsAsynchronousDeallocation())
       << "The logic below only works for synchronous allocators";

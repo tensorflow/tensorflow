@@ -138,7 +138,7 @@ tsl::Status DnnSupport::GetConvolveRunners(
   return port::UnimplementedError("GetConvolveRunners not implemented.");
 }
 
-port::StatusOr<std::unique_ptr<const dnn::ConvRunner>>
+tsl::StatusOr<std::unique_ptr<const dnn::ConvRunner>>
 DnnSupport::ConvolveRunnerFromDesc(
     Stream* stream, const dnn::AlgorithmDesc& algorithm_desc,
     dnn::ConvolutionKind kind, dnn::DataType element_type,
@@ -175,7 +175,7 @@ tsl::Status DnnSupport::GetFusedMatmulRunners(
   return port::UnimplementedError("GetFusedMatmulRunners not implemented.");
 }
 
-port::StatusOr<std::unique_ptr<const dnn::FusedConvRunner>>
+tsl::StatusOr<std::unique_ptr<const dnn::FusedConvRunner>>
 DnnSupport::FusedConvolveRunnerFromDesc(
     Stream* stream, const dnn::AlgorithmDesc& algorithm_desc,
     dnn::ConvolutionKind kind, dnn::DataType element_type,

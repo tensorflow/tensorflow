@@ -166,7 +166,7 @@ class Stream {
   // Allocate temporary memories. The stream will deallocate them when blocked
   // or destroyed.
   template <typename T>
-  port::StatusOr<std::unique_ptr<TemporaryDeviceMemory<T>>>
+  tsl::StatusOr<std::unique_ptr<TemporaryDeviceMemory<T>>>
   AllocateTemporaryArray(uint64_t element_count);
 
   // Entrains onto the stream of operations: a kernel launch with the given
@@ -420,7 +420,7 @@ class Stream {
     return port::UnimplementedError("DNN library is not found.");
   }
 
-  port::StatusOr<std::unique_ptr<const dnn::ConvRunner>> ConvolveRunnerFromDesc(
+  tsl::StatusOr<std::unique_ptr<const dnn::ConvRunner>> ConvolveRunnerFromDesc(
       const dnn::AlgorithmDesc &algorithm_desc, dnn::ConvolutionKind kind,
       dnn::DataType element_type, dnn::DataType output_type,
       const dnn::BatchDescriptor &input_descriptor,
@@ -436,7 +436,7 @@ class Stream {
         filter_descriptor, output_descriptor, convolution_descriptor);
   }
 
-  port::StatusOr<std::unique_ptr<const dnn::FusedConvRunner>>
+  tsl::StatusOr<std::unique_ptr<const dnn::FusedConvRunner>>
   FusedConvolveRunnerFromDesc(
       const dnn::AlgorithmDesc &algorithm_desc, dnn::ConvolutionKind kind,
       dnn::DataType element_type, dnn::DataType bias_type,
@@ -1670,7 +1670,7 @@ inline tsl::Status Stream::ThenLaunch(ThreadDim thread_dims,
 }
 
 template <typename T>
-inline port::StatusOr<std::unique_ptr<TemporaryDeviceMemory<T>>>
+inline tsl::StatusOr<std::unique_ptr<TemporaryDeviceMemory<T>>>
 Stream::AllocateTemporaryArray(uint64_t element_count) {
   return temporary_memory_manager_.AllocateArray<T>(element_count);
 }

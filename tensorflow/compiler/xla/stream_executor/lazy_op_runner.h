@@ -50,7 +50,7 @@ class LazyOpRunner {
  public:
   // Construct from a pre-initialized OpRunner; all calls to GetOrCreateRunner
   // will return a pointer to exactly this runner.
-  static port::StatusOr<std::unique_ptr<LazyOpRunner>> FromOpRunner(
+  static tsl::StatusOr<std::unique_ptr<LazyOpRunner>> FromOpRunner(
       std::unique_ptr<const OpRunner<typename Op::Signature>> runner) {
     if (!runner) {
       return port::InternalError("Null runner argument to FromOpRunner");
@@ -75,7 +75,7 @@ class LazyOpRunner {
   // executor will be errors.
   //
   // The result is owned by LazyOpRunner.
-  port::StatusOr<const OpRunner<typename Op::Signature>*> GetOrCreateRunner(
+  tsl::StatusOr<const OpRunner<typename Op::Signature>*> GetOrCreateRunner(
       typename Op::Config config, Stream* stream) {
     absl::MutexLock lock(&mu_);
     if (!runner_) {
@@ -86,7 +86,7 @@ class LazyOpRunner {
   }
 
   // Get the contained runner with the invariant that it's already initialized.
-  port::StatusOr<const OpRunner<typename Op::Signature>*> GetRunner() {
+  tsl::StatusOr<const OpRunner<typename Op::Signature>*> GetRunner() {
     absl::MutexLock lock(&mu_);
     if (!runner_) {
       return port::InternalError("LazyOpRunner::GetRunner: not initialized");
@@ -126,7 +126,7 @@ struct ConvOp {
     const ConvolutionDescriptor& convolution_descriptor;
   };
 
-  static port::StatusOr<std::unique_ptr<const OpRunner<ConvSignature>>>
+  static tsl::StatusOr<std::unique_ptr<const OpRunner<ConvSignature>>>
   RunnerFromAlgorithmDesc(const AlgorithmDesc& desc, Config config,
                           Stream* stream) {
     return stream->ConvolveRunnerFromDesc(
@@ -152,7 +152,7 @@ struct FusedConvOp {
     ActivationMode activation_mode;
   };
 
-  static port::StatusOr<std::unique_ptr<const OpRunner<FusedConvSignature>>>
+  static tsl::StatusOr<std::unique_ptr<const OpRunner<FusedConvSignature>>>
   RunnerFromAlgorithmDesc(const AlgorithmDesc& desc, Config config,
                           Stream* stream) {
     return stream->FusedConvolveRunnerFromDesc(
@@ -174,7 +174,7 @@ struct FusedMatmulOp {
   // this feature.
   struct Config {};
 
-  static port::StatusOr<std::unique_ptr<const OpRunner<Signature>>>
+  static tsl::StatusOr<std::unique_ptr<const OpRunner<Signature>>>
   RunnerFromAlgorithmDesc(const AlgorithmDesc& desc, Config config,
                           Stream* stream) {
     return port::UnimplementedError("Unimplemented");
