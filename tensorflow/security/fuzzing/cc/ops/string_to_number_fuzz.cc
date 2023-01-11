@@ -15,7 +15,6 @@
 #include <gtest/gtest.h>
 #include "fuzztest/fuzztest.h"
 #include "tensorflow/cc/ops/standard_ops.h"
-#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/security/fuzzing/cc/fuzz_session.h"
 
 namespace tensorflow {

@@ -9,6 +9,11 @@ load(
     "tf_cc_test",
 )
 
+load(
+    "//tensorflow/security/fuzzing:tf_fuzzing.bzl",
+    "tf_fuzz_target",
+)
+
 # copybara:uncomment package(default_applicable_licenses = ["//tensorflow:license"])
 
 # A trivial fuzzer with no pre-specified corpus.
@@ -83,7 +88,7 @@ tf_cc_test(
     ],
 )
 
-tf_cc_shared_test(
+tf_fuzz_target(
     name = "string_to_number_fuzz",
     srcs = ["string_to_number_fuzz.cc"],
     tags = ["no_oss"],
@@ -94,6 +99,5 @@ tf_cc_shared_test(
         "//tensorflow/security/fuzzing/cc:fuzz_session",
         "@com_google_fuzztest//fuzztest",
         "@com_google_fuzztest//fuzztest:fuzztest_gtest_main",
-        "@com_google_googletest//:gtest_main",
     ],
 )
