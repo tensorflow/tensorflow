@@ -32,16 +32,15 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-#define GEN_PASS_DEF_CONVERTLAUNCHFUNCTOCUDAGRAPHPASS
+#define GEN_PASS_DEF_OUTLINECUDAGRAPHSPASS
 #include "tensorflow/compiler/xla/mlir/backends/gpu/transforms/passes.h.inc"
 
 using namespace mlir;  // NOLINT
 
 using mlir::gpu::LaunchFuncOp;
 
-class ConvertLaunchFuncToCudaGraphPass
-    : public impl::ConvertLaunchFuncToCudaGraphPassBase<
-          ConvertLaunchFuncToCudaGraphPass> {
+class OutlineCudaGraphsPass
+    : public impl::OutlineCudaGraphsPassBase<OutlineCudaGraphsPass> {
   void runOnOperation() override;
 
   void getDependentDialects(DialectRegistry& registry) const override {
@@ -167,7 +166,7 @@ static void Outline(CustomCallDeclarations& custom_calls,
 
 //===----------------------------------------------------------------------===//
 
-void ConvertLaunchFuncToCudaGraphPass::runOnOperation() {
+void OutlineCudaGraphsPass::runOnOperation() {
   SymbolTable sym_table(getOperation());
   CustomCallDeclarations custom_calls(std::move(sym_table));
 
@@ -177,8 +176,8 @@ void ConvertLaunchFuncToCudaGraphPass::runOnOperation() {
 }
 
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
-createConvertLaunchFuncToCudaGraphPass() {
-  return std::make_unique<ConvertLaunchFuncToCudaGraphPass>();
+createOutlineCudaGraphsPass() {
+  return std::make_unique<OutlineCudaGraphsPass>();
 }
 
 }  // namespace gpu

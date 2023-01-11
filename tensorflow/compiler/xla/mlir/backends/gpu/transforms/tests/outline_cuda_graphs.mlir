@@ -1,4 +1,4 @@
-// RUN: xla-gpu-opt %s --split-input-file -xla-gpu-launch-func-to-cuda-graphs \
+// RUN: xla-gpu-opt %s --split-input-file -xla-gpu-outline-cuda-graphs \
 // RUN:   | FileCheck %s
 
 module attributes {gpu.container_module} {

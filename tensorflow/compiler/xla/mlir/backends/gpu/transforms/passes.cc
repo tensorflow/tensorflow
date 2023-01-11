@@ -41,7 +41,7 @@ void populateXlaGpuRuntimePasses(mlir::OpPassManager& pm,
   pm.addPass(createConvertLmhloToGpuRuntimePass());
 
   if (opts.enable_cuda_graphs) {
-    pm.addPass(createConvertLaunchFuncToCudaGraphPass());
+    pm.addPass(createOutlineCudaGraphsPass());
   }
 
   pm.addPass(createConvertGpuToGpuRuntimePass());
