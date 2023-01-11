@@ -162,7 +162,7 @@ class CursesNavigationHistory(object):
         the shortcut menu item.
       forward_command: (`str`) command for going forward. Used to construct the
         shortcut menu item.
-       latest_command_attribute: font attribute for lastest command.
+       latest_command_attribute: font attribute for latest command.
        old_command_attribute: font attribute for old (non-latest) command.
 
     Returns:
