@@ -131,6 +131,10 @@ std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
 createTransformReduceForCpuPass(int64_t vectorSize = 8, int64_t tileSize1D = 32,
                                 ArrayRef<int64_t> tileSizes2D = {});
 
+/// Pass to transform a thlo.reverse op for CPU backend.
+std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
+createTransformReverseForCpuPass(int64_t vectorSize = 8);
+
 /// Pass to transform a linalg.transpose op for CPU backend.
 std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
 createTransformTransposeForCpuPass(ArrayRef<int64_t> tileSizes = std::nullopt);

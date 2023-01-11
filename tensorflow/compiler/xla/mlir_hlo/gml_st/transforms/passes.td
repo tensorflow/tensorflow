@@ -286,6 +286,16 @@ def TransformReduceForCpuPass :
   ];
 }
 
+def TransformReverseForCpuPass :
+  Pass<"xla-cpu-transform-reverse", "mlir::func::FuncOp"> {
+    let summary = "Transform reverse ops for running on CPU";
+    let constructor = "createTransformReverseForCpuPass()";
+    let options = [
+      Option<"vectorSize", "vector-size", "int64_t", "8",
+           "Vector size for 'thlo.reverse`">,
+    ];
+  }
+
 def TransformSortForCpuPass :
     Pass<"gml-st-cpu-transform-sort", "mlir::func::FuncOp"> {
   let summary = "Transform sort ops for running on CPU";

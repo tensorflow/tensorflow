@@ -46,6 +46,7 @@ add_mlir_library(GmlStPasses
   transform_matmul_for_cpu/transform_matmul_for_cpu.cc
   transform_matmul_for_triton/transform_matmul_for_triton.cc
   transform_reduce_for_cpu/transform_reduce_for_cpu.cc
+  transform_reverse_for_cpu/transform_reverse_for_cpu.cc
   transform_tileable_ops_for_cpu/transform_tileable_ops_for_cpu.cc
   transform_transpose_for_cpu/transform_transpose_for_cpu.cc
   transform_scatter_for_cpu/transform_scatter_for_cpu.cc
