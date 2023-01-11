@@ -15,20 +15,28 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/translate/mhlo_to_lhlo_with_xla/mhlo_to_lhlo_with_xla.h"
 
+#include <algorithm>
+#include <array>
 #include <climits>
 #include <functional>
 #include <memory>
+#include <optional>
+#include <string>
 #include <tuple>
+#include <utility>
+#include <vector>
 
 #include "absl/algorithm/container.h"
 #include "absl/cleanup/cleanup.h"
 #include "absl/types/optional.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
+#include "mlir/AsmParser/AsmParser.h"  // from @llvm-project
 #include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/Bufferization/IR/Bufferization.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/MemRef/IR/MemRef.h"  // from @llvm-project
+#include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
@@ -297,19 +305,20 @@ tsl::StatusOr<mlir::Operation*> LhloDialectEmitter::CreateOpInFusion(
     std::vector<int64_t> dimensions(instr->dimensions().begin(),
                                     instr->dimensions().end());
     auto reduce_op = b.create<mhlo::ReduceOp>(
-        loc, llvm::makeArrayRef(loads).take_front(loads.size() / 2),
-        llvm::makeArrayRef(loads).drop_front(loads.size() / 2),
+        loc, llvm::ArrayRef(loads).take_front(loads.size() / 2),
+        llvm::ArrayRef(loads).drop_front(loads.size() / 2),
         GetI64DenseElementsAttr(dimensions));
 
     TF_RETURN_IF_ERROR(xla::HloFunctionImporter::ImportAsRegion(
-        *instr->called_computations()[0], &reduce_op.getBody(), &builder_,
+        *instr->called_computations()[0], symbol_table_, &reduce_op.getBody(),
+        &builder_,
         /*flatten_region_arg_tuple=*/true));
     op = reduce_op;
   } else {
-    TF_ASSIGN_OR_RETURN(
-        op,
-        xla::HloFunctionImporter::ImportInstruction(
-            instr, loads, &b, xla::DynamicShapeHandlingMode::kConvertToStatic));
+    TF_ASSIGN_OR_RETURN(op,
+                        xla::HloFunctionImporter::ImportInstruction(
+                            instr, loads, symbol_table_, &b,
+                            xla::DynamicShapeHandlingMode::kConvertToStatic));
   }
   TF_RET_CHECK(op->getNumResults() == num_results);
   for (int i = 0; i < results.size(); i++) {
@@ -356,6 +365,10 @@ tsl::StatusOr<mlir::Operation*> LhloDialectEmitter::EmitOp(
       return EmitBitcast(instr);
     case HloOpcode::kCollectivePermute:
       return EmitCollectivePermuteOp(instr);
+    case HloOpcode::kCollectivePermuteStart:
+      return EmitCollectivePermuteStartOp(instr);
+    case HloOpcode::kCollectivePermuteDone:
+      return EmitCollectivePermuteDoneOp(instr);
     case HloOpcode::kConditional:
       return EmitCaseOp(instr);
     case HloOpcode::kFft:
@@ -390,6 +403,14 @@ tsl::StatusOr<mlir::Operation*> LhloDialectEmitter::EmitOp(
       return EmitRngGetAndUpdateStateOp(instr);
     case HloOpcode::kWhile:
       return EmitWhileOp(instr);
+    case HloOpcode::kSend:
+      return EmitSendOp(instr);
+    case HloOpcode::kSendDone:
+      return EmitSendDoneOp(instr);
+    case HloOpcode::kRecv:
+      return EmitRecvOp(instr);
+    case HloOpcode::kRecvDone:
+      return EmitRecvDoneOp(instr);
 
     case HloOpcode::kAbs:
     case HloOpcode::kAdd:
@@ -474,7 +495,8 @@ tsl::StatusOr<lmhlo::SortOp> LhloDialectEmitter::EmitSortOp(
       builder_.getI64IntegerAttr(sort_instr->sort_dimension()));
   sort.setIsStableAttr(builder_.getBoolAttr(sort_instr->is_stable()));
   TF_RETURN_IF_ERROR(xla::HloFunctionImporter::ImportAsRegion(
-      *sort_instr->called_computations()[0], &sort.getComparator(), &builder_));
+      *sort_instr->called_computations()[0], symbol_table_,
+      &sort.getComparator(), &builder_));
   return sort;
 }
 
@@ -564,7 +586,7 @@ tsl::StatusOr<lmhlo::FusionOp> LhloDialectEmitter::EmitFusionOp(
   TF_ASSIGN_OR_RETURN(Value result,
                       xla::HloFunctionImporter::ImportInstructions(
                           *fusion_instr->fused_instructions_computation(),
-                          arguments, &region_builder));
+                          arguments, symbol_table_, &region_builder));
   {
     int i = 0;
     llvm::SmallVector<Value, 4> output;
@@ -644,8 +666,8 @@ tsl::StatusOr<lmhlo::ScatterOp> LhloDialectEmitter::EmitScatterOp(
 
   // import update computation as region
   TF_RETURN_IF_ERROR(xla::HloFunctionImporter::ImportAsRegion(
-      *scatter_instr->called_computations()[0], &scatter.getUpdateComputation(),
-      &builder_));
+      *scatter_instr->called_computations()[0], symbol_table_,
+      &scatter.getUpdateComputation(), &builder_));
 
   return scatter;
 }
@@ -680,11 +702,11 @@ LhloDialectEmitter::EmitSelectAndScatterOp(const HloInstruction* instr) {
 
   // import select and scatter computation as region
   TF_RETURN_IF_ERROR(xla::HloFunctionImporter::ImportAsRegion(
-      *select_and_scatter_instr->select(), &select_and_scatter.getSelect(),
-      &builder_));
+      *select_and_scatter_instr->select(), symbol_table_,
+      &select_and_scatter.getSelect(), &builder_));
   TF_RETURN_IF_ERROR(xla::HloFunctionImporter::ImportAsRegion(
-      *select_and_scatter_instr->scatter(), &select_and_scatter.getScatter(),
-      &builder_));
+      *select_and_scatter_instr->scatter(), symbol_table_,
+      &select_and_scatter.getScatter(), &builder_));
   return select_and_scatter;
 }
 
@@ -706,6 +728,10 @@ tsl::StatusOr<mlir::Operation*> LhloDialectEmitter::EmitCustomCallOp(
 
   if (xla::gpu::IsCublasLtMatmul(*instr)) {
     return EmitCublasLtMatmul(custom_call_instr);
+  }
+
+  if (xla::gpu::IsCublasLtMatmulF8(*instr)) {
+    return EmitCublasLtMatmulF8(custom_call_instr);
   }
 
   if (xla::gpu::IsCustomCallToDnnConvolution(*instr)) {
@@ -764,15 +790,40 @@ tsl::StatusOr<mlir::Operation*> LhloDialectEmitter::EmitCustomCallOp(
       ConvertCustomCallApiVersion(custom_call_instr->api_version()));
   custom_call.setCallTargetNameAttr(
       builder_.getStringAttr(custom_call_instr->custom_call_target()));
-  custom_call.setBackendConfigAttr(
-      builder_.getStringAttr(custom_call_instr->opaque()));
   custom_call.setApiVersionAttr(mhlo::CustomCallApiVersionAttr::get(
       builder_.getContext(), mlir_api_version));
+
+  // For typed custom calls we need to parse user-defined attributes back to the
+  // dictionary attribute, and then add them back to the custom call op.
+  if (mlir_api_version == mhlo::CustomCallApiVersion::API_VERSION_TYPED_FFI) {
+    if (custom_call_instr->opaque().empty()) {
+      auto empty = mlir::DictionaryAttr::get(builder_.getContext());
+      custom_call.setBackendConfigAttr(empty);
+    } else {
+      mlir::Attribute attr = mlir::parseAttribute(custom_call_instr->opaque(),
+                                                  builder_.getContext());
+      TF_RET_CHECK(attr.isa<mlir::DictionaryAttr>())
+          << "Couldn't parse backend config into a dictionary attribute";
+      custom_call.setBackendConfigAttr(attr);
+    }
+  } else {
+    custom_call.setBackendConfigAttr(
+        builder_.getStringAttr(custom_call_instr->opaque()));
+  }
+
   const int32_t segments[2] = {static_cast<int32_t>(num_arguments),
                                static_cast<int32_t>(num_results)};
   custom_call->setAttr(lmhlo::CustomCallOp::getOperandSegmentSizeAttr(),
                        builder_.getDenseI32ArrayAttr(segments));
   if (target_mapping) custom_call.setTargetArgMappingAttr(target_mapping);
+
+  for (int i = 0; i < custom_call_instr->called_computations().size(); ++i) {
+    auto& region = custom_call->getRegion(i);
+    TF_RETURN_IF_ERROR(xla::HloFunctionImporter::ImportAsRegion(
+        *custom_call_instr->called_computation(), symbol_table_, &region,
+        &builder_));
+  }
+
   return custom_call.getOperation();
 }
 
@@ -801,9 +852,10 @@ tsl::StatusOr<lmhlo::FusionOp> LhloDialectEmitter::EmitSoftmax(
     arguments.push_back(arg);
   }
 
-  TF_ASSIGN_OR_RETURN(Value result,
-                      xla::HloFunctionImporter::ImportInstructions(
-                          *instr->to_apply(), arguments, &region_builder));
+  TF_ASSIGN_OR_RETURN(
+      Value result,
+      xla::HloFunctionImporter::ImportInstructions(
+          *instr->to_apply(), arguments, symbol_table_, &region_builder));
   llvm::SmallVector<Value, 4> output;
   TF_RETURN_IF_ERROR(GetOrCreateView(instr, &output));
   region_builder.create<memref::TensorStoreOp>(loc, result, output[0]);
@@ -853,16 +905,20 @@ tsl::StatusOr<lmhlo_gpu::CublasLtMatmulEpilogue> AsLhloEpilogue(
   switch (epilogue) {
     case xla::gpu::GemmBackendConfig::DEFAULT:
       return lmhlo_gpu::CublasLtMatmulEpilogue::Default;
-      break;
-    case xla::gpu::GemmBackendConfig::BIAS:
-      return lmhlo_gpu::CublasLtMatmulEpilogue::Bias;
-      break;
     case xla::gpu::GemmBackendConfig::RELU:
       return lmhlo_gpu::CublasLtMatmulEpilogue::Relu;
-      break;
-    case xla::gpu::GemmBackendConfig::BIASRELU:
+    case xla::gpu::GemmBackendConfig::GELU:
+      return lmhlo_gpu::CublasLtMatmulEpilogue::Gelu;
+    case xla::gpu::GemmBackendConfig::GELU_AUX:
+      return lmhlo_gpu::CublasLtMatmulEpilogue::GeluAux;
+    case xla::gpu::GemmBackendConfig::BIAS:
+      return lmhlo_gpu::CublasLtMatmulEpilogue::Bias;
+    case xla::gpu::GemmBackendConfig::BIAS_RELU:
       return lmhlo_gpu::CublasLtMatmulEpilogue::BiasRelu;
-      break;
+    case xla::gpu::GemmBackendConfig::BIAS_GELU:
+      return lmhlo_gpu::CublasLtMatmulEpilogue::BiasGelu;
+    case xla::gpu::GemmBackendConfig::BIAS_GELU_AUX:
+      return lmhlo_gpu::CublasLtMatmulEpilogue::BiasGeluAux;
     default:
       return xla::InternalError("unknown epilogue");
   }
@@ -905,23 +961,79 @@ tsl::StatusOr<Operation*> LhloDialectEmitter::EmitCublasLtMatmul(
       bool has_vector_bias,
       xla::gpu::cublas_lt::EpilogueAddsVectorBias(config.epilogue()));
 
+  TF_ASSIGN_OR_RETURN(
+      bool has_aux_output,
+      xla::gpu::cublas_lt::EpilogueHasAuxiliaryOutput(config.epilogue()));
+
   TF_RET_CHECK(custom_call->operand_count() ==
                2 + int{has_matrix_bias} + int{has_vector_bias});
 
-  llvm::SmallVector<Value, 5> operands;
+  xla::ShapeIndex output_index =
+      has_aux_output ? xla::ShapeIndex{0} : xla::ShapeIndex{};
+
+  llvm::SmallVector<Value, 6> operands;
   TF_RETURN_IF_ERROR(GetOrCreateView(custom_call->operand(0), &operands));
   TF_RETURN_IF_ERROR(GetOrCreateView(custom_call->operand(1), &operands));
-  TF_RETURN_IF_ERROR(GetOrCreateView(
-      has_matrix_bias ? custom_call->operand(2) : custom_call, &operands));
-  TF_RETURN_IF_ERROR(GetOrCreateView(custom_call, &operands));
+  if (has_matrix_bias) {
+    TF_RETURN_IF_ERROR(GetOrCreateView(custom_call->operand(2), &operands));
+  } else {
+    TF_RETURN_IF_ERROR(GetOrCreateView(custom_call, &operands, output_index));
+  }
+  TF_RETURN_IF_ERROR(GetOrCreateView(custom_call, &operands, output_index));
 
   if (has_vector_bias) {
     TF_RETURN_IF_ERROR(GetOrCreateView(
         custom_call->operand(has_matrix_bias ? 3 : 2), &operands));
   }
 
+  if (has_aux_output) {
+    TF_RETURN_IF_ERROR(GetOrCreateView(custom_call, &operands, {1}));
+  }
+
   auto op =
       CreateOpWithoutAttrs<lmhlo_gpu::CublasLtMatmulOp>(custom_call, operands);
+  SetMatmulAttributes(op, config, builder_);
+
+  int32_t operand_sizes[] = {
+      1, 1, 1, 1, has_vector_bias ? 1 : 0, has_aux_output ? 1 : 0};
+  op->setAttr(op.getOperandSegmentSizeAttr(),
+              builder_.getDenseI32ArrayAttr(operand_sizes));
+
+  TF_ASSIGN_OR_RETURN(lmhlo_gpu::CublasLtMatmulEpilogue epilogue,
+                      AsLhloEpilogue(config.epilogue()));
+  op.setEpilogueAttr(lmhlo_gpu::CublasLtMatmulEpilogueAttr::get(
+      builder_.getContext(), epilogue));
+
+  // Use the first algorithm by default (i.e. fastest according to heuristics).
+  if (config.algorithm_case() !=
+      xla::gpu::GemmBackendConfig::kSelectedAlgorithm) {
+    op.setAlgorithmAttr(builder_.getI64IntegerAttr(0));
+  }
+
+  return op.getOperation();
+}
+
+tsl::StatusOr<Operation*> LhloDialectEmitter::EmitCublasLtMatmulF8(
+    const HloCustomCallInstruction* custom_call) {
+  TF_ASSIGN_OR_RETURN(
+      auto const config,
+      custom_call->backend_config<xla::gpu::GemmBackendConfig>());
+
+  TF_RET_CHECK(custom_call->operand_count() == 7);
+
+  llvm::SmallVector<Value, 9> operands;
+  TF_RETURN_IF_ERROR(GetOrCreateView(custom_call->operand(0), &operands));
+  TF_RETURN_IF_ERROR(GetOrCreateView(custom_call->operand(1), &operands));
+  TF_RETURN_IF_ERROR(GetOrCreateView(custom_call->operand(2), &operands));
+  TF_RETURN_IF_ERROR(GetOrCreateView(custom_call->operand(3), &operands));
+  TF_RETURN_IF_ERROR(GetOrCreateView(custom_call->operand(4), &operands));
+  TF_RETURN_IF_ERROR(GetOrCreateView(custom_call->operand(5), &operands));
+  TF_RETURN_IF_ERROR(GetOrCreateView(custom_call->operand(6), &operands));
+  TF_RETURN_IF_ERROR(GetOrCreateView(custom_call, &operands));
+
+  auto op = CreateOpWithoutAttrs<lmhlo_gpu::CublasLtMatmulF8Op>(custom_call,
+                                                                operands);
+
   SetMatmulAttributes(op, config, builder_);
 
   TF_ASSIGN_OR_RETURN(lmhlo_gpu::CublasLtMatmulEpilogue epilogue,
@@ -1136,7 +1248,7 @@ tsl::StatusOr<mlir::memref::GetGlobalOp> LhloDialectEmitter::EmitConstant(
     auto global_var = builder_.create<memref::GlobalOp>(
         loc, constant_name, builder_.getStringAttr("private"), memref_type,
         initial_value, true, /*alignment=*/IntegerAttr());
-    SymbolTable(module_).insert(global_var);
+    symbol_table_.insert(global_var);
     global_var.getOperation()->moveBefore(&module_.front());
 
     // For operations that do not fold this constant value in their codegen, we
@@ -1227,8 +1339,8 @@ tsl::StatusOr<lmhlo::AllReduceOp> LhloDialectEmitter::EmitAllReduceOp(
   all_reduce_op.setUseGlobalDeviceIdsAttr(
       builder_.getBoolAttr(all_reduce->use_global_device_ids()));
   TF_RETURN_IF_ERROR(xla::HloFunctionImporter::ImportAsRegion(
-      *instr->called_computations()[0], &all_reduce_op.getComputation(),
-      &builder_));
+      *instr->called_computations()[0], symbol_table_,
+      &all_reduce_op.getComputation(), &builder_));
   return all_reduce_op;
 }
 
@@ -1240,10 +1352,10 @@ LhloDialectEmitter::EmitAllReduceStartOp(const HloInstruction* instr) {
   }
   TF_RETURN_IF_ERROR(GetOrCreateView(instr, &operands, /*result_subset=*/{}));
 
-  Location loc = getLocation(instr);
+  mlir::Location loc = getLocation(instr);
   mlir::Type token_type = mlir::mhlo::TokenType::get(builder_.getContext());
   std::array<mlir::Type, 1> result_types = {token_type};
-  lmhlo_gpu::AllReduceStartOp all_reduce_start_op =
+  auto all_reduce_start_op =
       builder_.create<lmhlo_gpu::AllReduceStartOp>(loc, result_types, operands);
 
   auto* all_reduce = xla::Cast<xla::HloAllReduceInstruction>(instr);
@@ -1252,30 +1364,21 @@ LhloDialectEmitter::EmitAllReduceStartOp(const HloInstruction* instr) {
   all_reduce_start_op.setUseGlobalDeviceIdsAttr(
       builder_.getBoolAttr(all_reduce->use_global_device_ids()));
   TF_RETURN_IF_ERROR(xla::HloFunctionImporter::ImportAsRegion(
-      *instr->called_computations()[0], &all_reduce_start_op.getComputation(),
-      &builder_));
+      *instr->called_computations()[0], symbol_table_,
+      &all_reduce_start_op.getComputation(), &builder_));
 
-  TF_RET_CHECK(all_reduce_start_ops_.emplace(instr, all_reduce_start_op).second)
-      << "all-reduce-start already lowered";
+  auto [_, was_inserted] =
+      ret_tokens_.insert({instr, all_reduce_start_op.getToken()});
+  TF_RET_CHECK(was_inserted) << "all-reduce-start already lowered";
   return all_reduce_start_op;
 }
 
 tsl::StatusOr<lmhlo_gpu::AllReduceDoneOp>
 LhloDialectEmitter::EmitAllReduceDoneOp(const HloInstruction* instr) {
-  auto it = all_reduce_start_ops_.find(instr->operand(0));
-  TF_RET_CHECK(it != all_reduce_start_ops_.end())
-      << "didn't find all-reduce-start op";
-
-  llvm::SmallVector<Value, 4> operands;
-  operands.push_back(it->second.getToken());
-  all_reduce_start_ops_.erase(it);
-
-  for (const HloInstruction* operand : instr->operands()) {
-    TF_RETURN_IF_ERROR(GetOrCreateView(operand, &operands));
-  }
-  // We don't need to add buffers for the outputs, as these always alias inputs.
+  auto token = ret_tokens_.extract(instr->operand(0));
+  TF_RET_CHECK(token) << "didn't find all-reduce-start token";
   return builder_.create<lmhlo_gpu::AllReduceDoneOp>(
-      getLocation(instr), /*resultTypes=*/llvm::None, operands);
+      getLocation(instr), /*resultTypes=*/llvm::None, token.mapped());
 }
 
 tsl::StatusOr<lmhlo::ReduceScatterOp> LhloDialectEmitter::EmitReduceScatterOp(
@@ -1288,8 +1391,8 @@ tsl::StatusOr<lmhlo::ReduceScatterOp> LhloDialectEmitter::EmitReduceScatterOp(
   reduce_scatter_op.setUseGlobalDeviceIdsAttr(
       builder_.getBoolAttr(ars->use_global_device_ids()));
   TF_RETURN_IF_ERROR(xla::HloFunctionImporter::ImportAsRegion(
-      *instr->called_computations()[0], &reduce_scatter_op.getComputation(),
-      &builder_));
+      *instr->called_computations()[0], symbol_table_,
+      &reduce_scatter_op.getComputation(), &builder_));
   reduce_scatter_op.setScatterDimensionAttr(
       builder_.getI64IntegerAttr(ars->scatter_dimension()));
   return reduce_scatter_op;
@@ -1307,6 +1410,43 @@ LhloDialectEmitter::EmitCollectivePermuteOp(const HloInstruction* instr) {
   permute_op->setAttr(source_target_pairs_attr.getName(),
                       source_target_pairs_attr.getValue());
   return permute_op;
+}
+
+tsl::StatusOr<lmhlo_gpu::CollectivePermuteStartOp>
+LhloDialectEmitter::EmitCollectivePermuteStartOp(const HloInstruction* instr) {
+  llvm::SmallVector<Value, 2> operands;
+  for (const HloInstruction* operand : instr->operands()) {
+    TF_RETURN_IF_ERROR(GetOrCreateView(operand, &operands));
+  }
+  // Ignore the aliased first output and TPU-specific outputs.
+  TF_RETURN_IF_ERROR(GetOrCreateView(instr, &operands, /*result_subset=*/{1}));
+
+  mlir::Location loc = getLocation(instr);
+  mlir::Type token_type = mlir::mhlo::TokenType::get(builder_.getContext());
+  std::array<mlir::Type, 1> result_types = {token_type};
+  auto permute_start_op = builder_.create<lmhlo_gpu::CollectivePermuteStartOp>(
+      loc, result_types, operands);
+
+  auto* permute = xla::Cast<xla::HloCollectivePermuteInstruction>(instr);
+  SetupChannelIdAttribute(permute_start_op, permute, builder_);
+  mlir::NamedAttribute source_target_pairs_attr =
+      xla::HloFunctionImporter::ConvertSourceTargetPairs(
+          permute->source_target_pairs(), &builder_);
+  permute_start_op->setAttr(source_target_pairs_attr.getName(),
+                            source_target_pairs_attr.getValue());
+
+  auto [_, was_inserted] =
+      ret_tokens_.insert({instr, permute_start_op.getToken()});
+  TF_RET_CHECK(was_inserted) << "collective-permute-start already lowered";
+  return permute_start_op;
+}
+
+tsl::StatusOr<lmhlo_gpu::CollectivePermuteDoneOp>
+LhloDialectEmitter::EmitCollectivePermuteDoneOp(const HloInstruction* instr) {
+  auto token = ret_tokens_.extract(instr->operand(0));
+  TF_RET_CHECK(token) << "didn't find collective-permute-start token";
+  return builder_.create<lmhlo_gpu::CollectivePermuteDoneOp>(
+      getLocation(instr), /*resultTypes=*/llvm::None, token.mapped());
 }
 
 tsl::StatusOr<lmhlo::InfeedOp> LhloDialectEmitter::EmitInfeedOp(
@@ -1471,6 +1611,96 @@ tsl::StatusOr<lmhlo::WhileOp> LhloDialectEmitter::EmitWhileOp(
                                          &while_op.getBody()));
 
   return while_op;
+}
+
+// TODO(b/264291989): Use enum to define the host transfer type (channel type).
+template <typename Instr, typename OpTy>
+static void CopyChannelAttrs(OpBuilder& b, Instr* instr, OpTy op,
+                             int host_transfer_type) {
+  op.setIsHostTransferAttr(b.getBoolAttr(instr->is_host_transfer()));
+  op.setChannelHandleAttr(mlir::mhlo::ChannelHandleAttr::get(
+      b.getContext(), *instr->channel_id(),
+      instr->is_host_transfer() ? host_transfer_type : /*DEVICE_TO_DEVICE*/ 1));
+}
+
+template <typename Instr, typename OpTy>
+static void CopyFrontendAttrs(OpBuilder& b, Instr* instr, OpTy op) {
+  llvm::SmallVector<NamedAttribute> frontend_attrs;
+  for (auto& [name, value] : instr->frontend_attributes().map()) {
+    frontend_attrs.push_back(b.getNamedAttr(name, b.getStringAttr(value)));
+  }
+  op->setAttr(b.getStringAttr("frontend_attributes"),
+              b.getDictionaryAttr(frontend_attrs));
+}
+
+tsl::StatusOr<lmhlo::SendOp> LhloDialectEmitter::EmitSendOp(
+    const xla::HloInstruction* instr) {
+  llvm::SmallVector<Value, 2> operands;
+  TF_RETURN_IF_ERROR(GetOrCreateView(instr->operand(0), &operands));
+
+  auto token = mhlo::TokenType::get(builder_.getContext());
+  auto send_op = builder_.create<lmhlo::SendOp>(getLocation(instr),
+                                                TypeRange(token), operands);
+
+  // Set point-to-point op communication attributes.
+  auto* send = xla::Cast<xla::HloSendInstruction>(instr);
+  CopyChannelAttrs(builder_, send, send_op, /*host_transfer_type=*/2);
+  CopyFrontendAttrs(builder_, send, send_op);
+
+  auto [_, emplaced] = ret_tokens_.try_emplace(instr, send_op.getToken());
+  TF_RET_CHECK(emplaced) << "send already lowered";
+  return send_op;
+}
+
+tsl::StatusOr<lmhlo::SendDoneOp> LhloDialectEmitter::EmitSendDoneOp(
+    const xla::HloInstruction* instr) {
+  auto token = ret_tokens_.extract(instr->operand(0));
+  TF_RET_CHECK(token) << "didn't find send-done token";
+
+  auto send_done_op = builder_.create<lmhlo::SendDoneOp>(
+      getLocation(instr), /*resultTypes=*/llvm::None, token.mapped());
+
+  // Copy send-done attributes.
+  auto* send_done = xla::Cast<xla::HloSendDoneInstruction>(instr);
+  CopyChannelAttrs(builder_, send_done, send_done_op,
+                   /*host_transfer_type=*/2);
+
+  return send_done_op;
+}
+
+tsl::StatusOr<lmhlo::RecvOp> LhloDialectEmitter::EmitRecvOp(
+    const xla::HloInstruction* instr) {
+  llvm::SmallVector<Value, 2> operands;
+  TF_RETURN_IF_ERROR(GetOrCreateView(instr, &operands, {0}));
+
+  auto token = mhlo::TokenType::get(builder_.getContext());
+  auto recv_op = builder_.create<lmhlo::RecvOp>(getLocation(instr),
+                                                TypeRange(token), operands);
+
+  // Set point-to-point op communication attributes.
+  auto* recv = xla::Cast<xla::HloRecvInstruction>(instr);
+  CopyChannelAttrs(builder_, recv, recv_op, /*host_transfer_type=*/3);
+  CopyFrontendAttrs(builder_, recv, recv_op);
+
+  auto [_, emplaced] = ret_tokens_.try_emplace(instr, recv_op.getToken());
+  TF_RET_CHECK(emplaced) << "recv already lowered";
+  return recv_op;
+}
+
+tsl::StatusOr<lmhlo::RecvDoneOp> LhloDialectEmitter::EmitRecvDoneOp(
+    const xla::HloInstruction* instr) {
+  auto token = ret_tokens_.extract(instr->operand(0));
+  TF_RET_CHECK(token) << "didn't find recv-done token";
+
+  auto recv_done_op = builder_.create<lmhlo::RecvDoneOp>(
+      getLocation(instr), /*resultTypes=*/llvm::None, token.mapped());
+
+  // Copy recv-done attributes.
+  auto* recv_done = xla::Cast<xla::HloRecvDoneInstruction>(instr);
+  CopyChannelAttrs(builder_, recv_done, recv_done_op,
+                   /*host_transfer_type=*/3);
+
+  return recv_done_op;
 }
 
 tsl::StatusOr<Value> LhloDialectEmitter::GetOrCreateArrayView(
@@ -1696,7 +1926,7 @@ tsl::Status LhloDialectEmitter::Initialize() {
                         builder_.getIndexAttr(alloc->parameter_number()));
       if (!alloc->param_shape_index().empty()) {
         arg_attr_list.set("lmhlo.param_shape_index",
-                          builder_.getI64TensorAttr(llvm::makeArrayRef(
+                          builder_.getI64TensorAttr(llvm::ArrayRef(
                               alloc->param_shape_index().begin(),
                               alloc->param_shape_index().end())));
       }
@@ -1719,7 +1949,7 @@ tsl::Status LhloDialectEmitter::Initialize() {
         continue;
       }
       arg_attr_list.set("lmhlo.output_index",
-                        builder_.getI64TensorAttr(llvm::makeArrayRef(
+                        builder_.getI64TensorAttr(llvm::ArrayRef(
                             shape_index.begin(), shape_index.end())));
       if (auto alias = computation_.parent()
                            ->input_output_alias_config()
@@ -1739,8 +1969,7 @@ tsl::Status LhloDialectEmitter::Initialize() {
   func_op.setType(function_type);
   func_op.setAllArgAttrs(args_attrs);
 
-  SymbolTable symbol_table(module_);
-  symbol_table.insert(func_op);
+  symbol_table_.insert(func_op);
   builder_.setInsertionPointToEnd(block);
 
   auto return_op =

@@ -88,15 +88,11 @@ struct TilingCwisePass : public impl::TilingCwisePassBase<TilingCwisePass> {
     opts.distributionLabel = distributionLabel_;
 
     // Tile the roots of cwise expressions and fuse all cwise operands greedily.
-    auto tileRootOfCwiseExprFn = [](Operation *op) {
-      if (!isRootOfCwiseExpr(op)) return failure();
-      return success();
+    auto tileRootOfCwiseExprFn = [](TilingInterface op) {
+      return success(isRootOfCwiseExpr(op));
     };
-    auto fuseCwiseOperandsGreedilyFn = [](Operation *op) {
-      Operation *producerOp =
-          llvm::cast<MaterializeOp>(op).getSource().getDefiningOp();
-      if (!isCwiseGenericOp(producerOp)) return failure();
-      return success();
+    auto fuseCwiseOperandsGreedilyFn = [](MaterializeOp op) {
+      return success(isCwiseGenericOp(op.getSource().getDefiningOp()));
     };
 
     // Populate tiling and fusion patterns.
@@ -109,7 +105,7 @@ struct TilingCwisePass : public impl::TilingCwisePassBase<TilingCwisePass> {
     }
 
     // Clean up by removing temporary attributes.
-    f.walk([](Operation *op) { removeTransformationAttr(op); });
+    removeTilingLabels(f);
   }
 };
 

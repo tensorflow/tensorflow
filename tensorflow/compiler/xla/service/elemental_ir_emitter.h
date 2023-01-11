@@ -76,6 +76,8 @@ class ElementalIrEmitter : public IrBuilderMixin<ElementalIrEmitter> {
   virtual llvm::Value* EmitExtractReal(llvm::Value* value);
   virtual llvm::Value* EmitExtractImag(llvm::Value* value);
 
+  virtual StatusOr<llvm::Value*> EmitF32ToBF16(llvm::Value* f32_value);
+
  private:
   virtual StatusOr<llvm::Value*> EmitUnaryOp(const HloInstruction* op,
                                              llvm::Value* operand_value);
@@ -208,10 +210,6 @@ class ElementalIrEmitter : public IrBuilderMixin<ElementalIrEmitter> {
                                                 llvm::Value* operand_value);
 
   virtual StatusOr<llvm::Value*> EmitComplexSqrt(const HloInstruction* op,
-                                                 PrimitiveType prim_type,
-                                                 llvm::Value* operand_value);
-
-  virtual StatusOr<llvm::Value*> EmitComplexCbrt(const HloInstruction* op,
                                                  PrimitiveType prim_type,
                                                  llvm::Value* operand_value);
 

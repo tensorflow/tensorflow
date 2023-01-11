@@ -90,7 +90,6 @@ TfLiteQuantization GetQuantizationFromLegacy(
 Interpreter::Interpreter(ErrorReporter* error_reporter)
     : error_reporter_(error_reporter ? error_reporter
                                      : DefaultErrorReporter()) {
-  // TODO(b/128420794): Include the TFLite runtime version in the log.
   // Prod logging is useful for mobile platforms where scraping console logs is
   // critical for debugging.
 #if defined(TFLITE_IS_MOBILE_PLATFORM)
@@ -348,10 +347,10 @@ TfLiteStatus Interpreter::ApplyLazyDelegateProviders() {
             i);
         break;
       case kTfLiteError:
-        error_reporter_->Report(
-            "Failed to apply the default TensorFlow Lite "
-            "delegate indexed at %zu.",
-            i);
+        TF_LITE_REPORT_ERROR(error_reporter_,
+                             "Failed to apply the default TensorFlow Lite "
+                             "delegate indexed at %zu.",
+                             i);
         return kTfLiteError;
       case kTfLiteDelegateError:
         TFLITE_LOG(
@@ -377,10 +376,10 @@ TfLiteStatus Interpreter::ApplyLazyDelegateProviders() {
             i);
         return kTfLiteUnresolvedOps;
       default:
-        error_reporter_->Report(
-            "Unknown status (%d) after applying the default "
-            "TensorFlow Lite delegate indexed at %zu.",
-            status, i);
+        TF_LITE_REPORT_ERROR(error_reporter_,
+                             "Unknown status (%d) after applying the default "
+                             "TensorFlow Lite delegate indexed at %zu.",
+                             status, i);
         return kTfLiteError;
     }
   }
@@ -493,5 +492,14 @@ TfLiteStatus Interpreter::EnableCancellation() {
 }
 
 TfLiteStatus Interpreter::Cancel() { return primary_subgraph().Cancel(); }
+
+void Interpreter::AddProfiler(std::unique_ptr<Profiler> profiler) {
+  if (profiler == nullptr) return;
+  if (root_profiler_ == nullptr) {
+    root_profiler_ = std::make_unique<profiling::RootProfiler>();
+  }
+  root_profiler_->AddProfiler(std::move(profiler));
+  SetSubgraphProfiler();
+}
 
 }  // namespace tflite

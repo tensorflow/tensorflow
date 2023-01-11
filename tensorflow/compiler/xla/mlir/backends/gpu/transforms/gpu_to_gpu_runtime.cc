@@ -27,6 +27,7 @@ limitations under the License.
 #include "mlir/IR/SymbolTable.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
+#include "tensorflow/compiler/xla/mlir/backends/gpu/transforms/uid_generator.h"
 #include "tensorflow/compiler/xla/mlir/runtime/utils/custom_calls.h"
 
 namespace xla {
@@ -139,8 +140,9 @@ class LaunchFuncOpLowering : public OpRewritePattern<LaunchFuncOp> {
   static constexpr const char kCustomCallTarget[] = "xla.gpu.func.launch";
 
  public:
-  LaunchFuncOpLowering(MLIRContext* ctx, CustomCallDeclarations& custom_calls)
-      : OpRewritePattern(ctx), custom_calls_(custom_calls) {}
+  LaunchFuncOpLowering(MLIRContext* ctx, UidGenerator& uid,
+                       CustomCallDeclarations& custom_calls)
+      : OpRewritePattern(ctx), uid_(uid), custom_calls_(custom_calls) {}
 
   LogicalResult matchAndRewrite(LaunchFuncOp op,
                                 PatternRewriter& rewriter) const override {
@@ -157,6 +159,15 @@ class LaunchFuncOpLowering : public OpRewritePattern<LaunchFuncOp> {
         cast(op.getGridSizeZ()),  cast(op.getBlockSizeX()),
         cast(op.getBlockSizeY()), cast(op.getBlockSizeZ())};
 
+    // Shared memory size is optional for the `gpu.launch` but mandatory for the
+    // Xla runtime kernel launch custom call.
+    if (op.getDynamicSharedMemorySize()) {
+      args.insert(args.begin(), op.getDynamicSharedMemorySize());
+    } else {
+      auto zero = b.create<arith::ConstantIntOp>(0, b.getI32Type());
+      args.insert(args.begin(), zero);
+    }
+
     // Add kernel arguments.
     llvm::copy(op.getKernelOperands(), std::back_inserter(args));
 
@@ -168,6 +179,9 @@ class LaunchFuncOpLowering : public OpRewritePattern<LaunchFuncOp> {
     auto call = b.create<func::CallOp>(callee.getName(), TypeRange(), args);
     call->setAttr(b.getStringAttr("kernel"), op.getKernelName());
 
+    // Assign a unique id to this instance of a kernel launch operation.
+    call->setAttr(b.getStringAttr("uid"), b.getI64IntegerAttr(uid_.uid()));
+
     // Erase the original gpu launch operation.
     rewriter.eraseOp(op);
 
@@ -175,6 +189,7 @@ class LaunchFuncOpLowering : public OpRewritePattern<LaunchFuncOp> {
   }
 
  private:
+  UidGenerator& uid_;
   CustomCallDeclarations& custom_calls_;
 };
 
@@ -188,11 +203,14 @@ void ConvertGpuToGpuRuntimePass::runOnOperation() {
   SymbolTable sym_table(module);
   CustomCallDeclarations custom_calls(std::move(sym_table));
 
+  // Each kernel launch operation gets a unique id.
+  UidGenerator kernel_uid;
+
   // Convert gpu operations to XLA gpu runtime custom calls.
   RewritePatternSet patterns(ctx);
   patterns.insert<GpuModuleOpLowering>(ctx);
-  patterns.insert<LaunchFuncOpLowering, MemcpyOpLowering, MemsetOpLowering>(
-      ctx, custom_calls);
+  patterns.insert<LaunchFuncOpLowering>(ctx, kernel_uid, custom_calls);
+  patterns.insert<MemcpyOpLowering, MemsetOpLowering>(ctx, custom_calls);
 
   if (failed(applyPatternsAndFoldGreedily(module, std::move(patterns))))
     return signalPassFailure();

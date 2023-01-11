@@ -1,8 +1,8 @@
 // RUN: tf-opt --split-input-file -tf-lower-to-mlprogram-and-hlo %s -o - | FileCheck %s
 
 module attributes {tf_saved_model.semantics} {
-  // CHECK-LABEL: func @main
-  func.func @main(%arg0: tensor<i32> {tf_saved_model.index_path = []}) -> (tensor<*xi32> {tf_saved_model.index_path = []})
+  // CHECK-LABEL: func @lowers_to_stablehlo
+  func.func @lowers_to_stablehlo(%arg0: tensor<i32> {tf_saved_model.index_path = []}) -> (tensor<*xi32> {tf_saved_model.index_path = []})
     attributes {tf_saved_model.exported_names = ["lowers_to_stablehlo"]}
   {
     // CHECK-DAG: [[one:%.*]] = stablehlo.constant dense<1>
@@ -30,8 +30,8 @@ module attributes {tf_saved_model.semantics} {
 // -----
 
 module attributes {tf_saved_model.semantics} {
-  // CHECK-LABEL: func @main
-  func.func @main(%arg0: tensor<*x!tf_type.resource> {tf._user_specified_name = "iterator", tf.device = "/job:localhost/replica:0/task:0/device:CPU:0", tf_saved_model.index_path = []})
+  // CHECK-LABEL: func @removes_dead_code
+  func.func @removes_dead_code(%arg0: tensor<*x!tf_type.resource> {tf._user_specified_name = "iterator", tf.device = "/job:localhost/replica:0/task:0/device:CPU:0", tf_saved_model.index_path = []})
     attributes {tf_saved_model.exported_names = ["removes_dead_code"]}
   {
     // CHECK-NEXT: return
@@ -51,8 +51,8 @@ module attributes {tf_saved_model.semantics} {
 // -----
 
 module attributes {tf_saved_model.semantics} {
-  // CHECK-LABEL: func @main
-  func.func @main()
+  // CHECK-LABEL: func @lowers_variable_ops
+  func.func @lowers_variable_ops()
     attributes {tf_saved_model.exported_names = ["lowers_variable_ops"]}
   {
     // CHECK: ml_program.global_store
@@ -87,8 +87,8 @@ module attributes {tf_saved_model.semantics} {
     return %arg0, %arg1 : tensor<i32>, tensor<i32>
   }
 
-  // CHECK-LABEL: func @main
-  func.func @main(%arg0: tensor<!tf_type.resource<tensor<i32>>> {tf._user_specified_name = "arg0", tf.device = "/job:localhost/replica:0/task:0/device:CPU:0", tf_saved_model.index_path = []})
+  // CHECK-LABEL: func @handles_variables_in_while_loops
+  func.func @handles_variables_in_while_loops(%arg0: tensor<!tf_type.resource<tensor<i32>>> {tf._user_specified_name = "arg0", tf.device = "/job:localhost/replica:0/task:0/device:CPU:0", tf_saved_model.index_path = []})
     attributes {tf_saved_model.exported_names = ["lowers_variable_ops"]}
   {
     // CHECK: stablehlo.while

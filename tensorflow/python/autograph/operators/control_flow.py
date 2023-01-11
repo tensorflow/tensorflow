@@ -69,6 +69,7 @@ from tensorflow.python.autograph.utils import tensors
 from tensorflow.python.data.experimental.ops import take_while_ops
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import iterator_ops
+from tensorflow.python.data.ops import scan_op
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
@@ -179,7 +180,7 @@ def _verify_loop_init_vars(init_vars,
 
     error_msg = None
     if val is None:
-      error_msg = "'{}' may not be None before the loop".format(name)
+      error_msg = "'{}' is not allowed to be None before the loop".format(name)
     elif isinstance(val, variables.Undefined):
       error_msg = "'{}' must be defined before the loop".format(name)
       if extra_message:
@@ -748,8 +749,7 @@ def _general_purpose_scan(ds, init_state, body):
   # TODO(mdan): s/use_default_device/specialize_for_input_pipeline.
   # TODO(mdan): Don't use private symbols.
   # pylint:disable=protected-access
-  return dataset_ops._ScanDataset(
-      ds, init_state, body, use_default_device=False)
+  return scan_op._ScanDataset(ds, init_state, body, use_default_device=False)
 
 
 def _tf_dataset_for_stmt(

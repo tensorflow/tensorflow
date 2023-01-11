@@ -20,7 +20,7 @@ from typing import Callable, List, Optional, Union
 
 from tensorflow.python.distribute import collective_util
 from tensorflow.python.distribute import values as value_lib
-from tensorflow.python.eager import backprop
+from tensorflow.python.eager import backprop_util
 from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import indexed_slices
@@ -575,14 +575,14 @@ class CollectiveReplicaLauncher(object):
 def aggregate_tensors_or_indexed_slices(values, accumulation_fn=math_ops.add_n):
   """Aggregate tensors using `accumulation_fn` and IndexedSlices via concat."""
   if any(isinstance(v, indexed_slices.IndexedSlices) for v in values):
-    return backprop.aggregate_indexed_slices_gradients(values)
+    return backprop_util.AggregateIndexedSlicesGradients(values)
   else:
     return accumulation_fn(values)
 
 
 def divide_by_n_tensors_or_indexed_slices(value, n):
   if isinstance(value, indexed_slices.IndexedSlices):
-    value = backprop.flatten_nested_indexed_slices(value)
+    value = backprop_util.FlattenNestedIndexedSlices(value)
     return indexed_slices.IndexedSlices(value.values / n, value.indices,
                                         value.dense_shape)
   else:

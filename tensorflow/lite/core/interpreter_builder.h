@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 /// \file
+///
 /// Provides functionality to construct an interpreter for a model.
 ///
 /// WARNING: Users of TensorFlow Lite should not include this file directly,
@@ -26,17 +27,19 @@ limitations under the License.
 #include <map>
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "flatbuffers/flatbuffers.h"  // from @flatbuffers
 #include "tensorflow/lite/allocation.h"
-#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/core/api/error_reporter.h"
 #include "tensorflow/lite/core/api/op_resolver.h"
+#include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/core/interpreter.h"
 #include "tensorflow/lite/core/model_builder.h"
 #include "tensorflow/lite/core/subgraph.h"
 #include "tensorflow/lite/mutable_op_resolver.h"
+#include "tensorflow/lite/profiling/telemetry/profiler.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/stderr_reporter.h"
 
@@ -110,6 +113,14 @@ class InterpreterBuilder {
   void AddDelegate(TfLiteDelegate* delegate);
   void AddDelegate(TfLiteOpaqueDelegateStruct* opaque_delegate);
 
+  // Registers a telemetry profiler.
+  // Transfers the ownership to the InterpreterOptions.
+  // WARNING: This is an experimental API and subject to change.
+  void SetTelemetryProfiler(
+      std::unique_ptr<telemetry::TelemetryProfiler> profiler) {
+    telemetry_profiler_ = std::move(profiler);
+  }
+
  private:
   TfLiteStatus BuildLocalIndexToRegistrationMapping();
   TfLiteStatus ParseNodes(
@@ -149,6 +160,8 @@ class InterpreterBuilder {
   int num_fp32_tensors_ = 0;
   int num_threads_ = -1;
   InterpreterOptions options_;
+
+  std::unique_ptr<telemetry::TelemetryProfiler> telemetry_profiler_;
 };
 
 }  // namespace tflite

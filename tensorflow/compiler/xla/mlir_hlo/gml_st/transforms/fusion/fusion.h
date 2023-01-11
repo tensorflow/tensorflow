@@ -13,10 +13,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef MLIR_HLO_DIALECT_GML_ST_TRANSFORMS_FUSION_H
-#define MLIR_HLO_DIALECT_GML_ST_TRANSFORMS_FUSION_H
+#ifndef MLIR_HLO_GML_ST_TRANSFORMS_FUSION_FUSION_H
+#define MLIR_HLO_GML_ST_TRANSFORMS_FUSION_FUSION_H
 
 #include "gml_st/IR/gml_st_ops.h"
+#include "gml_st/transforms/peeling/peeling.h"
+#include "gml_st/transforms/tiling/tiling.h"
+#include "mlir/Dialect/Linalg/IR/Linalg.h"
 #include "mlir/IR/PatternMatch.h"
 
 namespace mlir {
@@ -32,12 +35,45 @@ FailureOr<Value> createFusedOp(PatternRewriter &rewriter,
 FailureOr<Operation *> fuse(PatternRewriter &rewriter,
                             MaterializeOp materializeOp);
 
+// Finds `gml_st.materialize` ops in the block and fuses ops into them. Verifies
+// that fusion candidate doesn't have any uses except the one
+// `gml_st.materialize` in the block to avoid exponential code growth.
+void fuseGreedily(PatternRewriter &rewriter, Block &block,
+                  llvm::function_ref<bool(Operation *)> filterFn = nullptr);
+
 /// Populate fusion patterns.
 void populateFusionPatterns(MLIRContext *ctx,
-                            function_ref<LogicalResult(Operation *)> filterFn,
+                            function_ref<LogicalResult(MaterializeOp)> filterFn,
                             RewritePatternSet *patterns);
+
+struct FusionCluster {
+  DenseSet<Operation *> operations;
+  Operation *root;
+};
+
+// Find a cluster of operations that can be tiled and fused together around
+// the root op. We want to fuse output of the fusion op with elementwise ops. In
+// general case a cluster is a tree that can have multiple leaf-node ops,
+// e.g. map(op, map(op)).
+// First element of the cluster is always the root for tiling.
+FusionCluster findMapFusionCluster(Operation *op);
+
+// Fuses linalg.fill that is used in init argument of the op.
+LogicalResult fuseOutputFill(PatternRewriter &rewriter, Operation *op);
+
+// Tiles the op and fuses greedily according to the filter function.
+FailureOr<Operation *> tileAndFuseGreedily(
+    PatternRewriter &rewriter, Operation *op,
+    const mlir::gml_st::TilingOptions &opts, StringRef label,
+    llvm::function_ref<bool(Operation *)> fuseFilterFn);
+
+// Tiles the op to 1 for all dimensions and fuses greedily according to the
+// filter function.
+LogicalResult tilePeeledOpsToScalars(
+    PatternRewriter &rewriter, const PeelingResult &peelingResult,
+    StringRef label, llvm::function_ref<bool(Operation *)> fuseFilterFn);
 
 }  // namespace gml_st
 }  // namespace mlir
 
-#endif  // MLIR_HLO_DIALECT_GML_ST_TRANSFORMS_FUSION_H
+#endif  // MLIR_HLO_GML_ST_TRANSFORMS_FUSION_FUSION_H

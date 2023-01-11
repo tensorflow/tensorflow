@@ -19,7 +19,7 @@ limitations under the License.
 #include "tensorflow/tsl/platform/float8.h"
 
 namespace tensorflow {
-typedef tsl::float8_e4m3 float8_e4m3;
+typedef tsl::float8_e4m3fn float8_e4m3fn;
 typedef tsl::float8_e5m2 float8_e5m2;
 }  // namespace tensorflow
 

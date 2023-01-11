@@ -5,7 +5,10 @@ load(
     "tf_cc_test",
 )
 
-package(default_visibility = ["//visibility:private"])
+package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    default_visibility = ["//visibility:private"],
+)
 
 licenses(["notice"])
 
@@ -47,6 +50,7 @@ cc_library(
     hdrs = ["benchmark_mlir_function.h"],
     deps = [
         ":benchmark",
+        "//tensorflow/compiler/jit:flags",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tfrt:host_context_util",
         "//tensorflow/compiler/mlir/tfrt:runtime_fallback_executor",
@@ -164,7 +168,9 @@ tf_cc_binary(
     ]),
     deps = [
         ":benchmark",
+        "//tensorflow/compiler/jit:flags",
         "//tensorflow/compiler/mlir/tfrt:host_context_util",
+        "@llvm-project//llvm:Support",
     ],
 )
 

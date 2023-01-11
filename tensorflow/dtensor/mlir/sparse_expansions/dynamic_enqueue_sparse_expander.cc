@@ -43,7 +43,7 @@ StatusOr<mlir::Value> ExpandIndices(mlir::OpBuilder& builder,
         "DTensor.");
   mlir::Location loc = indices.getLoc();
   auto indices_padded_type = mlir::RankedTensorType::get(
-      {-1, 3},
+      {mlir::ShapedType::kDynamic, 3},
       indices.getType().dyn_cast<mlir::RankedTensorType>().getElementType());
   // Little trick to make a rank-2 tensor of [[0,0], [0,1]] using rank 1
   // constants.

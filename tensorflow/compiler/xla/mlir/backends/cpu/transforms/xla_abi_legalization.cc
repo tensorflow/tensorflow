@@ -75,10 +75,9 @@ Value NormalizeTensor(ImplicitLocOpBuilder& b, TypedValue<ShapedType> tensor,
   return b.create<mhlo::ReshapeOp>(tensor.getType(), transpose);
 }
 
-void NormalizeInputInPlace(ImplicitLocOpBuilder& b,
-                           TypedValue<ShapedType> tensor,
+void NormalizeInputInPlace(ImplicitLocOpBuilder& b, Value tensor,
                            ArrayRef<int64_t> layout) {
-  if (IsDefaultLayout(layout)) {
+  if (!tensor.getType().isa<ShapedType>() || IsDefaultLayout(layout)) {
     return;
   }
 
@@ -233,7 +232,7 @@ struct RewriteCustomCalls : OpRewritePattern<mhlo::CustomCallOp> {
           op.setOperand(index, normalized);
         }
       }
-      op.removeOperand_layoutsAttr();
+      op.removeOperandLayoutsAttr();
     }
 
     // Rewrite i1 inputs to ui8.
@@ -257,7 +256,7 @@ struct RewriteCustomCalls : OpRewritePattern<mhlo::CustomCallOp> {
         NormalizeInputInPlace(b, result, layout);
       }
 
-      op.removeResult_layoutsAttr();
+      op.removeResultLayoutsAttr();
     }
 
     return success();

@@ -39,6 +39,7 @@ limitations under the License.
 #include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/platform/tstring.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/protobuf/struct.pb.h"
 
 namespace tensorflow {
 namespace data {
@@ -87,6 +88,12 @@ Status CreateTestFiles(const std::vector<tstring>& filenames,
   return OkStatus();
 }
 }  // namespace
+
+std::string LocalTempFilename() {
+  std::string path;
+  CHECK(Env::Default()->LocalTempFilename(&path));
+  return path;
+}
 
 DatasetDef RangeDataset(int64_t range) {
   DatasetDef dataset_def;
@@ -172,6 +179,20 @@ DatasetDef InfiniteDataset() {
             {{"T", DT_VARIANT}, {"index", 0}})},
       {});
   return dataset_def;
+}
+
+experimental::DistributedSnapshotMetadata
+CreateDummyDistributedSnapshotMetadata() {
+  StructuredValue decoded_spec;
+  TensorShapeProto::Dim* dim =
+      decoded_spec.mutable_tensor_shape_value()->add_dim();
+  dim->set_size(1);
+  dim->set_name(absl::StrCat("dim"));
+
+  experimental::DistributedSnapshotMetadata metadata;
+  metadata.set_element_spec(decoded_spec.SerializeAsString());
+  metadata.set_compression("");
+  return metadata;
 }
 
 StatusOr<DatasetDef> InterleaveTextlineDataset(

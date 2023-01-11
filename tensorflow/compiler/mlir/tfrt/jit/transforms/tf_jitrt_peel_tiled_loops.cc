@@ -43,7 +43,7 @@ struct PeelGmlStLoop : public mlir::OpRewritePattern<LoopTy> {
 
   mlir::LogicalResult matchAndRewrite(
       LoopTy loop, mlir::PatternRewriter &rewriter) const override {
-    if (hasTransformationAttr(loop, mlir::gml_st::kPeeledMarker))
+    if (mlir::gml_st::hasLabel(loop, mlir::gml_st::kPeelingAppliedLabel))
       return mlir::failure();
     return mlir::failure(peelAllLoops(loop, rewriter).empty());
   }
@@ -71,13 +71,13 @@ struct PeelTiledLoopsPass
     (void)applyPatternsAndFoldGreedily(func_op, std::move(loop_peeling));
 
     func_op->walk([&](LoopOp op) {
-      removeTransformationAttr(op, mlir::gml_st::kPeeledMarker);
+      mlir::gml_st::removeLabel(op, mlir::gml_st::kPeelingAppliedLabel);
     });
     func_op->walk([&](ParallelOp op) {
-      removeTransformationAttr(op, mlir::gml_st::kPeeledMarker);
+      mlir::gml_st::removeLabel(op, mlir::gml_st::kPeelingAppliedLabel);
     });
     func_op->walk([&](ForOp op) {
-      removeTransformationAttr(op, mlir::gml_st::kPeeledMarker);
+      mlir::gml_st::removeLabel(op, mlir::gml_st::kPeelingAppliedLabel);
     });
   }
 };

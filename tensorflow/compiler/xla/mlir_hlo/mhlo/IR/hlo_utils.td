@@ -30,16 +30,16 @@ def CastIntElementsAttr : NativeCodeCall<"$0.cast<DenseIntElementsAttr>()">;
 class ConstantSplat<string value> : NativeCodeCall<
     "hlo::getSplat(&$_builder, $0, " # value # ")">;
 
-class HLO_ConstantLike<string value> : NativeCodeCall<
+class MHLO_ConstantLike<string value> : NativeCodeCall<
     "chlo::getConstantLike($_builder, $_loc, " # value # ", $0)">;
 
-def HLO_ConstantLikeMaxFiniteValue : NativeCodeCall<
+def MHLO_ConstantLikeMaxFiniteValue : NativeCodeCall<
     "chlo::getConstantLikeMaxFiniteValue($_builder, $_loc, $0)">;
 
-def HLO_ConstantLikePosInfValue : NativeCodeCall<
+def MHLO_ConstantLikePosInfValue : NativeCodeCall<
     "chlo::getConstantLikeInfValue($_builder, $_loc, $0, /*negative=*/false)">;
 
-def HLO_ConstantLikeNegInfValue : NativeCodeCall<
+def MHLO_ConstantLikeNegInfValue : NativeCodeCall<
     "chlo::getConstantLikeInfValue($_builder, $_loc, $0, /*negative=*/true)">;
 
 def NullDenseIntElementsAttr : NativeCodeCall<"DenseIntElementsAttr()">;

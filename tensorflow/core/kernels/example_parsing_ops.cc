@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/util/example_proto_fast_parsing.h"
@@ -62,6 +63,9 @@ class ParseExampleOp : public OpKernel {
 
     // Grab the inputs.
     OP_REQUIRES_OK(ctx, ctx->input("serialized", &serialized));
+    OP_REQUIRES(ctx, serialized->NumElements() == 0 || serialized->data(),
+                errors::InvalidArgument(
+                    "Serialized data must not be null if there are elements"));
     OP_REQUIRES_OK(ctx, ctx->input("names", &names));
     if (op_version_ == 2) {
       OP_REQUIRES_OK(ctx, GetTensorKeys(ctx, "dense_keys", &dense_keys_t));
@@ -978,7 +982,7 @@ class ParseSingleSequenceExampleOp : public OpKernel {
     for (int d = 0; d < attrs_.num_context_dense; ++d) {
       TensorShape out_shape;
       for (const int dim : attrs_.context_dense_shapes[d].dim_sizes())
-        out_shape.AddDim(dim);
+        OP_REQUIRES_OK(ctx, out_shape.AddDimWithStatus(dim));
       Tensor* out = nullptr;
       OP_REQUIRES_OK(ctx, context_dense_values.allocate(d, out_shape, &out));
     }
@@ -1095,9 +1099,9 @@ class ParseSingleSequenceExampleOp : public OpKernel {
       const FeatureList& fl = (feature_list_missing)
                                   ? empty_feature_list
                                   : feature_list_found->second;
-      out_shape.AddDim(fl.feature_size());
+      OP_REQUIRES_OK(ctx, out_shape.AddDimWithStatus(fl.feature_size()));
       for (const int dim : attrs_.feature_list_dense_shapes[d].dim_sizes()) {
-        out_shape.AddDim(dim);
+        OP_REQUIRES_OK(ctx, out_shape.AddDimWithStatus(dim));
       }
       Tensor* out = nullptr;
       OP_REQUIRES_OK(ctx,

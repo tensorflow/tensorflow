@@ -22,6 +22,8 @@ from tensorflow.python.data.experimental.ops import random_access
 from tensorflow.python.data.kernel_tests import checkpoint_test_base
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.data.ops import options as options_lib
+from tensorflow.python.data.ops import prefetch_op
 from tensorflow.python.framework import combinations
 from tensorflow.python.framework import errors
 from tensorflow.python.platform import test
@@ -51,7 +53,7 @@ class PrefetchTest(test_base.DatasetTestBase, parameterized.TestCase):
               buffer_size=[-1, None, 0, 42], slack_period=[1, 8])))
   def testPrefetchWithSlack(self, buffer_size, slack_period):
     dataset = dataset_ops.Dataset.range(100)
-    dataset = dataset_ops.PrefetchDataset(
+    dataset = prefetch_op._PrefetchDataset(  # pylint: disable=protected-access
         dataset, buffer_size, slack_period=slack_period)
     self.assertDatasetProduces(dataset, expected_output=range(100))
 
@@ -82,15 +84,21 @@ class PrefetchTest(test_base.DatasetTestBase, parameterized.TestCase):
 class PrefetchCheckpointTest(checkpoint_test_base.CheckpointTestBase,
                              parameterized.TestCase):
 
-  def build_dataset(self, seed=10):
-    return dataset_ops.Dataset.range(100).prefetch(10).shuffle(
-        buffer_size=10, seed=seed, reshuffle_each_iteration=False)
+  def build_dataset(self, options=None):
+    dataset = dataset_ops.Dataset.range(100).prefetch(10)
+    if options:
+      dataset = dataset.with_options(options)
+    return dataset
 
   @combinations.generate(
-      combinations.times(test_base.default_test_combinations(),
-                         checkpoint_test_base.default_test_combinations()))
-  def test(self, verify_fn):
-    verify_fn(self, self.build_dataset, num_outputs=100)
+      combinations.times(
+          test_base.default_test_combinations(),
+          checkpoint_test_base.default_test_combinations(),
+          combinations.combine(symbolic_checkpoint=[False, True])))
+  def test(self, verify_fn, symbolic_checkpoint):
+    options = options_lib.Options()
+    options.experimental_symbolic_checkpoint = symbolic_checkpoint
+    verify_fn(self, lambda: self.build_dataset(options), num_outputs=100)
 
 
 class PrefetchRandomAccessTest(test_base.DatasetTestBase,

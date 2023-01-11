@@ -5,6 +5,7 @@ load(
 )
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
         "//tensorflow/distribute/experimental/rpc:__subpackages__",
         "//tensorflow/python/distribute/experimental/rpc:__subpackages__",

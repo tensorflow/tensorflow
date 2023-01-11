@@ -112,10 +112,10 @@ TEST_F(HloRematerializationTest, SingleComputationNoWorthRemat) {
   ASSERT_THAT(slice, op::Slice(op::Concatenate(op::Broadcast(_), _)));
 
   // Set the minimum remat size to 14KiB, meaning no nodes should be remat.
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHloRematerialization(
-                                            /*memory_limit_bytes=*/
-                                            14 * 1024, module.get(),
-                                            /*min_remat_size=*/14 * 1024));
+  TF_ASSERT_OK_AND_ASSIGN(bool changed,
+                          RunHloRematerialization(
+                              /*memory_limit_bytes=*/14 * 1024, module.get(),
+                              /*min_remat_size=*/14 * 1024));
   EXPECT_FALSE(changed);
 }
 
@@ -400,11 +400,11 @@ TEST_F(HloRematerializationTest, InstructionRematerializedMultipleTimes) {
   EXPECT_EQ(add_4->operand(0), bcast);
 
   // Pick a memory limit some where between 24KB (initial peak memory including
-  // parameter and output) and 19KB (peak memory possible with
+  // parameter and output) and 20KB (peak memory possible with
   // rematerialization).
   TF_ASSERT_OK_AND_ASSIGN(bool changed,
                           RunHloRematerialization(
-                              /*memory_limit_bytes=*/19 * 1024, module.get()));
+                              /*memory_limit_bytes=*/22 * 1024, module.get()));
   EXPECT_TRUE(changed);
 
   // The broadcast should have been rematerialized 3 times.
@@ -538,11 +538,11 @@ TEST_P(IndirectUseTest, IndirectUseRematerialized) {
   EXPECT_EQ(entry_computation->instruction_count(), 8);
 
   // Pick a memory limit some where between 24KB (initial peak memory
-  // including parameter and output) and 19KB (peak memory possible with
+  // including parameter and output) and 20KB (peak memory possible with
   // rematerialization).
   TF_ASSERT_OK_AND_ASSIGN(bool changed,
                           RunHloRematerialization(
-                              /*memory_limit_bytes=*/19 * 1024, module.get()));
+                              /*memory_limit_bytes=*/22 * 1024, module.get()));
   // Rematerialization should only occur if the rematerializable instruction
   // has no indirect uses.
   if (indirectly_used) {

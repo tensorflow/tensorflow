@@ -48,6 +48,13 @@ struct FetchConstantMinMaxInputs {
   bool operator()(TFFakeQuantOp tf_op, AttrType &min_value,
                   AttrType &max_value) const {
     Value min = tf_op.getMin(), max = tf_op.getMax();
+    if (auto min_id = min.getDefiningOp<TF::IdentityOp>()) {
+      min = min_id.getInput();
+    }
+    if (auto max_id = max.getDefiningOp<TF::IdentityOp>()) {
+      max = max_id.getInput();
+    }
+
     if (!matchPattern(min, m_Constant(&min_value))) {
       return false;
     }

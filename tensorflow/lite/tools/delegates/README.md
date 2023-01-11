@@ -9,17 +9,17 @@ arguments and provides a TFLite delegate instance creation based on those
 parameters. This delegate registrar has been used in TFLite evaluation tools and
 the benchmark model tool.
 
-A particular TFLite delegate provider can be used by
-linking the corresponding library, e.g. adding it to the `deps` of a BUILD rule.
-Note that each delegate provider library has been configured with
-`alwayslink=1` in the BUILD rule so that it will be linked to any binary that
-directly or indirectly depends on it.
+A particular TFLite delegate provider can be used by linking the corresponding
+library, e.g. adding it to the `deps` of a BUILD rule. Note that each delegate
+provider library has been configured with `alwayslink=1` in the BUILD rule so
+that it will be linked to any binary that directly or indirectly depends on it.
 
 The following lists all implemented TFLite delegate providers and their
 corresponding list of parameters that each supports to create a particular
 TFLite delegate.
 
 ### Common parameters
+
 *   `num_threads`: `int` (default=-1) \
     The number of threads to use for running the inference on CPU. By default,
     this is set to the platform default value -1.
@@ -42,13 +42,24 @@ TFLite delegate.
     Unique tokens ensure that the delegate doesn't read inapplicable/invalid
     data. Note that delegate_serialize_dir is also required to enable this
     feature.
+*   `first_delegate_node_index`: `int` (default=0) \
+    The index of the first node that could be delegated. Debug only. Add
+    '--define=tflite_debug_delegate=true' in your build command line to use it.
+    \
+    Currently only supported by CoreML delegate.
+*   `last_delegate_node_index`: `int` (default=INT_MAX) \
+    The index of the last node that could be delegated. Debug only. Add
+    '--define=tflite_debug_delegate=true' in your build command line to use it.
+    \
+    Currently only supported by CoreML delegate.
 
 ### GPU delegate provider
 
-The GPU deleagte is supported on Android and iOS devices, or platforms where
-the delegate library is built with "-DCL_DELEGATE_NO_GL" macro.
+The GPU delegate is supported on Android and iOS devices, or platforms where the
+delegate library is built with "-DCL_DELEGATE_NO_GL" macro.
 
 #### Common options
+
 *   `use_gpu`: `bool` (default=false) \
     Whether to use the
     [GPU accelerator delegate](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/delegates/gpu).
@@ -64,18 +75,21 @@ the delegate library is built with "-DCL_DELEGATE_NO_GL" macro.
     on non-iOS platforms.
 
 #### Android options
-*  `gpu_backend`: `string` (default="") \
+
+*   `gpu_backend`: `string` (default="") \
     Force the GPU delegate to use a particular backend for execution, and fail
     if unsuccessful. Should be one of: cl, gl. By default, the GPU delegate will
     try OpenCL first and then OpenGL if the former fails.
 
 #### iOS options
+
 *   `gpu_wait_type`: `string` (default="") \
     Which GPU wait_type option to use. Should be one of the following: passive,
     active, do_not_wait, aggressive. When left blank, passive mode is used by
     default.
 
 ### NNAPI delegate provider
+
 *   `use_nnapi`: `bool` (default=false) \
     Whether to use
     [Android NNAPI](https://developer.android.com/ndk/guides/neuralnetworks/).
@@ -92,9 +106,9 @@ the delegate library is built with "-DCL_DELEGATE_NO_GL" macro.
     to use when executing using NNAPI. Should be one of the following:
     fast_single_answer, sustained_speed, low_power, undefined.
 *   `nnapi_execution_priority`: `string` (default="") \
-    The relative priority for executions of the model in NNAPI. Should be one
-    of the following: default, low, medium and high. This option requires
-    Android 11+.
+    The relative priority for executions of the model in NNAPI. Should be one of
+    the following: default, low, medium and high. This option requires Android
+    11+.
 *   `disable_nnapi_cpu`: `bool` (default=true) \
     Excludes the
     [NNAPI CPU reference implementation](https://developer.android.com/ndk/guides/neuralnetworks#device-assignment)
@@ -110,24 +124,27 @@ the delegate library is built with "-DCL_DELEGATE_NO_GL" macro.
     efficiently manage resources, which would significantly reduce overhead
     especially if the same delegate instance is to be used for multiple
     inferences.
-*   `nnapi_support_library_path`: `string` (default=""),
-    Path from which NNAPI support library will be loaded to construct the
-    delegate. In order to use NNAPI delegate with support library,
-    --nnapi_accelerator_name must be specified and must be equal to one of the
-    devices provided by the support library.
+*   `nnapi_support_library_path`: `string` (default=""), Path from which NNAPI
+    support library will be loaded to construct the delegate. In order to use
+    NNAPI delegate with support library, --nnapi_accelerator_name must be
+    specified and must be equal to one of the devices provided by the support
+    library.
 
 ### Hexagon delegate provider
+
 *   `use_hexagon`: `bool` (default=false) \
     Whether to use the Hexagon delegate. Not all devices may support the Hexagon
-    delegate, refer to the [TensorFlow Lite documentation](https://www.tensorflow.org/lite/performance/hexagon_delegate) for more
-    information about which devices/chipsets are supported and about how to get
-    the required libraries. To use the Hexagon delegate also build the
-    hexagon_nn:libhexagon_interface.so target and copy the library to the
+    delegate, refer to the
+    [TensorFlow Lite documentation](https://www.tensorflow.org/lite/performance/hexagon_delegate)
+    for more information about which devices/chipsets are supported and about
+    how to get the required libraries. To use the Hexagon delegate also build
+    the hexagon_nn:libhexagon_interface.so target and copy the library to the
     device. All libraries should be copied to /data/local/tmp on the device.
 *   `hexagon_profiling`: `bool` (default=false) \
     Whether to profile ops running on hexagon.
 
 ### XNNPACK delegate provider
+
 *   `use_xnnpack`: `bool` (default=false) \
     Whether to explicitly apply the XNNPACK delegate. Note the XNNPACK delegate
     could be implicitly applied by the TF Lite runtime regardless the value of
@@ -135,16 +152,53 @@ the delegate library is built with "-DCL_DELEGATE_NO_GL" macro.
     `false` explicitly.
 
 ### CoreML delegate provider
+
 *   `use_coreml`: `bool` (default=false) \
-    Whether to use the [Core ML delegate](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/delegates/coreml).
+    Whether to use the
+    [Core ML delegate](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/delegates/coreml).
     This option is only available in iOS.
 *   `coreml_version`: `int` (default=0) \
     Target Core ML version for model conversion. The default value is 0 and it
     means using the newest version that's available on the device.
 
 ### External delegate provider
+
 *   `external_delegate_path`: `string` (default="") \
     Path to the external delegate library to use.
 *   `external_delegate_options`: `string` (default="") \
     A list of options to be passed to the external delegate library. Options
     should be in the format of `option1:value1;option2:value2;optionN:valueN`
+
+### Stable delegate provider [Experimental API]
+
+The stable delegate provider provides a `TfLiteOpaqueDelegate` object pointer
+and its corresponding deleter by loading a dynamic library that encapsulates the
+actual TFLite delegate implementation in a
+[`TfLiteStableDelegate`](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/core/experimental/acceleration/configuration/c/stable_delegate.h)
+struct instance.
+
+While the structure of the stable delegate provider is similar to the external
+delegate provider, which provides the
+[external delegates](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/delegates/external),
+the design objectives of the stable delegates and the external delegates are
+different.
+
+-   Stable delegates are designed to work with shared object files that support
+    ABI backward compatibility; that is, the delegate and the TF Lite runtime
+    won't need to be built using the exact same version of TF Lite as the app.
+    However, this is work in progress and the ABI stability is not yet
+    guaranteed.
+-   External delegates were developed mainly for delegate evaluation
+    (https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/delegates/external).
+
+The stable delegates and the external delegates use different APIs for
+diagnosing errors, creating and destroying the delegates. For more details of
+the concrete API differences, please check
+[stable_delegate.h](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/core/experimental/acceleration/configuration/c/stable_delegate.h)
+and
+[external_delegate.h](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/delegates/external/external_delegate.h).
+
+The stable delegate provider is not supported on Windows platform.
+
+*   `stable_abi_delegate_settings_file`: `string` (default="") \
+    Path to the delegate settings JSON file.

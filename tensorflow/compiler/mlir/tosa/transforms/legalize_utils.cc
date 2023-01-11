@@ -113,7 +113,7 @@ llvm::Optional<Value> buildReshapeWithDynamicDims(PatternRewriter& rewriter,
     return llvm::None;
   }
 
-  ArrayAttr shape_attr = rewriter.getI64ArrayAttr(static_dims);
+  DenseI64ArrayAttr shape_attr = rewriter.getDenseI64ArrayAttr(static_dims);
   auto output_ty = tensorflow::GetTypeFromTFTensorShape(static_dims, e_ty);
   return rewriter
       .create<tosa::ReshapeOp>(op->getLoc(), output_ty, input_value, shape_attr)
@@ -136,9 +136,9 @@ Value buildRescale(PatternRewriter& rewriter, Operation* op,
       rewriter, op->getLoc(), output_type, input_val,
       rewriter.getI32IntegerAttr(static_cast<int32_t>(input_zp)),
       rewriter.getI32IntegerAttr(static_cast<int32_t>(output_zp)),
-      rewriter.getI32ArrayAttr({multiplier}), rewriter.getI32ArrayAttr({shift}),
-      rewriter.getBoolAttr(scale32), rewriter.getBoolAttr(double_round),
-      rewriter.getBoolAttr(false));
+      rewriter.getDenseI32ArrayAttr({multiplier}),
+      rewriter.getDenseI32ArrayAttr({shift}), rewriter.getBoolAttr(scale32),
+      rewriter.getBoolAttr(double_round), rewriter.getBoolAttr(false));
 
   return rescale_op.getResult();
 }
@@ -206,8 +206,8 @@ Value buildRescaleOpConvOutput(PatternRewriter& rewriter, Operation* op,
     auto rescale_op = CreateOpAndInfer<tosa::RescaleOp>(
         rewriter, op->getLoc(), output_type, conv_val,
         rewriter.getI32IntegerAttr(0), rewriter.getI32IntegerAttr(output_zp),
-        rewriter.getI32ArrayAttr({multiplier}),
-        rewriter.getI32ArrayAttr({shift}), rewriter.getBoolAttr(scale32),
+        rewriter.getDenseI32ArrayAttr({multiplier}),
+        rewriter.getDenseI32ArrayAttr({shift}), rewriter.getBoolAttr(scale32),
         rewriter.getBoolAttr(double_round), rewriter.getBoolAttr(false));
 
     return rescale_op.getResult();
@@ -242,8 +242,8 @@ Value buildRescaleOpConvOutput(PatternRewriter& rewriter, Operation* op,
     auto rescale_op = CreateOpAndInfer<tosa::RescaleOp>(
         rewriter, op->getLoc(), output_type, conv_val,
         rewriter.getI32IntegerAttr(0), rewriter.getI32IntegerAttr(output_zp),
-        rewriter.getI32ArrayAttr(multiplier_arr),
-        rewriter.getI32ArrayAttr(shift_arr), rewriter.getBoolAttr(scale32),
+        rewriter.getDenseI32ArrayAttr(multiplier_arr),
+        rewriter.getDenseI32ArrayAttr(shift_arr), rewriter.getBoolAttr(scale32),
         rewriter.getBoolAttr(double_round), rewriter.getBoolAttr(true));
 
     return rescale_op.getResult();
@@ -277,8 +277,7 @@ Value getTosaConst8bitTable(PatternRewriter& rewriter, Operation* op,
   auto const_type = tensorflow::GetTypeFromTFTensorShape({256}, element_qtype);
   auto storage_type = tensorflow::GetTypeFromTFTensorShape(
       {256}, element_qtype.getStorageType());
-  auto const_attr =
-      DenseElementsAttr::get(storage_type, llvm::makeArrayRef(table));
+  auto const_attr = DenseElementsAttr::get(storage_type, llvm::ArrayRef(table));
 
   auto const_op =
       rewriter.create<tosa::ConstOp>(op->getLoc(), const_type, const_attr);
@@ -320,8 +319,7 @@ Value getTosaConst16bitTable(PatternRewriter& rewriter, Operation* op,
   auto const_type = tensorflow::GetTypeFromTFTensorShape({513}, element_qtype);
   auto storage_type = tensorflow::GetTypeFromTFTensorShape(
       {513}, element_qtype.getStorageType());
-  auto const_attr =
-      DenseElementsAttr::get(storage_type, llvm::makeArrayRef(table));
+  auto const_attr = DenseElementsAttr::get(storage_type, llvm::ArrayRef(table));
 
   auto const_op =
       rewriter.create<tosa::ConstOp>(op->getLoc(), const_type, const_attr);
@@ -372,13 +370,13 @@ void getTosaConst32bitTable(PatternRewriter& rewriter, Operation* op,
       {513}, element_qtype.getStorageType());
 
   auto first_const_attr =
-      DenseElementsAttr::get(storage_type, llvm::makeArrayRef(first_table));
+      DenseElementsAttr::get(storage_type, llvm::ArrayRef(first_table));
   auto second_const_attr =
-      DenseElementsAttr::get(storage_type, llvm::makeArrayRef(second_table));
+      DenseElementsAttr::get(storage_type, llvm::ArrayRef(second_table));
   auto third_const_attr =
-      DenseElementsAttr::get(storage_type, llvm::makeArrayRef(third_table));
+      DenseElementsAttr::get(storage_type, llvm::ArrayRef(third_table));
   auto fourth_const_attr =
-      DenseElementsAttr::get(storage_type, llvm::makeArrayRef(fourth_table));
+      DenseElementsAttr::get(storage_type, llvm::ArrayRef(fourth_table));
 
   first_const =
       rewriter.create<tosa::ConstOp>(op->getLoc(), const_type, first_const_attr)
@@ -449,9 +447,10 @@ bool getPaddingValuesFromPadType(tensorflow::Padding tf_pad,
                                  tensorflow::TensorFormat data_format_tf,
                                  uint32_t first_filter_spatial_dim,
                                  ShapedType input_type, ShapedType filter_type,
-                                 ArrayAttr strides, ArrayAttr dilations,
+                                 DenseI64ArrayAttr strides,
+                                 DenseI64ArrayAttr dilations,
                                  PatternRewriter& rewriter,
-                                 ArrayAttr& explicit_padding) {
+                                 DenseI64ArrayAttr& explicit_padding) {
   assert(tf_pad != tensorflow::Padding::EXPLICIT);
   if (!input_type.hasRank() || !filter_type.getRank()) return false;
   // Only support NHWC for now.
@@ -479,8 +478,8 @@ bool getPaddingValuesFromPadType(tensorflow::Padding tf_pad,
     int64_t ifm_dim = i + dim_index_shift;
     int64_t filter_dim = first_filter_spatial_dim + i;
 
-    int64_t dim_dilation = dilations[i].template cast<IntegerAttr>().getInt();
-    int64_t dim_stride = strides[i].template cast<IntegerAttr>().getInt();
+    int64_t dim_dilation = dilations[i];
+    int64_t dim_stride = strides[i];
 
     int64_t ip_size = input_type.getDimSize(ifm_dim);
     int64_t f_size = filter_type.getDimSize(filter_dim);
@@ -499,7 +498,7 @@ bool getPaddingValuesFromPadType(tensorflow::Padding tf_pad,
     computed_paddings.push_back(pad_after);
   }
 
-  explicit_padding = rewriter.getI64ArrayAttr(computed_paddings);
+  explicit_padding = rewriter.getDenseI64ArrayAttr(computed_paddings);
   return true;
 }
 
@@ -513,7 +512,7 @@ bool getPaddingValuesFromPadType(tensorflow::Padding tf_pad,
 // The explicit padding array in TF holds 2 pad values for every
 // dimension, even those that are not the 2 spatial ones. Just extract the
 // 2x pad values for the XY dims.
-ArrayAttr getPaddingValuesFromExplicitPadAttr(
+DenseI64ArrayAttr getPaddingValuesFromExplicitPadAttr(
     ArrayAttr explicit_pad, tensorflow::TensorFormat data_format_tf,
     PatternRewriter& rewriter) {
   SmallVector<int64_t> computed_paddings;
@@ -522,22 +521,21 @@ ArrayAttr getPaddingValuesFromExplicitPadAttr(
   for (int i = 0; i < 2; i++) {  // Two spatial dimensions X&Y
     int64_t dim = GetTensorSpatialDimIndex(4, data_format_tf,
                                            i);  // 4D tensor, NHWC/NCHW format
-
     pad_before = explicit_pad[dim * 2].template cast<IntegerAttr>().getInt();
     pad_after = explicit_pad[dim * 2 + 1].template cast<IntegerAttr>().getInt();
     computed_paddings.push_back(pad_before);
     computed_paddings.push_back(pad_after);
   }
 
-  return rewriter.getI64ArrayAttr(computed_paddings);
+  return rewriter.getDenseI64ArrayAttr(computed_paddings);
 }
 
 // Calculates the TOSA padding values for transposeConv2d
 bool getTransposeConv2dPaddingValues(
     tensorflow::Padding tf_pad, tensorflow::TensorFormat data_format_tf,
     uint32_t first_filter_spatial_dim, ShapedType input_type,
-    ShapedType filter_type, ShapedType output_type, ArrayAttr strides,
-    PatternRewriter& rewriter, ArrayAttr& explicit_padding) {
+    ShapedType filter_type, ShapedType output_type, DenseI64ArrayAttr strides,
+    PatternRewriter& rewriter, DenseI64ArrayAttr& explicit_padding) {
   assert(tf_pad != tensorflow::Padding::EXPLICIT);
   if (!input_type.hasRank() || !filter_type.hasRank() || !output_type.hasRank())
     return false;
@@ -558,7 +556,7 @@ bool getTransposeConv2dPaddingValues(
     int64_t ifm_size = input_type.getDimSize(ifm_dim);
     int64_t filter_size = filter_type.getDimSize(filter_dim);
     int64_t ofm_size = output_type.getDimSize(ofm_dim);
-    int64_t dim_stride = strides[i].template cast<IntegerAttr>().getInt();
+    int64_t dim_stride = strides[i];
 
     // These dimensions need to be static to legalize.
     if (ShapedType::isDynamic(filter_size) || ShapedType::isDynamic(ifm_size) ||
@@ -576,7 +574,7 @@ bool getTransposeConv2dPaddingValues(
     computed_paddings.push_back(pad_after);
   }
 
-  explicit_padding = rewriter.getI64ArrayAttr(computed_paddings);
+  explicit_padding = rewriter.getDenseI64ArrayAttr(computed_paddings);
   return true;
 }
 

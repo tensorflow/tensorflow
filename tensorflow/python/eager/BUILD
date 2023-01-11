@@ -12,6 +12,7 @@ load(
 )
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     licenses = ["notice"],
 )
 
@@ -55,7 +56,6 @@ cc_library(
         "//tensorflow/core/util:managed_stack_trace",
         "//tensorflow/python:ndarray_tensor",
         "//tensorflow/python:ndarray_tensor_bridge",
-        "//tensorflow/python:numpy_lib",
         "//tensorflow/python:py_exception_registry",
         "//tensorflow/python:pybind11_status",
         "//tensorflow/python/lib/core:py_seq_tensor",
@@ -64,6 +64,7 @@ cc_library(
         "//tensorflow/python/lib/core:safe_pyobject_ptr",
         "//tensorflow/python/util:cpp_python_util",
         "//tensorflow/python/util:stack_trace",
+        "//tensorflow/tsl/python/lib/core:numpy",
         "//third_party/py/numpy:headers",
         "//third_party/python_runtime:headers",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -194,7 +195,10 @@ py_library(
     name = "context",
     srcs = ["context.py"],
     srcs_version = "PY3",
-    visibility = ["//tensorflow:internal"],
+    visibility = [
+        "//tensorflow:internal",
+        "//third_party/py/jax_tpu_embedding:__subpackages__",
+    ],
     deps = [
         ":executor",
         ":monitoring",
@@ -379,6 +383,7 @@ cuda_py_test(
     ],
     deps = [
         ":backprop",
+        ":backprop_util",
         ":context",
         ":test",
         "//tensorflow/python:array_ops",

@@ -28,50 +28,16 @@ namespace xla {
 namespace gpu {
 
 using xla::runtime::CustomCall;
-using xla::runtime::Executable;
+using xla::runtime::State;
+using xla::runtime::StridedMemrefView;
 
-const GemmConfig* GemmConfigCache::Get(int64_t uid) {
-  absl::MutexLock lock(&mutex_);
-  auto it = configs_.find(uid);
-  if (it != configs_.end()) return &it->second;
-  return nullptr;
-}
-
-const GemmConfig* GemmConfigCache::Set(int64_t uid, GemmConfig config) {
-  absl::MutexLock lock(&mutex_);
-  auto it = configs_.find(uid);
-  if (it != configs_.end()) return &it->second;
-
-  auto emplaced = configs_.try_emplace(uid, std::move(config));
-  return &emplaced.first->second;
-}
-
-// -------------------------------------------------------------------------- //
-
-namespace {
-struct Gemm {
-  LLVM_ATTRIBUTE_ALWAYS_INLINE
-  absl::Status operator()(const ServiceExecutableRunOptions* run_options,
-                          const DebugOptions* debug_options,
-                          GemmConfigCache* configs,
-                          runtime::StridedMemrefView lhs,
-                          runtime::StridedMemrefView rhs,
-                          runtime::StridedMemrefView out, int64_t algorithm,
-                          double alpha_real, double alpha_imag, double beta,
-                          DotDimensionNumbers dot_dims, int64_t uid) const;
-
-  static Gemm Handler() { return Gemm(); }
-};
-}  // namespace
-
-absl::Status Gemm::operator()(const ServiceExecutableRunOptions* run_options,
-                              const DebugOptions* debug_options,
-                              GemmConfigCache* configs,
-                              runtime::StridedMemrefView lhs,
-                              runtime::StridedMemrefView rhs,
-                              runtime::StridedMemrefView out, int64_t algorithm,
-                              double alpha_real, double alpha_imag, double beta,
-                              DotDimensionNumbers dot_dims, int64_t uid) const {
+static absl::Status GemmImpl(const ServiceExecutableRunOptions* run_options,
+                             const DebugOptions* debug_options,
+                             State<GemmConfig> state, StridedMemrefView lhs,
+                             StridedMemrefView rhs, StridedMemrefView out,
+                             int64_t algorithm, double alpha_real,
+                             double alpha_imag, double beta,
+                             DotDimensionNumbers dot_dims) {
   se::DeviceMemoryBase lhs_data = GetDeviceAddress(lhs);
   se::DeviceMemoryBase rhs_data = GetDeviceAddress(rhs);
   se::DeviceMemoryBase output_data = GetDeviceAddress(out);
@@ -79,48 +45,39 @@ absl::Status Gemm::operator()(const ServiceExecutableRunOptions* run_options,
   VLOG(3) << "Running GEMM";
   se::Stream* stream = run_options->stream();
 
-  // Find the gemm config for this instance of operation based on uid.
-  const GemmConfig* config = configs->Get(uid);
-  if (config == nullptr) {
-    auto cfg = GetGemmConfig(lhs, rhs, out, algorithm, alpha_real, alpha_imag,
-                             beta, dot_dims.lhs_batch, dot_dims.lhs_contract,
-                             dot_dims.rhs_batch, dot_dims.rhs_contract);
-    if (!cfg.ok()) return ToAbslStatus(cfg.status());
-    config = configs->Set(uid, std::move(*cfg));
-  }
+  // Get the gemm config from the state.
+  absl::StatusOr<GemmConfig*> config = state.GetOrCreate([&] {
+    return ToAbsl(GetGemmConfig(lhs, rhs, out, algorithm, alpha_real,
+                                alpha_imag, beta, dot_dims.lhs_batch,
+                                dot_dims.lhs_contract, dot_dims.rhs_batch,
+                                dot_dims.rhs_contract));
+  });
+  if (!config.ok()) return config.status();
 
-  Status executed = [&]() -> Status {
-    return RunGemm(*config, lhs_data, rhs_data, output_data, stream);
-  }();
+  Status executed = RunGemm(**config, lhs_data, rhs_data, output_data, stream);
 
   if (!executed.ok()) return ToAbslStatus(executed);
 
   return absl::OkStatus();
 }
 
-static bool Gemm(runtime::ExecutionContext* ctx, void** args, void** attrs,
-                 void** rets) {
-  static auto* handler = CustomCall::Bind("xla.gpu.gemm")
-                             .UserData<const ServiceExecutableRunOptions*>()
-                             .UserData<const DebugOptions*>()
-                             .UserData<GemmConfigCache*>()
-                             .Arg<runtime::StridedMemrefView>()  // lhs
-                             .Arg<runtime::StridedMemrefView>()  // rhs
-                             .Arg<runtime::StridedMemrefView>()  // out
-                             .Attr<int64_t>("algorithm")
-                             .Attr<double>("alpha_real")
-                             .Attr<double>("alpha_imag")
-                             .Attr<double>("beta")
-                             .Attr<DotDimensionNumbers>("dot_dims")
-                             .Attr<int64_t>("uid")
-                             .To<checks>(Gemm::Handler())
-                             .release();
-
-  return succeeded(Executable::Call(ctx, *handler, args, attrs, rets));
-}
+XLA_RUNTIME_DEFINE_CUSTOM_CALL(
+    Gemm, FunctionWrapper<GemmImpl>(), checks,
+    CustomCall::Bind("xla.gpu.gemm")
+        .UserData<const ServiceExecutableRunOptions*>()
+        .UserData<const DebugOptions*>()
+        .State<GemmConfig>("uid")
+        .Arg<StridedMemrefView>()  // lhs
+        .Arg<StridedMemrefView>()  // rhs
+        .Arg<StridedMemrefView>()  // out
+        .Attr<int64_t>("algorithm")
+        .Attr<double>("alpha_real")
+        .Attr<double>("alpha_imag")
+        .Attr<double>("beta")
+        .Attr<DotDimensionNumbers>("dot_dims"));
 
 void RegisterGemmCustomCalls(runtime::DirectCustomCallRegistry& registry) {
-  registry.Register("xla.gpu.gemm", &xla::gpu::Gemm);
+  registry.Register("xla.gpu.gemm", Gemm);
 }
 
 }  // namespace gpu

@@ -60,7 +60,8 @@ absl::string_view BoolToString(bool b) { return b ? "true" : "false"; }
     absl::Span<const bool> dim_unique, absl::Span<const bool> dim_ordered,
     absl::Span<const Tile> tiles, PrimitiveType index_primitive_type,
     PrimitiveType pointer_primitive_type, int64_t memory_space,
-    std::optional<Shape> physical_shape) {
+    std::optional<Shape> physical_shape,
+    int64_t dynamic_shape_metadata_prefix_bytes) {
   Layout layout;
   for (int64_t dimension_number : minor_to_major) {
     layout.add_minor_to_major(dimension_number);
@@ -91,6 +92,8 @@ absl::string_view BoolToString(bool b) { return b ? "true" : "false"; }
   if (physical_shape != std::nullopt) {
     *layout.mutable_physical_shape() = *std::move(physical_shape);
   }
+  layout.set_dynamic_shape_metadata_prefix_bytes(
+      dynamic_shape_metadata_prefix_bytes);
   return layout;
 }
 
@@ -353,6 +356,14 @@ Layout CreateDefaultLayoutForRank(int64_t rank) {
       return InvalidArgument(
           "layout has a physical_shape, but is not a sparse array: %s",
           shape.ShortDebugString());
+    }
+    for (const auto& tile : layout.tiles()) {
+      if (tile.dimensions().empty() ||
+          absl::c_any_of(tile.dimensions(),
+                         [](int64_t dim) { return dim == 0; })) {
+        return InvalidArgument("layout has invalid tiles: %s",
+                               shape.ShortDebugString());
+      }
     }
   }
 

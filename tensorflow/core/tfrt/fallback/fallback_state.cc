@@ -75,5 +75,9 @@ FallbackState::CreateGraphExecutionState(GraphDef graph_def) const {
   return execution_state;
 }
 
+Status FallbackState::AddFunctionDef(const FunctionDef &func_def) {
+  return func_lib_def_.AddFunctionDef(func_def);
+}
+
 }  // namespace tfrt_stub
 }  // namespace tensorflow

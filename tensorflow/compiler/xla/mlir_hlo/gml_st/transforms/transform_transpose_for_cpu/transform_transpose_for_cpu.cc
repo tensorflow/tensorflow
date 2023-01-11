@@ -18,13 +18,16 @@ limitations under the License.
 
 #include "gml_st/IR/gml_st_ops.h"
 #include "gml_st/interfaces/tiling_interface_impl.h"
+#include "gml_st/transforms/fusion/fusion.h"
 #include "gml_st/transforms/passes.h"
+#include "gml_st/transforms/peeling/peeling.h"
 #include "gml_st/transforms/tiling/tiling.h"
 #include "gml_st/transforms/transforms.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
+#include "mlir/Interfaces/LoopLikeInterface.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 
@@ -36,6 +39,9 @@ namespace {
 
 using mlir::arith::ConstantIndexOp;
 
+static constexpr llvm::StringRef kTransposeTransformedLabel =
+    "__transpose_transformed_label__";
+
 struct TileTransposePattern : public OpRewritePattern<linalg::TransposeOp> {
   TileTransposePattern(MLIRContext *context, TilingOptions options,
                        PatternBenefit benefit = 1)
@@ -44,7 +50,11 @@ struct TileTransposePattern : public OpRewritePattern<linalg::TransposeOp> {
 
   LogicalResult matchAndRewrite(linalg::TransposeOp op,
                                 PatternRewriter &rewriter) const override {
-    if (hasTransformationAttr(op)) return failure();
+    if (hasLabel(op, kTransposeTransformedLabel)) return failure();
+
+    if (isa<LoopLikeOpInterface>(op->getParentOp()))
+      return rewriter.notifyMatchFailure(
+          op, "has already been tiled by another pass.");
 
     auto tilingResult =
         tile(options, rewriter, cast<TilingInterface>(op.getOperation()));
@@ -55,7 +65,22 @@ struct TileTransposePattern : public OpRewritePattern<linalg::TransposeOp> {
     if (tilingResult->loop != nullptr) {
       rewriter.replaceOp(op, tilingResult->loop->getResults());
     }
-    setTransformationAttr(rewriter, tilingResult->tiledOp);
+    setLabel(tilingResult->tiledOps.front(), kTransposeTransformedLabel);
+
+    // Peel parallel loops, label the main loop as "perfectly tiled" one, to
+    // enable vectorization after canonicalization.
+    if (auto loop = dyn_cast_or_null<ParallelOp>(tilingResult->loop)) {
+      auto peelingResult = peelAllLoops(loop, rewriter);
+      setLabel(loop, kPerfectlyTiledLoopLabel);
+
+      // Tile ops in the peeled loop again, to size 1, so they can be
+      // scalarized.
+      if (failed(tilePeeledOpsToScalars(rewriter, peelingResult,
+                                        kTransposeTransformedLabel,
+                                        /*fuseFilterFn=*/nullptr)))
+        return failure();
+    }
+
     return success();
   }
 
@@ -130,7 +155,9 @@ struct TransformTransposeForCpuPass
     }
 
     // Ensure we drop the marker in the end.
-    func.walk([](linalg::TransposeOp op) { removeTransformationAttr(op); });
+    func.walk([](linalg::TransposeOp op) {
+      removeLabel(op, kTransposeTransformedLabel);
+    });
   }
 };
 

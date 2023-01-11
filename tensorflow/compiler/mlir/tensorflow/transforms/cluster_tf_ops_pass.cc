@@ -25,6 +25,8 @@ limitations under the License.
 // does not exist any operation placed on host_B that conumes any result of any
 // operation placed on host_A.
 
+#include <optional>
+
 #include "mlir/IR/Builders.h"
 #include "mlir/Pass/Pass.h"
 #include "absl/strings/str_cat.h"
@@ -169,7 +171,7 @@ llvm::Optional<llvm::StringMap<FunctionMetadata>> GetFunctionMetadatas(
     return WalkResult::advance();
   });
 
-  if (result.wasInterrupted()) return llvm::None;
+  if (result.wasInterrupted()) return std::nullopt;
 
   return metadatas;
 }

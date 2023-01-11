@@ -159,6 +159,7 @@ from tensorflow.python.ops import variables
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import checkpoint_utils
+from tensorflow.python.util import deprecation
 from tensorflow.python.util import nest
 from tensorflow.python.util.compat import collections_abc
 from tensorflow.python.util.tf_export import tf_export
@@ -166,14 +167,17 @@ from tensorflow.tools.docs import doc_controls
 
 _FEATURE_COLUMN_DEPRECATION_WARNING = """\
     Warning: tf.feature_column is not recommended for new code. Instead,
-    feature preprocessing can be done directly using [Keras preprocessing
-    layers](https://www.tensorflow.org/guide/migrate/migrating_feature_columns).
-    See the [migration guide](https://tensorflow.org/guide/migrate) for details.
+    feature preprocessing can be done directly using either [Keras preprocessing
+    layers](https://www.tensorflow.org/guide/migrate/migrating_feature_columns)
+    or through the one-stop utility [`tf.keras.utils.FeatureSpace`](https://www.tensorflow.org/api_docs/python/tf/keras/utils/FeatureSpace)
+    built on top of them. See the [migration guide](https://tensorflow.org/guide/migrate)
+    for details.
     """
 
 _FEATURE_COLUMN_DEPRECATION_RUNTIME_WARNING = (
-    'Use Keras preprocessing layers instead. Each of `tf.feature_column.*` has'
-    ' a functional equivalent in `tf.keras.layers` for feature preprocessing '
+    'Use Keras preprocessing layers instead, either directly or via the '
+    '`tf.keras.utils.FeatureSpace` utility. Each of `tf.feature_column.*` has '
+    'a functional equivalent in `tf.keras.layers` for feature preprocessing '
     'when training a Keras model.')
 
 
@@ -240,9 +244,8 @@ def _internal_input_layer(features,
 
 
 @doc_controls.header(_FEATURE_COLUMN_DEPRECATION_WARNING)
-@tf_export(
-    v1=['feature_column.input_layer'],
-    deprecation_inst=_FEATURE_COLUMN_DEPRECATION_RUNTIME_WARNING)
+@tf_export(v1=['feature_column.input_layer'])
+@deprecation.deprecated(None, _FEATURE_COLUMN_DEPRECATION_RUNTIME_WARNING)
 def input_layer(features,
                 feature_columns,
                 weight_collections=None,
@@ -376,9 +379,8 @@ class InputLayer(object):
 
 
 @doc_controls.header(_FEATURE_COLUMN_DEPRECATION_WARNING)
-@tf_export(
-    v1=['feature_column.linear_model'],
-    deprecation_inst=_FEATURE_COLUMN_DEPRECATION_RUNTIME_WARNING)
+@tf_export(v1=['feature_column.linear_model'])
+@deprecation.deprecated(None, _FEATURE_COLUMN_DEPRECATION_RUNTIME_WARNING)
 def linear_model(features,
                  feature_columns,
                  units=1,
@@ -768,9 +770,8 @@ def _transform_features(features, feature_columns):
 
 
 @doc_controls.header(_FEATURE_COLUMN_DEPRECATION_WARNING)
-@tf_export(
-    v1=['feature_column.make_parse_example_spec'],
-    deprecation_inst=_FEATURE_COLUMN_DEPRECATION_RUNTIME_WARNING)
+@tf_export(v1=['feature_column.make_parse_example_spec'])
+@deprecation.deprecated(None, _FEATURE_COLUMN_DEPRECATION_RUNTIME_WARNING)
 def make_parse_example_spec(feature_columns):
   """Creates parsing spec dictionary from input feature_columns.
 
@@ -3122,7 +3123,6 @@ def _collect_leaf_level_keys(cross):
     else:
       leaf_level_keys.append(k)
   return leaf_level_keys
-
 
 
 class _IndicatorColumn(_DenseColumn, _SequenceDenseColumn,

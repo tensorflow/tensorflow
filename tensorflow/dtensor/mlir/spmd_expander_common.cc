@@ -40,7 +40,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/collection_ops_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_tensor.h"
-#include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/utils/convert_op_folder.h"
+#include "tensorflow/compiler/xla/mlir_hlo/utils/convert_op_folder.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/dtensor/cc/constants.h"
 #include "tensorflow/dtensor/cc/tensor_layout.h"
@@ -70,7 +70,7 @@ StatusOr<mlir::TensorType> LocalTypeFromGlobalType(
   auto shape = llvm::to_vector<4>(original_type.getShape());
   auto shard_values = layout.num_shards();
   for (int output_axis = 0; output_axis < shape.size(); ++output_axis) {
-    if (shape[output_axis] != mlir::ShapedType::kDynamicSize) {
+    if (shape[output_axis] != mlir::ShapedType::kDynamic) {
       if (shape[output_axis] % shard_values[output_axis] != 0) {
         return errors::InvalidArgument(
             "The sharding spec for axis ", output_axis, " splits among ",
@@ -96,7 +96,7 @@ StatusOr<mlir::TensorType> GlobalTypeFromLocalType(
   auto shape = llvm::to_vector<4>(original_type.getShape());
   auto shard_values = layout.num_shards();
   for (int output_axis = 0; output_axis < shape.size(); ++output_axis)
-    if (shape[output_axis] != mlir::ShapedType::kDynamicSize)
+    if (shape[output_axis] != mlir::ShapedType::kDynamic)
       shape[output_axis] *= shard_values[output_axis];
   mlir::RankedTensorType new_output_type =
       mlir::RankedTensorType::get(shape, original_type.getElementType());
@@ -120,8 +120,7 @@ Status CreateSplitOp(const int num_split, const int split_dimension,
   auto input_type = src_input.getType().cast<mlir::TensorType>();
 
   if (input_type.hasRank()) {
-    if (input_type.getShape()[split_dimension] ==
-        mlir::ShapedType::kDynamicSize) {
+    if (input_type.getShape()[split_dimension] == mlir::ShapedType::kDynamic) {
       output_type = input_type;
     } else {
       auto shape = llvm::to_vector<4>(input_type.getShape());

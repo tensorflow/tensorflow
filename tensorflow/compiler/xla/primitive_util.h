@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "tensorflow/tsl/platform/float8.h"
 
 namespace xla {
 namespace primitive_util {
@@ -127,6 +128,16 @@ inline PrimitiveType NativeToPrimitiveType<bfloat16>() {
   return BF16;
 }
 
+template <>
+inline PrimitiveType NativeToPrimitiveType<tsl::float8_e5m2>() {
+  return F8E5M2;
+}
+
+template <>
+inline PrimitiveType NativeToPrimitiveType<tsl::float8_e4m3fn>() {
+  return F8E4M3FN;
+}
+
 // Complex
 template <>
 inline PrimitiveType NativeToPrimitiveType<complex64>() {
@@ -162,6 +173,8 @@ ABSL_ATTRIBUTE_ALWAYS_INLINE inline int BitWidth(PrimitiveType type) {
 
     case S8:
     case U8:
+    case F8E5M2:
+    case F8E4M3FN:
       return 8;
 
     case S16:
@@ -203,6 +216,8 @@ ABSL_ATTRIBUTE_ALWAYS_INLINE inline int ByteWidth(PrimitiveType type) {
 
     case S8:
     case U8:
+    case F8E5M2:
+    case F8E4M3FN:
       return 1;
 
     case S16:
@@ -426,6 +441,16 @@ struct PrimitiveTypeToNative<BF16> {
   using type = bfloat16;
 };
 
+template <>
+struct PrimitiveTypeToNative<F8E5M2> {
+  using type = tsl::float8_e5m2;
+};
+
+template <>
+struct PrimitiveTypeToNative<F8E4M3FN> {
+  using type = tsl::float8_e4m3fn;
+};
+
 // Complex
 template <>
 struct PrimitiveTypeToNative<C64> {
@@ -451,8 +476,8 @@ bool IsPrimitiveTypeName(absl::string_view name);
 // For example,
 //  IsCanonicalRepresentation<float>(F32)          // true
 //  IsCanonicalRepresentation<xla::bfloat16>(BF16) // true
-//  IsCanonicalRepresentation<uint32_t>(S8)        // true, 8 <= 32
-//  IsCanonicalRepresentation<uint8_t>(S16)        // false, 16 > 8
+//  IsCanonicalRepresentation<int32_t>(S8)         // true, 8 <= 32
+//  IsCanonicalRepresentation<uint16_t>(S16)       // false, unsigned.
 template <typename T>
 bool IsCanonicalRepresentation(PrimitiveType type) {
   switch (type) {
@@ -460,6 +485,8 @@ bool IsCanonicalRepresentation(PrimitiveType type) {
     case F32:
     case BF16:
     case F64:
+    case F8E5M2:
+    case F8E4M3FN:
     case C64:
     case C128:
       return NativeToPrimitiveType<T>() == type;

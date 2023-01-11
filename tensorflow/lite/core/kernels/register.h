@@ -37,6 +37,12 @@ class BuiltinOpResolver : public MutableOpResolver {
   BuiltinOpResolver();
 };
 
+// This built-in op resolver enables XNNPACK by default for all data types.
+class BuiltinOpResolverWithXNNPACK : public BuiltinOpResolver {
+ public:
+  BuiltinOpResolverWithXNNPACK();
+};
+
 // TfLite interpreter could apply a TfLite delegate by default. To completely
 // disable this behavior, one could choose to use the following class
 // BuiltinOpResolverWithoutDefaultDelegates.

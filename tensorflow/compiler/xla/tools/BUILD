@@ -1,20 +1,25 @@
 # Tools and utilities that aid in XLA development and usage.
 
-load("//tensorflow:tensorflow.default.bzl", "filegroup")
+load("//tensorflow/tsl:tsl.default.bzl", "filegroup")
 load("//tensorflow/tsl/platform:rules_cc.bzl", "cc_library")
 load(
-    "//tensorflow:tensorflow.bzl",
+    "//tensorflow/tsl:tsl.bzl",
     "if_cuda_or_rocm",
-    "tf_cc_binary",
-    "tf_cc_test",
+)
+load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
+load(
+    "//tensorflow/compiler/xla:xla.bzl",
+    "xla_cc_binary",
+    "xla_cc_test",
+    "xla_py_proto_library",
 )
 load(
     "//tensorflow/tsl/platform:build_config.bzl",
     "tf_proto_library",
 )
-load("//tensorflow/compiler/xla:xla.bzl", "xla_py_proto_library")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//tensorflow/compiler/xla:internal"],
     licenses = ["notice"],
 )
@@ -29,7 +34,7 @@ filegroup(
     visibility = ["//tensorflow/compiler/xla:internal"],
 )
 
-tf_cc_binary(
+xla_cc_binary(
     name = "hex_floats_to_packed_literal",
     srcs = ["hex_floats_to_packed_literal.cc"],
     deps = [
@@ -37,7 +42,6 @@ tf_cc_binary(
         "//tensorflow/tsl/lib/io:buffered_inputstream",
         "//tensorflow/tsl/lib/io:random_inputstream",
         "//tensorflow/tsl/platform:env",
-        "//tensorflow/tsl/platform:env_impl",
         "//tensorflow/tsl/platform:logging",
         "//tensorflow/tsl/platform:platform_port",
         "//tensorflow/tsl/platform:status",
@@ -47,7 +51,7 @@ tf_cc_binary(
     ],
 )
 
-tf_cc_binary(
+xla_cc_binary(
     name = "show_signature",
     srcs = ["show_signature.cc"],
     deps = [
@@ -100,7 +104,7 @@ cc_library(
     alwayslink = True,
 )
 
-tf_cc_binary(
+xla_cc_binary(
     name = "replay_computation_cpu",
     deps = [
         ":replay_computation_library",
@@ -108,16 +112,17 @@ tf_cc_binary(
     ],
 )
 
-tf_cc_binary(
+xla_cc_binary(
     name = "replay_computation_gpu",
     tags = ["gpu"],
     deps = [
         ":replay_computation_library",
         "//tensorflow/compiler/xla/service:gpu_plugin",
+        "//tensorflow/compiler/xla/stream_executor/cuda:cublas_plugin",
     ],
 )
 
-tf_cc_binary(
+xla_cc_binary(
     name = "replay_computation_interpreter",
     deps = [
         ":replay_computation_library",
@@ -125,7 +130,7 @@ tf_cc_binary(
     ],
 )
 
-tf_cc_binary(
+xla_cc_binary(
     name = "show_literal",
     srcs = ["show_literal.cc"],
     deps = [
@@ -139,7 +144,7 @@ tf_cc_binary(
     ],
 )
 
-tf_cc_binary(
+xla_cc_binary(
     name = "convert_computation",
     srcs = ["convert_computation.cc"],
     deps = [
@@ -153,7 +158,7 @@ tf_cc_binary(
     ],
 )
 
-tf_cc_binary(
+xla_cc_binary(
     name = "show_text_literal",
     srcs = ["show_text_literal.cc"],
     deps = [
@@ -168,7 +173,7 @@ tf_cc_binary(
     ],
 )
 
-tf_cc_binary(
+xla_cc_binary(
     name = "dumped_computation_to_text",
     srcs = ["dumped_computation_to_text.cc"],
     deps = [
@@ -189,7 +194,7 @@ tf_cc_binary(
     ],
 )
 
-tf_cc_binary(
+xla_cc_binary(
     name = "dumped_computation_to_operation_list",
     srcs = ["dumped_computation_to_operation_list.cc"],
     deps = [
@@ -212,7 +217,7 @@ tf_cc_binary(
     ],
 )
 
-tf_cc_binary(
+xla_cc_binary(
     name = "hlo_proto_to_json",
     srcs = ["hlo_proto_to_json.cc"],
     deps = [
@@ -227,7 +232,7 @@ tf_cc_binary(
     ],
 )
 
-tf_cc_test(
+xla_cc_test(
     name = "hlo_extractor_test",
     srcs = ["hlo_extractor_test.cc"],
     deps = [
@@ -253,7 +258,7 @@ cc_library(
     ],
 )
 
-tf_cc_binary(
+xla_cc_binary(
     name = "interactive_graphviz",
     srcs = ["interactive_graphviz.cc"],
     deps = [
@@ -278,6 +283,8 @@ tf_cc_binary(
         "//tensorflow/tsl/util:command_line_flags",
     ] + if_cuda_or_rocm([
         "//tensorflow/compiler/xla/service:gpu_plugin",
+    ]) + if_cuda([
+        "//tensorflow/compiler/xla/stream_executor/cuda:cublas_plugin",
     ]),
 )
 
@@ -293,6 +300,7 @@ cc_library(
     hdrs = ["hlo_module_loader.h"],
     visibility = ["//tensorflow/compiler/xla:friends"],
     deps = [
+        ":run_hlo_module_proto_cc",
         "//tensorflow/compiler/xla:debug_options_flags",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla/hlo/ir:hlo",
@@ -306,7 +314,7 @@ cc_library(
     ],
 )
 
-tf_cc_test(
+xla_cc_test(
     name = "hlo_module_loader_test",
     srcs = ["hlo_module_loader_test.cc"],
     deps = [
@@ -380,7 +388,7 @@ cc_library(
     ],
 )
 
-tf_cc_binary(
+xla_cc_binary(
     name = "run_hlo_module",
     testonly = True,
     srcs = ["run_hlo_module_main.cc"],
@@ -403,6 +411,8 @@ tf_cc_binary(
         "//tensorflow/tsl/util:command_line_flags",
     ] + if_cuda_or_rocm([
         "//tensorflow/compiler/xla/service:gpu_plugin",
+    ]) + if_cuda([
+        "//tensorflow/compiler/xla/stream_executor/cuda:cublas_plugin",
     ]),
 )
 
@@ -423,7 +433,7 @@ cc_library(
     ],
 )
 
-tf_cc_test(
+xla_cc_test(
     name = "hlo_control_flow_flattening_test",
     srcs = ["hlo_control_flow_flattening_test.cc"],
     deps = [
@@ -449,7 +459,7 @@ cc_library(
     deps = [],
 )
 
-tf_cc_binary(
+xla_cc_binary(
     name = "compute_cost",
     srcs = ["compute_cost.cc"],
     deps = [

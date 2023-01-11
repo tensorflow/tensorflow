@@ -25,7 +25,7 @@ limitations under the License.
 
 namespace tensorflow {
 
-using stream_executor::port::StatusOr;
+using tsl::StatusOr;
 
 // Converts the TensorFlow DataType 'dtype' into an MLIR (scalar) type.
 Status ConvertDataType(DataType dtype, mlir::Builder builder, mlir::Type* type);

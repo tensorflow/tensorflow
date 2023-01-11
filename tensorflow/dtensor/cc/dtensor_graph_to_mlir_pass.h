@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_DTENSOR_CC_DTENSOR_GRAPH_TO_MLIR_PASS_H_
 #define TENSORFLOW_DTENSOR_CC_DTENSOR_GRAPH_TO_MLIR_PASS_H_
 
+#include <memory>
+
 #include "absl/container/flat_hash_set.h"
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
@@ -30,12 +32,18 @@ namespace tensorflow {
 class DTensorMlirPassRunner {
  public:
   DTensorMlirPassRunner();
-  // Translates `graph` and replaces it with the resulting rewritten graph.
-  Status RunOnGraph(const DeviceSet& device_set, bool is_func,
-                    FunctionLibraryDefinition* flib_def,
-                    std::unique_ptr<Graph>* graph,
-                    absl::flat_hash_set<Node*>& control_ret_nodes,
-                    Fprint128 cache_key);
+
+  // Translates and transforms `graph` to MLIR ModuleOp.
+  StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> RunOnGraph(
+      const DeviceSet& device_set, bool is_func,
+      FunctionLibraryDefinition* flib_def, const Graph& graph,
+      Fprint128 cache_key);
+
+  // Converts MLIR to graphdef for execution and adds it to Graph.
+  Status AddMlirModuleToGraph(mlir::ModuleOp module,
+                              FunctionLibraryDefinition* flib_def,
+                              absl::flat_hash_set<Node*>& control_ret_nodes,
+                              std::unique_ptr<Graph>* out_graph);
 
  private:
   // N.B. op_registration_ must be initialized before context/pass-manager to

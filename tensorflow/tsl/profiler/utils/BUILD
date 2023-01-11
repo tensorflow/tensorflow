@@ -4,6 +4,7 @@ load("//tensorflow/tsl/profiler/builds:build_config.bzl", "tf_profiler_copts")
 load("//tensorflow/tsl/platform:build_config.bzl", "tsl_cc_test")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
         "//tensorflow/tsl/profiler:internal",
     ],
@@ -13,7 +14,6 @@ package(
 package_group(
     name = "friends",
     includes = [
-        "//tensorflow/core/profiler:friends",
         "//tensorflow/tsl/profiler:friends",
     ],
 )
@@ -43,7 +43,7 @@ cc_library(
     ],
     copts = tf_profiler_copts(),
     visibility = [
-        "//tensorflow/compiler/xla/stream_executor:__subpackages__",
+        "//tensorflow/compiler/xla:__subpackages__",
         "//tensorflow/tsl/platform/cloud:__pkg__",
         "//tensorflow/tsl/profiler:internal",
     ],
@@ -175,6 +175,10 @@ cc_library(
     name = "trace_utils",
     hdrs = ["trace_utils.h"],
     copts = tf_profiler_copts(),
+    visibility = [
+        "//tensorflow/compiler/xla/backends/profiler/gpu:__pkg__",
+        "//tensorflow/tsl/profiler:internal",
+    ],
     deps = [
         "//tensorflow/tsl/platform:types",
     ],
@@ -357,5 +361,32 @@ cc_library(
     deps = [
         "//tensorflow/tsl/platform",
         "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
+    name = "buffer_pool",
+    srcs = ["buffer_pool.cc"],
+    hdrs = ["buffer_pool.h"],
+    copts = tf_profiler_copts(),
+    visibility = [
+        "//tensorflow/compiler/xla/backends/profiler/gpu:__pkg__",
+        "//tensorflow/tsl/profiler:internal",
+    ],
+    deps = [
+        "//tensorflow/tsl/platform:logging",
+        "//tensorflow/tsl/platform:mutex",
+        "//tensorflow/tsl/platform:platform_port",
+        "//tensorflow/tsl/platform:thread_annotations",
+    ],
+)
+
+tsl_cc_test(
+    name = "buffer_pool_test",
+    srcs = ["buffer_pool_test.cc"],
+    deps = [
+        ":buffer_pool",
+        "//tensorflow/tsl/platform:test",
+        "//tensorflow/tsl/platform:test_main",
     ],
 )

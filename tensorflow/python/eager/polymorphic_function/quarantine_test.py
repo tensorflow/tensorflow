@@ -737,13 +737,7 @@ class DefunTest(test.TestCase, parameterized.TestCase):
 
     x = constant_op.constant(1.0)
     with self.assertRaisesRegex(
-        TypeError, 'got keyword argument `training` '
-        'that was not included in input_signature'):
-      foo(x, training=True)
-
-    with self.assertRaisesRegex(
-        TypeError, 'got keyword argument `training` '
-        'that was not included in input_signature'):
+        TypeError, 'Parameter .* was expected to be of type .* but is .*'):
       foo(x, training=False)
 
     self.assertAllEqual(x.numpy(), foo(x).numpy())
@@ -883,7 +877,9 @@ class DefunTest(test.TestCase, parameterized.TestCase):
     save(mod, '/tmp/kwonlyf', defined.get_concrete_function(*signature))
     loaded = load('/tmp/kwonlyf')
     result = loaded.signatures['serving_default'](
-        a=array_ops.constant(1), b=array_ops.constant(2))
+        a=array_ops.constant(1),
+        b=array_ops.constant(2),
+        d=array_ops.constant(5))
     self.assertEqual(result['output_0'].numpy(), 11)
 
   def testInputSignatureWithKeywordOnlyArgsNoDefaults(self):
@@ -945,61 +941,17 @@ class DefunTest(test.TestCase, parameterized.TestCase):
     self.assertAllEqual(six, 2.0)
     self.assertAllEqual(seven, 2.0)
 
-  def testFunctionWithExtraAttributes(self):
-
-    @quarantine.defun_with_attributes(attributes={
-        'experimental_1': 'value1',
-        'experimental_2': 2
-    })
-    def matmul(x, y):
-      return math_ops.matmul(x, y)
-
-    def add(x, y):
-      return math_ops.add(x, y)
-
-    defun_add = quarantine.defun_with_attributes(
-        add, attributes={
-            'experimental_3': True,
-            'experimental_4': 1.0
-        })
-
-    with context.graph_mode(), self.cached_session():
-      with ops.get_default_graph().as_default():
-        t = constant_op.constant([[1.0, 2.0], [3.0, 4.0]])
-        sq = matmul(t, t)
-        double = defun_add(t, t)
-        self.assertAllEqual(sq.eval().reshape(-1), [7, 10, 15, 22])
-        self.assertAllEqual(double.eval().reshape(-1), [2, 4, 6, 8])
-
-        graph = ops.get_default_graph()
-        # pylint: disable=protected-access
-        self.assertLen(graph._functions, 2)
-        functions = list(graph._functions.values())
-        self.assertRegex(functions[0].definition.signature.name, '.*matmul.*')
-        attrs = functions[0].definition.attr
-        self.assertLen(attrs, 2)
-        self.assertEqual(attrs['experimental_1'].s, b'value1')
-        self.assertEqual(attrs['experimental_2'].i, 2)
-
-        self.assertRegex(functions[1].definition.signature.name, '.*add.*')
-        attrs = functions[1].definition.attr
-        self.assertLen(attrs, 2)
-        self.assertEqual(attrs['experimental_3'].b, True)
-        self.assertEqual(attrs['experimental_4'].f, 1.0)
-        # pylint: enable=protected-access
-
   def testFunctionWithInvalidAttribute(self):
-
-    @quarantine.defun_with_attributes(attributes={'experimental_1': ['value1']})
     def add(x, y):
       return math_ops.add(x, y)
 
-    with self.assertRaisesRegex(ValueError,
-                                'Attribute experimental_1 must be .* Got .*'):
-      with context.graph_mode(), self.cached_session():
-        with ops.get_default_graph().as_default():
-          t = constant_op.constant([[1.0, 2.0], [3.0, 4.0]])
-          add(t, t)
+    with self.assertRaisesRegex(
+        ValueError,
+        'TracingCompiler does not support `experimental_1` as an attribute.',
+    ):
+      quarantine.defun_with_attributes(
+          add, attributes={'experimental_1': 'value1'}
+      )
 
   def testRegisterFunction(self):
 

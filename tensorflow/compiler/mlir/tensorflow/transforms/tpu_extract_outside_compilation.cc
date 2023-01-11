@@ -1124,6 +1124,35 @@ LogicalResult CheckClusterResults(tf_device::ClusterOp cluster) {
   return success();
 }
 
+// Check that op marked for outside compilation has an ancestor also marked for
+// outside compilation.
+LogicalResult CheckAncestorNotOutsideComp(Operation* op) {
+  if (!op->getAttrOfType<StringAttr>(kXlaOutsideCompilationAttr))
+    return success();
+  Operation* iter_op = op;
+  while (auto* parent_op = iter_op->getParentOp()) {
+    if (parent_op->getAttrOfType<StringAttr>(kXlaOutsideCompilationAttr)) {
+      op->emitOpError()
+          << "An op marked for outside compilation (having attribute "
+          << kXlaOutsideCompilationAttr
+          << ") has an ancestor marked for outside compilation.";
+      return failure();
+    }
+    iter_op = parent_op;
+  }
+  return success();
+}
+
+// Check the validity of the module, pre-pass.
+LogicalResult CheckPreconditions(ModuleOp module) {
+  auto walk_result = module.walk([&](Operation* op) {
+    if (failed(CheckAncestorNotOutsideComp(op))) return WalkResult::interrupt();
+    return WalkResult::advance();
+  });
+  if (walk_result.wasInterrupted()) return failure();
+  return success();
+}
+
 // Check the validity of the module, post-pass.
 LogicalResult CheckPostconditions(ModuleOp module) {
   auto walk_result = module.walk([&](tf_device::ClusterOp cluster) {
@@ -1137,6 +1166,8 @@ LogicalResult CheckPostconditions(ModuleOp module) {
 void TPUExtractOutsideCompilation::runOnOperation() {
   // Get runtime devices information from the closest parent module.
   auto module = getOperation();
+  if (failed(CheckPreconditions(module))) signalPassFailure();
+
   mlir::TF::RuntimeDevices devices;
   if (failed(tensorflow::GetDevicesFromOp(module, &devices)))
     return signalPassFailure();

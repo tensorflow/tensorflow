@@ -25,6 +25,6 @@ def UnaryToBinaryEinsumEq : NativeCodeCall<
 // Convert UnaryEinsumOp to EinsumOp with two operands with redundant first
 // operand.
 def UnaryEinsumToEinsum : Pat<
-  (HLO_UnaryEinsumOp $operand, $equation),
-  (HLO_EinsumOp (HLO_ConstantOp (GetScalarOfType<1> $operand)),
+  (MHLO_UnaryEinsumOp $operand, $equation),
+  (MHLO_EinsumOp (MHLO_ConstantOp (GetScalarOfType<1> $operand)),
                 $operand, (UnaryToBinaryEinsumEq $equation))>;

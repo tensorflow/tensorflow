@@ -15,6 +15,7 @@ load(
 )
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
         "//tensorflow/compiler/mlir/quantization/tensorflow:internal_visibility_allowlist_package",
     ],
@@ -41,7 +42,12 @@ cc_library(
     name = "calibrator_singleton",
     hdrs = ["calibrator_singleton.h"],
     compatible_with = get_compatible_with_cloud(),
-    deps = if_static([":calibrator_singleton_impl"]),
+    deps = if_static([":calibrator_singleton_impl"]) + [
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/synchronization",
+        "@com_google_absl//absl/types:optional",
+    ],
 )
 
 tf_cc_test(
@@ -60,6 +66,7 @@ tf_kernel_library(
     srcs = ["custom_aggregator_op.cc"],
     compatible_with = get_compatible_with_cloud(),
     visibility = [
+        "//tensorflow:__pkg__",
         "//tensorflow/compiler/mlir/quantization/tensorflow/python:__pkg__",
     ],
     deps = [

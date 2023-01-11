@@ -29,19 +29,27 @@ include_directories(BEFORE
 
 add_mlir_library(GmlStPasses
   collapse_materialize_ops/collapse_materialize_ops.cc
+  collapse_shape/collapse_shape.cc
   fusion/fusion.cc
   gml_st_simtfy/gml_st_simtfy.cc
   gml_st_to_scf/gml_st_to_scf.cc
   gml_st_to_gpu/gml_st_to_gpu.cc
+  greedy_tiling_and_fusion/greedy_tiling_and_fusion.cc
+  lower_vector_contract/lower_vector_contract.cc
   peeling/peeling.cc
+  scalarization/scalarization.cc
   tiling/tiling.cc
   tiling_cwise/tiling_cwise.cc
   tiling_gpu_warp/tiling_gpu_warp.cc
   tiling_softmax/tiling_softmax.cc
   transform_map_for_cpu/transform_map_for_cpu.cc
   transform_matmul_for_cpu/transform_matmul_for_cpu.cc
+  transform_matmul_for_triton/transform_matmul_for_triton.cc
+  transform_reduce_for_cpu/transform_reduce_for_cpu.cc
+  transform_tileable_ops_for_cpu/transform_tileable_ops_for_cpu.cc
   transform_transpose_for_cpu/transform_transpose_for_cpu.cc
   transform_scatter_for_cpu/transform_scatter_for_cpu.cc
+  transform_sort_for_cpu/transform_sort_for_cpu.cc
   vectorization/vectorization.cc
 
   DEPENDS
@@ -64,6 +72,7 @@ add_mlir_library(GmlStPasses
   MLIRIR
   MLIRLinalgDialect
   MLIRLinalgTransforms
+  MLIRMemRefDialect
   MLIRPass
   MLIRSCFUtils
   MLIRSupport

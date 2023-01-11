@@ -34,7 +34,7 @@ bool GpuStream::Init() {
 
 void GpuStream::Destroy() {
   if (completed_event_ != nullptr) {
-    port::Status status =
+    tsl::Status status =
         GpuDriver::DestroyEvent(parent_->gpu_context(), &completed_event_);
     if (!status.ok()) {
       LOG(ERROR) << status.error_message();

@@ -6,6 +6,7 @@ load(
 )
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     licenses = ["notice"],
 )
 
@@ -71,6 +72,7 @@ pytype_strict_library(
     visibility = ["//tensorflow:internal"],
     deps = [
         ":serialization",
+        ":util",
         "//tensorflow/core/function/trace_type:default_types_proto_py",
         "//tensorflow/python/types",
     ],

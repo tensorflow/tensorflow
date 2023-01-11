@@ -22,7 +22,7 @@ namespace stream_executor {
 namespace gpu {
 
 Event::Status GpuEvent::PollForStatus() {
-  port::StatusOr<hipError_t> status =
+  tsl::StatusOr<hipError_t> status =
       GpuDriver::QueryEvent(parent_->gpu_context(), gpu_event_);
   if (!status.ok()) {
     LOG(ERROR) << "Error polling for event status: "

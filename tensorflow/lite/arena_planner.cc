@@ -24,7 +24,7 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/lite/builtin_ops.h"
-#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/graph_info.h"
 #include "tensorflow/lite/simple_memory_arena.h"
 
@@ -38,7 +38,9 @@ constexpr int32_t kNodeNotAssigned = std::numeric_limits<int32_t>::max();
 bool ShareFirstInputWithFirstOutputForNode(const TfLiteRegistration& node_reg) {
   // TODO (b/254230751): add support for more ops which support forwarding.
   switch (node_reg.builtin_code) {
+    case kTfLiteBuiltinExpandDims:
     case kTfLiteBuiltinReshape:
+    case kTfLiteBuiltinSqueeze:
       return true;
     default:
       return false;

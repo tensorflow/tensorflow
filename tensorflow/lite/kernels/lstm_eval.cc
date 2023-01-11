@@ -26,8 +26,8 @@ limitations under the License.
 #include "ruy/mul_params.h"  // from @ruy
 #include "ruy/profiler/instrumentation.h"  // from @ruy
 #include "ruy/ruy.h"  // from @ruy
-#include "tensorflow/lite/c/builtin_op_data.h"
-#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/c/builtin_op_data.h"
+#include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/kernels/cpu_backend_context.h"
 #include "tensorflow/lite/kernels/internal/compatibility.h"
 #include "tensorflow/lite/kernels/internal/kernel_utils.h"
@@ -188,7 +188,7 @@ inline void CalculateLstmGateFloat(
     const int n_output, const int n_cell,
     const TfLiteFusedActivation activation, float* gate,
     const bool is_input_all_zeros, const bool is_aux_input_all_zeros,
-    float* output, CpuBackendContext* context) {
+    float* output, bool recurrent_is_diag, CpuBackendContext* context) {
   const bool use_peephole = (cell_to_gate_weights != nullptr);
   const bool use_layer_norm = (layer_norm_coefficients != nullptr);
 
@@ -217,9 +217,16 @@ inline void CalculateLstmGateFloat(
     std::swap(accumulation_buffer, output);
   }
   // For each batch and cell: compute recurrent_weight * output_state.
-  MatrixBatchVectorMultiplyAccumulate(recurrent_to_gate_weights, output_state,
-                                      accumulation_buffer, output, n_cell,
-                                      n_output, n_batch, context);
+  if (recurrent_is_diag) {
+    tflite::tensor_utils::VectorBatchVectorCwiseProductAccumulate(
+        recurrent_to_gate_weights, n_cell, output_state, n_batch,
+        accumulation_buffer);
+    std::swap(accumulation_buffer, output);
+  } else {
+    MatrixBatchVectorMultiplyAccumulate(recurrent_to_gate_weights, output_state,
+                                        accumulation_buffer, output, n_cell,
+                                        n_output, n_batch, context);
+  }
   // For each batch and cell: compute cell_weight .* cell_state (peephole LSTM)
   if (use_peephole) {
     tensor_utils::VectorBatchVectorCwiseProductAccumulate(
@@ -667,12 +674,13 @@ void CalculateLstmOutputInteger8x8_16(
   // Note: unlike float/hybrid, the activation is always Tanh.
   tensor_utils::ApplyTanh(15 + cell_state_scale, cell_state, n_batch, n_cell,
                           scratch0);
-  tensor_utils::CwiseMul(output_gate, scratch0, hidden_scale_a, hidden_scale_b,
-                         n_batch, n_cell, hidden_zp, scratch1);
-
   const bool use_projection = (projection_weights != nullptr);
 
   if (use_projection) {
+    // b/246629213 the projection operation assumes -hidden_zp in CwiseMul
+    tensor_utils::CwiseMul(output_gate, scratch0, hidden_scale_a,
+                           hidden_scale_b, n_batch, n_cell, -hidden_zp,
+                           scratch1);
     // Note: no bias like in float/hybrid
     std::fill_n(output_state, n_batch * n_output, 0);
     tensor_utils::MatrixBatchVectorMultiplyAccumulate(
@@ -684,7 +692,9 @@ void CalculateLstmOutputInteger8x8_16(
                                   quantized_proj_clip);
     }
   } else {
-    std::copy_n(scratch1, n_batch * n_output, output_state);
+    tensor_utils::CwiseMul(output_gate, scratch0, hidden_scale_a,
+                           hidden_scale_b, n_batch, n_cell, hidden_zp,
+                           output_state);
   }
 }
 
@@ -875,7 +885,9 @@ inline void LstmStepFloat(
     int n_aux_input, int n_output, int output_batch_leading_dim,
     float* output_state_ptr, float* cell_state_ptr, float* scratch0,
     float* scratch1, float* scratch2, float* scratch3, float* scratch4,
-    float* output_ptr, CpuBackendContext* context) {
+    float* output_ptr, bool recurrent_to_input_is_diag,
+    bool recurrent_to_forget_is_diag, bool recurrent_to_cell_is_diag,
+    bool recurrent_to_output_is_diag, CpuBackendContext* context) {
   ruy::profiler::ScopeLabel label("LstmStepFloat");
   // Since we have already checked that weights are all there or none, we can
   // check the existence of only one to the get the condition.
@@ -897,17 +909,17 @@ inline void LstmStepFloat(
 
   if (!use_cifg) {
     // Calculate the input gate. (If not CIFG.)
-    CalculateLstmGateFloat(input_ptr, input_to_input_weights_ptr, aux_input_ptr,
-                           aux_input_to_input_weights_ptr, output_state_ptr,
-                           recurrent_to_input_weights_ptr,
+    CalculateLstmGateFloat(
+        input_ptr, input_to_input_weights_ptr, aux_input_ptr,
+        aux_input_to_input_weights_ptr, output_state_ptr,
+        recurrent_to_input_weights_ptr,
 
-                           cell_state_ptr, cell_to_input_weights_ptr,
-                           input_layer_norm_coefficients_ptr,
-                           input_gate_bias_ptr, n_batch, n_input, n_aux_input,
-                           n_output, n_cell,
-                           /*activation=*/kTfLiteActSigmoid, input_gate_scratch,
-                           is_input_all_zeros, is_aux_input_all_zeros,
-                           accumulation_scratch_buffer, context);
+        cell_state_ptr, cell_to_input_weights_ptr,
+        input_layer_norm_coefficients_ptr, input_gate_bias_ptr, n_batch,
+        n_input, n_aux_input, n_output, n_cell,
+        /*activation=*/kTfLiteActSigmoid, input_gate_scratch,
+        is_input_all_zeros, is_aux_input_all_zeros, accumulation_scratch_buffer,
+        recurrent_to_input_is_diag, context);
   }
   // Calculate the forget gate.
   CalculateLstmGateFloat(
@@ -919,7 +931,8 @@ inline void LstmStepFloat(
       forget_layer_norm_coefficients_ptr, forget_gate_bias_ptr, n_batch,
       n_input, n_aux_input, n_output, n_cell,
       /*activation=*/kTfLiteActSigmoid, forget_gate_scratch, is_input_all_zeros,
-      is_aux_input_all_zeros, accumulation_scratch_buffer, context);
+      is_aux_input_all_zeros, accumulation_scratch_buffer,
+      recurrent_to_forget_is_diag, context);
   // Calculate the cell update gate.
   CalculateLstmGateFloat(
       input_ptr, input_to_cell_weights_ptr, aux_input_ptr,
@@ -930,7 +943,8 @@ inline void LstmStepFloat(
       /*cell_to_gate_weights=*/nullptr, cell_layer_norm_coefficients_ptr,
       cell_gate_bias_ptr, n_batch, n_input, n_aux_input, n_output, n_cell,
       params->activation, cell_gate_scratch, is_input_all_zeros,
-      is_aux_input_all_zeros, accumulation_scratch_buffer, context);
+      is_aux_input_all_zeros, accumulation_scratch_buffer,
+      recurrent_to_cell_is_diag, context);
   // Update the cell state.
   UpdateLstmCellFloat(n_batch, n_cell, cell_state_ptr, input_gate_scratch,
                       forget_gate_scratch, cell_gate_scratch, use_cifg,
@@ -945,7 +959,8 @@ inline void LstmStepFloat(
       output_layer_norm_coefficients_ptr, output_gate_bias_ptr, n_batch,
       n_input, n_aux_input, n_output, n_cell,
       /*activation=*/kTfLiteActSigmoid, output_gate_scratch, is_input_all_zeros,
-      is_aux_input_all_zeros, accumulation_scratch_buffer, context);
+      is_aux_input_all_zeros, accumulation_scratch_buffer,
+      recurrent_to_output_is_diag, context);
   // Update the output state.
   CalculateLstmOutputFloat(n_batch, n_cell, n_output, cell_state_ptr,
                            output_gate_scratch, params->activation,
@@ -1769,8 +1784,11 @@ TfLiteStatus EvalFloat(
     const TfLiteLSTMParams* params, bool forward_sequence, bool time_major,
     int output_offset, TfLiteTensor* scratch_buffer, TfLiteTensor* output_state,
     TfLiteTensor* cell_state, TfLiteTensor* output,
+    bool recurrent_to_input_is_diag, bool recurrent_to_forget_is_diag,
+    bool recurrent_to_cell_is_diag, bool recurrent_to_output_is_diag,
     CpuBackendContext* context) {
   TF_LITE_ASSERT(input->dims->size >= 2 && input->dims->size <= 3);
+
   int max_time, n_batch;
   if (input->dims->size == 3) {
     max_time = (time_major) ? input->dims->data[0] : input->dims->data[1];
@@ -1785,7 +1803,9 @@ TfLiteStatus EvalFloat(
 
   // n_cell and n_output will be the same size when there is no projection.
   const int n_cell = input_to_output_weights->dims->data[0];
-  const int n_output = recurrent_to_output_weights->dims->data[1];
+  const int n_output = recurrent_to_output_is_diag
+                           ? recurrent_to_output_weights->dims->data[0]
+                           : recurrent_to_output_weights->dims->data[1];
 
   // Since we have already checked that weights are all there or none, we can
   // check the existence of only one to the get the condition.
@@ -1859,7 +1879,8 @@ TfLiteStatus EvalFloat(
           GetTensorData<float>(output_state), GetTensorData<float>(cell_state),
           input_gate_scratch, forget_gate_scratch, cell_gate_scratch,
           output_gate_scratch, accumulation_scratch_buffer, output_ptr,
-          context);
+          recurrent_to_input_is_diag, recurrent_to_forget_is_diag,
+          recurrent_to_cell_is_diag, recurrent_to_output_is_diag, context);
     }
   } else {
     for (int b = 0; b < n_batch; b++) {
@@ -1921,7 +1942,8 @@ TfLiteStatus EvalFloat(
             output_state_ptr, cell_state_ptr, input_gate_scratch_ptr,
             forget_gate_scratch_ptr, cell_gate_scratch_ptr,
             output_gate_scratch_ptr, accumulation_scratch_buffer, output_ptr,
-            context);
+            recurrent_to_input_is_diag, recurrent_to_forget_is_diag,
+            recurrent_to_cell_is_diag, recurrent_to_output_is_diag, context);
       }
     }
   }

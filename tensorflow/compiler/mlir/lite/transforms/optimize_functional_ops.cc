@@ -56,7 +56,7 @@ void UpdateFuncType(func::FuncOp func) {
   auto return_types = llvm::to_vector<4>(terminator->getOperandTypes());
 
   FunctionType func_type = func.getFunctionType();
-  if (llvm::makeArrayRef(return_types) == func_type.getResults()) return;
+  if (llvm::ArrayRef(return_types) == func_type.getResults()) return;
 
   auto updated_type =
       FunctionType::get(func.getContext(), func_type.getInputs(), return_types);
@@ -67,7 +67,7 @@ void UpdateFuncType(func::FuncOp func) {
 bool IsSideEffectFree(func::FuncOp func) {
   return !func.getBody()
               .walk([&](Operation* op) {
-                if (!MemoryEffectOpInterface::hasNoEffect(op) &&
+                if (!isMemoryEffectFree(op) &&
                     !op->hasTrait<OpTrait::IsTerminator>())
                   return WalkResult::interrupt();
                 return WalkResult::advance();

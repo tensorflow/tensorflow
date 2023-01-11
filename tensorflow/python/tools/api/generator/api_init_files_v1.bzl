@@ -24,8 +24,10 @@ TENSORFLOW_API_INIT_FILES_V1 = [
     "distribute/experimental/__init__.py",
     "distributions/__init__.py",
     "dtypes/__init__.py",
+    "dtypes/experimental/__init__.py",
     "errors/__init__.py",
     "experimental/__init__.py",
+    "experimental/extension_type/__init__.py",
     "feature_column/__init__.py",
     "gfile/__init__.py",
     "io/gfile/__init__.py",
@@ -159,6 +161,7 @@ KERAS_API_INIT_FILES_V1 = [
     "keras/preprocessing/text/__init__.py",
     "keras/regularizers/__init__.py",
     "keras/utils/__init__.py",
+    "keras/utils/legacy/__init__.py",
     "keras/wrappers/__init__.py",
     "keras/wrappers/scikit_learn/__init__.py",
 ]

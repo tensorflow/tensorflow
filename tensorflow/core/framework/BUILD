@@ -1,6 +1,5 @@
 load(
     "//tensorflow/core/platform:build_config.bzl",
-    "tf_kernel_tests_linkstatic",
     "tf_proto_library",
     "tf_pyclif_proto_library",
 )
@@ -23,6 +22,7 @@ load(
 )
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
         "//tensorflow/core:__subpackages__",
         "//tensorflow/security/fuzzing:__subpackages__",
@@ -576,7 +576,7 @@ cc_library(
     testonly = 1,
     srcs = ["fake_input.cc"],
     hdrs = ["fake_input.h"],
-    visibility = ["//tensorflow:__subpackages__"],
+    visibility = ["//tensorflow:internal"],
     deps = [
         ":attr_value_proto_cc",
         ":op_def_proto_cc",
@@ -668,6 +668,7 @@ cc_library(
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:logging",
         "//tensorflow/core/platform:macros",
+        "//tensorflow/core/platform:status",
         "//tensorflow/core/platform:statusor",
         "//tensorflow/core/util:overflow",
         "//third_party/eigen3",
@@ -784,6 +785,7 @@ tf_cuda_library(
         "variant_tensor_data.h",
     ],
     visibility = [
+        "//tensorflow:__pkg__",
         "//tensorflow/core:__pkg__",
         "//tensorflow/core/runtime_fallback:__subpackages__",
         "//tensorflow/core/tfrt:__subpackages__",
@@ -1128,7 +1130,6 @@ tf_cuda_cc_test(
     name = "variant_op_copy_test",
     size = "small",
     srcs = ["variant_op_copy_test.cc"],
-    linkstatic = tf_kernel_tests_linkstatic(),
     tags = tf_cuda_tests_tags(),
     deps = [
         "//tensorflow/cc:cc_ops",
@@ -1155,7 +1156,6 @@ tf_cc_test(
     name = "framework_run_handler_util_test",
     size = "small",
     srcs = ["run_handler_util_test.cc"],
-    linkstatic = tf_kernel_tests_linkstatic(),
     deps = [
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
@@ -1168,7 +1168,6 @@ tf_cc_test(
     name = "framework_run_handler_test",
     size = "small",
     srcs = ["run_handler_test.cc"],
-    linkstatic = tf_kernel_tests_linkstatic(),
     deps = [
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:direct_session_internal",
@@ -1192,7 +1191,6 @@ tf_cc_test(
     name = "framework_op_segment_test",
     size = "small",
     srcs = ["op_segment_test.cc"],
-    linkstatic = tf_kernel_tests_linkstatic(),
     deps = [
         "//tensorflow/cc:cc_ops",
         "//tensorflow/core",
@@ -1218,7 +1216,6 @@ tf_cc_test(
     name = "framework_resource_var_test",
     size = "small",
     srcs = ["resource_var_test.cc"],
-    linkstatic = tf_kernel_tests_linkstatic(),
     deps = [
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
@@ -1304,7 +1301,6 @@ tf_cc_tests(
         "//tensorflow:macos": ["-headerpad_max_install_names"],
         "//conditions:default": [],
     }),
-    linkstatic = tf_kernel_tests_linkstatic(),
     visibility = [
         "//tensorflow:internal",
         "//tensorflow/core:__pkg__",
@@ -1824,6 +1820,7 @@ tf_proto_library(
         ":log_memory_proto",
         ":model_proto",
         ":node_def_proto",
+        ":optimized_function_graph_proto",
         ":op_def_proto",
         ":reader_base_proto",
         ":resource_handle_proto",

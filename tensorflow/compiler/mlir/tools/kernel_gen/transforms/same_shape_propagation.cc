@@ -120,7 +120,7 @@ struct ShapeValue {
 
   ArrayRef<ValueOrConst> scalars() const {
     assert(!is_vector);
-    return llvm::makeArrayRef(shape);
+    return llvm::ArrayRef(shape);
   }
 
   bool isVector() const { return is_vector; }
@@ -294,8 +294,7 @@ class ShapeEqualityKnowledge {
             if (!candidate) candidate = dimOp.getSource();
             auto index = dimOp.getConstantIndex();
             if (!index.has_value()) return false;
-            return candidate == dimOp.getSource() &&
-                   p.index() == index.getValue();
+            return candidate == dimOp.getSource() && p.index() == index.value();
           });
       if (all_are_dimops && candidate) {
         equal_shapes_.unionSets(candidate.getAsOpaquePointer(),

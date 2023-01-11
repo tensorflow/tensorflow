@@ -6269,6 +6269,89 @@ TEST_F(AsynchronousCopyResourceTest, StartAtZeroAndRemove) {
             std::vector<float>({0.0, 0.0, 0.0, 0.0, 2.0}));
 }
 
+TEST_F(AsynchronousCopyResourceTest, OutOfOrderRemovalSameStartTime) {
+  // time:      0 1 2 3 4
+  // resource:  2 2 2 2 2
+  // add:1,3,1     +-+       OK
+  // resource:  2 2 1 2 2
+  // add:1,4,2     +---+     OK
+  // resource:  2 2 0 1 2
+  // rem:1,3,1     +-+
+  // resource:  2 2 0 2 2
+  // add:1,5,1     +-----+   OK
+  // resource:  2 2 0 1 2
+  // add:1,5,1     +-----+   OK
+  // resource:  2 2 0 0 2
+  // add:1,5,1     +-----+   OK
+  // resource:  2 2 0 0 1
+  // add:1,5,1     +-----+   OK
+  // resource:  2 2 0 0 0
+  // add:1,5,1     +-----+   Violate
+  // rem:1,4,2     +---+
+  // resource:  2 2 0 0 2
+  // rem:1,5,1     +-----+
+  // resource:  2 2 0 1 2
+  // rem:1,5,1     +-----+
+  // resource:  2 2 0 2 2
+  // rem:1,5,1     +-----+
+  // resource:  2 2 1 2 2
+  // rem:1,5,1     +-----+
+  // resource:  2 2 2 2 2
+  auto alternate_mem_space = MemorySpaceAssignment::MemorySpace::kAlternate;
+  AsynchronousCopyResource resource({2.0, 2.0, 2.0, 2.0, 2.0});
+  AsynchronousCopy copy1{1, 3, 1.0, alternate_mem_space, 0};
+  AsynchronousCopy copy2{1, 4, 2.0, alternate_mem_space, 1};
+  EXPECT_TRUE(resource.HasEnoughResource(1, 3, 1.0));
+  resource.AddCopy(copy1);
+  EXPECT_EQ(resource.GetCurrentResources(),
+            std::vector<float>({2.0, 2.0, 1.0, 2.0, 2.0}));
+  EXPECT_TRUE(resource.HasEnoughResource(1, 4, 2.0));
+  resource.AddCopy(copy2);
+  EXPECT_EQ(resource.GetCurrentResources(),
+            std::vector<float>({2.0, 2.0, 0.0, 1.0, 2.0}));
+  resource.RemoveCopy(copy1);
+  EXPECT_EQ(resource.GetCurrentResources(),
+            std::vector<float>({2.0, 2.0, 0.0, 2.0, 2.0}));
+
+  AsynchronousCopy copy3{1, 5, 1.0, alternate_mem_space, 2};
+  AsynchronousCopy copy4{1, 5, 1.0, alternate_mem_space, 3};
+  AsynchronousCopy copy5{1, 5, 1.0, alternate_mem_space, 4};
+  AsynchronousCopy copy6{1, 5, 1.0, alternate_mem_space, 5};
+  EXPECT_TRUE(resource.HasEnoughResource(1, 5, 1.0));
+  resource.AddCopy(copy3);
+  EXPECT_EQ(resource.GetCurrentResources(),
+            std::vector<float>({2.0, 2.0, 0.0, 1.0, 2.0}));
+  EXPECT_TRUE(resource.HasEnoughResource(1, 5, 1.0));
+  resource.AddCopy(copy4);
+  EXPECT_EQ(resource.GetCurrentResources(),
+            std::vector<float>({2.0, 2.0, 0.0, 0.0, 2.0}));
+  EXPECT_TRUE(resource.HasEnoughResource(1, 5, 1.0));
+  resource.AddCopy(copy5);
+  EXPECT_EQ(resource.GetCurrentResources(),
+            std::vector<float>({2.0, 2.0, 0.0, 0.0, 1.0}));
+  EXPECT_TRUE(resource.HasEnoughResource(1, 5, 1.0));
+  resource.AddCopy(copy6);
+  EXPECT_EQ(resource.GetCurrentResources(),
+            std::vector<float>({2.0, 2.0, 0.0, 0.0, 0.0}));
+  EXPECT_FALSE(resource.HasEnoughResource(1, 5, 1.0));
+
+  resource.RemoveCopy(copy2);
+  EXPECT_EQ(resource.GetCurrentResources(),
+            std::vector<float>({2.0, 2.0, 0.0, 0.0, 2.0}));
+  resource.RemoveCopy(copy3);
+  EXPECT_EQ(resource.GetCurrentResources(),
+            std::vector<float>({2.0, 2.0, 0.0, 1.0, 2.0}));
+  resource.RemoveCopy(copy4);
+  EXPECT_EQ(resource.GetCurrentResources(),
+            std::vector<float>({2.0, 2.0, 0.0, 2.0, 2.0}));
+  resource.RemoveCopy(copy5);
+  EXPECT_EQ(resource.GetCurrentResources(),
+            std::vector<float>({2.0, 2.0, 1.0, 2.0, 2.0}));
+  resource.RemoveCopy(copy6);
+  EXPECT_EQ(resource.GetCurrentResources(),
+            std::vector<float>({2.0, 2.0, 2.0, 2.0, 2.0}));
+}
+
 TEST_P(MemorySpaceAssignmentTest, CrossProgramPrefetchTest) {
   HloComputation::Builder builder(TestName());
 

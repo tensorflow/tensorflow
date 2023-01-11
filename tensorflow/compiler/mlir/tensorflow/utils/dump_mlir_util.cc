@@ -186,8 +186,9 @@ void PrintPassPipeline(const mlir::PassManager& pass_manager,
   llvm::interleaveComma(
       pass_manager.getPasses(), passOS,
       [&](mlir::Pass& pass) { pass.printAsTextualPipeline(passOS); });
-  os << "{-# external_resources: { mlir_reproducer: { pipeline: \""
-     << passOS.str() << "\", ";
+  os << "{-# external_resources: { mlir_reproducer: { pipeline: "
+        "\"builtin.module("
+     << passOS.str() << ")\", ";
   os << "disable_threading: true, ";
   os << "verify_each: true } } #-}";
   os << "\n\n";

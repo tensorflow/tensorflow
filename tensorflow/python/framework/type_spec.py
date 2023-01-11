@@ -36,6 +36,7 @@ from tensorflow.python.util import nest
 from tensorflow.python.util import tf_decorator
 from tensorflow.python.util.lazy_loader import LazyLoader
 from tensorflow.python.util.tf_export import tf_export
+from tensorflow.tools.docs import doc_controls
 
 # Use LazyLoader to avoid circular dependencies.
 tensor_spec = LazyLoader(
@@ -220,10 +221,29 @@ class TypeSpec(
     """
     return nested_structure_coder.encode_structure(self).type_spec_value
 
-  # TODO(b/223659753): Return the actual Tensor-based value instead of spec.
-  def _placeholder_value(self) -> "TypeSpec":
-    """Value used for tracing a function signature with this TraceType."""
-    return self
+  @doc_controls.do_not_doc_inheritable
+  def placeholder_value(self, placeholder_context):
+    """Value used for tracing a function signature with this TraceType.
+
+    WARNING: Do not override.
+
+    Args:
+      placeholder_context: A class container for context information when
+        creating a placeholder value.
+
+    Returns:
+      A `CompositeTensor` placeholder whose components are recursively composed
+        of placeholders themselves.
+    """
+    component_placeholders = nest.map_structure(
+        lambda x: x.placeholder_value(placeholder_context),
+        self._component_specs)
+    return self._from_components(component_placeholders)
+
+  def _to_tensors(self, value):
+    assert value._type_spec == self  # pylint: disable=protected-access
+    return [arg for arg in nest.flatten(value, expand_composites=True)
+            if isinstance(arg, ops.Tensor)]
 
   # TODO(b/225058047): Reconsider semantics.
   def is_compatible_with(self, spec_or_value):

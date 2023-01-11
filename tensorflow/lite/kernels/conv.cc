@@ -24,8 +24,8 @@ limitations under the License.
 #define TFLITE_WITH_MULTITHREADED_EIGEN
 #endif
 
-#include "tensorflow/lite/c/builtin_op_data.h"
-#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/c/builtin_op_data.h"
+#include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/kernels/cpu_backend_context.h"
 #if defined(TFLITE_WITH_MULTITHREADED_EIGEN)
 #include "tensorflow/lite/kernels/eigen_support.h"
@@ -596,6 +596,8 @@ TfLiteStatus Prepare(KernelType kernel_type, TfLiteContext* context,
       const auto* affine_quantization =
           reinterpret_cast<TfLiteAffineQuantization*>(
               filter->quantization.params);
+      TF_LITE_ENSURE(context, affine_quantization);
+      TF_LITE_ENSURE(context, affine_quantization->scale);
       TF_LITE_ENSURE_EQ(
           context, affine_quantization->scale->size,
           filter->dims->data[affine_quantization->quantized_dimension]);
@@ -746,6 +748,9 @@ void EvalQuantizedPerChannel(TfLiteContext* context, TfLiteNode* node,
     effective_kernel_type = kReference;
   }
 
+  if (filter->type == kTfLiteInt4) {
+    effective_kernel_type = kReference;
+  }
   // Grouped convolution is right now only supported on reference kernel.
   if (data->groups != 1) {
     effective_kernel_type = kReference;
@@ -753,13 +758,40 @@ void EvalQuantizedPerChannel(TfLiteContext* context, TfLiteNode* node,
 
   switch (effective_kernel_type) {
     case kReference: {
-      reference_integer_ops::ConvPerChannel(
-          op_params, data->per_channel_output_multiplier.data(),
-          data->per_channel_output_shift.data(), GetTensorShape(input),
-          GetTensorData<int8>(input), GetTensorShape(filter),
-          GetTensorData<int8>(filter), GetTensorShape(bias),
-          GetTensorData<int32>(bias), GetTensorShape(output),
-          GetTensorData<int8>(output));
+      switch (filter->type) {
+        case kTfLiteInt4: {
+          const size_t bytes_unpacked = filter->bytes * 2;
+          // container variable packed filter data is unpacked into in
+          // ConvPerChannelWithPackedInt4Weights before op is used on the data
+          int8_t* unpacked_filter_data =
+              new int8_t[bytes_unpacked / sizeof(int8_t)];
+          reference_integer_ops::ConvPerChannelWithPackedInt4Weights(
+              op_params, data->per_channel_output_multiplier.data(),
+              data->per_channel_output_shift.data(), GetTensorShape(input),
+              GetTensorData<int8>(input), GetTensorShape(filter),
+              GetTensorData<int8>(filter), unpacked_filter_data,
+              GetTensorShape(bias), GetTensorData<int32>(bias),
+              GetTensorShape(output), GetTensorData<int8>(output));
+          delete[] unpacked_filter_data;
+          break;
+        }
+        case kTfLiteInt8: {
+          reference_integer_ops::ConvPerChannel(
+              op_params, data->per_channel_output_multiplier.data(),
+              data->per_channel_output_shift.data(), GetTensorShape(input),
+              GetTensorData<int8>(input), GetTensorShape(filter),
+              GetTensorData<int8>(filter), GetTensorShape(bias),
+              GetTensorData<int32>(bias), GetTensorShape(output),
+              GetTensorData<int8>(output));
+          break;
+        }
+
+        default: {
+          printf("Weight type %s (%d) not supported.",
+                 TfLiteTypeGetName(filter->type), filter->type);
+          break;
+        }
+      }
       break;
     }
     case kGenericOptimized:

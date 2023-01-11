@@ -93,7 +93,7 @@ class TFRInlinerInterface : public DialectInlinerInterface {
     auto retValOp = dyn_cast<TFRReturnOp>(op);
     if (!retValOp) return;
 
-    for (auto ret_value : llvm::zip(valuesToRepl, retValOp.operands())) {
+    for (auto ret_value : llvm::zip(valuesToRepl, retValOp.getOperands())) {
       std::get<0>(ret_value).replaceAllUsesWith(std::get<1>(ret_value));
     }
   }
@@ -359,11 +359,15 @@ ParseResult TFRFuncOp::parse(OpAsmParser &parser, OperationState &result) {
          function_interface_impl::VariadicFlag,
          std::string &) { return builder.getFunctionType(arg_types, results); };
   return function_interface_impl::parseFunctionOp(
-      parser, result, /*allowVariadic=*/false, build_func_type);
+      parser, result, /*allowVariadic=*/false,
+      getFunctionTypeAttrName(result.name), build_func_type,
+      getArgAttrsAttrName(result.name), getResAttrsAttrName(result.name));
 }
 
 void TFRFuncOp::print(OpAsmPrinter &p) {
-  function_interface_impl::printFunctionOp(p, *this, /*isVariadic=*/false);
+  function_interface_impl::printFunctionOp(
+      p, *this, /*isVariadic=*/false, getFunctionTypeAttrName(),
+      getArgAttrsAttrName(), getResAttrsAttrName());
 }
 
 }  // namespace TFR
@@ -679,12 +683,12 @@ class RemoveQParamsOp : public OpRewritePattern<TFRQuantQParamsOp> {
       auto scales_type = RankedTensorType::get(
           {static_cast<int64_t>(num_channels)}, rewriter.getF32Type());
       auto scales_attr =
-          DenseElementsAttr::get(scales_type, llvm::makeArrayRef(scales));
+          DenseElementsAttr::get(scales_type, llvm::ArrayRef(scales));
       scale_op = rewriter.create<TF::ConstOp>(loc, scales_attr);
 
       auto zps_type = RankedTensorType::get(
           {static_cast<int64_t>(num_channels)}, rewriter.getI32Type());
-      auto zps_attr = DenseElementsAttr::get(zps_type, llvm::makeArrayRef(zps));
+      auto zps_attr = DenseElementsAttr::get(zps_type, llvm::ArrayRef(zps));
       zp_op = rewriter.create<TF::ConstOp>(loc, zps_attr);
     }
     if (!scale_op || !zp_op) {
@@ -770,8 +774,7 @@ class RemoveScaleFactorOp : public OpRewritePattern<TFRQuantScaleFactorOp> {
     rewriter.setInsertionPoint(scale_factor_op);
     const Location loc = scale_factor_op->getLoc();
     auto result_scale_op = rewriter.create<TF::ConstOp>(
-        loc,
-        DenseElementsAttr::get(scale_type, llvm::makeArrayRef(scale_factors)));
+        loc, DenseElementsAttr::get(scale_type, llvm::ArrayRef(scale_factors)));
     auto result_scale_cast_op = rewriter.create<CastOp>(
         loc, scale_factor_op.getType(), result_scale_op.getOutput());
     scale_factor_op.getScaleFactor().replaceAllUsesWith(

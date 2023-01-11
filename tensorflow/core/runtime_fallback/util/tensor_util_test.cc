@@ -43,7 +43,7 @@ TEST(TensorUtilTest, MoveHostBufferToTfTensorOk) {
   ssize_t size = 4 * 4;
   auto host_context = CreateTestHostContext();
   tfrt::TensorMetadata metadata(tfrt::DType(tfrt::DType::I32),
-                                llvm::makeArrayRef(4));
+                                llvm::ArrayRef(4));
   auto* ptr =
       host_context->AllocateBytes(size, /*alignment=*/EIGEN_MAX_ALIGN_BYTES);
   tfrt::DenseHostTensor dht(

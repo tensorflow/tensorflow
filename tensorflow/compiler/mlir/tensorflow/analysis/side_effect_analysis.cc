@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/analysis/side_effect_analysis.h"
 
 #include <bitset>
+#include <optional>
 #include <string>
 
 #include "absl/container/node_hash_map.h"
@@ -128,7 +129,7 @@ bool MayHaveSideEffect(Operation* op) {
   if (isa_and_nonnull<TF::TensorFlowDialect>(op->getDialect()))
     return TensorFlowDialect::CanHaveSideEffects(op);
 
-  if (mlir::MemoryEffectOpInterface::hasNoEffect(op)) return false;
+  if (mlir::isMemoryEffectFree(op)) return false;
   // Conservatively assume that there can be side effects.
   return true;
 }
@@ -286,15 +287,21 @@ class OpSideEffectCollector {
           // dead or get pruned, ignore it for side effect analysis.
           continue;
 
-        // Add side effects for op resource ID.
-        std::string instance_str = "";
+        // Add side effects for op resource ID. If `op` does not have
+        // `GetResourceInstanceInterface`, then all op instances will keep an
+        // empty `instance_str` which enforces global order.
+        std::optional<std::string> instance_str = "";
         SideEffects side_effects(GetSideEffectsFromEffectInstance(effect, op));
         if (auto resource_instance_op =
             dyn_cast<GetResourceInstanceInterface>(op)) {
           instance_str = resource_instance_op.GetResourceInstanceStr();
         }
+        // No value (`std::nullopt`) instance string signals that we should
+        // ignore this effect, see comment for `GetResourceInstanceInterface`.
+        if (!instance_str.has_value()) continue;
+
         TypeID type_id = effect.getResource()->getResourceID();
-        ResourceId resource_id = GetOpResourceId(type_id, instance_str);
+        ResourceId resource_id = GetOpResourceId(type_id, instance_str.value());
         side_effects.SetResourceId(resource_id);
         UpdateSideEffectsByResourceId(side_effects,
                                       side_effects_by_resource_id);
@@ -346,6 +353,17 @@ SideEffectsByResourceId CollectSideEffectsByResourceId(
     const TF::ResourceAliasAnalysis::Info& alias_analysis) {
   SideEffectsByResourceId side_effects_by_resource_id;
   if (!MayHaveSideEffect(op)) return side_effects_by_resource_id;
+
+  // For fetch op, set unknown effect to guarantee that it depends on every
+  // side-effecting op (directly or indirectly).
+  if (isa<tf_executor::FetchOp>(op)) {
+    SideEffects unknown_effect;
+    unknown_effect.SetUnknownEffect();
+    unknown_effect.SetResourceId(kUnknownResourceId);
+    UpdateSideEffectsByResourceId(unknown_effect,
+                                  side_effects_by_resource_id);
+    return side_effects_by_resource_id;
+  }
 
   if (isa<tf_device::LaunchOp, tf_device::ClusterOp, tf_executor::IslandOp,
           tf_executor::GraphOp, IfRegionOp, CaseRegionOp, WhileRegionOp>(op)) {

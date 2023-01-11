@@ -198,8 +198,8 @@ LogicalResult ConvertTFBatchMatMulOp<BatchMatMulOpType>::matchAndRewrite(
     std::swap(rhs_shape[rhs_dims - 1], rhs_shape[rhs_dims - 2]);
   }
 
-  const int rows = lhs_shape[lhs_dims - 2];
-  const int cols = rhs_shape[rhs_dims - 1];
+  const int64_t rows = lhs_shape[lhs_dims - 2];
+  const int64_t cols = rhs_shape[rhs_dims - 1];
 
   if (lhs_shape[lhs_dims - 1] != rhs_shape[rhs_dims - 2]) {
     // Input dimensions must be compatible for multiplication.
@@ -221,12 +221,12 @@ LogicalResult ConvertTFBatchMatMulOp<BatchMatMulOpType>::matchAndRewrite(
   // Input dimensions must be defined. MatMulBCast does not support partial
   // shapes.
   for (auto dim : lhs_shape) {
-    if (dim == -1) {
+    if (dim == mlir::ShapedType::kDynamic) {
       return failure();
     }
   }
   for (auto dim : rhs_shape) {
-    if (dim == -1) {
+    if (dim == mlir::ShapedType::kDynamic) {
       return failure();
     }
   }

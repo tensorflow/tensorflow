@@ -1,11 +1,14 @@
 load("//tensorflow/tsl/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow/tsl/platform:build_config.bzl", "tf_proto_library")
 load("//tensorflow/tsl:tsl.default.bzl", "tsl_grpc_cc_dependencies")
-load("//tensorflow:tensorflow.bzl", "tf_cc_test")
+load("//tensorflow/compiler/xla:xla.bzl", "xla_cc_test")
 
 licenses(["notice"])
 
-package(default_visibility = ["//tensorflow:internal"])
+package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    default_visibility = ["//tensorflow/compiler/xla:internal"],
+)
 
 tf_proto_library(
     name = "protocol_proto",
@@ -62,7 +65,7 @@ cc_library(
     ] + tsl_grpc_cc_dependencies(),
 )
 
-tf_cc_test(
+xla_cc_test(
     name = "service_test",
     srcs = ["service_test.cc"],
     tags = [
@@ -128,7 +131,7 @@ cc_library(
     ] + tsl_grpc_cc_dependencies(),
 )
 
-tf_cc_test(
+xla_cc_test(
     name = "client_server_test",
     size = "small",
     srcs = ["client_server_test.cc"],
@@ -147,7 +150,6 @@ tf_cc_test(
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/tsl/lib/core:status_test_util",
         "//tensorflow/tsl/platform:env",
-        "//tensorflow/tsl/platform:env_impl",
         "//tensorflow/tsl/platform:test",
         "//tensorflow/tsl/platform:test_main",
         "//tensorflow/tsl/platform:errors",

@@ -40,7 +40,7 @@ class ShapeInference
     auto failure_or_converged =
         InferModuleShape(getOperation(), max_iterations_);
     if (failed(failure_or_converged)) return signalPassFailure();
-    if (!failure_or_converged.getValue()) {
+    if (!failure_or_converged.value()) {
       getOperation().emitError()
           << "shape inference pass did not reach convergence after "
           << max_iterations_;

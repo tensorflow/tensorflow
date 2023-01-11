@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef MLIR_HLO_DIALECT_GML_ST_TRANSFORMS_TILING_INTERFACE_H
-#define MLIR_HLO_DIALECT_GML_ST_TRANSFORMS_TILING_INTERFACE_H
+#ifndef MLIR_HLO_GML_ST_INTERFACES_TILING_INTERFACE_H
+#define MLIR_HLO_GML_ST_INTERFACES_TILING_INTERFACE_H
 
 #include "mlir/Dialect/Utils/StructuredOpsUtils.h"
 #include "mlir/IR/Operation.h"
@@ -23,4 +23,27 @@ limitations under the License.
 // Include generated definitions.
 #include "gml_st/interfaces/tiling_interface.h.inc"
 
-#endif  // MLIR_HLO_DIALECT_GML_ST_TRANSFORMS_TILING_INTERFACE_H
+namespace mlir {
+namespace gml_st {
+
+// Helpers to emit either materialize(tile) or extract_slice.
+Value materializeSlice(OpBuilder &b, Location loc, Value valueToTile,
+                       ArrayRef<OpFoldResult> offsets,
+                       ArrayRef<OpFoldResult> sizes,
+                       ArrayRef<OpFoldResult> strides, bool useExtractSlice);
+
+Value materializeSlice(OpBuilder &b, Location loc, Value valueToTile,
+                       ArrayRef<OpFoldResult> offsets,
+                       ArrayRef<OpFoldResult> sizes, bool useExtractSlice);
+
+Value materializeIdentitySlice(OpBuilder &b, Location loc, Value valueToTile,
+                               bool useExtractSlice);
+
+// Extracts a point using materialize(tile) or extract(extract_slice).
+Value materializePoint(OpBuilder &b, Location loc, Value valueToTile,
+                       ArrayRef<OpFoldResult> offsets, bool useExtractSlice);
+
+}  // namespace gml_st
+}  // namespace mlir
+
+#endif  // MLIR_HLO_GML_ST_INTERFACES_TILING_INTERFACE_H

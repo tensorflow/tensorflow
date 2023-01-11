@@ -3,6 +3,7 @@
 load("//tensorflow:tensorflow.default.bzl", "cuda_py_test", "tf_py_test")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//tensorflow:internal"],
     licenses = ["notice"],
 )
@@ -207,7 +208,10 @@ cuda_py_test(
     size = "medium",
     srcs = ["conv_ops_3d_test.py"],
     shard_count = 30,
-    tags = ["no_cuda11"],
+    tags = [
+        "no_cuda11",
+        "no_mac_arm64",
+    ],
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
@@ -222,6 +226,7 @@ cuda_py_test(
     srcs = ["conv_ops_test.py"],
     shard_count = 4,
     tags = [
+        "no_mac_arm64",
         "optonly",  # times out
     ],
     deps = [
@@ -289,6 +294,7 @@ cuda_py_test(
     srcs = ["cudnn_deterministic_ops_test.py"],
     tags = [
         "no_cuda_asan",  # TODO(b/171509035): re-enable.
+        "no_rocm_pre_53",
     ],
     xla_enable_strict_auto_jit = True,
     deps = [
@@ -302,6 +308,7 @@ cuda_py_test(
     srcs = ["cudnn_d9m_test.py"],
     tags = [
         "no_cuda_asan",  # TODO(b/171509035): re-enable.
+        "no_rocm",  #This is test is specific to CUDA and enables determinism through a CUDA specific env var.
     ],
     deps = [
         ":cudnn_deterministic_base",

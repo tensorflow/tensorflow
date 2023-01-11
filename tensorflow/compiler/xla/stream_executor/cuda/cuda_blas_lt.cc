@@ -52,8 +52,8 @@ namespace cuda {
 namespace {
 
 template <typename T>
-port::Status SetAttr(cublasLtMatrixLayout_t handle,
-                     cublasLtMatrixLayoutAttribute_t attr, T value) {
+tsl::Status SetAttr(cublasLtMatrixLayout_t handle,
+                    cublasLtMatrixLayoutAttribute_t attr, T value) {
   return SET_ATTR(cublasLtMatrixLayoutSetAttribute, handle, attr, value);
 }
 
@@ -64,8 +64,8 @@ port::StatusOr<T> GetAttr(cublasLtMatrixLayout_t handle,
 }
 
 template <typename T>
-port::Status SetAttr(cublasLtMatmulDesc_t handle,
-                     cublasLtMatmulDescAttributes_t attr, T value) {
+tsl::Status SetAttr(cublasLtMatmulDesc_t handle,
+                    cublasLtMatmulDescAttributes_t attr, T value) {
   return SET_ATTR(cublasLtMatmulDescSetAttribute, handle, attr, value);
 }
 
@@ -76,8 +76,8 @@ port::StatusOr<T> GetAttr(cublasLtMatmulDesc_t handle,
 }
 
 template <typename T>
-port::Status SetAttr(cublasLtMatmulPreference_t handle,
-                     cublasLtMatmulPreferenceAttributes_t attr, T value) {
+tsl::Status SetAttr(cublasLtMatmulPreference_t handle,
+                    cublasLtMatmulPreferenceAttributes_t attr, T value) {
   return SET_ATTR(cublasLtMatmulPreferenceSetAttribute, handle, attr, value);
 }
 
@@ -101,26 +101,28 @@ port::StatusOr<cublasLtEpilogue_t> AsCublasLtEpilogue(
       return CUBLASLT_EPILOGUE_BIAS;
     case BlasLt::Epilogue::kBiasThenReLU:
       return CUBLASLT_EPILOGUE_RELU_BIAS;
-    case BlasLt::Epilogue::kGeLU:
 #if CUDA_VERSION >= 11040
+    case BlasLt::Epilogue::kGELU:
       return CUBLASLT_EPILOGUE_GELU;
-#else
-      return port::InternalError(absl::StrCat(
-          "CUBLASLT_EPILOGUE_GELU epilog requires cublasLt >= 11.4"));
-#endif
-    case BlasLt::Epilogue::kBiasThenGeLUApproximate:
-#if CUDA_VERSION >= 11040
+    case BlasLt::Epilogue::kGELUWithAux:
+      return CUBLASLT_EPILOGUE_GELU_AUX;
+    case BlasLt::Epilogue::kBiasThenGELU:
       return CUBLASLT_EPILOGUE_GELU_BIAS;
+    case BlasLt::Epilogue::kBiasThenGELUWithAux:
+      return CUBLASLT_EPILOGUE_GELU_AUX_BIAS;
 #else
-      return port::InternalError(absl::StrCat(
-          "CUBLASLT_EPILOGUE_GELU_BIAS epilog requires cublasLt >= 11.4"));
+    case BlasLt::Epilogue::kGELU:
+    case BlasLt::Epilogue::kGELUWithAux:
+    case BlasLt::Epilogue::kBiasThenGELU:
+    case BlasLt::Epilogue::kBiasThenGELUWithAux:
+      return port::InternalError("GELU epilogues require cublasLt >= 11.4");
 #endif
   }
 }
 
 }  // namespace
 
-port::Status BlasLt::Init() {
+tsl::Status BlasLt::Init() {
   cublasLtHandle_t blas_lt;
   SE_CUBLAS_RETURN_IF_ERROR(cublasLtCreate(&blas_lt));
   absl::MutexLock lock(&mu_);
@@ -244,14 +246,17 @@ BlasLt::GetMatmulAlgorithms(const BlasLt::MatmulPlan& plan,
   return std::move(algorithms);
 }
 
-port::Status BlasLt::DoMatmul(Stream* stream, const BlasLt::MatmulPlan& plan,
-                              const void* alpha, DeviceMemoryBase a,
-                              DeviceMemoryBase b, const void* beta,
-                              DeviceMemoryBase c, DeviceMemoryBase d,
-                              const BlasLt::MatmulAlgorithm& algorithm,
-                              ScratchAllocator& scratch_allocator,
-                              DeviceMemoryBase bias,
-                              blas::ProfileResult* profile_result) {
+tsl::Status BlasLt::DoMatmul(Stream* stream, const BlasLt::MatmulPlan& plan,
+                             const void* alpha, DeviceMemoryBase a,
+                             DeviceMemoryBase b, const void* beta,
+                             DeviceMemoryBase c, DeviceMemoryBase d,
+                             const BlasLt::MatmulAlgorithm& algorithm,
+                             ScratchAllocator& scratch_allocator,
+                             DeviceMemoryBase bias, DeviceMemoryBase aux,
+                             DeviceMemoryBase a_scale, DeviceMemoryBase b_scale,
+                             DeviceMemoryBase c_scale, DeviceMemoryBase d_scale,
+                             DeviceMemoryBase d_amax,
+                             blas::ProfileResult* profile_result) {
   std::unique_ptr<gpu::GpuTimer, gpu::GpuTimerDeleter> timer;
   if (profile_result != nullptr) {
     timer.reset(new gpu::GpuTimer(parent_));
@@ -270,12 +275,75 @@ port::Status BlasLt::DoMatmul(Stream* stream, const BlasLt::MatmulPlan& plan,
   {
     absl::MutexLock lock(&mu_);
     TF_RET_CHECK(blas_lt_ != nullptr);
-    // We must set the bias pointer while holding the mutex, to avoid a
+    // We must set the bias and aux pointers while holding the mutex, to avoid a
     // potential race condition from multiple threads sharing the same plan.
     if (bias != nullptr) {
       TF_RETURN_IF_ERROR(SetAttr(plan.op_desc.get(),
                                  CUBLASLT_MATMUL_DESC_BIAS_POINTER,
                                  bias.opaque()));
+    }
+#if CUDA_VERSION >= 11080
+    if (a_scale != nullptr) {
+      TF_RETURN_IF_ERROR(SetAttr(plan.op_desc.get(),
+                                 CUBLASLT_MATMUL_DESC_A_SCALE_POINTER,
+                                 a_scale.opaque()));
+    }
+    if (b_scale != nullptr) {
+      TF_RETURN_IF_ERROR(SetAttr(plan.op_desc.get(),
+                                 CUBLASLT_MATMUL_DESC_B_SCALE_POINTER,
+                                 b_scale.opaque()));
+    }
+    if (c_scale != nullptr) {
+      TF_RETURN_IF_ERROR(SetAttr(plan.op_desc.get(),
+                                 CUBLASLT_MATMUL_DESC_C_SCALE_POINTER,
+                                 c_scale.opaque()));
+    }
+    if (d_scale != nullptr) {
+      TF_RETURN_IF_ERROR(SetAttr(plan.op_desc.get(),
+                                 CUBLASLT_MATMUL_DESC_D_SCALE_POINTER,
+                                 d_scale.opaque()));
+    }
+    if (d_amax != nullptr) {
+      TF_RETURN_IF_ERROR(SetAttr(plan.op_desc.get(),
+                                 CUBLASLT_MATMUL_DESC_AMAX_D_POINTER,
+                                 d_amax.opaque()));
+    }
+#else
+    if (a_scale != nullptr || b_scale != nullptr || c_scale != nullptr ||
+        d_scale != nullptr || d_amax != nullptr) {
+      return port::InternalError(
+          "A/B/C/D scales and amax require cublasLt >= 11.8");
+    }
+#endif
+
+    if (aux != nullptr) {
+#if CUDA_VERSION >= 11040
+      TF_RETURN_IF_ERROR(SetAttr(plan.op_desc.get(),
+                                 CUBLASLT_MATMUL_DESC_EPILOGUE_AUX_POINTER,
+                                 aux.opaque()));
+
+      // Set leading dim and batch stride of auxiliary output to match output.
+      // TODO(cjfj): Set this once at initialization.
+      TF_ASSIGN_OR_RETURN(
+          int64_t output_leading_dim,
+          GetAttr<int64_t>(plan.d_desc.get(), CUBLASLT_MATRIX_LAYOUT_LD));
+
+      TF_RETURN_IF_ERROR(SetAttr(plan.op_desc.get(),
+                                 CUBLASLT_MATMUL_DESC_EPILOGUE_AUX_LD,
+                                 output_leading_dim));
+
+      TF_ASSIGN_OR_RETURN(
+          int64_t output_batch_stride,
+          GetAttr<int64_t>(plan.d_desc.get(),
+                           CUBLASLT_MATRIX_LAYOUT_STRIDED_BATCH_OFFSET));
+
+      TF_RETURN_IF_ERROR(SetAttr(plan.op_desc.get(),
+                                 CUBLASLT_MATMUL_DESC_EPILOGUE_AUX_BATCH_STRIDE,
+                                 output_batch_stride));
+#else
+      return port::InternalError(
+          "Auxiliary inputs / outputs require cublasLt >= 11.4");
+#endif
     }
 
     gpu::ScopedActivateExecutorContext sac{parent_};

@@ -1,6 +1,7 @@
 load("//tensorflow:tensorflow.default.bzl", "tf_custom_op_py_library", "tf_py_test")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
         "//tensorflow:internal",
     ],
@@ -43,10 +44,23 @@ py_library(
     ],
 )
 
+py_library(
+    name = "preemption_watcher",
+    srcs = ["preemption_watcher.py"],
+    srcs_version = "PY3",
+    deps = [
+        ":failure_handling_util",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/util:tf_export",
+        "@absl_py//absl/logging",
+    ],
+)
+
 tf_py_test(
     name = "failure_handler_test",
+    timeout = "long",
     srcs = ["failure_handler_test.py"],
-    shard_count = 4,
+    shard_count = 8,
     tags = [
         "no_windows",  # TODO(b/197981388)
     ],

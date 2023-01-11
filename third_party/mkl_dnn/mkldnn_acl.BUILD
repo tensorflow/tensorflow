@@ -129,7 +129,7 @@ template_rule(
     out = "include/oneapi/dnnl/dnnl_version.h",
     substitutions = {
         "@DNNL_VERSION_MAJOR@": "2",
-        "@DNNL_VERSION_MINOR@": "6",
+        "@DNNL_VERSION_MINOR@": "7",
         "@DNNL_VERSION_PATCH@": "0",
         "@DNNL_VERSION_HASH@": "N/A",
     },
@@ -161,7 +161,6 @@ cc_library(
         "src/cpu/aarch64/xbyak_aarch64/xbyak_aarch64",
         "src/cpu/gemm",
     ],
-    linkopts = ["-lgomp"],
     textual_hdrs = glob(
         [
             "include/**/*",

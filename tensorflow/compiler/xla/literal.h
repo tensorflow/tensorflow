@@ -153,7 +153,9 @@ class LiteralBase {
   template <typename T>
   typename std::enable_if<(std::is_arithmetic<T>::value ||
                            std::is_same<T, Eigen::half>::value ||
-                           std::is_same<T, bfloat16>::value),
+                           std::is_same<T, bfloat16>::value ||
+                           std::is_same<T, tsl::float8_e5m2>::value ||
+                           std::is_same<T, tsl::float8_e4m3fn>::value),
                           bool>::type
   IsEqualAt(absl::Span<const int64_t> multi_index, T value) const {
     if (auto as_s64 = GetIntegralAsS64(multi_index)) {
@@ -239,9 +241,8 @@ class LiteralBase {
   // if it's not an array.
   //
   // This casts value to the type of literal, then compares using ==, with the
-  // caveat that NaNs are considered equal.  The usual admonishments about
-  // floating-point equality checks apply.  We expect you to use this to check
-  // for values that can be expressed precisely as a float, e.g. -0.5.
+  // caveat that NaNs are considered equal. Unlike IsAll, this does not
+  // necessarily return false if the value does not fit in this literal's type.
   bool IsAllFloat(float value) const;
   bool IsAllComplex(complex64 value) const;
 
@@ -773,6 +774,12 @@ class LiteralBase {
   template <typename NativeT>
   Literal SliceInternal(const Shape& result_shape,
                         absl::Span<const int64_t> start_indices) const;
+
+  // Like IsAllFloat, but if round_value is false and the value is not
+  // representable with the literal's type (e.g., due to rounding error or
+  // overflow/underflow when casting the value to the literal's type), returns
+  // false.
+  bool IsAllFloatImpl(float value, bool round_value) const;
 };
 
 // Abstract base class representing a mutable literal in XLA.

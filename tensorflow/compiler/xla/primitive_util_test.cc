@@ -69,6 +69,8 @@ TEST(PrimitiveUtilTest, CastPreservesValues) {
   expecteds[PRED][C64] = true;
   expecteds[PRED][BF16] = true;
   expecteds[PRED][C128] = true;
+  expecteds[PRED][F8E5M2] = true;
+  expecteds[PRED][F8E4M3FN] = true;
   expecteds[S8][PRED] = false;
   expecteds[S8][S8] = true;
   expecteds[S8][S16] = true;
@@ -84,6 +86,8 @@ TEST(PrimitiveUtilTest, CastPreservesValues) {
   expecteds[S8][C64] = true;
   expecteds[S8][BF16] = true;
   expecteds[S8][C128] = true;
+  expecteds[S8][F8E5M2] = false;
+  expecteds[S8][F8E4M3FN] = false;
   expecteds[S16][PRED] = false;
   expecteds[S16][S8] = false;
   expecteds[S16][S16] = true;
@@ -99,6 +103,8 @@ TEST(PrimitiveUtilTest, CastPreservesValues) {
   expecteds[S16][C64] = true;
   expecteds[S16][BF16] = false;
   expecteds[S16][C128] = true;
+  expecteds[S16][F8E5M2] = false;
+  expecteds[S16][F8E4M3FN] = false;
   expecteds[S32][PRED] = false;
   expecteds[S32][S8] = false;
   expecteds[S32][S16] = false;
@@ -114,6 +120,8 @@ TEST(PrimitiveUtilTest, CastPreservesValues) {
   expecteds[S32][C64] = false;
   expecteds[S32][BF16] = false;
   expecteds[S32][C128] = true;
+  expecteds[S32][F8E5M2] = false;
+  expecteds[S32][F8E4M3FN] = false;
   expecteds[S64][PRED] = false;
   expecteds[S64][S8] = false;
   expecteds[S64][S16] = false;
@@ -129,6 +137,8 @@ TEST(PrimitiveUtilTest, CastPreservesValues) {
   expecteds[S64][C64] = false;
   expecteds[S64][BF16] = false;
   expecteds[S64][C128] = false;
+  expecteds[S64][F8E5M2] = false;
+  expecteds[S64][F8E4M3FN] = false;
   expecteds[U8][PRED] = false;
   expecteds[U8][S8] = false;
   expecteds[U8][S16] = true;
@@ -144,6 +154,10 @@ TEST(PrimitiveUtilTest, CastPreservesValues) {
   expecteds[U8][C64] = true;
   expecteds[U8][BF16] = true;
   expecteds[U8][C128] = true;
+  expecteds[U8][BF16] = true;
+  expecteds[U8][C128] = true;
+  expecteds[U8][F8E5M2] = false;
+  expecteds[U8][F8E4M3FN] = false;
   expecteds[U16][PRED] = false;
   expecteds[U16][S8] = false;
   expecteds[U16][S16] = false;
@@ -159,6 +173,8 @@ TEST(PrimitiveUtilTest, CastPreservesValues) {
   expecteds[U16][C64] = true;
   expecteds[U16][BF16] = false;
   expecteds[U16][C128] = true;
+  expecteds[U16][F8E5M2] = false;
+  expecteds[U16][F8E4M3FN] = false;
   expecteds[U32][PRED] = false;
   expecteds[U32][S8] = false;
   expecteds[U32][S16] = false;
@@ -174,6 +190,8 @@ TEST(PrimitiveUtilTest, CastPreservesValues) {
   expecteds[U32][C64] = false;
   expecteds[U32][BF16] = false;
   expecteds[U32][C128] = true;
+  expecteds[U32][F8E5M2] = false;
+  expecteds[U32][F8E4M3FN] = false;
   expecteds[U64][PRED] = false;
   expecteds[U64][S8] = false;
   expecteds[U64][S16] = false;
@@ -189,6 +207,8 @@ TEST(PrimitiveUtilTest, CastPreservesValues) {
   expecteds[U64][C64] = false;
   expecteds[U64][BF16] = false;
   expecteds[U64][C128] = false;
+  expecteds[U64][F8E5M2] = false;
+  expecteds[U64][F8E4M3FN] = false;
   expecteds[F16][PRED] = false;
   expecteds[F16][S8] = false;
   expecteds[F16][S16] = false;
@@ -204,6 +224,8 @@ TEST(PrimitiveUtilTest, CastPreservesValues) {
   expecteds[F16][C64] = true;
   expecteds[F16][BF16] = false;
   expecteds[F16][C128] = true;
+  expecteds[F16][F8E5M2] = false;
+  expecteds[F16][F8E4M3FN] = false;
   expecteds[F32][PRED] = false;
   expecteds[F32][S8] = false;
   expecteds[F32][S16] = false;
@@ -219,6 +241,8 @@ TEST(PrimitiveUtilTest, CastPreservesValues) {
   expecteds[F32][C64] = true;
   expecteds[F32][BF16] = false;
   expecteds[F32][C128] = true;
+  expecteds[F32][F8E5M2] = false;
+  expecteds[F32][F8E4M3FN] = false;
   expecteds[F64][PRED] = false;
   expecteds[F64][S8] = false;
   expecteds[F64][S16] = false;
@@ -234,6 +258,8 @@ TEST(PrimitiveUtilTest, CastPreservesValues) {
   expecteds[F64][C64] = false;
   expecteds[F64][BF16] = false;
   expecteds[F64][C128] = true;
+  expecteds[F64][F8E5M2] = false;
+  expecteds[F64][F8E4M3FN] = false;
   expecteds[C64][PRED] = false;
   expecteds[C64][S8] = false;
   expecteds[C64][S16] = false;
@@ -249,6 +275,8 @@ TEST(PrimitiveUtilTest, CastPreservesValues) {
   expecteds[C64][C64] = true;
   expecteds[C64][BF16] = false;
   expecteds[C64][C128] = true;
+  expecteds[C64][F8E5M2] = false;
+  expecteds[C64][F8E4M3FN] = false;
   expecteds[BF16][PRED] = false;
   expecteds[BF16][S8] = false;
   expecteds[BF16][S16] = false;
@@ -264,6 +292,8 @@ TEST(PrimitiveUtilTest, CastPreservesValues) {
   expecteds[BF16][C64] = true;
   expecteds[BF16][BF16] = true;
   expecteds[BF16][C128] = true;
+  expecteds[BF16][F8E5M2] = false;
+  expecteds[BF16][F8E4M3FN] = false;
   expecteds[C128][PRED] = false;
   expecteds[C128][S8] = false;
   expecteds[C128][S16] = false;
@@ -279,6 +309,42 @@ TEST(PrimitiveUtilTest, CastPreservesValues) {
   expecteds[C128][C64] = false;
   expecteds[C128][BF16] = false;
   expecteds[C128][C128] = true;
+  expecteds[C128][F8E5M2] = false;
+  expecteds[C128][F8E4M3FN] = false;
+  expecteds[F8E5M2][PRED] = false;
+  expecteds[F8E5M2][S8] = false;
+  expecteds[F8E5M2][S16] = false;
+  expecteds[F8E5M2][S32] = false;
+  expecteds[F8E5M2][S64] = false;
+  expecteds[F8E5M2][U8] = false;
+  expecteds[F8E5M2][U16] = false;
+  expecteds[F8E5M2][U32] = false;
+  expecteds[F8E5M2][U64] = false;
+  expecteds[F8E5M2][F16] = true;
+  expecteds[F8E5M2][F32] = true;
+  expecteds[F8E5M2][F64] = true;
+  expecteds[F8E5M2][C64] = true;
+  expecteds[F8E5M2][BF16] = true;
+  expecteds[F8E5M2][C128] = true;
+  expecteds[F8E5M2][F8E5M2] = true;
+  expecteds[F8E5M2][F8E4M3FN] = false;
+  expecteds[F8E4M3FN][PRED] = false;
+  expecteds[F8E4M3FN][S8] = false;
+  expecteds[F8E4M3FN][S16] = false;
+  expecteds[F8E4M3FN][S32] = false;
+  expecteds[F8E4M3FN][S64] = false;
+  expecteds[F8E4M3FN][U8] = false;
+  expecteds[F8E4M3FN][U16] = false;
+  expecteds[F8E4M3FN][U32] = false;
+  expecteds[F8E4M3FN][U64] = false;
+  expecteds[F8E4M3FN][F16] = true;
+  expecteds[F8E4M3FN][F32] = true;
+  expecteds[F8E4M3FN][F64] = true;
+  expecteds[F8E4M3FN][C64] = true;
+  expecteds[F8E4M3FN][BF16] = true;
+  expecteds[F8E4M3FN][C128] = true;
+  expecteds[F8E4M3FN][F8E5M2] = false;
+  expecteds[F8E4M3FN][F8E4M3FN] = true;
 
   for (int from_type_int = PrimitiveType_MIN;
        from_type_int < PrimitiveType_ARRAYSIZE; ++from_type_int) {

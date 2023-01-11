@@ -24,7 +24,7 @@ limitations under the License.
 #include "absl/strings/str_split.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/lite/builtin_op_data.h"
-#include "tensorflow/lite/c/c_api_types.h"
+#include "tensorflow/lite/core/c/c_api_types.h"
 #include "tensorflow/lite/kernels/internal/compatibility.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/schema/schema_utils.h"
@@ -116,6 +116,15 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
           op_sig.outputs.at(0).type == kTfLiteInt8) {
         return 3;
       }
+
+      // If the op has signed int8 and int4 op_sig.inputs and op_sig.outputs,
+      // its version 7.
+      if (op_sig.inputs.at(0).type == kTfLiteInt8 &&
+          op_sig.inputs.at(1).type == kTfLiteInt4 &&
+          op_sig.outputs.at(0).type == kTfLiteInt8) {
+        return 7;
+      }
+
       auto depthwise_conv_params =
           reinterpret_cast<TfLiteDepthwiseConvParams*>(op_sig.builtin_data);
       TFLITE_DCHECK(depthwise_conv_params != nullptr);
@@ -176,6 +185,15 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
           op_sig.outputs.at(0).type == kTfLiteInt8) {
         return 4;
       }
+
+      // If the op has signed int8 and int4 op_sig.inputs and op_sig.outputs,
+      // its version 7.
+      if (op_sig.inputs.at(0).type == kTfLiteInt8 &&
+          op_sig.inputs.at(1).type == kTfLiteInt4 &&
+          op_sig.outputs.at(0).type == kTfLiteInt8) {
+        return 10;
+      }
+
       // If the op is a signed int8 hybrid operation, we need to return
       // version 3.
       if (op_sig.inputs.at(0).type == kTfLiteFloat32 &&
@@ -304,6 +322,15 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
       return 1;
 
     case BuiltinOperator_TRANSPOSE_CONV: {
+      auto transpose_conv_params =
+          reinterpret_cast<TfLiteTransposeConvParams*>(op_sig.builtin_data);
+
+      // TransposeConvOp has fused activation function from version 4.
+      if (transpose_conv_params != nullptr &&
+          transpose_conv_params->activation) {
+        return 4;
+      }
+
       if (op_sig.inputs.size() == 4 &&
           op_sig.inputs.at(3).type != kTfLiteNoType) {
         return 3;
@@ -782,14 +809,18 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
     }
 
     case BuiltinOperator_UNIDIRECTIONAL_SEQUENCE_LSTM: {
+      auto unidirectional_sequence_lstm_params =
+          reinterpret_cast<TfLiteUnidirectionalSequenceLSTMParams*>(
+              op_sig.builtin_data);
+      if (unidirectional_sequence_lstm_params &&
+          unidirectional_sequence_lstm_params->diagonal_recurrent_tensors) {
+        return 4;
+      }
       // If the input tensor is float and a weight is int8, this is a version
       // 2 hybrid operation.
       if (op_sig.inputs.at(0).type == kTfLiteFloat32 &&
           op_sig.inputs.at(2).type == kTfLiteInt8 &&
           op_sig.outputs.at(0).type == kTfLiteFloat32) {
-        auto unidirectional_sequence_lstm_params =
-            reinterpret_cast<TfLiteUnidirectionalSequenceLSTMParams*>(
-                op_sig.builtin_data);
         if (unidirectional_sequence_lstm_params &&
             unidirectional_sequence_lstm_params->asymmetric_quantize_inputs) {
           return 3;

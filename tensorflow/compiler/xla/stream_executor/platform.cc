@@ -89,18 +89,18 @@ Platform::~Platform() {}
 
 bool Platform::Initialized() const { return true; }
 
-port::Status Platform::Initialize(
+tsl::Status Platform::Initialize(
     const std::map<std::string, std::string> &platform_options) {
   if (!platform_options.empty()) {
-    return port::Status(port::error::UNIMPLEMENTED,
-                        "this platform does not support custom initialization");
+    return tsl::Status(port::error::UNIMPLEMENTED,
+                       "this platform does not support custom initialization");
   }
   return ::tsl::OkStatus();
 }
 
-port::Status Platform::ForceExecutorShutdown() {
-  return port::Status(port::error::UNIMPLEMENTED,
-                      "executor shutdown is not supported on this platform");
+tsl::Status Platform::ForceExecutorShutdown() {
+  return tsl::Status(port::error::UNIMPLEMENTED,
+                     "executor shutdown is not supported on this platform");
 }
 
 std::unique_ptr<Platform::PeerAccessMap> Platform::GetPeerAccessMap() {
@@ -118,7 +118,7 @@ std::unique_ptr<Platform::PeerAccessMap> Platform::GetPeerAccessMap() {
   return std::unique_ptr<Platform::PeerAccessMap>{map};
 }
 
-port::Status Platform::EnablePeerAccess() {
+tsl::Status Platform::EnablePeerAccess() {
   auto peer_access_map = GetPeerAccessMap();
   for (const auto &access : *peer_access_map) {
     auto devices = access.first;

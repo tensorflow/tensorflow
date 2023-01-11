@@ -27,64 +27,64 @@ def HasOneUse : Constraint<CPred<"$0.hasOneUse()">>;
 // Canonicalization patterns.
 
 def DynamicBroadcastToOwnShape_1 : Pat<
-  (HLO_DynamicBroadcastInDimOp:$op $x,
+  (MHLO_DynamicBroadcastInDimOp:$op $x,
     (Shape_ToExtentTensorOp (Shape_ShapeOfOp $x)), $_, $_, $_),
   (replaceWithValue $x)>;
 def DynamicBroadcastToOwnShape_2 : Pat<
-  (HLO_DynamicBroadcastInDimOp:$op $x,
+  (MHLO_DynamicBroadcastInDimOp:$op $x,
     (Shape_ShapeOfOp $x), $attr0, $attr1, $attr2),
   (replaceWithValue $x)>;
 def DynamicBroadcastToOwnShape_3 : Pat<
-  (HLO_DynamicBroadcastInDimOp:$op $x,
+  (MHLO_DynamicBroadcastInDimOp:$op $x,
     (Tensor_CastOp (Shape_ToExtentTensorOp (Shape_ShapeOfOp $x))),
     $attr0, $attr1, $attr2),
   (Tensor_CastOp $x)>;
 def DynamicBroadcastToOwnShape_4 : Pat<
-  (HLO_DynamicBroadcastInDimOp:$op $x,
+  (MHLO_DynamicBroadcastInDimOp:$op $x,
     (Tensor_CastOp (Shape_ShapeOfOp $x)), $attr0, $attr1, $attr2),
   (Tensor_CastOp $x)>;
 
 def ShapeOfDynamicReshape : Pat<
-  (Shape_ShapeOfOp:$op (HLO_DynamicReshapeOp $x, $shape)),
+  (Shape_ShapeOfOp:$op (MHLO_DynamicReshapeOp $x, $shape)),
   (replaceWithValue $shape),
   [(HasSameType $shape, $op)]>;
 
 def IdentityBroadcastReshape : Pat<
-  (HLO_ReshapeOp:$op (HLO_BroadcastOp $input, $dims)),
+  (MHLO_ReshapeOp:$op (MHLO_BroadcastOp $input, $dims)),
   (replaceWithValue $input),
   [(HasSameType $input, $op)]>;
 
 def IdentityBroadcastInDimReshape : Pat<
-  (HLO_ReshapeOp:$op (HLO_BroadcastInDimOp $input, $dims)),
+  (MHLO_ReshapeOp:$op (MHLO_BroadcastInDimOp $input, $dims)),
   (replaceWithValue $input),
   [(HasSameType $input, $op)]>;
 
 def EliminateIdentityConvert : Pat<
-  (HLO_ConvertOp:$res $src),
+  (MHLO_ConvertOp:$res $src),
   (replaceWithValue $src),
   [(HasSameType $res, $src)]>;
 
 def EliminateRedundantReshape : Pat<
-  (HLO_ReshapeOp:$res (HLO_ReshapeOp $src)),
+  (MHLO_ReshapeOp:$res (MHLO_ReshapeOp $src)),
   (replaceWithValue $src),
   [(HasSameType $res, $src)]>;
 
 def EliminateIdentityReshape : Pat<
-  (HLO_ReshapeOp:$res $src),
+  (MHLO_ReshapeOp:$res $src),
   (replaceWithValue $src),
   [(HasSameType $res, $src)]>;
 
 // select(not(p), t, f) => select(p, f, t)
 def FusePredNegIntoSelect : Pat<
-  (HLO_SelectOp (HLO_NotOp $pred), $on_true, $on_false),
-  (HLO_SelectOp $pred, $on_false, $on_true)>;
+  (MHLO_SelectOp (MHLO_NotOp $pred), $on_true, $on_false),
+  (MHLO_SelectOp $pred, $on_false, $on_true)>;
 
 // select(broadcast(not(p)), t, f) => select(broadcast(p), f, t)
 def FuseBroadcastedPredNegIntoSelect : Pat<
-  (HLO_SelectOp
-    (HLO_BroadcastInDimOp:$b (HLO_NotOp $pred), $broadcast_dimensions),
+  (MHLO_SelectOp
+    (MHLO_BroadcastInDimOp:$b (MHLO_NotOp $pred), $broadcast_dimensions),
     $on_true, $on_false),
-  (HLO_SelectOp
-    (HLO_BroadcastInDimOp $pred, $broadcast_dimensions, (returnType $b)),
+  (MHLO_SelectOp
+    (MHLO_BroadcastInDimOp $pred, $broadcast_dimensions, (returnType $b)),
     $on_false, $on_true),
   [(HasOneUse $b)]>;

@@ -202,7 +202,7 @@ struct MoveElementwiseOpsUpIntoAssumingOpPattern : public RewritePattern {
         !op->hasTrait<hlo::OpTrait::BroadcastingElementwise>()) {
       return failure();
     }
-    if (!MemoryEffectOpInterface::hasNoEffect(op)) return failure();
+    if (!isMemoryEffectFree(op)) return failure();
 
     return moveUpIntoAssumingOpMatchAndRewrite(op, rewriter);
   }
@@ -250,7 +250,7 @@ struct MoveElementwiseOpsDownIntoAssumingOpPattern : public RewritePattern {
         !op->hasTrait<hlo::OpTrait::BroadcastingElementwise>()) {
       return failure();
     }
-    if (!MemoryEffectOpInterface::hasNoEffect(op)) return failure();
+    if (!isMemoryEffectFree(op)) return failure();
 
     return moveDownIntoAssumingOpMatchAndRewrite(op, rewriter);
   }
@@ -432,7 +432,7 @@ struct MergeAssumingOpsPass
     RewritePatternSet patterns(ctx);
     mhlo::populateMergeAssumingOpsPatterns(ctx, &patterns);
     GreedyRewriteConfig config;
-    config.maxIterations = GreedyRewriteConfig::kNoIterationLimit;
+    config.maxIterations = GreedyRewriteConfig::kNoLimit;
     if (failed(applyPatternsAndFoldGreedily(getOperation(), std::move(patterns),
                                             config))) {
       return signalPassFailure();

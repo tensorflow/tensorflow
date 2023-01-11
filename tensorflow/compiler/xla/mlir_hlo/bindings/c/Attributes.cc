@@ -26,10 +26,9 @@ MlirAttribute mlirMhloScatterDimensionNumbersGet(
     const int64_t *insertedWindowDims, intptr_t nScatteredDimsToOperandDims,
     const int64_t *scatteredDimsToOperandDims, int64_t indexVectorDim) {
   return wrap(mlir::mhlo::ScatterDimensionNumbersAttr::get(
-      unwrap(ctx), llvm::makeArrayRef(updateWindowDims, nUpdateWindowDims),
-      llvm::makeArrayRef(insertedWindowDims, nInsertedWindowDims),
-      llvm::makeArrayRef(scatteredDimsToOperandDims,
-                         nScatteredDimsToOperandDims),
+      unwrap(ctx), llvm::ArrayRef(updateWindowDims, nUpdateWindowDims),
+      llvm::ArrayRef(insertedWindowDims, nInsertedWindowDims),
+      llvm::ArrayRef(scatteredDimsToOperandDims, nScatteredDimsToOperandDims),
       indexVectorDim));
 }
 
@@ -98,9 +97,9 @@ MlirAttribute mlirMhloGatherDimensionNumbersGet(
     intptr_t nStartIndexMap, const int64_t *startIndexMap,
     int64_t indexVectorDim) {
   return wrap(mlir::mhlo::GatherDimensionNumbersAttr::get(
-      unwrap(ctx), llvm::makeArrayRef(offsetDims, nOffsetDims),
-      llvm::makeArrayRef(collapsedSliceDims, nCollapsedSliceDims),
-      llvm::makeArrayRef(startIndexMap, nStartIndexMap), indexVectorDim));
+      unwrap(ctx), llvm::ArrayRef(offsetDims, nOffsetDims),
+      llvm::ArrayRef(collapsedSliceDims, nCollapsedSliceDims),
+      llvm::ArrayRef(startIndexMap, nStartIndexMap), indexVectorDim));
 }
 
 bool mlirMhloAttributeIsAGatherDimensionNumbers(MlirAttribute attr) {
@@ -169,10 +168,10 @@ MlirAttribute mlirMhloDotDimensionNumbersGet(
     const int64_t *rhsContractingDimensions) {
   return wrap(mlir::mhlo::DotDimensionNumbersAttr::get(
       unwrap(ctx),
-      llvm::makeArrayRef(lhsBatchingDimensions, nLhsBatchingDimensions),
-      llvm::makeArrayRef(rhsBatchingDimensions, nRhsBatchingDimensions),
-      llvm::makeArrayRef(lhsContractingDimensions, nLhsContractingDimensions),
-      llvm::makeArrayRef(rhsContractingDimensions, nRhsContractingDimensions)));
+      llvm::ArrayRef(lhsBatchingDimensions, nLhsBatchingDimensions),
+      llvm::ArrayRef(rhsBatchingDimensions, nRhsBatchingDimensions),
+      llvm::ArrayRef(lhsContractingDimensions, nLhsContractingDimensions),
+      llvm::ArrayRef(rhsContractingDimensions, nRhsContractingDimensions)));
 }
 
 bool mlirMhloAttributeIsADotDimensionNumbers(MlirAttribute attr) {
@@ -252,11 +251,11 @@ MlirAttribute mlirMhloConvDimensionNumbersGet(
     intptr_t nOutputSpatialDimensions, const int64_t *outputSpatialDimensions) {
   return wrap(mlir::mhlo::ConvDimensionNumbersAttr::get(
       unwrap(ctx), inputBatchDimension, inputFeatureDimension,
-      llvm::makeArrayRef(inputSpatialDimensions, nInputSpatialDimensions),
+      llvm::ArrayRef(inputSpatialDimensions, nInputSpatialDimensions),
       kernelInputFeatureDimension, kernelOutputFeatureDimension,
-      llvm::makeArrayRef(kernelSpatialDimensions, nKernelSpatialDimensions),
+      llvm::ArrayRef(kernelSpatialDimensions, nKernelSpatialDimensions),
       outputBatchDimension, outputFeatureDimension,
-      llvm::makeArrayRef(outputSpatialDimensions, nOutputSpatialDimensions)));
+      llvm::ArrayRef(outputSpatialDimensions, nOutputSpatialDimensions)));
 }
 
 bool mlirMhloAttributeIsAConvDimensionNumbers(MlirAttribute attr) {
@@ -358,9 +357,8 @@ MLIR_CAPI_EXPORTED MlirAttribute mlirMhloOutputOperandAliasGet(
     const int64_t *outputTupleIndices, int64_t operandIndex,
     intptr_t nOperandTupleIndices, const int64_t *operandTupleIndices) {
   return wrap(mlir::mhlo::OutputOperandAliasAttr::get(
-      unwrap(ctx), llvm::makeArrayRef(outputTupleIndices, nOutputTupleIndices),
-      operandIndex,
-      llvm::makeArrayRef(operandTupleIndices, nOperandTupleIndices)));
+      unwrap(ctx), llvm::ArrayRef(outputTupleIndices, nOutputTupleIndices),
+      operandIndex, llvm::ArrayRef(operandTupleIndices, nOperandTupleIndices)));
 }
 
 bool mlirMhloAttributeIsAOutputOperandAlias(MlirAttribute attr) {
@@ -408,7 +406,7 @@ int64_t mlirMhloOutputOperandAliasGetOperandTupleIndicesElem(MlirAttribute attr,
 //
 MlirAttribute mlirMhloComparisonDirectionAttrGet(MlirContext ctx,
                                                  MlirStringRef direction) {
-  llvm::Optional<mlir::mhlo::ComparisonDirection> compareDirection =
+  std::optional<mlir::mhlo::ComparisonDirection> compareDirection =
       mlir::mhlo::symbolizeComparisonDirection(unwrap(direction));
   if (!compareDirection)
     llvm_unreachable("Invalid comparison-direction specified.");
@@ -431,7 +429,7 @@ MlirStringRef mlirMhloComparisonDirectionAttrGetDirection(MlirAttribute attr) {
 
 MlirAttribute mlirMhloComparisonTypeAttrGet(MlirContext ctx,
                                             MlirStringRef type) {
-  llvm::Optional<mlir::mhlo::ComparisonType> compareType =
+  std::optional<mlir::mhlo::ComparisonType> compareType =
       mlir::mhlo::symbolizeComparisonType(unwrap(type));
   if (!compareType) llvm_unreachable("Invalid comparison-type specified.");
   return wrap(
@@ -452,7 +450,7 @@ MlirStringRef mlirMhloComparisonTypeAttrGetType(MlirAttribute attr) {
 //
 
 MlirAttribute mlirMhloDomainKindAttrGet(MlirContext ctx, MlirStringRef kind) {
-  llvm::Optional<mlir::mhlo::DomainKind> domainKind =
+  std::optional<mlir::mhlo::DomainKind> domainKind =
       mlir::mhlo::symbolizeDomainKind(unwrap(kind));
   if (!domainKind) llvm_unreachable("Invalid domain kind specified.");
   return wrap(mlir::mhlo::DomainKindAttr::get(unwrap(ctx), domainKind.value()));
@@ -472,7 +470,7 @@ MlirStringRef mlirMhloDomainKindAttrGetType(MlirAttribute attr) {
 //
 
 MlirAttribute mlirMhloPrecisionAttrGet(MlirContext ctx, MlirStringRef type) {
-  llvm::Optional<mlir::mhlo::Precision> precisionType =
+  std::optional<mlir::mhlo::Precision> precisionType =
       mlir::mhlo::symbolizePrecision(unwrap(type));
   if (!precisionType) llvm_unreachable("Invalid precision-type specified.");
   return wrap(
@@ -493,7 +491,7 @@ MlirStringRef mlirMhloPrecisionAttrGetPrecision(MlirAttribute attr) {
 //
 
 MlirAttribute mlirMhloFftTypeAttrGet(MlirContext ctx, MlirStringRef type) {
-  llvm::Optional<mlir::mhlo::FftType> fftType =
+  std::optional<mlir::mhlo::FftType> fftType =
       mlir::mhlo::symbolizeFftType(unwrap(type));
   if (!fftType) llvm_unreachable("Invalid fft-type specified.");
   return wrap(mlir::mhlo::FftTypeAttr::get(unwrap(ctx), fftType.value()));
@@ -514,7 +512,7 @@ MlirStringRef mlirMhloFftTypeAttrGetFftType(MlirAttribute attr) {
 
 MlirAttribute mlirMhloDequantizeModeAttrGet(MlirContext ctx,
                                             MlirStringRef mode) {
-  llvm::Optional<mlir::mhlo::DequantizeMode> dequantizeMode =
+  std::optional<mlir::mhlo::DequantizeMode> dequantizeMode =
       mlir::mhlo::symbolizeDequantizeMode(unwrap(mode));
   if (!dequantizeMode) llvm_unreachable("Invalid dequantize-mode specified.");
   return wrap(
@@ -535,7 +533,7 @@ MlirStringRef mlirMhloDequantizeModeAttrGetDequantizeMode(MlirAttribute attr) {
 //
 
 MlirAttribute mlirMhloTransposeAttrGet(MlirContext ctx, MlirStringRef type) {
-  llvm::Optional<mlir::mhlo::Transpose> transposeType =
+  std::optional<mlir::mhlo::Transpose> transposeType =
       mlir::mhlo::symbolizeTranspose(unwrap(type));
   if (!transposeType) llvm_unreachable("Invalid transpose-type specified.");
   return wrap(
@@ -556,7 +554,7 @@ MlirStringRef mlirMhloTransposeAttrGetTranspose(MlirAttribute attr) {
 //
 
 MlirAttribute mlirMhloFusionKindAttrGet(MlirContext ctx, MlirStringRef kind) {
-  llvm::Optional<mlir::mhlo::FusionKind> fusionKind =
+  std::optional<mlir::mhlo::FusionKind> fusionKind =
       mlir::mhlo::symbolizeFusionKind(unwrap(kind));
   if (!fusionKind) llvm_unreachable("Invalid fusion-kind specified.");
   return wrap(mlir::mhlo::FusionKindAttr::get(unwrap(ctx), fusionKind.value()));
@@ -577,7 +575,7 @@ MlirStringRef mlirMhloFusionKindAttrGetFusionKind(MlirAttribute attr) {
 
 MlirAttribute mlirMhloRngDistributionAttrGet(MlirContext ctx,
                                              MlirStringRef distribution) {
-  llvm::Optional<mlir::mhlo::RngDistribution> rngDistribution =
+  std::optional<mlir::mhlo::RngDistribution> rngDistribution =
       mlir::mhlo::symbolizeRngDistribution(unwrap(distribution));
   if (!rngDistribution) llvm_unreachable("Invalid rng-distribution specified.");
   return wrap(mlir::mhlo::RngDistributionAttr::get(unwrap(ctx),
@@ -600,7 +598,7 @@ MlirStringRef mlirMhloRngDistributionAttrGetRngDistribution(
 
 MlirAttribute mlirMhloRngAlgorithmAttrGet(MlirContext ctx,
                                           MlirStringRef algorithm) {
-  llvm::Optional<mlir::mhlo::RngAlgorithm> rngAlgorithm =
+  std::optional<mlir::mhlo::RngAlgorithm> rngAlgorithm =
       mlir::mhlo::symbolizeRngAlgorithm(unwrap(algorithm));
   if (!rngAlgorithm) llvm_unreachable("Invalid rng-algorithm specified.");
   return wrap(
@@ -644,7 +642,7 @@ int64_t mlirMhloChannelHandleGetType(MlirAttribute attr) {
 MlirAttribute mlirMhloTypeExtensionsGet(MlirContext ctx, intptr_t nBounds,
                                         const int64_t *bounds) {
   return wrap(mlir::mhlo::TypeExtensionsAttr::get(
-      unwrap(ctx), llvm::makeArrayRef(bounds, nBounds)));
+      unwrap(ctx), llvm::ArrayRef(bounds, nBounds)));
 }
 
 bool mlirMhloAttributeIsTypeExtensions(MlirAttribute attr) {

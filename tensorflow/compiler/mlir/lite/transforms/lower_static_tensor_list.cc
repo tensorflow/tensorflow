@@ -22,12 +22,12 @@ limitations under the License.
 
 #include <climits>
 #include <cstdint>
+#include <optional>
 #include <utility>
 
 #include "absl/container/inlined_vector.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/DenseMap.h"
-#include "llvm/ADT/None.h"
 #include "llvm/ADT/Optional.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallSet.h"
@@ -1116,7 +1116,7 @@ bool IsTensorListType(Type type, llvm::Optional<Value> value) {
   if (!value.has_value()) {
     return false;
   }
-  for (const mlir::OpOperand &use : value.getValue().getUses()) {
+  for (const mlir::OpOperand &use : value.value().getUses()) {
     mlir::Operation *op = use.getOwner();
     if (llvm::isa<TF::TensorListGetItemOp>(op) ||
         llvm::isa<TF::TensorListLengthOp>(op) ||
@@ -1150,7 +1150,7 @@ llvm::SmallSet<int, 4> GetTensorListResultsIndex(func::FuncOp func) {
 
   for (const auto &result_and_idx :
        llvm::enumerate(func.getFunctionType().getResults())) {
-    if (IsTensorListType(result_and_idx.value(), llvm::None)) {
+    if (IsTensorListType(result_and_idx.value(), std::nullopt)) {
       set.insert(result_and_idx.index());
     }
   }

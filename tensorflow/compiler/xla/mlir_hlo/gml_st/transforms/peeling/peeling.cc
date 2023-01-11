@@ -67,12 +67,15 @@ LogicalResult peelLoop(RewriterBase &b, LoopTy loopOp, int64_t idx,
   Value lb = loopOp.getLowerBound()[idx], ub = loopOp.getUpperBound()[idx],
         step = loopOp.getStep()[idx];
   auto ubInt = getConstantIntValue(ub);
+  auto stepInt = getConstantIntValue(step);
+  // No specialization necessary if step is greater than upper bound.
+  if (ubInt && stepInt && ubInt < stepInt) return failure();
 
   auto loc = loopOp.getLoc();
   AffineExpr exprLb, exprUb, exprStep;
   bindSymbols(b.getContext(), exprLb, exprUb, exprStep);
   // New upper bound: %ub - (%ub - %lb) mod %step
-  auto modMap = AffineMap::get(0, 3, {exprUb - ((exprUb - exprLb) % exprStep)});
+  auto modMap = AffineMap::get(0, 3, exprUb - ((exprUb - exprLb) % exprStep));
   SmallVector<Value> operands{lb, ub, step};
   canonicalizeMapAndOperands(&modMap, &operands);
   modMap = simplifyAffineMap(modMap);
@@ -120,21 +123,17 @@ LogicalResult peelLoop(RewriterBase &b, LoopTy loopOp, int64_t idx,
   return success();
 }
 
-template <typename OpTy, bool IsMin>
+template <typename OpTy>
 void rewriteAffineOpAfterPeeling(RewriterBase &rewriter, Operation *mainLoop,
                                  Operation *remainderLoop, Value mainIv,
                                  Value remainderIv, Value ub, Value step) {
   mainLoop->walk([&](OpTy affineOp) {
-    AffineMap map = affineOp.getAffineMap();
-    (void)scf::rewritePeeledMinMaxOp(rewriter, affineOp, map,
-                                     affineOp.operands(), IsMin, mainIv, ub,
-                                     step, /*insideLoop=*/true);
+    (void)scf::rewritePeeledMinMaxOp(rewriter, affineOp, mainIv, ub, step,
+                                     /*insideLoop=*/true);
   });
   remainderLoop->walk([&](OpTy affineOp) {
-    AffineMap map = affineOp.getAffineMap();
-    (void)scf::rewritePeeledMinMaxOp(rewriter, affineOp, map,
-                                     affineOp.operands(), IsMin, remainderIv,
-                                     ub, step, /*insideLoop=*/false);
+    (void)scf::rewritePeeledMinMaxOp(rewriter, affineOp, remainderIv, ub, step,
+                                     /*insideLoop=*/false);
   });
 }
 
@@ -155,33 +154,29 @@ FailureOr<LoopTy> peelAndCanonicalizeGmlStLoopImpl(RewriterBase &rewriter,
   Value mainIv = loopOp.getInductionVars()[idx], step = loopOp.getStep()[idx],
         remainderIv = remainderLoop.getInductionVars()[idx];
 
-  rewriteAffineOpAfterPeeling<AffineMinOp, /*IsMin=*/true>(
-      rewriter, loopOp, remainderLoop, mainIv, remainderIv, ub, step);
-  rewriteAffineOpAfterPeeling<AffineMaxOp, /*IsMin=*/false>(
-      rewriter, loopOp, remainderLoop, mainIv, remainderIv, ub, step);
+  rewriteAffineOpAfterPeeling<AffineMinOp>(rewriter, loopOp, remainderLoop,
+                                           mainIv, remainderIv, ub, step);
+  rewriteAffineOpAfterPeeling<AffineMaxOp>(rewriter, loopOp, remainderLoop,
+                                           mainIv, remainderIv, ub, step);
 
   return remainderLoop;
 }
 
 template <typename LoopTy>
 PeelingResult peelAllLoopsImpl(LoopTy loop, mlir::PatternRewriter &rewriter) {
-  setTransformationAttr(rewriter, loop, kPeeledMarker);
+  setLabel(loop, kPeelingAppliedLabel);
   PeelingResult peelingResult;
   for (unsigned peeledIdx = 0; peeledIdx < loop.getNumLoops(); ++peeledIdx) {
     auto peel =
         peelAndCanonicalizeGmlStLoopImpl<LoopTy>(rewriter, loop, peeledIdx);
     if (failed(peel)) continue;
     // Mark the new loop if one was created.
-    setTransformationAttr(rewriter, *peel, kPeeledMarker);
+    setLabel(peel->getOperation(), kPeelingAppliedLabel);
     peelingResult.push_back(*peel);
   }
   return peelingResult;
 }
 }  // namespace
-
-PeelingResult peelAllLoops(LoopOp loop, mlir::PatternRewriter &rewriter) {
-  return peelAllLoopsImpl<LoopOp>(loop, rewriter);
-}
 
 PeelingResult peelAllLoops(ForOp loop, mlir::PatternRewriter &rewriter) {
   return peelAllLoopsImpl<ForOp>(loop, rewriter);
@@ -189,11 +184,6 @@ PeelingResult peelAllLoops(ForOp loop, mlir::PatternRewriter &rewriter) {
 
 PeelingResult peelAllLoops(ParallelOp loop, mlir::PatternRewriter &rewriter) {
   return peelAllLoopsImpl<ParallelOp>(loop, rewriter);
-}
-
-FailureOr<LoopOp> peelAndCanonicalizeGmlStLoop(RewriterBase &rewriter,
-                                               LoopOp loopOp, int64_t idx) {
-  return peelAndCanonicalizeGmlStLoopImpl<LoopOp>(rewriter, loopOp, idx);
 }
 
 FailureOr<ForOp> peelAndCanonicalizeGmlStLoop(RewriterBase &rewriter,

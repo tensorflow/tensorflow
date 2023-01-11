@@ -2,7 +2,15 @@ load("//tensorflow:tensorflow.default.bzl", "cuda_py_test", "tf_py_test")
 load("//tensorflow/compiler/tests:build_defs.bzl", "tf_xla_py_test")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     licenses = ["notice"],
+)
+
+py_library(
+    name = "attributes",
+    srcs = ["attributes.py"],
+    srcs_version = "PY3",
+    deps = [],
 )
 
 py_library(
@@ -11,9 +19,10 @@ py_library(
     srcs_version = "PY3",
     visibility = ["//tensorflow/python/eager:__pkg__"],
     deps = [
+        ":attributes",
         ":function_context",
         ":function_spec",
-        ":saved_model_utils",
+        ":saved_model_exported_concrete",
         "//tensorflow/core/function/polymorphism:function_cache",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:errors",
@@ -41,7 +50,9 @@ py_library(
     srcs_version = "PY3",
     visibility = ["//tensorflow/python/eager:__pkg__"],
     deps = [
+        ":attributes",
         ":monomorphic_function",
+        "//tensorflow/core/function/capture:capture_container",
     ],
 )
 
@@ -51,6 +62,7 @@ py_library(
     srcs_version = "PY3",
     visibility = ["//tensorflow:internal"],
     deps = [
+        ":attributes",
         ":function_spec",
         "//tensorflow/python:cond_v2",  # TODO(b/118513001): Imported via control_flow_ops; remove.
         "//tensorflow/python:control_flow_ops",
@@ -221,10 +233,7 @@ py_library(
     srcs_version = "PY3",
     visibility = ["//tensorflow:internal"],
     deps = [
-        "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python/framework:composite_tensor",
-        "//tensorflow/python/framework:tensor_spec",
-        "//tensorflow/python/framework:type_spec",
         "//tensorflow/python/util",
     ],
 )
@@ -326,6 +335,16 @@ py_library(
         "//tensorflow/python/trackable:asset",
         "//tensorflow/python/trackable:base",
         "//tensorflow/python/trackable:resource",
+    ],
+)
+
+py_library(
+    name = "saved_model_exported_concrete",
+    srcs = ["saved_model_exported_concrete.py"],
+    srcs_version = "PY3",
+    visibility = ["//tensorflow:internal"],
+    deps = [
+        "//tensorflow/python/trackable:base",
     ],
 )
 

@@ -15,6 +15,9 @@ limitations under the License.
 
 #include "tensorflow/python/framework/python_op_gen.h"
 
+#include <unordered_set>
+#include <vector>
+
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/framework/op_gen_lib.h"
@@ -53,7 +56,8 @@ TEST(PythonOpGen, TypeAnnotateAllOps) {
     type_annotate_ops.insert(op.name());
   }
 
-  string code = GetPythonOps(ops, api_def_map, {}, "", type_annotate_ops);
+  string code = GetPythonOps(ops, api_def_map, /* hidden_ops= */ {},
+                             /* source_file_list= */ {}, type_annotate_ops);
 
   const string all_types =
       ", _dtypes.BFloat16, _dtypes.Bool, _dtypes.Complex128, "
@@ -122,7 +126,8 @@ TEST(PythonOpGen, TypeAnnotateSingleTypeTensor) {
   protobuf::TextFormat::ParseFromString(kBaseOpDef, &op_defs);
   ApiDefMap api_def_map(op_defs);
 
-  string code = GetPythonOps(op_defs, api_def_map, {}, "", type_annotate_ops);
+  string code = GetPythonOps(op_defs, api_def_map, /* hidden_ops= */ {},
+                             /* source_file_list= */ {}, type_annotate_ops);
 
   const string typed_bar =
       "def bar(x: _ops.Tensor[_dtypes.String], y: _ops.Tensor[_dtypes.QInt8], "
@@ -184,7 +189,8 @@ TEST(PythonOpGen, TypeAnnotateMultiTypeTensor) {
   protobuf::TextFormat::ParseFromString(kBaseOpDef, &op_defs);
   ApiDefMap api_def_map(op_defs);
 
-  string code = GetPythonOps(op_defs, api_def_map, {}, "", type_annotate_ops);
+  string code = GetPythonOps(op_defs, api_def_map, /* hidden_ops= */ {},
+                             /* source_file_list= */ {}, type_annotate_ops);
 
   const string typed_foo =
       "def foo(x: _ops.Tensor[TV_Foo_T], y: _ops.Tensor[TV_Foo_T2], name=None) "
@@ -243,7 +249,8 @@ TEST(PythonOpGen, GenerateCorrectTypeVars) {
   protobuf::TextFormat::ParseFromString(kBaseOpDef, &op_defs);
   ApiDefMap api_def_map(op_defs);
 
-  string code = GetPythonOps(op_defs, api_def_map, {}, "", type_annotate_ops);
+  string code = GetPythonOps(op_defs, api_def_map, /* hidden_ops= */ {},
+                             /* source_file_list= */ {}, type_annotate_ops);
 
   const string typevars_foo = R"(
 TV_Foo_T = TypeVar("TV_Foo_T", _dtypes.Int8, _dtypes.UInt8)
@@ -304,7 +311,8 @@ TEST(PythonOpGen, TypeAnnotateFallback) {
   protobuf::TextFormat::ParseFromString(kBaseOpDef, &op_defs);
   ApiDefMap api_def_map(op_defs);
 
-  string code = GetPythonOps(op_defs, api_def_map, {}, "", type_annotate_ops);
+  string code = GetPythonOps(op_defs, api_def_map, /* hidden_ops= */ {},
+                             /* source_file_list= */ {}, type_annotate_ops);
 
   const string typed_foo_fallback =
       "def foo_eager_fallback(x: _ops.Tensor[TV_Foo_T], y: "
@@ -363,7 +371,8 @@ TEST(PythonOpGen, GenerateTypeVarAboveOp) {
   protobuf::TextFormat::ParseFromString(kBaseOpDef, &op_defs);
   ApiDefMap api_def_map(op_defs);
 
-  string code = GetPythonOps(op_defs, api_def_map, {}, "", type_annotate_ops);
+  string code = GetPythonOps(op_defs, api_def_map, /* hidden_ops= */ {},
+                             /* source_file_list= */ {}, type_annotate_ops);
 
   const string typevar_foo = "TV_Foo_";
   const string def_foo = "def foo";
@@ -420,7 +429,8 @@ TEST(PythonOpGen, TypeAnnotateDefaultParams) {
   protobuf::TextFormat::ParseFromString(kBaseOpDef, &op_defs);
   ApiDefMap api_def_map(op_defs);
 
-  string code = GetPythonOps(op_defs, api_def_map, {}, "", type_annotate_ops);
+  string code = GetPythonOps(op_defs, api_def_map, /* hidden_ops= */ {},
+                             /* source_file_list= */ {}, type_annotate_ops);
 
   const string params =
       "def foo_bar(x: _ops.Tensor[_dtypes.Float32], t: TV_FooBar_t, "
@@ -469,11 +479,24 @@ TEST(PythonOpGen, NoTypingSequenceTensors) {
   protobuf::TextFormat::ParseFromString(kBaseOpDef, &op_defs);
   ApiDefMap api_def_map(op_defs);
 
-  string code = GetPythonOps(op_defs, api_def_map, {}, "", type_annotate_ops);
+  string code = GetPythonOps(op_defs, api_def_map, /* hidden_ops= */ {},
+                             /* source_file_list= */ {}, type_annotate_ops);
 
   const string baz_def_line = "def baz(inputs, name=None):";
 
   ExpectHasSubstr(code, baz_def_line);
+}
+
+TEST(PythonOpGen, InsertCommentsForSourceFileLocation) {
+  std::unordered_set<string> type_annotate_ops{};
+  std::vector<string> source_file_list{"some_ops.cc", "another_ops.cc"};
+  OpList op_defs;
+  ApiDefMap api_def_map(op_defs);
+  string code = GetPythonOps(op_defs, api_def_map, /* hidden_ops= */ {},
+                             source_file_list, type_annotate_ops);
+
+  ExpectHasSubstr(code,
+                  "Original C++ source file: some_ops.cc, another_ops.cc");
 }
 
 }  // namespace

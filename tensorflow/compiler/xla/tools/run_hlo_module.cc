@@ -240,6 +240,17 @@ Status RunAndCompare(
       auto test_module,
       LoadModuleFromFile(hlo_filename, hlo_module_loader_details::Config(),
                          options.input_format, config_modifier_hook));
+  std::unique_ptr<RunHloModuleIterationLiterals> iteration_literals_proto_local;
+  if (iteration_literals_proto == nullptr) {
+    // User did not explicitly give input
+    if (options.input_format == "pb" || options.input_format == "pbtxt") {
+      // User is giving a snapshot (which contains inputs)
+      TF_ASSIGN_OR_RETURN(
+          iteration_literals_proto_local,
+          LoadInputFromFile(hlo_filename, options.input_format));
+      iteration_literals_proto = iteration_literals_proto_local.get();
+    }
+  }
   return RunAndCompare(std::move(test_module), test_runner, reference_runner,
                        engine, options, iteration_literals_proto,
                        reference_module_modifier_hook, config_modifier_hook);

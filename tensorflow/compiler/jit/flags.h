@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_JIT_FLAGS_H_
 #define TENSORFLOW_COMPILER_JIT_FLAGS_H_
 
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -122,6 +123,9 @@ struct XlaOpsCommonFlags {
   // If true, _XlaCompile compiles the cluster asynchronously with respect to
   // the main execution. The fallback path is taken while compilation happens.
   bool tf_xla_async_compilation;
+  // If true, uses Device API (PjRt) for single device compilation. Defaults to
+  // false.
+  bool tf_xla_use_device_api;
 };
 
 // Flags for the build_xla_ops pass.
@@ -175,7 +179,16 @@ struct JitRtFlags {
   // "query of death". See TfJitRtQueryOfDeathLogger.
   bool log_query_of_death;
 
+  // Enable vectorization, which requires tiling and peeling on different ops.
   bool vectorize;
+
+  // Enable tiling/fusion transformations shared with XLA:CPU Next.
+  bool enable_xla_cpu_transformations;
+
+  // Enable packing for matmul, which lowers the matmul op into linalg.mmt4d, to
+  // hopefully get the most optimized layout for matmul inputs, hence accelerate
+  // accesses to these during matmul computation.
+  bool pack_matmul;
 
   // Enables crash reproducer for JitRt MLIR pass manager.
   bool enable_crash_reproducer;
@@ -217,6 +230,10 @@ void AppendMarkForCompilationPassFlags(
 // Disables XLA compilation, forces it to return an error message instead. Can
 // be used by a server to ensure that JIT compilation is opt-in.
 void DisableXlaCompilation();
+
+// Enables XLA compilation. Can be used with `DisableXlaCompilation` to
+// enable/disable JIT compilation at different stages.
+void EnableXlaCompilation();
 
 // Returns `false` unless `DisableXlaCompilation` was called.
 bool FailOnXlaCompilation();

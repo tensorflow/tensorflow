@@ -8,6 +8,7 @@ load(
 )
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//tensorflow/core/profiler:internal"],
     licenses = ["notice"],
 )
@@ -30,7 +31,6 @@ exports_files(
 # Linked to pywrap_tensorflow.
 cc_library(
     name = "profiler_service_impl",
-    srcs = ["profiler_service_impl.cc"],
     hdrs = ["profiler_service_impl.h"],
     copts = tf_profiler_copts(),
     visibility = tf_external_workspace_visible(
@@ -54,6 +54,7 @@ cc_library(
         "//tensorflow/core/profiler/utils:xplane_utils",
         "//tensorflow/tsl/profiler/protobuf:profiler_service_proto_cc",
         "//tensorflow/tsl/profiler/protobuf:profiler_service_cc_grpc_proto",
+        "//tensorflow/tsl/profiler/rpc:profiler_service_impl",
         "//tensorflow/tsl/profiler/protobuf:xplane_proto_cc",
     ] + tf_grpc_cc_dependencies(),
 )
@@ -66,20 +67,22 @@ tf_profiler_pybind_cc_library_wrapper(
 
 cc_library(
     name = "profiler_server_impl",
-    srcs = ["profiler_server.cc"],
     hdrs = ["profiler_server.h"],
     copts = tf_profiler_copts(),
     visibility = [
+        "//tensorflow:__pkg__",
         "//tensorflow/compiler/xla:__subpackages__",
         "//tensorflow/core/profiler:internal",
         "//tensorflow/python:__pkg__",
         "//tensorflow/python/profiler/internal:__pkg__",
+        "//tensorflow/tsl/profiler/rpc/client:__pkg__",
     ],
     deps = [
         ":profiler_service_impl",
         "@com_google_absl//absl/strings",
         "//tensorflow/core:lib",
         "//tensorflow/tsl/profiler/protobuf:profiler_service_cc_grpc_proto",
+        "//tensorflow/tsl/profiler/rpc:profiler_server_impl",
     ] + tf_grpc_cc_dependencies(),
     alwayslink = True,
 )

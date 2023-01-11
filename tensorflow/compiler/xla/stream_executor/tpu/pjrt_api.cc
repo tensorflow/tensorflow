@@ -15,14 +15,80 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/stream_executor/tpu/pjrt_api.h"
 
-namespace tensorflow {
+#include <dlfcn.h>
+
+#include <string>
+
+#include "absl/container/flat_hash_map.h"
+#include "absl/strings/string_view.h"
+#include "tensorflow/compiler/xla/pjrt/c/pjrt_c_api_helpers.h"
+#include "tensorflow/compiler/xla/status.h"
+#include "tensorflow/compiler/xla/statusor.h"
+#include "tensorflow/tsl/platform/errors.h"
+
+namespace stream_executor {
 namespace tpu {
 
-static const PJRT_Api* pjrt_api;
+static auto* pjrt_apis =
+    new absl::flat_hash_map<std::string, const PJRT_Api*>{};
 
-const PJRT_Api* PjrtApi() { return pjrt_api; }
+static std::string CanonicalizeDeviceType(absl::string_view device_type) {
+  return absl::AsciiStrToLower(device_type);
+}
 
-void SetPjrtApi(const PJRT_Api* api) { pjrt_api = api; }
+xla::StatusOr<const PJRT_Api*> PjrtApi(absl::string_view device_type) {
+  std::string canonicalize_device_type = CanonicalizeDeviceType(device_type);
+  auto iter = pjrt_apis->find(canonicalize_device_type);
+
+  // TODO(b/261601433): the block below is for backward compatibiality. Remove
+  // this block after pytorch adds the call to LoadPjrtPlugin.
+  if (iter == pjrt_apis->end() && canonicalize_device_type == "tpu") {
+    const char* env_value = getenv("TPU_LIBRARY_PATH");
+    const char* libtpu_path =
+        env_value && strlen(env_value) > 0 ? env_value : "libtpu.so";
+    TF_RETURN_IF_ERROR(LoadPjrtPlugin("tpu", libtpu_path));
+    iter = pjrt_apis->find("tpu");
+  }
+
+  if (iter == pjrt_apis->end()) {
+    return tsl::errors::NotFound("PJRT_Api not found for device type ",
+                                 canonicalize_device_type);
+  }
+  return iter->second;
+}
+
+xla::Status SetPjrtApi(absl::string_view device_type, const PJRT_Api* api) {
+  std::string canonicalize_device_type = CanonicalizeDeviceType(device_type);
+  if (auto iter = pjrt_apis->find(canonicalize_device_type);
+      iter != pjrt_apis->end()) {
+    return tsl::errors::AlreadyExists(
+        "PJRT_Api already exists for device type ", canonicalize_device_type);
+  }
+  (*pjrt_apis)[canonicalize_device_type] = api;
+  LOG(INFO) << "PJRT_Api is set for device type " << canonicalize_device_type;
+  return tsl::OkStatus();
+}
+
+xla::Status LoadPjrtPlugin(absl::string_view device_type,
+                           absl::string_view library_path) {
+  void* library = dlopen(library_path.data(), RTLD_NOW);
+  if (library == nullptr) {
+    return tsl::errors::Internal("Failed to open ", library_path);
+  }
+  const PJRT_Api* (*fptr)();
+  *reinterpret_cast<void**>(&fptr) = dlsym(library, "GetPjrtApi");
+  if (fptr == nullptr) {
+    return tsl::errors::NotFound("GetPjrtApi not found in ", library_path);
+  }
+  LOG(INFO) << "GetPjrtApi was found for " << device_type << " at "
+            << library_path;
+
+  const PJRT_Api* pjrt_api = fptr();
+  TF_RETURN_IF_ERROR(pjrt::CheckMatchingStructSizes(
+      "PJRT_Api", PJRT_Api_STRUCT_SIZE, pjrt_api->struct_size));
+  TF_RETURN_IF_ERROR(stream_executor::tpu::SetPjrtApi(device_type, pjrt_api));
+  return tsl::OkStatus();
+}
 
 }  // namespace tpu
-}  // namespace tensorflow
+}  // namespace stream_executor

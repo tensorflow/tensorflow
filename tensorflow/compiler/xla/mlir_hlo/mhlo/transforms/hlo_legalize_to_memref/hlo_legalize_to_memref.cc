@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <functional>
 #include <memory>
+#include <optional>
 #include <utility>
 
 #include "lhlo/IR/lhlo_ops.h"
@@ -92,9 +93,6 @@ struct CustomCallOpInterface
     for (OpResult result : customCallOp->getOpResults()) {
       auto &newBuffer = bufferArgs.emplace_back();
       if (result.getType().isa<mhlo::TokenType>()) {
-        // Token must be the last result.
-        if (result.getResultNumber() != customCallOp->getNumResults() - 1)
-          return failure();
         continue;
       }
       auto tensorType = result.getType().dyn_cast<RankedTensorType>();
@@ -115,6 +113,12 @@ struct CustomCallOpInterface
     lmhlo::CustomCallTargetArgMappingAttr targetMapping;
     auto numArguments = static_cast<int32_t>(customCallOp->getNumOperands());
     auto numResults = static_cast<int32_t>(customCallOp->getNumResults());
+
+    // Take the result buffers and fill in the token input in the gaps.
+    auto bufferResults = llvm::to_vector(llvm::map_range(
+        llvm::ArrayRef(bufferArgs).slice(numArguments),
+        [&](Value buffer) { return buffer ? buffer : tokenArgument; }));
+
     if (tokenArgument) {
       // If there was a token, squeeze all the non-token arguments and results
       // (in-place) and remember the mapping.
@@ -148,16 +152,13 @@ struct CustomCallOpInterface
     }
 
     auto lhloOp = rewriter.create<lmhlo::CustomCallOp>(
-        op->getLoc(), llvm::None, bufferArgs, op->getAttrs());
+        op->getLoc(), std::nullopt, bufferArgs, op->getAttrs());
     if (targetMapping) lhloOp.setTargetArgMappingAttr(targetMapping);
     // lmhlo.custom_call uses a segment_size attribute to tell input from output
     // arguments.
     lhloOp->setAttr(lhloOp.getOperandSegmentSizeAttr(),
                     rewriter.getDenseI32ArrayAttr({numArguments, numResults}));
-    // If we have a token argument pass it through untouched.
-    if (tokenArgument) bufferArgs.push_back(tokenArgument);
-    bufferization::replaceOpWithBufferizedValues(
-        rewriter, op, makeArrayRef(bufferArgs).slice(numArguments));
+    bufferization::replaceOpWithBufferizedValues(rewriter, op, bufferResults);
     return success();
   }
 };
@@ -183,7 +184,7 @@ struct InfeedOpInterface
       bufferArgs.push_back(rewriter.create<bufferization::ToMemrefOp>(
           op->getLoc(), memrefType, *tensorAlloc));
     }
-    rewriter.create<lmhlo::InfeedOp>(op->getLoc(), llvm::None, bufferArgs,
+    rewriter.create<lmhlo::InfeedOp>(op->getLoc(), std::nullopt, bufferArgs,
                                      op->getAttrs());
     // Pass the token along.
     bufferArgs.push_back((op->getOperand(0)));
@@ -216,8 +217,8 @@ struct OutfeedOpInterface
     FailureOr<Value> operandBuffer =
         getBuffer(rewriter, op->getOperand(0), options);
     if (failed(operandBuffer)) return failure();
-    rewriter.create<lmhlo::OutfeedOp>(op->getLoc(), llvm::None, *operandBuffer,
-                                      op->getAttrs());
+    rewriter.create<lmhlo::OutfeedOp>(op->getLoc(), std::nullopt,
+                                      *operandBuffer, op->getAttrs());
     bufferization::replaceOpWithBufferizedValues(rewriter, op,
                                                  {op->getOperand(1)});
     return success();
@@ -421,8 +422,7 @@ FailureOr<Value> insertDynamicMemrefCastOp(
   }
 
   // Type-erased memref type with static rank and dynamic strides.
-  SmallVector<int64_t, 2> dynamicLayout(resultRank,
-                                        ShapedType::kDynamicStrideOrOffset);
+  SmallVector<int64_t, 2> dynamicLayout(resultRank, ShapedType::kDynamic);
   auto typeErasedMemrefType = MemRefType::get(
       resultType.getShape(), operandType.getElementType(),
       makeStridedLinearLayoutMap(dynamicLayout,

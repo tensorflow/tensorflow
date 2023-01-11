@@ -93,7 +93,7 @@ class StridedSliceOpTest : public ::testing::Test {};
 using DataTypes = ::testing::Types<float, uint8_t, int8_t, int16_t, int32_t>;
 TYPED_TEST_SUITE(StridedSliceOpTest, DataTypes);
 
-#ifdef GTEST_HAS_DEATH_TEST
+#if GTEST_HAS_DEATH_TEST
 TYPED_TEST(StridedSliceOpTest, UnsupportedInputSize) {
   EXPECT_DEATH(StridedSliceOpModel<TypeParam>({2, 2, 2, 2, 2, 2}, {5}, {5}, {5},
                                               0, 0, 0, 0, 0),

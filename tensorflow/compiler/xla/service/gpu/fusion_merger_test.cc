@@ -465,6 +465,29 @@ ENTRY e {
   EXPECT_FALSE(fusion_merger_.Run(module.get()).value());
 }
 
+TEST_F(FusionMergerTest, WillMergeSliceIntoReusingConsumer) {
+  auto module = ParseAndReturnVerifiedModule(R"(
+HloModule m
+
+f1 {
+  p01 = s8[1000000] parameter(0)
+  ROOT s0 = s8[10] slice(p01), slice={[0:10]}
+}
+
+f2 {
+  p02 = s8[10] parameter(0)
+  ROOT b0 = s8[10,1000000] broadcast(p02), dimensions={0}
+}
+
+ENTRY e {
+  p0 = s8[1000000] parameter(0)
+  f1 = s8[10] fusion(p0), kind=kLoop, calls=f1
+  ROOT r = s8[10,1000000] fusion(f1), kind=kLoop, calls=f2
+})")
+                    .value();
+  EXPECT_TRUE(fusion_merger_.Run(module.get()).value());
+}
+
 TEST_F(FusionMergerTest, WillMergeExpensiveFusionsIfSavesMemory) {
   auto module = ParseAndReturnVerifiedModule(R"(
     HloModule m
@@ -961,6 +984,47 @@ ENTRY e {
   )")
                     .value();
   EXPECT_FALSE(fusion_merger_.Run(module.get()).value());
+}
+
+TEST_F(FusionMergerTest, CommonElementwiseUsedParameter) {
+  auto module = ParseAndReturnVerifiedModule(R"(
+    HloModule m
+
+    p {
+      p0 = f32[10000000] parameter(0)
+      p1 = f32[10000000] parameter(1)
+      p2 = f32[10000000] parameter(2)
+      p3 = f32[10000000] parameter(3)
+      a0 = f32[10000000] add(p1, p2)
+      a1 = f32[10000000] add(a0, p3)
+      ROOT _ = add(p0, a1)
+    }
+
+    c1 {
+      p0 = f32[10000000] parameter(0)
+      p1 = f32[10000000] parameter(1)
+      ROOT _ = add(p0, p1)
+    }
+
+    c2 {
+      p0 = f32[10000000] parameter(0)
+      p1 = f32[10000000] parameter(1)
+      ROOT _ = multiply(p0, p1)
+    }
+
+    ENTRY entry {
+      p0 = f32[10000000] parameter(0)
+      p1 = f32[10000000] parameter(1)
+      p2 = f32[10000000] parameter(2)
+      p3 = f32[10000000] parameter(3)
+      f = f32[10000000] fusion(p0, p1, p2, p3), kind=kLoop, calls=p
+      f1 = f32[10000000] fusion(p0, f), kind=kLoop, calls=c1
+      f2 = f32[10000000] fusion(p1, f), kind=kLoop, calls=c2
+      ROOT _ = (f32[10000000], f32[10000000]) tuple(f1, f2)
+    }
+    )")
+                    .value();
+  EXPECT_TRUE(fusion_merger_.Run(module.get()).value());
 }
 
 }  // namespace

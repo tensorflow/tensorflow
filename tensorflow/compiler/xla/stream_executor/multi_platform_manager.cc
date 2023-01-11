@@ -33,7 +33,7 @@ namespace {
 
 class MultiPlatformManagerImpl {
  public:
-  port::Status RegisterPlatform(std::unique_ptr<Platform> platform)
+  tsl::Status RegisterPlatform(std::unique_ptr<Platform> platform)
       ABSL_LOCKS_EXCLUDED(mu_);
 
   port::StatusOr<Platform*> PlatformWithName(absl::string_view target)
@@ -63,7 +63,7 @@ class MultiPlatformManagerImpl {
       bool initialize_platform) ABSL_LOCKS_EXCLUDED(mu_);
 
   using Listener = MultiPlatformManager::Listener;
-  port::Status RegisterListener(std::unique_ptr<Listener> listener)
+  tsl::Status RegisterListener(std::unique_ptr<Listener> listener)
       ABSL_LOCKS_EXCLUDED(mu_);
 
  private:
@@ -90,15 +90,15 @@ class MultiPlatformManagerImpl {
   absl::flat_hash_map<std::string, Platform*> name_map_ ABSL_GUARDED_BY(mu_);
 };
 
-port::Status MultiPlatformManagerImpl::RegisterPlatform(
+tsl::Status MultiPlatformManagerImpl::RegisterPlatform(
     std::unique_ptr<Platform> platform) {
   CHECK(platform != nullptr);
   std::string key = absl::AsciiStrToLower(platform->Name());
   absl::MutexLock lock(&mu_);
   if (name_map_.find(key) != name_map_.end()) {
-    return port::Status(port::error::INTERNAL,
-                        "platform is already registered with name: \"" +
-                            platform->Name() + "\"");
+    return tsl::Status(port::error::INTERNAL,
+                       "platform is already registered with name: \"" +
+                           platform->Name() + "\"");
   }
   Platform* platform_ptr = platform.get();
   CHECK(id_map_.emplace(platform->id(), platform_ptr).second);
@@ -155,7 +155,7 @@ port::StatusOr<Platform*> MultiPlatformManagerImpl::InitializePlatformWithName(
 
   TF_ASSIGN_OR_RETURN(Platform * platform, LookupByNameLocked(target));
   if (platform->Initialized()) {
-    return port::Status(
+    return tsl::Status(
         port::error::FAILED_PRECONDITION,
         absl::StrCat("platform \"", target, "\" is already initialized"));
   }
@@ -171,7 +171,7 @@ port::StatusOr<Platform*> MultiPlatformManagerImpl::InitializePlatformWithId(
 
   TF_ASSIGN_OR_RETURN(Platform * platform, LookupByIdLocked(id));
   if (platform->Initialized()) {
-    return port::Status(
+    return tsl::Status(
         port::error::FAILED_PRECONDITION,
         absl::StrFormat("platform with id %p is already initialized", id));
   }
@@ -181,7 +181,7 @@ port::StatusOr<Platform*> MultiPlatformManagerImpl::InitializePlatformWithId(
   return platform;
 }
 
-port::Status MultiPlatformManagerImpl::RegisterListener(
+tsl::Status MultiPlatformManagerImpl::RegisterListener(
     std::unique_ptr<Listener> listener) {
   absl::MutexLock lock(&mu_);
   CHECK(id_map_.empty());
@@ -231,7 +231,7 @@ port::StatusOr<Platform*> MultiPlatformManagerImpl::LookupByNameLocked(
     absl::string_view target) {
   auto it = name_map_.find(absl::AsciiStrToLower(target));
   if (it == name_map_.end()) {
-    return port::Status(
+    return tsl::Status(
         port::error::NOT_FOUND,
         absl::StrCat("Could not find registered platform with name: \"", target,
                      "\". Available platform names are: ",
@@ -244,7 +244,7 @@ port::StatusOr<Platform*> MultiPlatformManagerImpl::LookupByIdLocked(
     const Platform::Id& id) {
   auto it = id_map_.find(id);
   if (it == id_map_.end()) {
-    return port::Status(
+    return tsl::Status(
         port::error::NOT_FOUND,
         absl::StrFormat("could not find registered platform with id: %p", id));
   }
@@ -258,7 +258,7 @@ MultiPlatformManagerImpl& Impl() {
 
 }  // namespace
 
-/*static*/ port::Status MultiPlatformManager::RegisterPlatform(
+/*static*/ tsl::Status MultiPlatformManager::RegisterPlatform(
     std::unique_ptr<Platform> platform) {
   return Impl().RegisterPlatform(std::move(platform));
 }
@@ -296,7 +296,7 @@ MultiPlatformManager::InitializePlatformWithId(
   return Impl().InitializePlatformWithId(id, options);
 }
 
-/*static*/ port::Status MultiPlatformManager::RegisterListener(
+/*static*/ tsl::Status MultiPlatformManager::RegisterListener(
     std::unique_ptr<Listener> listener) {
   return Impl().RegisterListener(std::move(listener));
 }

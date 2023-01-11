@@ -349,6 +349,7 @@ class api_export(object):  # pylint: disable=invalid-name
     self.set_attr(undecorated_func, api_names_attr, self._names)
     self.set_attr(undecorated_func, api_names_attr_v1, self._names_v1)
 
+    # TODO(b/263286841): Remove functionality
     if self._deprecation_inst is not None:
       # Inline import to avoid dependency cycle between deprecation
       # utility and tf_export
@@ -426,6 +427,8 @@ def kwarg_only(f):
 
 
 tf_export = functools.partial(api_export, api_name=TENSORFLOW_API_NAME)
+# TODO(b/263286841): Remove in favor of
+# `tensorflow_estimator.python.estimator.estimator_export`.
 estimator_export = functools.partial(
     api_export,
     api_name=ESTIMATOR_API_NAME,
