@@ -636,7 +636,7 @@ class XlaOpsNumericalTest(xla_test.XLATestCase, parameterized.TestCase):
         session.run(output)
       self.assertRegex(
           invalid_arg_error.exception.message,
-          (r'op has mismatched number of slice sizes \(3\) and number of start'
+          (r'has mismatched number of slice sizes \(3\) and number of start'
            r' indices \(2\)'))
 
   def testDynamicSliceWithIncorrectSizeIndicesShape(self):
@@ -649,7 +649,7 @@ class XlaOpsNumericalTest(xla_test.XLATestCase, parameterized.TestCase):
         session.run(output)
       self.assertRegex(
           invalid_arg_error.exception.message,
-          (r'op has mismatched number of slice sizes \(2\) and number of start'
+          (r'has mismatched number of slice sizes \(2\) and number of start'
            r' indices \(3\)'))
 
   def test_optimization_barrier(self):
