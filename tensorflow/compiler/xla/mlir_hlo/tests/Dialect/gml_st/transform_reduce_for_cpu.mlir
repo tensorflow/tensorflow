@@ -79,9 +79,12 @@ func.func @reduce_mulf(%input: tensor<?x?xf32>,
 //       PEELED:         %[[MAIN_FOR:.*]] = gml_st.for (%[[J:.*]]) = (%[[C0]]) to (%[[JUB:.*]]) {{.*}} outs ({{.*}} = %[[MAIN_FILL]]:
 //       PEELED:           %[[MAIN_PAR_MAIN_FOR_REDUCE:.*]] = linalg.reduce
 //       PEELED:           gml_st.set_yield %[[MAIN_PAR_MAIN_FOR_REDUCE]]
-//       PEELED:         %[[REM_FOR:.*]] = gml_st.for (%[[J:.*]]) = (%[[JUB]]) {{.*}} outs ({{.*}} = %[[MAIN_FOR]]:
-//       PEELED:           %[[MAIN_PAR_REM_FOR_REDUCE:.*]] = linalg.reduce
-//       PEELED:           gml_st.set_yield %[[MAIN_PAR_REM_FOR_REDUCE]]
+//       PEELED:         %[[REM_FOR:.*]] = gml_st.for (%[[J:.*]]) = (%[[JUB]]) {{.*}} outs (%[[REM_FOR_ARG:.*]] = %[[MAIN_FOR]]:
+//       PEELED:           %[[REM_FOR_SLICE:.*]] = gml_st.materialize %[[REM_FOR_ARG]]
+//       PEELED:           %[[SCALAR_REM_FOR:.*]] = gml_st.for (%[[K:.*]]) = (%[[C0]]) {{.*}} outs ({{.*}} = %[[REM_FOR_SLICE]]:
+//       PEELED:             %[[MAIN_PAR_REM_FOR_REDUCE:.*]] = linalg.reduce
+//       PEELED:             gml_st.set_yield %[[MAIN_PAR_REM_FOR_REDUCE]]
+//       PEELED:           gml_st.set_yield %[[SCALAR_REM_FOR]]
 //       PEELED:         gml_st.set_yield %[[REM_FOR]]
 
 //       PEELED:       %[[REM_PAR:.*]] = gml_st.parallel (%[[I:.*]]) = (%[[IUB]])
