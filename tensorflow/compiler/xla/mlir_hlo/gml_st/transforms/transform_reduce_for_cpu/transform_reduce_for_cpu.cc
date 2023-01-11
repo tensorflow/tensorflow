@@ -339,9 +339,8 @@ struct Reduce2DTransformPattern : public OpRewritePattern<linalg::ReduceOp> {
       setLabel(op, kReduceTransformedLabel);
 
       // Peel parallel loops.
-      if (failed(peelReduction(rewriter, tilingParallelDimsResult.value(),
-                               tilingReductionDimsResult.value())))
-        return failure();
+      peelReduction(rewriter, tilingParallelDimsResult.value(),
+                    tilingReductionDimsResult.value());
     }
 
     return success();
@@ -420,9 +419,9 @@ struct Reduce2DTransformPattern : public OpRewritePattern<linalg::ReduceOp> {
     return tilingReductionDimsResult;
   }
 
-  LogicalResult peelReduction(
-      PatternRewriter &rewriter, const TilingResult &tilingParallelDimsResult,
-      const TilingResult &tilingReductionDimsResult) const {
+  void peelReduction(PatternRewriter &rewriter,
+                     const TilingResult &tilingParallelDimsResult,
+                     const TilingResult &tilingReductionDimsResult) const {
     // Peel parallel loops.
     if (auto loop =
             dyn_cast_or_null<ParallelOp>(tilingParallelDimsResult.loop)) {
@@ -434,30 +433,7 @@ struct Reduce2DTransformPattern : public OpRewritePattern<linalg::ReduceOp> {
     if (auto loop = dyn_cast_or_null<ForOp>(tilingReductionDimsResult.loop)) {
       auto peelingResult = peelAllLoops(loop, rewriter);
       setLabel(loop, kPerfectlyTiledLoopLabel);
-
-      // Tile ops in the peeled loop again, to size 1, so they can be
-      // scalarized.
-      for (auto *loop : peelingResult) {
-        ForOp peeledLoop = dyn_cast<ForOp>(loop);
-        auto *terminatorOp = peeledLoop->getRegion(0).front().getTerminator();
-        if (!terminatorOp) return failure();
-
-        auto reduceOp =
-            terminatorOp->getOperand(0).getDefiningOp<linalg::ReduceOp>();
-        if (!reduceOp) return failure();
-
-        mlir::gml_st::TilingOptions opts;
-        opts.setTileSizeComputationFn(
-            getReductionDimTileSizes(reduceOp.getDimensions()[0], 1));
-        opts.distribute = false;
-
-        if (failed(tileAndFuseGreedily(
-                rewriter, reduceOp, opts, kReduceTransformedLabel,
-                [&](Operation *op) { return isa<linalg::MapOp>(op); })))
-          return failure();
-      }
     }
-    return success();
   }
 
   int64_t parallelDimTileSize;
