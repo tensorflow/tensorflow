@@ -94,12 +94,13 @@ static LogicalResult RunPipeline(
     ModuleOp module, const std::function<void(PassManager&)>& create_pipeline) {
   if (!create_pipeline) return success();
 
-  mlir::PassManager pm(module.getContext());
-  SetupPassDebugging(module.getContext(), pm);
-
   // Instrument the pass manager to capture timing information.
   DefaultTimingManager tm;
   TimingScope timing;
+
+  mlir::PassManager pm(module.getContext());
+  SetupPassDebugging(module.getContext(), pm);
+
   if (EnablePassTiming()) {
     tm.setEnabled(true);
     timing = tm.getRootScope();
