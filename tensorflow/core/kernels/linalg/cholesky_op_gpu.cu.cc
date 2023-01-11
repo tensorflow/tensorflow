@@ -146,7 +146,7 @@ class CholeskyOpGpu : public AsyncOpKernel {
     const int64_t batch_size = input_reshaped.dimension(0);
     std::vector<DeviceLapackInfo> dev_info;
 
-#if CUDA_VERSION >= 9020
+#if CUDA_VERSION >= 9020 || TENSORFLOW_USE_ROCM
     // Decide whether to use the batched API.
     // TODO(rmlarsen): The value 128 was found to be optimal for the equivalent
     // split in matrix_solve_op. Tune this heuristic.
@@ -193,7 +193,7 @@ class CholeskyOpGpu : public AsyncOpKernel {
             done);
       }
 
-#if CUDA_VERSION >= 9020
+#if CUDA_VERSION >= 9020 || TENSORFLOW_USE_ROCM
     }
 #endif
 
