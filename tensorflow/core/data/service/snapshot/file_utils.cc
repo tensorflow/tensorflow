@@ -18,6 +18,7 @@ limitations under the License.
 
 #include "absl/functional/function_ref.h"
 #include "absl/strings/string_view.h"
+#include "tensorflow/core/data/snapshot_utils.h"
 #include "tensorflow/tsl/platform/env.h"
 #include "tensorflow/tsl/platform/errors.h"
 #include "tensorflow/tsl/platform/status.h"
@@ -75,6 +76,21 @@ tsl::Status AtomicallyWriteTextProto(absl::string_view filename,
   TF_RETURN_WITH_CONTEXT_IF_ERROR(
       AtomicallyWrite(filename, env, nonatomically_write),
       "Requested to write proto in text format: ", proto.DebugString());
+  return tsl::OkStatus();
+}
+
+tsl::Status AtomicallyWriteTFRecord(absl::string_view filename,
+                                    const Tensor& tensor, tsl::Env* env) {
+  auto nonatomically_write = [&](const std::string& uncomitted_filename) {
+    snapshot_util::TFRecordWriter writer(uncomitted_filename,
+                                         tsl::io::compression::kNone);
+    TF_RETURN_IF_ERROR(writer.Initialize(env));
+    TF_RETURN_IF_ERROR(writer.WriteTensors({tensor}));
+    return tsl::OkStatus();
+  };
+  TF_RETURN_WITH_CONTEXT_IF_ERROR(
+      AtomicallyWrite(filename, env, nonatomically_write),
+      "Requested to write tensor: ", tensor.DebugString());
   return tsl::OkStatus();
 }
 

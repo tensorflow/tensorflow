@@ -16,6 +16,7 @@ limitations under the License.
 #define TENSORFLOW_CORE_DATA_SERVICE_SNAPSHOT_FILE_UTILS_H_
 
 #include "absl/strings/string_view.h"
+#include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/tsl/platform/env.h"
 #include "tensorflow/tsl/platform/protobuf.h"
 #include "tensorflow/tsl/platform/status.h"
@@ -39,6 +40,11 @@ tsl::Status AtomicallyWriteBinaryProto(absl::string_view filename,
 tsl::Status AtomicallyWriteTextProto(absl::string_view filename,
                                      const tsl::protobuf::Message& proto,
                                      tsl::Env* env);
+
+// Atomically writes `tensor` to `filename` in TFRecord format. Overwrites
+// existing contents if the file already exists.
+tsl::Status AtomicallyWriteTFRecord(absl::string_view filename,
+                                    const Tensor& tensor, tsl::Env* env);
 
 }  // namespace data
 }  // namespace tensorflow
