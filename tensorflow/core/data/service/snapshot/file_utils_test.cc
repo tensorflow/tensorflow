@@ -58,6 +58,18 @@ TEST_P(AtomicallyWriteStringToFileTest, WriteString) {
 INSTANTIATE_TEST_SUITE_P(FileContents, AtomicallyWriteStringToFileTest,
                          ::testing::ValuesIn<std::string>({"OK", ""}));
 
+TEST(FileUtilsTest, AtomicallyWriteBinaryProto) {
+  TF_ASSERT_OK_AND_ASSIGN(std::string directory, CreateTestDirectory());
+  std::string test_file = tsl::io::JoinPath(directory, "test_file");
+  DatasetDef out = testing::RangeDataset(/*range=*/10);
+  TF_ASSERT_OK(AtomicallyWriteBinaryProto(test_file, out, tsl::Env::Default()));
+
+  DatasetDef in;
+  TF_EXPECT_OK(tsl::Env::Default()->FileExists(test_file));
+  TF_ASSERT_OK(ReadBinaryProto(tsl::Env::Default(), test_file, &in));
+  EXPECT_THAT(in, testing::EqualsProto(out));
+}
+
 TEST(FileUtilsTest, AtomicallyWriteTextProto) {
   TF_ASSERT_OK_AND_ASSIGN(std::string directory, CreateTestDirectory());
   std::string test_file = tsl::io::JoinPath(directory, "test_file");

@@ -52,6 +52,19 @@ tsl::Status AtomicallyWriteStringToFile(absl::string_view filename,
   return tsl::OkStatus();
 }
 
+tsl::Status AtomicallyWriteBinaryProto(absl::string_view filename,
+                                       const tsl::protobuf::Message& proto,
+                                       tsl::Env* env) {
+  auto nonatomically_write = [&](const std::string& uncomitted_filename) {
+    TF_RETURN_IF_ERROR(WriteBinaryProto(env, uncomitted_filename, proto));
+    return tsl::OkStatus();
+  };
+  TF_RETURN_WITH_CONTEXT_IF_ERROR(
+      AtomicallyWrite(filename, env, nonatomically_write),
+      "Requested to write proto in binary format: ", proto.DebugString());
+  return tsl::OkStatus();
+}
+
 tsl::Status AtomicallyWriteTextProto(absl::string_view filename,
                                      const tsl::protobuf::Message& proto,
                                      tsl::Env* env) {
@@ -61,7 +74,7 @@ tsl::Status AtomicallyWriteTextProto(absl::string_view filename,
   };
   TF_RETURN_WITH_CONTEXT_IF_ERROR(
       AtomicallyWrite(filename, env, nonatomically_write),
-      "Requested to write proto: ", proto.DebugString());
+      "Requested to write proto in text format: ", proto.DebugString());
   return tsl::OkStatus();
 }
 
