@@ -1,28 +1,7 @@
-diff --ruN a/stablehlo/stablehlo/dialect/AssemblyFormat.h b/stablehlo/stablehlo/dialect/AssemblyFormat.h
---- stablehlo/stablehlo/dialect/AssemblyFormat.h
-+++ stablehlo/stablehlo/dialect/AssemblyFormat.h
-@@ -59,7 +59,7 @@
-                                     OpTypes... types) {
-   static_assert(sizeof...(types) > 0);  // Must be non empty, must have result
-   SmallVector<Type> typesVec{types...};
--  ArrayRef<Type> typesRef = makeArrayRef(typesVec);
-+  ArrayRef<Type> typesRef = ArrayRef(typesVec);
-   return detail::printSameOperandsAndResultTypeImpl(
-       p, op, typesRef.drop_back(1), typesRef.back());
- }
-@@ -69,7 +69,7 @@
-                                            OpTypes&... types) {
-   static_assert(sizeof...(types) > 0);  // Must be non empty, must have result
-   SmallVector<Type*> typesVec{&types...};
--  ArrayRef<Type*> typesRef = makeArrayRef(typesVec);
-+  ArrayRef<Type*> typesRef = ArrayRef(typesVec);
-   return detail::parseSameOperandsAndResultTypeImpl(
-       parser, typesRef.drop_back(1), *typesRef.back());
- }
 diff --ruN a/stablehlo/stablehlo/dialect/TypeInference.cpp b/stablehlo/stablehlo/dialect/TypeInference.cpp
 --- stablehlo/stablehlo/dialect/TypeInference.cpp
 +++ stablehlo/stablehlo/dialect/TypeInference.cpp
-@@ -2184,7 +2184,9 @@
+@@ -2186,7 +2186,9 @@
    }
  
    auto getSliceDim = [&sliceSizes](int64_t index) -> int64_t {
@@ -33,84 +12,4 @@ diff --ruN a/stablehlo/stablehlo/dialect/TypeInference.cpp b/stablehlo/stablehlo
    };
  
    return inferGatherReturnTypeComponents(
-diff --ruN a/stablehlo/stablehlo/integrations/c/StablehloAttributes.cpp b/stablehlo/stablehlo/integrations/c/StablehloAttributes.cpp
---- stablehlo/stablehlo/integrations/c/StablehloAttributes.cpp
-+++ stablehlo/stablehlo/integrations/c/StablehloAttributes.cpp
-@@ -27,9 +27,9 @@
-     const int64_t *insertedWindowDims, intptr_t nScatteredDimsToOperandDims,
-     const int64_t *scatteredDimsToOperandDims, int64_t indexVectorDim) {
-   return wrap(mlir::stablehlo::ScatterDimensionNumbersAttr::get(
--      unwrap(ctx), llvm::makeArrayRef(updateWindowDims, nUpdateWindowDims),
--      llvm::makeArrayRef(insertedWindowDims, nInsertedWindowDims),
--      llvm::makeArrayRef(scatteredDimsToOperandDims,
-+      unwrap(ctx), llvm::ArrayRef(updateWindowDims, nUpdateWindowDims),
-+      llvm::ArrayRef(insertedWindowDims, nInsertedWindowDims),
-+      llvm::ArrayRef(scatteredDimsToOperandDims,
-                          nScatteredDimsToOperandDims),
-       indexVectorDim));
- }
-@@ -99,9 +99,9 @@
-     intptr_t nStartIndexMap, const int64_t *startIndexMap,
-     int64_t indexVectorDim) {
-   return wrap(mlir::stablehlo::GatherDimensionNumbersAttr::get(
--      unwrap(ctx), llvm::makeArrayRef(offsetDims, nOffsetDims),
--      llvm::makeArrayRef(collapsedSliceDims, nCollapsedSliceDims),
--      llvm::makeArrayRef(startIndexMap, nStartIndexMap), indexVectorDim));
-+      unwrap(ctx), llvm::ArrayRef(offsetDims, nOffsetDims),
-+      llvm::ArrayRef(collapsedSliceDims, nCollapsedSliceDims),
-+      llvm::ArrayRef(startIndexMap, nStartIndexMap), indexVectorDim));
- }
- 
- bool stablehloAttributeIsAGatherDimensionNumbers(MlirAttribute attr) {
-@@ -170,10 +170,10 @@
-     const int64_t *rhsContractingDimensions) {
-   return wrap(mlir::stablehlo::DotDimensionNumbersAttr::get(
-       unwrap(ctx),
--      llvm::makeArrayRef(lhsBatchingDimensions, nLhsBatchingDimensions),
--      llvm::makeArrayRef(rhsBatchingDimensions, nRhsBatchingDimensions),
--      llvm::makeArrayRef(lhsContractingDimensions, nLhsContractingDimensions),
--      llvm::makeArrayRef(rhsContractingDimensions, nRhsContractingDimensions)));
-+      llvm::ArrayRef(lhsBatchingDimensions, nLhsBatchingDimensions),
-+      llvm::ArrayRef(rhsBatchingDimensions, nRhsBatchingDimensions),
-+      llvm::ArrayRef(lhsContractingDimensions, nLhsContractingDimensions),
-+      llvm::ArrayRef(rhsContractingDimensions, nRhsContractingDimensions)));
- }
- 
- bool stablehloAttributeIsADotDimensionNumbers(MlirAttribute attr) {
-@@ -253,11 +253,11 @@
-     intptr_t nOutputSpatialDimensions, const int64_t *outputSpatialDimensions) {
-   return wrap(mlir::stablehlo::ConvDimensionNumbersAttr::get(
-       unwrap(ctx), inputBatchDimension, inputFeatureDimension,
--      llvm::makeArrayRef(inputSpatialDimensions, nInputSpatialDimensions),
-+      llvm::ArrayRef(inputSpatialDimensions, nInputSpatialDimensions),
-       kernelInputFeatureDimension, kernelOutputFeatureDimension,
--      llvm::makeArrayRef(kernelSpatialDimensions, nKernelSpatialDimensions),
-+      llvm::ArrayRef(kernelSpatialDimensions, nKernelSpatialDimensions),
-       outputBatchDimension, outputFeatureDimension,
--      llvm::makeArrayRef(outputSpatialDimensions, nOutputSpatialDimensions)));
-+      llvm::ArrayRef(outputSpatialDimensions, nOutputSpatialDimensions)));
- }
- 
- bool stablehloAttributeIsAConvDimensionNumbers(MlirAttribute attr) {
-@@ -360,9 +360,9 @@
-     const int64_t *outputTupleIndices, int64_t operandIndex,
-     intptr_t nOperandTupleIndices, const int64_t *operandTupleIndices) {
-   return wrap(mlir::stablehlo::OutputOperandAliasAttr::get(
--      unwrap(ctx), llvm::makeArrayRef(outputTupleIndices, nOutputTupleIndices),
-+      unwrap(ctx), llvm::ArrayRef(outputTupleIndices, nOutputTupleIndices),
-       operandIndex,
--      llvm::makeArrayRef(operandTupleIndices, nOperandTupleIndices)));
-+      llvm::ArrayRef(operandTupleIndices, nOperandTupleIndices)));
- }
- 
- bool stablehloAttributeIsAOutputOperandAlias(MlirAttribute attr) {
-@@ -586,7 +586,7 @@
- MlirAttribute stablehloTypeExtensionsGet(MlirContext ctx, intptr_t nBounds,
-                                          const int64_t *bounds) {
-   return wrap(mlir::stablehlo::TypeExtensionsAttr::get(
--      unwrap(ctx), llvm::makeArrayRef(bounds, nBounds)));
-+      unwrap(ctx), llvm::ArrayRef(bounds, nBounds)));
- }
- 
- bool stablehloAttributeIsTypeExtensions(MlirAttribute attr) {
 
