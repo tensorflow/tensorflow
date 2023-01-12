@@ -269,12 +269,6 @@ class DataServiceDispatcherImpl {
       const std::string& dataset_id,
       std::vector<std::unique_ptr<SplitProvider>>& split_providers)
       TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
-  // Makes split providers for the specified `dataset_def`, and stores them in
-  // `split_providers`.
-  Status MakeSplitProviders(
-      const DatasetDef& dataset_def,
-      std::vector<std::unique_ptr<SplitProvider>>& split_providers)
-      TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
   // Registers a dataset with the given fingerprint, storing the new dataset's
   // id in `dataset_id`.
   Status RegisterDataset(uint64 fingerprint, const DatasetDef& dataset,

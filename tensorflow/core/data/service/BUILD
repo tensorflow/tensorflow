@@ -391,6 +391,7 @@ cc_library(
         ":grpc_util",
         ":journal",
         ":journal_proto_cc",
+        ":split_provider",
         ":task_remover",
         ":validate_utils",
         ":worker_cc_grpc_proto",
@@ -702,10 +703,12 @@ cc_library(
     ],
     # copybara:uncomment copts = ["-Wthread-safety-analysis"],
     deps = [
+        ":common_proto_cc",
         ":dispatcher_client",
         ":grpc_util",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "//tensorflow/core/data:standalone",
     ],
 )
 

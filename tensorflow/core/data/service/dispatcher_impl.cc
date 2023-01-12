@@ -45,6 +45,7 @@ limitations under the License.
 #include "tensorflow/core/data/service/grpc_util.h"
 #include "tensorflow/core/data/service/journal.h"
 #include "tensorflow/core/data/service/snapshot/path_utils.h"
+#include "tensorflow/core/data/service/split_provider.h"
 #include "tensorflow/core/data/service/validate_utils.h"
 #include "tensorflow/core/data/service/worker.grpc.pb.h"
 #include "tensorflow/core/data/snapshot_utils.h"
@@ -494,19 +495,7 @@ Status DataServiceDispatcherImpl::MakeSplitProviders(
   TF_RETURN_IF_ERROR(state_.DatasetFromId(dataset_id, dataset));
   std::shared_ptr<const DatasetDef> dataset_def;
   TF_RETURN_IF_ERROR(GetDatasetDef(*dataset, dataset_def));
-  TF_RETURN_IF_ERROR(MakeSplitProviders(*dataset_def, split_providers));
-  return OkStatus();
-}
-
-Status DataServiceDispatcherImpl::MakeSplitProviders(
-    const DatasetDef& dataset_def,
-    std::vector<std::unique_ptr<SplitProvider>>& split_providers)
-    TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-  standalone::Dataset::Params params;
-  std::unique_ptr<standalone::Dataset> standalone_dataset;
-  TF_RETURN_IF_ERROR(standalone::Dataset::FromGraph(params, dataset_def.graph(),
-                                                    &standalone_dataset));
-  TF_RETURN_IF_ERROR(standalone_dataset->MakeSplitProviders(&split_providers));
+  TF_RETURN_IF_ERROR(CreateSplitProviders(*dataset_def, split_providers));
   return OkStatus();
 }
 
@@ -1086,7 +1075,7 @@ StatusOr<SnapshotState*> DataServiceDispatcherImpl::CreateSnapshotState(
     const std::string& snapshot_directory, const DatasetDef& dataset_def) {
   auto [it, ignore] = snapshots_.insert({snapshot_directory, SnapshotState()});
   TF_RETURN_IF_ERROR(
-      MakeSplitProviders(dataset_def, it->second.split_providers));
+      CreateSplitProviders(dataset_def, it->second.split_providers));
   return &it->second;
 }
 

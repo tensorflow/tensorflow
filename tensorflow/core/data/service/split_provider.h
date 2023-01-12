@@ -19,7 +19,9 @@ limitations under the License.
 #include <functional>
 #include <memory>
 #include <string>
+#include <vector>
 
+#include "tensorflow/core/data/service/common.pb.h"
 #include "tensorflow/core/data/service/dispatcher_client.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -59,6 +61,11 @@ class DataServiceSplitProvider : public SplitProvider {
   int64_t repetition_ = 0;
   std::unique_ptr<DataServiceDispatcherClient> dispatcher_;
 };
+
+// Makes split providers for `dataset_def` and stores them in `split_providers`.
+Status CreateSplitProviders(
+    const DatasetDef& dataset_def,
+    std::vector<std::unique_ptr<SplitProvider>>& split_providers);
 
 }  // namespace data
 }  // namespace tensorflow
