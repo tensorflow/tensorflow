@@ -80,9 +80,9 @@ llvm::SmallVector<InputTensorSpec> Inputs(ssize_t rows, ssize_t cols,
   BM(Tfrt(NAME, Map({DYNAMIC_ROW, DYNAMIC_COL}, {ROWS, COLS}, {ROWS, COLS1}), \
           "main", Inputs(ROWS, COLS, COLS1)))
 
-#define BM_DYNAMIC_ALL(ROWS, COLS, COLS1)                                  \
-  BM_SUITE(MapDynamicAll_##ROWS##_##COLS1, kDynamicDim, kDynamicDim, ROWS, \
-           COLS, COLS1)
+#define BM_DYNAMIC_ALL(ROWS, COLS, COLS1)                                      \
+  BM_SUITE(FusedMapBcastDynamicAll_##ROWS##_##COLS1, kDynamicDim, kDynamicDim, \
+           ROWS, COLS, COLS1)
 BM_DYNAMIC_ALL(2, 1, 80);
 BM_DYNAMIC_ALL(8, 1, 6);
 BM_DYNAMIC_ALL(80, 1, 1);
@@ -91,9 +91,9 @@ BM_DYNAMIC_ALL(81, 1, 61);
 BM_DYNAMIC_ALL(800, 1, 600);
 BM_DYNAMIC_ALL(802, 1, 602);
 
-#define BM_STATIC_ROW(ROWS, COLS, COLS1)                                      \
-  BM_SUITE(MapStaticRow##ROWS##_##COLS1, kStaticDim, kDynamicDim, ROWS, COLS, \
-           COLS1)
+#define BM_STATIC_ROW(ROWS, COLS, COLS1)                                    \
+  BM_SUITE(FusedMapBcastStaticRow##ROWS##_##COLS1, kStaticDim, kDynamicDim, \
+           ROWS, COLS, COLS1)
 BM_STATIC_ROW(2, 1, 80);
 BM_STATIC_ROW(8, 1, 6);
 BM_STATIC_ROW(80, 1, 1);
@@ -102,9 +102,9 @@ BM_STATIC_ROW(81, 1, 61);
 BM_STATIC_ROW(800, 1, 600);
 BM_STATIC_ROW(802, 1, 602);
 
-#define BM_STATIC_COL(ROWS, COLS, COLS1)                                       \
-  BM_SUITE(MapStaticCol_##ROWS##_##COLS1, kDynamicDim, kStaticDim, ROWS, COLS, \
-           COLS1)
+#define BM_STATIC_COL(ROWS, COLS, COLS1)                                     \
+  BM_SUITE(FusedMapBcastCol_##ROWS##_##COLS1, kDynamicDim, kStaticDim, ROWS, \
+           COLS, COLS1)
 BM_STATIC_COL(2, 1, 80);
 BM_STATIC_COL(8, 1, 6);
 BM_STATIC_COL(80, 1, 1);
@@ -113,9 +113,9 @@ BM_STATIC_COL(81, 1, 61);
 BM_STATIC_COL(800, 1, 600);
 BM_STATIC_COL(802, 1, 602);
 
-#define BM_STATIC_ALL(ROWS, COLS, COLS1)                                      \
-  BM_SUITE(MapStaticAll_##ROWS##_##COLS1, kStaticDim, kStaticDim, ROWS, COLS, \
-           COLS1)
+#define BM_STATIC_ALL(ROWS, COLS, COLS1)                                    \
+  BM_SUITE(FusedMapBcastAll_##ROWS##_##COLS1, kStaticDim, kStaticDim, ROWS, \
+           COLS, COLS1)
 BM_STATIC_ALL(2, 1, 80);
 BM_STATIC_ALL(8, 1, 6);
 BM_STATIC_ALL(80, 1, 1);
