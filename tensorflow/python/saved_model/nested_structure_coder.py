@@ -556,8 +556,9 @@ class _TypeSpecCodec:
         type_spec_class = type_spec.lookup(class_name)
       except ValueError:
         type_spec_class = extension_type.AnonymousExtensionTypeSpec
-        warnings.warn("The type %r has not been registered.  Falling back to "
-                      "using AnonymousExtensionTypeSpec instead.")
+        warnings.warn(f"The type '{class_name}' has not been registered. "
+                      "Falling back to using AnonymousExtensionTypeSpec "
+                      "instead.")
     else:
       if type_spec_class_enum not in self.TYPE_SPEC_CLASS_FROM_PROTO:
         raise ValueError(
