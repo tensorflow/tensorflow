@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/xla/stream_executor/tpu/pjrt_api.h"
+#include "tensorflow/compiler/xla/pjrt/pjrt_api.h"
 
 #include <dlfcn.h>
 
@@ -26,8 +26,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/tsl/platform/errors.h"
 
-namespace stream_executor {
-namespace tpu {
+namespace pjrt {
 
 static auto* pjrt_apis =
     new absl::flat_hash_map<std::string, const PJRT_Api*>{};
@@ -86,9 +85,8 @@ xla::Status LoadPjrtPlugin(absl::string_view device_type,
   const PJRT_Api* pjrt_api = fptr();
   TF_RETURN_IF_ERROR(pjrt::CheckMatchingStructSizes(
       "PJRT_Api", PJRT_Api_STRUCT_SIZE, pjrt_api->struct_size));
-  TF_RETURN_IF_ERROR(stream_executor::tpu::SetPjrtApi(device_type, pjrt_api));
+  TF_RETURN_IF_ERROR(pjrt::SetPjrtApi(device_type, pjrt_api));
   return tsl::OkStatus();
 }
 
-}  // namespace tpu
-}  // namespace stream_executor
+}  // namespace pjrt

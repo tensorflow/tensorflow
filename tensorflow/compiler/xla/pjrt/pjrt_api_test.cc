@@ -12,7 +12,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "tensorflow/compiler/xla/stream_executor/tpu/pjrt_api.h"
+#include "tensorflow/compiler/xla/pjrt/pjrt_api.h"
 
 #include <gtest/gtest.h>
 #include "tensorflow/tsl/lib/core/status_test_util.h"
@@ -26,20 +26,19 @@ using ::tsl::testing::StatusIs;
 TEST(PjRtApiTest, SetAndGetGlobalPjRtApi) {
   PJRT_Api api;
 
-  TF_ASSERT_OK(stream_executor::tpu::SetPjrtApi("CPU", &api));
-  TF_ASSERT_OK_AND_ASSIGN(const PJRT_Api* output,
-                          stream_executor::tpu::PjrtApi("CPU"));
+  TF_ASSERT_OK(pjrt::SetPjrtApi("CPU", &api));
+  TF_ASSERT_OK_AND_ASSIGN(const PJRT_Api* output, pjrt::PjrtApi("CPU"));
   TF_ASSERT_OK_AND_ASSIGN(const PJRT_Api* output_lowercase,
-                          stream_executor::tpu::PjrtApi("cpu"));
+                          pjrt::PjrtApi("cpu"));
 
   EXPECT_EQ(output, &api);
   EXPECT_EQ(output_lowercase, &api);
-  EXPECT_THAT(stream_executor::tpu::SetPjrtApi("CPU", &api),
+  EXPECT_THAT(pjrt::SetPjrtApi("CPU", &api),
               StatusIs(tensorflow::error::ALREADY_EXISTS,
                        HasSubstr("PJRT_Api already exists for device type")));
   // TODO(b/261601433): change back to NOT_FOUND error after pytorch adds the
   // call to LoadPjrtPlugin.
-  EXPECT_THAT(stream_executor::tpu::PjrtApi("TPU"),
+  EXPECT_THAT(pjrt::PjrtApi("TPU"),
               StatusIs(tensorflow::error::INTERNAL,
                        HasSubstr("Failed to open libtpu.")));
 }
