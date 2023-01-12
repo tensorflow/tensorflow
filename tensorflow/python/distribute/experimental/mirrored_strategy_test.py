@@ -250,6 +250,16 @@ class StrategyDatasetTest(test_util.DTensorBaseTest):
       self.assertLen(d_api.unpack(batched_image), self.mesh.num_local_devices())
       self.assertLen(d_api.unpack(batched_label), self.mesh.num_local_devices())
 
+  def test_deprecated_strategy_methods(self):
+    strategy = mirrored_strategy.MirroredStrategy(self.mesh)
+    with self.assertRaisesRegex(
+        NotImplementedError, 'only available in the V1 API'):
+      strategy.make_dataset_iterator(self.dataset)
+
+    with self.assertRaisesRegex(
+        NotImplementedError, 'only available in the V1 API'):
+      strategy.make_input_fn_iterator(lambda _: self.dataset)
+
   # TODO(scottzhu): Add test for unpacking the dataset in tf.function
 
 if __name__ == '__main__':

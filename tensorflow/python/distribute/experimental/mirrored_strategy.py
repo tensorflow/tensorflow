@@ -204,13 +204,17 @@ class MirroredExtended(distribute_lib.StrategyExtendedV2):
         tf_data_service_config=None
     )
 
+  def _make_dataset_iterator(self, dataset):
+    raise NotImplementedError(
+        'Strategy.make_dataset_iterator() is deprecated, and only available '
+        'in the V1 API.')
+
+  def _make_input_fn_iterator(self, input_fn, replication_mode):
+    raise NotImplementedError(
+        'Strategy.make_input_fn_iterator() is deprecated, and only available '
+        'in the V1 API.')
+
   # TODO(scottzhu): Address all these methods in follow up cls.
-  # def _make_dataset_iterator(self, dataset):
-  #   pass
-  #
-  # def _make_input_fn_iterator(self, input_fn, replication_mode):
-  #   pass
-  #
   # def _distribute_datasets_from_function(self, dataset_fn, options):
   #   pass
   #
