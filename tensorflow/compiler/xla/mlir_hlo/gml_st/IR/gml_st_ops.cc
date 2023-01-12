@@ -446,6 +446,16 @@ struct CollapseSingleIterationLoops : public OpRewritePattern<LoopLikeOp> {
       auto lowerBoundConstant = getConstant(lowerBound);
       auto upperBoundConstant = getConstant(upperBound);
       auto stepConstant = getConstant(step);
+      // Remove the loop if it performs zero iterations.
+      if (lowerBoundConstant && upperBoundConstant &&
+          *lowerBoundConstant == *upperBoundConstant) {
+        if constexpr (std::is_same_v<LoopLikeOp, ParallelOp>) {
+          rewriter.replaceOp(op, op.getTerminator().getDsts());
+        } else {
+          rewriter.replaceOp(op, op.getOutputs());
+        }
+        return success();
+      }
       // Replace the loop induction variable by the lower bound if the loop
       // performs a single iteration. Otherwise, copy the loop bounds.
       if (lowerBoundConstant && upperBoundConstant && stepConstant &&
