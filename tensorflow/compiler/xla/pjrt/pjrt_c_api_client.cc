@@ -74,7 +74,9 @@ PjRtCApiClient::PjRtCApiClient(const PJRT_Api* c_api, PJRT_Client* c_client)
       //   Built on Mar 4 2021 15:25:57 (1614900357) cl/360760169
       platform_version_(absl::StrCat(
           "PJRT C API\n", ::pjrt::GetPlatformVersion(c_client, c_api))) {
-  wrapped_ = c_client_->client.get();
+  if (kPjRtCApiBypass) {
+    wrapped_ = c_client_->client.get();
+  }
 
   InitDevices();
   LOG(INFO) << "PjRtCApiClient created.";
@@ -103,7 +105,9 @@ void PjRtCApiClient::InitDevices() {
     // Map the wrapped PjRtDevice* to the PjRtCApiDevice* that wraps it.
     // TODO(b/237017893): remove `wrapped_device_map_` and replace it with
     // `c_api_device_map_`
-    wrapped_device_map_[device->device] = cpp_device.get();
+    if (kPjRtCApiBypass) {
+      wrapped_device_map_[device->device] = cpp_device.get();
+    }
   }
 
   PJRT_Client_AddressableDevices_Args address_args;
@@ -406,14 +410,15 @@ StatusOr<std::unique_ptr<PjRtBuffer>> PjRtCApiClient::BufferFromHostBuffer(
     event_args.struct_size = PJRT_Event_OnReady_Args_STRUCT_SIZE;
     event_args.priv = nullptr;
     event_args.event = event.get();
-    event_args.user_arg = new std::function<void(PJRT_Error*)>(
-        [on_done_with_host_buffer = std::move(on_done_with_host_buffer),
-         c_api = c_api_](PJRT_Error* error) {
-          if (error) {
-            ::pjrt::MakeErrorDeleter(c_api)(error);
-          }
-          on_done_with_host_buffer();
-        });
+    event_args.user_arg = new std::function<void(PJRT_Error*)>([
+      on_done_with_host_buffer = std::move(on_done_with_host_buffer),
+      c_api = c_api_
+    ](PJRT_Error * error) {
+      if (error) {
+        ::pjrt::MakeErrorDeleter(c_api)(error);
+      }
+      on_done_with_host_buffer();
+    });
     event_args.callback = [](PJRT_Error* error, void* args) {
       std::function<void(PJRT_Error*)>* on_done_with_host_buffer =
           reinterpret_cast<std::function<void(PJRT_Error*)>*>(args);
@@ -433,7 +438,9 @@ const PJRT_Api* PjRtCApiClient::pjrt_c_api() const { return c_api_; }
 
 PjRtCApiDevice::PjRtCApiDevice(PJRT_Device* device, PjRtCApiClient* client)
     : client_(client), device_(device) {
-  wrapped_ = device_->device;
+  if (kPjRtCApiBypass) {
+    wrapped_ = device_->device;
+  }
   InitAttributes();
 }
 
@@ -927,8 +934,11 @@ PjRtCApiExecutable::GetCostAnalysis() const {
 PjRtCApiBuffer::PjRtCApiBuffer(PjRtCApiClient* client, PJRT_Buffer* buffer)
     : client_(client),
       buffer_(buffer, ::pjrt::MakeBufferDeleter(client->pjrt_c_api())),
-      readiness_event_(nullptr, ::pjrt::MakeEventDeleter(client->pjrt_c_api())),
-      wrapped_(buffer_->buffer.get()) {
+      readiness_event_(nullptr,
+                       ::pjrt::MakeEventDeleter(client->pjrt_c_api())) {
+  if (kPjRtCApiBypass) {
+    wrapped_ = buffer_->buffer.get();
+  }
   set_shape();
 }
 
@@ -1083,7 +1093,7 @@ StatusOr<std::unique_ptr<PjRtBuffer>> PjRtCApiBuffer::CopyToDevice(
         literal_pointer->shape().element_type(),
         literal_pointer->shape().dimensions(), byte_strides,
         PjRtClient::HostBufferSemantics::kZeroCopy,
-        [literal{std::move(literal)}]() { /* frees literal */ }, dst_device);
+        [literal{std::move(literal)}](){/* frees literal */}, dst_device);
   }
 }
 
@@ -1118,7 +1128,7 @@ void PjRtCApiBuffer::MakePromiseTrackEvent() {
   args.priv = nullptr;
   args.event = GetReadyEvent();
   args.user_arg = new std::function<void(PJRT_Error*)>(
-      [promise = readiness_promise_, api](PJRT_Error* error) -> void {
+      [ promise = readiness_promise_, api ](PJRT_Error * error)->void {
         Status status = ::pjrt::PjrtErrorToStatus(error, api);
         promise->Set(status);
         ::pjrt::MakeErrorDeleter(api)(error);
