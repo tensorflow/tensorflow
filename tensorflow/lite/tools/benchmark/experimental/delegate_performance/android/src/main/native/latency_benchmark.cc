@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/lite/tools/benchmark/experimental/delegate_performance/android/jni/latency_benchmark.h"
+#include "tensorflow/lite/tools/benchmark/experimental/delegate_performance/android/src/main/native/latency_benchmark.h"
 
 #include <errno.h>
 #include <sys/stat.h>

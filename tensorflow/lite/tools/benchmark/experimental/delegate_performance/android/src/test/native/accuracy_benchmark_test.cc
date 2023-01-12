@@ -12,7 +12,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "tensorflow/lite/tools/benchmark/experimental/delegate_performance/android/jni/accuracy_benchmark.h"
+#include "tensorflow/lite/tools/benchmark/experimental/delegate_performance/android/src/main/native/accuracy_benchmark.h"
 
 #include <fcntl.h>
 #include <stdio.h>
@@ -28,7 +28,7 @@ limitations under the License.
 #include "tensorflow/lite/experimental/acceleration/configuration/configuration_generated.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/embedded_mobilenet_validation_model.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/mini_benchmark_test_helper.h"
-#include "tensorflow/lite/tools/benchmark/experimental/delegate_performance/android/jni/status_codes.h"
+#include "tensorflow/lite/tools/benchmark/experimental/delegate_performance/android/src/main/native/status_codes.h"
 
 namespace tflite {
 namespace benchmark {

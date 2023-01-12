@@ -30,7 +30,7 @@ import tflite.TFLiteSettings;
  * benchmark results.
  */
 final class TfLiteSettingsListEntry {
-  private static final String TAG = "tflite_TfLiteSettingsListEntry";
+  private static final String TAG = "TfLiteSettingsListEntry";
 
   private final TFLiteSettings tfliteSettings;
   private final String filePath;
@@ -105,8 +105,9 @@ final class TfLiteSettingsListEntry {
   @Override
   public String toString() {
     return "TfLiteSettingsListEntry{"
-        + "tfliteSettings="
-        + tfliteSettings
+        // TODO(b/265268620): Dump the entire TFLiteSettings buffer.
+        + "delegate="
+        + tfliteSettings.delegate()
         + ", "
         + "filePath="
         + filePath

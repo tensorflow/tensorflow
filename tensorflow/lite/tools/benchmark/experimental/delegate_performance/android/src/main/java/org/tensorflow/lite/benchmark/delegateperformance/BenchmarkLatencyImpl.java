@@ -1,4 +1,4 @@
-/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -19,10 +19,8 @@ import static org.tensorflow.lite.benchmark.delegateperformance.DelegatePerforma
 import static org.tensorflow.lite.benchmark.delegateperformance.DelegatePerformanceBenchmark.checkNotNull;
 import static org.tensorflow.lite.benchmark.delegateperformance.DelegatePerformanceBenchmark.checkState;
 
-import android.app.Activity;
-import android.content.Intent;
+import android.content.Context;
 import android.content.res.AssetFileDescriptor;
-import android.os.Bundle;
 import android.os.Trace;
 import android.util.Log;
 import com.google.protos.tflite.proto.benchmark.DelegatePerformance.LatencyCriteria;
@@ -34,11 +32,10 @@ import java.util.List;
 import tflite.StableDelegateLoaderSettings;
 
 /**
- * {@link Activity} class for Delegate Performance Latency Benchmark.
+ * Impl class for Delegate Performance Latency Benchmark.
  *
- * <p>This Activity receives test arguments via a command line specified in an intent extra. It
- * performs latency benchmark tests via TFLite Benchmark Tool based on the input arguments. Please
- * check the test example in
+ * <p>It performs latency benchmark tests via TFLite Benchmark Tool based on the input arguments.
+ * Please check the test example in
  * tensorflow/lite/tools/benchmark/experimental/delegate_performance/android/README.md.
  *
  * <p>Generates a CSV file under delegate_performance_result/latency folder to describe the
@@ -74,20 +71,21 @@ import tflite.StableDelegateLoaderSettings;
  *   <li>3. average inference latency: average time for the inferences in the benchmark run.
  * </ul>
  */
-public class BenchmarkLatencyActivity extends Activity {
+public final class BenchmarkLatencyImpl {
 
   private static final String LATENCY_FOLDER_NAME = "latency";
   private static final String PROTO_FOLDER_NAME = "proto";
-  private static final String TAG = "tflite_BenchmarkLatencyActivity";
+  private static final String TAG = "TfLiteLatencyImpl";
   private static final String DEFAULT_LATENCY_CRITERIA_FILENAME = "default_latency_criteria";
   private static final String LATENCY_CRITERIA_FILE_EXT = ".binarypb";
-  private static final String TFLITE_SETTINGS_FILES_INTENT_KEY_0 = "--tflite_settings_files";
-  private static final String ARGS_INTENT_KEY_0 = "--args";
   // Reference entry is the first item in the TfLiteSettingsListEntry list.
   private static final int REFERENCE_ENTRY_INDEX = 0;
   // The test target entry is the second item in the TfLiteSettingsListEntry list.
   private static final int TEST_TARGET_ENTRY_INDEX = 1;
 
+  private final Context context;
+  private final String[] tfliteSettingsJsonFiles;
+  private final String[] args;
   private LatencyCriteria defaultLatencyCriteria;
   private String resultFolderPath;
   /**
@@ -101,52 +99,53 @@ public class BenchmarkLatencyActivity extends Activity {
    */
   private boolean compareTwoStableDelegates;
 
-  @Override
-  public void onCreate(Bundle savedInstanceState) {
-    Log.i(TAG, "Create benchmark latency activity.");
-    super.onCreate(savedInstanceState);
+  public BenchmarkLatencyImpl(Context context, String[] tfliteSettingsJsonFiles, String[] args) {
+    this.context = context;
+    this.tfliteSettingsJsonFiles = tfliteSettingsJsonFiles;
+    if (args == null) {
+      // The "--args" extra key was not provided.
+      this.args = new String[0];
+    } else {
+      this.args = args;
+    }
+  }
 
-    Intent intent = getIntent();
-    Bundle bundle = intent.getExtras();
-    String[] tfliteSettingsJsonFiles = bundle.getStringArray(TFLITE_SETTINGS_FILES_INTENT_KEY_0);
+  /**
+   * Initializes the test environment. Creates the result folder and loads the default latency
+   * criteria file.
+   *
+   * <p>Returns {@code true} if the initialization was successful. Otherwise, returns {@code false}.
+   */
+  public boolean initialize() {
     if (tfliteSettingsJsonFiles == null || tfliteSettingsJsonFiles.length == 0) {
-      Log.e(TAG, "No TFLiteSettings file is provided.");
-      finish();
-      return;
+      Log.e(TAG, "No TFLiteSettings file provided.");
+      return false;
     }
     numberOfInputTfLiteSettingsIsOne = tfliteSettingsJsonFiles.length == 1;
-    String[] args = bundle.getStringArray(ARGS_INTENT_KEY_0);
-    if (args == null) {
-      // The "--args" extra key is not provided.
-      args = new String[0];
-    }
 
     try {
       // Creates root result folder.
       resultFolderPath =
           DelegatePerformanceBenchmark.createResultFolder(
-              getApplicationContext().getFilesDir(), LATENCY_FOLDER_NAME);
+              context.getFilesDir(), LATENCY_FOLDER_NAME);
     } catch (IOException e) {
       Log.e(
           TAG, "Failed to create result folder " + LATENCY_FOLDER_NAME + " in files directory.", e);
-      finish();
-      return;
+      return false;
     }
+
     try {
       // Loads default latency criteria.
       defaultLatencyCriteria = loadLatencyCriteria(DEFAULT_LATENCY_CRITERIA_FILENAME);
     } catch (IOException e) {
       Log.e(TAG, "Failed to load default latency criteria " + DEFAULT_LATENCY_CRITERIA_FILENAME, e);
-      finish();
-      return;
+      return false;
     }
-
-    benchmarkLatency(tfliteSettingsJsonFiles, args);
-    finish();
+    return true;
   }
 
   /** Benchmarks the embedded model files with the input TFLiteSettings JSON files. */
-  private void benchmarkLatency(String[] tfliteSettingsJsonFiles, String[] args) {
+  public void benchmark() {
     List<TfLiteSettingsListEntry> tfliteSettingsList =
         DelegatePerformanceBenchmark.loadTfLiteSettingsList(tfliteSettingsJsonFiles);
     if (tfliteSettingsList.size() < 2) {
@@ -162,7 +161,7 @@ public class BenchmarkLatencyActivity extends Activity {
     boolean passed = true;
     String[] assets;
     try {
-      assets = getAssets().list(LATENCY_FOLDER_NAME);
+      assets = context.getAssets().list(LATENCY_FOLDER_NAME);
     } catch (IOException e) {
       Log.e(TAG, "Failed to list files from assets folder.", e);
       return;
@@ -200,7 +199,7 @@ public class BenchmarkLatencyActivity extends Activity {
       String modelFilename, List<TfLiteSettingsListEntry> tfliteSettingsList, String[] args) {
     String modelName = DelegatePerformanceBenchmark.getModelName(modelFilename);
     try (AssetFileDescriptor modelFileDescriptor =
-        getAssets().openFd(LATENCY_FOLDER_NAME + "/" + modelFilename)) {
+        context.getAssets().openFd(LATENCY_FOLDER_NAME + "/" + modelFilename)) {
 
       for (TfLiteSettingsListEntry tfliteSettingsListEntry : tfliteSettingsList) {
         Log.i(
@@ -259,7 +258,7 @@ public class BenchmarkLatencyActivity extends Activity {
   private LatencyCriteria loadLatencyCriteria(String fileBasename) throws IOException {
     String latencyCriteriaFileAssetPath =
         PROTO_FOLDER_NAME + "/" + fileBasename + LATENCY_CRITERIA_FILE_EXT;
-    InputStream latencyCriteriaFile = getAssets().open(latencyCriteriaFileAssetPath);
+    InputStream latencyCriteriaFile = context.getAssets().open(latencyCriteriaFileAssetPath);
     return LatencyCriteria.parseFrom(latencyCriteriaFile);
   }
 
@@ -295,7 +294,7 @@ public class BenchmarkLatencyActivity extends Activity {
             reference,
             target,
             "inference_latency_average_us",
-            latencyCriteria.AVERAGE_INFERENCE_MAX_REGRESSION_PERCENTAGE_ALLOWED_FIELD_NUMBER);
+            latencyCriteria.getAverageInferenceMaxRegressionPercentageAllowed());
     if (numberOfInputTfLiteSettingsIsOne) {
       // Check for inference latency regression only when the number of input files is one.
       return checkInferenceRegression;
@@ -305,13 +304,13 @@ public class BenchmarkLatencyActivity extends Activity {
             reference,
             target,
             "initialization_latency_us",
-            latencyCriteria.INITIALIZATION_MAX_REGRESSION_PERCENTAGE_ALLOWED_FIELD_NUMBER);
+            latencyCriteria.getInitializationMaxRegressionPercentageAllowed());
     boolean checkWarmupRegression =
         checkLatencyThreshold(
             reference,
             target,
             "warmup_latency_average_us",
-            latencyCriteria.AVERAGE_WARM_UP_MAX_REGRESSION_PERCENTAGE_ALLOWED_FIELD_NUMBER);
+            latencyCriteria.getAverageWarmUpMaxRegressionPercentageAllowed());
     return checkInferenceRegression && checkInitializationRegression && checkWarmupRegression;
   }
 
@@ -351,7 +350,7 @@ public class BenchmarkLatencyActivity extends Activity {
       TfLiteSettingsListEntry reference,
       TfLiteSettingsListEntry target,
       String metricName,
-      int percentageThreshold) {
+      float percentageThreshold) {
     if (reference.metrics().containsKey(metricName) && target.metrics().containsKey(metricName)) {
       float referenceMetricValue = reference.metrics().get(metricName);
       float targetMetricValue = target.metrics().get(metricName);

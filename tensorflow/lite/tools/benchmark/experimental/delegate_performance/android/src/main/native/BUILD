@@ -45,24 +45,6 @@ cc_library(
     ],
 )
 
-cc_test(
-    name = "latency_benchmark_test",
-    srcs = ["latency_benchmark_test.cc"],
-    data = [
-        "//tensorflow/lite/delegates/utils/experimental/sample_stable_delegate:tensorflowlite_sample_stable_delegate",
-        "//tensorflow/lite/java/demo/app/src/main/assets:mobilenet_v1_1.0_224.tflite",
-        "//tensorflow/lite/tools/delegates/experimental/stable_delegate:test_sample_stable_delegate_settings.json",
-    ],
-    deps = [
-        ":latency_benchmark",
-        "//tensorflow/lite/delegates/utils/experimental/stable_delegate:tflite_settings_json_parser",
-        "//tensorflow/lite/experimental/acceleration/configuration:configuration_fbs",
-        "//tensorflow/lite/tools/benchmark/experimental/delegate_performance/android/proto:delegate_performance_cc_proto",
-        "@com_google_googletest//:gtest_main",
-        "@flatbuffers",
-    ],
-)
-
 cc_library(
     name = "accuracy_benchmark",
     srcs = ["accuracy_benchmark.cc"],
@@ -91,26 +73,6 @@ cc_library(
         ],
         "//conditions:default": [],
     }),
-)
-
-cc_test(
-    name = "accuracy_benchmark_test",
-    srcs = ["accuracy_benchmark_test.cc"],
-    data = [
-        "//tensorflow/lite/delegates/utils/experimental/sample_stable_delegate:tensorflowlite_sample_stable_delegate",
-        "//tensorflow/lite/delegates/utils/experimental/stable_delegate:test_xnnpack_settings.json",
-        "//tensorflow/lite/tools/delegates/experimental/stable_delegate:test_sample_stable_delegate_settings.json",
-    ],
-    deps = [
-        ":accuracy_benchmark",
-        ":status_codes",
-        "//tensorflow/lite/delegates/utils/experimental/stable_delegate:tflite_settings_json_parser",
-        "//tensorflow/lite/experimental/acceleration/configuration:configuration_fbs",
-        "//tensorflow/lite/experimental/acceleration/mini_benchmark:embedded_mobilenet_validation_model",
-        "//tensorflow/lite/experimental/acceleration/mini_benchmark:mini_benchmark_test_helper",
-        "@com_google_googletest//:gtest_main",
-        "@flatbuffers",
-    ],
 )
 
 cc_library(

@@ -24,7 +24,7 @@ import java.util.Map;
 
 /** Helper class for writing the final report. */
 final class CsvWriter {
-  private static final String TAG = "tflite_CsvWriter";
+  private static final String TAG = "TfLiteCsvWriter";
 
   /**
    * Writes the benchmark results into a CSV file.

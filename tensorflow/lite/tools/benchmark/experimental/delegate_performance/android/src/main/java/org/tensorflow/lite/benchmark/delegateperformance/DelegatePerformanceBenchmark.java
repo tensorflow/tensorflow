@@ -30,7 +30,7 @@ import tflite.TFLiteSettings;
 /** Helper class for running delegate performance benchmark. */
 class DelegatePerformanceBenchmark {
   private static final String DELEGATE_PERFORMANCE_RESULT_FOLDER = "delegate_performance_result";
-  private static final String TAG = "tflite_DelegatePerformanceBenchmark";
+  private static final String TAG = "TfLiteBenchmarkHelper";
   private static final String MODEL_EXT = ".tflite";
 
   static {

@@ -1,4 +1,4 @@
-/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -15,10 +15,8 @@ limitations under the License.
 
 package org.tensorflow.lite.benchmark.delegateperformance;
 
-import android.app.Activity;
-import android.content.Intent;
+import android.content.Context;
 import android.content.res.AssetFileDescriptor;
-import android.os.Bundle;
 import android.os.Trace;
 import android.util.Log;
 import java.io.IOException;
@@ -27,11 +25,10 @@ import java.util.List;
 import tflite.BenchmarkEvent;
 
 /**
- * {@link Activity} class for Delegate Performance Accuracy Benchmark.
+ * Impl class for Delegate Performance Accuracy Benchmark.
  *
- * <p>This Activity receives test arguments via a command line specified in an intent extra. It
- * performs accuracy benchmark tests via TFLite MiniBenchmark based on the input arguments. Please
- * check the test example in
+ * <p>It performs accuracy benchmark tests via TFLite MiniBenchmark based on the input arguments.
+ * Please check the test example in
  * tensorflow/lite/tools/benchmark/experimental/delegate_performance/android/README.md.
  *
  * <p>TODO(b/250877013): Consider improving the app's I/O interfaces.
@@ -48,61 +45,60 @@ import tflite.BenchmarkEvent;
  *       acceleration configuration and relative performance differences in percentage values.
  * </ul>
  */
-public class BenchmarkAccuracyActivity extends Activity {
+public class BenchmarkAccuracyImpl {
 
-  private static final String TAG = "tflite_BenchmarkAccuracyActivity";
+  private static final String TAG = "TfLiteAccuracyImpl";
   private static final String ACCURACY_FOLDER_NAME = "accuracy";
-  private static final String TFLITE_SETTINGS_FILES_INTENT_KEY_0 = "--tflite_settings_files";
   // The test target entry is the second item in the TfLiteSettingsListEntry list.
   private static final int TEST_TARGET_ENTRY_INDEX = 1;
 
+  private final Context context;
+  private final String[] tfliteSettingsJsonFiles;
   private String resultFolderPath;
 
-  @Override
-  public void onCreate(Bundle savedInstanceState) {
-    Log.i(TAG, "Create benchmark accuracy activity.");
-    super.onCreate(savedInstanceState);
+  public BenchmarkAccuracyImpl(Context context, String[] tfliteSettingsJsonFiles) {
+    this.context = context;
+    this.tfliteSettingsJsonFiles = tfliteSettingsJsonFiles;
+  }
 
-    Intent intent = getIntent();
-    Bundle bundle = intent.getExtras();
-    String[] tfliteSettingsJsonFiles = bundle.getStringArray(TFLITE_SETTINGS_FILES_INTENT_KEY_0);
+  /**
+   * Initializes the test environment. Checks the validity of input arguments and creates the result
+   * folder.
+   *
+   * <p>Returns {@code true} if the initialization was successful. Otherwise, returns {@code false}.
+   */
+  public boolean initialize() {
     if (tfliteSettingsJsonFiles == null || tfliteSettingsJsonFiles.length == 0) {
-      Log.e(TAG, "No TFLiteSettings file is provided.");
-      finish();
-      return;
+      Log.e(TAG, "No TFLiteSettings file provided.");
+      return false;
     }
 
     try {
       // Creates root result folder.
       resultFolderPath =
           DelegatePerformanceBenchmark.createResultFolder(
-              getApplicationContext().getFilesDir(), ACCURACY_FOLDER_NAME);
+              context.getFilesDir(), ACCURACY_FOLDER_NAME);
     } catch (IOException e) {
       Log.e(TAG, "Failed to create result folder", e);
-      finish();
-      return;
+      return false;
     }
+    return true;
+  }
 
+  public void benchmark() {
     Log.i(
         TAG,
         "Running accuracy benchmark with TFLiteSettings JSON files: "
             + Arrays.toString(tfliteSettingsJsonFiles));
-    benchmarkAccuracy(tfliteSettingsJsonFiles);
-
-    finish();
-  }
-
-  private void benchmarkAccuracy(String[] tfliteSettingsJsonFiles) {
     List<TfLiteSettingsListEntry> tfliteSettingsList =
         DelegatePerformanceBenchmark.loadTfLiteSettingsList(tfliteSettingsJsonFiles);
     if (tfliteSettingsList.size() < 2) {
       Log.e(TAG, "Failed to load the TFLiteSettings JSON file.");
-      finish();
       return;
     }
     String[] assets;
     try {
-      assets = getAssets().list(ACCURACY_FOLDER_NAME);
+      assets = context.getAssets().list(ACCURACY_FOLDER_NAME);
     } catch (IOException e) {
       Log.e(TAG, "Failed to list files from assets folder.", e);
       return;
@@ -119,14 +115,14 @@ public class BenchmarkAccuracyActivity extends Activity {
       try {
         modelResultPath =
             DelegatePerformanceBenchmark.createResultFolder(
-                getApplicationContext().getFilesDir(), ACCURACY_FOLDER_NAME + "/" + modelName);
+                context.getFilesDir(), ACCURACY_FOLDER_NAME + "/" + modelName);
       } catch (IOException e) {
         Log.e(TAG, "Failed to create result folder for " + modelName, e);
         passed = false;
         break;
       }
       try (AssetFileDescriptor modelFileDescriptor =
-          getAssets().openFd(ACCURACY_FOLDER_NAME + "/" + asset)) {
+          context.getAssets().openFd(ACCURACY_FOLDER_NAME + "/" + asset)) {
         for (TfLiteSettingsListEntry tfliteSettingsListEntry : tfliteSettingsList) {
           Trace.beginSection("Accuracy Benchmark");
           BenchmarkEvent benchmarkEvent =
