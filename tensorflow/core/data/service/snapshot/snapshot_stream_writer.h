@@ -85,6 +85,9 @@ class SnapshotStreamWriter {
   // TODO(b/258691666): Create a new `TaskIterator` that persists splits.
   explicit SnapshotStreamWriter(const SnapshotWriterParams& params,
                                 std::unique_ptr<TaskIterator> iterator);
+  virtual ~SnapshotStreamWriter() = default;
+  SnapshotStreamWriter(const SnapshotStreamWriter&) = delete;
+  SnapshotStreamWriter& operator=(const SnapshotStreamWriter&) = delete;
 
   // Waits for the writer to finish writing the snapshot stream.
   Status Wait();
