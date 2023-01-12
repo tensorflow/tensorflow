@@ -178,7 +178,13 @@ def result_wrapper(result_fn):
         # Wrapping result in identity so that control dependency between
         # update_op from `update_state` and result works in case result returns
         # a tensor.
-        return array_ops.identity(result)
+        if isinstance(result, dict):
+          return {
+              key: array_ops.identity(value)
+              for key, value in result.items()
+          }
+        else:
+          return array_ops.identity(result)
 
       # Wrapping result in merge_call. merge_call is used when we want to leave
       # replica mode and compute a value in cross replica mode.
