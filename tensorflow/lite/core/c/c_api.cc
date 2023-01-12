@@ -99,6 +99,13 @@ TfLiteInterpreterOptions* TfLiteInterpreterOptionsCreate() {
   return new TfLiteInterpreterOptions{};
 }
 
+struct TfLiteInterpreterOptions* TfLiteInterpreterOptionsCopy(
+    const struct TfLiteInterpreterOptions* from) {
+  struct TfLiteInterpreterOptions* copy = new TfLiteInterpreterOptions{};
+  *copy = *from;
+  return copy;
+}
+
 void TfLiteInterpreterOptionsDelete(TfLiteInterpreterOptions* options) {
   delete options;
 }

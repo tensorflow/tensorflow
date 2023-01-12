@@ -169,6 +169,13 @@ TFL_CAPI_EXPORT extern void TfLiteModelDelete(TfLiteModel* model);
 TFL_CAPI_EXPORT extern TfLiteInterpreterOptions*
 TfLiteInterpreterOptionsCreate();
 
+// Creates and returns a shallow copy of an options object.
+//
+// The caller is responsible for calling `TfLiteInterpreterOptionsDelete` to
+// deallocate the object pointed to by the returned pointer.
+TFL_CAPI_EXPORT extern TfLiteInterpreterOptions* TfLiteInterpreterOptionsCopy(
+    const TfLiteInterpreterOptions* from);
+
 // Destroys the interpreter options instance.
 TFL_CAPI_EXPORT extern void TfLiteInterpreterOptionsDelete(
     TfLiteInterpreterOptions* options);

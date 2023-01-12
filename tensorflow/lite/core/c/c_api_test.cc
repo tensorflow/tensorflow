@@ -595,6 +595,15 @@ static void error_reporter(void* user_data, const char* format, va_list args) {
   reinterpret_cast<tflite::TestErrorReporter*>(user_data)->Report(format, args);
 }
 
+TEST(CApiSimple, InterpreterOptionsCopy) {
+  TfLiteInterpreterOptions* options = TfLiteInterpreterOptionsCreate();
+  TfLiteInterpreterOptions* copy = TfLiteInterpreterOptionsCopy(options);
+  ASSERT_NE(copy, nullptr);
+  ASSERT_NE(copy, options);
+  TfLiteInterpreterOptionsDelete(options);
+  TfLiteInterpreterOptionsDelete(copy);
+}
+
 TEST(CApiSimple, ErrorReporter) {
   TfLiteModel* model =
       TfLiteModelCreateFromFile("tensorflow/lite/testdata/add.bin");
