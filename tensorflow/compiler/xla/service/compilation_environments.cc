@@ -243,8 +243,8 @@ Status CompilationEnvironments::AddEnvImpl(
     std::unique_ptr<tsl::protobuf::Message> env) {
   // Check if we already have an environment of env's type
   if (environments_.contains(&descriptor)) {
-    LOG(WARNING) << "Replacing CompilationEnvironment of type "
-                 << descriptor.full_name();
+    return tsl::errors::InvalidArgument(
+        "Replacing CompilationEnvironment of type %s.", descriptor.full_name());
   }
 
   // Process env
