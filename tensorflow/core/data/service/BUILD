@@ -423,20 +423,6 @@ cc_library(
     ] + tf_grpc_cc_dependencies(),
 )
 
-tf_cc_test(
-    name = "dispatcher_impl_test",
-    srcs = ["dispatcher_impl_test.cc"],
-    deps = [
-        ":dispatcher_impl",
-        ":dispatcher_proto_cc",
-        ":test_util",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
-        "//tensorflow/core/platform:status",
-        "//tensorflow/core/platform:status_matchers",
-    ],
-)
-
 cc_library(
     name = "dispatcher_state",
     srcs = ["dispatcher_state.cc"],
