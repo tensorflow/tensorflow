@@ -837,21 +837,24 @@ tsl::Status ROCMBlas::DoBlasGemmBatchedInternal(
     return c_allocation_status;
   }
 
-  MAPPED_T *alpha_ptr = reinterpret_cast<MAPPED_T *>(&alpha);
-  MAPPED_T *beta_ptr = reinterpret_cast<MAPPED_T *>(&beta);
-
   bool ok;
-  if constexpr (std::is_same<T, Eigen::bfloat16>::value) {
+  if constexpr (std::is_same_v<T, Eigen::bfloat16>) {
+    float alpha_ = static_cast<float>(alpha);
+    float beta_ = static_cast<float>(beta);
+    const void *alpha_ptr = reinterpret_cast<const void *>(&alpha_);
+    const void *beta_ptr = reinterpret_cast<const void *>(&beta_);
+
     ok = DoBlasInternal(
         rocblas_func, stream, /* pointer_mode_host = */ true,
         ROCMBlasTranspose(transa), ROCMBlasTranspose(transb), m, n, k,
-        GpuComplex(alpha_ptr), GpuMemory(a), rocblas_datatype_bf16_r, lda,
-        batch_stride_a, GpuMemory(b), rocblas_datatype_bf16_r, ldb,
-        batch_stride_b, GpuComplex(beta_ptr), GpuMemoryMutable(&c),
-        rocblas_datatype_bf16_r, ldc, batch_stride_c, GpuMemoryMutable(&c),
+        alpha_ptr, a.opaque(), rocblas_datatype_bf16_r, lda, batch_stride_a,
+        b.opaque(), rocblas_datatype_bf16_r, ldb, batch_stride_b, beta_ptr,
+        c.opaque(), rocblas_datatype_bf16_r, ldc, batch_stride_c, c.opaque(),
         rocblas_datatype_bf16_r, ldc, batch_stride_c, batch_count,
         rocblas_datatype_f32_r, rocblas_gemm_algo_standard, 0, 0);
   } else {
+    MAPPED_T *alpha_ptr = reinterpret_cast<MAPPED_T *>(&alpha);
+    MAPPED_T *beta_ptr = reinterpret_cast<MAPPED_T *>(&beta);
     ok = DoBlasInternal(rocblas_func, stream, /* pointer_mode_host = */ true,
                         ROCMBlasTranspose(transa), ROCMBlasTranspose(transb), m,
                         n, k, GpuComplex(alpha_ptr), GpuMemory(a), lda,
