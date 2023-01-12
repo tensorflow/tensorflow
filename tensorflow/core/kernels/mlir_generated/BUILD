@@ -477,7 +477,7 @@ tf_cuda_cc_test(
 
 tf_cuda_cc_test(
     name = "gpu_unary_ops_large_tensor_test",
-    size = "enormous",
+    size = "large",
     srcs = ["gpu_unary_ops_large_tensor_test.cc"],
     extra_copts = if_mlir_generated_experimental_kernels_enabled([
         "-DMLIR_GENERATED_EXPERIMENTAL_KERNELS_ENABLED",
