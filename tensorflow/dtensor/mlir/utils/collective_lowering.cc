@@ -97,6 +97,8 @@ bool HasEnableReuseGroupKey() {
 
 bool UseNcclCommunicationOnGpu() {
   // FIXME(b/258703996): use tsl::ReadBoolFromEnvVar()
+  // This is the same as gpu_use_nccl_communication() from
+  // tensorflow/dtensor/python/config.py.
   static const char* env_str = (std::getenv("DTENSOR_GPU_USE_NCCL_COMMUNICATION"));
   if (env_str && strcmp(env_str, "0") == 0) {
     return false;
