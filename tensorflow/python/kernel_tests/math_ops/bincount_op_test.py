@@ -178,6 +178,22 @@ class BincountTest(test_util.TensorFlowTestCase):
               weights=weights,
               binary_output=binary_output))
 
+  def test_negative_value(self):
+    with self.assertRaises(errors.InvalidArgumentError):
+      arg_0_tensor = random_ops.random_uniform(
+          [3, 1], minval=-256, maxval=257, dtype=dtypes.int32)
+      arg_0 = array_ops.identity(arg_0_tensor)
+      weights = None
+      minlength = 2
+      maxlength = 0
+      dtype = "float32"
+      axis = -1
+      binary_output = True
+      out = bincount_ops.bincount(
+          arg_0, weights=weights, minlength=minlength, maxlength=maxlength,
+          dtype=dtype, axis=axis, binary_output=binary_output)
+      self.evaluate(out)
+
 
 class BincountOpTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 
