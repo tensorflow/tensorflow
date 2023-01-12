@@ -56,6 +56,11 @@ TEST(PathUtilsTest, StreamDoneFilePath) {
               MatchesRegex("/path/to/snapshot.streams.stream_0.DONE"));
 }
 
+TEST(PathUtilsTest, SnapshotMetadataFilePath) {
+  EXPECT_THAT(SnapshotMetadataFilePath("/path/to/snapshot"),
+              MatchesRegex("/path/to/snapshot.snapshot.metadata"));
+}
+
 TEST(PathUtilsTest, DatasetDefFilePath) {
   EXPECT_THAT(DatasetDefFilePath("/path/to/snapshot"),
               MatchesRegex("/path/to/snapshot.dataset_def.proto"));

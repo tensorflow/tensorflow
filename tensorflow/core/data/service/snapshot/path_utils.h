@@ -49,6 +49,9 @@ std::string SplitPath(absl::string_view snapshot_path, int64_t stream_index,
 std::string StreamDoneFilePath(absl::string_view snapshot_path,
                                int64_t stream_index);
 
+// Returns the path of the serialized metadata for a snapshot.
+std::string SnapshotMetadataFilePath(absl::string_view snapshot_path);
+
 // Returns the path of the serialized graph of the dataset for a snapshot.
 std::string DatasetDefFilePath(absl::string_view snapshot_path);
 
