@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_LITE_DELEGATES_EXTERNAL_EXTERNAL_DELEGATE_H_
 
 #include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/c/c_api_types.h"  // IWYU pragma: export
 
 #ifdef __cplusplus
 extern "C" {
@@ -35,20 +36,20 @@ typedef struct TfLiteExternalDelegateOptions {
 } TfLiteExternalDelegateOptions;
 
 // Insert key/value to the options.
-TfLiteStatus TfLiteExternalDelegateOptionsInsert(
+TFL_CAPI_EXPORT TfLiteStatus TfLiteExternalDelegateOptionsInsert(
     TfLiteExternalDelegateOptions* options, const char* key, const char* value);
 
 // Populates TfLiteExternalDelegateOptions with the given shared library path.
-TfLiteExternalDelegateOptions TfLiteExternalDelegateOptionsDefault(
+TFL_CAPI_EXPORT TfLiteExternalDelegateOptions TfLiteExternalDelegateOptionsDefault(
     const char* lib_path);
 
 // Creates a new delegate instance that need to be destroyed with
 // `TfLiteExternalDelegateDelete` when delegate is no longer used by TFLite.
-TfLiteDelegate* TfLiteExternalDelegateCreate(
+TFL_CAPI_EXPORT TfLiteDelegate* TfLiteExternalDelegateCreate(
     const TfLiteExternalDelegateOptions* options);
 
 // Destroys a delegate created with `TfLiteExternalDelegateCreate` call.
-void TfLiteExternalDelegateDelete(TfLiteDelegate* delegate);
+TFL_CAPI_EXPORT void TfLiteExternalDelegateDelete(TfLiteDelegate* delegate);
 
 #ifdef __cplusplus
 }
