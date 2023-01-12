@@ -178,7 +178,6 @@ cc_library(
     deps = [
         ":test_util",
         "//tensorflow/lite/schema:schema_fbs",
-        "@com_google_benchmark//:benchmark",
         "@flatbuffers",
     ],
 )

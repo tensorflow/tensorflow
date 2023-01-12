@@ -2035,6 +2035,10 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
               /*aux_input_zp=*/nullptr,
               GetTemporary(context, node, kOutputStateZeroPoints), row_sums,
               row_sums_size, &op_data->compute_row_sums,
+              /*recurrent_to_input_is_diag=*/false,
+              /*recurrent_to_forget_is_diag=*/false,
+              /*recurrent_to_cell_is_diag=*/false,
+              /*recurrent_to_output_is_diag=*/false,
               CpuBackendContext::GetFromContext(context));
         }
         return lstm_eval::EvalHybrid(
@@ -2078,6 +2082,10 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
             /*aux_input_zp=*/nullptr,
             GetTemporary(context, node, kOutputStateZeroPoints), row_sums,
             row_sums_size, &op_data->compute_row_sums,
+            /*recurrent_to_input_is_diag=*/false,
+            /*recurrent_to_forget_is_diag=*/false,
+            /*recurrent_to_cell_is_diag=*/false,
+            /*recurrent_to_output_is_diag=*/false,
             CpuBackendContext::GetFromContext(context));
       }
       const int num_intermediate_tensors = node->intermediates->size;
