@@ -34,7 +34,6 @@ from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.profiler import trace
 from tensorflow.python.util import compat
 from tensorflow.python.util import lazy_loader
-from tensorflow.python.util import object_identity
 from tensorflow.python.util import tf_decorator
 from tensorflow.python.util import tf_inspect
 
@@ -201,17 +200,13 @@ class TracingCompiler:
     with self._lock:
       concrete_function, _ = self._maybe_define_concrete_function(args, kwargs)
       seen_names = set()
-      captured = object_identity.ObjectIdentitySet(
-          concrete_function.graph.internal_captures)
-      # pylint: disable=protected-access
-      concrete_function._arg_keywords = []
+      concrete_function._arg_keywords = []  # pylint: disable=protected-access
       prefix_counts = {}
-      # pylint: enable=protected-access
-      num_positional = 0
-      for arg in concrete_function.graph.inputs:
-        if arg in captured:
-          break
-        num_positional += 1
+      graph = concrete_function.graph
+      num_captures = len(
+          graph.internal_captures + graph.deferred_internal_captures)
+      num_positional = len(graph.inputs) - num_captures
+      for arg in concrete_function.graph.inputs[:num_positional]:
         user_arg_name = compat.as_str(arg.op.get_attr("_user_specified_name"))
         proposal = user_arg_name
         while proposal in seen_names:

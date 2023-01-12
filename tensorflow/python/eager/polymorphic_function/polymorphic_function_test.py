@@ -4869,6 +4869,20 @@ class MultiDeviceTest(test.TestCase, parameterized.TestCase):
     _ = f()
     self.assertLen(total_function_cache(f), expected_len)
 
+  def testByRefCaptureWithInputSignature(self):
+
+    @polymorphic_function.function(input_signature=[])
+    def f():
+      func = lambda: x
+      return ops.get_default_graph()._experimental_capture_side_input_by_ref(  # pylint: disable=protected-access
+          'lambda: x', func)
+
+    x = 1
+    _ = f()
+    x = 2
+    _ = f()
+    self.assertLen(total_function_cache(f), 2)
+
   def testFunctoolsLruCache(self):
     self.skipTest(
         "b/194845243: inspect.getfullargspec doesn't unwrap Python decorators.")
