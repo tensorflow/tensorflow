@@ -151,6 +151,7 @@ tensorflow/tools/toolchains/remote_config/BUILD:
 tensorflow/tools/toolchains/win/BUILD:
 tensorflow/tools/toolchains/win/bazel_211/BUILD:
 tensorflow/tools/toolchains/win/tf_win_01072022/BUILD:
+tensorflow/tools/toolchains/win/tf_win_01112023/BUILD:
 tensorflow/tools/toolchains/win/tf_win_01122022/BUILD:
 tensorflow/tools/toolchains/win/tf_win_01242022/BUILD:
 tensorflow/tools/toolchains/win/tf_win_01252022/BUILD:
