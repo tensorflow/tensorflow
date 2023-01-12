@@ -53,6 +53,45 @@ auto RandomNode() {
        fuzztest::PrintableAsciiString(), fuzztest::PrintableAsciiString());
 }
 
+struct FunctionDefCreateInputData {
+  std::string function_name;
+  std::vector<std::string> in_def;
+  std::vector<std::string> out_def;
+  std::vector<std::string> attr_def;
+  std::vector<FunctionDefHelper::Node> node_def;
+  std::vector<std::pair<string, string>> ret_def;
+};
+
+auto FunctionDefCreateInput() {
+  return fuzztest::Map([](std::string function_name, int number_of_input_arguments, int number_of_output_arguments) {
+      std::vector<string> in_def_vec;
+      in_def_vec.reserve(number_of_input_arguments);
+      for (int c = 0; c < number_of_input_arguments; ++c) {
+       in_def_vec.push_back("in" + std::to_string(c) + ":float");
+      }
+      std::vector<FunctionDefHelper::Node> body_nodes;
+      if (number_of_output_arguments > number_of_input_arguments) {
+       Tensor const_value(DataTypeToEnum<float>::value, {});
+       const_value.scalar<float>()() = 0;
+       body_nodes.push_back({{"zero"}, "Const", {}, {{"value", const_value}, {"dtype", DT_FLOAT}}});
+      }
+      std::vector<string> out_def_vec;
+      out_def_vec.reserve(number_of_output_arguments);
+      std::vector<std::pair<string, string>> ret_def;
+      ret_def.reserve(number_of_output_arguments);
+      for (int c = 0; c < number_of_output_arguments; ++c) {
+       auto output_id = "out" + std::to_string(c);
+       out_def_vec.push_back(output_id + ":float");
+       if (c < number_of_input_arguments) {
+         ret_def.emplace_back(output_id, "in" + std::to_string(c));
+       } else {
+         ret_def.emplace_back(output_id, "zero:output");
+       }
+      }
+      return FunctionDefCreateInputData {function_name, in_def_vec, out_def_vec, {}, body_nodes, ret_def};
+    }, fuzztest::PrintableAsciiString(), NumberOfInputArguments(), NumberOfOutputArguments());
+}
+
 }  // end namespace domain
 
 void AttrValueWrapperFuzz(AttrValueVariantFuzzType in) {
@@ -81,6 +120,12 @@ void NodeToNodeDefFuzz(FunctionDefHelper::Node node) {
   node.ToNodeDef();
 }
 FUZZ_TEST(FunctionFuzz, NodeToNodeDefFuzz).WithDomains(domain::RandomNode());
+
+void FunctionDefCreateFuzz(domain::FunctionDefCreateInputData inputData) {
+  FunctionDefHelper::Create(inputData.function_name, inputData.in_def, inputData.out_def,
+                            inputData.attr_def, inputData.node_def, inputData.ret_def);
+}
+FUZZ_TEST(FunctionFuzz, FunctionDefCreateFuzz).WithDomains(domain::FunctionDefCreateInput());
 
 void DebugStringFuzz(FunctionDef def) {
   auto str = DebugString(def);
