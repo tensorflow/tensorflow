@@ -19,7 +19,9 @@ cc_library(
     deps = [
         "//tensorflow/tsl/platform:env",
         "//tensorflow/tsl/platform:errors",
+        "//tensorflow/tsl/platform:protobuf",
         "//tensorflow/tsl/platform:status",
+        "@com_google_absl//absl/functional:function_ref",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -29,8 +31,10 @@ tf_cc_test(
     srcs = ["file_utils_test.cc"],
     deps = [
         ":file_utils",
+        "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+        "//tensorflow/core/data/service:test_util",
         "//tensorflow/tsl/platform:env",
         "//tensorflow/tsl/platform:errors",
         "//tensorflow/tsl/platform:path",

@@ -17,6 +17,7 @@ limitations under the License.
 
 #include "absl/strings/string_view.h"
 #include "tensorflow/tsl/platform/env.h"
+#include "tensorflow/tsl/platform/protobuf.h"
 #include "tensorflow/tsl/platform/status.h"
 
 namespace tensorflow {
@@ -26,6 +27,12 @@ namespace data {
 // file already exists.
 tsl::Status AtomicallyWriteStringToFile(absl::string_view filename,
                                         absl::string_view str, tsl::Env* env);
+
+// Atomically writes the text representation of `proto` to `filename`.
+// Overwrites existing contents if the file already exists.
+tsl::Status AtomicallyWriteTextProto(absl::string_view filename,
+                                     const tsl::protobuf::Message& proto,
+                                     tsl::Env* env);
 
 }  // namespace data
 }  // namespace tensorflow

@@ -16,6 +16,8 @@ limitations under the License.
 
 #include <string>
 
+#include "tensorflow/core/data/service/test_util.h"
+#include "tensorflow/core/platform/env.h"
 #include "tensorflow/tsl/lib/core/status_test_util.h"
 #include "tensorflow/tsl/platform/env.h"
 #include "tensorflow/tsl/platform/errors.h"
@@ -55,6 +57,18 @@ TEST_P(AtomicallyWriteStringToFileTest, WriteString) {
 
 INSTANTIATE_TEST_SUITE_P(FileContents, AtomicallyWriteStringToFileTest,
                          ::testing::ValuesIn<std::string>({"OK", ""}));
+
+TEST(FileUtilsTest, AtomicallyWriteTextProto) {
+  TF_ASSERT_OK_AND_ASSIGN(std::string directory, CreateTestDirectory());
+  std::string test_file = tsl::io::JoinPath(directory, "test_file");
+  DatasetDef out = testing::RangeDataset(/*range=*/10);
+  TF_ASSERT_OK(AtomicallyWriteTextProto(test_file, out, tsl::Env::Default()));
+
+  DatasetDef in;
+  TF_EXPECT_OK(tsl::Env::Default()->FileExists(test_file));
+  TF_ASSERT_OK(ReadTextProto(tsl::Env::Default(), test_file, &in));
+  EXPECT_THAT(in, testing::EqualsProto(out));
+}
 
 }  // namespace
 }  // namespace data
