@@ -88,13 +88,6 @@ static void CreateDefaultXlaCpuRuntimeCompilationPipeline(
   pm.addPass(mlir::createCanonicalizerPass());
   pm.addPass(mlir::createCSEPass());
 
-  // Optimize operations from the math dialect before outlining compute regions
-  // into functions to see all constant operands.
-  if (!opts.disable_math_optimizations) {
-    pm.addNestedPass<mlir::func::FuncOp>(
-        xla::CreateMathOptimizationPass(opts.math_avx2));
-  }
-
   // Enable math approximations to match XLA's FP accuracy spec.
   pm.addNestedPass<mlir::func::FuncOp>(
       xla::CreateMathApproximationPass({"all"}));
@@ -139,7 +132,7 @@ static void CreateDefaultXlaCpuRuntimeCompilationPipeline(
   // Convert async dialect to LLVM once everything else is in the LLVM dialect.
   pm.addPass(mlir::createConvertAsyncToLLVMPass());
 
-  pm.addPass(xla::CreateMathLegalizationPass(!opts.disable_math_optimizations));
+  pm.addPass(xla::CreateMathLegalizationPass(/*enable_approximations=*/false));
 
   // Convert everything else to LLVM dialect.
   mlir::LowerVectorToLLVMOptions vector_to_llvm_opts;
