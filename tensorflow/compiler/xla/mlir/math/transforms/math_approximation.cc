@@ -205,16 +205,63 @@ LogicalResult LogApproximation::matchAndRewrite(
   return mlir::success();
 }
 
+struct Log1pApproximation : public OpRewritePattern<math::Log1pOp> {
+ public:
+  using OpRewritePattern::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(math::Log1pOp op,
+                                PatternRewriter &rewriter) const final;
+};
+
+// Approximate log(1+x).
+LogicalResult Log1pApproximation::matchAndRewrite(
+    math::Log1pOp op, PatternRewriter &rewriter) const {
+  auto shape = vectorShape(op.getOperand().getType(), isF32);
+  if (!shape.has_value()) {
+    return rewriter.notifyMatchFailure(op, "unsupported operand type");
+  }
+
+  ImplicitLocOpBuilder builder(op->getLoc(), rewriter);
+  auto bcast = [&](Value value) -> Value {
+    return broadcast(builder, value, *shape);
+  };
+
+  // Approximate log(1+x) using the following, due to W. Kahan:
+  //   u = x + 1.0;
+  //   if (u == 1.0 || u == inf) return x;
+  //   return x * log(u) / (u - 1.0);
+  //          ^^^^^^^^^^^^^^^^^^^^^^
+  //             "log_large" below.
+  Value cst_one = bcast(f32Cst(builder, 1.0f));
+  Value x = op.getOperand();
+  Value u = builder.create<arith::AddFOp>(x, cst_one);
+  Value u_small =
+      builder.create<arith::CmpFOp>(arith::CmpFPredicate::OEQ, u, cst_one);
+  Value log_u = builder.create<math::LogOp>(u);
+  Value u_inf =
+      builder.create<arith::CmpFOp>(arith::CmpFPredicate::OEQ, u, log_u);
+  Value log_large = builder.create<arith::MulFOp>(
+      x, builder.create<arith::DivFOp>(
+             log_u, builder.create<arith::SubFOp>(u, cst_one)));
+  Value approximation = builder.create<arith::SelectOp>(
+      builder.create<arith::OrIOp>(u_small, u_inf), x, log_large);
+  rewriter.replaceOp(op, approximation);
+  return mlir::success();
+}
+
 void populateMathApproximationPatterns(RewritePatternSet &patterns,
                                        ArrayRef<std::string> oplist) {
   for (const std::string &op : oplist) {
     if (op == "all") {
-      patterns.add<EigenExpM1Approximation, LogApproximation>(
-          patterns.getContext());
-    } else if (op == "log") {
-      patterns.add<LogApproximation>(patterns.getContext());
+      patterns
+          .add<EigenExpM1Approximation, LogApproximation, Log1pApproximation>(
+              patterns.getContext());
     } else if (op == "expm1") {
       patterns.add<EigenExpM1Approximation>(patterns.getContext());
+    } else if (op == "log") {
+      patterns.add<LogApproximation>(patterns.getContext());
+    } else if (op == "log1p") {
+      patterns.add<Log1pApproximation>(patterns.getContext());
     }
   }
 }
