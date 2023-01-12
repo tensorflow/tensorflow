@@ -537,7 +537,10 @@ py_library(
         "convert_to_constants.py",
     ],
     srcs_version = "PY3",
-    visibility = visibility + ["//platforms/darwinn:__subpackages__"],
+    visibility = visibility + [
+        "//learning/deepmind/deepfunc:__subpackages__",
+        "//platforms/darwinn:__subpackages__",
+    ],
     deps = [
         ":dtypes",
         ":ops",
