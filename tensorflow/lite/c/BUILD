@@ -42,6 +42,7 @@ tflite_cc_shared_object(
         ":c_api_experimental",
         ":exported_symbols.lds",
         ":version_script.lds",
+        "//tensorflow/lite/delegates/external:external_delegate",
     ],
 )
 
