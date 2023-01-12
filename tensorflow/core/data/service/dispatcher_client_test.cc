@@ -22,6 +22,7 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "tensorflow/core/data/service/common.pb.h"
 #include "tensorflow/core/data/service/data_transfer.h"
+#include "tensorflow/core/data/service/snapshot/path_utils.h"
 #include "tensorflow/core/data/service/test_cluster.h"
 #include "tensorflow/core/data/service/test_util.h"
 #include "tensorflow/core/framework/dataset.h"
@@ -146,6 +147,15 @@ TEST_F(DispatcherClientTest, SnapshotMetadataAndDatasetDefWritten) {
         io::JoinPath(directory, "snapshot.metadata")));
     TF_ASSERT_OK(Env::Default()->FileExists(
         io::JoinPath(directory, "dataset_def.proto")));
+  }
+}
+
+TEST_F(DispatcherClientTest, CreateCommittedChunksDirectory) {
+  TF_ASSERT_OK_AND_ASSIGN(absl::flat_hash_set<std::string> directories,
+                          StartDummySnapshots());
+  for (const auto& directory : directories) {
+    TF_ASSERT_OK(
+        Env::Default()->FileExists(CommittedChunksDirectory(directory)));
   }
 }
 

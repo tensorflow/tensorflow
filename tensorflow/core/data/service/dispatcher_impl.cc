@@ -1093,6 +1093,8 @@ Status DataServiceDispatcherImpl::Snapshot(const SnapshotRequest* request,
       env_, request->directory(), &request->metadata()));
   TF_RETURN_IF_ERROR(WriteTextProto(
       env_, DatasetDefFilePath(request->directory()), request->dataset()));
+  TF_RETURN_IF_ERROR(env_->RecursivelyCreateDir(
+      CommittedChunksDirectory(request->directory())));
 
   Update update;
   SnapshotUpdate* snapshot = update.mutable_snapshot();
