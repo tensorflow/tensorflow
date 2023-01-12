@@ -441,8 +441,8 @@ bool DeviceOptionsToContextFlags(const DeviceOptions& device_options,
   return ::tsl::OkStatus();
 }
 
-/* static */ port::StatusOr<CUsharedconfig>
-GpuDriver::ContextGetSharedMemConfig(GpuContext* context) {
+/* static */ tsl::StatusOr<CUsharedconfig> GpuDriver::ContextGetSharedMemConfig(
+    GpuContext* context) {
   CUsharedconfig shared_mem_config;
   ScopedActivateContext activation(context);
   RETURN_IF_CUDA_RES_ERROR(cuCtxGetSharedMemConfig(&shared_mem_config),
@@ -664,7 +664,7 @@ GpuDriver::ContextGetSharedMemConfig(GpuContext* context) {
   }
 }
 
-/* static */ port::StatusOr<CUdevice> GpuDriver::DeviceFromContext(
+/* static */ tsl::StatusOr<CUdevice> GpuDriver::DeviceFromContext(
     GpuContext* context) {
   ScopedActivateContext activated{context};
   CUdevice device = -1;
@@ -840,8 +840,8 @@ GpuDriver::ContextGetSharedMemConfig(GpuContext* context) {
 }
 
 #if CUDA_VERSION >= 10020
-/* static */ port::StatusOr<GpuDriver::VmemSpan>
-GpuDriver::ReserveVirtualMemory(GpuContext* context, uint64_t bytes) {
+/* static */ tsl::StatusOr<GpuDriver::VmemSpan> GpuDriver::ReserveVirtualMemory(
+    GpuContext* context, uint64_t bytes) {
   ScopedActivateContext activation(context);
   CUdeviceptr base;
   CUresult res = cuMemAddressReserve(&base, bytes, /*alignment=*/0,
@@ -864,7 +864,7 @@ GpuDriver::ReserveVirtualMemory(GpuContext* context, uint64_t bytes) {
   }
 }
 
-/* static */ port::StatusOr<uint64_t> GpuDriver::GetMinAllocationGranularity(
+/* static */ tsl::StatusOr<uint64_t> GpuDriver::GetMinAllocationGranularity(
     GpuDeviceHandle device) {
   CUmemAllocationProp props = {};
   props.type = CU_MEM_ALLOCATION_TYPE_PINNED;
@@ -881,7 +881,7 @@ GpuDriver::ReserveVirtualMemory(GpuContext* context, uint64_t bytes) {
   return granularity;
 }
 
-/* static */ port::StatusOr<GpuDriver::GenericMemoryHandle>
+/* static */ tsl::StatusOr<GpuDriver::GenericMemoryHandle>
 GpuDriver::CreateMemoryHandle(GpuContext* context, uint64_t bytes) {
   ScopedActivateContext activation(context);
   auto device = DeviceFromContext(context);
@@ -992,8 +992,8 @@ GpuDriver::CreateMemoryHandle(GpuContext* context, uint64_t bytes) {
   return ::tsl::OkStatus();
 }
 
-/* static */ port::StatusOr<CUresult> GpuDriver::QueryEvent(GpuContext* context,
-                                                            CUevent event) {
+/* static */ tsl::StatusOr<CUresult> GpuDriver::QueryEvent(GpuContext* context,
+                                                           CUevent event) {
   ScopedActivateContext activated{context};
   CUresult res = cuEventQuery(event);
   if (res != CUDA_SUCCESS && res != CUDA_ERROR_NOT_READY) {
@@ -1123,14 +1123,14 @@ GpuDriver::CreateMemoryHandle(GpuContext* context, uint64_t bytes) {
         CreatedContexts::GetAnyContext(absl::bit_cast<void*>(gpu_src));
 
     if (static_cast<void*>(dst_context) == nullptr) {
-      port::StatusOr<GpuContext*> tmp_context = GetPointerContext(gpu_dst);
+      tsl::StatusOr<GpuContext*> tmp_context = GetPointerContext(gpu_dst);
       if (tmp_context.ok()) {
         dst_context = tmp_context.value()->context();
       }
     }
 
     if (static_cast<void*>(src_context) == nullptr) {
-      port::StatusOr<GpuContext*> tmp_context = GetPointerContext(gpu_src);
+      tsl::StatusOr<GpuContext*> tmp_context = GetPointerContext(gpu_src);
       if (tmp_context.ok()) {
         src_context = tmp_context.value()->context();
       }
@@ -1208,14 +1208,14 @@ GpuDriver::CreateMemoryHandle(GpuContext* context, uint64_t bytes) {
         CreatedContexts::GetAnyContext(absl::bit_cast<void*>(gpu_src));
 
     if (static_cast<void*>(dst_context) == nullptr) {
-      port::StatusOr<GpuContext*> tmp_context = GetPointerContext(gpu_dst);
+      tsl::StatusOr<GpuContext*> tmp_context = GetPointerContext(gpu_dst);
       if (tmp_context.ok()) {
         dst_context = tmp_context.value()->context();
       }
     }
 
     if (static_cast<void*>(src_context) == nullptr) {
-      port::StatusOr<GpuContext*> tmp_context = GetPointerContext(gpu_src);
+      tsl::StatusOr<GpuContext*> tmp_context = GetPointerContext(gpu_src);
       if (tmp_context.ok()) {
         src_context = tmp_context.value()->context();
       }
@@ -1287,7 +1287,7 @@ GpuDriver::CreateMemoryHandle(GpuContext* context, uint64_t bytes) {
   return device_count;
 }
 
-/* static */ port::StatusOr<GpuContext*> GpuDriver::GetPointerContext(
+/* static */ tsl::StatusOr<GpuContext*> GpuDriver::GetPointerContext(
     CUdeviceptr pointer) {
   GpuContext* context = nullptr;
   CUresult result =
@@ -1312,7 +1312,7 @@ GpuDriver::CreateMemoryHandle(GpuContext* context, uint64_t bytes) {
                    ToString(result)));
 }
 
-/* static */ port::StatusOr<MemorySpace> GpuDriver::GetPointerMemorySpace(
+/* static */ tsl::StatusOr<MemorySpace> GpuDriver::GetPointerMemorySpace(
     CUdeviceptr pointer) {
   unsigned int value;
   CUresult result =
@@ -1358,7 +1358,7 @@ GpuDriver::CreateMemoryHandle(GpuContext* context, uint64_t bytes) {
                       reinterpret_cast<void*>(dptr), ToString(result)));
 }
 
-/* static */ port::StatusOr<CUdevice> GpuDriver::GetPointerDevice(
+/* static */ tsl::StatusOr<CUdevice> GpuDriver::GetPointerDevice(
     CUdeviceptr pointer) {
   auto result = GetPointerContext(pointer);
   if (!result.ok()) {
@@ -1413,8 +1413,8 @@ GpuDriver::CreateMemoryHandle(GpuContext* context, uint64_t bytes) {
 // Helper function that turns the integer output of cuDeviceGetAttribute to type
 // T and wraps it in a StatusOr.
 template <typename T>
-static port::StatusOr<T> GetSimpleAttribute(CUdevice device,
-                                            CUdevice_attribute attribute) {
+static tsl::StatusOr<T> GetSimpleAttribute(CUdevice device,
+                                           CUdevice_attribute attribute) {
   int value = -1;
   RETURN_IF_CUDA_RES_ERROR(cuDeviceGetAttribute(&value, attribute, device),
                            "Could not retrieve CUDA device attribute (",
@@ -1423,43 +1423,43 @@ static port::StatusOr<T> GetSimpleAttribute(CUdevice device,
   return converted;
 }
 
-/* static */ port::StatusOr<int> GpuDriver::GetMultiprocessorCount(
+/* static */ tsl::StatusOr<int> GpuDriver::GetMultiprocessorCount(
     CUdevice device) {
   return GetSimpleAttribute<int>(device,
                                  CU_DEVICE_ATTRIBUTE_MULTIPROCESSOR_COUNT);
 }
 
-/* static */ port::StatusOr<int64_t> GpuDriver::GetMaxSharedMemoryPerCore(
+/* static */ tsl::StatusOr<int64_t> GpuDriver::GetMaxSharedMemoryPerCore(
     CUdevice device) {
   return GetSimpleAttribute<int64_t>(
       device, CU_DEVICE_ATTRIBUTE_MAX_SHARED_MEMORY_PER_MULTIPROCESSOR);
 }
 
-/* static */ port::StatusOr<int64_t> GpuDriver::GetMaxSharedMemoryPerBlock(
+/* static */ tsl::StatusOr<int64_t> GpuDriver::GetMaxSharedMemoryPerBlock(
     CUdevice device) {
   return GetSimpleAttribute<int64_t>(
       device, CU_DEVICE_ATTRIBUTE_MAX_SHARED_MEMORY_PER_BLOCK);
 }
 
-/* static */ port::StatusOr<int64_t> GpuDriver::GetMaxThreadsPerMultiprocessor(
+/* static */ tsl::StatusOr<int64_t> GpuDriver::GetMaxThreadsPerMultiprocessor(
     CUdevice device) {
   return GetSimpleAttribute<int64_t>(
       device, CU_DEVICE_ATTRIBUTE_MAX_THREADS_PER_MULTIPROCESSOR);
 }
 
-/* static */ port::StatusOr<int64_t> GpuDriver::GetMaxThreadsPerBlock(
+/* static */ tsl::StatusOr<int64_t> GpuDriver::GetMaxThreadsPerBlock(
     CUdevice device) {
   return GetSimpleAttribute<int64_t>(device,
                                      CU_DEVICE_ATTRIBUTE_MAX_THREADS_PER_BLOCK);
 }
 
-/* static */ port::StatusOr<int64_t> GpuDriver::GetMaxRegistersPerBlock(
+/* static */ tsl::StatusOr<int64_t> GpuDriver::GetMaxRegistersPerBlock(
     CUdevice device) {
   return GetSimpleAttribute<int64_t>(
       device, CU_DEVICE_ATTRIBUTE_MAX_REGISTERS_PER_BLOCK);
 }
 
-/* static */ port::StatusOr<int64_t> GpuDriver::GetThreadsPerWarp(
+/* static */ tsl::StatusOr<int64_t> GpuDriver::GetThreadsPerWarp(
     CUdevice device) {
   return GetSimpleAttribute<int64_t>(device, CU_DEVICE_ATTRIBUTE_WARP_SIZE);
 }
@@ -1514,7 +1514,7 @@ static port::StatusOr<T> GetSimpleAttribute(CUdevice device,
   return true;
 }
 
-/* static */ port::StatusOr<int> GpuDriver::GetDeviceAttribute(
+/* static */ tsl::StatusOr<int> GpuDriver::GetDeviceAttribute(
     CUdevice_attribute attribute, CUdevice device) {
   int val;
   CUresult res = cuDeviceGetAttribute(&val, attribute, device);
@@ -1637,7 +1637,7 @@ static port::StatusOr<T> GetSimpleAttribute(CUdevice device,
   return ::tsl::OkStatus();
 }
 
-/* static */ port::StatusOr<int> GpuDriver::GetMaxOccupiedBlocksPerCore(
+/* static */ tsl::StatusOr<int> GpuDriver::GetMaxOccupiedBlocksPerCore(
     GpuContext* context, CUfunction kernel, int threads_per_block,
     size_t dynamic_shared_memory_bytes) {
   ScopedActivateContext activation(context);

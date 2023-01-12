@@ -925,7 +925,7 @@ static bool UsesTensorOps(blas::AlgorithmType algo) {
 #endif
 }
 
-static port::StatusOr<cublasMath_t> GetMathTypeForGemmEx(
+static tsl::StatusOr<cublasMath_t> GetMathTypeForGemmEx(
     Stream *stream, blas::AlgorithmType algorithm, blas::DataType type_a,
     blas::DataType type_b, blas::ComputePrecision precision) {
   if (type_a != type_b) {
@@ -992,7 +992,7 @@ static port::StatusOr<cublasMath_t> GetMathTypeForGemmEx(
   return math_type;
 }
 
-static port::StatusOr<std::unique_ptr<GpuTimer, GpuTimerDeleter>>
+static tsl::StatusOr<std::unique_ptr<GpuTimer, GpuTimerDeleter>>
 StartGpuTimerForProfile(Stream *stream, GpuExecutor *executor,
                         blas::ProfileResult *output_profile_result) {
   std::unique_ptr<GpuTimer, GpuTimerDeleter> timer;

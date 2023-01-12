@@ -43,7 +43,7 @@ namespace stream_executor {
     }                                                                         \
   } while (false)
 
-port::StatusOr<std::vector<uint8_t>> LinkUsingNvlink(
+tsl::StatusOr<std::vector<uint8_t>> LinkUsingNvlink(
     absl::string_view preferred_cuda_dir, gpu::GpuContext* context,
     std::vector<CubinOrPTXImage> images) {
   {
@@ -129,7 +129,7 @@ port::StatusOr<std::vector<uint8_t>> LinkUsingNvlink(
   return cubin_vector;
 }
 
-port::StatusOr<std::vector<uint8_t>> LinkGpuAsm(
+tsl::StatusOr<std::vector<uint8_t>> LinkGpuAsm(
     gpu::GpuContext* context, std::vector<CubinOrPTXImage> images) {
   gpu::ScopedActivateContext activation(context);
 

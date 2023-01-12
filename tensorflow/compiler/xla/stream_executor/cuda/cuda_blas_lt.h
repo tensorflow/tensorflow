@@ -53,7 +53,7 @@ class BlasLt {
     //  - `num_rows` if `order == kColumnMajor`.
     // If `batch_stride` is not specified, it defaults to `num_rows * num_cols`
     // if `batch_size > 1`, otherwise `0`.
-    static port::StatusOr<MatrixLayout> Create(
+    static tsl::StatusOr<MatrixLayout> Create(
         blas::DataType type, size_t num_rows, size_t num_cols, Order order,
         size_t batch_size = 1,
         std::optional<int64_t> leading_dim_stride = std::nullopt,
@@ -89,7 +89,7 @@ class BlasLt {
 
   class MatmulDesc {
    public:
-    static port::StatusOr<MatmulDesc> Create(
+    static tsl::StatusOr<MatmulDesc> Create(
         blas::ComputationType compute_type, blas::DataType scale_type,
         blas::Transpose trans_a = blas::Transpose::kNoTranspose,
         blas::Transpose trans_b = blas::Transpose::kNoTranspose,
@@ -120,7 +120,7 @@ class BlasLt {
 
   class MatmulPreference {
    public:
-    static port::StatusOr<MatmulPreference> Create(size_t max_workspace_size);
+    static tsl::StatusOr<MatmulPreference> Create(size_t max_workspace_size);
 
     cublasLtMatmulPreference_t get() const { return handle_.get(); }
 
@@ -144,7 +144,7 @@ class BlasLt {
   // Returns a list of supported algorithms for DoMatmul. The algorithms are
   // returned in the order of increasing estimated compute time according to an
   // internal heuristic.
-  port::StatusOr<std::vector<MatmulAlgorithm>> GetMatmulAlgorithms(
+  tsl::StatusOr<std::vector<MatmulAlgorithm>> GetMatmulAlgorithms(
       const MatmulPlan& plan, const MatmulPreference& preference,
       size_t max_algorithm_count = 128);
 

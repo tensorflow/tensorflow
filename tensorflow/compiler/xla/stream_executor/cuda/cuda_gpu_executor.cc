@@ -386,7 +386,7 @@ int fpus_per_core(int cc_major, int cc_minor) {
 
 }  // namespace
 
-port::StatusOr<std::shared_ptr<DeviceMemoryBase>>
+tsl::StatusOr<std::shared_ptr<DeviceMemoryBase>>
 GpuExecutor::CreateOrShareConstant(Stream* stream,
                                    const std::vector<uint8_t>& content) {
   absl::MutexLock lock{&shared_constants_mu_};
@@ -810,7 +810,7 @@ tsl::Status GpuExecutor::BlockHostUntilDone(Stream* stream) {
 
 blas::BlasSupport* GpuExecutor::CreateBlas() {
   PluginRegistry* registry = PluginRegistry::Instance();
-  port::StatusOr<PluginRegistry::BlasFactory> status =
+  tsl::StatusOr<PluginRegistry::BlasFactory> status =
       registry->GetFactory<PluginRegistry::BlasFactory>(cuda::kCudaPlatformId,
                                                         plugin_config_.blas());
   if (!status.ok()) {
@@ -824,7 +824,7 @@ blas::BlasSupport* GpuExecutor::CreateBlas() {
 
 dnn::DnnSupport* GpuExecutor::CreateDnn() {
   PluginRegistry* registry = PluginRegistry::Instance();
-  port::StatusOr<PluginRegistry::DnnFactory> status =
+  tsl::StatusOr<PluginRegistry::DnnFactory> status =
       registry->GetFactory<PluginRegistry::DnnFactory>(cuda::kCudaPlatformId,
                                                        plugin_config_.dnn());
   if (!status.ok()) {
@@ -838,7 +838,7 @@ dnn::DnnSupport* GpuExecutor::CreateDnn() {
 
 fft::FftSupport* GpuExecutor::CreateFft() {
   PluginRegistry* registry = PluginRegistry::Instance();
-  port::StatusOr<PluginRegistry::FftFactory> status =
+  tsl::StatusOr<PluginRegistry::FftFactory> status =
       registry->GetFactory<PluginRegistry::FftFactory>(cuda::kCudaPlatformId,
                                                        plugin_config_.fft());
   if (!status.ok()) {
@@ -852,7 +852,7 @@ fft::FftSupport* GpuExecutor::CreateFft() {
 
 rng::RngSupport* GpuExecutor::CreateRng() {
   PluginRegistry* registry = PluginRegistry::Instance();
-  port::StatusOr<PluginRegistry::RngFactory> status =
+  tsl::StatusOr<PluginRegistry::RngFactory> status =
       registry->GetFactory<PluginRegistry::RngFactory>(cuda::kCudaPlatformId,
                                                        plugin_config_.rng());
   if (!status.ok()) {
@@ -1017,7 +1017,7 @@ static int TryToReadNumaNode(const std::string& pci_bus_id,
 #endif
 }
 
-port::StatusOr<std::unique_ptr<DeviceDescription>>
+tsl::StatusOr<std::unique_ptr<DeviceDescription>>
 GpuExecutor::CreateDeviceDescription(int device_ordinal) {
   GpuDeviceHandle device;
   auto status = GpuDriver::GetDevice(device_ordinal, &device);
@@ -1094,9 +1094,9 @@ GpuExecutor::CreateDeviceDescription(int device_ordinal) {
           .value();
   builder.set_l2_cache_size(l2_cache_bytes);
 
-  port::StatusOr<int> mem_clock_khz = GpuDriver::GetDeviceAttribute(
+  tsl::StatusOr<int> mem_clock_khz = GpuDriver::GetDeviceAttribute(
       CU_DEVICE_ATTRIBUTE_MEMORY_CLOCK_RATE, device_ordinal);
-  port::StatusOr<int> mem_bus_width_bits = GpuDriver::GetDeviceAttribute(
+  tsl::StatusOr<int> mem_bus_width_bits = GpuDriver::GetDeviceAttribute(
       CU_DEVICE_ATTRIBUTE_GLOBAL_MEMORY_BUS_WIDTH, device_ordinal);
   if (mem_clock_khz.ok() && mem_bus_width_bits.ok()) {
     // Times 2 because HBM is DDR memory; it gets two data bits per each data

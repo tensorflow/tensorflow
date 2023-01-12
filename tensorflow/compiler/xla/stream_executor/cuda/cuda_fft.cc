@@ -78,7 +78,7 @@ bool SetStream(GpuExecutor *parent, cufftHandle plan, Stream *stream) {
 
 // Populates array of 32b integers from 64b integers, or an error if the
 // numbers don't fit in 32b (signed).
-port::StatusOr<std::array<int32_t, 3>> Downsize64bArray(
+tsl::StatusOr<std::array<int32_t, 3>> Downsize64bArray(
     std::array<long long, 3> source, int32_t rank) {  // NOLINT
   std::array<int32_t, 3> downsized = {0};
   for (int32_t i = 0; i < rank; ++i) {
