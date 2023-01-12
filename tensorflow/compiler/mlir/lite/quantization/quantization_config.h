@@ -43,7 +43,7 @@ struct CustomOpInfo {
 
 using ::tflite::optimize::ReducedPrecisionSupport;
 using CustomOpMap = std::unordered_map<std::string, CustomOpInfo>;
-enum CustomOpUpdateOptions { kINputIndices, kWeightOnly, kNoSideEffect };
+enum CustomOpUpdateOptions { kInputIndices, kWeightOnly, kNoSideEffect };
 
 struct QuantizationSpecs {
   // Which function this node quant specifications belong to.
