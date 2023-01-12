@@ -15,10 +15,15 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/client/executable_build_options.h"
 
+#include <memory>
+#include <utility>
+
 #include "absl/strings/str_format.h"
 #include "tensorflow/compiler/xla/debug_options_flags.h"
 #include "tensorflow/compiler/xla/execution_options_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
+#include "tensorflow/compiler/xla/xla.pb.h"
+#include "tensorflow/tsl/platform/statusor.h"
 
 namespace xla {
 
@@ -53,6 +58,13 @@ ExecutableBuildOptions& ExecutableBuildOptions::set_result_layout(
   result_layout_set_ = true;
   result_layout_ = shape_with_layout;
   return *this;
+}
+
+CompilationEnvironments* ExecutableBuildOptions::mutable_comp_envs() {
+  if (!has_comp_envs()) {
+    comp_envs_.emplace();
+  }
+  return &*comp_envs_;
 }
 
 const Shape* ExecutableBuildOptions::result_layout() const {
@@ -109,6 +121,9 @@ StatusOr<ExecutableBuildOptionsProto> ExecutableBuildOptions::ToProto() const {
   if (result_layout()) {
     *output.mutable_result_layout() = result_layout()->ToProto();
   }
+  if (has_comp_envs()) {
+    *output.mutable_comp_envs() = comp_envs().ToProto();
+  }
   if (has_debug_options()) {
     *output.mutable_debug_options() = debug_options();
   }
@@ -142,6 +157,12 @@ StatusOr<ExecutableBuildOptions> ExecutableBuildOptionsFromProto(
   }
   if (input.has_result_layout()) {
     output.set_result_layout(xla::Shape(input.result_layout()));
+  }
+  if (input.has_comp_envs()) {
+    TF_ASSIGN_OR_RETURN(
+        auto comp_envs,
+        xla::CompilationEnvironments::CreateFromProto(input.comp_envs()));
+    *output.mutable_comp_envs() = std::move(*comp_envs);
   }
   if (input.has_debug_options()) {
     *output.mutable_debug_options() = input.debug_options();
