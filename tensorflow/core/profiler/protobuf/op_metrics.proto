@@ -18,6 +18,7 @@ enum MemBwType {
 enum MemorySpace {
   MEMORY_SPACE_UNDEFINED = 0;
   // Off-chip memory.
+  // Assume all backends use 1 for HBM/off-chip memory.
   MEMORY_SPACE_HBM = 1;
   // On-chip memory.
   MEMORY_SPACE_ON_CHIP = 0x7FFFFFFE;
