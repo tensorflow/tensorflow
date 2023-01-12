@@ -84,11 +84,11 @@ cc_library(
 xla_cc_test(
     name = "pjrt_array_impl_test_tfrt_cpu",
     size = "small",
-    srcs = [],
+    srcs = ["pjrt_array_impl_test_tfrt_cpu.cc"],
     deps = [
         ":tfrt_cpu_client_test_lib",
         "//tensorflow/compiler/xla/python/ifrt:array_impl_test_lib",
-        "@com_google_googletest//:gtest_main",
+        "@com_google_googletest//:gtest",
     ],
 )
 
