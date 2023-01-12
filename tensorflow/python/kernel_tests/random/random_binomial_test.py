@@ -208,9 +208,8 @@ class RandomBinomialTest(test.TestCase):
         )
         self.assertAllLess(z_scores, z_limit)
 
-  def testStatelessDtypes(self):
-    # Test case for GitHub issue 59160
-    shape_0 = constant_op.constant(1, dtype=dtypes.int64) #125091515651
+  def testStatelessDtypeInt64(self):
+    shape_0 = constant_op.constant(1, dtype=dtypes.int64)
     shape = [shape_0,]
     seed_0 = 12
     seed_1 = 34
