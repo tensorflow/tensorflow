@@ -292,9 +292,10 @@ struct SetYieldOpInterface
     return {};
   }
 
-  bool bufferizesToMemoryRead(Operation * /*op*/, OpOperand & /*opOperand*/,
+  bool bufferizesToMemoryRead(Operation *op, OpOperand &opOperand,
                               const AnalysisState & /*state*/) const {
-    return true;
+    return op->getNumRegions() > 0 ||
+           !cast<SetYieldOp>(op).isDstOperand(opOperand);
   }
 
   bool bufferizesToMemoryWrite(Operation *op, OpOperand &opOperand,
@@ -437,9 +438,12 @@ struct SetYieldOpInterface
   // Copied and modified for gml_st.materialize/gml_st.set_yield pairs from
   // mlir/lib/Dialect/Tensor/Transforms/BufferizableOpInterfaceImpl.cpp
   // Takes into account that gml_st.set_yield can have multiple src/dst pairs.
-  bool isNotConflicting(Operation * /*op*/, OpOperand *uRead,
+  bool isNotConflicting(Operation *op, OpOperand *uRead,
                         OpOperand *uConflictingWrite,
                         const AnalysisState &state) const {
+    if (llvm::isa<ForOp>(op->getParentOp())) {
+      return true;
+    }
     Operation *readingOp = uRead->getOwner();
     Operation *conflictingWritingOp = uConflictingWrite->getOwner();
 
