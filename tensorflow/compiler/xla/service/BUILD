@@ -5629,6 +5629,7 @@ cc_library(
     hdrs = ["hlo_runner_pjrt.h"],
     deps = [
         ":executable",
+        ":hlo_module_util",
         ":hlo_runner_interface",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla/client:xla_computation",
@@ -5636,8 +5637,6 @@ cc_library(
         "//tensorflow/compiler/xla/pjrt:pjrt_client",
         "//tensorflow/compiler/xla/pjrt:pjrt_executable",
         "//tensorflow/compiler/xla/pjrt:pjrt_future",
-        "//tensorflow/compiler/xla/service:hlo_module_util",
-        "//tensorflow/compiler/xla/tests:pjrt_client_registry",
         "//tensorflow/tsl/platform:errors",
         "//tensorflow/tsl/platform:statusor",
     ],
