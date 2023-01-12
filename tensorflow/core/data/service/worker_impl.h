@@ -112,7 +112,13 @@ class DataServiceWorkerImpl {
   // A thread for doing periodic heartbeats to the dispatcher.
   void HeartbeatThread() TF_LOCKS_EXCLUDED(mu_);
   // Performs a heartbeat to the dispatcher.
-  Status Heartbeat() TF_LOCKS_EXCLUDED(mu_);
+  Status Heartbeat();
+  // Builds a heartbeat request.
+  WorkerHeartbeatRequest BuildWorkerHeartbeatRequest() const
+      TF_LOCKS_EXCLUDED(mu_);
+  // Updates the tasks according to the heartbeat response.
+  void UpdateTasks(const WorkerHeartbeatResponse& response)
+      TF_LOCKS_EXCLUDED(mu_);
   // Gets the DatasetDef for `task_def`.
   StatusOr<DatasetDef> GetDatasetDef(const TaskDef& task_def) const;
   // Creates a dataset from `dataset_def`.

@@ -513,7 +513,16 @@ void DataServiceWorkerImpl::HeartbeatThread() TF_LOCKS_EXCLUDED(mu_) {
   }
 }
 
-Status DataServiceWorkerImpl::Heartbeat() TF_LOCKS_EXCLUDED(mu_) {
+Status DataServiceWorkerImpl::Heartbeat() {
+  WorkerHeartbeatRequest request = BuildWorkerHeartbeatRequest();
+  TF_ASSIGN_OR_RETURN(WorkerHeartbeatResponse response,
+                      dispatcher_->WorkerHeartbeat(request));
+  UpdateTasks(response);
+  return OkStatus();
+}
+
+WorkerHeartbeatRequest DataServiceWorkerImpl::BuildWorkerHeartbeatRequest()
+    const TF_LOCKS_EXCLUDED(mu_) {
   std::vector<int64_t> current_tasks;
   {
     mutex_lock l(mu_);
@@ -521,6 +530,7 @@ Status DataServiceWorkerImpl::Heartbeat() TF_LOCKS_EXCLUDED(mu_) {
       current_tasks.push_back(task.first);
     }
   }
+
   WorkerHeartbeatRequest request;
   request.set_worker_address(worker_address_);
   request.set_transfer_address(transfer_address_);
@@ -528,9 +538,11 @@ Status DataServiceWorkerImpl::Heartbeat() TF_LOCKS_EXCLUDED(mu_) {
   request.set_worker_uid(worker_uid_);
   *request.mutable_current_tasks() = {current_tasks.begin(),
                                       current_tasks.end()};
-  TF_ASSIGN_OR_RETURN(WorkerHeartbeatResponse response,
-                      dispatcher_->WorkerHeartbeat(request));
+  return request;
+}
 
+void DataServiceWorkerImpl::UpdateTasks(const WorkerHeartbeatResponse& response)
+    TF_LOCKS_EXCLUDED(mu_) {
   std::vector<std::shared_ptr<Task>> tasks_to_delete;
   {
     mutex_lock l(mu_);
@@ -560,7 +572,6 @@ Status DataServiceWorkerImpl::Heartbeat() TF_LOCKS_EXCLUDED(mu_) {
   for (const auto& task : tasks_to_delete) {
     StopTask(*task);
   }
-  return OkStatus();
 }
 
 void DataServiceWorkerImpl::DeleteLocalTask(const TaskInfo& task_info)
