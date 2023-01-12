@@ -3583,7 +3583,7 @@ class TensorFlowTestCase(googletest.TestCase):
     elif isinstance(a, ragged_tensor_value.RaggedTensorValue):
       return a.to_list()
     else:
-      return np.array(a).tolist()
+      return np.array(a, dtype=object).tolist()
 
   def _assertRaggedEqual(self, a, b, msg):
     """Asserts that two ragged tensors are equal."""
