@@ -450,8 +450,8 @@ class XlaCallModuleOp : public XlaOpKernel {
   int nr_outputs_;
   std::vector<string> dim_args_spec_;
   bool has_dynamic_shapes_;
-  mlir::OwningOpRef<mlir::ModuleOp> module_;
   mlir::MLIRContext context_{mlir::MLIRContext::Threading::DISABLED};
+  mlir::OwningOpRef<mlir::ModuleOp> module_;
 };
 
 REGISTER_XLA_OP(Name("XlaCallModule"), XlaCallModuleOp);
