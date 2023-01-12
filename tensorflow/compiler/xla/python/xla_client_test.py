@@ -50,7 +50,9 @@ FLAGS = flags.FLAGS
 def TestFactory(xla_backend,
                 cloud_tpu=False,
                 tfrt_tpu=False,
-                external_tpu=False):
+                external_tpu=False,
+                pjrt_c_api=False,
+                pathways=False):
   tests = []
 
   if not cloud_tpu:
@@ -143,7 +145,7 @@ def TestFactory(xla_backend,
       ops.Add(x, x)
       return builder.build()
 
-    @unittest.skipIf(cloud_tpu, "not implemented")
+    @unittest.skipIf(cloud_tpu or pathways, "not implemented")
     def testCompiledHloModuleToHloText(self):
       computation = self.ExampleComputation()
       executable = self.backend.compile(computation)
@@ -153,7 +155,7 @@ def TestFactory(xla_backend,
       self.assertTrue(hlo_text.startswith("HloModule acomputation"))
       self.assertIn("fusion", hlo_text)
 
-    @unittest.skipIf(cloud_tpu, "not implemented")
+    @unittest.skipIf(cloud_tpu or pathways, "not implemented")
     def testCompiledHloModuleAsSerializedProto(self):
       computation = self.ExampleComputation()
       executable = self.backend.compile(computation)
@@ -165,7 +167,7 @@ def TestFactory(xla_backend,
       hlo_text_roundtrip = hlo_module_roundtrip.to_string()
       self.assertEqual(hlo_text, hlo_text_roundtrip)
 
-    @unittest.skipIf(cloud_tpu, "not implemented")
+    @unittest.skipIf(cloud_tpu or pathways, "not implemented")
     def testStableComputationSerialization(self):
       # Ideally we would test identical computations produced in different
       # processes. For now we have this limited smoke test.
@@ -174,18 +176,21 @@ def TestFactory(xla_backend,
       for _ in range(10):
         self.assertEqual(computation.as_serialized_hlo_module_proto(), ref)
 
-    @unittest.skipIf(cloud_tpu, "not implemented")
+    # TODO(b/261771737): some version of this should work with pjrt_c_api=True
+    @unittest.skipIf(cloud_tpu or pathways or pjrt_c_api, "not implemented")
     def testFlopEstimate(self):
       computation = self.ExampleComputation()
       properties = xla_client._xla.hlo_module_cost_analysis(
           self.backend, computation.as_hlo_module())
       self.assertEqual(properties["flops"], 8.0)
 
+    # TODO(b/264472335): implement fingerprint for PJRT C API
+    @unittest.skipIf(pjrt_c_api, "not implemented")
     def testFingerprint(self):
       computation = self.ExampleComputation()
       executable = self.backend.compile(computation)
       fingerprint = executable.fingerprint
-      if self.backend.platform == "tpu" and not cloud_tpu:
+      if self.backend.platform == "tpu" and not (cloud_tpu or pathways):
         logging.info("fingerprint: %s", fingerprint)
         self.assertNotEmpty(fingerprint)
       else:
@@ -581,7 +586,7 @@ def TestFactory(xla_backend,
                      NumpyArrayF32(3.14)],
           expected=[4.25])
 
-    @unittest.skipIf(cloud_tpu, "not implemented")
+    @unittest.skipIf(cloud_tpu or pathways, "not implemented")
     def testCannotCallWithDeletedBuffers(self):
       c = self._NewComputation()
       ops.Add(
@@ -640,6 +645,7 @@ def TestFactory(xla_backend,
               "BlockHostUntilReady() called on deleted or donated buffer")):
         buffer.block_until_ready()
 
+    @unittest.skipIf(pjrt_c_api, "b/264472918")
     def testDeviceArrayBaseSignatures(self):
       # When extending `DeviceArrayBase`, the object behaves as a `DeviceArray`
       # and thus needs to correctly implement the following methods.
@@ -753,7 +759,7 @@ def TestFactory(xla_backend,
       self.assertGreaterEqual(arg1_buffer.unsafe_buffer_pointer(), 0)
       self.assertGreaterEqual(arg2_buffer.unsafe_buffer_pointer(), 0)
 
-    @unittest.skipIf(cloud_tpu, "not implemented")
+    @unittest.skipIf(cloud_tpu or pathways, "not implemented")
     def testClone(self):
       x = np.array([[3., 4., 5.]], np.float32)
       y = self.backend.buffer_from_pyval(x)
@@ -762,7 +768,7 @@ def TestFactory(xla_backend,
       np.testing.assert_array_equal(np.asarray(y), np.asarray(z))
       self.assertEqual(y.unsafe_buffer_pointer(), z.unsafe_buffer_pointer())
 
-    @unittest.skipIf(cloud_tpu, "not implemented")
+    @unittest.skipIf(cloud_tpu or pathways, "not implemented")
     def testJaxAttributesHaveCorrectDefaults(self):
       x = np.array([[3., 4., 5.]], np.float32)
       y = self.backend.buffer_from_pyval(x)
@@ -1910,6 +1916,7 @@ def TestFactory(xla_backend,
       self._ExecuteAndCompareClose(c, expected=[10])
 
     # TODO(phawkins): test comparison harness doesn't support bfloat16
+    @unittest.skipIf(pjrt_c_api, "b/264473047: hangs")
     @parameterized.named_parameters({
         "testcase_name": "_{}_dim{}".format(dtype.__name__, dim),
         "dtype": dtype,
@@ -1926,6 +1933,7 @@ def TestFactory(xla_backend,
           dimensions_to_reduce=[dim])
       self._ExecuteAndCompareClose(c, expected=[np.sum(input_array, axis=dim)])
 
+    @unittest.skipIf(pjrt_c_api, "b/264473047: hangs")
     @parameterized.named_parameters({
         "testcase_name": "_{}_dims[{}]".format(dtype.__name__, dims),
         "dtype": dtype,
@@ -2017,6 +2025,7 @@ def TestFactory(xla_backend,
           padding=padding)
       self._ExecuteAndCompareClose(c, expected=[[[5., 9.]]])
 
+    @unittest.skipIf(pjrt_c_api, "b/264473047: hangs")
     def testReduceWindowVariadic(self):
       c = self._NewComputation("reducer")
       shape = xla_client.shape_from_pyval(np.array(0, dtype=np.int32))
@@ -2094,7 +2103,7 @@ def TestFactory(xla_backend,
                       false_computation)
       self._ExecuteAndCompareClose(c, expected=[1.])
 
-    @unittest.skipIf(cloud_tpu, "not implemented")
+    @unittest.skipIf(cloud_tpu or pathways or pjrt_c_api, "not implemented")
     def testInfeedS32Values(self):
       to_infeed = NumpyArrayS32([1, 2, 3, 4])
       c = self._NewComputation()
@@ -2113,7 +2122,7 @@ def TestFactory(xla_backend,
             compiled_c, (), backend=self.backend)
         self.assertEqual(result, item)
 
-    @unittest.skipIf(cloud_tpu, "not implemented")
+    @unittest.skipIf(cloud_tpu or pathways or pjrt_c_api, "not implemented")
     def testInfeedTuple(self):
       to_infeed = (NumpyArrayS32([1, 2, 3, 4]), NumpyArrayS32([[7], [8]]))
       c = self._NewComputation()
@@ -2132,7 +2141,7 @@ def TestFactory(xla_backend,
       np.testing.assert_equal(result[0], to_infeed[0])
       np.testing.assert_equal(result[1], to_infeed[1])
 
-    @unittest.skipIf(cloud_tpu, "not implemented")
+    @unittest.skipIf(cloud_tpu or pathways or pjrt_c_api, "not implemented")
     def testInfeedThenOutfeedS32(self):
       to_round_trip = NumpyArrayS32([1, 2, 3, 4])
       c = self._NewComputation()
@@ -2499,11 +2508,12 @@ def TestFactory(xla_backend,
           self.assertTrue(
               re.match(r"^cuda \d{4,}$", version),
               msg=f"Expected CUDA version string; got {repr(version)}")
-      elif self.backend.platform == "tpu" and not cloud_tpu:
+      elif self.backend.platform == "tpu" and not pathways:
         self.assertIn("tpu", version.lower())
         self.assertIn("cl/", version)
+        self.assertIn("Built on ", version)
 
-    @unittest.skipIf(cloud_tpu or tfrt_tpu, "not implemented")
+    @unittest.skipIf(cloud_tpu or pathways or tfrt_tpu, "not implemented")
     def testExecutableSerialization(self):
       if self.backend.platform != "tpu":
         self.skipTest("Test requires tpu platform")
@@ -2608,7 +2618,9 @@ def TestFactory(xla_backend,
     # where the strides may differ between the host and devices. The reshaped
     # physical memory layout is not consecutive, and we test if the program can
     # return the correct logical view of the data.
-    @unittest.skipIf(cloud_tpu or tfrt_tpu or external_tpu, "not implemented")
+    @unittest.skipIf(
+        cloud_tpu or pathways or tfrt_tpu or external_tpu or pjrt_c_api,
+        "not implemented")
     @parameterized.named_parameters({
         "testcase_name": "_{}".format(dtype.__name__),
         "dtype": dtype,
@@ -2624,7 +2636,7 @@ def TestFactory(xla_backend,
       self._CompareToPyAndBufferProtocol(c, [arg0, arg1], [expected],
                                          np.testing.assert_equal)
 
-    @unittest.skipIf(cloud_tpu or tfrt_tpu, "not implemented")
+    @unittest.skipIf(cloud_tpu or pathways or tfrt_tpu, "not implemented")
     @parameterized.named_parameters({
         "testcase_name": "_{}".format(dtype.__name__),
         "dtype": dtype,
