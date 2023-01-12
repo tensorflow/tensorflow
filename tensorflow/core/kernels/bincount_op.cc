@@ -172,6 +172,7 @@ struct BincountReduceFunctor<CPUDevice, Tidx, T, binary_output> {
                         const typename TTypes<T, 2>::ConstTensor& weights,
                         typename TTypes<T, 2>::Tensor& out,
                         const Tidx num_bins) {
+    Status status = OkStatus();
     const int num_rows = out.dimension(0);
     const int num_cols = in.dimension(1);
     ThreadPool* thread_pool =
@@ -182,6 +183,12 @@ struct BincountReduceFunctor<CPUDevice, Tidx, T, binary_output> {
           for (int64_t i = start_row; i < end_row; ++i) {
             for (int64_t j = 0; j < num_cols; ++j) {
               Tidx value = in(i, j);
+              if (value < 0) {
+                status.Update(errors::InvalidArgument(
+                    "value must be positive, got value[", i, ", ",
+                    j, "] = ",value));
+                return;
+              }
               if (value < num_bins) {
                 if (binary_output) {
                   out(i, value) = T(1);
@@ -196,7 +203,7 @@ struct BincountReduceFunctor<CPUDevice, Tidx, T, binary_output> {
             }
           }
         });
-    return OkStatus();
+    return status;
   }
 };
 
