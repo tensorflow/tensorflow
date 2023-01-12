@@ -3,13 +3,8 @@
 #   APIs are meant to change over time.
 
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.default.bzl", "tf_cuda_cc_test")
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.default.bzl", "filegroup")
-load("//tensorflow:tensorflow.bzl", "if_cuda_or_rocm", "tf_copts")
+load("//tensorflow:tensorflow.default.bzl", "filegroup", "tf_cuda_cc_test")
+load("//tensorflow:tensorflow.bzl", "if_cuda_or_rocm", "if_nccl", "tf_copts")
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm")
 load(
@@ -17,10 +12,8 @@ load(
     "tf_cuda_tests_tags",
 )
 
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.default.bzl", "if_nccl")
-
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//tensorflow:__subpackages__"],
     features = ["-layering_check"],
     licenses = ["notice"],

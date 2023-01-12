@@ -268,7 +268,7 @@ struct ConvertWhileLikeRegionOpToExplicitCapture
 
   WhileLikeRegionOp RebuildWith(WhileLikeRegionOp op, ValueRange added,
                                 PatternRewriter &rewriter) const override {
-    ConditionOp cond_op = op.cond_condition();
+    ConditionOp cond_op = op.getCondCondition();
     rewriter.setInsertionPoint(cond_op);
     rewriter.replaceOpWithNewOp<ConditionOp>(
         cond_op, cond_op.getCond(),
@@ -276,7 +276,7 @@ struct ConvertWhileLikeRegionOpToExplicitCapture
                            cond_op.getArgs()),
         cond_op.getCtls());
 
-    YieldOp yield_op = op.body_yield();
+    YieldOp yield_op = op.getBodyYield();
     rewriter.setInsertionPoint(yield_op);
     rewriter.replaceOpWithNewOp<YieldOp>(
         yield_op,
@@ -305,7 +305,7 @@ struct ConvertForRegionOpToExplicitCapture
 
   ForRegionOp RebuildWith(ForRegionOp op, ValueRange added,
                           PatternRewriter &rewriter) const override {
-    YieldOp yield_op = op.body_yield();
+    YieldOp yield_op = op.getBodyYield();
     rewriter.setInsertionPoint(yield_op);
     // Get the iteration arguments excluding the for loop index argument.
     auto iter_args = GetLoopRegionDataArgs(op.getBodyRegion()).slice(1);
@@ -535,9 +535,11 @@ NamedAttrList BasePattern::BuildAttributes(RegionAttr preserved,
   for (auto &it : llvm::enumerate(results))
     res_attrs.push_back(build_attrs(preserved_res_attrs, it, arguments));
 
-  attrs.append(FunctionOpInterface::getArgDictAttrName(),
+  Optional<RegisteredOperationName> name =
+      RegisteredOperationName::lookup(GraphFuncOp::getOperationName(), ctx_);
+  attrs.append(GraphFuncOp::getArgAttrsAttrName(*name),
                ArrayAttr::get(ctx_, arg_attrs));
-  attrs.append(FunctionOpInterface::getResultDictAttrName(),
+  attrs.append(GraphFuncOp::getResAttrsAttrName(*name),
                ArrayAttr::get(ctx_, res_attrs));
   return attrs;
 }
@@ -649,6 +651,7 @@ FuncAttr BasePattern::Outline(Operation *op, PatternRewriter &rewriter,
       &name_uniquer);
 
   auto yield = cast<YieldOp>(region.front().getTerminator());
+  SmallVector<Value> yieldArgs(yield.getArgs());
   rewriter.setInsertionPoint(yield);
   auto ret_op = rewriter.replaceOpWithNewOp<ReturnOp>(
       yield, yield.getOperands(),
@@ -958,16 +961,18 @@ ConvertWhileLikeOp<WhileLikeRegionOp, WhileLikeOp>::matchAndRewrite(
   if (!body_ref || !cond_ref) {
     // Handle the condition region. Unlike other regions, the terminator is
     // special and the function only has one result.
-    ConditionOp cond_op = op.cond_condition();
+    ConditionOp cond_op = op.getCondCondition();
     // Create a name scope for the condition function.
     NameUniquer name_uniquer(this->ctx_);
     // Create the function.
+
     NamedAttrList cond_attrs =
         this->BuildAttributes(op.getCondRegionAttrsAttr(), op.getInit(),
                               cond_op.getCond(), &name_uniquer);
     GraphFuncOp cond_func =
         this->CreateFunc(op.getLoc(), "while_cond_function", op.getCondRegion(),
                          cond_op.getCond().getType(), std::move(cond_attrs));
+
     // Replace the condition terminator.
     rewriter.setInsertionPoint(cond_op);
     SmallVector<Value> cond_rets = {cond_op.getCond()};

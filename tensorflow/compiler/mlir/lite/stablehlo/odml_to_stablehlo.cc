@@ -16,6 +16,7 @@ limitations under the License.
 #include <algorithm>
 #include <iterator>
 #include <memory>
+#include <optional>
 #include <string>
 #include <unordered_set>
 #include <utility>
@@ -23,6 +24,7 @@ limitations under the License.
 
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
+#include "llvm/ADT/Optional.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Path.h"
@@ -49,20 +51,21 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/init_mlir.h"
 #include "tensorflow/compiler/mlir/lite/flatbuffer_export.h"
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/check_accepted_ops_pass.h"
-#include "tensorflow/compiler/mlir/lite/stablehlo/transforms/mhlo_tfl_pass.h"
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/op_stat_pass.h"
+#include "tensorflow/compiler/mlir/lite/stablehlo/transforms/stablehlo_tfl_pass.h"
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/transforms.h"
 #include "tensorflow/compiler/mlir/lite/tf_to_tfl_flatbuffer.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/passes/tf_quant_ops.h"
+#include "tensorflow/compiler/mlir/quantization/tensorflow/quantize_preprocess.h"
 #include "tensorflow/compiler/mlir/tensorflow/dialect_registration.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/tf_graph_optimization_pass.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/compile_mlir_util.h"
 #include "tensorflow/compiler/mlir/xla/transforms/passes.h"
-#include "tensorflow/compiler/mlir/xla/transforms/xla_passes.h"
-#include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/lhlo/transforms/register_passes.h"
-#include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/mhlo/IR/register.h"
-#include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/mhlo/transforms/register_passes.h"
+#include "tensorflow/compiler/xla/mlir/framework/transforms/passes.h"
+#include "tensorflow/compiler/xla/mlir_hlo/lhlo/transforms/passes.h"
+#include "tensorflow/compiler/xla/mlir_hlo/mhlo/IR/register.h"
+#include "tensorflow/compiler/xla/mlir_hlo/mhlo/transforms/passes.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/statusor.h"
@@ -131,7 +134,13 @@ opt<bool> skip_resize(
 // NOLINTNEXTLINE
 opt<bool> smuggle_disallowed_ops(
     "smuggle-disallowed-ops",
-    llvm::cl::desc("Smuggle disallowed ops via mhlo.custom_calls."),
+    llvm::cl::desc("Smuggle disallowed ops via stablehlo.custom_calls."),
+    llvm::cl::Optional, llvm::cl::init(false));
+
+// NOLINTNEXTLINE
+opt<bool> freeze_tf_graph(
+    "freeze-tf-graph",
+    llvm::cl::desc("Freeze TF graph to remove tf.ResourceVariable, etc."),
     llvm::cl::Optional, llvm::cl::init(false));
 
 namespace mlir {
@@ -139,7 +148,8 @@ namespace odml {
 
 tensorflow::StatusOr<OwningOpRef<mlir::ModuleOp>> ImportSavedModelOrMLIR(
     const std::string& input_path, MLIRContext* context,
-    llvm::SourceMgr* source_mgr) {
+    llvm::SourceMgr* source_mgr,
+    std::unique_ptr<tensorflow::SavedModelBundle>* saved_model_bundle) {
   if (absl::EndsWith(input_path, ".mlir")) {
     auto file_or_err = llvm::MemoryBuffer::getFileOrSTDIN(input_path.c_str());
     if (std::error_code error = file_or_err.getError()) {
@@ -162,18 +172,18 @@ tensorflow::StatusOr<OwningOpRef<mlir::ModuleOp>> ImportSavedModelOrMLIR(
   tensorflow::GraphImportConfig specs;
   specs.upgrade_legacy = true;
 
-  auto bundle = std::make_unique<tensorflow::SavedModelBundle>();
   return ImportSavedModel(input_path, /*saved_model_version=*/1, tags,
                           absl::MakeSpan(custom_opdefs), exported_names, specs,
-                          /*enable_variable_lifting=*/true, context, &bundle);
+                          /*enable_variable_lifting=*/true, context,
+                          saved_model_bundle);
 }
 
 tensorflow::Status ConvertStableHLOToFlatbuffer(mlir::ModuleOp module,
                                                 std::string* flatbuffer_str) {
   // Convert StableHLO MLIR to TFLite Custom Op MLIR
-  mlir::PassManager mhlo_tfl_pm(module->getContext());
-  mhlo_tfl_pm.addNestedPass<func::FuncOp>(TFL::mhlo::CreateMhloToTflPass());
-  if (failed(mhlo_tfl_pm.run(module))) {
+  mlir::PassManager pm(module->getContext());
+  pm.addNestedPass<func::FuncOp>(CreateStablehloToTflPass());
+  if (failed(pm.run(module))) {
     return tensorflow::errors::Aborted("HLO to TFL passes failed.");
   }
 
@@ -293,18 +303,39 @@ tensorflow::Status RunConverter(const PassPipelineCLParser& pass_pipeline) {
     return tensorflow::errors::Aborted("Export type is not supported.");
   }
 
+  auto bundle = std::make_unique<tensorflow::SavedModelBundle>();
+  bundle = nullptr;
+
   TF_ASSIGN_OR_RETURN(
-      auto module, ImportSavedModelOrMLIR(input_model, &context, &source_mgr));
+      auto module,
+      ImportSavedModelOrMLIR(input_model, &context, &source_mgr, &bundle));
   if (verbose) {
     TF_RETURN_IF_ERROR(ExportModule(*module,
                                     absl::StrCat(verbose_dir, "/debug_tf.mlir"),
                                     elide_large_elements_attrs));
   }
 
+  llvm::Optional<tensorflow::Session*> session = std::nullopt;
+  if (bundle) session = bundle->GetSession();  // NOMUTANTS--it should pass.
+
+  if (freeze_tf_graph) {
+    if (absl::EndsWith(input_model, ".mlir")) {
+      LOG(INFO) << "file type is mlir. ignoring freezing TF graph";
+    } else {
+      LOG(INFO) << "--freeze-tf-graph is on. Freezing TF graph...";
+      const auto status = tensorflow::quantization::PreprocessAndFreezeGraph(
+          *module, module->getContext(), session);
+      if (!status.ok()) {
+        return tensorflow::errors::Aborted(
+            "Failed to preprocess & freeze TF graph");
+      }
+    }
+  }
+
   auto conversion_status = ConvertTFToStableHLO(*module, pass_pipeline);
   auto export_path = conversion_status.ok()
                          ? output_path
-                         : absl::StrCat(verbose_dir, "/debug_mhlo.mlir");
+                         : absl::StrCat(verbose_dir, "/debug_stablehlo.mlir");
   return ExportModule(*module, export_path, elide_large_elements_attrs);
 }
 
@@ -325,7 +356,7 @@ void initAllPasses() {
   mlir::lmhlo::registerAllLmhloPasses();
   // These are in compiler/mlir/xla and not part of the above MHLO passes.
   mlir::mhlo::registerTfXlaPasses();
-  mlir::mhlo::registerXlaPasses();
+  mlir::mhlo::registerXlaFrameworkPasses();
   mlir::mhlo::registerLegalizeTFPass();
   mlir::mhlo::registerLegalizeTFControlFlowPass();
   mlir::mhlo::registerLegalizeTfTypesPassPass();

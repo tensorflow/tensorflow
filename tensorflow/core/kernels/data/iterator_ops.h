@@ -16,19 +16,18 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_KERNELS_DATA_ITERATOR_OPS_H_
 #define TENSORFLOW_CORE_KERNELS_DATA_ITERATOR_OPS_H_
 
+#include <memory>
 #include <utility>
+#include <vector>
 
-#include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/data/dataset_utils.h"
 #include "tensorflow/core/data/metric_utils.h"
 #include "tensorflow/core/data/unbounded_thread_pool.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/function_handle_cache.h"
-#include "tensorflow/core/framework/metrics.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.h"
-#include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/platform/refcount.h"
 
 namespace tensorflow {
@@ -56,7 +55,8 @@ class IteratorResource : public ResourceBase {
                  bool* end_of_sequence);
 
   // Saves a checkpoint of the state of the iterator through the given `writer`.
-  Status Save(SerializationContext* ctx, IteratorStateWriter* writer);
+  Status Save(OpKernelContext* ctx, ExternalStatePolicy external_state_policy,
+              IteratorStateWriter* writer);
 
   // Restores the state of the iterator from a checkpoint created by `Save`.
   Status Restore(OpKernelContext* ctx, IteratorStateReader* reader);
@@ -92,17 +92,6 @@ class IteratorResource : public ResourceBase {
 
     ~State() { cancellation_manager_.StartCancel(); }
 
-    // Downcasts the given `IteratorBase` to a `DatasetBaseIterator`, and uses
-    // it to set the `iterator` and the `dataset` field.
-    void DowncastAndSetIteratorAndDataset(std::unique_ptr<IteratorBase> it,
-                                          const DatasetBase* dataset) {
-      iterator_.reset(static_cast<DatasetBaseIterator*>(it.release()));
-      if (dataset) {
-        dataset->Ref();
-        dataset_.reset(const_cast<DatasetBase*>(dataset));
-      }
-    }
-
     std::shared_ptr<FunctionLibraryDefinition> flib_def() { return flib_def_; }
 
     FunctionLibraryRuntime* flr() { return flr_; }
@@ -121,7 +110,17 @@ class IteratorResource : public ResourceBase {
 
     DatasetBaseIterator* iterator() { return iterator_.get(); }
 
+    const MemoryCheckpoint& checkpoint() const { return checkpoint_; }
+
     DatasetBase* dataset() { return dataset_.get(); }
+
+    // Downcasts the given `IteratorBase` to a `DatasetBaseIterator`, and uses
+    // it to set the `iterator` and the `dataset` field.
+    void DowncastAndSetIteratorAndDataset(std::unique_ptr<IteratorBase> it,
+                                          const DatasetBase* dataset);
+
+    // Merges the given checkpoint with the checkpoint of this state.
+    void MergeCheckpoint(const MemoryCheckpoint& other);
 
    private:
     std::shared_ptr<FunctionLibraryDefinition> flib_def_;
@@ -132,6 +131,7 @@ class IteratorResource : public ResourceBase {
     CancellationManager cancellation_manager_;
     std::unique_ptr<DatasetBaseIterator> iterator_;
     core::RefCountPtr<DatasetBase> dataset_;
+    MemoryCheckpoint checkpoint_;
   };
 
   IteratorMetricsCollector metrics_collector_;
@@ -310,8 +310,7 @@ class SerializeIteratorOp : public OpKernel {
   void Compute(OpKernelContext* ctx) override;
 
  private:
-  SerializationContext::ExternalStatePolicy external_state_policy_ =
-      SerializationContext::ExternalStatePolicy::kWarn;
+  ExternalStatePolicy external_state_policy_ = ExternalStatePolicy::POLICY_WARN;
 };
 
 class DeserializeIteratorOp : public OpKernel {

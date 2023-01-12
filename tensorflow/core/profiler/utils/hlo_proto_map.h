@@ -63,8 +63,11 @@ class HloProtoMap {
   absl::StatusOr<const xla::HloProto*> GetHloProtoByModuleName(
       absl::string_view module_name) const;
 
+  absl::StatusOr<const xla::HloProto*> GetHloProtoByProgramId(
+      uint64_t program_id) const;
+
  private:
-  absl::flat_hash_map<int64_t, const xla::HloProto*> hlo_protos_by_program_id_;
+  absl::flat_hash_map<uint64_t, const xla::HloProto*> hlo_protos_by_program_id_;
   absl::flat_hash_map<std::string, const xla::HloProto*> hlo_protos_by_name_;
   std::vector<std::unique_ptr<const xla::HloProto>> owned_hlo_protos_;
 };

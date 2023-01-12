@@ -18,7 +18,7 @@ import time
 
 from tensorflow.python.client import session
 from tensorflow.python.eager import context
-from tensorflow.python.eager import function
+from tensorflow.python.eager import def_function
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
@@ -50,7 +50,7 @@ class CondWithManyIntermediatesBenchmark(test.Benchmark):
   def _benchmark_defun(self):
     """Benchmarks cond in a defun."""
 
-    @function.defun
+    @def_function.function
     def cond_fn(x):
       return self._create_cond(x)
 

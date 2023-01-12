@@ -25,6 +25,8 @@ limitations under the License.
 // does not exist any operation placed on host_B that conumes any result of any
 // operation placed on host_A.
 
+#include <optional>
+
 #include "mlir/IR/Builders.h"
 #include "mlir/Pass/Pass.h"
 #include "absl/strings/str_cat.h"
@@ -33,7 +35,6 @@ limitations under the License.
 #include "mlir/IR/BlockAndValueMapping.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
-#include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
 #include "tensorflow/core/util/device_name_utils.h"
 
 namespace mlir {
@@ -170,7 +171,7 @@ llvm::Optional<llvm::StringMap<FunctionMetadata>> GetFunctionMetadatas(
     return WalkResult::advance();
   });
 
-  if (result.wasInterrupted()) return llvm::None;
+  if (result.wasInterrupted()) return std::nullopt;
 
   return metadatas;
 }
@@ -298,8 +299,11 @@ void CreateRemoteRunCalls(MLIRContext *context,
   }
 }
 
+#define GEN_PASS_DEF_CLUSTERTFOPSBYHOSTPASS
+#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_passes.h.inc"
+
 class ClusterTFOpsByHostPass
-    : public ClusterTFOpsByHostPassBase<ClusterTFOpsByHostPass> {
+    : public impl::ClusterTFOpsByHostPassBase<ClusterTFOpsByHostPass> {
   void runOnOperation() override {
     MLIRContext *context = &getContext();
     ModuleOp module_op = getOperation();

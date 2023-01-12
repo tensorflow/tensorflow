@@ -19,6 +19,7 @@ from tensorflow.python.data.experimental.ops import cardinality
 from tensorflow.python.data.kernel_tests import checkpoint_test_base
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.data.ops import options as options_lib
 from tensorflow.python.framework import combinations
 from tensorflow.python.framework import errors
 from tensorflow.python.platform import test
@@ -84,16 +85,22 @@ class AssertCardinalityTest(test_base.DatasetTestBase, parameterized.TestCase):
 class AssertCardinalityCheckpointTest(checkpoint_test_base.CheckpointTestBase,
                                       parameterized.TestCase):
 
+  def build_dataset(self, num_elements, options=None):
+    dataset = dataset_ops.Dataset.range(num_elements).apply(
+        cardinality.assert_cardinality(num_elements))
+    if options:
+      dataset = dataset.with_options(options)
+    return dataset
+
   @combinations.generate(
-      combinations.times(test_base.default_test_combinations(),
-                         checkpoint_test_base.default_test_combinations()))
-  def test(self, verify_fn):
-
-    def build_dataset(num_elements):
-      return dataset_ops.Dataset.range(num_elements).apply(
-          cardinality.assert_cardinality(num_elements))
-
-    verify_fn(self, lambda: build_dataset(200), num_outputs=200)
+      combinations.times(
+          test_base.default_test_combinations(),
+          checkpoint_test_base.default_test_combinations(),
+          combinations.combine(symbolic_checkpoint=[False, True])))
+  def test(self, verify_fn, symbolic_checkpoint):
+    options = options_lib.Options()
+    options.experimental_symbolic_checkpoint = symbolic_checkpoint
+    verify_fn(self, lambda: self.build_dataset(200, options), num_outputs=200)
 
 
 if __name__ == "__main__":

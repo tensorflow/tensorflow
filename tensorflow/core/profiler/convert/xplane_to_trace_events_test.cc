@@ -72,6 +72,25 @@ TEST(ConvertXPlaneToTraceEvents, Convert) {
   EXPECT_EQ(trace.trace_events_size(), 3);
 }
 
+TEST(ConvertXPlaneToTraceEvents, SkipAsyncOps) {
+  XSpace xspace;
+  XPlaneBuilder device_plane(xspace.add_planes());
+  device_plane.SetName(GpuPlaneName(0));
+
+  XLineBuilder async_ops = device_plane.GetOrCreateLine(10);
+  async_ops.SetName(kXlaAsyncOpLineName);
+
+  XEventBuilder event1 =
+      async_ops.AddEvent(*device_plane.GetOrCreateEventMetadata("event1"));
+  event1.SetTimestampNs(100);
+  event1.SetDurationNs(1);
+
+  Trace trace;
+  ConvertXSpaceToTraceEvents(xspace, &trace);
+
+  ASSERT_THAT(trace.trace_events(), ::testing::IsEmpty());
+}
+
 TEST(ConvertXPlaneToTraceEvents, Drop) {
   Trace trace;
   for (int i = 0; i < 100; i++) {

@@ -26,7 +26,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/stream_executor/platform/dso_loader.h"
 #include "tensorflow/compiler/xla/stream_executor/platform/port.h"
 
-namespace tensorflow {
+namespace stream_executor {
 namespace wrap {
 
 using stream_executor::internal::CachedDsoLoader::GetRocblasDsoHandle;
@@ -270,6 +270,6 @@ using stream_executor::internal::CachedDsoLoader::GetRocblasDsoHandle;
 FOREACH_ROCBLAS_API(ROCBLAS_API_WRAPPER)
 
 }  // namespace wrap
-}  // namespace tensorflow
+}  // namespace stream_executor
 
 #endif  // TENSORFLOW_COMPILER_XLA_STREAM_EXECUTOR_ROCM_ROCBLAS_WRAPPER_H_

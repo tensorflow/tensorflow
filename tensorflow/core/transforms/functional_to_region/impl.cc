@@ -351,8 +351,8 @@ LogicalResult ConvertIfLikeOp<IfLikeOp, IfLikeRegionOp>::matchAndRewrite(
 
   // Replace the terminators `return` with `yield`.
   TypeRange ret_types = region_op.getOuts().getTypes();
-  this->ReplaceReturnWithYield(region_op.then_block(), ret_types, rewriter);
-  this->ReplaceReturnWithYield(region_op.else_block(), ret_types, rewriter);
+  this->ReplaceReturnWithYield(region_op.getThenBlock(), ret_types, rewriter);
+  this->ReplaceReturnWithYield(region_op.getElseBlock(), ret_types, rewriter);
   rewriter.replaceOp(op, region_op.getResults());
   return success();
 }
@@ -453,11 +453,11 @@ ConvertWhileLikeOp<WhileLikeOp, WhileLikeRegionOp>::matchAndRewrite(
                             region_op.getCondRegion(), rewriter);
   this->CloneAndReorderArgs(init.getTypes(), body_func.getBody(),
                             region_op.getBodyRegion(), rewriter);
-  this->ReplaceReturnWithYield(region_op.body_block(), init.getTypes(),
+  this->ReplaceReturnWithYield(region_op.getBodyBlock(), init.getTypes(),
                                rewriter);
 
   // Replace `return(tensor<*xi1>)` with `condition`.
-  auto ret_op = cast<ReturnOp>(region_op.cond_block().getTerminator());
+  auto ret_op = cast<ReturnOp>(region_op.getCondBlock().getTerminator());
   ValueRange ret_args, ret_ctls;
   std::tie(ret_args, ret_ctls) = this->SplitControl(ret_op.getOperands());
   rewriter.setInsertionPoint(ret_op);
@@ -491,7 +491,7 @@ LogicalResult ConvertForOp::matchAndRewrite(tfg::ForOp op,
   OperandRange args = op.getOperands().drop_front(2).drop_back(ctls.size());
   CloneAndReorderArgs(args.getTypes(), body_func.getBody(),
                       region_op.getBodyRegion(), rewriter);
-  ReplaceReturnWithYield(region_op.body_block(), init.getTypes(), rewriter);
+  ReplaceReturnWithYield(region_op.getBodyBlock(), init.getTypes(), rewriter);
   rewriter.replaceOp(op, region_op->getResults());
   return success();
 }

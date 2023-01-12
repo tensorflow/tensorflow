@@ -36,8 +36,6 @@ def TFL_Dialect : Dialect {
 
   let cppNamespace = "::mlir::TFL";
 
-  let emitAccessorPrefix = kEmitAccessorPrefix_Both;
-
   let useDefaultAttributePrinterParser = 1;
   let useDefaultTypePrinterParser = 1;
 

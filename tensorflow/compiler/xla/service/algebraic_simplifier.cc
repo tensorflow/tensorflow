@@ -33,6 +33,13 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/comparison_util.h"
+#include "tensorflow/compiler/xla/hlo/evaluator/hlo_evaluator.h"
+#include "tensorflow/compiler/xla/hlo/ir/dfs_hlo_visitor_with_default.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_casting_utils.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/literal_comparison.h"
@@ -40,14 +47,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/overflow_util.h"
 #include "tensorflow/compiler/xla/permutation_util.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
-#include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
-#include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
-#include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_creation_utils.h"
-#include "tensorflow/compiler/xla/service/hlo_evaluator.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/compiler/xla/service/hlo_instructions.h"
-#include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/hlo_query.h"
 #include "tensorflow/compiler/xla/service/pattern_matcher.h"
 #include "tensorflow/compiler/xla/shape.h"
@@ -58,7 +58,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/window_util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/tsl/platform/errors.h"
 #include "tensorflow/tsl/platform/logging.h"
 #include "tensorflow/tsl/platform/status.h"
@@ -748,11 +747,12 @@ Status AlgebraicSimplifierVisitor::HandleAdd(HloInstruction* add) {
   //
   // This is pattern is discovered in control flow V2 gradient update.
   if (Match(add,
-            m::Add(m::Op(&lhs),
-                   m::Op(&rhs)
-                       .WithOpcode(HloOpcode::kDynamicUpdateSlice)
-                       .WithOperand(
-                           0, m::Broadcast(m::ConstantEffectiveScalar(0)))))) {
+            m::AddAnyOrder(
+                m::Op(&lhs),
+                m::Op(&rhs)
+                    .WithOpcode(HloOpcode::kDynamicUpdateSlice)
+                    .WithOperand(
+                        0, m::Broadcast(m::ConstantEffectiveScalar(0)))))) {
     const Shape& partial_shape = rhs->operand(1)->shape();
     auto sliced_lhs = lhs->AddInstruction(HloInstruction::CreateDynamicSlice(
         partial_shape, lhs, absl::MakeSpan(rhs->operands()).subspan(2),
@@ -1050,8 +1050,11 @@ Status AlgebraicSimplifierVisitor::HandleBitcast(HloInstruction* bitcast) {
   }
   HloInstruction* op;
   if (Match(bitcast, m::Bitcast(m::Bitcast(m::Op(&op))))) {
-    return ReplaceWithNewInstruction(
-        bitcast, HloInstruction::CreateBitcast(bitcast->shape(), op));
+    auto new_bitcast = HloInstruction::CreateBitcast(bitcast->shape(), op);
+    HloInstruction* new_bitcast_ptr = new_bitcast.get();
+    TF_RETURN_IF_ERROR(
+        ReplaceWithNewInstruction(bitcast, std::move(new_bitcast)));
+    bitcast = new_bitcast_ptr;
   }
   // All bitcasts can be eliminated (assuming layout constraints are satisfied).
   ReplaceInstructionIfCompatible(bitcast, bitcast->mutable_operand(0));
@@ -5124,6 +5127,29 @@ Status AlgebraicSimplifierVisitor::HandleDynamicSlice(
     return ReplaceInstruction(dynamic_slice, operand);
   }
 
+  // DynamicSlice clamps the offset. If the slice size has the same size on a
+  // dim as the operand, we can replace it with zero.
+  std::vector<int> same_size_dims_to_simplify;
+  for (int64_t dim = 0; dim < operand->shape().rank(); ++dim) {
+    if (!(dynamic_slice->operand(dim + 1)->IsConstant() &&
+          IsAll(dynamic_slice->operand(dim + 1), 0)) &&
+        operand->shape().dimensions(dim) ==
+            dynamic_slice->shape().dimensions(dim)) {
+      same_size_dims_to_simplify.push_back(dim);
+    }
+  }
+  if (!same_size_dims_to_simplify.empty()) {
+    HloInstruction* zero = MakeScalarLike(dynamic_slice->mutable_operand(1), 0);
+    auto new_operands = dynamic_slice->mutable_operands();
+    for (int64_t dim : same_size_dims_to_simplify) {
+      new_operands[dim + 1] = zero;
+    }
+    return ReplaceInstruction(
+        dynamic_slice,
+        dynamic_slice->AddInstruction(dynamic_slice->CloneWithNewOperands(
+            dynamic_slice->shape(), new_operands)));
+  }
+
   HloInstruction* broadcast_operand;
   if (Match(operand, m::Broadcast(m::Op(&broadcast_operand)))) {
     std::vector<HloInstruction*> new_indices;
@@ -5424,6 +5450,31 @@ Status AlgebraicSimplifierVisitor::HandleDynamicUpdateSlice(
   // equal to dus_update.
   if (SameShape(dynamic_update_slice, dus_update)) {
     return ReplaceInstruction(dynamic_update_slice, dus_update);
+  }
+
+  // DynamicUpdateSlice clamps the offset. If the slice size has the same size
+  // on a dim as dus_update, we can replace it with zero.
+  std::vector<int> same_size_dims_to_simplify;
+  for (int64_t dim = 0; dim < dus_update->shape().rank(); ++dim) {
+    if (!(dynamic_update_slice->operand(dim + 2)->IsConstant() &&
+          IsAll(dynamic_update_slice->operand(dim + 2), 0)) &&
+        dus_update->shape().dimensions(dim) ==
+            dynamic_update_slice->shape().dimensions(dim)) {
+      same_size_dims_to_simplify.push_back(dim);
+    }
+  }
+  if (!same_size_dims_to_simplify.empty()) {
+    HloInstruction* zero =
+        MakeScalarLike(dynamic_update_slice->mutable_operand(2), 0);
+    auto new_operands = dynamic_update_slice->mutable_operands();
+    for (int64_t dim : same_size_dims_to_simplify) {
+      new_operands[dim + 2] = zero;
+    }
+    return ReplaceInstruction(
+        dynamic_update_slice,
+        dynamic_update_slice->AddInstruction(
+            dynamic_update_slice->CloneWithNewOperands(
+                dynamic_update_slice->shape(), new_operands)));
   }
 
   // If any dimension of dus_update is 0, elide the DynamicUpdateSlice.  This
@@ -6267,6 +6318,50 @@ Status AlgebraicSimplifierVisitor::HandleSelect(HloInstruction* select) {
         HloInstruction::CreateTernary(select->shape(), HloOpcode::kSelect,
                                       pred_operand, on_false, on_true));
   }
+
+  // select(pred, xs, dynamic_update_slice(xs, x, i))
+  //     -> dynamic_update_slice(xs, select(pred, dynamic_slice(xs, i), x), i)
+  HloInstruction* update_slice;
+  HloInstruction* xs;
+  HloInstruction* xs2;
+  auto update_slice_op = m::Op(&update_slice)
+                             .WithOpcode(HloOpcode::kDynamicUpdateSlice)
+                             .WithOperand(0, m::Op(&xs))
+                             .WithOneUse();
+  bool match_slice_left =
+      Match(select, m::Select(m::Op(), m::Op(&xs2), update_slice_op)) &&
+      (xs == xs2);
+  bool match_slice_right =
+      Match(select, m::Select(m::Op(), update_slice_op, m::Op(&xs2))) &&
+      (xs == xs2);
+  if (match_slice_left || match_slice_right) {
+    HloInstruction* pred = select->mutable_operand(0);
+    HloInstruction* x = update_slice->mutable_operand(1);
+    absl::Span<HloInstruction* const> i =
+        absl::MakeSpan(update_slice->operands()).subspan(2);
+    HloInstruction* new_pred;
+    if (ShapeUtil::IsScalar(pred->shape())) {
+      new_pred = pred;
+    } else {
+      Shape new_pred_shape = x->shape();
+      new_pred_shape.set_element_type(pred->shape().element_type());
+      simplifier_->UpdateLayout(&new_pred_shape);
+      new_pred = select->AddInstruction(HloInstruction::CreateDynamicSlice(
+          new_pred_shape, pred, i, x->shape().dimensions()));
+    }
+    HloInstruction* new_x =
+        select->AddInstruction(HloInstruction::CreateDynamicSlice(
+            x->shape(), xs, i, x->shape().dimensions()));
+    HloInstruction* new_x2 =
+        select->AddInstruction(HloInstruction::CreateTernary(
+            x->shape(), HloOpcode::kSelect, new_pred,
+            match_slice_left ? new_x : x, match_slice_left ? x : new_x));
+    std::unique_ptr<HloInstruction> new_xs =
+        HloInstruction::CreateDynamicUpdateSlice(select->shape(), xs, new_x2,
+                                                 i);
+    return ReplaceWithNewInstruction(select, std::move(new_xs));
+  }
+
   return OkStatus();
 }
 

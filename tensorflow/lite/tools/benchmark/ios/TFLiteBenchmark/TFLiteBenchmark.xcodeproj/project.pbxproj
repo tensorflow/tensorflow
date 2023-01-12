@@ -36,7 +36,6 @@
 
 /* Begin PBXFileReference section */
 		6FE7579920D59CE500F01636 /* benchmark_params.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = benchmark_params.json; sourceTree = "<group>"; };
-		6FE7579C20D5A5E000F01636 /* benchmark-lib.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = "benchmark-lib.a"; path = "$SRCROOT/../../../../../../tensorflow/lite/tools/make/gen/lib/benchmark-lib.a"; sourceTree = "<group>"; };
 		6FE7579E20D5A6A700F01636 /* Accelerate.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Accelerate.framework; path = System/Library/Frameworks/Accelerate.framework; sourceTree = SDKROOT; };
 		6FE757A020D5AB8000F01636 /* mobilenet_v1_1.0_224.tflite */ = {isa = PBXFileReference; lastKnownFileType = file; path = mobilenet_v1_1.0_224.tflite; sourceTree = "<group>"; };
 		6FE93FF820D592D8008C9FE4 /* TFLiteBenchmark.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = TFLiteBenchmark.app; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -81,7 +80,6 @@
 				DCAFFD062457B5D100314DDA /* CoreML.framework */,
 				DC4D465C2373ECF300397CBD /* TensorFlowLiteBenchmarkC.framework */,
 				6FE7579E20D5A6A700F01636 /* Accelerate.framework */,
-				6FE7579C20D5A5E000F01636 /* benchmark-lib.a */,
 			);
 			name = Frameworks;
 			sourceTree = "<group>";

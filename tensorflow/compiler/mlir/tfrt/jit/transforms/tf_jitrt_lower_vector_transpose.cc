@@ -16,9 +16,12 @@ limitations under the License.
 #include <algorithm>
 #include <iterator>
 #include <memory>
+#include <utility>
 
 #include "mlir/Dialect/Func/IR/FuncOps.h"
-#include "mlir/Dialect/Linalg/Transforms/CodegenStrategy.h"
+#include "mlir/Dialect/Vector/Transforms/VectorRewritePatterns.h"
+#include "mlir/Dialect/X86Vector/Transforms.h"
+#include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 #include "mlir/Dialect/Utils/StructuredOpsUtils.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tfrt/jit/transforms/tf_jitrt_passes.h"
 
@@ -28,27 +31,27 @@ namespace {
 #define GEN_PASS_DEF_LOWERTRANSPOSE
 #include "tensorflow/compiler/mlir/tfrt/jit/transforms/tf_jitrt_passes.h.inc"
 
-using mlir::linalg::CodegenStrategy;
-
 struct LowerTransposePass
     : public impl::LowerTransposeBase<LowerTransposePass> {
   void runOnOperation() override {
-    mlir::OpPassManager dynamic_pm("func.func");
     auto avx_lowering_options =
         mlir::x86vector::avx2::LoweringOptions().setTransposeOptions(
             mlir::x86vector::avx2::TransposeLoweringOptions()
                 .lower4x8xf32()
                 .lower8x8xf32());
 
-    CodegenStrategy strategy;
-    strategy.vectorLowering(mlir::linalg::LinalgVectorLoweringOptions()
-                                .enableShapeCastLowering(false)
-                                .enableVectorTransposeLowering()
-                                .enableAVX2Lowering()
-                                .setAVX2LoweringOptions(avx_lowering_options));
+    mlir::func::FuncOp funcOp = getOperation();
+    mlir::MLIRContext *context = funcOp.getContext();
+    mlir::RewritePatternSet patterns(context);
+    mlir::vector::VectorTransformsOptions vectorTransformOptions;
+    vectorTransformOptions = vectorTransformOptions.setVectorTransposeLowering(
+        mlir::vector::VectorTransposeLowering::EltWise);
+    mlir::vector::populateVectorTransposeLoweringPatterns(
+        patterns, vectorTransformOptions);
+    mlir::x86vector::avx2::populateSpecializedTransposeLoweringPatterns(
+        patterns, avx_lowering_options, /*benefit=*/10);
 
-    strategy.configurePassPipeline(dynamic_pm, &getContext());
-    if (failed(runPipeline(dynamic_pm, getOperation()))) {
+    if (failed(applyPatternsAndFoldGreedily(funcOp, std::move(patterns)))) {
       return signalPassFailure();
     }
   }

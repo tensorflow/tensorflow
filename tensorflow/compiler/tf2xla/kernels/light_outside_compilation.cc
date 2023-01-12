@@ -21,6 +21,7 @@ limitations under the License.
 #include <numeric>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "absl/types/span.h"
 #include "tensorflow/compiler/tf2xla/kernels/callback.pb.h"
@@ -47,6 +48,7 @@ limitations under the License.
 #include "tensorflow/core/framework/shape_inference.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.pb.h"
+#include "tensorflow/tsl/framework/device_id.h"
 
 namespace tensorflow {
 
@@ -291,7 +293,7 @@ class TfCallbackDevice : public DeviceBase {
       : DeviceBase(Env::Default()),
         stream_(stream),
         gpu_allocator_(GPUProcessState::singleton()->GetGPUAllocator(
-            TfDeviceId{stream_->parent()->device_ordinal()})),
+            tsl::TfDeviceId{stream_->parent()->device_ordinal()})),
         cpu_allocator_(
             ProcessState::singleton()->GetCPUAllocator(/*numa_node=*/0)) {
     for (int i = 0; i < callback_data.outputs_size(); ++i) {
@@ -327,7 +329,7 @@ class TfCallbackDevice : public DeviceBase {
     concrete_device->Reinitialize(
         context, gpu_stream,
         /*platform_device_id=*/
-        PlatformDeviceId(stream_->parent()->device_ordinal()), allocator,
+        tsl::PlatformDeviceId(stream_->parent()->device_ordinal()), allocator,
         // TODO(cheshire): Pass meaningful scratch
         // buffer.
         /*scratch=*/nullptr);
@@ -346,7 +348,12 @@ class TfCallbackDevice : public DeviceBase {
     if (attr.on_host()) {
       if (attr.gpu_compatible()) {
         GPUProcessState* ps = GPUProcessState::singleton();
-        return ps->GetGpuHostAllocator(0);
+        // TODO(jlebar): The very first call to GetGpuHostAllocator sets its
+        // memory limits.  So passing {} for the options here means that if
+        // nobody gets this allocator before us, we will not respect any limits
+        // the user might have set on host memory allocation.  Our call to
+        // GetGPUAllocator in the constructor has the same problem.
+        return ps->GetGpuHostAllocator(/*options=*/{}, 0);
       } else {
         return cpu_allocator_;
       }

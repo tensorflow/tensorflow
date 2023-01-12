@@ -3,6 +3,7 @@
 load("//tensorflow:tensorflow.bzl", "if_mobile", "if_not_mobile", "tf_cc_test", "tf_copts")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     # The public targets are marked public individually
     default_visibility = ["//tensorflow:__subpackages__"],
     licenses = ["notice"],
@@ -18,7 +19,6 @@ filegroup(
         "tf_op_shim.h",
         "tf_tensor_view.h",
     ],
-    # copybara:uncomment compatible_with = ["//buildenv/target:gce"],
     visibility = ["//tensorflow/core:__pkg__"],
 )
 
@@ -110,7 +110,7 @@ cc_library(
         ":tensor_view",
         "//tensorflow/lite:string_util",
         "//tensorflow/lite:type_to_tflitetype",
-        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/c:common",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
@@ -138,7 +138,9 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":shape",
+        ":status_macros",
         ":tensor_view",
+        "//tensorflow/core:protos_all_cc",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
@@ -183,7 +185,7 @@ cc_library(
         ":tensor_view",
         ":tflite_tensor_view",
         "//tensorflow/lite:mutable_op_resolver",
-        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/kernels:kernel_util",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
@@ -207,7 +209,7 @@ cc_library(
         "//tensorflow/core:tflite_portable_logging",
         "//tensorflow/lite:string_util",
         "//tensorflow/lite:type_to_tflitetype",
-        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/kernels/internal:compatibility",
         "@com_google_absl//absl/strings",
     ],

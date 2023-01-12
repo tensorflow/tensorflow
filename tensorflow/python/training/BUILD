@@ -1,11 +1,9 @@
 load("//tensorflow/core/platform:build_config.bzl", "tf_proto_library")
-load("//tensorflow:tensorflow.default.bzl", "tf_py_test")
-load("//tensorflow/tsl/platform/default:distribute.bzl", "distribute_py_test")
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.default.bzl", "cuda_py_test")
+load("//tensorflow:tensorflow.default.bzl", "cuda_py_test", "tf_py_test")
+load("//tensorflow/core/platform:distribute.bzl", "distribute_py_test")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//tensorflow:internal"],
     licenses = ["notice"],
 )
@@ -110,6 +108,7 @@ py_library(
         "//tensorflow/python:learning_rate_decay",
         "//tensorflow/python:sdca_ops",
         "//tensorflow/python/checkpoint:checkpoint_management",
+        "//tensorflow/python/checkpoint:checkpoint_view",
         "//tensorflow/python/trackable:base_delegate",
         "//tensorflow/python/training/experimental:loss_scale_optimizer",
         "//tensorflow/python/training/experimental:mixed_precision",
@@ -123,7 +122,7 @@ py_library(
     srcs_version = "PY3",
     deps = [
         ":training_lib",
-        "//tensorflow/python/checkpoint",
+        "//tensorflow/python/checkpoint:checkpoint_core",
         "//tensorflow/python/trackable:base",
         "//tensorflow/python/trackable:python_state",
         "//tensorflow/python/training/tracking:base",

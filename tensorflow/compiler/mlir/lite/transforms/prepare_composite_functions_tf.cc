@@ -50,7 +50,7 @@ limitations under the License.
 namespace mlir {
 namespace TFL {
 namespace {
-#define GEN_PASS_CLASSES
+#define GEN_PASS_DEF_PREPARECOMPOSITEFUNCTIONSPASS
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h.inc"
 
 constexpr char kTFAPIImplements[] = "tf.api_implements";
@@ -156,7 +156,8 @@ class ConvertEmbeddedLookupFunc {
 };
 
 class PrepareCompositeFunctionsPass
-    : public PrepareCompositeFunctionsPassBase<PrepareCompositeFunctionsPass> {
+    : public impl::PrepareCompositeFunctionsPassBase<
+          PrepareCompositeFunctionsPass> {
   void getDependentDialects(DialectRegistry& registry) const override {
     registry.insert<TFL::TensorFlowLiteDialect>();
   }

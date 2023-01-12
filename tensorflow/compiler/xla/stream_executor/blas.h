@@ -45,10 +45,10 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/stream_executor/data_type.h"
 #include "tensorflow/compiler/xla/stream_executor/device_memory.h"
-#include "tensorflow/compiler/xla/stream_executor/dnn.pb.h"
 #include "tensorflow/compiler/xla/stream_executor/lib/array_slice.h"
 #include "tensorflow/compiler/xla/stream_executor/lib/statusor.h"
 #include "tensorflow/compiler/xla/stream_executor/platform/port.h"
+#include "tensorflow/tsl/protobuf/dnn.pb.h"
 
 namespace Eigen {
 struct half;
@@ -185,20 +185,6 @@ class AlgorithmConfig {
 // Opaque identifier specifying the precision to use in gemm calls.
 typedef int64_t ComputePrecision;
 constexpr ComputePrecision kDefaultComputePrecision = 0;
-
-// This struct contains the metadata of a matrix, e.g., its base address and
-// dimensions.
-struct MatrixDescriptor {
-  DeviceMemoryBase data;
-  int64_t leading_dim_stride;
-  int64_t batch_stride;
-  Transpose transpose;
-
-  template <typename T>
-  DeviceMemory<T> cast() const {
-    return DeviceMemory<T>(data);
-  }
-};
 
 // BLAS support interface -- this can be derived from a GPU executor when the
 // underlying platform has an BLAS library implementation available. See
@@ -433,6 +419,18 @@ class BlasSupport {
       const port::ArraySlice<DeviceMemory<Eigen::half> *> &b,  // non-absl ok
       int ldb, float beta,
       const port::ArraySlice<DeviceMemory<Eigen::half> *> &c,  // non-absl ok
+      int ldc, int batch_count, ScratchAllocator *scratch_allocator) = 0;
+  virtual bool DoBlasGemmBatched(
+      Stream *stream, blas::Transpose transa, blas::Transpose transb,
+      uint64_t m, uint64_t n, uint64 k, float alpha,
+      const port::ArraySlice<DeviceMemory<Eigen::bfloat16> *>  // non-absl ok
+          &a,
+      int lda,
+      const port::ArraySlice<DeviceMemory<Eigen::bfloat16> *>  // non-absl ok
+          &b,
+      int ldb, float beta,
+      const port::ArraySlice<DeviceMemory<Eigen::bfloat16> *>  // non-absl ok
+          &c,
       int ldc, int batch_count, ScratchAllocator *scratch_allocator) = 0;
   virtual bool DoBlasGemmBatched(
       Stream *stream, blas::Transpose transa, blas::Transpose transb,
@@ -700,6 +698,13 @@ class BlasSupport {
       const DeviceMemorySlice<Eigen::half> &a, int lda,                        \
       const DeviceMemorySlice<Eigen::half> &b, int ldb, float beta,            \
       const DeviceMemorySlice<Eigen::half> &c, int ldc, int batch_count,       \
+      ScratchAllocator *scratch_allocator) override;                           \
+  bool DoBlasGemmBatched(                                                      \
+      Stream *stream, blas::Transpose transa, blas::Transpose transb,          \
+      uint64_t m, uint64 n, uint64 k, float alpha,                             \
+      const DeviceMemorySlice<Eigen::bfloat16> &a, int lda,                    \
+      const DeviceMemorySlice<Eigen::bfloat16> &b, int ldb, float beta,        \
+      const DeviceMemorySlice<Eigen::bfloat16> &c, int ldc, int batch_count,   \
       ScratchAllocator *scratch_allocator) override;                           \
   bool DoBlasGemmBatched(                                                      \
       Stream *stream, blas::Transpose transa, blas::Transpose transb,          \

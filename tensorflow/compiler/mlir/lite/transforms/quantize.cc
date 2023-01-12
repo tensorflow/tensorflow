@@ -50,24 +50,24 @@ namespace TFL {
 
 //===----------------------------------------------------------------------===//
 // The actual Quantize Pass.
-//
+//===----------------------------------------------------------------------===//
 namespace {
-#define GEN_PASS_CLASSES
+#define GEN_PASS_DEF_QUANTIZEPASS
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h.inc"
 
 enum QuantizationTrait { kFullQuantization, kDynamicRangeQuantization };
 
 // Base struct for quantization.
-template <QuantizationTrait quantization_trait, typename ConcretTy,
-          typename RootOp = DequantizeOp>
+template <QuantizationTrait quantization_trait, typename ConcreteT,
+          typename RootOpT = DequantizeOp>
 struct TFLQuantizationBase
-    : public quant::QuantizationPattern<ConcretTy, QuantizeOp, DequantizeOp,
-                                        NumericVerifyOp, RootOp> {
+    : public quant::QuantizationPattern<ConcreteT, QuantizeOp, DequantizeOp,
+                                        NumericVerifyOp, RootOpT> {
   explicit TFLQuantizationBase(MLIRContext* ctx,
                                const quant::QuantPassSpec& quant_params)
-      : quant::QuantizationPattern<ConcretTy, QuantizeOp, DequantizeOp,
-                                   NumericVerifyOp, RootOp>(ctx, quant_params) {
-  }
+      : quant::QuantizationPattern<ConcreteT, QuantizeOp, DequantizeOp,
+                                   NumericVerifyOp, RootOpT>(ctx,
+                                                             quant_params) {}
 
   static bool IsQuantizableCustomOp(Operation* op,
                                     const quant::CustomOpMap& custom_op_map) {
@@ -77,11 +77,11 @@ struct TFLQuantizationBase
     // behaviors. In that case, these ops can be marked in the custom map and
     // treated separately in this pass.
 
-    auto custom_op = llvm::dyn_cast_or_null<TFL::CustomOp>(op);
+    auto custom_op = llvm::dyn_cast_or_null<CustomOp>(op);
     if (!custom_op) return false;
 
     // Custom op which is marked in the custom op map is quantizable.
-    std::string op_name = custom_op.custom_code().str();
+    std::string op_name = custom_op.getCustomCode().str();
     return (custom_op_map.find(op_name) == custom_op_map.end()) ? false : true;
   }
 
@@ -89,7 +89,6 @@ struct TFLQuantizationBase
       Operation* quantized_op, const quant::CustomOpMap& custom_op_map) {
     // Collect the input if dynamic range quantization is on and the op supports
     // it.
-
     return quantization_trait == kDynamicRangeQuantization &&
            (dyn_cast_or_null<DynamicRangeQuantizedOpInterface>(quantized_op) ||
             IsQuantizableCustomOp(quantized_op, custom_op_map));
@@ -99,7 +98,6 @@ struct TFLQuantizationBase
       Operation* quantized_op, const quant::CustomOpMap& custom_op_map) {
     // Collect the output if dynamic range quantization is on and the op
     // supports it.
-
     return quantization_trait == kDynamicRangeQuantization &&
            (dyn_cast_or_null<DynamicRangeQuantizedOpInterface>(quantized_op) ||
             IsQuantizableCustomOp(quantized_op, custom_op_map));
@@ -113,7 +111,7 @@ struct TFLQuantizationBase
     bool is_blocklisted = false;
 
     if (auto custom_op = dyn_cast_or_null<CustomOp>(quantized_op)) {
-      std::string custom_op_name = custom_op.custom_code().str();
+      std::string custom_op_name = custom_op.getCustomCode().str();
       auto custom_map_iter = custom_op_map.find(custom_op_name);
 
       is_blocklisted =
@@ -178,8 +176,8 @@ class QuantizeConstPattern : public OpRewritePattern<QuantizeOp> {
   LogicalResult matchAndRewrite(QuantizeOp op,
                                 PatternRewriter& rewriter) const override {
     DenseFPElementsAttr attr;
-    if (matchPattern(op.input(), m_Constant(&attr))) {
-      auto qtype = op.qtypeAttr();
+    if (matchPattern(op.getInput(), m_Constant(&attr))) {
+      auto qtype = op.getQtypeAttr();
       Attribute quantized_attr;
       if (legacy_float_scale_) {
         quantized_attr = quant::QuantizeLegacy(attr, qtype.getValue());
@@ -199,7 +197,7 @@ class QuantizeConstPattern : public OpRewritePattern<QuantizeOp> {
 };
 
 // Applies quantization on the model in TFL dialect.
-struct QuantizePass : public QuantizePassBase<QuantizePass> {
+struct QuantizePass : public impl::QuantizePassBase<QuantizePass> {
  public:
   MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(QuantizePass)
 
@@ -254,7 +252,7 @@ void QuantizePass::runOnOperation() {
        quant_specs.whole_model_verify, enable_log_if_failed_},
       quant_specs};
 
-  TFL::populateWithGenerated(patterns);
+  populateWithGenerated(patterns);
 
   if (quant_specs.weight_quantization || quant_specs.use_fake_quant_num_bits) {
     patterns.add<TFLDynamicRangeQuantization>(ctx, quant_params);

@@ -115,6 +115,9 @@ std::unique_ptr<OperationPass<func::FuncOp>> CreatePostQuantizePass();
 std::unique_ptr<OperationPass<func::FuncOp>> CreatePostQuantizePass(
     bool emit_quant_adaptor_ops, const quant::CustomOpMap& custom_op_map = {});
 
+// Creates an instance of the TensorFlow Lite dialect QuantizeVariables pass.
+std::unique_ptr<OperationPass<ModuleOp>> CreatePrepareQuantizeVariablesPass();
+
 // Creates an instance of the TensorFlow Lite pass that decomposes hybrid
 // quantization patterns to the same dense operation with tfl dequantization
 // and quantization patterns.
@@ -223,6 +226,19 @@ std::unique_ptr<OperationPass<func::FuncOp>> CreatePinOpsWithSideEffectsPass();
 std::unique_ptr<OperationPass<func::FuncOp>>
 CreatePartitionedTopologicalSortPass();
 
+#define GEN_PASS_DECL_DEFAULTQUANTPARAMSPASS
+#define GEN_PASS_DECL_DENSETOSPARSEPASS
+#define GEN_PASS_DECL_LEGALIZETFPASS
+#define GEN_PASS_DECL_MODIFYIONODESPASS
+#define GEN_PASS_DECL_OPTIMIZEPASS
+#define GEN_PASS_DECL_POSTQUANTIZEPASS
+#define GEN_PASS_DECL_PREPARECOMPOSITEFUNCTIONSPASS
+#define GEN_PASS_DECL_PREPAREDYNAMICRANGEQUANTIZEPASS
+#define GEN_PASS_DECL_PREPAREQUANTIZEPASS
+#define GEN_PASS_DECL_PREPARETFPASS
+#define GEN_PASS_DECL_QUANTIZEPASS
+#define GEN_PASS_DECL_RAISECUSTOMOPSPASS
+#define GEN_PASS_DECL_TRIMFUNCTIONSPASS
 #define GEN_PASS_REGISTRATION
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h.inc"
 }  // namespace TFL

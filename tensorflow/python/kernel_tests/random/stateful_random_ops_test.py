@@ -41,10 +41,7 @@ from tensorflow.python.platform import test
 g_seeded = None
 g_unseeded = None
 
-
-GPU_FLOATS = [dtypes.float16, dtypes.float32, dtypes.float64]
-CPU_FLOATS = GPU_FLOATS + [dtypes.bfloat16]
-FLOATS = GPU_FLOATS
+FLOATS = [dtypes.bfloat16, dtypes.float16, dtypes.float32, dtypes.float64]
 INTS = [dtypes.int32, dtypes.int64]
 
 
@@ -493,7 +490,7 @@ class StatefulRandomOpsTest(test.TestCase, parameterized.TestCase):
 
     The CPU version.
     """
-    self._sameAsOldRandomOps("/device:CPU:0", CPU_FLOATS)
+    self._sameAsOldRandomOps("/device:CPU:0", FLOATS)
 
   @test_util.run_v2_only
   @test_util.run_cuda_only
@@ -502,7 +499,11 @@ class StatefulRandomOpsTest(test.TestCase, parameterized.TestCase):
 
     The GPU version.
     """
-    self._sameAsOldRandomOps(test_util.gpu_device_name(), GPU_FLOATS)
+    floats = [dtypes.float16, dtypes.float32, dtypes.float64]
+    if test_util.is_gpu_available(
+        cuda_only=True, min_cuda_compute_capability=(8, 0)):
+      floats += [dtypes.bfloat16]
+    self._sameAsOldRandomOps(test_util.gpu_device_name(), floats)
 
   @parameterized.parameters(INTS + [dtypes.uint32, dtypes.uint64])
   @test_util.run_v2_only
@@ -522,6 +523,9 @@ class StatefulRandomOpsTest(test.TestCase, parameterized.TestCase):
   @parameterized.parameters(FLOATS + INTS)
   @test_util.run_v2_only
   def testUniformIsInRange(self, dtype):
+    if dtype == dtypes.bfloat16 and not test_util.is_gpu_available(
+        cuda_only=True, min_cuda_compute_capability=(8, 0)):
+      self.skipTest("Bfloat16 requires compute capability 8.0")
     minval = 2
     maxval = 33
     size = 1000
@@ -534,6 +538,9 @@ class StatefulRandomOpsTest(test.TestCase, parameterized.TestCase):
   @parameterized.parameters(FLOATS)
   @test_util.run_v2_only
   def testNormalIsFinite(self, dtype):
+    if dtype == dtypes.bfloat16 and not test_util.is_gpu_available(
+        cuda_only=True, min_cuda_compute_capability=(8, 0)):
+      self.skipTest("Bfloat16 requires compute capability 8.0")
     gen = random.Generator.from_seed(1234)
     x = gen.normal(shape=[10000], dtype=dtype).numpy()
     self.assertTrue(np.all(np.isfinite(x)))
@@ -542,8 +549,11 @@ class StatefulRandomOpsTest(test.TestCase, parameterized.TestCase):
   @test_util.run_v2_only
   def testDistributionOfUniform(self, dtype):
     """Use Pearson's Chi-squared test to test for uniformity."""
+    if dtype == dtypes.bfloat16 and not test_util.is_gpu_available(
+        cuda_only=True, min_cuda_compute_capability=(8, 0)):
+      self.skipTest("Bfloat16 requires compute capability 8.0")
     n = 1000
-    seed = 12
+    seed = 123
     gen = random.Generator.from_seed(seed)
     maxval = 1
     if dtype.is_integer:
@@ -563,6 +573,9 @@ class StatefulRandomOpsTest(test.TestCase, parameterized.TestCase):
   @test_util.run_v2_only
   def testDistributionOfNormal(self, dtype):
     """Use Anderson-Darling test to test distribution appears normal."""
+    if dtype == dtypes.bfloat16 and not test_util.is_gpu_available(
+        cuda_only=True, min_cuda_compute_capability=(8, 0)):
+      self.skipTest("Bfloat16 requires compute capability 8.0")
     n = 1000
     gen = random.Generator.from_seed(1234)
     x = gen.normal(shape=[n], dtype=dtype).numpy()

@@ -148,6 +148,26 @@ find_package(gemmlowp REQUIRED)
 find_package(NEON_2_SSE REQUIRED)
 find_package(cpuinfo REQUIRED)  #CPUINFO is used by XNNPACK and RUY library
 find_package(ruy REQUIRED)
+# Download necessary dependencies.
+# Download pthreadpool source package if it doesn't exist.
+if(NOT DEFINED PTHREADPOOL_SOURCE_DIR)
+    message(STATUS "Downloading pthreadpool to ${CMAKE_BINARY_DIR}/pthreadpool-source (define PTHREADPOOL_SOURCE_DIR to avoid it)")
+    configure_file(cmake/DownloadPThreadPool.cmake "${CMAKE_BINARY_DIR}/pthreadpool-download/CMakeLists.txt")
+    execute_process(COMMAND "${CMAKE_COMMAND}" -G "${CMAKE_GENERATOR}" .
+      WORKING_DIRECTORY "${CMAKE_BINARY_DIR}/pthreadpool-download")
+    execute_process(COMMAND "${CMAKE_COMMAND}" --build .
+      WORKING_DIRECTORY "${CMAKE_BINARY_DIR}/pthreadpool-download")
+    set(PTHREADPOOL_SOURCE_DIR "${CMAKE_BINARY_DIR}/pthreadpool-source" CACHE STRING "pthreadpool source directory")
+endif()
+# Configure pthreadpool
+if(NOT TARGET pthreadpool)
+  set(PTHREADPOOL_BUILD_TESTS OFF CACHE BOOL "")
+  set(PTHREADPOOL_BUILD_BENCHMARKS OFF CACHE BOOL "")
+  set(PTHREADPOOL_ALLOW_DEPRECATED_API OFF CACHE BOOL "")
+  add_subdirectory(
+    "${PTHREADPOOL_SOURCE_DIR}"
+    "${CMAKE_BINARY_DIR}/pthreadpool")
+endif()
 set(TF_TARGET_PRIVATE_OPTIONS "")
 if(CMAKE_CXX_COMPILER_ID MATCHES "Clang$")
   # TensorFlow uses a heap of deprecated proto fields so surpress these
@@ -209,6 +229,9 @@ list(FILTER TFLITE_SRCS EXCLUDE REGEX ".*tflite_with_xnnpack\\.cc$")
 # Exclude Flex related files.
 list(FILTER TFLITE_SRCS EXCLUDE REGEX ".*with_selected_ops\\.cc$")
 
+# Exclude tensorflow_profiler_logger files.
+list(FILTER TFLITE_SRCS EXCLUDE REGEX ".*tensorflow_profiler_logger\\.cc$")
+
 if(_TFLITE_ENABLE_MMAP)
   list(FILTER TFLITE_SRCS EXCLUDE REGEX ".*mmap_allocation_disabled\\.cc$")
 else()
@@ -222,6 +245,10 @@ if(NOT "${CMAKE_SYSTEM_NAME}" STREQUAL "iOS")
 endif()
 populate_tflite_source_vars("core" TFLITE_CORE_SRCS)
 populate_tflite_source_vars("core/api" TFLITE_CORE_API_SRCS)
+populate_tflite_source_vars("core/c" TFLITE_CORE_C_SRCS)
+populate_tflite_source_vars("core/experimental/acceleration/configuration" TFLITE_CORE_EXPERIMENTAL_SRCS)
+populate_tflite_source_vars("core/kernels" TFLITE_CORE_KERNELS_SRCS)
+populate_tflite_source_vars("core/tools" TFLITE_CORE_TOOLS_SRCS)
 populate_tflite_source_vars("c" TFLITE_C_SRCS)
 populate_tflite_source_vars("delegates" TFLITE_DELEGATES_SRCS)
 if(TFLITE_ENABLE_GPU)
@@ -366,7 +393,7 @@ if(TFLITE_ENABLE_GPU)
      target_link_libraries(${lib_name})
    endforeach()
 endif()
-  list(APPEND TFLITE_TARGET_PUBLIC_OPTIONS "-DCL_DELEGATE_NO_GL" "-DEGL_NO_X11")
+  list(APPEND TFLITE_TARGET_PUBLIC_OPTIONS "-DCL_DELEGATE_NO_GL" "-DEGL_NO_X11" "-DEIGEN_NEON_GEBP_NR=4")
   list(APPEND TFLITE_TARGET_DEPENDENCIES
     absl::any
     absl::flat_hash_map
@@ -415,6 +442,10 @@ if(TFLITE_ENABLE_EXTERNAL_DELEGATE)
     FILTER ".*(_test|_tester)\\.(cc|h)"
   )
 endif()
+populate_tflite_source_vars("experimental/remat"
+  TFLITE_EXPERIMENTAL_REMAT_SRCS
+  FILTER ".*_test\\.(cc|h)$"
+)
 if (TFLITE_ENABLE_RESOURCE)
   populate_tflite_source_vars("experimental/resource"
     TFLITE_EXPERIMENTAL_RESOURCE_SRCS
@@ -461,6 +492,7 @@ set(TFLITE_PROFILER_SRCS
   ${TFLITE_SOURCE_DIR}/profiling/platform_profiler.cc
   ${TFLITE_SOURCE_DIR}/profiling/root_profiler.h
   ${TFLITE_SOURCE_DIR}/profiling/root_profiler.cc
+  ${TFLITE_SOURCE_DIR}/profiling/telemetry/profiler.cc
 )
 if(CMAKE_SYSTEM_NAME MATCHES "Android")
   list(APPEND TFLITE_PROFILER_SRCS
@@ -476,7 +508,11 @@ endif()
 # TFLite library
 set(_ALL_TFLITE_SRCS
   ${TFLITE_CORE_API_SRCS}
+  ${TFLITE_CORE_C_SRCS}
+  ${TFLITE_CORE_EXPERIMENTAL_SRCS}
+  ${TFLITE_CORE_KERNELS_SRCS}
   ${TFLITE_CORE_SRCS}
+  ${TFLITE_CORE_TOOLS_SRCS}
   ${TFLITE_C_SRCS}
   ${TFLITE_DELEGATES_FLEX_SRCS}
   ${TFLITE_DELEGATES_GPU_SRCS}
@@ -484,6 +520,7 @@ set(_ALL_TFLITE_SRCS
   ${TFLITE_DELEGATES_SRCS}
   ${TFLITE_DELEGATES_XNNPACK_SRCS}
   ${TFLITE_DELEGATES_EXTERNAL_SRCS}
+  ${TFLITE_EXPERIMENTAL_REMAT_SRCS}
   ${TFLITE_EXPERIMENTAL_RESOURCE_SRCS}
   ${TFLITE_EXPERIMENTAL_RUY_PROFILER_SRCS}
   ${TFLITE_EXPERIMENTAL_RUY_SRCS}
@@ -526,6 +563,7 @@ target_link_libraries(tensorflow-lite
     flatbuffers::flatbuffers
     gemmlowp
     ruy::ruy
+    pthreadpool
     ${CMAKE_DL_LIBS}
     ${TFLITE_TARGET_DEPENDENCIES}
 )

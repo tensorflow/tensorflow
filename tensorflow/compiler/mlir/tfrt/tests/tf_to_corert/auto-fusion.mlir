@@ -1,4 +1,4 @@
-// RUN: tf-tfrt-opt -tf-executor-to-tfrt-pipeline="enable-native-ops=false auto-fusion-oplist=tf.Rsqrt,tf.Tanh auto-fusion-min-cluster-size=1" -split-input-file %s \
+// RUN: tf-tfrt-opt -tf-executor-to-tfrt-pipeline="auto-fusion-oplist=tf.Rsqrt,tf.Tanh auto-fusion-min-cluster-size=1" -split-input-file %s \
 // RUN: | FileCheck %s --dump-input=always
 
 // CHECK-LABEL: func @single_op_cluster

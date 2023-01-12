@@ -340,7 +340,7 @@ class OptimizationOptions(options_lib.OptionsBase):
       docstring=
       "Whether to inject prefetch transformation as the last transformation "
       "when the last transformation is a synchronous transformation. If None, "
-      "defaults to False.")
+      "defaults to True.")
 
   map_and_batch_fusion = options_lib.create_option(
       name="map_and_batch_fusion",
@@ -571,6 +571,17 @@ class Options(options_lib.OptionsBase):
       "frequency is determined by the number of devices attached to this "
       "input pipeline. If None, defaults to False.")
 
+  experimental_symbolic_checkpoint = options_lib.create_option(
+      name="experimental_symbolic_checkpoint",
+      ty=bool,
+      docstring="Whether to checkpoint internal input pipeline state "
+      "maintaining cursors into data sources that identify last "
+      "element(s) produced as output to the tf.data consumer. This "
+      "is alternative to the default 'explicit' checkpointing which "
+      "stores the internal input pipeline state in the checkpoint. "
+      "Note that symbolic checkpointing is not supported for "
+      "transformations that can reorder elements.")
+
   experimental_threading = options_lib.create_option(
       name="experimental_threading",
       ty=ThreadingOptions,
@@ -622,6 +633,8 @@ class Options(options_lib.OptionsBase):
     pb.optimization_options.CopyFrom(self.experimental_optimization._to_proto())  # pylint: disable=protected-access
     if self.experimental_slack is not None:
       pb.slack = self.experimental_slack
+    if self.experimental_symbolic_checkpoint is not None:
+      pb.symbolic_checkpoint = self.experimental_symbolic_checkpoint
     pb.threading_options.CopyFrom(self.threading._to_proto())  # pylint: disable=protected-access
     return pb
 
@@ -637,6 +650,8 @@ class Options(options_lib.OptionsBase):
     self.experimental_optimization._from_proto(pb.optimization_options)  # pylint: disable=protected-access
     if pb.WhichOneof("optional_slack") is not None:
       self.experimental_slack = pb.slack
+    if pb.WhichOneof("optional_symbolic_checkpoint") is not None:
+      self.experimental_symbolic_checkpoint = pb.symbolic_checkpoint
     self.threading._from_proto(pb.threading_options)  # pylint: disable=protected-access
 
   def _set_mutable(self, mutable):

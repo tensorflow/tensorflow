@@ -40,6 +40,9 @@ std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
 CreateDTensorUndoMergeConstAcrossMesh();
 
 std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
+CreateDTensorElideIdentityBeforeCopyToMesh();
+
+std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
 CreateDTensorConstantFolding();
 
 std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
@@ -134,6 +137,9 @@ CreateDTensorSparseExpansion();
 
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
 CreateDTensorInferShapesForRestoreV2Op();
+
+std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
+CreateDTensorXlaSpmdIntegration();
 
 // Generate the code for registering passes.
 #define GEN_PASS_REGISTRATION

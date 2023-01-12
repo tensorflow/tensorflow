@@ -111,8 +111,7 @@ message DebugOptions {
   // Enable XLA Runtime in the CPU backend.
   bool xla_cpu_use_xla_runtime = 177;
 
-  // Maximum kernel unroll factor for the GPU backend.
-  int32 xla_gpu_max_kernel_unroll_factor = 98;
+  reserved 98;  // Was xla_gpu_max_kernel_unroll_factor
 
   // When true, "unsafe" mathematical optimizations are enabled. These
   // transformations include but are not limited to:
@@ -212,6 +211,10 @@ message DebugOptions {
   // If true, use MLIR instead of IR emitter to generate device code for
   // supported lmhlo.fusion ops. See xla::gpu::RewriteFusionOps() for details.
   bool xla_gpu_enable_mlir_lowering = 173;
+
+  // If true, generate softmax fusion nodes which are used in the MLIR lowering
+  // to generate device code for softmax.
+  bool xla_gpu_enable_softmax_fusion = 179;
 
   // Enable fast math with eigen in the HLO evaluator.
   bool xla_hlo_evaluator_use_fast_path = 106;
@@ -356,6 +359,9 @@ message DebugOptions {
   // Convert synchronous all-reduces ops into asynchronous.
   bool xla_gpu_enable_async_all_reduce = 152;
 
+  // Convert synchronous collective-permute ops into asynchronous.
+  bool xla_gpu_enable_async_collective_permute = 183;
+
   // Size threshold (in bytes) for the GPU all-reduce combiner.
   int64 xla_gpu_all_reduce_combine_threshold_bytes = 157;
 
@@ -401,6 +407,9 @@ message DebugOptions {
   // Whether to use cuBLASLt for GEMMs on GPUs.
   bool xla_gpu_enable_cublaslt = 166;
 
+  // Whether XLA is allowed to use CUDA Graphs.
+  bool xla_gpu_enable_cuda_graphs = 180;
+
   // Size threshold (in megabytes) for the GPU redzone scratch allocator.
   int64 xla_gpu_redzone_scratch_max_megabytes = 167;
 
@@ -424,7 +433,13 @@ message DebugOptions {
   // (much) faster on our hardware.  Set this flag to disable this behavior.
   bool xla_cpu_strict_dot_conv_math = 175;
 
-  // Next id: 179
+  // An option to enable using cuDNN runtime compiled fusion kernels which is
+  // available and recommended for Ampere+ GPUs.
+  bool xla_gpu_use_runtime_fusion = 181;
+
+  bool xla_dump_latency_hiding_schedule = 182;
+
+  // Next id: 184
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.
@@ -435,6 +450,12 @@ message DebugOptions {
   // xla_gpu_unsafe_fallback_to_driver_on_ptxas_error,
   // xla_gpu_simplify_scatters, xla_gpu_simplify_gathers
   reserved 5, 117, 133, 139, 176, 178;
+}
+
+message ShardableValueUpdatePairProto {
+  int64 input_parameter_number = 1;
+  repeated int64 parameter_shape_index = 2;
+  repeated int64 output_shape_index = 3;
 }
 
 // These settings control how XLA compiles and/or runs code.  Not all settings
@@ -510,6 +531,77 @@ message ExecutionOptions {
   // sharding of operations when multiple computation would be chained and
   // merged together.
   bool allow_spmd_sharding_propagation_to_output = 14;
+
+  // Whether to broadcast args across all replicas. One entry per arg.
+  repeated bool param_requires_broadcast_via_collectives = 18;
+
+  // If enabled, the compiler may generate sharding and unsharding programs as
+  // separate HLO modules, and modify the main program's input and output to
+  // be sharded.
+  bool allow_separate_sharding_programs = 19;
+
+  // The list of input/output pairs in the main program that could be sharded.
+  repeated ShardableValueUpdatePairProto shardable_value_update_pairs = 20;
+}
+
+// Serialization of HloModuleConfig. See the C++ class definition for
+// descriptions of each field.
+// There are no guarantees of backwards or forwards compatibility.
+message HloModuleConfigProto {
+  enum FusionConfigCollection {
+    OFF = 0;       // Do not collect configuration.
+    PER_EDGE = 1;  // Collect per-edge configuration.
+    PER_NODE = 2;  // Collect per-node configuration.
+  }
+
+  message BoolList {
+    repeated bool vals = 1;
+  }
+  message Int64List {
+    repeated int64 vals = 1;
+  }
+  message Int64ListList {
+    repeated Int64List lists = 1;
+  }
+
+  xla.ProgramShapeProto entry_computation_layout = 1;
+  uint64 seed = 2;
+  int32 launch_id = 3;
+  int64 replica_count = 4;
+  int64 num_partitions = 5;
+  repeated bool param_requires_broadcast_via_collectives = 6;
+  bool use_spmd_partitioning = 7;
+  bool use_auto_spmd_partitioning = 8;
+  repeated int64 auto_spmd_partitioning_mesh_shape = 9;
+  repeated int64 auto_spmd_partitioning_mesh_ids = 10;
+  bool deduplicate_hlo = 11;
+  int64 intra_op_parallelism_threads = 12;
+  string device_type = 13;
+
+  DebugOptions debug_options = 14;
+  DeviceAssignmentProto static_device_assignment = 15;
+  bool allow_separate_sharding_programs = 30;
+  repeated ShardableValueUpdatePairProto shardable_value_update_pairs = 16;
+  bool alias_passthrough_params = 17;
+  bool content_aware_computation_sorting = 18;
+  FusionConfigCollection fusion_config_collection = 19;
+
+  repeated BoolList fusion_config = 20;
+  map<string, Int64List> dot_config = 21;
+  repeated Int64ListList layout_config = 22;
+
+  repeated uint64 memory_space_assignment_config = 23;
+  repeated BoolList phase_ordering_config = 24;
+  int32 phase_index = 25;
+  map<string, string> flag_config = 26;
+  bool allow_spmd_sharding_propagation_to_output = 27;
+  map<string, int64> analysis_allowance_map = 28;
+  xla.PrecisionConfig.Precision matrix_unit_operand_precision = 29;
+}
+
+message HloModuleProtoWithConfig {
+  HloModuleProto hlo_module = 1;
+  HloModuleConfigProto config = 2;
 }
 
 message GetDeviceHandlesRequest {
@@ -711,4 +803,19 @@ message UnpackRequest {
 
 message UnpackResponse {
   repeated GlobalDataHandle tied_data = 1;
+}
+
+// A trace estimated by the Latency Hiding Scheduler.
+message ScheduleProto {
+  message Instruction {
+    // Instruction id (matches the id in HloInstructionProto).
+    int64 id = 1;
+
+    // Start and end timestamps in cycles.
+    double start_timestamp_cycles = 2;
+    double end_timestamp_cycles = 3;
+  }
+  repeated Instruction instructions = 1;
+  // Computation id (matches the id in HloComputationProto).
+  int64 computation_id = 2;
 }

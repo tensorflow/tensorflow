@@ -27,7 +27,6 @@ import numpy as np
 
 from tensorflow.core.framework import function_pb2
 from tensorflow.core.protobuf import config_pb2
-from tensorflow.core.protobuf import coordination_config_pb2
 from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.python import pywrap_tfe
 from tensorflow.python import tf2
@@ -42,6 +41,7 @@ from tensorflow.python.util import is_in_graph_mode
 from tensorflow.python.util import tf_contextlib
 from tensorflow.python.util.deprecation import deprecated
 from tensorflow.python.util.tf_export import tf_export
+from tensorflow.tsl.protobuf import coordination_config_pb2
 
 GRAPH_MODE = 0
 EAGER_MODE = 1
@@ -740,6 +740,7 @@ class Context:
                                      enable_health_check=True,
                                      cluster_register_timeout_in_ms=0,
                                      heartbeat_timeout_in_ms=0,
+                                     shutdown_barrier_timeout_in_ms=0,
                                      coordinated_jobs=None):
     """Enable distributed coordination service with specified configs."""
     if self._context_handle:
@@ -752,11 +753,12 @@ class Context:
     config.enable_health_check = enable_health_check
     config.cluster_register_timeout_in_ms = cluster_register_timeout_in_ms
     config.heartbeat_timeout_in_ms = heartbeat_timeout_in_ms
+    config.shutdown_barrier_timeout_in_ms = shutdown_barrier_timeout_in_ms
     if coordinated_jobs is not None:
       if isinstance(coordinated_jobs, list):
-        config.coordinated_jobs.extend(coordinated_jobs)
+        config.coordinated_job_list.extend(coordinated_jobs)
       else:
-        raise ValueError("`coordinated_jobs` must be a list of job names or "
+        raise ValueError("`coordinated_jobs` must be list[CoordinatedJob] or "
                          "None, but got: %s" % (coordinated_jobs,))
     self._coordination_service_config = config
 
@@ -791,6 +793,35 @@ class Context:
                                           error_message)
     else:
       raise ValueError("Context is not initialized.")
+
+  def get_task_states(self, job_configs):
+    """Get task states from the Coordination Service.
+
+    Args:
+      job_configs: A list of tuples of job name and task number.
+
+    Returns:
+      A list of TF_Status.
+    """
+    if self._context_handle:
+      job_names, task_nums = zip(*job_configs)
+      return pywrap_tfe.TFE_GetTaskStates(self._context_handle, job_names,
+                                          task_nums)
+    else:
+      raise ValueError("Context is not initialized.")
+
+  def wait_at_barrier(self, barrier_id, timeout_in_ms):
+    """Blocks until all coordinated tasks are at the barrier.
+
+    The barrier may fail if it times out or if one of the tasks is unhealthy.
+
+    Args:
+      barrier_id: Unique string identifying the barrier.
+      timeout_in_ms: Duration before the barrier times out and fails.
+    """
+    ensure_initialized()
+    pywrap_tfe.TFE_WaitAtBarrier(self._context_handle, barrier_id,
+                                 timeout_in_ms)
 
   def clear_kernel_cache(self):
     """Clear kernel cache and reset all stateful kernels."""

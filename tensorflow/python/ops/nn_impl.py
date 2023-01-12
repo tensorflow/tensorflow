@@ -109,15 +109,13 @@ def log_poisson_loss(targets, log_input, compute_full_loss=False, name=None):
 
 @tf_export(v1=["nn.sigmoid_cross_entropy_with_logits"])
 @dispatch.add_dispatch_support
-def sigmoid_cross_entropy_with_logits(  # pylint: disable=invalid-name
-    _sentinel=None,
+def sigmoid_cross_entropy_with_logits(
     labels=None,
     logits=None,
     name=None):
   """See sigmoid_cross_entropy_with_logits_v2."""
   # pylint: disable=protected-access
-  nn_ops._ensure_xent_args("sigmoid_cross_entropy_with_logits", _sentinel,
-                           labels, logits)
+  nn_ops._ensure_xent_args("sigmoid_cross_entropy_with_logits", labels, logits)
   # pylint: enable=protected-access
 
   with ops.name_scope(name, "logistic_loss", [logits, labels]) as name:
@@ -565,7 +563,7 @@ def swish(features, beta=1.0):
   beta = math_ops.cast(beta, features.dtype)
 
   @custom_gradient.custom_gradient
-  def swish_impl(features):
+  def swish_impl(features, beta):
 
     def grad(dy):
       """Gradient for the Swish activation function."""
@@ -577,14 +575,18 @@ def swish(features, beta=1.0):
       # expression immediately after use during the forward pass.
       with ops.control_dependencies([dy]):
         sigmoid_features = math_ops.sigmoid(beta * features)
+
       activation_grad = (
           sigmoid_features * (1.0 + (beta * features) *
                               (1.0 - sigmoid_features)))
-      return dy * activation_grad
+      beta_grad = math_ops.reduce_sum(
+          dy * math_ops.square(features) * sigmoid_features *
+          (1.0 - sigmoid_features))
+      return (dy * activation_grad, beta_grad)
 
     return features * math_ops.sigmoid(beta * features), grad
 
-  return swish_impl(features)
+  return swish_impl(features, beta)
 
 
 # pylint: disable=redefined-builtin
@@ -1683,11 +1685,6 @@ def fused_batch_norm(
   if variance is None:
     variance = constant_op.constant([])
 
-  # Set a minimum epsilon to 1.001e-5, which is a requirement by CUDNN to
-  # prevent exception (see cudnn.h).
-  min_epsilon = 1.001e-5
-  epsilon = epsilon if epsilon > min_epsilon else min_epsilon
-
   y, running_mean, running_var, _, _, _ = gen_nn_ops.fused_batch_norm_v3(
       x,
       scale,
@@ -2023,7 +2020,7 @@ def nce_loss_v2(weights,
 
   See [Noise-contrastive estimation: A new estimation principle for
   unnormalized statistical
-  models](http://www.jmlr.org/proceedings/papers/v9/gutmann10a/gutmann10a.pdf).
+  models](https://arxiv.org/abs/1806.03664).
   Also see our [Candidate Sampling Algorithms
   Reference](https://www.tensorflow.org/extras/candidate_sampling.pdf)
 

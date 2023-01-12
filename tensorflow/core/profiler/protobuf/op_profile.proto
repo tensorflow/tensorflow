@@ -75,9 +75,21 @@ message Metrics {
 
   // The memory bandwidth used to load operands, as a fraction of
   // thereotical memory bandwidth on the specific hardware.
-  double memory_bandwidth = 3;
+
+  // TODO: remove the next 2 and use the repeated array below.
+  // This is aggregated utilization across on-chip and off-chip memory.
+  double memory_bandwidth_util = 3;
+  // This is just off-chip hbm memory bw utilization.
+  double hbm_bandwidth_util = 4;
+
+  // The memory bandwidth used to load operands, as a fraction of
+  // thereotical memory bandwidth on the specific hardware.
+  // Index into array using MemBwType enum.
+  repeated double bandwidth_utils = 5;
 
   double raw_time = 11;            // Elapsed core-time in picoseconds.
   double raw_flops = 12;           // Total floating-point operations performed.
   double raw_bytes_accessed = 13;  // Total bytes accessed (include read/write).
+  // Total HBM bytes accessed (include read/write).
+  double raw_hbm_bytes_accessed = 14;
 }

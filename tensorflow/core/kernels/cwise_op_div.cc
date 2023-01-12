@@ -23,6 +23,8 @@ REGISTER8(BinaryOp, CPU, "Div", functor::safe_div, uint8, uint16, uint32,
           uint64, int8, int16, int32, int64_t);
 REGISTER8(BinaryOp, CPU, "TruncateDiv", functor::safe_div, uint8, uint16,
           uint32, uint64, int8, int16, int32, int64_t);
+REGISTER4(BinaryOp, CPU, "TruncateDiv", functor::truncate_div_real, Eigen::half,
+          bfloat16, float, double);
 REGISTER6(BinaryOp, CPU, "RealDiv", functor::div, float, Eigen::half, double,
           bfloat16, complex64, complex128);
 REGISTER6(BinaryOp, CPU, "DivNoNan", functor::div_no_nan, Eigen::half, float,
@@ -47,6 +49,8 @@ REGISTER5(BinaryOp, GPU, "RealDiv", functor::div, float, Eigen::half, double,
 REGISTER5(BinaryOp, GPU, "DivNoNan", functor::div_no_nan, Eigen::half, float,
           double, complex64, complex128);
 #endif
+REGISTER(BinaryOp, GPU, "Div", functor::div, bfloat16);
+REGISTER(BinaryOp, GPU, "RealDiv", functor::div, bfloat16);
 
 // A special GPU kernel for int32.
 // TODO(b/25387198): Also enable int32 in device memory. This kernel

@@ -17,6 +17,8 @@ limitations under the License.
 
 #include <memory>
 
+#include "pthreadpool.h"  // from @pthreadpool
+
 #ifdef TFLITE_HAVE_CPUINFO
 #include "include/cpuinfo.h"
 #endif
@@ -24,7 +26,7 @@ limitations under the License.
 #include "public/gemmlowp.h"
 #include "ruy/context.h"  // from @ruy
 #include "ruy/path.h"  // from @ruy
-#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/core/macros.h"
 #include "tensorflow/lite/external_cpu_backend_context.h"
 #include "tensorflow/lite/kernels/internal/compatibility.h"
@@ -147,6 +149,14 @@ void CpuBackendContext::SetMaxNumThreads(int max_num_threads) {
 }
 
 void CpuBackendContext::SetUseCaching(bool flag) { use_caching_ = flag; }
+
+pthreadpool_t CpuBackendContext::get_xnnpack_threadpool() {
+  if (!xnnpack_threadpool_ && max_num_threads_ > 1) {
+    xnnpack_threadpool_.reset(
+        pthreadpool_create(static_cast<size_t>(max_num_threads_)));
+  }
+  return xnnpack_threadpool_.get();
+}
 
 bool CpuBackendContext::PreferGemmlowpOnX86() {
   bool use_gemmlowp_on_x86 = false;

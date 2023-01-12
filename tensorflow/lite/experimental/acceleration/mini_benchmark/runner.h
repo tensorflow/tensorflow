@@ -19,7 +19,9 @@ limitations under the License.
 #include <vector>
 
 #include "flatbuffers/flatbuffers.h"  // from @flatbuffers
+#include "tensorflow/lite/core/api/error_reporter.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/status_codes.h"
+#include "tensorflow/lite/stderr_reporter.h"
 
 namespace tflite {
 namespace acceleration {
@@ -55,20 +57,14 @@ class ProcessRunner {
   // between 0 and 127 are well-defined.
   ProcessRunner(const std::string& temporary_path,
                 const std::string& function_name,
-                int (*function_pointer)(int argc, char** argv))
-      : temporary_path_(temporary_path),
-        function_name_(function_name),
-        function_pointer_(reinterpret_cast<void*>(function_pointer)),
-        timeout_millisec_(0) {}
-
-  ProcessRunner(const std::string& temporary_path,
-                const std::string& function_name,
                 int (*function_pointer)(int argc, char** argv),
-                int timeout_millisec)
+                int timeout_millisec = 0,
+                ErrorReporter* error_reporter = tflite::DefaultErrorReporter())
       : temporary_path_(temporary_path),
         function_name_(function_name),
         function_pointer_(reinterpret_cast<void*>(function_pointer)),
-        timeout_millisec_(timeout_millisec) {}
+        timeout_millisec_(timeout_millisec),
+        error_reporter_(error_reporter) {}
 
   // Initialize runner.
   MinibenchmarkStatus Init();
@@ -132,6 +128,7 @@ class ProcessRunner {
   std::string runner_path_;
   std::string soname_;
   int timeout_millisec_;
+  ErrorReporter* error_reporter_;
 };
 
 }  // namespace acceleration

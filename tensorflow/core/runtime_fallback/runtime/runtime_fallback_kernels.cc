@@ -859,8 +859,7 @@ void CoreRTTensorHandleToFallbackTensorInternal(
     return tensor_avref;
   };
 
-  auto dst_device =
-      exec_ctx.host()->GetDeviceManager()->GetDeviceRef<tfrt::Device>(device);
+  auto dst_device = exec_ctx.host()->GetDeviceRef(device);
 
   // Retrieve the underlying pointer of tfrt::Tensor. We don't need to do
   // extra ownership management here because KernelFallbackExecuteCompat()
@@ -996,7 +995,7 @@ static void FallbackTensorToCoreRTTensorHandleInternal(
     llvm::ArrayRef<tfrt::AsyncValue*> tf_tensor_args,
     llvm::MutableArrayRef<tfrt::RCReference<tfrt::AsyncValue>>
         tensorhandle_results,
-    absl::string_view device, const tfrt::ExecutionContext& exec_ctx) {
+    tfrt::string_view device, const tfrt::ExecutionContext& exec_ctx) {
   auto* host = exec_ctx.host();
 
   assert(tf_tensor_args.size() == tensorhandle_results.size());
@@ -1009,9 +1008,8 @@ static void FallbackTensorToCoreRTTensorHandleInternal(
 
     tensorhandle_results[i] =
         tfrt::MakeAvailableAsyncValueRef<tfrt::TensorHandle>(
-            host->GetDeviceManager()->GetDeviceRef<tfrt::Device>(
-                {device.data(), device.size()}),
-            metadata, std::move(kernel_fallback_tensor));
+            host->GetDeviceRef(device), metadata,
+            std::move(kernel_fallback_tensor));
   }
 }
 
@@ -1025,9 +1023,8 @@ void FallbackTensorToCoreRTTensorHandle(
     return tensorflow::profiler::TraceMeEncode({{"id", request_id}});
   });
 
-  FallbackTensorToCoreRTTensorHandleInternal(
-      args.values(), results.values(), ToAbslStringView(device.GetValue()),
-      exec_ctx);
+  FallbackTensorToCoreRTTensorHandleInternal(args.values(), results.values(),
+                                             device.GetValue(), exec_ctx);
 }
 
 static llvm::Expected<bool> Predicate(

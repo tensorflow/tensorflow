@@ -23,7 +23,7 @@ func.func @main(%arg0: tuple<tensor<1024xf32>, tensor<1xf32>>) -> tuple<tensor<1
 }
 
 // CHECK:   func @main(%[[VAL_0:.*]]: tensor<1024xf32>, %[[VAL_1:.*]]: tensor<1xf32>) -> (tensor<1024xf32>, tensor<1xf32>) {
-// CHECK:           %[[VAL_2:.*]] = "mhlo.tuple"(%[[VAL_0]], %[[VAL_1]]) : (tensor<1024xf32>, tensor<1xf32>) -> tuple<tensor<1024xf32>, tensor<1xf32>>
+// CHECK:           %[[VAL_2:.*]] = mhlo.tuple %[[VAL_0]], %[[VAL_1]] : tuple<tensor<1024xf32>, tensor<1xf32>>
 // CHECK:           return %[[VAL_0]], %[[VAL_1]] : tensor<1024xf32>, tensor<1xf32>
 // CHECK:         }
 

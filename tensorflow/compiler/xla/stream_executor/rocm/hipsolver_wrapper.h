@@ -29,7 +29,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/stream_executor/platform/dso_loader.h"
 #include "tensorflow/compiler/xla/stream_executor/platform/port.h"
 
-namespace tensorflow {
+namespace stream_executor {
 namespace wrap {
 
 #ifdef PLATFORM_GOOGLE
@@ -132,7 +132,7 @@ FOREACH_HIPSOLVER_API(HIPSOLVER_API_WRAPPER)
 #undef HIPSOLVER_API_WRAPPER
 
 }  // namespace wrap
-}  // namespace tensorflow
+}  // namespace stream_executor
 
 #endif  // TF_ROCM_VERSION
 #endif  // TENSORFLOW_COMPILER_XLA_STREAM_EXECUTOR_ROCM_HIPSOLVER_WRAPPER_H_

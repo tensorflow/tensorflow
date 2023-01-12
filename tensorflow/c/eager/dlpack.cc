@@ -129,7 +129,11 @@ DLDevice GetDlContext(TFE_TensorHandle* h, TF_Status* status) {
   if (device_type == "CPU") {
     ctx.device_type = DLDeviceType::kDLCPU;
   } else if (device_type == "GPU") {
+#if TENSORFLOW_USE_ROCM
+    ctx.device_type = DLDeviceType::kDLROCM;
+#else
     ctx.device_type = DLDeviceType::kDLCUDA;
+#endif
   } else {
     status->status = tensorflow::errors::InvalidArgument(
         "Unsupported Device Type for dlpack");
@@ -145,6 +149,8 @@ absl::optional<std::string> DeviceNameFromDlContext(const DLDevice& ctx,
     case DLDeviceType::kDLCPU:
       return "CPU:0";
     case DLDeviceType::kDLCUDA:
+      return absl::StrCat("GPU:", ctx.device_id);
+    case DLDeviceType::kDLROCM:
       return absl::StrCat("GPU:", ctx.device_id);
     default:
       return absl::nullopt;

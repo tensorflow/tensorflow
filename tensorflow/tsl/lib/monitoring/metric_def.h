@@ -21,10 +21,10 @@ limitations under the License.
 #include <string>
 #include <vector>
 
-#include "tensorflow/core/framework/summary.pb.h"
 #include "tensorflow/tsl/lib/monitoring/types.h"
 #include "tensorflow/tsl/platform/stringpiece.h"
 #include "tensorflow/tsl/platform/types.h"
+#include "tensorflow/tsl/protobuf/histogram.pb.h"
 
 namespace tsl {
 namespace monitoring {

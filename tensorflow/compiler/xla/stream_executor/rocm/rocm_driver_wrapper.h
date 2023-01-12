@@ -27,7 +27,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/stream_executor/platform/dso_loader.h"
 #include "tensorflow/compiler/xla/stream_executor/platform/port.h"
 
-namespace tensorflow {
+namespace stream_executor {
 namespace wrap {
 #ifdef PLATFORM_GOOGLE
 // Use static linked library
@@ -135,6 +135,6 @@ HIP_ROUTINE_EACH(STREAM_EXECUTOR_HIP_WRAP)
 #undef TO_STR
 #undef TO_STR_
 }  // namespace wrap
-}  // namespace tensorflow
+}  // namespace stream_executor
 
 #endif  // TENSORFLOW_COMPILER_XLA_STREAM_EXECUTOR_ROCM_ROCM_DRIVER_WRAPPER_H_

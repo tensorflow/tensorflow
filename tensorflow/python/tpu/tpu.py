@@ -1401,7 +1401,7 @@ def split_compile_and_replicate(
                                                padding_spec)
     if padding_maps:
       dynamic_shape_inputs = True
-      logging.info("TPU has inputs with dynamic shapes: %s", unpadded_inputs[0])
+      logging.info("TPU has inputs with dynamic shapes: %s", inputs[0])
 
   metadata_kwargs["step_marker_location"] = getattr(
       computation, "step_marker_location", "STEP_MARK_AT_ENTRY")

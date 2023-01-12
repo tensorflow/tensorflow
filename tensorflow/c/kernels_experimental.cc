@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/framework/resource_var.h"
 #include "tensorflow/core/framework/variant.h"
+#include "tensorflow/core/lib/gtl/cleanup.h"
 
 #ifndef IS_MOBILE_PLATFORM
 #include "tensorflow/core/kernels/data/optional_ops_util.h"
@@ -352,6 +353,11 @@ void TF_GetInputTensorFromVariable(TF_OpKernelContext* ctx, int input,
                                                     TF_Tensor* dest),
                                    TF_Tensor** out, TF_Status* status) {
   auto* cc_ctx = reinterpret_cast<::tensorflow::OpKernelContext*>(ctx);
+
+  auto status_setter = ::tensorflow::gtl::MakeCleanup([cc_ctx, status]() {
+    ::tensorflow::Set_TF_Status_from_Status(status, cc_ctx->status());
+  });
+
   tensorflow::Status s;
   if (cc_ctx->input_dtype(input) == tensorflow::DT_RESOURCE) {
     tensorflow::core::RefCountPtr<tensorflow::Var> var;
@@ -361,19 +367,19 @@ void TF_GetInputTensorFromVariable(TF_OpKernelContext* ctx, int input,
       OP_REQUIRES_OK(cc_ctx, EnsureSparseVariableAccess(ctx, isVariantType,
                                                         copyFunc, var.get()));
       *out = ::tensorflow::TF_TensorFromTensor(*var->tensor(), &s);
-      ::tensorflow::Set_TF_Status_from_Status(status, s);
+      OP_REQUIRES_OK(cc_ctx, s);
       return;
     }
     OP_REQUIRES_OK(cc_ctx, PrepareToUpdateVariable(
                                ctx, var->tensor(),
                                var->copy_on_read_mode.load(), false, copyFunc));
     *out = ::tensorflow::TF_TensorFromTensor(*var->tensor(), &s);
-    ::tensorflow::Set_TF_Status_from_Status(status, s);
+    OP_REQUIRES_OK(cc_ctx, s);
     return;
   }
   *out = ::tensorflow::TF_TensorFromTensor(
       cc_ctx->mutable_input(input, lock_held), &s);
-  ::tensorflow::Set_TF_Status_from_Status(status, s);
+  OP_REQUIRES_OK(cc_ctx, s);
 }
 
 void TF_OpKernelContext_ForwardRefInputToRefOutput(TF_OpKernelContext* ctx,

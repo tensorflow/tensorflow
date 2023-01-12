@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_KERNELS_STATELESS_RANDOM_OPS_H_
 #define TENSORFLOW_CORE_KERNELS_STATELESS_RANDOM_OPS_H_
 
+#include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/lib/random/random_distributions.h"
 
@@ -28,6 +29,21 @@ namespace tensorflow {
 // `out_key` and `out_counter` must be non-null.
 Status GenerateKey(Tensor seed_t, random::PhiloxRandom::Key* out_key,
                    random::PhiloxRandom::ResultType* out_counter);
+
+// A base class for kernels of stateless RNG ops that take shape and seed as the
+// first 2 inputs.
+class StatelessRandomOpBase : public OpKernel {
+ public:
+  explicit StatelessRandomOpBase(OpKernelConstruction* context);
+
+  void Compute(OpKernelContext* context) override;
+
+ protected:
+  // The part of Compute that depends on device, type, and distribution.
+  // Must be a tail call because it doesn't report error via return value.
+  virtual void Fill(OpKernelContext* context, random::PhiloxRandom random,
+                    Tensor* output) = 0;
+};
 
 }  // namespace tensorflow
 

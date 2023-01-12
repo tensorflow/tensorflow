@@ -255,7 +255,7 @@ StatusOr<llvm::DenseMap<int, Layout>> EinsumSPMDExpander::ComputeLayoutForward(
   // Need the mapping of input and output labels from the equation.
   auto einsum_op = mlir::cast<mlir::TF::EinsumOp>(op);
   size_t num_inputs = einsum_op.getNumOperands();
-  std::string equation = einsum_op.equation().str();
+  std::string equation = einsum_op.getEquation().str();
   absl::flat_hash_set<char> reduced_dim_labels;
   std::vector<absl::flat_hash_map<char, std::vector<int>>> input_mappings;
   absl::flat_hash_map<char, std::vector<int>> output_mapping;
@@ -310,7 +310,7 @@ StatusOr<llvm::DenseMap<int, Layout>> EinsumSPMDExpander::ComputeLayoutBackward(
   // Need the mapping of input and output labels from the equation.
   auto einsum_op = mlir::cast<mlir::TF::EinsumOp>(op);
   size_t num_inputs = einsum_op.getNumOperands();
-  std::string equation = einsum_op.equation().str();
+  std::string equation = einsum_op.getEquation().str();
   absl::flat_hash_set<char> reduced_dim_labels;
   std::vector<absl::flat_hash_map<char, std::vector<int>>> input_mappings;
   absl::flat_hash_map<char, std::vector<int>> output_mapping;
@@ -397,7 +397,7 @@ Status EinsumSPMDExpander::MaybeRelayoutInputs(
   absl::flat_hash_map<char, std::vector<int>> output_mapping;
   absl::flat_hash_set<char> contracting_labels;
   absl::flat_hash_set<char> all_labels;
-  TF_RETURN_IF_ERROR(ExtractEquationRelations(einsum.equation().str(),
+  TF_RETURN_IF_ERROR(ExtractEquationRelations(einsum.getEquation().str(),
                                               contracting_labels,
                                               input_mappings, output_mapping));
 

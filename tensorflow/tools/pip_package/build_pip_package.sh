@@ -207,6 +207,7 @@ function prepare_src() {
 
   mkdir -p ${TMPDIR}/third_party
   cp -R $RUNFILES/third_party/eigen3 ${TMPDIR}/third_party
+  cp -LR $RUNFILES/../local_config_cuda/cuda/_virtual_includes/cuda_headers_virtual/third_party/gpus ${TMPDIR}/third_party
 
   reorganize_includes "${TMPDIR}"
 
@@ -216,6 +217,12 @@ function prepare_src() {
 
   rm -f ${TMPDIR}/tensorflow/libtensorflow_framework.so
   rm -f ${TMPDIR}/tensorflow/libtensorflow_framework.so.[0-9].*
+
+  # Copying symlinks with -L duplicates these libraries.
+  rm -f ${TMPDIR}/tensorflow/libtensorflow_framework.dylib
+  rm -f ${TMPDIR}/tensorflow/libtensorflow_framework.[0-9].*.dylib
+  rm -f ${TMPDIR}/tensorflow/libtensorflow_cc.dylib
+  rm -f ${TMPDIR}/tensorflow/libtensorflow_cc.[0-9].*.dylib
 
   # TODO(annarev): copy over API files from tensorflow/api/_vN to tensorflow/
   #   except tensorflow/api/_vN/lite/.

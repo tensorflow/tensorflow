@@ -210,6 +210,8 @@ def get_element_from_tensor_info(tensor_info, graph=None, import_scope=None):
       ops.prepend_name_scope(tensor_info.name, import_scope=import_scope))
 
 
+# TODO(juanantoniomc): Delete these Path helper functions from this file when
+#                      cl/498254070 has been submitted.
 # Path helpers.
 
 

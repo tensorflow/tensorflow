@@ -67,7 +67,6 @@ while [[ ! "${TPU_CREATED}" == "true" ]]; do
     sleep 1m
   fi
 done
-# TODO(juanantoniomc): Delete this log once we know the optimal sleep time.
 echo "Total retry time: $RETRY_COUNTER minutes."
 
 # Clean up script uses these files.

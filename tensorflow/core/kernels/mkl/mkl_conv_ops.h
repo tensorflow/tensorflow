@@ -494,12 +494,17 @@ class MklDnnConvUtil {
     //     Conv2D: NHWC or NCHW
     //     Conv3D: NDHWC or NCDHW
     // oneDNN uses asymmetric padding.
-    TensorShape out_shape =
-        is_conv2d
-            ? ShapeFromFormat(data_format_, out_batch, out_rows, out_cols,
-                              out_depth)
-            : ShapeFromFormat(data_format_, out_batch,
-                              {{out_planes, out_rows, out_cols}}, out_depth);
+    TensorShape out_shape;
+    if (is_conv2d) {
+      OP_REQUIRES_OK(
+          context_, ShapeFromFormatWithStatus(data_format_, out_batch, out_rows,
+                                              out_cols, out_depth, &out_shape));
+    } else {
+      OP_REQUIRES_OK(context_, ShapeFromFormatWithStatus(
+                                   data_format_, out_batch,
+                                   {{out_planes, out_rows, out_cols}},
+                                   out_depth, &out_shape));
+    }
     *output_dims_tf_order = TFShapeToMklDnnDims(out_shape);
     if (is_grouped_convolution) {
       int out_depth = GetTensorDim(out_shape, data_format_, 'C');

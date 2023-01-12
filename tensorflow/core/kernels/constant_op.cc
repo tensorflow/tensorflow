@@ -219,6 +219,7 @@ REGISTER_KERNEL(GPU, int16);
 REGISTER_KERNEL(GPU, int64_t);
 REGISTER_KERNEL(GPU, bool);
 // Currently we do not support filling strings on GPU
+#endif
 
 // A special DEVICE_DEFAULT kernel for int32.
 // TODO(b/25387198): Also enable int32 in device memory. This kernel
@@ -231,7 +232,6 @@ REGISTER_KERNEL_BUILDER(Name("Fill")
                             .HostMemory("value")
                             .HostMemory("output"),
                         FillOp<CPUDevice, int32, int32>);
-#endif
 
 #undef REGISTER_KERNEL
 

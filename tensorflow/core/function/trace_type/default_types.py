@@ -14,6 +14,7 @@
 # ==============================================================================
 """TraceType implementations for common Python types."""
 
+import collections
 from typing import Any, Hashable, Optional, Sequence, Type
 from typing import Dict as PythonDict
 from typing import Tuple as PythonTuple
@@ -82,7 +83,11 @@ class Literal(trace.TraceType, serialization.Serializable):
     raise ValueError("Can not serialize Literal of type " +
                      type(self.value).__name__)
 
-  def _placeholder_value(self) -> Any:
+  def placeholder_value(self, placeholder_context=None) -> Any:
+    # TODO(b/263505796): Remove this check when a range's placeholder output
+    # is expected to be a range and not a list.
+    if isinstance(self.value, range):
+      return list(self.value)
     return self.value
 
   def __eq__(self, other) -> bool:
@@ -116,7 +121,7 @@ class Weakref(trace.TraceType):
       self, types: Sequence[trace.TraceType]) -> Optional["Weakref"]:
     return self if all(self == other for other in types) else None
 
-  def _placeholder_value(self) -> Any:
+  def placeholder_value(self, placeholder_context=None) -> Any:
     return self._ref()
 
   def __eq__(self, other):
@@ -187,9 +192,9 @@ class Tuple(trace.TraceType, serialization.Serializable):
     return default_types_pb2.SerializedTuple(
         components=[serialization.serialize(c) for c in self.components])
 
-  def _placeholder_value(self) -> Any:
+  def placeholder_value(self, placeholder_context) -> Any:
     components = [
-        component._placeholder_value()  # pylint: disable=protected-access
+        component.placeholder_value(placeholder_context)
         for component in self.components
     ]
     return tuple(components)
@@ -250,8 +255,8 @@ class List(trace.TraceType, serialization.Serializable):
     return default_types_pb2.SerializedList(
         components_tuple=self.components_tuple.experimental_as_proto())
 
-  def _placeholder_value(self) -> Any:
-    return list(self.components_tuple._placeholder_value())  # pylint: disable=protected-access
+  def placeholder_value(self, placeholder_context) -> Any:
+    return list(self.components_tuple.placeholder_value(placeholder_context))
 
   def __eq__(self, other: Any) -> bool:
     if not isinstance(other, trace.TraceType):
@@ -332,7 +337,7 @@ class NamedTuple(trace.TraceType, serialization.Serializable):
         attribute_names=list(self.attribute_names),
         attributes=self.attributes.experimental_as_proto())
 
-  def _placeholder_value(self) -> Any:
+  def placeholder_value(self, placeholder_context) -> Any:
     if self._placeholder_type is None:
       # We don't need to trace after serialization so it is not needed but we
       # can generate a placeholder type using the description if ever needed.
@@ -340,7 +345,7 @@ class NamedTuple(trace.TraceType, serialization.Serializable):
                        " unspecified placeholder_type. Note: placeholder_type "
                        "is lost during serialization.")
     attribute_placeholders = [
-        attribute._placeholder_value()  # pylint: disable=protected-access
+        attribute.placeholder_value(placeholder_context)
         for attribute in self.attributes.components
     ]
     return self._placeholder_type(*attribute_placeholders)
@@ -424,7 +429,7 @@ class Attrs(trace.TraceType):
     return default_types_pb2.SerializedAttrs(
         named_attributes=self.named_attributes.experimental_as_proto())
 
-  def _placeholder_value(self) -> Any:
+  def placeholder_value(self, placeholder_context) -> Any:
     if self._placeholder_type is None:
       # We don't need to trace after serialization so it is not needed but we
       # can generate a placeholder type using the description if ever needed.
@@ -432,7 +437,7 @@ class Attrs(trace.TraceType):
                        " unspecified placeholder_type. Note: placeholder_type "
                        "is lost during serialization.")
     attribute_placeholders = [
-        attribute._placeholder_value()  # pylint: disable=protected-access
+        attribute.placeholder_value(placeholder_context)
         for attribute in self.named_attributes.attributes.components
     ]
     return self._placeholder_type(*attribute_placeholders)
@@ -462,8 +467,11 @@ class Dict(trace.TraceType, serialization.Serializable):
     mapping: A mapping from keys to corresponding TraceTypes of the dict values.
   """
 
-  def __init__(self, mapping: PythonDict[Hashable, trace.TraceType]):
+  def __init__(self,
+               mapping: PythonDict[Hashable, trace.TraceType],
+               placeholder_type: Optional[Type[Any]] = None):
     self.mapping = mapping
+    self._placeholder_type = placeholder_type
 
   def _has_same_structure(self, other):
     if not isinstance(other, Dict):
@@ -499,7 +507,7 @@ class Dict(trace.TraceType, serialization.Serializable):
       else:
         new_mapping[key] = common
 
-    return Dict(new_mapping)
+    return Dict(new_mapping, self._placeholder_type)
 
   @classmethod
   def experimental_type_proto(cls) -> Type[default_types_pb2.SerializedDict]:
@@ -518,11 +526,18 @@ class Dict(trace.TraceType, serialization.Serializable):
         keys=[Literal(k).experimental_as_proto() for k in self.mapping.keys()],
         values=[serialization.serialize(v) for v in self.mapping.values()])
 
-  def _placeholder_value(self) -> Any:
-    return {
-        key: value._placeholder_value()  # pylint: disable=protected-access
+  def placeholder_value(self, placeholder_context) -> Any:
+    if self._placeholder_type is None:
+      raise ValueError("Can not generate placeholder value for Dict with"
+                       " unspecified placeholder_type. Note: placeholder_type "
+                       "is lost during serialization.")
+    attribute_placeholders = [
+        (key, value.placeholder_value(placeholder_context))
         for key, value in self.mapping.items()
-    }
+    ]
+    if self._placeholder_type is collections.defaultdict:
+      return dict(attribute_placeholders)
+    return self._placeholder_type(attribute_placeholders)
 
   def __eq__(self, other) -> bool:
     if not isinstance(other, trace.TraceType):
@@ -538,54 +553,6 @@ class Dict(trace.TraceType, serialization.Serializable):
 
   def __repr__(self):
     return f"{self.__class__.__name__}(mapping={self.mapping!r})"
-
-
-class Reference(trace.TraceType):
-  """Represents a resource with an identifier.
-
-  Resource identifiers are useful to denote identical resources, that is,
-  resources which are known at compilation time to point to the same thing.
-  This information is useful in automatic control dependencies for instance,
-  where ops using the same resource don't run concurrently.
-  """
-
-  def __init__(self, base: trace.TraceType, identifier: Hashable):
-    self.base = base
-    self.identifier = identifier
-
-  def is_subtype_of(self, other: trace.TraceType) -> bool:
-    if isinstance(other, Reference) and self.identifier == other.identifier:
-      return self.base.is_subtype_of(other.base)
-    return False
-
-  def most_specific_common_supertype(
-      self, types: Sequence[trace.TraceType]) -> Optional["Reference"]:
-    if all(
-        isinstance(other, Reference) and self.identifier == other.identifier
-        for other in types):
-      base_supertype = self.base.most_specific_common_supertype(
-          [other.base for other in types])
-      if base_supertype is not None:
-        return Reference(base_supertype, self.identifier)
-    return None
-
-  def _placeholder_value(self) -> Any:
-    return self.base._placeholder_value()  # pylint: disable=protected-access
-
-  def __eq__(self, other: Any) -> bool:
-    if not isinstance(other, trace.TraceType):
-      return NotImplemented
-
-    return isinstance(
-        other, Reference
-    ) and self.identifier == other.identifier and self.base == other.base
-
-  def __hash__(self) -> int:
-    return hash((self.identifier, self.base))
-
-  def __repr__(self):
-    return (f"{self.__class__.__name__}(base={self.base!r}, "
-            f"identifier={self.identifier!r})")
 
 serialization.register_serializable(Literal)
 serialization.register_serializable(Tuple)

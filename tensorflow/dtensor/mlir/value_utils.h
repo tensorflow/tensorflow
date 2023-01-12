@@ -37,6 +37,11 @@ mlir::RankedTensorType EffectivelyScalarR1Type(mlir::Type element_type);
 mlir::Value ReshapeSizeTypeToScalar(mlir::OpBuilder builder, mlir::Location loc,
                                     mlir::Value tensor);
 
+// Retuns a int64 array representing the TensorFlow shape given the MLIR type.
+// If the type is a resource, returns the underlying shape of the resource
+// instead. Returns an error if the type is not a RankedTensorType.
+StatusOr<llvm::SmallVector<int64_t>> GetTFShapeFromType(mlir::Type type);
+
 // Return a 1-D int32 constant array with the given values.
 mlir::Value IntConst(mlir::OpBuilder& builder, mlir::Location loc,
                      llvm::ArrayRef<int32> values);
@@ -61,9 +66,9 @@ mlir::Value CreateIntScalarConst(const int64_t value, mlir::OpBuilder builder,
                                  mlir::Location loc, bool use_int64 = true);
 
 // Returns a scalar constant with 'value' of 'type'.
-absl::optional<mlir::Value> CreateZeroScalarConst(mlir::OpBuilder& builder,
-                                                  mlir::Location loc,
-                                                  mlir::Type type);
+StatusOr<mlir::Value> CreateZeroScalarConst(mlir::OpBuilder& builder,
+                                            mlir::Location loc,
+                                            mlir::Type type);
 
 // Selects a scalar tensor value from a 1D array in specified index.
 StatusOr<mlir::Value> SelectScalarValueFromArray(mlir::OpBuilder& builder,

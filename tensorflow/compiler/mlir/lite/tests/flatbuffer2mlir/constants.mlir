@@ -93,6 +93,13 @@ func.func @uint8() -> tensor<4xui8> {
   func.return %0 : tensor<4xui8>
 }
 
+func.func @int4() -> tensor<5xi4> {
+  // CHECK-LABEL: @int4
+  // CHECK: value = dense<[6, 3, -2, -7, -8]> : tensor<5xi4>
+  %0 = "tfl.pseudo_const"() {value = dense<[6, 3, -2, -7, -8]> : tensor<5xi4>} : () -> tensor<5xi4>
+  func.return %0 : tensor<5xi4>
+}
+
 func.func @qi32_per_axis() -> tensor<3x3x!quant.uniform<i32:f32:1, {1.0, 0.5:1, 0.25:1}>> {
   // CHECK-LABEL: @qi32_per_axis
   // CHECK: {qtype = tensor<3x3x!quant.uniform<i32:f32:1, {1.000000e+00,5.000000e-01:1,2.500000e-01:1}>>, value = dense<1> : tensor<3x3xi32>} : () -> tensor<3x3x!quant.uniform<i32:f32:1, {1.000000e+00,5.000000e-01:1,2.500000e-01:1}>>

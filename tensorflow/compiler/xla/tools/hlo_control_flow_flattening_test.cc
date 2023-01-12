@@ -507,11 +507,12 @@ TEST_F(HloControlFlowFlatteningTest, Recv) {
 
   ENTRY %Recv () -> (f32[], token[]) {
     %token0 = token[] after-all()
-    %recv = (f32[], u32[], token[]) recv(token[] %token0), channel_id=15, sharding={maximal device=1}
-    ROOT %recv-done = (f32[], token[]) recv-done((f32[], u32[], token[]) %recv), channel_id=15, sharding={maximal device=1}
-    %constant = f32[] constant(2.1), sharding={maximal device=0}
-    %send = (f32[], u32[], token[]) send(f32[] %constant, token[] %token0), channel_id=16, sharding={maximal device=0}, control-predecessors={%recv}
-    %send-done = token[] send-done((f32[], u32[], token[]) %send), channel_id=16, sharding={maximal device=0}  }
+    %recv = (f32[], u32[], token[]) recv(token[] %token0), channel_id=15
+    ROOT %recv-done = (f32[], token[]) recv-done((f32[], u32[], token[]) %recv), channel_id=15
+    %constant = f32[] constant(2.1)
+    %send = (f32[], u32[], token[]) send(f32[] %constant, token[] %token0), channel_id=16, control-predecessors={%recv}
+    %send-done = token[] send-done((f32[], u32[], token[]) %send), channel_id=16
+  }
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
@@ -538,11 +539,12 @@ TEST_F(HloControlFlowFlatteningTest, RecvHostTransfer) {
 
   ENTRY %Recv () -> (f32[], token[]) {
     %token0 = token[] after-all()
-    %recv = (f32[], u32[], token[]) recv(token[] %token0), channel_id=15, is_host_transfer=true, sharding={maximal device=1}
-    ROOT %recv-done = (f32[], token[]) recv-done((f32[], u32[], token[]) %recv), channel_id=15, is_host_transfer=true, sharding={maximal device=1}
-    %constant = f32[] constant(2.1), sharding={maximal device=0}
-    %send = (f32[], u32[], token[]) send(f32[] %constant, token[] %token0), channel_id=16, sharding={maximal device=0}, control-predecessors={%recv}
-    %send-done = token[] send-done((f32[], u32[], token[]) %send), channel_id=16, sharding={maximal device=0}  }
+    %recv = (f32[], u32[], token[]) recv(token[] %token0), channel_id=15, is_host_transfer=true
+    ROOT %recv-done = (f32[], token[]) recv-done((f32[], u32[], token[]) %recv), channel_id=15, is_host_transfer=true
+    %constant = f32[] constant(2.1)
+    %send = (f32[], u32[], token[]) send(f32[] %constant, token[] %token0), channel_id=16, control-predecessors={%recv}
+    %send-done = token[] send-done((f32[], u32[], token[]) %send), channel_id=16
+  }
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
@@ -572,11 +574,11 @@ TEST_F(HloControlFlowFlatteningTest, Send) {
 
   ENTRY %Send () -> token[] {
     %token0 = token[] after-all()
-    %recv = (f32[], u32[], token[]) recv(token[] %token0), channel_id=15, sharding={maximal device=1}
-    %recv-done = (f32[], token[]) recv-done((f32[], u32[], token[]) %recv), channel_id=15, sharding={maximal device=1}
-    %constant = f32[] constant(2.1), sharding={maximal device=0}
-    %send = (f32[], u32[], token[]) send(f32[] %constant, token[] %token0), channel_id=16, sharding={maximal device=0}, control-predecessors={%recv}
-    ROOT %send-done = token[] send-done((f32[], u32[], token[]) %send), channel_id=16, sharding={maximal device=0}
+    %recv = (f32[], u32[], token[]) recv(token[] %token0), channel_id=15
+    %recv-done = (f32[], token[]) recv-done((f32[], u32[], token[]) %recv), channel_id=15
+    %constant = f32[] constant(2.1)
+    %send = (f32[], u32[], token[]) send(f32[] %constant, token[] %token0), channel_id=16, control-predecessors={%recv}
+    ROOT %send-done = token[] send-done((f32[], u32[], token[]) %send), channel_id=16
   }
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
@@ -604,11 +606,11 @@ TEST_F(HloControlFlowFlatteningTest, SendHostTransfer) {
 
   ENTRY %Send () -> token[] {
     %token0 = token[] after-all()
-    %recv = (f32[], u32[], token[]) recv(token[] %token0), channel_id=15, sharding={maximal device=1}
-    %recv-done = (f32[], token[]) recv-done((f32[], u32[], token[]) %recv), channel_id=15, sharding={maximal device=1}
-    %constant = f32[] constant(2.1), sharding={maximal device=0}
-    %send = (f32[], u32[], token[]) send(f32[] %constant, token[] %token0), channel_id=16, is_host_transfer=true, sharding={maximal device=0}, control-predecessors={%recv}
-    ROOT %send-done = token[] send-done((f32[], u32[], token[]) %send), channel_id=16, is_host_transfer=true, sharding={maximal device=0}
+    %recv = (f32[], u32[], token[]) recv(token[] %token0), channel_id=15
+    %recv-done = (f32[], token[]) recv-done((f32[], u32[], token[]) %recv), channel_id=15
+    %constant = f32[] constant(2.1)
+    %send = (f32[], u32[], token[]) send(f32[] %constant, token[] %token0), channel_id=16, is_host_transfer=true, control-predecessors={%recv}
+    ROOT %send-done = token[] send-done((f32[], u32[], token[]) %send), channel_id=16, is_host_transfer=true
   }
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto module,

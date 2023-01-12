@@ -16,6 +16,7 @@
 
 import builtins
 import collections
+import functools
 import inspect
 import types
 
@@ -28,6 +29,8 @@ from tensorflow.python.autograph.pyct import transformer
 from tensorflow.python.autograph.pyct.static_analysis import activity
 
 FreeVar = collections.namedtuple("FreeVar", ["name", "is_function", "obj"])
+
+_fn_log_cache = dict()
 
 
 def _parse_and_analyze(func):
@@ -46,9 +49,93 @@ def _parse_and_analyze(func):
   return node
 
 
+def _handle_wrap_partial_func(obj):
+  """Processes wrapped function and partial functions recursively."""
+  modified = True
+  while modified:
+    modified = False
+    while hasattr(obj, "__wrapped__"):
+      obj = obj.__wrapped__
+      modified = True
+    if isinstance(obj, functools.partial) or isinstance(
+        obj, functools.partialmethod):
+      obj = obj.func
+      modified = True
+  return obj
+
+
+def _get_self_obj_from_closure(fn):
+  """Get the object that `self` keyword refers to within a function.
+
+  Args:
+    fn: A python function object
+
+  Returns:
+    A class object that `self` refers to. Return None if not found.
+
+  Here is an example demonstrating how this helper function works.
+
+  ```
+  class Foo():
+
+    def __init__(self):
+      self.val = 1
+
+    def bar(self):
+      x = 2
+
+      def fn():
+        return self.val + x
+
+      return fn
+
+  foo = Foo()
+  fn = foo.bar()
+  self_obj = _get_self_obj_from_closure(fn)
+  assert self_obj is foo
+  ```
+
+  The goal is to get the `self_obj` (foo) from `fn`, so that it's feasible to
+  access attributes of `foo`, like self.val in this case.
+
+  This function first parses fn.qual_name, "Foo.bar.<locals>.fn", and finds the
+  closure whose class name appear in fn.qual_name first.
+  """
+  assert hasattr(fn, "__closure__")
+  qual_name = fn.__qualname__.split(".")
+  # Search from the right to left
+  qual_name = qual_name[::-1]
+
+  if fn.__closure__:
+    for cls_name in qual_name:
+      for cell in fn.__closure__:
+        try:
+          closure = cell.cell_contents
+        except ValueError:
+          # Continue when cell is empty and its content is unavailable
+          continue
+        if inspect.isclass(type(closure)):
+          if type(closure).__name__ == cls_name:
+            obj = closure
+            return obj
+
+  return None
+
+
 def _search_callable_free_vars(fn):
   """Search free vars from a callable object."""
-  node = _parse_and_analyze(fn)
+  fn = _handle_wrap_partial_func(fn)
+
+  try:
+    node = _parse_and_analyze(fn)
+  except ValueError:
+    # When source code unavailable, return empty result
+    return []
+  except NotImplementedError:
+    # Autograph cannot handle multiple lambda functions with same line number
+    # and args name.
+    return []
+
   scope = anno.getanno(node, anno.Static.SCOPE)
   free_vars_all = list(scope.free_vars)
   namespace = inspect_utils.getnamespace(fn)
@@ -60,7 +147,7 @@ def _search_callable_free_vars(fn):
     if var.is_simple():
       if base in builtins.__dict__.keys():
         continue
-      obj = namespace[base]
+      obj = namespace.get(base, None)
     else:
       assert var.is_composite()
       # A compositve qualified name `QN` can be either an attr or a subscript
@@ -80,15 +167,25 @@ def _search_callable_free_vars(fn):
         # Otherwise, only process `f`.
         if not var.qn[0].is_composite() and base == "self":
           attr = str(var.qn[1])
-          obj = getattr(fn.__self__, attr)
+          # For method, access the object that `self` refers to via __self__
+          if hasattr(fn, "__self__"):
+            obj = getattr(fn.__self__, attr, None)
+          # For function (not method) `self` usage under enclosing class scope
+          elif hasattr(fn, "__closure__"):
+            self_obj = _get_self_obj_from_closure(fn)
+            if self_obj:
+              obj = getattr(self_obj, attr, None)
+            else:
+              continue
+          else:
+            continue
         else:
           continue
 
     if (inspect.ismodule(obj) or inspect.isclass(obj)):
       continue
     elif inspect.isfunction(obj) or inspect.ismethod(obj):
-      while hasattr(fn, "__wrapped__"):
-        obj = obj.__wrapped__
+      obj = _handle_wrap_partial_func(obj)
       if obj.__module__ != fn.__module__:
         continue
       filtered.append(FreeVar(str(var), True, obj))
@@ -129,9 +226,6 @@ def _detect_function_free_vars(fn):
       fn, types.MethodType
   ), f"The input should be of Python function type. Got type: {type(fn)}."
 
-  while hasattr(fn, "__wrapped__"):
-    fn = fn.__wrapped__
-
   queue = collections.deque([fn])
   fn_map = dict()
 
@@ -155,18 +249,32 @@ def _detect_function_free_vars(fn):
   return fn_map
 
 
-def generate_logging(fn, fn_threshold=5, var_threshold=10):
+def generate_free_var_logging(fn, fn_threshold=5, var_threshold=10):
   """Generate loggings of free vars from fn."""
-  assert isinstance(fn, types.FunctionType) or isinstance(
-      fn, types.MethodType
-  ), f"The input should be of Python function/method type. Got type: {type(fn)}."
+  # Now only detect free vars for function/method
+  if not (isinstance(fn, types.FunctionType) or isinstance(
+      fn, types.MethodType) or isinstance(fn, functools.partial) or
+          isinstance(fn, functools.partialmethod)):
+    return None
+  fn = _handle_wrap_partial_func(fn)
 
-  while hasattr(fn, "__wrapped__"):
-    fn = fn.__wrapped__
-  fn_vars_map = _detect_function_free_vars(fn)
+  if not (hasattr(fn, "__module__") and hasattr(fn, "__qualname__")):
+    return None
+  fn_key = (fn.__module__, fn.__qualname__)
+  # To prevent log spam, only generate logging once for each tf.function
+  if fn_key in _fn_log_cache:
+    return None
+
+  try:
+    fn_vars_map = _detect_function_free_vars(fn)
+  except Exception:  # pylint: disable=broad-except
+    # Only for logging purpose, do not raise errors to users
+    return None
+
   # If not free vars detected, return None
   if not fn_vars_map:
-    return None
+    _fn_log_cache[fn_key] = None
+    return _fn_log_cache[fn_key]
 
   logging_txt = []
   tf_fn_name = _make_callable_signature(fn)
@@ -183,8 +291,12 @@ def generate_logging(fn, fn_threshold=5, var_threshold=10):
 
   # Show the free vars info of the tf.function at the top
   fn_threshold -= 1
-  tf_fn_line = one_line_logging(tf_fn_name, fn_vars_map[tf_fn_name],
-                                var_threshold)
+  try:
+    tf_fn_line = one_line_logging(tf_fn_name, fn_vars_map[tf_fn_name],
+                                  var_threshold)
+  except Exception:  # pylint: disable=broad-except
+    # Only for logging purpose, do not raise error to users
+    return ""
 
   # Functions that are defined outside of tf.function
   outside_fn_lines = []
@@ -211,5 +323,7 @@ def generate_logging(fn, fn_threshold=5, var_threshold=10):
   logging_txt = [explanation_line, tf_fn_line] + outside_fn_lines
   if ellipsis_line:
     logging_txt.append(ellipsis_line)
+  logging_txt = "\n".join(logging_txt)
 
-  return "\n".join(logging_txt)
+  _fn_log_cache[fn_key] = logging_txt
+  return _fn_log_cache[fn_key]

@@ -128,10 +128,21 @@ func.func @hoist_var_read_write() -> (tensor<i32> {tf_saved_model.index_path = [
 
 module attributes {tf_saved_model.semantics} {
 
-// Test not hoisting varhandle op that used by control flow ops.
+// Test not hoisting read variable op that used by control flow ops if var handle op and read variable op are separated, but still hoists const ops and var handle ops.
 
+// CHECK-LABEL: func @_tfrt_resource_init
+// CHECK: [[handle:%.*]] = "tf.VarHandleOp"() {container = "", shared_name = "x"} : () -> tensor<!tf_type.resource<tensor<i32>>>
+// CHECK: "tf._TfrtSetResource"([[handle]])
+// CHECK-SAME: index = [[handle_index:.*]]
+// CHECK: [[handle1:%.*]] = "tf.VarHandleOp"() {container = "", shared_name = "x"} : () -> tensor<!tf_type.resource<tensor<i32>>>
+// CHECK: "tf._TfrtSetResource"([[handle1]])
+// CHECK-SAME: index = [[handle1_index:.*]]
+// CHECK: [[const:%.*]] = "tf.Const"() {device = "/CPU:0", value = dense<true> : tensor<i1>} : () -> tensor<i1>
+// CHECK: "tf._TfrtSetResource"([[const]])
+// CHECK-SAME: index = [[const_index:.*]]
 func.func private @some_func(
     %arg: tensor<!tf_type.resource<tensor<i32>>>) -> tensor<i32> {
+  // CHECK: tf.ReadVariableOp
   %0 = "tf.ReadVariableOp"(%arg) {device = "cpu"} : (tensor<!tf_type.resource<tensor<i32>>>) -> tensor<i32>
   func.return %0 : tensor<i32>
 }
@@ -139,6 +150,8 @@ func.func private @some_func(
 // CHECK-LABEL: func @test_not_hoist_stateful_call
 func.func @not_hoist_stateful_call(%arg: tensor<i32> {tf_saved_model.index_path = ["input"]}) -> (tensor<i32> {tf_saved_model.index_path = ["r"]})
   attributes {tf_saved_model.exported_names = ["test_not_hoist_stateful_call"]} {
+  // CHECK-NOT: tf.VarHandleOp
+  // CHECK:  "tf._TfrtGetResource"()
   %handle = "tf.VarHandleOp"() {container = "", shared_name = "x"} : () -> tensor<!tf_type.resource<tensor<i32>>>
   // CHECK: tf.StatefulPartitionedCall
   %x = "tf.StatefulPartitionedCall"(%handle) {device = "/CPU:0", config = "", config_proto = "", executor_type = "", f = @some_func} : (tensor<!tf_type.resource<tensor<i32>>>) -> (tensor<i32>)
@@ -150,6 +163,8 @@ func.func @not_hoist_stateful_call(%arg: tensor<i32> {tf_saved_model.index_path 
 func.func @not_hoist_if(%arg: tensor<i32> {tf_saved_model.index_path = ["input"]}) -> (tensor<i32> {tf_saved_model.index_path = ["r"]})
   attributes {tf_saved_model.exported_names = ["test_not_hoist_if"]} {
   %handle = "tf.VarHandleOp"() {container = "", shared_name = "x"} : () -> tensor<!tf_type.resource<tensor<i32>>>
+  // CHECK-NOT: tf.Const
+  // CHECK:  "tf._TfrtGetResource"() 
   %cond = "tf.Const"() {device = "/CPU:0", value = dense<true> : tensor<i1>} : () -> tensor<i1>
   // CHECK: tf.If
   %x = "tf.If"(%cond, %handle) {then_branch = @some_func, else_branch = @some_func, is_stateless = false} : (tensor<i1>, tensor<!tf_type.resource<tensor<i32>>>) -> tensor<i32>

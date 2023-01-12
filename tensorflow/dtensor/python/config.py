@@ -17,7 +17,9 @@
 import os
 from typing import List, Optional, Union
 
+from tensorflow.python.eager import context
 from tensorflow.python.framework import config as tf_config
+from tensorflow.python.framework import device as tf_device
 from tensorflow.python.util.tf_export import tf_export
 
 _DT_CLIENT_ID = "DTENSOR_CLIENT_ID"
@@ -30,6 +32,55 @@ _DT_HEARTBEAT_ENABLED = "DTENSOR_ENABLE_HEARTBEAT"
 
 # All functions in this file can be used before calling
 # `tf.experimental.dtensor.initialize_accelerator_system`.
+
+
+# -----------------------------------------------------------------------------
+# Distributed training-related methods.
+#
+# Most users should use DTensor utility methods to create a mesh. The methods
+# here are only for advanced users who want to fully customize their meshes.
+# Note that local_devices and num_local_devices return the actual number of
+# locally attached devices. The others are set through environment variables.
+
+
+@tf_export("experimental.dtensor.local_devices", v1=[])
+def local_devices(
+    device_type: str,
+    for_client_id: Optional[int] = None) -> List[tf_device.DeviceSpec]:
+  """Returns a list of device specs configured on this client."""
+  if device_type.upper() not in ["CPU", "GPU", "TPU"]:
+    raise ValueError(f"Device type {device_type} is not CPU, GPU, or TPU.")
+
+  if for_client_id is None:
+    for_client_id = client_id()
+
+  # Return fully qualified device specs, sorted by increasing device index.
+  return [
+      tf_device.DeviceSpec(  # pylint: disable=g-complex-comprehension
+          job=job_name(),
+          replica=0,  # replica is deprecated and mostly hard-coded now.
+          task=for_client_id,
+          device_type=device_type,
+          device_index=i) for i in range(num_local_devices(device_type))
+  ]
+
+
+@tf_export("experimental.dtensor.num_local_devices", v1=[])
+def num_local_devices(device_type: str) -> int:
+  """Returns the number of devices of device_type configured on this client."""
+
+  # Reads from config because CPU and GPU can use logical devices.
+  if device_type.upper() in ["CPU", "GPU"]:
+    context_config = context.get_config()
+    return context_config.device_count[device_type.upper()]
+
+  return len(tf_config.list_physical_devices(device_type))
+
+
+@tf_export("experimental.dtensor.num_global_devices", v1=[])
+def num_global_devices(device_type: str) -> int:
+  """Returns the number of devices of device_type in this DTensor cluster."""
+  return num_local_devices(device_type) * num_clients()
 
 
 @tf_export("experimental.dtensor.client_id", v1=[])
@@ -151,3 +202,13 @@ def preferred_device_type() -> str:
     return "GPU"
 
   return "CPU"
+
+
+def gpu_use_nccl_communication() -> bool:
+  """Return True if environment indicates NCCL shall be used for GPU."""
+  return os.environ.get("DTENSOR_GPU_USE_NCCL_COMMUNICATION", "0") != "0"
+
+
+def backend_is_pw() -> bool:
+  """Return True if environment indicates the backend is Pathways."""
+  return os.environ.get("DTENSOR_USE_PARALLEL_EXECUTOR") == "pw"

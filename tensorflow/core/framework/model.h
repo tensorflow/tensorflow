@@ -973,6 +973,15 @@ class Model {
   // Gauge cell that can be used to collect the state of the model.
   monitoring::GaugeCell<std::function<std::string()>>* model_gauge_cell_ =
       nullptr;
+  // Used to synchronize metrics collection attempts against the model's
+  // destruction.
+  struct GuardedBool {
+    explicit GuardedBool(bool val) : val(val) {}
+    bool val TF_GUARDED_BY(mu);
+    mutex mu;
+  };
+  std::shared_ptr<GuardedBool> safe_to_collect_metrics_;
+
   // Time use for rate limitting the recomputation of human-readable string
   // represention of the model.
   absl::Time cache_until_ = absl::InfinitePast();
@@ -1033,6 +1042,10 @@ class ModelTiming {
 
   // Computes the total time of an async interleave node.
   void ComputeAsyncInterleaveManyTotalTime(const Node& node);
+  // Computes the first input total time of an async interleave node.
+  double ComputeAsyncInterleaveManyFirstInputTotalTime(const Node& node);
+  // Computes the interleaved inputs' total time of an async interleave node.
+  double ComputeAsyncInterleaveManyInterleavedInputsTotalTime(const Node& node);
 
   // Returns a vector of all nodes in the model. The nodes are either in
   // breadth-first search or reverse breadth-first search order depending on the

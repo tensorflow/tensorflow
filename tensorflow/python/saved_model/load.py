@@ -44,9 +44,11 @@ from tensorflow.python.saved_model import function_deserialization
 from tensorflow.python.saved_model import load_options
 from tensorflow.python.saved_model import load_v1_in_v2
 from tensorflow.python.saved_model import loader_impl
+from tensorflow.python.saved_model import path_helpers
 from tensorflow.python.saved_model import registration
 from tensorflow.python.saved_model import revived_types
 from tensorflow.python.saved_model import utils_impl as saved_model_utils
+from tensorflow.python.saved_model.pywrap_saved_model import fingerprinting
 from tensorflow.python.saved_model.pywrap_saved_model import metrics
 from tensorflow.python.trackable import asset
 from tensorflow.python.trackable import autotrackable
@@ -513,7 +515,7 @@ class Loader(object):
 
   def _restore_checkpoint(self):
     """Load state from checkpoint into the deserialized objects."""
-    variables_path = saved_model_utils.get_variables_path(self._export_dir)
+    variables_path = path_helpers.get_variables_path(self._export_dir)
     # TODO(b/205010730): Clean use of private methods of TrackableSaver.
     # pylint: disable=protected-access
     saver = checkpoint.TrackableSaver(graph_view.ObjectGraphView(self.get(0)))
@@ -638,6 +640,19 @@ class Loader(object):
 
   def _recreate_user_object(self, proto, node_id):
     """Instantiates a SavedUserObject."""
+    if proto.identifier == "optimizer":
+      # Make sure that the Keras optimizers module is imported. This is needed
+      # to be able to load the "optimizer" object (OptimizerV2), which has
+      # special logic around adding slot variables with `add_slot` in this file.
+      try:
+        import keras.optimizers.legacy as _  # pylint: disable=g-import-not-at-top
+      except ImportError:
+        try:
+          import keras.optimizers.optimizer_v2 as _  # pylint: disable=g-import-not-at-top
+        except ImportError as e:
+          raise ImportError(
+              "Error when importing Keras. Unable to load SavedModel that "
+              "contains an optimizer without the Keras module.") from e
     looked_up = revived_types.deserialize(proto)
     if looked_up is None:
       return self._recreate_base_user_object(proto, node_id)
@@ -966,6 +981,11 @@ def load_partial(export_dir, filters, tags=None, options=None):
     with ops.init_scope():
       root = load_v1_in_v2.load(export_dir, tags)
       root.graph_debug_info = debug_info
+
+  # Read and log SavedModel checksum, if it is nonzero.
+  saved_model_checksum = fingerprinting.MaybeReadSavedModelChecksum(export_dir)
+  if saved_model_checksum != 0:
+    metrics.SetReadFingerprint(saved_model_checksum=str(saved_model_checksum))
 
   if filters:
     return {node_id: loader.get(node_id) for node_id in filters}

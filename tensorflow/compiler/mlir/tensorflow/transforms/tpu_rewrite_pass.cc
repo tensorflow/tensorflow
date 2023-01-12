@@ -41,7 +41,6 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
-#include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/attribute_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_tensor.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_type.h"
@@ -78,8 +77,11 @@ constexpr char kBadArrayElementMsg[] =
 constexpr char kBadArrayAttrLengthMsg[] =
     "bad '{0}' attribute, expected array attribute of size {1}, got size {2}";
 
+#define GEN_PASS_DEF_TPUREWRITEPASS
+#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_passes.h.inc"
+
 namespace {
-struct TPURewritePass : public TF::TPURewritePassBase<TPURewritePass> {
+struct TPURewritePass : public impl::TPURewritePassBase<TPURewritePass> {
   void runOnOperation() override;
 };
 
@@ -299,7 +301,7 @@ LogicalResult SetMetadataProtoFromClusterFuncOp(
 
   if (xla_device_assignment.has_value())
     *metadata->mutable_device_assignment() =
-        std::move(xla_device_assignment.getValue());
+        std::move(xla_device_assignment.value());
   auto use_spmd_attr = op->getAttrOfType<BoolAttr>(kUseXlaSpmdAttr);
   if (!use_spmd_attr)
     return op.emitOpError(CreateMissingAttributeMsg(kUseXlaSpmdAttr));
@@ -471,7 +473,8 @@ int MovePreservedParallelExecuteChildren(
     tf_device::ParallelExecuteOp old_parallel_execute,
     tf_device::ParallelExecuteOp* new_parallel_execute) {
   // `num_moved_children` is the number of children that will be preserved.
-  const int num_moved_children = old_parallel_execute.regions().size() - 1;
+  const size_t num_moved_children =
+      old_parallel_execute.getRegions().size() - 1;
   *new_parallel_execute = builder->create<tf_device::ParallelExecuteOp>(
       old_parallel_execute->getLoc(),
       num_moved_children + num_cores_per_replica, concatenated_output_types);
@@ -479,8 +482,8 @@ int MovePreservedParallelExecuteChildren(
   // `cluster_idx` is the index of the child with the `ClusterFuncOp`, which
   // will be replaced.
   int cluster_idx = -1;
-  for (int child_idx = 0; child_idx < old_parallel_execute.regions().size();
-       ++child_idx) {
+  for (size_t child_idx = 0;
+       child_idx < old_parallel_execute.getRegions().size(); ++child_idx) {
     auto& block = old_parallel_execute.GetRegionBlockWithIndex(child_idx);
     if (cluster_func->getBlock() == &block) {
       assert(cluster_idx == -1);
@@ -494,8 +497,8 @@ int MovePreservedParallelExecuteChildren(
     int old_idx = child_idx >= cluster_idx ? child_idx + 1 : child_idx;
     int new_idx = child_idx >= cluster_idx ? child_idx + num_cores_per_replica
                                            : child_idx;
-    new_parallel_execute->getRegions()[new_idx]->takeBody(
-        *old_parallel_execute.getRegions()[old_idx]);
+    new_parallel_execute->getRegions()[new_idx].takeBody(
+        old_parallel_execute.getRegions()[old_idx]);
   }
 
   return cluster_idx;
@@ -526,9 +529,9 @@ LogicalResult AddToParallelExecuteOp(
   concatenated_output_types.reserve(num_results_pre_cluster +
                                     cluster_result_types.size() *
                                         num_cores_per_replica);
-  for (auto* region : old_parallel_execute.getRegions()) {
-    if (!isa<tf_device::ClusterFuncOp>(region->front().front())) {
-      for (Type t : region->front().front().getResultTypes())
+  for (mlir::Region& region : old_parallel_execute.getRegions()) {
+    if (!isa<tf_device::ClusterFuncOp>(region.front().front())) {
+      for (Type t : region.front().front().getResultTypes())
         concatenated_output_types.emplace_back(t);
     }
   }
@@ -656,7 +659,7 @@ LogicalResult CheckTPUPartitionedInputAndOutputAreValid(
       }
     }
   }
-  for (auto cluster_operand : cluster.operands()) {
+  for (auto cluster_operand : cluster.getOperands()) {
     Operation* def = cluster_operand.getDefiningOp();
     // This pass assumes that a TPUPartitionedInput is preceeded by
     // ReadVariable ops, and not vice versa. An earlier pass,
@@ -680,8 +683,8 @@ LogicalResult CheckParallelExecuteConstainsValidNonClusterProcess(
   int num_pre_cluster_regions = 0;
   int num_post_cluster_regions = 0;
   int num_cluster_regions = 0;
-  for (auto* region : parallel_execute.getRegions()) {
-    if (isa<tf_device::LaunchFuncOp>(region->front().front())) {
+  for (mlir::Region& region : parallel_execute.getRegions()) {
+    if (isa<tf_device::LaunchFuncOp>(region.front().front())) {
       if (num_cluster_regions == 0) {
         num_pre_cluster_regions++;
       } else {
@@ -702,9 +705,9 @@ LogicalResult CheckParallelExecuteConstainsValidNonClusterProcess(
 
 int GetNumResultsPreCluster(tf_device::ParallelExecuteOp parallel_execute) {
   int num_results_pre_cluster = 0;
-  for (auto region : parallel_execute.getRegions()) {
-    if (isa<tf_device::LaunchOp>(region->front().front())) {
-      num_results_pre_cluster = region->front().front().getResultTypes().size();
+  for (mlir::Region& region : parallel_execute.getRegions()) {
+    if (isa<tf_device::LaunchOp>(region.front().front())) {
+      num_results_pre_cluster = region.front().front().getResultTypes().size();
     }
   }
   return num_results_pre_cluster;
@@ -838,7 +841,7 @@ LogicalResult Rewrite(
     } else if (compile_device_op) {
       result_id->setAttr("device", compile_device_op);
     }
-    res.output().replaceAllUsesWith(compile_op->getResult(0));
+    res.getOutput().replaceAllUsesWith(compile_op->getResult(0));
   }
 
   BuildTPUCompileSucceededAssertOp(
@@ -896,7 +899,7 @@ void EraseClusterFuncs(
       }
     }
 
-    for (auto operand : cluster.operands()) {
+    for (auto operand : cluster.getOperands()) {
       Operation* def = operand.getDefiningOp();
       if (operand.hasOneUse() &&
           llvm::isa_and_nonnull<TF::TPUPartitionedInputOp>(def)) {

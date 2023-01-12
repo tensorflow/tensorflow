@@ -26,7 +26,6 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
-#include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
 
 namespace mlir {
 namespace TFDevice {
@@ -36,13 +35,19 @@ namespace {
 constexpr char kDeviceAttr[] = "device";
 constexpr char kFuncAttr[] = "func";
 
+#define GEN_PASS_DEF_CLUSTEROUTLININGPASS
+#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_passes.h.inc"
+
 struct ClusterOutliningPass
-    : public TF::ClusterOutliningPassBase<ClusterOutliningPass> {
+    : public impl::ClusterOutliningPassBase<ClusterOutliningPass> {
   void runOnOperation() override;
 };
 
+#define GEN_PASS_DEF_LAUNCHOUTLININGPASS
+#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_passes.h.inc"
+
 struct LaunchOutliningPass
-    : public TF::LaunchOutliningPassBase<LaunchOutliningPass> {
+    : public impl::LaunchOutliningPassBase<LaunchOutliningPass> {
   void runOnOperation() override;
 };
 

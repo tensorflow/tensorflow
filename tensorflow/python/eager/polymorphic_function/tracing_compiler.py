@@ -14,12 +14,16 @@
 # ==============================================================================
 """Tracing Compiler implementation."""
 
+import collections
 import threading
 import types as types_lib
 from typing import List
 import weakref
 
+from tensorflow.core.function import trace_type
+from tensorflow.core.function.capture import capture_container
 from tensorflow.core.function.polymorphism import function_cache
+from tensorflow.core.function.polymorphism import function_type as function_type_lib
 from tensorflow.python.eager import monitoring
 from tensorflow.python.eager.polymorphic_function import function_context
 from tensorflow.python.eager.polymorphic_function import function_spec
@@ -73,8 +77,7 @@ class TracingCompiler:
                autograph_options=None,
                reduce_retracing=False,
                capture_by_value=None,
-               jit_compile=None,
-               experimental_follow_type_hints=False):
+               jit_compile=None):
     """Initializes a `TracingCompiler`.
 
     Args:
@@ -96,9 +99,8 @@ class TracingCompiler:
       capture_by_value: Experimental. Whether to capture resource variables by
         value or reference. If None, will inherit from a parent context or
         default to False.
-      jit_compile: Force-compile the function with XLA, cf.
-        tf.function doc on jit_compile.
-      experimental_follow_type_hints: See the documentation for `tf.function`.
+      jit_compile: Force-compile the function with XLA, cf. tf.function doc on
+        jit_compile.
 
     Raises:
       ValueError: if `input_signature` is not None and the `python_function`'s
@@ -107,10 +109,7 @@ class TracingCompiler:
     self._python_function = python_function
     pure_function = attributes and monomorphic_function.IMPLEMENTS_ATTRIBUTE_NAME in attributes
     self._function_spec = function_spec.FunctionSpec.from_function_and_signature(
-        python_function,
-        input_signature,
-        is_pure=pure_function,
-        experimental_follow_type_hints=experimental_follow_type_hints)
+        python_function, input_signature, is_pure=pure_function)
     self._name = name
     self._autograph = autograph
     self._autograph_options = autograph_options
@@ -121,14 +120,13 @@ class TracingCompiler:
     self.tracing_count = 0
     # Maintein a dict of all captures: identifier -> lambda function. It's used
     # to get runtime values for all captures during ConcreteFunction dispatch,
-    self._captures_container = func_graph_module.CapturesContainer()
+    self._func_captures = capture_container.FunctionCaptures()
     self._lock = threading.RLock()
     # _descriptor_cache is a of instance of a class to an instance-specific
     # `TracingCompiler`, used to make sure tf.function-decorated methods
     # create different functions for each instance.
     self._descriptor_cache = weakref.WeakKeyDictionary()
     self._jit_compile = jit_compile
-    self._experimental_follow_type_hints = experimental_follow_type_hints
 
   def __call__(self, *args, **kwargs):
     """Calls a graph function specialized to the inputs."""
@@ -270,8 +268,8 @@ class TracingCompiler:
     # Return the cached `TracingCompiler` for the instance
     return self._descriptor_cache[instance]
 
-  def _create_concrete_function(self, args, kwargs):
-    """Create a `ConcreteFunction` from `args` and `kwargs`."""
+  def _create_concrete_function(self, args, kwargs, func_graph):
+    """Create a `ConcreteFunction` from `args`, `kwargs`, and `func_graph`."""
     self.tracing_count += 1
 
     arglen = len(args)
@@ -291,10 +289,12 @@ class TracingCompiler:
             args,
             kwargs,
             None,
+            func_graph=func_graph,
             autograph=self._autograph,
             autograph_options=self._autograph_options,
             arg_names=arg_names,
-            capture_by_value=self._capture_by_value),
+            capture_by_value=self._capture_by_value,
+            create_placeholders=False),
         self._function_attributes,
         spec=self.function_spec,
         # Tell the ConcreteFunction to clean up its graph once it goes out of
@@ -328,26 +328,29 @@ class TracingCompiler:
         self._function_spec.canonicalize_function_inputs(args, kwargs))
 
     if self.input_signature is not None:
-      args = self.input_signature
-      kwargs = {}
+      args = (*self.input_signature, *args[len(self.input_signature):])
 
     # Get runtime values of captures
-    captures = self._captures_container.get_snapshot()
+    captures = self._func_captures.get_by_ref_snapshot()
+
+    current_func_context = function_context.make_function_context()
 
     # cache_key_deletion_observer is useless here. It's based on all captures.
     # A new cache key will be built later when saving ConcreteFunction because
     # only active captures should be saved.
-    lookup_func_key, _ = function_context.make_cache_key((args, kwargs),
-                                                         captures)
-    concrete_function = self._function_cache.lookup(lookup_func_key, True)
+    lookup_func_type, lookup_func_context = (
+        self._function_spec.make_canonicalized_monomorphic_type(
+            args, kwargs, captures))
+    concrete_function = self._function_cache.lookup(current_func_context,
+                                                    lookup_func_type)
     if concrete_function is not None:
       return concrete_function, filtered_flat_args
 
     with monitoring.MonitoredTimer(_graph_building_time_counter.get_cell()):
       with trace.Trace("tf.function-graph_building"):
-        logging.vlog(1,
-                     "Creating new FuncGraph for Python function %r (key: %r)",
-                     self._python_function, lookup_func_key)
+        logging.vlog(
+            1, "Creating new FuncGraph for Python function %r (key: %r, %r)",
+            self._python_function, current_func_context, lookup_func_type)
         logging.vlog(2, "Python function signature [args: %s] [kwargs: %s]",
                      args, kwargs)
         ag_status = (
@@ -355,25 +358,43 @@ class TracingCompiler:
             if self._autograph else ag_ctx.Status.DISABLED)
         with ag_ctx.ControlStatusCtx(
             status=ag_status, options=self._autograph_options):
+          func_graph = func_graph_module.FuncGraph(
+              self._name, capture_by_value=self._capture_by_value)
           if self.input_signature is None and self._reduce_retracing:
-            generalized_func_key = self._function_cache.generalize(
-                lookup_func_key)
-            # Only get placeholders for arguments, not captures
-            args, kwargs = generalized_func_key._placeholder_value()["args"]  # pylint: disable=protected-access
+            target_func_type = self._function_cache.generalize(
+                current_func_context, lookup_func_type)
+          else:
+            target_func_type = lookup_func_type
+          handledata_mapping = lookup_func_context.get_handledata_mapping()
+          placeholder_mapping = lookup_func_context.get_placeholder_mapping()
+          placeholder_context = trace_type.InternalPlaceholderContext(
+              func_graph, placeholder_mapping, handledata_mapping)
+          with func_graph.as_default():
+            placeholder_bound_args = target_func_type.placeholder_arguments(
+                placeholder_context)
+          if self.function_spec.is_method:
+            # TODO(fmuham): canonicalize_function_inputs removes self arg.
+            args = placeholder_bound_args.args[1:]
+          else:
+            args = placeholder_bound_args.args
+          kwargs = placeholder_bound_args.kwargs
 
-          concrete_function = self._create_concrete_function(args, kwargs)
+          concrete_function = self._create_concrete_function(
+              args, kwargs, func_graph)
 
-          graph_capture_container = concrete_function.graph._capture_func_lib  # pylint: disable=protected-access
+          # TODO(b/263520817): Remove access to private attribute.
+          graph_capture_container = concrete_function.graph._function_captures  # pylint: disable=protected-access
           # Maintain the list of all captures
-          self._captures_container.update(graph_capture_container)
+          self._func_captures.merge_by_ref_with(graph_capture_container)
           # Get current active captures snapshot
-          captures = graph_capture_container.get_snapshot()
+          captures = graph_capture_container.get_by_ref_snapshot()
 
           # Create a cache_key with args and captures
-          traced_func_key, traced_func_deletion_observer = (
-              function_context.make_cache_key((args, kwargs), captures))
+          traced_func_deletion_observer = lookup_func_context.deletion_observer
+          traced_func_type = _insert_capture_type(
+              target_func_type, captures, lookup_func_context)
 
-          self._function_cache.add(traced_func_key,
+          self._function_cache.add(current_func_context, traced_func_type,
                                    traced_func_deletion_observer,
                                    concrete_function)
 
@@ -467,3 +488,11 @@ def class_method_to_instance_method(original_function, instance):
   wrapped_instance_func = tf_decorator.make_decorator(bound_method,
                                                       instance_func)
   return wrapped_instance_func
+
+
+def _insert_capture_type(original_func_type, captures, type_context):
+  capture_types = collections.OrderedDict()
+  for name, value in captures.items():
+    capture_types[name] = trace_type.from_value(value, type_context)
+  return function_type_lib.FunctionType(
+      original_func_type.parameters.values(), capture_types)

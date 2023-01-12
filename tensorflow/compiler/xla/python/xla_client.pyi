@@ -32,7 +32,7 @@ from .xla_extension import Device as Device
 from .xla_extension import DeviceArrayBase as DeviceArrayBase
 from .xla_extension import DeviceAssignment as DeviceAssignment
 from .xla_extension import DistributedRuntimeClient as DistributedRuntimeClient
-from .xla_extension import Executable as Executable
+from .xla_extension import LoadedExecutable as LoadedExecutable
 from .xla_extension import FftType as FftType
 from .xla_extension import Frame as Frame
 from .xla_extension import HostBufferSemantics as HostBufferSemantics
@@ -45,7 +45,7 @@ from .xla_extension import XlaComputation as XlaComputation
 from .xla_extension import XlaOp as XlaOp
 from .xla_extension import Sharding as Sharding
 from .xla_extension import XLACompatibleSharding as XLACompatibleSharding
-from .xla_extension import MeshPspecSharding as MeshPspecSharding
+from .xla_extension import NamedSharding as NamedSharding
 from .xla_extension import SingleDeviceSharding as SingleDeviceSharding
 from .xla_extension import PmapSharding as PmapSharding
 from .xla_extension import OpShardingSharding as OpShardingSharding
@@ -55,17 +55,19 @@ _version: int
 mlir_api_version: int
 
 bfloat16: numpy.dtype
+float8_e4m3fn: numpy.dtype
+float8_e5m2: numpy.dtype
 XLA_ELEMENT_TYPE_TO_DTYPE: Dict[PrimitiveType, numpy.dtype]
 
 
 def dtype_to_etype(dtype: numpy.dtype) -> PrimitiveType:
   ...
 
-def execute_with_python_values(executable: Executable, arguments: Sequence[Any],
+def execute_with_python_values(executable: LoadedExecutable, arguments: Sequence[Any],
                                backend: Client) -> Sequence[numpy.ndarray]: ...
 
 def execute_with_python_values_replicated(
-    executable: Executable, arguments: Sequence[Sequence[Any]],
+    executable: LoadedExecutable, arguments: Sequence[Sequence[Any]],
     backend: Client) -> Sequence[Sequence[numpy.ndarray]]: ...
 
 def shape_from_pyval(pyval: Any) -> Any: ...
@@ -101,6 +103,8 @@ def make_tpu_client() -> Client:
 def make_plugin_device_client() -> Client:
   ...
 
+def maybe_load_pjrt_plugins() -> None:
+  ...
 
 class OpMetadata:
 

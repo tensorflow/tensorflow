@@ -1,7 +1,8 @@
 # Description:
 #   libjpeg-turbo is a drop in replacement for jpeglib optimized with SIMD.
 
-load("@org_tensorflow//third_party:common.bzl", "template_rule")
+load("@bazel_skylib//rules:expand_template.bzl", "expand_template")
+load("@bazel_skylib//rules:common_settings.bzl", "string_flag")
 
 licenses(["notice"])  # custom notice-style license, see LICENSE.md
 
@@ -126,6 +127,7 @@ cc_library(
     copts = libjpegturbo_copts,
     visibility = ["//visibility:public"],
     deps = select({
+        ":nosimd": [":simd_none"],
         ":k8": [":simd_x86_64"],
         ":armeabi-v7a": [":simd_armv7a"],
         ":arm64-v8a": [":simd_armv8a"],
@@ -312,15 +314,15 @@ genrule(
     tools = ["@nasm"],
 )
 
-template_rule(
+expand_template(
     name = "neon-compat_gen",
-    src = "simd/arm/neon-compat.h.in",
     out = "simd/arm/neon-compat.h",
     substitutions = {
         "#cmakedefine HAVE_VLD1_S16_X3": "#define HAVE_VLD1_S16_X3",
         "#cmakedefine HAVE_VLD1_U16_X2": "#define HAVE_VLD1_U16_X2",
         "#cmakedefine HAVE_VLD1Q_U8_X4": "#define HAVE_VLD1Q_U8_X4",
     },
+    template = "simd/arm/neon-compat.h.in",
 )
 
 genrule(
@@ -517,6 +519,7 @@ cc_library(
     srcs = [
         "jchuff.h",
         "jconfig.h",
+        "jconfigint.h",
         "jdct.h",
         "jerror.h",
         "jinclude.h",
@@ -530,26 +533,35 @@ cc_library(
     copts = libjpegturbo_copts,
 )
 
-template_rule(
+expand_template(
+    name = "jversion",
+    out = "jversion.h",
+    substitutions = {
+        "@COPYRIGHT_YEAR@": "1991-2022",
+    },
+    template = "jversion.h.in",
+)
+
+expand_template(
     name = "jconfig_win",
-    src = "win/jconfig.h.in",
     out = "jconfig_win.h",
     substitutions = {
         "@JPEG_LIB_VERSION@": "62",
-        "@VERSION@": "2.0.0",
-        "@LIBJPEG_TURBO_VERSION_NUMBER@": "2000000",
+        "@VERSION@": "2.1.4",
+        "@LIBJPEG_TURBO_VERSION_NUMBER@": "2001004",
         "@BITS_IN_JSAMPLE@": "8",
         "#cmakedefine C_ARITH_CODING_SUPPORTED": "#define C_ARITH_CODING_SUPPORTED",
         "#cmakedefine D_ARITH_CODING_SUPPORTED": "#define D_ARITH_CODING_SUPPORTED",
         "#cmakedefine MEM_SRCDST_SUPPORTED": "#define MEM_SRCDST_SUPPORTED",
         "#cmakedefine WITH_SIMD": "",
     },
+    template = "win/jconfig.h.in",
 )
 
 JCONFIG_NOWIN_COMMON_SUBSTITUTIONS = {
     "@JPEG_LIB_VERSION@": "62",
-    "@VERSION@": "2.0.0",
-    "@LIBJPEG_TURBO_VERSION_NUMBER@": "2000000",
+    "@VERSION@": "2.1.4",
+    "@LIBJPEG_TURBO_VERSION_NUMBER@": "2001004",
     "#cmakedefine C_ARITH_CODING_SUPPORTED 1": "#define C_ARITH_CODING_SUPPORTED 1",
     "#cmakedefine D_ARITH_CODING_SUPPORTED 1": "#define D_ARITH_CODING_SUPPORTED 1",
     "#cmakedefine MEM_SRCDST_SUPPORTED 1": "#define MEM_SRCDST_SUPPORTED 1",
@@ -580,23 +592,23 @@ JCONFIG_NOWIN_SIMD_SUBSTITUTIONS.update(JCONFIG_NOWIN_COMMON_SUBSTITUTIONS)
 
 JCONFIG_NOWIN_NOSIMD_SUBSTITUTIONS.update(JCONFIG_NOWIN_COMMON_SUBSTITUTIONS)
 
-template_rule(
+expand_template(
     name = "jconfig_nowin_nosimd",
-    src = "jconfig.h.in",
     out = "jconfig_nowin_nosimd.h",
     substitutions = JCONFIG_NOWIN_NOSIMD_SUBSTITUTIONS,
+    template = "jconfig.h.in",
 )
 
-template_rule(
+expand_template(
     name = "jconfig_nowin_simd",
-    src = "jconfig.h.in",
     out = "jconfig_nowin_simd.h",
     substitutions = JCONFIG_NOWIN_SIMD_SUBSTITUTIONS,
+    template = "jconfig.h.in",
 )
 
 JCONFIGINT_COMMON_SUBSTITUTIONS = {
-    "@BUILD@": "20210424",
-    "@VERSION@": "2.1.0",
+    "@BUILD@": "20221022",
+    "@VERSION@": "2.1.4",
     "@CMAKE_PROJECT_NAME@": "libjpeg-turbo",
     "#undef inline": "",
     "#cmakedefine HAVE_INTRIN_H": "",
@@ -632,18 +644,18 @@ JCONFIGINT_NOWIN_SUBSTITUTIONS.update(JCONFIGINT_COMMON_SUBSTITUTIONS)
 
 JCONFIGINT_WIN_SUBSTITUTIONS.update(JCONFIGINT_COMMON_SUBSTITUTIONS)
 
-template_rule(
+expand_template(
     name = "jconfigint_nowin",
-    src = "jconfigint.h.in",
     out = "jconfigint_nowin.h",
     substitutions = JCONFIGINT_NOWIN_SUBSTITUTIONS,
+    template = "jconfigint.h.in",
 )
 
-template_rule(
+expand_template(
     name = "jconfigint_win",
-    src = "jconfigint.h.in",
     out = "jconfigint_win.h",
     substitutions = JCONFIGINT_WIN_SUBSTITUTIONS,
+    template = "jconfigint.h.in",
 )
 
 genrule(
@@ -747,8 +759,19 @@ genrule(
           "EOF",
 )
 
+string_flag(
+    name = "noasm",
+    build_setting_default = "no",
+)
+
+config_setting(
+    name = "nosimd",
+    flag_values = {":noasm": "yes"},
+)
+
 config_setting(
     name = "k8",
+    flag_values = {":noasm": "no"},
     values = {"cpu": "k8"},
 )
 
@@ -759,20 +782,24 @@ config_setting(
 
 config_setting(
     name = "armeabi-v7a",
+    flag_values = {":noasm": "no"},
     values = {"cpu": "armeabi-v7a"},
 )
 
 config_setting(
     name = "arm64-v8a",
+    flag_values = {":noasm": "no"},
     values = {"cpu": "arm64-v8a"},
 )
 
 config_setting(
     name = "windows",
+    flag_values = {":noasm": "no"},
     values = {"cpu": "x64_windows"},
 )
 
 config_setting(
     name = "linux_ppc64le",
+    flag_values = {":noasm": "no"},
     values = {"cpu": "ppc"},
 )

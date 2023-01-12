@@ -26,6 +26,7 @@ limitations under the License.
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
+#include "mlir/Dialect/SparseTensor/IR/SparseTensor.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
@@ -37,11 +38,11 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
-#include "tensorflow/compiler/mlir/xla/type_to_shape.h"
 #include "tensorflow/compiler/xla/client/sharding_builder.h"
-#include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
+#include "tensorflow/compiler/xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/side_effect_util.h"
+#include "tensorflow/compiler/xla/translate/mhlo_to_hlo/type_to_shape.h"
 
 namespace mlir {
 
@@ -329,18 +330,18 @@ Value RewriteHostComputeOp(OpBuilder& builder, int64_t& channel_id,
   Location loc = host_compute.getLoc();
 
   SmallVector<Value, 4> send_tokens;
-  for (auto operand : llvm::enumerate(host_compute.inputs())) {
+  for (auto operand : llvm::enumerate(host_compute.getInputs())) {
     auto send_token = CreateSendOp(
-        builder, channel_id, loc, operand.value(), host_compute.send_key(),
+        builder, channel_id, loc, operand.value(), host_compute.getSendKey(),
         operand.index(), token, xla::kXlaHostTransferTfRendezvousHandlerName);
     send_tokens.push_back(send_token);
   }
   token = CreateSinkToken(builder, loc, send_tokens, token);
 
   SmallVector<Value, 4> recv_tokens;
-  for (auto result : llvm::enumerate(host_compute.outputs())) {
+  for (auto result : llvm::enumerate(host_compute.getOutputs())) {
     auto recv_token = CreateRecvOp(
-        builder, channel_id, loc, result.value(), host_compute.recv_key(),
+        builder, channel_id, loc, result.value(), host_compute.getRecvKey(),
         result.index(), token, xla::kXlaHostTransferTfRendezvousHandlerName);
     recv_tokens.push_back(recv_token);
   }
@@ -355,7 +356,7 @@ Value RewriteSendToHostOp(OpBuilder& builder, int64_t& channel_id,
                           TF::XlaSendToHostOp send_to_host, Value token) {
   builder.setInsertionPoint(send_to_host);
   token = CreateSendOp(builder, channel_id, send_to_host.getLoc(),
-                       send_to_host.input(), send_to_host.key(),
+                       send_to_host.getInput(), send_to_host.getKey(),
                        /*index=*/0, token,
                        xla::kXlaHostTransferTfRendezvousHandlerName);
 
@@ -368,7 +369,7 @@ Value RewriteRecvFromHostOp(OpBuilder& builder, int64_t& channel_id,
                             TF::XlaRecvFromHostOp recv_from_host, Value token) {
   builder.setInsertionPoint(recv_from_host);
   token = CreateRecvOp(builder, channel_id, recv_from_host.getLoc(),
-                       recv_from_host.output(), recv_from_host.key(),
+                       recv_from_host.getOutput(), recv_from_host.getKey(),
                        /*index=*/0, token,
                        xla::kXlaHostTransferTfRendezvousHandlerName);
 
@@ -637,8 +638,8 @@ void RewriteControlFlowOpRegion(
                                                         block_arg_types);
 
   if (control_flow_blocks.contains(&region.front())) {
-      ops_to_visit.push_back(
-          {/*region_idx=*/llvm::None, block_token, &region.front().front()});
+    ops_to_visit.push_back(
+        {/*region_idx=*/llvm::None, block_token, &region.front().front()});
     return;
   }
 

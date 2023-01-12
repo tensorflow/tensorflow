@@ -175,6 +175,7 @@ struct Identity {
     }                                                   \
   };
 FIX_MEAN_IDENTITY(Eigen::half)
+FIX_MEAN_IDENTITY(Eigen::bfloat16)
 FIX_MEAN_IDENTITY(float)
 FIX_MEAN_IDENTITY(double)
 #undef FIX_MEAN_IDENTITY

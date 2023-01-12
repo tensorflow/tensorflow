@@ -337,5 +337,16 @@ XLA_TEST_F(ElementalIrEmitterExecutionTest, CompareBF16) {
   RunTest(hlo_text, {&lhs, &rhs});
 }
 
+XLA_TEST_F(ElementalIrEmitterExecutionTest, IotaBF16) {
+  constexpr char hlo_text[] = R"(
+  HloModule IotaBF16
+  ENTRY main {
+    ROOT iota_ = bf16[4] iota(), iota_dimension=0
+  }
+  )";
+
+  RunTest(hlo_text, {});
+}
+
 }  // namespace
 }  // namespace xla

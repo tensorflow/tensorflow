@@ -16,7 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_RESULT_CASTER_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_RESULT_CASTER_H_
 
-#include "tensorflow/compiler/xla/service/hlo_module.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/service/op_expander_pass.h"
 
 namespace xla {

@@ -90,6 +90,14 @@ def DTensorUndoMergeConstAcrossMesh
   ];
 }
 
+def DTensorElideIdentityBeforeCopyToMesh
+    : Pass<"dtensor-elide-identity-before-copy-to-mesh", "mlir::func::FuncOp"> {
+  let summary = "Elide IdentityOp right before CopyToMesh style Ops";
+  let constructor = "CreateDTensorElideIdentityBeforeCopyToMesh()";
+  let dependentDialects = [
+  ];
+}
+
 def DTensorSetDefaultSharding
     : Pass<"dtensor-set-default-sharding", "mlir::func::FuncOp"> {
   let summary = "Sets default sharding of TPU computation inputs/outputs to maximal.";
@@ -237,6 +245,8 @@ def DTensorEmbedding
     "::mlir::shape::ShapeDialect",
     "::mlir::scf::SCFDialect",
     "::mlir::tensor::TensorDialect",
+    "::mlir::sparse_tensor::SparseTensorDialect",
+    "::mlir::quant::QuantizationDialect",
   ];
 }
 
@@ -308,6 +318,14 @@ def DTensorInferShapesForRestoreV2Op
     : Pass<"dtensor-infer-shapes-for-restorev2-op", "mlir::ModuleOp"> {
   let summary = "Infer shapes of the outputs of tf.RestoreV2Op from the AssignVariableOps that consume those outputs. This is used for DTensor integration with TF Checkpoint.";
   let constructor = "CreateDTensorInferShapesForRestoreV2Op()";
+  let dependentDialects = [
+  ];
+}
+
+def DTensorXlaSpmdIntegration
+    : Pass<"dtensor-xla-spmd-integration", "mlir::ModuleOp"> {
+  let summary = "Converts all Layout operations into equivalent XLA Sharding attributes for inputs, outputs, and operations in the graph. All existing layouts must be on a XLA Mesh, and are deleted after this pass.";
+  let constructor = "CreateDTensorXlaSpmdIntegration()";
   let dependentDialects = [
   ];
 }
