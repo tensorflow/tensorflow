@@ -172,9 +172,6 @@ class PjRtCApiClient : public PjRtClient {
   StatusOr<std::optional<std::string>> ExecutableFingerprint(
       const PjRtLoadedExecutable& executable) const override;
 
-  StatusOr<std::string> SerializeExecutable(
-      const PjRtLoadedExecutable& executable) const override;
-
   // `PjRtCApiClient::DeserializeExecutable()` ignores `CompileOptions` arg
   StatusOr<std::unique_ptr<PjRtLoadedExecutable>> DeserializeExecutable(
       absl::string_view serialized,
@@ -487,6 +484,8 @@ class PjRtCApiExecutable : public PjRtLoadedExecutable {
 
   void Delete() override;
   bool IsDeleted() override;
+
+  StatusOr<std::string> SerializeExecutable() const override;
 
   PjRtLoadedExecutable* wrapped() const;
 

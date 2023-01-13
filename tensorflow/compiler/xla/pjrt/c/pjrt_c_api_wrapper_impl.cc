@@ -722,11 +722,9 @@ PJRT_Error* PJRT_Executable_Serialize(PJRT_Executable_Serialize_Args* args) {
   PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes(
       "PJRT_Executable_Serialize_Args",
       PJRT_Executable_Serialize_Args_STRUCT_SIZE, args->struct_size));
-  const xla::PjRtLoadedExecutable& executable = *args->executable->executable;
   std::string serialization;
-  const PJRT_Client* client = args->executable->client;
   PJRT_ASSIGN_OR_RETURN(serialization,
-                        client->client->SerializeExecutable(executable));
+                        args->executable->executable->SerializeExecutable());
 
   PJRT_SerializedExecutable* serialized_exec = new PJRT_SerializedExecutable;
   if (serialized_exec == nullptr) {

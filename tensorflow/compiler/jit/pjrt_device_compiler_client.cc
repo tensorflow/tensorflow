@@ -52,19 +52,13 @@ PjRtDeviceCompilerClient::BuildExecutable(
   return std::move(executable);
 }
 
-StatusOr<std::string> PjRtDeviceCompilerClient::SerializeExecutable(
-    const xla::PjRtLoadedExecutable& executable) {
-  VLOG(1) << "Serializing xla::PjRtLoadedExecutable to string.";
-  return client_->SerializeExecutable(executable);
-}
-
 StatusOr<std::string> PjRtDeviceCompilerClient::BuildSerializedExecutable(
     const XlaCompiler::Options& options,
     const XlaCompiler::CompilationResult& result) {
   VLOG(1) << "PJRT currently doesn't support AOT compilation. Compiling to "
              "xla::PjRtLoadedExecutable and serializing it";
   TF_ASSIGN_OR_RETURN(auto executable, BuildExecutable(options, result));
-  return SerializeExecutable(*executable);
+  return executable->SerializeExecutable();
 }
 
 StatusOr<std::unique_ptr<xla::PjRtLoadedExecutable>>
