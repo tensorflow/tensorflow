@@ -122,13 +122,6 @@ def RewriteVectorMultiReductionPass :
   let dependentDialects = ["mlir::memref::MemRefDialect"];
 }
 
-
-def DetensorizeLinalg : Pass<"tf-jitrt-detensorize-linalg", "mlir::func::FuncOp"> {
-  let summary = "Replace 0d tensor inputs to LinalgOp with extracted elements.";
-  let constructor = "tensorflow::CreateDetensorizeLinalgPass()";
-  let dependentDialects = ["mlir::linalg::LinalgDialect"];
-}
-
 def MathApproximation : Pass<"tf-jitrt-math-approximation", "mlir::func::FuncOp"> {
   let summary = "Approximate math operations with an implementation meant to "
                 "match Eigen's results. This is a useful property to have when "

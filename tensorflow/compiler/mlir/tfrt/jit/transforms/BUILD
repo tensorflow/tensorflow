@@ -48,7 +48,6 @@ cc_library(
         "tf_jitrt_buffer_forwarding.cc",
         "tf_jitrt_clustering_pass.cc",
         "tf_jitrt_copy_removal.cc",
-        "tf_jitrt_detensorize_linalg.cc",
         "tf_jitrt_fission.cc",
         "tf_jitrt_fusion.cc",
         "tf_jitrt_legalize_i1_type.cc",

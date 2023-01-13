@@ -48,10 +48,6 @@ CreateLinalgTrivialBufferForwardingPass();
 std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
 CreateLinalgTrivialCopyRemovalPass();
 
-// Pass to optimize padding in tiled loops by peeling the final loop iteration.
-std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
-CreatePeelTiledLoopsPass();
-
 // Pass to tile and fuse linalg.generic on tensors that models reduction.
 std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
 CreateTileReductionPass();
@@ -95,10 +91,6 @@ std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>> CreateFissionPass();
 
 // Pass to fuse Linalg generic operations on Tensors.
 std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>> CreateFusionPass();
-
-// Pass to replace 0-d tensor inputs to LinalgOp with extracted elements.
-std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
-CreateDetensorizeLinalgPass();
 
 // Creates `tf_device.cluster` operations according to the TF JitRt clustering
 // policy.
