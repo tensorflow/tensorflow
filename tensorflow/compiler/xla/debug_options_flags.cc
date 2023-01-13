@@ -50,6 +50,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_dump_max_hlo_modules(-1);
   opts.set_xla_dump_module_metadata(false);
   opts.set_xla_dump_hlo_as_long_text(false);
+  opts.set_xla_dump_enable_mlir_pretty_form(true);
 #ifdef ENABLE_MKL
   opts.set_xla_cpu_use_mkl_dnn(true);
 #endif  // ENABLE_MKL
@@ -775,6 +776,15 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       debug_options->xla_dump_hlo_pipeline_re(),
       "If specified, dumps HLO before and after optimization passes in the "
       "pass pipelines that match this regular expression."));
+  flag_list->push_back(tsl::Flag(
+      "xla_dump_enable_mlir_pretty_form",
+      bool_setter_for(&DebugOptions::set_xla_dump_enable_mlir_pretty_form),
+      debug_options->xla_dump_enable_mlir_pretty_form(),
+      "Enable dumping MLIR using pretty print form. If set to false, the "
+      "dumped "
+      "MLIR will be in the llvm-parsable format and can be processed by "
+      "mlir-opt tools. "
+      "Pretty print form is not legal MLIR."));
   flag_list->push_back(tsl::Flag(
       "xla_gpu_enable_xla_runtime_executable",
       bool_setter_for(&DebugOptions::set_xla_gpu_enable_xla_runtime_executable),
