@@ -814,6 +814,19 @@ func.func @dynamic_broadcast_in_dim_to_same_shape_4(%arg0: tensor<*xf32>) -> ten
   func.return %3 : tensor<?xf32>
 }
 
+// CHECK-LABEL: func @dynamic_broadcast_in_dim_all_dims_non_expanding
+func.func @dynamic_broadcast_in_dim_all_dims_non_expanding(%arg0: tensor<*xf32>, %arg1: tensor<1xindex>) -> tensor<?xf32> {
+  // CHECK-SAME: %[[ARG:.*]]: tensor<*xf32>
+  %1 = "mhlo.dynamic_broadcast_in_dim"(%arg0, %arg1) {
+    broadcast_dimensions = dense<0> : tensor<1xi64>,
+    known_expanding_dimensions = dense<> : tensor<0xi64>,
+    known_nonexpanding_dimensions = dense<0> : tensor<1xi64>
+  } : (tensor<*xf32>, tensor<1xindex>) -> tensor<?xf32>
+  // CHECK: %[[RES:.*]] = tensor.cast %[[ARG]] : tensor<*xf32> to tensor<?xf32>
+  // CHECK: return %[[RES]] : tensor<?xf32>
+  func.return %1 : tensor<?xf32>
+}
+
 // CHECK-LABEL: func @broadcast_in_dim_constant_fold_0d
 func.func @broadcast_in_dim_constant_fold_0d() -> tensor<1x64x224x224xf32> {
   %cst = mhlo.constant dense<0.000000e+00> : tensor<f32>

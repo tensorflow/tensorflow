@@ -2605,12 +2605,35 @@ class ChainedDynamicBroadcastInDimCanonicalization
     return success();
   }
 };
+
+// If all dimensions are known to be nonexpanding from the attribute, replace
+// the dynamic broadcast with a cast.
+class DynamicBroadcastInDimAllDimsNonExpanding
+    : public OpRewritePattern<DynamicBroadcastInDimOp> {
+  using OpRewritePattern::OpRewritePattern;
+  LogicalResult matchAndRewrite(DynamicBroadcastInDimOp op,
+                                PatternRewriter& rewriter) const override {
+    auto resultType = op.getResult().getType().dyn_cast<RankedTensorType>();
+    if (!resultType)
+      return rewriter.notifyMatchFailure(op, "requires ranked result type");
+
+    if (!op.getKnownNonexpandingDimensions().has_value() ||
+        op.getKnownNonexpandingDimensions()->size() != resultType.getRank())
+      return rewriter.notifyMatchFailure(
+          op, "known_nonexpanding_dimensions don't cover all output dims");
+
+    rewriter.replaceOpWithNewOp<tensor::CastOp>(op, resultType,
+                                                op.getOperand());
+    return success();
+  }
+};
 }  // namespace
 
 void DynamicBroadcastInDimOp::getCanonicalizationPatterns(
     RewritePatternSet& results, MLIRContext* context) {
   results.add<ChainedDynamicBroadcastInDimCanonicalization,
               DynamicBroadcastInDimOpNotActuallyDynamic,
+              DynamicBroadcastInDimAllDimsNonExpanding,
               DynamicBroadcastToOwnShape_1, DynamicBroadcastToOwnShape_2,
               DynamicBroadcastToOwnShape_3, DynamicBroadcastToOwnShape_4>(
       context);
