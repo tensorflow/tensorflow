@@ -27,6 +27,8 @@ limitations under the License.
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_utils.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/ops/tf_op_quant_spec.h"
+#include "tensorflow/compiler/mlir/quantization/tensorflow/passes/utils.h"
+#include "tensorflow/compiler/mlir/quantization/tensorflow/quantization_options.pb.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/utils/lift_as_function_call_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_dialect.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
@@ -108,6 +110,13 @@ class CheckQuantizableOps
         call_op->removeAttr(kQuantTraitAttrName);
       }
     }
+
+    StringRef function_name =
+        call_op.getFAttr().cast<FlatSymbolRefAttr>().getValue();
+    if (function_name.contains("gather")) {
+      call_op->removeAttr(kQuantTraitAttrName);
+    }
+
     return failure();
   }
 

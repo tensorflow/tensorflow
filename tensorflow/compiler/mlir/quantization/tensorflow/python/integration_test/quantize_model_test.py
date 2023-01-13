@@ -31,6 +31,7 @@ from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.framework import graph_pb2
 from tensorflow.core.framework import node_def_pb2
 from tensorflow.core.framework import tensor_shape_pb2
+from tensorflow.core.framework import types_pb2
 from tensorflow.python.client import session
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.eager import def_function
@@ -117,17 +118,6 @@ def parameter_combinations(test_parameters):
     for curr in itertools.product(*parameters.values()):
       real_parameters.append(dict(zip(keys, curr)))
   return real_parameters
-
-
-def get_dir_size(path='.'):
-  """Get the total size of files and sub-directories under the path."""
-  total = 0
-  for root, dirs, files in os.walk(path):
-    for filename in files:
-      total += os.path.getsize(os.path.join(root, filename))
-    for dirname in dirs:
-      total += get_dir_size(os.path.join(root, dirname))
-  return total
 
 
 class MultipleSignatureModel(module.Module):
@@ -1075,6 +1065,69 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
     else:
       self.assertTrue(self._contains_quantized_function_call(output_graphdef))
     self.assertFalse(self._contains_op(output_graphdef, 'FusedBatchNormV3'))
+
+  @parameterized.named_parameters(
+      ('to_tf', quant_opts_pb2.TF),
+      ('to_xla', quant_opts_pb2.XLA),
+      ('to_uq', quant_opts_pb2.UNIFORM_QUANTIZED),
+  )
+  @test_util.run_v2_only
+  def test_gather_and_conv_model(self, target_opset: quant_opts_pb2.OpSet):
+    model = self._create_simple_gather_and_conv_model(filter_shape=(2, 3, 3, 2))
+    saved_model_save.save(model, self._input_saved_model_path)
+
+    data_gen = self._create_data_generator(
+        input_key='input_tensor',
+        shape=[6],
+        minval=0,
+        maxval=10,
+        dtype=dtypes.int64,
+    )
+
+    tags = {tag_constants.SERVING}
+
+    quantization_options = quant_opts_pb2.QuantizationOptions(
+        quantization_method=quant_opts_pb2.QuantizationMethod(
+            experimental_method=_ExperimentalMethod.STATIC_RANGE
+        ),
+        op_set=target_opset,
+    )
+
+    converted_model = quantize_model.quantize(
+        self._input_saved_model_path,
+        ['serving_default'],
+        tags,
+        self._output_saved_model_path,
+        quantization_options,
+        representative_dataset=data_gen,
+    )
+    self.assertIsNotNone(converted_model)
+    self.assertCountEqual(
+        converted_model.signatures._signatures.keys(), {'serving_default'}
+    )
+
+    output_loader = saved_model_loader.SavedModelLoader(
+        self._output_saved_model_path
+    )
+    output_graphdef = output_loader.get_meta_graph_def_from_tags(tags).graph_def
+    if target_opset == quant_opts_pb2.XLA:
+      self.assertTrue(self._contains_op(output_graphdef, 'XlaConvV2'))
+      self.assertSizeRatioLessThan(
+          self._output_saved_model_path, self._input_saved_model_path, 1 / 3
+      )
+    elif target_opset == quant_opts_pb2.UNIFORM_QUANTIZED:
+      # _contains_op for UQ ops also checks _contains_quantized_function_call.
+      self.assertTrue(
+          self._contains_op(output_graphdef, 'UniformQuantizedConvolution')
+      )
+      self.assertSizeRatioGreaterThan(
+          self._output_saved_model_path, self._input_saved_model_path, 0.95
+      )
+    else:
+      self.assertTrue(self._contains_quantized_function_call(output_graphdef))
+      self.assertSizeRatioGreaterThan(
+          self._output_saved_model_path, self._input_saved_model_path, 0.95
+      )
 
   # TODO(b/263830952): Use dictionaries instead of tuples for parameters.
   @parameterized.named_parameters(
@@ -2554,7 +2607,6 @@ class DynamicRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
     output_graphdef = output_loader.get_meta_graph_def_from_tags(tags).graph_def
 
     if target_opset == quant_opts_pb2.UNIFORM_QUANTIZED:
-      # _contains_op for UQ ops also checks _contains_quantized_function_call.
       self.assertTrue(
           self._contains_op(output_graphdef, 'UniformQuantizedDotHybrid')
       )
@@ -2631,7 +2683,6 @@ class DynamicRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
           ]))
 
     if target_opset == quant_opts_pb2.UNIFORM_QUANTIZED:
-      # _contains_op for UQ ops also checks _contains_quantized_function_call.
       self.assertTrue(
           self._contains_op(
               output_graphdef, 'UniformQuantizedConvolutionHybrid'
@@ -2725,7 +2776,6 @@ class DynamicRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
           ]))
 
     if target_opset == quant_opts_pb2.UNIFORM_QUANTIZED:
-      # _contains_op for UQ ops also checks _contains_quantized_function_call.
       self.assertTrue(
           self._contains_op(
               output_graphdef,
@@ -2768,11 +2818,25 @@ class DynamicRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
       )
 
   @parameterized.named_parameters(
-      ('use_constant', False),
-      ('use_variable', True),
+      ('to_tf_use_constant', quant_opts_pb2.TF, False),
+      ('to_xla_use_constant', quant_opts_pb2.XLA, False),
+      (
+          'to_uniform_quantized_use_constant',
+          quant_opts_pb2.UNIFORM_QUANTIZED,
+          False,
+      ),
+      ('to_tf_use_variable', quant_opts_pb2.TF, True),
+      ('to_xla_use_variable', quant_opts_pb2.XLA, True),
+      (
+          'to_uniform_quantized_use_variable',
+          quant_opts_pb2.UNIFORM_QUANTIZED,
+          True,
+      ),
   )
   @test_util.run_v2_only
-  def test_gather_model(self, use_variable):
+  def test_gather_model(
+      self, target_opset: quant_opts_pb2.OpSet, use_variable: bool
+  ):
     model = self._create_gather_model(use_variable)
     saved_model_save.save(model, self._input_saved_model_path)
 
@@ -2780,8 +2844,10 @@ class DynamicRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
 
     quantization_options = quant_opts_pb2.QuantizationOptions(
         quantization_method=quant_opts_pb2.QuantizationMethod(
-            experimental_method=_ExperimentalMethod.DYNAMIC_RANGE),
-        op_set=quant_opts_pb2.OpSet.UNIFORM_QUANTIZED)
+            experimental_method=_ExperimentalMethod.DYNAMIC_RANGE
+        ),
+        op_set=target_opset,
+    )
 
     converted_model = quantize_model.quantize(self._input_saved_model_path,
                                               ['serving_default'], tags,
@@ -2792,11 +2858,18 @@ class DynamicRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
     self.assertCountEqual(converted_model.signatures._signatures.keys(),
                           {'serving_default'})
 
-    output_loader = saved_model_loader.SavedModelLoader(
-        self._output_saved_model_path)
-    output_graphdef = output_loader.get_meta_graph_def_from_tags(tags).graph_def
-    # Currently gather is not supported.
-    self.assertFalse(self._contains_quantized_function_call(output_graphdef))
+    # Only XLA opset does not apply weight-only quantization
+    if target_opset == quant_opts_pb2.XLA:
+      threshold = 0.25 if use_variable else 0.3
+      self.assertSizeRatioLessThan(
+          self._output_saved_model_path, self._input_saved_model_path, threshold
+      )
+    else:
+      # Double from the XLA threshold
+      threshold = 0.4 if use_variable else 0.7
+      self.assertSizeRatioGreaterThan(
+          self._output_saved_model_path, self._input_saved_model_path, threshold
+      )
 
   @test_util.run_in_graph_and_eager_modes
   def test_conv_model_with_wrong_tags_raises_error(self):
@@ -2868,17 +2941,36 @@ class DynamicRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
     output_loader = saved_model_loader.SavedModelLoader(
         self._output_saved_model_path)
     output_graphdef = output_loader.get_meta_graph_def_from_tags(tags).graph_def
+    type_attr = attr_value_pb2.AttrValue(type=types_pb2.DT_QINT8)
     if quantize:
-      self.assertTrue(self._contains_quantized_function_call(output_graphdef))
+      self.assertTrue(
+          self._contains_op(output_graphdef, 'Const', 'dtype', type_attr)
+      )
     else:
-      self.assertFalse(self._contains_quantized_function_call(output_graphdef))
+      self.assertFalse(
+          self._contains_op(output_graphdef, 'Const', 'dtype', type_attr)
+      )
 
   @parameterized.named_parameters(
-      ('use_constant', False),
-      ('use_variable', True),
+      ('to_tf_use_constant', quant_opts_pb2.TF, False),
+      ('to_xla_use_constant', quant_opts_pb2.XLA, False),
+      (
+          'to_uniform_quantized_use_constant',
+          quant_opts_pb2.UNIFORM_QUANTIZED,
+          False,
+      ),
+      ('to_tf_use_variable', quant_opts_pb2.TF, True),
+      ('to_xla_use_variable', quant_opts_pb2.XLA, True),
+      (
+          'to_uniform_quantized_use_variable',
+          quant_opts_pb2.UNIFORM_QUANTIZED,
+          True,
+      ),
   )
   @test_util.run_in_graph_and_eager_modes
-  def test_gather_model_tf1(self, use_variable):
+  def test_gather_model_tf1(
+      self, target_opset: quant_opts_pb2.OpSet, use_variable: bool
+  ):
     signature_key = signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY
     tags = {tag_constants.SERVING}
 
@@ -2894,8 +2986,10 @@ class DynamicRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
 
     quantization_options = quant_opts_pb2.QuantizationOptions(
         quantization_method=quant_opts_pb2.QuantizationMethod(
-            experimental_method=_ExperimentalMethod.DYNAMIC_RANGE),
-        op_set=quant_opts_pb2.OpSet.UNIFORM_QUANTIZED)
+            experimental_method=_ExperimentalMethod.DYNAMIC_RANGE
+        ),
+        op_set=target_opset,
+    )
 
     converted_model = quantize_model.quantize(self._input_saved_model_path,
                                               signature_keys, tags,
@@ -2906,11 +3000,18 @@ class DynamicRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
     self.assertCountEqual(converted_model.signatures._signatures.keys(),
                           signature_keys)
 
-    output_loader = saved_model_loader.SavedModelLoader(
-        self._output_saved_model_path)
-    output_graphdef = output_loader.get_meta_graph_def_from_tags(tags).graph_def
-    # Quantization is not currently supported for gather.
-    self.assertFalse(self._contains_quantized_function_call(output_graphdef))
+    # Only XLA opset does not apply weight-only quantization
+    if target_opset == quant_opts_pb2.XLA:
+      threshold = 0.17 if use_variable else 0.4
+      self.assertSizeRatioLessThan(
+          self._output_saved_model_path, self._input_saved_model_path, threshold
+      )
+    else:
+      # Double from the XLA threshold
+      threshold = 0.3 if use_variable else 0.8
+      self.assertSizeRatioGreaterThan(
+          self._output_saved_model_path, self._input_saved_model_path, threshold
+      )
 
   @test_util.run_in_graph_and_eager_modes
   def test_non_empty_directory_raises_file_exists_error(self):
@@ -3060,9 +3161,10 @@ class WeightOnlyQuantizationTest(quantize_model_test_base.QuantizedModelTest):
 
     self.assertTrue(self._contains_op(output_graphdef, 'MatMul'))
     # Due to other meta data, the compression is not exactly 1/4.
-    self.assertLessEqual(
-        get_dir_size(self._output_saved_model_path) /
-        get_dir_size(self._input_saved_model_path), 1 / 3)
+    threshold = 0.9 if quant_opts_pb2.TF else 0.3
+    self.assertSizeRatioLessThan(
+        self._output_saved_model_path, self._input_saved_model_path, threshold
+    )
 
   @parameterized.named_parameters(
       ('to_tf_per_tensor', quant_opts_pb2.TF, False),
@@ -3101,9 +3203,11 @@ class WeightOnlyQuantizationTest(quantize_model_test_base.QuantizedModelTest):
 
     self.assertTrue(self._contains_op(output_graphdef, 'Conv2D'))
     # Due to other meta data, the compression is not exactly 1/4.
-    self.assertLessEqual(
-        get_dir_size(self._output_saved_model_path) /
-        get_dir_size(self._input_saved_model_path), 1 / 3)
+
+    threshold = 0.9 if quant_opts_pb2.TF else 0.3
+    self.assertSizeRatioLessThan(
+        self._output_saved_model_path, self._input_saved_model_path, threshold
+    )
 
   @parameterized.named_parameters(
       ('to_tf_per_tensor', quant_opts_pb2.TF, False),
@@ -3146,9 +3250,77 @@ class WeightOnlyQuantizationTest(quantize_model_test_base.QuantizedModelTest):
 
     self.assertTrue(self._contains_op(output_graphdef, 'DepthwiseConv2dNative'))
     # Due to other meta data, the compression is not exactly 1/4.
-    self.assertLessEqual(
-        get_dir_size(self._output_saved_model_path) /
-        get_dir_size(self._input_saved_model_path), 1 / 3)
+    threshold = 0.9 if quant_opts_pb2.TF else 0.3
+    self.assertSizeRatioLessThan(
+        self._output_saved_model_path, self._input_saved_model_path, threshold
+    )
+
+  @parameterized.named_parameters(
+      ('to_tf_use_constant', quant_opts_pb2.TF, False),
+      ('to_xla_use_constant', quant_opts_pb2.XLA, False),
+      (
+          'to_uniform_quantized_use_constant',
+          quant_opts_pb2.UNIFORM_QUANTIZED,
+          False,
+      ),
+      ('to_tf_use_variable', quant_opts_pb2.TF, True),
+      ('to_xla_use_variable', quant_opts_pb2.XLA, True),
+      (
+          'to_uniform_quantized_use_variable',
+          quant_opts_pb2.UNIFORM_QUANTIZED,
+          True,
+      ),
+  )
+  @test_util.run_v2_only
+  def test_gather_model(
+      self, target_opset: quant_opts_pb2.OpSet, use_variable: bool
+  ):
+    model = self._create_gather_model(use_variable)
+    input_saved_model_path = self.create_tempdir('input').full_path
+    saved_model_save.save(model, input_saved_model_path)
+
+    tags = {tag_constants.SERVING}
+    output_directory = self.create_tempdir().full_path
+
+    quantization_options = quant_opts_pb2.QuantizationOptions(
+        quantization_method=quant_opts_pb2.QuantizationMethod(
+            experimental_method=_ExperimentalMethod.WEIGHT_ONLY
+        ),
+        op_set=target_opset,
+    )
+
+    if target_opset == quant_opts_pb2.UNIFORM_QUANTIZED:
+      # Uniform quantized opset is not supported for weight-only
+      with self.assertRaisesRegex(
+          ValueError, 'Uniform quantized opset does not support weight-only.'
+      ):
+        converted_model = quantize_model.quantize(
+            input_saved_model_path,
+            ['serving_default'],
+            tags,
+            output_directory,
+            quantization_options,
+        )
+      return
+
+    else:
+      converted_model = quantize_model.quantize(
+          input_saved_model_path,
+          ['serving_default'],
+          tags,
+          output_directory,
+          quantization_options,
+      )
+
+    self.assertIsNotNone(converted_model)
+    self.assertCountEqual(
+        converted_model.signatures._signatures.keys(), {'serving_default'}
+    )
+
+    threshold = 0.3 if quant_opts_pb2.XLA else 0.9
+    self.assertSizeRatioLessThan(
+        self._output_saved_model_path, self._input_saved_model_path, threshold
+    )
 
 
 if __name__ == '__main__':

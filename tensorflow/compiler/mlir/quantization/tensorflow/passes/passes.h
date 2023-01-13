@@ -76,7 +76,8 @@ CreateInsertCustomAggregationOpsPass();
 std::unique_ptr<OperationPass<ModuleOp>> CreateQuantizeCompositeFunctionsPass(
     tensorflow::quantization::QuantizationMethod::ExperimentalMethod
         quantization_method,
-    OpSet target_opset, bool enable_per_channel_quantization);
+    OpSet target_opset, bool enable_per_channel_quantization,
+    int min_num_elements_for_weights);
 
 // Converts dequantize-(quantizable) call-quantize pattern to a single call op
 // that has quantized input and output types. It is expected for this pass to

@@ -33,7 +33,8 @@ namespace mlir {
 namespace quant {
 namespace {
 
-constexpr char kCustomAggregatorOpName[] = "tf.CustomAggregator";
+constexpr StringRef kCustomAggregatorOpName = "tf.CustomAggregator";
+constexpr StringRef kQuantTraitAttrName = "_tfl_quant_trait";
 
 class InsertCustomAggregationOpsPass
     : public PassWrapper<InsertCustomAggregationOpsPass,
@@ -73,6 +74,12 @@ class AddCustomAggregationOp : public RewritePattern {
     // Return early if the given operator is the custom aggregator op.
     if (op->getName().getStringRef() == kCustomAggregatorOpName)
       return failure();
+
+    // Return early if the given op is a non-quantizable op.
+    auto call_op = dyn_cast_or_null<TF::PartitionedCallOp>(op);
+    if (call_op && !op->hasAttr(kQuantTraitAttrName)) {
+      return failure();
+    }
 
     bool mutated = false;
     for (Value input : op->getOperands()) {

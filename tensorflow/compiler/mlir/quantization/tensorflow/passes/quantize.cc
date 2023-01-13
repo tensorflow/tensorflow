@@ -482,6 +482,10 @@ class QuantizePass
     return "Apply quantization on models in TensorFlow dialect";
   }
 
+  // Determine if the unused Q-DQ pairs need to be removed. For weight-only
+  // quantizable ops, Q-DQ ops need to be preserved.
+  bool shouldKeepUnusedQdqPattern();
+
   void runOnOperation() override;
 
  private:
@@ -500,6 +504,12 @@ class QuantizePass
           clEnumValN(OpSet::UNIFORM_QUANTIZED, "UNIFORM_QUANTIZED",
                      "Uses TF Uniform Quantized ops"))};
 };
+
+bool QuantizePass::shouldKeepUnusedQdqPattern() {
+  return target_opset_ == OpSet::XLA &&
+         (quant_specs_.weight_only_quantization ||
+          quant_specs_.weight_quantization);
+}
 
 void QuantizePass::runOnOperation() {
   RewritePatternSet patterns(&getContext());
@@ -523,8 +533,7 @@ void QuantizePass::runOnOperation() {
   }
   (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
 
-  // Weight-only quantization requires q-dq patterns.
-  if (!quant_specs_.weight_only_quantization) {
+  if (!shouldKeepUnusedQdqPattern()) {
     RewritePatternSet patterns_2(&getContext());
     patterns_2.add<RemoveUnusedQdqPattern>(ctx);
     (void)applyPatternsAndFoldGreedily(func, std::move(patterns_2));
