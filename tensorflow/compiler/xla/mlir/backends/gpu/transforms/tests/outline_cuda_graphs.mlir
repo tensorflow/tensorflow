@@ -208,3 +208,83 @@ func.func @func(%arg0: memref<?xf32>, %arg1: memref<?xf32>) {
 // CHECK-NEXT: gpu.launch_func @gpu_module::@fn0
 // CHECK-NEXT: gpu.launch_func @gpu_module::@fn1
 // CHECK-NEXT: return
+
+// -----
+// Check that memref.view operations are cloned into the graph capture function.
+
+module attributes {gpu.container_module} {
+
+gpu.module @gpu_module attributes {binary = "kernel binary"} {
+  gpu.func @fn0(%arg0: memref<4xf32>) kernel { gpu.return }
+  gpu.func @fn1(%arg0: memref<4xf32>) kernel { gpu.return }
+}
+
+// CHECK: @func(%[[ARG0:.*]]: memref<16xi8>)
+func.func @func(%arg0: memref<16xi8>) {
+  %c0 = arith.constant 0 : index
+  %c1 = arith.constant 1 : index
+  %view = memref.view %arg0[%c0][] : memref<16xi8> to memref<4xf32>
+
+  call @external() : () -> ()
+
+  // CHECK: call @xla.gpu.cuda.graph.launch(%[[ARG0]])
+  // CHECK-SAME: {capture = @xla.gpu.cuda.graph.capture}
+  // CHECK-NEXT: return
+  gpu.launch_func  @gpu_module::@fn0 blocks in (%c1, %c1, %c1)
+    threads in (%c1, %c1, %c1) args(%view : memref<4xf32>)
+  gpu.launch_func  @gpu_module::@fn1 blocks in (%c1, %c1, %c1)
+    threads in (%c1, %c1, %c1) args(%view : memref<4xf32>)
+
+  func.return
+}
+
+func.func private @external()
+}
+
+// CHECK: func @xla.gpu.cuda.graph.capture
+// CHECK-NEXT: arith.constant 0
+// CHECK-NEXT: arith.constant 1
+// CHECK-NEXT: memref.view
+// CHECK-NEXT: gpu.launch_func @gpu_module::@fn0
+// CHECK-NEXT: gpu.launch_func @gpu_module::@fn1
+// CHECK-NEXT: return
+
+// -----
+// Check that memref.view not used by operations in the captured graph will not
+// be moved into the graph capture function.
+
+module attributes {gpu.container_module} {
+
+gpu.module @gpu_module attributes {binary = "kernel binary"} {
+  gpu.func @fn0(%arg0: memref<16xi8>) kernel { gpu.return }
+  gpu.func @fn1(%arg0: memref<16xi8>) kernel { gpu.return }
+}
+
+// CHECK: @func(%[[ARG0:.*]]: memref<16xi8>)
+func.func @func(%arg0: memref<16xi8>) {
+  %c0 = arith.constant 0 : index
+  %c1 = arith.constant 1 : index
+
+  call @external() : () -> ()
+
+  // CHECK: call @xla.gpu.cuda.graph.launch(%[[ARG0]])
+  // CHECK-SAME: {capture = @xla.gpu.cuda.graph.capture}
+  // CHECK-NEXT: memref.view
+  // CHECK-NEXT: return
+  gpu.launch_func  @gpu_module::@fn0 blocks in (%c1, %c1, %c1)
+    threads in (%c1, %c1, %c1) args(%arg0 : memref<16xi8>)
+  %view = memref.view %arg0[%c0][] : memref<16xi8> to memref<4xf32>
+  gpu.launch_func  @gpu_module::@fn1 blocks in (%c1, %c1, %c1)
+    threads in (%c1, %c1, %c1) args(%arg0 : memref<16xi8>)
+
+  func.return
+}
+
+func.func private @external()
+}
+
+// CHECK: func @xla.gpu.cuda.graph.capture
+// CHECK-NEXT: arith.constant 1
+// CHECK-NEXT: gpu.launch_func @gpu_module::@fn0
+// CHECK-NEXT: gpu.launch_func @gpu_module::@fn1
+// CHECK-NEXT: return

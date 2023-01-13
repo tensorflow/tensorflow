@@ -23,6 +23,7 @@ limitations under the License.
 #include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/GPU/IR/GPUDialect.h"  // from @llvm-project
+#include "mlir/Dialect/MemRef/IR/MemRef.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/Dominance.h"  // from @llvm-project
 #include "mlir/IR/ImplicitLocOpBuilder.h"  // from @llvm-project
@@ -79,19 +80,23 @@ using CaptureSequence =
 
 //===----------------------------------------------------------------------===//
 
-struct LaunchFuncOpCapture : public OpCapturePattern {
-  FailureOr<Capture> match(Operation* op) final {
-    if (isa<LaunchFuncOp>(op)) return Capture::kMove;
+template <typename T, OpCapturePattern::Capture capture>
+struct OpCapture : public OpCapturePattern {
+  FailureOr<OpCapturePattern::Capture> match(Operation* op) final {
+    if (isa<T>(op)) return capture;
     return failure();
   }
 };
 
-struct ConstantOpCapture : public OpCapturePattern {
-  FailureOr<Capture> match(Operation* op) final {
-    if (isa<arith::ConstantOp>(op)) return Capture::kClone;
-    return failure();
-  }
-};
+static constexpr auto kMove = OpCapturePattern::Capture::kMove;
+static constexpr auto kClone = OpCapturePattern::Capture::kClone;
+
+// Capture gpu operations by moving them intp graph capture function.
+struct LaunchFuncOpCapture : public OpCapture<LaunchFuncOp, kMove> {};
+
+// Capture pure operations by cloning them into graph capture function.
+struct ConstantOpCapture : public OpCapture<arith::ConstantOp, kClone> {};
+struct ViewOpCapture : public OpCapture<memref::ViewOp, kClone> {};
 
 //===----------------------------------------------------------------------===//
 
@@ -123,6 +128,22 @@ static std::vector<CaptureSequence> CollectCaptureSequences(
     // Remove the last sequence if it's empty.
     if (seq->empty()) seqs.pop_back();
   });
+
+  // Remove cloneable operations accidentally captured by the sequence of ops,
+  // e.g. we can have `memref.view` between two kernel launch operations that
+  // is not used by operations in the captured sequence.
+  for (CaptureSequence& seq : seqs) {
+    llvm::DenseSet<Operation*> moveable_ops;
+    for (auto& [op, capture] : seq)
+      if (capture == kMove) moveable_ops.insert(op);
+
+    llvm::erase_if(seq, [&](auto& pair) {
+      return pair.second == kClone &&
+             llvm::none_of(pair.first->getUsers(), [&](Operation* user) {
+               return moveable_ops.contains(user);
+             });
+    });
+  }
 
   // Try to extend discovered sequences of ops following operands use-def chains
   // and pulling cloneable operations defining operands into the graph capture
@@ -176,7 +197,7 @@ static std::vector<CaptureSequence> CollectCaptureSequences(
       });
 
       // Prepend all cloneable operations to the discovered ops sequence.
-      for (Operation* op : cloneable[block]) {
+      for (Operation* op : llvm::reverse(cloneable[block])) {
         seq.insert(seq.begin(), {op, OpCapturePattern::Capture::kClone});
       }
     }
@@ -300,6 +321,7 @@ void OutlineCudaGraphsPass::runOnOperation() {
   OpCapturePatternSet patterns;
   patterns.emplace_back(new LaunchFuncOpCapture());
   patterns.emplace_back(new ConstantOpCapture());
+  patterns.emplace_back(new ViewOpCapture());
 
   for (auto& seq : CollectCaptureSequences(getAnalysis<DominanceInfo>(),
                                            getOperation(), patterns)) {
