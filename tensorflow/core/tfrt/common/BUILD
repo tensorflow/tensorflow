@@ -119,23 +119,21 @@ tf_cc_test(
     ],
 )
 
-# copybara:uncomment_begin(TODO(b/260802979): kokoro build fails when se_gpu_pjrt_client is added)
-# tf_cuda_cc_test(
-#     name = "pjrt_util_test",
-#     srcs = ["pjrt_util_test.cc"],
-#     tags = tf_cuda_tests_tags(),
-#     deps = [
-#         ":global_state",
-#         ":pjrt_state",
-#         ":pjrt_util",
-#         "//tensorflow/compiler/xla/pjrt:pjrt_client",
-#         "//tensorflow/compiler/xla/pjrt:tfrt_cpu_pjrt_client",
-#         "//tensorflow/compiler/xla/service:gpu_plugin",
-#         "//tensorflow/core:framework",
-#         "//tensorflow/tsl/lib/core:status_test_util",
-#         "//tensorflow/tsl/platform:status_matchers",
-#         "//tensorflow/tsl/platform:test_main",
-#         "//tensorflow/tsl/protobuf:error_codes_proto_impl_cc",
-#     ],
-# )
-# copybara:uncomment_end
+tf_cuda_cc_test(
+    name = "pjrt_util_test",
+    srcs = ["pjrt_util_test.cc"],
+    tags = tf_cuda_tests_tags() + ["no_oss"],  # TODO(b/260802979) oss test fails when se_gpu_pjrt_client is added
+    deps = [
+        ":global_state",
+        ":pjrt_state",
+        ":pjrt_util",
+        "//tensorflow/compiler/xla/pjrt:pjrt_client",
+        "//tensorflow/compiler/xla/pjrt:tfrt_cpu_pjrt_client",
+        "//tensorflow/compiler/xla/service:gpu_plugin",
+        "//tensorflow/core:framework",
+        "//tensorflow/tsl/lib/core:status_test_util",
+        "//tensorflow/tsl/platform:status_matchers",
+        "//tensorflow/tsl/platform:test_main",
+        "//tensorflow/tsl/protobuf:error_codes_proto_impl_cc",
+    ],
+)
