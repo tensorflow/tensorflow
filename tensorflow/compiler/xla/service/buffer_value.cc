@@ -57,6 +57,8 @@ LogicalBufferProto BufferValue::ToProto(const SizeFunction& size_fn) const {
   }
   // TODO(b/239098765): Stop populating these fields and delete them when
   // profiler finishes adaptation.
+  proto.mutable_defined_at()->set_computation_name(
+      instruction()->parent()->name());
   proto.mutable_defined_at()->set_instruction_name(instruction()->name());
   return proto;
 }
