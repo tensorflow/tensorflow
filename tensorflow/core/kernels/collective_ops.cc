@@ -724,13 +724,15 @@ class CollectiveReduceV2OpKernel : public CollectiveOpV2Kernel {
                                               /*group_key*/ c->input(2),
                                               /*instance_key*/ c->input(3)),
                          done_with_cleanup);
+    col_params->instance.impl_details.max_subdivs_per_device =
+        max_subdivs_per_device_;
     col_params->instance.shape = c->input(0).shape();
     col_params->merge_op = merge_op_.get();
     col_params->final_op = final_op_.get();
     VLOG(1) << "CollectiveReduceV2 group_size " << col_params->group.group_size
             << " group_key " << col_params->group.group_key << " instance_key "
             << col_params->instance.instance_key;
-    // Allocate the output tensor, trying to reuse the input.
+    // Allocate the output tensor.
     Tensor* output = nullptr;
     OP_REQUIRES_OK_ASYNC(c,
                          c->forward_input_or_allocate_output(
@@ -1306,8 +1308,8 @@ class CollectiveReduceScatterV2OpKernel : public CollectiveOpV2Kernel {
     SetAttrValue(data_type_, &(*sub_node.mutable_attr())["T"]);
     merge_op_ = BuildOpKernel(c, merge_op_name, &sub_node);
     final_op_ = BuildOpKernel(c, final_op_name, &sub_node);
-    name_ = strings::StrCat(c->def().name(), ": ReduceScatterV2(", merge_op_name, ",",
-                            final_op_name, ")");
+    name_ = strings::StrCat(c->def().name(), ": ReduceScatterV2(",
+                            merge_op_name, ",", final_op_name, ")");
     VLOG(2) << "CollectiveReduceScatterV2 " << this << " name " << name_
             << " communication_hint " << communication_hint_;
   }
@@ -1318,20 +1320,24 @@ class CollectiveReduceScatterV2OpKernel : public CollectiveOpV2Kernel {
       done();
       col_params->Unref();
     };
-    OP_REQUIRES_OK_ASYNC(c,
-                         FillCollectiveParams(col_params, REDUCE_SCATTER_COLLECTIVE,
-                                              /*group_size*/ c->input(1),
-                                              /*group_key*/ c->input(2),
-                                              /*instance_key*/ c->input(3)),
-                         done_with_cleanup);
+    OP_REQUIRES_OK_ASYNC(
+        c,
+        FillCollectiveParams(col_params, REDUCE_SCATTER_COLLECTIVE,
+                             /*group_size*/ c->input(1),
+                             /*group_key*/ c->input(2),
+                             /*instance_key*/ c->input(3)),
+        done_with_cleanup);
+    col_params->instance.impl_details.max_subdivs_per_device =
+        max_subdivs_per_device_;
     auto output_shape = c->input(0).shape();
     output_shape.set_dim(
         0, output_shape.dim_size(0) / col_params->group.group_size);
     col_params->instance.shape = output_shape;
     col_params->merge_op = merge_op_.get();
     col_params->final_op = final_op_.get();
-    VLOG(1) << "CollectiveReduceScatterV2 group_size " << col_params->group.group_size
-            << " group_key " << col_params->group.group_key << " instance_key "
+    VLOG(1) << "CollectiveReduceScatterV2 group_size "
+            << col_params->group.group_size << " group_key "
+            << col_params->group.group_key << " instance_key "
             << col_params->instance.instance_key;
     // Allocate the output tensor, trying to reuse the input.
     Tensor* output = nullptr;

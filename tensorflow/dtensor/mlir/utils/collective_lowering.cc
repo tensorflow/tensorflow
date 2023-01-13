@@ -620,9 +620,10 @@ mlir::LogicalResult LowerReduceScatterOp(
     SetSingleLayoutOnOp(collective_op, *output_layout);
     reduce_scatter.replaceAllUsesWith(collective_op);
   } else {
-    // For non TPUs device, decompose to DTensorAllReduce+DTensorAllScatter.
-    // TODO(tmorris): Once CollectiveReduceScatterV2 has a CPU implementation,
-    // remove this path.
+    // For CPU and non-NCCL GPU devices, decompose to
+    // DTensorAllReduce+DTensorAllScatter.
+    // TODO(tmorris): Once CollectiveReduceScatterV2 has a non-NCCL
+    // implementation, remove this path.
     StatusOr<Layout> input_layout =
         ExtractRequiredLayoutFromOperand(reduce_scatter.getInput());
     if (!input_layout.ok()) {
