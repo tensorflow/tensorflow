@@ -2470,6 +2470,16 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
         g(a='f', l='e', m='a', p='g', q='d', r='b', v='c'),
         b'a=f, l=e, m=a, p=g, q=d, r=b, v=c')
 
+  def testSameConcreteFunctionDifferentKwargOrder(self):
+    @polymorphic_function.function
+    def foo(**kwargs):
+      return kwargs['a'] + math_ops.cast(kwargs['b'], dtypes.float32)
+
+    foo(a=constant_op.constant(1.0), b=constant_op.constant(1))
+    foo(b=constant_op.constant(1), a=constant_op.constant(1.0))
+
+    self.assertLen(total_function_cache(foo), 1)
+
   # pylint: disable=g-long-lambda
   @parameterized.named_parameters([
       dict(
