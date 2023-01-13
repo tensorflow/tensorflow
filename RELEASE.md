@@ -129,6 +129,9 @@
   * Added `tf.nn.experimental.general_dropout`, which is similar to
     `tf.random.experimental.stateless_dropout` but accepts a custom sampler
     function.
+* `tf.types.experimental.GenericFunction`
+  * The `experimental_get_compiler_ir` method supports tf.TensorSpec
+   compilation arguments.
 
 
 # Thanks to our Contributors
