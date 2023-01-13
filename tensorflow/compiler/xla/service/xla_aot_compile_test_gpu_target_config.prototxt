@@ -36,3 +36,15 @@ dnn_version_info {
   minor: 3
   patch: 2
 }
+autotune_results {
+  dots {
+    device: "sm_6.0 with 17071734784B RAM, 56 cores, 1480500KHz clock, 715000KHz mem clock, 4194304B L2$"
+    hlo: "f32[3,3]{1,0} custom-call(f32[3,3]{1,0}, f32[3,3]{1,0}), custom_call_target=\"__cublas$gemm\", backend_config=\"{\\\"alpha_real\\\":1,\\\"beta\\\":0,\\\"dot_dimension_numbers\\\":{\\\"lhs_contracting_dimensions\\\":[\\\"1\\\"],\\\"rhs_contracting_dimensions\\\":[\\\"0\\\"],\\\"lhs_batch_dimensions\\\":[],\\\"rhs_batch_dimensions\\\":[]},\\\"alpha_imag\\\":0,\\\"precision_config\\\":{\\\"operand_precision\\\":[\\\"DEFAULT\\\",\\\"DEFAULT\\\"]},\\\"epilogue\\\":\\\"DEFAULT\\\"}\""
+    result {
+      gemm {
+        algorithm: 13
+      }
+    }
+  }
+}
+device_description_str: "sm_6.0 with 17071734784B RAM, 56 cores, 1480500KHz clock, 715000KHz mem clock, 4194304B L2$"

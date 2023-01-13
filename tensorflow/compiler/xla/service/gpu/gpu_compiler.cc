@@ -359,6 +359,9 @@ GpuTargetConfig::GpuTargetConfig(const se::GpuTargetConfigProto& proto)
         proto.rocm_compute_capability());
     gpu_version = rocm_compute_capability;
   }
+
+  autotune_results = proto.autotune_results();
+  device_description_str = proto.device_description_str();
 }
 
 se::GpuTargetConfigProto GpuTargetConfig::ToProto() const {
@@ -379,6 +382,8 @@ se::GpuTargetConfigProto GpuTargetConfig::ToProto() const {
 
   proto.set_platform_name(platform_name);
   *proto.mutable_dnn_version_info() = dnn_version_info.ToProto();
+  *proto.mutable_autotune_results() = autotune_results;
+  proto.set_device_description_str(device_description_str);
   return proto;
 }
 
@@ -942,8 +947,12 @@ Status GpuCompiler::OptimizeHloPostLayoutAssignment(
   // the gte(customcall, 0) would probably already be into a fusion node.  We
   // can't simplify across HloComputation boundaries, so in this case we
   // wouldn't be able to simplify away the new_tuple bits.
-  GpuConvAlgorithmPicker::DeviceConfig config{stream_exec, device_allocator};
-  pipeline.AddPass<GpuConvAlgorithmPicker>(config);
+  if (stream_exec) {
+    // Autotune if stream_exec is available.
+    // TODO(b/248362914): Enable autotuning for convolutions without GPU.
+    GpuConvAlgorithmPicker::DeviceConfig config{stream_exec, device_allocator};
+    pipeline.AddPass<GpuConvAlgorithmPicker>(config);
+  }
 
   // Clean up new_tuple described above.
   pipeline.AddPass<TupleSimplifier>();
@@ -995,9 +1004,6 @@ StatusOr<std::unique_ptr<HloModule>> GpuCompiler::RunHloPasses(
 StatusOr<std::unique_ptr<HloModule>> GpuCompiler::RunHloPassesWithoutDevice(
     std::unique_ptr<HloModule> module, const CompileOptions& options,
     const GpuTargetConfig& gpu_target_config) {
-  // No attached device for running autotuning.
-  CHECK_EQ(module->config().debug_options().xla_gpu_autotune_level(), 0);
-
   // We dump the post-optimization HLO in RunBackend so no need to dump it here.
   XLA_SCOPED_LOGGING_TIMER(
       absl::StrCat("GpuCompiler::RunHloPasses for ", module->name()));

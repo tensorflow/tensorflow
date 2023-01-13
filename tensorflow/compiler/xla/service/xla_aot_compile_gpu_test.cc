@@ -126,6 +126,9 @@ TEST(XlaCompileTest, LoadGpuExecutableWithGemm) {
   TF_ASSERT_OK(
       tsl::ReadFileToString(tsl::Env::Default(), path, &serialized_aot_result));
 
+  // Check that GemmAlgorithmPicker successfully loaded autotune results.
+  EXPECT_TRUE(absl::StrContains(serialized_aot_result, "algorithm = 13 : i64"));
+
   // Get a LocalClient
   TF_ASSERT_OK_AND_ASSIGN(se::Platform * platform,
                           PlatformUtil::GetPlatform("CUDA"));

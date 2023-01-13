@@ -115,6 +115,9 @@ tf_proto_library(
     srcs = ["device_description.proto"],
     cc_api_version = 2,
     make_default_target_header_only = True,
+    protodeps = [
+        "//tensorflow/compiler/xla:autotune_results_proto",
+    ],
 )
 
 cc_library(
