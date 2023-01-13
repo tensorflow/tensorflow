@@ -8,6 +8,10 @@ load(
     "tf_cc_shared_test",
     "tf_cc_test",
 )
+load(
+    "//tensorflow/security/fuzzing:tf_fuzzing.bzl",
+    "tf_fuzz_target",
+)
 
 # copybara:uncomment package(default_applicable_licenses = ["//tensorflow:license"])
 
@@ -69,7 +73,7 @@ tf_cc_test(
     ],
 )
 
-tf_cc_test(
+tf_fuzz_target(
     name = "bincount_fuzz",
     srcs = ["bincount_fuzz.cc"],
     tags = ["no_oss"],
