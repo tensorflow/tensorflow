@@ -20,6 +20,7 @@ limitations under the License.
 #include <string>
 #include <string_view>
 #include <utility>
+#include <vector>
 
 #include "tensorflow/c/kernels.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
@@ -27,6 +28,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/next_pluggable_device/plugin_op_kernel.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/protobuf/config.pb.h"
+#include "tensorflow/tsl/platform/thread_annotations.h"
 
 namespace tensorflow {
 
@@ -74,14 +76,22 @@ class CPluginOpKernelContext : public PluginOpKernelContext {
 
   Status GetInput(int index, Tensor* tensor) const override;
 
+  Status GetInput(const char* name, const Tensor** tensor) override;
+
   Status GetInputRange(std::string_view name,
                        std::pair<int, int>* range) const override;
+
+  std::string_view GetOpKernelRequestedInput(int index) const override;
 
   std::string_view GetOpKernelName() const override;
 
   uint64_t GetFrameId() const override { return TF_GetFrameId(ctx_); }
 
   int64_t GetIterId() const override { return TF_GetIterId(ctx_); }
+
+  int64_t GetStepId() const override { return TF_GetStepId(ctx_); }
+
+  int GetDeviceId() const override { return TF_GetDeviceId(ctx_); }
 
   std::string GetSessionName() const override {
     // TODO(haoyuzhang): Implement with ctx_->session_metadata() if needed.
@@ -121,6 +131,11 @@ class CPluginOpKernelContext : public PluginOpKernelContext {
   void* GetContext() const override { return ctx_; }
 
  private:
+  mutable mutex mu_;
+
+  // A cache for tensors obtained from the ctx_. This is needed to extend the
+  // lifetime of the c++ tensorflow::Tensor created from `TF_TensorToTensor`.
+  std::vector<Tensor> obtained_tensors_ TF_GUARDED_BY(mu_);
   TF_OpKernelContext* ctx_;  // not owned.
 };
 

@@ -99,14 +99,24 @@ class PluginOpKernelContext {
 
   virtual Status GetInput(int index, Tensor* tensor) const = 0;
 
+  // This method is not marked const because CPluginOpKernel need to do some
+  // extra bookkeeping work.
+  virtual Status GetInput(const char* name, const Tensor** tensor) = 0;
+
   virtual Status GetInputRange(std::string_view name,
                                std::pair<int, int>* range) const = 0;
+
+  virtual std::string_view GetOpKernelRequestedInput(int index) const = 0;
 
   virtual std::string_view GetOpKernelName() const = 0;
 
   virtual uint64_t GetFrameId() const = 0;
 
   virtual int64_t GetIterId() const = 0;
+
+  virtual int64_t GetStepId() const = 0;
+
+  virtual int GetDeviceId() const = 0;
 
   virtual std::string GetSessionName() const = 0;
 

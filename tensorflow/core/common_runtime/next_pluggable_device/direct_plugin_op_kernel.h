@@ -78,8 +78,14 @@ class DirectPluginOpKernelContext : public PluginOpKernelContext {
 
   Status GetInput(int index, Tensor* tensor) const override;
 
+  Status GetInput(const char* name, const Tensor** tensor) override;
+
   Status GetInputRange(std::string_view name,
                        std::pair<int, int>* range) const override;
+
+  std::string_view GetOpKernelRequestedInput(int index) const override {
+    return ctx_->op_kernel().requested_input(index);
+  }
 
   std::string_view GetOpKernelName() const override {
     return ctx_->op_kernel().name();
@@ -88,6 +94,10 @@ class DirectPluginOpKernelContext : public PluginOpKernelContext {
   uint64_t GetFrameId() const override { return ctx_->frame_iter().frame_id; }
 
   int64_t GetIterId() const override { return ctx_->frame_iter().iter_id; }
+
+  int64_t GetStepId() const override { return ctx_->step_id(); }
+
+  int GetDeviceId() const override;
 
   std::string GetSessionName() const override {
     return ctx_->session_metadata() ? ctx_->session_metadata()->name() : "";

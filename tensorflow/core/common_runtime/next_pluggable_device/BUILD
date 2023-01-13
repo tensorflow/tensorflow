@@ -153,7 +153,7 @@ cc_library(
 cc_library(
     name = "plugin_op_kernel",
     hdrs = ["plugin_op_kernel.h"],
-    visibility = ["//learning/brain/tfrt/tf_tpu:__pkg__"],
+    visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/compiler/xla/pjrt:pjrt_client",
         "//tensorflow/core:framework_internal",
@@ -168,7 +168,7 @@ cc_library(
     name = "direct_plugin_op_kernel",
     srcs = ["direct_plugin_op_kernel.cc"],
     hdrs = ["direct_plugin_op_kernel.h"],
-    visibility = ["//learning/brain/tfrt/tf_tpu:__pkg__"],
+    visibility = ["//visibility:public"],
     deps = [
         ":plugin_coordination_service_agent_helper",
         ":plugin_op_kernel",
@@ -196,7 +196,7 @@ cc_library(
     name = "c_plugin_op_kernel",
     srcs = ["c_plugin_op_kernel.cc"],
     hdrs = ["c_plugin_op_kernel.h"],
-    visibility = ["//learning/brain/tfrt/tf_tpu:__pkg__"],
+    visibility = ["//visibility:public"],
     deps = [
         ":plugin_coordination_service_agent",
         ":plugin_coordination_service_agent_helper",
@@ -212,6 +212,7 @@ cc_library(
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:status",
         "//tensorflow/core/protobuf:for_core_protos_cc",
+        "//tensorflow/tsl/platform:thread_annotations",
     ],
 )
 

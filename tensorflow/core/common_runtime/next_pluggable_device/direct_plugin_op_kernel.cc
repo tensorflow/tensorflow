@@ -89,9 +89,20 @@ Status DirectPluginOpKernelContext::GetInput(int index, Tensor* tensor) const {
   return OkStatus();
 }
 
+Status DirectPluginOpKernelContext::GetInput(const char* name,
+                                             const Tensor** tensor) {
+  return ctx_->input(name, tensor);
+}
+
 Status DirectPluginOpKernelContext::GetInputRange(
     std::string_view name, std::pair<int, int>* range) const {
   return ctx_->op_kernel().InputRange(name, &range->first, &range->second);
+}
+
+int DirectPluginOpKernelContext::GetDeviceId() const {
+  const auto* device = ctx_->device();
+  CHECK(device->parsed_name().has_id);  // Crash OK.
+  return device->parsed_name().id;
 }
 
 }  // namespace tensorflow

@@ -140,7 +140,26 @@ Status CPluginOpKernelContext::GetInput(int index, Tensor* tensor) const {
   TF_Tensor* c_tensor;
   TF_GetInput(ctx_, index, &c_tensor, c_status_ptr.get());
   TF_TensorPtr c_tensor_ptr(c_tensor);
+  if (TF_GetCode(c_status_ptr.get()) != TF_OK) {
+    return StatusFromTF_Status(c_status_ptr.get());
+  }
   return TF_TensorToTensor(c_tensor, tensor);
+}
+
+Status CPluginOpKernelContext::GetInput(const char* name,
+                                        const Tensor** tensor) {
+  TF_StatusPtr c_status_ptr(TF_NewStatus());
+  TF_Tensor* c_tensor;
+  TF_GetInputByName(ctx_, name, &c_tensor, c_status_ptr.get());
+  TF_TensorPtr c_tensor_ptr(c_tensor);
+  Tensor tensor_tmp;
+  tsl::Status status = TF_TensorToTensor(c_tensor, &tensor_tmp);
+  if (status.ok()) {
+    mutex_lock lock(mu_);
+    obtained_tensors_.push_back(std::move(tensor_tmp));
+    *tensor = &(obtained_tensors_.back());
+  }
+  return status;
 }
 
 Status CPluginOpKernelContext::GetInputRange(std::string_view name,
@@ -153,6 +172,12 @@ Status CPluginOpKernelContext::GetInputRange(std::string_view name,
   range->first = args.start;
   range->second = args.stop;
   return OkStatus();
+}
+
+std::string_view CPluginOpKernelContext::GetOpKernelRequestedInput(
+    int index) const {
+  TF_StringView requested_input = TF_GetOpKernelRequestedInput(ctx_, index);
+  return {requested_input.data, requested_input.len};
 }
 
 std::string_view CPluginOpKernelContext::GetOpKernelName() const {
