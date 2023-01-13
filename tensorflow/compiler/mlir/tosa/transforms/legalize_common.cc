@@ -2271,9 +2271,7 @@ std::optional<Value> convertStridedSliceOp(
   // tensor
   //
   // 2. Reshape2: Reshape the tensor from (1) such that each dimension with
-  // stride is split into two dimensions of size_i/stride_i, stride_i. A naive
-  // implementation doubles the input tensor rank, but only dimensions being
-  // strided actually need to be doubled.
+  // abs(stride) != 1 is split into two dimensions of size_i/stride_i, stride_i.
   //
   // 3. Slice3: Slice the tensor from (2) such that we select index [0] from
   // each of the stride_i dimensions in (2)
@@ -2448,10 +2446,14 @@ std::optional<Value> convertStridedSliceOp(
   }
 
   // Step 2: reshape the sliced array
-  SmallVector<int64_t> a2_shape(input_rank * 2);
+  SmallVector<int64_t> a2_shape;
   for (int i = 0; i < input_rank; ++i) {
-    a2_shape[i * 2 + 0] = a1_size[i] == -1 ? -1 : a1_size[i] / abs(strides[i]);
-    a2_shape[i * 2 + 1] = abs(strides[i]);
+    int64_t abs_stride_i = abs(strides[i]);
+    a2_shape.push_back(a1_size[i] == -1 ? -1 : a1_size[i] / abs_stride_i);
+    if (abs_stride_i != 1) {
+      // only add a stride dimension if strides[i] != 1
+      a2_shape.push_back(abs_stride_i);
+    }
   }
 
   auto a2_reshape_op = CreateOpAndInfer<tosa::ReshapeOp>(
@@ -2462,19 +2464,24 @@ std::optional<Value> convertStridedSliceOp(
           tensorflow::ConvertMlirShapeToTF(a2_shape)));
 
   // Step 3: take a slice along the strides
-  SmallVector<int64_t> a3_begin(input_rank * 2), a3_size(input_rank * 2);
+  SmallVector<int64_t> a3_begin, a3_size;
   for (int i = 0; i < input_rank; ++i) {
-    a3_begin[i * 2 + 0] = 0;
-    a3_begin[i * 2 + 1] = 0;
+    int64_t abs_stride_i = abs(strides[i]);
+    a3_begin.push_back(0);
 
     if (shrink_axis_mask & (1 << i)) {
-      a3_size[i * 2 + 0] = 1;
+      a3_size.push_back(1);
     } else {
-      a3_size[i * 2 + 0] =
-          (a1_size[i] == -1) ? -1 : (a1_size[i] / abs(strides[i]));
+      a3_size.push_back((a1_size[i] == -1) ? -1 : (a1_size[i] / abs_stride_i));
     }
-    a3_size[i * 2 + 1] = 1;
+    if (abs_stride_i != 1) {
+      // previous reshape only adds a stride dimension if strides[i] != 1 
+      a3_begin.push_back(0);
+      a3_size.push_back(1);
+    }
   }
+  assert(a2_shape.size() == a3_begin.size());
+  assert(a2_shape.size() == a3_size.size());
 
   auto a3_slice_op = CreateOpAndInfer<tosa::SliceOp>(
       rewriter, op->getLoc(),
