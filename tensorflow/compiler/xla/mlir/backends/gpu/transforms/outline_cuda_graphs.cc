@@ -17,12 +17,20 @@ limitations under the License.
 #include <memory>
 #include <string>
 #include <utility>
+#include <vector>
 
+#include "llvm/ADT/STLExtras.h"
+#include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/GPU/IR/GPUDialect.h"  // from @llvm-project
+#include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/Dominance.h"  // from @llvm-project
 #include "mlir/IR/ImplicitLocOpBuilder.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/SymbolTable.h"  // from @llvm-project
+#include "mlir/IR/TypeRange.h"  // from @llvm-project
+#include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/RegionUtils.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/mlir/backends/gpu/transforms/passes.h"
 #include "tensorflow/compiler/xla/mlir/runtime/ir/rt_dialect.h"
@@ -50,53 +58,129 @@ class OutlineCudaGraphsPass
 
 //===----------------------------------------------------------------------===//
 
-// A sequence of launch func operation to be outlined into cuda graph
-// constructor.
-struct LaunchFuncSequence {
-  llvm::SmallVector<gpu::LaunchFuncOp> ops;
+struct OpCapturePattern {
+  // CUDA-graph-compatible operations can be either moved or cloned into the
+  // graph capture function. Most of the operations should be moved, as they
+  // have side effects, however small constants and pure operations like
+  // `memref.view` can be safely cloned into the graph region. We rely on later
+  // dead code elimination to erase them from the "main" function if they are
+  // not used by any other operations.
+  enum class Capture { kMove, kClone };
+
+  virtual ~OpCapturePattern() = default;
+  virtual FailureOr<Capture> match(Operation* op) = 0;
 };
 
-// Collect sequences of LaunchFuncOp operations that can be outlined into
-// Cuda Graph functions.
-//
-// TODO(ezhulenev): Do not collect launch func sequences if they are already
-// inside a graph capture function.
-static llvm::SmallVector<LaunchFuncSequence> CollectLaunchFuncSequences(
-    ModuleOp module) {
-  llvm::SmallVector<LaunchFuncSequence> seqs;
-  llvm::DenseSet<LaunchFuncOp> outlined;
+using OpCapturePatternSet = std::vector<std::unique_ptr<OpCapturePattern>>;
 
-  module.walk([&](LaunchFuncOp op) {
-    // This launch operation is a part of already collected sequence.
-    if (outlined.contains(op)) return;
+// A sequence of operations to be outlined into cuda graph capture function.
+using CaptureSequence =
+    llvm::SmallVector<std::pair<Operation*, OpCapturePattern::Capture>>;
 
-    // Find the first LaunchFuncOp in a sequence.
-    Operation* first = op;
-    while (Operation* prev = first->getPrevNode()) {
-      if (!isa<LaunchFuncOp>(prev)) break;
-      first = prev;
+//===----------------------------------------------------------------------===//
+
+struct LaunchFuncOpCapture : public OpCapturePattern {
+  FailureOr<Capture> match(Operation* op) final {
+    if (isa<LaunchFuncOp>(op)) return Capture::kMove;
+    return failure();
+  }
+};
+
+struct ConstantOpCapture : public OpCapturePattern {
+  FailureOr<Capture> match(Operation* op) final {
+    if (isa<arith::ConstantOp>(op)) return Capture::kClone;
+    return failure();
+  }
+};
+
+//===----------------------------------------------------------------------===//
+
+// Collect sequences of operations that can be outlined into Cuda Graphs.
+static std::vector<CaptureSequence> CollectCaptureSequences(
+    DominanceInfo& dominance, ModuleOp module, OpCapturePatternSet& patterns) {
+  std::vector<CaptureSequence> seqs;
+
+  // Match given operation with all capture patterns.
+  auto match = [&](Operation* op) -> FailureOr<OpCapturePattern::Capture> {
+    for (auto& pattern : patterns) {
+      if (auto matched = pattern->match(op); succeeded(matched)) return matched;
+    }
+    return failure();
+  };
+
+  // Find graph-compatible sequences of operations in every block.
+  module.walk([&](Block* block) {
+    CaptureSequence* seq = &seqs.emplace_back();
+
+    for (Operation& op : *block) {
+      FailureOr<OpCapturePattern::Capture> matched = match(&op);
+      // Append matched operation to the current sequence.
+      if (succeeded(matched)) seq->emplace_back(&op, *matched);
+      // Skip unsupported operation and start a new sequence.
+      if (failed(matched) && !seq->empty()) seq = &seqs.emplace_back();
     }
 
-    // Find the last LaunchFuncOp in a sequence.
-    Operation* last = op;
-    while (Operation* next = last->getNextNode()) {
-      if (!isa<LaunchFuncOp>(next)) break;
-      last = next;
-    }
-
-    // Skip sequences consisting of a single operation.
-    if (first == last) return;
-
-    // Collect all launch func ops.
-    LaunchFuncSequence& seq = seqs.emplace_back();
-
-    auto r = llvm::make_range(Block::iterator(first), ++Block::iterator(last));
-    llvm::transform(r, std::back_inserter(seq.ops), [&](Operation& op) {
-      auto launch = cast<LaunchFuncOp>(op);
-      outlined.insert(launch);
-      return launch;
-    });
+    // Remove the last sequence if it's empty.
+    if (seq->empty()) seqs.pop_back();
   });
+
+  // Try to extend discovered sequences of ops following operands use-def chains
+  // and pulling cloneable operations defining operands into the graph capture
+  // sequence. In practice we just clone `arith.constant` and `memref.view`
+  // operations into the graph capture function, to make it cheaper to compute
+  // the hash of the arguments at run time.
+  for (CaptureSequence& seq : seqs) {
+    llvm::DenseSet<Operation*> seq_ops;  // operations already in `seq`
+    llvm::SmallVector<Operation*> worklist;
+
+    // Add operations that define `op` arguments to the worklist.
+    auto populate_worklist = [&](Operation* op) {
+      for (Value arg : op->getOperands())
+        if (Operation* op = arg.getDefiningOp()) worklist.push_back(op);
+    };
+
+    for (auto& [op, _] : seq) {
+      seq_ops.insert(op);
+      populate_worklist(op);
+    }
+
+    // Find cloneable ops and group them by block where they are defined.
+    llvm::DenseMap<Block*, llvm::SmallVector<Operation*>> cloneable;
+
+    // Traverse use-def chains to collect all cloneable operations.
+    while (!worklist.empty()) {
+      Operation* op = worklist.pop_back_val();
+      if (seq_ops.contains(op)) continue;
+
+      // Check if operation can be cloned into graph capture function.
+      if (auto matched = match(op);
+          succeeded(matched) && *matched == OpCapturePattern::Capture::kClone) {
+        cloneable[op->getBlock()].push_back(op);
+        seq_ops.insert(op);
+        populate_worklist(op);
+      }
+    }
+
+    // Traverse blocks according to their dominance to avoid used-before-defined
+    // invalid SSA region construction in graph capture function.
+    llvm::SmallVector<Block*> blocks;
+    for (auto& [block, _] : cloneable) blocks.push_back(block);
+    llvm::sort(blocks, [&](Block* a, Block* b) {
+      return dominance.properlyDominates(a, b);
+    });
+
+    for (Block* block : blocks) {
+      // Sort operations according to their original position in the block.
+      llvm::sort(cloneable[block], [](Operation* a, Operation* b) {
+        return a->isBeforeInBlock(b);
+      });
+
+      // Prepend all cloneable operations to the discovered ops sequence.
+      for (Operation* op : cloneable[block]) {
+        seq.insert(seq.begin(), {op, OpCapturePattern::Capture::kClone});
+      }
+    }
+  }
 
   return seqs;
 }
@@ -105,59 +189,102 @@ static llvm::SmallVector<LaunchFuncSequence> CollectLaunchFuncSequences(
 
 using xla::runtime::CustomCallDeclarations;
 
-// Given a sequence of LaunchFuncOp operations outline them into a function,
-// and replace with an XLA Gpu runtime function call.
+static std::vector<Value> GetGraphCaptureFuncArgs(const CaptureSequence& seq) {
+  llvm::SetVector<Value> args;
+
+  // Values defined by operations in the capture sequence.
+  llvm::DenseSet<Value> defined_by_seq;
+  for (auto& [op, _] : seq)
+    defined_by_seq.insert(op->result_begin(), op->result_end());
+
+  // Add arguments defined outside of the capture sequence.
+  for (auto& [op, _] : seq) {
+    auto external_args = llvm::make_filter_range(
+        op->getOperands(),
+        [&](Value arg) { return !defined_by_seq.contains(arg); });
+    args.insert(external_args.begin(), external_args.end());
+  }
+
+  return args.takeVector();
+}
+
+// Given a sequence of operations, outline them into a graph capture function
+// and replace them with an XLA Gpu runtime function call.
 static void Outline(CustomCallDeclarations& custom_calls,
-                    LaunchFuncSequence& seq) {
+                    CaptureSequence& seq) {
+  // Only operations that have to be moved into the graph capture function
+  // represent Gpu computations.
+  unsigned num_move_captures = llvm::count_if(seq, [](auto capture) {
+    return capture.second == OpCapturePattern::Capture::kMove;
+  });
+  if (num_move_captures < 2) return;
+
   SymbolTable& sym_table = custom_calls.sym_table();
   MLIRContext* ctx = sym_table.getOp()->getContext();
 
   // Create a fused location out of LaunchFuncOp operations.
   llvm::SmallVector<Location> locations;
-  for (auto& op : seq.ops) locations.push_back(op.getLoc());
+  for (auto& op : seq) locations.push_back(op.first->getLoc());
   ImplicitLocOpBuilder b(FusedLoc::get(ctx, locations), sym_table.getOp());
 
-  // Collect all arguments used by the launch func operations.
-  llvm::SetVector<Value> args;
-  for (LaunchFuncOp op : seq.ops)
-    args.insert(op.operand_begin(), op.operand_end());
-
-  llvm::SmallVector<Type> args_types;
-  for (Value arg : args) args_types.push_back(arg.getType());
+  // Arguments of the graph capture function.
+  std::vector<Value> args = GetGraphCaptureFuncArgs(seq);
 
   // Create a function in the compiled module.
-  auto func_type = FunctionType::get(ctx, args_types, TypeRange());
-  auto func = b.create<func::FuncOp>("xla.gpu.cuda.graph.capture", func_type);
+  auto func = b.create<func::FuncOp>(
+      "xla.gpu.cuda.graph.capture",
+      FunctionType::get(ctx, TypeRange(ValueRange(args)), TypeRange()));
 
-  // Add graph building function to the module.
+  // Add graph capture function to the module.
   sym_table.insert(func);
 
-  // Export graph builder function to runtime.
+  // Export graph capture function to the runtime.
   b.setInsertionPoint(func);
   b.create<runtime::ExportOp>(func);
 
   // Create a custom call declaration corresponding to the outlined graph
   // capture function.
   func::FuncOp graph_launch = custom_calls.GetOrCreate(
-      b, "xla.gpu.cuda.graph.launch", args_types, TypeRange());
+      b, "xla.gpu.cuda.graph.launch", TypeRange(ValueRange(args)), TypeRange());
 
-  // Call the cuda graph launch custom call.
-  b.setInsertionPoint(seq.ops.front());
-  auto call = b.create<func::CallOp>(graph_launch.getName(), TypeRange(),
-                                     args.getArrayRef());
+  // Call the cuda graph launch custom call right before the first moved op.
+  auto insertion_point = llvm::find_if(seq, [](auto capture) {
+    return capture.second == OpCapturePattern::Capture::kMove;
+  });
+  b.setInsertionPoint(insertion_point->first);
+
+  auto call = b.create<func::CallOp>(graph_launch.getName(), TypeRange(), args);
   call->setAttr(b.getStringAttr("capture"), FlatSymbolRefAttr::get(func));
 
   // At this point we successfully added new functions to the module, so we can
-  // move LaunchFuncOp operations from their original location to the graph
+  // move or clone captured operations from their original location to the graph
   // capture function.
-
-  // Move all launch func operations into the function body.
   Block* body = func.addEntryBlock();
-  for (LaunchFuncOp op : seq.ops) op->moveBefore(body, body->end());
 
-  // Replace uses of original values with block arguments.
-  for (auto p : llvm::zip(args, func.getArguments()))
-    replaceAllUsesInRegionWith(std::get<0>(p), std::get<1>(p), func.getBody());
+  // We'll need to replace operands of cloned/moved operations inside the graph
+  // capture function.
+  llvm::SmallVector<std::pair<Value, Value>> mappings;  // {from, to} mappings
+  for (auto mapping : llvm::zip(args, func.getArguments()))
+    mappings.emplace_back(std::get<0>(mapping), std::get<1>(mapping));
+
+  // Move or clone operations into the graph capture function.
+  for (auto& [op, capture] : seq) {
+    if (capture == OpCapturePattern::Capture::kMove)
+      op->moveBefore(body, body->end());
+
+    if (capture == OpCapturePattern::Capture::kClone) {
+      Operation* clone = op->clone();
+      OpBuilder::atBlockEnd(body).insert(clone);
+
+      for (auto mapping : llvm::zip(op->getResults(), clone->getResults()))
+        mappings.emplace_back(std::get<0>(mapping), std::get<1>(mapping));
+    }
+  }
+
+  // Update def-use chains inside the graph capture function.
+  for (auto mapping : mappings) {
+    replaceAllUsesInRegionWith(mapping.first, mapping.second, func.getBody());
+  }
 
   // Add a return operation to the graph capture function.
   b.setInsertionPointToEnd(body);
@@ -170,13 +297,17 @@ void OutlineCudaGraphsPass::runOnOperation() {
   SymbolTable sym_table(getOperation());
   CustomCallDeclarations custom_calls(std::move(sym_table));
 
-  for (auto& seq : CollectLaunchFuncSequences(getOperation())) {
+  OpCapturePatternSet patterns;
+  patterns.emplace_back(new LaunchFuncOpCapture());
+  patterns.emplace_back(new ConstantOpCapture());
+
+  for (auto& seq : CollectCaptureSequences(getAnalysis<DominanceInfo>(),
+                                           getOperation(), patterns)) {
     Outline(custom_calls, seq);
   }
 }
 
-std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
-createOutlineCudaGraphsPass() {
+std::unique_ptr<OperationPass<ModuleOp>> createOutlineCudaGraphsPass() {
   return std::make_unique<OutlineCudaGraphsPass>();
 }
 

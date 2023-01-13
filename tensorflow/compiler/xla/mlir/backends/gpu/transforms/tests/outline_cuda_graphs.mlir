@@ -17,12 +17,6 @@ gpu.module @gpu_module attributes {binary = "kernel binary"} {
 // CHECK:   %[[ARG1:.*]]: memref<?xf32>
 // CHECK: )
 func.func @func(%arg0: memref<?xf32>, %arg1: memref<?xf32>) {
-  // CHECK: %[[C1:.*]] = arith.constant 1
-  // CHECK: %[[C2:.*]] = arith.constant 2
-  // CHECK: %[[C3:.*]] = arith.constant 3
-  // CHECK: %[[C4:.*]] = arith.constant 4
-  // CHECK: %[[C5:.*]] = arith.constant 5
-  // CHECK: %[[C6:.*]] = arith.constant 6
   %c1 = arith.constant 1 : index
   %c2 = arith.constant 2 : index
   %c3 = arith.constant 3 : index
@@ -30,9 +24,7 @@ func.func @func(%arg0: memref<?xf32>, %arg1: memref<?xf32>) {
   %c5 = arith.constant 5 : index
   %c6 = arith.constant 6 : index
 
-  // CHECK: call @xla.gpu.cuda.graph.launch(
-  // CHECK:  %[[C1]], %[[C2]], %[[C3]], %[[C4]], %[[C5]], %[[C6]],
-  // CHECK:  %[[ARG0]], %[[ARG1]])
+  // CHECK: call @xla.gpu.cuda.graph.launch(%[[ARG0]], %[[ARG1]])
   // CHECK-SAME: {capture = @xla.gpu.cuda.graph.capture}
   // CHECK-NEXT: return
 
@@ -50,13 +42,21 @@ func.func @func(%arg0: memref<?xf32>, %arg1: memref<?xf32>) {
 }
 
 // CHECK: func @xla.gpu.cuda.graph.capture
+// CHECK-NEXT:  %[[C1:.*]] = arith.constant 1
+// CHECK-NEXT:  %[[C2:.*]] = arith.constant 2
+// CHECK-NEXT:  %[[C3:.*]] = arith.constant 3
+// CHECK-NEXT:  %[[C4:.*]] = arith.constant 4
+// CHECK-NEXT:  %[[C5:.*]] = arith.constant 5
+// CHECK-NEXT:  %[[C6:.*]] = arith.constant 6
 // CHECK-NEXT:  gpu.launch_func @gpu_module::@fn0
+// CHECK-SAME:    blocks in (%[[C1]], %[[C2]], %[[C3]])
+// CHECK-SAME:    threads in (%[[C4]], %[[C5]], %[[C6]])
 // CHECK-NEXT:  gpu.launch_func @gpu_module::@fn1
+// CHECK-SAME:    blocks in (%[[C3]], %[[C2]], %[[C1]])
+// CHECK-SAME:    threads in (%[[C6]], %[[C5]], %[[C4]])
 // CHECK-NEXT:  return
 
-// CHECK: func private @xla.gpu.cuda.graph.launch(
-// CHECK-SAME:  index, index, index, index, index, index,
-// CHECK-SAME:  memref<?xf32>, memref<?xf32>)
+// CHECK: func private @xla.gpu.cuda.graph.launch(memref<?xf32>, memref<?xf32>)
 // CHECK-SAME: attributes {rt.custom_call = "xla.gpu.cuda.graph.launch"}
 }
 
@@ -107,7 +107,7 @@ func.func @func(%arg0: memref<?xf32>) {
   // CHECK: %[[C1:.*]] = arith.constant 1
   %c1 = arith.constant 1 : index
 
-  // CHECK: call @xla.gpu.cuda.graph.launch(%[[C1]], %[[ARG0]])
+  // CHECK: call @xla.gpu.cuda.graph.launch(%[[ARG0]])
   // CHECK-SAME: {capture = @[[CAPTURE:.*]]}
 
   gpu.launch_func  @gpu_module::@fn0
@@ -120,11 +120,14 @@ func.func @func(%arg0: memref<?xf32>) {
     threads in (%c1, %c1, %c1)
     args(%arg0 : memref<?xf32>)
 
-  // Use constant to break the large function launch sequence.
   // CHECK: %[[C2:.*]] = arith.constant 2
   %c2 = arith.constant 2 : index
 
-  // CHECK: call @xla.gpu.cuda.graph.launch(%[[C2]], %[[ARG0]])
+  // Use function call to break the captured ops sequence.
+  // CHECK: call @external
+  call @external(): () -> ()
+
+  // CHECK: call @xla.gpu.cuda.graph.launch(%[[ARG0]])
   // CHECK-SAME: {capture = @[[CAPTURE_0:.*]]}
 
   gpu.launch_func  @gpu_module::@fn1
@@ -140,10 +143,68 @@ func.func @func(%arg0: memref<?xf32>) {
   func.return
 }
 
+func.func private @external()
+
 // CHECK: rt.export @[[CAPTURE]]
-// CHECK: func.func @[[CAPTURE]](%arg0: index, %arg1: memref<?xf32>)
+// CHECK: func.func @[[CAPTURE]](%arg0: memref<?xf32>)
+// CHECK-NEXT: arith.constant 1
+// CHECK-NEXT: gpu.launch_func @gpu_module::@fn0
+// CHECK-NEXT: gpu.launch_func @gpu_module::@fn1
 
 // CHECK: rt.export @[[CAPTURE_0]]
-// CHECK: func.func @[[CAPTURE_0]](%arg0: index, %arg1: memref<?xf32>)
+// CHECK: func.func @[[CAPTURE_0]](%arg0: memref<?xf32>)
+// CHECK-NEXT: arith.constant 2
+// CHECK-NEXT: gpu.launch_func @gpu_module::@fn1
+// CHECK-NEXT: gpu.launch_func @gpu_module::@fn0
 
 }
+
+// -----
+// Check that constants from the different basic blocks are cloned into the
+// graph capture function.
+
+module attributes {gpu.container_module} {
+
+gpu.module @gpu_module attributes {binary = "kernel binary"} {
+  gpu.func @fn0(%arg0: memref<?xf32>) kernel {
+    gpu.return
+  }
+  gpu.func @fn1(%arg0: memref<?xf32>) kernel {
+    gpu.return
+  }
+}
+
+// CHECK: @func(
+// CHECK:   %[[ARG0:.*]]: memref<?xf32>,
+// CHECK:   %[[ARG1:.*]]: memref<?xf32>
+// CHECK: )
+func.func @func(%arg0: memref<?xf32>, %arg1: memref<?xf32>) {
+  cf.br ^bb2
+^bb1:
+  // CHECK: call @xla.gpu.cuda.graph.launch(%[[ARG0]], %[[ARG1]])
+  // CHECK-SAME: {capture = @xla.gpu.cuda.graph.capture}
+  // CHECK-NEXT: return
+
+  gpu.launch_func  @gpu_module::@fn0
+    blocks in (%c1, %c1, %c1)
+    threads in (%c1, %c1, %c1)
+    args(%arg0 : memref<?xf32>)
+
+  gpu.launch_func  @gpu_module::@fn1
+    blocks in (%c1, %c1, %c1)
+    threads in (%c1, %c1, %c1)
+    args(%arg1 : memref<?xf32>)
+
+  func.return
+
+^bb2:
+  %c1 = arith.constant 1 : index
+  cf.br ^bb1
+}
+}
+
+// CHECK: func @xla.gpu.cuda.graph.capture
+// CHECK-NEXT: arith.constant 1
+// CHECK-NEXT: gpu.launch_func @gpu_module::@fn0
+// CHECK-NEXT: gpu.launch_func @gpu_module::@fn1
+// CHECK-NEXT: return
