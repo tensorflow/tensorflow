@@ -67,10 +67,10 @@ build:rocm --copt="-Wno-error=unused-result"
 
 # Test-related settings below this point.
 test:cuda --test_env=LD_LIBRARY_PATH="/usr/local/cuda/lib64:/usr/local/cuda/extras/CUPTI/lib64"
-test:rocm --test_tag_filters=gpu,-no_oss,-oss_serial,-no_gpu,-no_rocm,-benchmark-test,-tpu,-v1only
+test:rocm --test_env=HSA_TOOLS_LIB=libroctracer64.so
 test --build_tests_only --keep_going --test_output=errors --verbose_failures=true
 # Local test jobs has to be 4 because parallel_gpu_execute is fragile, I think
-test --test_timeout=300,450,1200,3600 --local_test_jobs=4 --run_under=//tensorflow/tools/ci_build/gpu_build:parallel_gpu_execute
+test --test_timeout=920,2400,7200,9600 --local_test_jobs=4 --run_under=//tensorflow/tools/ci_build/gpu_build:parallel_gpu_execute
 # Give only the list of failed tests at the end of the log
 test --test_summary=short
 
@@ -83,6 +83,15 @@ test:nonpip_filters --build_tag_filters=gpu,requires-gpu,-no_gpu,-no_oss,-oss_se
 test:nonpip_filters --test_lang_filters=py --flaky_test_attempts=3 --test_size_filters=small,medium
 test:nonpip --config=nonpip_filters -- //tensorflow/... -//tensorflow/python/integration_testing/... -//tensorflow/compiler/tf2tensorrt/... -//tensorflow/compiler/xrt/... -//tensorflow/core/tpu/... -//tensorflow/lite/... -//tensorflow/tools/toolchains/...
 
+test:nonpip_filters_rocm --test_tag_filters=gpu,requires-gpu,-no_gpu,-no_oss,-oss_serial,-no_rocm
+test:nonpip_filters_rocm --build_tag_filters=gpu,requires-gpu,-no_gpu,-no_oss,-oss_serial,-no_rocm
+test:nonpip_filters_rocm --test_lang_filters=py --flaky_test_attempts=3 --test_size_filters=small,medium
+test:nonpip_rocm --config=nonpip_filters_rocm -- //tensorflow/... -//tensorflow/python/integration_testing/... -//tensorflow/compiler/tf2tensorrt/... -//tensorflow/compiler/xrt/... -//tensorflow/core/tpu/... -//tensorflow/lite/... -//tensorflow/tools/toolchains/...
+
+test:nonpip_filters_rocm_large --test_tag_filters=gpu,requires-gpu,-no_gpu,-no_oss,-oss_serial,-no_rocm
+test:nonpip_filters_rocm_large --build_tag_filters=gpu,requires-gpu,-no_gpu,-no_oss,-oss_serial,-no_rocm
+test:nonpip_filters_rocm_large --test_lang_filters=py --flaky_test_attempts=3 --test_size_filters=small,medium,large
+test:nonpip_rocm_large --config=nonpip_filters_rocm_large -- //tensorflow/... -//tensorflow/python/integration_testing/... -//tensorflow/compiler/tf2tensorrt/... -//tensorflow/compiler/xrt/... -//tensorflow/core/tpu/... -//tensorflow/lite/... -//tensorflow/tools/toolchains/...
 # "pip tests" run a similar suite of tests the "nonpip" tests, but do something
 # odd to attempt to validate the quality of the pip package. The wheel is
 # installed into a virtual environment, and then that venv is used to run all
