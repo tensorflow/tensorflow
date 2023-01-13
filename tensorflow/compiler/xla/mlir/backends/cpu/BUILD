@@ -24,6 +24,7 @@ xla_cc_binary(
         "@llvm-project//mlir:LinalgDialect",
         "@llvm-project//mlir:MlirOptLib",
         "@llvm-project//mlir:TensorDialect",
+        "@llvm-project//mlir:VectorDialect",
         "@stablehlo//:register",
     ],
 )

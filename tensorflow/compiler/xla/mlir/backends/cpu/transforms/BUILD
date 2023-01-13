@@ -30,6 +30,7 @@ cc_library(
     name = "passes",
     srcs = [
         "legalize_collective_ops.cc",
+        "legalize_i1_vector_transfers.cc",
         "lmhlo_to_cpu_runtime.cc",
         "xla_abi_legalization.cc",
     ],
@@ -51,5 +52,6 @@ cc_library(
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:TensorDialect",
         "@llvm-project//mlir:TransformUtils",
+        "@llvm-project//mlir:VectorDialect",
     ],
 )
