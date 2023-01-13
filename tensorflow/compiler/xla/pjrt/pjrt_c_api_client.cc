@@ -410,15 +410,14 @@ StatusOr<std::unique_ptr<PjRtBuffer>> PjRtCApiClient::BufferFromHostBuffer(
     event_args.struct_size = PJRT_Event_OnReady_Args_STRUCT_SIZE;
     event_args.priv = nullptr;
     event_args.event = event.get();
-    event_args.user_arg = new std::function<void(PJRT_Error*)>([
-      on_done_with_host_buffer = std::move(on_done_with_host_buffer),
-      c_api = c_api_
-    ](PJRT_Error * error) {
-      if (error) {
-        ::pjrt::MakeErrorDeleter(c_api)(error);
-      }
-      on_done_with_host_buffer();
-    });
+    event_args.user_arg = new std::function<void(PJRT_Error*)>(
+        [on_done_with_host_buffer = std::move(on_done_with_host_buffer),
+         c_api = c_api_](PJRT_Error* error) {
+          if (error) {
+            ::pjrt::MakeErrorDeleter(c_api)(error);
+          }
+          on_done_with_host_buffer();
+        });
     event_args.callback = [](PJRT_Error* error, void* args) {
       std::function<void(PJRT_Error*)>* on_done_with_host_buffer =
           reinterpret_cast<std::function<void(PJRT_Error*)>*>(args);
@@ -1093,7 +1092,7 @@ StatusOr<std::unique_ptr<PjRtBuffer>> PjRtCApiBuffer::CopyToDevice(
         literal_pointer->shape().element_type(),
         literal_pointer->shape().dimensions(), byte_strides,
         PjRtClient::HostBufferSemantics::kZeroCopy,
-        [literal{std::move(literal)}](){/* frees literal */}, dst_device);
+        [literal{std::move(literal)}]() { /* frees literal */ }, dst_device);
   }
 }
 
@@ -1128,7 +1127,7 @@ void PjRtCApiBuffer::MakePromiseTrackEvent() {
   args.priv = nullptr;
   args.event = GetReadyEvent();
   args.user_arg = new std::function<void(PJRT_Error*)>(
-      [ promise = readiness_promise_, api ](PJRT_Error * error)->void {
+      [promise = readiness_promise_, api](PJRT_Error* error) -> void {
         Status status = ::pjrt::PjrtErrorToStatus(error, api);
         promise->Set(status);
         ::pjrt::MakeErrorDeleter(api)(error);
