@@ -177,14 +177,16 @@ Status SnapshotStreamWriter::WriteRecord(
   return OkStatus();
 }
 
-Status SnapshotStreamWriter::FinalizeStream(const Status& status) {
+Status SnapshotStreamWriter::FinalizeStream(Status status) {
+  if (status.ok()) {
+    status = WriteDoneFile();
+  }
   if (!status.ok()) {
     // If writing snapshot fails and writing the error file also fails, returns
     // the former status.
     WriteErrorFile(status).IgnoreError();
-    return status;
   }
-  return WriteDoneFile();
+  return status;
 }
 
 Status SnapshotStreamWriter::WriteDoneFile() {

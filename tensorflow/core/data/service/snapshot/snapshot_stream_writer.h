@@ -130,7 +130,7 @@ class SnapshotStreamWriter {
 
   // Writes a DONE file when the stream is finished. Writes an ERROR file if it
   // failed.
-  Status FinalizeStream(const Status& status);
+  Status FinalizeStream(Status status);
   Status WriteDoneFile();
   Status WriteErrorFile(const Status& status);
 
