@@ -1452,6 +1452,7 @@ py_library(
         "//tensorflow/core/function/trace_type",
         "//tensorflow/python/eager:graph_only_ops",
         "//tensorflow/python/platform",
+        "//tensorflow/python/types",
         "//tensorflow/python/util",
         "//third_party/py/numpy",
     ],

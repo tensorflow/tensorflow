@@ -24,3 +24,10 @@ class NativeObject(object):
 
   The most notable example of NativeObject is Tensor.
   """
+
+
+class TensorSpec(object):
+  """Interface for internal isinstance checks to framework/tensor_spec.py.
+
+  This helps to avoid circular dependencies.
+  """

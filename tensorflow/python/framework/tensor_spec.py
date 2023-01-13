@@ -30,6 +30,7 @@ from tensorflow.python.framework import tensor_util
 from tensorflow.python.framework import type_spec
 from tensorflow.python.ops import handle_data_util
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.types import internal
 from tensorflow.python.util import _pywrap_utils
 from tensorflow.python.util import compat
 from tensorflow.python.util.tf_export import tf_export
@@ -135,7 +136,7 @@ class DenseSpec(type_spec.TypeSpec):
 @tf_export("TensorSpec")
 @type_spec.register("tf.TensorSpec")
 class TensorSpec(DenseSpec, type_spec.BatchableTypeSpec,
-                 trace_type.Serializable):
+                 trace_type.Serializable, internal.TensorSpec):
   """Describes the type of a tf.Tensor.
 
   >>> t = tf.constant([[1,2,3],[4,5,6]])
