@@ -806,6 +806,21 @@ func.func @main(%arg0: tensor<10xf32>) -> tensor<10xf32> {
 // -----
 
 // CHECK:  HloModule
+func.func @main(%arg0: tensor<2x3xf32>) -> tensor<2x3xf32> {
+  %0 = "mhlo.custom_call"(%arg0) {call_target_name = "SetBound", mhlo.literal = dense<1> : tensor<i32>} : (tensor<2x3xf32>) -> tensor<2x3xf32>
+  func.return %0 : tensor<2x3xf32>
+}
+
+// CHECK:  ENTRY
+// CHECK:  [[VAL_1:%.*]] = f32[2,3] parameter(0)
+// CHECK:  ROOT
+// CHECK-SAME:  f32[2,3] custom-call(f32[2,3] [[VAL_1]])
+// CHECK-SAME:  custom_call_target="SetBound"
+// CHECK-SAME:  literal=s32[] 1
+
+// -----
+
+// CHECK:  HloModule
 func.func @main(%arg0: tensor<2x3xf32>, %arg1: tensor<5x5xf32>) -> tensor<1x2x3xf32> {
   %0 = "mhlo.custom_call"(%arg0, %arg1) {backend_config = "bar", call_target_name = "foo", custom_call_schedule = #mhlo<custom_call_schedule LATEST>, has_side_effect = true} : (tensor<2x3xf32>, tensor<5x5xf32>) -> tensor<1x2x3xf32>
   func.return %0 : tensor<1x2x3xf32>

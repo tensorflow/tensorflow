@@ -423,6 +423,16 @@ add {
   ROOT %cosine.3 = f32[1,16,16,3]{3,2,1,0} cosine(f32[1,16,16,3]{3,2,1,0} %arg0.1)
 }
 
+// CHECK-LABEL:  func private @test_set_bound
+// CHECK-SAME:  [[ARG_0:%.*]]: tensor<2x3xf32>) -> tensor<2x3xf32>
+%test_set_bound (arg1: f32[2,3]) -> f32[2,3] {
+  %arg1 = f32[2,3] parameter(0)
+  // CHECK:  mhlo.custom_call @SetBound([[ARG_0]]) {
+  // CHECK-SAME: mhlo.literal = dense<1>
+  // CHECK-SAME: : (tensor<2x3xf32>) -> tensor<2x3xf32>
+  ROOT %custom-call = f32[2,3] custom-call(f32[2,3] %arg1), custom_call_target="SetBound", literal=s32[] 1
+}
+
 // CHECK-LABEL:  func private @test_custom_call
 // CHECK-SAME:  [[ARG_0:%.*]]: tensor<2x3xf32>, [[ARG_1:%.*]]: tensor<5x5xf32>) -> tensor<1x2x3xf32>
 %test_custom_call (arg1: f32[2,3], arg2: f32[5,5]) -> f32[1,2,3] {

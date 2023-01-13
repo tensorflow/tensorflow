@@ -903,6 +903,14 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
             "backend_config", builder_->getStringAttr(raw_backend_config)));
       }
 
+      if (custom_call->HasLiteral()) {
+        const Literal& literal = custom_call->literal();
+        auto attr = CreateDenseElementsAttrFromLiteral(literal, *builder_);
+        if (!attr.ok()) return attr.status();
+        attributes.push_back(
+            builder_->getNamedAttr("mhlo.literal", attr.value()));
+      }
+
       attributes.push_back(builder_->getNamedAttr(
           "api_version", mlir::mhlo::CustomCallApiVersionAttr::get(
                              builder_->getContext(), mlir_api_version)));
