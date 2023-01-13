@@ -43,7 +43,7 @@ auto Attrs() {
   return fuzztest::Map(AttrsVectorGenerator, fuzztest::Arbitrary<AttrsFuzzType>());
 }
 
-auto RandomNode() {
+auto FunctionDefNode() {
   return fuzztest::Map([](std::vector<string> ret, std::string op, std::vector<string> arg,
                           AttrsVectorType attr, std::vector<string> dep,
                           std::string device, std::string name) {
@@ -114,12 +114,12 @@ FUZZ_TEST(FunctionFuzz, FunctionRefFuzz).WithDomains(fuzztest::PrintableAsciiStr
 void NodeGetNameFuzz(FunctionDefHelper::Node node) {
   node.GetName();
 }
-FUZZ_TEST(FunctionFuzz, NodeGetNameFuzz).WithDomains(domain::RandomNode());
+FUZZ_TEST(FunctionFuzz, NodeGetNameFuzz).WithDomains(domain::FunctionDefNode());
 
 void NodeToNodeDefFuzz(FunctionDefHelper::Node node) {
   node.ToNodeDef();
 }
-FUZZ_TEST(FunctionFuzz, NodeToNodeDefFuzz).WithDomains(domain::RandomNode());
+FUZZ_TEST(FunctionFuzz, NodeToNodeDefFuzz).WithDomains(domain::FunctionDefNode());
 
 void FunctionDefCreateFuzz(domain::FunctionDefCreateInputData inputData) {
   FunctionDefHelper::Create(inputData.function_name, inputData.in_def, inputData.out_def,
