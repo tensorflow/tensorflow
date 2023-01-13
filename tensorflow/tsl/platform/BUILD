@@ -264,21 +264,20 @@ cc_library(
         ":logging",
         ":macros",
         ":mutex",
-        ":platform",
         ":stack_frame",
         ":stacktrace",
         ":str_util",
         ":strcat",
         ":stringprintf",
         ":types",
+        "//tensorflow/tsl/protobuf:error_codes_proto_impl_cc",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:cord",
         "@com_google_absl//absl/types:optional",
-        "//tensorflow/tsl/protobuf:error_codes_proto_impl_cc",
-    ] + tf_platform_deps("status"),
+    ],
 )
 
 cc_library(
