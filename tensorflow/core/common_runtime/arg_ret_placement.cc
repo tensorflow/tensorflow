@@ -50,7 +50,8 @@ static Status SetMemoryTypeHelper(
     Node* n;
     int output_idx;
     if (is_arg) {
-      DCHECK_EQ(node->op_def().name(), "_Arg");
+      DCHECK(node->op_def().name() == "_Arg" ||
+             node->op_def().name() == "_DeviceArg");
       output_idx = 0;
       n = node;
     } else {
@@ -58,7 +59,8 @@ static Status SetMemoryTypeHelper(
       // node in the subgraph for the function that they are in) so they do
       // not have any useful full type information. Instead get the full type
       // of the input to the _Rval op.
-      DCHECK_EQ(node->op_def().name(), "_Retval");
+      DCHECK(node->op_def().name() == "_Retval" ||
+             node->op_def().name() == "_DeviceRetval");
       const Edge* edge;
       TF_RETURN_IF_ERROR(node->input_edge(0, &edge));
       n = edge->src();
@@ -77,13 +79,6 @@ static Status SetMemoryTypeHelper(
             valid_full_type_information = mt_from_dtype == HOST_MEMORY;
           } else if (id == TFT_TENSOR) {
             valid_full_type_information = mt_from_dtype != HOST_MEMORY;
-          } else {
-            return errors::Internal(
-                "node=", n->name(), " (op=", n->def().op(),
-                ") has an int32 output with unexpected full type information ",
-                "with ints_on_device=", ints_on_device,
-                ". Neither TFT_TENSOR nor TFT_SHAPE_TENSOR found.\n",
-                n->def().DebugString());
           }
         }
         if (!valid_full_type_information) {
@@ -101,15 +96,16 @@ static Status SetMemoryTypeHelper(
                 n->def().DebugString());
           }
         }
-      } else {
+      } else if (mt_from_dtype == HOST_MEMORY) {
         if (weak_flag) {
           VLOG(1) << "node=" << n->name() << " (op=" << n->def().op()
-                  << ") has an int32 output but does not have full type "
-                     "information.";
+                  << ") has a HOST_MEMORY int32 output but does not have "
+                  << "(TFT_SHAPE_TENSOR) full type information.";
         } else {
-          return errors::Internal("node=", n->name(), " (op=", n->def().op(),
-                                  ")  has an int32 output but does not have "
-                                  "full type information.");
+          return errors::Internal(
+              "node=", n->name(), " (op=", n->def().op(),
+              ")  has a HOST_MEMORY int32 output but does not have "
+              "(TFT_SHAPE_TENSOR) full type information.");
         }
       }
     }
