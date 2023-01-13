@@ -452,7 +452,9 @@ message DebugOptions {
   // instead.
   bool xla_cpu_enable_mlir_tiling_and_fusion = 184;
 
-  // Next id: 186
+  bool xla_gpu_enable_latency_hiding_scheduler = 186;
+
+  // Next id: 187
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.

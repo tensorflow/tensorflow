@@ -135,7 +135,7 @@ class GpuCompiler : public LLVMCompiler {
       const GpuTargetConfig& gpu_target_config);
 
   StatusOr<std::unique_ptr<BufferAssignment>> AssignBuffers(
-      const HloModule* hlo_module) override;
+      HloModule* hlo_module, se::StreamExecutor* stream_exec) override;
 
   virtual GpuVersion GetGpuVersion(se::StreamExecutor* stream_exec) = 0;
   GpuTargetConfig GetGpuTargetConfig(se::StreamExecutor* stream_exec) {
