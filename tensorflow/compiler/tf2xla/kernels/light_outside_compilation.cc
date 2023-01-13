@@ -292,8 +292,12 @@ class TfCallbackDevice : public DeviceBase {
                             const TfCallbackData& callback_data)
       : DeviceBase(Env::Default()),
         stream_(stream),
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
         gpu_allocator_(GPUProcessState::singleton()->GetGPUAllocator(
-            tsl::TfDeviceId{stream_->parent()->device_ordinal()})),
+            *BaseGPUDevice::FindTfDeviceId(stream))),
+#else
+        gpu_allocator_(nullptr),
+#endif
         cpu_allocator_(
             ProcessState::singleton()->GetCPUAllocator(/*numa_node=*/0)) {
     for (int i = 0; i < callback_data.outputs_size(); ++i) {
@@ -330,8 +334,7 @@ class TfCallbackDevice : public DeviceBase {
         context, gpu_stream,
         /*platform_device_id=*/
         tsl::PlatformDeviceId(stream_->parent()->device_ordinal()), allocator,
-        // TODO(cheshire): Pass meaningful scratch
-        // buffer.
+        // TODO(cheshire): Pass meaningful scratch buffer.
         /*scratch=*/nullptr);
     return OkStatus();
 #else
