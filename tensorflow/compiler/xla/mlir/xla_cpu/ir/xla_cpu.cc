@@ -18,8 +18,11 @@ limitations under the License.
 #include "llvm/ADT/TypeSwitch.h"
 #include "mlir/Dialect/Bufferization/IR/BufferizableOpInterface.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypeInterfaces.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
+#include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/mlir/xla_cpu/ir/xla_cpu_dialect.cc.inc"
 #include "tensorflow/compiler/xla/mlir/xla_cpu/ir/xla_cpu_enums.cc.inc"
 #include "tensorflow/compiler/xla/mlir_hlo/mhlo/IR/hlo_ops.h"
@@ -134,6 +137,28 @@ LogicalResult AddDependencyOp::bufferize(
   bufferization::replaceOpWithBufferizedValues(rewriter, this->getOperation(),
                                                *maybe_buffer);
   return success();
+}
+
+LogicalResult MemRefElementCastOp::verify() {
+  auto src_ty = getMemref().getType();
+  auto dst_ty = getResult().getType();
+
+  auto src_width =
+      src_ty.cast<MemRefType>().getElementType().getIntOrFloatBitWidth();
+  auto dst_width =
+      dst_ty.cast<MemRefType>().getElementType().getIntOrFloatBitWidth();
+
+  if ((src_width + CHAR_BIT - 1) / CHAR_BIT !=
+      (dst_width + CHAR_BIT - 1) / CHAR_BIT) {
+    return failure();
+  }
+
+  if (src_ty.isa<UnrankedMemRefType>()) {
+    return success(!dst_ty.isa<UnrankedMemRefType>());
+  }
+
+  return success(src_ty.cast<ShapedType>().getShape() ==
+                 dst_ty.cast<ShapedType>().getShape());
 }
 
 }  // namespace xla_cpu
