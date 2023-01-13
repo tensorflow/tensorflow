@@ -392,15 +392,15 @@ FusionCluster findMapFusionCluster(Operation* op) {
     Operation* curOp = remainingProducers.pop_back_val();
     if (!curOp) continue;
 
-    if (curOp->getName() == op->getName()) {
+    if (auto mapOp = dyn_cast<linalg::MapOp>(curOp)) {
+      resultOps.insert(curOp);
+      for (auto* operand : mapOp.getDpsInputOperands())
+        remainingProducers.push_back(operand->get().getDefiningOp());
+    } else if (curOp->getName() == op->getName()) {
       for (auto* u : curOp->getUsers())
         // Do not fuse curOp that is used by another op of the same type.
         if (u->getName() == op->getName()) continue;
       resultOps.insert(curOp);
-    } else if (auto mapOp = dyn_cast<linalg::MapOp>(curOp)) {
-      resultOps.insert(curOp);
-      for (auto* operand : mapOp.getDpsInputOperands())
-        remainingProducers.push_back(operand->get().getDefiningOp());
     }
   }
   return {resultOps, rootOp};
