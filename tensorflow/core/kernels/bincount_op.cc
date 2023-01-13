@@ -185,7 +185,7 @@ struct BincountReduceFunctor<CPUDevice, Tidx, T, binary_output> {
               Tidx value = in(i, j);
               if (value < 0) {
                 status.Update(errors::InvalidArgument(
-                    "value must be positive, got value[", i, ", ",
+                    "Value must be non-negative, got value[", i, ", ",
                     j, "] = ",value));
                 return;
               }
