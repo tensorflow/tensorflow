@@ -37,6 +37,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/mlir/runtime/ir/rt_dialect.h"
 #include "tensorflow/compiler/xla/mlir/runtime/ir/rt_ops.h"
 #include "tensorflow/compiler/xla/mlir/runtime/utils/custom_calls.h"
+#include "tensorflow/compiler/xla/mlir_hlo/lhlo_gpu/IR/lhlo_gpu_ops.h"
 
 namespace xla {
 namespace gpu {
@@ -80,10 +81,10 @@ using CaptureSequence =
 
 //===----------------------------------------------------------------------===//
 
-template <typename T, OpCapturePattern::Capture capture>
+template <OpCapturePattern::Capture capture, typename T, typename... Ts>
 struct OpCapture : public OpCapturePattern {
   FailureOr<OpCapturePattern::Capture> match(Operation* op) final {
-    if (isa<T>(op)) return capture;
+    if (isa<T, Ts...>(op)) return capture;
     return failure();
   }
 };
@@ -91,12 +92,18 @@ struct OpCapture : public OpCapturePattern {
 static constexpr auto kMove = OpCapturePattern::Capture::kMove;
 static constexpr auto kClone = OpCapturePattern::Capture::kClone;
 
+template <typename T, typename... Ts>
+using MoveOp = OpCapture<kMove, T, Ts...>;
+template <typename T, typename... Ts>
+using CloneOp = OpCapture<kClone, T, Ts...>;
+
 // Capture gpu operations by moving them intp graph capture function.
-struct LaunchFuncOpCapture : public OpCapture<LaunchFuncOp, kMove> {};
+struct LaunchFuncOpCapture : public MoveOp<LaunchFuncOp> {};
+struct ConvOpCapture : public MoveOp<lmhlo_gpu::ConvForwardFusedOp> {};
 
 // Capture pure operations by cloning them into graph capture function.
-struct ConstantOpCapture : public OpCapture<arith::ConstantOp, kClone> {};
-struct ViewOpCapture : public OpCapture<memref::ViewOp, kClone> {};
+struct ConstantOpCapture : public CloneOp<arith::ConstantOp> {};
+struct ViewOpCapture : public CloneOp<memref::ViewOp> {};
 
 //===----------------------------------------------------------------------===//
 
@@ -320,6 +327,7 @@ void OutlineCudaGraphsPass::runOnOperation() {
 
   OpCapturePatternSet patterns;
   patterns.emplace_back(new LaunchFuncOpCapture());
+  patterns.emplace_back(new ConvOpCapture());
   patterns.emplace_back(new ConstantOpCapture());
   patterns.emplace_back(new ViewOpCapture());
 
