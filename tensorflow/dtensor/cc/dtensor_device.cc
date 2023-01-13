@@ -421,7 +421,7 @@ class DTensorDevice {
   // set.
   const MeshWithParallelDevice* global_default_mesh_ = nullptr;
   // If the user has specified a default output layout.
-  absl::optional<Layout> default_layout_;
+  std::optional<Layout> default_layout_;
 
   // Determines whether tensors with a shape previously associated with only one
   // layout use that layout if nothing else can be inferred.
@@ -1269,14 +1269,14 @@ Status AddExecutionFunctionDefsToFunctionDefLibrary(
         absl::StrCat(func.name(), "_", unique_function_number.fetch_add(1));
     auto control_ret_node_names =
         [&control_ret_names, &selected_call_node_name](
-            const Node* node) -> absl::optional<std::string> {
+            const Node* node) -> std::optional<std::string> {
       // Add the stateful partitioned call node as a control return as we need
       // to process any control deps inside the inner function.
       if (control_ret_names.contains(node->name()) ||
           node->name() == selected_call_node_name) {
         return node->name();
       }
-      return absl::nullopt;
+      return std::nullopt;
     };
 
     tensorflow::FunctionDef to_run;
