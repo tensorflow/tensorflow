@@ -41,6 +41,9 @@ createLegalizeCollectiveOpsPass();
 std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
 createLegalizeI1VectorTransferOpsPass();
 
+std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
+createConvertXlaCpuMemRefElementCastToLLVMPass();
+
 //===-----------------------------------------------------------------------===/
 
 #define GEN_PASS_REGISTRATION

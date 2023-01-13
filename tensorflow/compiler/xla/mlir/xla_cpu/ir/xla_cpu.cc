@@ -140,25 +140,21 @@ LogicalResult AddDependencyOp::bufferize(
 }
 
 LogicalResult MemRefElementCastOp::verify() {
-  auto src_ty = getMemref().getType();
-  auto dst_ty = getResult().getType();
+  auto src_memref_ty = getSrc().getType().cast<MemRefType>();
+  auto dst_memref_ty = getDst().getType().cast<MemRefType>();
+  if (src_memref_ty.getShape() != dst_memref_ty.getShape()) {
+    return emitOpError() << "expects matching shapes";
+  }
 
-  auto src_width =
-      src_ty.cast<MemRefType>().getElementType().getIntOrFloatBitWidth();
-  auto dst_width =
-      dst_ty.cast<MemRefType>().getElementType().getIntOrFloatBitWidth();
-
+  unsigned src_width = src_memref_ty.getElementType().getIntOrFloatBitWidth();
+  unsigned dst_width = dst_memref_ty.getElementType().getIntOrFloatBitWidth();
   if ((src_width + CHAR_BIT - 1) / CHAR_BIT !=
       (dst_width + CHAR_BIT - 1) / CHAR_BIT) {
-    return failure();
+    return emitOpError() << "cannot cast from "
+                         << src_memref_ty.getElementType() << " to "
+                         << dst_memref_ty.getElementType();
   }
-
-  if (src_ty.isa<UnrankedMemRefType>()) {
-    return success(!dst_ty.isa<UnrankedMemRefType>());
-  }
-
-  return success(src_ty.cast<ShapedType>().getShape() ==
-                 dst_ty.cast<ShapedType>().getShape());
+  return success();
 }
 
 }  // namespace xla_cpu
