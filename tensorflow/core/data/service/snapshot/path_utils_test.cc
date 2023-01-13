@@ -73,7 +73,7 @@ TEST(PathUtilsTest, CheckpointsDirectory) {
 
 TEST(PathUtilsTest, CommittedChunksDirectory) {
   EXPECT_THAT(CommittedChunksDirectory("/path/to/snapshot"),
-              MatchesRegex("/path/to/snapshot.committed_chunks"));
+              MatchesRegex("/path/to/snapshot.chunks"));
 }
 
 TEST(PathUtilsTest, UncommittedChunksDirectory) {

@@ -30,7 +30,7 @@ constexpr const char kDatasetDefFileName[] = "dataset_def.proto";
 constexpr const char kStreamsDirectoryName[] = "streams";
 constexpr const char kSplitsDirectoryName[] = "splits";
 constexpr const char kCheckpointsDirectoryName[] = "checkpoints";
-constexpr const char kCommittedChunksDirectoryName[] = "committed_chunks";
+constexpr const char kCommittedChunksDirectoryName[] = "chunks";
 constexpr const char kUncommittedChunksDirectoryName[] = "uncommitted_chunks";
 
 }  // namespace

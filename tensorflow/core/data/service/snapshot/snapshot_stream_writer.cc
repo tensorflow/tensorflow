@@ -131,18 +131,10 @@ Status SnapshotStreamWriter::WriteChunk() {
     TF_RETURN_IF_ERROR(WriteRecord(writer));
   }
   TF_RETURN_IF_ERROR(writer.Close());
-  return CommitChunk(chunk_file_path);
+  return CommitChunk();
 }
 
-std::string SnapshotStreamWriter::GetChunkFilePath() const {
-  return tsl::io::JoinPath(uncommitted_chunks_directory_,
-                           absl::StrCat("chunk_", chunk_index_));
-}
-
-Status SnapshotStreamWriter::CommitChunk(const std::string& chunk_file_path) {
-  std::string chunk_basename(tsl::io::Basename(chunk_file_path));
-  std::string committed_chunk_filename =
-      tsl::io::JoinPath(committed_chunks_directory_, chunk_basename);
+Status SnapshotStreamWriter::CommitChunk() {
   // Writes the checkpoint before committing the chunk. If the worker fails in
   // between, the restarted worker will synchronize the checkpoint with the
   // committed chunks.
@@ -150,10 +142,21 @@ Status SnapshotStreamWriter::CommitChunk(const std::string& chunk_file_path) {
     TF_RETURN_IF_ERROR(Save());
   }
   TF_RETURN_IF_ERROR(
-      params_.env->RenameFile(chunk_file_path, committed_chunk_filename));
+      params_.env->RenameFile(GetChunkFilePath(), GetCommittedChunkFilePath()));
   ++chunk_index_;
   chunk_size_bytes_ = 0;
   return OkStatus();
+}
+
+std::string SnapshotStreamWriter::GetChunkFilePath() const {
+  return tsl::io::JoinPath(uncommitted_chunks_directory_,
+                           absl::StrCat("chunk_", chunk_index_));
+}
+
+std::string SnapshotStreamWriter::GetCommittedChunkFilePath() const {
+  return tsl::io::JoinPath(
+      committed_chunks_directory_,
+      absl::StrCat("chunk_", params_.stream_index, "_", chunk_index_));
 }
 
 bool SnapshotStreamWriter::ShouldWriteRecord() const TF_LOCKS_EXCLUDED(mu_) {
@@ -299,10 +302,11 @@ Status SnapshotStreamWriter::SyncCheckpointWithChunks(
   for (const std::string& uncommitted_chunk : uncommitted_chunks) {
     std::string uncommitted_chunk_filename =
         tsl::io::JoinPath(uncommitted_chunks_directory_, uncommitted_chunk);
-    std::string committed_chunk_filename =
-        tsl::io::JoinPath(committed_chunks_directory_, uncommitted_chunk);
     TF_ASSIGN_OR_RETURN(int64_t chunk_index,
                         GetFileIndex(uncommitted_chunk, "chunk"));
+    std::string committed_chunk_filename = tsl::io::JoinPath(
+        committed_chunks_directory_,
+        absl::StrCat("chunk_", params_.stream_index, "_", chunk_index));
     if (chunk_index <= checkpoint_index) {
       TF_RETURN_IF_ERROR(params_.env->RenameFile(uncommitted_chunk_filename,
                                                  committed_chunk_filename));

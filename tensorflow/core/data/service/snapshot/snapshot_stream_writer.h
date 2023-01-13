@@ -63,7 +63,7 @@ struct SnapshotWriterParams {
 //   - DONE
 //   - snapshot.metadata
 //   - dataset_def.proto
-//   - committed chunks
+//   - chunks
 //     - chunk_<stream_index>_<chunk_index>
 //   - streams
 //     - stream_0
@@ -74,7 +74,7 @@ struct SnapshotWriterParams {
 //       - uncommitted chunks
 //         - chunk_<chunk_index>
 //       - checkpoints
-//         - checkpoint_<local_split_index>_<chunk_index>
+//         - checkpoint_<chunk_index>
 //
 // This class is thread-safe.
 // TODO(b/258691666): Support chunking, checkpointing, and fault tolerance.
@@ -114,11 +114,12 @@ class SnapshotStreamWriter {
   // Writes the next chunk.
   Status WriteChunk();
 
+  // Commits the current chunk.
+  Status CommitChunk();
+
   // Returns the path of the current chunk.
   std::string GetChunkFilePath() const;
-
-  // Commits the current chunk.
-  Status CommitChunk(const std::string& chunk_file_path);
+  std::string GetCommittedChunkFilePath() const;
 
   // Returns true if the writer should write the next record to the current
   // chunk.
