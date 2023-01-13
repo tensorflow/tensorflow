@@ -47,9 +47,9 @@ struct FunctionalControlFlowToCFG
 // Lowers a general tensor argument that is used as a condition to a functional
 // control flow op into an i1 value.
 static Value LowerCondition(Location loc, Value value, OpBuilder* builder) {
-  auto zero_d = builder->create<ToBoolOp>(loc, value);
-  auto scalar = builder->create<tensor::ExtractOp>(loc, zero_d);
-  return scalar.getResult();
+  Value zero_d = builder->create<ToBoolOp>(loc, value);
+  Value scalar = builder->create<tensor::ExtractOp>(loc, zero_d);
+  return scalar;
 }
 
 // Calls the function `fn` with arguments provided by the given function and
