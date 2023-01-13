@@ -816,9 +816,9 @@ LogicalResult ExportXlaOp(CstrReshapableOp, OpLoweringContext) {
 mlir::LogicalResult ExportXlaOp(mlir::mhlo::CopyOp op, OpLoweringContext ctx) {
   // If it's the only thing in a function we assume it's part of an async copy
   // op
-  if (op.getIsCrossProgramPrefetch() && !SimplyReturnedOp(op))
+  if (op.getCrossProgramPrefetchIndex() && !SimplyReturnedOp(op))
     return op->emitOpError() << "synchronous CopyOp should not include "
-                                "is_cross_program_prefetch attribute.";
+                                "cross_program_prefetch_index attribute.";
   auto& value_map = *ctx.values;
   auto result = op.getResult();
   xla::XlaOp xla_arg_0;
@@ -1022,8 +1022,12 @@ LogicalResult ExportXlaOp(AsyncStartOp op, OpLoweringContext ctx) {
   }
   auto copy_op = dyn_cast_or_null<CopyOp>(callee.getBody().front().front());
   if (copy_op && SimplyReturnedOp(copy_op)) {
+    std::optional<int> cross_program_prefetch_index =
+        copy_op.getCrossProgramPrefetchIndex()
+            ? std::make_optional(*copy_op.getCrossProgramPrefetchIndex())
+            : std::nullopt;
     value_map[result] = xla::internal::XlaBuilderFriend::BuildCopyStart(
-        ctx.builder, operands[0], copy_op.getIsCrossProgramPrefetch());
+        ctx.builder, operands[0], cross_program_prefetch_index);
     return mlir::success();
   }
   auto send_op = dyn_cast_or_null<SendOp>(callee.getBody().front().front());

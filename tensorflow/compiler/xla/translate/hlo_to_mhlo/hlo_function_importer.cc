@@ -1144,9 +1144,12 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
     }
     case HloOpcode::kCopyStart: {
       auto copy_start_instruction = Cast<HloCopyStartInstruction>(instruction);
-      if (copy_start_instruction->is_cross_program_prefetch()) {
-        attributes.push_back(builder_->getNamedAttr("is_cross_program_prefetch",
-                                                    builder_->getUnitAttr()));
+      if (auto cross_program_prefetch_index =
+              copy_start_instruction->cross_program_prefetch_index()) {
+        attributes.push_back(builder_->getNamedAttr(
+            "cross_program_prefetch_index",
+            builder_->getIntegerAttr(builder_->getIntegerType(32),
+                                     *cross_program_prefetch_index)));
         // Cross-program prefetch allows copy ops to accept tuples, in which
         // case, we need to double-wrap inputs and outputs in tuples.
         if (operands[0].getType().isa<mlir::TupleType>()) {

@@ -1705,18 +1705,16 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
           *async_execution_thread));
     }
     case HloOpcode::kCopyStart: {
-      // If the is_cross_program_prefetch attribute is not present then default
-      // to false.
-      optional<bool> is_cross_program_prefetch = false;
-      attrs["is_cross_program_prefetch"] = {/*required=*/false, AttrTy::kBool,
-                                            &is_cross_program_prefetch};
+      optional<int> cross_program_prefetch_index = std::nullopt;
+      attrs["cross_program_prefetch_index"] = {
+          /*required=*/false, AttrTy::kInt32, &cross_program_prefetch_index};
       if ((!preset_operands &&
            !ParseOperands(&operands, builder, /*expected_size=*/1)) ||
           !ParseAttributes(attrs, allow_attributes)) {
         return nullptr;
       }
       return builder->AddInstruction(HloInstruction::CreateCopyStart(
-          *shape, operands[0], *is_cross_program_prefetch));
+          *shape, operands[0], cross_program_prefetch_index));
     }
     case HloOpcode::kReplicaId: {
       if ((!preset_operands &&
@@ -3469,44 +3467,47 @@ bool HloParserImpl::SetValueInLiteralHelper(LocTy loc, ParsedElemT value,
   }
   using ParsedElemComponentT = typename ComponentType<ParsedElemT>::Type;
   using LiteralNativeComponentT = typename ComponentType<LiteralNativeT>::Type;
-  const auto handle_nan = [this, literal, index, loc](
-                              ParsedElemComponentT parsed_value_component,
-                              LiteralNativeComponentT*
-                                  literal_value_component) {
-    if (!std::isnan(static_cast<double>(parsed_value_component))) {
-      return true;
-    }
-    auto nan_payload = GetNanPayload(parsed_value_component);
-    if constexpr (std::is_same<LiteralNativeComponentT,
-                               tsl::float8_e4m3fn>::value) {
-      if (nan_payload != QuietNanWithoutPayload<double>()) {
-        return Error(
-            loc, StrCat("tries to set NaN payload 0x", absl::Hex(nan_payload),
-                        " to a literal in shape ",
-                        ShapeUtil::HumanString(literal->shape()),
-                        " at linear index ", index,
-                        ", but f8e4m3fn does not support payloads"));
-      }
-    } else {
-      if (nan_payload == QuietNanWithoutPayload<double>()) {
-        nan_payload = QuietNanWithoutPayload<LiteralNativeComponentT>();
-      }
-      const auto kLargestPayload = NanPayloadBitMask<LiteralNativeComponentT>();
-      if (nan_payload > kLargestPayload) {
-        return Error(
-            loc, StrCat("tries to set NaN payload 0x", absl::Hex(nan_payload),
-                        " to a literal in shape ",
-                        ShapeUtil::HumanString(literal->shape()),
-                        " at linear index ", index,
-                        ", but the NaN payload is out of range (0x",
-                        absl::Hex(kLargestPayload), ")"));
-      }
-      *literal_value_component = NanWithSignAndPayload<LiteralNativeComponentT>(
-          /*sign=*/std::signbit(static_cast<double>(parsed_value_component)),
-          /*nan_payload=*/nan_payload);
-    }
-    return true;
-  };
+  const auto handle_nan =
+      [this, literal, index, loc](
+          ParsedElemComponentT parsed_value_component,
+          LiteralNativeComponentT* literal_value_component) {
+        if (!std::isnan(static_cast<double>(parsed_value_component))) {
+          return true;
+        }
+        auto nan_payload = GetNanPayload(parsed_value_component);
+        if constexpr (std::is_same<LiteralNativeComponentT,
+                                   tsl::float8_e4m3fn>::value) {
+          if (nan_payload != QuietNanWithoutPayload<double>()) {
+            return Error(
+                loc, StrCat("tries to set NaN payload 0x",
+                            absl::Hex(nan_payload), " to a literal in shape ",
+                            ShapeUtil::HumanString(literal->shape()),
+                            " at linear index ", index,
+                            ", but f8e4m3fn does not support payloads"));
+          }
+        } else {
+          if (nan_payload == QuietNanWithoutPayload<double>()) {
+            nan_payload = QuietNanWithoutPayload<LiteralNativeComponentT>();
+          }
+          const auto kLargestPayload =
+              NanPayloadBitMask<LiteralNativeComponentT>();
+          if (nan_payload > kLargestPayload) {
+            return Error(
+                loc, StrCat("tries to set NaN payload 0x",
+                            absl::Hex(nan_payload), " to a literal in shape ",
+                            ShapeUtil::HumanString(literal->shape()),
+                            " at linear index ", index,
+                            ", but the NaN payload is out of range (0x",
+                            absl::Hex(kLargestPayload), ")"));
+          }
+          *literal_value_component =
+              NanWithSignAndPayload<LiteralNativeComponentT>(
+                  /*sign=*/std::signbit(
+                      static_cast<double>(parsed_value_component)),
+                  /*nan_payload=*/nan_payload);
+        }
+        return true;
+      };
   const ParsedElemComponentT parsed_real_value = GetReal(value);
   auto literal_real_value =
       static_cast<LiteralNativeComponentT>(parsed_real_value);

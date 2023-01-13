@@ -646,7 +646,7 @@ class HloInstruction {
   // prefetch or not.
   static std::unique_ptr<HloInstruction> CreateCopyStart(
       const Shape& shape, HloInstruction* operand,
-      bool is_cross_program_prefetch = false);
+      std::optional<int> cross_program_prefetch_index = std::nullopt);
 
   // Creates a compare op, performing the comparison specified in direction.
   static std::unique_ptr<HloInstruction> CreateCompare(
@@ -2149,8 +2149,8 @@ class HloInstruction {
       absl::string_view async_execution_thread,
       bool skip_async_execution_thread_overwrite);
 
-  // Delegates to HloCopyStartInstruction::is_cross_program_prefetch().
-  bool is_cross_program_prefetch() const;
+  // Delegates to HloCopyStartInstruction::is_cross_program_prefetch_index().
+  std::optional<int> cross_program_prefetch_index() const;
 
   // Delegates to HloCompareInstruction::direction().
   ComparisonDirection comparison_direction() const;

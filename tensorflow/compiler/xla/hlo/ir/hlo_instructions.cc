@@ -369,25 +369,28 @@ HloInstructionProto HloAsyncInstruction::ToProto() const {
   return proto;
 }
 
-HloCopyStartInstruction::HloCopyStartInstruction(const Shape& shape,
-                                                 HloInstruction* operand,
-                                                 bool is_cross_program_prefetch)
+HloCopyStartInstruction::HloCopyStartInstruction(
+    const Shape& shape, HloInstruction* operand,
+    std::optional<int> cross_program_prefetch_index)
     : HloInstruction(HloOpcode::kCopyStart, shape),
-      is_cross_program_prefetch_(is_cross_program_prefetch) {
+      cross_program_prefetch_index_(cross_program_prefetch_index) {
   AppendOperand(operand);
 }
 
 HloInstructionProto HloCopyStartInstruction::ToProto() const {
   HloInstructionProto proto = HloInstruction::ToProto();
-  proto.set_is_cross_program_prefetch(is_cross_program_prefetch_);
+  if (cross_program_prefetch_index_.has_value()) {
+    proto.set_cross_program_prefetch_index(*cross_program_prefetch_index_);
+  }
   return proto;
 }
 
 std::vector<std::string> HloCopyStartInstruction::ExtraAttributesToStringImpl(
     const HloPrintOptions& options) const {
   std::vector<std::string> result;
-  if (is_cross_program_prefetch()) {
-    result.push_back("is_cross_program_prefetch=true");
+  if (cross_program_prefetch_index_.has_value()) {
+    result.push_back("cross_program_prefetch_index=" +
+                     std::to_string(*cross_program_prefetch_index_));
   }
   return result;
 }
@@ -397,8 +400,8 @@ bool HloCopyStartInstruction::IdenticalSlowPath(
     absl::FunctionRef<bool(const HloComputation*, const HloComputation*)>
         eq_computations) const {
   const auto& casted_other = static_cast<const HloCopyStartInstruction&>(other);
-  return is_cross_program_prefetch() ==
-         casted_other.is_cross_program_prefetch();
+  return cross_program_prefetch_index() ==
+         casted_other.cross_program_prefetch_index();
 }
 
 std::unique_ptr<HloInstruction>
@@ -406,8 +409,8 @@ HloCopyStartInstruction::CloneWithNewOperandsImpl(
     const Shape& shape, absl::Span<HloInstruction* const> new_operands,
     HloCloneContext* context) const {
   CHECK_EQ(new_operands.size(), 1);
-  return std::make_unique<HloCopyStartInstruction>(shape, new_operands[0],
-                                                   is_cross_program_prefetch());
+  return std::make_unique<HloCopyStartInstruction>(
+      shape, new_operands[0], cross_program_prefetch_index());
 }
 
 HloCompareInstruction::HloCompareInstruction(
@@ -460,8 +463,8 @@ std::unique_ptr<HloInstruction> HloCompareInstruction::CloneWithNewOperandsImpl(
 
 namespace {
 
-// Converts a protocol buffer message (e.g., TriangularSolveOptions) to a vector
-// of "key=value" attribute strings generically, using protocol buffer
+// Converts a protocol buffer message (e.g., TriangularSolveOptions) to a
+// vector of "key=value" attribute strings generically, using protocol buffer
 // reflection.
 //
 // Currently implements a small subset of cases; feel free to add more as
@@ -1641,16 +1644,16 @@ HloCallableInstruction::CloneAndAppendInstructionIntoCalledComputation(
         CHECK_NOTNULL(GetModule())->AddEmbeddedComputation(builder.Build()));
     clone = called_computation_root();
   } else {
-    // When add_output is false, instruction_to_append is necessarily an operand
-    // of the callable instruction. After appending this will no longer be the
-    // case. Remove the operand from the operand list and remove its
-    // corresponding called computation parameter instruction.
+    // When add_output is false, instruction_to_append is necessarily an
+    // operand of the callable instruction. After appending this will no
+    // longer be the case. Remove the operand from the operand list and remove
+    // its corresponding called computation parameter instruction.
     bool in_operand_list =
         absl::c_linear_search(operands(), instruction_to_append);
     CHECK(add_output || in_operand_list);
     if (do_not_clone) {
-      // We assume all uses of a kTuple operation are GTE ops. In this case, we
-      // don't need to clone 'instruction_to_append'.
+      // We assume all uses of a kTuple operation are GTE ops. In this case,
+      // we don't need to clone 'instruction_to_append'.
       CHECK(!in_operand_list);
       clone = instruction_to_append;
     } else {
@@ -1662,8 +1665,8 @@ HloCallableInstruction::CloneAndAppendInstructionIntoCalledComputation(
     for (int64_t operand_num = 0; operand_num < operand_count();
          ++operand_num) {
       if (instruction_to_append == operand(operand_num)) {
-        // Replace the called computation parameter instruction's uses with the
-        // clone.
+        // Replace the called computation parameter instruction's uses with
+        // the clone.
         HloInstruction* called_computation_parameter =
             called_computation_parameters[operand_num];
         TF_CHECK_OK(called_computation_parameter->ReplaceAllUsesWith(clone));
@@ -1679,8 +1682,8 @@ HloCallableInstruction::CloneAndAppendInstructionIntoCalledComputation(
     // this callable instruction is no longer a use of instruction_to_append.
     if (in_operand_list) {
       DetachFrom(instruction_to_append);
-      // When the instruction_to_append does not have other users, we don't need
-      // to generate a multioutput instruction.
+      // When the instruction_to_append does not have other users, we don't
+      // need to generate a multioutput instruction.
       if (instruction_to_append->user_count() == 0) {
         add_output = false;
       }
@@ -1691,8 +1694,8 @@ HloCallableInstruction::CloneAndAppendInstructionIntoCalledComputation(
   const std::vector<HloInstruction*>& called_computation_parameters =
       called_computation()->parameter_instructions();
 
-  // Add each operand of the clone as an operand of the callable instruction. A
-  // complication is that some clone operands may already be operands of the
+  // Add each operand of the clone as an operand of the callable instruction.
+  // A complication is that some clone operands may already be operands of the
   // callable instruction.
   for (int64_t operand_num = 0; operand_num < clone->operand_count();
        ++operand_num) {
@@ -1709,9 +1712,9 @@ HloCallableInstruction::CloneAndAppendInstructionIntoCalledComputation(
     }
 
     if (called_computation_parameter == nullptr) {
-      // Clone's operand was not already an operand of the callable instruction.
-      // Add it as an operand and add a corresponding called computation
-      // parameter instruction.
+      // Clone's operand was not already an operand of the callable
+      // instruction. Add it as an operand and add a corresponding called
+      // computation parameter instruction.
       called_computation_parameter = AddCallOperand(operand);
     }
     TF_CHECK_OK(
@@ -1720,7 +1723,8 @@ HloCallableInstruction::CloneAndAppendInstructionIntoCalledComputation(
 
   if (add_output) {
     CHECK_GT(instruction_to_append->user_count(), 0);
-    // If this is already a multioutput instruction, expand the root tuple by 1.
+    // If this is already a multioutput instruction, expand the root tuple
+    // by 1.
     HloInstruction* root = called_computation_root();
     HloInstruction::InstructionVector tuple_elements;
     bool newly_created_tuple_instr = false;
@@ -1848,7 +1852,8 @@ void HloFusionInstruction::ClearFusionComputationInstruction() {
   // Each fusion calls a single computation, but we use called_computations()
   // instead of fused_instructions_computation(), because the order in which
   // things get destructed can vary; the fusion computation's back-pointer may
-  // already be null, which violates a check in fused_instructions_computation.
+  // already be null, which violates a check in
+  // fused_instructions_computation.
   for (HloComputation* computation : called_computations()) {
     // Some passes that rewrite fusions may reassign a fusion computation to a
     // different fusion instruction as this instruction gets destructed.
@@ -1976,8 +1981,8 @@ void HloFusionInstruction::MergeFusionInstruction(
   // Replace instruction_to_merge use of 'this' with unfused_root.
   TF_CHECK_OK(instruction_to_merge->ReplaceUseWith(this, unfused_root));
 
-  // Build a dummy root for the cloned fusion as we may remove the original root
-  // in the fusion process.
+  // Build a dummy root for the cloned fusion as we may remove the original
+  // root in the fusion process.
   if (!unfused_instructions.empty()) {
     HloComputation* computation = unfused_root->parent();
     auto* dummy_root = computation->AddInstruction(
@@ -2809,8 +2814,8 @@ std::vector<std::string> HloCustomCallInstruction::ExtraAttributesToStringImpl(
     extra.push_back(StrCat("padding_type=", PaddingType_Name(padding_type())));
   }
   // By contract, we print the custom call target even if
-  // options.print_subcomputation_mode() == kOff, because the call target is not
-  // an HloComputation.
+  // options.print_subcomputation_mode() == kOff, because the call target is
+  // not an HloComputation.
   extra.push_back(
       StrCat("custom_call_target=\"", CEscape(custom_call_target_), "\""));
 

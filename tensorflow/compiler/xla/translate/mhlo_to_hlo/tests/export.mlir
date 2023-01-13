@@ -768,7 +768,7 @@ func.func @main(%arg0: tensor<2xi32>) -> tensor<2xi32> {
 
 // CHECK:  HloModule
 func.func @copy_0(%arg0: tensor<128x32xf32>) -> tensor<128x32xf32> attributes {execution_thread = "main"} {
-  %0 = "mhlo.copy"(%arg0) { is_cross_program_prefetch } : (tensor<128x32xf32>) -> tensor<128x32xf32>
+  %0 = "mhlo.copy"(%arg0) {cross_program_prefetch_index = 0 : i32} : (tensor<128x32xf32>) -> tensor<128x32xf32>
   func.return %0 : tensor<128x32xf32>
 }
 
@@ -781,7 +781,7 @@ func.func @main(%arg0: tensor<128x32xf32>) -> tensor<128x32xf32> {
 // CHECK: ENTRY
 // CHECK: %[[INPUT:.*]] = f32[128,32] parameter(0)
 // CHECK: %[[OUTPUT:.*]] = (f32[128,32], f32[128,32], u32[]) copy-start(f32[128,32] %[[INPUT]])
-// CHECK-SAME:  is_cross_program_prefetch
+// CHECK-SAME:  cross_program_prefetch_index=0
 // CHECK: ROOT {{.*}} f32[128,32] copy-done((f32[128,32], f32[128,32], u32[]) %[[OUTPUT]]
 
 

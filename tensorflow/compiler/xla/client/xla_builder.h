@@ -106,8 +106,9 @@ struct XlaBuilderFriend {
                                           const XlaOp operands,
                                           const Shape& shape);
 
-  static XlaOp BuildCopyStart(XlaBuilder* builder, const XlaOp operand,
-                              bool is_cross_program_prefetch);
+  static XlaOp BuildCopyStart(
+      XlaBuilder* builder, XlaOp operand,
+      std::optional<int> cross_program_prefetch_index = std::nullopt);
   static XlaOp BuildCopyDone(XlaBuilder* builder, const XlaOp operand,
                              const Shape& shape);
 
