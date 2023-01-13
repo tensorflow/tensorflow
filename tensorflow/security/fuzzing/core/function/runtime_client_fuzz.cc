@@ -16,7 +16,7 @@
 
 #include <gtest/gtest.h>
 #include "fuzztest/fuzztest.h"
-#include "tensorflow/core/function/runtime_client.h"
+#include "tensorflow/core/function/runtime_client/runtime_client.h"
 #include "tensorflow/core/ir/dialect.h"
 #include "tensorflow/core/ir/ops.h"
 #include "mlir/Parser/Parser.h"  // from @llvm-project
