@@ -15,18 +15,22 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_DATA_SERVICE_WORKER_IMPL_H_
 #define TENSORFLOW_CORE_DATA_SERVICE_WORKER_IMPL_H_
 
+#include <cstdint>
 #include <memory>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/hash/hash.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/core/data/service/common.pb.h"
 #include "tensorflow/core/data/service/data_transfer.h"
 #include "tensorflow/core/data/service/dispatcher.grpc.pb.h"
 #include "tensorflow/core/data/service/dispatcher_client.h"
 #include "tensorflow/core/data/service/export.pb.h"
+#include "tensorflow/core/data/service/snapshot/snapshot_stream_writer.h"
 #include "tensorflow/core/data/service/task_runner.h"
 #include "tensorflow/core/data/service/worker.pb.h"
 #include "tensorflow/core/data/standalone.h"
@@ -96,6 +100,26 @@ class DataServiceWorkerImpl {
     std::unique_ptr<TaskRunner> task_runner;
   };
 
+  struct SnapshotTask {
+    // Base directory of the snapshot.
+    std::string base_path;
+
+    // Index of the snapshot stream written by this worker.
+    int64_t stream_index = 0;
+
+    // This is required to use it as a `flat_hash_map` key.
+    template <typename H>
+    friend H AbslHashValue(H h, const SnapshotTask& task) {
+      return H::combine(std::move(h), task.base_path, task.base_path);
+    }
+
+    friend bool operator==(const SnapshotTask& task1,
+                           const SnapshotTask& task2) {
+      return task1.base_path == task2.base_path &&
+             task1.stream_index == task2.stream_index;
+    }
+  };
+
   // Validates the worker config.
   Status ValidateWorkerConfig() const;
   // Sends task status to the dispatcher and checks for dispatcher commands.
@@ -119,6 +143,13 @@ class DataServiceWorkerImpl {
   // Updates the tasks according to the heartbeat response.
   void UpdateTasks(const WorkerHeartbeatResponse& response)
       TF_LOCKS_EXCLUDED(mu_);
+  // Updates the distributed snapshot tasks according to the heartbeat response.
+  Status UpdateSnapshotWriters(const WorkerHeartbeatResponse& response);
+  // Creates an dataset iterator for snapshot writers.
+  StatusOr<std::unique_ptr<StandaloneTaskIterator>> MakeSnapshotTaskIterator(
+      const DatasetDef& dataset_def) const;
+  // Gets the snapshot task progress from the snapshot writers.
+  std::vector<SnapshotTaskProgress> GetSnapshotTaskProgress() const;
   // Gets the DatasetDef for `task_def`.
   StatusOr<DatasetDef> GetDatasetDef(const TaskDef& task_def) const;
   // Creates a dataset from `dataset_def`.
@@ -155,6 +186,10 @@ class DataServiceWorkerImpl {
   condition_variable task_completion_cv_ TF_GUARDED_BY(mu_);
   condition_variable heartbeat_cv_ TF_GUARDED_BY(mu_);
   CancellationManager cancellation_manager_;
+
+  absl::flat_hash_map<SnapshotTask, std::unique_ptr<SnapshotStreamWriter>,
+                      absl::Hash<SnapshotTask>>
+      snapshot_writers_;
 
   // A thread for notifying the dispatcher when tasks complete.
   std::unique_ptr<Thread> task_completion_thread_;

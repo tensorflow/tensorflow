@@ -12,9 +12,9 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-
 #include "tensorflow/core/data/service/worker_impl.h"
 
+#include <iterator>
 #include <memory>
 #include <string>
 #include <utility>
@@ -37,6 +37,8 @@ limitations under the License.
 #include "tensorflow/core/data/service/dispatcher_client.h"
 #include "tensorflow/core/data/service/export.pb.h"
 #include "tensorflow/core/data/service/grpc_util.h"
+#include "tensorflow/core/data/service/snapshot/path_utils.h"
+#include "tensorflow/core/data/service/snapshot/snapshot_stream_writer.h"
 #include "tensorflow/core/data/service/split_provider.h"
 #include "tensorflow/core/data/service/task_runner.h"
 #include "tensorflow/core/data/service/utils.h"
@@ -60,6 +62,7 @@ limitations under the License.
 #include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/protobuf/service_config.pb.h"
 #include "tensorflow/core/public/session_options.h"
+#include "tensorflow/tsl/lib/io/compression.h"
 
 namespace tensorflow {
 namespace data {
@@ -518,7 +521,7 @@ Status DataServiceWorkerImpl::Heartbeat() {
   TF_ASSIGN_OR_RETURN(WorkerHeartbeatResponse response,
                       dispatcher_->WorkerHeartbeat(request));
   UpdateTasks(response);
-  return OkStatus();
+  return UpdateSnapshotWriters(response);
 }
 
 WorkerHeartbeatRequest DataServiceWorkerImpl::BuildWorkerHeartbeatRequest()
@@ -538,7 +541,34 @@ WorkerHeartbeatRequest DataServiceWorkerImpl::BuildWorkerHeartbeatRequest()
   request.set_worker_uid(worker_uid_);
   *request.mutable_current_tasks() = {current_tasks.begin(),
                                       current_tasks.end()};
+  std::vector<SnapshotTaskProgress> snapshot_task_progress =
+      GetSnapshotTaskProgress();
+  if (!snapshot_task_progress.empty()) {
+    *request.mutable_snapshot_task_progress() = {
+        std::make_move_iterator(snapshot_task_progress.begin()),
+        std::make_move_iterator(snapshot_task_progress.end())};
+  }
   return request;
+}
+
+std::vector<SnapshotTaskProgress>
+DataServiceWorkerImpl::GetSnapshotTaskProgress() const {
+  std::vector<SnapshotTaskProgress> snapshot_task_progress;
+  for (const auto& [snapshot_task, stream_writer] : snapshot_writers_) {
+    SnapshotTaskProgress progress;
+    progress.mutable_snapshot_task()->set_base_path(snapshot_task.base_path);
+    progress.mutable_snapshot_task()->set_stream_index(
+        snapshot_task.stream_index);
+    StatusOr<bool> completed = stream_writer->Completed();
+    if (completed.ok()) {
+      progress.set_completed(*completed);
+    } else {
+      progress.set_error_code(completed.status().code());
+      progress.set_error_message(completed.status().error_message());
+    }
+    snapshot_task_progress.push_back(std::move(progress));
+  }
+  return snapshot_task_progress;
 }
 
 void DataServiceWorkerImpl::UpdateTasks(const WorkerHeartbeatResponse& response)
@@ -572,6 +602,44 @@ void DataServiceWorkerImpl::UpdateTasks(const WorkerHeartbeatResponse& response)
   for (const auto& task : tasks_to_delete) {
     StopTask(*task);
   }
+}
+
+Status DataServiceWorkerImpl::UpdateSnapshotWriters(
+    const WorkerHeartbeatResponse& response) {
+  for (const SnapshotTaskDef& snapshot_task : response.snapshot_tasks()) {
+    DatasetDef dataset_def;
+    TF_RETURN_IF_ERROR(ReadTextProto(
+        Env::Default(), DatasetDefFilePath(snapshot_task.base_path()),
+        &dataset_def));
+    TF_ASSIGN_OR_RETURN(std::unique_ptr<StandaloneTaskIterator> iterator,
+                        MakeSnapshotTaskIterator(dataset_def));
+
+    // TODO(b/258691097): Support compression.
+    // TODO(b/258691097): If the response does not contain a snapshot task,
+    // cancel it from `snapshot_writers_`.
+    snapshot_writers_.try_emplace(
+        SnapshotTask{snapshot_task.base_path(), snapshot_task.stream_index()},
+        std::make_unique<SnapshotStreamWriter>(
+            SnapshotWriterParams{snapshot_task.base_path(),
+                                 snapshot_task.stream_index(),
+                                 tsl::io::compression::kNone, Env::Default()},
+            std::move(iterator)));
+  }
+  return OkStatus();
+}
+
+StatusOr<std::unique_ptr<StandaloneTaskIterator>>
+DataServiceWorkerImpl::MakeSnapshotTaskIterator(
+    const DatasetDef& dataset_def) const {
+  // TODO(b/258691097): Use dynamic sharding and read splits from the snapshot
+  // directory.
+  std::unique_ptr<standalone::Dataset> dataset;
+  TF_RETURN_IF_ERROR(standalone::Dataset::FromGraph(
+      standalone::Dataset::Params(), dataset_def.graph(), &dataset));
+  std::unique_ptr<standalone::Iterator> iterator;
+  TF_RETURN_IF_ERROR(dataset->MakeIterator(&iterator));
+  return std::make_unique<StandaloneTaskIterator>(std::move(dataset),
+                                                  std::move(iterator));
 }
 
 void DataServiceWorkerImpl::DeleteLocalTask(const TaskInfo& task_info)

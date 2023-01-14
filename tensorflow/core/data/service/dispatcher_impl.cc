@@ -346,19 +346,21 @@ Status DataServiceDispatcherImpl::CreateSnapshotStream(
 Status DataServiceDispatcherImpl::PopulateSnapshotInfo(
     absl::string_view worker_address, WorkerHeartbeatResponse* response) {
   for (auto& [snapshot_directory, snapshot_state] : snapshots_) {
-    WorkerHeartbeatResponse::Snapshot* snapshot = response->add_snapshots();
-    snapshot->set_directory(snapshot_directory);
+    SnapshotTaskDef* snapshot_task = response->add_snapshot_tasks();
+    snapshot_task->set_base_path(snapshot_directory);
     if (auto it = snapshot_state.assigned_streams.find(worker_address);
         it != snapshot_state.assigned_streams.end()) {
-      snapshot->set_stream_index(it->second);
+      snapshot_task->set_stream_index(it->second);
       continue;
     }
     if (snapshot_state.mode != SnapshotState::Mode::kActive) continue;
     // TODO(mpcallanan): Handle orphaned streams.
     TF_RETURN_IF_ERROR(CreateSnapshotStream(snapshot_directory, worker_address,
                                             snapshot_state));
-    snapshot->set_stream_index(snapshot_state.streams.size() - 1);
-    VLOG(1) << "creating stream #" << snapshot->stream_index()
+    snapshot_task->set_stream_index(snapshot_state.streams.size() - 1);
+    snapshot_state.assigned_streams[worker_address] =
+        snapshot_task->stream_index();
+    VLOG(1) << "creating stream #" << snapshot_task->stream_index()
             << " and assigning to worker " << worker_address;
   }
   return OkStatus();

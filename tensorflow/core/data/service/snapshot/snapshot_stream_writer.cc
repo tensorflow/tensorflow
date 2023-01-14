@@ -77,21 +77,17 @@ SnapshotStreamWriter::SnapshotStreamWriter(
   DCHECK_NE(iterator_, nullptr);
 }
 
-Status SnapshotStreamWriter::Wait() TF_LOCKS_EXCLUDED(mu_) {
-  snapshot_thread_.reset();
-  mutex_lock l(mu_);
-  return status_;
-}
-
 std::unique_ptr<Thread> SnapshotStreamWriter::RunSnapshotThread() {
   auto snapshot_fn = [this]() TF_LOCKS_EXCLUDED(mu_) {
-    Status status = WriteSnapshotFn();
+    Status status = WriteSnapshot();
     status = FinalizeStream(status);
-    if (!status.ok()) {
+    mutex_lock l(mu_);
+    if (status.ok()) {
+      completed_ = true;
+    } else {
       LOG(ERROR) << "Failed to write distributed tf.data snapshot stream at "
                  << stream_directory_ << ": " << status;
-      mutex_lock l(mu_);
-      status_ = std::move(status);
+      completed_ = std::move(status);
     }
   };
   return absl::WrapUnique(params_.env->StartThread(
@@ -99,7 +95,7 @@ std::unique_ptr<Thread> SnapshotStreamWriter::RunSnapshotThread() {
       std::move(snapshot_fn)));
 }
 
-Status SnapshotStreamWriter::WriteSnapshotFn() TF_LOCKS_EXCLUDED(mu_) {
+Status SnapshotStreamWriter::WriteSnapshot() TF_LOCKS_EXCLUDED(mu_) {
   // TODO(b/258691097): Write the "LEASE" file periodically.
   // TODO(b/258691097): Clean up checkpoints when the snapshot is complete.
   TF_RETURN_IF_ERROR(InitializeDirectories());
@@ -108,7 +104,7 @@ Status SnapshotStreamWriter::WriteSnapshotFn() TF_LOCKS_EXCLUDED(mu_) {
     TF_RETURN_IF_ERROR(WriteChunk());
   }
   mutex_lock l(mu_);
-  return status_;
+  return completed_.status();
 }
 
 Status SnapshotStreamWriter::InitializeDirectories() {
@@ -120,7 +116,7 @@ Status SnapshotStreamWriter::InitializeDirectories() {
 
 bool SnapshotStreamWriter::ShouldWriteChunk() const TF_LOCKS_EXCLUDED(mu_) {
   mutex_lock l(mu_);
-  return !end_of_sequence_ && status_.ok();
+  return !end_of_sequence_ && completed_.ok();
 }
 
 Status SnapshotStreamWriter::WriteChunk() {
@@ -162,7 +158,7 @@ std::string SnapshotStreamWriter::GetCommittedChunkFilePath() const {
 bool SnapshotStreamWriter::ShouldWriteRecord() const TF_LOCKS_EXCLUDED(mu_) {
   mutex_lock l(mu_);
   return chunk_size_bytes_ < params_.max_chunk_size_bytes &&
-         !end_of_sequence_ && status_.ok();
+         !end_of_sequence_ && completed_.ok();
 }
 
 Status SnapshotStreamWriter::WriteRecord(
@@ -201,15 +197,26 @@ Status SnapshotStreamWriter::WriteErrorFile(const Status& status) {
                                      params_.env);
 }
 
+StatusOr<bool> SnapshotStreamWriter::Completed() const TF_LOCKS_EXCLUDED(mu_) {
+  mutex_lock l(mu_);
+  return completed_;
+}
+
+StatusOr<bool> SnapshotStreamWriter::Wait() TF_LOCKS_EXCLUDED(mu_) {
+  snapshot_thread_.reset();
+  mutex_lock l(mu_);
+  return completed_;
+}
+
 void SnapshotStreamWriter::Cancel() TF_LOCKS_EXCLUDED(mu_) {
   mutex_lock l(mu_);
-  status_ = errors::Cancelled(
+  completed_ = errors::Cancelled(
       "The tf.data service snapshot writer has been cancelled.");
 }
 
 bool SnapshotStreamWriter::ShouldSave() const TF_LOCKS_EXCLUDED(mu_) {
   mutex_lock l(mu_);
-  return !end_of_sequence_ && status_.ok();
+  return !end_of_sequence_ && completed_.ok();
 }
 
 Status SnapshotStreamWriter::Save() {

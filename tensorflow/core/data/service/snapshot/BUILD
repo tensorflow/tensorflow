@@ -73,6 +73,7 @@ cc_library(
     name = "snapshot_stream_writer",
     srcs = ["snapshot_stream_writer.cc"],
     hdrs = ["snapshot_stream_writer.h"],
+    compatible_with = get_compatible_with_portable(),
     deps = [
         ":file_utils",
         ":path_utils",
@@ -125,6 +126,7 @@ cc_library(
     name = "utils",
     srcs = ["utils.cc"],
     hdrs = ["utils.h"],
+    compatible_with = get_compatible_with_portable(),
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core:protos_all_cc",
