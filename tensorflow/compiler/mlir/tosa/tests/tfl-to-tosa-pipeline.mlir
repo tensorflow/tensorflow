@@ -2190,3 +2190,53 @@ func.func @test_tfl_custom(%arg0: tensor<1x64x64x32xf32>) -> (tensor<1x32x32x32x
   %0, %1 = "tfl.custom"(%arg0) {custom_option = #tfl<const_bytes : "0x01000000020000000200000002000000020000000000000000000000000000000000000000000000">, custom_code = "MaxPoolingWithArgmax2D"} : (tensor<1x64x64x32xf32>) -> (tensor<1x32x32x32xf32>, tensor<1x32x32x32xf32>)
   func.return %0, %1 : tensor<1x32x32x32xf32>, tensor<1x32x32x32xf32>
 }
+
+// -----
+// CHECK-LABEL: test_tfl_while_loop
+// CHECK: %[[VAL_0:.*]]: tensor<1x4x4x4xf32> {tf_saved_model.index_path = ["placeholder_0"]}) -> (tensor<1x4x4x4xf32> {tf_saved_model.index_path = ["output_0"]}) {
+// CHECK: %[[VAL_1:.*]] = "tosa.const"() {value = dense<2.000000e+00> : tensor<1xf32>} : () -> tensor<1xf32>
+// CHECK: %[[VAL_2:.*]] = "tosa.while_loop"(%[[VAL_0]]) ({
+// CHECK: ^bb0(%[[VAL_3:.*]]: tensor<1x4x4x4xf32>):
+// CHECK: %[[VAL_4:.*]] = "tosa.reduce_sum"(%[[VAL_3]]) {axis = 1 : i64} : (tensor<1x4x4x4xf32>) -> tensor<1x1x4x4xf32>
+// CHECK: %[[VAL_5:.*]] = "tosa.reduce_sum"(%[[VAL_4]]) {axis = 2 : i64} : (tensor<1x1x4x4xf32>) -> tensor<1x1x1x4xf32>
+// CHECK: %[[VAL_6:.*]] = "tosa.reduce_sum"(%[[VAL_5]]) {axis = 3 : i64} : (tensor<1x1x1x4xf32>) -> tensor<1x1x1x1xf32>
+// CHECK: %[[VAL_7:.*]] = "tosa.reshape"(%[[VAL_6]]) {new_shape = array<i64: 1>} : (tensor<1x1x1x1xf32>) -> tensor<1xf32>
+// CHECK: %[[VAL_8:.*]] = "tosa.greater"(%[[VAL_1]], %[[VAL_7]]) : (tensor<1xf32>, tensor<1xf32>) -> tensor<1xi1>
+// CHECK: %[[VAL_9:.*]] = "tosa.reshape"(%[[VAL_8]]) {new_shape = array<i64>} : (tensor<1xi1>) -> tensor<i1>
+// CHECK: "tosa.yield"(%[[VAL_9]]) : (tensor<i1>) -> ()
+// CHECK: }, {
+// CHECK: ^bb0(%[[VAL_10:.*]]: tensor<1x4x4x4xf32>):
+// CHECK: %[[VAL_11:.*]] = "tosa.sigmoid"(%[[VAL_10]]) : (tensor<1x4x4x4xf32>) -> tensor<1x4x4x4xf32>
+// CHECK: %[[VAL_12:.*]] = "tosa.add"(%[[VAL_10]], %[[VAL_11]]) : (tensor<1x4x4x4xf32>, tensor<1x4x4x4xf32>) -> tensor<1x4x4x4xf32>
+// CHECK: "tosa.yield"(%[[VAL_12]]) : (tensor<1x4x4x4xf32>) -> ()
+// CHECK: }) : (tensor<1x4x4x4xf32>) -> tensor<1x4x4x4xf32>
+// CHECK: return %[[VAL_13:.*]] : tensor<1x4x4x4xf32>
+// CHECK: }
+func.func @test_tfl_while_loop(%arg0: tensor<1x4x4x4xf32> {tf_saved_model.index_path = ["placeholder_0"]}) -> (tensor<1x4x4x4xf32> {tf_saved_model.index_path = ["output_0"]}) {
+  %0 = "tfl.while"(%arg0) ({
+  ^bb0(%arg1: tensor<1x4x4x4xf32>):
+    %1 = func.call @result_cond(%arg1) : (tensor<1x4x4x4xf32>) -> tensor<i1>
+    "tfl.yield"(%1) : (tensor<i1>) -> ()
+  }, {
+  ^bb0(%arg1: tensor<1x4x4x4xf32>):
+    %1 = func.call @result_body(%arg1) : (tensor<1x4x4x4xf32>) -> tensor<1x4x4x4xf32>
+    "tfl.yield"(%1) : (tensor<1x4x4x4xf32>) -> ()
+  }) : (tensor<1x4x4x4xf32>) -> tensor<1x4x4x4xf32>
+  func.return %0 : tensor<1x4x4x4xf32>
+}
+func.func private @result_cond(%arg0: tensor<1x4x4x4xf32>) -> tensor<i1> {
+  %0 = "tfl.pseudo_const"() {value = dense<[0, 1, 2, 3]> : tensor<4xi32>} : () -> tensor<4xi32>
+  %1 = "tfl.sum"(%arg0, %0) {keep_dims = false} : (tensor<1x4x4x4xf32>, tensor<4xi32>) -> tensor<f32>
+  %2 = "tfl.pseudo_const"() {value = dense<2.000000e+00> : tensor<1xf32>} : () -> tensor<1xf32>
+  %3 = tfl.less(%1, %2) : (tensor<f32>, tensor<1xf32>) -> tensor<1xi1>
+  %4 = "tfl.pseudo_const"() {value = dense<> : tensor<0xi32>} : () -> tensor<0xi32>
+  %5 = "tfl.reshape"(%3, %4) : (tensor<1xi1>, tensor<0xi32>) -> tensor<i1>
+  func.return %5 : tensor<i1>
+}
+func.func private @result_body(%arg0: tensor<1x4x4x4xf32>) -> tensor<1x4x4x4xf32> {
+  %0 = "tfl.logistic"(%arg0) : (tensor<1x4x4x4xf32>) -> tensor<1x4x4x4xf32>
+  %1 = tfl.add %arg0, %0 {fused_activation_function = "NONE"} : tensor<1x4x4x4xf32>
+  func.return %1 : tensor<1x4x4x4xf32>
+}
+
+
