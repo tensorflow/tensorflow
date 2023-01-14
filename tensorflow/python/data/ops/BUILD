@@ -82,9 +82,11 @@ py_library(
     deps = [
         ":batch_op",
         ":cache_op",
+        ":choose_from_datasets_op",
         ":concatenate_op",
         ":counter_op",
         ":debug_mode",
+        ":directed_interleave_op",
         ":filter_op",
         ":flat_map_op",
         ":from_generator_op",
@@ -105,6 +107,7 @@ py_library(
         ":range_op",
         ":rebatch_op",
         ":repeat_op",
+        ":sample_from_datasets_op",
         ":save_ops",
         ":scan_op",
         ":shard_op",
@@ -157,8 +160,18 @@ py_library(
 )
 
 py_library(
+    name = "choose_from_datasets_op",
+    srcs = ["choose_from_datasets_op.py"],
+)
+
+py_library(
     name = "concatenate_op",
     srcs = ["concatenate_op.py"],
+)
+
+py_library(
+    name = "directed_interleave_op",
+    srcs = ["directed_interleave_op.py"],
 )
 
 py_library(
@@ -209,6 +222,11 @@ py_library(
 py_library(
     name = "repeat_op",
     srcs = ["repeat_op.py"],
+)
+
+py_library(
+    name = "sample_from_datasets_op",
+    srcs = ["sample_from_datasets_op.py"],
 )
 
 py_library(
