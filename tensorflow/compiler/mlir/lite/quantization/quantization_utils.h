@@ -37,7 +37,7 @@ limitations under the License.
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/QuantTypes.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
-#include "mlir/IR/BlockAndValueMapping.h"  // from @llvm-project
+#include "mlir/IR/IRMapping.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
@@ -562,7 +562,7 @@ class QuantizationPattern : public RewritePattern {
              llvm::enumerate(quantizing_op->getRegions())) {
           Region& target_region =
               quantized_op->getRegion(indexed_regions.index());
-          BlockAndValueMapping mapping;
+          IRMapping mapping;
           indexed_regions.value().cloneInto(&target_region, mapping);
         }
       }

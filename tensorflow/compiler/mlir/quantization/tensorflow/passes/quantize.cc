@@ -275,7 +275,7 @@ class QuantizeSameScaleOpsPattern
       if (quantizing_op->getNumRegions() != 0) {
         for (const auto& indexed_regions :
              llvm::enumerate(quantizing_op->getRegions())) {
-          BlockAndValueMapping mapping;
+          IRMapping mapping;
           indexed_regions.value().cloneInto(
               &quantized_op->getRegion(indexed_regions.index()), mapping);
         }

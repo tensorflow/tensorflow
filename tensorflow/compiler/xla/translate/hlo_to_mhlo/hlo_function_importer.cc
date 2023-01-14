@@ -31,7 +31,7 @@ limitations under the License.
 #include "mlir/AsmParser/AsmParser.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
-#include "mlir/IR/BlockAndValueMapping.h"  // from @llvm-project
+#include "mlir/IR/IRMapping.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project

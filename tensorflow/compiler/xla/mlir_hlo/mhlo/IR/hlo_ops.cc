@@ -6280,7 +6280,10 @@ ParseResult WhileOp::parse(OpAsmParser& parser, OperationState& result) {
 LogicalResult WhileOp::fold(ArrayRef<Attribute> /*operands*/,
                             SmallVectorImpl<OpFoldResult>& results) {
   DenseIntElementsAttr condValue;
-  auto condReturnOp = cast<ReturnOp>(getCond().front().back());
+  // TODO: This folder is executed on invalid mhlo.while ops during
+  // LegalizeMhlo, mlir_hlo/tosa/tests/unary.mlir. Broken pattern?
+  auto condReturnOp = dyn_cast<ReturnOp>(getCond().front().back());
+  if (!condReturnOp) return failure();
   if (!matchPattern(condReturnOp.getOperand(0), m_Constant(&condValue)))
     return failure();
   if (condValue.getSplatValue<BoolAttr>().getValue())
@@ -6411,13 +6414,13 @@ struct MhloDialectInlinerInterface : public DialectInlinerInterface {
   // We don't have any special restrictions on what can be inlined into
   // destination regions (e.g. while/conditional bodies). Always allow it.
   bool isLegalToInline(Region* dest, Region* src, bool wouldBeCloned,
-                       BlockAndValueMapping& valueMapping) const final {
+                       IRMapping& valueMapping) const final {
     return true;
   }
   // Operations in mhlo dialect are always legal to inline since they are
   // pure.
   bool isLegalToInline(Operation*, Region*, bool,
-                       BlockAndValueMapping&) const final {
+                       IRMapping&) const final {
     return true;
   }
 };

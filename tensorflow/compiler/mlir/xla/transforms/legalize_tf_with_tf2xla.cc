@@ -28,7 +28,7 @@ limitations under the License.
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/SparseTensor/IR/SparseTensor.h"  // from @llvm-project
 #include "mlir/Dialect/Tensor/IR/Tensor.h"  // from @llvm-project
-#include "mlir/IR/BlockAndValueMapping.h"  // from @llvm-project
+#include "mlir/IR/IRMapping.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
@@ -856,7 +856,7 @@ class TypePropagator : public ConversionPattern {
     // references so do not update such ops.
     if (!op->getRegions().empty() || HasSymbolRefAttr(op)) return failure();
 
-    BlockAndValueMapping mapper;
+    IRMapping mapper;
     bool has_type_change = false;
     for (auto [original, updated] : llvm::zip(op->getOperands(), operands)) {
       Type original_ty = original.getType();

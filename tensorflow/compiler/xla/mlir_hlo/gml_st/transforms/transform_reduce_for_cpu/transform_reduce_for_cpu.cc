@@ -250,7 +250,7 @@ struct Reduce1DTransformPattern : public OpRewritePattern<linalg::ReduceOp> {
 
   Value cloneReduceOp(OpBuilder &b, linalg::ReduceOp reduceOp,
                       ValueRange newInputs, Value newInit) const {
-    BlockAndValueMapping bvm;
+    IRMapping bvm;
     bvm.map(reduceOp.getInputs(), newInputs);
     bvm.map(reduceOp.getInits(), ValueRange{newInit});
 

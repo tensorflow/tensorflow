@@ -28,7 +28,7 @@ limitations under the License.
 #include "mlir/Dialect/Utils/StaticValueUtils.h"
 #include "mlir/Dialect/Utils/StructuredOpsUtils.h"
 #include "mlir/Dialect/Vector/IR/VectorOps.h"
-#include "mlir/IR/BlockAndValueMapping.h"
+#include "mlir/IR/IRMapping.h"
 #include "mlir/IR/Matchers.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 
@@ -136,7 +136,7 @@ ForOp replaceLoopWithNewYields(OpBuilder &builder, ForOp loop,
 
   // Move the body of the original loop to the new loop.
   builder.setInsertionPointToStart(newLoopBody);
-  BlockAndValueMapping bvm;
+  IRMapping bvm;
   for (Operation &bodyMember : loopBody->without_terminator()) {
     builder.clone(bodyMember, bvm);
   }

@@ -350,7 +350,7 @@ Operation *bubbleUpPadSlice(OpBuilder &b, tensor::PadOp padOp,
                                             staticNewHighs, newLows, newHighs);
 
     // Copy region to new PadOp.
-    BlockAndValueMapping bvm;
+    IRMapping bvm;
     padOp.getRegion().cloneInto(&newPadOp.getRegion(), bvm);
 
     // Cast result and return.

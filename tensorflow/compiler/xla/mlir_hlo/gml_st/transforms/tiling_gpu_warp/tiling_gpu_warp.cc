@@ -26,7 +26,7 @@ limitations under the License.
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
-#include "mlir/IR/BlockAndValueMapping.h"
+#include "mlir/IR/IRMapping.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 
 #define GEN_PASS_DEF_TILINGGPUWARPPASS
@@ -151,7 +151,7 @@ struct TilingCwisePattern : OpRewritePattern<linalg::MapOp> {
                 // Create scalar computation from `linalg.map` body by (i)
                 // mapping its block arguments to the newly materialized
                 // scalar operands, and (ii) cloning the body.
-                BlockAndValueMapping bvm;
+                IRMapping bvm;
                 bvm.map(mapOp.getBlock()->getArguments(), iterOperands);
                 for (auto& innerOp : mapOp.getBody()->without_terminator()) {
                   rewriter.clone(innerOp, bvm);
@@ -259,7 +259,7 @@ struct TilingReductionPattern : OpRewritePattern<linalg::ReduceOp> {
             /*useExtractSlice=*/false);
 
         // Create scalar computation based on `linalg.reduce` body.
-        BlockAndValueMapping bvm;
+        IRMapping bvm;
         bvm.map(reduceOp.getBlock()->getArguments()[0], operandMaterialized);
         bvm.map(reduceOp.getBlock()->getArguments()[1], iterationResult);
         for (Operation& inner : reduceOp.getBody()->without_terminator()) {

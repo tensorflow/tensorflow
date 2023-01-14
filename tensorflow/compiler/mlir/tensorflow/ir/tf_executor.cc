@@ -69,7 +69,7 @@ struct TensorFlowExecutorInlinerInterface : public DialectInlinerInterface {
   // Override the inlining hook to determine if 'src' can be inlined into
   // 'dest'.
   bool isLegalToInline(Region *dest, Region *src, bool wouldBeCloned,
-                       BlockAndValueMapping &value_mapping) const final {
+                       IRMapping &value_mapping) const final {
     // Allow inlining into tf.island regions if the incoming region has a single
     // block.
     return llvm::isa<tf_executor::IslandOp>(dest->getParentOp()) &&

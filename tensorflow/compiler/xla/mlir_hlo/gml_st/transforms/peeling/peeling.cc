@@ -28,7 +28,7 @@ limitations under the License.
 #include "mlir/Dialect/Arith/Utils/Utils.h"
 #include "mlir/Dialect/SCF/Utils/AffineCanonicalizationUtils.h"
 #include "mlir/Dialect/Tensor/Utils/Utils.h"
-#include "mlir/IR/BlockAndValueMapping.h"
+#include "mlir/IR/IRMapping.h"
 #include "mlir/IR/Matchers.h"
 
 namespace mlir {
@@ -87,7 +87,7 @@ LogicalResult peelLoop(RewriterBase &b, LoopTy loopOp, int64_t idx,
     return failure();
 
   // Create remainder loop.
-  BlockAndValueMapping bvm;
+  IRMapping bvm;
   for (const auto &[res, termDst] :
        llvm::zip(loopOp.getResults(), loopOp.getLoopLikeOpInits())) {
     bvm.map(termDst, res);

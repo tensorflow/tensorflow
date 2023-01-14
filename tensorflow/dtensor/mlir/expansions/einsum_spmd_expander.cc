@@ -19,8 +19,8 @@ limitations under the License.
 
 #include "absl/strings/string_view.h"
 #include "llvm/Support/FormatVariadic.h"
-#include "mlir/IR/BlockAndValueMapping.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
+#include "mlir/IR/IRMapping.h"  // from @llvm-project
 #include "tensorflow/dtensor/cc/tensor_layout.h"
 #include "tensorflow/dtensor/mlir/collectives.h"
 #include "tensorflow/dtensor/mlir/layout_parsing.h"
@@ -60,7 +60,7 @@ StatusOr<mlir::Operation*> EinsumSPMDExpander::ExpandOp(mlir::Operation* op) {
                                          layout_after_einsum, new_inputs));
 
   mlir::OpBuilder builder(op);
-  mlir::BlockAndValueMapping mapping;
+  mlir::IRMapping mapping;
   for (int i = 0; i < op->getNumOperands(); ++i)
     mapping.map(op->getOperand(i), new_inputs[i]);
   mlir::Operation* new_op = builder.clone(*op, mapping);

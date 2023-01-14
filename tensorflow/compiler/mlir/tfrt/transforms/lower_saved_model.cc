@@ -23,7 +23,7 @@ limitations under the License.
 #include "llvm/ADT/StringSet.h"
 #include "llvm/Support/Casting.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
-#include "mlir/IR/BlockAndValueMapping.h"  // from @llvm-project
+#include "mlir/IR/IRMapping.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/OperationSupport.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
@@ -81,7 +81,7 @@ struct HoistInfo {
 
   // Mapping from the old values produced by hoisted ops before hoisting to the
   // new values after hoisting.
-  mlir::BlockAndValueMapping value_mapping;
+  mlir::IRMapping value_mapping;
 
   // `hoisted_values` is to keep all values that are produced by hoisted ops
   // but used by non-hoisted ops. These values will be replaced by results of
