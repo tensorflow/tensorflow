@@ -1260,7 +1260,14 @@ xla_test(
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
         "//tensorflow/tsl/platform:logging",
         "//tensorflow/tsl/platform:test",
-    ],
+    ] + select({
+        "//tensorflow/tsl:is_cuda_enabled": [
+            "//tensorflow/tsl/platform:tensor_float_32_hdr_lib",
+        ],
+        "//conditions:default": [
+            "//tensorflow/tsl/platform:tensor_float_32_utils",
+        ],
+    }),
 )
 
 xla_test(
