@@ -455,6 +455,12 @@ void NcclManager::AddToReduceScatter(std::unique_ptr<Participant> participant,
   AddParticipant(std::move(participant), context, kReduceScatter, reduction_op);
 }
 
+void NcclManager::AddToAllToAll(std::unique_ptr<Participant> participant,
+                                const Context& context) {
+  AddParticipant(std::move(participant), context, kAllToAll,
+                 ncclSum /* unused */);
+}
+
 void NcclManager::AddBroadcastSend(std::unique_ptr<Participant> participant,
                                    const Context& context) {
   participant->root = true;
@@ -861,6 +867,36 @@ void NcclManager::LoopKernelLaunches(NcclStream* nccl_stream) {
         nccl_result = ncclReduceScatter(
             sendbuff, recvbuff, p->output->NumElements(), data_type,
             collective->reduction_op, nccl_comm, *cu_stream);
+        break;
+      }
+      case kAllToAll: {
+        const char* sendbuff = p->input->tensor_data().data();
+        char* recvbuff = const_cast<char*>(p->output->tensor_data().data());
+        size_t count =
+            p->input->NumElements() / collective->participants.size();
+        size_t rank_offset = count * DataTypeSize(collective->data_type);
+
+        VLOG(2) << "call Nccl All to All collective_key "
+                << collective->collective_key << " participant " << p_idx
+                << " num_participants " << collective->participants.size()
+                << " sendbuff " << static_cast<const char*>(sendbuff)
+                << " recvbuff " << static_cast<char*>(recvbuff) << " nccl_comm "
+                << nccl_comm << " comm_stream " << comm_stream
+                << " cuda_stream " << cu_stream;
+        profiler::AnnotatedTraceMe traceme([&] {
+          return profiler::TraceMeEncode(
+              "ncclAllToAll",
+              {{"buffer_size", ComputeBufferSize(p, collective->data_type)},
+               {"collective_type", "all_to_all"}});
+        });
+        ncclGroupStart();
+        for (int r = 0; r < collective->participants.size(); ++r) {
+          ncclSend(sendbuff + r * rank_offset, count, data_type, r, nccl_comm,
+                   *cu_stream);
+          ncclRecv(recvbuff + r * rank_offset, count, data_type, r, nccl_comm,
+                   *cu_stream);
+        }
+        nccl_result = ncclGroupEnd();
         break;
       }
     }

@@ -218,6 +218,12 @@ class NcclTestBase : public ::testing::Test {
                                           &input_, &output_);
     }
 
+    void RunAllToAll() {
+      output_ = input_;
+      status_ = tensorflow::RunCollective(test_env_, col_params_.get(), device_,
+                                          &input_, &output_);
+    }
+
     CollectiveTestEnv* test_env_;
     Tensor input_;
     Tensor output_;
@@ -374,6 +380,40 @@ class NcclGathererTest : public NcclTestBase {
   int source_rank_ = 0;
 };
 
+class NcclAllToAllTest : public NcclTestBase {
+ protected:
+  NcclAllToAllTest()
+      : NcclTestBase(/*collective_type=*/ALL_TO_ALL_COLLECTIVE,
+                     /*collective_name=*/"NcclAllToAll") {}
+  ~NcclAllToAllTest() override = default;
+
+  void InitInput(Tensor* input, const int rank) override {
+    for (size_t i = 0; i < input->NumElements(); ++i) {
+      float value = rank * input->NumElements() + i;
+      input->flat<float>()(i) = value;
+    }
+  }
+
+  void InitExpected(std::vector<float>* expected, const int tensor_length,
+                    const int current_rank, const int num_ranks) override {
+    expected->resize(tensor_length);
+    // Each rank will have num_ranks parts of size part_size from each rank.
+    const int part_size = tensor_length / num_ranks;
+    for (int rank = 0, i = 0; rank < num_ranks; ++rank) {
+      for (int j = 0; j < part_size; ++j, ++i) {
+        const int part_index = current_rank + rank * num_ranks;
+        (*expected)[i] = part_index * part_size + j;
+      }
+    }
+  }
+
+  void InitDevice(DeviceInstance* di) override {}
+
+  void RunCollectiveOnDevice(DeviceInstance* di) override { di->RunAllToAll(); }
+
+  int source_rank_ = 0;
+};
+
 TEST_F(NcclReducerTest, Test2Dev16Len) {
   RunTest(/*num_ranks=*/2, /*tensor_length=*/16);
 }
@@ -386,7 +426,7 @@ TEST_F(NcclReducerTest, Test8Dev16Len) {
 TEST_F(NcclReducerTest, Test8Dev128Len) {
   RunTest(/*num_ranks=*/8, /*tensor_length=*/128);
 }
-TEST_F(NcclReducerTest, Test8Dev1045991Len) {
+TEST_F(NcclReducerTest, Test8Dev1048576Len) {
   RunTest(/*num_ranks=*/8, /*tensor_length=*/1048576);
 }
 
@@ -404,7 +444,7 @@ TEST_F(NcclBroadcasterTest, Test8Dev16LenSrc7) {
 TEST_F(NcclBroadcasterTest, Test8Dev128LenSrc0) {
   RunTest(/*num_ranks=*/8, /*tensor_length=*/128);
 }
-TEST_F(NcclBroadcasterTest, Test8Dev1045991LenSrc0) {
+TEST_F(NcclBroadcasterTest, Test8Dev1048576LenSrc0) {
   RunTest(/*num_ranks=*/8, /*tensor_length=*/1048576);
 }
 
@@ -420,7 +460,7 @@ TEST_F(NcclGathererTest, Test8Dev16Len) {
 TEST_F(NcclGathererTest, Test8Dev128Len) {
   RunTest(/*num_ranks=*/8, /*tensor_length=*/128);
 }
-TEST_F(NcclGathererTest, Test8Dev1045991Len) {
+TEST_F(NcclGathererTest, Test8Dev1048576Len) {
   RunTest(/*num_ranks=*/8, /*tensor_length=*/1048576);
 }
 
@@ -436,7 +476,23 @@ TEST_F(NcclReduceScattererTest, Test8Dev16Len) {
 TEST_F(NcclReduceScattererTest, Test8Dev128Len) {
   RunTest(/*num_ranks=*/8, /*tensor_length=*/128);
 }
-TEST_F(NcclReduceScattererTest, Test8Dev1045991Len) {
+TEST_F(NcclReduceScattererTest, Test8Dev1048576Len) {
+  RunTest(/*num_ranks=*/8, /*tensor_length=*/1048576);
+}
+
+TEST_F(NcclAllToAllTest, Test2Dev16Len) {
+  RunTest(/*num_ranks=*/2, /*tensor_length=*/16);
+}
+TEST_F(NcclAllToAllTest, Test4Dev16Len) {
+  RunTest(/*num_ranks=*/4, /*tensor_length=*/16);
+}
+TEST_F(NcclAllToAllTest, Test8Dev16Len) {
+  RunTest(/*num_ranks=*/8, /*tensor_length=*/16);
+}
+TEST_F(NcclAllToAllTest, Test8Dev128Len) {
+  RunTest(/*num_ranks=*/8, /*tensor_length=*/128);
+}
+TEST_F(NcclAllToAllTest, Test8Dev1048576Len) {
   RunTest(/*num_ranks=*/8, /*tensor_length=*/1048576);
 }
 
