@@ -943,8 +943,16 @@ Status GpuCompiler::OptimizeHloPostLayoutAssignment(
   // wouldn't be able to simplify away the new_tuple bits.
   if (stream_exec) {
     // Autotune if stream_exec is available.
-    // TODO(b/248362914): Enable autotuning for convolutions without GPU.
     GpuConvAlgorithmPicker::DeviceConfig config{stream_exec, device_allocator};
+    pipeline.AddPass<GpuConvAlgorithmPicker>(config);
+  } else {
+    // Device not available. Use autotune results from gpu_target_config.
+    GpuConvAlgorithmPicker::ClearAutotuneResults();
+    TF_RETURN_IF_ERROR(GpuConvAlgorithmPicker::LoadAutotuneResults(
+        gpu_target_config.autotune_results));
+
+    GpuConvAlgorithmPicker::DevicelessConfig config{
+        gpu_target_config.device_description_str};
     pipeline.AddPass<GpuConvAlgorithmPicker>(config);
   }
 

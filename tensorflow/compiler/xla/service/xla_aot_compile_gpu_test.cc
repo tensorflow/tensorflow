@@ -180,6 +180,9 @@ TEST(XlaCompileTest, LoadGpuExecutableWithConvolution) {
   TF_ASSERT_OK(
       tsl::ReadFileToString(tsl::Env::Default(), path, &serialized_aot_result));
 
+  // Check that GpuConvAlgorithmPicker successfully loaded autotune results.
+  EXPECT_TRUE(absl::StrContains(serialized_aot_result, "\"algo_id\":\"3\""));
+
   // Get a LocalClient
   TF_ASSERT_OK_AND_ASSIGN(se::Platform * platform,
                           PlatformUtil::GetPlatform("CUDA"));
