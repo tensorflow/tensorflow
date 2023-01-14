@@ -42,6 +42,15 @@
         * In cases where the mask was previously ignored, you will now get
           an error if you pass a mask with an incompatible shape.
 
+*   `tf.SavedModel`
+
+    * Introduce new class `tf.saved_model.experimental.Fingerprint` that
+      contains the fingerprint of the SavedModel. See the
+      [SavedModel Fingerprinting RFC](https://github.com/tensorflow/community/pull/415)
+      for details.
+    * Introduce API `tf.saved_model.experimental.read_fingerprint(export_dir)`
+      for reading the fingerprint of a SavedModel.
+
 
 # Known Caveats
 

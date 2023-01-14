@@ -21,6 +21,7 @@ py_strict_library(
     deps = [
         ":builder",
         ":constants",
+        ":fingerprinting",
         ":load",
         ":loader",
         ":main_op",
@@ -782,12 +783,22 @@ tf_py_test(
     ],
 )
 
+py_strict_library(
+    name = "fingerprinting",
+    srcs = ["fingerprinting.py"],
+    deps = [
+        ":pywrap_saved_model",
+        "//tensorflow/python/util:tf_export",
+    ],
+)
+
 tf_py_test(
     name = "fingerprinting_test",
     size = "small",
     srcs = ["fingerprinting_test.py"],
     python_version = "PY3",
     deps = [
+        ":fingerprinting",
         "//tensorflow/python/eager:test",
     ],
 )
