@@ -408,9 +408,9 @@ def canonicalize_to_monomorphic(
 
     elif poly_parameter.kind is Parameter.VAR_KEYWORD:
       # Unbundle VAR_KEYWORD into individual KEYWORD_ONLY args.
-      for kwarg_name in sorted(arg.keys()):
+      for kwarg_name, kwarg_value in arg.items():
         parameters.append(
-            _make_validated_mono_param(kwarg_name, arg[kwarg_name],
+            _make_validated_mono_param(kwarg_name, kwarg_value,
                                        Parameter.KEYWORD_ONLY, type_context,
                                        poly_parameter.type_constraint))
     else:
