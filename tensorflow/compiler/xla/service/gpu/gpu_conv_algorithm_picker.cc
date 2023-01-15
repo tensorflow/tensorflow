@@ -148,7 +148,7 @@ StatusOr<std::vector<MaybeFusedConvRunner>> GetAlgorithms(
           /* conv_input_scale = */ config.conv_result_scale,
           /* side_input_scale = */ config.fusion->side_input_scale,
           /* leakyrelu_alpha = */ 0.0, stream, config.input_descriptor,
-          config.filter_descriptor, GetBiasDescriptor(config),
+          config.filter_descriptor, config.bias_descriptor,
           config.output_descriptor, config.conv_desc, use_fallback,
           config.fusion->mode, &runners));
       for (auto& runner : runners) {
