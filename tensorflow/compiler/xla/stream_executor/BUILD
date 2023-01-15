@@ -839,6 +839,7 @@ cc_library(
     deps = [
         ":dnn",
         ":stream_executor_headers",
+        "@com_google_absl//absl/base",
     ],
 )
 
