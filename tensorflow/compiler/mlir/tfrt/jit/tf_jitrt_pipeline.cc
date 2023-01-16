@@ -217,14 +217,14 @@ void CreateTfJitRtPipeline(OpPassManager& pm,
   pm.addPass(mlir::createCSEPass());
   pm.addPass(mlir::createCanonicalizerPass());
 
-  if (options.vectorize)
-    pm.addNestedPass<FuncOp>(CreateLowerVectorTransposePass());
+  pm.addNestedPass<FuncOp>(mlir::gml_st::createRewriteVectorTransposePass());
 
   mlir::VectorTransferToSCFOptions vec_to_scf_options;
   vec_to_scf_options.unroll = true;
   pm.addNestedPass<FuncOp>(
       mlir::createConvertVectorToSCFPass(vec_to_scf_options));
-  pm.addNestedPass<FuncOp>(createRewriteVectorMultiReductionPass());
+  pm.addNestedPass<FuncOp>(
+      mlir::gml_st::createRewriteVectorMultiReductionPass());
 
   pm.addNestedPass<FuncOp>(CreateMathApproximationPass({"all"}));
 }

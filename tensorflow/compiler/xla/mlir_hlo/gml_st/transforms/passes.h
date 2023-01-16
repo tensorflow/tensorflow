@@ -21,6 +21,7 @@ limitations under the License.
 #include <string>
 
 #include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "mlir/Pass/Pass.h"
 
 #define GEN_PASS_DECL
@@ -100,8 +101,15 @@ std::unique_ptr<OperationPass<func::FuncOp>> createVectorizeCopyPass();
 /// Pass to eliminate dead `memref.copy`.
 std::unique_ptr<OperationPass<func::FuncOp>> createSimplifyDeadCopyPass();
 
-/// Pass to lower vector.contract.
-std::unique_ptr<OperationPass<func::FuncOp>> createLowerVectorContractPass();
+/// Pass to rewrite vector.contract.
+std::unique_ptr<OperationPass<func::FuncOp>> createRewriteVectorContractPass();
+
+/// Pass to rewrite vector.transpose.
+std::unique_ptr<OperationPass<func::FuncOp>> createRewriteVectorTransposePass();
+
+/// Pass to rewrite vector.multi_reduction.
+std::unique_ptr<OperationPass<func::FuncOp>>
+createRewriteVectorMultiReductionPass();
 
 /// Pass to transform a thlo.scatter op for CPU backend.
 std::unique_ptr<OperationPass<func::FuncOp>> createTransformScatterForCpuPass();

@@ -191,13 +191,30 @@ def SimplifyDeadCopyPass :
                            "::mlir::memref::MemRefDialect"];
 }
 
-def LowerVectorContractPass :
-    Pass<"lower-vector-contract", "mlir::func::FuncOp"> {
-  let summary = "Pass to lower vector.contract";
-  let constructor = "::mlir::gml_st::createLowerVectorContractPass()";
-  let dependentDialects = ["::mlir::vector::VectorDialect",
-                           "::mlir::gml_st::GmlStDialect"];
+def RewriteVectorContractPass :
+    Pass<"rewrite-vector-contract", "mlir::func::FuncOp"> {
+  let summary = "Pass to rewrite vector.contract.";
+  let constructor = "::mlir::gml_st::createRewriteVectorContractPass()";
+  let dependentDialects = ["::mlir::vector::VectorDialect"];
 }
+
+
+def RewriteVectorMultiReductionPass :
+    Pass<"rewrite-vector-multi-reduction", "mlir::func::FuncOp"> {
+  let summary = "Pass to rewrite vector.multi_reduction.";
+  let constructor = "::mlir::gml_st::createRewriteVectorMultiReductionPass()";
+  let dependentDialects = ["::mlir::vector::VectorDialect"];
+}
+
+def RewriteVectorTransposePass : Pass<"rewrite-vector-transpose", "mlir::func::FuncOp"> {
+  let summary = "Pass to rewrite vector.transpose.";
+  let constructor = "::mlir::gml_st::createRewriteVectorTransposePass()";
+  let dependentDialects = [
+    "::mlir::LLVM::LLVMDialect",
+    "::mlir::vector::VectorDialect",
+  ];
+}
+
 
 def ScalarizationPass : Pass<"scalarize", "mlir::func::FuncOp"> {
   let summary = "Converts ops on tensors with 1 element to scalar ops.";

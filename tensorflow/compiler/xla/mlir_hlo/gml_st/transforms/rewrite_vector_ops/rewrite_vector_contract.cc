@@ -1,4 +1,4 @@
-/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,7 +16,6 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
-#include "gml_st/IR/gml_st_ops.h"
 #include "gml_st/transforms/passes.h"
 #include "gml_st/transforms/transforms.h"
 #include "gml_st/utils/vector_utils.h"
@@ -31,7 +30,7 @@ namespace {
 
 using vector::OuterProductOp;
 
-#define GEN_PASS_DEF_LOWERVECTORCONTRACTPASS
+#define GEN_PASS_DEF_REWRITEVECTORCONTRACTPASS
 #include "gml_st/transforms/passes.h.inc"
 
 struct OuterProductOpCanonicalizationPattern
@@ -69,9 +68,9 @@ struct OuterProductOpCanonicalizationPattern
   llvm::function_ref<bool(OuterProductOp)> filterFn;
 };
 
-struct LowerVectorContractPass
-    : public impl::LowerVectorContractPassBase<LowerVectorContractPass> {
-  LowerVectorContractPass() = default;
+struct RewriteVectorContractPass
+    : public impl::RewriteVectorContractPassBase<RewriteVectorContractPass> {
+  RewriteVectorContractPass() = default;
 
   void runOnOperation() override {
     auto func = getOperation();
@@ -125,8 +124,9 @@ struct LowerVectorContractPass
 };
 }  // namespace
 
-std::unique_ptr<OperationPass<func::FuncOp>> createLowerVectorContractPass() {
-  return std::make_unique<LowerVectorContractPass>();
+std::unique_ptr<OperationPass<func::FuncOp>> createRewriteVectorContractPass() {
+  return std::make_unique<RewriteVectorContractPass>();
 }
+
 }  // namespace gml_st
 }  // namespace mlir

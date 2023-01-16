@@ -42,7 +42,7 @@ void addTileableOpsTransformationsForCPU(
   pm.addNestedPass<FuncOp>(createCollapseMaterializeOpsPass());
   pm.addNestedPass<FuncOp>(createVectorizePerfectlyTiledLoopsPass());
   pm.addNestedPass<FuncOp>(createScalarizationPass());
-  pm.addNestedPass<FuncOp>(createLowerVectorContractPass());
+  pm.addNestedPass<FuncOp>(createRewriteVectorContractPass());
 }
 
 }  // namespace gml_st
