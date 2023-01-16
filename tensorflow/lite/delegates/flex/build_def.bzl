@@ -176,6 +176,9 @@ def tflite_flex_cc_library(
             clean_dep("//tensorflow:ios"): [
                 portable_tensorflow_lib,
             ],
+            clean_dep("//tensorflow:chromiumos"): [
+                portable_tensorflow_lib,
+            ],
             "//conditions:default": [
                 clean_dep("//tensorflow/core:tensorflow"),
                 clean_dep("//tensorflow/lite/c:common"),
