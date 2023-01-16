@@ -8,6 +8,7 @@ readme = "README.md"
 [tool.poetry.dependencies]
 python = "^3.9"
 pytest = "^7.2.1"
+allure-pytest = "^2.12.0"
 
 
 [build-system]

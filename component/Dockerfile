@@ -1,6 +1,5 @@
 FROM python:3.10
 
-
 ENV YOUR_ENV=component \
   PYTHONFAULTHANDLER=1 \
   PYTHONUNBUFFERED=1 \
@@ -22,4 +21,5 @@ RUN poetry config virtualenvs.create false \
 
 # Creating folders, and files for a project:
 COPY . /code
+
 CMD ["python", "-m", "component"]

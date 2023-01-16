@@ -33,4 +33,12 @@ steps:
     stage: "test"
     image: "${{build}}" # The image in which command will be executed
     commands:
-      - "pytest"
+      - "find /code/"
+      - "pytest /code --alluredir=$CF_VOLUME_PATH/allure-results"
+
+  test_reporting_step:
+    title: Generate test reporting
+    image: codefresh/cf-docker-test-reporting
+    environment:
+      - BUCKET_NAME=dr-codefresh-ci-reports
+      - CF_STORAGE_INTEGRATION=amazon
