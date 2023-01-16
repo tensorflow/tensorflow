@@ -211,8 +211,10 @@ class PoolingTest(test.TestCase, parameterized.TestCase):
     # haven't initialized enough of TF to know what our hardware is!)
     if use_gpu and not test.is_gpu_available():
       self.skipTest("No GPU is available.")
-    if use_gpu and data_type == dtypes.float64 and test.is_built_with_rocm():
-      self.skipTest("ROCm pooling ops don't support float64.")
+    if use_gpu and (data_type == dtypes.float64 or \
+                    data_type == dtypes.bfloat16) \
+                    and test.is_built_with_rocm():
+      self.skipTest("ROCm pooling ops don't support float64 and bfloat16 yet.")
     if use_gpu and data_format == "NCHW_VECT_C" and not test.is_gpu_available(
         cuda_only=True, min_cuda_compute_capability=(6, 1)):
       self.skipTest("NCHW_VECT_C requires sm61+.")
@@ -2554,7 +2556,7 @@ class PoolingTest(test.TestCase, parameterized.TestCase):
             orig_input_shape=orig_input_shape,
             grad=grad,
             ksize=[1, 40, 128, 1],
-            strides=[1, 128, 128, 30],
+            strides=[1, 128, 128, 30, 1],
             padding="SAME",
             data_format="NHWC")
         self.evaluate(t)
