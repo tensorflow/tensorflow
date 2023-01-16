@@ -1,3 +1,5 @@
+load("//tensorflow/lite/core/shims:cc_library_with_tflite.bzl", "cc_library_with_tflite")
+
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
@@ -38,19 +40,20 @@ cc_test(
     ],
 )
 
-cc_library(
+cc_library_with_tflite(
     name = "simple_opaque_delegate",
     srcs = ["simple_opaque_delegate.cc"],
     hdrs = ["simple_opaque_delegate.h"],
+    tflite_deps = [
+        "//tensorflow/lite/core/shims:c_api",
+        "//tensorflow/lite/core/shims:c_api_experimental",
+        "//tensorflow/lite/core/shims:common",
+        "//tensorflow/lite/core/shims:c_api_types",
+    ],
     deps = [
         "//tensorflow/lite:builtin_ops",
         "//tensorflow/lite:minimal_logging",
         "//tensorflow/lite:util",
-        "//tensorflow/lite/c:c_api",
-        "//tensorflow/lite/c:c_api_experimental",
-        "//tensorflow/lite/c:common",
-        "//tensorflow/lite/core/c:c_api_types",
-        "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/kernels/internal:compatibility",
     ],
 )
@@ -71,16 +74,15 @@ cc_test(
     data = [":c_api_test_builtin_op_models"],
     deps = [
         ":simple_opaque_delegate",
-        "//tensorflow/lite:framework",
         "//tensorflow/lite:kernel_api",
-        "//tensorflow/lite/c:c_api",
-        "//tensorflow/lite/c:c_api_experimental",
-        "//tensorflow/lite/c:common",
-        "//tensorflow/lite/core/c:c_api_types",
-        "//tensorflow/lite/core/c:common",
+        "//tensorflow/lite/core/shims:builtin_ops",
+        "//tensorflow/lite/core/shims:c_api",
+        "//tensorflow/lite/core/shims:c_api_experimental",
+        "//tensorflow/lite/core/shims:c_api_types",
+        "//tensorflow/lite/core/shims:common",
+        "//tensorflow/lite/core/shims:framework",
         "//tensorflow/lite/delegates:delegate_test_util",
         "//tensorflow/lite/delegates/utils/experimental/sample_stable_delegate",
-        "//tensorflow/lite/kernels:builtin_ops",
         "//tensorflow/lite/kernels:kernel_util",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
