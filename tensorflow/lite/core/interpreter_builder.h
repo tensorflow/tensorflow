@@ -140,6 +140,7 @@ class InterpreterBuilder {
       const flatbuffers::Vector<flatbuffers::Offset<SignatureDef>>*
           signature_def_list,
       Interpreter* interpreter);
+  void ParseConversionMetadata(TfLiteTelemetryInterpreterSettings* settings);
 
   const ::tflite::Model* model_;
   const OpResolver& op_resolver_;

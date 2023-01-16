@@ -90,6 +90,7 @@ tensorflow/lite/experimental/acceleration/mini_benchmark/special_rules.bzl:
 tensorflow/lite/ios/BUILD:
 tensorflow/lite/java/jni/BUILD:
 tensorflow/lite/lib_package/BUILD:
+tensorflow/lite/schema/conversion_metadata_generated.h:
 tensorflow/lite/schema/schema_generated.h:
 tensorflow/lite/special_rules.bzl:
 tensorflow/python/autograph/core/config:.py

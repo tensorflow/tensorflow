@@ -15,6 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_PROFILING_TELEMETRY_C_TELEMETRY_SETTING_H_
 #define TENSORFLOW_LITE_PROFILING_TELEMETRY_C_TELEMETRY_SETTING_H_
 
+#include <stddef.h>
 #include <stdint.h>
 
 #ifdef __cplusplus
@@ -37,12 +38,23 @@ typedef struct TfLiteTelemetrySettings {
   const void* data;
 } TfLiteTelemetrySettings;
 
+typedef struct TfLiteTelemetryConversionMetadata
+    TfLiteTelemetryConversionMetadata;
+
+const int32_t* TfLiteTelemetryConversionMetadataGetModelOptimizationModes(
+    const TfLiteTelemetryConversionMetadata* metadata);
+
+size_t TfLiteTelemetryConversionMetadataGetNumModelOptimizationModes(
+    const TfLiteTelemetryConversionMetadata* metadata);
+
 // TfLite model information and settings of the interpreter.
 // Note: This struct does not comply with ABI stability.
-typedef struct TfLiteTelemetryInterpreterSettings {
-  // TODO(b/261369329): Deserialize and export conversion metadata here.
-  const void* placeholder;
-} TfLiteTelemetryInterpreterSettings;
+typedef struct TfLiteTelemetryInterpreterSettings
+    TfLiteTelemetryInterpreterSettings;
+
+const TfLiteTelemetryConversionMetadata*
+TfLiteTelemetryInterpreterSettingsGetConversionMetadata(
+    const TfLiteTelemetryInterpreterSettings* settings);
 
 #ifdef __cplusplus
 }  // extern "C"

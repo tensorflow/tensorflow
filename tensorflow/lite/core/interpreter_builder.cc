@@ -38,6 +38,8 @@ limitations under the License.
 #include "tensorflow/lite/internal/signature_def.h"
 #include "tensorflow/lite/kernels/internal/compatibility.h"
 #include "tensorflow/lite/profiling/platform_profiler.h"
+#include "tensorflow/lite/profiling/telemetry/c/telemetry_setting_internal.h"
+#include "tensorflow/lite/schema/conversion_metadata_generated.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/schema/schema_utils.h"
 #include "tensorflow/lite/shared_library.h"
@@ -73,6 +75,9 @@ limitations under the License.
 namespace tflite {
 
 namespace {
+
+constexpr char kConversionMetadataKey[] = "CONVERSION_METADATA";
+constexpr char kTelemetryBuilderEventName[] = "InterpreterBuilder::operator()";
 
 // Ensure that ErrorReporter is non-null.
 ErrorReporter* ValidateErrorReporter(ErrorReporter* e) {
@@ -770,7 +775,8 @@ TfLiteStatus InterpreterBuilder::operator()(
   (*interpreter)
       ->SetProfilerImpl(tflite::profiling::MaybeCreatePlatformProfiler());
 
-  if (telemetry_profiler_) {
+  bool telemetry_registered = telemetry_profiler_ != nullptr;
+  if (telemetry_registered) {
     (*interpreter)->AddProfiler(std::move(telemetry_profiler_));
   }
 
@@ -831,6 +837,15 @@ TfLiteStatus InterpreterBuilder::operator()(
         op_resolver_.GetDelegateCreators();
   }
 
+  if (telemetry_registered) {
+    auto telemetry_settings =
+        std::make_unique<TfLiteTelemetryInterpreterSettings>();
+    ParseConversionMetadata(telemetry_settings.get());
+    (*interpreter)->SetTelemetrySettings(std::move(telemetry_settings));
+    // Reports model and interpreter settings if telemetry is applied.
+    (*interpreter)->ReportTelemetrySettings(kTelemetryBuilderEventName);
+  }
+
   TfLiteStatus status = ApplyDelegates(interpreter->get());
   if (status != kTfLiteOk) {
     interpreter->reset();
@@ -840,6 +855,7 @@ TfLiteStatus InterpreterBuilder::operator()(
   if (options_.GetDynamicAllocationForLargeTensors()) {
     (*interpreter)->ApplyOptionsImpl(&options_);
   }
+
   return status;
 }
 
@@ -857,6 +873,25 @@ void InterpreterBuilder::AddDelegate(
   // runtime code.  Apps using TF Lite should not rely on
   // TfLiteOpaqueDelegateStruct and TfLiteDelegate being equivalent.
   AddDelegate(reinterpret_cast<TfLiteDelegate*>(opaque_delegate));
+}
+
+void InterpreterBuilder::ParseConversionMetadata(
+    TfLiteTelemetryInterpreterSettings* settings) {
+  auto it = metadata_.find(kConversionMetadataKey);
+  if (it == metadata_.end()) {
+    // No conversion metadata embeded.
+    return;
+  }
+  auto* conversion_meta = GetConversionMetadata(it->second.data());
+  if (conversion_meta == nullptr || conversion_meta->options() == nullptr) {
+    // Empty conversion metadata.
+    return;
+  }
+  settings->conversion_metadata =
+      std::make_unique<TfLiteTelemetryConversionMetadata>();
+  settings->conversion_metadata->model_optimization_modes =
+      FlatBufferIntArrayToVector(
+          conversion_meta->options()->model_optimization_modes());
 }
 
 }  // namespace tflite
