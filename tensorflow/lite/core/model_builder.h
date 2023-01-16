@@ -153,10 +153,10 @@ class FlatBufferModel {
       const tflite::Model* caller_owned_model_spec,
       ErrorReporter* error_reporter = DefaultErrorReporter());
 
-  #if FLATBUFFERS_LITTLEENDIAN == 0
+#if FLATBUFFERS_LITTLEENDIAN == 0
   /// Byte swap a constant buffer in place.
   static void ByteSwapBuffer(int8_t tensor_type, size_t buffer_size,
-    uint8_t* buffer);
+                             uint8_t* buffer);
 
   /// Byte swap the buffers field of a TFLite Model instance in place.
   static void ByteSwapTFLiteModel(const tflite::Model* tfl_model);
@@ -178,7 +178,7 @@ class FlatBufferModel {
   
   /// Byte Swap the serialized String of a TFLite model in place.
   static void ByteSwapSerializedModel(std::string* serialized_model);
-  #endif
+#endif
 
   // Releases memory or unmaps mmaped memory.
   ~FlatBufferModel();

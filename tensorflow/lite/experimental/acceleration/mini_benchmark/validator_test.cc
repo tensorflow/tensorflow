@@ -115,11 +115,12 @@ TEST_F(ValidatorTest, HappyPathOnCpuWithCustomValidation) {
                                 model_with_input),
             kMinibenchmarkSuccess);
   // Dump the model with input to temp.
-  std::string serialized_str(reinterpret_cast<const char*>(
-      model_with_input.GetBufferPointer()),model_with_input.GetSize());
-  #if FLATBUFFERS_LITTLEENDIAN == 0
+  std::string serialized_str(
+      reinterpret_cast<const char*>(model_with_input.GetBufferPointer()),
+      model_with_input.GetSize());
+#if FLATBUFFERS_LITTLEENDIAN == 0
   tflite::FlatBufferModel::ByteSwapSerializedModel(&serialized_str);
-  #endif
+#endif
   std::string model_path = MiniBenchmarkTestHelper::DumpToTempFile(
       "mobilenet_quant_with_input.tflite", 
       reinterpret_cast<const unsigned char*>(serialized_str.c_str()),

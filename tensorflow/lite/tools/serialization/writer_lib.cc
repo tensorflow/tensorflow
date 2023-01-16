@@ -72,10 +72,10 @@ TfLiteStatus WriteImpl(const std::string& filename, void* data, size_t size) {
   FILE* fp = fopen(filename.c_str(), "wb");
   if (!fp) return kTfLiteError;
 
-  #if FLATBUFFERS_LITTLEENDIAN == 0
+#if FLATBUFFERS_LITTLEENDIAN == 0
   const tflite::Model* input_model = tflite::GetModel(data);
   tflite::FlatBufferModel::ByteSwapTFLiteModel(input_model);
-  #endif
+#endif
 
   const int result_size = fwrite(data, 1, size, fp);
   fclose(fp);

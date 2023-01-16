@@ -72,9 +72,9 @@ int RunEmbedder(const EmbedderOptions& options) {
               << std::endl;
     return 3;
   }
-  #if FLATBUFFERS_LITTLEENDIAN == 0
+#if FLATBUFFERS_LITTLEENDIAN == 0
   tflite::FlatBufferModel::ByteSwapSerializedModel(&main_model_contents);
-  #endif
+#endif
   const Model* main_model =
       flatbuffers::GetRoot<Model>(main_model_contents.data());
 
@@ -86,9 +86,9 @@ int RunEmbedder(const EmbedderOptions& options) {
               << std::endl;
     return 4;
   }
-  #if FLATBUFFERS_LITTLEENDIAN == 0
+#if FLATBUFFERS_LITTLEENDIAN == 0
   tflite::FlatBufferModel::ByteSwapSerializedModel(&metrics_model_contents);
-  #endif
+#endif
   const Model* metrics_model =
       flatbuffers::GetRoot<Model>(metrics_model_contents.data());
 
@@ -133,9 +133,9 @@ int RunEmbedder(const EmbedderOptions& options) {
               << " for writing failed: " << strerror(errno) << std::endl;
     return 7;
   }
-  #if FLATBUFFERS_LITTLEENDIAN == 0
+#if FLATBUFFERS_LITTLEENDIAN == 0
   tflite::FlatBufferModel::ByteSwapSerializedModel(&binary);
-  #endif
+#endif
   f << binary;
   f.close();
   if (!f.good()) {
