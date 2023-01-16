@@ -97,7 +97,7 @@ class AddCustomAggregationOp : public RewritePattern {
 
       // Skip calibration when the given operand comes from a constant.
       if (defining_op != nullptr &&
-          ::mlir::detail::isConstantLike(defining_op)) {
+          defining_op->hasTrait<OpTrait::ConstantLike>()) {
         continue;
       }
 
