@@ -62,39 +62,15 @@ createLegalizeTFControlFlowPass() {
 
 namespace {
 
-// Replaces implicitly captured value uses with block arguments.
-llvm::SmallVector<Value, 4> ReplaceImplicitInputs(
-    Block* block, int offset, ArrayRef<Value> implicit_inputs) {
-  llvm::SmallVector<Value, 4> implicit_input_elements;
-  implicit_input_elements.reserve(implicit_inputs.size());
-
-  Region* region = block->getParent();
-
-  for (auto& implicit_input : llvm::enumerate(implicit_inputs)) {
-    Value implicit_input_value = implicit_input.value();
-    BlockArgument arg = block->getArgument(implicit_input.index() + offset);
-    implicit_input_elements.emplace_back(arg);
-    for (auto& use :
-         llvm::make_early_inc_range(implicit_input_value.getUses())) {
-      if (!region->isAncestor(use.getOwner()->getParentRegion())) continue;
-      use.set(arg);
-    }
-  }
-
-  return implicit_input_elements;
-}
-
 // Replaces block terminator (tf.Yield) with `mhlo.return`. Additional results
 // can be returned if `extra_results` is not empty.
-void ReplaceTerminator(Block* block, ArrayRef<Value> extra_results,
-                       OpBuilder* builder) {
+void ReplaceTerminator(Block* block, OpBuilder* builder) {
   Operation* terminator = block->getTerminator();
   assert(isa<TF::YieldOp>(terminator));
   Location loc = terminator->getLoc();
 
   builder->setInsertionPoint(terminator);
   auto results = llvm::to_vector<4>(terminator->getOperands());
-  results.append(extra_results.begin(), extra_results.end());
   builder->create<mhlo::ReturnOp>(loc, results);
   terminator->erase();
 }
@@ -104,12 +80,10 @@ void LowerIfRegion(TF::IfRegionOp op) {
   OpBuilder builder(op);
 
   builder.setInsertionPoint(op);
-  ReplaceTerminator(&op.getThenBranch().front(), /*extra_results=*/{},
-                    &builder);
+  ReplaceTerminator(&op.getThenBranch().front(), &builder);
 
   builder.setInsertionPoint(op);
-  ReplaceTerminator(&op.getElseBranch().front(), /*extra_results=*/{},
-                    &builder);
+  ReplaceTerminator(&op.getElseBranch().front(), &builder);
 
   // Create the new `mhlo.if` op and take ownership of regions from
   // `tf.IfRegion` op.
@@ -131,7 +105,7 @@ void LowerCaseRegion(TF::CaseRegionOp op) {
 
   for (Region& region : op.getBranches()) {
     builder.setInsertionPoint(op);
-    ReplaceTerminator(&region.front(), /*extra_results=*/{}, &builder);
+    ReplaceTerminator(&region.front(), &builder);
   }
 
   // Create the new `mhlo.case` op and take ownership of regions from
@@ -151,21 +125,11 @@ void LowerWhileRegion(TF::WhileRegionOp op) {
   Location loc = op.getLoc();
   OpBuilder builder(op);
 
-  SmallVector<Value, 3> inputs(op.getInput());
-  const int inputs_size = inputs.size();
-  llvm::SetVector<Value> implicit_inputs;
-  getUsedValuesDefinedAbove(op.getOperation()->getRegions(), implicit_inputs);
-  inputs.append(implicit_inputs.begin(), implicit_inputs.end());
-
   builder.setInsertionPoint(op);
 
-  // Create the new `mhlo.while` op with 'inputs'. Implicit inputs are also
-  // returned.
+  // Create the new `mhlo.while` op with 'inputs'.
   auto while_result_types = llvm::to_vector<4>(op.getResultTypes());
-  while_result_types.reserve(while_result_types.size() +
-                             implicit_inputs.size());
-  for (const auto& implicit_input : implicit_inputs)
-    while_result_types.emplace_back(implicit_input.getType());
+  SmallVector<Value, 3> inputs(op.getInput());
   auto while_op =
       builder.create<mhlo::WhileOp>(loc, while_result_types, inputs);
 
@@ -176,13 +140,8 @@ void LowerWhileRegion(TF::WhileRegionOp op) {
   Block& cond_block = cond.front();
   builder.setInsertionPointToStart(&cond_block);
 
-  // Add args corresponding to 'implicit_inputs'.
-  for (const auto& implicit_input : implicit_inputs)
-    cond_block.addArgument(implicit_input.getType(), loc);
-  ReplaceImplicitInputs(&cond_block, inputs_size,
-                        implicit_inputs.getArrayRef());
   // Cond always returns a single result of bool type.
-  ReplaceTerminator(&cond_block, /*extra_results=*/{}, &builder);
+  ReplaceTerminator(&cond_block, &builder);
 
   // Rewrite body and associated block arguments and terminator. Ownership of
   // body region is transfered over from `tf.WhileRegion` to `mhlo.while`.
@@ -190,12 +149,7 @@ void LowerWhileRegion(TF::WhileRegionOp op) {
   body.takeBody(op.getBody());
   Block& body_block = body.front();
   builder.setInsertionPointToStart(&body_block);
-  // Add args corresponding to 'implicit_inputs'.
-  for (const auto& implicit_input : implicit_inputs)
-    body_block.addArgument(implicit_input.getType(), loc);
-  auto implicit_input_elements = ReplaceImplicitInputs(
-      &body_block, inputs_size, implicit_inputs.getArrayRef());
-  ReplaceTerminator(&body_block, implicit_input_elements, &builder);
+  ReplaceTerminator(&body_block, &builder);
 
   // Replace all uses of `op` results with that of `mhlo.while`.
   builder.setInsertionPoint(op);
