@@ -284,6 +284,7 @@ bool IsOpAllowedTf2XlaFallback(Operation* op) {
             TypeID::get<TF::XlaDynamicUpdateSliceOp>(),
             TypeID::get<TF::XlaKeyValueSortOp>(),
             TypeID::get<TF::XlaPadOp>(),
+            TypeID::get<TF::XlaSetBoundOp>(),
             TypeID::get<TF::XlaSetDynamicDimensionSizeOp>(),
             TypeID::get<TF::XlaSvdOp>(),
         };
