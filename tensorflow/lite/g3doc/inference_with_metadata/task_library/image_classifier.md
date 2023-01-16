@@ -48,7 +48,7 @@ API.
 ## Run inference in Java
 
 See the
-[Image Classification reference app](https://github.com/tensorflow/examples/blob/master/lite/examples/image_classification/android/EXPLORE_THE_CODE.md)
+[Image Classification reference app](https://github.com/tensorflow/examples/blob/master/lite/examples/image_classification/android/README.md)
 for an example of how to use `ImageClassifier` in an Android app.
 
 ### Step 1: Import Gradle dependency and other settings
