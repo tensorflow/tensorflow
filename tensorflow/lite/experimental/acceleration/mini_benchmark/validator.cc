@@ -350,41 +350,45 @@ MinibenchmarkStatus Validator::CreateInterpreter(int* delegate_error_out,
   return kMinibenchmarkSuccess;
 }
 
-MinibenchmarkStatus Validator::RunValidation(Results* results_out) {
+Validator::Status Validator::RunValidation(Results* results_out) {
+  BenchmarkStage stage = BenchmarkStage_INITIALIZATION;
   if (!results_out) {
-    return kMinibenchmarkPreconditionNotMet;
+    return Validator::Status{kMinibenchmarkPreconditionNotMet, stage};
   }
   if (!model_loader_) {
-    return kMinibenchmarkModelReadFailed;
+    return Validator::Status{kMinibenchmarkModelReadFailed, stage};
   }
   if (!model_loader_->Init()) {
-    return kMinibenchmarkModelInitFailed;
+    return Validator::Status{kMinibenchmarkModelInitFailed, stage};
   }
 
-#define MB_RETURN_IF_ERROR(s)                 \
-  {                                           \
-    MinibenchmarkStatus c = (s);              \
-    if (c != kMinibenchmarkSuccess) return c; \
+#define MB_RETURN_IF_ERROR(s, bs)                                      \
+  {                                                                    \
+    MinibenchmarkStatus c = (s);                                       \
+    if (c != kMinibenchmarkSuccess) return Validator::Status{c, (bs)}; \
   }
 
   // The lifetime of the delegate must be at least as long as the lifetime of
   // any Interpreter.
   int64_t delegate_load_start_time_us = ElapsedTimeMicros();
-  MB_RETURN_IF_ERROR(LoadDelegate());
+  MB_RETURN_IF_ERROR(LoadDelegate(), stage);
   MB_RETURN_IF_ERROR(CreateInterpreter(&results_out->delegate_error,
-                                       &results_out->delegated_kernels));
+                                       &results_out->delegated_kernels),
+                     stage);
   int64_t delegate_load_end_time_us = ElapsedTimeMicros();
 
   ValidatorProfiler profiler;
+  stage = BenchmarkStage_INFERENCE;
+
   if (has_accuracy_validation_) {
-    MB_RETURN_IF_ERROR(CheckGoldenOutput(results_out));
+    MB_RETURN_IF_ERROR(CheckGoldenOutput(results_out), stage);
   }
 
   main_model_->SetProfiler(&profiler, 0);
   TfLiteStatus status = validation_entrypoint_->Invoke();
   main_model_->SetProfiler(nullptr, 0);
   if (status != kTfLiteOk) {
-    return kMinibenchmarkInvokeFailed;
+    MB_RETURN_IF_ERROR(kMinibenchmarkInvokeFailed, stage);
   }
 
   int model_output_size = main_model_->outputs().size();
@@ -446,7 +450,7 @@ MinibenchmarkStatus Validator::RunValidation(Results* results_out) {
     }
   }
 #undef MB_RETURN_IF_ERROR
-  return kMinibenchmarkSuccess;
+  return Validator::Status{kMinibenchmarkSuccess};
 }
 
 int64_t Validator::BootTimeMicros() { return ElapsedTimeMicros(); }
