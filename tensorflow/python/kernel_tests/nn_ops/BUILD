@@ -308,11 +308,7 @@ cuda_py_test(
     srcs = ["cudnn_d9m_test.py"],
     tags = [
         "no_cuda_asan",  # TODO(b/171509035): re-enable.
-<<<<<<< HEAD
-        "no_rocm", #This is test is specific to CUDA and enables determinism through a CUDA specific env var. 
-=======
         "no_rocm",  #This is test is specific to CUDA and enables determinism through a CUDA specific env var.
->>>>>>> google_upstream/master
     ],
     deps = [
         ":cudnn_deterministic_base",

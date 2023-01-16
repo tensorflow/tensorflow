@@ -706,22 +706,13 @@ static bool fold(memory_copy_op& y, const memory_copy_op& x)
 // The below algorithm tries to minimize the number of memcpy by consolidating
 // neighboring memcpy into a single request
 template <typename MAPPED_T>
-<<<<<<< HEAD
-port::Status ReorganizeMemory(Stream* stream,
-      DeviceMemory<MAPPED_T> *device_memory,
-        const std::vector<MAPPED_T*>  &raw_ptrs,
-    int batch_count, uint64_t batch_stride,
-    bool gather)
-{
-  if(gather==false)
-    return port::Status(port::error::INTERNAL, "gather=false unsupported");
-=======
 tsl::Status ReorganizeMemory(Stream *stream,
                              DeviceMemory<MAPPED_T> *device_memory,
                              const std::vector<MAPPED_T *> &raw_ptrs,
                              int batch_count, uint64_t batch_stride,
                              bool gather) {
->>>>>>> google_upstream/master
+  if(gather==false)
+    return tsl::Status(tsl::error::INTERNAL, "gather=false unsupported");
   assert(batch_count > 0);
   char *device_memory_ptr = static_cast<char *>(device_memory->opaque());
   char* src_ptr = reinterpret_cast<char*>(raw_ptrs[0]);
@@ -767,20 +758,7 @@ tsl::Status ReorganizeMemory(Stream *stream,
     }
     i++;
   }
-<<<<<<< HEAD
   fflush(stdout);
-=======
-
-  DeviceMemoryBase src_mem = DeviceMemoryBase(src_ptr, cur_stride_size);
-  DeviceMemoryBase target_mem = DeviceMemoryBase(dst_ptr, cur_stride_size);
-  bool a_status =
-      gather ? stream->ThenMemcpy(&target_mem, src_mem, cur_stride_size).ok()
-             : stream->ThenMemcpy(&src_mem, target_mem, cur_stride_size).ok();
-  if (!a_status)
-    return tsl::Status(
-        port::error::INTERNAL,
-        "failed to copy device memory in ROCMBlas::DoBlasGemmBatched");
->>>>>>> google_upstream/master
   return tsl::OkStatus();
 }
 

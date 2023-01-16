@@ -253,10 +253,6 @@ namespace wrap {
 
 #endif
 
-<<<<<<< HEAD
-
-=======
->>>>>>> google_upstream/master
 #if (TF_ROCM_VERSION >= 50300)
 // clang-format off
 #define MIOPEN_DNN_ROUTINE_EACH(__macro)                             \
@@ -368,14 +364,8 @@ namespace wrap {
   __macro(miopenSetCTCLossDescriptor)                                \
   __macro(miopenGetCTCLossWorkspaceSize)                             \
   __macro(miopenCTCLoss)                                             \
-<<<<<<< HEAD
-  __macro(miopenDestroyCTCLossDescriptor)			     \
-  __macro(miopenSetConvolutionAttribute)                             \
-// clang-format on
-=======
   __macro(miopenDestroyCTCLossDescriptor)                            \
   __macro(miopenSetConvolutionAttribute)  // clang-format on
->>>>>>> google_upstream/master
 #else
 // clang-format off
 #define MIOPEN_DNN_ROUTINE_EACH(__macro)                             \
@@ -547,13 +537,7 @@ uint64_t GetHashValue(miopenConvolutionDescriptor_t conv_desc) {
   return hash_value;
 }
 
-<<<<<<< HEAD
-bool RequireMIOpenDeterminism() {
-  return tsl::OpDeterminismRequired(); 
-}
-=======
 bool RequireMIOpenDeterminism() { return tsl::OpDeterminismRequired(); }
->>>>>>> google_upstream/master
 
 // Class to implement a cache of compiled fusion plans
 class CachedFusionPlans {
@@ -989,15 +973,6 @@ class ScopedConvolutionDescriptor {
                  << ToString(status);
     }
 
-<<<<<<< HEAD
-#if (TF_ROCM_VERSION >= 50300) 
-    if (RequireMIOpenDeterminism()) {
-        status = wrap::miopenSetConvolutionAttribute(handle_, MIOPEN_CONVOLUTION_ATTRIB_DETERMINISTIC, 1);
-        if (status != miopenStatusSuccess) {
-        LOG(FATAL) << "could not set miopen convolution attribute: "
-                     << ToString(status);
-        }
-=======
 #if (TF_ROCM_VERSION >= 50300)
     if (RequireMIOpenDeterminism()) {
       status = wrap::miopenSetConvolutionAttribute(
@@ -1006,7 +981,6 @@ class ScopedConvolutionDescriptor {
         LOG(FATAL) << "could not set miopen convolution attribute: "
                    << ToString(status);
       }
->>>>>>> google_upstream/master
     }
 #endif
   }
@@ -2045,12 +2019,8 @@ class MIOpenRnnDescriptor : public MIOpenDescriptorCommon<dnn::RnnDescriptor> {
   miopenRNNDirectionMode_t direction_mode_;
   miopenRNNMode_t rnn_mode_;
   miopenDataType_t data_type_;
-<<<<<<< HEAD
   dnn::AlgorithmConfig algorithm_config_;
-  port::Status status_;
-=======
   tsl::Status status_;
->>>>>>> google_upstream/master
   // no dropout in MIOpen.
   // std::unique_ptr<miopenDropoutDescriptor> miopen_dropout_desc_;
   std::unique_ptr<MIOpenRnnParamsDescriptor> miopen_params_desc_;
