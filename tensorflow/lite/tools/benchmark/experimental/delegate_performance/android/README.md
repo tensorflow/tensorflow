@@ -202,7 +202,7 @@ bazel build -c dbg \
   tensorflow/lite/delegates/utils/experimental/sample_stable_delegate:tensorflowlite_sample_stable_delegate
 
 # Set the permissions so that we can overwrite a previously installed delegate
-chmod 755 bazel-bin/third_party/tensorflow/lite/delegates/utils/experimental/sample_stable_delegate/libtensorflowlite_sample_stable_delegate.so
+chmod 755 bazel-bin/tensorflow/lite/delegates/utils/experimental/sample_stable_delegate/libtensorflowlite_sample_stable_delegate.so
 
 # Ensure the delegateperformance files path exists
 adb shell run-as org.tensorflow.lite.benchmark.delegateperformance mkdir -p /data/data/org.tensorflow.lite.benchmark.delegateperformance/files
