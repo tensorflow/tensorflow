@@ -961,7 +961,8 @@ class SubBuffer : public TensorBuffer {
     CHECK_LE(root_->base<T>(), this->base<T>());
     T* root_limit = root_->base<T>() + root_->size() / sizeof(T);
     CHECK_LE(this->base<T>(), root_limit);
-    CHECK_LE(this->base<T>() + n, root_limit);
+    size_t max_n = root_limit - this->base<T>();
+    CHECK_LE(n, max_n);
     // Hold a ref of the underlying root buffer.
     // NOTE: 'buf' is a sub-buffer inside the 'root_' buffer.
     root_->Ref();
