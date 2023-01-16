@@ -115,6 +115,9 @@ tf_proto_library(
     srcs = ["device_description.proto"],
     cc_api_version = 2,
     make_default_target_header_only = True,
+    protodeps = [
+        "//tensorflow/compiler/xla:autotune_results_proto",
+    ],
 )
 
 cc_library(
@@ -151,8 +154,8 @@ cc_library(
     name = "module_spec",
     hdrs = ["module_spec.h"],
     deps = [
-        "//tensorflow/compiler/xla/stream_executor/lib",
         "//tensorflow/compiler/xla/stream_executor/platform",
+        "@com_google_absl//absl/types:span",
     ],
 )
 
@@ -328,6 +331,7 @@ cc_library(
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:optional",
+        "@com_google_absl//absl/types:span",
     ],
 )
 
@@ -401,6 +405,7 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:optional",
+        "@com_google_absl//absl/types:span",
     ],
 )
 
@@ -499,6 +504,7 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:optional",
+        "@com_google_absl//absl/types:span",
     ],
 )
 
@@ -531,6 +537,7 @@ cc_library(
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
+        "@com_google_absl//absl/types:span",
     ],
 )
 
@@ -540,12 +547,12 @@ cc_library(
     hdrs = ["blas.h"],
     deps = [
         ":data_type",
-        ":host_or_device_scalar",
         ":stream_executor_headers",
         "//tensorflow/compiler/xla/stream_executor/lib",
         "//tensorflow/compiler/xla/stream_executor/platform",
         "//tensorflow/tsl/protobuf:dnn_proto_cc",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
     ],
 )
 
@@ -611,6 +618,7 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:optional",
+        "@com_google_absl//absl/types:span",
     ],
 )
 
@@ -831,6 +839,7 @@ cc_library(
     deps = [
         ":dnn",
         ":stream_executor_headers",
+        "@com_google_absl//absl/base",
     ],
 )
 

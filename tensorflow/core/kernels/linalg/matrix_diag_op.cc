@@ -495,6 +495,7 @@ namespace functor {
   extern template struct MatrixDiagPart<GPUDevice, T>;
 
 TF_CALL_GPU_ALL_TYPES(DECLARE_GPU_SPEC);
+TF_CALL_bfloat16(DECLARE_GPU_SPEC);
 
 }  // namespace functor
 
@@ -536,6 +537,7 @@ TF_CALL_GPU_ALL_TYPES(DECLARE_GPU_SPEC);
                           MatrixDiagPartOp<GPUDevice, type>);
 
 TF_CALL_GPU_ALL_TYPES(REGISTER_MATRIX_DIAG_GPU);
+TF_CALL_bfloat16(REGISTER_MATRIX_DIAG_GPU);
 #undef REGISTER_MATRIX_DIAG_GPU
 
 // Registration of the deprecated kernel.
@@ -549,6 +551,7 @@ TF_CALL_GPU_ALL_TYPES(REGISTER_MATRIX_DIAG_GPU);
                               .TypeConstraint<type>("T"),                   \
                           MatrixDiagPartOp<GPUDevice, type>);
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_BATCH_MATRIX_DIAG_GPU);
+TF_CALL_bfloat16(REGISTER_BATCH_MATRIX_DIAG_GPU);
 #undef REGISTER_BATCH_MATRIX_DIAG_GPU
 
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM

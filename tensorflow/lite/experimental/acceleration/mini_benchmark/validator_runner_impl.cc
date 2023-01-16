@@ -231,9 +231,13 @@ ValidatorRunnerImpl::GetSuccessfulResultsFromStorage() {
     if (benchmark_evaluator_->IsValidationSuccessEvent(*event)) {
       results.push_back(event);
     } else if (event->event_type() == BenchmarkEventType_ERROR) {
-      TFLITE_LOG(TFLITE_LOG_WARNING,
-                 "Benchmark event failed with error code (%d).",
-                 event->error()->error_code());
+      TFLITE_LOG(
+          TFLITE_LOG_WARNING,
+          "Benchmark event failed with error code (%d), signal (%d), exit code "
+          "(%d), stage (%d), mini benchmark error code (%d).\n",
+          event->error()->error_code(), event->error()->signal(),
+          event->error()->exit_code(), event->error()->stage(),
+          event->error()->mini_benchmark_error_code());
     }
   }
   return results;

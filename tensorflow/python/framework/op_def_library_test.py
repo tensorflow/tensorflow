@@ -419,7 +419,7 @@ class OpDefLibraryTest(test_util.TensorFlowTestCase):
       @eager_function.defun_with_attributes(
           input_signature=(tensor_spec.TensorSpec(None, dtypes.float32),),
           autograph=False,
-          attributes={"_dummy_attr": 15})
+          attributes={"_implements": 15})
       def fn(x):
         return 2 + x
 
@@ -433,7 +433,7 @@ class OpDefLibraryTest(test_util.TensorFlowTestCase):
           value {
             func {
               name: '%s'
-              attr { key: "_dummy_attr" value { i: 15 } }
+              attr { key: "_implements" value { i: 15 } }
             }
           }
         }

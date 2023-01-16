@@ -58,7 +58,7 @@ Value applySingleResultLhloCode(Location loc, ValueRange operands,
     b->create<memref::StoreOp>(loc, operand.value(), argBufs[operand.index()]);
   }
   // Clone the ops from `lhlo_block`.
-  BlockAndValueMapping mapping;
+  IRMapping mapping;
   mapping.map(lhloBlock->getArguments(), argBufs);
   for (auto& nested : lhloBlock->without_terminator()) {
     auto* clone = b->clone(nested, mapping);

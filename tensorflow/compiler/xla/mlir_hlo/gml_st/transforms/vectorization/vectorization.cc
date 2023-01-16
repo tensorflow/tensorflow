@@ -25,6 +25,7 @@ limitations under the License.
 #include "mlir/Dialect/Arith/Utils/Utils.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
+#include "mlir/Dialect/Linalg/Transforms/Hoisting.h"
 #include "mlir/Dialect/Linalg/Transforms/Transforms.h"
 #include "mlir/Dialect/Vector/IR/VectorOps.h"
 #include "mlir/IR/OpDefinition.h"
@@ -172,6 +173,8 @@ struct MaterializeUpdateTransferWriteTensorOperand
 
   LogicalResult matchAndRewrite(vector::TransferWriteOp op,
                                 PatternRewriter &rewriter) const override {
+    if (!op->getParentOfType<ForOp>()) return failure();
+
     // Sanity checks of TransferWriteOp.
     if (op.hasOutOfBoundsDim()) return failure();
     if (op.getVectorType().getRank() != op.getShapedType().getRank())
@@ -211,6 +214,8 @@ struct SetYieldUpdateTransferWriteTensorOperand
 
   LogicalResult matchAndRewrite(SetYieldOp op,
                                 PatternRewriter &rewriter) const override {
+    if (!op->getParentOfType<ForOp>()) return failure();
+
     bool changed = false;
     for (const auto &[src, dst, set] :
          llvm::zip(op.getSrcs(), op.getDsts(), op.getSets())) {
@@ -284,7 +289,7 @@ SmallVector<Value, 4> generateDefaultOffsetFor(Value value,
 // Converts the ranked-tensor-typed `bvm`-mapped operands of `op` into vectors
 // via vector.transfer_read. Updates `bvm`'s mapping of `op`'s operands to the
 // newly created vector values.
-void convertTensorOperandsToVector(Operation *op, BlockAndValueMapping &bvm,
+void convertTensorOperandsToVector(Operation *op, IRMapping &bvm,
                                    OpBuilder &builder) {
   OpBuilder::InsertionGuard guard(builder);
   for (Value operand : op->getOperands()) {
@@ -306,7 +311,7 @@ void convertTensorOperandsToVector(Operation *op, BlockAndValueMapping &bvm,
 // `op`'s results to the newly generated tensors. Expects that the operation's
 // results are vectors, and the destinations tensors.
 void convertVectorResultsToTensor(ValueRange results, ValueRange destinations,
-                                  BlockAndValueMapping &bvm,
+                                  IRMapping &bvm,
                                   OpBuilder &builder) {
   for (auto [result, dest] : llvm::zip(results, destinations)) {
     Value mappedResult = bvm.lookupOrDefault(result);
@@ -340,7 +345,7 @@ struct TensorToElementVectorizationPattern
     if (tensorType.getNumDynamicDims() > 0 || tensorType.getNumElements() > 1)
       return rewriter.notifyMatchFailure(op, "should have a single element");
 
-    BlockAndValueMapping bvm;
+    IRMapping bvm;
     convertTensorOperandsToVector(op, bvm, rewriter);
     if (tensorType.getRank() == 0) {
       // ExtractOp only supports ranks > 0, for rank = 0 use ExtractElementOp
@@ -481,7 +486,7 @@ struct MaterializeOpVectorizationPattern
       return rewriter.notifyMatchFailure(op, "input is not statically shaped");
 
     Location loc = op.getLoc();
-    BlockAndValueMapping bvm;
+    IRMapping bvm;
     convertTensorOperandsToVector(op, bvm, rewriter);
     Type newResult = op.getResult().getType();
     if (auto tensorResult = newResult.dyn_cast<RankedTensorType>()) {
@@ -548,7 +553,7 @@ SmallVector<Type, 1> convertToVectorTypes(TypeRange types) {
 // terminator, and stores the mapping to new values into `bvm`.
 void copyLoopBodyAndVectorizeTerminator(LoopLikeOpInterface op,
                                         OpBuilder &builder,
-                                        BlockAndValueMapping &bvm) {
+                                        IRMapping &bvm) {
   auto &blocks = op.getLoopBody().getBlocks();
   assert(blocks.size() == 1 && "loop body should contain a single block");
   Block &block = blocks.front();
@@ -561,7 +566,7 @@ void copyLoopBodyAndVectorizeTerminator(LoopLikeOpInterface op,
 
 // Vectorizes a gml_st.parallel `op`, and stores the mapping from old to new
 // values into `bvm`.
-ParallelOp vectorizeLoopLikeOp(ParallelOp op, BlockAndValueMapping &bvm,
+ParallelOp vectorizeLoopLikeOp(ParallelOp op, IRMapping &bvm,
                                PatternRewriter &rewriter) {
   std::optional<StringAttr> distTypeAttr;
   if (auto distType = op.getDistributionType())
@@ -577,7 +582,7 @@ ParallelOp vectorizeLoopLikeOp(ParallelOp op, BlockAndValueMapping &bvm,
 
 // Vectorizes a gml_st.for `op`, and stores the mapping from old to new
 // values into `bvm`.
-ForOp vectorizeLoopLikeOp(ForOp op, BlockAndValueMapping &bvm,
+ForOp vectorizeLoopLikeOp(ForOp op, IRMapping &bvm,
                           PatternRewriter &rewriter) {
   convertTensorOperandsToVector(op, bvm, rewriter);
   auto outputs = llvm::to_vector(llvm::map_range(
@@ -637,7 +642,7 @@ struct LoopLikeOpVectorizationPattern : public OpRewritePattern<LoopLikeOp> {
           op, "shoud not use set_yield accumulators");
     }
 
-    BlockAndValueMapping bvm;
+    IRMapping bvm;
 
     auto vectorLoopLikeOp = vectorizeLoopLikeOp(op, bvm, rewriter);
     bvm.map(op.getResults(), vectorLoopLikeOp.getResults());
@@ -669,7 +674,7 @@ RewritePatternSet getDefaultVectorizationPatterns(MLIRContext *ctx) {
 
 bool isInsideGmlStLoop(Operation *op) {
   Operation *parent = op->getParentOp();
-  return isa<LoopOp>(parent) || isa<ParallelOp>(parent) || isa<ForOp>(parent);
+  return isa<ParallelOp>(parent) || isa<ForOp>(parent);
 }
 
 bool isFillTiledOrSmall(FillOp fill) {
@@ -862,6 +867,7 @@ struct VectorizePerfectlyTiledLoopsPass
       (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
     }
 
+    // TODO(vuson): remove these patterns once gml_st.for is retired.
     {
       RewritePatternSet patterns = getDefaultVectorizationPatterns(ctx);
       linalg::populatePadOpVectorizationPatterns(patterns);
@@ -870,8 +876,6 @@ struct VectorizePerfectlyTiledLoopsPass
                    IdentityTransposeOpFoldingPattern>(ctx);
       (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
     }
-
-    // Hoisting transfer_read/transfer_write.
     {
       RewritePatternSet patterns(ctx);
       patterns.add<IdentityMaterializeOpFoldingPattern>(ctx);
@@ -879,6 +883,8 @@ struct VectorizePerfectlyTiledLoopsPass
 
       hoistRedundantVectorTransfersOnTensor(func);
     }
+    // Hoisting transfer_read/transfer_write.
+    linalg::hoistRedundantVectorTransfersOnTensor(func);
   }
 };
 

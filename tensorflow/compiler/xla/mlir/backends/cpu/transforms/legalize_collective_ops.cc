@@ -246,6 +246,25 @@ class OutfeedLowering : public OpRewritePattern<mhlo::OutfeedOp> {
   };
 };
 
+class RngBitGeneratorLowering
+    : public OpRewritePattern<mhlo::RngBitGeneratorOp> {
+  using OpRewritePattern<mhlo::RngBitGeneratorOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(mhlo::RngBitGeneratorOp op,
+                                PatternRewriter& rewriter) const override {
+    ImplicitLocOpBuilder b(op.getLoc(), rewriter);
+
+    auto state_init = CreateEmptyLike(b, op.getLoc(), op.getOperand());
+    auto output_init =
+        b.create<tensor::EmptyOp>(op.getLoc(), op.getType(1), ValueRange{});
+
+    rewriter.replaceOpWithNewOp<xla_cpu::RngBitGeneratorOp>(
+        op, op->getResultTypes(), op->getOperand(0), state_init, output_init,
+        op.getRngAlgorithmAttr());
+    return success();
+  };
+};
+
 class AddDependencyLowering : public OpRewritePattern<mhlo::AddDependencyOp> {
   using OpRewritePattern<mhlo::AddDependencyOp>::OpRewritePattern;
 
@@ -263,11 +282,11 @@ void LegalizeCollectiveOpsPass::runOnOperation() {
 
   // Convert mhlo collective operations to XLA cpu ops.
   RewritePatternSet patterns(ctx);
-  patterns
-      .insert<AllReduceLowering, CollectivePermuteLowering, AllToAllLowering,
-              IdLowering<mhlo::PartitionIdOp, xla_cpu::PartitionIdOp>,
-              IdLowering<mhlo::ReplicaIdOp, xla_cpu::ReplicaIdOp>, FftLowering,
-              OutfeedLowering, AddDependencyLowering>(ctx);
+  patterns.insert<AddDependencyLowering, AllReduceLowering, AllToAllLowering,
+                  CollectivePermuteLowering, FftLowering,
+                  IdLowering<mhlo::PartitionIdOp, xla_cpu::PartitionIdOp>,
+                  IdLowering<mhlo::ReplicaIdOp, xla_cpu::ReplicaIdOp>,
+                  OutfeedLowering, RngBitGeneratorLowering>(ctx);
 
   if (failed(applyPatternsAndFoldGreedily(func, std::move(patterns)))) {
     return signalPassFailure();

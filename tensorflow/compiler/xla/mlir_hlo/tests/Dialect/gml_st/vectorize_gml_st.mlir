@@ -103,7 +103,6 @@ func.func @vectorize_gml_st_for_op(
 // CHECK:        %[[NEG:.*]] = arith.negf %[[LHSTILE]] : vector<4xf32>
 // CHECK:        gml_st.set_yield %[[NEG]] into %[[OUT]]
 // CHECK-SAME:   vector<4xf32> into vector<32xf32>
-// CHECK:      vector.transfer_write %[[RESULT]], %arg1[%c0]
 
 // -----
 
@@ -149,7 +148,6 @@ func.func @vectorize_loop_on_scalars(
 // CHECK:        %[[NEG:.*]] = arith.negf %[[LHSTILE]] : f32
 // CHECK:        gml_st.set_yield %[[NEG]] into %[[OUT]]
 // CHECK-SAME:   f32 into vector<32xf32>
-// CHECK:      vector.transfer_write %[[RESULT]], %arg1[%c0]
 
 // -----
 

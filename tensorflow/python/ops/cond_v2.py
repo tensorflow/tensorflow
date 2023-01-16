@@ -795,11 +795,42 @@ def _create_none_optionals(func_graph, n):
     return [gen_dataset_ops.optional_none() for _ in range(n)]
 
 
+# TODO(b/265317139): remove this function and move this dynamic dimension
+# handling logic to XLA once XLA shape is ready for dynamic dimensions.
+def _convert_dynamic_dimension_to_zero(shape):
+  """Converts dynamic dimensions in `shape` to zero.
+
+  The fake params created to match the intermediates captured in other branches
+  could have dynamic dimensions. But the XLA shape is not able to handle
+  dynamic dimensions in TF TensorShape. Setting the dynamic dimensions to
+  size zero will help avoid failing safety checks in bridge. When XLA
+  DynamicConditional op reconciles branch differences, XLA will replace the
+  dimension size 0 with a bounded dimension determined from the shape of
+  real argument in the other branch.
+
+  Note: Rank unknown shapes are returned as they are.
+
+  Args:
+    shape: The TensorShape of fake param.
+
+  Returns:
+    The new TensorShape with dynamic dimensions set to zero.
+  """
+  if shape.rank is None:
+    return shape
+
+  return tensor_shape.TensorShape(
+      [0 if d is None else d for d in shape.as_list()]
+  )
+
+
 def _create_fakeparams(func_graph, template_tensors):
-  """Create FakeParams for the XLA case."""
+  """Creates FakeParams for the XLA case."""
   with func_graph.as_default():
-    return [gen_functional_ops.fake_param(dtype=t.dtype, shape=t.shape)
-            for t in template_tensors]
+    return [
+        gen_functional_ops.fake_param(
+            dtype=t.dtype, shape=_convert_dynamic_dimension_to_zero(t.shape))
+        for t in template_tensors]
 
 
 def _check_same_outputs(op_type, graphs):

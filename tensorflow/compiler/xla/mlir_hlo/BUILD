@@ -1063,6 +1063,7 @@ cc_library(
         ":userange_analysis",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:LLVMDialect",
         "@llvm-project//mlir:Pass",
     ],
 )
@@ -1334,9 +1335,11 @@ cc_library(
         "gml_st/transforms/gml_st_to_gpu/gml_st_to_gpu.cc",
         "gml_st/transforms/gml_st_to_scf/gml_st_to_scf.cc",
         "gml_st/transforms/greedy_tiling_and_fusion/greedy_tiling_and_fusion.cc",
-        "gml_st/transforms/lower_vector_contract/lower_vector_contract.cc",
         "gml_st/transforms/passes.h.inc",
         "gml_st/transforms/peeling/peeling.cc",
+        "gml_st/transforms/rewrite_vector_ops/rewrite_vector_contract.cc",
+        "gml_st/transforms/rewrite_vector_ops/rewrite_vector_multi_reduction.cc",
+        "gml_st/transforms/rewrite_vector_ops/rewrite_vector_transpose.cc",
         "gml_st/transforms/scalarization/scalarization.cc",
         "gml_st/transforms/tiling/tiling.cc",
         "gml_st/transforms/tiling_cwise/tiling_cwise.cc",
@@ -1346,6 +1349,7 @@ cc_library(
         "gml_st/transforms/transform_matmul_for_cpu/transform_matmul_for_cpu.cc",
         "gml_st/transforms/transform_matmul_for_triton/transform_matmul_for_triton.cc",
         "gml_st/transforms/transform_reduce_for_cpu/transform_reduce_for_cpu.cc",
+        "gml_st/transforms/transform_reverse_for_cpu/transform_reverse_for_cpu.cc",
         "gml_st/transforms/transform_scatter_for_cpu/transform_scatter_for_cpu.cc",
         "gml_st/transforms/transform_sort_for_cpu/transform_sort_for_cpu.cc",
         "gml_st/transforms/transform_tileable_ops_for_cpu/transform_tileable_ops_for_cpu.cc",
@@ -1411,6 +1415,7 @@ cc_library(
         "@llvm-project//mlir:Transforms",
         "@llvm-project//mlir:VectorDialect",
         "@llvm-project//mlir:VectorTransforms",
+        "@llvm-project//mlir:X86VectorTransforms",
         "@stablehlo//:chlo_ops",
     ],
 )
@@ -1577,9 +1582,6 @@ gentbl_cc_library(
     ],
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "gml_st/IR/gml_st_ops.td",
-    td_srcs = [
-        "gml_st/IR/gml_st_legacy_ops.td",
-    ],
     deps = [":gml_st_ops_td_files"],
 )
 

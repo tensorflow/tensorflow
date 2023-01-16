@@ -22,6 +22,9 @@ limitations under the License.
 namespace tensorflow {
 namespace data {
 
+// Returns the directory path for the assigned streams of a snapshot.
+std::string StreamsDirectory(absl::string_view snapshot_path);
+
 // Returns the directory path for a worker writing one stream of the snapshot.
 std::string StreamDirectory(absl::string_view snapshot_path,
                             int64_t stream_index);
@@ -41,6 +44,16 @@ std::string SourceDirectory(absl::string_view snapshot_path,
 std::string SplitPath(absl::string_view snapshot_path, int64_t stream_index,
                       int64_t source_id, int64_t local_index,
                       int64_t global_index);
+
+// Returns the path of the DONE file of a snapshot stream.
+std::string StreamDoneFilePath(absl::string_view snapshot_path,
+                               int64_t stream_index);
+
+// Returns the path of the serialized metadata for a snapshot.
+std::string SnapshotMetadataFilePath(absl::string_view snapshot_path);
+
+// Returns the path of the serialized graph of the dataset for a snapshot.
+std::string DatasetDefFilePath(absl::string_view snapshot_path);
 
 // Returns the directory path for snapshot checkpoints.
 std::string CheckpointsDirectory(absl::string_view snapshot_path,

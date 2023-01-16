@@ -46,10 +46,19 @@ source tensorflow/tools/ci_build/build_scripts/DEFAULT_TEST_TARGETS.sh
 rocm_major_version=`cat /opt/rocm/.info/version | cut -d "." -f 1`
 rocm_minor_version=`cat /opt/rocm/.info/version | cut -d "." -f 2`
 TF_TEST_FILTER_TAGS_ROCM_VERSION_SPECIFIC=""
+<<<<<<< HEAD
 if [[ $rocm_major_version == *"5"* ]]; then
 	if [[ $rocm_minor_version -lt 3 ]]; then
 		TF_TEST_FILTER_TAGS_ROCM_VERSION_SPECIFIC=",-no_rocm_pre_53"	
 	fi
+=======
+if [[ $rocm_major_version -ge 5 ]]; then
+	if [[ $rocm_minor_version -lt 3 ]]; then
+		TF_TEST_FILTER_TAGS_ROCM_VERSION_SPECIFIC=",no_rocm_pre_53"	
+	fi
+else
+    TF_TEST_FILTER_TAGS_ROCM_VERSION_SPECIFIC=",no_rocm_pre_53"	
+>>>>>>> google_upstream/master
 fi
 
 # # Export optional variables for running pip.sh
@@ -61,7 +70,11 @@ export TF_TEST_FLAGS="--test_tag_filters=${TF_TEST_FILTER_TAGS} --build_tag_filt
  --test_env=TF_GPU_COUNT=$TF_GPU_COUNT \
  --test_env=TF_TESTS_PER_GPU=$TF_TESTS_PER_GPU \
  --test_env=HSA_TOOLS_LIB=libroctracer64.so \
+<<<<<<< HEAD
  --test_timeout 920,2400,7200,9600 \
+=======
+ --test_timeout 600,900,2400,7200 \
+>>>>>>> google_upstream/master
  --build_tests_only \
  --test_output=errors \
  --test_sharding_strategy=disabled \

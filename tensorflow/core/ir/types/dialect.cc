@@ -411,7 +411,7 @@ Attribute ShapeAttr::parse(AsmParser& parser, Type type) {
         return {};
     }
   }
-  return ShapeAttr::get(parser.getContext(), llvm::makeArrayRef(shape));
+  return ShapeAttr::get(parser.getContext(), llvm::ArrayRef(shape));
 }
 
 // Get or create a shape attribute.

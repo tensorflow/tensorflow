@@ -26,10 +26,9 @@ MlirAttribute mlirMhloScatterDimensionNumbersGet(
     const int64_t *insertedWindowDims, intptr_t nScatteredDimsToOperandDims,
     const int64_t *scatteredDimsToOperandDims, int64_t indexVectorDim) {
   return wrap(mlir::mhlo::ScatterDimensionNumbersAttr::get(
-      unwrap(ctx), llvm::makeArrayRef(updateWindowDims, nUpdateWindowDims),
-      llvm::makeArrayRef(insertedWindowDims, nInsertedWindowDims),
-      llvm::makeArrayRef(scatteredDimsToOperandDims,
-                         nScatteredDimsToOperandDims),
+      unwrap(ctx), llvm::ArrayRef(updateWindowDims, nUpdateWindowDims),
+      llvm::ArrayRef(insertedWindowDims, nInsertedWindowDims),
+      llvm::ArrayRef(scatteredDimsToOperandDims, nScatteredDimsToOperandDims),
       indexVectorDim));
 }
 
@@ -98,9 +97,9 @@ MlirAttribute mlirMhloGatherDimensionNumbersGet(
     intptr_t nStartIndexMap, const int64_t *startIndexMap,
     int64_t indexVectorDim) {
   return wrap(mlir::mhlo::GatherDimensionNumbersAttr::get(
-      unwrap(ctx), llvm::makeArrayRef(offsetDims, nOffsetDims),
-      llvm::makeArrayRef(collapsedSliceDims, nCollapsedSliceDims),
-      llvm::makeArrayRef(startIndexMap, nStartIndexMap), indexVectorDim));
+      unwrap(ctx), llvm::ArrayRef(offsetDims, nOffsetDims),
+      llvm::ArrayRef(collapsedSliceDims, nCollapsedSliceDims),
+      llvm::ArrayRef(startIndexMap, nStartIndexMap), indexVectorDim));
 }
 
 bool mlirMhloAttributeIsAGatherDimensionNumbers(MlirAttribute attr) {
@@ -169,10 +168,10 @@ MlirAttribute mlirMhloDotDimensionNumbersGet(
     const int64_t *rhsContractingDimensions) {
   return wrap(mlir::mhlo::DotDimensionNumbersAttr::get(
       unwrap(ctx),
-      llvm::makeArrayRef(lhsBatchingDimensions, nLhsBatchingDimensions),
-      llvm::makeArrayRef(rhsBatchingDimensions, nRhsBatchingDimensions),
-      llvm::makeArrayRef(lhsContractingDimensions, nLhsContractingDimensions),
-      llvm::makeArrayRef(rhsContractingDimensions, nRhsContractingDimensions)));
+      llvm::ArrayRef(lhsBatchingDimensions, nLhsBatchingDimensions),
+      llvm::ArrayRef(rhsBatchingDimensions, nRhsBatchingDimensions),
+      llvm::ArrayRef(lhsContractingDimensions, nLhsContractingDimensions),
+      llvm::ArrayRef(rhsContractingDimensions, nRhsContractingDimensions)));
 }
 
 bool mlirMhloAttributeIsADotDimensionNumbers(MlirAttribute attr) {
@@ -252,11 +251,11 @@ MlirAttribute mlirMhloConvDimensionNumbersGet(
     intptr_t nOutputSpatialDimensions, const int64_t *outputSpatialDimensions) {
   return wrap(mlir::mhlo::ConvDimensionNumbersAttr::get(
       unwrap(ctx), inputBatchDimension, inputFeatureDimension,
-      llvm::makeArrayRef(inputSpatialDimensions, nInputSpatialDimensions),
+      llvm::ArrayRef(inputSpatialDimensions, nInputSpatialDimensions),
       kernelInputFeatureDimension, kernelOutputFeatureDimension,
-      llvm::makeArrayRef(kernelSpatialDimensions, nKernelSpatialDimensions),
+      llvm::ArrayRef(kernelSpatialDimensions, nKernelSpatialDimensions),
       outputBatchDimension, outputFeatureDimension,
-      llvm::makeArrayRef(outputSpatialDimensions, nOutputSpatialDimensions)));
+      llvm::ArrayRef(outputSpatialDimensions, nOutputSpatialDimensions)));
 }
 
 bool mlirMhloAttributeIsAConvDimensionNumbers(MlirAttribute attr) {
@@ -358,9 +357,8 @@ MLIR_CAPI_EXPORTED MlirAttribute mlirMhloOutputOperandAliasGet(
     const int64_t *outputTupleIndices, int64_t operandIndex,
     intptr_t nOperandTupleIndices, const int64_t *operandTupleIndices) {
   return wrap(mlir::mhlo::OutputOperandAliasAttr::get(
-      unwrap(ctx), llvm::makeArrayRef(outputTupleIndices, nOutputTupleIndices),
-      operandIndex,
-      llvm::makeArrayRef(operandTupleIndices, nOperandTupleIndices)));
+      unwrap(ctx), llvm::ArrayRef(outputTupleIndices, nOutputTupleIndices),
+      operandIndex, llvm::ArrayRef(operandTupleIndices, nOperandTupleIndices)));
 }
 
 bool mlirMhloAttributeIsAOutputOperandAlias(MlirAttribute attr) {
@@ -644,7 +642,7 @@ int64_t mlirMhloChannelHandleGetType(MlirAttribute attr) {
 MlirAttribute mlirMhloTypeExtensionsGet(MlirContext ctx, intptr_t nBounds,
                                         const int64_t *bounds) {
   return wrap(mlir::mhlo::TypeExtensionsAttr::get(
-      unwrap(ctx), llvm::makeArrayRef(bounds, nBounds)));
+      unwrap(ctx), llvm::ArrayRef(bounds, nBounds)));
 }
 
 bool mlirMhloAttributeIsTypeExtensions(MlirAttribute attr) {

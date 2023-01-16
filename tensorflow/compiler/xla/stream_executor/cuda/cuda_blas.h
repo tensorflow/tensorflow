@@ -41,9 +41,6 @@ namespace cuda {
 // Opaque and unique identifier for the cuBLAS plugin.
 extern const PluginId kCuBlasPlugin;
 
-template <typename T>
-using DeviceMemorySlice = port::ArraySlice<DeviceMemory<T> *>;  // non-absl ok
-
 // BLAS plugin for CUDA platform via cuBLAS library.
 //
 // This satisfies the platform-agnostic BlasSupport interface.

@@ -619,7 +619,7 @@ Status ProcessFunctionLibraryRuntime::InstantiateMultiDevice(
     DumpGraph(
         strings::StrCat("After all optimization passes (", pair.first, ")"),
         optimized_subgraph);
-    if (VLOG_IS_ON(1)) {
+    if (VLOG_IS_ON(3)) {
       DumpGraphDefToFile(
           strings::StrCat("pflr_after_all_optimization_passes_",
                           reinterpret_cast<uintptr_t>(optimized_subgraph), "_",
@@ -790,7 +790,7 @@ Status ProcessFunctionLibraryRuntime::InstantiateMultiDevice(
   TF_RETURN_IF_ERROR(group.as_summary_status());
 
   *handle = AddMultiDeviceHandle(std::move(data), function_key);
-  VLOG(2) << "Instantiated MultiDevice function \"" << function_name
+  VLOG(1) << "Instantiated MultiDevice function \"" << function_name
           << "\" with handle " << *handle;
 
   PublishSubgraphs(function_name, std::move(subgraphs));

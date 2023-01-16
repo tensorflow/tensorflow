@@ -301,17 +301,10 @@ FindResultBufferAllocationIndex(const BufferAssignment& assignment,
   return {std::move(buffer_indices)};
 }
 
-StatusOr<std::string> TfrtCpuClient::SerializeExecutable(
-    const PjRtLoadedExecutable& executable) const {
-  const TfrtCpuExecutable* tfrt_cpu_executable =
-      tensorflow::down_cast<const TfrtCpuExecutable*>(&executable);
-
-  std::shared_ptr<Executable> cpu_executable =
-      tfrt_cpu_executable->cpu_executable();
-
+StatusOr<std::string> TfrtCpuExecutable::SerializeExecutable() const {
   cpu::CpuCompiler compiler;
   TF_ASSIGN_OR_RETURN(std::unique_ptr<AotCompilationResult> aot_result,
-                      compiler.Export(cpu_executable.get()));
+                      compiler.Export(cpu_executable_.get()));
 
   TF_ASSIGN_OR_RETURN(std::string serialized, aot_result->SerializeAsString());
 

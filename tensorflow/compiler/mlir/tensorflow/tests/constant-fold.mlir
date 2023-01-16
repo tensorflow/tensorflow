@@ -653,7 +653,7 @@ func.func @testEmptyResults(%arg0: tensor<0x2xf32>) -> tensor<0x2xf32> {
 //
 // CHECK-LABEL: func @yieldOp
 func.func @yieldOp(%arg0: tensor<f32>, %arg1: tensor<f32>, %arg2: tensor<i1>) -> (tensor<f32>) {
-  // CHECK-2: tf.Yield
+  // CHECK-COUNT-2: tf.Yield
   %0 = "tf.IfRegion"(%arg2) ({
       "tf.Yield"(%arg0) : (tensor<f32>) -> ()
     }, {

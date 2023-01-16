@@ -1,4 +1,4 @@
-// RUN: odml_to_stablehlo %s --allow-tf=false -o /tmp/temp.mlir; [ ! -f /tmp/temp.mlir ]
+// RUN: odml_to_stablehlo %s --allow-tf=false -o /tmp/temp.mlir; [ -f /tmp/temp.mlir ]; [ -f /tmp/debug_stablehlo.mlir ]
 // RUN: odml_to_stablehlo %s --allow-tf=true -o /tmp/temp2.mlir; [ -f /tmp/temp2.mlir ]
 
 module attributes {tf.versions = {bad_consumers = [], min_consumer = 12 : i32, producer = 975 : i32}, tf_saved_model.semantics}  {

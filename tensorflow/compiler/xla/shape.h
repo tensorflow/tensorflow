@@ -172,7 +172,7 @@ class Shape {
   void clear_dynamic_dimensions() {
     if (!IsTuple()) {
       if (is_dynamic()) {
-        mutable_layout()->set_dynamic_shape_metadata_prefix_in_bytes(0);
+        mutable_layout()->set_dynamic_shape_metadata_prefix_bytes(0);
       }
       for (int64_t i = 0; i < dynamic_dimensions_.size(); ++i) {
         dynamic_dimensions_[i] = false;

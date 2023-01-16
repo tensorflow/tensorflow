@@ -73,14 +73,8 @@ message Metrics {
   //  - it does not reveal the peak core FLOPS of the hardware
   double flops = 2;
 
-  // The memory bandwidth used to load operands, as a fraction of
-  // thereotical memory bandwidth on the specific hardware.
-
-  // TODO: remove the next 2 and use the repeated array below.
-  // This is aggregated utilization across on-chip and off-chip memory.
-  double memory_bandwidth_util = 3;
-  // This is just off-chip hbm memory bw utilization.
-  double hbm_bandwidth_util = 4;
+  reserved 3;
+  reserved 4;
 
   // The memory bandwidth used to load operands, as a fraction of
   // thereotical memory bandwidth on the specific hardware.

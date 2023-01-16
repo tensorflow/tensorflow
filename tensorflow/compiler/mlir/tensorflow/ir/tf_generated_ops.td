@@ -10741,6 +10741,18 @@ def TF_OptionalNoneOp : TF_Op<"OptionalNone", [Pure]> {
   );
 }
 
+def TF_OutfeedEnqueueOp : TF_Op<"OutfeedEnqueue", []> {
+  let summary = "Enqueue a Tensor on the computation outfeed.";
+
+  let arguments = (ins
+    Arg<TF_Tensor, [{A tensor that will be inserted into the outfeed queue.}]>:$input
+  );
+
+  let results = (outs);
+
+  TF_DerivedOperandTypeAttr dtype = TF_DerivedOperandTypeAttr<0>;
+}
+
 def TF_OutfeedEnqueueTupleOp : TF_Op<"OutfeedEnqueueTuple", []> {
   let summary = "Enqueue multiple Tensor values on the computation outfeed.";
 
@@ -21716,6 +21728,63 @@ Sorts a tensor. Currently only sorts in ascending order are supported.
 
   let results = (outs
     Res<TF_Tensor, [{A `Tensor` of type T.}]>:$output
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
+def TF_XlaSpmdFullToShardShapeOp : TF_Op<"XlaSpmdFullToShardShape", [Pure]> {
+  let summary = [{
+An op used by XLA SPMD partitioner to switch from automatic partitioning to
+  }];
+
+  let description = [{
+manual partitioning. It annotates the input (full-shape, to be automatically
+partitioned) with the same sharding used by manual partitioning, and outputs a
+shard-shaped tensor to be consumed by later manually-partitioned ops. If the
+shape is not evenly partitionable, the padding region will be masked with 0s.
+The conversion can happen partially in subgroups, by specifying the dim
+attribute, where only that dim will be converted.
+  }];
+
+  let arguments = (ins
+    TF_Tensor:$input,
+
+    StrAttr:$manual_sharding,
+    DefaultValuedOptionalAttr<I64Attr, "-1">:$dim,
+    DefaultValuedOptionalAttr<I64ArrayAttr, "{}">:$unspecified_dims
+  );
+
+  let results = (outs
+    TF_Tensor:$output
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
+def TF_XlaSpmdShardToFullShapeOp : TF_Op<"XlaSpmdShardToFullShape", [Pure]> {
+  let summary = [{
+An op used by XLA SPMD partitioner to switch from manual partitioning to
+  }];
+
+  let description = [{
+automatic partitioning. It converts the shard-shaped, manually partitioned input
+into full-shaped tensor to be partitioned automatically with the same sharding
+used by manual partitioning. The conversion can happen partially in subgroups,
+by specifying the dim attribute, where only that dim will be converted.
+  }];
+
+  let arguments = (ins
+    TF_Tensor:$input,
+
+    StrAttr:$manual_sharding,
+    TF_ShapeAttr:$full_shape,
+    DefaultValuedOptionalAttr<I64Attr, "-1">:$dim,
+    DefaultValuedOptionalAttr<I64ArrayAttr, "{}">:$unspecified_dims
+  );
+
+  let results = (outs
+    TF_Tensor:$output
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;

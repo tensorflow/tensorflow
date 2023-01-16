@@ -475,6 +475,27 @@ tf_cuda_cc_test(
     ],
 )
 
+tf_cuda_cc_test(
+    name = "gpu_unary_ops_large_tensor_test",
+    size = "large",
+    srcs = ["gpu_unary_ops_large_tensor_test.cc"],
+    extra_copts = if_mlir_generated_experimental_kernels_enabled([
+        "-DMLIR_GENERATED_EXPERIMENTAL_KERNELS_ENABLED",
+    ]) + if_mlir_generated_gpu_kernels_enabled(
+        ["-DMLIR_GENERATED_GPU_KERNELS_ENABLED"],
+    ),
+    tags = tf_cuda_tests_tags() + [
+        "no_cuda_asan",  # TODO(b/171341759): re-enable.
+        "no_cuda",  # TODO(b/196608406): re-enable
+    ],
+    deps = [
+        ":base_ops_test",
+        ":base_unary_ops_test",
+        "//tensorflow/core/common_runtime:device",
+        "//tensorflow/core/common_runtime:device_factory",
+    ],
+)
+
 cc_library(
     name = "base_binary_ops_test",
     testonly = 1,
@@ -723,9 +744,6 @@ gpu_kernel_library(
         "f64",
     ],
     op = "atanh",
-    test_tags = [
-        "noasan",  # TODO(b/248071004): JIT-compiled code will not be instrumented.
-    ],
     tile_size = "256",
     types = [],
     unroll_factors = "4",

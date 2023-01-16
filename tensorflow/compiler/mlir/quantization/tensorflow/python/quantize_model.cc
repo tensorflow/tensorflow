@@ -85,11 +85,11 @@ struct ExportOptions {
   bool unfreeze_constants = false;
 
   // Path to the directory where checkpoint files are saved.
-  absl::string_view checkpoint_dir = "";
+  std::string checkpoint_dir = "";
 
   // Name used to identify the ModuleOp this is exporting. Only used for
   // debugging and does not modify the behavior of the export.
-  absl::string_view debug_name = "tf_quant";
+  std::string debug_name = "tf_quant";
 };
 
 // Add passes for transforming the MLIR module op so that it can be exported

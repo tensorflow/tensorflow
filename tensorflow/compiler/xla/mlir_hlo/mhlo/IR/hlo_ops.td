@@ -90,7 +90,7 @@ def MHLO_IotaOp : MHLO_Op<"iota", [Pure]> {
   }];
   let arguments = (ins I64Attr:$iota_dimension);
 
-  let results = (outs MHLO_IntFpOrComplexTensor:$output);
+  let results = (outs MHLO_StaticShapeIntFpOrComplexTensor:$output);
 
   // TODO(b/130357376): Iota has special conversion logic to HLO.
   let hasCustomHLOConverter = 1;
@@ -1012,7 +1012,7 @@ def MHLO_InfeedOp : MHLO_Op<"infeed", []> {
     DefaultValuedStrAttr<StrAttr, "">:$infeed_config,
     OptionalAttr<ArrayAttr>:$layout
   );
-  let results = (outs Variadic<MHLO_TensorOrToken>);
+  let results = (outs Variadic<MHLO_StaticShapeTensorOrToken>);
   let hasCustomHLOConverter = 1;
   let hasVerifier = 1;
 }
@@ -1088,7 +1088,7 @@ def MHLO_RecvOp : MHLO_Op<"recv", []> {
     DefaultValuedOptionalAttr<BoolAttr, "false">:$is_host_transfer
   );
 
-  let results = (outs Variadic<MHLO_TensorOrToken>);
+  let results = (outs Variadic<MHLO_StaticShapeTensorOrToken>);
   let hasCustomHLOConverter = 1;
   let hasVerifier = 1;
 }
@@ -1674,7 +1674,7 @@ def MHLO_DynamicSliceOp: MHLO_Op<"dynamic_slice",
 
 def MHLO_DynamicUpdateSliceOp: MHLO_Op<"dynamic_update_slice",
       [Pure, AllElementTypesMatch<["operand", "update", "result"]>,
-       AllShapesMatch<["operand", "result"]>, InferTensorType]> {
+       InferTensorType]> {
   let summary = "Dynamic Update Slice operator";
   let description = [{
     DynamicUpdateSlice generates a result which is the value of the input array
@@ -2003,6 +2003,8 @@ def MHLO_ClampOp : MHLO_ShapedInterfaceOp<"clamp", [Pure,
   );
   let results = (outs MHLO_Tensor:$result);
 
+  let hasFolder = 1;
+
   let assemblyFormat = [{
     $min `,` $operand `,` $max attr-dict
       `:` custom<SameOperandsAndResultType>(type($min), type($operand), type($max), type($result))
@@ -2110,7 +2112,7 @@ def MHLO_CopyOp: MHLO_Op<"copy", [Pure, HLO_CompatibleOperandsAndResultType]> {
   }];
   let arguments = (ins
       MHLO_TensorOrTokenOrTuple:$operand,
-      UnitAttr:$is_cross_program_prefetch
+      OptionalAttr<I32Attr>:$cross_program_prefetch_index
   );
   let results = (outs MHLO_TensorOrTokenOrTuple:$result);
   let hasCustomHLOConverter = 1;
@@ -3023,7 +3025,7 @@ def MHLO_RngBitGeneratorOp : MHLO_Op<"rng_bit_generator", [Pure]> {
 
   let results = (outs
       MHLO_IntOrFpTensor:$output_state,
-      MHLO_IntOrFpTensor:$output
+      MHLO_StaticShapeIntOrFpTensor:$output
       );
 
   let hasVerifier = 1;

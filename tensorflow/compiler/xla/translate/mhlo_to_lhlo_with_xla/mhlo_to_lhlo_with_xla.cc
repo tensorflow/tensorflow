@@ -151,7 +151,8 @@ tsl::Status OptimizeAndConvertHloToLmhlo(std::unique_ptr<HloModule> hlo_module,
   }
 
   tsl::StatusOr<std::unique_ptr<BufferAssignment>> assignment =
-      backend->compiler()->AssignBuffers(optimized_hlo_module->get());
+      backend->compiler()->AssignBuffers(optimized_hlo_module->get(),
+                                         backend->default_stream_executor());
   TF_RETURN_WITH_CONTEXT_IF_ERROR(assignment.status(),
                                   "running XLA buffer assigment");
 
@@ -305,8 +306,8 @@ tsl::StatusOr<mlir::Operation*> LhloDialectEmitter::CreateOpInFusion(
     std::vector<int64_t> dimensions(instr->dimensions().begin(),
                                     instr->dimensions().end());
     auto reduce_op = b.create<mhlo::ReduceOp>(
-        loc, llvm::makeArrayRef(loads).take_front(loads.size() / 2),
-        llvm::makeArrayRef(loads).drop_front(loads.size() / 2),
+        loc, llvm::ArrayRef(loads).take_front(loads.size() / 2),
+        llvm::ArrayRef(loads).drop_front(loads.size() / 2),
         GetI64DenseElementsAttr(dimensions));
 
     TF_RETURN_IF_ERROR(xla::HloFunctionImporter::ImportAsRegion(
@@ -1554,11 +1555,13 @@ tsl::Status LhloDialectEmitter::ImportAsLmhloRegion(
       [this, after] { builder_.restoreInsertionPoint(after); });
 
   builder_ = OpBuilder(region);
-  const xla::HloInstructionSequence* schedule =
-      assignment_.hlo_ordering().SequentialOrder(*computation);
-  if (!schedule)
+  xla::HloModule* hlo_module = computation->parent();
+  if (!hlo_module->has_schedule()) {
     return tsl::errors::Unimplemented(
         "Missing sequential order for the computation");
+  }
+  const xla::HloInstructionSequence* schedule =
+      &hlo_module->schedule().sequence(computation);
   TF_RETURN_IF_ERROR(
       computation->AcceptOrdered(this, schedule->instructions()));
   builder_.create<lmhlo::TerminatorOp>(builder_.getUnknownLoc());
@@ -1926,7 +1929,7 @@ tsl::Status LhloDialectEmitter::Initialize() {
                         builder_.getIndexAttr(alloc->parameter_number()));
       if (!alloc->param_shape_index().empty()) {
         arg_attr_list.set("lmhlo.param_shape_index",
-                          builder_.getI64TensorAttr(llvm::makeArrayRef(
+                          builder_.getI64TensorAttr(llvm::ArrayRef(
                               alloc->param_shape_index().begin(),
                               alloc->param_shape_index().end())));
       }
@@ -1949,7 +1952,7 @@ tsl::Status LhloDialectEmitter::Initialize() {
         continue;
       }
       arg_attr_list.set("lmhlo.output_index",
-                        builder_.getI64TensorAttr(llvm::makeArrayRef(
+                        builder_.getI64TensorAttr(llvm::ArrayRef(
                             shape_index.begin(), shape_index.end())));
       if (auto alias = computation_.parent()
                            ->input_output_alias_config()
@@ -2005,10 +2008,10 @@ tsl::Status HloToLhloModule(const BufferAssignment& assignment,
 
   const xla::HloInstructionSequence* schedule =
       assignment.hlo_ordering().SequentialOrder(*computation);
-  if (!schedule)
+  if (!schedule) {
     return tsl::errors::Unimplemented(
         "Missing sequential order for the computation");
-
+  }
   BaseScopedDiagnosticHandler status_handler(module.getContext());
 
   const std::vector<HloInstruction*>& ordering = schedule->instructions();

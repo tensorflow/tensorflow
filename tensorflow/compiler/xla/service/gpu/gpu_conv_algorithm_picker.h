@@ -17,6 +17,8 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_GPU_CONV_ALGORITHM_PICKER_H_
 
 #include <optional>
+#include <string>
+#include <variant>
 
 #include "absl/time/time.h"
 #include "tensorflow/compiler/xla/autotune_results.pb.h"
@@ -38,18 +40,38 @@ namespace gpu {
 
 // Modifies CustomCalls to cudnn convolutions, choosing the best algorithm for
 // each and adding explicit scratch space to the CustomCalls.
+//
+// It supports two modes: device and deviceless.
+// In device mode, we run autotuning on the device and store autotune results.
+//
+// In deviceless mode, we pass in some information related to the device and
+// use stored autotune results to rewrite convolutions. If the required autotune
+// result is not stored, then the performance of convolution will be suboptimal.
 class GpuConvAlgorithmPicker : public HloModulePass {
  public:
   static void ClearAutotuneResults();
   static Status WriteAutotuneResults(AutotuneResults* results);
   static Status LoadAutotuneResults(const AutotuneResults& results);
 
-  // If the `allocator` parameter is not null, we will use it to allocate temp
-  // memory while timing the various convolution algorithms.  If it's null,
-  // we'll use the default allocator on the StreamExecutor.
-  GpuConvAlgorithmPicker(se::StreamExecutor* stream_exec,
-                         se::DeviceMemoryAllocator* allocator)
-      : stream_exec_(stream_exec), allocator_(allocator) {}
+  struct DeviceConfig {
+    se::StreamExecutor* stream_exec;  // never null
+
+    // If the `allocator` parameter is not null, we will use it to allocate temp
+    // memory while timing the various convolution algorithms.  If it's null,
+    // we'll use the default allocator on the StreamExecutor.
+    se::DeviceMemoryAllocator* allocator;  // may be null
+  };
+
+  struct DevicelessConfig {
+    // Used as the key to search for autotune result for the device. Can be
+    // found by stream_exec->GetDeviceDescription()->model_str().
+    std::string device_description_str;
+  };
+
+  explicit GpuConvAlgorithmPicker(DeviceConfig device_config)
+      : config_(device_config) {}
+  explicit GpuConvAlgorithmPicker(DevicelessConfig deviceless_config)
+      : config_(deviceless_config) {}
 
   absl::string_view name() const override {
     return "gpu-conv-algorithm-picker";
@@ -92,8 +114,7 @@ class GpuConvAlgorithmPicker : public HloModulePass {
       const HloCustomCallInstruction* instr,
       se::DeviceMemoryAllocator* allocator, se::Stream* stream);
 
-  se::StreamExecutor* stream_exec_;       // never null
-  se::DeviceMemoryAllocator* allocator_;  // may be null
+  std::variant<DeviceConfig, DevicelessConfig> config_;
 };
 
 }  // namespace gpu

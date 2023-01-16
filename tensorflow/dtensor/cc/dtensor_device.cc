@@ -317,22 +317,14 @@ class DTensorDevice {
       TFE_Context* context, TF_Status* status) const;
 
  private:
-  // If the `operation_name` of an op indicates a custom DTensor op (e.g.
-  // CopyToMesh), then separately handle those custom ops instead of running
-  // default DTensor graph compilation.
+  // If the `operation_name` of an op indicates a custom DTensor op then
+  // separately handle those custom ops instead of running default DTensor graph
+  // compilation.
   void MaybeHandleDTensorCustomOps(
       const char* operation_name, const int num_inputs,
       const TFE_OpAttrs* attributes, TFE_Context* context,
       TFE_TensorHandle** inputs, int* num_outputs, TFE_TensorHandle** outputs,
       bool* is_custom_dtensor_op, TF_Status* status);
-
-  // Copies non-dtensor eager tensor or DTensor to a mesh specified by
-  // `attributes`.
-  // Currently, only copy to replicated layout on target mesh is supported.
-  void CopyToMesh(TFE_Context* context, int num_inputs,
-                  TFE_TensorHandle** inputs, const TFE_OpAttrs* attributes,
-                  TFE_TensorHandle** outputs, int* num_outputs,
-                  TF_Status* status);
 
   // Update output layouts for eager ops based on same shape policy.
   Status UpdateOutputLayoutsWithSameShapePolicy(
@@ -429,7 +421,7 @@ class DTensorDevice {
   // set.
   const MeshWithParallelDevice* global_default_mesh_ = nullptr;
   // If the user has specified a default output layout.
-  absl::optional<Layout> default_layout_;
+  std::optional<Layout> default_layout_;
 
   // Determines whether tensors with a shape previously associated with only one
   // layout use that layout if nothing else can be inferred.
@@ -731,91 +723,8 @@ void DTensorDevice::MaybeHandleDTensorCustomOps(
     TFE_Execute(op.get(), outputs, num_outputs, status);
     return;
   }
-  if (operation_name == std::string("CopyToMesh")) {
-    CopyToMesh(context, num_inputs, inputs, attributes, outputs, num_outputs,
-               status);
-    return;
-  }
 
   *is_custom_dtensor_op = false;
-}
-
-void DTensorDevice::CopyToMesh(TFE_Context* context, int num_inputs,
-                               TFE_TensorHandle** inputs,
-                               const TFE_OpAttrs* attributes,
-                               TFE_TensorHandle** outputs, int* num_outputs,
-                               TF_Status* status) {
-  if (num_inputs != 1) {
-    RETURN_STATUS(status, TF_INVALID_ARGUMENT,
-                  "DTensor CopyToMesh requires exactly 1 input.");
-  }
-  if (*num_outputs < 1) {
-    RETURN_STATUS(status, TF_INTERNAL,
-                  "DTensor CopyToMesh must have output buffer to allocate at "
-                  "least 1 output.");
-  }
-
-  // Assign layout.
-  StatusOr<Layout> target_layout_or =
-      FetchLayoutFromAttributes(attributes, kQualifiedLayoutAttr);
-  if (!target_layout_or.ok()) {
-    RETURN_STATUS(status, TF_INVALID_ARGUMENT,
-                  "DTensor CopyToMesh requires valid layout attribute for "
-                  "destination DTensor.");
-  }
-
-  const Layout target_layout = *target_layout_or;
-  const Mesh& target_mesh = target_layout.mesh();
-
-  // TODO(b/193443769): Support sharded layout for eager copy to mesh.
-  if (!target_layout.IsFullyReplicated()) {
-    RETURN_STATUS(status, TF_UNIMPLEMENTED,
-                  "Target layout of DTensor CopyToMesh must be replicated. "
-                  "Consider changing the target layout to replicated layout or "
-                  "file a bug to the DTensor team (b/193443769).");
-  }
-
-  TFE_TensorHandle* input_tensor = inputs[0];
-
-  // Check that if input tensor is DTensor, then input layout of the DTensor
-  // must be replicated.
-  const char* input_device = TFE_TensorHandleDeviceName(input_tensor, status);
-  if (TF_GetCode(status) != TF_OK) return;
-
-  if (name_ == input_device) {
-    // Handle input which is on DTensor device already.
-    TensorWithLayout* t = reinterpret_cast<TensorWithLayout*>(
-        TFE_TensorHandleDevicePointer(input_tensor, status));
-    if (TF_GetCode(status) != TF_OK) return;
-
-    if (!t->layout().IsFullyReplicated())
-      RETURN_STATUS(status, TF_INVALID_ARGUMENT,
-                    "Input tensor to CopyToMesh must be replicated DTensor or "
-                    "normal eager Tensor.");
-
-    // If input to CopyToMesh is a DTensor, we use the first local tensor as
-    // input tensor handle to invoke copy.
-    input_tensor = t->get_tensor(0);
-  }
-
-  auto it = mesh_to_device_map_.find(target_mesh);
-  if (it == mesh_to_device_map_.end()) {
-    RETURN_STATUS(
-        status, TF_INTERNAL,
-        "DTensor CopyToMesh target mesh is not registered. Meshes should be "
-        "automatically registered. Please file a bug. (component id: 833864)");
-  }
-
-  const MeshWithParallelDevice* target_parallel_mesh = it->second.get();
-
-  // Broadcast non-dtensor value to dtensor.
-  std::unique_ptr<TensorWithLayout> wrapper = TensorWithLayout::Broadcast(
-      context, input_tensor, *target_parallel_mesh, name_, status);
-  if (TF_GetCode(status) != TF_OK) return;
-
-  RecordInShapeLayoutCache(*wrapper);
-  *num_outputs = 1;
-  *outputs = MakeLayoutTensorHandle(context, std::move(wrapper), status);
 }
 
 namespace {
@@ -1179,8 +1088,10 @@ Status DTensorDevice::UpdateOutputLayoutsWithSameShapePolicy(
     //   is trivial. On the other hande, downstream system "thinks' Variable has
     //   shape same as the pointing value. So, providing a layout based on
     //   VarHandleOp (scalar) might confuse the downstream system.
+    // - CopyToMesh has a user-supplied layout that is propagated downstream.
     if (op_name != std::string("Relayout") &&
-        op_name != std::string("VarHandleOp")) {
+        op_name != std::string("VarHandleOp") &&
+        op_name != std::string("CopyToMesh")) {
       // TODO(b/162009702): Support matching between partially-known shapes.
       if (global_output_shape.IsFullyDefined()) {
         gtl::InlinedVector<int64, 4> shape_vector(
@@ -1358,14 +1269,14 @@ Status AddExecutionFunctionDefsToFunctionDefLibrary(
         absl::StrCat(func.name(), "_", unique_function_number.fetch_add(1));
     auto control_ret_node_names =
         [&control_ret_names, &selected_call_node_name](
-            const Node* node) -> absl::optional<std::string> {
+            const Node* node) -> std::optional<std::string> {
       // Add the stateful partitioned call node as a control return as we need
       // to process any control deps inside the inner function.
       if (control_ret_names.contains(node->name()) ||
           node->name() == selected_call_node_name) {
         return node->name();
       }
-      return absl::nullopt;
+      return std::nullopt;
     };
 
     tensorflow::FunctionDef to_run;
@@ -1476,8 +1387,6 @@ StatusOr<DTensorDevice::LoweredModuleBundle> DTensorDevice::LowerToSPMDModule(
         pass_runner_.RunOnGraph(device_set, doperation.is_func(), flib_def,
                                 *result.graph, cache_key));
   }
-  VLOG(4) << tensorflow::DumpGraphToFile("after_mlir_spmd_lowering",
-                                         *result.graph, flib_def);
 
   cached_mlir_module = module_manager_.AddCachedExecutable(
       doperation, cache_key, mlir_module_ref.release());
@@ -2089,7 +1998,9 @@ void DTensorDevice::Execute(const TFE_Op* original_op, int* num_outputs,
     TF_DataType dtype = TFE_TensorHandleDataType(input);
     const bool small_int_tensor = num_elements < kSmallTensorThreshold &&
                                   (dtype == TF_INT32 || dtype == TF_INT64);
-    if (!(num_dims == 0 || dtype == TF_STRING || small_int_tensor)) {
+    // Only allow large constant autobroadcast for CopyToMesh op.
+    if (operation_name != std::string("CopyToMesh") &&
+        !(num_dims == 0 || dtype == TF_STRING || small_int_tensor)) {
       std::vector<int64_t> tensor_shape(TensorShapeAsVector(input, status));
       if (TF_GetCode(status) != TF_OK) return;
       RETURN_STATUS(

@@ -16,7 +16,9 @@ limitations under the License.
 #include "tensorflow/cc/saved_model/fingerprinting.h"
 
 #include <algorithm>
+#include <cstdint>
 #include <string>
+#include <unordered_map>
 
 #include "absl/container/btree_map.h"
 #include "absl/strings/strip.h"
@@ -164,6 +166,20 @@ StatusOr<FingerprintDef> ReadSavedModelFingerprint(
     return result;
   }
   return found_pb;
+}
+
+std::unordered_map<std::string, uint64_t> MakeFingerprintMap(
+    const FingerprintDef& fingerprint) {
+  std::unordered_map<std::string, uint64_t> fingerprint_map;
+  fingerprint_map["saved_model_checksum"] = fingerprint.saved_model_checksum();
+  fingerprint_map["graph_def_program_hash"] =
+      fingerprint.graph_def_program_hash();
+  fingerprint_map["signature_def_hash"] = fingerprint.signature_def_hash();
+  fingerprint_map["saved_object_graph_hash"] =
+      fingerprint.saved_object_graph_hash();
+  fingerprint_map["checkpoint_hash"] = fingerprint.checkpoint_hash();
+  fingerprint_map["version"] = fingerprint.version().producer();
+  return fingerprint_map;
 }
 
 }  // namespace tensorflow::saved_model::fingerprinting

@@ -135,6 +135,7 @@ xla_cc_test(
 xla_cc_test(
     name = "cpu_eigen_dot_operation_test",
     srcs = ["cpu_eigen_dot_operation_test.cc"],
+    tags = ["no_mac_arm64"],
     deps = [
         "//tensorflow/compiler/xla/hlo/ir:hlo",
         "//tensorflow/compiler/xla/service/cpu:cpu_compiler",

@@ -92,8 +92,6 @@ void printConvolutionDimensions(AsmPrinter &p, Operation *,
 ParseResult parseConvolutionDimensions(AsmParser &parser,
                                        ConvDimensionNumbersAttr &dnums);
 
-FailureOr<SmallVector<int64_t>> parseIntArray(AsmParser &parser);
-void printIntArray(AsmPrinter &printer, ArrayRef<int64_t> ints);
 }  // end namespace mhlo
 }  // end namespace mlir
 

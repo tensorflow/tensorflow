@@ -38,11 +38,11 @@ class DeviceIdUtil {
  public:
   // Convenient methods for getting the associated executor given a TfDeviceId
   // or PlatformDeviceId.
-  static port::StatusOr<StreamExecutor*> ExecutorForPlatformDeviceId(
+  static tsl::StatusOr<StreamExecutor*> ExecutorForPlatformDeviceId(
       Platform* device_manager, tsl::PlatformDeviceId platform_device_id) {
     return device_manager->ExecutorForDevice(platform_device_id.value());
   }
-  static port::StatusOr<StreamExecutor*> ExecutorForTfDeviceId(
+  static tsl::StatusOr<StreamExecutor*> ExecutorForTfDeviceId(
       const tsl::DeviceType& type, Platform* device_manager,
       tsl::TfDeviceId tf_device_id) {
     tsl::PlatformDeviceId platform_device_id;

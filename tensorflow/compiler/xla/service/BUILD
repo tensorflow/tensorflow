@@ -69,6 +69,12 @@ tf_proto_library(
     cc_api_version = 2,
 )
 
+xla_py_proto_library(
+    name = "metrics_pb2",
+    api_version = 2,
+    deps = [":metrics_proto"],
+)
+
 # Filegroup used to collect source files for dependency checking.
 filegroup(
     name = "c_srcs",
@@ -3979,6 +3985,7 @@ cc_library(
 xla_cc_test(
     name = "hlo_execution_profile_test",
     srcs = ["hlo_execution_profile_test.cc"],
+    tags = ["no_mac_arm64"],
     deps = [
         ":cpu_plugin",
         ":hlo_cost_analysis",
@@ -5622,6 +5629,7 @@ cc_library(
     hdrs = ["hlo_runner_pjrt.h"],
     deps = [
         ":executable",
+        ":hlo_module_util",
         ":hlo_runner_interface",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla/client:xla_computation",
@@ -5629,8 +5637,6 @@ cc_library(
         "//tensorflow/compiler/xla/pjrt:pjrt_client",
         "//tensorflow/compiler/xla/pjrt:pjrt_executable",
         "//tensorflow/compiler/xla/pjrt:pjrt_future",
-        "//tensorflow/compiler/xla/service:hlo_module_util",
-        "//tensorflow/compiler/xla/tests:pjrt_client_registry",
         "//tensorflow/tsl/platform:errors",
         "//tensorflow/tsl/platform:statusor",
     ],
@@ -6745,9 +6751,13 @@ cc_library(
     srcs = ["compilation_environments.cc"],
     hdrs = ["compilation_environments.h"],
     deps = [
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla:xla_proto_cc",
         "//tensorflow/tsl/platform:casts",
+        "//tensorflow/tsl/platform:errors",
         "//tensorflow/tsl/platform:logging",  # fixdeps: keep
         "//tensorflow/tsl/platform:protobuf",
+        "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/memory",
@@ -6776,8 +6786,11 @@ xla_cc_test(
     deps = [
         ":compilation_environments",
         ":test_compilation_environment_proto_cc",
+        "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:test",
+        "//tensorflow/compiler/xla:xla_proto_cc",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+        "//tensorflow/tsl/lib/core:status_test_util",
         "//tensorflow/tsl/platform:casts",
         "//tensorflow/tsl/platform:protobuf",
     ],
@@ -7094,7 +7107,7 @@ xla_cc_test(
         "//tensorflow/compiler/xla/service/cpu:cpu_compiler",
         "//tensorflow/tsl/lib/core:status_test_util",
         "//tensorflow/tsl/platform:env",
-        "//tensorflow/tsl/platform:resource_loader",
+        "//tensorflow/tsl/platform:path",
         "//tensorflow/tsl/platform:statusor",
         "//tensorflow/tsl/platform:test",
         "@com_google_googletest//:gtest_main",
@@ -7105,7 +7118,6 @@ xla_cc_test(
     name = "xla_aot_compile_stablehlo_cpu_test",
     srcs = ["xla_aot_compile_stablehlo_cpu_test.cc"],
     data = [":xla_aot_compile_stablehlo_test_cpu_executable"],
-    tags = ["no_oss"],
     deps = [
         ":cpu_plugin",
         ":platform_util",
@@ -7117,7 +7129,7 @@ xla_cc_test(
         "//tensorflow/compiler/xla/tests:literal_test_util",
         "//tensorflow/tsl/lib/core:status_test_util",
         "//tensorflow/tsl/platform:env",
-        "//tensorflow/tsl/platform:resource_loader",
+        "//tensorflow/tsl/platform:path",
         "//tensorflow/tsl/platform:statusor",
         "//tensorflow/tsl/platform:test",
         "@com_google_googletest//:gtest_main",
@@ -7154,7 +7166,7 @@ xla_cc_test(
         "//tensorflow/compiler/xla/service/cpu:cpu_compiler",
         "//tensorflow/tsl/lib/core:status_test_util",
         "//tensorflow/tsl/platform:env",
-        "//tensorflow/tsl/platform:resource_loader",
+        "//tensorflow/tsl/platform:path",
         "//tensorflow/tsl/platform:statusor",
         "//tensorflow/tsl/platform:test",
     ]),

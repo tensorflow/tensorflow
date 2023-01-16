@@ -87,7 +87,8 @@ std::unique_ptr<OperationPass<func::FuncOp>>
 createLegalizeHloShapeOpsToStandardPass();
 
 /// Lowers from MHLO dialect to THLO dialect.
-std::unique_ptr<OperationPass<func::FuncOp>> createLegalizeMHLOToTHLOPass();
+std::unique_ptr<OperationPass<func::FuncOp>> createLegalizeMHLOToTHLOPass(
+    bool enableExperimentalOps = false);
 
 /// Lowers from HLO dialect to Linalg dialect.
 std::unique_ptr<OperationPass<func::FuncOp>> createLegalizeHloToLinalgPass(

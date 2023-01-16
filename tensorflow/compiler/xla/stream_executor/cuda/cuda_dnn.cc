@@ -309,7 +309,7 @@ cudnnConvolutionBwdFilterAlgo_t ToConvBackwardFilterAlgo(
   }
 }
 
-port::StatusOr<int> GetCudnnProperty(libraryPropertyType type) {
+tsl::StatusOr<int> GetCudnnProperty(libraryPropertyType type) {
   int value;
   RETURN_IF_CUDNN_ERROR(cudnnGetProperty(type, &value));
   return value;
@@ -453,7 +453,7 @@ void CudnnSupport::NotifyStreamDestroyed(Stream* stream) /* override */ {
   cudnn_->NotifyStreamDestroyed(stream);
 }
 
-port::StatusOr<perftools::gputools::dnn::VersionInfo>
+tsl::StatusOr<perftools::gputools::dnn::VersionInfo>
 CudnnSupport::GetVersion() {
   CudnnVersion version;
   TF_RETURN_IF_ERROR(GetLoadedCudnnVersion(&version));
@@ -601,12 +601,12 @@ CtcLossDescriptor CreateCtcLossDescriptor() {
 }
 #endif
 
-port::StatusOr<PersistentRnnPlan> CreatePersistentRnnPlan(
+tsl::StatusOr<PersistentRnnPlan> CreatePersistentRnnPlan(
     cudnnRNNDescriptor_t rnn_desc, int batch_size, cudnnDataType_t data_type) {
   cudnnPersistentRNNPlan_t result;
   RETURN_IF_CUDNN_ERROR(
       cudnnCreatePersistentRNNPlan(rnn_desc, batch_size, data_type, &result));
-  return port::StatusOr<PersistentRnnPlan>(PersistentRnnPlan(result));
+  return tsl::StatusOr<PersistentRnnPlan>(PersistentRnnPlan(result));
 }
 
 // Turns a BatchDescriptor structure into a cudnn tensor handle within a
@@ -1171,7 +1171,7 @@ class CudnnDropoutDescriptor {
  public:
   CudnnDropoutDescriptor(CudnnDropoutDescriptor&&) = default;
 
-  static port::StatusOr<CudnnDropoutDescriptor> Create(
+  static tsl::StatusOr<CudnnDropoutDescriptor> Create(
       const CudnnHandle& cudnn, float dropout, uint64_t seed,
       ScratchAllocator* state_allocator) {
     DropoutDescriptor handle = CreateDropoutDescriptor();
@@ -1217,7 +1217,7 @@ class CudnnRnnParamsDescriptor {
  public:
   CudnnRnnParamsDescriptor(CudnnRnnParamsDescriptor&&) = default;
 
-  static port::StatusOr<CudnnRnnParamsDescriptor> Create(
+  static tsl::StatusOr<CudnnRnnParamsDescriptor> Create(
       const CudnnHandle& cudnn, int input_size, cudnnDataType_t data_type,
       cudnnRNNDescriptor_t rnn_desc, cudnnRNNMode_t rnn_mode,
       cudnnDirectionMode_t direction_mode, int num_layers);
@@ -1268,7 +1268,7 @@ class CudnnRnnDescriptor : public dnn::RnnDescriptor {
  public:
   CudnnRnnDescriptor(CudnnRnnDescriptor&& other) = default;
 
-  static port::StatusOr<CudnnRnnDescriptor> Create(
+  static tsl::StatusOr<CudnnRnnDescriptor> Create(
       const CudnnHandle& cudnn, int num_layers, int hidden_size, int input_size,
       int cell_size, int batch_size, cudnnRNNInputMode_t input_mode,
       cudnnDirectionMode_t direction_mode, cudnnRNNMode_t rnn_mode,
@@ -1353,14 +1353,14 @@ class CudnnRnnDescriptor : public dnn::RnnDescriptor {
     }
 #endif
 
-    port::StatusOr<PersistentRnnPlan> rnn_plan_wrapper;
+    tsl::StatusOr<PersistentRnnPlan> rnn_plan_wrapper;
     PersistentRnnPlan rnn_plan;
     if (rnn_algo == CUDNN_RNN_ALGO_PERSIST_DYNAMIC) {
       CHECK_GE(batch_size, 0);
       rnn_plan_wrapper =
           CreatePersistentRnnPlan(rnn_desc.get(), batch_size, data_type);
       if (!rnn_plan_wrapper.ok()) {
-        return port::StatusOr<CudnnRnnDescriptor>(rnn_plan_wrapper.status());
+        return tsl::StatusOr<CudnnRnnDescriptor>(rnn_plan_wrapper.status());
       } else {
         rnn_plan = std::move(rnn_plan_wrapper).value();
         RETURN_IF_CUDNN_ERROR(
@@ -1538,7 +1538,7 @@ tsl::Status CheckAndFetchProjectionWeights(
   return ::tsl::OkStatus();
 }
 
-port::StatusOr<CudnnRnnParamsDescriptor> CudnnRnnParamsDescriptor::Create(
+tsl::StatusOr<CudnnRnnParamsDescriptor> CudnnRnnParamsDescriptor::Create(
     const CudnnHandle& cudnn, int input_size, cudnnDataType_t data_type,
     cudnnRNNDescriptor_t rnn_desc, cudnnRNNMode_t rnn_mode,
     cudnnDirectionMode_t direction_mode, int num_layers) {
@@ -1657,7 +1657,7 @@ class CudnnRnnSequenceTensorDescriptor
   CudnnRnnSequenceTensorDescriptor(CudnnRnnSequenceTensorDescriptor&&) =
       default;
 
-  static port::StatusOr<CudnnRnnSequenceTensorDescriptor> Create(
+  static tsl::StatusOr<CudnnRnnSequenceTensorDescriptor> Create(
       GpuExecutor* parent, int max_seq_length, int batch_size, int data_size,
       cudnnDataType_t data_type) {
     if (max_seq_length <= 0) {
@@ -1675,7 +1675,7 @@ class CudnnRnnSequenceTensorDescriptor
                                             std::move(tensor_desc));
   }
 
-  static port::StatusOr<CudnnRnnSequenceTensorDescriptor> Create(
+  static tsl::StatusOr<CudnnRnnSequenceTensorDescriptor> Create(
       GpuExecutor* parent, int max_seq_length, int batch_size, int data_size,
       const absl::Span<const int>& seq_lengths, bool time_major,
       cudnnDataType_t data_type) {
@@ -1777,7 +1777,7 @@ struct RnnModelDims {
 };
 
 template <class T>
-port::StatusOr<RnnModelDims> ExtractAndCheckRnnForward(
+tsl::StatusOr<RnnModelDims> ExtractAndCheckRnnForward(
     const CudnnRnnDescriptor& rnn_desc,
     const CudnnRnnSequenceTensorDescriptor& input_desc,
     const DeviceMemory<T>& input_data,
@@ -1858,7 +1858,7 @@ tsl::Status CheckRNNParameterSize(
   return ::tsl::OkStatus();
 }
 
-port::StatusOr<DeviceMemory<uint8_t>> CreateRnnWorkspace(
+tsl::StatusOr<DeviceMemory<uint8_t>> CreateRnnWorkspace(
     Stream* stream, const CudnnHandle& cudnn,
     const CudnnRnnDescriptor& rnn_desc,
     const CudnnRnnSequenceTensorDescriptor& input_desc,
@@ -1877,7 +1877,7 @@ port::StatusOr<DeviceMemory<uint8_t>> CreateRnnWorkspace(
 }
 
 #if CUDNN_VERSION >= 7402
-port::StatusOr<DeviceMemory<uint8_t>> CreateBatchNormForwardWorkspace(
+tsl::StatusOr<DeviceMemory<uint8_t>> CreateBatchNormForwardWorkspace(
     Stream* stream, const CudnnHandle& cudnn, const cudnnBatchNormMode_t& mode,
     const cudnnBatchNormOps_t& bn_ops,
     const cudnnActivationDescriptor_t& activation_desc,
@@ -1901,7 +1901,7 @@ port::StatusOr<DeviceMemory<uint8_t>> CreateBatchNormForwardWorkspace(
   return workspace_allocator->AllocateBytes(workspace_size_in_bytes);
 }
 
-port::StatusOr<DeviceMemory<uint8_t>> CreateBatchNormBackwardWorkspace(
+tsl::StatusOr<DeviceMemory<uint8_t>> CreateBatchNormBackwardWorkspace(
     Stream* stream, const CudnnHandle& cudnn, const cudnnBatchNormMode_t& mode,
     const cudnnBatchNormOps_t& bn_ops,
     const cudnnActivationDescriptor_t& activation_desc,
@@ -2415,7 +2415,7 @@ tsl::Status CudnnSupport::DoCtcLossImpl(
   return ::tsl::OkStatus();
 }
 
-port::StatusOr<std::unique_ptr<dnn::RnnDescriptor>>
+tsl::StatusOr<std::unique_ptr<dnn::RnnDescriptor>>
 CudnnSupport::createRnnDescriptor(
     int num_layers, int hidden_size, int input_size, int cell_size,
     int batch_size, dnn::RnnInputMode input_mode,
@@ -2438,7 +2438,7 @@ CudnnSupport::createRnnDescriptor(
       new CudnnRnnDescriptor(std::move(rnn_desc)));
 }
 
-port::StatusOr<std::unique_ptr<dnn::RnnSequenceTensorDescriptor>>
+tsl::StatusOr<std::unique_ptr<dnn::RnnSequenceTensorDescriptor>>
 CudnnSupport::createRnnSequenceTensorDescriptor(int max_seq_length,
                                                 int batch_size, int data_size,
                                                 dnn::DataType data_type) {
@@ -2450,7 +2450,7 @@ CudnnSupport::createRnnSequenceTensorDescriptor(int max_seq_length,
       new CudnnRnnSequenceTensorDescriptor(std::move(descriptor)));
 }
 
-port::StatusOr<std::unique_ptr<dnn::RnnSequenceTensorDescriptor>>
+tsl::StatusOr<std::unique_ptr<dnn::RnnSequenceTensorDescriptor>>
 CudnnSupport::createRnnSequenceTensorDescriptor(
     int max_seq_length, int batch_size, int data_size,
     const absl::Span<const int>& seq_lengths, bool time_major,
@@ -2463,7 +2463,7 @@ CudnnSupport::createRnnSequenceTensorDescriptor(
       new CudnnRnnSequenceTensorDescriptor(std::move(descriptor)));
 }
 
-port::StatusOr<std::unique_ptr<dnn::RnnStateTensorDescriptor>>
+tsl::StatusOr<std::unique_ptr<dnn::RnnStateTensorDescriptor>>
 CudnnSupport::createRnnStateTensorDescriptor(int num_layer, int batch_size,
                                              int data_size,
                                              dnn::DataType data_type) {
@@ -2766,7 +2766,7 @@ namespace {
 // TODO(csigg): Merge a lot of duplicate code below for forward, backward data,
 // and backward filter.
 
-port::StatusOr<cudnnConvolutionFwdAlgo_t> GetCudnnConvolutionForwardAlgo(
+tsl::StatusOr<cudnnConvolutionFwdAlgo_t> GetCudnnConvolutionForwardAlgo(
     const CudnnHandle& cudnn, const CudnnTensorDescriptor& input_nd,
     const CudnnFilterDescriptor& filter, const CudnnConvolutionDescriptor& conv,
     const CudnnTensorDescriptor& output_nd, bool specify_workspace_limit,
@@ -2804,7 +2804,7 @@ port::StatusOr<cudnnConvolutionFwdAlgo_t> GetCudnnConvolutionForwardAlgo(
 #endif
 }
 
-port::StatusOr<cudnnConvolutionBwdDataAlgo_t>
+tsl::StatusOr<cudnnConvolutionBwdDataAlgo_t>
 GetCudnnConvolutionBackwardDataAlgo(const CudnnHandle& cudnn,
                                     const CudnnTensorDescriptor& input_nd,
                                     const CudnnFilterDescriptor& filter,
@@ -2847,7 +2847,7 @@ GetCudnnConvolutionBackwardDataAlgo(const CudnnHandle& cudnn,
 #endif
 }
 
-port::StatusOr<cudnnConvolutionBwdFilterAlgo_t>
+tsl::StatusOr<cudnnConvolutionBwdFilterAlgo_t>
 GetCudnnConvolutionBackwardFilterAlgo(const CudnnHandle& cudnn,
                                       const CudnnTensorDescriptor& input_nd,
                                       const CudnnFilterDescriptor& filter,
@@ -2889,7 +2889,7 @@ GetCudnnConvolutionBackwardFilterAlgo(const CudnnHandle& cudnn,
 #endif
 }
 
-port::StatusOr<DeviceMemory<uint8_t>> AllocateCudnnConvolutionForwardWorkspace(
+tsl::StatusOr<DeviceMemory<uint8_t>> AllocateCudnnConvolutionForwardWorkspace(
     Stream* stream, const CudnnHandle& cudnn,
     const CudnnTensorDescriptor& input_nd, const CudnnFilterDescriptor& filter,
     const CudnnConvolutionDescriptor& conv,
@@ -2937,7 +2937,7 @@ port::StatusOr<DeviceMemory<uint8_t>> AllocateCudnnConvolutionForwardWorkspace(
   return scratch_allocator->AllocateBytes(size_in_bytes);
 }
 
-port::StatusOr<DeviceMemory<uint8_t>>
+tsl::StatusOr<DeviceMemory<uint8_t>>
 AllocateCudnnConvolutionBackwardDataWorkspace(
     Stream* stream, const CudnnHandle& cudnn,
     const CudnnTensorDescriptor& input_nd, const CudnnFilterDescriptor& filter,
@@ -2987,7 +2987,7 @@ AllocateCudnnConvolutionBackwardDataWorkspace(
   return scratch_allocator->AllocateBytes(size_in_bytes);
 }
 
-port::StatusOr<DeviceMemory<uint8_t>>
+tsl::StatusOr<DeviceMemory<uint8_t>>
 AllocateCudnnConvolutionBackwardFilterWorkspace(
     Stream* stream, const CudnnHandle& cudnn,
     const CudnnTensorDescriptor& input_nd, const CudnnFilterDescriptor& filter,
@@ -3037,8 +3037,8 @@ AllocateCudnnConvolutionBackwardFilterWorkspace(
   return scratch_allocator->AllocateBytes(size_in_bytes);
 }
 
-port::StatusOr<bool> UseTensorOps(Stream* stream, dnn::DataType type,
-                                  std::optional<dnn::AlgorithmDesc> desc) {
+tsl::StatusOr<bool> UseTensorOps(Stream* stream, dnn::DataType type,
+                                 std::optional<dnn::AlgorithmDesc> desc) {
   bool use_tensor_ops;
   if (desc.has_value()) {
     use_tensor_ops = desc->tensor_ops_enabled();
@@ -3055,7 +3055,7 @@ port::StatusOr<bool> UseTensorOps(Stream* stream, dnn::DataType type,
 cudnnDataType_t GetRnnComputeType(dnn::DataType data_type);
 dnn::DataType GetConvAccumulatorType(dnn::DataType data_type);
 
-port::StatusOr<dnn::AlgorithmDesc> GetCudnnConvolutionForwardAlgorithm(
+tsl::StatusOr<dnn::AlgorithmDesc> GetCudnnConvolutionForwardAlgorithm(
     Stream* stream, const CudnnHandle& cudnn,
     const dnn::AlgorithmConfig& algorithm_config,
     const CudnnTensorDescriptor& input_nd, const CudnnFilterDescriptor& filter,
@@ -3118,7 +3118,7 @@ port::StatusOr<dnn::AlgorithmDesc> GetCudnnConvolutionForwardAlgorithm(
   return *algo_desc;
 }
 
-port::StatusOr<dnn::AlgorithmDesc> GetCudnnConvolutionBackwardDataAlgorithm(
+tsl::StatusOr<dnn::AlgorithmDesc> GetCudnnConvolutionBackwardDataAlgorithm(
     Stream* stream, const CudnnHandle& cudnn,
     const dnn::AlgorithmConfig& algorithm_config,
     const CudnnTensorDescriptor& input_nd, const CudnnFilterDescriptor& filter,
@@ -3179,7 +3179,7 @@ port::StatusOr<dnn::AlgorithmDesc> GetCudnnConvolutionBackwardDataAlgorithm(
   return *algo_desc;
 }
 
-port::StatusOr<dnn::AlgorithmDesc> GetCudnnConvolutionBackwardFilterAlgorithm(
+tsl::StatusOr<dnn::AlgorithmDesc> GetCudnnConvolutionBackwardFilterAlgorithm(
     Stream* stream, const CudnnHandle& cudnn,
     const dnn::AlgorithmConfig& algorithm_config,
     const CudnnTensorDescriptor& input_nd, const CudnnFilterDescriptor& filter,
@@ -3211,7 +3211,7 @@ port::StatusOr<dnn::AlgorithmDesc> GetCudnnConvolutionBackwardFilterAlgorithm(
     algo_desc = dnn::AlgorithmDesc(algo, use_tensor_ops);
   }
 
-  port::StatusOr<DeviceMemory<uint8_t>> scratch_or =
+  tsl::StatusOr<DeviceMemory<uint8_t>> scratch_or =
       AllocateCudnnConvolutionBackwardFilterWorkspace(
           stream, cudnn, input_nd, filter, conv, output_nd, *algo_desc,
           scratch_allocator);
@@ -3482,7 +3482,7 @@ std::tuple<int, int> GetTensorVectorSizeAndDim(
   return std::make_tuple(vector_size, vector_dim);
 }
 
-port::StatusOr<cudnn_frontend::Tensor> CreateCudnnTensor(
+tsl::StatusOr<cudnn_frontend::Tensor> CreateCudnnTensor(
     absl::Span<const int64_t> dims, absl::Span<const int64_t> strides,
     int64_t uid, dnn::DataType dtype, int64_t vec_count, int64_t vec_dim,
     bool is_virtual = false) {
@@ -3499,7 +3499,7 @@ port::StatusOr<cudnn_frontend::Tensor> CreateCudnnTensor(
   return tensor;
 }
 
-port::StatusOr<std::unique_ptr<cudnn_frontend::OperationGraph>>
+tsl::StatusOr<std::unique_ptr<cudnn_frontend::OperationGraph>>
 GetCudnnOperationGraph(dnn::ConvolutionKind kind, dnn::DataType input_type,
                        dnn::DataType output_type,
                        const dnn::BatchDescriptor& input_descriptor,
@@ -3623,7 +3623,7 @@ bool SideInputNeeded(dnn::ActivationMode activation_mode, double conv_scale,
   return check_activation || check_scale;
 }
 
-port::StatusOr<std::unique_ptr<cudnn_frontend::OperationGraph>>
+tsl::StatusOr<std::unique_ptr<cudnn_frontend::OperationGraph>>
 GetCudnnFusedOperationGraph(
     dnn::ConvolutionKind kind, dnn::DataType input_type,
     dnn::DataType bias_type, dnn::DataType output_type, double alpha,
@@ -3894,7 +3894,7 @@ GetCudnnFusedOperationGraph(
       new cudnn_frontend::OperationGraph(std::move(op_graph)));
 }
 
-port::StatusOr<std::unique_ptr<cudnn_frontend::OperationGraph>>
+tsl::StatusOr<std::unique_ptr<cudnn_frontend::OperationGraph>>
 GetCudnnFusedMatmulGraph(dnn::DataType input_type, dnn::DataType bias_type,
                          dnn::DataType output_type, bool trans_a, bool trans_b,
                          uint64_t m_u, uint64_t n_u, uint64_t k_u, int64_t lda,
@@ -4040,7 +4040,7 @@ GetCudnnFusedMatmulGraph(dnn::DataType input_type, dnn::DataType bias_type,
 
 }  // namespace
 
-static port::StatusOr<cudnn_frontend::ExecutionPlan> RebuildExecutionPlan(
+static tsl::StatusOr<cudnn_frontend::ExecutionPlan> RebuildExecutionPlan(
     const CudnnHandle& cudnn, const dnn::AlgorithmDesc& desc,
     const cudnn_frontend::OperationGraph& op_graph) {
   if (!desc.is_cudnn_frontend()) {
@@ -4154,7 +4154,7 @@ tsl::Status CudnnSupport::DoPrepareForConvolution(
 class CudnnLegacyConvRunner : public dnn::ConvRunner {
  public:
   // Queries the workspace size and constructs a 'CudnnLegacyConvRunner'.
-  static port::StatusOr<CudnnLegacyConvRunner> Create(
+  static tsl::StatusOr<CudnnLegacyConvRunner> Create(
       GpuExecutor* parent, Stream* stream, CudnnAccess* cudnn,
       const dnn::AlgorithmDesc& algo, dnn::DataType input_type,
       dnn::DataType output_type, dnn::ConvolutionKind kind,
@@ -4216,7 +4216,7 @@ class CudnnLegacyConvRunner : public dnn::ConvRunner {
 
   size_t GetWorkspaceSize() const override { return workspace_size_; }
 
-  port::StatusOr<dnn::AlgorithmDesc> ToAlgorithmDesc() const override {
+  tsl::StatusOr<dnn::AlgorithmDesc> ToAlgorithmDesc() const override {
     return MakeAlgorithmDesc();
   }
 
@@ -4441,7 +4441,7 @@ struct BackendDescriptorDeleter {
 
 using BackendDescriptor = std::unique_ptr<void, BackendDescriptorDeleter>;
 
-port::StatusOr<BackendDescriptor> CreateBackendDesc(
+tsl::StatusOr<BackendDescriptor> CreateBackendDesc(
     cudnnBackendDescriptorType_t type) {
   void* result;
   RETURN_IF_CUDNN_ERROR(cudnnBackendCreateDescriptor(type, &result));
@@ -4454,7 +4454,7 @@ port::StatusOr<BackendDescriptor> CreateBackendDesc(
 // opposed to a sequence of multiple attributes.  The distinction is a bit
 // meaningless, but this is the presentation the cuDNN docs use, so it may as
 // well be consistent.
-port::StatusOr<std::vector<BackendDescriptor>> GetDescriptorAttribute(
+tsl::StatusOr<std::vector<BackendDescriptor>> GetDescriptorAttribute(
     cudnnBackendDescriptor_t desc, cudnnBackendAttributeName_t name,
     cudnnBackendDescriptorType_t type) {
   int64_t n;
@@ -4483,7 +4483,7 @@ port::StatusOr<std::vector<BackendDescriptor>> GetDescriptorAttribute(
 
 // Extract the engine ID and tuning knobs from the ExecutionPlan, and return
 // them in the form of an AlgorithmDesc for use with RebuildExecutionPlan.
-port::StatusOr<dnn::AlgorithmDesc> ExecutionPlanToAlgorithmDesc(
+tsl::StatusOr<dnn::AlgorithmDesc> ExecutionPlanToAlgorithmDesc(
     const cudnn_frontend::ExecutionPlan& plan, size_t workspace_size) {
   TF_ASSIGN_OR_RETURN(
       auto engine_cfgs,
@@ -4584,7 +4584,7 @@ class CudnnExecutionPlanRunner<void(Args...)>
 
   size_t GetWorkspaceSize() const override { return workspace_size_; }
 
-  port::StatusOr<dnn::AlgorithmDesc> ToAlgorithmDesc() const override {
+  tsl::StatusOr<dnn::AlgorithmDesc> ToAlgorithmDesc() const override {
     return ExecutionPlanToAlgorithmDesc(plan_, workspace_size_);
   }
 
@@ -4662,7 +4662,7 @@ class CudnnExecutionPlanRunner<void(Args...)>
     return tsl::OkStatus();
   }
 
-  static port::StatusOr<CudnnExecutionPlanRunner> Create(
+  static tsl::StatusOr<CudnnExecutionPlanRunner> Create(
       GpuExecutor* parent, CudnnAccess* cudnn,
       cudnn_frontend::ExecutionPlan plan, absl::Span<const int64_t> uids,
       bool need_side_input) {
@@ -4917,7 +4917,7 @@ tsl::Status CudnnSupport::GetConvolveRunners(
 #endif  // CUDNN_VERSION >= 8100 && TF_ENABLE_CUDNN_FRONTEND
 }
 
-port::StatusOr<std::unique_ptr<const dnn::ConvRunner>>
+tsl::StatusOr<std::unique_ptr<const dnn::ConvRunner>>
 CudnnSupport::ConvolveRunnerFromDesc(
     Stream* stream, const dnn::AlgorithmDesc& algorithm_desc,
     dnn::ConvolutionKind kind, dnn::DataType input_type,
@@ -4981,7 +4981,7 @@ CudnnSupport::ConvolveRunnerFromDesc(
 class CudnnLegacyFusedConvRunner : public dnn::FusedConvRunner {
  public:
   // Queries the workspace size and constructs a 'CudnnLegacyFusedConvRunner'.
-  static port::StatusOr<CudnnLegacyFusedConvRunner> Create(
+  static tsl::StatusOr<CudnnLegacyFusedConvRunner> Create(
       GpuExecutor* parent, Stream* stream, CudnnAccess* cudnn,
       const dnn::AlgorithmDesc& algo, dnn::DataType input_type,
       double conv_scale, double side_input_scale,
@@ -5016,7 +5016,7 @@ class CudnnLegacyFusedConvRunner : public dnn::FusedConvRunner {
 
   uint64_t GetWorkspaceSize() const override { return workspace_size_; }
 
-  port::StatusOr<dnn::AlgorithmDesc> ToAlgorithmDesc() const override {
+  tsl::StatusOr<dnn::AlgorithmDesc> ToAlgorithmDesc() const override {
     return MakeAlgorithmDesc();
   }
 
@@ -5163,7 +5163,7 @@ class CudnnLegacyFusedConvRunner : public dnn::FusedConvRunner {
   CudnnActivationDescriptor activation_desc_;
 };
 
-port::StatusOr<std::unique_ptr<const dnn::FusedConvRunner>>
+tsl::StatusOr<std::unique_ptr<const dnn::FusedConvRunner>>
 CudnnSupport::FusedConvolveRunnerFromDesc(
     Stream* stream, const dnn::AlgorithmDesc& algorithm_desc,
     dnn::ConvolutionKind kind, dnn::DataType input_type,
@@ -6360,7 +6360,7 @@ struct PoolingSplitsSpec {
   int64_t output_offset_in_bytes;
 };
 
-port::StatusOr<std::vector<PoolingSplitsSpec>> GetTensorSplits(
+tsl::StatusOr<std::vector<PoolingSplitsSpec>> GetTensorSplits(
     const dnn::BatchDescriptor& input_descriptor,
     const dnn::BatchDescriptor& output_descriptor, dnn::DataType element_type) {
   std::vector<PoolingSplitsSpec> out;

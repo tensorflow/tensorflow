@@ -417,12 +417,11 @@ struct TestFfiModule : ffi::StatelessModule {
             {{"ffi.always_fail", FFI_AlwaysFail}, {"ffi.memcpy", FFI_Memcpy}}) {
   }
 
-  XLA_FFI_DEFINE_FUNCTION(
-      FFI_AlwaysFail, AlwaysFail,
-      ffi::Ffi::Bind("ffi.always_fail").Arg<ffi::StridedBufferArg>());
+  XLA_FFI_DEFINE_FUNCTION(FFI_AlwaysFail, AlwaysFail,
+                          ffi::Ffi::Binding().Arg<ffi::StridedBufferArg>());
 
   XLA_FFI_DEFINE_FUNCTION(FFI_Memcpy, Memcpy,
-                          ffi::Ffi::Bind("ffi.memcpy")
+                          ffi::Ffi::Binding()
                               .Stream<se::gpu::GpuStreamHandle>()
                               .Arg<ffi::StridedBufferArg>()
                               .Arg<ffi::StridedBufferArg>());

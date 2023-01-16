@@ -88,7 +88,7 @@ void AddSparsificationPasses(mlir::OpPassManager& pm) {
       /*enableBufferInitialization=*/false,
       /*vectorLength=*/0,
       /*enableVLAVectorization=*/false,
-      /*enableSIMDIndex32*/false));
+      /*enableSIMDIndex32*/ false));
   pm.addNestedPass<mlir::func::FuncOp>(
       mlir::bufferization::createFinalizingBufferizePass());
 }
@@ -131,7 +131,8 @@ static Status CreateHloXlaPipeline(
   // TODO(kramerb): Give THLO lowerings priority over linalg when it's ready for
   // concat, reduce and friends.
   pm.addNestedPass<mlir::func::FuncOp>(
-      mlir::mhlo::createLegalizeHloToLinalgPass());
+      mlir::mhlo::createLegalizeHloToLinalgPass(
+          options.enable_tiling_and_fusion));
   pm.addNestedPass<mlir::func::FuncOp>(
       mlir::mhlo::createLegalizeMHLOToTHLOPass());
 
@@ -156,8 +157,19 @@ static Status CreateHloXlaPipeline(
   pm.addPass(mlir::createCSEPass());
   pm.addPass(mlir::memref::createResolveShapedTypeResultDimsPass());
   pm.addPass(mlir::createCanonicalizerPass());
-  pm.addNestedPass<mlir::func::FuncOp>(
-      mlir::createLinalgElementwiseOpFusionPass());
+  if (options.enable_tiling_and_fusion) {
+    mlir::gml_st::GmlStCPUPipelineOptions gml_st_opts;
+    gml_st_opts.vectorSize = 8;
+    gml_st_opts.reduction1DTileSize = 32;
+    gml_st_opts.reduction2DTileSizes = {4, 4};
+    gml_st_opts.matmulTileSizes = {4, 4, 4};
+    gml_st_opts.lowerToMmt4d = true;
+
+    mlir::gml_st::addTileableOpsTransformationsForCPU(pm, gml_st_opts);
+  } else {
+    pm.addNestedPass<mlir::func::FuncOp>(
+        mlir::createLinalgElementwiseOpFusionPass());
+  }
   pm.addPass(mlir::createReconcileUnrealizedCastsPass());
   pm.addPass(mlir::createConvertTensorToLinalgPass());
 

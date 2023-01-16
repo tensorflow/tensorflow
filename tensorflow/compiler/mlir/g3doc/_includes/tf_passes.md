@@ -1559,6 +1559,7 @@ The transformation happens only for on-device variables. The above
 transformation requires `%arg0`, `%arg1` to have the same device assignment
 as the `TPUExecute` op.
 ### `-tf-tpu-parallel-execute-sink-resource-write`: Moves tf.AssignVariableOp consumers of tf_device.parallel_execute into tf_device.parallel_execute regions
+### `-tf-tpu-partitioned-op-conversion`: Rewrite all TPU Partitioned ops into their V2 counterparts.
 ### `-tf-tpu-reorder-replicate-partitioned-inputs`: Reorder replicated and partitioned input ops.
 This pass rewrites how data parallelism and model parallelism is expressed for
 inputs. It reorders `tf.TPUPartitionedInput` (model parallelism) and

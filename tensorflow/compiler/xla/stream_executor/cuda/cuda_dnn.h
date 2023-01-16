@@ -22,6 +22,7 @@ limitations under the License.
 #include <cstdint>
 
 #include "absl/base/thread_annotations.h"
+#include "absl/types/span.h"
 #include "tensorflow/compiler/xla/stream_executor/cuda/cuda_activation.h"
 #include "tensorflow/compiler/xla/stream_executor/dnn.h"
 #include "tensorflow/compiler/xla/stream_executor/lib/status.h"
@@ -40,12 +41,10 @@ class CudnnCtcLossDescriptor;
 // Opaque and unique identifier for the cuDNN plugin.
 extern const PluginId kCuDnnPlugin;
 
-using BatchDescriptorSlice =
-    port::ArraySlice<dnn::BatchDescriptor>;  // non-absl ok
+using BatchDescriptorSlice = absl::Span<const dnn::BatchDescriptor>;
 
 template <typename T>
-using DeviceMemorySlice =
-    port::ArraySlice<const DeviceMemory<T>*>;  // non-absl ok
+using DeviceMemorySlice = absl::Span<const DeviceMemory<T>* const>;
 
 // cudnn-library based DNN support. For details on overridden interface
 // functions, see dnn.h.
@@ -54,9 +53,9 @@ class CudnnSupport : public dnn::DnnSupport {
   explicit CudnnSupport(GpuExecutor* parent);
 
   tsl::Status Init() override;
-  port::StatusOr<perftools::gputools::dnn::VersionInfo> GetVersion() override;
+  tsl::StatusOr<perftools::gputools::dnn::VersionInfo> GetVersion() override;
 
-  port::StatusOr<std::unique_ptr<dnn::RnnDescriptor>> createRnnDescriptor(
+  tsl::StatusOr<std::unique_ptr<dnn::RnnDescriptor>> createRnnDescriptor(
       int num_layers, int hidden_size, int input_size, int cell_size,
       int batch_size, dnn::RnnInputMode input_mode,
       dnn::RnnDirectionMode direction_mode, dnn::RnnMode rnn_mode,
@@ -64,19 +63,19 @@ class CudnnSupport : public dnn::DnnSupport {
       float dropout, uint64_t seed, ScratchAllocator* state_allocator,
       bool use_padded_io) override;
 
-  port::StatusOr<std::unique_ptr<dnn::RnnSequenceTensorDescriptor>>
+  tsl::StatusOr<std::unique_ptr<dnn::RnnSequenceTensorDescriptor>>
   createRnnSequenceTensorDescriptor(int max_seq_length, int batch_size,
                                     int data_size,
                                     dnn::DataType data_type) override;
 
-  port::StatusOr<std::unique_ptr<dnn::RnnSequenceTensorDescriptor>>
+  tsl::StatusOr<std::unique_ptr<dnn::RnnSequenceTensorDescriptor>>
   createRnnSequenceTensorDescriptor(int max_seq_length, int batch_size,
                                     int data_size,
                                     const absl::Span<const int>& seq_lengths,
                                     bool time_major,
                                     dnn::DataType data_type) override;
 
-  port::StatusOr<std::unique_ptr<dnn::RnnStateTensorDescriptor>>
+  tsl::StatusOr<std::unique_ptr<dnn::RnnStateTensorDescriptor>>
   createRnnStateTensorDescriptor(int num_layer, int batch_size, int data_size,
                                  dnn::DataType data_type) override;
 
@@ -232,7 +231,7 @@ class CudnnSupport : public dnn::DnnSupport {
       std::vector<std::unique_ptr<const dnn::ConvRunner>>* out_exec_plans)
       override;
 
-  port::StatusOr<std::unique_ptr<const dnn::ConvRunner>> ConvolveRunnerFromDesc(
+  tsl::StatusOr<std::unique_ptr<const dnn::ConvRunner>> ConvolveRunnerFromDesc(
       Stream* stream, const dnn::AlgorithmDesc& algorithm_desc,
       dnn::ConvolutionKind kind, dnn::DataType input_type,
       dnn::DataType output_type, const dnn::BatchDescriptor& input_descriptor,
@@ -263,7 +262,7 @@ class CudnnSupport : public dnn::DnnSupport {
       std::vector<std::unique_ptr<const dnn::FusedMatmulRunner>>*
           out_exec_plans) override;
 
-  port::StatusOr<std::unique_ptr<const dnn::FusedConvRunner>>
+  tsl::StatusOr<std::unique_ptr<const dnn::FusedConvRunner>>
   FusedConvolveRunnerFromDesc(
       Stream* stream, const dnn::AlgorithmDesc& algorithm_desc,
       dnn::ConvolutionKind kind, dnn::DataType input_type,

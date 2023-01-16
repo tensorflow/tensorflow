@@ -22,6 +22,11 @@ namespace {
 
 using ::testing::MatchesRegex;
 
+TEST(PathUtilsTest, StreamsDirectory) {
+  EXPECT_THAT(StreamsDirectory("/path/to/snapshot"),
+              MatchesRegex("/path/to/snapshot.streams"));
+}
+
 TEST(PathUtilsTest, StreamDirectory) {
   EXPECT_THAT(StreamDirectory("/path/to/snapshot", /*stream_index=*/0),
               MatchesRegex("/path/to/snapshot.streams.stream_0"));
@@ -46,6 +51,21 @@ TEST(PathUtilsTest, SplitPath) {
           "/path/to/snapshot.streams.stream_0.splits.source_1.split_2_3"));
 }
 
+TEST(PathUtilsTest, StreamDoneFilePath) {
+  EXPECT_THAT(StreamDoneFilePath("/path/to/snapshot", /*stream_index=*/0),
+              MatchesRegex("/path/to/snapshot.streams.stream_0.DONE"));
+}
+
+TEST(PathUtilsTest, SnapshotMetadataFilePath) {
+  EXPECT_THAT(SnapshotMetadataFilePath("/path/to/snapshot"),
+              MatchesRegex("/path/to/snapshot.snapshot.metadata"));
+}
+
+TEST(PathUtilsTest, DatasetDefFilePath) {
+  EXPECT_THAT(DatasetDefFilePath("/path/to/snapshot"),
+              MatchesRegex("/path/to/snapshot.dataset_def.proto"));
+}
+
 TEST(PathUtilsTest, CheckpointsDirectory) {
   EXPECT_THAT(CheckpointsDirectory("/path/to/snapshot", /*stream_index=*/0),
               MatchesRegex("/path/to/snapshot.streams.stream_0.checkpoints"));
@@ -53,7 +73,7 @@ TEST(PathUtilsTest, CheckpointsDirectory) {
 
 TEST(PathUtilsTest, CommittedChunksDirectory) {
   EXPECT_THAT(CommittedChunksDirectory("/path/to/snapshot"),
-              MatchesRegex("/path/to/snapshot.committed_chunks"));
+              MatchesRegex("/path/to/snapshot.chunks"));
 }
 
 TEST(PathUtilsTest, UncommittedChunksDirectory) {

@@ -331,4 +331,18 @@ void TfLiteOpaqueDelegateDelete(TfLiteOpaqueDelegate* opaque_delegate) {
   delete tflite_delegate;
 }
 
+void* TfLiteOpaqueDelegateGetData(const TfLiteOpaqueDelegate* delegate) {
+  if (!delegate) return nullptr;
+
+  // The following cast is safe only because this code is part of the
+  // TF Lite runtime implementation.  Apps using TF Lite should not rely on
+  // 'TfLiteOpaqueDelegate' and 'TfLiteDelegate' being equivalent.
+  const auto* tflite_delegate =
+      reinterpret_cast<const TfLiteDelegate*>(delegate);
+
+  if (!tflite_delegate->opaque_delegate_builder) return nullptr;
+
+  return tflite_delegate->opaque_delegate_builder->data;
+}
+
 }  // extern "C"

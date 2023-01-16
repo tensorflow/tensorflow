@@ -17,11 +17,13 @@ limitations under the License.
 #define TENSORFLOW_PYTHON_FRAMEWORK_PYTHON_OP_GEN_INTERNAL_H_
 
 #include <unordered_map>
+#include <vector>
 
 #include "tensorflow/core/framework/api_def.pb.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/python/framework/python_op_gen_annotator.h"
 
 namespace tensorflow {
 namespace python_op_gen_internal {
@@ -71,7 +73,8 @@ class ParamNames {
 class GenPythonOp {
  public:
   GenPythonOp(const OpDef& op_def, const ApiDef& api_def,
-              const string& function_name, bool add_type_annotations_);
+              const string& function_name, bool add_type_annotations_,
+              GeneratedCodeAnnotator* annotator);
   virtual ~GenPythonOp();
 
   virtual string Code();
@@ -100,6 +103,7 @@ class GenPythonOp {
   const string function_name_;
   bool add_type_annotations_;
   const int num_outs_;
+  GeneratedCodeAnnotator* annotator_ = nullptr;
 
   // Return value from Code() is prelude_ + result_.
   string prelude_;  // Code before function definition

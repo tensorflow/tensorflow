@@ -28,7 +28,7 @@ limitations under the License.
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/GPU/IR/GPUDialect.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
-#include "mlir/IR/BlockAndValueMapping.h"
+#include "mlir/IR/IRMapping.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/IR/ValueRange.h"
@@ -181,7 +181,7 @@ static Value handleImperfectTile(Location loc, LaunchOp launch,
 /// space of `parallel`. Returns an SSA value that is a part of the `launch`'s
 /// region, and represents the value of `parallel`'s induction variable.
 static Value matchLaunchSpaceToLoop(ParallelOp parallel,
-                                    const BlockAndValueMapping& bvm,
+                                    const IRMapping& bvm,
                                     unsigned launchIdx, LaunchOp launch,
                                     RewriterBase& rewriter) {
   Location loc = parallel.getLoc();
@@ -231,7 +231,7 @@ LogicalResult simtfyOp(ParallelOp root, RewriterBase& rewriter) {
 
   constexpr size_t kNumberOfNestedLoops = 3;
 
-  BlockAndValueMapping bvm;
+  IRMapping bvm;
   // We need to keep track of which value in the gpu.launch region represents
   // which level of the induction variable in the nested region. This is because
   // we might have multiple gml_st.parallel operations on the same level, and

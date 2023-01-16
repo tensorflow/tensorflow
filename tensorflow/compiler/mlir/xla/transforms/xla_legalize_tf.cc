@@ -199,7 +199,7 @@ FailureOr<mhlo::ConstantOp> CreateConstantOpForQint8Rhs(
   auto arr = t.flat<tensorflow::qint8>();
   auto dense_attr = mlir::DenseElementsAttr::get(
       GetSameShapeTensorType(new_rhs_type, rewriter.getIntegerType(8)),
-      llvm::makeArrayRef(arr.data(), arr.size()));
+      llvm::ArrayRef(arr.data(), arr.size()));
   return rewriter.create<mhlo::ConstantOp>(op.getLoc(), new_rhs_type,
                                            dense_attr);
 }
@@ -688,6 +688,11 @@ mlir::LogicalResult ApplyPatterns(Operation *op, RewritePatternSet &patterns,
   target.addLegalDialect<tensor::TensorDialect>();
   target.addLegalDialect<shape::ShapeDialect>();
   target.addLegalOp<func::CallOp>();
+
+  // These ops are legalized in LegalizeTFCommunication after this and that pass
+  // only operates on MHLO control flow ops.
+  target.addLegalOp<TF::_XlaHostComputeMlirOp, TF::XlaSendToHostOp,
+                    TF::XlaRecvFromHostOp>();
 
   if (!allow_partial_conversion) {
     // Fully qualify ReturnOp here as mhlo dialect also defines a ReturnOp.

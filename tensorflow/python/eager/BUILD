@@ -383,6 +383,7 @@ cuda_py_test(
     ],
     deps = [
         ":backprop",
+        ":backprop_util",
         ":context",
         ":test",
         "//tensorflow/python:array_ops",

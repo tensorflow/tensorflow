@@ -31,7 +31,7 @@ namespace tensorflow {
 namespace dtensor {
 
 template <typename T>
-using StatusOr = stream_executor::port::StatusOr<T>;
+using StatusOr = tsl::StatusOr<T>;
 
 inline Status WithContext(const Status& ds, absl::string_view file,
                           int line_number, absl::string_view context = "") {

@@ -253,6 +253,12 @@ TF_CAPI_EXPORT extern uint64_t TF_GetFrameId(TF_OpKernelContext* ctx);
 // Returns the Iter ID of the given context.
 TF_CAPI_EXPORT extern int64_t TF_GetIterId(TF_OpKernelContext* ctx);
 
+// Returns the Step ID of the given context.
+TF_CAPI_EXPORT extern int64_t TF_GetStepId(TF_OpKernelContext* ctx);
+
+// Returns the Device ID of the device that the context possesses.
+TF_CAPI_EXPORT extern int TF_GetDeviceId(TF_OpKernelContext* ctx);
+
 // Returns the graph def version of the given context.
 TF_CAPI_EXPORT extern int TF_GetGraphDefVersion(TF_OpKernelContext* ctx);
 

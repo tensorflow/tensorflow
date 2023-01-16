@@ -18,7 +18,6 @@
 
 # TODO(b/243822285): Reduce this list as much as possible.
 # Constants
-from tensorflow.python.eager.polymorphic_function.monomorphic_function import IMPLEMENTS_ATTRIBUTE_NAME
 from tensorflow.python.eager.polymorphic_function.monomorphic_function import _BACKWARD_PREFIX
 from tensorflow.python.eager.polymorphic_function.monomorphic_function import _FORWARD_PREFIX
 from tensorflow.python.eager.polymorphic_function.monomorphic_function import _INFERENCE_PREFIX

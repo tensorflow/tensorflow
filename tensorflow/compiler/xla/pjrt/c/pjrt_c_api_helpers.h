@@ -112,6 +112,8 @@ xla::PjRtFuture<xla::Status> ConvertCEventToCppFuture(PJRT_Event* c_event,
 xla::Status CheckMatchingStructSizes(absl::string_view struct_name,
                                      size_t expected_size, size_t actual_size);
 
+absl::string_view GetPlatformVersion(PJRT_Client* client, const PJRT_Api* api);
+
 }  // namespace pjrt
 
 #endif  // TENSORFLOW_COMPILER_XLA_PJRT_C_PJRT_C_API_HELPERS_H_

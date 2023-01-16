@@ -1311,6 +1311,10 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
           GetTemporary(context, node, kAuxInputZeroPoints),
           GetTemporary(context, node, kOutputStateZeroPoints), fw_row_sums,
           fw_row_sums_size, &op_data->compute_fw_row_sums,
+          /*recurrent_to_input_is_diag=*/false,
+          /*recurrent_to_forget_is_diag=*/false,
+          /*recurrent_to_cell_is_diag=*/false,
+          /*recurrent_to_output_is_diag=*/false,
           CpuBackendContext::GetFromContext(context));
       TF_LITE_ENSURE_OK(context, fw_pass_status);
 
@@ -1352,6 +1356,10 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
           GetTemporary(context, node, kAuxInputZeroPoints),
           GetTemporary(context, node, kOutputStateZeroPoints), bw_row_sums,
           bw_row_sums_size, &op_data->compute_bw_row_sums,
+          /*recurrent_to_input_is_diag=*/false,
+          /*recurrent_to_forget_is_diag=*/false,
+          /*recurrent_to_cell_is_diag=*/false,
+          /*recurrent_to_output_is_diag=*/false,
           CpuBackendContext::GetFromContext(context));
       TF_LITE_ENSURE_OK(context, bw_pass_status);
       return kTfLiteOk;

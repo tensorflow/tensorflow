@@ -38,8 +38,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/xla_computation.h"
 #include "tensorflow/compiler/xla/comparison_util.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_input_output_alias_config.h"
-#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
-#include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_sharding.h"
 #include "tensorflow/compiler/xla/layout_util.h"
@@ -257,11 +255,14 @@ XlaOp XlaBuilderFriend::BuildAllReduceDone(XlaBuilder* builder,
   });
 }
 
-XlaOp XlaBuilderFriend::BuildCopyStart(XlaBuilder* builder, const XlaOp operand,
-                                       bool is_cross_program_prefetch) {
+XlaOp XlaBuilderFriend::BuildCopyStart(
+    XlaBuilder* builder, const XlaOp operand,
+    std::optional<int> cross_program_prefetch_index) {
   return builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     HloInstructionProto instr;
-    instr.set_is_cross_program_prefetch(is_cross_program_prefetch);
+    if (cross_program_prefetch_index) {
+      instr.set_cross_program_prefetch_index(*cross_program_prefetch_index);
+    }
 
     TF_ASSIGN_OR_RETURN(const Shape* operand_shape,
                         builder->GetShapePtr(operand));

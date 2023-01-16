@@ -59,6 +59,7 @@ mlir_tf_tools_dirs = [
     'tensorflow/compiler/xla/mlir/backends/gpu',
     'tensorflow/compiler/xla/mlir/runtime',
     'tensorflow/compiler/mlir/lite/stablehlo',
+    'tensorflow/dtensor/mlir/tests',
 ]
 config.mlir_tf_tools_dirs = [
     os.path.join(real_test_srcdir, os.environ['TEST_WORKSPACE'], s)

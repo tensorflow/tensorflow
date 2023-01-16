@@ -2119,7 +2119,8 @@ class Operation(object):
 
     # Removes this frame from the Python traceback.
     # We adjust stacklevel directly to avoid triggering serialization.
-    self.traceback._stacklevel += 1  # pylint: disable=protected-access
+    if self.traceback is not None:
+      self.traceback._stacklevel += 1  # pylint: disable=protected-access
 
   @classmethod
   def _from_c_op(cls, c_op, g):

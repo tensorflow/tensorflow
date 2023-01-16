@@ -39,9 +39,8 @@ namespace tpu {
 // individual nodes.
 class TpuNodeContext final {
  public:
-  using Status = stream_executor::port::Status;
   template <typename T>
-  using StatusOr = stream_executor::port::StatusOr<T>;
+  using StatusOr = tsl::StatusOr<T>;
 
   static StatusOr<std::unique_ptr<TpuNodeContext>> Create(int device_ordinal);
 
@@ -51,11 +50,11 @@ class TpuNodeContext final {
   }
   ~TpuNodeContext();
 
-  static Status StopChipHeartbeats();
+  static tsl::Status StopChipHeartbeats();
 
-  static Status CloseTpuHost();
+  static tsl::Status CloseTpuHost();
 
-  static Status Initialize(int device_ordinal);
+  static tsl::Status Initialize(int device_ordinal);
 
   static TpuPlatformInterface* platform();
 

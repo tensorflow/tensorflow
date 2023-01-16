@@ -32,7 +32,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "llvm/ADT/StringRef.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
-#include "mlir/IR/BlockAndValueMapping.h"  // from @llvm-project
+#include "mlir/IR/IRMapping.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/core/util/device_name_utils.h"
@@ -228,7 +228,7 @@ void CreateFunctions(ModuleOp module_op,
     // operation should use the arguments of the newly created func_op as
     // appropriate.
     OpBuilder builder(block, block->end());
-    BlockAndValueMapping mapping;
+    IRMapping mapping;
     for (int i : llvm::seq<int>(0, metadata.inputs.size())) {
       Value original_value = metadata.inputs[i];
       Value new_value = func_op.getArgument(i);
@@ -256,7 +256,7 @@ void CreateFunctions(ModuleOp module_op,
 // tf_device.remote_run calls.
 void CreateRemoteRunCalls(MLIRContext *context,
                           const llvm::StringMap<FunctionMetadata> &metadatas) {
-  BlockAndValueMapping mapping;
+  IRMapping mapping;
   for (auto &iter : metadatas) {
     llvm::StringRef host = iter.first();
     const FunctionMetadata &metadata = iter.second;

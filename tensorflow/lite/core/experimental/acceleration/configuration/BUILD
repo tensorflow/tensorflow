@@ -8,7 +8,7 @@ cc_library(
     srcs = ["delegate_registry.cc"],
     hdrs = ["delegate_registry.h"],
     visibility = [
-        "//tensorflow/lite/experimental/acceleration/configuration:__subpackages__",
+        "//tensorflow/lite:__subpackages__",
     ],
     deps = [
         "//tensorflow/lite/core/c:common",

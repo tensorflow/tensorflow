@@ -87,13 +87,13 @@ StatusOr<ElementsAttr> ConvertFlatTensor(const Tensor& input_tensor,
                                          ShapedType type) {
   auto arr = input_tensor.flat<T>();
   return ElementsAttr(mlir::DenseElementsAttr::get(
-      type, llvm::makeArrayRef(arr.data(), arr.size())));
+      type, llvm::ArrayRef(arr.data(), arr.size())));
 }
 
 ElementsAttr ConvertTensorOfCustomFloatType(const Tensor& tensor,
                                             RankedTensorType type) {
-  auto buffer = llvm::makeArrayRef(static_cast<char*>(tensor.data()),
-                                   tensor.TotalBytes());
+  auto buffer =
+      llvm::ArrayRef(static_cast<char*>(tensor.data()), tensor.TotalBytes());
   return mlir::DenseElementsAttr::getFromRawBuffer(type, buffer);
 }
 
@@ -281,7 +281,7 @@ StatusOr<mlir::Attribute> ConvertTensorShapeProto(const TensorShapeProto& shape,
     dims.push_back(dim.size() == kTFDynamicSize ? ShapedType::kDynamic
                                                 : dim.size());
   }
-  return mlir::TF::ShapeAttr::get(context, llvm::makeArrayRef(dims));
+  return mlir::TF::ShapeAttr::get(context, llvm::ArrayRef(dims));
 }
 
 // Converts an MLIR dense string elements attribute to a TensorFlow tensor

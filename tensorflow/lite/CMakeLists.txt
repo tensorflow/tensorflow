@@ -175,7 +175,7 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "Clang$")
   list(APPEND TF_TARGET_PRIVATE_OPTIONS "-Wno-deprecated-declarations")
 endif()
 # Additional compiler flags used when compiling TF Lite.
-set(TFLITE_TARGET_PUBLIC_OPTIONS "")
+set(TFLITE_TARGET_PUBLIC_OPTIONS "-DEIGEN_NEON_GEBP_NR=4")
 set(TFLITE_TARGET_PRIVATE_OPTIONS "")
 set(TFLITE_TARGET_PRIVATE_DEFINITIONS "")
 # Additional library dependencies based upon enabled features.
@@ -393,7 +393,7 @@ if(TFLITE_ENABLE_GPU)
      target_link_libraries(${lib_name})
    endforeach()
 endif()
-  list(APPEND TFLITE_TARGET_PUBLIC_OPTIONS "-DCL_DELEGATE_NO_GL" "-DEGL_NO_X11" "-DEIGEN_NEON_GEBP_NR=4")
+  list(APPEND TFLITE_TARGET_PUBLIC_OPTIONS "-DCL_DELEGATE_NO_GL" "-DEGL_NO_X11")
   list(APPEND TFLITE_TARGET_DEPENDENCIES
     absl::any
     absl::flat_hash_map

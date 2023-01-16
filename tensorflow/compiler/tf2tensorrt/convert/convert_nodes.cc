@@ -3653,6 +3653,24 @@ Status ConvertIdentity(const OpConverterParams* params) {
   return OkStatus();
 }
 
+// This converter is a debug-only feature designed to allow graph segmentation
+// experiments. Its use is being controled by
+// `TF_TRT_OP_FAKELIST=OpName1,OpName2,...`.
+// See `op_converter_registry.cc` for further details.
+//
+// This converter is designed as followed:
+//   - always succeed at graph segmentation time.
+//   - always fail at TRT Engine build time.
+Status ConvertFake(const OpConverterParams* params) {
+  if (params->validation_only) return OkStatus();
+
+  return errors::Unimplemented(
+      "This converter is not valid after graph "
+      "segmentation. Building an engine using this "
+      "converter will trigger a native segment "
+      "fallback.");
+}
+
 Status ConvertSquare(const OpConverterParams* params) {
   const auto& inputs = params->inputs;
   const auto& node_def = params->node_def;
@@ -5801,6 +5819,8 @@ REGISTER_DEFAULT_TRT_OP_CONVERTER(ConvertIdentity,
                                    "StopGradient", "_CopyFromHostToGpu"});
 REGISTER_DEFAULT_TRT_OP_CONVERTER(ConvertBatchMatMul,
                                   {"BatchMatMul", "BatchMatMulV2"});
+// Debug converter only accessible via `TF_TRT_OP_FAKELIST=OpName1,OpName2,...`
+REGISTER_DEFAULT_TRT_OP_CONVERTER(ConvertFake, "FakeOp");
 
 Status ConvertGraphDefToEngine(
     const GraphDef& gdef, OpKernelContext* ctx, TrtPrecisionMode precision_mode,

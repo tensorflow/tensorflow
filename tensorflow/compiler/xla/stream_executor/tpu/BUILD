@@ -1,7 +1,6 @@
 # Description: StreamExecutor Interface for TPUs
 
 load("//tensorflow/tsl/platform:rules_cc.bzl", "cc_library")
-load("//tensorflow/compiler/xla:xla.bzl", "xla_cc_test")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -21,21 +20,6 @@ package(
         "//tensorflow/dtensor:__subpackages__",
     ],
     licenses = ["notice"],
-)
-
-cc_library(
-    name = "pjrt_api",
-    srcs = ["pjrt_api.cc"],
-    hdrs = ["pjrt_api.h"],
-    deps = [
-        "//tensorflow/compiler/xla:status",
-        "//tensorflow/compiler/xla:statusor",
-        "//tensorflow/compiler/xla/pjrt/c:pjrt_c_api_hdrs",
-        "//tensorflow/compiler/xla/pjrt/c:pjrt_c_api_helpers",
-        "//tensorflow/tsl/platform:errors",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/strings",
-    ],
 )
 
 cc_library(
@@ -168,7 +152,6 @@ cc_library(
         ":tpu_executor_interface",
         ":tpu_platform_interface",
         ":tpu_stream_interface",
-        "//tensorflow/compiler/xla:status",
         "//tensorflow/compiler/xla/stream_executor",
         "//tensorflow/compiler/xla/stream_executor/lib",
         "//tensorflow/compiler/xla/stream_executor/platform",
@@ -422,12 +405,10 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":libtftpu_header",
-        ":pjrt_api",
         ":tpu_api",
         ":tpu_api_dlsym_set_fn",
         ":tpu_executor_base",
         ":tpu_executor_c_api_hdrs",
-        ":tpu_executor_init_fns",
         ":tpu_library_init_fns",
         ":tpu_ops_c_api_hdrs",
         "//tensorflow/compiler/xla/stream_executor/lib",
@@ -539,17 +520,5 @@ cc_library(
         ":c_api_decl",
         ":tpu_api",
         "//tensorflow/tsl/platform:types",
-    ],
-)
-
-xla_cc_test(
-    name = "pjrt_api_test",
-    srcs = ["pjrt_api_test.cc"],
-    deps = [
-        ":pjrt_api",
-        "//tensorflow/tsl/lib/core:status_test_util",
-        "//tensorflow/tsl/platform:status_matchers",
-        "//tensorflow/tsl/protobuf:error_codes_proto_impl_cc",
-        "@com_google_googletest//:gtest_main",
     ],
 )

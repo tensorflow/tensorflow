@@ -615,26 +615,30 @@ XLA_TEST_F(ConvertTest, ConvertF16F8e4m3fnRoundtrip) {
     float input;
     float expected_roundtrip;
   } test_cases[] = {
-    // clang-format off
+      // clang-format off
       {0.0, 0.0},
       {1.0, 1.0},
       {-1.0, -1.0},
       {inf, nan},
-    // clang-format on
-    {0x1.1p0, 0x1p0},    // Round-to-even down
-    {0x1.3p0, 0x1.4p0},  // Round-to-even up
-    {0x1.Cp8, 0x1.Cp8},  // Max value
-    {0x1.Dp8, 0x1.Cp8},  // Largest number that doesn't overflow
-    {0x1.D04p8, nan},    // Smallest number that overflows
-    {0x1p9, nan},        // Overflow
-    {0x1p-6, 0x1p-6},    // Smallest normal
-                         // Denormals are only not truncated on the interpreter.
-  // TODO(b/259609697): Do not truncate denormals on any platform
-#if XLA_TEST_BACKEND_INTERPRETER
-    {0x1.Cp-7, 0x1.Cp-7},  // Denormal isn't truncated
-#else
-    {0x1.Cp-7, 0},  // Denormal truncation
-#endif
+      // clang-format on
+      {0x1.1p0, 0x1p0},    // Round-to-even down
+      {0x1.3p0, 0x1.4p0},  // Round-to-even up
+      {0x1.Cp8, 0x1.Cp8},  // Max value
+      {0x1.Dp8, 0x1.Cp8},  // Largest number that doesn't overflow
+      {0x1.D04p8, nan},    // Smallest number that overflows
+      {0x1p9, nan},        // Overflow
+      {0x1p-6, 0x1p-6},    // Smallest F8 normal
+      {0x1.Ep-7, 0x1p-6},  // Smallest number rounding up to normal
+
+      // Denormal tests
+      {0x1.0p-8, 0x1.0p-8},    // Denormal without rounding
+      {0x1.4p-8, 0x1.0p-8},    // Round-to-even down
+      {0x1.Cp-8, 0x1.0p-7},    // Round-to-even up
+      {0x1.5p-7, 0x1.4p-7},    // Round-to-nearest down
+      {0x1.3p-7, 0x1.4p-7},    // Round-to-nearest up
+      {0x1p-10, 0},            // Largest number that underflows
+      {0x1.004p-10, 0x1p-9},   // Smallest number that doesn't underflow
+      {0x1.DFCp-7, 0x1.Cp-7},  // Largest number that rounds to denormal
   };
 
   std::vector<Eigen::half> inputs;
@@ -663,15 +667,6 @@ XLA_TEST_F(ConvertTest, ConvertF8e4m3fnF16RoundtripExhaustive) {
   xla::XlaOp all_f8_as_f8 = ConstantR1<tsl::float8_e4m3fn>(&builder, all_f8);
   xla::XlaOp all_f8_as_f16 = ConvertElementType(all_f8_as_f8, F16);
   ConvertElementType(all_f8_as_f16, F8E4M3FN);
-
-#if !XLA_TEST_BACKEND_INTERPRETER
-  for (int i = 0; i < 0x8; i++) {
-    // Currently denormal FP8 values are truncated on non-interpreter backends
-    all_f8[i] = tsl::float8_e4m3fn{0.};
-    all_f8[i + 0x80] = tsl::float8_e4m3fn{-0.};
-  }
-#endif
-
   ComputeAndCompareR1<tsl::float8_e4m3fn>(&builder, all_f8, {});
 }
 

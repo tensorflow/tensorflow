@@ -135,6 +135,33 @@ cc_library(
 )
 
 cc_library(
+    name = "pjrt_api",
+    srcs = ["pjrt_api.cc"],
+    hdrs = ["pjrt_api.h"],
+    deps = [
+        "//tensorflow/compiler/xla:status",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla/pjrt/c:pjrt_c_api_hdrs",
+        "//tensorflow/compiler/xla/pjrt/c:pjrt_c_api_helpers",
+        "//tensorflow/tsl/platform:errors",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+xla_cc_test(
+    name = "pjrt_api_test",
+    srcs = ["pjrt_api_test.cc"],
+    deps = [
+        ":pjrt_api",
+        "//tensorflow/tsl/lib/core:status_test_util",
+        "//tensorflow/tsl/platform:status_matchers",
+        "//tensorflow/tsl/protobuf:error_codes_proto_impl_cc",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
     name = "pjrt_client",
     srcs = ["pjrt_client.cc"],
     hdrs = ["pjrt_client.h"],
@@ -613,6 +640,7 @@ cc_library(
     srcs = ["pjrt_c_api_client.cc"],
     hdrs = ["pjrt_c_api_client.h"],
     deps = [
+        ":pjrt_api",
         ":pjrt_client",
         ":pjrt_executable",
         ":pjrt_future",
@@ -625,7 +653,6 @@ cc_library(
         "//tensorflow/compiler/xla/pjrt/c:pjrt_c_api_wrapper_impl",  # TODO(skyewm): remove
         "//tensorflow/compiler/xla/service:hlo_proto_cc",
         "//tensorflow/compiler/xla/stream_executor/tpu:c_api_conversions",  # TODO(b/238999986): Remove this.
-        "//tensorflow/compiler/xla/stream_executor/tpu:pjrt_api",
         "//tensorflow/compiler/xla/stream_executor/tpu:tpu_initializer_helper",
         "//tensorflow/tsl/platform:status",
         "@com_google_absl//absl/strings",

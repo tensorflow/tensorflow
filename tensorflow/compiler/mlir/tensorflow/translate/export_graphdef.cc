@@ -76,7 +76,7 @@ using mlir::Operation;
 using mlir::SymbolTable;
 using mlir::Value;
 using mlir::func::FuncOp;
-using stream_executor::port::StatusOr;
+using tsl::StatusOr;
 
 namespace {
 

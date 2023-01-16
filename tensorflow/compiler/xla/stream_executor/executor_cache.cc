@@ -22,7 +22,7 @@ limitations under the License.
 
 namespace stream_executor {
 
-port::StatusOr<StreamExecutor*> ExecutorCache::GetOrCreate(
+tsl::StatusOr<StreamExecutor*> ExecutorCache::GetOrCreate(
     const StreamExecutorConfig& config,
     const std::function<ExecutorFactory>& factory) {
   // In the fast path case, the cache already has an entry and we can just
@@ -54,7 +54,7 @@ port::StatusOr<StreamExecutor*> ExecutorCache::GetOrCreate(
   }
 
   VLOG(2) << "building executor";
-  port::StatusOr<std::unique_ptr<StreamExecutor>> result = factory();
+  tsl::StatusOr<std::unique_ptr<StreamExecutor>> result = factory();
   if (!result.ok()) {
     VLOG(2) << "failed to get build executor: " << result.status();
     // If construction failed, leave the cache Entry around, but with a null
@@ -65,7 +65,7 @@ port::StatusOr<StreamExecutor*> ExecutorCache::GetOrCreate(
   return entry->configurations.back().second.get();
 }
 
-port::StatusOr<StreamExecutor*> ExecutorCache::Get(
+tsl::StatusOr<StreamExecutor*> ExecutorCache::Get(
     const StreamExecutorConfig& config) {
   Entry* entry = nullptr;
   {

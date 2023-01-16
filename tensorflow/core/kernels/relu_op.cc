@@ -113,6 +113,7 @@ namespace functor {
   extern template struct Selu<GPUDevice, T>;
 
 TF_CALL_GPU_NUMBER_TYPES(DECLARE_GPU_NO_MLIR_SPEC);
+TF_CALL_bfloat16(DECLARE_GPU_NO_MLIR_SPEC);
 }  // namespace functor
 
 #define REGISTER_GPU_NO_MLIR_KERNELS(type)                       \
@@ -127,6 +128,7 @@ TF_CALL_GPU_NUMBER_TYPES(DECLARE_GPU_NO_MLIR_SPEC);
       SeluOp<GPUDevice, type>);
 
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU_NO_MLIR_KERNELS);
+TF_CALL_bfloat16(REGISTER_GPU_NO_MLIR_KERNELS);
 #undef REGISTER_RELU_KERNEL
 #endif
 
@@ -198,6 +200,7 @@ void Relu<GPUDevice, qint8>::operator()(
 extern template struct Relu<GPUDevice, qint8>;
 
 TF_CALL_GPU_NUMBER_TYPES(DECLARE_GPU_SPEC);
+TF_CALL_bfloat16(DECLARE_GPU_SPEC);
 }  // namespace functor
 
 // Registration of the GPU implementations.
@@ -231,6 +234,7 @@ TF_CALL_GPU_NUMBER_TYPES(DECLARE_GPU_SPEC);
       SeluGradOp<GPUDevice, type>)
 
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU_KERNELS);
+TF_CALL_bfloat16(REGISTER_GPU_KERNELS);
 #undef REGISTER_GPU_KERNELS
 
 template <typename Device>

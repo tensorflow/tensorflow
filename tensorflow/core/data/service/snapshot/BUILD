@@ -12,6 +12,43 @@ package(
 )
 
 cc_library(
+    name = "file_utils",
+    srcs = ["file_utils.cc"],
+    hdrs = ["file_utils.h"],
+    compatible_with = get_compatible_with_portable(),
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core/data:snapshot_utils",
+        "//tensorflow/tsl/platform:env",
+        "//tensorflow/tsl/platform:errors",
+        "//tensorflow/tsl/platform:protobuf",
+        "//tensorflow/tsl/platform:status",
+        "@com_google_absl//absl/functional:function_ref",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+tf_cc_test(
+    name = "file_utils_test",
+    srcs = ["file_utils_test.cc"],
+    deps = [
+        ":file_utils",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/data:dataset_test_base",
+        "//tensorflow/core/data:snapshot_utils",
+        "//tensorflow/core/data/service:test_util",
+        "//tensorflow/core/framework:types_proto_cc",
+        "//tensorflow/tsl/platform:env",
+        "//tensorflow/tsl/platform:errors",
+        "//tensorflow/tsl/platform:path",
+        "//tensorflow/tsl/platform:status",
+        "//tensorflow/tsl/platform:statusor",
+    ],
+)
+
+cc_library(
     name = "path_utils",
     srcs = ["path_utils.cc"],
     hdrs = ["path_utils.h"],
@@ -36,7 +73,9 @@ cc_library(
     name = "snapshot_stream_writer",
     srcs = ["snapshot_stream_writer.cc"],
     hdrs = ["snapshot_stream_writer.h"],
+    compatible_with = get_compatible_with_portable(),
     deps = [
+        ":file_utils",
         ":path_utils",
         ":utils",
         "//tensorflow/core:framework",
@@ -77,6 +116,7 @@ tf_cc_test(
         "//tensorflow/tsl/platform:path",
         "//tensorflow/tsl/platform:status",
         "//tensorflow/tsl/platform:status_matchers",
+        "//tensorflow/tsl/platform:statusor",
         "//tensorflow/tsl/protobuf:protos_all_cc",
         "@com_google_absl//absl/strings",
     ],
@@ -86,6 +126,7 @@ cc_library(
     name = "utils",
     srcs = ["utils.cc"],
     hdrs = ["utils.h"],
+    compatible_with = get_compatible_with_portable(),
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core:protos_all_cc",

@@ -121,9 +121,7 @@ class PyBuffer {
   absl::string_view platform_name() const {
     return ifrt_array_->client()->platform_name();
   }
-  bool is_deleted() const {
-    return ifrt_array_->IsDeleted();
-  }
+  bool is_deleted() const { return ifrt_array_->IsDeleted(); }
 
   StatusOr<pybind11::object> CopyToDevice(
       const ClientAndPtr<PjRtDevice>& dst_device) const;
@@ -178,9 +176,7 @@ class PyBuffer {
   StatusOr<int64_t> size();
 
   // Returns the number of dimensions of the (host) numpy array.
-  int ndim() const {
-    return pjrt_buffer()->on_device_shape().dimensions_size();
-  }
+  int ndim() const { return ifrt_array_->shape().dims().size(); }
 
   pybind11::tuple python_shape() const;
   pybind11::dtype python_dtype() const;
@@ -360,9 +356,7 @@ class PyShardedBuffer {
 
   Status BlockHostUntilReady();
 
-  void Delete() {
-    ifrt_array_->Delete();
-  }
+  void Delete() { ifrt_array_->Delete(); }
 
  private:
   void Link() {

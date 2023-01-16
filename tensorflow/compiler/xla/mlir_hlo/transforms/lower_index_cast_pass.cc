@@ -34,12 +34,12 @@ namespace mlir {
 namespace {
 
 // index_cast is not defined on tensors, so lower it to a tensor.generate.
-struct IndexCastConverter : public OpRewritePattern<arith::IndexCastOp> {
+template <typename T>
+struct IndexCastConverter : public OpRewritePattern<T> {
  public:
-  using OpRewritePattern::OpRewritePattern;
-  LogicalResult matchAndRewrite(arith::IndexCastOp op,
-                                PatternRewriter &rewriter) const final {
-    auto resultTy = op.getType().dyn_cast<RankedTensorType>();
+  using OpRewritePattern<T>::OpRewritePattern;
+  LogicalResult matchAndRewrite(T op, PatternRewriter &rewriter) const final {
+    auto resultTy = op.getType().template dyn_cast<RankedTensorType>();
     if (!resultTy) return failure();
 
     SmallVector<Value> dynamicExtents =
@@ -48,8 +48,7 @@ struct IndexCastConverter : public OpRewritePattern<arith::IndexCastOp> {
         op, resultTy, dynamicExtents,
         [&](OpBuilder &b, Location loc, ValueRange args) {
           Value extent = b.create<tensor::ExtractOp>(loc, op.getIn(), args);
-          Value cast = b.create<arith::IndexCastOp>(
-              loc, resultTy.getElementType(), extent);
+          Value cast = b.create<T>(loc, resultTy.getElementType(), extent);
           b.create<tensor::YieldOp>(loc, cast);
         });
     return success();
@@ -60,7 +59,9 @@ struct LowerIndexCastPass
     : public impl::LowerIndexCastPassBase<LowerIndexCastPass> {
   void runOnOperation() override {
     RewritePatternSet patterns(&getContext());
-    patterns.add<IndexCastConverter>(patterns.getContext());
+    patterns.add<IndexCastConverter<arith::IndexCastOp>,
+                 IndexCastConverter<arith::IndexCastUIOp>>(
+        patterns.getContext());
     if (failed(
             applyPatternsAndFoldGreedily(getOperation(), std::move(patterns))))
       return signalPassFailure();

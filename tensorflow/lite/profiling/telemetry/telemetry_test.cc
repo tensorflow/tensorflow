@@ -29,7 +29,7 @@ namespace {
 constexpr char kEventName[] = "event_name";
 constexpr char kSettingName[] = "setting_name";
 
-class MockTelemtryProfiler : public TelemetryProfiler {
+class MockTelemetryProfiler : public TelemetryProfiler {
  public:
   MOCK_METHOD(void, ReportTelemetryEvent,
               (const char* event_name, TelemetryStatusCode status), (override));
@@ -56,7 +56,7 @@ class TelemetryTest : public ::testing::Test {
  protected:
   TelemetryTest() { context_.profiler = &profiler_; }
 
-  MockTelemtryProfiler profiler_;
+  MockTelemetryProfiler profiler_;
   TfLiteContext context_;
 };
 

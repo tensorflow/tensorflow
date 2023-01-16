@@ -22,7 +22,7 @@ HloModule foobar
 
 // CHECK:  func private [[COPY_GENSYM:@.*copy.*]]([[INPUT:%.*]]: tensor<128x32xf32>) -> tensor<128x32xf32> attributes {execution_thread = "main"} {
   // CHECK-NEXT:  mhlo.copy [[INPUT]]
-  // CHECK-SAME: is_cross_program_prefetch
+  // CHECK-SAME: cross_program_prefetch_index
 
 // CHECK: func private [[CP_GENSYM:@.*collective_permute_.*]]([[INPUT:%.*]]: tensor<128x32xf32>) -> tensor<128x32xf32> attributes {execution_thread = "main"} {
   // CHECK-NEXT:  "mhlo.collective_permute"([[INPUT]])
@@ -98,7 +98,7 @@ add {
   input = f32[128,32] parameter(0)
   // CHECK-NEXT:  [[COPY_START:%.*]] = "mhlo.async_start"([[INPUT]])
   // CHECK-SAME: called_computation = [[COPY_GENSYM]], execution_thread = "main"
-  copy-start = (f32[128,32], f32[128,32], u32[]) copy-start(input), is_cross_program_prefetch=true
+  copy-start = (f32[128,32], f32[128,32], u32[]) copy-start(input), cross_program_prefetch_index=0
   // CHECK-NEXT: "mhlo.async_done"([[COPY_START]])
   // CHECK-SAME: called_computation = [[COPY_GENSYM]], execution_thread = "main"
   ROOT copy-done = f32[128,32] copy-done(copy-start)

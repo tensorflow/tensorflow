@@ -39,7 +39,7 @@ limitations under the License.
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/IR/Attributes.h"
-#include "mlir/IR/BlockAndValueMapping.h"
+#include "mlir/IR/IRMapping.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/Dialect.h"
@@ -368,7 +368,7 @@ struct RemoveCopyInReduceBody : public OpRewritePattern<ReduceOp> {
         SmallVector<Location>(oldReduceBody.getNumArguments(),
                               reduce.getLoc()));
 
-    mlir::BlockAndValueMapping bvm;
+    mlir::IRMapping bvm;
     for (auto item : llvm::zip(reduce.getBody().front().getArguments(),
                                newBlock->getArguments())) {
       bvm.map(std::get<0>(item), std::get<1>(item));

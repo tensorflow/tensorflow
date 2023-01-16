@@ -58,6 +58,10 @@ struct MhloToScalarOp<mhlo::AndOp> {
   using UOp = ::mlir::arith::AndIOp;
 };
 template <>
+struct MhloToScalarOp<mhlo::CbrtOp> {
+  using FOp = ::mlir::math::CbrtOp;
+};
+template <>
 struct MhloToScalarOp<mhlo::CompareOp> {
   using FOp = ::mlir::arith::CmpFOp;
   using IOp = ::mlir::arith::CmpIOp;
@@ -319,27 +323,6 @@ inline Value getConstantOrSplat(OpBuilder* b, Location loc, Type t,
     v = SplatElementsAttr::get(vecType, v);
   }
   return b->create<arith::ConstantOp>(loc, t, v);
-}
-
-template <>
-inline Value mapMhloOpToStdScalarOp<mhlo::CbrtOp>(Location loc,
-                                                  ArrayRef<Type> resultTypes,
-                                                  ArrayRef<Type> argTypes,
-                                                  mhlo::CbrtOp::Adaptor adaptor,
-                                                  OpBuilder* b) {
-  Type elementType = getElementTypeOrSelf(argTypes.front());
-  if (auto floatType = elementType.dyn_cast<FloatType>()) {
-    // Convert cbrt(x) to copysign(cbrt(abs(x), 1.0 / 3.0), x).
-    // This is to allow cbrt using pow while still handling negative numbers. It
-    // should match most cbrt intrinsics.
-    Value abs = b->create<mlir::math::AbsFOp>(loc, adaptor.getOperand());
-    Value third = b->create<arith::ConstantOp>(
-        loc, b->getFloatAttr(floatType, 1.0 / 3.0));
-    Value pow = b->create<mlir::math::PowFOp>(loc, resultTypes[0], abs, third);
-    return b->create<mlir::math::CopySignOp>(loc, floatType, pow,
-                                             adaptor.getOperand());
-  }
-  return nullptr;
 }
 
 template <typename PredicateType>

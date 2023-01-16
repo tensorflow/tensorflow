@@ -3457,7 +3457,7 @@ static llvm::Value* GetStartOffsetX(const TilingScheme& tiling_scheme,
 static void EmitXTileLoop(
     const IrEmitterUnnested::ThreadIdInfo& thread_id_info,
     const IrArray::Index& tile_origin_index, const TilingScheme& tiling_scheme,
-    bool check_x_tile_bounds, llvm::Value* start_offset_x, llvm::Value* y_loc,
+    bool check_x_tile_bounds, llvm::Value* y_loc,
     IrEmitterUnnested::ValueVector2 tile_dimensions, llvm::IRBuilder<>* b,
     const IrEmitterUnnested::EmitElementFunction* emit_elem_function) {
   llvm::Type* index_ty = tile_dimensions[1]->getType();
@@ -3465,6 +3465,8 @@ static void EmitXTileLoop(
   auto constant = [&](int64_t val) {
     return llvm::ConstantInt::get(index_ty, val);
   };
+  llvm::Value* start_offset_x =
+      GetStartOffsetX(tiling_scheme, thread_id_info.thread_id_x, index_ty, b);
 
   int64_t vector_size = tiling_scheme.GetVectorSize();
   int64_t stride_x = tiling_scheme.GetIndexingOrder() == kLinearIndexingX
@@ -3477,18 +3479,15 @@ static void EmitXTileLoop(
       /*end=*/constant(tiling_scheme.GetTileSizeFor(kDimX) / vector_size),
       /*step=*/1, [&](llvm::Value* x) {
         for (int64_t i = 0; i < vector_size; i++) {
-          llvm::Value* linear_index =
-              b->CreateAdd(b->CreateMul(x, constant(vector_size)), constant(i));
-          llvm::Value* x_loc = b->CreateAdd(
-              b->CreateAdd(b->CreateMul(x, constant(stride_x * vector_size)),
-                           constant(i)),
-              start_offset_x, "x_loc");
+          llvm::Value* x_offset = b->CreateAdd(
+              b->CreateMul(x, constant(stride_x * vector_size)), constant(i));
+          llvm::Value* x_loc = b->CreateAdd(x_offset, start_offset_x, "x_loc");
           IrArray::Index source_idx_x =
               tile_origin_index.AddOffsetToDim(y_loc, kDimY, b)
                   .AddOffsetToDim(x_loc, kDimX, b);
           auto emit_element = [&] {
             return (*emit_elem_function)(thread_id_info, source_idx_x, y_loc,
-                                         x_loc, linear_index);
+                                         x_loc);
           };
           if (check_x_tile_bounds) {
             ksl.If("x_in_tile", b->CreateICmpULT(x_loc, tile_dimensions[1]),
@@ -3509,8 +3508,6 @@ void IrEmitterUnnested::EmitTile(
     return llvm::ConstantInt::get(index_ty, val);
   };
   llvm::Value* num_threads_y = constant(tiling_scheme.GetNumThreadsFor(kDimY));
-  llvm::Value* start_offset_x =
-      GetStartOffsetX(tiling_scheme, thread_id_info.thread_id_x, index_ty, &b_);
 
   KernelSupportLibrary ksl(&b_, llvm_ir::UnrollMode::kDefaultUnroll);
 
@@ -3522,8 +3519,8 @@ void IrEmitterUnnested::EmitTile(
       /*step=*/num_threads_y, [&](llvm::Value* y_loc) {
         auto unroll_inner_tile_loop = [&](bool check_x_tile_bounds) {
           return EmitXTileLoop(thread_id_info, tile_origin_index, tiling_scheme,
-                               check_x_tile_bounds, start_offset_x, y_loc,
-                               tile_dimensions, &b_, &emit_elem_function);
+                               check_x_tile_bounds, y_loc, tile_dimensions, &b_,
+                               &emit_elem_function);
         };
 
         // Only take this path when we unroll in a way vectorizable by
@@ -4286,8 +4283,7 @@ Status IrEmitterUnnested::EmitTranspose021Tile(
     EmitTile(
         tiling_scheme, index, thread_id_info, tile_dimensions,
         [&](const ThreadIdInfo& thread_id_info, const IrArray::Index& index,
-            llvm::Value* y_loc, llvm::Value* x_loc,
-            llvm::Value* /*x_iter_num*/) {
+            llvm::Value* y_loc, llvm::Value* x_loc) {
           // Compute all extra output values before writing them. This avoids
           // overwriting aliased input/output values before all reads occurred.
           std::vector<std::tuple<IrArray, IrArray::Index, llvm::Value*>>
@@ -4338,7 +4334,7 @@ Status IrEmitterUnnested::EmitTranspose021Tile(
         /*emit_elem_function=*/
         [&](const ThreadIdInfo& thread_id_info,
             const llvm_ir::IrArray::Index& index, llvm::Value* y_loc,
-            llvm::Value* x_loc, llvm::Value* /*x_iter_num*/) {
+            llvm::Value* x_loc) {
           for (const auto& [output_idx, root] : llvm::enumerate(hlo_roots)) {
             if (FindAnyTiledTranspose(*root)) {
               const HloInstruction& hero = FindNonTrivialHero(*root);
@@ -4816,13 +4812,17 @@ Status IrEmitterUnnested::EmitIRForReduction(
 
   EmitElementFunction emit_reduction_element =
       [&](const ThreadIdInfo& thread_id_info, const IrArray::Index& index,
-          llvm::Value* y_loc, llvm::Value* x_loc, llvm::Value* x_iter_num) {
+          llvm::Value* y_loc, llvm::Value* x_loc) {
         IrArray::Index input_index = GetUnnormalizedIndex(
             index, input_shape, &b_,
             codegen_state.GetTilingScheme().GetDimsInElems());
-
         llvm::Value* partial_result_index =
-            codegen_state.IsRowReduction() ? b_.getInt32(0) : x_iter_num;
+            codegen_state.IsRowReduction()
+                ? b_.getInt32(0)
+                : b_.CreateSub(
+                      x_loc,
+                      GetStartOffsetX(tiling_scheme, thread_id_info.thread_id_x,
+                                      index_ty, &b_));
 
         // Clear the linear index field of the IrArray::Index to enable the use
         // of GetElementPointer with array types. This enables the vectorization

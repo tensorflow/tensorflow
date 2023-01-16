@@ -1109,7 +1109,7 @@ class ConvertConvDynamic : public OpRewritePattern<OpT> {
                               dimension_numbers_attr, feature_group_count_attr,
                               batch_group_count_attr};
     rewriter.replaceOpWithNewOp<mhlo::DynamicConvOp>(op, op.getType(), operands,
-                                                     llvm::makeArrayRef(attrs));
+                                                     llvm::ArrayRef(attrs));
     return success();
   }
 
@@ -1266,7 +1266,7 @@ class ConvertConvOp : public OpRewritePattern<OpTy> {
                               dimension_numbers_attr, feature_group_count_attr,
                               batch_group_count_attr, paddings_attr};
     rewriter.replaceOpWithNewOp<ConvolutionOp>(op, op.getType(), operands,
-                                               llvm::makeArrayRef(attrs));
+                                               llvm::ArrayRef(attrs));
     return success();
   }
 };
@@ -3149,9 +3149,9 @@ class ConvertBatchMatMulV2Op : public OpRewritePattern<TF::BatchMatMulV2Op> {
     int64_t rank = lhs_type.getRank();
     auto batch_dimensions = llvm::to_vector<4>(llvm::seq<int64_t>(0, rank - 2));
     auto lhs_contracting_dimensions = llvm::to_vector<4>(
-        llvm::makeArrayRef({op.getAdjX() ? rank - 2 : rank - 1}));
+        llvm::ArrayRef({op.getAdjX() ? rank - 2 : rank - 1}));
     auto rhs_contracting_dimensions = llvm::to_vector<4>(
-        llvm::makeArrayRef({op.getAdjY() ? rank - 1 : rank - 2}));
+        llvm::ArrayRef({op.getAdjY() ? rank - 1 : rank - 2}));
     auto dimension_numbers = DotDimensionNumbersAttr::get(
         rewriter.getContext(),
         /*lhs_batching_dimensions=*/batch_dimensions,
@@ -4377,7 +4377,7 @@ class ConvertTensorScatterOp : public OpRewritePattern<OpTy> {
           rewriter.create<TF::ConstOp>(op->getLoc(), const_type, const_attr);
 
       auto broadcast_to_type = tensorflow::GetTypeFromTFTensorShape(
-          llvm::makeArrayRef<int64_t>(expected_update_shape),
+          llvm::ArrayRef<int64_t>(expected_update_shape),
           updates_ty.getElementType());
 
       updates = rewriter.create<TF::BroadcastToOp>(
@@ -5834,11 +5834,11 @@ class ConvertRandomShuffleOp : public OpRewritePattern<TF::RandomShuffleOp> {
       // Then perform the swap.
       // indices[i] <- indices[swaps[i]]
       indices = builder->create<mhlo::DynamicUpdateSliceOp>(
-          loc, indices.getType(), indices, target_index, llvm::makeArrayRef(i));
+          loc, indices.getType(), indices, target_index, llvm::ArrayRef(i));
       // indices[swaps[i]] <- indices[i]
       indices = builder->create<mhlo::DynamicUpdateSliceOp>(
           loc, indices.getType(), indices, source_index,
-          llvm::makeArrayRef(swap_index));
+          llvm::ArrayRef(swap_index));
 
       // Update new values.
       new_values->assign({swaps, indices});
@@ -6470,7 +6470,7 @@ class ConvertXlaConvV2Op : public OpRewritePattern<TF::XlaConvV2Op> {
         feature_group_count_named_attr, batch_group_count_named_attr,
         dimension_numbers_named_attr,   precision_config_named_attr};
     rewriter.replaceOpWithNewOp<mhlo::ConvolutionOp>(op, op.getType(), operands,
-                                                     llvm::makeArrayRef(attrs));
+                                                     llvm::ArrayRef(attrs));
     return success();
   }
 };

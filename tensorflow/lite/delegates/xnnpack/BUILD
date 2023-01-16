@@ -1434,6 +1434,36 @@ cc_test(
 )
 
 cc_test(
+    name = "signed_quantized_reshape_test",
+    srcs = ["signed_quantized_reshape_test.cc"],
+    linkopts = select({
+        "//tensorflow:emscripten": EMSCRIPTEN_LINKOPTS,
+        "//conditions:default": [],
+    }),
+    deps = [
+        ":reshape_tester",
+        ":test_main",
+        ":xnnpack_delegate_test_mode",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
+    name = "unsigned_quantized_reshape_test",
+    srcs = ["unsigned_quantized_reshape_test.cc"],
+    linkopts = select({
+        "//tensorflow:emscripten": EMSCRIPTEN_LINKOPTS,
+        "//conditions:default": [],
+    }),
+    deps = [
+        ":reshape_tester",
+        ":test_main",
+        ":xnnpack_delegate_test_mode",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
     name = "resize_bilinear_test",
     srcs = ["resize_bilinear_test.cc"],
     linkopts = select({
@@ -2281,6 +2311,7 @@ cc_test(
         ":test_main",
         ":xnnpack_delegate_test_mode",
         "//tensorflow/lite:framework",
+        "//tensorflow/lite/core:framework",
         "//tensorflow/lite/kernels:builtin_ops",
         "@com_google_googletest//:gtest",
     ],

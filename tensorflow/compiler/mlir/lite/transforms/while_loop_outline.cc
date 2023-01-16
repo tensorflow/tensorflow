@@ -180,7 +180,7 @@ void ReplaceRegionWithCall(StringRef name, Region& region,
   auto block = b.createBlock(&region);
   SmallVector<Value, 4> new_operands;
   new_operands.reserve(types.size());
-  for (Type t : llvm::makeArrayRef(types).drop_back(extern_values.size()))
+  for (Type t : llvm::ArrayRef(types).drop_back(extern_values.size()))
     new_operands.push_back(block->addArgument(t, loc));
   for (Value v : extern_values) new_operands.push_back(v);
   auto call = b.create<func::CallOp>(loc, func, new_operands);

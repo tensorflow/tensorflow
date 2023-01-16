@@ -28,7 +28,7 @@ limitations under the License.
 namespace mlir {
 namespace TFL {
 
-stream_executor::port::StatusOr<arith::ConstantOp> CreateConstOpWithSingleValue(
+tsl::StatusOr<arith::ConstantOp> CreateConstOpWithSingleValue(
     PatternRewriter* rewriter, Location loc, ShapedType shaped_type,
     int value) {
   Type element_type = shaped_type.getElementType();

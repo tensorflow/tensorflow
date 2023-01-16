@@ -28,7 +28,7 @@ limitations under the License.
 
 namespace tensorflow {
 
-using stream_executor::port::StatusOr;
+using tsl::StatusOr;
 
 // Converts an TensorFlow tensor proto into an MLIR elements attribute.
 StatusOr<mlir::ElementsAttr> ConvertTensorProto(const TensorProto& input_tensor,

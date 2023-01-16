@@ -219,6 +219,7 @@ cc_library(
         "//tensorflow/compiler/xla/service/cpu/runtime:collectives",
         "//tensorflow/compiler/xla/service/cpu/runtime:custom_call",
         "//tensorflow/compiler/xla/service/cpu/runtime:fft_call",
+        "//tensorflow/compiler/xla/service/cpu/runtime:rng",
         "//tensorflow/compiler/xla/service/cpu/runtime:xfeed",
         "//tensorflow/compiler/xla/service:stochastic_convert_decomposer",
         "//tensorflow/compiler/xla/translate/hlo_to_mhlo:hlo_utils",

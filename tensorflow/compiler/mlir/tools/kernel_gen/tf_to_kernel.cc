@@ -115,6 +115,7 @@ Status Run(llvm::StringRef input_file, llvm::StringRef output_file,
   std::string tf_code;
   TF_RETURN_IF_ERROR(
       ReadFileToString(Env::Default(), input_file.str(), &tf_code));
+
   // Compile.
   mlir::MLIRContext context;
   TF_ASSIGN_OR_RETURN(

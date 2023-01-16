@@ -50,9 +50,7 @@ static std::string GetCudaErrorMessage(CUresult result) {
 }
 #endif  // GOOGLE_CUDA
 
-void GpuCudaMallocAsyncAllocator::PrintAllocatorStatistics() {
-  tsl::mutex_lock lock(lock_);
-
+void GpuCudaMallocAsyncAllocator::PrintAllocatorStatisticsNoLock() {
   std::map<size_t, int> size_map_histogram;
   std::vector<std::string> ptr_size_string;
   for (auto p : size_map_) {
@@ -102,6 +100,11 @@ void GpuCudaMallocAsyncAllocator::PrintAllocatorStatistics() {
   LOG(ERROR) << "CU_MEMPOOL_ATTR_RESERVED_MEM_HIGH: " << mem_reserved_high;
   LOG(ERROR) << "CU_MEMPOOL_ATTR_USED_MEM_HIGH: " << mem_used_high;
 #endif
+}
+
+void GpuCudaMallocAsyncAllocator::PrintAllocatorStatistics() {
+  tsl::mutex_lock lock(lock_);
+  PrintAllocatorStatisticsNoLock();
 }
 
 std::atomic<int> GpuCudaMallocAsyncAllocator::number_instantiated_(0);
@@ -286,6 +289,13 @@ void* GpuCudaMallocAsyncAllocator::AllocateRaw(size_t alignment,
         << "The instantiation of GpuCudaMallocAsyncAllocator failed."
         << " See previous errors.";
   }
+  // The lock is only needed when stats are enabled, but it must be around
+  // the cuMemAllocFromPoolAsync call as well to ensure consistency of the stats
+  // update.
+  std::unique_lock<tsl::mutex> lock(lock_, std::defer_lock);
+  if (stats_) {
+    lock.lock();
+  }
   cuda::ScopedActivateExecutorContext scoped_activation{stream_exec_};
   void* ptr = nullptr;
   if (auto result =
@@ -297,17 +307,16 @@ void* GpuCudaMallocAsyncAllocator::AllocateRaw(size_t alignment,
                << " bytes: " << GetCudaErrorMessage(result)
                << "\n Reported by CUDA: Free memory/Total memory: " << free
                << "/" << total;
-    if (auto stats = GetStats())
-      LOG(ERROR) << "Stats: " << stats->DebugString();
-
-    PrintAllocatorStatistics();
+    if (stats_) {
+      LOG(ERROR) << "Stats: " << stats_->DebugString();
+      PrintAllocatorStatisticsNoLock();
+    }
 
     return nullptr;
   }
 
   // Update stats.
   if (stats_) {
-    tsl::mutex_lock lock(lock_);
     ++(stats_->num_allocs);
     stats_->bytes_in_use += num_bytes;
     if (stats_->bytes_in_use > stats_->peak_bytes_in_use) {
@@ -318,7 +327,8 @@ void* GpuCudaMallocAsyncAllocator::AllocateRaw(size_t alignment,
         std::max(stats_->peak_bytes_in_use, stats_->bytes_in_use);
     stats_->largest_alloc_size =
         std::max<std::size_t>(stats_->largest_alloc_size, num_bytes);
-    size_map_[ptr] = num_bytes;
+    bool ptr_inserted = size_map_.emplace(ptr, num_bytes).second;
+    DCHECK(ptr_inserted);
   }
   VLOG(10) << Name() << " Allocated " << num_bytes << " at " << ptr;
   return ptr;
@@ -329,6 +339,12 @@ void* GpuCudaMallocAsyncAllocator::AllocateRaw(size_t alignment,
 void GpuCudaMallocAsyncAllocator::DeallocateRaw(void* ptr) {
 #if TF_CUDA_MALLOC_ASYNC_SUPPORTED
   if (ptr == nullptr) return;
+  // The lock is only needed when stats are enabled, but it must be around
+  // the cuMemFreeAsync call as well to ensure consistency of the stats update.
+  std::unique_lock<tsl::mutex> lock(lock_, std::defer_lock);
+  if (stats_) {
+    lock.lock();
+  }
   if (auto result = cuMemFreeAsync(reinterpret_cast<const CUdeviceptr&>(ptr),
                                    cuda_stream_)) {
     if (result == CUDA_ERROR_DEINITIALIZED) {
@@ -343,14 +359,14 @@ void GpuCudaMallocAsyncAllocator::DeallocateRaw(void* ptr) {
       LOG(ERROR) << "cudaFreeAsync failed to free " << ptr << ": "
                  << GetCudaErrorMessage(result)
                  << "\n Free memory/Total memory: " << free << "/" << total;
-      if (auto stats = GetStats())
-        LOG(ERROR) << "Stats: " << stats->DebugString();
+      if (stats_) {
+        LOG(ERROR) << "Stats: " << stats_->DebugString();
+      }
     }
   }
 
   // Updates the stats.
   if (stats_) {
-    tsl::mutex_lock lock(lock_);
     DCHECK(size_map_.contains(ptr));
     size_t size = size_map_[ptr];
     stats_->bytes_in_use -= size;

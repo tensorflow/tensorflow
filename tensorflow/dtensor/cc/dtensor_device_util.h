@@ -16,8 +16,12 @@ limitations under the License.
 #ifndef TENSORFLOW_DTENSOR_CC_DTENSOR_DEVICE_UTIL_H_
 #define TENSORFLOW_DTENSOR_CC_DTENSOR_DEVICE_UTIL_H_
 
+#include <map>
+#include <memory>
+#include <optional>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "tensorflow/c/eager/c_api.h"
 #include "tensorflow/c/eager/parallel_device/parallel_device_lib.h"
@@ -135,7 +139,7 @@ struct DTensorOperation {
 
 struct EmbeddingResourceAttrs {
   int64_t table_id;
-  absl::optional<int64_t> slot_id;  // NOLINT
+  std::optional<int64_t> slot_id;  // NOLINT
   bool is_dirty = false;
 };
 
@@ -224,10 +228,10 @@ class TensorWithLayout {
 
   // A dummy TensorWithLayout without holding a ParallelTensor.
   static std::unique_ptr<TensorWithLayout> Dummy(
-      const std::vector<int64_t>& local_shape, const TF_DataType dtype,
+      const std::vector<int64_t>& local_shape, TF_DataType dtype,
       const MeshWithParallelDevice& mesh, const Layout& layout);
 
-  virtual ~TensorWithLayout() {}
+  virtual ~TensorWithLayout() = default;
 
   virtual const Layout& layout() const { return layout_; }
 
@@ -305,7 +309,7 @@ class TensorWithLayout {
     input_layout_for_shape_op_result_.emplace(layout);
   }
 
-  const absl::optional<Layout> shape_metadata_layout() const {
+  const std::optional<Layout>& shape_metadata_layout() const {
     return input_layout_for_shape_op_result_;
   }
 
@@ -316,22 +320,22 @@ class TensorWithLayout {
   // For replicated layout tensors, global shape is simply the shape of local
   // tensors on each device. For sharded tensor, this is the global shape
   // encodes layout & local shape on each device.
-  const std::vector<int64_t> global_shape() const {
+  std::vector<int64_t> global_shape() const {
     return layout().GlobalShapeFromLocalShape(local_shape());
   }
 
-  const std::vector<int64_t> local_shape() const { return local_shape_; }
+  const std::vector<int64_t>& local_shape() const { return local_shape_; }
 
-  const absl::optional<NodeDef> const_value() const { return const_value_; }
+  const std::optional<NodeDef>& const_value() const { return const_value_; }
 
-  const absl::optional<EmbeddingResourceAttrs>& attrs() const { return attrs_; }
+  const std::optional<EmbeddingResourceAttrs>& attrs() const { return attrs_; }
 
  protected:
   TensorWithLayout(std::unique_ptr<parallel_device::ParallelTensor> tensor,
                    const MeshWithParallelDevice& mesh, const Layout& layout,
                    std::vector<int64_t> local_shape,
-                   absl::optional<TF_DataType> dtype = absl::nullopt,
-                   absl::optional<NodeDef> const_value = absl::nullopt)
+                   std::optional<TF_DataType> dtype = std::nullopt,
+                   std::optional<NodeDef> const_value = std::nullopt)
       : tensor_(std::move(tensor)),
         layout_(layout),
         mesh_(mesh),
@@ -350,21 +354,21 @@ class TensorWithLayout {
   // This provides extra information to the layout propagation and SPMD passes
   // during op-by-op execution. (For example, the reduction indices for Sum,
   // target shapes for Rng/Reshape, etc).
-  absl::optional<NodeDef> const_value_;
+  std::optional<NodeDef> const_value_;
 
   // Optionally holds the original input layout for a shape Op returned Tensor.
   // This is used to preserve information for a shape op output so that future
   // uses could recover local shape.
   // TODO(hthu,allenl,xiejw): Move this into a separate class for clarity.
-  absl::optional<Layout> input_layout_for_shape_op_result_ = absl::nullopt;
+  std::optional<Layout> input_layout_for_shape_op_result_ = std::nullopt;
 
   // The local shape of tensors placed on each of `tensor_`'s component devices.
   std::vector<int64_t> local_shape_;
 
-  absl::optional<TF_DataType> dtype_;
+  std::optional<TF_DataType> dtype_;
 
   // Resource input attributes for embedding inputs.
-  absl::optional<EmbeddingResourceAttrs> attrs_;  // NOLINT
+  std::optional<EmbeddingResourceAttrs> attrs_;  // NOLINT
 };
 
 // Extension of TensorWithLayout which holds resource handle with layout.
@@ -418,10 +422,10 @@ class ResourceHandleWithLayout : public TensorWithLayout {
     dereferenced_dtype_.emplace(dtype);
   }
 
-  const absl::optional<TensorShapeProto>& dereferenced_shape() const {
+  const std::optional<TensorShapeProto>& dereferenced_shape() const {
     return dereferenced_shape_;
   }
-  const absl::optional<DataType>& dereferenced_dtype() const {
+  const std::optional<DataType>& dereferenced_dtype() const {
     return dereferenced_dtype_;
   }
 
@@ -435,10 +439,10 @@ class ResourceHandleWithLayout : public TensorWithLayout {
 
  private:
   // The layout of the tensor pointed to by this handle, if any.
-  absl::optional<Layout> dereferenced_layout_;
+  std::optional<Layout> dereferenced_layout_;
   // The shape and dtype of the tensor pointed to by this resource tensor.
-  absl::optional<TensorShapeProto> dereferenced_shape_;
-  absl::optional<DataType> dereferenced_dtype_;
+  std::optional<TensorShapeProto> dereferenced_shape_;
+  std::optional<DataType> dereferenced_dtype_;
 };
 
 // TensorWithLayout for SparseTensors.
@@ -503,8 +507,8 @@ class SparseTensorWithLayout : public TensorWithLayout {
       std::unique_ptr<parallel_device::ParallelTensor> dense_shapes,
       const MeshWithParallelDevice& mesh, const Layout& layout,
       std::vector<int64_t> local_shape,
-      absl::optional<TF_DataType> dtype = absl::nullopt,
-      absl::optional<NodeDef> const_value = absl::nullopt)
+      std::optional<TF_DataType> dtype = std::nullopt,
+      std::optional<NodeDef> const_value = std::nullopt)
       : TensorWithLayout(nullptr, mesh, layout, local_shape),
         indices_(std::move(indices)),
         values_(std::move(values)),
@@ -586,7 +590,7 @@ class ExecutableManager {
   // have ran this function at least twice and the small input value changed
   // across separate runs.
   bool IsConstantFoldable(const DTensorOperation& doperation,
-                          const int input_index) const;
+                          int input_index) const;
 
  private:
   // Generates a cache key for the graph, including its attributes,
@@ -622,8 +626,8 @@ Status PrepareGraphForMlir(
     const std::vector<TensorWithLayout*>& inputs,
     const DTensorOperation& doperation,
     const tensorflow::FunctionLibraryDefinition& flib_def,
-    const NameAttrList& attributes,
-    const absl::optional<Layout>& default_layout, tensorflow::Graph* graph,
+    const NameAttrList& attributes, const std::optional<Layout>& default_layout,
+    tensorflow::Graph* graph,
     std::vector<PartialTensorShape>* global_output_shapes,
     std::vector<const Layout*>* output_layouts);
 
