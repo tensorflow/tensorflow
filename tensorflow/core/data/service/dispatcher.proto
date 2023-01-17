@@ -8,12 +8,14 @@ import "tensorflow/core/protobuf/data_service.proto";
 import "tensorflow/core/protobuf/error_codes.proto";
 import "tensorflow/core/protobuf/snapshot.proto";
 
-// Next tag: 3
+// Next tag: 4
 message SnapshotTaskDef {
   // The base directory at which the snapshot is being materialized.
   string base_path = 1;
   // The index of the stream that the worker has been assigned to process.
   int64 stream_index = 2;
+  // The number of source datasets (split providers).
+  int64 num_sources = 3;
 }
 
 // Next tag: 5

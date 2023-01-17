@@ -70,6 +70,25 @@ tf_cc_test(
 )
 
 cc_library(
+    name = "snapshot_split_provider",
+    srcs = ["snapshot_split_provider.cc"],
+    hdrs = ["snapshot_split_provider.h"],
+    compatible_with = get_compatible_with_portable(),
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core/data/service:dispatcher_client",
+        "//tensorflow/core/data/service:dispatcher_proto_cc",
+        "//tensorflow/core/data/service:grpc_util",
+        "//tensorflow/tsl/platform:env",
+        "//tensorflow/tsl/platform:errors",
+        "//tensorflow/tsl/platform:mutex",
+        "//tensorflow/tsl/platform:status",
+        "//tensorflow/tsl/platform:thread_annotations",
+        "@com_google_absl//absl/time",
+    ],
+)
+
+cc_library(
     name = "snapshot_stream_writer",
     srcs = ["snapshot_stream_writer.cc"],
     hdrs = ["snapshot_stream_writer.h"],

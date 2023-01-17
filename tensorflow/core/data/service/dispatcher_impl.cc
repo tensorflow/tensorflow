@@ -44,6 +44,7 @@ limitations under the License.
 #include "tensorflow/core/data/service/export.pb.h"
 #include "tensorflow/core/data/service/grpc_util.h"
 #include "tensorflow/core/data/service/journal.h"
+#include "tensorflow/core/data/service/snapshot/file_utils.h"
 #include "tensorflow/core/data/service/snapshot/path_utils.h"
 #include "tensorflow/core/data/service/split_provider.h"
 #include "tensorflow/core/data/service/validate_utils.h"
@@ -346,14 +347,22 @@ Status DataServiceDispatcherImpl::CreateSnapshotStream(
 Status DataServiceDispatcherImpl::PopulateSnapshotInfo(
     absl::string_view worker_address, WorkerHeartbeatResponse* response) {
   for (auto& [snapshot_directory, snapshot_state] : snapshots_) {
+    auto it = snapshot_state.assigned_streams.find(worker_address);
+    if (it == snapshot_state.assigned_streams.end() &&
+        snapshot_state.mode != SnapshotState::Mode::kActive) {
+      // If new workers are starting but the snapshot is not active, do not add
+      // a snapshot task.
+      continue;
+    }
+
     SnapshotTaskDef* snapshot_task = response->add_snapshot_tasks();
     snapshot_task->set_base_path(snapshot_directory);
-    if (auto it = snapshot_state.assigned_streams.find(worker_address);
-        it != snapshot_state.assigned_streams.end()) {
+    snapshot_task->set_num_sources(snapshot_state.split_providers.size());
+    if (it != snapshot_state.assigned_streams.end()) {
       snapshot_task->set_stream_index(it->second);
       continue;
     }
-    if (snapshot_state.mode != SnapshotState::Mode::kActive) continue;
+
     // TODO(mpcallanan): Handle orphaned streams.
     TF_RETURN_IF_ERROR(CreateSnapshotStream(snapshot_directory, worker_address,
                                             snapshot_state));
