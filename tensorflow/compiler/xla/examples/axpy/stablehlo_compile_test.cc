@@ -13,7 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <iostream>
 #include <memory>
+#include <ostream>
 #include <string>
 #include <utility>
 #include <vector>
@@ -84,6 +86,9 @@ TEST(StableHloAxpyTest, LoadAndRunCpuExecutable) {
   TF_ASSERT_OK(
       tsl::ReadFileToString(tsl::Env::Default(), module_path, &module_string));
 
+  std::cerr << "Loaded StableHLO module from " << module_path << ":\n"
+            << module_string << std::endl;
+
   // Register MLIR dialects necessary to parse our module. In our case this is
   // just the Func dialect and StableHLO.
   mlir::DialectRegistry dialects;
@@ -104,6 +109,11 @@ TEST(StableHloAxpyTest, LoadAndRunCpuExecutable) {
   auto x_literal = xla::LiteralUtil::CreateR1<float>({1.0f, 2.0f, 3.0f, 4.0f});
   auto y_literal =
       xla::LiteralUtil::CreateR1<float>({10.5f, 20.5f, 30.5f, 40.5f});
+
+  std::cerr << "Computation inputs:" << std::endl;
+  std::cerr << "\talpha:" << alpha_literal << std::endl;
+  std::cerr << "\tx:" << x_literal << std::endl;
+  std::cerr << "\ty:" << y_literal << std::endl;
 
   // Get the host device.
   PjRtDevice* cpu = pjrt_se_client.devices()[0];
@@ -131,6 +141,7 @@ TEST(StableHloAxpyTest, LoadAndRunCpuExecutable) {
   xla::LiteralTestUtil::ExpectR1Near<float>({13.64f, 26.78f, 39.92f, 53.06f},
                                             *axpy_result_literal,
                                             xla::ErrorSpec(0.01f));
+  std::cerr << "Computation output: " << *axpy_result_literal << std::endl;
 }
 
 }  // namespace
