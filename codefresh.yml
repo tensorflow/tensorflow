@@ -29,7 +29,7 @@ steps:
     dockerfile: "Dockerfile"
     stage: "build"
 
-  phase_1:
+  phase_1_parallel:
     type: parallel
     stage: "phase-1"
     steps:
@@ -37,13 +37,13 @@ steps:
         title: "Linter"
         image: "${{build}}" # The image in which command will be executed
         commands:
-          - "pylint /code/component"
+          - "pylint --rcfile /code/.pylintrc /code/component /code/tests"
       test:
         title: "Running Tests"
         image: "${{build}}" # The image in which command will be executed
         fail_fast: false
         commands:
-          - "pytest /code/tests/unit --alluredir=$CF_VOLUME_PATH/allure-results-unit"
+          - "pytest -n 3 /code/tests/unit --alluredir=$CF_VOLUME_PATH/allure-results-unit"
 
   test_reporting_step:
     stage: "phase-1"
@@ -83,7 +83,7 @@ steps:
     image: "${{build}}" # The image in which command will be executed
     fail_fast: false
     commands:
-      - "pytest /code/tests/integration --alluredir=$CF_VOLUME_PATH/allure-results-integration"
+      - "pytest -n 3 /code/tests/integration --alluredir=$CF_VOLUME_PATH/allure-results-integration"
 
   integration_test_report:
     title: Integration Test Report
