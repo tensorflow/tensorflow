@@ -143,6 +143,8 @@ Status NVPTXCompiler::OptimizeHloPostLayoutAssignment(
       hlo_module, stream_exec, device_allocator, gpu_target_config));
 
   HloPassPipeline post_pipeline("nvptx post-layout_assignment part 2");
+  // Rewrite Multi-Headed Attention modules to Fused MHA custom-calls.
+  post_pipeline.AddPass<CudnnFusedMHARewriter>(cuda_compute_capability);
   if (!stream_exec) {
     // Device not available. Use autotune results from gpu_target_config.
     GemmAlgorithmPicker::ClearAutotuneResults();

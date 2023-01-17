@@ -18,13 +18,14 @@ limitations under the License.
 #include <functional>
 #include <string>
 
+#include "tensorflow/compiler/xla/hlo/ir/hlo_casting_utils.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/service/gpu/backend_configs.pb.h"
 #include "tensorflow/compiler/xla/service/gpu/cublas_cudnn.h"
-#include "tensorflow/compiler/xla/hlo/ir/hlo_casting_utils.h"
+#include "tensorflow/compiler/xla/service/gpu/matmul_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_creation_utils.h"
-#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/pattern_matcher.h"
 #include "tensorflow/compiler/xla/stream_executor/dnn.pb.h"
 #include "tensorflow/core/platform/errors.h"
@@ -98,7 +99,137 @@ Status SetName(HloModule* module, HloInstruction* fmha) {
       "Found invalid FMHA custom-call target while setting custom-call name");
 }
 
-StatusOr<bool> FuseBatchedMatmuls(HloComputation* comp) {
+bool IsComputeCapabilitySupported(stream_executor::CudaComputeCapability cc) {
+  return true;
+  if (!(cc.IsAtLeast(
+          se::CudaComputeCapability::AMPERE) /* && cc.minor == 0 */)) {
+      VLOG(2) << "CudnnFusedMHARewriter did not run. Unsupported compute "
+                 "capability";
+    return false;
+  }
+  return true;
+}
+
+bool IsSupportedPrimitiveType(const HloInstruction* bmm) {
+  auto dtype = bmm->shape().element_type();
+  return dtype == BF16 || dtype == F16;
+}
+
+bool IsContractingDimSupported(
+    absl::Span<const int64_t> contracting_dims) {
+  return absl::c_all_of(contracting_dims,
+                        [](int64_t dim) { return dim == 64; });
+}
+
+bool IsNonContractingDimSupported(
+    const std::vector<int64_t>& non_contracting_dims) {
+  return absl::c_all_of(non_contracting_dims,
+                        [](int64_t dim) { return dim <= 512; });
+}
+
+std::vector<int64_t> GetDimensionVector(absl::Span<const int64_t> dimensions,
+                                        absl::Span<const int64_t> dim_nums) {
+  std::vector<int64_t> vec(dim_nums.size());
+  for (int i = 0; i < dim_nums.size(); i++) {
+    vec[i] = dimensions.at(dim_nums.at(i));
+  }
+  return vec;
+}
+
+StatusOr<bool> IsSupportedBMM1(const HloInstruction* bmm_1) {
+  GemmBackendConfig config_bmm1;
+  TF_ASSIGN_OR_RETURN(config_bmm1, bmm_1->backend_config<GemmBackendConfig>());
+  const DotDimensionNumbers& dot_dims_bmm1 =
+      config_bmm1.dot_dimension_numbers();
+  TF_ASSIGN_OR_RETURN(
+      std::vector<int64_t> lhs_non_contracting_dim_nums_bmm1,
+      GetNonContractingDims(bmm_1->operand(0)->shape(),
+                            dot_dims_bmm1.lhs_batch_dimensions(),
+                            dot_dims_bmm1.lhs_contracting_dimensions()));
+  TF_ASSIGN_OR_RETURN(
+      std::vector<int64_t> rhs_non_contracting_dim_nums_bmm1,
+      GetNonContractingDims(bmm_1->operand(1)->shape(),
+                            dot_dims_bmm1.rhs_batch_dimensions(),
+                            dot_dims_bmm1.rhs_contracting_dimensions()));
+  std::vector<int64_t> lhs_non_contracting_dims_bmm1 =
+      GetDimensionVector(bmm_1->operand(0)->shape().dimensions(),
+                         lhs_non_contracting_dim_nums_bmm1);
+  std::vector<int64_t> rhs_non_contracting_dims_bmm1 =
+      GetDimensionVector(bmm_1->operand(1)->shape().dimensions(),
+                         rhs_non_contracting_dim_nums_bmm1);
+  // The non contracting dimensions for BMM1 need to be less than or equal to
+  // 512.
+  if (!IsNonContractingDimSupported(lhs_non_contracting_dims_bmm1) ||
+      !IsNonContractingDimSupported(rhs_non_contracting_dims_bmm1)) {
+    if (VLOG_IS_ON(2)) {
+      VLOG(2) << "BMM1 lhs_non_contracting_dims: "
+              << absl::StrJoin(lhs_non_contracting_dims_bmm1, ",")
+              << " BMM1 rhs_non_contracting_dims: "
+              << absl::StrJoin(rhs_non_contracting_dims_bmm1, ",")
+              << " are not supported.";
+    }
+    return false;
+  }
+
+  std::vector<int64_t> lhs_contracting_dims_bmm1 =
+      GetDimensionVector(bmm_1->operand(0)->shape().dimensions(),
+                         dot_dims_bmm1.lhs_contracting_dimensions());
+  std::vector<int64_t> rhs_contracting_dims_bmm1 =
+      GetDimensionVector(bmm_1->operand(1)->shape().dimensions(),
+                         dot_dims_bmm1.rhs_contracting_dimensions());
+
+  // The contracting dimensions for BMM1 need to be 64.
+  if (!IsContractingDimSupported(lhs_contracting_dims_bmm1) ||
+      !IsContractingDimSupported(rhs_contracting_dims_bmm1)) {
+    if (VLOG_IS_ON(2)) {
+      VLOG(2) << "BMM1 lhs_contracting_dims: "
+              << absl::StrJoin(lhs_contracting_dims_bmm1, ",")
+              << " BMM1 rhs_contracting_dims: "
+              << absl::StrJoin(rhs_contracting_dims_bmm1, ",")
+              << " are not supported.";
+    }
+    return false;
+  }
+  return true;
+}
+
+StatusOr<bool> IsSupportedBMM2(const HloInstruction* bmm_2) {
+  GemmBackendConfig config_bmm2;
+  TF_ASSIGN_OR_RETURN(config_bmm2, bmm_2->backend_config<GemmBackendConfig>());
+  const DotDimensionNumbers& dot_dims_bmm2 =
+      config_bmm2.dot_dimension_numbers();
+
+  TF_ASSIGN_OR_RETURN(
+      std::vector<int64_t> rhs_non_contracting_dim_nums_bmm2,
+      GetNonContractingDims(bmm_2->operand(1)->shape(),
+                            dot_dims_bmm2.rhs_batch_dimensions(),
+                            dot_dims_bmm2.rhs_contracting_dimensions()));
+
+  std::vector<int64_t> rhs_non_contracting_dims_bmm2 =
+      GetDimensionVector(bmm_2->operand(1)->shape().dimensions(),
+                         rhs_non_contracting_dim_nums_bmm2);
+  // The non contracting dimension for BMM2 needs to be 64 for the input matrix.
+  // The input matrix is the second argument to BMM2 i.e, rhs.
+  if (!absl::c_all_of(rhs_non_contracting_dims_bmm2,
+                      [](int64_t dim) { return dim == 64; })) {
+    if (VLOG_IS_ON(2)) {
+      VLOG(2) << " BMM1 rhs_non_contracting_dims: "
+              << absl::StrJoin(rhs_non_contracting_dims_bmm2, ",")
+              << " are not supported.";
+    }
+    return false;
+  }
+  return true;
+}
+
+StatusOr<bool> FuseBatchedMatmuls(HloComputation* comp,
+                                  stream_executor::CudaComputeCapability cc) {
+  const DebugOptions& debug_options = comp->parent()->config().debug_options();
+  if (!debug_options.xla_gpu_enable_cudnn_fmha() ||
+      !IsComputeCapabilitySupported(cc)) {
+    return false;
+  }
+
   bool changed = false;
   for (HloInstruction* instr : comp->MakeInstructionPostOrder()) {
     HloInstruction* bmm_1;
@@ -111,6 +242,23 @@ StatusOr<bool> FuseBatchedMatmuls(HloComputation* comp) {
     if (!Match(instr, pattern)) {
       continue;
     }
+
+    // cuDNN 8.8 currently only supports BF16 and F16 data types.
+    if (!IsSupportedPrimitiveType(bmm_1) || !IsSupportedPrimitiveType(bmm_2)) {
+      if (VLOG_IS_ON(2)) {
+        VLOG(2) << "Unsupported primitive type for cuDNN MHA fusion:\n"
+                << bmm_1->ToString() << "\nOR\n"
+                << bmm_2->ToString() << "\n"
+                << "BF16 and F16 are the supported Dtypes.";
+      }
+      continue;
+    }
+
+    TF_ASSIGN_OR_RETURN(bool is_bmm1_supported, IsSupportedBMM1(bmm_1));
+    if (!is_bmm1_supported) continue;
+    TF_ASSIGN_OR_RETURN(bool is_bmm2_supported, IsSupportedBMM2(bmm_2));
+    if (!is_bmm2_supported) continue;
+
     TF_ASSIGN_OR_RETURN(auto config_bmm1,
                         bmm_1->backend_config<GemmBackendConfig>());
     TF_ASSIGN_OR_RETURN(auto config_bmm2,
@@ -168,7 +316,7 @@ StatusOr<bool> CudnnFusedMHARewriter::Run(
   for (HloComputation* comp :
        module->MakeNonfusionComputations(execution_threads)) {
     bool changed = false;
-    TF_ASSIGN_OR_RETURN(changed, FuseBatchedMatmuls(comp));
+    TF_ASSIGN_OR_RETURN(changed, FuseBatchedMatmuls(comp, compute_capability_));
     any_changed |= changed;
   }
 

@@ -24,6 +24,9 @@ namespace gpu {
 
 class CudnnFusedMHARewriter : public HloModulePass {
  public:
+  explicit CudnnFusedMHARewriter(se::CudaComputeCapability cc)
+      : compute_capability_(cc) {}
+
   absl::string_view name() const override {
     return "cudnn-fused-multi-headed-attention-rewriter";
   }
@@ -32,6 +35,9 @@ class CudnnFusedMHARewriter : public HloModulePass {
   StatusOr<bool> Run(
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
+
+ private:
+  const se::CudaComputeCapability compute_capability_;
 };
 
 }  // namespace gpu
