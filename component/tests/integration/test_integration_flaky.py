@@ -2,7 +2,7 @@ import random
 
 import pytest
 
-IS_FLAKY = False
+IS_FLAKY = True
 
 
 @pytest.mark.parametrize("param", range(0, 90_000))
