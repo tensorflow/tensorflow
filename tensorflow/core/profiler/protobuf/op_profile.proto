@@ -81,9 +81,11 @@ message Metrics {
   // Index into array using MemBwType enum.
   repeated double bandwidth_utils = 5;
 
-  double raw_time = 11;            // Elapsed core-time in picoseconds.
-  double raw_flops = 12;           // Total floating-point operations performed.
-  double raw_bytes_accessed = 13;  // Total bytes accessed (include read/write).
-  // Total HBM bytes accessed (include read/write).
-  double raw_hbm_bytes_accessed = 14;
+  double raw_time = 11;   // Elapsed core-time in picoseconds.
+  double raw_flops = 12;  // Total floating-point operations performed.
+  // Total bytes accessed for each memory type.
+  // Index into array using MemBwType enum.
+  repeated double raw_bytes_accessed_array = 15;
+
+  reserved 13, 14;
 }
