@@ -999,6 +999,37 @@ xla_cc_test(
 )
 
 cc_library(
+    name = "dot_dimension_sorter",
+    srcs = ["dot_dimension_sorter.cc"],
+    hdrs = ["dot_dimension_sorter.h"],
+    deps = [
+        "//tensorflow/compiler/xla:permutation_util",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:xla_data_proto_cc",
+        "//tensorflow/compiler/xla/hlo/ir:hlo",
+        "//tensorflow/compiler/xla/service:hlo_pass",
+        "//tensorflow/tsl/platform:logging",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+xla_cc_test(
+    name = "dot_dimension_sorter_test",
+    srcs = ["dot_dimension_sorter_test.cc"],
+    tags = tf_cuda_tests_tags(),
+    deps = [
+        ":dot_dimension_sorter",
+        "//tensorflow/compiler/xla/service:gpu_plugin",
+        "//tensorflow/compiler/xla/service:hlo_matchers",
+        "//tensorflow/compiler/xla/service:hlo_parser",
+        "//tensorflow/compiler/xla/service/gpu/tests:gpu_codegen_test",
+        "//tensorflow/compiler/xla/tests:test_utils",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",  # fixdeps: keep
+    ],
+)
+
+cc_library(
     name = "gpu_conv_algorithm_picker",
     srcs = ["gpu_conv_algorithm_picker.cc"],
     hdrs = ["gpu_conv_algorithm_picker.h"],
@@ -1698,6 +1729,7 @@ cc_library(
         ":alias_passthrough_params",
         ":all_reduce_blueconnect",
         ":conv_layout_normalization",
+        ":dot_dimension_sorter",
         ":executable_proto_cc",
         ":fusion_merger",
         ":gemm_broadcast_folding_rewriter",
