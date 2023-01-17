@@ -6114,7 +6114,6 @@ filegroup(
         "assign_op.h",
         "bias_op.cc",
         "bias_op.h",
-        "bias_op_gpu.h",
         "cast_op.cc",
         "cast_op.h",
         "cast_op_impl.h",
