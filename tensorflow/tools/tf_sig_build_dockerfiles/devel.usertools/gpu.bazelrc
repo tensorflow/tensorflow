@@ -78,20 +78,50 @@ test --test_summary=short
 # Pass --config=nonpip to run the same suite of tests. If you want to run just
 # one test for investigation, you don't need --config=nonpip; just run the
 # bazel test invocation as normal.
-test:nonpip_filters --test_tag_filters=gpu,requires-gpu,-no_gpu,-no_oss,-oss_serial,-no_cuda11
-test:nonpip_filters --build_tag_filters=gpu,requires-gpu,-no_gpu,-no_oss,-oss_serial,-no_cuda11
+test:nonpip_filters --test_tag_filters=gpu,requires-gpu,-no_gpu,-no_oss,-oss_serial,-no_cuda11,-no_rocm
+test:nonpip_filters --build_tag_filters=gpu,requires-gpu,-no_gpu,-no_oss,-oss_serial,-no_cuda11,-no_rocm
 test:nonpip_filters --test_lang_filters=py --flaky_test_attempts=3 --test_size_filters=small,medium
 test:nonpip --config=nonpip_filters -- //tensorflow/... -//tensorflow/python/integration_testing/... -//tensorflow/compiler/tf2tensorrt/... -//tensorflow/compiler/xrt/... -//tensorflow/core/tpu/... -//tensorflow/lite/... -//tensorflow/tools/toolchains/...
 
-test:nonpip_filters_rocm --test_tag_filters=gpu,requires-gpu,-no_gpu,-no_oss,-oss_serial,-no_rocm
-test:nonpip_filters_rocm --build_tag_filters=gpu,requires-gpu,-no_gpu,-no_oss,-oss_serial,-no_rocm
-test:nonpip_filters_rocm --test_lang_filters=py --flaky_test_attempts=3 --test_size_filters=small,medium
-test:nonpip_rocm --config=nonpip_filters_rocm -- //tensorflow/... -//tensorflow/python/integration_testing/... -//tensorflow/compiler/tf2tensorrt/... -//tensorflow/compiler/xrt/... -//tensorflow/core/tpu/... -//tensorflow/lite/... -//tensorflow/tools/toolchains/...
+# "nonpip_large" will run tests marked as large as well
+test:nonpip_filters_large --test_tag_filters=gpu,requires-gpu,-no_gpu,-no_oss,-oss_serial,-no_cuda11,-no_rocm,-benchmark-test,-tpu,-v1only
+test:nonpip_filters_large --build_tag_filters=gpu,requires-gpu,-no_gpu,-no_oss,-oss_serial,-no_cuda11,-no_rocm
+test:nonpip_filters_large --test_lang_filters=py --flaky_test_attempts=3 --test_size_filters=small,medium,large
+test:nonpip_large --config=nonpip_filters_large -- //tensorflow/... -//tensorflow/python/integration_testing/... -//tensorflow/compiler/tf2tensorrt/... -//tensorflow/compiler/xrt/... -//tensorflow/core/tpu/... -//tensorflow/lite/... -//tensorflow/tools/toolchains/...
 
-test:nonpip_filters_rocm_large --test_tag_filters=gpu,requires-gpu,-no_gpu,-no_oss,-oss_serial,-no_rocm
-test:nonpip_filters_rocm_large --build_tag_filters=gpu,requires-gpu,-no_gpu,-no_oss,-oss_serial,-no_rocm
-test:nonpip_filters_rocm_large --test_lang_filters=py --flaky_test_attempts=3 --test_size_filters=small,medium,large
-test:nonpip_rocm_large --config=nonpip_filters_rocm_large -- //tensorflow/... -//tensorflow/python/integration_testing/... -//tensorflow/compiler/tf2tensorrt/... -//tensorflow/compiler/xrt/... -//tensorflow/core/tpu/... -//tensorflow/lite/... -//tensorflow/tools/toolchains/...
+# "nonpip_filter_multi_gpu" will run a defined set of multi-gpu tests
+test:nonpip_filters_multi_gpu --test_tag_filters=-no_gpu,-no_rocm
+test:nonpip_filters_multi_gpu --build_tag_filters=-no_gpu,-no_rocm
+test:nonpip_filters_multi_gpu --test_lang_filters=py --flaky_test_attempts=3 --test_size_filters=small,medium,large --test_env=TF_PER_DEVICE_MEMORY_LIMIT_MB=2048
+test:nonpip_multi_gpu --config=nonpip_filters_multi_gpu -- \
+//tensorflow/core/common_runtime/gpu:gpu_device_unified_memory_test_2gpu \
+//tensorflow/core/nccl:nccl_manager_test_2gpu \
+//tensorflow/python/distribute/integration_test:mwms_peer_failure_test_2gpu \
+//tensorflow/python/distribute:checkpoint_utils_test_2gpu \
+//tensorflow/python/distribute:checkpointing_test_2gpu \
+//tensorflow/python/distribute:collective_all_reduce_strategy_test_xla_2gpu \
+//tensorflow/python/distribute:custom_training_loop_gradient_test_2gpu \
+//tensorflow/python/distribute:custom_training_loop_input_test_2gpu \
+//tensorflow/python/distribute:distribute_utils_test_2gpu \
+//tensorflow/python/distribute:input_lib_test_2gpu \
+//tensorflow/python/distribute:input_lib_type_spec_test_2gpu \
+//tensorflow/python/distribute:metrics_v1_test_2gpu \
+//tensorflow/python/distribute:mirrored_variable_test_2gpu \
+//tensorflow/python/distribute:parameter_server_strategy_test_2gpu \
+//tensorflow/python/distribute:ps_values_test_2gpu \
+//tensorflow/python/distribute:random_generator_test_2gpu \
+//tensorflow/python/distribute:test_util_test_2gpu \
+//tensorflow/python/distribute:tf_function_test_2gpu \
+//tensorflow/python/distribute:vars_test_2gpu \
+//tensorflow/python/distribute:warm_starting_util_test_2gpu \
+//tensorflow/python/training:saver_test_2gpu \
+
+# "nonpip_cpu" will cpu-only tests
+test:nonpip_filters_cpu --test_tag_filters=-no_oss,-oss_serial,-gpu,-multi_gpu,-tpu,-no_cuda11,-no_rocm,-benchmark-test,-v1only
+test:nonpip_filters_cpu --build_tag_filters=-no_oss,-oss_serial,-gpu,-multi_gpu,-tpu,-no_cuda11,-no_rocm,-benchmark-test,-v1only
+test:nonpip_filters_cpu --test_lang_filters=py --flaky_test_attempts=3 --test_size_filters=small,medium,large
+test:nonpip_cpu --config=nonpip_filters_cpu -- //tensorflow/... -//tensorflow/python/integration_testing/... -//tensorflow/compiler/tf2tensorrt/... -//tensorflow/compiler/xrt/... -//tensorflow/core/tpu/... -//tensorflow/java/... -//tensorflow/lite/... -//tensorflow/c/eager:c_api_distributed_test -//tensorflow/tools/toolchains/... -//tensorflow/python/data/experimental/kernel_tests/service:local_workers_test -//tensorflow/python/data/experimental/kernel_tests/service:worker_tags_test
+
 # "pip tests" run a similar suite of tests the "nonpip" tests, but do something
 # odd to attempt to validate the quality of the pip package. The wheel is
 # installed into a virtual environment, and then that venv is used to run all
@@ -111,7 +141,7 @@ test:pip_venv --python_path="/bazel_pip/bin/python3"
 test:pip_venv --define=no_tensorflow_py_deps=true
 # Yes, we don't exclude the gpu tests on pip for some reason.
 test:pip_filters --test_tag_filters=gpu,requires-gpu,-no_gpu,-no_oss,-oss_serial,-no_cuda11,-no_pip,-nopip,-no_rocm
-test:pip_filters --build_tag_filters=gpu,requires-gpu,-no_gpu,-no_oss,-oss_serial,-no_cuda11,-no_pip,-nopip
+test:pip_filters --build_tag_filters=gpu,requires-gpu,-no_gpu,-no_oss,-oss_serial,-no_cuda11,-no_pip,-nopip,-no_rocm
 test:pip_filters --test_lang_filters=py --flaky_test_attempts=3 --test_size_filters=small,medium
 test:pip --config=pip_venv --config=pip_filters -- //bazel_pip/tensorflow/... -//bazel_pip/tensorflow/python/integration_testing/... -//bazel_pip/tensorflow/compiler/tf2tensorrt/... -//bazel_pip/tensorflow/compiler/xrt/... -//bazel_pip/tensorflow/core/tpu/... -//bazel_pip/tensorflow/lite/... -//tensorflow/tools/toolchains/...
 
