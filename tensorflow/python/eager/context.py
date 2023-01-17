@@ -504,9 +504,10 @@ class Context:
     # to int.
     try:
       hash(seed)
+      self._rng = random.Random(seed)
     except TypeError:
       seed = int(np.array(seed))
-    self._rng = random.Random(seed)
+      self._rng = random.Random(seed)
     # Also clear the kernel cache, to reset any existing seeds
     if self._context_handle is not None:
       pywrap_tfe.TFE_ContextClearCaches(self._context_handle)
