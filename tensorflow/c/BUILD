@@ -860,6 +860,7 @@ tf_cc_test(
     data = [
         "testdata/tf_record",
         "//tensorflow/c/experimental/stream_executor/test:test_pluggable_device.so",
+        "//tensorflow/core/common_runtime/next_pluggable_device/c:test_next_pluggable_device_plugin.so",
     ],
     extra_copts = if_google(["-DTENSORFLOW_NO_SHARED_OBJECTS=1"]),
     linkopts = select({

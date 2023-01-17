@@ -15,7 +15,9 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/pjrt/pjrt_api.h"
 
+#if !defined(PLATFORM_WINDOWS)
 #include <dlfcn.h>
+#endif
 
 #include <string>
 
@@ -68,25 +70,33 @@ xla::Status SetPjrtApi(absl::string_view device_type, const PJRT_Api* api) {
   return tsl::OkStatus();
 }
 
+xla::Status InitPjrtPlugin(PjrtApiInitFn init_fn,
+                           absl::string_view device_type) {
+  const PJRT_Api* pjrt_api = init_fn();
+  TF_RETURN_IF_ERROR(pjrt::CheckMatchingStructSizes(
+      "PJRT_Api", PJRT_Api_STRUCT_SIZE, pjrt_api->struct_size));
+  return SetPjrtApi(device_type, pjrt_api);
+}
+
 xla::Status LoadPjrtPlugin(absl::string_view device_type,
                            absl::string_view library_path) {
+#ifdef PLATFORM_WINDOWS
+  return tsl::errors::Unimplemented(
+      "LoadPjrtPlugin is not implemented on windows yet.");
+#else
   void* library = dlopen(library_path.data(), RTLD_NOW);
   if (library == nullptr) {
     return tsl::errors::Internal("Failed to open ", library_path);
   }
-  const PJRT_Api* (*fptr)();
-  *reinterpret_cast<void**>(&fptr) = dlsym(library, "GetPjrtApi");
-  if (fptr == nullptr) {
+  PjrtApiInitFn init_fn;
+  *reinterpret_cast<void**>(&init_fn) = dlsym(library, "GetPjrtApi");
+  if (init_fn == nullptr) {
     return tsl::errors::NotFound("GetPjrtApi not found in ", library_path);
   }
   LOG(INFO) << "GetPjrtApi was found for " << device_type << " at "
             << library_path;
-
-  const PJRT_Api* pjrt_api = fptr();
-  TF_RETURN_IF_ERROR(pjrt::CheckMatchingStructSizes(
-      "PJRT_Api", PJRT_Api_STRUCT_SIZE, pjrt_api->struct_size));
-  TF_RETURN_IF_ERROR(pjrt::SetPjrtApi(device_type, pjrt_api));
-  return tsl::OkStatus();
+  return InitPjrtPlugin(init_fn, device_type);
+#endif
 }
 
 }  // namespace pjrt
