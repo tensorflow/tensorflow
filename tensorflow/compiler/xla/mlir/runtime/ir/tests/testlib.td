@@ -34,6 +34,7 @@ def TestlibDialect : Dialect {
   let useDefaultAttributePrinterParser = 1;
 
   let useDefaultTypePrinterParser = 1;
+  let useFoldAPI = kEmitFoldAdaptorFolder;
 }
 
 include "testlib_attrs.td"

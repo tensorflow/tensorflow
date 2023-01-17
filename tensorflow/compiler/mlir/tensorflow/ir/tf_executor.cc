@@ -1085,7 +1085,7 @@ void ControlTriggerOp::getCanonicalizationPatterns(RewritePatternSet &results,
 // tf_executor.island
 //===----------------------------------------------------------------------===//
 
-LogicalResult IslandOp::fold(llvm::ArrayRef<Attribute> operands,
+LogicalResult IslandOp::fold(FoldAdaptor,
                              llvm::SmallVectorImpl<OpFoldResult> &results) {
   // This folds IslandOps with no inner ops, one control operand and no data
   // results. The single control operand is forwarded to the IslandOp control

@@ -715,7 +715,8 @@ void buildFusedBroadcastableBinOp(Builder* builder, OperationState& result,
 // AddOp
 //===----------------------------------------------------------------------===//
 
-OpFoldResult AddOp::fold(ArrayRef<Attribute> operands) {
+OpFoldResult AddOp::fold(FoldAdaptor adaptor) {
+  auto operands = adaptor.getOperands();
   // TODO(b/142478136): Handle fused ops.
   if (getFusedActivationFunction() != "NONE") return {};
   return ConstFoldBinaryOp(
@@ -901,7 +902,8 @@ LogicalResult ConcatenationOp::verify() {
                                     operand_types, axis);
 }
 
-OpFoldResult ConcatenationOp::fold(ArrayRef<Attribute> operands) {
+OpFoldResult ConcatenationOp::fold(FoldAdaptor adaptor) {
+  auto operands = adaptor.getOperands();
   if (getFusedActivationFunction() == "NONE") {
     if (auto output_type = getOutput().getType().dyn_cast<RankedTensorType>()) {
       const int64_t axis = GetConcatenationOpAxis(*this);
@@ -1080,9 +1082,9 @@ LogicalResult FullyConnectedOp::verify() {
   return mlir::success();
 }
 
-LogicalResult FullyConnectedOp::fold(ArrayRef<Attribute> operands,
+LogicalResult FullyConnectedOp::fold(FoldAdaptor adaptor,
                                      SmallVectorImpl<OpFoldResult>& results) {
-  assert(operands.size() == 3);
+  assert(adaptor.getOperands().size() == 3);
 
   // Folding not implemented with any activation function or any weight type
   // besides the default.
@@ -1516,7 +1518,8 @@ mlir::LogicalResult ScatterNdOp::verify() {
 // MulOp
 //===----------------------------------------------------------------------===//
 
-OpFoldResult MulOp::fold(ArrayRef<Attribute> operands) {
+OpFoldResult MulOp::fold(FoldAdaptor adaptor) {
+  auto operands = adaptor.getOperands();
   // TODO(b/142478136): Handle fused ops.
   if (getFusedActivationFunction() != "NONE") return {};
 
@@ -1556,7 +1559,8 @@ int64_t MulOp::GetArithmeticCount(Operation* op) {
 // DivOp
 //===----------------------------------------------------------------------===//
 
-OpFoldResult DivOp::fold(ArrayRef<Attribute> operands) {
+OpFoldResult DivOp::fold(FoldAdaptor adaptor) {
+  auto operands = adaptor.getOperands();
   // TODO(b/142478136): Handle fused ops.
   if (getFusedActivationFunction() != "NONE") return {};
   return ConstFoldBinaryOp(
@@ -1734,7 +1738,8 @@ bool InputOutputHasSameShape(mlir::Type input_type, mlir::Type output_type) {
 
 }  // end anonymous namespace
 
-OpFoldResult ReshapeOp::fold(ArrayRef<Attribute> operands) {
+OpFoldResult ReshapeOp::fold(FoldAdaptor adaptor) {
+  auto operands = adaptor.getOperands();
   // Remove identity reshape with both static result and input shape.
   auto result_type = getType().cast<ShapedType>();
   auto input_type = getOperand(0).getType().cast<ShapedType>();
@@ -2161,7 +2166,7 @@ void SliceOp::getCanonicalizationPatterns(RewritePatternSet& results,
 // SqueezeOp
 //===----------------------------------------------------------------------===//
 
-OpFoldResult SqueezeOp::fold(ArrayRef<Attribute> operands) {
+OpFoldResult SqueezeOp::fold(FoldAdaptor) {
   auto input_ty = getInput().getType().dyn_cast<RankedTensorType>();
   auto result_ty = getType().dyn_cast<RankedTensorType>();
 
@@ -2174,7 +2179,8 @@ OpFoldResult SqueezeOp::fold(ArrayRef<Attribute> operands) {
 // SubOp
 //===----------------------------------------------------------------------===//
 
-OpFoldResult SubOp::fold(ArrayRef<Attribute> operands) {
+OpFoldResult SubOp::fold(FoldAdaptor adaptor) {
+  auto operands = adaptor.getOperands();
   // TODO(b/142478136): Handle fused ops.
   if (getFusedActivationFunction() != "NONE") return {};
   return ConstFoldBinaryOp(
@@ -2738,7 +2744,8 @@ mlir::LogicalResult SVDFOp::verify() {
 // AbsOp
 //===----------------------------------------------------------------------===//
 
-OpFoldResult AbsOp::fold(ArrayRef<Attribute> operands) {
+OpFoldResult AbsOp::fold(FoldAdaptor adaptor) {
+  auto operands = adaptor.getOperands();
   Type result_type = getType();
   // Only constant fold for tensor of f32 is implemented.
   if (!IsF32ShapedType(result_type)) return nullptr;
@@ -2751,7 +2758,8 @@ OpFoldResult AbsOp::fold(ArrayRef<Attribute> operands) {
 // NegOp
 //===----------------------------------------------------------------------===//
 
-OpFoldResult NegOp::fold(ArrayRef<Attribute> operands) {
+OpFoldResult NegOp::fold(FoldAdaptor adaptor) {
+  auto operands = adaptor.getOperands();
   Type result_type = getType();
   // Only constant fold for tensor of f32 is implemented.
   if (!IsF32ShapedType(result_type)) return nullptr;
@@ -2764,7 +2772,8 @@ OpFoldResult NegOp::fold(ArrayRef<Attribute> operands) {
 // SinOp
 //===----------------------------------------------------------------------===//
 
-OpFoldResult SinOp::fold(ArrayRef<Attribute> operands) {
+OpFoldResult SinOp::fold(FoldAdaptor adaptor) {
+  auto operands = adaptor.getOperands();
   Type result_type = getType();
   // Only constant fold for tensor of f32 is implemented.
   if (!IsF32ShapedType(result_type)) return nullptr;
@@ -2781,7 +2790,8 @@ OpFoldResult SinOp::fold(ArrayRef<Attribute> operands) {
 // CosOp
 //===----------------------------------------------------------------------===//
 
-OpFoldResult CosOp::fold(ArrayRef<Attribute> operands) {
+OpFoldResult CosOp::fold(FoldAdaptor adaptor) {
+  auto operands = adaptor.getOperands();
   Type result_type = getType();
   // Only constant fold for tensor of f32 is implemented.
   if (!IsF32ShapedType(result_type)) return nullptr;
@@ -2798,7 +2808,8 @@ OpFoldResult CosOp::fold(ArrayRef<Attribute> operands) {
 // LogOp
 //===----------------------------------------------------------------------===//
 
-OpFoldResult LogOp::fold(ArrayRef<Attribute> operands) {
+OpFoldResult LogOp::fold(FoldAdaptor adaptor) {
+  auto operands = adaptor.getOperands();
   Type result_type = getType();
   // Only constant fold for tensor of f32 is implemented.
   if (!IsF32ShapedType(result_type)) return nullptr;
@@ -2815,7 +2826,7 @@ OpFoldResult LogOp::fold(ArrayRef<Attribute> operands) {
 // ShapeOp
 //===----------------------------------------------------------------------===//
 
-OpFoldResult ShapeOp::fold(ArrayRef<Attribute> operands) {
+OpFoldResult ShapeOp::fold(FoldAdaptor) {
   auto input_type = getInput().getType().cast<ShapedType>();
   if (!input_type.hasStaticShape()) return nullptr;
 
@@ -2838,7 +2849,8 @@ OpFoldResult ShapeOp::fold(ArrayRef<Attribute> operands) {
 // SqrtOp
 //===----------------------------------------------------------------------===//
 
-OpFoldResult SqrtOp::fold(ArrayRef<Attribute> operands) {
+OpFoldResult SqrtOp::fold(FoldAdaptor adaptor) {
+  auto operands = adaptor.getOperands();
   Type result_type = getType();
   // Only constant fold for tensor of f32 is implemented.
   if (!IsF32ShapedType(result_type)) return nullptr;
@@ -2855,7 +2867,8 @@ OpFoldResult SqrtOp::fold(ArrayRef<Attribute> operands) {
 // RsqrtOp
 //===----------------------------------------------------------------------===//
 
-OpFoldResult RsqrtOp::fold(ArrayRef<Attribute> operands) {
+OpFoldResult RsqrtOp::fold(FoldAdaptor adaptor) {
+  auto operands = adaptor.getOperands();
   Type result_type = getType();
   // Only constant fold for tensor of f32/bf16 is implemented.
   if (!IsF32ShapedType(result_type) && !IsBF16ShapedType(result_type))
@@ -2879,7 +2892,8 @@ OpFoldResult RsqrtOp::fold(ArrayRef<Attribute> operands) {
 // SquareOp
 //===----------------------------------------------------------------------===//
 
-OpFoldResult SquareOp::fold(ArrayRef<Attribute> operands) {
+OpFoldResult SquareOp::fold(FoldAdaptor adaptor) {
+  auto operands = adaptor.getOperands();
   Type result_type = getType();
   // Only constant fold for tensor of f32 is implemented.
   if (!IsF32ShapedType(result_type)) return nullptr;
@@ -2892,7 +2906,8 @@ OpFoldResult SquareOp::fold(ArrayRef<Attribute> operands) {
 // RankOp
 //===----------------------------------------------------------------------===//
 
-OpFoldResult RankOp::fold(ArrayRef<Attribute> operands) {
+OpFoldResult RankOp::fold(FoldAdaptor adaptor) {
+  auto operands = adaptor.getOperands();
   assert(operands.size() == 1);
   auto result_type = getType().cast<ShapedType>();
   if (auto elements_attr = operands[0].dyn_cast_or_null<ElementsAttr>()) {
@@ -2918,7 +2933,9 @@ OpFoldResult RankOp::fold(ArrayRef<Attribute> operands) {
 // ConstOp
 //===----------------------------------------------------------------------===//
 
-OpFoldResult ConstOp::fold(ArrayRef<Attribute> operands) {
+OpFoldResult ConstOp::fold(FoldAdaptor adaptor) {
+  auto operands = adaptor.getOperands();
+  (void)operands;
   assert(operands.empty() && "constant has no operands");
   // Return the held attribute value.
   return getValue();
@@ -2967,7 +2984,8 @@ void ConstOp::getCanonicalizationPatterns(RewritePatternSet& results,
 // CastOp
 //===----------------------------------------------------------------------===//
 
-OpFoldResult CastOp::fold(ArrayRef<Attribute> operands) {
+OpFoldResult CastOp::fold(FoldAdaptor adaptor) {
+  auto operands = adaptor.getOperands();
   assert(operands.size() == 1);
   if (getElementTypeOrSelf(getInput()) == getElementTypeOrSelf(getType())) {
     return getInput();
@@ -3108,7 +3126,8 @@ DenseElementsAttr BuildConstRangeTensor(Type result_elem_type, int num_elements,
 }
 }  // namespace
 
-OpFoldResult RangeOp::fold(ArrayRef<Attribute> operands) {
+OpFoldResult RangeOp::fold(FoldAdaptor adaptor) {
+  auto operands = adaptor.getOperands();
   assert(operands.size() == 3);
   auto start_tensor = operands[0].dyn_cast_or_null<ElementsAttr>();
   auto limit_tensor = operands[1].dyn_cast_or_null<ElementsAttr>();
@@ -3242,7 +3261,7 @@ LogicalResult StridedSliceOp::verify() {
   return success();
 }
 
-OpFoldResult StridedSliceOp::fold(ArrayRef<Attribute> operands) {
+OpFoldResult StridedSliceOp::fold(FoldAdaptor) {
   // Currently only support all masks being 0.
   if (getBeginMask() != 0 || getEndMask() != 0 || getEllipsisMask() != 0 ||
       getNewAxisMask() != 0 || getShrinkAxisMask() != 0)
@@ -3324,7 +3343,8 @@ void ComputePermutation(ElementsAttr input_tensor, ArrayRef<int32_t> perm,
 
 }  // namespace
 
-OpFoldResult TransposeOp::fold(ArrayRef<Attribute> operands) {
+OpFoldResult TransposeOp::fold(FoldAdaptor adaptor) {
+  auto operands = adaptor.getOperands();
   assert(operands.size() == 2);
   auto input_tensor = operands[0].dyn_cast_or_null<ElementsAttr>();
   auto perm_tensor = operands[1].dyn_cast_or_null<ElementsAttr>();
@@ -3833,7 +3853,7 @@ int64_t L2NormalizationOp::GetArithmeticCount(Operation* op) {
 // PadOp
 //===----------------------------------------------------------------------===//
 
-OpFoldResult PadOp::fold(ArrayRef<Attribute> operands) {
+OpFoldResult PadOp::fold(FoldAdaptor) {
   if (InputOutputHasSameShape(getInput().getType(), getOutput().getType()))
     return getInput();
 
@@ -3844,7 +3864,7 @@ OpFoldResult PadOp::fold(ArrayRef<Attribute> operands) {
 // PadV2Op
 //===----------------------------------------------------------------------===//
 
-OpFoldResult PadV2Op::fold(ArrayRef<Attribute> operands) {
+OpFoldResult PadV2Op::fold(FoldAdaptor) {
   if (InputOutputHasSameShape(getInput().getType(), getOutput().getType()))
     return getInput();
 
@@ -3855,9 +3875,7 @@ OpFoldResult PadV2Op::fold(ArrayRef<Attribute> operands) {
 // NoValueOp
 //===----------------------------------------------------------------------===//
 
-OpFoldResult NoValueOp::fold(ArrayRef<Attribute> operands) {
-  return getValueAttr();
-}
+OpFoldResult NoValueOp::fold(FoldAdaptor) { return getValueAttr(); }
 
 bool NoValueOp::isBuildableWith(Attribute value, Type type) {
   return value.isa<UnitAttr>() && type.isa<NoneType>();
@@ -3988,7 +4006,8 @@ ParseResult ControlNodeOp::parse(OpAsmParser& parser, OperationState& result) {
 // EmbeddingLookupOp
 //===----------------------------------------------------------------------===//
 
-OpFoldResult EmbeddingLookupOp::fold(ArrayRef<Attribute> operands) {
+OpFoldResult EmbeddingLookupOp::fold(FoldAdaptor adaptor) {
+  auto operands = adaptor.getOperands();
   auto lookup_attr = operands[0].dyn_cast_or_null<DenseIntElementsAttr>();
   auto value_attr = operands[1].dyn_cast_or_null<DenseElementsAttr>();
   if (!lookup_attr || !value_attr) {

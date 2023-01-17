@@ -22,6 +22,7 @@ include "mlir/IR/OpBase.td"
 def LHLO_Dialect : Dialect {
   let name = "lmhlo";
   let cppNamespace = "::mlir::lmhlo";
+  let useFoldAPI = kEmitFoldAdaptorFolder;
 }
 
 #endif  // LHLO_DIALECT
