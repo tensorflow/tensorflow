@@ -1472,7 +1472,6 @@ tsl_cc_test(
     ],
     deps = [
         ":path",
-        ":resource_loader",
         ":strcat",
         ":subprocess",
         ":test",
