@@ -24,13 +24,13 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "third_party/eigen3/Eigen/Core"
 #include "tensorflow/compiler/xla/stream_executor/blas.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/stacktrace.h"
 #include "tensorflow/compiler/xla/stream_executor/platform.h"
 #include "tensorflow/compiler/xla/stream_executor/platform/logging.h"
 #include "tensorflow/compiler/xla/stream_executor/platform/port.h"
 #include "tensorflow/compiler/xla/stream_executor/rng.h"
 #include "tensorflow/compiler/xla/stream_executor/stream_executor_internal.h"
 #include "tensorflow/compiler/xla/stream_executor/stream_executor_pimpl.h"
+#include "tensorflow/tsl/platform/stacktrace.h"
 
 namespace stream_executor {
 
@@ -224,7 +224,7 @@ std::string CallStr(const char *function_name, Stream *stream,
   }
   absl::StrAppend(&str, ")");
   if (VLOG_IS_ON(10)) {
-    absl::StrAppend(&str, " ", port::CurrentStackTrace(), "\n");
+    absl::StrAppend(&str, " ", tsl::CurrentStackTrace(), "\n");
   }
   return str;
 }

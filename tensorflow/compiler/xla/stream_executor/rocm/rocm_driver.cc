@@ -30,13 +30,14 @@ limitations under the License.
 #include "tensorflow/compiler/xla/stream_executor/gpu/gpu_driver.h"
 #include "tensorflow/compiler/xla/stream_executor/lib/env.h"
 #include "tensorflow/compiler/xla/stream_executor/lib/error.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/human_readable.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/stacktrace.h"
 #include "tensorflow/compiler/xla/stream_executor/lib/static_threadlocal.h"
 #include "tensorflow/compiler/xla/stream_executor/lib/threadpool.h"
 #include "tensorflow/compiler/xla/stream_executor/platform/logging.h"
 #include "tensorflow/compiler/xla/stream_executor/platform/port.h"
 #include "tensorflow/compiler/xla/stream_executor/rocm/rocm_driver_wrapper.h"
+#include "tensorflow/tsl/platform/env.h"
+#include "tensorflow/tsl/platform/numbers.h"
+#include "tensorflow/tsl/platform/stacktrace.h"
 
 bool FLAGS_gpuexec_rocm_driver_inject_init_error = false;
 bool FLAGS_gpuexec_rocm_sync_around_driver_calls = false;
@@ -124,7 +125,7 @@ string ToString(hipError_t result) {
 // and wait for completion.
 port::ThreadPool* GetDriverExecutor() {
   static port::ThreadPool* thread_pool = new port::ThreadPool(
-      port::Env::Default(), port::ThreadOptions(), "rocm_driver", 1);
+      port::Env::Default(), tsl::ThreadOptions(), "rocm_driver", 1);
   return thread_pool;
 }
 
@@ -159,7 +160,7 @@ void SynchronizeOrDie() {
   auto res = wrap::hipDeviceSynchronize();
   if (res != hipSuccess) {
     LOG(FATAL) << "Synchronize found " << ToString(res)
-               << " :: " << port::CurrentStackTrace();
+               << " :: " << tsl::CurrentStackTrace();
   }
 }
 
@@ -605,7 +606,7 @@ GpuDriver::ContextGetSharedMemConfig(GpuContext* context) {
   hipError_t res = wrap::hipMalloc(&result, bytes);
   if (res != hipSuccess) {
     LOG(ERROR) << "failed to allocate "
-               << port::HumanReadableNumBytes::ToString(bytes) << " (" << bytes
+               << tsl::strings::HumanReadableNumBytes(bytes) << " (" << bytes
                << " bytes) from device: " << ToString(res);
     return nullptr;
   }
@@ -796,7 +797,7 @@ GpuDriver::ContextGetSharedMemConfig(GpuContext* context) {
   hipError_t res = wrap::hipDeviceSynchronize();
   if (res != hipSuccess) {
     LOG(ERROR) << "could not synchronize on ROCM device: " << ToString(res)
-               << " :: " << port::CurrentStackTrace();
+               << " :: " << tsl::CurrentStackTrace();
     return false;
   }
 

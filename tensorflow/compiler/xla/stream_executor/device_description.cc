@@ -22,8 +22,8 @@ limitations under the License.
 #include <string>
 
 #include "absl/strings/str_cat.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/human_readable.h"
 #include "tensorflow/compiler/xla/stream_executor/lib/mathutil.h"
+#include "tensorflow/tsl/platform/numbers.h"
 
 namespace stream_executor {
 
@@ -84,14 +84,14 @@ std::unique_ptr<std::map<std::string, std::string>> DeviceDescription::ToMap()
 
   result["Device Address Bits"] = absl::StrCat(device_address_bits());
   result["Device Memory Size"] =
-      port::HumanReadableNumBytes::ToString(device_memory_size());
+      tsl::strings::HumanReadableNumBytes(device_memory_size());
   result["Memory Bandwidth"] = absl::StrCat(
-      port::HumanReadableNumBytes::ToString(memory_bandwidth_), "/s");
+      tsl::strings::HumanReadableNumBytes(memory_bandwidth_), "/s");
 
   result["Shared Memory Per Core"] =
-      port::HumanReadableNumBytes::ToString(shared_memory_per_core_);
+      tsl::strings::HumanReadableNumBytes(shared_memory_per_core_);
   result["Shared Memory Per Block"] =
-      port::HumanReadableNumBytes::ToString(shared_memory_per_block_);
+      tsl::strings::HumanReadableNumBytes(shared_memory_per_block_);
 
   result["Clock Rate GHz"] = absl::StrCat(clock_rate_ghz());
 

@@ -50,6 +50,9 @@ cc_library(
         "//tensorflow/compiler/xla/stream_executor/platform",
         "//tensorflow/compiler/xla/stream_executor/platform:dso_loader",
         "@local_config_rocm//rocm:rocm_headers",
+        "//tensorflow/tsl/platform:env",
+        "//tensorflow/tsl/platform:numbers",
+        "//tensorflow/tsl/platform:stacktrace",
     ]),
 )
 
