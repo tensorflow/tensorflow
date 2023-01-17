@@ -3684,7 +3684,10 @@ void ConstantFolding::runOnOperation() {
     for (Operation &op : func.SingleBlock::getBody()->without_terminator()) {
       ops.push_back(&op);
     }
-    if (!applyOpPatternsAndFold(ops, final_patterns_, /*strict=*/true)) break;
+    bool changed = false;
+    (void)applyOpPatternsAndFold(ops, final_patterns_, /*strict=*/true,
+                                 &changed);
+    if (!changed) break;
   } while (iteration++ < max_iterations);
 
   // TODO(chiahungduan): This is used to avoid evaluating a node multiple times.
