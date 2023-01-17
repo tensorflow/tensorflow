@@ -17,6 +17,7 @@ limitations under the License.
 #define EIGEN_DONT_PARALLELIZE
 
 #include "mkl_batch_matmul_helper.h"
+#include "mkl_matmul_ops_common.h"
 #include "tensorflow/core/kernels/linalg/einsum_op_impl.h"
 
 namespace tensorflow {
@@ -40,7 +41,8 @@ struct MklEinsumHelper {
   template <typename Device, typename T>
   static Status MKLContractOperands(
       OpKernelContext* ctx, absl::Span<const Tensor> inputs,
-      absl::Span<const bool> swap_free_and_contract, Tensor* output) {
+      absl::Span<const bool> swap_free_and_contract, Tensor* output,
+      MklDnnMatMulOpBase<T, T>* base_op, const bool is_weight_const) {
     if (inputs.size() == 1)
       return EinsumHelper::CopyFrom(inputs[0], inputs[0].shape(), output);
     MatMulBCast bcast(inputs[0].shape().dim_sizes(),
@@ -146,14 +148,30 @@ struct MklEinsumHelper {
           memory::desc(params->b_dims, MklDnnType<T>(), weight_format);
       std::shared_ptr<dnnl::matmul::primitive_desc> matmul_pd =
           matmul_prim->GetPrimitiveDesc();
-      // Reorder weights if necessary.
-      // Check whether we need to do reorder.
+
       if (weight_md != matmul_pd->weights_desc()) {
-        weights_mkl.SetUsrMem(weight_md, weight_data);
-        weights_mkl.CheckReorderToOpMem(matmul_pd.get()->weights_desc(),
-                                        cpu_engine, ctx);
-        weight_data =
-            reinterpret_cast<T*>(weights_mkl.GetOpMem().get_data_handle());
+        T* cached_weight_data = nullptr;
+        if (is_weight_const) {
+	  if (base_op->IsWeightCacheEmpty(ctx)) {
+            base_op->CacheWeight(ctx, matmul_pd, cached_weight_data, rhs,
+                              weights_mkl, weight_md);
+          }
+          cached_weight_data =
+              base_op->GetCachedWeight(ctx, matmul_pd->weights_desc());
+        }
+
+        // Cache weight may fail when it gets different format in different
+        // iteration. Fallback to reoder if it happens.
+        // Also do generel reorder if weight isn't const.
+        if (cached_weight_data != nullptr) {
+          weight_data = cached_weight_data;
+        } else {
+          weights_mkl.SetUsrMem(weight_md, weight_data);
+          weights_mkl.CheckReorderToOpMem(matmul_pd.get()->weights_desc(),
+                                         base_op->cpu_engine_, ctx);
+          weight_data =
+              reinterpret_cast<T*>(weights_mkl.GetOpMem().get_data_handle());
+        }
       }
     }
 #endif  // DNNL_AARCH64_USE_ACL
@@ -178,15 +196,22 @@ struct MklEinsumHelper {
 };
 
 template <typename Device, typename T>
-class MklEinsum : public OpKernel {
+class MklEinsum : public MklDnnMatMulOpBase<T, T> {
  public:
-  explicit MklEinsum(OpKernelConstruction* c) : OpKernel(c) {
+  explicit MklEinsum(OpKernelConstruction* c) : MklDnnMatMulOpBase<T, T>(c) {
     OP_REQUIRES_OK(c, c->GetAttr("equation", &mkl_equation_));
     OP_REQUIRES_OK(c, ParseEinsumEquation(
                           mkl_equation_, &mkl_input_labels_,
                           &mkl_output_labels_, &mkl_label_types_,
                           &mkl_input_label_counts_, &mkl_output_label_counts_,
                           &mkl_input_has_ellipsis_, &mkl_output_has_ellipsis_));
+    this->is_weight_const_ = false;
+      if (AreWeightsFrozen()) {
+      this->is_weight_const_ = true;
+    } else if (c->HasAttr("is_filter_const")){
+      OP_REQUIRES_OK(
+          c, c->GetAttr("is_filter_const", &(this->is_weight_const_)));
+    }
   }
 
   virtual ~MklEinsum() {}
@@ -231,7 +256,7 @@ class MklEinsum : public OpKernel {
     Tensor contraction_output_reshaped;
     OP_REQUIRES_OK(ctx, MklEinsumHelper::MKLContractOperands<Device, T>(
                             ctx, inputs_reduced, swap_free_and_contract,
-                            &contraction_output_reshaped));
+                            &contraction_output_reshaped, this, this->is_weight_const_));
 
     // Copy the batch labels from the contraction output. Recover the batch
     // shape, which may have been broadcasted.

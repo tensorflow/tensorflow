@@ -489,10 +489,10 @@ class MklDnnMatMulOpBase : public OpKernel {
 
   // Cache the converted weight in a tensor.
   // Only one thread can execute this method at any given time.
+  template <typename T>
   void CacheWeight(
       OpKernelContext* context,
-      const std::shared_ptr<dnnl::inner_product_forward::primitive_desc>&
-          matmul_fwd_pd,
+      const std::shared_ptr<T>& matmul_fwd_pd,
       Tweight* weight_data, const Tensor& weight_tensor,
       MklDnnData<Tweight>& weight, const memory::desc& weight_md)
       TF_LOCKS_EXCLUDED(mu_) {
