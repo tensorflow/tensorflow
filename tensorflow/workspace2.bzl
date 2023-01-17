@@ -207,18 +207,18 @@ def _tf_repositories():
             "//third_party/mkl_dnn:onednn_acl_depthwise_convolution.patch",
             "//third_party/mkl_dnn:onednn_acl_threadpool_scheduler.patch",
         ],
-        sha256 = "fc2b617ec8dbe907bb10853ea47c46f7acd8817bc4012748623d911aca43afbb",
-        strip_prefix = "oneDNN-2.7",
-        urls = tf_mirror_urls("https://github.com/oneapi-src/oneDNN/archive/v2.7.tar.gz"),
+        sha256 = "a50993aa6265b799b040fe745e0010502f9f7103cc53a9525d59646aef006633",
+        strip_prefix = "oneDNN-2.7.3",
+        urls = tf_mirror_urls("https://github.com/oneapi-src/oneDNN/archive/v2.7.3.tar.gz"),
     )
 
     tf_http_archive(
         name = "compute_library",
-        sha256 = "ac2ce7b5636e99f175b084362f83fe24d72e6ceb0bd62ee5866772f7355d024d",
-        strip_prefix = "ComputeLibrary-22.08",
+        sha256 = "e20a060d3c4f803889d96c2f0b865004ba3ef4e228299a44339ea1c1ba827c85",
+        strip_prefix = "ComputeLibrary-22.11",
         build_file = "//third_party/compute_library:BUILD",
-        patch_file = ["//third_party/compute_library:compute_library.patch", "//third_party/compute_library:acl_fixed_format_kernels_striding.patch", "//third_party/compute_library:acl_depthwise_updateable_weights.patch", "//third_party/compute_library:acl_fixup_SVE_merges.patch"],
-        urls = tf_mirror_urls("https://github.com/ARM-software/ComputeLibrary/archive/v22.08.tar.gz"),
+        patch_file = ["//third_party/compute_library:compute_library.patch", "//third_party/compute_library:acl_fixed_format_kernels_striding.patch", "//third_party/compute_library:acl_openmp_fix.patch"],
+        urls = tf_mirror_urls("https://github.com/ARM-software/ComputeLibrary/archive/v22.11.tar.gz"),
     )
 
     tf_http_archive(
