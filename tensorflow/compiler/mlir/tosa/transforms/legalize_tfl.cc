@@ -190,6 +190,7 @@ DECL_CONVERT_OP(FakeQuant);
 DECL_CONVERT_OP(While);
 DECL_CONVERT_OP(Real);
 DECL_CONVERT_OP(Imag);
+DECL_CONVERT_OP(RFFT2d);
 
 #undef DECL_CONVERT_OP
 
@@ -4349,6 +4350,76 @@ LogicalResult ConvertTFLImagOp::matchAndRewrite(
   return success();
 }
 
+LogicalResult ConvertTFLRFFT2dOp::matchAndRewrite(
+    Operation* op, PatternRewriter& rewriter) const {
+  auto rfft2d_op = cast<TFL::RFFT2dOp>(op);
+  auto loc = op->getLoc();
+  Value input = rfft2d_op.getInput();
+
+  auto input_type = dyn_cast<RankedTensorType>(input.getType());
+  auto output_type = dyn_cast<ShapedType>(rfft2d_op.getResult().getType());
+
+  if (!input_type || !output_type) {
+    return rewriter.notifyMatchFailure(op, "ranked input/output required");
+  }
+
+  if (!input_type.getElementType().isF32()) {
+    return rewriter.notifyMatchFailure(op, "input type must be fp32");
+  }
+
+  Value fft_length_value = rfft2d_op.getFftLength();
+  llvm::SmallVector<int32_t> fft_length;
+  if (failed(getVectorFromValue32(fft_length_value, fft_length))) {
+    return rewriter.notifyMatchFailure(op, "fft_length is not a constant");
+  }
+
+  auto fp32_ty = UnrankedTensorType::get(rewriter.getF32Type());
+
+  // Padding is automatically inserted during the lowering when
+  // fft_length > input shape. However, to take care of the
+  // case fft_length < input shape we need to crop the input.
+  const int64_t rank = input_type.getRank();
+  auto input_shape = input_type.getShape();
+  if (fft_length[0] < input_shape[rank - 2] ||
+      fft_length[1] < input_shape[rank - 1]) {
+    llvm::SmallVector<int64_t> slice_begin(rank, 0);
+    llvm::SmallVector<int64_t> slice_size;
+    for (auto dim : input_type.getShape().drop_back(2)) {
+      slice_size.push_back(dim);
+    }
+    slice_size.push_back(fft_length[0]);
+    slice_size.push_back(fft_length[1]);
+    input = CreateOpAndInfer<tosa::SliceOp>(
+        rewriter, loc, fp32_ty, input, rewriter.getDenseI64ArrayAttr(slice_begin),
+        rewriter.getDenseI64ArrayAttr(slice_size));
+  }
+
+  auto rfft2d =
+      CreateOpAndInfer<tosa::RFFT2dOp>(rewriter, loc, fp32_ty, fp32_ty, input);
+
+  auto output_shape = output_type.getShape();
+  llvm::SmallVector<int64_t> new_shape{output_shape};
+  new_shape.push_back(1);
+  auto reshape_1 = CreateOpAndInfer<tosa::ReshapeOp>(
+      rewriter, loc, fp32_ty, rfft2d.getResult(0),
+      rewriter.getDenseI64ArrayAttr(new_shape));
+  auto reshape_2 = CreateOpAndInfer<tosa::ReshapeOp>(
+      rewriter, loc, fp32_ty, rfft2d.getResult(1),
+      rewriter.getDenseI64ArrayAttr(new_shape));
+
+  llvm::SmallVector<Value, 2> values = {reshape_1, reshape_2};
+  auto concat = CreateOpAndInfer<tosa::ConcatOp>(rewriter, loc, fp32_ty, values,
+                                                 rewriter.getI64IntegerAttr(3));
+
+  Value cast = rewriter
+                   .create<mlir::UnrealizedConversionCastOp>(loc, output_type,
+                                                             concat.getResult())
+                   ->getResult(0);
+  rewriter.replaceOp(op, cast);
+
+  return success();
+}
+
 LogicalResult LegalizeTFL::initialize(MLIRContext* context) {
   RewritePatternSet patterns(context);
   mlir::tosa::populateLegalizeTFLPatterns(context, patterns);
@@ -4485,6 +4556,7 @@ void populateLegalizeTFLPatterns(MLIRContext* ctx,
   DEF_PATTERN_INSERT(TFLWhile);
   DEF_PATTERN_INSERT(TFLReal);
   DEF_PATTERN_INSERT(TFLImag);
+  DEF_PATTERN_INSERT(TFLRFFT2d);
 }
 
 // Creates an instance of the TensorFlow Lite dialect LegalizeTFL pass.
