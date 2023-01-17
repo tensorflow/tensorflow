@@ -43,7 +43,7 @@ steps:
         image: "${{build}}" # The image in which command will be executed
         fail_fast: false
         commands:
-          - "pytest /code/ --alluredir=$CF_VOLUME_PATH/allure-results"
+          - "pytest /code/tests/unit --alluredir=$CF_VOLUME_PATH/allure-results-unit"
 
   test_reporting_step:
     stage: "phase-1"
@@ -52,6 +52,7 @@ steps:
     environment:
       - BUCKET_NAME=dr-codefresh-ci-reports
       - CF_STORAGE_INTEGRATION=dr-codefresh-ci-reports
+      - ALLURE_DIR=allure-results-unit
 
   evaluate_unit_tests:
     image: alpine:latest
@@ -82,7 +83,7 @@ steps:
     image: "${{build}}" # The image in which command will be executed
     fail_fast: false
     commands:
-      - "pytest . --alluredir=$CF_VOLUME_PATH/allure-results"
+      - "pytest /code/tests/integration --alluredir=$CF_VOLUME_PATH/allure-results-integration"
 
   integration_test_report:
     title: Integration Test Report
@@ -91,6 +92,7 @@ steps:
     environment:
       - BUCKET_NAME=dr-codefresh-ci-reports
       - CF_STORAGE_INTEGRATION=dr-codefresh-ci-reports
+      - ALLURE_DIR=allure-results-integration
 
   evaluate_integration_test:
     image: alpine:latest
