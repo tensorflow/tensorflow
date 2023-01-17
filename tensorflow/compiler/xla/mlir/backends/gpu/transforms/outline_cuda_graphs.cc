@@ -238,8 +238,8 @@ static std::vector<Value> GetGraphCaptureFuncArgs(const CaptureSequence& seq) {
 
 // Given a sequence of operations, outline them into a graph capture function
 // and replace them with an XLA Gpu runtime function call.
-static void Outline(CustomCallDeclarations& custom_calls,
-                    CaptureSequence& seq) {
+static void Outline(CustomCallDeclarations& custom_calls, CaptureSequence& seq,
+                    unsigned ordinal) {
   // Only operations that have to be moved into the graph capture function
   // represent Gpu computations.
   unsigned num_move_captures = llvm::count_if(seq, [](auto capture) {
@@ -268,7 +268,7 @@ static void Outline(CustomCallDeclarations& custom_calls,
 
   // Export graph capture function to the runtime.
   b.setInsertionPoint(func);
-  b.create<runtime::ExportOp>(func);
+  b.create<runtime::ExportOp>(func, ordinal);
 
   // Create a custom call declaration corresponding to the outlined graph
   // capture function.
@@ -331,9 +331,10 @@ void OutlineCudaGraphsPass::runOnOperation() {
   patterns.emplace_back(new ConstantOpCapture());
   patterns.emplace_back(new ViewOpCapture());
 
+  unsigned ordinal = 1;  // entry point will be exported with ordinal 0
   for (auto& seq : CollectCaptureSequences(getAnalysis<DominanceInfo>(),
                                            getOperation(), patterns)) {
-    Outline(custom_calls, seq);
+    Outline(custom_calls, seq, ordinal++);
   }
 }
 

@@ -650,6 +650,8 @@ cc_library(
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla/mlir/runtime/transforms:compilation_pipeline_gpu",
+        "//tensorflow/compiler/xla/mlir/runtime/transforms:type_converter",
+        "//tensorflow/compiler/xla/mlir/runtime/ir:rt",
         "//tensorflow/compiler/xla/mlir_hlo:lhlo_gpu",
         "//tensorflow/compiler/xla/runtime:diagnostics",
         "//tensorflow/compiler/xla/runtime:executable",
