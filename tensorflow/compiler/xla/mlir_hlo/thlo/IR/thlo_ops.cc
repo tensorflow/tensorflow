@@ -235,14 +235,12 @@ Value fuseConcatenateOpThroughTile(ConcatenateOp op, OpBuilder &b, Location loc,
   RankedTensorType resultTy = op.getType(0).cast<RankedTensorType>();
   int64_t rank = resultTy.getRank();
   OperandRange allOperands = op.getInputs();
-  Value anyOperand = allOperands.front();
 
   // Create the shared tile strides, which are the exact same for every operand
-  // tile. Also create a basis for the space sizes, tile offsets, and tile
-  // sizes. These hold the shared values in all non-concat dimensions and can be
-  // amended in the concat dimension to create the individual operand tiles.
+  // tile. Also create a basis for the tile offsets and sizes. These hold the
+  // shared values in all non-concat dimensions and can be amended in the concat
+  // dimension to create the individual operand tiles.
   SmallVector<Value> sharedTileStrides(rank);
-  SmallVector<Value> baseSpaceSizes(rank);
   SmallVector<Value> baseTileOffsets(rank);
   SmallVector<Value> baseTileSizes(rank);
   SmallVector<Value> tileOffsets = getAsValues(b, loc, offsets);
@@ -250,15 +248,13 @@ Value fuseConcatenateOpThroughTile(ConcatenateOp op, OpBuilder &b, Location loc,
   SmallVector<Value> tileStrides(sizes.size(),
                                  b.create<arith::ConstantIndexOp>(loc, 1));
   for (int64_t i = 0; i < rank; ++i) {
-    Value iCst = b.create<arith::ConstantIndexOp>(loc, i);
     sharedTileStrides[i] =
         getValueOrCreateConstantIndexOp(b, loc, tileStrides[i]);
 
-    // The space sizes, tile offsets, and tile sizes differ in the concat
-    // dimension. Do not populate these.
+    // The tile offsets and sizes differ in the concat dimension. Do not
+    // populate these.
     if (i == static_cast<int64_t>(concatDim)) continue;
 
-    baseSpaceSizes[i] = b.createOrFold<tensor::DimOp>(loc, anyOperand, iCst);
     baseTileOffsets[i] =
         getValueOrCreateConstantIndexOp(b, loc, tileOffsets[i]);
     baseTileSizes[i] = getValueOrCreateConstantIndexOp(b, loc, tileSizes[i]);
@@ -280,14 +276,11 @@ Value fuseConcatenateOpThroughTile(ConcatenateOp op, OpBuilder &b, Location loc,
   SmallVector<Value> subOperands;
   subOperands.reserve(allOperands.size());
   for (Value operand : allOperands) {
-    // Create operand space.
-    Value operandSizeInConcatDim =
-        b.create<tensor::DimOp>(loc, operand, concatDimCst);
-    baseSpaceSizes[concatDim] = operandSizeInConcatDim;
-
     // Find the current operand's tile offset in the concat dimension. This is
     // the remaining offset clamped into the bounds of the operand. Note that
     // the remaining offset is always >= 0.
+    Value operandSizeInConcatDim =
+        b.create<tensor::DimOp>(loc, operand, concatDimCst);
     Value operandTileOffsetInConcatDim = b.create<arith::MinUIOp>(
         loc, remainingTileOffsetInConcatDim, operandSizeInConcatDim);
     baseTileOffsets[concatDim] = operandTileOffsetInConcatDim;
@@ -302,7 +295,8 @@ Value fuseConcatenateOpThroughTile(ConcatenateOp op, OpBuilder &b, Location loc,
     subOperands.push_back(gml_st::materializeSlice(
         b, loc, operand, getMixedValues(allDynamic, baseTileOffsets, b),
         getMixedValues(allDynamic, baseTileSizes, b),
-        getMixedValues(allDynamic, sharedTileStrides, b), false));
+        getMixedValues(allDynamic, sharedTileStrides, b),
+        /*useExtractSlice=*/false));
 
     // Unless it is the last operand, update the remaining tile offset in the
     // concat dimension. The remaining offset is subtracted by the operand's
@@ -324,10 +318,9 @@ Value fuseConcatenateOpThroughTile(ConcatenateOp op, OpBuilder &b, Location loc,
   auto subResultType =
       RankedTensorType::get(subInit.getType().cast<ShapedType>().getShape(),
                             resultTy.getElementType());
-  return b
-      .create<thlo::ConcatenateOp>(loc, subResultType, subOperands, subInit,
-                                   b.getIndexAttr(concatDim))
-      ->getResult(0);
+  auto concatOp = b.create<thlo::ConcatenateOp>(
+      loc, subResultType, subOperands, subInit, b.getIndexAttr(concatDim));
+  return concatOp.getResults().front();
 }
 
 Value fuseConcatenateOpThroughPointRecursively(
