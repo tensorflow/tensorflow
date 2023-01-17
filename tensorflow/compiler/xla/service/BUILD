@@ -7046,6 +7046,7 @@ xla_cc_binary(
         "//tensorflow/tsl/platform:protobuf",
         "//tensorflow/tsl/util:command_line_flags",
         "@stablehlo//:register",
+        "//tensorflow/compiler/xla:autotune_results_proto_cc",
     ] + if_cuda_is_configured([
         "//tensorflow/compiler/xla/service/gpu:executable_proto_cc",
         "//tensorflow/compiler/xla/service/gpu:gpu_compiler",
@@ -7066,24 +7067,28 @@ xla_aot_compile_cpu(
 
 xla_aot_compile_gpu(
     name = "xla_aot_compile_test_gpu_executable",
+    autotune_results = "xla_aot_compile_test_autotune_results.prototxt",
     gpu_target_config = "xla_aot_compile_test_gpu_target_config.prototxt",
     module = "xla_aot_compile_test.mlir",
 )
 
 xla_aot_compile_gpu(
     name = "xla_aot_compile_test_gpu_executable_constant",
+    autotune_results = "xla_aot_compile_test_autotune_results.prototxt",
     gpu_target_config = "xla_aot_compile_test_gpu_target_config.prototxt",
     module = "xla_aot_compile_test_constant.mlir",
 )
 
 xla_aot_compile_gpu(
     name = "xla_aot_compile_test_gpu_executable_gemm",
+    autotune_results = "xla_aot_compile_test_autotune_results.prototxt",
     gpu_target_config = "xla_aot_compile_test_gpu_target_config.prototxt",
     module = "xla_aot_compile_test_gemm.mlir",
 )
 
 xla_aot_compile_gpu(
     name = "xla_aot_compile_test_gpu_executable_convolution",
+    autotune_results = "xla_aot_compile_test_autotune_results.prototxt",
     gpu_target_config = "xla_aot_compile_test_gpu_target_config.prototxt",
     module = "xla_aot_compile_test_convolution.mlir",
 )
