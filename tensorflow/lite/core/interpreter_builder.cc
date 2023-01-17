@@ -333,6 +333,7 @@ TfLiteStatus InterpreterBuilder::ParseNodes(
   subgraph->ReserveNodes(operators->size());
   if (subgraph_info) {
     subgraph_info->op_types.resize(operators->size());
+    subgraph_info->custom_op_names.resize(operators->size());
   }
 
   for (int i = 0; i < operators->size(); ++i) {
@@ -355,7 +356,10 @@ TfLiteStatus InterpreterBuilder::ParseNodes(
 
     BuiltinOperator op_type =
         static_cast<BuiltinOperator>(registration->builtin_code);
-    if (subgraph_info) subgraph_info->op_types[i] = op_type;
+    if (subgraph_info) {
+      subgraph_info->op_types[i] = op_type;
+      subgraph_info->custom_op_names[i] = registration->custom_name;
+    }
 
     if (op_type != BuiltinOperator_CUSTOM && op->custom_options()) {
       error_reporter_->Report(

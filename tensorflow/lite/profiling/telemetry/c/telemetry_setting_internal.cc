@@ -35,4 +35,53 @@ size_t TfLiteTelemetryConversionMetadataGetNumModelOptimizationModes(
   return metadata->model_optimization_modes.size();
 }
 
+size_t TfLiteTelemetryInterpreterSettingsGetNumSubgraphInfo(
+    const TfLiteTelemetryInterpreterSettings* settings) {
+  if (settings == nullptr) return 0;
+  return settings->subgraph_infos.size();
+}
+
+const TfLiteTelemetrySubgraphInfo*
+TfLiteTelemetryInterpreterSettingsGetSubgraphInfo(
+    const TfLiteTelemetryInterpreterSettings* settings) {
+  if (settings == nullptr) return nullptr;
+  return settings->subgraph_infos.data();
+}
+
+size_t TfLiteTelemetrySubgraphInfoGetNumOpTypes(
+    TfLiteTelemetrySubgraphInfo* subgraph_info) {
+  if (subgraph_info == nullptr) return 0;
+  return subgraph_info->op_types.size();
+}
+
+const int32_t* TfLiteTelemetrySubgraphInfoGetOpTypes(
+    TfLiteTelemetrySubgraphInfo* subgraph_info) {
+  if (subgraph_info == nullptr) return nullptr;
+  return subgraph_info->op_types.data();
+}
+
+size_t TfLiteTelemetrySubgraphInfoGetNumQuantizations(
+    TfLiteTelemetrySubgraphInfo* subgraph_info) {
+  if (subgraph_info == nullptr) return 0;
+  return subgraph_info->quantizations.size();
+}
+
+const TfLiteQuantization* TfLiteTelemetrySubgraphInfoGetQuantizations(
+    TfLiteTelemetrySubgraphInfo* subgraph_info) {
+  if (subgraph_info == nullptr) return nullptr;
+  return subgraph_info->quantizations.data();
+}
+
+size_t TfLiteTelemetrySubgraphInfoGetNumCustomOpNames(
+    TfLiteTelemetrySubgraphInfo* subgraph_info) {
+  if (subgraph_info == nullptr) return 0;
+  return subgraph_info->custom_op_names.size();
+}
+
+const char** TfLiteTelemetrySubgraphInfoGetCustomOpNames(
+    TfLiteTelemetrySubgraphInfo* subgraph_info) {
+  if (subgraph_info == nullptr) return nullptr;
+  return subgraph_info->custom_op_names.data();
+}
+
 }  // extern "C"

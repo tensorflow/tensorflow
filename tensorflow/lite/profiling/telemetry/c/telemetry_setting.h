@@ -18,6 +18,8 @@ limitations under the License.
 #include <stddef.h>
 #include <stdint.h>
 
+#include "tensorflow/lite/core/c/common.h"
+
 #ifdef __cplusplus
 extern "C" {
 #endif  // __cplusplus
@@ -55,6 +57,34 @@ typedef struct TfLiteTelemetryInterpreterSettings
 const TfLiteTelemetryConversionMetadata*
 TfLiteTelemetryInterpreterSettingsGetConversionMetadata(
     const TfLiteTelemetryInterpreterSettings* settings);
+
+// Telemetry data for a specific TFLite subgraph.
+typedef struct TfLiteTelemetrySubgraphInfo TfLiteTelemetrySubgraphInfo;
+
+size_t TfLiteTelemetryInterpreterSettingsGetNumSubgraphInfo(
+    const TfLiteTelemetryInterpreterSettings* settings);
+
+const TfLiteTelemetrySubgraphInfo*
+TfLiteTelemetryInterpreterSettingsGetSubgraphInfo(
+    const TfLiteTelemetryInterpreterSettings* settings);
+
+size_t TfLiteTelemetrySubgraphInfoGetNumOpTypes(
+    TfLiteTelemetrySubgraphInfo* subgraph_info);
+
+const int32_t* TfLiteTelemetrySubgraphInfoGetOpTypes(
+    TfLiteTelemetrySubgraphInfo* subgraph_info);
+
+size_t TfLiteTelemetrySubgraphInfoGetNumQuantizations(
+    TfLiteTelemetrySubgraphInfo* subgraph_info);
+
+const TfLiteQuantization* TfLiteTelemetrySubgraphInfoGetQuantizations(
+    TfLiteTelemetrySubgraphInfo* subgraph_info);
+
+size_t TfLiteTelemetrySubgraphInfoGetNumCustomOpNames(
+    TfLiteTelemetrySubgraphInfo* subgraph_info);
+
+const char** TfLiteTelemetrySubgraphInfoGetCustomOpNames(
+    TfLiteTelemetrySubgraphInfo* subgraph_info);
 
 #ifdef __cplusplus
 }  // extern "C"
