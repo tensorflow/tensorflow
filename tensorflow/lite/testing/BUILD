@@ -228,7 +228,6 @@ cc_library(
     hdrs = ["split.h"],
     deps = [
         "//tensorflow/lite:string",
-        "//third_party/eigen3",
     ],
 )
 
