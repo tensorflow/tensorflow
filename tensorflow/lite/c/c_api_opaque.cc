@@ -157,10 +157,10 @@ TfLiteStatus TfLiteOpaqueTensorCopyToBuffer(
 }
 
 const TfLiteOpaqueTensor* TfLiteOpaqueNodeGetInput(
-    TfLiteOpaqueContext* opaque_context, const TfLiteOpaqueNode* opaque_node,
-    int index) {
+    const TfLiteOpaqueContext* opaque_context,
+    const TfLiteOpaqueNode* opaque_node, int index) {
   const TfLiteTensor* tensor =
-      tflite::GetInput(reinterpret_cast<TfLiteContext*>(opaque_context),
+      tflite::GetInput(reinterpret_cast<const TfLiteContext*>(opaque_context),
                        reinterpret_cast<const TfLiteNode*>(opaque_node), index);
   return reinterpret_cast<const TfLiteOpaqueTensor*>(tensor);
 }
