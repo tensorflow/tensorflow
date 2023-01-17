@@ -6,7 +6,8 @@ version: "1.0"
 stages:
   - "clone"
   - "build"
-  - "test"
+  - "phase-1"
+  - "phase-2"
 
 steps:
   clone:
@@ -28,17 +29,78 @@ steps:
     dockerfile: "Dockerfile"
     stage: "build"
 
-  test:
-    title: "Running Tests"
-    stage: "test"
-    image: "${{build}}" # The image in which command will be executed
-    commands:
-      - "find /code/"
-      - "pytest /code --alluredir=$CF_VOLUME_PATH/allure-results"
+  phase_1:
+    type: parallel
+    stage: "phase-1"
+    steps:
+      lint:
+        title: "Running Tests"
+        image: "${{build}}" # The image in which command will be executed
+        commands:
+          - "pylint ."
+
+      test:
+        title: "Running Tests"
+        image: "${{build}}" # The image in which command will be executed
+        fail_fast: false
+        commands:
+          - "pytest /code/ --alluredir=$CF_VOLUME_PATH/allure-results"
 
   test_reporting_step:
+    stage: "phase-1"
     title: Generate test reporting
     image: codefresh/cf-docker-test-reporting
     environment:
       - BUCKET_NAME=dr-codefresh-ci-reports
       - CF_STORAGE_INTEGRATION=dr-codefresh-ci-reports
+
+  evaluate_unit_tests:
+    image: alpine:latest
+    title: Checking Unit Test Result
+    stage: "phase-1"
+    commands:
+    - echo "Unit tests failed, marking the whole pipeline as failed"
+    - exit 1
+    when:
+      condition:
+        all:
+          myCondition: test.result == 'failure'
+
+  step_name:
+    type: pending-approval
+    stage: "phase-2"
+    title: Start Phase 2
+    description: Should we start phase 2 testing?
+    timeout:
+      duration: 48
+      finalState: approved
+      timeUnit: hours
+
+  # TODO: Use dynamic pipelines instead. Use different test suite
+  integration_test:
+    title: "Running Tests"
+    stage: "phase-2"
+    image: "${{build}}" # The image in which command will be executed
+    fail_fast: false
+    commands:
+      - "pytest . --alluredir=$CF_VOLUME_PATH/allure-results"
+
+  integration_test_report:
+    title: Integration Test Report
+    image: codefresh/cf-docker-test-reporting
+    stage: "phase-2"
+    environment:
+      - BUCKET_NAME=dr-codefresh-ci-reports
+      - CF_STORAGE_INTEGRATION=dr-codefresh-ci-reports
+
+  evaluate_integration_test:
+    image: alpine:latest
+    title: Checking Integration Test Result
+    stage: "phase-2"
+    commands:
+    - echo "Integration tests failed, marking the whole pipeline as failed"
+    - exit 1
+    when:
+      condition:
+        all:
+          myCondition: integration_test.result == 'failure'
