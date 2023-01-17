@@ -685,6 +685,17 @@ def assert_no_new_pyobjects_executing_eagerly(func=None, warmup_iters=2):
       """Warms up, gets object counts, runs the test, checks for new objects."""
       with context.eager_mode():
         gc.disable()
+        # Python 3.11 removed "errors" and "skipped" as members of
+        # unittest.case._Outcome so get them from the test result object
+        # instead.
+        test_errors = None
+        test_skipped = None
+        if hasattr(self._outcome, "errors"):
+          test_errors = self._outcome.errors
+          test_skipped = self._outcome.skipped
+        else:
+          test_errors = self._outcome.result.errors
+          test_skipped = self._outcome.result.skipped
         # Run the test 2 times as warmup, in an attempt to fill up caches, which
         # should not grow as the test is run repeatedly below.
         #
@@ -709,8 +720,7 @@ def assert_no_new_pyobjects_executing_eagerly(func=None, warmup_iters=2):
         # These objects are retained across gc collections so we exclude them
         # from the object count calculation.
         obj_count_by_type = _get_object_count_by_type(
-            exclude=gc.get_referents(self._outcome.errors,
-                                     self._outcome.skipped))
+            exclude=gc.get_referents(test_errors, test_skipped))
 
         if ops.has_default_graph():
           collection_sizes_before = {
@@ -745,8 +755,7 @@ def assert_no_new_pyobjects_executing_eagerly(func=None, warmup_iters=2):
         # There should be no new Python objects hanging around.
         obj_count_by_type = (
             _get_object_count_by_type(
-                exclude=gc.get_referents(self._outcome.errors,
-                                         self._outcome.skipped)) -
+                exclude=gc.get_referents(test_errors, test_skipped)) -
             obj_count_by_type)
 
         # There should be no newly registered functions hanging around.
