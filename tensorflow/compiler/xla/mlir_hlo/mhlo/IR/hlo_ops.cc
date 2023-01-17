@@ -2621,12 +2621,14 @@ class DynamicBroadcastInDimAllDimsNonExpanding
       return rewriter.notifyMatchFailure(op, "requires ranked result type");
 
     if (!op.getKnownNonexpandingDimensions().has_value() ||
-        op.getKnownNonexpandingDimensions()->size() != resultType.getRank())
+        op.getKnownNonexpandingDimensions()->size() != resultType.getRank()) {
       return rewriter.notifyMatchFailure(
           op, "known_nonexpanding_dimensions don't cover all output dims");
+    }
 
-    rewriter.replaceOpWithNewOp<tensor::CastOp>(op, resultType,
-                                                op.getOperand());
+    auto cast = rewriter.createOrFold<tensor::CastOp>(op.getLoc(), resultType,
+                                                      op.getOperand());
+    rewriter.replaceOp(op, cast);
     return success();
   }
 };
