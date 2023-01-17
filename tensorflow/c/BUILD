@@ -90,6 +90,22 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "c_api_headers",
+    hdrs = [
+        "c_api.h",
+        "c_api_macros.h",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":tf_attrtype",
+        ":tf_buffer",
+        ":tf_datatype",
+        ":tf_status_headers",
+        ":tf_tstring",
+    ],
+)
+
 tf_cuda_library(
     name = "c_api_internal",
     hdrs = [
