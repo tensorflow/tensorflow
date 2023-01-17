@@ -54,21 +54,32 @@ using xla::runtime::ScalarArg;
 #endif  // #if GOOGLE_CUDA
 
 //===----------------------------------------------------------------------===//
+// CUDA graphs caching.
+//===----------------------------------------------------------------------===//
+
+StreamExecutorGraphInstances* GraphInstances::operator()(
+    se::StreamExecutor* executor) {
+  absl::MutexLock lock(&mutex_);
+  return &graphs_[executor];
+}
+
+//===----------------------------------------------------------------------===//
 // RAII helpers for CUDA graph types.
 //===----------------------------------------------------------------------===//
 
 #if GOOGLE_CUDA
 
-using OwnedGraph = GraphInstances::OwnedGraph;
-using OwnedGraphExec = GraphInstances::OwnedGraphExec;
+using OwnedGraph = StreamExecutorGraphInstances::OwnedGraph;
+using OwnedGraphExec = StreamExecutorGraphInstances::OwnedGraphExec;
 
-void GraphInstances::DestroyGraph::operator()(cudaGraph_t graph) {
+void StreamExecutorGraphInstances::DestroyGraph::operator()(cudaGraph_t graph) {
   cudaError_t err = cudaGraphDestroy(graph);
   CHECK(err == cudaSuccess)
       << "Failed to destroy CUDA graph: " << cudaGetErrorString(err);
 }
 
-void GraphInstances::DestroyGraphExec::operator()(cudaGraphExec_t instance) {
+void StreamExecutorGraphInstances::DestroyGraphExec::operator()(
+    cudaGraphExec_t instance) {
   cudaError_t err = cudaGraphExecDestroy(instance);
   CHECK(err == cudaSuccess)
       << "Failed to destroy CUDA graph instance: " << cudaGetErrorString(err);
@@ -210,8 +221,9 @@ static absl::Status LaunchGraph(
     const std::vector<uint8_t>* cubin, se::DeviceMemoryBase* temp_buffer,
     StreamExecutorKernels::Snapshot* kernels,
     StreamExecutorConvRunners::Snapshot* convs,
-    GraphInstances::Snapshot* instances, runtime::Executable* executable,
-    CustomCall::RemainingArgs fwd_args, CustomCall::FunctionOrdinal capture) {
+    StreamExecutorGraphInstances::Snapshot* instances,
+    runtime::Executable* executable, CustomCall::RemainingArgs fwd_args,
+    CustomCall::FunctionOrdinal capture) {
 #if GOOGLE_CUDA
   VLOG(1) << "Launch Cuda Graph: capture=" << capture.ordinal;
 
@@ -303,7 +315,7 @@ XLA_RUNTIME_DEFINE_CUSTOM_CALL(
         .UserData<se::DeviceMemoryBase*>()
         .UserData<StreamExecutorKernels::Snapshot*>()
         .UserData<StreamExecutorConvRunners::Snapshot*>()
-        .UserData<GraphInstances::Snapshot*>()
+        .UserData<StreamExecutorGraphInstances::Snapshot*>()
         .UserData<Executable*>()
         .RemainingArgs()
         .Attr<CustomCall::FunctionOrdinal>("capture"));

@@ -177,7 +177,7 @@ cc_library(
         "//tensorflow/compiler/xla/service/gpu:stream_executor_util",
         "//tensorflow/compiler/xla/stream_executor",
         "//tensorflow/compiler/xla/stream_executor/gpu:gpu_stream",
-        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:node_hash_map",
         "@com_google_absl//absl/synchronization",
         "@local_config_cuda//cuda:cuda_headers",
     ],
