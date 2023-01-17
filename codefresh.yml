@@ -34,11 +34,10 @@ steps:
     stage: "phase-1"
     steps:
       lint:
-        title: "Running Tests"
+        title: "Linter"
         image: "${{build}}" # The image in which command will be executed
         commands:
-          - "pylint ."
-
+          - "pylint /code/component"
       test:
         title: "Running Tests"
         image: "${{build}}" # The image in which command will be executed
