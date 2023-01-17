@@ -183,5 +183,18 @@ class HistogramFixedWidthTest(test.TestCase):
         nbins=2)
     self.assertAllEqual(hist, [1, 1])
 
+  def test_large_range(self):
+    hist = histogram_ops.histogram_fixed_width(
+        values=constant_op.constant(
+            [-(2**31), 2**31 - 1], dtype=dtypes.int32
+        ),
+        value_range=constant_op.constant(
+            [-(2**31), 2**31 - 1], dtype=dtypes.int32
+        ),
+        nbins=2,
+    )
+    self.assertAllEqual(hist, [1, 1])
+
+
 if __name__ == '__main__':
   test.main()
