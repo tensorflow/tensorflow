@@ -22,6 +22,20 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
+
+// cuDNN currently supports and the rewriter matches the following patterns for Multi-headed attention:
+// 1. BMM1 - BMM2
+// 2. BMM1 - Scale - Bias - Mask - Softmax - BMM2 (To be added)
+// 3. BMM1 - Scale - Bias - Mask - Softmax - Dropout - BMM2 (To be added)
+// 4. BMM1 - Scale - Mask - Softmax - BMM2 (To be added)
+// 5. BMM1 - Scale - Mask - Softmax - Dropout - BMM2 (To be added)
+// 6. BMM1 - Softmax - Dropout - BMM2 (To be added)
+
+// Note that cuDNN 8.8 has the following limitations: 
+// 1. The non contracting dimensions for BMM1 need to be less than or equal to 512.
+// 2. The contracting dimensions for BMM1 need to be 64.
+// 3. The non contracting dimension for BMM2 needs to be 64 for the input matrix.
+
 class CudnnFusedMHARewriter : public HloModulePass {
  public:
   explicit CudnnFusedMHARewriter(se::CudaComputeCapability cc)

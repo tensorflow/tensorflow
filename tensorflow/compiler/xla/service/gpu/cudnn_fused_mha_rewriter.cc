@@ -222,6 +222,19 @@ StatusOr<bool> IsSupportedBMM2(const HloInstruction* bmm_2) {
   return true;
 }
 
+// The following pattern is matched here:
+// Q    K
+// |    |
+// v    v
+//  BMM1
+//   |    V
+//   |    |
+//   v    v
+//    BMM2
+//     |
+//     v
+//     O
+
 StatusOr<bool> FuseBatchedMatmuls(HloComputation* comp,
                                   stream_executor::CudaComputeCapability cc) {
   const DebugOptions& debug_options = comp->parent()->config().debug_options();
