@@ -43,4 +43,5 @@ cc_library(
     hdrs = ["telemetry_setting_internal.h"],
     compatible_with = get_compatible_with_portable(),
     copts = tflite_copts(),
+    deps = ["//tensorflow/lite/core/c:common"],
 )

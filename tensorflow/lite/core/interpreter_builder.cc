@@ -326,11 +326,14 @@ class MallocDataAllocator : public BuiltinDataAllocator {
 
 TfLiteStatus InterpreterBuilder::ParseNodes(
     const flatbuffers::Vector<flatbuffers::Offset<Operator>>* operators,
-    Subgraph* subgraph) {
+    Subgraph* subgraph, TfLiteTelemetrySubgraphInfo* subgraph_info) {
   TfLiteStatus status = kTfLiteOk;
 
   // Reduce the number of redundant allocations
   subgraph->ReserveNodes(operators->size());
+  if (subgraph_info) {
+    subgraph_info->op_types.resize(operators->size());
+  }
 
   for (int i = 0; i < operators->size(); ++i) {
     const auto* op = operators->Get(i);
@@ -352,6 +355,7 @@ TfLiteStatus InterpreterBuilder::ParseNodes(
 
     BuiltinOperator op_type =
         static_cast<BuiltinOperator>(registration->builtin_code);
+    if (subgraph_info) subgraph_info->op_types[i] = op_type;
 
     if (op_type != BuiltinOperator_CUSTOM && op->custom_options()) {
       error_reporter_->Report(
@@ -569,7 +573,7 @@ TfLiteStatus InterpreterBuilder::ParseSignatureDefs(
 TfLiteStatus InterpreterBuilder::ParseTensors(
     const flatbuffers::Vector<flatbuffers::Offset<Buffer>>* buffers,
     const flatbuffers::Vector<flatbuffers::Offset<Tensor>>* tensors,
-    Subgraph* subgraph) {
+    Subgraph* subgraph, TfLiteTelemetrySubgraphInfo* subgraph_info) {
   TfLiteStatus status = kTfLiteOk;
 
   // A little helper to get the names of inputs and outputs. Note that they
@@ -579,6 +583,10 @@ TfLiteStatus InterpreterBuilder::ParseTensors(
     if (name) return name->c_str();
     return kEmptyTensorName;
   };
+
+  if (subgraph_info) {
+    subgraph_info->quantizations.resize(tensors->size());
+  }
 
   num_fp32_tensors_ = 0;
   for (int i = 0; i < tensors->size(); ++i) {
@@ -626,6 +634,7 @@ TfLiteStatus InterpreterBuilder::ParseTensors(
                               i);
       status = kTfLiteError;
     }
+    if (subgraph_info) subgraph_info->quantizations[i] = quantization;
 
     std::vector<int> dims_signature = {};
     if (tensor->shape_signature()) {
@@ -776,8 +785,11 @@ TfLiteStatus InterpreterBuilder::operator()(
       ->SetProfilerImpl(tflite::profiling::MaybeCreatePlatformProfiler());
 
   bool telemetry_registered = telemetry_profiler_ != nullptr;
+  std::unique_ptr<TfLiteTelemetryInterpreterSettings> telemetry_settings;
   if (telemetry_registered) {
     (*interpreter)->AddProfiler(std::move(telemetry_profiler_));
+    telemetry_settings = std::make_unique<TfLiteTelemetryInterpreterSettings>();
+    telemetry_settings->subgraph_infos.resize(subgraphs->size());
   }
 
   for (int subgraph_index = 0; subgraph_index < subgraphs->size();
@@ -785,6 +797,10 @@ TfLiteStatus InterpreterBuilder::operator()(
     const tflite::SubGraph* subgraph = (*subgraphs)[subgraph_index];
     tflite::Subgraph* modified_subgraph =
         (*interpreter)->subgraph(subgraph_index);
+    auto* subgraph_info =
+        telemetry_registered
+            ? &telemetry_settings->subgraph_infos[subgraph_index]
+            : nullptr;
     auto operators = subgraph->operators();
     auto tensors = subgraph->tensors();
     if (!tensors) {
@@ -805,9 +821,11 @@ TfLiteStatus InterpreterBuilder::operator()(
     // Finally setup nodes and tensors
     // Parse tensors before nodes as ParseNodes checks input tensors for the
     // nodes.
-    if (ParseTensors(buffers, tensors, modified_subgraph) != kTfLiteOk)
+    if (ParseTensors(buffers, tensors, modified_subgraph, subgraph_info) !=
+        kTfLiteOk)
       return cleanup_and_error();
-    if (operators && ParseNodes(operators, modified_subgraph) != kTfLiteOk)
+    if (operators &&
+        ParseNodes(operators, modified_subgraph, subgraph_info) != kTfLiteOk)
       return cleanup_and_error();
 
     std::vector<int> variables;
@@ -838,8 +856,6 @@ TfLiteStatus InterpreterBuilder::operator()(
   }
 
   if (telemetry_registered) {
-    auto telemetry_settings =
-        std::make_unique<TfLiteTelemetryInterpreterSettings>();
     ParseConversionMetadata(telemetry_settings.get());
     (*interpreter)->SetTelemetrySettings(std::move(telemetry_settings));
     // Reports model and interpreter settings if telemetry is applied.
@@ -877,6 +893,7 @@ void InterpreterBuilder::AddDelegate(
 
 void InterpreterBuilder::ParseConversionMetadata(
     TfLiteTelemetryInterpreterSettings* settings) {
+  if (settings == nullptr) return;
   auto it = metadata_.find(kConversionMetadataKey);
   if (it == metadata_.end()) {
     // No conversion metadata embeded.

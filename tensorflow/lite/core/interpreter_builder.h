@@ -39,6 +39,7 @@ limitations under the License.
 #include "tensorflow/lite/core/model_builder.h"
 #include "tensorflow/lite/core/subgraph.h"
 #include "tensorflow/lite/mutable_op_resolver.h"
+#include "tensorflow/lite/profiling/telemetry/c/telemetry_setting_internal.h"
 #include "tensorflow/lite/profiling/telemetry/profiler.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/stderr_reporter.h"
@@ -125,11 +126,11 @@ class InterpreterBuilder {
   TfLiteStatus BuildLocalIndexToRegistrationMapping();
   TfLiteStatus ParseNodes(
       const flatbuffers::Vector<flatbuffers::Offset<Operator>>* operators,
-      Subgraph* subgraph);
+      Subgraph* subgraph, TfLiteTelemetrySubgraphInfo* subgraph_info);
   TfLiteStatus ParseTensors(
       const flatbuffers::Vector<flatbuffers::Offset<Buffer>>* buffers,
       const flatbuffers::Vector<flatbuffers::Offset<Tensor>>* tensors,
-      Subgraph* subgraph);
+      Subgraph* subgraph, TfLiteTelemetrySubgraphInfo* subgraph_info);
   TfLiteStatus ApplyDelegates(Interpreter* interpreter);
   TfLiteStatus ParseQuantization(const QuantizationParameters* src_quantization,
                                  TfLiteQuantization* quantization,
