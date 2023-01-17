@@ -106,8 +106,9 @@ struct XlaBuilderFriend {
                                           const XlaOp operands,
                                           const Shape& shape);
 
-  static XlaOp BuildCopyStart(XlaBuilder* builder, const XlaOp operand,
-                              bool is_cross_program_prefetch);
+  static XlaOp BuildCopyStart(
+      XlaBuilder* builder, XlaOp operand,
+      std::optional<int> cross_program_prefetch_index = std::nullopt);
   static XlaOp BuildCopyDone(XlaBuilder* builder, const XlaOp operand,
                              const Shape& shape);
 
@@ -1656,7 +1657,7 @@ class XlaBuilder {
   //
   // TODO(hinsu): Return const pointer within StatusOr and use
   // absl::implicit_cast at callsites. This requires implicit_cast support in
-  // stream_executor::port::StatusOr similar to absl::StatusOr.
+  // xla::StatusOr similar to absl::StatusOr.
   template <typename InstructionType>
   StatusOr<InstructionType> LookUpInstructionInternal(XlaOp op) const {
     TF_RETURN_IF_ERROR(CheckOpBuilder(op));

@@ -21,7 +21,12 @@ from absl import logging
 from tensorflow.python.distribute.failure_handling.failure_handling_util import detect_platform
 from tensorflow.python.distribute.failure_handling.failure_handling_util import PlatformDevice
 from tensorflow.python.eager import context
+from tensorflow.python.eager import monitoring
 from tensorflow.python.util.tf_export import tf_export
+
+_preemption_handling_counter = monitoring.Counter(
+    "third_party/tensorflow/python/distribute/preemption_watcher",
+    "Counter for number of preempions catched and handled by PreemptionWatcher")
 
 _PREEMPTION_KEY = "TF_DEFAULT_PREEMPTION_NOTICE_KEY"
 
@@ -90,5 +95,6 @@ class PreemptionWatcher:
   def _watch_preemption_key(self):
     logging.info("Watching preemption signal.")
     message = context.context().get_config_key_value(_PREEMPTION_KEY)
+    _preemption_handling_counter.get_cell().increase_by(1)
     logging.info("Preemption signal received.")
     self._preemption_message = message

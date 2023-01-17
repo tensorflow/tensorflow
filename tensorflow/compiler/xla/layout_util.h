@@ -44,7 +44,8 @@ class LayoutUtil {
       PrimitiveType index_primitive_type = PRIMITIVE_TYPE_INVALID,
       PrimitiveType pointer_primitive_type = PRIMITIVE_TYPE_INVALID,
       int64_t memory_space = 0,
-      std::optional<Shape> physical_shape = std::nullopt);
+      std::optional<Shape> physical_shape = std::nullopt,
+      int64_t dynamic_shape_metadata_prefix_bytes = 0);
 
   // Similar to MakeLayout, but take indices in reverse order.
   static Layout MakeLayoutFromMajorToMinor(

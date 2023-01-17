@@ -53,7 +53,7 @@ class FractionalMaxPoolOp : public OpKernel {
     }
 
     OP_REQUIRES(
-        context, pooling_ratio_[0] == 1 || pooling_ratio_[3] == 1,
+        context, pooling_ratio_[0] == 1 && pooling_ratio_[3] == 1,
         errors::Unimplemented("Fractional max pooling is not yet "
                               "supported on the batch nor channel dimension."));
 

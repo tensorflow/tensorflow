@@ -32,7 +32,7 @@ limitations under the License.
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
-#include "mlir/IR/BlockAndValueMapping.h"  // from @llvm-project
+#include "mlir/IR/IRMapping.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
@@ -96,7 +96,7 @@ func::FuncOp BuildFunction(llvm::ArrayRef<Operation*> ops,
   Block* outlined_func_block = outlined_func.addEntryBlock();
 
   // Clone the operations and remap the inputs to use the function arguments.
-  BlockAndValueMapping mapping;
+  IRMapping mapping;
   mapping.map(inputs, outlined_func.getArguments());
   builder->setInsertionPoint(outlined_func_block, outlined_func_block->begin());
   for (Operation* op : ops) {

@@ -38,6 +38,8 @@ limitations under the License.
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/status_codes.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/validator.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/validator_runner.h"
+#include "tensorflow/lite/logger.h"
+#include "tensorflow/lite/minimal_logging.h"
 #include "tensorflow/lite/nnapi/sl/include/SupportLibrary.h"
 #include "tensorflow/lite/tools/model_loader.h"
 
@@ -47,10 +49,10 @@ namespace {
 
 using flatbuffers::Offset;
 
-MinibenchmarkStatus RunValidator(absl::string_view model_path,
-                                 const std::string& nnapi_sl_path,
-                                 TFLiteSettingsT& tflite_settings,
-                                 Validator::Results& results) {
+Validator::Status RunValidator(absl::string_view model_path,
+                               const std::string& nnapi_sl_path,
+                               TFLiteSettingsT& tflite_settings,
+                               Validator::Results& results) {
   // Load NNAPI Support Library if specified.
   std::unique_ptr<const ::tflite::nnapi::NnApiSupportLibrary> nnapi_sl_handle;
   if (tflite_settings.nnapi_settings && !nnapi_sl_path.empty()) {
@@ -59,7 +61,8 @@ MinibenchmarkStatus RunValidator(absl::string_view model_path,
     nnapi_sl_handle = ::tflite::nnapi::loadNnApiSupportLibrary(nnapi_sl_path);
 
     if (!nnapi_sl_handle) {
-      return kMiniBenchmarkCannotLoadSupportLibrary;
+      return Validator::Status{kMiniBenchmarkCannotLoadSupportLibrary,
+                               BenchmarkStage_INITIALIZATION};
     }
 
     tflite_settings.nnapi_settings->support_library_handle =
@@ -73,7 +76,8 @@ MinibenchmarkStatus RunValidator(absl::string_view model_path,
   std::unique_ptr<tools::ModelLoader> model_loader =
       tools::CreateModelLoaderFromPath(model_path);
   if (!model_loader) {
-    return kMinibenchmarkPreconditionNotMet;
+    return Validator::Status{kMinibenchmarkPreconditionNotMet,
+                             BenchmarkStage_INITIALIZATION};
   }
 
   auto validator = std::make_unique<Validator>(
@@ -114,9 +118,9 @@ int Java_org_tensorflow_lite_acceleration_validation_entrypoint(int argc,
   }
 
   FlatbufferStorage<BenchmarkEvent> storage(storage_path);
-  MinibenchmarkStatus status = storage.Read();
-  if (status != kMinibenchmarkSuccess) {
-    return status;
+  MinibenchmarkStatus read_status = storage.Read();
+  if (read_status != kMinibenchmarkSuccess) {
+    return read_status;
   }
   TFLiteSettingsT tflite_settings;
 
@@ -129,23 +133,25 @@ int Java_org_tensorflow_lite_acceleration_validation_entrypoint(int argc,
             fbb, CreateTFLiteSettings(fbb, &tflite_settings),
             BenchmarkEventType_RECOVERED_ERROR, /* result */ 0,
             CreateBenchmarkError(
-                fbb, BenchmarkStage_UNKNOWN,
+                fbb, BenchmarkStage_INITIALIZATION,
                 kMinibenchmarkUnableToSetCpuAffinity, /*signal=*/0,
                 /*error_code=*/0,
                 /*mini_benchmark_error_code=*/set_big_core_affinity_errno),
             Validator::BootTimeMicros(), Validator::WallTimeMicros()));
   }
 
-  status = kMinibenchmarkNoValidationRequestFound;
+  Validator::Status run_status =
+      Validator::Status{kMinibenchmarkNoValidationRequestFound};
+
   for (int i = storage.Count() - 1; i >= 0; i--) {
     const BenchmarkEvent* event = storage.Get(i);
     if (event->event_type() == BenchmarkEventType_START) {
       event->tflite_settings()->UnPackTo(&tflite_settings);
 
       Validator::Results results;
-      status =
+      run_status =
           RunValidator(model_path, nnapi_sl_path, tflite_settings, results);
-      if (status != kMinibenchmarkSuccess) {
+      if (run_status.status != kMinibenchmarkSuccess) {
         break;
       }
 
@@ -185,7 +191,7 @@ int Java_org_tensorflow_lite_acceleration_validation_entrypoint(int argc,
       &fbb, CreateBenchmarkEvent(
                 fbb, CreateTFLiteSettings(fbb, &tflite_settings),
                 BenchmarkEventType_ERROR, /* result */ 0,
-                CreateBenchmarkError(fbb, BenchmarkStage_UNKNOWN, status),
+                CreateBenchmarkError(fbb, run_status.stage, run_status.status),
                 Validator::BootTimeMicros(), Validator::WallTimeMicros()));
 }
 }  // extern "C"

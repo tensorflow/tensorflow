@@ -33,7 +33,7 @@ limitations under the License.
 #include "tensorflow/core/util/device_name_utils.h"
 
 namespace tensorflow {
-using stream_executor::port::StatusOr;
+using tsl::StatusOr;
 
 inline constexpr absl::string_view kTPUReplicatedHost = "TPU_REPLICATED_HOST";
 inline constexpr absl::string_view kNumCoresPerReplicaAttr =

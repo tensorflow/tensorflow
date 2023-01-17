@@ -915,6 +915,12 @@ def ExecutorTPUV1IslandInliningPass : Pass<"tf-executor-tpu-v1-island-inlining",
   let constructor = "tf_executor::CreateTFExecutorTPUV1IslandInliningPass()";
 }
 
+def TPUPartitionedOpConversionPass : Pass<"tf-tpu-partitioned-op-conversion", "mlir::func::FuncOp"> {
+  let summary = "Rewrite all TPU Partitioned ops into their V2 counterparts.";
+
+  let constructor = "TFTPU::CreateTPUPartitionedOpConversionPass()";
+}
+
 def TPUClusterFormationPass : Pass<"tf-tpu-cluster-formation", "ModuleOp"> {
   let summary = "Forms clusters from operations assigned to the same TPU computation";
 

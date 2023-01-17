@@ -768,7 +768,7 @@ func.func @main(%arg0: tensor<2xi32>) -> tensor<2xi32> {
 
 // CHECK:  HloModule
 func.func @copy_0(%arg0: tensor<128x32xf32>) -> tensor<128x32xf32> attributes {execution_thread = "main"} {
-  %0 = "mhlo.copy"(%arg0) { is_cross_program_prefetch } : (tensor<128x32xf32>) -> tensor<128x32xf32>
+  %0 = "mhlo.copy"(%arg0) {cross_program_prefetch_index = 0 : i32} : (tensor<128x32xf32>) -> tensor<128x32xf32>
   func.return %0 : tensor<128x32xf32>
 }
 
@@ -781,7 +781,7 @@ func.func @main(%arg0: tensor<128x32xf32>) -> tensor<128x32xf32> {
 // CHECK: ENTRY
 // CHECK: %[[INPUT:.*]] = f32[128,32] parameter(0)
 // CHECK: %[[OUTPUT:.*]] = (f32[128,32], f32[128,32], u32[]) copy-start(f32[128,32] %[[INPUT]])
-// CHECK-SAME:  is_cross_program_prefetch
+// CHECK-SAME:  cross_program_prefetch_index=0
 // CHECK: ROOT {{.*}} f32[128,32] copy-done((f32[128,32], f32[128,32], u32[]) %[[OUTPUT]]
 
 
@@ -802,6 +802,21 @@ func.func @main(%arg0: tensor<10xf32>) -> tensor<10xf32> {
 // CHECK:  ROOT %[[RESULT:.*]] = f32[10] all-reduce(f32[10] %[[ARG0]])
 // CHECK-SAME{LITERAL}:  replica_groups={{0,2,4,6},{1,3,5,7}}
 // CHECK-SAME:  to_apply=%[[SUM_COMPUTATION]]
+
+// -----
+
+// CHECK:  HloModule
+func.func @main(%arg0: tensor<2x3xf32>) -> tensor<2x3xf32> {
+  %0 = "mhlo.custom_call"(%arg0) {call_target_name = "SetBound", mhlo.literal = dense<1> : tensor<i32>} : (tensor<2x3xf32>) -> tensor<2x3xf32>
+  func.return %0 : tensor<2x3xf32>
+}
+
+// CHECK:  ENTRY
+// CHECK:  [[VAL_1:%.*]] = f32[2,3] parameter(0)
+// CHECK:  ROOT
+// CHECK-SAME:  f32[2,3] custom-call(f32[2,3] [[VAL_1]])
+// CHECK-SAME:  custom_call_target="SetBound"
+// CHECK-SAME:  literal=s32[] 1
 
 // -----
 

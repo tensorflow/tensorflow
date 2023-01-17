@@ -586,7 +586,7 @@ class CStreamExecutor : public internal::StreamExecutorInterface {
 
   // Creates a new DeviceDescription object.
   // Ownership is transferred to the caller.
-  port::StatusOr<std::unique_ptr<DeviceDescription>> CreateDeviceDescription()
+  tsl::StatusOr<std::unique_ptr<DeviceDescription>> CreateDeviceDescription()
       const override {
     OwnedTFStatus c_status(TF_NewStatus());
 
@@ -678,7 +678,7 @@ CPlatform::~CPlatform() {
   destroy_platform_fns_(&platform_fns_);
 }
 
-port::StatusOr<std::unique_ptr<DeviceDescription>>
+tsl::StatusOr<std::unique_ptr<DeviceDescription>>
 CPlatform::DescriptionForDevice(int ordinal) const {
   // TODO(annarev): see if we can get StreamExecutor instance
   // and call GetDeviceDescription. executor_cache_.Get would need
@@ -687,24 +687,24 @@ CPlatform::DescriptionForDevice(int ordinal) const {
   builder.set_name(name_);
   return builder.Build();
 }
-port::StatusOr<StreamExecutor*> CPlatform::ExecutorForDevice(int ordinal) {
+tsl::StatusOr<StreamExecutor*> CPlatform::ExecutorForDevice(int ordinal) {
   stream_executor::StreamExecutorConfig config;
   config.ordinal = ordinal;
   return GetExecutor(config);
 }
-port::StatusOr<StreamExecutor*> CPlatform::ExecutorForDeviceWithPluginConfig(
+tsl::StatusOr<StreamExecutor*> CPlatform::ExecutorForDeviceWithPluginConfig(
     int ordinal, const PluginConfig& plugin_config) {
   StreamExecutorConfig config;
   config.ordinal = ordinal;
   config.plugin_config = plugin_config;
   return GetExecutor(config);
 }
-port::StatusOr<StreamExecutor*> CPlatform::GetExecutor(
+tsl::StatusOr<StreamExecutor*> CPlatform::GetExecutor(
     const StreamExecutorConfig& config) {
   return executor_cache_.GetOrCreate(
       config, [&]() { return GetUncachedExecutor(config); });
 }
-port::StatusOr<std::unique_ptr<StreamExecutor>> CPlatform::GetUncachedExecutor(
+tsl::StatusOr<std::unique_ptr<StreamExecutor>> CPlatform::GetUncachedExecutor(
     const StreamExecutorConfig& config) {
   // Fill device creation params
   SE_CreateDeviceParams device_params{SE_CREATE_DEVICE_PARAMS_STRUCT_SIZE};

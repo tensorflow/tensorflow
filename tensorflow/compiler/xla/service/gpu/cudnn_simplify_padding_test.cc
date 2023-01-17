@@ -140,13 +140,14 @@ TEST_F(CudnnSimplifyPaddingTest, EndToEnd) {
   // conv2 should be fed directly from conv1, without any intervening
   // reshapes/pads.
   EXPECT_THAT(
-      root, GmockMatch(m::Tuple(
-                m::Slice(m::Reshape(m::GetTupleElement(m::CustomCall(
-                    "__cudnn$convBiasActivationForward",
-                    m::GetTupleElement(
-                        m::CustomCall("__cudnn$convBiasActivationForward"), 0),
-                    m::Op(), m::Op(), m::Op())))),
-                m::Op())));
+      root,
+      GmockMatch(m::Tuple(
+          m::Slice(m::Reshape(m::GetTupleElement(m::CustomCall(
+              {"__cudnn$convBiasActivationForward"},
+              m::GetTupleElement(
+                  m::CustomCall({"__cudnn$convBiasActivationForward"}), 0),
+              m::Op(), m::Op(), m::Op())))),
+          m::Op())));
 }
 
 TEST_F(CudnnSimplifyPaddingTest, PaddedWeights) {

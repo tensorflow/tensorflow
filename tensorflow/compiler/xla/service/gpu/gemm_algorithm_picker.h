@@ -33,6 +33,12 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
+// GemmAlgorithmPicker supports two modes: device and deviceless.
+// In device mode, we run autotuning on the device and store autotune results.
+// In deviceless mode, we pass in some information related to the device and
+// use stored autotune results to rewrite Gemm instructions. If the required
+// autotune result is not stored, then no algorithm is set, which indicates that
+// a different cuBLAS API that does not require specifying an algorithm is used.
 class GemmAlgorithmPicker : public HloModulePass {
  public:
   static void ClearAutotuneResults();
@@ -45,7 +51,13 @@ class GemmAlgorithmPicker : public HloModulePass {
   };
 
   struct DevicelessConfig {
-    std::string device_description_str;
+    // The human-readable description of the device.  It can be found by using
+    // stream_exec->GetDeviceDescription().model_str() when the stream executor
+    // is available.
+    std::string model_str;
+
+    // A field to determine the architecture of the device. We only pick an
+    // algorithm for non-Ampere architectures.
     se::CudaComputeCapability cuda_compute_capability{0, 0};
   };
 

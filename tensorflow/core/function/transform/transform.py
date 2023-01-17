@@ -18,7 +18,7 @@ from typing import Any, Optional, Callable, Union, Iterator
 
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.framework import function_pb2
-from tensorflow.core.function import runtime_client
+from tensorflow.core.function.runtime_client import runtime_client
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import function as function_lib
 from tensorflow.python.eager.polymorphic_function import saved_model_utils

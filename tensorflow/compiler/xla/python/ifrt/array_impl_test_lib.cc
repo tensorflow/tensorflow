@@ -18,6 +18,7 @@ limitations under the License.
 #include <optional>
 #include <vector>
 
+#include "absl/types/span.h"
 #include "tensorflow/compiler/xla/python/ifrt/array.h"
 #include "tensorflow/compiler/xla/python/ifrt/client.h"
 #include "tensorflow/compiler/xla/python/ifrt/test_util.h"
@@ -108,6 +109,60 @@ TEST(ArrayImplTest, MakeArrayFromHostBufferAndCopyToHostBuffer) {
                               ArrayCopySemantics::kAlwaysCopy);
   TF_ASSERT_OK(future.Await());
   EXPECT_THAT(out_data, ElementsAreArray(data));
+}
+
+TEST(ArrayImplTest, MakeArrayFromHostBufferWithByteStridesAndCopyToHostBuffer) {
+  TF_ASSERT_OK_AND_ASSIGN(auto client, test_util::GetClient());
+
+  DType dtype(DType::kF32);
+  Shape shape({2, 3});
+  // The input data layout is minor-to-major.
+  std::vector<float> data = {0, 3, 1, 4, 2, 5};
+  std::vector<int64_t> byte_strides = {4, 8};
+  Device* device = client->addressable_devices().at(0);
+  auto sharding = SingleDeviceSharding::Create(device);
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto array, client->MakeArrayFromHostBuffer(
+                      data.data(), dtype, shape, byte_strides, sharding,
+                      Client::HostBufferSemantics::kImmutableOnlyDuringCall,
+                      /*on_done_with_host_buffer=*/{}));
+
+  std::vector<float> out_data(6);
+  // The expected output data layout is major-to-minor.
+  std::vector<float> expected_out_data = {0, 1, 2, 3, 4, 5};
+  auto future =
+      array->CopyToHostBuffer(out_data.data(), /*byte_strides=*/std::nullopt,
+                              ArrayCopySemantics::kAlwaysCopy);
+  TF_ASSERT_OK(future.Await());
+  EXPECT_THAT(out_data, ElementsAreArray(expected_out_data));
+}
+
+TEST(ArrayImplTest, MakeArrayFromHostBufferAndCopyToHostBufferWithByteStrides) {
+  TF_ASSERT_OK_AND_ASSIGN(auto client, test_util::GetClient());
+
+  DType dtype(DType::kF32);
+  Shape shape({2, 3});
+  // The input data layout is major-to-minor.
+  std::vector<float> data = {0, 1, 2, 3, 4, 5};
+  Device* device = client->addressable_devices().at(0);
+  auto sharding = SingleDeviceSharding::Create(device);
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto array, client->MakeArrayFromHostBuffer(
+                      data.data(), dtype, shape,
+                      /*byte_strides=*/std::nullopt, sharding,
+                      Client::HostBufferSemantics::kImmutableOnlyDuringCall,
+                      /*on_done_with_host_buffer=*/{}));
+
+  std::vector<float> out_data(6);
+  // The requested output data layout is minor-to-major.
+  std::vector<int64_t> byte_strides = {4, 8};
+  std::vector<float> expected_out_data = {0, 3, 1, 4, 2, 5};
+  auto future = array->CopyToHostBuffer(out_data.data(), byte_strides,
+                                        ArrayCopySemantics::kAlwaysCopy);
+  TF_ASSERT_OK(future.Await());
+  EXPECT_THAT(out_data, ElementsAreArray(expected_out_data));
 }
 
 TEST(ArrayImplTest, AssembleArray) {

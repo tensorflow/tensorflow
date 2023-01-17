@@ -18,6 +18,7 @@ limitations under the License.
 
 #include "gml_st/IR/gml_st_ops.h"
 #include "gml_st/interfaces/tiling_interface_impl.h"
+#include "gml_st/transforms/fusion/fusion.h"
 #include "gml_st/transforms/passes.h"
 #include "gml_st/transforms/peeling/peeling.h"
 #include "gml_st/transforms/tiling/tiling.h"
@@ -71,6 +72,13 @@ struct TileTransposePattern : public OpRewritePattern<linalg::TransposeOp> {
     if (auto loop = dyn_cast_or_null<ParallelOp>(tilingResult->loop)) {
       auto peelingResult = peelAllLoops(loop, rewriter);
       setLabel(loop, kPerfectlyTiledLoopLabel);
+
+      // Tile ops in the peeled loop again, to size 1, so they can be
+      // scalarized.
+      if (failed(tilePeeledOpsToScalars(rewriter, peelingResult,
+                                        kTransposeTransformedLabel,
+                                        /*fuseFilterFn=*/nullptr)))
+        return failure();
     }
 
     return success();

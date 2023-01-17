@@ -14,7 +14,7 @@
 # ==============================================================================
 """Tests for TF_DETERMINISTIC_OPS=1."""
 
-import os 
+import os
 from tensorflow.python.framework import config
 from tensorflow.python.kernel_tests.nn_ops import cudnn_deterministic_base
 from tensorflow.python.platform import test

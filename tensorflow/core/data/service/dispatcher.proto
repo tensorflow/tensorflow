@@ -5,17 +5,30 @@ package tensorflow.data;
 import "tensorflow/core/data/service/common.proto";
 import "tensorflow/core/framework/tensor.proto";
 import "tensorflow/core/protobuf/data_service.proto";
+import "tensorflow/core/protobuf/error_codes.proto";
 import "tensorflow/core/protobuf/snapshot.proto";
 
 // Next tag: 3
-message TaskProgress {
-  // The task that this message is about.
-  int64 task_id = 1;
-  // Whether the task has completed.
-  bool completed = 2;
+message SnapshotTaskDef {
+  // The base directory at which the snapshot is being materialized.
+  string base_path = 1;
+  // The index of the stream that the worker has been assigned to process.
+  int64 stream_index = 2;
 }
 
-// Next tag: 6
+// Next tag: 5
+message SnapshotTaskProgress {
+  SnapshotTaskDef snapshot_task = 1;
+  // True if the snapshot is complete successfully. Unset if the snapshot is not
+  // complete or an error has occurred.
+  bool completed = 2;
+  // If any error occurs during the snapshot processing, the `error_code` and
+  // `error_message` will be filled with the error status.
+  error.Code error_code = 3;
+  string error_message = 4;
+}
+
+// Next tag: 7
 message WorkerHeartbeatRequest {
   string worker_address = 1;
   string transfer_address = 3;
@@ -23,22 +36,24 @@ message WorkerHeartbeatRequest {
   // The UID of the worker Borg job, used for telemetry.
   int64 worker_uid = 5;
   repeated int64 current_tasks = 2;
+  // Progress of the snapshot tasks, if any.
+  repeated SnapshotTaskProgress snapshot_task_progress = 6;
 }
 
 // Next tag: 4
 message WorkerHeartbeatResponse {
   repeated TaskDef new_tasks = 1;
   repeated int64 tasks_to_delete = 2;
-
-  message Snapshot {
-    // The directory at which the snapshot is being materialized.
-    string directory = 1;
-
-    // The index of the stream that the worker has been assigned to process.
-    int64 stream_index = 2;
-  }
   // Snapshots to process.
-  repeated Snapshot snapshots = 3;
+  repeated SnapshotTaskDef snapshot_tasks = 3;
+}
+
+// Next tag: 3
+message TaskProgress {
+  // The task that this message is about.
+  int64 task_id = 1;
+  // Whether the task has completed.
+  bool completed = 2;
 }
 
 // Next tag: 3

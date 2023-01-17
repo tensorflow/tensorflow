@@ -24,7 +24,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/strings/string_view.h"
-#include "tensorflow/lite/model_builder.h"
+#include "tensorflow/lite/core/model_builder.h"
 
 namespace tflite {
 namespace tools {

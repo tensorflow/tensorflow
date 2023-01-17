@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
+#include "absl/types/span.h"
 #include "tensorflow/tsl/lib/strings/proto_serialization.h"
 #include "tensorflow/tsl/protobuf/dnn.pb.h"
 
@@ -137,7 +138,7 @@ tsl::Status DnnSupport::GetConvolveRunners(
   return port::UnimplementedError("GetConvolveRunners not implemented.");
 }
 
-port::StatusOr<std::unique_ptr<const dnn::ConvRunner>>
+tsl::StatusOr<std::unique_ptr<const dnn::ConvRunner>>
 DnnSupport::ConvolveRunnerFromDesc(
     Stream* stream, const dnn::AlgorithmDesc& algorithm_desc,
     dnn::ConvolutionKind kind, dnn::DataType element_type,
@@ -174,7 +175,7 @@ tsl::Status DnnSupport::GetFusedMatmulRunners(
   return port::UnimplementedError("GetFusedMatmulRunners not implemented.");
 }
 
-port::StatusOr<std::unique_ptr<const dnn::FusedConvRunner>>
+tsl::StatusOr<std::unique_ptr<const dnn::FusedConvRunner>>
 DnnSupport::FusedConvolveRunnerFromDesc(
     Stream* stream, const dnn::AlgorithmDesc& algorithm_desc,
     dnn::ConvolutionKind kind, dnn::DataType element_type,
@@ -617,7 +618,7 @@ int64_t BatchDescriptor::FullyConnectedBiasCount(
 }
 
 BatchDescriptor BatchDescriptor::DepthConcatenateOutputDescriptor(
-    port::ArraySlice<dnn::BatchDescriptor> inputs) {  // non-absl ok
+    absl::Span<const dnn::BatchDescriptor> inputs) {
   if (inputs.empty()) {
     return BatchDescriptor();
   }

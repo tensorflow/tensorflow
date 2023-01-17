@@ -62,176 +62,16 @@ createLegalizeTFControlFlowPass() {
 
 namespace {
 
-void Detuple(Value tuple, ValueRange replace, OpBuilder* builder) {
-  // De-tuple the results of the xla hlo if result.
-  for (auto result_it : llvm::enumerate(replace)) {
-    auto get_tuple_value = builder->create<mhlo::GetTupleElementOp>(
-        result_it.value().getLoc(), tuple, result_it.index());
-    result_it.value().replaceAllUsesWith(get_tuple_value);
-  }
-}
-
-// For mlir::IfOp or mlir::CaseOp, replace the uses of their region's block
-// arguments with 'implicit_operands'. Here | 'implicit_operands' | == Number of
-// arguments in any of the regions in IfOp or CaseOp.
-void ReplaceBlockArgumentsWithImplicitOperands(
-    mlir::Operation* op, llvm::ArrayRef<mlir::Value> implicit_operands) {
-  assert((mlir::dyn_cast<mlir::mhlo::IfOp>(*op) ||
-          mlir::dyn_cast<mlir::mhlo::CaseOp>(*op)) &&
-         "Unexpected mlir op in ReplaceBlockArgumentsWithImplicitOperands!");
-
-  for (auto& region : op->getRegions()) {
-    int implicit_operand_index = 0;
-    for (auto arg : region.getArguments()) {
-      assert(implicit_operand_index < implicit_operands.size());
-      arg.replaceAllUsesWith(implicit_operands[implicit_operand_index++]);
-    }
-
-    region.front().eraseArguments(0, region.getNumArguments());
-  }
-}
-
-// Imports the source region into the destination region. MHLO supports
-// multiple arguments per branch and multiple returns which are individually
-// tupled together during export to XLA. This tupling is needed as XLA if/while
-// operation only supports one argument per branch and a single return value.
-// `tuple_arg` allows any branch that requires additional arguments to have
-// their values be tupled together. Similarly, `tuple_return` allows the results
-// of the if/while operation to be tupled together.
-void ImportXlaRegion(mlir::func::FuncOp func, Region* dest_region, Location loc,
-                     bool tuple_return = true, bool tuple_arg = true) {
-  OpBuilder builder(dest_region);
-
-  auto entry_block = builder.createBlock(dest_region);
-  func::CallOp result;
-  if (!tuple_arg) {
-    auto inputs = func.getFunctionType().getInputs();
-    auto args = entry_block->addArguments(
-        inputs, SmallVector<Location>(inputs.size(), loc));
-    ArrayRef<Value> callop_args(args.begin(), args.end());
-    result = builder.create<func::CallOp>(loc, func, callop_args);
-  } else {
-    auto tuple_arg = entry_block->addArgument(
-        builder.getTupleType(func.getFunctionType().getInputs()), loc);
-    llvm::SmallVector<Value, 4> detupled_args;
-    detupled_args.reserve(func.getNumArguments());
-
-    for (int64_t i = 0, s = func.getNumArguments(); i < s; i++) {
-      auto extract = builder.create<GetTupleElementOp>(loc, tuple_arg, i);
-      detupled_args.push_back(extract);
-    }
-
-    result = builder.create<func::CallOp>(loc, func, detupled_args);
-  }
-
-  if (!tuple_return) {
-    builder.create<mhlo::ReturnOp>(loc, result.getResults());
-  } else {
-    auto tuple_op = builder.create<TupleOp>(loc, result.getResults());
-    builder.create<mhlo::ReturnOp>(loc, tuple_op.getResult());
-  }
-}
-
-// Replaces all block arguments of a block with a single block arg of Tuple
-// type `tuple_type`. Single block arguments are removed and remapped to
-// get_tuple_element(tuple_arg, index).
-void ReplaceBlockArgs(Block* block, Type tuple_type, OpBuilder* builder) {
-  auto tuple_arg = block->addArgument(tuple_type, block->getParent()->getLoc());
-  Detuple(tuple_arg, block->getArguments().drop_back(1), builder);
-  for (int i = block->getNumArguments() - 2; i >= 0; --i)
-    block->eraseArgument(i);
-}
-
-// Replaces implicitly captured value uses with block arguments.
-llvm::SmallVector<Value, 4> ReplaceImplicitInputs(
-    Block* block, int offset, ArrayRef<Value> implicit_inputs) {
-  llvm::SmallVector<Value, 4> implicit_input_elements;
-  implicit_input_elements.reserve(implicit_inputs.size());
-
-  Region* region = block->getParent();
-
-  for (auto& implicit_input : llvm::enumerate(implicit_inputs)) {
-    Value implicit_input_value = implicit_input.value();
-    BlockArgument arg = block->getArgument(implicit_input.index() + offset);
-    implicit_input_elements.emplace_back(arg);
-    for (auto& use :
-         llvm::make_early_inc_range(implicit_input_value.getUses())) {
-      if (!region->isAncestor(use.getOwner()->getParentRegion())) continue;
-      use.set(arg);
-    }
-  }
-
-  return implicit_input_elements;
-}
-
-// Replaces implicitly captured value uses with tuple block argument.
-// get_tuple_element's are created to extract specific values. Values from
-// get_tuple_element's are returned in the order of `implicit_inputs`.
-llvm::SmallVector<Value, 4> ReplaceImplicitInputsWithTupleElements(
-    Block* block, int offset, ArrayRef<Value> implicit_inputs,
-    OpBuilder* builder) {
-  llvm::SmallVector<Value, 4> implicit_input_elements;
-  implicit_input_elements.reserve(implicit_inputs.size());
-
-  Region* region = block->getParent();
-  assert(block->getNumArguments() == 1);
-
-  BlockArgument tuple_arg = block->getArgument(0);
-  for (auto& implicit_input : llvm::enumerate(implicit_inputs)) {
-    Value implicit_input_value = implicit_input.value();
-    auto get_tuple_element = builder->create<mhlo::GetTupleElementOp>(
-        implicit_input_value.getLoc(), tuple_arg,
-        implicit_input.index() + offset);
-    implicit_input_elements.emplace_back(get_tuple_element.getResult());
-    for (auto& use :
-         llvm::make_early_inc_range(implicit_input_value.getUses())) {
-      if (!region->isAncestor(use.getOwner()->getParentRegion())) continue;
-      use.set(get_tuple_element.getResult());
-    }
-  }
-
-  return implicit_input_elements;
-}
-
-// Finds and replaces implicitly captured value uses with tuple block argument.
-// A tuple of implicitly captured values is also created and returned, for use
-// as an operand to the associated mhlo control flow op.
-Value TupleImplicitInputs(Region& region, Location loc, OpBuilder* builder) {
-  llvm::SetVector<Value> implicit_inputs;
-  getUsedValuesDefinedAbove(region, region, implicit_inputs);
-  llvm::ArrayRef<Value> implicit_inputs_ref = implicit_inputs.getArrayRef();
-  Value tuple_input = builder->create<mhlo::TupleOp>(loc, implicit_inputs_ref);
-  Block& block = region.front();
-  // `tf.CaseRegion`/`tf.IfRegion` are expected to have no block arguments and
-  // instead all inputs used by their branch regions are implicitly captured
-  // from above.
-  assert(block.getNumArguments() == 0);
-  block.addArgument(tuple_input.getType(), loc);
-  builder->setInsertionPointToStart(&block);
-  ReplaceImplicitInputsWithTupleElements(&block, /*offset=*/0,
-                                         implicit_inputs_ref, builder);
-  return tuple_input;
-}
-
 // Replaces block terminator (tf.Yield) with `mhlo.return`. Additional results
-// can be returned if `extra_results` is not empty. If `tuple_return` is
-// set, a tuple of the return values will be set as the terminator operand.
-void ReplaceTerminator(Block* block, ArrayRef<Value> extra_results,
-                       OpBuilder* builder, bool tuple_return = true) {
+// can be returned if `extra_results` is not empty.
+void ReplaceTerminator(Block* block, OpBuilder* builder) {
   Operation* terminator = block->getTerminator();
   assert(isa<TF::YieldOp>(terminator));
   Location loc = terminator->getLoc();
 
   builder->setInsertionPoint(terminator);
   auto results = llvm::to_vector<4>(terminator->getOperands());
-  results.append(extra_results.begin(), extra_results.end());
-  if (tuple_return) {
-    auto tuple_results = builder->create<mhlo::TupleOp>(loc, results);
-    builder->create<mhlo::ReturnOp>(loc, tuple_results.getResult());
-  } else {
-    builder->create<mhlo::ReturnOp>(loc, results);
-  }
-
+  builder->create<mhlo::ReturnOp>(loc, results);
   terminator->erase();
 }
 
@@ -240,12 +80,10 @@ void LowerIfRegion(TF::IfRegionOp op) {
   OpBuilder builder(op);
 
   builder.setInsertionPoint(op);
-  ReplaceTerminator(&op.getThenBranch().front(), /*extra_results=*/{}, &builder,
-                    /*tuple_return=*/false);
+  ReplaceTerminator(&op.getThenBranch().front(), &builder);
 
   builder.setInsertionPoint(op);
-  ReplaceTerminator(&op.getElseBranch().front(), /*extra_results=*/{}, &builder,
-                    /*tuple_return=*/false);
+  ReplaceTerminator(&op.getElseBranch().front(), &builder);
 
   // Create the new `mhlo.if` op and take ownership of regions from
   // `tf.IfRegion` op.
@@ -267,8 +105,7 @@ void LowerCaseRegion(TF::CaseRegionOp op) {
 
   for (Region& region : op.getBranches()) {
     builder.setInsertionPoint(op);
-    ReplaceTerminator(&region.front(), /*extra_results=*/{}, &builder,
-                      /*tuple_return=*/false);
+    ReplaceTerminator(&region.front(), &builder);
   }
 
   // Create the new `mhlo.case` op and take ownership of regions from
@@ -288,21 +125,11 @@ void LowerWhileRegion(TF::WhileRegionOp op) {
   Location loc = op.getLoc();
   OpBuilder builder(op);
 
-  SmallVector<Value, 3> inputs(op.getInput());
-  const int inputs_size = inputs.size();
-  llvm::SetVector<Value> implicit_inputs;
-  getUsedValuesDefinedAbove(op.getOperation()->getRegions(), implicit_inputs);
-  inputs.append(implicit_inputs.begin(), implicit_inputs.end());
-
   builder.setInsertionPoint(op);
 
-  // Create the new `mhlo.while` op with 'inputs'. Implicit inputs are also
-  // returned.
+  // Create the new `mhlo.while` op with 'inputs'.
   auto while_result_types = llvm::to_vector<4>(op.getResultTypes());
-  while_result_types.reserve(while_result_types.size() +
-                             implicit_inputs.size());
-  for (const auto& implicit_input : implicit_inputs)
-    while_result_types.emplace_back(implicit_input.getType());
+  SmallVector<Value, 3> inputs(op.getInput());
   auto while_op =
       builder.create<mhlo::WhileOp>(loc, while_result_types, inputs);
 
@@ -313,14 +140,8 @@ void LowerWhileRegion(TF::WhileRegionOp op) {
   Block& cond_block = cond.front();
   builder.setInsertionPointToStart(&cond_block);
 
-  // Add args corresponding to 'implicit_inputs'.
-  for (const auto& implicit_input : implicit_inputs)
-    cond_block.addArgument(implicit_input.getType(), loc);
-  ReplaceImplicitInputs(&cond_block, inputs_size,
-                        implicit_inputs.getArrayRef());
   // Cond always returns a single result of bool type.
-  ReplaceTerminator(&cond_block, /*extra_results=*/{}, &builder,
-                    /*tuple_return=*/false);
+  ReplaceTerminator(&cond_block, &builder);
 
   // Rewrite body and associated block arguments and terminator. Ownership of
   // body region is transfered over from `tf.WhileRegion` to `mhlo.while`.
@@ -328,12 +149,7 @@ void LowerWhileRegion(TF::WhileRegionOp op) {
   body.takeBody(op.getBody());
   Block& body_block = body.front();
   builder.setInsertionPointToStart(&body_block);
-  // Add args corresponding to 'implicit_inputs'.
-  for (const auto& implicit_input : implicit_inputs)
-    body_block.addArgument(implicit_input.getType(), loc);
-  auto implicit_input_elements = ReplaceImplicitInputs(
-      &body_block, inputs_size, implicit_inputs.getArrayRef());
-  ReplaceTerminator(&body_block, implicit_input_elements, &builder, false);
+  ReplaceTerminator(&body_block, &builder);
 
   // Replace all uses of `op` results with that of `mhlo.while`.
   builder.setInsertionPoint(op);

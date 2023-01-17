@@ -35,6 +35,7 @@ from tensorflow.dtensor.python.config import is_gpu_present  # pylint: disable=u
 from tensorflow.dtensor.python.config import is_tpu_present  # pylint: disable=unused-import
 from tensorflow.dtensor.python.config import preferred_device_type  # pylint: disable=unused-import
 from tensorflow.dtensor.python.tests.test_backend_name import DTensorTestUtilBackend
+from tensorflow.dtensor.python.tests.test_backend_util import DTensorTestBackendConfigurator
 from tensorflow.python.compat import v2_compat
 from tensorflow.python.eager import context
 from tensorflow.python.framework import config as tf_config
@@ -148,15 +149,21 @@ class DTensorBaseTest(tf_test.TestCase, parameterized.TestCase):
   def setUpClass(cls):
     super(DTensorBaseTest, cls).setUpClass()
 
+  def setUp(self):
+    super().setUp()
+    self._backend_configurator = DTensorTestBackendConfigurator(self)
+
   def tearDown(self):
-    super().tearDown()
     # Make sure all async ops finish.
     context.async_wait()
 
-    self.maybeShutdownTpuSystem()
     # TODO(hthu): Remove the reset once we fixed the CopyToMesh with
     # DefaultMesh placement issue.
     reset_dtensor()
+
+    self._backend_configurator.tearDown()
+
+    super().tearDown()
 
   @staticmethod
   def configTestMesh(  # pylint: disable=invalid-name
@@ -199,18 +206,6 @@ class DTensorBaseTest(tf_test.TestCase, parameterized.TestCase):
 
     return mesh
 
-  @staticmethod
-  def maybeShutdownTpuSystem():  # pylint: disable=invalid-name
-    """Shuts down the TPU System if present.
-
-    This is usually called at the unit test tear down phase to reset the TPU
-    system before running the next test.
-    """
-    # Only need to explicitly shuts down TPU system in TFRT since in current
-    # runtime, the shutdown is done in initialization process.
-    if accelerator_util.is_initialized():
-      accelerator_util.shutdown_accelerator_system()
-
   def skipForDeviceType(  # pylint: disable=invalid-name
       self,
       device_type: typing.List[str],
@@ -246,7 +241,9 @@ class DTensorBaseTest(tf_test.TestCase, parameterized.TestCase):
       self.skipTest(reason)
 
   def skipTest(self, reason):  # pylint: disable=invalid-name
-    self.maybeShutdownTpuSystem()
+    # skipTest() may be called in super().setUp()
+    if hasattr(self, '_backend_configurator'):
+      self._backend_configurator.tearDown()
     super().skipTest(reason)
 
   def assertDTensorEqual(

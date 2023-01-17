@@ -1007,10 +1007,15 @@ def cast(x, dtype, name=None):
       # allows some conversions that cast() can't do, e.g. casting numbers to
       # strings.
       x = ops.convert_to_tensor(x, name="x")
+      if x.dtype.is_complex and base_type.is_floating:
+        logging.warn(
+            f"You are casting an input of type {x.dtype.name} to an "
+            f"incompatible dtype {base_type.name}.  This will "
+            "discard the imaginary part and may not be what you "
+            "intended."
+        )
       if x.dtype != base_type:
         x = gen_math_ops.cast(x, base_type, name=name)
-    if x.dtype.is_complex and base_type.is_floating:
-      logging.warn("Casting complex to real discards imaginary part.")
     return x
 
 
@@ -4109,7 +4114,6 @@ def add_n(inputs, name=None):
       return array_ops.identity(values, name=name)
     return values
   return gen_math_ops.add_n(inputs, name=name)
-
 
 
 @tf_export("math.accumulate_n", v1=["math.accumulate_n", "accumulate_n"])

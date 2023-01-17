@@ -350,7 +350,7 @@ Operation *bubbleUpPadSlice(OpBuilder &b, tensor::PadOp padOp,
                                             staticNewHighs, newLows, newHighs);
 
     // Copy region to new PadOp.
-    BlockAndValueMapping bvm;
+    IRMapping bvm;
     padOp.getRegion().cloneInto(&newPadOp.getRegion(), bvm);
 
     // Cast result and return.
@@ -448,8 +448,6 @@ void registerGmlStTilingInterfaceExternalModels(DialectRegistry &registry) {
         ExternalLinalgOpTilingInterface<linalg::MapOp>>(*ctx);
     linalg::MatmulOp::attachInterface<
         ExternalLinalgOpTilingInterface<linalg::MatmulOp>>(*ctx);
-    linalg::Mmt4DOp::attachInterface<
-        ExternalLinalgOpTilingInterface<linalg::Mmt4DOp>>(*ctx);
     linalg::ReduceOp::attachInterface<
         ExternalLinalgOpTilingInterface<linalg::ReduceOp>>(*ctx);
     linalg::TransposeOp::attachInterface<

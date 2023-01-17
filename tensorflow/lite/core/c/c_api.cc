@@ -22,9 +22,9 @@ limitations under the License.
 #include "tensorflow/lite/builtin_ops.h"
 #include "tensorflow/lite/c/c_api_internal.h"
 #include "tensorflow/lite/c/common_internal.h"
+#include "tensorflow/lite/core/create_op_resolver.h"
 #include "tensorflow/lite/core/interpreter.h"
 #include "tensorflow/lite/core/model.h"
-#include "tensorflow/lite/create_op_resolver.h"
 #include "tensorflow/lite/delegates/interpreter_utils.h"
 #include "tensorflow/lite/delegates/nnapi/nnapi_delegate.h"
 #include "tensorflow/lite/kernels/internal/compatibility.h"
@@ -97,6 +97,13 @@ void TfLiteModelDelete(TfLiteModel* model) { delete model; }
 
 TfLiteInterpreterOptions* TfLiteInterpreterOptionsCreate() {
   return new TfLiteInterpreterOptions{};
+}
+
+struct TfLiteInterpreterOptions* TfLiteInterpreterOptionsCopy(
+    const struct TfLiteInterpreterOptions* from) {
+  struct TfLiteInterpreterOptions* copy = new TfLiteInterpreterOptions{};
+  *copy = *from;
+  return copy;
 }
 
 void TfLiteInterpreterOptionsDelete(TfLiteInterpreterOptions* options) {

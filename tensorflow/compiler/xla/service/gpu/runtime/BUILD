@@ -165,6 +165,7 @@ cc_library(
     srcs = ["graph_launch.cc"],
     hdrs = ["graph_launch.h"],
     deps = [
+        ":conv",
         ":kernel_launch",
         ":support",
         "//tensorflow/compiler/xla:types",

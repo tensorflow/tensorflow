@@ -143,9 +143,22 @@ Status NVPTXCompiler::OptimizeHloPostLayoutAssignment(
       hlo_module, stream_exec, device_allocator, gpu_target_config));
 
   HloPassPipeline post_pipeline("nvptx post-layout_assignment part 2");
-  GemmAlgorithmPicker::DeviceConfig device_config{stream_exec,
-                                                  device_allocator};
-  post_pipeline.AddPass<GemmAlgorithmPicker>(device_config);
+  if (!stream_exec) {
+    // Device not available. Use autotune results from gpu_target_config.
+    GemmAlgorithmPicker::ClearAutotuneResults();
+    TF_RETURN_IF_ERROR(GemmAlgorithmPicker::LoadAutotuneResults(
+        gpu_target_config.autotune_results));
+
+    std::string device_description_str =
+        gpu_target_config.device_description_str;
+    GemmAlgorithmPicker::DevicelessConfig deviceless_config{
+        device_description_str, cuda_compute_capability};
+    post_pipeline.AddPass<GemmAlgorithmPicker>(deviceless_config);
+  } else {
+    GemmAlgorithmPicker::DeviceConfig device_config{stream_exec,
+                                                    device_allocator};
+    post_pipeline.AddPass<GemmAlgorithmPicker>(device_config);
+  }
 
   // Transform TriangularSolve ops into custom-calls, so we can add temp
   // memory.

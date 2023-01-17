@@ -18,8 +18,11 @@ limitations under the License.
 #include "llvm/ADT/TypeSwitch.h"
 #include "mlir/Dialect/Bufferization/IR/BufferizableOpInterface.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypeInterfaces.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
+#include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/mlir/xla_cpu/ir/xla_cpu_dialect.cc.inc"
 #include "tensorflow/compiler/xla/mlir/xla_cpu/ir/xla_cpu_enums.cc.inc"
 #include "tensorflow/compiler/xla/mlir_hlo/mhlo/IR/hlo_ops.h"
@@ -58,7 +61,7 @@ LogicalResult BufferizeOp(Op op, RewriterBase &rewriter,
                       op.getOperation()->getAttrs());
   bufferization::replaceOpWithBufferizedValues(
       rewriter, op.getOperation(),
-      llvm::makeArrayRef(new_operands).drop_front(num_inputs));
+      llvm::ArrayRef(new_operands).drop_front(num_inputs));
   return success();
 }
 
@@ -116,6 +119,12 @@ LogicalResult OutfeedOp::bufferize(
   return BufferizeOp(*this, rewriter, options, this->getNumOperands());
 }
 
+LogicalResult RngBitGeneratorOp::bufferize(
+    RewriterBase &rewriter,
+    const bufferization::BufferizationOptions &options) {
+  return BufferizeOp(*this, rewriter, options, 1);
+}
+
 LogicalResult AddDependencyOp::bufferize(
     RewriterBase &rewriter,
     const bufferization::BufferizationOptions &options) {
@@ -127,6 +136,24 @@ LogicalResult AddDependencyOp::bufferize(
   }
   bufferization::replaceOpWithBufferizedValues(rewriter, this->getOperation(),
                                                *maybe_buffer);
+  return success();
+}
+
+LogicalResult MemRefElementCastOp::verify() {
+  auto src_memref_ty = getSrc().getType().cast<MemRefType>();
+  auto dst_memref_ty = getDst().getType().cast<MemRefType>();
+  if (src_memref_ty.getShape() != dst_memref_ty.getShape()) {
+    return emitOpError() << "expects matching shapes";
+  }
+
+  unsigned src_width = src_memref_ty.getElementType().getIntOrFloatBitWidth();
+  unsigned dst_width = dst_memref_ty.getElementType().getIntOrFloatBitWidth();
+  if ((src_width + CHAR_BIT - 1) / CHAR_BIT !=
+      (dst_width + CHAR_BIT - 1) / CHAR_BIT) {
+    return emitOpError() << "cannot cast from "
+                         << src_memref_ty.getElementType() << " to "
+                         << dst_memref_ty.getElementType();
+  }
   return success();
 }
 

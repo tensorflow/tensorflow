@@ -147,12 +147,9 @@ ENTRY main {
                                            .cuda_compute_capability()),
                           m.get()));
   changed = false;
-  absl::string_view device_description_str =
-      stream_exec->device_description_str();
-  se::CudaComputeCapability cuda_compute_capability =
-      stream_exec->GetDeviceDescription().cuda_compute_capability();
   GemmAlgorithmPicker::DevicelessConfig deviceless_config{
-      std::string(device_description_str), cuda_compute_capability};
+      stream_exec->GetDeviceDescription().model_str(),
+      stream_exec->GetDeviceDescription().cuda_compute_capability()};
   TF_ASSERT_OK_AND_ASSIGN(
       changed, RunHloPass(GemmAlgorithmPicker(deviceless_config), m.get()))
   ASSERT_TRUE(changed);

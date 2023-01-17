@@ -468,8 +468,9 @@ typedef struct TfLiteTensor {
   // Optional. Encodes shapes with unknown dimensions with -1. This field is
   // only populated when unknown dimensions exist in a read-write tensor (i.e.
   // an input or output tensor). (e.g.  `dims` contains [1, 1, 1, 3] and
-  // `dims_signature` contains [1, -1, -1, 3]). Note that this field only
-  // exists when TF_LITE_STATIC_MEMORY is not defined.
+  // `dims_signature` contains [1, -1, -1, 3]).  If no unknown dimensions exist
+  // then `dims_signature` is either null, or set to an empty array.  Note that
+  // this field only exists when TF_LITE_STATIC_MEMORY is not defined.
   const TfLiteIntArray* dims_signature;
 } TfLiteTensor;
 
@@ -1133,6 +1134,17 @@ TfLiteOpaqueDelegate* TfLiteOpaqueDelegateCreate(
 // Deletes the provided opaque 'delegate'.  This function has no effect if the
 // 'delegate' is a null pointer.
 void TfLiteOpaqueDelegateDelete(TfLiteOpaqueDelegate* delegate);
+
+// Returns a pointer to the data associated with the provided opaque 'delegate'.
+//
+// A null pointer will be returned when:
+// - The 'delegate' is null.
+// - The 'data' field of the 'TfLiteOpaqueDelegateBuilder' used to construct the
+//   'delegate' was null.
+// - Or in case of any other error.
+// - The 'delegate' has been constructed via a 'TfLiteOpaqueDelegateBuilder',
+//   but the 'data' field of the 'TfLiteOpaqueDelegateBuilder' is null.
+void* TfLiteOpaqueDelegateGetData(const TfLiteOpaqueDelegate* delegate);
 
 #ifdef __cplusplus
 }  // extern "C"

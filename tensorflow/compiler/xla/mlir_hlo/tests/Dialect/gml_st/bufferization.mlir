@@ -284,10 +284,10 @@ func.func @matmul(%lhs: tensor<128x16xf32>,
 // CHECK-LABEL: func.func @matmul
 // CHECK-NOT:     alloc
 // CHECK:         gml_st.parallel
-// CHECK-3:         memref.subview
+// CHECK-COUNT-3:   memref.subview
 // CHECK-NOT:       alloc
 // CHECK:           gml_st.for
-// CHECK-4:           memref.subview
+// CHECK-COUNT-2:     memref.subview
 // CHECK-NOT:         alloc
 // CHECK:             linalg.matmul
 

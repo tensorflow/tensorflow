@@ -28,7 +28,7 @@ limitations under the License.
 #include "mlir/Dialect/Arith/Utils/Utils.h"
 #include "mlir/Dialect/SCF/Utils/AffineCanonicalizationUtils.h"
 #include "mlir/Dialect/Tensor/Utils/Utils.h"
-#include "mlir/IR/BlockAndValueMapping.h"
+#include "mlir/IR/IRMapping.h"
 #include "mlir/IR/Matchers.h"
 
 namespace mlir {
@@ -67,12 +67,15 @@ LogicalResult peelLoop(RewriterBase &b, LoopTy loopOp, int64_t idx,
   Value lb = loopOp.getLowerBound()[idx], ub = loopOp.getUpperBound()[idx],
         step = loopOp.getStep()[idx];
   auto ubInt = getConstantIntValue(ub);
+  auto stepInt = getConstantIntValue(step);
+  // No specialization necessary if step is greater than upper bound.
+  if (ubInt && stepInt && ubInt < stepInt) return failure();
 
   auto loc = loopOp.getLoc();
   AffineExpr exprLb, exprUb, exprStep;
   bindSymbols(b.getContext(), exprLb, exprUb, exprStep);
   // New upper bound: %ub - (%ub - %lb) mod %step
-  auto modMap = AffineMap::get(0, 3, {exprUb - ((exprUb - exprLb) % exprStep)});
+  auto modMap = AffineMap::get(0, 3, exprUb - ((exprUb - exprLb) % exprStep));
   SmallVector<Value> operands{lb, ub, step};
   canonicalizeMapAndOperands(&modMap, &operands);
   modMap = simplifyAffineMap(modMap);
@@ -84,7 +87,7 @@ LogicalResult peelLoop(RewriterBase &b, LoopTy loopOp, int64_t idx,
     return failure();
 
   // Create remainder loop.
-  BlockAndValueMapping bvm;
+  IRMapping bvm;
   for (const auto &[res, termDst] :
        llvm::zip(loopOp.getResults(), loopOp.getLoopLikeOpInits())) {
     bvm.map(termDst, res);
@@ -175,21 +178,12 @@ PeelingResult peelAllLoopsImpl(LoopTy loop, mlir::PatternRewriter &rewriter) {
 }
 }  // namespace
 
-PeelingResult peelAllLoops(LoopOp loop, mlir::PatternRewriter &rewriter) {
-  return peelAllLoopsImpl<LoopOp>(loop, rewriter);
-}
-
 PeelingResult peelAllLoops(ForOp loop, mlir::PatternRewriter &rewriter) {
   return peelAllLoopsImpl<ForOp>(loop, rewriter);
 }
 
 PeelingResult peelAllLoops(ParallelOp loop, mlir::PatternRewriter &rewriter) {
   return peelAllLoopsImpl<ParallelOp>(loop, rewriter);
-}
-
-FailureOr<LoopOp> peelAndCanonicalizeGmlStLoop(RewriterBase &rewriter,
-                                               LoopOp loopOp, int64_t idx) {
-  return peelAndCanonicalizeGmlStLoopImpl<LoopOp>(rewriter, loopOp, idx);
 }
 
 FailureOr<ForOp> peelAndCanonicalizeGmlStLoop(RewriterBase &rewriter,

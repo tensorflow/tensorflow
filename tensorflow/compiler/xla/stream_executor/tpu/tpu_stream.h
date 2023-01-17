@@ -28,8 +28,6 @@ namespace tpu {
 
 class TpuStream : public tensorflow::tpu::TpuStreamInterface {
  public:
-  using Status = stream_executor::port::Status;
-
   explicit TpuStream(SE_Stream* stream) : stream_(stream) {}
   ~TpuStream() override {
     stream_executor::tpu::ExecutorApiFn()->TpuStream_FreeFn(stream_);
@@ -42,7 +40,7 @@ class TpuStream : public tensorflow::tpu::TpuStreamInterface {
             stream_, static_cast<TpuStream*>(other)->stream_);
   }
 
-  Status EnqueueTransferHostToDevice(
+  tsl::Status EnqueueTransferHostToDevice(
       stream_executor::DeviceMemoryBase device_dst, const void* host_src,
       uint64_t size) {
     StatusHelper status;
@@ -53,7 +51,7 @@ class TpuStream : public tensorflow::tpu::TpuStreamInterface {
     return status.status();
   }
 
-  Status EnqueueTransferDeviceToHost(
+  tsl::Status EnqueueTransferDeviceToHost(
       stream_executor::DeviceMemoryBase device_src, void* host_dst,
       uint64_t size) {
     StatusHelper status;
@@ -64,7 +62,7 @@ class TpuStream : public tensorflow::tpu::TpuStreamInterface {
     return status.status();
   }
 
-  Status EnqueueOnTpuDeviceSendRecvLocal(
+  tsl::Status EnqueueOnTpuDeviceSendRecvLocal(
       stream_executor::DeviceMemoryBase send_buffer,
       stream_executor::DeviceMemoryBase recv_buffer) override {
     StatusHelper status;

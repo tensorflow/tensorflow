@@ -177,6 +177,8 @@ void CreateTPUBridgePipelineImpl(OpPassManager &pm) {
   pm.addNestedPass<func::FuncOp>(
       CreateTPUResourceReadsWritesPartitioningPass());
   pm.addPass(TFDevice::CreateAnnotateParameterReplicationPass());
+  pm.addNestedPass<mlir::func::FuncOp>(
+      mlir::TF::CreateRewriteTPUEmbeddingOpsPass());
   pm.addPass(CreateTPURewritePass());
   pm.addPass(createSymbolDCEPass());
   pm.addNestedPass<func::FuncOp>(

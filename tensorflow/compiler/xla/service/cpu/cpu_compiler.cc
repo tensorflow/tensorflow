@@ -123,6 +123,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/cpu/runtime/collectives.h"
 #include "tensorflow/compiler/xla/service/cpu/runtime/custom_call.h"
 #include "tensorflow/compiler/xla/service/cpu/runtime/fft_call.h"
+#include "tensorflow/compiler/xla/service/cpu/runtime/rng.h"
 #include "tensorflow/compiler/xla/service/cpu/runtime/xfeed.h"
 #include "tensorflow/compiler/xla/service/cpu/simple_orc_jit.h"
 #include "tensorflow/compiler/xla/service/cpu/xla_framework.h"
@@ -179,6 +180,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/stream_executor/host/host_platform_id.h"
+#include "tensorflow/compiler/xla/stream_executor/stream_executor_pimpl.h"
 #include "tensorflow/compiler/xla/translate/hlo_to_mhlo/hlo_to_mlir_hlo.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
@@ -308,7 +310,6 @@ class FlattenTuplesAndBufferizeTypeConverter : public mlir::TypeConverter {
 
 runtime::JitExecutable::Options GetXlaRuntimeJitExecutableOptions() {
   runtime::CpuPipelineOptions copts;
-  copts.disable_math_optimizations = true;
   runtime::JitExecutable::Options opts;
   opts.specialization = runtime::JitExecutable::Specialization::kDisabled;
   opts.compiler.register_dialects =
@@ -323,6 +324,7 @@ runtime::JitExecutable::Options GetXlaRuntimeJitExecutableOptions() {
         PopulateXlaCpuCustomCall(registry);
         PopulateXlaXfeedCall(registry);
         PopulateXlaCpuFftCall(registry);
+        PopulateXlaCpuRngCall(registry);
       });
   opts.compiler.create_compilation_pipeline =
       [copts](xla::runtime::PassManager& passes) {
@@ -359,7 +361,7 @@ CpuXlaRuntimeAotCompilationResult::LoadExecutable(
       xla_runtime_cpu_executable_.xla_framework_mapping());
 
   TF_ASSIGN_OR_RETURN(std::unique_ptr<BufferAssignment> buffer_assignment,
-                      compiler->AssignBuffers(hlo_module.get()));
+                      compiler->AssignBuffers(hlo_module.get(), executor));
 
   // TODO(b/232263665): JitOptions should be used only for JIT case because it
   // has details irrelevant to AOT.
@@ -379,8 +381,6 @@ CpuAotCompilationResult::CpuAotCompilationResult(
       buffer_infos_(std::move(buffer_infos)),
       result_buffer_index_(result_buffer_index),
       hlo_profile_printer_data_(std::move(hlo_profile_printer_data)) {}
-
-CpuAotCompilationResult::~CpuAotCompilationResult() = default;
 
 CpuCompiler::CpuCompiler() {
   // Initialize LLVM the first time the CpuCompiler is initialized.
@@ -556,7 +556,9 @@ Status CpuCompiler::RunHloPassesThroughLayoutAssn(
 
   // Expand random number generation.
   pipeline.AddPass<RngExpander>();
-  pipeline.AddPass<RngBitGeneratorExpander>(RandomAlgorithm::RNG_PHILOX);
+  if (!is_mlir_compile) {
+    pipeline.AddPass<RngBitGeneratorExpander>(RandomAlgorithm::RNG_PHILOX);
+  }
 
   // Remove zero-sized HLO from the input so that other passes don't have to
   // handle it.
@@ -932,13 +934,12 @@ StatusOr<std::unique_ptr<HloModule>> CpuCompiler::RunHloPasses(
   TF_RETURN_IF_ERROR(RunHloPasses(
       module.get(), /*is_aot_compile=*/false, jit_target_machine.get(),
       /*is_mlir_compile=*/
-      module->config().debug_options().xla_cpu_enable_mlir_lowering() ||
           module->config().debug_options().xla_cpu_use_xla_runtime()));
   return std::move(module);
 }
 
 StatusOr<std::unique_ptr<BufferAssignment>> CpuCompiler::AssignBuffers(
-    const HloModule* module) {
+    HloModule* module, se::StreamExecutor* /*stream_exec*/) {
   // Select an order for emitting the HLO instructions for each computation.
   // Using this sequence enables tighter buffer liveness analysis and reduced
   // memory usage (as compared to using DependencyHloOrdering).
@@ -946,14 +947,15 @@ StatusOr<std::unique_ptr<BufferAssignment>> CpuCompiler::AssignBuffers(
                       ScheduleModule(module, BufferSizeBytesFunction(),
                                      ComputationSchedulerToModuleScheduler(
                                          DFSMemoryScheduler)));
+  TF_RETURN_IF_ERROR(module->set_schedule(std::move(schedule)));
 
   // Run buffer allocation on the HLO graph.
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<BufferAssignment> assignment,
-      BufferAssigner::Run(module,
-                          std::make_unique<SequentialHloOrdering>(schedule),
-                          BufferSizeBytesFunction(), memory_alignment,
-                          /*allocate_buffers_for_constants=*/true));
+      BufferAssigner::Run(
+          module, std::make_unique<SequentialHloOrdering>(module->schedule()),
+          BufferSizeBytesFunction(), memory_alignment,
+          /*allocate_buffers_for_constants=*/true));
 
   return std::move(assignment);
 }
@@ -1009,6 +1011,8 @@ Status LowerMLIRModule(mlir::ModuleOp mlir_module,
 
   xla::runtime::PassManager xla_pm(&pm);
   HloXlaRuntimePipelineOptions options;
+  options.enable_tiling_and_fusion =
+      GetDebugOptionsFromFlags().xla_cpu_enable_mlir_tiling_and_fusion();
   options.sparse_bufferization = false;
   options.outline_with_xla_framework = true;
   TF_RETURN_IF_ERROR(CreateHloXlaRuntimePipeline(xla_pm, options));
@@ -1233,25 +1237,6 @@ CpuCompiler::CompileLegacyCpuExecutable(std::unique_ptr<HloModule> module) {
   // before a caller computation.
 
   std::string function_name;
-  if (module->config().debug_options().xla_cpu_enable_mlir_lowering()) {
-    TF_ASSIGN_OR_RETURN(
-        auto mlir_module,
-        createMLIRModule(module.get(), mlir_context, assignment.get()));
-    TF_RETURN_IF_ERROR(LowerMLIRModule(*mlir_module, mlir_context));
-
-    function_name = entry_computation->name();
-    // TODO(kramerb): Don't rely on the exact function name.
-    llvm::cast<mlir::LLVM::LLVMFuncOp>(
-        mlir_module->lookupSymbol("main_xla_framework"))
-        .setName(function_name);
-
-    llvm_module = mlir::translateModuleToLLVMIR(*mlir_module, *llvm_context);
-    if (!llvm_module) {
-      return InternalError("Translation to LLVM IR failed");
-    }
-    llvm_module->setDataLayout((*jit)->data_layout());
-    llvm_module->setTargetTriple((*jit)->target_triple().getTriple());
-  } else {
     LLVMTargetMachineFeatures target_machine_features((*jit)->target_machine());
     IrEmitter ir_emitter(
         &mlir_context, *module, *assignment, llvm_module.get(),
@@ -1301,7 +1286,6 @@ CpuCompiler::CompileLegacyCpuExecutable(std::unique_ptr<HloModule> module) {
       return std::string(function_name_vector.begin(),
                          function_name_vector.end());
     }();
-  }
 
   std::string ir_module_string;
   if (embed_ir_in_executable) {

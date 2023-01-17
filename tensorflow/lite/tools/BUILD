@@ -396,7 +396,7 @@ cc_library(
     hdrs = ["model_loader.h"],
     deps = [
         "//tensorflow/lite:minimal_logging",
-        "//tensorflow/lite:model_builder",
+        "//tensorflow/lite/core:model_builder",
         "@com_google_absl//absl/strings",
     ],
 )

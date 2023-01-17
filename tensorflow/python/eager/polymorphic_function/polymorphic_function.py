@@ -74,18 +74,19 @@ from tensorflow.python.distribute.parallel_device import parallel_device
 from tensorflow.python.eager import context
 from tensorflow.python.eager import lift_to_graph
 from tensorflow.python.eager import monitoring
+from tensorflow.python.eager.polymorphic_function import attributes as attributes_lib
+from tensorflow.python.eager.polymorphic_function import compiler_ir
 from tensorflow.python.eager.polymorphic_function import function_spec as function_spec_lib
-from tensorflow.python.eager.polymorphic_function import monomorphic_function
 from tensorflow.python.eager.polymorphic_function import tracing_compiler
 from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import func_graph as func_graph_module
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_spec
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import control_flow_util
 from tensorflow.python.ops import math_ops
-from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.profiler import trace
@@ -656,10 +657,10 @@ class Function(core.GenericFunction, trackable.Trackable):
         wrapped_fn))
 
   def _create_implements_attribute(self):
-    """Creates the attribute value corresponding to IMPLEMENTS_ATTRIBUTE_NAME."""
+    """Creates the attribute value corresponding to attribute_lib.IMPLEMENTS."""
     attributes = {}
     if isinstance(self._implements, str):
-      # First check if the IMPLEMENTS_ATTRIBUTE_NAME is specified as a
+      # First check if the attribute_lib.IMPLEMENTS is specified as a
       # NameAttrList. This is used when apart from the function name being
       # implemented, a list of attributes is also being specified.
       # The attributes are specified as key-value pairs in the NameAttrList
@@ -671,10 +672,9 @@ class Function(core.GenericFunction, trackable.Trackable):
         nameattrlist = attr_value_pb2.NameAttrList()
         _text_format.Merge(self._implements, nameattrlist)
         attr_value.func.CopyFrom(nameattrlist)
-        attributes[monomorphic_function.IMPLEMENTS_ATTRIBUTE_NAME] = attr_value
+        attributes[attributes_lib.IMPLEMENTS] = attr_value
       except (_text_format.ParseError, DecodeError):
-        attributes[
-            monomorphic_function.IMPLEMENTS_ATTRIBUTE_NAME] = self._implements
+        attributes[attributes_lib.IMPLEMENTS] = self._implements
     return attributes
 
   def _compiler(self, fn):
@@ -686,12 +686,13 @@ class Function(core.GenericFunction, trackable.Trackable):
 
     share = self._shared_rendezvous
     if share is not None:
-      attributes[monomorphic_function.SHARED_RENDEZVOUS_ATTRIBUTE_NAME] = share
+      attributes[attributes_lib.SHARED_RENDEZVOUS] = share
 
     if self._jit_compile is not None:
-      attributes.update(_XlaMustCompile=bool(self._jit_compile))
+      attributes[attributes_lib.XLA_COMPILE] = bool(self._jit_compile)
       if self._jit_compile:
-        attributes.update(_noinline=True)
+        attributes[attributes_lib.NO_INLINE] = True
+
     if not attributes:
       attributes = None
 
@@ -998,6 +999,32 @@ class Function(core.GenericFunction, trackable.Trackable):
       raise ValueError("Compiler IR can only be returned for functions marked "
                        "with 'jit_compile=True'")
 
+    is_tensor_spec = lambda x: isinstance(x, tensor_spec.TensorSpec)
+
+    def _check_inputs(args, kwargs):
+      all_inputs = list(args) + list(kwargs.values())
+      # Emtpy input is okay.
+      if not all_inputs:
+        return
+      if any(map(is_tensor_spec, all_inputs)) and any(
+          map(lambda x: not is_tensor_spec(x), all_inputs)
+      ):
+        raise ValueError(
+            "experimental_get_compiler_ir supports either "
+            "(1) all inputs are TensorSpec  or "
+            "(2) all inputs are tf.Tensor/python variables"
+        )
+
+    _check_inputs(args, kwargs)
+    if (
+        len(args) + len(kwargs.values()) > 0
+        and all(map(is_tensor_spec, args))
+        and all(map(is_tensor_spec, kwargs.values()))
+    ):
+      # For the case inputs are not empty and input types are all tf.TensorSpec
+      concrete_fn = self.get_concrete_function(*args, **kwargs)
+      return compiler_ir.from_concrete_function(concrete_fn)
+
     concrete_fn = self.get_concrete_function(*args, **kwargs)
     fn_name = concrete_fn.name
 
@@ -1006,10 +1033,7 @@ class Function(core.GenericFunction, trackable.Trackable):
         concrete_fn._function_spec.canonicalize_function_inputs(args, kwargs))
 
     def compiler_ir_generator(stage="hlo", device_name=None):
-      # TODO(cheshire): This is a hack to get the current "preferred" device,
-      # there is no current API to get it otherwise.
-      if device_name is None:
-        device_name = random_ops.random_normal([]).device
+      device_name = compiler_ir.maybe_get_device_name(device_name)
       res_bytes = context.context().get_compiler_ir(
           device_name=device_name,
           stage=stage,

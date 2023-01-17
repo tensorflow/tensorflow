@@ -803,6 +803,13 @@ Below is the list of currently supported quantized operators:
   as the outputs, and the ratio of input scale to output scale must be in the
   [2**-8, 2**7] range.
 
+#### `RESHAPE`
+
+*   The first input and the output must be in 8-bit quantized format.
+*   The second input (the input with the new shape specification) must be either
+    static (use `kTfLiteMmapRo` allocation type), or absent (with the new shape
+    specified via `ReshapeOptions` table).
+
 #### `RESIZE_BILINEAR`
 
 * The first input and the output must be 4D tensors in 8-bit quantized format.

@@ -24,6 +24,7 @@ limitations under the License.
 #include <vector>
 
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "tensorflow/compiler/xla/autotune_results.pb.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/service/executable.h"
 #include "tensorflow/compiler/xla/service/gpu/executable.pb.h"
@@ -107,6 +108,8 @@ struct GpuTargetConfig {
   GpuVersion gpu_version;
   std::string platform_name;
   se::dnn::VersionInfo dnn_version_info;
+  AutotuneResults autotune_results;
+  std::string device_description_str;
 };
 
 // The GPU compiler generates efficient GPU executables.
@@ -132,7 +135,7 @@ class GpuCompiler : public LLVMCompiler {
       const GpuTargetConfig& gpu_target_config);
 
   StatusOr<std::unique_ptr<BufferAssignment>> AssignBuffers(
-      const HloModule* hlo_module) override;
+      HloModule* hlo_module, se::StreamExecutor* stream_exec) override;
 
   virtual GpuVersion GetGpuVersion(se::StreamExecutor* stream_exec) = 0;
   GpuTargetConfig GetGpuTargetConfig(se::StreamExecutor* stream_exec) {

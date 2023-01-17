@@ -21,7 +21,7 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
 #include "tensorflow/core/platform/resource_loader.h"
-#include "tensorflow/lite/model_builder.h"
+#include "tensorflow/lite/core/model_builder.h"
 
 namespace tflite {
 

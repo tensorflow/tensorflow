@@ -14,7 +14,6 @@ limitations under the License.
 ==============================================================================*/
 
 #include <list>
-#include <regex>  // NOLINT
 #include <string>
 
 #include "absl/strings/match.h"
@@ -24,6 +23,7 @@ limitations under the License.
 #include "llvm/TableGen/Main.h"
 #include "llvm/TableGen/Record.h"
 #include "mlir/TableGen/Operator.h"  // from @llvm-project
+#include "tensorflow/tsl/platform/regexp.h"
 
 using llvm::LessRecord;
 using llvm::raw_ostream;
@@ -169,8 +169,8 @@ void GenerateStaticQuantOp(std::vector<Record *> &defs,
   // Dimension equals to -1 means per-channel quantization is not supported for
   // the op. Therefore check whether the return value is positive integer as
   // well.
-  std::regex per_channel_support_regex(
-      "(.*)(int GetQuantizationDimIndex\\(\\) \\{ return (\\d*); \\})(.*)");
+  static const LazyRE2 per_channel_support_regex = {
+      "int GetQuantizationDimIndex\\(\\) \\{ return (\\d*); \\}"};
 
   for (const auto *def : defs) {
     Operator op(def);
@@ -190,9 +190,9 @@ void GenerateStaticQuantOp(std::vector<Record *> &defs,
 
       if (per_axis) {
         std::string op_extra_declaration = op.getExtraClassDeclaration().str();
-        bool per_axis_support = std::regex_match(
+        bool per_axis_support = RE2::PartialMatch(
             absl::StrReplaceAll(op_extra_declaration, {{"\n", " "}}),
-            per_channel_support_regex);
+            *per_channel_support_regex);
         if (per_axis_support) result.emplace_back(op_name);
       } else {
         result.emplace_back(op_name);

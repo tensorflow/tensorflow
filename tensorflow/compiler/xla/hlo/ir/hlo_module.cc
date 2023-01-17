@@ -310,13 +310,15 @@ HloModuleProto HloModule::ToProto() const {
   *proto.mutable_input_output_alias() = input_output_alias_config().ToProto();
   *proto.mutable_dynamic_parameter_binding() =
       dynamic_parameter_binding().ToProto();
-  for (const auto& parameter_indices : CrossProgramPrefetches()) {
-    const auto& parameter = parameter_indices.first;
-    const auto& indices = parameter_indices.second;
+  for (const auto& [parameter, indices, alt_memory_offset] :
+       CrossProgramPrefetches()) {
     auto* prefetch = proto.mutable_cross_program_prefetches()->Add();
     prefetch->set_parameter(parameter);
     for (auto index : indices) {
       prefetch->add_index(index);
+    }
+    if (alt_memory_offset) {
+      prefetch->set_offset(*alt_memory_offset);
     }
   }
   proto.set_is_dynamic(is_dynamic_);
@@ -482,7 +484,8 @@ StatusOr<std::unique_ptr<HloModule>> HloModule::CreateFromProto(
   for (const auto& prefetch : proto.cross_program_prefetches()) {
     module->AddCrossProgramPrefetch(
         prefetch.parameter(),
-        ShapeIndex(prefetch.index().begin(), prefetch.index().end()));
+        ShapeIndex(prefetch.index().begin(), prefetch.index().end()),
+        prefetch.offset());
   }
 
   module->set_is_dynamic(proto.is_dynamic());
@@ -918,10 +921,8 @@ std::unique_ptr<HloModule> HloModule::Clone(const HloModuleConfig& config,
     }
     TF_CHECK_OK(module->set_schedule(std::move(clone_schedule)));
   }
-  for (const auto& parameter_indices : CrossProgramPrefetches()) {
-    const auto& parameter = parameter_indices.first;
-    const auto& indices = parameter_indices.second;
-    module->AddCrossProgramPrefetch(parameter, indices);
+  for (const auto& [parameter, indices, offset] : CrossProgramPrefetches()) {
+    module->AddCrossProgramPrefetch(parameter, indices, offset);
   }
 
   // To make clone behavior match uncloned behavior, we reorder

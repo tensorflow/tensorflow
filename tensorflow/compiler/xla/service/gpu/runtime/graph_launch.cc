@@ -25,6 +25,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/runtime/custom_call.h"
 #include "tensorflow/compiler/xla/runtime/executable.h"
+#include "tensorflow/compiler/xla/service/gpu/runtime/conv.h"
 #include "tensorflow/compiler/xla/service/gpu/runtime/kernel_launch.h"
 #include "tensorflow/compiler/xla/service/gpu/runtime/support.h"
 #include "tensorflow/compiler/xla/service/service_executable_run_options.h"
@@ -204,9 +205,11 @@ static absl::StatusOr<OwnedGraph> CaptureGraph(
 //===----------------------------------------------------------------------===//
 
 static absl::Status LaunchGraph(
-    const ServiceExecutableRunOptions* run_options, const std::string* ptx,
+    const ServiceExecutableRunOptions* run_options,
+    const DebugOptions* debug_options, const std::string* ptx,
     const std::vector<uint8_t>* cubin, se::DeviceMemoryBase* temp_buffer,
     StreamExecutorKernels::Snapshot* kernels,
+    StreamExecutorConvRunners::Snapshot* convs,
     GraphInstances::Snapshot* instances, runtime::Executable* executable,
     CustomCall::RemainingArgs fwd_args, CustomCall::FunctionOrdinal capture) {
 #if GOOGLE_CUDA
@@ -220,8 +223,8 @@ static absl::Status LaunchGraph(
 
   // Forwards user data required for launching kernels.
   auto user_data = [&] {
-    return CustomCall::UserData(run_options, ptx, cubin, temp_buffer, kernels,
-                                executable);
+    return CustomCall::UserData(run_options, debug_options, ptx, cubin,
+                                temp_buffer, kernels, convs, executable);
   };
 
   absl::StatusOr<GraphInstance*> instance = instances->GetOrCreate(
@@ -294,10 +297,12 @@ XLA_RUNTIME_DEFINE_CUSTOM_CALL(
     Launch, FunctionWrapper<LaunchGraph>(), checks,
     CustomCall::Bind("xla.gpu.cuda.graph.launch")
         .UserData<const ServiceExecutableRunOptions*>()
+        .UserData<const DebugOptions*>()
         .UserData<const std::string*>()
         .UserData<const std::vector<uint8_t>*>()
         .UserData<se::DeviceMemoryBase*>()
         .UserData<StreamExecutorKernels::Snapshot*>()
+        .UserData<StreamExecutorConvRunners::Snapshot*>()
         .UserData<GraphInstances::Snapshot*>()
         .UserData<Executable*>()
         .RemainingArgs()

@@ -16,8 +16,10 @@ limitations under the License.
 #include "tensorflow/compiler/xla/stream_executor/stream.h"
 
 #include <cstdint>
+#include <limits>
 #include <memory>
 #include <utility>
+#include <vector>
 
 #include "absl/strings/str_cat.h"
 #include "third_party/eigen3/Eigen/Core"
@@ -140,7 +142,7 @@ std::string ToVlogString(float f) { return absl::StrCat(f); }
 std::string ToVlogString(double d) { return absl::StrCat(d); }
 
 template <class T>
-std::string ToVlogString(port::ArraySlice<T> elements) {  // non-absl ok
+std::string ToVlogString(absl::Span<const T> elements) {
   std::string str = absl::StrCat(
       ToVlogString(reinterpret_cast<const void *>(elements.data())), "[",
       elements.size(), "]{");
@@ -166,8 +168,8 @@ std::string ToVlogString(port::ArraySlice<T> elements) {  // non-absl ok
 }
 
 template <class T>
-std::string ToVlogString(port::MutableArraySlice<T> elements) {  // non-absl ok
-  return ToVlogString(port::ArraySlice<T>(elements));            // non-absl ok
+std::string ToVlogString(absl::Span<T> elements) {
+  return ToVlogString(absl::Span<const T>(elements));
 }
 
 std::string ToVlogString(dnn::DepthToSpaceLayout depth_to_space_layout) {
@@ -734,8 +736,8 @@ Stream &Stream::ThenActivateWithOptions(dnn::ActivationMode activation_mode,
 }
 
 Stream &Stream::ThenDepthConcatenate(
-    port::ArraySlice<dnn::BatchDescriptor> input_dimensions,   // non-absl ok
-    port::ArraySlice<const DeviceMemory<float> *> input_data,  // non-absl ok
+    absl::Span<const dnn::BatchDescriptor> input_dimensions,
+    absl::Span<const DeviceMemory<float> *const> input_data,
     DeviceMemory<float> *output_data) {
   VLOG_CALL(PARAM(input_dimensions), PARAM(input_data), PARAM(output_data));
 
@@ -762,8 +764,8 @@ Stream &Stream::ThenDepthConcatenate(
 }
 
 Stream &Stream::ThenSpaceConcatenate(
-    port::ArraySlice<dnn::BatchDescriptor> input_dimensions,   // non-absl ok
-    port::ArraySlice<const DeviceMemory<float> *> input_data,  // non-absl ok
+    absl::Span<const dnn::BatchDescriptor> input_dimensions,
+    absl::Span<const DeviceMemory<float> *const> input_data,
     DeviceMemory<float> *output_data,
     dnn::SpaceConcatenateMode concat_direction) {
   VLOG_CALL(PARAM(input_dimensions), PARAM(input_data), PARAM(output_data));
@@ -862,8 +864,8 @@ Stream &Stream::ThenSpaceToDepth(
 
 Stream &Stream::ThenElementwiseOperate(
     dnn::ElementwiseOperation operation,
-    port::ArraySlice<dnn::BatchDescriptor> input_dimensions,   // non-absl ok
-    port::ArraySlice<const DeviceMemory<float> *> input_data,  // non-absl ok
+    absl::Span<const dnn::BatchDescriptor> input_dimensions,
+    absl::Span<const DeviceMemory<float> *const> input_data,
     const dnn::BatchDescriptor &output_dimensions,
     DeviceMemory<float> *output_data) {
   VLOG_CALL(PARAM(operation), PARAM(input_dimensions), PARAM(input_data),
@@ -881,10 +883,9 @@ Stream &Stream::ThenElementwiseOperate(
 
 Stream &Stream::ThenElementwiseOperateScaledQuantized(
     dnn::ElementwiseOperation operation,
-    port::ArraySlice<int> input_multiplicands,  // non-absl ok
-    int output_divisor,
-    port::ArraySlice<dnn::BatchDescriptor> input_dimensions,   // non-absl ok
-    port::ArraySlice<const DeviceMemory<float> *> input_data,  // non-absl ok
+    absl::Span<const int> input_multiplicands, int output_divisor,
+    absl::Span<const dnn::BatchDescriptor> input_dimensions,
+    absl::Span<const DeviceMemory<float> *const> input_data,
     const dnn::BatchDescriptor &output_dimensions,
     DeviceMemory<float> *output_data) {
   VLOG_CALL(PARAM(operation), PARAM(input_multiplicands), PARAM(output_divisor),
@@ -1757,13 +1758,9 @@ Stream &Stream::ThenBlasTrsmBatched(
 
 Stream &Stream::ThenBlasGemmBatched(
     blas::Transpose transa, blas::Transpose transb, uint64_t m, uint64 n,
-    uint64_t k, float alpha,
-    const port::ArraySlice<DeviceMemory<Eigen::half> *> &a,  // non-absl ok
-    int lda,
-    const port::ArraySlice<DeviceMemory<Eigen::half> *> &b,  // non-absl ok
-    int ldb, float beta,
-    const port::ArraySlice<DeviceMemory<Eigen::half> *> &c,  // non-absl ok
-    int ldc, int batch_count) {
+    uint64_t k, float alpha, DeviceMemorySlice<Eigen::half> a, int lda,
+    DeviceMemorySlice<Eigen::half> b, int ldb, float beta,
+    DeviceMemorySlice<Eigen::half> c, int ldc, int batch_count) {
   return ThenBlasGemmBatchedWithScratch(transa, transb, m, n, k, alpha, a, lda,
                                         b, ldb, beta, c, ldc, batch_count,
                                         /*scratch_allocator=*/nullptr);
@@ -1771,25 +1768,18 @@ Stream &Stream::ThenBlasGemmBatched(
 
 Stream &Stream::ThenBlasGemmBatchedWithScratch(
     blas::Transpose transa, blas::Transpose transb, uint64_t m, uint64 n,
-    uint64_t k, float alpha,
-    const port::ArraySlice<DeviceMemory<Eigen::half> *> &a,  // non-absl ok
-    int lda,
-    const port::ArraySlice<DeviceMemory<Eigen::half> *> &b,  // non-absl ok
-    int ldb, float beta,
-    const port::ArraySlice<DeviceMemory<Eigen::half> *> &c,  // non-absl ok
-    int ldc, int batch_count, ScratchAllocator *scratch_allocator) {
+    uint64_t k, float alpha, DeviceMemorySlice<Eigen::half> a, int lda,
+    DeviceMemorySlice<Eigen::half> b, int ldb, float beta,
+    DeviceMemorySlice<Eigen::half> c, int ldc, int batch_count,
+    ScratchAllocator *scratch_allocator) {
   VLOG_CALL(PARAM(transa), PARAM(transb), PARAM(m), PARAM(n), PARAM(k),
             PARAM(alpha), PARAM(a), PARAM(lda), PARAM(b), PARAM(ldb),
             PARAM(beta), PARAM(c), PARAM(ldc), PARAM(batch_count));
 
-  ThenBlasImpl<
-      blas::Transpose, blas::Transpose, uint64_t, uint64_t, uint64, float,
-      const port::ArraySlice<DeviceMemory<Eigen::half> *> &,  // non-absl ok
-      int,
-      const port::ArraySlice<DeviceMemory<Eigen::half> *> &,  // non-absl ok
-      int, float,
-      const port::ArraySlice<DeviceMemory<Eigen::half> *> &,  // non-absl ok
-      int, int, ScratchAllocator *>
+  ThenBlasImpl<blas::Transpose, blas::Transpose, uint64_t, uint64_t, uint64,
+               float, DeviceMemorySlice<Eigen::half>, int,
+               DeviceMemorySlice<Eigen::half>, int, float,
+               DeviceMemorySlice<Eigen::half>, int, int, ScratchAllocator *>
       impl;
   return impl(this, &blas::BlasSupport::DoBlasGemmBatched, transa, transb, m, n,
               k, alpha, a, lda, b, ldb, beta, c, ldc, batch_count,
@@ -1798,39 +1788,31 @@ Stream &Stream::ThenBlasGemmBatchedWithScratch(
 
 Stream &Stream::ThenBlasGemmBatchedWithScratch(
     blas::Transpose transa, blas::Transpose transb, uint64_t m, uint64 n,
-    uint64_t k, float alpha,
-    const port::ArraySlice<DeviceMemory<Eigen::bfloat16> *> &a,  // non-absl ok
-    int lda,
-    const port::ArraySlice<DeviceMemory<Eigen::bfloat16> *> &b,  // non-absl ok
-    int ldb, float beta,
-    const port::ArraySlice<DeviceMemory<Eigen::bfloat16> *> &c,  // non-absl ok
-    int ldc, int batch_count, ScratchAllocator *scratch_allocator) {
+    uint64_t k, float alpha, DeviceMemorySlice<Eigen::bfloat16> a, int lda,
+    DeviceMemorySlice<Eigen::bfloat16> b, int ldb, float beta,
+    DeviceMemorySlice<Eigen::bfloat16> c, int ldc, int batch_count,
+    ScratchAllocator *scratch_allocator) {
   VLOG_CALL(PARAM(transa), PARAM(transb), PARAM(m), PARAM(n), PARAM(k),
             PARAM(alpha), PARAM(a), PARAM(lda), PARAM(b), PARAM(ldb),
             PARAM(beta), PARAM(c), PARAM(ldc), PARAM(batch_count));
 
-  ThenBlasImpl<
-      blas::Transpose, blas::Transpose, uint64_t, uint64_t, uint64, float,
-      const port::ArraySlice<DeviceMemory<Eigen::bfloat16> *> &,  // non-absl ok
-      int,
-      const port::ArraySlice<DeviceMemory<Eigen::bfloat16> *> &,  // non-absl ok
-      int, float,
-      const port::ArraySlice<DeviceMemory<Eigen::bfloat16> *> &,  // non-absl ok
-      int, int, ScratchAllocator *>
+  ThenBlasImpl<blas::Transpose, blas::Transpose, uint64_t, uint64_t, uint64,
+               float, DeviceMemorySlice<Eigen::bfloat16>, int,
+               DeviceMemorySlice<Eigen::bfloat16>, int, float,
+               DeviceMemorySlice<Eigen::bfloat16>, int, int, ScratchAllocator *>
       impl;
   return impl(this, &blas::BlasSupport::DoBlasGemmBatched, transa, transb, m, n,
               k, alpha, a, lda, b, ldb, beta, c, ldc, batch_count,
               scratch_allocator);
 }
 
-Stream &Stream::ThenBlasGemmBatched(
-    blas::Transpose transa, blas::Transpose transb, uint64_t m, uint64 n,
-    uint64_t k, float alpha,
-    const port::ArraySlice<DeviceMemory<float> *> &a,           // non-absl ok
-    int lda, const port::ArraySlice<DeviceMemory<float> *> &b,  // non-absl ok
-    int ldb, float beta,
-    const port::ArraySlice<DeviceMemory<float> *> &c,  // non-absl ok
-    int ldc, int batch_count) {
+Stream &Stream::ThenBlasGemmBatched(blas::Transpose transa,
+                                    blas::Transpose transb, uint64_t m,
+                                    uint64 n, uint64_t k, float alpha,
+                                    DeviceMemorySlice<float> a, int lda,
+                                    DeviceMemorySlice<float> b, int ldb,
+                                    float beta, DeviceMemorySlice<float> c,
+                                    int ldc, int batch_count) {
   return ThenBlasGemmBatchedWithScratch(transa, transb, m, n, k, alpha, a, lda,
                                         b, ldb, beta, c, ldc, batch_count,
                                         /*scratch_allocator=*/nullptr);
@@ -1838,36 +1820,30 @@ Stream &Stream::ThenBlasGemmBatched(
 
 Stream &Stream::ThenBlasGemmBatchedWithScratch(
     blas::Transpose transa, blas::Transpose transb, uint64_t m, uint64 n,
-    uint64_t k, float alpha,
-    const port::ArraySlice<DeviceMemory<float> *> &a,           // non-absl ok
-    int lda, const port::ArraySlice<DeviceMemory<float> *> &b,  // non-absl ok
-    int ldb, float beta,
-    const port::ArraySlice<DeviceMemory<float> *> &c,  // non-absl ok
+    uint64_t k, float alpha, DeviceMemorySlice<float> a, int lda,
+    DeviceMemorySlice<float> b, int ldb, float beta, DeviceMemorySlice<float> c,
     int ldc, int batch_count, ScratchAllocator *scratch_allocator) {
   VLOG_CALL(PARAM(transa), PARAM(transb), PARAM(m), PARAM(n), PARAM(k),
             PARAM(alpha), PARAM(a), PARAM(lda), PARAM(b), PARAM(ldb),
             PARAM(beta), PARAM(c), PARAM(ldc), PARAM(batch_count));
 
-  ThenBlasImpl<
-      blas::Transpose, blas::Transpose, uint64_t, uint64_t, uint64, float,
-      const port::ArraySlice<DeviceMemory<float> *> &, int,    // non-absl ok
-      const port::ArraySlice<DeviceMemory<float> *> &, int,    // non-absl ok
-      float, const port::ArraySlice<DeviceMemory<float> *> &,  // non-absl ok
-      int, int, ScratchAllocator *>
+  ThenBlasImpl<blas::Transpose, blas::Transpose, uint64_t, uint64_t, uint64,
+               float, DeviceMemorySlice<float>, int, DeviceMemorySlice<float>,
+               int, float, DeviceMemorySlice<float>, int, int,
+               ScratchAllocator *>
       impl;
   return impl(this, &blas::BlasSupport::DoBlasGemmBatched, transa, transb, m, n,
               k, alpha, a, lda, b, ldb, beta, c, ldc, batch_count,
               scratch_allocator);
 }
 
-Stream &Stream::ThenBlasGemmBatched(
-    blas::Transpose transa, blas::Transpose transb, uint64_t m, uint64 n,
-    uint64_t k, double alpha,
-    const port::ArraySlice<DeviceMemory<double> *> &a,           // non-absl ok
-    int lda, const port::ArraySlice<DeviceMemory<double> *> &b,  // non-absl ok
-    int ldb, double beta,
-    const port::ArraySlice<DeviceMemory<double> *> &c,  // non-absl ok
-    int ldc, int batch_count) {
+Stream &Stream::ThenBlasGemmBatched(blas::Transpose transa,
+                                    blas::Transpose transb, uint64_t m,
+                                    uint64 n, uint64_t k, double alpha,
+                                    DeviceMemorySlice<double> a, int lda,
+                                    DeviceMemorySlice<double> b, int ldb,
+                                    double beta, DeviceMemorySlice<double> c,
+                                    int ldc, int batch_count) {
   return ThenBlasGemmBatchedWithScratch(transa, transb, m, n, k, alpha, a, lda,
                                         b, ldb, beta, c, ldc, batch_count,
                                         /*scratch_allocator=*/nullptr);
@@ -1875,23 +1851,18 @@ Stream &Stream::ThenBlasGemmBatched(
 
 Stream &Stream::ThenBlasGemmBatchedWithScratch(
     blas::Transpose transa, blas::Transpose transb, uint64_t m, uint64 n,
-    uint64_t k, double alpha,
-    const port::ArraySlice<DeviceMemory<double> *> &a,           // non-absl ok
-    int lda, const port::ArraySlice<DeviceMemory<double> *> &b,  // non-absl ok
-    int ldb, double beta,
-    const port::ArraySlice<DeviceMemory<double> *> &c,  // non-absl ok
-    int ldc, int batch_count, ScratchAllocator *scratch_allocator) {
+    uint64_t k, double alpha, DeviceMemorySlice<double> a, int lda,
+    DeviceMemorySlice<double> b, int ldb, double beta,
+    DeviceMemorySlice<double> c, int ldc, int batch_count,
+    ScratchAllocator *scratch_allocator) {
   VLOG_CALL(PARAM(transa), PARAM(transb), PARAM(m), PARAM(n), PARAM(k),
             PARAM(alpha), PARAM(a), PARAM(lda), PARAM(b), PARAM(ldb),
             PARAM(beta), PARAM(c), PARAM(ldc), PARAM(batch_count));
 
-  ThenBlasImpl<
-      blas::Transpose, blas::Transpose, uint64_t, uint64_t, uint64, double,
-      const port::ArraySlice<DeviceMemory<double> *> &,       // non-absl ok
-      int, const port::ArraySlice<DeviceMemory<double> *> &,  // non-absl ok
-      int, double,
-      const port::ArraySlice<DeviceMemory<double> *> &,  // non-absl ok
-      int, int, ScratchAllocator *>
+  ThenBlasImpl<blas::Transpose, blas::Transpose, uint64_t, uint64_t, uint64,
+               double, DeviceMemorySlice<double>, int,
+               DeviceMemorySlice<double>, int, double,
+               DeviceMemorySlice<double>, int, int, ScratchAllocator *>
       impl;
   return impl(this, &blas::BlasSupport::DoBlasGemmBatched, transa, transb, m, n,
               k, alpha, a, lda, b, ldb, beta, c, ldc, batch_count,
@@ -1901,15 +1872,9 @@ Stream &Stream::ThenBlasGemmBatchedWithScratch(
 Stream &Stream::ThenBlasGemmBatched(
     blas::Transpose transa, blas::Transpose transb, uint64_t m, uint64 n,
     uint64_t k, std::complex<float> alpha,
-    const port::ArraySlice<DeviceMemory<std::complex<float>> *>  // non-absl ok
-        &a,
-    int lda,
-    const port::ArraySlice<DeviceMemory<std::complex<float>> *>  // non-absl ok
-        &b,
-    int ldb, std::complex<float> beta,
-    const port::ArraySlice<DeviceMemory<std::complex<float>> *>  // non-absl ok
-        &c,
-    int ldc, int batch_count) {
+    DeviceMemorySlice<std::complex<float>> a, int lda,
+    DeviceMemorySlice<std::complex<float>> b, int ldb, std::complex<float> beta,
+    DeviceMemorySlice<std::complex<float>> c, int ldc, int batch_count) {
   return ThenBlasGemmBatchedWithScratch(transa, transb, m, n, k, alpha, a, lda,
                                         b, ldb, beta, c, ldc, batch_count,
                                         /*scratch_allocator=*/nullptr);
@@ -1918,25 +1883,19 @@ Stream &Stream::ThenBlasGemmBatched(
 Stream &Stream::ThenBlasGemmBatchedWithScratch(
     blas::Transpose transa, blas::Transpose transb, uint64_t m, uint64 n,
     uint64_t k, std::complex<float> alpha,
-    const port::ArraySlice<DeviceMemory<std::complex<float>> *>  // non-absl ok
-        &a,
-    int lda,
-    const port::ArraySlice<DeviceMemory<std::complex<float>> *>  // non-absl ok
-        &b,
-    int ldb, std::complex<float> beta,
-    const port::ArraySlice<DeviceMemory<std::complex<float>> *>  // non-absl ok
-        &c,
-    int ldc, int batch_count, ScratchAllocator *scratch_allocator) {
+    DeviceMemorySlice<std::complex<float>> a, int lda,
+    DeviceMemorySlice<std::complex<float>> b, int ldb, std::complex<float> beta,
+    DeviceMemorySlice<std::complex<float>> c, int ldc, int batch_count,
+    ScratchAllocator *scratch_allocator) {
   VLOG_CALL(PARAM(transa), PARAM(transb), PARAM(m), PARAM(n), PARAM(k),
             PARAM(alpha), PARAM(a), PARAM(lda), PARAM(b), PARAM(ldb),
             PARAM(beta), PARAM(c), PARAM(ldc), PARAM(batch_count));
 
-  ThenBlasImpl<
-      blas::Transpose, blas::Transpose, uint64_t, uint64_t, uint64,
-      std::complex<float>, const DeviceMemorySlice<std::complex<float>> &, int,
-      const DeviceMemorySlice<std::complex<float>> &, int, std::complex<float>,
-      const DeviceMemorySlice<std::complex<float>> &, int, int,
-      ScratchAllocator *>
+  ThenBlasImpl<blas::Transpose, blas::Transpose, uint64_t, uint64_t, uint64,
+               std::complex<float>, DeviceMemorySlice<std::complex<float>>, int,
+               DeviceMemorySlice<std::complex<float>>, int, std::complex<float>,
+               DeviceMemorySlice<std::complex<float>>, int, int,
+               ScratchAllocator *>
       impl;
   return impl(this, &blas::BlasSupport::DoBlasGemmBatched, transa, transb, m, n,
               k, alpha, a, lda, b, ldb, beta, c, ldc, batch_count,
@@ -1946,9 +1905,9 @@ Stream &Stream::ThenBlasGemmBatchedWithScratch(
 Stream &Stream::ThenBlasGemmBatched(
     blas::Transpose transa, blas::Transpose transb, uint64_t m, uint64 n,
     uint64_t k, std::complex<double> alpha,
-    const DeviceMemorySlice<std::complex<double>> &a, int lda,
-    const DeviceMemorySlice<std::complex<double>> &b, int ldb,
-    std::complex<double> beta, const DeviceMemorySlice<std::complex<double>> &c,
+    DeviceMemorySlice<std::complex<double>> a, int lda,
+    DeviceMemorySlice<std::complex<double>> b, int ldb,
+    std::complex<double> beta, DeviceMemorySlice<std::complex<double>> c,
     int ldc, int batch_count) {
   return ThenBlasGemmBatchedWithScratch(transa, transb, m, n, k, alpha, a, lda,
                                         b, ldb, beta, c, ldc, batch_count,
@@ -1958,21 +1917,19 @@ Stream &Stream::ThenBlasGemmBatched(
 Stream &Stream::ThenBlasGemmBatchedWithScratch(
     blas::Transpose transa, blas::Transpose transb, uint64_t m, uint64 n,
     uint64_t k, std::complex<double> alpha,
-    const DeviceMemorySlice<std::complex<double>> &a, int lda,
-    const DeviceMemorySlice<std::complex<double>> &b, int ldb,
-    std::complex<double> beta,
-    const DeviceMemorySlice<std::complex<double>> &c,  // non-absl ok
+    DeviceMemorySlice<std::complex<double>> a, int lda,
+    DeviceMemorySlice<std::complex<double>> b, int ldb,
+    std::complex<double> beta, DeviceMemorySlice<std::complex<double>> c,
     int ldc, int batch_count, ScratchAllocator *scratch_allocator) {
   VLOG_CALL(PARAM(transa), PARAM(transb), PARAM(m), PARAM(n), PARAM(k),
             PARAM(alpha), PARAM(a), PARAM(lda), PARAM(b), PARAM(ldb),
             PARAM(beta), PARAM(c), PARAM(ldc), PARAM(batch_count));
 
-  ThenBlasImpl<
-      blas::Transpose, blas::Transpose, uint64_t, uint64_t, uint64,
-      std::complex<double>, const DeviceMemorySlice<std::complex<double>> &,
-      int, const DeviceMemorySlice<std::complex<double>> &, int,
-      std::complex<double>, const DeviceMemorySlice<std::complex<double>> &,
-      int, int, ScratchAllocator *>
+  ThenBlasImpl<blas::Transpose, blas::Transpose, uint64_t, uint64_t, uint64,
+               std::complex<double>, DeviceMemorySlice<std::complex<double>>,
+               int, DeviceMemorySlice<std::complex<double>>, int,
+               std::complex<double>, DeviceMemorySlice<std::complex<double>>,
+               int, int, ScratchAllocator *>
       impl;
   return impl(this, &blas::BlasSupport::DoBlasGemmBatched, transa, transb, m, n,
               k, alpha, a, lda, b, ldb, beta, c, ldc, batch_count,

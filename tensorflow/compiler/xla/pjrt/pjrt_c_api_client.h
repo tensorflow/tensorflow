@@ -172,9 +172,6 @@ class PjRtCApiClient : public PjRtClient {
   StatusOr<std::optional<std::string>> ExecutableFingerprint(
       const PjRtLoadedExecutable& executable) const override;
 
-  StatusOr<std::string> SerializeExecutable(
-      const PjRtLoadedExecutable& executable) const override;
-
   // `PjRtCApiClient::DeserializeExecutable()` ignores `CompileOptions` arg
   StatusOr<std::unique_ptr<PjRtLoadedExecutable>> DeserializeExecutable(
       absl::string_view serialized,
@@ -289,6 +286,8 @@ class PjRtCApiClient : public PjRtClient {
   std::vector<PjRtDevice*> devices_;
   std::vector<PjRtDevice*> addressable_devices_;
   absl::flat_hash_map<PJRT_Device*, PjRtCApiDevice*> c_to_cpp_device_map_;
+
+  const std::string platform_version_;
 
   // TODO(skyewm): this is a shim so we can run PjRtCApiClient code without the
   // C API being fully implemented. All methods using wrapped_ should either be
@@ -485,6 +484,8 @@ class PjRtCApiExecutable : public PjRtLoadedExecutable {
 
   void Delete() override;
   bool IsDeleted() override;
+
+  StatusOr<std::string> SerializeExecutable() const override;
 
   PjRtLoadedExecutable* wrapped() const;
 

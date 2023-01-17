@@ -28,6 +28,7 @@ from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.types import internal
 from tensorflow.python.types import trace
 from tensorflow.python.util import _pywrap_utils
 from tensorflow.python.util import compat
@@ -39,9 +40,6 @@ from tensorflow.python.util.tf_export import tf_export
 from tensorflow.tools.docs import doc_controls
 
 # Use LazyLoader to avoid circular dependencies.
-tensor_spec = LazyLoader(
-    "tensor_spec", globals(),
-    "tensorflow.python.framework.tensor_spec")
 ops = LazyLoader("ops", globals(),
                  "tensorflow.python.framework.ops")
 # TODO(b/238903802): Remove this dependency.
@@ -848,7 +846,7 @@ class BatchableTypeSpec(TypeSpec, metaclass=abc.ABCMeta):
 
 def get_batchable_flat_tensor_specs(spec, context_spec=None):
   """Returns the flat tensor specs for `spec`."""
-  if isinstance(spec, tensor_spec.TensorSpec):
+  if isinstance(spec, internal.TensorSpec):
     return [spec]
   elif hasattr(spec, "__batch_encoder__"):
     encoding_specs = nest.map_structure(
@@ -866,7 +864,7 @@ def get_batchable_flat_tensor_specs(spec, context_spec=None):
 
 def batchable_to_tensor_list(spec, value, minimum_rank=0):
   """Returns a list of tensors encoding `value`, whose type is `spec`."""
-  if isinstance(spec, tensor_spec.TensorSpec):
+  if isinstance(spec, internal.TensorSpec):
     return [value]
   elif hasattr(spec, "__batch_encoder__"):
     encoded_value = spec.__batch_encoder__.encode(spec, value, minimum_rank)
@@ -881,7 +879,7 @@ def batchable_to_tensor_list(spec, value, minimum_rank=0):
 
 def batchable_from_tensor_list(spec, tensor_list):
   """Returns a value with type `spec` decoded from `tensor_list`."""
-  if isinstance(spec, tensor_spec.TensorSpec):
+  if isinstance(spec, internal.TensorSpec):
     assert len(tensor_list) == 1
     return tensor_list[0]
   elif hasattr(spec, "__batch_encoder__"):
@@ -950,7 +948,7 @@ def _type_spec_from_value(value) -> TypeSpec:
   """Returns a `TypeSpec` that represents the given `value`."""
   if isinstance(value, ops.Tensor):
     # Note: we do not include Tensor names when constructing TypeSpecs.
-    return tensor_spec.TensorSpec(value.shape, value.dtype)
+    return trace_type.from_value(value)
 
   if isinstance(value, composite_tensor.CompositeTensor):
     return value._type_spec  # pylint: disable=protected-access

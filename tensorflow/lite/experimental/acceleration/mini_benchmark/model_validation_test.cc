@@ -113,7 +113,9 @@ class LocalizerValidationRegressionTest : public ::testing::Test {
     close(fd);
 
     Validator::Results results;
-    EXPECT_EQ(validator->RunValidation(&results), kMinibenchmarkSuccess);
+    Validator::Status validation_run = validator->RunValidation(&results);
+    EXPECT_EQ(validation_run.status, kMinibenchmarkSuccess);
+    EXPECT_EQ(validation_run.stage, BenchmarkStage_UNKNOWN);
     EXPECT_TRUE(results.ok);
     EXPECT_EQ(results.delegate_error, 0);
     if (accelerator_name != "CPU") {

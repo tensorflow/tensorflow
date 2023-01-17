@@ -92,7 +92,7 @@ bool TemporaryMemoryManager::HasAllocated(const DeviceMemoryBase& device_memory,
   return it->second.allocation_generation == generation;
 }
 
-port::StatusOr<std::unique_ptr<TemporaryDeviceMemoryBase>>
+tsl::StatusOr<std::unique_ptr<TemporaryDeviceMemoryBase>>
 TemporaryMemoryManager::AllocateArrayBase(uint64_t element_count,
                                           uint64_t element_size) {
   uint64_t byte_size = element_count * element_size;

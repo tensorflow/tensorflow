@@ -58,7 +58,7 @@ std::string DriverVersionToString(DriverVersion version) {
                          std::get<2>(version));
 }
 
-std::string DriverVersionStatusToString(port::StatusOr<DriverVersion> version) {
+std::string DriverVersionStatusToString(tsl::StatusOr<DriverVersion> version) {
   if (!version.ok()) {
     return version.status().ToString();
   }
@@ -66,7 +66,7 @@ std::string DriverVersionStatusToString(port::StatusOr<DriverVersion> version) {
   return DriverVersionToString(version.value());
 }
 
-port::StatusOr<DriverVersion> StringToDriverVersion(const std::string &value) {
+tsl::StatusOr<DriverVersion> StringToDriverVersion(const std::string &value) {
   std::vector<std::string> pieces = absl::StrSplit(value, '.');
   if (pieces.size() < 2 || pieces.size() > 4) {
     return tsl::Status(
@@ -196,11 +196,11 @@ void Diagnostician::LogDiagnosticInformation() {
       closedir(dir);
     }
   }
-  port::StatusOr<DriverVersion> dso_version = FindDsoVersion();
+  tsl::StatusOr<DriverVersion> dso_version = FindDsoVersion();
   LOG(INFO) << "libcuda reported version is: "
             << cuda::DriverVersionStatusToString(dso_version);
 
-  port::StatusOr<DriverVersion> kernel_version = FindKernelDriverVersion();
+  tsl::StatusOr<DriverVersion> kernel_version = FindKernelDriverVersion();
   LOG(INFO) << "kernel reported version is: "
             << cuda::DriverVersionStatusToString(kernel_version);
 #endif
@@ -215,8 +215,8 @@ void Diagnostician::LogDiagnosticInformation() {
 
 // Iterates through loaded DSOs with DlIteratePhdrCallback to find the
 // driver-interfacing DSO version number. Returns it as a string.
-port::StatusOr<DriverVersion> Diagnostician::FindDsoVersion() {
-  port::StatusOr<DriverVersion> result(tsl::Status(
+tsl::StatusOr<DriverVersion> Diagnostician::FindDsoVersion() {
+  tsl::StatusOr<DriverVersion> result(tsl::Status(
       port::error::NOT_FOUND,
       "was unable to find libcuda.so DSO loaded into this program"));
 
@@ -267,7 +267,7 @@ port::StatusOr<DriverVersion> Diagnostician::FindDsoVersion() {
       std::string dso_version = dot + strlen(so_suffix);
       // TODO(b/22689637): Eliminate the explicit namespace if possible.
       auto stripped_dso_version = absl::StripSuffix(dso_version, ".ld64");
-      auto result = static_cast<port::StatusOr<DriverVersion> *>(data);
+      auto result = static_cast<tsl::StatusOr<DriverVersion> *>(data);
       *result = cuda::StringToDriverVersion(std::string(stripped_dso_version));
       return 1;
     }
@@ -281,7 +281,7 @@ port::StatusOr<DriverVersion> Diagnostician::FindDsoVersion() {
   return result;
 }
 
-port::StatusOr<DriverVersion> Diagnostician::FindKernelModuleVersion(
+tsl::StatusOr<DriverVersion> Diagnostician::FindKernelModuleVersion(
     const std::string &driver_version_file_contents) {
   static const char *kDriverFilePrelude = "Kernel Module  ";
   size_t offset = driver_version_file_contents.find(kDriverFilePrelude);
@@ -303,8 +303,8 @@ port::StatusOr<DriverVersion> Diagnostician::FindKernelModuleVersion(
 }
 
 void Diagnostician::WarnOnDsoKernelMismatch(
-    port::StatusOr<DriverVersion> dso_version,
-    port::StatusOr<DriverVersion> kernel_version) {
+    tsl::StatusOr<DriverVersion> dso_version,
+    tsl::StatusOr<DriverVersion> kernel_version) {
   if (kernel_version.ok() && dso_version.ok() &&
       dso_version.value() == kernel_version.value()) {
     LOG(INFO) << "kernel version seems to match DSO: "
@@ -318,8 +318,7 @@ void Diagnostician::WarnOnDsoKernelMismatch(
   }
 }
 
-
-port::StatusOr<DriverVersion> Diagnostician::FindKernelDriverVersion() {
+tsl::StatusOr<DriverVersion> Diagnostician::FindKernelDriverVersion() {
 #if defined(__APPLE__)
   CFStringRef kext_ids[1];
   kext_ids[0] = kDriverKextIdentifier;

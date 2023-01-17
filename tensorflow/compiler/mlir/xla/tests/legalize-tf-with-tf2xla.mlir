@@ -410,6 +410,17 @@ func.func @bounds_propagation_skip_symbol_ref_ops(%input: tensor<4xf32>, %size: 
   func.return %1 : tensor<?xf32>
 }
 
+// CHECK-LABEL: func @set_bound
+func.func @set_bound(%arg0: tensor<i32>) -> tensor<i32> {
+  %bound = "tf.Const"() {value = dense<16> : tensor<i32>} : () -> tensor<i32>
+
+  // CHECK: %[[RESULT:.*]] = mhlo.custom_call @SetBound(%arg0) {backend_config = "", mhlo.literal = dense<16> : tensor<i32>}
+  %bounded = "tf.XlaSetBound"(%arg0, %bound) : (tensor<i32>, tensor<i32>) -> tensor<i32>
+
+  // CHECK: return %[[RESULT]]
+  func.return %bounded : tensor<i32>
+}
+
 // TODO(hinsu): Add a test with a valid TF op for which tf2xla kernel is
 // available but doesn't support this instance.
 }

@@ -272,7 +272,7 @@ tensorflow::Status ConvertTFToStableHLO(
   mlir::odml::AddStablehloOptimizationPasses(pm);
 
   if (failed(pm.run(tf_module))) {
-    return tensorflow::errors::Aborted("Lowering to Compute IR failed.");
+    return tensorflow::errors::Aborted("Lowering to StableHLO failed.");
   }
 
   return ::tensorflow::OkStatus();
@@ -333,10 +333,23 @@ tensorflow::Status RunConverter(const PassPipelineCLParser& pass_pipeline) {
   }
 
   auto conversion_status = ConvertTFToStableHLO(*module, pass_pipeline);
-  auto export_path = conversion_status.ok()
-                         ? output_path
-                         : absl::StrCat(verbose_dir, "/debug_stablehlo.mlir");
-  return ExportModule(*module, export_path, elide_large_elements_attrs);
+  auto output_export_status =
+      ExportModule(*module, output_path, elide_large_elements_attrs);
+  if (!conversion_status.ok()) {
+    LOG(ERROR) << "TF to StableHLO conversion failed: "
+               << conversion_status.error_message();
+
+    auto debug_export_status = ExportModule(
+        *module, absl::StrCat(verbose_dir, "/debug_stablehlo.mlir"),
+        elide_large_elements_attrs);
+    if (!debug_export_status.ok()) {
+      LOG(ERROR) << "Failed to export debug_stablehlo.mlir: "
+                 << debug_export_status.error_message();
+    }
+
+    return conversion_status;
+  }
+  return output_export_status;
 }
 
 // All MLIR and TF passes are registered here, similar to mlirOptMain.

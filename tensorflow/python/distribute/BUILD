@@ -76,7 +76,7 @@ pytype_strict_library(
         "//tensorflow/python:nccl_ops",
         "//tensorflow/python:platform",
         "//tensorflow/python:resource_variable_ops",
-        "//tensorflow/python/eager:backprop",
+        "//tensorflow/python/eager:backprop_util",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/framework:indexed_slices",
         "//tensorflow/python/framework:tensor_spec",

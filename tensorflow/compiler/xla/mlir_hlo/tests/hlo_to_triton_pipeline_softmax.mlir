@@ -44,21 +44,14 @@ func.func @perfectly_tiled_softmax(%argbuffer : memref<2048x4096xf32>,
 // CHECK-SAME: %[[OUT:.*]]: memref<2048x4096xf32>) kernel
 // CHECK:      %[[C0:.*]] = arith.constant 0 : index
 // CHECK:      %[[BID:.*]] = gpu.block_id  x
-// CHECK:      %[[SV:.*]] = memref.subview %[[IN]][%[[BID]], 0] [1, 4096]
-// CHECK:      %[[VEC:.*]] = vector.transfer_read %[[SV]][%[[C0]], %[[C0]]]
+// CHECK:      %[[IN_SV:.*]] = memref.subview %[[IN]][%[[BID]], 0] [1, 4096]
+// CHECK:      %[[VEC:.*]] = vector.transfer_read %[[IN_SV]][%[[C0]], %[[C0]]]
 // CHECK:      %[[MAX:.*]] = vector.multi_reduction <maxf>, %[[VEC]]
+// CHECK:      %[[OUT_SV:.*]] = memref.subview %[[OUT]][%[[BID]], 0] [1, 4096]
 // CHECK:      %[[BMAX:.*]] = vector.broadcast %[[MAX]]
 // CHECK:      %[[SUB:.*]] = arith.subf %[[VEC]], %[[BMAX]]
 // CHECK:      %[[EXP:.*]] = math.exp %[[SUB]]
 // CHECK:      %[[SUM:.*]] = vector.multi_reduction <add>, %[[EXP]]
 // CHECK:      %[[BSUM:.*]] = vector.broadcast %[[SUM]]
 // CHECK:      %[[DIV:.*]] = arith.divf %[[EXP]], %[[BSUM]]
-// The bufferization adds an extra alloc and a copy inside the loop, because it
-// finds a conflict between vector.transfer_write, tensor.extract_slice and
-// gml_st.set_yield that is produced by 'vectorize-gml-st-loops'.
-// hlo-one-shot-bufferize works as intended here.
-// CHECK:      %[[EXTRA_ALLOC:.*]] = memref.alloc
-// CHECK:      vector.transfer_write %[[DIV]], %[[EXTRA_ALLOC]][%[[BID]], %[[C0]]]
-// CHECK:      %[[EXTRA_ALLOC_SUBVIEW:.*]] = memref.subview %[[EXTRA_ALLOC]]
-// CHECK:      %[[OUT_SUBVIEW:.*]] = memref.subview %[[OUT]]
-// CHECK:      memref.copy %[[EXTRA_ALLOC_SUBVIEW]], %[[OUT_SUBVIEW]]
+// CHECK:      vector.transfer_write %[[DIV]], %[[OUT_SV]][%[[C0]], %[[C0]]]

@@ -31,6 +31,7 @@ limitations under the License.
 #include "absl/memory/memory.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/optional.h"
+#include "absl/types/span.h"
 #include "tensorflow/compiler/xla/stream_executor/device_memory_allocator.h"
 #include "tensorflow/compiler/xla/stream_executor/lib/status.h"
 #include "tensorflow/compiler/xla/stream_executor/lib/statusor.h"
@@ -94,18 +95,6 @@ class StreamExecutor {
   // Returns a reference to the platform that created this executor.
   const Platform* platform() const { return platform_; }
 
-  // Gets a human-readable description of the device, e.g. "nvidia GPU
-  // supporting sm75 with 32GB RAM, 80 SMs, ...".  This is intended to be the if
-  // and only if two devices are "the same" (e.g. the same make/model of GPU),
-  // though it may not completely succeed at this for all platforms.
-  //
-  // This string is not guaranteed to be stable between versions.  Please DO NOT
-  // rely on it never changing.  (Within one version of the code, it won't
-  // change, don't worry.)
-  absl::string_view device_description_str() const {
-    return device_description_str_;
-  }
-
   // Retrieves (loads) a kernel for the platform this StreamExecutor is acting
   // upon, if one exists.
   //
@@ -135,7 +124,7 @@ class StreamExecutor {
   // Unloads the module with handle `module_handle`.
   bool UnloadModule(ModuleHandle module_handle);
 
-  port::StatusOr<std::shared_ptr<DeviceMemoryBase>> CreateOrShareConstant(
+  tsl::StatusOr<std::shared_ptr<DeviceMemoryBase>> CreateOrShareConstant(
       Stream* stream, const std::vector<uint8_t>& content);
 
   // Synchronously allocates an array on the device of type T with element_count
@@ -192,11 +181,11 @@ class StreamExecutor {
   // - Note: symbol_name should include its namespace as well. For example,
   //         pass "nms0::symbol" if referring to nms0::symbol.
   template <typename T>
-  port::StatusOr<DeviceMemory<T>> GetSymbol(const std::string& symbol_name,
-                                            ModuleHandle module_handle);
+  tsl::StatusOr<DeviceMemory<T>> GetSymbol(const std::string& symbol_name,
+                                           ModuleHandle module_handle);
 
   // An untyped version of GetSymbol.
-  port::StatusOr<DeviceMemoryBase> GetUntypedSymbol(
+  tsl::StatusOr<DeviceMemoryBase> GetUntypedSymbol(
       const std::string& symbol_name, ModuleHandle module_handle);
 
   // Deallocate the DeviceMemory previously allocated via this interface.
@@ -281,7 +270,7 @@ class StreamExecutor {
   // array slice. Checks that the destination size can accommodate the host
   // slice size.
   template <class T>
-  tsl::Status SynchronousMemcpyH2D(port::ArraySlice<T> host_src,  // non-absl ok
+  tsl::Status SynchronousMemcpyH2D(absl::Span<const T> host_src,
                                    DeviceMemoryBase* device_dst) {
     auto host_size = host_src.size() * sizeof(T);
     CHECK(device_dst->size() == 0 || device_dst->size() >= host_size);
@@ -297,7 +286,7 @@ class StreamExecutor {
   // slice size.
   template <typename T>
   tsl::Status SynchronousMemcpyD2H(const DeviceMemory<T>& device_src,
-                                   port::MutableArraySlice<T> host_dst) {
+                                   absl::Span<T> host_dst) {
     auto host_size = host_dst.size() * sizeof(T);
     CHECK(device_src.size() == 0 || host_size >= device_src.size());
     return SynchronousMemcpyD2H(device_src, host_size, host_dst.begin());
@@ -440,7 +429,7 @@ class StreamExecutor {
 
   // Create an RNN descriptor based on model shapes and configurations.
   // The caller retains the ownership of the descriptor.
-  port::StatusOr<std::unique_ptr<dnn::RnnDescriptor>> createRnnDescriptor(
+  tsl::StatusOr<std::unique_ptr<dnn::RnnDescriptor>> createRnnDescriptor(
       int num_layers, int hidden_size, int input_size, int cell_size,
       int batch_size, dnn::RnnInputMode input_mode,
       dnn::RnnDirectionMode direction_mode, dnn::RnnMode rnn_mode,
@@ -450,11 +439,11 @@ class StreamExecutor {
 
   // Create a RNN sequence descriptor that specifies either the input or output
   // sequence. The caller retains the ownership of the returned descriptor.
-  port::StatusOr<std::unique_ptr<dnn::RnnSequenceTensorDescriptor>>
+  tsl::StatusOr<std::unique_ptr<dnn::RnnSequenceTensorDescriptor>>
   createRnnSequenceTensorDescriptor(int max_seq_length, int batch_size,
                                     int data_size, dnn::DataType data_type);
 
-  port::StatusOr<std::unique_ptr<dnn::RnnSequenceTensorDescriptor>>
+  tsl::StatusOr<std::unique_ptr<dnn::RnnSequenceTensorDescriptor>>
   createRnnSequenceTensorDescriptor(int max_seq_length, int batch_size,
                                     int data_size,
                                     const absl::Span<const int>& seq_lengths,
@@ -462,7 +451,7 @@ class StreamExecutor {
 
   // Create an RNN state descriptor that specifies the input or hidden state.
   // The caller retains the ownership of the returned descriptor.
-  port::StatusOr<std::unique_ptr<dnn::RnnStateTensorDescriptor>>
+  tsl::StatusOr<std::unique_ptr<dnn::RnnStateTensorDescriptor>>
   createRnnStateTensorDescriptor(int num_layer, int batch_size, int data_size,
                                  dnn::DataType data_type);
 
@@ -482,7 +471,7 @@ class StreamExecutor {
   // The canonical storage for both ptx and cubin_data should outlive the
   // lifetime of the kernel.
   template <typename... Args>
-  port::StatusOr<std::unique_ptr<TypedKernel<Args...>>> CreateTypedKernel(
+  tsl::StatusOr<std::unique_ptr<TypedKernel<Args...>>> CreateTypedKernel(
       absl::string_view kernel_name, absl::string_view ptx,
       absl::Span<const uint8_t> cubin_data);
 
@@ -789,8 +778,6 @@ class StreamExecutor {
 
   StreamExecutorMemoryAllocator allocator_;
 
-  std::string device_description_str_;
-
   SE_DISALLOW_COPY_AND_ASSIGN(StreamExecutor);
 };
 
@@ -833,7 +820,7 @@ class ScopedModuleHandle {
 // Inlines
 
 template <typename... Args>
-inline port::StatusOr<std::unique_ptr<TypedKernel<Args...>>>
+inline tsl::StatusOr<std::unique_ptr<TypedKernel<Args...>>>
 StreamExecutor::CreateTypedKernel(absl::string_view kernel_name,
                                   absl::string_view ptx,
                                   absl::Span<const uint8_t> cubin_data) {
@@ -858,9 +845,9 @@ inline DeviceMemory<T> StreamExecutor::AllocateArray(uint64_t element_count,
 }
 
 template <typename T>
-inline port::StatusOr<DeviceMemory<T>> StreamExecutor::GetSymbol(
+inline tsl::StatusOr<DeviceMemory<T>> StreamExecutor::GetSymbol(
     const std::string& symbol_name, ModuleHandle module_handle) {
-  port::StatusOr<DeviceMemoryBase> untyped_symbol =
+  tsl::StatusOr<DeviceMemoryBase> untyped_symbol =
       GetUntypedSymbol(symbol_name, module_handle);
   if (!untyped_symbol.ok()) {
     return untyped_symbol.status();

@@ -35,7 +35,6 @@ add_mlir_library(GmlStPasses
   gml_st_to_scf/gml_st_to_scf.cc
   gml_st_to_gpu/gml_st_to_gpu.cc
   greedy_tiling_and_fusion/greedy_tiling_and_fusion.cc
-  lower_vector_contract/lower_vector_contract.cc
   peeling/peeling.cc
   scalarization/scalarization.cc
   tiling/tiling.cc
@@ -46,10 +45,14 @@ add_mlir_library(GmlStPasses
   transform_matmul_for_cpu/transform_matmul_for_cpu.cc
   transform_matmul_for_triton/transform_matmul_for_triton.cc
   transform_reduce_for_cpu/transform_reduce_for_cpu.cc
+  transform_reverse_for_cpu/transform_reverse_for_cpu.cc
   transform_tileable_ops_for_cpu/transform_tileable_ops_for_cpu.cc
   transform_transpose_for_cpu/transform_transpose_for_cpu.cc
   transform_scatter_for_cpu/transform_scatter_for_cpu.cc
   transform_sort_for_cpu/transform_sort_for_cpu.cc
+  rewrite_vector_ops/rewrite_vector_contract.cc
+  rewrite_vector_ops/rewrite_vector_multi_reduction.cc
+  rewrite_vector_ops/rewrite_vector_transpose.cc
   vectorization/vectorization.cc
 
   DEPENDS

@@ -23,7 +23,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/platform_util.h"
 #include "tensorflow/tsl/lib/core/status_test_util.h"
 #include "tensorflow/tsl/platform/env.h"
-#include "tensorflow/tsl/platform/resource_loader.h"
+#include "tensorflow/tsl/platform/path.h"
 #include "tensorflow/tsl/platform/statusor.h"
 #include "tensorflow/tsl/platform/test.h"
 
@@ -32,8 +32,8 @@ namespace xla_compile {
 namespace {
 
 TEST(XlaCompileTest, LoadGpuExecutable) {
-  std::string path = tsl::GetDataDependencyFilepath(
-      "tensorflow/compiler/xla/service/xla_aot_compile_test_gpu_executable");
+  std::string path = tsl::io::JoinPath(tsl::testing::XlaSrcRoot(), "service",
+                                       "xla_aot_compile_test_gpu_executable");
   std::string serialized_aot_result;
   TF_ASSERT_OK(
       tsl::ReadFileToString(tsl::Env::Default(), path, &serialized_aot_result));
@@ -77,9 +77,9 @@ TEST(XlaCompileTest, LoadGpuExecutable) {
 }
 
 TEST(XlaCompileTest, LoadGpuExecutableWithConstant) {
-  std::string path = tsl::GetDataDependencyFilepath(
-      "tensorflow/compiler/xla/service/"
-      "xla_aot_compile_test_gpu_executable_constant");
+  std::string path =
+      tsl::io::JoinPath(tsl::testing::XlaSrcRoot(), "service",
+                        "xla_aot_compile_test_gpu_executable_constant");
   std::string serialized_aot_result;
   TF_ASSERT_OK(
       tsl::ReadFileToString(tsl::Env::Default(), path, &serialized_aot_result));
@@ -119,12 +119,15 @@ TEST(XlaCompileTest, LoadGpuExecutableWithConstant) {
 }
 
 TEST(XlaCompileTest, LoadGpuExecutableWithGemm) {
-  std::string path = tsl::GetDataDependencyFilepath(
-      "tensorflow/compiler/xla/service/"
-      "xla_aot_compile_test_gpu_executable_gemm");
+  std::string path =
+      tsl::io::JoinPath(tsl::testing::XlaSrcRoot(), "service",
+                        "xla_aot_compile_test_gpu_executable_gemm");
   std::string serialized_aot_result;
   TF_ASSERT_OK(
       tsl::ReadFileToString(tsl::Env::Default(), path, &serialized_aot_result));
+
+  // Check that GemmAlgorithmPicker successfully loaded autotune results.
+  EXPECT_TRUE(absl::StrContains(serialized_aot_result, "algorithm = 13 : i64"));
 
   // Get a LocalClient
   TF_ASSERT_OK_AND_ASSIGN(se::Platform * platform,
@@ -170,12 +173,15 @@ TEST(XlaCompileTest, LoadGpuExecutableWithGemm) {
 }
 
 TEST(XlaCompileTest, LoadGpuExecutableWithConvolution) {
-  std::string path = tsl::GetDataDependencyFilepath(
-      "tensorflow/compiler/xla/service/"
-      "xla_aot_compile_test_gpu_executable_convolution");
+  std::string path =
+      tsl::io::JoinPath(tsl::testing::XlaSrcRoot(), "service",
+                        "xla_aot_compile_test_gpu_executable_convolution");
   std::string serialized_aot_result;
   TF_ASSERT_OK(
       tsl::ReadFileToString(tsl::Env::Default(), path, &serialized_aot_result));
+
+  // Check that GpuConvAlgorithmPicker successfully loaded autotune results.
+  EXPECT_TRUE(absl::StrContains(serialized_aot_result, "\"algo_id\":\"3\""));
 
   // Get a LocalClient
   TF_ASSERT_OK_AND_ASSIGN(se::Platform * platform,

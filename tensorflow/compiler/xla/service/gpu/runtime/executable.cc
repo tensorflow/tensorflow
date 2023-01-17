@@ -353,8 +353,12 @@ Status GpuRuntimeExecutable::Execute(
   if (temp_alloc)
     temp_buffer = buffer_allocations.GetDeviceAddress(temp_alloc->index());
 
-  // Take snapshots of every state required by custom calls.
+  // State cached separately for each stream executor.
   StreamExecutorKernels::Snapshot kernels = gpu_kernels_(executor)->snapshot();
+  StreamExecutorConvRunners::Snapshot conv_runners =
+      conv_runners_(executor)->snapshot();
+
+  // State cached globally for gpu executable.
   GemmConfigs::Snapshot gemm_configs = gemm_configs_.snapshot();
   FftPlans::Snapshot fft_plans = fft_plans_.snapshot();
 
@@ -364,7 +368,7 @@ Status GpuRuntimeExecutable::Execute(
   // Pass auxiliary data to the custom call handlers.
   runtime::CustomCall::UserData user_data(
       run_options, &executable, &debug_options_, &temp_buffer, &asm_text,
-      &ffi_state, &binary, &kernels, &gemm_configs, &conv_runners_cache_,
+      &ffi_state, &binary, &kernels, &gemm_configs, &conv_runners,
       &collectives_, &fft_plans,
       // Null pointer will be interpreted as an absence of async collectives
       // support and custom calls will safely return an error.

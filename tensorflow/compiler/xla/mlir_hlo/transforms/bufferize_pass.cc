@@ -156,10 +156,6 @@ struct ComputeOpAndFuncBufferizePass
                                   linalg::LinalgDialect, mhlo::MhloDialect,
                                   shape::ShapeDialect, tensor::TensorDialect,
                                   thlo::THLODialect, vector::VectorDialect>();
-    // Ops inside TiledLoopOps have special handling.
-    options.opFilter.denyOperation([](Operation* op) {
-      return mlir::isa<gml_st::LoopOp>(op->getParentOp());
-    });
 
     if (failed(bufferization::bufferizeOp(getOperation(), options))) {
       signalPassFailure();
@@ -181,12 +177,8 @@ struct ComputeOpAndFuncBufferizePass
                            lmhlo::LmhloDialect, math::MathDialect,
                            memref::MemRefDialect, tensor::TensorDialect,
                            thlo::THLODialect, vector::VectorDialect>();
-    target.addLegalOp<UnrealizedConversionCastOp, gml_st::LoopOp>();
+    target.addLegalOp<UnrealizedConversionCastOp>();
     target.addIllegalDialect<mhlo::MhloDialect>();
-    target.addDynamicallyLegalOp<tensor::ExtractSliceOp, tensor::InsertSliceOp>(
-        [&](Operation* op) {
-          return mlir::isa<gml_st::LoopOp>(op->getParentOp());
-        });
 
     CustomBufferizeTypeConverter converter;
     populateFunctionOpInterfaceTypeConversionPattern<func::FuncOp>(patterns,
@@ -210,15 +202,10 @@ struct ComputeOpAndFuncBufferizePass
     auto isLegalOp = [&](Operation* op) { return converter.isLegal(op); };
     target.addDynamicallyLegalOp<func::CallOp, func::ReturnOp>(isLegalOp);
 
-    auto isLegalOrInsideTiledLoop = [&](Operation* op) {
-      return converter.isLegal(op) ||
-             mlir::isa<gml_st::LoopOp>(op->getParentOp());
-    };
-    target.addDynamicallyLegalDialect<linalg::LinalgDialect>(
-        isLegalOrInsideTiledLoop);
+    target.addDynamicallyLegalDialect<linalg::LinalgDialect>(isLegalOp);
     target
         .addDynamicallyLegalOp<vector::TransferWriteOp, vector::TransferReadOp>(
-            isLegalOrInsideTiledLoop);
+            isLegalOp);
 
     return applyPartialConversion(getOperation(), target, std::move(patterns));
   }
@@ -340,8 +327,7 @@ struct FinalBufferizePass
              converter.isLegal(op->getResultTypes());
     };
     target.addDynamicallyLegalOp<func::ConstantOp, arith::ConstantOp,
-                                 arith::IndexCastOp, arith::SelectOp,
-                                 gml_st::LoopOp, gml_st::YieldOp>(
+                                 arith::IndexCastOp, arith::SelectOp>(
         typesAreLegal);
 
     RewritePatternSet patterns(&getContext());

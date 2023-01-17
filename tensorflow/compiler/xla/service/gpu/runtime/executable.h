@@ -145,7 +145,7 @@ class GpuRuntimeExecutable {
   GemmConfigs gemm_configs_;
 
   // Keep a cache for conv configs for all conv operations in the program.
-  ConvRunnerCache conv_runners_cache_;
+  ConvRunners conv_runners_;
 
   // Support for running collective operations.
   CollectivesSupport collectives_;

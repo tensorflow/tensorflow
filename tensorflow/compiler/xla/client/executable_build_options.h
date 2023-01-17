@@ -23,6 +23,7 @@ limitations under the License.
 
 #include "absl/strings/string_view.h"
 #include "tensorflow/compiler/xla/pjrt/compile_options.pb.h"
+#include "tensorflow/compiler/xla/service/compilation_environments.h"
 #include "tensorflow/compiler/xla/service/computation_placer.h"
 #include "tensorflow/compiler/xla/shape.h"
 #include "tensorflow/compiler/xla/xla.pb.h"
@@ -59,8 +60,16 @@ class ExecutableBuildOptions {
   ExecutableBuildOptions& set_result_layout(const Shape& shape_with_layout);
   const Shape* result_layout() const;
 
+  // Expose access to the XLA compilation environments, which will be passed to
+  // the compilation process. `comp_envs()` must not be called if
+  // `has_comp_envs()` returns false.
+  bool has_comp_envs() const { return comp_envs_.has_value(); }
+  const CompilationEnvironments& comp_envs() const { return *comp_envs_; }
+  CompilationEnvironments* mutable_comp_envs();
+
   // Expose access to the XLA debug options which will be passed to the
-  // compilation process.
+  // compilation process. `debug_options()` must not be called if
+  // `has_debug_options()` returns false.
   bool has_debug_options() const { return debug_options_.has_value(); }
   const DebugOptions& debug_options() const { return *debug_options_; }
   DebugOptions* mutable_debug_options();
@@ -190,6 +199,7 @@ class ExecutableBuildOptions {
   int device_ordinal_ = -1;
   Shape result_layout_;
   bool result_layout_set_ = false;
+  std::optional<CompilationEnvironments> comp_envs_;
   std::optional<DebugOptions> debug_options_;
   se::DeviceMemoryAllocator* device_allocator_ = nullptr;
   int num_replicas_ = 1;

@@ -63,8 +63,19 @@ struct TileMapPattern : public OpRewritePattern<linalg::MapOp> {
 
     if (hasLabel(op, kMapTransformedLabel)) return failure();
 
-    auto tiledLoop =
-        tileAndFuseMap(rewriter, op, innerDimTileSize, fuseFilterFn);
+    mlir::gml_st::TilingOptions opts;
+    opts.tileSizeComputationFn = [&](OpBuilder &b, Operation *op) {
+      auto numLoops = cast<linalg::MapOp>(op).getNumLoops();
+      SmallVector<Value> tiles(
+          numLoops, b.create<arith::ConstantIndexOp>(op->getLoc(), 1));
+      if (!tiles.empty())
+        tiles.back() =
+            b.create<arith::ConstantIndexOp>(op->getLoc(), innerDimTileSize);
+      return tiles;
+    };
+
+    auto tiledLoop = tileAndFuseGreedily(rewriter, op, opts,
+                                         kMapTransformedLabel, fuseFilterFn);
     if (failed(tiledLoop)) return failure();
 
     // Peel parallel loops.
@@ -74,7 +85,8 @@ struct TileMapPattern : public OpRewritePattern<linalg::MapOp> {
 
       // Tile ops in the peeled loop again, to size 1, so they can be
       // scalarized.
-      if (failed(tilePeeledOpsToScalars(rewriter, peelingResult, fuseFilterFn)))
+      if (failed(tilePeeledOpsToScalars(rewriter, peelingResult,
+                                        kMapTransformedLabel, fuseFilterFn)))
         return failure();
     }
 
@@ -98,53 +110,6 @@ struct TileMapPattern : public OpRewritePattern<linalg::MapOp> {
       if (auto curMap = dyn_cast<linalg::MapOp>(curOp)) rootMap = curMap;
     }
     return rootMap;
-  }
-
-  FailureOr<Operation *> tileAndFuseMap(
-      PatternRewriter &rewriter, Operation *op, int64_t tileSize,
-      llvm::function_ref<bool(Operation *)> fuseFilterFn) const {
-    mlir::gml_st::TilingOptions opts;
-    opts.tileSizeComputationFn = [&](OpBuilder &b, Operation *op) {
-      auto numLoops = cast<linalg::MapOp>(op).getNumLoops();
-      SmallVector<Value> tiles(
-          numLoops, b.create<arith::ConstantIndexOp>(op->getLoc(), 1));
-      if (!tiles.empty())
-        tiles.back() = b.create<arith::ConstantIndexOp>(op->getLoc(), tileSize);
-      return tiles;
-    };
-
-    auto tilingResult = tile(opts, rewriter, cast<TilingInterface>(op));
-    if (failed(tilingResult)) return failure();
-
-    // If we did not tile (e.g. when all tile sizes are 0), do not replace
-    // original op and just mark it as transformed then return.
-    if (tilingResult->loop != nullptr) {
-      rewriter.replaceOp(op, tilingResult->loop->getResults());
-
-      // Fuse ops into the loop.
-      fuseGreedily(rewriter, *tilingResult->tiledOps.front()->getBlock(),
-                   fuseFilterFn);
-    }
-    setLabel(tilingResult->tiledOps.front(), kMapTransformedLabel);
-    return tilingResult->loop;
-  }
-
-  LogicalResult tilePeeledOpsToScalars(
-      PatternRewriter &rewriter, const PeelingResult &peelingResult,
-      llvm::function_ref<bool(Operation *)> fuseFilterFn) const {
-    for (auto *loop : peelingResult) {
-      ParallelOp peeledLoop = dyn_cast<ParallelOp>(loop);
-      auto *terminatorOp = peeledLoop->getRegion(0).front().getTerminator();
-      if (!terminatorOp) return failure();
-
-      auto *definingOp = terminatorOp->getOperand(0).getDefiningOp();
-      if (!definingOp) return failure();
-
-      if (failed(tileAndFuseMap(rewriter, definingOp, /*tileSize=*/1,
-                                fuseFilterFn)))
-        return failure();
-    }
-    return success();
   }
 
   int64_t innerDimTileSize;

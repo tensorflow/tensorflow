@@ -49,6 +49,23 @@ cc_library(
     ],
 )
 
+cc_test(
+    name = "sample_stable_delegate_test",
+    srcs = ["sample_stable_delegate_test.cc"],
+    data = [
+        "//tensorflow/lite:testdata/add.bin",
+    ],
+    deps = [
+        ":sample_stable_delegate",
+        "//tensorflow/lite/c:c_api",
+        "//tensorflow/lite/c:c_api_experimental",
+        "//tensorflow/lite/c:c_api_types",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/kernels:kernel_util",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
 cc_library(
     name = "sample_stable_delegate_external",
     testonly = True,
@@ -84,5 +101,25 @@ tflite_cc_shared_object(
     deps = [
         ":sample_stable_delegate_external",
         "//tensorflow/lite/delegates/utils/experimental/stable_delegate:version_script.lds",
+    ],
+)
+
+cc_test(
+    name = "sample_stable_delegate_external_test",
+    srcs = ["sample_stable_delegate_external_test.cc"],
+    data = [
+        ":tensorflowlite_sample_stable_delegate",
+        "//tensorflow/lite:testdata/add.bin",
+    ],
+    deps = [
+        ":sample_stable_delegate",
+        "//tensorflow/lite/c:c_api",
+        "//tensorflow/lite/c:c_api_experimental",
+        "//tensorflow/lite/c:c_api_types",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/delegates/utils/experimental/stable_delegate:delegate_loader",
+        "//tensorflow/lite/experimental/acceleration/configuration:configuration_fbs",
+        "//tensorflow/lite/kernels:kernel_util",
+        "@com_google_googletest//:gtest_main",
     ],
 )

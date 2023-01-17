@@ -6,6 +6,14 @@ package(
     licenses = ["notice"],
 )
 
+exports_files(
+    srcs = [
+        "builtin_op_kernels.h",
+        "register.h",
+    ],
+    visibility = ["//tensorflow/lite/core/shims:__subpackages__"],
+)
+
 cc_library(
     name = "builtin_ops",
     srcs = ["register.cc"],
@@ -15,9 +23,7 @@ cc_library(
     ],
     compatible_with = get_compatible_with_portable(),
     visibility = [
-        "//tensorflow/lite/core/shims:__subpackages__",
-        "//tensorflow/lite/kernels:__subpackages__",
-        "//tensorflow/lite/tools/benchmark:__subpackages__",
+        "//tensorflow/lite:__subpackages__",
     ],
     deps = [
         "//tensorflow/lite:mutable_op_resolver",

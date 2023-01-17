@@ -67,7 +67,7 @@ class GpuDriver {
   // Returns the device associated with the given context.
   // device is an outparam owned by the caller, must not be null.
   // http://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__CTX.html#group__CUDA__CTX_1g4e84b109eba36cdaaade167f34ae881e
-  static port::StatusOr<GpuDeviceHandle> DeviceFromContext(GpuContext* context);
+  static tsl::StatusOr<GpuDeviceHandle> DeviceFromContext(GpuContext* context);
 
   // Creates a new CUDA stream associated with the given context via
   // cuStreamCreate.
@@ -154,8 +154,8 @@ class GpuDriver {
     // Size in bytes.
     uint64_t size_bytes;
   };
-  static port::StatusOr<VmemSpan> ReserveVirtualMemory(GpuContext* context,
-                                                       uint64_t bytes);
+  static tsl::StatusOr<VmemSpan> ReserveVirtualMemory(GpuContext* context,
+                                                      uint64_t bytes);
 
   // Frees a range of virtual addresses that were previously reserved through
   // ReserveVirtualMemory via cuMemAddressFree.
@@ -165,7 +165,7 @@ class GpuDriver {
   // Calculates the minimum alignment for memory allocations done through
   // cuMemCreate via cuMemGetAllocationGranularity.
   // https://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__VA.html#group__CUDA__VA_1g30ee906c2cf66a0347b3dfec3d7eb31a
-  static port::StatusOr<uint64_t> GetMinAllocationGranularity(
+  static tsl::StatusOr<uint64_t> GetMinAllocationGranularity(
       GpuDeviceHandle device);
 
   // Allocates physical memory and returns a handle that can be mapped to
@@ -176,7 +176,7 @@ class GpuDriver {
     uint64_t handle;
     uint64_t bytes;
   };
-  static port::StatusOr<GenericMemoryHandle> CreateMemoryHandle(
+  static tsl::StatusOr<GenericMemoryHandle> CreateMemoryHandle(
       GpuContext* context, uint64_t bytes);
 
   // Frees memory represented by the provided MemoryHandle via cuMemRelease.
@@ -250,7 +250,7 @@ class GpuDriver {
   // Gets the preferred shared memory bank configuration for the specified
   // CONTEXT (not function!), either default or four- or eight-byte bank size.
   // http://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__CTX.html#group__CUDA__CTX_1g17153a1b8b8c756f7ab8505686a4ad74
-  static port::StatusOr<GpuSharedMemConfig> ContextGetSharedMemConfig(
+  static tsl::StatusOr<GpuSharedMemConfig> ContextGetSharedMemConfig(
       GpuContext* context);
 
   // Sets the preferred shared memory bank configuration for the specified
@@ -443,20 +443,19 @@ class GpuDriver {
   // Polls (without blocking) to determine the status of an event - pending or
   // complete (or an error status).
   // http://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__EVENT.html#group__CUDA__EVENT_1g6f0704d755066b0ee705749ae911deef
-  static port::StatusOr<GpuStatus> QueryEvent(GpuContext* context,
-                                              GpuEventHandle event);
+  static tsl::StatusOr<GpuStatus> QueryEvent(GpuContext* context,
+                                             GpuEventHandle event);
 
   // -- Pointer-specific calls.
 
   // Returns the context in which pointer was allocated or registered.
-  static port::StatusOr<GpuContext*> GetPointerContext(GpuDevicePtr pointer);
+  static tsl::StatusOr<GpuContext*> GetPointerContext(GpuDevicePtr pointer);
 
   // Returns the device associated with the context from GetPointerContext().
-  static port::StatusOr<GpuDeviceHandle> GetPointerDevice(GpuDevicePtr pointer);
+  static tsl::StatusOr<GpuDeviceHandle> GetPointerDevice(GpuDevicePtr pointer);
 
   // Returns the memory space addressed by pointer.
-  static port::StatusOr<MemorySpace> GetPointerMemorySpace(
-      GpuDevicePtr pointer);
+  static tsl::StatusOr<MemorySpace> GetPointerMemorySpace(GpuDevicePtr pointer);
 
   // Returns the base address and size of the device pointer dptr.
   static tsl::Status GetPointerAddressRange(GpuDevicePtr dptr,
@@ -483,38 +482,37 @@ class GpuDriver {
 
 #if TENSORFLOW_USE_ROCM
   // tests the current device for MFMA insn support (ROCm only)
-  static port::StatusOr<bool> GetMFMASupport();
+  static tsl::StatusOr<bool> GetMFMASupport();
 #endif
 
   // Returns the number of multiprocessors on the device (note that the device
   // may be multi-GPU-per-board).
-  static port::StatusOr<int> GetMultiprocessorCount(GpuDeviceHandle device);
+  static tsl::StatusOr<int> GetMultiprocessorCount(GpuDeviceHandle device);
 
   // Returns the limit on number of threads that can be resident in a single
   // multiprocessor.
-  static port::StatusOr<int64_t> GetMaxThreadsPerMultiprocessor(
+  static tsl::StatusOr<int64_t> GetMaxThreadsPerMultiprocessor(
       GpuDeviceHandle device);
 
   // Returns the limit on number of threads which may be resident for a single
   // block (cooperative thread array).
-  static port::StatusOr<int64_t> GetMaxThreadsPerBlock(GpuDeviceHandle device);
+  static tsl::StatusOr<int64_t> GetMaxThreadsPerBlock(GpuDeviceHandle device);
 
   // Returns the amount of shared memory available on a single GPU core (i.e.
   // SM on NVIDIA devices).
-  static port::StatusOr<int64_t> GetMaxSharedMemoryPerCore(
+  static tsl::StatusOr<int64_t> GetMaxSharedMemoryPerCore(
       GpuDeviceHandle device);
 
   // Returns the amount of shared memory available for a single block
   // (cooperative thread array).
-  static port::StatusOr<int64_t> GetMaxSharedMemoryPerBlock(
+  static tsl::StatusOr<int64_t> GetMaxSharedMemoryPerBlock(
       GpuDeviceHandle device);
 
   // Returns the maximum supported number of registers per block.
-  static port::StatusOr<int64_t> GetMaxRegistersPerBlock(
-      GpuDeviceHandle device);
+  static tsl::StatusOr<int64_t> GetMaxRegistersPerBlock(GpuDeviceHandle device);
 
   // Returns the number of threads per warp.
-  static port::StatusOr<int64_t> GetThreadsPerWarp(GpuDeviceHandle device);
+  static tsl::StatusOr<int64_t> GetThreadsPerWarp(GpuDeviceHandle device);
 
   // Queries the grid limits for device with cuDeviceGetAttribute calls.
   // http://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__DEVICE.html#group__CUDA__DEVICE_1g9c3e1414f0ad901d3278a4d6645fc266
@@ -533,8 +531,8 @@ class GpuDriver {
   // Gets a specific integer-valued property about the given device.
   //
   // http://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__DEVICE.html#group__CUDA__DEVICE_1g9c3e1414f0ad901d3278a4d6645fc266
-  static port::StatusOr<int> GetDeviceAttribute(GpuDeviceAttribute attribute,
-                                                GpuDeviceHandle device);
+  static tsl::StatusOr<int> GetDeviceAttribute(GpuDeviceAttribute attribute,
+                                               GpuDeviceHandle device);
 
   // Returns whether ECC is enabled for the given GpuDeviceHandle via
   // cuDeviceGetattribute with CU_DEVICE_ATTRIBUTE_ECC_ENABLED.
@@ -578,7 +576,7 @@ class GpuDriver {
   // specified kernel/GpuFunctionHandle when launched with the specified
   // parameters.
   // http://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__OCCUPANCY.html#group__CUDA__OCCUPANCY_1gcc6e1094d05cba2cee17fe33ddd04a98
-  static port::StatusOr<int> GetMaxOccupiedBlocksPerCore(
+  static tsl::StatusOr<int> GetMaxOccupiedBlocksPerCore(
       GpuContext* context, GpuFunctionHandle kernel, int threads_per_block,
       size_t dynamic_shared_memory_bytes);
 

@@ -50,6 +50,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_dump_max_hlo_modules(-1);
   opts.set_xla_dump_module_metadata(false);
   opts.set_xla_dump_hlo_as_long_text(false);
+  opts.set_xla_dump_enable_mlir_pretty_form(true);
 #ifdef ENABLE_MKL
   opts.set_xla_cpu_use_mkl_dnn(true);
 #endif  // ENABLE_MKL
@@ -98,12 +99,14 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   // Set 4GB space limit for redzone scratch allocator.
   opts.set_xla_gpu_redzone_scratch_max_megabytes(1LL << 12);
   opts.set_xla_gpu_shape_checks(DebugOptions::RUNTIME);
-  opts.set_xla_cpu_enable_mlir_lowering(false);
   opts.set_xla_gpu_enable_mlir_lowering(true);
   opts.set_xla_gpu_enable_softmax_fusion(false);
   opts.set_xla_gpu_normalize_layouts(true);
   opts.set_xla_gpu_simplify_all_fp_conversions(true);
   opts.set_xla_dump_latency_hiding_schedule(false);
+  opts.set_xla_gpu_enable_latency_hiding_scheduler(false);
+
+  opts.set_xla_cpu_enable_mlir_tiling_and_fusion(false);
   return opts;
 }
 
@@ -777,6 +780,15 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       "If specified, dumps HLO before and after optimization passes in the "
       "pass pipelines that match this regular expression."));
   flag_list->push_back(tsl::Flag(
+      "xla_dump_enable_mlir_pretty_form",
+      bool_setter_for(&DebugOptions::set_xla_dump_enable_mlir_pretty_form),
+      debug_options->xla_dump_enable_mlir_pretty_form(),
+      "Enable dumping MLIR using pretty print form. If set to false, the "
+      "dumped "
+      "MLIR will be in the llvm-parsable format and can be processed by "
+      "mlir-opt tools. "
+      "Pretty print form is not legal MLIR."));
+  flag_list->push_back(tsl::Flag(
       "xla_gpu_enable_xla_runtime_executable",
       bool_setter_for(&DebugOptions::set_xla_gpu_enable_xla_runtime_executable),
       debug_options->xla_gpu_enable_xla_runtime_executable(),
@@ -808,11 +820,6 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       DebugOptions::ShapeChecks_Name(debug_options->xla_gpu_shape_checks()),
       "When to perform shape checks in XLA:GPU."));
   flag_list->push_back(tsl::Flag(
-      "xla_cpu_enable_mlir_lowering",
-      bool_setter_for(&DebugOptions::set_xla_cpu_enable_mlir_lowering),
-      debug_options->xla_cpu_enable_mlir_lowering(),
-      "Enable MLIR-based lowering in XLA:CPU instead of LLVM emitters."));
-  flag_list->push_back(tsl::Flag(
       "xla_gpu_enable_mlir_lowering", setter_for_xla_gpu_enable_mlir_lowering,
       debug_options->xla_gpu_enable_mlir_lowering(),
       "Enable MLIR-based lowering in XLA:GPU instead of LLVM emitters."));
@@ -838,6 +845,17 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       bool_setter_for(&DebugOptions::set_xla_dump_latency_hiding_schedule),
       debug_options->xla_dump_latency_hiding_schedule(),
       "Dump the schedule from the latency-hiding scheduler."));
+  flag_list->push_back(tsl::Flag(
+      "xla_cpu_enable_mlir_tiling_and_fusion",
+      bool_setter_for(&DebugOptions::set_xla_cpu_enable_mlir_tiling_and_fusion),
+      debug_options->xla_cpu_enable_mlir_tiling_and_fusion(),
+      "Enable MLIR tiling and fusion."));
+  flag_list->push_back(
+      tsl::Flag("xla_gpu_enable_latency_hiding_scheduler",
+                bool_setter_for(
+                    &DebugOptions::set_xla_gpu_enable_latency_hiding_scheduler),
+                debug_options->xla_gpu_enable_latency_hiding_scheduler(),
+                "Enable latency-hiding scheduler for XLA:GPU"));
 }  // NOLINT(readability/fn_size)
 
 // Allocates flag_values and flag_objects; this function must not be called more

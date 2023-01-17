@@ -411,12 +411,12 @@ struct TensorFlowLiteInlinerInterface : public DialectInlinerInterface {
     return true;
   }
   bool isLegalToInline(Operation* op, Region* dest, bool wouldBeCloned,
-                       BlockAndValueMapping&) const final {
+                       IRMapping&) const final {
     // No TFLite op restricts inlining today, revise as needed in the future.
     return true;
   }
   bool isLegalToInline(Region* dest, Region* src, bool wouldBeCloned,
-                       BlockAndValueMapping& valueMapping) const final {
+                       IRMapping& valueMapping) const final {
     return isa<WhileOp>(dest->getParentOp());
   }
 };

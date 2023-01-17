@@ -841,6 +841,19 @@ def _populate_quantization_options_default_values(
       quantization_options.op_set == quant_opts_pb2.OpSet.UNIFORM_QUANTIZED):
     raise ValueError('Uniform quantized opset does not support weight-only.')
 
+  # Converter assumes options are specified. So set SRQ explicitly.
+  if (
+      quantization_options.quantization_method.experimental_method
+      == _ExperimentalMethod.EXPERIMENTAL_METHOD_UNSPECIFIED
+  ):
+    logging.debug(
+        '"experimental_method" for QuantizationMethod is not specified.'
+        'Static range quantization is used by default.'
+    )
+    quantization_options.quantization_method.experimental_method = (
+        _ExperimentalMethod.STATIC_RANGE
+    )
+
 
 def quantize(
     saved_model_path: str,
@@ -919,9 +932,4 @@ def quantize(
           'Experimental quantization method {method.experimental_method}'
           ' is not implemented.')
   else:
-    logging.debug(
-        'Neither "method" nor "experimental_method" for QuantizationMethod '
-        'is specified. Static range quantization is used by default.')
-    return _static_range_quantize(saved_model_path, signature_keys, tags,
-                                  output_directory, quantization_options,
-                                  representative_dataset)
+    raise ValueError(f'Invalid value for QuantizationMethod: {method.method}.')

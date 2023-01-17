@@ -941,23 +941,21 @@ config_setting(
     visibility = ["//visibility:public"],
 )
 
-# copybara:uncomment_begin(configurable API loading)
-# bool_flag(
-#     name = "enable_api_indexable",
-#     build_setting_default = False,
-# )
-#
-# config_setting(
-#     name = "api_indexable_flag",
-#     flag_values = {":enable_api_indexable": "True"},
-# )
-#
-# selects.config_setting_group(
-#     name = "api_indexable",
-#     match_any = [":api_indexable_flag"] + ADDITIONAL_API_INDEXABLE_SETTINGS,
-#     visibility = ["//visibility:public"],
-# )
-# copybara:uncomment_end
+bool_flag(
+    name = "enable_api_indexable",
+    build_setting_default = False,
+)
+
+config_setting(
+    name = "api_indexable_flag",
+    flag_values = {":enable_api_indexable": "True"},
+)
+
+selects.config_setting_group(
+    name = "api_indexable",
+    match_any = [":api_indexable_flag"] + ADDITIONAL_API_INDEXABLE_SETTINGS,
+    visibility = ["//visibility:public"],
+)
 
 # DO NOT ADD ANY NEW EXCEPTIONS TO THIS LIST!
 # Instead, please use public APIs or public build rules TF provides.
@@ -1303,7 +1301,7 @@ tf_cc_shared_library(
         "//tensorflow/core/data/service:server_lib",
         "//tensorflow/core/debug",
         "//tensorflow/core/distributed_runtime:server_lib",
-        "//tensorflow/core/function:runtime_client_cc",
+        "//tensorflow/core/function/runtime_client:runtime_client_cc",
         "//tensorflow/core/grappler/clusters:cluster",
         "//tensorflow/core/grappler/clusters:single_machine",
         "//tensorflow/core/grappler/clusters:virtual_cluster",

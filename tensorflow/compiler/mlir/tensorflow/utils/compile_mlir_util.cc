@@ -421,10 +421,6 @@ void CreateConvertMlirToXlaHloPipeline(
   pm.addNestedPass<mlir::func::FuncOp>(
       mlir::mhlo::createSinkConstantsToControlFlowPass());
   pm.addPass(mlir::TF::CreateTFShapeInferencePass());
-  // LegalizeTFControlFlow encapsulates arguments for control flow operations
-  // with a tuple argument which break the assumption of resource lifting
-  // inside PromoteResourcesToArgs.
-  pm.addPass(mlir::mhlo::createLegalizeTFControlFlowPass());
 
   pm.addNestedPass<mlir::func::FuncOp>(mlir::TF::CreateLowerQuantizedPass());
   pm.addPass(mlir::mhlo::CreateLegalizeTfTypesPass());
@@ -437,7 +433,6 @@ void CreateConvertMlirToXlaHloPipeline(
     pm.addNestedPass<mlir::func::FuncOp>(std::move(target_pass));
   }
   pm.addNestedPass<mlir::func::FuncOp>(mlir::mhlo::CreateAdjustLayoutPass());
-  pm.addPass(mlir::mhlo::CreateLegalizeTFCommunicationPass());
   pm.addPass(mlir::mhlo::CreateLegalizeTFCollectivePass());
   pm.addNestedPass<mlir::func::FuncOp>(mlir::createCanonicalizerPass());
   // Run shape inference pass to propagate shapes through tensor_cast operations
@@ -455,6 +450,16 @@ void CreateConvertMlirToXlaHloPipeline(
   // the the caller.
   pm.addPass(mlir::mhlo::createStablehloLegalizeToHloPass());
 
+  // TODO(b/259271758): Move this pass within the legalization TF pass. That is
+  // required for using support quantization types with control flow because the
+  // TensorFlow uses qint types and MHLO uses quantization types and neither
+  // supports the other one. So, legalization of control flow has to happen with
+  // the other ops. Originally, control flow ops were legalized separately as
+  // they were functional ops and required module pass while legalize tf is a
+  // function pass. Now that we exclusively only use TF region ops, it can be a
+  // function pass.
+  pm.addPass(mlir::mhlo::createLegalizeTFControlFlowPass());
+
   // Run LegalizeTFPass again because the previous legalization passes can
   // expose more graph pruning and canonicalization opportunities that are
   // necessary for the second LegalizeTFPass(allow_partial_conversion=false)
@@ -463,6 +468,10 @@ void CreateConvertMlirToXlaHloPipeline(
       /*allow_partial_conversion=*/allow_partial_conversion,
       /*legalize_chlo=*/true,
       /*tf2xla_fallback_device_type=*/device_type, prefer_tf2xla));
+
+  // This pass operates on MHLO control flow ops so it should be legalized after
+  // the control flow ops are legalized.
+  pm.addPass(mlir::mhlo::CreateLegalizeTFCommunicationPass());
 
   if (CanInlineFunctionsPostLegalization(device_type))
     pm.addPass(mlir::createInlinerPass());

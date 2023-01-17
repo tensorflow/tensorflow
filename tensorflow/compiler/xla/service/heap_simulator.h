@@ -433,7 +433,7 @@ class GlobalDecreasingSizeBestFitHeap : public HeapAlgorithm<BufferType> {
   // end of the last co-located buffer.  There could be "holes" in the live
   // ranges of each co-located buffers, but in this heuristics we think they are
   // contiguous.
-  BufferIntervalCompare GetTemporalBufferIntervalCompare() const;
+  virtual BufferIntervalCompare GetTemporalBufferIntervalCompare() const;
 
   absl::flat_hash_map<const BufferType*, BufferInterval> buffer_intervals_;
   HeapResult result_;
@@ -447,6 +447,7 @@ class GlobalDecreasingSizeBestFitHeap : public HeapAlgorithm<BufferType> {
   // Alloc or Free call.
   int64_t current_time_ = 0;
 
+ protected:
   // Returns all transitive colocated buffers of this buffer interval. I.e., If
   // a buffer A is colocated with B and B is colocated with C, this function
   // returns all three of them.

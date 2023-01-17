@@ -22,6 +22,7 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "tensorflow/core/data/service/common.pb.h"
 #include "tensorflow/core/data/service/data_transfer.h"
+#include "tensorflow/core/data/service/snapshot/path_utils.h"
 #include "tensorflow/core/data/service/test_cluster.h"
 #include "tensorflow/core/data/service/test_util.h"
 #include "tensorflow/core/framework/dataset.h"
@@ -149,6 +150,15 @@ TEST_F(DispatcherClientTest, SnapshotMetadataAndDatasetDefWritten) {
   }
 }
 
+TEST_F(DispatcherClientTest, CreateCommittedChunksDirectory) {
+  TF_ASSERT_OK_AND_ASSIGN(absl::flat_hash_set<std::string> directories,
+                          StartDummySnapshots());
+  for (const auto& directory : directories) {
+    TF_ASSERT_OK(
+        Env::Default()->FileExists(CommittedChunksDirectory(directory)));
+  }
+}
+
 TEST_F(DispatcherClientTest, SnapshotsInHeartbeat) {
   TF_ASSERT_OK_AND_ASSIGN(absl::flat_hash_set<std::string> directories,
                           StartDummySnapshots());
@@ -157,10 +167,11 @@ TEST_F(DispatcherClientTest, SnapshotsInHeartbeat) {
   TF_ASSERT_OK_AND_ASSIGN(
       WorkerHeartbeatResponse worker_heartbeat_response,
       dispatcher_client_->WorkerHeartbeat(worker_heartbeat_request));
-  ASSERT_EQ(worker_heartbeat_response.snapshots_size(), directories.size());
-  for (const auto& snapshot : worker_heartbeat_response.snapshots()) {
-    ASSERT_TRUE(directories.count(snapshot.directory()));
-    ASSERT_EQ(snapshot.stream_index(), 0);
+  ASSERT_EQ(worker_heartbeat_response.snapshot_tasks_size(),
+            directories.size());
+  for (const auto& snapshot_task : worker_heartbeat_response.snapshot_tasks()) {
+    ASSERT_TRUE(directories.count(snapshot_task.base_path()));
+    ASSERT_EQ(snapshot_task.stream_index(), 0);
   }
 }
 
@@ -172,13 +183,13 @@ TEST_F(DispatcherClientTest, GetSnapshotSplit) {
   TF_ASSERT_OK_AND_ASSIGN(
       WorkerHeartbeatResponse worker_heartbeat_response,
       dispatcher_client_->WorkerHeartbeat(worker_heartbeat_request));
-  for (const auto& snapshot : worker_heartbeat_response.snapshots()) {
+  for (const auto& snapshot_task : worker_heartbeat_response.snapshot_tasks()) {
     GetSnapshotSplitRequest get_snapshot_split_request;
     Tensor split;
     bool end_of_splits;
     TF_ASSERT_OK(dispatcher_client_->GetSnapshotSplit(
-        snapshot.directory(), snapshot.stream_index(), /*source_index=*/0,
-        split, end_of_splits));
+        snapshot_task.base_path(), snapshot_task.stream_index(),
+        /*source_index=*/0, split, end_of_splits));
     ASSERT_FALSE(end_of_splits);
   }
 }

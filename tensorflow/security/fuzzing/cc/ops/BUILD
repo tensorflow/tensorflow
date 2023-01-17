@@ -8,6 +8,10 @@ load(
     "tf_cc_shared_test",
     "tf_cc_test",
 )
+load(
+    "//tensorflow/security/fuzzing:tf_fuzzing.bzl",
+    "tf_fuzz_target",
+)
 
 # copybara:uncomment package(default_applicable_licenses = ["//tensorflow:license"])
 
@@ -63,6 +67,20 @@ tf_cc_test(
         "//tensorflow/core/framework:types_proto_cc",
         "//tensorflow/core/kernels:array",
         "//tensorflow/core/kernels:matmul_op",
+        "//tensorflow/security/fuzzing/cc:fuzz_session",
+        "@com_google_fuzztest//fuzztest",
+        "@com_google_fuzztest//fuzztest:fuzztest_gtest_main",
+    ],
+)
+
+tf_fuzz_target(
+    name = "bincount_fuzz",
+    srcs = ["bincount_fuzz.cc"],
+    tags = ["no_oss"],
+    deps = [
+        "//tensorflow/cc:cc_ops",
+        "//tensorflow/core/kernels:array",
+        "//tensorflow/core/kernels:bincount_op",
         "//tensorflow/security/fuzzing/cc:fuzz_session",
         "@com_google_fuzztest//fuzztest",
         "@com_google_fuzztest//fuzztest:fuzztest_gtest_main",

@@ -184,7 +184,7 @@ TosaOp CreateOpAndInfer(PatternRewriter& rewriter, Location loc, Type result_ty,
   Type new_ty =
       newKnowledge.hasRank
           ? Type{tensorflow::GetTypeFromTFTensorShape(
-                llvm::makeArrayRef(newKnowledge.sizes), newKnowledge.dtype)}
+                llvm::ArrayRef(newKnowledge.sizes), newKnowledge.dtype)}
           : Type{mlir::UnrankedTensorType::get(newKnowledge.dtype)};
   result.setType(new_ty);
   return op;

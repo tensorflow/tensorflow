@@ -443,11 +443,17 @@ class FunctionSpec(object):
     if self.is_method:
       args = (None, *args)
 
-    kwargs = {
+    sanitized_kwargs = {
         function_type_lib.sanitize_arg_name(k): v for k, v in kwargs.items()
     }
+    if len(kwargs) != len(sanitized_kwargs):
+      raise ValueError(f"Name collision after sanitization. Please rename "
+                       f"tf.function input parameters. Original: "
+                       f"{sorted(kwargs.keys())}, Sanitized: "
+                       f"{sorted(sanitized_kwargs.keys())}")
+
     bound_arguments = self.function_type.bind_with_defaults(
-        args, kwargs, self.default_values)
+        args, sanitized_kwargs, self.default_values)
     args = bound_arguments.args[1:] if self.is_method else bound_arguments.args
     return args, bound_arguments.kwargs
 

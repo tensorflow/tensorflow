@@ -40,7 +40,7 @@ class ShapedType;
 
 namespace tensorflow {
 
-using stream_executor::port::StatusOr;
+using tsl::StatusOr;
 
 // Add custom op prefix for TensorFlow dialects.
 Status AddTensorFlowOpPrefix(std::string);

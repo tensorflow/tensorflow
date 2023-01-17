@@ -139,7 +139,7 @@ struct Reduce1DTransformPattern : public OpRewritePattern<linalg::ReduceOp> {
     // Create tensor<VECTOR_SIZExELEM_TYPE> with neutral elements for tile loop
     // init.
     Value emptyVector = rewriter.create<tensor::EmptyOp>(
-        loc, llvm::makeArrayRef({vectorSize}), elementType);
+        loc, llvm::ArrayRef({vectorSize}), elementType);
     Value filledVector =
         rewriter.create<linalg::FillOp>(loc, neutralValue, emptyVector)
             .getResult(0);
@@ -250,7 +250,7 @@ struct Reduce1DTransformPattern : public OpRewritePattern<linalg::ReduceOp> {
 
   Value cloneReduceOp(OpBuilder &b, linalg::ReduceOp reduceOp,
                       ValueRange newInputs, Value newInit) const {
-    BlockAndValueMapping bvm;
+    IRMapping bvm;
     bvm.map(reduceOp.getInputs(), newInputs);
     bvm.map(reduceOp.getInits(), ValueRange{newInit});
 
@@ -339,8 +339,9 @@ struct Reduce2DTransformPattern : public OpRewritePattern<linalg::ReduceOp> {
       setLabel(op, kReduceTransformedLabel);
 
       // Peel parallel loops.
-      peelReduction(rewriter, tilingParallelDimsResult.value(),
-                    tilingReductionDimsResult.value());
+      if (failed(peelReduction(rewriter, tilingParallelDimsResult.value(),
+                               tilingReductionDimsResult.value())))
+        return failure();
     }
 
     return success();
@@ -419,9 +420,9 @@ struct Reduce2DTransformPattern : public OpRewritePattern<linalg::ReduceOp> {
     return tilingReductionDimsResult;
   }
 
-  void peelReduction(PatternRewriter &rewriter,
-                     const TilingResult &tilingParallelDimsResult,
-                     const TilingResult &tilingReductionDimsResult) const {
+  LogicalResult peelReduction(
+      PatternRewriter &rewriter, const TilingResult &tilingParallelDimsResult,
+      const TilingResult &tilingReductionDimsResult) const {
     // Peel parallel loops.
     if (auto loop =
             dyn_cast_or_null<ParallelOp>(tilingParallelDimsResult.loop)) {
@@ -433,7 +434,30 @@ struct Reduce2DTransformPattern : public OpRewritePattern<linalg::ReduceOp> {
     if (auto loop = dyn_cast_or_null<ForOp>(tilingReductionDimsResult.loop)) {
       auto peelingResult = peelAllLoops(loop, rewriter);
       setLabel(loop, kPerfectlyTiledLoopLabel);
+
+      // Tile ops in the peeled loop again, to size 1, so they can be
+      // scalarized.
+      for (auto *loop : peelingResult) {
+        ForOp peeledLoop = dyn_cast<ForOp>(loop);
+        auto *terminatorOp = peeledLoop->getRegion(0).front().getTerminator();
+        if (!terminatorOp) return failure();
+
+        auto reduceOp =
+            terminatorOp->getOperand(0).getDefiningOp<linalg::ReduceOp>();
+        if (!reduceOp) return failure();
+
+        mlir::gml_st::TilingOptions opts;
+        opts.setTileSizeComputationFn(
+            getReductionDimTileSizes(reduceOp.getDimensions()[0], 1));
+        opts.distribute = false;
+
+        if (failed(tileAndFuseGreedily(
+                rewriter, reduceOp, opts, kReduceTransformedLabel,
+                [&](Operation *op) { return isa<linalg::MapOp>(op); })))
+          return failure();
+      }
     }
+    return success();
   }
 
   int64_t parallelDimTileSize;

@@ -375,15 +375,23 @@ def remove_training_nodes(input_graph, protected_nodes=None):
   types_to_splice = {"Identity": True}
   control_input_names = set()
   node_names_with_control_input = set()
+  node_in_colocated = set()
+
   for node in nodes_after_removal:
     for node_input in node.input:
       if "^" in node_input:
         control_input_names.add(node_input.replace("^", ""))
         node_names_with_control_input.add(node.name)
+    # Prevent colocated nodes from being lost.
+    if "_class" in node.attr:
+      for colocated_node_name in node.attr["_class"].list.s:
+        node_in_colocated.add(_get_colocated_node_name(colocated_node_name))
 
   names_to_splice = {}
   for node in nodes_after_removal:
     if node.op in types_to_splice and node.name not in protected_nodes:
+      if node.name in node_in_colocated:
+        continue
       # We don't want to remove nodes that have control edge inputs, because
       # they might be involved in subtle dependency issues that removing them
       # will jeopardize.

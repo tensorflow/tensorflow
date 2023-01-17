@@ -87,6 +87,9 @@ namespace mlir {
 #include "hlo_patterns.cc.inc"
 }  // namespace mlir
 
+using mlir::hlo::parseDimSizes;
+using mlir::hlo::printDimSizes;
+
 #include "mhlo/IR/hlo_ops_enums.cc.inc"
 #define GET_ATTRDEF_CLASSES
 #include "mhlo/IR/hlo_ops_attrs.cc.inc"
@@ -2602,12 +2605,35 @@ class ChainedDynamicBroadcastInDimCanonicalization
     return success();
   }
 };
+
+// If all dimensions are known to be nonexpanding from the attribute, replace
+// the dynamic broadcast with a cast.
+class DynamicBroadcastInDimAllDimsNonExpanding
+    : public OpRewritePattern<DynamicBroadcastInDimOp> {
+  using OpRewritePattern::OpRewritePattern;
+  LogicalResult matchAndRewrite(DynamicBroadcastInDimOp op,
+                                PatternRewriter& rewriter) const override {
+    auto resultType = op.getResult().getType().dyn_cast<RankedTensorType>();
+    if (!resultType)
+      return rewriter.notifyMatchFailure(op, "requires ranked result type");
+
+    if (!op.getKnownNonexpandingDimensions().has_value() ||
+        op.getKnownNonexpandingDimensions()->size() != resultType.getRank())
+      return rewriter.notifyMatchFailure(
+          op, "known_nonexpanding_dimensions don't cover all output dims");
+
+    rewriter.replaceOpWithNewOp<tensor::CastOp>(op, resultType,
+                                                op.getOperand());
+    return success();
+  }
+};
 }  // namespace
 
 void DynamicBroadcastInDimOp::getCanonicalizationPatterns(
     RewritePatternSet& results, MLIRContext* context) {
   results.add<ChainedDynamicBroadcastInDimCanonicalization,
               DynamicBroadcastInDimOpNotActuallyDynamic,
+              DynamicBroadcastInDimAllDimsNonExpanding,
               DynamicBroadcastToOwnShape_1, DynamicBroadcastToOwnShape_2,
               DynamicBroadcastToOwnShape_3, DynamicBroadcastToOwnShape_4>(
       context);
@@ -2620,27 +2646,6 @@ LogicalResult DynamicBroadcastInDimOp::reifyReturnTypeShapes(
   reifiedReturnShapes.push_back(
       castToIndexTensor(builder, getLoc(), adaptor.getOutputDimensions()));
   return success();
-}
-
-//===----------------------------------------------------------------------===//
-// ClampOp
-//===----------------------------------------------------------------------===//
-
-LogicalResult ClampOp::inferReturnTypeComponents(
-    MLIRContext*, Optional<Location> location, ValueShapeRange operands,
-    DictionaryAttr attributes, RegionRange regions,
-    SmallVectorImpl<ShapedTypeComponents>& inferredReturnShapes) {
-  ClampOp::Adaptor adaptor(operands, attributes, regions);
-  return hlo::inferClampOp(location, adaptor.getMin(), adaptor.getOperand(),
-                           adaptor.getMax(), inferredReturnShapes);
-}
-
-LogicalResult ClampOp::reifyReturnTypeShapes(
-    OpBuilder& builder, ValueRange operands,
-    SmallVectorImpl<Value>& reifiedReturnShapes) {
-  // For `mhlo.clamp`, the first operand may be a scalar.
-  return hlo::deriveShapeFromOperand(&builder, getOperation(), operands[1],
-                                     &reifiedReturnShapes);
 }
 
 //===----------------------------------------------------------------------===//
@@ -3512,13 +3517,13 @@ void ReduceWindowOp::build(
   for (auto i : inputs) {
     auto iType = i.getType().cast<ShapedType>();
     blockArgTypes.push_back(iType.cloneWith(
-        llvm::makeArrayRef<int64_t>(std::nullopt), iType.getElementType()));
+        llvm::ArrayRef<int64_t>(std::nullopt), iType.getElementType()));
     locs.push_back(i.getLoc());
   }
   for (auto i : init_values) {
     auto iType = i.getType().cast<ShapedType>();
     blockArgTypes.push_back(iType.cloneWith(
-        llvm::makeArrayRef<int64_t>(std::nullopt), iType.getElementType()));
+        llvm::ArrayRef<int64_t>(std::nullopt), iType.getElementType()));
     locs.push_back(i.getLoc());
   }
 
@@ -5241,6 +5246,57 @@ OpFoldResult XorOp::fold(ArrayRef<Attribute> operands) {
 #undef BINARY_FOLDER
 
 //===----------------------------------------------------------------------===//
+// ClampOp
+//===----------------------------------------------------------------------===//
+
+OpFoldResult ClampOp::fold(ArrayRef<Attribute> operands) {
+  auto operand = operands[1].dyn_cast_or_null<ElementsAttr>();
+  auto min = operands[0].dyn_cast_or_null<ElementsAttr>();
+  auto max = operands[2].dyn_cast_or_null<ElementsAttr>();
+  if (!operand || !min || !max) {
+    return {};
+  }
+  if (min.getType().getRank() == 0) {
+    min = DenseElementsAttr::get(operand.getType(),
+                                 min.getValues<Attribute>()[0]);
+  }
+  if (max.getType().getRank() == 0) {
+    max = DenseElementsAttr::get(operand.getType(),
+                                 max.getValues<Attribute>()[0]);
+  }
+  Attribute result = {};
+  if (operand.getType().getElementType().isa<FloatType>()) {
+    result = BinaryFolder<ClampOp, FloatType, APFloat, Max<APFloat>>(
+        this, ArrayRef<Attribute>{min, operand});
+    result = BinaryFolder<ClampOp, FloatType, APFloat, Min<APFloat>>(
+        this, ArrayRef<Attribute>{max, result});
+  } else if (operand.getType().getElementType().isa<IntegerType>()) {
+    result = BinaryFolder<ClampOp, IntegerType, APInt, Max<APSInt>>(
+        this, ArrayRef<Attribute>{min, operand});
+    result = BinaryFolder<ClampOp, IntegerType, APInt, Min<APSInt>>(
+        this, ArrayRef<Attribute>{max, result});
+  }
+  return result;
+}
+
+LogicalResult ClampOp::inferReturnTypeComponents(
+    MLIRContext*, Optional<Location> location, ValueShapeRange operands,
+    DictionaryAttr attributes, RegionRange regions,
+    SmallVectorImpl<ShapedTypeComponents>& inferredReturnShapes) {
+  ClampOp::Adaptor adaptor(operands, attributes, regions);
+  return hlo::inferClampOp(location, adaptor.getMin(), adaptor.getOperand(),
+                           adaptor.getMax(), inferredReturnShapes);
+}
+
+LogicalResult ClampOp::reifyReturnTypeShapes(
+    OpBuilder& builder, ValueRange operands,
+    SmallVectorImpl<Value>& reifiedReturnShapes) {
+  // For `mhlo.clamp`, the first operand may be a scalar.
+  return hlo::deriveShapeFromOperand(&builder, getOperation(), operands[1],
+                                     &reifiedReturnShapes);
+}
+
+//===----------------------------------------------------------------------===//
 // SliceOp
 //===----------------------------------------------------------------------===//
 
@@ -6224,7 +6280,10 @@ ParseResult WhileOp::parse(OpAsmParser& parser, OperationState& result) {
 LogicalResult WhileOp::fold(ArrayRef<Attribute> /*operands*/,
                             SmallVectorImpl<OpFoldResult>& results) {
   DenseIntElementsAttr condValue;
-  auto condReturnOp = cast<ReturnOp>(getCond().front().back());
+  // TODO: This folder is executed on invalid mhlo.while ops during
+  // LegalizeMhlo, mlir_hlo/tosa/tests/unary.mlir. Broken pattern?
+  auto condReturnOp = dyn_cast<ReturnOp>(getCond().front().back());
+  if (!condReturnOp) return failure();
   if (!matchPattern(condReturnOp.getOperand(0), m_Constant(&condValue)))
     return failure();
   if (condValue.getSplatValue<BoolAttr>().getValue())
@@ -6355,13 +6414,13 @@ struct MhloDialectInlinerInterface : public DialectInlinerInterface {
   // We don't have any special restrictions on what can be inlined into
   // destination regions (e.g. while/conditional bodies). Always allow it.
   bool isLegalToInline(Region* dest, Region* src, bool wouldBeCloned,
-                       BlockAndValueMapping& valueMapping) const final {
+                       IRMapping& valueMapping) const final {
     return true;
   }
   // Operations in mhlo dialect are always legal to inline since they are
   // pure.
   bool isLegalToInline(Operation*, Region*, bool,
-                       BlockAndValueMapping&) const final {
+                       IRMapping&) const final {
     return true;
   }
 };
@@ -6442,35 +6501,26 @@ void MhloDialect::printAttribute(Attribute attr, DialectAsmPrinter& os) const {
 }
 
 /// Helpers for attributes parsing.
-static ParseResult parseDims(AsmParser& parser, SmallVector<int64_t>& dims) {
-  dims.clear();
-  return parser.parseCommaSeparatedList(AsmParser::Delimiter::Square, [&] {
-    dims.emplace_back();
-    return parser.parseInteger(dims.back());
-  });
-}
-
-static ParseResult parseDimsWithMinimumElements(AsmParser& parser,
-                                                SmallVector<int64_t>& dims,
-                                                int minElements) {
-  if (failed(parseDims(parser, dims))) return failure();
-  if (static_cast<int64_t>(dims.size()) < minElements)
-    return parser.emitError(parser.getCurrentLocation())
-           << "expected at least " << minElements << " element(s), found "
-           << dims.size();
+static ParseResult parseDims(AsmParser& parser,
+                             SmallVector<int64_t>& dimSizes) {
+  dimSizes.clear();
+  auto failOrDims = parseDimSizes(parser);
+  if (failed(failOrDims)) {
+    return failure();
+  }
+  dimSizes = std::move(*failOrDims);
   return success();
 }
 
-FailureOr<SmallVector<int64_t>> parseIntArray(AsmParser& parser) {
-  SmallVector<int64_t> ints;
-  if (failed(parseDims(parser, ints))) return failure();
-  return ints;
-}
-
-void printIntArray(AsmPrinter& printer, ArrayRef<int64_t> ints) {
-  printer << '[';
-  llvm::interleaveComma(ints, printer);
-  printer << ']';
+static ParseResult parseDimsWithMinimumElements(AsmParser& parser,
+                                                SmallVector<int64_t>& dimSizes,
+                                                int minElements) {
+  if (failed(parseDims(parser, dimSizes))) return failure();
+  if (static_cast<int64_t>(dimSizes.size()) < minElements)
+    return parser.emitError(parser.getCurrentLocation())
+           << "expected at least " << minElements << " element(s), found "
+           << dimSizes.size();
+  return success();
 }
 
 /// Parse a custom attribute that resembles a struct of the form
@@ -6621,57 +6671,6 @@ Attribute GatherDimensionNumbersAttr::parse(AsmParser& parser, Type type) {
   return GatherDimensionNumbersAttr::get(parser.getContext(), offsetDims,
                                          collapsedSliceDims, startIndexMap,
                                          indexVectorDim);
-}
-
-namespace {
-
-void printCommaSeparatedDynamicShapes(AsmPrinter& printer,
-                                      llvm::ArrayRef<int64_t> shape) {
-  printer << '[';
-  auto printIntOrQuestion = [&](int64_t value) {
-    if (ShapedType::isDynamic(value))
-      printer << '?';
-    else
-      printer << value;
-  };
-  llvm::interleaveComma(shape, printer, printIntOrQuestion);
-  printer << ']';
-}
-
-ParseResult parseCommaSeparatedDynamicShapes(AsmParser& parser,
-                                             SmallVectorImpl<int64_t>& shape) {
-  auto parseElt = [&]() -> ParseResult {
-    if (!parser.parseOptionalQuestion()) {
-      shape.push_back(ShapedType::kDynamic);
-      return success();
-    }
-    return parser.parseInteger(shape.emplace_back());
-  };
-  return parser.parseCommaSeparatedList(AsmParser::Delimiter::Square, parseElt);
-}
-
-}  // namespace
-
-void TypeExtensionsAttr::print(AsmPrinter& printer) const {
-  printer << "<bounds = ";
-  printCommaSeparatedDynamicShapes(printer, getBounds());
-  printer << ">";
-}
-
-Attribute TypeExtensionsAttr::parse(AsmParser& parser, mlir::Type) {
-  if (parser.parseLess() || parser.parseKeyword("bounds") ||
-      parser.parseEqual())
-    return {};
-
-  SmallVector<int64_t> resultBounds;
-  if (parseCommaSeparatedDynamicShapes(parser, resultBounds)) {
-    parser.emitError(parser.getCurrentLocation(),
-                     "failed to parse TypeExtensions parameter 'bounds' which "
-                     "is to be a `::llvm::ArrayRef<int64_t>`");
-    return {};
-  }
-  if (parser.parseGreater()) return {};
-  return TypeExtensionsAttr::get(parser.getContext(), resultBounds);
 }
 
 // Custom printer and parser for DotDimensionNumbersAttr.

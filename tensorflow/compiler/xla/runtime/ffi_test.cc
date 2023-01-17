@@ -156,7 +156,7 @@ struct TestModule : public ffi::StatefulModule<TestModuleState> {
   // Function that tests that we can successfully decode various kinds of
   // attributes attached to custom calls.
   XLA_FFI_DEFINE_FUNCTION(FFI_AttrsDecoding, AttrsDecoding,
-                          ffi::Ffi::Bind("ffi.attrs")
+                          ffi::Ffi::Binding()
                               .State<TestModuleState>()  // state
                               .Attr<std::string_view>("str")
                               .Attr<float>("f32")
@@ -173,7 +173,7 @@ struct TestModule : public ffi::StatefulModule<TestModuleState> {
   // Function that tests that we can successfully decode various kinds of
   // arguments passed to custom calls.
   XLA_FFI_DEFINE_FUNCTION(FFI_Fill, Fill,
-                          ffi::Ffi::Bind("ffi.fill")
+                          ffi::Ffi::Binding()
                               .State<TestModuleState>()  // state
                               .Arg<int32_t>()            // arg0
                               .Arg<ffi::BufferArg>()     // arg1

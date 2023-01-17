@@ -1994,11 +1994,6 @@ class HloInstructionPattern {
     return AppendImpl(HloInstructionPatternOpcodeImpl(opcode, false));
   }
 
-  // Modifies the pattern to match only the custom call with a given target.
-  auto WithCustomCallTarget(absl::string_view custom_call_target) const {
-    return AppendImpl(HloInstructionCustomCallTargetImpl({custom_call_target}));
-  }
-
   // Modifies the pattern to match a custom call with one of the given targets.
   auto WithCustomCallTarget(
       absl::Span<const absl::string_view> custom_call_targets) const {
@@ -2451,12 +2446,6 @@ auto CustomCall(Arg0&& arg0, Args&&... args) {
 }
 
 template <typename... Args>
-auto CustomCall(absl::string_view custom_call_target, Args&&... args) {
-  return CustomCall(std::forward<Args>(args)...)
-      .WithCustomCallTarget(custom_call_target);
-}
-
-template <typename... Args>
 auto CustomCall(absl::Span<const absl::string_view> custom_call_targets,
                 Args&&... args) {
   return CustomCall(std::forward<Args>(args)...)
@@ -2471,13 +2460,6 @@ auto CustomCall(HloInstructionType** matched_inst, Arg0&& arg0,
   return detail::WithOperands(
       CustomCall(matched_inst).WithNumOperands(sizeof...(Args) + 1),
       /*operand_num=*/0, std::forward<Arg0>(arg0), std::forward<Args>(args)...);
-}
-
-template <typename HloInstructionType, typename... Args>
-auto CustomCall(HloInstructionType** matched_inst,
-                absl::string_view custom_call_target, Args&&... args) {
-  return CustomCall(matched_inst, std::forward<Args>(args)...)
-      .WithCustomCallTarget(custom_call_target);
 }
 
 template <typename HloInstructionType, typename... Args>

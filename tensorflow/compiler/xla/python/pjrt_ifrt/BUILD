@@ -54,6 +54,7 @@ cc_library(
         "//tensorflow/compiler/xla/client:xla_computation",
         "//tensorflow/compiler/xla/pjrt:mlir_to_hlo",
         "//tensorflow/compiler/xla/pjrt:pjrt_client",
+        "//tensorflow/compiler/xla/pjrt:utils",
         "//tensorflow/compiler/xla/python/ifrt",
         "//tensorflow/compiler/xla/service:hlo_proto_cc",
         "//tensorflow/compiler/xla/translate/mhlo_to_hlo:type_to_shape",
@@ -83,11 +84,11 @@ cc_library(
 xla_cc_test(
     name = "pjrt_array_impl_test_tfrt_cpu",
     size = "small",
-    srcs = [],
+    srcs = ["pjrt_array_impl_test_tfrt_cpu.cc"],
     deps = [
         ":tfrt_cpu_client_test_lib",
         "//tensorflow/compiler/xla/python/ifrt:array_impl_test_lib",
-        "@com_google_googletest//:gtest_main",
+        "@com_google_googletest//:gtest",
     ],
 )
 
