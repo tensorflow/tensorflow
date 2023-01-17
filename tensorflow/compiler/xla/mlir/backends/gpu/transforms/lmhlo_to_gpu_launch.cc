@@ -212,11 +212,6 @@ static absl::StatusOr<std::unique_ptr<ThunkSequence>> Match(
   auto thunks_for_op = std::make_unique<ThunkSequence>();
   ExtractThunksForOp(op, thunk_sequence, thunks_for_op.get());
 
-  // Operation did not exist in the original HLO module and has no corresponding
-  // thunks lowered by XLA:GPU compiler.
-  if (thunks_for_op->empty())
-    return absl::InternalError("No thunks emitted for the operation");
-
   // Check if we know how to lower a Thunk to Gpu operation(s).
   auto is_supported = [](const std::unique_ptr<Thunk>& thunk) -> bool {
     Thunk::Kind kinds[] = {Thunk::kKernel, Thunk::kCopy,
