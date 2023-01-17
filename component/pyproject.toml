@@ -9,6 +9,7 @@ readme = "README.md"
 python = "^3.9"
 pytest = "^7.2.1"
 allure-pytest = "^2.12.0"
+pylint = "^2.15.10"
 
 
 [build-system]

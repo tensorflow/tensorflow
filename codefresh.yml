@@ -41,4 +41,4 @@ steps:
     image: codefresh/cf-docker-test-reporting
     environment:
       - BUCKET_NAME=dr-codefresh-ci-reports
-      - CF_STORAGE_INTEGRATION=amazon
+      - CF_STORAGE_INTEGRATION=dr-codefresh-ci-reports
