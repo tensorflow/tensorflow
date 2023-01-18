@@ -9,13 +9,10 @@
 
 func.func @reduce_add_static(%input: tensor<100x10xf32>,
                         %output: tensor<10xf32>) -> tensor<10xf32> {
-  %res = linalg.reduce ins(%input: tensor<100x10xf32>)
-                     outs(%output: tensor<10xf32>)
-                     dimensions = [0]
-          (%in: f32, %init: f32) {
-            %0 = arith.addf %in, %init : f32
-            linalg.yield %0 : f32
-          }
+  %res = linalg.reduce { arith.addf }
+           ins(%input: tensor<100x10xf32>)
+           outs(%output: tensor<10xf32>)
+           dimensions = [0]
   return %res : tensor<10xf32>
 }
 
@@ -52,13 +49,11 @@ func.func @reduce_mulf(%input: tensor<?x?xf32>,
   %1 = tensor.empty(%0) : tensor<?xf32>
   %cst = arith.constant 0.000000e+00 : f32
   %2 = linalg.fill ins(%cst : f32) outs(%1 : tensor<?xf32>) -> tensor<?xf32>
-  %res = linalg.reduce ins(%input: tensor<?x?xf32>)
-                     outs(%2: tensor<?xf32>)
-                     dimensions = [1]
-          (%in: f32, %init: f32) {
-            %mulf = arith.mulf %in, %init : f32
-            linalg.yield %mulf : f32
-          }
+  %res = linalg.reduce { arith.mulf }
+           ins(%input: tensor<?x?xf32>)
+           outs(%2: tensor<?xf32>)
+           dimensions = [1]
+
   return %res : tensor<?xf32>
 }
 
@@ -116,22 +111,13 @@ func.func @reduce_mulf(%input: tensor<?x?xf32>,
 func.func @reduce_map_fuse(%arg0: tensor<10x100xf32>,
     %arg1: tensor<10x100xf32>, %output: tensor<10xf32>) -> tensor<10xf32> {
   %map_init = tensor.empty() : tensor<10x100xf32>
-  %mapped = linalg.map
-    ins(%arg0, %arg1 : tensor<10x100xf32>, tensor<10x100xf32>)
-    outs(%map_init : tensor<10x100xf32>)
-    (%lhs_elem: f32, %rhs_elem: f32) {
-      %0 = arith.addf %lhs_elem, %rhs_elem : f32
-      linalg.yield %0 : f32
-    }
-
-  %res = linalg.reduce
-    ins(%mapped: tensor<10x100xf32>)
-    outs(%output: tensor<10xf32>)
-    dimensions = [1]
-    (%in: f32, %init: f32) {
-      %0 = arith.addf %in, %init : f32
-      linalg.yield %0 : f32
-    }
+  %mapped = linalg.map { arith.addf }
+              ins(%arg0, %arg1 : tensor<10x100xf32>, tensor<10x100xf32>)
+              outs(%map_init : tensor<10x100xf32>)
+  %res = linalg.reduce { arith.addf }
+           ins(%mapped: tensor<10x100xf32>)
+           outs(%output: tensor<10xf32>)
+           dimensions = [1]
   return %res : tensor<10xf32>
 }
 
@@ -174,14 +160,10 @@ func.func @reduce_1d_static(%arg0: tensor<100xf32>) -> tensor<f32> {
   %1 = tensor.empty() : tensor<f32>
   %cst = arith.constant 0.0 : f32
   %init = linalg.fill ins(%cst : f32) outs(%1 : tensor<f32>) -> tensor<f32>
-  %res = linalg.reduce
-    ins(%arg0: tensor<100xf32>)
-    outs(%init: tensor<f32>)
-    dimensions = [0]
-    (%in_elem: f32, %init_elem: f32) {
-      %0 = arith.addf %in_elem, %init_elem : f32
-      linalg.yield %0 : f32
-    }
+  %res = linalg.reduce { arith.addf }
+           ins(%arg0: tensor<100xf32>)
+           outs(%init: tensor<f32>)
+           dimensions = [0]
   return %res : tensor<f32>
 }
 
@@ -234,14 +216,10 @@ func.func @reduce_1d_dynamic(%arg0: tensor<?xf32>) -> tensor<f32> {
   %1 = tensor.empty() : tensor<f32>
   %cst = arith.constant 0.0 : f32
   %init = linalg.fill ins(%cst : f32) outs(%1 : tensor<f32>) -> tensor<f32>
-  %res = linalg.reduce
-    ins(%arg0: tensor<?xf32>)
-    outs(%init: tensor<f32>)
-    dimensions = [0]
-    (%in_elem: f32, %init_elem: f32) {
-      %0 = arith.addf %in_elem, %init_elem : f32
-      linalg.yield %0 : f32
-    }
+  %res = linalg.reduce { arith.addf }
+           ins(%arg0: tensor<?xf32>)
+           outs(%init: tensor<f32>)
+           dimensions = [0]
   return %res : tensor<f32>
 }
 
@@ -276,30 +254,18 @@ func.func @reduce_map_fuse_map(%arg0: tensor<10x100xf32>,
     %arg1: tensor<10x100xf32>, %output: tensor<10xf32>) -> tensor<10xf32> {
   %map_init = tensor.empty() : tensor<10x100xf32>
   %reduce_init = tensor.empty() : tensor<10xf32>
-  %mapped = linalg.map
-    ins(%arg0, %arg1 : tensor<10x100xf32>, tensor<10x100xf32>)
-    outs(%map_init : tensor<10x100xf32>)
-    (%lhs_elem: f32, %rhs_elem: f32) {
-      %0 = arith.addf %lhs_elem, %rhs_elem : f32
-      linalg.yield %0 : f32
-    }
+  %mapped = linalg.map { arith.addf }
+              ins(%arg0, %arg1 : tensor<10x100xf32>, tensor<10x100xf32>)
+              outs(%map_init : tensor<10x100xf32>)
 
-  %reduce = linalg.reduce
-    ins(%mapped: tensor<10x100xf32>)
-    outs(%reduce_init: tensor<10xf32>)
-    dimensions = [1]
-    (%in: f32, %init: f32) {
-      %0 = arith.addf %in, %init : f32
-      linalg.yield %0 : f32
-    }
+  %reduce = linalg.reduce { arith.addf }
+              ins(%mapped: tensor<10x100xf32>)
+              outs(%reduce_init: tensor<10xf32>)
+              dimensions = [1]
 
-  %res = linalg.map
-    ins(%reduce: tensor<10xf32>)
-    outs(%output : tensor<10xf32>)
-    (%elem: f32) {
-      %0 = math.absf %elem : f32
-      linalg.yield %0 : f32
-    }
+  %res = linalg.map { math.absf }
+           ins(%reduce: tensor<10xf32>)
+           outs(%output : tensor<10xf32>)
   return %res : tensor<10xf32>
 }
 

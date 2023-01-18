@@ -1,16 +1,13 @@
-// RUN: mlir-hlo-opt %s --gml-st-cpu-transform-map="tile-size=8" \ 
+// RUN: mlir-hlo-opt %s --gml-st-cpu-transform-map="tile-size=8" \
 // RUN: --split-input-file \
 // RUN: | FileCheck %s
 
 func.func @map_unary(%input: tensor<?x?xf32>, %init: tensor<?x?xf32>)
                   -> tensor<?x?xf32> {
-  %abs = linalg.map
-         ins(%input:tensor<?x?xf32>)
-         outs(%init:tensor<?x?xf32>)
-         (%input_elem: f32) {
-           %0 = math.absf %input_elem: f32
-           linalg.yield %0: f32
-         }
+  %abs = linalg.map { math.absf }
+           ins(%input:tensor<?x?xf32>)
+           outs(%init:tensor<?x?xf32>)
+
   func.return %abs : tensor<?x?xf32>
 }
 
@@ -69,26 +66,18 @@ func.func @map_unary(%input: tensor<?x?xf32>, %init: tensor<?x?xf32>)
 func.func @map_broadcast_fuse(%arg0: tensor<?xf32>, %arg1: tensor<?x?x?xf32>,
                               %init0: tensor<?xf32>,
                               %init1: tensor<?x?x?xf32>) -> tensor<?x?x?xf32> {
-  %abs = linalg.map
-         ins(%arg0:tensor<?xf32>)
-         outs(%init0:tensor<?xf32>)
-         (%input_elem: f32) {
-           %0 = math.absf %input_elem: f32
-           linalg.yield %0: f32
-         }
+  %abs = linalg.map { math.absf }
+           ins(%arg0:tensor<?xf32>)
+           outs(%init0:tensor<?xf32>)
 
   %bcast = linalg.broadcast
-           ins(%abs : tensor<?xf32>)
-           outs(%init1 : tensor<?x?x?xf32>)
-           dimensions = [1, 2]
+             ins(%abs : tensor<?xf32>)
+             outs(%init1 : tensor<?x?x?xf32>)
+             dimensions = [1, 2]
 
-  %mapped = linalg.map
-            ins(%bcast, %arg1 : tensor<?x?x?xf32>, tensor<?x?x?xf32>)
-            outs(%init1:tensor<?x?x?xf32>)
-            (%lhs: f32, %rhs: f32) {
-              %0 = arith.addf %lhs, %rhs: f32
-              linalg.yield %0: f32
-            }
+  %mapped = linalg.map { arith.addf }
+              ins(%bcast, %arg1 : tensor<?x?x?xf32>, tensor<?x?x?xf32>)
+              outs(%init1:tensor<?x?x?xf32>)
 
   func.return %mapped : tensor<?x?x?xf32>
 }
@@ -174,29 +163,18 @@ func.func @map_broadcast_fuse(%arg0: tensor<?xf32>, %arg1: tensor<?x?x?xf32>,
 func.func @map_non_unique_users(%arg: tensor<?x?xf32>,
                               %init: tensor<?x?xf32>) -> tensor<?x?xf32> {
 
-  %exp = linalg.map
-         ins(%arg: tensor<?x?xf32>)
-         outs(%init: tensor<?x?xf32>)
-         (%input1: f32) {
-           %0 = math.exp %input1 : f32
-           linalg.yield %0: f32
-         }
+  %exp = linalg.map { math.exp }
+           ins(%arg: tensor<?x?xf32>)
+           outs(%init: tensor<?x?xf32>)
 
-  %mul = linalg.map
-         ins(%exp, %exp: tensor<?x?xf32>, tensor<?x?xf32>)
-         outs(%init: tensor<?x?xf32>)
-         (%input1: f32, %input2: f32) {
-           %0 = arith.mulf %input1, %input2 : f32
-           linalg.yield %0: f32
-         }
+  %mul = linalg.map { arith.mulf }
+           ins(%exp, %exp: tensor<?x?xf32>, tensor<?x?xf32>)
+           outs(%init: tensor<?x?xf32>)
 
-  %abs = linalg.map
-         ins(%mul: tensor<?x?xf32>)
-         outs(%init: tensor<?x?xf32>)
-         (%input1: f32) {
-           %0 = math.absf %input1 : f32
-           linalg.yield %0: f32
-         }
+  %abs = linalg.map { math.absf }
+           ins(%mul: tensor<?x?xf32>)
+           outs(%init: tensor<?x?xf32>)
+
   func.return %abs : tensor<?x?xf32>
 }
 
