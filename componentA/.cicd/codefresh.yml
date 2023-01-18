@@ -1,0 +1,108 @@
+# More examples of Codefresh YAML can be found at
+# https://codefresh.io/docs/docs/yaml-examples/examples/
+
+version: "1.0"
+metadata:
+  name: tensorflow/componentB
+# Stages can help you organize your steps in stages
+stages:
+  - "clone"
+  - "build"
+  - "phase-1"
+  - "phase-2"
+
+steps:
+  clone:
+    title: "Cloning repository"
+    type: "git-clone"
+    repo: "carsongee/tensorflow"
+    # CF_BRANCH value is auto set when pipeline is triggered
+    # Learn more at codefresh.io/docs/docs/codefresh-yaml/variables/
+    revision: "${{CF_BRANCH}}"
+    git: "github-cg"
+    stage: "clone"
+
+  build:
+    title: "Building Docker image"
+    type: "build"
+    image_name: "carsongee/tensorflow/componentA"
+    working_directory: "${{clone}}/componentA"
+    tag: "${{CF_BRANCH_TAG_NORMALIZED}}"
+    dockerfile: "Dockerfile"
+    stage: "build"
+
+  phase_1_parallel:
+    type: parallel
+    stage: "phase-1"
+    steps:
+      lint:
+        title: "Linter"
+        image: "${{build}}" # The image in which command will be executed
+        commands:
+          - "pylint --rcfile /code/.pylintrc /code/componentA /code/tests"
+      test:
+        title: "Running Tests"
+        image: "${{build}}" # The image in which command will be executed
+        fail_fast: false
+        commands:
+          - "pytest -n 3 /code/tests/unit --alluredir=$CF_VOLUME_PATH/allure-results-unit"
+
+  test_reporting_step:
+    stage: "phase-1"
+    title: Generate test reporting
+    image: codefresh/cf-docker-test-reporting
+    environment:
+      - BUCKET_NAME=dr-codefresh-ci-reports
+      - CF_STORAGE_INTEGRATION=dr-codefresh-ci-reports
+      - ALLURE_DIR=allure-results-unit
+
+  evaluate_unit_tests:
+    image: alpine:latest
+    title: Checking Unit Test Result
+    stage: "phase-1"
+    commands:
+      - echo "Unit tests failed, marking the whole pipeline as failed"
+      - exit 1
+    when:
+      condition:
+        all:
+          myCondition: test.result == 'failure'
+
+  step_name:
+    type: pending-approval
+    stage: "phase-2"
+    title: Start Phase 2
+    description: Should we start phase 2 testing?
+    timeout:
+      duration: 48
+      finalState: approved
+      timeUnit: hours
+
+  integration_test:
+    title: "Running Tests"
+    stage: "phase-2"
+    image: "${{build}}" # The image in which command will be executed
+    fail_fast: false
+    commands:
+      - "pytest -n 3 /code/tests/integration --alluredir=$CF_VOLUME_PATH/allure-results-integration"
+
+  integration_test_report:
+    title: Integration Test Report
+    image: codefresh/cf-docker-test-reporting
+    stage: "phase-2"
+    environment:
+      - BUCKET_NAME=dr-codefresh-ci-reports
+      - CF_STORAGE_INTEGRATION=dr-codefresh-ci-reports
+      - ALLURE_DIR=allure-results-integration
+
+  evaluate_integration_test:
+    image: alpine:latest
+    title: Checking Integration Test Result
+    stage: "phase-2"
+    commands:
+    - echo "Integration tests failed, marking the whole pipeline as failed"
+    - exit 1
+    when:
+      condition:
+        all:
+          myCondition: integration_test.result == 'failure'

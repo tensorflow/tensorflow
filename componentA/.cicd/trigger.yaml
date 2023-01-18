@@ -1,0 +1,19 @@
+spec:
+  triggers:
+    - name: componentA
+      type: git
+      repo: carsongee/tensorflow
+      events:
+        - pullrequest.commentAdded
+      commentRegex: /.*cf test componentA.*/gi
+      provider: github
+      branchRegex: /^((master|develop)$).*/gi
+      branchRegexInput: regex
+      disabled: false
+      options:
+        noCache: false
+        noCfCache: false
+        resetVolume: false
+      verified: true
+      context: github
+      contexts: [ ]

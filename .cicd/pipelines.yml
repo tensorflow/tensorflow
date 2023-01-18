@@ -1,0 +1,4 @@
+- pipeline_id: tensorflow/componentA
+  trigger_id: componentA
+- pipeline_id: tensorflow/componentB
+  trigger_id: componentB
