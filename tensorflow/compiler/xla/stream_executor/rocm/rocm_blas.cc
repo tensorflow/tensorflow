@@ -201,7 +201,7 @@ bool ROCMBlas::DoBlasInternalImpl(FuncT rocblas_func, Stream *stream,
   bool allow_atomics = !OpDeterminismRequired();
   rocblas_status ret;
   if (!allow_atomics) {
-    ret = rocblas_set_atomics_mode(blas_, rocblas_atomics_not_allowed);
+    ret = wrap::rocblas_set_atomics_mode(blas_, rocblas_atomics_not_allowed);
     if (err_on_failure && ret != rocblas_status_success) {
       LOG(ERROR) << "failed to to set atomics mode before " << rocblas_func.kName << ": "
                  << ToString(ret);
