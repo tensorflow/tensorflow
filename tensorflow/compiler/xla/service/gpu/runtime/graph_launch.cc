@@ -114,6 +114,13 @@ H AbslHashValue(H h, const RemainingArgsPtrs& m) {
 
 #if GOOGLE_CUDA
 
+static bool InDebugMode() {
+#ifdef NDEBUG
+  return false;
+#endif
+  return true;
+}
+
 static absl::StatusOr<OwnedGraph> CaptureGraph(
     const ServiceExecutableRunOptions* run_options,
     runtime::FunctionRef function_ref, CustomCall::RemainingArgs fwd_args,
@@ -195,7 +202,8 @@ static absl::StatusOr<OwnedGraph> CaptureGraph(
         StrFormat("Stream begin capture failed: %s", cudaGetErrorString(err)));
 
   // Call into graph capture function.
-  auto captured = function_ref(args, runtime::NoResultConverter{}, opts);
+  auto captured = function_ref(args, runtime::NoResultConverter{}, opts,
+                               /*verify_arguments=*/InDebugMode());
 
   // Always stop capturing the stream before checking `captured` result.
   if (auto err = cudaStreamEndCapture(stream, &graph); err != cudaSuccess)
