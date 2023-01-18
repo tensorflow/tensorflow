@@ -102,6 +102,7 @@ enum CONV_OP {
   CONV_OP_BACKPROP_INPUT = 1,
   CONV_OP_BACKPROP_FILTER = 2,
   CONV_OP_FUSED = 3,
+  CONV_OP_FUSED_PAD_ONLY = 4,
 };
 
 }  // namespace
@@ -219,6 +220,16 @@ static void BM_ConvFloat(::testing::benchmark::State& state, int batch,
                       .Attr("resize_align_corners", false)
                       .Finalize(conv));
       break;
+    case CONV_OP_FUSED_PAD_ONLY:
+      TF_CHECK_OK(NodeDefBuilder("conv2d", "FusedPadConv2D")
+                      .Input("input", 0, data_type)
+                      .Input("paddings", 0, DT_INT32)
+                      .Input("filter", 0, data_type)
+                      .Attr("mode", "REFLECT")
+                      .Attr("strides", {1, stride, stride, 1})
+                      .Attr("padding", padding == VALID ? "VALID" : "SAME")
+                      .Finalize(conv));
+      break;
   }
   Graph* g = new Graph(OpRegistry::Global());
   GraphConstructorOptions opts;
@@ -279,12 +290,20 @@ static void BM_ConvFloat(::testing::benchmark::State& state, int batch,
                  strings::StrCat(BS, "_", R, "_", C, "_", ID, "_", OD, "_",    \
                                  KR, "_", KC, "_", STR, "_", PAD, "_h_gpu"));  \
   }                                                                            \
+  static void BM_ConvBFloat16FusedPadOnlyCPU4_##LABEL(                         \
+      ::testing::benchmark::State& state) {                                    \
+    BM_ConvFloat(state, BS, R, C, ID, OD, KR, KC, CONV_OP_FUSED_PAD_ONLY, 4,   \
+                 STR, PAD, false, DT_BFLOAT16,                                 \
+                 strings::StrCat(BS, "_", R, "_", C, "_", ID, "_", OD, "_",    \
+                                 KR, "_", KC, "_", STR, "_", PAD, "_bf_cpu4"));\
+  }                                                                            \
   BENCHMARK(BM_ConvFloatFwdCPU1_##LABEL)->UseRealTime();                       \
   BENCHMARK(BM_ConvFloatFwdCPU4_##LABEL)->UseRealTime();                       \
   BENCHMARK(BM_ConvFloatFusedCPU1_##LABEL)->UseRealTime();                     \
   BENCHMARK(BM_ConvFloatFusedCPU4_##LABEL)->UseRealTime();                     \
   BENCHMARK(BM_ConvFloatFwdGPU_##LABEL)->UseRealTime();                        \
-  BENCHMARK(BM_ConvHalfFwdGPU_##LABEL)->UseRealTime()
+  BENCHMARK(BM_ConvHalfFwdGPU_##LABEL)->UseRealTime();                         \
+  BENCHMARK(BM_ConvBFloat16FusedPadOnlyCPU4_##LABEL)->UseRealTime();
 
 BM_ConvFloatFwd(32, 5, 5, 1248, 128, 1, 1, 1, SAME, conv0);
 BM_ConvFloatFwd(32, 8, 8, 384, 384, 1, 3, 1, SAME, conv1);
