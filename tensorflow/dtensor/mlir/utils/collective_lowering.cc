@@ -315,12 +315,7 @@ mlir::Operation* EmitCollectiveReduceScatter(
     const mlir::StringRef device_type) {
   mlir::TensorType input_type = input.getType().dyn_cast<mlir::TensorType>();
 
-  const bool need_int32_to_int64_upcast =
-      (device_type.endswith("GPU") && input_type &&
-       input_type.getElementType().isInteger(32));
-
   const bool need_transpose = scatter_dimension != 0;
-
   std::vector<int64> perm_for_transpose;
   if (need_transpose) {
     perm_for_transpose.reserve(input_type.getRank());
@@ -340,22 +335,7 @@ mlir::Operation* EmitCollectiveReduceScatter(
       transposed_shape[i] = output_shape[perm_for_transpose[i]];
     }
     output_type = mlir::RankedTensorType::get(
-        transposed_shape, need_int32_to_int64_upcast
-                              ? builder.getIntegerType(64)
-                              : input_type.getElementType());
-  }
-
-  if (need_int32_to_int64_upcast) {
-    LOG(WARNING) << "On GPU, collective reduce of int32 is not supported. "
-                    "Casting to int64 as a workaround: "
-                 << mlir::debugString(loc);
-
-    mlir::TF::CastOp cast_to_int64 = builder.create<mlir::TF::CastOp>(
-        loc,
-        mlir::RankedTensorType::get(input_type.getShape(),
-                                    builder.getIntegerType(64)),
-        input);
-    input = cast_to_int64.getResult();
+        transposed_shape, input_type.getElementType());
   }
 
   mlir::Value group_key_scalar;
@@ -379,21 +359,11 @@ mlir::Operation* EmitCollectiveReduceScatter(
       /*timeout_seconds=*/builder.getF32FloatAttr(0.),
       /*max_subdivs_per_device=*/builder.getI64IntegerAttr(16));
   SetSingleLayoutOnOp(collective_reduce_scatter, Layout::Empty());
-  mlir::Operation* prev_op = collective_reduce_scatter;
-
-  if (need_int32_to_int64_upcast) {
-    prev_op = builder.create<mlir::TF::CastOp>(
-        loc,
-        mlir::RankedTensorType::get(
-            output_type.dyn_cast<mlir::TensorType>().getShape(),
-            builder.getIntegerType(32)),
-        prev_op->getResult(0));
-  }
   if (need_transpose) {
-    prev_op = EmitTransposeOp(builder, loc, prev_op->getResult(0),
-                              perm_for_transpose);
+    return EmitTransposeOp(builder, loc,
+        collective_reduce_scatter->getResult(0), perm_for_transpose);
   }
-  return prev_op;
+  return collective_reduce_scatter;
 }
 
 mlir::Operation* EmitCollectiveGather(
