@@ -236,7 +236,6 @@ tf_kernel_library(
     tags = ["manual"],
     deps = if_mlir_generated_gpu_kernels_enabled([
         ":base_gpu_op",
-        ":gpu_add_v2_kernels",
         ":gpu_atan2_kernels",
         ":gpu_bitwise_and_kernels",
         ":gpu_bitwise_or_kernels",
@@ -265,13 +264,21 @@ tf_kernel_library(
         ":gpu_right_shift_kernels",
         ":gpu_select_v2_kernels",
         ":gpu_squared_difference_kernels",
-        ":gpu_sub_kernels",
         ":gpu_xdivy_kernels",
         ":gpu_xlog1py_kernels",
         ":gpu_xlogy_kernels",
         ":gpu_zeta_kernels",
         "//third_party/eigen3",
-    ]),
+    ]) + if_mlir_generated_experimental_kernels_enabled(
+        [
+            ":gpu_add_v2_kernels_experimental",
+            ":gpu_sub_kernels_experimental",
+        ],
+        [
+            ":gpu_add_v2_kernels",
+            ":gpu_sub_kernels",
+        ],
+    ),
 )
 
 tf_kernel_library(
@@ -1296,6 +1303,25 @@ gpu_kernel_library(
 )
 
 gpu_kernel_library(
+    name = "gpu_add_v2_kernels_experimental",
+    op = "add_v2",
+    tile_size = "1024",
+    jit_i64_indexed_for_large_tensors_types = [
+        "f16",
+        "f32",
+        "f64",
+        "i8",
+        "i16",
+        "i32",
+        "i64",
+        "c64",
+        "c128",
+    ],
+    types = [],
+    unroll_factors = "4",
+)
+
+gpu_kernel_library(
     name = "gpu_div_kernels",
     jit_types = [
         "i8",
@@ -1524,6 +1550,29 @@ gpu_kernel_library(
         "c64",
         "c128",
     ],
+    unroll_factors = "4",
+)
+
+gpu_kernel_library(
+    name = "gpu_sub_kernels_experimental",
+    op = "sub",
+    tile_size = "1024",
+    jit_types = [
+        "i8",
+        "i16",
+        "ui8",
+        "ui16",
+    ],
+    jit_i64_indexed_for_large_tensors_types = [
+        "f16",
+        "f32",
+        "f64",
+        "i32",
+        "i64",
+        "c64",
+        "c128",
+    ],
+    types = [],
     unroll_factors = "4",
 )
 
