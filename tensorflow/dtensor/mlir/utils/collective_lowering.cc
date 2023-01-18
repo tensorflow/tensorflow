@@ -99,7 +99,8 @@ bool UseNcclCommunicationOnGpu() {
   // FIXME(b/258703996): use tsl::ReadBoolFromEnvVar()
   // This is the same as gpu_use_nccl_communication() from
   // tensorflow/dtensor/python/config.py.
-  static const char* env_str = (std::getenv("DTENSOR_GPU_USE_NCCL_COMMUNICATION"));
+  static const char* env_str =
+      (std::getenv("DTENSOR_GPU_USE_NCCL_COMMUNICATION"));
   if (env_str && strcmp(env_str, "0") == 0) {
     return false;
   }
@@ -334,8 +335,8 @@ mlir::Operation* EmitCollectiveReduceScatter(
     for (int i = 0; i < output_shape.size(); i++) {
       transposed_shape[i] = output_shape[perm_for_transpose[i]];
     }
-    output_type = mlir::RankedTensorType::get(
-        transposed_shape, input_type.getElementType());
+    output_type = mlir::RankedTensorType::get(transposed_shape,
+                                              input_type.getElementType());
   }
 
   mlir::Value group_key_scalar;
@@ -361,7 +362,8 @@ mlir::Operation* EmitCollectiveReduceScatter(
   SetSingleLayoutOnOp(collective_reduce_scatter, Layout::Empty());
   if (need_transpose) {
     return EmitTransposeOp(builder, loc,
-        collective_reduce_scatter->getResult(0), perm_for_transpose);
+                           collective_reduce_scatter->getResult(0),
+                           perm_for_transpose);
   }
   return collective_reduce_scatter;
 }
