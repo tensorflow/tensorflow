@@ -57,6 +57,7 @@ limitations under the License.
 #include "tensorflow/dtensor/mlir/layout_parsing.h"
 #include "tensorflow/dtensor/mlir/spmd_expander_common.h"
 #include "tensorflow/dtensor/mlir/value_utils.h"
+#include "tensorflow/tsl/util/env_var.h"
 
 namespace tensorflow {
 namespace dtensor {
@@ -96,15 +97,15 @@ bool HasEnableReuseGroupKey() {
 }
 
 bool UseNcclCommunicationOnGpu() {
-  // FIXME(b/258703996): use tsl::ReadBoolFromEnvVar()
   // This is the same as gpu_use_nccl_communication() from
   // tensorflow/dtensor/python/config.py.
-  static const char* env_str =
-      (std::getenv("DTENSOR_GPU_USE_NCCL_COMMUNICATION"));
-  if (env_str && strcmp(env_str, "0") == 0) {
-    return false;
-  }
-  return true;
+  static bool is_enabled = [] {
+    bool ret = false;
+    TF_CHECK_OK(tsl::ReadBoolFromEnvVar("DTENSOR_GPU_USE_NCCL_COMMUNICATION",
+                                        /*default_val=*/false, &ret));
+    return ret;
+  }();
+  return is_enabled;
 }
 
 mlir::LogicalResult EmitAllReduceForXla(
