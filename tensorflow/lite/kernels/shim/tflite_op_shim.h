@@ -125,11 +125,11 @@ class TfLiteOpKernel {
 
   // Adds this op kernel to the passed in op resolver
   static void Add(MutableOpResolver* resolver) {
-    resolver->AddCustom(ImplType::kOpName, GetTfLiteRegistration());
+    resolver->AddCustom(ImplType::OpName(), GetTfLiteRegistration());
   }
 
   // The operation name
-  static const char* OpName() { return ImplType::kOpName; }
+  static const char* OpName() { return ImplType::OpName(); }
 
  protected:
   // The data that is stored in node::user_data.
