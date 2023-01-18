@@ -16,25 +16,17 @@ limitations under the License.
 // This file implements logic for lowering TensorFlow dialect's control flow to
 // the XLA dialect.
 
-#include <cstddef>
-#include <cstdint>
 #include <iterator>
-#include <numeric>
-#include <tuple>
+#include <utility>
 
-#include "llvm/ADT/ArrayRef.h"
-#include "llvm/ADT/STLExtras.h"
-#include "llvm/ADT/SetVector.h"
-#include "llvm/ADT/SmallVector.h"
-#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/SparseTensor/IR/SparseTensor.h"  // from @llvm-project
-#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
-#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/OperationSupport.h"  // from @llvm-project
+#include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassRegistry.h"  // from @llvm-project
+#include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
 #include "mlir/Transforms/RegionUtils.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/xla/mlir_hlo/mhlo/IR/hlo_ops.h"
@@ -62,123 +54,70 @@ createLegalizeTFControlFlowPass() {
 
 namespace {
 
-// Replaces block terminator (tf.Yield) with `mhlo.return`. Additional results
-// can be returned if `extra_results` is not empty.
-void ReplaceTerminator(Block* block, OpBuilder* builder) {
-  Operation* terminator = block->getTerminator();
-  assert(isa<TF::YieldOp>(terminator));
-  Location loc = terminator->getLoc();
+class LowerYieldOp : public OpConversionPattern<TF::YieldOp> {
+ public:
+  using OpConversionPattern::OpConversionPattern;
 
-  builder->setInsertionPoint(terminator);
-  auto results = llvm::to_vector<4>(terminator->getOperands());
-  builder->create<mhlo::ReturnOp>(loc, results);
-  terminator->erase();
-}
-
-void LowerIfRegion(TF::IfRegionOp op) {
-  Location loc = op.getLoc();
-  OpBuilder builder(op);
-
-  builder.setInsertionPoint(op);
-  ReplaceTerminator(&op.getThenBranch().front(), &builder);
-
-  builder.setInsertionPoint(op);
-  ReplaceTerminator(&op.getElseBranch().front(), &builder);
-
-  // Create the new `mhlo.if` op and take ownership of regions from
-  // `tf.IfRegion` op.
-  builder.setInsertionPoint(op);
-  auto if_op =
-      builder.create<mhlo::IfOp>(loc, op.getResultTypes(), op.getCond());
-  if_op.getTrueBranch().takeBody(op.getThenBranch());
-  if_op.getFalseBranch().takeBody(op.getElseBranch());
-
-  // Replace all uses of `op` results with that of `mhlo.IfOp`.
-  op->replaceAllUsesWith(if_op);
-
-  op.erase();
-}
-
-void LowerCaseRegion(TF::CaseRegionOp op) {
-  Location loc = op.getLoc();
-  OpBuilder builder(op);
-
-  for (Region& region : op.getBranches()) {
-    builder.setInsertionPoint(op);
-    ReplaceTerminator(&region.front(), &builder);
+  LogicalResult matchAndRewrite(
+      TF::YieldOp op, TF::YieldOp::Adaptor adaptor,
+      ConversionPatternRewriter& rewriter) const override {
+    rewriter.replaceOpWithNewOp<mhlo::ReturnOp>(op, adaptor.getOperands());
+    return success();
   }
+};
 
-  // Create the new `mhlo.case` op and take ownership of regions from
-  // `tf.CaseRegion` op.
-  builder.setInsertionPoint(op);
-  auto case_op = builder.create<mhlo::CaseOp>(
-      loc, op.getResultTypes(), op.getBranchIndex(), op.getBranches().size());
-  for (auto region : llvm::zip(case_op.getBranches(), op.getBranches()))
-    std::get<0>(region).takeBody(std::get<1>(region));
+template <typename SrcOpT, typename DstOpT>
+class LowerControlFlowOp : public OpConversionPattern<SrcOpT> {
+ public:
+  using OpConversionPattern<SrcOpT>::OpConversionPattern;
 
-  // Replace all uses of `op` results with that of `mhlo.CaseOp`.
-  op.replaceAllUsesWith(case_op);
-  op.erase();
-}
+  LogicalResult matchAndRewrite(
+      SrcOpT op, typename SrcOpT::Adaptor adaptor,
+      ConversionPatternRewriter& rewriter) const override {
+    DstOpT mhlo_op;
+    Location loc = op.getLoc();
+    if constexpr (std::is_same<DstOpT, mhlo::CaseOp>::value) {
+      // Explicitly handle the Case op because it has variadic regions and takes
+      // the number of regions as an input along with the operands.
+      mhlo_op = rewriter.create<DstOpT>(loc, op.getResultTypes(),
+                                        adaptor.getBranchIndex(),
+                                        op.getBranches().size());
+    } else {
+      mhlo_op = rewriter.create<DstOpT>(loc, op.getResultTypes(),
+                                        adaptor.getOperands());
+    }
 
-void LowerWhileRegion(TF::WhileRegionOp op) {
-  Location loc = op.getLoc();
-  OpBuilder builder(op);
+    // Replace all uses of `op` results with the newly created op.
+    rewriter.replaceOp(op, mhlo_op.getResults());
 
-  builder.setInsertionPoint(op);
-
-  // Create the new `mhlo.while` op with 'inputs'.
-  auto while_result_types = llvm::to_vector<4>(op.getResultTypes());
-  SmallVector<Value, 3> inputs(op.getInput());
-  auto while_op =
-      builder.create<mhlo::WhileOp>(loc, while_result_types, inputs);
-
-  // Rewrite cond and associated block arguments and terminator. Ownership of
-  // cond region is transfered over from `tf.WhileRegion` to `mhlo.while`.
-  Region& cond = while_op.getCond();
-  cond.takeBody(op.getCond());
-  Block& cond_block = cond.front();
-  builder.setInsertionPointToStart(&cond_block);
-
-  // Cond always returns a single result of bool type.
-  ReplaceTerminator(&cond_block, &builder);
-
-  // Rewrite body and associated block arguments and terminator. Ownership of
-  // body region is transfered over from `tf.WhileRegion` to `mhlo.while`.
-  Region& body = while_op.getBody();
-  body.takeBody(op.getBody());
-  Block& body_block = body.front();
-  builder.setInsertionPointToStart(&body_block);
-  ReplaceTerminator(&body_block, &builder);
-
-  // Replace all uses of `op` results with that of `mhlo.while`.
-  builder.setInsertionPoint(op);
-  if (while_op.getNumResults() > 1) {
-    for (const auto& result_it : llvm::enumerate(op.getResults()))
-      result_it.value().replaceAllUsesWith(
-          while_op.getResult(result_it.index()));
-  } else {
-    op->replaceAllUsesWith(while_op);
+    int64_t num_regions = op.getNumRegions();
+    for (int64_t idx = 0; idx < num_regions; ++idx) {
+      rewriter.inlineRegionBefore(op.getBodyRegion(idx),
+                                  mhlo_op.getBodyRegion(idx),
+                                  mhlo_op.getBodyRegion(idx).end());
+    }
+    return success();
   }
-  op.erase();
-}
+};
 }  // namespace
 
 void LegalizeTFControlFlow::runOnOperation() {
-  getOperation().walk([&](Operation* op) {
-    if (auto while_region_op = dyn_cast<TF::WhileRegionOp>(op)) {
-      LowerWhileRegion(while_region_op);
-      return;
-    }
-    if (auto if_region_op = dyn_cast<TF::IfRegionOp>(op)) {
-      LowerIfRegion(if_region_op);
-      return;
-    }
-    if (auto case_region_op = dyn_cast<TF::CaseRegionOp>(op)) {
-      LowerCaseRegion(case_region_op);
-      return;
-    }
-  });
+  Operation* op = getOperation();
+  MLIRContext* context = op->getContext();
+
+  ConversionTarget target(*context);
+  target.addLegalOp<CaseOp, IfOp, WhileOp, ReturnOp>();
+
+  RewritePatternSet patterns(context);
+  patterns
+      .add<LowerControlFlowOp<TF::CaseRegionOp, mhlo::CaseOp>,
+           LowerControlFlowOp<TF::IfRegionOp, mhlo::IfOp>,
+           LowerControlFlowOp<TF::WhileRegionOp, mhlo::WhileOp>, LowerYieldOp>(
+          context);
+
+  if (failed(applyPartialConversion(op, target, std::move(patterns)))) {
+    signalPassFailure();
+  }
 }
 }  // namespace mhlo
 }  // namespace mlir
