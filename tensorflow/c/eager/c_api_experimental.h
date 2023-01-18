@@ -294,10 +294,6 @@ TF_CAPI_EXPORT extern TFE_MonitoringSamplerCell* TFE_MonitoringGetCellSampler2(
 TF_CAPI_EXPORT extern void TFE_ContextOptionsSetTfrt(TFE_ContextOptions*,
                                                      bool use_tfrt);
 
-// Sets whether to use TFRT distributed runtime
-TF_CAPI_EXPORT extern void TFE_ContextOptionsSetTfrtDistributedRuntime(
-    TFE_ContextOptions* options, bool use_tfrt_distributed_runtime);
-
 // Returns the context_id from the EagerContext which is used by the
 // EagerService to maintain consistency between client and worker. The
 // context_id is initialized with a dummy value and is later set when the worker
