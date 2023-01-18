@@ -247,7 +247,11 @@ static absl::Status LaunchGraph(
 
         // Instantiate captured CUDA graph into an executable instance.
         cudaGraphExec_t exec;
+#if CUDA_VERSION >= 12000
+        if (auto err = cudaGraphInstantiate(&exec, &**g);
+#else
         if (auto err = cudaGraphInstantiate(&exec, &**g, nullptr, nullptr, 0);
+#endif
             err != cudaSuccess) {
           return InternalError(StrFormat("Graph instantiation failed: %s",
                                          cudaGetErrorString(err)));
@@ -281,6 +285,14 @@ static absl::Status LaunchGraph(
   auto g = CaptureGraph(run_options, function_ref, fwd_args, user_data());
   if (!g.ok()) return g.status();
 
+#if CUDA_VERSION >= 12000
+  cudaGraphExecUpdateResultInfo update_result;
+
+  auto err =
+      cudaGraphExecUpdate((*instance)->exec.get(), g->get(), &update_result);
+  if (err != cudaSuccess || update_result.result != cudaGraphExecUpdateSuccess)
+    return InternalError("Failed to update cuda graph");
+#else
   cudaGraphExecUpdateResult update_result;
   cudaGraphNode_t error_node;
 
@@ -288,6 +300,7 @@ static absl::Status LaunchGraph(
                                  &update_result);
   if (err != cudaSuccess || update_result != cudaGraphExecUpdateSuccess)
     return InternalError("Failed to update cuda graph");
+#endif
 
   // Update captured graph pointers hash.
   (*instance)->ptr_hash = ptrs_hash;
