@@ -1606,7 +1606,13 @@ class TrtGraphConverterV2(object):
     signatures = {self._input_saved_model_signature_key: self._converted_func}
     save.save(trackable, output_saved_model_dir, signatures, options=options)
 
-  def summary(self, line_length=160, detailed=True, print_fn=None):
+  @deprecation.deprecated_arg_values(
+      None,
+      "Consider using instead: `summary(..., verbosity_lvl=[0..2], ...)`",
+      warn_once=True,
+      detailed=True)
+  def summary(self, line_length=160, detailed=False, verbosity_lvl=1,
+              print_fn=None):
     """This method describes the results of the conversion by TF-TRT.
 
     It includes information such as the name of the engine, the number of nodes
@@ -1616,7 +1622,10 @@ class TrtGraphConverterV2(object):
     Args:
       line_length: Default line length when printing on the console. Minimum 160
         characters long.
-      detailed: Whether or not to show the nodes inside each TRTEngineOp.
+      verbosity_lvl:
+         - 0: No details per engine
+         - 1: Adds which OP Types are inside each TRTEngineOp.
+         - 2: Adds inputs and outputs (shape and dtype) for each TRTEngineOp.
       print_fn: Print function to use. Defaults to `print`. It will be called on
         each line of the summary. You can set it to a custom function in order
         to capture the string summary.
@@ -1696,12 +1705,22 @@ class TrtGraphConverterV2(object):
               in_dtypes, out_dtypes, in_shapes, out_shapes
           ],
           positions=positions,
-          print_fn=print_fn)
+          print_fn=print_fn
+      )
 
-      if detailed:
-        print_fn()
-        for key, value in sorted(dict(converted_ops_dict).items()):
-          print_fn(f"\t- {key}: {value}x")
+      if verbosity_lvl >= 1 or detailed:
+        print_fn("\n\t* Converted Layers:")
+        for layer_name, count in sorted(dict(converted_ops_dict).items()):
+          print_fn(f"\t\t- {layer_name}: {count}x")
+
+      if verbosity_lvl >= 2:
+        print_fn(f"\n\t* Inputs [Total: {len(in_shapes)}]:")
+        for shape, dtype in zip(in_shapes, in_dtypes):
+          print_fn(f"\t\t- {shape} [{dtype}]")
+
+        print_fn(f"\n\t* Outputs [Total: {len(out_shapes)}]:")
+        for shape, dtype in zip(out_shapes, out_dtypes):
+          print_fn(f"\t\t- {shape} [{dtype}]")
 
     print_fn(f"\n{'='*line_length}")
     print_fn(f"[*] Total number of TensorRT engines: {n_engines}")
