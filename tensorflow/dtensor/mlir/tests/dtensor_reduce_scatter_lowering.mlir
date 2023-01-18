@@ -1,4 +1,4 @@
-// RUN: dtensor-opt %s -split-input-file -dtensor-reduce-scatter-lowering -verify-diagnostics | FileCheck %s --dump-input=fail
+// RUN: DTENSOR_GPU_USE_NCCL_COMMUNICATION=1 dtensor-opt %s -split-input-file -dtensor-reduce-scatter-lowering -verify-diagnostics | FileCheck %s --dump-input=fail
 
 // Check the lowering of DTensorReduceScatter on TPU with sum reduction.
 // CHECK-LABEL: func @lower_reduce_scatter_sum_tpu
