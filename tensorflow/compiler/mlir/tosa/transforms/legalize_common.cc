@@ -784,11 +784,11 @@ llvm::Optional<Value> convertSpaceToBatchNDOp(PatternRewriter& rewriter,
   if (!matchPattern(paddings_value, m_Constant(&paddings_elems)))
     return llvm::None;
 
-  SmallVector<int32_t> a0_pad_const(2 * (input_rank));
+  SmallVector<int32_t> a0_padding(2 * (input_rank));
   SmallVector<int64_t> padded_shape(input_rank);
 
   // 1. Pad based on paddings operand.  No padding on the batch dimension.
-  // The a0_pad_const array is addressed as [input_rank][2], but
+  // The a0_padding array is addressed as [input_rank][2], but
   // it is flattened to a 1D array because LLVM appears to only accept 1D.
   //
   // padded_shape[] is the shape of the padded output of step a1.
@@ -796,15 +796,15 @@ llvm::Optional<Value> convertSpaceToBatchNDOp(PatternRewriter& rewriter,
   padded_shape[0] = input_shape[0];
 
   // Batch dimension padding
-  a0_pad_const[0] = 0;
-  a0_pad_const[1] = 0;
+  a0_padding[0] = 0;
+  a0_padding[1] = 0;
 
   // This iterator seems to be the only reliable way to get
   // int values out of a multi-dimensional ElementsAttr.
   int idx = 0;
 
   for (auto i : paddings_elems.getValues<IntegerAttr>()) {
-    a0_pad_const[idx + 2] = i.getInt();
+    a0_padding[idx + 2] = i.getInt();
     padding_sum += i.getInt();
     idx++;
   }
@@ -813,34 +813,32 @@ llvm::Optional<Value> convertSpaceToBatchNDOp(PatternRewriter& rewriter,
   for (int i = 0; i < block_rank; i++) {
     padded_shape[i + 1] = input_shape[i + 1];
     if (!ShapedType::isDynamic(padded_shape[i + 1])) {
-      int32_t lo_pad = a0_pad_const[2 * (i + 1) + 0];
-      int32_t hi_pad = a0_pad_const[2 * (i + 1) + 1];
+      int32_t lo_pad = a0_padding[2 * (i + 1) + 0];
+      int32_t hi_pad = a0_padding[2 * (i + 1) + 1];
       padded_shape[i + 1] += lo_pad + hi_pad;
     }
   }
 
   // No padding on the remaining_shape dimensions
   for (int i = 0; i < remaining_shape_rank; i++) {
-    a0_pad_const[2 * (i + block_rank + 1) + 0] = 0;
-    a0_pad_const[2 * (i + block_rank + 1) + 1] = 0;
+    a0_padding[2 * (i + block_rank + 1) + 0] = 0;
+    a0_padding[2 * (i + block_rank + 1) + 1] = 0;
     padded_shape[i + block_rank + 1] = input_shape[i + block_rank + 1];
   }
 
-  RankedTensorType a0_pad_const_attr_type =
+  RankedTensorType a0_padding_attr_type =
       tensorflow::GetTypeFromTFTensorShape({(input_rank), 2},
                                            rewriter.getIntegerType(32));
 
-  // Create a const op to generate the tensor type for the input padding array
-  auto a0_pad_const_op = rewriter.create<tosa::ConstOp>(
-      op->getLoc(), a0_pad_const_attr_type,
-      DenseElementsAttr::get(a0_pad_const_attr_type,
-                             llvm::ArrayRef(a0_pad_const)));
+  // Create padding attribute for pad op.
+  DenseI32ArrayAttr a0_padding_attr =
+      rewriter.getDenseI32ArrayAttr(llvm::makeArrayRef(a0_padding));
 
   auto a1_pad_input_op = CreateOpAndInfer<tosa::PadOp>(
       rewriter, op->getLoc(),
       tensorflow::GetTypeFromTFTensorShape(padded_shape,
                                            result_type.getElementType()),
-      input_value, a0_pad_const_op.getResult());
+      input_value, a0_padding_attr);
 
   // 2. Reshape the padded structure of shape padded_shape to
   // [batch + padded_shape[1] / block_shape[0], block_shape[0], ...

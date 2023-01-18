@@ -2509,9 +2509,18 @@ LogicalResult ConvertTFLPadOp::matchAndRewrite(
   // Not a ranked tensor output
   if (!output_type) return failure();
 
+  ElementsAttr padding_elems;
+  if (!matchPattern(tfl_pad_op.getPadding(), m_Constant(&padding_elems)))
+    return rewriter.notifyMatchFailure(op, "tfl::pad paddings is not constant");
+
+  SmallVector<int32_t> padding_vals;
+  for (int i = 0; i < padding_elems.getNumElements(); i++)
+    padding_vals.push_back(padding_elems.getValues<IntegerAttr>()[i].getInt());
+
+  DenseI32ArrayAttr padding_attr = rewriter.getDenseI32ArrayAttr(padding_vals);
+
   auto pad_op = CreateOpAndInfer<tosa::PadOp>(
-      rewriter, op->getLoc(), output_type, tfl_pad_op.getInput(),
-      tfl_pad_op.getPadding());
+      rewriter, op->getLoc(), output_type, tfl_pad_op.getInput(), padding_attr);
 
   rewriter.replaceOp(op, {pad_op.getResult()});
   return success();
@@ -2552,10 +2561,22 @@ LogicalResult ConvertTFLMirrorPadOp::matchAndRewrite(
 LogicalResult ConvertTFLPadV2Op::matchAndRewrite(
     Operation* op, PatternRewriter& rewriter) const {
   auto tfl_pad_op = cast<TFL::PadV2Op>(op);
-
   Value input = tfl_pad_op.getInput();
-  Value padding = tfl_pad_op.getPadding();
-  Value constant_value = tfl_pad_op.getConstantValues();
+
+  ElementsAttr padding_elems;
+  if (!matchPattern(tfl_pad_op.getPadding(), m_Constant(&padding_elems)))
+    return failure();
+
+  SmallVector<int32_t> padding_vals;
+  for (int i = 0; i < padding_elems.getNumElements(); i++)
+    padding_vals.push_back(padding_elems.getValues<IntegerAttr>()[i].getInt());
+
+  DenseI32ArrayAttr padding = rewriter.getDenseI32ArrayAttr(padding_vals);
+
+  DenseIntOrFPElementsAttr constant_value;
+  if (!matchPattern(tfl_pad_op.getConstantValues(), m_Constant(&constant_value)))
+    return rewriter.notifyMatchFailure(
+        op, "tfl::pad constant_values is not constant");
 
   CreateReplaceOpAndInfer<tosa::PadOp>(rewriter, op, tfl_pad_op.getType(),
                                        input, padding, constant_value);

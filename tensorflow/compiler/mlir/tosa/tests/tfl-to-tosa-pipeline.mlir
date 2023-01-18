@@ -1061,9 +1061,8 @@ func.func @test_unstack(%arg0: tensor<1x32x32x8xf32>) -> tensor<*xf32> {
 // -----
 
 // CHECK-LABEL: test_pad
-// CHECK-DAG: %[[VAR0:.*]] = "tosa.const"() {value = dense<{{\[\[}}1, 1], {{\[}}2, 2]]> : tensor<2x2xi32>}
-// CHECK-DAG: %[[PVAL:.*]] = "tosa.const"() {value = dense<0.000000e+00> : tensor<f32>}
-// CHECK: %[[VAR1:.*]] = "tosa.pad"(%arg0, %[[VAR0]], %[[PVAL]])
+// CHECK-SAME: -> tensor<4x7xf32>
+// CHECK: %[[VAL_1:.*]] = "tosa.pad"(%[[VAL_0]]) {pad_const = dense<0.000000e+00> : tensor<f32>, padding = array<i32: 1, 1, 2, 2>} : (tensor<2x3xf32>) -> tensor<4x7xf32>
 func.func @test_pad(%arg0: tensor<2x3xf32>) -> tensor<*xf32> {
   %cst = arith.constant dense<[[1, 1], [2, 2]]> : tensor<2x2xi32>
   %0 = "tfl.pad"(%arg0, %cst) : (tensor<2x3xf32>, tensor<2x2xi32>) -> tensor<*xf32>
@@ -1075,17 +1074,11 @@ func.func @test_pad(%arg0: tensor<2x3xf32>) -> tensor<*xf32> {
 
 // CHECK-LABEL: test_pad_v2
 // CHECK-SAME: -> tensor<1x257x9x28xf32>
+// CHECK: %[[VAL_1:.*]] = "tosa.pad"(%[[VAL_0]]) {pad_const = dense<-3.40282347E+38> : tensor<f32>, padding = array<i32: 0, 0, 1, 0, 0, 1, 1, 2>} : (tensor<1x256x8x25xf32>) -> tensor<1x257x9x28xf32>
 func.func @test_pad_v2(%arg0: tensor<1x256x8x25xf32>) -> (tensor<*xf32>) {
-  // CHECK-DAG: %[[PADDING:.+]] = "tosa.const"() {value = dense<{{\[\[}}0, 0], [1, 0], [0, 1], [1, 2]]> : tensor<4x2xi32>}
   %0 = "tfl.pseudo_const"() {value = dense<[[0, 0], [1, 0], [0, 1], [1, 2]]> : tensor<4x2xi32>} : () -> tensor<4x2xi32>
-
-  // CHECK-DAG: %[[VAL:.+]] = "tosa.const"() {value = dense<-3.40282347E+38> : tensor<f32>}
   %1 = "tfl.pseudo_const"() {value = dense<-3.40282347E+38> : tensor<f32>} : () -> tensor<f32>
-
-  // CHECK-DAG: %[[PAD:.+]] = "tosa.pad"(%arg0, %[[PADDING]], %[[VAL]]) : (tensor<1x256x8x25xf32>, tensor<4x2xi32>, tensor<f32>) -> tensor<1x257x9x28xf32>
   %2 = "tfl.padv2"(%arg0, %0, %1) : (tensor<1x256x8x25xf32>, tensor<4x2xi32>, tensor<f32>) -> tensor<*xf32>
-
-  // CHECK: return %[[PAD]]
   func.return %2 : tensor<*xf32>
 }
 
@@ -1419,10 +1412,8 @@ func.func @test_tile(%arg0: tensor<13x21x3xf32>) -> tensor<*xf32> {
 // -----
 
 // CHECK-LABEL: test_space_to_batch
-// CHECK-DAG: %[[VAR0:.*]] = "tosa.const"() {value = dense<{{\[}}[0, 0], [0, 1], [0, 0]]> : tensor<3x2xi32>}
 // CHECK-DAG: %[[VAR1:.*]] = "tosa.const"() {value = dense<[2, 0, 1, 3]> : tensor<4xi32>}
-// CHECK-DAG: %[[PVAL:.*]] = "tosa.const"() {value = dense<0.000000e+00> : tensor<f32>}
-// CHECK-DAG: %[[VAR2:.*]] = "tosa.pad"(%arg0, %[[VAR0]], %[[PVAL]])
+// CHECK-DAG: %[[VAR2:.*]] = "tosa.pad"(%[[VAL_0]]) {pad_const = dense<0.000000e+00> : tensor<f32>, padding = array<i32: 0, 0, 0, 1, 0, 0>}
 // CHECK-DAG: %[[VAR3:.*]] = "tosa.reshape"(%[[VAR2]]) {new_shape = array<i64: 13, 11, 2, 3>}
 // CHECK-DAG: %[[VAR4:.*]] = "tosa.transpose"(%[[VAR3]], %[[VAR1]])
 // CHECK: %[[VAR5:.*]] = "tosa.reshape"(%[[VAR4]]) {new_shape = array<i64: 26, 11, 3>}
@@ -1436,10 +1427,8 @@ func.func @test_space_to_batch(%arg0: tensor<13x21x3xf32>) -> tensor<26x11x3xf32
 // -----
 
 // CHECK-LABEL: test_space_to_batch_dyn
-// CHECK-DAG: %[[C0:.+]] = "tosa.const"() {value = dense<0.000000e+00> : tensor<f32>}
-// CHECK-DAG: %[[C1:.+]] = "tosa.const"() {value = dense<{{\[\[}}0, 0], [0, 2], [0, 0], [0, 0]]> : tensor<4x2xi32>}
 // CHECK-DAG: %[[C2:.+]] = "tosa.const"() {value = dense<[2, 4, 0, 1, 3, 5]> : tensor<6xi32>}
-// CHECK-DAG: %[[PAD:.+]] = "tosa.pad"(%arg0, %[[C1]], %[[C0]]) : (tensor<?x241x1x80xf32>, tensor<4x2xi32>, tensor<f32>) -> tensor<?x243x1x80xf32>
+// CHECK-DAG: %[[PAD:.*]] = "tosa.pad"(%[[VAL_0]]) {pad_const = dense<0.000000e+00> : tensor<f32>, padding = array<i32: 0, 0, 0, 2, 0, 0, 0, 0>}
 // CHECK-DAG: %[[R0:.+]] = "tosa.reshape"(%[[PAD]]) {new_shape = array<i64: -1, 81, 3, 1, 1, 80>}
 // CHECK-DAG: %[[T:.+]] = "tosa.transpose"(%[[R0]], %[[C2]])
 // CHECK-DAG: %[[R1:.+]] = "tosa.reshape"(%[[T]]) {new_shape = array<i64: -1, 81, 1, 80>}

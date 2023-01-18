@@ -1745,9 +1745,18 @@ LogicalResult ConvertTFPadOp::matchAndRewrite(Operation* op,
   // Not a ranked tensor output
   if (!output_type) return failure();
 
-  auto pad_op = CreateOpAndInfer<tosa::PadOp>(rewriter, op->getLoc(),
-                                              output_type, tf_pad_op.getInput(),
-                                              tf_pad_op.getPaddings());
+  ElementsAttr padding_elems;
+  if (!matchPattern(tf_pad_op.getPaddings(), m_Constant(&padding_elems)))
+    return rewriter.notifyMatchFailure(op, "tf::pad paddings is not constant");
+
+  SmallVector<int32_t> padding_vals;
+  for (int i = 0; i < padding_elems.getNumElements(); i++)
+    padding_vals.push_back(padding_elems.getValues<IntegerAttr>()[i].getInt());
+
+  DenseI32ArrayAttr padding_attr = rewriter.getDenseI32ArrayAttr(padding_vals);
+
+  auto pad_op = CreateOpAndInfer<tosa::PadOp>(
+      rewriter, op->getLoc(), output_type, tf_pad_op.getInput(), padding_attr);
 
   rewriter.replaceOp(op, {pad_op.getResult()});
   return success();

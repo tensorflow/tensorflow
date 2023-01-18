@@ -666,9 +666,7 @@ func.func @test_unstack(%arg0: tensor<1x32x32x8xf32>) -> tensor<32x32x8xf32> {
 // -----
 
 // CHECK-LABEL: test_pad
-// CHECK-DAG: %[[VAR0:.*]] = "tosa.const"() {value = dense<1> : tensor<3x2xi32>}
-// CHECK-DAG: %[[PVAL:.*]] = "tosa.const"() {value = dense<0.000000e+00> : tensor<f32>}
-// CHECK: %[[VAR1:.*]] = "tosa.pad"(%arg0, %[[VAR0]], %[[PVAL]])
+// CHECK: %[[VAL_1:.*]] = "tosa.pad"(%[[VAL_0]]) {pad_const = dense<0.000000e+00> : tensor<f32>, padding = array<i32: 1, 1, 1, 1, 1, 1>}
 func.func @test_pad(%arg0: tensor<13x21x3xf32>) -> tensor<15x23x5xf32> {
   %2 = "tf.Const"()  {value = dense<1> : tensor<3x2xi32>}  : () -> tensor<3x2xi32>
   %3 = "tf.Pad"(%arg0, %2)   : (tensor<13x21x3xf32>, tensor<3x2xi32>) -> tensor<15x23x5xf32>
@@ -845,13 +843,11 @@ func.func @test_reverse(%arg0: tensor<13x21x3xf32>) -> tensor<13x21x3xf32> {
 // -----
 
 // CHECK-LABEL: test_space_to_batch
-// CHECK-DAG: %[[VAR0:.*]] = "tosa.const"() {value = dense<{{\[}}[0, 0], [0, 1], [0, 0]]> : tensor<3x2xi32>}
-// CHECK-DAG: %[[VAR1:.*]] = "tosa.const"() {value = dense<[2, 0, 1, 3]> : tensor<4xi32>}
-// CHECK-DAG: %[[PVAL:.*]] = "tosa.const"() {value = dense<0.000000e+00> : tensor<f32>}
-// CHECK-DAG: %[[VAR2:.*]] = "tosa.pad"(%arg0, %[[VAR0]], %[[PVAL]])
-// CHECK-DAG: %[[VAR3:.*]] = "tosa.reshape"(%[[VAR2]]) {new_shape = array<i64: 13, 11, 2, 3>}
-// CHECK-DAG: %[[VAR4:.*]] = "tosa.transpose"(%[[VAR3]], %[[VAR1]])
-// CHECK: %[[VAR5:.*]] = "tosa.reshape"(%[[VAR4]]) {new_shape = array<i64: 26, 11, 3>}
+// CHECK-DAG: %[[VAL_1:.*]] = "tosa.const"() {value = dense<[2, 0, 1, 3]> : tensor<4xi32>}
+// CHECK-DAG: %[[VAL_2:.*]] = "tosa.pad"(%[[VAL_0]]) {pad_const = dense<0.000000e+00> : tensor<f32>, padding = array<i32: 0, 0, 0, 1, 0, 0>}
+// CHECK-DAG: %[[VAL_3:.*]] = "tosa.reshape"(%[[VAL_2]]) {new_shape = array<i64: 13, 11, 2, 3>}
+// CHECK-DAG: %[[VAL_4:.*]] = "tosa.transpose"(%[[VAL_3]], %[[VAL_1]])
+// CHECK: %[[VAL_5:.*]] = "tosa.reshape"(%[[VAL_4]]) {new_shape = array<i64: 26, 11, 3>}
 func.func @test_space_to_batch(%arg0: tensor<13x21x3xf32>) -> tensor<26x11x3xf32> {
   %2 = "tf.Const"()  {value = dense<2> : tensor<1xi32>}  : () -> tensor<1xi32>
   %3 = "tf.Const"()  {value = dense<[[0, 1]]> : tensor<1x2xi32>}  : () -> tensor<1x2xi32>
