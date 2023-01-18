@@ -132,7 +132,7 @@ MakeScopedTracer(StreamExecutor* stream_exec, BeginCallT begin_call,
 // TF_PER_DEVICE_MEMORY_LIMIT_MB environment variable is not set.
 static int64_t GetMemoryLimitBytes() {
   int64_t value;
-  SE_CHECK_OK(
+  TF_CHECK_OK(
       tsl::ReadInt64FromEnvVar("TF_PER_DEVICE_MEMORY_LIMIT_MB", 0, &value));
   return value * (1ll << 20);
 }
@@ -308,7 +308,7 @@ tsl::Status StreamExecutor::GetConvolveRunners(
     std::vector<std::unique_ptr<const dnn::ConvRunner>>* out_exec_plans) {
   dnn::DnnSupport* dnn_support = AsDnn();
   if (!dnn_support) {
-    return port::UnimplementedError("DNN library is not found.");
+    return tsl::errors::Unimplemented("DNN library is not found.");
   }
   return dnn_support->GetConvolveRunners(
       use_cudnn_frontend, kind, input_type, output_type, stream,
@@ -331,7 +331,7 @@ tsl::Status StreamExecutor::GetFusedConvolveRunners(
     std::vector<std::unique_ptr<const dnn::FusedConvRunner>>* out_exec_plans) {
   dnn::DnnSupport* dnn_support = AsDnn();
   if (!dnn_support) {
-    return port::UnimplementedError("DNN library is not found.");
+    return tsl::errors::Unimplemented("DNN library is not found.");
   }
   return dnn_support->GetFusedConvolveRunners(
       use_cudnn_frontend, kind, input_type, bias_type, output_type,
@@ -349,7 +349,7 @@ tsl::Status StreamExecutor::GetFusedMatmulRunners(
         out_exec_plans) {
   dnn::DnnSupport* dnn_support = AsDnn();
   if (!dnn_support) {
-    return port::UnimplementedError("DNN library is not found.");
+    return tsl::errors::Unimplemented("DNN library is not found.");
   }
 
   return dnn_support->GetFusedMatmulRunners(

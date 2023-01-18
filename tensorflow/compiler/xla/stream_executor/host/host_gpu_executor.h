@@ -54,12 +54,12 @@ class HostExecutor : public internal::StreamExecutorInterface {
 
   tsl::Status GetKernel(const MultiKernelLoaderSpec& spec,
                         KernelBase* kernel) override {
-    return port::UnimplementedError("Not Implemented");
+    return tsl::errors::Unimplemented("Not Implemented");
   }
   tsl::Status Launch(Stream* stream, const ThreadDim& thread_dims,
                      const BlockDim& block_dims, const KernelBase& kernel,
                      const KernelArgsArrayBase& args) override {
-    return port::UnimplementedError("Not Implemented");
+    return tsl::errors::Unimplemented("Not Implemented");
   }
 
   DeviceMemoryBase Allocate(uint64_t size, int64_t memory_space) override;

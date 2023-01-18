@@ -58,12 +58,12 @@ class XlaInterpreterExecutor : public internal::StreamExecutorInterface {
 
   tsl::Status GetKernel(const MultiKernelLoaderSpec &spec,
                         KernelBase *kernel) override {
-    return port::UnimplementedError("Not Implemented");
+    return tsl::errors::Unimplemented("Not Implemented");
   }
   tsl::Status Launch(Stream *stream, const ThreadDim &thread_dims,
                      const BlockDim &block_dims, const KernelBase &kernel,
                      const KernelArgsArrayBase &args) override {
-    return port::UnimplementedError("Not Implemented");
+    return tsl::errors::Unimplemented("Not Implemented");
   }
 
   DeviceMemoryBase Allocate(uint64_t size, int64_t memory_space) override;
@@ -90,27 +90,27 @@ class XlaInterpreterExecutor : public internal::StreamExecutorInterface {
 
   tsl::Status MemZero(Stream *stream, DeviceMemoryBase *location,
                       uint64_t size) override {
-    return port::InternalError("Interpreter can not memzero");
+    return tsl::errors::Internal("Interpreter can not memzero");
   }
   tsl::Status Memset(Stream *stream, DeviceMemoryBase *location,
                      uint8_t pattern, uint64_t size) override {
-    return port::InternalError("Interpreter can not memset");
+    return tsl::errors::Internal("Interpreter can not memset");
   }
   tsl::Status Memset32(Stream *stream, DeviceMemoryBase *location,
                        uint32_t pattern, uint64_t size) override {
-    return port::InternalError("Interpreter can not memset");
+    return tsl::errors::Internal("Interpreter can not memset");
   }
 
   // No "synchronize all activity" implemented for this platform at the moment.
   bool SynchronizeAllActivity() override { return true; }
   tsl::Status SynchronousMemZero(DeviceMemoryBase *location,
                                  uint64_t size) override {
-    return port::InternalError("Interpreter can not memzero");
+    return tsl::errors::Internal("Interpreter can not memzero");
   }
 
   tsl::Status SynchronousMemSet(DeviceMemoryBase *location, int value,
                                 uint64_t size) override {
-    return port::InternalError("Interpreter can not memset");
+    return tsl::errors::Internal("Interpreter can not memset");
   }
 
   tsl::Status SynchronousMemcpy(DeviceMemoryBase *dev_dst, const void *host_src,

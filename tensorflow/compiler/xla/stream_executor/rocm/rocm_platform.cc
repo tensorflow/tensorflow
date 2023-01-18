@@ -173,7 +173,7 @@ static void InitializeROCmPlatform() {
   auto status = MultiPlatformManager::PlatformWithName("ROCM");
   if (!status.ok()) {
     std::unique_ptr<gpu::ROCmPlatform> platform(new gpu::ROCmPlatform);
-    SE_CHECK_OK(MultiPlatformManager::RegisterPlatform(std::move(platform)));
+    TF_CHECK_OK(MultiPlatformManager::RegisterPlatform(std::move(platform)));
   }
 }
 

@@ -117,7 +117,7 @@ bool GpuExecutor::UnloadModule(ModuleHandle module_handle) {
 tsl::StatusOr<std::shared_ptr<DeviceMemoryBase>>
 GpuExecutor::CreateOrShareConstant(Stream* stream,
                                    const std::vector<uint8_t>& content) {
-  return port::UnimplementedError("Not implemented for ROCm");
+  return tsl::errors::Unimplemented("Not implemented for ROCm");
 }
 
 bool GpuExecutor::UnloadGpuBinary(const void* gpu_binary) {
@@ -249,7 +249,7 @@ tsl::Status GpuExecutor::GetKernel(const MultiKernelLoaderSpec& spec,
   }
 
   if (on_disk_spec != nullptr) {
-    return port::InternalError(
+    return tsl::errors::Internal(
         "Loading ROCM kernel from disk is not supported");
   } else if (spec.has_cuda_cubin_in_memory()) {
     kernelname = &spec.cuda_cubin_in_memory().kernelname();
@@ -263,13 +263,13 @@ tsl::Status GpuExecutor::GetKernel(const MultiKernelLoaderSpec& spec,
     }
     kernel_to_gpu_binary_[kernel] = hsaco;
   } else {
-    return port::InternalError("No method of loading ROCM kernel provided");
+    return tsl::errors::Internal("No method of loading ROCM kernel provided");
   }
 
   VLOG(2) << "getting function " << *kernelname << " from module " << module;
   if (!GpuDriver::GetModuleFunction(context_, module, kernelname->c_str(),
                                     rocm_kernel->gpu_function_ptr())) {
-    return port::InternalError("Failed getting module function");
+    return tsl::errors::Internal("Failed getting module function");
   }
 
   // We have to trust the kernel loader spec arity because there doesn't appear
@@ -380,7 +380,7 @@ tsl::Status GpuExecutor::LoadModule(const MultiModuleLoaderSpec& spec,
         static_cast<const void*>(spec.cuda_cubin_in_memory().data())));
     return tsl::OkStatus();
   } else {
-    return port::InternalError("No HASCO binary found");
+    return tsl::errors::Internal("No HASCO binary found");
   }
 }
 

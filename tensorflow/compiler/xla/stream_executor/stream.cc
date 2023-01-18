@@ -256,7 +256,7 @@ Stream::Stream(StreamExecutor *parent)
     : parent_(parent),
       implementation_(parent->implementation()->GetStreamImplementation()),
       allocated_(false),
-      status_(port::InternalError("Uninitialized stream")),
+      status_(tsl::errors::Internal("Uninitialized stream")),
       temporary_memory_manager_(this) {
   VLOG_CALL(PARAM(parent));
 }
@@ -2413,7 +2413,7 @@ void Stream::CheckError(bool operation_retcode) {
     return;
   }
   absl::MutexLock lock(&mu_);
-  status_ = port::InternalError("Unknown error");
+  status_ = tsl::errors::Internal("Unknown error");
 }
 
 Stream &Stream::ThenFft(fft::Plan *plan,

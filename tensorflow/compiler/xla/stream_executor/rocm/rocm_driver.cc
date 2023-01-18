@@ -43,13 +43,13 @@ bool FLAGS_gpuexec_rocm_driver_inject_init_error = false;
 bool FLAGS_gpuexec_rocm_sync_around_driver_calls = false;
 bool FLAGS_gpuexec_rocm_device_0_only = false;
 
-#define RETURN_IF_ROCM_ERROR(expr, ...)                                \
-  do {                                                                 \
-    hipError_t _res = (expr);                                          \
-    if (TF_PREDICT_FALSE(_res != hipSuccess)) {                        \
-      return port::InternalError(absl::StrCat(                         \
-          __VA_ARGS__, ": ", ::stream_executor::gpu::ToString(_res))); \
-    }                                                                  \
+#define RETURN_IF_ROCM_ERROR(expr, ...)                                     \
+  do {                                                                      \
+    hipError_t _res = (expr);                                               \
+    if (TF_PREDICT_FALSE(_res != hipSuccess)) {                             \
+      return tsl::errors::Internal(__VA_ARGS__, ": ",                       \
+                                   ::stream_executor::gpu::ToString(_res)); \
+    }                                                                       \
   } while (0)
 
 // Debugging: on each push and pop of a rocm context, verify the current device
@@ -423,7 +423,7 @@ GpuDriver::ContextGetSharedMemConfig(GpuContext* context) {
                                             const char* ptx_contents,
                                             hipModule_t* module) {
   LOG(ERROR) << "Feature not supported on ROCm platform (LoadPtx)";
-  return port::InternalError("Not Implemented");
+  return tsl::errors::Internal("Not Implemented");
 }
 
 /* static */ tsl::Status GpuDriver::LoadCubin(GpuContext* context,
@@ -446,8 +446,7 @@ GpuDriver::ContextGetSharedMemConfig(GpuContext* context) {
         hipError_t res = wrap::hipModuleLoadData(module, hsaco_data);
 
         if (res != hipSuccess) {
-          ret = port::InternalError(
-              absl::StrCat("Failed to load HSACO: ", ToString(res)));
+          ret = tsl::errors::Internal("Failed to load HSACO: ", ToString(res));
           notification.Notify();
         }
 

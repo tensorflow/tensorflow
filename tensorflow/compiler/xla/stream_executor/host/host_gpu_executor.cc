@@ -53,9 +53,9 @@ tsl::Status HostExecutor::Init(int device_ordinal,
       device_options.non_portable_tags.find("host_thread_stack_size_in_bytes");
   if (it != device_options.non_portable_tags.end()) {
     if (!absl::SimpleAtoi(it->second, &thread_stack_size_in_bytes_)) {
-      return port::InvalidArgumentError(absl::StrCat(
+      return tsl::errors::InvalidArgument(
           "Unable to parse host_thread_stack_size_in_bytes as an integer: ",
-          it->second));
+          it->second);
     }
   }
   return ::tsl::OkStatus();
