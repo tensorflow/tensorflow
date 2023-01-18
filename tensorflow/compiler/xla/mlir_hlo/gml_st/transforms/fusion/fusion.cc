@@ -176,7 +176,7 @@ struct FusionPass : public impl::FusionPassBase<FusionPass> {
   }
 
   void getDependentDialects(DialectRegistry& registry) const final {
-    registry.insert<GmlStDialect, tensor::TensorDialect>();
+    registry.insert<GmlStDialect, scf::SCFDialect, tensor::TensorDialect>();
     registerGmlStTilingInterfaceExternalModels(registry);
   }
 

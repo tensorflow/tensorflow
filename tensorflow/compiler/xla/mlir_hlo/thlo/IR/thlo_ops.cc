@@ -16,6 +16,7 @@ limitations under the License.
 #include "thlo/IR/thlo_ops.h"
 
 #include <algorithm>
+#include <cassert>
 #include <functional>
 #include <iterator>
 #include <memory>
@@ -224,15 +225,71 @@ SmallVector<Range> ConcatenateOp::getIterationDomain(OpBuilder &b) {
 
 namespace {
 
-// TODO(frgossen): Fuse this as a switch statement if all the operands are unit
-// size in the concatenation dimension.
-Value fuseConcatenateOpThroughTile(ConcatenateOp op, OpBuilder &b, Location loc,
-                                   ArrayRef<OpFoldResult> offsets,
-                                   ArrayRef<OpFoldResult> sizes,
-                                   bool useExtractSlice) {
-  int64_t concatDim = op.getDimension().getSExtValue();
-  RankedTensorType resultTy = op.getType(0).cast<RankedTensorType>();
+Value getSingleOperandTiledImplementationForConcatRecursively(
+    OpBuilder &b, Location loc, int64_t concatDim, ValueRange remainingOperands,
+    SmallVector<OpFoldResult> &remainingOffsets, ArrayRef<OpFoldResult> sizes,
+    bool useExtractSlice) {
+  assert(!remainingOperands.empty() && "expect at least one remaining operand");
+  assert(sizes[concatDim].get<Attribute>().cast<IntegerAttr>().getInt() == 1 &&
+         "expect unit size in concat dim");
 
+  // Terminal case of exactly one operand.
+  Value leadingOperand = remainingOperands.front();
+  if (remainingOperands.size() == 1) {
+    return gml_st::materializeSlice(b, loc, leadingOperand, remainingOffsets,
+                                    sizes, useExtractSlice);
+  }
+
+  // For more than one operand, distinguish between the leading operand and the
+  // remainder.
+  assert(remainingOperands.size() > 1 &&
+         "expect more than one operand at this point");
+  Value leadingOperandSizeInConcatDim =
+      b.create<tensor::DimOp>(loc, leadingOperand, concatDim);
+  Value remainingOffsetInConcatDim =
+      getValueOrCreateConstantIndexOp(b, loc, remainingOffsets[concatDim]);
+  Value leadingOperandPredicate = b.create<arith::CmpIOp>(
+      loc, arith::CmpIPredicate::ult, remainingOffsetInConcatDim,
+      leadingOperandSizeInConcatDim);
+  auto ifOp = b.create<scf::IfOp>(
+      loc, leadingOperandPredicate,
+      [&](OpBuilder &b, Location loc) {
+        Value tiledConcat =
+            getSingleOperandTiledImplementationForConcatRecursively(
+                b, loc, concatDim, {leadingOperand}, remainingOffsets, sizes,
+                useExtractSlice);
+        b.create<scf::YieldOp>(loc, tiledConcat);
+      },
+      [&](OpBuilder &b, Location loc) {
+        remainingOffsets[concatDim] =
+            b.create<arith::SubIOp>(loc, remainingOffsetInConcatDim,
+                                    leadingOperandSizeInConcatDim)
+                .getResult();
+        Value tiledConcat =
+            getSingleOperandTiledImplementationForConcatRecursively(
+                b, loc, concatDim, remainingOperands.drop_front(),
+                remainingOffsets, sizes, useExtractSlice);
+        b.create<scf::YieldOp>(loc, tiledConcat);
+      });
+  return ifOp.getResults().front();
+}
+
+Value getSingleOperandTiledImplementationForConcat(
+    ConcatenateOp op, OpBuilder &b, Location loc,
+    ArrayRef<OpFoldResult> offsets, ArrayRef<OpFoldResult> sizes,
+    bool useExtractSlice) {
+  int64_t concatDim = op.getDimension().getSExtValue();
+  SmallVector<OpFoldResult> remainingOffsets(offsets);
+  return getSingleOperandTiledImplementationForConcatRecursively(
+      b, loc, concatDim, op.getInputs(), remainingOffsets, sizes,
+      useExtractSlice);
+}
+
+Value getGenericTiledImplementationForConcat(ConcatenateOp op, OpBuilder &b,
+                                             Location loc,
+                                             ArrayRef<OpFoldResult> offsets,
+                                             ArrayRef<OpFoldResult> sizes,
+                                             bool useExtractSlice) {
   // Create a basis for the tile offsets and sizes. These hold the shared values
   // in all non-concat dimensions and are amended in the concat dimension to
   // create the individual operand tiles. Also, create the shared tile strides,
@@ -243,6 +300,7 @@ Value fuseConcatenateOpThroughTile(ConcatenateOp op, OpBuilder &b, Location loc,
 
   // Some shared values.
   Value zeroCst = b.create<arith::ConstantIndexOp>(loc, 0);
+  int64_t concatDim = op.getDimension().getSExtValue();
   Value concatDimCst = b.create<arith::ConstantIndexOp>(loc, concatDim);
   Value maxTileSizeInConcatDim =
       getValueOrCreateConstantIndexOp(b, loc, sizes[concatDim]);
@@ -255,8 +313,8 @@ Value fuseConcatenateOpThroughTile(ConcatenateOp op, OpBuilder &b, Location loc,
 
   // Create the relevant subsets per operand. These tiles can be empty at
   // runtime.
-  SmallVector<Value> subOperands;
-  subOperands.reserve(op.getNumDpsInputs());
+  SmallVector<Value> tiledOperands;
+  tiledOperands.reserve(op.getNumDpsInputs());
   for (Value operand : op.getInputs()) {
     // Find the current operand's tile offset in the concat dimension. This is
     // the remaining offset clamped into the bounds of the operand. Note that
@@ -274,7 +332,7 @@ Value fuseConcatenateOpThroughTile(ConcatenateOp op, OpBuilder &b, Location loc,
         loc, remainingOperandSizeInConcatDim, maxTileSizeInConcatDim);
 
     // Create the operand tile and materialize the subset for this operand.
-    subOperands.push_back(
+    tiledOperands.push_back(
         gml_st::materializeSlice(b, loc, operand, operandTileOffsetsBase,
                                  operandTileSizesBase, operandTileStrides,
                                  /*useExtractSlice=*/false));
@@ -294,14 +352,32 @@ Value fuseConcatenateOpThroughTile(ConcatenateOp op, OpBuilder &b, Location loc,
   }
 
   // Create the tiled concat op.
-  Value subInit = gml_st::materializeSlice(b, loc, op.getInit(), offsets, sizes,
-                                           useExtractSlice);
-  auto subResultType =
-      RankedTensorType::get(subInit.getType().cast<ShapedType>().getShape(),
-                            resultTy.getElementType());
-  auto concatOp = b.create<thlo::ConcatenateOp>(
-      loc, subResultType, subOperands, subInit, b.getIndexAttr(concatDim));
-  return concatOp.getResults().front();
+  Value tiledInit = gml_st::materializeSlice(b, loc, op.getInit(), offsets,
+                                             sizes, useExtractSlice);
+  auto tiledConcat =
+      b.create<thlo::ConcatenateOp>(loc, tiledInit.getType(), tiledOperands,
+                                    tiledInit, b.getIndexAttr(concatDim));
+  return tiledConcat.getResults().front();
+}
+
+Value getTiledImplementationForConcat(ConcatenateOp op, OpBuilder &b,
+                                      Location loc,
+                                      ArrayRef<OpFoldResult> offsets,
+                                      ArrayRef<OpFoldResult> sizes,
+                                      bool useExtractSlice) {
+  // If the tile is of unit size in the concatenation dimension, we can generate
+  // the tiled implementation based on a single operand.
+  int64_t concatDim = op.getDimension().getSExtValue();
+  OpFoldResult tileSizeInConcatDim = sizes[concatDim];
+  if (tileSizeInConcatDim.is<Attribute>() &&
+      tileSizeInConcatDim.get<Attribute>().cast<IntegerAttr>().getInt() == 1) {
+    return getSingleOperandTiledImplementationForConcat(op, b, loc, offsets,
+                                                        sizes, useExtractSlice);
+  }
+
+  // Otherwise, rely on the generic implementation.
+  return getGenericTiledImplementationForConcat(op, b, loc, offsets, sizes,
+                                                useExtractSlice);
 }
 
 }  // namespace
@@ -309,8 +385,8 @@ Value fuseConcatenateOpThroughTile(ConcatenateOp op, OpBuilder &b, Location loc,
 SmallVector<Operation *> ConcatenateOp::getTiledImplementation(
     OpBuilder &b, ArrayRef<OpFoldResult> offsets, ArrayRef<OpFoldResult> sizes,
     bool useExtractSlice) {
-  auto tiled = fuseConcatenateOpThroughTile(*this, b, getLoc(), offsets, sizes,
-                                            useExtractSlice);
+  auto tiled = getTiledImplementationForConcat(*this, b, getLoc(), offsets,
+                                               sizes, useExtractSlice);
   return {tiled.getDefiningOp()};
 }
 
