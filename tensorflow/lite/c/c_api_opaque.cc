@@ -350,3 +350,15 @@ const char* TfLiteOpaqueContextGetName(
   auto* subgraph = GetSubgraph(opaque_context);
   return subgraph->GetName().c_str();
 }
+
+TfLiteStatus TfLiteOpaqueContextResizeTensor(TfLiteOpaqueContext* context,
+                                             TfLiteOpaqueTensor* tensor,
+                                             TfLiteIntArray* new_size) {
+  // The following casts are safe only because this code is part of the
+  // TF Lite runtime implementation.  Apps using TF Lite should not rely on
+  // TfLiteOpaqueContext and TfLiteContext being equivalent, or on
+  // TfLiteOpaqueTensor and TfLiteTensor being equivalent.
+  TfLiteContext* tflite_context = reinterpret_cast<TfLiteContext*>(context);
+  return tflite_context->ResizeTensor(
+      tflite_context, reinterpret_cast<TfLiteTensor*>(tensor), new_size);
+}

@@ -342,6 +342,17 @@ TFL_CAPI_EXPORT
 const char* TfLiteOpaqueContextGetName(
     const struct TfLiteOpaqueContext* opaque_context);
 
+// Resizes the provided 'tensor' that is associated with the provided
+// 'context' so that the 'tensor's shape matches the dimensionality specified
+// via the provided 'new_size' array.  Returns 'kTfLiteOk' in
+// case of success.  Any other return value indicates a failure and will leave
+// the 'tensor' in an unspecified state.  The TF Lite runtime takes ownership
+// of the 'new_size' array, even in case of failure.
+TFL_CAPI_EXPORT
+TfLiteStatus TfLiteOpaqueContextResizeTensor(TfLiteOpaqueContext* context,
+                                             TfLiteOpaqueTensor* tensor,
+                                             TfLiteIntArray* new_size);
+
 #ifdef __cplusplus
 }  // extern "C"
 #endif  // __cplusplus
