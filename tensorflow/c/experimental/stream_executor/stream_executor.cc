@@ -314,12 +314,12 @@ class CStreamExecutor : public internal::StreamExecutorInterface {
                                  uint64 size) override {
     // TODO(annarev): figure out if we should support memzero/memset
     // functionality by allocating on host and then copying to device.
-    return port::UnimplementedError(
+    return tsl::errors::Unimplemented(
         "SynchronousMemZero is not supported by pluggable device.");
   }
   tsl::Status SynchronousMemSet(DeviceMemoryBase* location, int value,
                                 uint64 size) override {
-    return port::UnimplementedError(
+    return tsl::errors::Unimplemented(
         "SynchronousMemSet is not supported by pluggable device.");
   }
   tsl::Status SynchronousMemcpy(DeviceMemoryBase* gpu_dst, const void* host_src,
@@ -571,7 +571,7 @@ class CStreamExecutor : public internal::StreamExecutorInterface {
   }
   int PlatformDeviceCount() override { return visible_device_count_; }
   tsl::Status EnablePeerAccessTo(StreamExecutorInterface* other) override {
-    return port::UnimplementedError(
+    return tsl::errors::Unimplemented(
         "EnablePeerAccessTo is not supported by pluggable device.");
   }
   bool CanEnablePeerAccessTo(StreamExecutorInterface* other) override {
@@ -802,7 +802,7 @@ tsl::Status InitStreamExecutorPlugin(SEInitPluginFn init_fn,
           std::move(platform), params.destroy_platform, std::move(platform_fns),
           params.destroy_platform_fns, std::move(device_fns), std::move(se),
           std::move(timer_fns)));
-  SE_CHECK_OK(stream_executor::MultiPlatformManager::RegisterPlatform(
+  TF_CHECK_OK(stream_executor::MultiPlatformManager::RegisterPlatform(
       std::move(cplatform)));
   // TODO(annarev): Return `use_bfc_allocator` value in some way so that it is
   // available in `PluggableDeviceProcessState` once the latter is checked in.
