@@ -99,7 +99,6 @@ cc_library(
     srcs = ["gcs_file_system.cc"],
     hdrs = ["gcs_file_system.h"],
     copts = tsl_copts(),
-    linkstatic = 1,  # Needed since alwayslink is broken in bazel b/27630669
     visibility = ["//visibility:public"],
     deps = [
         ":compute_engine_metadata_client",
@@ -143,7 +142,6 @@ cc_library(
         "-DTPU_GCS_FS",
         "-DPLATFORM_CLOUD_TPU",
     ],
-    linkstatic = 1,  # Needed since alwayslink is broken in bazel b/27630669
     visibility = ["//visibility:public"],
     deps = [
         ":compute_engine_metadata_client",
