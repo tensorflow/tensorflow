@@ -232,49 +232,32 @@ Value fuseConcatenateOpThroughTile(ConcatenateOp op, OpBuilder &b, Location loc,
                                    bool useExtractSlice) {
   int64_t concatDim = op.getDimension().getSExtValue();
   RankedTensorType resultTy = op.getType(0).cast<RankedTensorType>();
-  int64_t rank = resultTy.getRank();
-  OperandRange allOperands = op.getInputs();
 
-  // Create the shared tile strides, which are the exact same for every operand
-  // tile. Also create a basis for the tile offsets and sizes. These hold the
-  // shared values in all non-concat dimensions and can be amended in the concat
-  // dimension to create the individual operand tiles.
-  SmallVector<Value> sharedTileStrides(rank);
-  SmallVector<Value> baseTileOffsets(rank);
-  SmallVector<Value> baseTileSizes(rank);
-  SmallVector<Value> tileOffsets = getAsValues(b, loc, offsets);
-  SmallVector<Value> tileSizes = getAsValues(b, loc, sizes);
-  SmallVector<Value> tileStrides(sizes.size(),
-                                 b.create<arith::ConstantIndexOp>(loc, 1));
-  for (int64_t i = 0; i < rank; ++i) {
-    sharedTileStrides[i] =
-        getValueOrCreateConstantIndexOp(b, loc, tileStrides[i]);
-
-    // The tile offsets and sizes differ in the concat dimension. Do not
-    // populate these.
-    if (i == static_cast<int64_t>(concatDim)) continue;
-
-    baseTileOffsets[i] =
-        getValueOrCreateConstantIndexOp(b, loc, tileOffsets[i]);
-    baseTileSizes[i] = getValueOrCreateConstantIndexOp(b, loc, tileSizes[i]);
-  }
+  // Create a basis for the tile offsets and sizes. These hold the shared values
+  // in all non-concat dimensions and are amended in the concat dimension to
+  // create the individual operand tiles. Also, create the shared tile strides,
+  // which are the exact same for every operand tile.
+  SmallVector<OpFoldResult> operandTileOffsetsBase(offsets);
+  SmallVector<OpFoldResult> operandTileSizesBase(sizes);
+  SmallVector<OpFoldResult> operandTileStrides(sizes.size(), b.getIndexAttr(1));
 
   // Some shared values.
-  SmallVector<int64_t> allDynamic(rank, ShapedType::kDynamic);
   Value zeroCst = b.create<arith::ConstantIndexOp>(loc, 0);
   Value concatDimCst = b.create<arith::ConstantIndexOp>(loc, concatDim);
-  Value maxTileSizeInConcatDim = tileSizes[concatDim];
+  Value maxTileSizeInConcatDim =
+      getValueOrCreateConstantIndexOp(b, loc, sizes[concatDim]);
 
   // The remaining tile offset in the concat dimension is subtracted by each
   // operand's size in that dimension. We maintain the invariant
   // remainingTileOffsetInConcatDim >= 0.
-  Value remainingTileOffsetInConcatDim = tileOffsets[concatDim];
+  Value remainingTileOffsetInConcatDim =
+      getValueOrCreateConstantIndexOp(b, loc, offsets[concatDim]);
 
   // Create the relevant subsets per operand. These tiles can be empty at
   // runtime.
   SmallVector<Value> subOperands;
-  subOperands.reserve(allOperands.size());
-  for (Value operand : allOperands) {
+  subOperands.reserve(op.getNumDpsInputs());
+  for (Value operand : op.getInputs()) {
     // Find the current operand's tile offset in the concat dimension. This is
     // the remaining offset clamped into the bounds of the operand. Note that
     // the remaining offset is always >= 0.
@@ -282,25 +265,24 @@ Value fuseConcatenateOpThroughTile(ConcatenateOp op, OpBuilder &b, Location loc,
         b.create<tensor::DimOp>(loc, operand, concatDimCst);
     Value operandTileOffsetInConcatDim = b.create<arith::MinUIOp>(
         loc, remainingTileOffsetInConcatDim, operandSizeInConcatDim);
-    baseTileOffsets[concatDim] = operandTileOffsetInConcatDim;
+    operandTileOffsetsBase[concatDim] = operandTileOffsetInConcatDim;
 
     // Find the current operand's tile size in the concat dimension.
     Value remainingOperandSizeInConcatDim = b.create<arith::SubIOp>(
         loc, operandSizeInConcatDim, operandTileOffsetInConcatDim);
-    baseTileSizes[concatDim] = b.create<arith::MinUIOp>(
+    operandTileSizesBase[concatDim] = b.createOrFold<arith::MinUIOp>(
         loc, remainingOperandSizeInConcatDim, maxTileSizeInConcatDim);
 
     // Create the operand tile and materialize the subset for this operand.
-    subOperands.push_back(gml_st::materializeSlice(
-        b, loc, operand, getMixedValues(allDynamic, baseTileOffsets, b),
-        getMixedValues(allDynamic, baseTileSizes, b),
-        getMixedValues(allDynamic, sharedTileStrides, b),
-        /*useExtractSlice=*/false));
+    subOperands.push_back(
+        gml_st::materializeSlice(b, loc, operand, operandTileOffsetsBase,
+                                 operandTileSizesBase, operandTileStrides,
+                                 /*useExtractSlice=*/false));
 
     // Unless it is the last operand, update the remaining tile offset in the
     // concat dimension. The remaining offset is subtracted by the operand's
     // size but must remain >= 0.
-    if (operand != allOperands.back()) {
+    if (operand != op.getInputs().back()) {
       Value cmp = b.create<arith::CmpIOp>(loc, arith::CmpIPredicate::ule,
                                           remainingTileOffsetInConcatDim,
                                           operandSizeInConcatDim);
