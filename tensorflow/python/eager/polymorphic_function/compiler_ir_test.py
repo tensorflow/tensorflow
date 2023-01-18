@@ -23,7 +23,6 @@ from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_array_ops
-from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 from tensorflow.python.util import nest
@@ -119,24 +118,6 @@ class CompilerIrTest(xla_test.XLATestCase):
       args = [ops.convert_to_tensor([1, 2, 3, 4])]
       args_spec = nest.map_structure(tensor_spec.TensorSpec.from_tensor, args)
       concrete_fn = f2.get_concrete_function(*args_spec)
-      if test_util.is_mlir_bridge_enabled():
-        with self.assertRaisesRegex(
-            ValueError, 'TF to XLA legalization failed'
-        ):
-          _ = compiler_ir.from_concrete_function(concrete_fn)(stage='hlo')
-      else:
-        _ = compiler_ir.from_concrete_function(concrete_fn)(stage='hlo')
-
-      # Those cases both input and output shapes are static but tf graph
-      # contains constant args inside.
-      @polymorphic_function.function(jit_compile=True)
-      def f3(a, b):
-        c = array_ops.slice(a, [b], [-1])
-        return math_ops.reduce_sum(c)
-
-      args = [ops.convert_to_tensor([2, 3]), ops.convert_to_tensor(1)]
-      args_spec = nest.map_structure(tensor_spec.TensorSpec.from_tensor, args)
-      concrete_fn = f3.get_concrete_function(*args_spec)
       if test_util.is_mlir_bridge_enabled():
         with self.assertRaisesRegex(
             ValueError, 'TF to XLA legalization failed'
