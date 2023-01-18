@@ -59,9 +59,9 @@ FailureOr<TilingResult> tileReverseAndUpdateResultIfTiled(
 }
 
 SmallVector<int64_t> getTileSizes(int64_t rank, int64_t vectorSize,
-                                  bool tileForVectorization) {
+                                  bool tileToScalarize) {
   SmallVector<int64_t> sizes(rank, 1);
-  if (tileForVectorization) sizes[rank - 1] = vectorSize;
+  if (!tileToScalarize) sizes[rank - 1] = vectorSize;
   return sizes;
 }
 
@@ -83,36 +83,28 @@ struct ReverseTransformPattern : public OpRewritePattern<thlo::ReverseOp> {
       return rewriter.notifyMatchFailure(
           reverseOp, "has already been tiled by another pass.");
 
-    // Parallel dimension tiling. If the last dimension is to be reversed,
-    // tiling will be of the form 1x1x..x1xVectorSize. Otherwise, all tiling
-    // dimensions will be of size 1.
+    // Parallel dimension tiling. Tiling will be of the form
+    // 1x1x..x1xVectorSize.
     int64_t rank = reverseOp.getInput().getType().getRank();
-    bool isLastDimReverse =
-        llvm::is_contained(reverseOp.getReverseDimensions(), rank - 1);
     auto tilingResult = tileReverseAndUpdateResultIfTiled(
-        rewriter, reverseOp, getTileSizes(rank, vectorSize, isLastDimReverse),
+        rewriter, reverseOp, getTileSizes(rank, vectorSize, false),
         /*distribute=*/true);
 
-    // Peeling and second level of tiling is needed in the case we are reversing
-    // the last dimension.
-    if (isLastDimReverse) {
-      // Peel parallel loop.
-      if (auto loop = dyn_cast_or_null<ParallelOp>(tilingResult->loop)) {
-        auto peelingResult = peelAllLoops(loop, rewriter);
+    // Peel parallel loop.
+    if (auto loop = dyn_cast_or_null<ParallelOp>(tilingResult->loop)) {
+      auto peelingResult = peelAllLoops(loop, rewriter);
 
-        // If we have a remaining loop, we tile this to sizes of 1.
-        for (auto *remParLoop : peelingResult) {
-          remParLoop->walk([&](Operation *childOp) {
-            if (isa<thlo::ReverseOp>(childOp)) {
-              auto innerReverseOp = dyn_cast<thlo::ReverseOp>(*childOp);
-              auto secondTiling = tileReverseAndUpdateResultIfTiled(
-                  rewriter, innerReverseOp,
-                  getTileSizes(rank, vectorSize, false),
-                  /*distribute=*/true);
-              setLabel(innerReverseOp, kReverseTransformedLabel);
-            }
-          });
-        }
+      // If we have a remaining loop, we tile this to sizes of 1.
+      for (auto *remParLoop : peelingResult) {
+        remParLoop->walk([&](Operation *childOp) {
+          if (isa<thlo::ReverseOp>(childOp)) {
+            auto innerReverseOp = dyn_cast<thlo::ReverseOp>(*childOp);
+            auto secondTiling = tileReverseAndUpdateResultIfTiled(
+                rewriter, innerReverseOp, getTileSizes(rank, vectorSize, true),
+                /*distribute=*/true);
+            setLabel(innerReverseOp, kReverseTransformedLabel);
+          }
+        });
       }
     }
 

@@ -56,7 +56,9 @@ func.func @reverse_dynamic(
 
 //       CHECK:     %[[INNER_PARALLEL:.*]] = gml_st.parallel (%[[INNER_IDX0:.*]], %[[INNER_IDX1:.*]]) =
 //  CHECK-SAME:     (%[[C0]], %[[C0]]) to (%[[C1]], %[[DIM2]]) step (%[[C1]], %[[C1]])
-//       CHECK:       %[[INNER_REVERSED:.*]] = thlo.reverse
-//  CHECK-SAME:         ins(%{{.*}} : tensor<1x1xf32>) outs(%{{.*}} : tensor<1x1xf32>)
+
+//       CHECK:       %[[IN_SLICE:.*]] = gml_st.materialize
+//       CHECK:       %[[TILE:.*]] = gml_st.tile
+//  CHECK-NEXT:     gml_st.set_yield %[[IN_SLICE]] into %[[INIT_SLICE:.*]][%[[TILE]]]
 
 //       CHECK:   return %[[REM_PARALLEL]]

@@ -552,6 +552,4 @@ func.func @thlo_reverse(%arg : tensor<1x1xf32>,
 }
 // CHECK-LABEL: @thlo_reverse(
 //  CHECK-SAME: %[[ARG:.*]]: tensor<1x1xf32>, %[[INIT:.*]]: tensor<1x1xf32>)
-      // CHECK:   %[[C0:.*]] = arith.constant 0 : index
-//  CHECK-NEXT:   %[[ELEM:.*]] = tensor.extract %[[ARG]][%[[C0]], %[[C0]]]
-//  CHECK-NEXT:   %[[UPDATED:.*]] = tensor.from_elements %[[ELEM]]
+//       CHECK:   return %[[ARG]]

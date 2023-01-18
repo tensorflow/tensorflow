@@ -39,7 +39,6 @@ limitations under the License.
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/OpImplementation.h"
 #include "mlir/Interfaces/DestinationStyleOpInterface.h"
-#include "thlo/IR/thlo_ops.h"
 
 namespace mlir {
 namespace {
@@ -1224,6 +1223,15 @@ FailureOr<Value> ReverseOp::generateResultTileValue(
   return getTiledImplementation(b, offsets, sizes, /*useExtractSlice=*/false)
       .front()
       ->getResult(resultNumber);
+}
+
+OpFoldResult ReverseOp::fold(
+    ReverseOpGenericAdaptor<ArrayRef<Attribute>>) /*operands*/ {
+  auto inputType = getInput().getType();
+  for (unsigned i = 0; i < getReverseDimensions().size(); ++i) {
+    if (inputType.getDimSize(getReverseDimensions()[i]) != 1) return nullptr;
+  }
+  return getInput();
 }
 
 }  // namespace thlo

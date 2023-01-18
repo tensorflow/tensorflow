@@ -284,6 +284,8 @@ def THLO_ReverseOp : THLO_DstStyleOp<"reverse", [
 
   let results = (outs TensorOrMemref:$result);
 
+  let hasFolder = 1;
+
   let extraClassDeclaration = [{
     // Implement method necessary for DestinationStyleOpInterface.
     std::pair<int64_t, int64_t> getDpsInitsPositionRange() {
