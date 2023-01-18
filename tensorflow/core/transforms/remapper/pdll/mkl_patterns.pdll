@@ -13,6 +13,8 @@
 // limitations under the License.
 
 #include "mlir/IR/OpBase.td"
+#include "tensorflow/core/ir/types/types.td"
+#include "tensorflow/core/ir/ops.td"
 #include "tensorflow/core/transforms/utils/pdll/utils.pdll"
 
 Constraint AttrIsF32OrBF16(attr: Attr) [{
@@ -50,4 +52,11 @@ Pattern SigmoidAndMul1 {
   let root = op<tfg.Mul>(arg, sigmoid_arg.0, controls: ValueRange) { "T" = x: AttrIsF32OrBF16};
   OpHasCpuDevice(root);
   replace root with ReplaceMulWith_MklSwish(root, arg, controls);
+}
+
+// Testing type-expression for type belonging to a dialect.
+Pattern {
+  let res_type: TypeRange;
+  let ctl_type = type<"!tf_type.control">;
+  erase op<tfg.non_existing_op> -> (res_type, ctl_type);
 }
