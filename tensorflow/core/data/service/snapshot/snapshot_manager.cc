@@ -50,6 +50,7 @@ Status SnapshotManager::Start(const SnapshotRequest& request) {
   TF_RETURN_IF_ERROR(CreateSplitProviders(request.dataset(), split_providers_));
   TF_RETURN_IF_ERROR(WriteOnDiskSkeleton());
   TF_RETURN_IF_ERROR(WriteOnDiskMetadata(request));
+  metadata_ = request.metadata();
   return OkStatus();
 }
 
@@ -90,9 +91,8 @@ Status SnapshotManager::ReadOnDiskMetadata() {
     return InvalidArgument("failed to recover snapshot at ", path_,
                            ": snapshot has no snapshot.metadata");
   }
-  experimental::DistributedSnapshotMetadata metadata;
   TF_RETURN_IF_ERROR(
-      ReadTextProto(env_, SnapshotMetadataFilePath(path_), &metadata));
+      ReadTextProto(env_, SnapshotMetadataFilePath(path_), &metadata_));
 
   if (!env_->FileExists(DatasetDefFilePath(path_)).ok()) {
     return InvalidArgument("failed to recovery snapshot at ", path_,
@@ -247,6 +247,7 @@ Status SnapshotManager::WorkerHeartbeat(const WorkerHeartbeatRequest& request,
   SnapshotTaskDef* snapshot_task = response.add_snapshot_tasks();
   snapshot_task->set_base_path(path_);
   snapshot_task->set_num_sources(num_sources());
+  *snapshot_task->mutable_metadata() = metadata_;
 
   if (auto it = assignments_.find(request.worker_address());
       it != assignments_.end()) {

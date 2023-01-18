@@ -63,7 +63,6 @@ limitations under the License.
 #include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/protobuf/service_config.pb.h"
 #include "tensorflow/core/public/session_options.h"
-#include "tensorflow/tsl/lib/io/compression.h"
 
 namespace tensorflow {
 namespace data {
@@ -620,15 +619,14 @@ Status DataServiceWorkerImpl::UpdateSnapshotWriters(
       continue;
     }
 
-    // TODO(b/258691097): Support compression.
     // TODO(b/258691097): If the response does not contain a snapshot task,
     // cancel it from `snapshot_writers_`.
     snapshot_writers_.emplace(
         snapshot_task_key,
         std::make_unique<SnapshotStreamWriter>(
-            SnapshotWriterParams{snapshot_task.base_path(),
-                                 snapshot_task.stream_index(),
-                                 tsl::io::compression::kNone, Env::Default()},
+            SnapshotWriterParams{
+                snapshot_task.base_path(), snapshot_task.stream_index(),
+                snapshot_task.metadata().compression(), Env::Default()},
             std::move(iterator)));
   }
   return OkStatus();

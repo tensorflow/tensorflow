@@ -21,6 +21,7 @@ limitations under the License.
 
 #include "tensorflow/core/data/service/dispatcher.pb.h"
 #include "tensorflow/core/framework/dataset.h"
+#include "tensorflow/core/protobuf/snapshot.pb.h"
 #include "tensorflow/tsl/platform/env.h"
 #include "tensorflow/tsl/platform/status.h"
 #include "tensorflow/tsl/platform/statusor.h"
@@ -97,9 +98,11 @@ class SnapshotManager {
   tsl::StatusOr<int64_t> CreateNewStream(const std::string& worker_address);
 
   // The filepath of the on-disk state.
-  std::string path_;
+  const std::string path_;
   // A tensorflow environment interface used to write to and read from `path_`.
-  tsl::Env* env_;
+  tsl::Env* const env_;
+  // Distributed snapshot metadata.
+  experimental::DistributedSnapshotMetadata metadata_;
 
   // A split provider for each input source of the dataset being snapshotted.
   std::vector<std::unique_ptr<SplitProvider>> split_providers_;

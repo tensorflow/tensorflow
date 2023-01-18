@@ -15,6 +15,7 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 #include <string>
+#include <tuple>
 #include <vector>
 
 #include "absl/time/time.h"
@@ -50,20 +51,23 @@ using tsl::testing::IsOkAndHolds;
 
 constexpr const char kProtocol[] = "grpc";
 
-class DistributedSnapshotTest : public ::testing::TestWithParam<int64_t> {
- protected:
-  void SetUp() override {
+class TestSnapshotCluster {
+ public:
+  explicit TestSnapshotCluster(int64_t num_workers) {
     TestCluster::Config config;
-    config.num_workers = NumWorkers();
+    config.num_workers = num_workers;
     config.worker_heartbeat_interval_ms = 100;
     test_cluster_ = std::make_unique<TestCluster>(config);
-    TF_ASSERT_OK(test_cluster_->Initialize());
+    TF_CHECK_OK(test_cluster_->Initialize());
     dispatcher_client_ = std::make_unique<DataServiceDispatcherClient>(
         test_cluster_->DispatcherAddress(), kProtocol);
   }
 
-  int64_t NumWorkers() const { return GetParam(); }
+  DataServiceDispatcherClient& dispatcher() const {
+    return *dispatcher_client_;
+  }
 
+ private:
   std::unique_ptr<TestCluster> test_cluster_;
   std::unique_ptr<DataServiceDispatcherClient> dispatcher_client_;
 };
@@ -151,12 +155,19 @@ tsl::StatusOr<std::vector<T>> ReadSnapshot(const std::string& base_path,
   return result;
 }
 
+class DistributedSnapshotTest : public ::testing::TestWithParam<int64_t> {
+ protected:
+  int64_t NumWorkers() const { return GetParam(); }
+};
+
 TEST_P(DistributedSnapshotTest, WriteSnapshot) {
+  TestSnapshotCluster data_service(NumWorkers());
   DatasetDef dataset = RangeDataset(10);
   experimental::DistributedSnapshotMetadata metadata =
       CreateDummyDistributedSnapshotMetadata();
   std::string snapshot_path = LocalTempFilename();
-  TF_ASSERT_OK(dispatcher_client_->Snapshot(dataset, snapshot_path, metadata));
+  TF_ASSERT_OK(
+      data_service.dispatcher().Snapshot(dataset, snapshot_path, metadata));
   TF_ASSERT_OK(WaitUntilSnapshotComplete(snapshot_path));
   if (NumWorkers() == 1) {
     EXPECT_THAT(
@@ -170,16 +181,17 @@ TEST_P(DistributedSnapshotTest, WriteSnapshot) {
 }
 
 TEST_P(DistributedSnapshotTest, WriteMultipleSnapshots) {
+  TestSnapshotCluster data_service(NumWorkers());
   experimental::DistributedSnapshotMetadata metadata =
       CreateDummyDistributedSnapshotMetadata();
   std::vector<std::string> snapshots = {
       LocalTempFilename(), LocalTempFilename(), LocalTempFilename()};
-  TF_ASSERT_OK(
-      dispatcher_client_->Snapshot(RangeDataset(0), snapshots[0], metadata));
-  TF_ASSERT_OK(
-      dispatcher_client_->Snapshot(RangeDataset(10), snapshots[1], metadata));
-  TF_ASSERT_OK(
-      dispatcher_client_->Snapshot(RangeDataset(20), snapshots[2], metadata));
+  TF_ASSERT_OK(data_service.dispatcher().Snapshot(RangeDataset(0), snapshots[0],
+                                                  metadata));
+  TF_ASSERT_OK(data_service.dispatcher().Snapshot(RangeDataset(10),
+                                                  snapshots[1], metadata));
+  TF_ASSERT_OK(data_service.dispatcher().Snapshot(RangeDataset(20),
+                                                  snapshots[2], metadata));
   TF_ASSERT_OK(WaitUntilSnapshotComplete(snapshots[0]));
   TF_ASSERT_OK(WaitUntilSnapshotComplete(snapshots[1]));
   TF_ASSERT_OK(WaitUntilSnapshotComplete(snapshots[2]));
@@ -194,11 +206,13 @@ TEST_P(DistributedSnapshotTest, WriteMultipleSnapshots) {
 }
 
 TEST_P(DistributedSnapshotTest, EmptyDataset) {
+  TestSnapshotCluster data_service(NumWorkers());
   DatasetDef dataset = RangeDataset(0);
   experimental::DistributedSnapshotMetadata metadata =
       CreateDummyDistributedSnapshotMetadata();
   std::string snapshot_path = LocalTempFilename();
-  TF_ASSERT_OK(dispatcher_client_->Snapshot(dataset, snapshot_path, metadata));
+  TF_ASSERT_OK(
+      data_service.dispatcher().Snapshot(dataset, snapshot_path, metadata));
   TF_ASSERT_OK(WaitUntilSnapshotComplete(snapshot_path));
   EXPECT_THAT(ReadSnapshot<int64_t>(snapshot_path, tsl::io::compression::kNone),
               IsOkAndHolds(IsEmpty()));
@@ -206,6 +220,36 @@ TEST_P(DistributedSnapshotTest, EmptyDataset) {
 
 INSTANTIATE_TEST_SUITE_P(NumWorkers, DistributedSnapshotTest,
                          ::testing::Values(1, 5));
+
+class DistributedSnapshotCompressionTest
+    : public ::testing::TestWithParam<std::tuple<int64_t, std::string>> {
+ protected:
+  int64_t NumWorkers() const { return std::get<0>(GetParam()); }
+  std::string Compression() const { return std::get<1>(GetParam()); }
+};
+
+TEST_P(DistributedSnapshotCompressionTest, Compression) {
+  TestSnapshotCluster data_service(NumWorkers());
+  DatasetDef dataset = RangeDataset(20);
+  experimental::DistributedSnapshotMetadata metadata =
+      CreateDummyDistributedSnapshotMetadata();
+  metadata.set_compression(Compression());
+  std::string snapshot_path = LocalTempFilename();
+  TF_ASSERT_OK(
+      data_service.dispatcher().Snapshot(dataset, snapshot_path, metadata));
+  TF_ASSERT_OK(WaitUntilSnapshotComplete(snapshot_path));
+  EXPECT_THAT(
+      ReadSnapshot<int64_t>(snapshot_path, Compression()),
+      IsOkAndHolds(UnorderedElementsAre(0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11,
+                                        12, 13, 14, 15, 16, 17, 18, 19)));
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    NumWorkersAndCompression, DistributedSnapshotCompressionTest,
+    ::testing::Combine(::testing::Values(1, 5),
+                       ::testing::Values(tsl::io::compression::kGzip,
+                                         tsl::io::compression::kSnappy,
+                                         tsl::io::compression::kZlib)));
 
 // TODO(b/258691097): Add tests for multiple sources (e.g., zip, enumerate).
 

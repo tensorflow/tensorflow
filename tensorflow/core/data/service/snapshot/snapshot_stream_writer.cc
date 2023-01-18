@@ -80,19 +80,19 @@ SnapshotStreamWriter::SnapshotStreamWriter(
 }
 
 void SnapshotStreamWriter::WriteSnapshotAndLog() TF_LOCKS_EXCLUDED(mu_) {
-  LOG(INFO) << "Writing distributed tf.data snapshot stream at "
-            << stream_directory_;
+  LOG(INFO) << "Writing distributed tf.data snapshot stream: "
+            << params_.DebugString();
   Status status = WriteSnapshot();
   status = FinalizeStream(status);
   mutex_lock l(mu_);
   if (!status.ok()) {
-    LOG(ERROR) << "Failed to write distributed tf.data snapshot stream at "
-               << stream_directory_ << ": " << status;
+    LOG(ERROR) << "Failed to write distributed tf.data snapshot stream: "
+               << params_.DebugString() << ". Status: " << status;
     completed_ = std::move(status);
     return;
   }
-  LOG(INFO) << "Finished writing distributed tf.data snapshot stream at "
-            << stream_directory_;
+  LOG(INFO) << "Finished writing distributed tf.data snapshot stream: "
+            << params_.DebugString();
   completed_ = true;
 }
 

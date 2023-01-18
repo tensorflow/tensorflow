@@ -20,6 +20,7 @@ limitations under the License.
 #include <optional>
 #include <string>
 
+#include "absl/strings/substitute.h"
 #include "tensorflow/core/data/service/common.pb.h"
 #include "tensorflow/core/data/service/task_runner.h"
 #include "tensorflow/core/data/service/worker.pb.h"
@@ -50,6 +51,12 @@ struct SnapshotWriterParams {
 
   // The maximum number of bytes in each chunk.
   int64_t max_chunk_size_bytes = kDefaultMaxChunkSizeBytes;
+
+  std::string DebugString() const {
+    return absl::Substitute(
+        "SnapshotWriterParams { base_path: $0, stream: $1, compression: $2 }",
+        snapshot_path, stream_index, compression);
+  }
 
  private:
   static constexpr int64_t kDefaultMaxChunkSizeBytes =
