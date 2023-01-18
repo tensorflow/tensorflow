@@ -544,6 +544,195 @@ tf_cuda_cc_test(
     ],
 )
 
+# Trigonometric kernels.
+
+gpu_kernel_library(
+    name = "gpu_acos_kernels",
+    op = "acos",
+    tile_size = "256",
+    types = [
+        "f16",
+        "f32",
+        "f64",
+    ],
+    # Cannot vectorize.
+)
+
+gpu_kernel_library(
+    name = "gpu_acosh_kernels",
+    op = "acosh",
+    tile_size = "256",
+    types = [
+        "f16",
+        "f32",
+        "f64",
+    ],
+    # May be compute-bound.
+    # unroll_factors = "4",
+)
+
+gpu_kernel_library(
+    name = "gpu_asin_kernels",
+    op = "asin",
+    tile_size = "256",
+    types = [
+        "f16",
+        "f32",
+        "f64",
+    ],
+    # Cannot vectorize.
+)
+
+gpu_kernel_library(
+    name = "gpu_asinh_kernels",
+    op = "asinh",
+    tile_size = "256",
+    types = [
+        "f16",
+        "f32",
+        "f64",
+    ],
+    # Cannot vectorize.
+)
+
+gpu_kernel_library(
+    name = "gpu_atan_kernels",
+    op = "atan",
+    tile_size = "256",
+    types = [
+        "f16",
+        "f32",
+        "f64",
+    ],
+    unroll_factors = "4",
+)
+
+gpu_kernel_library(
+    name = "gpu_atanh_kernels",
+    op = "atanh",
+    tile_size = "256",
+    types = [
+        "f16",
+        "f32",
+        "f64",
+    ],
+    unroll_factors = "4",
+)
+
+gpu_kernel_library(
+    name = "gpu_atanh_kernels_experimental",
+    jit_i64_indexed_for_large_tensors_types = [
+        "f16",
+        "f32",
+        "f64",
+    ],
+    op = "atanh",
+    tile_size = "256",
+    types = [],
+    unroll_factors = "4",
+)
+
+gpu_kernel_library(
+    name = "gpu_atan2_kernels",
+    op = "atan2",
+    tile_size = "256",
+    types = [
+        "f16",
+        "f32",
+        "f64",
+    ],
+    unroll_factors = "4",
+)
+
+gpu_kernel_library(
+    name = "gpu_cos_kernels",
+    jit_types = [
+        "c64",
+        "c128",
+    ],
+    op = "cos",
+    tile_size = "256",
+    types = [
+        "f16",
+        "f32",
+        "f64",
+    ],
+)
+
+gpu_kernel_library(
+    name = "gpu_cosh_kernels",
+    jit_types = [
+        "c64",
+        "c128",
+    ],
+    op = "cosh",
+    tile_size = "256",
+    types = [
+        "f16",
+        "f32",
+        "f64",
+    ],
+    # May be compute-bound.
+)
+
+gpu_kernel_library(
+    name = "gpu_sin_kernels",
+    jit_types = [
+        "c64",
+        "c128",
+    ],
+    op = "sin",
+    tile_size = "256",
+    types = [
+        "f16",
+        "f32",
+        "f64",
+    ],
+)
+
+gpu_kernel_library(
+    name = "gpu_sinh_kernels",
+    jit_types = [
+        "c64",
+        "c128",
+    ],
+    op = "sinh",
+    tile_size = "256",
+    types = [
+        "f16",
+        "f32",
+        "f64",
+    ],
+    # May be compute-bound.
+)
+
+gpu_kernel_library(
+    name = "gpu_tan_kernels",
+    jit_types = [
+        "c64",
+        "c128",
+    ],
+    op = "tan",
+    tile_size = "256",
+    types = [
+        "f16",
+        "f32",
+        "f64",
+    ],
+)
+
+gpu_kernel_library(
+    name = "gpu_tanh_kernels",
+    op = "tanh",
+    tile_size = "256",
+    types = [
+        "f16",
+        "f32",
+        "f64",
+    ],
+    unroll_factors = "4",
+)
+
 # TODO(b/160731748): Re-enable when it works again.
 # gpu_kernel_library(
 #     name = "gpu_bias_add_kernels",
@@ -647,31 +836,6 @@ gpu_kernel_library(
 )
 
 gpu_kernel_library(
-    name = "gpu_acos_kernels",
-    op = "acos",
-    tile_size = "256",
-    types = [
-        "f16",
-        "f32",
-        "f64",
-    ],
-    # Cannot vectorize.
-)
-
-gpu_kernel_library(
-    name = "gpu_acosh_kernels",
-    op = "acosh",
-    tile_size = "256",
-    types = [
-        "f16",
-        "f32",
-        "f64",
-    ],
-    # May be compute-bound.
-    # unroll_factors = "4",
-)
-
-gpu_kernel_library(
     name = "gpu_angle_kernels",
     op = "angle",
     output_types = [
@@ -687,67 +851,6 @@ gpu_kernel_library(
 )
 
 gpu_kernel_library(
-    name = "gpu_asin_kernels",
-    op = "asin",
-    tile_size = "256",
-    types = [
-        "f16",
-        "f32",
-        "f64",
-    ],
-    # Cannot vectorize.
-)
-
-gpu_kernel_library(
-    name = "gpu_asinh_kernels",
-    op = "asinh",
-    tile_size = "256",
-    types = [
-        "f16",
-        "f32",
-        "f64",
-    ],
-    # Cannot vectorize.
-)
-
-gpu_kernel_library(
-    name = "gpu_atan_kernels",
-    op = "atan",
-    tile_size = "256",
-    types = [
-        "f16",
-        "f32",
-        "f64",
-    ],
-    unroll_factors = "4",
-)
-
-gpu_kernel_library(
-    name = "gpu_atanh_kernels",
-    op = "atanh",
-    tile_size = "256",
-    types = [
-        "f16",
-        "f32",
-        "f64",
-    ],
-    unroll_factors = "4",
-)
-
-gpu_kernel_library(
-    name = "gpu_atanh_kernels_experimental",
-    jit_i64_indexed_for_large_tensors_types = [
-        "f16",
-        "f32",
-        "f64",
-    ],
-    op = "atanh",
-    tile_size = "256",
-    types = [],
-    unroll_factors = "4",
-)
-
-gpu_kernel_library(
     name = "gpu_conj_kernels",
     op = "conj",
     tile_size = "256",
@@ -756,23 +859,6 @@ gpu_kernel_library(
         "c128",
     ],
     unroll_factors = "2",
-)
-
-gpu_kernel_library(
-    name = "gpu_cosh_kernels",
-    jit_types = [
-        "c64",
-        "c128",
-    ],
-    op = "cosh",
-    tile_size = "256",
-    types = [
-        "f16",
-        "f32",
-        "f64",
-    ],
-    # May be compute-bound.
-    # unroll_factors = "4",
 )
 
 gpu_kernel_library(
@@ -899,23 +985,6 @@ gpu_kernel_library(
         "c128",
     ],
     unroll_factors = "4",
-)
-
-gpu_kernel_library(
-    name = "gpu_sinh_kernels",
-    jit_types = [
-        "c64",
-        "c128",
-    ],
-    op = "sinh",
-    tile_size = "256",
-    types = [
-        "f16",
-        "f32",
-        "f64",
-    ],
-    # May be compute-bound.
-    # unroll_factors = "4",
 )
 
 gpu_kernel_library(
@@ -1143,18 +1212,6 @@ gpu_kernel_library(
     unroll_factors = "4",
 )
 
-gpu_kernel_library(
-    name = "gpu_atan2_kernels",
-    op = "atan2",
-    tile_size = "256",
-    types = [
-        "f16",
-        "f32",
-        "f64",
-    ],
-    unroll_factors = "4",
-)
-
 # Logical operations.
 [
     gpu_kernel_library(
@@ -1333,7 +1390,6 @@ gpu_kernel_library(
         "softplus",
         "softsign",
         "sqrt",
-        "tanh",
     ]
 ]
 
@@ -1369,29 +1425,6 @@ gpu_kernel_library(
         "is_finite",
         "is_inf",
         "is_nan",
-    ]
-]
-
-# Kernels that support all floating-point types but cannot be vectorized.
-[
-    gpu_kernel_library(
-        name = "gpu_" + op + "_kernels",
-        jit_types = [
-            "c64",
-            "c128",
-        ],
-        op = op,
-        tile_size = "256",
-        types = [
-            "f16",
-            "f32",
-            "f64",
-        ],
-    )
-    for op in [
-        "cos",
-        "sin",
-        "tan",
     ]
 ]
 
