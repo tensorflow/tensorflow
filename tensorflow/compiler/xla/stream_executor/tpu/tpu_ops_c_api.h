@@ -671,7 +671,6 @@ typedef struct TpuEmbeddingEngine_RecvActivationsComputation_Params {
 
   TpuSerializedProto tpu_embedding_config;
   XLA_Shape* deduplication_data_shape;
-  const XLA_TpuMeshState* tpu_mesh_state;
   TpuSerializedProto* op_sharding;
 
   // out
@@ -688,7 +687,6 @@ typedef struct
   void* priv;
 
   TpuSerializedProto tpu_embedding_config;
-  const XLA_TpuMeshState* tpu_mesh_state;
   TpuSerializedProto* op_sharding;
   // out
   TpuSerializedProto* xla_computation;
@@ -706,7 +704,6 @@ typedef struct TpuEmbeddingEngine_SendTPUEmbeddingGradientsComputation_Params {
 
   int32_t num_inputs;
   TpuSerializedProto tpu_embedding_config;
-  const XLA_TpuMeshState* tpu_mesh_state;
   XLA_Shape* learning_rate_tuple_shape;
   XLA_Shape* deduplication_data_shape;
   XLA_Shape* gradient_tuple_shape;
