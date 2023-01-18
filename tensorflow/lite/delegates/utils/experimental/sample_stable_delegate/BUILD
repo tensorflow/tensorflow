@@ -67,20 +67,20 @@ cc_test(
     ],
 )
 
-cc_library(
+cc_library_with_tflite(
     name = "sample_stable_delegate_external",
     testonly = True,
     srcs = [
         "sample_stable_delegate_external.cc",
     ],
     copts = tflite_copts(),
-    deps = [
+    tflite_deps = [
         ":sample_stable_delegate",
-        "//tensorflow/lite/c:c_api",
-        "//tensorflow/lite/c:c_api_experimental",
-        "//tensorflow/lite/c:c_api_types",
-        "//tensorflow/lite/c:common",
         "//tensorflow/lite/core/experimental/acceleration/configuration/c:stable_delegate",
+        "//tensorflow/lite/core/shims:c_api",
+        "//tensorflow/lite/core/shims:c_api_experimental",
+        "//tensorflow/lite/core/shims:c_api_types",
+        "//tensorflow/lite/core/shims:common",
         "//tensorflow/lite/core/shims:delegate_plugin",
         "//tensorflow/lite/delegates/utils:simple_opaque_delegate",
         "//tensorflow/lite/delegates/utils/experimental/stable_delegate:stable_delegate_inferface",
