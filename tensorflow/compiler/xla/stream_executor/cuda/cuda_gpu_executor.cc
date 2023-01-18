@@ -238,7 +238,7 @@ tsl::Status GpuExecutor::LoadModuleFromPtx(const char* ptx, CUmodule* module) {
 
 tsl::Status GpuExecutor::LoadModuleFromHsaco(const char* hsaco,
                                              CUmodule* module) {
-  return port::InternalError(
+  return tsl::errors::Internal(
       "Feature not supported on CUDA platform (LoadModuleFromHsaco)");
 }
 
@@ -260,7 +260,7 @@ tsl::Status GpuExecutor::GetKernel(const MultiKernelLoaderSpec& spec,
     kernelname = &spec.cuda_ptx_in_memory().kernelname();
 
     if (cc_major_ == 0 && cc_minor_ == 0) {
-      return port::InternalError("Compute capability not set");
+      return tsl::errors::Internal("Compute capability not set");
     }
 
     const char* ptx = spec.cuda_ptx_in_memory().text(cc_major_, cc_minor_);
@@ -275,12 +275,12 @@ tsl::Status GpuExecutor::GetKernel(const MultiKernelLoaderSpec& spec,
     TF_RETURN_IF_ERROR(LoadModuleFromPtx(ptx, &module));
     kernel_to_gpu_binary_[kernel] = ptx;
   } else {
-    return port::InternalError("No method of loading CUDA kernel provided");
+    return tsl::errors::Internal("No method of loading CUDA kernel provided");
   }
   VLOG(2) << "getting function " << *kernelname << " from module " << module;
   if (!GpuDriver::GetModuleFunction(context_, module, kernelname->c_str(),
                                     cuda_kernel->gpu_function_ptr())) {
-    return port::InternalError("Could not find the corresponding function");
+    return tsl::errors::Internal("Could not find the corresponding function");
   }
 
   // We have to trust the kernel loader spec arity because there doesn't appear
@@ -342,11 +342,11 @@ tsl::Status GpuExecutor::LoadModule(const MultiModuleLoaderSpec& spec,
     return ::tsl::OkStatus();
   } else if (spec.has_cuda_ptx_in_memory()) {
     if (cc_major_ == 0 && cc_minor_ == 0) {
-      return port::InternalError("Compute capability not set");
+      return tsl::errors::Internal("Compute capability not set");
     }
 
     if (!spec.cuda_ptx_in_memory()) {
-      return port::InternalError("PTX not found in spec");
+      return tsl::errors::Internal("PTX not found in spec");
     }
 
     absl::MutexLock lock{&in_memory_modules_mu_};
@@ -356,7 +356,7 @@ tsl::Status GpuExecutor::LoadModule(const MultiModuleLoaderSpec& spec,
         const_cast<void*>(static_cast<const void*>(spec.cuda_ptx_in_memory())));
     return ::tsl::OkStatus();
   }
-  return port::InternalError("No method of loading CUDA module provided");
+  return tsl::errors::Internal("No method of loading CUDA module provided");
 }
 
 bool GpuExecutor::UnloadModule(ModuleHandle module_handle) {
@@ -413,7 +413,7 @@ GpuExecutor::CreateOrShareConstant(Stream* stream,
     DeviceMemoryBase* new_constant =
         new DeviceMemoryBase(Allocate(content.size(), /*memory_space=*/0));
     if (new_constant->opaque() == nullptr) {
-      return port::InternalError(absl::StrFormat(
+      return tsl::errors::Internal(absl::StrFormat(
           "Failed to allocate %d bytes for new constant", content.size()));
     }
 
@@ -422,7 +422,7 @@ GpuExecutor::CreateOrShareConstant(Stream* stream,
             .BlockHostUntilDone();
     if (!status.ok()) {
       Deallocate(new_constant);
-      status.Update(port::InternalError(absl::StrFormat(
+      status.Update(tsl::errors::Internal(absl::StrFormat(
           "Memcpy to device address %p failed", new_constant->opaque())));
       return status;
     }
