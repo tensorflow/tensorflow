@@ -494,7 +494,9 @@ class StatelessRandomBinomialOp : public OpKernel {
     const int64_t num_sample_dims =
         (shape_tensor.dim_size(0) - bcast.output_shape().size());
     for (int64_t i = 0; i < num_sample_dims; ++i) {
-      samples_per_batch *= shape_tensor.flat<int32>()(i);
+      samples_per_batch *= shape_tensor.dtype() == DT_INT32
+                               ? shape_tensor.scalar<int32>()(i)
+                               : shape_tensor.scalar<int64_t>()(i);
     }
     int64_t num_batches = 1;
     for (int64_t i = num_sample_dims; i < shape_tensor.dim_size(0); ++i) {

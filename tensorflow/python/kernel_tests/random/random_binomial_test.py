@@ -15,6 +15,7 @@
 """Tests for tensorflow.ops.stateful_random_ops.binomial."""
 import numpy as np
 
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import test_util
 from tensorflow.python.kernel_tests.random import util
@@ -206,6 +207,29 @@ class RandomBinomialTest(test.TestCase):
             stride=stride,
         )
         self.assertAllLess(z_scores, z_limit)
+
+  def testStatelessDtypeInt64(self):
+    shape_0 = constant_op.constant(1, dtype=dtypes.int64)
+    shape = [
+        shape_0,
+    ]
+    seed_0 = 12
+    seed_1 = 34
+    seed = [
+        seed_0,
+        seed_1,
+    ]
+    counts = 10.0
+    probs = 0.4
+    output_dtype = dtypes.float16
+    out = stateless_random_ops.stateless_random_binomial(
+        shape=shape,
+        seed=seed,
+        counts=counts,
+        probs=probs,
+        output_dtype=output_dtype,
+    )
+    self.evaluate(out)
 
 
 if __name__ == "__main__":
