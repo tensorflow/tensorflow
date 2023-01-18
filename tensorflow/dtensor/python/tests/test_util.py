@@ -287,6 +287,8 @@ class DTensorBaseTest(tf_test.TestCase, parameterized.TestCase):
     result_dtensor = numpy_util.to_numpy(result_dtensor)
 
     # Check dtype.
+    # Note: This check needs be after result_dtensor is converted
+    # into numpy, due to failure with Numpy version 1.18.5.
     self.assertEqual(expected_result.dtype, result_dtensor.dtype,
                      result_dtensor)
 
