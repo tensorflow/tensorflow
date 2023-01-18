@@ -68,10 +68,11 @@ struct PjitCacheEntry {
 
 class PjitFunction {
  public:
-  PjitFunction(std::string function_name, py::function cache_miss,
-               std::vector<int> static_argnums,
+  PjitFunction(std::string function_name, std::optional<py::function> fun,
+               py::function cache_miss, std::vector<int> static_argnums,
                std::vector<py::str> static_argnames, int executables_cache_size)
       : function_name_(std::move(function_name)),
+        fun_(std::move(fun)),
         cache_miss_(std::move(cache_miss)),
         static_argnums_(std::move(static_argnums)),
         static_argnames_(std::move(static_argnames)),
@@ -115,6 +116,7 @@ class PjitFunction {
   void ClearPythonReferences();
 
   const std::string& function_name() const { return function_name_; }
+  const std::optional<py::function>& fun() const { return fun_; }
   const py::function& cache_miss() const { return cache_miss_; }
 
   const std::vector<int>& static_argnums() const { return static_argnums_; }
@@ -124,6 +126,16 @@ class PjitFunction {
 
   int cache_capacity() const { return executables_->Capacity(); }
 
+  py::object PythonSignature() {
+    if (!fun_.has_value()) {
+      throw py::value_error(absl::StrFormat(
+          "Calling __signature__ on PjitFunction(%s) not supported.",
+          function_name_));
+    }
+    static const auto* inspect = new py::module(py::module::import("inspect"));
+    return inspect->attr("signature")(*fun_);
+  }
+
  private:
   xla::Status UpdateArgsSignature(ParsedArgumentsAsBuffers& arguments);
 
@@ -132,6 +144,7 @@ class PjitFunction {
                           const py::tuple& out_and_fastpath_data);
 
   std::string function_name_;
+  std::optional<py::function> fun_;
   py::function cache_miss_;
   std::vector<int> static_argnums_;
   std::vector<py::str> static_argnames_;
@@ -650,24 +663,28 @@ PyObject* PjitFunction_tp_repr(PyObject* self) {
 }  // extern "C"
 
 void InitializePjitFunction(PjitFunctionObject* fn_obj,
-                            std::string function_name, py::function cache_miss,
+                            std::string function_name,
+                            std::optional<py::function> fun,
+                            py::function cache_miss,
                             std::vector<int> static_argnums,
                             std::vector<py::str> static_argnames,
                             int executables_cache_size) {
   new (&fn_obj->fun)
-      PjitFunction(std::move(function_name), std::move(cache_miss),
-                   std::move(static_argnums), std::move(static_argnames),
-                   executables_cache_size);
+      PjitFunction(std::move(function_name), std::move(fun),
+                   std::move(cache_miss), std::move(static_argnums),
+                   std::move(static_argnames), executables_cache_size);
 }
 
-py::object MakePjitFunction(std::string function_name, py::function cache_miss,
+py::object MakePjitFunction(std::string function_name,
+                            std::optional<py::function> fun,
+                            py::function cache_miss,
                             std::vector<int> static_argnums,
                             std::vector<py::str> static_argnames,
                             int executables_cache_size) {
   py::object obj = py::reinterpret_steal<py::object>(PjitFunction_tp_new(
       reinterpret_cast<PyTypeObject*>(PjitFunction_Type), nullptr, nullptr));
   PjitFunctionObject* fn_obj = reinterpret_cast<PjitFunctionObject*>(obj.ptr());
-  InitializePjitFunction(fn_obj, std::move(function_name),
+  InitializePjitFunction(fn_obj, std::move(function_name), std::move(fun),
                          std::move(cache_miss), std::move(static_argnums),
                          std::move(static_argnames), executables_cache_size);
   return obj;
@@ -726,6 +743,9 @@ void BuildPjitSubmodule(py::module& m) {
         py::dict pickle;
         pickle["version"] = kPjitFunctionPickleVersion;
         pickle["function_name"] = fn->function_name();
+        if (fn->fun().has_value()) {
+          pickle["fun"] = *fn->fun();
+        }
         pickle["cache_miss"] = fn->cache_miss();
         pickle["static_argnums"] = fn->static_argnums();
         pickle["static_argnames"] = fn->static_argnames();
@@ -745,6 +765,10 @@ void BuildPjitSubmodule(py::module& m) {
         }
         std::string function_name =
             py::cast<std::string>(pickle["function_name"]);
+        std::optional<py::function> fun;
+        if (pickle.contains("fun")) {
+          fun = py::cast<py::function>(pickle["fun"]);
+        }
         py::function cache_miss = py::cast<py::function>(pickle["cache_miss"]);
         std::vector<int> static_argnums =
             py::cast<std::vector<int>>(pickle["static_argnums"]);
@@ -753,22 +777,25 @@ void BuildPjitSubmodule(py::module& m) {
         int cache_capacity = py::cast<int>(pickle["cache_capacity"]);
         InitializePjitFunction(
             reinterpret_cast<PjitFunctionObject*>(self.ptr()),
-            std::move(function_name), std::move(cache_miss),
+            std::move(function_name), std::move(fun), std::move(cache_miss),
             std::move(static_argnums), std::move(static_argnames),
             cache_capacity);
       },
       py::is_method(cfun_type));
-
+  cfun.attr("__signature__") =
+      property_readonly([](py::handle self) -> xla::StatusOr<py::object> {
+        return AsPjitFunction(self)->PythonSignature();
+      });
   cfun.attr("_cache_miss") =
       property_readonly([](py::handle self) -> py::object {
         return AsPjitFunction(self)->cache_miss();
       });
 
-  m.def("pjit", [](std::string function_name, py::function cache_miss,
-                   std::vector<int> static_argnums,
+  m.def("pjit", [](std::string function_name, std::optional<py::function> fun,
+                   py::function cache_miss, std::vector<int> static_argnums,
                    std::vector<py::str> static_argnames) {
-    return MakePjitFunction(std::move(function_name), std::move(cache_miss),
-                            std::move(static_argnums),
+    return MakePjitFunction(std::move(function_name), std::move(fun),
+                            std::move(cache_miss), std::move(static_argnums),
                             std::move(static_argnames),
                             /*executables_cache_size=*/4096);
   });
