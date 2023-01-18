@@ -103,11 +103,11 @@ class SnapshotStreamWriter {
   void Cancel();
 
  private:
-  // Runs `WriteSnapshotFn` on a dedicated thread.
-  std::unique_ptr<Thread> RunSnapshotThread();
+  // Writes the snapshot and any debugging log when necessary.
+  void WriteSnapshotAndLog();
 
-  // Function to write the snapshot. Returns an error if writing fails or the
-  // task has been cancelled.
+  // Writes the snapshot. Returns an error if writing fails or the task has been
+  // cancelled.
   Status WriteSnapshot();
 
   // Creates directories to store uncommitted chunks and checkpoints.
