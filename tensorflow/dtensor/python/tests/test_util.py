@@ -275,7 +275,7 @@ class DTensorBaseTest(tf_test.TestCase, parameterized.TestCase):
       self.assertEqual(
           api.fetch_layout(result_dtensor),
           expected_layout,
-          msg='========\nexpected layout is\n  {}\n\nwhile got layout is\n  {}\n'
+          msg='=======\nexpected layout is\n  {}\n\nwhile got layout is\n  {}\n'
           .format(expected_str, got_str))
 
     layout = api.fetch_layout(result_dtensor)
