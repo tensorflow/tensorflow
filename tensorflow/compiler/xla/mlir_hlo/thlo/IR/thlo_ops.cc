@@ -304,67 +304,6 @@ Value fuseConcatenateOpThroughTile(ConcatenateOp op, OpBuilder &b, Location loc,
   return concatOp.getResults().front();
 }
 
-Value fuseConcatenateOpThroughPointRecursively(
-    OpBuilder &b, Location loc, RankedTensorType rankedTy, uint64_t concatDim,
-    SmallVector<Value> &remainingOffsets, ValueRange remainingOperands,
-    bool useExtractSlice) {
-  // Bail if called for no operands.
-  if (remainingOperands.empty()) {
-    return {};
-  }
-  Value leadingOperand = remainingOperands.front();
-
-  // Terminal case of exactly one operand.
-  if (remainingOperands.size() == 1) {
-    // Create operand point.
-    SmallVector<int64_t> allDynamicOffsets(rankedTy.getRank(),
-                                           ShapedType::kDynamic);
-
-    SmallVector<int64_t> sizeOrStride({1});
-
-    auto slice = gml_st::materializeSlice(
-        b, loc, leadingOperand,
-        getMixedValues(allDynamicOffsets, remainingOffsets, b),
-        getMixedValues(sizeOrStride, ValueRange{}, b),
-        getMixedValues(sizeOrStride, ValueRange{}, b), useExtractSlice);
-
-    return b.create<tensor::ExtractOp>(
-        loc, slice, ValueRange{b.create<arith::ConstantIndexOp>(loc, 0)});
-  }
-
-  // For more than 1 operand, distinguish between the leading operand and the
-  // remainder.
-  assert(remainingOperands.size() > 1 &&
-         "expect more than 1 operand at this point");
-  Value leadingOperandConcatDim =
-      b.create<tensor::DimOp>(loc, leadingOperand, concatDim);
-  Value leadingOperandPredicate = b.create<arith::CmpIOp>(
-      loc, arith::CmpIPredicate::ult, remainingOffsets[concatDim],
-      leadingOperandConcatDim);
-  auto ifOp = b.create<scf::IfOp>(
-      loc, rankedTy.getElementType(), leadingOperandPredicate,
-      [&](OpBuilder &b, Location loc) {
-        // For the leading operand, recur with the current offsets.
-        Value fused = fuseConcatenateOpThroughPointRecursively(
-            b, loc, rankedTy, concatDim, remainingOffsets, leadingOperand,
-            useExtractSlice);
-        b.create<scf::YieldOp>(loc, fused);
-      },
-      [&](OpBuilder &b, Location loc) {
-        // For the remaining operands, substract the leading operand's size from
-        // the remaining offsets in the concatenation dimension.
-        SmallVector<Value> thenRemainingOffsets(remainingOffsets.begin(),
-                                                remainingOffsets.end());
-        thenRemainingOffsets[concatDim] = b.create<arith::SubIOp>(
-            loc, remainingOffsets[concatDim], leadingOperandConcatDim);
-        Value fused = fuseConcatenateOpThroughPointRecursively(
-            b, loc, rankedTy, concatDim, thenRemainingOffsets,
-            remainingOperands.drop_front(), useExtractSlice);
-        b.create<scf::YieldOp>(loc, fused);
-      });
-  return ifOp.getResults().front();
-}
-
 }  // namespace
 
 SmallVector<Operation *> ConcatenateOp::getTiledImplementation(
