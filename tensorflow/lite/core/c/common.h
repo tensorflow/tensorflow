@@ -648,26 +648,23 @@ void TfLiteTensorReset(TfLiteType type, const char* name, TfLiteIntArray* dims,
 TfLiteStatus TfLiteTensorCopy(const TfLiteTensor* src, TfLiteTensor* dst);
 
 // Change the size of the memory block owned by `tensor` to `num_bytes`.
-// Tensors with allocation types other than `kTfLiteDynamic` will be ignored and
-// a kTfLiteOk will be returned.
+// Tensors with allocation types other than kTfLiteDynamic will be ignored.
 // `tensor`'s internal data buffer will be assigned a pointer
 // which can safely be passed to free or realloc if `num_bytes` is zero.
+// Behaviour is undefined if `tensor` is NULL.
 // If `preserve_data` is true, tensor data will be unchanged in the range from
-// the start of the region up to the minimum of the old and new sizes. In the
-// case of NULL tensor, or an error allocating new memory, returns
-// `kTfLiteError`.
-TfLiteStatus TfLiteTensorResizeMaybeCopy(size_t num_bytes, TfLiteTensor* tensor,
-                                         bool preserve_data);
+// the start of the region up to the minimum of the old and new sizes.
+void TfLiteTensorResizeMaybeCopy(size_t num_bytes, TfLiteTensor* tensor,
+                                 bool preserve_data);
 
 // Change the size of the memory block owned by `tensor` to `num_bytes`.
-// Tensors with allocation types other than kTfLiteDynamic will be ignored and
-// a kTfLiteOk will be returned.
+// Tensors with allocation types other than kTfLiteDynamic will be ignored.
 // `tensor`'s internal data buffer will be assigned a pointer
 // which can safely be passed to free or realloc if `num_bytes` is zero.
+// Behaviour is undefined if `tensor` is NULL.
 // Tensor data will be unchanged in the range from the start of the region up to
-// the minimum of the old and new sizes. In the case
-// of NULL tensor, or an error allocating new memory, returns `kTfLiteError`.
-TfLiteStatus TfLiteTensorRealloc(size_t num_bytes, TfLiteTensor* tensor);
+// the minimum of the old and new sizes.
+void TfLiteTensorRealloc(size_t num_bytes, TfLiteTensor* tensor);
 #endif  // TF_LITE_STATIC_MEMORY
 
 // WARNING: This is an experimental interface that is subject to change.
