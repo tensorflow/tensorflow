@@ -1,11 +1,12 @@
-tensorflow-gpu has been deprecated. Please install tensorflow instead.
+tensorflow-gpu has been removed. Please install tensorflow instead.
+The tensorflow package still supports GPU accelerated operations.
 
-## Deprecation Information
+## Removal Information
 
 tensorflow and tensorflow-gpu have been the same package since TensorFlow
 2.1, released in September 2019. Although the checksums differ due to metadata,
 they were built in the same way and both provide GPU support via Nvidia CUDA.
-As of December 2022, tensorflow-gpu is deprecated and has been replaced with
+As of December 2022, tensorflow-gpu has been removed and has been replaced with
 this new, empty package that generates an error upon installation.
 
 All existing versions of tensorflow-gpu are still available, but the

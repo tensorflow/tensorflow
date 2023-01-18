@@ -18,23 +18,23 @@ import sys
 
 import setuptools
 
-TF_DEPRECATION_WARNING = """
+TF_REMOVAL_WARNING = """
 
 =========================================================
-The "tensorflow-gpu" package has been deprecated!
+The "tf-nightly-gpu" package has been removed!
 
-Please install "tensorflow" instead.
+Please install "tf-nightly" instead.
 
 Other than the name, the two packages have been identical
-since TensorFlow 2.1, or roughly since Sep 2019. For more
-information, see: pypi.org/project/tensorflow-gpu
+since tf-nightly 2.1, or roughly since Sep 2019. For more
+information, see: pypi.org/project/tf-nightly-gpu
 =========================================================
 
 """
 
 # Cover all "pip install" situations
 if "bdist_wheel" in sys.argv or "install" in sys.argv or "bdist_egg" in sys.argv:
-  raise Exception(TF_DEPRECATION_WARNING)
+  raise Exception(TF_REMOVAL_WARNING)
 
 if __name__ == "__main__":
   setuptools.setup()

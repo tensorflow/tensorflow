@@ -1,11 +1,12 @@
-tf-nightly-gpu has been deprecated. Please install tf-nightly instead.
+tf-nightly-gpu has been removed. Please install tf-nightly instead.
+The tf-nightly package still supports GPU accelerated operations.
 
-## Deprecation Information
+## Removal Information
 
 tf-nightly and tf-nightly-gpu have been the same package since TensorFlow
 2.1, released in September 2019. Although the checksums differ due to metadata,
 they were built in the same way and both provide GPU support via Nvidia CUDA.
-As of December 2022, tf-nightly-gpu is deprecated and has been replaced with
+As of December 2022, tf-nightly-gpu has been removed and has been replaced with
 this new, empty package that generates an error upon installation.
 
 The TensorFlow team has stopped releasing any new tf-nightly-gpu packages, and
