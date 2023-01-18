@@ -89,6 +89,27 @@ cc_library(
 )
 
 cc_library(
+    name = "snapshot_manager",
+    srcs = ["snapshot_manager.cc"],
+    hdrs = ["snapshot_manager.h"],
+    compatible_with = get_compatible_with_portable(),
+    deps = [
+        ":file_utils",
+        ":path_utils",
+        "//tensorflow/core:framework",
+        "//tensorflow/core/data:snapshot_utils",
+        "//tensorflow/core/data/service:common_proto_cc",
+        "//tensorflow/core/data/service:dispatcher_proto_cc",
+        "//tensorflow/core/data/service:split_provider",
+        "//tensorflow/core/platform:status",
+        "//tensorflow/tsl/platform:env",
+        "//tensorflow/tsl/platform:errors",
+        "//tensorflow/tsl/platform:status",
+        "//tensorflow/tsl/platform:statusor",
+    ],
+)
+
+cc_library(
     name = "snapshot_stream_writer",
     srcs = ["snapshot_stream_writer.cc"],
     hdrs = ["snapshot_stream_writer.h"],

@@ -253,8 +253,8 @@ message SnapshotRequest {
   // The dataset to snapshot.
   DatasetDef dataset = 1;
 
-  // The directory to which to materialize the snapshot.
-  string directory = 2;
+  // The path to which to materialize the snapshot.
+  string path = 2;
 
   // The metadata for the snapshot.
   experimental.DistributedSnapshotMetadata metadata = 3;
@@ -265,8 +265,8 @@ message SnapshotResponse {}
 
 // Next tag: 4
 message GetSnapshotSplitRequest {
-  // The directory in which the snapshot is being materialized.
-  string directory = 1;
+  // The base path of the snapshot materialization.
+  string base_path = 1;
 
   // The index of the snapshot stream from which to get the split.
   int64 stream_index = 2;

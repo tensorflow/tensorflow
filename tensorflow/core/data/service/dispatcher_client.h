@@ -65,14 +65,14 @@ class DataServiceDispatcherClient : public DataServiceClientBase {
                   bool& end_of_splits);
 
   // Gets the next split for the specified source of a stream of the snapshot in
-  // `directory`. If `end_of_splits` returns true, then there are no more splits
+  // `base_path`. If `end_of_splits` returns true, then there are no more splits
   // to be processed for the specified stream source.
-  Status GetSnapshotSplit(const std::string& directory, int64_t stream_index,
+  Status GetSnapshotSplit(const std::string& base_path, int64_t stream_index,
                           int64_t source_index, Tensor& split,
                           bool& end_of_splits);
 
-  // Initiates the process of materializing `dataset`'s output to `directory`.
-  Status Snapshot(const DatasetDef& dataset, const std::string& directory,
+  // Initiates the process of materializing `dataset`'s output to `path`.
+  Status Snapshot(const DatasetDef& dataset, const std::string& path,
                   const experimental::DistributedSnapshotMetadata& metadata);
 
   // Registers a dataset with the tf.data service, and stores the generated

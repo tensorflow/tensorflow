@@ -609,7 +609,7 @@ Status DataServiceWorkerImpl::UpdateSnapshotWriters(
     const WorkerHeartbeatResponse& response) {
   for (const SnapshotTaskDef& snapshot_task : response.snapshot_tasks()) {
     DatasetDef dataset_def;
-    TF_RETURN_IF_ERROR(ReadTextProto(
+    TF_RETURN_IF_ERROR(ReadBinaryProto(
         Env::Default(), DatasetDefFilePath(snapshot_task.base_path()),
         &dataset_def));
     TF_ASSIGN_OR_RETURN(std::unique_ptr<StandaloneTaskIterator> iterator,

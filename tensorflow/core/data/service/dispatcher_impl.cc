@@ -32,6 +32,8 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/memory/memory.h"
+#include "absl/strings/numbers.h"
+#include "absl/strings/str_split.h"
 #include "absl/time/time.h"
 #include "tensorflow/core/data/dataset_utils.h"
 #include "tensorflow/core/data/hash_utils.h"
@@ -47,6 +49,7 @@ limitations under the License.
 #include "tensorflow/core/data/service/snapshot/file_utils.h"
 #include "tensorflow/core/data/service/snapshot/path_utils.h"
 #include "tensorflow/core/data/service/split_provider.h"
+#include "tensorflow/core/data/service/utils.h"
 #include "tensorflow/core/data/service/validate_utils.h"
 #include "tensorflow/core/data/service/worker.grpc.pb.h"
 #include "tensorflow/core/data/snapshot_utils.h"
@@ -188,7 +191,6 @@ DataServiceDispatcherImpl::~DataServiceDispatcherImpl() {
   maintenance_thread_.reset();
 }
 
-// TODO(b/250921378): Recover snapshots.
 Status DataServiceDispatcherImpl::Start() {
   mutex_lock l(mu_);
   if (config_.job_gc_timeout_ms() >= 0) {
@@ -243,6 +245,13 @@ Status DataServiceDispatcherImpl::Start() {
   // Initialize the journal writer in `Start` so that we fail fast in case it
   // can't be initialized.
   TF_RETURN_IF_ERROR(journal_writer_.value()->EnsureInitialized());
+
+  for (const auto& path : state_.ListSnapshotPaths()) {
+    TF_ASSIGN_OR_RETURN(std::unique_ptr<SnapshotManager> snapshot_manager,
+                        SnapshotManager::Resume(path, env_));
+    snapshots_.insert({path, std::move(snapshot_manager)});
+  }
+
   started_ = true;
   return OkStatus();
 }
@@ -331,50 +340,6 @@ Status DataServiceDispatcherImpl::FindNewTasks(
   return OkStatus();
 }
 
-Status DataServiceDispatcherImpl::CreateSnapshotStream(
-    absl::string_view snapshot_directory, absl::string_view worker_address,
-    SnapshotState& snapshot_state) {
-  for (int64_t source_index = 0;
-       source_index < snapshot_state.split_providers.size(); ++source_index) {
-    TF_RETURN_IF_ERROR(env_->RecursivelyCreateDir(SourceDirectory(
-        snapshot_directory, snapshot_state.streams.size(), source_index)));
-  }
-  snapshot_state.streams.push_back(
-      StreamState(snapshot_state.split_providers.size(), worker_address));
-  return OkStatus();
-}
-
-Status DataServiceDispatcherImpl::PopulateSnapshotInfo(
-    absl::string_view worker_address, WorkerHeartbeatResponse* response) {
-  for (auto& [snapshot_directory, snapshot_state] : snapshots_) {
-    auto it = snapshot_state.assigned_streams.find(worker_address);
-    if (it == snapshot_state.assigned_streams.end() &&
-        snapshot_state.mode != SnapshotState::Mode::kActive) {
-      // If new workers are starting but the snapshot is not active, do not add
-      // a snapshot task.
-      continue;
-    }
-
-    SnapshotTaskDef* snapshot_task = response->add_snapshot_tasks();
-    snapshot_task->set_base_path(snapshot_directory);
-    snapshot_task->set_num_sources(snapshot_state.split_providers.size());
-    if (it != snapshot_state.assigned_streams.end()) {
-      snapshot_task->set_stream_index(it->second);
-      continue;
-    }
-
-    // TODO(mpcallanan): Handle orphaned streams.
-    TF_RETURN_IF_ERROR(CreateSnapshotStream(snapshot_directory, worker_address,
-                                            snapshot_state));
-    snapshot_task->set_stream_index(snapshot_state.streams.size() - 1);
-    snapshot_state.assigned_streams[worker_address] =
-        snapshot_task->stream_index();
-    VLOG(1) << "creating stream #" << snapshot_task->stream_index()
-            << " and assigning to worker " << worker_address;
-  }
-  return OkStatus();
-}
-
 Status DataServiceDispatcherImpl::WorkerHeartbeat(
     const WorkerHeartbeatRequest* request, WorkerHeartbeatResponse* response) {
   TF_RETURN_IF_ERROR(CheckStarted());
@@ -409,7 +374,10 @@ Status DataServiceDispatcherImpl::WorkerHeartbeat(
       FindTasksToDelete(current_tasks, assigned_tasks, response));
   TF_RETURN_IF_ERROR(
       FindNewTasks(worker_address, current_tasks, assigned_tasks, response));
-  TF_RETURN_IF_ERROR(PopulateSnapshotInfo(worker_address, response));
+
+  for (const auto& [path, snapshot_manager] : snapshots_) {
+    TF_RETURN_IF_ERROR(snapshot_manager->WorkerHeartbeat(*request, *response));
+  }
 
   VLOG(4) << "Finished worker heartbeat for worker at address "
           << request->worker_address();
@@ -1082,82 +1050,24 @@ Status DataServiceDispatcherImpl::GetWorkers(const GetWorkersRequest* request,
   return OkStatus();
 }
 
-StatusOr<SnapshotState*> DataServiceDispatcherImpl::CreateSnapshotState(
-    const std::string& snapshot_directory, const DatasetDef& dataset_def) {
-  auto [it, ignore] = snapshots_.insert({snapshot_directory, SnapshotState()});
-  TF_RETURN_IF_ERROR(
-      CreateSplitProviders(dataset_def, it->second.split_providers));
-  return &it->second;
-}
-
 Status DataServiceDispatcherImpl::Snapshot(const SnapshotRequest* request,
                                            SnapshotResponse* response) {
   TF_RETURN_IF_ERROR(CheckStarted());
   mutex_lock l(mu_);
 
-  if (snapshots_.contains(request->directory())) {
-    return errors::InvalidArgument("a snapshot at \"", request->directory(),
-                                   "\" is already started or completed");
+  if (snapshots_.contains(request->path())) {
+    return errors::InvalidArgument("a snapshot at ", request->path(),
+                                   " is already started or completed");
   }
 
-  TF_RETURN_IF_ERROR(snapshot_util::WriteMetadataFile(
-      env_, request->directory(), &request->metadata()));
-  TF_RETURN_IF_ERROR(WriteTextProto(
-      env_, DatasetDefFilePath(request->directory()), request->dataset()));
-  TF_RETURN_IF_ERROR(env_->RecursivelyCreateDir(
-      CommittedChunksDirectory(request->directory())));
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<SnapshotManager> snapshot_manager,
+                      SnapshotManager::Start(*request, env_));
+  snapshots_.insert({request->path(), std::move(snapshot_manager)});
 
   Update update;
   SnapshotUpdate* snapshot = update.mutable_snapshot();
-  snapshot->set_directory(request->directory());
+  snapshot->set_path(request->path());
   TF_RETURN_IF_ERROR(Apply(update));
-
-  TF_RETURN_IF_ERROR(
-      CreateSnapshotState(request->directory(), request->dataset()).status());
-
-  return OkStatus();
-}
-
-Status DataServiceDispatcherImpl::ValidateGetSnapshotSplitRequest(
-    const GetSnapshotSplitRequest& request) {
-  auto snapshot_state_it = snapshots_.find(request.directory());
-  if (snapshot_state_it == snapshots_.end()) {
-    return errors::InvalidArgument(
-        "the dispatcher does not know of a snapshot at ", request.directory());
-  }
-  SnapshotState& snapshot_state = snapshot_state_it->second;
-  if (snapshot_state.mode == SnapshotState::Mode::kDone) {
-    return errors::InvalidArgument(
-        "the dispatcher considers all splits for the snapshot at ",
-        request.directory(), "to have already been processed");
-  }
-
-  if (request.stream_index() >= snapshot_state.streams.size()) {
-    return errors::InvalidArgument("the dispatcher does not know of a stream ",
-                                   absl::StrCat(request.stream_index()),
-                                   " for the snapshot at ",
-                                   request.directory());
-  }
-  StreamState& stream_state = snapshot_state.streams[request.stream_index()];
-  if (stream_state.mode == StreamState::Mode::kDone) {
-    return errors::InvalidArgument("the dispatcher considers the stream ",
-                                   absl::StrCat(request.stream_index()),
-                                   "for the snapshot at ", request.directory(),
-                                   " to be done");
-  }
-
-  if (request.source_index() >= stream_state.sources.size()) {
-    return errors::InvalidArgument(absl::StrCat(
-        "the dispatcher does not know of a dataset source at index ",
-        request.source_index(), " for the stream at ", request.stream_index(),
-        " for the snapshot at ", request.directory()));
-  }
-  if (stream_state.sources[request.source_index()].done) {
-    return errors::InvalidArgument(absl::StrCat(
-        "the dispatcher considers the source at index ", request.source_index(),
-        " for the stream at ", request.stream_index(), " for the snapshot at ",
-        request.directory(), " to be done"));
-  }
 
   return OkStatus();
 }
@@ -1168,58 +1078,13 @@ Status DataServiceDispatcherImpl::GetSnapshotSplit(
   TF_RETURN_IF_ERROR(CheckStarted());
   mutex_lock l(mu_);
 
-  TF_RETURN_IF_ERROR(ValidateGetSnapshotSplitRequest(*request));
-
-  SnapshotState& snapshot_state = snapshots_[request->directory()];
-  if (snapshot_state.mode == SnapshotState::Mode::kWindingDown) {
-    response->set_end_of_splits(true);
-    return OkStatus();
+  auto it = snapshots_.find(request->base_path());
+  if (it == snapshots_.end()) {
+    return errors::InvalidArgument(
+        "the dispatcher does not know of a snapshot at ", request->base_path());
   }
 
-  Tensor split;
-  bool end_of_splits = true;
-  SplitProvider* split_provider =
-      snapshot_state.split_providers[request->source_index()].get();
-  DCHECK(split_provider != nullptr);
-  TF_RETURN_IF_ERROR(split_provider->GetNext(&split, &end_of_splits));
-
-  StreamState& stream_state = snapshot_state.streams[request->stream_index()];
-  SourceState& source_state = stream_state.sources[request->source_index()];
-  if (end_of_splits) {
-    source_state.done = true;
-    stream_state.active_sources.erase(request->source_index());
-    if (stream_state.active_sources.empty()) {
-      stream_state.mode = StreamState::Mode::kDone;
-      snapshot_state.assigned_streams.erase(stream_state.worker_address);
-    }
-    snapshot_state.mode = snapshot_state.assigned_streams.empty()
-                              ? SnapshotState::Mode::kDone
-                              : SnapshotState::Mode::kWindingDown;
-
-    response->set_end_of_splits(true);
-    return OkStatus();
-  }
-
-  std::string unassigned_split_path;
-  if (!env_->LocalTempFilename(&unassigned_split_path)) {
-    return errors::Internal("failed to write split");
-  }
-
-  snapshot_util::TFRecordWriter writer(unassigned_split_path,
-                                       tsl::io::compression::kNone);
-  TF_RETURN_IF_ERROR(writer.Initialize(env_));
-  TF_RETURN_IF_ERROR(writer.WriteTensors({split}));
-
-  std::string assigned_split_path =
-      SplitPath(request->directory(), request->stream_index(),
-                request->source_index(), source_state.next_local_split_index,
-                snapshot_state.next_global_split_index);
-  TF_RETURN_IF_ERROR(
-      env_->RenameFile(unassigned_split_path, assigned_split_path));
-  ++source_state.next_local_split_index;
-  ++snapshot_state.next_global_split_index;
-
-  split.AsProtoTensorContent(response->mutable_split());
+  TF_RETURN_IF_ERROR(it->second->GetSnapshotSplit(*request, *response));
 
   return OkStatus();
 }
