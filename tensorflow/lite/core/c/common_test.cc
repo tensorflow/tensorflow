@@ -15,13 +15,19 @@ limitations under the License.
 
 #include "tensorflow/lite/core/c/common.h"
 
+#include <cstddef>
+#include <cstdlib>
+#include <limits>
 #include <memory>
 #include <string>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "tensorflow/lite/core/c/c_api_types.h"
+#include "tensorflow/lite/util.h"
 
 namespace tflite {
+using ::testing::ElementsAreArray;
 
 // NOTE: this tests only the TfLiteIntArray part of context.
 // most of common.h is provided in the context of using it with
@@ -218,6 +224,152 @@ TEST(TestTfLiteOpaqueDelegate, CallTfLiteOpaqueDelegateCreateWithNull) {
 
 TEST(TestTfLiteOpaqueDelegate, CallTfLiteOpaqueDelegateDeleteWithNull) {
   TfLiteOpaqueDelegateDelete(nullptr);
+}
+
+TEST(TestTensorRealloc, TensorReallocMoreBytesSucceeds) {
+  const TfLiteType t = kTfLiteFloat32;
+  const int num_elements = 4;
+  const int new_num_elements = 6;
+  const size_t bytes = sizeof(float) * num_elements;
+  const size_t new_bytes = sizeof(float) * new_num_elements;
+  float* data = (float*)malloc(bytes);
+  memset(data, 0, bytes);
+
+  TfLiteIntArray* dims = ConvertVectorToTfLiteIntArray({num_elements});
+  TfLiteTensor* tensor = (TfLiteTensor*)malloc(sizeof(TfLiteTensor));
+  tensor->sparsity = nullptr;
+  tensor->quantization.type = kTfLiteNoQuantization;
+  tensor->bytes = bytes;
+  tensor->type = t;
+  tensor->data.data = data;
+  tensor->allocation_type = kTfLiteDynamic;
+  tensor->dims = dims;
+  tensor->dims_signature = TfLiteIntArrayCopy(dims);
+
+  ASSERT_EQ(TfLiteTensorRealloc(new_bytes, tensor), kTfLiteOk);
+  EXPECT_EQ(tensor->bytes, new_bytes);
+
+  ASSERT_THAT(std::vector<int>(tensor->data.f, tensor->data.f + num_elements),
+              ElementsAreArray({0, 0, 0, 0}));
+
+  TfLiteTensorFree(tensor);
+  free(tensor);
+}
+
+TEST(TestTensorRealloc, TensorReallocLessBytesSucceeds) {
+  const TfLiteType t = kTfLiteFloat32;
+  const int num_elements = 4;
+  const int new_num_elements = 2;
+  const size_t bytes = sizeof(float) * num_elements;
+  const size_t new_bytes = sizeof(float) * new_num_elements;
+  float* data = (float*)malloc(bytes);
+  memset(data, 0, bytes);
+
+  TfLiteIntArray* dims = ConvertVectorToTfLiteIntArray({num_elements});
+  TfLiteTensor* tensor = (TfLiteTensor*)malloc(sizeof(TfLiteTensor));
+  tensor->sparsity = nullptr;
+  tensor->bytes = bytes;
+  tensor->type = t;
+  tensor->data.data = data;
+  tensor->allocation_type = kTfLiteDynamic;
+  tensor->dims = dims;
+  tensor->dims_signature = TfLiteIntArrayCopy(dims);
+  tensor->quantization.type = kTfLiteNoQuantization;
+
+  ASSERT_EQ(TfLiteTensorRealloc(new_bytes, tensor), kTfLiteOk);
+  EXPECT_EQ(tensor->bytes, new_bytes);
+
+  ASSERT_THAT(std::vector<int>(tensor->data.f, tensor->data.f + 2),
+              ElementsAreArray({0, 0}));
+
+  TfLiteTensorFree(tensor);
+  free(tensor);
+}
+
+TEST(TestTensorRealloc, TensorReallocNonDynamicNoChange) {
+  const TfLiteType t = kTfLiteFloat32;
+  const int num_elements = 4;
+  const int new_num_elements = 6;
+  const size_t bytes = sizeof(float) * num_elements;
+  const size_t new_bytes = sizeof(float) * new_num_elements;
+  float* data = (float*)malloc(bytes);
+  memset(data, 0, bytes);
+
+  TfLiteIntArray* dims = ConvertVectorToTfLiteIntArray({num_elements});
+  TfLiteTensor* tensor = (TfLiteTensor*)malloc(sizeof(TfLiteTensor));
+  tensor->sparsity = nullptr;
+  tensor->bytes = bytes;
+  tensor->type = t;
+  tensor->data.data = data;
+  tensor->allocation_type = kTfLiteArenaRw;
+  tensor->quantization.type = kTfLiteNoQuantization;
+  tensor->dims = dims;
+  tensor->dims_signature = TfLiteIntArrayCopy(dims);
+
+  EXPECT_EQ(TfLiteTensorRealloc(new_bytes, tensor), kTfLiteOk);
+  // Tensor should still be intact.
+  EXPECT_EQ(tensor->bytes, bytes);
+
+  EXPECT_THAT(std::vector<int>(tensor->data.i32, tensor->data.i32 + 4),
+              ElementsAreArray({0, 0, 0, 0}));
+
+  free(tensor->data.data);
+  TfLiteTensorFree(tensor);
+  free(tensor);
+}
+
+TEST(TestTensorRealloc, TensorReallocNumByte0) {
+  const TfLiteType t = kTfLiteFloat32;
+  const int num_elements = 4;
+  const int new_num_elements = 0;
+  const size_t bytes = sizeof(float) * num_elements;
+  const size_t new_bytes = sizeof(float) * new_num_elements;
+  float* data = (float*)malloc(bytes);
+  memset(data, 0, bytes);
+
+  TfLiteIntArray* dims = ConvertVectorToTfLiteIntArray({num_elements});
+  TfLiteTensor* tensor = (TfLiteTensor*)malloc(sizeof(TfLiteTensor));
+  tensor->sparsity = nullptr;
+  tensor->bytes = bytes;
+  tensor->type = t;
+  tensor->data.data = data;
+  tensor->allocation_type = kTfLiteDynamic;
+  tensor->quantization.type = kTfLiteNoQuantization;
+  tensor->dims = dims;
+  tensor->dims_signature = TfLiteIntArrayCopy(dims);
+
+  EXPECT_EQ(TfLiteTensorRealloc(new_bytes, tensor), kTfLiteOk);
+  EXPECT_EQ(tensor->bytes, 0);
+
+  TfLiteTensorFree(tensor);
+  free(tensor);
+}
+
+TEST(TestTensorRealloc, TensorReallocLargeBytesFails) {
+  const TfLiteType t = kTfLiteFloat32;
+  const int num_elements = 4;
+  const size_t bytes = sizeof(float) * num_elements;
+
+  float* data = (float*)malloc(bytes);
+  memset(data, 0, bytes);
+
+  TfLiteIntArray* dims = ConvertVectorToTfLiteIntArray({num_elements});
+  TfLiteTensor* tensor = (TfLiteTensor*)malloc(sizeof(TfLiteTensor));
+  tensor->sparsity = nullptr;
+  tensor->bytes = bytes;
+  tensor->type = t;
+  tensor->data.data = data;
+  tensor->allocation_type = kTfLiteDynamic;
+  tensor->dims = dims;
+  tensor->dims_signature = TfLiteIntArrayCopy(dims);
+  tensor->quantization.type = kTfLiteNoQuantization;
+
+  const size_t large_bytes = std::numeric_limits<size_t>::max();
+  EXPECT_EQ(TfLiteTensorRealloc(large_bytes, tensor), kTfLiteError);
+
+  TfLiteTensorFree(tensor);
+  free(data);
+  free(tensor);
 }
 
 TEST(TestTfLiteOpaqueDelegate, GetData_WellFormedOpaqueDelegate) {
