@@ -21,10 +21,10 @@ limitations under the License.
 #include "mlir/Dialect/Tosa/IR/TosaOps.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
-#include "transforms/passes.h"
+#include "passes.h"
 
 #define GEN_PASS_DEF_TOSAPREPAREMHLOPASS
-#include "transforms/passes.h.inc"
+#include "passes.h.inc"
 
 #define PASS_NAME "tosa-prepare-mhlo"
 #define DEBUG_TYPE PASS_NAME
