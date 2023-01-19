@@ -2682,6 +2682,9 @@ class VariableSpec(tensor_spec.DenseSpec):
 
   # TraceType method
   def placeholder_value(self, placeholder_context):
+    if placeholder_context.unnest_only:
+      return self
+
     name = self.name or placeholder_context.naming_scope
     context_graph = placeholder_context.context_graph
     if placeholder_context.has_placeholder(self.alias_id):

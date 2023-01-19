@@ -233,6 +233,9 @@ class TypeSpec(
       A `CompositeTensor` placeholder whose components are recursively composed
         of placeholders themselves.
     """
+    if placeholder_context.unnest_only:
+      return self
+
     component_placeholders = nest.map_structure(
         lambda x: x.placeholder_value(placeholder_context),
         self._component_specs)

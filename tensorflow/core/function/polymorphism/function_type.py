@@ -474,7 +474,9 @@ def add_type_constraints(function_type: FunctionType, input_signature: Any,
         parameters.append(
             Parameter(param.name, sanitized_kind, param.optional,
                       type_constraint))
-      # TODO(fmuham): Add check for insufficient type constraints.
+      else:
+        raise TypeError(
+            f"input_signature missing type constraint for {param.name}")
 
   if constraints:
     raise TypeError(

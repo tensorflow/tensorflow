@@ -3543,22 +3543,20 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     m = MyModule()
     tf_func_dec = polymorphic_function.function(
         input_signature=(tensor_spec.TensorSpec([], dtypes.int32),))
-    at_declare_error_msg = 'TensorSpecs are still required.*arg2.*arg3'
-    at_call_error_msg = 'too many positional arguments'
-
-    with self.assertRaisesRegex(TypeError, at_call_error_msg):
+    error_message = 'input_signature missing type constraint'
+    with self.assertRaisesRegex(TypeError, error_message):
       tf_func_dec(m.f1)(1, 2, 3)
 
-    with self.assertRaisesRegex(TypeError, at_call_error_msg):
+    with self.assertRaisesRegex(TypeError, error_message):
       tf_func_dec(m.f2)(1, 2, 3)
 
-    with self.assertRaisesRegex(TypeError, at_declare_error_msg):
+    with self.assertRaisesRegex(TypeError, error_message):
       tf_func_dec(m.f3)(1, 2, 3)
 
-    with self.assertRaisesRegex(TypeError, at_call_error_msg):
+    with self.assertRaisesRegex(TypeError, error_message):
       tf_func_dec(m.f4)(1, 2, 3)
 
-    with self.assertRaisesRegex(TypeError, at_call_error_msg):
+    with self.assertRaisesRegex(TypeError, error_message):
       tf_func_dec(m.f5)(1, 2, 3)
 
     self.assertEqual(tf_func_dec(m.f6)(1).numpy(), 5)
@@ -3566,37 +3564,36 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
   def testInputSignatureMissingTensorSpecsFunction(self):
     tf_func_dec = polymorphic_function.function(
         input_signature=(tensor_spec.TensorSpec([], dtypes.int32),))
-    at_dec_error_msg = 'TensorSpecs are still required.*arg2.*arg3'
-    at_call_error_msg = 'too many positional arguments'
+    error_message = 'input_signature missing type constraint'
     # pylint: disable=unused-argument
     def f1(arg1, arg2, arg3):
       pass
 
-    with self.assertRaisesRegex(TypeError, at_call_error_msg):
+    with self.assertRaisesRegex(TypeError, error_message):
       tf_func_dec(f1)(1, 2, 3)
 
     def f2(arg1, arg2, arg3, **kwargs):
       pass
 
-    with self.assertRaisesRegex(TypeError, at_call_error_msg):
+    with self.assertRaisesRegex(TypeError, error_message):
       tf_func_dec(f2)(1, 2, 3)
 
     def f3(arg1, arg2, arg3, arg4=4, **kwargs):
       pass
 
-    with self.assertRaisesRegex(TypeError, at_dec_error_msg):
+    with self.assertRaisesRegex(TypeError, error_message):
       tf_func_dec(f3)(1, 2, 3)
 
     def f4(arg1, arg2, arg3, *args):
       pass
 
-    with self.assertRaisesRegex(TypeError, at_call_error_msg):
+    with self.assertRaisesRegex(TypeError, error_message):
       tf_func_dec(f4)(1, 2, 3)
 
     def f5(arg1, arg2, arg3, *args, **kwargs):
       pass
 
-    with self.assertRaisesRegex(TypeError, at_call_error_msg):
+    with self.assertRaisesRegex(TypeError, error_message):
       tf_func_dec(f5)(1, 2, 3)
     # pyline: enable=unused-argument
 
@@ -3607,21 +3604,20 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
   def testInputSignatureMissingTensorSpecsLambdaFunction(self):
     tf_func_dec = polymorphic_function.function(
         input_signature=(tensor_spec.TensorSpec([], dtypes.int32),))
-    at_dec_error_msg = 'TensorSpecs are still required.*arg2.*arg3'
-    at_call_error_msg = 'too many positional arguments'
-    with self.assertRaisesRegex(TypeError, at_call_error_msg):
+    error_message = 'input_signature missing type constraint'
+    with self.assertRaisesRegex(TypeError, error_message):
       tf_func_dec(lambda ar1, arg2, arg3: None)(1, 2, 3)
 
-    with self.assertRaisesRegex(TypeError, at_call_error_msg):
+    with self.assertRaisesRegex(TypeError, error_message):
       tf_func_dec(lambda arg1, arg2, arg3, **kwargs: None)(1, 2, 3)
 
-    with self.assertRaisesRegex(TypeError, at_dec_error_msg):
+    with self.assertRaisesRegex(TypeError, error_message):
       tf_func_dec(lambda arg1, arg2, arg3, arg4=4, **kwargs: None)(1, 2, 3)
 
-    with self.assertRaisesRegex(TypeError, at_call_error_msg):
+    with self.assertRaisesRegex(TypeError, error_message):
       tf_func_dec(lambda arg1, arg2, arg3, *args: None)(1, 2, 3)
 
-    with self.assertRaisesRegex(TypeError, at_call_error_msg):
+    with self.assertRaisesRegex(TypeError, error_message):
       tf_func_dec(lambda arg1, arg2, arg3, *args, **kwargs: None)(1, 2, 3)
 
     self.assertEqual(
@@ -3643,20 +3639,23 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     else:  # lambda_function
       f = lambda arg1, arg2, arg3, arg4=4: arg1 + arg2 + arg3 + arg4
 
+    error_message = 'input_signature missing type constraint'
     tf_func_dec = polymorphic_function.function(
-        input_signature=(tensor_spec.TensorSpec([], dtypes.int32),))
-    with self.assertRaisesRegex(TypeError,
-                                'TensorSpecs are still required.*arg3'):
+        input_signature=(tensor_spec.TensorSpec([], dtypes.int32),)
+    )
+    with self.assertRaisesRegex(TypeError, error_message):
       tf_func_dec(functools.partial(f, 1))(2, 3)
 
-    with self.assertRaisesRegex(TypeError, 'too many positional argument'):
+    with self.assertRaisesRegex(TypeError, error_message):
       tf_func_dec(functools.partial(f, arg4=5))(1, 2, 3)
 
-    with self.assertRaisesRegex(TypeError, 'too many positional argument'):
+    with self.assertRaisesRegex(TypeError, error_message):
       tf_func_dec(functools.partial(f, 1, arg4=5))(2, 3)
 
-    self.assertAllEqual(tf_func_dec(functools.partial(f, 1, 2, arg4=5))(3),
-                        array_ops.constant(11))
+    self.assertAllEqual(
+        tf_func_dec(functools.partial(f, 1, 2, arg4=5))(3),
+        array_ops.constant(11),
+    )
 
   @test_util.run_in_graph_and_eager_modes
   def test_variable_naming(self):
