@@ -4078,7 +4078,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     self.assertEqual(func._name, cloned._name)
     self.assertEqual(input_signature, cloned.input_signature)
     self.assertEqual(autograph, cloned._autograph)
-    self.assertEqual(implements, cloned._implements)
+    self.assertEqual(func._attributes, cloned._attributes)
     self.assertEqual(autograph_options, cloned._experimental_autograph_options)
     self.assertEqual(relax_shapes, cloned._reduce_retracing)
     self.assertEqual(compile_, cloned._jit_compile)
@@ -4154,7 +4154,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     self.assertEqual(func._name, cloned._name)
     self.assertEqual(input_signature, cloned.input_signature)
     self.assertEqual(autograph, cloned._autograph)
-    self.assertEqual(implements, cloned._implements)
+    self.assertEqual(func._attributes, cloned._attributes)
     self.assertEqual(autograph_options, cloned._experimental_autograph_options)
     self.assertEqual(relax_shapes, cloned._reduce_retracing)
 
