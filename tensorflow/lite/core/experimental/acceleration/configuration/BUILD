@@ -1,3 +1,5 @@
+load("//tensorflow/lite/core/c:special_rules.bzl", "experimental_acceleration_api_allowlist")
+
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     licenses = ["notice"],
@@ -21,6 +23,9 @@ cc_library(
     name = "stable_delegate_registry",
     srcs = ["stable_delegate_registry.cc"],
     hdrs = ["stable_delegate_registry.h"],
+    visibility = [
+        "//tensorflow/lite:__subpackages__",
+    ] + experimental_acceleration_api_allowlist(),
     deps = [
         "//tensorflow/lite/core/experimental/acceleration/configuration/c:stable_delegate",
         "//tensorflow/lite/core/shims:tflite_use_opaque_delegate",  # buildcleaner: keep

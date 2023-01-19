@@ -76,7 +76,6 @@ cc_library_with_tflite(
     copts = tflite_copts(),
     tflite_deps = [
         ":sample_stable_delegate",
-        "//tensorflow/lite/core/experimental/acceleration/configuration/c:stable_delegate",
         "//tensorflow/lite/core/shims:c_api",
         "//tensorflow/lite/core/shims:c_api_experimental",
         "//tensorflow/lite/core/shims:c_api_types",
