@@ -1404,7 +1404,7 @@ class DatasetV2(
     dataset = dataset.repeat(2)
     # [1, 0, 2, 1, 0, 2]
     ```
-
+    
     In TF 2.0, `tf.data.Dataset` objects are Python iterables which makes it
     possible to also create epochs through Python iteration:
 
@@ -1435,6 +1435,9 @@ class DatasetV2(
       reshuffle_each_iteration: (Optional.) A boolean, which if true indicates
         that the dataset should be pseudorandomly reshuffled each time it is
         iterated over. (Defaults to `True`.)
+        Note: Setting reshuffle_each_iteration = True may leads to data leakage.
+              Hence users should be careful while using 
+              reshuffle_each_iteration=True.
       name: (Optional.) A name for the tf.data operation.
 
     Returns:
