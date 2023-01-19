@@ -261,7 +261,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":status",
-        "//tensorflow/compiler/xla/stream_executor/lib",
+        "//tensorflow/tsl/platform:statusor",
     ],
 )
 

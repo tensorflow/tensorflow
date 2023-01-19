@@ -40,6 +40,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_ops_c_api.h"
 #include "tensorflow/tsl/platform/errors.h"
 #include "tensorflow/tsl/platform/logging.h"
+#include "tensorflow/tsl/platform/statusor.h"
 
 #if !defined(PLATFORM_GOOGLE)
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_api.h"

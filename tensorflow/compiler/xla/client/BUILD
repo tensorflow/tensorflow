@@ -235,7 +235,6 @@ cc_library(
         "//tensorflow/compiler/xla/hlo/evaluator:hlo_evaluator",
         "//tensorflow/compiler/xla/hlo/ir:hlo",
         "//tensorflow/compiler/xla/service:hlo_proto_cc",
-        "//tensorflow/compiler/xla/stream_executor/lib",
         "//tensorflow/tsl/platform:errors",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings:str_format",
