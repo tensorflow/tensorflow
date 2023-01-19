@@ -18,6 +18,15 @@ filegroup(
 )
 
 py_library(
+    name = "type_registry",
+    srcs = [
+        "type_registry.py",
+    ],
+    srcs_version = "PY3",
+    visibility = ["//tensorflow:__subpackages__"],
+)
+
+py_library(
     name = "utils",
     srcs = [
         "__init__.py",
