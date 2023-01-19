@@ -507,8 +507,15 @@ class FunctionSpec(object):
                        f"{sorted(kwargs.keys())}, Sanitized: "
                        f"{sorted(sanitized_kwargs.keys())}")
 
-    bound_arguments = self.function_type.bind_with_defaults(
-        args, sanitized_kwargs, self.default_values)
+    try:
+      bound_arguments = self.function_type.bind_with_defaults(
+          args, sanitized_kwargs, self.default_values)
+    except Exception as e:
+      raise TypeError(
+          f"Binding inputs to tf.function `{self._name}` failed due to `{e}`."
+          f"Received args: {args} and kwargs: {sanitized_kwargs} for signature:"
+          f" {self.function_type}."
+      ) from e
     return bound_arguments.args, bound_arguments.kwargs
 
 
