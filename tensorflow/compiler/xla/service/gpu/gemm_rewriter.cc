@@ -580,8 +580,8 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
       return false;
     }
 
-    // cuBLASLt FP8 GEMM kernels require the operand sizes to be multiples
-    // of 16.
+    // cuBLASLt FP8 GEMM kernels require the non-batch dimensions of the
+    // operands to be multiples of 16.
     TF_ASSIGN_OR_RETURN(auto gemm_backend_config,
                         instr->backend_config<GemmBackendConfig>());
     absl::Span<const int64_t> a_dims =
@@ -677,6 +677,16 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
       return false;
     }
 
+    // Verify that bitcasts preserve the element types.
+    if (a_bitcast && !ShapeUtil::SameElementType(
+                         a_bitcast->shape(), a_bitcast->operand(0)->shape())) {
+      return false;
+    }
+    if (b_bitcast && !ShapeUtil::SameElementType(
+                         b_bitcast->shape(), b_bitcast->operand(0)->shape())) {
+      return false;
+    }
+
     // Shift any bitcasts to the unconverted and unscaled operands.
     if (a_bitcast) {
       a = instr->AddInstruction(a_bitcast->CloneWithNewOperands(
@@ -701,13 +711,9 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     // Identify the dimensional order which describes a transpose of the
     // contracting and non-contracting dimensions of the GEMM.
     auto transp_dim_order =
-        [](HloInstruction *x, absl::Span<const int64_t> x_contracting_dims,
+        [](HloInstruction *x, int64_t x_contracting_dim,
            absl::Span<const int64_t> x_batch_dims) -> std::vector<int64_t> {
-      std::vector<int64_t> dims;
-      dims.reserve(x->shape().dimensions_size());
-      for (int i = 0; i < x->shape().dimensions_size(); ++i) {
-        dims.emplace_back(-1);
-      }
+      std::vector<int64_t> dims(x->shape().dimensions_size(), -1);
       // Discard the batch dimensions.
       for (int64_t batch_dim : x_batch_dims) {
         dims[batch_dim] = batch_dim;
@@ -715,13 +721,12 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
       // Identify the non-contracting dimension.
       int non_contracting_dim;
       for (int i = 0; i < x->shape().dimensions_size(); ++i) {
-        if (dims[i] == -1 && !absl::c_linear_search(x_contracting_dims, i)) {
+        if (dims[i] == -1 && x_contracting_dim != i) {
           non_contracting_dim = i;
         }
       }
-      // Exchange the contracting and non-contracting dimensions.
-      dims[non_contracting_dim] = x_contracting_dims[0];
-      dims[x_contracting_dims[0]] = non_contracting_dim;
+      dims[non_contracting_dim] = x_contracting_dim;
+      dims[x_contracting_dim] = non_contracting_dim;
       return dims;
     };
 
@@ -737,19 +742,19 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     };
 
     if (is_col_major) {
-      std::vector<int64_t> transp_dim_order_ =
-          transp_dim_order(a, a_contracting_dims, a_batch_dims);
+      std::vector<int64_t> new_dim_order =
+          transp_dim_order(a, a_contracting_dims[0], a_batch_dims);
       a = instr->AddInstruction(HloInstruction::CreateTranspose(
           ShapeUtil::MakeShape(a->shape().element_type(),
-                               transp_dims(a, transp_dim_order_)),
-          a, transp_dim_order_));
+                               transp_dims(a, new_dim_order)),
+          a, new_dim_order));
     } else {
-      std::vector<int64_t> transp_dim_order_ =
-          transp_dim_order(b, b_contracting_dims, b_batch_dims);
+      std::vector<int64_t> new_dim_order =
+          transp_dim_order(b, b_contracting_dims[0], b_batch_dims);
       b = instr->AddInstruction(HloInstruction::CreateTranspose(
           ShapeUtil::MakeShape(b->shape().element_type(),
-                               transp_dims(b, transp_dim_order_)),
-          b, transp_dim_order_));
+                               transp_dims(b, new_dim_order)),
+          b, new_dim_order));
     }
 
     std::unique_ptr<HloInstruction> new_custom_call =
