@@ -24,7 +24,6 @@ limitations under the License.
 
 #include "absl/functional/any_invocable.h"
 #include "absl/synchronization/mutex.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/status.h"
 #include "tensorflow/compiler/xla/stream_executor/lib/threadpool.h"
 #include "tensorflow/compiler/xla/stream_executor/stream_executor_internal.h"
 
