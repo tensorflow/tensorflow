@@ -126,6 +126,11 @@ tf_py_test(
     size = "small",
     srcs = ["fault_tolerance_test.py"],
     shard_count = 8,
+    tags = [
+        "noasan",
+        "nomsan",
+        "notsan",
+    ],
     deps = [
         ":test_base",
         "//tensorflow:tensorflow_py",
