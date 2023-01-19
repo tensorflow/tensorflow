@@ -339,6 +339,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:hlo_module_config",
         "//tensorflow/compiler/xla/service:hlo_runner_interface",
         "//tensorflow/compiler/xla/stream_executor:platform",
+        "//tensorflow/compiler/xla/stream_executor/lib",
         "//tensorflow/tsl/platform:errors",
     ],
 )

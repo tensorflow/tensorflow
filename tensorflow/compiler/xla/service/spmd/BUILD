@@ -61,6 +61,8 @@ cc_library(
         "//tensorflow/compiler/xla/service:shape_inference",
         "//tensorflow/compiler/xla/service:sharding_propagation",
         "//tensorflow/compiler/xla/service:tuple_simplifier",
+        "//tensorflow/compiler/xla/stream_executor/lib",
+        "//tensorflow/tsl/platform:logging",
         "//tensorflow/tsl/platform:numbers",
         "//tensorflow/tsl/platform:statusor",
         "@com_google_absl//absl/algorithm:container",
@@ -152,6 +154,7 @@ cc_library(
     deps = [
         "//tensorflow/compiler/xla/hlo/ir:hlo",
         "//tensorflow/compiler/xla/service:hlo_pass",
+        "//tensorflow/compiler/xla/stream_executor/lib",
         "@com_google_absl//absl/container:flat_hash_map",
     ],
 )

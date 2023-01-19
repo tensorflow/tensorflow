@@ -16,11 +16,11 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_STATUSOR_H_
 
 #include "tensorflow/compiler/xla/status.h"
-#include "tensorflow/tsl/platform/statusor.h"
+#include "tensorflow/compiler/xla/stream_executor/lib/statusor.h"
 
 namespace xla {
 
-// Use tsl's StatusOr so we don't duplicate code.
+// Use steam_executor's StatusOr so we don't duplicate code.
 using tsl::StatusOr;  // TENSORFLOW_STATUS_OK
 
 }  // namespace xla

@@ -19,9 +19,9 @@ limitations under the License.
 #include <string>
 
 #include "absl/strings/string_view.h"
+#include "tensorflow/compiler/xla/stream_executor/lib/status.h"
 #include "tensorflow/compiler/xla/stream_executor/platform/port.h"
 #include "tensorflow/tsl/platform/env.h"
-#include "tensorflow/tsl/platform/status.h"
 
 namespace stream_executor {
 namespace port {
@@ -29,11 +29,11 @@ namespace port {
 using tsl::Env;     // NOLINT(misc-unused-using-decls)
 using tsl::Thread;  // NOLINT(misc-unused-using-decls)
 
-inline tsl::Status FileExists(const std::string& filename) {
+inline Status FileExists(const std::string& filename) {
   return Env::Default()->FileExists(filename);
 }
 
-inline tsl::Status FileExists(const absl::string_view& filename) {
+inline Status FileExists(const absl::string_view& filename) {
   return Env::Default()->FileExists(std::string(filename));
 }
 

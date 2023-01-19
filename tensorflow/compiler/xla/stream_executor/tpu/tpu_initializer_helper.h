@@ -19,7 +19,8 @@ limitations under the License.
 #include <string>
 #include <vector>
 
-#include "tensorflow/tsl/platform/status.h"
+#include "tensorflow/compiler/xla/stream_executor/lib/status.h"
+#include "tensorflow/compiler/xla/stream_executor/lib/statusor.h"
 
 namespace tensorflow {
 namespace tpu {
