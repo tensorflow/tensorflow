@@ -403,6 +403,7 @@ cc_library(
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/functional:function_ref",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:span",
     ],
 )
@@ -451,6 +452,7 @@ xla_cc_test(
         ":types",
         ":util",
         ":xla_data_proto_cc",
+        "//tensorflow/tsl/platform:env",
         "//tensorflow/tsl/platform:protobuf",
         "//tensorflow/tsl/platform:test_benchmark",
         "//tensorflow/tsl/platform:test_main",
