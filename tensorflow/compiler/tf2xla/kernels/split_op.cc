@@ -67,15 +67,6 @@ class SplitOp : public XlaOpKernel {
             split_dim_orig, " (size = ", input_shape.dim_size(split_dim), ") ",
             "and num_split ", num_split));
 
-    xla::XlaBuilder* builder = ctx->builder();
-    xla::XlaOp input = ctx->Input(1);
-    auto shape_or = builder->GetShape(input);
-    OP_REQUIRES_OK(ctx, shape_or.status());
-
-    OP_REQUIRES(ctx, !shape_or.value().is_dynamic(),
-                errors::InvalidArgument(
-                    "Split op doesn't support bounded dynamic inputs"));
-
     // All the slices are the same size: this is the size along the
     // split dimension.
     const int32_t slice_size = input_shape.dim_size(split_dim) / num_split;
@@ -91,6 +82,8 @@ class SplitOp : public XlaOpKernel {
       int64_t dim = input_shape.dim_size(i);
       limits[i] = dim;
     }
+
+    auto input = ctx->Input(1);
 
     // Create each of the outputs.
     for (int i = 0; i < num_split; ++i) {
@@ -184,18 +177,9 @@ class SplitVOp : public XlaOpKernel {
                                 "specified.  Got: ",
                                 total_split_size));
 
-    xla::XlaBuilder* builder = ctx->builder();
-    auto shape_or = builder->GetShape(input);
-    OP_REQUIRES_OK(ctx, shape_or.status());
-
     if (neg_one_dim >= 0) {
       split_sizes[neg_one_dim] =
           input_shape.dim_size(split_dim) - total_split_size;
-      // TODO(b/265880112): Support this using the SetDimensionSize op.
-      OP_REQUIRES(
-          ctx, !shape_or.value().is_dynamic(),
-          errors::Unimplemented("SplitV op doesn't yet support bounded "
-                                "dynamic inputs when size splits has -1"));
     }
 
     // The vectors we will use to define the slice. The entry for the
