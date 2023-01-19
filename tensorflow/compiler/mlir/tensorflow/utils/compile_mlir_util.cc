@@ -376,6 +376,10 @@ Status RefineShapes(llvm::ArrayRef<TensorOrResourceShape> arg_shapes,
   return error_handler.ConsumeStatus();
 }
 
+// We generally have the following pass structure:
+// TensorFlow passes
+// Legalization passes
+// MHLO passes
 void CreateConvertMlirToXlaHloPipeline(
     mlir::OpPassManager& pm, llvm::StringRef device_type, bool prefer_tf2xla,
     llvm::MutableArrayRef<std::unique_ptr<mlir::Pass>>
@@ -422,6 +426,15 @@ void CreateConvertMlirToXlaHloPipeline(
       mlir::mhlo::createSinkConstantsToControlFlowPass());
   pm.addPass(mlir::TF::CreateTFShapeInferencePass());
 
+  // Legalize any StableHLO ops to MHLO. Bridge still doesn't use StableHLO but
+  // such ops might be present in the input from upstream like TFRT compilation.
+  // Later on, this could be merged in the legalization pass when we migrate
+  // bridge to StableHLO.
+  // TODO(b/259459405): Avoid this peculiar use through some refactoring in
+  // the the caller.
+  // This needs to happen before legalization.
+  pm.addPass(mlir::mhlo::createStablehloLegalizeToHloPass());
+
   pm.addNestedPass<mlir::func::FuncOp>(mlir::TF::CreateLowerQuantizedPass());
   pm.addPass(mlir::mhlo::CreateLegalizeTfTypesPass());
   pm.addPass(mlir::mhlo::createLegalizeTFModulePass(
@@ -440,15 +453,6 @@ void CreateConvertMlirToXlaHloPipeline(
   // inference was originally missing in a TF op but the corresponding HLO op
   // had static shape after lowering.
   pm.addPass(mlir::TF::CreateTFShapeInferencePass());
-
-  // Legalize any StableHLO ops to MHLO. Bridge still doesn't use StableHLO but
-  // such ops might be present in the input from upstream like TFRT compilation.
-  // Later on, this could be merged in the legalization pass when we migrate
-  // bridge to StableHLO.
-  //
-  // TODO(b/259459405): Avoid this peculiar use through some refactoring in
-  // the the caller.
-  pm.addPass(mlir::mhlo::createStablehloLegalizeToHloPass());
 
   // TODO(b/259271758): Move this pass within the legalization TF pass. That is
   // required for using support quantization types with control flow because the
