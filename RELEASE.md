@@ -96,6 +96,8 @@
 
     *   Coordination service now works with `dtensor.initialize_accelerator_system`,
         and enabled by default.
+    *   Add `tf.experimental.dtensor.is_dtensor` to check if a tensor
+        is a DTensor instance.
 
 *   `tf.data`:
 

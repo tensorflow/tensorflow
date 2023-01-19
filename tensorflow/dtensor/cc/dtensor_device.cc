@@ -303,6 +303,10 @@ class DTensorDevice {
   std::string FetchLayout(TFE_Context* context, TFE_TensorHandle* input,
                           TF_Status* status);
 
+  // Returns whether `input` is a dtensor of this DTensorDevice.
+  bool IsDTensor(TFE_Context* context, TFE_TensorHandle* input,
+                 TF_Status* status);
+
   TFE_TensorHandle* SparsePack(TFE_Context* context, int num_inputs,
                                TFE_TensorHandle** indices,
                                TFE_TensorHandle** values,
@@ -663,6 +667,12 @@ std::string DTensorDevice::FetchLayout(TFE_Context* context,
       TFE_TensorHandleDevicePointer(input, status));
   if (TF_GetCode(status) != TF_OK) return {};
   return t->layout().ToString();
+}
+
+bool DTensorDevice::IsDTensor(TFE_Context* context, TFE_TensorHandle* input,
+                              TF_Status* status) {
+  const char* input_device = TFE_TensorHandleDeviceName(input, status);
+  return input_device == name_;
 }
 
 std::vector<TFE_TensorHandle*> DTensorDevice::Unpack(TFE_Context* context,
@@ -2279,6 +2289,12 @@ std::string FetchLayout(TFE_Context* context, TFE_TensorHandle* input,
                         void* device_info, TF_Status* status) {
   DTensorDevice* device = reinterpret_cast<DTensorDevice*>(device_info);
   return device->FetchLayout(context, input, status);
+}
+
+bool IsDTensor(TFE_Context* context, TFE_TensorHandle* input, void* device_info,
+               TF_Status* status) {
+  DTensorDevice* device = reinterpret_cast<DTensorDevice*>(device_info);
+  return device->IsDTensor(context, input, status);
 }
 
 TFE_TensorHandle* SparsePack(TFE_Context* context, int num_inputs,

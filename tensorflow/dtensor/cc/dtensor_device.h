@@ -107,6 +107,10 @@ std::vector<TFE_TensorHandle*> Unpack(TFE_Context* context,
 std::string FetchLayout(TFE_Context* context, TFE_TensorHandle* input,
                         void* device_info, TF_Status* status);
 
+// Returns whether `input` is a dtensor.
+bool IsDTensor(TFE_Context* context, TFE_TensorHandle* input, void* device_info,
+               TF_Status* status);
+
 // Pack `indices`, `values`, `shapes` tensors into a SparseTensorWithLayout.
 TFE_TensorHandle* SparsePack(TFE_Context* context, int num_inputs,
                              TFE_TensorHandle** indices,

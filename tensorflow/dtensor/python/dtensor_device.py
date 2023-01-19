@@ -32,6 +32,7 @@ from tensorflow.python.framework import device as tf_device
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
+from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import resource_variable_ops
 
 
@@ -293,6 +294,26 @@ class DTensorDevice(object):
     except core._NotOkStatusException as e:  # pylint: disable=protected-access
       raise core._status_to_exception(e) from None  # pylint: disable=protected-access
     return layout_lib.Layout.from_string(layout_string)
+
+  def is_dtensor(self, tensor: Any) -> bool:
+    """Check whether the input tensor is a DTensor.
+
+    In Python, a DTensor has the same type as a `tf.Tensor`. This method will
+    let you check and handle the tensor differently if a tf.Tensor is a DTensor.
+
+    Args:
+      tensor: an object to be checked.
+
+    Returns:
+      bool, True if the given tensor is a DTensor.
+    """
+    if not tensor_util.is_tensor(tensor):
+      return False
+    return _pywrap_dtensor_device.IsDTensor(
+        context.context()._handle,  # pylint: disable=protected-access
+        tensor,
+        self._device_info,
+    )
 
   def set_same_shape_policy(self, enabled):
     """Guess layouts using the layouts of other tensors with the same shape.

@@ -38,6 +38,7 @@ using tensorflow::dtensor::ExperimentalSetDefaultLayout;
 using tensorflow::dtensor::ExperimentalSetDefaultMesh;
 using tensorflow::dtensor::FetchLayout;
 using tensorflow::dtensor::GetFunctionCacheHitAndMissCount;
+using tensorflow::dtensor::IsDTensor;
 using tensorflow::dtensor::IsSparseDTensor;
 using tensorflow::dtensor::Mesh;
 using tensorflow::dtensor::Pack;
@@ -302,6 +303,20 @@ PYBIND11_MODULE(_pywrap_dtensor_device, m) {
         return tensorflow::PyoOrThrow(
             PyUnicode_FromString(layout_string.c_str()));
       });
+  m.def("IsDTensor", [](const py::handle& context,
+                        const py::handle& dtensor_handle,
+                        const py::capsule& device_info) {
+    std::unique_ptr<TF_Status, decltype(&TF_DeleteStatus)> status(
+        TF_NewStatus(), TF_DeleteStatus);
+    bool is_dtensor = IsDTensor(
+        static_cast<TFE_Context*>(PyCapsule_GetPointer(context.ptr(), nullptr)),
+        EagerTensor_Handle(dtensor_handle.ptr()), device_info, status.get());
+    if (TF_GetCode(status.get()) != TF_OK) {
+      PyErr_SetString(PyExc_ValueError, TF_Message(status.get()));
+      throw py::error_already_set();
+    }
+    return is_dtensor;
+  });
   m.def("IsSparseDTensor", [](const py::handle& context,
                               const py::handle& dtensor_handle,
                               const py::capsule& device_info) {
