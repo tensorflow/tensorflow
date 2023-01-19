@@ -925,7 +925,6 @@ void DnnPoolingGradOp<Eigen::bfloat16>::Compute(
   template class DnnPoolingOp<T>; \
   template class DnnPoolingGradOp<T>;
 TF_CALL_GPU_NUMBER_TYPES(DEFINE_DNN_OPS)
-TF_CALL_bfloat16(DEFINE_DNN_OPS)
 
 #if CUDNN_VERSION >= 7300
     template class DnnPoolingOp<qint8>;

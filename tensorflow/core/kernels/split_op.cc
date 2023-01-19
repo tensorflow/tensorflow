@@ -344,7 +344,6 @@ REGISTER_SPLIT(quint8);
                               .HostMemory("split_dim"),  \
                           SplitOpGPU<type>)
 
-TF_CALL_bfloat16(REGISTER_GPU);
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU);
 TF_CALL_COMPLEX_TYPES(REGISTER_GPU);
 #undef REGISTER_GPU

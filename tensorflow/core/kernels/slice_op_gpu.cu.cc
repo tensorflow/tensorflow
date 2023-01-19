@@ -37,7 +37,6 @@ typedef Eigen::GpuDevice GPUDevice;
   template struct functor::Slice<GPUDevice, T, 7>; \
   template struct functor::Slice<GPUDevice, T, 8>;
 
-TF_CALL_bfloat16(DEFINE_GPU_KERNELS);
 TF_CALL_int8(DEFINE_GPU_KERNELS);
 TF_CALL_int32(DEFINE_GPU_KERNELS);
 TF_CALL_int64(DEFINE_GPU_KERNELS);

@@ -67,7 +67,6 @@ void ConcatGPUImpl(const Eigen::GpuDevice& d,
       int split_size, typename TTypes<T, 2>::Matrix* output);
 
 TF_CALL_INTEGRAL_TYPES(REGISTER);  // int32 Needed for TensorLists.
-TF_CALL_bfloat16(REGISTER);
 TF_CALL_GPU_ALL_TYPES(REGISTER);
 #undef REGISTER
 

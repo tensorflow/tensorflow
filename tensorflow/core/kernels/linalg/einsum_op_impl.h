@@ -650,7 +650,6 @@ namespace functor {
   DECLARE_GPU_SPEC(T, 6);
 
 TF_CALL_GPU_NUMBER_TYPES(DECLARE_GPU_SPECS);
-DECLARE_GPU_SPECS(Eigen::bfloat16);
 // TODO(rocm): Enable once complex types are supported.
 #if GOOGLE_CUDA
 DECLARE_GPU_SPECS(complex64);
