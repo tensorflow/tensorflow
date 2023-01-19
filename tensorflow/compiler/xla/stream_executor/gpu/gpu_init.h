@@ -18,7 +18,7 @@ limitations under the License.
 
 #include <string>
 
-#include "tensorflow/tsl/platform/status.h"
+#include "tensorflow/compiler/xla/stream_executor/lib/status.h"
 
 namespace stream_executor {
 class Platform;
