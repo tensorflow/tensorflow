@@ -30,6 +30,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/functional/any_invocable.h"
 #include "absl/types/optional.h"
 #include "tensorflow/compiler/xla/stream_executor/allocator_stats.h"
 #include "tensorflow/compiler/xla/stream_executor/device_description.h"
@@ -252,9 +253,8 @@ class StreamExecutorInterface {
   virtual bool MemcpyDeviceToDevice(Stream* stream, DeviceMemoryBase* gpu_dst,
                                     const DeviceMemoryBase& gpu_src,
                                     uint64_t size) = 0;
-  virtual bool HostCallback(Stream* stream, std::function<void()> callback);
   virtual bool HostCallback(Stream* stream,
-                            std::function<tsl::Status()> callback) = 0;
+                            absl::AnyInvocable<tsl::Status() &&> callback) = 0;
   virtual tsl::Status AllocateEvent(Event* event) = 0;
   virtual tsl::Status DeallocateEvent(Event* event) = 0;
   virtual tsl::Status RecordEvent(Stream* stream, Event* event) = 0;

@@ -22,7 +22,9 @@ limitations under the License.
 #include "tensorflow/c/experimental/stream_executor/stream_executor.h"
 
 #include <string>
+#include <utility>
 
+#include "absl/functional/any_invocable.h"
 #include "tensorflow/c/c_api_macros.h"
 #include "tensorflow/c/c_api_macros_internal.h"
 #include "tensorflow/c/experimental/stream_executor/stream_executor_internal.h"
@@ -193,7 +195,7 @@ DeviceMemoryBase DeviceMemoryBaseFromC(const SP_DeviceMemoryBase& mem) {
 
 // Wrapper that allows passing std::function across C API.
 struct HostCallbackContext {
-  std::function<tsl::Status()> callback;
+  absl::AnyInvocable<tsl::Status() &&> callback;
 };
 
 // This wrapper allows calling `HostCallbackContext::callback` across C API.
@@ -201,7 +203,7 @@ struct HostCallbackContext {
 // `callback_fn` to `host_callback` in `SP_StreamExecutor`.
 void HostCallbackTrampoline(void* ctx, TF_Status* status) {
   HostCallbackContext* host_ctx = static_cast<HostCallbackContext*>(ctx);
-  tsl::Status s = host_ctx->callback();
+  tsl::Status s = std::move(host_ctx->callback)();
   Set_TF_Status_from_Status(status, s);
   delete host_ctx;
 }
@@ -423,10 +425,10 @@ class CStreamExecutor : public internal::StreamExecutorInterface {
     return true;
   }
   bool HostCallback(Stream* stream,
-                    std::function<tsl::Status()> callback) override {
+                    absl::AnyInvocable<tsl::Status() &&> callback) override {
     SP_Stream stream_handle =
         static_cast<CStream*>(stream->implementation())->Handle();
-    HostCallbackContext* ctx = new HostCallbackContext{callback};
+    HostCallbackContext* ctx = new HostCallbackContext{std::move(callback)};
     return stream_executor_->host_callback(&device_, stream_handle,
                                            &HostCallbackTrampoline, ctx);
   }

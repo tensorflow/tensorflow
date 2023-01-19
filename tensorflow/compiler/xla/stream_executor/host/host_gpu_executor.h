@@ -21,6 +21,7 @@ limitations under the License.
 
 #include <cstdint>
 
+#include "absl/functional/any_invocable.h"
 #include "tensorflow/compiler/xla/stream_executor/blas.h"
 #include "tensorflow/compiler/xla/stream_executor/host/host_stream.h"
 #include "tensorflow/compiler/xla/stream_executor/host/host_timer.h"
@@ -106,7 +107,7 @@ class HostExecutor : public internal::StreamExecutorInterface {
                                               uint64_t size) override;
 
   bool HostCallback(Stream* stream,
-                    std::function<tsl::Status()> callback) override;
+                    absl::AnyInvocable<tsl::Status() &&> callback) override;
 
   tsl::Status AllocateEvent(Event* event) override;
   tsl::Status DeallocateEvent(Event* event) override;

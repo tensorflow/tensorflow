@@ -28,6 +28,7 @@ limitations under the License.
 #include "absl/base/attributes.h"
 #include "absl/base/macros.h"
 #include "absl/base/thread_annotations.h"
+#include "absl/functional/any_invocable.h"
 #include "absl/memory/memory.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/optional.h"
@@ -617,12 +618,9 @@ class StreamExecutor {
 
   // Entrains on a stream a user-specified function to be run on the host.
   // See Stream::ThenDoHostCallback for full details.
-  bool HostCallback(Stream* stream, std::function<void()> callback);
-
-  // Entrains on a stream a user-specified function to be run on the host.
-  // See Stream::ThenDoHostCallback for full details.
   // This is the preferred form for a callback that may return an error.
-  bool HostCallback(Stream* stream, std::function<tsl::Status()> callback);
+  bool HostCallback(Stream* stream,
+                    absl::AnyInvocable<tsl::Status() &&> callback);
 
   // Performs platform-specific allocation and initialization of an event.
   tsl::Status AllocateEvent(Event* event);

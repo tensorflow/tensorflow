@@ -25,6 +25,7 @@ limitations under the License.
 #include <utility>
 
 #include "absl/base/const_init.h"
+#include "absl/functional/any_invocable.h"
 #include "absl/strings/ascii.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
@@ -755,13 +756,8 @@ tsl::Status StreamExecutor::Memset32(Stream* stream, DeviceMemoryBase* location,
   return implementation_->Memset32(stream, location, pattern, size);
 }
 
-bool StreamExecutor::HostCallback(Stream* stream,
-                                  std::function<void()> callback) {
-  return implementation_->HostCallback(stream, std::move(callback));
-}
-
-bool StreamExecutor::HostCallback(Stream* stream,
-                                  std::function<tsl::Status()> callback) {
+bool StreamExecutor::HostCallback(
+    Stream* stream, absl::AnyInvocable<tsl::Status() &&> callback) {
   return implementation_->HostCallback(stream, std::move(callback));
 }
 

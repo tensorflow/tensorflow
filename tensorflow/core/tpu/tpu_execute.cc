@@ -235,8 +235,9 @@ xla::Status UpdateDynamicInputs(
               se::DeviceMemory<int8>(mutable_input_mem->AsDeviceMemoryBase()),
               absl::MakeSpan(absl::bit_cast<int8*>(raw_input_runtime->data()),
                              ShapeSizeCompactRaw(runtime_shape)));
-          stream->ThenDoHostCallback([raw_input_runtime, padded_data,
-                                      runtime_shape, compile_time_shape]() {
+          stream->ThenDoHostCallbackWithStatus([raw_input_runtime, padded_data,
+                                                runtime_shape,
+                                                compile_time_shape]() {
             // After getting the data onto the host, transpose the data to
             // the correct layout by delinearizing it and linearizing it again.
             XLA_Shape c_runtime_shape, c_compile_time_shape;
@@ -273,7 +274,7 @@ xla::Status UpdateDynamicInputs(
           stream->ThenMemcpyH2D<int8>(*padded_data, &typed_new_input_memory);
 
           // Retain the memory until the end of the transfer.
-          stream->ThenDoHostCallback([padded_data]() { return OkStatus(); });
+          stream->ThenDoHostCallback([padded_data] {});
 
           // Modify the memory location in the input shape tree to point to the
           // new input.

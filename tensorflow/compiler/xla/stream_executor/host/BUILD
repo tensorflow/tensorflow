@@ -67,6 +67,7 @@ cc_library(
         "//tensorflow/tsl/platform:denormal",
         "//tensorflow/tsl/platform:env",
         "//tensorflow/tsl/platform:setround",
+        "@com_google_absl//absl/functional:any_invocable",
         "@com_google_absl//absl/synchronization",
     ],
 )
@@ -108,6 +109,7 @@ cc_library(
         "//tensorflow/compiler/xla/stream_executor/lib",
         "//tensorflow/tsl/platform:platform_port",
         "//tensorflow/tsl/platform/profile_utils:profile_utils_cpu_utils",
+        "@com_google_absl//absl/functional:any_invocable",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
     ],

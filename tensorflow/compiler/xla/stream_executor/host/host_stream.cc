@@ -17,6 +17,10 @@ limitations under the License.
 // the HostExecutor implementation.
 #include "tensorflow/compiler/xla/stream_executor/host/host_stream.h"
 
+#include <queue>
+#include <utility>
+
+#include "absl/functional/any_invocable.h"
 #include "absl/synchronization/notification.h"
 #include "tensorflow/tsl/platform/denormal.h"
 #include "tensorflow/tsl/platform/env.h"
@@ -49,14 +53,15 @@ HostStream::~HostStream() {
   thread_.reset();
 }
 
-bool HostStream::EnqueueTask(std::function<void()> task) {
-  return EnqueueTaskWithStatus([task = std::move(task)]() {
-    task();
+bool HostStream::EnqueueTask(absl::AnyInvocable<void() &&> task) {
+  return EnqueueTaskWithStatus([task = std::move(task)]() mutable {
+    std::move(task)();
     return ::tsl::OkStatus();
   });
 }
 
-bool HostStream::EnqueueTaskWithStatus(std::function<tsl::Status()> task) {
+bool HostStream::EnqueueTaskWithStatus(
+    absl::AnyInvocable<tsl::Status() &&> task) {
   CHECK(task != nullptr);
   absl::MutexLock lock(&mu_);
   work_queue_.push(std::move(task));
@@ -72,18 +77,18 @@ void HostStream::WorkLoop() {
   tsl::port::ScopedFlushDenormal flush;
   tsl::port::ScopedSetRound round(FE_TONEAREST);
   while (true) {
-    std::queue<std::function<tsl::Status()>> queue;
+    std::queue<absl::AnyInvocable<tsl::Status() &&>> queue;
     {
       absl::MutexLock lock(&mu_);
       mu_.Await(absl::Condition(this, &HostStream::WorkAvailable));
       std::swap(queue, work_queue_);
     }
     while (!queue.empty()) {
-      std::function<tsl::Status()>& fn = queue.front();
+      absl::AnyInvocable<tsl::Status()&&>& fn = queue.front();
       if (!fn) {
         return;
       }
-      status_.Update(fn());
+      status_.Update(std::move(fn)());
       queue.pop();
     }
   }

@@ -16,11 +16,13 @@ limitations under the License.
 #include "tensorflow/compiler/xla/stream_executor/stream.h"
 
 #include <cstdint>
+#include <functional>
 #include <limits>
 #include <memory>
 #include <utility>
 #include <vector>
 
+#include "absl/functional/any_invocable.h"
 #include "absl/strings/str_cat.h"
 #include "third_party/eigen3/Eigen/Core"
 #include "tensorflow/compiler/xla/stream_executor/blas.h"
@@ -110,6 +112,11 @@ std::string ToVlogString(const std::complex<T> &c) {
 
 template <class T>
 std::string ToVlogString(const std::function<T> &f) {
+  return f == nullptr ? "null" : "<non-null function>";
+}
+
+template <class T>
+std::string ToVlogString(const absl::AnyInvocable<T> &f) {
   return f == nullptr ? "null" : "<non-null function>";
 }
 
@@ -2371,19 +2378,15 @@ Stream &Stream::ThenTransformTensor(const dnn::BatchDescriptor &input_desc,
   return *this;
 }
 
-Stream &Stream::ThenDoHostCallback(std::function<void()> callback) {
-  VLOG_CALL(PARAM(callback));
-
-  if (!ok()) {
-    LOG(INFO) << DebugStreamPointers()
-              << " was in error state before adding host callback";
-  }
-  CheckError(parent_->HostCallback(this, std::move(callback)));
-  return *this;
+Stream &Stream::ThenDoHostCallback(absl::AnyInvocable<void() &&> callback) {
+  return ThenDoHostCallbackWithStatus([cb = std::move(callback)]() mutable {
+    std::move(cb)();
+    return ::tsl::OkStatus();
+  });
 }
 
 Stream &Stream::ThenDoHostCallbackWithStatus(
-    std::function<tsl::Status()> callback) {
+    absl::AnyInvocable<tsl::Status() &&> callback) {
   VLOG_CALL(PARAM(callback));
 
   if (!ok()) {
@@ -2395,7 +2398,7 @@ Stream &Stream::ThenDoHostCallbackWithStatus(
 }
 
 Stream &Stream::ThenRunAfterNextBlockHostUntilDone(
-    std::function<void()> callback) {
+    absl::AnyInvocable<void() &&> callback) {
   VLOG_CALL(PARAM(callback));
 
   if (!ok()) {
@@ -2547,13 +2550,13 @@ tsl::Status Stream::BlockHostUntilDone() {
 }
 
 void Stream::RunAfterBlockHostUntilDoneCallbacks() {
-  std::vector<std::function<void()>> callbacks;
+  std::vector<absl::AnyInvocable<void() &&>> callbacks;
   {
     absl::MutexLock lock(&mu_);
     std::swap(callbacks, after_block_host_until_done_callbacks_);
   }
-  for (const auto &fn : callbacks) {
-    fn();
+  for (auto &fn : callbacks) {
+    std::move(fn)();
   }
 }
 

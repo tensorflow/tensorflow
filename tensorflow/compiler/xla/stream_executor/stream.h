@@ -28,6 +28,7 @@ limitations under the License.
 #include <type_traits>
 
 #include "absl/base/thread_annotations.h"
+#include "absl/functional/any_invocable.h"
 #include "absl/synchronization/mutex.h"
 #include "tensorflow/compiler/xla/stream_executor/blas.h"
 #include "tensorflow/compiler/xla/stream_executor/device_memory.h"
@@ -1463,7 +1464,7 @@ class Stream {
   // This is kept for backward compatibility. Future code should use
   // ThenDoHostCallbackWithStatus and explicitly return a success status.
   // TODO(b/112125301): Eventually remove this method.
-  Stream &ThenDoHostCallback(std::function<void()> callback);
+  Stream &ThenDoHostCallback(absl::AnyInvocable<void() &&> callback);
 
   // Entrains onto the stream a callback to the host (from the device).
   // Host callbacks block/occupy the stream just as device functions
@@ -1477,13 +1478,15 @@ class Stream {
   //
   // On certain platforms, ThenDoHostCallback is expected to have significant
   // negative effects on performance.
-  Stream &ThenDoHostCallbackWithStatus(std::function<tsl::Status()> callback);
+  Stream &ThenDoHostCallbackWithStatus(
+      absl::AnyInvocable<tsl::Status() &&> callback);
 
   // Runs the given callback after the next call to BlockHostUntilDone on this
   // stream (or after the Stream does BlockHostUntilDone in its destructor).
   // This can act as a faster alternative to ThenDoHostCallbackWithStatus for
   // some use cases.
-  Stream &ThenRunAfterNextBlockHostUntilDone(std::function<void()> callback);
+  Stream &ThenRunAfterNextBlockHostUntilDone(
+      absl::AnyInvocable<void() &&> callback);
 
   // Returns the StreamExecutor (parent object) associated with this stream.
   StreamExecutor *parent() const {
@@ -1617,8 +1620,8 @@ class Stream {
   internal::TemporaryMemoryManager temporary_memory_manager_;
 
   // Callbacks enqueued to be run after the next call to BlockHostUntilDone().
-  std::vector<std::function<void()>> after_block_host_until_done_callbacks_
-      ABSL_GUARDED_BY(mu_);
+  std::vector<absl::AnyInvocable<void() &&>>
+      after_block_host_until_done_callbacks_ ABSL_GUARDED_BY(mu_);
 
   // Non-extended BLAS interface requires alpha/beta to be floats when input
   // type is Eigen::half. However, for consistency purposes it is convenient

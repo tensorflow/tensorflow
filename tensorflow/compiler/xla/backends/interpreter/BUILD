@@ -156,6 +156,7 @@ cc_library(
         "//tensorflow/compiler/xla/stream_executor/host:host_stream",
         "//tensorflow/compiler/xla/stream_executor/host:host_timer",
         "//tensorflow/tsl/platform:logging",
+        "@com_google_absl//absl/functional:any_invocable",
         "@com_google_absl//absl/types:span",
     ],
 )
