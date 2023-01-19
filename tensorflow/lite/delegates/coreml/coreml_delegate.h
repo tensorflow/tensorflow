@@ -17,6 +17,8 @@ limitations under the License.
 
 #include "tensorflow/lite/c/common.h"
 
+// LINT.IfChange
+
 #ifdef __cplusplus
 extern "C" {
 #endif  // __cplusplus
@@ -64,5 +66,7 @@ void TfLiteCoreMlDelegateDelete(TfLiteDelegate* delegate);
 #ifdef __cplusplus
 }
 #endif  // __cplusplus
+
+// LINT.ThenChange(README.md)
 
 #endif  // TENSORFLOW_LITE_DELEGATES_COREML_COREML_DELEGATE_H_
