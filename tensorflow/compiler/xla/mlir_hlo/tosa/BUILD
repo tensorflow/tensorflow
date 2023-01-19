@@ -17,8 +17,8 @@ cc_binary(
     name = "mhlo-tosa-opt",
     srcs = ["mhlo_tosa_opt.cc"],
     deps = [
-        "//tensorflow/compiler/xla/mlir_hlo/tosa/transforms:MHLOTOSATransforms",
         "//tensorflow/compiler/xla/mlir_hlo:hlo_dialect_registration",
+        "//tensorflow/compiler/xla/mlir_hlo/tosa/transforms:MHLOTOSATransforms",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:AllPassesAndDialects",
         "@llvm-project//mlir:IR",
