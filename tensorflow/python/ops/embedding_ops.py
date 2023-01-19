@@ -14,6 +14,7 @@
 # ==============================================================================
 """Operations for embeddings."""
 
+from tensorflow.python.compat import compat
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import indexed_slices
@@ -1007,9 +1008,26 @@ def embedding_lookup_sparse_impl(
     name,
 ):
   """Implementation of sparse embedding aggregation."""
-  if len(params) == 1 and max_norm is None and allow_fast_lookup:
+  need_sparse_segment_gradient = False
+  # Ensure we can query the devices below.
+  segment_ids = ops.convert_to_tensor(segment_ids, name="segment_ids")
+  if (len(params) == 1 and
+      not isinstance(params[0], resource_variable_ops.BaseResourceVariable)):
+    params = [ops.convert_to_tensor(params[0], name="params")]
+  # Note that if the params are on a different device (e.g., CPU), we must use
+  # embedding_lookup() so that the gather operation is colocated with them.
+  if (len(params) == 1 and params[0].device == segment_ids.device and
+      max_norm is None and (
+          allow_fast_lookup or
+          (ignore_weights and compat.forward_compatible(2023, 9, 18)))):
     idx = ids
     embeddings = params[0]
+    if isinstance(embeddings, resource_variable_ops.BaseResourceVariable):
+      # Avoid a redundant copy due to copy-on-read semantics for
+      # sparsely-updated variables.
+      embeddings = embeddings.read_value_no_copy()
+    if not allow_fast_lookup:
+      need_sparse_segment_gradient = True
   else:
     ids, idx = array_ops.unique(ids)
     embeddings = embedding_lookup(
@@ -1072,15 +1090,18 @@ def embedding_lookup_sparse_impl(
     assert idx is not None
     if combiner == "sum":
       embeddings = math_ops.sparse_segment_sum(
-          embeddings, idx, segment_ids, name=name
+          embeddings, idx, segment_ids, name=name,
+          sparse_gradient=need_sparse_segment_gradient
       )
     elif combiner == "mean":
       embeddings = math_ops.sparse_segment_mean(
-          embeddings, idx, segment_ids, name=name
+          embeddings, idx, segment_ids, name=name,
+          sparse_gradient=need_sparse_segment_gradient
       )
     elif combiner == "sqrtn":
       embeddings = math_ops.sparse_segment_sqrt_n(
-          embeddings, idx, segment_ids, name=name
+          embeddings, idx, segment_ids, name=name,
+          sparse_gradient=need_sparse_segment_gradient
       )
     else:
       assert False, "Unrecognized combiner"

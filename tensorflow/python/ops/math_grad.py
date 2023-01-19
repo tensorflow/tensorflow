@@ -334,20 +334,20 @@ def _SegmentMeanGrad(op: ops.Operation, grad):
 
 
 def _SparseSegmentReduceGradV2(op, grad, norm=None):
-    """Sparse gradient for SparseSegment(Sum|Mean|SqrtN)[WithNumSegments]."""
-    assert(norm is None or norm == 'mean' or norm == 'sqrtn')
-    data = op.inputs[0]
-    indices = op.inputs[1]
-    segment_ids = op.inputs[2]
-    data_shape = array_ops.shape(op.inputs[0])
-    dense_output_dim0 = data_shape[0]
-    grad_fn = (math_ops.sparse_segment_mean_grad_v2 if norm == 'mean' else
-               math_ops.sparse_segment_sqrt_n_grad_v2 if norm == 'sqrtn' else
-               math_ops.sparse_segment_sum_grad_v2)
-    grad_values, sorted_unique_indices = grad_fn(
-        grad, indices, segment_ids, dense_output_dim0)
-    return indexed_slices_lib.IndexedSlices(
-        grad_values, sorted_unique_indices, data_shape)
+  """Sparse gradient for SparseSegment(Sum|Mean|SqrtN)[WithNumSegments]."""
+  assert(norm is None or norm == 'mean' or norm == 'sqrtn')
+  data = op.inputs[0]
+  indices = op.inputs[1]
+  segment_ids = op.inputs[2]
+  data_shape = array_ops.shape(op.inputs[0])
+  dense_output_dim0 = data_shape[0]
+  grad_fn = (math_ops.sparse_segment_mean_grad_v2 if norm == 'mean' else
+             math_ops.sparse_segment_sqrt_n_grad_v2 if norm == 'sqrtn' else
+             math_ops.sparse_segment_sum_grad_v2)
+  grad_values, sorted_unique_indices = grad_fn(
+      grad, indices, segment_ids, dense_output_dim0)
+  return indexed_slices_lib.IndexedSlices(
+      grad_values, sorted_unique_indices, data_shape)
 
 
 def _GetOpAttrOrNone(op, name):
