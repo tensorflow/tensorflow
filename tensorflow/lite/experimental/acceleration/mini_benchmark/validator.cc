@@ -215,9 +215,16 @@ MinibenchmarkStatus Validator::LoadDelegate() {
   }
   std::string delegate_name;
   if (is_stable_delegate) {
-    // When a stable delegate shared library is provided, the stable delegate
-    // plugin loads symbols from the shared library to initialize the delegates.
-    delegate_name = "StableDelegate";
+    if (which_delegate == Delegate_GPU) {
+      // Load GPU plugin from GpuModulePlugin when delegate_path is provided.
+      // This is a workaround before StableDelegate is supported.
+      delegate_name = "GpuModule";
+    } else {
+      // When a stable delegate shared library is provided, the stable delegate
+      // plugin loads symbols from the shared library to initialize the
+      // delegates.
+      delegate_name = "StableDelegate";
+    }
   } else {
     switch (which_delegate) {
       case Delegate_NONE:
@@ -319,9 +326,9 @@ MinibenchmarkStatus Validator::CreateInterpreter(int* delegate_error_out,
   }
 
   // Check if the model is actually going to execute on the delegate.
-  // For now just give a warning, with the exception of NNAPI SL mini benchmark.
-  // Can consider changing to error in other contexts.
-  // The logic is copy/pasted from benchmark_tflite_model.cc
+  // For now just give a warning, with the exception of NNAPI SL mini
+  // benchmark. Can consider changing to error in other contexts. The logic is
+  // copy/pasted from benchmark_tflite_model.cc
   // TODO(b/232085640): Replace this logic with Subgraph::IsFullyDelegated()
   // after making that function public.
   absl::flat_hash_set<int> checked_node_ids;

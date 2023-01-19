@@ -59,7 +59,7 @@ BlockingValidatorRunner::BlockingValidatorRunner(
           : std::make_unique<CustomValidationEmbedder>(
                 options.custom_input_batch_size, options.custom_input_data,
                 options.error_reporter),
-      options.error_reporter, options.nnapi_sl,
+      options.error_reporter, options.nnapi_sl, options.gpu_plugin_handle,
       options.validation_entrypoint_name, options.benchmark_result_evaluator);
 }
 

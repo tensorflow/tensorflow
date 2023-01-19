@@ -102,7 +102,8 @@ class ValidatorRunnerImplTest : public ::testing::Test {
         options_.model_path, options_.storage_path,
         options_.data_directory_path, options_.per_test_timeout_ms,
         std::move(custom_validation_embedder_), options_.error_reporter,
-        options_.nnapi_sl, options_.validation_entrypoint_name,
+        options_.nnapi_sl, options_.gpu_plugin_handle,
+        options_.validation_entrypoint_name,
         options_.benchmark_result_evaluator);
   }
 
