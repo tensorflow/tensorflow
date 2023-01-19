@@ -29,7 +29,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/stream_executor/cuda/cuda_blas_utils.h"
 #include "tensorflow/compiler/xla/stream_executor/device_memory.h"
 #include "tensorflow/compiler/xla/stream_executor/host_or_device_scalar.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/status.h"
 
 namespace stream_executor {
 namespace gpu {

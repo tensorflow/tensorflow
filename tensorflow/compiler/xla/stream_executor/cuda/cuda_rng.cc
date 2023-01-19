@@ -25,7 +25,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/stream_executor/device_memory.h"
 #include "tensorflow/compiler/xla/stream_executor/lib/env.h"
 #include "tensorflow/compiler/xla/stream_executor/lib/initialize.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/status.h"
 #include "tensorflow/compiler/xla/stream_executor/platform/logging.h"
 #include "tensorflow/compiler/xla/stream_executor/rng.h"
 // clang-format off
