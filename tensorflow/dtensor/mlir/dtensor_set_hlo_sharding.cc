@@ -14,27 +14,30 @@ limitations under the License.
 ==============================================================================*/
 
 #include <memory>
+#include <optional>
 
+#include "llvm/ADT/Optional.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
-#include "mlir/Support/LogicalResult.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
-#include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/dtensor/cc/xla_spmd/layout_to_xla_sharding.h"
+#include "tensorflow/dtensor/mlir/dtensor_dialect/ir/dialect.h"
 #include "tensorflow/dtensor/mlir/ir/tf_dtensor.h"
-#include "tensorflow/dtensor/mlir/op_utils.h"
 
 namespace tensorflow {
 namespace dtensor {
 namespace {
-#define GEN_PASS_DEF_DTENSORXLASPMDINTEGRATION
+#define GEN_PASS_DECL_DTENSORSETHLOSHARDINGPASS
+#define GEN_PASS_DEF_DTENSORSETHLOSHARDINGPASS
 #include "tensorflow/dtensor/mlir/dtensor_passes.h.inc"
 
-mlir::LogicalResult SetHloShardingForInputsAndOps(mlir::ModuleOp module,
-                                                  mlir::OpBuilder builder) {
+mlir::LogicalResult SetHloShardingForInputsAndOps(
+    mlir::ModuleOp module, mlir::OpBuilder builder,
+    bool check_layout_use_xla_spmd) {
   module.walk([&](mlir::TF::DTensorLayout layout_op) {
-    if (!layout_op.getLayout().mesh().use_xla_spmd()) {
+    if (check_layout_use_xla_spmd &&
+        !layout_op.getLayout().mesh().use_xla_spmd()) {
       layout_op.emitOpError(
           "Found a layout operation that is not on XLA SPMD mesh during XLA "
           "SPMD integration.");
@@ -99,31 +102,40 @@ mlir::LogicalResult SetHloShardingForOutputs(mlir::ModuleOp module,
   return mlir::success();
 }
 
-struct DTensorXlaSpmdIntegration
-    : public impl::DTensorXlaSpmdIntegrationBase<DTensorXlaSpmdIntegration> {
+class DTensorSetHloShardingPass
+    : public impl::DTensorSetHloShardingPassBase<DTensorSetHloShardingPass> {
+ public:
+  using DTensorSetHloShardingPassBase::DTensorSetHloShardingPassBase;
+
+  explicit DTensorSetHloShardingPass(
+      llvm::Optional<bool> check_layout_use_xla_spmd) {
+    if (check_layout_use_xla_spmd.has_value()) {
+      check_layout_use_xla_spmd_ = *check_layout_use_xla_spmd;
+    }
+  }
+
   void runOnOperation() override {
     mlir::MLIRContext& context = getContext();
     mlir::OpBuilder builder(&context);
     mlir::ModuleOp module = getOperation();
-
-    if (mlir::failed(SetHloShardingForInputsAndOps(module, builder))) {
-      return signalPassFailure();
-    }
-
-    if (mlir::failed(ReplaceAuxiliaryDTensorLayoutOpsWithIdentity(module))) {
+    if (mlir::failed(SetHloShardingForInputsAndOps(
+            module, builder, check_layout_use_xla_spmd_.getValue()))) {
       return signalPassFailure();
     }
 
     if (mlir::failed(SetHloShardingForOutputs(module, builder))) {
       return signalPassFailure();
     }
-    RemoveDTensorLayoutOps(module, /*remove_xla_spmd_layouts=*/true);
-  };
+  }
 };
+
 }  // namespace
+
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
-CreateDTensorXlaSpmdIntegration() {
-  return std::make_unique<DTensorXlaSpmdIntegration>();
+CreateDTensorSetHloShardingPass(
+    llvm::Optional<bool> check_layout_use_xla_spmd) {
+  return std::make_unique<DTensorSetHloShardingPass>(check_layout_use_xla_spmd);
 }
+
 }  // namespace dtensor
 }  // namespace tensorflow

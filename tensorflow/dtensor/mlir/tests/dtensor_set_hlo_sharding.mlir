@@ -1,13 +1,14 @@
-// RUN: dtensor-opt %s -split-input-file -dtensor-set-hlo-sharding='check_layout_use_xla_spmd=true' -dtensor-replace-auxiliary-layout-op -dtensor-remove-dtensorlayout | FileCheck %s
+// RUN: dtensor-opt %s -split-input-file -dtensor-set-hlo-sharding='check_layout_use_xla_spmd=true' | FileCheck %s
 
-// Check after XLA SPMD integration, all inputs, outputs, and operations have sharding attributes.
-//  And all "tf.DTensorLayout" are removed.
+// Check all inputs, outputs, and operations have sharding attributes, with `check_layout_use_xla_spmd` set to true.
 // CHECK-LABEL: func @check_layouts_are_converted_to_xla_sharding_attributes
-// CHECK-SAME: (%arg0: tensor<8x8xi32> {mhlo.sharding = "", tf._layout = "sharding_specs:unsharded,unsharded, mesh:|x=1|0|0|/job:localhost/replica:0/task:0/device:CPU:0|use_xla_spmd"}) -> (tensor<8x8xi32> {mhlo.sharding = ""})
+// CHECK-SAME: (%arg0: tensor<8x8xi32> {mhlo.sharding = "", tf._layout = "sharding_specs:unsharded,unsharded, mesh:|x=1|0|0|/job:localhost/replica:0/task:0/device:CPU:0|use_xla_spmd"}) -> (tensor<8x8xi32> {mhlo.sharding = ""}) {
 func.func @check_layouts_are_converted_to_xla_sharding_attributes(
-  %arg0: tensor<8x8xi32> {tf._layout = "sharding_specs:unsharded,unsharded, mesh:|x=1|0|0|/job:localhost/replica:0/task:0/device:CPU:0|use_xla_spmd"}) -> (tensor<8x8xi32>) {
+  %arg0: tensor<8x8xi32> {tf._layout = "sharding_specs:unsharded,unsharded, mesh:|x=1|0|0|/job:localhost/replica:0/task:0/device:CPU:0|use_xla_spmd"}) -> tensor<8x8xi32> {
+  // CHECK:      "tf.DTensorLayout"
   // CHECK:      "tf.Identity"
   // CHECK-SAME: mhlo.sharding = ""
+  // CHECK:      "tf.DTensorLayout"
   // CHECK-NEXT: return
   %1 = "tf.DTensorLayout"(%arg0) {global_shape = #tf_type.shape<8x8>, layout = #dtensor.layout<sharding_specs:unsharded,unsharded, mesh:|x=1|0|0|/job:localhost/replica:0/task:0/device:CPU:0|use_xla_spmd>} : (tensor<8x8xi32>) -> tensor<8x8xi32>
   %2 = "tf.Identity"(%1) {_global_shape = [#tf_type.shape<8x8>], device = ""} : (tensor<8x8xi32>) -> tensor<8x8xi32>
