@@ -21,7 +21,7 @@ limitations under the License.
 #include "llvm/Support/Casting.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
-#include "mlir/IR/BlockAndValueMapping.h"  // from @llvm-project
+#include "mlir/IR/IRMapping.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
@@ -56,7 +56,7 @@ void UpdateFuncType(func::FuncOp func) {
   auto return_types = llvm::to_vector<4>(terminator->getOperandTypes());
 
   FunctionType func_type = func.getFunctionType();
-  if (llvm::makeArrayRef(return_types) == func_type.getResults()) return;
+  if (llvm::ArrayRef(return_types) == func_type.getResults()) return;
 
   auto updated_type =
       FunctionType::get(func.getContext(), func_type.getInputs(), return_types);
@@ -124,7 +124,7 @@ class FoldIfOp : public OpRewritePattern<TF::IfOp> {
     // one blocks are not encountered in practice.
     if (!llvm::hasSingleElement(func)) return failure();
 
-    BlockAndValueMapping mapper;
+    IRMapping mapper;
     for (int i = 0, e = func.getNumArguments(); i != e; ++i)
       mapper.map(func.getArgument(i), op.getOperand(i + 1));
 

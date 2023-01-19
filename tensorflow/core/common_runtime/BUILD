@@ -243,6 +243,7 @@ filegroup(
         ":core_cpu_base_headers",
         "allocator_retry.h",
         "shared_counter.h",
+        "arg_ret_placement.h",
         "base_collective_executor.h",
         "bfc_allocator.h",
         "hierarchical_tree_broadcaster.h",
@@ -339,6 +340,18 @@ cc_library(
         "//tensorflow/core/profiler/lib:traceme",
     ],
     alwayslink = 1,
+)
+
+cc_library(
+    name = "arg_ret_placement",
+    srcs = ["arg_ret_placement.cc"],
+    hdrs = [
+        "arg_ret_placement.h",
+    ],
+    copts = tf_copts(),
+    deps = [
+        "//tensorflow/core:graph",
+    ],
 )
 
 cc_library(
@@ -780,6 +793,7 @@ cc_library(
     ],
     copts = tf_copts(),
     deps = [
+        ":arg_ret_placement",
         ":composite_device",
         ":device",
         ":device_mgr",
@@ -3325,6 +3339,20 @@ tf_cc_test(
         ":core",
         "//tensorflow/core:framework",
         "//tensorflow/core:ops",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+    ],
+)
+
+tf_cc_test(
+    name = "arg_ret_placement_test",
+    size = "small",
+    srcs = [
+        "arg_ret_placement_test.cc",
+    ],
+    deps = [
+        ":arg_ret_placement",
+        "//tensorflow/cc:scope",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
     ],

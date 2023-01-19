@@ -7,10 +7,16 @@ package(
     licenses = ["notice"],
 )
 
-exports_files([
-    "macros.h",
-    "subgraph.h",
-])
+exports_files(
+    srcs = [
+        "create_op_resolver.h",
+        "macros.h",
+        "subgraph.h",
+    ],
+    visibility = [
+        "//tensorflow/lite:__subpackages__",
+    ],
+)
 
 cc_library(
     name = "headers",
@@ -37,6 +43,7 @@ cc_library(
         "//tensorflow/lite/experimental/resource",
         "//tensorflow/lite/internal:signature_def",
         "//tensorflow/lite/profiling:root_profiler",
+        "//tensorflow/lite/profiling/telemetry/c:telemetry_setting_internal",
     ],
 )
 
@@ -100,6 +107,10 @@ cc_library(
         "//tensorflow/lite/experimental/resource",
         "//tensorflow/lite/internal:signature_def",
         "//tensorflow/lite/profiling:root_profiler",
+        "//tensorflow/lite/profiling/telemetry",
+        "//tensorflow/lite/profiling/telemetry:profiler",
+        "//tensorflow/lite/profiling/telemetry/c:telemetry_setting_internal",
+        "//tensorflow/lite/schema:conversion_metadata_fbs",
         "//tensorflow/lite/schema:schema_fbs",
         "@flatbuffers//:runtime_cc",
     ],
@@ -167,6 +178,10 @@ cc_library(
         "//tensorflow/lite/experimental/resource",
         "//tensorflow/lite/internal:signature_def",
         "//tensorflow/lite/profiling:root_profiler",
+        "//tensorflow/lite/profiling/telemetry",
+        "//tensorflow/lite/profiling/telemetry:profiler",
+        "//tensorflow/lite/profiling/telemetry/c:telemetry_setting_internal",
+        "//tensorflow/lite/schema:conversion_metadata_fbs",
         "//tensorflow/lite/schema:schema_fbs",
         "@flatbuffers//:runtime_cc",
     ],
@@ -226,6 +241,10 @@ cc_library(
         "//tensorflow/lite/kernels/internal:compatibility",
         "//tensorflow/lite/profiling:platform_profiler",
         "//tensorflow/lite/profiling:root_profiler",
+        "//tensorflow/lite/profiling/telemetry",
+        "//tensorflow/lite/profiling/telemetry:profiler",
+        "//tensorflow/lite/profiling/telemetry/c:telemetry_setting_internal",
+        "//tensorflow/lite/schema:conversion_metadata_fbs",
         "//tensorflow/lite/schema:schema_fbs",
         "//tensorflow/lite/schema:schema_utils",
         "@flatbuffers//:runtime_cc",
@@ -293,6 +312,10 @@ cc_library(
         "//tensorflow/lite/experimental/resource",
         "//tensorflow/lite/internal:signature_def",
         "//tensorflow/lite/profiling:root_profiler",
+        "//tensorflow/lite/profiling/telemetry",
+        "//tensorflow/lite/profiling/telemetry:profiler",
+        "//tensorflow/lite/profiling/telemetry/c:telemetry_setting_internal",
+        "//tensorflow/lite/schema:conversion_metadata_fbs",
         "//tensorflow/lite/schema:schema_fbs",
         "@flatbuffers//:runtime_cc",
         "@ruy//ruy:denormal",
@@ -349,12 +372,12 @@ cc_test(
         "tflite_smoke_test",
     ],
     deps = [
-        ":headers",
+        ":framework",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:interpreter_test_util",
         "//tensorflow/lite:string",
         "//tensorflow/lite:string_util",
-        "//tensorflow/lite/core:framework",
+        "//tensorflow/lite/c:common",
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/core/api:verifier",
         "//tensorflow/lite/core/c:common",

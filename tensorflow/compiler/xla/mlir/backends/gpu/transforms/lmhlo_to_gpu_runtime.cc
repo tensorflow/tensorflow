@@ -29,7 +29,7 @@ limitations under the License.
 #include "mlir/Dialect/MemRef/IR/MemRef.h"  // from @llvm-project
 #include "mlir/Dialect/SCF/IR/SCF.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
-#include "mlir/IR/BlockAndValueMapping.h"  // from @llvm-project
+#include "mlir/IR/IRMapping.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/ImplicitLocOpBuilder.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
@@ -389,7 +389,7 @@ class WhileOpLowering : public OpRewritePattern<WhileOp> {
     auto loop = b.create<scf::ForOp>(lb, ub, c1, ValueRange());
 
     // Move body region into the new loop operation.
-    BlockAndValueMapping mapping;
+    IRMapping mapping;
     rewriter.eraseOp(op.getBody().front().getTerminator());
     rewriter.mergeBlockBefore(&op.getBody().front(),
                               loop.getLoopBody().front().getTerminator());
@@ -411,7 +411,7 @@ class WhileOpLowering : public OpRewritePattern<WhileOp> {
     Value pred = op.getOperand(0);
 
     // Inline condition and body regions into the new loop operation.
-    BlockAndValueMapping mapping;
+    IRMapping mapping;
     rewriter.inlineRegionBefore(op.getCond(), loop.getBefore(),
                                 loop.getBefore().begin());
     rewriter.inlineRegionBefore(op.getBody(), loop.getAfter(),

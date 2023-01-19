@@ -481,7 +481,8 @@ xla::StatusOr<xla::ExecutionOutput> TPUExecute(
   for (auto& prefetch : hlo_metadata.hlo_module().cross_program_prefetches()) {
     module->AddCrossProgramPrefetch(
         prefetch.parameter(),
-        xla::ShapeIndex(prefetch.index().begin(), prefetch.index().end()));
+        xla::ShapeIndex(prefetch.index().begin(), prefetch.index().end()),
+        prefetch.offset());
   }
 
   TF_RETURN_IF_ERROR(UpdateDynamicInputs(stream, backend->memory_allocator(),

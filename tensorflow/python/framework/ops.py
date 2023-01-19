@@ -67,7 +67,6 @@ from tensorflow.python.util import deprecation
 from tensorflow.python.util import dispatch
 from tensorflow.python.util import function_utils
 from tensorflow.python.util import lock_util
-from tensorflow.python.util import memory
 from tensorflow.python.util import object_identity
 from tensorflow.python.util import tf_contextlib
 from tensorflow.python.util import tf_stack
@@ -2120,7 +2119,8 @@ class Operation(object):
 
     # Removes this frame from the Python traceback.
     # We adjust stacklevel directly to avoid triggering serialization.
-    self.traceback._stacklevel += 1  # pylint: disable=protected-access
+    if self.traceback is not None:
+      self.traceback._stacklevel += 1  # pylint: disable=protected-access
 
   @classmethod
   def _from_c_op(cls, c_op, g):
@@ -6656,7 +6656,7 @@ def dismantle_graph(graph):
     graph: A `Graph` object to destroy. Neither it nor any of its ops are usable
       after this function runs.
   """
-  memory.dismantle_ordered_dict(graph._functions)  # pylint: disable=protected-access
+  graph._functions.clear()  # pylint: disable=protected-access
 
   # Now clean up Operation<->Graph reference cycles by clearing all of the
   # attributes for the Graph and its ops.

@@ -378,14 +378,12 @@ class TestUpgrade(test_util.TensorFlowTestCase, parameterized.TestCase):
     added_names_message = """Some function names in
 self.reordered_function_names are not in reorders_v2.py.
 Please run the following commands to update reorders_v2.py:
-bazel build tensorflow/tools/compatibility/update:generate_v2_reorders_map
-bazel-bin/tensorflow/tools/compatibility/update/generate_v2_reorders_map
+bazel run tensorflow/tools/compatibility/update:generate_v2_reorders_map
 """
     removed_names_message = """%s in self.reorders_v2 does not match
 any name in self.reordered_function_names.
 Please run the following commands to update reorders_v2.py:
-bazel build tensorflow/tools/compatibility/update:generate_v2_reorders_map
-bazel-bin/tensorflow/tools/compatibility/update/generate_v2_reorders_map
+bazel run tensorflow/tools/compatibility/update:generate_v2_reorders_map
 """
     self.assertTrue(
         reordered_function_names.issubset(function_reorders),

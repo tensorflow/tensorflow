@@ -142,6 +142,9 @@ struct Costs {
   Duration intermediate_memory_read_time;   // Intermediate memory read cost.
   Duration intermediate_memory_write_time;  // Intermediate memory write cost.
 
+  // Network time (colelctived ops - all gather, all reduce, etc.)
+  Duration network_time;
+
   // This field can be a very pessimistic estimate of the main memory
   // requirements of a graph. For example, it might assume that all activations
   // are live for all of a graph's execution.
@@ -194,6 +197,7 @@ Costs::Costs() {
   compute_time = Duration::zero();
   memory_time = Duration::zero();
   intermediate_memory_time = Duration::zero();
+  network_time = Duration::zero();
   max_memory = kMemoryUnknown;
   persistent_memory = kMemoryUnknown;
   temporary_memory = kMemoryUnknown;
@@ -207,6 +211,7 @@ Costs Costs::ZeroCosts(bool inaccurate) {
   costs.compute_time = Duration::zero();
   costs.memory_time = Duration::zero();
   costs.intermediate_memory_time = Duration::zero();
+  costs.network_time = Duration::zero();
   costs.max_memory = kZeroMemory;
   costs.persistent_memory = kZeroMemory;
   costs.temporary_memory = kZeroMemory;

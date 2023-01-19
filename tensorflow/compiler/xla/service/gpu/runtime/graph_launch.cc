@@ -25,6 +25,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/runtime/custom_call.h"
 #include "tensorflow/compiler/xla/runtime/executable.h"
+#include "tensorflow/compiler/xla/service/gpu/runtime/conv.h"
 #include "tensorflow/compiler/xla/service/gpu/runtime/kernel_launch.h"
 #include "tensorflow/compiler/xla/service/gpu/runtime/support.h"
 #include "tensorflow/compiler/xla/service/service_executable_run_options.h"
@@ -53,21 +54,32 @@ using xla::runtime::ScalarArg;
 #endif  // #if GOOGLE_CUDA
 
 //===----------------------------------------------------------------------===//
+// CUDA graphs caching.
+//===----------------------------------------------------------------------===//
+
+StreamExecutorGraphInstances* GraphInstances::operator()(
+    se::StreamExecutor* executor) {
+  absl::MutexLock lock(&mutex_);
+  return &graphs_[executor];
+}
+
+//===----------------------------------------------------------------------===//
 // RAII helpers for CUDA graph types.
 //===----------------------------------------------------------------------===//
 
 #if GOOGLE_CUDA
 
-using OwnedGraph = GraphInstances::OwnedGraph;
-using OwnedGraphExec = GraphInstances::OwnedGraphExec;
+using OwnedGraph = StreamExecutorGraphInstances::OwnedGraph;
+using OwnedGraphExec = StreamExecutorGraphInstances::OwnedGraphExec;
 
-void GraphInstances::DestroyGraph::operator()(cudaGraph_t graph) {
+void StreamExecutorGraphInstances::DestroyGraph::operator()(cudaGraph_t graph) {
   cudaError_t err = cudaGraphDestroy(graph);
   CHECK(err == cudaSuccess)
       << "Failed to destroy CUDA graph: " << cudaGetErrorString(err);
 }
 
-void GraphInstances::DestroyGraphExec::operator()(cudaGraphExec_t instance) {
+void StreamExecutorGraphInstances::DestroyGraphExec::operator()(
+    cudaGraphExec_t instance) {
   cudaError_t err = cudaGraphExecDestroy(instance);
   CHECK(err == cudaSuccess)
       << "Failed to destroy CUDA graph instance: " << cudaGetErrorString(err);
@@ -101,6 +113,13 @@ H AbslHashValue(H h, const RemainingArgsPtrs& m) {
 //----------------------------------------------------------------------------//
 
 #if GOOGLE_CUDA
+
+static bool InDebugMode() {
+#ifdef NDEBUG
+  return false;
+#endif
+  return true;
+}
 
 static absl::StatusOr<OwnedGraph> CaptureGraph(
     const ServiceExecutableRunOptions* run_options,
@@ -183,7 +202,8 @@ static absl::StatusOr<OwnedGraph> CaptureGraph(
         StrFormat("Stream begin capture failed: %s", cudaGetErrorString(err)));
 
   // Call into graph capture function.
-  auto captured = function_ref(args, runtime::NoResultConverter{}, opts);
+  auto captured = function_ref(args, runtime::NoResultConverter{}, opts,
+                               /*verify_arguments=*/InDebugMode());
 
   // Always stop capturing the stream before checking `captured` result.
   if (auto err = cudaStreamEndCapture(stream, &graph); err != cudaSuccess)
@@ -204,11 +224,14 @@ static absl::StatusOr<OwnedGraph> CaptureGraph(
 //===----------------------------------------------------------------------===//
 
 static absl::Status LaunchGraph(
-    const ServiceExecutableRunOptions* run_options, const std::string* ptx,
+    const ServiceExecutableRunOptions* run_options,
+    const DebugOptions* debug_options, const std::string* ptx,
     const std::vector<uint8_t>* cubin, se::DeviceMemoryBase* temp_buffer,
     StreamExecutorKernels::Snapshot* kernels,
-    GraphInstances::Snapshot* instances, runtime::Executable* executable,
-    CustomCall::RemainingArgs fwd_args, CustomCall::FunctionOrdinal capture) {
+    StreamExecutorConvRunners::Snapshot* convs,
+    StreamExecutorGraphInstances::Snapshot* instances,
+    runtime::Executable* executable, CustomCall::RemainingArgs fwd_args,
+    CustomCall::FunctionOrdinal capture) {
 #if GOOGLE_CUDA
   VLOG(1) << "Launch Cuda Graph: capture=" << capture.ordinal;
 
@@ -220,8 +243,8 @@ static absl::Status LaunchGraph(
 
   // Forwards user data required for launching kernels.
   auto user_data = [&] {
-    return CustomCall::UserData(run_options, ptx, cubin, temp_buffer, kernels,
-                                executable);
+    return CustomCall::UserData(run_options, debug_options, ptx, cubin,
+                                temp_buffer, kernels, convs, executable);
   };
 
   absl::StatusOr<GraphInstance*> instance = instances->GetOrCreate(
@@ -232,7 +255,11 @@ static absl::Status LaunchGraph(
 
         // Instantiate captured CUDA graph into an executable instance.
         cudaGraphExec_t exec;
+#if CUDA_VERSION >= 12000
+        if (auto err = cudaGraphInstantiate(&exec, &**g);
+#else
         if (auto err = cudaGraphInstantiate(&exec, &**g, nullptr, nullptr, 0);
+#endif
             err != cudaSuccess) {
           return InternalError(StrFormat("Graph instantiation failed: %s",
                                          cudaGetErrorString(err)));
@@ -266,6 +293,14 @@ static absl::Status LaunchGraph(
   auto g = CaptureGraph(run_options, function_ref, fwd_args, user_data());
   if (!g.ok()) return g.status();
 
+#if CUDA_VERSION >= 12000
+  cudaGraphExecUpdateResultInfo update_result;
+
+  auto err =
+      cudaGraphExecUpdate((*instance)->exec.get(), g->get(), &update_result);
+  if (err != cudaSuccess || update_result.result != cudaGraphExecUpdateSuccess)
+    return InternalError("Failed to update cuda graph");
+#else
   cudaGraphExecUpdateResult update_result;
   cudaGraphNode_t error_node;
 
@@ -273,6 +308,7 @@ static absl::Status LaunchGraph(
                                  &update_result);
   if (err != cudaSuccess || update_result != cudaGraphExecUpdateSuccess)
     return InternalError("Failed to update cuda graph");
+#endif
 
   // Update captured graph pointers hash.
   (*instance)->ptr_hash = ptrs_hash;
@@ -294,11 +330,13 @@ XLA_RUNTIME_DEFINE_CUSTOM_CALL(
     Launch, FunctionWrapper<LaunchGraph>(), checks,
     CustomCall::Bind("xla.gpu.cuda.graph.launch")
         .UserData<const ServiceExecutableRunOptions*>()
+        .UserData<const DebugOptions*>()
         .UserData<const std::string*>()
         .UserData<const std::vector<uint8_t>*>()
         .UserData<se::DeviceMemoryBase*>()
         .UserData<StreamExecutorKernels::Snapshot*>()
-        .UserData<GraphInstances::Snapshot*>()
+        .UserData<StreamExecutorConvRunners::Snapshot*>()
+        .UserData<StreamExecutorGraphInstances::Snapshot*>()
         .UserData<Executable*>()
         .RemainingArgs()
         .Attr<CustomCall::FunctionOrdinal>("capture"));

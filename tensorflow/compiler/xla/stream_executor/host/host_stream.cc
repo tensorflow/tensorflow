@@ -19,6 +19,7 @@ limitations under the License.
 
 #include "absl/synchronization/notification.h"
 #include "tensorflow/tsl/platform/denormal.h"
+#include "tensorflow/tsl/platform/env.h"
 #include "tensorflow/tsl/platform/setround.h"
 
 namespace stream_executor {
@@ -26,8 +27,8 @@ namespace host {
 
 namespace {
 
-port::ThreadOptions GetThreadOptions(size_t stack_size_in_bytes) {
-  port::ThreadOptions options;
+tsl::ThreadOptions GetThreadOptions(size_t stack_size_in_bytes) {
+  tsl::ThreadOptions options;
   options.stack_size = stack_size_in_bytes;
   return options;
 }
@@ -55,7 +56,7 @@ bool HostStream::EnqueueTask(std::function<void()> task) {
   });
 }
 
-bool HostStream::EnqueueTaskWithStatus(std::function<port::Status()> task) {
+bool HostStream::EnqueueTaskWithStatus(std::function<tsl::Status()> task) {
   CHECK(task != nullptr);
   absl::MutexLock lock(&mu_);
   work_queue_.push(std::move(task));
@@ -71,14 +72,14 @@ void HostStream::WorkLoop() {
   tsl::port::ScopedFlushDenormal flush;
   tsl::port::ScopedSetRound round(FE_TONEAREST);
   while (true) {
-    std::queue<std::function<port::Status()>> queue;
+    std::queue<std::function<tsl::Status()>> queue;
     {
       absl::MutexLock lock(&mu_);
       mu_.Await(absl::Condition(this, &HostStream::WorkAvailable));
       std::swap(queue, work_queue_);
     }
     while (!queue.empty()) {
-      std::function<port::Status()>& fn = queue.front();
+      std::function<tsl::Status()>& fn = queue.front();
       if (!fn) {
         return;
       }
@@ -88,9 +89,9 @@ void HostStream::WorkLoop() {
   }
 }
 
-port::Status HostStream::BlockUntilDone() {
+tsl::Status HostStream::BlockUntilDone() {
   absl::Notification done;
-  port::Status status;
+  tsl::Status status;
   EnqueueTask([&done, &status, this]() {
     // This task is always executed synchronously before 'status_' is updated
     // with the result of the task (always OK() in this case), so we don't need

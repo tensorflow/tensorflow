@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/core/data/service/dispatcher.pb.h"
 #include "tensorflow/core/data/service/dispatcher_state.h"
 #include "tensorflow/core/data/service/export.pb.h"
+#include "tensorflow/core/data/service/snapshot/snapshot_manager.h"
 #include "tensorflow/core/data/service/task_remover.h"
 #include "tensorflow/core/data/service/worker.grpc.pb.h"
 #include "tensorflow/core/framework/dataset.h"
@@ -173,11 +174,18 @@ class DataServiceDispatcherImpl {
                          ClientHeartbeatResponse* response);
   Status GetWorkers(const GetWorkersRequest* request,
                     GetWorkersResponse* response);
+  Status Snapshot(const SnapshotRequest* request, SnapshotResponse* response);
+  Status GetSnapshotSplit(const GetSnapshotSplitRequest* request,
+                          GetSnapshotSplitResponse* response);
 
   // Exports the dispatcher state for debugging.
   DispatcherStateExport ExportState() const;
 
  private:
+  // A thread which periodically checks for iterations to clean up, clients to
+  // release, and snapshot streams to reassign.
+  void MaintenanceThread();
+
   // Restores split providers from the state in `iteration` and stores them in
   // `restored`.
   Status RestoreSplitProviders(
@@ -250,8 +258,8 @@ class DataServiceDispatcherImpl {
       std::vector<std::shared_ptr<const DispatcherState::Task>>& tasks)
       TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
-  // Creates a new task for an iteration. The created task may be either pending
-  // or active.
+  // Creates a new task for an iteration. The created task may be either
+  // pending or active.
   Status CreateTask(std::shared_ptr<const DispatcherState::Iteration> iteration,
                     const std::string& worker_address,
                     std::shared_ptr<const DispatcherState::Task>& task)
@@ -297,8 +305,6 @@ class DataServiceDispatcherImpl {
   // used when recovering state when the dispatcher starts.
   Status ApplyWithoutJournaling(const Update& update)
       TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
-  // A thread which periodically checks for iterations to clean up.
-  void IterationGcThread();
   // Releases iteration clients that haven't heartbeated recently.
   Status ReleaseMissingClients() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
   // Scans for old iterations and marks them as finished.
@@ -330,8 +336,8 @@ class DataServiceDispatcherImpl {
   absl::flat_hash_map<int64_t, std::vector<std::unique_ptr<SplitProvider>>>
       split_providers_ TF_GUARDED_BY(mu_);
   // Mapping from round robin iteration id to the round the iteration is
-  // currently on. This is based on the data provided by client heartbeats, and
-  // may be stale.
+  // currently on. This is based on the data provided by client heartbeats,
+  // and may be stale.
   absl::flat_hash_map<int64_t, int64_t> round_robin_rounds_ TF_GUARDED_BY(mu_);
   // Map from task id to a TaskRemover which determines when to remove the task.
   absl::flat_hash_map<int64_t, std::shared_ptr<TaskRemover>>
@@ -340,12 +346,17 @@ class DataServiceDispatcherImpl {
   absl::flat_hash_map<int64_t, absl::Time> latest_client_heartbeats_time_
       TF_GUARDED_BY(mu_);
 
+  // Managers for all snapshot processes created or recovered during the
+  // lifetime of this dispatcher instance.
+  absl::flat_hash_map<std::string, std::unique_ptr<SnapshotManager>> snapshots_
+      TF_GUARDED_BY(mu_);
+
   std::optional<std::unique_ptr<JournalWriter>> journal_writer_
       TF_GUARDED_BY(mu_);
   DispatcherState state_ TF_GUARDED_BY(mu_);
-  // Condition variable for waking up the iteration gc thread.
-  condition_variable iteration_gc_thread_cv_;
-  std::unique_ptr<Thread> iteration_gc_thread_;
+  // Condition variable for waking up the gc thread.
+  condition_variable maintenance_thread_cv_;
+  std::unique_ptr<Thread> maintenance_thread_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(DataServiceDispatcherImpl);
 };

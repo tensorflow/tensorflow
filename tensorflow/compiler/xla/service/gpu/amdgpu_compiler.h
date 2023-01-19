@@ -40,7 +40,8 @@ class AMDGPUCompiler : public GpuCompiler {
   Status OptimizeHloPostLayoutAssignment(
       HloModule* hlo_module, se::StreamExecutor* stream_exec,
       se::DeviceMemoryAllocator* device_allocator,
-      const GpuTargetConfig& gpu_target_config) override;
+      const GpuTargetConfig& gpu_target_config,
+      const AutotuneResults* autotune_results) override;
 
   GpuVersion GetGpuVersion(se::StreamExecutor* stream_exec) override;
 

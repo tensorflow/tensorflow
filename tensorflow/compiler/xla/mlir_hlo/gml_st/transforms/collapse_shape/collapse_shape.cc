@@ -240,7 +240,7 @@ linalg::MapOp createCollapsedMapOp(
   auto collapsedInitTy = collapsedInit.getType().cast<RankedTensorType>();
   auto collapsedMapOp = rewriter.create<linalg::MapOp>(
       loc, collapsedInitTy, collapsedOperands, collapsedInit);
-  BlockAndValueMapping bvm;
+  IRMapping bvm;
   mapOp.getBodyRegion().cloneInto(&collapsedMapOp.getRegion(), bvm);
   return collapsedMapOp;
 }

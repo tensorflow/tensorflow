@@ -48,6 +48,7 @@ TODO: Make invariants more structured so that we can reference them in ops.
   }];
 
   let cppNamespace = "::mlir::TF";
+  let useFoldAPI = kEmitFoldAdaptorFolder;
 }
 
 //===----------------------------------------------------------------------===//
@@ -117,7 +118,7 @@ class TF_OpIsBroadcastableToRes<int opId, int resId> : And<[
 
 
 class TF_AllTypesMatchPred<list<string> values> :
-    CPred<"tf_type::AreCastCompatible(llvm::makeArrayRef({" #
+    CPred<"tf_type::AreCastCompatible(llvm::ArrayRef({" #
       !interleave(values, ", ") # "}))">;
 
 class TF_AllTypesMatch<list<string> names> :

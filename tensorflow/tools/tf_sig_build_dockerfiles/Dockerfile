@@ -56,3 +56,6 @@ RUN /setup.python.sh $PYTHON_VERSION devel.requirements.txt
 # Setup build and environment
 COPY devel.usertools /usertools
 COPY devel.bashrc /root/.bashrc
+
+# Don't use the bazel cache when a new docker image is created.
+RUN echo build --action_env=DOCKER_CACHEBUSTER=$(date +%s%N)$RANDOM >> /etc/bazel.bazelrc

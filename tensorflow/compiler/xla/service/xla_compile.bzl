@@ -43,25 +43,30 @@ def xla_aot_compile_cpu(
 def xla_aot_compile_gpu(
         name,
         module,
-        gpu_target_config):
+        gpu_target_config,
+        autotune_results):
     """Runs xla_compile to compile an MHLO or StableHLO module into an AotCompilationResult for GPU
 
     Args:
         name: The name of the build rule.
         module: The MHLO or StableHLO file to compile.
         gpu_target_config: The serialized GpuTargetConfigProto
+        autotune_results: AOT AutotuneResults
     """
 
     # Run xla_compile to generate the file containing an AotCompilationResult.
     native.genrule(
         name = ("gen_" + name),
-        srcs = [module, gpu_target_config],
+        srcs = [module, gpu_target_config, autotune_results],
         outs = [name],
-        cmd = ("$(location " + xla_compile_tool + ")" +
-               " --module_file=$(location " + module + ")" +
-               " --output_file=$(location " + name + ")" +
-               " --platform=gpu" +
-               " --gpu_target_config=$(location " + gpu_target_config + ")"),
+        cmd = (
+            "$(location " + xla_compile_tool + ")" +
+            " --module_file=$(location " + module + ")" +
+            " --output_file=$(location " + name + ")" +
+            " --platform=gpu" +
+            " --gpu_target_config=$(location " + gpu_target_config + ")" +
+            " --autotune_results=$(location " + autotune_results + ")"
+        ),
         tools = [xla_compile_tool],
         # copybara:comment_begin(oss-only)
         target_compatible_with = select({

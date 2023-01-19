@@ -22,6 +22,7 @@ limitations under the License.
 #include <tuple>
 #include <utility>
 
+#include "absl/container/node_hash_map.h"
 #include "tensorflow/compiler/xla/runtime/custom_call_registry.h"
 #include "tensorflow/compiler/xla/stream_executor/stream_executor.h"
 
@@ -36,12 +37,15 @@ namespace gpu {
 void RegisterGraphLaunchCustomCalls(
     runtime::DirectCustomCallRegistry& registry);
 
+struct GraphInstance;                // Forward declare
+class StreamExecutorGraphInstances;  // Forward declare
+
 #if GOOGLE_CUDA
-struct GraphInstance;  // Forward declare
 
 // A state vector that owns all instantiated CUDA graphs. Graph capture function
 // ordinal is the key in this container.
-class GraphInstances : public runtime::StateVector<GraphInstance> {
+class StreamExecutorGraphInstances
+    : public runtime::StateVector<GraphInstance> {
   // Deleters for CUDA graph and graph exec instance that check the returned
   // status and terminate if it's not `cudaSuccess`.
   struct DestroyGraph {
@@ -67,7 +71,7 @@ struct GraphInstance {
   // because currently it's guaranteed that all shapes and launch dimensions
   // will be constant from run to run.
   size_t ptr_hash ABSL_GUARDED_BY(*mutex);
-  GraphInstances::OwnedGraphExec exec ABSL_GUARDED_BY(*mutex);
+  StreamExecutorGraphInstances::OwnedGraphExec exec ABSL_GUARDED_BY(*mutex);
 
   // Access to a graph instance must be synchronized, because we potentially can
   // run concurrent graph instance updates.
@@ -78,9 +82,21 @@ struct GraphInstance {
 
 // Define empty struct and empty state when CUDA is not enabled.
 struct GraphInstance {};
-class GraphInstances : public runtime::StateVector<GraphInstance> {};
+class StreamExecutorGraphInstances
+    : public runtime::StateVector<GraphInstance> {};
 
 #endif  // #if GOOGLE_CUDA
+
+// Xla executable keeps a mapping from stream executors to graph instances.
+class GraphInstances {
+ public:
+  StreamExecutorGraphInstances* operator()(se::StreamExecutor* executor);
+
+ private:
+  mutable absl::Mutex mutex_;
+  absl::node_hash_map<se::StreamExecutor*, StreamExecutorGraphInstances> graphs_
+      ABSL_GUARDED_BY(mutex_);
+};
 
 }  // namespace gpu
 }  // namespace xla

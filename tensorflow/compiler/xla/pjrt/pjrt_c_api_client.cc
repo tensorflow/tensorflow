@@ -29,13 +29,13 @@ limitations under the License.
 #include "tensorflow/compiler/xla/pjrt/c/pjrt_c_api_helpers.h"
 // TODO(skyewm): remove when everything goes through C API
 #include "tensorflow/compiler/xla/pjrt/c/pjrt_c_api_wrapper_impl.h"
+#include "tensorflow/compiler/xla/pjrt/pjrt_api.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_executable.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_future.h"
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/compiler/xla/shape.h"
 #include "tensorflow/compiler/xla/shape_util.h"
-#include "tensorflow/compiler/xla/stream_executor/tpu/pjrt_api.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_initializer_helper.h"  // NOLINT(unused-includes): required for tensorflow::tpu::FindAndLoadTpuLibrary
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
@@ -67,7 +67,13 @@ bool kPjRtCApiBypass = false;
 PjRtCApiClient::PjRtCApiClient(const PJRT_Api* c_api, PJRT_Client* c_client)
     : c_api_(c_api),
       c_client_(std::unique_ptr<PJRT_Client, ::pjrt::PJRT_ClientDeleter>(
-          c_client, ::pjrt::MakeClientDeleter(c_api))) {
+          c_client, ::pjrt::MakeClientDeleter(c_api))),
+      // Example platform version string:
+      //   PJRT C API
+      //   TFRT TPU v2
+      //   Built on Mar 4 2021 15:25:57 (1614900357) cl/360760169
+      platform_version_(absl::StrCat(
+          "PJRT C API\n", ::pjrt::GetPlatformVersion(c_client, c_api))) {
   wrapped_ = c_client_->client.get();
 
   InitDevices();
@@ -154,15 +160,7 @@ int PjRtCApiClient::process_index() const {
 }
 
 absl::string_view PjRtCApiClient::platform_version() const {
-  PJRT_Client_PlatformVersion_Args args;
-  args.struct_size = PJRT_Client_PlatformVersion_Args_STRUCT_SIZE;
-  args.priv = nullptr;
-  args.client = c_client_.get();
-  pjrt::LogFatalIfPjrtError(c_api_->PJRT_Client_PlatformVersion(&args), c_api_);
-
-  absl::string_view platform_version(args.platform_version,
-                                     args.platform_version_size);
-  return platform_version;
+  return platform_version_;
 }
 
 static DeviceAssignment CalculateDefaultAssignment(
@@ -261,39 +259,6 @@ StatusOr<std::unique_ptr<PjRtLoadedExecutable>> PjRtCApiClient::Compile(
   std::string format(pjrt::kMlirFormat);
   return InitializeArgsAndCompile(this, c_api_, c_client_.get(), options,
                                   module_bytecode, format);
-}
-
-StatusOr<std::string> PjRtCApiClient::SerializeExecutable(
-    const PjRtLoadedExecutable& executable) const {
-  auto c_api_exec =
-      tensorflow::down_cast<const PjRtCApiExecutable*>(&executable);
-  const PJRT_Executable* c_exec = c_api_exec->c_executable();
-
-  PJRT_Executable_Serialize_Args ser_args;
-  ser_args.struct_size = PJRT_Executable_Serialize_Args_STRUCT_SIZE;
-  ser_args.priv = nullptr;
-  ser_args.executable = c_exec;
-  ser_args.serialized_executable = nullptr;
-
-  const PJRT_Api* api = pjrt_c_api();
-
-  RETURN_STATUS_IF_ERROR(api->PJRT_Executable_Serialize(&ser_args), api);
-  PJRT_SerializedExecutable* c_serialized_exec = ser_args.serialized_executable;
-  std::unique_ptr<PJRT_SerializedExecutable,
-                  ::pjrt::PJRT_SerializedExecutableDeleter>
-      serialized_executable(c_serialized_exec,
-                            ::pjrt::MakeSerializedExecutableDeleter(api));
-
-  PJRT_SerializedExecutable_Data_Args data_args;
-  data_args.struct_size = PJRT_SerializedExecutable_Data_Args_STRUCT_SIZE;
-  data_args.priv = nullptr;
-  data_args.serialized_executable = c_serialized_exec;
-  data_args.data = nullptr;
-  data_args.data_size = 0;
-
-  RETURN_STATUS_IF_ERROR(api->PJRT_SerializedExecutable_Data(&data_args), api);
-
-  return std::string(data_args.data, data_args.data_size);
 }
 
 StatusOr<std::unique_ptr<PjRtLoadedExecutable>>
@@ -924,6 +889,34 @@ PjRtCApiExecutable::GetCostAnalysis() const {
   return output_map;
 }
 
+StatusOr<std::string> PjRtCApiExecutable::SerializeExecutable() const {
+  PJRT_Executable_Serialize_Args ser_args;
+  ser_args.struct_size = PJRT_Executable_Serialize_Args_STRUCT_SIZE;
+  ser_args.priv = nullptr;
+  ser_args.executable = c_executable();
+  ser_args.serialized_executable = nullptr;
+
+  const PJRT_Api* api = pjrt_c_api();
+
+  RETURN_STATUS_IF_ERROR(api->PJRT_Executable_Serialize(&ser_args), api);
+  PJRT_SerializedExecutable* c_serialized_exec = ser_args.serialized_executable;
+  std::unique_ptr<PJRT_SerializedExecutable,
+                  ::pjrt::PJRT_SerializedExecutableDeleter>
+      serialized_executable(c_serialized_exec,
+                            ::pjrt::MakeSerializedExecutableDeleter(api));
+
+  PJRT_SerializedExecutable_Data_Args data_args;
+  data_args.struct_size = PJRT_SerializedExecutable_Data_Args_STRUCT_SIZE;
+  data_args.priv = nullptr;
+  data_args.serialized_executable = c_serialized_exec;
+  data_args.data = nullptr;
+  data_args.data_size = 0;
+
+  RETURN_STATUS_IF_ERROR(api->PJRT_SerializedExecutable_Data(&data_args), api);
+
+  return std::string(data_args.data, data_args.data_size);
+}
+
 // ---------------------------------- Buffers ----------------------------------
 
 PjRtCApiBuffer::PjRtCApiBuffer(PjRtCApiClient* client, PJRT_Buffer* buffer)
@@ -1159,8 +1152,7 @@ StatusOr<std::unique_ptr<PjRtClient>> GetCApiClient(
     TF_RETURN_IF_ERROR(tensorflow::tpu::FindAndLoadTpuLibrary());
   }
 #endif
-  TF_ASSIGN_OR_RETURN(const PJRT_Api* c_api,
-                      stream_executor::tpu::PjrtApi(device_type));
+  TF_ASSIGN_OR_RETURN(const PJRT_Api* c_api, pjrt::PjrtApi(device_type));
   if (c_api == nullptr) {
     return InternalError("PJRT C API is nullptr");
   }

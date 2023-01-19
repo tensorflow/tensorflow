@@ -178,7 +178,6 @@ cc_library(
     deps = [
         ":test_util",
         "//tensorflow/lite/schema:schema_fbs",
-        "@com_google_benchmark//:benchmark",
         "@flatbuffers",
     ],
 )
@@ -704,7 +703,6 @@ BUILTIN_KERNEL_DEPS = [
     "//tensorflow/lite:framework_stable",
     "//tensorflow/lite:minimal_logging",
     "//tensorflow/lite:string_util",
-    "//tensorflow/lite:tflite_kernel_use_xnnpack_optional",
     "//tensorflow/lite/core:subgraph",
     "//tensorflow/lite:util",
     "//tensorflow/lite/core/c:common",
@@ -726,11 +724,6 @@ BUILTIN_KERNEL_DEPS = [
     "//conditions:default": [
         ":eigen_support",
         "//tensorflow/lite/kernels/internal:optimized_eigen",
-    ],
-}) + select({
-    "//tensorflow/lite:tflite_with_xnnpack_explicit_false": [],
-    "//conditions:default": [
-        "@XNNPACK//:xnnpack_for_tflite",
     ],
 })
 
@@ -784,12 +777,12 @@ cc_test(
         "variable_ops_test.cc",
     ],
     deps = [
-        ":builtin_ops",
         ":test_main",
         ":variable_op_kernels",  # buildcleaner: keep
         "//tensorflow/lite:framework_stable",
-        "//tensorflow/lite/core:headers",
+        "//tensorflow/lite/core:framework_stable",
         "//tensorflow/lite/core/c:common",
+        "//tensorflow/lite/core/kernels:builtin_ops",
         "//tensorflow/lite/kernels/internal:tensor",
         "@com_google_googletest//:gtest",
         "@flatbuffers",
@@ -1285,7 +1278,7 @@ cc_test(
     deps = [
         ":kernel_util",
         "//tensorflow/lite:framework_stable",
-        "//tensorflow/lite/core:headers",
+        "//tensorflow/lite/core:framework_stable",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/kernels:builtin_ops",
         "//tensorflow/lite/tools:logging",
@@ -2680,16 +2673,16 @@ cc_library(
     srcs = ["subgraph_test_util.cc"],
     hdrs = ["subgraph_test_util.h"],
     deps = [
-        ":builtin_ops",
         ":kernel_util",
         ":variable_op_kernels",
         "//tensorflow/lite:builtin_ops",
         "//tensorflow/lite:framework_stable",
         "//tensorflow/lite:interpreter_test_util",
         "//tensorflow/lite:string_util",
-        "//tensorflow/lite/core:headers",
+        "//tensorflow/lite/core:framework_stable",
         "//tensorflow/lite/core:subgraph",
         "//tensorflow/lite/core/c:common",
+        "//tensorflow/lite/core/kernels:builtin_ops",
         "@com_google_googletest//:gtest",
     ],
 )

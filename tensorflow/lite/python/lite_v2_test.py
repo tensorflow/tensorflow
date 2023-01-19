@@ -2648,11 +2648,15 @@ class FromSavedModelTest(lite_v2_test_util.ModelTest):
 
 class FromKerasModelTest(lite_v2_test_util.ModelTest):
 
-  @parameterized.named_parameters(('EnableMlirVariableQuantization', True),
-                                  ('DisablMlirVariableQuantization', False))
+  @parameterized.named_parameters(
+      ('EnableMlirVariableQuantizationNumState1', True, 1),
+      ('DisablMlirVariableQuantizationNumState1', False, 1),
+      ('EnableMlirVariableQuantizationNumState2', True, 2),
+      ('DisablMlirVariableQuantizationNumState2', False, 2),
+  )
   @test_util.run_v2_only
-  def testVariableQuantization(self, variable_quantization):
-    model, calibration_gen = self._createReadAssignModel()
+  def testVariableQuantization(self, variable_quantization, number_of_states):
+    model, calibration_gen = self._createReadAssignModel(number_of_states)
 
     converter = lite.TFLiteConverterV2.from_keras_model(model)
     converter.optimizations = [tf.lite.Optimize.DEFAULT]

@@ -138,7 +138,7 @@ class BincountTest(test_util.TensorFlowTestCase):
     # size must be scalar.
     with self.assertRaisesRegex(
         (ValueError, errors.InvalidArgumentError),
-        "Shape must be rank 0 but is rank 1(?s).*Bincount"):
+        "(?s)Shape must be rank 0 but is rank 1.*Bincount"):
       gen_math_ops.bincount([1, 2, 3, 1, 6, 8], [1], [])
     # size must be positive.
     with self.assertRaisesRegex((ValueError, errors.InvalidArgumentError),

@@ -25,9 +25,12 @@ limitations under the License.
 #include "mlir/Dialect/Arith/Utils/Utils.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
+#include "mlir/Dialect/Linalg/Transforms/Hoisting.h"
 #include "mlir/Dialect/Linalg/Transforms/Transforms.h"
 #include "mlir/Dialect/Vector/IR/VectorOps.h"
+#include "mlir/IR/OpDefinition.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
+#include "thlo/IR/thlo_ops.h"
 
 namespace mlir {
 namespace gml_st {
@@ -43,6 +46,7 @@ using mlir::linalg::Mmt4DOp;
 using mlir::linalg::ReduceOp;
 using mlir::linalg::TransposeOp;
 using mlir::tensor::ExpandShapeOp;
+using mlir::thlo::ReverseOp;
 using mlir::vector::TransferReadOp;
 using mlir::vector::TransferWriteOp;
 
@@ -55,6 +59,9 @@ using mlir::vector::TransferWriteOp;
 // static shape with more elements, then `linalg.fill` won't be vectorized. It
 // is expected that such operations are tiled to get to small static shapes.
 constexpr int64_t kNumElementsThreshold = 1024;
+
+// TODO(manany): This should be parameterized later on depending on hardware.
+constexpr int64_t kNumElementsVectorization = 8;
 
 // Rewrite `vector.transfer_read(linalg.expand_shape)` as
 // `vector.shape_cast(vector.transfer_read)`.
@@ -166,6 +173,8 @@ struct MaterializeUpdateTransferWriteTensorOperand
 
   LogicalResult matchAndRewrite(vector::TransferWriteOp op,
                                 PatternRewriter &rewriter) const override {
+    if (!op->getParentOfType<ForOp>()) return failure();
+
     // Sanity checks of TransferWriteOp.
     if (op.hasOutOfBoundsDim()) return failure();
     if (op.getVectorType().getRank() != op.getShapedType().getRank())
@@ -205,6 +214,8 @@ struct SetYieldUpdateTransferWriteTensorOperand
 
   LogicalResult matchAndRewrite(SetYieldOp op,
                                 PatternRewriter &rewriter) const override {
+    if (!op->getParentOfType<ForOp>()) return failure();
+
     bool changed = false;
     for (const auto &[src, dst, set] :
          llvm::zip(op.getSrcs(), op.getDsts(), op.getSets())) {
@@ -278,7 +289,7 @@ SmallVector<Value, 4> generateDefaultOffsetFor(Value value,
 // Converts the ranked-tensor-typed `bvm`-mapped operands of `op` into vectors
 // via vector.transfer_read. Updates `bvm`'s mapping of `op`'s operands to the
 // newly created vector values.
-void convertTensorOperandsToVector(Operation *op, BlockAndValueMapping &bvm,
+void convertTensorOperandsToVector(Operation *op, IRMapping &bvm,
                                    OpBuilder &builder) {
   OpBuilder::InsertionGuard guard(builder);
   for (Value operand : op->getOperands()) {
@@ -300,7 +311,7 @@ void convertTensorOperandsToVector(Operation *op, BlockAndValueMapping &bvm,
 // `op`'s results to the newly generated tensors. Expects that the operation's
 // results are vectors, and the destinations tensors.
 void convertVectorResultsToTensor(ValueRange results, ValueRange destinations,
-                                  BlockAndValueMapping &bvm,
+                                  IRMapping &bvm,
                                   OpBuilder &builder) {
   for (auto [result, dest] : llvm::zip(results, destinations)) {
     Value mappedResult = bvm.lookupOrDefault(result);
@@ -334,7 +345,7 @@ struct TensorToElementVectorizationPattern
     if (tensorType.getNumDynamicDims() > 0 || tensorType.getNumElements() > 1)
       return rewriter.notifyMatchFailure(op, "should have a single element");
 
-    BlockAndValueMapping bvm;
+    IRMapping bvm;
     convertTensorOperandsToVector(op, bvm, rewriter);
     if (tensorType.getRank() == 0) {
       // ExtractOp only supports ranks > 0, for rank = 0 use ExtractElementOp
@@ -350,6 +361,66 @@ struct TensorToElementVectorizationPattern
 
  private:
   llvm::function_ref<bool(tensor::ExtractOp)> filterFn;
+};
+
+// This currently matches for all thlo.reverse of the form 1x1x..x1xVectorSize.
+// DimSize < kNumElementsVectorization will be handled by Scalarization.
+bool isPerfectlyTiledReverse(thlo::ReverseOp reverseOp) {
+  auto inputType = reverseOp.getInput().getType();
+  for (unsigned i = 0; i < inputType.getRank(); ++i) {
+    if (inputType.isDynamicDim(i)) {
+      return false;
+    }
+    if (i == inputType.getRank() - 1) {
+      return inputType.getDimSize(i) == kNumElementsVectorization &&
+             llvm::is_contained(reverseOp.getReverseDimensions(), i);
+    }
+    if (inputType.getDimSize(i) != 1) {
+      return false;
+    }
+  }
+  return false;
+}
+
+// Rewrite thlo.reverse of pattern 1x1x..x1xVectorSize as vector.transfer_read
+// followed by vector.shuffle followed by vector.transfer_write.
+struct ThloReverseVectorizationPattern
+    : public mlir::OpRewritePattern<thlo::ReverseOp> {
+  explicit ThloReverseVectorizationPattern(MLIRContext *context,
+                                           mlir::PatternBenefit benefit = 1)
+      : mlir::OpRewritePattern<thlo::ReverseOp>(context, benefit) {}
+
+  LogicalResult matchAndRewrite(thlo::ReverseOp op,
+                                PatternRewriter &rewriter) const override {
+    if (!isPerfectlyTiledReverse(op))
+      return rewriter.notifyMatchFailure(op, "did not match filter");
+
+    auto inputType = op.getInput().getType();
+    auto vecTargetType =
+        RankedTensorType::get(inputType.getShape()[inputType.getRank() - 1],
+                              inputType.getElementType());
+    Value zero = rewriter.create<arith::ConstantIndexOp>(op.getLoc(), 0);
+    SmallVector<Value> indices(op.getInit().getType().getRank(), zero);
+
+    auto readInput = rewriter.create<vector::TransferReadOp>(
+        op.getLoc(),
+        VectorType::get(vecTargetType.getShape(),
+                        vecTargetType.getElementType()),
+        op.getInput(), indices);
+
+    SmallVector<int64_t> mask;
+    int64_t maskSize = inputType.getShape()[inputType.getRank() - 1];
+    mask.reserve(maskSize);
+    for (int i = maskSize - 1; i >= 0; --i) {
+      mask.push_back(i);
+    }
+    auto shuffle = rewriter.create<vector::ShuffleOp>(op.getLoc(), readInput,
+                                                      readInput, mask);
+
+    rewriter.replaceOpWithNewOp<vector::TransferWriteOp>(
+        op, shuffle.getResult(), op.getInit(), indices);
+    return success();
+  }
 };
 
 // Rewrite vector.transfer_read(tensor.empty) into a constant vector of the
@@ -415,7 +486,7 @@ struct MaterializeOpVectorizationPattern
       return rewriter.notifyMatchFailure(op, "input is not statically shaped");
 
     Location loc = op.getLoc();
-    BlockAndValueMapping bvm;
+    IRMapping bvm;
     convertTensorOperandsToVector(op, bvm, rewriter);
     Type newResult = op.getResult().getType();
     if (auto tensorResult = newResult.dyn_cast<RankedTensorType>()) {
@@ -482,7 +553,7 @@ SmallVector<Type, 1> convertToVectorTypes(TypeRange types) {
 // terminator, and stores the mapping to new values into `bvm`.
 void copyLoopBodyAndVectorizeTerminator(LoopLikeOpInterface op,
                                         OpBuilder &builder,
-                                        BlockAndValueMapping &bvm) {
+                                        IRMapping &bvm) {
   auto &blocks = op.getLoopBody().getBlocks();
   assert(blocks.size() == 1 && "loop body should contain a single block");
   Block &block = blocks.front();
@@ -495,7 +566,7 @@ void copyLoopBodyAndVectorizeTerminator(LoopLikeOpInterface op,
 
 // Vectorizes a gml_st.parallel `op`, and stores the mapping from old to new
 // values into `bvm`.
-ParallelOp vectorizeLoopLikeOp(ParallelOp op, BlockAndValueMapping &bvm,
+ParallelOp vectorizeLoopLikeOp(ParallelOp op, IRMapping &bvm,
                                PatternRewriter &rewriter) {
   std::optional<StringAttr> distTypeAttr;
   if (auto distType = op.getDistributionType())
@@ -511,7 +582,7 @@ ParallelOp vectorizeLoopLikeOp(ParallelOp op, BlockAndValueMapping &bvm,
 
 // Vectorizes a gml_st.for `op`, and stores the mapping from old to new
 // values into `bvm`.
-ForOp vectorizeLoopLikeOp(ForOp op, BlockAndValueMapping &bvm,
+ForOp vectorizeLoopLikeOp(ForOp op, IRMapping &bvm,
                           PatternRewriter &rewriter) {
   convertTensorOperandsToVector(op, bvm, rewriter);
   auto outputs = llvm::to_vector(llvm::map_range(
@@ -571,7 +642,7 @@ struct LoopLikeOpVectorizationPattern : public OpRewritePattern<LoopLikeOp> {
           op, "shoud not use set_yield accumulators");
     }
 
-    BlockAndValueMapping bvm;
+    IRMapping bvm;
 
     auto vectorLoopLikeOp = vectorizeLoopLikeOp(op, bvm, rewriter);
     bvm.map(op.getResults(), vectorLoopLikeOp.getResults());
@@ -603,7 +674,7 @@ RewritePatternSet getDefaultVectorizationPatterns(MLIRContext *ctx) {
 
 bool isInsideGmlStLoop(Operation *op) {
   Operation *parent = op->getParentOp();
-  return isa<LoopOp>(parent) || isa<ParallelOp>(parent) || isa<ForOp>(parent);
+  return isa<ParallelOp>(parent) || isa<ForOp>(parent);
 }
 
 bool isFillTiledOrSmall(FillOp fill) {
@@ -792,9 +863,11 @@ struct VectorizePerfectlyTiledLoopsPass
       patterns.add<TransferReadOfOneDimExpandShape>(ctx);
       patterns.add<TensorToElementVectorizationPattern>(
           ctx, isInsidePerfectlyTiledLoop);
+      patterns.add<ThloReverseVectorizationPattern>(ctx);
       (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
     }
 
+    // TODO(vuson): remove these patterns once gml_st.for is retired.
     {
       RewritePatternSet patterns = getDefaultVectorizationPatterns(ctx);
       linalg::populatePadOpVectorizationPatterns(patterns);
@@ -803,8 +876,6 @@ struct VectorizePerfectlyTiledLoopsPass
                    IdentityTransposeOpFoldingPattern>(ctx);
       (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
     }
-
-    // Hoisting transfer_read/transfer_write.
     {
       RewritePatternSet patterns(ctx);
       patterns.add<IdentityMaterializeOpFoldingPattern>(ctx);
@@ -812,6 +883,8 @@ struct VectorizePerfectlyTiledLoopsPass
 
       hoistRedundantVectorTransfersOnTensor(func);
     }
+    // Hoisting transfer_read/transfer_write.
+    linalg::hoistRedundantVectorTransfersOnTensor(func);
   }
 };
 

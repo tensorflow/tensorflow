@@ -71,6 +71,9 @@ class OpWrapper : public OpKernelShim<OpWrapper, Rt> {
         out0: int, shape=[] - first output
       )doc";
 
+  static const char* OpName() { return kOpName; }
+  static const char* Doc() { return kDoc; }
+
   // For the static methods, they shouldn't change based on the types.
   static std::vector<std::string> Attrs() { return TmplOpType0::Attrs(); }
   static std::vector<std::string> Inputs() { return TmplOpType0::Inputs(); }

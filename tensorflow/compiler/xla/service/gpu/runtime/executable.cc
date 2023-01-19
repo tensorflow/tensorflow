@@ -353,10 +353,23 @@ Status GpuRuntimeExecutable::Execute(
   if (temp_alloc)
     temp_buffer = buffer_allocations.GetDeviceAddress(temp_alloc->index());
 
-  // Take snapshots of every state required by custom calls.
+  // State cached separately for each stream executor.
   StreamExecutorKernels::Snapshot kernels = gpu_kernels_(executor)->snapshot();
+  StreamExecutorConvRunners::Snapshot conv_runners =
+      conv_runners_(executor)->snapshot();
+
+#if GOOGLE_CUDA
+  StreamExecutorGraphInstances::Snapshot graph_instances =
+      graph_instances_(executor)->snapshot();
+#endif  // GOOGLE_CUDA
+
+  // State cached globally for gpu executable.
   GemmConfigs::Snapshot gemm_configs = gemm_configs_.snapshot();
   FftPlans::Snapshot fft_plans = fft_plans_.snapshot();
+
+#if GOOGLE_CUDA
+  MatmulPlans::Snapshot matmul_plans = cublas_lt_matmul_plans_.snapshot();
+#endif  // GOOGLE_CUDA
 
   // Initialize state required for running functions exported from FFI modules.
   FfiStateVector ffi_state = ffi_modules_state_.state_vector();
@@ -364,8 +377,12 @@ Status GpuRuntimeExecutable::Execute(
   // Pass auxiliary data to the custom call handlers.
   runtime::CustomCall::UserData user_data(
       run_options, &executable, &debug_options_, &temp_buffer, &asm_text,
-      &ffi_state, &binary, &kernels, &gemm_configs, &conv_runners_cache_,
+      &ffi_state, &binary, &kernels, &gemm_configs, &conv_runners,
       &collectives_, &fft_plans,
+#if GOOGLE_CUDA
+      // Auxiliary data that is available only if compiled with CUDA support.
+      &matmul_plans, &graph_instances,
+#endif  // GOOGLE_CUDA
       // Null pointer will be interpreted as an absence of async collectives
       // support and custom calls will safely return an error.
       async_collectives.async_comm_stream() ? &async_collectives : nullptr);
@@ -375,13 +392,6 @@ Status GpuRuntimeExecutable::Execute(
   if (!state_ref.ok())
     return InternalError("Failed to initialize runtime modules state: %s",
                          state_ref.status().message());
-
-#if GOOGLE_CUDA
-  // Add auxiliary data that is available only if compiled with CUDA support.
-  MatmulPlans::Snapshot matmul_plans = cublas_lt_matmul_plans_.snapshot();
-  GraphInstances::Snapshot graph_instances = graph_instances_.snapshot();
-  user_data.insert_all(&matmul_plans, &graph_instances);
-#endif  // GOOGLE_CUDA
 
   // Collect all emitted diagnostic messages.
   std::string diagnostic;

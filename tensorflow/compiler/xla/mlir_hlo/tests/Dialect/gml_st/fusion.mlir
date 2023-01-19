@@ -56,64 +56,62 @@ func.func @dynamic_broadcast_in_dim(%arg : tensor<?x?xf32>,
 
 // -----
 
-func.func @concatenate_at_tile(%init : tensor<?x?xi32>, %a: tensor<?x?xi32>,
-    %b: tensor<?x?xi32>, %c: tensor<?x?xi32>, %i: index, %j: index,
-    %arg_dim0: index, %arg_dim1: index) -> tensor<?x?xi32> {
-  %concat = thlo.concatenate
-      ins(%a : tensor<?x?xi32>, %b : tensor<?x?xi32>, %c : tensor<?x?xi32>)
-      outs(%init : tensor<?x?xi32>)
-      dimension = 1
+// CHECK-LABEL: @nary_concatenate_with_unit_dims
+// CHECK-SAME:  %[[INIT:.*]]: tensor<?x?xi32>, %[[ARG_A:.*]]: tensor<?x?xi32>, %[[ARG_B:.*]]: tensor<?x?xi32>, %[[ARG_C:.*]]: tensor<?x?xi32>, %[[I:.*]]: index, %[[J:.*]]: index, %[[N:.*]]: index
+func.func @nary_concatenate_with_unit_dims(%init : tensor<?x?xi32>,
+    %a: tensor<?x?xi32>, %b: tensor<?x?xi32>, %c: tensor<?x?xi32>, %i: index,
+    %j: index, %n: index) -> tensor<?x1xi32> {
+  // CHECK-DAG: %[[C1:.*]] = arith.constant 1
+  // CHECK:     %[[DIM:.*]] = tensor.dim %[[ARG_A]], %[[C1]]
+  // CHECK:     %[[CMPI:.*]] = arith.cmpi ult, %[[J]], %[[DIM]]
+  // CHECK:     %[[IF:.*]] = scf.if %[[CMPI]] -> (tensor<?x1xi32>)
+  // CHECK:       %[[MATERIALIZE:.*]] = gml_st.materialize %[[ARG_A]] [%[[I]], %[[J]]] [%[[N]], 1] [1, 1]
+  // CHECK:       scf.yield %[[MATERIALIZE]]
+  // CHECK:     else
+  // CHECK:       %[[SUBI:.*]] = arith.subi %[[J]], %[[DIM]]
+  // CHECK:       %[[DIM_0:.*]] = tensor.dim %[[ARG_B]], %[[C1]]
+  // CHECK:       %[[CMPI_0:.*]] = arith.cmpi ult, %[[SUBI]], %[[DIM_0]]
+  // CHECK:       %[[IF_0:.*]] = scf.if %[[CMPI_0]] -> (tensor<?x1xi32>)
+  // CHECK:         %[[MATERIALIZE_0:.*]] = gml_st.materialize %[[ARG_B]] [%[[I]], %[[SUBI]]] [%[[N]], 1] [1, 1]
+  // CHECK:         scf.yield %[[MATERIALIZE_0]]
+  // CHECK:       else
+  // CHECK:         %[[SUBI_0:.*]] = arith.subi %[[SUBI]], %[[DIM_0]]
+  // CHECK:         %[[MATERIALIZE_1:.*]] = gml_st.materialize %[[ARG_C]] [%[[I]], %[[SUBI_0]]] [%[[N]], 1] [1, 1]
+  // CHECK:         scf.yield %[[MATERIALIZE_1]]
+  // CHECK:       scf.yield %[[IF_0]]
+  // CHECK:     return {op_label = "consumer"} %[[IF]]
+  %concat = thlo.concatenate ins(%a : tensor<?x?xi32>, %b : tensor<?x?xi32>,
+      %c : tensor<?x?xi32>) outs(%init : tensor<?x?xi32>) dimension = 1
       { op_label = "producer" }
-  %concat_sub = gml_st.materialize %concat[%i, %j] [%arg_dim0, %arg_dim1] [1, 1] 
-      : tensor<?x?xi32> to tensor<?x?xi32>
-  func.return { op_label = "consumer" } %concat_sub : tensor<?x?xi32>
+  %tiled_concat = gml_st.materialize %concat[%i, %j] [%n, 1] [1, 1]
+      : tensor<?x?xi32> to tensor<?x1xi32>
+  func.return { op_label = "consumer" } %tiled_concat : tensor<?x1xi32>
 }
-// CHECK-LABEL: @concatenate
-// CHECK-SAME:  (%[[INIT:[a-z0-9]+]]: tensor<?x?xi32>, %[[A:[a-z0-9]+]]: tensor<?x?xi32>,
-// CHECK-SAME:  %[[B:[a-z0-9]+]]: tensor<?x?xi32>, %[[C:[a-z0-9]+]]: tensor<?x?xi32>,
-// CHECK-SAME:  %[[I:[a-z0-9]+]]: index, %[[J:[a-z0-9]+]]: index,
-// CHECK-SAME:  %[[ARG_DIM0:[a-z0-9]+]]: index, %[[ARG_DIM1:[a-z0-9]+]]: index)
 
-// CHECK-DAG:  %[[C0:.*]] = arith.constant 0
-// CHECK-DAG:  %[[C1:.*]] = arith.constant 1
+// -----
 
-// CHECK:      %[[DIM_2:.*]] = tensor.dim %[[A]], %[[C1]]
-// CHECK:      %[[MINUI:.*]] = arith.minui %[[J]], %[[DIM_2]]
-// CHECK:      %[[SUBI:.*]] = arith.subi %[[DIM_2]], %[[MINUI]]
-// CHECK:      %[[MINUI_0:.*]] = arith.minui %[[SUBI]], %[[ARG_DIM1]]
-// CHECK:      %[[A_SUB:.*]] = gml_st.materialize %[[A]]
-// CHECK-SAME:     [%[[I]], %[[MINUI]]]
-// CHECK-SAME:     [%[[ARG_DIM0]], %[[MINUI_0]]]
-
-// CHECK:      %[[CMPI:.*]] = arith.cmpi ule, %[[J]], %[[DIM_2]]
-// CHECK:      %[[SUBI_0:.*]] = arith.subi %[[J]], %[[DIM_2]]
-// CHECK:      %[[SELECT:.*]] = arith.select %[[CMPI]], %[[C0]], %[[SUBI_0]]
-// CHECK:      %[[DIM_3:.*]] = tensor.dim %[[B]], %[[C1]]
-// CHECK:      %[[MINUI_1:.*]] = arith.minui %[[SELECT]], %[[DIM_3]]
-// CHECK:      %[[SUBI_1:.*]] = arith.subi %[[DIM_3]], %[[MINUI_1]]
-// CHECK:      %[[MINUI_2:.*]] = arith.minui %[[SUBI_1]], %[[ARG_DIM1]]
-// CHECK:      %[[B_SUB:.*]] = gml_st.materialize %[[B]]
-// CHECK-SAME:     [%[[I]], %[[MINUI_1]]]
-// CHECK-SAME:     [%[[ARG_DIM0]], %[[MINUI_2]]]
-
-// CHECK:      %[[CMPI_0:.*]] = arith.cmpi ule, %[[SELECT]], %[[DIM_3]]
-// CHECK:      %[[SUBI_2:.*]] = arith.subi %[[SELECT]], %[[DIM_3]]
-// CHECK:      %[[SELECT_0:.*]] = arith.select %[[CMPI_0]], %[[C0]], %[[SUBI_2]]
-// CHECK:      %[[DIM_4:.*]] = tensor.dim %[[C]], %[[C1]]
-// CHECK:      %[[MINUI_3:.*]] = arith.minui %[[SELECT_0]], %[[DIM_4]]
-// CHECK:      %[[SUBI_3:.*]] = arith.subi %[[DIM_4]], %[[MINUI_3]]
-// CHECK:      %[[MINUI_4:.*]] = arith.minui %[[SUBI_3]], %[[ARG_DIM1]]
-// CHECK:      %[[C_SUB:.*]] = gml_st.materialize %[[C]]
-// CHECK-SAME:     [%[[I]], %[[MINUI_3]]]
-// CHECK-SAME:     [%[[ARG_DIM0]], %[[MINUI_4]]]
-// CHECK:      %[[INIT_SUB:.*]] = gml_st.materialize %[[INIT]]
-// CHECK-SAME:     [%[[I]], %[[J]]] [%[[ARG_DIM0]], %[[ARG_DIM1]]]
-// CHECK:      %[[CONCATENATE:.*]] = thlo.concatenate
-// CHECK-SAME:     ins(%[[A_SUB]] : tensor<?x?xi32>, %[[B_SUB]] : tensor<?x?xi32>,
-// CHECK-SAME:         %[[C_SUB]] : tensor<?x?xi32>)
-// CHECK-SAME:     outs(%[[INIT_SUB]] : tensor<?x?xi32>)
-// CHECK-SAME:     dimension = 1
-// CHECK:      return {op_label = "consumer"} %[[CONCATENATE]]
+// CHECK-LABEL: @binary_concatenate_with_unit_dims
+// CHECK-SAME:  %[[INIT:.*]]: tensor<?x?xi32>, %[[ARG_A:.*]]: tensor<?x?xi32>, %[[ARG_B:.*]]: tensor<?x?xi32>, %[[I:.*]]: index, %[[J:.*]]: index, %[[N:.*]]: index
+func.func @binary_concatenate_with_unit_dims(%init : tensor<?x?xi32>,
+    %a: tensor<?x?xi32>, %b: tensor<?x?xi32>, %i: index, %j: index, %n: index)
+    -> tensor<?x1xi32> {
+  // CHECK-DAG: %[[C1:.*]] = arith.constant 1
+  // CHECK:     %[[DIM:.*]] = tensor.dim %[[ARG_A]], %[[C1]]
+  // CHECK:     %[[CMPI:.*]] = arith.cmpi ult, %[[J]], %[[DIM]]
+  // CHECK:     %[[IF:.*]] = scf.if %[[CMPI]] -> (tensor<?x1xi32>)
+  // CHECK:       %[[MATERIALIZE:.*]] = gml_st.materialize %[[ARG_A]] [%[[I]], %[[J]]] [%[[N]], 1] [1, 1]
+  // CHECK:       scf.yield %[[MATERIALIZE]]
+  // CHECK:     else
+  // CHECK:       %[[SUBI:.*]] = arith.subi %[[J]], %[[DIM]]
+  // CHECK:       %[[MATERIALIZE_0:.*]] = gml_st.materialize %[[ARG_B]] [%[[I]], %[[SUBI]]] [%[[N]], 1] [1, 1]
+  // CHECK:       scf.yield %[[MATERIALIZE_0]]
+  // CHECK:     return {op_label = "consumer"} %[[IF]]
+  %concat = thlo.concatenate ins(%a : tensor<?x?xi32>, %b : tensor<?x?xi32>)
+      outs(%init : tensor<?x?xi32>) dimension = 1 { op_label = "producer" }
+  %tiled_concat = gml_st.materialize %concat[%i, %j] [%n, 1] [1, 1]
+      : tensor<?x?xi32> to tensor<?x1xi32>
+  func.return { op_label = "consumer" } %tiled_concat : tensor<?x1xi32>
+}
 
 // -----
 

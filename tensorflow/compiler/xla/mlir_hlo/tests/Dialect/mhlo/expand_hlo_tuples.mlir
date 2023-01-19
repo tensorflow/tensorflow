@@ -1,4 +1,4 @@
-// RUN: mlir-hlo-opt %s -split-input-file -expand-hlo-tuples='entry-function=main' | FileCheck %s
+// RUN: mlir-hlo-opt %s -split-input-file -expand-hlo-tuples='entry-function=main' -allow-unregistered-dialect | FileCheck %s
 // Check if the `expand-hlo-tuples` pass adds the right variable to return_op and function return type.
 
 func.func @main(%arg0: tensor<1x1xf32>, %arg1: tensor<1x8x8x16xf32>) -> tuple<tensor<1024xf32>, tensor<1xf32>> {
@@ -22,10 +22,10 @@ func.func @main(%arg0: tuple<tensor<1024xf32>, tensor<1xf32>>) -> tuple<tensor<1
   func.return %arg0 : tuple<tensor<1024xf32>, tensor<1xf32>>
 }
 
-// CHECK:   func @main(%[[VAL_0:.*]]: tensor<1024xf32>, %[[VAL_1:.*]]: tensor<1xf32>) -> (tensor<1024xf32>, tensor<1xf32>) {
-// CHECK:           %[[VAL_2:.*]] = mhlo.tuple %[[VAL_0]], %[[VAL_1]] : tuple<tensor<1024xf32>, tensor<1xf32>>
-// CHECK:           return %[[VAL_0]], %[[VAL_1]] : tensor<1024xf32>, tensor<1xf32>
-// CHECK:         }
+// CHECK: func @main(%[[VAL_0:.*]]: tensor<1024xf32>, %[[VAL_1:.*]]: tensor<1xf32>) -> (tensor<1024xf32>, tensor<1xf32>) {
+// CHECK:   %[[VAL_2:.*]] = mhlo.tuple %[[VAL_0]], %[[VAL_1]] : tuple<tensor<1024xf32>, tensor<1xf32>>
+// CHECK:   return %[[VAL_0]], %[[VAL_1]] : tensor<1024xf32>, tensor<1xf32>
+// CHECK: }
 
 // -----
 
@@ -35,5 +35,18 @@ func.func @main() -> tuple<> {
 }
 
 // CHECK-LABEL: func @main() {
-// CHECK:   return{{$}}
-// CHECK:  }
+//       CHECK:   return{{$}}
+//       CHECK: }
+
+// -----
+
+func.func @main() -> tuple<tensor<1xf32>, tensor<1xi32>> {
+  %0 = "test.dummy"() : () -> tuple<tensor<1xf32>, tensor<1xi32>>
+  func.return %0 : tuple<tensor<1xf32>, tensor<1xi32>>
+}
+
+// CHECK-LABEL: func @main()
+//       CHECK: %[[TUPLE:.*]] = "test.dummy"()
+//       CHECK: %[[T0:.*]] = mhlo.get_tuple_element %[[TUPLE]][0]
+//       CHECK: %[[T1:.*]] = mhlo.get_tuple_element %[[TUPLE]][1]
+//       CHECK: return %[[T0]], %[[T1]]

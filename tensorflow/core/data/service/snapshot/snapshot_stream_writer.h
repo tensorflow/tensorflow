@@ -20,6 +20,7 @@ limitations under the License.
 #include <optional>
 #include <string>
 
+#include "absl/strings/substitute.h"
 #include "tensorflow/core/data/service/common.pb.h"
 #include "tensorflow/core/data/service/task_runner.h"
 #include "tensorflow/core/data/service/worker.pb.h"
@@ -38,9 +39,9 @@ struct SnapshotWriterParams {
   // for how the directory is structured.
   std::string snapshot_path;
 
-  // The ID of the stream. A stream is one shard of the snapshot processed by a
-  // worker.
-  int64_t stream_id = 0;
+  // The index of the snapshot stream. A stream is one shard of the snapshot
+  // processed by a worker.
+  int64_t stream_index = 0;
 
   // Compression method as defined in tsl/lib/io/compression.h.
   std::string compression;
@@ -50,6 +51,12 @@ struct SnapshotWriterParams {
 
   // The maximum number of bytes in each chunk.
   int64_t max_chunk_size_bytes = kDefaultMaxChunkSizeBytes;
+
+  std::string DebugString() const {
+    return absl::Substitute(
+        "SnapshotWriterParams { base_path: $0, stream: $1, compression: $2 }",
+        snapshot_path, stream_index, compression);
+  }
 
  private:
   static constexpr int64_t kDefaultMaxChunkSizeBytes =
@@ -63,7 +70,7 @@ struct SnapshotWriterParams {
 //   - DONE
 //   - snapshot.metadata
 //   - dataset_def.proto
-//   - committed chunks
+//   - chunks
 //     - chunk_<stream_index>_<chunk_index>
 //   - streams
 //     - stream_0
@@ -74,7 +81,7 @@ struct SnapshotWriterParams {
 //       - uncommitted chunks
 //         - chunk_<chunk_index>
 //       - checkpoints
-//         - checkpoint_<local_split_index>_<chunk_index>
+//         - checkpoint_<chunk_index>
 //
 // This class is thread-safe.
 // TODO(b/258691666): Support chunking, checkpointing, and fault tolerance.
@@ -85,20 +92,30 @@ class SnapshotStreamWriter {
   // TODO(b/258691666): Create a new `TaskIterator` that persists splits.
   explicit SnapshotStreamWriter(const SnapshotWriterParams& params,
                                 std::unique_ptr<TaskIterator> iterator);
+  virtual ~SnapshotStreamWriter() = default;
+  SnapshotStreamWriter(const SnapshotStreamWriter&) = delete;
+  SnapshotStreamWriter& operator=(const SnapshotStreamWriter&) = delete;
 
-  // Waits for the writer to finish writing the snapshot stream.
-  Status Wait();
+  // Returns true if the snapshot stream has completed. A snapshot stream is
+  // completed if the dataset has reached the end of sequence and a DONE file is
+  // written. Returns an error if the snapshot has failed. This does not block
+  // the caller.
+  StatusOr<bool> Completed() const;
+
+  // Waits for the writer to finish writing the snapshot stream and returns the
+  // final status.
+  StatusOr<bool> Wait();
 
   // Cancels the writer. If cancelled, `Wait` will return a Cancelled error.
   void Cancel();
 
  private:
-  // Runs `WriteSnapshotFn` on a dedicated thread.
-  std::unique_ptr<Thread> RunSnapshotThread();
+  // Writes the snapshot and any debugging log when necessary.
+  void WriteSnapshotAndLog();
 
-  // Function to write the snapshot. Returns an error if writing fails or the
-  // task has been cancelled.
-  Status WriteSnapshotFn();
+  // Writes the snapshot. Returns an error if writing fails or the task has been
+  // cancelled.
+  Status WriteSnapshot();
 
   // Creates directories to store uncommitted chunks and checkpoints.
   Status InitializeDirectories();
@@ -111,11 +128,12 @@ class SnapshotStreamWriter {
   // Writes the next chunk.
   Status WriteChunk();
 
+  // Commits the current chunk.
+  Status CommitChunk();
+
   // Returns the path of the current chunk.
   std::string GetChunkFilePath() const;
-
-  // Commits the current chunk.
-  Status CommitChunk(const std::string& chunk_file_path);
+  std::string GetCommittedChunkFilePath() const;
 
   // Returns true if the writer should write the next record to the current
   // chunk.
@@ -124,11 +142,20 @@ class SnapshotStreamWriter {
   // Writes the next record to the current chunk.
   Status WriteRecord(snapshot_util::TFRecordWriter& writer);
 
+  // Writes a DONE file when the stream is finished. Writes an ERROR file if it
+  // failed.
+  Status FinalizeStream(Status status);
+  Status WriteDoneFile();
+  Status WriteErrorFile(const Status& status);
+
   // Returns true if the writer should write an iterator checkpoint.
   bool ShouldSave() const;
 
   // Saves an iterator checkpoint.
   Status Save();
+
+  // After committing a checkpoint, deletes the previous checkpoints.
+  Status DeleteOutdatedCheckpoints();
 
   // Restores from the last checkpoint.
   Status Restore();
@@ -136,15 +163,19 @@ class SnapshotStreamWriter {
   // Returns the index of the last checkpointed chunk.
   StatusOr<int64_t> LastCheckpointIndex() const;
 
-  // Synchronizes the checkpoint with the committed chunks. This will commit
-  // uncommitted chunk files written before the checkpoint and delete chunk
-  // files written after the checkpoint.
-  Status SyncCheckpointWithChunks();
+  // Synchronizes the checkpoint with the committed chunks. This is called when
+  // the worker restores the snapshot in case the worker fails after writing the
+  // checkpoint but before committing a chunk file.
+  Status SyncCheckpointWithChunks(int64_t checkpoint_index);
 
   // Returns the path of the checkpoint for `chunk_index`.
   std::string CheckpointPath(int64_t chunk_index) const;
 
   const SnapshotWriterParams params_;
+  const std::string stream_directory_;
+  const std::string committed_chunks_directory_;
+  const std::string uncommitted_chunks_directory_;
+  const std::string checkpoints_directory_;
 
   // The dataset iterator that produces the dataset elements.
   std::unique_ptr<TaskIterator> iterator_;
@@ -159,11 +190,11 @@ class SnapshotStreamWriter {
 
   mutable mutex mu_;
 
-  // Status of the writer:
-  // - If the snapshotting is successful, it is an OK status.
+  // Whether the writer is completed:
+  // - If the snapshot is successful, this is true.
   // - If any error happens during the snapshot write, it is the error status.
-  // - If the writer is cancelled, it is a Cancelled status.
-  Status status_ TF_GUARDED_BY(mu_);
+  // - If the snapshot has not finished, this is false.
+  StatusOr<bool> completed_ TF_GUARDED_BY(mu_) = false;
 
   std::unique_ptr<Thread> snapshot_thread_;
 };

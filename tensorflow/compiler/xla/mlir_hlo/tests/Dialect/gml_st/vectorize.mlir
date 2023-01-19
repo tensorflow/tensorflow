@@ -109,7 +109,6 @@ func.func @parallel_on_tensor(
 // CHECK: %[[LHS:.*]] = vector.transfer_read {{%.*}}[%c0]
 // CHECK: %[[RHS:.*]] = vector.transfer_read {{%.*}}[%c0]
 // CHECK: %[[ADD:.*]] = arith.addf %[[LHS]], %[[RHS]] : vector<4xf32>
-// CHECK: vector.transfer_write %[[ADD]], %[[ARG2]][%[[ITER]]]
 
 // -----
 

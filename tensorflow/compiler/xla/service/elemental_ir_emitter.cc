@@ -274,9 +274,8 @@ llvm::Value* EmitF16ToF8e4m3fn(llvm::Value* f16_value, llvm::IRBuilder<>* b) {
 
   // Truncate the mantissa to 3 bits. ReducePrecision cannot deal with
   // f8E4M3FN's NaN representations, so don't use ReducePrecision to handle
-  // exponent reduction.
-  // TODO(b/259609697): ReducePrecision truncates denormal values. Do not do
-  // this for FP8.
+  // exponent reduction. Denormal values are not handled properly here and are
+  // dealt with later in this function.
   StatusOr<Value*> f16_reduced_statusor = EmitReducePrecisionIR(
       /*src_ty=*/F16, f16_value,
       /*dest_exponent_bits=*/5,
@@ -285,6 +284,21 @@ llvm::Value* EmitF16ToF8e4m3fn(llvm::Value* f16_value, llvm::IRBuilder<>* b) {
   CHECK(f16_reduced_statusor.ok());  // Crash OK
   Value* f16_reduced = f16_reduced_statusor.value();
   f16_reduced = b->CreateBitCast(f16_reduced, i16_type);
+
+  // Remove the sign bit.
+  //   f16_reduced = f16_reduced & 0x7FFF
+  f16_reduced = b->CreateAnd(f16_reduced, i16_const(0x7FFF));
+
+  // Bits of the F16 representation of the smallest F8 normal value.
+  constexpr int min_normal_value = 0x2400;
+
+  // Round values smaller than the smallest F8 normal value up to the smallest
+  // F8 normal value. The case where we round to a denormal value is handled
+  // later.
+  //    f16_reduced = max(f16_reduced, min_normal_value)
+  f16_reduced = b->CreateSelect(
+      b->CreateICmpULT(f16_reduced, i16_const(min_normal_value)),
+      i16_const(min_normal_value), f16_reduced);
 
   constexpr int exponent_bias_difference = 15 - 7;
   constexpr int f16_mantissa_bits = 10;
@@ -302,23 +316,52 @@ llvm::Value* EmitF16ToF8e4m3fn(llvm::Value* f16_value, llvm::IRBuilder<>* b) {
       b->CreateLShr(f16_reduced, i16_const(mantissa_bits_difference));
   f8_bits = b->CreateTrunc(f8_bits, i8_type);
 
-  // Bits of the lowest F16 value that gets converted to a normal F8 value.
-  // In binary: 0 01000 1110000000
-  constexpr int min_nonzero_value = 0x2380;
   // Bits of the highest F16 value that gets converted to a finite F8 value.
   // In binary: 0 10111 1101111111
   constexpr int max_finite_value = 0x5F7F;
 
-  // If we're below the minimum F16 value or above the maximum F16 value,
-  // output zero or NaN respectively.
-  //   f8_bits = f16_abs_bits < min_nonzero_value ? 0 : f8_bits
+  // If we're above the maximum F8 value, output NaN.
   //   f8_bits = f16_abs_bits > max_finite_value ? 0x7F : f8_bits
-  f8_bits = b->CreateSelect(
-      b->CreateICmpULT(f16_abs_bits, i16_const(min_nonzero_value)), i8_const(0),
-      f8_bits);
   f8_bits = b->CreateSelect(
       b->CreateICmpUGT(f16_abs_bits, i16_const(max_finite_value)),
       i8_const(0x7F), f8_bits);
+
+  // F16 values that are halfway between denormal F8 values. This is used to
+  // determine how to round to denormal F8 values.
+  const int halfway_points[8] = {
+      0x1400,  // 2**-10;        halfway between [0,            2**-9]
+      0x1A00,  // 1.5 * 2**-9;   halfway between [2**-9,        2**-8]
+      0x1D00,  // 1.25 * 2**-8;  halfway between [2**-8,        1.5 * 2**-8]
+      0x1F00,  // 1.75 * 2**-8;  halfway between [1.5 * 2**-8,  2**-7]
+      0x2080,  // 1.125 * 2**-7; halfway between [2**-7,        1.25 * 2**-7]
+      0x2180,  // 1.375 * 2**-7; halfway between [1.25 * 2**-7, 1.5 * 2**-7]
+      0x2280,  // 1.625 * 2**-7; halfway between [1.5 * 2**-7,  1.75 * 2**-7]
+      0x2380,  // 1.875 * 2**-7; halfway between [1.75 * 2**-7, 2**-6]
+  };
+
+  // Handle case where output is denormal. If we're rounding to a denormal
+  // value, ignore the current value of f8_bits and set it to the correct
+  // denormal value. We emit the equivalent of the following:
+  //
+  //   if (f16_abs_bits <= halfway_points[0]) {
+  //     f8_bits = 0;
+  //   } else if (f16_abs_bits < halfway_points[1]) {
+  //     f8_bits = 1;
+  //   } else if (f16_abs_bits <= halfway_points[2]) {
+  //   ...  // More if-else statements. The comparisons alternate between <=
+  //   ...  // and < to handle round-to-even properly.
+  //   } else if (f16_abs_bits < halfway_points[7])  {
+  //     f8_bits = 7;
+  //   }
+  for (int i = ABSL_ARRAYSIZE(halfway_points) - 1; i >= 0; i--) {
+    Value* comparison;
+    if (i % 2 == 0) {
+      comparison = b->CreateICmpULE(f16_abs_bits, i16_const(halfway_points[i]));
+    } else {
+      comparison = b->CreateICmpULT(f16_abs_bits, i16_const(halfway_points[i]));
+    }
+    f8_bits = b->CreateSelect(comparison, i8_const(i), f8_bits);
+  }
 
   // Set the sign bit.
   //   f8_bits |= f8_sign
@@ -347,9 +390,8 @@ llvm::Value* EmitF8e4m3fnToF16(llvm::Value* f8_value, llvm::IRBuilder<>* b) {
   Value* f8_abs_bits = b->CreateAnd(f8_as_int, i8_const(0x7F));
 
   // We assume below that the value is neither NaN nor denormal. If it NaN or
-  // denormal, the output is set to NaN or zero at the end using a Select
-  // instruction
-  // TODO(b/259609697): Do not truncate denormal values to zero.
+  // denormal, the output is set to NaN or zero at the end using Select
+  // instructions.
 
   // Get the sign:
   //   f16_sign = (f8_as_int & 0x80) << 8
@@ -394,14 +436,29 @@ llvm::Value* EmitF8e4m3fnToF16(llvm::Value* f8_value, llvm::IRBuilder<>* b) {
   Value* is_nan = b->CreateICmpEQ(f8_abs_bits, i8_const(0x7F));
   f16_as_int = b->CreateSelect(is_nan, i16_const(0x7E00), f16_as_int);
 
-  // Set output to zero if input is denormal
-  //   f16_as_int = f8_abs_bits <= f8_mantissa_mask ? 0 : f16_as_int
-  Value* is_denormal =
-      b->CreateICmpULE(f8_abs_bits, i8_const(f8_mantissa_mask));
-  f16_as_int = b->CreateSelect(is_denormal, i16_const(0x0), f16_as_int);
+  // Map from F8 denormal value to F16 value.
+  int f8_denormal_to_f16[8] = {
+      0x0000,  // 0
+      0x1800,  // 2**-9
+      0x1C00,  // 2**-8
+      0x1E00,  // 1.5 * 2**-8
+      0x2000,  // 2**-7
+      0x2100,  // 1.25 * 2**-7
+      0x2200,  // 1.5 * 2**-7
+      0x2300,  // 1.75 * 2**-7
+  };
+
+  // If the F8 value is denormal, use the map above to determine the correct F16
+  // value.
+  //    if (f8_abs_bits < 8) { f16_as_int = f8_denormal_to_f16[f8_abs_bits]; }
+  for (int i = 0; i < ABSL_ARRAYSIZE(f8_denormal_to_f16); i++) {
+    Value* is_denormal_value = b->CreateICmpEQ(f8_abs_bits, i8_const(i));
+    f16_as_int = b->CreateSelect(is_denormal_value,
+                                 i16_const(f8_denormal_to_f16[i]), f16_as_int);
+  }
 
   // Set the sign bit.
-  //   f8_bits |= f8_sign
+  //   f16_as_int |= f16_sign
   f16_as_int = b->CreateOr(f16_as_int, f16_sign);
   return b->CreateBitCast(f16_as_int, b->getHalfTy());
 }

@@ -163,9 +163,6 @@ class TfrtCpuClient final : public PjRtClient {
   StatusOr<std::optional<std::string>> ExecutableFingerprint(
       const PjRtLoadedExecutable& executable) const override;
 
-  StatusOr<std::string> SerializeExecutable(
-      const PjRtLoadedExecutable& executable) const override;
-
   // For TfrtCpuClient, `options` is mandatory.
   // This function returns an InvalidArgument error if `std::nullopt` is passed.
   // TODO(b/237720161): make it actually optional
@@ -554,6 +551,8 @@ class TfrtCpuExecutable final : public PjRtLoadedExecutable {
   void Delete() override;
 
   bool IsDeleted() override;
+
+  StatusOr<std::string> SerializeExecutable() const override;
 
   bool IsReturnedFutureSupported() const override { return true; }
 

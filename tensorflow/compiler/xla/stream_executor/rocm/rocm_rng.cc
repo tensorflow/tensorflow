@@ -286,7 +286,7 @@ void initialize_rocrand() {
       rocm::kROCmPlatformId, PluginKind::kRng, gpu::kGpuRandPlugin);
 
   if (!rocRandAlreadyRegistered) {
-    port::Status status =
+    tsl::Status status =
         PluginRegistry::Instance()->RegisterFactory<PluginRegistry::RngFactory>(
             rocm::kROCmPlatformId, gpu::kGpuRandPlugin, "rocRAND",
             [](internal::StreamExecutorInterface* parent) -> rng::RngSupport* {

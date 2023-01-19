@@ -338,7 +338,7 @@ class FractionalMaxPoolTest(test.TestCase):
             name=None)
         self.evaluate(result)
 
-  def testPoolingRatioValueOutOfRange(self):
+  def testPoolingRatioIllegalSmallValue(self):
     with self.cached_session() as _:
       # Whether turn on `TF2_BEHAVIOR` generates different error messages
       with self.assertRaisesRegex(
@@ -353,6 +353,16 @@ class FractionalMaxPoolTest(test.TestCase):
             seed=0,
             seed2=0,
         )
+        self.evaluate(result)
+
+  def testPoolingIllegalRatioForBatch(self):
+    with self.cached_session() as _:
+      with self.assertRaises(errors.UnimplementedError):
+        result = nn_ops.fractional_max_pool(
+            np.zeros([3, 30, 50, 3]),
+            [2, 3, 1.5, 1],
+            True,
+            True)
         self.evaluate(result)
 
 

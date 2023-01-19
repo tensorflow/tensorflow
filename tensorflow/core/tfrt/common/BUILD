@@ -123,8 +123,9 @@ tf_cc_test(
         "//tensorflow/compiler/xla/pjrt:pjrt_client",
         "//tensorflow/compiler/xla/pjrt:tfrt_cpu_pjrt_client",
         "//tensorflow/core:framework",
-        "//tensorflow/core:test",
-        "//tensorflow/core/platform:status_matchers",
-        "@com_google_googletest//:gtest_main",
+        "//tensorflow/tsl/lib/core:status_test_util",
+        "//tensorflow/tsl/platform:status_matchers",
+        "//tensorflow/tsl/platform:test_main",
+        "//tensorflow/tsl/protobuf:error_codes_proto_impl_cc",
     ],
 )

@@ -13,14 +13,15 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef MLIR_HLO_DIALECT_GML_ST_TRANSFORMS_PASSES_H
-#define MLIR_HLO_DIALECT_GML_ST_TRANSFORMS_PASSES_H
+#ifndef MLIR_HLO_GML_ST_TRANSFORMS_PASSES_H
+#define MLIR_HLO_GML_ST_TRANSFORMS_PASSES_H
 
 #include <memory>
 #include <optional>
 #include <string>
 
 #include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "mlir/Pass/Pass.h"
 
 #define GEN_PASS_DECL
@@ -100,8 +101,15 @@ std::unique_ptr<OperationPass<func::FuncOp>> createVectorizeCopyPass();
 /// Pass to eliminate dead `memref.copy`.
 std::unique_ptr<OperationPass<func::FuncOp>> createSimplifyDeadCopyPass();
 
-/// Pass to lower vector.contract.
-std::unique_ptr<OperationPass<func::FuncOp>> createLowerVectorContractPass();
+/// Pass to rewrite vector.contract.
+std::unique_ptr<OperationPass<func::FuncOp>> createRewriteVectorContractPass();
+
+/// Pass to rewrite vector.transpose.
+std::unique_ptr<OperationPass<func::FuncOp>> createRewriteVectorTransposePass();
+
+/// Pass to rewrite vector.multi_reduction.
+std::unique_ptr<OperationPass<func::FuncOp>>
+createRewriteVectorMultiReductionPass();
 
 /// Pass to transform a thlo.scatter op for CPU backend.
 std::unique_ptr<OperationPass<func::FuncOp>> createTransformScatterForCpuPass();
@@ -130,6 +138,10 @@ createTransformMapForCpuPass(int64_t tileSize = 1);
 std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
 createTransformReduceForCpuPass(int64_t vectorSize = 8, int64_t tileSize1D = 32,
                                 ArrayRef<int64_t> tileSizes2D = {});
+
+/// Pass to transform a thlo.reverse op for CPU backend.
+std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
+createTransformReverseForCpuPass(int64_t vectorSize = 8);
 
 /// Pass to transform a linalg.transpose op for CPU backend.
 std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
@@ -185,4 +197,4 @@ void addTileableOpsTransformationsForCPU(
 }  // namespace gml_st
 }  // namespace mlir
 
-#endif  // MLIR_HLO_DIALECT_GML_ST_TRANSFORMS_PASSES_H
+#endif  // MLIR_HLO_GML_ST_TRANSFORMS_PASSES_H

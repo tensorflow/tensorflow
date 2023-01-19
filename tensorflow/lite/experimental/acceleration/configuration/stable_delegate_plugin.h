@@ -21,11 +21,11 @@ limitations under the License.
 #include <memory>
 #include <string>
 
+#include "tensorflow/lite/core/experimental/acceleration/configuration/delegate_registry.h"
 #include "tensorflow/lite/core/shims/c/common.h"
 #include "tensorflow/lite/core/shims/c/experimental/acceleration/configuration/delegate_plugin.h"
 #include "tensorflow/lite/delegates/utils/experimental/stable_delegate/delegate_loader.h"
 #include "tensorflow/lite/experimental/acceleration/configuration/configuration_generated.h"
-#include "tensorflow/lite/experimental/acceleration/configuration/delegate_registry.h"
 #include "tensorflow/lite/tools/logging.h"
 
 namespace tflite {

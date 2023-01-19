@@ -21,7 +21,9 @@ tensorflow/dtensor/build_defs:.bzl
 tensorflow/dtensor/mlir/utils/dtensor_mlir_passes_internal:.cc
 tensorflow/dtensor/mlir/utils/update_tpu_metadata:.cc
 tensorflow/dtensor/python/tests/test_backend_name:.py
+tensorflow/dtensor/python/tests/test_backend_util:.py
 tensorflow/examples/custom_ops_doc/multiplex_1/BUILD:
+tensorflow/examples/custom_ops_doc/multiplex_1/README.md:
 tensorflow/examples/custom_ops_doc/multiplex_1/multiplex_1_op.py:
 tensorflow/examples/custom_ops_doc/multiplex_2/BUILD:
 tensorflow/examples/custom_ops_doc/multiplex_2/multiplex_2_op.py:
@@ -88,6 +90,7 @@ tensorflow/lite/experimental/acceleration/mini_benchmark/special_rules.bzl:
 tensorflow/lite/ios/BUILD:
 tensorflow/lite/java/jni/BUILD:
 tensorflow/lite/lib_package/BUILD:
+tensorflow/lite/schema/conversion_metadata_generated.h:
 tensorflow/lite/schema/schema_generated.h:
 tensorflow/lite/special_rules.bzl:
 tensorflow/python/autograph/core/config:.py
@@ -150,6 +153,7 @@ tensorflow/tools/toolchains/remote_config/BUILD:
 tensorflow/tools/toolchains/win/BUILD:
 tensorflow/tools/toolchains/win/bazel_211/BUILD:
 tensorflow/tools/toolchains/win/tf_win_01072022/BUILD:
+tensorflow/tools/toolchains/win/tf_win_01112023/BUILD:
 tensorflow/tools/toolchains/win/tf_win_01122022/BUILD:
 tensorflow/tools/toolchains/win/tf_win_01242022/BUILD:
 tensorflow/tools/toolchains/win/tf_win_01252022/BUILD:

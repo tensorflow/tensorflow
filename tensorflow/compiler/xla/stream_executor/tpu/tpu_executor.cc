@@ -317,8 +317,7 @@ Status TpuExecutor::SynchronousMemcpy(
 Status TpuExecutor::SynchronousMemcpyDeviceToDevice(
     ::stream_executor::DeviceMemoryBase* device_dst,
     const ::stream_executor::DeviceMemoryBase& device_src, uint64_t size) {
-  return ::stream_executor::port::UnimplementedError(
-      "This operation not supported on TPU");
+  return tsl::errors::Unimplemented("This operation not supported on TPU");
 }
 
 bool TpuExecutor::MemcpyDeviceToDevice(

@@ -559,8 +559,7 @@ class TFAPIChangeSpec(ast_edits.NoUpdateSpec):
     # This list should just contain names of functions that had
     # their arguments reordered. After adding a function name to the list
     # run the following to update reorders_v2.py:
-    # bazel build tensorflow/tools/compatibility/update:generate_v2_reorders_map
-    # bazel-bin/tensorflow/tools/compatibility/update/generate_v2_reorders_map
+    # bazel run tensorflow/tools/compatibility/update:generate_v2_reorders_map
     # pylint: enable=line-too-long
     self.reordered_function_names = {
         "tf.io.serialize_sparse",

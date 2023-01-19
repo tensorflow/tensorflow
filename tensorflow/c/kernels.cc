@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/c/kernels.h"
 
 #include <memory>
+#include <vector>
 
 #include "tensorflow/c/c_api_internal.h"
 #include "tensorflow/c/c_api_macros.h"
@@ -650,6 +651,18 @@ int64_t TF_GetIterId(TF_OpKernelContext* ctx) {
   return reinterpret_cast<::tensorflow::OpKernelContext*>(ctx)
       ->frame_iter()
       .iter_id;
+}
+
+int64_t TF_GetStepId(TF_OpKernelContext* ctx) {
+  return reinterpret_cast<::tensorflow::OpKernelContext*>(ctx)->step_id();
+}
+
+int TF_GetDeviceId(TF_OpKernelContext* ctx) {
+  // TensorFlow always sets device in OpKernelContext.
+  auto* device =
+      reinterpret_cast<::tensorflow::OpKernelContext*>(ctx)->device();
+  if (!device->parsed_name().has_id) return -1;
+  return device->parsed_name().id;
 }
 
 TF_StringView TF_GetOpKernelName(TF_OpKernelContext* ctx) {

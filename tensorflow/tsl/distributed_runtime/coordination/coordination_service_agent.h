@@ -60,6 +60,7 @@ class Env;
 //                           crashed or got preempted).
 //    - errors::InvalidArgument: Unexpected heartbeat from remote task (not
 //                               registered or wrong config).
+// TODO(hanyangtay): Migrate to string_view for string parameters.
 class CoordinationServiceAgent {
  public:
   using StatusOrValueCallback =
@@ -70,7 +71,7 @@ class CoordinationServiceAgent {
   using ChangedKeyValuesCallback =
       std::function<void(const std::map<std::string, std::string>&)>;
 
-  virtual ~CoordinationServiceAgent() {}
+  virtual ~CoordinationServiceAgent() = default;
 
   // Initialize coordination service agent.
   virtual Status Initialize(
@@ -158,11 +159,14 @@ class CoordinationServiceAgent {
   //       disconnected.
   virtual Status Reset() = 0;
 
+  // Key-value store API.
+  // The agent does not need to be connected to utilize the key-value store.
+  // There are no concurrency guarantees. To avoid a race / impose an ordering
+  // on potentially concurrent ops (e.g. set, delete), use WaitAtBarrier().
+
   // Get config key-value from the service.
   // If the key-value is not inserted yet, this is a blocking call that waits
   // until the corresponding key is inserted.
-  // Agent does not need to be connected to utilize the distributed key-value
-  // store.
   //   - errors::DeadlineExceeded: timed out waiting for key.
   virtual StatusOr<std::string> GetKeyValue(const std::string& key) = 0;
   virtual StatusOr<std::string> GetKeyValue(const std::string& key,
@@ -173,18 +177,14 @@ class CoordinationServiceAgent {
       const std::string& key, StatusOrValueCallback done) = 0;
 
   // Get config key-value from the service.
-  // If the key-value does not exist, this call returns NotFound error.
-  // Agent does not need to be connected to utilize the distributed key-value
-  // store.
   //   - errors::NotFound: the requested key does not exist.
   virtual StatusOr<std::string> TryGetKeyValue(const std::string& key) = 0;
 
   // Get all values under a directory (key).
   // A value is considered to be in the directory if its key is prefixed with
   // the directory.
-  // This is not a blocking call.
-  // Agent does not need to be connected to utilize the distributed key-value
-  // store.
+  // This is not a blocking call. If no keys are found, an empty vector is
+  // returned immediately.
   virtual StatusOr<std::vector<tensorflow::KeyValueEntry>> GetKeyValueDir(
       const std::string& key) = 0;
   virtual void GetKeyValueDirAsync(const std::string& key,

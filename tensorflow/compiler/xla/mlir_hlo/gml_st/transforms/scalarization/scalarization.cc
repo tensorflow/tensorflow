@@ -50,7 +50,7 @@ struct ScalarizeLinalgOp : public OpInterfaceRewritePattern<LinalgOp> {
                                      LinalgOp linalgOp, ValueRange argValues) {
     // Clone everything but terminator.
     Block *body = linalgOp.getBlock();
-    BlockAndValueMapping map;
+    IRMapping map;
     map.map(body->getArguments(), argValues);
     for (auto &op : body->without_terminator()) {
       if (auto indexOp = dyn_cast<linalg::IndexOp>(&op)) {
@@ -215,7 +215,7 @@ struct ScalarizeScatterOp : public OpRewritePattern<thlo::ScatterOp> {
 
                 // Combine update with the value in the output.
                 Block *body = scatterOp.getBody();
-                BlockAndValueMapping bvm;
+                IRMapping bvm;
                 bvm.map(body->getArgument(0), updateValue);
                 bvm.map(body->getArgument(1), currentValue);
 

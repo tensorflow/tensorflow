@@ -146,12 +146,11 @@ class Ffi {
  public:
   virtual ~Ffi() = default;
 
-  virtual std::string_view name() const = 0;
   virtual XLA_FFI_Error* operator()(const XLA_FFI_Api* api,
                                     XLA_FFI_ExecutionContext* ctx, void** args,
                                     void** attrs, void** rets) const = 0;
 
-  static FfiBinding<> Bind(std::string name);
+  static FfiBinding<> Binding();
 
   template <typename T>
   static bool Isa(const XLA_FFI_Api* api, XLA_FFI_TypeId type_id);
@@ -510,8 +509,8 @@ class FfiBinding {
 
   template <typename Fn>
   std::unique_ptr<FfiHandler<Fn, Ts...>> To(Fn fn) {
-    return std::unique_ptr<FfiHandler<Fn, Ts...>>(new FfiHandler<Fn, Ts...>(
-        std::forward<Fn>(fn), std::move(name_), std::move(attrs_)));
+    return std::unique_ptr<FfiHandler<Fn, Ts...>>(
+        new FfiHandler<Fn, Ts...>(std::forward<Fn>(fn), std::move(attrs_)));
   }
 
  private:
@@ -519,23 +518,20 @@ class FfiBinding {
   friend class FfiBinding;
   friend class Ffi;
 
-  explicit FfiBinding(std::string name) : name_(std::move(name)) {
+  explicit FfiBinding() {
     static_assert(sizeof...(Ts) == 0, "ffi arguments must be empty");
   }
 
   template <typename... TTs>
   FfiBinding(FfiBinding<TTs...>&& other)  // NOLINT
-      : name_(std::move(other.name_)), attrs_(std::move(other.attrs_)) {}
+      : attrs_(std::move(other.attrs_)) {}
 
   FfiBinding(FfiBinding&) = delete;
 
-  std::string name_;                // ffi name
   std::vector<std::string> attrs_;  // names of bound attributes
 };
 
-inline FfiBinding<> Ffi::Bind(std::string name) {
-  return FfiBinding<>(std::move(name));
-}
+inline FfiBinding<> Ffi::Binding() { return FfiBinding<>(); }
 
 //===----------------------------------------------------------------------===//
 // Helpers for decoding opaque arguments and attributes' memory.
@@ -798,8 +794,6 @@ class FfiHandler : public Ffi {
   }
 
  public:
-  std::string_view name() const final { return name_; }
-
   XLA_FFI_Error* operator()(const XLA_FFI_Api* api,
                             XLA_FFI_ExecutionContext* ctx, void** args,
                             void** attrs, void** rets) const final {
@@ -867,9 +861,8 @@ class FfiHandler : public Ffi {
     return ToError(api, FfiStatus::Ok());
   }
 
-  FfiHandler(Fn fn, std::string name, std::vector<std::string> attrs)
+  FfiHandler(Fn fn, std::vector<std::string> attrs)
       : fn_(std::move(fn)),
-        name_(std::move(name)),
         attrs_(std::move(attrs)),
         attrs_idx_(attrs_.size()) {
     // Sort attributes names.
@@ -886,7 +879,6 @@ class FfiHandler : public Ffi {
 
   Fn fn_;
 
-  std::string name_;
   std::vector<std::string> attrs_;
 
   // A mapping from the attribute index to its index in the lexicographically

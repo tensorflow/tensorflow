@@ -65,6 +65,7 @@ cc_library(
         "//tensorflow/compiler/xla/stream_executor:kernel",
         "//tensorflow/compiler/xla/stream_executor/lib",
         "//tensorflow/tsl/platform:denormal",
+        "//tensorflow/tsl/platform:env",
         "//tensorflow/tsl/platform:setround",
         "@com_google_absl//absl/synchronization",
     ],

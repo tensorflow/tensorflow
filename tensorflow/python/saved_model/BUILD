@@ -21,6 +21,7 @@ py_strict_library(
     deps = [
         ":builder",
         ":constants",
+        ":fingerprinting",
         ":load",
         ":loader",
         ":main_op",
@@ -215,12 +216,10 @@ py_strict_library(
     ],
     srcs_version = "PY3",
     deps = [
-        ":constants",
         ":nested_structure_coder",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:composite_tensor",
         "//tensorflow/python:framework_for_generated_wrappers",
-        "//tensorflow/python:lib",
         "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python:sparse_tensor",
         "//tensorflow/python:util",
@@ -784,12 +783,22 @@ tf_py_test(
     ],
 )
 
+py_strict_library(
+    name = "fingerprinting",
+    srcs = ["fingerprinting.py"],
+    deps = [
+        ":pywrap_saved_model",
+        "//tensorflow/python/util:tf_export",
+    ],
+)
+
 tf_py_test(
     name = "fingerprinting_test",
     size = "small",
     srcs = ["fingerprinting_test.py"],
     python_version = "PY3",
     deps = [
+        ":fingerprinting",
         "//tensorflow/python/eager:test",
     ],
 )

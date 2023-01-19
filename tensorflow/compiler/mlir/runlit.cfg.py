@@ -104,6 +104,7 @@ tool_names = [
     'xla-translate',
     'xla-translate-opt',
     'xla-translate-gpu-opt',
+    'dtensor-opt',
 ]
 tools = [ToolSubst(s, unresolved='ignore') for s in tool_names]
 llvm_config.add_tool_substitutions(tools, tool_dirs)

@@ -36,7 +36,9 @@ limitations under the License.
 #include "mlir/Support/DebugStringHelper.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/map_util.h"
+#include "tensorflow/compiler/xla/mlir/runtime/ir/rt_ops.h"
 #include "tensorflow/compiler/xla/mlir/runtime/transforms/compilation_pipeline_gpu.h"
+#include "tensorflow/compiler/xla/mlir/runtime/transforms/type_converter.h"
 #include "tensorflow/compiler/xla/runtime/diagnostics.h"
 #include "tensorflow/compiler/xla/runtime/executable.h"
 #include "tensorflow/compiler/xla/runtime/jit_executable.h"
@@ -834,6 +836,73 @@ GpuExecutable::GpuExecutable(
       module().unique_id(), shared_module(), debug_buffer_assignment_);
 }
 
+// Returns a list of functions exported from the `module` that should be loaded
+// from the object file. Entrypoint functions always loaded with ordinal 0.
+static StatusOr<std::vector<runtime::Executable::LoadFunction>>
+GetFunctionsToLoad(mlir::ModuleOp module, std::string_view entry) {
+  std::vector<runtime::Executable::LoadFunction> functions;
+
+  // Use canonical type converter because we currently do not support any
+  // user-defined types in XLA:GPU executables.
+  runtime::TypeConverter type_converter;
+
+  // Converts function type and adds load function metadata. In XLA:GPU exported
+  // function runtime signature is the same as regular signature with an extra
+  // execution context argument at index 0.
+  auto convert = [&](mlir::func::FuncOp func) -> Status {
+    auto signature = type_converter.Convert(func.getFunctionType());
+    if (!signature.ok())
+      return InternalError("Failed to convert entry function type: %s",
+                           signature.status().message());
+
+    // TODO(ezhulenev): Copy `signature` once FunctionType is copyable.
+    auto rt_signature = type_converter.Convert(func.getFunctionType());
+    rt_signature->insert_operand(
+        0, std::make_unique<runtime::ExecutionContextOperandType>());
+
+    functions.push_back({func.getName().str(), std::move(*signature),
+                         std::move(*rt_signature)});
+
+    return OkStatus();
+  };
+
+  mlir::SymbolTable sym_table(module);
+
+  // Load entrypoint function first at ordinal 0.
+  TF_CHECK_OK(convert(module.lookupSymbol<mlir::func::FuncOp>(entry)));
+
+  // Load all functions explicitly exported from the module (in XLA:GPU it's
+  // always CUDA graph capture functions). We explicitly sort them by ordinal,
+  // to make sure they are loaded in correct order.
+  auto export_ops = llvm::to_vector(module.getOps<runtime::ExportOp>());
+  llvm::sort(export_ops, [](runtime::ExportOp a, runtime::ExportOp b) {
+    return b.getOrdinal()->getSExtValue() < b.getOrdinal()->getSExtValue();
+  });
+  for (runtime::ExportOp exported : export_ops) {
+    TF_CHECK_OK(convert(
+        sym_table.lookup<mlir::func::FuncOp>(exported.getFunctionRef())));
+  }
+
+  return functions;
+}
+
+// Get arguments buffer sizes from the entry function signature.
+static StatusOr<std::vector<int64_t>> GetBufferSizes(runtime::FunctionType& f) {
+  std::vector<int64_t> buffer_sizes;
+  for (unsigned i = 0; i < f.num_operands(); ++i) {
+    auto* memref = llvm::dyn_cast<runtime::MemrefType>(f.operand(i));
+
+    // Entry function argument must be a statically shaped 1d I8 memref.
+    if (memref == nullptr || memref->element_type() != PrimitiveType::S8 ||
+        memref->rank() != 1 || runtime::MemrefType::IsDynamic(memref->size(0)))
+      return InternalError("Illegal buffer argument type: %s",
+                           f.operand(0)->ToString());
+
+    buffer_sizes.push_back(memref->size(0));
+  }
+  return buffer_sizes;
+}
+
 StatusOr<std::unique_ptr<Executable>> GpuExecutable::LoadFromObjFile(
     std::shared_ptr<HloModule> hlo_module, absl::string_view obj_file,
     absl::string_view mlir_module,
@@ -844,6 +913,8 @@ StatusOr<std::unique_ptr<Executable>> GpuExecutable::LoadFromObjFile(
   VLOG(1) << "Load serialized Gpu executable from object file: module="
           << hlo_module->name();
 
+  std::string_view entry = hlo_module->entry_computation()->name();
+
   // Load MLIR module behind the compiled object file to recover XLA allocations
   // and output info details. Also recover buffer sizes from the entrypoint
   // function signature.
@@ -853,20 +924,17 @@ StatusOr<std::unique_ptr<Executable>> GpuExecutable::LoadFromObjFile(
   auto module = mlir::parseSourceString<mlir::ModuleOp>(mlir_module, &context);
   if (!module) return InternalError("Failed to parse AOT compiled module");
 
-  // Get the XLA module entrypoint function.
-  auto func = mlir::cast<mlir::func::FuncOp>(
-      module->lookupSymbol(hlo_module->entry_computation()->name()));
+  // Get the list of functions to be loaded from the object file.
+  TF_ASSIGN_OR_RETURN(std::vector<runtime::Executable::LoadFunction> functions,
+                      GetFunctionsToLoad(*module, entry));
+  VLOG(2) << "Found " << functions.size() << " functions to load";
 
-  // Get the buffer sizes from the entrypoint function signature.
-  std::vector<int64_t> buffer_sizes;
-  buffer_sizes.reserve(func.getNumArguments());
-  for (auto type : func.getArgumentTypes()) {
-    auto memref = type.dyn_cast<mlir::MemRefType>();
-    if (!memref || !memref.hasStaticShape() || memref.getRank() != 1)
-      return InternalError("Illegal entrypoint argument type: %s",
-                           mlir::debugString(type));
-    buffer_sizes.push_back(memref.getDimSize(0));
-  }
+  // Get the buffer sizes from the entry function signature.
+  TF_ASSIGN_OR_RETURN(std::vector<int64_t> buffer_sizes,
+                      GetBufferSizes(functions[0].signature));
+
+  // Get the XLA module entrypoint function.
+  auto func = mlir::cast<mlir::func::FuncOp>(module->lookupSymbol(entry));
 
   // Infer XLA allocations and output info from the MLIR module.
   std::vector<BufferAllocation> allocations;
@@ -879,29 +947,8 @@ StatusOr<std::unique_ptr<Executable>> GpuExecutable::LoadFromObjFile(
   llvm::StringRef data(obj_file.data(), obj_file.size());
   auto buffer = llvm::MemoryBuffer::getMemBuffer(data, hlo_module->name());
 
-  // Create a XLA Runtime function signature (all arguments passed as 1d
-  // memrefs).
-  std::vector<std::unique_ptr<runtime::Type>> args;
-  std::vector<std::unique_ptr<runtime::Type>> rt_args;
-  rt_args.push_back(std::make_unique<runtime::ExecutionContextOperandType>());
-
-  for (int64_t size : buffer_sizes) {
-    auto s8 = PrimitiveType::S8;
-    std::array<int64_t, 1> dims = {size};
-    args.push_back(std::make_unique<runtime::MemrefType>(dims, s8));
-    rt_args.push_back(std::make_unique<runtime::MemrefType>(dims, s8));
-  }
-
-  runtime::FunctionType signature(std::move(args), /*results=*/{});
-  runtime::FunctionType rt_signature(std::move(rt_args), /*results=*/{});
-
   auto symbol_map = runtime::ToSymbolsBinding(RegisterXlaGpuRuntimeCustomCalls,
                                               RegisterXlaGpuTypeIdNames);
-
-  // Gpu executable has a single exported function.
-  std::vector<runtime::Executable::LoadFunction> functions;
-  functions.push_back({hlo_module->entry_computation()->name(),
-                       std::move(signature), std::move(rt_signature)});
 
   // Load XLA Runtime executable from an object file, and link it with Gpu
   // runtime intrinsics implementing Gpu custom calls.

@@ -28,6 +28,7 @@ gentbl_cc_library(
 cc_library(
     name = "passes",
     srcs = [
+        "math_approximation.cc",
         "math_legalization.cc",
         "math_optimization.cc",
     ],

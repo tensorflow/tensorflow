@@ -34,6 +34,7 @@ class TensorOrMemrefOf<list<Type> allowedTypes> :
 def THLO_Dialect : Dialect {
   let name = "thlo";
   let cppNamespace = "::mlir::thlo";
+  let useFoldAPI = kEmitFoldAdaptorFolder;
 }
 
 class THLO_Op<string mnemonic, list<Trait> traits> :
@@ -282,6 +283,8 @@ def THLO_ReverseOp : THLO_DstStyleOp<"reverse", [
   );
 
   let results = (outs TensorOrMemref:$result);
+
+  let hasFolder = 1;
 
   let extraClassDeclaration = [{
     // Implement method necessary for DestinationStyleOpInterface.

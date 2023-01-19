@@ -2707,6 +2707,10 @@ class VariableSpec(tensor_spec.DenseSpec):
         attr_value_pb2.AttrValue(s=compat.as_bytes(name)))
     return variable
 
+  def _to_tensors(self, value):
+    assert isinstance(value, BaseResourceVariable)
+    return [value.handle]
+
   def _get_structure(self):
     # shape, dtype, trainable, and alias_id are all leaves.
     return PList(PLeaf(), PLeaf(), PLeaf(), PLeaf())

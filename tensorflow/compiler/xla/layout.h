@@ -306,11 +306,11 @@ class Layout {
   Shape* mutable_physical_shape();
   void clear_physical_shape();
 
-  int64_t dynamic_shape_metadata_prefix_in_bytes() const {
-    return dynamic_shape_metadata_prefix_in_bytes_;
+  int64_t dynamic_shape_metadata_prefix_bytes() const {
+    return dynamic_shape_metadata_prefix_bytes_;
   }
-  void set_dynamic_shape_metadata_prefix_in_bytes(int64_t bytes) {
-    dynamic_shape_metadata_prefix_in_bytes_ = bytes;
+  void set_dynamic_shape_metadata_prefix_bytes(int64_t bytes) {
+    dynamic_shape_metadata_prefix_bytes_ = bytes;
   }
 
   void Swap(Layout* other) {
@@ -366,7 +366,7 @@ class Layout {
   // The dynamic shape metadata size in bytes in front of the shape data. The
   // field may be non-zero for a static shape whose associated buffer is for a
   // dynamic shape, e.g. a result of SliceToDynamic.
-  int64_t dynamic_shape_metadata_prefix_in_bytes_ = 0;
+  int64_t dynamic_shape_metadata_prefix_bytes_ = 0;
 };
 
 std::ostream& operator<<(std::ostream& out, const Tile& Tile);

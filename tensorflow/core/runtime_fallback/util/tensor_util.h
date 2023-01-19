@@ -60,8 +60,8 @@ inline tfrt::TensorMetadata GetTensorMetadata(
   auto dim_sizes = tf_tensor.shape().dim_sizes();
   static_assert(sizeof(tfrt::Index) == sizeof(dim_sizes.front()),
                 "Invalid dimension type size");
-  auto shape = llvm::makeArrayRef(
-      reinterpret_cast<tfrt::Index*>(dim_sizes.data()), dim_sizes.size());
+  auto shape = llvm::ArrayRef(reinterpret_cast<tfrt::Index*>(dim_sizes.data()),
+                              dim_sizes.size());
   return tfrt::TensorMetadata(dtype, shape);
 }
 

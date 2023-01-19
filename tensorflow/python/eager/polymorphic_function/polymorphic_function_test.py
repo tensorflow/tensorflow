@@ -37,7 +37,7 @@ from tensorflow.python.eager import backprop
 from tensorflow.python.eager import cancellation
 from tensorflow.python.eager import context
 from tensorflow.python.eager import lift_to_graph
-from tensorflow.python.eager.polymorphic_function import monomorphic_function
+from tensorflow.python.eager.polymorphic_function import attributes as attributes_lib
 from tensorflow.python.eager.polymorphic_function import polymorphic_function
 from tensorflow.python.eager.polymorphic_function import tracing_compiler
 from tensorflow.python.framework import composite_tensor
@@ -288,12 +288,12 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
         name = f.signature.name
         if 'forward' in name or 'backward' in name:
           not_present += 1
-          self.assertNotIn(monomorphic_function.IMPLEMENTS_ATTRIBUTE_NAME,
+          self.assertNotIn(attributes_lib.IMPLEMENTS,
                            f.attr, f)
         else:
           present += 1
           self.assertEqual(
-              f.attr[monomorphic_function.IMPLEMENTS_ATTRIBUTE_NAME].s,
+              f.attr[attributes_lib.IMPLEMENTS].s,
               'func'.encode('ascii'), f)
       self.assertEqual(not_present, 2, fdefs)
       self.assertEqual(present, 1, fdefs)
@@ -404,11 +404,11 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
         name = f.signature.name
         if 'forward' in name or 'backward' in name:
           not_present += 1
-          self.assertNotIn(monomorphic_function.IMPLEMENTS_ATTRIBUTE_NAME,
+          self.assertNotIn(attributes_lib.IMPLEMENTS,
                            f.attr, f)
         else:
           present += 1
-          attr_value = f.attr[monomorphic_function.IMPLEMENTS_ATTRIBUTE_NAME]
+          attr_value = f.attr[attributes_lib.IMPLEMENTS]
           self.assertIsNotNone(attr_value.func, f)
           self.assertEqual(attr_value.func.name, 'embedding_matmul')
           name_attrs = attr_value.func.attr
@@ -2470,6 +2470,16 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
         g(a='f', l='e', m='a', p='g', q='d', r='b', v='c'),
         b'a=f, l=e, m=a, p=g, q=d, r=b, v=c')
 
+  def testSameConcreteFunctionDifferentKwargOrder(self):
+    @polymorphic_function.function
+    def foo(**kwargs):
+      return kwargs['a'] + math_ops.cast(kwargs['b'], dtypes.float32)
+
+    foo(a=constant_op.constant(1.0), b=constant_op.constant(1))
+    foo(b=constant_op.constant(1), a=constant_op.constant(1.0))
+
+    self.assertLen(total_function_cache(foo), 1)
+
   # pylint: disable=g-long-lambda
   @parameterized.named_parameters([
       dict(
@@ -3840,6 +3850,15 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
                  constant_op.constant(3.),
                  constant_op.constant(4.)))
 
+  def testDuplicatedSanitizedNames(self):
+    @polymorphic_function.function
+    def foo(**kwargs):
+      return kwargs['a_b'] + kwargs['a/b']
+
+    error_message = 'Name collision after sanitization.'
+    with self.assertRaisesRegex(ValueError, error_message):
+      foo(**{'a_b': 1, 'a/b': 2})
+
   def testVariableCreatorScope(self):
     created_variables = []
     captured_variables = []
@@ -4859,6 +4878,20 @@ class MultiDeviceTest(test.TestCase, parameterized.TestCase):
     x = type_after(val_after)
     _ = f()
     self.assertLen(total_function_cache(f), expected_len)
+
+  def testByRefCaptureWithInputSignature(self):
+
+    @polymorphic_function.function(input_signature=[])
+    def f():
+      func = lambda: x
+      return ops.get_default_graph()._experimental_capture_side_input_by_ref(  # pylint: disable=protected-access
+          'lambda: x', func)
+
+    x = 1
+    _ = f()
+    x = 2
+    _ = f()
+    self.assertLen(total_function_cache(f), 2)
 
   def testFunctoolsLruCache(self):
     self.skipTest(

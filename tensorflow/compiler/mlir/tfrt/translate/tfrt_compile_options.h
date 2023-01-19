@@ -85,6 +85,13 @@ struct TfrtCompileOptions {
   // supposed to be turned on by default.
   bool hoist_invariant_ops = false;
 
+  // If true, the compiler will try to sink in the invariant ops (e.g. const
+  // ops, var handle ops, etc.) to the nested function (e.g. batch function) to
+  // facilitate invariant ops hoisting.
+  // TODO(tfrt-devs): Set the default value to true after testing as it is
+  // supposed to be turned on by default.
+  bool sink_in_invariant_ops = false;
+
   // If true, tf.While's iterations will be parallelized on a best-effort
   // basis. This is currently experimental.
   bool enable_while_parallel_iterations = false;

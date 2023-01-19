@@ -126,7 +126,7 @@ def copy_to_mesh(
 
   Copies a regular tf.Tensor onto the DTensor device. Use the mesh attached to
   `layout` as target mesh. This method currently only supports replicated
-  layouts. To get a DTensor with a sharded layout, use the `pack` method.
+  layouts, or one-to-one copies for sharded layouts.
 
   Args:
     tensor: A regular tf.Tensor to be copied as a DTensor.
@@ -138,7 +138,8 @@ def copy_to_mesh(
     A DTensor on the DTensor device with the given layout.
   """
   del source_layout
-  return _dtensor_device().copy_to_mesh(tensor, layout)
+  with run_on(layout.mesh):
+    return gen_dtensor_ops.copy_to_mesh(tensor, layout.to_string())
 
 
 @tf_export("experimental.dtensor.pack", v1=[])

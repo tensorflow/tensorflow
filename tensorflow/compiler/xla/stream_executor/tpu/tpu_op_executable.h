@@ -20,6 +20,7 @@ limitations under the License.
 #include <functional>
 #include <memory>
 #include <optional>
+#include <vector>
 
 #include "absl/types/optional.h"
 #include "absl/types/span.h"
@@ -55,8 +56,9 @@ class TpuOpExecutable : public xla::TpuExecutableInterface {
       const xla::ServiceExecutableRunOptions& run_options,
       absl::Span<const stream_executor::DeviceMemoryBase> arguments,
       stream_executor::DeviceMemoryBase result,
-      std::optional<stream_executor::DeviceMemoryBase>
-          cross_program_prefetch_addr) override;
+      const std::vector<stream_executor::DeviceMemoryBase>&
+          cross_program_prefetch_addrs,
+      const std::vector<uint32_t>& cross_program_prefetch_offsets) override;
 
   xla::Shape HostShapeToDeviceShape(const xla::Shape& host_shape) override;
 

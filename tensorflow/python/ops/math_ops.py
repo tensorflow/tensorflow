@@ -1007,10 +1007,15 @@ def cast(x, dtype, name=None):
       # allows some conversions that cast() can't do, e.g. casting numbers to
       # strings.
       x = ops.convert_to_tensor(x, name="x")
+      if x.dtype.is_complex and base_type.is_floating:
+        logging.warn(
+            f"You are casting an input of type {x.dtype.name} to an "
+            f"incompatible dtype {base_type.name}.  This will "
+            "discard the imaginary part and may not be what you "
+            "intended."
+        )
       if x.dtype != base_type:
         x = gen_math_ops.cast(x, base_type, name=name)
-    if x.dtype.is_complex and base_type.is_floating:
-      logging.warn("Casting complex to real discards imaginary part.")
     return x
 
 
@@ -1066,7 +1071,7 @@ def saturate_cast(value, dtype, name=None):
     out_real_dtype = dtype.real_dtype
     if in_dtype.min < out_real_dtype.min or in_dtype.max > out_real_dtype.max:
 
-      # Forward-compatibility required for Brella if output is real:
+      # Wrap changes to maintain TensorFlow's forward-compatibility window.
       if not dtype.is_complex and not tf_compat.forward_compatible(2023, 1, 16):
         # Old behavior using max/min.
         if in_dtype.min < dtype.min:
@@ -4037,8 +4042,8 @@ def add(x, y, name=None):
 
   Args:
     x: A `tf.Tensor`. Must be one of the following types: bfloat16, half,
-      float32, float64, uint8, int8, int16, int32, int64, complex64, complex128,
-      string.
+      float16, float32, float64, uint8, uint16, uint32, uint64, int8, int16,
+      int32, int64, complex64, complex128, string.
     y: A `tf.Tensor`. Must have the same type as x.
     name: A name for the operation (optional)
   """
@@ -4109,7 +4114,6 @@ def add_n(inputs, name=None):
       return array_ops.identity(values, name=name)
     return values
   return gen_math_ops.add_n(inputs, name=name)
-
 
 
 @tf_export("math.accumulate_n", v1=["math.accumulate_n", "accumulate_n"])

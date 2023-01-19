@@ -17,6 +17,7 @@ limitations under the License.
 #include <iostream>
 #include <memory>
 #include <numeric>
+#include <optional>
 #include <string>
 #include <utility>
 
@@ -476,7 +477,7 @@ GetBroadcastShapesForBatchMatmul(ShapedType input_type,
   SmallVector<int64_t> broadcasted_batch_dims;
   if (!OpTrait::util::getBroadcastedShape(input_batch_dims, weight_batch_dims,
                                           broadcasted_batch_dims)) {
-    return llvm::None;
+    return std::nullopt;
   }
   SmallVector<int64_t> broadcasted_input_shape(broadcasted_batch_dims);
   broadcasted_input_shape.append(input_matmul_dims.begin(),

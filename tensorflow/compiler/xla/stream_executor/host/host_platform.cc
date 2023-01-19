@@ -40,12 +40,12 @@ int HostPlatform::VisibleDeviceCount() const {
 
 const std::string& HostPlatform::Name() const { return name_; }
 
-port::StatusOr<std::unique_ptr<DeviceDescription>>
+tsl::StatusOr<std::unique_ptr<DeviceDescription>>
 HostPlatform::DescriptionForDevice(int ordinal) const {
   return HostExecutor::CreateDeviceDescription(ordinal);
 }
 
-port::StatusOr<StreamExecutor*> HostPlatform::ExecutorForDevice(int ordinal) {
+tsl::StatusOr<StreamExecutor*> HostPlatform::ExecutorForDevice(int ordinal) {
   StreamExecutorConfig config;
   config.ordinal = ordinal;
   config.plugin_config = PluginConfig();
@@ -53,7 +53,7 @@ port::StatusOr<StreamExecutor*> HostPlatform::ExecutorForDevice(int ordinal) {
   return GetExecutor(config);
 }
 
-port::StatusOr<StreamExecutor*> HostPlatform::ExecutorForDeviceWithPluginConfig(
+tsl::StatusOr<StreamExecutor*> HostPlatform::ExecutorForDeviceWithPluginConfig(
     int device_ordinal, const PluginConfig& plugin_config) {
   StreamExecutorConfig config;
   config.ordinal = device_ordinal;
@@ -62,20 +62,20 @@ port::StatusOr<StreamExecutor*> HostPlatform::ExecutorForDeviceWithPluginConfig(
   return GetExecutor(config);
 }
 
-port::StatusOr<StreamExecutor*> HostPlatform::GetExecutor(
+tsl::StatusOr<StreamExecutor*> HostPlatform::GetExecutor(
     const StreamExecutorConfig& config) {
   return executor_cache_.GetOrCreate(
       config, [&]() { return GetUncachedExecutor(config); });
 }
 
-port::StatusOr<std::unique_ptr<StreamExecutor>>
+tsl::StatusOr<std::unique_ptr<StreamExecutor>>
 HostPlatform::GetUncachedExecutor(const StreamExecutorConfig& config) {
   auto executor = std::make_unique<StreamExecutor>(
       this, std::make_unique<HostExecutor>(config.plugin_config),
       config.ordinal);
   auto init_status = executor->Init(config.device_options);
   if (!init_status.ok()) {
-    return port::Status(
+    return tsl::Status(
         port::error::INTERNAL,
         absl::StrFormat(
             "failed initializing StreamExecutor for device ordinal %d: %s",
@@ -96,7 +96,7 @@ void HostPlatform::UnregisterTraceListener(TraceListener* listener) {
 
 static void InitializeHostPlatform() {
   std::unique_ptr<Platform> platform(new host::HostPlatform);
-  SE_CHECK_OK(MultiPlatformManager::RegisterPlatform(std::move(platform)));
+  TF_CHECK_OK(MultiPlatformManager::RegisterPlatform(std::move(platform)));
 }
 
 }  // namespace host

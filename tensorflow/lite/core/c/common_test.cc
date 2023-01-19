@@ -220,4 +220,47 @@ TEST(TestTfLiteOpaqueDelegate, CallTfLiteOpaqueDelegateDeleteWithNull) {
   TfLiteOpaqueDelegateDelete(nullptr);
 }
 
+TEST(TestTfLiteOpaqueDelegate, GetData_WellFormedOpaqueDelegate) {
+  int delegate_data = 42;
+  TfLiteOpaqueDelegateBuilder builder{};
+  builder.data = &delegate_data;
+
+  TfLiteOpaqueDelegate* opaque_delegate = TfLiteOpaqueDelegateCreate(&builder);
+
+  EXPECT_EQ(&delegate_data, TfLiteOpaqueDelegateGetData(opaque_delegate));
+
+  TfLiteOpaqueDelegateDelete(opaque_delegate);
+}
+
+TEST(TestTfLiteOpaqueDelegate,
+     GetData_NotConstructedWithTfLiteOpaqueDelegateCreate) {
+  // Given a non-opaque delegate, that was created with 'TfLiteDelegateCreate'
+  // and has its 'data_' field set manually.
+  int delegate_data = 42;
+  TfLiteDelegate non_opaque_delegate = TfLiteDelegateCreate();
+  non_opaque_delegate.data_ = &delegate_data;
+  // The following cast is safe only because this code is part of the
+  // TF Lite test suite.  Apps using TF Lite should not rely on
+  // 'TfLiteOpaqueDelegate' and 'TfLiteDelegate' being equivalent.
+  auto* opaque_delegate =
+      reinterpret_cast<TfLiteOpaqueDelegate*>(&non_opaque_delegate);
+
+  // The accessor returns 'nullptr', because the 'data' field inside the opaque
+  // delegate builder was not set.  Note that we deliberately don't fall back
+  // to returning the 'TfLiteDelegate's 'data_' field.  The fact that the
+  // 'TfLiteDelegate' is the internal representation of the
+  // 'TfLiteOpaqueDelegate' is an implementation detail that could
+  // theoretically change in the future.
+  EXPECT_EQ(nullptr, TfLiteOpaqueDelegateGetData(opaque_delegate));
+}
+
+TEST(TestTfLiteOpaqueDelegate, GetData_NoDataSetViaOpaqueDelegateBuilder) {
+  TfLiteOpaqueDelegateBuilder builder{};
+  TfLiteOpaqueDelegate* opaque_delegate = TfLiteOpaqueDelegateCreate(&builder);
+  // The accessor returns 'nullptr', because the 'data' field inside the opaque
+  // delegate builder was not set.
+  EXPECT_EQ(nullptr, TfLiteOpaqueDelegateGetData(opaque_delegate));
+  TfLiteOpaqueDelegateDelete(opaque_delegate);
+}
+
 }  // namespace tflite

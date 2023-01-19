@@ -263,6 +263,7 @@ cc_library(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:InferTypeOpInterface",
         "@llvm-project//mlir:QuantOps",
+        "@llvm-project//mlir:TransformUtils",
     ],
 )
 
@@ -481,8 +482,8 @@ gentbl_cc_library(
 cc_library(
     name = "stablehlo_passes",
     srcs = [
-        "stablehlo/transforms/LegalizeStablehloToVhlo.cpp",
-        "stablehlo/transforms/LegalizeVhloToStablehlo.cpp",
+        "stablehlo/transforms/StablehloLegalizeToVhlo.cpp",
+        "stablehlo/transforms/VhloLegalizeToStablehlo.cpp",
         "stablehlo/transforms/VhloToVersion.cpp",
     ],
     hdrs = [

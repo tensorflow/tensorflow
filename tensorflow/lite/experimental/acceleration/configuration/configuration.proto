@@ -226,7 +226,7 @@ enum GPUInferenceUsage {
 // See
 // https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/delegates/gpu/delegate.h
 message GPUSettings {
-  // Ignored if inference_priority1/2/3 are set.
+  // Obsolete: Ignored if inference_priority1/2/3 are set.
   optional bool is_precision_loss_allowed = 1;
   optional bool enable_quantized_inference = 2 [default = true];
   optional GPUBackend force_backend = 3;

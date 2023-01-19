@@ -157,13 +157,13 @@ struct ConvertMhloDotOp : public OpRewritePattern<mhlo::DotOp> {
         RankedTensorType::get(lhsReshape, lhsType.getElementType());
     auto lhsReshapeOp = rewriter.create<tosa::ReshapeOp>(
         op->getLoc(), lhsReshapeType, op.getLhs(),
-        rewriter.getI64ArrayAttr(lhsReshape));
+        rewriter.getDenseI64ArrayAttr(lhsReshape));
 
     auto rhsReshapeType =
         RankedTensorType::get(rhsReshape, rhsType.getElementType());
     auto rhsReshapeOp = rewriter.create<tosa::ReshapeOp>(
         op->getLoc(), rhsReshapeType, op.getRhs(),
-        rewriter.getI64ArrayAttr(rhsReshape));
+        rewriter.getDenseI64ArrayAttr(rhsReshape));
 
     auto matMulType =
         RankedTensorType::get(matMulShape, lhsType.getElementType());
@@ -172,7 +172,7 @@ struct ConvertMhloDotOp : public OpRewritePattern<mhlo::DotOp> {
 
     // Reshape the matmul result back to the original result shape.
     rewriter.replaceOpWithNewOp<tosa::ReshapeOp>(
-        op, resultType, matMulOp, rewriter.getI64ArrayAttr(resultShape));
+        op, resultType, matMulOp, rewriter.getDenseI64ArrayAttr(resultShape));
     return success();
   }
 };
@@ -230,7 +230,7 @@ struct ConvertMhloIotaOp : public OpRewritePattern<mhlo::IotaOp> {
 
     // Tile the const array to the result shape of the iota op.
     rewriter.replaceOpWithNewOp<tosa::TileOp>(
-        op, resultType, constOp, rewriter.getI64ArrayAttr(tileMultiples));
+        op, resultType, constOp, rewriter.getDenseI64ArrayAttr(tileMultiples));
     return success();
   }
 };
@@ -360,7 +360,7 @@ struct ConvertMhloReduceOp : public OpRewritePattern<mhlo::ReduceOp> {
 
     rewriter.replaceOpWithNewOp<tosa::ReshapeOp>(
         op, op.getResultTypes().front(), reduceOpResult,
-        rewriter.getI64ArrayAttr(outputShape));
+        rewriter.getDenseI64ArrayAttr(outputShape));
 
     return success();
   }
@@ -411,8 +411,8 @@ struct ConvertMhloSliceOp : public OpRewritePattern<mhlo::SliceOp> {
 
     rewriter.replaceOpWithNewOp<tosa::SliceOp>(
         op, op.getResult().getType(), op.getOperand(),
-        rewriter.getI64ArrayAttr(startIndicesI64),
-        rewriter.getI64ArrayAttr(size));
+        rewriter.getDenseI64ArrayAttr(startIndicesI64),
+        rewriter.getDenseI64ArrayAttr(size));
     return success();
   }
 };

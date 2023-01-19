@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef MLIR_HLO_DIALECT_GML_ST_TRANSFORMS_VECTORIZATION_H
-#define MLIR_HLO_DIALECT_GML_ST_TRANSFORMS_VECTORIZATION_H
+#ifndef MLIR_HLO_GML_ST_TRANSFORMS_VECTORIZATION_VECTORIZATION_H
+#define MLIR_HLO_GML_ST_TRANSFORMS_VECTORIZATION_VECTORIZATION_H
 
 #include "llvm/ADT/StringRef.h"
 
@@ -24,4 +24,4 @@ namespace gml_st {
 }  // namespace gml_st
 }  // namespace mlir
 
-#endif  // MLIR_HLO_DIALECT_GML_ST_TRANSFORMS_VECTORIZATION_H
+#endif  // MLIR_HLO_GML_ST_TRANSFORMS_VECTORIZATION_VECTORIZATION_H

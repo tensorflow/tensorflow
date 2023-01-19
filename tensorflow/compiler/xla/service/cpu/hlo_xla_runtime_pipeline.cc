@@ -37,7 +37,6 @@ limitations under the License.
 #include "mlir/Dialect/Shape/Transforms/Passes.h"  // from @llvm-project
 #include "mlir/Dialect/SparseTensor/Transforms/Passes.h"  // from @llvm-project
 #include "mlir/Dialect/Tensor/Transforms/BufferizableOpInterfaceImpl.h"  // from @llvm-project
-#include "mlir/Dialect/Tensor/Transforms/Passes.h"  // from @llvm-project
 #include "mlir/Dialect/Vector/Transforms/BufferizableOpInterfaceImpl.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
@@ -46,9 +45,9 @@ limitations under the License.
 #include "tensorflow/compiler/xla/mlir/runtime/transforms/compiler.h"
 #include "tensorflow/compiler/xla/mlir_hlo/gml_st/interfaces/bufferizable_op_interface_impl.h"
 #include "tensorflow/compiler/xla/mlir_hlo/gml_st/transforms/passes.h"
-#include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Transforms/passes.h"
 #include "tensorflow/compiler/xla/mlir_hlo/mhlo/interfaces/bufferizable_op_interface_impl.h"
 #include "tensorflow/compiler/xla/mlir_hlo/mhlo/transforms/passes.h"
+#include "tensorflow/compiler/xla/mlir_hlo/transforms/passes.h"
 #include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/tsl/platform/errors.h"
 #include "tensorflow/tsl/platform/logging.h"
@@ -88,7 +87,7 @@ void AddSparsificationPasses(mlir::OpPassManager& pm) {
       /*enableBufferInitialization=*/false,
       /*vectorLength=*/0,
       /*enableVLAVectorization=*/false,
-      /*enableSIMDIndex32*/false));
+      /*enableSIMDIndex32*/ false));
   pm.addNestedPass<mlir::func::FuncOp>(
       mlir::bufferization::createFinalizingBufferizePass());
 }
@@ -128,10 +127,12 @@ static Status CreateHloXlaPipeline(
       mlir::mhlo::createMhloExpandOpsSimplifierPass());
   pm.addNestedPass<mlir::func::FuncOp>(
       mlir::mhlo::createHloCanonicalizeScatterPass());
+  pm.addNestedPass<FuncOp>(mlir::mhlo::createGroupReductionDimensionsPass());
   // TODO(kramerb): Give THLO lowerings priority over linalg when it's ready for
   // concat, reduce and friends.
   pm.addNestedPass<mlir::func::FuncOp>(
-      mlir::mhlo::createLegalizeHloToLinalgPass());
+      mlir::mhlo::createLegalizeHloToLinalgPass(
+          options.enable_tiling_and_fusion));
   pm.addNestedPass<mlir::func::FuncOp>(
       mlir::mhlo::createLegalizeMHLOToTHLOPass());
 
@@ -141,12 +142,14 @@ static Status CreateHloXlaPipeline(
   pm.addPass(mlir::mhlo::createConvertToSignlessPass());
 
   // Transform scatter ops.
-  pm.addNestedPass<mlir::func::FuncOp>(
-      mlir::gml_st::createTransformScatterForCpuPass());
+  if (!options.enable_tiling_and_fusion) {
+    pm.addNestedPass<mlir::func::FuncOp>(
+        mlir::gml_st::createTransformScatterForCpuPass());
+  }
 
   // Lower shape dialect to standard to enable linalg canonicalizations (e.g.
   // use linalg inputs instead of outputs for memref.dim operations).
-  pm.addNestedPass<mlir::func::FuncOp>(mlir::createShapeSimplification());
+  pm.addNestedPass<mlir::func::FuncOp>(mlir::mhlo::createShapeSimplification());
   pm.addNestedPass<mlir::func::FuncOp>(mlir::createShapeToShapeLowering());
   pm.addPass(mlir::createConvertShapeToStandardPass());
   pm.addNestedPass<mlir::func::FuncOp>(
@@ -156,8 +159,19 @@ static Status CreateHloXlaPipeline(
   pm.addPass(mlir::createCSEPass());
   pm.addPass(mlir::memref::createResolveShapedTypeResultDimsPass());
   pm.addPass(mlir::createCanonicalizerPass());
-  pm.addNestedPass<mlir::func::FuncOp>(
-      mlir::createLinalgElementwiseOpFusionPass());
+  if (options.enable_tiling_and_fusion) {
+    mlir::gml_st::GmlStCPUPipelineOptions gml_st_opts;
+    gml_st_opts.vectorSize = 8;
+    gml_st_opts.reduction1DTileSize = 32;
+    gml_st_opts.reduction2DTileSizes = {4, 4};
+    gml_st_opts.matmulTileSizes = {4, 4, 4};
+    gml_st_opts.lowerToMmt4d = true;
+
+    mlir::gml_st::addTileableOpsTransformationsForCPU(pm, gml_st_opts);
+  } else {
+    pm.addNestedPass<mlir::func::FuncOp>(
+        mlir::createLinalgElementwiseOpFusionPass());
+  }
   pm.addPass(mlir::createReconcileUnrealizedCastsPass());
   pm.addPass(mlir::createConvertTensorToLinalgPass());
 
@@ -186,6 +200,10 @@ static Status CreateHloXlaPipeline(
     pm.addPass(mlir::hlo::createOneShotBufferizePass());
   }
 
+  if (options.enable_tiling_and_fusion) {
+    pm.addNestedPass<FuncOp>(mlir::gml_st::createVectorizeCopyPass());
+    pm.addNestedPass<FuncOp>(mlir::gml_st::createSimplifyDeadCopyPass());
+  }
   // Handle framework specific requirements for buffers and then insert
   // deallocations for temporary buffers.
   pm.addNestedPass<mlir::func::FuncOp>(mlir::createConvertLinalgToLoopsPass());
@@ -217,9 +235,6 @@ static Status CreateHloXlaPipeline(
   // pm.addNestedPass<mlir::func::FuncOp>(CreateLinalgMatmulSpecializationPass());
   pm.addPass(mlir::createCanonicalizerPass());
 
-  // Tile and vectorize linalg operation using Linalg Codegen Strategy.
-  // pm.addNestedPass<mlir::func::FuncOp>(CreateCodegenStrategyForMatMulPass());
-
   // TODO(tpopp): Move hits to mlir::hlo::createGenericHostToLLVMPass?
   pm.addNestedPass<mlir::func::FuncOp>(
       mlir::createConvertComplexToStandardPass());
@@ -227,11 +242,16 @@ static Status CreateHloXlaPipeline(
   pm.addPass(mlir::createCSEPass());
   pm.addPass(mlir::createCanonicalizerPass());
 
+  pm.addNestedPass<FuncOp>(mlir::gml_st::createRewriteVectorTransposePass());
   mlir::VectorTransferToSCFOptions vec_to_scf_options;
   vec_to_scf_options.unroll = true;
   pm.addNestedPass<mlir::func::FuncOp>(
       mlir::createConvertVectorToSCFPass(vec_to_scf_options));
-
+  pm.addNestedPass<FuncOp>(
+      mlir::gml_st::createRewriteVectorMultiReductionPass());
+  pm.addNestedPass<FuncOp>(xla::cpu::createLegalizeI1VectorTransferOpsPass());
+  pm.addNestedPass<FuncOp>(
+      xla::cpu::createConvertXlaCpuMemRefElementCastToLLVMPass());
   return OkStatus();
 }
 

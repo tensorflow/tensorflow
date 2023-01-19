@@ -60,3 +60,12 @@ def LiftMatMul : Pat<
       (NamedAttr<"transpose_a"> $transpose_a),
       (NamedAttr<"transpose_b"> $transpose_b))),
   [(IsNotInLiftedFunc $res), (IsConstTensor $b)], (addBenefit 1)>;
+
+def LiftGather : Pat<
+  (TF_GatherV2Op:$res $params, $indices, $axis, $batch_dims),
+  (LiftAsFunctionCall<"composite_gather_fn">
+    (ArgumentList $params, $indices, $axis),
+    (ResultList $res),
+    (NamedAttributeList
+      (NamedAttr<"batch_dims"> $batch_dims))),
+  [(IsNotInLiftedFunc $res), (IsConstTensor $params)], (addBenefit 1)>;

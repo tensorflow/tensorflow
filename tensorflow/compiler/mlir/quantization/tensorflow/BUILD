@@ -328,6 +328,7 @@ cc_library(
         "passes/lift_quantizable_spots_as_functions.inc",
         "passes/lift_quantizable_spots_as_functions_drq.cc",
         "passes/lift_quantizable_spots_as_functions_drq.inc",
+        "passes/mark_functions_noinline.cc",
         "passes/merge_initializer_function_ops_to_main.cc",
         "passes/optimize.cc",
         "passes/optimize.inc",

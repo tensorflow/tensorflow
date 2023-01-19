@@ -49,7 +49,6 @@ class OperationPass;
 class Type;
 
 namespace TFL {
-using StringSet = absl::flat_hash_set<std::string>;
 
 // Creates an instance of the TensorFlow Lite dialect LegalizeTF pass.
 // When the given run_tfl_runtime_verification value is true, it will check each
@@ -84,7 +83,8 @@ std::unique_ptr<OperationPass<ModuleOp>> CreateLowerStaticTensorListPass();
 // as they are now structure variables of QuantizationSpecs.
 std::unique_ptr<OperationPass<func::FuncOp>> CreateQuantizePass(
     const quant::QuantizationSpecs& quant_specs,
-    const StringSet& ops_blocklist = {}, const StringSet& nodes_blocklist = {});
+    const absl::flat_hash_set<std::string>& ops_blocklist = {},
+    const absl::flat_hash_set<std::string>& nodes_blocklist = {});
 
 std::unique_ptr<OperationPass<func::FuncOp>> CreateDefaultQuantizePass();
 
@@ -92,8 +92,9 @@ std::unique_ptr<OperationPass<func::FuncOp>> CreateDefaultQuantizePass();
 // the binary size.
 std::unique_ptr<OperationPass<func::FuncOp>> CreateQuantizePass(
     bool verify_numeric = false, bool whole_model_verify = false,
-    bool legacy_float_scale = false, const StringSet& ops_blocklist = {},
-    const StringSet& nodes_blocklist = {});
+    bool legacy_float_scale = false,
+    const absl::flat_hash_set<std::string>& ops_blocklist = {},
+    const absl::flat_hash_set<std::string>& nodes_blocklist = {});
 
 // Creates an instance of the TensorFlow Lite dialect PrepareQuantize pass.
 std::unique_ptr<OperationPass<func::FuncOp>> CreatePrepareQuantizePass(

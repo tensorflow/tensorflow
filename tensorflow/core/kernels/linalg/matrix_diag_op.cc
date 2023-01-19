@@ -127,14 +127,17 @@ class MatrixDiagPartOp : public OpKernel {
 
     TensorShape output_shape;
     for (int i = 0; i < rank - 2; ++i) {
-      output_shape.AddDim(input_shape.dim_size(i));
+      OP_REQUIRES_OK(context,
+                     output_shape.AddDimWithStatus(input_shape.dim_size(i)));
     }
     const Eigen::Index num_diags = upper_diag_index - lower_diag_index + 1;
-    if (num_diags > 1) output_shape.AddDim(num_diags);
+    if (num_diags > 1) {
+      OP_REQUIRES_OK(context, output_shape.AddDimWithStatus(num_diags));
+    }
     const int32_t max_diag_len =
         std::min(num_rows + std::min(upper_diag_index, 0),
                  num_cols - std::max(lower_diag_index, 0));
-    output_shape.AddDim(max_diag_len);
+    OP_REQUIRES_OK(context, output_shape.AddDimWithStatus(max_diag_len));
 
     Tensor* output = nullptr;
     OP_REQUIRES_OK(context, context->allocate_output(0, output_shape, &output));
@@ -492,6 +495,7 @@ namespace functor {
   extern template struct MatrixDiagPart<GPUDevice, T>;
 
 TF_CALL_GPU_ALL_TYPES(DECLARE_GPU_SPEC);
+TF_CALL_bfloat16(DECLARE_GPU_SPEC);
 
 }  // namespace functor
 
@@ -533,6 +537,7 @@ TF_CALL_GPU_ALL_TYPES(DECLARE_GPU_SPEC);
                           MatrixDiagPartOp<GPUDevice, type>);
 
 TF_CALL_GPU_ALL_TYPES(REGISTER_MATRIX_DIAG_GPU);
+TF_CALL_bfloat16(REGISTER_MATRIX_DIAG_GPU);
 #undef REGISTER_MATRIX_DIAG_GPU
 
 // Registration of the deprecated kernel.
@@ -546,6 +551,7 @@ TF_CALL_GPU_ALL_TYPES(REGISTER_MATRIX_DIAG_GPU);
                               .TypeConstraint<type>("T"),                   \
                           MatrixDiagPartOp<GPUDevice, type>);
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_BATCH_MATRIX_DIAG_GPU);
+TF_CALL_bfloat16(REGISTER_BATCH_MATRIX_DIAG_GPU);
 #undef REGISTER_BATCH_MATRIX_DIAG_GPU
 
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM

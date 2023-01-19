@@ -619,6 +619,11 @@ tf_cuda_library(
         ":utils",
         ":op_converter",
         "//tensorflow/core:lib",
+        "//tensorflow/core/platform:env",
+        "//tensorflow/core/platform:logging",
+        "//tensorflow/core/platform:status",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/strings",
     ] + if_static([":op_converter_registry_impl"]),
 )
 

@@ -31,6 +31,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/python/py_array.h"
 #include "tensorflow/compiler/xla/python/py_executable.h"
 #include "tensorflow/compiler/xla/python/py_values.h"
+#include "tensorflow/compiler/xla/python/python_utils.h"
 #include "tensorflow/compiler/xla/python/sharding.h"
 #include "tensorflow/compiler/xla/python/status_casters.h"
 #include "tensorflow/compiler/xla/python/util.h"
@@ -67,10 +68,11 @@ struct PjitCacheEntry {
 
 class PjitFunction {
  public:
-  PjitFunction(std::string function_name, py::function cache_miss,
-               std::vector<int> static_argnums,
+  PjitFunction(std::string function_name, std::optional<py::function> fun,
+               py::function cache_miss, std::vector<int> static_argnums,
                std::vector<py::str> static_argnames, int executables_cache_size)
       : function_name_(std::move(function_name)),
+        fun_(std::move(fun)),
         cache_miss_(std::move(cache_miss)),
         static_argnums_(std::move(static_argnums)),
         static_argnames_(std::move(static_argnames)),
@@ -87,6 +89,25 @@ class PjitFunction {
   PjitFunction(PjitFunction&&) = default;
   PjitFunction& operator=(PjitFunction&&) = default;
 
+  // pybind11::object typed subclass for PjitFunction objects.
+  class pyobject : public py::object {
+   public:
+    PYBIND11_OBJECT(pyobject,  // NOLINT
+                    py::object, PjitFunction::IsPjitFunction);
+    pyobject() = default;
+    PjitFunction* func() const {
+      return PjitFunction::AsPjitFunctionUnchecked(*this);
+    }
+  };
+  // Alias as ::object; outside the scope above we won't confuse pybind11's
+  // macros.
+  using object = pyobject;
+
+  // Returns true if `h` is a PjitFunction.
+  static bool IsPjitFunction(py::handle handle);
+  // Converts `handle` to a PjitFunction*. Does not do any checking.
+  static PjitFunction* AsPjitFunctionUnchecked(py::handle handle);
+
   xla::StatusOr<py::object> Call(py::handle callable, PyObject* const* args,
                                  size_t nargs, PyObject* kwnames);
 
@@ -95,7 +116,25 @@ class PjitFunction {
   void ClearPythonReferences();
 
   const std::string& function_name() const { return function_name_; }
+  const std::optional<py::function>& fun() const { return fun_; }
   const py::function& cache_miss() const { return cache_miss_; }
+
+  const std::vector<int>& static_argnums() const { return static_argnums_; }
+  const std::vector<py::str>& static_argnames() const {
+    return static_argnames_;
+  }
+
+  int cache_capacity() const { return executables_->Capacity(); }
+
+  py::object PythonSignature() {
+    if (!fun_.has_value()) {
+      throw py::value_error(absl::StrFormat(
+          "Calling __signature__ on PjitFunction(%s) not supported.",
+          function_name_));
+    }
+    static const auto* inspect = new py::module(py::module::import("inspect"));
+    return inspect->attr("signature")(*fun_);
+  }
 
  private:
   xla::Status UpdateArgsSignature(ParsedArgumentsAsBuffers& arguments);
@@ -105,6 +144,7 @@ class PjitFunction {
                           const py::tuple& out_and_fastpath_data);
 
   std::string function_name_;
+  std::optional<py::function> fun_;
   py::function cache_miss_;
   std::vector<int> static_argnums_;
   std::vector<py::str> static_argnames_;
@@ -479,6 +519,21 @@ struct PjitFunctionObject {
 
 PyObject* PjitFunction_Type = nullptr;
 
+bool PjitFunction::IsPjitFunction(py::handle handle) {
+  return handle.get_type() == PjitFunction_Type;
+}
+
+PjitFunction* PjitFunction::AsPjitFunctionUnchecked(py::handle handle) {
+  return &(reinterpret_cast<PjitFunctionObject*>(handle.ptr())->fun);
+}
+
+PjitFunction* AsPjitFunction(py::handle handle) {
+  if (!PjitFunction::IsPjitFunction(handle)) {
+    throw xla::XlaRuntimeError(xla::InvalidArgument("Expected a PjitFunction"));
+  }
+  return PjitFunction::AsPjitFunctionUnchecked(handle);
+}
+
 extern "C" {
 
 PyObject* PjitFunction_tp_vectorcall(PyObject* callable, PyObject* const* args,
@@ -607,19 +662,37 @@ PyObject* PjitFunction_tp_repr(PyObject* self) {
 
 }  // extern "C"
 
-py::object MakePjitFunction(std::string function_name, py::function cache_miss,
+void InitializePjitFunction(PjitFunctionObject* fn_obj,
+                            std::string function_name,
+                            std::optional<py::function> fun,
+                            py::function cache_miss,
+                            std::vector<int> static_argnums,
+                            std::vector<py::str> static_argnames,
+                            int executables_cache_size) {
+  new (&fn_obj->fun)
+      PjitFunction(std::move(function_name), std::move(fun),
+                   std::move(cache_miss), std::move(static_argnums),
+                   std::move(static_argnames), executables_cache_size);
+}
+
+py::object MakePjitFunction(std::string function_name,
+                            std::optional<py::function> fun,
+                            py::function cache_miss,
                             std::vector<int> static_argnums,
                             std::vector<py::str> static_argnames,
                             int executables_cache_size) {
   py::object obj = py::reinterpret_steal<py::object>(PjitFunction_tp_new(
       reinterpret_cast<PyTypeObject*>(PjitFunction_Type), nullptr, nullptr));
   PjitFunctionObject* fn_obj = reinterpret_cast<PjitFunctionObject*>(obj.ptr());
-  new (&fn_obj->fun)
-      PjitFunction(std::move(function_name), std::move(cache_miss),
-                   std::move(static_argnums), std::move(static_argnames),
-                   executables_cache_size);
+  InitializePjitFunction(fn_obj, std::move(function_name), std::move(fun),
+                         std::move(cache_miss), std::move(static_argnums),
+                         std::move(static_argnames), executables_cache_size);
   return obj;
 }
+
+// Version numbers for the pickled representations of
+// PjitFunction. Increment these if changing them.
+const int kPjitFunctionPickleVersion = 1;
 
 }  // namespace
 
@@ -664,11 +737,65 @@ void BuildPjitSubmodule(py::module& m) {
   m.attr("PjitFunction") = cfun_type;
   cfun.attr("__module__") = m.attr("__name__");
 
-  m.def("pjit", [](std::string function_name, py::function cache_miss,
-                   std::vector<int> static_argnums,
+  cfun.attr("__getstate__") = py::cpp_function(
+      [](const PjitFunction::object& self) {
+        PjitFunction* fn = self.func();
+        py::dict pickle;
+        pickle["version"] = kPjitFunctionPickleVersion;
+        pickle["function_name"] = fn->function_name();
+        if (fn->fun().has_value()) {
+          pickle["fun"] = *fn->fun();
+        }
+        pickle["cache_miss"] = fn->cache_miss();
+        pickle["static_argnums"] = fn->static_argnums();
+        pickle["static_argnames"] = fn->static_argnames();
+        pickle["cache_capacity"] = fn->cache_capacity();
+        return pickle;
+      },
+      py::is_method(cfun_type));
+  cfun.attr("__setstate__") = py::cpp_function(
+      [](py::object& self, const py::dict& pickle) {
+        int version = py::cast<int>(pickle["version"]);
+        if (version != kPjitFunctionPickleVersion) {
+          throw std::invalid_argument(absl::StrFormat(
+              "Invalid PjitFunction pickle version, got %d, expected %d. "
+              "Pickling/Unpickling jitted functions using different JAX "
+              "versions is not supported.",
+              version, kPjitFunctionPickleVersion));
+        }
+        std::string function_name =
+            py::cast<std::string>(pickle["function_name"]);
+        std::optional<py::function> fun;
+        if (pickle.contains("fun")) {
+          fun = py::cast<py::function>(pickle["fun"]);
+        }
+        py::function cache_miss = py::cast<py::function>(pickle["cache_miss"]);
+        std::vector<int> static_argnums =
+            py::cast<std::vector<int>>(pickle["static_argnums"]);
+        std::vector<py::str> static_argnames =
+            py::cast<std::vector<py::str>>(pickle["static_argnames"]);
+        int cache_capacity = py::cast<int>(pickle["cache_capacity"]);
+        InitializePjitFunction(
+            reinterpret_cast<PjitFunctionObject*>(self.ptr()),
+            std::move(function_name), std::move(fun), std::move(cache_miss),
+            std::move(static_argnums), std::move(static_argnames),
+            cache_capacity);
+      },
+      py::is_method(cfun_type));
+  cfun.attr("__signature__") =
+      property_readonly([](py::handle self) -> xla::StatusOr<py::object> {
+        return AsPjitFunction(self)->PythonSignature();
+      });
+  cfun.attr("_cache_miss") =
+      property_readonly([](py::handle self) -> py::object {
+        return AsPjitFunction(self)->cache_miss();
+      });
+
+  m.def("pjit", [](std::string function_name, std::optional<py::function> fun,
+                   py::function cache_miss, std::vector<int> static_argnums,
                    std::vector<py::str> static_argnames) {
-    return MakePjitFunction(std::move(function_name), std::move(cache_miss),
-                            std::move(static_argnums),
+    return MakePjitFunction(std::move(function_name), std::move(fun),
+                            std::move(cache_miss), std::move(static_argnums),
                             std::move(static_argnames),
                             /*executables_cache_size=*/4096);
   });

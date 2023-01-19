@@ -34,7 +34,6 @@ BuildXlaOpsPassFlags* build_ops_flags;
 MarkForCompilationPassFlags* mark_for_compilation_flags;
 XlaDeviceFlags* device_flags;
 XlaOpsCommonFlags* ops_flags;
-IntroduceFloatingPointJitterPassFlags* jitter_flags;
 MlirCommonFlags* mlir_flags;
 JitRtFlags* jitrt_flags;
 std::vector<Flag>* jitrt_flag_list;
@@ -221,9 +220,6 @@ void AllocateAndParseFlags() {
   ops_flags->tf_xla_async_compilation = false;
   ops_flags->tf_xla_use_device_api = false;
 
-  jitter_flags = new IntroduceFloatingPointJitterPassFlags;
-  jitter_flags->jitter_amount = 1e-5;
-
   // The `enable_mlir_bridge` flag allows the user to explicitly request that
   // their program is (or isn't) compiled using the MLIR-based TF-to-XLA bridge.
   //
@@ -236,10 +232,6 @@ void AllocateAndParseFlags() {
   bool enable_mlir_bridge_is_explicit = false;
   bool enable_mlir_merge_control_flow_pass = true;
   bool enable_mlir_convert_control_to_data_outputs_pass = false;
-  auto setter_for_jitter_tensor_names = [](string sequence) {
-    jitter_flags->tensor_names = absl::StrSplit(sequence, ',');
-    return true;
-  };
   // Dump graphs in TFG dialect.
   bool use_tfg_graph_dumper = false;
 
@@ -282,15 +274,6 @@ void AllocateAndParseFlags() {
        Flag("tf_xla_use_device_api", &ops_flags->tf_xla_use_device_api,
             "If true, uses the Device API (PjRt) for single device compilation."
             " Defaults to false."),
-
-       Flag("tf_introduce_floating_point_jitter_to_tensors",
-            setter_for_jitter_tensor_names, "",
-            "The Tensors to add the jitter to.  The tensors are named in the "
-            "TensorId format of <node name>:<output idx>."),
-       Flag("tf_introduce_floating_point_jitter_amount",
-            &jitter_flags->jitter_amount,
-            "The amount of jitter to introduce.  This amount is added to each "
-            "element in the tensors named in `tensor_names."),
 
        Flag("tf_mlir_enable_mlir_bridge", &enable_mlir_bridge,
             "Enables experimental MLIR-Based TensorFlow Compiler Bridge.",
@@ -339,7 +322,6 @@ void ResetFlags() {
   delete mark_for_compilation_flags;
   delete device_flags;
   delete ops_flags;
-  delete jitter_flags;
   delete mlir_flags;
   delete flag_list;
   delete jitrt_flags;
@@ -372,12 +354,6 @@ XlaDeviceFlags* GetXlaDeviceFlags() {
 const XlaOpsCommonFlags& GetXlaOpsCommonFlags() {
   absl::call_once(flags_init, &AllocateAndParseFlags);
   return *ops_flags;
-}
-
-const IntroduceFloatingPointJitterPassFlags&
-GetIntroduceFloatingPointJitterPassFlags() {
-  absl::call_once(flags_init, &AllocateAndParseFlags);
-  return *jitter_flags;
 }
 
 MlirCommonFlags* GetMlirCommonFlags() {

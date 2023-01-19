@@ -2777,7 +2777,8 @@ Status AlgebraicSimplifierVisitor::HandleDot(HloInstruction* dot) {
         lhs->shape().rank()) ||
        (dnums.rhs_contracting_dimensions_size() +
             dnums.rhs_batch_dimensions_size() ==
-        rhs->shape().rank()))) {
+        rhs->shape().rank())) &&
+      ShouldStrengthReduceDotToReduce(dot)) {
     TF_ASSIGN_OR_RETURN(HloInstruction * new_lhs,
                         NormalizeDotOperandToBatchMajorAndContractingMinor(
                             lhs, dnums.lhs_batch_dimensions(),

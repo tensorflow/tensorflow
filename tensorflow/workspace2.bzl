@@ -201,7 +201,12 @@ def _tf_repositories():
     tf_http_archive(
         name = "mkl_dnn_acl_compatible",
         build_file = "//third_party/mkl_dnn:mkldnn_acl.BUILD",
-        patch_file = ["//third_party/mkl_dnn:onednn_acl_threadcap.patch", "//third_party/mkl_dnn:onednn_acl_fixed_format_kernels.patch", "//third_party/mkl_dnn:onednn_acl_depthwise_convolution.patch"],
+        patch_file = [
+            "//third_party/mkl_dnn:onednn_acl_threadcap.patch",
+            "//third_party/mkl_dnn:onednn_acl_fixed_format_kernels.patch",
+            "//third_party/mkl_dnn:onednn_acl_depthwise_convolution.patch",
+            "//third_party/mkl_dnn:onednn_acl_threadpool_scheduler.patch",
+        ],
         sha256 = "fc2b617ec8dbe907bb10853ea47c46f7acd8817bc4012748623d911aca43afbb",
         strip_prefix = "oneDNN-2.7",
         urls = tf_mirror_urls("https://github.com/oneapi-src/oneDNN/archive/v2.7.tar.gz"),
@@ -310,10 +315,10 @@ def _tf_repositories():
     tf_http_archive(
         name = "org_sqlite",
         build_file = "//third_party:sqlite.BUILD",
-        sha256 = "9c99955b21d2374f3a385d67a1f64cbacb1d4130947473d25c77ad609c03b4cd",
-        strip_prefix = "sqlite-amalgamation-3390400",
+        sha256 = "49112cc7328392aa4e3e5dae0b2f6736d0153430143d21f69327788ff4efe734",
+        strip_prefix = "sqlite-amalgamation-3400100",
         system_build_file = "//third_party/systemlibs:sqlite.BUILD",
-        urls = tf_mirror_urls("https://www.sqlite.org/2022/sqlite-amalgamation-3390400.zip"),
+        urls = tf_mirror_urls("https://www.sqlite.org/2022/sqlite-amalgamation-3400100.zip"),
     )
 
     tf_http_archive(
@@ -500,10 +505,10 @@ def _tf_repositories():
     tf_http_archive(
         name = "curl",
         build_file = "//third_party:curl.BUILD",
-        sha256 = "3dfdd39ba95e18847965cd3051ea6d22586609d9011d91df7bc5521288987a82",
-        strip_prefix = "curl-7.86.0",
+        sha256 = "8a063d664d1c23d35526b87a2bf15514962ffdd8ef7fd40519191b3c23e39548",
+        strip_prefix = "curl-7.87.0",
         system_build_file = "//third_party/systemlibs:curl.BUILD",
-        urls = tf_mirror_urls("https://curl.haxx.se/download/curl-7.86.0.tar.gz"),
+        urls = tf_mirror_urls("https://curl.haxx.se/download/curl-7.87.0.tar.gz"),
     )
 
     # WARNING: make sure ncteisen@ and vpai@ are cc-ed on any CL to change the below rule
@@ -606,9 +611,9 @@ def _tf_repositories():
         name = "nccl_archive",
         build_file = "//third_party:nccl/archive.BUILD",
         patch_file = ["//third_party/nccl:archive.patch"],
-        sha256 = "d5f5243200d4e40683c56f04435bfd6defa379cb4f2b8c07b0f191df0f66c3d9",
-        strip_prefix = "nccl-2.13.4-1",
-        urls = tf_mirror_urls("https://github.com/nvidia/nccl/archive/v2.13.4-1.tar.gz"),
+        sha256 = "7f7c738511a8876403fc574d13d48e7c250d934d755598d82e14bab12236fc64",
+        strip_prefix = "nccl-2.16.2-1",
+        urls = tf_mirror_urls("https://github.com/nvidia/nccl/archive/v2.16.2-1.tar.gz"),
     )
 
     java_import_external(

@@ -246,7 +246,7 @@ static absl::Mutex autotune_cache_mu(absl::kConstInit);
 static auto& autotune_cache ABSL_GUARDED_BY(autotune_cache_mu) =
     *new absl::flat_hash_map<
         std::tuple<
-            std::string /*stream_exec->device_description_str()*/,
+            std::string /*stream_exec->GetDeviceDescription()->model_str()*/,
             std::string /*conv->ToString(HloPrintOptions::Canonical()) */>,
         std::optional<se::blas::AlgorithmType>>();
 static int64_t autotune_cache_hits ABSL_GUARDED_BY(autotune_cache_mu) = 0;
@@ -262,7 +262,7 @@ StatusOr<std::optional<se::blas::AlgorithmType>> DoGemmAutotune(
   absl::MutexLock gpu_lock(&GetGpuMutex(stream->parent()));
 
   auto key = std::make_tuple(
-      std::string(stream->parent()->device_description_str()),
+      stream->parent()->GetDeviceDescription().model_str(),
       gemm->ToString(
           HloPrintOptions::Canonical().set_print_backend_config(true)));
 
@@ -441,7 +441,7 @@ StatusOr<bool> RunOnInstruction(HloInstruction* gemm,
   VLOG(3) << "Loading the autotune result of GemmThunk " << gemm->ToString();
 
   auto key = std::make_tuple(
-      std::string(config.device_description_str),
+      std::string(config.model_str),
       gemm->ToString(
           HloPrintOptions::Canonical().set_print_backend_config(true)));
 
@@ -462,6 +462,9 @@ StatusOr<bool> RunOnInstruction(HloInstruction* gemm,
   GemmBackendConfig gemm_config =
       gemm->backend_config<GemmBackendConfig>().value();
   GemmBackendConfig updated_config = gemm_config;
+
+  // We only set the 'algorithm' field on non-Ampere architectures, as for
+  // Ampere it's ignored in any case.
   if (algorithm && !capability.IsAtLeast(se::CudaComputeCapability::AMPERE)) {
     updated_config.set_selected_algorithm(*algorithm);
   }
@@ -510,9 +513,9 @@ Status GemmAlgorithmPicker::WriteAutotuneResults(AutotuneResults* results) {
     // have a good way to represent them in the proto.
     if (!result.has_value()) continue;
 
-    const auto& [device_description_str, hlo] = k;
+    const auto& [model_str, hlo] = k;
     auto& entry = *results->add_dots();
-    entry.set_device(device_description_str);
+    entry.set_device(model_str);
     entry.set_hlo(hlo);
     entry.mutable_result()->mutable_gemm()->set_algorithm(*result);
   }

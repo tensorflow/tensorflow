@@ -64,7 +64,7 @@ using mlir::MLIRContext;
 using mlir::ModuleOp;
 using mlir::Operation;
 using mlir::OwningOpRef;
-using stream_executor::port::StatusOr;
+using tsl::StatusOr;
 
 bool IsControlFlowV1Op(Operation* op) {
   return mlir::isa<mlir::tf_executor::SwitchOp, mlir::tf_executor::MergeOp,

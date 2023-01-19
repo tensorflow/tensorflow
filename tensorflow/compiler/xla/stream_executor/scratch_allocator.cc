@@ -23,7 +23,7 @@ limitations under the License.
 
 namespace stream_executor {
 
-port::StatusOr<DeviceMemory<uint8_t>> OneTimeScratchAllocator::AllocateBytes(
+tsl::StatusOr<DeviceMemory<uint8_t>> OneTimeScratchAllocator::AllocateBytes(
     int64_t byte_size) {
   CHECK(temporary_ == nullptr);
   TF_ASSIGN_OR_RETURN(temporary_,

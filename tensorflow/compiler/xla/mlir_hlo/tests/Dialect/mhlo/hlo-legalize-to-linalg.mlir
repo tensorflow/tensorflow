@@ -233,19 +233,13 @@ func.func @complex_rsqrt(%operand: tensor<2x2xcomplex<f32>>)
 func.func @float_cbrt(%operand: tensor<2x2xf32>) -> tensor<2x2xf32> {
   %tensor_result = "mhlo.cbrt"(%operand)
       : (tensor<2x2xf32>) -> tensor<2x2xf32>
-  // CHECK: %[[THIRD:.+]] = arith.constant 0.333333343
   // CHECK: ^{{[a-z0-9_]*}}
   // CHECK-SAME: %[[IN:[a-zA-Z0-9_]*]]: f32
-  // CHECK-SAME: %[[OUT:[a-zA-Z0-9_]*]]: f32
-  // CHECK: %[[ABS:.+]] = math.absf %[[IN]]
-  // CHECK: %[[POW:.+]] = math.powf %[[ABS]], %[[THIRD]]
-  // CHECK: %[[RESULT:.+]] = math.copysign %[[POW]], %[[IN]]
+  // CHECK: %[[RESULT:.+]] = math.cbrt %[[IN]]
   // CHECK: linalg.yield %[[RESULT]]
 
   // CHECK-PRIMITIVE: linalg.map
-  // CHECK-PRIMITIVE: math.absf
-  // CHECK-PRIMITIVE: math.powf
-  // CHECK-PRIMITIVE: math.copysign
+  // CHECK-PRIMITIVE: math.cbrt
   func.return %tensor_result : tensor<2x2xf32>
 }
 
@@ -1141,6 +1135,18 @@ func.func @transpose_dynamic(%arg0: tensor<?x?x9x?xi32>) -> tensor<?x?x?x9xi32> 
 // CHECK-PRIMITIVE-SAME: outs(%[[INIT]] : tensor<?x?x?x9xi32>)
 // CHECK-PRIMITIVE-SAME: permutation = [1, 0, 3, 2]
 // CHECK-PRIMITIVE-SAME: {someattr}
+
+func.func @transpose_unsigned(%arg0: tensor<2x2xui32>) -> tensor<2x2xui32> {
+  %0 = "mhlo.transpose"(%arg0) {
+    permutation = dense<[1, 0]> : tensor<2xi64>,
+    result_layout = dense<[0, 1]> : tensor<2xindex>
+  } : (tensor<2x2xui32>) -> tensor<2x2xui32>
+  return %0 : tensor<2x2xui32>
+}
+
+// Regression test. Just check that unsigned ints lower successfully.
+// CHECK-LABEL: func @transpose_unsigned
+// CHECK-PRIMITIVE-LABEL: func @transpose_unsigned
 
 // -----
 
@@ -3045,13 +3051,10 @@ func.func @reduce_add(%arg0: tensor<5x4xi32>, %arg1: tensor<i32>) -> tensor<5xi3
 // CHECK-PRIMITIVE-DAG: %[[INIT:.*]] = tensor.extract %{{.*}} : tensor<i32>
 // CHECK-PRIMITIVE-DAG: %[[INIT_TENSOR:.*]] = tensor.empty()
 // CHECK-PRIMITIVE-DAG: %[[FILL_TENSOR:.*]] = linalg.fill ins(%[[INIT]]{{.*}}outs(%[[INIT_TENSOR]]
-// CHECK-PRIMITIVE: linalg.reduce
+// CHECK-PRIMITIVE: linalg.reduce { arith.addi }
 // CHECK-PRIMITIVE-SAME: ins(%{{.*}}tensor<5x4xi32>)
 // CHECK-PRIMITIVE-SAME: outs(%[[FILL_TENSOR]] : tensor<5xi32>)
 // CHECK-PRIMITIVE-SAME: dimensions = [1]  {someattr}
-// CHECK-PRIMITIVE-NEXT: (%[[LHS_IN:.*]]: i32, %[[RHS_IN:.*]]: i32) {
-// CHECK-PRIMITIVE-NEXT:   %[[RESULT:.*]] = arith.addi %[[RHS_IN]], %[[LHS_IN]] : i32
-// CHECK-PRIMITIVE-NEXT:   linalg.yield %[[RESULT]] : i32
 
 // -----
 
@@ -3097,13 +3100,10 @@ func.func @reduce_dim0(%arg0: tensor<5x4xi32>, %arg1: tensor<i32>) -> tensor<4xi
 // CHECK-PRIMITIVE-DAG: %[[INIT:.*]] = tensor.extract %{{.*}} : tensor<i32>
 // CHECK-PRIMITIVE-DAG: %[[INIT_TENSOR:.*]] = tensor.empty()
 // CHECK-PRIMITIVE-DAG: %[[FILL_TENSOR:.*]] = linalg.fill ins(%[[INIT]]{{.*}}outs(%[[INIT_TENSOR]]
-// CHECK-PRIMITIVE: linalg.reduce
+// CHECK-PRIMITIVE: linalg.reduce { arith.maxsi }
 // CHECK-PRIMITIVE-SAME: ins(%{{.*}}tensor<5x4xi32>)
 // CHECK-PRIMITIVE-SAME: outs(%[[FILL_TENSOR]] : tensor<4xi32>)
 // CHECK-PRIMITIVE-SAME: dimensions = [0]
-// CHECK-PRIMITIVE-NEXT: (%[[LHS_IN:.*]]: i32, %[[RHS_IN:.*]]: i32) {
-// CHECK-PRIMITIVE-NEXT:   %[[RESULT:.*]] = arith.maxsi %[[RHS_IN]], %[[LHS_IN]] : i32
-// CHECK-PRIMITIVE-NEXT:   linalg.yield %[[RESULT]] : i32
 
 // -----
 

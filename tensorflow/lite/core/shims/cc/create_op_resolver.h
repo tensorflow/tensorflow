@@ -17,7 +17,7 @@ limitations under the License.
 
 #include <memory>
 
-#include "tensorflow/lite/create_op_resolver.h"
+#include "tensorflow/lite/core/create_op_resolver.h"
 
 namespace tflite_shims {
 using ::tflite::CreateOpResolver;

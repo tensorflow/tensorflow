@@ -50,6 +50,9 @@ cc_library(
         "//tensorflow/compiler/xla/stream_executor/platform",
         "//tensorflow/compiler/xla/stream_executor/platform:dso_loader",
         "@local_config_rocm//rocm:rocm_headers",
+        "//tensorflow/tsl/platform:env",
+        "//tensorflow/tsl/platform:numbers",
+        "//tensorflow/tsl/platform:stacktrace",
     ]),
 )
 
@@ -273,6 +276,7 @@ cc_library(
         "@com_google_absl//absl/types:span",
         "@local_config_rocm//rocm:rocm_headers",
         "//tensorflow/tsl/util:env_var",
+        "//tensorflow/tsl/util:determinism_for_kernels",
     ]),
     alwayslink = True,
 )

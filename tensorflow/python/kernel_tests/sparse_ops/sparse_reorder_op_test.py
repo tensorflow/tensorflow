@@ -37,10 +37,10 @@ class SparseReorderTest(test.TestCase, parameterized.TestCase):
         array_ops.placeholder(dtypes.float64),
         array_ops.placeholder(dtypes.int64))
 
-  def _SparseTensorValue_5x6(self, permutation):
+  def _SparseTensorValue_5x6(self, permutation, dtype=dtypes.float64):
     ind = np.array([[0, 0], [1, 0], [1, 3], [1, 4], [3, 2],
                     [3, 3]]).astype(np.int64)
-    val = np.array([0, 10, 13, 14, 32, 33]).astype(np.float64)
+    val = np.array([0, 10, 13, 14, 32, 33]).astype(dtype.as_numpy_dtype)
 
     ind = ind[permutation]
     val = val[permutation]
@@ -107,11 +107,12 @@ class SparseReorderTest(test.TestCase, parameterized.TestCase):
       self.assertAllEqual(output_val.values, input_val.values)
       self.assertAllEqual(output_val.dense_shape, input_val.dense_shape)
 
-  def testOutOfOrder(self):
-    expected_output_val = self._SparseTensorValue_5x6(np.arange(6))
+  @parameterized.parameters(dtypes.bfloat16, dtypes.float64)
+  def testOutOfOrder(self, dtype):
+    expected_output_val = self._SparseTensorValue_5x6(np.arange(6), dtype)
     with self.session() as sess:
       for _ in range(5):  # To test various random permutations
-        input_val = self._SparseTensorValue_5x6(np.random.permutation(6))
+        input_val = self._SparseTensorValue_5x6(np.random.permutation(6), dtype)
         sp_output = sparse_ops.sparse_reorder(input_val)
 
         output_val = self.evaluate(sp_output)

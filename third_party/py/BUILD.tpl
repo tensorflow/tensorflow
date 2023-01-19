@@ -9,14 +9,12 @@ load("@bazel_tools//tools/python:toolchain.bzl", "py_runtime_pair")
 py_runtime(
     name = "py2_runtime",
     interpreter_path = "%{PYTHON_BIN_PATH}",
-    stub_shebang = "#!%{PYTHON_BIN_PATH}",
     python_version = "PY2",
 )
 
 py_runtime(
     name = "py3_runtime",
     interpreter_path = "%{PYTHON_BIN_PATH}",
-    stub_shebang = "#!%{PYTHON_BIN_PATH}",
     python_version = "PY3",
 )
 

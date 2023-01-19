@@ -109,23 +109,23 @@ func.func @whileRegionImplicitInputs(%arg0: tensor<i32>) -> tensor<i32> {
   %0 = mhlo.constant dense<0> : tensor<i32>
   // CHECK: [[VAL1:%.+]] = mhlo.constant dense<-1>
   %1 = mhlo.constant dense<-1> : tensor<i32>
-  // CHECK: [[VAL2:%.+]]:3 = mhlo.while([[ITER_ARG0:.*]] = [[ARG0]], [[ITER_ARG1:.*]] = [[VAL0]], [[ITER_ARG2:.*]] = [[VAL1]])
+  // CHECK: [[VAL2:%.+]] = mhlo.while([[ITER_ARG0:.*]] = [[ARG0]])
   %2 = "tf.WhileRegion"(%arg0) ({
   ^cond(%carg0: tensor<i32>):
-    // CHECK: [[VAL3:%.+]] = mhlo.compare LT, [[ITER_ARG0]], [[ITER_ARG1]]
+    // CHECK: [[VAL3:%.+]] = mhlo.compare LT, [[ITER_ARG0]], [[VAL0]]
     %3 = mhlo.compare LT, %carg0, %0 : (tensor<i32>, tensor<i32>) -> tensor<i1>
     // CHECK: mhlo.return [[VAL3]]
     "tf.Yield"(%3) : (tensor<i1>) -> ()
   }, {
   ^body(%barg0: tensor<i32>):
-    // CHECK: [[VAL3:%.+]] = mhlo.add [[ITER_ARG0]], [[ITER_ARG2]]
+    // CHECK: [[VAL3:%.+]] = mhlo.add [[ITER_ARG0]], [[VAL1]]
     %3 = mhlo.add %barg0, %1 : tensor<i32>
     // CHECK: [[VAL4:%.+]] = mhlo.add [[ITER_ARG0]], [[VAL3]]
     %4 = mhlo.add %barg0, %3 : tensor<i32>
-    // CHECK: mhlo.return [[VAL4]], [[ITER_ARG1]], [[ITER_ARG2]]
+    // CHECK: mhlo.return [[VAL4]]
     "tf.Yield"(%4) : (tensor<i32>) -> ()
   }) {is_stateless = true, parallel_iterations = 10 : i64} : (tensor<i32>) -> tensor<i32>
-  // CHECK: return [[VAL2]]#0
+  // CHECK: return [[VAL2]]
   func.return %2 : tensor<i32>
 }
 
@@ -136,16 +136,16 @@ func.func @whileRegionMultipleImplicitInputs() {
   %0 = mhlo.constant dense<0> : tensor<i32>
   // CHECK: [[VAL1:%.+]] = mhlo.constant dense<-1>
   %1 = mhlo.constant dense<-1> : tensor<i32>
-  // CHECK: [[VAL2:%.+]]:2 = mhlo.while([[ITER_ARG0:.*]] = [[VAL0]], [[ITER_ARG1:.*]] = [[VAL1]])
+  // CHECK: mhlo.while()
   "tf.WhileRegion"() ({
-    // CHECK: [[VAL3:%.+]] = mhlo.compare LT, [[ITER_ARG0]], [[ITER_ARG1]]
+    // CHECK: [[VAL3:%.+]] = mhlo.compare LT, [[VAL0]], [[VAL1]]
     %2 = "mhlo.compare"(%0, %1) {comparison_direction = #mhlo<comparison_direction LT>} : (tensor<i32>, tensor<i32>) -> tensor<i1>
     // CHECK: mhlo.return [[VAL3]]
     "tf.Yield"(%2) : (tensor<i1>) -> ()
   }, {
-    // CHECK: [[VAL3:%.+]] = mhlo.add [[ITER_ARG0]], [[ITER_ARG1]]
+    // CHECK: [[VAL3:%.+]] = mhlo.add [[VAL0]], [[VAL1]]
     %2 = mhlo.add %0, %1 : tensor<i32>
-    // CHECK: mhlo.return [[ITER_ARG0]], [[ITER_ARG1]]
+    // CHECK: mhlo.return
     "tf.Yield"() : () -> ()
   }) {is_stateless = true, parallel_iterations = 10 : i64} : () -> ()
   // CHECK: return

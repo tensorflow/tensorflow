@@ -82,6 +82,9 @@ Status DispatcherState::Apply(const Update& update) {
     case Update::kFinishTask:
       FinishTask(update.finish_task());
       break;
+    case Update::kSnapshot:
+      Snapshot(update.snapshot());
+      break;
     case Update::UPDATE_TYPE_NOT_SET:
       return errors::Internal("Update type not set.");
   }
@@ -482,6 +485,10 @@ Status DispatcherState::ValidateWorker(absl::string_view worker_address) const {
 StatusOr<int64_t> DispatcherState::GetWorkerIndex(
     absl::string_view worker_address) const {
   return worker_index_resolver_.GetWorkerIndex(worker_address);
+}
+
+void DispatcherState::Snapshot(const SnapshotUpdate& snapshot) {
+  snapshot_paths_.insert(snapshot.path());
 }
 
 }  // namespace data

@@ -650,7 +650,7 @@ CREATE_REPLACEADDWITHBIASADD_TEST_1(DepthConv2D, Add, DT_FLOAT);
 
 class FusedMatMulBiasAddAndGeluTest : public GrapplerTest {
  public:
-  template <DataType DTYPE>
+  template <DataType DTYPE, bool is_pattern2>
   void RunTest() {
     using ::tensorflow::ops::Placeholder;
 
@@ -668,20 +668,40 @@ class FusedMatMulBiasAddAndGeluTest : public GrapplerTest {
     auto bias_add = ops::BiasAdd(s.WithOpName("bias_add"), matmul, bias);
 
     // Add Gelu approximate with smaller ops
-    auto square_root_one_half =
-        ops::Const(s.WithOpName("square_root_one_half"), {0.707106f}, {});
+    auto square_root_one_half_const =
+        ops::Const(s.WithOpName("square_root_one_half_const"), {0.707106f}, {});
+    // For some cases, eg. BF16, there will be a Cast, Const -> Cast -> Mul
+    auto square_root_one_half = ops::Cast(s.WithOpName("square_root_one_half"),
+                                          square_root_one_half_const, DTYPE);
     auto bias_add_times_square_root_one_half =
         ops::Mul(s.WithOpName("bias_add_times_square_root_one_half"), bias_add,
                  square_root_one_half);
     auto erf =
         ops::Erf(s.WithOpName("erf"), bias_add_times_square_root_one_half);
-    auto one = ops::Const(s.WithOpName("one"), {1.0f}, {});
+
+    auto one_const = ops::Const(s.WithOpName("one_const"), {1.0f}, {});
+    // For some cases, eg. BF16, there will be a Cast, Const -> Cast -> AddV2
+    auto one = ops::Cast(s.WithOpName("one"), one_const, DTYPE);
     auto erf_plus_one = ops::AddV2(s.WithOpName("one_plus_erf"), erf, one);
-    auto one_half = ops::Const(s.WithOpName("one_half"), {0.5f}, {});
-    auto erf_plus_one_times_one_half = ops::Mul(
-        s.WithOpName("erf_plus_one_times_one_half"), erf_plus_one, one_half);
-    auto gelu = ops::Mul(s.WithOpName("fusion_output"),
-                         erf_plus_one_times_one_half, bias_add);
+
+    auto one_half_const =
+        ops::Const(s.WithOpName("one_half_const"), {0.5f}, {});
+    // For some cases, eg. BF16, there will be a Cast, Const -> Cast -> Mul
+    auto one_half = ops::Cast(s.WithOpName("one_half"), one_half_const, DTYPE);
+
+    Output gelu;
+    if (is_pattern2) {
+      auto bias_add_times_one_half = ops::Mul(
+          s.WithOpName("erf_plus_one_times_one_half"), bias_add, one_half);
+      gelu = ops::Mul(s.WithOpName("fusion_output"), erf_plus_one,
+                      bias_add_times_one_half);
+    } else {
+      auto erf_plus_one_times_one_half = ops::Mul(
+          s.WithOpName("erf_plus_one_times_one_half"), erf_plus_one, one_half);
+      auto gelu = ops::Mul(s.WithOpName("fusion_output"),
+                           erf_plus_one_times_one_half, bias_add);
+    }
+
     auto fetch = ops::Identity(s.WithOpName("fetch"), gelu);
 
     auto lhs_t = GenerateTensorWithSetRandom<DTYPE>({8, 32});
@@ -730,12 +750,22 @@ class FusedMatMulBiasAddAndGeluTest : public GrapplerTest {
   }
 };
 
-// Gelu has two implementations (1) exact and (2) approximate. Exact cannot be
-// used with bfloat16 numeric since the Erf is not supported in bfloat16 yet.
-// Here gelu-exact is tested for float32 numeric only. Gelu-approximate test
-// is added in tensorflow/python/grappler/remapper_test.py, since the pattern is
+// Fused {MatMul + BiasAdd + Gelu-exact} has 2 subgraph patterns. We test both
+// patterns with float32 and bfloat16 data types here. Gelu-approximate test is
+// added in `tensorflow/python/grappler/remapper_test.py` since the pattern is
 // changed by other optimizers before the remapper optimizer.
-TEST_F(FusedMatMulBiasAddAndGeluTest, Float32GeluExact) { RunTest<DT_FLOAT>(); }
+TEST_F(FusedMatMulBiasAddAndGeluTest, Float32GeluExact) {
+  RunTest<DT_FLOAT, false>();
+}
+TEST_F(FusedMatMulBiasAddAndGeluTest, BFloat16GeluExact) {
+  RunTest<DT_BFLOAT16, false>();
+}
+TEST_F(FusedMatMulBiasAddAndGeluTest, Float32GeluExact2) {
+  RunTest<DT_FLOAT, true>();
+}
+TEST_F(FusedMatMulBiasAddAndGeluTest, BFloat16GeluExact2) {
+  RunTest<DT_BFLOAT16, true>();
+}
 
 class MklFusedBatchMatMul : public MklRemapperTest {
  public:

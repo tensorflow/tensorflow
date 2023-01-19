@@ -36,7 +36,7 @@ limitations under the License.
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/IR/AffineMap.h"
 #include "mlir/IR/Attributes.h"
-#include "mlir/IR/BlockAndValueMapping.h"
+#include "mlir/IR/IRMapping.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/BuiltinTypes.h"
@@ -153,8 +153,9 @@ class HloToLhloOpConverter : public BaseOpConversion<HloOpTy> {
     if (failed(convertResults(op, bufferArgs, rewriter))) return failure();
     rewriter.create<mhlo::HloToLhloOp<HloOpTy>>(op->getLoc(), std::nullopt,
                                                 bufferArgs, op->getAttrs());
-    rewriter.replaceOp(op, llvm::makeArrayRef(bufferArgs)
-                               .drop_front(adaptor.getOperands().size()));
+    rewriter.replaceOp(
+        op,
+        llvm::ArrayRef(bufferArgs).drop_front(adaptor.getOperands().size()));
     return success();
   }
 };

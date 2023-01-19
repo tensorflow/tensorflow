@@ -1660,6 +1660,7 @@ tf_cuda_cc_test(
     srcs = ["conv_ops_test.cc"],
     tags = [
         "no_cuda_asan",  # TODO(b/171342275): re-enable.
+        "no_mac_arm64",
         "requires-gpu-sm70",
     ],
     deps = [
@@ -6113,7 +6114,6 @@ filegroup(
         "assign_op.h",
         "bias_op.cc",
         "bias_op.h",
-        "bias_op_gpu.h",
         "cast_op.cc",
         "cast_op.h",
         "cast_op_impl.h",
@@ -7459,6 +7459,7 @@ cc_binary(
     linkstatic = 1,
     tags = [
         "manual",
+        "no_mac_arm64",
         "notap",
     ],
     deps = [

@@ -88,9 +88,9 @@ StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> DTensorMlirPassRunner::RunOnGraph(
   import_config.control_outputs = {"eager_operation"};
 
   // Import GraphDef to TF MLIR.
-  stream_executor::port::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>>
-      module_ref = ConvertGraphToMlir(graph, debug_info, *flib_def,
-                                      import_config, &context_);
+  tsl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> module_ref =
+      ConvertGraphToMlir(graph, debug_info, *flib_def, import_config,
+                         &context_);
   if (!module_ref.ok())
     return errors::InvalidArgument(
         absl::StrCat(

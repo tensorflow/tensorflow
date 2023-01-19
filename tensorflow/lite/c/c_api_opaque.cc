@@ -74,19 +74,28 @@ int32_t TfLiteOpaqueTensorDim(const TfLiteOpaqueTensor* opaque_tensor,
                          dim_index);
 }
 
-int32_t TfLiteOpaqueTensorNumDimsSignature(
-    const TfLiteOpaqueTensor* opaque_tensor) {
+TfLiteStatus TfLiteOpaqueTensorGetNumDimsSignature(
+    const TfLiteOpaqueTensor* opaque_tensor, int32_t* num_dims) {
   const TfLiteTensor* tensor = Convert(opaque_tensor);
   if (!tensor->dims_signature) {
-    return -1;
+    *num_dims = -1;
+    return kTfLiteOk;
   }
-
-  return tensor->dims_signature->size;
+  *num_dims = tensor->dims_signature->size;
+  return kTfLiteOk;
 }
 
-int32_t TfLiteOpaqueTensorDimSignature(const TfLiteOpaqueTensor* opaque_tensor,
-                                       int32_t dim_index) {
-  return Convert(opaque_tensor)->dims_signature->data[dim_index];
+TfLiteStatus TfLiteOpaqueTensorGetDimSignature(
+    const TfLiteOpaqueTensor* opaque_tensor, int32_t dim_index,
+    int32_t* dim_length) {
+  const TfLiteTensor* tensor = Convert(opaque_tensor);
+  // `dims_signature` is not defined when no unknown dimensions are present.
+  if (tensor->dims_signature != nullptr && tensor->dims_signature->size != 0) {
+    *dim_length = tensor->dims_signature->data[dim_index];
+  } else {
+    *dim_length = tensor->dims->data[dim_index];
+  }
+  return kTfLiteOk;
 }
 
 const TfLiteIntArray* TfLiteOpaqueTensorDims(
@@ -148,10 +157,10 @@ TfLiteStatus TfLiteOpaqueTensorCopyToBuffer(
 }
 
 const TfLiteOpaqueTensor* TfLiteOpaqueNodeGetInput(
-    TfLiteOpaqueContext* opaque_context, const TfLiteOpaqueNode* opaque_node,
-    int index) {
+    const TfLiteOpaqueContext* opaque_context,
+    const TfLiteOpaqueNode* opaque_node, int index) {
   const TfLiteTensor* tensor =
-      tflite::GetInput(reinterpret_cast<TfLiteContext*>(opaque_context),
+      tflite::GetInput(reinterpret_cast<const TfLiteContext*>(opaque_context),
                        reinterpret_cast<const TfLiteNode*>(opaque_node), index);
   return reinterpret_cast<const TfLiteOpaqueTensor*>(tensor);
 }
@@ -340,4 +349,16 @@ const char* TfLiteOpaqueContextGetName(
     const struct TfLiteOpaqueContext* opaque_context) {
   auto* subgraph = GetSubgraph(opaque_context);
   return subgraph->GetName().c_str();
+}
+
+TfLiteStatus TfLiteOpaqueContextResizeTensor(TfLiteOpaqueContext* context,
+                                             TfLiteOpaqueTensor* tensor,
+                                             TfLiteIntArray* new_size) {
+  // The following casts are safe only because this code is part of the
+  // TF Lite runtime implementation.  Apps using TF Lite should not rely on
+  // TfLiteOpaqueContext and TfLiteContext being equivalent, or on
+  // TfLiteOpaqueTensor and TfLiteTensor being equivalent.
+  TfLiteContext* tflite_context = reinterpret_cast<TfLiteContext*>(context);
+  return tflite_context->ResizeTensor(
+      tflite_context, reinterpret_cast<TfLiteTensor*>(tensor), new_size);
 }

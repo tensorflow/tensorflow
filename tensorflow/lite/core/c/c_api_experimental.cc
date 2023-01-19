@@ -204,12 +204,10 @@ void TfLiteSignatureRunnerDelete(TfLiteSignatureRunner* signature_runner) {
   delete signature_runner;
 }
 
-void TfLiteInterpreterSetTelemetryProfiler(
-    const TfLiteInterpreter* interpreter,
+void TfLiteInterpreterOptionsSetTelemetryProfiler(
+    TfLiteInterpreterOptions* options,
     TfLiteTelemetryProfilerStruct* profiler) {
-  std::unique_ptr<tflite::telemetry::TelemetryProfiler> p;
-  p.reset(tflite::telemetry::MakeTfLiteTelemetryProfiler(profiler));
-  interpreter->impl->AddProfiler(std::move(p));
+  options->telemetry_profiler = profiler;
 }
 
 }  // extern "C"
