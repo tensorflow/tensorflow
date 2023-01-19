@@ -402,16 +402,6 @@ void CreateConvertMlirToXlaHloPipeline(
   // had static shape after lowering.
   pm.addPass(mlir::TF::CreateTFShapeInferencePass());
 
-  // TODO(b/259271758): Move this pass within the legalization TF pass. That is
-  // required for using support quantization types with control flow because the
-  // TensorFlow uses qint types and MHLO uses quantization types and neither
-  // supports the other one. So, legalization of control flow has to happen with
-  // the other ops. Originally, control flow ops were legalized separately as
-  // they were functional ops and required module pass while legalize tf is a
-  // function pass. Now that we exclusively only use TF region ops, it can be a
-  // function pass.
-  pm.addPass(mlir::mhlo::createLegalizeTFControlFlowPass());
-
   // Run LegalizeTFPass again because the previous legalization passes can
   // expose more graph pruning and canonicalization opportunities that are
   // necessary for the second LegalizeTFPass(allow_partial_conversion=false)

@@ -96,9 +96,6 @@ void PopulateLegalizeTfQuantizationPatterns(MLIRContext* context,
 /// Checks whether the op is supported by the Tf2Xla fallback for legalization.
 bool HasTf2XlaFallback(Operation* op);
 
-/// Lowers from TF dialect's control flow to HLO dialect's control flow.
-std::unique_ptr<OperationPass<ModuleOp>> createLegalizeTFControlFlowPass();
-
 /// Converts the provided Operation as well as all nested operations into HLO
 /// dialect using the conversion patterns registered by the HLO dialect. When
 /// allow_partial_conversion is false, emits an error if there is any operation
@@ -124,7 +121,6 @@ std::unique_ptr<OperationPass<ModuleOp>> CreateLegalizeTFCollectivePass();
 #define GEN_PASS_REGISTRATION
 #define GEN_PASS_DECL_LEGALIZETF
 #define GEN_PASS_DECL_LEGALIZETFCOLLECTIVE
-#define GEN_PASS_DECL_LEGALIZETFCONTROLFLOW
 #define GEN_PASS_DECL_LEGALIZETFMODULEPASS
 #define GEN_PASS_DECL_LEGALIZETFNOFALLBACK
 #define GEN_PASS_DECL_LEGALIZETFTYPESPASS

@@ -95,13 +95,6 @@ def LegalizeTFNoFallback : Pass<"xla-legalize-tf-no-fallback", "mlir::func::Func
                            "shape::ShapeDialect", "func::FuncDialect", "sparse_tensor::SparseTensorDialect"];
 }
 
-def LegalizeTFControlFlow : Pass<"xla-legalize-tf-control-flow", "ModuleOp"> {
-  let summary = "Legalize from TF dialect's to HLO dialect's control flow.";
-
-  let constructor = "mlir::mhlo::createLegalizeTFControlFlowPass()";
-  let dependentDialects = ["mhlo::MhloDialect", "sparse_tensor::SparseTensorDialect"];
-}
-
 def LegalizeTfTypesPass : Pass<"xla-legalize-tf-types"> {
   let summary = "Replace TensorFlow types with types that are legal in the MHLO dialect";
 

@@ -177,7 +177,6 @@ cc_library(
     srcs = [
         "transforms/legalize_tf_collective.cc",
         "transforms/legalize_tf_communication.cc",
-        "transforms/legalize_tf_control_flow.cc",
         "transforms/legalize_tf_types.cc",
         "transforms/tf_xla_passes.h.inc",
         "transforms/xla_legalize_tf.cc",
