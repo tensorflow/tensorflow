@@ -347,6 +347,7 @@ TfLiteStatus Prepare(KernelType kernel_type, TfLiteContext* context,
   // or equals (normal conv).
   auto input_channel = input->dims->data[3];
   auto filter_input_channel = filter->dims->data[3];
+  TF_LITE_ENSURE(context, filter_input_channel > 0);
   TF_LITE_ENSURE_EQ(context, input_channel % filter_input_channel, 0);
   data->groups = input_channel / filter_input_channel;
 
