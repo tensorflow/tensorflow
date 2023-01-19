@@ -17,7 +17,6 @@ package_group(
     packages = [],
 )
 
-
 gentbl_cc_library(
     name = "MHLOTOSAPDLLPatternsIncGen",
     tbl_outs = [
@@ -79,4 +78,3 @@ cc_library(
         "@llvm-project//mlir:Transforms",
     ],
 )
-
