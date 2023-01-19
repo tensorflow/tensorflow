@@ -180,6 +180,7 @@ DECL_CONVERT_OP(SparseToDense);
 DECL_CONVERT_OP(OneHot);
 DECL_CONVERT_OP(ArgMax);
 DECL_CONVERT_OP(FakeQuant);
+DECL_CONVERT_OP(While);
 
 #undef DECL_CONVERT_OP
 
@@ -3637,6 +3638,38 @@ LogicalResult ConvertTFLFakeQuantOp::matchAndRewrite(
   return success();
 }
 
+// Clone block, convert yield from TFL to TOSA
+static void inlineWhileCase(Region& srcRegion, Region& dstRegion,
+                            PatternRewriter& rewriter) {
+  rewriter.cloneRegionBefore(srcRegion, &dstRegion.back());
+  rewriter.eraseBlock(&dstRegion.back());
+
+  Block* headBlock = &dstRegion.front();
+
+  auto yield = cast<mlir::TFL::YieldOp>(headBlock->getTerminator());
+  rewriter.setInsertionPoint(yield);
+  rewriter.create<mlir::tosa::YieldOp>(yield.getLoc(), yield.getOperands());
+  rewriter.eraseOp(yield);
+}
+
+LogicalResult ConvertTFLWhileOp::matchAndRewrite(
+    Operation* op, PatternRewriter& rewriter) const {
+  auto tfl_while_op = cast<TFL::WhileOp>(op);
+
+  auto while_op = rewriter.create<mlir::tosa::WhileOp>(
+      op->getLoc(), op->getResultTypes(), op->getOperands());
+
+  rewriter.createBlock(&while_op.getCond());
+  rewriter.createBlock(&while_op.getBody());
+
+  inlineWhileCase(tfl_while_op.getCond(), while_op.getCond(), rewriter);
+  inlineWhileCase(tfl_while_op.getBody(), while_op.getBody(), rewriter);
+
+  rewriter.replaceOp(tfl_while_op, while_op.getResults());
+
+  return success();
+}
+
 LogicalResult LegalizeTFL::initialize(MLIRContext* context) {
   RewritePatternSet patterns(context);
   mlir::tosa::populateLegalizeTFLPatterns(context, patterns);
@@ -3766,6 +3799,7 @@ void populateLegalizeTFLPatterns(MLIRContext* ctx,
   DEF_PATTERN_INSERT(TFLOneHot);
   DEF_PATTERN_INSERT(TFLArgMax);
   DEF_PATTERN_INSERT(TFLFakeQuant);
+  DEF_PATTERN_INSERT(TFLWhile);
 }
 
 // Creates an instance of the TensorFlow Lite dialect LegalizeTFL pass.
