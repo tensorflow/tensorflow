@@ -34,15 +34,6 @@ limitations under the License.
 
 namespace tensorflow {
 
-// Populates the supplied passmanager with the passes required to run the
-// TF MLIR to XLA HLO MLIR conversion/legalization. Custom legalization passes
-// can be populated in `custom_legalization_passes`.
-void CreateConvertMlirToXlaHloPipeline(
-    mlir::OpPassManager& pm, llvm::StringRef device_type, bool prefer_tf2xla,
-    llvm::MutableArrayRef<std::unique_ptr<mlir::Pass>>
-        custom_legalization_passes,
-    bool allow_partial_conversion = false);
-
 // Lowers MLIR module to XLA HLO inside an XlaComputation. The input module
 // should only contain operations in tf dialect. If the input module contains
 // operation in the tf_executor dialect, for example, returns an error.

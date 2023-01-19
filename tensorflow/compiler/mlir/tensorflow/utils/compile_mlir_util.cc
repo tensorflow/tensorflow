@@ -324,58 +324,6 @@ bool CanInlineFunctionsPostLegalization(llvm::StringRef device_type) {
   return device_type == DEVICE_TPU_XLA_JIT;
 }
 
-}  //  namespace
-
-Status RefineShapes(llvm::ArrayRef<TensorOrResourceShape> arg_shapes,
-                    mlir::ModuleOp module) {
-  auto producer_or = GetTfGraphProducerVersion(module);
-  if (!producer_or.ok()) return producer_or.status();
-  int64_t producer_version = producer_or.value();
-
-  llvm::SmallVector<int64_t, 16> shape_backing;
-  llvm::SmallVector<llvm::ArrayRef<int64_t>, 4> arg_shapes_copy;
-  {
-    // Convert arg_shapes to a mlir friendly format.
-    size_t count = 0;
-    for (const TensorOrResourceShape& tensor_resource_shape : arg_shapes) {
-      if (tensor_resource_shape.is_resource) continue;
-      count += tensor_resource_shape.shape.dims();
-    }
-    shape_backing.resize(count);
-    arg_shapes_copy.reserve(arg_shapes.size());
-    size_t offset = 0;
-    for (const TensorOrResourceShape& tensor_resource_shape : arg_shapes) {
-      if (tensor_resource_shape.is_resource) {
-        arg_shapes_copy.push_back(llvm::ArrayRef<int64_t>());
-        continue;
-      }
-      size_t start = offset;
-      for (tensorflow::TensorShapeDim dim : tensor_resource_shape.shape) {
-        shape_backing[offset] = dim.size;
-        ++offset;
-      }
-      if (offset == start) {
-        arg_shapes_copy.push_back(llvm::ArrayRef<int64_t>());
-      } else {
-        arg_shapes_copy.push_back(
-            llvm::ArrayRef<int64_t>(&shape_backing[start], offset - start));
-      }
-    }
-  }
-
-  auto main_func = module.lookupSymbol<mlir::func::FuncOp>("main");
-
-  mlir::StatusScopedDiagnosticHandler error_handler(module.getContext());
-  mlir::LogicalResult result = mlir::TF::InferShapeForFunction(
-      main_func, arg_shapes_copy, producer_version);
-
-  if (failed(result)) {
-    return error_handler.Combine(
-        errors::Internal("MLIR Shape refinement failed"));
-  }
-  return error_handler.ConsumeStatus();
-}
-
 // We generally have the following pass structure:
 // TensorFlow passes
 // Legalization passes
@@ -384,7 +332,7 @@ void CreateConvertMlirToXlaHloPipeline(
     mlir::OpPassManager& pm, llvm::StringRef device_type, bool prefer_tf2xla,
     llvm::MutableArrayRef<std::unique_ptr<mlir::Pass>>
         custom_legalization_passes,
-    bool allow_partial_conversion) {
+    bool allow_partial_conversion = false) {
   // Note that the region-based control-flow produced here still contains
   // function call ops which get inlined by the subsequent inliner pass.
   pm.addPass(mlir::TF::CreateTFFunctionalControlFlowToRegions());
@@ -484,6 +432,58 @@ void CreateConvertMlirToXlaHloPipeline(
   // since XLA uses functional control flow.
   pm.addNestedPass<mlir::func::FuncOp>(
       mlir::mhlo::createSinkConstantsToControlFlowPass());
+}
+
+}  //  namespace
+
+Status RefineShapes(llvm::ArrayRef<TensorOrResourceShape> arg_shapes,
+                    mlir::ModuleOp module) {
+  auto producer_or = GetTfGraphProducerVersion(module);
+  if (!producer_or.ok()) return producer_or.status();
+  int64_t producer_version = producer_or.value();
+
+  llvm::SmallVector<int64_t, 16> shape_backing;
+  llvm::SmallVector<llvm::ArrayRef<int64_t>, 4> arg_shapes_copy;
+  {
+    // Convert arg_shapes to a mlir friendly format.
+    size_t count = 0;
+    for (const TensorOrResourceShape& tensor_resource_shape : arg_shapes) {
+      if (tensor_resource_shape.is_resource) continue;
+      count += tensor_resource_shape.shape.dims();
+    }
+    shape_backing.resize(count);
+    arg_shapes_copy.reserve(arg_shapes.size());
+    size_t offset = 0;
+    for (const TensorOrResourceShape& tensor_resource_shape : arg_shapes) {
+      if (tensor_resource_shape.is_resource) {
+        arg_shapes_copy.push_back(llvm::ArrayRef<int64_t>());
+        continue;
+      }
+      size_t start = offset;
+      for (tensorflow::TensorShapeDim dim : tensor_resource_shape.shape) {
+        shape_backing[offset] = dim.size;
+        ++offset;
+      }
+      if (offset == start) {
+        arg_shapes_copy.push_back(llvm::ArrayRef<int64_t>());
+      } else {
+        arg_shapes_copy.push_back(
+            llvm::ArrayRef<int64_t>(&shape_backing[start], offset - start));
+      }
+    }
+  }
+
+  auto main_func = module.lookupSymbol<mlir::func::FuncOp>("main");
+
+  mlir::StatusScopedDiagnosticHandler error_handler(module.getContext());
+  mlir::LogicalResult result = mlir::TF::InferShapeForFunction(
+      main_func, arg_shapes_copy, producer_version);
+
+  if (failed(result)) {
+    return error_handler.Combine(
+        errors::Internal("MLIR Shape refinement failed"));
+  }
+  return error_handler.ConsumeStatus();
 }
 
 Status LegalizeToHlo(mlir::ModuleOp module_op, llvm::StringRef device_type,
