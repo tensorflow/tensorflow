@@ -45,6 +45,7 @@ limitations under the License.
 #include "tensorflow/lite/graph_info.h"
 #include "tensorflow/lite/memory_planner.h"
 #include "tensorflow/lite/minimal_logging.h"
+#include "tensorflow/lite/profiling/telemetry/telemetry.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/util.h"
 #ifdef TFLITE_USE_SIMPLE_MEMORY_PLANNER
@@ -1353,6 +1354,11 @@ TfLiteStatus Subgraph::RemoveUnusedInputs() {
 }
 
 TfLiteStatus Subgraph::Invoke() {
+  auto status = InvokeImpl();
+  telemetry::TelemetryReportEvent(&context_, "Invoke", status);
+  return status;
+}
+TfLiteStatus Subgraph::InvokeImpl() {
   if (!consistent_) {
     ReportError("Invoke called on model that is not consistent.");
     return kTfLiteError;
@@ -1884,7 +1890,7 @@ TfLiteStatus Subgraph::RedoAllDelegates() {
   std::vector<TfLiteDelegate*> delegates_to_apply;
   delegates_applied_.swap(delegates_to_apply);
   for (auto* delegate : delegates_to_apply) {
-    TF_LITE_ENSURE_STATUS(ModifyGraphWithDelegate(delegate));
+    TF_LITE_ENSURE_STATUS(ModifyGraphWithDelegateImpl(delegate));
   }
   return kTfLiteOk;
 }
@@ -1932,6 +1938,12 @@ TfLiteStatus Subgraph::EnsureMemoryAllocations() {
 }
 
 TfLiteStatus Subgraph::ModifyGraphWithDelegate(TfLiteDelegate* delegate) {
+  auto status = ModifyGraphWithDelegateImpl(delegate);
+  telemetry::TelemetryReportEvent(&context_, "ModifyGraphWithDelegate", status);
+  return status;
+}
+
+TfLiteStatus Subgraph::ModifyGraphWithDelegateImpl(TfLiteDelegate* delegate) {
   TFLITE_SCOPED_TAGGED_DEFAULT_PROFILE(profiler_.get(),
                                        "ModifyGraphWithDelegate");
 

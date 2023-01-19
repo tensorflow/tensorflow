@@ -463,6 +463,7 @@ cc_library(
         "//tensorflow/lite/experimental/resource",
         "//tensorflow/lite/experimental/remat:metadata_util",
         "//tensorflow/lite/profiling:root_profiler",
+        "//tensorflow/lite/profiling/telemetry",
         "//tensorflow/lite/schema:schema_fbs",
     ] + select({
         "//tensorflow/lite:tflite_use_simple_memory_planner": [
