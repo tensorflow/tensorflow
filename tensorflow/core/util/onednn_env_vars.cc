@@ -53,5 +53,15 @@ bool ThreadPoolUseCallerThread() {
   return threadpool_use_caller_thread;
 }
 
+string FPMathModeSetting() {
+  static string math_mode_setting = [] {
+    string setting = "";
+    TF_CHECK_OK(ReadStringFromEnvVar("TF_SET_ONEDNN_FPMATH_MODE",
+                                     /*default_value*/ "", &setting));
+    return setting;
+  }();
+
+  return math_mode_setting;
+}
 }  // namespace tensorflow
 #endif  // INTEL_MKL

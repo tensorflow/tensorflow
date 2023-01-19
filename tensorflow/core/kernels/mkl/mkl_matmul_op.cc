@@ -86,6 +86,10 @@ class MklMatMulOp : public OpKernel {
       return;
     }
 
+    if (std::is_same<T, float>::value) {
+      (void)SetFPMathMode();
+    }
+
     const int m = a.dim_size(1 - dim_pair[0].first);
     const int k = a.dim_size(dim_pair[0].first);
     const int n = b.dim_size(1 - dim_pair[0].second);
