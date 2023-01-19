@@ -2955,7 +2955,22 @@ class TensorFlowTestCase(googletest.TestCase):
       else:
         a = self.evaluate(a)
     if not isinstance(a, np.ndarray):
-      return np.array(a)
+      try:
+        return np.array(a)
+      except ValueError as e:
+        # TODO(b/264461299): NumPy 1.24 no longer infers dtype=object from
+        # ragged sequences.
+        # See:
+        # https://numpy.org/neps/nep-0034-infer-dtype-is-object.html
+        # Fixing this correctly requires clarifying the API contract of this
+        # function with respect to ragged sequences and possibly updating all
+        # users. As a backwards compatibility measure, if array
+        # creation fails with an "inhomogeneous shape" error, try again with
+        # an explicit dtype=object, which should restore the previous behavior.
+        if "inhomogeneous shape" in str(e):
+          return np.array(a, dtype=object)
+        else:
+          raise
     return a
 
   def evaluate_if_both_tensors(self, a, b):
