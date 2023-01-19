@@ -167,13 +167,6 @@ filegroup(
 )
 
 filegroup(
-    name = "zen_graph_util_header",
-    srcs = [
-        "zen_graph_util.h",
-    ],
-)
-
-filegroup(
     name = "mobile_srcs_only_runtime",
     srcs = [
         "algorithm.cc",

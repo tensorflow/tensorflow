@@ -1,4 +1,4 @@
-/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -30,19 +30,18 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/core/common_runtime/function.h"
+#include "tensorflow/core/common_runtime/layout_pass_util.h"
 #include "tensorflow/core/common_runtime/optimization_registry.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/graph/algorithm.h"
 #include "tensorflow/core/graph/graph.h"
-#include "tensorflow/core/graph/node_builder.h"
 #include "tensorflow/core/graph/zen_graph_util.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/lib/hash/hash.h"
-#include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/util/port.h"
 #include "tensorflow/core/util/tensor_format.h"
 #include "tensorflow/core/util/zen_util.h"
@@ -96,203 +95,144 @@ namespace tensorflow {
 //      Input: Graph G, Names of the nodes to rewrite and their new names
 //      Output: Modified Graph G' if the nodes are modified, G otherwise.
 //      Start:
-//        N = Topological_Sort(G) // N is a set of nodes in toposort order.
+//        N = TopologicalSort(G)  // N is a set of nodes in toposort order.
 //        foreach node n in N
 //        do
-//          if (ZenOpNodeRewrite(n)) // Can this node be rewrittern with Zen op.
+//          if (ZenOpNodeRewrite(n))  // Can this node be rewritten with Zen op.
 //          then
 //            E = set of <incoming edge and its src_output slot> of n
 //            E' = {}   // a new set of edges for rewritten node
 //            foreach <e,s> in E
 //            do
-//              E' U {<e,s>}  // First copy edge which generates Tensorflow
-//                            // tensor as it is
+//              E' U {<e,s>}  // Copy edges which generate tensors
 //            done
-//            n' = Build_New_Node(G,new_name,E')
-//            Mark_Rewritten(n')  // Mark the new node as being rewritten.
+//            n' = BuildNewNode(G, new_name, E')
+//            MarkRewritten(n')  // Mark the new node as being rewritten.
 //          fi
 //        done
 //
 //      Explanation:
 //        For graph rewrite, we visit nodes of the input graph in the
-//        topological sort order. With this ordering, we visit nodes in the
-//        top-to-bottom fashion. We need this order because while visiting a
-//        node we want that all of its input nodes are visited and rewritten if
-//        applicable. This is because if we need to rewrite a given node
-//        then all of its input nodes need to be fixed (in other words they
-//        cannot be deleted later.)
+//        topological sort order (top-to-bottom fashion). We need this order
+//        because while visiting a node we want that all of its input nodes are
+//        visited and rewritten if applicable. This is because if we need to
+//        rewrite a given node then all of its input nodes need to be fixed (in
+//        other words they cannot be deleted later.)
 //
 class ZenLayoutRewritePass : public GraphOptimizationPass {
  public:
   ZenLayoutRewritePass() {
     // Zen op rewrite information records
-    zrwdb_.push_back({"Conv2D", "ZenConv2D", CheckValidityForDTypeSupported,
-                      UpdateZenOpAttrsConv2D});
-    zrwdb_.push_back({"_FusedConv2D", "_ZenFusedConv2D",
-                      CheckValidityFusedConv2D, UpdateZenOpAttrsFusedConv2D});
-    zrwdb_.push_back({"DepthwiseConv2dNative", "ZenDepthwiseConv2dNative",
-                      CheckValidityForDTypeSupported, UpdateZenOpAttrsConv2D});
-    zrwdb_.push_back({"_FusedDepthwiseConv2dNative",
-                      "_ZenFusedDepthwiseConv2dNative",
-                      CheckValidityFusedConv2D, UpdateZenOpAttrsFusedConv2D});
-    zrwdb_.push_back({"MatMul", "ZenMatMul", CheckValidityForDTypeSupported,
-                      UpdateZenOpAttrs});
-    zrwdb_.push_back({"_FusedMatMul", "_ZenFusedMatMul",
-                      CheckValidityForDTypeSupported, UpdateZenOpAttrs});
-    zrwdb_.push_back({"BatchMatMul", "ZenBatchMatMul",
-                      CheckValidityForDTypeSupported, UpdateZenOpAttrs});
-    zrwdb_.push_back({"BatchMatMulV2", "ZenBatchMatMulV2",
-                      CheckValidityForDTypeSupported, UpdateZenOpAttrs});
-    zrwdb_.push_back({"MaxPool", "ZenMaxPool", CheckValidityForDTypeSupported,
-                      UpdateZenOpAttrs});
-    zrwdb_.push_back({"AvgPool", "ZenAvgPool", CheckValidityForDTypeSupported,
-                      UpdateZenOpAttrs});
-    // TF-ZenDNN supports NHWC and BLOCKED format execution. For BLOCKED format
+    zen_rewrite_db_.push_back({"Conv2D", "_ZenConv2D",
+                               CheckValidityForDTypeSupported,
+                               UpdateZenOpAttrsConv2D});
+    zen_rewrite_db_.push_back({"_FusedConv2D", "_ZenFusedConv2D",
+                               CheckValidityFusedConv2D,
+                               UpdateZenOpAttrsFusedConv2D});
+    zen_rewrite_db_.push_back(
+        {"DepthwiseConv2dNative", "_ZenDepthwiseConv2dNative",
+         CheckValidityForDTypeSupported, UpdateZenOpAttrsConv2D});
+    zen_rewrite_db_.push_back(
+        {"_FusedDepthwiseConv2dNative", "_ZenFusedDepthwiseConv2dNative",
+         CheckValidityFusedConv2D, UpdateZenOpAttrsFusedConv2D});
+    zen_rewrite_db_.push_back({"MatMul", "_ZenMatMul",
+                               CheckValidityForDTypeSupported,
+                               UpdateZenOpAttrs});
+    zen_rewrite_db_.push_back({"_FusedMatMul", "_ZenFusedMatMul",
+                               CheckValidityForDTypeSupported,
+                               UpdateZenOpAttrs});
+    zen_rewrite_db_.push_back({"BatchMatMul", "_ZenBatchMatMul",
+                               CheckValidityForDTypeSupported,
+                               UpdateZenOpAttrs});
+    zen_rewrite_db_.push_back({"BatchMatMulV2", "_ZenBatchMatMulV2",
+                               CheckValidityForDTypeSupported,
+                               UpdateZenOpAttrs});
+    zen_rewrite_db_.push_back({"MaxPool", "_ZenMaxPool",
+                               CheckValidityForDTypeSupported,
+                               UpdateZenOpAttrs});
+    zen_rewrite_db_.push_back({"AvgPool", "_ZenAvgPool",
+                               CheckValidityForDTypeSupported,
+                               UpdateZenOpAttrs});
+    // TF-ZenDNN supports NHWC and blocked format execution. For blocked format,
     // following rewrites are not supported.
     if (!IsBlockedFormatEnabled()) {
-      zrwdb_.push_back({"Softmax", "ZenSoftmax", CheckValidityForDTypeSupported,
-                        UpdateZenOpAttrs});
-      zrwdb_.push_back({"ConjugateTranspose", "ZenConjugateTranspose",
-                        RewriteValid, UpdateZenOpAttrs});
-      zrwdb_.push_back(
-          {"Transpose", "ZenTranspose", RewriteValid, UpdateZenOpAttrs});
-      zrwdb_.push_back({"InvertPermutation", "ZenInvertPermutation",
-                        RewriteValid, UpdateZenOpAttrs});
-      zrwdb_.push_back({"FusedBatchNorm", "ZenFusedBatchNorm", RewriteValid,
-                        UpdateZenOpAttrs});
-      zrwdb_.push_back({"FusedBatchNormV2", "ZenFusedBatchNormV2", RewriteValid,
-                        UpdateZenOpAttrs});
-      zrwdb_.push_back({"FusedBatchNormV3", "ZenFusedBatchNormV3", RewriteValid,
-                        UpdateZenOpAttrs});
+      zen_rewrite_db_.push_back({"Softmax", "_ZenSoftmax",
+                                 CheckValidityForDTypeSupported,
+                                 UpdateZenOpAttrs});
+      zen_rewrite_db_.push_back({"ConjugateTranspose", "_ZenConjugateTranspose",
+                                 RewriteValid, UpdateZenOpAttrs});
+      zen_rewrite_db_.push_back(
+          {"Transpose", "_ZenTranspose", RewriteValid, UpdateZenOpAttrs});
+      zen_rewrite_db_.push_back({"InvertPermutation", "_ZenInvertPermutation",
+                                 RewriteValid, UpdateZenOpAttrs});
+      zen_rewrite_db_.push_back({"FusedBatchNorm", "_ZenFusedBatchNorm",
+                                 RewriteValid, UpdateZenOpAttrs});
+      zen_rewrite_db_.push_back({"FusedBatchNormV2", "_ZenFusedBatchNormV2",
+                                 RewriteValid, UpdateZenOpAttrs});
+      zen_rewrite_db_.push_back({"FusedBatchNormV3", "_ZenFusedBatchNormV3",
+                                 RewriteValid, UpdateZenOpAttrs});
     }
-    // TF training ops list from tensorflow/core/kernels/training_ops.cc
-    // Used to check whether graph has inference ops only as TF-ZenDNN
-    // currently does not support training, it supports inference only.
-    tf_training_ops.push_back("ApplyGradientDescent");
-    tf_training_ops.push_back("ApplyAdadelta");
-    tf_training_ops.push_back("ResourceSparseApplyAdadelta");
-    tf_training_ops.push_back("ApplyProximalGradientDescent");
-    tf_training_ops.push_back("SparseApplyProximalGradientDescent");
-    tf_training_ops.push_back("ApplyAdagrad");
-    tf_training_ops.push_back("ApplyAdagradV2");
-    tf_training_ops.push_back("ApplyProximalAdagrad");
-    tf_training_ops.push_back("SparseApplyAdagrad");
-    tf_training_ops.push_back("SparseApplyAdagradV2");
-    tf_training_ops.push_back("SparseApplyProximalAdagrad");
-    tf_training_ops.push_back("ApplyAdagradDA");
-    tf_training_ops.push_back("SparseApplyAdagradDA");
-    tf_training_ops.push_back("ApplyFtrl");
-    tf_training_ops.push_back("ApplyFtrlV2");
-    tf_training_ops.push_back("SparseApplyFtrl");
-    tf_training_ops.push_back("SparseApplyFtrlV2");
-    tf_training_ops.push_back("ApplyMomentum");
-    tf_training_ops.push_back("ApplyKerasMomentum");
-    tf_training_ops.push_back("ApplyAdam");
-    tf_training_ops.push_back("ApplyAdaMax");
-    tf_training_ops.push_back("ApplyRMSProp");
-    tf_training_ops.push_back("ApplyCenteredRMSProp");
-    tf_training_ops.push_back("ApplyAddSign");
-    tf_training_ops.push_back("ApplyPowerSign");
+    // TF-ZenDNN currently only supports inference. The graph must not have
+    // any of the training ops in tensorflow/core/kernels/training_ops.cc
+    tf_training_ops_.push_back("ApplyGradientDescent");
+    tf_training_ops_.push_back("ApplyAdadelta");
+    tf_training_ops_.push_back("ResourceSparseApplyAdadelta");
+    tf_training_ops_.push_back("ApplyProximalGradientDescent");
+    tf_training_ops_.push_back("SparseApplyProximalGradientDescent");
+    tf_training_ops_.push_back("ApplyAdagrad");
+    tf_training_ops_.push_back("ApplyAdagradV2");
+    tf_training_ops_.push_back("ApplyProximalAdagrad");
+    tf_training_ops_.push_back("SparseApplyAdagrad");
+    tf_training_ops_.push_back("SparseApplyAdagradV2");
+    tf_training_ops_.push_back("SparseApplyProximalAdagrad");
+    tf_training_ops_.push_back("ApplyAdagradDA");
+    tf_training_ops_.push_back("SparseApplyAdagradDA");
+    tf_training_ops_.push_back("ApplyFtrl");
+    tf_training_ops_.push_back("ApplyFtrlV2");
+    tf_training_ops_.push_back("SparseApplyFtrl");
+    tf_training_ops_.push_back("SparseApplyFtrlV2");
+    tf_training_ops_.push_back("ApplyMomentum");
+    tf_training_ops_.push_back("ApplyKerasMomentum");
+    tf_training_ops_.push_back("ApplyAdam");
+    tf_training_ops_.push_back("ApplyAdaMax");
+    tf_training_ops_.push_back("ApplyRMSProp");
+    tf_training_ops_.push_back("ApplyCenteredRMSProp");
+    tf_training_ops_.push_back("ApplyAddSign");
+    tf_training_ops_.push_back("ApplyPowerSign");
   }
 
-  // Standard interface to run pass.
+  // Standard interface to run optimization passes.
   Status Run(const GraphOptimizationPassOptions &options);
 
-  // Helper function which executes several passes on the graph
-  // for fusion and rewrite
-  //
-  // @input  g - input graph
-  //
-  // Dumps graph before and after rewite
-  //
-  // @return true, if and only if graph is mutated; false otherwise.
+  // Executes fusion and rewrite passes on the graph. Has an option to dump
+  // graph before and after rewrite. Returns true if and only if the graph
+  // mutated, false otherwise.
   bool ZenOpRewritePass(std::unique_ptr<Graph> *g);
 
-  // Helper function which rewrites TF-Vanilla ops with Zen ops
-  //
-  // @input  g - input graph
-  //
-  // @return true, if one or more rewrites are successful; false otherwise.
+  // Replaces TF-Vanilla ops with Zen ops
+  // Returns true if one or more rewrites are successful, false otherwise.
   bool ZenOpUpdate(std::unique_ptr<Graph> *g);
 
-  // Structure to specify the name of an original node, its new name after
-  // rewrite,  the function to be used to copy attributes for the op, and
-  // the rule (if any) which must hold for rewriting the node
+  // Stores Zen op rewrite rules.
   typedef struct {
     string tf_op_name;   // Original name of op of the node in the graph
     string zen_op_name;  // New name of the op
     // A function handler to copy attributes from an old node to a new node.
     std::function<bool(const Node *)> check_validity;
-    // A rule under which to rewrite this node
-    std::function<void(const Node *, NodeBuilder *)> update_zenopattr;
+    // Returns true if we should rewrite the node.
+    std::function<void(const Node *, NodeBuilder *)> update_zen_op_attr;
   } ZenOpRewriteRecord;
 
  private:
   // Maintain record about nodes to rewrite
-  std::vector<ZenOpRewriteRecord> zrwdb_;
+  std::vector<ZenOpRewriteRecord> zen_rewrite_db_;
 
   // TF training ops list from tensorflow/core/kernels/training_ops.cc
-  std::vector<string> tf_training_ops;
-
-  // Is OpDef::ArgDef a list type? It could be N * T or list(type).
-  // Refer to opdef.proto for details of list type.
-  inline bool ArgIsList(const OpDef::ArgDef &arg) const {
-    return !arg.type_list_attr().empty() || !arg.number_attr().empty();
-  }
-
-  // Get length of a list in 'n' if 'arg' is of list type. Refer to
-  // description of ArgIsList for definition of list type.
-  inline int GetTensorListLength(const OpDef::ArgDef &arg, const Node *n) {
-    CHECK_EQ(ArgIsList(arg), true);
-    int N = 0;
-    if (!arg.type_list_attr().empty()) {
-      std::vector<DataType> value;
-      TF_CHECK_OK(GetNodeAttr(n->def(), arg.type_list_attr(), &value));
-      N = value.size();
-    } else {
-      TF_CHECK_OK(GetNodeAttr(n->def(), arg.number_attr(), &N));
-    }
-    return N;
-  }
+  std::vector<string> tf_training_ops_;
 
   inline bool HasSubstr(const std::string primary,
                         const std::string sub) const {
     return primary.find(sub) != std::string::npos;
-  }
-
-  // Can op represented by node 'n' run on DEVICE_CPU?
-  // Op can run on CPU with ZenDNN if the runtime assigned device or the
-  // user requested device contains device CPU, or both are empty.
-  bool CanOpRunOnCPUDevice(const Node *n) {
-    bool result = true;
-    string reason;
-
-    const char *const kCPUDeviceSubStr = "CPU";
-    const char *const kXLACPUDeviceSubStr = "XLA_CPU";
-
-    // If Op has been specifically assigned to a non-CPU or XLA_CPU device, then
-    // No.
-    if (!n->assigned_device_name().empty() &&
-        (!absl::StrContains(n->assigned_device_name(), kCPUDeviceSubStr) ||
-         absl::StrContains(n->assigned_device_name(), kXLACPUDeviceSubStr))) {
-      result = false;
-      reason = "Op has been assigned a runtime device that is not CPU.";
-    }
-    // If user has specifically assigned this op to a non-CPU or XLA_CPU device,
-    // then No.
-    else if (!n->def().device().empty() &&
-             (!absl::StrContains(n->def().device(), kCPUDeviceSubStr) ||
-              absl::StrContains(n->def().device(), kXLACPUDeviceSubStr))) {
-      result = false;
-      reason = "User has assigned a device that is not CPU.";
-    }
-
-    if (!result) {
-      VLOG(1) << "ZenLayoutRewritePass::CanOpRunOnCPUDevice: Node skipped for "
-              << "rewrite" << n->type_string() << " reason : " << reason;
-    }
-
-    return result;
   }
 
   // Check if the node 'n' has any applicable rewrite rule
@@ -344,9 +284,9 @@ class ZenLayoutRewritePass : public GraphOptimizationPass {
   // Currently TF-ZenDNN supports FP32 inference only.
   // Returns, true if node is of float dataype, false otherwise
   static bool CheckValidityForDTypeSupported(const Node *n) {
-    DataType nT;
-    TF_CHECK_OK(GetNodeAttr(n->def(), "T", &nT));
-    return (nT == DT_FLOAT);
+    DataType data_type;
+    TF_CHECK_OK(GetNodeAttr(n->def(), "T", &data_type));
+    return (data_type == DT_FLOAT);
   }
 
   // Method to provide a 'valid' status for nodes that don't require any check.
@@ -383,22 +323,11 @@ class ZenLayoutRewritePass : public GraphOptimizationPass {
 
   static void UpdateZenOpAttrsFusedConv2D(const Node *orig_node,
                                           NodeBuilder *nb);
-  // Create new inputs by copying old inputs 'inputs' for the rewritten node
-  // in 'nb' in graph 'g'. Original node is input in 'orig_node'. This is mostly
-  // used in the context of rewrite for just operator name change in which
-  // inputs of old operator and new operator are same.
-  //
-  // Returns OkStatus() if setting up inputs is successful, otherwise
-  // returns appropriate status code.
-  Status CopyInputs(const Node *orig_node,
-                    const gtl::InlinedVector<std::pair<Node *, int>, 4> &inputs,
-                    NodeBuilder *nb);
 
   // Examines the input and output nodes of each node, for Zen nodes and
   // determines reorder flags.
   //
   // @input   nodes - A list of nodes
-  //
   // @return  An unordered map with nodes as key and
   //          value as a pair of reorder flags
   std::unordered_map<Node *, std::pair<bool, bool>> GetReorderFlags(
@@ -407,7 +336,6 @@ class ZenLayoutRewritePass : public GraphOptimizationPass {
   // Update reorder information of all Zen nodes
   //
   // @input g - input graph
-  //
   // @return true, if one or more updates are successful; false otherwise.
   bool AddReorderAttrs(std::unique_ptr<Graph> *g);
 };
@@ -425,16 +353,17 @@ ZenLayoutRewritePass::CheckNodeForZenOpRewrite(const Node *n) const {
 
   DataType data_type;
 
-  for (auto zrwr = zrwdb_.cbegin(); zrwr != zrwdb_.cend(); ++zrwr) {
-    if (n->type_string().compare(zrwr->tf_op_name) == 0 &&
-        zrwr->check_validity(n)) {
+  for (auto rewrite_record = zen_rewrite_db_.cbegin();
+       rewrite_record != zen_rewrite_db_.cend(); ++rewrite_record) {
+    if (n->type_string().compare(rewrite_record->tf_op_name) == 0 &&
+        rewrite_record->check_validity(n)) {
       TF_CHECK_OK(GetNodeAttr(n->def(), "T", &data_type));
-      if (!zen_op_registry::IsZenOpKernelRegistered(zrwr->zen_op_name,
+      if (!zen_op_registry::IsZenOpKernelRegistered(rewrite_record->zen_op_name,
                                                     data_type)) {
         // No Zen kernel is registered for op
         return nullptr;
       }
-      return &*zrwr;
+      return &*rewrite_record;
     }
   }
   return nullptr;
@@ -917,52 +846,11 @@ void ZenLayoutRewritePass::GetNodesProducingTFTensorList(
   }
 }
 
-Status ZenLayoutRewritePass::CopyInputs(
-    const Node *old_node,
-    const gtl::InlinedVector<std::pair<Node *, int>, 4> &old_node_inputs,
-    NodeBuilder *nb) {
-  // Number of input slots to old node
-  // Input slots are represented by .Input() calls in REGISTER_OP.
-  int old_node_input_slots = old_node->op_def().input_arg_size();
-  // Actual number of inputs can be greater than or equal to number
-  // of Input slots because inputs of type list could be unfolded.
-  auto old_node_input_size = old_node_inputs.size();
-
-  if (old_node->type_string() == "_FusedConv2D") {
-    // [TODO zendnn-tf]
-    // commit 5be9a5 updates _FusedConv2D with additional host_args in vanilla
-    // tensorflow, temporarily the addtional argument is removed for Zen op
-    // conversion as it is yet to support in ZenDNN.
-    old_node_input_slots--;
-  }
-
-  DCHECK_GE(old_node_input_size, old_node_input_slots);
-
-  // Copy all inputs of old node to new node.
-  int iidx = 0;
-  for (int on_slot_idx = 0; on_slot_idx < old_node_input_slots; on_slot_idx++) {
-    // An input slot could be a single tensor or a list. We need
-    // to handle this case accordingly.
-    DCHECK_LT(iidx, old_node_input_size);
-    const OpDef::ArgDef &arg = old_node->op_def().input_arg(on_slot_idx);
-    if (ArgIsList(arg)) {
-      std::vector<NodeBuilder::NodeOut> new_node_inputs;
-      int tensor_list_length = GetTensorListLength(arg, old_node);
-      GetNodesProducingTFTensorList(old_node_inputs, &iidx, tensor_list_length,
-                                    &new_node_inputs);
-      nb->Input(new_node_inputs);
-    } else {
-      nb->Input(old_node_inputs[iidx].first, old_node_inputs[iidx].second);
-      iidx++;
-    }
-  }
-  return OkStatus();
-}
-
 Status ZenLayoutRewritePass::ZenOpNodeRewrite(
-    std::unique_ptr<Graph> *g, Node *orig_node, const ZenOpRewriteRecord *zrwr,
+    std::unique_ptr<Graph> *g, Node *orig_node,
+    const ZenOpRewriteRecord *rewrite_record,
     std::pair<bool, bool> reorder_flags) {
-  DCHECK_NE(zrwr, nullptr);
+  DCHECK_NE(rewrite_record, nullptr);
   DCHECK_NE(orig_node, nullptr);
 
   Status ret_status = OkStatus();
@@ -979,18 +867,18 @@ Status ZenLayoutRewritePass::ZenOpNodeRewrite(
   gtl::InlinedVector<std::pair<Node *, int>, 4> inputs(num_data_inputs);
   FillInputs(orig_node, &control_edges, &inputs);
 
-  NodeBuilder nb(orig_node->name().c_str(), zrwr->zen_op_name.c_str());
+  NodeBuilder nb(orig_node->name().c_str(),
+                 rewrite_record->zen_op_name.c_str());
 
   nb.Device(orig_node->def().device());
   ret_status = CopyInputs(orig_node, inputs, &nb);
   if (ret_status != OkStatus()) {
     return ret_status;
   }
-  zrwr->update_zenopattr(const_cast<const Node *>(orig_node), &nb);
+  rewrite_record->update_zen_op_attr(const_cast<const Node *>(orig_node), &nb);
 
   nb.Attr("reorder_before", reorder_flags.first);
   nb.Attr("reorder_after", reorder_flags.second);
-  nb.Attr("is_eager", false);
   nb.Attr("in_links", IncomingEdgeCount(orig_node));
   nb.Attr("out_links", OutgoingEdgeCount(orig_node));
   nb.Attr("reset",
@@ -1224,12 +1112,14 @@ bool ZenLayoutRewritePass::AddReorderAttrs(std::unique_ptr<Graph> *g) {
 
   for (Node *n : order) {
     std::string op_name = n->type_string();
+    bool is_eager;
 
-    // NOTE: Every Zen op must have the prefix "Zen"
-    auto found = op_name.find("Zen");
+    // NOTE: Every Zen op must have the prefix "_Zen"
+    auto found = op_name.find(zen_op_registry::kZenNodePrefix);
     if (found != std::string::npos) {
       // found a Zen op
-      zen_nodes.push_back(n);
+      TF_CHECK_OK(GetNodeAttr(n->def(), "is_eager", &is_eager));
+      if (is_eager == false) zen_nodes.push_back(n);
     }
   }
 
@@ -1241,16 +1131,16 @@ bool ZenLayoutRewritePass::AddReorderAttrs(std::unique_ptr<Graph> *g) {
     std::string op_name = n->type_string();
     std::pair<bool, bool> n_reorder = reorder_flags[n];
 
-    ZenOpRewriteRecord zrwr;
-    for (auto it = zrwdb_.begin(); it < zrwdb_.end(); it++) {
+    ZenOpRewriteRecord rewrite_record;
+    for (auto it = zen_rewrite_db_.begin(); it < zen_rewrite_db_.end(); it++) {
       if (op_name == it->zen_op_name) {
-        zrwr = *it;  // make a copy of it
+        rewrite_record = *it;  // make a copy of it
         break;
       }
     }
 
     // rewrite op with a copy containing the new reorder flags
-    if (ZenOpNodeRewrite(g, n, &zrwr, n_reorder) == OkStatus()) {
+    if (ZenOpNodeRewrite(g, n, &rewrite_record, n_reorder) == OkStatus()) {
       VLOG(1) << "ZenLayoutRewritePass::AddReorderAttrs: Node " << node_name
               << " " << op_name << " updated reorders to " << n_reorder.first
               << " " << n_reorder.second;
@@ -1270,14 +1160,14 @@ bool ZenLayoutRewritePass::ZenOpUpdate(std::unique_ptr<Graph> *g) {
       continue;
     }
 
-    const ZenOpRewriteRecord *zrwr = nullptr;
-    if ((zrwr = CheckNodeForZenOpRewrite(n)) != nullptr) {
+    const ZenOpRewriteRecord *rewrite_record = nullptr;
+    if ((rewrite_record = CheckNodeForZenOpRewrite(n)) != nullptr) {
       string node_name = n->name();
       string op_name = n->type_string();
       std::pair<bool, bool> n_reorder(true, true);
-      if (ZenOpNodeRewrite(g, n, zrwr, n_reorder) == OkStatus()) {
+      if (ZenOpNodeRewrite(g, n, rewrite_record, n_reorder) == OkStatus()) {
         VLOG(1) << "ZenLayoutRewritePass::ZenOpUpdate: Node " << op_name
-                << " rewritten with ZenOp " << zrwr->zen_op_name;
+                << " rewritten with ZenOp " << rewrite_record->zen_op_name;
         result = true;
       } else {
         // Rewriting the node with ZenOP failed. Hence the existing node will
@@ -1300,7 +1190,7 @@ Status ZenLayoutRewritePass::AreAllInferenceOps(std::unique_ptr<Graph> *g) {
     if (!n->IsOp()) {
       continue;
     }
-    for (auto op = tf_training_ops.cbegin(); op != tf_training_ops.cend();
+    for (auto op = tf_training_ops_.cbegin(); op != tf_training_ops_.cend();
          ++op) {
       if (n->type_string().find(*op) != string::npos) {
         return Status(error::Code::UNIMPLEMENTED,
@@ -1352,7 +1242,7 @@ bool ZenLayoutRewritePass::ZenOpRewritePass(std::unique_ptr<Graph> *g) {
     }
     // Check and perform Pad fusion with Conv2D (Removes Pad op and expects n to
     // be Pad op)
-    else if (ZenFusePadConv(g, n, "ZenConv2D", "Pad")) {
+    else if (ZenFusePadConv(g, n, "_ZenConv2D", "Pad")) {
       VLOG(1) << "ZenLayoutRewritePass::ZenOpRewritePass: ConvPad Successful";
     }
   }

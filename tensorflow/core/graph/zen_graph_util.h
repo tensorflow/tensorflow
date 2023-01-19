@@ -1,4 +1,4 @@
-/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -29,7 +29,7 @@ namespace tensorflow {
 namespace zen_op_registry {
 
 // Prefix that we add to Tensorflow op name to construct Zen op name.
-static const char* const kZenNodePrefix = "Zen";
+static const char* const kZenNodePrefix = "_Zen";
 
 // Get the name of Zen op from original TensorFlow op
 // We prefix the original op with "Zen" to get Zen op.
@@ -37,12 +37,12 @@ inline string GetZenOpName(const string& name) {
   return string(kZenNodePrefix) + name;
 }
 
-// Check whether opname with type T is registered as Zen operator
+// Check whether op name with type T is registered as Zen operator
 // that will go through name change or layout change pass.
 //
-// @input: name of the op
-// @input: T datatype to be used for checking op
-// @return: true if opname is registered as Zen op that will go through name
+// @input op_name - name of the op
+// @input T - datatype to be used for checking op
+// @return true if op name is registered as Zen op that will go through name
 // change or layout change pass; false otherwise
 static inline bool IsZenOpKernelRegistered(const string& op_name, DataType T) {
   string registered_kernels_key = op_name + string(DataType_Name(T));
@@ -75,5 +75,6 @@ static inline bool IsZenOpKernelRegistered(const string& op_name, DataType T) {
 
 }  // namespace zen_op_registry
 }  // namespace tensorflow
+
 #endif  // AMD_ZENDNN
 #endif  // TENSORFLOW_CORE_GRAPH_ZEN_GRAPH_UTIL_H_

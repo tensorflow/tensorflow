@@ -1236,16 +1236,27 @@ cc_library(
 )
 
 cc_library(
+    name = "layout_pass_util",
+    srcs = ["layout_pass_util.cc"],
+    hdrs = ["layout_pass_util.h"],
+    copts = tf_copts(),
+    deps = [
+      "//tensorflow/core:graph",
+    ],
+)
+
+cc_library(
     name = "zen_layout_pass",
     srcs = ["zen_layout_pass.cc"],
-    hdrs = ["//tensorflow/core/graph:zen_graph_util_header"],
     copts = tf_copts(),
     deps = [
         ":function",
+        ":layout_pass_util",
         ":optimization_registry",
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:graph",
+        "//tensorflow/core/graph:zen_graph_util",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
