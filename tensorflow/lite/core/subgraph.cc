@@ -26,6 +26,7 @@ limitations under the License.
 #include <iterator>
 #include <memory>
 #include <string>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -863,6 +864,27 @@ TfLiteStatus Subgraph::AllocateTensors() {
   // index that uses the tensor.
   InitializeTensorReleaseMap();
 
+  // Temporary tensors allocated during Prepare for nodes which are subsequently
+  // delegated are not required and can be freed.
+  if (!pre_delegation_execution_plan_.empty()) {
+    // NOLINTNEXTLINE - absl::flat_hash_set increases binary size by 106kB.
+    std::unordered_set<int> delegated_nodes;
+    for (int pre_delegation_node_index : pre_delegation_execution_plan_) {
+      delegated_nodes.insert(pre_delegation_node_index);
+    }
+    for (int pose_delegation_node_index : execution_plan_) {
+      delegated_nodes.erase(pose_delegation_node_index);
+    }
+    for (int node_index : delegated_nodes) {
+      TfLiteNode& node = nodes_and_registration_[node_index].first;
+      // Free all temporary tensors allocated by delegated nodes.
+      for (int i = 0; i < node.temporaries->size; ++i) {
+        TfLiteTensor* temporary_tensor = tensor(node.temporaries->data[i]);
+        TfLiteTensorDataFree(temporary_tensor);
+        temporary_tensor->bytes = 0;
+      }
+    }
+  }
   return kTfLiteOk;
 }
 
