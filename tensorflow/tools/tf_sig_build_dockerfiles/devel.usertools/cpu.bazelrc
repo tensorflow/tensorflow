@@ -43,6 +43,9 @@ build --profile=/tf/pkg/profile.json.gz
 test --build_tests_only --keep_going --test_output=errors --verbose_failures=true
 test --local_test_jobs=HOST_CPUS
 test --test_env=LD_LIBRARY_PATH
+test --test_env=TF_NEED_ROCM=0
+test --test_env=ROCM_PATH=
+test --test_env=ROCM_TOOLKIT_PATH=
 # Give only the list of failed tests at the end of the log
 test --test_summary=short
 
