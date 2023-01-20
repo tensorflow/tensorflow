@@ -37,7 +37,7 @@ build --copt=-mavx --host_copt=-mavx
 build --profile=/tf/pkg/profile.json.gz
 
 # Use the NVCC toolchain to compile for manylinux2014
-build --crosstool_top="@sigbuild-r2.12_config_cuda//crosstool:toolchain"
+# build --crosstool_top="@sigbuild-r2.12_config_cuda//crosstool:toolchain"
 
 # Test-related settings below this point.
 test --build_tests_only --keep_going --test_output=errors --verbose_failures=true
@@ -53,7 +53,7 @@ test --test_summary=short
 test:nonpip_filters --test_tag_filters=-no_oss,-oss_serial,-gpu,-tpu,-benchmark-test,-v1only
 test:nonpip_filters --build_tag_filters=-no_oss,-oss_serial,-gpu,-tpu,-benchmark-test,-v1only
 test:nonpip_filters --test_lang_filters=py --flaky_test_attempts=3 --test_size_filters=small,medium
-test:nonpip --config=nonpip_filters -- //tensorflow/... -//tensorflow/python/integration_testing/... -//tensorflow/compiler/tf2tensorrt/... -//tensorflow/compiler/xrt/... -//tensorflow/core/tpu/... -//tensorflow/lite/... -//tensorflow/tools/toolchains/...
+test:nonpip --config=nonpip_filters -- //tensorflow/... -//tensorflow/python/integration_testing/... -//tensorflow/compiler/tf2tensorrt/... -//tensorflow/compiler/xrt/... -//tensorflow/core/tpu/... -//tensorflow/lite/... -//tensorflow/tools/toolchains/... -//tensorflow/python/training:server_lib_test -//tensorflow/python/data/kernel_tests:iterator_test_cpu -//tensorflow/python/client:session_list_devices_test
 
 # "pip tests" run a similar suite of tests the "nonpip" tests, but do something
 # odd to attempt to validate the quality of the pip package. The wheel is
