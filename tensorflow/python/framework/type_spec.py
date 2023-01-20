@@ -50,7 +50,11 @@ nested_structure_coder = LazyLoader(
 
 @tf_export("TypeSpec", v1=["TypeSpec", "data.experimental.Structure"])
 class TypeSpec(
-    trace.TraceType, trace_type.Serializable, metaclass=abc.ABCMeta):
+    internal.TypeSpec,
+    trace.TraceType,
+    trace_type.Serializable,
+    metaclass=abc.ABCMeta,
+):
   """Specifies a TensorFlow value type.
 
   A `tf.TypeSpec` provides metadata describing an object accepted or returned

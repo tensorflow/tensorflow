@@ -47,6 +47,7 @@ from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.ops.ragged import row_partition
+from tensorflow.python.types import internal
 from tensorflow.python.util import compat
 from tensorflow.python.util import nest
 from tensorflow.python.util.compat import collections_abc
@@ -496,7 +497,7 @@ class _TypeSpecCodec:
       return True
 
     # Check if it's a registered type.
-    if isinstance(pyobj, type_spec.TypeSpec):
+    if isinstance(pyobj, internal.TypeSpec):
       try:
         type_spec.get_name(type(pyobj))
         return True
