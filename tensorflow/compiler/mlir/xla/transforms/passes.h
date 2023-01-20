@@ -118,12 +118,17 @@ std::unique_ptr<OperationPass<ModuleOp>> CreateLegalizeTFCommunicationPass();
 // ops.
 std::unique_ptr<OperationPass<ModuleOp>> CreateLegalizeTFCollectivePass();
 
+// Verifies that the TF/XLA ops have all been lowered to MHLO.
+std::unique_ptr<OperationPass<func::FuncOp>>
+CreateVerifyTFXLALegalizationPass();
+
 #define GEN_PASS_REGISTRATION
 #define GEN_PASS_DECL_LEGALIZETF
 #define GEN_PASS_DECL_LEGALIZETFCOLLECTIVE
 #define GEN_PASS_DECL_LEGALIZETFMODULEPASS
 #define GEN_PASS_DECL_LEGALIZETFNOFALLBACK
 #define GEN_PASS_DECL_LEGALIZETFTYPESPASS
+#define GEN_PASS_DECL_VERIFYTFXLALEGALIZATION
 #include "tensorflow/compiler/mlir/xla/transforms/xla_legalize_tf_passes.h.inc"
 
 #define GEN_PASS_REGISTRATION

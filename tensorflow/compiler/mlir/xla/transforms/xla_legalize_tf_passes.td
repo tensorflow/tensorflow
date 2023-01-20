@@ -119,3 +119,14 @@ def LegalizeTFCollective : Pass<"xla-legalize-tf-collective", "ModuleOp"> {
   let constructor = "mlir::mhlo::CreateLegalizeTFCollectivePass()";
   let dependentDialects = ["mhlo::MhloDialect", "sparse_tensor::SparseTensorDialect"];
 }
+
+def VerifyTFXLALegalization : Pass<"tfxla-verify-legalization", "mlir::func::FuncOp"> {
+  let summary = "Verifies that all TF ops have been legalized to XLA.";
+
+  let description = [{"Ensures that all Tensorflow ops have been legalized to "
+                    "XLA and reports an error about which op has not been"
+                    "legalized. This pass does not transform any ops and is just"
+                    " a verification pass to ensure invariants are true."}];
+
+  let constructor = "mlir::mhlo::CreateVerifyTFXLALegalizationPass()";
+}
