@@ -1626,13 +1626,15 @@ class MicroBenchmarks(benchmarks_test_base.MicroBenchmarksBase):
   def benchmark_tf_range_return_int64_GPU(self):
     self._benchmark_tf_range_return(dtype=dtypes.int64, device=GPU)
 
-  def benchmark_embedding_lookup_sparse_with_sparse_input(self,
-                                                          batch_size=32000,
-                                                          device=GPU):
+  def _benchmark_embedding_lookup_sparse_with_sparse_input(self,
+                                                         allow_dense_grads=True,
+                                                         batch_size=32000,
+                                                         device=GPU):
     def func(sp_ids):
       return embedding_ops.embedding_lookup_sparse(self._m_10000_by_16,
-                                                   sp_ids,
-                                                   None)
+                                            sp_ids,
+                                            None,
+                                            allow_dense_grads=allow_dense_grads)
 
     with context.device(device):
       values = random_ops.random_uniform(shape=(batch_size,),
@@ -1647,13 +1649,23 @@ class MicroBenchmarks(benchmarks_test_base.MicroBenchmarksBase):
       func(sparse_input)
       self._run(lambda: func(sparse_input), num_iters=2000)
 
-  def benchmark_embedding_lookup_sparse_with_ragged_input(self,
-                                                          batch_size=32000,
-                                                          device=GPU):
+  def benchmark_tf_embedding_lookup_sparse_with_sparse_input_sparse_grads(self):
+    self._benchmark_embedding_lookup_sparse_with_sparse_input(
+                                                        allow_dense_grads=False)
+
+  def benchmark_tf_embedding_lookup_sparse_with_sparse_input_dense_grads(self):
+    self._benchmark_embedding_lookup_sparse_with_sparse_input(
+                                                         allow_dense_grads=True)
+
+  def _benchmark_embedding_lookup_sparse_with_ragged_input(self,
+                                                         allow_dense_grads=True,
+                                                         batch_size=32000,
+                                                         device=GPU):
     def func(sp_ids):
-      return embedding_ops.embedding_lookup_sparse(self._m_10000_by_16, sp_ids,
-                                                   None,
-                                                   allow_dense_grads=True)
+      return embedding_ops.embedding_lookup_sparse(self._m_10000_by_16,
+                                            sp_ids,
+                                            None,
+                                            allow_dense_grads=allow_dense_grads)
 
     with context.device(device):
       values = random_ops.random_uniform(shape=(batch_size,),
@@ -1666,6 +1678,14 @@ class MicroBenchmarks(benchmarks_test_base.MicroBenchmarksBase):
                                                                   value_rowids)
       func(ragged_input)
       self._run(lambda: func(ragged_input), num_iters=2000)
+
+  def benchmark_embedding_lookup_sparse_with_ragged_input_sparse_grads(self):
+    self._benchmark_embedding_lookup_sparse_with_ragged_input(
+                                                        allow_dense_grads=False)
+
+  def benchmark_embedding_lookup_sparse_with_ragged_input_dense_grads(self):
+    self._benchmark_embedding_lookup_sparse_with_ragged_input(
+                                                         allow_dense_grads=True)
 
 if __name__ == "__main__":
   test.main()
