@@ -98,8 +98,8 @@ HeuristicLayoutAssignment(const HloInstruction* instr,
     return kAllNHWC;
   }
 
-  // If we're not Volta or not fp16/bfloat16, or not conv2D, the decision is easy: Use
-  // NCHW.
+  // If we're not Volta or not fp16/bfloat16, or not conv2D, the decision is
+  // easy: Use NCHW.
   const bool isFloat16 = (input_ty == F16) || (input_ty == BF16);
   if (!isFloat16 ||
       !stream_executor->GetDeviceDescription()

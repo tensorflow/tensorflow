@@ -356,7 +356,6 @@ ENTRY entry {
 }
 
 TEST_F(LayoutAssignmentTest, ConvCuDNNBF16) {
-  
   if (!GetCudaComputeCapability().IsAtLeast(se::CudaComputeCapability::VOLTA)) {
     GTEST_SKIP() << "Conv with Bfloat16 uses NHWC layout for "
                     "architectures with Tensor Cores.";
