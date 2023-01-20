@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <variant>
 
+#include "mlir/Support/MathExtras.h"
 #include "tools/mlir_interpreter/framework/tensor_or_memref.h"
 
 namespace mlir {
@@ -119,6 +120,43 @@ llvm::SmallVector<InterpreterValue> noOpTerminator(
     MutableArrayRef<InterpreterValue> args, mlir::Operation*,
     InterpreterState&) {
   return llvm::to_vector(args);
+}
+
+int64_t evalAffineExpr(AffineExpr expr, ArrayRef<int64_t> dims) {
+  switch (expr.getKind()) {
+    case AffineExprKind::Add:
+      return evalAffineExpr(expr.cast<AffineBinaryOpExpr>().getLHS(), dims) +
+             evalAffineExpr(expr.cast<AffineBinaryOpExpr>().getRHS(), dims);
+    case AffineExprKind::Mul:
+      return evalAffineExpr(expr.cast<AffineBinaryOpExpr>().getLHS(), dims) *
+             evalAffineExpr(expr.cast<AffineBinaryOpExpr>().getRHS(), dims);
+    case AffineExprKind::Mod:
+      return mod(
+          evalAffineExpr(expr.cast<AffineBinaryOpExpr>().getLHS(), dims),
+          evalAffineExpr(expr.cast<AffineBinaryOpExpr>().getRHS(), dims));
+    case AffineExprKind::FloorDiv:
+      return floorDiv(
+          evalAffineExpr(expr.cast<AffineBinaryOpExpr>().getLHS(), dims),
+          evalAffineExpr(expr.cast<AffineBinaryOpExpr>().getRHS(), dims));
+    case AffineExprKind::CeilDiv:
+      return ceilDiv(
+          evalAffineExpr(expr.cast<AffineBinaryOpExpr>().getLHS(), dims),
+          evalAffineExpr(expr.cast<AffineBinaryOpExpr>().getRHS(), dims));
+    case AffineExprKind::Constant:
+      return expr.cast<AffineConstantExpr>().getValue();
+    case AffineExprKind::DimId:
+      return dims[expr.cast<AffineDimExpr>().getPosition()];
+    case AffineExprKind::SymbolId:
+      llvm_unreachable("Symbol is unsupported");
+  }
+}
+
+SmallVector<int64_t> evalAffineMap(AffineMap map, ArrayRef<int64_t> dims) {
+  SmallVector<int64_t> result;
+  for (auto expr : map.getResults()) {
+    result.push_back(evalAffineExpr(expr, dims));
+  }
+  return result;
 }
 
 }  // namespace interpreter

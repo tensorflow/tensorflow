@@ -68,6 +68,9 @@ llvm::SmallVector<InterpreterValue> noOpTerminator(
     MutableArrayRef<InterpreterValue> args, mlir::Operation*,
     InterpreterState&);
 
+int64_t evalAffineExpr(AffineExpr expr, ArrayRef<int64_t> dims);
+llvm::SmallVector<int64_t> evalAffineMap(AffineMap map, ArrayRef<int64_t> dims);
+
 }  // namespace interpreter
 }  // namespace mlir
 
