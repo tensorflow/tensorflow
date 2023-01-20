@@ -172,6 +172,7 @@ class Node {
         name_(std::move(args.name)),
         autotune_(true),
         buffered_bytes_(0),
+        peak_buffered_bytes_(0),
         buffered_elements_(0),
         buffered_elements_low_(std::numeric_limits<int64_t>::max()),
         buffered_elements_high_(std::numeric_limits<int64_t>::min()),
@@ -226,6 +227,11 @@ class Node {
   // Returns the number of bytes stored in this node's buffer.
   int64_t buffered_bytes() const TF_LOCKS_EXCLUDED(mu_) {
     return buffered_bytes_;
+  }
+
+  // Returns the peak number of bytes stored in this node's buffer.
+  int64_t peak_buffered_bytes() const TF_LOCKS_EXCLUDED(mu_) {
+    return peak_buffered_bytes_;
   }
 
   // Returns the number of elements stored in this node's buffer.
@@ -311,6 +317,7 @@ class Node {
   // Records the change in this node's buffer.
   void record_buffer_event(int64_t bytes_delta, int64_t elements_delta) {
     buffered_bytes_ += bytes_delta;
+    peak_buffered_bytes_.store(std::max(peak_buffered_bytes_, buffered_bytes_));
     buffered_elements_ += elements_delta;
     // There is no need to maintain watermarks for synchronous ops because we
     // will not upsize or downsize the buffers of synchronous ops.
@@ -680,6 +687,7 @@ class Node {
   // from computation of output time and processing time.
   std::atomic<bool> autotune_;
   std::atomic<int64_t> buffered_bytes_;
+  std::atomic<int64_t> peak_buffered_bytes_;
   std::atomic<int64_t> buffered_elements_;
   std::atomic<int64_t> buffered_elements_low_;
   std::atomic<int64_t> buffered_elements_high_;
