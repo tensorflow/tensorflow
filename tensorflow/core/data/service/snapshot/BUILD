@@ -111,6 +111,53 @@ cc_library(
 )
 
 cc_library(
+    name = "snapshot_reader",
+    srcs = ["snapshot_reader.cc"],
+    hdrs = ["snapshot_reader.h"],
+    compatible_with = get_compatible_with_portable(),
+    deps = [
+        ":path_utils",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/data:snapshot_utils",
+        "//tensorflow/core/data/service:common",
+        "//tensorflow/tsl/platform:env",
+        "//tensorflow/tsl/platform:errors",
+        "//tensorflow/tsl/platform:path",
+        "//tensorflow/tsl/platform:status",
+        "//tensorflow/tsl/platform:statusor",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+tf_cc_test(
+    name = "snapshot_reader_test",
+    size = "small",
+    srcs = ["snapshot_reader_test.cc"],
+    deps = [
+        ":path_utils",
+        ":snapshot_reader",
+        ":snapshot_stream_writer",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/data:standalone",
+        "//tensorflow/core/data/service:common",
+        "//tensorflow/core/data/service:common_proto_cc",
+        "//tensorflow/core/data/service:task_runner",
+        "//tensorflow/core/data/service:test_util",
+        "//tensorflow/core/framework:types_proto_cc",
+        "//tensorflow/tsl/platform:env",
+        "//tensorflow/tsl/platform:errors",
+        "//tensorflow/tsl/platform:status",
+        "//tensorflow/tsl/platform:status_matchers",
+        "//tensorflow/tsl/platform:statusor",
+        "//tensorflow/tsl/protobuf:protos_all_cc",
+    ],
+)
+
+cc_library(
     name = "snapshot_stream_writer",
     srcs = ["snapshot_stream_writer.cc"],
     hdrs = ["snapshot_stream_writer.h"],

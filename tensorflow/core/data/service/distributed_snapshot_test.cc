@@ -21,21 +21,19 @@ limitations under the License.
 #include "absl/time/time.h"
 #include "tensorflow/core/data/service/dispatcher_client.h"
 #include "tensorflow/core/data/service/snapshot/path_utils.h"
+#include "tensorflow/core/data/service/snapshot/snapshot_reader.h"
 #include "tensorflow/core/data/service/test_cluster.h"
 #include "tensorflow/core/data/service/test_util.h"
 #include "tensorflow/core/framework/tensor.h"
-#include "tensorflow/core/framework/tensor.pb.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/protobuf/snapshot.pb.h"
 #include "tensorflow/tsl/lib/core/status_test_util.h"
 #include "tensorflow/tsl/lib/io/compression.h"
-#include "tensorflow/tsl/lib/io/record_reader.h"
 #include "tensorflow/tsl/platform/env.h"
 #include "tensorflow/tsl/platform/errors.h"
-#include "tensorflow/tsl/platform/file_system.h"
 #include "tensorflow/tsl/platform/status.h"
 #include "tensorflow/tsl/platform/status_matchers.h"
 #include "tensorflow/tsl/platform/statusor.h"
-#include "tensorflow/tsl/platform/tstring.h"
 
 namespace tensorflow {
 namespace data {
@@ -102,55 +100,22 @@ tsl::Status WaitUntilSnapshotComplete(const std::string& base_path) {
   return tsl::OkStatus();
 }
 
-// Reads the TF records from `file_path`.
-template <class T>
-tsl::StatusOr<std::vector<T>> ReadRecords(const std::string& file_path,
-                                          const std::string& compression) {
-  std::unique_ptr<RandomAccessFile> file;
-  TF_RETURN_IF_ERROR(Env::Default()->NewRandomAccessFile(file_path, &file));
-  auto record_reader = std::make_unique<tsl::io::RecordReader>(
-      file.get(),
-      tsl::io::RecordReaderOptions::CreateRecordReaderOptions(compression));
-
-  std::vector<T> result;
-  uint64_t offset = 0;
-  while (true) {
-    tstring record;
-    tsl::Status status = record_reader->ReadRecord(&offset, &record);
-    if (errors::IsOutOfRange(status)) {
-      return result;
-    }
-    TF_RETURN_IF_ERROR(status);
-
-    TensorProto proto;
-    if (!proto.ParseFromArray(record.data(), record.size())) {
-      return errors::FailedPrecondition("Failed to parse tensor from string: ",
-                                        record);
-    }
-    Tensor tensor;
-    if (!tensor.FromProto(proto)) {
-      return errors::FailedPrecondition(
-          "Failed to parse tensor from stored proto: ", proto.DebugString());
-    }
-    result.push_back(tensor.unaligned_flat<T>().data()[0]);
-  }
-  return result;
-}
-
 // Reads the records from a distributed tf.data snapshot written at `base_path`.
 template <class T>
 tsl::StatusOr<std::vector<T>> ReadSnapshot(const std::string& base_path,
                                            const std::string& compression) {
-  std::string chunks_directory = CommittedChunksDirectory(base_path);
-  std::vector<string> chunks;
-  TF_RETURN_IF_ERROR(Env::Default()->GetChildren(chunks_directory, &chunks));
-
+  experimental::DistributedSnapshotMetadata metadata;
+  metadata.set_compression(compression);
+  SnapshotReaderParams params{base_path, metadata, DataTypeVector{DT_INT64},
+                              Env::Default()};
+  SnapshotReader reader(params);
   std::vector<T> result;
-  for (const std::string& chunk : chunks) {
-    std::string chunk_file = tsl::io::JoinPath(chunks_directory, chunk);
-    TF_ASSIGN_OR_RETURN(std::vector<T> chunk_records,
-                        ReadRecords<T>(chunk_file, compression));
-    result.insert(result.end(), chunk_records.begin(), chunk_records.end());
+  while (true) {
+    TF_ASSIGN_OR_RETURN(GetNextResult next, reader.GetNext());
+    if (next.end_of_sequence) {
+      return result;
+    }
+    result.push_back(next.tensors[0].unaligned_flat<T>().data()[0]);
   }
   return result;
 }

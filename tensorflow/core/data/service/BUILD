@@ -136,6 +136,7 @@ cc_library(
     # copybara:uncomment copts = ["-Wthread-safety-analysis"],
     deps = [
         ":common_proto_cc",
+        "//tensorflow/core:framework",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:status",
@@ -484,13 +485,13 @@ tf_cc_test(
         "//tensorflow/core:test_main",
         "//tensorflow/core/data:snapshot_utils",
         "//tensorflow/core/data/service/snapshot:path_utils",
-        "//tensorflow/core/framework:tensor_proto_cc",
+        "//tensorflow/core/data/service/snapshot:snapshot_reader",
+        "//tensorflow/core/framework:types_proto_cc",
         "//tensorflow/tsl/platform:env",
         "//tensorflow/tsl/platform:errors",
         "//tensorflow/tsl/platform:status",
         "//tensorflow/tsl/platform:status_matchers",
         "//tensorflow/tsl/platform:statusor",
-        "//tensorflow/tsl/platform:tstring",
     ] + tf_grpc_cc_dependencies() + tf_protos_profiler_service(),
 )
 
