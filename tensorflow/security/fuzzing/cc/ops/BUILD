@@ -11,7 +11,7 @@ load(
 
 load(
     "//tensorflow/security/fuzzing:tf_fuzzing.bzl",
-    "tf_fuzz_target",
+    "tf_cc_fuzz_test",
 )
 
 # copybara:uncomment package(default_applicable_licenses = ["//tensorflow:license"])
@@ -88,7 +88,7 @@ tf_cc_test(
     ],
 )
 
-tf_fuzz_target(
+tf_cc_fuzz_target(
     name = "string_to_number_fuzz",
     srcs = ["string_to_number_fuzz.cc"],
     tags = ["no_oss"],
@@ -97,7 +97,5 @@ tf_fuzz_target(
         "//tensorflow/core/kernels:string_to_number_op",
         "//tensorflow/core/kernels:array",
         "//tensorflow/security/fuzzing/cc:fuzz_session",
-        "@com_google_fuzztest//fuzztest",
-        "@com_google_fuzztest//fuzztest:fuzztest_gtest_main",
     ],
 )
