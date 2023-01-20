@@ -125,21 +125,13 @@ func.func @matmul_fuse_output(%arg0: tensor<?x?xf32>, %arg1: tensor<?x?xf32>,
                      outs(%filled : tensor<?x?xf32>) -> tensor<?x?xf32>
   %5 = linalg.matmul ins(%arg0, %arg2 : tensor<?x?xf32>, tensor<?x?xf32>)
                      outs(%filled : tensor<?x?xf32>) -> tensor<?x?xf32>
-  %6 = linalg.map
-       ins(%5 : tensor<?x?xf32>)
-       outs(%init : tensor<?x?xf32>)
-       (%el: f32) {
-         %0 = math.absf %el: f32
-         linalg.yield %0: f32
-       }
+  %6 = linalg.map { math.absf }
+         ins(%5 : tensor<?x?xf32>)
+         outs(%init : tensor<?x?xf32>)
 
-  %result = linalg.map
-            ins(%4, %6 : tensor<?x?xf32>, tensor<?x?xf32>)
-            outs(%init : tensor<?x?xf32>)
-            (%lhs: f32, %rhs: f32) {
-              %0 = arith.addf %lhs, %rhs: f32
-              linalg.yield %0: f32
-            }
+  %result = linalg.map { arith.addf }
+              ins(%4, %6 : tensor<?x?xf32>, tensor<?x?xf32>)
+              outs(%init : tensor<?x?xf32>)
   return %result : tensor<?x?xf32>
 }
 

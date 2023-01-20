@@ -51,14 +51,10 @@ func.func @tiling_warp_level_reduction(%arg0: tensor<7x13xf32>)
         : tensor<7x13xf32> to tensor<1x13xf32>
     %6 = gml_st.materialize %1[%arg1] [1] [1]
         : tensor<7xf32> to tensor<1xf32>
-    %7 = linalg.reduce
-        ins(%4 : tensor<1x13xf32>)
-        outs(%6 : tensor<1xf32>)
-        dimensions = [1]
-        (%in: f32, %out: f32) {
-          %8 = arith.maxf %out, %in : f32
-          linalg.yield %8 : f32
-        }
+    %7 = linalg.reduce { arith.maxf }
+           ins(%4 : tensor<1x13xf32>)
+           outs(%6 : tensor<1xf32>)
+           dimensions = [1]
     %5 = gml_st.tile [%arg1] [1] [1] : !gml_st.tile<1>
     gml_st.set_yield %7 into %1[%5]
         : tensor<1xf32> into tensor<7xf32>[!gml_st.tile<1>]
@@ -117,13 +113,9 @@ func.func @tiling_warp_level_cwise(%arg0: tensor<7x13xf32>,
         : tensor<7x13xf32> to tensor<1x13xf32>
     %5 = gml_st.materialize %0 [%arg2, 0] [1, 13] [1, 1]
         : tensor<7x13xf32> to tensor<1x13xf32>
-    %6 = linalg.map
-        ins(%3, %4 : tensor<1x13xf32>, tensor<1x13xf32>)
-        outs(%5 : tensor<1x13xf32>)
-        (%in: f32, %in_0: f32) {
-          %7 = arith.subf %in, %in_0 : f32
-          linalg.yield %7 : f32
-        }
+    %6 = linalg.map { arith.subf }
+           ins(%3, %4 : tensor<1x13xf32>, tensor<1x13xf32>)
+           outs(%5 : tensor<1x13xf32>)
     %2 = gml_st.tile [%arg2, 0] [1, 13] [1, 1] : !gml_st.tile<1x13>
     gml_st.set_yield %6 into %0[%2]
         : tensor<1x13xf32> into tensor<7x13xf32>[!gml_st.tile<1x13>]
@@ -274,46 +266,31 @@ func.func @softmax(%arg0: tensor<2048x4096xf32>) -> tensor<2048x4096xf32> {
           : tensor<2048x4096xf32> to tensor<1x4096xf32>
       %13 = gml_st.materialize %1[%9] [1] [1]
           : tensor<2048xf32> to tensor<1xf32>
-      %14 = linalg.reduce ins(%11 : tensor<1x4096xf32>)
-                     outs(%13 : tensor<1xf32>) dimensions = [1]
-        (%in: f32, %out: f32) {
-            %23 = arith.maxf %out, %in : f32
-            linalg.yield %23 : f32
-        }
+      %14 = linalg.reduce { arith.maxf }
+              ins(%11 : tensor<1x4096xf32>)
+              outs(%13 : tensor<1xf32>) dimensions = [1]
       %15 = gml_st.materialize %2[%9, 0] [1, 4096] [1, 1]
           : tensor<2048x4096xf32> to tensor<1x4096xf32>
       %16 = linalg.broadcast
-          ins(%14 : tensor<1xf32>) outs(%15 : tensor<1x4096xf32>)
-          dimensions = [1]
-      %17 = linalg.map ins(%11, %16 : tensor<1x4096xf32>, tensor<1x4096xf32>)
-          outs(%15 : tensor<1x4096xf32>)
-      (%in: f32, %in_1: f32) {
-        %23 = arith.subf %in, %in_1 : f32
-        linalg.yield %23 : f32
-      }
-      %18 = linalg.map ins(%17 : tensor<1x4096xf32>)
-          outs(%15 : tensor<1x4096xf32>)
-      (%in: f32) {
-        %23 = math.exp %in : f32
-        linalg.yield %23 : f32
-      }
+              ins(%14 : tensor<1xf32>) outs(%15 : tensor<1x4096xf32>)
+              dimensions = [1]
+      %17 = linalg.map  { arith.subf }
+              ins(%11, %16 : tensor<1x4096xf32>, tensor<1x4096xf32>)
+              outs(%15 : tensor<1x4096xf32>)
+      %18 = linalg.map { math.exp }
+              ins(%17 : tensor<1x4096xf32>)
+              outs(%15 : tensor<1x4096xf32>)
       %19 = gml_st.materialize %3[%9] [1] [1]
         : tensor<2048xf32> to tensor<1xf32>
-      %20 = linalg.reduce ins(%18 : tensor<1x4096xf32>)
-                outs(%19 : tensor<1xf32>) dimensions = [1]
-        (%in: f32, %out: f32) {
-            %23 = arith.addf %out, %in : f32
-            linalg.yield %23 : f32
-      }
+      %20 = linalg.reduce { arith.addf }
+              ins(%18 : tensor<1x4096xf32>)
+              outs(%19 : tensor<1xf32>) dimensions = [1]
       %21 = linalg.broadcast
           ins(%20 : tensor<1xf32>) outs(%15 : tensor<1x4096xf32>)
           dimensions = [1]
-      %22 = linalg.map ins(%18, %21 : tensor<1x4096xf32>, tensor<1x4096xf32>)
-          outs(%15 : tensor<1x4096xf32>)
-      (%in: f32, %in_1: f32) {
-        %23 = arith.divf %in, %in_1 : f32
-        linalg.yield %23 : f32
-      }
+      %22 = linalg.map { arith.divf }
+              ins(%18, %21 : tensor<1x4096xf32>, tensor<1x4096xf32>)
+              outs(%15 : tensor<1x4096xf32>)
       %8 = gml_st.tile [%arg2, 0] [1, 4096] [1, 1] : !gml_st.tile<1x4096>
       gml_st.set_yield %22 into %6[%8]
           : tensor<1x4096xf32> into tensor<1024x4096xf32>[!gml_st.tile<1x4096>]

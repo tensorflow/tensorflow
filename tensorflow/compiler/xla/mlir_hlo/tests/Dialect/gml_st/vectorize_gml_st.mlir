@@ -24,13 +24,9 @@ func.func @vectorize_gml_st_parallel_op(
         : tensor<32xf32> to tensor<4xf32>
       %7 = gml_st.materialize %arg1tile[%i] [4] [1]
         : tensor<32xf32> to tensor<4xf32>
-      %9 = linalg.map
-                ins(%6: tensor<4xf32>)
-                outs(%7 : tensor<4xf32>)
-      (%arg5: f32) {
-        %10 = arith.negf %arg5 : f32
-        linalg.yield %10 : f32
-      }
+      %9 = linalg.map {arith.negf }
+             ins(%6: tensor<4xf32>)
+             outs(%7 : tensor<4xf32>)
       %tile = gml_st.tile [%i] [4] [1] : !gml_st.tile<4>
       gml_st.set_yield %9 into %arg1tile[%tile]
         : tensor<4xf32> into tensor<32xf32>[!gml_st.tile<4>]
@@ -75,13 +71,9 @@ func.func @vectorize_gml_st_for_op(
         : tensor<32xf32> to tensor<4xf32>
       %7 = gml_st.materialize %out[%i][4][1]
         : tensor<32xf32> to tensor<4xf32>
-      %9 = linalg.map
-                ins(%6: tensor<4xf32>)
-                outs(%7 : tensor<4xf32>)
-      (%arg5: f32) {
-        %10 = arith.negf %arg5 : f32
-        linalg.yield %10 : f32
-      }
+      %9 = linalg.map { arith.negf }
+              ins(%6: tensor<4xf32>)
+              outs(%7 : tensor<4xf32>)
       %tile = gml_st.tile [%i] [4] [1] : !gml_st.tile<4>
       gml_st.set_yield %9 into %out[%tile]
         : tensor<4xf32> into tensor<32xf32>[!gml_st.tile<4>]
@@ -167,13 +159,9 @@ func.func @skip_vectorization_with_wrong_label(
         : tensor<32xf32> to tensor<4xf32>
       %7 = gml_st.materialize %arg1[%i][4][1]
         : tensor<32xf32> to tensor<4xf32>
-      %9 = linalg.map
-                ins(%6: tensor<4xf32>)
-                outs(%7 : tensor<4xf32>)
-      (%arg5: f32) {
-        %10 = arith.negf %arg5 : f32
-        linalg.yield %10 : f32
-      }
+      %9 = linalg.map { arith.negf }
+             ins(%6: tensor<4xf32>)
+             outs(%7 : tensor<4xf32>)
       %tile = gml_st.tile [%i] [4] [1] : !gml_st.tile<4>
       gml_st.set_yield %9 into %arg1[%tile]
         : tensor<4xf32> into tensor<32xf32>[!gml_st.tile<4>]

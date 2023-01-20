@@ -20,13 +20,9 @@ func.func @parallel_with_tiles(
       : memref<?x?xf32> to memref<4x1xf32, #map0>
     %8 = memref.subview %arg0[%arg3, %arg4] [4, 1] [1, 1]
       : memref<?x?xf32> to memref<4x1xf32, #map0>
-    linalg.map
+    linalg.map { arith.addf }
             ins(%8, %7 : memref<4x1xf32, #map0>, memref<4x1xf32, #map0>)
             outs(%6 : memref<4x1xf32, #map0>)
-    (%arg5: f32, %arg6: f32) {
-      %9 = arith.addf %arg5, %arg6 : f32
-      linalg.yield %9 : f32
-    }
     gml_st.set_yield
   }
   func.return %arg2 : memref<?x?xf32>
@@ -57,13 +53,9 @@ func.func @for_with_tiles(
       : memref<?x?xf32> to memref<4x1xf32, #map0>
     %8 = memref.subview %arg0[%arg3, %arg4] [4, 1] [1, 1]
       : memref<?x?xf32> to memref<4x1xf32, #map0>
-    linalg.map
+    linalg.map { arith.addf }
             ins(%8, %7 : memref<4x1xf32, #map0>, memref<4x1xf32, #map0>)
             outs(%6 : memref<4x1xf32, #map0>)
-    (%arg5: f32, %arg6: f32) {
-      %9 = arith.addf %arg5, %arg6 : f32
-      linalg.yield %9 : f32
-    }
     gml_st.set_yield
   }
   func.return %arg2 : memref<?x?xf32>
@@ -92,12 +84,9 @@ func.func @parallel_on_tensor(
       : tensor<?xf32> to tensor<4xf32>
     %8 = gml_st.materialize %arg2[%i] [4] [1]
       : tensor<?xf32> to tensor<4xf32>
-    %9 = linalg.map ins(%6, %7 : tensor<4xf32>, tensor<4xf32>)
-      outs(%8 : tensor<4xf32>)
-      (%arg5: f32, %arg6: f32) {
-        %10 = arith.addf %arg5, %arg6 : f32
-        linalg.yield %10 : f32
-      }
+    %9 = linalg.map { arith.addf }
+           ins(%6, %7 : tensor<4xf32>, tensor<4xf32>)
+           outs(%8 : tensor<4xf32>)
     %tile = gml_st.tile [%i] [4] [1] : !gml_st.tile<4>
     gml_st.set_yield %9 into %arg2[%tile]
       : tensor<4xf32> into tensor<?xf32>[!gml_st.tile<4>]
