@@ -123,6 +123,7 @@ limitations under the License.
 #include "tensorflow/tsl/platform/mem.h"
 #include "tensorflow/tsl/platform/status.h"
 #include "tensorflow/tsl/platform/statusor.h"
+#include "tensorflow/tsl/platform/threadpool.h"
 #include "tensorflow/tsl/profiler/lib/connected_traceme.h"
 #include "tensorflow/tsl/profiler/lib/traceme.h"
 
@@ -1929,7 +1930,8 @@ static const T* FindCallback(int channel_id, absl::Span<const T> callbacks) {
 
 // Converts PjRt SendCallbacks to an XLA StreamExecutor send function.
 static SendDeviceMemoryFunction ConvertSendCallbacksToSendFunction(
-    int device_ordinal, const ExecuteOptions& options) {
+    int device_ordinal, const ExecuteOptions& options,
+    tsl::thread::ThreadPool* thread_pool) {
   // Check if we have callbacks registered for the given device ordinal.
   if (device_ordinal >= options.send_callbacks.size()) {
     return [=](int64_t channel_id, se::Stream*, const Shape&,
@@ -1945,8 +1947,9 @@ static SendDeviceMemoryFunction ConvertSendCallbacksToSendFunction(
   absl::Span<const SendCallback> callbacks =
       options.send_callbacks[device_ordinal];
 
-  return [callbacks](int64_t channel_id, se::Stream* stream, const Shape& shape,
-                     const se::DeviceMemoryBase& src)
+  return [callbacks, thread_pool](int64_t channel_id, se::Stream* stream,
+                                  const Shape& shape,
+                                  const se::DeviceMemoryBase& src)
              -> StatusOr<std::shared_ptr<se::Event>> {
     VLOG(3) << "Send " << src.size() << " bytes to channel #" << channel_id
             << " (shape=" << shape.ToString() << ")";
@@ -1966,21 +1969,36 @@ static SendDeviceMemoryFunction ConvertSendCallbacksToSendFunction(
       return InternalError("Failed to initialize done event (channel_id=%d)",
                            channel_id);
 
-    // Allocate chunk on the host for copying data from device.
-    PjRtChunk chunk = PjRtChunk::AllocateDefault(src.size());
-    stream->ThenMemcpy(chunk.data(), src, src.size());
-    stream->ThenRecordEvent(done_event.get());
+    // Because SendCallback API forces us to block the caller thread, schedule
+    // it on a thread pool to avoild blocking the caller.
+    thread_pool->Schedule([shape, send, stream, src, done_event]() {
+      // Allocate chunk on the host for copying data from device.
+      PjRtChunk chunk = PjRtChunk::AllocateDefault(src.size());
 
-    // TODO(ezhulenev): We are forced to block the caller thread here because
-    // we must guarantee that chunk passed to the callback is complete. Callback
-    // should take PjRtFuture<PjRtChunk> to enable truly async send operation.
-    if (auto st = stream->BlockHostUntilDone(); !st.ok()) return st;
+      stream->ThenMemcpy(chunk.data(), src, src.size());
+      stream->ThenRecordEvent(done_event.get());
 
-    // Pass chunk to the registered callback.
-    auto sent = send->callback({shape}, std::move(chunk),
-                               /*total_size_in_bytes=*/src.size(),
-                               /*done=*/true);
-    if (!sent.ok()) return sent;
+      // TODO(ezhulenev): Unfortunately once we return done event to the caller,
+      // we have no way to signal that send operation actually failed, and we
+      // unconditionally record completion on a stream. Add an asynchronous
+      // error reporting mechanism to `(Send|Recv)DeviceMemoryFunction`s.
+
+      // TODO(ezhulenev): We are forced to block the caller thread here because
+      // we must guarantee that chunk passed to the callback is complete.
+      // Alternatively callback should take PjRtFuture<PjRtChunk> to enable
+      // truly async send operation.
+      if (auto st = stream->BlockHostUntilDone(); !st.ok())
+        LOG(ERROR) << "Failed to synchronize with a stream: "
+                   << st.error_message();
+
+      // Pass chunk to the registered callback.
+      auto sent = send->callback({shape}, std::move(chunk),
+                                 /*total_size_in_bytes=*/src.size(),
+                                 /*done=*/true);
+      if (!sent.ok())
+        LOG(ERROR) << "Failed to send a buffer to a callback: "
+                   << sent.error_message();
+    });
 
     return std::move(done_event);
   };
@@ -2178,10 +2196,13 @@ StatusOr<ScopedShapedBuffer> PjRtStreamExecutorExecutable::EnqueueExecution(
           on_device_executable_parameter_shapes_[executable_idx],
           argument_handles, *device_buffers, events));
 
+  // Schedule async send operations in the client thread pool.
+  auto* thread_pool = client_->thread_pool();
+
   // Create a PjRt<->StreamExecutor adaptors to send/recv device memory as
   // PjRt chunks via the user-provided callbacks.
   SendDeviceMemoryFunction send_device_memory =
-      ConvertSendCallbacksToSendFunction(device_ordinal, options);
+      ConvertSendCallbacksToSendFunction(device_ordinal, options, thread_pool);
   RecvDeviceMemoryFunction recv_device_memory =
       ConvertRecvCallbacksToRecvFunction(device_ordinal, options);
 
