@@ -37,8 +37,7 @@ namespace gpu {
 // In device mode, we run autotuning on the device and store autotune results.
 // In deviceless mode, we pass in some information related to the device and
 // use stored autotune results to rewrite Gemm instructions. If the required
-// autotune result is not stored, then no algorithm is set, which indicates that
-// a different cuBLAS API that does not require specifying an algorithm is used.
+// autotune result is not stored, then algorithm is set to kRuntimeAutotuning.
 class GemmAlgorithmPicker : public HloModulePass {
  public:
   static void ClearAutotuneResults();

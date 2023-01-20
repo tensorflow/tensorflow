@@ -156,6 +156,8 @@ cc_library(
         "//tensorflow/compiler/xla/runtime:state",
         "//tensorflow/compiler/xla/service:executable",
         "//tensorflow/compiler/xla/service/gpu:matmul_utils",
+        "//tensorflow/compiler/xla/stream_executor:blas",
+        "//tensorflow/compiler/xla/stream_executor:device_memory",
         "@com_google_absl//absl/container:node_hash_map",
     ],
 )

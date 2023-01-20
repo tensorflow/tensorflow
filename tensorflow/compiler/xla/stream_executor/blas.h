@@ -134,6 +134,7 @@ constexpr AlgorithmType kDefaultAlgorithm = -1;
 constexpr AlgorithmType kDefaultBlasGemm = -2;
 constexpr AlgorithmType kDefaultBlasGemv = -3;
 constexpr AlgorithmType kNoAlgorithm = -4;
+constexpr AlgorithmType kRuntimeAutotuning = -5;
 
 // blas uses -1 to represent the default algorithm. This happens to match up
 // with the CUBLAS_GEMM_DFALT constant, so cuda_blas.cc is using static_cast

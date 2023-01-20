@@ -7087,6 +7087,13 @@ xla_aot_compile_gpu(
 )
 
 xla_aot_compile_gpu(
+    name = "xla_aot_compile_test_gpu_executable_gemm_runtime_autotuning",
+    autotune_results = "xla_aot_compile_test_autotune_results_runtime_autotuning.prototxt",
+    gpu_target_config = "xla_aot_compile_test_gpu_target_config.prototxt",
+    module = "xla_aot_compile_test_gemm.mlir",
+)
+
+xla_aot_compile_gpu(
     name = "xla_aot_compile_test_gpu_executable_convolution",
     autotune_results = "xla_aot_compile_test_autotune_results.prototxt",
     gpu_target_config = "xla_aot_compile_test_gpu_target_config.prototxt",
@@ -7144,6 +7151,7 @@ xla_cc_test(
         ":xla_aot_compile_test_gpu_executable",
         ":xla_aot_compile_test_gpu_executable_constant",
         ":xla_aot_compile_test_gpu_executable_gemm",
+        ":xla_aot_compile_test_gpu_executable_gemm_runtime_autotuning",
         ":xla_aot_compile_test_gpu_executable_convolution",
     ]),
     env = {
