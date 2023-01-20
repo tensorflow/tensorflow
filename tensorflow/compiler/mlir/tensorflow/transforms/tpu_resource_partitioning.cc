@@ -71,8 +71,8 @@ Type GetResourceSubtype(Value resource) {
 // `old_partitioned_input` is the predecessor of `old_read`. `new_reads`
 // contains the predecessors of `new_partitioned_input`.
 LogicalResult UpdateReadUses(TF::ReadVariableOp old_read,
-                             TF::TPUPartitionedInputOp old_partitioned_input,
-                             TF::TPUPartitionedInputOp new_partitioned_input,
+                             TF::TPUPartitionedInputV2Op old_partitioned_input,
+                             TF::TPUPartitionedInputV2Op new_partitioned_input,
                              llvm::SmallVector<Value, 4> new_reads) {
   xla::OpSharding sharding;
   sharding.ParseFromString(
@@ -81,15 +81,15 @@ LogicalResult UpdateReadUses(TF::ReadVariableOp old_read,
        llvm::make_early_inc_range(old_read.getValue().getUses())) {
     if (dyn_cast_or_null<tf_device::ClusterFuncOp>(read_use.getOwner())) {
       // ClusterFunc's use of the Read is replaced with use of the
-      // TPUPartitionedInput.
+      // TPUPartitionedInputV2.
       read_use.set(new_partitioned_input);
     } else {
-      // Outside compiled code's use of the Read after TPUPartitionedInput is
-      // replaced with use of the first Read before the TPUPartitionedInput.
+      // Outside compiled code's use of the Read after TPUPartitionedInputV2 is
+      // replaced with use of the first Read before the TPUPartitionedInputV2.
       if (sharding.type() != xla::OpSharding::REPLICATED) {
         // TODO(b/243077297): Generalize to any sharding.
         old_partitioned_input.emitOpError(
-            "TPUPartitionedInput variable used in outside compiled code is "
+            "TPUPartitionedInputV2 variable used in outside compiled code is "
             "only supported with REPLICATED sharding");
         return failure();
       }
@@ -122,17 +122,18 @@ LogicalResult PartitionResourceReadsWrites(
   if (!parallel_execute)
     parallel_execute = BuildParallelExecuteOp(cluster_func, &builder);
 
-  // Rewrite results before rewriting operands as `tf.TPUPartitionedInput`
+  // Rewrite results before rewriting operands as `tf.TPUPartitionedInputV2`
   // resource handle results is an indicator for a partitioned resource
-  // variable. These `tf.TPUPartitionedInput` will be removed when rewriting
+  // variable. These `tf.TPUPartitionedInputV2` will be removed when rewriting
   // the operands.
   for (Value result : parallel_execute.getExecuteOutputs()) {
     if (!result.hasOneUse()) continue;
     auto assign_var =
         llvm::dyn_cast<TF::AssignVariableOp>(*result.getUsers().begin());
     if (!assign_var || assign_var.getValue() != result) continue;
-    auto partitioned_input = llvm::dyn_cast_or_null<TF::TPUPartitionedInputOp>(
-        assign_var.getResource().getDefiningOp());
+    auto partitioned_input =
+        llvm::dyn_cast_or_null<TF::TPUPartitionedInputV2Op>(
+            assign_var.getResource().getDefiningOp());
     if (!partitioned_input ||
         !AllResourceTypesHaveSubtypes(partitioned_input.getInputs().getTypes()))
       continue;
@@ -142,9 +143,9 @@ LogicalResult PartitionResourceReadsWrites(
     partitioned_output_types.reserve(partitioned_input.getN());
     for (Type input_type : partitioned_input.getInputs().getTypes())
       partitioned_output_types.push_back(GetResourceSubtype(input_type));
-    auto partitioned_output = builder.create<TF::TPUPartitionedOutputOp>(
+    auto partitioned_output = builder.create<TF::TPUPartitionedOutputV2Op>(
         cluster_func->getLoc(), partitioned_output_types, result,
-        partitioned_input.getPartitionDimAttr(),
+        partitioned_input.getPartitionDimsAttr(),
         partitioned_input.get_XlaShardingAttr());
     for (auto resource_write : llvm::zip(partitioned_input.getInputs(),
                                          partitioned_output.getOutput()))
@@ -158,8 +159,9 @@ LogicalResult PartitionResourceReadsWrites(
     auto read_var = llvm::dyn_cast_or_null<TF::ReadVariableOp>(
         operand.get().getDefiningOp());
     if (!read_var) continue;
-    auto partitioned_input = llvm::dyn_cast_or_null<TF::TPUPartitionedInputOp>(
-        read_var.getResource().getDefiningOp());
+    auto partitioned_input =
+        llvm::dyn_cast_or_null<TF::TPUPartitionedInputV2Op>(
+            read_var.getResource().getDefiningOp());
     if (!partitioned_input || !AllResourceTypesHaveSubtypes(
                                   partitioned_input.getInputs().getTypes())) {
       continue;
@@ -172,9 +174,10 @@ LogicalResult PartitionResourceReadsWrites(
           read_var->getLoc(), GetResourceSubtype(input), input);
       partitioned_reads.push_back(partitioned_read.getValue());
     }
-    auto partitioned_read = builder.create<TF::TPUPartitionedInputOp>(
+    auto partitioned_read = builder.create<TF::TPUPartitionedInputV2Op>(
         partitioned_input->getLoc(), read_var.getValue().getType(),
-        partitioned_reads, partitioned_input.getPartitionDimAttr(),
+        partitioned_reads, partitioned_input.getPartitionDimsAttr(),
+        partitioned_input.getIsPackedAttr(),
         partitioned_input.get_XlaShardingAttr());
     if (failed(UpdateReadUses(read_var, partitioned_input, partitioned_read,
                               partitioned_reads)))
