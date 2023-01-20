@@ -22,6 +22,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/exported_model.pb.h"
+#include "tensorflow/compiler/mlir/quantization/tensorflow/quantization_options.pb.h"
 #include "tensorflow/core/framework/graph.pb.h"
 
 namespace tensorflow {
@@ -46,26 +47,26 @@ absl::StatusOr<ExportedModel> QuantizeQatModel(
     absl::string_view saved_model_path,
     const std::vector<std::string>& signature_keys,
     const std::unordered_set<std::string>& tags,
-    absl::string_view quant_opts_serialized);
+    const QuantizationOptions& quant_opts);
 
 // Apply post-training dynamic range quantization to the model.
 absl::StatusOr<ExportedModel> QuantizePtqDynamicRange(
     absl::string_view saved_model_path,
     const std::vector<std::string>& signature_keys,
     const std::unordered_set<std::string>& tags,
-    absl::string_view quant_opts_serialized);
+    const QuantizationOptions& quant_opts);
 
 absl::StatusOr<ExportedModel> QuantizePtqModelPreCalibration(
     absl::string_view saved_model_path,
     const std::vector<std::string>& exported_names,
     const std::unordered_set<std::string>& tags,
-    absl::string_view quant_opts_serialized);
+    const QuantizationOptions& quant_opts);
 
 absl::StatusOr<ExportedModel> QuantizePtqModelPostCalibration(
     absl::string_view saved_model_path,
     const std::vector<std::string>& signature_keys,
     const std::unordered_set<std::string>& tags,
-    absl::string_view quant_opts_serialized);
+    const QuantizationOptions& quant_opts);
 
 }  // namespace internal
 }  // namespace quantization
