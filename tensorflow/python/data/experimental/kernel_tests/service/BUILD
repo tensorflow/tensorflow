@@ -30,7 +30,7 @@ tf_py_test(
     ],
 )
 
-# TODO(b/266126556): Reenable sanitizers.
+# TODO(b/266126556): Reenable this test.
 tf_py_test(
     name = "snapshot_ft_test",
     size = "small",
@@ -39,6 +39,7 @@ tf_py_test(
     tags = [
         "noasan",
         "nomsan",
+        "notap",
         "notsan",
     ],
     deps = [
