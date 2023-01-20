@@ -416,41 +416,110 @@ func.func @fft(%arg0: tensor<3x9xcomplex<f32>>) -> tensor<3x9xindex> {
 // -----
 
 // CHECK-LABEL: func @batch_norm_grad
-func.func @batch_norm_grad(%input: tensor<2x2x2x2xf32>, %scale: tensor<2xf32>, %mean: tensor<2xf32>, %variance: tensor<2xf32>, %grad_output: tensor<2x2x2x2xf32>) -> tensor<2x2x2x2xindex> {
+func.func @batch_norm_grad(%input: tensor<2x2x2x2xf32>, %scale: tensor<2xf32>, %mean: tensor<2xf32>, %variance: tensor<2xf32>, %grad_output: tensor<2x2x2x2xf32>) -> tensor<*xindex> {
   %0:3 = "mhlo.batch_norm_grad" (%input, %scale, %mean, %variance, %grad_output) {epsilon = 0.001 : f32, feature_index = 0 : i64} : (tensor<2x2x2x2xf32>, tensor<2xf32>, tensor<2xf32>, tensor<2xf32>, tensor<2x2x2x2xf32>) -> (tensor<2x2x2x2xf32>, tensor<2xf32>, tensor<2xf32>)
-  // CHECK: (tensor<2x2x2x2xf32>) -> tensor<2x2x2x2xindex>
-  %1 = "mhlo_test.get_return_type_components"(%0#0) : (tensor<2x2x2x2xf32>) -> tensor<2x2x2x2xindex>
-  // CHECK: (tensor<2xf32>) -> tensor<2xindex>
-  %2 = "mhlo_test.get_return_type_components"(%0#1) : (tensor<2xf32>) -> tensor<2xindex>
-  // CHECK: (tensor<2xf32>) -> tensor<2xindex>
-  %3 = "mhlo_test.get_return_type_components"(%0#2) : (tensor<2xf32>) -> tensor<2xindex>
-  func.return %1 : tensor<2x2x2x2xindex>
+  // CHECK: types0 = tensor<2x2x2x2xf32>
+  // CHECK-SAME: types1 = tensor<2xf32>
+  // CHECK-SAME: types2 = tensor<2xf32>
+  %1 = "mhlo_test.get_return_types"(%0#0) : (tensor<2x2x2x2xf32>) -> tensor<*xindex>
+  func.return %1 : tensor<*xindex>
 }
 
 // -----
 
 // CHECK-LABEL: func @batch_norm_train
-func.func @batch_norm_train(%input: tensor<2x2x2x2xf32>, %scale: tensor<2xf32>, %offset: tensor<2xf32>) -> tensor<2x2x2x2xindex> {
-  %0:3 = "mhlo.batch_norm_training" (%input, %scale, %offset) {epsilon = 0.001 : f32, feature_index = 1 : i64} : (tensor<2x2x2x2xf32>, tensor<2xf32>, tensor<2xf32>) -> (tensor<2x2x2x2xf32>, tensor<2xf32>, tensor<2xf32>)
-  // CHECK: (tensor<2x2x2x2xf32>) -> tensor<2x2x2x2xindex>
-  %1 = "mhlo_test.get_return_type_components"(%0#0) : (tensor<2x2x2x2xf32>) -> tensor<2x2x2x2xindex>
-  // CHECK: (tensor<2xf32>) -> tensor<2xindex>
-  %2 = "mhlo_test.get_return_type_components"(%0#1) : (tensor<2xf32>) -> tensor<2xindex>
-  // CHECK: (tensor<2xf32>) -> tensor<2xindex>
-  %3 = "mhlo_test.get_return_type_components"(%0#2) : (tensor<2xf32>) -> tensor<2xindex>
-  func.return %1 : tensor<2x2x2x2xindex>
+func.func @batch_norm_train(%input: tensor<2x?x2x2xf32>, %scale: tensor<2xf32>, %offset: tensor<2xf32>) -> tensor<*xindex> {
+  %0:3 = "mhlo.batch_norm_training" (%input, %scale, %offset) {epsilon = 0.001 : f32, feature_index = 1 : i64} : (tensor<2x?x2x2xf32>, tensor<2xf32>, tensor<2xf32>) -> (tensor<2x?x2x2xf32>, tensor<?xf32>, tensor<?xf32>)
+  // CHECK: types0 = tensor<2x?x2x2xf32>
+  // CHECK-SAME: types1 = tensor<?xf32>
+  // CHECK-SAME: types2 = tensor<?xf32>
+  %1 = "mhlo_test.get_return_types"(%0#0) : (tensor<2x?x2x2xf32>) -> tensor<*xindex>
+  func.return %1 : tensor<*xindex>
 }
 
 // -----
 
 // CHECK-LABEL: @batch_norm_inference
-func.func @batch_norm_inference(%input: tensor<4x256xf32>, %scale: tensor<256xf32>, %offset: tensor<256xf32>, %mean: tensor<256xf32>, %variance: tensor<256xf32>) -> (tensor<4x256xindex>) {
+func.func @batch_norm_inference(%input: tensor<4x256xf32>, %scale: tensor<256xf32>, %offset: tensor<256xf32>, %mean: tensor<256xf32>, %variance: tensor<256xf32>) -> (tensor<*xindex>) {
   %0 = "mhlo.batch_norm_inference" (%input, %scale, %offset, %mean, %variance) {epsilon = 1.001000e-05 : f32, feature_index = 1 : i64} :
       (tensor<4x256xf32>, tensor<256xf32>, tensor<256xf32>, tensor<256xf32>,
         tensor<256xf32>) -> tensor<4x256xf32>
-  // CHECK: (tensor<4x256xf32>) -> tensor<4x256xindex>
-  %1 = "mhlo_test.get_return_type_components"(%0) : (tensor<4x256xf32>) -> tensor<4x256xindex>
-  func.return %1 : tensor<4x256xindex>
+  // CHECK: types0 = tensor<4x256xf32>
+  %1 = "mhlo_test.get_return_types"(%0) : (tensor<4x256xf32>) -> tensor<*xindex>
+  func.return %1 : tensor<*xindex>
+}
+
+// -----
+
+// CHECK-LABEL: @batch_norm_inference_bounds
+func.func @batch_norm_inference_bounds(
+  %input: tensor<4x?xf32, #mhlo.type_extensions<bounds = [?, 64]>>, %scale: tensor<?xf32>,
+  %offset: tensor<?xf32>, %mean: tensor<?xf32>, %variance: tensor<?xf32>
+) -> (tensor<*xindex>) {
+  %0 = "mhlo.batch_norm_inference" (%input, %scale, %offset, %mean, %variance) {
+    epsilon = 1.001000e-05 : f32, feature_index = 1 : i64
+    } : (tensor<4x?xf32, #mhlo.type_extensions<bounds = [?, 64]>>, tensor<?xf32>, tensor<?xf32>, tensor<?xf32>, tensor<?xf32>) -> tensor<4x?xf32, #mhlo.type_extensions<bounds = [?, 64]>>
+  // CHECK: types0 = tensor<4x?xf32, #mhlo.type_extensions<bounds = [?, 64]>>
+  %1 = "mhlo_test.get_return_types"(%0) : (tensor<4x?xf32, #mhlo.type_extensions<bounds = [?, 64]>>) -> tensor<*xindex>
+  func.return %1 : tensor<*xindex>
+}
+
+// -----
+
+// CHECK-LABEL: func @batch_norm_grad_bounds
+func.func @batch_norm_grad_bounds(
+  %input: tensor<2x?xf32, #mhlo.type_extensions<bounds = [?, 64]>>,
+  %scale: tensor<?xf32, #mhlo.type_extensions<bounds = [64]>>,
+  %mean: tensor<?xf32, #mhlo.type_extensions<bounds = [64]>>,
+  %variance: tensor<?xf32, #mhlo.type_extensions<bounds = [64]>>,
+  %grad_output: tensor<2x?xf32, #mhlo.type_extensions<bounds = [?, 64]>>
+) -> tensor<*xindex> {
+  %0:3 = "mhlo.batch_norm_grad" (%input, %scale, %mean, %variance, %grad_output) {
+    epsilon = 0.001 : f32, feature_index = 1 : i64
+  } : (
+    tensor<2x?xf32, #mhlo.type_extensions<bounds = [?, 64]>>,
+    tensor<?xf32, #mhlo.type_extensions<bounds = [64]>>,
+    tensor<?xf32, #mhlo.type_extensions<bounds = [64]>>,
+    tensor<?xf32, #mhlo.type_extensions<bounds = [64]>>,
+    tensor<2x?xf32, #mhlo.type_extensions<bounds = [?, 64]>>
+  ) ->
+    (
+    tensor<2x?xf32, #mhlo.type_extensions<bounds = [?, 64]>>,
+    tensor<?xf32, #mhlo.type_extensions<bounds = [64]>>,
+    tensor<?xf32, #mhlo.type_extensions<bounds = [64]>>
+  )
+  // CHECK: types0 = tensor<2x?xf32, #mhlo.type_extensions<bounds = [?, 64]>>
+  // CHECK-SAME: types1 = tensor<?xf32, #mhlo.type_extensions<bounds = [64]>>
+  // CHECK-SAME: types2 = tensor<?xf32, #mhlo.type_extensions<bounds = [64]>>
+  %1 = "mhlo_test.get_return_types"(%0#0) : (tensor<2x?xf32, #mhlo.type_extensions<bounds = [?, 64]>>) -> tensor<*xindex>
+  func.return %1 : tensor<*xindex>
+}
+
+// -----
+
+// CHECK-LABEL: func @batch_norm_train_bounds
+func.func @batch_norm_train_bounds(
+  %input: tensor<2x?xf32, #mhlo.type_extensions<bounds = [?, 64]>>,
+  %scale: tensor<?xf32, #mhlo.type_extensions<bounds = [64]>>,
+  %offset: tensor<?xf32, #mhlo.type_extensions<bounds = [64]>>
+) -> tensor<*xindex> {
+  %0:3 = "mhlo.batch_norm_training" (%input, %scale, %offset) {
+    epsilon = 0.001 : f32, feature_index = 1 : i64
+  } : (
+    tensor<2x?xf32, #mhlo.type_extensions<bounds = [?, 64]>>,
+    tensor<?xf32, #mhlo.type_extensions<bounds = [64]>>,
+    tensor<?xf32, #mhlo.type_extensions<bounds = [64]>>
+  ) ->
+    (
+    tensor<2x?xf32, #mhlo.type_extensions<bounds = [?, 64]>>,
+    tensor<?xf32, #mhlo.type_extensions<bounds = [64]>>,
+    tensor<?xf32, #mhlo.type_extensions<bounds = [64]>>
+  )
+  // CHECK: types0 = tensor<2x?xf32, #mhlo.type_extensions<bounds = [?, 64]>>
+  // CHECK-SAME: types1 = tensor<?xf32, #mhlo.type_extensions<bounds = [64]>>
+  // CHECK-SAME: types2 = tensor<?xf32, #mhlo.type_extensions<bounds = [64]>>
+  %1 = "mhlo_test.get_return_types"(%0#0) : (tensor<2x?xf32, #mhlo.type_extensions<bounds = [?, 64]>>) -> tensor<*xindex>
+  func.return %1 : tensor<*xindex>
 }
 
 // -----

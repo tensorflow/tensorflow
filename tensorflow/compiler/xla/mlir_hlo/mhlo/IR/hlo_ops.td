@@ -1750,11 +1750,7 @@ def MHLO_DomainOp : MHLO_Op<"domain", [HLO_CompatibleOperandsAndResultType, Infe
 }
 
 def MHLO_BatchNormGradOp : MHLO_Op<"batch_norm_grad", [Pure,
-    AllShapesMatch<["scale", "mean", "variance", "grad_scale",
-        "grad_offset"]>,
-    AllShapesMatch<["operand", "grad_output"]>,
-    AllElementTypesMatch<["operand", "grad_scale", "grad_offset"]>,
-    AllTypesMatch<["operand", "grad_operand"]>,
+    AllElementTypesMatch<["operand", "grad_operand", "grad_scale", "grad_offset"]>,
     InferTensorType]> {
   let summary = "Batch Normalization Gradient";
   let description = [{
@@ -1782,9 +1778,7 @@ def MHLO_BatchNormGradOp : MHLO_Op<"batch_norm_grad", [Pure,
 }
 
 def MHLO_BatchNormInferenceOp : MHLO_Op<"batch_norm_inference",
-    [Pure, AllTypesMatch<["operand", "result"]>,
-    AllShapesMatch<["scale", "offset", "mean", "variance"]>,
-    InferTensorType]> {
+    [Pure, AllElementTypesMatch<["operand", "result"]>, InferTensorType]> {
   let summary = "Batch Normalization for Inference";
   let description = [{
     Normalizes an array across batch and spatial dimensions.
@@ -1806,9 +1800,7 @@ def MHLO_BatchNormInferenceOp : MHLO_Op<"batch_norm_inference",
 }
 
 def MHLO_BatchNormTrainingOp : MHLO_Op<"batch_norm_training",
-    [Pure, AllTypesMatch<["operand", "output"]>,
-    AllElementTypesMatch<["operand", "batch_mean", "batch_var"]>,
-    AllShapesMatch<["scale", "offset", "batch_mean", "batch_var"]>,
+    [Pure, AllElementTypesMatch<["operand", "output", "batch_mean", "batch_var"]>,
     InferTensorType]> {
   let summary = "Batch Normalization for Training";
   let description = [{
