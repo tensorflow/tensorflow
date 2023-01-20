@@ -1889,6 +1889,7 @@ cc_library(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:MemRefDialect",
         "@llvm-project//mlir:TensorDialect",
+        "@llvm-project//mlir:VectorDialect",
         "@llvm-project//mlir:ViewLikeInterface",
     ],
     alwayslink = 1,
