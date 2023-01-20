@@ -1935,7 +1935,7 @@ static SendDeviceMemoryFunction ConvertSendCallbacksToSendFunction(
   // Check if we have callbacks registered for the given device ordinal.
   if (device_ordinal >= options.send_callbacks.size()) {
     return [=](int64_t channel_id, se::Stream*, const Shape&,
-               const se::DeviceMemoryBase&) {
+               const se::DeviceMemoryBase&, SendRecvErrorHandler) {
       return InvalidArgument(
           "Failed to send a buffer to the channel_id=%d, there was no send "
           "callbacks registered for the device_ordinal=%d",
@@ -1947,9 +1947,9 @@ static SendDeviceMemoryFunction ConvertSendCallbacksToSendFunction(
   absl::Span<const SendCallback> callbacks =
       options.send_callbacks[device_ordinal];
 
-  return [callbacks, thread_pool](int64_t channel_id, se::Stream* stream,
-                                  const Shape& shape,
-                                  const se::DeviceMemoryBase& src)
+  return [callbacks](int64_t channel_id, se::Stream* stream, const Shape& shape,
+                     const se::DeviceMemoryBase& src,
+                     SendRecvErrorHandler on_error)
              -> StatusOr<std::shared_ptr<se::Event>> {
     VLOG(3) << "Send " << src.size() << " bytes to channel #" << channel_id
             << " (shape=" << shape.ToString() << ")";
@@ -1969,36 +1969,30 @@ static SendDeviceMemoryFunction ConvertSendCallbacksToSendFunction(
       return InternalError("Failed to initialize done event (channel_id=%d)",
                            channel_id);
 
-    // Because SendCallback API forces us to block the caller thread, schedule
-    // it on a thread pool to avoild blocking the caller.
-    thread_pool->Schedule([shape, send, stream, src, done_event]() {
-      // Allocate chunk on the host for copying data from device.
-      PjRtChunk chunk = PjRtChunk::AllocateDefault(src.size());
+    // Allocate chunk on the host for copying data from device.
+    PjRtChunk chunk = PjRtChunk::AllocateDefault(src.size());
 
-      stream->ThenMemcpy(chunk.data(), src, src.size());
-      stream->ThenRecordEvent(done_event.get());
-
-      // TODO(ezhulenev): Unfortunately once we return done event to the caller,
-      // we have no way to signal that send operation actually failed, and we
-      // unconditionally record completion on a stream. Add an asynchronous
-      // error reporting mechanism to `(Send|Recv)DeviceMemoryFunction`s.
-
-      // TODO(ezhulenev): We are forced to block the caller thread here because
-      // we must guarantee that chunk passed to the callback is complete.
-      // Alternatively callback should take PjRtFuture<PjRtChunk> to enable
-      // truly async send operation.
-      if (auto st = stream->BlockHostUntilDone(); !st.ok())
-        LOG(ERROR) << "Failed to synchronize with a stream: "
-                   << st.error_message();
-
-      // Pass chunk to the registered callback.
-      auto sent = send->callback({shape}, std::move(chunk),
-                                 /*total_size_in_bytes=*/src.size(),
-                                 /*done=*/true);
-      if (!sent.ok())
-        LOG(ERROR) << "Failed to send a buffer to a callback: "
-                   << sent.error_message();
+    tsl::profiler::TraceMe trace([&] {
+      return tsl::profiler::TraceMeEncode("PjRtStreamExecutorExecutable::Send",
+                                          {{"channel_id", channel_id}});
     });
+
+    stream->ThenMemcpy(chunk.data(), src, src.size());
+    stream->ThenRecordEvent(done_event.get());
+
+    if (auto st = stream->BlockHostUntilDone(); !st.ok()) {
+      return InternalError(
+          "failed to synchronize send operation with a stream: %s",
+          st.error_message());
+    }
+
+    // Pass chunk to the registered callback.
+    auto sent = send->callback({shape}, std::move(chunk),
+                               /*total_size_in_bytes=*/src.size(),
+                               /*done=*/true);
+    if (!sent.ok())
+      return InternalError("failed to send a buffer to a callback: %s",
+                           sent.error_message());
 
     return std::move(done_event);
   };
@@ -2007,10 +2001,13 @@ static SendDeviceMemoryFunction ConvertSendCallbacksToSendFunction(
 namespace {
 class StreamExecutorCopyToDeviceStream : public CopyToDeviceStream {
  public:
-  StreamExecutorCopyToDeviceStream(std::shared_ptr<se::Event> done,
-                                   se::Stream* stream,
-                                   se::DeviceMemoryBase* dst)
-      : CopyToDeviceStream(dst->size(), /*granule_bytes=*/1),
+  StreamExecutorCopyToDeviceStream(int64_t channel_id,
+                                   absl::Notification* notify,
+                                   std::shared_ptr<se::Event> done,
+                                   se::Stream* stream, se::DeviceMemoryBase dst)
+      : CopyToDeviceStream(dst.size(), /*granule_bytes=*/1),
+        channel_id_(channel_id),
+        notify_(notify),
         done_(std::move(done)),
         stream_(stream),
         dst_(dst) {}
@@ -2019,6 +2016,12 @@ class StreamExecutorCopyToDeviceStream : public CopyToDeviceStream {
     int64_t offset = 0;
     bool complete = false;
 
+    tsl::profiler::TraceMe trace([&] {
+      return tsl::profiler::TraceMeEncode(
+          "StreamExecutorCopyToDeviceStream::AddChunk",
+          {{"channel_id", channel_id_}});
+    });
+
     {  // Get the offset for submitting memcpy operation.
       absl::MutexLock lock(&mu_);
       offset = current_bytes_;
@@ -2026,24 +2029,31 @@ class StreamExecutorCopyToDeviceStream : public CopyToDeviceStream {
       complete = IsCompleteLocked();
     }
 
-    stream_->ThenMemcpy(dst_, chunk.data(), chunk.size());
+    // TODO(ezhulenev): Add a test for chunked recv handler. We do not correctly
+    // handle offsets, and do not have a test for it.
+    stream_->ThenMemcpy(&dst_, chunk.data(), chunk.size());
 
     // Delete chunk once the memcpy operation completes.
     auto* chunk_ptr = std::make_unique<PjRtChunk>(std::move(chunk)).release();
     stream_->ThenDoHostCallback([chunk_ptr]() { delete chunk_ptr; });
 
-    // Record done event once processing the last chunk. It is the caller
+    // Record done event once processed the last chunk. It is the caller
     // responsibility to synchronize with this event before submitting any new
     // computations to the stream.
-    if (complete) stream_->ThenRecordEvent(done_.get());
+    if (complete) {
+      notify_->Notify();
+      stream_->ThenRecordEvent(done_.get());
+    }
 
     return PjRtFuture<Status>(OkStatus());
   }
 
  private:
+  int64_t channel_id_;
+  absl::Notification* notify_;
   std::shared_ptr<se::Event> done_;
   se::Stream* stream_;
-  se::DeviceMemoryBase* dst_;
+  se::DeviceMemoryBase dst_;
 };
 }  // namespace
 
@@ -2052,7 +2062,7 @@ static RecvDeviceMemoryFunction ConvertRecvCallbacksToRecvFunction(
   // Check if we have callbacks registered for the given device ordinal.
   if (device_ordinal >= options.send_callbacks.size()) {
     return [=](int64_t channel_id, se::Stream*, const Shape&,
-               se::DeviceMemoryBase*) {
+               se::DeviceMemoryBase*, SendRecvErrorHandler) {
       return InvalidArgument(
           "Failed to receive a buffer from the channel_id=%d, there was no "
           "recv callbacks registered for the device_ordinal=%d",
@@ -2065,10 +2075,15 @@ static RecvDeviceMemoryFunction ConvertRecvCallbacksToRecvFunction(
       options.recv_callbacks[device_ordinal];
 
   return [callbacks](int64_t channel_id, se::Stream* stream, const Shape& shape,
-                     se::DeviceMemoryBase* dst)
+                     se::DeviceMemoryBase* dst, SendRecvErrorHandler on_error)
              -> StatusOr<std::shared_ptr<se::Event>> {
     VLOG(3) << "Recv from channel #" << channel_id
             << " (shape=" << shape.ToString() << ")";
+
+    tsl::profiler::TraceMe trace([&] {
+      return tsl::profiler::TraceMeEncode("PjRtStreamExecutorExecutable::Recv",
+                                          {{"channel_id", channel_id}});
+    });
 
     const RecvCallback* recv = FindCallback(channel_id, callbacks);
     if (!recv) {
@@ -2085,8 +2100,16 @@ static RecvDeviceMemoryFunction ConvertRecvCallbacksToRecvFunction(
       return InternalError("Failed to initialize done event (channel_id=%d)",
                            channel_id);
 
+    // TODO(ezhulenev): This is a temporary work around the internal error that
+    // does not allow to run multiple recv operations concurrently. This
+    // notification forces the caller to block until the recv callback copies
+    // all the data into `dst` device buffer.
+    absl::Notification notify;
+
     recv->callback({shape}, std::make_unique<StreamExecutorCopyToDeviceStream>(
-                                done_event, stream, dst));
+                                channel_id, &notify, done_event, stream, *dst));
+
+    notify.WaitForNotification();
 
     return std::move(done_event);
   };

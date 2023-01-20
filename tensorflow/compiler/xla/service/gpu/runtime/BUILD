@@ -293,6 +293,8 @@ cc_library(
         "//tensorflow/compiler/xla/runtime:executable",
         "//tensorflow/compiler/xla/service:executable",
         "//tensorflow/compiler/xla/stream_executor:event",
+        "//tensorflow/tsl/profiler/lib:traceme",
+        "//tensorflow/tsl/profiler/lib:traceme_encode",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",

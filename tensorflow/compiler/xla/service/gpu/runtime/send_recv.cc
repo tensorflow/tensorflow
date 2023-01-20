@@ -29,6 +29,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/runtime/executable.h"
 #include "tensorflow/compiler/xla/service/gpu/runtime/support.h"
 #include "tensorflow/compiler/xla/service/service_executable_run_options.h"
+#include "tensorflow/tsl/profiler/lib/traceme.h"
+#include "tensorflow/tsl/profiler/lib/traceme_encode.h"
 
 namespace xla {
 namespace gpu {
@@ -36,6 +38,9 @@ namespace gpu {
 using absl::InternalError;
 using absl::InvalidArgumentError;
 using absl::StrFormat;
+
+using tsl::profiler::TraceMe;
+using tsl::profiler::TraceMeEncode;
 
 using xla::runtime::AggregateAttrDef;
 using xla::runtime::AggregateAttrEncoding;
@@ -122,6 +127,16 @@ absl::StatusOr<std::shared_ptr<se::Event>> SendRecvEvents::PopEvent(
 // Send/Recv custom call implementation.
 //===----------------------------------------------------------------------===//
 
+// Asynchronous send/recv operations can fail long after we finished submitting
+// all work to the stream, and we can't do anything about it. In this case we
+// will have some garbage data on device, and it's up to the higher level
+// of the stack to discard it.
+static void OnError(Status error) {
+  LOG(ERROR) << "Received asynchronous Send/Recv error: "
+             << error.error_message() << ". "
+             << "Previously computed results are likely incorrect.";
+}
+
 static absl::Status SendImpl(const ServiceExecutableRunOptions* run_options,
                              SendRecvEvents* events, StridedMemrefView arg,
                              ChannelHandle channel, bool is_host_transfer,
@@ -130,6 +145,10 @@ static absl::Status SendImpl(const ServiceExecutableRunOptions* run_options,
           << " channel=" << channel.handle
           << " is_host_transfer=" << is_host_transfer;
 
+  TraceMe trace([&] {
+    return TraceMeEncode("xla.gpu.send", {{"channel", channel.handle}});
+  });
+
   // For now we only support transfers between the device and the host.
   if (!is_host_transfer)
     return InvalidArgumentError(
@@ -137,12 +156,16 @@ static absl::Status SendImpl(const ServiceExecutableRunOptions* run_options,
 
   // Use device_to_host stream if it is available.
   se::Stream* stream = run_options->run_options().device_to_host_stream();
-  if (stream == nullptr) stream = run_options->stream();
+  if (stream) {
+    stream->ThenWaitFor(run_options->stream());
+  } else {
+    stream = run_options->stream();
+  }
 
   // Send buffer to a handler registered with the run options.
   if (auto* send = run_options->run_options().send_device_memory_function()) {
-    auto done_event =
-        (*send)(channel.handle, stream, ToShape(arg), GetDeviceAddress(arg));
+    auto done_event = (*send)(channel.handle, stream, ToShape(arg),
+                              GetDeviceAddress(arg), OnError);
     if (!done_event.ok()) return ToAbslStatus(done_event.status());
     return events->PushEvent(channel.handle, std::move(*done_event));
   }
@@ -158,6 +181,10 @@ static absl::Status RecvImpl(const ServiceExecutableRunOptions* run_options,
           << " channel=" << channel.handle
           << " is_host_transfer=" << is_host_transfer;
 
+  TraceMe trace([&] {
+    return TraceMeEncode("xla.gpu.recv", {{"channel", channel.handle}});
+  });
+
   // For now we only support transfers between the device and the host.
   if (!is_host_transfer)
     return InvalidArgumentError(
@@ -165,12 +192,17 @@ static absl::Status RecvImpl(const ServiceExecutableRunOptions* run_options,
 
   // Use host_to_device stream if it is available.
   se::Stream* stream = run_options->run_options().host_to_device_stream();
-  if (stream == nullptr) stream = run_options->stream();
+  if (stream) {
+    stream->ThenWaitFor(run_options->stream());
+  } else {
+    stream = run_options->stream();
+  }
 
   // Recv buffer from a handler registered with the run options.
   if (auto* recv = run_options->run_options().recv_device_memory_function()) {
     auto dst = GetDeviceAddress(arg);
-    auto done_event = (*recv)(channel.handle, stream, ToShape(arg), &dst);
+    auto done_event =
+        (*recv)(channel.handle, stream, ToShape(arg), &dst, OnError);
     if (!done_event.ok()) return ToAbslStatus(done_event.status());
     return events->PushEvent(channel.handle, std::move(*done_event));
   }
@@ -185,6 +217,10 @@ static absl::Status SendDoneImpl(const ServiceExecutableRunOptions* run_options,
           << " channel=" << channel.handle
           << " is_host_transfer=" << is_host_transfer;
 
+  TraceMe trace([&] {
+    return TraceMeEncode("xla.gpu.send_done", {{"channel", channel.handle}});
+  });
+
   auto done_event = events->PopEvent(channel.handle);
   if (!done_event.ok()) return done_event.status();
 
@@ -198,6 +234,10 @@ static absl::Status RecvDoneImpl(const ServiceExecutableRunOptions* run_options,
   VLOG(3) << "Wait for Recv completion:"
           << " channel=" << channel.handle
           << " is_host_transfer=" << is_host_transfer;
+
+  TraceMe trace([&] {
+    return TraceMeEncode("xla.gpu.recv_done", {{"channel", channel.handle}});
+  });
 
   auto done_event = events->PopEvent(channel.handle);
   if (!done_event.ok()) return done_event.status();

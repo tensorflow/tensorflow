@@ -38,12 +38,14 @@ struct ThreadPoolDevice;
 }  // namespace Eigen
 
 namespace tsl {
+class Status;
 template <typename T>
 class StatusOr;
 }  // namespace tsl
 
 namespace xla {
 
+using ::tsl::Status;    // TENSORFLOW_STATUS_OK
 using ::tsl::StatusOr;  // TENSORFLOW_STATUS_OK
 
 class DeviceAssignment;
@@ -90,13 +92,30 @@ class RunId {
 using ThenExecuteFunction =
     std::function<void(stream_executor::Stream*, std::function<void()>)>;
 
+// Send/Recv operations are asynchronous and can't always report an error to
+// the caller synchronously. Send/Recv device memory functions declared below
+// return an error immediately if the operation can't be scheduled (e.g. unknown
+// channel id), but can return an error via the callback later on if the actual
+// data transfer failed. In case of an error the recv buffer will contain
+// undefined data (garbage), but it allows the XLA executable to run ahead and
+// submit dependent operations to the compute stream. It is the clients
+// responsibility to discard computation results if any async data transfer
+// errors were reported.
+//
+// If the caller does not block a thread after submitting work to a stream
+// (Stream::BlockHostUntilDone), the error handler callback can potentially
+// outlive the execution itself and it should not capture stack allocated
+// objects.
+using SendRecvErrorHandler = std::function<void(Status)>;
+
 // Callback for sending device buffer to a channel. Returned event will be
 // recorded on a `stream` once the send operation is completed and data was
 // copied from the `src` memory.
 using SendDeviceMemoryFunction =
     std::function<StatusOr<std::shared_ptr<stream_executor::Event>>(
         int64_t channel_id, stream_executor::Stream* stream, const Shape& shape,
-        const stream_executor::DeviceMemoryBase& src)>;
+        const stream_executor::DeviceMemoryBase& src,
+        SendRecvErrorHandler error_handler)>;
 
 // Callback for receiving device buffer from a channel. Returned event will be
 // recorded on a `stream` once the recv operation is completed and data was
@@ -104,7 +123,8 @@ using SendDeviceMemoryFunction =
 using RecvDeviceMemoryFunction =
     std::function<StatusOr<std::shared_ptr<stream_executor::Event>>(
         int64_t channel_id, stream_executor::Stream* stream, const Shape& shape,
-        stream_executor::DeviceMemoryBase* dst)>;
+        stream_executor::DeviceMemoryBase* dst,
+        SendRecvErrorHandler error_handler)>;
 
 // Class containing options for running a LocalExecutable.
 class ExecutableRunOptions {
