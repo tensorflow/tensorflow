@@ -1,4 +1,5 @@
 load("//tensorflow/lite/core/shims:cc_library_with_tflite.bzl", "cc_library_with_tflite")
+load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -16,6 +17,7 @@ cc_library(
     hdrs = [
         "simple_delegate.h",
     ],
+    compatible_with = get_compatible_with_portable(),
     deps = [
         "//tensorflow/lite:kernel_api",
         "//tensorflow/lite:minimal_logging",

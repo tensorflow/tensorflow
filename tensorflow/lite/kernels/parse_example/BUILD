@@ -1,5 +1,6 @@
 load("//tensorflow:tensorflow.bzl", "tf_cc_test", "tf_features_nolayering_check_if_ios")
 load("//tensorflow/lite:special_rules.bzl", "nonportable_visibility_allowlist")
+load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
 
 # Kernel for custom parse_example
 package(
@@ -20,6 +21,7 @@ cc_library(
         "example_proto_fast_parsing.h",
         "parse_example.h",
     ],
+    compatible_with = get_compatible_with_portable(),
     features = tf_features_nolayering_check_if_ios(),
     deps = [
         "@com_google_absl//absl/base",
