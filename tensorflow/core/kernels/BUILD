@@ -210,6 +210,8 @@ tf_cuda_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
+        "//tensorflow/core/common_runtime:collective_test_util",
+        "//tensorflow/core/framework:tensor_testutil",
         "//tensorflow/core/nccl:collective_communicator",
     ],
 )

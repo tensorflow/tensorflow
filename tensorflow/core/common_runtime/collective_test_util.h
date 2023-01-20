@@ -80,6 +80,7 @@ struct CollectiveTestEnv {
   std::shared_ptr<UnboundedWorkQueue> work_queue;
   std::unique_ptr<tensorflow::DeviceMgr> device_mgr;
   std::unique_ptr<DeviceResolverInterface> device_resolver;
+  std::unique_ptr<NcclCommunicatorInterface> nccl_communicator;
   core::RefCountPtr<CollectiveExecutor> col_exec;
   FailTestRMA* remote_access;
 
@@ -87,7 +88,8 @@ struct CollectiveTestEnv {
 };
 
 std::unique_ptr<CollectiveTestEnv> CreateCollectiveTestEnv(
-    int num_workers, int num_devices_per_worker, DeviceType device_type);
+    int num_workers, int num_devices_per_worker, DeviceType device_type,
+    bool use_nccl = false);
 
 core::RefCountPtr<CollectiveParams> CreateCollectiveParams(
     const CollectiveTestEnv& test_env, int rank, const string& collective_name,
