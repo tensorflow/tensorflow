@@ -5,32 +5,7 @@ package tensorflow.data;
 import "tensorflow/core/data/service/common.proto";
 import "tensorflow/core/framework/tensor.proto";
 import "tensorflow/core/protobuf/data_service.proto";
-import "tensorflow/core/protobuf/error_codes.proto";
 import "tensorflow/core/protobuf/snapshot.proto";
-
-// Next tag: 5
-message SnapshotTaskDef {
-  // The base directory at which the snapshot is being materialized.
-  string base_path = 1;
-  // The index of the stream that the worker has been assigned to process.
-  int64 stream_index = 2;
-  // The number of source datasets (split providers).
-  int64 num_sources = 3;
-  // Snapshot metadata including the element spec and compression method.
-  experimental.DistributedSnapshotMetadata metadata = 4;
-}
-
-// Next tag: 5
-message SnapshotTaskProgress {
-  SnapshotTaskDef snapshot_task = 1;
-  // True if the snapshot is complete successfully. Unset if the snapshot is not
-  // complete or an error has occurred.
-  bool completed = 2;
-  // If any error occurs during the snapshot processing, the `error_code` and
-  // `error_message` will be filled with the error status.
-  error.Code error_code = 3;
-  string error_message = 4;
-}
 
 // Next tag: 7
 message WorkerHeartbeatRequest {
