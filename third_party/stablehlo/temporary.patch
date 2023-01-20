@@ -1,3 +1,26 @@
+diff --ruN a/stablehlo/stablehlo/dialect/CMakeLists.txt b/stablehlo/stablehlo/dialect/CMakeLists.txt
+--- stablehlo/stablehlo/dialect/CMakeLists.txt
++++ stablehlo/stablehlo/dialect/CMakeLists.txt
+@@ -156,14 +156,19 @@
+ mlir_tablegen(VhloOps.cpp.inc -gen-op-defs)
+ mlir_tablegen(VhloOpInterfaces.h.inc -gen-op-interface-decls)
+ mlir_tablegen(VhloOpInterfaces.cpp.inc -gen-op-interface-defs)
++set(LLVM_TARGET_DEFINITIONS VhloEnums.td)
+ mlir_tablegen(VhloEnums.h.inc -gen-enum-decls)
+ mlir_tablegen(VhloEnums.cpp.inc -gen-enum-defs)
++set(LLVM_TARGET_DEFINITIONS VhloOps.td)
+ mlir_tablegen(VhloAttrs.h.inc -gen-attrdef-decls)
+ mlir_tablegen(VhloAttrs.cpp.inc -gen-attrdef-defs)
++set(LLVM_TARGET_DEFINITIONS VhloAttrs.td)
+ mlir_tablegen(VhloAttrInterfaces.h.inc -gen-attr-interface-decls)
+ mlir_tablegen(VhloAttrInterfaces.cpp.inc -gen-attr-interface-defs)
++set(LLVM_TARGET_DEFINITIONS VhloTypes.td)
+ mlir_tablegen(VhloTypeInterfaces.h.inc -gen-type-interface-decls)
+ mlir_tablegen(VhloTypeInterfaces.cpp.inc -gen-type-interface-defs)
++set(LLVM_TARGET_DEFINITIONS VhloOps.td)
+ mlir_tablegen(VhloTypeDefs.h.inc -gen-typedef-decls --typedefs-dialect=vhlo)
+ mlir_tablegen(VhloTypeDefs.cpp.inc -gen-typedef-defs --typedefs-dialect=vhlo)
+ add_public_tablegen_target(VhloOpsIncGen)
 diff --ruN a/stablehlo/stablehlo/dialect/ChloOps.cpp b/stablehlo/stablehlo/dialect/ChloOps.cpp
 --- stablehlo/stablehlo/dialect/ChloOps.cpp
 +++ stablehlo/stablehlo/dialect/ChloOps.cpp
