@@ -16,12 +16,12 @@
 # pylint: disable=missing-docstring,g-direct-tensorflow-import
 
 import collections
+from functools import partial
 import string
 import sys
 import traceback
 
 import numpy as np
-from functools import partial
 
 from tensorflow.compiler.tf2xla.python import xla
 from tensorflow.core.framework import full_type_pb2
@@ -41,12 +41,12 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import gen_array_ops
-from tensorflow.python.ops import gen_dataset_ops
 from tensorflow.python.ops import gen_image_ops
 from tensorflow.python.ops import gen_linalg_ops
 from tensorflow.python.ops import gen_list_ops
 from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import gen_nn_ops
+from tensorflow.python.ops import gen_optional_ops
 from tensorflow.python.ops import gen_parsing_ops
 from tensorflow.python.ops import gen_random_ops
 from tensorflow.python.ops import gen_sparse_ops
@@ -3910,8 +3910,9 @@ def _untile_variant(t):
 def _convert_optional_from_value(pfor_input):
   pfor_input.stack_inputs()
   return wrap(
-      gen_dataset_ops.optional_from_value([x.t for x in pfor_input.inputs]),
-      True)
+      gen_optional_ops.optional_from_value([x.t for x in pfor_input.inputs]),
+      True,
+  )
 
 
 @RegisterPFor("OptionalGetValue")
@@ -3926,8 +3927,9 @@ def _convert_optional_get_value(pfor_input):
         [tensor_util.constant_value(pfor_input.pfor.loop_len_vector)])
     shape = loop_len_shape.concatenate(shape)
     output_shapes.append(shape.as_proto())
-  results = gen_dataset_ops.optional_get_value(handle, output_types,
-                                               output_shapes)
+  results = gen_optional_ops.optional_get_value(
+      handle, output_types, output_shapes
+  )
   return [wrap(t, True) for t in results]
 
 

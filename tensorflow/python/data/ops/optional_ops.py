@@ -21,7 +21,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import type_spec
-from tensorflow.python.ops import gen_dataset_ops
+from tensorflow.python.ops import gen_optional_ops
 from tensorflow.python.util import deprecation
 from tensorflow.python.util.tf_export import tf_export
 
@@ -127,7 +127,7 @@ class Optional(composite_tensor.CompositeTensor, metaclass=abc.ABCMeta):
     Returns:
       A `tf.experimental.Optional` with no value.
     """
-    return _OptionalImpl(gen_dataset_ops.optional_none(), element_spec)
+    return _OptionalImpl(gen_optional_ops.optional_none(), element_spec)
 
   @staticmethod
   def from_value(value):
@@ -152,8 +152,9 @@ class Optional(composite_tensor.CompositeTensor, metaclass=abc.ABCMeta):
         encoded_value = structure.to_tensor_list(element_spec, value)
 
     return _OptionalImpl(
-        gen_dataset_ops.optional_from_value(encoded_value, name=scope),
-        element_spec)
+        gen_optional_ops.optional_from_value(encoded_value, name=scope),
+        element_spec,
+    )
 
 
 class _OptionalImpl(Optional):
@@ -170,7 +171,9 @@ class _OptionalImpl(Optional):
 
   def has_value(self, name=None):
     with ops.colocate_with(self._variant_tensor):
-      return gen_dataset_ops.optional_has_value(self._variant_tensor, name=name)
+      return gen_optional_ops.optional_has_value(
+          self._variant_tensor, name=name
+      )
 
   def get_value(self, name=None):
     # TODO(b/110122868): Consolidate the restructuring logic with similar logic
@@ -178,11 +181,12 @@ class _OptionalImpl(Optional):
     with ops.name_scope(name, "OptionalGetValue",
                         [self._variant_tensor]) as scope:
       with ops.colocate_with(self._variant_tensor):
-        result = gen_dataset_ops.optional_get_value(
+        result = gen_optional_ops.optional_get_value(
             self._variant_tensor,
             name=scope,
             output_types=structure.get_flat_tensor_types(self._element_spec),
-            output_shapes=structure.get_flat_tensor_shapes(self._element_spec))
+            output_shapes=structure.get_flat_tensor_shapes(self._element_spec),
+        )
       # NOTE: We do not colocate the deserialization of composite tensors
       # because not all ops are guaranteed to have non-GPU kernels.
       return structure.from_tensor_list(self._element_spec, result)

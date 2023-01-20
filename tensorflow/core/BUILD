@@ -942,6 +942,7 @@ filegroup(
         "nn_grad",
         "nn_ops_op_lib",
         "no_op_op_lib",
+        "optional_ops_op_lib",
         "parsing_ops_op_lib",
         "portable_op_registrations_and_gradients",
         "ragged_array_ops_op_lib",
