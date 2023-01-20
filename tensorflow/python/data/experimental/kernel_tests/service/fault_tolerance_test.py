@@ -14,8 +14,6 @@
 # ==============================================================================
 """Tests for tf.data service ops where servers are started late or preempted."""
 import multiprocessing
-import os
-import tempfile
 import threading
 import time
 
@@ -23,7 +21,6 @@ from absl.testing import parameterized
 
 from tensorflow.python.data.experimental.kernel_tests.service import test_base as data_service_test_base
 from tensorflow.python.data.experimental.ops import data_service_ops
-from tensorflow.python.data.experimental.ops import distributed_save_op
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import combinations
@@ -33,20 +30,6 @@ from tensorflow.python.platform import test
 
 TMP_WORK_DIR = data_service_test_base.TMP_WORK_DIR
 NO_WORK_DIR = data_service_test_base.NO_WORK_DIR
-
-
-def write_file(path):
-  os.makedirs(os.path.dirname(path), exist_ok=True)
-  with open(path, "w") as _:
-    pass
-
-
-def splits_dir(path, stream_idx=0):
-  return os.path.join(path, "streams", f"stream_{stream_idx}", "splits")
-
-
-def source_dir(path, stream_idx=0):
-  return os.path.join(splits_dir(path, stream_idx), "source_0")
 
 
 class FaultToleranceTest(data_service_test_base.TestBase,
@@ -327,112 +310,6 @@ class FaultToleranceTest(data_service_test_base.TestBase,
     it = iter(ds)
     cluster.add_worker()
     self.assertAllEqual(next(it), tensor)
-
-  def snapshot(self):
-    ds = dataset_ops.Dataset.range(10)
-    path = os.path.join(tempfile.mkdtemp(dir=self.get_temp_dir()), "snapshot")
-    cluster = data_service_test_base.TestCluster(num_workers=1)
-    distributed_save_op.distributed_save(ds, path, cluster.dispatcher_address())
-    return cluster, path, ds
-
-  @combinations.generate(test_base.eager_only_combinations())
-  def testSnapshotRecoverySucceeds(self):
-    cluster, _, _ = self.snapshot()
-    cluster.restart_dispatcher()
-
-  @combinations.generate(test_base.eager_only_combinations())
-  def testSnapshotRecoveryBlocksOverwrite(self):
-    cluster, path, ds = self.snapshot()
-    cluster.restart_dispatcher()
-    with self.assertRaisesOpError("is already started or completed"):
-      distributed_save_op.distributed_save(
-          ds, path, cluster.dispatcher_address()
-      )
-
-  @combinations.generate(
-      combinations.times(
-          test_base.eager_only_combinations(),
-          combinations.combine(
-              bad_stream_dir_name=["stream_", "stream_x", "stream_-1"]
-          ),
-      )
-  )
-  def testSnapshotRecoveryFailsWithBadStreamName(self, bad_stream_dir_name):
-    cluster, path, _ = self.snapshot()
-    os.makedirs(os.path.join(path, "streams", bad_stream_dir_name))
-    with self.assertRaisesRegex(ValueError, "can't parse"):
-      cluster.restart_dispatcher()
-
-  @combinations.generate(
-      combinations.times(
-          test_base.eager_only_combinations(),
-          combinations.combine(
-              bad_source_dir_name=["source_", "source_x", "source_-1"]
-          ),
-      )
-  )
-  def testSnapshotRecoveryFailsWithBadSourceName(self, bad_source_dir_name):
-    cluster, path, _ = self.snapshot()
-    os.makedirs(os.path.join(splits_dir(path), bad_source_dir_name))
-    with self.assertRaisesRegex(ValueError, "can't parse"):
-      cluster.restart_dispatcher()
-
-  @combinations.generate(test_base.eager_only_combinations())
-  def testSnapshotRecoveryFailsWithOutOfBoundsSourceName(self):
-    cluster, path, _ = self.snapshot()
-    os.makedirs(os.path.join(splits_dir(path), "source_1"))
-    with self.assertRaisesRegex(ValueError, "found conflict"):
-      cluster.restart_dispatcher()
-
-  @combinations.generate(
-      combinations.times(
-          test_base.eager_only_combinations(),
-          combinations.combine(
-              bad_split_filename=[
-                  "split_",
-                  "split_x_0",
-                  "split_-1_0",
-                  "split_0_x",
-                  "split_0_-1",
-              ]
-          ),
-      )
-  )
-  def testSnapshotRecoveryFailsWithBadSplitNames(self, bad_split_filename):
-    cluster, path, _ = self.snapshot()
-    write_file(os.path.join(source_dir(path), bad_split_filename))
-    with self.assertRaisesRegex(ValueError, "can't parse"):
-      cluster.restart_dispatcher()
-
-  @combinations.generate(test_base.eager_only_combinations())
-  def testSnapshotRecoveryFailsWithOutOfOrderSplitName(self):
-    cluster, path, _ = self.snapshot()
-    write_file(os.path.join(source_dir(path), "split_1_0"))
-    with self.assertRaisesRegex(ValueError, "found conflict"):
-      cluster.restart_dispatcher()
-
-  @combinations.generate(test_base.eager_only_combinations())
-  def testSnapshotRecoveryFailsWithOutOfBoundsSplitName(self):
-    cluster, path, _ = self.snapshot()
-    write_file(os.path.join(source_dir(path), "split_1_1"))
-    with self.assertRaisesRegex(ValueError, "found conflict"):
-      cluster.restart_dispatcher()
-
-  @combinations.generate(test_base.eager_only_combinations())
-  def testSnapshotRecoveryFailsWithMissingGlobalIndexInSplitNames(self):
-    cluster, path, _ = self.snapshot()
-    write_file(os.path.join(source_dir(path), "split_0_1"))
-    with self.assertRaisesRegex(ValueError, "found missing global"):
-      cluster.restart_dispatcher()
-
-  @combinations.generate(test_base.eager_only_combinations())
-  def testSnapshotRecoveryFailsWithDuplicateGlobalIndexInSplitName(self):
-    cluster, path, _ = self.snapshot()
-    write_file(os.path.join(source_dir(path), "split_0_1"))
-    write_file(os.path.join(source_dir(path, stream_idx=1), "split_0_1"))
-    with self.assertRaisesRegex(ValueError, "found duplicate global"):
-      cluster.restart_dispatcher()
-
 
 if __name__ == "__main__":
   test.main()

@@ -30,6 +30,27 @@ tf_py_test(
     ],
 )
 
+# TODO(b/266126556): Reenable sanitizers.
+tf_py_test(
+    name = "snapshot_ft_test",
+    size = "small",
+    srcs = ["snapshot_ft_test.py"],
+    shard_count = 8,
+    tags = [
+        "noasan",
+        "nomsan",
+        "notsan",
+    ],
+    deps = [
+        ":test_base",
+        "//tensorflow/python:platform_test",
+        "//tensorflow/python/data/experimental/ops:distributed_save_op",
+        "//tensorflow/python/data/kernel_tests:test_base",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/framework:combinations",
+    ],
+)
+
 tf_py_test(
     name = "coordinated_read_ft_test",
     size = "medium",
@@ -126,11 +147,6 @@ tf_py_test(
     size = "small",
     srcs = ["fault_tolerance_test.py"],
     shard_count = 8,
-    tags = [
-        "noasan",
-        "nomsan",
-        "notsan",
-    ],
     deps = [
         ":test_base",
         "//tensorflow:tensorflow_py",
