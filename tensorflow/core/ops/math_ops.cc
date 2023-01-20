@@ -131,8 +131,8 @@ REGISTER_OP("BatchMatMulV2")
     .Input("y: T")
     .Output("output: T")
     .Attr(
-        "T: {bfloat16, half, float, double, int16, int32, int64, complex64, "
-        "complex128}")
+        "T: {bfloat16, half, float, double, int16, int32, int64, uint8, "
+        "uint16, uint32, uint64, complex64, complex128}")
     .Attr("adj_x: bool = false")
     .Attr("adj_y: bool = false")
     .SetShapeFn(shape_inference::BatchMatMulV2Shape);
@@ -950,8 +950,8 @@ REGISTER_OP("MatMul")
     .Attr("transpose_a: bool = false")
     .Attr("transpose_b: bool = false")
     .Attr(
-        "T: {bfloat16, half, float, double, int32, int64, complex64, "
-        "complex128}")
+        "T: {bfloat16, half, float, double, int32, int64, uint8, "
+        "uint16, uint32, uint64, complex64, complex128}")
     .SetShapeFn(shape_inference::MatMulShape);
 
 #ifdef INTEL_MKL
