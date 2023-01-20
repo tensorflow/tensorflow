@@ -17,6 +17,7 @@
 
 import abc
 import contextlib
+from copy import deepcopy
 import functools
 import warnings
 
@@ -412,6 +413,18 @@ class OptimizerV2(trackable.Trackable):
                        "passed `clipnorm` {}, `global_clipnorm` {}".format(
                            self.clipnorm, self.global_clipnorm))
     self.clipvalue = kwargs.pop("clipvalue", None)
+
+  def __deepcopy__(self, memo):
+    cls = self.__class__
+    result = cls.__new__(cls)
+    memo[id(self)] = result
+    for k, v in self.__dict__.items():
+      # DistributionStrategy singleton cannot be serialized
+      if k == "_distribution_strategy":
+        continue
+      setattr(result, k, deepcopy(v, memo))
+    result._distribution_strategy = self._distribution_strategy
+    return result
 
   @property
   def clipnorm(self):
