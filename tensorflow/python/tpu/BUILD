@@ -665,7 +665,6 @@ pytype_strict_library(
         "//tensorflow/python/types",
         "//tensorflow/python/util",
         "//tensorflow/python/util:tf_export",
-        "@absl_py//absl/logging",
     ],
 )
 
