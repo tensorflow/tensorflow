@@ -88,7 +88,7 @@ tf_cc_test(
     ],
 )
 
-tf_cc_fuzz_target(
+tf_cc_fuzz_test(
     name = "string_to_number_fuzz",
     srcs = ["string_to_number_fuzz.cc"],
     tags = ["no_oss"],
