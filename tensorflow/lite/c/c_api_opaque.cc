@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/lite/c/c_api_opaque.h"
 
+#include <cstdio>
 #include <unordered_map>
 #include <vector>
 
@@ -361,4 +362,36 @@ TfLiteStatus TfLiteOpaqueContextResizeTensor(TfLiteOpaqueContext* context,
   TfLiteContext* tflite_context = reinterpret_cast<TfLiteContext*>(context);
   return tflite_context->ResizeTensor(
       tflite_context, reinterpret_cast<TfLiteTensor*>(tensor), new_size);
+}
+
+void TfLiteOpaqueContextReportError(struct TfLiteOpaqueContext* opaque_context,
+                                    const char* format, ...) {
+  va_list vlist;
+  va_start(vlist, format);
+  TfLiteOpaqueContextReportErrorVa(opaque_context, format, vlist);
+  va_end(vlist);
+}
+void TfLiteOpaqueContextReportErrorVa(
+    struct TfLiteOpaqueContext* opaque_context, const char* format,
+    va_list vlist) {
+  // Determine the length of the resulting error message.
+  va_list copy;
+  va_copy(copy, vlist);
+  int n = vsnprintf(nullptr, 0, format, copy);
+  if (n < 0) {
+    return;
+  }
+  size_t size = (size_t)n + 1;  // +1 for '\0'.
+  char* buffer = new char[size];
+  n = vsnprintf(buffer, size, format, vlist);
+  if (n < 0) {
+    delete[] buffer;
+    return;
+  }
+  // The following cast is safe only because this code is part of the
+  // TF Lite runtime implementation.  Apps using TF Lite should not rely on
+  // TfLiteOpaqueContext and TfLiteContext being equivalent.
+  auto* context = reinterpret_cast<TfLiteContext*>(opaque_context);
+  TF_LITE_KERNEL_LOG(context, "%s", buffer);
+  delete[] buffer;
 }
