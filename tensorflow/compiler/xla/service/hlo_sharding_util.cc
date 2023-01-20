@@ -161,6 +161,10 @@ bool IsShardingMoreSpecific(const HloSharding& lhs, const HloSharding& rhs) {
     }
     return is_better;
   }
+  // Manual sharding is more specific than tile maximal sharding.
+  if (lhs.IsManual() && rhs.IsTileMaximal()) {
+    return true;
+  }
   if (lhs.IsManual() || rhs.IsManual()) {
     return false;
   }
@@ -424,7 +428,7 @@ std::optional<int64_t> GetDominantDevice(
 
 HloSharding TransposeSharding(const HloSharding& sharding,
                               absl::Span<const int64_t> dimensions) {
-  if (sharding.IsTileMaximal()) {
+  if (sharding.IsTileMaximal() || sharding.IsManual()) {
     return sharding;
   }
   DimensionVector perm_dimensions(dimensions.begin(), dimensions.end());
@@ -456,7 +460,7 @@ HloSharding TransposeSharding(const HloSharding& sharding,
 std::optional<HloSharding> ReshapeSharding(const Shape& source_shape,
                                            const Shape& target_shape,
                                            const HloSharding& sharding) {
-  if (sharding.IsTileMaximal()) {
+  if (sharding.IsTileMaximal() || sharding.IsManual()) {
     return sharding;
   }
 
@@ -685,7 +689,7 @@ bool ContainsTileSharding(const HloModule& module) {
 HloSharding GatherOutputShardingFromIndexIndexPassthroughDimensions(
     const HloSharding& index_sharding, const HloInstruction* hlo) {
   CHECK(hlo->opcode() == HloOpcode::kGather);
-  if (index_sharding.IsTileMaximal()) {
+  if (index_sharding.IsTileMaximal() || index_sharding.IsManual()) {
     return index_sharding;
   }
 
@@ -726,7 +730,7 @@ HloSharding GatherOutputShardingFromIndexIndexPassthroughDimensions(
 HloSharding GatherIndexShardingFromOutputIndexPassthroughDimensions(
     const HloSharding& output_sharding, const HloInstruction* hlo) {
   CHECK(hlo->opcode() == HloOpcode::kGather);
-  if (output_sharding.IsTileMaximal()) {
+  if (output_sharding.IsTileMaximal() || output_sharding.IsManual()) {
     return output_sharding;
   }
 
@@ -765,7 +769,7 @@ HloSharding GatherIndexShardingFromOutputIndexPassthroughDimensions(
 }
 
 HloSharding GatherEffectiveOutputSharding(const HloInstruction& hlo) {
-  if (hlo.sharding().IsTileMaximal()) {
+  if (hlo.sharding().IsTileMaximal() || hlo.sharding().IsManual()) {
     return hlo.sharding();
   }
 
@@ -817,7 +821,7 @@ HloSharding GatherEffectiveOutputSharding(const HloInstruction& hlo) {
 
 HloSharding ScatterIndexShardingFromUpdateIndexPassthroughDimensions(
     const HloSharding& update_sharding, const HloScatterInstruction* scatter) {
-  if (update_sharding.IsTileMaximal()) {
+  if (update_sharding.IsTileMaximal() || update_sharding.IsManual()) {
     return update_sharding;
   }
 
@@ -859,7 +863,7 @@ HloSharding ScatterIndexShardingFromUpdateIndexPassthroughDimensions(
 
 HloSharding ScatterUpdateShardingFromIndexIndexPassthroughDimensions(
     const HloSharding& index_sharding, const HloScatterInstruction* scatter) {
-  if (index_sharding.IsTileMaximal()) {
+  if (index_sharding.IsTileMaximal() || index_sharding.IsManual()) {
     return index_sharding;
   }
 
@@ -901,7 +905,7 @@ HloSharding ScatterUpdateShardingFromIndexIndexPassthroughDimensions(
 
 HloSharding ScatterEffectiveIndexSharding(
     const HloSharding& index_sharding, const HloScatterInstruction& scatter) {
-  if (index_sharding.IsTileMaximal()) {
+  if (index_sharding.IsTileMaximal() || index_sharding.IsManual()) {
     return index_sharding;
   }
 
@@ -945,7 +949,7 @@ HloSharding ScatterEffectiveIndexSharding(
 
 HloSharding ScatterEffectiveDataSharding(const HloSharding& data_sharding,
                                          const HloScatterInstruction& scatter) {
-  if (data_sharding.IsTileMaximal()) {
+  if (data_sharding.IsTileMaximal() || data_sharding.IsManual()) {
     return data_sharding;
   }
 
@@ -1027,7 +1031,7 @@ std::optional<HloSharding> PassthroughOperandToGatherOutputOrScatterUpdate(
     absl::Span<const int64_t> index_map,
     absl::Span<const int64_t> offset_or_window_dims,
     absl::Span<const int64_t> slice_size, const int64_t index_vector_dim) {
-  if (operand_sharding.IsTileMaximal()) {
+  if (operand_sharding.IsTileMaximal() || operand_sharding.IsManual()) {
     return operand_sharding;
   }
   auto operand_passthrough_dims = GetGatherScatterOperandPassthroughOperandDims(
@@ -1075,7 +1079,8 @@ std::optional<HloSharding> PassthroughGatherOutputOrScatterUpdateToOperand(
     absl::Span<const int64_t> index_map,
     absl::Span<const int64_t> offset_or_window_dims,
     absl::Span<const int64_t> slice_size) {
-  if (output_or_update_sharding.IsTileMaximal()) {
+  if (output_or_update_sharding.IsTileMaximal() ||
+      output_or_update_sharding.IsManual()) {
     return output_or_update_sharding;
   }
   auto operand_passthrough_dims = GetGatherScatterOperandPassthroughOperandDims(
@@ -1121,7 +1126,7 @@ std::optional<HloSharding> PassthroughGatherOutputOrScatterUpdateToOperand(
 std::optional<HloSharding> GatherOperandShardingFromOutputParallelDimensions(
     const HloSharding& output_sharding, const HloInstruction& gather,
     const CallGraph& call_graph) {
-  if (output_sharding.IsTileMaximal()) {
+  if (output_sharding.IsTileMaximal() || output_sharding.IsManual()) {
     return output_sharding;
   }
   auto parallel_dims = GetGatherParallelBatchDims(gather, call_graph);
@@ -1357,7 +1362,7 @@ ScatterUpdateShardingFromOutputOperandPassthroughDimensions(
 std::optional<HloSharding> ScatterUpdateShardingFromOutputParallelDimensions(
     const HloSharding& output_sharding, const HloScatterInstruction& scatter,
     const CallGraph& call_graph) {
-  if (output_sharding.IsTileMaximal()) {
+  if (output_sharding.IsTileMaximal() || output_sharding.IsManual()) {
     return output_sharding;
   }
   auto parallel_dims = GetScatterParallelBatchDims(scatter, call_graph);
@@ -1417,6 +1422,9 @@ HloSharding GatherOutputOrScatterUpdateShardingFromIndicesParallelDimensions(
     const int64_t output_or_update_shape_rank,
     absl::Span<const int64_t> indices_parallel_dims,
     absl::Span<const int64_t> output_or_update_parallel_dims) {
+  if (indices_sharding.IsTileMaximal() || indices_sharding.IsManual()) {
+    return indices_sharding;
+  }
   CHECK_EQ(output_or_update_parallel_dims.size(), indices_parallel_dims.size());
   absl::InlinedVector<int64_t, 4> output_or_update_tiling(
       output_or_update_shape_rank, 1);
@@ -1545,7 +1553,7 @@ std::vector<int64_t> DevicesForSharding(
 
 HloSharding PartiallyReplicateTiledShardingOnDims(
     const HloSharding& sharding, absl::Span<const int64_t> dims_to_replicate) {
-  if (sharding.IsTileMaximal()) {
+  if (sharding.IsTileMaximal() || sharding.IsManual()) {
     return sharding;
   }
   int64_t group_count = 1;
@@ -1596,7 +1604,7 @@ HloSharding PartiallyReplicateTiledShardingOnDims(
 
 HloSharding PartiallyReplicateTiledShardingOnAllDimsExcept(
     const HloSharding& sharding, absl::Span<const int64_t> dims_to_keep) {
-  if (sharding.IsTileMaximal()) {
+  if (sharding.IsTileMaximal() || sharding.IsManual()) {
     return sharding;
   }
   std::vector<int64_t> dims_to_replicate(sharding.TiledDataRank());
@@ -1660,7 +1668,7 @@ HloSharding RemoveShapeDimensions(const HloSharding& sharding,
 std::optional<HloSharding> TransposeShardingWithCollapsedDims(
     const HloSharding& source, absl::Span<int64_t const> src_to_tgt,
     absl::Span<int64_t const> tgt_to_src) {
-  if (source.IsTileMaximal()) {
+  if (source.IsTileMaximal() || source.IsManual()) {
     return source;
   }
   if (src_to_tgt.size() < source.tile_assignment().num_dimensions()) {
