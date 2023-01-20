@@ -13,6 +13,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#if defined(INTEL_MKL) || defined(AMD_ZENDNN)
+
+// This file refactors common utility functions from oneDNN and ZenDNN layout
+// rewrite passes.
+
+// TODO(penporn): Make mkl_layout_pass.cc call these functions.
+
 #include "tensorflow/core/common_runtime/layout_pass_util.h"
 
 namespace tensorflow {
@@ -51,9 +58,9 @@ bool CanOpRunOnCPUDevice(const Node *n) {
   }
   // If user has specifically assigned this op to a non-CPU or XLA_CPU device,
   // then No.
-  else if (!n->def().device().empty() &&
-           (!absl::StrContains(n->def().device(), kCPUDeviceSubStr) ||
-            absl::StrContains(n->def().device(), kXLACPUDeviceSubStr))) {
+  if (!n->def().device().empty() &&
+      (!absl::StrContains(n->def().device(), kCPUDeviceSubStr) ||
+       absl::StrContains(n->def().device(), kXLACPUDeviceSubStr))) {
     result = false;
     reason = "User has assigned a device that is not CPU.";
   }
@@ -130,3 +137,5 @@ Status CopyInputs(
 }
 
 }  // namespace tensorflow
+
+#endif  // INTEL_MKL || AMD_ZENDNN

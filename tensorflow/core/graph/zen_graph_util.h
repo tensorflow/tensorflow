@@ -17,6 +17,9 @@ limitations under the License.
 #define TENSORFLOW_CORE_GRAPH_ZEN_GRAPH_UTIL_H_
 #ifdef AMD_ZENDNN
 
+#include <string>
+#include <utility>
+
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/graph/graph.h"

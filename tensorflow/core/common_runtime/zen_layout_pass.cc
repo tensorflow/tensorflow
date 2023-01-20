@@ -172,8 +172,8 @@ class ZenLayoutRewritePass : public GraphOptimizationPass {
       zen_rewrite_db_.push_back({"FusedBatchNormV3", "_ZenFusedBatchNormV3",
                                  RewriteValid, UpdateZenOpAttrs});
     }
-    // TF-ZenDNN currently only supports inference. The graph must not have
-    // any of the training ops in tensorflow/core/kernels/training_ops.cc
+    // TF-ZenDNN currently only supports inference. The graph must not have any
+    // of the training ops in tensorflow/core/kernels/training_ops.cc
     tf_training_ops_.push_back("ApplyGradientDescent");
     tf_training_ops_.push_back("ApplyAdadelta");
     tf_training_ops_.push_back("ResourceSparseApplyAdadelta");
@@ -205,18 +205,18 @@ class ZenLayoutRewritePass : public GraphOptimizationPass {
   Status Run(const GraphOptimizationPassOptions &options);
 
   // Executes fusion and rewrite passes on the graph. Has an option to dump
-  // graph before and after rewrite. Returns true if and only if the graph
+  // graph before and after rewrite. Returns true, if and only if the graph
   // mutated, false otherwise.
   bool ZenOpRewritePass(std::unique_ptr<Graph> *g);
 
-  // Replaces TF-Vanilla ops with Zen ops
-  // Returns true if one or more rewrites are successful, false otherwise.
+  // Replaces TF-Vanilla ops with Zen ops. Returns true if one or more rewrites
+  // are successful, false otherwise.
   bool ZenOpUpdate(std::unique_ptr<Graph> *g);
 
   // Stores Zen op rewrite rules.
   typedef struct {
-    string tf_op_name;   // Original name of op of the node in the graph
-    string zen_op_name;  // New name of the op
+    string tf_op_name;   // Original name of op of the node in the graph.
+    string zen_op_name;  // New name of the op.
     // A function handler to copy attributes from an old node to a new node.
     std::function<bool(const Node *)> check_validity;
     // Returns true if we should rewrite the node.
@@ -224,7 +224,7 @@ class ZenLayoutRewritePass : public GraphOptimizationPass {
   } ZenOpRewriteRecord;
 
  private:
-  // Maintain record about nodes to rewrite
+  // Maintain record about nodes to rewrite.
   std::vector<ZenOpRewriteRecord> zen_rewrite_db_;
 
   // TF training ops list from tensorflow/core/kernels/training_ops.cc
@@ -235,22 +235,22 @@ class ZenLayoutRewritePass : public GraphOptimizationPass {
     return primary.find(sub) != std::string::npos;
   }
 
-  // Check if the node 'n' has any applicable rewrite rule
+  // Check if the node 'n' has any applicable rewrite rule.
   //
-  // @return RewriteInfo* for the applicable rewrite rule
+  // @return RewriteInfo* for the applicable rewrite rule.
   const ZenOpRewriteRecord *CheckNodeForZenOpRewrite(const Node *n) const;
 
-  // Get nodes that will feed a list of TF tensors to the new
-  // node that we are constructing.
+  // Get nodes that will feed a list of TF tensors to the new node that we are
+  // constructing.
   //
   // @input inputs - inputs to old node that we are using for constructing
-  //                 new inputs,
+  //                 new inputs.
   // @input input_idx - the index in the 'inputs' vector pointing to the
-  //                    current input that we have processed so far
+  //                    current input that we have processed so far.
   // @output input_idx - index will be incremented by the number of nodes
-  //                     from 'inputs' that are processed
-  // @input list_length - The expected length of list of TF tensors
-  // @output output_nodes - the list of new nodes creating TF tensors
+  //                     from 'inputs' that are processed.
+  // @input list_length - The expected length of list of TF tensors.
+  // @output output_nodes - the list of new nodes creating TF tensors.
   //
   // @return None
   void GetNodesProducingTFTensorList(
@@ -259,9 +259,8 @@ class ZenLayoutRewritePass : public GraphOptimizationPass {
       std::vector<NodeBuilder::NodeOut> *output_nodes);
 
   // ZenDNN currently does not support all fusions that grappler performs
-  // together with Conv2D and DepthwiseConv2D. We rewrite
-  // _FusedConv2D and _FusedDepthwiseConv2dNative only if it includes those
-  // we support
+  // together with Conv2D and DepthwiseConv2D. We rewrite _FusedConv2D and
+  // _FusedDepthwiseConv2dNative only if it includes those we support.
   static bool CheckValidityFusedConv2D(const Node *n) {
     // Return false if the node is not with data type supported by Zen
     // inference. Currently Zen supports inference in float only.
@@ -281,8 +280,8 @@ class ZenLayoutRewritePass : public GraphOptimizationPass {
             fused_ops == std::vector<string>{"FusedBatchNorm", "Relu"});
   }
 
-  // Currently TF-ZenDNN supports FP32 inference only.
-  // Returns, true if node is of float dataype, false otherwise
+  // Currently TF-ZenDNN supports FP32 inference only. Returns, true if node is
+  // of float dataype, false otherwise.
   static bool CheckValidityForDTypeSupported(const Node *n) {
     DataType data_type;
     TF_CHECK_OK(GetNodeAttr(n->def(), "T", &data_type));
@@ -290,12 +289,12 @@ class ZenLayoutRewritePass : public GraphOptimizationPass {
   }
 
   // Method to provide a 'valid' status for nodes that don't require any check.
-  // This method is used in ZenLayoutRewritePass() for creating the
-  // record/entry for rewriting native ops with Zen ops.
+  // This method is used in ZenLayoutRewritePass() for creating the record/entry
+  // for rewriting native ops with Zen ops.
   static bool RewriteValid(const Node *n) { return true; }
 
-  // Method to find whether the graph has inference ops only. It returns
-  // error status if the graph has training ops.
+  // Method to find whether the graph has inference ops only. It returns error
+  // status if the graph has training ops.
   Status AreAllInferenceOps(std::unique_ptr<Graph> *g);
 
   // Rewrites input node to a new node specified by its matching rewrite record.
@@ -331,7 +330,7 @@ class ZenLayoutRewritePass : public GraphOptimizationPass {
   // @return  An unordered map with nodes as key and
   //          value as a pair of reorder flags
   std::unordered_map<Node *, std::pair<bool, bool>> GetReorderFlags(
-      std::vector<Node *> &nodes);
+      const std::vector<Node *> &nodes);
 
   // Update reorder information of all Zen nodes
   //
@@ -341,7 +340,7 @@ class ZenLayoutRewritePass : public GraphOptimizationPass {
 };
 
 // ZenLayoutRewritePass is executed in phase 0, to make sure it is executed
-// before MklLayoutRewritePass(Phase 1).
+// before MklLayoutRewritePass (phase 1).
 REGISTER_OPTIMIZATION(OptimizationPassRegistry::POST_PARTITIONING, 0,
                       ZenLayoutRewritePass);
 
@@ -349,7 +348,7 @@ void DeleteNodeAndUpdateLinks(std::unique_ptr<Graph> *, Node *, Node *, int);
 
 const ZenLayoutRewritePass::ZenOpRewriteRecord *
 ZenLayoutRewritePass::CheckNodeForZenOpRewrite(const Node *n) const {
-  CHECK_NOTNULL(n);
+  CHECK_NOTNULL(n);  // Crash ok.
 
   DataType data_type;
 
@@ -360,7 +359,7 @@ ZenLayoutRewritePass::CheckNodeForZenOpRewrite(const Node *n) const {
       TF_CHECK_OK(GetNodeAttr(n->def(), "T", &data_type));
       if (!zen_op_registry::IsZenOpKernelRegistered(rewrite_record->zen_op_name,
                                                     data_type)) {
-        // No Zen kernel is registered for op
+        // No Zen kernel is registered for op.
         return nullptr;
       }
       return &*rewrite_record;
@@ -370,12 +369,13 @@ ZenLayoutRewritePass::CheckNodeForZenOpRewrite(const Node *n) const {
 }
 
 // Returns true if 'm' is the last Zen node of the graph, false otherwise.
-bool IsLastZenNode(std::unique_ptr<Graph> *g, Node *m, std::string zen_prefix) {
+bool IsLastZenNode(std::unique_ptr<Graph> *g, Node *m) {
   std::vector<Node *> order;
   GetPostOrder(**g, &order);
 
   for (Node *n : order) {
-    if ((n->type_string()).find(zen_prefix) != std::string::npos) {
+    if ((n->type_string()).find(zen_op_registry::kZenNodePrefix) !=
+        std::string::npos) {
       return (n == m);
     }
   }
@@ -387,10 +387,9 @@ int IncomingEdgeCount(const Node *n) {
   int count = 0;
   if (n == nullptr) return count;
   for (const Edge *e : n->in_edges()) {
-    if (e->IsControlEdge() || e->src()->type_string() == "Const") {
-      continue;
+    if (!e->IsControlEdge() && e->src()->type_string() != "Const") {
+      count++;
     }
-    count++;
   }
   return count;
 }
@@ -407,40 +406,41 @@ int OutgoingEdgeCount(const Node *n) {
   return count;
 }
 
-// conv_pattern is expected to be variants of Conv2D patterns
-// pad_pattern is expected to be Pad op
 // Upon pattern match, the Pad op is removed. Conv2D op has been updated
 // previously. This pattern (Pad -> Conv2D/FusedConv2D) is observed in ResNet50
-// and other ResNet variants
+// and other ResNet variants.
+//
+// @input  conv_pattern - a variant of Conv2D pattern.
+//         pad_pattern - a Pad op.
+// @return True if fusion is performed, false otherwise.
 bool ZenFusePadConv(std::unique_ptr<Graph> *g, Node *orig_node,
                     string conv_pattern, string pad_pattern) {
-  int source_slot;      // Source output of incoming edge for Pad op
-  string padding = "";  // To check that padding type is set to EXPLICIT
-  // Padding type that should be in Conv2D
+  int source_slot;      // Source output of incoming edge for Pad op.
+  string padding = "";  // To check that padding type is set to EXPLICIT.
+  // Padding type that should be in Conv2D.
   const string kExplicitPad = "EXPLICIT";
 
-  // If current node is not Pad, return false
+  // If current node is not Pad, return false.
   if (orig_node->type_string() != pad_pattern) {
     return false;
   }
-  // Check incoming edges to Pad op (orig_node)
+  // Check incoming edges to Pad op (orig_node).
   for (const Edge *n : orig_node->in_edges()) {
     if (n->IsControlEdge() || n->src()->type_string() == "Const") {
       continue;
     }
-    // Store source output of incoming edge for Pad op
+    // Store source output of incoming edge for Pad op.
     source_slot = n->src_output();
-    // Check outgoing edges from Pad op (orig_node)
+    // Check outgoing edges from Pad op (orig_node).
     for (const Edge *e : orig_node->out_edges()) {
-      // Check for 2nd pattern (Conv2D)
+      // Check for 2nd pattern (Conv2D).
       if (!e->IsControlEdge() && e->dst()->type_string() == conv_pattern) {
-        // If padding type is not EXPLICIT, fusion of Pad op
-        // cannot be performed
         TF_CHECK_OK(GetNodeAttr((e->dst())->def(), "padding", &padding));
+        // If padding type is not EXPLICIT, fusion of Pad op cannot be performed
         if (padding != kExplicitPad) {
           return false;
         }
-        // Remove Pad node as it's Fused with Conv2D (FusedPadConv2D)
+        // Remove Pad node as it's Fused with Conv2D (FusedPadConv2D).
         DeleteNodeAndUpdateLinks(g, orig_node, n->src(), source_slot);
         return true;
       }  // end of if condition to check conv_pattern among non-control edges
@@ -448,23 +448,6 @@ bool ZenFusePadConv(std::unique_ptr<Graph> *g, Node *orig_node,
   }      // end of for loop for in edges
   // return false as Pad removal is not performed
   return false;
-}  // End of ZenFusePadConv function
-
-// Return the count of _FusedConv2D predecessor nodes of 'node', ignore Const
-// and _ZenFusedConv2D nodes. If any other kind of node is a predecessor
-// return 0.
-int CountFusedConv2DInEdges(const Node *node) {
-  int count = 0;
-  for (const Edge *edge : node->in_edges()) {
-    if (edge->IsControlEdge()) continue;
-    if (edge->src()->type_string() == "_FusedConv2D") {
-      ++count;
-    } else if (edge->src()->type_string() != "Const" &&
-               edge->src()->type_string() != ("_ZenFusedConv2D")) {
-      return 0;
-    }
-  }
-  return count;
 }
 
 // Delete node 'm' and update the incoming and outgoing links of it.
@@ -506,58 +489,7 @@ void DeleteNodeAndUpdateLinks(std::unique_ptr<Graph> *g, Node *m,
   (*g)->RemoveNode(m);
 }
 
-// Checks if MaxPool is followed by ReLU and updates edge for a pattern match
-const Edge *CheckMaxPoolRelu(const Edge *e, string pattern) {
-  if (e->dst()->type_string() == "MaxPool" && pattern == "Relu") {
-    for (const Edge *d : e->dst()->out_edges()) {
-      if (!d->IsControlEdge() && d->dst()->type_string() == pattern) {
-        return d;
-      }
-    }
-  }
-  return e;
-}
-
-// Reorder Activate -
-// Example use cases :
-//  [ConvolutionBias - Maxool - Relu ] -> [ ConvolutionBiasRelu - Maxpool ]
-//  [ConvolutionBias - Concat - Relu ] -> [ ConvolutionBiasRelu - Concat ]
-//  [ConvolutionBias - Concat - Maxpool - Relu ] ->
-//                        [ ConvolutionBiasRelu - Concat - Maxpool]
-int ReorderActivation(std::unique_ptr<Graph> *g, const Node *orig_node,
-                      string pattern1, string pattern2, string pattern3) {
-  bool flag = 0;
-  int count;
-  std::unordered_set<Node *> unique_node;
-
-  if (OutgoingEdgeCount(orig_node) != 1) {
-    return flag;
-  }
-
-  for (const Edge *n : orig_node->out_edges()) {
-    if (n->IsControlEdge()) {
-      continue;
-    }
-    count = CountFusedConv2DInEdges(n->dst());
-    if ((n->dst()->type_string() == pattern1) && count) {
-      for (const Edge *e : n->dst()->out_edges()) {
-        // check for Maxpool Relu pattern
-        e = CheckMaxPoolRelu(e, pattern2);
-        // For successful pattern match with count > 1 Attribute updation
-        // happens Relu gets deleted  when count equals 1
-        if (e->dst()->type_string() == pattern2 &&
-            IncomingEdgeCount(e->dst()) == 1 && count == 1) {
-          DeleteNodeAndUpdateLinks(g, e->dst(), e->src(), e->src_output());
-        }
-        flag = 1;
-        break;
-      }
-    }
-  }
-  return flag;
-}
-
-// Remove the Successor of Zen node if it is matching with 'pattern'.
+// Remove the Successor of Zen node if it matches with 'pattern'.
 //
 // @input  g - input graph.
 // @input  orig_node - Source Zen node.
@@ -581,10 +513,9 @@ bool ZenOpRemoveSuccessor(std::unique_ptr<Graph> *g, const Node *orig_node,
 }
 
 // Fuse Conv2D-Bias-ReLU
-bool FuseCBR(std::unique_ptr<Graph> *g, const Node *orig_node, string pattern) {
-  return ZenOpRemoveSuccessor(g, orig_node, pattern) ||
-         ReorderActivation(g, orig_node, "MaxPool", pattern, "_FusedConv2D") ||
-         ReorderActivation(g, orig_node, "ConcatV2", pattern, "_FusedConv2D");
+bool FuseConv2DBiasRelu(std::unique_ptr<Graph> *g, const Node *orig_node,
+                        string pattern) {
+  return ZenOpRemoveSuccessor(g, orig_node, pattern);
 }
 
 void ZenLayoutRewritePass::UpdateZenOpAttrs(const Node *orig_node,
@@ -594,41 +525,38 @@ void ZenLayoutRewritePass::UpdateZenOpAttrs(const Node *orig_node,
 
   for (auto iter = attr_list.begin(); iter != attr_list.end(); ++iter) {
     name = iter->first;
-    // since the reorder attributes , links and reset  are handled separately
-    // we skip their inclusion here to avoid duplicate attrs
+    // Skip the following attributes because they are handled elsewhere.
     if (name == "reorder_before" || name == "reorder_after" ||
         name == "is_eager" || name == "in_links" || name == "out_links" ||
         name == "reset") {
       continue;
     }
-    auto attr = iter->second;
 
-    nb->Attr(name, attr);
+    nb->Attr(name, iter->second);
   }
 }
 
-// Used internally in UpdateZenOpAttrsConv2D and UpdateZenOpAttrsFusedConv2D
-// to update padding attribute according to PadConv2D fusion
-// -----------------------------------------------------------------
-// Input parameters
-// padding: padding attribute of orig_node (expected to be variants of Conv2D)
-// orig_node: Node with which Pad op needs to be fused
-// explicit_paddings: a vector of padding values for each dimension
-// Returns: true if fusion can take place (otherwise false)
-// -----------------------------------------------------------------
-bool updateAttributePadConv2D(string padding, const Node *orig_node,
+// Used internally in UpdateZenOpAttrsConv2D and UpdateZenOpAttrsFusedConv2D to
+// update 'padding' attribute according to PadConv2D fusion.
+//
+// @input  padding - 'padding' attribute of 'orig_node'.
+//         orig_node - Node with which Pad op needs to be fused.
+//         explicit_paddings - a vector of padding values for each dimension.
+// @return True if fusion can take place, false otherwise.
+//
+bool UpdateAttributePadConv2D(string padding, const Node *orig_node,
                               std::vector<int32> &explicit_paddings) {
   // Part of PadConv2D fusion
   // If padding is VALID and the current FusedConv2D op is preceded by Pad op,
   // then we are updating the padding attribute to EXPLICIT and setting
-  // explicit_paddings attribute
+  // explicit_paddings attribute.
   // If padding is EXPLICIT and the pattern Pad op -> FusedConv2D op exists,
-  // then we are updating the explicit_paddings attribute only
+  // then we are updating the explicit_paddings attribute only.
   const string kValidPad = "VALID";
   const string kExplicitPad = "EXPLICIT";
   const string kPadPattern = "Pad";
 
-  // Temparary fix for num_host_args argument of _FusedConv2D node
+  // Temporary fix for num_host_args argument of _FusedConv2D node.
   if (orig_node->type_string() == "_FusedConv2D") {
     string data_format;
     string filter_format;
@@ -648,49 +576,45 @@ bool updateAttributePadConv2D(string padding, const Node *orig_node,
     }
   }
 
-  // if padding is not VALID or EXPLICIT, fusion cannot be performed
+  // If padding is not VALID or EXPLICIT, fusion cannot be performed.
   if (padding != kValidPad && padding != kExplicitPad) {
     return false;
   }
 
-  // Check incoming edges to origin node (FusedConv2D)
+  // Check incoming edges to origin node (FusedConv2D).
   for (const Edge *m : orig_node->in_edges()) {
-    // Skip if previous node is Const
+    // Skip if previous node is Const.
     if (m->src()->type_string() == "Const") {
       continue;
     }
     // If previous node is kPadPattern, pattern (Pad op -> FusedConv2D op) has
-    // been found
+    // been found.
     if (m->src()->type_string() == kPadPattern) {
-      // Get original explicit padding values if padding = EXPLICIT
+      // Get original explicit padding values if padding = EXPLICIT.
       std::vector<int32> explicit_paddings_orig = {};
       if (padding == kExplicitPad) {
         TF_CHECK_OK(GetNodeAttr(orig_node->def(), "explicit_paddings",
                                 &explicit_paddings_orig));
       }
-      // input will hold the const op before Pad op
+      // 'input' will hold the const op before Pad op.
       Node *input = nullptr;
       // Index 0 has the input data and Index 1 has the padding values (which is
-      // needed)
+      // needed).
       TF_CHECK_OK((m->src())->input_node(1, &input));
       // Check if input is constant
       if (input->IsConstant()) {
         Tensor explicit_padding_tensor;
-        // value attribute has the Tensor with explicit padding values
+        // value attribute has the Tensor with explicit padding values.
         TF_CHECK_OK(
             GetNodeAttr((input)->def(), "value", &explicit_padding_tensor));
-        // Number of elements in explicit_padding_tensor (should be 8)
+        // Number of elements in explicit_padding_tensor (should be 8).
         int num_elements = explicit_padding_tensor.NumElements();
-        // Padding values are of datatype int32
-        typedef int32 T;
-        // padding_1d_tensor is an Eigen Tensor
-        auto padding_1d_tensor = explicit_padding_tensor.flat<T>();
+        // 'padding_1d_tensor' is an Eigen Tensor with datatype int32.
+        auto padding_1d_tensor = explicit_padding_tensor.flat<int32>();
         // For dimension i (starting from 0), the padding values
         // will be at 2*i and 2*i + 1
         for (int index_pad = 0; index_pad < num_elements; index_pad++) {
-          if (padding == kValidPad)
-          // Insert the padding value at index i
-          {
+          if (padding == kValidPad) {
             explicit_paddings.insert(explicit_paddings.begin() + index_pad,
                                      padding_1d_tensor(index_pad));
           } else if (padding == kExplicitPad) {
@@ -698,18 +622,17 @@ bool updateAttributePadConv2D(string padding, const Node *orig_node,
                                      padding_1d_tensor(index_pad) +
                                          explicit_paddings_orig.at(index_pad));
           }
-        }  // end of for loop for padding values
-        // Set padding_update to 1 (as PadConv2D can be performed)
+        }  // end of for loop for padding values.
+        // PadConv2D fusion can be performed.
         return true;
-      }  // end of if condition to check constant op
-    }    // end of if condition for Pad op
-  }      // end of for loop for input edges for FusedConv2D op
+      }  // end of if condition to check constant op.
+    }    // end of if condition for Pad op.
+  }      // end of for loop for input edges for FusedConv2D op.
   return false;
-}  // end of updateAttributePadConv2D()
+}
 
-// Copies the attributes from Conv2D op to ZenConv2D op
-// padding and explicit_paddings attributes are updated accordingly to PadConv2D
-// fusion
+// Copies the attributes from Conv2D op to ZenConv2D op. 'padding' and
+// 'explicit_paddings' attributes are updated accordingly to PadConv2D fusion.
 void ZenLayoutRewritePass::UpdateZenOpAttrsConv2D(const Node *orig_node,
                                                   NodeBuilder *nb) {
   DataType T;
@@ -719,32 +642,33 @@ void ZenLayoutRewritePass::UpdateZenOpAttrsConv2D(const Node *orig_node,
   std::vector<int32> dilations;
   std::vector<int32> explicit_paddings = {};
 
-  // Get attributes from TfOp node.
+  // Get attributes from TF op node.
   TF_CHECK_OK(GetNodeAttr(orig_node->def(), "T", &T));
   TF_CHECK_OK(GetNodeAttr(orig_node->def(), "strides", &strides));
   TF_CHECK_OK(GetNodeAttr(orig_node->def(), "padding", &padding));
   TF_CHECK_OK(GetNodeAttr(orig_node->def(), "data_format", &data_format));
   TF_CHECK_OK(GetNodeAttr(orig_node->def(), "dilations", &dilations));
 
-  // padding_update determines if padding attributes needs to be modified
+  // 'padding_update' determines if padding attributes needs to be modified.
   bool padding_update = false;
-  // PadConv2D fusion can be done for VALID and EXPLICIT padding
-  if (padding != "SAME")
-    // Check if PadConv2D fusion can be done and get the padding values
+  // PadConv2D fusion can be done for VALID and EXPLICIT padding.
+  if (padding != "SAME") {
+    // Check if PadConv2D fusion can be done and get the padding values.
     padding_update =
-        updateAttributePadConv2D(padding, orig_node, explicit_paddings);
-  // Update ZenOp with attributes from TfOp
+        UpdateAttributePadConv2D(padding, orig_node, explicit_paddings);
+  }
+  // Update Zen op with attributes from TF op.
   nb->Attr("T", T);
   nb->Attr("strides", strides);
-  // Update padding attribute for PadConv2D fusion
+  // Update 'padding' attribute for PadConv2D fusion.
   if (padding_update == true) {
-    nb->Attr("padding", "EXPLICIT");                   // Updates padding type
-    nb->Attr("explicit_paddings", explicit_paddings);  // sets padding values
-  }
-  // Padding attribute for condition when fusion is not performed
-  else {
+    nb->Attr("padding", "EXPLICIT");                   // Updates padding type.
+    nb->Attr("explicit_paddings", explicit_paddings);  // sets padding values.
+  } else {
+    // 'padding' attribute for condition when fusion is not performed.
     nb->Attr("padding", padding);
-    // If padding is EXPLICIT, then explicit_paddings attribute needs to be set
+    // If 'padding' is EXPLICIT, then 'explicit_paddings' attribute needs to be
+    // set.
     if (padding == "EXPLICIT") {
       std::vector<int32> explicit_paddings_tmp = {};
       TF_CHECK_OK(GetNodeAttr(orig_node->def(), "explicit_paddings",
@@ -756,9 +680,9 @@ void ZenLayoutRewritePass::UpdateZenOpAttrsConv2D(const Node *orig_node,
   nb->Attr("dilations", dilations);
 }
 
-// Copies the attributes from FusedConv2D op to ZenFusedConv2D op
-// padding and explicit_paddings attributes are updated accordingly to
-// PadFusedConv2D fusion
+// Copies the attributes from FusedConv2D op to ZenFusedConv2D op. 'padding' and
+// 'explicit_paddings' attributes are updated accordingly to PadFusedConv2D
+// fusion.
 void ZenLayoutRewritePass::UpdateZenOpAttrsFusedConv2D(const Node *orig_node,
                                                        NodeBuilder *nb) {
   DataType T;
@@ -770,7 +694,7 @@ void ZenLayoutRewritePass::UpdateZenOpAttrsFusedConv2D(const Node *orig_node,
   std::vector<int32> dilations;
   std::vector<int32> explicit_paddings = {};
 
-  // Get attributes from TfOp node.
+  // Get attributes from TF op node.
   TF_CHECK_OK(GetNodeAttr(orig_node->def(), "T", &T));
   TF_CHECK_OK(GetNodeAttr(orig_node->def(), "num_args", &num_args));
   TF_CHECK_OK(GetNodeAttr(orig_node->def(), "strides", &strides));
@@ -779,26 +703,27 @@ void ZenLayoutRewritePass::UpdateZenOpAttrsFusedConv2D(const Node *orig_node,
   TF_CHECK_OK(GetNodeAttr(orig_node->def(), "dilations", &dilations));
   TF_CHECK_OK(GetNodeAttr(orig_node->def(), "epsilon", &epsilon));
 
-  // padding_update determines if padding attributes needs to be modified
+  // 'padding_update' determines if padding attributes needs to be modified.
   bool padding_update = false;
-  // PadFusedConv2D fusion can be done for VALID and EXPLICIT padding
-  if (padding != "SAME")
-    // Check if PadFusedConv2D fusion can be done and get the padding values
+  // PadFusedConv2D fusion can be done for VALID and EXPLICIT padding.
+  if (padding != "SAME") {
+    // Check if PadFusedConv2D fusion can be done and get the padding values.
     padding_update =
-        updateAttributePadConv2D(padding, orig_node, explicit_paddings);
-  // Update ZenOp with attributes from TfOp
+        UpdateAttributePadConv2D(padding, orig_node, explicit_paddings);
+  }
+  // Update Zen op with attributes from TF op.
   nb->Attr("T", T);
   nb->Attr("num_args", num_args);
   nb->Attr("strides", strides);
-  // Update padding attribute for PadConv2D fusion
+  // Update padding attribute for PadConv2D fusion.
   if (padding_update == true) {
-    nb->Attr("padding", "EXPLICIT");                   // Updates padding type
-    nb->Attr("explicit_paddings", explicit_paddings);  // sets padding values
-  }
-  // Padding attribute for condition when fusion is not performed
-  else {
+    nb->Attr("padding", "EXPLICIT");                   // Updates padding type.
+    nb->Attr("explicit_paddings", explicit_paddings);  // sets padding values.
+  } else {
+    // 'padding' attribute for condition when fusion is not performed.
     nb->Attr("padding", padding);
-    // If padding is EXPLICIT, then explicit_paddings attribute needs to be set
+    // If 'padding' is EXPLICIT, then 'explicit_paddings' attribute needs to be
+    // set.
     if (padding == "EXPLICIT") {
       std::vector<int32> explicit_paddings_tmp = {};
       TF_CHECK_OK(GetNodeAttr(orig_node->def(), "explicit_paddings",
@@ -838,8 +763,8 @@ void ZenLayoutRewritePass::GetNodesProducingTFTensorList(
     CHECK_LT(*input_idx, inputs.size());
     Node *n = inputs[*input_idx].first;
     int slot = inputs[*input_idx].second;
-    // If input node 'n' is just producing a single tensor at
-    // output slot 'slot' then we just add that single node.
+    // If input node 'n' is just producing a single tensor at output slot 'slot'
+    // then we just add that single node.
     output_nodes->push_back(NodeBuilder::NodeOut(n, slot));
     (*input_idx)++;
     list_length--;
@@ -853,7 +778,6 @@ Status ZenLayoutRewritePass::ZenOpNodeRewrite(
   DCHECK_NE(rewrite_record, nullptr);
   DCHECK_NE(orig_node, nullptr);
 
-  Status ret_status = OkStatus();
   Node *new_node = nullptr;
   std::vector<string> fused_ops = {};
   int num_data_inputs = orig_node->in_edges().size();
@@ -871,41 +795,34 @@ Status ZenLayoutRewritePass::ZenOpNodeRewrite(
                  rewrite_record->zen_op_name.c_str());
 
   nb.Device(orig_node->def().device());
-  ret_status = CopyInputs(orig_node, inputs, &nb);
-  if (ret_status != OkStatus()) {
-    return ret_status;
-  }
+  TF_RETURN_IF_ERROR(CopyInputs(orig_node, inputs, &nb));
   rewrite_record->update_zen_op_attr(const_cast<const Node *>(orig_node), &nb);
 
   nb.Attr("reorder_before", reorder_flags.first);
   nb.Attr("reorder_after", reorder_flags.second);
   nb.Attr("in_links", IncomingEdgeCount(orig_node));
   nb.Attr("out_links", OutgoingEdgeCount(orig_node));
-  nb.Attr("reset",
-          IsLastZenNode(g, orig_node, zen_op_registry::kZenNodePrefix));
+  nb.Attr("reset", IsLastZenNode(g, orig_node));
 
-  // Add/Update Fused Op Attribute
+  // Add/Update Fused Op Attribute.
   if (orig_node->type_string() == "_ZenFusedConv2D" ||
       orig_node->type_string() == "_FusedConv2D" ||
       orig_node->type_string() == "_FusedDepthwiseConv2dNative" ||
       orig_node->type_string() == "_ZenFusedDepthwiseConv2dNative") {
     TF_CHECK_OK(GetNodeAttr(orig_node->def(), "fused_ops", &fused_ops));
-    if (FuseCBR(g, orig_node, "Relu")) {
+    if (FuseConv2DBiasRelu(g, orig_node, "Relu")) {
       if (fused_ops.size() == 1) {
         fused_ops.push_back("Relu");
       }
     }
-    if (FuseCBR(g, orig_node, "Relu6")) {
+    if (FuseConv2DBiasRelu(g, orig_node, "Relu6")) {
       if (fused_ops.size() == 1) {
         fused_ops.push_back("Relu6");
       }
     }
     nb.Attr("fused_ops", fused_ops);
   }
-  ret_status = nb.Finalize(&**g, &new_node);
-  if (ret_status != OkStatus()) {
-    return ret_status;
-  }
+  TF_RETURN_IF_ERROR(nb.Finalize(&**g, &new_node));
 
   std::unordered_set<Node *> unique_node;
   for (const Edge *e : orig_node->in_edges()) {
@@ -933,23 +850,22 @@ Status ZenLayoutRewritePass::ZenOpNodeRewrite(
   new_node->set_assigned_device_name(orig_node->assigned_device_name());
   (*g)->RemoveNode(orig_node);
 
-  return ret_status;
+  return OkStatus();
 }
 
+// 'nodes' is a vector of Zen nodes marked for rewrite to update reorder flags.
 std::unordered_map<Node *, std::pair<bool, bool>>
-ZenLayoutRewritePass::GetReorderFlags(std::vector<Node *> &nodes) {
-  // nodes is a vector of original nodes marked for rewrite with Zen ops
-
-  // map from node to [reorder_before, reorder_after]
+ZenLayoutRewritePass::GetReorderFlags(const std::vector<Node *> &nodes) {
+  // Map from node to [reorder_before, reorder_after]
   std::unordered_map<Node *, std::pair<bool, bool>> reorder_flags;
   bool first_reorder_completed = false;  // assuming only one input
-  // When setting reorder_before, we check if the input ops are read ops
-  // typically to avoid considering read ops from filter weights as they
-  // are reordered anyway in the Zen op. However, for the first op,
-  // there will be two read ops, one from weights, and one from input
-  // data. To handle this special case, this bool variable is used.
 
   for (Node *n : nodes) {
+    // When setting reorder_before, we check if the input ops are read ops
+    // typically to avoid considering read ops from filter weights as they are
+    // reordered anyway in the Zen op. However, for the first op, there will be
+    // two read ops, one from weights, and one from input data. To handle this
+    // special case, this bool variable is used.
     bool reorder_before, reorder_after;
     reorder_before = reorder_after = false;
 
@@ -964,12 +880,10 @@ ZenLayoutRewritePass::GetReorderFlags(std::vector<Node *> &nodes) {
         VLOG(1) << "ZenLayoutRewritePass::GetReorderFlags: At " << n->name()
                 << " " << n->type_string() << ", non-Zen output - "
                 << dst->name() << " " << dst->type_string();
-        // didn't find the next node
-        // this means that the next node is not a Zen node
-        // thus, we must reorder
+        // Did not find the next node this means that the next node is not a
+        // Zen node, thus, we must reorder.
         reorder_after = true;
-        // can exit the loop since remaining edges won't
-        // change this flag
+        // Exit the loop as remaining edges will not change this flag.
         break;
       }
     }
@@ -982,23 +896,20 @@ ZenLayoutRewritePass::GetReorderFlags(std::vector<Node *> &nodes) {
       }
 
       if (HasSubstr(src->type_string(), "_Arg")) {
-        // found a placeholder op
+        // Found a placeholder op.
         VLOG(1) << "ZenLayoutRewritePass::GetReorderFlags: At " << n->name()
                 << " " << n->type_string() << ", a placeholder op "
                 << src->name() << " " << src->type_string();
-        // in this case, we don't need to worry about
-        // a read op from data
+        // In this case, we don't need to worry about a read op from data.
         first_reorder_completed = true;
         reorder_before = true;
         break;
       }
 
-      // ignore read ops coming from weights
+      // Ignore read ops coming from weights.
       if (HasSubstr(src->name(), "read")) {
-        // found read op
-        // check if it is the first
+        // Found read op, check if it is the first.
         if (!first_reorder_completed) {
-          // it's the first!
           VLOG(1) << "ZenLayoutRewritePass::GetReorderFlags: At " << n->name()
                   << " " << n->type_string() << ", encountered first read op "
                   << src->name() << " " << src->type_string();
@@ -1006,8 +917,6 @@ ZenLayoutRewritePass::GetReorderFlags(std::vector<Node *> &nodes) {
           reorder_before = true;
           break;
         }
-        // read op was not first
-        // ignore it
         continue;
       }
 
@@ -1016,12 +925,10 @@ ZenLayoutRewritePass::GetReorderFlags(std::vector<Node *> &nodes) {
         VLOG(1) << "ZenLayoutRewritePass::GetReorderFlags: At " << n->name()
                 << " " << n->type_string() << ", non-Zen input - "
                 << src->name() << " " << src->type_string();
-        // didn't find the previous node
-        // this means that the previous node is not a Zen node
-        // thus, we must reorder
+        // Did not find the previous node this means that the previous node is
+        // not a Zen node, thus, we must reorder.
         reorder_before = true;
-        // can exit the loop since remaining edges won't
-        // change this flag
+        // Exit the loop since remaining edges will not change this flag.
         break;
       }
     }
@@ -1030,9 +937,9 @@ ZenLayoutRewritePass::GetReorderFlags(std::vector<Node *> &nodes) {
     reorder_flags[n] = n_flags;
   }
 
-  // Handle the case of branches separately
+  // Handle the case of branches separately.
   for (Node *n : nodes) {
-    // Let A and B be Zen nodes, and X be a non-Zen node
+    // Let A and B be Zen nodes, and X be a non-Zen node.
     // rb - reorder_before, ra - reorder_after
     // Handle first case of branching:
     //       A (rb=True, ra)
@@ -1043,18 +950,18 @@ ZenLayoutRewritePass::GetReorderFlags(std::vector<Node *> &nodes) {
         Node *dst = e->dst();
         auto it = std::find(nodes.begin(), nodes.end(), dst);
         if (it != nodes.end() && reorder_flags[dst].first) {
-          // found Zen node
+          // Found Zen node.
           reorder_flags[n].second = true;
           break;
         }
       }
     }
-    // reorder flags set to true cannot be altered
+    // Reorder flags set to true cannot be altered.
   }
 
   // Case 2
   for (Node *n : nodes) {
-    // Let A and B be Zen nodes, and X be a non-Zen node
+    // Let A and B be Zen nodes, and X be a non-Zen node.
     // rb - reorder_before, ra - reorder_after
     // Handle second case of branching:
     //    B(rb=False, ra)   X
@@ -1065,18 +972,18 @@ ZenLayoutRewritePass::GetReorderFlags(std::vector<Node *> &nodes) {
         Node *src = e->src();
         auto it = std::find(nodes.begin(), nodes.end(), src);
         if (it != nodes.end() && reorder_flags[src].second) {
-          // found Zen node
+          // Found Zen node.
           reorder_flags[n].first = true;
           break;
         }
       }
     }
-    // reorder flags set to true cannot be altered
+    // Reorder flags set to true cannot be altered.
   }
 
   // Case 3
   for (Node *n : nodes) {
-    // Let A be a Zen nodes, and B and X be a Zen/Non Zen node
+    // Let A be a Zen nodes, and B and X be a Zen/Non Zen node.
     // rb - reorder_before, ra - reorder_after
     // Handle third case of branching:
     //    B(rb, ra=True)    X (set ra=True) if one of the siblings has ra=True
@@ -1089,14 +996,14 @@ ZenLayoutRewritePass::GetReorderFlags(std::vector<Node *> &nodes) {
           Node *src = f->src();
           auto it = std::find(nodes.begin(), nodes.end(), src);
           if (it != nodes.end() && src != n && reorder_flags[src].second) {
-            // Found a sibling with reorder after set to True
+            // Found a sibling with reorder_after set to True.
             reorder_flags[n].second = true;
             break;
           }
         }
       }
     }
-    // reorder flags set to true cannot be altered
+    // Reorder flags set to true cannot be altered.
   }
 
   return reorder_flags;
@@ -1114,12 +1021,14 @@ bool ZenLayoutRewritePass::AddReorderAttrs(std::unique_ptr<Graph> *g) {
     std::string op_name = n->type_string();
     bool is_eager;
 
-    // NOTE: Every Zen op must have the prefix "_Zen"
+    // NOTE: Every Zen op must have the prefix "_Zen".
     auto found = op_name.find(zen_op_registry::kZenNodePrefix);
     if (found != std::string::npos) {
-      // found a Zen op
+      // Found a Zen op.
       TF_CHECK_OK(GetNodeAttr(n->def(), "is_eager", &is_eager));
-      if (is_eager == false) zen_nodes.push_back(n);
+      if (is_eager == false) {
+        zen_nodes.push_back(n);
+      }
     }
   }
 
@@ -1134,12 +1043,12 @@ bool ZenLayoutRewritePass::AddReorderAttrs(std::unique_ptr<Graph> *g) {
     ZenOpRewriteRecord rewrite_record;
     for (auto it = zen_rewrite_db_.begin(); it < zen_rewrite_db_.end(); it++) {
       if (op_name == it->zen_op_name) {
-        rewrite_record = *it;  // make a copy of it
+        rewrite_record = *it;
         break;
       }
     }
 
-    // rewrite op with a copy containing the new reorder flags
+    // Rewrite op with a copy containing the new reorder flags.
     if (ZenOpNodeRewrite(g, n, &rewrite_record, n_reorder) == OkStatus()) {
       VLOG(1) << "ZenLayoutRewritePass::AddReorderAttrs: Node " << node_name
               << " " << op_name << " updated reorders to " << n_reorder.first
@@ -1170,10 +1079,10 @@ bool ZenLayoutRewritePass::ZenOpUpdate(std::unique_ptr<Graph> *g) {
                 << " rewritten with ZenOp " << rewrite_record->zen_op_name;
         result = true;
       } else {
-        // Rewriting the node with ZenOP failed. Hence the existing node will
+        // Rewriting the node with Zen op failed. Hence the existing node will
         // be there with graph for inference.
         VLOG(1) << "ZenLayoutRewritePass::ZenOpUpdate: Failed to rewrite node "
-                << node_name << " with ZenOp " << op_name;
+                << node_name << " with Zen op " << op_name;
       }
     }
   }
@@ -1183,7 +1092,6 @@ bool ZenLayoutRewritePass::ZenOpUpdate(std::unique_ptr<Graph> *g) {
 // Method to find whether the graph has inference ops only. It returns error
 // status if the graph has training ops.
 Status ZenLayoutRewritePass::AreAllInferenceOps(std::unique_ptr<Graph> *g) {
-  Status ret_status = OkStatus();
   std::vector<Node *> order;
   GetReversePostOrder(**g, &order);
   for (Node *n : order) {
@@ -1196,12 +1104,11 @@ Status ZenLayoutRewritePass::AreAllInferenceOps(std::unique_ptr<Graph> *g) {
         return Status(error::Code::UNIMPLEMENTED,
                       "Training operation found! Currently TF-ZenDNN "
                       "does not support training. Set environment "
-                      "variable TF_ENABLE_ZENDNN_OPTS to '0' for "
-                      "training.");
+                      "variable TF_ENABLE_ZENDNN_OPTS to '0' for training.");
       }
     }
   }
-  return ret_status;
+  return OkStatus();
 }
 
 bool ZenLayoutRewritePass::ZenOpRewritePass(std::unique_ptr<Graph> *g) {
@@ -1217,9 +1124,9 @@ bool ZenLayoutRewritePass::ZenOpRewritePass(std::unique_ptr<Graph> *g) {
 
   DumpGraph("\nBefore ZenRewritePass:\n", &**g);
 
-  // Two passes of Graph optimization
+  // Two passes of Graph optimization:
 
-  // First pass implements Basic Fusion Eg. CBR
+  // First pass implements Basic Fusion Eg. Conv2D-Bias-Relu.
   result = ZenOpUpdate(g);
   if (!result) {
     VLOG(1) << "ZenLayoutRewritePass::ZenOpRewritePass: No opportunity for Zen "
@@ -1234,19 +1141,16 @@ bool ZenLayoutRewritePass::ZenOpRewritePass(std::unique_ptr<Graph> *g) {
     }
     // Fused Optimizations
 
-    // Check and perform Pad fusion with FusedConv2D (Removes Pad op and
-    // expects n to be Pad op)
+    // Check and perform Pad fusion with FusedConv2D/Conv2D (Removes Pad op and
+    // expects n to be Pad op).
     if (ZenFusePadConv(g, n, "_ZenFusedConv2D", "Pad")) {
       VLOG(1) << "ZenLayoutRewritePass::ZenOpRewritePass: "
               << "FusedConvPad Successful";
-    }
-    // Check and perform Pad fusion with Conv2D (Removes Pad op and expects n to
-    // be Pad op)
-    else if (ZenFusePadConv(g, n, "_ZenConv2D", "Pad")) {
+    } else if (ZenFusePadConv(g, n, "_ZenConv2D", "Pad")) {
       VLOG(1) << "ZenLayoutRewritePass::ZenOpRewritePass: ConvPad Successful";
     }
   }
-  // Update ZenOP
+  // Update Zen op.
   result = ZenOpUpdate(g);
   if (!result) {
     VLOG(1) << "ZenLayoutRewritePass::ZenOpRewritePass: No instance of "

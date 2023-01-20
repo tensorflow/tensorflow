@@ -16,7 +16,10 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_COMMON_RUNTIME_LAYOUT_PASS_UTIL_H_
 #define TENSORFLOW_CORE_COMMON_RUNTIME_LAYOUT_PASS_UTIL_H_
 
+#if defined(INTEL_MKL) || defined(AMD_ZENDNN)
+
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "tensorflow/core/graph/node_builder.h"
@@ -67,4 +70,5 @@ Status CopyInputs(const Node *orig_node,
 
 }  // namespace tensorflow
 
+#endif  // INTEL_MKL || AMD_ZENDNN
 #endif  // TENSORFLOW_CORE_COMMON_RUNTIME_LAYOUT_PASS_UTIL_H_
