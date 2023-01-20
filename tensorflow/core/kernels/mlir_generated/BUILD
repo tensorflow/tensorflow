@@ -144,8 +144,8 @@ tf_kernel_library(
         ":gpu_is_inf_kernels",
         ":gpu_is_nan_kernels",
         ":gpu_lgamma_kernels",
-        ":gpu_log1p_kernels",
         ":gpu_log_kernels",
+        ":gpu_log1p_kernels",
         ":gpu_logical_not_kernels",
         ":gpu_neg_kernels",
         ":gpu_real_kernels",
@@ -555,7 +555,7 @@ tf_cuda_cc_test(
     ],
 )
 
-# Trigonometric kernels.
+# Trigonometric kernels
 
 gpu_kernel_library(
     name = "gpu_acos_kernels",
@@ -901,6 +901,76 @@ gpu_kernel_library(
     tile_size = "256",
     types = [],
     unroll_factors = "4",
+)
+
+# Rounding kernels
+
+gpu_kernel_library(
+    name = "gpu_ceil_kernels",
+    op = "ceil",
+    tile_size = "256",
+    types = [
+        "f16",
+        "f32",
+        "f64",
+    ],
+    unroll_factors = "4",
+)
+
+gpu_kernel_library(
+    name = "gpu_floor_kernels",
+    op = "floor",
+    tile_size = "256",
+    types = [
+        "f16",
+        "f32",
+        "f64",
+    ],
+    unroll_factors = "4",
+)
+
+gpu_kernel_library(
+    name = "gpu_floor_mod_kernels",
+    jit_types = [
+        "i8",
+        "i16",
+        "i64",
+        "ui8",
+        "ui16",
+        "ui32",
+        "ui64",
+        "f16",
+        "f32",
+        "f64",
+    ],
+    op = "floor_mod",
+    tile_size = "1024",
+    types = [],
+    unroll_factors = "4",
+)
+
+gpu_kernel_library(
+    name = "gpu_rint_kernels",
+    jit_types = ["f16"],
+    op = "rint",
+    tile_size = "1024",
+    types = [
+        "f32",
+        "f64",
+    ],
+)
+
+gpu_kernel_library(
+    name = "gpu_round_kernels",
+    op = "round",
+    tile_size = "1024",
+    types = [
+        "f16",
+        "f32",
+        "f64",
+        "i32",
+        "i64",
+    ],
 )
 
 # TODO(b/160731748): Re-enable when it works again.
@@ -1516,26 +1586,6 @@ gpu_kernel_library(
     unroll_factors = "4",
 )
 
-gpu_kernel_library(
-    name = "gpu_floor_mod_kernels",
-    jit_types = [
-        "i8",
-        "i16",
-        "i64",
-        "ui8",
-        "ui16",
-        "ui32",
-        "ui64",
-        "f16",
-        "f32",
-        "f64",
-    ],
-    op = "floor_mod",
-    tile_size = "1024",
-    types = [],
-    unroll_factors = "4",
-)
-
 # Kernels that support all floating-point types.
 [
     gpu_kernel_library(
@@ -1550,9 +1600,7 @@ gpu_kernel_library(
         unroll_factors = "4",
     )
     for op in [
-        "ceil",
         "expm1",
-        "floor",
         "log",
         "log1p",
         "relu_grad",
@@ -1749,30 +1797,6 @@ gpu_kernel_library(
         "f64",
         "c64",
         "c128",
-    ],
-)
-
-gpu_kernel_library(
-    name = "gpu_rint_kernels",
-    jit_types = ["f16"],
-    op = "rint",
-    tile_size = "1024",
-    types = [
-        "f32",
-        "f64",
-    ],
-)
-
-gpu_kernel_library(
-    name = "gpu_round_kernels",
-    op = "round",
-    tile_size = "1024",
-    types = [
-        "f16",
-        "f32",
-        "f64",
-        "i32",
-        "i64",
     ],
 )
 
