@@ -1,6 +1,8 @@
 # Distributed snapshot library.
 
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
+load("//tensorflow:tensorflow.default.bzl", "tf_grpc_cc_dependencies")
+load("//tensorflow/core/platform:build_config.bzl", "tf_protos_profiler_service")
 load("//tensorflow/tsl:tsl.default.bzl", "get_compatible_with_portable")
 
 package(
@@ -9,6 +11,34 @@ package(
         "//tensorflow:internal",
     ],
     licenses = ["notice"],
+)
+
+tf_cc_test(
+    name = "distributed_snapshot_test",
+    srcs = ["distributed_snapshot_test.cc"],
+    # copybara:uncomment extra_copts = ["-Wthread-safety-analysis"],
+    deps = [
+        ":path_utils",
+        ":snapshot_reader",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/time",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/data:snapshot_utils",
+        "//tensorflow/core/data/service:dispatcher_client",
+        "//tensorflow/core/data/service:test_cluster",
+        "//tensorflow/core/data/service:test_util",
+        "//tensorflow/core/framework:tensor_proto_cc",
+        "//tensorflow/tsl/platform:env",
+        "//tensorflow/tsl/platform:errors",
+        "//tensorflow/tsl/platform:status",
+        "//tensorflow/tsl/platform:status_matchers",
+        "//tensorflow/tsl/platform:statusor",
+        "//tensorflow/tsl/platform:tstring",
+    ] + tf_grpc_cc_dependencies() + tf_protos_profiler_service(),
 )
 
 cc_library(

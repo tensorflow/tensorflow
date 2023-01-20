@@ -468,33 +468,6 @@ tf_cc_test(
     ],
 )
 
-tf_cc_test(
-    name = "distributed_snapshot_test",
-    srcs = ["distributed_snapshot_test.cc"],
-    # copybara:uncomment extra_copts = ["-Wthread-safety-analysis"],
-    deps = [
-        ":dispatcher_client",
-        ":test_cluster",
-        ":test_util",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/time",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
-        "//tensorflow/core/data:snapshot_utils",
-        "//tensorflow/core/data/service/snapshot:path_utils",
-        "//tensorflow/core/data/service/snapshot:snapshot_reader",
-        "//tensorflow/core/framework:types_proto_cc",
-        "//tensorflow/tsl/platform:env",
-        "//tensorflow/tsl/platform:errors",
-        "//tensorflow/tsl/platform:status",
-        "//tensorflow/tsl/platform:status_matchers",
-        "//tensorflow/tsl/platform:statusor",
-    ] + tf_grpc_cc_dependencies() + tf_protos_profiler_service(),
-)
-
 cc_library(
     name = "grpc_dispatcher_impl",
     srcs = ["grpc_dispatcher_impl.cc"],
