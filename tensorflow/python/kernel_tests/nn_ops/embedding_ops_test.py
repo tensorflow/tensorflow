@@ -16,6 +16,7 @@
 
 import itertools
 import math
+from absl.testing import parameterized
 
 import numpy as np
 
@@ -646,7 +647,7 @@ class EmbeddingLookupTest(test.TestCase):
     self.assertAllEqual(embedding, [[[1.0], [1.0]], [[1.0]]])
 
 
-class EmbeddingLookupSparseTest(test.TestCase):
+class EmbeddingLookupSparseTest(test.TestCase, parameterized.TestCase):
 
   def _RandomIdsAndWeights(self, batch_size, vocab_size, ragged):
     max_val_per_entry = 6
@@ -687,149 +688,165 @@ class EmbeddingLookupSparseTest(test.TestCase):
       index += num_val
     return grouped_vals
 
+  @parameterized.parameters(
+      itertools.product(
+          [1, 5],
+          ["sum", "mean", "sqrtn"],
+          [dtypes.float16, dtypes.bfloat16, dtypes.float32, dtypes.float64],
+          [True, False],
+          [True, False],
+          [True, False]
+      ))
   @test_util.run_deprecated_v1
-  def testEmbeddingLookupSparse(self):
+  def testEmbeddingLookupSparse(self, num_shards, combiner, dtype,
+                    ignore_weights, ragged, allow_dense_grads):
     vocab_size = 13
     batch_size = 10
     param_shape = [2, 5]
     expected_lookup_result_shape = [None] + param_shape
 
-    for (num_shards, combiner, dtype, ignore_weights, ragged,
-                     allow_dense_grads) in itertools.product(
-        [1, 5], ["sum", "mean", "sqrtn"],
-        [dtypes.float16, dtypes.bfloat16, dtypes.float32, dtypes.float64],
-        [True, False], [True, False], [True, False]):
+    sp_ids, sp_weights, ids, weights, vals_per_batch_entry = (
+    self._RandomIdsAndWeights(batch_size, vocab_size, ragged))
 
-      sp_ids, sp_weights, ids, weights, vals_per_batch_entry = (
-      self._RandomIdsAndWeights(batch_size, vocab_size, ragged))
+    grouped_ids = self._GroupByBatchEntry(ids, vals_per_batch_entry)
+    grouped_weights = self._GroupByBatchEntry(weights, vals_per_batch_entry)
+    grouped_ignored_weights = self._GroupByBatchEntry(
+      np.ones(np.sum(vals_per_batch_entry)), vals_per_batch_entry)
 
-      grouped_ids = self._GroupByBatchEntry(ids, vals_per_batch_entry)
-      grouped_weights = self._GroupByBatchEntry(weights, vals_per_batch_entry)
-      grouped_ignored_weights = self._GroupByBatchEntry(
-        np.ones(np.sum(vals_per_batch_entry)), vals_per_batch_entry)
+    with self.cached_session():
+      p, params, feed_dict = _EmbeddingParams(
+          num_shards, vocab_size, shape=param_shape, dtype=dtype)
+      embedding_sum = embedding_ops.embedding_lookup_sparse(
+          p,
+          sp_ids,
+          None if ignore_weights else sp_weights,
+          combiner=combiner,
+          allow_dense_grads=allow_dense_grads)
 
-      with self.cached_session():
-        p, params, feed_dict = _EmbeddingParams(
-            num_shards, vocab_size, shape=param_shape, dtype=dtype)
-        embedding_sum = embedding_ops.embedding_lookup_sparse(
-            p,
-            sp_ids,
-            None if ignore_weights else sp_weights,
-            combiner=combiner,
-            allow_dense_grads=allow_dense_grads)
+      self.assertEqual(embedding_sum.get_shape().as_list(),
+                        expected_lookup_result_shape)
+      self.assertEqual(embedding_sum.dtype, dtype)
 
-        self.assertEqual(embedding_sum.get_shape().as_list(),
-                         expected_lookup_result_shape)
-        self.assertEqual(embedding_sum.dtype, dtype)
+      tf_embedding_sum = embedding_sum.eval(feed_dict=feed_dict)
 
-        tf_embedding_sum = embedding_sum.eval(feed_dict=feed_dict)
+      np_embedding_sum, np_weight_sum, np_weight_sq_sum = _EmbeddingResult(
+          params,
+          grouped_ids,
+          num_shards,
+          vocab_size,
+          weight_vals=grouped_ignored_weights
+          if ignore_weights else grouped_weights)
+      if combiner == "mean":
+        np_embedding_sum /= np.reshape(np_weight_sum, (batch_size, 1, 1))
+      if combiner == "sqrtn":
+        np_embedding_sum /= np.reshape(
+            np.sqrt(np_weight_sq_sum), (batch_size, 1, 1))
 
-        np_embedding_sum, np_weight_sum, np_weight_sq_sum = _EmbeddingResult(
-            params,
-            grouped_ids,
-            num_shards,
-            vocab_size,
-            weight_vals=grouped_ignored_weights
-            if ignore_weights else grouped_weights)
-        if combiner == "mean":
-          np_embedding_sum /= np.reshape(np_weight_sum, (batch_size, 1, 1))
-        if combiner == "sqrtn":
-          np_embedding_sum /= np.reshape(
-              np.sqrt(np_weight_sq_sum), (batch_size, 1, 1))
+      rtol = 1e-6
+      if dtype == dtypes.bfloat16:
+        rtol = 1e-2
+      elif dtype == dtypes.float16:
+        rtol = 1e-3
+      atol = rtol
+      self.assertAllClose(np_embedding_sum, tf_embedding_sum, rtol, atol)
 
-        rtol = 1e-6
-        if dtype == dtypes.bfloat16:
-          rtol = 1e-2
-        elif dtype == dtypes.float16:
-          rtol = 1e-3
-        atol = rtol
-        self.assertAllClose(np_embedding_sum, tf_embedding_sum, rtol, atol)
-
-  def testMissingInSparseIds(self):
+  @parameterized.parameters(
+    itertools.product(
+        ["sum", "mean", "sqrtn"],
+        [True, False],
+        [True, False]
+    ))
+  def testMissingInSparseIds(self, combiner, ragged, allow_dense_grads):
     # Github issue, 36359
     with self.test_session():
       x = array_ops.ones((4, 5))
-      for combiner, ragged, allow_dense_grads in itertools.product(
-        ["sum", "mean", "sqrtn"], [True, False], [True, False]):
-        indices = [[1, 0], [3, 0]]
-        sp_ids = sparse_tensor.SparseTensor(
-          constant_op.constant(indices, dtypes.int64),
-          constant_op.constant([0, 2], dtypes.int32),
-          constant_op.constant([4, 1], dtypes.int64))
-        sp_weights = sparse_tensor.SparseTensor(
-          constant_op.constant(indices, dtypes.int64),
-          constant_op.constant([1, 1], dtypes.float32),
-          constant_op.constant([4, 1], dtypes.int64))
+      indices = [[1, 0], [3, 0]]
+      sp_ids = sparse_tensor.SparseTensor(
+        constant_op.constant(indices, dtypes.int64),
+        constant_op.constant([0, 2], dtypes.int32),
+        constant_op.constant([4, 1], dtypes.int64))
+      sp_weights = sparse_tensor.SparseTensor(
+        constant_op.constant(indices, dtypes.int64),
+        constant_op.constant([1, 1], dtypes.float32),
+        constant_op.constant([4, 1], dtypes.int64))
 
-        if ragged:
-          sp_ids = ragged_tensor.RaggedTensor.from_sparse(sp_ids)
-          sp_weights = ragged_tensor.RaggedTensor.from_sparse(sp_weights)
+      if ragged:
+        sp_ids = ragged_tensor.RaggedTensor.from_sparse(sp_ids)
+        sp_weights = ragged_tensor.RaggedTensor.from_sparse(sp_weights)
 
-        embedding_sum = embedding_ops.embedding_lookup_sparse(
-            x, sp_ids, sp_weights, combiner=combiner,
-            allow_dense_grads=allow_dense_grads)
+      embedding_sum = embedding_ops.embedding_lookup_sparse(
+          x, sp_ids, sp_weights, combiner=combiner,
+          allow_dense_grads=allow_dense_grads)
 
-        tf_embedding_sum = ops.convert_to_tensor(embedding_sum)
-        self.assertAllClose(tf_embedding_sum[0], np.zeros(5))
-        self.assertAllClose(tf_embedding_sum[1], np.ones(5))
-        self.assertAllClose(tf_embedding_sum[2], np.zeros(5))
-        self.assertAllClose(tf_embedding_sum[3], np.ones(5))
+      tf_embedding_sum = ops.convert_to_tensor(embedding_sum)
+      self.assertAllClose(tf_embedding_sum[0], np.zeros(5))
+      self.assertAllClose(tf_embedding_sum[1], np.ones(5))
+      self.assertAllClose(tf_embedding_sum[2], np.zeros(5))
+      self.assertAllClose(tf_embedding_sum[3], np.ones(5))
 
+  @parameterized.parameters(
+    itertools.product(
+        [1, 3],
+        ["sum", "mean", "sqrtn"],
+        [dtypes.float32, dtypes.float64],
+        [True, False],
+        [True, False],
+        [True, False]
+    ))
   @test_util.run_deprecated_v1
-  def testGradientsEmbeddingLookupSparse(self):
+  def testGradientsEmbeddingLookupSparse(self, num_shards, combiner, dtype, ignore_weights, ragged,
+                     allow_dense_grads):
     vocab_size = 12
     batch_size = 4
     param_shape = [2, 3]
 
-    for (num_shards, combiner, dtype, ignore_weights, ragged,
-                     allow_dense_grads) in itertools.product(
-        [1, 3], ["sum", "mean", "sqrtn"],[dtypes.float32,
-                                           dtypes.float64], [True, False],
-                                           [True, False], [True, False]):
-      sp_ids, sp_weights, _, _, _ = (self._RandomIdsAndWeights(
-        batch_size, vocab_size, ragged))
-      with self.cached_session():
-        x, params, _ = _EmbeddingParams(
-            num_shards, vocab_size, shape=param_shape, dtype=dtype)
+    sp_ids, sp_weights, _, _, _ = (self._RandomIdsAndWeights(
+      batch_size, vocab_size, ragged))
+    with self.cached_session():
+      x, params, _ = _EmbeddingParams(
+          num_shards, vocab_size, shape=param_shape, dtype=dtype)
 
-        y = embedding_ops.embedding_lookup_sparse(
-            x,
-            sp_ids,
-            None if ignore_weights else sp_weights,
-            combiner=combiner,
-            allow_dense_grads=allow_dense_grads)
-        x_name = [_PName(i) for i in range(num_shards)]
-        x_init_value = [params[x_n + ":0"] for x_n in x_name]
-        x_shape = [i.shape for i in x_init_value]
-        y_shape = [batch_size] + list(params[_PName(0) + ":0"].shape[1:])
-        err = gradient_checker.compute_gradient_error(
-            x, x_shape, y, y_shape, x_init_value=x_init_value)
-      self.assertLess(err, 1e-5 if dtype == dtypes.float64 else 2e-3)
+      y = embedding_ops.embedding_lookup_sparse(
+          x,
+          sp_ids,
+          None if ignore_weights else sp_weights,
+          combiner=combiner,
+          allow_dense_grads=allow_dense_grads)
+      x_name = [_PName(i) for i in range(num_shards)]
+      x_init_value = [params[x_n + ":0"] for x_n in x_name]
+      x_shape = [i.shape for i in x_init_value]
+      y_shape = [batch_size] + list(params[_PName(0) + ":0"].shape[1:])
+      err = gradient_checker.compute_gradient_error(
+          x, x_shape, y, y_shape, x_init_value=x_init_value)
+    self.assertLess(err, 1e-5 if dtype == dtypes.float64 else 2e-3)
 
+  @parameterized.parameters(
+    itertools.product(
+        [True, False],
+        [True, False]
+    ))
   @test_util.run_deprecated_v1
-  def testIncompatibleShapes(self):
-    for ragged, allow_dense_grads in itertools.product(
-          [True, False], [True, False]):
-      with self.cached_session():
-        x, _, _ = _EmbeddingParams(1, 10, dtype=dtypes.float32)
-        indices = [[0, 0], [0, 1], [1, 0]]
-        indices_weights = [[0, 0], [0, 1]]
-        sp_ids = sparse_tensor.SparseTensor(
-            constant_op.constant(indices, dtypes.int64),
-            constant_op.constant([0, 1, 2], dtypes.int32),
-            constant_op.constant([2, 2], dtypes.int64))
-        sp_weights = sparse_tensor.SparseTensor(
-            constant_op.constant(indices_weights, dtypes.int64),
-            constant_op.constant([12.0, 5.0], dtypes.float32),
-            constant_op.constant([1, 2], dtypes.int64))
-        if ragged:
-          sp_ids = ragged_tensor.RaggedTensor.from_sparse(sp_ids)
-          sp_weights = ragged_tensor.RaggedTensor.from_sparse(sp_weights)
+  def testIncompatibleShapes(self, ragged, allow_dense_grads):
+    with self.cached_session():
+      x, _, _ = _EmbeddingParams(1, 10, dtype=dtypes.float32)
+      indices = [[0, 0], [0, 1], [1, 0]]
+      indices_weights = [[0, 0], [0, 1]]
+      sp_ids = sparse_tensor.SparseTensor(
+          constant_op.constant(indices, dtypes.int64),
+          constant_op.constant([0, 1, 2], dtypes.int32),
+          constant_op.constant([2, 2], dtypes.int64))
+      sp_weights = sparse_tensor.SparseTensor(
+          constant_op.constant(indices_weights, dtypes.int64),
+          constant_op.constant([12.0, 5.0], dtypes.float32),
+          constant_op.constant([1, 2], dtypes.int64))
+      if ragged:
+        sp_ids = ragged_tensor.RaggedTensor.from_sparse(sp_ids)
+        sp_weights = ragged_tensor.RaggedTensor.from_sparse(sp_weights)
 
-        with self.assertRaises(ValueError):
-          embedding_ops.embedding_lookup_sparse(
-              x, sp_ids, sp_weights, combiner="mean",
-              allow_dense_grads=allow_dense_grads)
+      with self.assertRaises(ValueError):
+        embedding_ops.embedding_lookup_sparse(
+            x, sp_ids, sp_weights, combiner="mean",
+            allow_dense_grads=allow_dense_grads)
 
   @test_util.run_deprecated_v1
   def test_incompatible_types(self):
@@ -849,7 +866,7 @@ class EmbeddingLookupSparseTest(test.TestCase):
       self.assertRaises(TypeError, embedding_ops.embedding_lookup_sparse,
                         x, sp_ids, sp_weights)
 
-class SafeEmbeddingLookupSparseTest(test.TestCase):
+class SafeEmbeddingLookupSparseTest(test.TestCase, parameterized.TestCase):
 
   def _random_weights(self, vocab_size=4, embed_dim=4, num_shards=1):
     assert vocab_size > 0
@@ -891,7 +908,7 @@ class SafeEmbeddingLookupSparseTest(test.TestCase):
         constant_op.constant(weights, dtypes.float32),
         constant_op.constant(shape, dtypes.int64))
 
-    if(ragged):
+    if ragged:
       sparse_ids = ragged_tensor.RaggedTensor.from_sparse(sparse_ids)
       sparse_weights = ragged_tensor.RaggedTensor.from_sparse(sparse_weights)
 
@@ -906,7 +923,7 @@ class SafeEmbeddingLookupSparseTest(test.TestCase):
     #   Index 1, 1: all ids have <=0 weight
     #   Index 1, 2: no ids to begin with
     indices = [[0, 0, 0], [0, 0, 1], [0, 0, 2], [0, 1, 0], [1, 0, 0], [1, 1, 0],
-              [1, 1, 1]]
+               [1, 1, 1]]
     ids = [0, 1, -1, -1, 2, 0, 1]
     weights = [1.0, 2.0, 1.0, 1.0, 3.0, 0.0, -0.5]
     shape = [2, 3, 4]
@@ -923,109 +940,124 @@ class SafeEmbeddingLookupSparseTest(test.TestCase):
 
     return sparse_ids, sparse_weights
 
+  @parameterized.parameters(
+    itertools.product(
+        [True, False],
+        [True, False]
+    ))
   @test_util.run_deprecated_v1
-  def test_safe_embedding_lookup_sparse_return_zero_vector(self):
+  def test_safe_embedding_lookup_sparse_return_zero_vector(self, ragged, allow_dense_grads):
     with self.cached_session():
       embedding_weights = self._random_weights()
-      for ragged, allow_dense_grads in itertools.product([True, False],
-                                                              [True, False]):
-        sparse_ids, sparse_weights = self._ids_and_weights_2d(ragged)
+      sparse_ids, sparse_weights = self._ids_and_weights_2d(ragged)
 
-        embedding_lookup_result = (
-            embedding_ops.safe_embedding_lookup_sparse_v2(
-                                          embedding_weights,
-                                          sparse_ids,
-                                          sparse_weights,
-                                          allow_dense_grads=allow_dense_grads))
+      embedding_lookup_result = (
+          embedding_ops.safe_embedding_lookup_sparse_v2(
+                                        embedding_weights,
+                                        sparse_ids,
+                                        sparse_weights,
+                                        allow_dense_grads=allow_dense_grads))
 
-        self.assertAllClose(
-            embedding_lookup_result,
-            [(1.0 * embedding_weights[0][0] + 2.0 * embedding_weights[0][1]) /
-              3.0, [0] * 4, [0] * 4, embedding_weights[0][2], [0] * 4])
+      self.assertAllClose(
+          embedding_lookup_result,
+          [(1.0 * embedding_weights[0][0] + 2.0 * embedding_weights[0][1]) /
+            3.0, [0] * 4, [0] * 4, embedding_weights[0][2], [0] * 4])
 
+  @parameterized.parameters(
+    itertools.product(
+        [True, False],
+        [True, False]
+    ))
   @test_util.run_deprecated_v1
-  def test_safe_embedding_lookup_sparse_return_special_vector(self):
+  def test_safe_embedding_lookup_sparse_return_special_vector(self, ragged, allow_dense_grads):
     with self.cached_session():
       embedding_weights = self._random_weights()
-      for ragged, allow_dense_grads in itertools.product([True, False],
-                                                             [True, False]):
-        sparse_ids, sparse_weights = self._ids_and_weights_2d(ragged)
+      sparse_ids, sparse_weights = self._ids_and_weights_2d(ragged)
 
-        embedding_lookup_result = (
-            embedding_ops.safe_embedding_lookup_sparse_v2(
-                embedding_weights, sparse_ids, sparse_weights, default_id=3,
-                allow_dense_grads=allow_dense_grads))
+      embedding_lookup_result = (
+          embedding_ops.safe_embedding_lookup_sparse_v2(
+              embedding_weights, sparse_ids, sparse_weights, default_id=3,
+              allow_dense_grads=allow_dense_grads))
 
-        self.assertAllClose(
-            embedding_lookup_result,
-            [(1.0 * embedding_weights[0][0] + 2.0 * embedding_weights[0][1]) /
-            3.0, embedding_weights[0][3], embedding_weights[0][3],
-            embedding_weights[0][2], embedding_weights[0][3]])
+      self.assertAllClose(
+          embedding_lookup_result,
+          [(1.0 * embedding_weights[0][0] + 2.0 * embedding_weights[0][1]) /
+          3.0, embedding_weights[0][3], embedding_weights[0][3],
+          embedding_weights[0][2], embedding_weights[0][3]])
 
+  @parameterized.parameters(
+    itertools.product(
+        [True, False],
+        [True, False]
+    ))
   @test_util.run_deprecated_v1
-  def test_safe_embedding_lookup_sparse_no_weights(self):
+  def test_safe_embedding_lookup_sparse_no_weights(self, ragged, allow_dense_grads):
     with self.cached_session():
       embedding_weights = self._random_weights()
-      for ragged, allow_dense_grads in itertools.product([True, False],
-                                                             [True, False]):
-        sparse_ids, _ = self._ids_and_weights_2d(ragged)
+      sparse_ids, _ = self._ids_and_weights_2d(ragged)
 
-        embedding_lookup_result = (
-            embedding_ops.safe_embedding_lookup_sparse_v2(
-                                          embedding_weights,
-                                          sparse_ids,
-                                          None,
-                                          allow_dense_grads=allow_dense_grads))
+      embedding_lookup_result = (
+          embedding_ops.safe_embedding_lookup_sparse_v2(
+                                        embedding_weights,
+                                        sparse_ids,
+                                        None,
+                                        allow_dense_grads=allow_dense_grads))
 
-        self.assertAllClose(
-            embedding_lookup_result,
-            [(embedding_weights[0][0] + embedding_weights[0][1]) / 2.0, [0] * 4,
-            [0] * 4, embedding_weights[0][2], (
-                embedding_weights[0][0] + embedding_weights[0][1]) / 2.0])
+      self.assertAllClose(
+          embedding_lookup_result,
+          [(embedding_weights[0][0] + embedding_weights[0][1]) / 2.0, [0] * 4,
+          [0] * 4, embedding_weights[0][2], (
+              embedding_weights[0][0] + embedding_weights[0][1]) / 2.0])
 
+  @parameterized.parameters(
+    itertools.product(
+        [True, False],
+        [True, False]
+    ))
   @test_util.run_deprecated_v1
-  def test_safe_embedding_lookup_sparse_partitioned(self):
+  def test_safe_embedding_lookup_sparse_partitioned(self, ragged, allow_dense_grads):
     with self.cached_session():
       embedding_weights = self._random_weights(num_shards=3)
-      for ragged, allow_dense_grads in itertools.product([True, False],
-                                                             [True, False]):
-        sparse_ids, _ = self._ids_and_weights_2d(ragged)
+      sparse_ids, _ = self._ids_and_weights_2d(ragged)
 
-        embedding_lookup_result = (
-            embedding_ops.safe_embedding_lookup_sparse_v2(
-                                          embedding_weights,
-                                          sparse_ids,
-                                          None,
-                                          allow_dense_grads=allow_dense_grads))
+      embedding_lookup_result = (
+          embedding_ops.safe_embedding_lookup_sparse_v2(
+                                        embedding_weights,
+                                        sparse_ids,
+                                        None,
+                                        allow_dense_grads=allow_dense_grads))
 
-        embedding_weights_list = list(itertools.chain(*embedding_weights))
-        self.assertAllClose(
-              embedding_lookup_result,
-              [(embedding_weights_list[0] + embedding_weights_list[1]) / 2.0,
-               [0] * 4, [0] * 4, embedding_weights_list[2],
-               (embedding_weights_list[0] + embedding_weights_list[1]) / 2.0])
+      embedding_weights_list = list(itertools.chain(*embedding_weights))
+      self.assertAllClose(
+            embedding_lookup_result,
+            [(embedding_weights_list[0] + embedding_weights_list[1]) / 2.0,
+              [0] * 4, [0] * 4, embedding_weights_list[2],
+              (embedding_weights_list[0] + embedding_weights_list[1]) / 2.0])
 
+  @parameterized.parameters(
+    itertools.product(
+        [True, False],
+        [True, False]
+    ))
   @test_util.run_deprecated_v1
-  def test_safe_embedding_lookup_sparse_partitioned_inconsistent_weights(self):
+  def test_safe_embedding_lookup_sparse_partitioned_inconsistent_weights(self, ragged, allow_dense_grads):
     with self.cached_session():
       embedding_weights = self._random_weights(num_shards=3)
-      for ragged, allow_dense_grads in itertools.product([True, False],
-                                                             [True, False]):
-        sparse_ids, sparse_weights = self._ids_and_weights_2d(ragged)
+      sparse_ids, sparse_weights = self._ids_and_weights_2d(ragged)
 
-        embedding_weights[1] = embedding_weights[1].astype(np.float64)
-        self.assertRaises(TypeError, embedding_ops.safe_embedding_lookup_sparse,
-                          embedding_weights, sparse_ids)
-        embedding_weights_constant = [
-            constant_op.constant(w, dtype=dtypes.float64)
-            for w in embedding_weights
-        ]
-        self.assertRaises(ValueError,
-                          embedding_ops.safe_embedding_lookup_sparse,
-                          embedding_weights_constant,
-                          sparse_ids,
-                          sparse_weights,
-                          allow_dense_grads=allow_dense_grads)
+      embedding_weights[1] = embedding_weights[1].astype(np.float64)
+      self.assertRaises(TypeError, embedding_ops.safe_embedding_lookup_sparse,
+                        embedding_weights, sparse_ids)
+      embedding_weights_constant = [
+          constant_op.constant(w, dtype=dtypes.float64)
+          for w in embedding_weights
+      ]
+      self.assertRaises(ValueError,
+                        embedding_ops.safe_embedding_lookup_sparse,
+                        embedding_weights_constant,
+                        sparse_ids,
+                        sparse_weights,
+                        allow_dense_grads=allow_dense_grads)
 
   @test_util.run_deprecated_v1
   def test_safe_embedding_lookup_sparse_3d_return_zero_vector(self):

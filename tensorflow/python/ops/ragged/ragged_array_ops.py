@@ -871,7 +871,6 @@ def _cross_internal(inputs,
     return ragged_tensor.RaggedTensor.from_row_splits(
         values_out, splits_out, validate=False)
 
-@tf_export("ragged.fill_empty_rows")
 def fill_empty_rows(ragged_input,
                            default_value,
                            name=None):
@@ -905,7 +904,7 @@ def fill_empty_rows(ragged_input,
       raise TypeError(f"ragged_input must be RaggedTensor, \
             got {type(ragged_input)}")
     default_value = ops.convert_to_tensor(
-        default_value, dtype=ragged_input.values.dtype)
+        default_value, dtype=ragged_input.dtype)
     (output_value_rowids, output_values, empty_row_indicator,
      unused_reverse_index_map) = gen_ragged_array_ops.ragged_fill_empty_rows(
          value_rowids=ragged_input.value_rowids(),

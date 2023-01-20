@@ -414,8 +414,9 @@ def embedding_lookup_sparse(params,
   all the indices of sp_ids are in canonical row-major order.
 
   `sp_ids` and `sp_weights` (if not None) are `SparseTensor`s or `RaggedTensor`s
-  with rank of 2. Use of `RaggedTensor`s can yield higher performance.
-  Embeddings are always aggregated along the last dimension.
+  with rank of 2. For `SpareTensor`s with left-aligned non-zero entries which
+  can be described as `RaggedTensor`s, use of `RaggedTensor`s can yield higher
+  performance.
 
   It also assumes that all id values lie in the range [0, p0), where p0
   is the sum of the size of params along dimension 0.
@@ -518,16 +519,10 @@ def embedding_lookup_sparse(params,
     segment_ids = sp_ids.indices[:, 0]
     ids = sp_ids.values
 
-    if len(params) == 1 and max_norm is None and allow_dense_grads:
-      idx = ids
-      embeddings = params[0]
-    else:
-      ids, idx = array_ops.unique(ids)
-      embeddings = embedding_lookup(
-          params, ids, partition_strategy=partition_strategy, max_norm=max_norm)
-
-    return embedding_lookup_sparse_impl(embeddings, segment_ids, sp_weights,
-                                        idx, combiner, ignore_weights, name)
+    return embedding_lookup_sparse_impl(params, segment_ids, sp_weights,
+                                        ids, combiner, ignore_weights, max_norm,
+                                        allow_dense_grads, partition_strategy,
+                                        name)
 
 
 @tf_export("nn.embedding_lookup_sparse", v1=[])
@@ -546,8 +541,9 @@ def embedding_lookup_sparse_v2(params,
   all the indices of sp_ids are in canonical row-major order.
 
   `sp_ids` and `sp_weights` (if not None) are `SparseTensor`s or `RaggedTensor`s
-  with rank of 2. Use of `RaggedTensor`s can yield higher performance.
-  Embeddings are always aggregated along the last dimension.
+  with rank of 2. For `SpareTensor`s with left-aligned non-zero entries which
+  can be described as `RaggedTensor`s, use of `RaggedTensor`s can yield higher
+  performance.
 
   It also assumes that all id values lie in the range [0, p0), where p0
   is the sum of the size of params along dimension 0.
@@ -648,8 +644,9 @@ def safe_embedding_lookup_sparse_v2(embedding_weights,
   for `default_id` is returned, or the 0-vector if `default_id` is not supplied.
 
   The ids and weights may be multi-dimensional `SparseTensor`s or
-  `RaggedTensor`s with rank of 2. Use of `RaggedTensor`s can yield higher
-  performance. Embeddings are always aggregated along the last dimension.
+  `RaggedTensor`s with rank of 2. For `SpareTensor`s with left-aligned non-zero
+  entries which can be described as `RaggedTensor`s, use of `RaggedTensor`s can
+  yield higher performance.
 
   If `len(embedding_weights) > 1`, each element `id` of `ids` is partitioned
   between the elements of `embedding_weights` according to the "div" partition
@@ -761,8 +758,10 @@ def safe_embedding_lookup_sparse(embedding_weights,
   for `default_id` is returned, or the 0-vector if `default_id` is not supplied.
 
   The ids and weights may be multi-dimensional `SparseTensor`s or
-  `RaggedTensor`s with rank of 2. Use of `RaggedTensor`s can yield higher
-  performance. Embeddings are always aggregated along the last dimension.
+  `RaggedTensor`s with rank of 2. For `SpareTensor`s with left-aligned non-zero
+  entries which can be described as `RaggedTensor`s, use of `RaggedTensor`s can
+  yield higher performance. Embeddings are always aggregated along the last
+  dimension.
 
   Args:
     embedding_weights: A single tensor representing the complete embedding
@@ -913,14 +912,25 @@ def safe_embedding_lookup_sparse(embedding_weights,
     return final_result
 
 
-def embedding_lookup_sparse_impl(embeddings,
+def embedding_lookup_sparse_impl(params,
                           segment_ids,
                           sp_weights,
-                          idx,
+                          ids,
                           combiner,
                           ignore_weights,
+                          max_norm,
+                          allow_dense_grads,
+                          partition_strategy,
                           name):
   """Implementation of sparse embedding aggregation."""
+  if len(params) == 1 and max_norm is None and allow_dense_grads:
+    idx = ids
+    embeddings = params[0]
+  else:
+    ids, idx = array_ops.unique(ids)
+    embeddings = embedding_lookup(
+        params, ids, partition_strategy=partition_strategy, max_norm=max_norm)
+
   if not ignore_weights:
     if segment_ids.dtype != dtypes.int32:
       segment_ids = math_ops.cast(segment_ids, dtypes.int32)

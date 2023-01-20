@@ -60,8 +60,9 @@ TEST_F(RaggedFillEmptyRowsOpTest, IntValues) {
   AddInputFromArray<int>(TensorShape({}), {-1});              // default value
   TF_ASSERT_OK(RunOpKernel());
 
-  test::ExpectTensorEqual<int64_t>(*GetOutput(kValueRowidsOutput),
-                                   test::AsTensor<int64_t>({0, 1, 2, 2, 3, 4, 5, 6}));
+  test::ExpectTensorEqual<int64_t>(
+      *GetOutput(kValueRowidsOutput),
+      test::AsTensor<int64_t>({0, 1, 2, 2, 3, 4, 5, 6}));
   test::ExpectTensorEqual<int>(
       *GetOutput(kValuesOutput),
       test::AsTensor<int>({-1, 2, 4, 6, -1, -1, 8, -1}));
@@ -69,18 +70,19 @@ TEST_F(RaggedFillEmptyRowsOpTest, IntValues) {
 
 TEST_F(RaggedFillEmptyRowsOpTest, FloatValues) {
   BuildFillEmptyRowsGraph<float>();
-  AddInputFromArray<int64_t>(TensorShape({4}), {1, 2, 2, 5}); // value_rowids
-  AddInputFromArray<float>(TensorShape({4}), {2., 4., 6., 8.});     // values
-  AddInputFromArray<int64_t>(TensorShape({}), {7});           // nrows
-  AddInputFromArray<float>(TensorShape({}), {-1.});              // default value
+  AddInputFromArray<int64_t>(TensorShape({4}), {1, 2, 2, 5});    // value_rowids
+  AddInputFromArray<float>(TensorShape({4}), {2., 4., 6., 8.});  // values
+  AddInputFromArray<int64_t>(TensorShape({}), {7});              // nrows
+  AddInputFromArray<float>(TensorShape({}), {-1.});  // default value
   TF_ASSERT_OK(RunOpKernel());
 
-  test::ExpectTensorEqual<int64_t>(*GetOutput(kValueRowidsOutput),
-                                   test::AsTensor<int64_t>({0, 1, 2, 2, 3, 4, 5, 6}));
+  test::ExpectTensorEqual<int64_t>(
+      *GetOutput(kValueRowidsOutput),
+      test::AsTensor<int64_t>({0, 1, 2, 2, 3, 4, 5, 6}));
   test::ExpectTensorEqual<float>(
       *GetOutput(kValuesOutput),
       test::AsTensor<float>({-1., 2., 4., 6., -1., -1., 8., -1.}));
 }
 
 }
-}
+}  // namespace tensorflow

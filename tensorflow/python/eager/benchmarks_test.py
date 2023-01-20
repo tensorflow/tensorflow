@@ -1626,9 +1626,13 @@ class MicroBenchmarks(benchmarks_test_base.MicroBenchmarksBase):
   def benchmark_tf_range_return_int64_GPU(self):
     self._benchmark_tf_range_return(dtype=dtypes.int64, device=GPU)
 
-  def _benchmark_embedding_lookup_sparse_sparse_input(self, batch_size=32000, device=GPU):
+  def benchmark_embedding_lookup_sparse_with_sparse_input(self,
+                                                          batch_size=32000,
+                                                          device=GPU):
     def func(sp_ids):
-      return embedding_ops.embedding_lookup_sparse(self._m_10000_by_16, sp_ids, None)
+      return embedding_ops.embedding_lookup_sparse(self._m_10000_by_16,
+                                                   sp_ids,
+                                                   None)
 
     with context.device(device):
       values = random_ops.random_uniform(shape=(batch_size,),
@@ -1637,17 +1641,19 @@ class MicroBenchmarks(benchmarks_test_base.MicroBenchmarksBase):
                         dtype=dtypes.int64)
       value_rowids = ops.EagerTensor(np.arange(batch_size), device=device)
 
-      ragged_input = ragged_tensor.RaggedTensor.from_value_rowids(values, value_rowids)
-      sparse_input = sparse_ops.from_dense(ragged_input.to_tensor())
+      ragged_input = ragged_tensor.RaggedTensor.from_value_rowids(values,
+                                                                  value_rowids)
+      sparse_input = ragged_input.to_sparse()
       func(sparse_input)
       self._run(lambda: func(sparse_input), num_iters=2000)
 
-  def benchmark_tf_embedding_lookup_sparse_sparse_input(self):
-    self._benchmark_embedding_lookup_sparse_sparse_input()
-
-  def _benchmark_embedding_lookup_sparse_ragged_input(self, batch_size=32000, device=GPU):
+  def benchmark_embedding_lookup_sparse_with_ragged_input(self,
+                                                          batch_size=32000,
+                                                          device=GPU):
     def func(sp_ids):
-      return embedding_ops.embedding_lookup_sparse(self._m_10000_by_16, sp_ids, None, allow_dense_grads=True)
+      return embedding_ops.embedding_lookup_sparse(self._m_10000_by_16, sp_ids,
+                                                   None,
+                                                   allow_dense_grads=True)
 
     with context.device(device):
       values = random_ops.random_uniform(shape=(batch_size,),
@@ -1656,12 +1662,10 @@ class MicroBenchmarks(benchmarks_test_base.MicroBenchmarksBase):
                         dtype=dtypes.int64)
       value_rowids = ops.EagerTensor(np.arange(batch_size), device=device)
 
-      ragged_input = ragged_tensor.RaggedTensor.from_value_rowids(values, value_rowids)
+      ragged_input = ragged_tensor.RaggedTensor.from_value_rowids(values,
+                                                                  value_rowids)
       func(ragged_input)
       self._run(lambda: func(ragged_input), num_iters=2000)
-
-  def benchmark_tf_embedding_lookup_sparse_ragged_input(self):
-    self._benchmark_embedding_lookup_sparse_ragged_input()
 
 if __name__ == "__main__":
   test.main()
