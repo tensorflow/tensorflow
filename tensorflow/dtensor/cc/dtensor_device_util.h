@@ -398,6 +398,11 @@ class ResourceHandleWithLayout : public TensorWithLayout {
 
   void UpdateLayout(const Layout& new_layout, TF_Status* status) override;
 
+  void UpdateElementLayouts(const std::vector<Layout>& layouts,
+                            TF_Status* status) {
+    dereferenced_element_layouts_.emplace(layouts);
+  }
+
   void UpdateShapeAndDType(const TensorShapeProto& shape, const DataType& dtype,
                            TF_Status* status) override {
     set_dereferenced_shape(shape);
@@ -422,6 +427,11 @@ class ResourceHandleWithLayout : public TensorWithLayout {
     dereferenced_dtype_.emplace(dtype);
   }
 
+  const std::optional<std::vector<Layout>>& dereferenced_element_layouts()
+      const {
+    return dereferenced_element_layouts_;
+  }
+
   const std::optional<TensorShapeProto>& dereferenced_shape() const {
     return dereferenced_shape_;
   }
@@ -440,6 +450,9 @@ class ResourceHandleWithLayout : public TensorWithLayout {
  private:
   // The layout of the tensor pointed to by this handle, if any.
   std::optional<Layout> dereferenced_layout_;
+  // The layouts of the tensors emitted by this resource handle if it is an
+  // iterator resource.
+  std::optional<std::vector<Layout>> dereferenced_element_layouts_;
   // The shape and dtype of the tensor pointed to by this resource tensor.
   std::optional<TensorShapeProto> dereferenced_shape_;
   std::optional<DataType> dereferenced_dtype_;

@@ -42,6 +42,7 @@ using tensorflow::dtensor::IsDTensor;
 using tensorflow::dtensor::IsSparseDTensor;
 using tensorflow::dtensor::Mesh;
 using tensorflow::dtensor::Pack;
+using tensorflow::dtensor::SetIteratorElementLayouts;
 using tensorflow::dtensor::SetSameShapePolicy;
 using tensorflow::dtensor::SetTPUCoreIDs;
 using tensorflow::dtensor::SparsePack;
@@ -342,6 +343,18 @@ PYBIND11_MODULE(_pywrap_dtensor_device, m) {
         static_cast<TFE_Context*>(PyCapsule_GetPointer(context.ptr(), nullptr)),
         device_info, status.get());
   });
+  m.def("SetIteratorElementLayouts",
+        [](const py::handle& context, const py::handle& dtensor_handle,
+           const std::vector<std::string>& element_layouts,
+           const py::capsule& device_info) {
+          std::unique_ptr<TF_Status, decltype(&TF_DeleteStatus)> status(
+              TF_NewStatus(), TF_DeleteStatus);
+          SetIteratorElementLayouts(
+              static_cast<TFE_Context*>(
+                  PyCapsule_GetPointer(context.ptr(), nullptr)),
+              EagerTensor_Handle(dtensor_handle.ptr()), element_layouts,
+              device_info, status.get());
+        });
   py::class_<Mesh>(m, "Mesh")
       .def(py::init(&Mesh::CreateMesh))
       .def_property_readonly("name", &Mesh::name)

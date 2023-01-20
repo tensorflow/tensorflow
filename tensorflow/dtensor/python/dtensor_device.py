@@ -379,6 +379,22 @@ class DTensorDevice(object):
         context.context()._handle,  # pylint: disable=protected-access,
         self._device_info)
 
+  def set_iterator_element_layouts(self, iterator_resource_dtensor,
+                                   layouts: List[layout_lib.Layout]):
+    """Sets the element layouts on an iterator resource tensor.
+
+    Args:
+      iterator_resource_dtensor: a DTensor created by packing the individiual
+        iterator resource tensors.
+      layouts: the flattened list of layouts to be applied to the elements
+        emitted by the iterator resource DTensor.
+    """
+    _pywrap_dtensor_device.SetIteratorElementLayouts(
+        context.context()._handle,  # pylint: disable=protected-access
+        iterator_resource_dtensor,
+        [layout.to_string() for layout in layouts],
+        self._device_info)
+
   @contextlib.contextmanager
   def _experimental_default_mesh(self, mesh: layout_lib.Mesh):
     """Sets a default mesh for all ops in the scope.

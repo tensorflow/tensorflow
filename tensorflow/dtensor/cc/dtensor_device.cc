@@ -17,9 +17,11 @@ limitations under the License.
 
 #include <algorithm>
 #include <cstdint>
+#include <iterator>
 #include <memory>
 #include <optional>
 #include <string>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -319,6 +321,10 @@ class DTensorDevice {
 
   std::unordered_map<std::string, int> GetFunctionCacheHitAndMissCount(
       TFE_Context* context, TF_Status* status) const;
+
+  void SetIteratorElementLayouts(TFE_Context* context, TFE_TensorHandle* input,
+                                 const std::vector<std::string>& string_layouts,
+                                 TF_Status* status);
 
  private:
   // If the `operation_name` of an op indicates a custom DTensor op then
@@ -1154,6 +1160,33 @@ std::unordered_map<std::string, int>
 DTensorDevice::GetFunctionCacheHitAndMissCount(TFE_Context* context,
                                                TF_Status* status) const {
   return function_compilation_hits_and_misses_;
+}
+
+void DTensorDevice::SetIteratorElementLayouts(
+    TFE_Context* context, TFE_TensorHandle* input,
+    const std::vector<std::string>& string_layouts, TF_Status* status) {
+  const char* input_device = TFE_TensorHandleDeviceName(input, status);
+  if (input_device != name_) {
+    TF_SetStatus(
+        status, TF_INVALID_ARGUMENT,
+        absl::StrCat(
+            "SetIteratorElementLayouts expects an iterator resource placed on ",
+            "the DTensor device: ", name_,
+            ", but it was placed on device: ", input_device)
+            .c_str());
+    return;
+  }
+  ResourceHandleWithLayout* t = reinterpret_cast<ResourceHandleWithLayout*>(
+      TFE_TensorHandleDevicePointer(input, status));
+  if (TF_GetCode(status) != TF_OK) return;
+
+  std::vector<Layout> layouts;
+  std::transform(string_layouts.cbegin(), string_layouts.cend(),
+                 std::back_inserter(layouts),
+                 [](const std::string& layout_str) {
+                   return Layout::FromString(layout_str).value();
+                 });
+  t->UpdateElementLayouts(layouts, status);
 }
 
 // From `graph` containing computation for all meshes, extract/select
@@ -2319,5 +2352,13 @@ std::unordered_map<std::string, int> GetFunctionCacheHitAndMissCount(
   DTensorDevice* device = reinterpret_cast<DTensorDevice*>(device_info);
   return device->GetFunctionCacheHitAndMissCount(context, status);
 }
+
+void SetIteratorElementLayouts(TFE_Context* context, TFE_TensorHandle* input,
+                               const std::vector<std::string>& string_layouts,
+                               void* device_info, TF_Status* status) {
+  DTensorDevice* device = reinterpret_cast<DTensorDevice*>(device_info);
+  device->SetIteratorElementLayouts(context, input, string_layouts, status);
+}
+
 }  // namespace dtensor
 }  // namespace tensorflow

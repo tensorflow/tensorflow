@@ -130,6 +130,12 @@ bool IsSparseDTensor(TFE_Context* context, TFE_TensorHandle* input,
 // 'miss'.
 std::unordered_map<std::string, int> GetFunctionCacheHitAndMissCount(
     TFE_Context* context, void* device_info, TF_Status* status);
+
+// Sets the layouts for the elements emitted by an iterator resource tensor.
+void SetIteratorElementLayouts(TFE_Context* context, TFE_TensorHandle* input,
+                               const std::vector<std::string>& string_layouts,
+                               void* device_info, TF_Status* status);
+
 }  // namespace dtensor
 }  // namespace tensorflow
 

@@ -272,5 +272,45 @@ StatusOr<absl::optional<Layout>> ExtractLayoutFromFunctionReturnAttr(
   return layout;
 }
 
+StatusOr<llvm::SmallVector<Layout, 4>> ExtractElementLayoutsFromOperand(
+    mlir::OpOperand& input_value) {
+  const int operand_index = input_value.getOperandNumber();
+  auto defining_op = input_value.get().getDefiningOp();
+
+  if (defining_op) {
+    if (mlir::isa<mlir::TF::DTensorLayout>(defining_op)) {
+      return ExtractElementLayoutsFromOperand(defining_op->getOpOperand(0));
+    }
+  }
+
+  // If we reach this point, we're working with a function argument.
+  mlir::Operation* op = input_value.getOwner();
+  auto enclosing_function = op->getParentOfType<mlir::func::FuncOp>();
+  if (!enclosing_function)
+    return errors::InvalidArgument(
+        llvm::formatv("Could not find iterator at {0}-th input to op: {1}",
+                      operand_index, op->getName())
+            .str());
+
+  auto block_arg = input_value.get().dyn_cast<mlir::BlockArgument>();
+  auto array_attr = enclosing_function.getArgAttrOfType<mlir::ArrayAttr>(
+      block_arg.getArgNumber(), kIteratorElementLayouts);
+  if (!array_attr)
+    return errors::InvalidArgument(
+        llvm::formatv(
+            "Could not find `{0}` attribute of {1}-th input to op: {2}",
+            kIteratorElementLayouts, operand_index, op->getName())
+            .str());
+
+  llvm::SmallVector<Layout, 4> layouts(array_attr.size());
+  for (int i = 0; i < array_attr.size(); ++i) {
+    layouts[i] = Layout::FromString(
+                     array_attr[i].cast<mlir::StringAttr>().getValue().str())
+                     .value();
+  }
+
+  return layouts;
+}
+
 }  // namespace dtensor
 }  // namespace tensorflow

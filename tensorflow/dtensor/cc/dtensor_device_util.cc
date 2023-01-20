@@ -15,7 +15,9 @@ limitations under the License.
 
 #include "tensorflow/dtensor/cc/dtensor_device_util.h"
 
+#include <algorithm>
 #include <cstddef>
+#include <iterator>
 #include <optional>
 #include <string>
 #include <utility>
@@ -393,6 +395,14 @@ void ResourceHandleWithLayout::EncodeAttributes(
   }
   if (dereferenced_dtype().has_value()) {
     builder.Attr("_handle_dtypes", {*dereferenced_dtype()});
+  }
+  if (dereferenced_element_layouts().has_value()) {
+    std::vector<std::string> layout_strs;
+    std::transform(dereferenced_element_layouts()->begin(),
+                   dereferenced_element_layouts()->end(),
+                   std::back_inserter(layout_strs),
+                   [](const Layout& layout) { return layout.ToString(); });
+    builder.Attr("_element_layouts", layout_strs);
   }
 }
 
