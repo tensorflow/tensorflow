@@ -1337,7 +1337,9 @@ Status AlgebraicSimplifierVisitor::HandleCopy(HloInstruction* copy) {
         copy, HloInstruction::CreateUnary(copy->shape(), HloOpcode::kCopy, op));
   }
   // All copies can be eliminated (assuming layout constraints are satisfied).
-  if (ReplaceInstructionIfCompatible(copy, copy->mutable_operand(0))) {
+  if ((!copy->has_sharding() ||
+       copy->GetModule()->entry_computation()->root_instruction() != copy) &&
+      ReplaceInstructionIfCompatible(copy, copy->mutable_operand(0))) {
     return OkStatus();
   }
 
