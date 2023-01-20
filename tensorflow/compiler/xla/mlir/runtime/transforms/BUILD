@@ -242,6 +242,9 @@ cc_library(
         "//tensorflow/tsl:macos_arm64": [
             "@llvm-project//llvm:AArch64AsmParser",
         ],
+        "//tensorflow/tsl:linux_s390x": [
+            "@llvm-project//llvm:SystemZAsmParser",
+        ],
         "//conditions:default": [
             "@llvm-project//llvm:X86AsmParser",
         ],
