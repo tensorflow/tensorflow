@@ -195,6 +195,9 @@ class DfsHloVisitorBase {
   virtual Status HandleSin(HloInstructionPtr hlo) {
     return HandleElementwiseUnary(hlo);
   }
+  virtual Status HandleTan(HloInstructionPtr hlo) {
+    return HandleElementwiseUnary(hlo);
+  }
   virtual Status HandleTanh(HloInstructionPtr hlo) {
     return HandleElementwiseUnary(hlo);
   }

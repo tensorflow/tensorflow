@@ -1337,26 +1337,6 @@ struct ConvertSinhOp : public OpConversionPattern<SinhOp> {
   }
 };
 
-Value materializeTan(ConversionPatternRewriter &rewriter, Location loc,
-                     ValueRange operands) {
-  TanOp::Adaptor transformed(operands);
-  return rewriter.create<mhlo::DivOp>(
-      loc, rewriter.create<mhlo::SineOp>(loc, transformed.getOperand()),
-      rewriter.create<mhlo::CosineOp>(loc, transformed.getOperand()));
-}
-
-struct ConvertTanOp : public OpConversionPattern<TanOp> {
-  using OpConversionPattern<TanOp>::OpConversionPattern;
-  LogicalResult matchAndRewrite(
-      TanOp op, OpAdaptor adaptor,
-      ConversionPatternRewriter &rewriter) const override {
-    rewriter.replaceOp(
-        op, materializeWithUpcast(rewriter, op.getLoc(), adaptor.getOperands(),
-                                  rewriter.getF32Type(), &materializeTan));
-    return success();
-  }
-};
-
 // Converts chlo.top_k to MHLO iota, sort, and slice ops.
 //
 // chlo.top_k sorts along last dimension of the input tensor and then returns
@@ -1729,7 +1709,6 @@ void populateDecomposeChloPatterns(MLIRContext *context,
                    ConvertNextAfterOp,
                    ConvertPolygammaOp,
                    ConvertSinhOp,
-                   ConvertTanOp,
                    ConvertTopKOp,
                    ConvertZetaOp>(context);
   // clang-format on

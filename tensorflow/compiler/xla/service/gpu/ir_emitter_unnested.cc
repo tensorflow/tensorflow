@@ -267,6 +267,7 @@ bool MayPreventVectorization(mlir::Operation* op) {
       case HloOpcode::kDot:
       case HloOpcode::kSin:
       case HloOpcode::kCos:
+      case HloOpcode::kTan:
       case HloOpcode::kPower:
       case HloOpcode::kAtan2:
         return true;

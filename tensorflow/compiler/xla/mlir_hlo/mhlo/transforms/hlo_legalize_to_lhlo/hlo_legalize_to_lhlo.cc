@@ -565,6 +565,7 @@ void populateHloToLhloConversionPattern(
       HloToLhloOpConverter<mhlo::SliceOp>,
       HloToLhloOpConverter<mhlo::SqrtOp>,
       HloToLhloOpConverter<mhlo::SubtractOp>,
+      HloToLhloOpConverter<mhlo::TanOp>,
       HloToLhloOpConverter<mhlo::TanhOp>,
       HloToLhloOpConverter<mhlo::TransposeOp>,
       HloToLhloOpConverter<mhlo::XorOp>,

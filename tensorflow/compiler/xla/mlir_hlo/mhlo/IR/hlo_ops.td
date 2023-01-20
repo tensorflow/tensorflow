@@ -596,6 +596,25 @@ def MHLO_SineOp: MHLO_UnaryElementwiseOp<"sine",
   let hasCustomHLOConverter = 1;
 }
 
+def MHLO_TanOp: MHLO_UnaryElementwiseOp<"tan",
+    [Pure, HLO_CompatibleOperandsAndResultType], MHLO_FpOrComplexTensor> {
+  let summary = "Tan operator";
+  let description = [{
+    Returns `Tan(operand)` element-wise.
+
+    See
+    https://www.tensorflow.org/xla/operation_semantics#element-wise_unary_functions.
+
+    Example:
+
+    ```mlir
+    %0 = mhlo.tan %arg0 : tensor<2xf32>
+    ```
+  }];
+  let hasFolder = 1;
+  let hasCustomHLOConverter = 1;
+}
+
 def MHLO_SqrtOp: MHLO_UnaryElementwiseOp<"sqrt",
     [Pure, HLO_CompatibleOperandsAndResultType], MHLO_FpOrComplexTensor> {
   let summary = "Square-root operator";

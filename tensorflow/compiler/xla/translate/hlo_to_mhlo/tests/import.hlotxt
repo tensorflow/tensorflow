@@ -423,6 +423,14 @@ add {
   ROOT %cosine.3 = f32[1,16,16,3]{3,2,1,0} cosine(f32[1,16,16,3]{3,2,1,0} %arg0.1)
 }
 
+// CHECK-LABEL:  func private @test_tan(%arg0: tensor<1x16x16x3xf32>) -> tensor<1x16x16x3xf32>
+%test_tan (arg0.1: f32[1,16,16,3]) -> f32[1,16,16,3] {
+  %arg0.1 = f32[1,16,16,3]{3,2,1,0} parameter(0), metadata={op_name="HLO_Args"}
+
+  // CHECK-NEXT:  mhlo.tan %arg0 : tensor<1x16x16x3xf32>
+  ROOT %tan.3 = f32[1,16,16,3]{3,2,1,0} tan(f32[1,16,16,3]{3,2,1,0} %arg0.1)
+}
+
 // CHECK-LABEL:  func private @test_set_bound
 // CHECK-SAME:  [[ARG_0:%.*]]: tensor<2x3xf32>) -> tensor<2x3xf32>
 %test_set_bound (arg1: f32[2,3]) -> f32[2,3] {

@@ -470,6 +470,7 @@ tsl::StatusOr<mlir::Operation*> LhloDialectEmitter::EmitOp(
     case HloOpcode::kSqrt:
     case HloOpcode::kSubtract:
     case HloOpcode::kStochasticConvert:
+    case HloOpcode::kTan:
     case HloOpcode::kTanh:
     case HloOpcode::kTranspose:
     case HloOpcode::kXor:

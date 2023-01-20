@@ -2421,36 +2421,6 @@ func.func @acos_dynamic(%arg0: tensor<*xf32>) -> tensor<*xf32> {
 
 // -----
 
-// CHECK-LABEL: @tan
-// CHECK-SAME: (%[[ARG:.*]]: tensor<2xf32>) -> tensor<2xf32>
-// CHLO-LABEL: @tan
-// CHLO-SAME: (%[[ARG:.*]]: tensor<2xf32>) -> tensor<2xf32>
-func.func @tan(%arg : tensor<2xf32>) -> tensor<2xf32> {
-  // CHECK: chlo.tan %[[ARG]] : tensor<2xf32>
-  // CHLO: %[[SINE:.*]] = mhlo.sine %[[ARG]]
-  // CHLO  %[[COSINE:.*]] = mhlo.cosine %[[ARG]]
-  // CHLO  %[[RESULT:.*]] = "mhlo.divide"(%[[SINE]], %[[COSINE]])
-  %result = "tf.Tan"(%arg) : (tensor<2xf32>) -> tensor<2xf32>
-  func.return %result : tensor<2xf32>
-}
-
-// -----
-
-// CHECK-LABEL: @tan_unranked
-// CHECK-SAME: (%[[ARG:.*]]: tensor<*xf32>) -> tensor<*xf32>
-// CHLO-LABEL: @tan_unranked
-// CHLO-SAME: (%[[ARG:.*]]: tensor<*xf32>) -> tensor<*xf32>
-func.func @tan_unranked(%arg : tensor<*xf32>) -> tensor<*xf32> {
-  // CHECK: chlo.tan %[[ARG]] : tensor<*xf32>
-  // CHLO: %[[SINE:.*]] = mhlo.sine %[[ARG]]
-  // CHLO  %[[COSINE:.*]] = mhlo.cosine %[[ARG]]
-  // CHLO  %[[RESULT:.*]] = "mhlo.divide"(%[[SINE]], %[[COSINE]])
-  %result = "tf.Tan"(%arg) : (tensor<*xf32>) -> tensor<*xf32>
-  func.return %result : tensor<*xf32>
-}
-
-// -----
-
 // CHECK-LABEL: func @cast_dynamic_i2f
 func.func @cast_dynamic_i2f(%arg0: tensor<?xi32>) -> tensor<?xf32> {
   // CHECK: mhlo.convert %arg0 : (tensor<?xi32>) -> tensor<?xf32>
@@ -2518,6 +2488,15 @@ func.func @complex_abs(%arg0: tensor<2xcomplex<f32>>) -> tensor<2xf32> {
 func.func @cos(%arg0: tensor<2xf32>) -> tensor<2xf32> {
   // CHECK:  mhlo.cosine %arg0 : tensor<2xf32>
   %0 = "tf.Cos"(%arg0) : (tensor<2xf32>) -> tensor<2xf32>
+  func.return %0 : tensor<2xf32>
+}
+
+// -----
+
+// CHECK-LABEL: @tan
+func.func @tan(%arg0: tensor<2xf32>) -> tensor<2xf32> {
+  // CHECK:  mhlo.tan %arg0 : tensor<2xf32>
+  %0 = "tf.Tan"(%arg0) : (tensor<2xf32>) -> tensor<2xf32>
   func.return %0 : tensor<2xf32>
 }
 

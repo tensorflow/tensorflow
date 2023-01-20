@@ -160,6 +160,7 @@ bool CanInferShape(HloOpcode code) {
     case HloOpcode::kSelectAndScatter:
     case HloOpcode::kSort:
     case HloOpcode::kSubtract:
+    case HloOpcode::kTan:
     case HloOpcode::kTanh:
     case HloOpcode::kTranspose:
     case HloOpcode::kTriangularSolve:
@@ -1373,6 +1374,7 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
     case HloOpcode::kSin:
     case HloOpcode::kSqrt:
     case HloOpcode::kCbrt:
+    case HloOpcode::kTan:
     case HloOpcode::kTanh: {
       if ((!preset_operands &&
            !ParseOperands(&operands, builder, /*expected_size=*/1)) ||
