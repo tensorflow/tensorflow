@@ -20,10 +20,9 @@ limitations under the License.
 
 #include <stdio.h>
 
-#include "tensorflow/core/kernels/softplus_op.h"
-
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor_types.h"
+#include "tensorflow/core/kernels/softplus_op.h"
 
 namespace tensorflow {
 
@@ -38,11 +37,9 @@ typedef Eigen::GpuDevice GPUDevice;
 
 #if !defined(MLIR_GENERATED_GPU_KERNELS_ENABLED)
 TF_CALL_GPU_NUMBER_TYPES(DEFINE_SOFTPLUS_GPU_KERNELS);
-TF_CALL_bfloat16(DEFINE_SOFTPLUS_GPU_KERNELS);
 #endif
 
 TF_CALL_GPU_NUMBER_TYPES(DEFINE_SOFTPLUS_GRAD_GPU_KERNELS);
-TF_CALL_bfloat16(DEFINE_SOFTPLUS_GRAD_GPU_KERNELS);
 
 }  // end namespace tensorflow
 

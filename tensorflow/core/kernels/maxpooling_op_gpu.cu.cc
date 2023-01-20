@@ -17,6 +17,8 @@ limitations under the License.
 
 #define EIGEN_USE_GPU
 
+#include "tensorflow/core/kernels/maxpooling_op_gpu.h"
+
 #include <stdio.h>
 
 #include <cfloat>
@@ -25,7 +27,6 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/framework/type_traits.h"
 #include "tensorflow/core/kernels/maxpooling_op.h"
-#include "tensorflow/core/kernels/maxpooling_op_gpu.h"
 #include "tensorflow/core/util/gpu_kernel_helper.h"
 
 namespace tensorflow {
@@ -475,7 +476,6 @@ typedef Eigen::GpuDevice GPUDevice;
   template struct MaxPoolGradBackwardNoMask<T>;
 
 TF_CALL_GPU_NUMBER_TYPES(DEFINE_GPU_KERNELS);
-TF_CALL_bfloat16(DEFINE_GPU_KERNELS);
 
 #undef DEFINE_GPU_KERNELS
 
