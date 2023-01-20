@@ -341,11 +341,12 @@ Status GpuRuntimeExecutable::Execute(
   StatusOr<StreamPool::Ptr> async_comms_stream =
       run_options->BorrowStream(device_ordinal);
 
-  // Async collective support instantiated for each Gpu executable run, so that
-  // concurrent executions can run independenty using a separate set of events
-  // for communication.
+  // Async Collectives support and Send/Recv events instantiated for each Gpu
+  // executable run, so that concurrent executions can run independenty using a
+  // separate set of events for communication.
   AsyncCollectivesSupport async_collectives(
       async_comms_stream.ok() ? async_comms_stream->get() : nullptr);
+  SendRecvEvents send_recv_events;
 
   // Always pass in the temp buffer, even if it is null, to accommodate the
   // 0-sized buffer corner case.
@@ -378,7 +379,7 @@ Status GpuRuntimeExecutable::Execute(
   runtime::CustomCall::UserData user_data(
       run_options, &executable, &debug_options_, &temp_buffer, &asm_text,
       &ffi_state, &binary, &kernels, &gemm_configs, &conv_runners,
-      &collectives_, &fft_plans,
+      &collectives_, &fft_plans, &send_recv_events,
 #if GOOGLE_CUDA
       // Auxiliary data that is available only if compiled with CUDA support.
       &matmul_plans, &graph_instances,

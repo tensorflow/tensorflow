@@ -292,9 +292,12 @@ cc_library(
         "//tensorflow/compiler/xla/runtime:custom_call_registry",
         "//tensorflow/compiler/xla/runtime:executable",
         "//tensorflow/compiler/xla/service:executable",
+        "//tensorflow/compiler/xla/stream_executor:event",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/synchronization",
     ],
 )
 

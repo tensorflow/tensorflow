@@ -1946,7 +1946,8 @@ static SendDeviceMemoryFunction ConvertSendCallbacksToSendFunction(
       options.send_callbacks[device_ordinal];
 
   return [callbacks](int64_t channel_id, se::Stream* stream, const Shape& shape,
-                     const se::DeviceMemoryBase& src) {
+                     const se::DeviceMemoryBase& src)
+             -> StatusOr<std::shared_ptr<se::Event>> {
     VLOG(3) << "Send " << src.size() << " bytes to channel #" << channel_id
             << " (shape=" << shape.ToString() << ")";
 
@@ -1957,31 +1958,42 @@ static SendDeviceMemoryFunction ConvertSendCallbacksToSendFunction(
           channel_id);
     }
 
+    // Allocate event that will signal completion of send operation. We do not
+    // actually track the completion of the send callback, we only have to keep
+    // the device memory long enough to complete the memcpy command.
+    auto done_event = std::make_shared<se::Event>(stream->parent());
+    if (!done_event->Init())
+      return InternalError("Failed to initialize done event (channel_id=%d)",
+                           channel_id);
+
     // Allocate chunk on the host for copying data from device.
     PjRtChunk chunk = PjRtChunk::AllocateDefault(src.size());
     stream->ThenMemcpy(chunk.data(), src, src.size());
+    stream->ThenRecordEvent(done_event.get());
 
-    // TODO(ezhulenev): Instead of blocking the host, we can submit memcpy
-    // operation on a stream, and block the host and call the callback in the
-    // SendDone operation. For the simplicity of the initial implementation
-    // we do it all in the send function.
-    auto status = stream->BlockHostUntilDone();
-    if (!status.ok()) return status;
+    // TODO(ezhulenev): We are forced to block the caller thread here because
+    // we must guarantee that chunk passed to the callback is complete. Callback
+    // should take PjRtFuture<PjRtChunk> to enable truly async send operation.
+    if (auto st = stream->BlockHostUntilDone(); !st.ok()) return st;
 
     // Pass chunk to the registered callback.
-    return send->callback({shape}, std::move(chunk),
-                          /*total_size_in_bytes=*/src.size(),
-                          /*done=*/true);
+    auto sent = send->callback({shape}, std::move(chunk),
+                               /*total_size_in_bytes=*/src.size(),
+                               /*done=*/true);
+    if (!sent.ok()) return sent;
+
+    return std::move(done_event);
   };
 }
 
 namespace {
 class StreamExecutorCopyToDeviceStream : public CopyToDeviceStream {
  public:
-  StreamExecutorCopyToDeviceStream(absl::Notification* done, se::Stream* stream,
+  StreamExecutorCopyToDeviceStream(std::shared_ptr<se::Event> done,
+                                   se::Stream* stream,
                                    se::DeviceMemoryBase* dst)
       : CopyToDeviceStream(dst->size(), /*granule_bytes=*/1),
-        done_(done),
+        done_(std::move(done)),
         stream_(stream),
         dst_(dst) {}
 
@@ -1998,18 +2010,20 @@ class StreamExecutorCopyToDeviceStream : public CopyToDeviceStream {
 
     stream_->ThenMemcpy(dst_, chunk.data(), chunk.size());
 
-    // Delete chunk once the memcpy operation completes. We do not need to block
-    // the host here because all subsequent compute operations will be submitted
-    // on the same stream.
+    // Delete chunk once the memcpy operation completes.
     auto* chunk_ptr = std::make_unique<PjRtChunk>(std::move(chunk)).release();
     stream_->ThenDoHostCallback([chunk_ptr]() { delete chunk_ptr; });
 
-    if (complete) done_->Notify();
+    // Record done event once processing the last chunk. It is the caller
+    // responsibility to synchronize with this event before submitting any new
+    // computations to the stream.
+    if (complete) stream_->ThenRecordEvent(done_.get());
+
     return PjRtFuture<Status>(OkStatus());
   }
 
  private:
-  absl::Notification* done_;
+  std::shared_ptr<se::Event> done_;
   se::Stream* stream_;
   se::DeviceMemoryBase* dst_;
 };
@@ -2033,7 +2047,8 @@ static RecvDeviceMemoryFunction ConvertRecvCallbacksToRecvFunction(
       options.recv_callbacks[device_ordinal];
 
   return [callbacks](int64_t channel_id, se::Stream* stream, const Shape& shape,
-                     se::DeviceMemoryBase* dst) {
+                     se::DeviceMemoryBase* dst)
+             -> StatusOr<std::shared_ptr<se::Event>> {
     VLOG(3) << "Recv from channel #" << channel_id
             << " (shape=" << shape.ToString() << ")";
 
@@ -2044,17 +2059,18 @@ static RecvDeviceMemoryFunction ConvertRecvCallbacksToRecvFunction(
           channel_id);
     }
 
-    // TODO(ezhulenev): Revisit `RecvDeviceMemoryFunction` API to make it
-    // non-blocking and signal copy to device stream completion via events.
-    absl::Notification done;
+    // Allocate event that will signal completion of recv operation. We record
+    // it on a stream after submitting the memcpy for the last chunk (see
+    // `StreamExecutorCopyToDeviceStream` implementation above).
+    auto done_event = std::make_shared<se::Event>(stream->parent());
+    if (!done_event->Init())
+      return InternalError("Failed to initialize done event (channel_id=%d)",
+                           channel_id);
+
     recv->callback({shape}, std::make_unique<StreamExecutorCopyToDeviceStream>(
-                                &done, stream, dst));
+                                done_event, stream, dst));
 
-    VLOG(3) << "Wait for the complection of recv callback: channel_id="
-            << channel_id;
-    done.WaitForNotification();
-
-    return OkStatus();
+    return std::move(done_event);
   };
 }
 
@@ -2172,6 +2188,7 @@ StatusOr<ScopedShapedBuffer> PjRtStreamExecutorExecutable::EnqueueExecution(
   ExecutableRunOptions run_options;
   run_options.set_stream(device_state->compute_stream());
   run_options.set_host_to_device_stream(device_state->host_to_device_stream());
+  run_options.set_device_to_host_stream(device_state->GetDeviceToHostStream());
   run_options.set_allocator(client_->allocator());
   run_options.set_intra_op_thread_pool(
       client_->client()->backend().eigen_intra_op_thread_pool_device());
