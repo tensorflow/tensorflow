@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/profiler/convert/trace_events_to_json.h"
+#include "tensorflow/tsl/profiler/convert/trace_events_to_json.h"
 
 #include <algorithm>
 #include <string>
@@ -22,15 +22,20 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/strings/str_cat.h"
 #include "json/json.h"
-#include "tensorflow/core/platform/protobuf.h"
-#include "tensorflow/core/platform/types.h"
-#include "tensorflow/core/profiler/protobuf/trace_events.pb.h"
-#include "tensorflow/core/profiler/utils/format_utils.h"
-#include "tensorflow/core/profiler/utils/math_utils.h"
+#include "tensorflow/tsl/platform/protobuf.h"
+#include "tensorflow/tsl/platform/types.h"
+#include "tensorflow/tsl/profiler/protobuf/trace_events.pb.h"
+#include "tensorflow/tsl/profiler/utils/format_utils.h"
+#include "tensorflow/tsl/profiler/utils/math_utils.h"
 
-namespace tensorflow {
+namespace tsl {
 namespace profiler {
 namespace {
+
+using tensorflow::profiler::Device;
+using tensorflow::profiler::Resource;
+using tensorflow::profiler::Trace;
+using tensorflow::profiler::TraceEvent;
 
 // Converts the given time from picoseconds to microseconds and then to a string
 // using maximum precision.
@@ -128,4 +133,4 @@ std::string TraceEventsToJson(const Trace& trace) {
 }
 
 }  // namespace profiler
-}  // namespace tensorflow
+}  // namespace tsl

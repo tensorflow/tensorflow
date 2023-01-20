@@ -13,18 +13,21 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/profiler/convert/xplane_to_trace_events.h"
+#include "tensorflow/tsl/profiler/convert/xplane_to_trace_events.h"
 
-#include "tensorflow/core/platform/test.h"
-#include "tensorflow/core/profiler/protobuf/trace_events.pb.h"
-#include "tensorflow/core/profiler/protobuf/xplane.pb.h"
-#include "tensorflow/core/profiler/utils/trace_utils.h"
-#include "tensorflow/core/profiler/utils/xplane_builder.h"
-#include "tensorflow/core/profiler/utils/xplane_schema.h"
+#include "tensorflow/tsl/platform/test.h"
+#include "tensorflow/tsl/profiler/protobuf/trace_events.pb.h"
+#include "tensorflow/tsl/profiler/protobuf/xplane.pb.h"
+#include "tensorflow/tsl/profiler/utils/trace_utils.h"
+#include "tensorflow/tsl/profiler/utils/xplane_builder.h"
+#include "tensorflow/tsl/profiler/utils/xplane_schema.h"
 
-namespace tensorflow {
+namespace tsl {
 namespace profiler {
 namespace {
+
+using tensorflow::profiler::Trace;
+using tensorflow::profiler::XSpace;
 
 void CreateXSpace(XSpace* space) {
   XPlaneBuilder host_plane(space->add_planes());
@@ -109,4 +112,4 @@ TEST(ConvertXPlaneToTraceEvents, Drop) {
 
 }  // namespace
 }  // namespace profiler
-}  // namespace tensorflow
+}  // namespace tsl

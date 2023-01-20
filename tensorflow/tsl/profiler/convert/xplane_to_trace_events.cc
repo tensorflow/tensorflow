@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/profiler/convert/xplane_to_trace_events.h"
+#include "tensorflow/tsl/profiler/convert/xplane_to_trace_events.h"
 
 #include <stddef.h>
 
@@ -24,20 +24,25 @@ limitations under the License.
 
 #include "absl/strings/string_view.h"
 #include "absl/types/optional.h"
-#include "tensorflow/core/platform/types.h"
-#include "tensorflow/core/profiler/protobuf/trace_events.pb.h"
-#include "tensorflow/core/profiler/protobuf/xplane.pb.h"
-#include "tensorflow/core/profiler/utils/tf_xplane_visitor.h"
-#include "tensorflow/core/profiler/utils/trace_utils.h"
-#include "tensorflow/core/profiler/utils/xplane_schema.h"
-#include "tensorflow/core/profiler/utils/xplane_utils.h"
-#include "tensorflow/core/profiler/utils/xplane_visitor.h"
+#include "tensorflow/tsl/platform/types.h"
+#include "tensorflow/tsl/profiler/protobuf/trace_events.pb.h"
+#include "tensorflow/tsl/profiler/protobuf/xplane.pb.h"
+#include "tensorflow/tsl/profiler/utils/tf_xplane_visitor.h"
+#include "tensorflow/tsl/profiler/utils/trace_utils.h"
 #include "tensorflow/tsl/profiler/utils/xplane_schema.h"
+#include "tensorflow/tsl/profiler/utils/xplane_utils.h"
+#include "tensorflow/tsl/profiler/utils/xplane_visitor.h"
 
-namespace tensorflow {
+namespace tsl {
 namespace profiler {
 
 namespace {
+
+using tensorflow::profiler::Device;
+using tensorflow::profiler::Resource;
+using tensorflow::profiler::Trace;
+using tensorflow::profiler::TraceEvent;
+using tensorflow::profiler::XSpace;
 
 void BuildDeviceAndResources(uint32 device_id, const XPlaneVisitor& plane,
                              Device* device) {
@@ -174,4 +179,4 @@ void ConvertXSpaceToTraceEventsString(const XSpace& xspace,
 }
 
 }  // namespace profiler
-}  // namespace tensorflow
+}  // namespace tsl

@@ -13,27 +13,29 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_CORE_PROFILER_CONVERT_XPLANE_TO_TRACE_EVENTS_H_
-#define TENSORFLOW_CORE_PROFILER_CONVERT_XPLANE_TO_TRACE_EVENTS_H_
+#ifndef TENSORFLOW_TSL_PROFILER_CONVERT_XPLANE_TO_TRACE_EVENTS_H_
+#define TENSORFLOW_TSL_PROFILER_CONVERT_XPLANE_TO_TRACE_EVENTS_H_
 
 #include <string>
 
-#include "tensorflow/core/platform/types.h"
-#include "tensorflow/core/profiler/protobuf/trace_events.pb.h"
-#include "tensorflow/core/profiler/protobuf/xplane.pb.h"
+#include "tensorflow/tsl/platform/types.h"
+#include "tensorflow/tsl/profiler/protobuf/trace_events.pb.h"
+#include "tensorflow/tsl/profiler/protobuf/xplane.pb.h"
 
-namespace tensorflow {
+namespace tsl {
 namespace profiler {
 
-void ConvertXSpaceToTraceEvents(const XSpace& xspace, Trace* trace);
+void ConvertXSpaceToTraceEvents(const tensorflow::profiler::XSpace& xspace,
+                                tensorflow::profiler::Trace* trace);
 
-void ConvertXSpaceToTraceEventsString(const XSpace& xspace,
-                                      std::string* content);
+void ConvertXSpaceToTraceEventsString(
+    const tensorflow::profiler::XSpace& xspace, std::string* content);
 
 // Not Public API, Testing only.
-void MaybeDropEventsForTraceViewer(Trace* trace, uint32 limit);
+void MaybeDropEventsForTraceViewer(tensorflow::profiler::Trace* trace,
+                                   uint32 limit);
 
 }  // namespace profiler
-}  // namespace tensorflow
+}  // namespace tsl
 
-#endif  // TENSORFLOW_CORE_PROFILER_CONVERT_XPLANE_TO_TRACE_EVENTS_H_
+#endif  // TENSORFLOW_TSL_PROFILER_CONVERT_XPLANE_TO_TRACE_EVENTS_H_

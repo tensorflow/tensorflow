@@ -13,18 +13,20 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/profiler/convert/trace_events_to_json.h"
+#include "tensorflow/tsl/profiler/convert/trace_events_to_json.h"
 
 #include <string>
 
 #include "json/json.h"
-#include "tensorflow/core/platform/protobuf.h"
-#include "tensorflow/core/platform/test.h"
-#include "tensorflow/core/profiler/protobuf/trace_events.pb.h"
+#include "tensorflow/tsl/platform/protobuf.h"
+#include "tensorflow/tsl/platform/test.h"
+#include "tensorflow/tsl/profiler/protobuf/trace_events.pb.h"
 
-namespace tensorflow {
+namespace tsl {
 namespace profiler {
 namespace {
+
+using tensorflow::profiler::Trace;
 
 std::string ConvertTextFormattedTraceToJson(const std::string& trace_str) {
   Trace trace;
@@ -124,4 +126,4 @@ TEST(TraceEventsToJson, JsonConversion) {
 
 }  // namespace
 }  // namespace profiler
-}  // namespace tensorflow
+}  // namespace tsl

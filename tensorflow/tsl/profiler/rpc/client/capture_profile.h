@@ -40,9 +40,9 @@ Status Monitor(const std::string& service_addr, int duration_ms,
 // Starts tracing on a single or multiple hosts. Each host will save the result
 // in the given logdir. If no trace was collected, retries tracing for
 // num_tracing_attempts. Assumes that options have been validated.
-Status Trace(const std::string& logdir, int num_tracing_attempts,
-             tensorflow::RemoteProfilerSessionManagerOptions& opts,
-             bool is_cloud_tpu_session);
+Status CaptureRemoteTrace(const std::string& logdir, int num_tracing_attempts,
+                          tensorflow::RemoteProfilerSessionManagerOptions& opts,
+                          bool is_cloud_tpu_session);
 
 }  // namespace profiler
 }  // namespace tsl
