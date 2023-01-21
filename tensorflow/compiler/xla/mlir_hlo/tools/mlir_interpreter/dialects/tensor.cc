@@ -106,9 +106,10 @@ llvm::SmallVector<InterpreterValue> insertSlice(
 
   auto staticSizes = insert.getStaticSizes();
   llvm::SmallVector<int64_t> insertedDims;
-  auto* srcSizeIt = src.view().sizes.begin();
+  auto& srcView = src.view();
+  auto* srcSizeIt = srcView.sizes.begin();
   for (auto [dim, size] : llvm::enumerate(staticSizes)) {
-    if (*srcSizeIt != size) {
+    if (srcSizeIt == srcView.sizes.end() || *srcSizeIt != size) {
       assert(size == 1 && "Can only insert unit dims");
       insertedDims.push_back(dim);
     } else {
@@ -116,7 +117,7 @@ llvm::SmallVector<InterpreterValue> insertSlice(
     }
   }
 
-  for (const auto& srcIndices : src.view().indices()) {
+  for (const auto& srcIndices : srcView.indices()) {
     llvm::SmallVector<int64_t> srcWithInsertedDims = srcIndices;
     for (int64_t dim : insertedDims) {
       srcWithInsertedDims.insert(srcWithInsertedDims.begin() + dim, 0);
