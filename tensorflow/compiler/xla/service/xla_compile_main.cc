@@ -147,21 +147,22 @@ xla::Status XlaCompileMain(const std::string& module_path,
     if (autotune_results_path.empty()) {
       TF_ASSIGN_OR_RETURN(result, AotCompileGpuExecutable(std::move(hlo_module),
                                                           gpu_target_config));
-    }
+    } else {
+      // Parse AutotuneResults.
+      std::string autotune_results_string;
+      TF_RETURN_IF_ERROR(tsl::ReadFileToString(tsl::Env::Default(),
+                                               autotune_results_path,
+                                               &autotune_results_string));
+      AutotuneResults autotune_results;
+      if (!tsl::protobuf::TextFormat::ParseFromString(autotune_results_string,
+                                                      &autotune_results)) {
+        return FailedPrecondition("Failed to parse AutotuneResults");
+      }
 
-    // Parse AutotuneResults.
-    std::string autotune_results_string;
-    TF_RETURN_IF_ERROR(tsl::ReadFileToString(
-        tsl::Env::Default(), autotune_results_path, &autotune_results_string));
-    AutotuneResults autotune_results;
-    if (!tsl::protobuf::TextFormat::ParseFromString(autotune_results_string,
-                                                    &autotune_results)) {
-      return FailedPrecondition("Failed to parse AutotuneResults");
+      TF_ASSIGN_OR_RETURN(
+          result, AotCompileGpuExecutable(std::move(hlo_module),
+                                          gpu_target_config, autotune_results));
     }
-
-    TF_ASSIGN_OR_RETURN(
-        result, AotCompileGpuExecutable(std::move(hlo_module),
-                                        gpu_target_config, autotune_results));
 #endif
   } else {
     return Unimplemented("platform %s not supported", platform);
