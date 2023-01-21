@@ -27,9 +27,7 @@ limitations under the License.
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
 #include "mlir/Dialect/Linalg/Transforms/Hoisting.h"
 #include "mlir/Dialect/Linalg/Transforms/Transforms.h"
-#include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/Dialect/Vector/IR/VectorOps.h"
-#include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/OpDefinition.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 #include "thlo/IR/thlo_ops.h"
@@ -468,14 +466,13 @@ struct TensorEmptyToVectorBroadcastPattern
 };
 
 struct MaterializeOpVectorizationPattern
-    : public OpRewritePattern<tensor::ExtractSliceOp> {
+    : public OpRewritePattern<MaterializeOp> {
   MaterializeOpVectorizationPattern(
-      MLIRContext *context,
-      llvm::function_ref<bool(tensor::ExtractSliceOp)> filterFn,
+      MLIRContext *context, llvm::function_ref<bool(MaterializeOp)> filterFn,
       PatternBenefit benefit = 1)
       : OpRewritePattern(context, benefit), filterFn(filterFn) {}
 
-  LogicalResult matchAndRewrite(tensor::ExtractSliceOp op,
+  LogicalResult matchAndRewrite(MaterializeOp op,
                                 PatternRewriter &rewriter) const override {
     if (!filterFn(op))
       return rewriter.notifyMatchFailure(op, "did not match filter");
@@ -516,16 +513,16 @@ struct MaterializeOpVectorizationPattern
   }
 
  private:
-  llvm::function_ref<bool(tensor::ExtractSliceOp)> filterFn;
+  llvm::function_ref<bool(MaterializeOp)> filterFn;
 };
 
 struct IdentityMaterializeOpFoldingPattern
-    : public OpRewritePattern<tensor::ExtractSliceOp> {
+    : public OpRewritePattern<MaterializeOp> {
   explicit IdentityMaterializeOpFoldingPattern(MLIRContext *context,
                                                PatternBenefit benefit = 1)
       : OpRewritePattern(context, benefit) {}
 
-  LogicalResult matchAndRewrite(tensor::ExtractSliceOp op,
+  LogicalResult matchAndRewrite(MaterializeOp op,
                                 PatternRewriter &rewriter) const override {
     auto src = op.getSource();
     // Only fold identity materialize of ForOp's block argument.
@@ -537,31 +534,6 @@ struct IdentityMaterializeOpFoldingPattern
       return rewriter.notifyMatchFailure(op, "did not match filter");
 
     op.replaceAllUsesWith(src);
-    return success();
-  }
-};
-
-// TODO(pifon): Remove patterns that use gml_st.materialize, once GmlSt loops
-// are removed/upstreamed.
-struct FoldVectorExtractOfMaterialize
-    : public OpRewritePattern<vector::ExtractOp> {
-  explicit FoldVectorExtractOfMaterialize(MLIRContext *context,
-                                          PatternBenefit benefit = 1)
-      : OpRewritePattern(context, benefit) {}
-
-  LogicalResult matchAndRewrite(vector::ExtractOp op,
-                                PatternRewriter &rewriter) const override {
-    auto materializeOp = op.getVector().getDefiningOp<gml_st::MaterializeOp>();
-    if (!materializeOp) return failure();
-
-    if (llvm::any_of(op.getPosition().getAsRange<IntegerAttr>(),
-                     [](IntegerAttr pos) { return pos.getInt() != 0; }))
-      return failure();
-
-    rewriter.replaceOpWithNewOp<gml_st::MaterializeOp>(
-        op, op.getType(), materializeOp.getSource(),
-        materializeOp.getMixedOffsets(), materializeOp.getMixedSizes(),
-        materializeOp.getMixedStrides());
     return success();
   }
 };
@@ -681,7 +653,6 @@ struct LoopLikeOpVectorizationPattern : public OpRewritePattern<LoopLikeOp> {
         op.getResults(), [&](Value v) { return bvm.lookupOrDefault(v); }));
 
     rewriter.replaceOp(op, mappedResults);
-
     return success();
   }
 
@@ -696,6 +667,7 @@ RewritePatternSet getDefaultVectorizationPatterns(MLIRContext *ctx) {
   patterns.add<mlir::linalg::LinalgCopyVTRForwardingPattern,
                mlir::linalg::LinalgCopyVTWForwardingPattern>(ctx,
                                                              /*benefit=*/2);
+  TransferReadOp::getCanonicalizationPatterns(patterns, ctx);
   TransferWriteOp::getCanonicalizationPatterns(patterns, ctx);
   return patterns;
 }
@@ -772,7 +744,7 @@ struct VectorizeGmlStLoopsPass
           op.getResult(0).getType().cast<mlir::RankedTensorType>();
       return outputType.hasStaticShape();
     };
-    auto materializeOpFilter = [&](tensor::ExtractSliceOp op) {
+    auto materializeOpFilter = [&](MaterializeOp op) {
       // Materialize op should only be vectorized if the producer of its
       // source is within the vectorized region, otherwise we vectorize one
       // level too much. (E.g., for GPU, if we are vectorizing up to warp level,
@@ -789,10 +761,9 @@ struct VectorizeGmlStLoopsPass
     };
     {
       RewritePatternSet patterns = getDefaultVectorizationPatterns(ctx);
-      patterns
-          .add<FoldVectorExtractOfMaterialize, TransferReadOfOneDimExpandShape,
-               MaterializeFromSingleElementToExtractPattern,
-               SetYieldOfScalarToVectorPattern>(ctx);
+      patterns.add<TransferReadOfOneDimExpandShape,
+                   MaterializeFromSingleElementToExtractPattern,
+                   SetYieldOfScalarToVectorPattern>(ctx);
       patterns.add<VectorizationPattern<FillOp>>(ctx, fillOpFilter);
       patterns.add<VectorizationPattern<GenericOp>>(ctx, genericOpFilter);
       patterns.add<VectorizationPattern<BroadcastOp>,
@@ -877,7 +848,6 @@ struct VectorizePerfectlyTiledLoopsPass
     };
     {
       RewritePatternSet patterns = getDefaultVectorizationPatterns(ctx);
-      TransferReadOp::getCanonicalizationPatterns(patterns, ctx);
       // clang-format off
       patterns.add<
         VectorizationPattern<BroadcastOp>,
@@ -897,17 +867,15 @@ struct VectorizePerfectlyTiledLoopsPass
       (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
     }
 
+    // TODO(vuson): remove these patterns once gml_st.for is retired.
     {
       RewritePatternSet patterns = getDefaultVectorizationPatterns(ctx);
-      TransferReadOp::getCanonicalizationPatterns(patterns, ctx);
       linalg::populatePadOpVectorizationPatterns(patterns);
       patterns.add<MaterializeUpdateTransferWriteTensorOperand,
                    SetYieldUpdateTransferWriteTensorOperand,
                    IdentityTransposeOpFoldingPattern>(ctx);
       (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
     }
-
-    // Hoisting transfer_read/transfer_write.
     {
       RewritePatternSet patterns(ctx);
       patterns.add<IdentityMaterializeOpFoldingPattern>(ctx);

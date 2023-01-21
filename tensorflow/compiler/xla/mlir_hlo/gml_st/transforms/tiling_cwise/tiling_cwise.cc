@@ -43,8 +43,7 @@ namespace {
 bool isRootOfCwiseExpr(Operation *op) {
   return isCwiseGenericOp(op) &&
          llvm::none_of(op->getUsers(), [](Operation *user) {
-           return isCwiseGenericOp(user) ||
-                  llvm::isa<tensor::ExtractSliceOp>(user);
+           return isCwiseGenericOp(user) || llvm::isa<MaterializeOp>(user);
          });
 }
 
@@ -92,7 +91,7 @@ struct TilingCwisePass : public impl::TilingCwisePassBase<TilingCwisePass> {
     auto tileRootOfCwiseExprFn = [](TilingInterface op) {
       return success(isRootOfCwiseExpr(op));
     };
-    auto fuseCwiseOperandsGreedilyFn = [](tensor::ExtractSliceOp op) {
+    auto fuseCwiseOperandsGreedilyFn = [](MaterializeOp op) {
       return success(isCwiseGenericOp(op.getSource().getDefiningOp()));
     };
 

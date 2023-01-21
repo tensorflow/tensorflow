@@ -13,5 +13,5 @@ func.func @map_unary(%input: tensor<?x?xf32>, %init: tensor<?x?xf32>)
 // CHECK:            math.absf %{{.*}} : vector<8xf32>
 // CHECK:         gml_st.parallel
 // CHECK:           gml_st.parallel
-// CHECK:             affine.apply
+// CHECK:             arith.addi
 // CHECK:             math.absf %{{.*}} : f32

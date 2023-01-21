@@ -156,9 +156,16 @@ struct ScalarizeScatterOp : public OpRewritePattern<thlo::ScatterOp> {
     auto initType = init.getType().dyn_cast<RankedTensorType>();
     if (!initType) return failure();
 
+    int64_t initRank = initType.getRank();
+
     SmallVector<OpFoldResult> initDimSizes =
         tensor::getMixedSizes(b, loc, init);
     auto initDimValues = getValueOrCreateConstantIndexOp(b, loc, initDimSizes);
+
+    Value initTile = b.create<gml_st::TileOp>(
+        loc, SmallVector<OpFoldResult>(initRank, b.getI64IntegerAttr(0)),
+        initDimSizes,
+        SmallVector<OpFoldResult>(initRank, b.getI64IntegerAttr(1)));
 
     Value zero = b.create<arith::ConstantIndexOp>(0);
     Value one = b.create<arith::ConstantIndexOp>(1);
@@ -185,9 +192,9 @@ struct ScalarizeScatterOp : public OpRewritePattern<thlo::ScatterOp> {
     auto ifOp = b.create<scf::IfOp>(
         loc, TypeRange(ValueRange{init}), indexIsInBounds,
         [&](OpBuilder &thenBuilder, Location thenLoc) {
-          scf::LoopNest loopNest = scf::buildLoopNest(
-              thenBuilder, thenLoc, lbs, updatesDimValues, steps,
-              ValueRange{init},
+          auto loop = thenBuilder.create<gml_st::ForOp>(
+              thenLoc, TypeRange(ValueRange{init}), lbs, updatesDimValues,
+              steps, init,
               [&](OpBuilder &nestedBuilder, Location bodyLoc,
                   ValueRange updateIndex, ValueRange loopInits) {
                 Value initBlockArg = loopInits.front();
@@ -222,10 +229,11 @@ struct ScalarizeScatterOp : public OpRewritePattern<thlo::ScatterOp> {
                 Value updatedInit = thenBuilder.create<InsertOp>(
                     thenLoc, combinedValue, initBlockArg, initIndex);
 
-                return scf::ValueVector({updatedInit});
+                nestedBuilder.create<gml_st::SetYieldOp>(
+                    bodyLoc, updatedInit, initBlockArg, initTile);
               });
 
-          thenBuilder.create<scf::YieldOp>(thenLoc, loopNest.results);
+          thenBuilder.create<scf::YieldOp>(thenLoc, loop.getResults());
         },
         [&](OpBuilder &elseBuilder, Location elseLoc) {
           elseBuilder.create<scf::YieldOp>(elseLoc, init);
@@ -360,7 +368,7 @@ struct ScalarizeConcatenateOp : public OpRewritePattern<thlo::ConcatenateOp> {
 
     auto materializeAndInsert = [&](OpBuilder &b, Location l, Value input) {
       Value slice =
-          b.create<tensor::ExtractSliceOp>(l, input, offsets, sizes, strides);
+          b.create<gml_st::MaterializeOp>(l, input, offsets, sizes, strides);
       return b.create<tensor::InsertSliceOp>(l, slice, initTensor, offsets,
                                              sizes, strides);
     };
@@ -466,6 +474,28 @@ struct ScalarizeReverseOp : public OpRewritePattern<thlo::ReverseOp> {
   }
 };
 
+// Fold `tensor.extract(gml_st.materialize -> tensor<1x1xf32>)` into
+//      `gml_st.materialize -> f32` for single-element tensors.
+struct FoldTensorExtractIntoMaterialize : public OpRewritePattern<ExtractOp> {
+  using OpRewritePattern::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(ExtractOp extractOp,
+                                PatternRewriter &rewriter) const override {
+    auto materializeOp =
+        extractOp.getTensor().getDefiningOp<gml_st::MaterializeOp>();
+    if (!materializeOp) return failure();
+
+    if (!hasSingleElement(materializeOp.getType().cast<ShapedType>()))
+      return failure();
+
+    rewriter.replaceOpWithNewOp<gml_st::MaterializeOp>(
+        extractOp, extractOp.getType(), materializeOp.getSource(),
+        materializeOp.getMixedOffsets(), materializeOp.getMixedSizes(),
+        materializeOp.getMixedStrides());
+    return success();
+  }
+};
+
 // Fold `gml_st.set_yield(tensor.from_elements(x) -> tensor<1x1xf32>)` into
 //      `gml_st.set_yield(x)` for single-element tensors.
 struct FoldTensorFromElementsIntoSetYield
@@ -498,7 +528,8 @@ struct FoldTensorFromElementsIntoSetYield
 };
 
 void populateTensorInsertExtractFoldingPatterns(RewritePatternSet *patterns) {
-  patterns->add<FoldTensorFromElementsIntoSetYield>(patterns->getContext());
+  patterns->add<FoldTensorExtractIntoMaterialize,
+                FoldTensorFromElementsIntoSetYield>(patterns->getContext());
 }
 
 struct ScalarizationPass
