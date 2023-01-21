@@ -115,9 +115,8 @@ func.func @pad_with_negative_inferred_bounds(%arg0: tensor<3x?x?xf16, #mhlo.type
 // CHECK-LABEL: @cholesky
 func.func @cholesky(%arg0: tensor<1x2x2xf32>) -> tensor<1x2x2xindex> {
   %0 = "mhlo.cholesky"(%arg0) { lower = true } : (tensor<1x2x2xf32>) -> tensor<1x2x2xf32>
-  %1 = "mhlo_test.get_return_type_components"(%0)
-      : (tensor<1x2x2xf32>) -> tensor<1x2x2xindex>
-// CHECK: %1 = "mhlo_test.return_type_components"(%0) {dims0 = [1, 2, 2], element_type0 = f32} : (tensor<1x2x2xf32>) -> tensor<1x2x2xindex>
+  %1 = "mhlo_test.get_return_type_components"(%0) : (tensor<1x2x2xf32>) -> tensor<1x2x2xindex>
+  // CHECK: %1 = "mhlo_test.return_type_components"(%0) {dims0 = [1, 2, 2], element_type0 = f32} : (tensor<1x2x2xf32>) -> tensor<1x2x2xindex>
   func.return %1: tensor<1x2x2xindex>
 }
 
@@ -151,7 +150,7 @@ func.func @abs(%arg0: tensor<1x2xf32>) -> tensor<1x2xindex> {
 // -----
 
 // CHECK-LABEL: @concat
-func.func @concat(%arg0: tensor<1xi32>, %arg1: tensor<2xi32>)  -> tensor<3xindex> {
+func.func @concat(%arg0: tensor<1xi32>, %arg1: tensor<2xi32>) -> tensor<3xindex> {
   %0 = "mhlo.concatenate"(%arg0, %arg1) { dimension = 0 : i64 } : (tensor<1xi32>, tensor<2xi32>) -> tensor<3xi32>
   %1 = "mhlo_test.get_return_type_components"(%0)
       : (tensor<3xi32>) -> tensor<3xindex>
@@ -175,7 +174,7 @@ func.func @concat(%arg0: tensor<1xi32>, %arg1: tensor<2xi32>)  -> tensor<3xindex
 // CHECK-LABEL: @concat_bounds_c0
 func.func @concat_bounds_c0(
   %arg0: tensor<5x1xi32, #mhlo.type_extensions<bounds = [?, ?]>>,
-  %arg1: tensor<5x2xi32, #mhlo.type_extensions<bounds = [?, ?]>>)  -> tensor<*xindex> {
+  %arg1: tensor<5x2xi32, #mhlo.type_extensions<bounds = [?, ?]>>) -> tensor<*xindex> {
   %result = "mhlo.concatenate"(%arg0, %arg1) { dimension = 1 : i64 } : (
     tensor<5x1xi32, #mhlo.type_extensions<bounds = [?, ?]>>,
     tensor<5x2xi32, #mhlo.type_extensions<bounds = [?, ?]>>) -> tensor<?x?xi32>
@@ -189,7 +188,7 @@ func.func @concat_bounds_c0(
 // CHECK-LABEL: @concat_bounds_c1
 func.func @concat_bounds_c1(
   %arg0: tensor<5x2xi32, #mhlo.type_extensions<bounds = [?, ?]>>,
-  %arg1: tensor<5x?xi32, #mhlo.type_extensions<bounds = [?, ?]>>)  -> tensor<*xindex> {
+  %arg1: tensor<5x?xi32, #mhlo.type_extensions<bounds = [?, ?]>>) -> tensor<*xindex> {
   %result = "mhlo.concatenate"(%arg0, %arg1) { dimension = 1 : i64 } : (
     tensor<5x2xi32, #mhlo.type_extensions<bounds = [?, ?]>>,
     tensor<5x?xi32, #mhlo.type_extensions<bounds = [?, ?]>>) -> tensor<?x?xi32>
@@ -210,7 +209,7 @@ func.func @concat_bounds_c1(
 // CHECK-LABEL: @concat_bounds_c2
 func.func @concat_bounds_c2(
   %arg0: tensor<5x2xi32, #mhlo.type_extensions<bounds = [?, ?]>>,
-  %arg1: tensor<5x?xi32, #mhlo.type_extensions<bounds = [?, 4]>>)  -> tensor<*xindex> {
+  %arg1: tensor<5x?xi32, #mhlo.type_extensions<bounds = [?, 4]>>) -> tensor<*xindex> {
   %result = "mhlo.concatenate"(%arg0, %arg1) { dimension = 1 : i64 } : (
     tensor<5x2xi32, #mhlo.type_extensions<bounds = [?, ?]>>,
     tensor<5x?xi32, #mhlo.type_extensions<bounds = [?, 4]>>) -> tensor<?x?xi32>
@@ -231,7 +230,7 @@ func.func @concat_bounds_c2(
 // CHECK-LABEL: @concat_bounds_c3
 func.func @concat_bounds_c3(
   %arg0: tensor<5x?xi32, #mhlo.type_extensions<bounds = [?, ?]>>,
-  %arg1: tensor<5x?xi32, #mhlo.type_extensions<bounds = [?, ?]>>)  -> tensor<*xindex> {
+  %arg1: tensor<5x?xi32, #mhlo.type_extensions<bounds = [?, ?]>>) -> tensor<*xindex> {
   %result = "mhlo.concatenate"(%arg0, %arg1) { dimension = 1 : i64 } : (
     tensor<5x?xi32, #mhlo.type_extensions<bounds = [?, ?]>>,
     tensor<5x?xi32, #mhlo.type_extensions<bounds = [?, ?]>>) -> tensor<?x?xi32>
@@ -245,7 +244,7 @@ func.func @concat_bounds_c3(
 // CHECK-LABEL: @concat_bounds_c4
 func.func @concat_bounds_c4(
   %arg0: tensor<5x?xi32, #mhlo.type_extensions<bounds = [?, ?]>>,
-  %arg1: tensor<5x?xi32, #mhlo.type_extensions<bounds = [?, 4]>>)  -> tensor<*xindex> {
+  %arg1: tensor<5x?xi32, #mhlo.type_extensions<bounds = [?, 4]>>) -> tensor<*xindex> {
   %result = "mhlo.concatenate"(%arg0, %arg1) { dimension = 1 : i64 } : (
     tensor<5x?xi32, #mhlo.type_extensions<bounds = [?, ?]>>,
     tensor<5x?xi32, #mhlo.type_extensions<bounds = [?, 4]>>) -> tensor<?x?xi32>
@@ -266,7 +265,7 @@ func.func @concat_bounds_c4(
 // CHECK-LABEL: @concat_bounds_c5
 func.func @concat_bounds_c5(
   %arg0: tensor<5x?xi32, #mhlo.type_extensions<bounds = [?, 3]>>,
-  %arg1: tensor<5x?xi32, #mhlo.type_extensions<bounds = [?, 4]>>)  -> tensor<*xindex> {
+  %arg1: tensor<5x?xi32, #mhlo.type_extensions<bounds = [?, 4]>>) -> tensor<*xindex> {
   %result = "mhlo.concatenate"(%arg0, %arg1) { dimension = 1 : i64 } : (
     tensor<5x?xi32, #mhlo.type_extensions<bounds = [?, 3]>>,
     tensor<5x?xi32, #mhlo.type_extensions<bounds = [?, 4]>>) -> tensor<?x?xi32>
@@ -285,7 +284,7 @@ func.func @concat_bounds_c5(
 // CHECK-LABEL: @concat_bounds_unranked_c0
 func.func @concat_bounds_unranked_c0(
   %arg0: tensor<*xi32>,
-  %arg1: tensor<5x?xi32, #mhlo.type_extensions<bounds = [?, 4]>>)  -> tensor<*xindex> {
+  %arg1: tensor<5x?xi32, #mhlo.type_extensions<bounds = [?, 4]>>) -> tensor<*xindex> {
   %result = "mhlo.concatenate"(%arg0, %arg1) { dimension = 0 : i64 } : (
     tensor<*xi32>,
     tensor<5x?xi32, #mhlo.type_extensions<bounds = [?, 4]>>) -> tensor<5x?xi32>
@@ -299,7 +298,7 @@ func.func @concat_bounds_unranked_c0(
 // CHECK-LABEL: @concat_bounds_unranked_c1
 func.func @concat_bounds_unranked_c1(
   %arg0: tensor<*xi32>,
-  %arg1: tensor<5x?xi32, #mhlo.type_extensions<bounds = [?, 4]>>)  -> tensor<*xindex> {
+  %arg1: tensor<5x?xi32, #mhlo.type_extensions<bounds = [?, 4]>>) -> tensor<*xindex> {
   %result = "mhlo.concatenate"(%arg0, %arg1) { dimension = 1 : i64 } : (
     tensor<*xi32>,
     tensor<5x?xi32, #mhlo.type_extensions<bounds = [?, 4]>>) -> tensor<5x?xi32>
@@ -1093,6 +1092,14 @@ func.func @pad(%arg0: tensor<?x48x48x32xf32>) -> tensor<4xindex> {
 
 // -----
 
+// CHECK-LABEL: func @cholesky_bounds
+func.func @cholesky_bounds(%input: tensor<2x?x?xf32, #mhlo.type_extensions<bounds = [?, 5, ?]>>) -> tensor<*xindex> {
+  %0 = "mhlo.cholesky"(%input) { lower = true } : (tensor<2x?x?xf32, #mhlo.type_extensions<bounds = [?, 5, ?]>>) -> tensor<*xf32>
+  // CHECK: types0 = tensor<2x?x?xf32, #mhlo.type_extensions<bounds = [?, 5, ?]>>
+  %1 = "mhlo_test.get_return_types"(%0) : (tensor<*xf32>) -> tensor<*xindex>
+  func.return %1 : tensor<*xindex>
+}
+
 // CHECK-LABEL: func @concatenate
 // CHECK-SAME: (%[[ARG0:.*]]: tensor<?x?xi32>, %[[ARG1:.*]]: tensor<?x?xi32>, %[[ARG2:.*]]: tensor<?x?xi32>
 func.func @concatenate(%arg0: tensor<?x?xi32>, %arg1: tensor<?x?xi32>, %arg2: tensor<?x?xi32>) -> tensor<2xindex> {
@@ -1221,7 +1228,7 @@ func.func @broadcast(%arg0: tensor<?xi32>) -> tensor<3xindex> {
 
 // CHECK-LABEL: func @transpose
 // CHECK-SAME: (%[[ARG0:.*]]: tensor<?x?x?x?xi32>
-func.func @transpose(%arg0: tensor<?x?x?x?xi32>) ->  tensor<4xindex> {
+func.func @transpose(%arg0: tensor<?x?x?x?xi32>) -> tensor<4xindex> {
   // CHECK: %[[C0:.*]] = arith.constant 0 : index
   // CHECK: %[[C1:.*]] = arith.constant 1 : index
   // CHECK: %[[C2:.*]] = arith.constant 2 : index
