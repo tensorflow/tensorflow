@@ -98,9 +98,9 @@ cc_library(
     srcs = ["async_collective_creator.cc"],
     hdrs = ["async_collective_creator.h"],
     deps = [
-        ":computation_placer_hdr",
         ":hlo_pass",
         ":shape_inference",
+        "//tensorflow/compiler/xla:frontend_attributes",
         "//tensorflow/compiler/xla/hlo/ir:hlo",
         "//tensorflow/tsl/platform:errors",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -4540,6 +4540,7 @@ cc_library(
         ":hlo_pass",
         ":logical_buffer",
         ":tuple_simplifier",
+        "//tensorflow/compiler/xla:frontend_attributes",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:types",

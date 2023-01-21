@@ -177,6 +177,18 @@ cc_library(
 )
 
 cc_library(
+    name = "frontend_attributes",
+    srcs = [
+        "frontend_attributes.cc",
+    ],
+    hdrs = [
+        "frontend_attributes.h",
+    ],
+    visibility = [":friends"],
+    deps = ["//tensorflow/compiler/xla/hlo/ir:hlo"],
+)
+
+cc_library(
     name = "test",
     testonly = 1,
     hdrs = ["test.h"],
