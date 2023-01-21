@@ -1278,3 +1278,23 @@ func.func @select_and_scatter_bound(
   %3 = "mhlo_test.get_return_types"(%1) : (tensor<*xf32>) -> tensor<*xindex>
   func.return %3 : tensor<*xindex>
 }
+
+// -----
+
+// CHECK-LABEL: func @reduce_window_bound
+func.func @reduce_window_bound(%arg0: tensor<4x?x?x?xf32, #mhlo.type_extensions<bounds = [?, ?, 4, 2]>>,
+    %init0: tensor<f32>) -> (tensor<*xindex>) {
+  %0:1 = "mhlo.reduce_window"(%arg0, %init0) ({
+  ^bb0(%a0: tensor<f32>, %b0: tensor<f32>):
+    %2 = mhlo.add %a0, %b0 : tensor<f32>
+    "mhlo.return"(%2) : (tensor<f32>) -> ()
+  }) {
+    padding = dense<[[0, 0], [0, 0], [2, 2], [0, 0]]> : tensor<4x2xi64>,
+    window_dimensions = dense<[1, 1, 5, 1]> : tensor<4xi64>,
+    window_strides = dense<[1, 1, 3, 1]> : tensor<4xi64>
+  } : (tensor<4x?x?x?xf32, #mhlo.type_extensions<bounds = [?, ?, 4, 2]>>,
+       tensor<f32>) -> (tensor<*xf32>)
+  // CHECK: types0 = tensor<4x?x?x?xf32, #mhlo.type_extensions<bounds = [?, ?, 2, 2]>>
+  %1 = "mhlo_test.get_return_types"(%0#0) : (tensor<*xf32>) -> tensor<*xindex>
+  func.return %1: tensor<*xindex>
+}
