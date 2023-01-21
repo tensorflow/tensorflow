@@ -3521,6 +3521,14 @@ func.func @reduce_precision_invalid_exponent(%arg: tensor<2x4xf32>) -> tensor<2x
 
 // -----
 
+func.func @reduce_precision_invalid_mantissa(%arg: tensor<2x4xf32>) -> tensor<2x4xf32> {
+  // expected-error @+1 {{mantissa_bits must be at least 0.}}
+  %0 = "mhlo.reduce_precision"(%arg) {exponent_bits=1 : i32, mantissa_bits=-1 : i32} : (tensor<2x4xf32>) -> tensor<2x4xf32>
+  func.return %0 : tensor<2x4xf32>
+}
+
+// -----
+
 func.func @gather(%operand : tensor<2x4x9xi32>, %start_indices : tensor<1x5x2xi32>) -> tensor<1x5x8xi32> {
   %res = "mhlo.gather"(%operand, %start_indices) {
     dimension_numbers = #mhlo.gather<
