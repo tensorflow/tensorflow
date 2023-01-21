@@ -29,6 +29,8 @@ namespace tensorflow {
 class ZenEagerOpRewrite : public EagerOpRewrite {
  public:
   ZenEagerOpRewrite(string name, string file, string line);
+
+  // Stores Zen op rewrite rules.
   struct ZenEagerOp {
     string op_name;
     string zen_op_name;
@@ -46,7 +48,7 @@ class ZenEagerOpRewrite : public EagerOpRewrite {
   Status Run(EagerOperation *orig_op,
              std::unique_ptr<tensorflow::EagerOperation> *out_op);
 
-  // Initializes the new op and sets up its inputs and attributes
+  // Initializes the new op and sets up its inputs and attributes.
   static Status SetupNewOp(EagerOperation *orig_op, const string zen_op_name,
                            std::unique_ptr<EagerOperation> *new_zen_op);
 
@@ -66,23 +68,23 @@ class ZenEagerOpRewrite : public EagerOpRewrite {
   // Default rewrite rule that always rewrite for float data type.
   static bool AlwaysRewriteFloat(EagerOperation *op) {
     DataType data_type;
-    const NodeDef &ndef = op->MutableAttrs()->BuildNodeDef();
-    TF_CHECK_OK(GetNodeAttr(ndef, "T", &data_type));
+    const NodeDef &kNodeDef = op->MutableAttrs()->BuildNodeDef();
+    TF_CHECK_OK(GetNodeAttr(kNodeDef, "T", &data_type));
     return (data_type == DT_FLOAT);
   }
 
-  // Helper function to insert zen_eager_ops to Map
+  // Helper function to insert zen_eager_ops to map.
   void InsertZenEagerOps(ZenEagerOp op);
 
-  // List of eager ops that can be rewritten with Zen ops.
-  // The list is sorted in alphabetical order
+  // List of eager ops that can be rewritten with Zen ops. The list is sorted in
+  // alphabetical order.
   const std::vector<string> kAlwaysRewriteOps = {
       "AvgPool",          "Conv2D", "FusedBatchNorm", "FusedBatchNormV2",
       "FusedBatchNormV3", "MatMul", "MaxPool",        "Softmax"};
 };
 
-// The priority value must be higher than MklEagerOpRewrite (10000) so that
-// Zen rewrite happens before Mkl rewrite.
+// The priority value must be higher than MklEagerOpRewrite (10000) so that Zen
+// rewrite happens before Mkl rewrite.
 REGISTER_REWRITE(EagerOpRewriteRegistry::POST_PLACEMENT, 30000,
                  ZenEagerOpRewrite);
 
@@ -93,7 +95,7 @@ ZenEagerOpRewrite::ZenEagerOpRewrite(string name, string file, string line)
     InsertZenEagerOps({op_name, zen_op_registry::GetZenOpName(op_name),
                        AlwaysRewriteFloat, CreateGenericZenOp});
   }
-};
+}
 
 void ZenEagerOpRewrite::InsertZenEagerOps(ZenEagerOp op) {
   zen_eager_ops_.insert(std::make_pair(op.op_name, op));
@@ -167,8 +169,8 @@ bool ZenEagerOpRewrite::ShouldRewriteOp(EagerOperation *op) {
   // Find the op and verify the requirements for rewriting it with Zen op.
   auto it = zen_eager_ops_.find(op->Name());
   if (it != zen_eager_ops_.end()) {
-    // Eager op found
-    // Verify that a kernel exists for Zen op and rewrite is possible
+    // Eager op found, verify that a kernel exists for Zen op and rewrite is
+    // possible.
     if (zen_op_registry::IsZenOpKernelRegistered(
             zen_op_registry::GetZenOpName(op->Name()), data_type) &&
         it->second.rewrite_rule(op)) {
@@ -180,8 +182,8 @@ bool ZenEagerOpRewrite::ShouldRewriteOp(EagerOperation *op) {
 
 Status ZenEagerOpRewrite::RewriteToZenOp(
     EagerOperation *orig_op, std::unique_ptr<EagerOperation> *zen_op) {
-  // TODO(zendnn-tf): zen_eager_ops_ lookup can be reduced from twice
-  // (once each in ShouldRewriteOp & RewriteToZenOp) to just once.
+  // TODO(zendnn-tf): zen_eager_ops_ lookup can be reduced from twice (once each
+  // in ShouldRewriteOp & RewriteToZenOp) to just once.
   TF_RETURN_IF_ERROR(zen_eager_ops_[orig_op->Name()].create_zen_op(
       orig_op, zen_op, zen_eager_ops_[orig_op->Name()].zen_op_name));
   return OkStatus();
