@@ -549,13 +549,13 @@ InterpreterValue outerProduct(InterpreterState&,
         acc ? std::get<TT>(acc->storage).clone() : TT::empty(ty.getShape());
     if (std::holds_alternative<T>(rhs.storage)) {
       T rhsS = std::get<T>(rhs.storage);
-      for (int64_t i : llvm::seq(0l, lhsT.view.sizes[0])) {
+      for (int64_t i : llvm::seq(int64_t{0}, lhsT.view.sizes[0])) {
         result.at(i) = combiner(result.at(i), lhsT.at(i) * rhsS);
       }
     } else {
       const TT& rhsT = std::get<TT>(rhs.storage);
-      for (int64_t i : llvm::seq(0l, lhsT.view.sizes[0])) {
-        for (int64_t j : llvm::seq(0l, rhsT.view.sizes[0])) {
+      for (int64_t i : llvm::seq(int64_t{0}, lhsT.view.sizes[0])) {
+        for (int64_t j : llvm::seq(int64_t{0}, rhsT.view.sizes[0])) {
           result.at({i, j}) =
               combiner(result.at({i, j}), lhsT.at(i) * rhsT.at(j));
         }
@@ -673,8 +673,9 @@ std::optional<InterpreterValue> extractMemorySlice(
         bool isInBounds = size >= vectorView.sizes[j];
         if (!isInBounds && inBounds[i]) return std::nullopt;
 
-        memSliceView.slice(i, offsets[i],
-                           std::max(0l, std::min(vectorView.sizes[j], size)));
+        memSliceView.slice(
+            i, offsets[i],
+            std::max(int64_t{0}, std::min(vectorView.sizes[j], size)));
         found = true;
       }
     }
