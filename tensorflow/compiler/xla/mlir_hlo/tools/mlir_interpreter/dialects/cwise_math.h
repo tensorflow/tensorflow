@@ -65,7 +65,9 @@ struct Power : CwiseArith {
       while (b > 0) {
         if (b & 1) result *= a;
         b >>= 1;
-        a *= a;
+        if (b) {
+          a *= a;
+        }
       }
       return result;
     } else {

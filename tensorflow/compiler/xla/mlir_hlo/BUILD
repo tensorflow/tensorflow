@@ -1879,6 +1879,7 @@ cc_library(
     ),
     strip_include_prefix = ".",
     deps = [
+        ":mlir_hlo",
         ":mlir_interpreter_dialect_utils",
         ":mlir_interpreter_framework",
         "@com_google_absl//absl/strings",
