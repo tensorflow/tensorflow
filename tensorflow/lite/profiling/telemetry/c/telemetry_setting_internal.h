@@ -40,6 +40,19 @@ struct TfLiteTelemetryInterpreterSettings {
   std::vector<TfLiteTelemetrySubgraphInfo> subgraph_infos;
 };
 
+struct TfLiteTelemetryGpuDelegateSettings {
+  // Reported by "GpuDelegate::DelegatePrepare" event.
+  size_t num_nodes_delegated;
+
+  // Reported by "GpuDelegateKernel::Prepare" event.
+  enum Backend {
+    UNKNOWN = 0,
+    OPENCL = 1,
+    OPENGL = 2,
+  };
+  Backend backend;
+};
+
 #ifdef __cplusplus
 }  // extern "C"
 #endif  // __cplusplus
