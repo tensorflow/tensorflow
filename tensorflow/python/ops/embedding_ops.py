@@ -406,7 +406,7 @@ def embedding_lookup_sparse(params,
                             name=None,
                             combiner=None,
                             max_norm=None,
-                            allow_dense_grads=False):
+                            allow_fast_lookup=False):
   """Looks up embeddings for the given ids and weights from a list of tensors.
 
   This op assumes that there is at least one id for each row in the dense tensor
@@ -443,10 +443,10 @@ def embedding_lookup_sparse(params,
       of the squares of the weights. Defaults to `mean`.
     max_norm: If not `None`, each embedding is clipped if its l2-norm is larger
       than this value, before combining.
-    allow_dense_grads: An optional boolean specifying whether to allow dense
-      gradients during training. Setting this flag to `True` can improve
-      performance when `params` is a single tensor and `max_norm` is `None` at
-      the expense of higher memory usage.
+    allow_fast_lookup: An optional boolean specifying whether to allow
+      simplified embedding lookups when `params` is a single tensor and
+      `max_norm` is `None`. Setting this flag to `True` during training can
+      cause the use of dense gradients with increased memory footprint.
 
   Returns:
     A dense tensor representing the combined embeddings for the
@@ -521,7 +521,7 @@ def embedding_lookup_sparse(params,
 
     return embedding_lookup_sparse_impl(params, segment_ids, sp_weights,
                                         ids, combiner, ignore_weights, max_norm,
-                                        allow_dense_grads, partition_strategy,
+                                        allow_fast_lookup, partition_strategy,
                                         name)
 
 
@@ -532,7 +532,7 @@ def embedding_lookup_sparse_v2(params,
                                sp_weights,
                                combiner=None,
                                max_norm=None,
-                               allow_dense_grads=False,
+                               allow_fast_lookup=False,
                                name=None):
   """Looks up embeddings for the given ids and weights from a list of tensors.
 
@@ -573,10 +573,10 @@ def embedding_lookup_sparse_v2(params,
       of the squares of the weights. Defaults to `mean`.
     max_norm: If not `None`, each embedding is clipped if its l2-norm is larger
       than this value, before combining.
-    allow_dense_grads: An optional boolean specifying whether to allow dense
-      gradients during training. Setting this flag to `True` can improve
-      performance when `params` is a single tensor and `max_norm` is `None` at
-      the expense of higher memory usage.
+    allow_fast_lookup: An optional boolean specifying whether to allow
+      simplified embedding lookups when `params` is a single tensor and
+      `max_norm` is `None`. Setting this flag to `True` during training can
+      cause the use of dense gradients with increased memory footprint.
     name: Optional name for the op.
 
   Returns:
@@ -620,7 +620,7 @@ def embedding_lookup_sparse_v2(params,
     ValueError: If `combiner` is not one of {"mean", "sqrtn", "sum"}.
   """
   return embedding_lookup_sparse(params, sp_ids, sp_weights, "div", name,
-                                 combiner, max_norm, allow_dense_grads)
+                                 combiner, max_norm, allow_fast_lookup)
 
 
 @tf_export("nn.safe_embedding_lookup_sparse", v1=[])
@@ -631,7 +631,7 @@ def safe_embedding_lookup_sparse_v2(embedding_weights,
                                     combiner="mean",
                                     default_id=None,
                                     max_norm=None,
-                                    allow_dense_grads=False,
+                                    allow_fast_lookup=False,
                                     name=None):
   """Lookup embedding results, accounting for invalid IDs and empty features.
 
@@ -675,10 +675,10 @@ def safe_embedding_lookup_sparse_v2(embedding_weights,
       0-vector.
     max_norm: If not `None`, all embeddings are l2-normalized to max_norm before
       combining.
-    allow_dense_grads: An optional boolean specifying whether to allow dense
-      gradients during training. Setting this flag to `True` can improve
-      performance when `params` is a single tensor and `max_norm` is `None` at
-      the expense of higher memory usage.
+    allow_fast_lookup: An optional boolean specifying whether to allow
+      simplified embedding lookups when `params` is a single tensor and
+      `max_norm` is `None`. Setting this flag to `True` during training can
+      cause the use of dense gradients with increased memory footprint.
     name: A name for this operation (optional).
 
   Returns:
@@ -730,7 +730,7 @@ def safe_embedding_lookup_sparse_v2(embedding_weights,
       name=name,
       partition_strategy="div",
       max_norm=max_norm,
-      allow_dense_grads=allow_dense_grads)
+      allow_fast_lookup=allow_fast_lookup)
 
 
 @tf_export(v1=["nn.safe_embedding_lookup_sparse"])
@@ -743,7 +743,7 @@ def safe_embedding_lookup_sparse(embedding_weights,
                                  name=None,
                                  partition_strategy="div",
                                  max_norm=None,
-                                 allow_dense_grads=False):
+                                 allow_fast_lookup=False):
   """Lookup embedding results, accounting for invalid IDs and empty features.
 
   The partitioned embedding in `embedding_weights` must all be the same shape
@@ -783,10 +783,10 @@ def safe_embedding_lookup_sparse(embedding_weights,
       `"div"` and `"mod"` are supported. Default is `"div"`.
     max_norm: If not `None`, all embeddings are l2-normalized to max_norm before
       combining.
-    allow_dense_grads: An optional boolean specifying whether to allow dense
-      gradients during training. Setting this flag to `True` can improve
-      performance when `params` is a single tensor and `max_norm` is `None` at
-      the expense of higher memory usage.
+    allow_fast_lookup: An optional boolean specifying whether to allow
+      simplified embedding lookups when `params` is a single tensor and
+      `max_norm` is `None`. Setting this flag to `True` during training can
+      cause the use of dense gradients with increased memory footprint.
 
   Returns:
     A dense tensor representing the combined embeddings for the
@@ -884,7 +884,7 @@ def safe_embedding_lookup_sparse(embedding_weights,
         partition_strategy=partition_strategy,
         name=None if default_id is None else scope,
         max_norm=max_norm,
-        allow_dense_grads=allow_dense_grads)
+        allow_fast_lookup=allow_fast_lookup)
 
     if default_id is None:
       # Broadcast is_row_empty to the same shape as embedding_lookup_result,
@@ -919,11 +919,11 @@ def embedding_lookup_sparse_impl(params,
                           combiner,
                           ignore_weights,
                           max_norm,
-                          allow_dense_grads,
+                          allow_fast_lookup,
                           partition_strategy,
                           name):
   """Implementation of sparse embedding aggregation."""
-  if len(params) == 1 and max_norm is None and allow_dense_grads:
+  if len(params) == 1 and max_norm is None and allow_fast_lookup:
     idx = ids
     embeddings = params[0]
   else:

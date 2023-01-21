@@ -698,8 +698,13 @@ class EmbeddingLookupSparseTest(test.TestCase, parameterized.TestCase):
           [True, False]
       ))
   @test_util.run_deprecated_v1
-  def testEmbeddingLookupSparse(self, num_shards, combiner, dtype,
-                    ignore_weights, ragged, allow_dense_grads):
+  def testEmbeddingLookupSparse(self,
+                                num_shards,
+                                combiner,
+                                dtype,
+                                ignore_weights,
+                                ragged,
+                                allow_fast_lookup):
     vocab_size = 13
     batch_size = 10
     param_shape = [2, 5]
@@ -721,7 +726,7 @@ class EmbeddingLookupSparseTest(test.TestCase, parameterized.TestCase):
           sp_ids,
           None if ignore_weights else sp_weights,
           combiner=combiner,
-          allow_dense_grads=allow_dense_grads)
+          allow_fast_lookup=allow_fast_lookup)
 
       self.assertEqual(embedding_sum.get_shape().as_list(),
                         expected_lookup_result_shape)
@@ -756,7 +761,7 @@ class EmbeddingLookupSparseTest(test.TestCase, parameterized.TestCase):
         [True, False],
         [True, False]
     ))
-  def testMissingInSparseIds(self, combiner, ragged, allow_dense_grads):
+  def testMissingInSparseIds(self, combiner, ragged, allow_fast_lookup):
     # Github issue, 36359
     with self.test_session():
       x = array_ops.ones((4, 5))
@@ -776,7 +781,7 @@ class EmbeddingLookupSparseTest(test.TestCase, parameterized.TestCase):
 
       embedding_sum = embedding_ops.embedding_lookup_sparse(
           x, sp_ids, sp_weights, combiner=combiner,
-          allow_dense_grads=allow_dense_grads)
+          allow_fast_lookup=allow_fast_lookup)
 
       tf_embedding_sum = ops.convert_to_tensor(embedding_sum)
       self.assertAllClose(tf_embedding_sum[0], np.zeros(5))
@@ -794,8 +799,13 @@ class EmbeddingLookupSparseTest(test.TestCase, parameterized.TestCase):
         [True, False]
     ))
   @test_util.run_deprecated_v1
-  def testGradientsEmbeddingLookupSparse(self, num_shards, combiner, dtype, ignore_weights, ragged,
-                     allow_dense_grads):
+  def testGradientsEmbeddingLookupSparse(self,
+                                         num_shards,
+                                         combiner,
+                                         dtype,
+                                         ignore_weights,
+                                         ragged,
+                                         allow_fast_lookup):
     vocab_size = 12
     batch_size = 4
     param_shape = [2, 3]
@@ -811,7 +821,7 @@ class EmbeddingLookupSparseTest(test.TestCase, parameterized.TestCase):
           sp_ids,
           None if ignore_weights else sp_weights,
           combiner=combiner,
-          allow_dense_grads=allow_dense_grads)
+          allow_fast_lookup=allow_fast_lookup)
       x_name = [_PName(i) for i in range(num_shards)]
       x_init_value = [params[x_n + ":0"] for x_n in x_name]
       x_shape = [i.shape for i in x_init_value]
@@ -826,7 +836,7 @@ class EmbeddingLookupSparseTest(test.TestCase, parameterized.TestCase):
         [True, False]
     ))
   @test_util.run_deprecated_v1
-  def testIncompatibleShapes(self, ragged, allow_dense_grads):
+  def testIncompatibleShapes(self, ragged, allow_fast_lookup):
     with self.cached_session():
       x, _, _ = _EmbeddingParams(1, 10, dtype=dtypes.float32)
       indices = [[0, 0], [0, 1], [1, 0]]
@@ -846,7 +856,7 @@ class EmbeddingLookupSparseTest(test.TestCase, parameterized.TestCase):
       with self.assertRaises(ValueError):
         embedding_ops.embedding_lookup_sparse(
             x, sp_ids, sp_weights, combiner="mean",
-            allow_dense_grads=allow_dense_grads)
+            allow_fast_lookup=allow_fast_lookup)
 
   @test_util.run_deprecated_v1
   def test_incompatible_types(self):
@@ -946,7 +956,9 @@ class SafeEmbeddingLookupSparseTest(test.TestCase, parameterized.TestCase):
         [True, False]
     ))
   @test_util.run_deprecated_v1
-  def test_safe_embedding_lookup_sparse_return_zero_vector(self, ragged, allow_dense_grads):
+  def test_safe_embedding_lookup_sparse_return_zero_vector(self,
+                                                           ragged,
+                                                           allow_fast_lookup):
     with self.cached_session():
       embedding_weights = self._random_weights()
       sparse_ids, sparse_weights = self._ids_and_weights_2d(ragged)
@@ -956,7 +968,7 @@ class SafeEmbeddingLookupSparseTest(test.TestCase, parameterized.TestCase):
                                         embedding_weights,
                                         sparse_ids,
                                         sparse_weights,
-                                        allow_dense_grads=allow_dense_grads))
+                                        allow_fast_lookup=allow_fast_lookup))
 
       self.assertAllClose(
           embedding_lookup_result,
@@ -969,7 +981,10 @@ class SafeEmbeddingLookupSparseTest(test.TestCase, parameterized.TestCase):
         [True, False]
     ))
   @test_util.run_deprecated_v1
-  def test_safe_embedding_lookup_sparse_return_special_vector(self, ragged, allow_dense_grads):
+  def test_safe_embedding_lookup_sparse_return_special_vector(
+                                                             self,
+                                                             ragged,
+                                                             allow_fast_lookup):
     with self.cached_session():
       embedding_weights = self._random_weights()
       sparse_ids, sparse_weights = self._ids_and_weights_2d(ragged)
@@ -977,7 +992,7 @@ class SafeEmbeddingLookupSparseTest(test.TestCase, parameterized.TestCase):
       embedding_lookup_result = (
           embedding_ops.safe_embedding_lookup_sparse_v2(
               embedding_weights, sparse_ids, sparse_weights, default_id=3,
-              allow_dense_grads=allow_dense_grads))
+              allow_fast_lookup=allow_fast_lookup))
 
       self.assertAllClose(
           embedding_lookup_result,
@@ -991,7 +1006,9 @@ class SafeEmbeddingLookupSparseTest(test.TestCase, parameterized.TestCase):
         [True, False]
     ))
   @test_util.run_deprecated_v1
-  def test_safe_embedding_lookup_sparse_no_weights(self, ragged, allow_dense_grads):
+  def test_safe_embedding_lookup_sparse_no_weights(self,
+                                                   ragged,
+                                                   allow_fast_lookup):
     with self.cached_session():
       embedding_weights = self._random_weights()
       sparse_ids, _ = self._ids_and_weights_2d(ragged)
@@ -1001,7 +1018,7 @@ class SafeEmbeddingLookupSparseTest(test.TestCase, parameterized.TestCase):
                                         embedding_weights,
                                         sparse_ids,
                                         None,
-                                        allow_dense_grads=allow_dense_grads))
+                                        allow_fast_lookup=allow_fast_lookup))
 
       self.assertAllClose(
           embedding_lookup_result,
@@ -1015,7 +1032,9 @@ class SafeEmbeddingLookupSparseTest(test.TestCase, parameterized.TestCase):
         [True, False]
     ))
   @test_util.run_deprecated_v1
-  def test_safe_embedding_lookup_sparse_partitioned(self, ragged, allow_dense_grads):
+  def test_safe_embedding_lookup_sparse_partitioned(self,
+                                                    ragged,
+                                                    allow_fast_lookup):
     with self.cached_session():
       embedding_weights = self._random_weights(num_shards=3)
       sparse_ids, _ = self._ids_and_weights_2d(ragged)
@@ -1025,7 +1044,7 @@ class SafeEmbeddingLookupSparseTest(test.TestCase, parameterized.TestCase):
                                         embedding_weights,
                                         sparse_ids,
                                         None,
-                                        allow_dense_grads=allow_dense_grads))
+                                        allow_fast_lookup=allow_fast_lookup))
 
       embedding_weights_list = list(itertools.chain(*embedding_weights))
       self.assertAllClose(
@@ -1040,7 +1059,10 @@ class SafeEmbeddingLookupSparseTest(test.TestCase, parameterized.TestCase):
         [True, False]
     ))
   @test_util.run_deprecated_v1
-  def test_safe_embedding_lookup_sparse_partitioned_inconsistent_weights(self, ragged, allow_dense_grads):
+  def test_safe_embedding_lookup_sparse_partitioned_inconsistent_weights(
+                                                             self,
+                                                             ragged,
+                                                             allow_fast_lookup):
     with self.cached_session():
       embedding_weights = self._random_weights(num_shards=3)
       sparse_ids, sparse_weights = self._ids_and_weights_2d(ragged)
@@ -1057,7 +1079,7 @@ class SafeEmbeddingLookupSparseTest(test.TestCase, parameterized.TestCase):
                         embedding_weights_constant,
                         sparse_ids,
                         sparse_weights,
-                        allow_dense_grads=allow_dense_grads)
+                        allow_fast_lookup=allow_fast_lookup)
 
   @test_util.run_deprecated_v1
   def test_safe_embedding_lookup_sparse_3d_return_zero_vector(self):
