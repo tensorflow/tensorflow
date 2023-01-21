@@ -34,10 +34,13 @@ typedef std::unique_ptr<TF_Tensor, decltype(&TF_DeleteTensor)>
 TF_Tensor* BoolTensor(int32_t v);
 
 // Create a tensor with values of type TF_INT8 provided by `values`.
-TF_Tensor* Int8Tensor(const int64_t* dims, int num_dims, const char* values);
+TF_Tensor* Int8Tensor(const int64_t* dims, 
+                      int num_dims, 
+                      const char* values);
 
 // Create a tensor with values of type TF_INT32 provided by `values`.
-TF_Tensor* Int32Tensor(const int64_t* dims, int num_dims,
+TF_Tensor* Int32Tensor(const int64_t* dims, 
+                       int num_dims,
                        const int32_t* values);
 
 // Create 1 dimensional tensor with values from `values`
@@ -88,7 +91,7 @@ TF_Operation* Min(TF_Operation* l, TF_Operation* r, TF_Graph* graph,
 TF_Operation* Mul(TF_Operation* l, TF_Operation* r, TF_Graph* graph,
                   TF_Status* s, const char* name = "mul");
 
-// If `op_device` is non-empty, set the created op on that device.
+// If `op_device` is non-empty, set the created op on that device.(op-operation device)
 TF_Operation* MinWithDevice(TF_Operation* l, TF_Operation* r, TF_Graph* graph,
                             const string& op_device, TF_Status* s,
                             const char* name = "min");
@@ -132,8 +135,8 @@ std::vector<string> GetFuncNames(const tensorflow::GraphDef& graph_def);
 
 class CSession {
  public:
-  CSession(TF_Graph* graph, TF_Status* s, bool use_XLA = false);
-  explicit CSession(TF_Session* session);
+  CSession(TF_Graph* graph, TF_Status* s, bool use_XLA = false);  // XLA-Accelarated Linear Algebra is a domain specifc 
+  explicit CSession(TF_Session* session);                         // compiler for linear algebra
 
   ~CSession();
 
@@ -160,6 +163,6 @@ class CSession {
   std::vector<TF_Output> outputs_;
   std::vector<TF_Tensor*> output_values_;
   std::vector<TF_Operation*> targets_;
-};
+}; // Class ends here
 
 #endif  // TENSORFLOW_C_C_TEST_UTIL_H_
