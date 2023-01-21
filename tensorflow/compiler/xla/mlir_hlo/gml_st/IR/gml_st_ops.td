@@ -79,6 +79,12 @@ def GMLST_TileType : GMLST_Set<"Tile"> {
 
 def AnySet : Type<Or<[GMLST_TileType.predicate]>, "subset type">;
 
+def Vector : AnyTypeOf<[
+  AnyVectorOfAnyRank
+], "", "::mlir::ShapedType">;
+def VectorOrScalar : AnyTypeOf<[
+  AnyVectorOfAnyRank, AnyFloat, AnyInteger, AnyComplex, Index
+]>;
 def RankedTensorOrVector : AnyTypeOf<[
   AnyRankedTensor, AnyVectorOfAnyRank
 ], "", "::mlir::ShapedType">;
@@ -155,38 +161,30 @@ def GMLST_MaterializeOp : GMLST_Op<"materialize", [
     OffsetSizeAndStrideOpInterface, Pure]> {
   let summary = "Operation to extract values from tensor or vector";
   let description = [{
-    The "materialize" operation extracts a tensor or a vector from another
-    tensor or a vector. MaterializeOp accepts a list of offsets-sizes-strides
-    type to extract tensors from tensors.
+    The "materialize" operation extracts a vector from another or a vector.
+    MaterializeOp accepts a list of offsets-sizes-strides.
 
     ```
-    %subtensor = gml_st.materialize %tensor[0, 0][42, 16][1, 1]
-      : tensor<?x?xf32>[!gml_st.tile<42x16>] to tensor<42x16xf32>
+    %subvector = gml_st.materialize %vector[0, 0][42, 16][1, 1]
+      : vector<?x?xf32>[!gml_st.tile<42x16>] to vector<42x16xf32>
     ```
 
     If `sizes` define a shape with a single element, it is also possible to
-    extract an element from a tensor.
+    extract an element from a vector.
 
     ```
-    %element = gml_st.materialize %tensor[0, 0][1, 1][1, 1]
-      : tensor<3x1xindex>[!gml_st.tile<1x1>] to index
+    %element = gml_st.materialize %vector[0, 0][1, 1][1, 1]
+      : vector<3x1xindex>[!gml_st.tile<1x1>] to index
 
-    %element = gml_st.materialize %tensor[%tile_0d]
-      : tensor<f32>[][][] to f32
+    %element = gml_st.materialize %vector[%tile_0d]
+      : vector<f32>[][][] to f32
 
-    %subtensor = gml_st.materialize %tensor[%tile_with_single_element]
-      : tensor<3x1xindex>[0, 0][1, 1][1, 1] to tensor<1x1xindex>
-    ```
-
-    MaterializeOp can also extract a vector from a vector.
-
-    ```
-    %subvector = gml_st.materialize %vector[%tile]
-      : vector<64x32xf32>[0, 0][42, 16][1, 1] to vector<42x16xf32>
+    %subvector = gml_st.materialize %vector[%tile_with_single_element]
+      : vector<3x1xindex>[0, 0][1, 1][1, 1] to vector<1x1xindex>
     ```
   }];
   let arguments = (ins
-    RankedTensorOrVector:$source,
+    Vector:$source,
     Variadic<Index>:$offsets,
     Variadic<Index>:$sizes,
     Variadic<Index>:$strides,
@@ -194,7 +192,7 @@ def GMLST_MaterializeOp : GMLST_Op<"materialize", [
     DenseI64ArrayAttr:$static_sizes,
     DenseI64ArrayAttr:$static_strides
   );
-  let results = (outs RankedTensorOrVectorOrScalar:$result);
+  let results = (outs VectorOrScalar:$result);
 
   let builders = [
    OpBuilder<(ins "Value":$source, "ArrayRef<OpFoldResult>":$offsets,

@@ -31,6 +31,7 @@ limitations under the License.
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Dialect/Vector/IR/VectorOps.h"
 #include "mlir/IR/MLIRContext.h"
+#include "mlir/IR/OpDefinition.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/Support/LogicalResult.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
@@ -238,6 +239,20 @@ SubViewOp createSubView(Location loc, Value source,
   return rewriter.create<SubViewOp>(loc, memRefType.cast<MemRefType>(), source,
                                     offsets, sizes, strides);
 }
+// Matches a simple version of vector.transfer_read `op`.
+// 1.  it has a minor identity permutation map
+// 2.  it has no mask
+LogicalResult matchNonPermutingTransferRead(vector::TransferReadOp op,
+                                            PatternRewriter& rewriter) {
+  if (!op.getPermutationMap().isMinorIdentity()) {
+    return rewriter.notifyMatchFailure(op,
+                                       "expected cannonical permutation map");
+  }
+  if (op.getMask()) {
+    return rewriter.notifyMatchFailure(op, "should have no mask");
+  }
+  return success();
+}
 
 LogicalResult EliminateMaterializeOfTransferReadPattern::matchAndRewrite(
     MaterializeOp materialize, PatternRewriter& rewriter) const {
@@ -255,7 +270,8 @@ LogicalResult EliminateMaterializeOfTransferReadPattern::matchAndRewrite(
     return rewriter.notifyMatchFailure(transferRead,
                                        "expected memref as source");
   }
-  if (failed(matchSimpleTransferOp(transferRead, rewriter))) return failure();
+  if (failed(matchNonPermutingTransferRead(transferRead, rewriter)))
+    return failure();
 
   // Rewrite the pattern as:
   // vector.transfer_read
@@ -265,19 +281,30 @@ LogicalResult EliminateMaterializeOfTransferReadPattern::matchAndRewrite(
   // to `source` in between `transferRead` and `materialize`. This won't happen
   // for elementwise fusion and softmax, but might become a problem down the
   // line.
-  auto subview = createSubView(
-      materialize.getLoc(), source, materialize.getMixedOffsets(),
-      materialize.getMixedSizes(), materialize.getMixedStrides(), rewriter);
+  SmallVector<OpFoldResult> offsets;
+  for (auto en : llvm::zip(transferRead.getIndices(),
+                           getAsValues(rewriter, materialize.getLoc(),
+                                       materialize.getMixedOffsets()))) {
+    Value transferReadOffset = std::get<0>(en);
+    Value materializeOffset = std::get<1>(en);
+    offsets.push_back({rewriter.createOrFold<arith::AddIOp>(
+        materialize.getLoc(), transferReadOffset, materializeOffset)});
+  }
+  SmallVector<Value> zeros(
+      transferRead.getIndices().size(),
+      rewriter.create<arith::ConstantIndexOp>(materialize.getLoc(), 0));
+  auto subview = createSubView(materialize.getLoc(), source, offsets,
+                               materialize.getMixedSizes(),
+                               materialize.getMixedStrides(), rewriter);
   Type resultType = materialize.getResult().getType();
   if (!resultType.isa<VectorType>()) {
     // We have a transfer to a single element: just use memref.load directly.
-    rewriter.replaceOpWithNewOp<memref::LoadOp>(materialize, subview,
-                                                transferRead.getIndices());
+    rewriter.replaceOpWithNewOp<memref::LoadOp>(materialize, subview, zeros);
     return success();
   }
   rewriter.replaceOpWithNewOp<TransferReadOp>(
-      materialize, resultType, subview, transferRead.getIndices(),
-      transferRead.getPermutationMap(), transferRead.getPadding(),
+      materialize, resultType, subview, zeros, transferRead.getPermutationMap(),
+      transferRead.getPadding(),
       /*mask=*/nullptr, transferRead.getInBounds().value_or(nullptr));
   return success();
 }

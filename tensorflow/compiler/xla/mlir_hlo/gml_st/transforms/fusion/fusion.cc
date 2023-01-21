@@ -71,8 +71,8 @@ struct DimOpReificationPattern : public OpRewritePattern<tensor::DimOp> {
     if (!def) return failure();
 
     // TODO(pifon): Split this pattern into many.
-    // Case MaterializeOp.
-    if (auto materializeOp = llvm::dyn_cast<MaterializeOp>(def)) {
+    // Case tensor::ExtractSliceOp.
+    if (auto materializeOp = llvm::dyn_cast<tensor::ExtractSliceOp>(def)) {
       assert(materializeOp->getNumResults() == 1 && "assume single result");
       auto dimConstantIndex = op.getConstantIndex();
       if (!dimConstantIndex.has_value()) return failure();
@@ -150,14 +150,15 @@ LogicalResult replaceSetYieldDstByProducerInit(SetYieldOp setYieldOp,
   return failure();
 }
 
-class FusionPattern : public OpRewritePattern<MaterializeOp> {
+class FusionPattern : public OpRewritePattern<tensor::ExtractSliceOp> {
  public:
   FusionPattern(MLIRContext* context,
-                function_ref<LogicalResult(MaterializeOp)> filterFn,
+                function_ref<LogicalResult(tensor::ExtractSliceOp)> filterFn,
                 mlir::PatternBenefit benefit = 1)
-      : OpRewritePattern<MaterializeOp>(context, benefit), filterFn(filterFn) {}
+      : OpRewritePattern<tensor::ExtractSliceOp>(context, benefit),
+        filterFn(filterFn) {}
 
-  LogicalResult matchAndRewrite(MaterializeOp materializeOp,
+  LogicalResult matchAndRewrite(tensor::ExtractSliceOp materializeOp,
                                 PatternRewriter& rewriter) const override {
     assert(filterFn && "expect filter function");
     if (failed(filterFn(materializeOp)))
@@ -166,7 +167,7 @@ class FusionPattern : public OpRewritePattern<MaterializeOp> {
   }
 
  private:
-  function_ref<LogicalResult(MaterializeOp)> filterFn;
+  function_ref<LogicalResult(tensor::ExtractSliceOp)> filterFn;
 };
 
 struct FusionPass : public impl::FusionPassBase<FusionPass> {
@@ -183,7 +184,7 @@ struct FusionPass : public impl::FusionPassBase<FusionPass> {
   void runOnOperation() final {
     MLIRContext* ctx = &getContext();
 
-    auto filterFn = [&](MaterializeOp op) {
+    auto filterFn = [&](tensor::ExtractSliceOp op) {
       Operation* producerOp = op.getSource().getDefiningOp();
       if (!producerOp || (!producerLabel.empty() &&
                           !hasMatchingLabel(producerOp, producerLabel))) {
@@ -279,9 +280,10 @@ void reifyDimOpsUsers(PatternRewriter& rewriter, Operation* op) {
   }
 }
 
-// Iterates over MaterializeOps inside the block, finds a suitable candidate for
-// fusion and fuses it. The fusion candidate should satisfy the filter function
-// and not have uses outside of the block. Fails if nothing can be fused.
+// Iterates over tensor::ExtractSliceOp inside the block, finds a suitable
+// candidate for fusion and fuses it. The fusion candidate should satisfy the
+// filter function and not have uses outside of the block. Fails if nothing can
+// be fused.
 LogicalResult fuseGreedilyOneOpIntoBlock(
     PatternRewriter& rewriter, Block& block,
     llvm::function_ref<bool(Operation*)> filterFn) {
@@ -290,9 +292,9 @@ LogicalResult fuseGreedilyOneOpIntoBlock(
   // here and unnecessary. Without removing those duplicate, some ops will be
   // fused multiple times resulting in exponential code growth.
   eliminateEqualOps<TileOp>(rewriter, block);
-  eliminateEqualOps<MaterializeOp>(rewriter, block);
+  eliminateEqualOps<tensor::ExtractSliceOp>(rewriter, block);
 
-  for (auto materializeOp : block.getOps<MaterializeOp>()) {
+  for (auto materializeOp : block.getOps<tensor::ExtractSliceOp>()) {
     auto* fusionCandidate = materializeOp.getSource().getDefiningOp();
     // Do not fuse if there is no defining op. Of example if it's a materialize
     // from a function argument.
@@ -326,7 +328,7 @@ LogicalResult fuseGreedilyOneOpIntoBlock(
 }  // namespace
 
 FailureOr<Operation*> fuse(PatternRewriter& rewriter,
-                           MaterializeOp materializeOp) {
+                           tensor::ExtractSliceOp materializeOp) {
   Location loc = materializeOp.getLoc();
   FailureOr<Value> fusedOr = createFusedOp(rewriter, materializeOp);
   if (failed(fusedOr)) return failure();  // Match failure already notified.
@@ -344,6 +346,8 @@ FailureOr<Operation*> fuse(PatternRewriter& rewriter,
           loc, fused, SmallVector<Value>(tensorType.getRank(), zero));
     } else {
       // The result should be a tensor, cast it to the correct shape
+      OpBuilder::InsertionGuard g(rewriter);
+      rewriter.setInsertionPointAfter(fused.getDefiningOp());
       fused =
           rewriter.create<tensor::CastOp>(loc, materializeOp.getType(), fused);
     }
@@ -414,7 +418,7 @@ LogicalResult fuseOutputFill(PatternRewriter& rewriter, Operation* op) {
   // linalg.fill has already been fused for another matmul.
   if (isa<linalg::FillOp>(definingOp)) return success();
 
-  auto materialize = dyn_cast<MaterializeOp>(definingOp);
+  auto materialize = dyn_cast<tensor::ExtractSliceOp>(definingOp);
   if (!materialize) {
     return rewriter.notifyMatchFailure(
         op, "has failed to 'materialize' output during 'linalg.fill' fusion.");
@@ -468,7 +472,7 @@ LogicalResult tilePeeledOpsToScalars(
 }
 
 FailureOr<Value> createFusedOp(PatternRewriter& rewriter,
-                               MaterializeOp materializeOp) {
+                               tensor::ExtractSliceOp materializeOp) {
   auto tileableOp = materializeOp.getSource().getDefiningOp<TilingInterface>();
   if (!tileableOp) {
     return rewriter.notifyMatchFailure(
@@ -491,9 +495,10 @@ FailureOr<Value> createFusedOp(PatternRewriter& rewriter,
   return tiledProducer;
 }
 
-void populateFusionPatterns(MLIRContext* ctx,
-                            function_ref<LogicalResult(MaterializeOp)> filterFn,
-                            RewritePatternSet* patterns) {
+void populateFusionPatterns(
+    MLIRContext* ctx,
+    function_ref<LogicalResult(tensor::ExtractSliceOp)> filterFn,
+    RewritePatternSet* patterns) {
   patterns->insert<FusionPattern>(ctx, filterFn);
   // clang-format off
   patterns->insert<

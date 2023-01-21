@@ -160,30 +160,6 @@ Operation *generateTileLoopNest(OpBuilder &builder, Location loc,
   return loop;
 }
 
-struct DimOfMaterializedTilePattern : public OpRewritePattern<tensor::DimOp> {
-  using OpRewritePattern<tensor::DimOp>::OpRewritePattern;
-
-  LogicalResult matchAndRewrite(tensor::DimOp op,
-                                PatternRewriter &rewriter) const override {
-    Operation *def = op.getSource().getDefiningOp();
-    if (!def) return failure();
-
-    auto materializeOp = llvm::dyn_cast<MaterializeOp>(def);
-    if (!materializeOp) return failure();
-
-    std::optional<int64_t> indexOr = op.getConstantIndex();
-    if (!indexOr.has_value()) return failure();
-
-    Value tileSizeValue =
-        materializeOp.isDynamicSize(*indexOr)
-            ? materializeOp.getDynamicSize(*indexOr)
-            : rewriter.create<arith::ConstantIndexOp>(
-                  op.getLoc(), materializeOp.getStaticSize(*indexOr));
-    rewriter.replaceOp(op, tileSizeValue);
-    return success();
-  }
-};
-
 /// Pattern to tile an op that implements the `TilingInterface` using
 /// `gml_st.for` for iterating over the tiles.
 struct TilingPattern : public OpInterfaceRewritePattern<TilingInterface> {
@@ -257,7 +233,6 @@ struct TilingPass : public impl::TilingPassBase<TilingPass> {
     };
     RewritePatternSet patterns(ctx);
     populateTilingPatterns(ctx, filterFn, opts, &patterns);
-    patterns.add<DimOfMaterializedTilePattern>(ctx);
     if (failed(applyPatternsAndFoldGreedily(f, std::move(patterns))))
       return signalPassFailure();
 
@@ -353,7 +328,7 @@ FailureOr<TilingResult> tile(const TilingOptions &options,
       for (auto [dst, regionArg] :
            llvm::zip(dstOperands, forLoop.getRegionOutputArgs())) {
         dst.replaceUsesWithIf(regionArg, [&](OpOperand &operand) {
-          return isa<MaterializeOp>(operand.getOwner());
+          return isa<tensor::ExtractSliceOp>(operand.getOwner());
         });
       }
     }

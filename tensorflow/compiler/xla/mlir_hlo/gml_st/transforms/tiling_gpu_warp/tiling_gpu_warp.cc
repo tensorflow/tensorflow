@@ -314,7 +314,7 @@ struct TilingGPUWarpPass
 
     // Populate fusion patterns.
     auto fuseGreedilyFilterFn = [](Operation* op) {
-      auto materializeOp = llvm::dyn_cast<MaterializeOp>(op);
+      auto materializeOp = llvm::dyn_cast<tensor::ExtractSliceOp>(op);
       Operation* source = materializeOp.getSource().getDefiningOp();
 
       // Do not fuse warp-level reductions.

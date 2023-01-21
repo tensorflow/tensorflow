@@ -41,7 +41,8 @@ static constexpr llvm::StringRef kTileSoftmaxAppliedLabel =
 
 Operation *fuseIthOperandInPlace(PatternRewriter &rewriter, Operation *op,
                                  int64_t i) {
-  auto matOp = llvm::cast<MaterializeOp>(op->getOperand(i).getDefiningOp());
+  auto matOp =
+      llvm::cast<tensor::ExtractSliceOp>(op->getOperand(i).getDefiningOp());
   FailureOr<Value> fused = createFusedOp(rewriter, matOp);
   assert(succeeded(fused) && "expect success after matching");
   rewriter.replaceOp(matOp, *fused);
@@ -148,7 +149,7 @@ struct TilePartialSoftmaxPattern
     // Only apply to non-fusable occurrences.
     bool hasFusableOccurrences = llvm::any_of(
         op->getUsers(),
-        [](Operation *op) { return llvm::isa<MaterializeOp>(op); });
+        [](Operation *op) { return llvm::isa<tensor::ExtractSliceOp>(op); });
     if (hasFusableOccurrences)
       return rewriter.notifyMatchFailure(op, "has fusable occurrences");
 
@@ -192,10 +193,11 @@ struct TilePartialSoftmaxPattern
   std::string distributionLabel;
 };
 
-struct FusePartialSoftmaxPattern : public OpRewritePattern<MaterializeOp> {
-  using OpRewritePattern<MaterializeOp>::OpRewritePattern;
+struct FusePartialSoftmaxPattern
+    : public OpRewritePattern<tensor::ExtractSliceOp> {
+  using OpRewritePattern<tensor::ExtractSliceOp>::OpRewritePattern;
 
-  LogicalResult matchAndRewrite(MaterializeOp op,
+  LogicalResult matchAndRewrite(tensor::ExtractSliceOp op,
                                 PatternRewriter &rewriter) const override {
     Value source = op.getSource();
     Operation *def = source.getDefiningOp();
@@ -234,10 +236,10 @@ struct FusePartialSoftmaxPattern : public OpRewritePattern<MaterializeOp> {
   }
 };
 
-struct FuseUnaryCwisePattern : public OpRewritePattern<MaterializeOp> {
-  using OpRewritePattern<MaterializeOp>::OpRewritePattern;
+struct FuseUnaryCwisePattern : public OpRewritePattern<tensor::ExtractSliceOp> {
+  using OpRewritePattern<tensor::ExtractSliceOp>::OpRewritePattern;
 
-  LogicalResult matchAndRewrite(MaterializeOp op,
+  LogicalResult matchAndRewrite(tensor::ExtractSliceOp op,
                                 PatternRewriter &rewriter) const override {
     // Match unary cwise ops.
     Operation *source = op.getSource().getDefiningOp();

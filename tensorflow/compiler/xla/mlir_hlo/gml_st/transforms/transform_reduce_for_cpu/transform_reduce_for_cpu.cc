@@ -18,6 +18,7 @@ limitations under the License.
 #include <utility>
 
 #include "gml_st/IR/gml_st_ops.h"
+#include "gml_st/interfaces/tiling_interface.h"
 #include "gml_st/interfaces/tiling_interface_impl.h"
 #include "gml_st/transforms/fusion/fusion.h"
 #include "gml_st/transforms/passes.h"
@@ -151,7 +152,7 @@ struct Reduce1DTransformPattern : public OpRewritePattern<linalg::ReduceOp> {
       Value inputSlice =
           tileAndReshapeInput(b, loc, ivs.front(), input, elementType);
 
-      MaterializeOp initSlice = create1DSlice(
+      tensor::ExtractSliceOp initSlice = create1DSlice(
           b, loc, inits.front(), b.getIndexAttr(0), b.getIndexAttr(vectorSize));
 
       // Create `linalg.reduce` to combine
@@ -191,8 +192,10 @@ struct Reduce1DTransformPattern : public OpRewritePattern<linalg::ReduceOp> {
       Value inputSlice =
           create1DSlice(b, loc, input, ivs.front(), remainderSize);
 
-      Value initSlice = b.create<gml_st::MaterializeOp>(
-          loc, inits.front(), /*offsets=*/SmallVector<OpFoldResult>{});
+      Value initSlice = materializeSlice(
+          b, loc, inits.front(), /*offsets=*/SmallVector<OpFoldResult>{},
+          /*sizes=*/SmallVector<OpFoldResult>{},
+          /*strides=*/SmallVector<OpFoldResult>{}, false);
 
       auto newReduceOp = cloneReduceOp(b, reduceOp, inputSlice, initSlice);
 
@@ -238,14 +241,15 @@ struct Reduce1DTransformPattern : public OpRewritePattern<linalg::ReduceOp> {
                                    ValueRange{tileableBound, inputSize});
   }
 
-  MaterializeOp create1DSlice(OpBuilder &b, Location loc, Value source,
-                              OpFoldResult offset, OpFoldResult size) const {
+  tensor::ExtractSliceOp create1DSlice(OpBuilder &b, Location loc, Value source,
+                                       OpFoldResult offset,
+                                       OpFoldResult size) const {
     SmallVector<OpFoldResult> offsets{offset};
     SmallVector<OpFoldResult> sizes{size};
     SmallVector<OpFoldResult> strides{b.getIndexAttr(1)};
 
-    return b.create<gml_st::MaterializeOp>(loc, source, offsets, sizes,
-                                           strides);
+    return b.create<tensor::ExtractSliceOp>(loc, source, offsets, sizes,
+                                            strides);
   }
 
   Value cloneReduceOp(OpBuilder &b, linalg::ReduceOp reduceOp,
@@ -338,7 +342,7 @@ struct Reduce2DTransformPattern : public OpRewritePattern<linalg::ReduceOp> {
       }
       setLabel(op, kReduceTransformedLabel);
 
-      // Peel parallel loops.
+      //  Peel parallel loops.
       if (failed(peelReduction(rewriter, tilingParallelDimsResult.value(),
                                tilingReductionDimsResult.value())))
         return failure();
