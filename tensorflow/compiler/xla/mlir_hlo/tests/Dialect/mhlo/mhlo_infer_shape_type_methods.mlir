@@ -72,7 +72,7 @@ func.func @dynamic_slice(%arg0: tensor<3x4xi32>, %arg1: tensor<i64>, %arg2: tens
 // -----
 
 // CHECK-LABEL: @pad
-func.func @pad(%arg0: tensor<1x2x3xf16>, %arg1: tensor<f16>) -> tensor<2x4x7xf16> {
+func.func @pad(%arg0: tensor<1x2x3xf16>, %arg1: tensor<f16>) -> tensor<2x4x7xindex> {
   %0 = "mhlo.pad"(%arg0, %arg1) {
     edge_padding_high = dense<[1, 1, 0]> : tensor<3xi64>,
     edge_padding_low = dense<[0, 1, 2]> : tensor<3xi64>,
@@ -80,7 +80,7 @@ func.func @pad(%arg0: tensor<1x2x3xf16>, %arg1: tensor<f16>) -> tensor<2x4x7xf16
   } : (tensor<1x2x3xf16>, tensor<f16>) -> tensor<2x4x7xf16>
   %1 = "mhlo_test.get_return_type_components"(%0) : (tensor<2x4x7xf16>) -> tensor<2x4x7xindex>
 // CHECK: %1 = "mhlo_test.get_return_type_components"(%0) : (tensor<2x4x7xf16>) -> tensor<2x4x7xindex>
-  func.return %0 : tensor<2x4x7xf16>
+  func.return %1 : tensor<2x4x7xindex>
 }
 
 // -----
@@ -549,7 +549,7 @@ func.func @triangular_solve(%arg0: tensor<10x5x4x4xf32>, %arg1: tensor<10x5x4x4x
 // -----
 
 // CHECK-LABEL: func @if
-func.func @if(%pred : tensor<i1>, %branch_operand : tensor<2xf32>, %wrong_type : tensor<2xf32>) {
+func.func @if(%pred : tensor<i1>, %branch_operand : tensor<2xf32>, %wrong_type : tensor<2xf32>) -> tensor<2xindex> {
   %0 = "mhlo.if"(%pred) ({
       "mhlo.return"(%wrong_type) : (tensor<2xf32>) -> ()
     }, {
@@ -557,13 +557,13 @@ func.func @if(%pred : tensor<i1>, %branch_operand : tensor<2xf32>, %wrong_type :
     }) : (tensor<i1>) -> tensor<2xf32>
   // CHECK: (tensor<2xf32>) -> tensor<2xindex>
   %1 = "mhlo_test.get_return_type_components"(%0) : (tensor<2xf32>) -> tensor<2xindex>
-  func.return
+  func.return %1 : tensor<2xindex>
 }
 
 // -----
 
 // CHECK-LABEL: func @case
-func.func @case(%index : tensor<i32>, %branch_operand : tensor<2xf32>) {
+func.func @case(%index : tensor<i32>, %branch_operand : tensor<2xf32>) -> tensor<2xindex> {
   %0 = "mhlo.case"(%index) ({
       "mhlo.return"(%branch_operand) : (tensor<2xf32>) -> ()
   }, {
@@ -571,13 +571,13 @@ func.func @case(%index : tensor<i32>, %branch_operand : tensor<2xf32>) {
   }) : (tensor<i32>) -> tensor<2xf32>
   // CHECK: (tensor<2xf32>) -> tensor<2xindex>
   %1 = "mhlo_test.get_return_type_components"(%0) : (tensor<2xf32>) -> tensor<2xindex>
-  func.return
+  func.return %1 : tensor<2xindex>
 }
 
 // -----
 
 // CHECK-LABEL: func @sort
-func.func @sort(%input0: tensor<16x16xf32>, %input1: tensor<16x16xi32>) {
+func.func @sort(%input0: tensor<16x16xf32>, %input1: tensor<16x16xi32>) -> (tensor<16x16xindex>, tensor<16x16xindex>) {
   %0:2 = "mhlo.sort"(%input0, %input1) ({
   ^bb0(%arg0: tensor<f32>, %arg1: tensor<f32>, %arg2: tensor<i32>, %arg3: tensor<i32>):
     %7 = "mhlo.compare"(%arg0, %arg1) {comparison_direction = #mhlo<comparison_direction GT>} : (tensor<f32>, tensor<f32>) -> tensor<i1>
@@ -587,7 +587,7 @@ func.func @sort(%input0: tensor<16x16xf32>, %input1: tensor<16x16xi32>) {
   %1 = "mhlo_test.get_return_type_components"(%0#0) : (tensor<16x16xf32>) -> tensor<16x16xindex>
   // CHECK: (tensor<16x16xi32>) -> tensor<16x16xindex>
   %2 = "mhlo_test.get_return_type_components"(%0#1) : (tensor<16x16xi32>) -> tensor<16x16xindex>
-  func.return
+  func.return %1, %2 : tensor<16x16xindex>, tensor<16x16xindex>
 }
 
 // -----
@@ -748,7 +748,7 @@ func.func @tanh_sparsity(%arg0: tensor<10x10xf32, #CSR>) -> tensor<10x10xindex> 
   %0 = "mhlo.tanh"(%arg0) : (tensor<10x10xf32, #CSR>) -> tensor<10x10xf32>
   %1 = "mhlo_test.get_return_types"(%0)
       : (tensor<10x10xf32>) -> tensor<10x10xindex>
-// CHECK: %1 = "mhlo_test.return_types"(%0) {types0 = tensor<10x10xf32, {{.*}}>} : (tensor<10x10xf32>) -> tensor<10x10xindex>
+  // CHECK: %1 = "mhlo_test.return_types"(%0) {types0 = tensor<10x10xf32, {{.*}}>} : (tensor<10x10xf32>) -> tensor<10x10xindex>
   func.return %1 : tensor<10x10xindex>
 }
 
@@ -763,7 +763,7 @@ func.func @abs_sparsity(%arg0: tensor<10x10xf32, #CSR>) -> tensor<10x10xindex> {
   %0 = "mhlo.abs"(%arg0) : (tensor<10x10xf32, #CSR>) -> tensor<10x10xf32>
   %1 = "mhlo_test.get_return_types"(%0)
       : (tensor<10x10xf32>) -> tensor<10x10xindex>
-// CHECK: %1 = "mhlo_test.return_types"(%0) {types0 = tensor<10x10xf32, {{.*}}>} : (tensor<10x10xf32>) -> tensor<10x10xindex>
+  // CHECK: %1 = "mhlo_test.return_types"(%0) {types0 = tensor<10x10xf32, {{.*}}>} : (tensor<10x10xf32>) -> tensor<10x10xindex>
   func.return %1 : tensor<10x10xindex>
 }
 
@@ -778,7 +778,7 @@ func.func @real_sparsity(%arg0: tensor<10x10xcomplex<f32>, #CSR>) -> tensor<10x1
   %0 = "mhlo.real"(%arg0) : (tensor<10x10xcomplex<f32>, #CSR>) -> tensor<10x10xf32>
   %1 = "mhlo_test.get_return_types"(%0)
       : (tensor<10x10xf32>) -> tensor<10x10xindex>
-// CHECK: %1 = "mhlo_test.return_types"(%0) {types0 = tensor<10x10xf32, {{.*}}>} : (tensor<10x10xf32>) -> tensor<10x10xindex>
+  // CHECK: %1 = "mhlo_test.return_types"(%0) {types0 = tensor<10x10xf32, {{.*}}>} : (tensor<10x10xf32>) -> tensor<10x10xindex>
   func.return %1 : tensor<10x10xindex>
 }
 
@@ -793,7 +793,7 @@ func.func @imag_sparsity(%arg0: tensor<10x10xcomplex<f32>, #CSR>) -> tensor<10x1
   %0 = "mhlo.imag"(%arg0) : (tensor<10x10xcomplex<f32>, #CSR>) -> tensor<10x10xf32>
   %1 = "mhlo_test.get_return_types"(%0)
       : (tensor<10x10xf32>) -> tensor<10x10xindex>
-// CHECK: %1 = "mhlo_test.return_types"(%0) {types0 = tensor<10x10xf32, {{.*}}>} : (tensor<10x10xf32>) -> tensor<10x10xindex>
+  // CHECK: %1 = "mhlo_test.return_types"(%0) {types0 = tensor<10x10xf32, {{.*}}>} : (tensor<10x10xf32>) -> tensor<10x10xindex>
   func.return %1 : tensor<10x10xindex>
 }
 
@@ -808,7 +808,7 @@ func.func @complex_sparsity(%arg0: tensor<10x10xf32, #CSR>, %arg1: tensor<10x10x
   %0 = "mhlo.complex"(%arg0, %arg1) : (tensor<10x10xf32, #CSR>, tensor<10x10xf32, #CSR>) -> tensor<10x10xcomplex<f32>>
   %1 = "mhlo_test.get_return_types"(%0)
       : (tensor<10x10xcomplex<f32>>) -> tensor<10x10xindex>
-// CHECK: %1 = "mhlo_test.return_types"(%0) {types0 = tensor<10x10xcomplex<f32>, {{.*}}>} : (tensor<10x10xcomplex<f32>>) -> tensor<10x10xindex>
+  // CHECK: %1 = "mhlo_test.return_types"(%0) {types0 = tensor<10x10xcomplex<f32>, {{.*}}>} : (tensor<10x10xcomplex<f32>>) -> tensor<10x10xindex>
   func.return %1 : tensor<10x10xindex>
 }
 
