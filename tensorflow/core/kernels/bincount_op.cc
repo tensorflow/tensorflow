@@ -172,7 +172,13 @@ struct BincountReduceFunctor<CPUDevice, Tidx, T, binary_output> {
                         const typename TTypes<T, 2>::ConstTensor& weights,
                         typename TTypes<T, 2>::Tensor& out,
                         const Tidx num_bins) {
-    Status status = OkStatus();
+    Eigen::Tensor<Tidx, 0, Eigen::RowMajor> value_min_tensor = in.minimum();
+    auto value_min = value_min_tensor();
+    if (value_min < 0) {
+      return errors::InvalidArgument(
+          "Value must be non-negative, got min value ", value_min);
+    }
+
     const int num_rows = out.dimension(0);
     const int num_cols = in.dimension(1);
     ThreadPool* thread_pool =
@@ -183,12 +189,6 @@ struct BincountReduceFunctor<CPUDevice, Tidx, T, binary_output> {
           for (int64_t i = start_row; i < end_row; ++i) {
             for (int64_t j = 0; j < num_cols; ++j) {
               Tidx value = in(i, j);
-              if (value < 0) {
-                status.Update(errors::InvalidArgument(
-                    "Value must be non-negative, got value[", i, ", ",
-                    j, "] = ",value));
-                return;
-              }
               if (value < num_bins) {
                 if (binary_output) {
                   out(i, value) = T(1);
@@ -203,7 +203,7 @@ struct BincountReduceFunctor<CPUDevice, Tidx, T, binary_output> {
             }
           }
         });
-    return status;
+    return OkStatus();
   }
 };
 
