@@ -261,6 +261,7 @@ cc_library(
         "//tensorflow/core/platform:env",
         "//tensorflow/core/platform:mutex",
         "//tensorflow/core/platform:thread_annotations",
+        "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/time",
     ],
 )
