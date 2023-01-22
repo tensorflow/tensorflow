@@ -123,6 +123,7 @@ tf_py_test(
     srcs = [
         "pywrap_quantize_model_test.py",
     ],
+    tags = ["no_pip"],
     deps = [
         ":pywrap_quantize_model",
         "//tensorflow:tensorflow_py",
