@@ -2145,6 +2145,7 @@ absl::flat_hash_set<string> GetKnownXLAAllowlistOp() {
       "Roll",
       "ScatterNd",
       "SegmentSumV2",
+      "SegmentProdV2",
       "SelfAdjointEigV2",
       "SoftmaxCrossEntropyWithLogits",
       "SpaceToBatch",
