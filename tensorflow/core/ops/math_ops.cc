@@ -12,6 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include <limits>
+#include <vector>
 
 #include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/framework/numeric_op.h"
@@ -1278,7 +1280,7 @@ REGISTER_OP("SegmentSum")
     .Attr("Tindices: {int32,int64}")
     .SetShapeFn(SegmentReductionShapeFn);
 
-// TODO(hinsu): Introduce Segment{Prod,Min,Max}V2 ops, similarly.
+// TODO(hinsu): Introduce Segment{Min,Max}V2 ops, similarly.
 REGISTER_OP("SegmentSumV2")
     .Input("data: T")
     .Input("segment_ids: Tindices")
@@ -1304,6 +1306,16 @@ REGISTER_OP("SegmentProd")
     .Attr("T: numbertype")
     .Attr("Tindices: {int32,int64}")
     .SetShapeFn(SegmentReductionShapeFn);
+
+REGISTER_OP("SegmentProdV2")
+    .Input("data: T")
+    .Input("segment_ids: Tindices")
+    .Input("num_segments: Tnumsegments")
+    .Output("output: T")
+    .Attr("T: numbertype")
+    .Attr("Tindices: {int32,int64}")
+    .Attr("Tnumsegments: {int32,int64} = DT_INT32")
+    .SetShapeFn(shape_inference::SegmentReductionWithNumSegmentsShapeFn);
 
 REGISTER_OP("SegmentMin")
     .Input("data: T")

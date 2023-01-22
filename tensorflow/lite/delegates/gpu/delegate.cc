@@ -87,6 +87,8 @@ class Delegate {
  public:
   explicit Delegate(const TfLiteGpuDelegateOptionsV2* options)
       : num_delegate_kernels_(0) {
+    telemetry_settings_ =
+        std::make_unique<TfLiteTelemetryGpuDelegateSettings>();
     delegate_.data_ = reinterpret_cast<void*>(this);
     delegate_.Prepare = DelegatePrepare;
     delegate_.CopyFromBufferHandle = nullptr;
