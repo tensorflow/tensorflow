@@ -55,20 +55,19 @@ class FuseTensorExtractPattern : public OpRewritePattern<tensor::ExtractOp> {
 
     ParallelOp outerMostParallelOp;
     for (Operation *user : extractOp->getUsers()) {
-      auto parallelOp = user->getParentOfType<gml_st::ParallelOp>();
+      ParallelOp parallelOp = user->getParentOfType<gml_st::ParallelOp>();
       while (parallelOp && parallelOp->getParentOfType<gml_st::ParallelOp>())
         parallelOp = parallelOp->getParentOfType<gml_st::ParallelOp>();
 
       if (!parallelOp)
         return rewriter.notifyMatchFailure(extractOp, "consumer is not fused");
 
-      if (!outerMostParallelOp) {
+      if (!outerMostParallelOp)
         outerMostParallelOp = parallelOp;
-      } else if (outerMostParallelOp != parallelOp) {
+      else if (outerMostParallelOp != parallelOp)
         return rewriter.notifyMatchFailure(
             extractOp,
             "consumers are not all nested under the same ParallelOp");
-      }
     }
 
     rewriter.setInsertionPointToStart(outerMostParallelOp.getBody());
@@ -117,7 +116,7 @@ struct GreedyTilingAndFusionPass
 
     auto tilingFilterFn = [&](TilingInterface op) {
       return success(llvm::none_of(op->getUsers(), [](Operation *user) {
-        return llvm::isa<tensor::ExtractSliceOp>(user) ||
+        return llvm::isa<MaterializeOp>(user) ||
                llvm::isa<gml_st::TilingInterface>(user);
       }));
     };
@@ -126,7 +125,7 @@ struct GreedyTilingAndFusionPass
       RewritePatternSet patterns(ctx);
       populateTilingPatterns(ctx, tilingFilterFn, opts, &patterns);
 
-      auto fusionFilterFn = [](tensor::ExtractSliceOp) { return success(); };
+      auto fusionFilterFn = [](MaterializeOp) { return success(); };
       populateFusionPatterns(ctx, fusionFilterFn, &patterns);
 
       if (failed(applyPatternsAndFoldGreedily(f, std::move(patterns))))

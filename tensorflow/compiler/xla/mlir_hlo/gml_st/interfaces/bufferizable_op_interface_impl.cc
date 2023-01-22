@@ -25,7 +25,6 @@ limitations under the License.
 #include "mlir/Dialect/Bufferization/IR/BufferizableOpInterface.h"
 #include "mlir/Dialect/Bufferization/IR/Bufferization.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
-#include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/Interfaces/ViewLikeInterface.h"
 #include "mlir/Support/LogicalResult.h"
 
@@ -33,8 +32,8 @@ using mlir::bufferization::AnalysisState;
 using mlir::bufferization::BufferizableOpInterface;
 using mlir::bufferization::BufferizationOptions;
 using mlir::bufferization::BufferRelation;
+using mlir::bufferization::ToMemrefOp;
 using mlir::bufferization::ToTensorOp;
-using mlir::tensor::ExtractSliceOp;
 
 namespace mlir {
 namespace gml_st {
@@ -404,34 +403,32 @@ struct SetYieldOpInterface
   }
 
   bool areEquivalentSlices(const AnalysisState &state,
-                           ExtractSliceOp extractSliceOp, SetYieldOp setYieldOp,
+                           MaterializeOp materializeOp, SetYieldOp setYieldOp,
                            int64_t updateIdx) const {
-    if (!extractSliceOp || !setYieldOp) return false;
-    if (extractSliceOp != setYieldOp &&
-        !state.areEquivalentBufferizedValues(extractSliceOp.getSource(),
+    if (!materializeOp || !setYieldOp) return false;
+    if (materializeOp != setYieldOp &&
+        !state.areEquivalentBufferizedValues(materializeOp.getSource(),
                                              setYieldOp.getDsts()[updateIdx])) {
       return false;
     }
     if (!sameOffsetsSizesAndStrides(
-            extractSliceOp,
+            materializeOp,
             setYieldOp.getSets()[updateIdx].getDefiningOp<TileOp>(),
             isEqualConstantIntOrValue))
       return false;
     return true;
   }
 
-  /// Return true if `value` is originating from an ExtractSliceOp that matches
+  /// Return true if `value` is originating from an MaterializeOp that matches
   /// the given SetYieldOp.
   bool matchesInsertDestination(const AnalysisState &state, Value value,
                                 SetYieldOp setYieldOp,
                                 int64_t updateIdx) const {
     // Look for matching slices.
     auto matchesSlice = [&](Value val) {
-      if (auto materializeOp = val.getDefiningOp<ExtractSliceOp>()) {
-        if (areEquivalentSlices(state, materializeOp, setYieldOp, updateIdx)) {
+      if (auto materializeOp = val.getDefiningOp<MaterializeOp>())
+        if (areEquivalentSlices(state, materializeOp, setYieldOp, updateIdx))
           return true;
-        }
-      }
       return false;
     };
     return llvm::all_of(
@@ -450,7 +447,7 @@ struct SetYieldOpInterface
     Operation *readingOp = uRead->getOwner();
     Operation *conflictingWritingOp = uConflictingWrite->getOwner();
 
-    // Special rules for matching SetYieldOp/ExtractSliceOp pairs. If
+    // Special rules for matching SetYieldOp/MaterializeOp pairs. If
     // uRead is an SetYieldOp...
     if (auto setYieldOp = dyn_cast<SetYieldOp>(readingOp)) {
       for (int64_t updateIdx :

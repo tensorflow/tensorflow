@@ -29,7 +29,6 @@ Value materializeSlice(OpBuilder &b, Location loc, Value valueToTile,
                        ArrayRef<OpFoldResult> offsets,
                        ArrayRef<OpFoldResult> sizes,
                        ArrayRef<OpFoldResult> strides, bool useExtractSlice) {
-  useExtractSlice = true;
   if (useExtractSlice) {
     return b.create<tensor::ExtractSliceOp>(loc, valueToTile, offsets, sizes,
                                             strides);
@@ -47,7 +46,6 @@ Value materializeSlice(OpBuilder &b, Location loc, Value valueToTile,
 
 Value materializeIdentitySlice(OpBuilder &b, Location loc, Value valueToTile,
                                bool useExtractSlice) {
-  useExtractSlice = true;
   if (useExtractSlice) return valueToTile;
 
   int64_t rank = valueToTile.getType().cast<RankedTensorType>().getRank();
@@ -61,7 +59,6 @@ Value materializeIdentitySlice(OpBuilder &b, Location loc, Value valueToTile,
 
 Value materializePoint(OpBuilder &b, Location loc, Value valueToTile,
                        ArrayRef<OpFoldResult> offsets, bool useExtractSlice) {
-  useExtractSlice = true;
   auto tensorType = valueToTile.getType().cast<RankedTensorType>();
   int64_t rank = tensorType.getRank();
 

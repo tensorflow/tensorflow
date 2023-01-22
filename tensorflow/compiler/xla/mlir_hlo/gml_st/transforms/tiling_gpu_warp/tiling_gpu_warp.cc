@@ -37,7 +37,7 @@ namespace gml_st {
 
 namespace {
 
-constexpr llvm::StringRef kTileGpuWarpAppliedLabel =
+static constexpr llvm::StringRef kTileGpuWarpAppliedLabel =
     "__tile_gpu_warp_applied_label__";
 
 constexpr const char* kWarpDistributionLabel = "warp";
@@ -46,7 +46,7 @@ constexpr const char* kThreadDistributionLabel = "thread";
 using OpFoldResults = SmallVector<OpFoldResult>;
 
 // Returns 'count' rounded up to power of two, up to warp size (32).
-int64_t getGroupSize(int64_t count) {
+static int64_t getGroupSize(int64_t count) {
   constexpr int64_t kWarpSize = 32;
   if (count < 0) return kWarpSize;
   for (int64_t i = 1; i < kWarpSize; i *= 2)
@@ -314,7 +314,7 @@ struct TilingGPUWarpPass
 
     // Populate fusion patterns.
     auto fuseGreedilyFilterFn = [](Operation* op) {
-      auto materializeOp = llvm::dyn_cast<tensor::ExtractSliceOp>(op);
+      auto materializeOp = llvm::dyn_cast<MaterializeOp>(op);
       Operation* source = materializeOp.getSource().getDefiningOp();
 
       // Do not fuse warp-level reductions.
