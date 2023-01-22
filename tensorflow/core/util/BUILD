@@ -162,7 +162,6 @@ filegroup(
         "mkl_threadpool.h",
         "mkl_util.h",
         "onednn_env_vars.h",
-        "zen_util.h",
         "overflow.h",
         "padding.h",
         "permutation_input_iterator.h",
@@ -188,6 +187,7 @@ filegroup(
         "util.h",
         "work_sharder.h",
         "xla_config_registry.h",
+        "zen_util.h",
         "//tensorflow/tsl/util:framework_internal_private_hdrs",
     ],
 )
