@@ -1241,7 +1241,7 @@ cc_library(
     hdrs = ["layout_pass_util.h"],
     copts = tf_copts(),
     deps = [
-      "//tensorflow/core:graph",
+        "//tensorflow/core:graph",
     ],
 )
 
@@ -1261,7 +1261,7 @@ cc_library(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/graph:zen_graph_util",
         "@com_google_absl//absl/base",
-        ],
+    ],
     alwayslink = 1,
 )
 
