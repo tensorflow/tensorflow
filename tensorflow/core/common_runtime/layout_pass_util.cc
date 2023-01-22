@@ -23,13 +23,14 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/layout_pass_util.h"
 
 namespace tensorflow {
+namespace zendnn {
 
 inline bool ArgIsList(const OpDef::ArgDef &arg) {
   return !arg.type_list_attr().empty() || !arg.number_attr().empty();
 }
 
 inline int GetTensorListLength(const OpDef::ArgDef &arg, const Node *n) {
-  CHECK_EQ(ArgIsList(arg), true);
+  CHECK_EQ(ArgIsList(arg), true);  // Crash ok.
   int N = 0;
   if (!arg.type_list_attr().empty()) {
     std::vector<DataType> value;
@@ -76,14 +77,14 @@ bool CanOpRunOnCPUDevice(const Node *n) {
 void GetNodesProducingTFTensorList(
     const gtl::InlinedVector<std::pair<Node *, int>, 4> &inputs, int *input_idx,
     int list_length, std::vector<NodeBuilder::NodeOut> *output_nodes) {
-  CHECK_LT(*input_idx, inputs.size());
-  CHECK_GT(list_length, 0);
-  CHECK_NOTNULL(output_nodes);
+  CHECK_LT(*input_idx, inputs.size());  // Crash ok.
+  CHECK_GT(list_length, 0);             // Crash ok.
+  CHECK_NOTNULL(output_nodes);          // Crash ok.
   output_nodes->reserve(list_length);
 
   while (list_length != 0) {
-    CHECK_GT(list_length, 0);
-    CHECK_LT(*input_idx, inputs.size());
+    CHECK_GT(list_length, 0);             // Crash ok.
+    CHECK_LT(*input_idx, inputs.size());  // Crash ok.
     Node *n = inputs[*input_idx].first;
     int slot = inputs[*input_idx].second;
     // If input node 'n' is just producing a single tensor at
@@ -98,7 +99,7 @@ Status CopyInputs(
     const Node *old_node,
     const gtl::InlinedVector<std::pair<Node *, int>, 4> &old_node_inputs,
     NodeBuilder *nb) {
-  // Number of input slots to old node
+  // Number of input slots to old node.
   // Input slots are represented by .Input() calls in REGISTER_OP.
   int old_node_input_slots = old_node->op_def().input_arg_size();
   // Actual number of inputs can be greater than or equal to number
@@ -136,6 +137,7 @@ Status CopyInputs(
   return OkStatus();
 }
 
+}  // namespace zendnn
 }  // namespace tensorflow
 
 #endif  // INTEL_MKL || AMD_ZENDNN

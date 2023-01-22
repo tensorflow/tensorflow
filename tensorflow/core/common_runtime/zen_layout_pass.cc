@@ -240,24 +240,6 @@ class ZenLayoutRewritePass : public GraphOptimizationPass {
   // @return RewriteInfo* for the applicable rewrite rule.
   const ZenOpRewriteRecord *CheckNodeForZenOpRewrite(const Node *n) const;
 
-  // Get nodes that will feed a list of TF tensors to the new node that we are
-  // constructing.
-  //
-  // @input inputs - inputs to old node that we are using for constructing
-  //                 new inputs.
-  // @input input_idx - the index in the 'inputs' vector pointing to the
-  //                    current input that we have processed so far.
-  // @output input_idx - index will be incremented by the number of nodes
-  //                     from 'inputs' that are processed.
-  // @input list_length - The expected length of list of TF tensors.
-  // @output output_nodes - the list of new nodes creating TF tensors.
-  //
-  // @return None
-  void GetNodesProducingTFTensorList(
-      const gtl::InlinedVector<std::pair<Node *, int>, 4> &inputs,
-      int *input_idx, int list_length,
-      std::vector<NodeBuilder::NodeOut> *output_nodes);
-
   // ZenDNN currently does not support all fusions that grappler performs
   // together with Conv2D and DepthwiseConv2D. We rewrite _FusedConv2D and
   // _FusedDepthwiseConv2dNative only if it includes those we support.
@@ -323,12 +305,17 @@ class ZenLayoutRewritePass : public GraphOptimizationPass {
   static void UpdateZenOpAttrsFusedConv2D(const Node *orig_node,
                                           NodeBuilder *nb);
 
-  // Examines the input and output nodes of each node, for Zen nodes and
-  // determines reorder flags.
+  // This function determines the reorder flags <reorder_before, reorder_after>
+  // for each Zen node. Here reordering means converting tensor layout. The
+  // 'reorder_before' flag indicates whether the tensors need to be reordered
+  // to Zen format before the Zen node. The 'reorder_after' flag indicates
+  // whether the tensors need to be reordered back to native nhwc format after
+  // the Zen node.
   //
-  // @input   nodes - A list of nodes
-  // @return  An unordered map with nodes as key and
-  //          value as a pair of reorder flags
+  // @input  nodes - A vector of Zen nodes marked for rewrite to update reorder
+  //                 flags.
+  // @return An unordered map with nodes as key and value as a pair of reorder
+  //         flags.
   std::unordered_map<Node *, std::pair<bool, bool>> GetReorderFlags(
       const std::vector<Node *> &nodes);
 
@@ -489,7 +476,7 @@ void DeleteNodeAndUpdateLinks(std::unique_ptr<Graph> *g, Node *m,
   (*g)->RemoveNode(m);
 }
 
-// Remove the Successor of Zen node if it matches with 'pattern'.
+// Remove the successor of Zen node if it matches with 'pattern'.
 //
 // @input  g - input graph.
 // @input  orig_node - Source Zen node.
@@ -750,27 +737,6 @@ static void FillInputs(const Node *n,
   std::sort(control_edges->begin(), control_edges->end());
 }
 
-void ZenLayoutRewritePass::GetNodesProducingTFTensorList(
-    const gtl::InlinedVector<std::pair<Node *, int>, 4> &inputs, int *input_idx,
-    int list_length, std::vector<NodeBuilder::NodeOut> *output_nodes) {
-  CHECK_LT(*input_idx, inputs.size());
-  CHECK_GT(list_length, 0);
-  CHECK_NOTNULL(output_nodes);
-  output_nodes->reserve(list_length);
-
-  while (list_length != 0) {
-    CHECK_GT(list_length, 0);
-    CHECK_LT(*input_idx, inputs.size());
-    Node *n = inputs[*input_idx].first;
-    int slot = inputs[*input_idx].second;
-    // If input node 'n' is just producing a single tensor at output slot 'slot'
-    // then we just add that single node.
-    output_nodes->push_back(NodeBuilder::NodeOut(n, slot));
-    (*input_idx)++;
-    list_length--;
-  }
-}
-
 Status ZenLayoutRewritePass::ZenOpNodeRewrite(
     std::unique_ptr<Graph> *g, Node *orig_node,
     const ZenOpRewriteRecord *rewrite_record,
@@ -780,10 +746,10 @@ Status ZenLayoutRewritePass::ZenOpNodeRewrite(
 
   Node *new_node = nullptr;
   std::vector<string> fused_ops = {};
-  int num_data_inputs = orig_node->in_edges().size();
+  int num_data_inputs = 0;
   for (const Edge *e : orig_node->in_edges()) {
-    if (e->IsControlEdge()) {
-      num_data_inputs--;
+    if (!e->IsControlEdge()) {
+      num_data_inputs++;
     }
   }
 
@@ -795,7 +761,7 @@ Status ZenLayoutRewritePass::ZenOpNodeRewrite(
                  rewrite_record->zen_op_name.c_str());
 
   nb.Device(orig_node->def().device());
-  TF_RETURN_IF_ERROR(CopyInputs(orig_node, inputs, &nb));
+  TF_RETURN_IF_ERROR(zendnn::CopyInputs(orig_node, inputs, &nb));
   rewrite_record->update_zen_op_attr(const_cast<const Node *>(orig_node), &nb);
 
   nb.Attr("reorder_before", reorder_flags.first);
@@ -853,7 +819,6 @@ Status ZenLayoutRewritePass::ZenOpNodeRewrite(
   return OkStatus();
 }
 
-// 'nodes' is a vector of Zen nodes marked for rewrite to update reorder flags.
 std::unordered_map<Node *, std::pair<bool, bool>>
 ZenLayoutRewritePass::GetReorderFlags(const std::vector<Node *> &nodes) {
   // Map from node to [reorder_before, reorder_after]
@@ -880,7 +845,7 @@ ZenLayoutRewritePass::GetReorderFlags(const std::vector<Node *> &nodes) {
         VLOG(1) << "ZenLayoutRewritePass::GetReorderFlags: At " << n->name()
                 << " " << n->type_string() << ", non-Zen output - "
                 << dst->name() << " " << dst->type_string();
-        // Did not find the next node this means that the next node is not a
+        // Did not find the next node. This means that the next node is not a
         // Zen node, thus, we must reorder.
         reorder_after = true;
         // Exit the loop as remaining edges will not change this flag.
@@ -925,7 +890,7 @@ ZenLayoutRewritePass::GetReorderFlags(const std::vector<Node *> &nodes) {
         VLOG(1) << "ZenLayoutRewritePass::GetReorderFlags: At " << n->name()
                 << " " << n->type_string() << ", non-Zen input - "
                 << src->name() << " " << src->type_string();
-        // Did not find the previous node this means that the previous node is
+        // Did not find the previous node. This means that the previous node is
         // not a Zen node, thus, we must reorder.
         reorder_before = true;
         // Exit the loop since remaining edges will not change this flag.
@@ -938,6 +903,7 @@ ZenLayoutRewritePass::GetReorderFlags(const std::vector<Node *> &nodes) {
   }
 
   // Handle the case of branches separately.
+  // Case 1
   for (Node *n : nodes) {
     // Let A and B be Zen nodes, and X be a non-Zen node.
     // rb - reorder_before, ra - reorder_after
@@ -1011,7 +977,7 @@ ZenLayoutRewritePass::GetReorderFlags(const std::vector<Node *> &nodes) {
 
 bool ZenLayoutRewritePass::AddReorderAttrs(std::unique_ptr<Graph> *g) {
   bool result = false;
-  CHECK_NOTNULL(g);
+  CHECK_NOTNULL(g);  // Crash ok.
 
   std::vector<Node *> order;
   GetReversePostOrder(**g, &order);
@@ -1065,7 +1031,7 @@ bool ZenLayoutRewritePass::ZenOpUpdate(std::unique_ptr<Graph> *g) {
   std::vector<Node *> order;
   GetReversePostOrder(**g, &order);
   for (Node *n : order) {
-    if (!n->IsOp() || !CanOpRunOnCPUDevice(n)) {
+    if (!n->IsOp() || !zendnn::CanOpRunOnCPUDevice(n)) {
       continue;
     }
 
@@ -1113,7 +1079,7 @@ Status ZenLayoutRewritePass::AreAllInferenceOps(std::unique_ptr<Graph> *g) {
 
 bool ZenLayoutRewritePass::ZenOpRewritePass(std::unique_ptr<Graph> *g) {
   bool result = false;
-  CHECK_NOTNULL(g);
+  CHECK_NOTNULL(g);  // Crash ok.
 
   // Before we proceed further for Zen Op rewrites first the graph shall be
   // checked for inference ops only as TF-ZenDNN currently does not support
@@ -1130,13 +1096,13 @@ bool ZenLayoutRewritePass::ZenOpRewritePass(std::unique_ptr<Graph> *g) {
   result = ZenOpUpdate(g);
   if (!result) {
     VLOG(1) << "ZenLayoutRewritePass::ZenOpRewritePass: No opportunity for Zen "
-            << "op conversion found";
+            << "op conversion found in first graph optimization pass.";
   }
   // Second Pass - Enable Fused Optimizations
   // Enable Advanced Graph Optimizations
   GetReversePostOrder(**g, &order);
   for (Node *n : order) {
-    if (!n->IsOp() || !CanOpRunOnCPUDevice(n)) {
+    if (!n->IsOp() || !zendnn::CanOpRunOnCPUDevice(n)) {
       continue;
     }
     // Fused Optimizations
@@ -1148,13 +1114,16 @@ bool ZenLayoutRewritePass::ZenOpRewritePass(std::unique_ptr<Graph> *g) {
               << "FusedConvPad Successful";
     } else if (ZenFusePadConv(g, n, "_ZenConv2D", "Pad")) {
       VLOG(1) << "ZenLayoutRewritePass::ZenOpRewritePass: ConvPad Successful";
+    } else {
+      VLOG(1) << "ZenLayoutRewritePass::ZenOpRewritePass: No opportunity for "
+              << "Conv-Pad fusion found in second graph optimization pass.";
     }
   }
-  // Update Zen op.
+  // Third Pass to implement optimizations over Zen ops.
   result = ZenOpUpdate(g);
   if (!result) {
-    VLOG(1) << "ZenLayoutRewritePass::ZenOpRewritePass: No instance of "
-            << "FuseBatchNorm found.";
+    VLOG(1) << "ZenLayoutRewritePass::ZenOpRewritePass: No opportunity for Zen "
+            << "op conversion found in third graph optimization pass.";
   }
 
   result = AddReorderAttrs(g);

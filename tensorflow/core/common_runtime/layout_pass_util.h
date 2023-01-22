@@ -27,6 +27,12 @@ limitations under the License.
 
 namespace tensorflow {
 
+// Temporarily wrapping these helper functions in the zendnn namespace
+// to avoid crashing with similar functions in mkl_layout_pass.cc.
+// TODO(penporn): Delete the functions in mkl_layout_pass and use the functions
+// here after TF 2.12 branch cut.
+namespace zendnn {
+
 // Is OpDef::ArgDef a list type? It could be N * T or list(type).
 // Refer to opdef.proto for details of list type.
 inline bool ArgIsList(const OpDef::ArgDef &arg);
@@ -68,6 +74,7 @@ Status CopyInputs(const Node *orig_node,
                   const gtl::InlinedVector<std::pair<Node *, int>, 4> &inputs,
                   NodeBuilder *nb);
 
+}  // namespace zendnn
 }  // namespace tensorflow
 
 #endif  // INTEL_MKL || AMD_ZENDNN

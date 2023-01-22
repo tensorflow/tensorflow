@@ -34,7 +34,7 @@ namespace zen_op_registry {
 // Prefix that we add to Tensorflow op name to construct Zen op name.
 static const char* const kZenNodePrefix = "_Zen";
 
-// Get the name of Zen op from original TensorFlow op
+// Get the name of Zen op from original TensorFlow op.
 // We prefix the original op with "Zen" to get Zen op.
 inline string GetZenOpName(const string& name) {
   return string(kZenNodePrefix) + name;
@@ -43,10 +43,10 @@ inline string GetZenOpName(const string& name) {
 // Check whether op name with type T is registered as Zen operator
 // that will go through name change or layout change pass.
 //
-// @input op_name - name of the op
-// @input T - datatype to be used for checking op
+// @input  op_name - name of the op.
+// @input  T - datatype to be used for checking op.
 // @return true if op name is registered as Zen op that will go through name
-// change or layout change pass; false otherwise
+// change or layout change pass; false otherwise.
 static inline bool IsZenOpKernelRegistered(const string& op_name, DataType T) {
   string registered_kernels_key = op_name + string(DataType_Name(T));
   thread_local static auto* registered_kernels_map =
