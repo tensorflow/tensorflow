@@ -16,11 +16,14 @@ limitations under the License.
 /// This files contains a pipeline which converts HLO operations to GPU kernels
 /// written in a combination of LLVM and NVVM dialects.
 
+#include <memory>
+
 #include "gml_st/transforms/passes.h"
 #include "mhlo/transforms/passes.h"
 #include "mlir/Conversion/AffineToStandard/AffineToStandard.h"
 #include "mlir/Conversion/SCFToControlFlow/SCFToControlFlow.h"
 #include "mlir/Conversion/ShapeToStandard/ShapeToStandard.h"
+#include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Arith/Transforms/Passes.h"
 #include "mlir/Dialect/Bufferization/Transforms/Passes.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
@@ -28,9 +31,13 @@ limitations under the License.
 #include "mlir/Dialect/Linalg/Passes.h"
 #include "mlir/Dialect/MemRef/Transforms/Passes.h"
 #include "mlir/Dialect/SCF/Transforms/Passes.h"
+#include "mlir/Dialect/Vector/IR/VectorOps.h"
+#include "mlir/IR/IRMapping.h"
+#include "mlir/IR/Matchers.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Transforms/Passes.h"
+#include "mlir/Transforms/RegionUtils.h"
 #include "transforms/gpu_passes.h"
 #include "transforms/passes.h"
 
@@ -38,15 +45,82 @@ using namespace mlir;
 using ::mlir::func::FuncOp;
 using ::mlir::gpu::GPUModuleOp;
 
-static constexpr const char* kBlockDistributionLabel = "block";
-static constexpr const char* kWarpDistributionLabel = "warp";
-static constexpr const char* kThreadDistributionLabel = "thread";
+static constexpr const char *kBlockDistributionLabel = "block";
+static constexpr const char *kWarpDistributionLabel = "warp";
+static constexpr const char *kThreadDistributionLabel = "thread";
+
+namespace {
+LogicalResult sinkOperationsIntoLaunchOp(gpu::LaunchOp launchOp) {
+  Region &launchOpBody = launchOp.getBody();
+
+  // Identify uses from values defined outside of the scope of the launch
+  // operation.
+  SetVector<Value> valuesFromAbove;
+  getUsedValuesDefinedAbove(launchOpBody, valuesFromAbove);
+
+  SetVector<Operation *> producers;
+  for (Value value : valuesFromAbove) {
+    Operation *operandOp = value.getDefiningOp();
+    if (!operandOp) continue;
+    producers.insert(operandOp);
+  }
+
+  // Find operations that can be sunk into the scope.
+  SmallVector<Operation *> opsToSink;
+  for (Operation *op : producers) {
+    SmallVector<Operation *> currentOps;
+    auto transferReadOp = dyn_cast<vector::TransferReadOp>(op);
+    if (!transferReadOp) continue;
+    currentOps.push_back(transferReadOp);
+    for (auto index : transferReadOp.getIndices()) {
+      auto indexDefOp = index.getDefiningOp<arith::ConstantOp>();
+      if (indexDefOp) break;
+      currentOps.push_back(indexDefOp);
+    }
+    if (currentOps.size() == transferReadOp.getTransferRank() + 1)
+      opsToSink.append(currentOps);
+  }
+
+  // Insert operations so that the defs get cloned before uses.
+  mlir::IRMapping map;
+  OpBuilder builder(launchOpBody);
+  for (Operation *op : llvm::reverse(opsToSink)) {
+    Operation *clonedOp = builder.clone(*op, map);
+    // Only replace uses within the launch op.
+    for (auto pair : llvm::zip(op->getResults(), clonedOp->getResults())) {
+      replaceAllUsesInRegionWith(std::get<0>(pair), std::get<1>(pair),
+                                 launchOp.getBody());
+    }
+  }
+  return success();
+}
+
+}  // namespace
+
+/// Pass that moves ops which are likely an index computation into gpu.launch
+/// body.
+class GPUSinkVectorArgsInGPULaunchPass
+    : public mlir::PassWrapper<GPUSinkVectorArgsInGPULaunchPass,
+                               mlir::OperationPass<> > {
+ public:
+  void runOnOperation() override {
+    Operation *op = getOperation();
+    if (op->walk([](gpu::LaunchOp launch) {
+            // Pull in instructions that can be sunk
+            if (failed(sinkOperationsIntoLaunchOp(launch)))
+              return WalkResult::interrupt();
+
+            return WalkResult::advance();
+          }).wasInterrupted())
+      signalPassFailure();
+  }
+};
 
 // TODO(b/233761238): We only want to have this pipeline temporarily, as it is
 // not yet clear how exactly it will look like. The goal is to merge this with
 // the unified kernel generator + autofusion + XLA Next pipeline once we have
 // it, and once this code stabilizes.
-void mlir::createHloToGpuPipeline(OpPassManager& pm,
+void mlir::createHloToGpuPipeline(OpPassManager &pm,
                                   ArrayRef<int64_t> blockTileDim,
                                   ArrayRef<int64_t> warpTileDim,
                                   ArrayRef<int64_t> threadTileDim,
@@ -129,7 +203,9 @@ void mlir::createHloToGpuPipeline(OpPassManager& pm,
   pm.addNestedPass<FuncOp>(gml_st::createGmlStToScfPass());
   pm.addNestedPass<FuncOp>(arith::createArithExpandOpsPass());
   pm.addNestedPass<FuncOp>(createCanonicalizerPass());
-  pm.addPass(createGpuLauchSinkIndexComputationsPass());
+  pm.addPass(std::make_unique<GPUSinkVectorArgsInGPULaunchPass>());
+  pm.addNestedPass<FuncOp>(mlir::createGpuLauchSinkIndexComputationsPass());
+
   constexpr llvm::StringRef kGpuDataLayoutSpec =
       "#dlti.dl_spec<#dlti.dl_entry<index,32:i32>>";
   pm.addPass(createGpuKernelOutliningPass(kGpuDataLayoutSpec));

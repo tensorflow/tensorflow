@@ -22,47 +22,6 @@ func.func @dynamic_types(%size : index) {
 
 // -----
 
-// CHECK-LABEL: @materialize_complex
-// CHECK-SAME: %[[TENSOR:.*]]: tensor<3x1xcomplex<f32>>
-func.func @materialize_complex(%tensor: tensor<3x1xcomplex<f32>>) {
-  // CHECK: %{{.*}} = gml_st.materialize %[[TENSOR]] [0, 0] [1, 1] [1, 1] : tensor<3x1xcomplex<f32>>
-  %0 = gml_st.materialize %tensor[0, 0][1, 1][1, 1]
-    : tensor<3x1xcomplex<f32>> to complex<f32>
-  func.return
-}
-
-// -----
-
-// CHECK-LABEL: @materialize_index
-// CHECK-SAME: %[[TENSOR:.*]]: tensor<3x1xindex>
-func.func @materialize_index(%tensor: tensor<3x1xindex>) {
-  // CHECK: %{{.*}} = gml_st.materialize %[[TENSOR]] [0, 0] [1, 1] [1, 1] : tensor<3x1xindex>
-  %0 = gml_st.materialize %tensor[0, 0][1, 1][1, 1]: tensor<3x1xindex> to index
-  func.return
-}
-
-// -----
-
-// CHECK-LABEL: @materialize_static_tensor
-// CHECK-SAME: %[[TENSOR:.*]]: tensor<64x32xf32>
-func.func @materialize_static_tensor(%tensor: tensor<64x32xf32>) {
-  // CHECK: %{{.*}} = gml_st.materialize %[[TENSOR]] [0, 0] [42, 16] [1, 1] : tensor<64x32xf32>
-  %0 = gml_st.materialize %tensor[0, 0][42, 16][1, 1]
-    : tensor<64x32xf32> to tensor<42x16xf32>
-  func.return
-}
-
-// -----
-
-// CHECK-LABEL: @materialize_dynamic_tensor
-// CHECK-SAME: %[[TENSOR:.*]]: tensor<?x?xf32>
-func.func @materialize_dynamic_tensor(%tensor: tensor<?x?xf32>) {
-  // CHECK: %{{.*}} = gml_st.materialize %[[TENSOR]] [0, 0] [42, 16] [1, 1] : tensor<?x?xf32>
-  %0 = gml_st.materialize %tensor[0, 0][42, 16][1, 1]
-    : tensor<?x?xf32> to tensor<42x16xf32>
-  func.return
-}
-
 // CHECK-LABEL: @materialize_vector
 // CHECK-SAME: %[[VECTOR:.*]]: vector<64x32xf32>
 func.func @materialize_vector(%vector: vector<64x32xf32>) {
@@ -123,11 +82,11 @@ func.func @parallel_loop(%lhs: tensor<8xf32>, %rhs: tensor<8xf32>,
   %c8 = arith.constant 8 : index
 
   %sum = gml_st.parallel (%i) = (%c0) to (%c8) step (%c4) {
-    %lhs_sub = gml_st.materialize %lhs[%i] [4] [1]
+    %lhs_sub = tensor.extract_slice %lhs[%i] [4] [1]
       : tensor<8xf32> to tensor<4xf32>
-    %rhs_sub = gml_st.materialize %rhs[%i] [4] [1]
+    %rhs_sub = tensor.extract_slice %rhs[%i] [4] [1]
       : tensor<8xf32> to tensor<4xf32>
-    %out_sub = gml_st.materialize %output[%i] [4] [1]
+    %out_sub = tensor.extract_slice %output[%i] [4] [1]
       : tensor<8xf32> to tensor<4xf32>
 
     %result_sub = linalg.generic {
@@ -212,13 +171,13 @@ func.func @for_loop(%lhs: tensor<8xf32>, %rhs: tensor<8xf32>,
 
   %sum, %sum2 = gml_st.for (%i) = (%c0) to (%c8) step (%c4)
       outs(%out_ = %output : tensor<8xf32>, %out2_ = %output2 : tensor<8xf32>) {
-    %lhs_sub = gml_st.materialize %lhs [%i] [4] [1]
+    %lhs_sub = tensor.extract_slice %lhs [%i] [4] [1]
       : tensor<8xf32> to tensor<4xf32>
-    %rhs_sub = gml_st.materialize %rhs [%i] [4] [1]
+    %rhs_sub = tensor.extract_slice %rhs [%i] [4] [1]
       : tensor<8xf32> to tensor<4xf32>
-    %out_sub = gml_st.materialize %out_ [%i] [4] [1]
+    %out_sub = tensor.extract_slice %out_ [%i] [4] [1]
       : tensor<8xf32> to tensor<4xf32>
-    %out2_sub = gml_st.materialize %out_ [%i] [4] [1]
+    %out2_sub = tensor.extract_slice %out_ [%i] [4] [1]
       : tensor<8xf32> to tensor<4xf32>
 
     %result_sub = linalg.generic {
@@ -252,11 +211,11 @@ func.func @trivial_acc_region(%lhs: tensor<8xf32>,
   %c8 = arith.constant 8 : index
 
   %sum = gml_st.parallel (%i) = (%c0) to (%c8) step (%c4) {
-    %lhs_sub = gml_st.materialize %lhs [%i] [4] [1]
+    %lhs_sub = tensor.extract_slice %lhs [%i] [4] [1]
       : tensor<8xf32> to tensor<4xf32>
-    %rhs_sub = gml_st.materialize %rhs[%i] [4] [1]
+    %rhs_sub = tensor.extract_slice %rhs[%i] [4] [1]
       : tensor<8xf32> to tensor<4xf32>
-    %out_sub = gml_st.materialize %output[%i] [4] [1]
+    %out_sub = tensor.extract_slice %output[%i] [4] [1]
       : tensor<8xf32> to tensor<4xf32>
 
     %result_sub = linalg.generic {
@@ -295,13 +254,13 @@ func.func @two_acc_region(%lhs: tensor<8xf32>, %rhs: tensor<8xf32>,
   %c8 = arith.constant 8 : index
 
   %result:2 = gml_st.parallel (%i) = (%c0) to (%c8) step (%c4) {
-    %lhs_sub = gml_st.materialize %lhs [%i] [4] [1]
+    %lhs_sub = tensor.extract_slice %lhs [%i] [4] [1]
       : tensor<8xf32> to tensor<4xf32>
-    %rhs_sub = gml_st.materialize %rhs [%i] [4] [1]
+    %rhs_sub = tensor.extract_slice %rhs [%i] [4] [1]
       : tensor<8xf32> to tensor<4xf32>
-    %out_sub = gml_st.materialize %output [%i] [4] [1]
+    %out_sub = tensor.extract_slice %output [%i] [4] [1]
       : tensor<8xf32> to tensor<4xf32>
-    %out_2_sub = gml_st.materialize %output_2 [%i] [4] [1]
+    %out_2_sub = tensor.extract_slice %output_2 [%i] [4] [1]
       : tensor<8xf32> to tensor<4xf32>
 
     %result_sub = linalg.generic {
@@ -357,11 +316,11 @@ func.func @accumulator_region(%lhs: tensor<8xf32>,
   %c8 = arith.constant 8 : index
 
   %sum = gml_st.parallel (%i) = (%c0) to (%c8) step (%c4) {
-    %lhs_sub = gml_st.materialize %lhs [%i] [4] [1]
+    %lhs_sub = tensor.extract_slice %lhs [%i] [4] [1]
       : tensor<8xf32> to tensor<4xf32>
-    %rhs_sub = gml_st.materialize %rhs [%i] [4] [1]
+    %rhs_sub = tensor.extract_slice %rhs [%i] [4] [1]
       : tensor<8xf32> to tensor<4xf32>
-    %out_sub = gml_st.materialize %output [%i] [4] [1]
+    %out_sub = tensor.extract_slice %output [%i] [4] [1]
       : tensor<8xf32> to tensor<4xf32>
 
     %result_sub = linalg.generic {
@@ -411,7 +370,7 @@ func.func @reduce_tiles(%arg: tensor<8xf32>,
   %c0_f32 = arith.constant 0.0 : f32
 
   %sum = gml_st.parallel (%i) = (%c0) to (%c8) step (%c4) {
-    %arg_sub = gml_st.materialize %arg [%i] [4] [1]
+    %arg_sub = tensor.extract_slice %arg [%i] [4] [1]
       : tensor<8xf32> to tensor<4xf32>
 
     %local_init = tensor.empty() : tensor<f32>
@@ -461,7 +420,7 @@ func.func @column_reduction(%arg: tensor<128x16xf32>,
   %cst = arith.constant 0.000000e+00 : f32
 
   %sum = gml_st.parallel (%i, %j) = (%c0, %c0) to (%c128, %c16) step (%c8, %c8) {
-    %arg_sub = gml_st.materialize %arg[%i, %j] [8, 8] [1, 1]
+    %arg_sub = tensor.extract_slice %arg[%i, %j] [8, 8] [1, 1]
       : tensor<128x16xf32> to tensor<8x8xf32>
 
     %init = tensor.empty() : tensor<8xf32>
@@ -515,10 +474,10 @@ func.func @sequential_column_reduction(%arg: tensor<128x16xf32>,
 
   %sum = gml_st.for (%i, %j) = (%c0, %c0) to (%c128, %c16) step (%c8, %c8)
       outs(%out_ = %out : tensor<16xf32>) {
-    %arg_sub = gml_st.materialize %arg[%i, %j] [8, 8] [1, 1]
+    %arg_sub = tensor.extract_slice %arg[%i, %j] [8, 8] [1, 1]
       : tensor<128x16xf32> to tensor<8x8xf32>
 
-    %out_sub = gml_st.materialize %out_[%j] [8] [1]
+    %out_sub = tensor.extract_slice %out_[%j] [8] [1]
       : tensor<16xf32> to tensor<8xf32>
 
     %result_sub = linalg.generic {
