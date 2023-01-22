@@ -1116,6 +1116,18 @@ tf_device.replicate([%0, %1] as %ri: tensor<*x!tf_type.resource>) {n = 2 : i32} 
   tf_device.return
 }
 ```
+### `-tf-replicate-tensor-list-init-ops`: Replicate TensorList init ops for correct shape assignments in shape inference
+If we pass same TensorList to a while op as multiple arguments or just use
+the same TensorList at multiple places and assign different
+TensorListSetItem to elements of TensorList, the shape inference is then
+unable to identify the Shape of these args and thus the input TensorList
+shape is unidentifiable.
+All of these args are supposed to be independent and not related to original
+creation of TensorList.
+
+This pass will create multiple instances of TensorList for each arg of the
+while op and each use and thus there will be not a conflict in resolving the
+shape of these different inputs.
 ### `-tf-replicate-to-island`: Lowers device replicate to executor islands
 
 #### Options
