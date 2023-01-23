@@ -138,6 +138,21 @@ func.func @alltoall(%data: tensor<4x16xf32>) -> tensor<16x4xindex> {
 
 // -----
 
+// CHECK-LABEL: func @alltoall_bounds
+func.func @alltoall_bounds(%data: tensor<16x?xf32, #mhlo.type_extensions<bounds = [?, 5]>>) -> tensor<*xindex> {
+  %0 = "mhlo.all_to_all"(%data) {
+    split_dimension = 0 : i64,
+    concat_dimension = 1 : i64,
+    split_count = 4 : i64,
+    replica_groups = dense<[[0, 1, 2, 3]]> : tensor<1x4xi64>
+  } : (tensor<16x?xf32, #mhlo.type_extensions<bounds = [?, 5]>>) -> tensor<*xf32>
+  // CHECK: types0 = tensor<4x?xf32, #mhlo.type_extensions<bounds = [?, 20]>>
+  %1 = "mhlo_test.get_return_types"(%0) : (tensor<*xf32>) -> tensor<*xindex>
+  func.return %1 : tensor<*xindex>
+}
+
+// -----
+
 // CHECK-LABEL: func @abs
 func.func @abs(%arg0: tensor<1x2xf32>) -> tensor<1x2xindex> {
   %0 = "mhlo.abs"(%arg0) {} : (tensor<1x2xf32>) -> tensor<1x2xf32>
