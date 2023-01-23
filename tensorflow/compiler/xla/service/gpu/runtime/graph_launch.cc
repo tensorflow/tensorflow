@@ -32,6 +32,7 @@ limitations under the License.
 
 #if GOOGLE_CUDA
 #include "third_party/gpus/cuda/include/cuda_runtime_api.h"
+#include "tensorflow/compiler/xla/stream_executor/cuda/cuda_graph.h"
 #include "tensorflow/compiler/xla/stream_executor/gpu/gpu_stream.h"
 #endif  // #if GOOGLE_CUDA
 
@@ -64,30 +65,6 @@ StreamExecutorGraphInstances* GraphInstances::operator()(
 }
 
 //===----------------------------------------------------------------------===//
-// RAII helpers for CUDA graph types.
-//===----------------------------------------------------------------------===//
-
-#if GOOGLE_CUDA
-
-using OwnedGraph = StreamExecutorGraphInstances::OwnedGraph;
-using OwnedGraphExec = StreamExecutorGraphInstances::OwnedGraphExec;
-
-void StreamExecutorGraphInstances::DestroyGraph::operator()(cudaGraph_t graph) {
-  cudaError_t err = cudaGraphDestroy(graph);
-  CHECK(err == cudaSuccess)
-      << "Failed to destroy CUDA graph: " << cudaGetErrorString(err);
-}
-
-void StreamExecutorGraphInstances::DestroyGraphExec::operator()(
-    cudaGraphExec_t instance) {
-  cudaError_t err = cudaGraphExecDestroy(instance);
-  CHECK(err == cudaSuccess)
-      << "Failed to destroy CUDA graph instance: " << cudaGetErrorString(err);
-}
-
-#endif  // #if GOOGLE_CUDA
-
-//===----------------------------------------------------------------------===//
 // Helper structure to hash the remaining arguments' memref pointers.
 //===----------------------------------------------------------------------===//
 
@@ -114,6 +91,8 @@ H AbslHashValue(H h, const RemainingArgsPtrs& m) {
 
 #if GOOGLE_CUDA
 
+using se::gpu::OwnedCudaGraph;
+
 static bool InDebugMode() {
 #ifdef NDEBUG
   return false;
@@ -121,7 +100,7 @@ static bool InDebugMode() {
   return true;
 }
 
-static absl::StatusOr<OwnedGraph> CaptureGraph(
+static absl::StatusOr<OwnedCudaGraph> CaptureGraph(
     const ServiceExecutableRunOptions* run_options,
     runtime::FunctionRef function_ref, CustomCall::RemainingArgs fwd_args,
     CustomCall::UserData user_data) {
@@ -214,7 +193,7 @@ static absl::StatusOr<OwnedGraph> CaptureGraph(
     return InternalError(StrFormat("Failed to capture CUDA graph: %s; %s",
                                    captured.message(), error));
 
-  return OwnedGraph(graph);
+  return OwnedCudaGraph(graph);
 }
 
 #endif  // #if GOOGLE_CUDA
@@ -265,7 +244,7 @@ static absl::Status LaunchGraph(
                                          cudaGetErrorString(err)));
         }
 
-        return GraphInstance(ptrs_hash, exec);
+        return GraphInstance(ptrs_hash, se::gpu::OwnedCudaGraphExec(exec));
       });
 
   if (!instance.ok()) return instance.status();
