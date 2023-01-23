@@ -59,9 +59,11 @@ RUN test "${CHECKOUT_TF_SRC}" -eq 1 && git clone --depth=1 https://github.com/te
 # See http://bugs.python.org/issue19846
 ENV LANG C.UTF-8
 
-RUN apt-get update && apt-get install -y \
-    python3 \
-    python3-pip
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        python3 \
+        python3-pip \
+    && apt-get -y clean all \
+    && rm -rf /var/lib/apt/lists/*
 
 RUN python3 -m pip --no-cache-dir install --upgrade \
     "pip<20.3" \
@@ -70,7 +72,7 @@ RUN python3 -m pip --no-cache-dir install --upgrade \
 # Some TF tools expect a "python" binary
 RUN ln -s $(which python3) /usr/local/bin/python
 
-RUN apt-get update && apt-get install -y \
+RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     curl \
     git \
@@ -78,7 +80,9 @@ RUN apt-get update && apt-get install -y \
     openjdk-8-jdk \
     python3-dev \
     virtualenv \
-    swig
+    swig \
+    && apt-get -y clean all \
+    && rm -rf /var/lib/apt/lists/*
 
 RUN python3 -m pip --no-cache-dir install \
     Pillow \
@@ -114,7 +118,10 @@ RUN jupyter serverextension enable --py jupyter_http_over_ws
 
 RUN mkdir -p /tf/tensorflow-tutorials && chmod -R a+rwx /tf/
 RUN mkdir /.local && chmod a+rwx /.local
-RUN apt-get update && apt-get install -y --no-install-recommends wget git
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        wget git \
+    && apt-get -y clean all \
+    && rm -rf /var/lib/apt/lists/*
 WORKDIR /tf/tensorflow-tutorials
 RUN wget https://raw.githubusercontent.com/tensorflow/docs/master/site/en/tutorials/keras/classification.ipynb
 RUN wget https://raw.githubusercontent.com/tensorflow/docs/master/site/en/tutorials/keras/overfit_and_underfit.ipynb

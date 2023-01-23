@@ -59,7 +59,9 @@ RUN apt-key adv --fetch-keys https://developer.download.nvidia.com/compute/cuda/
         libcudnn8=${CUDNN}+cuda${CUDA} \
         pkg-config \
         software-properties-common \
-        unzip
+        unzip \
+    && apt-get -y clean all \
+    && rm -rf /var/lib/apt/lists/*
 
 # Install TensorRT if not building for PowerPC
 # NOTE: libnvinfer uses cuda11.6 versions
@@ -69,7 +71,7 @@ RUN [[ "${ARCH}" = "ppc64le" ]] || { apt-get update && \
         apt-get update && \
         apt-get install -y --no-install-recommends libnvinfer${LIBNVINFER_MAJOR_VERSION}=${LIBNVINFER}+cuda11.6 \
         libnvinfer-plugin${LIBNVINFER_MAJOR_VERSION}=${LIBNVINFER}+cuda11.6 \
-        && apt-get clean \
+        && apt-get -y clean all \
         && rm -rf /var/lib/apt/lists/*; }
 
 # For CUDA profiling, TensorFlow requires CUPTI.
@@ -84,9 +86,11 @@ RUN ln -s /usr/local/cuda/lib64/stubs/libcuda.so /usr/local/cuda/lib64/stubs/lib
 # See http://bugs.python.org/issue19846
 ENV LANG C.UTF-8
 
-RUN apt-get update && apt-get install -y \
-    python3 \
-    python3-pip
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        python3 \
+        python3-pip \
+    && apt-get -y clean all \
+    && rm -rf /var/lib/apt/lists/*
 
 RUN python3 -m pip --no-cache-dir install --upgrade \
     "pip<20.3" \
@@ -117,7 +121,10 @@ RUN jupyter serverextension enable --py jupyter_http_over_ws
 
 RUN mkdir -p /tf/tensorflow-tutorials && chmod -R a+rwx /tf/
 RUN mkdir /.local && chmod a+rwx /.local
-RUN apt-get update && apt-get install -y --no-install-recommends wget git
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        wget git \
+    && apt-get -y clean all \
+    && rm -rf /var/lib/apt/lists/*
 WORKDIR /tf/tensorflow-tutorials
 RUN wget https://raw.githubusercontent.com/tensorflow/docs/master/site/en/tutorials/keras/classification.ipynb
 RUN wget https://raw.githubusercontent.com/tensorflow/docs/master/site/en/tutorials/keras/overfit_and_underfit.ipynb

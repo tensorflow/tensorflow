@@ -34,12 +34,16 @@ ARG PYTHON=python3
 
 RUN apt-get update && apt-get install -y --no-install-recommends --fix-missing \
     curl \
-    software-properties-common
+    software-properties-common \
+    && apt-get -y clean all \
+    && rm -rf /var/lib/apt/lists/*
 
 RUN add-apt-repository ppa:deadsnakes/ppa
 
 RUN apt-get update && apt-get install -y --no-install-recommends --fix-missing \
-    ${PYTHON}
+    ${PYTHON} \
+    && apt-get -y clean all \
+    && rm -rf /var/lib/apt/lists/*
 
 RUN curl -fSsL https://bootstrap.pypa.io/get-pip.py | ${PYTHON}
 
@@ -72,8 +76,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends --fix-missing \
     libmpich-dev \
     openssh-client \
     openssh-server && \
-    apt-get clean && \
-    rm -rf /var/lib/apt/lists/*
+    && apt-get -y clean all \
+    && rm -rf /var/lib/apt/lists/*
 
 # Create a wrapper for MPICH to allow running as root by default
 RUN mv /usr/bin/mpirun /usr/bin/mpirun.real && \
@@ -100,7 +104,9 @@ ARG HOROVOD_WITH_TENSORFLOW=1
 ARG HOROVOD_VERSION=v0.21.1
 
 RUN apt-get update && apt-get install -y --no-install-recommends --fix-missing \
-    software-properties-common
+    software-properties-common \
+    && apt-get -y clean all \
+    && rm -rf /var/lib/apt/lists/*
 
 RUN cd /usr/lib/python3/dist-packages && \
     ln -sf apt_pkg.cpython-35m-x86_64-linux-gnu.so apt_pkg.so
@@ -113,7 +119,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends --fix-missing \
     g++-8 \
     gcc-8 \
     git \
-    ${PYTHON}-dev
+    ${PYTHON}-dev \
+    && apt-get -y clean all \
+    && rm -rf /var/lib/apt/lists/*
 
 RUN update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-5 500 --slave /usr/bin/g++ g++ /usr/bin/g++-5 && \
     update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-8 800 --slave /usr/bin/g++ g++ /usr/bin/g++-8

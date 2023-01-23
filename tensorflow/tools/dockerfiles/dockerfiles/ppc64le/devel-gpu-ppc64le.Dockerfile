@@ -66,7 +66,9 @@ RUN apt-key adv --fetch-keys https://developer.download.nvidia.com/compute/cuda/
         zlib1g-dev \
         wget \
         git \
-        && \
+    && apt-get -y clean all \
+    && rm -rf /var/lib/apt/lists/* \
+    && \
     find /usr/local/cuda-${CUDA}/lib64/ -type f -name 'lib*_static.a' -not -name 'libcudart_static.a' -delete && \
     rm /usr/lib/${LIB_DIR_PREFIX}-linux-gnu/libcudnn_static_v8.a
 
@@ -80,7 +82,7 @@ RUN [[ "${ARCH}" = "ppc64le" ]] || { apt-get update && \
         libnvinfer-dev=${LIBNVINFER}+cuda11.8 \
         libnvinfer-plugin-dev=${LIBNVINFER}+cuda11.8 \
         libnvinfer-plugin${LIBNVINFER_MAJOR_VERSION}=${LIBNVINFER}+cuda11.8 \
-        && apt-get clean \
+        && apt-get -y clean all \
         && rm -rf /var/lib/apt/lists/*; }
 
 # Configure the build for our CUDA configuration.
@@ -104,9 +106,11 @@ RUN ln -s /usr/local/cuda/lib64/stubs/libcuda.so /usr/local/cuda/lib64/stubs/lib
 # See http://bugs.python.org/issue19846
 ENV LANG C.UTF-8
 
-RUN apt-get update && apt-get install -y \
-    python3 \
-    python3-pip
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        python3 \
+        python3-pip \
+    && apt-get -y clean all \
+    && rm -rf /var/lib/apt/lists/*
 
 RUN python3 -m pip --no-cache-dir install --upgrade \
     "pip<20.3" \
@@ -115,14 +119,16 @@ RUN python3 -m pip --no-cache-dir install --upgrade \
 # Some TF tools expect a "python" binary
 RUN ln -s $(which python3) /usr/local/bin/python
 
-RUN apt-get update && apt-get install -y \
-    build-essential \
-    curl \
-    git \
-    openjdk-8-jdk \
-    python3-dev \
-    virtualenv \
-    swig
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        build-essential \
+        curl \
+        git \
+        openjdk-8-jdk \
+        python3-dev \
+        virtualenv \
+        swig \
+    && apt-get -y clean all \
+    && rm -rf /var/lib/apt/lists/*
 
 RUN python3 -m pip --no-cache-dir install \
     Pillow \

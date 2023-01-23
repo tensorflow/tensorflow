@@ -25,14 +25,19 @@ FROM ubuntu:${UBUNTU_VERSION} as base
 
 ENV DEBIAN_FRONTEND=noninteractive
 
-RUN apt-get update && apt-get install -y curl
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        curl \
+    && apt-get -y clean all \
+    && rm -rf /var/lib/apt/lists/*
 
 # See http://bugs.python.org/issue19846
 ENV LANG C.UTF-8
 
-RUN apt-get update && apt-get install -y \
-    python3 \
-    python3-pip
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        python3 \
+        python3-pip \
+    && apt-get -y clean all \
+    && rm -rf /var/lib/apt/lists/*
 
 RUN python3 -m pip --no-cache-dir install --upgrade \
     "pip<20.3" \
@@ -47,7 +52,10 @@ RUN ln -s $(which python3) /usr/local/bin/python
 #   tf-nightly
 #   tf-nightly-gpu
 ARG TF_PACKAGE=tensorflow
-RUN apt-get update && apt-get install -y curl libhdf5-dev wget
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        curl libhdf5-dev wget \
+    && apt-get -y clean all \
+    && rm -rf /var/lib/apt/lists/*
 RUN python3 -m pip install --no-cache-dir --global-option=build_ext \
             --global-option=-I/usr/include/hdf5/serial/ \
             --global-option=-L/usr/lib/powerpc64le-linux-gnu/hdf5/serial \
