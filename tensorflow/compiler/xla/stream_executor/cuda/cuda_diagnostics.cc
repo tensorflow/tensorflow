@@ -46,9 +46,8 @@ limitations under the License.
 #include "absl/strings/str_split.h"
 #include "absl/strings/strip.h"
 #include "tensorflow/compiler/xla/stream_executor/lib/error.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/process_state.h"
 #include "tensorflow/compiler/xla/stream_executor/lib/status.h"
-#include "tensorflow/compiler/xla/stream_executor/platform/logging.h"
+#include "tensorflow/tsl/platform/host_info.h"
 
 namespace stream_executor {
 namespace cuda {
@@ -144,17 +143,17 @@ void Diagnostician::LogDiagnosticInformation() {
     if (!started) {
       LOG(INFO) << "kernel driver is installed, but does not appear to be "
                    "running on this host "
-                << "(" << port::Hostname() << ")";
+                << "(" << tsl::port::Hostname() << ")";
     }
   } else {
     LOG(INFO) << "kernel driver does not appear to be installed on this host "
-              << "(" << port::Hostname() << ")";
+              << "(" << tsl::port::Hostname() << ")";
   }
   CFRelease(kext_infos);
 #elif !defined(PLATFORM_WINDOWS)
   if (access(kDriverVersionPath, F_OK) != 0) {
     LOG(INFO) << "kernel driver does not appear to be running on this host "
-              << "(" << port::Hostname() << "): "
+              << "(" << tsl::port::Hostname() << "): "
               << "/proc/driver/nvidia/version does not exist";
     return;
   }
@@ -167,13 +166,13 @@ void Diagnostician::LogDiagnosticInformation() {
 #endif
 
   LOG(INFO) << "retrieving CUDA diagnostic information for host: "
-            << port::Hostname();
+            << tsl::port::Hostname();
 
   LogDriverVersionInformation();
 }
 
 /* static */ void Diagnostician::LogDriverVersionInformation() {
-  LOG(INFO) << "hostname: " << port::Hostname();
+  LOG(INFO) << "hostname: " << tsl::port::Hostname();
 #ifndef PLATFORM_WINDOWS
   if (VLOG_IS_ON(1)) {
     const char *value = getenv("LD_LIBRARY_PATH");
