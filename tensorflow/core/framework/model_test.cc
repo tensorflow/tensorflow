@@ -2393,7 +2393,8 @@ TEST_F(ModelTimingTest, OptimizeStageBased_OneStage) {
         id: 1
         name: "ParallelMapV2"
         autotune: true
-        num_elements: 100
+        num_elements: 97
+        buffered_elements: 3
         processing_time: 5000
         bytes_produced: 10000
         node_class: ASYNC_KNOWN_RATIO
@@ -2430,7 +2431,6 @@ TEST_F(ModelTimingTest, OptimizeStageBased_OneStage) {
         num_elements: 100
         processing_time: 1000
         node_class: KNOWN_RATIO
-        ratio: 2
       }
     }
     output: 1
