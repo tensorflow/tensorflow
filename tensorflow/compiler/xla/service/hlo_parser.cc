@@ -3703,6 +3703,9 @@ bool HloParserImpl::ParseDenseLiteral(Literal* literal, const Shape& shape) {
         break;
       }
       case TokKind::kRbrace: {
+        if (nest_level == 0) {
+          return TokenError("unexpected '}' token");
+        }
         nest_level--;
         if (elems_seen_per_dim[nest_level] != shape.dimensions(nest_level)) {
           return TokenError(absl::StrFormat(
