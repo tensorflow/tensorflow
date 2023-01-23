@@ -1627,6 +1627,66 @@ gpu_kernel_library(
     },
 )
 
+# Square and square root kernels
+
+gpu_kernel_library(
+    name = "gpu_sqrt_kernels",
+    op = "sqrt",
+    tile_size = "256",
+    types = [
+        "f16",
+        "f32",
+        "f64",
+    ],
+    unroll_factors = "4",
+)
+
+gpu_kernel_library(
+    name = "gpu_rsqrt_kernels",
+    op = "rsqrt",
+    tile_size = "256",
+    types = [
+        "f16",
+        "f32",
+        "f64",
+    ],
+    unroll_factors = "4",
+)
+
+gpu_kernel_library(
+    name = "gpu_square_kernels",
+    jit_types = [
+        "i8",
+        "i16",
+        "ui8",
+        "ui16",
+        "ui32",
+        "ui64",
+    ],
+    op = "square",
+    tile_size = "1024",
+    types = [
+        "f16",
+        "f32",
+        "f64",
+        "i64",
+    ],
+    unroll_factors = "4",
+)
+
+gpu_kernel_library(
+    name = "gpu_squared_difference_kernels",
+    op = "squared_difference",
+    tile_size = "1024",
+    types = [
+        "f16",
+        "f32",
+        "f64",
+        "i64",
+    ],
+    unroll_factors = "4",
+)
+
 # TODO(b/160731748): Re-enable when it works again.
 # gpu_kernel_library(
 #     name = "gpu_bias_add_kernels",
@@ -1756,40 +1816,6 @@ gpu_kernel_library(
     ],
 )
 
-gpu_kernel_library(
-    name = "gpu_square_kernels",
-    jit_types = [
-        "i8",
-        "i16",
-        "ui8",
-        "ui16",
-        "ui32",
-        "ui64",
-    ],
-    op = "square",
-    tile_size = "1024",
-    types = [
-        "f16",
-        "f32",
-        "f64",
-        "i64",
-    ],
-    unroll_factors = "4",
-)
-
-gpu_kernel_library(
-    name = "gpu_squared_difference_kernels",
-    op = "squared_difference",
-    tile_size = "1024",
-    types = [
-        "f16",
-        "f32",
-        "f64",
-        "i64",
-    ],
-    unroll_factors = "4",
-)
-
 # Bitwise operations.
 [
     gpu_kernel_library(
@@ -1861,10 +1887,8 @@ gpu_kernel_library(
     )
     for op in [
         "relu_grad",
-        "rsqrt",
         "softplus",
         "softsign",
-        "sqrt",
     ]
 ]
 
