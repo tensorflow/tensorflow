@@ -534,6 +534,7 @@ cc_library(
     srcs = if_cuda_is_configured(["cuda_graph.cc"]),
     hdrs = if_cuda_is_configured(["cuda_graph.h"]),
     deps = if_cuda_is_configured([
+        "@com_google_absl//absl/strings:str_format",
         "@local_config_cuda//cuda:cuda_headers",
         "//tensorflow/compiler/xla/stream_executor/gpu:gpu_stream",
     ]),

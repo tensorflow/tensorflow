@@ -16,9 +16,13 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_STREAM_EXECUTOR_CUDA_CUDA_GRAPH_H_
 #define TENSORFLOW_COMPILER_XLA_STREAM_EXECUTOR_CUDA_CUDA_GRAPH_H_
 
+#include <functional>
 #include <memory>
 
+#include "absl/functional/any_invocable.h"
 #include "third_party/gpus/cuda/include/driver_types.h"
+#include "tensorflow/compiler/xla/stream_executor/stream.h"
+#include "tensorflow/tsl/platform/statusor.h"
 
 namespace stream_executor {
 namespace gpu {
@@ -53,7 +57,28 @@ class OwnedCudaGraphExec
   // Bring std::unique_ptr constructors in scope.
   using std::unique_ptr<std::remove_pointer_t<cudaGraphExec_t>,
                         CudaGraphSupport::DestroyGraphExec>::unique_ptr;
+
+ public:
+  // Updates executable graph instance with a newly captured graph. Returns an
+  // error if the new graph is not compatible (see `cudaGraphExecUpdate`).
+  tsl::Status Update(OwnedCudaGraph graph);
+
+  // Launches captured graph on a given stream.
+  tsl::Status Launch(stream_executor::Stream* stream);
 };
+
+//===----------------------------------------------------------------------===//
+// CUDA Graph Helpers.
+//===----------------------------------------------------------------------===//
+
+// Captures all operations added to a `stream` by the `capture` function into
+// the cuda graph instance.
+tsl::StatusOr<OwnedCudaGraph> CaptureCudaGraph(
+    stream_executor::Stream* stream, absl::AnyInvocable<tsl::Status()> capture,
+    cudaStreamCaptureMode mode = cudaStreamCaptureModeThreadLocal);
+
+// Instantiates a captured cuda graph instance into a cuda graph executable.
+tsl::StatusOr<OwnedCudaGraphExec> InstantiateCudaGraph(OwnedCudaGraph graph);
 
 }  // namespace gpu
 }  // namespace stream_executor
