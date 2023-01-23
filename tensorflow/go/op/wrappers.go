@@ -50514,6 +50514,22 @@ func Switch(scope *Scope, data tf.Output, pred tf.Output) (output_false tf.Outpu
 	return op.Output(0), op.Output(1)
 }
 
+// Synchronizes the device this op is run on.
+//
+// Only GPU ops are asynchrous in TensorFlow, and so this only has an effect when
+// run on GPUs. On GPUs, this op synchronizes the GPU's compute stream.
+//
+// Returns the created operation.
+func SyncDevice(scope *Scope) (o *tf.Operation) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "SyncDevice",
+	}
+	return scope.AddOperation(opspec)
+}
+
 // TFRecordDatasetAttr is an optional argument to TFRecordDataset.
 type TFRecordDatasetAttr func(optionalAttr)
 
