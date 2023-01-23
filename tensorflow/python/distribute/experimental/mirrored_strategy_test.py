@@ -284,6 +284,46 @@ class StrategyDatasetTest(test_util.DTensorBaseTest):
     self.assertEqual(unpacked_images[0].shape, [local_batch_size, 8, 8, 3])
     self.assertEqual(unpacked_images[1].shape, [local_batch_size, 8, 8, 3])
 
+  def test_distribute_values_from_function(self):
+    array_value = np.array([3., 2., 1.])
+    def value_fn(ctx):
+      return array_value[ctx.replica_id_in_sync_group]
+    strategy = mirrored_strategy.MirroredStrategy(self.mesh)
+    distributed_values = (
+        strategy.experimental_distribute_values_from_function(
+            value_fn))
+    self.assertDTensorEqual(
+        constant_op.constant([3., 2.], dtype=dtypes.float64),
+        layout.Layout.batch_sharded(self.mesh, batch_dim='batch', rank=1),
+        distributed_values)
+
+  def test_distribute_values_from_function_with_nested_structure(self):
+    array_value = np.array([3., 2., 1.])
+    def value_fn(ctx):
+      value = array_value[ctx.replica_id_in_sync_group]
+      return {'a': value,
+              'b': constant_op.constant([value + 1.0, value + 2.0])}
+    strategy = mirrored_strategy.MirroredStrategy(self.mesh)
+    distributed_values = (
+        strategy.experimental_distribute_values_from_function(
+            value_fn))
+    self.assertIsInstance(distributed_values, dict)
+    self.assertDTensorEqual(
+        constant_op.constant([3., 2.], dtype=dtypes.float64),
+        layout.Layout.batch_sharded(self.mesh, batch_dim='batch', rank=1),
+        distributed_values['a'])
+    unpacked_a = d_api.unpack(distributed_values['a'])
+    # Note that this might have a slight behavior difference, the original
+    # mirrored strategy may return scalar for each PerReplica. The DTensor
+    # implementation is more strict and always ensures the PerReplica
+    # value has the same rank as the global-view Tensor.
+    self.assertAllClose(unpacked_a[0], [3.])
+    self.assertAllClose(unpacked_a[1], [2.])
+    self.assertDTensorEqual(
+        constant_op.constant([4., 5., 3., 4.], dtype=dtypes.float64),
+        layout.Layout.batch_sharded(self.mesh, batch_dim='batch', rank=1),
+        distributed_values['b'])
+
   # TODO(scottzhu): Add test for unpacking the dataset in tf.function
 
 if __name__ == '__main__':

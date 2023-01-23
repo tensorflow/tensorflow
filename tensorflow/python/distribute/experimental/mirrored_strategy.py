@@ -17,6 +17,7 @@
 This is an experiment to validate the viability of the DTensor API, and expose
 any potential feature gaps between the current API and the need.
 """
+import functools
 
 from tensorflow.dtensor.python import api as d_api
 from tensorflow.dtensor.python import config as d_config
@@ -26,7 +27,9 @@ from tensorflow.dtensor.python import layout
 from tensorflow.dtensor.python import mesh_util
 from tensorflow.python.data.experimental.ops import distribute
 from tensorflow.python.distribute import distribute_lib
+from tensorflow.python.distribute import distribute_utils
 from tensorflow.python.framework import ops
+from tensorflow.python.ops import array_ops
 from tensorflow.python.util import nest
 
 # Default dimension name used for the mesh created when user provide a list
@@ -258,6 +261,43 @@ class MirroredExtended(distribute_lib.StrategyExtendedV2):
         tf_data_service_config=None
     )
 
-  # TODO(scottzhu): Address all these methods in follow up cls.
-  # def _experimental_distribute_values_from_function(self, value_fn):
-  #   pass
+  def _experimental_distribute_values_from_function(self, value_fn):
+    per_replica_values = []
+    for replica_id in range(self._num_replicas_in_sync):
+      per_replica_values.append(value_fn(
+          distribute_lib.ValueContext(replica_id,
+                                      self._num_replicas_in_sync)))
+    # Instead of using the DistributeVariable, return a DTensor instead since
+    # the run() will expect a DTensor instance.
+    result = distribute_utils.regroup(per_replica_values, always_wrap=True)
+    map_fn = functools.partial(_convert_per_replica_to_dtensor, mesh=self._mesh)
+    return nest.map_structure(map_fn, result)
+
+
+def _convert_per_replica_to_dtensor(per_replica_value, mesh):
+  """Convert a PreReplica result to a DTensor instance.
+
+  Args:
+    per_replica_value: A PerReplica instance whose value will be converted
+      to DTensor.
+    mesh: The mesh used for layout creation.
+
+  Returns:
+    A DTensor instance that packed from per_replica_value with batch sharded
+      layout.
+  """
+  values = per_replica_value.values
+  rank = len(values[0].shape)
+
+  batch_layout = layout.Layout.batch_sharded(
+      mesh, batch_dim=_DEFAULT_BATCH_MESH_DIM_NAME, rank=rank)
+  if rank == 0:
+    result = []
+    # dtensor.pack requires each component to have same rank as the packed
+    # result. When the individual value is scalar, it needs to be expanded into
+    # 1D tensor.
+    for v in values:
+      result.append(array_ops.expand_dims_v2(v, axis=0))
+  else:
+    result = list(values)   # dtensor.pack requires a list as input.
+  return d_api.pack(result, batch_layout)
