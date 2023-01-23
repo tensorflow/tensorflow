@@ -225,10 +225,12 @@ xla_cc_test(
     deps = [
         ":arguments",
         ":async_runtime",
+        ":custom_call_registry",
         ":jit_executable",
         ":logical_result",
         ":results",
         ":types",
+        "//tensorflow/compiler/xla/mlir/runtime/transforms:compilation_pipeline_options",
         "//tensorflow/compiler/xla/mlir/runtime/transforms/tests:testlib_pipeline",
         "//tensorflow/compiler/xla/mlir/runtime/utils:async_runtime_api",
         "//tensorflow/tsl/platform:test",

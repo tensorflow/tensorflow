@@ -72,27 +72,28 @@ SnapshotStreamWriter::SnapshotStreamWriter(
           params.snapshot_path, params.stream_index)),
       checkpoints_directory_(
           CheckpointsDirectory(params.snapshot_path, params.stream_index)),
-      iterator_(std::move(iterator)),
-      snapshot_thread_(RunSnapshotThread()) {
+      iterator_(std::move(iterator)) {
   DCHECK_NE(iterator_, nullptr);
+  snapshot_thread_ = absl::WrapUnique(params_.env->StartThread(
+      /*thread_options=*/{}, /*name=*/"tf_data_service_snapshot_thread",
+      [this]() { WriteSnapshotAndLog(); }));
 }
 
-std::unique_ptr<Thread> SnapshotStreamWriter::RunSnapshotThread() {
-  auto snapshot_fn = [this]() TF_LOCKS_EXCLUDED(mu_) {
-    Status status = WriteSnapshot();
-    status = FinalizeStream(status);
-    mutex_lock l(mu_);
-    if (status.ok()) {
-      completed_ = true;
-    } else {
-      LOG(ERROR) << "Failed to write distributed tf.data snapshot stream at "
-                 << stream_directory_ << ": " << status;
-      completed_ = std::move(status);
-    }
-  };
-  return absl::WrapUnique(params_.env->StartThread(
-      /*thread_options=*/{}, /*name=*/"tf_data_service_snapshot_thread",
-      std::move(snapshot_fn)));
+void SnapshotStreamWriter::WriteSnapshotAndLog() TF_LOCKS_EXCLUDED(mu_) {
+  LOG(INFO) << "Writing distributed tf.data snapshot stream: "
+            << params_.DebugString();
+  Status status = WriteSnapshot();
+  status = FinalizeStream(status);
+  mutex_lock l(mu_);
+  if (!status.ok()) {
+    LOG(ERROR) << "Failed to write distributed tf.data snapshot stream: "
+               << params_.DebugString() << ". Status: " << status;
+    completed_ = std::move(status);
+    return;
+  }
+  LOG(INFO) << "Finished writing distributed tf.data snapshot stream: "
+            << params_.DebugString();
+  completed_ = true;
 }
 
 Status SnapshotStreamWriter::WriteSnapshot() TF_LOCKS_EXCLUDED(mu_) {
@@ -120,6 +121,8 @@ bool SnapshotStreamWriter::ShouldWriteChunk() const TF_LOCKS_EXCLUDED(mu_) {
 }
 
 Status SnapshotStreamWriter::WriteChunk() {
+  LOG(INFO) << "Writing distributed tf.data snapshot stream "
+            << params_.stream_index << ", chunk " << chunk_index_ << ".";
   std::string chunk_file_path = GetChunkFilePath();
   snapshot_util::TFRecordWriter writer(chunk_file_path, params_.compression);
   TF_RETURN_IF_ERROR(writer.Initialize(params_.env));
@@ -220,6 +223,9 @@ bool SnapshotStreamWriter::ShouldSave() const TF_LOCKS_EXCLUDED(mu_) {
 }
 
 Status SnapshotStreamWriter::Save() {
+  LOG(INFO) << "Checkpointing distributed tf.data snapshot writer. Stream "
+            << params_.stream_index << ", chunk " << chunk_index_
+            << ", chunk size in bytes: " << chunk_size_bytes_ << ".";
   std::string uncommitted_checkpoint_path;
   if (!params_.env->LocalTempFilename(&uncommitted_checkpoint_path)) {
     return errors::Internal(
@@ -277,6 +283,8 @@ Status SnapshotStreamWriter::Restore() {
   TF_RETURN_IF_ERROR(iterator_->Restore(serialized_tensors[0]));
   TF_RETURN_IF_ERROR(SyncCheckpointWithChunks(*checkpoint_index));
   chunk_index_ = *checkpoint_index + 1;
+  LOG(INFO) << "Restored distributed tf.data snapshot writer. Stream "
+            << params_.stream_index << ", chunk " << *checkpoint_index << ".";
   return OkStatus();
 }
 

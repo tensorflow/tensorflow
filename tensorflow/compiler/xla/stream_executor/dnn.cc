@@ -135,7 +135,7 @@ tsl::Status DnnSupport::GetConvolveRunners(
     const dnn::ConvolutionDescriptor& /*convolution_descriptor*/,
     bool /*use_fallback*/, ScratchAllocator* /*scratch_allocator*/,
     std::vector<std::unique_ptr<const dnn::ConvRunner>>* /*exec_plans*/) {
-  return port::UnimplementedError("GetConvolveRunners not implemented.");
+  return tsl::errors::Unimplemented("GetConvolveRunners not implemented.");
 }
 
 tsl::StatusOr<std::unique_ptr<const dnn::ConvRunner>>
@@ -146,7 +146,7 @@ DnnSupport::ConvolveRunnerFromDesc(
     const dnn::FilterDescriptor& filter_descriptor,
     const dnn::BatchDescriptor& output_descriptor,
     const dnn::ConvolutionDescriptor& convolution_descriptor) {
-  return port::UnimplementedError("ConvolveRunnerFromDesc not implemented.");
+  return tsl::errors::Unimplemented("ConvolveRunnerFromDesc not implemented.");
 }
 
 tsl::Status DnnSupport::GetFusedConvolveRunners(
@@ -161,7 +161,7 @@ tsl::Status DnnSupport::GetFusedConvolveRunners(
     const dnn::ConvolutionDescriptor& convolution_descriptor, bool use_fallback,
     dnn::ActivationMode activation_mode,
     std::vector<std::unique_ptr<const dnn::FusedConvRunner>>* out_exec_plans) {
-  return port::UnimplementedError("GetFusedConvolveRunners not implemented.");
+  return tsl::errors::Unimplemented("GetFusedConvolveRunners not implemented.");
 }
 
 tsl::Status DnnSupport::GetFusedMatmulRunners(
@@ -172,7 +172,7 @@ tsl::Status DnnSupport::GetFusedMatmulRunners(
     bool use_fallback,
     std::vector<std::unique_ptr<const dnn::FusedMatmulRunner>>*
         out_exec_plans) {
-  return port::UnimplementedError("GetFusedMatmulRunners not implemented.");
+  return tsl::errors::Unimplemented("GetFusedMatmulRunners not implemented.");
 }
 
 tsl::StatusOr<std::unique_ptr<const dnn::FusedConvRunner>>
@@ -187,7 +187,7 @@ DnnSupport::FusedConvolveRunnerFromDesc(
     const dnn::BatchDescriptor& output_descriptor,
     const dnn::ConvolutionDescriptor& convolution_descriptor,
     dnn::ActivationMode activation_mode) {
-  return port::UnimplementedError(
+  return tsl::errors::Unimplemented(
       "FusedConvolveRunnerFromDesc not implemented.");
 }
 
@@ -903,7 +903,7 @@ tsl::Status DnnSupport::DoCtcLoss(
     absl::Span<const int> input_lengths_data, DeviceMemoryBase costs_data,
     const RnnStateTensorDescriptor& grads_desc, DeviceMemoryBase grads_data,
     DeviceMemory<uint8_t> scratch_memory, int ctc_loss_algo_id) {
-  return port::UnimplementedError("CtcLoss not implemented");
+  return tsl::errors::Unimplemented("CtcLoss not implemented");
 }
 
 }  // namespace dnn

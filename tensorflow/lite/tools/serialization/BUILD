@@ -59,7 +59,7 @@ cc_binary(
         ":writer_lib",
         "//tensorflow/lite:framework",
         "//tensorflow/lite/core:framework",
-        "//tensorflow/lite/kernels:builtin_ops",
+        "//tensorflow/lite/core/kernels:builtin_ops",
     ],
 )
 
@@ -70,7 +70,7 @@ cc_binary(
         ":writer_lib",
         "//tensorflow/lite:framework",
         "//tensorflow/lite/core:framework",
-        "//tensorflow/lite/kernels:builtin_ops",
+        "//tensorflow/lite/core/kernels:builtin_ops",
     ],
 )
 
@@ -84,7 +84,7 @@ cc_test(
         "//tensorflow/lite/core:framework",
         "//tensorflow/lite/core/c:c_api_types",
         "//tensorflow/lite/core/c:common",
-        "//tensorflow/lite/kernels:builtin_ops",
+        "//tensorflow/lite/core/kernels:builtin_ops",
         "//tensorflow/lite/kernels:subgraph_test_util",
         "//tensorflow/lite/schema:schema_fbs",
         "//tensorflow/lite/testing:util",

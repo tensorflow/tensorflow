@@ -96,8 +96,6 @@ class TfLiteTelemetryProfiler : public TelemetryProfiler {
   explicit TfLiteTelemetryProfiler(TfLiteTelemetryProfilerStruct* profiler)
       : profiler_(profiler) {}
 
-  ~TfLiteTelemetryProfiler() override { delete profiler_; }
-
   void ReportTelemetryEvent(const char* event_name,
                             TelemetryStatusCode status) override;
   void ReportTelemetryOpEvent(const char* event_name, int64_t op_idx,

@@ -137,6 +137,43 @@ def to_function_type(fullargspec):
   return function_type_lib.FunctionType(parameters), default_values
 
 
+def to_input_signature(function_type):
+  """Extracts an input_signature from function_type instance."""
+  constrained_parameters = list(function_type.parameters.keys())
+
+  # self does not have a constraint in input_signature
+  if "self" in constrained_parameters:
+    constrained_parameters.pop(0)
+
+  # There are no parameters to constrain.
+  if not constrained_parameters:
+    return tuple()
+
+  constraints = []
+  for parameter_name in constrained_parameters:
+    parameter = function_type.parameters[parameter_name]
+    constraint = None
+    if parameter.type_constraint:
+      # Generate legacy constraint representation.
+      constraint = parameter.type_constraint.placeholder_value(
+          trace_type.InternalPlaceholderContext(unnest_only=True)
+      )
+      if any(
+          not isinstance(arg, tensor_spec.TensorSpec)
+          for arg in nest.flatten([constraint], expand_composites=True)):
+        # input_signature only supports TensorSpec composites.
+        constraint = None
+
+    if constraint is not None:
+      constraints.append(constraint)
+    else:
+      # input_signatures are contiguous (can optionally skip default values).
+      break
+
+  # If the list is empty then there was no input_signature specified.
+  return tuple(constraints) if constraints else None
+
+
 # TODO(b/214462107): Clean up and migrate to core/function when unblocked.
 class FunctionSpec(object):
   """Specification of how to bind arguments to a function."""
@@ -162,12 +199,17 @@ class FunctionSpec(object):
     _validate_signature(input_signature)
     _validate_python_function(python_function, input_signature)
 
-    is_bound_method = tf_inspect.isanytargetmethod(
-        python_function) or inspect.ismethod(python_function)
-    fullargspec = to_fullargspec(
-        function_type_lib.FunctionType.from_callable(python_function),
-        function_type_lib.FunctionType.get_default_values(python_function),
-        is_bound_method)
+    function_type = function_type_lib.FunctionType.from_callable(
+        python_function)
+    default_values = function_type_lib.FunctionType.get_default_values(
+        python_function)
+
+    is_bound_method = inspect.ismethod(python_function)
+
+    if input_signature is not None:
+      input_signature = tuple(input_signature)
+      function_type = function_type_lib.add_type_constraints(
+          function_type, input_signature, default_values)
 
     # Get the function's name.  Remove functools.partial wrappers if necessary.
     while isinstance(python_function, functools.partial):
@@ -175,32 +217,53 @@ class FunctionSpec(object):
     name = getattr(python_function, "__name__", "f")
 
     return FunctionSpec(
-        fullargspec,
+        function_type,
+        default_values,
         is_bound_method,
-        input_signature,
         is_pure=is_pure,
         jit_compile=jit_compile,
         name=name)
 
+  @classmethod
+  def from_fullargspec_and_signature(cls,
+                                     fullargspec,
+                                     is_bound_method,
+                                     input_signature,
+                                     is_pure=False,
+                                     name=None,
+                                     jit_compile=None):
+    """Construct FunctionSpec from legacy FullArgSpec format."""
+    function_type, default_values = to_function_type(fullargspec)
+    if input_signature:
+      input_signature = tuple(input_signature)
+      function_type = function_type_lib.add_type_constraints(
+          function_type, input_signature, default_values)
+
+    return FunctionSpec(function_type, default_values, is_bound_method, is_pure,
+                        name, jit_compile)
+
   def __init__(self,
-               fullargspec,
+               function_type,
+               default_values,
                is_bound_method,
-               input_signature,
                is_pure=False,
                name=None,
                jit_compile=None):
     """Constructs a FunctionSpec describing a python function.
 
     Args:
-      fullargspec: `tf_inspect.FullArgSpec` object describing the function.
+      function_type: A FunctionType describing the python function signature.
+      default_values: Dictionary mapping parameter names to default values.
       is_bound_method: True if the underlying function is a bound method.
-      input_signature: a signature of the function (None, if variable)
       is_pure: if True all input arguments (including variables and constants)
         will be converted to tensors and no variable changes allowed.
       name: Name of the function
       jit_compile: see `tf.function`.
     """
-    self._fullargspec = fullargspec
+    self._function_type = function_type
+    self._default_values = default_values
+    self._fullargspec = to_fullargspec(function_type, default_values,
+                                       is_bound_method)
     self._is_bound_method = is_bound_method
     self._is_pure = is_pure
     self._jit_compile = jit_compile
@@ -212,9 +275,9 @@ class FunctionSpec(object):
       # Remove `self`: default arguments shouldn't be matched to it.
       # TODO(b/127938157): Should this error out if there is no arg to
       # be removed?
-      args = fullargspec.args[1:]
+      args = self.fullargspec.args[1:]
     else:
-      args = fullargspec.args
+      args = self.fullargspec.args
 
     # A cache mapping from argument name to index, for canonicalizing
     # arguments that are called in a keyword-like fashion.
@@ -222,7 +285,7 @@ class FunctionSpec(object):
     self._arg_names = args
 
     # A cache mapping from arg index to default value, for canonicalization.
-    default_values = fullargspec.defaults
+    default_values = self.fullargspec.defaults
     offset = len(args) - len(default_values or [])
     self._arg_indices_to_default_values = {
         offset + index: default
@@ -231,6 +294,7 @@ class FunctionSpec(object):
     self._arg_indices_no_default_values = set(range(len(args))) - set(
         self._arg_indices_to_default_values)
 
+    input_signature = to_input_signature(function_type)
     _validate_signature(input_signature)
     if input_signature is None:
       self._input_signature = None
@@ -239,11 +303,6 @@ class FunctionSpec(object):
       self._flat_input_signature = tuple(
           nest.flatten(input_signature, expand_composites=True))
     self.validate_input_signature_with_argspec()
-
-    self._function_type, self._default_values = to_function_type(fullargspec)
-    if self.input_signature:
-      self._function_type = function_type_lib.add_type_constraints(
-          self.function_type, self.input_signature, self.default_values)
 
   @property
   def default_values(self):
@@ -312,17 +371,16 @@ class FunctionSpec(object):
     if captures is None:
       captures = dict()
 
-    # TODO(fmuham): canonicalize_function_inputs removes self arg.
-    if self.is_method:
-      args = (None, *args)
-
     kwargs = {
         function_type_lib.sanitize_arg_name(name): value
         for name, value in kwargs.items()
     }
 
-    _, function_type, type_context = function_type_lib.canonicalize_to_monomorphic(
-        args, kwargs, self.default_values, captures, self.function_type)
+    _, function_type, type_context = (
+        function_type_lib.canonicalize_to_monomorphic(
+            args, kwargs, self.default_values, captures, self.function_type
+        )
+    )
 
     return function_type, type_context
 
@@ -440,9 +498,6 @@ class FunctionSpec(object):
 
   def bind_function_inputs(self, args, kwargs):
     """Bind `args` and `kwargs` into a canonicalized signature args, kwargs."""
-    if self.is_method:
-      args = (None, *args)
-
     sanitized_kwargs = {
         function_type_lib.sanitize_arg_name(k): v for k, v in kwargs.items()
     }
@@ -452,10 +507,16 @@ class FunctionSpec(object):
                        f"{sorted(kwargs.keys())}, Sanitized: "
                        f"{sorted(sanitized_kwargs.keys())}")
 
-    bound_arguments = self.function_type.bind_with_defaults(
-        args, sanitized_kwargs, self.default_values)
-    args = bound_arguments.args[1:] if self.is_method else bound_arguments.args
-    return args, bound_arguments.kwargs
+    try:
+      bound_arguments = self.function_type.bind_with_defaults(
+          args, sanitized_kwargs, self.default_values)
+    except Exception as e:
+      raise TypeError(
+          f"Binding inputs to tf.function `{self._name}` failed due to `{e}`."
+          f"Received args: {args} and kwargs: {sanitized_kwargs} for signature:"
+          f" {self.function_type}."
+      ) from e
+    return bound_arguments.args, bound_arguments.kwargs
 
 
 def _validate_signature(signature):

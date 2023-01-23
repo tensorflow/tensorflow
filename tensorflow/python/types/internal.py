@@ -26,6 +26,13 @@ class NativeObject(object):
   """
 
 
+class TypeSpec(object):
+  """Interface for internal isinstance checks to framework/type_spec.py.
+
+  This helps to avoid circular dependencies.
+  """
+
+
 class TensorSpec(object):
   """Interface for internal isinstance checks to framework/tensor_spec.py.
 

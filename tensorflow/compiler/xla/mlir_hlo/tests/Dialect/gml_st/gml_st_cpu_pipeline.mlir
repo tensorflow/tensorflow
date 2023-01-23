@@ -3,11 +3,9 @@
 
 func.func @map_unary(%input: tensor<?x?xf32>, %init: tensor<?x?xf32>)
                   -> tensor<?x?xf32> {
-  %abs = linalg.map ins(%input:tensor<?x?xf32>) outs(%init:tensor<?x?xf32>)
-     (%input_elem: f32) {
-       %0 = math.absf %input_elem: f32
-       linalg.yield %0: f32
-     }
+  %abs = linalg.map { math.absf }
+           ins(%input:tensor<?x?xf32>)
+           outs(%init:tensor<?x?xf32>)
   func.return %abs : tensor<?x?xf32>
 }
 // CHECK-LABEL: func.func @map_unary
@@ -15,5 +13,5 @@ func.func @map_unary(%input: tensor<?x?xf32>, %init: tensor<?x?xf32>)
 // CHECK:            math.absf %{{.*}} : vector<8xf32>
 // CHECK:         gml_st.parallel
 // CHECK:           gml_st.parallel
-// CHECK:             arith.addi
+// CHECK:             affine.apply
 // CHECK:             math.absf %{{.*}} : f32

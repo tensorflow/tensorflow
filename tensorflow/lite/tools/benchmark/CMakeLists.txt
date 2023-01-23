@@ -29,6 +29,7 @@ list(APPEND TFLITE_BENCHMARK_SRCS
   ${TFLITE_SOURCE_DIR}/profiling/profile_summary_formatter.cc
   ${TFLITE_SOURCE_DIR}/profiling/root_profiler.cc
   ${TFLITE_SOURCE_DIR}/profiling/telemetry/profiler.cc
+  ${TFLITE_SOURCE_DIR}/profiling/telemetry/telemetry.cc
   ${TFLITE_SOURCE_DIR}/profiling/time.cc
   ${TFLITE_SOURCE_DIR}/tools/command_line_flags.cc
   ${TFLITE_SOURCE_DIR}/tools/delegates/default_execution_provider.cc

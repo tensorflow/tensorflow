@@ -202,7 +202,7 @@ static void InitializeCudaPlatform() {
   // registered platforms.
 
   std::unique_ptr<gpu::CudaPlatform> platform(new gpu::CudaPlatform);
-  SE_CHECK_OK(MultiPlatformManager::RegisterPlatform(std::move(platform)));
+  TF_CHECK_OK(MultiPlatformManager::RegisterPlatform(std::move(platform)));
 }
 
 }  // namespace stream_executor

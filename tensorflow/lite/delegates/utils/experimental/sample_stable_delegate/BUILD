@@ -15,6 +15,7 @@
 
 # A sample delegate that supports addition and subtraction only.
 load("//tensorflow/lite:build_def.bzl", "tflite_cc_shared_object", "tflite_copts", "tflite_linkopts_no_undefined")
+load("//tensorflow/lite/core/shims:cc_library_with_tflite.bzl", "cc_library_with_tflite")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -24,7 +25,7 @@ package(
     licenses = ["notice"],
 )
 
-cc_library(
+cc_library_with_tflite(
     name = "sample_stable_delegate",
     testonly = True,
     srcs = [
@@ -34,16 +35,16 @@ cc_library(
         "sample_stable_delegate.h",
     ],
     copts = tflite_copts(),
-    deps = [
-        "//tensorflow/lite:framework",
-        "//tensorflow/lite:kernel_api",
-        "//tensorflow/lite/c:c_api",
-        "//tensorflow/lite/c:c_api_experimental",
-        "//tensorflow/lite/c:c_api_types",
-        "//tensorflow/lite/c:common",
+    tflite_deps = [
+        "//tensorflow/lite/core/shims:builtin_ops",
+        "//tensorflow/lite/core/shims:builtin_op_data",
+        "//tensorflow/lite/core/shims:c_api",
+        "//tensorflow/lite/core/shims:c_api_experimental",
+        "//tensorflow/lite/core/shims:c_api_types",
+        "//tensorflow/lite/core/shims:common",
         "//tensorflow/lite/delegates/utils:simple_opaque_delegate",
-        "//tensorflow/lite/kernels:builtin_ops",
-        "//tensorflow/lite/kernels:kernel_util",
+    ],
+    deps = [
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
     ],
@@ -66,20 +67,19 @@ cc_test(
     ],
 )
 
-cc_library(
+cc_library_with_tflite(
     name = "sample_stable_delegate_external",
     testonly = True,
     srcs = [
         "sample_stable_delegate_external.cc",
     ],
     copts = tflite_copts(),
-    deps = [
+    tflite_deps = [
         ":sample_stable_delegate",
-        "//tensorflow/lite/c:c_api",
-        "//tensorflow/lite/c:c_api_experimental",
-        "//tensorflow/lite/c:c_api_types",
-        "//tensorflow/lite/c:common",
-        "//tensorflow/lite/core/experimental/acceleration/configuration/c:stable_delegate",
+        "//tensorflow/lite/core/shims:c_api",
+        "//tensorflow/lite/core/shims:c_api_experimental",
+        "//tensorflow/lite/core/shims:c_api_types",
+        "//tensorflow/lite/core/shims:common",
         "//tensorflow/lite/core/shims:delegate_plugin",
         "//tensorflow/lite/delegates/utils:simple_opaque_delegate",
         "//tensorflow/lite/delegates/utils/experimental/stable_delegate:stable_delegate_inferface",

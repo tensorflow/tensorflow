@@ -37,24 +37,24 @@ limitations under the License.
 #include "tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.h"
 #include "tensorflow/compiler/xla/stream_executor/lib/env.h"
 #include "tensorflow/compiler/xla/stream_executor/lib/error.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/human_readable.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/stacktrace.h"
 #include "tensorflow/compiler/xla/stream_executor/lib/static_threadlocal.h"
 #include "tensorflow/compiler/xla/stream_executor/lib/threadpool.h"
 #include "tensorflow/compiler/xla/stream_executor/platform/logging.h"
 #include "tensorflow/compiler/xla/stream_executor/platform/port.h"
+#include "tensorflow/tsl/platform/env.h"
+#include "tensorflow/tsl/platform/stacktrace.h"
 
 bool FLAGS_gpuexec_cuda_driver_inject_init_error = false;
 bool FLAGS_gpuexec_cuda_sync_around_driver_calls = false;
 bool FLAGS_gpuexec_cuda_device_0_only = false;
 
-#define RETURN_IF_CUDA_RES_ERROR(expr, ...)                            \
-  do {                                                                 \
-    CUresult _res = (expr);                                            \
-    if (ABSL_PREDICT_FALSE(_res != CUDA_SUCCESS)) {                    \
-      return port::InternalError(absl::StrCat(                         \
-          __VA_ARGS__, ": ", ::stream_executor::gpu::ToString(_res))); \
-    }                                                                  \
+#define RETURN_IF_CUDA_RES_ERROR(expr, ...)                                 \
+  do {                                                                      \
+    CUresult _res = (expr);                                                 \
+    if (ABSL_PREDICT_FALSE(_res != CUDA_SUCCESS)) {                         \
+      return tsl::errors::Internal(__VA_ARGS__, ": ",                       \
+                                   ::stream_executor::gpu::ToString(_res)); \
+    }                                                                       \
   } while (0)
 
 #define FAIL_IF_CUDA_RES_ERROR(expr, ...)                   \
@@ -100,7 +100,7 @@ CUcontext CurrentContext() {
 // and wait for completion.
 port::ThreadPool* GetDriverExecutor() {
   static port::ThreadPool* thread_pool = new port::ThreadPool(
-      port::Env::Default(), port::ThreadOptions(), "cuda_driver", 1);
+      port::Env::Default(), tsl::ThreadOptions(), "cuda_driver", 1);
   return thread_pool;
 }
 
@@ -122,7 +122,7 @@ namespace {
 // Call cuCtxtSynchronize and crash if it doesn't succeed.
 void SynchronizeOrDie() {
   FAIL_IF_CUDA_RES_ERROR(cuCtxSynchronize(),
-                         "Synchronize fail: ", port::CurrentStackTrace());
+                         "Synchronize fail: ", tsl::CurrentStackTrace());
 }
 
 struct ThreadLocalData {
@@ -543,8 +543,8 @@ bool DeviceOptionsToContextFlags(const DeviceOptions& device_options,
                                               : 0] = '\0';
       LOG(ERROR) << "error log buffer (" << error_log_buffer_bytes
                  << " bytes): " << error_log_buffer.data();
-      ret = port::InternalError(
-          absl::StrCat("Failed to load PTX text as a module: ", ToString(res)));
+      ret = tsl::errors::Internal("Failed to load PTX text as a module: ",
+                                  ToString(res));
       notification.Notify();
     }
 
@@ -563,7 +563,7 @@ bool DeviceOptionsToContextFlags(const DeviceOptions& device_options,
 /* static */ tsl::Status GpuDriver::LoadHsaco(GpuContext* context,
                                               const char* hsaco_contents,
                                               CUmodule* module) {
-  return port::InternalError(
+  return tsl::errors::Internal(
       "Feature not supported on CUDA platform (LoadHsaco)");
 }
 
@@ -735,7 +735,7 @@ bool DeviceOptionsToContextFlags(const DeviceOptions& device_options,
     // LOG(INFO) because this isn't always important to users (e.g. BFCAllocator
     // implements a retry if the first allocation fails).
     LOG(INFO) << "failed to allocate "
-              << port::HumanReadableNumBytes::ToString(bytes) << " (" << bytes
+              << tsl::strings::HumanReadableNumBytes(bytes) << " (" << bytes
               << " bytes) from device: " << ToString(res);
     return nullptr;
   }
@@ -847,7 +847,7 @@ bool DeviceOptionsToContextFlags(const DeviceOptions& device_options,
   CUresult res = cuMemAddressReserve(&base, bytes, /*alignment=*/0,
                                      /*addr=*/0, /*flags=*/0);
   if (res != CUDA_SUCCESS) {
-    return port::InternalError(
+    return tsl::errors::Internal(
         absl::StrFormat("error reserving %d bytes of virtual GPU memory: %s",
                         bytes, ToString(res)));
   }
@@ -875,8 +875,8 @@ bool DeviceOptionsToContextFlags(const DeviceOptions& device_options,
   CUresult res = cuMemGetAllocationGranularity(
       &granularity, &props, CU_MEM_ALLOC_GRANULARITY_MINIMUM);
   if (res != CUDA_SUCCESS) {
-    return port::InternalError(absl::StrCat(
-        "failed to get min allocation granularity: ", ToString(res)));
+    return tsl::errors::Internal("failed to get min allocation granularity: ",
+                                 ToString(res));
   }
   return granularity;
 }
@@ -898,7 +898,7 @@ GpuDriver::CreateMemoryHandle(GpuContext* context, uint64_t bytes) {
   CUmemGenericAllocationHandle mem_handle;
   CUresult res = cuMemCreate(&mem_handle, bytes, &props, 0);
   if (res != CUDA_SUCCESS) {
-    return port::InternalError(
+    return tsl::errors::Internal(
         absl::StrFormat("failed to create memory allocation of size %d: %s",
                         bytes, ToString(res)));
   }
@@ -931,7 +931,7 @@ GpuDriver::CreateMemoryHandle(GpuContext* context, uint64_t bytes) {
   CUresult res =
       cuMemMap(va, handle.bytes, /*offset=*/0, handle.handle, /*flags=*/0);
   if (res != CUDA_SUCCESS) {
-    return port::InternalError(absl::StrFormat(
+    return tsl::errors::Internal(absl::StrFormat(
         "Failed to map %d bytes at %d: %s", handle.bytes, va, ToString(res)));
   }
 
@@ -950,7 +950,7 @@ GpuDriver::CreateMemoryHandle(GpuContext* context, uint64_t bytes) {
       LOG(ERROR)
           << "Failed to unmap memory in GpuDriver::MapMemory error path.";
     }
-    return port::InternalError(absl::StrFormat(
+    return tsl::errors::Internal(absl::StrFormat(
         "Failed to set read/write access on memory mapped at %d: %s", va,
         ToString(res)));
   }
@@ -1043,7 +1043,7 @@ GpuDriver::CreateMemoryHandle(GpuContext* context, uint64_t bytes) {
   CUresult res = cuCtxSynchronize();
   if (res != CUDA_SUCCESS) {
     LOG(ERROR) << "could not synchronize on CUDA context: " << ToString(res)
-               << " :: " << port::CurrentStackTrace();
+               << " :: " << tsl::CurrentStackTrace();
     return false;
   }
 

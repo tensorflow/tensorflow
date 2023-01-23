@@ -574,6 +574,7 @@ const llvm::DenseSet<mlir::TypeID> &MlirPreferredOps() {
     TypeID::get<TF::CeilOp>(),
     TypeID::get<TF::CheckNumericsOp>(),
     TypeID::get<TF::CosOp>(),
+    TypeID::get<TF::TanOp>(),
     TypeID::get<TF::DiagPartOp>(),
     TypeID::get<TF::EinsumOp>(),
     TypeID::get<TF::ExpOp>(),

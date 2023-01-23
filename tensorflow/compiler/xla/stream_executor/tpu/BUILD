@@ -158,6 +158,7 @@ cc_library(
         "//tensorflow/tsl/platform:casts",
         "//tensorflow/tsl/platform:types",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/functional:any_invocable",
         "@com_google_absl//absl/synchronization",
     ],
     alwayslink = True,
@@ -205,6 +206,7 @@ cc_library(
         "//tensorflow/tsl/platform:casts",
         "//tensorflow/tsl/platform:types",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/functional:any_invocable",
         "@com_google_absl//absl/synchronization",
     ],
 )
@@ -248,6 +250,7 @@ cc_library(
         "//tensorflow/tsl/platform:types",
         "@com_google_absl//absl/cleanup",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/functional:any_invocable",
         "@com_google_absl//absl/synchronization",
     ],
 )

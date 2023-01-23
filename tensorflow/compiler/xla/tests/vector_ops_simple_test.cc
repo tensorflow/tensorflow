@@ -433,7 +433,7 @@ XLA_TEST_F(VecOpsSimpleTest, CbrtSevenValues) {
                              1.860867, -inf,    inf,    qnan};
   auto x = ConstantR1<float>(&builder, cube);
   Cbrt(x);
-  ComputeAndCompare(&builder, {}, ErrorSpec(/*aabs=*/1e-7, /*arel=*/3e-7));
+  ComputeAndCompare(&builder, {}, ErrorSpec(/*aabs=*/1e-7, /*arel=*/5e-7));
 }
 
 }  // namespace

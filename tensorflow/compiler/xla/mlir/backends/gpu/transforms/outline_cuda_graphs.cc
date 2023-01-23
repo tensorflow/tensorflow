@@ -126,8 +126,12 @@ static std::vector<CaptureSequence> CollectCaptureSequences(
 
     for (Operation& op : *block) {
       FailureOr<OpCapturePattern::Capture> matched = match(&op);
-      // Append matched operation to the current sequence.
-      if (succeeded(matched)) seq->emplace_back(&op, *matched);
+      // Append matched operation to the current sequence. We only append
+      // operations that must be moved into the graph capture function (ops with
+      // side effects), and add cloneable operations later.
+      if (succeeded(matched) && *matched == kMove)
+        seq->emplace_back(&op, *matched);
+
       // Skip unsupported operation and start a new sequence.
       if (failed(matched) && !seq->empty()) seq = &seqs.emplace_back();
     }
@@ -197,16 +201,17 @@ static std::vector<CaptureSequence> CollectCaptureSequences(
       return dominance.properlyDominates(a, b);
     });
 
-    for (Block* block : blocks) {
+    for (Block* block : llvm::reverse(blocks)) {
       // Sort operations according to their original position in the block.
       llvm::sort(cloneable[block], [](Operation* a, Operation* b) {
         return a->isBeforeInBlock(b);
       });
 
       // Prepend all cloneable operations to the discovered ops sequence.
-      for (Operation* op : llvm::reverse(cloneable[block])) {
-        seq.insert(seq.begin(), {op, OpCapturePattern::Capture::kClone});
-      }
+      auto cloned = llvm::map_range(cloneable[block], [](Operation* op) {
+        return std::make_pair(op, OpCapturePattern::Capture::kClone);
+      });
+      seq.insert(seq.begin(), cloned.begin(), cloned.end());
     }
   }
 
@@ -238,14 +243,15 @@ static std::vector<Value> GetGraphCaptureFuncArgs(const CaptureSequence& seq) {
 
 // Given a sequence of operations, outline them into a graph capture function
 // and replace them with an XLA Gpu runtime function call.
-static void Outline(CustomCallDeclarations& custom_calls,
-                    CaptureSequence& seq) {
+static LogicalResult Outline(unsigned ordinal,
+                             CustomCallDeclarations& custom_calls,
+                             CaptureSequence& seq) {
   // Only operations that have to be moved into the graph capture function
   // represent Gpu computations.
   unsigned num_move_captures = llvm::count_if(seq, [](auto capture) {
     return capture.second == OpCapturePattern::Capture::kMove;
   });
-  if (num_move_captures < 2) return;
+  if (num_move_captures < 2) return failure();
 
   SymbolTable& sym_table = custom_calls.sym_table();
   MLIRContext* ctx = sym_table.getOp()->getContext();
@@ -268,7 +274,7 @@ static void Outline(CustomCallDeclarations& custom_calls,
 
   // Export graph capture function to the runtime.
   b.setInsertionPoint(func);
-  b.create<runtime::ExportOp>(func);
+  b.create<runtime::ExportOp>(func, ordinal);
 
   // Create a custom call declaration corresponding to the outlined graph
   // capture function.
@@ -317,6 +323,8 @@ static void Outline(CustomCallDeclarations& custom_calls,
   // Add a return operation to the graph capture function.
   b.setInsertionPointToEnd(body);
   b.create<func::ReturnOp>(ValueRange());
+
+  return success();
 }
 
 //===----------------------------------------------------------------------===//
@@ -331,9 +339,10 @@ void OutlineCudaGraphsPass::runOnOperation() {
   patterns.emplace_back(new ConstantOpCapture());
   patterns.emplace_back(new ViewOpCapture());
 
+  unsigned ordinal = 1;  // entry point will be exported with ordinal 0
   for (auto& seq : CollectCaptureSequences(getAnalysis<DominanceInfo>(),
                                            getOperation(), patterns)) {
-    Outline(custom_calls, seq);
+    if (succeeded(Outline(ordinal, custom_calls, seq))) ordinal++;
   }
 }
 

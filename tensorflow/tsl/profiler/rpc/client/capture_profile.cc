@@ -186,9 +186,9 @@ Status NewSession(absl::string_view repository_root,
 
 }  // namespace
 
-Status Trace(const std::string& logdir, int num_tracing_attempts,
-             RemoteProfilerSessionManagerOptions& opts,
-             bool is_cloud_tpu_session) {
+Status CaptureRemoteTrace(const std::string& logdir, int num_tracing_attempts,
+                          RemoteProfilerSessionManagerOptions& opts,
+                          bool is_cloud_tpu_session) {
   DCHECK_GT(opts.profiler_options().duration_ms(), 0);
   DCHECK(!opts.service_addresses().empty());
 

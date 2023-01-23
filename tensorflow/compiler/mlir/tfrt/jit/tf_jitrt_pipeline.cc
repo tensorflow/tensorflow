@@ -98,7 +98,6 @@ void CreateTfJitRtPipeline(OpPassManager& pm,
   pm.addPass(mlir::TF::CreateTFFunctionalControlFlowToRegions());
 
   // Transform TF operation to HLO.
-  pm.addPass(mlir::mhlo::createLegalizeTFControlFlowPass());
   pm.addNestedPass<FuncOp>(mlir::mhlo::createLegalizeTFPass());
 
   if (options.legalize_i1_tensors) {
@@ -133,12 +132,10 @@ void CreateTfJitRtPipeline(OpPassManager& pm,
   pm.addNestedPass<mlir::func::FuncOp>(mlir::mhlo::createLegalizeSortPass());
   pm.addNestedPass<FuncOp>(xla::cpu::createLegalizeCollectiveOpsPass());
 
-  // // Apply MHLO to THLO legalization before lowering to Linalg
-  pm.addNestedPass<mlir::func::FuncOp>(
-      mlir::mhlo::createLegalizeMHLOToTHLOPass());
-  pm.addNestedPass<mlir::func::FuncOp>(
-      mlir::gml_st::createTransformReverseForCpuPass());
-
+  if (options.vectorize) {
+    pm.addNestedPass<mlir::func::FuncOp>(
+        mlir::mhlo::createLegalizeMHLOToTHLOPass());
+  }
   pm.addNestedPass<FuncOp>(mlir::mhlo::createLegalizeHloToLinalgPass(
       /*enablePrimitiveOps=*/options.vectorize));
   pm.addPass(mlir::mhlo::createLegalizeToArithmeticPass());

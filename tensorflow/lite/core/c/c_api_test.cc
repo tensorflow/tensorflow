@@ -899,6 +899,61 @@ TEST(CApiSimple, OpaqueContextGetNodeAndRegistration) {
   TfLiteOpaqueDelegateDelete(opaque_delegate);
 }
 
+TEST(CApiSimple, TfLiteOpaqueContextResizeTensor) {
+  struct DelegatePrepareStatus {
+    bool prepared;
+  };
+  DelegatePrepareStatus delegate_state{false};
+
+  TfLiteModel* model =
+      TfLiteModelCreateFromFile("tensorflow/lite/testdata/add.bin");
+
+  TfLiteOpaqueDelegateBuilder opaque_delegate_builder{};
+  opaque_delegate_builder.data = &delegate_state;
+  opaque_delegate_builder.Prepare = [](TfLiteOpaqueContext* opaque_context,
+                                       TfLiteOpaqueDelegate* opaque_delegate,
+                                       void* data) {
+    DelegatePrepareStatus* delegate_state =
+        static_cast<DelegatePrepareStatus*>(data);
+    delegate_state->prepared = true;
+
+    TfLiteOpaqueTensor* tensor =
+        TfLiteOpaqueContextGetOpaqueTensor(opaque_context, 0);
+    EXPECT_EQ(4, TfLiteOpaqueTensorNumDims(tensor));
+    EXPECT_EQ(1, TfLiteOpaqueTensorDim(tensor, 0));
+    EXPECT_EQ(8, TfLiteOpaqueTensorDim(tensor, 1));
+    EXPECT_EQ(8, TfLiteOpaqueTensorDim(tensor, 2));
+    EXPECT_EQ(3, TfLiteOpaqueTensorDim(tensor, 3));
+
+    TfLiteIntArray* new_dims = TfLiteIntArrayCreate(3);
+    new_dims->data[0] = 2;
+    new_dims->data[1] = 3;
+    new_dims->data[2] = 4;
+    EXPECT_EQ(kTfLiteOk, TfLiteOpaqueContextResizeTensor(opaque_context, tensor,
+                                                         new_dims));
+
+    EXPECT_EQ(new_dims->size, TfLiteOpaqueTensorNumDims(tensor));
+    EXPECT_EQ(new_dims->data[0], TfLiteOpaqueTensorDim(tensor, 0));
+    EXPECT_EQ(new_dims->data[1], TfLiteOpaqueTensorDim(tensor, 1));
+    EXPECT_EQ(new_dims->data[2], TfLiteOpaqueTensorDim(tensor, 2));
+    return kTfLiteOk;
+  };
+
+  TfLiteOpaqueDelegate* opaque_delegate =
+      TfLiteOpaqueDelegateCreate(&opaque_delegate_builder);
+
+  TfLiteInterpreterOptions* options = TfLiteInterpreterOptionsCreate();
+  TfLiteInterpreterOptionsAddDelegate(options, opaque_delegate);
+  TfLiteInterpreter* interpreter = TfLiteInterpreterCreate(model, options);
+  TfLiteModelDelete(model);
+
+  // The delegate should have been applied.
+  EXPECT_TRUE(delegate_state.prepared);
+  TfLiteInterpreterOptionsDelete(options);
+  TfLiteInterpreterDelete(interpreter);
+  TfLiteOpaqueDelegateDelete(opaque_delegate);
+}
+
 TEST(CApiSimple, ValidModel) {
   std::ifstream model_file("tensorflow/lite/testdata/add.bin");
 

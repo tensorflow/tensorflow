@@ -1188,7 +1188,39 @@ class DefunTest(test.TestCase, parameterized.TestCase):
     with self.assertRaises((TypeError, ValueError)):
       graph_function('Not a Tensor.')
 
-  def testSwapImplementationWithGrapplerPlugin(self):
+  @parameterized.parameters([
+      (
+          quarantine.defun_with_attributes(
+              attributes={
+                  'api_implements': 'random_boost',
+                  'api_preferred_device': 'CPU',
+              }
+          ),
+          quarantine.defun_with_attributes(
+              attributes={
+                  'api_implements': 'random_boost',
+                  'api_preferred_device': 'GPU',
+              }
+          ),
+      ),
+      (
+          polymorphic_function.function(
+              experimental_attributes={
+                  'api_implements': 'random_boost',
+                  'api_preferred_device': 'CPU',
+              }
+          ),
+          polymorphic_function.function(
+              experimental_attributes={
+                  'api_implements': 'random_boost',
+                  'api_preferred_device': 'GPU',
+              }
+          ),
+      ),
+  ])
+  def testSwapImplementationWithGrapplerPlugin(
+      self, cpu_decorator, gpu_decorator
+  ):
     # Set the min_graph_nodes to -1 since the graph in this test is too small,
     # and will be ignored by grappler if don't set this.
     rewrites = rewriter_config_pb2.RewriterConfig()
@@ -1201,17 +1233,11 @@ class DefunTest(test.TestCase, parameterized.TestCase):
     with context.graph_mode(), self.cached_session(
         config=config_proto, graph=ops.Graph(), use_gpu=True):
 
-      @quarantine.defun_with_attributes(attributes={
-          'api_implements': 'random_boost',
-          'api_preferred_device': 'CPU'
-      })
+      @cpu_decorator
       def cpu_boost(x):
         return math_ops.add(x, 2.0)
 
-      @quarantine.defun_with_attributes(attributes={
-          'api_implements': 'random_boost',
-          'api_preferred_device': 'GPU'
-      })
+      @gpu_decorator
       def gpu_boost(x):
         return math_ops.add(x, 4.0)
 

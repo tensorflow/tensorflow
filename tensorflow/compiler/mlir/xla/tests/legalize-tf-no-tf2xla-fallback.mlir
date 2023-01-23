@@ -2351,7 +2351,7 @@ func.func @acos_dynamic(%arg0: tensor<*xf32>) -> tensor<*xf32> {
 // CHECK-LABEL: @tan
 // CHECK-SAME: (%[[ARG:.*]]: tensor<2xf32>) -> tensor<2xf32>
 func.func @tan(%arg : tensor<2xf32>) -> tensor<2xf32> {
-  // CHECK: chlo.tan %[[ARG]] : tensor<2xf32>
+  // CHECK: mhlo.tan %[[ARG]] : tensor<2xf32>
   %result = "tf.Tan"(%arg) : (tensor<2xf32>) -> tensor<2xf32>
   func.return %result : tensor<2xf32>
 }
@@ -2361,7 +2361,7 @@ func.func @tan(%arg : tensor<2xf32>) -> tensor<2xf32> {
 // CHECK-LABEL: @tan_unranked
 // CHECK-SAME: (%[[ARG:.*]]: tensor<*xf32>) -> tensor<*xf32>
 func.func @tan_unranked(%arg : tensor<*xf32>) -> tensor<*xf32> {
-  // CHECK: chlo.tan %[[ARG]] : tensor<*xf32>
+  // CHECK: mhlo.tan %[[ARG]] : tensor<*xf32>
   %result = "tf.Tan"(%arg) : (tensor<*xf32>) -> tensor<*xf32>
   func.return %result : tensor<*xf32>
 }

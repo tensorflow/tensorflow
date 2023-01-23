@@ -505,6 +505,12 @@ class PjRtClient {
   virtual StatusOr<std::unique_ptr<PjRtBuffer>> CreateUninitializedBuffer(
       const Shape& shape, PjRtDevice* device) = 0;
 
+  // Creates buffer that carries an error future without allocating memory.
+  virtual StatusOr<std::unique_ptr<PjRtBuffer>> CreateErrorBuffer(
+      Status error, const Shape& shape, PjRtDevice* device) {
+    return Unimplemented("CreateErrorBuffer not supported.");
+  }
+
   // A client may want to create a buffer, and hand the buffer to other PjRt
   // methods, before the data to store in the buffer is available to the client.
   // This is supported using CreateBuffersForAsyncHostToDevice, which returns an

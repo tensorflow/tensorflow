@@ -1143,7 +1143,7 @@ class DnnSupport {
 
   // Gets the version of the backing library, as a VersionInfo object.
   virtual tsl::StatusOr<VersionInfo> GetVersion() {
-    return port::UnimplementedError(
+    return tsl::errors::Unimplemented(
         "DnnSupport::GetVersion not implemented on this platform.");
   }
 
@@ -1370,7 +1370,7 @@ class DnnSupport {
       DeviceMemoryBase output_data, ScratchAllocator* scratch_allocator,
       const dnn::AlgorithmConfig& algorithm_config,
       dnn::ProfileResult* output_profile_result) {
-    return port::UnimplementedError(
+    return tsl::errors::Unimplemented(
         "DnnSupport::DoFusedConvolve not implemented on this platform.");
   }
 

@@ -20,15 +20,18 @@ limitations under the License.
 #include "pybind11/pybind11.h"
 #include "pybind11/pytypes.h"
 #include "pybind11/stl.h"
+#include "pybind11_abseil/absl_casters.h"  // from @pybind11_abseil
 #include "pybind11_abseil/status_casters.h"  // from @pybind11_abseil
 #include "tensorflow/compiler/mlir/quantization/tensorflow/exported_model.pb.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/python/quantize_model.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/python/quantize_model_wrapper.h"
+#include "tensorflow/compiler/mlir/quantization/tensorflow/quantization_options.pb.h"
 #include "tensorflow/python/lib/core/pybind11_lib.h"
 
 namespace {
 
 using ::tensorflow::quantization::ExportedModel;
+using ::tensorflow::quantization::QuantizationOptions;
 
 // Serializes an ExportedModel. Raises python ValueError if serialization fails.
 std::string Serialize(const ExportedModel& exported_model) {
@@ -65,6 +68,28 @@ struct type_caster<ExportedModel> {
     // release() prevents the reference count from decreasing upon the
     // destruction of py::bytes and returns a raw python object handle.
     return py::bytes(Serialize(src)).release();
+  }
+};
+
+// Python -> cpp conversion for `QuantizationOptions`. Accepts a serialized
+// protobuf string and deserializes into an instance of `QuantizationOptions`.
+template <>
+struct type_caster<QuantizationOptions> {
+ public:
+  PYBIND11_TYPE_CASTER(QuantizationOptions, const_name("QuantizationOptions"));
+
+  bool load(handle src, const bool convert) {
+    auto caster = make_caster<absl::string_view>();
+    // The user should have passed a valid python string.
+    if (!caster.load(src, convert)) {
+      return false;
+    }
+
+    const absl::string_view quantization_opts_serialized =
+        cast_op<absl::string_view>(std::move(caster));
+
+    // NOLINTNEXTLINE: Explicit std::string conversion required for OSS.
+    return value.ParseFromString(std::string(quantization_opts_serialized));
   }
 };
 
@@ -115,14 +140,15 @@ PYBIND11_MODULE(pywrap_quantize_model, m) {
       [](const absl::string_view saved_model_path,
          const std::vector<std::string>& signature_keys,
          const std::unordered_set<std::string>& tags,
-         const absl::string_view quant_opts_serialized)
+         const QuantizationOptions& quant_opts)
           -> absl::StatusOr<ExportedModel> {
         return tensorflow::quantization::internal::QuantizeQatModel(
-            saved_model_path, signature_keys, tags, quant_opts_serialized);
+            saved_model_path, signature_keys, tags, quant_opts);
       },
       R"pbdoc(
       Returns serialized ExportedModel that contains the quantized model's
-      GraphDef and metadata.
+      GraphDef and metadata. The user should pass a serialized
+      `QuantizationOptions` for the `quant_opts` argument.
 
       Raises `StatusNotOk` exception if when the run was unsuccessful.
     )pbdoc");
@@ -132,14 +158,15 @@ PYBIND11_MODULE(pywrap_quantize_model, m) {
       [](const absl::string_view saved_model_path,
          const std::vector<std::string>& signature_keys,
          const std::unordered_set<std::string>& tags,
-         const absl::string_view quant_opts_serialized)
+         const QuantizationOptions& quant_opts)
           -> absl::StatusOr<ExportedModel> {
         return tensorflow::quantization::internal::QuantizePtqDynamicRange(
-            saved_model_path, signature_keys, tags, quant_opts_serialized);
+            saved_model_path, signature_keys, tags, quant_opts);
       },
       R"pbdoc(
       Returns serialized ExportedModel that contains the quantized model's
-      GraphDef and metadata.
+      GraphDef and metadata. The user should pass a serialized
+      `QuantizationOptions` for the `quant_opts` argument.
 
       Raises `StatusNotOk` exception if when the run was unsuccessful.
     )pbdoc");
@@ -149,15 +176,17 @@ PYBIND11_MODULE(pywrap_quantize_model, m) {
       [](const absl::string_view saved_model_path,
          const std::vector<std::string>& signature_keys,
          const std::unordered_set<std::string>& tags,
-         const absl::string_view quant_opts_serialized)
+         const QuantizationOptions& quant_opts)
           -> absl::StatusOr<ExportedModel> {
         return tensorflow::quantization::internal::
             QuantizePtqModelPreCalibration(saved_model_path, signature_keys,
-                                           tags, quant_opts_serialized);
+                                           tags, quant_opts);
       },
       R"pbdoc(
       Returns serialized ExportedModel that contains the model's GraphDef and
-      metadata. The GraphDef contains extra ops required for calibration.
+      metadata. The GraphDef contains extra ops required for calibration. The
+      user should pass a serialized `QuantizationOptions` for the `quant_opts`
+      argument.
 
       Raises `StatusNotOk` exception if when the run was unsuccessful.
     )pbdoc");
@@ -167,15 +196,16 @@ PYBIND11_MODULE(pywrap_quantize_model, m) {
       [](const absl::string_view saved_model_path,
          const std::vector<std::string>& signature_keys,
          const std::unordered_set<std::string>& tags,
-         const absl::string_view quant_opts_serialized)
+         const QuantizationOptions& quant_opts)
           -> absl::StatusOr<ExportedModel> {
         return tensorflow::quantization::internal::
             QuantizePtqModelPostCalibration(saved_model_path, signature_keys,
-                                            tags, quant_opts_serialized);
+                                            tags, quant_opts);
       },
       R"pbdoc(
       Returns serialized ExportedModel that contains the quantized model's
-      GraphDef and metadata.
+      GraphDef and metadata. The user should pass a serialized
+      `QuantizationOptions` for the `quant_opts` argument.
 
       Raises `StatusNotOk` exception if when the run was unsuccessful.
     )pbdoc");

@@ -180,6 +180,7 @@ DECL_CONVERT_OP(SparseToDense);
 DECL_CONVERT_OP(OneHot);
 DECL_CONVERT_OP(ArgMax);
 DECL_CONVERT_OP(FakeQuant);
+DECL_CONVERT_OP(While);
 
 #undef DECL_CONVERT_OP
 
@@ -2869,103 +2870,14 @@ LogicalResult ConvertTFLHardSwishOp::matchAndRewrite(
 LogicalResult ConvertTFLSinOp::matchAndRewrite(
     Operation* op, PatternRewriter& rewriter) const {
   auto tfl_sin_op = cast<TFL::SinOp>(op);
-  Location loc = op->getLoc();
-  Value input = tfl_sin_op.getX();
-  RankedTensorType input_ty = input.getType().dyn_cast<RankedTensorType>();
-  ShapedType output_ty =
+  auto input = tfl_sin_op.getX();
+  ShapedType output_type =
       tfl_sin_op.getResult().getType().dyn_cast<ShapedType>();
 
-  Type input_ety = input_ty.getElementType();
-  Type output_ety = output_ty.getElementType();
+  llvm::Optional<Value> result = convertSinOp(rewriter, op, input, output_type);
+  if (!result) return failure();
 
-  if (!input_ty || !output_ty) return failure();
-
-  if (input_ety != output_ety) {
-    return rewriter.notifyMatchFailure(op,
-                                       "input/output element type must match");
-  }
-
-  bool input_is_fp = input_ty.getElementType().isF32();
-  bool output_is_fp = output_ty.getElementType().isF32();
-
-  if (!input_is_fp || !output_is_fp) {
-    return rewriter.notifyMatchFailure(op, "input/result must be fp32");
-  }
-
-  // To perform a sin operation we remap the sin domain to be over a single
-  // period of the function, remapping to the domain of the table function.
-  // We then remap the range of the table function to map to the range of the
-  // sin operation.
-
-  // 1. Normalize the period of the domain from [0, 2π) to [0, 1).
-  auto fp_scalar_ty = RankedTensorType::get({}, rewriter.getF32Type());
-  Value fp_scale = rewriter.create<tosa::ConstOp>(
-      loc, fp_scalar_ty,
-      DenseElementsAttr::get(fp_scalar_ty, {static_cast<float>(0.5 / M_PI)}));
-
-  // 2. Remap the periodic behavior of the domain to line up within [0, 1).
-  Value fp_scaled = CreateOpAndInfer<tosa::MulOp>(
-      rewriter, loc, input_ty, input, fp_scale, rewriter.getI32IntegerAttr(0));
-  auto floored =
-      CreateOpAndInfer<tosa::FloorOp>(rewriter, loc, input_ty, fp_scaled);
-  auto repeated = CreateOpAndInfer<tosa::SubOp>(rewriter, loc, input_ty,
-                                                fp_scaled, floored);
-
-  // 3. Scale and translate the normalized domain to the table domain. This
-  // includes a translating and scaling to [-int16_max, int16_max] and casting
-  // to an i16.
-  Value one = rewriter.create<tosa::ConstOp>(
-      loc, fp_scalar_ty, DenseElementsAttr::get(fp_scalar_ty, {1.0f}));
-
-  Value two = rewriter.create<tosa::ConstOp>(
-      loc, fp_scalar_ty, DenseElementsAttr::get(fp_scalar_ty, {2.0f}));
-  auto scale_up = CreateOpAndInfer<tosa::MulOp>(
-      rewriter, loc, input_ty, repeated, two, rewriter.getI32IntegerAttr(0));
-  auto translate =
-      CreateOpAndInfer<tosa::SubOp>(rewriter, loc, input_ty, scale_up, one);
-
-  Value int_limit = rewriter.create<tosa::ConstOp>(
-      loc, fp_scalar_ty,
-      DenseElementsAttr::get(
-          fp_scalar_ty,
-          {static_cast<float>(std::numeric_limits<int16_t>::max())}));
-  auto int_scaled =
-      CreateOpAndInfer<tosa::MulOp>(rewriter, loc, input_ty, translate,
-                                    int_limit, rewriter.getI32IntegerAttr(0));
-
-  auto int16_ty = input_ty.clone(rewriter.getIntegerType(16));
-  auto casted =
-      CreateOpAndInfer<tosa::CastOp>(rewriter, loc, int16_ty, int_scaled);
-
-  // 4. Compute the lookup table using the range of [-255, 255] for sin.
-  llvm::SmallVector<int16_t> values;
-  const int num_values = 513;
-  values.resize(num_values, 0);
-  // First and last values should be 0;
-  for (int i = 1; i < num_values - 1; ++i)
-    values[i] = std::numeric_limits<int16_t>::max() *
-                sin(static_cast<float>(i) * 2.0 * M_PI / (num_values - 1.0));
-
-  auto table_ty =
-      RankedTensorType::get({num_values}, rewriter.getIntegerType(16));
-  Value table = rewriter.create<tosa::ConstOp>(
-      loc, table_ty, DenseElementsAttr::get(table_ty, llvm::ArrayRef(values)));
-
-  auto table_result_ty = input_ty.clone(rewriter.getIntegerType(32));
-  auto table_result = CreateOpAndInfer<tosa::TableOp>(
-      rewriter, loc, table_result_ty, casted, table);
-
-  // 5. The range of table is a 23-bit two's compliment value. Normalize the
-  // range by casting to an fp32 and dividing by 2^22.
-  auto table_result_fp =
-      CreateOpAndInfer<CastOp>(rewriter, loc, input_ty, table_result);
-  auto output_scale = rewriter.create<ConstOp>(
-      loc, fp_scalar_ty,
-      DenseElementsAttr::get(
-          fp_scalar_ty,
-          {static_cast<float>(1.0 / static_cast<float>(1 << 22))}));
-  CreateReplaceOpAndInfer<MulOp>(rewriter, op, output_ty, table_result_fp,
-                                 output_scale, rewriter.getI32IntegerAttr(0));
+  rewriter.replaceOp(op, {result.value()});
   return success();
 }
 
@@ -3726,6 +3638,38 @@ LogicalResult ConvertTFLFakeQuantOp::matchAndRewrite(
   return success();
 }
 
+// Clone block, convert yield from TFL to TOSA
+static void inlineWhileCase(Region& srcRegion, Region& dstRegion,
+                            PatternRewriter& rewriter) {
+  rewriter.cloneRegionBefore(srcRegion, &dstRegion.back());
+  rewriter.eraseBlock(&dstRegion.back());
+
+  Block* headBlock = &dstRegion.front();
+
+  auto yield = cast<mlir::TFL::YieldOp>(headBlock->getTerminator());
+  rewriter.setInsertionPoint(yield);
+  rewriter.create<mlir::tosa::YieldOp>(yield.getLoc(), yield.getOperands());
+  rewriter.eraseOp(yield);
+}
+
+LogicalResult ConvertTFLWhileOp::matchAndRewrite(
+    Operation* op, PatternRewriter& rewriter) const {
+  auto tfl_while_op = cast<TFL::WhileOp>(op);
+
+  auto while_op = rewriter.create<mlir::tosa::WhileOp>(
+      op->getLoc(), op->getResultTypes(), op->getOperands());
+
+  rewriter.createBlock(&while_op.getCond());
+  rewriter.createBlock(&while_op.getBody());
+
+  inlineWhileCase(tfl_while_op.getCond(), while_op.getCond(), rewriter);
+  inlineWhileCase(tfl_while_op.getBody(), while_op.getBody(), rewriter);
+
+  rewriter.replaceOp(tfl_while_op, while_op.getResults());
+
+  return success();
+}
+
 LogicalResult LegalizeTFL::initialize(MLIRContext* context) {
   RewritePatternSet patterns(context);
   mlir::tosa::populateLegalizeTFLPatterns(context, patterns);
@@ -3855,6 +3799,7 @@ void populateLegalizeTFLPatterns(MLIRContext* ctx,
   DEF_PATTERN_INSERT(TFLOneHot);
   DEF_PATTERN_INSERT(TFLArgMax);
   DEF_PATTERN_INSERT(TFLFakeQuant);
+  DEF_PATTERN_INSERT(TFLWhile);
 }
 
 // Creates an instance of the TensorFlow Lite dialect LegalizeTFL pass.

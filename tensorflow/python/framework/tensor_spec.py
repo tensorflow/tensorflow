@@ -216,6 +216,9 @@ class TensorSpec(DenseSpec, type_spec.BatchableTypeSpec,
 
   def placeholder_value(self, placeholder_context):
     """Generates a graph_placholder with the given TensorSpec information."""
+    if placeholder_context.unnest_only:
+      return self
+
     name = self.name or placeholder_context.naming_scope
     context_graph = placeholder_context.context_graph
     placeholder = self._graph_placeholder(context_graph, name=name)

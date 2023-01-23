@@ -35,38 +35,38 @@ struct TPUReorderReplicateAndPartitionedInputsPass
 LogicalResult ReorderReplicateAndPartitionedInputs(
     TF::TPUReplicatedInputOp replicated_input) {
   if (!llvm::all_of(replicated_input.getInputs(), [](Value input) {
-        return llvm::isa_and_nonnull<TF::TPUPartitionedInputOp>(
+        return llvm::isa_and_nonnull<TF::TPUPartitionedInputV2Op>(
             input.getDefiningOp());
       }))
     return replicated_input.emitOpError()
-           << "expects all inputs from 'tf.TPUPartitionedInput' ops";
+           << "expects all inputs from 'tf.TPUPartitionedInputV2' ops";
 
-  auto first_partitioned_input = llvm::cast<TF::TPUPartitionedInputOp>(
+  auto first_partitioned_input = llvm::cast<TF::TPUPartitionedInputV2Op>(
       replicated_input.getOperand(0).getDefiningOp());
   std::optional<::llvm::StringRef> xla_sharding =
       first_partitioned_input.get_XlaSharding();
-  int64_t partition_dim = first_partitioned_input.getPartitionDim();
+  auto partition_dims = first_partitioned_input.getPartitionDims();
   size_t num_cores_per_replica = first_partitioned_input.getNumOperands();
 
   for (auto operand : replicated_input.getInputs().drop_front()) {
     auto partitioned_input =
-        llvm::cast<TF::TPUPartitionedInputOp>(operand.getDefiningOp());
+        llvm::cast<TF::TPUPartitionedInputV2Op>(operand.getDefiningOp());
     std::optional<::llvm::StringRef> op_xla_sharding =
         partitioned_input.get_XlaSharding();
-    int64_t op_partition_dim = partitioned_input.getPartitionDim();
-    // Abort if TPUPartitionedInput(s) do not have the same attributes.
-    if (partition_dim != op_partition_dim)
+    auto op_partition_dims = partitioned_input.getPartitionDims();
+    // Abort if TPUPartitionedInputV2(s) do not have the same attributes.
+    if (!llvm::equal(partition_dims, op_partition_dims))
       return partitioned_input->emitOpError()
-             << "expects partition_dim = " << partition_dim << " but found "
-             << op_partition_dim;
+             << "expects partition_dims = " << partition_dims << " but found "
+             << op_partition_dims;
     if (partitioned_input.getNumOperands() != num_cores_per_replica)
       return partitioned_input->emitOpError()
              << "expects " << num_cores_per_replica << " operands but found "
              << partitioned_input.getNumOperands();
     if (xla_sharding != op_xla_sharding)
       return replicated_input.emitOpError()
-             << "expects all inputs from 'tf.TPUPartitionedInput' ops to have "
-                "identical XLA sharding";
+             << "expects all inputs from 'tf.TPUPartitionedInputV2' ops to "
+                "have identical XLA sharding";
   }
 
   // 2D Matrix to store per core per replica operands. The matrix dimensions are
@@ -78,7 +78,7 @@ LogicalResult ReorderReplicateAndPartitionedInputs(
 
   // Collect all operands in the 2D matrix.
   for (auto operand : replicated_input.getInputs()) {
-    auto pi = llvm::cast<TF::TPUPartitionedInputOp>(operand.getDefiningOp());
+    auto pi = llvm::cast<TF::TPUPartitionedInputV2Op>(operand.getDefiningOp());
     for (auto& pi_operand : pi->getOpOperands()) {
       unsigned core_id = pi_operand.getOperandNumber();
       operands_per_replica_per_core[core_id].push_back(pi_operand.get());
@@ -86,7 +86,7 @@ LogicalResult ReorderReplicateAndPartitionedInputs(
   }
 
   // Create new `tf.TPUReplicatedInput` ops feeding into one
-  // `tf.TPUPartitionedInput` op.
+  // `tf.TPUPartitionedInputV2` op.
   OpBuilder builder(replicated_input);
   llvm::SmallVector<Value, 4> operands_per_core;
   for (const auto& operands_per_replica : operands_per_replica_per_core) {
@@ -96,7 +96,7 @@ LogicalResult ReorderReplicateAndPartitionedInputs(
     operands_per_core.push_back(replicate_op);
   }
 
-  auto pi = builder.create<TF::TPUPartitionedInputOp>(
+  auto pi = builder.create<TF::TPUPartitionedInputV2Op>(
       first_partitioned_input.getLoc(), replicated_input.getType(),
       operands_per_core, first_partitioned_input->getAttrs());
   replicated_input.replaceAllUsesWith(pi.getOutput());
@@ -107,7 +107,7 @@ void TPUReorderReplicateAndPartitionedInputsPass::runOnOperation() {
   auto result =
       getOperation()->walk([](TF::TPUReplicatedInputOp replicated_input) {
         if (llvm::none_of(replicated_input.getInputs(), [](Value input) {
-              return llvm::isa_and_nonnull<TF::TPUPartitionedInputOp>(
+              return llvm::isa_and_nonnull<TF::TPUPartitionedInputV2Op>(
                   input.getDefiningOp());
             }))
           return WalkResult::advance();
@@ -124,7 +124,7 @@ void TPUReorderReplicateAndPartitionedInputsPass::runOnOperation() {
     return;
   }
 
-  getOperation()->walk([](TF::TPUPartitionedInputOp partitioned_input) {
+  getOperation()->walk([](TF::TPUPartitionedInputV2Op partitioned_input) {
     if (partitioned_input->use_empty()) partitioned_input->erase();
   });
 }

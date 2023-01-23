@@ -32,6 +32,8 @@ using Status = tsl::Status;  // TENSORFLOW_STATUS_OK
 #define SE_ASSERT_OK(val) ASSERT_EQ(::tsl::Status(), (val))
 
 // Define some canonical error helpers.
+// TODO(jlebar): These are being removed in favor of e.g.
+// tsl::errors::Unimplemented.
 inline tsl::Status UnimplementedError(absl::string_view message) {
   return tsl::Status(error::UNIMPLEMENTED, message);
 }

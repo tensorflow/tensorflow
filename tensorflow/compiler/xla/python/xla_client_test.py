@@ -1169,6 +1169,12 @@ def TestFactory(xla_backend,
       ops.Abs(ops.Constant(c, arr))
       self._ExecuteAndCompareClose(c, expected=[np.abs(arr)])
 
+    def testTanF32(self):
+      c = self._NewComputation()
+      arr = NumpyArrayF32([-0.2, 3.3, 12.1, 0.1, 0.0001])
+      ops.Tan(ops.Constant(c, arr))
+      self._ExecuteAndCompareClose(c, expected=[np.tan(arr)])
+
     def testTanhF32(self):
       c = self._NewComputation()
       arr = NumpyArrayF32([-0.2, 3.3, 12.1, 0.1, 0.0001])

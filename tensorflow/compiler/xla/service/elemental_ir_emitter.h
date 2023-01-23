@@ -161,6 +161,9 @@ class ElementalIrEmitter : public IrBuilderMixin<ElementalIrEmitter> {
   virtual StatusOr<llvm::Value*> EmitCos(PrimitiveType prim_type,
                                          llvm::Value* value);
 
+  virtual StatusOr<llvm::Value*> EmitTan(PrimitiveType prim_type,
+                                         llvm::Value* value);
+
   virtual StatusOr<llvm::Value*> EmitExp(PrimitiveType prim_type,
                                          llvm::Value* value,
                                          absl::string_view name);

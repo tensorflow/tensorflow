@@ -304,9 +304,7 @@ void ExecuteOp::getOpAttrs(
 // ConstDenseTensorOp
 //===----------------------------------------------------------------------===//
 
-OpFoldResult ConstDenseTensorOp::fold(ArrayRef<Attribute> operands) {
-  return getValue();
-}
+OpFoldResult ConstDenseTensorOp::fold(FoldAdaptor) { return getValue(); }
 
 //===----------------------------------------------------------------------===//
 // CoreRTTensorHandleToFallbackTensorOp

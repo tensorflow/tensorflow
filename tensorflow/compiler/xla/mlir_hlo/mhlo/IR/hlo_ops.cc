@@ -439,6 +439,7 @@ INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(SignOp)
 INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(SineOp)
 INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(SqrtOp)
 INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(SubtractOp)
+INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(TanOp)
 INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(TanhOp)
 INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(XorOp)
 
@@ -625,8 +626,8 @@ LogicalResult AfterAllOp::inferReturnTypes(
 // ConstantOp
 //===----------------------------------------------------------------------===//
 
-OpFoldResult ConstantOp::fold(ArrayRef<Attribute> operands) {
-  assert(operands.empty() && "constant has no operands");
+OpFoldResult ConstantOp::fold(FoldAdaptor adaptor) {
+  assert(adaptor.getOperands().empty() && "constant has no operands");
 
   // Return the held attribute value.
   return getValue();
@@ -1411,7 +1412,7 @@ LogicalResult GetDimensionSizeOp::inferReturnTypes(
 }
 
 /// Fold get_dimension_size when the said shape dimension is a constant.
-OpFoldResult GetDimensionSizeOp::fold(ArrayRef<Attribute> attrs) {
+OpFoldResult GetDimensionSizeOp::fold(FoldAdaptor) {
   RankedTensorType type = getOperand().getType().dyn_cast<RankedTensorType>();
   if (!type) return {};
 
@@ -1464,7 +1465,7 @@ void IotaOp::getCanonicalizationPatterns(RewritePatternSet& results,
   results.add<IotaBroadcast>(context);
 }
 
-OpFoldResult IotaOp::fold(ArrayRef<Attribute> operands) {
+OpFoldResult IotaOp::fold(FoldAdaptor /*adaptor*/) {
   auto dimension = getIotaDimension();
   auto resultTy = getResult().getType().cast<ShapedType>();
   if (resultTy.hasRank() && resultTy.getDimSize(dimension) == 1) {
@@ -1638,7 +1639,7 @@ LogicalResult DynamicUpdateSliceOp::inferReturnTypeComponents(
       adaptor.getStartIndices(), inferredReturnShapes);
 }
 
-OpFoldResult DynamicUpdateSliceOp::fold(ArrayRef<Attribute> operands) {
+OpFoldResult DynamicUpdateSliceOp::fold(FoldAdaptor /*adaptor*/) {
   auto operandShape = this->getOperand().getType().cast<RankedTensorType>();
   auto updateShape = this->getUpdate().getType().cast<RankedTensorType>();
 
@@ -1983,7 +1984,8 @@ void ConvertOp::build(OpBuilder& builder, OperationState& result, Value operand,
   build(builder, result, resultTy, operand);
 }
 
-OpFoldResult ConvertOp::fold(ArrayRef<Attribute> operands) {
+OpFoldResult ConvertOp::fold(FoldAdaptor adaptor) {
+  auto operands = adaptor.getOperands();
   auto operandTy = getOperand().getType().cast<TensorType>();
   auto resultTy = getResult().getType().cast<TensorType>();
   if (operandTy == resultTy) return getOperand();
@@ -2268,8 +2270,9 @@ LogicalResult BatchNormGradOp::inferReturnTypeComponents(
     SmallVectorImpl<ShapedTypeComponents>& inferredReturnShapes) {
   BatchNormGradOp::Adaptor adaptor(operands, attributes, regions);
   return hlo::inferBatchNormGradOp(
-      location, adaptor.getOperand(), adaptor.getScale(),
-      adaptor.getFeatureIndex(), inferredReturnShapes);
+      location, adaptor.getOperand(), adaptor.getScale(), adaptor.getMean(),
+      adaptor.getVariance(), adaptor.getGradOutput(), adaptor.getFeatureIndex(),
+      inferredReturnShapes);
 }
 
 //===----------------------------------------------------------------------===//
@@ -2282,7 +2285,7 @@ LogicalResult BatchNormTrainingOp::inferReturnTypeComponents(
     SmallVectorImpl<ShapedTypeComponents>& inferredReturnShapes) {
   BatchNormTrainingOp::Adaptor adaptor(operands, attributes, regions);
   return hlo::inferBatchNormTrainingOp(
-      location, adaptor.getOperand(), adaptor.getScale(),
+      location, adaptor.getOperand(), adaptor.getScale(), adaptor.getOffset(),
       adaptor.getFeatureIndex(), inferredReturnShapes);
 }
 
@@ -2296,15 +2299,16 @@ LogicalResult BatchNormInferenceOp::inferReturnTypeComponents(
     SmallVectorImpl<ShapedTypeComponents>& inferredReturnShapes) {
   BatchNormInferenceOp::Adaptor adaptor(operands, attributes, regions);
   return hlo::inferBatchNormInferenceOp(
-      location, adaptor.getOperand(), adaptor.getScale(),
-      adaptor.getFeatureIndex(), inferredReturnShapes);
+      location, adaptor.getOperand(), adaptor.getScale(), adaptor.getOffset(),
+      adaptor.getMean(), adaptor.getVariance(), adaptor.getFeatureIndex(),
+      inferredReturnShapes);
 }
 
 //===----------------------------------------------------------------------===//
 // BitcastOp
 //===----------------------------------------------------------------------===//
 
-OpFoldResult BitcastOp::fold(ArrayRef<Attribute>) {
+OpFoldResult BitcastOp::fold(FoldAdaptor) {
   if (getResult().getType() != getOperand().getType()) {
     return {};
   }
@@ -2355,7 +2359,8 @@ LogicalResult BitcastConvertOp::verify() {
 // BroadcastOp
 //===----------------------------------------------------------------------===//
 
-OpFoldResult BroadcastOp::fold(ArrayRef<Attribute> attrs) {
+OpFoldResult BroadcastOp::fold(FoldAdaptor adaptor) {
+  auto attrs = adaptor.getOperands();
   auto type = getType().cast<RankedTensorType>();
   auto sizesType = getBroadcastSizes().getType();
   if (sizesType.getNumElements() == 0) {
@@ -2438,7 +2443,8 @@ LogicalResult BroadcastInDimOp::verify() {
                                      getBroadcastDimensions(), getResult());
 }
 
-OpFoldResult BroadcastInDimOp::fold(ArrayRef<Attribute> attrs) {
+OpFoldResult BroadcastInDimOp::fold(FoldAdaptor adaptor) {
+  auto attrs = adaptor.getOperands();
   auto type = getType().cast<RankedTensorType>();
   if (type == getOperand().getType()) {
     auto broadcastValues = getBroadcastDimensions().getValues<int64_t>();
@@ -2618,12 +2624,14 @@ class DynamicBroadcastInDimAllDimsNonExpanding
       return rewriter.notifyMatchFailure(op, "requires ranked result type");
 
     if (!op.getKnownNonexpandingDimensions().has_value() ||
-        op.getKnownNonexpandingDimensions()->size() != resultType.getRank())
+        op.getKnownNonexpandingDimensions()->size() != resultType.getRank()) {
       return rewriter.notifyMatchFailure(
           op, "known_nonexpanding_dimensions don't cover all output dims");
+    }
 
-    rewriter.replaceOpWithNewOp<tensor::CastOp>(op, resultType,
-                                                op.getOperand());
+    auto cast = rewriter.createOrFold<tensor::CastOp>(op.getLoc(), resultType,
+                                                      op.getOperand());
+    rewriter.replaceOp(op, cast);
     return success();
   }
 };
@@ -2660,7 +2668,7 @@ LogicalResult ComplexOp::inferReturnTypes(
   return hlo::inferComplexOp(location, adaptor.getLhs(), inferredReturnTypes);
 }
 
-OpFoldResult ComplexOp::fold(ArrayRef<Attribute> operands) {
+OpFoldResult ComplexOp::fold(FoldAdaptor) {
   auto realOp = getOperand(0).getDefiningOp<mhlo::RealOp>();
   auto imagOp = getOperand(1).getDefiningOp<mhlo::ImagOp>();
   if (realOp && imagOp && realOp.getOperand() == imagOp.getOperand()) {
@@ -2682,7 +2690,7 @@ LogicalResult ImagOp::inferReturnTypes(
   return hlo::inferImagOp(location, adaptor.getOperand(), inferredReturnTypes);
 }
 
-OpFoldResult ImagOp::fold(ArrayRef<Attribute> operands) {
+OpFoldResult ImagOp::fold(FoldAdaptor) {
   if (auto complexOp = getOperand().getDefiningOp<mhlo::ComplexOp>()) {
     return complexOp.getOperand(1);
   }
@@ -2715,7 +2723,7 @@ LogicalResult RealOp::inferReturnTypes(
   return hlo::inferRealOp(location, adaptor.getOperand(), inferredReturnTypes);
 }
 
-OpFoldResult RealOp::fold(ArrayRef<Attribute> operands) {
+OpFoldResult RealOp::fold(FoldAdaptor) {
   if (auto complexOp = getOperand().getDefiningOp<mhlo::ComplexOp>()) {
     return complexOp.getOperand(0);
   }
@@ -2867,7 +2875,8 @@ static Attribute foldConcatenate(ConcatenateOp* op,
   return {};
 }
 
-OpFoldResult ConcatenateOp::fold(ArrayRef<Attribute> operands) {
+OpFoldResult ConcatenateOp::fold(FoldAdaptor adaptor) {
+  auto operands = adaptor.getOperands();
   if (getNumOperands() == 1) return getOperand(0);
 
   ShapedType type = getResult().getType().cast<ShapedType>();
@@ -3322,7 +3331,7 @@ LogicalResult MapOp::inferReturnTypeComponents(
                          adaptor.getComputation(), inferredReturnShapes);
 }
 
-OpFoldResult MapOp::fold(ArrayRef<Attribute> operands) {
+OpFoldResult MapOp::fold(FoldAdaptor) {
   mlir::Block& bb = getComputation().front();
   mlir::Operation& frontOp = bb.front();
 
@@ -3389,7 +3398,7 @@ LogicalResult RecvOp::verify() {
 // CopyOp
 //===----------------------------------------------------------------------===//
 
-OpFoldResult CopyOp::fold(ArrayRef<Attribute> operands) { return getOperand(); }
+OpFoldResult CopyOp::fold(FoldAdaptor) { return getOperand(); }
 
 //===----------------------------------------------------------------------===//
 // ReduceWindowOp
@@ -3445,8 +3454,9 @@ bool isSplatZero(SplatElementsAttr attr) {
   return false;
 }
 
-LogicalResult ReduceWindowOp::fold(ArrayRef<Attribute> operands,
+LogicalResult ReduceWindowOp::fold(FoldAdaptor adaptor,
                                    SmallVectorImpl<OpFoldResult>& results) {
+  auto operands = adaptor.getOperands();
   const auto emptyOrAllEq = [](const Optional<DenseIntElementsAttr> opt,
                                const int64_t n) {
     return !opt.has_value() ||
@@ -3554,7 +3564,8 @@ void ReduceWindowOp::build(
 // We intend to verify the following properties
 //  P2. exponent_bits >= 1
 LogicalResult ReducePrecisionOp::verify() {
-  return hlo::verifyReducePrecisionOp(getLoc(), getExponentBits());
+  return hlo::verifyReducePrecisionOp(getLoc(), getExponentBits(),
+                                      getMantissaBits());
 }
 
 //===----------------------------------------------------------------------===//
@@ -3618,7 +3629,8 @@ static Attribute foldReverseHelper(DenseElementsAttr& attr, ShapedType& type,
   return DenseElementsAttr::get(type, result);
 }
 
-OpFoldResult ReverseOp::fold(ArrayRef<Attribute> operands) {
+OpFoldResult ReverseOp::fold(FoldAdaptor adaptor) {
+  auto operands = adaptor.getOperands();
   Value input = getOperand();
 
   // No dimensions to reverse.
@@ -3652,7 +3664,7 @@ OpFoldResult ReverseOp::fold(ArrayRef<Attribute> operands) {
 // ReduceOp
 //===----------------------------------------------------------------------===//
 
-LogicalResult ReduceOp::fold(ArrayRef<Attribute> operands,
+LogicalResult ReduceOp::fold(FoldAdaptor /*adaptor*/,
                              SmallVectorImpl<OpFoldResult>& results) {
   // No dimensions to reduce.
   if (getDimensions().getNumElements() == 0) {
@@ -4205,7 +4217,8 @@ LogicalResult XlaRngGetAndUpdateStateOp::inferReturnTypes(
 // SelectOp
 //===----------------------------------------------------------------------===//
 
-OpFoldResult SelectOp::fold(ArrayRef<Attribute> operands) {
+OpFoldResult SelectOp::fold(FoldAdaptor adaptor) {
+  auto operands = adaptor.getOperands();
   if (getOnTrue() == getOnFalse()) {
     return getOnTrue();
   }
@@ -4265,7 +4278,8 @@ LogicalResult SetDimensionSizeOp::verify() {
   return verifyDimAttr(*this);
 }
 
-OpFoldResult SetDimensionSizeOp::fold(ArrayRef<Attribute> operands) {
+OpFoldResult SetDimensionSizeOp::fold(FoldAdaptor adaptor) {
+  auto operands = adaptor.getOperands();
   DenseElementsAttr input = operands[0].dyn_cast_or_null<DenseElementsAttr>();
   if (input) return input;
 
@@ -4390,7 +4404,8 @@ OpFoldResult padOpFoldHelper(DenseElementsAttr input, DenseElementsAttr padding,
   return DenseElementsAttr::get(returnType, result);
 }
 
-OpFoldResult PadOp::fold(ArrayRef<Attribute> operands) {
+OpFoldResult PadOp::fold(FoldAdaptor adaptor) {
+  auto operands = adaptor.getOperands();
   // If all padding is zero then it is an identity pad.
   auto isZero = [](const APInt& i) { return i == 0; };
   if (llvm::all_of(getEdgePaddingLow().getValues<APInt>(), isZero) &&
@@ -4660,7 +4675,8 @@ LogicalResult ReshapeOp::verify() {
   return hlo::verifyReshapeOp(getLoc(), getOperand(), getResult());
 }
 
-OpFoldResult ReshapeOp::fold(ArrayRef<Attribute> operands) {
+OpFoldResult ReshapeOp::fold(FoldAdaptor adaptor) {
+  auto operands = adaptor.getOperands();
   if (getOperand().getType() == getType()) {
     return getOperand();
   }
@@ -4895,7 +4911,8 @@ double logistic(double d) { return 1.0 / (1.0 + std::exp(-d)); }
 
 // NOLINTBEGIN(bugprone-macro-parentheses)
 #define UNARY_FOLDER(Op, Func)                                                \
-  OpFoldResult Op::fold(ArrayRef<Attribute> attrs) {                          \
+  OpFoldResult Op::fold(FoldAdaptor adaptor) {                                \
+    auto attrs = adaptor.getOperands();                                       \
     /* AbsOp could take complex but return float */                           \
     if (getElementTypeOrSelf(getOperation()->getOperand(0).getType()) !=      \
         getElementTypeOrSelf(getType())) {                                    \
@@ -4909,14 +4926,16 @@ double logistic(double d) { return 1.0 / (1.0 + std::exp(-d)); }
   }
 
 #define UNARY_FOLDER_INT(Op, Func)                                          \
-  OpFoldResult Op::fold(ArrayRef<Attribute> attrs) {                        \
+  OpFoldResult Op::fold(FoldAdaptor adaptor) {                              \
+    auto attrs = adaptor.getOperands();                                     \
     if (getElementTypeOrSelf(getType()).isa<IntegerType>())                 \
       return UnaryFolder<Op, IntegerType, APInt, Func<APInt>>(this, attrs); \
     return {};                                                              \
   }
 
 #define UNARY_FOLDER_FLOAT(Op, Func)                                 \
-  OpFoldResult Op::fold(ArrayRef<Attribute> attrs) {                 \
+  OpFoldResult Op::fold(FoldAdaptor adaptor) {                       \
+    auto attrs = adaptor.getOperands();                              \
     if (getElementTypeOrSelf(getType()).isa<FloatType>())            \
       return UnaryFolder<Op, FloatType, APFloat, Func>(this, attrs); \
     return {};                                                       \
@@ -4938,7 +4957,8 @@ double logistic(double d) { return 1.0 / (1.0 + std::exp(-d)); }
       return result;                                                 \
     }                                                                \
   };                                                                 \
-  OpFoldResult Op::fold(ArrayRef<Attribute> attrs) {                 \
+  OpFoldResult Op::fold(FoldAdaptor adaptor) {                       \
+    auto attrs = adaptor.getOperands();                              \
     if (getElementTypeOrSelf(getType()).isa<FloatType>())            \
       return UnaryFolder<Op, FloatType, APFloat, Op##Folder,         \
                          Validate<APFloat>>(this, attrs);            \
@@ -4960,6 +4980,7 @@ UNARY_FOLDER_UPCAST_TO_F64(LogOp, std::log, PositiveValue)
 UNARY_FOLDER_UPCAST_TO_F64(RsqrtOp, rsqrt, PositiveValue)
 UNARY_FOLDER_UPCAST_TO_F64(SineOp, std::sin, AnyValue)
 UNARY_FOLDER_UPCAST_TO_F64(SqrtOp, std::sqrt, NonNegativeValue)
+UNARY_FOLDER_UPCAST_TO_F64(TanOp, std::tan, AnyValue)
 UNARY_FOLDER_UPCAST_TO_F64(TanhOp, std::tanh, AnyValue)
 
 #undef UNARY_FOLDER
@@ -5090,9 +5111,10 @@ struct Min<APFloat> {
     return BinaryFolder<Op, IntegerType, APInt, Func<APSInt>>(this, attrs);  \
   return {};
 
-#define BINARY_FOLDER(Op, Func)                      \
-  OpFoldResult Op::fold(ArrayRef<Attribute> attrs) { \
-    BINARY_FOLDER_INTERNAL(Op, Func)                 \
+#define BINARY_FOLDER(Op, Func)                \
+  OpFoldResult Op::fold(FoldAdaptor adaptor) { \
+    auto attrs = adaptor.getOperands();        \
+    BINARY_FOLDER_INTERNAL(Op, Func)           \
   }
 
 // Addition, subtraction and multiplication use the std:: versions of the ops.
@@ -5105,7 +5127,8 @@ BINARY_FOLDER(RemOp, Remainder)
 BINARY_FOLDER(MaxOp, Max)
 BINARY_FOLDER(MinOp, Min)
 
-OpFoldResult AddOp::fold(ArrayRef<Attribute> attrs) {
+OpFoldResult AddOp::fold(FoldAdaptor adaptor) {
+  auto attrs = adaptor.getOperands();
   // Handle special case where one operand is 0:  x + 0 => x
   if (attrs[0] || attrs[1]) {
     SplatElementsAttr splatLhs = attrs[0].dyn_cast_or_null<SplatElementsAttr>();
@@ -5132,7 +5155,8 @@ bool isSplatOne(SplatElementsAttr attr) {
   return false;
 }
 
-OpFoldResult MulOp::fold(ArrayRef<Attribute> attrs) {
+OpFoldResult MulOp::fold(FoldAdaptor adaptor) {
+  auto attrs = adaptor.getOperands();
   // Handle special case where one operand is 1: x * 1 => x
   if (attrs[0] || attrs[1]) {
     SplatElementsAttr splatLhs = attrs[0].dyn_cast_or_null<SplatElementsAttr>();
@@ -5152,7 +5176,8 @@ OpFoldResult MulOp::fold(ArrayRef<Attribute> attrs) {
 // Logical Ops
 //===----------------------------------------------------------------------===//
 
-OpFoldResult AndOp::fold(ArrayRef<Attribute> operands) {
+OpFoldResult AndOp::fold(FoldAdaptor adaptor) {
+  auto operands = adaptor.getOperands();
   if (getLhs() == getRhs()) return getLhs();
 
   auto lhsVal = operands[0].dyn_cast_or_null<DenseElementsAttr>();
@@ -5183,7 +5208,8 @@ OpFoldResult AndOp::fold(ArrayRef<Attribute> operands) {
       this, operands);
 }
 
-OpFoldResult OrOp::fold(ArrayRef<Attribute> operands) {
+OpFoldResult OrOp::fold(FoldAdaptor adaptor) {
+  auto operands = adaptor.getOperands();
   if (getLhs() == getRhs()) return getLhs();
 
   auto lhsVal = operands[0].dyn_cast_or_null<DenseElementsAttr>();
@@ -5214,7 +5240,8 @@ OpFoldResult OrOp::fold(ArrayRef<Attribute> operands) {
                                                                      operands);
 }
 
-OpFoldResult XorOp::fold(ArrayRef<Attribute> operands) {
+OpFoldResult XorOp::fold(FoldAdaptor adaptor) {
+  auto operands = adaptor.getOperands();
   // Fold x^x to 0. Attributes only support static shapes.
   auto rType = getType().cast<ShapedType>();
   if (getLhs() == getRhs() && rType.hasStaticShape()) {
@@ -5249,7 +5276,8 @@ OpFoldResult XorOp::fold(ArrayRef<Attribute> operands) {
 // ClampOp
 //===----------------------------------------------------------------------===//
 
-OpFoldResult ClampOp::fold(ArrayRef<Attribute> operands) {
+OpFoldResult ClampOp::fold(FoldAdaptor adaptor) {
+  auto operands = adaptor.getOperands();
   auto operand = operands[1].dyn_cast_or_null<ElementsAttr>();
   auto min = operands[0].dyn_cast_or_null<ElementsAttr>();
   auto max = operands[2].dyn_cast_or_null<ElementsAttr>();
@@ -5373,7 +5401,8 @@ static Attribute foldSlice(SliceOp* op, I values) {
                                 outValues);
 }
 
-OpFoldResult SliceOp::fold(ArrayRef<Attribute> operands) {
+OpFoldResult SliceOp::fold(FoldAdaptor adaptor) {
+  auto operands = adaptor.getOperands();
   // Check if the SliceOp is a NoOp operation.
   auto operandType = getOperand().getType().cast<ShapedType>();
   auto resultType = getResult().getType().cast<ShapedType>();
@@ -5612,7 +5641,8 @@ void SortOp::getCanonicalizationPatterns(RewritePatternSet& results,
 // TransposeOp
 //===----------------------------------------------------------------------===//
 
-OpFoldResult TransposeOp::fold(ArrayRef<Attribute> operands) {
+OpFoldResult TransposeOp::fold(FoldAdaptor adaptor) {
+  auto operands = adaptor.getOperands();
   if (auto elements = operands.front().dyn_cast_or_null<SplatElementsAttr>()) {
     return reshape(elements, getResult().getType().cast<ShapedType>());
   }
@@ -5773,7 +5803,7 @@ LogicalResult TriangularSolveOp::inferReturnTypeComponents(
 // GetTupleElementOp
 //===----------------------------------------------------------------------===//
 
-OpFoldResult GetTupleElementOp::fold(ArrayRef<Attribute> /*operands*/) {
+OpFoldResult GetTupleElementOp::fold(FoldAdaptor /*adaptor*/) {
   if (auto tupleOp = getOperand().getDefiningOp<mhlo::TupleOp>()) {
     return tupleOp.getOperand(getIndex());
   }
@@ -5875,7 +5905,8 @@ static Attribute CompareFolder(CompareOp op, ArrayRef<Attribute> attrs) {
   return DenseElementsAttr::get(resultTy, values);
 }
 
-OpFoldResult CompareOp::fold(ArrayRef<Attribute> operands) {
+OpFoldResult CompareOp::fold(FoldAdaptor adaptor) {
+  auto operands = adaptor.getOperands();
   auto resultTy = getType().cast<ShapedType>();
   if (!resultTy.hasStaticShape()) return {};
 
@@ -6020,8 +6051,8 @@ llvm::SmallVector<Attribute, 4> evaluateMhloRegion(Region& region,
 }
 
 LogicalResult ScatterOp::fold(
-    ArrayRef<Attribute> args,
-    llvm::SmallVectorImpl<OpFoldResult>& foldResults) {
+    FoldAdaptor adaptor, llvm::SmallVectorImpl<OpFoldResult>& foldResults) {
+  auto args = adaptor.getOperands();
   // Variadic Scatter not yet implemented
   if (getInputs().size() != 1 || getUpdates().size() != 1) return failure();
   auto index = args[1].dyn_cast_or_null<DenseIntElementsAttr>();
@@ -6277,7 +6308,7 @@ ParseResult WhileOp::parse(OpAsmParser& parser, OperationState& result) {
   return success();
 }
 
-LogicalResult WhileOp::fold(ArrayRef<Attribute> /*operands*/,
+LogicalResult WhileOp::fold(FoldAdaptor /*adaptor*/,
                             SmallVectorImpl<OpFoldResult>& results) {
   DenseIntElementsAttr condValue;
   // TODO: This folder is executed on invalid mhlo.while ops during

@@ -42,6 +42,7 @@ from tensorflow.python.ops import default_gradient
 from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import resource_variable_ops
+from tensorflow.python.ops.parallel_for import control_flow_ops as pfor_ops
 from tensorflow.python.ops.unconnected_gradients import UnconnectedGradients
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import _pywrap_utils
@@ -49,16 +50,8 @@ from tensorflow.python.util import nest
 from tensorflow.python.util import tf_contextlib
 from tensorflow.python.util import tf_inspect
 from tensorflow.python.util import variable_utils
-from tensorflow.python.util.lazy_loader import LazyLoader
 from tensorflow.python.util.tf_export import tf_export
 
-
-# Note that we need to lazy load the following two modules to avoid creating
-# circular dependencies.
-# TODO(b/119775953): fix the circular dependencies.
-pfor_ops = LazyLoader(
-    "pfor_ops", globals(),
-    "tensorflow.python.ops.parallel_for.control_flow_ops")
 
 _op_attr_type_cache = {}
 

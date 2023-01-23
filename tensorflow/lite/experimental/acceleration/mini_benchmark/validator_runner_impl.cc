@@ -107,6 +107,13 @@ MinibenchmarkStatus ValidatorRunnerImpl::Init() {
     return status;
   }
 
+  status = gpu_helper_.Load();
+  if (status != kMinibenchmarkSuccess) {
+    TF_LITE_REPORT_ERROR(error_reporter_, "Failed to load GPU Module: %d",
+                         static_cast<int>(status));
+    return status;
+  }
+
   status = validation_entrypoint_helper_.Validate();
   if (status != kMinibenchmarkSuccess) {
     return status;
@@ -143,6 +150,7 @@ void ValidatorRunnerImpl::TriggerValidationAsync(
            validation_entrypoint_helper_.name().c_str(),
        validation_entrypoint = validation_entrypoint_helper_.LoadEntrypoint(),
        nnapi_sl_path = nnapi_helper_.nnapi_sl_path(),
+       gpu_so_path = gpu_helper_.gpu_so_path(),
        model_with_custom_input = CopyModel(model_with_custom_input_.get()),
        timeout_ms = timeout_ms_]() {
         FileLock lock(storage_path + ".parent_lock");
@@ -191,14 +199,24 @@ void ValidatorRunnerImpl::TriggerValidationAsync(
           }
           args.push_back(storage_path);
           args.push_back(data_directory_path);
-          if (!nnapi_sl_path.empty() &&
-              tflite_settings_obj.delegate == tflite::Delegate_NNAPI) {
+          // If NNAPI or GPU is provided as a shared object file, pass the file
+          // path as a commandline flag.
+          if (tflite_settings_obj.delegate == tflite::Delegate_NNAPI &&
+              !nnapi_sl_path.empty()) {
             TFLITE_LOG_PROD(
                 TFLITE_LOG_INFO,
                 "Running benchmark using NNAPI support library at path '%s'",
                 nnapi_sl_path.c_str());
             args.push_back(nnapi_sl_path);
+          } else if (tflite_settings_obj.delegate == tflite::Delegate_GPU &&
+                     !gpu_so_path.empty()) {
+            TFLITE_LOG_PROD(
+                TFLITE_LOG_INFO,
+                "Running benchmark using GPU Delegate Module at path '%s'",
+                gpu_so_path.c_str());
+            args.push_back(gpu_so_path);
           }
+
           std::string output;
           status = runner.Run(model_with_custom_input.get(), args, &output,
                               &exitcode, &signal);
@@ -333,5 +351,23 @@ MinibenchmarkStatus ValidatorRunnerImpl::NnapiHelper::Load() {
   return kMinibenchmarkSuccess;
 }
 
+MinibenchmarkStatus ValidatorRunnerImpl::GpuHelper::Load() {
+  if (gpu_plugin_handle_) {
+#ifndef _WIN32
+    Dl_info dl_info;
+    // Looking for the file where GPU is loaded from. This file will be passed
+    // to validator in a separate process.
+    int status = dladdr(gpu_plugin_handle_, &dl_info);
+    if (status == 0 || !dl_info.dli_fname) {
+      return kMinibenchmarkCannotLoadGpuModule;
+    }
+    gpu_so_path_ = dl_info.dli_fname;
+  }
+#else   // _WIN32
+    return kMinibenchmarkUnsupportedPlatform;
+  }
+#endif  // !_WIN32
+  return kMinibenchmarkSuccess;
+}
 }  // namespace acceleration
 }  // namespace tflite

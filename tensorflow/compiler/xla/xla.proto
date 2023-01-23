@@ -834,4 +834,5 @@ message ScheduleProto {
   // Computation id (matches the id in HloComputationProto).
   int64 computation_id = 2;
   HloModuleProto hlo_module = 3;
+  int64 cycles_per_microsecond = 4;
 }

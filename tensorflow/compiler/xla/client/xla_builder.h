@@ -1498,6 +1498,7 @@ class XlaBuilder {
   friend XlaOp Clz(XlaOp operand);
   friend XlaOp Cos(XlaOp operand);
   friend XlaOp Sin(XlaOp operand);
+  friend XlaOp Tan(XlaOp operand);
   friend XlaOp Tanh(XlaOp operand);
   friend XlaOp Real(XlaOp operand);
   friend XlaOp Imag(XlaOp operand);
@@ -2562,6 +2563,9 @@ XlaOp Cos(XlaOp operand);
 
 // Enqueues a sine instruction onto the computation.
 XlaOp Sin(XlaOp operand);
+
+// Enqueues a tan instruction onto the computation.
+XlaOp Tan(XlaOp operand);
 
 // Enqueues a tanh instruction onto the computation.
 XlaOp Tanh(XlaOp operand);

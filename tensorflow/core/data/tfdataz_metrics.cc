@@ -17,6 +17,7 @@ limitations under the License.
 #include <algorithm>
 #include <cstdint>
 #include <deque>
+#include <memory>
 #include <string>
 #include <utility>
 #include <vector>
@@ -87,9 +88,8 @@ double ApproximateLatencyEstimator::GetAverageLatency(Duration duration)
   return interval_latency / interval_count;
 }
 
-TfDatazMetricsCollector::TfDatazMetricsCollector(const std::string& device_type,
-                                                 const Env& env)
-    : device_type_(device_type), latency_estimator_(env) {}
+TfDatazMetricsCollector::TfDatazMetricsCollector(const Env& env)
+    : latency_estimator_(env) {}
 
 void TfDatazMetricsCollector::RecordGetNextLatency(
     int64_t get_next_latency_usec) {
@@ -111,6 +111,38 @@ double TfDatazMetricsCollector::GetAverageLatencyForLastFiveMinutes() {
 double TfDatazMetricsCollector::GetAverageLatencyForLastSixtyMinutes() {
   return latency_estimator_.GetAverageLatency(
       ApproximateLatencyEstimator::Duration::kSixtyMinutes);
+}
+
+namespace {
+static mutex* get_tfdataz_metrics_registry_lock() {
+  static mutex tfdataz_metrics_registry_lock(LINKER_INITIALIZED);
+  return &tfdataz_metrics_registry_lock;
+}
+
+using TfDatazMetricsCollectors =
+    absl::flat_hash_set<std::shared_ptr<TfDatazMetricsCollector>>;
+TfDatazMetricsCollectors& tfdataz_metric_collectors() {
+  static auto& collectors = *new TfDatazMetricsCollectors();
+  return collectors;
+}
+}  // namespace
+
+void TfDatazMetricsRegistry::Register(
+    std::shared_ptr<TfDatazMetricsCollector> collector) {
+  mutex_lock l(*get_tfdataz_metrics_registry_lock());
+  tfdataz_metric_collectors().insert(collector);
+}
+
+void TfDatazMetricsRegistry::Deregister(
+    std::shared_ptr<TfDatazMetricsCollector> collector) {
+  mutex_lock l(*get_tfdataz_metrics_registry_lock());
+  tfdataz_metric_collectors().erase(collector);
+}
+
+absl::flat_hash_set<std::shared_ptr<TfDatazMetricsCollector>>
+TfDatazMetricsRegistry::GetIteratorMetricCollectors() {
+  mutex_lock l(*get_tfdataz_metrics_registry_lock());
+  return tfdataz_metric_collectors();
 }
 
 }  // namespace data

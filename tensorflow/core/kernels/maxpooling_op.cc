@@ -1602,13 +1602,11 @@ namespace functor {
   extern template struct SpatialMaxPooling<Eigen::GpuDevice, T>;
 
 TF_CALL_GPU_NUMBER_TYPES(DECLARE_GPU_SPEC);
-TF_CALL_bfloat16(DECLARE_GPU_SPEC);
 #undef DECLARE_GPU_SPEC
 }  // namespace functor
 
 #define REGISTER_GPU_MAX_POOL_KERNELS(T) REGISTER_MAX_POOL_KERNELS(GPU, T)
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU_MAX_POOL_KERNELS);
-TF_CALL_bfloat16(REGISTER_GPU_MAX_POOL_KERNELS);
 #undef REGISTER_GPU_MAX_POOL_KERNELS
 
 // Below kernels currently implemented only for GPU device.
@@ -1644,7 +1642,6 @@ TF_CALL_bfloat16(REGISTER_GPU_MAX_POOL_KERNELS);
                               .TypeConstraint<int64_t>("Targmax"), \
                           MaxPoolingGradGradWithArgmaxOp<GPUDevice, T>);
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU_ONLY_POOL_KERNELS);
-TF_CALL_bfloat16(REGISTER_GPU_ONLY_POOL_KERNELS);
 
 // TODO(b/65847473): Re-enable once the underlying build error is fixed.
 #if !defined(PLATFORM_WINDOWS)

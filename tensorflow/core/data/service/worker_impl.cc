@@ -38,6 +38,7 @@ limitations under the License.
 #include "tensorflow/core/data/service/export.pb.h"
 #include "tensorflow/core/data/service/grpc_util.h"
 #include "tensorflow/core/data/service/snapshot/path_utils.h"
+#include "tensorflow/core/data/service/snapshot/snapshot_split_provider.h"
 #include "tensorflow/core/data/service/snapshot/snapshot_stream_writer.h"
 #include "tensorflow/core/data/service/split_provider.h"
 #include "tensorflow/core/data/service/task_runner.h"
@@ -62,7 +63,6 @@ limitations under the License.
 #include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/protobuf/service_config.pb.h"
 #include "tensorflow/core/public/session_options.h"
-#include "tensorflow/tsl/lib/io/compression.h"
 
 namespace tensorflow {
 namespace data {
@@ -607,22 +607,26 @@ void DataServiceWorkerImpl::UpdateTasks(const WorkerHeartbeatResponse& response)
 Status DataServiceWorkerImpl::UpdateSnapshotWriters(
     const WorkerHeartbeatResponse& response) {
   for (const SnapshotTaskDef& snapshot_task : response.snapshot_tasks()) {
+    SnapshotTask snapshot_task_key{snapshot_task.base_path(),
+                                   snapshot_task.stream_index()};
+    if (snapshot_writers_.contains(snapshot_task_key)) {
+      continue;
+    }
+
     DatasetDef dataset_def;
-    TF_RETURN_IF_ERROR(ReadTextProto(
+    TF_RETURN_IF_ERROR(ReadBinaryProto(
         Env::Default(), DatasetDefFilePath(snapshot_task.base_path()),
         &dataset_def));
     TF_ASSIGN_OR_RETURN(std::unique_ptr<StandaloneTaskIterator> iterator,
-                        MakeSnapshotTaskIterator(dataset_def));
-
-    // TODO(b/258691097): Support compression.
+                        MakeSnapshotTaskIterator(snapshot_task, dataset_def));
     // TODO(b/258691097): If the response does not contain a snapshot task,
     // cancel it from `snapshot_writers_`.
-    snapshot_writers_.try_emplace(
-        SnapshotTask{snapshot_task.base_path(), snapshot_task.stream_index()},
+    snapshot_writers_.emplace(
+        snapshot_task_key,
         std::make_unique<SnapshotStreamWriter>(
-            SnapshotWriterParams{snapshot_task.base_path(),
-                                 snapshot_task.stream_index(),
-                                 tsl::io::compression::kNone, Env::Default()},
+            SnapshotWriterParams{
+                snapshot_task.base_path(), snapshot_task.stream_index(),
+                snapshot_task.metadata().compression(), Env::Default()},
             std::move(iterator)));
   }
   return OkStatus();
@@ -630,14 +634,22 @@ Status DataServiceWorkerImpl::UpdateSnapshotWriters(
 
 StatusOr<std::unique_ptr<StandaloneTaskIterator>>
 DataServiceWorkerImpl::MakeSnapshotTaskIterator(
-    const DatasetDef& dataset_def) const {
-  // TODO(b/258691097): Use dynamic sharding and read splits from the snapshot
-  // directory.
+    const SnapshotTaskDef& snapshot_task, const DatasetDef& dataset_def) const {
   std::unique_ptr<standalone::Dataset> dataset;
   TF_RETURN_IF_ERROR(standalone::Dataset::FromGraph(
       standalone::Dataset::Params(), dataset_def.graph(), &dataset));
+
+  std::vector<std::unique_ptr<SplitProvider>> split_providers;
+  split_providers.reserve(snapshot_task.num_sources());
+  for (int i = 0; i < snapshot_task.num_sources(); ++i) {
+    split_providers.push_back(std::make_unique<SnapshotSplitProvider>(
+        config_.dispatcher_address(), config_.protocol(), snapshot_task,
+        /*source_index=*/i,
+        absl::Milliseconds(config_.dispatcher_timeout_ms())));
+  }
   std::unique_ptr<standalone::Iterator> iterator;
-  TF_RETURN_IF_ERROR(dataset->MakeIterator(&iterator));
+  TF_RETURN_IF_ERROR(
+      dataset->MakeIterator(std::move(split_providers), &iterator));
   return std::make_unique<StandaloneTaskIterator>(std::move(dataset),
                                                   std::move(iterator));
 }

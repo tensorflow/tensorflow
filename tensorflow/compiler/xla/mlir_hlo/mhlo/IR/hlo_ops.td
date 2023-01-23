@@ -596,6 +596,25 @@ def MHLO_SineOp: MHLO_UnaryElementwiseOp<"sine",
   let hasCustomHLOConverter = 1;
 }
 
+def MHLO_TanOp: MHLO_UnaryElementwiseOp<"tan",
+    [Pure, HLO_CompatibleOperandsAndResultType], MHLO_FpOrComplexTensor> {
+  let summary = "Tan operator";
+  let description = [{
+    Returns `Tan(operand)` element-wise.
+
+    See
+    https://www.tensorflow.org/xla/operation_semantics#element-wise_unary_functions.
+
+    Example:
+
+    ```mlir
+    %0 = mhlo.tan %arg0 : tensor<2xf32>
+    ```
+  }];
+  let hasFolder = 1;
+  let hasCustomHLOConverter = 1;
+}
+
 def MHLO_SqrtOp: MHLO_UnaryElementwiseOp<"sqrt",
     [Pure, HLO_CompatibleOperandsAndResultType], MHLO_FpOrComplexTensor> {
   let summary = "Square-root operator";
@@ -1731,11 +1750,7 @@ def MHLO_DomainOp : MHLO_Op<"domain", [HLO_CompatibleOperandsAndResultType, Infe
 }
 
 def MHLO_BatchNormGradOp : MHLO_Op<"batch_norm_grad", [Pure,
-    AllShapesMatch<["scale", "mean", "variance", "grad_scale",
-        "grad_offset"]>,
-    AllShapesMatch<["operand", "grad_output"]>,
-    AllElementTypesMatch<["operand", "grad_scale", "grad_offset"]>,
-    AllTypesMatch<["operand", "grad_operand"]>,
+    AllElementTypesMatch<["operand", "grad_operand", "grad_scale", "grad_offset"]>,
     InferTensorType]> {
   let summary = "Batch Normalization Gradient";
   let description = [{
@@ -1763,9 +1778,7 @@ def MHLO_BatchNormGradOp : MHLO_Op<"batch_norm_grad", [Pure,
 }
 
 def MHLO_BatchNormInferenceOp : MHLO_Op<"batch_norm_inference",
-    [Pure, AllTypesMatch<["operand", "result"]>,
-    AllShapesMatch<["scale", "offset", "mean", "variance"]>,
-    InferTensorType]> {
+    [Pure, AllElementTypesMatch<["operand", "result"]>, InferTensorType]> {
   let summary = "Batch Normalization for Inference";
   let description = [{
     Normalizes an array across batch and spatial dimensions.
@@ -1787,9 +1800,7 @@ def MHLO_BatchNormInferenceOp : MHLO_Op<"batch_norm_inference",
 }
 
 def MHLO_BatchNormTrainingOp : MHLO_Op<"batch_norm_training",
-    [Pure, AllTypesMatch<["operand", "output"]>,
-    AllElementTypesMatch<["operand", "batch_mean", "batch_var"]>,
-    AllShapesMatch<["scale", "offset", "batch_mean", "batch_var"]>,
+    [Pure, AllElementTypesMatch<["operand", "output", "batch_mean", "batch_var"]>,
     InferTensorType]> {
   let summary = "Batch Normalization for Training";
   let description = [{

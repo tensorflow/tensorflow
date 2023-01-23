@@ -16,7 +16,9 @@ limitations under the License.
 #include <unistd.h>
 
 #include "absl/base/casts.h"
+#include "absl/functional/any_invocable.h"
 #include "absl/strings/ascii.h"
+#include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
@@ -30,10 +32,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/stream_executor/lib/error.h"
 #include "tensorflow/compiler/xla/stream_executor/lib/initialize.h"
 #include "tensorflow/compiler/xla/stream_executor/lib/mathutil.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/numbers.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/path.h"
 #include "tensorflow/compiler/xla/stream_executor/lib/process_state.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/statusor.h"
 #include "tensorflow/compiler/xla/stream_executor/platform.h"
 #include "tensorflow/compiler/xla/stream_executor/platform/dso_loader.h"
 #include "tensorflow/compiler/xla/stream_executor/platform/logging.h"
@@ -118,7 +117,7 @@ bool GpuExecutor::UnloadModule(ModuleHandle module_handle) {
 tsl::StatusOr<std::shared_ptr<DeviceMemoryBase>>
 GpuExecutor::CreateOrShareConstant(Stream* stream,
                                    const std::vector<uint8_t>& content) {
-  return port::UnimplementedError("Not implemented for ROCm");
+  return tsl::errors::Unimplemented("Not implemented for ROCm");
 }
 
 bool GpuExecutor::UnloadGpuBinary(const void* gpu_binary) {
@@ -250,7 +249,7 @@ tsl::Status GpuExecutor::GetKernel(const MultiKernelLoaderSpec& spec,
   }
 
   if (on_disk_spec != nullptr) {
-    return port::InternalError(
+    return tsl::errors::Internal(
         "Loading ROCM kernel from disk is not supported");
   } else if (spec.has_cuda_cubin_in_memory()) {
     kernelname = &spec.cuda_cubin_in_memory().kernelname();
@@ -264,13 +263,13 @@ tsl::Status GpuExecutor::GetKernel(const MultiKernelLoaderSpec& spec,
     }
     kernel_to_gpu_binary_[kernel] = hsaco;
   } else {
-    return port::InternalError("No method of loading ROCM kernel provided");
+    return tsl::errors::Internal("No method of loading ROCM kernel provided");
   }
 
   VLOG(2) << "getting function " << *kernelname << " from module " << module;
   if (!GpuDriver::GetModuleFunction(context_, module, kernelname->c_str(),
                                     rocm_kernel->gpu_function_ptr())) {
-    return port::InternalError("Failed getting module function");
+    return tsl::errors::Internal("Failed getting module function");
   }
 
   // We have to trust the kernel loader spec arity because there doesn't appear
@@ -381,7 +380,7 @@ tsl::Status GpuExecutor::LoadModule(const MultiModuleLoaderSpec& spec,
         static_cast<const void*>(spec.cuda_cubin_in_memory().data())));
     return tsl::OkStatus();
   } else {
-    return port::InternalError("No HASCO binary found");
+    return tsl::errors::Internal("No HASCO binary found");
   }
 }
 
@@ -559,13 +558,14 @@ bool GpuExecutor::MemcpyDeviceToDevice(Stream* stream,
 }
 
 bool GpuExecutor::HostCallback(Stream* stream,
-                               std::function<tsl::Status()> callback) {
-  auto callback_ptr = new std::function<void()>([callback]() {
-    tsl::Status s = callback();
-    if (!s.ok()) {
-      LOG(WARNING) << "Host callback failed: " << s;
-    }
-  });
+                               absl::AnyInvocable<tsl::Status() &&> callback) {
+  auto callback_ptr =
+      new absl::AnyInvocable<void() &&>([cb = std::move(callback)]() mutable {
+        tsl::Status s = std::move(cb)();
+        if (!s.ok()) {
+          LOG(WARNING) << "Host callback failed: " << s;
+        }
+      });
   return GpuDriver::AddStreamCallback(context_, AsGpuStreamValue(stream),
                                       InternalHostCallback, callback_ptr);
 }
@@ -573,9 +573,8 @@ bool GpuExecutor::HostCallback(Stream* stream,
 /* static */ void GpuExecutor::InternalHostCallback(GpuStreamHandle stream,
                                                     hipError_t status,
                                                     void* data) {
-  std::function<void()>* callback =
-      reinterpret_cast<std::function<void()>*>(data);
-  (*callback)();
+  auto* callback = reinterpret_cast<absl::AnyInvocable<void() &&>*>(data);
+  std::move (*callback)();
   delete callback;
 }
 
@@ -838,7 +837,7 @@ static int TryToReadNumaNode(const string& pci_bus_id, int device_ordinal) {
   content = buf;
 
   int32_t value;
-  if (port::safe_strto32(content, &value)) {
+  if (absl::SimpleAtoi(content, &value)) {
     if (value < 0) {  // See http://b/18228951 for details on this path.
       LOG(INFO) << "successful NUMA node read from SysFS had negative value ("
                 << value

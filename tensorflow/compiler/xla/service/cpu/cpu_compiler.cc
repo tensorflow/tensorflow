@@ -328,7 +328,10 @@ runtime::JitExecutable::Options GetXlaRuntimeJitExecutableOptions() {
       });
   opts.compiler.create_compilation_pipeline =
       [copts](xla::runtime::PassManager& passes) {
-        Status status = CreateDefaultHloXlaRuntimePipeline(passes);
+        HloXlaRuntimePipelineOptions options;
+        options.enable_tiling_and_fusion =
+            GetDebugOptionsFromFlags().xla_cpu_enable_mlir_tiling_and_fusion();
+        Status status = CreateHloXlaRuntimePipeline(passes, options);
         if (!status.ok()) {
           LOG(FATAL) << "HLO-XLA Runtime pipeline failed with: "
                      << status.error_message();

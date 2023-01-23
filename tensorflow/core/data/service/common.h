@@ -16,10 +16,12 @@ limitations under the License.
 #define TENSORFLOW_CORE_DATA_SERVICE_COMMON_H_
 
 #include <string>
+#include <vector>
 
 #include "absl/strings/string_view.h"
 #include "tensorflow/core/data/service/common.pb.h"
 #include "tensorflow/core/framework/dataset_options.pb.h"
+#include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/platform/types.h"
@@ -36,6 +38,24 @@ constexpr int kDataServiceVersion = 6;
 // will be applied a "COLOCATED" tag. This is used to avoid reading from tf.data
 // workers on other TF hosts when the host runs a local tf.data service worker.
 constexpr absl::string_view kColocatedWorkerTag = "COLOCATED";
+
+// Container to hold the result of a `GetNext` call.
+struct GetNextResult final {
+  explicit GetNextResult() = default;
+  GetNextResult(const GetNextResult&) = delete;
+  GetNextResult& operator=(const GetNextResult&) = delete;
+  GetNextResult(GetNextResult&&) = default;
+  GetNextResult& operator=(GetNextResult&&) = delete;
+
+  static GetNextResult EndOfSequence() {
+    GetNextResult result;
+    result.end_of_sequence = true;
+    return result;
+  }
+
+  std::vector<Tensor> tensors;
+  bool end_of_sequence = false;
+};
 
 // Returns true if `processing_mode` specifies no sharding policy.
 bool IsNoShard(const ProcessingModeDef& processing_mode);

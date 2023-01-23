@@ -194,6 +194,33 @@ cc_library(
 )
 
 cc_library(
+    name = "tflite_op_wrapper",
+    hdrs = ["tflite_op_wrapper.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":op_kernel",
+        ":status_macros",
+        "//tensorflow/lite:type_to_tflitetype",
+        "//tensorflow/lite/c:common",
+    ],
+)
+
+cc_test(
+    name = "tflite_op_wrapper_test",
+    srcs = ["tflite_op_wrapper_test.cc"],
+    deps = [
+        ":op_kernel",
+        ":tflite_op_shim",
+        ":tflite_op_wrapper",
+        "//tensorflow/core/platform:tstring",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+        "@com_google_googletest//:gtest_main",
+        "@flatbuffers//:public_headers_lib",
+    ],
+)
+
+cc_library(
     name = "status_macros",
     hdrs = ["status_macros.h"],
     visibility = ["//visibility:public"],

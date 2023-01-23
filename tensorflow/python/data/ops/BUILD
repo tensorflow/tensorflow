@@ -77,7 +77,11 @@ py_library(
 
 py_library(
     name = "dataset_ops",
-    srcs = ["dataset_ops.py"],
+    # Grouped together due to mutual dependencies, to avoid dependency cycles.
+    srcs = [
+        "dataset_autograph.py",
+        "dataset_ops.py",
+    ],
     srcs_version = "PY3",
     deps = [
         ":batch_op",
@@ -241,7 +245,11 @@ py_library(
 
 py_library(
     name = "iterator_ops",
-    srcs = ["iterator_ops.py"],
+    # Grouped together due to mutual dependencies, to avoid dependency cycles.
+    srcs = [
+        "iterator_autograph.py",
+        "iterator_ops.py",
+    ],
     srcs_version = "PY3",
     deps = [
         ":optional_ops",

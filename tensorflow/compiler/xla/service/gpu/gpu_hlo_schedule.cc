@@ -193,6 +193,7 @@ class GpuLatencyEstimatorNop : public LatencyEstimator {
     return 1.0;
   }
   TimeCost NodeCost(const HloInstruction* instr) const override { return 1.0; }
+  int CyclesPerMicrosecond() const override { return 1; }
 };
 
 }  // end namespace

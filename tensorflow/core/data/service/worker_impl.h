@@ -147,6 +147,7 @@ class DataServiceWorkerImpl {
   Status UpdateSnapshotWriters(const WorkerHeartbeatResponse& response);
   // Creates an dataset iterator for snapshot writers.
   StatusOr<std::unique_ptr<StandaloneTaskIterator>> MakeSnapshotTaskIterator(
+      const SnapshotTaskDef& snapshot_task,
       const DatasetDef& dataset_def) const;
   // Gets the snapshot task progress from the snapshot writers.
   std::vector<SnapshotTaskProgress> GetSnapshotTaskProgress() const;

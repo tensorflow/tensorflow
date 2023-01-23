@@ -18,6 +18,7 @@ limitations under the License.
 #include <stddef.h>
 #include <stdlib.h>
 
+#include <algorithm>
 #include <cstdint>
 #include <functional>
 #include <memory>
@@ -29,9 +30,11 @@ limitations under the License.
 #include "tensorflow/lite/allocation.h"
 #include "tensorflow/lite/core/api/error_reporter.h"
 #include "tensorflow/lite/core/api/profiler.h"
+#include "tensorflow/lite/core/c/c_api_types.h"
 #include "tensorflow/lite/external_cpu_backend_context.h"
 #include "tensorflow/lite/interpreter_options.h"
 #include "tensorflow/lite/minimal_logging.h"
+#include "tensorflow/lite/profiling/telemetry/telemetry.h"
 #include "tensorflow/lite/stderr_reporter.h"
 #include "tensorflow/lite/util.h"
 
@@ -432,6 +435,18 @@ TfLiteStatus Interpreter::SetMetadata(
                         ? nullptr
                         : &model_control_dependencies_[subgraph_index]));
   }
+  return kTfLiteOk;
+}
+
+TfLiteStatus Interpreter::SetTelemetrySettings(
+    std::unique_ptr<TfLiteTelemetryInterpreterSettings> settings) {
+  telemetry_data_ = std::move(settings);
+  return kTfLiteOk;
+}
+
+TfLiteStatus Interpreter::ReportTelemetrySettings(const char* setting_name) {
+  telemetry::TelemetryReportSettings(context_, setting_name,
+                                     telemetry_data_.get());
   return kTfLiteOk;
 }
 

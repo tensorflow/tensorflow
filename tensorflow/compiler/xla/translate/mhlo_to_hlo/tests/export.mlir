@@ -2112,6 +2112,16 @@ func.func @main(%arg0: tensor<2xf32>) -> tensor<2xf32> {
 // -----
 
 // CHECK: HloModule
+func.func @main(%arg0: tensor<2xf32>) -> tensor<2xf32> {
+  // CHECK: %[[ARG0:.*]] = f32[2] parameter(0)
+  %0 = "mhlo.tan"(%arg0) {} : (tensor<2xf32>) -> tensor<2xf32>
+  // CHECK: tan(f32[2] %[[ARG0]])
+  func.return %0 : tensor<2xf32>
+}
+
+// -----
+
+// CHECK: HloModule
 // CHECK{LITERAL}: output_to_operand_aliasing={{0}: (0, {1})}
 func.func @main(%arg0: tuple<tensor<1x1xf32>, tensor<2x3xf32>>, %arg1: tensor<5x5xf32>) {
   %0 = "mhlo.custom_call"(%arg0, %arg1) {

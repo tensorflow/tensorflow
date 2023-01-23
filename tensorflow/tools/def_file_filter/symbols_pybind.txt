@@ -550,9 +550,11 @@ tensorflow::dtensor::TPUCoreLocationsToIDs
 tensorflow::dtensor::Pack
 tensorflow::dtensor::Unpack
 tensorflow::dtensor::FetchLayout
+tensorflow::dtensor::IsDTensor
 tensorflow::dtensor::SparsePack
 tensorflow::dtensor::IsSparseDTensor
 tensorflow::dtensor::GetFunctionCacheHitAndMissCount
+tensorflow::dtensor::SetIteratorElementLayouts
 
 [//tensorflow/dtensor/cc:tensor_layout] # DTensor
 tensorflow::dtensor::Mesh

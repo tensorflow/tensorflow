@@ -18,6 +18,7 @@ limitations under the License.
 #include <utility>
 
 #include "gml_st/IR/gml_st_ops.h"
+#include "gml_st/transforms/passes.h"
 #include "gml_st/transforms/transforms.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Arith/Utils/Utils.h"
@@ -156,16 +157,9 @@ struct ScalarizeScatterOp : public OpRewritePattern<thlo::ScatterOp> {
     auto initType = init.getType().dyn_cast<RankedTensorType>();
     if (!initType) return failure();
 
-    int64_t initRank = initType.getRank();
-
     SmallVector<OpFoldResult> initDimSizes =
         tensor::getMixedSizes(b, loc, init);
     auto initDimValues = getValueOrCreateConstantIndexOp(b, loc, initDimSizes);
-
-    Value initTile = b.create<gml_st::TileOp>(
-        loc, SmallVector<OpFoldResult>(initRank, b.getI64IntegerAttr(0)),
-        initDimSizes,
-        SmallVector<OpFoldResult>(initRank, b.getI64IntegerAttr(1)));
 
     Value zero = b.create<arith::ConstantIndexOp>(0);
     Value one = b.create<arith::ConstantIndexOp>(1);
@@ -190,11 +184,11 @@ struct ScalarizeScatterOp : public OpRewritePattern<thlo::ScatterOp> {
         loc, indexIsInBounds,
         isValidIndex(b, loc, *scatterIndices, initDimValues, zero));
     auto ifOp = b.create<scf::IfOp>(
-        loc, TypeRange(ValueRange{init}), indexIsInBounds,
+        loc, indexIsInBounds,
         [&](OpBuilder &thenBuilder, Location thenLoc) {
-          auto loop = thenBuilder.create<gml_st::ForOp>(
-              thenLoc, TypeRange(ValueRange{init}), lbs, updatesDimValues,
-              steps, init,
+          scf::LoopNest loopNest = scf::buildLoopNest(
+              thenBuilder, thenLoc, lbs, updatesDimValues, steps,
+              ValueRange{init},
               [&](OpBuilder &nestedBuilder, Location bodyLoc,
                   ValueRange updateIndex, ValueRange loopInits) {
                 Value initBlockArg = loopInits.front();
@@ -229,11 +223,10 @@ struct ScalarizeScatterOp : public OpRewritePattern<thlo::ScatterOp> {
                 Value updatedInit = thenBuilder.create<InsertOp>(
                     thenLoc, combinedValue, initBlockArg, initIndex);
 
-                nestedBuilder.create<gml_st::SetYieldOp>(
-                    bodyLoc, updatedInit, initBlockArg, initTile);
+                return scf::ValueVector({updatedInit});
               });
 
-          thenBuilder.create<scf::YieldOp>(thenLoc, loop.getResults());
+          thenBuilder.create<scf::YieldOp>(thenLoc, loopNest.results);
         },
         [&](OpBuilder &elseBuilder, Location elseLoc) {
           elseBuilder.create<scf::YieldOp>(elseLoc, init);
@@ -368,7 +361,7 @@ struct ScalarizeConcatenateOp : public OpRewritePattern<thlo::ConcatenateOp> {
 
     auto materializeAndInsert = [&](OpBuilder &b, Location l, Value input) {
       Value slice =
-          b.create<gml_st::MaterializeOp>(l, input, offsets, sizes, strides);
+          b.create<tensor::ExtractSliceOp>(l, input, offsets, sizes, strides);
       return b.create<tensor::InsertSliceOp>(l, slice, initTensor, offsets,
                                              sizes, strides);
     };
@@ -402,8 +395,7 @@ struct ScalarizeConcatenateOp : public OpRewritePattern<thlo::ConcatenateOp> {
 
     return b
         .create<scf::IfOp>(
-            loc, resultType,
-            tensorHasElement(b, loc, inputs.front(), concatDim),
+            loc, tensorHasElement(b, loc, inputs.front(), concatDim),
             [&](OpBuilder &thenBuilder, Location thenLoc) {
               thenBuilder.create<scf::YieldOp>(
                   thenLoc,
@@ -426,17 +418,20 @@ LogicalResult scalarizeOp(Operation *op, PatternRewriter &rewriter,
   ImplicitLocOpBuilder b(op->getLoc(), rewriter);
 
   auto outputType = output.getType().dyn_cast<RankedTensorType>();
-  if (!outputType)
+  if (!outputType) {
     return rewriter.notifyMatchFailure(
         op, "failed to cast output to RankedTensorType");
-  if (!hasSingleElement(outputType))
+  }
+  if (!hasSingleElement(outputType)) {
     return rewriter.notifyMatchFailure(
         op, "has output with number of elements not equal to 1");
+  }
 
   auto inputType = input.getType().dyn_cast<RankedTensorType>();
-  if (!inputType)
+  if (!inputType) {
     return rewriter.notifyMatchFailure(
         op, "failed to cast input to RankedTensorType");
+  }
 
   Value zero = b.create<arith::ConstantIndexOp>(0);
   llvm::SmallVector<Value> indicesInput(inputType.getRank(), zero);
@@ -474,28 +469,6 @@ struct ScalarizeReverseOp : public OpRewritePattern<thlo::ReverseOp> {
   }
 };
 
-// Fold `tensor.extract(gml_st.materialize -> tensor<1x1xf32>)` into
-//      `gml_st.materialize -> f32` for single-element tensors.
-struct FoldTensorExtractIntoMaterialize : public OpRewritePattern<ExtractOp> {
-  using OpRewritePattern::OpRewritePattern;
-
-  LogicalResult matchAndRewrite(ExtractOp extractOp,
-                                PatternRewriter &rewriter) const override {
-    auto materializeOp =
-        extractOp.getTensor().getDefiningOp<gml_st::MaterializeOp>();
-    if (!materializeOp) return failure();
-
-    if (!hasSingleElement(materializeOp.getType().cast<ShapedType>()))
-      return failure();
-
-    rewriter.replaceOpWithNewOp<gml_st::MaterializeOp>(
-        extractOp, extractOp.getType(), materializeOp.getSource(),
-        materializeOp.getMixedOffsets(), materializeOp.getMixedSizes(),
-        materializeOp.getMixedStrides());
-    return success();
-  }
-};
-
 // Fold `gml_st.set_yield(tensor.from_elements(x) -> tensor<1x1xf32>)` into
 //      `gml_st.set_yield(x)` for single-element tensors.
 struct FoldTensorFromElementsIntoSetYield
@@ -528,8 +501,7 @@ struct FoldTensorFromElementsIntoSetYield
 };
 
 void populateTensorInsertExtractFoldingPatterns(RewritePatternSet *patterns) {
-  patterns->add<FoldTensorExtractIntoMaterialize,
-                FoldTensorFromElementsIntoSetYield>(patterns->getContext());
+  patterns->add<FoldTensorFromElementsIntoSetYield>(patterns->getContext());
 }
 
 struct ScalarizationPass

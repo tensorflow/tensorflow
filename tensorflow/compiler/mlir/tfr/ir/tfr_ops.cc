@@ -896,14 +896,17 @@ void TFRQuantScaleFactorOp::getCanonicalizationPatterns(
   results.add<RemoveScaleFactorOp>(context);
 }
 
-OpFoldResult TFR::EqualOp::fold(ArrayRef<Attribute> operands) {
+OpFoldResult TFR::EqualOp::fold(FoldAdaptor adaptor) {
+  auto operands = adaptor.getOperands();
   assert(operands.size() == 2 && "equal op has two operands");
   auto ctx = getContext();
   if (operands[0] == operands[1]) return BoolAttr::get(ctx, true);
   return BoolAttr::get(ctx, false);
 }
 
-OpFoldResult ConstOp::fold(ArrayRef<Attribute> operands) {
+OpFoldResult ConstOp::fold(FoldAdaptor adaptor) {
+  auto operands = adaptor.getOperands();
+  (void)operands;
   assert(operands.empty() && "constant has no operands");
 
   // Return the held attribute value.

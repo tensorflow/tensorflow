@@ -30,6 +30,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/functional/any_invocable.h"
 #include "absl/types/optional.h"
 #include "tensorflow/compiler/xla/stream_executor/allocator_stats.h"
 #include "tensorflow/compiler/xla/stream_executor/device_description.h"
@@ -184,21 +185,21 @@ class StreamExecutorInterface {
 
   virtual tsl::Status GetKernel(const MultiKernelLoaderSpec& spec,
                                 KernelBase* kernel) {
-    return port::UnimplementedError("Not Implemented");
+    return tsl::errors::Unimplemented("Not Implemented");
   }
   virtual bool UnloadModule(ModuleHandle module_handle) { return false; }
   virtual tsl::Status LoadModule(const MultiModuleLoaderSpec& spec,
                                  ModuleHandle* module_handle) {
-    return port::UnimplementedError("Not Implemented");
+    return tsl::errors::Unimplemented("Not Implemented");
   }
   virtual tsl::StatusOr<std::shared_ptr<DeviceMemoryBase>>
   CreateOrShareConstant(Stream* stream, const std::vector<uint8_t>& content) {
-    return port::UnimplementedError("Not Implemented");
+    return tsl::errors::Unimplemented("Not Implemented");
   }
   virtual tsl::Status Launch(Stream* stream, const ThreadDim& thread_dims,
                              const BlockDim& block_dims, const KernelBase& k,
                              const KernelArgsArrayBase& args) {
-    return port::UnimplementedError("Not Implemented");
+    return tsl::errors::Unimplemented("Not Implemented");
   }
 
   // Releases any state associated with the kernel.
@@ -241,7 +242,7 @@ class StreamExecutorInterface {
                               uint64_t size) = 0;
   virtual tsl::Status Memset(Stream* stream, DeviceMemoryBase* location,
                              uint8 pattern, uint64_t size) {
-    return port::InternalError("Not implemented");
+    return tsl::errors::Internal("Not implemented");
   }
   virtual tsl::Status Memset32(Stream* stream, DeviceMemoryBase* location,
                                uint32_t pattern, uint64_t size) = 0;
@@ -252,9 +253,8 @@ class StreamExecutorInterface {
   virtual bool MemcpyDeviceToDevice(Stream* stream, DeviceMemoryBase* gpu_dst,
                                     const DeviceMemoryBase& gpu_src,
                                     uint64_t size) = 0;
-  virtual bool HostCallback(Stream* stream, std::function<void()> callback);
   virtual bool HostCallback(Stream* stream,
-                            std::function<tsl::Status()> callback) = 0;
+                            absl::AnyInvocable<tsl::Status() &&> callback) = 0;
   virtual tsl::Status AllocateEvent(Event* event) = 0;
   virtual tsl::Status DeallocateEvent(Event* event) = 0;
   virtual tsl::Status RecordEvent(Stream* stream, Event* event) = 0;

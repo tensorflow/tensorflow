@@ -60,7 +60,7 @@ static tsl::StatusOr<absl::string_view> GetPtxasVersionString(
   binary.SetProgram(binary_path_str, {binary_path_str, "--version"});
   binary.SetChannelAction(tsl::CHAN_STDOUT, tsl::ACTION_PIPE);
   if (!binary.Start()) {
-    return port::InternalError(
+    return tsl::errors::Internal(
         absl::StrFormat("Couldn't invoke %s --version", binary_path));
   }
 
@@ -68,7 +68,7 @@ static tsl::StatusOr<absl::string_view> GetPtxasVersionString(
   int exit_code = binary.Communicate(/*stdin_input=*/nullptr, &out,
                                      /*stderr_output=*/nullptr);
   if (exit_code != 0) {
-    return port::InternalError(absl::StrFormat(
+    return tsl::errors::Internal(absl::StrFormat(
         "Running %s --version returned %d", binary_path, exit_code));
   }
   auto emplace_it = seen_binary_paths->emplace(binary_path, std::move(out));
@@ -262,7 +262,7 @@ tsl::StatusOr<std::vector<uint8_t>> CompileGpuAsm(int cc_major, int cc_minor,
   std::string ptx_path;
   auto env = tsl::Env::Default();
   if (!env->LocalTempFilename(&ptx_path)) {
-    return port::InternalError("couldn't get temp PTX file name");
+    return tsl::errors::Internal("couldn't get temp PTX file name");
   }
   TF_RETURN_IF_ERROR(tsl::WriteStringToFile(env, ptx_path, ptx_contents));
   VLOG(2) << "ptx written to: " << ptx_path;
@@ -274,7 +274,7 @@ tsl::StatusOr<std::vector<uint8_t>> CompileGpuAsm(int cc_major, int cc_minor,
   // Invoke ptxas and collect its output.
   std::string cubin_path;
   if (!env->LocalTempFilename(&cubin_path)) {
-    return port::InternalError("couldn't get temp CUBIN file name");
+    return tsl::errors::Internal("couldn't get temp CUBIN file name");
   }
   absl::Cleanup cubin_cleaner = [&cubin_path] {
     // CUBIN file may never be created, so the failure to delete it should not
@@ -300,7 +300,7 @@ tsl::StatusOr<std::vector<uint8_t>> CompileGpuAsm(int cc_major, int cc_minor,
   ptxas_info_dumper.SetProgram(ptxas_path, ptxas_args);
   ptxas_info_dumper.SetChannelAction(tsl::CHAN_STDERR, tsl::ACTION_PIPE);
   if (!ptxas_info_dumper.Start()) {
-    return port::InternalError("Failed to launch ptxas");
+    return tsl::errors::Internal("Failed to launch ptxas");
   }
   std::string stderr_output;
   int exit_status = ptxas_info_dumper.Communicate(
@@ -318,7 +318,7 @@ tsl::StatusOr<std::vector<uint8_t>> CompileGpuAsm(int cc_major, int cc_minor,
           ptxas_path, " ptxas too old. Falling back to the driver to compile.");
     }
 
-    return port::InternalError(
+    return tsl::errors::Internal(
         absl::StrFormat("ptxas exited with non-zero error code %d, output: %s",
                         exit_status, stderr_output));
   }
@@ -350,7 +350,7 @@ tsl::StatusOr<std::vector<uint8_t>> BundleGpuAsm(
   for (const CubinOrPTXImage& img : images) {
     std::string img_path;
     if (!env->LocalTempFilename(&img_path)) {
-      return port::InternalError(
+      return tsl::errors::Internal(
           "Could not get temporary filenames for images.");
     }
     TF_RETURN_IF_ERROR(tsl::WriteStringToFile(
@@ -367,7 +367,7 @@ tsl::StatusOr<std::vector<uint8_t>> BundleGpuAsm(
   // Prepare temorary result file.
   std::string result_path;
   if (!env->LocalTempFilename(&result_path)) {
-    return port::InternalError(
+    return tsl::errors::Internal(
         "Could not get temporary filename for fatbin result.");
   }
   absl::Cleanup result_file_cleaner = [&result_path] {
@@ -400,13 +400,13 @@ tsl::StatusOr<std::vector<uint8_t>> BundleGpuAsm(
   fatbinary.SetProgram(fatbinary_path, fatbinary_args);
   fatbinary.SetChannelAction(tsl::CHAN_STDERR, tsl::ACTION_PIPE);
   if (!fatbinary.Start()) {
-    return port::InternalError("Failed to launch fatbinary.");
+    return tsl::errors::Internal("Failed to launch fatbinary.");
   }
   std::string stderr_output;
   int exit_status = fatbinary.Communicate(
       /*stdin_input=*/nullptr, /*stdout_output=*/nullptr, &stderr_output);
   if (exit_status != 0) {
-    return port::InternalError(absl::StrFormat(
+    return tsl::errors::Internal(absl::StrFormat(
         "fatbinary exited with non-zero error code %d, output: %s", exit_status,
         stderr_output));
   }
@@ -453,7 +453,7 @@ tsl::StatusOr<std::vector<uint8_t>> BundleGpuAsm(
   for (const HsacoImage& img : images) {
     std::string img_path;
     if (!env->LocalTempFilename(&img_path)) {
-      return port::InternalError(
+      return tsl::errors::Internal(
           "Could not get temporary filenames for images.");
     }
     TF_RETURN_IF_ERROR(tsl::WriteStringToFile(
@@ -472,7 +472,7 @@ tsl::StatusOr<std::vector<uint8_t>> BundleGpuAsm(
   // Prepare temorary result file.
   std::string result_path;
   if (!env->LocalTempFilename(&result_path)) {
-    return port::InternalError(
+    return tsl::errors::Internal(
         "Could not get temporary filename for fatbin result.");
   }
   absl::Cleanup result_file_cleaner = [&result_path] {
@@ -494,13 +494,13 @@ tsl::StatusOr<std::vector<uint8_t>> BundleGpuAsm(
                                    clang_offload_bundler_args);
   clang_offload_bundler.SetChannelAction(tsl::CHAN_STDERR, tsl::ACTION_PIPE);
   if (!clang_offload_bundler.Start()) {
-    return port::InternalError("Failed to launch clang_offload_bundler.");
+    return tsl::errors::Internal("Failed to launch clang_offload_bundler.");
   }
   std::string stderr_output;
   int exit_status = clang_offload_bundler.Communicate(
       /*stdin_input=*/nullptr, /*stdout_output=*/nullptr, &stderr_output);
   if (exit_status != 0) {
-    return port::InternalError(
+    return tsl::errors::Internal(
         absl::StrFormat("clang_offload_bundler exited with non-zero error "
                         "code %d, output: %s",
                         exit_status, stderr_output));

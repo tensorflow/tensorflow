@@ -31,7 +31,7 @@ limitations under the License.
 //  stream
 //    .Init()
 //    .ThenBlasAxpy(1024, 5.5, x, 1, &y, 1);
-//  SE_CHECK_OK(stream.BlockHostUntilDone());
+//  TF_CHECK_OK(stream.BlockHostUntilDone());
 //
 // By using stream operations in this manner the user can easily intermix custom
 // kernel launches (via StreamExecutor::ThenLaunch()) with these pre-canned BLAS
@@ -134,6 +134,7 @@ constexpr AlgorithmType kDefaultAlgorithm = -1;
 constexpr AlgorithmType kDefaultBlasGemm = -2;
 constexpr AlgorithmType kDefaultBlasGemv = -3;
 constexpr AlgorithmType kNoAlgorithm = -4;
+constexpr AlgorithmType kRuntimeAutotuning = -5;
 
 // blas uses -1 to represent the default algorithm. This happens to match up
 // with the CUBLAS_GEMM_DFALT constant, so cuda_blas.cc is using static_cast

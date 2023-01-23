@@ -538,7 +538,8 @@ class Function(core.GenericFunction, trackable.Trackable):
                jit_compile=None,
                reduce_retracing=False,
                experimental_implements=None,
-               experimental_autograph_options=None):
+               experimental_autograph_options=None,
+               experimental_attributes=None,):
     """Initializes a `Function`.
 
     Args:
@@ -550,6 +551,7 @@ class Function(core.GenericFunction, trackable.Trackable):
       reduce_retracing: See the documentation for `tf.function`.
       experimental_implements: See the documentation for `tf.function`.
       experimental_autograph_options: See the documentation for `tf.function`.
+      experimental_attributes: See the documentation for `tf.function`.
 
     Raises:
       ValueError: if `input_signature` is not None and the `python_function`'s
@@ -562,7 +564,22 @@ class Function(core.GenericFunction, trackable.Trackable):
         input_signature,
         jit_compile=jit_compile,
     )
-    self._implements = experimental_implements
+
+    self._attributes = {}
+    if experimental_implements is not None:
+      self._attributes = self._create_implements_attribute(
+          experimental_implements
+      )
+
+    if experimental_attributes is not None:
+      self._attributes.update(experimental_attributes)
+
+    for attribute in self._attributes:
+      if attribute not in attributes_lib.POLYMORPHIC_FUNCTION_ALLOWLIST:
+        raise ValueError(
+            f"`{attribute} is not supported by tf.function as an attribute."
+        )
+
     # If `True`, the function uses the rendezvous of the parent. This is only
     # needed to support code where raw send/recv operations are inserted and
     # when functions are run in graph mode where they may not be inlined.
@@ -656,10 +673,10 @@ class Function(core.GenericFunction, trackable.Trackable):
         self._python_function,
         wrapped_fn))
 
-  def _create_implements_attribute(self):
+  def _create_implements_attribute(self, implements_arg):
     """Creates the attribute value corresponding to attribute_lib.IMPLEMENTS."""
     attributes = {}
-    if isinstance(self._implements, str):
+    if isinstance(implements_arg, str):
       # First check if the attribute_lib.IMPLEMENTS is specified as a
       # NameAttrList. This is used when apart from the function name being
       # implemented, a list of attributes is also being specified.
@@ -670,19 +687,16 @@ class Function(core.GenericFunction, trackable.Trackable):
       try:
         attr_value = attr_value_pb2.AttrValue()
         nameattrlist = attr_value_pb2.NameAttrList()
-        _text_format.Merge(self._implements, nameattrlist)
+        _text_format.Merge(implements_arg, nameattrlist)
         attr_value.func.CopyFrom(nameattrlist)
         attributes[attributes_lib.IMPLEMENTS] = attr_value
       except (_text_format.ParseError, DecodeError):
-        attributes[attributes_lib.IMPLEMENTS] = self._implements
+        attributes[attributes_lib.IMPLEMENTS] = implements_arg
     return attributes
 
   def _compiler(self, fn):
     """Returns a TracingCompiler generated from the input function."""
-    attributes = {}
-
-    if self._implements is not None:
-      attributes = self._create_implements_attribute()
+    attributes = self._attributes.copy()
 
     share = self._shared_rendezvous
     if share is not None:
@@ -692,9 +706,6 @@ class Function(core.GenericFunction, trackable.Trackable):
       attributes[attributes_lib.XLA_COMPILE] = bool(self._jit_compile)
       if self._jit_compile:
         attributes[attributes_lib.NO_INLINE] = True
-
-    if not attributes:
-      attributes = None
 
     try:
       name = fn.__name__
@@ -778,7 +789,7 @@ class Function(core.GenericFunction, trackable.Trackable):
         autograph=self._autograph,
         jit_compile=self._jit_compile,
         reduce_retracing=self._reduce_retracing,
-        experimental_implements=self._implements,
+        experimental_attributes=self._attributes,
         experimental_autograph_options=self._experimental_autograph_options)
 
     if self._shared_rendezvous:
@@ -1312,6 +1323,7 @@ def function(
     reduce_retracing=False,
     experimental_implements=None,
     experimental_autograph_options=None,
+    experimental_attributes=None,
     experimental_relax_shapes=None,
     experimental_compile=None,
     experimental_follow_type_hints=None  # pylint: disable=unused-argument
@@ -1613,6 +1625,8 @@ def function(
       project.
     experimental_autograph_options: Optional tuple of
       `tf.autograph.experimental.Feature` values.
+    experimental_attributes: Optional dictionary of attributes to include in the
+      generated FunctionDefs.
     experimental_relax_shapes: Deprecated. Use `reduce_retracing`
       instead.
     experimental_compile: Deprecated alias to 'jit_compile'.
@@ -1658,7 +1672,8 @@ def function(
                 jit_compile,
                 "experimental_compile",
                 experimental_compile),
-            experimental_implements=experimental_implements))
+            experimental_implements=experimental_implements,
+            experimental_attributes=experimental_attributes))
 
   # This code path is for the `foo = tf.function(foo, ...)` use case
   if func is not None:
