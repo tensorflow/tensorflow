@@ -55,6 +55,10 @@ std::unique_ptr<OperationPass<func::FuncOp>> createLegalizeTFPass(
 std::unique_ptr<OperationPass<ModuleOp>> createLegalizeTFModulePass(
     StringRef tf2xla_fallback_device_type = "");
 
+// Legalizes from MHLO quantized ops with MHLO quant types to MHLO primitive ops
+// like int ops.
+std::unique_ptr<OperationPass<func::FuncOp>> createConvertMHLOQuantToIntPass();
+
 /// Lowers from TF dialect to HLO dialect. When allow_partial_conversion is
 /// false, emits an error if there is any operation that can't be legalized.
 std::unique_ptr<OperationPass<func::FuncOp>> createLegalizeTFNoFallbackPass(
@@ -129,6 +133,7 @@ CreateVerifyTFXLALegalizationPass();
 #define GEN_PASS_DECL_LEGALIZETFNOFALLBACK
 #define GEN_PASS_DECL_LEGALIZETFTYPESPASS
 #define GEN_PASS_DECL_VERIFYTFXLALEGALIZATION
+#define GEN_PASS_DECL_CONVERTMHLOQUANTTOINT
 #include "tensorflow/compiler/mlir/xla/transforms/xla_legalize_tf_passes.h.inc"
 
 #define GEN_PASS_REGISTRATION

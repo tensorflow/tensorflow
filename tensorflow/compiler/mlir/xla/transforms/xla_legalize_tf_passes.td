@@ -76,6 +76,18 @@ def LegalizeTFModulePass : Pass<"xla-fallback-legalize-tf-module-pass", "ModuleO
                            "shape::ShapeDialect", "func::FuncDialect", "sparse_tensor::SparseTensorDialect"];
 }
 
+def ConvertMHLOQuantToInt : Pass<"convert-mhlo-quant-to-int", "mlir::func::FuncOp"> {
+  let summary = "Convert from MHLO quantized ops to MHLO primitive ops.";
+
+  let description = [{
+    Convert from MHLO quantized ops with MHLO quant types to MHLO primitive ops
+    like int ops.
+  }];
+
+  let constructor = "mlir::mhlo::createConvertMHLOQuantToIntPass()";
+  let dependentDialects = ["chlo::ChloDialect", "mhlo::MhloDialect"];
+}
+
 def LegalizeTFNoFallback : Pass<"xla-legalize-tf-no-fallback", "mlir::func::FuncOp"> {
   let summary = "Legalize from TF dialect's or HLO dialect's control flow.";
 
