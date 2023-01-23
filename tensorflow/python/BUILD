@@ -998,6 +998,16 @@ tf_gen_op_wrapper_private_py(
     ],
 )
 
+tf_gen_op_wrapper_private_py(
+    name = "sync_ops_gen",
+    visibility = [
+        "//tensorflow:internal",
+    ],
+    deps = [
+        "//tensorflow/core:sync_ops_op_lib",
+    ],
+)
+
 py_library(
     name = "array_grad",
     srcs = ["ops/array_grad.py"],

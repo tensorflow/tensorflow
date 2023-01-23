@@ -4885,6 +4885,10 @@ tf_module {
     argspec: "args=[\'input\', \'Tout\', \'f\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
+    name: "SyncDevice"
+    argspec: "args=[\'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
     name: "TFRecordDataset"
     argspec: "args=[\'filenames\', \'compression_type\', \'buffer_size\', \'metadata\', \'name\'], varargs=None, keywords=None, defaults=[\'\', \'None\'], "
   }

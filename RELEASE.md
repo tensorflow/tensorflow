@@ -120,6 +120,9 @@
         `rerandomize_each_iteration=True`, the `sample_from_datasets()`
         operation will use a different (deterministic) sequence of numbers every
         epoch.
+*   `tf.test`:
+    *   Added `tf.test.experimental.sync_devices`, which is useful for
+        accurately measuring performance in benchmarks.
 
 # Bug Fixes and Other Changes
 

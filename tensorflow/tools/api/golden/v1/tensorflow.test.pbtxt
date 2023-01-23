@@ -13,6 +13,10 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
+    name: "experimental"
+    mtype: "<type \'module\'>"
+  }
+  member {
     name: "mock"
     mtype: "<type \'module\'>"
   }

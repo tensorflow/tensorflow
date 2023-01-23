@@ -10,6 +10,7 @@ load(
     "tf_cc_shared_object",
     "tf_cc_test",
     "tf_gen_op_wrapper_py",
+    "tf_kernel_library",
 )
 load("//tensorflow:tensorflow.default.bzl", "cuda_py_test", "tf_py_test", "tf_python_pybind_extension")
 load("//tensorflow:pytype.default.bzl", "pytype_library", "pytype_strict_library")
@@ -1521,6 +1522,7 @@ py_library(
         "//tensorflow/python:pywrap_tf_session",
         "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python:session",
+        "//tensorflow/python:sync_ops_gen",
         "//tensorflow/python:tensor_array_ops",
         "//tensorflow/python:training",
         "//tensorflow/python:variables",
@@ -1860,10 +1862,11 @@ tf_gen_op_wrapper_py(
     deps = [":test_ops_kernels"],
 )
 
-cc_library(
+tf_kernel_library(
     name = "test_ops_kernels",
     srcs = ["test_ops.cc"],
-    linkstatic = 1,
+    hdrs = ["test_ops.h"],
+    gpu_srcs = ["test_ops.cu.cc"],
     deps = [
         "@com_google_absl//absl/time",
         "//tensorflow/core:framework",
@@ -2115,7 +2118,7 @@ tf_py_test(
     ],
 )
 
-tf_py_test(
+cuda_py_test(
     name = "test_util_test",
     size = "small",
     srcs = ["test_util_test.py"],

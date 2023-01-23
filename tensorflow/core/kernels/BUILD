@@ -7614,6 +7614,14 @@ tf_kernel_library(
     ],
 )
 
+tf_kernel_library(
+    name = "sync_ops",
+    prefix = "sync_ops",
+    deps = [
+        "//tensorflow/core:framework",
+    ],
+)
+
 # Library to link with when compiling the cwise_op kernels directly,
 # e.g. for selective registration.
 # should not be linked by projects that also link the cwise_op library.
