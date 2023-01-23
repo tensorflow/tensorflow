@@ -734,6 +734,33 @@ func.func @scatter(%input_tensor: tensor<200x100x300xf32>,
 
 // -----
 
+// CHECK-LABEL: func @scatter_bounds
+func.func @scatter_bounds(%input_tensor: tensor<200x?x?xf32, #mhlo.type_extensions<bounds = [?, ?, 301]>>,
+    %scatter_indices: tensor<10x2xi32>, %updates: tensor<10x300xf32>) ->
+      tensor<*xindex> {
+  %0 = "mhlo.scatter" (%input_tensor, %scatter_indices, %updates) ({
+  ^bb0(%lhs: tensor<f32>, %rhs: tensor<f32>):
+    %add = mhlo.add %lhs, %rhs : tensor<f32>
+    "mhlo.return"(%add) : (tensor<f32>) -> ()
+  }) {
+    scatter_dimension_numbers = #mhlo.scatter<
+      update_window_dims = [1],
+      inserted_window_dims = [0, 1],
+      scatter_dims_to_operand_dims = [0, 1],
+      index_vector_dim = 1
+    >,
+    indices_are_sorted = true,
+    unique_indices = true
+  } : (tensor<200x?x?xf32, #mhlo.type_extensions<bounds = [?, ?, 301]>>, tensor<10x2xi32>, tensor<10x300xf32>) ->
+      tensor<200x?x?xf32>
+
+  %1 = "mhlo_test.get_return_types"(%0) : (tensor<200x?x?xf32>) -> tensor<*xindex>
+  // CHECK: types0 = tensor<200x?x?xf32, #mhlo.type_extensions<bounds = [?, ?, 301]>>
+  func.return %1 : tensor<*xindex>
+}
+
+// -----
+
 //===----------------------------------------------------------------------===//
 // Sparsity
 //===----------------------------------------------------------------------===//
