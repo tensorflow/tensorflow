@@ -216,6 +216,10 @@ for model benchmarking.
 *   `external_delegate_path`: `string` (default="")
 *   `external_delegate_options`: `string` (default="")
 
+#### Stable delegate [Experimental]
+*   `stable_delegate_loader_settings`: `string` (default="") A path to the
+    JSON-encoded delegate [`TFLiteSettings`](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/experimental/acceleration/configuration/configuration.proto#L488) file, which is defined in `configuration.proto`.
+
 As some delegates are only available on certain platforms, when running the
 benchmark tool on a particular platform, specifying `--help` will print out all
 supported parameters.
