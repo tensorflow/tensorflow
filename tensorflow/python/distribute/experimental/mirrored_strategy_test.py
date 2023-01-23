@@ -260,6 +260,30 @@ class StrategyDatasetTest(test_util.DTensorBaseTest):
         NotImplementedError, 'only available in the V1 API'):
       strategy.make_input_fn_iterator(lambda _: self.dataset)
 
+  def test_distribute_dataset_from_fn(self):
+    local_batch_size = 4
+    global_batch_size = 8
+    def dataset_fn(option):
+      del option
+      return dataset_ops.Dataset.from_tensors(
+          (self.images, self.labels)).repeat().batch(
+              local_batch_size, drop_remainder=True).prefetch(2)
+    strategy = mirrored_strategy.MirroredStrategy(self.mesh)
+    distributed_dataset = strategy.distribute_datasets_from_function(
+        dataset_fn, None)
+
+    element = next(iter(distributed_dataset))
+    batched_image, batched_label = element
+    self.assertEqual(batched_image.shape, [global_batch_size, 8, 8, 3])
+    self.assertEqual(batched_label.shape, [global_batch_size, 1])
+
+    # Make sure there are two shards when unpack, and each of them has 4 as
+    # batch size
+    unpacked_images = d_api.unpack(batched_image)
+    self.assertLen(unpacked_images, self.mesh.num_local_devices())
+    self.assertEqual(unpacked_images[0].shape, [local_batch_size, 8, 8, 3])
+    self.assertEqual(unpacked_images[1].shape, [local_batch_size, 8, 8, 3])
+
   # TODO(scottzhu): Add test for unpacking the dataset in tf.function
 
 if __name__ == '__main__':

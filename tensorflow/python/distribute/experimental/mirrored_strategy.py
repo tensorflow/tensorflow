@@ -137,6 +137,9 @@ class MirroredExtended(distribute_lib.StrategyExtendedV2):
 
   @property
   def _num_replicas_in_sync(self):
+    # The mesh should be 1D with batch sharding only.
+    # In the model parallel case, it should only return the size of
+    # batch dimension.
     return self._mesh.size
 
   def value_container(self, value):
@@ -214,9 +217,47 @@ class MirroredExtended(distribute_lib.StrategyExtendedV2):
         'Strategy.make_input_fn_iterator() is deprecated, and only available '
         'in the V1 API.')
 
+  def _distribute_datasets_from_function(self, dataset_fn, options):
+    # TODO(scottzhu): Implement the logic for options in future
+    del options
+    # Single worker for now, this will change when deal with different input
+    # options or multiple workers.
+    input_context = distribute_lib.InputContext(
+        num_input_pipelines=1,
+        input_pipeline_id=0,
+        num_replicas_in_sync=self._num_replicas_in_sync
+    )
+    dataset = dataset_fn(input_context)
+
+    # Note that the dataset should already batched to local per-relica batch
+    def _create_batch_layout(tensor_spec):
+      rank = len(tensor_spec.shape)
+      return layout.Layout.batch_sharded(
+          self._mesh, batch_dim=_DEFAULT_BATCH_MESH_DIM_NAME, rank=rank)
+
+    layouts = nest.map_structure(_create_batch_layout, dataset.element_spec)
+
+    batch_size = distribute.compute_batch_size(dataset)
+    # There are multiple case that the batch is not static, eg partial batch,
+    # or uneven batch, in all those case, it will return -1.
+    if batch_size.numpy() < 0:
+      # When we don't have a static batch size.
+      raise ValueError('DTensor strategy requires a static batch size for now.'
+                       'The dynamic batch size will be supported in future')
+    global_batch_size = batch_size.numpy() * self._num_replicas_in_sync
+
+    return input_util.DTensorDataset(
+        dataset=dataset,
+        mesh=self._mesh,
+        layouts=layouts,
+        global_batch_size=global_batch_size,
+        dataset_already_batched=True,
+        batch_dim=_DEFAULT_BATCH_MESH_DIM_NAME,
+        # TODO(scottzhu): Add prefetch support by inspecting the input dataset.
+        prefetch=None,
+        tf_data_service_config=None
+    )
+
   # TODO(scottzhu): Address all these methods in follow up cls.
-  # def _distribute_datasets_from_function(self, dataset_fn, options):
-  #   pass
-  #
   # def _experimental_distribute_values_from_function(self, value_fn):
   #   pass
