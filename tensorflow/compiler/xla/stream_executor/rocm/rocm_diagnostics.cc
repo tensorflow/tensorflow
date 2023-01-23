@@ -36,8 +36,8 @@ limitations under the License.
 #include "absl/strings/str_split.h"
 #include "absl/strings/strip.h"
 #include "tensorflow/compiler/xla/stream_executor/lib/error.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/process_state.h"
 #include "tensorflow/compiler/xla/stream_executor/platform/logging.h"
+#include "tensorflow/tsl/platform/host_info.h"
 
 namespace stream_executor {
 namespace rocm {
@@ -109,13 +109,13 @@ string Diagnostician::GetDevNodePath(int dev_node_ordinal) {
 
 void Diagnostician::LogDiagnosticInformation() {
   LOG(INFO) << "retrieving ROCM diagnostic information for host: "
-            << port::Hostname();
+            << tsl::port::Hostname();
 
   LogDriverVersionInformation();
 }
 
 /* static */ void Diagnostician::LogDriverVersionInformation() {
-  LOG(INFO) << "hostname: " << port::Hostname();
+  LOG(INFO) << "hostname: " << tsl::port::Hostname();
   if (VLOG_IS_ON(1)) {
     const char* value = getenv("LD_LIBRARY_PATH");
     string library_path = value == nullptr ? "" : value;

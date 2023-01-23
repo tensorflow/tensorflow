@@ -440,7 +440,7 @@ struct Mmt4DTransformPattern : public OpRewritePattern<linalg::Mmt4DOp> {
               auto numLoops = unpackOp.getDestRank();
               auto dimAndTileMapping = unpackOp.getDimAndTileMapping();
               SmallVector<Value> tileSizes;
-              for (int i = 0; i < numLoops; ++i) {
+              for (size_t i = 0; i < numLoops; ++i) {
                 if (dimAndTileMapping.count(i)) {
                   tileSizes.push_back(getValueOrCreateConstantIndexOp(
                       builder, loc, dimAndTileMapping[i]));

@@ -57,7 +57,7 @@ func.func @matmul(%arg0: tensor<?x?xf32>, %arg1: tensor<?x?xf32>)
 // TRANSFORMED:         %[[INIT:.*]] = tensor.empty
 
 // TRANSFORMED:         %[[MAIN_PAR:.*]] = gml_st.parallel (%[[I:.*]], %[[J:.*]]) = (%[[C0]], %[[C0]]) to (%[[IUB:.*]], %[[JUB:.*]]) step
-// TRANSFORMED:           %[[MAIN_SLICE:.*]] = gml_st.materialize %[[INIT]]
+// TRANSFORMED:           %[[MAIN_SLICE:.*]] = tensor.extract_slice %[[INIT]]
 // TRANSFORMED:           %[[MAIN_FILL:.*]] = linalg.fill{{.*}}outs(%[[MAIN_SLICE]]
 // TRANSFORMED:           %[[MAIN_FOR:.*]] = gml_st.for (%[[K:.*]]) = (%[[C0]]) to (%[[KUB:.*]]) {{.*}} outs ({{.*}} = %[[MAIN_FILL]]:
 // TRANSFORMED:             %[[MAIN_PAR_MAIN_FOR_MATMUL:.*]] = linalg.matmul
@@ -68,7 +68,7 @@ func.func @matmul(%arg0: tensor<?x?xf32>, %arg1: tensor<?x?xf32>)
 // TRANSFORMED:           gml_st.set_yield %[[REM_FOR]]
 
 // TRANSFORMED:         %[[REM_RHS_PAR:.*]] = gml_st.parallel (%[[I:.*]], %[[J:.*]]) = (%[[C0]], %[[JUB]])
-// TRANSFORMED:           %[[REM_RHS_SLICE:.*]] = gml_st.materialize %[[MAIN_PAR]]
+// TRANSFORMED:           %[[REM_RHS_SLICE:.*]] = tensor.extract_slice %[[MAIN_PAR]]
 // TRANSFORMED:           %[[REM_RHS_FILL:.*]] = linalg.fill{{.*}}outs(%[[REM_RHS_SLICE]]
 // TRANSFORMED:           %[[REM_RHS_FOR:.*]] = gml_st.for (%[[K:.*]]) = (%[[C0]]) {{.*}} outs ({{.*}} = %[[REM_RHS_FILL]]:
 // TRANSFORMED:             %[[REM_RHS_PAR_MATMUL:.*]] = linalg.matmul
@@ -76,7 +76,7 @@ func.func @matmul(%arg0: tensor<?x?xf32>, %arg1: tensor<?x?xf32>)
 // TRANSFORMED:           gml_st.set_yield %[[REM_RHS_FOR]]
 
 // TRANSFORMED:         gml_st.parallel (%[[I:.*]], %[[J:.*]]) = (%[[IUB]], %[[C0]])
-// TRANSFORMED:           %[[REM_LHS_SLICE:.*]] = gml_st.materialize %[[REM_RHS_PAR]]
+// TRANSFORMED:           %[[REM_LHS_SLICE:.*]] = tensor.extract_slice %[[REM_RHS_PAR]]
 // TRANSFORMED:           %[[REM_LHS_FILL:.*]] = linalg.fill{{.*}}outs(%[[REM_LHS_SLICE]]
 // TRANSFORMED:           %[[REM_LHS_FOR:.*]] = gml_st.for (%[[K:.*]]) = (%[[C0]]) {{.*}} outs ({{.*}} = %[[REM_LHS_FILL]]:
 // TRANSFORMED:             %[[REM_LHS_PAR_MATMUL:.*]] = linalg.matmul

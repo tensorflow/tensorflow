@@ -82,12 +82,16 @@ add_mlir_library(MhloPasses
 
   LINK_LIBS PUBLIC
   ChloOps
+  MhloAnalysis
   MhloDialect
   MhloScatterUtils
   MhloTypeConversion
   MLIRIR
+  MLIRLinalgDialect
+  MLIRMathDialect
   MLIRMhloUtils
   MLIRPass
+  MLIRSCFDialect
   MLIRSideEffectInterfaces
   MLIRTransformUtils
   StablehloBroadcastUtils
@@ -151,6 +155,7 @@ add_mlir_library(MhloToMemrefConversion
   Core
 
   LINK_LIBS PUBLIC
+  LmhloDialect
   MhloDialect
   MhloTypeConversion
   MLIRIR
@@ -176,6 +181,7 @@ add_mlir_library(MhloToArithmeticConversion
   MLIRIR
   MLIRPass
   MLIRMathDialect
+  MLIRSCFDialect
   MLIRTransforms
   MLIRTransformUtils
 )
@@ -198,7 +204,9 @@ add_mlir_library(MhloToStandard
   LINK_LIBS PUBLIC
   MhloDialect
   MLIRIR
+  MLIRMathDialect
   MLIRPass
+  MLIRSCFDialect
   MLIRTensorDialect
   MLIRTransformUtils
 )
@@ -307,6 +315,7 @@ add_mlir_library(StablehloToMhlo
   LINK_LIBS PUBLIC
   MhloDialect
   MhloTypeConversion
+  MLIRAsmParser
   MLIRIR
   MLIRPass
   MLIRSupport

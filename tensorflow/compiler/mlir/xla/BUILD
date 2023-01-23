@@ -175,6 +175,7 @@ cc_library(
 cc_library(
     name = "xla_legalize_tf",
     srcs = [
+        "transforms/convert_mhlo_quant_to_int.cc",
         "transforms/legalize_tf_collective.cc",
         "transforms/legalize_tf_communication.cc",
         "transforms/legalize_tf_types.cc",

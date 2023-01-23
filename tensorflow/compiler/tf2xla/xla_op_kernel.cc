@@ -277,8 +277,7 @@ static Status LiteralToPredVector(const xla::LiteralSlice& literal,
 Status XlaOpKernelContext::ResolveInputDynamismIntoPred(int index, bool* out) {
   xla::Literal literal;
   XlaExpression e = InputExpression(index);
-  auto* client = compiler() ? compiler()->client() : nullptr;
-  StatusOr<Tensor> dynamism_or_status = e.ResolveDynamism(client);
+  StatusOr<Tensor> dynamism_or_status = e.ResolveDynamism();
   if (!dynamism_or_status.ok()) {
     // When failed to resolve dynamism, conservatively consider the value
     // dynamic. This could happen if the input depends on some ops like
@@ -320,8 +319,7 @@ Status XlaOpKernelContext::ResolveInputDynamismReshaped(
     int index, absl::Span<const int64_t> new_dims,
     xla::Literal* dynamism_literal) {
   XlaExpression e = InputExpression(index);
-  auto* client = compiler() ? compiler()->client() : nullptr;
-  StatusOr<Tensor> dynamism_or_status = e.ResolveDynamism(client);
+  StatusOr<Tensor> dynamism_or_status = e.ResolveDynamism();
   if (!dynamism_or_status.ok()) {
     xla::Literal true_literal = xla::LiteralUtil::CreateR0<bool>(true);
     // When failed to resolve dynamism, conservatively consider the value

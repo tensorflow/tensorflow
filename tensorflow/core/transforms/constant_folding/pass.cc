@@ -3685,7 +3685,8 @@ void ConstantFolding::runOnOperation() {
       ops.push_back(&op);
     }
     bool changed = false;
-    (void)applyOpPatternsAndFold(ops, final_patterns_, /*strict=*/true,
+    (void)applyOpPatternsAndFold(ops, final_patterns_,
+                                 GreedyRewriteStrictness::ExistingAndNewOps,
                                  &changed);
     if (!changed) break;
   } while (iteration++ < max_iterations);

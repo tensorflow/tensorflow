@@ -1633,7 +1633,6 @@ py_library(
         "//tensorflow/python/framework",
         "//tensorflow/python/framework:for_generated_wrappers",
         "//tensorflow/python/framework:ops",
-        "//tensorflow/python/ops/linalg/sparse",
         "//tensorflow/python/util",
     ],
 )

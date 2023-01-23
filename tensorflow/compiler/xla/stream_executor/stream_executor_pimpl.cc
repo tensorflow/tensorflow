@@ -35,12 +35,12 @@ limitations under the License.
 #include "tensorflow/compiler/xla/stream_executor/lib/env.h"
 #include "tensorflow/compiler/xla/stream_executor/lib/error.h"
 #include "tensorflow/compiler/xla/stream_executor/lib/statusor.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/threadpool.h"
 #include "tensorflow/compiler/xla/stream_executor/platform/port.h"
 #include "tensorflow/compiler/xla/stream_executor/rng.h"
 #include "tensorflow/compiler/xla/stream_executor/stream.h"
 #include "tensorflow/compiler/xla/stream_executor/stream_executor_internal.h"
 #include "tensorflow/tsl/platform/stacktrace.h"
+#include "tensorflow/tsl/platform/threadpool.h"
 #include "tensorflow/tsl/util/env_var.h"
 
 namespace {
@@ -60,7 +60,7 @@ std::string StackTraceIfVLOG10() {
 
 // Make sure the executor is done with its work; we know (because this isn't
 // publicly visible) that all enqueued work is quick.
-void BlockOnThreadExecutor(port::ThreadPool* executor) {
+void BlockOnThreadExecutor(tsl::thread::ThreadPool* executor) {
   absl::Notification n;
   executor->Schedule([&n]() { n.Notify(); });
   n.WaitForNotification();
@@ -145,7 +145,7 @@ StreamExecutor::StreamExecutor(
     : platform_(platform),
       implementation_(std::move(implementation)),
       device_ordinal_(device_ordinal),
-      background_threads_(new port::ThreadPool(
+      background_threads_(new tsl::thread::ThreadPool(
           port::Env::Default(), "stream_executor", kNumBackgroundThreads)),
       live_stream_count_(0),
       tracing_enabled_(false),

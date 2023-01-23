@@ -163,8 +163,7 @@ struct TFToI64JITInvocationForLargeTensorsPattern : public RewritePattern {
 
     // Create and replace in two steps to clone the original op.
     auto ifOp = rewriter.create<scf::IfOp>(
-        loc, op->getResultTypes(), large_tensor_predicate, jit_body_builder_fn,
-        aot_body_builder_fn);
+        loc, large_tensor_predicate, jit_body_builder_fn, aot_body_builder_fn);
     rewriter.replaceOp(op, ifOp.getResults());
     return success();
   }

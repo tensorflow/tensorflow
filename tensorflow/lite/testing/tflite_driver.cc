@@ -31,11 +31,11 @@ limitations under the License.
 #if !defined(__APPLE__)
 #include "tensorflow/lite/delegates/flex/delegate.h"
 #endif
+#include "tensorflow/lite/core/kernels/register.h"
 #include "tensorflow/lite/kernels/custom_ops_register.h"
 #include "tensorflow/lite/kernels/gradient/gradient_ops.h"
 #include "tensorflow/lite/kernels/parse_example/parse_example.h"
 #include "tensorflow/lite/kernels/perception/perception_ops.h"
-#include "tensorflow/lite/kernels/register.h"
 #include "tensorflow/lite/kernels/register_ref.h"
 #include "tensorflow/lite/kernels/test_delegate_providers.h"
 #include "tensorflow/lite/signature_runner.h"
