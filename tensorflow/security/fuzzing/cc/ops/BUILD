@@ -71,3 +71,15 @@ tf_cc_fuzz_test(
         "//tensorflow/security/fuzzing/cc:fuzz_session",
     ],
 )
+
+tf_cc_fuzz_test(
+    name = "string_to_number_fuzz",
+    srcs = ["string_to_number_fuzz.cc"],
+    tags = ["no_oss"],
+    deps = [
+        "//tensorflow/cc:cc_ops",
+        "//tensorflow/core/kernels:array",
+        "//tensorflow/core/kernels:string_to_number_op",
+        "//tensorflow/security/fuzzing/cc:fuzz_session",
+    ],
+)
