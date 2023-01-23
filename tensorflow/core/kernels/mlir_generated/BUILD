@@ -1536,6 +1536,97 @@ gpu_kernel_library(
     unroll_factors = "4",
 )
 
+# Logarithmic and exponential kernels
+gpu_kernel_library(
+    name = "gpu_exp_kernels",
+    op = "exp",
+    tile_size = "256",
+    types = [
+        "f16",
+        "f32",
+        "f64",
+        "c64",
+        "c128",
+    ],
+    unroll_factors = "4",
+)
+
+gpu_kernel_library(
+    name = "gpu_expm1_kernels",
+    op = "expm1",
+    tile_size = "256",
+    types = [
+        "f16",
+        "f32",
+        "f64",
+    ],
+    unroll_factors = "4",
+)
+
+gpu_kernel_library(
+    name = "gpu_log_kernels",
+    op = "log",
+    tile_size = "256",
+    types = [
+        "f16",
+        "f32",
+        "f64",
+    ],
+    unroll_factors = "4",
+)
+
+gpu_kernel_library(
+    name = "gpu_log1p_kernels",
+    op = "log1p",
+    tile_size = "256",
+    types = [
+        "f16",
+        "f32",
+        "f64",
+    ],
+    unroll_factors = "4",
+)
+
+gpu_kernel_library(
+    name = "gpu_xlogy_kernels",
+    op = "xlogy",
+    tile_size = "1024",
+    types = [
+        "f16",
+        "f32",
+        "f64",
+        "c64",
+        "c128",
+    ],
+    unroll_factors = "4",
+    # For complex XlogyOp kernels, we don't use unrolling, it would only cause
+    # slowdowns.
+    unroll_factors_override = {
+        "c64": None,
+        "c128": None,
+    },
+)
+
+gpu_kernel_library(
+    name = "gpu_xlog1py_kernels",
+    op = "xlog1py",
+    tile_size = "1024",
+    types = [
+        "f16",
+        "f32",
+        "f64",
+        "c64",
+        "c128",
+    ],
+    unroll_factors = "4",
+    # For complex Xlog1pyOp kernels, we don't use unrolling, it would only cause
+    # slowdowns.
+    unroll_factors_override = {
+        "c64": None,
+        "c128": None,
+    },
+)
+
 # TODO(b/160731748): Re-enable when it works again.
 # gpu_kernel_library(
 #     name = "gpu_bias_add_kernels",
@@ -1769,9 +1860,6 @@ gpu_kernel_library(
         unroll_factors = "4",
     )
     for op in [
-        "expm1",
-        "log",
-        "log1p",
         "relu_grad",
         "rsqrt",
         "softplus",
@@ -1779,20 +1867,6 @@ gpu_kernel_library(
         "sqrt",
     ]
 ]
-
-gpu_kernel_library(
-    name = "gpu_exp_kernels",
-    op = "exp",
-    tile_size = "256",
-    types = [
-        "f16",
-        "f32",
-        "f64",
-        "c64",
-        "c128",
-    ],
-    unroll_factors = "4",
-)
 
 gpu_kernel_library(
     name = "gpu_cast_kernels",
@@ -1863,46 +1937,6 @@ gpu_kernel_library(
         "c64",
         "c128",
     ],
-)
-
-gpu_kernel_library(
-    name = "gpu_xlogy_kernels",
-    op = "xlogy",
-    tile_size = "1024",
-    types = [
-        "f16",
-        "f32",
-        "f64",
-        "c64",
-        "c128",
-    ],
-    unroll_factors = "4",
-    # For complex XlogyOp kernels, we don't use unrolling, it would only cause
-    # slowdowns.
-    unroll_factors_override = {
-        "c64": None,
-        "c128": None,
-    },
-)
-
-gpu_kernel_library(
-    name = "gpu_xlog1py_kernels",
-    op = "xlog1py",
-    tile_size = "1024",
-    types = [
-        "f16",
-        "f32",
-        "f64",
-        "c64",
-        "c128",
-    ],
-    unroll_factors = "4",
-    # For complex Xlog1pyOp kernels, we don't use unrolling, it would only cause
-    # slowdowns.
-    unroll_factors_override = {
-        "c64": None,
-        "c128": None,
-    },
 )
 
 gpu_kernel_library(
