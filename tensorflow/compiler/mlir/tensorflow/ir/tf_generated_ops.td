@@ -2307,9 +2307,9 @@ Mutually reduces multiple tensors of identical type and shape.
   }];
 }
 
-def TF_CollectiveReduceV2Op : TF_Op<"CollectiveReduceV2", [DeclareOpInterfaceMethods<TF_GetResourceInstanceInterface>, TF_CollectiveReduceOrderingEffect]> {
+def TF_CollectiveReduceScatterV2Op : TF_Op<"CollectiveReduceScatterV2", [DeclareOpInterfaceMethods<TF_GetResourceInstanceInterface>, TF_CollectiveReduceOrderingEffect]> {
   let summary = [{
-Mutually reduces multiple tensors of identical type and shape.
+Mutually reduces multiple tensors of identical type and shape and scatters the result.
   }];
 
   let arguments = (ins
@@ -2334,7 +2334,7 @@ Mutually reduces multiple tensors of identical type and shape.
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
-def TF_CollectiveReduceScatterV2Op : TF_Op<"CollectiveReduceScatterV2", [DeclareOpInterfaceMethods<TF_GetResourceInstanceInterface>, TF_CollectiveReduceOrderingEffect]> {
+def TF_CollectiveReduceV2Op : TF_Op<"CollectiveReduceV2", [DeclareOpInterfaceMethods<TF_GetResourceInstanceInterface>, TF_CollectiveReduceOrderingEffect]> {
   let summary = [{
 Mutually reduces multiple tensors of identical type and shape.
   }];
