@@ -232,6 +232,7 @@ bool IsOpAllowedTf2XlaFallback(Operation* op) {
             TypeID::get<TF::RollOp>(),
             TypeID::get<TF::RoundOp>(),
             TypeID::get<TF::SegmentSumV2Op>(),
+            TypeID::get<TF::SegmentProdV2Op>(),
             TypeID::get<TF::SelectV2Op>(),
             TypeID::get<TF::SelfAdjointEigV2Op>(),
             TypeID::get<TF::SeluGradOp>(),
