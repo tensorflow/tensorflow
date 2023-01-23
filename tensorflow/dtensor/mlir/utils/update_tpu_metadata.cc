@@ -15,16 +15,16 @@ limitations under the License.
 
 #include <string>
 
-#include "mlir/Dialect/Func/IR/FuncOps.h"
-#include "mlir/IR/Attributes.h"
-#include "mlir/IR/Builders.h"
-#include "mlir/IR/Operation.h"
-#include "mlir/IR/Value.h"
-#include "mlir/IR/Visitors.h"
-#include "mlir/Pass/Pass.h"
-#include "mlir/Pass/PassManager.h"
-#include "mlir/Support/LogicalResult.h"
-#include "mlir/Transforms/Passes.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
+#include "mlir/IR/Attributes.h"  // from @llvm-project
+#include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/Operation.h"  // from @llvm-project
+#include "mlir/IR/Value.h"  // from @llvm-project
+#include "mlir/IR/Visitors.h"  // from @llvm-project
+#include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Pass/PassManager.h"  // from @llvm-project
+#include "mlir/Support/LogicalResult.h"  // from @llvm-project
+#include "mlir/Transforms/Passes.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
@@ -40,6 +40,20 @@ limitations under the License.
 namespace tensorflow {
 namespace dtensor {
 
+namespace internal {
+#ifdef PLATFORM_GOOGLE
+extern void ComputeReplicaGroupSplitInfo(int requested_num_replicas,
+                                         int* num_replicas,
+                                         int* core_id_offset);
+#else
+// By default, all TPUs are connected, construct a single replica group.
+void ComputeReplicaGroupSplitInfo(int requested_num_replicas, int* num_replicas,
+                                  int* core_id_local_offset) {
+  *num_replicas = requested_num_replicas;
+  *core_id_local_offset = 0;
+}
+#endif
+}  // namespace internal
 namespace {
 #define GEN_PASS_DEF_DTENSORUPDATETPUMETADATA
 #include "tensorflow/dtensor/mlir/dtensor_passes.h.inc"
@@ -86,7 +100,12 @@ mlir::LogicalResult UpdateTPUCompileMetadata(const Mesh& mesh_config,
       return mlir::WalkResult::interrupt();
     }
 
+    int core_id_local_offset = 0;
     int num_replicas = mesh_config.num_devices();
+
+    internal::ComputeReplicaGroupSplitInfo(num_replicas, &num_replicas,
+                                           &core_id_local_offset);
+
     metadata_proto.set_num_replicas(num_replicas);
 
     // We keep DTensor mesh global device IDs equal to XLA replica IDs, both
@@ -130,7 +149,7 @@ mlir::LogicalResult UpdateTPUCompileMetadata(const Mesh& mesh_config,
       // TODO(b/188076080): Clean up device id.
       const int64_t start_device_id = mesh_config.min_global_device_id();
       for (int i = 0; i < num_replicas; ++i) {
-        int tpu_core_id_index = i + start_device_id;
+        int tpu_core_id_index = i + start_device_id + core_id_local_offset;
         computation_device->add_replica_device_ids(
             tpu_core_ids[tpu_core_id_index]);
       }
