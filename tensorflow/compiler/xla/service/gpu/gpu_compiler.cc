@@ -297,7 +297,6 @@ class GpuBfloat16Support : public BFloat16Support {
       gpu_info_;
 };
 
-
 bool ConvIsLowerable(HloInstruction* conv) {
   return GpuConvRewriter::ConvIsLowerable(conv);
 }
