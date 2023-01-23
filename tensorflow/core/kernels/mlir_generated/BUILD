@@ -1134,6 +1134,91 @@ gpu_kernel_library(
     unroll_factors = "4",
 )
 
+# Complex-specifc kernels
+
+gpu_kernel_library(
+    name = "gpu_angle_kernels",
+    op = "angle",
+    output_types = [
+        "f32",
+        "f64",
+    ],
+    tile_size = "256",
+    types = [
+        "c64",
+        "c128",
+    ],
+    unroll_factors = "2",
+)
+
+gpu_kernel_library(
+    name = "gpu_complex_abs_kernels",
+    op = "complex_abs",
+    output_types = [
+        "f32",
+        "f64",
+    ],
+    tile_size = "256",
+    types = [
+        "c64",
+        "c128",
+    ],
+)
+
+gpu_kernel_library(
+    name = "gpu_complex_kernels",
+    op = "complex",
+    output_types = [
+        "c64",
+        "c128",
+    ],
+    tile_size = "1024",
+    types = [
+        "f32",
+        "f64",
+    ],
+    unroll_factors = "2",
+)
+
+gpu_kernel_library(
+    name = "gpu_conj_kernels",
+    op = "conj",
+    tile_size = "256",
+    types = [
+        "c64",
+        "c128",
+    ],
+    unroll_factors = "2",
+)
+
+gpu_kernel_library(
+    name = "gpu_imag_kernels",
+    op = "imag",
+    output_types = [
+        "f32",
+        "f64",
+    ],
+    tile_size = "256",
+    types = [
+        "c64",
+        "c128",
+    ],
+)
+
+gpu_kernel_library(
+    name = "gpu_real_kernels",
+    op = "real",
+    output_types = [
+        "f32",
+        "f64",
+    ],
+    tile_size = "256",
+    types = [
+        "c64",
+        "c128",
+    ],
+)
+
 # TODO(b/160731748): Re-enable when it works again.
 # gpu_kernel_library(
 #     name = "gpu_bias_add_kernels",
@@ -1237,32 +1322,6 @@ gpu_kernel_library(
 )
 
 gpu_kernel_library(
-    name = "gpu_angle_kernels",
-    op = "angle",
-    output_types = [
-        "f32",
-        "f64",
-    ],
-    tile_size = "256",
-    types = [
-        "c64",
-        "c128",
-    ],
-    unroll_factors = "2",
-)
-
-gpu_kernel_library(
-    name = "gpu_conj_kernels",
-    op = "conj",
-    tile_size = "256",
-    types = [
-        "c64",
-        "c128",
-    ],
-    unroll_factors = "2",
-)
-
-gpu_kernel_library(
     name = "gpu_erf_kernels",
     op = "erf",
     tile_size = "256",
@@ -1287,38 +1346,10 @@ gpu_kernel_library(
 )
 
 gpu_kernel_library(
-    name = "gpu_imag_kernels",
-    op = "imag",
-    output_types = [
-        "f32",
-        "f64",
-    ],
-    tile_size = "256",
-    types = [
-        "c64",
-        "c128",
-    ],
-)
-
-gpu_kernel_library(
     name = "gpu_logical_not_kernels",
     op = "logical_not",
     tile_size = "256",
     types = ["i1"],
-)
-
-gpu_kernel_library(
-    name = "gpu_real_kernels",
-    op = "real",
-    output_types = [
-        "f32",
-        "f64",
-    ],
-    tile_size = "256",
-    types = [
-        "c64",
-        "c128",
-    ],
 )
 
 gpu_kernel_library(
@@ -1460,35 +1491,6 @@ gpu_kernel_library(
         "c128",
     ],
     unroll_factors = "4",
-)
-
-gpu_kernel_library(
-    name = "gpu_complex_kernels",
-    op = "complex",
-    output_types = [
-        "c64",
-        "c128",
-    ],
-    tile_size = "1024",
-    types = [
-        "f32",
-        "f64",
-    ],
-    unroll_factors = "2",
-)
-
-gpu_kernel_library(
-    name = "gpu_complex_abs_kernels",
-    op = "complex_abs",
-    output_types = [
-        "f32",
-        "f64",
-    ],
-    tile_size = "256",
-    types = [
-        "c64",
-        "c128",
-    ],
 )
 
 gpu_kernel_library(
