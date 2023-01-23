@@ -43,12 +43,13 @@ class RaiseDeprecatedMklOpError : public OpKernel {
 }  // namespace
 
 // Deprecated MklAddN op
-#define REGISTER_MKL_CPU(T)                                                   \
-  REGISTER_KERNEL_BUILDER(Name("_MklAddN")                                    \
-                              .Device(DEVICE_CPU)                             \
-                              .TypeConstraint<T>("T")                         \
-                              .Label(mkl_op_registry::kMklNameChangeOpLabel), \
-                          RaiseDeprecatedMklOpError);
+#define REGISTER_MKL_CPU(T)                                    \
+  REGISTER_KERNEL_BUILDER(                                     \
+      Name("_MklAddN")                                         \
+          .Device(DEVICE_CPU)                                  \
+          .TypeConstraint<T>("T")                              \
+          .Label(mkl_op_registry::kMklLayoutDependentOpLabel), \
+      RaiseDeprecatedMklOpError);
 TF_CALL_float(REGISTER_MKL_CPU);
 TF_CALL_bfloat16(REGISTER_MKL_CPU);
 #undef REGISTER_MKL_CPU
@@ -82,75 +83,82 @@ REGISTER6(RaiseDeprecatedMklOpError, CPU, "_MklSquaredDifference",
 #pragma pop_macro("REGISTER")
 
 // Deprecated MklIdentity op
-#define REGISTER_MKL_CPU(T)                                                   \
-  REGISTER_KERNEL_BUILDER(Name("_MklIdentity")                                \
-                              .Device(DEVICE_CPU)                             \
-                              .TypeConstraint<T>("T")                         \
-                              .Label(mkl_op_registry::kMklNameChangeOpLabel), \
-                          RaiseDeprecatedMklOpError);
+#define REGISTER_MKL_CPU(T)                                    \
+  REGISTER_KERNEL_BUILDER(                                     \
+      Name("_MklIdentity")                                     \
+          .Device(DEVICE_CPU)                                  \
+          .TypeConstraint<T>("T")                              \
+          .Label(mkl_op_registry::kMklLayoutDependentOpLabel), \
+      RaiseDeprecatedMklOpError);
 TF_CALL_float(REGISTER_MKL_CPU);
 TF_CALL_bfloat16(REGISTER_MKL_CPU);
 #undef REGISTER_MKL_CPU
 
 // Deprecated MklInputConversion op
-#define REGISTER_MKL_CPU(T)                                                   \
-  REGISTER_KERNEL_BUILDER(Name("_MklInputConversion")                         \
-                              .Device(DEVICE_CPU)                             \
-                              .TypeConstraint<T>("T")                         \
-                              .Label(mkl_op_registry::kMklNameChangeOpLabel), \
-                          RaiseDeprecatedMklOpError);
+#define REGISTER_MKL_CPU(T)                                    \
+  REGISTER_KERNEL_BUILDER(                                     \
+      Name("_MklInputConversion")                              \
+          .Device(DEVICE_CPU)                                  \
+          .TypeConstraint<T>("T")                              \
+          .Label(mkl_op_registry::kMklLayoutDependentOpLabel), \
+      RaiseDeprecatedMklOpError);
 TF_CALL_float(REGISTER_MKL_CPU);
 TF_CALL_bfloat16(REGISTER_MKL_CPU);
 #undef REGISTER_MKL_CPU
 
 // Deprecated MklLRN and MklLRNGrad ops
-#define REGISTER_MKL_CPU(T)                                                   \
-  REGISTER_KERNEL_BUILDER(Name("_MklLRN")                                     \
-                              .Device(DEVICE_CPU)                             \
-                              .TypeConstraint<T>("T")                         \
-                              .Label(mkl_op_registry::kMklNameChangeOpLabel), \
-                          RaiseDeprecatedMklOpError);                         \
-  REGISTER_KERNEL_BUILDER(Name("_MklLRNGrad")                                 \
-                              .Device(DEVICE_CPU)                             \
-                              .TypeConstraint<T>("T")                         \
-                              .Label(mkl_op_registry::kMklNameChangeOpLabel), \
-                          RaiseDeprecatedMklOpError);
+#define REGISTER_MKL_CPU(T)                                    \
+  REGISTER_KERNEL_BUILDER(                                     \
+      Name("_MklLRN")                                          \
+          .Device(DEVICE_CPU)                                  \
+          .TypeConstraint<T>("T")                              \
+          .Label(mkl_op_registry::kMklLayoutDependentOpLabel), \
+      RaiseDeprecatedMklOpError);                              \
+  REGISTER_KERNEL_BUILDER(                                     \
+      Name("_MklLRNGrad")                                      \
+          .Device(DEVICE_CPU)                                  \
+          .TypeConstraint<T>("T")                              \
+          .Label(mkl_op_registry::kMklLayoutDependentOpLabel), \
+      RaiseDeprecatedMklOpError);
 TF_CALL_float(REGISTER_MKL_CPU);
 #undef REGISTER_MKL_CPU
 
 // Deprecated MklReshape op
-#define REGISTER_MKL_CPU(T)                                                   \
-  REGISTER_KERNEL_BUILDER(Name("_MklReshape")                                 \
-                              .Device(DEVICE_CPU)                             \
-                              .HostMemory("shape")                            \
-                              .TypeConstraint<T>("T")                         \
-                              .TypeConstraint("Tshape", {DT_INT32, DT_INT64}) \
-                              .Label(mkl_op_registry::kMklNameChangeOpLabel), \
-                          RaiseDeprecatedMklOpError);
+#define REGISTER_MKL_CPU(T)                                    \
+  REGISTER_KERNEL_BUILDER(                                     \
+      Name("_MklReshape")                                      \
+          .Device(DEVICE_CPU)                                  \
+          .HostMemory("shape")                                 \
+          .TypeConstraint<T>("T")                              \
+          .TypeConstraint("Tshape", {DT_INT32, DT_INT64})      \
+          .Label(mkl_op_registry::kMklLayoutDependentOpLabel), \
+      RaiseDeprecatedMklOpError);
 TF_CALL_float(REGISTER_MKL_CPU);
 TF_CALL_bfloat16(REGISTER_MKL_CPU);
 #undef REGISTER_MKL_CPU
 
 // Deprecated MklSlice op
-#define REGISTER_MKL_CPU(type)                                                \
-  REGISTER_KERNEL_BUILDER(Name("_MklSlice")                                   \
-                              .Device(DEVICE_CPU)                             \
-                              .TypeConstraint<type>("T")                      \
-                              .HostMemory("begin")                            \
-                              .HostMemory("size")                             \
-                              .Label(mkl_op_registry::kMklNameChangeOpLabel), \
-                          RaiseDeprecatedMklOpError);
+#define REGISTER_MKL_CPU(type)                                 \
+  REGISTER_KERNEL_BUILDER(                                     \
+      Name("_MklSlice")                                        \
+          .Device(DEVICE_CPU)                                  \
+          .TypeConstraint<type>("T")                           \
+          .HostMemory("begin")                                 \
+          .HostMemory("size")                                  \
+          .Label(mkl_op_registry::kMklLayoutDependentOpLabel), \
+      RaiseDeprecatedMklOpError);
 TF_CALL_float(REGISTER_MKL_CPU);
 TF_CALL_bfloat16(REGISTER_MKL_CPU);
 #undef REGISTER_MKL_CPU
 
 // Deprecated MklToTf op
-#define REGISTER_MKL_CPU(T)                                                   \
-  REGISTER_KERNEL_BUILDER(Name("_MklToTf")                                    \
-                              .Device(DEVICE_CPU)                             \
-                              .TypeConstraint<T>("T")                         \
-                              .Label(mkl_op_registry::kMklNameChangeOpLabel), \
-                          RaiseDeprecatedMklOpError);
+#define REGISTER_MKL_CPU(T)                                    \
+  REGISTER_KERNEL_BUILDER(                                     \
+      Name("_MklToTf")                                         \
+          .Device(DEVICE_CPU)                                  \
+          .TypeConstraint<T>("T")                              \
+          .Label(mkl_op_registry::kMklLayoutDependentOpLabel), \
+      RaiseDeprecatedMklOpError);
 TF_CALL_NUMBER_TYPES(REGISTER_MKL_CPU);
 TF_CALL_QUANTIZED_TYPES(REGISTER_MKL_CPU);
 #undef REGISTER_MKL_CPU
