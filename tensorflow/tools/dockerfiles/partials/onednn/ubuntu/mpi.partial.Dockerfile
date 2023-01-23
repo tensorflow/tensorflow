@@ -7,8 +7,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends --fix-missing \
     openmpi-common \
     openssh-client \
     openssh-server && \
-    apt-get clean && \
-    rm -rf /var/lib/apt/lists/*
+    && apt-get -y clean all \
+    && rm -rf /var/lib/apt/lists/*
 
 # Create a wrapper for OpenMPI to allow running as root by default
 RUN mv /usr/bin/mpirun /usr/bin/mpirun.real && \

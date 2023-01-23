@@ -36,7 +36,9 @@ RUN apt-key adv --fetch-keys https://developer.download.nvidia.com/compute/cuda/
         libcudnn8=${CUDNN}+cuda${CUDA} \
         pkg-config \
         software-properties-common \
-        unzip
+        unzip \
+    && apt-get -y clean all \
+    && rm -rf /var/lib/apt/lists/*
 
 # Install TensorRT if not building for PowerPC
 # NOTE: libnvinfer uses cuda11.6 versions
@@ -46,7 +48,7 @@ RUN [[ "${ARCH}" = "ppc64le" ]] || { apt-get update && \
         apt-get update && \
         apt-get install -y --no-install-recommends libnvinfer${LIBNVINFER_MAJOR_VERSION}=${LIBNVINFER}+cuda11.6 \
         libnvinfer-plugin${LIBNVINFER_MAJOR_VERSION}=${LIBNVINFER}+cuda11.6 \
-        && apt-get clean \
+        && apt-get -y clean all \
         && rm -rf /var/lib/apt/lists/*; }
 
 # For CUDA profiling, TensorFlow requires CUPTI.

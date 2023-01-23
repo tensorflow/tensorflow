@@ -10,7 +10,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends --fix-missing \
     g++-8 \
     gcc-8 \
     git \
-    ${PYTHON}-dev
+    ${PYTHON}-dev \
+    && apt-get -y clean all \
+    && rm -rf /var/lib/apt/lists/*
 
 RUN update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-9 100 --slave /usr/bin/g++ g++ /usr/bin/g++-9 && \
     update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-8 800 --slave /usr/bin/g++ g++ /usr/bin/g++-8

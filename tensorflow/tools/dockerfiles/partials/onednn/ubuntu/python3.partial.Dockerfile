@@ -4,12 +4,16 @@ ARG PYTHON=python3
 
 RUN apt-get update && apt-get install -y --no-install-recommends --fix-missing \
     curl \
-    software-properties-common
+    software-properties-common \
+    && apt-get -y clean all \
+    && rm -rf /var/lib/apt/lists/*
 
 RUN add-apt-repository ppa:deadsnakes/ppa
 
 RUN apt-get update && apt-get install -y --no-install-recommends --fix-missing \
-    ${PYTHON}
+    ${PYTHON} \
+    && apt-get -y clean all \
+    && rm -rf /var/lib/apt/lists/*
 
 RUN curl -fSsL https://bootstrap.pypa.io/get-pip.py | ${PYTHON}
 

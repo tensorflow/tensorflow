@@ -1,4 +1,4 @@
-RUN apt-get update && apt-get install -y \
+RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     curl \
     git \
@@ -6,7 +6,9 @@ RUN apt-get update && apt-get install -y \
     openjdk-8-jdk \
     python3-dev \
     virtualenv \
-    swig
+    swig \
+    && apt-get -y clean all \
+    && rm -rf /var/lib/apt/lists/*
 
 RUN python3 -m pip --no-cache-dir install \
     Pillow \

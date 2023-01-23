@@ -43,7 +43,9 @@ RUN apt-key adv --fetch-keys https://developer.download.nvidia.com/compute/cuda/
         zlib1g-dev \
         wget \
         git \
-        && \
+    && apt-get -y clean all \
+    && rm -rf /var/lib/apt/lists/* \
+    && \
     find /usr/local/cuda-${CUDA}/lib64/ -type f -name 'lib*_static.a' -not -name 'libcudart_static.a' -delete && \
     rm /usr/lib/${LIB_DIR_PREFIX}-linux-gnu/libcudnn_static_v8.a
 
@@ -57,7 +59,7 @@ RUN [[ "${ARCH}" = "ppc64le" ]] || { apt-get update && \
         libnvinfer-dev=${LIBNVINFER}+cuda11.8 \
         libnvinfer-plugin-dev=${LIBNVINFER}+cuda11.8 \
         libnvinfer-plugin${LIBNVINFER_MAJOR_VERSION}=${LIBNVINFER}+cuda11.8 \
-        && apt-get clean \
+        && apt-get -y clean all \
         && rm -rf /var/lib/apt/lists/*; }
 
 # Configure the build for our CUDA configuration.

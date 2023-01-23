@@ -4,7 +4,10 @@
 #   tf-nightly
 #   tf-nightly-gpu
 ARG TF_PACKAGE=tensorflow
-RUN apt-get update && apt-get install -y curl libhdf5-dev wget
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        curl libhdf5-dev wget \
+    && apt-get -y clean all \
+    && rm -rf /var/lib/apt/lists/*
 RUN python3 -m pip install --no-cache-dir --global-option=build_ext \
             --global-option=-I/usr/include/hdf5/serial/ \
             --global-option=-L/usr/lib/powerpc64le-linux-gnu/hdf5/serial \

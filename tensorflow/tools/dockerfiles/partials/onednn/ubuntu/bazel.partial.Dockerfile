@@ -1,5 +1,7 @@
 RUN apt-get update && apt-get install -y --no-install-recommends --fix-missing \
-    curl
+    curl \
+    && apt-get -y clean all \
+    && rm -rf /var/lib/apt/lists/*
 
 # Install bazel
 ARG BAZEL_VERSION=3.7.2

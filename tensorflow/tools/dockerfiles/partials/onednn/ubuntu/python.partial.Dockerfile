@@ -6,7 +6,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends --fix-missing \
     ca-certificates \
     curl \
     ${PYTHON} \
-    ${PYTHON}-distutils
+    ${PYTHON}-distutils \
+    && apt-get -y clean all \
+    && rm -rf /var/lib/apt/lists/*
 
 RUN curl -fSsL https://bootstrap.pypa.io/get-pip.py | ${PYTHON}
 
