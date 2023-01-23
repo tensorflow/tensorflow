@@ -66,12 +66,10 @@ external storage.
     and can be appended to the `args` string (note that all args must be nested
     in the single quoted string that follows the args key). {value=2}
 
-1.  Push the TensorFlow Lite model that you need to test.
-
-```
-adb push mobilenet_quant_v1_224.tflite /data/local/tmp
-```
-
+Currently the tool uses a 'mobilenet_v1_1.0_224.tflite' and
+'mobilenet_quant_v1_224.tflite' model for latency and accuracy benchmarking. The
+TF Lite model file is bundled into the app during the build process. We plan to
+expand the number of models in the future.
 1. Dump the test target delegate settings file on device. Example command:
 
 ```
