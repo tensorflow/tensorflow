@@ -48,24 +48,23 @@ class ZenEagerOpRewrite : public EagerOpRewrite {
   Status Run(EagerOperation *orig_op,
              std::unique_ptr<tensorflow::EagerOperation> *out_op);
 
-  // Initializes the new op and sets up its inputs and attributes.
-  static Status SetupNewOp(EagerOperation *orig_op, const string zen_op_name,
-                           std::unique_ptr<EagerOperation> *new_zen_op);
-
-  // Generic rewrite that can be used for any Zen op that doesn't need
-  // special processing.
+  // Generic rewrite for any Zen op that doesn't need special processing. It
+  // initializes new Zen op, sets up its inputs and attributes.
   static Status CreateGenericZenOp(EagerOperation *orig_op,
                                    std::unique_ptr<EagerOperation> *zen_op,
                                    string zen_op_name);
 
   // Calls op-specific rewrite function to create new Zen op.
-  Status RewriteToZenOp(EagerOperation *orig_op,
-                        std::unique_ptr<EagerOperation> *zen_op);
+  Status RewriteToZenOp(
+      EagerOperation *orig_op, std::unique_ptr<EagerOperation> *zen_op,
+      std::unordered_map<std::string, ZenEagerOp>::iterator *it);
 
-  // Check whether we can rewrite the op to Zen one or not.
-  bool ShouldRewriteOp(EagerOperation *op);
+  // Check whether we can rewrite the original op with Zen op, or not.
+  bool ShouldRewriteOp(
+      EagerOperation *op,
+      std::unordered_map<std::string, ZenEagerOp>::iterator *it);
 
-  // Default rewrite rule that always rewrite for float data type.
+  // Default rewrite rule that always rewrites for float data type.
   static bool AlwaysRewriteFloat(EagerOperation *op) {
     DataType data_type;
     const NodeDef &kNodeDef = op->MutableAttrs()->BuildNodeDef();
@@ -104,43 +103,12 @@ void ZenEagerOpRewrite::InsertZenEagerOps(ZenEagerOp op) {
 Status ZenEagerOpRewrite::Run(
     EagerOperation *orig_op,
     std::unique_ptr<tensorflow::EagerOperation> *out_op) {
-  if (ShouldRewriteOp(orig_op)) {
-    TF_CHECK_OK(RewriteToZenOp(orig_op, out_op));
+  std::unordered_map<std::string, ZenEagerOp>::iterator it;
+  // Don't rewrite the op if TF-ZenDNN use is disabled at runtime.
+  if (IsZenDnnEnabled() && ShouldRewriteOp(orig_op, &it)) {
+    TF_CHECK_OK(RewriteToZenOp(orig_op, out_op, &it));
   }
   return OkStatus();
-}
-
-Status ZenEagerOpRewrite::SetupNewOp(
-    EagerOperation *orig_op, string zen_op_name,
-    std::unique_ptr<EagerOperation> *new_zen_op) {
-  bool is_remote = false;
-  new_zen_op->reset(new tensorflow::EagerOperation(&orig_op->EagerContext()));
-  TF_RETURN_IF_ERROR(new_zen_op->get()->Reset(zen_op_name.c_str(), nullptr,
-                                              is_remote, nullptr));
-
-  int num_inputs = orig_op->Inputs().size();
-  // Add all inputs to the new op.
-  for (int i = 0; i < num_inputs; ++i) {
-    TF_RETURN_IF_ERROR((*new_zen_op)->AddInput(orig_op->Inputs()[i]));
-  }
-
-  // Copy all attributes to the new op.
-  const NodeDef &kOrigNodeDef = orig_op->MutableAttrs()->BuildNodeDef();
-
-  AttrSlice attr_list(kOrigNodeDef);
-  for (const auto &attr : attr_list) {
-    (*new_zen_op)->MutableAttrs()->Set(attr.first, attr.second);
-  }
-
-  (*new_zen_op)->MutableAttrs()->Set("is_eager", true);
-  (*new_zen_op)->MutableAttrs()->Set("reorder_before", false);
-  (*new_zen_op)->MutableAttrs()->Set("reorder_after", false);
-  (*new_zen_op)->MutableAttrs()->Set("in_links", 1);
-  (*new_zen_op)->MutableAttrs()->Set("out_links", 1);
-  (*new_zen_op)->MutableAttrs()->Set("reset", true);
-
-  string device_name = orig_op->DeviceName();
-  return (*new_zen_op)->SetDeviceName(device_name.c_str());
 }
 
 Status ZenEagerOpRewrite::CreateGenericZenOp(
@@ -149,15 +117,36 @@ Status ZenEagerOpRewrite::CreateGenericZenOp(
   VLOG(1) << " TF-EAGER-REWRITE Info: OriginalOp= " << orig_op->Name()
           << " ZenOp=" << zen_op_name;
 
-  TF_CHECK_OK(SetupNewOp(orig_op, zen_op_name, zen_op));
-  return OkStatus();
+  zen_op->reset(new tensorflow::EagerOperation(&orig_op->EagerContext()));
+  TF_RETURN_IF_ERROR(zen_op->get()->Reset(zen_op_name.c_str(), nullptr,
+                                          /*is_remote=*/ false, nullptr));
+
+  // Add all inputs to the Zen op.
+  for (auto input : orig_op->Inputs()) {
+    TF_RETURN_IF_ERROR((*zen_op)->AddInput(input));
+  }
+
+  // Copy all attributes to the Zen op.
+  const NodeDef &kOrigNodeDef = orig_op->MutableAttrs()->BuildNodeDef();
+  AttrSlice attr_list(kOrigNodeDef);
+  for (const auto &attr : attr_list) {
+    (*zen_op)->MutableAttrs()->Set(attr.first, attr.second);
+  }
+
+  (*zen_op)->MutableAttrs()->Set("is_eager", true);
+  (*zen_op)->MutableAttrs()->Set("reorder_before", false);
+  (*zen_op)->MutableAttrs()->Set("reorder_after", false);
+  (*zen_op)->MutableAttrs()->Set("in_links", 1);
+  (*zen_op)->MutableAttrs()->Set("out_links", 1);
+  (*zen_op)->MutableAttrs()->Set("reset", true);
+
+  string device_name = orig_op->DeviceName();
+  return (*zen_op)->SetDeviceName(device_name.c_str());
 }
 
-bool ZenEagerOpRewrite::ShouldRewriteOp(EagerOperation *op) {
-  // Don't rewrite the op if TF-ZenDNN use is disabled at runtime.
-  if (!IsZenDnnEnabled()) {
-    return false;
-  }
+bool ZenEagerOpRewrite::ShouldRewriteOp(
+    EagerOperation *op,
+    std::unordered_map<std::string, ZenEagerOp>::iterator *it) {
   // Only rewrite if op is to be run on CPU device.
   if (op->GetDeviceParsedName().type != "CPU") {
     return false;
@@ -167,25 +156,22 @@ bool ZenEagerOpRewrite::ShouldRewriteOp(EagerOperation *op) {
     return false;
   }
   // Find the op and verify the requirements for rewriting it with Zen op.
-  auto it = zen_eager_ops_.find(op->Name());
-  if (it != zen_eager_ops_.end()) {
-    // Eager op found, verify that a kernel exists for Zen op and rewrite is
-    // possible.
-    if (zen_op_registry::IsZenOpKernelRegistered(
-            zen_op_registry::GetZenOpName(op->Name()), data_type) &&
-        it->second.rewrite_rule(op)) {
-      return true;
-    }
+  *it = zen_eager_ops_.find(op->Name());
+  if (*it == zen_eager_ops_.end()) {
+    return false;
   }
-  return false;
+  // Eager op found, verify that a kernel exists for Zen op and rewrite is
+  // possible.
+  return (zen_op_registry::IsZenOpKernelRegistered(
+              zen_op_registry::GetZenOpName(op->Name()), data_type) &&
+          (*it)->second.rewrite_rule(op));
 }
 
 Status ZenEagerOpRewrite::RewriteToZenOp(
-    EagerOperation *orig_op, std::unique_ptr<EagerOperation> *zen_op) {
-  // TODO(zendnn-tf): zen_eager_ops_ lookup can be reduced from twice (once each
-  // in ShouldRewriteOp & RewriteToZenOp) to just once.
-  TF_RETURN_IF_ERROR(zen_eager_ops_[orig_op->Name()].create_zen_op(
-      orig_op, zen_op, zen_eager_ops_[orig_op->Name()].zen_op_name));
+    EagerOperation *orig_op, std::unique_ptr<EagerOperation> *zen_op,
+    std::unordered_map<std::string, ZenEagerOp>::iterator *it) {
+  TF_RETURN_IF_ERROR(
+      (*it)->second.create_zen_op(orig_op, zen_op, (*it)->second.zen_op_name));
   return OkStatus();
 }
 
