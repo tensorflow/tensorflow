@@ -90,6 +90,8 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_force_host_platform_device_count(1);
   opts.set_xla_gpu_all_reduce_combine_threshold_bytes(30 * 1024 * 1024);
   opts.set_xla_gpu_enable_async_all_reduce(true);
+  opts.set_xla_gpu_enable_reassociation_for_converted_ar(true);
+
   opts.set_xla_cpu_enable_xprof_traceme(false);
   opts.set_xla_gpu_unsafe_fallback_to_driver_on_ptxas_not_found(false);
   opts.set_xla_multiheap_size_constraint_per_heap(-1);
@@ -797,7 +799,12 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       debug_options->xla_gpu_collective_inflation_factor(),
       "Inflation factor for collectives. If set to > 1, each XLA/GPU "
       "collective will execute multiple times (will yield incorrect results)"));
-
+  flag_list->push_back(tsl::Flag(
+      "xla_gpu_enable_reassociation_for_converted_ar",
+      bool_setter_for(&DebugOptions::set_xla_gpu_enable_reassociation_for_converted_ar),
+      debug_options->xla_gpu_enable_reassociation_for_converted_ar(),
+      "Enable allreduce reassociation on allreduces that are converted to a wider type. "
+      "The reassociated allreduce will be promoted to a wider-typed allreduce."));
   flag_list->push_back(
       tsl::Flag("xla_gpu_dump_llvmir",
                 bool_setter_for(&DebugOptions::set_xla_gpu_dump_llvmir),

@@ -38,8 +38,8 @@ limitations under the License.
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Transforms/Utils/SplitModule.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
-#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
-#include "mlir/IR/Diagnostics.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"            // from @llvm-project
+#include "mlir/IR/Diagnostics.h"           // from @llvm-project
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
@@ -192,8 +192,6 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 namespace {
-
-
 
 bool ConvIsLowerable(HloInstruction* conv) {
   return GpuConvRewriter::ConvIsLowerable(conv);
@@ -594,7 +592,8 @@ Status GpuCompiler::OptimizeHloModule(HloModule* hlo_module,
     HloPassPipeline collectives_pipeline("collective-optimizations");
     collectives_pipeline.AddPass<AllReduceFolder>();
     collectives_pipeline.AddPass<ReduceScatterCreator>();
-    collectives_pipeline.AddPass<AllReduceReassociate>();
+    collectives_pipeline.AddPass<AllReduceReassociate>(
+        debug_options.xla_gpu_enable_reassociation_for_converted_ar());
     collectives_pipeline.AddPass<ReduceScatterReassociate>();
     collectives_pipeline.AddPass<WhileLoopAllReduceCodeMotion>(
         /*enable_reduce_scatter=*/hlo_module->config()
@@ -1531,7 +1530,6 @@ StatusOr<std::unique_ptr<AotCompilationResult>> GpuCompiler::Export(
           gpu_executable->constants());
   return result;
 }
-
 
 StatusOr<std::unique_ptr<Executable>> CompileLmhloToExecutable(
     GpuCompiler* compiler, mlir::ModuleOp module, std::string module_name,

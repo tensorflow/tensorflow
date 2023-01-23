@@ -29,23 +29,45 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/collective_ops_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_domain_map.h"
 #include "tensorflow/compiler/xla/service/hlo_query.h"
+#include "tensorflow/compiler/xla/service/pattern_matcher.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/tsl/platform/errors.h"
 
 namespace xla {
 namespace {
 
+namespace m = match;
+
+bool AreAllreduceKeysEqual(AllReduceKey& key0, AllReduceKey& key1,
+                           bool ignore_element_type) {
+  // We compare all elements in the tuple except element_type which is the
+  // second member in the AllReduceKey tuple.
+  if (ignore_element_type) {
+    return std::get<0>(key0) == std::get<0>(key1) &&
+           std::get<2>(key0) == std::get<2>(key1) &&
+           std::get<3>(key0) == std::get<3>(key1) &&
+           std::get<4>(key0) == std::get<4>(key1) &&
+           std::get<5>(key0) == std::get<5>(key1);
+  } else {
+    return key0 == key1;
+  }
+}
 // Returns if the given all reduce instructions are compatible with each other.
 // Note that since the given all-reduce instructions are connected to another
 // instruction by a direct data flow edge, they must belong to the same domain.
 // As a result, we don't need to include any domain information in the
 // AllReduceKey to check compatibility.
-bool AreCompatible(const HloAllReduceInstruction *ar0,
-                   const HloAllReduceInstruction *ar1, ReductionKind op_kind) {
+bool AreCompatible(const HloAllReduceInstruction* ar0,
+                   const HloAllReduceInstruction* ar1, ReductionKind op_kind,
+                   bool ignore_element_type) {
   std::optional<AllReduceKey> key0 = GetAllReduceKey(ar0);
   std::optional<AllReduceKey> key1 = GetAllReduceKey(ar1);
   auto kind0 = MatchReductionComputation(ar0->to_apply());
-  return key0 && key1 && kind0 && *key0 == *key1 && kind0 == op_kind;
+  // If ignore_element_type is true, then we compare all elements in the
+  // AllReduceKey tuple except the element_type
+  return key0 && key1 && kind0 &&
+         AreAllreduceKeysEqual(*key0, *key1, ignore_element_type) &&
+         kind0 == op_kind;
 }
 
 // Look-through some formatting operations that might be in front of the
@@ -59,7 +81,8 @@ HloAllReduceInstruction* LookThroughForAllReduce(
     }
     if (instr->opcode() != HloOpcode::kReshape &&
         instr->opcode() != HloOpcode::kPad &&
-        instr->opcode() != HloOpcode::kSlice) {
+        instr->opcode() != HloOpcode::kSlice &&
+        instr->opcode() != HloOpcode::kConvert) {
       return nullptr;
     }
     if (instr->opcode() == HloOpcode::kPad) {
@@ -91,11 +114,55 @@ bool ReassociateAllReduceIsProfitable(HloInstruction* ar0, HloInstruction* ar1,
          ShapeUtil::ElementsIn(reassociated_inst->shape());
 }
 
+bool AreCompatibleConverts(const HloInstruction* convert0,
+                           const HloInstruction* convert1) {
+  bool is_compatible = true;
+  // For numerical stability, we only re-order ops with casts from a narrow type
+  // to a wider type.
+  if (convert0) {
+    is_compatible &= primitive_util::CastPreservesValues(
+        convert0->operand(0)->shape().element_type(),
+        convert0->shape().element_type());
+  }
+
+  if (convert1) {
+    is_compatible &= primitive_util::CastPreservesValues(
+        convert1->operand(0)->shape().element_type(),
+        convert1->shape().element_type());
+  }
+
+  if (convert0 && convert1) {
+    CHECK(convert0->shape().element_type() == convert1->shape().element_type());
+    is_compatible &= convert0->operand(0)->shape().element_type() ==
+                     convert1->operand(0)->shape().element_type();
+  }
+  return is_compatible;
+}
+
+template <typename Pattern>
+auto OptionalConvertWithOneUser(HloInstruction** optional_convert,
+                                Pattern pattern) {
+  return m::AnyOf<HloInstruction>(
+      m::Convert(optional_convert, pattern).WithOneUser(), std::move(pattern));
+}
+
+bool MatchOperandsToAllReduceWithOptionalConvert(HloInstruction* inst,
+                                                 HloInstruction** convert0,
+                                                 HloInstruction** convert1) {
+  auto ar_op_optional_convert_pattern =
+      m::Op()
+          .WithOperand(0, OptionalConvertWithOneUser(convert0, m::AllReduce()))
+          .WithOperand(1, OptionalConvertWithOneUser(convert1, m::AllReduce()))
+          .WithPredicate([](const HloInstruction* inst) {
+            return inst->shape().IsArray();
+          });
+  return Match(inst, ar_op_optional_convert_pattern);
+}
 }  // namespace
 
 StatusOr<bool> AllReduceReassociate::Run(
-    HloModule *module,
-    const absl::flat_hash_set<absl::string_view> &execution_threads) {
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
   if (hlo_query::ContainsLayoutConstrainedAllReduce(*module)) {
     VLOG(1)
         << "Skip AllReduceReassociate because the module contains all-reduce "
@@ -107,7 +174,7 @@ StatusOr<bool> AllReduceReassociate::Run(
 
   bool changed = false;
   for (auto computation : module->computations(execution_threads)) {
-    for (HloInstruction *inst : computation->MakeInstructionPostOrder()) {
+    for (HloInstruction* inst : computation->MakeInstructionPostOrder()) {
       // Check if the instruction we want to reassociate with will match any
       // valid all-reduce reduction function. Save the ReductionKind object for
       // later.
@@ -141,7 +208,40 @@ StatusOr<bool> AllReduceReassociate::Run(
       if (!ReassociateAllReduceIsProfitable(ar0, ar1, inst)) {
         continue;
       }
-      if (!AreCompatible(ar0, ar1, *kind)) {
+
+      HloInstruction* convert0 = nullptr;
+      HloInstruction* convert1 = nullptr;
+      if (!MatchOperandsToAllReduceWithOptionalConvert(inst, &convert0,
+                                                       &convert1)) {
+        VLOG(2) << "One or both inputs are type-converted.";
+      }
+      // Check to see if input converts are present and preserving values and
+      // precision.
+      bool should_promote_ar = convert0 || convert1;
+      if (should_promote_ar) {
+        if (!reassociate_converted_ar_) {
+          VLOG(2) << "Inputs have Converts but "
+                     "xla_gpu_enable_reassociation_for_converted_ar is set to "
+                     "false, skipping";
+          continue;
+        }
+        if (!AreCompatibleConverts(convert0, convert1)) {
+          VLOG(2) << "Inputs' Converts are not preserving "
+                     "value, skipping";
+          continue;
+        }
+      }
+
+      HloInstruction* op_operand0 = inst->mutable_operand(0);
+      HloInstruction* op_operand1 = inst->mutable_operand(1);
+      if (convert0) {
+        op_operand0 = convert0->mutable_operand(0);
+      }
+      if (convert1) {
+        op_operand1 = convert1->mutable_operand(0);
+      }
+      if (!AreCompatible(ar0, ar1, *kind,
+                         /*ignore_element_type=*/should_promote_ar)) {
         VLOG(2) << "All-Reduce operations are not compatible, skipping";
         continue;
       }
@@ -149,22 +249,70 @@ StatusOr<bool> AllReduceReassociate::Run(
       VLOG(2) << "\tAR0: " << ar0->opcode();
       VLOG(2) << "\tAR1: " << ar1->opcode();
 
-      // Found pattern op(ar(x), ar(y)). Transform it into ar(op(x,y)).
-      TF_RETURN_IF_ERROR(ar0->ReplaceAllUsesWith(ar0->mutable_operand(0)));
-      TF_RETURN_IF_ERROR(ar1->ReplaceAllUsesWith(ar1->mutable_operand(0)));
       auto op_users = inst->users();
-      HloInstruction* new_ar = computation->AddInstruction(
-          ar0->CloneWithNewOperands(inst->shape(), {inst}));
+      // Found pattern op(ar(x), ar(y)). Transform it into ar(op(x,y)).
+      HloInstruction* new_op_operand0 = ar0->mutable_operand(0);
+      HloInstruction* new_op_operand1 = ar1->mutable_operand(0);
+      if (convert0) {
+        HloInstruction* ar0_operand = ar0->mutable_operand(0);
+        TF_RETURN_IF_ERROR(convert0->ReplaceOperandWith(0, ar0_operand));
+        new_op_operand0 = convert0;
+      }
+      if (convert1) {
+        HloInstruction* ar1_operand = ar1->mutable_operand(0);
+        TF_RETURN_IF_ERROR(convert1->ReplaceOperandWith(0, ar1_operand));
+        new_op_operand1 = convert1;
+      }
 
+      HloInstruction* new_op =
+          should_promote_ar
+              ? computation->AddInstruction(inst->CloneWithNewOperands(
+                    inst->shape(), {new_op_operand0, new_op_operand1}))
+              : inst;
+
+      Shape new_ar_out_shape = inst->shape();
+      if (should_promote_ar) {
+        new_ar_out_shape.set_element_type(
+            new_op_operand0->shape().element_type());
+      } else {
+        TF_RETURN_IF_ERROR(ar0->ReplaceAllUsesWith(ar0->mutable_operand(0)));
+        TF_RETURN_IF_ERROR(ar1->ReplaceAllUsesWith(ar1->mutable_operand(0)));
+      }
+
+      HloInstruction* new_ar = computation->AddInstruction(
+          ar0->CloneWithNewOperands(new_ar_out_shape, {new_op}));
       // Do not reuse channel_id from the existing instruction.
       if (new_ar->channel_id()) {
         new_ar->set_channel_id(next_channel_id++);
       }
 
-      TF_RETURN_IF_ERROR(inst->ReplaceUsesWith(op_users, new_ar));
+      if (should_promote_ar) {
+        HloComputation* to_apply = new_ar->to_apply();
+        PrimitiveType type = new_ar->shape().element_type();
+        std::string name = absl::StrCat(to_apply->name(), "_reassoc_promoted");
+        HloComputation::Builder promoted(name);
+        auto x = promoted.AddInstruction(HloInstruction::CreateParameter(
+            /*parameter_number=*/0, ShapeUtil::MakeShape(type, {}), "x"));
+        auto y = promoted.AddInstruction(HloInstruction::CreateParameter(
+            /*parameter_number=*/1, ShapeUtil::MakeShape(type, {}), "y"));
+        promoted.AddInstruction(HloInstruction::CreateBinary(
+            ShapeUtil::MakeShape(type, {}),
+            to_apply->root_instruction()->opcode(), x, y));
+
+        HloComputation* to_apply_promoted =
+            inst->GetModule()->AddEmbeddedComputation(promoted.Build());
+        new_ar->set_to_apply(to_apply_promoted);
+        TF_RETURN_IF_ERROR(inst->ReplaceAllUsesWith(new_ar));
+      } else {
+        TF_RETURN_IF_ERROR(inst->ReplaceUsesWith(op_users, new_ar));
+      }
+
       // Note that RemoveInstructionAndUnusedOperands may not remove the 2
       // all-reduce operands of `inst` if they are not safe to remove otherwise,
       // so manually these instructions.
+      if (should_promote_ar) {
+        TF_RETURN_IF_ERROR(computation->RemoveInstruction(inst));
+      }
       TF_RETURN_IF_ERROR(computation->RemoveInstruction(ar0));
       if (ar0 != ar1) {
         TF_RETURN_IF_ERROR(computation->RemoveInstruction(ar1));

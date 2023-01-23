@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
 #include "tensorflow/compiler/xla/hlo/utils/hlo_matchers.h"
+#include "tensorflow/compiler/xla/service/pattern_matcher_gmock.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 
@@ -499,5 +500,131 @@ ENTRY main {
   EXPECT_EQ(AllReduceCount(module), 1);
 }
 
+// Checks whether a linear chain of converts-adds of ARs is reassociated in a
+// single pass.
+TEST_F(AllReduceSimplifierTest, ChainWithConvert) {
+  absl::string_view hlo_string = R"(
+HloModule m
+add.1 {
+  x.47 = bf16[] parameter(0)
+  y.47 = bf16[] parameter(1)
+  ROOT add.2532 = bf16[] add(x.47, y.47)
+}
+ENTRY main {
+  p0 = bf16[8] parameter(0)
+  p1 = bf16[8] parameter(1)
+  p2 = bf16[8] parameter(2)
+  p3 = bf16[8] parameter(3)
+  ar0 = bf16[8] all-reduce(p0), replica_groups={}, to_apply=add.1
+  ar1 = bf16[8] all-reduce(p1), replica_groups={}, to_apply=add.1
+  ar2 = bf16[8] all-reduce(p2), replica_groups={}, to_apply=add.1
+  ar3 = bf16[8] all-reduce(p3), replica_groups={}, to_apply=add.1
+  convert0 = f32[8] convert(ar0)
+  convert1 = f32[8] convert(ar1)
+  add0 = f32[8] add(convert0, convert1)
+  convert2 = f32[8] convert(ar2)
+  add1 = f32[8] add(add0, convert2)
+  convert3 = f32[8] convert(ar3)
+  add2 = f32[8] add(add1, convert3)
+  ROOT convert4 = bf16[8] convert(add2)
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          RunPass(hlo_string, /*expect_change=*/true));
+  SCOPED_TRACE(module->ToString());
+  EXPECT_THAT(
+      module->entry_computation()->root_instruction(),
+      m::Convert(m::AllReduce(m::Add(m::Add(m::Add(m::Convert(m::Parameter(0)),
+                                                   m::Convert(m::Parameter(1))),
+                                            m::Convert(m::Parameter(2))),
+                                     m::Convert(m::Parameter(3))))));
+  EXPECT_EQ(AllReduceCount(module), 1);
+  EXPECT_THAT(
+      module->entry_computation()->root_instruction()->operand(0)->shape(),
+      GmockMatch(::xla::match::Shape().WithElementType(F32)));
+}
+
+// Checks that a list of incompatible converts-adds of ARs should NOT be
+// reassociated.
+TEST_F(AllReduceSimplifierTest, AllreduceWithConvertIncompatibleType) {
+  absl::string_view hlo_string = R"(
+HloModule m
+add.1 {
+  x.47 = bf16[] parameter(0)
+  y.47 = bf16[] parameter(1)
+  ROOT add.2532 = bf16[] add(x.47, y.47)
+}
+max.1 {
+  x.48 = bf16[] parameter(0)
+  y.48 = bf16[] parameter(1)
+  ROOT max.2533 = bf16[] maximum(x.48, y.48)
+}
+min.1 {
+  x.49 = bf16[] parameter(0)
+  y.49 = bf16[] parameter(1)
+  ROOT min.2534 = bf16[] minimum(x.49, y.49)
+}
+mul.1 {
+  x.50 = bf16[] parameter(0)
+  y.50 = bf16[] parameter(1)
+  ROOT mul.2535 = bf16[] multiply(x.50, y.50)
+}
+ENTRY main {
+  p0 = bf16[8] parameter(0)
+  p1 = bf16[8] parameter(1)
+  p2 = bf16[8] parameter(2)
+  p3 = bf16[8] parameter(3)
+  ar0 = bf16[8] all-reduce(p0), replica_groups={}, to_apply=add.1
+  ar1 = bf16[8] all-reduce(p1), replica_groups={}, to_apply=max.1
+  ar2 = bf16[8] all-reduce(p2), replica_groups={}, to_apply=min.1
+  ar3 = bf16[8] all-reduce(p3), replica_groups={}, to_apply=mul.1
+  convert0 = f32[8] convert(ar0)
+  convert1 = f32[8] convert(ar1)
+  add0 = f32[8] add(convert0, convert1)
+  convert2 = f32[8] convert(ar2)
+  add1 = f32[8] add(add0, convert2)
+  convert3 = f32[8] convert(ar3)
+  add2 = f32[8] add(add1, convert3)
+  ROOT convert4 = bf16[8] convert(add2)
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          RunPass(hlo_string, /*expect_change=*/false));
+  SCOPED_TRACE(module->ToString());
+}
+
+// Checks that a list of incompatible converts-adds of ARs should NOT be
+// reassociated.
+TEST_F(AllReduceSimplifierTest, AllreduceWithLossyConvert) {
+  absl::string_view hlo_string = R"(
+HloModule m
+add.1 {
+  x.47 = bf16[] parameter(0)
+  y.47 = bf16[] parameter(1)
+  ROOT add.2532 = bf16[] add(x.47, y.47)
+}
+ENTRY main {
+  p0 = bf16[8] parameter(0)
+  p1 = bf16[8] parameter(1)
+  p2 = bf16[8] parameter(2)
+  p3 = bf16[8] parameter(3)
+  ar0 = bf16[8] all-reduce(p0), replica_groups={}, to_apply=add.1
+  ar1 = bf16[8] all-reduce(p1), replica_groups={}, to_apply=add.1
+  ar2 = bf16[8] all-reduce(p2), replica_groups={}, to_apply=add.1
+  ar3 = bf16[8] all-reduce(p3), replica_groups={}, to_apply=add.1
+  convert0 = u32[8] convert(ar0)
+  convert1 = u32[8] convert(ar1)
+  add0 = u32[8] add(convert0, convert1)
+  convert2 = u32[8] convert(ar2)
+  add1 = u32[8] add(add0, convert2)
+  convert3 = u32[8] convert(ar3)
+  add2 = u32[8] add(add1, convert3)
+  ROOT convert4 = bf16[8] convert(add2)
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          RunPass(hlo_string, /*expect_change=*/false));
+  SCOPED_TRACE(module->ToString());
+}
 }  // namespace
 }  // namespace xla
