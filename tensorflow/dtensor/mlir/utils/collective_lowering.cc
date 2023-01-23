@@ -235,7 +235,6 @@ mlir::Operation* EmitCollectiveReduce(
     const mlir::DenseIntElementsAttr& group_assignment, int32 key_base,
     mlir::Value device_id, int32 host_group_size,
     const mlir::StringRef device_type) {
-  int32_t group_size;
   const mlir::TensorType input_type =
       input.getType().dyn_cast<mlir::TensorType>();
 
@@ -376,9 +375,7 @@ mlir::Operation* EmitCollectiveGather(
     const mlir::StringRef device_type) {
   DCHECK_EQ(group_assignment.getType().getRank(), 2);
   auto shape = group_assignment.getType().getShape();
-  const int32 num_groups = shape[0];
   const int32 group_size = shape[1];
-  const int32 num_devices = num_groups * group_size;
   const mlir::TensorType input_type =
       input.getType().dyn_cast<mlir::TensorType>();
   auto input_shape = input_type.getShape();
