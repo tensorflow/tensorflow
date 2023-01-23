@@ -10,13 +10,13 @@ func.func @vectorize_tiled_matmul(%lhs: tensor<8x16xf32>,
 
   %7 = gml_st.for (%i) =
               (%c0) to (%c16) step (%c2) outs (%arg6 = %fill: tensor<8x4xf32>) {
-    %9 = gml_st.materialize %lhs[0, %i] [8, 2] [1, 1]  :
+    %9 = tensor.extract_slice %lhs[0, %i] [8, 2] [1, 1]  :
               tensor<8x16xf32> to tensor<8x2xf32>
 
-    %11 = gml_st.materialize %rhs[%i, 0] [2, 4] [1, 1]  :
+    %11 = tensor.extract_slice %rhs[%i, 0] [2, 4] [1, 1]  :
               tensor<16x4xf32> to tensor<2x4xf32>
 
-    %13 = gml_st.materialize %arg6[0, 0] [8, 4] [1, 1]  :
+    %13 = tensor.extract_slice %arg6[0, 0] [8, 4] [1, 1]  :
               tensor<8x4xf32> to tensor<8x4xf32>
 
     %14 = linalg.matmul ins(%9, %11 : tensor<8x2xf32>, tensor<2x4xf32>)
@@ -34,9 +34,9 @@ func.func @vectorize_tiled_matmul(%lhs: tensor<8x16xf32>,
 // CHECK:         %[[OUT_READ:.*]] = vector.transfer_read %[[OUT:.*]]
 // CHECK:         %[[FOR:.*]] = gml_st.for {{.*}} outs (%[[ARG:.*]] =
 // CHECK:           %[[LHS:.*]] = vector.transfer_read
-// CHECK-SAME:        : tensor<8x2xf32>, vector<8x2xf32>
+// CHECK-SAME:        : tensor<8x16xf32>, vector<8x2xf32>
 // CHECK:           %[[RHS:.*]] = vector.transfer_read
-// CHECK-SAME:        : tensor<2x4xf32>, vector<2x4xf32>
+// CHECK-SAME:        : tensor<16x4xf32>, vector<2x4xf32>
 // CHECK:           %[[CONTRACT:.*]] = vector.contract
 // CHECK-SAME:        %[[LHS]], %[[RHS]], %[[ARG]]
 // CHECK:           gml_st.set_yield %[[CONTRACT]] into %[[ARG]]
@@ -54,19 +54,19 @@ func.func @vectorize_static_matmul(%lhs: tensor<128x16xf32>,
   %c128 = arith.constant 128 : index
   %c64 = arith.constant 64 : index
   %0 = gml_st.parallel (%i, %j) = (%c0, %c0) to (%c128, %c64) step (%c8, %c4) {
-    %2 = gml_st.materialize %lhs[%i, 0] [8, 16] [1, 1] :
+    %2 = tensor.extract_slice %lhs[%i, 0] [8, 16] [1, 1] :
             tensor<128x16xf32> to tensor<8x16xf32>
-    %4 = gml_st.materialize %rhs[0, %j] [16, 4] [1, 1] :
+    %4 = tensor.extract_slice %rhs[0, %j] [16, 4] [1, 1] :
             tensor<16x64xf32> to tensor<16x4xf32>
-    %6 = gml_st.materialize %fill[%i, %j] [8, 4] [1, 1] :
+    %6 = tensor.extract_slice %fill[%i, %j] [8, 4] [1, 1] :
             tensor<128x64xf32> to tensor<8x4xf32>
     %7 = gml_st.for (%k) =
                 (%c0) to (%c16) step (%c2) outs (%arg6 = %6: tensor<8x4xf32>) {
-      %9 = gml_st.materialize %2[0, %k] [8, 2] [1, 1] :
+      %9 = tensor.extract_slice %2[0, %k] [8, 2] [1, 1] :
                 tensor<8x16xf32> to tensor<8x2xf32>
-      %11 = gml_st.materialize %4[%k, 0] [2, 4] [1, 1] :
+      %11 = tensor.extract_slice %4[%k, 0] [2, 4] [1, 1] :
                 tensor<16x4xf32> to tensor<2x4xf32>
-      %13 = gml_st.materialize %arg6[0, 0] [8, 4] [1, 1] :
+      %13 = tensor.extract_slice %arg6[0, 0] [8, 4] [1, 1] :
                 tensor<8x4xf32> to tensor<8x4xf32>
       %14 = linalg.matmul ins(%9, %11 : tensor<8x2xf32>, tensor<2x4xf32>)
                           outs(%13 : tensor<8x4xf32>) -> tensor<8x4xf32>
@@ -85,8 +85,8 @@ func.func @vectorize_static_matmul(%lhs: tensor<128x16xf32>,
 // CHECK:         %[[OUT_READ:.*]] = vector.transfer_read {{.*}} : tensor<8x4xf32>, vector<8x4xf32>
 // CHECK:         %[[FOR:.*]] = gml_st.for {{.*}} outs (%[[ARG:.*]] = %[[OUT_READ]]
 // CHECK-NOT:       linalg.matmul
-// CHECK:           %[[LHS:.*]] = vector.transfer_read {{.*}} : tensor<8x2xf32>, vector<8x2xf32>
-// CHECK:           %[[RHS:.*]] = vector.transfer_read {{.*}} : tensor<2x4xf32>, vector<2x4xf32>
+// CHECK:           %[[LHS:.*]] = vector.transfer_read {{.*}} : tensor<128x16xf32>, vector<8x2xf32>
+// CHECK:           %[[RHS:.*]] = vector.transfer_read {{.*}} : tensor<16x64xf32>, vector<2x4xf32>
 // CHECK-NOT:       vector.transfer_read
 // CHECK:           %[[CONTRACT:.*]] = vector.contract {{{.*}}} %[[LHS]], %[[RHS]], %[[ARG]]
 // CHECK:           gml_st.set_yield %[[CONTRACT]] into %[[ARG]]

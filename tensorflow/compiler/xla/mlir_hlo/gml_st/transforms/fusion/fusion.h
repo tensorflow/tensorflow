@@ -16,35 +16,35 @@ limitations under the License.
 #ifndef MLIR_HLO_GML_ST_TRANSFORMS_FUSION_FUSION_H
 #define MLIR_HLO_GML_ST_TRANSFORMS_FUSION_FUSION_H
 
-#include "gml_st/IR/gml_st_ops.h"
 #include "gml_st/transforms/peeling/peeling.h"
 #include "gml_st/transforms/tiling/tiling.h"
-#include "mlir/Dialect/Linalg/IR/Linalg.h"
+#include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/IR/PatternMatch.h"
 
 namespace mlir {
 namespace gml_st {
 
 // Create fused operation based on the specificed subset. The result is
-// equivalent to the given `materialize` op.
+// equivalent to the given `tensor.extract_slice` op.
 FailureOr<Value> createFusedOp(PatternRewriter &rewriter,
-                               MaterializeOp materializeOp);
+                               tensor::ExtractSliceOp materializeOp);
 
-// Fuses an op into `gml_st.materialize` and performs the necessary updates to
+// Fuses an op into `tensor.extract_slice` and performs the necessary updates to
 // the surrounding loop if any.
 FailureOr<Operation *> fuse(PatternRewriter &rewriter,
-                            MaterializeOp materializeOp);
+                            tensor::ExtractSliceOp materializeOp);
 
-// Finds `gml_st.materialize` ops in the block and fuses ops into them. Verifies
-// that fusion candidate doesn't have any uses except the one
-// `gml_st.materialize` in the block to avoid exponential code growth.
+// Finds `tensor.extract_slice` ops in the block and fuses ops into them.
+// Verifies that fusion candidate doesn't have any uses except the one
+// `tensor.extract_slice` in the block to avoid exponential code growth.
 void fuseGreedily(PatternRewriter &rewriter, Block &block,
                   llvm::function_ref<bool(Operation *)> filterFn = nullptr);
 
 /// Populate fusion patterns.
-void populateFusionPatterns(MLIRContext *ctx,
-                            function_ref<LogicalResult(MaterializeOp)> filterFn,
-                            RewritePatternSet *patterns);
+void populateFusionPatterns(
+    MLIRContext *ctx,
+    function_ref<LogicalResult(tensor::ExtractSliceOp)> filterFn,
+    RewritePatternSet *patterns);
 
 struct FusionCluster {
   DenseSet<Operation *> operations;

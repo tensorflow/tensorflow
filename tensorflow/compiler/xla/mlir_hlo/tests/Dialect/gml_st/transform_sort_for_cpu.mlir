@@ -21,13 +21,13 @@ func.func @sort_variadic(%input1: tensor<64x8x4xf32>, %input2: tensor<64x8x4xf32
 // CHECK-SAME:        %[[INIT2:[A-Za-z0-9]*]]: tensor<64x8x4xf32>) {
 
 // CHECK:             gml_st.parallel
-// CHECK:               %[[INPUT1_SUB:.*]] = gml_st.materialize %[[INPUT1]]
+// CHECK:               %[[INPUT1_SUB:.*]] = tensor.extract_slice %[[INPUT1]]
 // CHECK:      : tensor<64x8x4xf32> to tensor<1x?x1xf32>
-// CHECK:               %[[INPUT2_SUB:.*]] = gml_st.materialize %[[INPUT2]]
+// CHECK:               %[[INPUT2_SUB:.*]] = tensor.extract_slice %[[INPUT2]]
 // CHECK:      : tensor<64x8x4xf32> to tensor<1x?x1xf32>
-// CHECK:               %[[INIT1_SUB:.*]] = gml_st.materialize %[[INIT1]]
+// CHECK:               %[[INIT1_SUB:.*]] = tensor.extract_slice %[[INIT1]]
 // CHECK:      : tensor<64x8x4xf32> to tensor<1x?x1xf32>
-// CHECK:               %[[INIT2_SUB:.*]] = gml_st.materialize %[[INIT2]]
+// CHECK:               %[[INIT2_SUB:.*]] = tensor.extract_slice %[[INIT2]]
 // CHECK:      : tensor<64x8x4xf32> to tensor<1x?x1xf32>
 
 // CHECK:      thlo.sort

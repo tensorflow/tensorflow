@@ -10,32 +10,46 @@ func.func @softmax(%arg0: tensor<64x128xf32>) -> tensor<64x128xf32> {
   %cst_0 = arith.constant 0xFF800000 : f32
   %0 = tensor.empty() : tensor<64xf32>
   %1 = linalg.fill ins(%cst_0 : f32) outs(%0 : tensor<64xf32>) -> tensor<64xf32>
-  %2 = linalg.reduce { arith.maxf }
-         ins(%arg0 : tensor<64x128xf32>)
-         outs(%1 : tensor<64xf32>) 
-         dimensions = [1]
+  %2 = linalg.reduce ins(%arg0 : tensor<64x128xf32>)
+                     outs(%1 : tensor<64xf32>) dimensions = [1]
+    (%arg1: f32, %arg2: f32) {
+      %11 = arith.maxf %arg1, %arg2 : f32
+      linalg.yield %11 : f32
+    }
   %3 = tensor.empty() : tensor<64x128xf32>
   %4 = linalg.broadcast
-         ins(%2 : tensor<64xf32>)
-         outs(%3 : tensor<64x128xf32>)
-         dimensions = [1]
-  %5 = linalg.map { arith.subf }
-         ins(%arg0, %4 : tensor<64x128xf32>, tensor<64x128xf32>)
-         outs(%3 : tensor<64x128xf32>)
-  %6 = linalg.map { math.exp }
-         ins(%5 : tensor<64x128xf32>)
-         outs(%3 : tensor<64x128xf32>)
+    ins(%2 : tensor<64xf32>)
+    outs(%3 : tensor<64x128xf32>)
+    dimensions = [1]
+  %5 = linalg.map ins(%arg0, %4 : tensor<64x128xf32>, tensor<64x128xf32>)
+              outs(%3 : tensor<64x128xf32>)
+  (%arg1: f32, %arg2: f32) {
+    %11 = arith.subf %arg1, %arg2 : f32
+    linalg.yield %11 : f32
+  }
+  %6 = linalg.map ins(%5 : tensor<64x128xf32>)
+              outs(%3 : tensor<64x128xf32>)
+  (%arg1: f32) {
+    %11 = math.exp %arg1 : f32
+    linalg.yield %11 : f32
+  }
   %7 = linalg.fill ins(%cst : f32) outs(%0 : tensor<64xf32>) -> tensor<64xf32>
-  %8 = linalg.reduce { arith.addf }
-         ins(%6 : tensor<64x128xf32>)
-         outs(%7 : tensor<64xf32>) dimensions = [1]
+  %8 = linalg.reduce ins(%6 : tensor<64x128xf32>)
+                     outs(%7 : tensor<64xf32>) dimensions = [1]
+    (%arg1: f32, %arg2: f32) {
+      %11 = arith.addf %arg2, %arg1 : f32
+      linalg.yield %11 : f32
+    }
   %9 = linalg.broadcast
-         ins(%8 : tensor<64xf32>)
-         outs(%3 : tensor<64x128xf32>)
-         dimensions = [1]
-  %10 = linalg.map { arith.divf }
-          ins(%6, %9 : tensor<64x128xf32>, tensor<64x128xf32>)
-          outs(%3 : tensor<64x128xf32>)
+    ins(%8 : tensor<64xf32>)
+    outs(%3 : tensor<64x128xf32>)
+    dimensions = [1]
+  %10 = linalg.map ins(%6, %9 : tensor<64x128xf32>, tensor<64x128xf32>)
+      outs(%3 : tensor<64x128xf32>)
+  (%arg1: f32, %arg2: f32) {
+    %11 = arith.divf %arg1, %arg2 : f32
+    linalg.yield %11 : f32
+  }
   return %10 : tensor<64x128xf32>
 }
 // CHECK-LABEL: @softmax
@@ -54,20 +68,20 @@ func.func @softmax(%arg0: tensor<64x128xf32>) -> tensor<64x128xf32> {
 // CHECK-SAME:     outs(%[[EMPTY]] : tensor<64xf32>)
 
 // CHECK:      %[[PARALLEL:.*]] = gml_st.parallel (%[[ARG1:.*]]) = (%[[C0]]) to (%[[C64]]) step (%[[C8]])
-// CHECK-NEXT:   %[[MATERIALIZE:.*]] = gml_st.materialize %[[ARG0]] [%[[ARG1]], 0] [8, 128] [1, 1]
-// CHECK-NEXT:   %[[MATERIALIZE_0:.*]] = gml_st.materialize %[[FILL]] [%[[ARG1]]] [8] [1]
-// CHECK-NEXT:   %[[MATERIALIZE_1:.*]] = gml_st.materialize %[[EMPTY_0]] [%[[ARG1]], 0] [8, 128] [1, 1]
-// CHECK-NEXT:   %[[MATERIALIZE_3:.*]] = gml_st.materialize %[[FILL_0]] [%[[ARG1]]] [8] [1]
+// CHECK-NEXT:   %[[MATERIALIZE:.*]] = tensor.extract_slice %[[ARG0]][%[[ARG1]], 0] [8, 128] [1, 1]
+// CHECK-NEXT:   %[[MATERIALIZE_0:.*]] = tensor.extract_slice %[[FILL]][%[[ARG1]]] [8] [1]
+// CHECK-NEXT:   %[[MATERIALIZE_1:.*]] = tensor.extract_slice %[[EMPTY_0]][%[[ARG1]], 0] [8, 128] [1, 1]
+// CHECK-NEXT:   %[[MATERIALIZE_3:.*]] = tensor.extract_slice %[[FILL_0]][%[[ARG1]]] [8] [1]
 
 // CHECK:        %[[PARALLEL_0:.*]] = gml_st.parallel (%[[ARG2:.*]]) = (%[[C0]]) to (%[[C8]]) step (%[[C1]])
-// CHECK-NEXT:     %[[MATERIALIZE_4:.*]] = gml_st.materialize %[[MATERIALIZE]] [%[[ARG2]], 0] [1, 128] [1, 1]
-// CHECK-NEXT:     %[[MATERIALIZE_5:.*]] = gml_st.materialize %[[MATERIALIZE_0]] [%[[ARG2]]] [1] [1]
+// CHECK-NEXT:     %[[MATERIALIZE_4:.*]] = tensor.extract_slice %[[MATERIALIZE]][%[[ARG2]], 0] [1, 128] [1, 1]
+// CHECK-NEXT:     %[[MATERIALIZE_5:.*]] = tensor.extract_slice %[[MATERIALIZE_0]][%[[ARG2]]] [1] [1]
 // CHECK-NEXT:     %[[REDUCE:.*]] = linalg.reduce
 // CHECK-SAME:         ins(%[[MATERIALIZE_4]] : tensor<1x128xf32>)
 // CHECK-SAME:         outs(%[[MATERIALIZE_5]] : tensor<1xf32>)
 // CHECK-SAME:         dimensions = [1]
 
-// CHECK:          %[[MATERIALIZE_6:.*]] = gml_st.materialize %[[MATERIALIZE_1]] [%[[ARG2]], 0] [1, 128] [1, 1]
+// CHECK:          %[[MATERIALIZE_6:.*]] = tensor.extract_slice %[[MATERIALIZE_1]][%[[ARG2]], 0] [1, 128] [1, 1]
 // CHECK-NEXT:     %[[BROADCAST:.*]] = linalg.broadcast
 // CHECK-SAME:         ins(%[[REDUCE]] : tensor<1xf32>)
 // CHECK-SAME:         outs(%[[MATERIALIZE_6]] : tensor<1x128xf32>)
@@ -81,7 +95,7 @@ func.func @softmax(%arg0: tensor<64x128xf32>) -> tensor<64x128xf32> {
 // CHECK-SAME:         ins(%[[MAP]] : tensor<1x128xf32>)
 // CHECK-SAME:         outs(%[[MATERIALIZE_6]] : tensor<1x128xf32>)
 
-// CHECK:          %[[MATERIALIZE_8:.*]] = gml_st.materialize %[[MATERIALIZE_3]] [%[[ARG2]]] [1] [1]
+// CHECK:          %[[MATERIALIZE_8:.*]] = tensor.extract_slice %[[MATERIALIZE_3]][%[[ARG2]]] [1] [1]
 // CHECK-NEXT:          %[[REDUCE_0:.*]] = linalg.reduce
 // CHECK-SAME:         ins(%[[MAP_0]] : tensor<1x128xf32>)
 // CHECK-SAME:         outs(%[[MATERIALIZE_8]] : tensor<1xf32>)

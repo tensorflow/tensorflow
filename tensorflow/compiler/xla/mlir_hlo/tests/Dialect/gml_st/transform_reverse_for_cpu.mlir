@@ -12,11 +12,11 @@ func.func @reverse_static_perfect_tiles(
 
 // CHECK-LABEL: @reverse_static_perfect_tiles(
 //  CHECK-SAME: %[[IN:.*]]: tensor<64xf32>, %[[INIT:.*]]: tensor<64xf32>
-//       CHECK:   %[[PARALLEL:.*]] = gml_st.parallel (%[[IDX:.*]]) = 
+//       CHECK:   %[[PARALLEL:.*]] = gml_st.parallel (%[[IDX:.*]]) =
 //       CHECK:     %[[TEMP:.*]] = arith.subi
 //       CHECK:     %[[IN_IDX:.*]] = arith.subi %[[TEMP]]
-//   CHECK-DAG:     %[[IN_SLICE:.*]] = gml_st.materialize %[[IN]] [%[[IN_IDX]]]
-//   CHECK-DAG:     %[[INIT_SLICE:.*]] = gml_st.materialize %[[INIT]] [%[[IDX]]]
+//   CHECK-DAG:     %[[IN_SLICE:.*]] = tensor.extract_slice %[[IN]][%[[IN_IDX]]]
+//   CHECK-DAG:     %[[INIT_SLICE:.*]] = tensor.extract_slice %[[INIT]][%[[IDX]]]
 //  CHECK-NEXT:     %[[REVERSED:.*]] = thlo.reverse
 //  CHECK-SAME:       ins(%[[IN_SLICE]] : tensor<8xf32>)
 //  CHECK-SAME:       outs(%[[INIT_SLICE]] : tensor<8xf32>)
@@ -44,20 +44,18 @@ func.func @reverse_dynamic(
 //       CHECK:   %[[DIM1:.*]] = tensor.dim %[[INIT]], %[[C1]]
 //       CHECK:   %[[END_IDX1:.*]] = affine.apply #map()[%[[DIM1]]]
 
-//       CHECK:   %[[PERF_PARALLEL:.*]] = gml_st.parallel (%[[PERF_IDX0:.*]], %[[PERF_IDX1:.*]]) =
+//       CHECK:   %[[PERF_PARALLEL:.*]] = gml_st.parallel
 //  CHECK-SAME:   (%[[C0]], %[[C0]]) to (%[[DIM0]], %[[END_IDX1]]) step (%[[C1]], %[[C8]])
 //       CHECK:     %[[PERF_REVERSED:.*]] = thlo.reverse
 //  CHECK-SAME:       ins(%{{.*}} : tensor<1x?xf32>) outs(%{{.*}} : tensor<1x?xf32>)
 
-//       CHECK:   %[[REM_PARALLEL:.*]] = gml_st.parallel (%[[REM_IDX0:.*]], %[[REM_IDX1:.*]]) =
+//       CHECK:   %[[REM_PARALLEL:.*]] = gml_st.parallel
 //  CHECK-SAME:   (%[[C0]], %[[END_IDX1]]) to (%[[DIM0]], %[[DIM1]]) step (%[[C1]], %[[C8]])
-//       CHECK:     %[[REM_END_IDX1:.*]] = affine.apply #map1(%[[REM_IDX1]])[%[[DIM1]]]
-//       CHECK:     %[[DIM2:.*]] = tensor.dim %[[REM_INIT_SLICE:.*]], %[[C1]] : tensor<1x?xf32>
 
-//       CHECK:     %[[INNER_PARALLEL:.*]] = gml_st.parallel (%[[INNER_IDX0:.*]], %[[INNER_IDX1:.*]]) =
-//  CHECK-SAME:     (%[[C0]], %[[C0]]) to (%[[C1]], %[[DIM2]]) step (%[[C1]], %[[C1]])
+//       CHECK:     %[[INNER_PARALLEL:.*]] = gml_st.parallel
+//  CHECK-SAME:     (%[[C0]], %[[C0]]) to (%[[C1]], %{{.*}}) step (%[[C1]], %[[C1]])
 
-//       CHECK:       %[[IN_SLICE:.*]] = gml_st.materialize
+//       CHECK:       %[[IN_SLICE:.*]] = tensor.extract_slice
 //       CHECK:       %[[TILE:.*]] = gml_st.tile
 //  CHECK-NEXT:     gml_st.set_yield %[[IN_SLICE]] into %[[INIT_SLICE:.*]][%[[TILE]]]
 

@@ -1,49 +1,5 @@
 // RUN: mlir-hlo-opt %s -split-input-file -verify-diagnostics
 
-
-func.func @materialize_rank_mismatch(%tensor: tensor<?x?xf32>) {
-  // expected-error @+1 {{expected result type = 'tensor<4xf32>' to match the inferred type = 'tensor<4x1xf32>'}}
-  %0 = gml_st.materialize %tensor[0, 0][4, 1][1, 1]
-     : tensor<?x?xf32> to tensor<4xf32>
-}
-
-// -----
-
-func.func @materialize_inferred_type_mismatch(%tensor: tensor<?x?xf32>,
-                                              %dim: index) {
-  // expected-error @+1 {{expected result type = 'tensor<4x?xf32>' to match the inferred type = 'tensor<?x4xf32>}}
-  %0 = gml_st.materialize %tensor[0, 0][%dim, 4][1, 1]
-     : tensor<?x?xf32> to tensor<4x?xf32>
-}
-
-// -----
-
-func.func @materialize_scalar_with_dynamic_tile(
-    %tensor: tensor<?x?xf32>, %dim: index) {
-  // expected-error @+1 {{expected tile type -9223372036854775808, 2 to have a single element shape}}
-  %0 = gml_st.materialize %tensor[0, 0][%dim, 2][1, 1]
-     : tensor<?x?xf32> to f32
-}
-
-// -----
-
-func.func @materialize_scalar_with_nonsingle_element_tile(
-    %tensor: tensor<?x?xf32>) {
-  // expected-error @+1 {{expected tile type 1, 2 to have a single element shape}}
-  %0 = gml_st.materialize %tensor[0, 0][1, 2][1, 2]
-     : tensor<?x?xf32> to f32
-}
-
-// -----
-
-func.func @materialize_scalar_element_type_mismatch(%tensor: tensor<?x?xf32>) {
-  // expected-error @+1 {{expected the result type 'i32' to match source element type 'f32'}}
-  %0 = gml_st.materialize %tensor[0, 0][1, 1][1, 1]
-     : tensor<?x?xf32> to i32
-}
-
-// -----
-
 func.func @tile_op_mismatch_sizes_and_static_sizes(%i: index) {
   // expected-error@+1 {{expected 0 dynamic size values}}
   %1 = "gml_st.tile"(%i) { static_offsets = array<i64: 0, 0>, static_sizes = array<i64: 1, 1>, static_strides = array<i64: 1, 1>, operand_segment_sizes = array<i32: 0, 1, 0> } : (index) -> !gml_st.tile<?x?>
@@ -100,9 +56,9 @@ func.func @for_loop_wrong_yield_target(
 
   %sum = gml_st.for (%i) = (%c0) to (%c8) step (%c4)
       outs(%out_ = %output : tensor<f32>) {
-    %arg_sub = gml_st.materialize %arg[%i] [4] [1]
+    %arg_sub = tensor.extract_slice %arg[%i] [4] [1]
       : tensor<8xf32> to tensor<4xf32>
-    %out_sub = gml_st.materialize %out_[][][]
+    %out_sub = tensor.extract_slice %out_[][][]
       : tensor<f32> to tensor<f32>
 
     %result_sub = linalg.dot
@@ -126,9 +82,9 @@ func.func @yield_with_accumulator_mismatched_type(
   %c8 = arith.constant 8 : index
 
   %sum = gml_st.parallel (%i) = (%c0) to (%c8) step (%c4) {
-    %arg_sub = gml_st.materialize %arg[%i] [4] [1]
+    %arg_sub = tensor.extract_slice %arg[%i] [4] [1]
       : tensor<8xf32> to tensor<4xf32>
-    %out_sub = gml_st.materialize %output[][][]
+    %out_sub = tensor.extract_slice %output[][][]
       : tensor<f32> to tensor<f32>
 
     %result_sub = linalg.dot
@@ -155,9 +111,9 @@ func.func @for_loop_wrong_yield_operands(
 
   %sum = gml_st.for (%i) = (%c0) to (%c8) step (%c4)
       outs(%out_ = %output : tensor<f32>) {
-    %arg_sub = gml_st.materialize %arg[%i] [4] [1]
+    %arg_sub = tensor.extract_slice %arg[%i] [4] [1]
       : tensor<8xf32> to tensor<4xf32>
-    %out_sub = gml_st.materialize %out_[][][]
+    %out_sub = tensor.extract_slice %out_[][][]
       : tensor<f32> to tensor<f32>
 
     %result_sub = linalg.dot

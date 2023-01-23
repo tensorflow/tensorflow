@@ -78,11 +78,11 @@ func.func @parallel_on_tensor(
   %c0 = arith.constant 0 : index
   %0 = tensor.dim %arg0, %c0 : tensor<?xf32>
   %2 = gml_st.parallel (%i) = (%c0) to (%0) step (%c4) {
-    %6 = gml_st.materialize %arg0[%i] [4] [1]
+    %6 = tensor.extract_slice %arg0[%i] [4] [1]
       : tensor<?xf32> to tensor<4xf32>
-    %7 = gml_st.materialize %arg1[%i] [4] [1]
+    %7 = tensor.extract_slice %arg1[%i] [4] [1]
       : tensor<?xf32> to tensor<4xf32>
-    %8 = gml_st.materialize %arg2[%i] [4] [1]
+    %8 = tensor.extract_slice %arg2[%i] [4] [1]
       : tensor<?xf32> to tensor<4xf32>
     %9 = linalg.map { arith.addf }
            ins(%6, %7 : tensor<4xf32>, tensor<4xf32>)
@@ -94,9 +94,9 @@ func.func @parallel_on_tensor(
   func.return %2 : tensor<?xf32>
 }
 // CHECK-NOT: linalg.map
-// CHECK: gml_st.parallel (%[[ITER:.*]]) = (%c0)
-// CHECK: %[[LHS:.*]] = vector.transfer_read {{%.*}}[%c0]
-// CHECK: %[[RHS:.*]] = vector.transfer_read {{%.*}}[%c0]
+// CHECK: gml_st.parallel (%[[ITER:.*]]) = (%[[C0:[a-z0-9]+]])
+// CHECK: %[[LHS:.*]] = vector.transfer_read {{%[a-z0-9_]+}}[%[[C0]]]
+// CHECK: %[[RHS:.*]] = vector.transfer_read {{%[a-z0-9_]+}}[%[[C0]]]
 // CHECK: %[[ADD:.*]] = arith.addf %[[LHS]], %[[RHS]] : vector<4xf32>
 
 // -----
@@ -203,11 +203,11 @@ func.func @fold_identity_materialize(%arg0: tensor<8x16xf32>, %arg1: tensor<16x8
   %cst_0 = arith.constant 0.000000e+00 : f32
   %0 = tensor.empty() : tensor<8x8xf32>
   %6 = gml_st.for (%arg4) = (%c0) to (%c16) step (%c8) outs (%arg5 = %0: tensor<8x8xf32>) {
-    %19 = gml_st.materialize %arg0[%c0, %arg4] [8, 8] [1, 1]  : tensor<8x16xf32> to tensor<8x8xf32>
-    %21 = gml_st.materialize %arg1[%arg4, %c0] [8, 8] [1, 1]  : tensor<16x8xf32> to tensor<8x8xf32>
-    %23 = gml_st.materialize %arg5[0, 0] [8, 8] [1, 1]  : tensor<8x8xf32> to tensor<8x8xf32>
+    %19 = tensor.extract_slice %arg0[%c0, %arg4] [8, 8] [1, 1]  : tensor<8x16xf32> to tensor<8x8xf32>
+    %21 = tensor.extract_slice %arg1[%arg4, %c0] [8, 8] [1, 1]  : tensor<16x8xf32> to tensor<8x8xf32>
+    %23 = tensor.extract_slice %arg5[0, 0] [8, 8] [1, 1]  : tensor<8x8xf32> to tensor<8x8xf32>
     %28 = linalg.fill ins(%cst_0 : f32) outs(%23 : tensor<8x8xf32>) -> tensor<8x8xf32>
-    %29 = gml_st.materialize %28[0, 0] [8, 8] [1, 1]  : tensor<8x8xf32> to tensor<8x8xf32>
+    %29 = tensor.extract_slice %28[0, 0] [8, 8] [1, 1]  : tensor<8x8xf32> to tensor<8x8xf32>
     %22 = gml_st.tile [0, 0] [8, 8] [1, 1] : !gml_st.tile<8x8>
     gml_st.set_yield %29 into %arg5[%22] : tensor<8x8xf32> into tensor<8x8xf32>[!gml_st.tile<8x8>]
   } : tensor<8x8xf32>
@@ -221,6 +221,5 @@ func.func @fold_identity_materialize(%arg0: tensor<8x16xf32>, %arg1: tensor<16x8
 
 // CHECK:         gml_st.for {{.*}} outs (%[[ARG:.*]] = %[[INIT]]
 // CHECK:           %[[WRITE:.*]] = vector.transfer_write %[[CST]], %[[ARG]]
-// CHECK:           %[[MAT:.*]] = gml_st.materialize %[[WRITE]] [0, 0] [8, 8] [1, 1]
 // CHECK:           %[[TILE:.*]] = gml_st.tile [0, 0] [8, 8] [1, 1]
-// CHECK:           gml_st.set_yield %[[MAT]] into %[[ARG]]
+// CHECK:           gml_st.set_yield %[[WRITE]] into %[[ARG]]
