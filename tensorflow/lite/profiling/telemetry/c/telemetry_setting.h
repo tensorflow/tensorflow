@@ -86,6 +86,16 @@ size_t TfLiteTelemetrySubgraphInfoGetNumCustomOpNames(
 const char** TfLiteTelemetrySubgraphInfoGetCustomOpNames(
     TfLiteTelemetrySubgraphInfo* subgraph_info);
 
+// Telemetry information for GPU delegate.
+typedef struct TfLiteTelemetryGpuDelegateSettings
+    TfLiteTelemetryGpuDelegateSettings;
+
+size_t TfLiteTelemetryGpuDelegateSettingsGetNumNodesDelegated(
+    TfLiteTelemetryGpuDelegateSettings* settings);
+
+int TfLiteTelemetryGpuDelegateSettingsGetBackend(
+    TfLiteTelemetryGpuDelegateSettings* settings);
+
 #ifdef __cplusplus
 }  // extern "C"
 #endif  // __cplusplus
