@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/core/framework/kernel_def_builder.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
+#include "tensorflow/core/framework/resource_handle.pb.h"
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/framework/types.h"
 // Required for IS_MOBILE_PLATFORM definition
@@ -296,6 +297,13 @@ void TF_InputRange(TF_OpKernelContext* ctx, const char* name,
   tensorflow::Set_TF_Status_from_Status(args->status, status);
 }
 
+TF_DataType TF_InputDatatype(TF_OpKernelContext* ctx, int index) {
+  auto* cc_ctx = reinterpret_cast<::tensorflow::OpKernelContext*>(ctx);
+  CHECK_GE(index, 0);                     // Crash OK
+  CHECK_LT(index, cc_ctx->num_inputs());  // Crash OK
+  return static_cast<TF_DataType>(cc_ctx->input_dtype(index));
+}
+
 void TF_SetOutput(TF_OpKernelContext* ctx, int i, const TF_Tensor* tensor,
                   TF_Status* status) {
   auto* cc_ctx = reinterpret_cast<::tensorflow::OpKernelContext*>(ctx);
@@ -352,6 +360,18 @@ void TF_GetSerializedConfigProto(TF_OpKernelContext* ctx,
   }
   auto cc_status =
       tensorflow::MessageToBuffer(config_proto, serialized_config_proto);
+  tensorflow::Set_TF_Status_from_Status(status, cc_status);
+}
+
+void TF_GetSerializedResourceHandleProto(
+    TF_OpKernelContext* ctx, int i, TF_Buffer* serialized_resource_handle_proto,
+    TF_Status* status) {
+  auto* cc_ctx = reinterpret_cast<::tensorflow::OpKernelContext*>(ctx);
+  const tensorflow::ResourceHandle& handle = HandleFromInput(cc_ctx, i);
+  tensorflow::ResourceHandleProto handle_proto;
+  handle.AsProto(&handle_proto);
+  auto cc_status = tensorflow::MessageToBuffer(
+      handle_proto, serialized_resource_handle_proto);
   tensorflow::Set_TF_Status_from_Status(status, cc_status);
 }
 

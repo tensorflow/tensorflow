@@ -190,6 +190,11 @@ TF_CAPI_EXPORT extern void TF_InputRange(TF_OpKernelContext* ctx,
                                          const char* name,
                                          TF_InputRange_Args* args);
 
+// Returns the data type of the index-th input. If index < 0 or index >=
+// TF_NumInputs(ctx), the program aborts.
+TF_CAPI_EXPORT extern TF_DataType TF_InputDatatype(TF_OpKernelContext* ctx,
+                                                   int index);
+
 // Sets the ith output of ctx to tensor. If TF_GetCode(status) is anything but
 // TF_OK, ctx is left unmodified.
 //
@@ -214,6 +219,11 @@ TF_CAPI_EXPORT extern void TF_GetSerializedFunctionDefLibrary(
 // Retrieves a serialized ConfigProto. Status will be set.
 TF_CAPI_EXPORT extern void TF_GetSerializedConfigProto(
     TF_OpKernelContext* ctx, TF_Buffer* serialized_config_proto,
+    TF_Status* status);
+
+// Retrieves a serialized ResourceHandleProto. Status will be set.
+TF_CAPI_EXPORT extern void TF_GetSerializedResourceHandleProto(
+    TF_OpKernelContext* ctx, int i, TF_Buffer* serialized_resource_handle_proto,
     TF_Status* status);
 
 // Notifies the given OpKernelConstruction that kernel construction has failed.
