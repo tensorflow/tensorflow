@@ -150,11 +150,10 @@ REGISTER_XLA_OP(
     Name("UnsortedSegmentSum").CompileTimeConstantInput("num_segments"),
     SegmentSum</*indices_are_sorted=*/false>);
 
-template <bool indices_are_sorted>
-class SegmentProd : public SegmentReduce {
+class UnsortedSegmentProd : public SegmentReduce {
  public:
-  explicit SegmentProd(OpKernelConstruction* ctx)
-      : SegmentReduce(ctx, indices_are_sorted) {}
+  explicit UnsortedSegmentProd(OpKernelConstruction* ctx)
+      : SegmentReduce(ctx, /*indices_are_sorted=*/false) {}
 
   xla::XlaOp InitialValue(xla::XlaBuilder* builder) override {
     return xla::One(builder, type_);
@@ -164,9 +163,7 @@ class SegmentProd : public SegmentReduce {
 
 REGISTER_XLA_OP(
     Name("UnsortedSegmentProd").CompileTimeConstantInput("num_segments"),
-    SegmentProd</*indices_are_sorted=*/false>);
-REGISTER_XLA_OP(Name("SegmentProdV2").CompileTimeConstantInput("num_segments"),
-                SegmentProd</*indices_are_sorted=*/true>);
+    UnsortedSegmentProd);
 
 class UnsortedSegmentMin : public SegmentReduce {
  public:
