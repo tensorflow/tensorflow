@@ -128,8 +128,8 @@ cc_library(
     deps = [
         ":device_description_proto_cc",
         ":launch_dim",
-        "//tensorflow/compiler/xla/stream_executor/lib",
         "//tensorflow/compiler/xla/stream_executor/platform",
+        "//tensorflow/tsl/lib/math:math_util",
         "//tensorflow/tsl/platform:numbers",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/strings",
