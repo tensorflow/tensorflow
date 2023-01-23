@@ -163,6 +163,8 @@ class Status {
   // any existing payload for that `type_url`.
   //
   // This function does nothing if the Status is ok.
+  void SetPayload(absl::string_view type_url, absl::Cord payload);
+  // Deprecated: use the previous function instead.
   void SetPayload(absl::string_view type_url, absl::string_view payload);
 
   // Erases the payload corresponding to the `type_url` key.  Returns `true` if
@@ -204,7 +206,7 @@ class Status {
 
     tsl::error::Code code;
     std::string msg;
-    std::unordered_map<std::string, std::string> payloads;
+    std::unordered_map<std::string, absl::Cord> payloads;
     absl::InlinedVector<SourceLocation, 4> source_locations;
     std::vector<StackFrame> stack_trace;
   };
@@ -258,7 +260,7 @@ class StatusGroup {
   // otherwise one payload value will be chosen in an unspecified but
   // deterministic order.
   // NOTE: The payload marking derived statuses as derived will not be returned.
-  std::unordered_map<std::string, std::string> GetPayloads() const;
+  std::unordered_map<std::string, absl::Cord> GetPayloads() const;
 
   // Return a merged status with combined child status messages with a summary.
   Status as_summary_status() const;
