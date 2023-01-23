@@ -365,7 +365,7 @@ Operation *bubbleUpPadSlice(OpBuilder &b, tensor::PadOp padOp,
   // creating SliceOps with result dimensions of size 0 at runtime.
   if (generateZeroSliceGuard && dynHasZeroLenCond) {
     auto result = b.create<scf::IfOp>(
-        loc, resultType, dynHasZeroLenCond,
+        loc, dynHasZeroLenCond,
         /*thenBuilder=*/
         [&](OpBuilder &b, Location loc) {
           b.create<scf::YieldOp>(loc, createGenerateOp()->getResult(0));

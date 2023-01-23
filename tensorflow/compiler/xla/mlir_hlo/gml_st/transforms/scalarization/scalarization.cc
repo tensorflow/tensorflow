@@ -190,7 +190,7 @@ struct ScalarizeScatterOp : public OpRewritePattern<thlo::ScatterOp> {
         loc, indexIsInBounds,
         isValidIndex(b, loc, *scatterIndices, initDimValues, zero));
     auto ifOp = b.create<scf::IfOp>(
-        loc, TypeRange(ValueRange{init}), indexIsInBounds,
+        loc, indexIsInBounds,
         [&](OpBuilder &thenBuilder, Location thenLoc) {
           auto loop = thenBuilder.create<gml_st::ForOp>(
               thenLoc, TypeRange(ValueRange{init}), lbs, updatesDimValues,
@@ -402,8 +402,7 @@ struct ScalarizeConcatenateOp : public OpRewritePattern<thlo::ConcatenateOp> {
 
     return b
         .create<scf::IfOp>(
-            loc, resultType,
-            tensorHasElement(b, loc, inputs.front(), concatDim),
+            loc, tensorHasElement(b, loc, inputs.front(), concatDim),
             [&](OpBuilder &thenBuilder, Location thenLoc) {
               thenBuilder.create<scf::YieldOp>(
                   thenLoc,
