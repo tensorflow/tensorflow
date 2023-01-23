@@ -15,8 +15,8 @@ message WorkerHeartbeatRequest {
   // The UID of the worker Borg job, used for telemetry.
   int64 worker_uid = 5;
   repeated int64 current_tasks = 2;
-  // Progress of the snapshot tasks, if any.
-  repeated SnapshotTaskProgress snapshot_task_progress = 6;
+  // The status of any active snapshot tasks, keyed by snapshot path.
+  map<string, SnapshotTaskProgress> snapshot_task_progress = 6;
 }
 
 // Next tag: 4

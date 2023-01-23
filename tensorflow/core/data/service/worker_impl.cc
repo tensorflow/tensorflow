@@ -541,12 +541,10 @@ WorkerHeartbeatRequest DataServiceWorkerImpl::BuildWorkerHeartbeatRequest()
   request.set_worker_uid(worker_uid_);
   *request.mutable_current_tasks() = {current_tasks.begin(),
                                       current_tasks.end()};
-  std::vector<SnapshotTaskProgress> snapshot_task_progress =
-      GetSnapshotTaskProgress();
-  if (!snapshot_task_progress.empty()) {
-    *request.mutable_snapshot_task_progress() = {
-        std::make_move_iterator(snapshot_task_progress.begin()),
-        std::make_move_iterator(snapshot_task_progress.end())};
+  for (const auto& snapshot_task_progress : GetSnapshotTaskProgress()) {
+    request.mutable_snapshot_task_progress()->insert(
+        {snapshot_task_progress.snapshot_task().base_path(),
+         snapshot_task_progress});
   }
   return request;
 }
