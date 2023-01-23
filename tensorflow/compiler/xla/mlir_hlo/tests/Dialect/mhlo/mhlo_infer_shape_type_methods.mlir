@@ -649,6 +649,16 @@ func.func @dynamic_update_slice(%arg0: tensor<4x4xi32>, %arg1: tensor<2x2xi32>, 
 
 // -----
 
+// CHECK-LABEL: @dynamic_update_slice_with_bounds
+func.func @dynamic_update_slice_with_bounds(%input: tensor<3x?x?xi64, #mhlo.type_extensions<bounds = [?, ?, 5]>>, %update: tensor<1x4x3xi64>, %start1: tensor<i64>, %start2: tensor<i64>, %start3 : tensor<i64>) -> tensor<*xindex> {
+  %0 = "mhlo.dynamic_update_slice"(%input, %update, %start1, %start2, %start3) : (tensor<3x?x?xi64, #mhlo.type_extensions<bounds = [?, ?, 5]>>, tensor<1x4x3xi64>, tensor<i64>, tensor<i64>, tensor<i64>) -> tensor<3x?x?xi64>
+  // CHECK: types0 = tensor<3x?x?xi64, #mhlo.type_extensions<bounds = [?, ?, 5]>>
+  %1 = "mhlo_test.get_return_types"(%0) : (tensor<3x?x?xi64>) -> tensor<*xindex>
+  func.return %1 : tensor<*xindex>
+}
+
+// -----
+
 // CHECK-LABEL: func @create_token
 func.func @create_token() -> !mhlo.token {
   %0 = "mhlo.create_token"() : () -> !mhlo.token
