@@ -24,8 +24,8 @@ limitations under the License.
 
 #include "absl/functional/any_invocable.h"
 #include "absl/synchronization/mutex.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/threadpool.h"
 #include "tensorflow/compiler/xla/stream_executor/stream_executor_internal.h"
+#include "tensorflow/tsl/platform/env.h"
 
 namespace stream_executor {
 namespace host {
@@ -59,7 +59,7 @@ class HostStream : public internal::StreamInterface {
   absl::Mutex mu_;
   std::queue<absl::AnyInvocable<tsl::Status() &&>> work_queue_
       ABSL_GUARDED_BY(mu_);
-  std::unique_ptr<port::Thread> thread_;
+  std::unique_ptr<tsl::Thread> thread_;
   tsl::Status status_;
 };
 

@@ -22,6 +22,7 @@ limitations under the License.
 
 #include "absl/functional/any_invocable.h"
 #include "absl/synchronization/notification.h"
+#include "tensorflow/compiler/xla/stream_executor/lib/env.h"
 #include "tensorflow/tsl/platform/denormal.h"
 #include "tensorflow/tsl/platform/env.h"
 #include "tensorflow/tsl/platform/setround.h"
