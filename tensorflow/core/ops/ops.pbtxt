@@ -58148,6 +58148,10 @@ op {
   }
 }
 op {
+  name: "SyncDevice"
+  is_stateful: true
+}
+op {
   name: "TFRecordDataset"
   input_arg {
     name: "filenames"
