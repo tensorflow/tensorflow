@@ -44,9 +44,46 @@ limitations under the License.
 namespace tensorflow {
 namespace data {
 
+Status DataServiceDispatcherClient::Initialize() {
+  mutex_lock l(mu_);
+  if (stub_) {
+    return OkStatus();
+  }
+  std::shared_ptr<grpc::ChannelCredentials> credentials;
+  TF_RETURN_IF_ERROR(
+      CredentialsFactory::CreateClientCredentials(protocol_, &credentials));
+  grpc::ChannelArguments args;
+  args.SetMaxReceiveMessageSize(std::numeric_limits<int32>::max());
+  args.SetInt(GRPC_ARG_USE_LOCAL_SUBCHANNEL_POOL, true);
+  auto channel = grpc::CreateCustomChannel(address_, credentials, args);
+  stub_ = DispatcherService::NewStub(channel);
+  GetVersionRequest req;
+  GetVersionResponse resp;
+  grpc::ClientContext ctx;
+  grpc::Status s = stub_->GetVersion(&ctx, req, &resp);
+  if (!s.ok()) {
+    return grpc_util::WrapError(
+        absl::StrCat("Failed to get dispatcher version from dispatcher "
+                     "running at ",
+                     address_),
+        s);
+  }
+
+  if (resp.version() != kDataServiceVersion) {
+    return errors::FailedPrecondition(
+        "Version mismatch with tf.data service server. The server is running "
+        "version ",
+        resp.version(), ", while the client is running version ",
+        kDataServiceVersion,
+        ". Please ensure that the client and server side are running the "
+        "same version of TensorFlow. If you're running an MPM binary, make "
+        "sure the server is running an up-to-date MPM.");
+  }
+  return OkStatus();
+}
+
 StatusOr<WorkerHeartbeatResponse> DataServiceDispatcherClient::WorkerHeartbeat(
     const WorkerHeartbeatRequest& request) {
-  TF_RETURN_IF_ERROR(EnsureInitialized());
   WorkerHeartbeatResponse response;
   grpc::ClientContext client_ctx;
   grpc::Status status = stub_->WorkerHeartbeat(&client_ctx, request, &response);
@@ -59,7 +96,6 @@ StatusOr<WorkerHeartbeatResponse> DataServiceDispatcherClient::WorkerHeartbeat(
 Status DataServiceDispatcherClient::WorkerUpdate(
     const std::string& worker_address,
     std::vector<TaskProgress>& task_progress) {
-  TF_RETURN_IF_ERROR(EnsureInitialized());
   WorkerUpdateRequest req;
   req.set_worker_address(worker_address);
   for (const auto& update : task_progress) {
@@ -76,7 +112,6 @@ Status DataServiceDispatcherClient::WorkerUpdate(
 
 Status DataServiceDispatcherClient::GetDatasetDef(const std::string& dataset_id,
                                                   DatasetDef& dataset_def) {
-  TF_RETURN_IF_ERROR(EnsureInitialized());
   GetDatasetDefRequest req;
   req.set_dataset_id(dataset_id);
   GetDatasetDefResponse resp;
@@ -324,46 +359,9 @@ Status DataServiceDispatcherClient::GetDataServiceConfig(
 }
 
 Status DataServiceDispatcherClient::EnsureInitialized() {
-  mutex_lock l(mu_);
-  if (stub_) {
-    return OkStatus();
-  }
-  std::shared_ptr<grpc::ChannelCredentials> credentials;
-  TF_RETURN_IF_ERROR(
-      CredentialsFactory::CreateClientCredentials(protocol_, &credentials));
-  grpc::ChannelArguments args;
-  args.SetMaxReceiveMessageSize(std::numeric_limits<int32>::max());
-  args.SetInt(GRPC_ARG_USE_LOCAL_SUBCHANNEL_POOL, true);
-  auto channel = grpc::CreateCustomChannel(address_, credentials, args);
-  stub_ = DispatcherService::NewStub(channel);
-  GetVersionRequest req;
-  GetVersionResponse resp;
-  TF_RETURN_IF_ERROR(grpc_util::Retry(
-      [&] {
-        grpc::ClientContext ctx;
-        grpc::Status s = stub_->GetVersion(&ctx, req, &resp);
-        if (!s.ok()) {
-          return grpc_util::WrapError(
-              absl::StrCat("Failed to get dispatcher version from dispatcher "
-                           "running at ",
-                           address_),
-              s);
-        }
-        return OkStatus();
-      },
-      "check service version",
-      /*deadline_micros=*/kint64max));
-  if (resp.version() != kDataServiceVersion) {
-    return errors::FailedPrecondition(
-        "Version mismatch with tf.data service server. The server is running "
-        "version ",
-        resp.version(), ", while the client is running version ",
-        kDataServiceVersion,
-        ". Please ensure that the client and server side are running the "
-        "same version of TensorFlow. If you're running an MPM binary, make "
-        "sure the server is running an up-to-date MPM.");
-  }
-  return OkStatus();
+  return grpc_util::Retry([this] { return Initialize(); },
+                          "Initialize dispatcher client",
+                          /*deadline_micros=*/kint64max);
 }
 
 }  // namespace data

@@ -1075,6 +1075,7 @@ cc_library(
         "//tensorflow/core/platform:status",
         "//tensorflow/core/platform:statusor",
         "//tensorflow/core/platform:thread_annotations",
+        "//tensorflow/core/platform:types",
     ] + tf_grpc_cc_dependencies(),
 )
 

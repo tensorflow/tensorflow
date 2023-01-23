@@ -61,6 +61,7 @@ limitations under the License.
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/platform/thread_annotations.h"
+#include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/protobuf/service_config.pb.h"
 #include "tensorflow/core/public/session_options.h"
 
@@ -170,19 +171,17 @@ Status DataServiceWorkerImpl::Start(const std::string& worker_address,
 
   dispatcher_ = std::make_unique<DataServiceDispatcherClient>(
       config_.dispatcher_address(), config_.protocol());
-  TF_RETURN_IF_ERROR(dispatcher_->Initialize());
-
-  Status s = Heartbeat();
-  while (!s.ok()) {
-    if (!IsPreemptedError(s)) {
-      return s;
-    }
-    LOG(WARNING) << "Failed to register with dispatcher at "
-                 << config_.dispatcher_address() << ": " << s;
-    Env::Default()->SleepForMicroseconds(
-        absl::ToInt64Microseconds(kRetryInterval));
-    s = Heartbeat();
-  }
+  auto should_retry = [this]() TF_LOCKS_EXCLUDED(mu_) {
+    mutex_lock l(mu_);
+    return !cancelled_;
+  };
+  TF_RETURN_IF_ERROR(
+      grpc_util::Retry([this]() { return dispatcher_->Initialize(); },
+                       should_retry, "Initialize dispatcher client.",
+                       /*deadline_micros=*/kint64max));
+  TF_RETURN_IF_ERROR(grpc_util::Retry([this]() { return Heartbeat(); },
+                                      should_retry, "Worker heartbeat.",
+                                      /*deadline_micros=*/kint64max));
   LOG(INFO) << "Worker registered with dispatcher running at "
             << config_.dispatcher_address();
   task_completion_thread_ = absl::WrapUnique(

@@ -43,6 +43,8 @@ class DataServiceDispatcherClient : public DataServiceClientBase {
                               const std::string& protocol)
       : DataServiceClientBase(address, protocol) {}
 
+  Status Initialize() override;
+
   // Sends a heartbeat to the dispatcher. If the worker wasn't already
   // registered with the dispatcher, this will register the worker. The
   // dispatcher will report which new tasks the worker should run, and which
