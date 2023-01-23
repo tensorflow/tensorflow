@@ -429,9 +429,9 @@ cc_library(
         "//tensorflow/lite/core/c:c_api_types",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/core/experimental/acceleration/configuration:delegate_registry",
+        "//tensorflow/lite/core/kernels:builtin_ops",
         "//tensorflow/lite/experimental/acceleration/configuration:configuration_fbs",
         "//tensorflow/lite/experimental/acceleration/mini_benchmark:constants",
-        "//tensorflow/lite/kernels:builtin_ops",
         "//tensorflow/lite/tools:model_loader",
     ],
 )

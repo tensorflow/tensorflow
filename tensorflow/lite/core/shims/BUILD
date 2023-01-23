@@ -245,7 +245,6 @@ cc_library(
         "//tensorflow/lite:cc_api",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/core/kernels:builtin_ops",
-        "//tensorflow/lite/kernels:builtin_ops",
     ],
 )
 
