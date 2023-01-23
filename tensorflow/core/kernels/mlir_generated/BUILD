@@ -1687,6 +1687,90 @@ gpu_kernel_library(
     unroll_factors = "4",
 )
 
+# Bitwise operations.
+
+gpu_kernel_library(
+    name = "gpu_bitwise_and_kernels",
+    op = "bitwise_and",
+    tile_size = "1024",
+    types = [
+        "i8",
+        "i16",
+        "i32",
+        "i64",
+    ],
+    unroll_factors = "4",
+)
+
+gpu_kernel_library(
+    name = "gpu_bitwise_or_kernels",
+    op = "bitwise_or",
+    tile_size = "1024",
+    types = [
+        "i8",
+        "i16",
+        "i32",
+        "i64",
+    ],
+    unroll_factors = "4",
+)
+
+gpu_kernel_library(
+    name = "gpu_bitwise_xor_kernels",
+    op = "bitwise_xor",
+    tile_size = "1024",
+    types = [
+        "i8",
+        "i16",
+        "i32",
+        "i64",
+    ],
+    unroll_factors = "4",
+)
+
+gpu_kernel_library(
+    name = "gpu_invert_kernels",
+    op = "invert",
+    tile_size = "1024",
+    types = [
+        "i8",
+        "i16",
+        "i32",
+        "i64",
+    ],
+    unroll_factors = "4",
+)
+
+gpu_kernel_library(
+    name = "gpu_left_shift_kernels",
+    op = "left_shift",
+    tile_size = "1024",
+    types = [
+        "i8",
+        "i16",
+        "i32",
+        "i64",
+    ],
+    unroll_factors = "4",
+)
+
+gpu_kernel_library(
+    name = "gpu_right_shift_kernels",
+    op = "right_shift",
+    tile_size = "1024",
+    types = [
+        "i8",
+        "i16",
+        "i32",
+        "i64",
+        "ui8",
+        "ui16",
+        "ui32",
+        "ui64",
+    ],
+    unroll_factors = "4",
+)
+
 # TODO(b/160731748): Re-enable when it works again.
 # gpu_kernel_library(
 #     name = "gpu_bias_add_kernels",
@@ -1814,46 +1898,6 @@ gpu_kernel_library(
         "f32",
         "f64",
     ],
-)
-
-# Bitwise operations.
-[
-    gpu_kernel_library(
-        name = "gpu_" + op + "_kernels",
-        op = op,
-        tile_size = "1024",
-        types = [
-            "i8",
-            "i16",
-            "i32",
-            "i64",
-        ],
-        unroll_factors = "4",
-    )
-    for op in [
-        "bitwise_and",
-        "bitwise_or",
-        "bitwise_xor",
-        "invert",
-        "left_shift",
-    ]
-]
-
-gpu_kernel_library(
-    name = "gpu_right_shift_kernels",
-    op = "right_shift",
-    tile_size = "1024",
-    types = [
-        "i8",
-        "i16",
-        "i32",
-        "i64",
-        "ui8",
-        "ui16",
-        "ui32",
-        "ui64",
-    ],
-    unroll_factors = "4",
 )
 
 # Logical operations.
