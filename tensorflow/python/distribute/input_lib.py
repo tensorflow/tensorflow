@@ -20,6 +20,7 @@ import time
 
 import six
 
+from tensorflow.python.autograph.operators import py_builtins
 from tensorflow.python.data.experimental.ops import batching
 from tensorflow.python.data.experimental.ops import cardinality as cardinality_lib
 from tensorflow.python.data.experimental.ops import distribute
@@ -2170,3 +2171,17 @@ def _rebatch_as_dynamic(per_replica_spec):
   return values.PerReplicaSpec(
       *nest.map_structure(_rebatch, per_replica_spec._value_specs))
   # pylint: enable=protected-access
+
+
+def _ag_enumerate_not_implemented():
+  raise NotImplementedError(
+      "use a for loop over the dataset and keep a separate counter"
+  )
+
+
+py_builtins.enumerate_registry.register(
+    DistributedIterator, _ag_enumerate_not_implemented
+)
+py_builtins.enumerate_registry.register(
+    DistributedDataset, _ag_enumerate_not_implemented
+)

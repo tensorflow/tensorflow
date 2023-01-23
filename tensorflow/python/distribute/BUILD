@@ -547,6 +547,7 @@ py_library(
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:sparse_tensor",
+        "//tensorflow/python/autograph/operators",
         "//tensorflow/python/data/experimental/ops:batching",
         "//tensorflow/python/data/experimental/ops:cardinality",
         "//tensorflow/python/data/experimental/ops:distribute",

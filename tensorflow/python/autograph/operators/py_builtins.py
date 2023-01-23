@@ -35,13 +35,7 @@ from tensorflow.python.ops import list_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import sort_ops
 from tensorflow.python.ops.parallel_for import control_flow_ops as parallel_ops
-from tensorflow.python.util import lazy_loader
 
-# TODO(b/145618471): Remove this dependency.
-# Lazy import to work around circular dependencies
-input_lib = lazy_loader.LazyLoader(
-    'input_lib', globals(),
-    'tensorflow.python.distribute.input_lib')
 
 UNSPECIFIED = object()
 
@@ -427,10 +421,6 @@ def enumerate_(s, start=0):
   enumerate_override = registry_lookup(enumerate_registry, s)
   if enumerate_override is not None:
     return enumerate_override(s, start)
-  if isinstance(s,
-                (input_lib.DistributedIterator, input_lib.DistributedDataset)):
-    raise NotImplementedError(
-        'use a for loop over the dataset and keep a separate counter')
   return _py_enumerate(s, start)
 
 
