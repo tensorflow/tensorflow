@@ -1798,6 +1798,32 @@ gpu_kernel_library(
     ],
 )
 
+# Erf kernels
+
+gpu_kernel_library(
+    name = "gpu_erf_kernels",
+    op = "erf",
+    tile_size = "256",
+    types = [
+        "f16",
+        "f32",
+        "f64",
+    ],
+    unroll_factors = "4",
+)
+
+gpu_kernel_library(
+    name = "gpu_erfc_kernels",
+    op = "erfc",
+    tile_size = "256",
+    types = [
+        "f16",
+        "f32",
+        "f64",
+    ],
+    unroll_factors = "4",
+)
+
 # TODO(b/160731748): Re-enable when it works again.
 # gpu_kernel_library(
 #     name = "gpu_bias_add_kernels",
@@ -1862,30 +1888,6 @@ gpu_kernel_library(
         "f32",
         "f64",
     ],
-)
-
-gpu_kernel_library(
-    name = "gpu_erf_kernels",
-    op = "erf",
-    tile_size = "256",
-    types = [
-        "f16",
-        "f32",
-        "f64",
-    ],
-    unroll_factors = "4",
-)
-
-gpu_kernel_library(
-    name = "gpu_erfc_kernels",
-    op = "erfc",
-    tile_size = "256",
-    types = [
-        "f16",
-        "f32",
-        "f64",
-    ],
-    unroll_factors = "4",
 )
 
 gpu_kernel_library(
