@@ -63,8 +63,8 @@ void printShapeTypeDimensionsList(AsmPrinter &printer,
       "x");
 }
 
-ParseResult parseShapeTypeDimensionsList(
-    AsmParser &parser, FailureOr<SmallVector<int64_t>> &dims) {
+ParseResult parseShapeTypeDimensionsList(AsmParser &parser,
+                                         SmallVectorImpl<int64_t> &dims) {
   SmallVector<int64_t> vals;
   if (failed(parser.parseDimensionList(vals, /*allowDynamic=*/true,
                                        /*withTrailingX=*/false))) {
