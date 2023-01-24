@@ -8638,5 +8638,75 @@ ENTRY %main.21 {
               op::Sharding("{devices=[2,1]0,1}"));
 }
 
+TEST_F(ShardingPropagationTest, SortOperandShardedOnSortDim_RankOne) {
+  const char* const hlo_string = R"(
+HloModule module, entry_computation_layout={(f32[1024]{0})->(f32[1024]{0}, s32[1024]{0})}
+
+compare {
+  p.0.lhs = f32[] parameter(0), sharding={replicated}
+  p.0.rhs = f32[] parameter(1), sharding={replicated}
+  p.1.lhs = s32[] parameter(2), sharding={replicated}
+  p.1.rhs = s32[] parameter(3), sharding={replicated}
+  ROOT lt = pred[] compare(p.0.lhs, p.0.rhs), direction=LT, sharding={replicated}
+}
+
+ENTRY entry {
+  param.0 = f32[1024]{0} parameter(0)
+  negate.0 = f32[1024]{0} negate(param.0), sharding={devices=[8]0,1,2,3,4,5,6,7}
+  iota.0 = s32[1024]{0} iota(), iota_dimension=0
+  sort.0 = (f32[1024]{0}, s32[1024]{0}) sort(negate.0, iota.0), dimensions={0}, is_stable=true, to_apply=compare
+  ROOT copy.0 = (f32[1024]{0}, s32[1024]{0}) copy(sort.0)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool changed,
+      ShardingPropagation(/*is_spmd=*/true, /*propagate_metadata=*/true)
+          .Run(module.get()));
+
+  XLA_VLOG_LINES(1, module->ToString());
+  EXPECT_FALSE(changed);  // Does not propagate the sharding for 1D operands
+}
+
+TEST_F(ShardingPropagationTest, SortOperandShardedOnSortDim_RankTwo) {
+  const char* const hlo_string = R"(
+HloModule module, entry_computation_layout={(f32[1024,1024]{1,0})->(f32[1024,1024]{1,0}, s32[1024,1024]{1,0})}
+
+compare {
+  p.0.lhs = f32[] parameter(0), sharding={replicated}
+  p.0.rhs = f32[] parameter(1), sharding={replicated}
+  p.1.lhs = s32[] parameter(2), sharding={replicated}
+  p.1.rhs = s32[] parameter(3), sharding={replicated}
+  ROOT lt = pred[] compare(p.0.lhs, p.0.rhs), direction=LT, sharding={replicated}
+}
+
+ENTRY entry {
+  param.0 = f32[1024,1024]{1,0} parameter(0)
+  negate.0 = f32[1024,1024]{1,0} negate(param.0), sharding={devices=[1,8]0,1,2,3,4,5,6,7}
+  iota.0 = s32[1024,1024]{1,0} iota(), iota_dimension=1
+  sort.0 = (f32[1024,1024]{1,0}, s32[1024,1024]{1,0}) sort(negate.0, iota.0), dimensions={1}, is_stable=true, to_apply=compare
+  ROOT copy.0 = (f32[1024,1024]{1,0}, s32[1024,1024]{1,0}) copy(sort.0)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool changed,
+      ShardingPropagation(/*is_spmd=*/true, /*propagate_metadata=*/true)
+          .Run(module.get()));
+
+  XLA_VLOG_LINES(1, module->ToString());
+  EXPECT_TRUE(changed);
+  EXPECT_THAT(FindInstruction(module.get(), "iota.0"),
+              op::Sharding("{devices=[1,8]0,1,2,3,4,5,6,7}"));
+  EXPECT_THAT(
+      FindInstruction(module.get(), "sort.0"),
+      op::Sharding(
+          "{{devices=[1,8]0,1,2,3,4,5,6,7}, {devices=[1,8]0,1,2,3,4,5,6,7}}"));
+}
+
 }  // namespace
 }  // namespace xla

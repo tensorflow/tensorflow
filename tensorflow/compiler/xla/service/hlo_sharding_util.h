@@ -403,6 +403,11 @@ HloSharding MergeShardingDimension(const HloSharding& sharding,
 std::shared_ptr<const HloSharding> CreateTupleSharding(
     const Shape& shape, absl::Span<const HloInstruction* const> elements);
 
+// Tests whether the sort operand is sharded along the sort dimension and there
+// exists a free (i.e., unsharded) dimension to move the sharding into.
+bool IsSortOperandShardingMovable(const HloInstruction* sort_operand,
+                                  int64_t sort_dim);
+
 }  // namespace hlo_sharding_util
 }  // namespace xla
 

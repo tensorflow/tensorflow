@@ -2377,5 +2377,29 @@ std::shared_ptr<const HloSharding> CreateTupleSharding(
   return std::make_shared<const HloSharding>(
       HloSharding::Tuple(shape, sub_shardings));
 }
+
+bool IsSortOperandShardingMovable(const HloInstruction* sort_operand,
+                                  int64_t sort_dim) {
+  // Some early exit cases.
+  if (sort_operand == nullptr || sort_operand->shape().rank() < 2 ||
+      !sort_operand->has_sharding()) {
+    return false;
+  }
+  const auto& sharding = sort_operand->sharding();
+  if (!sharding.IsTiled() || sharding.IsTileMaximal() ||
+      sharding.tile_assignment().dim(sort_dim) == 1) {
+    return false;
+  }
+  // Test whether there exist a free dimension to move the sharding into
+  auto tile_assignment_dims = sharding.tile_assignment().dimensions();
+  const int rank = sort_operand->shape().rank();
+  for (int64_t dim = 0; dim < rank; ++dim) {
+    if (dim == sort_dim || tile_assignment_dims[dim] != 1) {
+      continue;
+    }
+    return true;
+  }
+  return false;
+}
 }  // namespace hlo_sharding_util
 }  // namespace xla
