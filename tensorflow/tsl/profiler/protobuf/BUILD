@@ -40,6 +40,7 @@ tf_proto_library(
     has_services = 1,
     cc_api_version = 2,
     create_grpc_library = True,
+    create_java_proto = False,
     make_default_target_header_only = True,
     protodeps = [
         ":profiler_options_proto",
@@ -60,6 +61,13 @@ tf_proto_library(
     protodeps = [":profiler_service_proto"],
     use_grpc_namespace = True,
     visibility = ["//visibility:public"],
+)
+
+tf_proto_library(
+    name = "trace_events_proto",
+    srcs = ["trace_events.proto"],
+    cc_api_version = 2,
+    visibility = [":friends"],
 )
 
 # This is needed because of how tf_android_core_proto_sources parses proto paths.

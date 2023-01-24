@@ -191,10 +191,14 @@ class _Function(_Convertible):
       incoming_edge: The edge into the argument to be converted.
       tensor_data: The constant value.
     """
-    function = self.converted_self().function
     index = incoming_edge.destination.index
-    function.signature.input_arg[index].type = tensor_data.dtype
+    for edge in self.outgoing_edges:
+      if edge.source.index == index:
+        edge.destination.convertible.convert_variable_to_constant(
+            edge, tensor_data)
 
+    function = self.converted_self().function
+    function.signature.input_arg[index].type = tensor_data.dtype
     # TODO(b/176982859): Find a more satisfying way to update shape information
     # than clearing it, or migrate users to a workflow that does not require
     # freezing.
@@ -205,11 +209,6 @@ class _Function(_Convertible):
     if "_output_shapes" in arg_attrs:
       arg_attrs["_output_shapes"].list.shape[0].unknown_rank = True
       del arg_attrs["_output_shapes"].list.shape[0].dim[:]
-
-    for edge in self.outgoing_edges:
-      if edge.source.index == index:
-        edge.destination.convertible.convert_variable_to_constant(
-            edge, tensor_data)
 
   def create_edges(self):
     for n in self._nodes.values():
@@ -524,20 +523,18 @@ class _FunctionCaller(_Node):
       converted_names = self._enclosing_graph.converted_function_names
       for attr_name in self._function_attributes:
         attr = node.attr[attr_name]
-        if attr.HasField("func"):
+        if attr.HasField(
+            "func") and self._enclosing_graph.is_converted_function(
+                attr.func.name):
           attr.func.name = converted_names[attr.func.name]
         elif attr.HasField("list"):
           for func in attr.list.func:
-            func.name = converted_names[func.name]
+            if self._enclosing_graph.is_converted_function(func.name):
+              func.name = converted_names[func.name]
     return self._converted_self
 
   def convert_variable_to_constant(self, incoming_edge, tensor_data):
-    node = self.converted_self()
     index = incoming_edge.destination.index
-    if index >= self._first_function_input:
-      node.update_dtype(self._type_attribute,
-                        index - self._first_function_input, tensor_data.dtype)
-
     # The loop below is reasonable but not correct in general:
     # The outgoing edges going into the functions are correct, because the
     # inputs map to the function inputs. But the edges going into other nodes do
@@ -553,6 +550,11 @@ class _FunctionCaller(_Node):
       dest = edge.destination.convertible
       if edge.source.index == index and isinstance(dest, _Function):
         dest.convert_variable_to_constant(edge, tensor_data)
+
+    node = self.converted_self()
+    if index >= self._first_function_input:
+      node.update_dtype(self._type_attribute,
+                        index - self._first_function_input, tensor_data.dtype)
 
   def create_edges(self):
     """Creates edges related to a function caller.
@@ -711,6 +713,11 @@ class _GraphDef(_Convertible):
     func = self.functions.pop(old_name)
     func.function.signature.name = new_name
     self.functions[new_name] = func
+
+  def is_converted_function(self, function_name):
+    # Only converted functions will be renamed.
+    return (function_name not in self.converted_self().functions) and (
+        function_name in self.converted_function_names)
 
   def converted_self(self):
     if self._converted_self is None:

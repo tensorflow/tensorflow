@@ -26,6 +26,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
 #include "tensorflow/compiler/xla/python/ifrt/array.h"
 #include "tensorflow/compiler/xla/python/ifrt/compiler.h"
+#include "tensorflow/compiler/xla/python/ifrt/tuple.h"
+#include "tensorflow/compiler/xla/python/ifrt/value.h"
 #include "tensorflow/compiler/xla/statusor.h"
 
 namespace xla {
@@ -59,16 +61,21 @@ class Client : public llvm::RTTIExtends<Client, llvm::RTTIRoot> {
   //
   // TODO(hyeontaek): Consider changing `on_done_with_host_buffer` into a
   // returned `Future<Status>` for consistency with other IFRT APIs.
-  virtual StatusOr<std::unique_ptr<Array>> MakeArrayFromHostBuffer(
+  virtual StatusOr<tsl::RCReference<Array>> MakeArrayFromHostBuffer(
       const void* data, DType dtype, Shape shape,
       std::optional<absl::Span<const int64_t>> byte_strides,
       std::shared_ptr<const Sharding> sharding, HostBufferSemantics semantics,
       std::function<void()> on_done_with_host_buffer) = 0;
 
   // Builds a larger array out of individual per-device shards.
-  virtual StatusOr<std::unique_ptr<Array>> AssembleArray(
+  virtual StatusOr<tsl::RCReference<Array>> AssembleArrayFromSingleDeviceArrays(
       Shape shape, std::shared_ptr<const Sharding> sharding,
-      absl::Span<Array* const> arrays, ArrayCopySemantics semantics) = 0;
+      absl::Span<tsl::RCReference<Array>> arrays,
+      ArrayCopySemantics semantics) = 0;
+
+  // Builds a tuple from a sequence of values.
+  virtual StatusOr<tsl::RCReference<Tuple>> MakeTuple(
+      absl::Span<tsl::RCReference<Value>> values) = 0;
 
   // The following APIs are taken from `xla::PjRtClient` for fast prototyping.
   // Most of the APIs will be factored out as a `Platform`/`Topology` in the
@@ -99,7 +106,7 @@ class Client : public llvm::RTTIExtends<Client, llvm::RTTIRoot> {
 
   // TODO(hyeontaek): Potentially remove this method to encourage supporting
   // only ahead-of-time compilation.
-  virtual Compiler* GetDefaultCompiler() const = 0;
+  virtual Compiler* GetDefaultCompiler() = 0;
 
   static char ID;  // NOLINT
 };

@@ -96,8 +96,6 @@ def normalize_element(element, element_signature=None):
     components = nest.flatten_up_to(element_signature, element)
     pack_as = element_signature
   with ops.name_scope("normalize_element"):
-    # Imported here to avoid circular dependency.
-    from tensorflow.python.data.ops import dataset_ops  # pylint: disable=g-import-not-at-top
     for i, (t, spec) in enumerate(zip(components, flattened_signature)):
       try:
         if spec is None:
@@ -108,14 +106,16 @@ def normalize_element(element, element_signature=None):
         normalized_components.append(
             ops.convert_to_tensor(t, name="component_%d" % i))
       else:
-        if isinstance(spec, sparse_tensor.SparseTensorSpec):
+        if hasattr(spec, "_tf_data_normalize") and callable(
+            spec._tf_data_normalize):  # pylint: disable=protected-access
+          normalized_components.append(spec._tf_data_normalize(t))  # pylint: disable=protected-access
+        elif isinstance(spec, sparse_tensor.SparseTensorSpec):
           normalized_components.append(sparse_tensor.SparseTensor.from_value(t))
         elif isinstance(spec, ragged_tensor.RaggedTensorSpec):
           normalized_components.append(
               ragged_tensor.convert_to_tensor_or_ragged_tensor(
                   t, name="component_%d" % i))
-        elif isinstance(
-            spec, (tensor_array_ops.TensorArraySpec, dataset_ops.DatasetSpec)):
+        elif isinstance(spec, (tensor_array_ops.TensorArraySpec)):
           normalized_components.append(t)
         elif isinstance(spec, NoneTensorSpec):
           normalized_components.append(NoneTensor())

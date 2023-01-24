@@ -66,7 +66,7 @@ void ParseCustomOpSpecs(absl::string_view node_names,
     auto node_specification = node_infos[1];
     CustomOpInfo new_node_info;
     switch (update_option) {
-      case CustomOpUpdateOptions::kINputIndices: {
+      case CustomOpUpdateOptions::kInputIndices: {
         std::vector<std::string> indices =
             absl::StrSplit(node_specification, '-');
         for (auto& cur_index : indices) {

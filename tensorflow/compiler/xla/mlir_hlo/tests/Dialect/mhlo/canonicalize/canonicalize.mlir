@@ -252,6 +252,39 @@ func.func @min_fold_float() -> tensor<6xf32> {
   func.return %2 : tensor<6xf32>
 }
 
+// CHECK-LABEL: clamp_scalar_fold
+func.func @clamp_scalar_fold() -> tensor<5xi64> {
+  %0 = mhlo.constant dense<149> : tensor<i64>
+  %1 = mhlo.constant dense<[-1, 100, 200, 0, 149]> : tensor<5xi64>
+  %2 = mhlo.constant dense<0> : tensor<i64>
+  // CHECK{LITERAL}: mhlo.constant dense<[0, 100, 149, 0, 149]>
+  // CHECK-NOT: mhlo.clamp
+  %3 = mhlo.clamp %2, %1, %0 : (tensor<i64>, tensor<5xi64>, tensor<i64>) -> tensor<5xi64>
+  return %3 : tensor<5xi64>
+}
+
+// CHECK-LABEL: clamp_fold
+func.func @clamp_fold() -> tensor<5xi64> {
+  %0 = mhlo.constant dense<[149, 101, -1,  30, 50]> : tensor<5xi64>
+  %1 = mhlo.constant dense<[-1,  100, 200, 0,  149]> : tensor<5xi64>
+  %2 = mhlo.constant dense<[0,   10,  -10, 10, -100]> : tensor<5xi64>
+  // CHECK{LITERAL}: mhlo.constant dense<[0, 100, -1, 10, 50]>
+  // CHECK-NOT: mhlo.clamp
+  %3 = mhlo.clamp %2, %1, %0 : (tensor<5xi64>, tensor<5xi64>, tensor<5xi64>) -> tensor<5xi64>
+  return %3 : tensor<5xi64>
+}
+
+// CHECK-LABEL: clamp_fold_float
+func.func @clamp_fold_float() -> tensor<6xf32> {
+  %0 = mhlo.constant dense<[5.0, 66.0, 0xFFFFFFFF, -2.0,       0xFFFFFFFF, 6.0]> : tensor<6xf32>
+  %1 = mhlo.constant dense<[5.0, 3.0,  2.0,        0xFFFFFFFF, 0xFFFFFFFF, 4.0]> : tensor<6xf32>
+  %2 = mhlo.constant dense<[5.0, 1.0,  1.0,        0xFFFFFFFF, 0xFFFFFFFF, 5.0]> : tensor<6xf32>
+  // CHECK{LITERAL}: mhlo.constant dense<[5.000000e+00, 3.000000e+00, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 5.000000e+00]
+  // CHECK-NOT: mhlo.clamp
+  %3 = mhlo.clamp %2, %1, %0 : (tensor<6xf32>, tensor<6xf32>, tensor<6xf32>) -> tensor<6xf32>
+  return %3 : tensor<6xf32>
+}
+
 // CHECK-LABEL: concatenate_noop
 func.func @concatenate_noop(%arg0: tensor<4xi32>) -> tensor<4xi32> {
   // CHECK-SAME: [[ARG:%.+]]: tensor<4xi32>
@@ -781,6 +814,19 @@ func.func @dynamic_broadcast_in_dim_to_same_shape_4(%arg0: tensor<*xf32>) -> ten
   func.return %3 : tensor<?xf32>
 }
 
+// CHECK-LABEL: func @dynamic_broadcast_in_dim_all_dims_non_expanding
+func.func @dynamic_broadcast_in_dim_all_dims_non_expanding(%arg0: tensor<*xf32>, %arg1: tensor<1xindex>) -> tensor<?xf32> {
+  // CHECK-SAME: %[[ARG:.*]]: tensor<*xf32>
+  %1 = "mhlo.dynamic_broadcast_in_dim"(%arg0, %arg1) {
+    broadcast_dimensions = dense<0> : tensor<1xi64>,
+    known_expanding_dimensions = dense<> : tensor<0xi64>,
+    known_nonexpanding_dimensions = dense<0> : tensor<1xi64>
+  } : (tensor<*xf32>, tensor<1xindex>) -> tensor<?xf32>
+  // CHECK: %[[RES:.*]] = tensor.cast %[[ARG]] : tensor<*xf32> to tensor<?xf32>
+  // CHECK: return %[[RES]] : tensor<?xf32>
+  func.return %1 : tensor<?xf32>
+}
+
 // CHECK-LABEL: func @broadcast_in_dim_constant_fold_0d
 func.func @broadcast_in_dim_constant_fold_0d() -> tensor<1x64x224x224xf32> {
   %cst = mhlo.constant dense<0.000000e+00> : tensor<f32>
@@ -837,7 +883,7 @@ func.func @dynamic_iota_is_static(%arg0 : tensor<1xindex>) -> tensor<4xi32> {
 
 // CHECK-LABEL: @dynamic_iota_is_static_constant_arg
 func.func @dynamic_iota_is_static_constant_arg(%arg0: tensor<5xi32>) -> tensor<?xi32> {
-  // CHECK-NOTE: mhlo.dynamic_iota
+  // CHECK-NOT: mhlo.dynamic_iota
   // CHECK: [[RESULT:%.*]] = "mhlo.iota"
   // CHECK: [[CAST:%.*]] = tensor.cast [[RESULT]]
   // CHECK: return [[CAST]]

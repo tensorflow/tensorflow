@@ -9,12 +9,18 @@ py_library(
     srcs = ["structured_function.py"],
     srcs_version = "PY3",
     deps = [
+        ":debug_mode",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:function",
         "//tensorflow/python:util",
         "//tensorflow/python/data/util:nest",
         "//tensorflow/python/data/util:structure",
     ],
+)
+
+py_library(
+    name = "debug_mode",
+    srcs = ["debug_mode.py"],
 )
 
 py_library(
@@ -46,6 +52,11 @@ py_library(
 )
 
 py_library(
+    name = "shuffle_op",
+    srcs = ["shuffle_op.py"],
+)
+
+py_library(
     name = "rebatch_op",
     srcs = ["rebatch_op.py"],
     deps = [
@@ -66,13 +77,20 @@ py_library(
 
 py_library(
     name = "dataset_ops",
-    srcs = ["dataset_ops.py"],
+    # Grouped together due to mutual dependencies, to avoid dependency cycles.
+    srcs = [
+        "dataset_autograph.py",
+        "dataset_ops.py",
+    ],
     srcs_version = "PY3",
     deps = [
         ":batch_op",
         ":cache_op",
+        ":choose_from_datasets_op",
         ":concatenate_op",
         ":counter_op",
+        ":debug_mode",
+        ":directed_interleave_op",
         ":filter_op",
         ":flat_map_op",
         ":from_generator_op",
@@ -93,9 +111,11 @@ py_library(
         ":range_op",
         ":rebatch_op",
         ":repeat_op",
+        ":sample_from_datasets_op",
         ":save_ops",
         ":scan_op",
         ":shard_op",
+        ":shuffle_op",
         ":skip_op",
         ":snapshot_op",
         ":sparse_batch_op",
@@ -144,8 +164,18 @@ py_library(
 )
 
 py_library(
+    name = "choose_from_datasets_op",
+    srcs = ["choose_from_datasets_op.py"],
+)
+
+py_library(
     name = "concatenate_op",
     srcs = ["concatenate_op.py"],
+)
+
+py_library(
+    name = "directed_interleave_op",
+    srcs = ["directed_interleave_op.py"],
 )
 
 py_library(
@@ -199,6 +229,11 @@ py_library(
 )
 
 py_library(
+    name = "sample_from_datasets_op",
+    srcs = ["sample_from_datasets_op.py"],
+)
+
+py_library(
     name = "ignore_errors_op",
     srcs = ["ignore_errors_op.py"],
 )
@@ -210,7 +245,11 @@ py_library(
 
 py_library(
     name = "iterator_ops",
-    srcs = ["iterator_ops.py"],
+    # Grouped together due to mutual dependencies, to avoid dependency cycles.
+    srcs = [
+        "iterator_autograph.py",
+        "iterator_ops.py",
+    ],
     srcs_version = "PY3",
     deps = [
         ":optional_ops",

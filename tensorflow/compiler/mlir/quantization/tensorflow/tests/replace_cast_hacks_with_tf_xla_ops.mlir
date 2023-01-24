@@ -306,6 +306,150 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 12 : i32, p
 
 // -----
 
+module attributes {tf.versions = {bad_consumers = [], min_consumer = 12 : i32, producer = 1213 : i32}} {
+  func.func @matmul_two_tensors_with_static_shape(%arg0: tensor<2x2xf32>, %arg1: tensor<2x2xf32>) -> (tensor<2x2xf32>) {
+    %cst = "tf.Const"() {value = dense<-5.450000e+01> : tensor<f32>} : () -> tensor<f32>
+    %cst_0 = "tf.Const"() {value = dense<0.0156862754> : tensor<f32>} : () -> tensor<f32>
+    %cst_1 = "tf.Const"() {value = dense<-5.000000e-01> : tensor<f32>} : () -> tensor<f32>
+    %cst_2 = "tf.Const"() {value = dense<-1> : tensor<i32>} : () -> tensor<i32>
+    %cst_3 = "tf.Const"() {value = dense<0.0274509806> : tensor<f32>} : () -> tensor<f32>
+    %cst_4 = "tf.Const"() {value = dense<-55> : tensor<i32>} : () -> tensor<i32>
+    %cst_5 = "tf.Const"() {value = dense<-1.280000e+02> : tensor<f32>} : () -> tensor<f32>
+    %cst_6 = "tf.Const"() {value = dense<1.270000e+02> : tensor<f32>} : () -> tensor<f32>
+    %0 = "tf.Div"(%arg1, %cst_0) : (tensor<2x2xf32>, tensor<f32>) -> tensor<2x2xf32>
+    %1 = "tf.AddV2"(%0, %cst_1) : (tensor<2x2xf32>, tensor<f32>) -> tensor<2x2xf32>
+    %2 = "tf.Floor"(%1) : (tensor<2x2xf32>) -> tensor<2x2xf32>
+    %3 = "tf.ClipByValue"(%2, %cst_5, %cst_6) : (tensor<2x2xf32>, tensor<f32>, tensor<f32>) -> tensor<2x2xf32>
+    %4 = "tf.Cast"(%3) {Truncate = false} : (tensor<2x2xf32>) -> tensor<2x2xi8>
+    %5 = "tf.Div"(%arg0, %cst_3) : (tensor<2x2xf32>, tensor<f32>) -> tensor<2x2xf32>
+    %6 = "tf.AddV2"(%5, %cst) : (tensor<2x2xf32>, tensor<f32>) -> tensor<2x2xf32>
+    %7 = "tf.Floor"(%6) : (tensor<2x2xf32>) -> tensor<2x2xf32>
+    %8 = "tf.ClipByValue"(%7, %cst_5, %cst_6) : (tensor<2x2xf32>, tensor<f32>, tensor<f32>) -> tensor<2x2xf32>
+    %9 = "tf.Cast"(%8) {Truncate = false} : (tensor<2x2xf32>) -> tensor<2x2xi8>
+    %10 = "tf.Cast"(%9) {Truncate = false} : (tensor<2x2xi8>) -> tensor<2x2xi32>
+    %11 = "tf.Sub"(%10, %cst_4) : (tensor<2x2xi32>, tensor<i32>) -> tensor<2x2xi32>
+    %12 = "tf.Identity"(%4) : (tensor<2x2xi8>) -> tensor<2x2xi8>
+    %13 = "tf.Cast"(%12) {Truncate = false} : (tensor<2x2xi8>) -> tensor<2x2xi32>
+    %14 = "tf.Sub"(%13, %cst_2) : (tensor<2x2xi32>, tensor<i32>) -> tensor<2x2xi32>
+    %15 = "tf.MatMul"(%11, %14) {transpose_a = false, transpose_b = false} : (tensor<2x2xi32>, tensor<2x2xi32>) -> tensor<2x2xi32>
+    %16 = "tf.Cast"(%15) {Truncate = false} : (tensor<2x2xi32>) -> tensor<2x2xf32>
+    %17 = "tf.Mul"(%16, %cst_0) : (tensor<2x2xf32>, tensor<f32>) -> tensor<2x2xf32>
+    %18 = "tf.AddV2"(%17, %cst) : (tensor<2x2xf32>, tensor<f32>) -> tensor<2x2xf32>
+    %19 = "tf.Floor"(%18) : (tensor<2x2xf32>) -> tensor<2x2xf32>
+    %20 = "tf.ClipByValue"(%19, %cst_5, %cst_6) : (tensor<2x2xf32>, tensor<f32>, tensor<f32>) -> tensor<2x2xf32>
+    %21 = "tf.Cast"(%20) {Truncate = false} : (tensor<2x2xf32>) -> tensor<2x2xi8>
+    %22 = "tf.Identity"(%21) {device = ""} : (tensor<2x2xi8>) -> tensor<2x2xi8>
+    %23 = "tf.Identity"(%22) {device = ""} : (tensor<2x2xi8>) -> tensor<2x2xi8>
+    %24 = "tf.Cast"(%23) : (tensor<2x2xi8>) -> tensor<2x2xi32>
+    %25 = "tf.Sub"(%24, %cst_4) : (tensor<2x2xi32>, tensor<i32>) -> tensor<2x2xi32>
+    %26 = "tf.Cast"(%25) : (tensor<2x2xi32>) -> tensor<2x2xf32>
+    %27 = "tf.Mul"(%26, %cst_3) : (tensor<2x2xf32>, tensor<f32>) -> tensor<2x2xf32>
+    return %27 : tensor<2x2xf32>
+  }
+
+// CHECK-LABEL: func @matmul_two_tensors_with_static_shape
+// CHECK: %[[arg1_div:.*]] = "tf.Div"(%arg1
+// CHECK: %[[arg1_add:.*]] = "tf.AddV2"(%[[arg1_div]]
+// CHECK: %[[arg1_floor:.*]] = "tf.Floor"(%[[arg1_add]]
+// CHECK: %[[arg1_clip:.*]] = "tf.ClipByValue"(%[[arg1_floor]]
+// CHECK: %[[arg1_cast:.*]] = "tf.Cast"(%[[arg1_clip]]
+
+// CHECK: %[[arg0_div:.*]] = "tf.Div"(%arg0
+// CHECK: %[[arg0_add:.*]] = "tf.AddV2"(%[[arg0_div]]
+// CHECK: %[[arg0_floor:.*]] = "tf.Floor"(%[[arg0_add]]
+// CHECK: %[[arg0_clip:.*]] = "tf.ClipByValue"(%[[arg0_floor]]
+// CHECK: %[[arg0_cast:.*]] = "tf.Cast"(%[[arg0_clip]]
+
+// CHECK: %[[arg1_identity:.*]] = "tf.Identity"(%[[arg1_cast]]
+
+// CHECK: %[[matmul:.*]] = "tf.XlaDotV2"(%[[arg0_cast]], %[[arg1_identity]]
+// CHECK-SAME: (tensor<2x2xi8>, tensor<2x2xi8>) -> tensor<2x2xi32>
+
+// CHECK: %[[matmul_sub:.*]] = "tf.Sub"(%[[matmul]]
+// CHECK: %[[matmul_cast:.*]] = "tf.Cast"(%[[matmul_sub]]
+// CHECK: %[[matmul_mul:.*]] = "tf.Mul"(%[[matmul_cast]]
+// CHECK: %[[matmul_add:.*]] = "tf.AddV2"(%[[matmul_mul]]
+// CHECK: %[[matmul_floor:.*]] = "tf.Floor"(%[[matmul_add]]
+// CHECK: %[[matmul_clip:.*]] = "tf.ClipByValue"(%[[matmul_floor]]
+}
+
+// -----
+
+module attributes {tf.versions = {bad_consumers = [], min_consumer = 12 : i32, producer = 1213 : i32}} {
+  func.func @matmul_two_tensors_with_dynamic_shape(%arg0: tensor<?x?xf32>, %arg1: tensor<?x?xf32>) -> (tensor<?x?xf32>) {
+    %cst = "tf.Const"() {value = dense<-5.450000e+01> : tensor<f32>} : () -> tensor<f32>
+    %cst_0 = "tf.Const"() {value = dense<0.0156862754> : tensor<f32>} : () -> tensor<f32>
+    %cst_1 = "tf.Const"() {value = dense<-5.000000e-01> : tensor<f32>} : () -> tensor<f32>
+    %cst_2 = "tf.Const"() {value = dense<-1> : tensor<i32>} : () -> tensor<i32>
+    %cst_3 = "tf.Const"() {value = dense<0.0274509806> : tensor<f32>} : () -> tensor<f32>
+    %cst_4 = "tf.Const"() {value = dense<-55> : tensor<i32>} : () -> tensor<i32>
+    %cst_5 = "tf.Const"() {value = dense<-1.280000e+02> : tensor<f32>} : () -> tensor<f32>
+    %cst_6 = "tf.Const"() {value = dense<1.270000e+02> : tensor<f32>} : () -> tensor<f32>
+    %0 = "tf.Div"(%arg1, %cst_0) : (tensor<?x?xf32>, tensor<f32>) -> tensor<?x?xf32>
+    %1 = "tf.AddV2"(%0, %cst_1) : (tensor<?x?xf32>, tensor<f32>) -> tensor<?x?xf32>
+    %2 = "tf.Floor"(%1) : (tensor<?x?xf32>) -> tensor<?x?xf32>
+    %3 = "tf.ClipByValue"(%2, %cst_5, %cst_6) : (tensor<?x?xf32>, tensor<f32>, tensor<f32>) -> tensor<?x?xf32>
+    %4 = "tf.Cast"(%3) {Truncate = false} : (tensor<?x?xf32>) -> tensor<?x?xi8>
+    %5 = "tf.Div"(%arg0, %cst_3) : (tensor<?x?xf32>, tensor<f32>) -> tensor<?x?xf32>
+    %6 = "tf.AddV2"(%5, %cst) : (tensor<?x?xf32>, tensor<f32>) -> tensor<?x?xf32>
+    %7 = "tf.Floor"(%6) : (tensor<?x?xf32>) -> tensor<?x?xf32>
+    %8 = "tf.ClipByValue"(%7, %cst_5, %cst_6) : (tensor<?x?xf32>, tensor<f32>, tensor<f32>) -> tensor<?x?xf32>
+    %9 = "tf.Cast"(%8) {Truncate = false} : (tensor<?x?xf32>) -> tensor<?x?xi8>
+    %10 = "tf.Cast"(%4) {Truncate = false} : (tensor<?x?xi8>) -> tensor<?x?xi32>
+    %11 = "tf.Sub"(%10, %cst_2) : (tensor<?x?xi32>, tensor<i32>) -> tensor<?x?xi32>
+    %12 = "tf.Identity"(%9) : (tensor<?x?xi8>) -> tensor<?x?xi8>
+    %13 = "tf.Cast"(%12) {Truncate = false} : (tensor<?x?xi8>) -> tensor<?x?xi32>
+    %14 = "tf.Sub"(%13, %cst_4) : (tensor<?x?xi32>, tensor<i32>) -> tensor<?x?xi32>
+    %15 = "tf.MatMul"(%11, %14) {transpose_a = false, transpose_b = false} : (tensor<?x?xi32>, tensor<?x?xi32>) -> tensor<?x?xi32>
+    %16 = "tf.Cast"(%15) {Truncate = false} : (tensor<?x?xi32>) -> tensor<?x?xf32>
+    %17 = "tf.Mul"(%16, %cst_0) : (tensor<?x?xf32>, tensor<f32>) -> tensor<?x?xf32>
+    %18 = "tf.AddV2"(%17, %cst) : (tensor<?x?xf32>, tensor<f32>) -> tensor<?x?xf32>
+    %19 = "tf.Floor"(%18) : (tensor<?x?xf32>) -> tensor<?x?xf32>
+    %20 = "tf.ClipByValue"(%19, %cst_5, %cst_6) : (tensor<?x?xf32>, tensor<f32>, tensor<f32>) -> tensor<?x?xf32>
+    %21 = "tf.Cast"(%20) {Truncate = false} : (tensor<?x?xf32>) -> tensor<?x?xi8>
+    %22 = "tf.Identity"(%21) {device = ""} : (tensor<?x?xi8>) -> tensor<?x?xi8>
+    %23 = "tf.Identity"(%22) {device = ""} : (tensor<?x?xi8>) -> tensor<?x?xi8>
+    %24 = "tf.Cast"(%23) : (tensor<?x?xi8>) -> tensor<?x?xi32>
+    %25 = "tf.Sub"(%24, %cst_4) : (tensor<?x?xi32>, tensor<i32>) -> tensor<?x?xi32>
+    %26 = "tf.Cast"(%25) : (tensor<?x?xi32>) -> tensor<?x?xf32>
+    %27 = "tf.Mul"(%26, %cst_3) : (tensor<?x?xf32>, tensor<f32>) -> tensor<?x?xf32>
+    return %27 : tensor<?x?xf32>
+  }
+
+// CHECK-LABEL: func @matmul_two_tensors_with_dynamic_shape
+// CHECK: %[[arg1_div:.*]] = "tf.Div"(%arg1
+// CHECK: %[[arg1_add:.*]] = "tf.AddV2"(%[[arg1_div]]
+// CHECK: %[[arg1_floor:.*]] = "tf.Floor"(%[[arg1_add]]
+// CHECK: %[[arg1_clip:.*]] = "tf.ClipByValue"(%[[arg1_floor]]
+// CHECK: %[[arg1_cast:.*]] = "tf.Cast"(%[[arg1_clip]]
+
+// CHECK: %[[arg0_div:.*]] = "tf.Div"(%arg0
+// CHECK: %[[arg0_add:.*]] = "tf.AddV2"(%[[arg0_div]]
+// CHECK: %[[arg0_floor:.*]] = "tf.Floor"(%[[arg0_add]]
+// CHECK: %[[arg0_clip:.*]] = "tf.ClipByValue"(%[[arg0_floor]]
+// CHECK: %[[arg0_cast:.*]] = "tf.Cast"(%[[arg0_clip]]
+// CHECK: %[[arg0_identity:.*]] = "tf.Identity"(%[[arg0_cast]]
+
+// CHECK: %[[matmul:.*]] = "tf.XlaDotV2"(%[[arg1_cast]], %[[arg0_identity]]
+// CHECK-SAME: (tensor<?x?xi8>, tensor<?x?xi8>) -> tensor<?x?xi32>
+
+// CHECK: %[[arg0_shape:.*]] = "tf.Shape"(%[[arg0_identity]]
+// CHECK: %[[shape_zp_contribute:.*]] = "tf.StridedSlice"(%[[arg0_shape]]
+// CHECK: %[[shape_zp_contribute_cast:.*]] = "tf.Cast"(%[[shape_zp_contribute]]
+// CHECK: %[[shape_zp_contribute_mul:.*]] = "tf.Mul"(%[[shape_zp_contribute_cast]]
+// CHECK: %[[zp:.*]] = "tf.Sub"({{.*}}, %[[shape_zp_contribute_mul]])
+
+// CHECK: %[[matmul_sub:.*]] = "tf.Sub"(%[[matmul]], %[[zp]]
+// CHECK: %[[matmul_cast:.*]] = "tf.Cast"(%[[matmul_sub]]
+// CHECK: %[[matmul_mul:.*]] = "tf.Mul"(%[[matmul_cast]]
+// CHECK: %[[matmul_add:.*]] = "tf.AddV2"(%[[matmul_mul]]
+// CHECK: %[[matmul_floor:.*]] = "tf.Floor"(%[[matmul_add]]
+// CHECK: %[[matmul_clip:.*]] = "tf.ClipByValue"(%[[matmul_floor]]
+
+}
+
+// -----
+
 module attributes {tf.versions = {bad_consumers = [], min_consumer = 12 : i32, producer = 1213 : i32}, tf_saved_model.semantics} {
   func.func @conv3d_with_static_shape(%arg0: tensor<1x3x4x3x3xf32> {tf_saved_model.index_path = ["input_tensor"]}) -> (tensor<1x3x2x3x2xf32> {tf_saved_model.index_path = ["output"]}) attributes {tf.entry_function = {control_outputs = "", inputs = "serving_default_input_tensor:0", outputs = "tf.PartitionedCall:0"}, tf_saved_model.exported_names = ["serving_default"]} {
     %cst = "tf.Const"() {device = "", value = dense<[4.57413898E-6, 4.56899261E-6]> : tensor<2xf32>} : () -> tensor<2xf32>
@@ -426,3 +570,298 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 12 : i32, p
 // CHECK: %[[XLADOTV2_0:.*]] = "tf.XlaDotV2"(%[[CAST]]
 // CHECK: %[[SUB_0:.*]] = "tf.Sub"(%[[XLADOTV2_0]], %[[CONST]]) : (tensor<20x30x64x3xi32>, tensor<20x30x1x3xi32>) -> tensor<20x30x64x3xi32>
 }
+
+// -----
+
+module attributes {tf.versions = {bad_consumers = [], min_consumer = 12 : i32, producer = 1213 : i32}, tf_saved_model.semantics} {
+  func.func @broadcasting_weight_batch_matmul(%arg0: tensor<2x1x1024xf32> {tf_saved_model.index_path = ["input_tensor"]}) -> (tensor<2x1x3xf32> {tf_saved_model.index_path = ["output"]}) attributes {tf.entry_function = {control_outputs = "", inputs = "serving_default_input_tensor:0", outputs = "PartitionedCall:0"}, tf_saved_model.exported_names = ["serving_default"]} {
+    %cst = "tf.Const"() {device = "", value = dense<3.08762283E-5> : tensor<f32>} : () -> tensor<f32>
+    %cst_0 = "tf.Const"() {device = "", value = dense<-1.275000e+02> : tensor<f32>} : () -> tensor<f32>
+    %cst_1 = "tf.Const"() {device = "", value = dense<-1.280000e+02> : tensor<f32>} : () -> tensor<f32>
+    %cst_2 = "tf.Const"() {device = "", value = dense<[-241, 5894, -3771]> : tensor<3xi32>} : () -> tensor<3xi32>
+    %cst_3 = "tf.Const"() {device = "", value = dense_resource<__elided__> : tensor<1024x3xi8>} : () -> tensor<1024x3xi8>
+    %cst_4 = "tf.Const"() {device = "", value = dense<0.00392156513> : tensor<f32>} : () -> tensor<f32>
+    %cst_5 = "tf.Const"() {device = "", value = dense<-128> : tensor<i32>} : () -> tensor<i32>
+    %cst_6 = "tf.Const"() {device = "", value = dense<1.270000e+02> : tensor<f32>} : () -> tensor<f32>
+    %0 = "tf.Div"(%arg0, %cst_4) {device = ""} : (tensor<2x1x1024xf32>, tensor<f32>) -> tensor<2x1x1024xf32>
+    %1 = "tf.AddV2"(%0, %cst_0) {device = ""} : (tensor<2x1x1024xf32>, tensor<f32>) -> tensor<2x1x1024xf32>
+    %2 = "tf.Floor"(%1) {device = ""} : (tensor<2x1x1024xf32>) -> tensor<2x1x1024xf32>
+    %3 = "tf.ClipByValue"(%2, %cst_1, %cst_6) {device = ""} : (tensor<2x1x1024xf32>, tensor<f32>, tensor<f32>) -> tensor<2x1x1024xf32>
+    %4 = "tf.Cast"(%3) {Truncate = false, device = ""} : (tensor<2x1x1024xf32>) -> tensor<2x1x1024xi8>
+    %5 = "tf.Cast"(%4) {Truncate = false, device = ""} : (tensor<2x1x1024xi8>) -> tensor<2x1x1024xi32>
+    %6 = "tf.Sub"(%5, %cst_5) {device = ""} : (tensor<2x1x1024xi32>, tensor<i32>) -> tensor<2x1x1024xi32>
+    %7 = "tf.Identity"(%cst_3) {device = ""} : (tensor<1024x3xi8>) -> tensor<1024x3xi8>
+    %8 = "tf.Cast"(%7) {Truncate = false, device = ""} : (tensor<1024x3xi8>) -> tensor<1024x3xi32>
+    %9 = "tf.BatchMatMulV2"(%6, %8) {adj_x = false, adj_y = false, device = ""} : (tensor<2x1x1024xi32>, tensor<1024x3xi32>) -> tensor<2x1x3xi32>
+    %10 = "tf.AddV2"(%9, %cst_2) {device = ""} : (tensor<2x1x3xi32>, tensor<3xi32>) -> tensor<2x1x3xi32>
+    %11 = "tf.Cast"(%10) {Truncate = false, device = ""} : (tensor<2x1x3xi32>) -> tensor<2x1x3xf32>
+    %12 = "tf.Mul"(%11, %cst) {device = ""} : (tensor<2x1x3xf32>, tensor<f32>) -> tensor<2x1x3xf32>
+    %13 = "tf.Identity"(%12) {device = ""} : (tensor<2x1x3xf32>) -> tensor<2x1x3xf32>
+    %14 = "tf.Identity"(%13) {device = ""} : (tensor<2x1x3xf32>) -> tensor<2x1x3xf32>
+    return %14 : tensor<2x1x3xf32>
+  }
+
+// CHECK-LABEL: func @broadcasting_weight_batch_matmul
+// CHECK-DAG: %[[CONST:.*]] = "tf.Const"() {value = dense<[2, 1024, 3]> : tensor<3xi64>} : () -> tensor<3xi64>
+// CHECK: %[[CAST:.*]] = "tf.Cast"
+// CHECK: %[[BROADCAST_TO:.*]] = "tf.BroadcastTo"({{.*}}, %[[CONST]]) : (tensor<1024x3xi8>, tensor<3xi64>) -> tensor<2x1024x3xi8>
+// CHECK: %[[XLADOTV2_0:.*]] = "tf.XlaDotV2"(%[[CAST]], %[[BROADCAST_TO]])
+}
+
+// -----
+
+module attributes {tf.versions = {bad_consumers = [], min_consumer = 12 : i32, producer = 1213 : i32}, tf_saved_model.semantics} {
+  func.func @broadcasting_input_batch_matmul(%arg0: tensor<2x1x1024xf32> {tf_saved_model.index_path = ["input_tensor"]}) -> (tensor<2x2x1x3xf32> {tf_saved_model.index_path = ["output"]}) attributes {tf.entry_function = {control_outputs = "", inputs = "serving_default_input_tensor:0", outputs = "PartitionedCall:0"}, tf_saved_model.exported_names = ["serving_default"]} {
+    %cst = "tf.Const"() {device = "", value = dense<3.08762283E-5> : tensor<f32>} : () -> tensor<f32>
+    %cst_0 = "tf.Const"() {device = "", value = dense<-1.275000e+02> : tensor<f32>} : () -> tensor<f32>
+    %cst_1 = "tf.Const"() {device = "", value = dense<-1.280000e+02> : tensor<f32>} : () -> tensor<f32>
+    %cst_2 = "tf.Const"() {device = "", value = dense<[-241, 5894, -3771]> : tensor<3xi32>} : () -> tensor<3xi32>
+    %cst_3 = "tf.Const"() {device = "", value = dense_resource<__elided__> : tensor<2x2x1024x3xi8>} : () -> tensor<2x2x1024x3xi8>
+    %cst_4 = "tf.Const"() {device = "", value = dense<0.00392156513> : tensor<f32>} : () -> tensor<f32>
+    %cst_5 = "tf.Const"() {device = "", value = dense<-128> : tensor<i32>} : () -> tensor<i32>
+    %cst_6 = "tf.Const"() {device = "", value = dense<1.270000e+02> : tensor<f32>} : () -> tensor<f32>
+    %0 = "tf.Div"(%arg0, %cst_4) {device = ""} : (tensor<2x1x1024xf32>, tensor<f32>) -> tensor<2x1x1024xf32>
+    %1 = "tf.AddV2"(%0, %cst_0) {device = ""} : (tensor<2x1x1024xf32>, tensor<f32>) -> tensor<2x1x1024xf32>
+    %2 = "tf.Floor"(%1) {device = ""} : (tensor<2x1x1024xf32>) -> tensor<2x1x1024xf32>
+    %3 = "tf.ClipByValue"(%2, %cst_1, %cst_6) {device = ""} : (tensor<2x1x1024xf32>, tensor<f32>, tensor<f32>) -> tensor<2x1x1024xf32>
+    %4 = "tf.Cast"(%3) {Truncate = false, device = ""} : (tensor<2x1x1024xf32>) -> tensor<2x1x1024xi8>
+    %5 = "tf.Cast"(%4) {Truncate = false, device = ""} : (tensor<2x1x1024xi8>) -> tensor<2x1x1024xi32>
+    %6 = "tf.Sub"(%5, %cst_5) {device = ""} : (tensor<2x1x1024xi32>, tensor<i32>) -> tensor<2x1x1024xi32>
+    %7 = "tf.Identity"(%cst_3) {device = ""} : (tensor<2x2x1024x3xi8>) -> tensor<2x2x1024x3xi8>
+    %8 = "tf.Cast"(%7) {Truncate = false, device = ""} : (tensor<2x2x1024x3xi8>) -> tensor<2x2x1024x3xi32>
+    %9 = "tf.BatchMatMulV2"(%6, %8) {adj_x = false, adj_y = false, device = ""} : (tensor<2x1x1024xi32>, tensor<2x2x1024x3xi32>) -> tensor<2x2x1x3xi32>
+    %10 = "tf.AddV2"(%9, %cst_2) {device = ""} : (tensor<2x2x1x3xi32>, tensor<3xi32>) -> tensor<2x2x1x3xi32>
+    %11 = "tf.Cast"(%10) {Truncate = false, device = ""} : (tensor<2x2x1x3xi32>) -> tensor<2x2x1x3xf32>
+    %12 = "tf.Mul"(%11, %cst) {device = ""} : (tensor<2x2x1x3xf32>, tensor<f32>) -> tensor<2x2x1x3xf32>
+    %13 = "tf.Identity"(%12) {device = ""} : (tensor<2x2x1x3xf32>) -> tensor<2x2x1x3xf32>
+    %14 = "tf.Identity"(%13) {device = ""} : (tensor<2x2x1x3xf32>) -> tensor<2x2x1x3xf32>
+    return %14 : tensor<2x2x1x3xf32>
+  }
+
+// CHECK-LABEL: func @broadcasting_input_batch_matmul
+// CHECK-DAG: %[[WEIGHT:.*]] = "tf.Const"() {device = "", value = {{.*}} : tensor<2x2x1024x3xi8>} : () -> tensor<2x2x1024x3xi8>
+// CHECK-DAG: %[[CONST:.*]] = "tf.Const"() {value = dense<[2, 2, 1, 1024]> : tensor<4xi64>} : () -> tensor<4xi64>
+// CHECK: %[[CAST:.*]] = "tf.Cast"
+// CHECK: %[[BROADCAST_TO:.*]] = "tf.BroadcastTo"(%[[CAST]], %[[CONST]]) : (tensor<2x1x1024xi8>, tensor<4xi64>) -> tensor<2x2x1x1024xi8>
+// CHECK: %[[XLADOTV2_0:.*]] = "tf.XlaDotV2"(%[[BROADCAST_TO]], %[[WEIGHT]])
+}
+
+// -----
+
+module attributes {tf.versions = {bad_consumers = [], min_consumer = 12 : i32, producer = 1213 : i32}, tf_saved_model.semantics} {
+  func.func @dynamic_shape_batch_matmul(%arg0: tensor<?x1x1024xf32> {tf_saved_model.index_path = ["input_tensor"]}) -> (tensor<?x1x3xf32> {tf_saved_model.index_path = ["output"]}) attributes {tf.entry_function = {control_outputs = "", inputs = "serving_default_input_tensor:0", outputs = "PartitionedCall:0"}, tf_saved_model.exported_names = ["serving_default"]} {
+    %cst = "tf.Const"() {device = "", value = dense<3.08762283E-5> : tensor<f32>} : () -> tensor<f32>
+    %cst_0 = "tf.Const"() {device = "", value = dense<-1.275000e+02> : tensor<f32>} : () -> tensor<f32>
+    %cst_1 = "tf.Const"() {device = "", value = dense<-1.280000e+02> : tensor<f32>} : () -> tensor<f32>
+    %cst_2 = "tf.Const"() {device = "", value = dense<[-241, 5894, -3771]> : tensor<3xi32>} : () -> tensor<3xi32>
+    %cst_3 = "tf.Const"() {device = "", value = dense_resource<__elided__> : tensor<1024x3xi8>} : () -> tensor<1024x3xi8>
+    %cst_4 = "tf.Const"() {device = "", value = dense<0.00392156513> : tensor<f32>} : () -> tensor<f32>
+    %cst_5 = "tf.Const"() {device = "", value = dense<-128> : tensor<i32>} : () -> tensor<i32>
+    %cst_6 = "tf.Const"() {device = "", value = dense<1.270000e+02> : tensor<f32>} : () -> tensor<f32>
+    %0 = "tf.Div"(%arg0, %cst_4) {device = ""} : (tensor<?x1x1024xf32>, tensor<f32>) -> tensor<?x1x1024xf32>
+    %1 = "tf.AddV2"(%0, %cst_0) {device = ""} : (tensor<?x1x1024xf32>, tensor<f32>) -> tensor<?x1x1024xf32>
+    %2 = "tf.Floor"(%1) {device = ""} : (tensor<?x1x1024xf32>) -> tensor<?x1x1024xf32>
+    %3 = "tf.ClipByValue"(%2, %cst_1, %cst_6) {device = ""} : (tensor<?x1x1024xf32>, tensor<f32>, tensor<f32>) -> tensor<?x1x1024xf32>
+    %4 = "tf.Cast"(%3) {Truncate = false, device = ""} : (tensor<?x1x1024xf32>) -> tensor<?x1x1024xi8>
+    %5 = "tf.Cast"(%4) {Truncate = false, device = ""} : (tensor<?x1x1024xi8>) -> tensor<?x1x1024xi32>
+    %6 = "tf.Sub"(%5, %cst_5) {device = ""} : (tensor<?x1x1024xi32>, tensor<i32>) -> tensor<?x1x1024xi32>
+    %7 = "tf.Identity"(%cst_3) {device = ""} : (tensor<1024x3xi8>) -> tensor<1024x3xi8>
+    %8 = "tf.Cast"(%7) {Truncate = false, device = ""} : (tensor<1024x3xi8>) -> tensor<1024x3xi32>
+    %9 = "tf.BatchMatMulV2"(%6, %8) {adj_x = false, adj_y = false, device = ""} : (tensor<?x1x1024xi32>, tensor<1024x3xi32>) -> tensor<?x1x3xi32>
+    %10 = "tf.AddV2"(%9, %cst_2) {device = ""} : (tensor<?x1x3xi32>, tensor<3xi32>) -> tensor<?x1x3xi32>
+    %11 = "tf.Cast"(%10) {Truncate = false, device = ""} : (tensor<?x1x3xi32>) -> tensor<?x1x3xf32>
+    %12 = "tf.Mul"(%11, %cst) {device = ""} : (tensor<?x1x3xf32>, tensor<f32>) -> tensor<?x1x3xf32>
+    %13 = "tf.Identity"(%12) {device = ""} : (tensor<?x1x3xf32>) -> tensor<?x1x3xf32>
+    %14 = "tf.Identity"(%13) {device = ""} : (tensor<?x1x3xf32>) -> tensor<?x1x3xf32>
+    return %14 : tensor<?x1x3xf32>
+  }
+
+// CHECK-LABEL: func @dynamic_shape_batch_matmul
+// CHECK-DAG: %[[CONST:.*]] = "tf.Const"() {value = dense<0> : tensor<1xi32>} : () -> tensor<1xi32>
+// CHECK-DAG: %[[CONST_1:.*]] = "tf.Const"() {value = dense<2> : tensor<1xi32>} : () -> tensor<1xi32>
+// CHECK-DAG: %[[CONST_2:.*]] = "tf.Const"() {value = dense<1> : tensor<1xi32>} : () -> tensor<1xi32>
+// CHECK-DAG: %[[CONST_3:.*]] = "tf.Const"() {value = dense<[1024, 3]> : tensor<2xi64>} : () -> tensor<2xi64>
+// CHECK-DAG: %[[CONST_4:.*]] = "tf.Const"() {value = dense<> : tensor<0xi64>} : () -> tensor<0xi64>
+// CHECK-DAG: %[[CONST_5:.*]] = "tf.Const"() {value = dense<0> : tensor<i32>} : () -> tensor<i32>
+// CHECK-DAG: %[[WEIGHT:.*]] = "tf.Const"() {device = "", value = {{.*}} : tensor<1024x3xi8>} : () -> tensor<1024x3xi8>
+// CHECK: %[[CAST:.*]] = "tf.Cast"({{.*}}) {Truncate = false, device = ""} : (tensor<?x1x1024xf32>) -> tensor<?x1x1024xi8>
+// CHECK: %[[SHAPE:.*]] = "tf.Shape"(%[[CAST]]) : (tensor<?x1x1024xi8>) -> tensor<3xi64>
+// CHECK: %[[SLICE_1:.*]] = "tf.Slice"(%[[SHAPE]], %[[CONST]], %[[CONST_2]]) : (tensor<3xi64>, tensor<1xi32>, tensor<1xi32>) -> tensor<1xi64>
+// CHECK: %[[SLICE_2:.*]] = "tf.Slice"(%[[SHAPE]], %[[CONST_2]], %[[CONST_1]]) : (tensor<3xi64>, tensor<1xi32>, tensor<1xi32>) -> tensor<2xi64>
+// CHECK: %[[BROADCAST_ARGS:.*]] = "tf.BroadcastArgs"(%[[SLICE_1]], %[[CONST_4]]) : (tensor<1xi64>, tensor<0xi64>) -> tensor<1xi64>
+// CHECK: %[[CONCAT_1:.*]] = "tf.Concat"(%[[CONST_5]], %[[BROADCAST_ARGS]], %[[SLICE_2]]) : (tensor<i32>, tensor<1xi64>, tensor<2xi64>) -> tensor<3xi64>
+// CHECK: %[[CONCAT_2:.*]] = "tf.Concat"(%[[CONST_5]], %[[BROADCAST_ARGS]], %[[CONST_3]]) : (tensor<i32>, tensor<1xi64>, tensor<2xi64>) -> tensor<3xi64>
+// CHECK: %[[BROADCAST_1:.*]] = "tf.BroadcastTo"(%[[CAST]], %[[CONCAT_1]]) : (tensor<?x1x1024xi8>, tensor<3xi64>) -> tensor<?x1x1024xi8>
+// CHECK: %[[BROADCAST_2:.*]] = "tf.BroadcastTo"(%[[WEIGHT]], %[[CONCAT_2]]) : (tensor<1024x3xi8>, tensor<3xi64>) -> tensor<?x1024x3xi8>
+// CHECK: %[[DOT:.*]] = "tf.XlaDotV2"(%[[BROADCAST_1]], %[[BROADCAST_2]])
+}
+
+// -----
+
+module attributes {tf.versions = {bad_consumers = [], min_consumer = 12 : i32, producer = 1213 : i32}} {
+  func.func @batch_matmul_two_tensors_with_static_shape(%arg0: tensor<2x2x2xf32>, %arg1: tensor<2x2x2xf32>) -> (tensor<2x2x2xf32>) {
+    %cst = "tf.Const"() {value = dense<-5.450000e+01> : tensor<f32>} : () -> tensor<f32>
+    %cst_0 = "tf.Const"() {value = dense<0.0156862754> : tensor<f32>} : () -> tensor<f32>
+    %cst_1 = "tf.Const"() {value = dense<-5.000000e-01> : tensor<f32>} : () -> tensor<f32>
+    %cst_2 = "tf.Const"() {value = dense<-1> : tensor<i32>} : () -> tensor<i32>
+    %cst_3 = "tf.Const"() {value = dense<0.0274509806> : tensor<f32>} : () -> tensor<f32>
+    %cst_4 = "tf.Const"() {value = dense<-55> : tensor<i32>} : () -> tensor<i32>
+    %cst_5 = "tf.Const"() {value = dense<-1.280000e+02> : tensor<f32>} : () -> tensor<f32>
+    %cst_6 = "tf.Const"() {value = dense<1.270000e+02> : tensor<f32>} : () -> tensor<f32>
+    %0 = "tf.Div"(%arg1, %cst_0) : (tensor<2x2x2xf32>, tensor<f32>) -> tensor<2x2x2xf32>
+    %1 = "tf.AddV2"(%0, %cst_1) : (tensor<2x2x2xf32>, tensor<f32>) -> tensor<2x2x2xf32>
+    %2 = "tf.Floor"(%1) : (tensor<2x2x2xf32>) -> tensor<2x2x2xf32>
+    %3 = "tf.ClipByValue"(%2, %cst_5, %cst_6) : (tensor<2x2x2xf32>, tensor<f32>, tensor<f32>) -> tensor<2x2x2xf32>
+    %4 = "tf.Cast"(%3) {Truncate = false} : (tensor<2x2x2xf32>) -> tensor<2x2x2xi8>
+    %5 = "tf.Div"(%arg0, %cst_3) : (tensor<2x2x2xf32>, tensor<f32>) -> tensor<2x2x2xf32>
+    %6 = "tf.AddV2"(%5, %cst) : (tensor<2x2x2xf32>, tensor<f32>) -> tensor<2x2x2xf32>
+    %7 = "tf.Floor"(%6) : (tensor<2x2x2xf32>) -> tensor<2x2x2xf32>
+    %8 = "tf.ClipByValue"(%7, %cst_5, %cst_6) : (tensor<2x2x2xf32>, tensor<f32>, tensor<f32>) -> tensor<2x2x2xf32>
+    %9 = "tf.Cast"(%8) {Truncate = false} : (tensor<2x2x2xf32>) -> tensor<2x2x2xi8>
+    %10 = "tf.Cast"(%4) {Truncate = false} : (tensor<2x2x2xi8>) -> tensor<2x2x2xi32>
+    %11 = "tf.Sub"(%10, %cst_2) : (tensor<2x2x2xi32>, tensor<i32>) -> tensor<2x2x2xi32>
+    %12 = "tf.Identity"(%9) : (tensor<2x2x2xi8>) -> tensor<2x2x2xi8>
+    %13 = "tf.Cast"(%12) {Truncate = false} : (tensor<2x2x2xi8>) -> tensor<2x2x2xi32>
+    %14 = "tf.Sub"(%13, %cst_4) : (tensor<2x2x2xi32>, tensor<i32>) -> tensor<2x2x2xi32>
+    %15 = "tf.BatchMatMulV2"(%11, %14) {adj_x = false, adj_y = false} : (tensor<2x2x2xi32>, tensor<2x2x2xi32>) -> tensor<2x2x2xi32>
+    %16 = "tf.Cast"(%15) {Truncate = false} : (tensor<2x2x2xi32>) -> tensor<2x2x2xf32>
+    %17 = "tf.Mul"(%16, %cst_0) : (tensor<2x2x2xf32>, tensor<f32>) -> tensor<2x2x2xf32>
+    %18 = "tf.AddV2"(%17, %cst) : (tensor<2x2x2xf32>, tensor<f32>) -> tensor<2x2x2xf32>
+    %19 = "tf.Floor"(%18) : (tensor<2x2x2xf32>) -> tensor<2x2x2xf32>
+    %20 = "tf.ClipByValue"(%19, %cst_5, %cst_6) : (tensor<2x2x2xf32>, tensor<f32>, tensor<f32>) -> tensor<2x2x2xf32>
+    %21 = "tf.Cast"(%20) {Truncate = false} : (tensor<2x2x2xf32>) -> tensor<2x2x2xi8>
+    %22 = "tf.Identity"(%21) {device = ""} : (tensor<2x2x2xi8>) -> tensor<2x2x2xi8>
+    %23 = "tf.Identity"(%22) {device = ""} : (tensor<2x2x2xi8>) -> tensor<2x2x2xi8>
+    %24 = "tf.Cast"(%23) : (tensor<2x2x2xi8>) -> tensor<2x2x2xi32>
+    %25 = "tf.Sub"(%24, %cst_4) : (tensor<2x2x2xi32>, tensor<i32>) -> tensor<2x2x2xi32>
+    %26 = "tf.Cast"(%25) : (tensor<2x2x2xi32>) -> tensor<2x2x2xf32>
+    %27 = "tf.Mul"(%26, %cst_3) : (tensor<2x2x2xf32>, tensor<f32>) -> tensor<2x2x2xf32>
+    return %27 : tensor<2x2x2xf32>
+  }
+
+// CHECK-LABEL: func @batch_matmul_two_tensors_with_static_shape
+// CHECK: %[[arg1_div:.*]] = "tf.Div"(%arg1
+// CHECK: %[[arg1_add:.*]] = "tf.AddV2"(%[[arg1_div]]
+// CHECK: %[[arg1_floor:.*]] = "tf.Floor"(%[[arg1_add]]
+// CHECK: %[[arg1_clip:.*]] = "tf.ClipByValue"(%[[arg1_floor]]
+// CHECK: %[[arg1_cast:.*]] = "tf.Cast"(%[[arg1_clip]]
+
+// CHECK: %[[arg0_div:.*]] = "tf.Div"(%arg0
+// CHECK: %[[arg0_add:.*]] = "tf.AddV2"(%[[arg0_div]]
+// CHECK: %[[arg0_floor:.*]] = "tf.Floor"(%[[arg0_add]]
+// CHECK: %[[arg0_clip:.*]] = "tf.ClipByValue"(%[[arg0_floor]]
+// CHECK: %[[arg0_cast:.*]] = "tf.Cast"(%[[arg0_clip]]
+
+// CHECK: %[[matmul:.*]] = "tf.XlaDotV2"(%[[arg1_cast]], %[[arg0_cast]]
+// CHECK-SAME: (tensor<2x2x2xi8>, tensor<2x2x2xi8>) -> tensor<2x2x2xi32>
+
+// CHECK: %[[matmul_sub:.*]] = "tf.Sub"(%[[matmul]]
+// CHECK: %[[matmul_cast:.*]] = "tf.Cast"(%[[matmul_sub]]
+// CHECK: %[[matmul_mul:.*]] = "tf.Mul"(%[[matmul_cast]]
+// CHECK: %[[matmul_add:.*]] = "tf.AddV2"(%[[matmul_mul]]
+// CHECK: %[[matmul_floor:.*]] = "tf.Floor"(%[[matmul_add]]
+// CHECK: %[[matmul_clip:.*]] = "tf.ClipByValue"(%[[matmul_floor]]
+}
+
+// -----
+
+module attributes {tf.versions = {bad_consumers = [], min_consumer = 12 : i32, producer = 1213 : i32}} {
+  func.func @batch_matmul_two_tensors_with_dynamic_shape(%arg0: tensor<2x?x?xf32>, %arg1: tensor<2x?x?xf32>) -> (tensor<2x?x?xf32>) {
+    %cst = "tf.Const"() {value = dense<0> : tensor<1xi32>} : () -> tensor<1xi32>
+    %cst_0 = "tf.Const"() {value = dense<2> : tensor<1xi32>} : () -> tensor<1xi32>
+    %cst_1 = "tf.Const"() {value = dense<1> : tensor<1xi32>} : () -> tensor<1xi32>
+    %cst_2 = "tf.Const"() {value = dense<0> : tensor<i32>} : () -> tensor<i32>
+    %cst_3 = "tf.Const"() {value = dense<2> : tensor<1xi64>} : () -> tensor<1xi64>
+    %cst_4 = "tf.Const"() {value = dense<-55> : tensor<i32>} : () -> tensor<i32>
+    %cst_5 = "tf.Const"() {value = dense<1> : tensor<1xi64>} : () -> tensor<1xi64>
+    %cst_6 = "tf.Const"() {value = dense<-1> : tensor<i32>} : () -> tensor<i32>
+    %cst_7 = "tf.Const"() {value = dense<55> : tensor<i32>} : () -> tensor<i32>
+    %cst_8 = "tf.Const"() {value = dense<-5.450000e+01> : tensor<f32>} : () -> tensor<f32>
+    %cst_9 = "tf.Const"() {value = dense<0.0156862754> : tensor<f32>} : () -> tensor<f32>
+    %cst_10 = "tf.Const"() {value = dense<-5.000000e-01> : tensor<f32>} : () -> tensor<f32>
+    %cst_11 = "tf.Const"() {value = dense<0.0274509806> : tensor<f32>} : () -> tensor<f32>
+    %cst_12 = "tf.Const"() {value = dense<-1.280000e+02> : tensor<f32>} : () -> tensor<f32>
+    %cst_13 = "tf.Const"() {value = dense<1.270000e+02> : tensor<f32>} : () -> tensor<f32>
+    %0 = "tf.Div"(%arg1, %cst_9) : (tensor<2x?x?xf32>, tensor<f32>) -> tensor<2x?x?xf32>
+    %1 = "tf.AddV2"(%0, %cst_10) : (tensor<2x?x?xf32>, tensor<f32>) -> tensor<2x?x?xf32>
+    %2 = "tf.Floor"(%1) : (tensor<2x?x?xf32>) -> tensor<2x?x?xf32>
+    %3 = "tf.ClipByValue"(%2, %cst_12, %cst_13) : (tensor<2x?x?xf32>, tensor<f32>, tensor<f32>) -> tensor<2x?x?xf32>
+    %4 = "tf.Cast"(%3) {Truncate = false} : (tensor<2x?x?xf32>) -> tensor<2x?x?xi8>
+    %5 = "tf.Div"(%arg0, %cst_11) : (tensor<2x?x?xf32>, tensor<f32>) -> tensor<2x?x?xf32>
+    %6 = "tf.AddV2"(%5, %cst_8) : (tensor<2x?x?xf32>, tensor<f32>) -> tensor<2x?x?xf32>
+    %7 = "tf.Floor"(%6) : (tensor<2x?x?xf32>) -> tensor<2x?x?xf32>
+    %8 = "tf.ClipByValue"(%7, %cst_12, %cst_13) : (tensor<2x?x?xf32>, tensor<f32>, tensor<f32>) -> tensor<2x?x?xf32>
+    %9 = "tf.Cast"(%8) {Truncate = false} : (tensor<2x?x?xf32>) -> tensor<2x?x?xi8>
+    %10 = "tf.Shape"(%4) : (tensor<2x?x?xi8>) -> tensor<3xi64>
+    %11 = "tf.Slice"(%10, %cst, %cst_1) : (tensor<3xi64>, tensor<1xi32>, tensor<1xi32>) -> tensor<1xi64>
+    %12 = "tf.Slice"(%10, %cst_1, %cst_0) : (tensor<3xi64>, tensor<1xi32>, tensor<1xi32>) -> tensor<2xi64>
+    %13 = "tf.Shape"(%9) : (tensor<2x?x?xi8>) -> tensor<3xi64>
+    %14 = "tf.Slice"(%13, %cst, %cst_1) : (tensor<3xi64>, tensor<1xi32>, tensor<1xi32>) -> tensor<1xi64>
+    %15 = "tf.Slice"(%13, %cst_1, %cst_0) : (tensor<3xi64>, tensor<1xi32>, tensor<1xi32>) -> tensor<2xi64>
+    %16 = "tf.BroadcastArgs"(%11, %14) : (tensor<1xi64>, tensor<1xi64>) -> tensor<1xi64>
+    %17 = "tf.Concat"(%cst_2, %16, %12) : (tensor<i32>, tensor<1xi64>, tensor<2xi64>) -> tensor<3xi64>
+    %18 = "tf.Concat"(%cst_2, %16, %15) : (tensor<i32>, tensor<1xi64>, tensor<2xi64>) -> tensor<3xi64>
+    %19 = "tf.BroadcastTo"(%4, %17) : (tensor<2x?x?xi8>, tensor<3xi64>) -> tensor<2x?x?xi8>
+    %20 = "tf.BroadcastTo"(%9, %18) : (tensor<2x?x?xi8>, tensor<3xi64>) -> tensor<2x?x?xi8>
+    %21 = "tf.XlaDotV2"(%19, %20) {dimension_numbers = "\22\01\00\1A\01\00\12\01\01\0A\01\02", precision_config = ""} : (tensor<2x?x?xi8>, tensor<2x?x?xi8>) -> tensor<2x?x?xi32>
+    %22 = "tf.Cast"(%19) {Truncate = false} : (tensor<2x?x?xi8>) -> tensor<2x?x?xi32>
+    %23 = "tf.Sum"(%22, %cst_3) {keep_dims = true} : (tensor<2x?x?xi32>, tensor<1xi64>) -> tensor<2x?x1xi32>
+    %24 = "tf.Mul"(%23, %cst_4) : (tensor<2x?x1xi32>, tensor<i32>) -> tensor<2x?x1xi32>
+    %25 = "tf.Cast"(%20) {Truncate = false} : (tensor<2x?x?xi8>) -> tensor<2x?x?xi32>
+    %26 = "tf.Sum"(%25, %cst_5) {keep_dims = true} : (tensor<2x?x?xi32>, tensor<1xi64>) -> tensor<2x1x?xi32>
+    %27 = "tf.Mul"(%26, %cst_6) : (tensor<2x1x?xi32>, tensor<i32>) -> tensor<2x1x?xi32>
+    %28 = "tf.Shape"(%20) : (tensor<2x?x?xi8>) -> tensor<3xi64>
+    %29 = "tf.StridedSlice"(%28, %cst_5, %cst_3, %cst_5) {begin_mask = 0 : i64, ellipsis_mask = 0 : i64, end_mask = 0 : i64, new_axis_mask = 0 : i64, shrink_axis_mask = 0 : i64} : (tensor<3xi64>, tensor<1xi64>, tensor<1xi64>, tensor<1xi64>) -> tensor<1xi64>
+    %30 = "tf.Cast"(%29) {Truncate = false} : (tensor<1xi64>) -> tensor<1xi32>
+    %31 = "tf.Mul"(%30, %cst_7) : (tensor<1xi32>, tensor<i32>) -> tensor<1xi32>
+    %32 = "tf.Add"(%24, %27) : (tensor<2x?x1xi32>, tensor<2x1x?xi32>) -> tensor<2x?x?xi32>
+    %33 = "tf.Sub"(%32, %31) : (tensor<2x?x?xi32>, tensor<1xi32>) -> tensor<2x?x?xi32>
+    %34 = "tf.Sub"(%21, %33) : (tensor<2x?x?xi32>, tensor<2x?x?xi32>) -> tensor<2x?x?xi32>
+    %35 = "tf.Cast"(%34) {Truncate = false} : (tensor<2x?x?xi32>) -> tensor<2x?x?xf32>
+    %36 = "tf.Mul"(%35, %cst_9) : (tensor<2x?x?xf32>, tensor<f32>) -> tensor<2x?x?xf32>
+    %37 = "tf.AddV2"(%36, %cst_8) : (tensor<2x?x?xf32>, tensor<f32>) -> tensor<2x?x?xf32>
+    %38 = "tf.Floor"(%37) : (tensor<2x?x?xf32>) -> tensor<2x?x?xf32>
+    %39 = "tf.ClipByValue"(%38, %cst_12, %cst_13) : (tensor<2x?x?xf32>, tensor<f32>, tensor<f32>) -> tensor<2x?x?xf32>
+    %40 = "tf.Cast"(%39) {Truncate = false} : (tensor<2x?x?xf32>) -> tensor<2x?x?xi8>
+    %41 = "tf.Identity"(%40) {device = ""} : (tensor<2x?x?xi8>) -> tensor<2x?x?xi8>
+    %42 = "tf.Identity"(%41) {device = ""} : (tensor<2x?x?xi8>) -> tensor<2x?x?xi8>
+    %43 = "tf.Cast"(%42) : (tensor<2x?x?xi8>) -> tensor<2x?x?xi32>
+    %44 = "tf.Sub"(%43, %cst_4) : (tensor<2x?x?xi32>, tensor<i32>) -> tensor<2x?x?xi32>
+    %45 = "tf.Cast"(%44) : (tensor<2x?x?xi32>) -> tensor<2x?x?xf32>
+    %46 = "tf.Mul"(%45, %cst_11) : (tensor<2x?x?xf32>, tensor<f32>) -> tensor<2x?x?xf32>
+    return %46 : tensor<2x?x?xf32>
+  }
+
+// CHECK-LABEL: func @batch_matmul_two_tensors_with_dynamic_shape
+// CHECK: %[[arg1_div:.*]] = "tf.Div"(%arg1
+// CHECK: %[[arg1_add:.*]] = "tf.AddV2"(%[[arg1_div]]
+// CHECK: %[[arg1_floor:.*]] = "tf.Floor"(%[[arg1_add]]
+// CHECK: %[[arg1_clip:.*]] = "tf.ClipByValue"(%[[arg1_floor]]
+// CHECK: %[[arg1_cast:.*]] = "tf.Cast"(%[[arg1_clip]]
+
+// CHECK: %[[arg0_div:.*]] = "tf.Div"(%arg0
+// CHECK: %[[arg0_add:.*]] = "tf.AddV2"(%[[arg0_div]]
+// CHECK: %[[arg0_floor:.*]] = "tf.Floor"(%[[arg0_add]]
+// CHECK: %[[arg0_clip:.*]] = "tf.ClipByValue"(%[[arg0_floor]]
+// CHECK: %[[arg0_cast:.*]] = "tf.Cast"(%[[arg0_clip]]
+
+// CHECK: %[[arg1_broad:.*]] = "tf.BroadcastTo"(%[[arg1_cast]]
+// CHECK: %[[arg0_broad:.*]] = "tf.BroadcastTo"(%[[arg0_cast]]
+
+// CHECK: %[[matmul:.*]] = "tf.XlaDotV2"(%[[arg1_broad]], %[[arg0_broad]]
+// CHECK-SAME: (tensor<2x?x?xi8>, tensor<2x?x?xi8>) -> tensor<2x?x?xi32>
+
+// CHECK: %[[arg0_shape:.*]] = "tf.Shape"(%[[arg0_broad]]
+// CHECK: %[[shape_zp_contribute:.*]] = "tf.StridedSlice"(%[[arg0_shape]]
+// CHECK: %[[shape_zp_contribute_cast:.*]] = "tf.Cast"(%[[shape_zp_contribute]]
+// CHECK: %[[shape_zp_contribute_mul:.*]] = "tf.Mul"(%[[shape_zp_contribute_cast]]
+// CHECK: %[[zp:.*]] = "tf.Sub"({{.*}}, %[[shape_zp_contribute_mul]])
+
+// CHECK: %[[matmul_sub:.*]] = "tf.Sub"(%[[matmul]], %[[zp]]
+// CHECK: %[[matmul_cast:.*]] = "tf.Cast"(%[[matmul_sub]]
+// CHECK: %[[matmul_mul:.*]] = "tf.Mul"(%[[matmul_cast]]
+// CHECK: %[[matmul_add:.*]] = "tf.AddV2"(%[[matmul_mul]]
+// CHECK: %[[matmul_floor:.*]] = "tf.Floor"(%[[matmul_add]]
+// CHECK: %[[matmul_clip:.*]] = "tf.ClipByValue"(%[[matmul_floor]]
+}
+

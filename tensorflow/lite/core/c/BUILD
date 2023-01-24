@@ -5,6 +5,7 @@ load(
 )
 load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
 load("//tensorflow/lite/core/c:special_rules.bzl", "common_header_visibility_allowlist")
+load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -24,6 +25,12 @@ exports_files(
     ],
 )
 
+bzl_library(
+    name = "special_rules_bzl",
+    srcs = ["special_rules.bzl"],
+    visibility = ["//tensorflow/lite:__subpackages__"],
+)
+
 filegroup(
     name = "headers_filegroup",
     srcs = [
@@ -38,6 +45,7 @@ tflite_cc_library_with_c_headers_test(
     hdrs = [
         "c_api.h",
     ],
+    compatible_with = get_compatible_with_portable(),
     copts = tflite_copts(),
     visibility = [
         "//tensorflow/lite:__subpackages__",
@@ -68,6 +76,7 @@ tflite_cc_library_with_c_headers_test(
     name = "c_api_without_op_resolver",
     srcs = ["c_api.cc"],
     hdrs = ["c_api.h"],
+    compatible_with = get_compatible_with_portable(),
     copts = tflite_copts(),
     tags = ["allow_undefined_symbols"],  # For tflite::CreateOpResolver().
     visibility = [
@@ -76,11 +85,11 @@ tflite_cc_library_with_c_headers_test(
     deps = [
         ":c_api_types",
         "//tensorflow/lite:builtin_ops",
-        "//tensorflow/lite:create_op_resolver_header",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:version",
         "//tensorflow/lite/c:c_api_internal",
         "//tensorflow/lite/c:common_internal",
+        "//tensorflow/lite/core:create_op_resolver_header",
         "//tensorflow/lite/core:framework",
         "//tensorflow/lite/delegates:interpreter_utils",
         "//tensorflow/lite/delegates/nnapi:nnapi_delegate",
@@ -116,11 +125,11 @@ tflite_cc_library_with_c_headers_test(
     deps = [
         ":c_api_types",
         "//tensorflow/lite:builtin_ops",
-        "//tensorflow/lite:create_op_resolver_header",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:version",
         "//tensorflow/lite/c:c_api_internal",
         "//tensorflow/lite/c:common_internal",
+        "//tensorflow/lite/core:create_op_resolver_header",
         "//tensorflow/lite/core:framework",
         "//tensorflow/lite/delegates:interpreter_utils",
         "//tensorflow/lite/delegates/nnapi:nnapi_delegate",
@@ -226,6 +235,7 @@ cc_test(
     deps = [
         ":c_api_types",
         ":common",
+        "//tensorflow/lite:util",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -283,6 +293,8 @@ tflite_cc_library_with_c_headers_test(
         "//tensorflow/lite:framework",
         "//tensorflow/lite/c:c_api_internal",
         "//tensorflow/lite/core:framework",
+        "//tensorflow/lite/profiling/telemetry:profiler",
+        "//tensorflow/lite/profiling/telemetry/c:profiler",
     ],
     alwayslink = 1,  # Why?? TODO(b/161243354): eliminate this.
 )
@@ -306,6 +318,8 @@ tflite_cc_library_with_c_headers_test(
         "//tensorflow/lite:kernel_api",
         "//tensorflow/lite/c:c_api_internal",
         "//tensorflow/lite/core:framework",
+        "//tensorflow/lite/profiling/telemetry:profiler",
+        "//tensorflow/lite/profiling/telemetry/c:profiler",
     ],
     alwayslink = 1,  # Why?? TODO(b/161243354): eliminate this.
 )
@@ -329,6 +343,8 @@ tflite_cc_library_with_c_headers_test(
         "//tensorflow/lite:kernel_api",
         "//tensorflow/lite/c:c_api_internal",
         "//tensorflow/lite/core:framework",
+        "//tensorflow/lite/profiling/telemetry:profiler",
+        "//tensorflow/lite/profiling/telemetry/c:profiler",
     ],
 )
 

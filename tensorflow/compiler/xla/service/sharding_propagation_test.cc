@@ -1010,6 +1010,104 @@ ENTRY %tuple {
   }
 }
 
+TEST_P(ParameterizedMetadataTest, TupleForwardPassAndBackWardPass) {
+  const char* const hlo_string = R"(
+HloModule module
+ENTRY %tuple {
+  %param0 =  f32[256,2]{1,0} parameter(0),
+    sharding={manual metadata={op_name="a"}}
+  %param1 =  f32[256,2]{1,0} parameter(1),
+    sharding={devices=[1,2]0,1 metadata={op_name="b"}}
+  %constant = s32[1,2]{1,0} constant({{0,1}})
+  %gather = f32[1,32,2]{2,1,0} gather(param0, constant), offset_dims={1,2}, collapsed_slice_dims={}, start_index_map={0,1}, index_vector_dim=1, slice_sizes={32,2}
+  %tuple = (f32[1,32,2]{2,1,0}, f32[256,2]{1,0}) tuple(
+    %gather, %param1)
+  ROOT %copy = (f32[1,32,2]{2,1,0}, f32[256,2]{1,0}) copy(%tuple)
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  if (GetParam().clear_metadata) {
+    ClearMetadata(module.get());
+  }
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool changed,
+      ShardingPropagation(/*is_spmd=*/true, GetParam().propagate_metadata)
+          .Run(module.get()));
+  XLA_VLOG_LINES(1, module->ToString());
+  EXPECT_TRUE(changed);
+  auto* tuple = FindInstruction(module.get(), "tuple");
+  ASSERT_NE(tuple, nullptr);
+  // Check that the sharding on param1 is not replicated on tuple element[1].
+  EXPECT_THAT(tuple, op::Sharding("{{manual}, {devices=[1,2]0,1}}"));
+  if (GetParam().propagate_metadata && !GetParam().clear_metadata) {
+    EXPECT_THAT(tuple->sharding().tuple_elements()[0],
+                ShardingMetadata({CreateMetadata("a")}));
+    EXPECT_THAT(tuple->sharding().tuple_elements()[1],
+                ShardingMetadata({CreateMetadata("b")}));
+  } else {
+    for (const HloSharding& sub_sharding : tuple->sharding().tuple_elements()) {
+      EXPECT_THAT(sub_sharding, ShardingMetadata({}));
+    }
+  }
+}
+
+TEST_P(ParameterizedMetadataTest, TupleShapedBackWardPass) {
+  const char* const hlo_string = R"(
+HloModule module
+
+%cond {
+  %vars.cond = (u32[], f32[]) parameter(0)
+  %count.cond = u32[] get-tuple-element(%vars.cond), index=0
+  %limit = u32[] constant(10)
+  ROOT %lt = pred[] compare(%count.cond, %limit), direction=LT
+}
+
+%body {
+  %param = (u32[], f32[]) parameter(0)
+  %count = u32[] get-tuple-element(%param), index=0
+  %after-all = token[] after-all()
+  %recv = (f32[], u32[], token[]) recv(%after-all), channel_id=1
+  %recv-done = (f32[], token[]) recv-done(%recv), channel_id=1
+  %data = f32[] get-tuple-element(%recv-done), index=0
+  ROOT %tuple = (u32[], f32[]) tuple(%count, %data)
+}
+
+ENTRY %entry {
+  %zero = u32[] constant(0), sharding={replicated metadata={op_name="a"}}
+  %p0 = f32[] parameter(0), sharding={manual metadata={op_name="b"}}
+  %tuple = (u32[], f32[]) tuple(%zero, %p0)
+  %while = (u32[], f32[]) while(%tuple), body=%body, condition=%cond,
+    sharding={{manual metadata={op_name="c"}},
+              {manual metadata={op_name="d"}}}
+  ROOT %result = f32[] get-tuple-element(%while), index=1
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  if (GetParam().clear_metadata) {
+    ClearMetadata(module.get());
+  }
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool changed,
+      ShardingPropagation(/*is_spmd=*/true, GetParam().propagate_metadata)
+          .Run(module.get()));
+  XLA_VLOG_LINES(1, module->ToString());
+  EXPECT_TRUE(changed);
+  auto* tuple = FindInstruction(module.get(), "tuple");
+  ASSERT_NE(tuple, nullptr);
+  // Check that the sharding on param1 is not replicated on tuple element[1].
+  EXPECT_THAT(tuple, op::Sharding("{{manual}, {manual}}"));
+  if (GetParam().propagate_metadata && !GetParam().clear_metadata) {
+    EXPECT_THAT(tuple->sharding().tuple_elements()[0],
+                ShardingMetadata({CreateMetadata("c")}));
+    EXPECT_THAT(tuple->sharding().tuple_elements()[1],
+                ShardingMetadata({CreateMetadata("d")}));
+  } else {
+    for (const HloSharding& sub_sharding : tuple->sharding().tuple_elements()) {
+      EXPECT_THAT(sub_sharding, ShardingMetadata({}));
+    }
+  }
+}
+
 TEST_P(ParameterizedMetadataTest, ForwardConvolutionForwardPass) {
   const char* const hlo_string = R"(
 HloModule module
@@ -8428,6 +8526,116 @@ ENTRY %entry {
           .Run(module.get()));
   XLA_VLOG_LINES(1, module->ToString());
   EXPECT_TRUE(changed);
+}
+
+TEST_F(ShardingPropagationTest, ContractingAsNonContractingCrash) {
+  const char* const hlo_string = R"(
+HloModule module
+
+ENTRY %entry {
+  %p0 = f32[20,64,56,56]{3,2,1,0} parameter(0), sharding={replicated}
+  %p1 = f32[1,1,256,64]{2,3,1,0} parameter(1), sharding={devices=[4,2,1,1]0,1,2,3,4,5,6,7}
+  %convolution.4512 = f32[20,256,56,56]{3,2,1,0} convolution(%p0, %p1), window={size=1x1}, dim_labels=bf01_01oi->bf01
+  ROOT %copy = f32[20,256,56,56]{3,2,1,0} copy(%convolution.4512)
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool changed,
+      ShardingPropagation(/*is_spmd=*/true, /*propagate_metadata=*/true)
+          .Run(module.get()));
+  XLA_VLOG_LINES(1, module->ToString());
+  EXPECT_TRUE(changed);
+}
+
+TEST_F(ShardingPropagationTest, PropagateReduceManualTuple) {
+  const char* const hlo_string = R"(
+HloModule pjit
+
+orclone {
+  lhs.1 = u32[] parameter(0)
+  rhs.1 = u32[] parameter(2)
+  or.2 = u32[] or(lhs.1, rhs.1)
+  lhs.0 = u32[] parameter(1)
+  rhs.0 = u32[] parameter(3)
+  or.3 = u32[] or(lhs.0, rhs.0)
+  ROOT tuple.4 = (u32[], u32[]) tuple(or.2, or.3)
+}
+
+ENTRY %main.21 {
+  select.104 = u32[2,2]{1,0} parameter(0), sharding={manual}
+  shift-left.5 = u32[2,2]{1,0} parameter(1), sharding={manual}
+  constant.4183 = u32[] constant(0), sharding={manual}
+  reduce.1 = (u32[2]{0}, u32[2]{0}) reduce(shift-left.5, select.104, constant.4183, constant.4183), dimensions={1}, to_apply=orclone
+  ROOT get-tuple-element.13 = u32[2]{0} get-tuple-element(reduce.1), index=0
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool changed,
+      ShardingPropagation(/*is_spmd=*/true, /*propagate_metadata=*/true)
+          .Run(module.get()));
+
+  EXPECT_THAT(FindInstruction(module.get(), "reduce.1"),
+              op::Sharding("{{manual}, {manual}}"));
+  XLA_VLOG_LINES(1, module->ToString());
+  EXPECT_TRUE(changed);
+}
+
+TEST_F(ShardingPropagationTest, MergeCompatibleTiles) {
+  const char* const hlo_string = R"(
+HloModule pjit
+
+ENTRY %main.21 {
+  p = bf16[8,4,256,1024,12288]{4,3,2,1,0} parameter(0), sharding={devices=[8,1,1,1,1]0,1,2,3,4,5,6,7}
+  p2 = bf16[8,4,256,1024,12288]{4,3,2,1,0} parameter(1), sharding={devices=[4,1,1,1,1,2]0,1,2,3,4,5,6,7 last_tile_dim_replicate}
+  c0 =  bf16[8,4,256,1024,12288]{4,3,2,1,0} copy(p)
+  c1 =  bf16[8,4,256,1024,12288]{4,3,2,1,0} copy(p2)
+  a = bf16[8,4,256,1024,12288]{4,3,2,1,0} add(c0, c1)
+  ROOT c2 = bf16[8,4,256,1024,12288]{4,3,2,1,0} copy(a), sharding={devices=[8,1,1,1,1]0,1,2,3,4,5,6,7}
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool changed,
+      ShardingPropagation(/*is_spmd=*/true, /*propagate_metadata=*/true)
+          .Run(module.get()));
+
+  XLA_VLOG_LINES(1, module->ToString());
+  EXPECT_TRUE(changed);
+  EXPECT_THAT(FindInstruction(module.get(), "c1"),
+              op::Sharding("{devices=[8,1,1,1,1]0,1,2,3,4,5,6,7}"));
+}
+
+TEST_F(ShardingPropagationTest, OutfeedUser) {
+  const char* const hlo_string = R"(
+HloModule pjit
+
+ENTRY %main.21 {
+  p = f32[10,128]{1,0} parameter(0)
+  c = f32[10,128]{1,0} copy(p)
+  t = (f32[10,128]{1,0}) tuple(c)
+  a = token[] after-all()
+  ROOT of = token[] outfeed((f32[10,128]{1,0}) %t, token[] %a), outfeed_shape=(f32[10,128]{1,0}), sharding={{devices=[2,1]0,1}, {maximal device=0}}
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool changed,
+      ShardingPropagation(/*is_spmd=*/true, /*propagate_metadata=*/true)
+          .Run(module.get()));
+
+  XLA_VLOG_LINES(1, module->ToString());
+  EXPECT_TRUE(changed);
+  EXPECT_THAT(FindInstruction(module.get(), "c"),
+              op::Sharding("{devices=[2,1]0,1}"));
 }
 
 }  // namespace

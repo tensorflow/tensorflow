@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/delegates/coreml/coreml_delegate_kernel.h"
 
+#include "fp16.h"  // from @FP16
 #include "tensorflow/lite/context_util.h"
 #include "tensorflow/lite/kernels/internal/optimized/optimized_ops.h"
 #include "tensorflow/lite/kernels/internal/types.h"
@@ -210,9 +211,18 @@ TfLiteStatus CoreMlDelegateKernel::Invoke(TfLiteContext* context, TfLiteNode* no
       for (int i = 0; i < input_tensor_ids_.size(); ++i) {
         const int tensor_id = input_tensor_ids_[i];
         TfLiteTensor* tensor = &context->tensors[tensor_id];
+        const float* float_ptr = tensor->data.f;
+        if (tensor->type == kTfLiteFloat16) {
+          std::vector<float> floats = std::vector<float>(NumElements(tensor));
+          const uint16_t* float16_ptr = reinterpret_cast<uint16_t const*>(tensor->data.f16);
+          for (int j = 0; j < floats.size(); j++) {
+            floats[j] = fp16_ieee_to_fp32_value(float16_ptr[j]);
+          }
+          float_ptr = floats.data();
+        }
         // Transpose input to CHW.
         // TODO(b/143992544): try adding transpose op for inputs.
-        TransposeToCHW(tensor->data.f, inputs_[i].data.data(), tensor->dims);
+        TransposeToCHW(float_ptr, inputs_[i].data.data(), tensor->dims);
       }
 
       if (![executor_ invokeWithInputs:inputs_ outputs:outputs_]) {

@@ -36,6 +36,7 @@ cc_library(
         "//tensorflow/core/common_runtime:function_body",
         "//tensorflow/core/common_runtime:function_optimization_registry",
         "//tensorflow/core/common_runtime:optimization_registry",
+        "//tensorflow/core/common_runtime:optimize_function_graph_utils",
         "//tensorflow/core/common_runtime:placer",
         "//tensorflow/core/common_runtime/eager:context",
         "//tensorflow/core/grappler:grappler_item",
@@ -149,8 +150,6 @@ cc_library(
 cc_library(
     name = "virtual_device",
     hdrs = ["virtual_device.h"],
-    # TODO(fishx): Change the whole BUILD file to be gce compatible.
-    # copybara:uncomment compatible_with = ["//buildenv/target:gce"],
     deps = [
         "@tf_runtime//:hostcontext",
     ],
@@ -166,12 +165,13 @@ cc_library(
 # go/loose-lsc-one-target-approach for more details.
 cc_library(
     name = "loose_headers",
-    compatible_with = ["//buildenv/target:gce"],
     tags = ["avoid_dep"],
     textual_hdrs = [
         "c_api_tfrt.h",
     ],
-    visibility = ["//tensorflow/c/eager:__pkg__"],
+    visibility = [
+        "//visibility:private",  # Only private by automation, not intent. Owner may accept CLs adding visibility. See go/scheuklappen#explicit-private.
+    ],
 )
 
 alias(

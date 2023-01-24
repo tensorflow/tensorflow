@@ -19,11 +19,12 @@ limitations under the License.
 #define GML_ST_OPS
 
 include "mlir/IR/OpBase.td"
+include "mlir/Interfaces/ControlFlowInterfaces.td"
 include "mlir/Interfaces/InferTypeOpInterface.td"
 include "mlir/Interfaces/SideEffectInterfaces.td"
+include "mlir/Interfaces/LoopLikeInterface.td"
 include "mlir/Interfaces/ViewLikeInterface.td"
 include "gml_st/IR/gml_st_ops_base.td"
-include "gml_st/IR/gml_st_legacy_ops.td"
 
 ///////////////////////////////////////////////////////////////////////////////
 // Types
@@ -78,6 +79,12 @@ def GMLST_TileType : GMLST_Set<"Tile"> {
 
 def AnySet : Type<Or<[GMLST_TileType.predicate]>, "subset type">;
 
+def Vector : AnyTypeOf<[
+  AnyVectorOfAnyRank
+], "", "::mlir::ShapedType">;
+def VectorOrScalar : AnyTypeOf<[
+  AnyVectorOfAnyRank, AnyFloat, AnyInteger, AnyComplex, Index
+]>;
 def RankedTensorOrVector : AnyTypeOf<[
   AnyRankedTensor, AnyVectorOfAnyRank
 ], "", "::mlir::ShapedType">;
@@ -148,54 +155,76 @@ def GMLST_TileOp : GMLST_Op<"tile", [
   let hasVerifier = 1;
 }
 
-def GMLST_MaterializeOp : GMLST_Op<"materialize", [Pure]> {
+def GMLST_MaterializeOp : GMLST_Op<"materialize", [
+    AttrSizedOperandSegments,
+    DeclareOpInterfaceMethods<ReifyRankedShapedTypeOpInterface>,
+    OffsetSizeAndStrideOpInterface, Pure]> {
   let summary = "Operation to extract values from tensor or vector";
   let description = [{
-    The "materialize" operation extracts a tensor or a vector from another
-    tensor or a vector as specified by the value of a provided set.
-
-    MaterializeOp accepts `!gml_st.tile` type to extract tensors from tensors.
+    The "materialize" operation extracts a vector from another or a vector.
+    MaterializeOp accepts a list of offsets-sizes-strides.
 
     ```
-    %subtensor = gml_st.materialize %tensor[%tile]
-      : tensor<?x?xf32>[!gml_st.tile<42x16>] to tensor<42x16xf32>
+    %subvector = gml_st.materialize %vector[0, 0][42, 16][1, 1]
+      : vector<?x?xf32>[!gml_st.tile<42x16>] to vector<42x16xf32>
     ```
 
-    If `!gml_st.tile` has a single element or rank-0, it is also possible to
-    extract an element from a tensor.
+    If `sizes` define a shape with a single element, it is also possible to
+    extract an element from a vector.
 
     ```
-    %element = gml_st.materialize %tensor[%tile_with_single_element]
-      : tensor<3x1xindex>[!gml_st.tile<1x1>] to index
+    %element = gml_st.materialize %vector[0, 0][1, 1][1, 1]
+      : vector<3x1xindex>[!gml_st.tile<1x1>] to index
 
-    %element = gml_st.materialize %tensor[%tile_0d]
-      : tensor<f32>[!gml_st.tile<>] to f32
+    %element = gml_st.materialize %vector[%tile_0d]
+      : vector<f32>[][][] to f32
 
-    %subtensor = gml_st.materialize %tensor[%tile_with_single_element]
-      : tensor<3x1xindex>[!gml_st.tile<1x1>] to tensor<1x1xindex>
+    %subvector = gml_st.materialize %vector[%tile_with_single_element]
+      : vector<3x1xindex>[0, 0][1, 1][1, 1] to vector<1x1xindex>
     ```
-
-    MaterializeOp can also extract a vector from a vector.
-
-    ```
-    %subvector = gml_st.materialize %vector[%tile]
-      : vector<64x32xf32>[!gml_st.tile<42x16>] to vector<42x16xf32>
-    ```
-
-    The operation is designed to be polymorphic to support non-rectangular
-    subsets. It will accept `set` arguments of types other than `!gml_st.tile`.
   }];
-  let arguments = (ins RankedTensorOrVector:$source, AnySet:$set);
-  let results = (outs RankedTensorOrVectorOrScalar:$result);
+  let arguments = (ins
+    Vector:$source,
+    Variadic<Index>:$offsets,
+    Variadic<Index>:$sizes,
+    Variadic<Index>:$strides,
+    DenseI64ArrayAttr:$static_offsets,
+    DenseI64ArrayAttr:$static_sizes,
+    DenseI64ArrayAttr:$static_strides
+  );
+  let results = (outs VectorOrScalar:$result);
 
-  let builders = [OpBuilder<(ins "Value":$source, "Value":$set)>];
+  let builders = [
+   OpBuilder<(ins "Value":$source, "ArrayRef<OpFoldResult>":$offsets,
+     "ArrayRef<OpFoldResult>":$sizes, "ArrayRef<OpFoldResult>":$strides)>,
+   OpBuilder<(ins "Type":$resultType, "Value":$source,
+     "ArrayRef<OpFoldResult>":$offsets, "ArrayRef<OpFoldResult>":$sizes,
+     "ArrayRef<OpFoldResult>":$strides)>,
+   OpBuilder<(ins "Value":$source, "ArrayRef<OpFoldResult>":$offsets)>,
+  ];
 
   let assemblyFormat = [{
-    $source`[` $set `]` attr-dict `:` type($source) `[` type($set) `]`
-      `to` type($result)
+    $source
+    custom<DynamicIndexList>($offsets, $static_offsets)
+    custom<DynamicIndexList>($sizes, $static_sizes)
+    custom<DynamicIndexList>($strides, $static_strides)
+    attr-dict
+    `:` type($source) `to` type($result)
   }];
 
+  let extraClassDeclaration = [{
+    /// Return the expected rank of each of the`static_offsets`, `static_sizes`
+    /// and `static_strides` attributes.
+    std::array<unsigned, 3> getArrayAttrMaxRanks() {
+      unsigned rank = getSource().getType().cast<ShapedType>().getRank();
+      return {rank, rank, rank};
+    }
+    /// Return the number of leading operands before the `offsets`, `sizes` and
+    /// and `strides` operands.
+    static unsigned getOffsetSizeAndStrideStartOperandIndex() { return 1; }
+  }];
   let hasCanonicalizer = 1;
+  let hasVerifier = 1;
 }
 
 class GMLST_LoopLikeOp<string mnemonic, list<Trait> traits = []>
@@ -326,7 +355,7 @@ def GMLST_ParallelOp : GMLST_LoopLikeOp<"parallel", []> {
   let builders = [
     OpBuilder<(ins "TypeRange":$resultTypes, "ValueRange":$lowerBounds,
       "ValueRange":$upperBounds, "ValueRange":$steps,
-      CArg<"Optional<StringAttr>", "llvm::None">:$distributionType,
+      CArg<"std::optional<StringAttr>", "std::nullopt">:$distributionType,
       CArg<"function_ref<void (OpBuilder &, Location, /*ivs=*/ValueRange)>",
       "nullptr">:$bodyBuilderFn)>,
   ];
@@ -555,6 +584,23 @@ def GMLST_SetYieldOp : GMLST_Op<"set_yield", [
   }];
 
   let hasCanonicalizer = 1;
+}
+
+def GMLST_YieldOp : GMLST_Op<"yield", [Pure, ReturnLike, Terminator,
+    HasParent<"::mlir::gml_st::SetYieldOp">]>,
+    Arguments<(ins AnyType:$value)> {
+  let summary = "Yield operation";
+  let description = [{
+    `gml_st.yield` is a special terminator operation for accumulator regions of
+    `gml_st.set_yield`.
+
+    Example:
+
+    ```mlir
+    gml_st.yield %f0: tensor<f32>
+    ```
+  }];
+  let assemblyFormat = "attr-dict $value `:` type($value)";
 }
 
 // TODO(b/253560795): Figure out where this operation shoud live, and how to

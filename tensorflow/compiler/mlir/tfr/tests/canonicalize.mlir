@@ -1,4 +1,4 @@
-// RUN: tfr-opt %s -canonicalize -verify-diagnostics -split-input-file | FileCheck %s
+// RUN: tfr-opt %s -canonicalize="test-convergence" -verify-diagnostics -split-input-file | FileCheck %s
 
 // Tests for ops with canonicalization patterns.
 

@@ -23,6 +23,11 @@ package(
     licenses = ["notice"],
 )
 
+config_setting(
+    name = "tflite_debug_delegate",
+    define_values = {"tflite_debug_delegate": "true"},
+)
+
 cc_library(
     name = "telemetry",
     srcs = ["telemetry.cc"],
@@ -138,10 +143,11 @@ cc_test(
         "//tensorflow/lite:version",
         "//tensorflow/lite/c:c_api_experimental",
         "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core:framework",
         "//tensorflow/lite/core/c:c_api_types",
         "//tensorflow/lite/core/c:common",
+        "//tensorflow/lite/core/kernels:builtin_ops",
         "//tensorflow/lite/experimental/remat:metadata_util",
-        "//tensorflow/lite/kernels:builtin_ops",
         "//tensorflow/lite/kernels:kernel_util",
         "//tensorflow/lite/kernels/internal:compatibility",
         "//tensorflow/lite/schema:schema_conversion_utils",
@@ -150,6 +156,47 @@ cc_test(
         "//third_party/eigen3",
         "@com_google_googletest//:gtest_main",
         "@flatbuffers",
+    ],
+)
+
+cc_test(
+    name = "opaque_delegate_test",
+    size = "small",
+    srcs = ["opaque_delegate_test.cc"],
+    data = ["//tensorflow/lite:testdata/add.bin"],
+    defines = [
+        "TFLITE_USE_OPAQUE_DELEGATE",
+    ],
+    deps = [
+        "//tensorflow/lite:framework",
+        "//tensorflow/lite/c:c_api_experimental",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/c:c_api_types",
+        "//tensorflow/lite/core/c:common",
+        "//tensorflow/lite/kernels:builtin_ops",
+        "//tensorflow/lite/testing:util",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "opaque_delegate_strip_error_strings_test",
+    size = "small",
+    srcs = ["opaque_delegate_test.cc"],
+    data = ["//tensorflow/lite:testdata/add.bin"],
+    defines = [
+        "TFLITE_USE_OPAQUE_DELEGATE",
+        "TF_LITE_STRIP_ERROR_STRINGS",
+    ],
+    deps = [
+        "//tensorflow/lite:framework",
+        "//tensorflow/lite/c:c_api_experimental",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/c:c_api_types",
+        "//tensorflow/lite/core/c:common",
+        "//tensorflow/lite/kernels:builtin_ops",
+        "//tensorflow/lite/testing:util",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -168,7 +215,7 @@ cc_library(
         "//tensorflow/lite:version",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/core/c:common",
-        "//tensorflow/lite/kernels:builtin_ops",
+        "//tensorflow/lite/core/kernels:builtin_ops",
         "//tensorflow/lite/kernels:kernel_util",
         "//tensorflow/lite/kernels/internal:compatibility",
         "//tensorflow/lite/schema:schema_conversion_utils",

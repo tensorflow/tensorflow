@@ -125,9 +125,9 @@ class DynamicStitchOpImplBase : public OpKernel {
     // Allocate result tensor of shape
     //   [*first_dim_size] + data.shape[indices.dims:]
     TensorShape result_shape;
-    result_shape.AddDim(*first_dim_size);
+    OP_REQUIRES_OK(c, result_shape.AddDimWithStatus(*first_dim_size));
     for (int d = indices0.dims(); d < data0.dims(); d++) {
-      result_shape.AddDim(data0.dim_size(d));
+      OP_REQUIRES_OK(c, result_shape.AddDimWithStatus(data0.dim_size(d)));
     }
     OP_REQUIRES_OK(c, c->allocate_output(0, result_shape, result_ptr));
   }

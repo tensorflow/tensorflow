@@ -34,8 +34,8 @@ cc_library(
     deps = [
         "//tensorflow/lite:framework_stable",
         "//tensorflow/lite:util",
+        "//tensorflow/lite/core/kernels:builtin_ops",
         "//tensorflow/lite/delegates/nnapi:nnapi_delegate",
-        "//tensorflow/lite/kernels:builtin_ops",
         "//tensorflow/lite/nnapi:nnapi_lib",
         "//tensorflow/lite/tools/delegates/compatibility/common:delegate_compatibility_checker_base",
         "//tensorflow/lite/tools/delegates/compatibility/common:delegate_compatibility_checker_util",

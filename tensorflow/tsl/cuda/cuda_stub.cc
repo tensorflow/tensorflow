@@ -53,44 +53,9 @@ CUresult GetSymbolNotFoundError() {
 #error CUDA version earlier than 8 is not supported.
 #endif
 
-// Forward-declare types introduced in CUDA 9.0.
-typedef struct CUDA_LAUNCH_PARAMS_st CUDA_LAUNCH_PARAMS;
-
 #ifndef __CUDA_DEPRECATED
 #define __CUDA_DEPRECATED
 #endif
-
-#if CUDA_VERSION < 10000
-// Define fake enums introduced in CUDA 10.0.
-typedef enum CUgraphNodeType_enum {} CUgraphNodeType;
-typedef enum CUstreamCaptureStatus_enum {} CUstreamCaptureStatus;
-typedef enum CUexternalMemoryHandleType_enum {} CUexternalMemoryHandleType;
-typedef enum CUexternalSemaphoreHandleType_enum {
-} CUexternalSemaphoreHandleType;
-#endif
-
-// Forward-declare types introduced in CUDA 10.0.
-typedef struct CUextMemory_st* CUexternalMemory;
-typedef struct CUextSemaphore_st* CUexternalSemaphore;
-typedef struct CUgraph_st* CUgraph;
-typedef struct CUgraphNode_st* CUgraphNode;
-typedef struct CUgraphExec_st* CUgraphExec;
-typedef struct CUDA_KERNEL_NODE_PARAMS_st CUDA_KERNEL_NODE_PARAMS;
-typedef struct CUDA_MEMSET_NODE_PARAMS_st CUDA_MEMSET_NODE_PARAMS;
-typedef struct CUDA_HOST_NODE_PARAMS_st CUDA_HOST_NODE_PARAMS;
-typedef struct CUDA_EXTERNAL_MEMORY_HANDLE_DESC_st
-    CUDA_EXTERNAL_MEMORY_HANDLE_DESC;
-typedef struct CUDA_EXTERNAL_MEMORY_BUFFER_DESC_st
-    CUDA_EXTERNAL_MEMORY_BUFFER_DESC;
-typedef struct CUDA_EXTERNAL_MEMORY_MIPMAPPED_ARRAY_DESC_st
-    CUDA_EXTERNAL_MEMORY_MIPMAPPED_ARRAY_DESC;
-typedef struct CUDA_EXTERNAL_SEMAPHORE_HANDLE_DESC_st
-    CUDA_EXTERNAL_SEMAPHORE_HANDLE_DESC;
-typedef struct CUDA_EXTERNAL_SEMAPHORE_SIGNAL_PARAMS_st
-    CUDA_EXTERNAL_SEMAPHORE_SIGNAL_PARAMS;
-typedef struct CUDA_EXTERNAL_SEMAPHORE_WAIT_PARAMS_st
-    CUDA_EXTERNAL_SEMAPHORE_WAIT_PARAMS;
-typedef void(CUDA_CB* CUhostFn)(void* userData);
 
 #if CUDA_VERSION < 10000
 #include "tensorflow/tsl/cuda/cuda_9_0.inc"
@@ -102,6 +67,8 @@ typedef void(CUDA_CB* CUhostFn)(void* userData);
 #include "tensorflow/tsl/cuda/cuda_10_2.inc"
 #elif CUDA_VERSION < 11020
 #include "tensorflow/tsl/cuda/cuda_11_0.inc"
-#else
+#elif CUDA_VERSION < 12000
 #include "tensorflow/tsl/cuda/cuda_11_2.inc"
+#else
+#include "tensorflow/tsl/cuda/cuda_12_0.inc"
 #endif

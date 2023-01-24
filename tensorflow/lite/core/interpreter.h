@@ -52,6 +52,7 @@ limitations under the License.
 #include "tensorflow/lite/interpreter_options.h"
 #include "tensorflow/lite/portable_type_to_tflitetype.h"
 #include "tensorflow/lite/profiling/root_profiler.h"
+#include "tensorflow/lite/profiling/telemetry/c/telemetry_setting_internal.h"
 #include "tensorflow/lite/signature_runner.h"
 #include "tensorflow/lite/stderr_reporter.h"
 #include "tensorflow/lite/string_type.h"
@@ -568,7 +569,6 @@ class Interpreter {
   /// 5. kTfLiteError: Unexpected/runtime failure. \n
   /// \warning This is an experimental API and subject to change. \n
   TfLiteStatus ModifyGraphWithDelegate(TfLiteDelegate* delegate);
-  TfLiteStatus ModifyGraphWithDelegate(TfLiteOpaqueDelegateStruct* delegate);
 
   // Owning handle to a TfLiteDelegate instance.
   using TfLiteDelegatePtr =
@@ -619,9 +619,6 @@ class Interpreter {
   TfLiteStatus SetBufferHandle(int tensor_index,
                                TfLiteBufferHandle buffer_handle,
                                TfLiteDelegate* delegate);
-  TfLiteStatus SetBufferHandle(int tensor_index,
-                               TfLiteBufferHandle buffer_handle,
-                               TfLiteOpaqueDelegateStruct* opaque_delegate);
 
   /// \warning This is an experimental API and subject to change. \n
   /// \brief Get the delegate buffer handle, and the delegate which can process
@@ -629,9 +626,6 @@ class Interpreter {
   TfLiteStatus GetBufferHandle(int tensor_index,
                                TfLiteBufferHandle* buffer_handle,
                                TfLiteDelegate** delegate);
-  TfLiteStatus GetBufferHandle(int tensor_index,
-                               TfLiteBufferHandle* buffer_handle,
-                               TfLiteOpaqueDelegateStruct** opaque_delegate);
 
   /// \warning This is an experimental API and subject to change. \n
   /// \brief Sets the profiler to tracing execution. The caller retains
@@ -654,6 +648,12 @@ class Interpreter {
   /// ownership of the profiler and must ensure its validity.
   /// nullptr `profiler` will be ignored.
   void AddProfiler(Profiler* profiler);
+
+  /// \warning This is an experimental API and subject to change. \n
+  /// \brief Adds the profiler to tracing execution. Transfers
+  /// ownership of the profiler to the interpreter.
+  /// nullptr `profiler` will be ignored.
+  void AddProfiler(std::unique_ptr<Profiler> profiler);
 
   /// \warning This is an experimental API and subject to change. \n
   /// \brief Gets the profiler used for op tracing.
@@ -854,6 +854,14 @@ class Interpreter {
   // Used by InterpreterBuilder, should be called after setting up subgraphs.
   TfLiteStatus SetMetadata(const std::map<std::string, std::string>& metadata);
 
+  // Sets telemetry settings on model information and interpreter settings.
+  // Used by InterpreterBuilder.
+  TfLiteStatus SetTelemetrySettings(
+      std::unique_ptr<TfLiteTelemetryInterpreterSettings> telemetry_settings);
+
+  // Reports the telemetry settings with the given setting name.
+  TfLiteStatus ReportTelemetrySettings(const char* setting_name);
+
   /// Adds `subgraphs_to_add` subgraphs, preserving pre-existing Subgraph
   /// entries. The value pointed to by `first_new_subgraph_index` will be set to
   /// the index of the first new subgraph if `first_new_subgraph_index` is
@@ -935,6 +943,9 @@ class Interpreter {
   // Model metadata stored as mapping of name (key) to buffer (value).
   // Data is mapped from the Metadata in TFLite flatbuffer model.
   std::map<std::string, std::string> metadata_;
+
+  // Telemery data including model metadata and interpreter settings.
+  std::unique_ptr<TfLiteTelemetryInterpreterSettings> telemetry_data_;
 
   // InterpreterOptions object which is being used.
   std::unique_ptr<InterpreterOptions> options_;

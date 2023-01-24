@@ -113,9 +113,11 @@ cc_library(
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_passes",
         "//tensorflow/compiler/mlir/tfrt/jit/transforms:tf_jitrt_passes",
         "//tensorflow/compiler/mlir/xla:xla_legalize_tf",
+        "//tensorflow/compiler/xla/mlir/backends/cpu/transforms:passes",
         "//tensorflow/compiler/xla/mlir/runtime/ir:rt",
         "//tensorflow/compiler/xla/mlir/runtime/transforms:compiler",
         "//tensorflow/compiler/xla/mlir_hlo:gml_st_passes",
+        "//tensorflow/compiler/xla/mlir_hlo:gml_st_transforms",
         "//tensorflow/compiler/xla/mlir_hlo:mhlo_passes",
         "//tensorflow/compiler/xla/mlir_hlo:transforms_passes",
         "//tensorflow/compiler/xla/runtime:compiler",
@@ -231,7 +233,6 @@ tfrt_cc_library(
     name = "tf_jitrt_request_context",
     srcs = ["jit/tf_jitrt_request_context.cc"],
     hdrs = ["jit/tf_jitrt_request_context.h"],
-    # copybara:uncomment compatible_with = ["//buildenv/target:gce"],
     deps = [
         "//tensorflow/compiler/xla/runtime:async_values_cache",
         "//tensorflow/compiler/xla/runtime:jit_executable",
@@ -361,6 +362,22 @@ cc_library(
 )
 
 cc_library(
+    name = "transforms/gpu_passes",
+    srcs = ["transforms/gpu_passes.cc"],
+    hdrs = ["transforms/gpu_passes.h"],
+    deps = [
+        "//tensorflow/compiler/mlir/tensorflow",
+        "//tensorflow/compiler/mlir/tfrt/ir:tfrt_gpu_opdefs",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:Transforms",
+    ],
+)
+
+cc_library(
     name = "tf_to_tfrt",
     srcs = [
         "transforms/cross_device_transfer.cc",
@@ -374,6 +391,7 @@ cc_library(
         "transforms/remove_device_attribute.cc",
         "transforms/remove_tf_if_const_args.cc",
         "transforms/reorder_assert.cc",
+        "transforms/sink_in_invariant_ops.cc",
         "transforms/tf_to_tfrt.cc",
         "transforms/tpu_passes.h",
     ],
@@ -388,6 +406,7 @@ cc_library(
         ":tensor_array_side_effect_analysis",
         ":tf_jitrt_opdefs",
         ":tf_jitrt_pipeline",
+        ":transforms/gpu_passes",
         ":transforms/set_shape_invariant_in_while_ops",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
@@ -411,45 +430,17 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core/platform:tstring",
         "//tensorflow/compiler/mlir/tfrt/ir:tfrt_fallback_async_opdefs",
+        "//tensorflow/compiler/mlir/tfrt/ir:tfrt_gpu_opdefs",
         "@tf_runtime//:basic_kernels_opdefs",
         "@tf_runtime//:core_runtime_opdefs",
         "@tf_runtime//backends/jitrt:jitrt_opdefs",
         "@tf_runtime//:stream_analysis",
         "@tf_runtime//:test_kernels_opdefs",
+        "//tensorflow/compiler/mlir/tfrt:transform_utils",
+        "//tensorflow/tsl/platform:status",
     ] + if_google([
         "//learning/brain/tfrt/tpu/compiler/mlir:tf_to_tfrt_tpu",
     ]),
-    alwayslink = 1,
-)
-
-cc_library(
-    name = "tf_to_tfrt_data",
-    srcs = [
-        "transforms/tf_to_tfrt_data.cc",
-    ],
-    hdrs = [
-        "transforms/tf_to_tfrt_data.h",
-    ],
-    deps = [
-        ":tf_to_tfrt",
-        "//tensorflow/compiler/mlir/tensorflow",
-        "//tensorflow/compiler/mlir/tensorflow:error_util",
-        "//tensorflow/compiler/mlir/tensorflow:import_model",
-        "//tensorflow/compiler/mlir/tensorflow:mlir_roundtrip_flags",
-        "//tensorflow/compiler/mlir/tensorflow:tensorflow_passes",
-        "//tensorflow/compiler/mlir/tensorflow:tensorflow_types",
-        "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core/platform:errors",
-        "//tensorflow/core/platform:status",
-        "@llvm-project//mlir:FuncDialect",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:Pass",
-        "@llvm-project//mlir:Transforms",
-        "@tf_runtime//:basic_kernels_opdefs",
-        "@tf_runtime//:bef",
-        "@tf_runtime//:data_opdefs",
-        "@tf_runtime//:mlirtobef",
-    ],
     alwayslink = 1,
 )
 
@@ -562,6 +553,7 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core/common_runtime:function_body",
         "//tensorflow/core/common_runtime:function_def_utils",
+        "//tensorflow/core/tfrt/fallback:fallback_state",
         "//tensorflow/core/platform:status",
         "@tf_runtime//:bef",
         "@tf_runtime//:mlirtobef",
@@ -641,7 +633,6 @@ cc_library(
         "//tensorflow/compiler/mlir/tfrt/jit/transforms:tf_jitrt_passes",
         "//tensorflow/compiler/mlir/tfrt/jit/transforms:tf_jitrt_test_passes",
         "//tensorflow/compiler/mlir/tfrt:tf_to_tfrt",
-        "//tensorflow/compiler/mlir/tfrt:tf_to_tfrt_data",
     ] + if_google([
         "//learning/brain/tfrt/tpu/compiler/mlir:tf_to_tfrt_tpu",
     ]),
@@ -675,9 +666,11 @@ tf_cc_binary(
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:bridge_pass_test_pipeline_registration",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_passes",
+        "//tensorflow/compiler/mlir/tfrt:transforms/gpu_passes",
         "//tensorflow/compiler/mlir/tfrt/ir:tfrt_fallback_async_opdefs",
         "//tensorflow/compiler/mlir/tfrt/ir:tfrt_fallback_opdefs",
         "//tensorflow/compiler/mlir/tfrt/ir:tfrt_fallback_sync_opdefs",
+        "//tensorflow/compiler/mlir/tfrt/ir:tfrt_gpu_opdefs",
         "//tensorflow/compiler/mlir/tfrt/jit/transforms:tf_jitrt_passes",
         "//tensorflow/compiler/mlir/tfrt/jit/transforms:tf_jitrt_test_passes",
         "//tensorflow/compiler/xla/mlir_hlo:gml_st",
@@ -828,5 +821,15 @@ cc_library(
         "@tf_runtime//:basic_kernels_opdefs",
         "@tf_runtime//:core_runtime_opdefs",
         "@tf_runtime//:support",
+    ],
+)
+
+cc_library(
+    name = "transforms/update_op_cost_in_tfrt_mlir",
+    srcs = ["transforms/update_op_cost_in_tfrt_mlir.cc"],
+    hdrs = ["transforms/update_op_cost_in_tfrt_mlir.h"],
+    deps = [
+        "//tensorflow/core/tfrt/fallback:cost_recorder",
+        "@llvm-project//mlir:IR",
     ],
 )

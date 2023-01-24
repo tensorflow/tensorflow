@@ -28,9 +28,8 @@ limitations under the License.
 #include "absl/container/inlined_vector.h"
 #include "tensorflow/compiler/xla/service/hlo_alias_analysis.h"
 #include "tensorflow/compiler/xla/service/hlo_cost_analysis.h"
-#include "tensorflow/compiler/xla/service/hlo_dataflow_analysis.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
-#include "tensorflow/compiler/xla/service/tuple_points_to_analysis.h"
+#include "tensorflow/compiler/xla/xla.pb.h"
 
 namespace xla {
 
@@ -90,8 +89,9 @@ class LatencyEstimator {
   virtual TimeCost GetLatencyBetween(const HloGraphNode& from,
                                      const HloGraphNode& target) const = 0;
   // Uses the approximate or cost model function for NodeCost based on a flag.
-  virtual LatencyEstimator::TimeCost NodeCost(
-      const HloInstruction* node) const = 0;
+  virtual TimeCost NodeCost(const HloInstruction* node) const = 0;
+  // Returns the core frequency used in latency estimation.
+  virtual int CyclesPerMicrosecond() const = 0;
   virtual ~LatencyEstimator() = default;
 };
 
@@ -99,13 +99,14 @@ class LatencyEstimator {
 class ApproximateLatencyEstimator : public LatencyEstimator {
  public:
   // Returns a latency estimation between two instructions.
-  // Currently this is in abstract units. When the real/accurate cost model will
-  // be implemented this will be in the units that will be.
+  // Currently this is in abstract units. When the real/accurate cost model is
+  // implemented this will be in cycles.
   TimeCost GetLatencyBetween(const HloGraphNode& from,
                              const HloGraphNode& target) const override;
   // Uses the approximate or cost model function for NodeCost based on a flag.
-  LatencyEstimator::TimeCost NodeCost(
-      const HloInstruction* instr) const override;
+  TimeCost NodeCost(const HloInstruction* instr) const override;
+  // ApproximateLatencyEstimator uses abstract units so this returns 1.
+  int CyclesPerMicrosecond() const override { return 1; }
 };
 
 // Helper class to keep track of which instructions are to be supported and
@@ -342,9 +343,8 @@ class BufferInfoTracker {
       const HloBuffer* value, const HloInstruction* first_definition,
       const HloCostAnalysis::ShapeSizeFunction& shape_size_bytes) {
     return ValueInfo{
-        .value = value,
-        .first_definition = first_definition,
-        .buffer_size = shape_size_bytes(value->values()[0]->shape())};
+        /*value=*/value, /*first_definition=*/first_definition,
+        /*buffer_size=*/shape_size_bytes(value->values()[0]->shape())};
   }
   const ValueInfo& GetBufferInfo(HloBuffer::Id id) const {
     return buffer_infos_[id];
@@ -632,6 +632,10 @@ class DefaultSchedulerCore : public SchedulerCore {
   virtual HloGraphNode* FindAndExtractBestNodeAvailable(
       SchedulingState& sched_state,
       DefaultSchedulerCore::ShouldSkipNodeFunction should_skip_node);
+  void DumpLatencyHidingSchedule(
+      const HloComputation* computation, const HloScheduleGraph& schedule_graph,
+      const std::vector<HloInstruction*>& instructions,
+      int cycles_per_microsecond, const DebugOptions& debug_options);
 
   HloCostAnalysis::ShapeSizeFunction shape_size_bytes_;
   std::unique_ptr<ModulePressureState> module_pressure_state_;

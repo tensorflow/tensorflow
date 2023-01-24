@@ -18,8 +18,6 @@ limitations under the License.
 #include <utility>
 
 #include "gml_st/IR/gml_st_ops.h"
-#include "gml_st/interfaces/tiling_interface.h"
-#include "gml_st/interfaces/tiling_interface_impl.h"
 #include "gml_st/transforms/fusion/fusion.h"
 #include "gml_st/transforms/passes.h"
 #include "gml_st/transforms/tiling/tiling.h"
@@ -28,6 +26,7 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "mlir/Dialect/Linalg/Transforms/TilingInterfaceImpl.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 
@@ -37,6 +36,50 @@ namespace {
 
 #define GEN_PASS_DEF_GREEDYTILINGANDFUSIONPASS
 #include "gml_st/transforms/passes.h.inc"
+
+namespace {
+
+class FuseTensorExtractPattern : public OpRewritePattern<tensor::ExtractOp> {
+ public:
+  explicit FuseTensorExtractPattern(MLIRContext *context)
+      : OpRewritePattern<tensor::ExtractOp>(context) {}
+
+  LogicalResult matchAndRewrite(tensor::ExtractOp extractOp,
+                                PatternRewriter &rewriter) const override {
+    if (extractOp->getParentOfType<ParallelOp>())
+      return rewriter.notifyMatchFailure(extractOp, "already fused");
+
+    if (extractOp->getUsers().empty())
+      return rewriter.notifyMatchFailure(extractOp, "op is trivially dead");
+
+    ParallelOp outerMostParallelOp;
+    for (Operation *user : extractOp->getUsers()) {
+      auto parallelOp = user->getParentOfType<gml_st::ParallelOp>();
+      while (parallelOp && parallelOp->getParentOfType<gml_st::ParallelOp>())
+        parallelOp = parallelOp->getParentOfType<gml_st::ParallelOp>();
+
+      if (!parallelOp)
+        return rewriter.notifyMatchFailure(extractOp, "consumer is not fused");
+
+      if (!outerMostParallelOp) {
+        outerMostParallelOp = parallelOp;
+      } else if (outerMostParallelOp != parallelOp) {
+        return rewriter.notifyMatchFailure(
+            extractOp,
+            "consumers are not all nested under the same ParallelOp");
+      }
+    }
+
+    rewriter.setInsertionPointToStart(outerMostParallelOp.getBody());
+    Value newExtractOp = rewriter.create<tensor::ExtractOp>(
+        extractOp.getLoc(), extractOp.getTensor(), extractOp.getIndices());
+    rewriter.replaceAllUsesWith(extractOp, newExtractOp);
+
+    return success();
+  }
+};
+
+}  // namespace
 
 struct GreedyTilingAndFusionPass
     : public impl::GreedyTilingAndFusionPassBase<GreedyTilingAndFusionPass> {
@@ -50,7 +93,7 @@ struct GreedyTilingAndFusionPass
   void getDependentDialects(DialectRegistry &registry) const final {
     registry
         .insert<GmlStDialect, linalg::LinalgDialect, tensor::TensorDialect>();
-    registerGmlStTilingInterfaceExternalModels(registry);
+    linalg::registerTilingInterfaceExternalModels(registry);
   }
 
   void runOnOperation() override {
@@ -73,15 +116,25 @@ struct GreedyTilingAndFusionPass
 
     auto tilingFilterFn = [&](TilingInterface op) {
       return success(llvm::none_of(op->getUsers(), [](Operation *user) {
-        return llvm::isa<MaterializeOp>(user) ||
-               llvm::isa<gml_st::TilingInterface>(user);
+        return llvm::isa<tensor::ExtractSliceOp>(user) ||
+               llvm::isa<TilingInterface>(user);
       }));
     };
-    RewritePatternSet patterns(ctx);
-    populateTilingPatterns(ctx, tilingFilterFn, opts, &patterns);
 
-    auto fusionFilterFn = [](MaterializeOp) { return success(); };
-    populateFusionPatterns(ctx, fusionFilterFn, &patterns);
+    {
+      RewritePatternSet patterns(ctx);
+      populateTilingPatterns(ctx, tilingFilterFn, opts, &patterns);
+
+      auto fusionFilterFn = [](tensor::ExtractSliceOp) { return success(); };
+      populateFusionPatterns(ctx, fusionFilterFn, &patterns);
+
+      if (failed(applyPatternsAndFoldGreedily(f, std::move(patterns))))
+        return signalPassFailure();
+    }
+
+    RewritePatternSet patterns(ctx);
+
+    patterns.add<FuseTensorExtractPattern>(ctx);
 
     if (failed(applyPatternsAndFoldGreedily(f, std::move(patterns))))
       return signalPassFailure();

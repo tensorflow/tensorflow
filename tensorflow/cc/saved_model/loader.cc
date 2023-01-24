@@ -301,7 +301,7 @@ Status LoadSavedModel(const SessionOptions& session_options,
   auto fingerprint_proto =
       saved_model::fingerprinting::ReadSavedModelFingerprint(export_dir);
   if (fingerprint_proto.ok()) {
-    // Set gauge cell with graph_def_checksum.
+    // Set gauge cell with saved_model_checksum.
     metrics::SavedModelReadFingerprint().Set(
         std::to_string(fingerprint_proto->saved_model_checksum()));
   }
@@ -318,6 +318,7 @@ Status LoadSavedModel(const SessionOptions& session_options,
   };
   if (status.ok()) {
     log_and_count(kLoadAttemptSuccess);
+    metrics::SavedModelReadPath().Set(export_dir);
   } else {
     log_and_count(kLoadAttemptFail);
   }

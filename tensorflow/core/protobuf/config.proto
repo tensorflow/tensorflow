@@ -595,7 +595,8 @@ message ConfigProto {
     // If set, this can be used by the runtime and the Ops for debugging,
     // monitoring, etc.
     //
-    // NOTE: This is currently used and propagated only by the direct session.
+    // NOTE: This is currently used and propagated only by the direct session
+    // and EagerContext.
     SessionMetadata session_metadata = 11;
 
     // If true, the session may treat the graph as being static for optimization
@@ -688,7 +689,18 @@ message ConfigProto {
     // Distributed coordination service configurations.
     CoordinationServiceConfig coordination_config = 23;
 
-    // Next: 24
+    // If true, the session will treat the graph as being non-static for
+    // optimization purposes.
+    //
+    // If this option is set to true when a session is created, the full
+    // GraphDef will be retained to enable calls to Session::Extend().
+    // Calling Extend() without setting this flag will result in errors.
+    //
+    // This option is meant to replace `optimize_for_static_graph` and it
+    // aims to negate its value.
+    bool disable_optimize_for_static_graph = 24;
+
+    // Next: 25
   }
 
   Experimental experimental = 16;

@@ -5,12 +5,10 @@ cc_library(
     name = "delegate_provider",
     srcs = [
         "stable_delegate_provider.cc",
-        "//tensorflow/lite/experimental/acceleration/configuration:configuration_fbs_contents-inl.h",
     ],
     copts = tflite_copts(),
     visibility = ["//visibility:public"],
     deps = [
-        "@flatbuffers",
         "//tensorflow/lite/core/shims:common",
         "//tensorflow/lite/tools:command_line_flags",
         "//tensorflow/lite/tools/delegates:delegate_provider_hdr",
@@ -21,6 +19,7 @@ cc_library(
         "//conditions:default": [
             "//tensorflow/lite/core/shims:delegate_plugin",
             "//tensorflow/lite/delegates/utils/experimental/stable_delegate:delegate_loader",
+            "//tensorflow/lite/delegates/utils/experimental/stable_delegate:tflite_settings_json_parser",
             "//tensorflow/lite/experimental/acceleration/configuration:configuration_fbs",
             "//tensorflow/lite/experimental/acceleration/configuration/c:stable_delegate",
         ],
@@ -53,4 +52,12 @@ cc_test(
         "@com_google_googletest//:gtest_main",
         "@pthreadpool",
     ],
+)
+
+exports_files(
+    srcs = [
+        "test_invalid_settings.json",
+        "test_sample_stable_delegate_settings.json",
+    ],
+    visibility = ["//visibility:public"],
 )

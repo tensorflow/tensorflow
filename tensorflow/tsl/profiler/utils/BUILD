@@ -24,6 +24,14 @@ cc_library(
 )
 
 cc_library(
+    name = "format_utils",
+    hdrs = ["format_utils.h"],
+    deps = [
+        "//tensorflow/tsl/platform:logging",
+    ],
+)
+
+cc_library(
     name = "time_utils",
     hdrs = ["time_utils.h"],
     copts = tf_profiler_copts(),
@@ -43,7 +51,7 @@ cc_library(
     ],
     copts = tf_profiler_copts(),
     visibility = [
-        "//tensorflow/compiler/xla/stream_executor:__subpackages__",
+        "//tensorflow/compiler/xla:__subpackages__",
         "//tensorflow/tsl/platform/cloud:__pkg__",
         "//tensorflow/tsl/profiler:internal",
     ],

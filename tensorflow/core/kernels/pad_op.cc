@@ -315,7 +315,6 @@ namespace functor {
   DECLARE_GPU_SPEC(T, 6);
 
 TF_CALL_GPU_ALL_TYPES(DECLARE_GPU_SPECS);
-TF_CALL_bfloat16(DECLARE_GPU_SPECS);
 TF_CALL_int8(DECLARE_GPU_SPECS);
 TF_CALL_uint8(DECLARE_GPU_SPECS);
 }  // namespace functor
@@ -350,7 +349,6 @@ TF_CALL_uint8(DECLARE_GPU_SPECS);
                           PadOp<GPUDevice, T, int64>)
 
 TF_CALL_GPU_ALL_TYPES(REGISTER_GPU_KERNEL);
-TF_CALL_bfloat16(REGISTER_GPU_KERNEL);
 TF_CALL_int8(REGISTER_GPU_KERNEL);
 TF_CALL_uint8(REGISTER_GPU_KERNEL);
 
@@ -392,6 +390,5 @@ REGISTER_KERNEL_BUILDER(Name("PadV2")
                             .HostMemory("output"),
                         PadOp<CPUDevice, int32, int64>);
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-
 
 }  // end namespace tensorflow

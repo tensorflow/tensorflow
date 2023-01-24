@@ -48,6 +48,7 @@ TODO: Make invariants more structured so that we can reference them in ops.
   }];
 
   let cppNamespace = "::mlir::TF";
+  let useFoldAPI = kEmitFoldAdaptorFolder;
 }
 
 //===----------------------------------------------------------------------===//
@@ -117,7 +118,7 @@ class TF_OpIsBroadcastableToRes<int opId, int resId> : And<[
 
 
 class TF_AllTypesMatchPred<list<string> values> :
-    CPred<"tf_type::AreCastCompatible(llvm::makeArrayRef({" #
+    CPred<"tf_type::AreCastCompatible(llvm::ArrayRef({" #
       !interleave(values, ", ") # "}))">;
 
 class TF_AllTypesMatch<list<string> names> :
@@ -188,6 +189,7 @@ def TF_TPUExecuteResource : TF_ResourceBase<"TPUExecute">;
 def TF_RandomGeneratorResource : TF_ResourceBase<"RandomGenerator">;
 def TF_XlaHostComputeResource : TF_ResourceBase<"XlaHostCompute">;
 def TF_CollectiveReduceOrderingResource : TF_ResourceBase<"CollectiveReduceOrdering">;
+def TF_NcclAllReduceOrderingResource : TF_ResourceBase<"NcclAllReduceOrdering">;
 
 // Fake resource, see `TF_MustExecute` below.
 def TF_MustExecuteResource : TF_ResourceBase<"MustExecute">;
@@ -255,6 +257,9 @@ def TF_RandomGeneratorSideEffect : MemoryEffects<[MemWrite<TF_RandomGeneratorRes
 // Special effect for keeping `CollectiveReduce` ops in order.
 def TF_CollectiveReduceOrderingEffect : MemoryEffects<[MemWrite<TF_CollectiveReduceOrderingResource>]>;
 
+// Special effect for keeping `NcclAllReduce` ops on the same device in order.
+def TF_NcclAllReduceOrderingEffect : MemoryEffects<[MemWrite<TF_NcclAllReduceOrderingResource>]>;
+
 // Trait for enforcing that a side-effecting op is executed, even if it would be
 // considered dead by MLIR (see b/195782952).
 // The trait is implemented as a write effect for a fake resource which is
@@ -311,6 +316,8 @@ def TF_Float16Ref : TF_TensorFlowType<"HalfRef", "f16ref">;
 def TF_Float32Ref : TF_TensorFlowType<"FloatRef", "f32ref">;
 def TF_Float64Ref : TF_TensorFlowType<"DoubleRef", "f64ref">;
 def TF_Bfloat16Ref : TF_TensorFlowType<"Bfloat16Ref", "bf16ref">;
+def TF_Float8E4M3FNRef : TF_TensorFlowType<"Float8E4M3FNRef", "float8e4m3fnref">;
+def TF_Float8E5M2Ref : TF_TensorFlowType<"Float8E5M2Ref", "float8e5m2ref">;
 
 // Complex reference types
 def TF_Complex64Ref : TF_TensorFlowType<"Complex64Ref", "complex64ref">;
@@ -419,11 +426,14 @@ def TF_Float16 : AnyTypeOf<[F16, TF_Float16Ref], "16-bit float">;
 def TF_Float32 : AnyTypeOf<[F32, TF_Float32Ref], "32-bit float">;
 def TF_Float64 : AnyTypeOf<[F64, TF_Float64Ref], "64-bit float">;
 def TF_Bfloat16 : AnyTypeOf<[BF16, TF_Bfloat16Ref], "bfloat16">;
+def TF_Float8E4M3FN : AnyTypeOf<[F8E4M3FN, TF_Float8E4M3FNRef], "float8e4m3fn">;
+def TF_Float8E5M2 : AnyTypeOf<[F8E5M2, TF_Float8E5M2Ref], "float8e5m2">;
 
 def TF_F32OrF64 : AnyTypeOf<[TF_Float32, TF_Float64], "32/64-bit float">;
 
 def TF_Float : AnyTypeOf<
-  [TF_Float16, TF_Float32, TF_Float64, TF_Bfloat16],
+  [TF_Float16, TF_Float32, TF_Float64, TF_Bfloat16, TF_Float8E4M3FN,
+   TF_Float8E5M2],
   "floating-point">;
 
 // Tensor types
@@ -433,6 +443,8 @@ def TF_Float16Tensor : TensorOf<[TF_Float16]>;
 def TF_Float32Tensor : TensorOf<[TF_Float32]>;
 def TF_Float64Tensor : TensorOf<[TF_Float64]>;
 def TF_Bfloat16Tensor : TensorOf<[TF_Bfloat16]>;
+def TF_Float8E4M3FNTensor : TensorOf<[TF_Float8E4M3FN]>;
+def TF_Float8E5M2Tensor : TensorOf<[TF_Float8E5M2]>;
 
 //===----------------------------------------------------------------------===//
 // Complex types (including corresponding reference types)

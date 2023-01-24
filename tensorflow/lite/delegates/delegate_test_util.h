@@ -25,9 +25,9 @@ limitations under the License.
 
 #include <gtest/gtest.h>
 #include "third_party/eigen3/Eigen/Core"
+#include "tensorflow/lite/core/kernels/register.h"
 #include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/kernels/internal/compatibility.h"
-#include "tensorflow/lite/kernels/register.h"
 
 namespace tflite {
 namespace delegates {
@@ -93,7 +93,7 @@ class SimpleDelegate {
 // Friend of Interpreter to access private methods.
 class TestDelegation {
  public:
-  virtual ~TestDelegation() {}
+  virtual ~TestDelegation() = default;
 
   // Returns an empty interpreter that uses the same default delegates that are
   // normally enabled by default.

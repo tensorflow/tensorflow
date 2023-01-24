@@ -6,9 +6,11 @@ load(
     "if_oss",
     "if_xla_available",
     "py_test",
+    "tf_cc_binary",
     "tf_cc_shared_object",
     "tf_cc_test",
     "tf_gen_op_wrapper_py",
+    "tf_kernel_library",
 )
 load("//tensorflow:tensorflow.default.bzl", "cuda_py_test", "tf_py_test", "tf_python_pybind_extension")
 load("//tensorflow:pytype.default.bzl", "pytype_library", "pytype_strict_library")
@@ -18,6 +20,7 @@ load("//tensorflow/core/platform:build_config_root.bzl", "if_static", "tf_additi
 
 visibility = [
     "//tensorflow:__subpackages__",
+    "//tensorflow/dtensor:dtensor-internal",
     "//learning/brain/tfrt:__subpackages__",
     "//third_party/py/tensorflow_numerics:__subpackages__",
     "//tensorflow_models/google:__subpackages__",
@@ -83,14 +86,47 @@ cc_library(
     ],
     visibility = ["//visibility:public"],
     deps = [
+        ":op_reg_offset_proto_cc",
+        ":python_op_gen_annotator",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:op_gen_lib",
         "//tensorflow/core:protos_all_cc",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
     ],
     alwayslink = 1,
+)
+
+cc_library(
+    name = "python_op_gen_annotator",
+    srcs = ["python_op_gen_annotator.cc"],
+    hdrs = ["python_op_gen_annotator.h"],
+    visibility = ["//tensorflow:internal"],
+    deps = [
+        ":kythe_metadata_proto_cc",
+        ":op_reg_offset_proto_cc",
+        "//tensorflow/core:portable_gif_internal",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/platform:stringpiece",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+tf_cc_test(
+    name = "python_op_gen_annotator_test",
+    srcs = ["python_op_gen_annotator_test.cc"],
+    deps = [
+        ":kythe_metadata_proto_cc",
+        ":python_op_gen_annotator",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/platform:protobuf",
+        "@com_google_absl//absl/strings",
+    ],
 )
 
 tf_python_pybind_extension(
@@ -110,12 +146,16 @@ cc_library(
     srcs = ["python_op_gen_main.cc"],
     visibility = ["//visibility:public"],
     deps = [
+        ":op_reg_offset_proto_cc",
         ":python_op_gen",
         "//tensorflow/core:framework",
+        "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:op_gen_lib",
         "//tensorflow/core:protos_all_cc",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
     ],
     alwayslink = 1,
 )
@@ -124,12 +164,72 @@ tf_cc_test(
     name = "python_op_gen_test",
     srcs = ["python_op_gen_test.cc"],
     deps = [
+        ":op_reg_offset_proto_cc",
         ":python_op_gen",
         "//tensorflow/core:framework",
         "//tensorflow/core:op_gen_lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+    ],
+)
+
+tf_proto_library(
+    name = "op_reg_offset_proto",
+    srcs = ["op_reg_offset.proto"],
+    cc_api_version = 3,
+    visibility = ["//tensorflow:internal"],
+)
+
+tf_proto_library(
+    name = "kythe_metadata_proto",
+    srcs = ["kythe_metadata.proto"],
+    cc_api_version = 3,
+    visibility = ["//tensorflow:internal"],
+)
+
+tf_cc_binary(
+    name = "offset_counter",
+    srcs = ["offset_counter.cc"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":offset_counter_helper",
+        ":op_reg_offset_proto_cc",
+        "//tensorflow/tsl/platform:errors",
+        "//tensorflow/tsl/platform:platform_port",
+        "//tensorflow/tsl/platform:strcat",
+        "//tensorflow/tsl/platform:types",
+        "//tensorflow/tsl/util:command_line_flags",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
+    name = "offset_counter_helper",
+    srcs = ["offset_counter_helper.cc"],
+    hdrs = ["offset_counter_helper.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":op_reg_offset_proto_cc",
+        "//tensorflow/tsl/platform:errors",
+        "//tensorflow/tsl/platform:regexp",
+        "//tensorflow/tsl/platform:status",
+        "//tensorflow/tsl/platform:strcat",
+        "//tensorflow/tsl/platform:types",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+tf_cc_test(
+    name = "offset_counter_helper_test",
+    srcs = ["offset_counter_helper_test.cc"],
+    deps = [
+        ":offset_counter_helper",
+        ":op_reg_offset_proto_cc",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "@com_google_absl//absl/strings:str_format",
     ],
 )
 
@@ -315,6 +415,7 @@ py_library(
         "//tensorflow/core/function/trace_type",
         "//tensorflow/python:pywrap_tensorflow",
         "//tensorflow/python/lib/core:_pywrap_bfloat16",
+        "//tensorflow/python/lib/core:_pywrap_custom_casts",
         "//tensorflow/python/lib/core:_pywrap_float8",
         "//tensorflow/python/types:doc_typealias",
     ],
@@ -437,7 +538,10 @@ py_library(
         "convert_to_constants.py",
     ],
     srcs_version = "PY3",
-    visibility = visibility,
+    visibility = visibility + [
+        "//learning/deepmind/deepfunc:__subpackages__",
+        "//platforms/darwinn:__subpackages__",
+    ],
     deps = [
         ":dtypes",
         ":ops",
@@ -1011,6 +1115,7 @@ py_library(
         ":tensor_util",
         ":type_spec",
         "//tensorflow/core:protos_all_py",
+        "//tensorflow/core/function/capture:capture_container",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:handle_data_util",
         "//tensorflow/python:resource_variable_ops",
@@ -1346,7 +1451,9 @@ py_library(
         ":type_spec",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/core/function/trace_type",
-        "//tensorflow/python:tensor_util",
+        "//tensorflow/python/eager:graph_only_ops",
+        "//tensorflow/python/platform",
+        "//tensorflow/python/types",
         "//tensorflow/python/util",
         "//third_party/py/numpy",
     ],
@@ -1415,6 +1522,7 @@ py_library(
         "//tensorflow/python:pywrap_tf_session",
         "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python:session",
+        "//tensorflow/python:sync_ops_gen",
         "//tensorflow/python:tensor_array_ops",
         "//tensorflow/python:training",
         "//tensorflow/python:variables",
@@ -1754,10 +1862,11 @@ tf_gen_op_wrapper_py(
     deps = [":test_ops_kernels"],
 )
 
-cc_library(
+tf_kernel_library(
     name = "test_ops_kernels",
     srcs = ["test_ops.cc"],
-    linkstatic = 1,
+    hdrs = ["test_ops.h"],
+    gpu_srcs = ["test_ops.cu.cc"],
     deps = [
         "@com_google_absl//absl/time",
         "//tensorflow/core:framework",
@@ -2009,7 +2118,7 @@ tf_py_test(
     ],
 )
 
-tf_py_test(
+cuda_py_test(
     name = "test_util_test",
     size = "small",
     srcs = ["test_util_test.py"],
@@ -2248,3 +2357,15 @@ tf_python_pybind_extension(
 #     deps = [":cpp_shape_inference_proto"],
 # )
 # copybara:uncomment_end
+
+py_library(
+    name = "summary_test_util",
+    testonly = True,
+    srcs = ["summary_test_util.py"],
+    srcs_version = "PY3",
+    deps = [
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/python:lib",
+        "//tensorflow/python:platform",
+    ],
+)

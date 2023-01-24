@@ -234,8 +234,19 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
       break;
     }
     case HloOpcode::kCopyStart: {
-      instruction = CreateCopyStart(shape, operands(0),
-                                    proto.is_cross_program_prefetch());
+      std::optional<int> cross_program_prefetch_index;
+      if (proto.optional_cross_program_prefetch_index_case() ==
+          HloInstructionProto::kCrossProgramPrefetchIndex) {
+        cross_program_prefetch_index =
+            std::make_optional(proto.cross_program_prefetch_index());
+
+        // Silently upgrade HLO protos using the old field.
+      } else if (proto.is_cross_program_prefetch()) {
+        cross_program_prefetch_index = 0;
+      }
+
+      instruction =
+          CreateCopyStart(shape, operands(0), cross_program_prefetch_index);
       break;
     }
     case HloOpcode::kCompare: {
@@ -1121,6 +1132,7 @@ HloInstruction::CreateRngBitGenerator(const Shape& shape, HloInstruction* state,
     case HloOpcode::kSqrt:
     case HloOpcode::kCbrt:
     case HloOpcode::kTanh:
+    case HloOpcode::kTan:
       break;
     default:
       LOG(FATAL) << "Invalid unary instruction opcode "
@@ -1235,9 +1247,9 @@ HloInstruction::CreateRngBitGenerator(const Shape& shape, HloInstruction* state,
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateCopyStart(
     const Shape& shape, HloInstruction* operand,
-    bool is_cross_program_prefetch) {
+    std::optional<int> cross_program_prefetch) {
   return std::make_unique<HloCopyStartInstruction>(shape, operand,
-                                                   is_cross_program_prefetch);
+                                                   cross_program_prefetch);
 }
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateCompare(
@@ -2122,6 +2134,7 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
     case HloOpcode::kSin:
     case HloOpcode::kSqrt:
     case HloOpcode::kCbrt:
+    case HloOpcode::kTan:
     case HloOpcode::kTanh:
       CHECK_EQ(new_operands.size(), 1);
       clone = CreateUnary(shape, opcode_, new_operands[0]);
@@ -2579,6 +2592,7 @@ bool HloInstruction::IdenticalSlowPath(
     case HloOpcode::kStochasticConvert:
     case HloOpcode::kCbrt:
     case HloOpcode::kSubtract:
+    case HloOpcode::kTan:
     case HloOpcode::kTanh:
     case HloOpcode::kTuple:
       return true;
@@ -3052,6 +3066,7 @@ bool HloInstruction::IsOpElementwise(HloOpcode opcode) {
     case HloOpcode::kSin:
     case HloOpcode::kSqrt:
     case HloOpcode::kCbrt:
+    case HloOpcode::kTan:
     case HloOpcode::kTanh:
       return true;
 
@@ -3651,6 +3666,8 @@ Status HloInstruction::Visit(DfsHloVisitorBase<HloInstructionPtr>* visitor) {
       return visitor->HandleLog(this);
     case HloOpcode::kLog1p:
       return visitor->HandleLog1p(this);
+    case HloOpcode::kTan:
+      return visitor->HandleTan(this);
     case HloOpcode::kTanh:
       return visitor->HandleTanh(this);
     case HloOpcode::kCos:
@@ -4931,8 +4948,8 @@ void HloInstruction::set_called_computations_execution_thread(
       async_execution_thread, skip_async_execution_thread_overwrite);
 }
 
-bool HloInstruction::is_cross_program_prefetch() const {
-  return Cast<HloCopyStartInstruction>(this)->is_cross_program_prefetch();
+std::optional<int> HloInstruction::cross_program_prefetch_index() const {
+  return Cast<HloCopyStartInstruction>(this)->cross_program_prefetch_index();
 }
 
 ComparisonDirection HloInstruction::comparison_direction() const {
@@ -4952,8 +4969,8 @@ const CholeskyOptions& HloInstruction::cholesky_options() const {
 }
 
 const std::vector<std::pair<ShapeIndex, std::pair<int64_t, ShapeIndex>>>&
-HloInstruction::custom_call_output_operand_aliasing() const {
-  return Cast<HloCustomCallInstruction>(this)->output_to_operand_aliasing();
+HloInstruction::output_operand_aliasing() const {
+  return Cast<HloCallableInstruction>(this)->output_to_operand_aliasing();
 }
 
 }  // namespace xla

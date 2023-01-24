@@ -175,8 +175,8 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "Clang$")
   list(APPEND TF_TARGET_PRIVATE_OPTIONS "-Wno-deprecated-declarations")
 endif()
 # Additional compiler flags used when compiling TF Lite.
-set(TFLITE_TARGET_PUBLIC_OPTIONS "")
-set(TFLITE_TARGET_PRIVATE_OPTIONS "-DEIGEN_NEON_GEBP_NR=4")
+set(TFLITE_TARGET_PUBLIC_OPTIONS "-DEIGEN_NEON_GEBP_NR=4")
+set(TFLITE_TARGET_PRIVATE_OPTIONS "")
 set(TFLITE_TARGET_PRIVATE_DEFINITIONS "")
 # Additional library dependencies based upon enabled features.
 set(TFLITE_TARGET_DEPENDENCIES "")
@@ -492,6 +492,7 @@ set(TFLITE_PROFILER_SRCS
   ${TFLITE_SOURCE_DIR}/profiling/platform_profiler.cc
   ${TFLITE_SOURCE_DIR}/profiling/root_profiler.h
   ${TFLITE_SOURCE_DIR}/profiling/root_profiler.cc
+  ${TFLITE_SOURCE_DIR}/profiling/telemetry/profiler.cc
 )
 if(CMAKE_SYSTEM_NAME MATCHES "Android")
   list(APPEND TFLITE_PROFILER_SRCS
@@ -536,6 +537,7 @@ set(_ALL_TFLITE_SRCS
   ${TFLITE_PROFILER_SRCS}
   ${TFLITE_SOURCE_DIR}/internal/signature_def.h
   ${TFLITE_SOURCE_DIR}/kernels/internal/utils/sparsity_format_converter.cc
+  ${TFLITE_SOURCE_DIR}/schema/conversion_metadata_generated.h
   ${TFLITE_SOURCE_DIR}/schema/schema_utils.cc
   ${TFLITE_SOURCE_DIR}/schema/schema_generated.h
 )

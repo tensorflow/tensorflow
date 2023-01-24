@@ -1,6 +1,10 @@
 load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite", "verifier_internal_visibility_allowlist")
 load("//tensorflow/lite:build_def.bzl", "tflite_copts", "tflite_copts_warnings")
 load("//tensorflow:tensorflow.bzl", "tf_cc_binary", "tf_cc_test")
+load(
+    "//tensorflow/core/platform:build_config.bzl",
+    "tf_proto_library",
+)
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -257,7 +261,7 @@ cc_library(
     hdrs = ["command_line_flags.h"],
     copts = tflite_copts(),
     deps = [
-        "//tensorflow/lite/tools:logging",
+        ":logging",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -299,8 +303,8 @@ tf_cc_binary(
     srcs = ["list_flex_ops_main.cc"],
     visibility = ["//visibility:public"],
     deps = [
+        ":command_line_flags",
         ":list_flex_ops",
-        "//tensorflow/lite/tools:command_line_flags",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -310,8 +314,8 @@ cc_library(
     srcs = ["list_flex_ops_main.cc"],
     visibility = ["//visibility:public"],
     deps = [
+        ":command_line_flags",
         ":list_flex_ops",
-        "//tensorflow/lite/tools:command_line_flags",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -333,8 +337,8 @@ tf_cc_binary(
     srcs = ["list_flex_ops_main.cc"],
     visibility = ["//visibility:public"],
     deps = [
+        ":command_line_flags",
         ":list_flex_ops_no_kernel",
-        "//tensorflow/lite/tools:command_line_flags",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -386,4 +390,42 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "model_loader",
+    srcs = ["model_loader.cc"],
+    hdrs = ["model_loader.h"],
+    deps = [
+        "//tensorflow/lite:minimal_logging",
+        "//tensorflow/lite/core:model_builder",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_test(
+    name = "model_loader_test",
+    srcs = ["model_loader_test.cc"],
+    data = ["//tensorflow/lite/java/demo/app/src/main/assets:mobilenet_v1_1.0_224.tflite"],
+    deps = [
+        ":model_loader",
+        "//tensorflow/lite:model_builder",
+        "//tensorflow/lite/schema:schema_fbs",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_googletest//:gtest_main",
+        "@flatbuffers//:runtime_cc",
+    ],
+)
+
 tflite_portable_test_suite()
+
+# copybara:uncomment_begin(google-only)
+# tf_proto_library(
+#     name = "op_kernel_set_proto",
+#     srcs = ["op_kernel_set.proto"],
+# )
+#
+# py_proto_library(
+#     name = "op_kernel_set_py_pb2",
+#     api_version = 2,
+#     deps = [":op_kernel_set_proto"],
+# )
+# copybara:uncomment_end

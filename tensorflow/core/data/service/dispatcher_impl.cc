@@ -32,6 +32,8 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/memory/memory.h"
+#include "absl/strings/numbers.h"
+#include "absl/strings/str_split.h"
 #include "absl/time/time.h"
 #include "tensorflow/core/data/dataset_utils.h"
 #include "tensorflow/core/data/hash_utils.h"
@@ -44,10 +46,14 @@ limitations under the License.
 #include "tensorflow/core/data/service/export.pb.h"
 #include "tensorflow/core/data/service/grpc_util.h"
 #include "tensorflow/core/data/service/journal.h"
+#include "tensorflow/core/data/service/snapshot/file_utils.h"
+#include "tensorflow/core/data/service/snapshot/path_utils.h"
+#include "tensorflow/core/data/service/split_provider.h"
+#include "tensorflow/core/data/service/utils.h"
 #include "tensorflow/core/data/service/validate_utils.h"
 #include "tensorflow/core/data/service/worker.grpc.pb.h"
+#include "tensorflow/core/data/snapshot_utils.h"
 #include "tensorflow/core/data/standalone.h"
-#include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/metrics.h"
 #include "tensorflow/core/framework/node_def.pb.h"
@@ -56,7 +62,6 @@ limitations under the License.
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/path.h"
-#include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/random.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/statusor.h"
@@ -64,7 +69,6 @@ limitations under the License.
 #include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/protobuf/data_service.pb.h"
 #include "tensorflow/core/protobuf/service_config.pb.h"
-#include "tensorflow/core/public/session_options.h"
 
 namespace tensorflow {
 namespace data {
@@ -182,16 +186,16 @@ DataServiceDispatcherImpl::~DataServiceDispatcherImpl() {
   {
     mutex_lock l(mu_);
     cancelled_ = true;
-    iteration_gc_thread_cv_.notify_all();
+    maintenance_thread_cv_.notify_all();
   }
-  iteration_gc_thread_.reset();
+  maintenance_thread_.reset();
 }
 
 Status DataServiceDispatcherImpl::Start() {
   mutex_lock l(mu_);
   if (config_.job_gc_timeout_ms() >= 0) {
-    iteration_gc_thread_ = absl::WrapUnique(env_->StartThread(
-        {}, "iteration-gc-thread", [&] { IterationGcThread(); }));
+    maintenance_thread_ = absl::WrapUnique(env_->StartThread(
+        {}, "maintenance-thread", [&] { MaintenanceThread(); }));
   }
   if (config_.work_dir().empty()) {
     if (config_.fault_tolerant_mode()) {
@@ -241,6 +245,13 @@ Status DataServiceDispatcherImpl::Start() {
   // Initialize the journal writer in `Start` so that we fail fast in case it
   // can't be initialized.
   TF_RETURN_IF_ERROR(journal_writer_.value()->EnsureInitialized());
+
+  for (const auto& path : state_.ListSnapshotPaths()) {
+    TF_ASSIGN_OR_RETURN(std::unique_ptr<SnapshotManager> snapshot_manager,
+                        SnapshotManager::Resume(path, env_));
+    snapshots_.insert({path, std::move(snapshot_manager)});
+  }
+
   started_ = true;
   return OkStatus();
 }
@@ -284,7 +295,7 @@ Status DataServiceDispatcherImpl::RestoreSplitProviders(
 
 Status DataServiceDispatcherImpl::FindTasksToDelete(
     const absl::flat_hash_set<int64_t>& current_tasks,
-    const std::vector<std::shared_ptr<const Task>> assigned_tasks,
+    const std::vector<std::shared_ptr<const Task>>& assigned_tasks,
     WorkerHeartbeatResponse* response) {
   absl::flat_hash_set<int64_t> assigned_ids;
   for (const auto& assigned : assigned_tasks) {
@@ -363,6 +374,10 @@ Status DataServiceDispatcherImpl::WorkerHeartbeat(
       FindTasksToDelete(current_tasks, assigned_tasks, response));
   TF_RETURN_IF_ERROR(
       FindNewTasks(worker_address, current_tasks, assigned_tasks, response));
+
+  for (const auto& [path, snapshot_manager] : snapshots_) {
+    TF_RETURN_IF_ERROR(snapshot_manager->WorkerHeartbeat(*request, *response));
+  }
 
   VLOG(4) << "Finished worker heartbeat for worker at address "
           << request->worker_address();
@@ -459,11 +474,7 @@ Status DataServiceDispatcherImpl::MakeSplitProviders(
   TF_RETURN_IF_ERROR(state_.DatasetFromId(dataset_id, dataset));
   std::shared_ptr<const DatasetDef> dataset_def;
   TF_RETURN_IF_ERROR(GetDatasetDef(*dataset, dataset_def));
-  standalone::Dataset::Params params;
-  std::unique_ptr<standalone::Dataset> standalone_dataset;
-  TF_RETURN_IF_ERROR(standalone::Dataset::FromGraph(
-      params, dataset_def->graph(), &standalone_dataset));
-  TF_RETURN_IF_ERROR(standalone_dataset->MakeSplitProviders(&split_providers));
+  TF_RETURN_IF_ERROR(CreateSplitProviders(*dataset_def, split_providers));
   return OkStatus();
 }
 
@@ -1039,6 +1050,45 @@ Status DataServiceDispatcherImpl::GetWorkers(const GetWorkersRequest* request,
   return OkStatus();
 }
 
+Status DataServiceDispatcherImpl::Snapshot(const SnapshotRequest* request,
+                                           SnapshotResponse* response) {
+  TF_RETURN_IF_ERROR(CheckStarted());
+  mutex_lock l(mu_);
+
+  if (snapshots_.contains(request->path())) {
+    return errors::InvalidArgument("a snapshot at ", request->path(),
+                                   " is already started or completed");
+  }
+
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<SnapshotManager> snapshot_manager,
+                      SnapshotManager::Start(*request, env_));
+  snapshots_.insert({request->path(), std::move(snapshot_manager)});
+
+  Update update;
+  SnapshotUpdate* snapshot = update.mutable_snapshot();
+  snapshot->set_path(request->path());
+  TF_RETURN_IF_ERROR(Apply(update));
+
+  return OkStatus();
+}
+
+Status DataServiceDispatcherImpl::GetSnapshotSplit(
+    const GetSnapshotSplitRequest* request,
+    GetSnapshotSplitResponse* response) {
+  TF_RETURN_IF_ERROR(CheckStarted());
+  mutex_lock l(mu_);
+
+  auto it = snapshots_.find(request->base_path());
+  if (it == snapshots_.end()) {
+    return errors::InvalidArgument(
+        "the dispatcher does not know of a snapshot at ", request->base_path());
+  }
+
+  TF_RETURN_IF_ERROR(it->second->GetSnapshotSplit(*request, *response));
+
+  return OkStatus();
+}
+
 Status DataServiceDispatcherImpl::PopulateTaskDef(
     std::shared_ptr<const Task> task, TaskDef* task_def) const
     TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
@@ -1113,13 +1163,13 @@ Status DataServiceDispatcherImpl::Apply(const Update& update)
   return state_.Apply(update);
 }
 
-void DataServiceDispatcherImpl::IterationGcThread() {
+void DataServiceDispatcherImpl::MaintenanceThread() {
   int64_t next_check_micros = 0;
   while (true) {
     mutex_lock l(mu_);
     while (!cancelled_ && env_->NowMicros() < next_check_micros) {
       int64_t remaining_micros = next_check_micros - env_->NowMicros();
-      iteration_gc_thread_cv_.wait_for(
+      maintenance_thread_cv_.wait_for(
           l, std::chrono::microseconds(remaining_micros));
     }
     if (cancelled_) {

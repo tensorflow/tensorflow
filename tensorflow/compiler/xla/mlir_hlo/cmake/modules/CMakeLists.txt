@@ -23,6 +23,7 @@ set(MHLO_CONFIG_CMAKE_DIR "${mhlo_cmake_builddir}")
 set(MHLO_CONFIG_LLVM_CMAKE_DIR "${llvm_cmake_builddir}")
 set(MHLO_CONFIG_INCLUDE_EXPORTS "include(\"\${MHLO_CMAKE_DIR}/MHLOTargets.cmake\")")
 set(MHLO_CONFIG_INCLUDE_DIRS
+  "${MLIR_HLO_SOURCE_DIR}"
   "${MLIR_HLO_MAIN_INCLUDE_DIR}"
   "${MLIR_HLO_GEN_INCLUDE_DIR}"
   )

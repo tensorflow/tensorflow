@@ -21,6 +21,7 @@ limitations under the License.
 #include <iterator>
 #include <memory>
 #include <numeric>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -1358,7 +1359,7 @@ ENTRY entry {
 
 TEST_F(LatencyHidingSchedulerTest,
        BalanceChainedCollectivePermutesLoopedEinsum) {
-  absl::string_view hlo_string = R"(
+  std::string hlo_string = R"(
 HloModule module, is_scheduled=true
 
 %fused_computation.1793 (param_0.4944: s32[16], param_1.5648: u32[], param_2.3959: u32[], param_3.3338: u32[], param_4.2302: u32[]) -> (s32[1], s32[1], s32[1], s32[1]) {
@@ -1459,6 +1460,8 @@ HloModule module, is_scheduled=true
   %slice.1245 = bf16[1,4,288,8,1024,1,1]{4,2,0,3,1,6,5:T(8,128)(2,1)} slice(bf16[2,4,288,8,1024,1,1]{4,2,0,3,1,6,5:T(8,128)(2,1)} %param_1.265), slice={[1:2], [0:4], [0:288], [0:8], [0:1024], [0:1], [0:1]}
   ROOT %add.3080 = bf16[1,4,288,8,1024,1,1]{4,2,0,3,1,6,5:T(8,128)(2,1)} add(bf16[1,4,288,8,1024,1,1]{4,2,0,3,1,6,5:T(8,128)(2,1)} %param_0.240, bf16[1,4,288,8,1024,1,1]{4,2,0,3,1,6,5:T(8,128)(2,1)} %slice.1245)
 }
+)";
+  hlo_string += R"(
 
 ENTRY entry {
   %param.163 = (bf16[1,20,256,16,4,288,1]{2,5,1,4,3,6,0:T(8,128)(2,1)}, bf16[8,1024,1,20,256,1,1]{4,1,3,0,6,5,2:T(8,128)(2,1)}, bf16[1,4,288,8,1024,1,1]{4,2,3,1,6,5,0:T(8,128)(2,1)}, bf16[1,4,288,8,1024,1,1]{4,2,0,3,1,6,5:T(8,128)(2,1)}, u32[]{:T(128)}) parameter(0)
@@ -1610,7 +1613,7 @@ ENTRY entry {
 
 TEST_F(LatencyHidingSchedulerTest,
        BalanceChainedCollectivePermutesLoopedEinsum2) {
-  absl::string_view hlo_string = R"(
+  std::string hlo_string = R"(
 HloModule module, is_scheduled=true
 
 %fused_computation.1851 (param_0.5170: s32[32], param_1.5848: u32[], param_2.4103: u32[], param_3.3513: u32[], param_4.2356: u32[]) -> (s32[1], s32[1], s32[1], s32[1]) {
@@ -1711,7 +1714,8 @@ HloModule module, is_scheduled=true
   %slice.1125 = bf16[1,576,16,1024,1,1]{3,1,0,2,5,4:T(8,128)(2,1)} slice(bf16[2,576,16,1024,1,1]{3,1,0,2,5,4:T(8,128)(2,1)} %param_1.298), slice={[1:2], [0:576], [0:16], [0:1024], [0:1], [0:1]}
   ROOT %add.3122 = bf16[1,576,16,1024,1,1]{3,1,0,2,5,4:T(8,128)(2,1)} add(bf16[1,576,16,1024,1,1]{3,1,0,2,5,4:T(8,128)(2,1)} %param_0.250, bf16[1,576,16,1024,1,1]{3,1,0,2,5,4:T(8,128)(2,1)} %slice.1125)
 }
-
+)";
+  hlo_string += R"(
 ENTRY entry {
   %constant.4782 = u32[]{:T(128)} constant(16)
   %constant.4661 = u32[]{:T(128)} constant(2)
@@ -1803,7 +1807,7 @@ ENTRY entry {
 
 TEST_F(LatencyHidingSchedulerTest,
        BalanceChainedCollectivePermutesLoopedEinsum3) {
-  absl::string_view hlo_string = R"(
+  std::string hlo_string = R"(
 HloModule module, is_scheduled=true
 
 %fused_computation.1799 (param_0.4926: s32[16], param_1.5709: u32[], param_2.3976: u32[], param_3.3386: u32[], param_4.2299: u32[]) -> (s32[1], s32[1], s32[1], s32[1]) {
@@ -1898,7 +1902,8 @@ HloModule module, is_scheduled=true
   %bitcast.596 = bf16[8,2048,1,36,256,1]{4,1,3,0,5,2:T(8,128)(2,1)} bitcast(bf16[8,2048,1,36,256,1,1]{4,1,6,5,3,2,0:T(8,128)(2,1)} %convolution.171)
   ROOT %add.3143 = bf16[8,2048,1,36,256,1]{4,1,3,0,5,2:T(8,128)(2,1)} add(bf16[8,2048,1,36,256,1]{4,1,3,0,5,2:T(8,128)(2,1)} %add.3146, bf16[8,2048,1,36,256,1]{4,1,3,0,5,2:T(8,128)(2,1)} %bitcast.596)
 }
-
+)";
+  hlo_string += R"(
 ENTRY entry {
   %constant.4735 = u32[]{:T(128)} constant(2)
   %constant.4598 = u32[]{:T(128)} constant(15)

@@ -204,7 +204,7 @@ class RowPartition(composite_tensor.CompositeTensor):
     partitioned_rows = [[] for _ in nrows]
     for (value, rowid) in zip(values, value_rowids):
       partitioned_rows[rowid].append(value)
-    ``
+    ```
 
     Args:
       value_rowids: A 1-D integer tensor with shape `[nvals]`, which corresponds

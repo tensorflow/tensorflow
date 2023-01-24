@@ -108,8 +108,8 @@ class RaggedOneHotTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       dict(indices=[[1]], depth=4, axis=-2,
            # Note: the only negative `axis` value supported by
            # array_ops.one_hot is -1.
-           message=(r'axis must be >= -1|'  # graph mode
-                    r'(?i)Expected axis.* to be -1 or between.*'),  # eager mode
+           message=(r'(?i)axis must be >= -1|'  # graph mode
+                    r'Expected axis.* to be -1 or between.*'),  # eager mode
            exception=(ValueError, errors.InvalidArgumentError,
                       errors.UnknownError)),
   ])  # pyformat: disable

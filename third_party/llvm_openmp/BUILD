@@ -1,7 +1,7 @@
 # Build file for OpenMP library that is part of llvm
 
 load(
-    "@org_tensorflow//tensorflow:tensorflow.bzl",
+    "@org_tensorflow//tensorflow/tsl:tsl.bzl",
     "if_linux_x86_64",
     "if_macos",
     "if_windows",
@@ -36,7 +36,7 @@ py_binary(
 )
 
 kmp_i18n_os_type = select({
-    "@org_tensorflow//tensorflow:windows": "win",
+    "@org_tensorflow//tensorflow/tsl:windows": "win",
     "//conditions:default": "lin",
 })
 
@@ -114,7 +114,7 @@ omp_vars_win = {
 }
 
 omp_all_cmake_vars = select({
-    "@org_tensorflow//tensorflow:windows": cmake_var_string(
+    "@org_tensorflow//tensorflow/tsl:windows": cmake_var_string(
         dict_add(
             omp_vars,
             omp_vars_win,

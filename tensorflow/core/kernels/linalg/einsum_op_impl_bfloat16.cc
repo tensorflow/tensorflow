@@ -26,6 +26,12 @@ namespace tensorflow {
 TF_CALL_bfloat16(REGISTER_CPU);
 #undef REGISTER_CPU
 
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+#define REGISTER_GPU(TYPE) REGISTER_EINSUM(GPU, TYPE)
+TF_CALL_bfloat16(REGISTER_GPU);
+#undef REGISTER_GPU
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+
 #undef REGISTER_EINSUM
 
 }  // namespace tensorflow

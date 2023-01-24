@@ -89,8 +89,9 @@ inline constexpr absl::string_view PjRtRuntimeTypeString(PjRtRuntimeType type) {
 
 class PjRtClient;
 
-using PjRtDeviceAttribute =
-    std::variant<std::string, int64_t, std::vector<int64_t>>;
+using PjRtValueType =
+    std::variant<std::string, int64_t, std::vector<int64_t>, float>;
+using PjRtDeviceAttribute = PjRtValueType;
 
 class PjRtDevice {
  public:
@@ -453,7 +454,8 @@ class PjRtClient {
   }
 
   // Returns a backend-specific HLO cost analysis visitor.
-  virtual StatusOr<std::unique_ptr<HloCostAnalysis>> GetHloCostAnalysis() = 0;
+  virtual StatusOr<std::unique_ptr<HloCostAnalysis>> GetHloCostAnalysis()
+      const = 0;
 
   // Compile `computation` with given `options`.
   virtual StatusOr<std::unique_ptr<PjRtLoadedExecutable>> Compile(
@@ -467,23 +469,22 @@ class PjRtClient {
   virtual StatusOr<std::optional<std::string>> ExecutableFingerprint(
       const PjRtLoadedExecutable& executable) const = 0;
 
-  // Returns a platform-specific serialization of `executable`. The
-  // serialization is not guaranteed to be stable over time. `executable` must
-  // have been produced by this client.
-  virtual StatusOr<std::string> SerializeExecutable(
-      const PjRtLoadedExecutable& executable) const = 0;
-
   // Deserializes a serialized executable as produced by
-  // SerializeExecutable(). `serialized` must have been produced by a client of
-  // the same platform and version as this one.
+  // PjRtExecutable::SerializeExecutable(). `serialized` must have been
+  // produced by a compiler of the same platform and version as this one.
+  //
+  // Pending completion of b/237720161, `options` is a mandatory argument in
+  // most implementations of this interface. They _are_ optional for
+  // implementations related to the PJRT C API.
   virtual StatusOr<std::unique_ptr<PjRtLoadedExecutable>> DeserializeExecutable(
-      absl::string_view serialized, CompileOptions options) = 0;
+      absl::string_view serialized, std::optional<CompileOptions> options) = 0;
 
   // LoadSerializedExecutable takes the serialized output of PjRtExecutable. The
   // returned executable is loaded by this client. The same checks are made as
   // in Load that the serialized executable is compatible with the client.
   virtual StatusOr<std::unique_ptr<PjRtLoadedExecutable>>
-  LoadSerializedExecutable(absl::string_view serialized, CompileOptions options,
+  LoadSerializedExecutable(absl::string_view serialized,
+                           std::optional<CompileOptions> options,
                            const LoadOptions& load_options) {
     return Unimplemented("Loading serialized executable not supported.");
   }
@@ -503,6 +504,12 @@ class PjRtClient {
   // Creates a buffer on the device without initializing or copying any data.
   virtual StatusOr<std::unique_ptr<PjRtBuffer>> CreateUninitializedBuffer(
       const Shape& shape, PjRtDevice* device) = 0;
+
+  // Creates buffer that carries an error future without allocating memory.
+  virtual StatusOr<std::unique_ptr<PjRtBuffer>> CreateErrorBuffer(
+      Status error, const Shape& shape, PjRtDevice* device) {
+    return Unimplemented("CreateErrorBuffer not supported.");
+  }
 
   // A client may want to create a buffer, and hand the buffer to other PjRt
   // methods, before the data to store in the buffer is available to the client.
@@ -832,6 +839,10 @@ class PjRtBuffer {
   // offset+transfer_size must be less than GetOnDeviceSizeInBytes. The
   // returned future transitions to ready on error, or after the transfer has
   // completed.
+  //
+  // Note that the underlying driver may have requirements
+  // on the alignment of `dst` and `offset` as well. Look at implementations of
+  // this method for specific alignment requirements.
   virtual PjRtFuture<Status> CopyRawToHost(void* dst, int64_t offset,
                                            int64_t transfer_size) = 0;
 
@@ -949,6 +960,19 @@ class PjRtBuffer {
       PjRtFuture<StatusOr<std::vector<std::string>>> serialized_descriptors,
       std::vector<RemoteSendCallback> callbacks,
       const ScatterDetails& scatter_details) = 0;
+
+  // Donates 'this' and returns a new buffer that is ready only when both 'this'
+  // and 'dependency' are ready.
+  //
+  // Once ready, the new buffer's contents will be exactly the contents of
+  // 'this'.
+  //
+  // If either 'this' or 'dependency' transitions to error, then the returned
+  // buffer will transition to error.
+  virtual StatusOr<std::unique_ptr<PjRtBuffer>> DonateWithControlDependency(
+      PjRtFuture<Status> dependency) {
+    return Unimplemented("DonateWithControlDependency is not supported.");
+  }
 
   // Helper to allow a caller to indicate that it is going to do some "sends"
   // of the buffer a later date, where a send is a transfer out of a device
@@ -1139,6 +1163,12 @@ class PjRtLoadedExecutable : public PjRtExecutable {
   virtual PjRtClient* client() const = 0;
 
   virtual const DeviceAssignment& device_assignment() const = 0;
+
+  // Returns named values for cost properties of this executable (such as
+  // operations, size of input/outputs, and run time estimate). Properties may
+  // differ for different platforms.
+  virtual StatusOr<absl::flat_hash_map<std::string, PjRtValueType>>
+  GetCostAnalysis() const;
 
   // The replica and partition indices of device_assignment to be run by this
   // client. On single-host platforms without partitioning, this is all replicas

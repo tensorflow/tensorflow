@@ -3,6 +3,7 @@ load(
     "if_google",
     "if_libtpu",
     "if_oss",
+    "if_zendnn",
     "tf_cc_test",
     "tf_cc_test_mkl",
     "tf_cc_tests",
@@ -220,6 +221,7 @@ tf_cuda_library(
     copts = tf_copts(),
     deps = [
         ":scoped_allocator",
+        ":stats_publisher_interface",
         "//tensorflow/core:graph",
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
@@ -242,6 +244,7 @@ filegroup(
         ":core_cpu_base_headers",
         "allocator_retry.h",
         "shared_counter.h",
+        "arg_ret_placement.h",
         "base_collective_executor.h",
         "bfc_allocator.h",
         "hierarchical_tree_broadcaster.h",
@@ -266,6 +269,7 @@ filegroup(
         "graph_optimizer.h",
         "gradients.h",
         "input_colocation_exemption_registry.h",
+        "int32_fulltype.h",
         "isolate_placer_inspection_required_ops_pass.h",
         "local_device.h",
         "local_executor_params.h",
@@ -337,6 +341,18 @@ cc_library(
         "//tensorflow/core/profiler/lib:traceme",
     ],
     alwayslink = 1,
+)
+
+cc_library(
+    name = "arg_ret_placement",
+    srcs = ["arg_ret_placement.cc"],
+    hdrs = [
+        "arg_ret_placement.h",
+    ],
+    copts = tf_copts(),
+    deps = [
+        "//tensorflow/core:graph",
+    ],
 )
 
 cc_library(
@@ -778,6 +794,7 @@ cc_library(
     ],
     copts = tf_copts(),
     deps = [
+        ":arg_ret_placement",
         ":composite_device",
         ":device",
         ":device_mgr",
@@ -792,8 +809,10 @@ cc_library(
         ":graph_constructor",
         ":graph_optimizer",
         ":inline_function_utils",
+        ":int32_fulltype",
         ":memory_types",
         ":optimization_registry",
+        ":optimize_function_graph_utils",
         ":optimized_function_graph_info",
         ":partitioning_utils",
         ":placer",
@@ -802,6 +821,7 @@ cc_library(
         ":rendezvous_util",
         ":replicate_per_replica_nodes",
         ":single_threaded_executor",
+        ":stats_publisher_interface",
         ":type_inference",
         "//tensorflow/core:framework",
         "//tensorflow/core:graph",
@@ -1174,6 +1194,22 @@ cc_library(
 )
 
 cc_library(
+    name = "int32_fulltype",
+    srcs = ["int32_fulltype.cc"],
+    hdrs = [
+        "int32_fulltype.h",
+        "optimization_registry.h",
+    ],
+    copts = tf_copts(),
+    deps = [
+        ":optimization_registry",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:graph",
+        "//tensorflow/core:lib",
+    ],
+)
+
+cc_library(
     name = "lower_if_op",
     srcs = ["lower_if_op.cc"],
     hdrs = ["lower_if_op.h"],
@@ -1211,6 +1247,37 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
     ],
+)
+
+cc_library(
+    name = "layout_pass_util",
+    srcs = ["layout_pass_util.cc"],
+    hdrs = ["layout_pass_util.h"],
+    copts = tf_copts(),
+    deps = [
+        "//tensorflow/core:graph",
+        "//tensorflow/core:portable_gif_internal",
+    ],
+)
+
+cc_library(
+    name = "zen_layout_pass",
+    srcs = ["zen_layout_pass.cc"],
+    copts = tf_copts(),
+    deps = [
+        ":function",
+        ":layout_pass_util",
+        ":optimization_registry",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:framework_internal",
+        "//tensorflow/core:graph",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/graph:zen_graph_util",
+        "@com_google_absl//absl/base",
+    ],
+    alwayslink = 1,
 )
 
 cc_library(
@@ -1835,6 +1902,7 @@ tf_cuda_library(
         ":graph_view",
         ":hierarchical_tree_broadcaster",
         ":input_colocation_exemption_registry",
+        ":int32_fulltype",
         ":isolate_placer_inspection_required_ops_pass",
         ":local_device",
         ":lower_functional_ops",
@@ -1870,7 +1938,7 @@ tf_cuda_library(
         ":step_stats_collector",
         ":threadpool_device",
         ":threadpool_device_factory",
-    ],
+    ] + if_zendnn([":zen_layout_pass"]),
 )
 
 tf_cuda_library(
@@ -3252,5 +3320,72 @@ tf_cc_test(
         "//tensorflow/tsl/platform:status_matchers",
         "//tensorflow/tsl/platform:test",
         "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
+    name = "optimize_function_graph_utils",
+    srcs = ["optimize_function_graph_utils.cc"],
+    hdrs = ["optimize_function_graph_utils.h"],
+    copts = tf_copts(),
+    deps = [
+        ":composite_device",
+        ":device_set",
+        ":function_body",
+        ":function_optimization_registry",
+        ":function_utils",
+        ":optimization_registry",
+        ":placer",
+        "//tensorflow/core:core_cpu_base",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core/framework:graph_proto_cc",
+    ],
+)
+
+tf_cc_test(
+    name = "optimize_function_graph_utils_test",
+    srcs = ["optimize_function_graph_utils_test.cc"],
+    deps = [
+        ":device",
+        ":device_factory",
+        ":device_set",
+        ":optimize_function_graph_utils",
+        "//tensorflow/core:testlib",
+        "//tensorflow/core/kernels:function_ops",
+        "//tensorflow/tsl/lib/core:status_test_util",
+        "//tensorflow/tsl/platform:status",
+        "//tensorflow/tsl/platform:test",
+        "@com_google_absl//absl/strings",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+tf_cc_test(
+    name = "int32_fulltype_test",
+    size = "small",
+    srcs = [
+        "int32_fulltype_test.cc",
+    ],
+    deps = [
+        ":core",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:ops",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+    ],
+)
+
+tf_cc_test(
+    name = "arg_ret_placement_test",
+    size = "small",
+    srcs = [
+        "arg_ret_placement_test.cc",
+    ],
+    deps = [
+        ":arg_ret_placement",
+        "//tensorflow/cc:scope",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
     ],
 )

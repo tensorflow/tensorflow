@@ -187,7 +187,6 @@ class TFAPIChangeSpec(ast_edits.NoUpdateSpec):
         },
         "tf.nn.softmax_cross_entropy_with_logits": {
             "dim": "axis",
-            "_sentinel": None,
         },
         "tf.nn.softmax_cross_entropy_with_logits_v2": {
             "dim": "axis"
@@ -252,6 +251,10 @@ class TFAPIChangeSpec(ast_edits.NoUpdateSpec):
             "keep_dims": "keepdims"
         },
         "tf.debugging.assert_all_finite": {
+            "t": "x",
+            "msg": "message",
+        },
+        "tf.verify_tensor_all_finite": {
             "t": "x",
             "msg": "message",
         },
@@ -556,8 +559,7 @@ class TFAPIChangeSpec(ast_edits.NoUpdateSpec):
     # This list should just contain names of functions that had
     # their arguments reordered. After adding a function name to the list
     # run the following to update reorders_v2.py:
-    # bazel build tensorflow/tools/compatibility/update:generate_v2_reorders_map
-    # bazel-bin/tensorflow/tools/compatibility/update/generate_v2_reorders_map
+    # bazel run tensorflow/tools/compatibility/update:generate_v2_reorders_map
     # pylint: enable=line-too-long
     self.reordered_function_names = {
         "tf.io.serialize_sparse",
@@ -670,6 +672,8 @@ class TFAPIChangeSpec(ast_edits.NoUpdateSpec):
         "tf.data.experimental.SparseTensorStructure",
         "tf.data.experimental.RaggedTensorStructure",
         "tf.data.experimental.TensorArrayStructure",
+        "tf.debugging.assert_all_finite",
+        "tf.gather_nd",
     }
 
     # Manual mapping of function names to be reordered to their list of argument
@@ -903,6 +907,13 @@ class TFAPIChangeSpec(ast_edits.NoUpdateSpec):
         "Please use model.save(path, save_format='tf') "
         "(or alternatively tf.keras.models.save_model), and "
         "tf.keras.models.load_model(path) instead.")
+
+    saved_model_load_warning = (
+        ast_edits.WARNING,
+        "tf.saved_model.load works differently in 2.0 compared to 1.0. See "
+        "migration information in the documentation of "
+        "tf.compat.v1.saved_model.load."
+        "\nThe calls have been converted to compat.v1.")
 
     # Function warnings. <function name> placeholder inside warnings will be
     # replaced by function name.
@@ -1260,6 +1271,8 @@ class TFAPIChangeSpec(ast_edits.NoUpdateSpec):
         "tf.summary.scalar": summary_api_comment,
         "tf.summary.tensor_summary": summary_api_comment,
         "tf.summary.text": summary_api_comment,
+        "tf.saved_model.load": saved_model_load_warning,
+        "tf.saved_model.loader.load": saved_model_load_warning,
     }
     all_renames_v2.add_contrib_direct_import_support(self.function_warnings)
 
@@ -1665,7 +1678,8 @@ class TFAPIChangeSpec(ast_edits.NoUpdateSpec):
     return root_node, visitor.log, visitor.warnings_and_errors
 
   def clear_preprocessing(self):
-    self.__init__()
+    self.__init__(import_rename=self.import_rename,
+                  upgrade_compat_v1_import=self.upgrade_compat_v1_import)
 
 
 def _is_ast_str(node):

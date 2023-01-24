@@ -60,8 +60,13 @@ class CpuCallback {
   ~CpuCallback() {
     // The destructor may be called without GIL held. In that case, we defer it
     // to GlobalPyRefManager.
-    pybind11::object object = std::move(callable_);
-    GlobalPyRefManager()->AddGarbage(absl::MakeSpan(&object, 1));
+    std::vector<pybind11::object> objects;
+    objects.push_back(std::move(callable_));
+    for (auto& arg : args_) {
+      objects.push_back(std::move(arg.dtype));
+    }
+
+    GlobalPyRefManager()->AddGarbage(absl::MakeSpan(objects));
   }
 
   const std::vector<Arg>& args() const { return args_; }
@@ -85,8 +90,8 @@ class CpuCallback {
   StatusOr<pybind11::tuple> CallInternal(pybind11::tuple args);
 
   pybind11::function callable_;
-  std::vector<Arg> const args_;
-  std::vector<Result> const results_;
+  std::vector<Arg> args_;
+  std::vector<Result> results_;
   xla::TransposePlanCache transpose_cache_;
 };
 

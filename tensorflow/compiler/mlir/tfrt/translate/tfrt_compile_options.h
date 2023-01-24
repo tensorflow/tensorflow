@@ -85,6 +85,13 @@ struct TfrtCompileOptions {
   // supposed to be turned on by default.
   bool hoist_invariant_ops = false;
 
+  // If true, the compiler will try to sink in the invariant ops (e.g. const
+  // ops, var handle ops, etc.) to the nested function (e.g. batch function) to
+  // facilitate invariant ops hoisting.
+  // TODO(tfrt-devs): Set the default value to true after testing as it is
+  // supposed to be turned on by default.
+  bool sink_in_invariant_ops = false;
+
   // If true, tf.While's iterations will be parallelized on a best-effort
   // basis. This is currently experimental.
   bool enable_while_parallel_iterations = false;
@@ -125,6 +132,10 @@ struct TfrtCompileOptions {
 
   // Whether to compile to sync TFRT dialect.
   bool compile_to_sync_tfrt_dialect = false;
+
+  // Whether to use bridge for GPU.
+  // TODO(b/260915352): Remove the flag and default to using bridge.
+  bool use_bridge_for_gpu = false;
 };
 
 std::ostream& operator<<(std::ostream& os, const TfrtCompileOptions& options);

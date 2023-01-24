@@ -31,6 +31,21 @@ tf_py_test(
 )
 
 tf_py_test(
+    name = "snapshot_ft_test",
+    size = "small",
+    srcs = ["snapshot_ft_test.py"],
+    shard_count = 8,
+    deps = [
+        ":test_base",
+        "//tensorflow/python:platform_test",
+        "//tensorflow/python/data/experimental/ops:distributed_save_op",
+        "//tensorflow/python/data/kernel_tests:test_base",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/framework:combinations",
+    ],
+)
+
+tf_py_test(
     name = "coordinated_read_ft_test",
     size = "medium",
     srcs = ["coordinated_read_ft_test.py"],

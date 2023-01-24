@@ -16,8 +16,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/stream_executor/gpu/gpu_stream.h"
 
 #include "tensorflow/compiler/xla/stream_executor/gpu/gpu_executor.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/status.h"
 #include "tensorflow/compiler/xla/stream_executor/stream.h"
+#include "tensorflow/tsl/platform/status.h"
 
 namespace stream_executor {
 namespace gpu {
@@ -34,7 +34,7 @@ bool GpuStream::Init() {
 
 void GpuStream::Destroy() {
   if (completed_event_ != nullptr) {
-    port::Status status =
+    tsl::Status status =
         GpuDriver::DestroyEvent(parent_->gpu_context(), &completed_event_);
     if (!status.ok()) {
       LOG(ERROR) << status.error_message();

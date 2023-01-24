@@ -112,6 +112,9 @@ MklEagerOpRewrite::MklEagerOpRewrite(string name, string file, string line)
   InsertMKLEagerOps(
       {"FusedBatchNormV3", RewriteFusedBatchNormV3, CreateGenericMklOp});
   InsertMKLEagerOps({"MatMul", AlwaysRewrite, CreateGenericMklOp});
+  // TODO(Intel-tf): Support MaxPool, MaxPool3D rewrite, handle workspace.
+  // Note: MaxPoolGrad, MaxPool3DGrad rewrite cannot be supported in eager
+  // mode due to workspace restriction
 };
 
 void MklEagerOpRewrite::InsertMKLEagerOps(MklEagerOp op) {

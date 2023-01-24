@@ -18,6 +18,7 @@ import threading
 import warnings
 
 from tensorflow.python.checkpoint import saveable_compat
+from tensorflow.python.data.ops import iterator_autograph
 from tensorflow.python.data.ops import optional_ops
 from tensorflow.python.data.ops import options as options_lib
 from tensorflow.python.data.util import nest
@@ -976,3 +977,4 @@ def get_next_as_optional(iterator):
 
 
 _pywrap_utils.RegisterType("OwnedIterator", OwnedIterator)
+iterator_autograph.register_overrides()

@@ -2399,6 +2399,23 @@ func.func @convert_floor_mod_int_cst(%arg0: tensor<192x8xi32>) -> tensor<192x8xi
   func.return %7 : tensor<192x8xi32>
 }
 
+// CHECK-LABEL: func @convert_floor_mod_bfloat
+// CHECK: %[[RESULT:.*]] = "tf.FloorMod"(%arg0, %arg1) : (tensor<10x10xbf16>, tensor<10x10xbf16>) -> tensor<10x10xbf16>
+// CHECK: return %[[RESULT]]
+// CHECK: }
+func.func @convert_floor_mod_bfloat(%arg0: tensor<10x10xbf16>, %arg1: tensor<10x10xbf16>) -> tensor<10x10xbf16> {
+  %0 = mhlo.constant dense<0.000000e+00> : tensor<10x10xbf16>
+  %1 = mhlo.remainder %arg0, %arg1 : tensor<10x10xbf16>
+  %2 = mhlo.compare  NE, %1, %0,  FLOAT : (tensor<10x10xbf16>, tensor<10x10xbf16>) -> tensor<10x10xi1>
+  %3 = mhlo.compare  LT, %1, %0,  FLOAT : (tensor<10x10xbf16>, tensor<10x10xbf16>) -> tensor<10x10xi1>
+  %4 = mhlo.compare  LT, %arg1, %0,  FLOAT : (tensor<10x10xbf16>, tensor<10x10xbf16>) -> tensor<10x10xi1>
+  %5 = mhlo.compare  NE, %3, %4,  UNSIGNED : (tensor<10x10xi1>, tensor<10x10xi1>) -> tensor<10x10xi1>
+  %6 = mhlo.and %5, %2 : tensor<10x10xi1>
+  %7 = mhlo.add %1, %arg1 : tensor<10x10xbf16>
+  %8 = mhlo.select %6, %7, %1 : tensor<10x10xi1>, tensor<10x10xbf16>
+  return %8 : tensor<10x10xbf16>
+}
+
 // CHECK-LABEL: func @convert_floor_div
 // CHECK: %[[RESULT:.*]] = "tf.FloorDiv"(%arg0, %arg1) : (tensor<10x10xbf16>, tensor<10x10xbf16>) -> tensor<10x10xbf16>
 // CHECK: return %[[RESULT]]
@@ -3029,6 +3046,94 @@ func.func @convert_argmax_with_reshaped_iota(%arg0: tensor<1x32x1xf32>) -> (tens
 func.func @convert_not(%arg0: tensor<5x3x1xi1>) -> tensor<5x3x1xi1> {
   %0 = "mhlo.not"(%arg0): (tensor<5x3x1xi1>) -> (tensor<5x3x1xi1>)
   func.return %0 : tensor<5x3x1xi1>
+}
+
+// CHECK-LABEL:   func @convert_not_i8(
+// CHECK-SAME:                      %[[ARG:.*]]: tensor<7x9x11xi8>) -> tensor<7x9x11xi8> {
+// CHECK:           %[[CST:.*]] = "tf.Const"() {value = dense<-1> : tensor<i8>} : () -> tensor<i8>
+// CHECK:           %[[RES:.*]] = "tf.BitwiseXor"(%[[ARG]], %[[CST]]) : (tensor<7x9x11xi8>, tensor<i8>) -> tensor<7x9x11xi8>
+// CHECK:           return %[[RES]] : tensor<7x9x11xi8>
+// CHECK:         }
+func.func @convert_not_i8(%arg0: tensor<7x9x11xi8>) -> tensor<7x9x11xi8> {
+  %0 = "mhlo.not"(%arg0): (tensor<7x9x11xi8>) -> (tensor<7x9x11xi8>)
+  func.return %0 : tensor<7x9x11xi8>
+}
+
+// CHECK-LABEL:   func @convert_not_i16(
+// CHECK-SAME:                      %[[ARG:.*]]: tensor<7x9x11xi16>) -> tensor<7x9x11xi16> {
+// CHECK:           %[[CST:.*]] = "tf.Const"() {value = dense<-1> : tensor<i16>} : () -> tensor<i16>
+// CHECK:           %[[RES:.*]] = "tf.BitwiseXor"(%[[ARG]], %[[CST]]) : (tensor<7x9x11xi16>, tensor<i16>) -> tensor<7x9x11xi16>
+// CHECK:           return %[[RES]] : tensor<7x9x11xi16>
+// CHECK:         }
+func.func @convert_not_i16(%arg0: tensor<7x9x11xi16>) -> tensor<7x9x11xi16> {
+  %0 = "mhlo.not"(%arg0): (tensor<7x9x11xi16>) -> (tensor<7x9x11xi16>)
+  func.return %0 : tensor<7x9x11xi16>
+}
+
+// CHECK-LABEL:   func @convert_not_i32(
+// CHECK-SAME:                      %[[ARG:.*]]: tensor<7x9x11xi32>) -> tensor<7x9x11xi32> {
+// CHECK:           %[[CST:.*]] = "tf.Const"() {value = dense<-1> : tensor<i32>} : () -> tensor<i32>
+// CHECK:           %[[RES:.*]] = "tf.BitwiseXor"(%[[ARG]], %[[CST]]) : (tensor<7x9x11xi32>, tensor<i32>) -> tensor<7x9x11xi32>
+// CHECK:           return %[[RES]] : tensor<7x9x11xi32>
+// CHECK:         }
+func.func @convert_not_i32(%arg0: tensor<7x9x11xi32>) -> tensor<7x9x11xi32> {
+  %0 = "mhlo.not"(%arg0): (tensor<7x9x11xi32>) -> (tensor<7x9x11xi32>)
+  func.return %0 : tensor<7x9x11xi32>
+}
+
+// CHECK-LABEL:   func @convert_not_i64(
+// CHECK-SAME:                      %[[ARG:.*]]: tensor<7x9x11xi64>) -> tensor<7x9x11xi64> {
+// CHECK:           %[[CST:.*]] = "tf.Const"() {value = dense<-1> : tensor<i64>} : () -> tensor<i64>
+// CHECK:           %[[RES:.*]] = "tf.BitwiseXor"(%[[ARG]], %[[CST]]) : (tensor<7x9x11xi64>, tensor<i64>) -> tensor<7x9x11xi64>
+// CHECK:           return %[[RES]] : tensor<7x9x11xi64>
+// CHECK:         }
+func.func @convert_not_i64(%arg0: tensor<7x9x11xi64>) -> tensor<7x9x11xi64> {
+  %0 = "mhlo.not"(%arg0): (tensor<7x9x11xi64>) -> (tensor<7x9x11xi64>)
+  func.return %0 : tensor<7x9x11xi64>
+}
+
+// CHECK-LABEL:   func @convert_not_ui8(
+// CHECK-SAME:                      %[[ARG:.*]]: tensor<7x9x11xui8>) -> tensor<7x9x11xui8> {
+// CHECK:           %[[CST:.*]] = "tf.Const"() {value = dense<255> : tensor<ui8>} : () -> tensor<ui8>
+// CHECK:           %[[RES:.*]] = "tf.BitwiseXor"(%[[ARG]], %[[CST]]) : (tensor<7x9x11xui8>, tensor<ui8>) -> tensor<7x9x11xui8>
+// CHECK:           return %[[RES]] : tensor<7x9x11xui8>
+// CHECK:         }
+func.func @convert_not_ui8(%arg0: tensor<7x9x11xui8>) -> tensor<7x9x11xui8> {
+  %0 = "mhlo.not"(%arg0): (tensor<7x9x11xui8>) -> (tensor<7x9x11xui8>)
+  func.return %0 : tensor<7x9x11xui8>
+}
+
+// CHECK-LABEL:   func @convert_not_ui16(
+// CHECK-SAME:                      %[[ARG:.*]]: tensor<7x9x11xui16>) -> tensor<7x9x11xui16> {
+// CHECK:           %[[CST:.*]] = "tf.Const"() {value = dense<65535> : tensor<ui16>} : () -> tensor<ui16>
+// CHECK:           %[[RES:.*]] = "tf.BitwiseXor"(%[[ARG]], %[[CST]]) : (tensor<7x9x11xui16>, tensor<ui16>) -> tensor<7x9x11xui16>
+// CHECK:           return %[[RES]] : tensor<7x9x11xui16>
+// CHECK:         }
+func.func @convert_not_ui16(%arg0: tensor<7x9x11xui16>) -> tensor<7x9x11xui16> {
+  %0 = "mhlo.not"(%arg0): (tensor<7x9x11xui16>) -> (tensor<7x9x11xui16>)
+  func.return %0 : tensor<7x9x11xui16>
+}
+
+// CHECK-LABEL:   func @convert_not_ui32(
+// CHECK-SAME:                      %[[ARG:.*]]: tensor<7x9x11xui32>) -> tensor<7x9x11xui32> {
+// CHECK:           %[[CST:.*]] = "tf.Const"() {value = dense<4294967295> : tensor<ui32>} : () -> tensor<ui32>
+// CHECK:           %[[RES:.*]] = "tf.BitwiseXor"(%[[ARG]], %[[CST]]) : (tensor<7x9x11xui32>, tensor<ui32>) -> tensor<7x9x11xui32>
+// CHECK:           return %[[RES]] : tensor<7x9x11xui32>
+// CHECK:         }
+func.func @convert_not_ui32(%arg0: tensor<7x9x11xui32>) -> tensor<7x9x11xui32> {
+  %0 = "mhlo.not"(%arg0): (tensor<7x9x11xui32>) -> (tensor<7x9x11xui32>)
+  func.return %0 : tensor<7x9x11xui32>
+}
+
+// CHECK-LABEL:   func @convert_not_ui64(
+// CHECK-SAME:                      %[[ARG:.*]]: tensor<7x9x11xui64>) -> tensor<7x9x11xui64> {
+// CHECK:           %[[CST:.*]] = "tf.Const"() {value = dense<18446744073709551615> : tensor<ui64>} : () -> tensor<ui64>
+// CHECK:           %[[RES:.*]] = "tf.BitwiseXor"(%[[ARG]], %[[CST]]) : (tensor<7x9x11xui64>, tensor<ui64>) -> tensor<7x9x11xui64>
+// CHECK:           return %[[RES]] : tensor<7x9x11xui64>
+// CHECK:         }
+func.func @convert_not_ui64(%arg0: tensor<7x9x11xui64>) -> tensor<7x9x11xui64> {
+  %0 = "mhlo.not"(%arg0): (tensor<7x9x11xui64>) -> (tensor<7x9x11xui64>)
+  func.return %0 : tensor<7x9x11xui64>
 }
 
 // -----

@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_LLVM_IR_IR_BUILDER_MIXIN_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_LLVM_IR_IR_BUILDER_MIXIN_H_
 
+#include <optional>
+
 #include "llvm/IR/IRBuilder.h"
 
 namespace xla {
@@ -80,14 +82,14 @@ class IrBuilderMixin {
   }
 
   llvm::CallInst* Call(llvm::FunctionCallee func_callee,
-                       llvm::ArrayRef<llvm::Value*> args = llvm::None,
+                       llvm::ArrayRef<llvm::Value*> args = std::nullopt,
                        const llvm::Twine& name = "",
                        llvm::MDNode* fp_math_tag = nullptr) {
     return mixin_builder()->CreateCall(func_callee, args, name, fp_math_tag);
   }
 
   llvm::CallInst* Call(llvm::FunctionType* func_type, llvm::Value* callee,
-                       llvm::ArrayRef<llvm::Value*> args = llvm::None,
+                       llvm::ArrayRef<llvm::Value*> args = std::nullopt,
                        const llvm::Twine& name = "",
                        llvm::MDNode* fp_math_tag = nullptr) {
     return mixin_builder()->CreateCall(func_type, callee, args, name,

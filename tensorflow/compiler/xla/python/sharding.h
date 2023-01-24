@@ -55,6 +55,9 @@ class Sharding {
   std::optional<int> num_devices_;
 };
 
+// Returns a hash that may sometimes return different hashes for equal values.
+// It is not a correct implementation of `__hash__` in python, but it's fine
+// for jit/pjit dispatch since it only causes spurious cache misses.
 size_t ShardingHash(const pybind11::object& obj);
 
 bool ShardingEqual(const pybind11::object& a, const pybind11::object& b);
@@ -95,6 +98,11 @@ class SingleDeviceSharding : public XLACompatibleSharding {
       : XLACompatibleSharding(/*num_devices=*/1), device_(std::move(device)) {}
 
   const pybind11::object& device() const { return device_; }
+
+  static pybind11::handle type() {
+    static auto type = pybind11::type::handle_of<SingleDeviceSharding>();
+    return type;
+  }
 
  private:
   pybind11::object device_;

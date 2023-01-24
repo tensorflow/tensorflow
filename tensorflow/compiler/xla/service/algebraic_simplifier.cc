@@ -53,7 +53,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/shape.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/window_util.h"
@@ -1338,7 +1337,9 @@ Status AlgebraicSimplifierVisitor::HandleCopy(HloInstruction* copy) {
         copy, HloInstruction::CreateUnary(copy->shape(), HloOpcode::kCopy, op));
   }
   // All copies can be eliminated (assuming layout constraints are satisfied).
-  if (ReplaceInstructionIfCompatible(copy, copy->mutable_operand(0))) {
+  if ((!copy->has_sharding() ||
+       copy->GetModule()->entry_computation()->root_instruction() != copy) &&
+      ReplaceInstructionIfCompatible(copy, copy->mutable_operand(0))) {
     return OkStatus();
   }
 
@@ -2777,7 +2778,8 @@ Status AlgebraicSimplifierVisitor::HandleDot(HloInstruction* dot) {
         lhs->shape().rank()) ||
        (dnums.rhs_contracting_dimensions_size() +
             dnums.rhs_batch_dimensions_size() ==
-        rhs->shape().rank()))) {
+        rhs->shape().rank())) &&
+      ShouldStrengthReduceDotToReduce(dot)) {
     TF_ASSIGN_OR_RETURN(HloInstruction * new_lhs,
                         NormalizeDotOperandToBatchMajorAndContractingMinor(
                             lhs, dnums.lhs_batch_dimensions(),
@@ -6318,6 +6320,50 @@ Status AlgebraicSimplifierVisitor::HandleSelect(HloInstruction* select) {
         HloInstruction::CreateTernary(select->shape(), HloOpcode::kSelect,
                                       pred_operand, on_false, on_true));
   }
+
+  // select(pred, xs, dynamic_update_slice(xs, x, i))
+  //     -> dynamic_update_slice(xs, select(pred, dynamic_slice(xs, i), x), i)
+  HloInstruction* update_slice;
+  HloInstruction* xs;
+  HloInstruction* xs2;
+  auto update_slice_op = m::Op(&update_slice)
+                             .WithOpcode(HloOpcode::kDynamicUpdateSlice)
+                             .WithOperand(0, m::Op(&xs))
+                             .WithOneUse();
+  bool match_slice_left =
+      Match(select, m::Select(m::Op(), m::Op(&xs2), update_slice_op)) &&
+      (xs == xs2);
+  bool match_slice_right =
+      Match(select, m::Select(m::Op(), update_slice_op, m::Op(&xs2))) &&
+      (xs == xs2);
+  if (match_slice_left || match_slice_right) {
+    HloInstruction* pred = select->mutable_operand(0);
+    HloInstruction* x = update_slice->mutable_operand(1);
+    absl::Span<HloInstruction* const> i =
+        absl::MakeSpan(update_slice->operands()).subspan(2);
+    HloInstruction* new_pred;
+    if (ShapeUtil::IsScalar(pred->shape())) {
+      new_pred = pred;
+    } else {
+      Shape new_pred_shape = x->shape();
+      new_pred_shape.set_element_type(pred->shape().element_type());
+      simplifier_->UpdateLayout(&new_pred_shape);
+      new_pred = select->AddInstruction(HloInstruction::CreateDynamicSlice(
+          new_pred_shape, pred, i, x->shape().dimensions()));
+    }
+    HloInstruction* new_x =
+        select->AddInstruction(HloInstruction::CreateDynamicSlice(
+            x->shape(), xs, i, x->shape().dimensions()));
+    HloInstruction* new_x2 =
+        select->AddInstruction(HloInstruction::CreateTernary(
+            x->shape(), HloOpcode::kSelect, new_pred,
+            match_slice_left ? new_x : x, match_slice_left ? x : new_x));
+    std::unique_ptr<HloInstruction> new_xs =
+        HloInstruction::CreateDynamicUpdateSlice(select->shape(), xs, new_x2,
+                                                 i);
+    return ReplaceWithNewInstruction(select, std::move(new_xs));
+  }
+
   return OkStatus();
 }
 

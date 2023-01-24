@@ -187,7 +187,8 @@ struct ReturnResults {
         tensor_proto->add_sizes(size);
       }
 
-      tensor_proto->set_contents(absl::string_view(data, size_in_bytes));
+      ABSL_ANNOTATE_MEMORY_IS_INITIALIZED(data, size_in_bytes);
+      tensor_proto->set_contents(std::string(data, size_in_bytes));
       tensor_proto->set_dtype(desc->dtype());
 
       std::free(desc->data());
@@ -230,7 +231,7 @@ static absl::Status WriteInoutResults(ArgumentsProto& proto, RunnerArgs& args,
             tensor_proto->add_sizes(size);
           }
 
-          tensor_proto->set_contents(absl::string_view(sv, size_in_bytes));
+          tensor_proto->set_contents(std::string(sv, size_in_bytes));
           tensor_proto->set_dtype(memref->dtype());
         }
         break;

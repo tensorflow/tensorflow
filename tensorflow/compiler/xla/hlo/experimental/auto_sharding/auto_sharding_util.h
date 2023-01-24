@@ -578,6 +578,9 @@ std::vector<std::vector<int64_t>> DecomposeMeshShapes(
     std::vector<int64_t> mesh_shape);
 
 bool OutputInputSameShapes(const HloInstruction* ins);
+
+bool IsEntryComputationInputOrOutput(const HloModule* module,
+                                     const HloInstruction* ins);
 }  // namespace spmd
 }  // namespace xla
 

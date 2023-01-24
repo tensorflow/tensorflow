@@ -22,6 +22,7 @@ include "mlir/IR/OpBase.td"
 include "mlir/Interfaces/InferTypeOpInterface.td"
 include "tensorflow/compiler/xla/mlir/xla_cpu/ir/xla_cpu_dialect.td"
 include "tensorflow/compiler/xla/mlir/xla_cpu/ir/xla_cpu_enums.td"
+include "tensorflow/compiler/xla/mlir_hlo/mhlo/IR/hlo_base.td"
 
 // Base class for XLA CPU dialect ops.
 class XlaCpu_Op<string mnemonic, list<Trait> traits = []> :
@@ -209,7 +210,7 @@ def FftOp : XlaCpu_Op<"fft", [BufferizableOpInterface]> {
   }];
 }
 
-def OutfeedOp : XlaCpu_Op<"outfeed", []> {
+def OutfeedOp : XlaCpu_Op<"outfeed", [BufferizableOpInterface]> {
   let summary = "CPU-specific version of Outfeed";
   let description = [{
     The major differences between this and HLO's outfeed are:
@@ -219,8 +220,120 @@ def OutfeedOp : XlaCpu_Op<"outfeed", []> {
   let arguments = (ins
     Variadic<TensorOrMemref>:$operand,
     DefaultValuedStrAttr<StrAttr, "">:$config,
-    ArrayAttr:$resultType
+    ArrayAttr:$result_type
   );
+  let extraClassDeclaration = [{
+    // Declarations for BufferizableOpInterface:
+    bool bufferizesToMemoryRead(OpOperand &opOperand,
+        const bufferization::AnalysisState &state) {
+      return true;
+    }
+    bool bufferizesToMemoryWrite(OpOperand &opOperand,
+        const bufferization::AnalysisState &state) {
+      return false;
+    }
+    SmallVector<OpResult> getAliasingOpResult(
+        OpOperand &opOperand, const bufferization::AnalysisState &state) {
+      return {};
+    }
+    LogicalResult bufferize(RewriterBase &rewriter,
+        const bufferization::BufferizationOptions &options);
+    bufferization::BufferRelation bufferRelation(OpResult opResult,
+        const bufferization::AnalysisState &state) {
+      return bufferization::BufferRelation::Equivalent;
+    }
+  }];
+}
+
+def MemRefElementCastOp : XlaCpu_Op<"memref_element_cast",
+    [SameOperandsAndResultShape]> {
+  let summary = "MemRef reinterpret_cast on element types";
+  let description = [{
+    This op is the equivalent of C++'s reinterpret_cast on pointers. The element
+    types' storage sizes must be the same. Does not cast shapes.
+  }];
+  let arguments = (ins
+    MemRefOf<[I1, I8, I16, I32, I64, BF16, F16, F32, F64]>:$src
+  );
+  let results = (outs
+    MemRefOf<[I1, I8, I16, I32, I64, BF16, F16, F32, F64]>:$dst
+  );
+  let assemblyFormat = "$src attr-dict `:` type($src) `to` type($dst)";
+  let hasVerifier = 1;
+}
+
+def RngBitGeneratorOp : XlaCpu_Op<"rng_bit_generator", [BufferizableOpInterface]> {
+  let summary = "CPU-specific version of rng_bit_generator";
+  let description = [{
+    The major differences between this and HLO's rng_bit_generator are:
+    - It bufferizes to itself.
+    - It uses destination passing style.
+  }];
+  let arguments = (ins
+      TensorOrMemref:$state,
+      TensorOrMemref:$dst_state,
+      TensorOrMemref:$dst,
+      AnyAttr:$rng_algorithm
+  );
+  let results = (outs Variadic<TensorOrMemref>);
+  let extraClassDeclaration = [{
+    // Declarations for BufferizableOpInterface:
+    bool bufferizesToMemoryRead(OpOperand &opOperand,
+        const bufferization::AnalysisState &state) {
+      return opOperand.getOperandNumber() == 0;
+    }
+    bool bufferizesToMemoryWrite(OpOperand &opOperand,
+        const bufferization::AnalysisState &state) {
+      return opOperand.getOperandNumber() != 0;
+    }
+    SmallVector<OpResult> getAliasingOpResult(
+        OpOperand &opOperand, const bufferization::AnalysisState &state) {
+      if (opOperand.getOperandNumber() == 0) return {};
+      return {getOperation()->getOpResult(opOperand.getOperandNumber()-1)};
+    }
+    LogicalResult bufferize(RewriterBase &rewriter,
+        const bufferization::BufferizationOptions &options);
+    bufferization::BufferRelation bufferRelation(OpResult opResult,
+        const bufferization::AnalysisState &state) {
+      return bufferization::BufferRelation::Equivalent;
+    }
+  }];
+}
+
+def AddDependencyOp : XlaCpu_Op<"add_dependency", [BufferizableOpInterface]> {
+  let summary = "CPU-specific version of AddDependency";
+  let description = [{
+    The major differences between this and HLO's add_dependency are:
+    - It bufferizes itself.
+  }];
+  let arguments = (ins
+    MHLO_TensorOrToken:$operand,
+    MHLO_Token:$token
+  );
+  let results = (outs MHLO_TensorOrToken);
+  let extraClassDeclaration = [{
+    // Declarations for BufferizableOpInterface:
+    bool bufferizesToMemoryRead(OpOperand &opOperand,
+        const bufferization::AnalysisState &state) {
+      return opOperand.getOperandNumber() == 0;
+    }
+    bool bufferizesToMemoryWrite(OpOperand &opOperand,
+        const bufferization::AnalysisState &state) {
+      return false;
+    }
+    SmallVector<OpResult> getAliasingOpResult(
+        OpOperand &opOperand, const bufferization::AnalysisState &state) {
+      if (opOperand.getOperandNumber() == 0 || opOperand.getOperandNumber() == 1)
+        return {};
+      return {getOperation()->getOpResult(0)};
+    }
+    LogicalResult bufferize(RewriterBase &rewriter,
+        const bufferization::BufferizationOptions &options);
+    bufferization::BufferRelation bufferRelation(OpResult opResult,
+        const bufferization::AnalysisState &state) {
+      return bufferization::BufferRelation::None;
+    }
+  }];
 }
 
 #endif  // TENSORFLOW_COMPILER_XLA_MLIR_XLA_CPU_OPS_TD_

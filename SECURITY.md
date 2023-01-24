@@ -277,11 +277,7 @@ TensorFlow uses the following disclosure process:
 
 For each vulnerability, we try to ingress it as soon as possible, given the size
 of the team and the number of reports. Vulnerabilities will, in general, be
-batched to be fixed at the same time as a quarterly release. An exception to
-this rule is for high impact vulnerabilities where exploitation of models used
-for inference in products (i.e., not models created just to showcase a
-vulnerability) is possible. In these cases, we will attempt to do patch releases
-within an accelerated timeline, not waiting for the next quarterly release.
+batched to be fixed at the same time as a quarterly release.
 
 Past security advisories are listed
 [here](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/security/README.md).

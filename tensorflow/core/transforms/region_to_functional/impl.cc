@@ -27,11 +27,11 @@ limitations under the License.
 #include "llvm/ADT/iterator.h"
 #include "llvm/Support/ScopedPrinter.h"
 #include "llvm/Support/raw_ostream.h"
-#include "mlir/IR/BlockAndValueMapping.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/FunctionInterfaces.h"  // from @llvm-project
+#include "mlir/IR/IRMapping.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/OpDefinition.h"  // from @llvm-project
 #include "mlir/IR/OperationSupport.h"  // from @llvm-project
@@ -535,9 +535,11 @@ NamedAttrList BasePattern::BuildAttributes(RegionAttr preserved,
   for (auto &it : llvm::enumerate(results))
     res_attrs.push_back(build_attrs(preserved_res_attrs, it, arguments));
 
-  attrs.append(FunctionOpInterface::getArgDictAttrName(),
+  Optional<RegisteredOperationName> name =
+      RegisteredOperationName::lookup(GraphFuncOp::getOperationName(), ctx_);
+  attrs.append(GraphFuncOp::getArgAttrsAttrName(*name),
                ArrayAttr::get(ctx_, arg_attrs));
-  attrs.append(FunctionOpInterface::getResultDictAttrName(),
+  attrs.append(GraphFuncOp::getResAttrsAttrName(*name),
                ArrayAttr::get(ctx_, res_attrs));
   return attrs;
 }
@@ -649,6 +651,7 @@ FuncAttr BasePattern::Outline(Operation *op, PatternRewriter &rewriter,
       &name_uniquer);
 
   auto yield = cast<YieldOp>(region.front().getTerminator());
+  SmallVector<Value> yieldArgs(yield.getArgs());
   rewriter.setInsertionPoint(yield);
   auto ret_op = rewriter.replaceOpWithNewOp<ReturnOp>(
       yield, yield.getOperands(),
@@ -962,12 +965,14 @@ ConvertWhileLikeOp<WhileLikeRegionOp, WhileLikeOp>::matchAndRewrite(
     // Create a name scope for the condition function.
     NameUniquer name_uniquer(this->ctx_);
     // Create the function.
+
     NamedAttrList cond_attrs =
         this->BuildAttributes(op.getCondRegionAttrsAttr(), op.getInit(),
                               cond_op.getCond(), &name_uniquer);
     GraphFuncOp cond_func =
         this->CreateFunc(op.getLoc(), "while_cond_function", op.getCondRegion(),
                          cond_op.getCond().getType(), std::move(cond_attrs));
+
     // Replace the condition terminator.
     rewriter.setInsertionPoint(cond_op);
     SmallVector<Value> cond_rets = {cond_op.getCond()};

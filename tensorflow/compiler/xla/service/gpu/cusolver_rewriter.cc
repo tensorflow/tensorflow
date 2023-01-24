@@ -167,8 +167,7 @@ StatusOr<bool> GpusolverRewriter::RunOnComputation(
     return false;
   }
 
-  TF_ASSIGN_OR_RETURN(GpuSolverContext context,
-                      GpuSolverContext::Create(/*stream=*/nullptr));
+  TF_ASSIGN_OR_RETURN(GpuSolverContext context, GpuSolverContext::Create());
 
   bool changed = false;
   for (HloInstruction* instruction : cusolver_calls) {

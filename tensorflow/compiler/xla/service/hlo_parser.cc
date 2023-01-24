@@ -59,6 +59,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/tsl/lib/gtl/map_util.h"
+#include "tensorflow/tsl/platform/float8.h"
 
 namespace xla {
 
@@ -159,6 +160,7 @@ bool CanInferShape(HloOpcode code) {
     case HloOpcode::kSelectAndScatter:
     case HloOpcode::kSort:
     case HloOpcode::kSubtract:
+    case HloOpcode::kTan:
     case HloOpcode::kTanh:
     case HloOpcode::kTranspose:
     case HloOpcode::kTriangularSolve:
@@ -304,7 +306,12 @@ class HloParserImpl : public HloParser {
   bool ParseSingleInstruction(HloModule* module);
 
   // Parses a module, returning false if an error occurred.
-  bool ParseHloModule(HloModule* module);
+  // if `parse_module_without_header` is true, the parsed text is sequence of
+  // computations, and assume computation with `ENTRY` annotation or the last
+  // computation as module's entry computation, also using the entry
+  // computation's parameter and `ROOT` instruction's layout as module's layout.
+  bool ParseHloModule(HloModule* module,
+                      bool parse_module_without_header = false);
 
   bool ParseComputations(HloModule* module);
   bool ParseComputation(HloComputation** entry_computation);
@@ -650,9 +657,13 @@ bool HloParserImpl::TokenError(absl::string_view msg) {
 
 Status HloParserImpl::Run(HloModule* module) {
   lexer_.Lex();
-  if (lexer_.GetKind() == TokKind::kw_HloModule) {
+  if ((lexer_.GetKind() == TokKind::kw_HloModule) ||
+      (lexer_.GetKind() == TokKind::kw_ENTRY) ||
+      (lexer_.LookAhead() == TokKind::kLbrace)) {
     // This means that the text contains a full HLO module.
-    if (!ParseHloModule(module)) {
+    bool parse_module_without_header =
+        (lexer_.GetKind() == TokKind::kw_HloModule) ? false : true;
+    if (!ParseHloModule(module, parse_module_without_header)) {
       return InvalidArgument(
           "Syntax error when trying to parse the text as a HloModule:\n%s",
           GetError());
@@ -918,18 +929,9 @@ bool HloParserImpl::ParseCustomCallApiVersion(CustomCallApiVersion* result) {
 }
 
 // ::= 'HloModule' name computations
-bool HloParserImpl::ParseHloModule(HloModule* module) {
-  if (lexer_.GetKind() != TokKind::kw_HloModule) {
-    return TokenError("expects HloModule");
-  }
-  // Eat 'HloModule'
-  lexer_.Lex();
-
+bool HloParserImpl::ParseHloModule(HloModule* module,
+                                   bool parse_module_without_header) {
   std::string name;
-  if (!ParseName(&name)) {
-    return false;
-  }
-
   std::optional<bool> is_scheduled;
   std::optional<AliasingData> aliasing_data;
   std::optional<bool> alias_passthrough_params;
@@ -944,13 +946,35 @@ bool HloParserImpl::ParseHloModule(HloModule* module) {
   attrs["entry_computation_layout"] = {/*required=*/false,
                                        AttrTy::kComputationLayout,
                                        &entry_computation_layout};
-  if (!ParseAttributes(attrs)) {
-    return false;
+
+  if (!parse_module_without_header) {
+    if (lexer_.GetKind() != TokKind::kw_HloModule) {
+      return TokenError("expects HloModule");
+    }
+    // Eat 'HloModule'
+    lexer_.Lex();
+
+    if (!ParseName(&name)) {
+      return false;
+    }
+    if (!ParseAttributes(attrs)) {
+      return false;
+    }
+    module->set_name(name);
   }
-  module->set_name(name);
+
   if (!ParseComputations(module)) {
     return false;
   }
+
+  if (parse_module_without_header) {
+    name = "module_" + module->entry_computation()->name();
+    entry_computation_layout =
+        ComputationLayout(module->entry_computation()->ComputeProgramShape(),
+                          /*ignore_layouts*/ false);
+  }
+
+  module->set_name(name);
 
   if (is_scheduled.has_value() && *is_scheduled) {
     TF_CHECK_OK(module->set_schedule(ScheduleFromInstructionOrder(module)));
@@ -1350,6 +1374,7 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
     case HloOpcode::kSin:
     case HloOpcode::kSqrt:
     case HloOpcode::kCbrt:
+    case HloOpcode::kTan:
     case HloOpcode::kTanh: {
       if ((!preset_operands &&
            !ParseOperands(&operands, builder, /*expected_size=*/1)) ||
@@ -1704,18 +1729,16 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
           *async_execution_thread));
     }
     case HloOpcode::kCopyStart: {
-      // If the is_cross_program_prefetch attribute is not present then default
-      // to false.
-      optional<bool> is_cross_program_prefetch = false;
-      attrs["is_cross_program_prefetch"] = {/*required=*/false, AttrTy::kBool,
-                                            &is_cross_program_prefetch};
+      optional<int> cross_program_prefetch_index = std::nullopt;
+      attrs["cross_program_prefetch_index"] = {
+          /*required=*/false, AttrTy::kInt32, &cross_program_prefetch_index};
       if ((!preset_operands &&
            !ParseOperands(&operands, builder, /*expected_size=*/1)) ||
           !ParseAttributes(attrs, allow_attributes)) {
         return nullptr;
       }
       return builder->AddInstruction(HloInstruction::CreateCopyStart(
-          *shape, operands[0], *is_cross_program_prefetch));
+          *shape, operands[0], cross_program_prefetch_index));
     }
     case HloOpcode::kReplicaId: {
       if ((!preset_operands &&
@@ -3328,6 +3351,12 @@ bool HloParserImpl::SetValueInLiteral(LocTy loc, double value, int64_t index,
                                       Literal* literal) {
   const Shape& shape = literal->shape();
   switch (shape.element_type()) {
+    case F8E5M2:
+      return SetValueInLiteralHelper<tsl::float8_e5m2>(loc, value, index,
+                                                       literal);
+    case F8E4M3FN:
+      return SetValueInLiteralHelper<tsl::float8_e4m3fn>(loc, value, index,
+                                                         literal);
     case F16:
       return SetValueInLiteralHelper<Eigen::half>(loc, value, index, literal);
     case BF16:
@@ -3462,32 +3491,47 @@ bool HloParserImpl::SetValueInLiteralHelper(LocTy loc, ParsedElemT value,
   }
   using ParsedElemComponentT = typename ComponentType<ParsedElemT>::Type;
   using LiteralNativeComponentT = typename ComponentType<LiteralNativeT>::Type;
-  const auto handle_nan = [this, literal, index, loc](
-                              ParsedElemComponentT parsed_value_component,
-                              LiteralNativeComponentT*
-                                  literal_value_component) {
-    if (!std::isnan(static_cast<double>(parsed_value_component))) {
-      return true;
-    }
-    auto nan_payload = GetNanPayload(parsed_value_component);
-    if (nan_payload == QuietNanWithoutPayload<double>()) {
-      nan_payload = QuietNanWithoutPayload<LiteralNativeComponentT>();
-    }
-    const auto kLargestPayload = NanPayloadBitMask<LiteralNativeComponentT>();
-    if (nan_payload > kLargestPayload) {
-      return Error(
-          loc,
-          StrCat("tries to set NaN payload 0x", absl::Hex(nan_payload),
-                 " to a literal in shape ",
-                 ShapeUtil::HumanString(literal->shape()), " at linear index ",
-                 index, ", but the NaN payload is out of range (0x",
-                 absl::Hex(kLargestPayload), ")"));
-    }
-    *literal_value_component = NanWithSignAndPayload<LiteralNativeComponentT>(
-        /*sign=*/std::signbit(static_cast<double>(parsed_value_component)),
-        /*nan_payload=*/nan_payload);
-    return true;
-  };
+  const auto handle_nan =
+      [this, literal, index, loc](
+          ParsedElemComponentT parsed_value_component,
+          LiteralNativeComponentT* literal_value_component) {
+        if (!std::isnan(static_cast<double>(parsed_value_component))) {
+          return true;
+        }
+        auto nan_payload = GetNanPayload(parsed_value_component);
+        if constexpr (std::is_same<LiteralNativeComponentT,
+                                   tsl::float8_e4m3fn>::value) {
+          if (nan_payload != QuietNanWithoutPayload<double>()) {
+            return Error(
+                loc, StrCat("tries to set NaN payload 0x",
+                            absl::Hex(nan_payload), " to a literal in shape ",
+                            ShapeUtil::HumanString(literal->shape()),
+                            " at linear index ", index,
+                            ", but f8e4m3fn does not support payloads"));
+          }
+        } else {
+          if (nan_payload == QuietNanWithoutPayload<double>()) {
+            nan_payload = QuietNanWithoutPayload<LiteralNativeComponentT>();
+          }
+          const auto kLargestPayload =
+              NanPayloadBitMask<LiteralNativeComponentT>();
+          if (nan_payload > kLargestPayload) {
+            return Error(
+                loc, StrCat("tries to set NaN payload 0x",
+                            absl::Hex(nan_payload), " to a literal in shape ",
+                            ShapeUtil::HumanString(literal->shape()),
+                            " at linear index ", index,
+                            ", but the NaN payload is out of range (0x",
+                            absl::Hex(kLargestPayload), ")"));
+          }
+          *literal_value_component =
+              NanWithSignAndPayload<LiteralNativeComponentT>(
+                  /*sign=*/std::signbit(
+                      static_cast<double>(parsed_value_component)),
+                  /*nan_payload=*/nan_payload);
+        }
+        return true;
+      };
   const ParsedElemComponentT parsed_real_value = GetReal(value);
   auto literal_real_value =
       static_cast<LiteralNativeComponentT>(parsed_real_value);
@@ -3659,6 +3703,9 @@ bool HloParserImpl::ParseDenseLiteral(Literal* literal, const Shape& shape) {
         break;
       }
       case TokKind::kRbrace: {
+        if (nest_level == 0) {
+          return TokenError("unexpected '}' token");
+        }
         nest_level--;
         if (elems_seen_per_dim[nest_level] != shape.dimensions(nest_level)) {
           return TokenError(absl::StrFormat(
@@ -3771,22 +3818,29 @@ struct MinMaxFiniteValue {
   static T min() { return std::numeric_limits<T>::lowest(); }
 };
 
-template <>
-struct MinMaxFiniteValue<Eigen::half> {
+template <typename T>
+struct MinMaxFiniteValueCustomFloat {
   static double max() {
     // Sadly this is not constexpr, so this forces `value` to be a method.
-    return static_cast<double>(Eigen::NumTraits<Eigen::half>::highest());
+    return static_cast<double>(Eigen::NumTraits<T>::highest());
   }
   static double min() { return -max(); }
 };
 
 template <>
-struct MinMaxFiniteValue<bfloat16> {
-  static double max() {
-    return static_cast<double>(Eigen::NumTraits<Eigen::bfloat16>::highest());
-  }
-  static double min() { return -max(); }
-};
+struct MinMaxFiniteValue<Eigen::half>
+    : MinMaxFiniteValueCustomFloat<Eigen::half> {};
+
+template <>
+struct MinMaxFiniteValue<bfloat16> : MinMaxFiniteValueCustomFloat<bfloat16> {};
+
+template <>
+struct MinMaxFiniteValue<tsl::float8_e5m2>
+    : MinMaxFiniteValueCustomFloat<tsl::float8_e5m2> {};
+
+template <>
+struct MinMaxFiniteValue<tsl::float8_e4m3fn>
+    : MinMaxFiniteValueCustomFloat<tsl::float8_e4m3fn> {};
 
 // MSVC's standard C++ library does not define isnan/isfinite for integer types.
 // To work around that we will need to provide our own.
@@ -5186,7 +5240,8 @@ bool HloParserImpl::ParseLayoutIntAttribute(
 //       (':' dim_level_types
 //            tiles
 //            memory_space
-//            physical_shape)?
+//            physical_shape
+//            dynamic_shape_metadata_prefix_bytes)?
 //       '}'
 // memory_space
 //   ::= /*empty*/
@@ -5201,6 +5256,7 @@ bool HloParserImpl::ParseLayout(Layout* layout) {
   PrimitiveType pointer_primitive_type = PRIMITIVE_TYPE_INVALID;
   int64_t memory_space = 0;
   std::optional<Shape> physical_shape;
+  int64_t dynamic_shape_metadata_prefix_bytes = 0;
 
   auto parse_and_add_item = [&]() {
     int64_t i;
@@ -5273,6 +5329,12 @@ bool HloParserImpl::ParseLayout(Layout* layout) {
         physical_shape.emplace();
         ParsePhysicalShape(&*physical_shape);
       }
+
+      if (lexer_.GetKind() == TokKind::kIdent && lexer_.GetStrVal() == "M") {
+        lexer_.Lex();
+        ParseLayoutIntAttribute(&dynamic_shape_metadata_prefix_bytes,
+                                "dynamic shape metadata prefix bytes");
+      }
     }
   }
   if (!ParseToken(TokKind::kRbrace,
@@ -5285,10 +5347,10 @@ bool HloParserImpl::ParseLayout(Layout* layout) {
   for (int i = 0; i < tiles.size(); i++) {
     vec_tiles[i] = Tile(tiles[i]);
   }
-  *layout = LayoutUtil::MakeLayout(minor_to_major, dim_level_types, dim_unique,
-                                   dim_ordered, vec_tiles, index_primitive_type,
-                                   pointer_primitive_type, memory_space,
-                                   std::move(physical_shape));
+  *layout = LayoutUtil::MakeLayout(
+      minor_to_major, dim_level_types, dim_unique, dim_ordered, vec_tiles,
+      index_primitive_type, pointer_primitive_type, memory_space,
+      std::move(physical_shape), dynamic_shape_metadata_prefix_bytes);
   return true;
 }
 

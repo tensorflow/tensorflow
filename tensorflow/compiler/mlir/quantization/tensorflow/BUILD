@@ -18,6 +18,7 @@ package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
         ":internal_visibility_allowlist_package",
+        "//tensorflow:__pkg__",
     ],
     licenses = ["notice"],
 )
@@ -86,6 +87,7 @@ td_library(
         "passes/post_quantize.td",
         "passes/prepare_lifting.td",
         "passes/prepare_quantize.td",
+        "passes/preprocess_op.td",
         "passes/quantize_composite_functions.td",
         "passes/replace_cast_hacks_with_tf_xla_ops.td",
         "passes/tf_quant_ops.td",
@@ -219,6 +221,20 @@ gentbl_cc_library(
     deps = [":quant_td_files"],
 )
 
+gentbl_cc_library(
+    name = "preprocess_op_gen",
+    compatible_with = get_compatible_with_cloud(),
+    tbl_outs = [
+        (
+            ["-gen-rewriters"],
+            "passes/preprocess_op.inc",
+        ),
+    ],
+    tblgen = "@llvm-project//mlir:mlir-tblgen",
+    td_file = "passes/preprocess_op.td",
+    deps = [":quant_td_files"],
+)
+
 cc_library(
     name = "tf_quant_ops",
     srcs = [
@@ -306,11 +322,13 @@ cc_library(
         "passes/insert_custom_aggregation_ops.cc",
         "passes/insert_main_function.cc",
         "passes/insert_quantized_functions.cc",
+        "passes/insert_restore_op.cc",
         "passes/issue_ids_of_custom_aggregation_ops.cc",
         "passes/lift_quantizable_spots_as_functions.cc",
         "passes/lift_quantizable_spots_as_functions.inc",
         "passes/lift_quantizable_spots_as_functions_drq.cc",
         "passes/lift_quantizable_spots_as_functions_drq.inc",
+        "passes/mark_functions_noinline.cc",
         "passes/merge_initializer_function_ops_to_main.cc",
         "passes/optimize.cc",
         "passes/optimize.inc",
@@ -321,6 +339,8 @@ cc_library(
         "passes/prepare_quantize.cc",
         "passes/prepare_quantize.inc",
         "passes/prepare_quantize_drq.cc",
+        "passes/preprocess_op.cc",
+        "passes/preprocess_op.inc",
         "passes/quantize.cc",
         "passes/quantize_composite_functions.cc",
         "passes/quantize_composite_functions.inc",
@@ -344,6 +364,7 @@ cc_library(
         "//tensorflow/compiler/mlir/lite/quantization:quantization_config",
         "//tensorflow/compiler/mlir/lite/quantization:quantization_lib",
         "//tensorflow/compiler/mlir/lite/quantization/ir:QuantOps",
+        "//tensorflow/compiler/mlir/quantization/tensorflow/cc:const_op_size",
         "//tensorflow/compiler/mlir/quantization/tensorflow/utils:fake_quant_utils",
         "//tensorflow/compiler/mlir/quantization/tensorflow/utils:lift_as_function_call_utils",
         "//tensorflow/compiler/mlir/quantization/tensorflow/utils:tf_to_uniform_attribute_utils",
@@ -373,6 +394,7 @@ cc_library(
         "@com_google_absl//absl/cleanup",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/random",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@llvm-project//llvm:Support",
@@ -412,7 +434,7 @@ cc_library(
         "//tensorflow/core:core_cpu_base",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/platform:path",
-        "//tensorflow/tsl/platform:status",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@llvm-project//llvm:Support",
@@ -433,9 +455,10 @@ cc_library(
     ],
     compatible_with = get_compatible_with_cloud(),
     deps = [
+        ":pass_utils",
+        ":passes",
         ":quantization_options_proto_cc",
         "//tensorflow/cc/saved_model:loader",
-        "//tensorflow/compiler/mlir/quantization/tensorflow:passes",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:error_util",
         "//tensorflow/compiler/mlir/tensorflow:export_graphdef",

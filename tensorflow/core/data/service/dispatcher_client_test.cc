@@ -19,8 +19,10 @@ limitations under the License.
 #include <optional>
 #include <string>
 
+#include "absl/container/flat_hash_set.h"
 #include "tensorflow/core/data/service/common.pb.h"
 #include "tensorflow/core/data/service/data_transfer.h"
+#include "tensorflow/core/data/service/snapshot/path_utils.h"
 #include "tensorflow/core/data/service/test_cluster.h"
 #include "tensorflow/core/data/service/test_util.h"
 #include "tensorflow/core/framework/dataset.h"
@@ -31,14 +33,18 @@ limitations under the License.
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/protobuf/data_service.pb.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
+#include "tensorflow/core/protobuf/snapshot.pb.h"
 #include "tensorflow/core/protobuf/struct.pb.h"
 
 namespace tensorflow {
 namespace data {
 namespace {
 
+using ::tensorflow::data::experimental::DistributedSnapshotMetadata;
+using ::tensorflow::data::testing::CreateDummyDistributedSnapshotMetadata;
 using ::tensorflow::data::testing::EqualsProto;
 using ::tensorflow::data::testing::InfiniteDataset;
+using ::tensorflow::data::testing::LocalTempFilename;
 using ::tensorflow::data::testing::RangeDataset;
 using ::tensorflow::testing::StatusIs;
 using ::testing::AllOf;
@@ -79,6 +85,20 @@ class DispatcherClientTest : public ::testing::Test {
     return dataset_id;
   }
 
+  // Starts snapshots and returns the directories.
+  StatusOr<absl::flat_hash_set<std::string>> StartDummySnapshots() {
+    DistributedSnapshotMetadata metadata =
+        CreateDummyDistributedSnapshotMetadata();
+    // Create a set of local file paths to which snapshots will be materialized.
+    absl::flat_hash_set<std::string> directories = {LocalTempFilename(),
+                                                    LocalTempFilename()};
+    for (const auto& directory : directories) {
+      TF_RETURN_IF_ERROR(
+          dispatcher_client_->Snapshot(RangeDataset(10), directory, metadata));
+    }
+    return directories;
+  }
+
   std::unique_ptr<TestCluster> test_cluster_;
   std::unique_ptr<DataServiceDispatcherClient> dispatcher_client_;
 };
@@ -102,10 +122,75 @@ TEST_F(DispatcherClientTest, DatasetDoesNotExist) {
       StatusIs(error::NOT_FOUND, HasSubstr("Dataset id not-found not found")));
 }
 
+TEST_F(DispatcherClientTest, SnapshotAlreadyStarted) {
+  DistributedSnapshotMetadata metadata =
+      CreateDummyDistributedSnapshotMetadata();
+  std::string directory = LocalTempFilename();
+  TF_ASSERT_OK(
+      dispatcher_client_->Snapshot(RangeDataset(10), directory, metadata));
+  EXPECT_THAT(
+      dispatcher_client_->Snapshot(RangeDataset(10), directory, metadata),
+      StatusIs(error::INVALID_ARGUMENT, HasSubstr("already started")));
+}
+
 TEST_F(DispatcherClientTest, GetDataServiceConfig) {
   DataServiceConfig config;
   TF_ASSERT_OK(dispatcher_client_->GetDataServiceConfig(config));
   EXPECT_EQ(config.deployment_mode(), DEPLOYMENT_MODE_COLOCATED);
+}
+
+TEST_F(DispatcherClientTest, SkeletonWritten) {
+  TF_ASSERT_OK_AND_ASSIGN(absl::flat_hash_set<std::string> paths,
+                          StartDummySnapshots());
+  for (const auto& path : paths) {
+    TF_ASSERT_OK(Env::Default()->FileExists(CommittedChunksDirectory(path)));
+    TF_ASSERT_OK(Env::Default()->FileExists(StreamsDirectory(path)));
+  }
+}
+
+TEST_F(DispatcherClientTest, SnapshotMetadataAndDatasetDefWritten) {
+  TF_ASSERT_OK_AND_ASSIGN(absl::flat_hash_set<std::string> paths,
+                          StartDummySnapshots());
+  for (const auto& path : paths) {
+    TF_ASSERT_OK(
+        Env::Default()->FileExists(io::JoinPath(path, "snapshot.metadata")));
+    TF_ASSERT_OK(
+        Env::Default()->FileExists(io::JoinPath(path, "dataset_def.proto")));
+  }
+}
+
+TEST_F(DispatcherClientTest, SnapshotsInHeartbeat) {
+  TF_ASSERT_OK_AND_ASSIGN(absl::flat_hash_set<std::string> paths,
+                          StartDummySnapshots());
+  WorkerHeartbeatRequest worker_heartbeat_request;
+  worker_heartbeat_request.set_worker_address(test_cluster_->WorkerAddress(0));
+  TF_ASSERT_OK_AND_ASSIGN(
+      WorkerHeartbeatResponse worker_heartbeat_response,
+      dispatcher_client_->WorkerHeartbeat(worker_heartbeat_request));
+  ASSERT_EQ(worker_heartbeat_response.snapshot_tasks_size(), paths.size());
+  for (const auto& snapshot_task : worker_heartbeat_response.snapshot_tasks()) {
+    ASSERT_TRUE(paths.count(snapshot_task.base_path()));
+    ASSERT_EQ(snapshot_task.stream_index(), 0);
+  }
+}
+
+TEST_F(DispatcherClientTest, GetSnapshotSplit) {
+  TF_ASSERT_OK_AND_ASSIGN(absl::flat_hash_set<std::string> paths,
+                          StartDummySnapshots());
+  WorkerHeartbeatRequest worker_heartbeat_request;
+  worker_heartbeat_request.set_worker_address(test_cluster_->WorkerAddress(0));
+  TF_ASSERT_OK_AND_ASSIGN(
+      WorkerHeartbeatResponse worker_heartbeat_response,
+      dispatcher_client_->WorkerHeartbeat(worker_heartbeat_request));
+  for (const auto& snapshot_task : worker_heartbeat_response.snapshot_tasks()) {
+    GetSnapshotSplitRequest get_snapshot_split_request;
+    Tensor split;
+    bool end_of_splits;
+    TF_ASSERT_OK(dispatcher_client_->GetSnapshotSplit(
+        snapshot_task.base_path(), snapshot_task.stream_index(),
+        /*source_index=*/0, split, end_of_splits));
+    ASSERT_FALSE(end_of_splits);
+  }
 }
 
 TEST_F(DispatcherClientTest, RegisterDatasetWithExplicitId) {

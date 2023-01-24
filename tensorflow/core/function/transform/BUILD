@@ -4,7 +4,7 @@ load("//tensorflow:strict.default.bzl", "py_strict_test")
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
-        "//tensorflow/core/function:__subpackages__",
+        "//tensorflow/core/function/runtime_client:__subpackages__",
     ],
 )
 
@@ -23,7 +23,7 @@ pytype_strict_library(
     deps = [
         "//tensorflow/core:protos_all_py",
         "//tensorflow/core/framework:function_proto_py",
-        "//tensorflow/core/function:runtime_client_py",
+        "//tensorflow/core/function/runtime_client:runtime_client_py",
         "//tensorflow/python:default_gradient",
         "//tensorflow/python:gradients",
         "//tensorflow/python:handle_data_util",
@@ -34,6 +34,7 @@ pytype_strict_library(
         "//tensorflow/python/framework:function_def_to_graph",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:tensor_spec",
+        "//tensorflow/python/platform",
         "//tensorflow/python/util",
     ],
 )

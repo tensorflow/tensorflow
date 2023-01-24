@@ -49,10 +49,22 @@ tensorflow::tfprof::SerializeToString
 [//tensorflow/core/grappler/graph_analyzer:graph_analyzer_tool] # graph_analyze
 tensorflow::grappler::graph_analyzer::GraphAnalyzerTool
 
-[//tensorflow/python:bfloat16_lib] # bfloat16
-tensorflow::RegisterNumpyBfloat16
-tensorflow::Bfloat16Dtype
-tensorflow::Float8_E4M3B11Dtype
+[//tensorflow/tsl/python/lib/core:bfloat16_lib] # bfloat16
+tsl::RegisterNumpyBfloat16
+tsl::Bfloat16Dtype
+tsl::Bfloat16NumpyType
+tsl::Float8_E4M3B11Dtype
+
+[//tensorflow/tsl/python/lib/core:float8_lib] # float8_e4m3fn, float8_e5m2
+tsl::RegisterNumpyFloat8e4m3fn
+tsl::Float8e4m3fnDtype
+tsl::Float8e4m3fnNumpyType
+tsl::RegisterNumpyFloat8e5m2
+tsl::Float8e5m2Dtype
+tsl::Float8e5m2NumpyType
+
+[//tensorflow/tsl/python/lib/core:custom_casts_lib]
+tsl::RegisterCustomCasts
 
 [//tensorflow/python:py_func_lib] # py_func
 tensorflow::InitializePyTrampoline
@@ -92,6 +104,7 @@ tensorflow::SessionState::kTensorHandleResourceTypeName
 [//tensorflow/core/data/service:dispatcher_client] # dispatcher_client
 tensorflow::data::DataServiceDispatcherClient::EnsureInitialized
 tensorflow::data::DataServiceDispatcherClient::GetDataServiceMetadata
+tensorflow::data::DataServiceDispatcherClient::Initialize
 
 [//tensorflow/core/data/service:grpc_util] # grpc_util
 tensorflow::data::grpc_util::Retry
@@ -225,6 +238,7 @@ tensorflow::ExperimentalRunPassPipeline
 tensorflow::ExperimentalConvertSavedModelV1ToMlirLite
 tensorflow::ExperimentalConvertSavedModelV1ToMlir
 tensorflow::ExperimentalConvertSavedModelToMlir
+tensorflow::ExperimentalWriteBytecode
 tensorflow::ImportGraphDef
 tensorflow::ImportFunction
 
@@ -372,9 +386,6 @@ tsl::ProfilerSession::~ProfilerSession
 tsl::profiler::ProfilerServer::StartProfilerServer
 tsl::profiler::ProfilerServer::~ProfilerServer
 
-[//tensorflow/core/profiler/convert:hlo_to_tools_data_impl] # profiler
-tensorflow::profiler::ConvertHloProtoToToolData
-
 [//tensorflow/core/profiler/rpc/client:profiler_client_impl] # profiler
 tensorflow::profiler::ProfileGrpc
 tensorflow::profiler::NewSessionGrpc
@@ -441,6 +452,7 @@ tensorflow::metrics::CheckpointSize
 [//tensorflow/cc/saved_model:fingerprinting_impl] # SavedModel Fingerprinting
 tensorflow::saved_model::fingerprinting::CreateFingerprintDef
 tensorflow::saved_model::fingerprinting::ReadSavedModelFingerprint
+tensorflow::saved_model::fingerprinting::MakeFingerprintMap
 
 
 [//tensorflow/compiler/jit:flags] # tfe
@@ -539,9 +551,11 @@ tensorflow::dtensor::TPUCoreLocationsToIDs
 tensorflow::dtensor::Pack
 tensorflow::dtensor::Unpack
 tensorflow::dtensor::FetchLayout
+tensorflow::dtensor::IsDTensor
 tensorflow::dtensor::SparsePack
 tensorflow::dtensor::IsSparseDTensor
 tensorflow::dtensor::GetFunctionCacheHitAndMissCount
+tensorflow::dtensor::SetIteratorElementLayouts
 
 [//tensorflow/dtensor/cc:tensor_layout] # DTensor
 tensorflow::dtensor::Mesh

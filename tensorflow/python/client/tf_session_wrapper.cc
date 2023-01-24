@@ -569,8 +569,12 @@ PYBIND11_MODULE(_pywrap_tf_session, m) {
 
   m.def("TF_NewGraph", TF_NewGraph, py::return_value_policy::reference,
         py::call_guard<py::gil_scoped_release>());
-  m.def("TF_DeleteGraph", TF_DeleteGraph,
-        py::call_guard<py::gil_scoped_release>());
+  // Note: Do not use gil_scoped_release here which eventually (re)aquires the
+  // GIL. As graphs may be (automatically) freed from threads still running
+  // after Python already started to finalize this will lead to
+  // force-termination. See
+  // https://github.com/tensorflow/tensorflow/issues/50853
+  m.def("TF_DeleteGraph", TF_DeleteGraph);
 
   m.def("TF_GraphGetOpDef",
         [](TF_Graph* graph, const char* op_name, TF_Buffer* output_op_def) {
@@ -935,6 +939,15 @@ PYBIND11_MODULE(_pywrap_tf_session, m) {
           TF_GraphCopyFunction(graph, func, grad, status.get());
           tensorflow::MaybeRaiseRegisteredFromTFStatusWithGIL(status.get());
         });
+
+  m.def("TF_GraphRemoveFunction", [](TF_Graph* graph, const char* func_name) {
+    tensorflow::Safe_TF_StatusPtr status =
+        tensorflow::make_safe(TF_NewStatus());
+    // Release GIL.
+    py::gil_scoped_release release;
+    TF_GraphRemoveFunction(graph, func_name, status.get());
+    tensorflow::MaybeRaiseRegisteredFromTFStatusWithGIL(status.get());
+  });
 
   m.def(
       "TF_FunctionImportFunctionDef",

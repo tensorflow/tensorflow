@@ -1502,6 +1502,13 @@ Status XlaCompiler::CompileGraph(
       &result->resource_updates, &result->xla_output_shape,
       result->input_mapping));
 
+  for (const auto& [key, send] : host_compute_sends_) {
+    *result->host_compute_metadata.add_device_to_host() = send;
+  }
+  for (const auto& [key, recv] : host_compute_recvs_) {
+    *result->host_compute_metadata.add_host_to_device() = recv;
+  }
+
   VLOG(2) << "Outputs: total: " << context->retvals().size()
           << " nonconstant: " << num_nonconst_outputs;
   VLOG(2) << "XLA output shape: "

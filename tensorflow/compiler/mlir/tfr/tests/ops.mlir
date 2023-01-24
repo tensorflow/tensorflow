@@ -28,7 +28,7 @@ func.func private @tensor_list_type_tuple_like() -> !tfr.tensor_list<input_T>
 
 // -----
 
-// expected-error@+1 {{unbalanced '>' character in pretty dialect name}}
+// expected-error@+1 {{unbalanced '[' character in pretty dialect name}}
 func.func private @tensor_invalid_1() -> !tfr.tensor<[N, T>
 
 // -----

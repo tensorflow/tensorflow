@@ -458,7 +458,7 @@ StatusOr<mlir::Value> EmitHaloExchange(mlir::OpBuilder& builder, int halo_size,
     return errors::InvalidArgument(
         "Requested halo exchange on unknown mesh dim");
 
-  // TODO(hongjunchoi): Add support fof halo exchange for GPU/CPU.
+  // TODO(b/261485237): Add support for halo exchange for GPU/CPU.
   if (!mesh.is_tpu_mesh())
     return errors::InvalidArgument("Halo exchange is only supported on TPU.");
 

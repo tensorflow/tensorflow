@@ -330,6 +330,7 @@ py_library(
         # broken saved_model_cli.
         ":saved_model_aot_compile",
         ":saved_model_utils",
+        "@absl_py//absl/flags:argparse_flags",
         "//tensorflow/python",
         "//tensorflow/python/debug/wrappers:local_cli_wrapper",
     ] + if_google([

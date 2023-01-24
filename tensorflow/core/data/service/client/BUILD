@@ -18,8 +18,8 @@ cc_library(
     hdrs = [
         "common.h",
     ],
+    # copybara:uncomment copts = ["-Wthread-safety-analysis"],
     deps = [
-        "//tensorflow/core:framework",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/data/service:common_proto_cc",
         "@com_google_absl//absl/time",
@@ -30,6 +30,7 @@ cc_library(
     name = "data_service_client",
     srcs = ["data_service_client.cc"],
     hdrs = ["data_service_client.h"],
+    # copybara:uncomment copts = ["-Wthread-safety-analysis"],
     deps = [
         ":common",
         ":validate_utils",
@@ -61,6 +62,7 @@ cc_library(
 tf_cc_test(
     name = "data_service_client_test",
     srcs = ["data_service_client_test.cc"],
+    # copybara:uncomment extra_copts = ["-Wthread-safety-analysis"],
     deps = [
         ":common",
         ":data_service_client",
@@ -70,6 +72,7 @@ tf_cc_test(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+        "//tensorflow/core/data/service:common",
         "//tensorflow/core/data/service:test_cluster",
         "//tensorflow/core/data/service:test_util",
         "//tensorflow/core/platform:status",
@@ -82,6 +85,7 @@ cc_library(
     name = "utils",
     srcs = ["utils.cc"],
     hdrs = ["utils.h"],
+    # copybara:uncomment copts = ["-Wthread-safety-analysis"],
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core:protos_all_cc",
@@ -99,6 +103,7 @@ cc_library(
 tf_cc_test(
     name = "utils_test",
     srcs = ["utils_test.cc"],
+    # copybara:uncomment extra_copts = ["-Wthread-safety-analysis"],
     deps = [
         ":utils",
         "//tensorflow/core:framework",
@@ -119,6 +124,7 @@ cc_library(
     name = "validate_utils",
     srcs = ["validate_utils.cc"],
     hdrs = ["validate_utils.h"],
+    # copybara:uncomment copts = ["-Wthread-safety-analysis"],
     deps = [
         ":common",
         "//tensorflow/core:framework",
@@ -134,6 +140,7 @@ cc_library(
 tf_cc_test(
     name = "validate_utils_test",
     srcs = ["validate_utils_test.cc"],
+    # copybara:uncomment extra_copts = ["-Wthread-safety-analysis"],
     deps = [
         ":common",
         ":validate_utils",

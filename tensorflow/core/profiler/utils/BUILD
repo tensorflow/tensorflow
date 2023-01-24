@@ -69,9 +69,7 @@ cc_library(
 cc_library(
     name = "format_utils",
     hdrs = ["format_utils.h"],
-    deps = [
-        "//tensorflow/core:lib",
-    ],
+    deps = ["//tensorflow/tsl/profiler/utils:format_utils"],
 )
 
 cc_library(

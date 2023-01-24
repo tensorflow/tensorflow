@@ -77,7 +77,6 @@ bash download_models.sh
 ```
 
 ## Comparing performance with vanilla TF
-For TF OSS only:
 
 We provide example scripts comparing TF-oneDNN performance with vanilla TF's
 that users can modify for their own benchmarks. The scripts assume that models
@@ -96,11 +95,14 @@ Showing runtimes in microseconds. `?` means not available.
                Model,  Batch,        Vanilla,         oneDNN,    Speedup
           bert-large,      1,              x,              y,        x/y
           bert-large,     16,            ...,            ...,        ...
+          bert-large,     64,            ...,            ...,        ...          
            inception,      1,            ...,            ...,        ...
            inception,     16,            ...,            ...,        ...
+           inception,     64,            ...,            ...,        ...           
                                         ⋮
         ssd-resnet34,      1,              ?,            ...,          ?
         ssd-resnet34,     16,              ?,            ...,          ?
+        ssd-resnet34,     64,              ?,            ...,          ?        
 ```
 
 Vanilla TF can't run `ssd-resnet34` on CPU because it doesn't support NCHW

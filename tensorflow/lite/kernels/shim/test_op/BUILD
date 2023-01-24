@@ -58,7 +58,6 @@ cc_library(
     deps = [
         ":simple_op",
         "//tensorflow/lite:mutable_op_resolver",
-        "//tensorflow/lite/c:common",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/kernels/shim:tflite_op_shim",
     ],
@@ -70,7 +69,6 @@ cc_test(
     deps = [
         ":simple_tflite_op",
         "//tensorflow/core/platform:tstring",
-        "//tensorflow/lite/c:common",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/kernels:test_util",
         "@com_google_googletest//:gtest_main",
@@ -105,12 +103,11 @@ tf_kernel_library(
     hdrs = ["tmpl_tflite_op.h"],
     deps = [
         ":tmpl_op",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:protos_all_cc",
         "//tensorflow/lite:mutable_op_resolver",
         "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/kernels/shim:tflite_op_shim",
-        "@com_google_absl//absl/types:variant",
+        "//tensorflow/lite/kernels/shim:tflite_op_wrapper",
     ],
 )
 
@@ -127,7 +124,8 @@ tf_cc_test(
         ":tmpl_tf_op",
         "//tensorflow/core:framework",
         "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core:testlib",
+        "//tensorflow/core/framework:fake_input",
+        "//tensorflow/core/framework:tensor_testutil",
         "//tensorflow/core/kernels:ops_testutil",
         "@com_google_googletest//:gtest_main",
     ],

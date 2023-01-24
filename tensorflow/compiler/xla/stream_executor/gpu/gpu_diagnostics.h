@@ -18,8 +18,8 @@ limitations under the License.
 
 #include <tuple>
 
-#include "tensorflow/compiler/xla/stream_executor/lib/statusor.h"
 #include "tensorflow/compiler/xla/stream_executor/platform/port.h"
+#include "tensorflow/tsl/platform/statusor.h"
 
 namespace stream_executor {
 namespace gpu {
@@ -34,10 +34,10 @@ using DriverVersion = std::tuple<int, int, int>;
 // string DriverVersionToString(DriverVersion version);
 //
 //// Converts a parsed driver version or status value to natural string form.
-// string DriverVersionStatusToString(port::StatusOr<DriverVersion> version);
+// string DriverVersionStatusToString(tsl::StatusOr<DriverVersion> version);
 //
 //// Converts a string of a form like "331.79" to a DriverVersion{331, 79}.
-// port::StatusOr<DriverVersion> StringToDriverVersion(const string& value);
+// tsl::StatusOr<DriverVersion> StringToDriverVersion(const string& value);
 
 class Diagnostician {
  public:
@@ -58,15 +58,15 @@ class Diagnostician {
   //
   // This is solely used for more informative log messages when the user is
   // running on a machine that happens to have a libcuda/kernel driver mismatch.
-  static port::StatusOr<DriverVersion> FindKernelModuleVersion(
+  static tsl::StatusOr<DriverVersion> FindKernelModuleVersion(
       const std::string& driver_version_file_contents);
 
   // Extracts the kernel driver version from the current host.
-  static port::StatusOr<DriverVersion> FindKernelDriverVersion();
+  static tsl::StatusOr<DriverVersion> FindKernelDriverVersion();
 
   // Iterates through loaded DSOs with DlIteratePhdrCallback to find the
   // driver-interfacing DSO version number. Returns it as a string.
-  static port::StatusOr<DriverVersion> FindDsoVersion();
+  static tsl::StatusOr<DriverVersion> FindDsoVersion();
 
   // Logs information about the kernel driver version and userspace driver
   // library version.
@@ -80,8 +80,8 @@ class Diagnostician {
   // This is solely used for more informative log messages when the user is
   // running on a machine that happens to have a libcuda/kernel driver mismatch.
   static void WarnOnDsoKernelMismatch(
-      port::StatusOr<DriverVersion> dso_version,
-      port::StatusOr<DriverVersion> kernel_version);
+      tsl::StatusOr<DriverVersion> dso_version,
+      tsl::StatusOr<DriverVersion> kernel_version);
 
   // Logs information about the dev nodes present on this machine: their
   // existence, permissions, accessibility from this uid/gid.

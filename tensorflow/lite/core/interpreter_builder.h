@@ -27,6 +27,7 @@ limitations under the License.
 #include <map>
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "flatbuffers/flatbuffers.h"  // from @flatbuffers
@@ -38,6 +39,8 @@ limitations under the License.
 #include "tensorflow/lite/core/model_builder.h"
 #include "tensorflow/lite/core/subgraph.h"
 #include "tensorflow/lite/mutable_op_resolver.h"
+#include "tensorflow/lite/profiling/telemetry/c/telemetry_setting_internal.h"
+#include "tensorflow/lite/profiling/telemetry/profiler.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/stderr_reporter.h"
 
@@ -111,15 +114,23 @@ class InterpreterBuilder {
   void AddDelegate(TfLiteDelegate* delegate);
   void AddDelegate(TfLiteOpaqueDelegateStruct* opaque_delegate);
 
+  // Registers a telemetry profiler.
+  // Transfers the ownership to the InterpreterOptions.
+  // WARNING: This is an experimental API and subject to change.
+  void SetTelemetryProfiler(
+      std::unique_ptr<telemetry::TelemetryProfiler> profiler) {
+    telemetry_profiler_ = std::move(profiler);
+  }
+
  private:
   TfLiteStatus BuildLocalIndexToRegistrationMapping();
   TfLiteStatus ParseNodes(
       const flatbuffers::Vector<flatbuffers::Offset<Operator>>* operators,
-      Subgraph* subgraph);
+      Subgraph* subgraph, TfLiteTelemetrySubgraphInfo* subgraph_info);
   TfLiteStatus ParseTensors(
       const flatbuffers::Vector<flatbuffers::Offset<Buffer>>* buffers,
       const flatbuffers::Vector<flatbuffers::Offset<Tensor>>* tensors,
-      Subgraph* subgraph);
+      Subgraph* subgraph, TfLiteTelemetrySubgraphInfo* subgraph_info);
   TfLiteStatus ApplyDelegates(Interpreter* interpreter);
   TfLiteStatus ParseQuantization(const QuantizationParameters* src_quantization,
                                  TfLiteQuantization* quantization,
@@ -130,6 +141,7 @@ class InterpreterBuilder {
       const flatbuffers::Vector<flatbuffers::Offset<SignatureDef>>*
           signature_def_list,
       Interpreter* interpreter);
+  void ParseConversionMetadata(TfLiteTelemetryInterpreterSettings* settings);
 
   const ::tflite::Model* model_;
   const OpResolver& op_resolver_;
@@ -150,6 +162,8 @@ class InterpreterBuilder {
   int num_fp32_tensors_ = 0;
   int num_threads_ = -1;
   InterpreterOptions options_;
+
+  std::unique_ptr<telemetry::TelemetryProfiler> telemetry_profiler_;
 };
 
 }  // namespace tflite

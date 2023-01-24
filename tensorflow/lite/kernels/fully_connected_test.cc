@@ -1393,7 +1393,7 @@ TEST_P(FloatFullyConnectedOpTest, SimpleTest4DInput4DOutput) {
                              }));
 }
 
-#ifdef GTEST_HAS_DEATH_TEST
+#if GTEST_HAS_DEATH_TEST
 TEST_P(FloatFullyConnectedOpTest, SimpleTest4DInputInvalidShape) {
   // Note that it is not required that the first dimension be the number of
   // batches. But it is required that the last dimension is the 'input_dim'.

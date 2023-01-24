@@ -465,8 +465,8 @@ def _transform_features_v2(features, feature_columns, state_manager):
 @doc_controls.header(_FEATURE_COLUMN_DEPRECATION_WARNING)
 @tf_export(
     'feature_column.make_parse_example_spec',
-    v1=[],
-    deprecation_inst=_FEATURE_COLUMN_DEPRECATION_RUNTIME_WARNING)
+    v1=[])
+@deprecation.deprecated(None, _FEATURE_COLUMN_DEPRECATION_RUNTIME_WARNING)
 def make_parse_example_spec_v2(feature_columns):
   """Creates parsing spec dictionary from input feature_columns.
 
@@ -528,9 +528,8 @@ def make_parse_example_spec_v2(feature_columns):
 
 
 @doc_controls.header(_FEATURE_COLUMN_DEPRECATION_WARNING)
-@tf_export(
-    'feature_column.embedding_column',
-    deprecation_inst=_FEATURE_COLUMN_DEPRECATION_RUNTIME_WARNING)
+@tf_export('feature_column.embedding_column')
+@deprecation.deprecated(None, _FEATURE_COLUMN_DEPRECATION_RUNTIME_WARNING)
 def embedding_column(categorical_column,
                      dimension,
                      combiner='mean',
@@ -645,9 +644,8 @@ def embedding_column(categorical_column,
 
 
 @doc_controls.header(_FEATURE_COLUMN_DEPRECATION_WARNING)
-@tf_export(
-    v1=['feature_column.shared_embedding_columns'],
-    deprecation_inst=_FEATURE_COLUMN_DEPRECATION_RUNTIME_WARNING)
+@tf_export(v1=['feature_column.shared_embedding_columns'])
+@deprecation.deprecated(None, _FEATURE_COLUMN_DEPRECATION_RUNTIME_WARNING)
 def shared_embedding_columns(categorical_columns,
                              dimension,
                              combiner='mean',
@@ -842,8 +840,8 @@ def shared_embedding_columns(categorical_columns,
 @doc_controls.header(_FEATURE_COLUMN_DEPRECATION_WARNING)
 @tf_export(
     'feature_column.shared_embeddings',
-    v1=[],
-    deprecation_inst=_FEATURE_COLUMN_DEPRECATION_RUNTIME_WARNING)
+    v1=[])
+@deprecation.deprecated(None, _FEATURE_COLUMN_DEPRECATION_RUNTIME_WARNING)
 def shared_embedding_columns_v2(categorical_columns,
                                 dimension,
                                 combiner='mean',
@@ -1019,9 +1017,8 @@ def shared_embedding_columns_v2(categorical_columns,
 
 
 @doc_controls.header(_FEATURE_COLUMN_DEPRECATION_WARNING)
-@tf_export(
-    'feature_column.numeric_column',
-    deprecation_inst=_FEATURE_COLUMN_DEPRECATION_RUNTIME_WARNING)
+@tf_export('feature_column.numeric_column')
+@deprecation.deprecated(None, _FEATURE_COLUMN_DEPRECATION_RUNTIME_WARNING)
 def numeric_column(key,
                    shape=(1,),
                    default_value=None,
@@ -1120,9 +1117,8 @@ def numeric_column(key,
 
 
 @doc_controls.header(_FEATURE_COLUMN_DEPRECATION_WARNING)
-@tf_export(
-    'feature_column.bucketized_column',
-    deprecation_inst=_FEATURE_COLUMN_DEPRECATION_RUNTIME_WARNING)
+@tf_export('feature_column.bucketized_column')
+@deprecation.deprecated(None, _FEATURE_COLUMN_DEPRECATION_RUNTIME_WARNING)
 def bucketized_column(source_column, boundaries):
   """Represents discretized dense input bucketed by `boundaries`.
 
@@ -1208,9 +1204,8 @@ def bucketized_column(source_column, boundaries):
 
 
 @doc_controls.header(_FEATURE_COLUMN_DEPRECATION_WARNING)
-@tf_export(
-    'feature_column.categorical_column_with_hash_bucket',
-    deprecation_inst=_FEATURE_COLUMN_DEPRECATION_RUNTIME_WARNING)
+@tf_export('feature_column.categorical_column_with_hash_bucket')
+@deprecation.deprecated(None, _FEATURE_COLUMN_DEPRECATION_RUNTIME_WARNING)
 def categorical_column_with_hash_bucket(key,
                                         hash_bucket_size,
                                         dtype=dtypes.string):
@@ -1281,9 +1276,8 @@ def categorical_column_with_hash_bucket(key,
 
 
 @doc_controls.header(_FEATURE_COLUMN_DEPRECATION_WARNING)
-@tf_export(
-    v1=['feature_column.categorical_column_with_vocabulary_file'],
-    deprecation_inst=_FEATURE_COLUMN_DEPRECATION_RUNTIME_WARNING)
+@tf_export(v1=['feature_column.categorical_column_with_vocabulary_file'])
+@deprecation.deprecated(None, _FEATURE_COLUMN_DEPRECATION_RUNTIME_WARNING)
 def categorical_column_with_vocabulary_file(key,
                                             vocabulary_file,
                                             vocabulary_size=None,
@@ -1392,8 +1386,8 @@ def categorical_column_with_vocabulary_file(key,
 @doc_controls.header(_FEATURE_COLUMN_DEPRECATION_WARNING)
 @tf_export(
     'feature_column.categorical_column_with_vocabulary_file',
-    v1=[],
-    deprecation_inst=_FEATURE_COLUMN_DEPRECATION_RUNTIME_WARNING)
+    v1=[])
+@deprecation.deprecated(None, _FEATURE_COLUMN_DEPRECATION_RUNTIME_WARNING)
 def categorical_column_with_vocabulary_file_v2(key,
                                                vocabulary_file,
                                                vocabulary_size=None,
@@ -1528,9 +1522,8 @@ def categorical_column_with_vocabulary_file_v2(key,
 
 
 @doc_controls.header(_FEATURE_COLUMN_DEPRECATION_WARNING)
-@tf_export(
-    'feature_column.categorical_column_with_vocabulary_list',
-    deprecation_inst=_FEATURE_COLUMN_DEPRECATION_RUNTIME_WARNING)
+@tf_export('feature_column.categorical_column_with_vocabulary_list')
+@deprecation.deprecated(None, _FEATURE_COLUMN_DEPRECATION_RUNTIME_WARNING)
 def categorical_column_with_vocabulary_list(key,
                                             vocabulary_list,
                                             dtype=None,
@@ -1648,9 +1641,8 @@ def categorical_column_with_vocabulary_list(key,
 
 
 @doc_controls.header(_FEATURE_COLUMN_DEPRECATION_WARNING)
-@tf_export(
-    'feature_column.categorical_column_with_identity',
-    deprecation_inst=_FEATURE_COLUMN_DEPRECATION_RUNTIME_WARNING)
+@tf_export('feature_column.categorical_column_with_identity')
+@deprecation.deprecated(None, _FEATURE_COLUMN_DEPRECATION_RUNTIME_WARNING)
 def categorical_column_with_identity(key, num_buckets, default_value=None):
   """A `CategoricalColumn` that returns identity values.
 
@@ -1727,9 +1719,8 @@ def categorical_column_with_identity(key, num_buckets, default_value=None):
 
 
 @doc_controls.header(_FEATURE_COLUMN_DEPRECATION_WARNING)
-@tf_export(
-    'feature_column.indicator_column',
-    deprecation_inst=_FEATURE_COLUMN_DEPRECATION_RUNTIME_WARNING)
+@tf_export('feature_column.indicator_column')
+@deprecation.deprecated(None, _FEATURE_COLUMN_DEPRECATION_RUNTIME_WARNING)
 def indicator_column(categorical_column):
   """Represents multi-hot representation of given categorical column.
 
@@ -1773,9 +1764,8 @@ def indicator_column(categorical_column):
 
 
 @doc_controls.header(_FEATURE_COLUMN_DEPRECATION_WARNING)
-@tf_export(
-    'feature_column.weighted_categorical_column',
-    deprecation_inst=_FEATURE_COLUMN_DEPRECATION_RUNTIME_WARNING)
+@tf_export('feature_column.weighted_categorical_column')
+@deprecation.deprecated(None, _FEATURE_COLUMN_DEPRECATION_RUNTIME_WARNING)
 def weighted_categorical_column(categorical_column,
                                 weight_feature_key,
                                 dtype=dtypes.float32):
@@ -1852,10 +1842,12 @@ def weighted_categorical_column(categorical_column,
 
 
 @doc_controls.header(_FEATURE_COLUMN_DEPRECATION_WARNING)
-@tf_export(
-    'feature_column.crossed_column',
-    deprecation_inst='Use `tf.keras.layers.experimental.preprocessing.HashedCrossing` instead for feature crossing when preprocessing data to train a Keras model.'
-)
+@tf_export('feature_column.crossed_column')
+@deprecation.deprecated(
+    None,
+    'Use `tf.keras.layers.experimental.preprocessing.HashedCrossing` '
+    'instead for feature crossing when preprocessing data to train a '
+    'Keras model.')
 def crossed_column(keys, hash_bucket_size, hash_key=None):
   """Returns a column for performing crosses of categorical features.
 

@@ -2,6 +2,7 @@ path: "tensorflow.data.IteratorSpec"
 tf_class {
   is_instance: "<class \'tensorflow.python.data.ops.iterator_ops.IteratorSpec\'>"
   is_instance: "<class \'tensorflow.python.framework.type_spec.TypeSpec\'>"
+  is_instance: "<class \'tensorflow.python.types.internal.TypeSpec\'>"
   is_instance: "<class \'tensorflow.python.types.trace.TraceType\'>"
   is_instance: "<class \'tensorflow.core.function.trace_type.serialization.Serializable\'>"
   is_instance: "<type \'object\'>"
@@ -44,5 +45,9 @@ tf_class {
   member_method {
     name: "most_specific_compatible_type"
     argspec: "args=[\'self\', \'other\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "placeholder_value"
+    argspec: "args=[\'self\', \'placeholder_context\'], varargs=None, keywords=None, defaults=None"
   }
 }

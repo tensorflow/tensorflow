@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""External-only build rules for c_api."""
+"""Build macros for C headers."""
 
 def c_api_visibility_allowlist():
     """Returns a list of packages that can depend on c_api."""
@@ -22,6 +22,6 @@ def common_header_visibility_allowlist():
     """Returns a list of packages that can depend on tensorflow/lite/core/c/common.h."""
     return []
 
-def vendor_delegate_allowlist():
-    """Returns a list of packages that can depend on vendor_delegate."""
+def experimental_acceleration_api_allowlist():
+    """Returns a list of packages that can depend on tensorflow/lite/core/experimental/acceleration/ subpackages.."""
     return []

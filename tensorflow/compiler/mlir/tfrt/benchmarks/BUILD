@@ -50,6 +50,7 @@ cc_library(
     hdrs = ["benchmark_mlir_function.h"],
     deps = [
         ":benchmark",
+        "//tensorflow/compiler/jit:flags",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tfrt:host_context_util",
         "//tensorflow/compiler/mlir/tfrt:runtime_fallback_executor",
@@ -167,7 +168,9 @@ tf_cc_binary(
     ]),
     deps = [
         ":benchmark",
+        "//tensorflow/compiler/jit:flags",
         "//tensorflow/compiler/mlir/tfrt:host_context_util",
+        "@llvm-project//llvm:Support",
     ],
 )
 
@@ -206,6 +209,38 @@ tf_cc_binary(
         ":benchmark",
         ":benchmark_mlir_function",
         "@llvm-project//llvm:Support",
+    ],
+)
+
+tf_cc_binary(
+    name = "map_op_benchmark",
+    testonly = 1,
+    srcs = ["map_op_benchmark.cc"],
+    # Args() not supported. Enable when we got rid of tf benchmark and use the
+    # standard gunit benchmark.
+    tags = if_oss([
+        "no_oss",
+        "manual",
+    ]),
+    deps = [
+        ":benchmark",
+        ":benchmark_mlir_function",
+    ],
+)
+
+tf_cc_binary(
+    name = "fused_map_bcast_benchmark",
+    testonly = 1,
+    srcs = ["fused_map_bcast_benchmark.cc"],
+    # Args() not supported. Enable when we got rid of tf benchmark and use the
+    # standard gunit benchmark.
+    tags = if_oss([
+        "no_oss",
+        "manual",
+    ]),
+    deps = [
+        ":benchmark",
+        ":benchmark_mlir_function",
     ],
 )
 
@@ -298,6 +333,23 @@ tf_cc_binary(
     name = "fused_reduction_benchmark",
     testonly = 1,
     srcs = ["fused_reduction_benchmark.cc"],
+    # Args() not supported. Enable when we got rid of tf benchmark and use the
+    # standard gunit benchmark.
+    tags = if_oss([
+        "no_oss",
+        "manual",
+    ]),
+    deps = [
+        ":benchmark",
+        ":benchmark_mlir_function",
+        "@llvm-project//llvm:Support",
+    ],
+)
+
+tf_cc_binary(
+    name = "reverse_op_benchmark",
+    testonly = 1,
+    srcs = ["reverse_op_benchmark.cc"],
     # Args() not supported. Enable when we got rid of tf benchmark and use the
     # standard gunit benchmark.
     tags = if_oss([

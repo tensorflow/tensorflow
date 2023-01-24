@@ -95,6 +95,11 @@ def _to_default_values(fullargspec):
   if fullargspec.kwonlydefaults is not None:
     defaults.update(fullargspec.kwonlydefaults)
 
+  defaults = {
+      function_type_lib.sanitize_arg_name(name): value
+      for name, value in defaults.items()
+  }
+
   return defaults
 
 
@@ -103,15 +108,12 @@ def to_function_type(fullargspec):
   default_values = _to_default_values(fullargspec)
   parameters = []
 
-  arg_kind = (
-      function_type_lib.Parameter.POSITIONAL_ONLY if fullargspec.kwonlyargs else
-      function_type_lib.Parameter.POSITIONAL_OR_KEYWORD)
   for arg in fullargspec.args:
-    # TODO(b/249802365): Add sanitization warning when load-bearing.
+    arg_name = function_type_lib.sanitize_arg_name(arg)
     parameters.append(
         function_type_lib.Parameter(
-            function_type_lib.sanitize_arg_name(arg), arg_kind, arg
-            in default_values, None))
+            arg_name, function_type_lib.Parameter.POSITIONAL_OR_KEYWORD,
+            arg_name in default_values, None))
 
   if fullargspec.varargs is not None:
     parameters.append(
@@ -120,7 +122,6 @@ def to_function_type(fullargspec):
                                     False, None))
 
   for kwarg in fullargspec.kwonlyargs:
-    # TODO(b/249802365): Add sanitization warning when load-bearing.
     parameters.append(
         function_type_lib.Parameter(
             function_type_lib.sanitize_arg_name(kwarg),
@@ -134,6 +135,43 @@ def to_function_type(fullargspec):
                                     False, None))
 
   return function_type_lib.FunctionType(parameters), default_values
+
+
+def to_input_signature(function_type):
+  """Extracts an input_signature from function_type instance."""
+  constrained_parameters = list(function_type.parameters.keys())
+
+  # self does not have a constraint in input_signature
+  if "self" in constrained_parameters:
+    constrained_parameters.pop(0)
+
+  # There are no parameters to constrain.
+  if not constrained_parameters:
+    return tuple()
+
+  constraints = []
+  for parameter_name in constrained_parameters:
+    parameter = function_type.parameters[parameter_name]
+    constraint = None
+    if parameter.type_constraint:
+      # Generate legacy constraint representation.
+      constraint = parameter.type_constraint.placeholder_value(
+          trace_type.InternalPlaceholderContext(unnest_only=True)
+      )
+      if any(
+          not isinstance(arg, tensor_spec.TensorSpec)
+          for arg in nest.flatten([constraint], expand_composites=True)):
+        # input_signature only supports TensorSpec composites.
+        constraint = None
+
+    if constraint is not None:
+      constraints.append(constraint)
+    else:
+      # input_signatures are contiguous (can optionally skip default values).
+      break
+
+  # If the list is empty then there was no input_signature specified.
+  return tuple(constraints) if constraints else None
 
 
 # TODO(b/214462107): Clean up and migrate to core/function when unblocked.
@@ -161,12 +199,17 @@ class FunctionSpec(object):
     _validate_signature(input_signature)
     _validate_python_function(python_function, input_signature)
 
-    is_bound_method = tf_inspect.isanytargetmethod(
-        python_function) or inspect.ismethod(python_function)
-    fullargspec = to_fullargspec(
-        function_type_lib.FunctionType.from_callable(python_function),
-        function_type_lib.FunctionType.get_default_values(python_function),
-        is_bound_method)
+    function_type = function_type_lib.FunctionType.from_callable(
+        python_function)
+    default_values = function_type_lib.FunctionType.get_default_values(
+        python_function)
+
+    is_bound_method = inspect.ismethod(python_function)
+
+    if input_signature is not None:
+      input_signature = tuple(input_signature)
+      function_type = function_type_lib.add_type_constraints(
+          function_type, input_signature, default_values)
 
     # Get the function's name.  Remove functools.partial wrappers if necessary.
     while isinstance(python_function, functools.partial):
@@ -174,32 +217,53 @@ class FunctionSpec(object):
     name = getattr(python_function, "__name__", "f")
 
     return FunctionSpec(
-        fullargspec,
+        function_type,
+        default_values,
         is_bound_method,
-        input_signature,
         is_pure=is_pure,
         jit_compile=jit_compile,
         name=name)
 
+  @classmethod
+  def from_fullargspec_and_signature(cls,
+                                     fullargspec,
+                                     is_bound_method,
+                                     input_signature,
+                                     is_pure=False,
+                                     name=None,
+                                     jit_compile=None):
+    """Construct FunctionSpec from legacy FullArgSpec format."""
+    function_type, default_values = to_function_type(fullargspec)
+    if input_signature:
+      input_signature = tuple(input_signature)
+      function_type = function_type_lib.add_type_constraints(
+          function_type, input_signature, default_values)
+
+    return FunctionSpec(function_type, default_values, is_bound_method, is_pure,
+                        name, jit_compile)
+
   def __init__(self,
-               fullargspec,
+               function_type,
+               default_values,
                is_bound_method,
-               input_signature,
                is_pure=False,
                name=None,
                jit_compile=None):
     """Constructs a FunctionSpec describing a python function.
 
     Args:
-      fullargspec: `tf_inspect.FullArgSpec` object describing the function.
+      function_type: A FunctionType describing the python function signature.
+      default_values: Dictionary mapping parameter names to default values.
       is_bound_method: True if the underlying function is a bound method.
-      input_signature: a signature of the function (None, if variable)
       is_pure: if True all input arguments (including variables and constants)
         will be converted to tensors and no variable changes allowed.
       name: Name of the function
       jit_compile: see `tf.function`.
     """
-    self._fullargspec = fullargspec
+    self._function_type = function_type
+    self._default_values = default_values
+    self._fullargspec = to_fullargspec(function_type, default_values,
+                                       is_bound_method)
     self._is_bound_method = is_bound_method
     self._is_pure = is_pure
     self._jit_compile = jit_compile
@@ -211,9 +275,9 @@ class FunctionSpec(object):
       # Remove `self`: default arguments shouldn't be matched to it.
       # TODO(b/127938157): Should this error out if there is no arg to
       # be removed?
-      args = fullargspec.args[1:]
+      args = self.fullargspec.args[1:]
     else:
-      args = fullargspec.args
+      args = self.fullargspec.args
 
     # A cache mapping from argument name to index, for canonicalizing
     # arguments that are called in a keyword-like fashion.
@@ -221,7 +285,7 @@ class FunctionSpec(object):
     self._arg_names = args
 
     # A cache mapping from arg index to default value, for canonicalization.
-    default_values = fullargspec.defaults
+    default_values = self.fullargspec.defaults
     offset = len(args) - len(default_values or [])
     self._arg_indices_to_default_values = {
         offset + index: default
@@ -230,6 +294,7 @@ class FunctionSpec(object):
     self._arg_indices_no_default_values = set(range(len(args))) - set(
         self._arg_indices_to_default_values)
 
+    input_signature = to_input_signature(function_type)
     _validate_signature(input_signature)
     if input_signature is None:
       self._input_signature = None
@@ -238,11 +303,6 @@ class FunctionSpec(object):
       self._flat_input_signature = tuple(
           nest.flatten(input_signature, expand_composites=True))
     self.validate_input_signature_with_argspec()
-
-    self._function_type, self._default_values = to_function_type(fullargspec)
-    if self.input_signature:
-      self._function_type = function_type_lib.add_type_constraints(
-          self.function_type, self.input_signature, self.default_values)
 
   @property
   def default_values(self):
@@ -311,19 +371,18 @@ class FunctionSpec(object):
     if captures is None:
       captures = dict()
 
-    # TODO(fmuham): canonicalize_function_inputs removes self arg.
-    if self.is_method:
-      args = (None, *args)
-
     kwargs = {
         function_type_lib.sanitize_arg_name(name): value
         for name, value in kwargs.items()
     }
 
-    _, function_type, type_context = function_type_lib.canonicalize_to_monomorphic(
-        args, kwargs, self.default_values, captures, self.function_type)
+    _, function_type, type_context = (
+        function_type_lib.canonicalize_to_monomorphic(
+            args, kwargs, self.default_values, captures, self.function_type
+        )
+    )
 
-    return function_type, type_context.deletion_observer
+    return function_type, type_context
 
   def signature_summary(self, default_values=False):
     """Returns a string summarizing this function's signature.
@@ -379,11 +438,12 @@ class FunctionSpec(object):
                        f"({self.input_signature}).")
     if args:
       # If args are provided, they must match the input signature.
-      if not is_same_structure(self.input_signature, args):
+      input_signature_args = args[:len(self.input_signature)]
+      if not is_same_structure(self.input_signature, input_signature_args):
         raise ValueError("Structure of Python function inputs does not match "
                          f"input_signature: inputs ({args}), "
                          f"input_signature ({self.input_signature}).")
-      flat_inputs = nest.flatten(args, expand_composites=True)
+      flat_inputs = nest.flatten(input_signature_args, expand_composites=True)
       if any(not isinstance(arg, (ops.Tensor, tensor_spec.DenseSpec,
                                   resource_variable_ops.BaseResourceVariable))
              for arg in flat_inputs):
@@ -428,6 +488,8 @@ class FunctionSpec(object):
         argument when an input signature is specified, or when the inputs
         do not conform to the input signature.
     """
+    if self.is_pure:
+      args, kwargs = _convert_variables_to_tensors(args, kwargs)
     args, kwargs = self.bind_function_inputs(args, kwargs)
     args, kwargs = cast_inputs(args, kwargs, self.input_signature)
     filtered_flat_args = filter_function_inputs(args, kwargs)
@@ -436,93 +498,25 @@ class FunctionSpec(object):
 
   def bind_function_inputs(self, args, kwargs):
     """Bind `args` and `kwargs` into a canonicalized signature args, kwargs."""
-    kwargs = {key: kwargs[key] for key in kwargs}
-    if self._is_pure:
-      args, kwargs = _convert_variables_to_tensors(args, kwargs)
+    sanitized_kwargs = {
+        function_type_lib.sanitize_arg_name(k): v for k, v in kwargs.items()
+    }
+    if len(kwargs) != len(sanitized_kwargs):
+      raise ValueError(f"Name collision after sanitization. Please rename "
+                       f"tf.function input parameters. Original: "
+                       f"{sorted(kwargs.keys())}, Sanitized: "
+                       f"{sorted(sanitized_kwargs.keys())}")
 
-    # Pre-calculate to reduce overhead
-    arglen = len(args)
-    if self._input_signature is not None:
-      if arglen > len(self._input_signature):
-        raise TypeError(f"{self.signature_summary()} has an input_signature "
-                        f"{self._input_signature} which specifies "
-                        f"{len(self._input_signature)} positional arguments, "
-                        f"but got {arglen}.")
-      for arg in six.iterkeys(kwargs):
-        index = self._args_to_indices.get(arg, None)
-        if index is None:
-          raise TypeError(f"{self.signature_summary()} got unexpected keyword "
-                          f"argument `{arg}`.")
-        if index >= len(self._input_signature):
-          raise TypeError(
-              f"{self.signature_summary()} got keyword argument `{arg}` that "
-              "was not included in input_signature.")
-
-    if not kwargs:
-      inputs = args
-      if self._arg_indices_to_default_values:
-        try:
-          inputs += tuple(self._arg_indices_to_default_values[i]
-                          for i in range(arglen, len(self._arg_names)))
-        except KeyError:
-          missing_args = [
-              self._arg_names[i]
-              for i in range(arglen, len(self._arg_names))
-              if i not in self._arg_indices_to_default_values
-          ]
-          raise TypeError(f"{self.signature_summary()} missing required "
-                          f"arguments: {', '.join(missing_args)}.")
-
-      if self._fullargspec.kwonlydefaults:
-        kwargs.update(self._fullargspec.kwonlydefaults)
-    else:
-      # Maps from index of arg to its corresponding value, according to `args`
-      # and `kwargs`; seeded with the default values for the named args that
-      # aren't in `args`.
-      arg_indices_to_values = {
-          index: default for index, default in six.iteritems(
-              self._arg_indices_to_default_values) if index >= arglen
-      }
-      consumed_args = []
-      missing_arg_indices = self._arg_indices_no_default_values - set(
-          range(arglen))
-      for arg, value in six.iteritems(kwargs):
-        index = self._args_to_indices.get(arg, None)
-        if index is not None:
-          if index < arglen:
-            raise TypeError(f"{self.signature_summary()} got two values for "
-                            f"{arg!r}.")
-          arg_indices_to_values[index] = value
-          # These arguments in 'kwargs' might also belong to
-          # positional arguments
-          missing_arg_indices.discard(index)
-          consumed_args.append(arg)
-      for arg in consumed_args:
-        # After this loop, `kwargs` will only contain keyword_only arguments,
-        # and all positional_or_keyword arguments have been moved to `inputs`.
-        kwargs.pop(arg)
-      inputs = args + _deterministic_dict_values(arg_indices_to_values)
-      # Exclude positional args with values
-      if missing_arg_indices:
-        missing_args = [self._arg_names[i] for i in sorted(missing_arg_indices)]
-        if len(missing_args) == 1:
-          raise TypeError(f"{self.signature_summary()} missing 1 required "
-                          f"argument: {missing_args[0]}.")
-        else:
-          raise TypeError(f"{self.signature_summary()} missing required "
-                          f"arguments: {', '.join(missing_args)}.")
-
-      if kwargs and self._input_signature is not None:
-        raise TypeError("Keyword arguments are not supported when "
-                        "input_signature is provided. Signature: "
-                        f"{self.signature_summary()}. Keyword arguments: "
-                        f"{kwargs}.")
-
-      if self._fullargspec.kwonlydefaults:
-        for (kwarg, default) in self._fullargspec.kwonlydefaults.items():
-          kwargs.setdefault(kwarg, default)
-
-    return inputs, kwargs
+    try:
+      bound_arguments = self.function_type.bind_with_defaults(
+          args, sanitized_kwargs, self.default_values)
+    except Exception as e:
+      raise TypeError(
+          f"Binding inputs to tf.function `{self._name}` failed due to `{e}`."
+          f"Received args: {args} and kwargs: {sanitized_kwargs} for signature:"
+          f" {self.function_type}."
+      ) from e
+    return bound_arguments.args, bound_arguments.kwargs
 
 
 def _validate_signature(signature):
@@ -604,10 +598,9 @@ def cast_inputs(args, kwargs, input_signature):
   """Casts args, kwargs to TF values based on an optional input_signature."""
   if input_signature is None:
     args = cast_numpy_inputs(args)
-    kwargs = cast_numpy_inputs(kwargs)
   else:
     args = cast_inputs_to_signature(args, input_signature)
-    kwargs = {}
+  kwargs = cast_numpy_inputs(kwargs)
 
   return args, kwargs
 
@@ -706,13 +699,11 @@ def filter_function_inputs(args, kwargs):
   for inp in flat_inputs:
     # TODO(b/183107079): Allow these once they're handled properly.
     if isinstance(inp, weakref.ref):
-      raise ValueError(
-          f"weakref input {inp} not supported for tf.function.")
+      raise ValueError(f"weakref input {inp} not supported for tf.function.")
 
   filtered_flat_inputs = [
       t for t in flat_inputs
-      if isinstance(t, (ops.Tensor,
-                        resource_variable_ops.BaseResourceVariable))
+      if isinstance(t, (ops.Tensor, resource_variable_ops.BaseResourceVariable))
   ]
 
   return filtered_flat_inputs

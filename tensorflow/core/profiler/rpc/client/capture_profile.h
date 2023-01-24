@@ -28,9 +28,9 @@ limitations under the License.
 namespace tensorflow {
 namespace profiler {
 
+using tsl::profiler::CaptureRemoteTrace;   // NOLINT
 using tsl::profiler::ExportToTensorBoard;  // NOLINT
 using tsl::profiler::Monitor;              // NOLINT
-using tsl::profiler::Trace;                // NOLINT
 
 }  // namespace profiler
 }  // namespace tensorflow

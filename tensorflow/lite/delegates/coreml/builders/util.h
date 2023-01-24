@@ -30,6 +30,10 @@ namespace coreml {
 bool IsBinaryOpSupported(const TfLiteRegistration* registration,
                          const TfLiteNode* node, TfLiteContext* context);
 
+// Gets the float scalar value from the given tensor. The tensor should be a
+// constant float32/float16 tensor of size 1.
+float GetScalarFloatFromTensor(const TfLiteTensor* tensor);
+
 }  // namespace coreml
 }  // namespace delegates
 }  // namespace tflite

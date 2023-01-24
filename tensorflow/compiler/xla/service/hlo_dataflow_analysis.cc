@@ -415,9 +415,13 @@ bool HloDataflowAnalysis::Phi(
     PrimitiveType ty = shape.element_type();
     bool is_array = shape.IsArray();
     absl::c_for_each(inputs, [&](const InstructionValueSet* input) {
-      DCHECK(ty == input->shape().element_type() &&
-             (!is_array || ShapeUtil::ElementsIn(shape) ==
-                               ShapeUtil::ElementsIn(input->shape())));
+      DCHECK(
+          ty == input->shape().element_type() &&
+          (!is_array ||
+           ShapeUtil::ElementsIn(shape) ==
+               ShapeUtil::ElementsIn(input->shape()) ||
+           ShapeUtil::ArraySize(shape) == ShapeUtil::ArraySize(input->shape())))
+          << shape.ToString() << " vs." << input->shape().ToString();
     });
   }
 

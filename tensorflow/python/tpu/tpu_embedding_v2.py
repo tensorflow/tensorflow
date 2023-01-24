@@ -890,6 +890,15 @@ class TPUEmbedding(autotrackable.AutoTrackable):
         # Add one dimension to the last axis.
         sample_indices = array_ops.pad(
             sample_indices, paddings=[[0, 0], [0, 1]])
+    else:
+      if feature.max_sequence_length > 0:
+        logging.warning(
+            (
+                "Input tensor is rank %d which is above 2, the"
+                " max_sequence_length setting will be ignored."
+            ),
+            tensor.shape.rank,
+        )
     indices.append(sample_indices)
     values.append(math_ops.cast(tensor.values, dtypes.int64))
     # If we have weights they must be a SparseTensor.

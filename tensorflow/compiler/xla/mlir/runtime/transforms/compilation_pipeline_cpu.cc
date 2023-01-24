@@ -76,6 +76,8 @@ void RegisterDefaultXlaCpuRuntimeDialects(DialectRegistry& dialects) {
 
 static void CreateDefaultXlaCpuRuntimeCompilationPipeline(
     mlir::OpPassManager& pm, const CpuPipelineOptions& opts) {
+  pm.addPass(mlir::createAsyncFuncToAsyncRuntimePass());
+
   // Convert entry function to the XLA entrypoint.
   pm.addPass(CreateExportRuntimeFunctionsPass());
   pm.addPass(cpu::createConvertLmhloToCpuRuntimePass());
@@ -86,12 +88,9 @@ static void CreateDefaultXlaCpuRuntimeCompilationPipeline(
   pm.addPass(mlir::createCanonicalizerPass());
   pm.addPass(mlir::createCSEPass());
 
-  // Optimize operations from the math dialect before outlining compute regions
-  // into functions to see all constant operands.
-  if (!opts.disable_math_optimizations) {
-    pm.addNestedPass<mlir::func::FuncOp>(
-        xla::CreateMathOptimizationPass(opts.math_avx2));
-  }
+  // Enable math approximations to match XLA's FP accuracy spec.
+  pm.addNestedPass<mlir::func::FuncOp>(
+      xla::CreateMathApproximationPass({"all"}));
 
   // Convert all linalg operations to parallel loops.
   pm.addNestedPass<mlir::func::FuncOp>(
@@ -110,6 +109,8 @@ static void CreateDefaultXlaCpuRuntimeCompilationPipeline(
   // Expand math operations into std/arith dialect operations.
   pm.addNestedPass<mlir::func::FuncOp>(mlir::arith::createArithExpandOpsPass());
   pm.addNestedPass<mlir::func::FuncOp>(mlir::memref::createExpandOpsPass());
+  pm.addNestedPass<mlir::func::FuncOp>(
+      mlir::memref::createExpandStridedMetadataPass());
 
   // Add alignment attribute to all memref allocations.
   pm.addNestedPass<mlir::func::FuncOp>(
@@ -131,11 +132,7 @@ static void CreateDefaultXlaCpuRuntimeCompilationPipeline(
   // Convert async dialect to LLVM once everything else is in the LLVM dialect.
   pm.addPass(mlir::createConvertAsyncToLLVMPass());
 
-  {
-    mlir::OpPassManager& fpm = pm.nest<mlir::func::FuncOp>();
-    fpm.addPass(mlir::createConvertMathToLLVMPass());
-  }
-  pm.addPass(mlir::createConvertMathToLibmPass());
+  pm.addPass(xla::CreateMathLegalizationPass(/*enable_approximations=*/false));
 
   // Convert everything else to LLVM dialect.
   mlir::LowerVectorToLLVMOptions vector_to_llvm_opts;

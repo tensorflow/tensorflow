@@ -78,9 +78,6 @@ struct GraphExecutionRunOptions {
   // in the tensorflow::tfrt_stub::Runtime will be used.
   tensorflow::tfrt_stub::WorkQueueInterface* work_queue = nullptr;
 
-  // If true, the cost of the op will be measured at the execution time.
-  bool enable_cost_measurement = false;
-
   // If true, just-in-time host compilation is disabled, and then if the
   // specified graph is not compiled, the execution will return an error.
   bool disable_compilation = false;
