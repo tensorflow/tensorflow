@@ -36,7 +36,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/stream_executor/cuda/cuda_stream.h"
 #include "tensorflow/compiler/xla/stream_executor/cuda/cuda_timer.h"
 #include "tensorflow/compiler/xla/stream_executor/dnn.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/env.h"
 #include "tensorflow/compiler/xla/stream_executor/lib/error.h"
 #include "tensorflow/compiler/xla/stream_executor/lib/initialize.h"
 #include "tensorflow/compiler/xla/stream_executor/platform/logging.h"

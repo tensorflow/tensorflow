@@ -22,7 +22,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/stream_executor/gpu/gpu_executor.h"
 #include "tensorflow/compiler/xla/stream_executor/gpu/gpu_helpers.h"
 #include "tensorflow/compiler/xla/stream_executor/gpu/gpu_stream.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/env.h"
 #include "tensorflow/compiler/xla/stream_executor/lib/initialize.h"
 #include "tensorflow/compiler/xla/stream_executor/platform/dso_loader.h"
 #include "tensorflow/compiler/xla/stream_executor/platform/logging.h"
@@ -30,6 +29,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/stream_executor/plugin_registry.h"
 #include "tensorflow/compiler/xla/stream_executor/rocm/rocm_platform_id.h"
 #include "tensorflow/compiler/xla/stream_executor/stream_executor_internal.h"
+#include "tensorflow/tsl/platform/env.h"
 
 namespace stream_executor {
 namespace gpu {
@@ -55,32 +55,32 @@ namespace wrap {
 
 #else
 
-#define STREAM_EXECUTOR_ROCFFT_WRAP(__name)                               \
-  struct DynLoadShim__##__name {                                          \
-    static const char *kName;                                             \
-    using FuncPtrT = std::add_pointer<decltype(::__name)>::type;          \
-    static void *GetDsoHandle() {                                         \
-      auto s = internal::CachedDsoLoader::GetHipfftDsoHandle();           \
-      return s.value();                                              \
-    }                                                                     \
-    static FuncPtrT LoadOrDie() {                                         \
-      void *f;                                                            \
-      auto s = port::Env::Default()->GetSymbolFromLibrary(GetDsoHandle(), \
-                                                          kName, &f);     \
-      CHECK(s.ok()) << "could not find " << kName                         \
-                    << " in rocfft DSO; dlerror: " << s.error_message();  \
-      return reinterpret_cast<FuncPtrT>(f);                               \
-    }                                                                     \
-    static FuncPtrT DynLoad() {                                           \
-      static FuncPtrT f = LoadOrDie();                                    \
-      return f;                                                           \
-    }                                                                     \
-    template <typename... Args>                                           \
-    hipfftResult operator()(GpuExecutor *parent, Args... args) {          \
-      gpu::ScopedActivateExecutorContext sac{parent};                     \
-      return DynLoad()(args...);                                          \
-    }                                                                     \
-  } __name;                                                               \
+#define STREAM_EXECUTOR_ROCFFT_WRAP(__name)                              \
+  struct DynLoadShim__##__name {                                         \
+    static const char *kName;                                            \
+    using FuncPtrT = std::add_pointer<decltype(::__name)>::type;         \
+    static void *GetDsoHandle() {                                        \
+      auto s = internal::CachedDsoLoader::GetHipfftDsoHandle();          \
+      return s.value();                                                  \
+    }                                                                    \
+    static FuncPtrT LoadOrDie() {                                        \
+      void *f;                                                           \
+      auto s = tsl::Env::Default()->GetSymbolFromLibrary(GetDsoHandle(), \
+                                                         kName, &f);     \
+      CHECK(s.ok()) << "could not find " << kName                        \
+                    << " in rocfft DSO; dlerror: " << s.error_message(); \
+      return reinterpret_cast<FuncPtrT>(f);                              \
+    }                                                                    \
+    static FuncPtrT DynLoad() {                                          \
+      static FuncPtrT f = LoadOrDie();                                   \
+      return f;                                                          \
+    }                                                                    \
+    template <typename... Args>                                          \
+    hipfftResult operator()(GpuExecutor *parent, Args... args) {         \
+      gpu::ScopedActivateExecutorContext sac{parent};                    \
+      return DynLoad()(args...);                                         \
+    }                                                                    \
+  } __name;                                                              \
   const char *DynLoadShim__##__name::kName = #__name;
 
 #endif

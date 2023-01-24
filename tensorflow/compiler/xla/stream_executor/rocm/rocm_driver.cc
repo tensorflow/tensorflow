@@ -28,7 +28,6 @@ limitations under the License.
 #include "absl/synchronization/notification.h"
 #include "tensorflow/compiler/xla/stream_executor/gpu/gpu_diagnostics.h"
 #include "tensorflow/compiler/xla/stream_executor/gpu/gpu_driver.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/env.h"
 #include "tensorflow/compiler/xla/stream_executor/lib/error.h"
 #include "tensorflow/compiler/xla/stream_executor/lib/static_threadlocal.h"
 #include "tensorflow/compiler/xla/stream_executor/platform/logging.h"
@@ -125,7 +124,7 @@ string ToString(hipError_t result) {
 // and wait for completion.
 tsl::thread::ThreadPool* GetDriverExecutor() {
   static tsl::thread::ThreadPool* thread_pool = new tsl::thread::ThreadPool(
-      port::Env::Default(), tsl::ThreadOptions(), "rocm_driver", 1);
+      tsl::Env::Default(), tsl::ThreadOptions(), "rocm_driver", 1);
   return thread_pool;
 }
 

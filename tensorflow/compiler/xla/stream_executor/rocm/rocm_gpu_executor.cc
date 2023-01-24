@@ -28,7 +28,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/stream_executor/gpu/gpu_stream.h"
 #include "tensorflow/compiler/xla/stream_executor/gpu/gpu_timer.h"
 #include "tensorflow/compiler/xla/stream_executor/kernel_cache_config.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/env.h"
 #include "tensorflow/compiler/xla/stream_executor/lib/error.h"
 #include "tensorflow/compiler/xla/stream_executor/lib/initialize.h"
 #include "tensorflow/compiler/xla/stream_executor/platform.h"
@@ -42,6 +41,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/stream_executor/stream_executor_internal.h"
 #include "tensorflow/compiler/xla/stream_executor/stream_executor_pimpl.h"
 #include "tensorflow/compiler/xla/stream_executor/timer.h"
+#include "tensorflow/tsl/platform/env.h"
 
 #ifdef PLATFORMS_GPUS_ROCM_DYNAMIC_LIBROCM_DYNAMIC_LIBROCM_H_
 #error \
@@ -196,7 +196,7 @@ bool GpuExecutor::FindOnDiskForISAVersion(absl::string_view filename,
 
   string cc_specific =
       absl::StrCat(filename, ".cc", version_, canonical_suffix);
-  if (port::FileExists(cc_specific).ok()) {
+  if (tsl::Env::Default()->FileExists(cc_specific).ok()) {
     VLOG(2) << "found AMDGPU ISA version-specific file, using that: "
             << cc_specific;
     *found_filename = cc_specific;
@@ -205,7 +205,7 @@ bool GpuExecutor::FindOnDiskForISAVersion(absl::string_view filename,
 
   VLOG(2) << "could not find AMDGPU ISA version-specific file at: "
           << cc_specific;
-  if (port::FileExists(string(filename)).ok()) {
+  if (tsl::Env::Default()->FileExists(string(filename)).ok()) {
     *found_filename = string(filename);
     return true;
   }

@@ -22,9 +22,9 @@ limitations under the License.
 
 #include "rocm/include/rocblas.h"
 #include "tensorflow/compiler/xla/stream_executor/gpu/gpu_activation.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/env.h"
 #include "tensorflow/compiler/xla/stream_executor/platform/dso_loader.h"
 #include "tensorflow/compiler/xla/stream_executor/platform/port.h"
+#include "tensorflow/tsl/platform/env.h"
 
 namespace stream_executor {
 namespace wrap {

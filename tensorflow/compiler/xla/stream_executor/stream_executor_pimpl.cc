@@ -32,7 +32,6 @@ limitations under the License.
 #include "absl/synchronization/notification.h"
 #include "tensorflow/compiler/xla/stream_executor/blas.h"
 #include "tensorflow/compiler/xla/stream_executor/fft.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/env.h"
 #include "tensorflow/compiler/xla/stream_executor/lib/error.h"
 #include "tensorflow/compiler/xla/stream_executor/lib/statusor.h"
 #include "tensorflow/compiler/xla/stream_executor/platform/port.h"
@@ -146,7 +145,7 @@ StreamExecutor::StreamExecutor(
       implementation_(std::move(implementation)),
       device_ordinal_(device_ordinal),
       background_threads_(new tsl::thread::ThreadPool(
-          port::Env::Default(), "stream_executor", kNumBackgroundThreads)),
+          tsl::Env::Default(), "stream_executor", kNumBackgroundThreads)),
       live_stream_count_(0),
       tracing_enabled_(false),
       mem_alloc_bytes_(0),
