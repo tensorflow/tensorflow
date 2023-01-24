@@ -22,6 +22,7 @@ limitations under the License.
 
 #include "absl/strings/substitute.h"
 #include "tensorflow/core/data/service/common.pb.h"
+#include "tensorflow/core/data/service/snapshot/path_utils.h"
 #include "tensorflow/core/data/service/task_runner.h"
 #include "tensorflow/core/data/service/worker.pb.h"
 #include "tensorflow/core/data/snapshot_utils.h"
@@ -51,6 +52,23 @@ struct SnapshotWriterParams {
 
   // The maximum number of bytes in each chunk.
   int64_t max_chunk_size_bytes = kDefaultMaxChunkSizeBytes;
+
+  std::string StreamDirectory() const {
+    return tensorflow::data::StreamDirectory(snapshot_path, stream_index);
+  }
+
+  std::string CommittedChunksDirectory() const {
+    return tensorflow::data::CommittedChunksDirectory(snapshot_path);
+  }
+
+  std::string UncommittedChunksDirectory() const {
+    return tensorflow::data::UncommittedChunksDirectory(snapshot_path,
+                                                        stream_index);
+  }
+
+  std::string CheckpointsDirectory() const {
+    return tensorflow::data::CheckpointsDirectory(snapshot_path, stream_index);
+  }
 
   std::string DebugString() const {
     return absl::Substitute(
@@ -172,10 +190,6 @@ class SnapshotStreamWriter {
   std::string CheckpointPath(int64_t chunk_index) const;
 
   const SnapshotWriterParams params_;
-  const std::string stream_directory_;
-  const std::string committed_chunks_directory_;
-  const std::string uncommitted_chunks_directory_;
-  const std::string checkpoints_directory_;
 
   // The dataset iterator that produces the dataset elements.
   std::unique_ptr<TaskIterator> iterator_;
