@@ -181,8 +181,8 @@ void InfoAboutUnusedCPUFeatures() {
     if (!missing_instructions.empty()) {
       LOG(INFO) << "This TensorFlow binary is optimized "
                 << "to use available CPU instructions in performance-"
-                << "critical operations." << std::endl 
-                << "To enable the following instructions:" 
+                << "critical operations." << std::endl
+                << "To enable the following instructions:"
                 << missing_instructions << ", in other operations, rebuild "
                 << "TensorFlow with the appropriate compiler flags.";
     }

@@ -35,7 +35,7 @@ bool IsGoogleTensorRTEnabled() {
 #else   // TF_USE_TENSORRT_STATIC
   auto handle_or = se::internal::DsoLoader::TryDlopenTensorRTLibraries();
   if (!handle_or.ok()) {
-    LOG_WARNING_WITH_PREFIX << "TensorRT is not installed.";
+    LOG_WARNING_WITH_PREFIX << "Could not find TensorRT";
   }
   return handle_or.ok();
 #endif  // TF_USE_TENSORRT_STATIC
