@@ -1771,6 +1771,33 @@ gpu_kernel_library(
     unroll_factors = "4",
 )
 
+# Logical kernels
+
+gpu_kernel_library(
+    name = "gpu_logical_not_kernels",
+    op = "logical_not",
+    tile_size = "256",
+    types = ["i1"],
+)
+
+gpu_kernel_library(
+    name = "gpu_logical_and_kernels",
+    op = "logical_and",
+    tile_size = "1024",
+    types = [
+        "i1",
+    ],
+)
+
+gpu_kernel_library(
+    name = "gpu_logical_or_kernels",
+    op = "logical_or",
+    tile_size = "1024",
+    types = [
+        "i1",
+    ],
+)
+
 # TODO(b/160731748): Re-enable when it works again.
 # gpu_kernel_library(
 #     name = "gpu_bias_add_kernels",
@@ -1862,13 +1889,6 @@ gpu_kernel_library(
 )
 
 gpu_kernel_library(
-    name = "gpu_logical_not_kernels",
-    op = "logical_not",
-    tile_size = "256",
-    types = ["i1"],
-)
-
-gpu_kernel_library(
     name = "gpu_polygamma_kernels",
     op = "polygamma",
     tile_size = "256",
@@ -1899,22 +1919,6 @@ gpu_kernel_library(
         "f64",
     ],
 )
-
-# Logical operations.
-[
-    gpu_kernel_library(
-        name = "gpu_" + op + "_kernels",
-        op = op,
-        tile_size = "1024",
-        types = [
-            "i1",
-        ],
-    )
-    for op in [
-        "logical_and",
-        "logical_or",
-    ]
-]
 
 # Kernels that support all floating-point types.
 [
