@@ -66,8 +66,10 @@ namespace xla {
 namespace gpu {
 
 Status NVPTXCompiler::OptimizeHloConvolutionCanonicalization(
-    HloModule* hlo_module, se::CudaComputeCapability cuda_compute_capability,
+    HloModule* hlo_module, GpuVersion gpu_version,
     se::DeviceMemoryAllocator* device_allocator) {
+  auto cuda_compute_capability =
+      std::get<se::CudaComputeCapability>(gpu_version);
   // Convert convolutions into CustomCalls to cudnn, then canonicalize them
   // (GpuConvPaddingLegalization). Also expand cuSolver calls.
   HloPassPipeline pipeline("conv_canonicalization");

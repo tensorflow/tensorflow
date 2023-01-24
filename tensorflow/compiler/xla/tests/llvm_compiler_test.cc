@@ -45,7 +45,7 @@ class GpuDummyCompiler : public GpuCompiler {
   GpuDummyCompiler() : GpuCompiler(kDummyTestId, kDummyTriple, kDummyLayout) {}
 
   Status OptimizeHloConvolutionCanonicalization(
-      HloModule* hlo_module, se::CudaComputeCapability cuda_compute_capability,
+      HloModule* hlo_module, GpuVersion gpu_version,
       se::DeviceMemoryAllocator* device_allocator) {
     return OkStatus();
   }
