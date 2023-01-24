@@ -92,6 +92,9 @@
     *   Add ability to save a `tf.keras.utils.FeatureSpace` object, via
         `feature_space.save("myfeaturespace.keras")`, and reload it via
         `feature_space = tf.keras.models.load_model("myfeaturespace.keras")`.
+    *   Added utility `tf.keras.utils.to_ordinal` to convert class vector to
+        ordinal regression / classification matrix.
+   
 
 *   `tf.experimental.dtensor`:
 
