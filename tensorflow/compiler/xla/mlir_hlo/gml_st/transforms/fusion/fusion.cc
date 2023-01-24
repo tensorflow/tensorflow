@@ -20,8 +20,6 @@ limitations under the License.
 #include <utility>
 
 #include "gml_st/IR/gml_st_ops.h"
-#include "gml_st/interfaces/tiling_interface.h"
-#include "gml_st/interfaces/tiling_interface_impl.h"
 #include "gml_st/transforms/passes.h"
 #include "gml_st/transforms/peeling/peeling.h"
 #include "gml_st/transforms/rewriters.h"
@@ -179,7 +177,6 @@ struct FusionPass : public impl::FusionPassBase<FusionPass> {
 
   void getDependentDialects(DialectRegistry& registry) const final {
     registry.insert<GmlStDialect, scf::SCFDialect, tensor::TensorDialect>();
-    registerGmlStTilingInterfaceExternalModels(registry);
   }
 
   void runOnOperation() final {

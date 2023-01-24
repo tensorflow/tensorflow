@@ -17,11 +17,11 @@ limitations under the License.
 #include <utility>
 
 #include "gml_st/IR/gml_st_ops.h"
-#include "gml_st/interfaces/tiling_interface_impl.h"
 #include "gml_st/transforms/passes.h"
 #include "gml_st/transforms/tiling/tiling.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "mlir/Dialect/Linalg/Transforms/TilingInterfaceImpl.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
@@ -38,7 +38,7 @@ struct TransformScatterForCpuPass
   void getDependentDialects(DialectRegistry &registry) const final {
     registry.insert<mlir::gml_st::GmlStDialect, arith::ArithDialect,
                     tensor::TensorDialect>();
-    mlir::gml_st::registerGmlStTilingInterfaceExternalModels(registry);
+    linalg::registerTilingInterfaceExternalModels(registry);
   }
 
   void runOnOperation() override {
@@ -54,7 +54,7 @@ struct TransformScatterForCpuPass
       b.setInsertionPointToStart(
           &op->getParentOfType<func::FuncOp>().getBody().front());
 
-      auto loops = cast<gml_st::TilingInterface>(op).getLoopIteratorTypes();
+      auto loops = cast<TilingInterface>(op).getLoopIteratorTypes();
       return SmallVector<Value>(
           loops.size(), b.create<arith::ConstantIndexOp>(op->getLoc(), 1));
     };

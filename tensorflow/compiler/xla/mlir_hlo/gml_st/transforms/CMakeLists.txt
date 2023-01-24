@@ -63,8 +63,6 @@ add_mlir_library(GmlStPasses
   Core
 
   LINK_LIBS PUBLIC
-  GmlStTilingInterface
-  GmlStTilingInterfaceImpl
   MLIRDestinationStyleOpInterface
   MhloDialect
   MLIRDialectUtils

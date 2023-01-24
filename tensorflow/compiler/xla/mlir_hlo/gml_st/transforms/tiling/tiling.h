@@ -19,8 +19,8 @@ limitations under the License.
 #include <functional>
 #include <string>
 
-#include "gml_st/interfaces/tiling_interface.h"
 #include "mlir/IR/PatternMatch.h"
+#include "mlir/Interfaces/TilingInterface.h"
 
 namespace mlir {
 namespace gml_st {

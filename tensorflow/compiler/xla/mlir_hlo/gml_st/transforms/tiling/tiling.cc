@@ -23,8 +23,6 @@ limitations under the License.
 #include <utility>
 
 #include "gml_st/IR/gml_st_ops.h"
-#include "gml_st/interfaces/tiling_interface.h"
-#include "gml_st/interfaces/tiling_interface_impl.h"
 #include "gml_st/transforms/passes.h"
 #include "gml_st/transforms/transforms.h"
 #include "llvm/ADT/ArrayRef.h"
@@ -35,6 +33,7 @@ limitations under the License.
 #include "mlir/Dialect/Arith/Utils/Utils.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
+#include "mlir/Dialect/Linalg/Transforms/TilingInterfaceImpl.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
@@ -206,7 +205,7 @@ struct TilingPass : public impl::TilingPassBase<TilingPass> {
   void getDependentDialects(DialectRegistry &registry) const final {
     registry.insert<GmlStDialect, tensor::TensorDialect, linalg::LinalgDialect,
                     scf::SCFDialect>();
-    registerGmlStTilingInterfaceExternalModels(registry);
+    linalg::registerTilingInterfaceExternalModels(registry);
   }
 
   void runOnOperation() override {
@@ -291,8 +290,7 @@ FailureOr<TilingResult> tile(const TilingOptions &options,
   rewriter.setInsertionPoint(terminator);
 
   // 4. Insert the tiled implementation within the loop.
-  tilingResult.tiledOps = op.getTiledImplementation(rewriter, offsets, sizes,
-                                                    /*useExtractSlice=*/false);
+  tilingResult.tiledOps = op.getTiledImplementation(rewriter, offsets, sizes);
 
   // 5. Compute tiles for the insertion.
   int64_t numResults = op->getNumResults();

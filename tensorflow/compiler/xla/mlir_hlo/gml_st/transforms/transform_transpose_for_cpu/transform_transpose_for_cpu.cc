@@ -17,7 +17,6 @@ limitations under the License.
 #include <utility>
 
 #include "gml_st/IR/gml_st_ops.h"
-#include "gml_st/interfaces/tiling_interface_impl.h"
 #include "gml_st/transforms/fusion/fusion.h"
 #include "gml_st/transforms/passes.h"
 #include "gml_st/transforms/peeling/peeling.h"
@@ -26,6 +25,7 @@ limitations under the License.
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
+#include "mlir/Dialect/Linalg/Transforms/TilingInterfaceImpl.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/Interfaces/LoopLikeInterface.h"
 #include "mlir/Pass/Pass.h"
@@ -100,7 +100,7 @@ struct TransformTransposeForCpuPass
   void getDependentDialects(DialectRegistry &registry) const final {
     registry.insert<GmlStDialect, arith::ArithDialect, linalg::LinalgDialect,
                     tensor::TensorDialect>();
-    registerGmlStTilingInterfaceExternalModels(registry);
+    linalg::registerTilingInterfaceExternalModels(registry);
   }
 
   void runOnOperation() override {

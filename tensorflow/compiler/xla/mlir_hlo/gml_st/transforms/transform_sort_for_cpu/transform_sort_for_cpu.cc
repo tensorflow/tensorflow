@@ -17,12 +17,12 @@ limitations under the License.
 #include <utility>
 
 #include "gml_st/IR/gml_st_ops.h"
-#include "gml_st/interfaces/tiling_interface_impl.h"
 #include "gml_st/transforms/passes.h"
 #include "gml_st/transforms/tiling/tiling.h"
 #include "gml_st/transforms/transforms.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "mlir/Dialect/Linalg/Transforms/TilingInterfaceImpl.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
@@ -76,7 +76,7 @@ struct TransformSortForCpuPass
 
   void getDependentDialects(DialectRegistry &registry) const final {
     registry.insert<GmlStDialect, arith::ArithDialect, tensor::TensorDialect>();
-    registerGmlStTilingInterfaceExternalModels(registry);
+    linalg::registerTilingInterfaceExternalModels(registry);
   }
 
   void runOnOperation() override {

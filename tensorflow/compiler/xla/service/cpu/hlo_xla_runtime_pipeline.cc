@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <utility>
 
+#include "mlir/Dialect/Linalg/Transforms/TilingInterfaceImpl.h"
 #include "mlir/Conversion/BufferizationToMemRef/BufferizationToMemRef.h"  // from @llvm-project
 #include "mlir/Conversion/ComplexToStandard/ComplexToStandard.h"  // from @llvm-project
 #include "mlir/Conversion/ReconcileUnrealizedCasts/ReconcileUnrealizedCasts.h"  // from @llvm-project
@@ -24,7 +25,6 @@ limitations under the License.
 #include "mlir/Conversion/TensorToLinalg/TensorToLinalgPass.h"  // from @llvm-project
 #include "mlir/Conversion/VectorToSCF/VectorToSCF.h"  // from @llvm-project
 #include "mlir/Dialect/Arith/Transforms/BufferizableOpInterfaceImpl.h"  // from @llvm-project
-#include "mlir/Dialect/Arith/Transforms/Passes.h"  // from @llvm-project
 #include "mlir/Dialect/Bufferization/Transforms/FuncBufferizableOpInterfaceImpl.h"  // from @llvm-project
 #include "mlir/Dialect/Bufferization/Transforms/OneShotAnalysis.h"  // from @llvm-project
 #include "mlir/Dialect/Bufferization/Transforms/Passes.h"  // from @llvm-project
@@ -272,6 +272,7 @@ void RegisterHloXlaRuntimePipelineDialects(mlir::DialectRegistry& dialects) {
       dialects);
   mlir::gml_st::registerBufferizableOpInterfaceExternalModels(dialects);
   mlir::linalg::registerBufferizableOpInterfaceExternalModels(dialects);
+  mlir::linalg::registerTilingInterfaceExternalModels(dialects);
   mlir::mhlo::registerBufferizableOpInterfaceExternalModels(dialects);
   mlir::scf::registerBufferizableOpInterfaceExternalModels(dialects);
   mlir::shape::registerBufferizableOpInterfaceExternalModels(dialects);
