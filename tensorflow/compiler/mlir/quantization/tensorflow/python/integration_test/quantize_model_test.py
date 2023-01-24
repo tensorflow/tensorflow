@@ -53,6 +53,7 @@ from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.saved_model import builder
 from tensorflow.python.saved_model import loader_impl as saved_model_loader
 from tensorflow.python.saved_model import save as saved_model_save
+from tensorflow.python.saved_model import save_options
 from tensorflow.python.saved_model import signature_constants
 from tensorflow.python.saved_model import signature_def_utils_impl
 from tensorflow.python.saved_model import tag_constants
@@ -1851,6 +1852,75 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
     # The difference between TF and target path is expected to be small.
     self.assertAllClose(new_outputs, got_outputs, atol=0.0666)
     self.assertAllClose(new_outputs, expected_outputs, atol=0.057)
+
+  @test_util.run_in_graph_and_eager_modes
+  def test_function_alias_preserved(self):
+    model = self._create_conv2d_model(
+        input_shape=(1, 3, 4, 3), filter_shape=(2, 3, 3, 2)
+    )
+
+    signatures = {
+        'serving_default': model.conv.get_concrete_function(),
+    }
+    save_opts = save_options.SaveOptions(
+        function_aliases={'conv_func': model.conv}
+    )
+
+    saved_model_save.save(
+        model, self._input_saved_model_path, signatures, save_opts
+    )
+
+    def data_gen() -> repr_dataset.RepresentativeDataset:
+      rng = np.random.default_rng(seed=123)
+      for _ in range(2):
+        yield {
+            'input_tensor': rng.uniform(
+                low=0, high=150, size=(1, 3, 4, 3)
+            ).astype(np.float32),
+        }
+
+    tags = {tag_constants.SERVING}
+
+    quantization_options = quant_opts_pb2.QuantizationOptions(
+        quantization_method=quant_opts_pb2.QuantizationMethod(
+            experimental_method=_ExperimentalMethod.STATIC_RANGE
+        ),
+        op_set=quant_opts_pb2.OpSet.XLA,
+    )
+
+    converted_model = quantize_model.quantize(
+        self._input_saved_model_path,
+        ['serving_default'],
+        tags,
+        self._output_saved_model_path,
+        quantization_options,
+        representative_dataset=data_gen(),
+    )
+
+    self.assertIsNotNone(converted_model)
+    self.assertCountEqual(
+        converted_model.signatures._signatures.keys(), {'serving_default'}
+    )
+
+    # Test whether the aliased function exists.
+    output_loader = saved_model_loader.SavedModelLoader(
+        self._output_saved_model_path
+    )
+
+    # Confirm that the function alias is preserved.
+    meta_graph_def = output_loader.get_meta_graph_def_from_tags(tags)
+    function_aliases = meta_graph_def.meta_info_def.function_aliases
+    self.assertNotEmpty(function_aliases)
+    self.assertCountEqual(function_aliases.values(), {'conv_func'})
+
+    # Test that the aliased function contains a quantized op.
+    for func_name, alias in function_aliases.items():
+      if alias == 'conv_func':
+        for func in meta_graph_def.graph_def.library.function:
+          if func.signature.name == func_name:
+            self._contains_op_with_name_and_attribute(
+                func.node_def, op_name='XlaConvV2', attr_name='', attr_val=None
+            )
 
   @test_util.deprecated_graph_mode_only
   def test_matmul_ptq_model_with_unfreeze_constants(self):

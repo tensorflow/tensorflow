@@ -619,12 +619,19 @@ def _run_static_range_ptq(
       according to the quantized graph to match the original signature defs.
   """
   logging.info('Running post-training quantization pre-calibration step.')
+
+  loader = saved_model_loader.SavedModelLoader(saved_model_path)
+  function_aliases = loader.get_meta_graph_def_from_tags(
+      tags
+  ).meta_info_def.function_aliases
+
   exported_model_serialized = (
       quantize_model_wrapper.quantize_ptq_model_pre_calibration(
           saved_model_path,
           list(signature_def_keys),
           set(tags),
           quant_opts.SerializeToString(),
+          dict(function_aliases),
       )
   )
 
@@ -648,6 +655,7 @@ def _run_static_range_ptq(
       exported_model.restore_node_name,
       exported_model.checkpoint_dir,
       exported_model.variable_shared_names,
+      exported_model.function_aliases,
   )
 
   # Uses the representative dataset to collect statistics for calibration.
@@ -678,6 +686,7 @@ def _run_static_range_ptq(
           list(signature_def_keys),
           set(tags),
           quant_opts.SerializeToString(),
+          dict(exported_model.function_aliases),
       )
   )
 
@@ -685,10 +694,7 @@ def _run_static_range_ptq(
       exported_model_serialized
   )
 
-  return (
-      exported_model,
-      signature_def_map,
-  )
+  return exported_model, signature_def_map
 
 
 def _static_range_quantize(
@@ -780,6 +786,7 @@ def _static_range_quantize(
       restore_op_name=exported_model.restore_node_name,
       checkpoint_dir=exported_model.checkpoint_dir,
       variable_shared_names=exported_model.variable_shared_names,
+      function_aliases=exported_model.function_aliases,
   )
 
   return saved_model_load(output_directory)
