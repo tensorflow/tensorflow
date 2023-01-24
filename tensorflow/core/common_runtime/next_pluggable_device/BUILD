@@ -32,10 +32,10 @@ cc_library(
     deps = [
         ":next_pluggable_device_allocator",
         ":next_pluggable_device_api",
-        ":pjrt_device_context",
         "//tensorflow/c:tf_status_headers",
         "//tensorflow/c:tf_status_helper",
         "//tensorflow/c:tf_tensor_internal",
+        "//tensorflow/compiler/jit:pjrt_device_context",
         "//tensorflow/core:core_cpu_lib",
         "//tensorflow/core:framework",
         "//tensorflow/core/common_runtime/next_pluggable_device/c:plugin_c_api_hdrs",
@@ -81,26 +81,6 @@ cc_library(
         "//tensorflow/core/common_runtime/next_pluggable_device/c:plugin_c_api_hdrs",
         "//tensorflow/tsl/platform:errors",
         "@com_google_absl//absl/strings",
-    ],
-)
-
-cc_library(
-    name = "pjrt_device_context",
-    srcs = [
-        "pjrt_device_context.cc",
-    ],
-    hdrs = [
-        "pjrt_device_context.h",
-    ],
-    visibility = ["//visibility:public"],
-    deps = [
-        "//tensorflow/compiler/tf2xla:common",
-        "//tensorflow/compiler/xla/pjrt:pjrt_client",
-        "//tensorflow/core:framework",
-        "//tensorflow/core/platform:status",
-        "//tensorflow/core/profiler/lib:traceme",
-        "//tensorflow/core/tfrt/common:async_value_tensor",
-        "//tensorflow/core/tfrt/common:pjrt_util",
     ],
 )
 

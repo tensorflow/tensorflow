@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/common_runtime/next_pluggable_device/pjrt_device_context.h"
+#include "tensorflow/compiler/jit/pjrt_device_context.h"
 
 #include <memory>
 #include <utility>

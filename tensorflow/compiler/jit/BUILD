@@ -1340,6 +1340,26 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "pjrt_device_context",
+    srcs = [
+        "pjrt_device_context.cc",
+    ],
+    hdrs = [
+        "pjrt_device_context.h",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//tensorflow/compiler/tf2xla:common",
+        "//tensorflow/compiler/xla/pjrt:pjrt_client",
+        "//tensorflow/core:framework",
+        "//tensorflow/core/platform:status",
+        "//tensorflow/core/profiler/lib:traceme",
+        "//tensorflow/core/tfrt/common:async_value_tensor",
+        "//tensorflow/core/tfrt/common:pjrt_util",
+    ],
+)
+
 tf_cc_test(
     name = "device_compilation_cluster_signature_test",
     srcs = [
