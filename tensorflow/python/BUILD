@@ -1205,10 +1205,7 @@ py_library(
     name = "collective_ops",
     srcs = ["ops/collective_ops.py"],
     srcs_version = "PY3",
-    deps = [
-        ":collective_ops_gen",
-        "//tensorflow/python/framework:for_generated_wrappers",
-    ],
+    deps = [":collective_ops_gen"],
 )
 
 tf_py_test(
@@ -1437,8 +1434,8 @@ py_library(
         ":functional_ops_gen",
         ":gradients_util",
         ":handle_data_util",
+        ":optional_ops_gen",
         ":pywrap_tensorflow",
-        "//tensorflow/python:optional_ops_gen",
         "//tensorflow/python/compat",
         "//tensorflow/python/eager:function",
         "//tensorflow/python/framework:auto_control_deps_utils",
@@ -1881,7 +1878,6 @@ py_library(
     srcs = ["ops/manip_grad.py"],
     srcs_version = "PY3",
     deps = [
-        ":control_flow_ops",
         ":manip_ops",
         "//tensorflow/python/framework:for_generated_wrappers",
     ],
@@ -2262,19 +2258,8 @@ py_library(
     ],
     srcs_version = "PY3",
     deps = [
-        ":array_ops",
-        ":clip_ops",
-        ":init_ops",
-        ":math_ops",
-        ":nn_ops",
-        ":partitioned_variables",
-        ":random_ops",
-        ":variable_scope",
-        ":variables",
-        "//tensorflow/python/framework:for_generated_wrappers",
         "//tensorflow/python/keras/layers/legacy_rnn:rnn_cell_impl",
         "//tensorflow/python/keras/layers/legacy_rnn:rnn_cell_wrapper_impl",
-        "//tensorflow/python/util",
     ],
 )
 
@@ -2300,7 +2285,6 @@ py_library(
     deps = [
         ":sdca_ops_gen",
         "//tensorflow/python/framework:for_generated_wrappers",
-        "//third_party/py/numpy",
     ],
 )
 
@@ -3470,7 +3454,7 @@ pywrap_tensorflow_macro(
         "@com_google_absl//absl/types:span",
         "@com_google_absl//absl/types:optional",
         "//tensorflow/c/experimental/filesystem:filesystem_interface",
-        "//tensorflow/c/experimental/stream_executor:stream_executor",
+        "//tensorflow/c/experimental/stream_executor",
         "//tensorflow/c:env",
         "//tensorflow/c:kernels",
         "//tensorflow/c:kernels_experimental",
@@ -3718,7 +3702,6 @@ py_library(
     visibility = ["//visibility:public"],
     deps = [
         ":platform",
-        "//tensorflow/python/framework",
         "//tensorflow/python/framework:for_generated_wrappers",
     ],
 )
@@ -4055,8 +4038,8 @@ cuda_py_test(
     srcs = ["ops/factory_ops_test.py"],
     main = "ops/factory_ops_test.py",
     deps = [
+        ":platform_test",
         ":sparse_ops",
-        "//tensorflow/python:platform_test",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/distribute:mirrored_strategy",
         "//tensorflow/python/eager:def_function",
@@ -4137,9 +4120,9 @@ tf_python_pybind_extension(
     srcs = ["//tensorflow/core/config:flags_api_wrapper.cc"],
     visibility = ["//tensorflow/core/config:__subpackages__"],
     deps = [
+        ":pybind11_lib",
         "//tensorflow/core:lib_headers_for_pybind",
         "//tensorflow/core/config:flags_headers",
-        "//tensorflow/python:pybind11_lib",
         "//third_party/python_runtime:headers",
         "@com_google_absl//absl/types:optional",
         "@pybind11",
