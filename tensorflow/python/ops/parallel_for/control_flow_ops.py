@@ -104,9 +104,14 @@ def for_loop(loop_fn, loop_fn_dtypes, iters, parallel_iterations=None):
   assert len(output) in (0, len(flat_loop_fn_dtypes))
   if not output:
     # This may happen for the case where iters == 0.
-    return None
-  else:
-    return nest.pack_sequence_as(loop_fn_dtypes, output)
+    # Pack a list of empty tensors with the proper ranks to match pfor output on 0 iters
+    loop_var = array_ops.placeholder_with_default(0, shape=[])
+    loop_fn_out = nest.flatten(loop_fn(loop_var))
+    ranks = [ops.convert_to_tensor(x).shape.rank for x in loop_fn_out]
+    output = [array_ops.zeros([0]*(ranks[i]+1), dt) 
+              for i,dt in enumerate(flat_loop_fn_dtypes)]
+
+  return nest.pack_sequence_as(loop_fn_dtypes, output)
 
 
 def _flatten_first_two_dims(x):
