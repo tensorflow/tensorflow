@@ -30,6 +30,7 @@ from tensorflow.python.framework import tensor_util
 from tensorflow.python.framework import type_spec
 from tensorflow.python.ops import handle_data_util
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.types import core as core_tf_types
 from tensorflow.python.types import internal
 from tensorflow.python.util import _pywrap_utils
 from tensorflow.python.util import compat
@@ -317,14 +318,7 @@ class TensorSpec(DenseSpec, type_spec.BatchableTypeSpec,
     return ops.Tensor
 
   def _to_components(self, value):
-    try:
-      value = ops.convert_to_tensor(value, self._dtype)
-    except (TypeError, ValueError):
-      raise ValueError(f"Value {value} is not convertible to a tensor with "
-                       f"dtype {self._dtype} and shape {self._shape}.")
-    if not value.shape.is_compatible_with(self._shape):
-      raise ValueError(f"Value {value} is not convertible to a tensor with "
-                       f"dtype {self._dtype} and shape {self._shape}.")
+    assert isinstance(value, core_tf_types.Tensor)
     return value
 
   def _from_components(self, components):
