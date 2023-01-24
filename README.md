@@ -33,7 +33,7 @@ and [C++](https://www.tensorflow.org/api_docs/cc) APIs, as well as
 non-guaranteed backward compatible API for
 [other languages](https://www.tensorflow.org/api_docs).
 
-Keep up-to-date with release announcements and security updates by subscribing
+Keep yourself up-to-date with release announcements and security updates by subscribing
 to
 [announce@tensorflow.org](https://groups.google.com/a/tensorflow.org/forum/#!forum/announce).
 See all the [mailing lists](https://www.tensorflow.org/community/forums).
