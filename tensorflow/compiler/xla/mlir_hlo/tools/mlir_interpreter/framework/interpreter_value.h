@@ -39,8 +39,6 @@ namespace interpreter {
 struct InterpreterValue;
 
 struct Tuple {
-  Tuple() = default;
-
   bool operator==(const Tuple& other) const;
 
   SmallVector<std::shared_ptr<InterpreterValue>> values;

@@ -83,6 +83,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/mlir/runtime/transforms/calling_convention.h"
 #include "tensorflow/compiler/xla/mlir/runtime/transforms/compilation_pipeline_cpu.h"
 #include "tensorflow/compiler/xla/mlir/runtime/transforms/compiler.h"
+#include "tensorflow/compiler/xla/mlir/tools/mlir_replay/public/compiler_trace_instrumentation.h"
 #include "tensorflow/compiler/xla/mlir_hlo/lhlo/IR/lhlo_ops.h"
 #include "tensorflow/compiler/xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "tensorflow/compiler/xla/mlir_hlo/mhlo/transforms/passes.h"
@@ -308,7 +309,8 @@ class FlattenTuplesAndBufferizeTypeConverter : public mlir::TypeConverter {
   }
 };
 
-runtime::JitExecutable::Options GetXlaRuntimeJitExecutableOptions() {
+runtime::JitExecutable::Options GetXlaRuntimeJitExecutableOptions(
+    const HloModule& module) {
   runtime::CpuPipelineOptions copts;
   runtime::JitExecutable::Options opts;
   opts.specialization = runtime::JitExecutable::Specialization::kDisabled;
@@ -326,18 +328,26 @@ runtime::JitExecutable::Options GetXlaRuntimeJitExecutableOptions() {
         PopulateXlaCpuFftCall(registry);
         PopulateXlaCpuRngCall(registry);
       });
-  opts.compiler.create_compilation_pipeline =
-      [copts](xla::runtime::PassManager& passes) {
-        HloXlaRuntimePipelineOptions options;
-        options.enable_tiling_and_fusion =
-            GetDebugOptionsFromFlags().xla_cpu_enable_mlir_tiling_and_fusion();
-        Status status = CreateHloXlaRuntimePipeline(passes, options);
-        if (!status.ok()) {
-          LOG(FATAL) << "HLO-XLA Runtime pipeline failed with: "
-                     << status.error_message();
-        }
-        runtime::CreateDefaultXlaCpuRuntimeCompilationPipeline(passes, copts);
-      };
+  opts.compiler
+      .create_compilation_pipeline = [&module, copts](
+                                         xla::runtime::PassManager& passes) {
+    HloXlaRuntimePipelineOptions options;
+    options.enable_tiling_and_fusion =
+        GetDebugOptionsFromFlags().xla_cpu_enable_mlir_tiling_and_fusion();
+    Status status = CreateHloXlaRuntimePipeline(passes, options);
+    if (!status.ok()) {
+      LOG(FATAL) << "HLO-XLA Runtime pipeline failed with: "
+                 << status.error_message();
+    }
+    runtime::CreateDefaultXlaCpuRuntimeCompilationPipeline(passes, copts);
+
+    if (module.config().debug_options().xla_dump_hlo_snapshots()) {
+      passes->addInstrumentation(
+          std::make_unique<mlir::interpreter::MlirCompilerTraceInstrumentation>(
+              module.config().debug_options().xla_dump_to(), module.unique_id(),
+              module.name()));
+    }
+  };
   opts.compiler.calling_convention = runtime::ResultsToOutsCallingConvention(
       FlattenTuplesAndBufferizeTypeConverter());
   return opts;
@@ -368,7 +378,8 @@ CpuXlaRuntimeAotCompilationResult::LoadExecutable(
 
   // TODO(b/232263665): JitOptions should be used only for JIT case because it
   // has details irrelevant to AOT.
-  runtime::JitExecutable::Options opts = GetXlaRuntimeJitExecutableOptions();
+  runtime::JitExecutable::Options opts =
+      GetXlaRuntimeJitExecutableOptions(*hlo_module);
 
   return CpuExecutable::LoadFromObjFile(
       std::move(hlo_module), xla_runtime_executable.obj_file(),
@@ -937,7 +948,7 @@ StatusOr<std::unique_ptr<HloModule>> CpuCompiler::RunHloPasses(
   TF_RETURN_IF_ERROR(RunHloPasses(
       module.get(), /*is_aot_compile=*/false, jit_target_machine.get(),
       /*is_mlir_compile=*/
-          module->config().debug_options().xla_cpu_use_xla_runtime()));
+      module->config().debug_options().xla_cpu_use_xla_runtime()));
   return std::move(module);
 }
 
@@ -1240,55 +1251,52 @@ CpuCompiler::CompileLegacyCpuExecutable(std::unique_ptr<HloModule> module) {
   // before a caller computation.
 
   std::string function_name;
-    LLVMTargetMachineFeatures target_machine_features((*jit)->target_machine());
-    IrEmitter ir_emitter(
-        &mlir_context, *module, *assignment, llvm_module.get(),
-        std::move(instruction_to_profile_idx),
-        std::move(computation_to_profile_idx),
-        ModuleComputationsTransitivelyContainCustomCall(*module),
-        &target_machine_features,
+  LLVMTargetMachineFeatures target_machine_features((*jit)->target_machine());
+  IrEmitter ir_emitter(&mlir_context, *module, *assignment, llvm_module.get(),
+                       std::move(instruction_to_profile_idx),
+                       std::move(computation_to_profile_idx),
+                       ModuleComputationsTransitivelyContainCustomCall(*module),
+                       &target_machine_features,
 #ifdef MEMORY_SANITIZER
-        /*emit_code_for_msan=*/true
+                       /*emit_code_for_msan=*/true
 #else
-        /*emit_code_for_msan=*/false
+                       /*emit_code_for_msan=*/false
 #endif
-    );
+  );
 
-    TF_RETURN_IF_ERROR(ir_emitter.EmitConstantGlobals());
+  TF_RETURN_IF_ERROR(ir_emitter.EmitConstantGlobals());
 
-    for (ComputationToEmit subcomputation :
-         SubcomputationEmissionOrder(entry_computation)) {
-      if (subcomputation.computation->IsFusionComputation()) {
-        continue;
-      }
-      TF_RETURN_IF_ERROR(
-          ir_emitter
-              .EmitComputation(
-                  subcomputation.computation,
-                  subcomputation.computation->name(),
-                  /*is_top_level_computation=*/false,
-                  schedule.sequence(subcomputation.computation).instructions(),
-                  subcomputation.allow_reassociation)
-              .status());
+  for (ComputationToEmit subcomputation :
+       SubcomputationEmissionOrder(entry_computation)) {
+    if (subcomputation.computation->IsFusionComputation()) {
+      continue;
     }
-    std::string function_name_prefix = entry_computation->name().empty()
-                                           ? "__compute"
-                                           : entry_computation->name();
-    TF_ASSIGN_OR_RETURN(llvm::Function * entry_function,
-                        ir_emitter.EmitComputation(
-                            entry_computation, function_name_prefix,
-                            /*is_top_level_computation=*/true,
-                            schedule.sequence(entry_computation).instructions(),
-                            /*allow_reassociation=*/false));
+    TF_RETURN_IF_ERROR(
+        ir_emitter
+            .EmitComputation(
+                subcomputation.computation, subcomputation.computation->name(),
+                /*is_top_level_computation=*/false,
+                schedule.sequence(subcomputation.computation).instructions(),
+                subcomputation.allow_reassociation)
+            .status());
+  }
+  std::string function_name_prefix = entry_computation->name().empty()
+                                         ? "__compute"
+                                         : entry_computation->name();
+  TF_ASSIGN_OR_RETURN(llvm::Function * entry_function,
+                      ir_emitter.EmitComputation(
+                          entry_computation, function_name_prefix,
+                          /*is_top_level_computation=*/true,
+                          schedule.sequence(entry_computation).instructions(),
+                          /*allow_reassociation=*/false));
 
-    function_name = [&]() {
-      llvm::SmallVector<char, 40> function_name_vector;
-      llvm::Mangler::getNameWithPrefix(function_name_vector,
-                                       entry_function->getName(),
-                                       (*jit)->data_layout());
-      return std::string(function_name_vector.begin(),
-                         function_name_vector.end());
-    }();
+  function_name = [&]() {
+    llvm::SmallVector<char, 40> function_name_vector;
+    llvm::Mangler::getNameWithPrefix(
+        function_name_vector, entry_function->getName(), (*jit)->data_layout());
+    return std::string(function_name_vector.begin(),
+                       function_name_vector.end());
+  }();
 
   std::string ir_module_string;
   if (embed_ir_in_executable) {
@@ -1324,9 +1332,11 @@ CpuCompiler::CompileLegacyCpuExecutable(std::unique_ptr<HloModule> module) {
 namespace {
 
 StatusOr<std::unique_ptr<XlaRuntimeCpuExecutable>> GetXlaRuntimeCpuExecutable(
-    mlir::ModuleOp mlir_module, absl::string_view entry_point,
+    const HloModule& hlo_module, mlir::ModuleOp mlir_module,
+    absl::string_view entry_point,
     const XlaFrameworkMapping& xla_framework_mapping) {
-  runtime::JitExecutable::Options opts = GetXlaRuntimeJitExecutableOptions();
+  runtime::JitExecutable::Options opts =
+      GetXlaRuntimeJitExecutableOptions(hlo_module);
   std::string serialized_mlir;
   llvm::raw_string_ostream os(serialized_mlir);
   mlir_module.print(os);
@@ -1395,7 +1405,8 @@ CpuCompiler::CompileXlaRuntimeCpuExecutable(
 
   TF_ASSIGN_OR_RETURN(
       auto xla_runtime_executable,
-      GetXlaRuntimeCpuExecutable(*mlir_module, "main", xla_framework_mapping));
+      GetXlaRuntimeCpuExecutable(*hlo_module, *mlir_module, "main",
+                                 xla_framework_mapping));
 
   if (DumpingEnabledForHloModule(*hlo_module)) {
     TF_ASSIGN_OR_RETURN(std::string_view obj_file,
