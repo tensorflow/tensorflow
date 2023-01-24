@@ -289,6 +289,7 @@ func.func @scatter_i64(%indices: tensor<?x2xindex>,
 
 // CHECK-FOR:       %[[INDICES_COUNT:.*]] = tensor.dim %[[INDICES]], %c0
 // CHECK-FOR:       gml_st.for (%{{.*}}) = (%[[C0]]) to (%[[INDICES_COUNT]])
+// CHECK-FOR-SAME:    outs (%[[INIT_:.*]] = %[[INIT]]: tensor<?x?xi64>) {
 
 // CHECK-FOR:       %[[UPDATE_SUB:.*]] = tensor.extract_slice %[[UPDATES]]
 // CHECK-FOR-SAME:    : tensor<?x?x?xi64>
@@ -298,7 +299,7 @@ func.func @scatter_i64(%indices: tensor<?x2xindex>,
 // CHECK-FOR:       %[[SCATTER:.*]] = thlo.scatter
 // CHECK-FOR-SAME:    ins(%[[INDICES_SUB]] : tensor<1x2xindex>,
 // CHECK-FOR-SAME:        %[[UPDATE_SUB]] : tensor<1x?x?xi64>)
-// CHECK-FOR-SAME:    outs(%[[INIT]] : tensor<?x?xi64>)
+// CHECK-FOR-SAME:    outs(%[[INIT_]] : tensor<?x?xi64>)
 // CHECK-FOR:           arith.addi
 // CHECK-FOR:           thlo.yield
 // CHECK-FOR:       gml_st.set_yield %[[SCATTER:.*]]

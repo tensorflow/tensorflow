@@ -328,7 +328,7 @@ FailureOr<TilingResult> tile(const TilingOptions &options,
            llvm::zip(dstOperands, forLoop.getRegionOutputArgs())) {
         dst.replaceUsesWithIf(regionArg, [&](OpOperand &operand) {
           Operation *owner = operand.getOwner();
-          return isa<tensor::ExtractSliceOp>(owner) &&
+          return isa<tensor::ExtractSliceOp, TilingInterface>(owner) &&
                  owner->getParentOfType<gml_st::ForOp>() ==
                      forLoop.getOperation();
         });
