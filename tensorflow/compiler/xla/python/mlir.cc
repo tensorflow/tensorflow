@@ -22,6 +22,7 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/Parser/Parser.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
+#include "pybind11/cast.h"
 #include "pybind11/pybind11.h"
 #include "stablehlo/dialect/ChloOps.h"  // from @stablehlo
 #include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo
@@ -77,12 +78,12 @@ void EnablePrintBeforeAndAfter(mlir::PassManager& pm) {
   pm.enableIRPrinting(print_before, print_after);
 }
 
-// Converts an XlaComputation to a StableHLO mlir::Module string. Exists for
-// backwards compatibility.
+// Converts an XlaComputation to an MHLO or StableHLO mlir::Module string.
+// Exists for backwards compatibility.
 // TODO(phawkins): port remaining users of XlaComputations to use mlir::Modules
 // instead and delete this function.
 StatusOr<std::string> PyXlaComputationToMlirModule(
-    const XlaComputation& computation) {
+    const XlaComputation& computation, bool emit_stable_hlo) {
   mlir::MLIRContext context;
   if (VLOG_IS_ON(3)) context.disableMultithreading();
   mlir::OwningOpRef<mlir::ModuleOp> module =
@@ -93,7 +94,9 @@ StatusOr<std::string> PyXlaComputationToMlirModule(
                                          /*import_all_computations=*/true));
   mlir::PassManager pm(&context);
   if (VLOG_IS_ON(3)) EnablePrintBeforeAndAfter(pm);
-  pm.addPass(mlir::mhlo::createHloLegalizeToStablehloPass());
+  if (emit_stable_hlo) {
+    pm.addPass(mlir::mhlo::createHloLegalizeToStablehloPass());
+  }
   if (!mlir::succeeded(pm.run(*module))) {
     return tsl::errors::InvalidArgument("MHLO => StableHLO failed");
   }
@@ -156,7 +159,8 @@ void BuildMlirSubmodule(py::module& m) {
   py::module mlir_module = m.def_submodule("mlir", "MLIR/XLA integration");
 
   mlir_module.def("xla_computation_to_mlir_module",
-                  &PyXlaComputationToMlirModule);
+                  &PyXlaComputationToMlirModule, py::arg("computation"),
+                  py::arg("emit_stable_hlo") = true);
   mlir_module.def("mlir_module_to_xla_computation",
                   &PyMlirModuleToXlaComputation, py::arg("mlir_module"),
                   py::arg("use_tuple_args") = false,
