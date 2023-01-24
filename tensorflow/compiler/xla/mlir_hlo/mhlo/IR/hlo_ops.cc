@@ -1071,107 +1071,15 @@ LogicalResult DotGeneralOp::reifyReturnTypeShapes(
 // FftOp
 //===----------------------------------------------------------------------===//
 
-// We intend to verify the following properties
-// P1. 1 <= rank <= 3
-// P2. Element types agree with fft_type
-// P3. Operand shape dimensions agree with fft_length for the given fft_type
 LogicalResult FftOp::inferReturnTypeComponents(
     MLIRContext*, Optional<Location> location, ValueShapeRange operands,
     DictionaryAttr attributes, RegionRange regions,
     SmallVectorImpl<ShapedTypeComponents>& inferredReturnShapes) {
   FftOp::Adaptor adaptor(operands, attributes, regions);
-  auto fftLength = adaptor.getFftLength().getValues<int64_t>();
-  int64_t fftRank = fftLength.size();
-
-  // P1.
-  if (fftRank > 3 || fftRank < 1) {
-    return emitOptionalError(location, "rank must be between 1 and 3, but got ",
-                             fftRank, ".");
-  }
-
-  // P2. Element type agreement
-  // FFT : C -> C
-  // IFFT : C -> C
-  // RFFT : R -> C
-  // IRFFT : C -> R
-  auto fftType = adaptor.getFftType();
-  auto operandType = adaptor.getOperand().getType().cast<TensorType>();
-  Type operandElementType = operandType.getElementType();
-  // Check the input element type and infer return element type
-  if (fftType == FftType::RFFT) {
-    if (!operandElementType.isF32() && !operandElementType.isF64()) {
-      return emitOptionalError(
-          location, "RFFT requires f32 or f64 input type, but is given ",
-          operandElementType, ".");
-    }
-  } else {
-    if (!operandElementType.isa<ComplexType>()) {
-      return emitOptionalError(
-          location, stringifyFftType(fftType),
-          " takes a complex tensor as input, but is given ", operandType, ".");
-    }
-  }
-  // Generate the output element type
-  Type resultElementType = operandElementType;
-  if (fftType == FftType::RFFT) {  // RFFT : R -> C
-    resultElementType = ComplexType::get(resultElementType);
-  } else if (fftType == FftType::IRFFT) {  // IRFFT : C -> R
-    resultElementType = operandElementType.cast<ComplexType>().getElementType();
-  }
-
-  // P3. Check input shape and infer return shape
-  operandType = operandType.dyn_cast<RankedTensorType>();
-  if (!operandType) {
-    inferredReturnShapes.emplace_back(resultElementType);
-    return success();
-  }
-  auto operandShape = operandType.getShape();
-  if (static_cast<int64_t>(operandShape.size()) < fftRank) {
-    return emitOptionalError(
-        location, "operand rank must not be less than fft rank of ", fftRank,
-        " for operand of type ", operandType, ".");
-  }
-
-  SmallVector<int64_t> resultShape = to_vector(operandShape);
-
-  if (fftType == FftType::RFFT) {
-    auto shapeBack = operandShape.take_back(fftRank);
-    for (auto [operandDim, fftDim] : llvm::zip(shapeBack, fftLength)) {
-      if (operandDim != fftDim) {
-        return emitOptionalError(
-            location,
-            "RFFT requires innermost dimensions match fft_length. Got: ",
-            operandShape, " but wanted ", fftLength, ".");
-      }
-    }
-    if (fftLength[fftRank - 1] != 0) {
-      resultShape[resultShape.size() - 1] = fftLength[fftRank - 1] / 2 + 1;
-    }
-  }
-  if (fftType == FftType::IRFFT) {
-    auto shapeBack = operandShape.take_back(fftRank).drop_back();
-    for (auto [operandDim, fftDim] : llvm::zip(shapeBack, fftLength)) {
-      if (operandDim != fftDim) {
-        return emitOptionalError(location,
-                                 "IRFFT requires non-final dimensions "
-                                 "match fft_length. Got: ",
-                                 operandShape, " but wanted ", fftLength,
-                                 ", and ", operandDim, " != ", fftDim, ".");
-      }
-    }
-    if ((operandShape[operandShape.size() - 1] != 0 ||
-         fftLength[fftRank - 1] != 0) &&
-        operandShape[operandShape.size() - 1] != fftLength[fftRank - 1] / 2 + 1)
-      return emitOptionalError(location,
-                               "IRFFT requires innermost dimension match "
-                               "fft_length[-1]/2+1. Got: ",
-                               operandShape, " but fft_length is ", fftLength,
-                               ".");
-    resultShape[resultShape.size() - 1] = fftLength[fftRank - 1];
-  }
-
-  inferredReturnShapes.emplace_back(resultShape, resultElementType);
-  return success();
+  return hlo::inferFftOp(location, adaptor.getOperand(),
+                         adaptor.getFftType() == FftType::RFFT,
+                         adaptor.getFftType() == FftType::IRFFT,
+                         adaptor.getFftLength(), inferredReturnShapes);
 }
 
 //===----------------------------------------------------------------------===//
