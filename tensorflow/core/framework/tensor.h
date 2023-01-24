@@ -36,8 +36,7 @@ limitations under the License.
 #include "tensorflow/core/platform/types.h"
 
 #if !defined(PLUGGABLE_DEVICE_SUPPORTED_MACOS) &&  \
-    defined(__APPLE__) && !defined(ANDROID) &&     \
-    !defined(__ANDROID__) && !TARGET_OS_IOS
+    defined(__APPLE__) && !defined(ANDROID) && !TARGET_OS_IOS
 #define PLUGGABLE_DEVICE_SUPPORTED_MACOS 1
 #endif
 
