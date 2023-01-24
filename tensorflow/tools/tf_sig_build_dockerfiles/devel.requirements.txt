@@ -8,7 +8,7 @@ absl-py ~= 1.0.0
 astunparse ~= 1.6.3
 flatbuffers ~= 2.0
 google_pasta ~= 0.2
-h5py ~= 3.7.0
+h5py ~= 3.8.0 # Earliest version for Python 3.11
 # TODO(b/262592253): Support older versions of NumPy for Python 3.10 and lower
 # to support TFX. Remove when Apache Beam upgrades to newer NumPy.
 numpy ~= 1.21.4; python_version < '3.11'
