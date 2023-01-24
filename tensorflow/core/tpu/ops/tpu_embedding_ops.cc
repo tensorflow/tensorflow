@@ -538,4 +538,10 @@ REGISTER_OP("MergeDedupData")
     .Attr("float_type: {half, bfloat16, float}")
     .SetShapeFn(tensorflow::shape_inference::ScalarShape);
 
+REGISTER_OP("ComputeDedupDataTupleMask")
+    .Output("output_shape: int32")
+    .Attr("config: string")
+    .SetIsStateful()
+    .SetShapeFn(tensorflow::shape_inference::ScalarShape);
+
 }  // namespace tensorflow

@@ -539,5 +539,58 @@ class MergeDedupDataOp : public XlaOpKernel {
 
 REGISTER_XLA_OP(Name("MergeDedupData").AllowVariantTypes(), MergeDedupDataOp);
 
+// This op computes deduplication data tuple mask.
+class ComputeDedupDataTupleMaskOp : public XlaOpKernel {
+ public:
+  explicit ComputeDedupDataTupleMaskOp(OpKernelConstruction* ctx)
+      : XlaOpKernel(ctx) {
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("config", &config_string_));
+    OP_REQUIRES(
+        ctx,
+        tensorflow::tpu::TPUEmbeddingConfiguration().ParseFromString(
+            config_string_),
+        errors::InvalidArgument("Failed to parse TPUEmbeddingConfiguration "
+                                "proto from config attr"));
+  }
+
+  void Compile(XlaOpKernelContext* ctx) override {
+    VLOG(1) << "Compile ComputeDeduplicationDataShapeOp";
+
+    TpuEmbeddingEngine_DedupDataTupleMaskComputation_Params params;
+    params.tpu_embedding_config.bytes = config_string_.c_str();
+    params.tpu_embedding_config.size = config_string_.size();
+
+    TpuSerializedProto xla_computation_serialized;
+    auto proto_cleanup = absl::MakeCleanup([&xla_computation_serialized] {
+      StreamExecutor_Tpu_FreeSerializedProto(&xla_computation_serialized);
+    });
+
+    params.xla_computation = &xla_computation_serialized;
+    StatusHelper status;
+    params.status = status.c_status;
+
+    stream_executor::tpu::OpsApiFn()
+        ->TpuEmbeddingEngine_DedupDataTupleMaskComputationFn(&params);
+    OP_REQUIRES_OK(ctx, status.status());
+
+    auto xla_computation =
+        stream_executor::tpu::DeserializeProto<xla::HloModuleProto>(
+            xla_computation_serialized);
+    const xla::XlaOp deduplication_data_tuple_mask =
+        xla::Call(ctx->builder(), xla_computation, {});
+    ctx->SetOutput(0, deduplication_data_tuple_mask);
+    VLOG(1) << "Compile ComputeDedupDataTupleMaskOp done";
+  }
+
+ private:
+  // TPU Embedding config string.
+  std::string config_string_;
+
+  TF_DISALLOW_COPY_AND_ASSIGN(ComputeDedupDataTupleMaskOp);
+};
+
+REGISTER_XLA_OP(Name("ComputeDedupDataTupleMask").AllowVariantTypes(),
+                ComputeDedupDataTupleMaskOp);
+
 }  // anonymous namespace
 }  // namespace tensorflow
