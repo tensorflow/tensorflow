@@ -70,6 +70,8 @@ namespace tflite {
 /// OpResolver must be defined to provide your kernel implementations to the
 /// interpreter. This is environment specific and may consist of just the
 /// builtin ops, or some custom operators you defined to extend tflite.
+namespace impl {
+
 class FlatBufferModel {
  public:
   /// Builds a model based on a file.
@@ -213,6 +215,10 @@ class FlatBufferModel {
   /// be null if the client provides a tflite::Model directly.
   std::unique_ptr<Allocation> allocation_;
 };
+
+}  // namespace impl
+
+using FlatBufferModel = impl::FlatBufferModel;
 
 }  // namespace tflite
 

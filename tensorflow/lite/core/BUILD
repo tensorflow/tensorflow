@@ -450,6 +450,7 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
     copts = tflite_copts() + tflite_copts_warnings(),
     visibility = [
+        "//platforms/darwinn/tflite:__subpackages__",
         "//tensorflow/lite:__subpackages__",
         "//tensorflow/lite/core:__subpackages__",
         "//tensorflow/lite/kernels:__subpackages__",

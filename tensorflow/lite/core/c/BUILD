@@ -85,7 +85,6 @@ tflite_cc_library_with_c_headers_test(
     deps = [
         ":c_api_types",
         "//tensorflow/lite:builtin_ops",
-        "//tensorflow/lite:framework",
         "//tensorflow/lite:version",
         "//tensorflow/lite/c:c_api_internal",
         "//tensorflow/lite/c:common_internal",
@@ -290,7 +289,7 @@ tflite_cc_library_with_c_headers_test(
         ":c_api",
         ":common",
         "//tensorflow/lite:builtin_ops",
-        "//tensorflow/lite:framework",
+        "//tensorflow/lite:signature_runner",
         "//tensorflow/lite/c:c_api_internal",
         "//tensorflow/lite/core:framework",
         "//tensorflow/lite/profiling/telemetry:profiler",

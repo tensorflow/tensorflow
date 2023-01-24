@@ -51,6 +51,11 @@ namespace internal {
 class CommonOpaqueConversionUtil;  // Class for friend declarations.
 }
 
+namespace impl {
+class Interpreter;         // Class for friend declarations.
+class InterpreterBuilder;  // Class for friend declarations.
+}  // namespace impl
+
 namespace delegates {
 namespace test_utils {
 class TestDelegate;  // Class for friend declarations.
@@ -61,7 +66,7 @@ class TestDelegate;  // Class for friend declarations.
 class Subgraph {
  public:
 #ifndef DOXYGEN_SKIP
-  friend class Interpreter;
+  friend class ::tflite::impl::Interpreter;
   friend class SignatureRunner;
   friend class SingleOpModel;
   friend class internal::CommonOpaqueConversionUtil;
@@ -453,7 +458,7 @@ class Subgraph {
 
  private:
 #ifndef DOXYGEN_SKIP
-  friend class InterpreterBuilder;
+  friend class tflite::impl::InterpreterBuilder;
   friend class TestDelegate;
 #endif  // DOXYGEN_SKIP
   // SubgraphAwareProfiler wraps an actual TFLite profiler, such as a
