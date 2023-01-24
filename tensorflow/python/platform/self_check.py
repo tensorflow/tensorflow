@@ -61,3 +61,4 @@ def preload_check():
     # incompatibilities before we trigger them (which would typically result in
     # SIGILL).
     from tensorflow.python.platform import _pywrap_cpu_feature_guard
+    _pywrap_cpu_feature_guard.InfoAboutUnusedCPUFeatures()
