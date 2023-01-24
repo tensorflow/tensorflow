@@ -2916,25 +2916,18 @@ LogicalResult ConvertTFLAtan2Op::matchAndRewrite(
   auto tfl_atan2_op = cast<TFL::Atan2Op>(op);
   Location loc = op->getLoc();
   Value input_y = tfl_atan2_op.getY();
-  RankedTensorType input_y_ty = input_y.getType().dyn_cast<RankedTensorType>();
   Value input_x = tfl_atan2_op.getX();
-  RankedTensorType input_x_ty = input_x.getType().dyn_cast<RankedTensorType>();
-  ShapedType output_ty =
-      tfl_atan2_op.getResult().getType().dyn_cast<ShapedType>();
 
-  if (!input_y_ty || !input_x_ty) {
-    return rewriter.notifyMatchFailure(
-        op, "ConvertTFLAtan2Op: ranked inputs required");
+  auto input_y_ty = dyn_cast<RankedTensorType>(input_y.getType());
+  auto input_x_ty = dyn_cast<RankedTensorType>(input_x.getType());
+  auto output_ty = dyn_cast<ShapedType>(tfl_atan2_op.getResult().getType());
+
+  if (!input_y_ty || !input_x_ty || !output_ty) {
+    return rewriter.notifyMatchFailure(op, "ranked inputs/output required");
   }
 
-  Type input_y_ety = input_y_ty.getElementType();
-  Type input_x_ety = input_x_ty.getElementType();
-  Type output_ety = output_ty.getElementType();
-
-  bool op_is_fp = input_y_ty.getElementType().isF32();
-  if (!op_is_fp) {
-    return rewriter.notifyMatchFailure(
-        op, "ConvertTFLAtan2Op: input/result must be fp32.");
+  if (!input_y_ty.getElementType().isF32()) {
+    return rewriter.notifyMatchFailure(op, "input must be fp32");
   }
 
   // To perform an atan2 operation we make use of an atan lookup table,
@@ -2971,7 +2964,7 @@ LogicalResult ConvertTFLAtan2Op::matchAndRewrite(
 
   // 2. Scale and translate the normalized domain to the table domain. This
   // includes a translating and scaling to [-int16_max, int16_max] and casting
-  // to an i16.
+  // to an i16 as it is the highest precision the table operation supports.
   auto fp_scalar_ty = RankedTensorType::get({}, rewriter.getF32Type());
   auto scale_up =
       CreateOpAndInfer<tosa::MulOp>(rewriter, loc, input_y_ty, atan_input, two,
@@ -3000,7 +2993,7 @@ LogicalResult ConvertTFLAtan2Op::matchAndRewrite(
       rewriter, loc, output_ty.clone(rewriter.getIntegerType(32)), casted,
       table_const);
 
-  // 4. The range of table is a 23-bit two's compliment value. Normalize the
+  // 4. The range of table is a 23-bit two's complement value. Normalize the
   // range by casting to an fp32 and dividing by 2^22.
   auto table_result_fp =
       CreateOpAndInfer<tosa::CastOp>(rewriter, loc, output_ty, table_result);
