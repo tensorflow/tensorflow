@@ -39,13 +39,13 @@ func.func @lower_reduce_scatter_gpu_mesh(%arg0: tensor<i32>,
   // CHECK:      "tf_device.cluster"
   // CHECK:       %[[DEVICE_ID_RESHAPE:.*]] = "tf.Reshape"(%arg0
   // CHECK:       %[[RELATIVE_DEVICE_ID:.*]] = "tf.Sub"(%[[DEVICE_ID_RESHAPE]]
-  // CHECK-NEXT:  %[[CONST_1:.*]] = "tf.Const"
-  // CHECK-NEXT:  %[[DEVICE_ID_TO_GROUP_KEY:.*]] = "tf.Const"
-  // CHECK-NEXT:  %[[GROUP_KEY_SLICE:.*]] = "tf.Slice"(%[[DEVICE_ID_TO_GROUP_KEY]], %[[RELATIVE_DEVICE_ID]], %[[CONST_1]]
+  // CHECK-DAG:   %[[CONST_1:.*]] = "tf.Const"
+  // CHECK-DAG:   %[[DEVICE_ID_TO_GROUP_KEY:.*]] = "tf.Const"
+  // CHECK:       %[[GROUP_KEY_SLICE:.*]] = "tf.Slice"(%[[DEVICE_ID_TO_GROUP_KEY]], %[[RELATIVE_DEVICE_ID]], %[[CONST_1]]
   // CHECK:       %[[GROUP_KEY_RESHAPE:.*]] = "tf.Reshape"(%[[GROUP_KEY_SLICE]]
-  // CHECK-NEXT:  %[[INSTANCE_KEY:.*]] = "tf.Const"
-  // CHECK-NEXT:  %[[GROUP_SIZE:.*]] = "tf.Const"
-  // CHECK-NEXT:  %[[REDUCE_SCATTER_OUT:.*]] = "tf.CollectiveReduceScatterV2"(%arg1, %[[GROUP_SIZE]], %[[GROUP_KEY_RESHAPE]], %[[INSTANCE_KEY]])
+  // CHECK-DAG:   %[[INSTANCE_KEY:.*]] = "tf.Const"
+  // CHECK-DAG:   %[[GROUP_SIZE:.*]] = "tf.Const"
+  // CHECK:       %[[REDUCE_SCATTER_OUT:.*]] = "tf.CollectiveReduceScatterV2"(%arg1, %[[GROUP_SIZE]], %[[GROUP_KEY_RESHAPE]], %[[INSTANCE_KEY]])
   // CHECK-SAME:  final_op = "Id"
   // CHECK-SAME:  merge_op = "Add"
   // CHECK-NEXT   tf_device.return %[[REDUCE_SCATTER_OUT]]
