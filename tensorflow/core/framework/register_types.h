@@ -210,6 +210,9 @@ limitations under the License.
 
 #define TF_CALL_GPU_NUMBER_TYPES_NO_HALF(m) TF_CALL_float(m) TF_CALL_double(m)
 
+#define TF_CALL_GPU_NUMBER_TYPES_NO_BF16(m) \
+  TF_CALL_half(m) TF_CALL_float(m) TF_CALL_double(m)
+
 // Call "m" on all quantized types.
 // TODO(cwhipkey): include TF_CALL_qint16(m) TF_CALL_quint16(m)
 #define TF_CALL_QUANTIZED_TYPES(m) \
