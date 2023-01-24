@@ -2178,6 +2178,7 @@ cc_library(
 xla_cc_test(
     name = "gpu_layout_assignment_test",
     srcs = ["gpu_layout_assignment_test.cc"],
+    tags = tf_cuda_tests_tags(),
     deps = [
         ":cublas_cudnn",
         ":gemm_rewriter",
@@ -2189,6 +2190,7 @@ xla_cc_test(
         "//tensorflow/compiler/xla/service:computation_layout",
         "//tensorflow/compiler/xla/service:hlo_matchers",
         "//tensorflow/compiler/xla/service:hlo_parser",
+        "//tensorflow/compiler/xla/service/gpu/tests:gpu_codegen_test",
         "//tensorflow/compiler/xla/stream_executor/lib",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",  # build_cleaner: keep
