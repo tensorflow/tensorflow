@@ -107,8 +107,8 @@ def for_loop(loop_fn, loop_fn_dtypes, iters, parallel_iterations=None):
     # Pack a list of empty tensors with the proper ranks to match pfor output on 0 iters
     loop_var = array_ops.placeholder_with_default(0, shape=[])
     loop_fn_out = nest.flatten(loop_fn(loop_var))
-    ranks = [ops.convert_to_tensor(x).shape.rank for x in loop_fn_out]
-    output = [array_ops.zeros([0]*(ranks[i]+1), dt) 
+    out_shapes = [[0]+ops.convert_to_tensor(x).shape for x in loop_fn_out]
+    output = [array_ops.zeros(out_shapes[i], dt)
               for i,dt in enumerate(flat_loop_fn_dtypes)]
 
   return nest.pack_sequence_as(loop_fn_dtypes, output)

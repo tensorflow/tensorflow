@@ -132,8 +132,11 @@ class PForTest(PForTestCase):
     with self.assertRaisesRegex(ValueError, "Use `for_loop` instead"):
       pfor_control_flow_ops.pfor(lambda i: 1, 8, parallel_iterations=1)
 
-  def test_zero_loop_iters(self):
+  def test_zero_loop_iters_basic(self):
     self._test_loop_fn(lambda i: 1, 0)
+
+  def test_zero_loop_iters_tensor(self):
+    self._test_loop_fn(lambda i: array_ops.zeros([10, 3], dtype=dtypes.int32), 0)
 
   def test_vectorized_map(self):
 
