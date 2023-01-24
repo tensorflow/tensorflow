@@ -370,6 +370,21 @@ TfLiteStatus TfLiteOpaqueContextResizeTensor(TfLiteOpaqueContext* context,
 TFL_CAPI_EXPORT
 void TfLiteOpaqueContextReportError(struct TfLiteOpaqueContext* opaque_context,
                                     const char* format, ...);
+
+// Same as 'TfLiteOpaqueContextReportError', but with the variable arguments
+// passed via a 'va_list' instead of directly.
+//
+// Callers that receive an ellipsis and want to forward it to
+// to the opaque context error reporting API can add the ellipsis content to a
+// 'va_list' and then call 'TfLiteOpaqueContextReportErrorVa'. E.g.:
+//
+// void MyErrorReporter(struct TfLiteOpaqueContext* opaque_context,
+//                                     const char* format, ...) {
+//   va_list vlist;
+//   va_start(vlist, format);
+//   TfLiteOpaqueContextReportErrorVa(opaque_context, format, vlist);
+//   va_end(vlist);
+// }
 TFL_CAPI_EXPORT
 void TfLiteOpaqueContextReportErrorVa(
     struct TfLiteOpaqueContext* opaque_context, const char* format,
