@@ -122,7 +122,7 @@ static absl::Status CompileAndExecute(
   auto executed = executable->Execute(args, converter, execute_opts);
   if (!executed.ok())
     return absl::InternalError(
-        absl::StrFormat("%s: %s", executed.message(), error));
+        absl::StrFormat("%s: %s", executed.status().message(), error));
 
   return absl::OkStatus();
 }

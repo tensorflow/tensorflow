@@ -159,7 +159,8 @@ static absl::StatusOr<OwnedCudaGraph> CaptureGraph(
   // Create a graph from running the graph capture function.
   auto captured = se::gpu::CaptureCudaGraph(capture_stream->get(), [&]() {
     return FromAbslStatus(function_ref(args, runtime::NoResultConverter{}, opts,
-                                       /*verify_arguments=*/InDebugMode()));
+                                       /*verify_arguments=*/InDebugMode())
+                              .status());
   });
 
   if (!captured.ok()) return ToAbslStatus(captured.status());

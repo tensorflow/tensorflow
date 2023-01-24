@@ -86,7 +86,7 @@ static absl::Status CompileAndExecute(std::string_view source,
   auto executed = executable->Execute(args, NoResultConverter{}, execute_opts);
   if (!executed.ok()) {
     return absl::InternalError(
-        absl::StrFormat("%s: %s", executed.message(), diagnostic));
+        absl::StrFormat("%s: %s", executed.status().message(), diagnostic));
   }
 
   return absl::OkStatus();

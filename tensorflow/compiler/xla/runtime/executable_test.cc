@@ -55,6 +55,22 @@ static AsyncTaskRunner* NoRunner() {
   return reinterpret_cast<AsyncTaskRunner*>(0XDEADBEEF);
 }
 
+// Lazily execute tasks
+class LazyAsyncTaskRunner : public AsyncTaskRunner {
+ public:
+  void Schedule(Task task) final { tasks_.push_back(std::move(task)); }
+  void Run() {
+    while (!tasks_.empty()) {
+      tasks_.back()();
+      tasks_.pop_back();
+      break;
+    }
+  }
+
+ private:
+  std::vector<Task> tasks_;
+};
+
 struct CustomCallRegistry {
   std::function<void(DynamicCustomCallRegistry&)> dynamic_custom_calls;
   std::function<void(DirectCustomCallRegistry&)> direct_custom_calls;
@@ -76,10 +92,10 @@ static absl::StatusOr<JitExecutable> Compile(
   return JitExecutable::Instantiate(module, opts, exported);
 }
 
-static absl::Status Execute(JitExecutable& jit_executable, unsigned ordinal,
-                            ArgumentsRef args, ResultConverter& results,
-                            AsyncTaskRunner* async_task_runner = NoRunner(),
-                            const CustomCallRegistry& registry = {}) {
+static absl::StatusOr<ExecutionReference> Execute(
+    JitExecutable& jit_executable, unsigned ordinal, ArgumentsRef args,
+    ResultConverter& results, AsyncTaskRunner* async_task_runner = NoRunner(),
+    const CustomCallRegistry& registry = {}, bool use_lazy_runner = false) {
   AsyncValuePtr<Executable> executable = jit_executable.DefaultExecutable();
   if (executable.IsError()) return executable.GetError();
 
@@ -96,20 +112,28 @@ static absl::Status Execute(JitExecutable& jit_executable, unsigned ordinal,
   execute_opts.custom_call_registry = &dynamic_custom_calls;
   execute_opts.custom_call_data = &user_data;
   execute_opts.async_task_runner = async_task_runner;
+  if (use_lazy_runner) {
+    LazyAsyncTaskRunner runner;
+    execute_opts.async_task_runner = &runner;
+    FunctionRef function_ref = executable->function_ref(ordinal);
+    auto status = function_ref(args, results, execute_opts);
+    runner.Run();
+    return status;
+  }
 
   FunctionRef function_ref = executable->function_ref(ordinal);
   return function_ref(args, results, execute_opts);
 }
 
-static absl::Status CompileAndExecute(
+static absl::StatusOr<ExecutionReference> CompileAndExecute(
     std::string_view module, ArgumentsRef args, ResultConverter& results,
     AsyncTaskRunner* async_task_runner = NoRunner(),
-    const CustomCallRegistry& registry = {}) {
+    const CustomCallRegistry& registry = {}, bool use_lazy_runner = false) {
   StatusOr<JitExecutable> jit_executable = Compile(module, {"test"}, registry);
   if (!jit_executable.ok()) return jit_executable.status();
 
-  return Execute(*jit_executable, 0, args, results, async_task_runner,
-                 registry);
+  return Execute(*jit_executable, 0, args, results, async_task_runner, registry,
+                 use_lazy_runner);
 }
 
 //===----------------------------------------------------------------------===//
@@ -322,7 +346,8 @@ TEST(ExecutableTest, AssertionFailure) {
     ScalarArg arg0(int32_t{42});
     auto executed = CompileAndExecute(module, {arg0}, converter);
     EXPECT_FALSE(executed.ok());
-    EXPECT_EQ(executed.message(), "run time error: Oops, argument can't be 42");
+    EXPECT_EQ(executed.status().message(),
+              "run time error: Oops, argument can't be 42");
   }
 }
 
@@ -353,7 +378,8 @@ TEST(ExecutableTest, AssertionFailureOrResult) {
     ScalarArg arg0(int32_t{42});
     auto executed = CompileAndExecute(module, {arg0}, converter);
     EXPECT_FALSE(executed.ok());
-    EXPECT_EQ(executed.message(), "run time error: Oops, argument can't be 42");
+    EXPECT_EQ(executed.status().message(),
+              "run time error: Oops, argument can't be 42");
     EXPECT_EQ(result, 0);
   }
 }
@@ -481,6 +507,47 @@ TEST(ExecutableTest, AsyncCustomCall) {
           .ok());
   EXPECT_EQ(i32, 42);
 }
+
+TEST(ExecutableTest, AsyncExecute) {
+  absl::string_view source = R"(
+    module {
+    func.func private @custom_call_return() -> !async.value<i32>
+      attributes { rt.dynamic, rt.custom_call = "test.custom_call_return" }
+
+    async.func @test() -> !async.value<i32> {
+      %token, %result = async.execute -> !async.value<i32> {
+        %0 = func.call @custom_call_return() : () -> !async.value<i32>
+        %1 = async.await %0 : !async.value<i32>
+        async.yield %1 : i32
+      }
+      %1 = async.await %result : !async.value<i32>
+      return %1 : i32
+    }
+    }
+  )";
+
+  LazyAsyncTaskRunner runner;
+
+  auto async_result = tsl::MakeAvailableAsyncValueRef<int32_t>(42);
+  auto f_result = [&]() -> absl::StatusOr<AsyncValueRef<int32_t>> {
+    return async_result;
+  };
+
+  CustomCallRegistry registry = {[&](DynamicCustomCallRegistry& registry) {
+    registry.Register(CustomCall::Bind("test.custom_call_return")
+                          .Ret<AsyncValueRef<int32_t>>()
+                          .To(f_result));
+  }};
+  AsyncValueRef<int32_t> result = MakeConstructedAsyncValueRef<int32_t>();
+  ResultConverterSet converter(AssertNoError, ReturnAsyncI32{result.AsPtr()});
+
+  ASSERT_TRUE(CompileAndExecute(source, /*args=*/{}, converter, &runner,
+                                registry, /*use_lazy_runner=*/true)
+                  .ok());
+
+  EXPECT_EQ(result.get(), 42);
+}
+
 //===----------------------------------------------------------------------===//
 // Performance benchmarks are below.
 //===----------------------------------------------------------------------===//
