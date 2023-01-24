@@ -19,6 +19,7 @@ limitations under the License.
 #include <memory>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "tensorflow/c/kernels_experimental.h"
 #include "tensorflow/c/tf_status_helper.h"
@@ -127,6 +128,17 @@ TF_VariableInfo* TF_CreateVariableInfoFromContext(TF_OpKernelContext* ctx,
   tensorflow::Var* variable;
   cc_status = tensorflow::LookupResource(cc_ctx, handle, &variable);
   return new TF_VariableInfo(index, handle.name(), variable);
+}
+
+void TF_LockVariableInfos(TF_VariableInfo** vars, int num_vars,
+                          TF_Status* status) {
+  std::vector<tensorflow::VariableInfo*> variable_ptrs;
+  variable_ptrs.reserve(num_vars);
+  for (int i = 0; i < num_vars; ++i) {
+    variable_ptrs.push_back(&(vars[i]->var_info));
+  }
+  tsl::Status cc_status = LockVariables(absl::MakeSpan(variable_ptrs));
+  tsl::Set_TF_Status_from_Status(status, cc_status);
 }
 
 void TF_AllocateTempForVariableInfo(TF_OpKernelContext* ctx,

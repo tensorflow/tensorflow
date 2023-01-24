@@ -33,6 +33,8 @@ class CPluginVariable : public PluginVariable {
 
   tsl::Status GetMutableTensor(Tensor** result_tensor) override;
 
+  TF_VariableInfo* GetVariableInfo() { return var_info_; }
+
   friend class CPluginOpKernelContext;
 
  private:

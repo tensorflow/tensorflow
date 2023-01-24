@@ -89,6 +89,10 @@ TF_CAPI_EXPORT extern void TF_LookupOrCreatePluginResource(
 TF_CAPI_EXPORT extern TF_VariableInfo* TF_CreateVariableInfoFromContext(
     TF_OpKernelContext* ctx, int index, TF_Status* status);
 
+TF_CAPI_EXPORT extern void TF_LockVariableInfos(TF_VariableInfo** vars,
+                                                int num_vars,
+                                                TF_Status* status);
+
 TF_CAPI_EXPORT extern void TF_AllocateTempForVariableInfo(
     TF_OpKernelContext* ctx, TF_VariableInfo* var_info, TF_Status* status);
 
