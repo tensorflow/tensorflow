@@ -3,7 +3,6 @@ cc_binary(
     srcs = ["mlir_replay.cc"],
     deps = [
         ":mlir_replay_lib",
-        "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/xla:debug_options_flags",
         "//tensorflow/compiler/xla/mlir/runtime/ir:rt",
         "//tensorflow/compiler/xla/mlir/tools/mlir_replay/public:compiler_trace_proto_cc",
