@@ -58,7 +58,9 @@ TEST_F(TfDatazMetricsTest, RecordGetNextLatency) {
   tfdataz_metrics_->RecordGetNextLatency(2);
   tfdataz_metrics_->RecordGetNextLatency(3);
 
-  EXPECT_FLOAT_EQ(tfdataz_metrics_->GetAverageLatencyForLastOneMinute(), 2.0);
+  EXPECT_FLOAT_EQ(absl::ToDoubleMicroseconds(
+                      tfdataz_metrics_->GetAverageLatencyForLastOneMinute()),
+                  2.0);
 }
 
 TEST_F(TfDatazMetricsTest, GetAverageLatencyForLastOneMinute) {
@@ -67,7 +69,9 @@ TEST_F(TfDatazMetricsTest, GetAverageLatencyForLastOneMinute) {
   tfdataz_metrics_->RecordGetNextLatency(2);
   tfdataz_metrics_->RecordGetNextLatency(3);
 
-  EXPECT_FLOAT_EQ(tfdataz_metrics_->GetAverageLatencyForLastOneMinute(), 2.5);
+  EXPECT_FLOAT_EQ(absl::ToDoubleMicroseconds(
+                      tfdataz_metrics_->GetAverageLatencyForLastOneMinute()),
+                  2.5);
 }
 
 TEST_F(TfDatazMetricsTest, GetAverageLatencyForLastFiveMinutes) {
@@ -77,7 +81,9 @@ TEST_F(TfDatazMetricsTest, GetAverageLatencyForLastFiveMinutes) {
   tfdataz_metrics_->RecordGetNextLatency(5);
   tfdataz_metrics_->RecordGetNextLatency(6);
 
-  EXPECT_FLOAT_EQ(tfdataz_metrics_->GetAverageLatencyForLastFiveMinutes(), 5.0);
+  EXPECT_FLOAT_EQ(absl::ToDoubleMicroseconds(
+                      tfdataz_metrics_->GetAverageLatencyForLastFiveMinutes()),
+                  5.0);
 }
 
 TEST_F(TfDatazMetricsTest,
@@ -88,7 +94,8 @@ TEST_F(TfDatazMetricsTest,
   tfdataz_metrics_->RecordGetNextLatency(5);
   tfdataz_metrics_->RecordGetNextLatency(6);
 
-  EXPECT_FLOAT_EQ(tfdataz_metrics_->GetAverageLatencyForLastSixtyMinutes(),
+  EXPECT_FLOAT_EQ(absl::ToDoubleMicroseconds(
+                      tfdataz_metrics_->GetAverageLatencyForLastSixtyMinutes()),
                   5.0);
 }
 
@@ -100,7 +107,8 @@ TEST_F(TfDatazMetricsTest,
   tfdataz_metrics_->RecordGetNextLatency(5);
   tfdataz_metrics_->RecordGetNextLatency(6);
 
-  EXPECT_FLOAT_EQ(tfdataz_metrics_->GetAverageLatencyForLastSixtyMinutes(),
+  EXPECT_FLOAT_EQ(absl::ToDoubleMicroseconds(
+                      tfdataz_metrics_->GetAverageLatencyForLastSixtyMinutes()),
                   4.0);
 }
 
@@ -112,32 +120,48 @@ TEST_F(TfDatazMetricsTest,
   tfdataz_metrics_->RecordGetNextLatency(3);
   tfdataz_metrics_->RecordGetNextLatency(4);
 
-  EXPECT_FLOAT_EQ(tfdataz_metrics_->GetAverageLatencyForLastSixtyMinutes(),
+  EXPECT_FLOAT_EQ(absl::ToDoubleMicroseconds(
+                      tfdataz_metrics_->GetAverageLatencyForLastSixtyMinutes()),
                   3.0);
 }
 
 TEST_F(TfDatazMetricsTest, GetMultipleAverageLatencies) {
   tfdataz_metrics_->RecordGetNextLatency(1);
-  EXPECT_FLOAT_EQ(tfdataz_metrics_->GetAverageLatencyForLastOneMinute(), 1.0);
-  EXPECT_FLOAT_EQ(tfdataz_metrics_->GetAverageLatencyForLastFiveMinutes(), 1.0);
-  EXPECT_FLOAT_EQ(tfdataz_metrics_->GetAverageLatencyForLastSixtyMinutes(),
+  EXPECT_FLOAT_EQ(absl::ToDoubleMicroseconds(
+                      tfdataz_metrics_->GetAverageLatencyForLastOneMinute()),
+                  1.0);
+  EXPECT_FLOAT_EQ(absl::ToDoubleMicroseconds(
+                      tfdataz_metrics_->GetAverageLatencyForLastFiveMinutes()),
+                  1.0);
+  EXPECT_FLOAT_EQ(absl::ToDoubleMicroseconds(
+                      tfdataz_metrics_->GetAverageLatencyForLastSixtyMinutes()),
                   1.0);
 
   env_->AdvanceByMicroseconds(k1MinutesInMicros);
   tfdataz_metrics_->RecordGetNextLatency(2);
   tfdataz_metrics_->RecordGetNextLatency(3);
-  EXPECT_FLOAT_EQ(tfdataz_metrics_->GetAverageLatencyForLastOneMinute(), 2.5);
-  EXPECT_FLOAT_EQ(tfdataz_metrics_->GetAverageLatencyForLastFiveMinutes(), 2.0);
-  EXPECT_FLOAT_EQ(tfdataz_metrics_->GetAverageLatencyForLastSixtyMinutes(),
+  EXPECT_FLOAT_EQ(absl::ToDoubleMicroseconds(
+                      tfdataz_metrics_->GetAverageLatencyForLastOneMinute()),
+                  2.5);
+  EXPECT_FLOAT_EQ(absl::ToDoubleMicroseconds(
+                      tfdataz_metrics_->GetAverageLatencyForLastFiveMinutes()),
+                  2.0);
+  EXPECT_FLOAT_EQ(absl::ToDoubleMicroseconds(
+                      tfdataz_metrics_->GetAverageLatencyForLastSixtyMinutes()),
                   2.0);
 
   env_->AdvanceByMicroseconds(k60MinutesInMicros);
   tfdataz_metrics_->RecordGetNextLatency(4);
   tfdataz_metrics_->RecordGetNextLatency(5);
   tfdataz_metrics_->RecordGetNextLatency(6);
-  EXPECT_FLOAT_EQ(tfdataz_metrics_->GetAverageLatencyForLastOneMinute(), 5.0);
-  EXPECT_FLOAT_EQ(tfdataz_metrics_->GetAverageLatencyForLastFiveMinutes(), 5.0);
-  EXPECT_FLOAT_EQ(tfdataz_metrics_->GetAverageLatencyForLastSixtyMinutes(),
+  EXPECT_FLOAT_EQ(absl::ToDoubleMicroseconds(
+                      tfdataz_metrics_->GetAverageLatencyForLastOneMinute()),
+                  5.0);
+  EXPECT_FLOAT_EQ(absl::ToDoubleMicroseconds(
+                      tfdataz_metrics_->GetAverageLatencyForLastFiveMinutes()),
+                  5.0);
+  EXPECT_FLOAT_EQ(absl::ToDoubleMicroseconds(
+                      tfdataz_metrics_->GetAverageLatencyForLastSixtyMinutes()),
                   5.0);
 }
 

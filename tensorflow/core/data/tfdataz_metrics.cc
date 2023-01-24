@@ -74,7 +74,7 @@ int ApproximateLatencyEstimator::PrevSlot(int steps)
   return (next_slot_ - steps + kSlots) % kSlots;
 }
 
-double ApproximateLatencyEstimator::GetAverageLatency(Duration duration)
+absl::Duration ApproximateLatencyEstimator::GetAverageLatency(Duration duration)
     TF_LOCKS_EXCLUDED(mu_) {
   UpdateRingBuffer();
 
@@ -85,7 +85,7 @@ double ApproximateLatencyEstimator::GetAverageLatency(Duration duration)
   double interval_count =
       static_cast<double>(latency_count_counter_ -
                           latency_count_[PrevSlot(static_cast<int>(duration))]);
-  return interval_latency / interval_count;
+  return absl::Duration(absl::Microseconds(interval_latency)) / interval_count;
 }
 
 TfDatazMetricsCollector::TfDatazMetricsCollector(const Env& env)
@@ -98,17 +98,17 @@ void TfDatazMetricsCollector::RecordGetNextLatency(
   }
 }
 
-double TfDatazMetricsCollector::GetAverageLatencyForLastOneMinute() {
+absl::Duration TfDatazMetricsCollector::GetAverageLatencyForLastOneMinute() {
   return latency_estimator_.GetAverageLatency(
       ApproximateLatencyEstimator::Duration::kMinute);
 }
 
-double TfDatazMetricsCollector::GetAverageLatencyForLastFiveMinutes() {
+absl::Duration TfDatazMetricsCollector::GetAverageLatencyForLastFiveMinutes() {
   return latency_estimator_.GetAverageLatency(
       ApproximateLatencyEstimator::Duration::kFiveMinutes);
 }
 
-double TfDatazMetricsCollector::GetAverageLatencyForLastSixtyMinutes() {
+absl::Duration TfDatazMetricsCollector::GetAverageLatencyForLastSixtyMinutes() {
   return latency_estimator_.GetAverageLatency(
       ApproximateLatencyEstimator::Duration::kSixtyMinutes);
 }

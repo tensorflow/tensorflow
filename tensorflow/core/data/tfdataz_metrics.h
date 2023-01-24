@@ -24,6 +24,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_set.h"
+#include "absl/time/time.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/thread_annotations.h"
@@ -49,7 +50,7 @@ class ApproximateLatencyEstimator {
 
   // Returns the average latency for the duration (1,5 and 60 minutes)
   // specified.
-  double GetAverageLatency(Duration duration);
+  absl::Duration GetAverageLatency(Duration duration);
 
  private:
   static constexpr int64_t kSecondsPerMinute = 60;
@@ -100,13 +101,13 @@ class TfDatazMetricsCollector {
   void RecordGetNextLatency(int64_t get_next_latency_usec);
 
   // Returns the average `GetNext` latency for past 1 minute.
-  double GetAverageLatencyForLastOneMinute();
+  absl::Duration GetAverageLatencyForLastOneMinute();
 
   // Returns the average `GetNext` latency for past 5 minutes.
-  double GetAverageLatencyForLastFiveMinutes();
+  absl::Duration GetAverageLatencyForLastFiveMinutes();
 
   // Returns the average `GetNext` latency for past 60 minutes.
-  double GetAverageLatencyForLastSixtyMinutes();
+  absl::Duration GetAverageLatencyForLastSixtyMinutes();
 
  private:
   ApproximateLatencyEstimator latency_estimator_;
