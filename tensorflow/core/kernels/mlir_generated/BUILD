@@ -1824,6 +1824,53 @@ gpu_kernel_library(
     unroll_factors = "4",
 )
 
+# Gamma kernels
+
+gpu_kernel_library(
+    name = "gpu_polygamma_kernels",
+    op = "polygamma",
+    tile_size = "256",
+    types = [
+        "f32",
+        "f64",
+    ],
+)
+
+gpu_kernel_library(
+    name = "gpu_digamma_kernels",
+    op = "digamma",
+    tile_size = "256",
+    types = [
+        "f16",
+        "f32",
+        "f64",
+    ],
+)
+
+gpu_kernel_library(
+    name = "gpu_lgamma_kernels",
+    op = "lgamma",
+    tile_size = "256",
+    types = [
+        "f16",
+        "f32",
+        "f64",
+    ],
+)
+
+gpu_kernel_library(
+    # The zeta kernels needs many registers so tile at 256.
+    name = "gpu_zeta_kernels",
+    op = "zeta",
+    tile_size = "256",
+    types = [
+        "f32",
+        "f64",
+    ],
+    # TODO(b/178388085): Enable unrolling after vectorization is fixed.
+    # unroll_factors = "4",
+)
+
 # TODO(b/160731748): Re-enable when it works again.
 # gpu_kernel_library(
 #     name = "gpu_bias_add_kernels",
@@ -1890,38 +1937,6 @@ gpu_kernel_library(
     ],
 )
 
-gpu_kernel_library(
-    name = "gpu_polygamma_kernels",
-    op = "polygamma",
-    tile_size = "256",
-    types = [
-        "f32",
-        "f64",
-    ],
-)
-
-gpu_kernel_library(
-    name = "gpu_digamma_kernels",
-    op = "digamma",
-    tile_size = "256",
-    types = [
-        "f16",
-        "f32",
-        "f64",
-    ],
-)
-
-gpu_kernel_library(
-    name = "gpu_lgamma_kernels",
-    op = "lgamma",
-    tile_size = "256",
-    types = [
-        "f16",
-        "f32",
-        "f64",
-    ],
-)
-
 # Kernels that support all floating-point types.
 [
     gpu_kernel_library(
@@ -1973,19 +1988,6 @@ gpu_kernel_library(
             ["i64"] * 14 + ["ui8"] * 14 + ["ui16"] * 14 + ["ui32"] * 14 +
             ["ui64"] * 14 + ["f16"] * 14 + ["f32"] * 14 + ["f64"] * 14 +
             ["c64"] * 14 + ["c128"] * 14,
-)
-
-gpu_kernel_library(
-    # The zeta kernels needs many registers so tile at 256.
-    name = "gpu_zeta_kernels",
-    op = "zeta",
-    tile_size = "256",
-    types = [
-        "f32",
-        "f64",
-    ],
-    # TODO(b/178388085): Enable unrolling after vectorization is fixed.
-    # unroll_factors = "4",
 )
 
 gpu_kernel_library(
