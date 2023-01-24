@@ -343,6 +343,12 @@ class Subgraph {
   static constexpr int kInvalidSubgraphIndex = -1;
   int GetSubgraphIndex() const { return subgraph_index_; }
 
+  // Returns true if this subgraph is the primary subgraph.
+  // Returns false otherwise, including the cases when GetSubgraphIndex()
+  // returns kInvalidSubgraphIndex.
+  // WARNING: This is an experimental API and subject to change.
+  bool IsPrimarySubgraph() const { return GetSubgraphIndex() == 0; }
+
   // True if all tensors in the graph has static size after calling
   // `AllocateTensors` function.
   // Before `AllocateTensors` is called, this will always return true;
