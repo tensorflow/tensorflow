@@ -66,13 +66,15 @@ bool TRTInt8Calibrator::setBatch(const std::unordered_map<string, void*>& data,
     }
     const auto& d = devptr->second;
 
-    // TODO(sami,aaroey): Need to figure out a way to ensure synchronization
-    // between stream, perhaps using a tensor?
-    auto status = cudaMemcpyAsync(d.first, it.second, d.second,
-                                  cudaMemcpyDeviceToDevice, stream);
-    if (status != cudaSuccess) {
-      LOG(FATAL) << "cudaMemcpy " << engine_name_ << " for '" << it.first
-                 << "' failed with " << status;
+    if (it.second != nullptr) {
+      // TODO(sami,aaroey): Need to figure out a way to ensure synchronization
+      // between stream, perhaps using a tensor?
+      auto status = cudaMemcpyAsync(d.first, it.second, d.second,
+                                    cudaMemcpyDeviceToDevice, stream);
+      if (status != cudaSuccess) {
+        LOG(FATAL) << "cudaMemcpy " << engine_name_ << " for '" << it.first
+                   << "' failed with " << status;
+      }
     }
   }
 

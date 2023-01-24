@@ -347,6 +347,53 @@ bool CanContractEdge(const SimpleEdge* edge,
   return !has_cycle;
 }
 
+#define NAME "Postprocessor/BatchMultiClassNonMaxSuppression/MultiClassNonMaxSuppression/mul"
+#define NAME_1 "Postprocessor/BatchMultiClassNonMaxSuppression/MultiClassNonMaxSuppression/range"
+static size_t DefineNumberOfInputs(
+    const std::set<const Node*, NodePtrCompare>& segment_nodes) {
+  std::unordered_set<string> node_names;
+  for (const auto node : segment_nodes) {
+    if (node->type_string() == "Const") continue;
+
+    for (const Edge* edge : node->in_edges()) {
+      if (edge->IsControlEdge()) continue;
+
+      const auto* pSrcNode = edge->src();
+      if (pSrcNode->IsSource() || pSrcNode->type_string() == "Const" ||
+          segment_nodes.count(pSrcNode))
+        continue;
+
+      node_names.insert(pSrcNode->name());
+    }
+  }
+
+  return node_names.size();
+}
+
+static int64_t DefineNumberOfInputs(
+    const SimpleEdge* edge,
+    std::vector<UnionFind<SimpleNode*>>& node_segments) {
+  const SimpleNode* src = edge->src();
+  const SimpleNode* dst = edge->dst();
+
+  std::set<const Node*, NodePtrCompare> segment_nodes;
+  for (auto& u : node_segments) {
+    if (!u.Value())
+      continue;
+
+    auto* parent = u.ParentValue();
+    if (!parent)
+      continue;
+
+    const auto& parent_name = parent->name();
+    if (parent_name == src->name() || parent_name == dst->name()) {
+      segment_nodes.insert(u.Value()->tf_node());
+    }
+  }
+
+  return DefineNumberOfInputs(segment_nodes);
+}
+
 // TODO(bixia): put this to a common utility file.
 string TensorPropertiesToString(const OpInfo::TensorProperties& prop) {
   string s = StrCat(DataTypeString(prop.dtype()), ": ");
@@ -867,6 +914,9 @@ Status SegmentGraph(const Graph* tf_graph,
         "Need graph propertities to disallow dynamic non-batch dimensions");
   }
 
+  int64_t max_num_input_nodes;
+  TF_CHECK_OK(ReadInt64FromEnvVar("TF_TRT_MAX_NUM_INPUT_NODES",
+                                /*default_value=*/500, &max_num_input_nodes));
   // Steps:
   // 1. run the segmentation algorithm to find all the segments, which uses
   //    candidate_fn to determine the candidates segment nodes;
@@ -1034,6 +1084,17 @@ Status SegmentGraph(const Graph* tf_graph,
                   << expected_device_name << " " << out_device_name;
           continue;
         }
+        if (true || out_edge->src()->name() == NAME || out_edge->src()->name() == NAME_1) {
+          num_input_nodes = DefineNumberOfInputs(out_edge, node_segments);
+          if (num_input_nodes > max_num_input_nodes) {
+            VLOG(1) << "ANDREI: ... ... too many inputs: for " << out_edge->src()->name()
+                    << " num_input_nodes = " << num_input_nodes << " vs. limit: " << max_num_input_nodes
+                    << "\nANDREI: ... ... dst: " << out_edge->dst()->name()
+                    << "\nBy modifying the environment variable "
+                    "TF_TRT_MAX_NUM_INPUT_NODES you can change this limit.";
+            continue;
+          }
+        }
 
         if (CanContractEdge(out_edge, graph)) {
           VLOG(3) << "... ... can contract. new batch size "
@@ -1056,7 +1117,7 @@ Status SegmentGraph(const Graph* tf_graph,
         const SimpleNode* dst = contract_edge->dst();
 
         VLOG(3) << "Merge " << src->name() << " <- " << dst->name() << " ("
-                << src->id() << " <- " << dst->id();
+                << src->id() << " <- " << dst->id() << ")";
         TF_RETURN_IF_ERROR(
             node_segments[src->id()].Merge(&node_segments[dst->id()]));
 
@@ -1216,6 +1277,18 @@ Status SegmentGraph(const Graph* tf_graph,
         num_effective_nodes < options.minimum_segment_size) {
       VLOG(1) << "Segment " << segments->size() << " has only "
               << num_effective_nodes << " effective nodes, dropping";
+      continue;
+    }
+
+    const auto num_input_nodes = DefineNumberOfInputs(segment_nodes);
+
+    // Don't use segments with many inputs.
+    if (num_input_nodes > max_num_input_nodes) {
+      VLOG(1) << "Segment " << segments->size() << " has more than "
+              << max_num_input_nodes << " inputs: "
+              << num_input_nodes << ", dropping.\n"
+              << "By modifying the environment variable "
+                 "TF_TRT_MAX_NUM_INPUT_NODES you can change this limit.";
       continue;
     }
     segments->emplace_back(itr.second.property, segment_nodes);

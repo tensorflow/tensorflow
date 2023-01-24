@@ -275,13 +275,20 @@ class TRTEngineOp : public AsyncOpKernel {
   bool use_explicit_precision_;
 };
 
-#define TYPECASE(dt, X)                                       \
-  case dt: {                                                  \
-    return (void*)X->flat<EnumToDataType<dt>::Type>().data(); \
+#define TYPECASE(dt, X)                                                        \
+  case dt: {                                                                   \
+    LOG(ERROR) << "[TYPECASE] Found dtype:" << DebugString(dt);                \
+    LOG(ERROR) << "[TYPECASE] Found DIMS:" << DebugString(X->dims());          \
+    LOG(ERROR) << "[TYPECASE] Found NumElements:" << X->NumElements();         \
+    auto value = (void*)X->flat<EnumToDataType<dt>::Type>().data();            \
+    LOG(ERROR) << "[TYPECASE] Ret Value:" << value;                            \
+    return value;                                                              \
   }
 
 void* GetTensorAddress(const Tensor* tensor_ptr) {
   const auto tensor_type = tensor_ptr->dtype();
+  LOG(ERROR) << "[GetTensorAddress] Tensor Total Bytes:" << tensor_ptr->TotalBytes();
+  LOG(ERROR) << "[GetTensorAddress] Tensor Shape:" << tensor_ptr->shape().DebugString();
   switch (tensor_type) {
     TYPECASE(DT_FLOAT, tensor_ptr);
     TYPECASE(DT_HALF, tensor_ptr);
@@ -678,10 +685,15 @@ void TRTEngineOp::ExecuteCalibration(OpKernelContext* ctx,
   for (int i = 0; i < num_inputs; i++) {
     const Tensor& t = ctx->input(i);
     void* data_address = GetTensorAddress(&t);
-    OP_REQUIRES_ASYNC(ctx, data_address,
+
+    if (t.TotalBytes() != 0) {
+      OP_REQUIRES_ASYNC(ctx, data_address,
                       errors::InvalidArgument(
-                          "Unsupported data type encountered in input ", i),
+                        "Unsupported data type [", DebugString(t.dtype()),
+                        "] encountered in input ", i),
                       dummy_async_helper);
+    }
+
     // Check the allocated buffer is sufficient for input
     const auto device_tensor = &calib_ctx->device_tensors_.at(i);
     if (t.TotalBytes() != device_tensor->TotalBytes()) {
@@ -693,6 +705,7 @@ void TRTEngineOp::ExecuteCalibration(OpKernelContext* ctx,
     }
     input_data.emplace(StrCat(IONamePrefixes::kInputPHName, i), data_address);
   }
+
   if (input_size_ok) {
     VLOG(2) << "Filled map for sending";
     // Copied from gpu_kernel_helper.h as the header can only be used in *.cu.cc
@@ -1322,7 +1335,7 @@ Status TRTEngineOp::AllocateCalibrationResources(
     CHECK_EQ(t.TotalBytes(), input->TotalBytes());  // Crash OK
 
     void* device_address = GetTensorAddress(input);
-    if (device_address == nullptr) {
+    if (device_address == nullptr && input->TotalBytes() != 0) {
       return errors::InvalidArgument("Unsupported data type [",
                                      DebugString(t.dtype()),
                                      "] encountered in input ", i);
