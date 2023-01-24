@@ -3518,6 +3518,7 @@ filegroup(
         "//tensorflow/cc/saved_model:fingerprinting_impl",  # SavedModel fingerprinting
         "//tensorflow/compiler/jit:get_compiler_ir",  # tfe
         "//tensorflow/core/platform:statusor",  # tfe
+        "//tensorflow/core/platform:cpu_feature_guard",  # cpu_feature_guard
         "//tensorflow/compiler/jit:flags",  # tfe
         "//tensorflow/compiler/mlir/python:mlir",  # mlir
         "//tensorflow/compiler/mlir/quantization/tensorflow/python:quantize_model_cc_impl",  # quantization
