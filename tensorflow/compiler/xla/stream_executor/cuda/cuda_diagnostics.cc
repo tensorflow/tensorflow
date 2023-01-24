@@ -45,9 +45,9 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_split.h"
 #include "absl/strings/strip.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/error.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/status.h"
+#include "tensorflow/compiler/xla/stream_executor/platform/logging.h"
 #include "tensorflow/tsl/platform/host_info.h"
+#include "tensorflow/tsl/platform/status.h"
 
 namespace stream_executor {
 namespace cuda {
@@ -69,7 +69,7 @@ tsl::StatusOr<DriverVersion> StringToDriverVersion(const std::string &value) {
   std::vector<std::string> pieces = absl::StrSplit(value, '.');
   if (pieces.size() < 2 || pieces.size() > 4) {
     return tsl::Status(
-        port::error::INVALID_ARGUMENT,
+        tsl::error::INVALID_ARGUMENT,
         absl::StrFormat(
             "expected %%d.%%d, %%d.%%d.%%d, or %%d.%%d.%%d.%%d form "
             "for driver version; got \"%s\"",
@@ -81,21 +81,21 @@ tsl::StatusOr<DriverVersion> StringToDriverVersion(const std::string &value) {
   int patch = 0;
   if (!absl::SimpleAtoi(pieces[0], &major)) {
     return tsl::Status(
-        port::error::INVALID_ARGUMENT,
+        tsl::error::INVALID_ARGUMENT,
         absl::StrFormat("could not parse major version number \"%s\" as an "
                         "integer from string \"%s\"",
                         pieces[0], value));
   }
   if (!absl::SimpleAtoi(pieces[1], &minor)) {
     return tsl::Status(
-        port::error::INVALID_ARGUMENT,
+        tsl::error::INVALID_ARGUMENT,
         absl::StrFormat("could not parse minor version number \"%s\" as an "
                         "integer from string \"%s\"",
                         pieces[1].c_str(), value.c_str()));
   }
   if (pieces.size() == 3 && !absl::SimpleAtoi(pieces[2], &patch)) {
     return tsl::Status(
-        port::error::INVALID_ARGUMENT,
+        tsl::error::INVALID_ARGUMENT,
         absl::StrFormat("could not parse patch version number \"%s\" as an "
                         "integer from string \"%s\"",
                         pieces[2], value));
@@ -216,7 +216,7 @@ void Diagnostician::LogDiagnosticInformation() {
 // driver-interfacing DSO version number. Returns it as a string.
 tsl::StatusOr<DriverVersion> Diagnostician::FindDsoVersion() {
   tsl::StatusOr<DriverVersion> result(tsl::Status(
-      port::error::NOT_FOUND,
+      tsl::error::NOT_FOUND,
       "was unable to find libcuda.so DSO loaded into this program"));
 
 #if defined(__APPLE__)
@@ -286,7 +286,7 @@ tsl::StatusOr<DriverVersion> Diagnostician::FindKernelModuleVersion(
   size_t offset = driver_version_file_contents.find(kDriverFilePrelude);
   if (offset == std::string::npos) {
     return tsl::Status(
-        port::error::NOT_FOUND,
+        tsl::error::NOT_FOUND,
         absl::StrCat("could not find kernel module information in "
                      "driver version file contents: \"",
                      driver_version_file_contents, "\""));
@@ -347,21 +347,21 @@ tsl::StatusOr<DriverVersion> Diagnostician::FindKernelDriverVersion() {
   }
   CFRelease(kext_infos);
   auto status = tsl::Status(
-      port::error::INTERNAL,
+      tsl::error::INTERNAL,
       absl::StrCat(
           "failed to read driver bundle version: ",
           CFStringGetCStringPtr(kDriverKextIdentifier, kCFStringEncodingUTF8)));
   return status;
 #elif defined(PLATFORM_WINDOWS)
   auto status =
-      tsl::Status(port::error::UNIMPLEMENTED,
+      tsl::Status(tsl::error::UNIMPLEMENTED,
                   "kernel reported driver version not implemented on Windows");
   return status;
 #else
   FILE *driver_version_file = fopen(kDriverVersionPath, "r");
   if (driver_version_file == nullptr) {
     return tsl::Status(
-        port::error::PERMISSION_DENIED,
+        tsl::error::PERMISSION_DENIED,
         absl::StrCat("could not open driver version path for reading: ",
                      kDriverVersionPath));
   }
@@ -383,7 +383,7 @@ tsl::StatusOr<DriverVersion> Diagnostician::FindKernelDriverVersion() {
   }
 
   auto status = tsl::Status(
-      port::error::INTERNAL,
+      tsl::error::INTERNAL,
       absl::StrCat(
           "failed to read driver version file contents: ", kDriverVersionPath,
           "; ferror: ", ferror(driver_version_file)));

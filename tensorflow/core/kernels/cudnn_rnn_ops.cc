@@ -336,9 +336,9 @@ inline Status FromExecutorStatus(const tsl::StatusOr<T>& s) {
 
 inline tsl::Status ToExecutorStatus(const Status& s) {
   return s.ok() ? OkStatus()
-                : tsl::Status(static_cast<se::port::error::Code>(
-                                  static_cast<int>(s.code())),
-                              s.error_message());
+                : tsl::Status(
+                      static_cast<tsl::error::Code>(static_cast<int>(s.code())),
+                      s.error_message());
 }
 
 template <typename>

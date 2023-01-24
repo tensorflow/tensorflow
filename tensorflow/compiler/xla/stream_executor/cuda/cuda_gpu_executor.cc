@@ -44,7 +44,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/stream_executor/kernel_cache_config.h"
 #include "tensorflow/compiler/xla/stream_executor/lib/error.h"
 #include "tensorflow/compiler/xla/stream_executor/lib/initialize.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/statusor.h"
 #include "tensorflow/compiler/xla/stream_executor/platform.h"
 #include "tensorflow/compiler/xla/stream_executor/platform/logging.h"
 #include "tensorflow/compiler/xla/stream_executor/platform/port.h"
@@ -55,6 +54,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/stream_executor/timer.h"
 #include "tensorflow/tsl/platform/env.h"
 #include "tensorflow/tsl/platform/numbers.h"
+#include "tensorflow/tsl/platform/statusor.h"
 
 // LOG(ERROR) uses a const named ERROR, so a macro with the same name is
 // always unwanted. This happens on Windows that defines such a macro.

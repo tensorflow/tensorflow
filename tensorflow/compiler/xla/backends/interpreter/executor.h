@@ -120,7 +120,7 @@ class XlaInterpreterExecutor : public internal::StreamExecutorInterface {
   tsl::Status SynchronousMemcpyDeviceToDevice(DeviceMemoryBase *pop_dst,
                                               const DeviceMemoryBase &pop_src,
                                               uint64_t size) override {
-    return tsl::Status{port::error::UNIMPLEMENTED, ""};
+    return tsl::Status{tsl::error::UNIMPLEMENTED, ""};
   }
 
   bool HostCallback(Stream *stream,
@@ -133,11 +133,11 @@ class XlaInterpreterExecutor : public internal::StreamExecutorInterface {
   }
 
   tsl::Status RecordEvent(Stream *stream, Event *event) override {
-    return tsl::Status{port::error::UNIMPLEMENTED, "RecordEvent"};
+    return tsl::Status{tsl::error::UNIMPLEMENTED, "RecordEvent"};
   }
 
   tsl::Status WaitForEvent(Stream *stream, Event *event) override {
-    return tsl::Status{port::error::UNIMPLEMENTED, "WaitForEvent"};
+    return tsl::Status{tsl::error::UNIMPLEMENTED, "WaitForEvent"};
   }
 
   Event::Status PollForEventStatus(Event *event) override {
