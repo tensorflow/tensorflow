@@ -13,7 +13,9 @@
 # limitations under the License.
 # ==============================================================================
 """Implmentation for defining get_compiler_ir."""
+from tensorflow.core.function import trace_type
 from tensorflow.python.eager import context
+from tensorflow.python.framework import tensor_spec
 from tensorflow.python.ops import random_ops
 from tensorflow.python.util import nest
 
@@ -24,6 +26,32 @@ def maybe_get_device_name(device_name):
   if device_name is None:
     device_name = random_ops.random_normal([]).device
   return device_name
+
+
+def make_handledata_tensor_specs(resource_vars):
+  """Convert tf.Variable list to its corresponding TensorSpec list."""
+  inner_context = trace_type.InternalTracingContext()
+  trace_type_inputs = trace_type.from_value(
+      tuple(resource_vars), inner_context
+  ).components
+  handledata_mapping = inner_context.get_handledata_mapping()
+
+  def to_spec(traced_input):
+    try:
+      my_id = id(traced_input)
+      handled_data = handledata_mapping[my_id]
+      shape_and_type = handled_data.shape_and_type[0]
+      spec = tensor_spec.TensorSpec(
+          shape=shape_and_type.shape, dtype=shape_and_type.dtype
+      )
+      return spec
+    except Exception as e:
+      raise ValueError(
+          "Fail to convert tf.Variable list to TensorSpec list. The error"
+          " is: %s" % e
+      ) from e
+
+  return [to_spec(trace_type) for trace_type in trace_type_inputs]
 
 
 def from_concrete_function(concrete_fn):
