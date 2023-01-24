@@ -408,9 +408,9 @@ def canonicalize_to_monomorphic(
 
     elif poly_parameter.kind is Parameter.VAR_KEYWORD:
       # Unbundle VAR_KEYWORD into individual KEYWORD_ONLY args.
-      for kwarg_name, kwarg_value in arg.items():
+      for kwarg_name in sorted(arg.keys()):
         parameters.append(
-            _make_validated_mono_param(kwarg_name, kwarg_value,
+            _make_validated_mono_param(kwarg_name, arg[kwarg_name],
                                        Parameter.KEYWORD_ONLY, type_context,
                                        poly_parameter.type_constraint))
     else:
@@ -474,7 +474,9 @@ def add_type_constraints(function_type: FunctionType, input_signature: Any,
         parameters.append(
             Parameter(param.name, sanitized_kind, param.optional,
                       type_constraint))
-      # TODO(fmuham): Add check for insufficient type constraints.
+      else:
+        raise TypeError(
+            f"input_signature missing type constraint for {param.name}")
 
   if constraints:
     raise TypeError(

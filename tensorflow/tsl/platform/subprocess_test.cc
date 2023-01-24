@@ -22,7 +22,6 @@ limitations under the License.
 
 #include "tensorflow/tsl/lib/core/status_test_util.h"
 #include "tensorflow/tsl/platform/path.h"
-#include "tensorflow/tsl/platform/resource_loader.h"
 #include "tensorflow/tsl/platform/strcat.h"
 #include "tensorflow/tsl/platform/test.h"
 
@@ -41,27 +40,29 @@ static string GetDataFilePath(const string& relative_path) {
 #ifdef PLATFORM_WINDOWS
   // While CreateProcess on windows is resilient to not having ".exe" suffix,
   // Bazel_tools has to have the exact file path to return the resource.
-  return GetDataDependencyFilepath(strings::StrCat(relative_path, ".exe"));
+  return strings::StrCat(relative_path, ".exe");
 #else
-  return GetDataDependencyFilepath(relative_path);
+  return relative_path;
 #endif
 }
 
 string EchoProgram() {
-  return io::JoinPath("tensorflow", "tsl", "platform", "testdata", "test_echo");
+  return io::JoinPath(testing::TslSrcRoot(), "platform", "testdata",
+                      "test_echo");
 }
 
 string EchoArgv1Program() {
-  return io::JoinPath("tensorflow", "tsl", "platform", "testdata",
+  return io::JoinPath(testing::TslSrcRoot(), "platform", "testdata",
                       "test_echo_argv_1");
 }
 
 string NoopProgram() {
-  return io::JoinPath("tensorflow", "tsl", "platform", "testdata", "test_noop");
+  return io::JoinPath(testing::TslSrcRoot(), "platform", "testdata",
+                      "test_noop");
 }
 
 string StdErrProgram() {
-  return io::JoinPath("tensorflow", "tsl", "platform", "testdata",
+  return io::JoinPath(testing::TslSrcRoot(), "platform", "testdata",
                       "test_stderr");
 }
 

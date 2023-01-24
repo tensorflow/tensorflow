@@ -100,7 +100,7 @@ void XlaInterpreterPlatform::UnregisterTraceListener(TraceListener* listener) {
 
 static void InitializeXlaInterpreterPlatform() {
   std::unique_ptr<Platform> platform(new XlaInterpreterPlatform);
-  SE_CHECK_OK(MultiPlatformManager::RegisterPlatform(std::move(platform)));
+  TF_CHECK_OK(MultiPlatformManager::RegisterPlatform(std::move(platform)));
 }
 
 }  // namespace interpreter

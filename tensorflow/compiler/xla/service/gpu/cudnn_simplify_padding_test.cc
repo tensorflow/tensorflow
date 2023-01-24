@@ -590,5 +590,98 @@ TEST_F(CudnnSimplifyPaddingTest, SliceMoreElementsThanPad) {
   }
 }
 
+TEST_F(CudnnSimplifyPaddingTest, NoChangeOnNonTrivialConstants) {
+  auto module = ParseAndReturnVerifiedModule(R"(
+HloModule jit_outer
+
+ENTRY main.26 {
+  reshape.2 = f32[1,3,3,12]{3,2,1,0} parameter(0)
+  constant.1 = f32[3,3,1,12]{3,2,1,0} constant({ {
+    { /*i1=0*/ { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 } },
+    { /*i1=1*/ { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 } },
+    { /*i1=2*/ { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 } }
+  }, {
+    { /*i1=0*/ { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 } },
+    { /*i1=2*/ { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 } }
+    { /*i1=2*/ { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 } }
+  }, {
+    { /*i1=0*/ { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 } },
+    { /*i1=1*/ { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 } },
+    { /*i1=2*/ { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 } } } })
+  cudnn-conv = (f32[1,5,5,12]{3,2,1,0}, u8[0]{0}) custom-call(reshape.2, constant.1), window={size=3x3 pad=2_2x2_2}, dim_labels=b01f_01io->b01f, feature_group_count=12, custom_call_target="__cudnn$convForward"
+  get-tuple-element = f32[1,5,5,12]{3,2,1,0} get-tuple-element(cudnn-conv), index=0
+  slice.2 = f32[1,5,1,12]{3,2,1,0} slice(get-tuple-element), slice={[0:1], [0:5], [0:1], [0:12]}
+  constant.0 = f32[] constant(0)
+  ROOT pad.1 = f32[1,5,3,12]{3,2,1,0} pad(slice.2, constant.0), padding=0_0x0_0x2_0x0_0
+}
+  )")
+                    .value();
+
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunJustThisPass(module.get()));
+  EXPECT_FALSE(changed);
+}
+
+TEST_F(CudnnSimplifyPaddingTest, NoChangeOnComplexSlices) {
+  auto module = ParseAndReturnVerifiedModule(R"(
+HloModule jit_outer
+
+ENTRY main.26 {
+  reshape.2 = f32[1,3,3,12]{3,2,1,0} parameter(0)
+  constant.1 = f32[3,3,1,12]{3,2,1,0} constant({ {
+    { /*i1=0*/ { 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 } },
+    { /*i1=1*/ { 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 } },
+    { /*i1=2*/ { 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 } }
+  }, {
+    { /*i1=0*/ { 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 } },
+    { /*i1=2*/ { 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 } }
+    { /*i1=2*/ { 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 } }
+  }, {
+    { /*i1=0*/ { 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 } },
+    { /*i1=1*/ { 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 } },
+    { /*i1=2*/ { 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 } } } })
+  cudnn-conv = (f32[1,5,5,12]{3,2,1,0}, u8[0]{0}) custom-call(reshape.2, constant.1), window={size=3x3 pad=2_2x2_2}, dim_labels=b01f_01io->b01f, feature_group_count=12, custom_call_target="__cudnn$convForward"
+  get-tuple-element = f32[1,5,5,12]{3,2,1,0} get-tuple-element(cudnn-conv), index=0
+  slice.2 = f32[1,5,5,4]{3,2,1,0} slice(get-tuple-element), slice={[0:1], [0:5], [0:5], [2:6]}
+  constant.0 = f32[] constant(0)
+  ROOT pad.1 = f32[1,5,5,12]{3,2,1,0} pad(slice.2, constant.0), padding=0_0x0_0x0_0x0_8
+}
+  )")
+                    .value();
+
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunJustThisPass(module.get()));
+  EXPECT_FALSE(changed);
+}
+
+TEST_F(CudnnSimplifyPaddingTest, ScanOrderFeatureDimLast) {
+  auto module = ParseAndReturnVerifiedModule(R"(
+HloModule jit_outer
+
+ENTRY main.26 {
+  reshape.2 = f32[1,3,3,12]{3,2,1,0} parameter(0)
+  constant.1 = f32[3,3,1,12]{3,2,1,0} constant({ {
+    { /*i1=0*/ { 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 } },
+    { /*i1=1*/ { 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 } },
+    { /*i1=2*/ { 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 } }
+  }, {
+    { /*i1=0*/ { 1, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0 } },
+    { /*i1=2*/ { 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 } }
+    { /*i1=2*/ { 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 } }
+  }, {
+    { /*i1=0*/ { 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 } },
+    { /*i1=1*/ { 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 } },
+    { /*i1=2*/ { 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 } } } })
+  cudnn-conv = (f32[1,5,5,12]{3,2,1,0}, u8[0]{0}) custom-call(reshape.2, constant.1), window={size=3x3 pad=2_2x2_2}, dim_labels=b01f_01io->b01f, feature_group_count=12, custom_call_target="__cudnn$convForward"
+  get-tuple-element = f32[1,5,5,12]{3,2,1,0} get-tuple-element(cudnn-conv), index=0
+  slice.2 = f32[1,5,5,6]{3,2,1,0} slice(get-tuple-element), slice={[0:1], [0:5], [0:5], [0:6]}
+  constant.0 = f32[] constant(0)
+  ROOT pad.1 = f32[1,5,5,12]{3,2,1,0} pad(slice.2, constant.0), padding=0_0x0_0x0_0x0_6
+}
+  )")
+                    .value();
+
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunJustThisPass(module.get()));
+  EXPECT_FALSE(changed);
+}
+
 }  // anonymous namespace
 }  // namespace xla::gpu

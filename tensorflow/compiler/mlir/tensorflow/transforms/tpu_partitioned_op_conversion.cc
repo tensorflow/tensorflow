@@ -55,22 +55,25 @@ LogicalResult ReplacePartitionedOp(IntegerAttr num_cores_per_replica, T op) {
 
   Type first_operand_type;
   if constexpr (is_input) {
-    first_operand_type = getElementTypeOrSelf(op.getOperand(0));
+    first_operand_type = op.getOperand(0).getType();
   } else {
-    first_operand_type = getElementTypeOrSelf(op.getOperand());
+    first_operand_type = op.getOperand().getType();
   }
 
-  if (first_operand_type.isa<TF::ResourceType>()) {
-    auto resource_type = first_operand_type.cast<TF::ResourceType>();
-    first_operand_type = resource_type.getSubtypes().front();
+  auto element_type = getElementTypeOrSelf(first_operand_type);
+  if (element_type.isa<TF::ResourceType>()) {
+    first_operand_type =
+        element_type.cast<TF::ResourceType>().getSubtypes().front();
   }
 
-  auto ranked_type = first_operand_type.dyn_cast_or_null<RankedTensorType>();
-  if (!(ranked_type && ranked_type.hasRank())) {
-    return op->emitError() << "cannot convert op with unranked input tensor.";
+  auto tensor_type = first_operand_type.dyn_cast_or_null<TensorType>();
+  if (!(tensor_type && tensor_type.hasRank())) {
+    return op->emitError()
+           << "cannot convert op with unranked or non-tensor input type "
+           << tensor_type << ".";
   }
 
-  int rank = ranked_type.getRank();
+  int rank = tensor_type.getRank();
   if (rank <= partition_dim) {
     return op->emitError() << "cannot partition " << first_operand_type
                            << " (rank = " << rank << ") along dimension "

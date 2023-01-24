@@ -469,15 +469,9 @@ class PjRtClient {
   virtual StatusOr<std::optional<std::string>> ExecutableFingerprint(
       const PjRtLoadedExecutable& executable) const = 0;
 
-  // Returns a platform-specific serialization of `executable`. The
-  // serialization is not guaranteed to be stable over time. `executable` must
-  // have been produced by this client.
-  virtual StatusOr<std::string> SerializeExecutable(
-      const PjRtLoadedExecutable& executable) const = 0;
-
   // Deserializes a serialized executable as produced by
-  // SerializeExecutable(). `serialized` must have been produced by a client of
-  // the same platform and version as this one.
+  // PjRtExecutable::SerializeExecutable(). `serialized` must have been
+  // produced by a compiler of the same platform and version as this one.
   //
   // Pending completion of b/237720161, `options` is a mandatory argument in
   // most implementations of this interface. They _are_ optional for
@@ -510,6 +504,12 @@ class PjRtClient {
   // Creates a buffer on the device without initializing or copying any data.
   virtual StatusOr<std::unique_ptr<PjRtBuffer>> CreateUninitializedBuffer(
       const Shape& shape, PjRtDevice* device) = 0;
+
+  // Creates buffer that carries an error future without allocating memory.
+  virtual StatusOr<std::unique_ptr<PjRtBuffer>> CreateErrorBuffer(
+      Status error, const Shape& shape, PjRtDevice* device) {
+    return Unimplemented("CreateErrorBuffer not supported.");
+  }
 
   // A client may want to create a buffer, and hand the buffer to other PjRt
   // methods, before the data to store in the buffer is available to the client.

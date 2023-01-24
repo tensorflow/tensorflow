@@ -70,7 +70,30 @@ REGISTER_OP("TPUPartitionedInput")
       int partition_dim;
       TF_RETURN_IF_ERROR(c->GetAttr("partition_dim", &partition_dim));
 
+      if (c->num_inputs() == 0) {
+        return errors::InvalidArgument(
+            "Expected at least one input to TPUPartitionedInput.");
+      }
+
       ShapeHandle cur = c->input(c->num_inputs() - 1);
+      int rank = InferenceContext::kUnknownRank;
+      if (dtype == DT_RESOURCE) {
+        auto* shapes_and_types =
+            c->input_handle_shapes_and_types(c->num_inputs() - 1);
+        if (shapes_and_types) {
+          ShapeHandle shape_handle = shapes_and_types->at(0).shape;
+          rank = InferenceContext::Rank(shape_handle);
+        }
+      } else {
+        rank = InferenceContext::Rank(cur);
+      }
+
+      // limitation: can only validate rank when it is known
+      if ((rank != InferenceContext::kUnknownRank && partition_dim >= rank) ||
+          (partition_dim < -1))
+        return errors::InvalidArgument("Cannot partition dim ", partition_dim,
+                                       " of rank ", rank, " tensor.");
+
       for (int i = c->num_inputs() - 2; i >= 0; --i) {
         TF_RETURN_WITH_CONTEXT_IF_ERROR(c->Merge(c->input(i), cur, &cur),
                                         "From merging shape ", i,
@@ -153,7 +176,10 @@ REGISTER_OP("TPUPartitionedInputV2")
         // we cannot validate the number of inputs for replicated, unpacked ops
         // since we cannot infer the number of partitions from partition_dims
         return errors::InvalidArgument("Expected ", num_inputs_expected,
-                                       " inputs, got ", c->num_inputs());
+                                       " inputs, got ", c->num_inputs(), ".");
+      } else if (c->num_inputs() == 0) {
+        return errors::InvalidArgument(
+            "Expected at least one input to TPUPartitionedInputV2.");
       }
 
       ShapeHandle output_shape;

@@ -1301,6 +1301,17 @@ LogicalResult ExportXlaOp(CosineOp op, OpLoweringContext ctx) {
   return mlir::success();
 }
 
+LogicalResult ExportXlaOp(TanOp op, OpLoweringContext ctx) {
+  auto& value_map = *ctx.values;
+  auto result = op.getResult();
+  xla::XlaOp arg;
+  if (failed(GetXlaOp(*op.getODSOperands(0).begin(), value_map, &arg, op)))
+    return mlir::failure();
+  auto xla_result = xla::Tan(Unwrap(arg));
+  value_map[result] = xla_result;
+  return mlir::success();
+}
+
 LogicalResult ExportXlaOp(DotOp op, OpLoweringContext ctx) {
   auto& value_map = *ctx.values;
   xla::XlaOp lhs, rhs;

@@ -85,9 +85,9 @@ struct proxy_type {
 #define TF_CALL_CPU_PROXY_TYPES(m)                                     \
   TF_CALL_int64(m) TF_CALL_int32(m) TF_CALL_uint16(m) TF_CALL_int16(m) \
       TF_CALL_int8(m) TF_CALL_complex128(m)
-#define TF_CALL_GPU_PROXY_TYPES(m)                                    \
-  TF_CALL_double(m) TF_CALL_float(m) TF_CALL_half(m) TF_CALL_int32(m) \
-      TF_CALL_int8(m)
+#define TF_CALL_GPU_PROXY_TYPES(m)                                       \
+  TF_CALL_double(m) TF_CALL_float(m) TF_CALL_half(m) TF_CALL_bfloat16(m) \
+      TF_CALL_int32(m) TF_CALL_int8(m)
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_CORE_FRAMEWORK_REGISTER_TYPES_TRAITS_H_

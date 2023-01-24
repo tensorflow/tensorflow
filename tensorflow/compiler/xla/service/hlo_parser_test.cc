@@ -2616,6 +2616,19 @@ ENTRY %configuration_test() -> s32[] {
                            ->raw_backend_config_string());
 }
 
+TEST_F(HloParserTest, LiteralDimensionsError) {
+  const std::string original = R"(HloModule some_2x3_module
+
+ENTRY %some_2x3 () -> f32[2,3] {
+  ROOT %constant = f32[2,3]{1,0} constant(}{1, 2, 3}, {4, 5, 6}})
+}
+
+)";
+  auto result = ParseAndReturnUnverifiedModule(original);
+  EXPECT_NE(OkStatus(), result.status());
+  ExpectHasSubstr(result.status().error_message(), "unexpected '}' token");
+}
+
 TEST_F(HloParserTest, LiteralDimensionsMismatch_1) {
   const std::string original = R"(HloModule some_2_module
 
@@ -4257,6 +4270,104 @@ ENTRY test {
           tsl::error::INVALID_ARGUMENT,
           HasSubstr(
               "Layout has physical shape, but is not for a sparse array")));
+}
+
+TEST_F(HloParserTest, ParseSingleComputation) {
+  const std::string original = R"(
+test {
+  ROOT root =  f32[1,64,10,128]{1,0,2,3} parameter(0)
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnUnverifiedModule(original));
+  EXPECT_TRUE(module->entry_computation()
+                  ->ComputeProgramShape()
+                  .parameters()[0]
+                  .has_layout());
+  EXPECT_TRUE(
+      module->entry_computation()->ComputeProgramShape().result().has_layout());
+  EXPECT_EQ(module->entry_computation()
+                ->ComputeProgramShape()
+                .parameters()[0]
+                .layout(),
+            Layout({1, 0, 2, 3}));
+  EXPECT_EQ(
+      module->entry_computation()->ComputeProgramShape().result().layout(),
+      Layout({1, 0, 2, 3}));
+}
+
+TEST_F(HloParserTest, ParseSingleEntryComputation) {
+  const std::string original = R"(
+ENTRY test {
+  ROOT root =  f32[1,64,10,128]{1,0,2,3} parameter(0)
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnUnverifiedModule(original));
+  EXPECT_TRUE(module->entry_computation()
+                  ->ComputeProgramShape()
+                  .parameters()[0]
+                  .has_layout());
+  EXPECT_TRUE(
+      module->entry_computation()->ComputeProgramShape().result().has_layout());
+  EXPECT_EQ(module->entry_computation()
+                ->ComputeProgramShape()
+                .parameters()[0]
+                .layout(),
+            Layout({1, 0, 2, 3}));
+  EXPECT_EQ(
+      module->entry_computation()->ComputeProgramShape().result().layout(),
+      Layout({1, 0, 2, 3}));
+}
+
+TEST_F(HloParserTest, ParseMultiComputations) {
+  const std::string original = R"(
+comp1 {
+  ROOT root =  f32[1,64,10,128]{3,2,1,0} parameter(0)
+}
+comp2 {
+  ROOT root =  f32[1,64,10,128]{1,0,2,3} parameter(0)
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnUnverifiedModule(original));
+  EXPECT_TRUE(module->entry_computation()
+                  ->ComputeProgramShape()
+                  .parameters()[0]
+                  .has_layout());
+  EXPECT_TRUE(
+      module->entry_computation()->ComputeProgramShape().result().has_layout());
+  EXPECT_EQ(module->entry_computation()
+                ->ComputeProgramShape()
+                .parameters()[0]
+                .layout(),
+            Layout({1, 0, 2, 3}));
+  EXPECT_EQ(
+      module->entry_computation()->ComputeProgramShape().result().layout(),
+      Layout({1, 0, 2, 3}));
+}
+
+TEST_F(HloParserTest, ParseMultiComputationsWithEntry) {
+  const std::string original = R"(
+ENTRY comp1 {
+  ROOT root =  f32[1,64,10,128]{1,0,2,3} parameter(0)
+}
+comp2 {
+  ROOT root =  f32[1,64,10,128]{3,2,1,0} parameter(0)
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnUnverifiedModule(original));
+  EXPECT_TRUE(module->entry_computation()
+                  ->ComputeProgramShape()
+                  .parameters()[0]
+                  .has_layout());
+  EXPECT_TRUE(
+      module->entry_computation()->ComputeProgramShape().result().has_layout());
+  EXPECT_EQ(module->entry_computation()
+                ->ComputeProgramShape()
+                .parameters()[0]
+                .layout(),
+            Layout({1, 0, 2, 3}));
+  EXPECT_EQ(
+      module->entry_computation()->ComputeProgramShape().result().layout(),
+      Layout({1, 0, 2, 3}));
 }
 
 }  // namespace

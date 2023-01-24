@@ -138,9 +138,7 @@ struct LogicalBufferStruct {
         *ResolveShapeIndex(&top_level_shape, proto.defined_at().shape_index());
   }
 
-  absl::string_view instruction_name() const {
-    return proto.defined_at().instruction_name();
-  }
+  absl::string_view instruction_name() const { return hlo_instruction.name(); }
 
   int64_t color() const { return proto.color(); }
   size_t size() const { return proto.size(); }
@@ -166,9 +164,9 @@ struct LogicalBufferStruct {
   // Get the instruction name with shape index for a logical buffer.
   std::string GetInstructionNameWithShapeIndex() const {
     if (proto.defined_at().shape_index().empty()) {
-      return proto.defined_at().instruction_name();
+      return std::string(instruction_name());
     } else {
-      return absl::StrCat(proto.defined_at().instruction_name(), "{",
+      return absl::StrCat(instruction_name(), "{",
                           absl::StrJoin(proto.defined_at().shape_index(), ","),
                           "}");
     }
@@ -268,9 +266,16 @@ class HloProtoBufferWrapper {
  private:
   // Initialize the mappings of logical buffers and buffer allocations.
   void Init() {
+    // A mapping from name to HLO instruction.
+    absl::flat_hash_map<absl::string_view, const ::xla::HloInstructionProto*>
+        name_to_hlo;
+    absl::flat_hash_map<uint64_t, const ::xla::HloInstructionProto*>
+        unique_id_to_hlo;
+
     for (const auto& computation : hlo_proto_.hlo_module().computations()) {
       for (const auto& instruction : computation.instructions()) {
-        name_to_hlo_[instruction.name()] = &instruction;
+        name_to_hlo[instruction.name()] = &instruction;
+        unique_id_to_hlo[instruction.id()] = &instruction;
       }
     }
 
@@ -290,10 +295,15 @@ class HloProtoBufferWrapper {
       for (const auto& assigned : buffer_allocation.assigned()) {
         const auto id = assigned.logical_buffer_id();
         const auto* logical_buffer = id_to_logical_buffer_proto.at(id);
-        const auto& instruction =
-            *name_to_hlo_.at(logical_buffer->defined_at().instruction_name());
+        const auto& instruction_name =
+            logical_buffer->defined_at().instruction_name();
+        const auto* instruction =
+            instruction_name.empty()
+                ? unique_id_to_hlo.at(
+                      logical_buffer->defined_at().instruction_id())
+                : name_to_hlo.at(instruction_name);
         id_to_logical_buffer_[id] = std::make_unique<LogicalBufferStruct>(
-            *logical_buffer, *buffer_allocation_s, instruction,
+            *logical_buffer, *buffer_allocation_s, *instruction,
             assigned.offset());
       }
     }
@@ -354,10 +364,6 @@ class HloProtoBufferWrapper {
 
   // Reference to the original HLO proto.
   const ::xla::HloProto& hlo_proto_;
-
-  // A mapping from name to HLO instruction.
-  absl::flat_hash_map<absl::string_view, const ::xla::HloInstructionProto*>
-      name_to_hlo_;
 
   // A mapping from logical buffer ID to logical buffer.
   absl::flat_hash_map<int64_t, std::unique_ptr<LogicalBufferStruct>>

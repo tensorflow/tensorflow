@@ -66,4 +66,34 @@ def LegalizeCollectiveOpsPass :
   let constructor = "createLegalizeCollectiveOpsPass()";
 }
 
+def LegalizeI1VectorTransferOpsPass :
+   Pass<"xla-legalize-i1-vector-transfers", "mlir::func::FuncOp"> {
+  let summary = "Legalizes transfer ops operating on vectors of i1.";
+
+  let description = [{
+      Replaces transfers involving vector<i1>s with memref casts to i8, and
+      vector comparisons.
+  }];
+
+  let dependentDialects = [
+    "mlir::vector::VectorDialect", "mlir::xla_cpu::XlaCpuDialect"
+  ];
+
+  let constructor = "createLegalizeI1VectorTransferOpsPass()";
+}
+
+def ConvertXlaCpuMemRefElementCastToLLVMPass :
+   Pass<"xla-convert-memref-element-cast-to-llvm", "mlir::func::FuncOp"> {
+  let summary = "Converts xla_cpu.memref_element_cast ops to LLVM.";
+
+  let description = [{
+      Rewrites xla_cpu.memref_elements_cast ops as a new memref descriptor,
+      where the allocated and aligned pointers are updated.
+  }];
+
+  let dependentDialects = ["mlir::LLVM::LLVMDialect"];
+
+  let constructor = "createConvertXlaCpuMemRefElementCastToLLVMPass()";
+}
+
 #endif  // TENSORFLOW_COMPILER_XLA_MLIR_TRANSFORMS_CPU_PASSES_TD_

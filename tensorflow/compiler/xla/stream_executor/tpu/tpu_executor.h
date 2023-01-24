@@ -22,6 +22,7 @@ limitations under the License.
 #include <optional>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/functional/any_invocable.h"
 #include "absl/synchronization/mutex.h"
 #include "tensorflow/compiler/xla/stream_executor/device_memory.h"
 #include "tensorflow/compiler/xla/stream_executor/device_options.h"
@@ -122,7 +123,7 @@ class TpuExecutor : public tensorflow::tpu::TpuExecutorInterface {
   CreateEventImplementation() override;
 
   bool HostCallback(Stream* stream,
-                    std::function<tsl::Status()> callback) override;
+                    absl::AnyInvocable<tsl::Status() &&> callback) override;
 
   bool Memcpy(Stream* stream, void* host_dst,
               const ::stream_executor::DeviceMemoryBase& device_src,

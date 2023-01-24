@@ -273,10 +273,13 @@ void EagerContext::ResetPFLR(const DeviceMgr* device_mgr, Env* env,
                              thread::ThreadPool* thread_pool,
                              DistributedFunctionLibraryRuntime* cluster_flr) {
   Rendezvous::Factory rendezvous_factory = CreateRendezvousFactory();
+  const tensorflow::SessionMetadata* session_metadata = nullptr;
+  if (opts_.config.experimental().has_session_metadata()) {
+    session_metadata = &opts_.config.experimental().session_metadata();
+  }
   pflr_.reset(new ProcessFunctionLibraryRuntime(
       device_mgr, env, config, graph_def_version, lib_def, optimizer_options,
-      thread_pool, cluster_flr,
-      /*session_metadata=*/nullptr, std::move(rendezvous_factory),
+      thread_pool, cluster_flr, session_metadata, std::move(rendezvous_factory),
       StatsPublisherInterface::GetStatsPublisherFactory()));
 }
 

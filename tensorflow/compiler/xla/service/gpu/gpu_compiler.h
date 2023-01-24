@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_GPU_COMPILER_H_
 
 #include <memory>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -108,7 +109,6 @@ struct GpuTargetConfig {
   GpuVersion gpu_version;
   std::string platform_name;
   se::dnn::VersionInfo dnn_version_info;
-  AutotuneResults autotune_results;
   std::string device_description_str;
 };
 
@@ -132,10 +132,11 @@ class GpuCompiler : public LLVMCompiler {
   // GpuConvAlgorithmPicker can not run.
   StatusOr<std::unique_ptr<HloModule>> RunHloPassesWithoutDevice(
       std::unique_ptr<HloModule> module, const CompileOptions& options,
-      const GpuTargetConfig& gpu_target_config);
+      const GpuTargetConfig& gpu_target_config,
+      const AutotuneResults& autotune_results);
 
   StatusOr<std::unique_ptr<BufferAssignment>> AssignBuffers(
-      const HloModule* hlo_module) override;
+      HloModule* hlo_module, se::StreamExecutor* stream_exec) override;
 
   virtual GpuVersion GetGpuVersion(se::StreamExecutor* stream_exec) = 0;
   GpuTargetConfig GetGpuTargetConfig(se::StreamExecutor* stream_exec) {
@@ -176,20 +177,27 @@ class GpuCompiler : public LLVMCompiler {
       Executable* executable) const override;
 
  protected:
+  // During compilation with device, stream_exec != null and autotune_results
+  // == null. During deviceless AOT compilation, stream_exec == null and
+  // autotune_results != null.
   virtual Status OptimizeHloPostLayoutAssignment(
       HloModule* hlo_module, se::StreamExecutor* stream_exec,
       se::DeviceMemoryAllocator* device_allocator,
-      const GpuTargetConfig& gpu_target_config);
+      const GpuTargetConfig& gpu_target_config,
+      const AutotuneResults* autotune_results);
 
  private:
-  // Stream_executor is null during AOT compilation.
+  // During compilation with device, stream_exec != null and autotune_results
+  // == null. During deviceless AOT compilation, stream_exec == null and
+  // autotune_results != null.
   Status OptimizeHloModule(HloModule* hlo_module,
                            se::StreamExecutor* stream_exec,
                            se::DeviceMemoryAllocator* device_allocator,
-                           const GpuTargetConfig& gpu_target_config);
+                           const GpuTargetConfig& gpu_target_config,
+                           const AutotuneResults* autotune_results);
 
   virtual Status OptimizeHloConvolutionCanonicalization(
-      HloModule* hlo_module, se::CudaComputeCapability cuda_compute_capability,
+      HloModule* hlo_module, GpuVersion gpu_version,
       se::DeviceMemoryAllocator* device_allocator) = 0;
 
   virtual HloDataflowAnalysis::CanShareBuffer GetCanShareBuffer() {

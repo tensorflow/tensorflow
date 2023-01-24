@@ -23,7 +23,7 @@ limitations under the License.
 #include "gml_st/transforms/passes.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/Dialect/SCF/Transforms/Transforms.h"
-#include "mlir/IR/BlockAndValueMapping.h"
+#include "mlir/IR/IRMapping.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 
 namespace mlir {
@@ -43,7 +43,7 @@ struct ParallelOpToSCFPattern : public OpRewritePattern<ParallelOp> {
     if (!loop.hasBufferSemantics()) return failure();
 
     auto cloneBody = [&](OpBuilder &builder, Location /*loc*/, ValueRange ivs) {
-      BlockAndValueMapping bvm;
+      IRMapping bvm;
       bvm.map(loop.getInductionVars(), ivs);
 
       for (auto &op : loop.getBody()->without_terminator())
@@ -67,7 +67,7 @@ struct ForOpToSCFPattern : public OpRewritePattern<ForOp> {
                                 PatternRewriter &rewriter) const override {
     auto cloneBody = [&](OpBuilder &builder, Location /*loc*/, ValueRange ivs,
                          ValueRange iterArgs) {
-      BlockAndValueMapping bvm;
+      IRMapping bvm;
       bvm.map(loop.getInductionVars(), ivs);
       bvm.map(loop.getRegionOutputArgs(), iterArgs);
 

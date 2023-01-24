@@ -1129,7 +1129,7 @@ class TableConfig:
     # Use optimizer to handle the rest of the parameters.
     self.optimizer._set_optimization_parameters(parameters)  # pylint: disable=protected-access
     if self.quantization_config:
-      self.quantization_config._set_quantization_parameters(parameters)  # pylint: disable=protected-access
+      self.quantization_config._set_optimization_parameters(parameters)  # pylint: disable=protected-access
 
 
 @tf_export("tpu.experimental.embedding.FeatureConfig")

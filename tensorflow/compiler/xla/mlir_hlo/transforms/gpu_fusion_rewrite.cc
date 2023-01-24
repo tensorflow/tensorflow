@@ -27,7 +27,7 @@ limitations under the License.
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/GPU/IR/GPUDialect.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
-#include "mlir/IR/BlockAndValueMapping.h"
+#include "mlir/IR/IRMapping.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/MLIRContext.h"
@@ -204,7 +204,7 @@ static ConversionTarget getRewritableTarget(MLIRContext* ctx) {
       mhlo::DivOp, mhlo::ExpOp, mhlo::Expm1Op, mhlo::FloorOp, mhlo::LogOp,
       mhlo::Log1pOp, mhlo::LogisticOp, mhlo::MulOp, mhlo::NegOp, mhlo::RoundOp,
       mhlo::RoundNearestEvenOp, mhlo::RsqrtOp, mhlo::SignOp, mhlo::SineOp,
-      mhlo::SqrtOp, mhlo::SubtractOp, mhlo::TanhOp>(
+      mhlo::SqrtOp, mhlo::SubtractOp, mhlo::TanOp, mhlo::TanhOp>(
       [&](Operation* op) { return op->hasOneUse(); });
   return target;
 }
@@ -294,7 +294,7 @@ LogicalResult GpuFusionRewritePass::rewriteFusionOp(
   auto funcType = rewriter.getFunctionType(argTypes, std::nullopt);
   auto funcOp = rewriter.create<func::FuncOp>(loc, "fusion", funcType);
   rewriter.setInsertionPointToEnd(funcOp.addEntryBlock());
-  BlockAndValueMapping mapping;
+  IRMapping mapping;
   for (const auto& [from, to] :
        llvm::zip_first(captures, funcOp.getArguments())) {
     mapping.map(from, to);

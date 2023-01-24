@@ -327,15 +327,7 @@ absl::StatusOr<ExportedModel> QuantizeQatModel(
     const absl::string_view saved_model_path,
     const std::vector<std::string> &signature_keys,
     const std::unordered_set<std::string> &tags,
-    const absl::string_view quant_opts_serialized) {
-  QuantizationOptions quantization_options;
-  if (!quantization_options.ParseFromString(
-          // NOLINTNEXTLINE: std::string conversion required.
-          std::string(quant_opts_serialized))) {
-    return absl::InternalError(
-        "Failed to parse QuantizationOptions from string.");
-  }
-
+    const QuantizationOptions &quantization_options) {
   // Convert the SavedModelBundle to an MLIR module.
   mlir::MLIRContext context = CreateMlirContextForTfQuantization();
 
@@ -402,15 +394,7 @@ absl::StatusOr<ExportedModel> QuantizePtqModelPreCalibration(
     const absl::string_view saved_model_path,
     const std::vector<std::string> &signature_keys,
     const std::unordered_set<std::string> &tags,
-    const absl::string_view quant_opts_serialized) {
-  QuantizationOptions quantization_options;
-  if (!quantization_options.ParseFromString(
-          // NOLINTNEXTLINE: std::string conversion required.
-          std::string(quant_opts_serialized))) {
-    return absl::InternalError(
-        "Failed to parse QuantizationOptions from string.");
-  }
-
+    const QuantizationOptions &quantization_options) {
   // Convert the SavedModelBundle to an MLIR module.
   mlir::MLIRContext context = CreateMlirContextForTfQuantization();
 
@@ -479,15 +463,7 @@ absl::StatusOr<ExportedModel> QuantizePtqModelPostCalibration(
     const absl::string_view saved_model_path,
     const std::vector<std::string> &signature_keys,
     const std::unordered_set<std::string> &tags,
-    const absl::string_view quant_opts_serialized) {
-  QuantizationOptions quantization_options;
-  if (!quantization_options.ParseFromString(
-          // NOLINTNEXTLINE: std::string conversion required.
-          std::string(quant_opts_serialized))) {
-    return absl::InternalError(
-        "Failed to parse QuantizationOptions from string.");
-  }
-
+    const QuantizationOptions &quantization_options) {
   // Convert the SavedModelBundle to an MLIR module.
   mlir::MLIRContext context = CreateMlirContextForTfQuantization();
 
@@ -558,15 +534,7 @@ absl::StatusOr<ExportedModel> QuantizePtqDynamicRange(
     const absl::string_view saved_model_path,
     const std::vector<std::string> &signature_keys,
     const std::unordered_set<std::string> &tags,
-    const absl::string_view quant_opts_serialized) {
-  QuantizationOptions quantization_options;
-  if (!quantization_options.ParseFromString(
-          // NOLINTNEXTLINE: std::string conversion required.
-          std::string(quant_opts_serialized))) {
-    return absl::InternalError(
-        "Failed to parse QuantizationOptions from string.");
-  }
-
+    const QuantizationOptions &quantization_options) {
   // Convert the SavedModelBundle to an MLIR module.
   mlir::MLIRContext context = CreateMlirContextForTfQuantization();
 

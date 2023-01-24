@@ -31,8 +31,9 @@
 
 *   `tf.keras`
 
-    * Improvements and fixes in Keras loss masking: 
-        
+    * Added a `model.export(filepath)` API to create a lightweight SavedModel
+      artifact that can be used for inference (e.g. with TF-Serving).
+    * Improvements and fixes in Keras loss masking:
         * Whether you represent a ragged tensor as a `tf.RaggedTensor` or using
           [keras masking](https://www.tensorflow.org/guide/keras/masking_and_padding),
           the returned loss values should be the identical to each other.
@@ -41,6 +42,15 @@
           in TensorFlow `2.12` compared to previous versions.
         * In cases where the mask was previously ignored, you will now get
           an error if you pass a mask with an incompatible shape.
+
+*   `tf.SavedModel`
+
+    * Introduce new class `tf.saved_model.experimental.Fingerprint` that
+      contains the fingerprint of the SavedModel. See the
+      [SavedModel Fingerprinting RFC](https://github.com/tensorflow/community/pull/415)
+      for details.
+    * Introduce API `tf.saved_model.experimental.read_fingerprint(export_dir)`
+      for reading the fingerprint of a SavedModel.
 
 
 # Known Caveats
@@ -87,6 +97,8 @@
 
     *   Coordination service now works with `dtensor.initialize_accelerator_system`,
         and enabled by default.
+    *   Add `tf.experimental.dtensor.is_dtensor` to check if a tensor
+        is a DTensor instance.
 
 *   `tf.data`:
 
@@ -108,6 +120,9 @@
         `rerandomize_each_iteration=True`, the `sample_from_datasets()`
         operation will use a different (deterministic) sequence of numbers every
         epoch.
+*   `tf.test`:
+    *   Added `tf.test.experimental.sync_devices`, which is useful for
+        accurately measuring performance in benchmarks.
 
 # Bug Fixes and Other Changes
 
@@ -129,6 +144,9 @@
   * Added `tf.nn.experimental.general_dropout`, which is similar to
     `tf.random.experimental.stateless_dropout` but accepts a custom sampler
     function.
+* `tf.types.experimental.GenericFunction`
+  * The `experimental_get_compiler_ir` method supports tf.TensorSpec
+   compilation arguments.
 
 
 # Thanks to our Contributors

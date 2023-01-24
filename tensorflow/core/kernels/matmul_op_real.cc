@@ -47,7 +47,6 @@ TF_CALL_GPU_NUMBER_TYPES(REGISTER_BATCH_MATMUL_GPU);
 REGISTER_BATCH_MATMUL_TOUT_GPU(Eigen::half, Eigen::half, Eigen::half);
 REGISTER_BATCH_MATMUL_TOUT_GPU(float, float, float);
 REGISTER_BATCH_MATMUL_TOUT_GPU(double, double, double);
-TF_CALL_bfloat16(REGISTER_BATCH_MATMUL_GPU);
 REGISTER_BATCH_MATMUL_TOUT_GPU(Eigen::bfloat16, Eigen::bfloat16,
                                Eigen::bfloat16);
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM

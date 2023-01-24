@@ -40,15 +40,14 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/inlined_vector.h"
+#include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_split.h"
 #include "absl/strings/strip.h"
 #include "tensorflow/compiler/xla/stream_executor/lib/error.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/numbers.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/process_state.h"
 #include "tensorflow/compiler/xla/stream_executor/lib/status.h"
-#include "tensorflow/compiler/xla/stream_executor/platform/logging.h"
+#include "tensorflow/tsl/platform/host_info.h"
 
 namespace stream_executor {
 namespace cuda {
@@ -80,21 +79,21 @@ tsl::StatusOr<DriverVersion> StringToDriverVersion(const std::string &value) {
   int major;
   int minor;
   int patch = 0;
-  if (!port::safe_strto32(pieces[0], &major)) {
+  if (!absl::SimpleAtoi(pieces[0], &major)) {
     return tsl::Status(
         port::error::INVALID_ARGUMENT,
         absl::StrFormat("could not parse major version number \"%s\" as an "
                         "integer from string \"%s\"",
                         pieces[0], value));
   }
-  if (!port::safe_strto32(pieces[1], &minor)) {
+  if (!absl::SimpleAtoi(pieces[1], &minor)) {
     return tsl::Status(
         port::error::INVALID_ARGUMENT,
         absl::StrFormat("could not parse minor version number \"%s\" as an "
                         "integer from string \"%s\"",
                         pieces[1].c_str(), value.c_str()));
   }
-  if (pieces.size() == 3 && !port::safe_strto32(pieces[2], &patch)) {
+  if (pieces.size() == 3 && !absl::SimpleAtoi(pieces[2], &patch)) {
     return tsl::Status(
         port::error::INVALID_ARGUMENT,
         absl::StrFormat("could not parse patch version number \"%s\" as an "
@@ -144,17 +143,17 @@ void Diagnostician::LogDiagnosticInformation() {
     if (!started) {
       LOG(INFO) << "kernel driver is installed, but does not appear to be "
                    "running on this host "
-                << "(" << port::Hostname() << ")";
+                << "(" << tsl::port::Hostname() << ")";
     }
   } else {
     LOG(INFO) << "kernel driver does not appear to be installed on this host "
-              << "(" << port::Hostname() << ")";
+              << "(" << tsl::port::Hostname() << ")";
   }
   CFRelease(kext_infos);
 #elif !defined(PLATFORM_WINDOWS)
   if (access(kDriverVersionPath, F_OK) != 0) {
     VLOG(1) << "kernel driver does not appear to be running on this host "
-              << "(" << port::Hostname() << "): "
+              << "(" << tsl::port::Hostname() << "): "
               << "/proc/driver/nvidia/version does not exist";
     return;
   }
@@ -167,13 +166,13 @@ void Diagnostician::LogDiagnosticInformation() {
 #endif
 
   LOG(INFO) << "retrieving CUDA diagnostic information for host: "
-            << port::Hostname();
+            << tsl::port::Hostname();
 
   LogDriverVersionInformation();
 }
 
 /* static */ void Diagnostician::LogDriverVersionInformation() {
-  LOG(INFO) << "hostname: " << port::Hostname();
+  LOG(INFO) << "hostname: " << tsl::port::Hostname();
 #ifndef PLATFORM_WINDOWS
   if (VLOG_IS_ON(1)) {
     const char *value = getenv("LD_LIBRARY_PATH");

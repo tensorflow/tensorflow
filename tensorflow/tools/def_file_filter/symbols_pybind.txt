@@ -104,6 +104,7 @@ tensorflow::SessionState::kTensorHandleResourceTypeName
 [//tensorflow/core/data/service:dispatcher_client] # dispatcher_client
 tensorflow::data::DataServiceDispatcherClient::EnsureInitialized
 tensorflow::data::DataServiceDispatcherClient::GetDataServiceMetadata
+tensorflow::data::DataServiceDispatcherClient::Initialize
 
 [//tensorflow/core/data/service:grpc_util] # grpc_util
 tensorflow::data::grpc_util::Retry
@@ -451,6 +452,7 @@ tensorflow::metrics::CheckpointSize
 [//tensorflow/cc/saved_model:fingerprinting_impl] # SavedModel Fingerprinting
 tensorflow::saved_model::fingerprinting::CreateFingerprintDef
 tensorflow::saved_model::fingerprinting::ReadSavedModelFingerprint
+tensorflow::saved_model::fingerprinting::MakeFingerprintMap
 
 
 [//tensorflow/compiler/jit:flags] # tfe
@@ -549,9 +551,11 @@ tensorflow::dtensor::TPUCoreLocationsToIDs
 tensorflow::dtensor::Pack
 tensorflow::dtensor::Unpack
 tensorflow::dtensor::FetchLayout
+tensorflow::dtensor::IsDTensor
 tensorflow::dtensor::SparsePack
 tensorflow::dtensor::IsSparseDTensor
 tensorflow::dtensor::GetFunctionCacheHitAndMissCount
+tensorflow::dtensor::SetIteratorElementLayouts
 
 [//tensorflow/dtensor/cc:tensor_layout] # DTensor
 tensorflow::dtensor::Mesh

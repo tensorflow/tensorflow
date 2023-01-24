@@ -350,7 +350,7 @@ Operation *bubbleUpPadSlice(OpBuilder &b, tensor::PadOp padOp,
                                             staticNewHighs, newLows, newHighs);
 
     // Copy region to new PadOp.
-    BlockAndValueMapping bvm;
+    IRMapping bvm;
     padOp.getRegion().cloneInto(&newPadOp.getRegion(), bvm);
 
     // Cast result and return.
@@ -365,7 +365,7 @@ Operation *bubbleUpPadSlice(OpBuilder &b, tensor::PadOp padOp,
   // creating SliceOps with result dimensions of size 0 at runtime.
   if (generateZeroSliceGuard && dynHasZeroLenCond) {
     auto result = b.create<scf::IfOp>(
-        loc, resultType, dynHasZeroLenCond,
+        loc, dynHasZeroLenCond,
         /*thenBuilder=*/
         [&](OpBuilder &b, Location loc) {
           b.create<scf::YieldOp>(loc, createGenerateOp()->getResult(0));

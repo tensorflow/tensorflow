@@ -189,7 +189,6 @@ cc_library(
     hdrs = ["test_util.h"],
     deps = [
         ":acceleration_test_util",
-        ":builtin_ops",
         ":test_delegate_providers_lib",
         "//tensorflow/core/platform:logging",
         "//tensorflow/lite:framework_stable",
@@ -202,6 +201,7 @@ cc_library(
         "//tensorflow/lite/core:subgraph",
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/core/c:common",
+        "//tensorflow/lite/core/kernels:builtin_ops",
         "//tensorflow/lite/delegates/nnapi:acceleration_test_util",
         "//tensorflow/lite/delegates/nnapi:nnapi_delegate",
         "//tensorflow/lite/kernels/internal:tensor_utils",
@@ -703,7 +703,6 @@ BUILTIN_KERNEL_DEPS = [
     "//tensorflow/lite:framework_stable",
     "//tensorflow/lite:minimal_logging",
     "//tensorflow/lite:string_util",
-    "//tensorflow/lite:tflite_kernel_use_xnnpack_optional",
     "//tensorflow/lite/core:subgraph",
     "//tensorflow/lite:util",
     "//tensorflow/lite/core/c:common",
@@ -725,11 +724,6 @@ BUILTIN_KERNEL_DEPS = [
     "//conditions:default": [
         ":eigen_support",
         "//tensorflow/lite/kernels/internal:optimized_eigen",
-    ],
-}) + select({
-    "//tensorflow/lite:tflite_with_xnnpack_explicit_false": [],
-    "//conditions:default": [
-        "@XNNPACK//:xnnpack_for_tflite",
     ],
 })
 
@@ -1187,11 +1181,11 @@ cc_test(
     size = "small",
     srcs = ["broadcast_args_test.cc"],
     deps = [
-        ":builtin_ops",
         ":test_main",
         ":test_util",
         "//tensorflow/lite:framework_stable",
         "//tensorflow/lite/core:framework_stable",
+        "//tensorflow/lite/core/kernels:builtin_ops",
         "@com_google_googletest//:gtest",
     ],
 )
@@ -1201,11 +1195,11 @@ cc_test(
     size = "small",
     srcs = ["broadcast_to_test.cc"],
     deps = [
-        ":builtin_ops",
         ":test_main",
         ":test_util",
         "//tensorflow/lite:framework_stable",
         "//tensorflow/lite/core:framework_stable",
+        "//tensorflow/lite/core/kernels:builtin_ops",
         "@com_google_googletest//:gtest",
     ],
 )
@@ -1286,7 +1280,7 @@ cc_test(
         "//tensorflow/lite:framework_stable",
         "//tensorflow/lite/core:framework_stable",
         "//tensorflow/lite/core/c:common",
-        "//tensorflow/lite/kernels:builtin_ops",
+        "//tensorflow/lite/core/kernels:builtin_ops",
         "//tensorflow/lite/tools:logging",
         "@com_google_googletest//:gtest_main",
     ],

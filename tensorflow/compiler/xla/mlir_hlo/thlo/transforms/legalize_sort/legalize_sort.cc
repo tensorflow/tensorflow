@@ -51,7 +51,7 @@ Value emitComparison(ImplicitLocOpBuilder& b, SmallVector<Value>& lhs,
   assert(block.getTerminator()->getOperands().size() == 1 &&
          "Comparator must return a single value");
 
-  BlockAndValueMapping mapping;
+  IRMapping mapping;
   for (auto [idx, arg] : llvm::enumerate(comparator.getArguments())) {
     Value value = idx % 2 == 0 ? lhs[idx / 2] : rhs[idx / 2];
     mapping.map(arg, value);

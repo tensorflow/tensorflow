@@ -36,7 +36,7 @@ limitations under the License.
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/IR/AffineMap.h"
 #include "mlir/IR/Attributes.h"
-#include "mlir/IR/BlockAndValueMapping.h"
+#include "mlir/IR/IRMapping.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/BuiltinTypes.h"
@@ -565,6 +565,7 @@ void populateHloToLhloConversionPattern(
       HloToLhloOpConverter<mhlo::SliceOp>,
       HloToLhloOpConverter<mhlo::SqrtOp>,
       HloToLhloOpConverter<mhlo::SubtractOp>,
+      HloToLhloOpConverter<mhlo::TanOp>,
       HloToLhloOpConverter<mhlo::TanhOp>,
       HloToLhloOpConverter<mhlo::TransposeOp>,
       HloToLhloOpConverter<mhlo::XorOp>,

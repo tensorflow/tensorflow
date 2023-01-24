@@ -16,6 +16,7 @@ limitations under the License.
 #include <map>
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
@@ -174,7 +175,7 @@ Status UpdateMetadata(se::Stream* stream, se::DeviceMemory<uint8>* buffer,
   TF_RETURN_IF_ERROR(transfer_manager->TransferArrayToDeviceAsync(
       stream, *metadata_literal, metadata_buffer));
   // Retain the literal until the end of the transfer.
-  stream->ThenDoHostCallback([metadata_literal]() { return OkStatus(); });
+  stream->ThenDoHostCallback([keep_alive = std::move(metadata_literal)] {});
   return OkStatus();
 }
 

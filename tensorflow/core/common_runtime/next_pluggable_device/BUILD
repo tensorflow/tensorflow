@@ -170,14 +170,15 @@ cc_library(
     hdrs = ["direct_plugin_op_kernel.h"],
     visibility = ["//visibility:public"],
     deps = [
+        ":direct_plugin_variable",
         ":plugin_coordination_service_agent_helper",
         ":plugin_op_kernel",
         ":plugin_resource",
-        "//tensorflow/compiler/xla/pjrt:pjrt_client",
+        ":plugin_variable",
         "//tensorflow/core:framework",
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:status",
-        "//tensorflow/core/tfrt/common:pjrt_util",
+        "//tensorflow/tsl/platform:status",
     ],
 )
 
@@ -198,9 +199,11 @@ cc_library(
     hdrs = ["c_plugin_op_kernel.h"],
     visibility = ["//visibility:public"],
     deps = [
+        ":c_plugin_variable",
         ":plugin_coordination_service_agent",
         ":plugin_coordination_service_agent_helper",
         ":plugin_op_kernel",
+        ":plugin_variable",
         "//tensorflow/c:c_api_internal",
         "//tensorflow/c:kernels_hdrs",
         "//tensorflow/c:tf_buffer_internal",
@@ -209,9 +212,12 @@ cc_library(
         "//tensorflow/c/experimental/next_pluggable_device:c_api",
         "//tensorflow/compiler/xla/pjrt:pjrt_client",
         "//tensorflow/core:framework",
+        "//tensorflow/core/framework:resource_handle_proto_cc",
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:status",
         "//tensorflow/core/protobuf:for_core_protos_cc",
+        "//tensorflow/tsl/platform:errors",
+        "//tensorflow/tsl/platform:status",
         "//tensorflow/tsl/platform:thread_annotations",
     ],
 )
@@ -306,6 +312,42 @@ cc_library(
             ":c_plugin_coordination_service_agent",
         ],
     }),
+)
+
+cc_library(
+    name = "plugin_variable",
+    hdrs = ["plugin_variable.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//tensorflow/tsl/platform:status",
+    ],
+)
+
+cc_library(
+    name = "direct_plugin_variable",
+    srcs = ["direct_plugin_variable.cc"],
+    hdrs = ["direct_plugin_variable.h"],
+    deps = [
+        ":plugin_variable",
+        "//tensorflow/compiler/jit:xla_launch_util",
+        "//tensorflow/tsl/platform:status",
+    ],
+)
+
+cc_library(
+    name = "c_plugin_variable",
+    srcs = ["c_plugin_variable.cc"],
+    hdrs = ["c_plugin_variable.h"],
+    deps = [
+        ":plugin_variable",
+        "//tensorflow/c:tf_status_helper",
+        "//tensorflow/c:tf_tensor_internal",
+        "//tensorflow/c/experimental/next_pluggable_device:c_api",
+        "//tensorflow/core:framework",
+        "//tensorflow/core/platform:status",
+        "//tensorflow/tsl/platform:errors",
+        "//tensorflow/tsl/platform:status",
+    ],
 )
 
 cc_library(

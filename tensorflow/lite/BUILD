@@ -815,7 +815,8 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
     defines = select({
         ":tflite_kernel_use_xnnpack_false": [],
-        ":tflite_with_xnnpack_explicit_false": [],
+        "//tensorflow:macos": [],
+        "//tensorflow:fuchsia": [],
         "//conditions:default": [
             "TFLITE_KERNEL_USE_XNNPACK",
         ],
@@ -962,7 +963,7 @@ cc_test(
     deps = [
         ":framework",
         "//tensorflow/lite/core:framework",
-        "//tensorflow/lite/kernels:builtin_ops",
+        "//tensorflow/lite/core/kernels:builtin_ops",
         "//tensorflow/lite/schema:schema_fbs",
         "//tensorflow/lite/testing:util",
         "@com_google_googletest//:gtest_main",
@@ -1015,8 +1016,8 @@ tf_cc_test(
         ":framework",
         "//tensorflow/lite/core:framework",
         "//tensorflow/lite/core/api",
+        "//tensorflow/lite/core/kernels:builtin_ops",
         "//tensorflow/lite/delegates/flex:delegate",
-        "//tensorflow/lite/kernels:builtin_ops",
         "//tensorflow/lite/testing:util",
         "@com_google_googletest//:gtest_main",
     ],
@@ -1044,7 +1045,7 @@ cc_test(
         ":util",
         "//tensorflow/lite/core:framework",
         "//tensorflow/lite/core/c:common",
-        "//tensorflow/lite/kernels:builtin_ops",
+        "//tensorflow/lite/core/kernels:builtin_ops",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -1101,8 +1102,8 @@ cc_test(
         ":optional_debug_tools",
         "//tensorflow/lite/core:framework",
         "//tensorflow/lite/core/c:common",
+        "//tensorflow/lite/core/kernels:builtin_ops",
         "//tensorflow/lite/delegates/xnnpack:xnnpack_delegate",
-        "//tensorflow/lite/kernels:builtin_ops",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -1141,7 +1142,7 @@ cc_library(
         ":mutable_op_resolver",
         ":op_resolver",
         "//tensorflow/lite/core:create_op_resolver_header",
-        "//tensorflow/lite/kernels:builtin_ops",
+        "//tensorflow/lite/core/kernels:builtin_ops",
     ],
     # Some targets only have an implicit dependency on CreateOpResolver.
     # This avoids warnings about backwards references when linking.

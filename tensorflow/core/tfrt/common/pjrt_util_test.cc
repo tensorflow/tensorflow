@@ -73,10 +73,5 @@ TEST(PjRtStateResourceManagerTest, GetNotExistPjRtClientNotImplemented) {
                          "on the first use is not implemented.")));
 }
 
-TEST(PjRtStateResourceManagerTest, GetNotExistGpuPjRtClient) {
-  TF_ASSERT_OK_AND_ASSIGN(auto pjrt_client, GetOrCreatePjRtClient(DEVICE_GPU));
-  EXPECT_THAT(pjrt_client, ::testing::NotNull());
-}
-
 }  // namespace
 }  // namespace tensorflow

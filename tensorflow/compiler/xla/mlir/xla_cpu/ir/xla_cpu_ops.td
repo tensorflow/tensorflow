@@ -245,6 +245,23 @@ def OutfeedOp : XlaCpu_Op<"outfeed", [BufferizableOpInterface]> {
   }];
 }
 
+def MemRefElementCastOp : XlaCpu_Op<"memref_element_cast",
+    [SameOperandsAndResultShape]> {
+  let summary = "MemRef reinterpret_cast on element types";
+  let description = [{
+    This op is the equivalent of C++'s reinterpret_cast on pointers. The element
+    types' storage sizes must be the same. Does not cast shapes.
+  }];
+  let arguments = (ins
+    MemRefOf<[I1, I8, I16, I32, I64, BF16, F16, F32, F64]>:$src
+  );
+  let results = (outs
+    MemRefOf<[I1, I8, I16, I32, I64, BF16, F16, F32, F64]>:$dst
+  );
+  let assemblyFormat = "$src attr-dict `:` type($src) `to` type($dst)";
+  let hasVerifier = 1;
+}
+
 def RngBitGeneratorOp : XlaCpu_Op<"rng_bit_generator", [BufferizableOpInterface]> {
   let summary = "CPU-specific version of rng_bit_generator";
   let description = [{

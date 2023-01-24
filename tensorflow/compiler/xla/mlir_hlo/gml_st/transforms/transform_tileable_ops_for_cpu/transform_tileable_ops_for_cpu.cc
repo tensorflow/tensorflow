@@ -35,6 +35,8 @@ void addTileableOpsTransformationsForCPU(
   pm.addNestedPass<FuncOp>(createTransformTransposeForCpuPass());
   pm.addNestedPass<FuncOp>(createTransformMapForCpuPass(options.vectorSize));
   pm.addNestedPass<FuncOp>(createTransformSortForCpuPass());
+  pm.addNestedPass<mlir::func::FuncOp>(
+      mlir::gml_st::createTransformReverseForCpuPass());
 
   pm.addPass(createCSEPass());
   pm.addPass(createCanonicalizerPass());
@@ -42,7 +44,7 @@ void addTileableOpsTransformationsForCPU(
   pm.addNestedPass<FuncOp>(createCollapseMaterializeOpsPass());
   pm.addNestedPass<FuncOp>(createVectorizePerfectlyTiledLoopsPass());
   pm.addNestedPass<FuncOp>(createScalarizationPass());
-  pm.addNestedPass<FuncOp>(createLowerVectorContractPass());
+  pm.addNestedPass<FuncOp>(createRewriteVectorContractPass());
 }
 
 }  // namespace gml_st

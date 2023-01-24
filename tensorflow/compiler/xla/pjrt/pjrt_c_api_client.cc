@@ -261,39 +261,6 @@ StatusOr<std::unique_ptr<PjRtLoadedExecutable>> PjRtCApiClient::Compile(
                                   module_bytecode, format);
 }
 
-StatusOr<std::string> PjRtCApiClient::SerializeExecutable(
-    const PjRtLoadedExecutable& executable) const {
-  auto c_api_exec =
-      tensorflow::down_cast<const PjRtCApiExecutable*>(&executable);
-  const PJRT_Executable* c_exec = c_api_exec->c_executable();
-
-  PJRT_Executable_Serialize_Args ser_args;
-  ser_args.struct_size = PJRT_Executable_Serialize_Args_STRUCT_SIZE;
-  ser_args.priv = nullptr;
-  ser_args.executable = c_exec;
-  ser_args.serialized_executable = nullptr;
-
-  const PJRT_Api* api = pjrt_c_api();
-
-  RETURN_STATUS_IF_ERROR(api->PJRT_Executable_Serialize(&ser_args), api);
-  PJRT_SerializedExecutable* c_serialized_exec = ser_args.serialized_executable;
-  std::unique_ptr<PJRT_SerializedExecutable,
-                  ::pjrt::PJRT_SerializedExecutableDeleter>
-      serialized_executable(c_serialized_exec,
-                            ::pjrt::MakeSerializedExecutableDeleter(api));
-
-  PJRT_SerializedExecutable_Data_Args data_args;
-  data_args.struct_size = PJRT_SerializedExecutable_Data_Args_STRUCT_SIZE;
-  data_args.priv = nullptr;
-  data_args.serialized_executable = c_serialized_exec;
-  data_args.data = nullptr;
-  data_args.data_size = 0;
-
-  RETURN_STATUS_IF_ERROR(api->PJRT_SerializedExecutable_Data(&data_args), api);
-
-  return std::string(data_args.data, data_args.data_size);
-}
-
 StatusOr<std::unique_ptr<PjRtLoadedExecutable>>
 PjRtCApiClient::DeserializeExecutable(absl::string_view serialized,
                                       std::optional<CompileOptions> options) {
@@ -920,6 +887,34 @@ PjRtCApiExecutable::GetCostAnalysis() const {
   }
 
   return output_map;
+}
+
+StatusOr<std::string> PjRtCApiExecutable::SerializeExecutable() const {
+  PJRT_Executable_Serialize_Args ser_args;
+  ser_args.struct_size = PJRT_Executable_Serialize_Args_STRUCT_SIZE;
+  ser_args.priv = nullptr;
+  ser_args.executable = c_executable();
+  ser_args.serialized_executable = nullptr;
+
+  const PJRT_Api* api = pjrt_c_api();
+
+  RETURN_STATUS_IF_ERROR(api->PJRT_Executable_Serialize(&ser_args), api);
+  PJRT_SerializedExecutable* c_serialized_exec = ser_args.serialized_executable;
+  std::unique_ptr<PJRT_SerializedExecutable,
+                  ::pjrt::PJRT_SerializedExecutableDeleter>
+      serialized_executable(c_serialized_exec,
+                            ::pjrt::MakeSerializedExecutableDeleter(api));
+
+  PJRT_SerializedExecutable_Data_Args data_args;
+  data_args.struct_size = PJRT_SerializedExecutable_Data_Args_STRUCT_SIZE;
+  data_args.priv = nullptr;
+  data_args.serialized_executable = c_serialized_exec;
+  data_args.data = nullptr;
+  data_args.data_size = 0;
+
+  RETURN_STATUS_IF_ERROR(api->PJRT_SerializedExecutable_Data(&data_args), api);
+
+  return std::string(data_args.data, data_args.data_size);
 }
 
 // ---------------------------------- Buffers ----------------------------------

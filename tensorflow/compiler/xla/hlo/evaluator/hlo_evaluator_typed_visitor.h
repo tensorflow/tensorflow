@@ -2032,6 +2032,27 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
 
   template <typename NativeT, typename std::enable_if_t<
                                   std::is_floating_point_v<NativeT>>* = nullptr>
+  Status HandleTan(HloInstruction* tan) {
+    TF_ASSIGN_OR_RETURN(parent_->evaluated_[tan],
+                        ElementWiseUnaryOp(tan, [](ElementwiseT elem_operand) {
+                          return std::tan(elem_operand);
+                        }));
+    return OkStatus();
+  }
+
+  template <typename NativeT,
+            typename std::enable_if_t<std::is_integral_v<NativeT> ||
+                                      is_complex_v<NativeT>>* = nullptr>
+  Status HandleTan(HloInstruction* tan) {
+    return UnsupportedTypeError(tan);
+  }
+
+  Status HandleTan(HloInstruction* tan) override {
+    return HandleTan<ElementwiseT>(tan);
+  }
+
+  template <typename NativeT, typename std::enable_if_t<
+                                  std::is_floating_point_v<NativeT>>* = nullptr>
   Status HandleReducePrecision(HloInstruction* reduce_precision) {
     TF_ASSIGN_OR_RETURN(
         parent_->evaluated_[reduce_precision],

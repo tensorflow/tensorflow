@@ -120,7 +120,14 @@ class CApiTest : public ::testing::Test {
       flatbuffers::Vector<flatbuffers::Offset<tflite::TFLiteSettings>>>
   CreateTFLiteSettings() {
     return mini_benchmark_fbb_.CreateVector(
-        {tflite::CreateTFLiteSettings(mini_benchmark_fbb_)});
+        {tflite::CreateTFLiteSettings(mini_benchmark_fbb_,
+#ifdef ANDROID
+                                      tflite::Delegate_GPU
+#else
+                                      tflite::Delegate_NONE
+#endif
+
+                                      )});
   }
 
   flatbuffers::FlatBufferBuilder mini_benchmark_fbb_;

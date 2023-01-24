@@ -20,6 +20,7 @@ limitations under the License.
 #include <optional>
 #include <string>
 
+#include "absl/strings/substitute.h"
 #include "tensorflow/core/data/service/common.pb.h"
 #include "tensorflow/core/data/service/task_runner.h"
 #include "tensorflow/core/data/service/worker.pb.h"
@@ -50,6 +51,12 @@ struct SnapshotWriterParams {
 
   // The maximum number of bytes in each chunk.
   int64_t max_chunk_size_bytes = kDefaultMaxChunkSizeBytes;
+
+  std::string DebugString() const {
+    return absl::Substitute(
+        "SnapshotWriterParams { base_path: $0, stream: $1, compression: $2 }",
+        snapshot_path, stream_index, compression);
+  }
 
  private:
   static constexpr int64_t kDefaultMaxChunkSizeBytes =
@@ -89,19 +96,26 @@ class SnapshotStreamWriter {
   SnapshotStreamWriter(const SnapshotStreamWriter&) = delete;
   SnapshotStreamWriter& operator=(const SnapshotStreamWriter&) = delete;
 
-  // Waits for the writer to finish writing the snapshot stream.
-  Status Wait();
+  // Returns true if the snapshot stream has completed. A snapshot stream is
+  // completed if the dataset has reached the end of sequence and a DONE file is
+  // written. Returns an error if the snapshot has failed. This does not block
+  // the caller.
+  StatusOr<bool> Completed() const;
+
+  // Waits for the writer to finish writing the snapshot stream and returns the
+  // final status.
+  StatusOr<bool> Wait();
 
   // Cancels the writer. If cancelled, `Wait` will return a Cancelled error.
   void Cancel();
 
  private:
-  // Runs `WriteSnapshotFn` on a dedicated thread.
-  std::unique_ptr<Thread> RunSnapshotThread();
+  // Writes the snapshot and any debugging log when necessary.
+  void WriteSnapshotAndLog();
 
-  // Function to write the snapshot. Returns an error if writing fails or the
-  // task has been cancelled.
-  Status WriteSnapshotFn();
+  // Writes the snapshot. Returns an error if writing fails or the task has been
+  // cancelled.
+  Status WriteSnapshot();
 
   // Creates directories to store uncommitted chunks and checkpoints.
   Status InitializeDirectories();
@@ -130,7 +144,7 @@ class SnapshotStreamWriter {
 
   // Writes a DONE file when the stream is finished. Writes an ERROR file if it
   // failed.
-  Status FinalizeStream(const Status& status);
+  Status FinalizeStream(Status status);
   Status WriteDoneFile();
   Status WriteErrorFile(const Status& status);
 
@@ -176,11 +190,11 @@ class SnapshotStreamWriter {
 
   mutable mutex mu_;
 
-  // Status of the writer:
-  // - If the snapshotting is successful, it is an OK status.
+  // Whether the writer is completed:
+  // - If the snapshot is successful, this is true.
   // - If any error happens during the snapshot write, it is the error status.
-  // - If the writer is cancelled, it is a Cancelled status.
-  Status status_ TF_GUARDED_BY(mu_);
+  // - If the snapshot has not finished, this is false.
+  StatusOr<bool> completed_ TF_GUARDED_BY(mu_) = false;
 
   std::unique_ptr<Thread> snapshot_thread_;
 };

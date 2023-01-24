@@ -85,8 +85,8 @@ class MarkFunctionsNoinlinePass
   }
 
   // Gets a set of function names from `noinline_functions_`.
-  llvm::StringSet<> GetNoinlineFunctionsSet() {
-    llvm::StringSet<> noinline_functions;
+  StringSet<> GetNoinlineFunctionsSet() {
+    StringSet<> noinline_functions;
     noinline_functions.insert(noinline_functions_.begin(),
                               noinline_functions_.end());
     return noinline_functions;
@@ -97,7 +97,7 @@ class MarkFunctionsNoinlinePass
 };
 
 void MarkFunctionsNoinlinePass::runOnOperation() {
-  const llvm::StringSet<> noinline_functions = GetNoinlineFunctionsSet();
+  const StringSet<> noinline_functions = GetNoinlineFunctionsSet();
 
   func::FuncOp func_op = getOperation();
   Builder builder(&getContext());

@@ -55,7 +55,6 @@ int main(int argc, char **argv) {
   mlir::mhlo::registerTfXlaPasses();
   mlir::mhlo::registerXlaFrameworkPasses();
   mlir::mhlo::registerLegalizeTFPass();
-  mlir::mhlo::registerLegalizeTFControlFlowPass();
   mlir::mhlo::registerLegalizeTfTypesPassPass();
   mlir::tosa::registerLegalizeTosaPasses();
   mlir::tosa::registerTFtoTOSALegalizationPipeline();

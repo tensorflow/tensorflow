@@ -40,6 +40,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/service/gpu/stream_executor_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
+#include "tensorflow/compiler/xla/stream_executor/dnn.pb.h"
 #include "tensorflow/compiler/xla/stream_executor/scratch_allocator.h"
 #include "tensorflow/compiler/xla/stream_executor/stream.h"
 #include "tensorflow/compiler/xla/stream_executor/stream_executor_pimpl.h"
@@ -47,7 +48,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/tsl/platform/logger.h"
 #include "tensorflow/tsl/platform/numbers.h"
-#include "tensorflow/tsl/protobuf/dnn.pb.h"
 #include "tensorflow/tsl/util/env_var.h"
 #include "tensorflow/tsl/util/proto/proto_utils.h"
 
@@ -148,7 +148,7 @@ StatusOr<std::vector<MaybeFusedConvRunner>> GetAlgorithms(
           /* conv_input_scale = */ config.conv_result_scale,
           /* side_input_scale = */ config.fusion->side_input_scale,
           /* leakyrelu_alpha = */ 0.0, stream, config.input_descriptor,
-          config.filter_descriptor, GetBiasDescriptor(config),
+          config.filter_descriptor, config.bias_descriptor,
           config.output_descriptor, config.conv_desc, use_fallback,
           config.fusion->mode, &runners));
       for (auto& runner : runners) {

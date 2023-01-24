@@ -488,7 +488,7 @@ StatusOr<std::optional<std::string>> PjRtLoadedExecutable::Fingerprint() const {
 
 StatusOr<std::string> PjRtLoadedExecutable::Serialize() const {
   DCHECK(this);
-  return client_->pjrt_client()->SerializeExecutable(*pjrt_loaded_executable_);
+  return pjrt_loaded_executable_->SerializeExecutable();
 }
 
 Future<Status> PjRtLoadedExecutable::Delete() {

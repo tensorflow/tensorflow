@@ -172,6 +172,16 @@ void ConnectContextGroups(const ContextGroupMap& context_groups) {
   for (auto& type_id_group : context_groups) {
     for (auto& id_group : type_id_group.second) {
       const ContextGroup& group = id_group.second;
+      if (group.producers.size() >= 64 && group.consumers.size() >= 64) {
+        LOG_EVERY_N(WARNING, 1000)
+            << "id:" << id_group.first
+            << " producers:" << group.producers.size() << " : "
+            << group.producers[0]->GetEventVisitor().Name()
+            << " consumers:" << group.consumers.size() << " : "
+            << group.consumers[0]->GetEventVisitor().Name();
+        continue;
+      }
+
       for (EventNode* parent : group.producers) {
         for (EventNode* child : group.consumers) {
           parent->AddChild(child);

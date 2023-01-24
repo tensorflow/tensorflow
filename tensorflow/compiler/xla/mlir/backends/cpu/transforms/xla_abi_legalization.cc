@@ -20,7 +20,7 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
-#include "mlir/IR/BlockAndValueMapping.h"  // from @llvm-project
+#include "mlir/IR/IRMapping.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/ImplicitLocOpBuilder.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
@@ -124,7 +124,7 @@ struct RewriteInputArgs : OpRewritePattern<func::FuncOp> {
 
     ImplicitLocOpBuilder b(op.getLoc(), rewriter);
     b.setInsertionPointToStart(&op.getBody().front());
-    BlockAndValueMapping bvm;
+    IRMapping bvm;
     for (const auto&& [param, layout] :
          llvm::zip(op.getArguments(), param_layouts)) {
       NormalizeInputInPlace(b, param, layout);

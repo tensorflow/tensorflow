@@ -99,6 +99,10 @@ tsl::StatusOr<std::vector<uint8_t>> LinkUsingNvlink(
 std::string FindCudaExecutable(const std::string& binary_name,
                                const std::string& preferred_cuda_dir);
 
+// Runs tool --version and parses its version string.
+tsl::StatusOr<std::array<int64_t, 3>> GetToolVersion(
+    absl::string_view tool_path);
+
 // On NVIDIA GPUs, returns the CUDA toolkit version supported by the driver,
 tsl::StatusOr<std::array<int64_t, 3>> GetAsmCompilerVersion(
     const std::string& preferred_cuda_dir);

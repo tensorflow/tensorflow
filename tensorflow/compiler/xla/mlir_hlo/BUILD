@@ -1063,6 +1063,7 @@ cc_library(
         ":userange_analysis",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:LLVMDialect",
         "@llvm-project//mlir:Pass",
     ],
 )
@@ -1181,6 +1182,7 @@ cc_library(
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:AffineDialect",
         "@llvm-project//mlir:AffineToStandard",
+        "@llvm-project//mlir:ArithDialect",
         "@llvm-project//mlir:ArithToLLVM",
         "@llvm-project//mlir:ArithTransforms",
         "@llvm-project//mlir:BufferizationDialect",
@@ -1210,6 +1212,7 @@ cc_library(
         "@llvm-project//mlir:ShapeToStandard",
         "@llvm-project//mlir:TensorInferTypeOpInterfaceImpl",
         "@llvm-project//mlir:Transforms",
+        "@llvm-project//mlir:VectorDialect",
         "@llvm-project//mlir:VectorToLLVM",
         "@llvm-project//mlir:VectorTransforms",
     ],
@@ -1334,9 +1337,11 @@ cc_library(
         "gml_st/transforms/gml_st_to_gpu/gml_st_to_gpu.cc",
         "gml_st/transforms/gml_st_to_scf/gml_st_to_scf.cc",
         "gml_st/transforms/greedy_tiling_and_fusion/greedy_tiling_and_fusion.cc",
-        "gml_st/transforms/lower_vector_contract/lower_vector_contract.cc",
         "gml_st/transforms/passes.h.inc",
         "gml_st/transforms/peeling/peeling.cc",
+        "gml_st/transforms/rewrite_vector_ops/rewrite_vector_contract.cc",
+        "gml_st/transforms/rewrite_vector_ops/rewrite_vector_multi_reduction.cc",
+        "gml_st/transforms/rewrite_vector_ops/rewrite_vector_transpose.cc",
         "gml_st/transforms/scalarization/scalarization.cc",
         "gml_st/transforms/tiling/tiling.cc",
         "gml_st/transforms/tiling_cwise/tiling_cwise.cc",
@@ -1377,6 +1382,7 @@ cc_library(
         ":type_conversion",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:AffineDialect",
+        "@llvm-project//mlir:AffineUtils",
         "@llvm-project//mlir:ArithDialect",
         "@llvm-project//mlir:ArithUtils",
         "@llvm-project//mlir:BufferizationDialect",
@@ -1412,6 +1418,7 @@ cc_library(
         "@llvm-project//mlir:Transforms",
         "@llvm-project//mlir:VectorDialect",
         "@llvm-project//mlir:VectorTransforms",
+        "@llvm-project//mlir:X86VectorTransforms",
         "@stablehlo//:chlo_ops",
     ],
 )
@@ -1688,6 +1695,7 @@ cc_library(
         "@llvm-project//mlir:BufferizationDialect",
         "@llvm-project//mlir:MemRefDialect",
         "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:TensorDialect",
         "@llvm-project//mlir:ViewLikeInterface",
     ],
 )
@@ -1863,4 +1871,107 @@ cc_binary(
     linkshared = True,
     linkstatic = False,
     deps = ["@llvm-project//mlir:mlir_c_runner_utils"],
+)
+
+cc_library(
+    name = "mlir_interpreter_dialects",
+    srcs = glob(
+        [
+            "tools/mlir_interpreter/dialects/*.cc",
+        ],
+        exclude = ["tools/mlir_interpreter/dialects/util.cc"],
+    ),
+    strip_include_prefix = ".",
+    deps = [
+        ":gml_st",
+        ":mlir_hlo",
+        ":mlir_interpreter_dialect_utils",
+        ":mlir_interpreter_framework",
+        "@com_google_absl//absl/strings",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:AffineDialect",
+        "@llvm-project//mlir:ArithDialect",
+        "@llvm-project//mlir:BufferizationDialect",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:LinalgDialect",
+        "@llvm-project//mlir:MemRefDialect",
+        "@llvm-project//mlir:SCFDialect",
+        "@llvm-project//mlir:TensorDialect",
+        "@llvm-project//mlir:VectorDialect",
+        "@llvm-project//mlir:ViewLikeInterface",
+    ],
+    alwayslink = 1,
+)
+
+cc_library(
+    name = "mlir_interpreter_dialect_utils",
+    srcs = [
+        "tools/mlir_interpreter/dialects/util.cc",
+    ],
+    hdrs = [
+        "tools/mlir_interpreter/dialects/comparators.h",
+        "tools/mlir_interpreter/dialects/cwise_math.h",
+        "tools/mlir_interpreter/dialects/util.h",
+    ],
+    strip_include_prefix = ".",
+    deps = [
+        ":mlir_interpreter_framework",
+        "@com_google_absl//absl/strings",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:ArithDialect",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:TensorDialect",
+        "@llvm-project//mlir:ViewLikeInterface",
+    ],
+)
+
+cc_library(
+    name = "mlir_interpreter_framework",
+    srcs = [
+        "tools/mlir_interpreter/framework/interpreter.cc",
+        "tools/mlir_interpreter/framework/interpreter_value.cc",
+        "tools/mlir_interpreter/framework/registration.cc",
+        "tools/mlir_interpreter/framework/tensor_or_memref.cc",
+    ],
+    hdrs = [
+        "tools/mlir_interpreter/framework/interpreter.h",
+        "tools/mlir_interpreter/framework/interpreter_value.h",
+        "tools/mlir_interpreter/framework/interpreter_value_util.h",
+        "tools/mlir_interpreter/framework/registration.h",
+        "tools/mlir_interpreter/framework/tensor_or_memref.h",
+    ],
+    strip_include_prefix = ".",
+    deps = [
+        "//tensorflow/tsl/platform:logging",
+        "@com_google_absl//absl/strings",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:DialectUtils",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
+    ],
+)
+
+cc_binary(
+    name = "mlir-interpreter-runner",
+    srcs = ["tools/mlir_interpreter/mlir-interpreter-runner.cc"],
+    deps = [
+        ":gml_st",
+        ":hlo_dialect_registration",
+        ":lhlo",
+        ":lhlo_gpu",
+        ":mhlo_passes",
+        ":mlir_interpreter_dialects",
+        ":mlir_interpreter_framework",
+        ":thlo",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:AllPassesAndDialects",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:MlirReduceLib",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Support",
+    ],
 )

@@ -50,6 +50,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_dump_max_hlo_modules(-1);
   opts.set_xla_dump_module_metadata(false);
   opts.set_xla_dump_hlo_as_long_text(false);
+  opts.set_xla_dump_enable_mlir_pretty_form(true);
 #ifdef ENABLE_MKL
   opts.set_xla_cpu_use_mkl_dnn(true);
 #endif  // ENABLE_MKL
@@ -101,6 +102,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_normalize_layouts(true);
   opts.set_xla_gpu_simplify_all_fp_conversions(true);
   opts.set_xla_dump_latency_hiding_schedule(false);
+  opts.set_xla_gpu_enable_latency_hiding_scheduler(false);
 
   opts.set_xla_cpu_enable_mlir_tiling_and_fusion(false);
   return opts;
@@ -776,6 +778,15 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       "If specified, dumps HLO before and after optimization passes in the "
       "pass pipelines that match this regular expression."));
   flag_list->push_back(tsl::Flag(
+      "xla_dump_enable_mlir_pretty_form",
+      bool_setter_for(&DebugOptions::set_xla_dump_enable_mlir_pretty_form),
+      debug_options->xla_dump_enable_mlir_pretty_form(),
+      "Enable dumping MLIR using pretty print form. If set to false, the "
+      "dumped "
+      "MLIR will be in the llvm-parsable format and can be processed by "
+      "mlir-opt tools. "
+      "Pretty print form is not legal MLIR."));
+  flag_list->push_back(tsl::Flag(
       "xla_gpu_enable_xla_runtime_executable",
       bool_setter_for(&DebugOptions::set_xla_gpu_enable_xla_runtime_executable),
       debug_options->xla_gpu_enable_xla_runtime_executable(),
@@ -837,6 +848,12 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       bool_setter_for(&DebugOptions::set_xla_cpu_enable_mlir_tiling_and_fusion),
       debug_options->xla_cpu_enable_mlir_tiling_and_fusion(),
       "Enable MLIR tiling and fusion."));
+  flag_list->push_back(
+      tsl::Flag("xla_gpu_enable_latency_hiding_scheduler",
+                bool_setter_for(
+                    &DebugOptions::set_xla_gpu_enable_latency_hiding_scheduler),
+                debug_options->xla_gpu_enable_latency_hiding_scheduler(),
+                "Enable latency-hiding scheduler for XLA:GPU"));
 }  // NOLINT(readability/fn_size)
 
 // Allocates flag_values and flag_objects; this function must not be called more

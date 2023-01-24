@@ -294,6 +294,10 @@ cc_library(
         "//tensorflow/core/platform:blocking_counter",
         "//tensorflow/core/platform:logging",
         "//tensorflow/core/platform:mutex",
+        "//tensorflow/tsl/platform:blocking_counter",
+        "//tensorflow/tsl/platform:logging",
+        "//tensorflow/tsl/platform:tstring",
+        "//tensorflow/tsl/platform:types",
     ] + tf_additional_tensor_coding_deps(),
     alwayslink = 1,
 )

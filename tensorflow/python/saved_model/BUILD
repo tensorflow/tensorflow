@@ -3,7 +3,7 @@
 
 load("//tensorflow:strict.default.bzl", "py_strict_library")
 load("//tensorflow:tensorflow.default.bzl", "cuda_py_test", "tf_py_test", "tf_pybind_cc_library_wrapper", "tf_python_pybind_extension")
-load("//tensorflow:tensorflow.bzl", "VERSION", "tf_python_pybind_static_deps")
+load("//tensorflow:tensorflow.bzl", "VERSION", "if_google", "tf_python_pybind_static_deps")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -21,6 +21,7 @@ py_strict_library(
     deps = [
         ":builder",
         ":constants",
+        ":fingerprinting",
         ":load",
         ":loader",
         ":main_op",
@@ -503,6 +504,7 @@ cuda_py_test(
     deps = [
         ":load",
         ":save",
+        "@absl_py//absl/testing:parameterized",
         "//tensorflow/python:cond_v2",  # b/118513001
         "//tensorflow/python:constant_op",
         "//tensorflow/python:control_flow_ops",
@@ -517,8 +519,9 @@ cuda_py_test(
         "//tensorflow/python/trackable:asset",
         "//tensorflow/python/trackable:autotrackable",
         "//tensorflow/python/trackable:resource",
-        "@absl_py//absl/testing:parameterized",
-    ],
+    ] + if_google([
+        "//tensorflow/cc/experimental/tf2:runtime_pybind",
+    ]),
 )
 
 tf_py_test(
@@ -645,6 +648,7 @@ py_strict_library(
         "//tensorflow/python/ops/numpy_ops:numpy",
         "//tensorflow/python/ops/ragged:ragged_tensor",
         "//tensorflow/python/ops/ragged:row_partition",
+        "//tensorflow/python/types",
         "//tensorflow/python/util",
         "//tensorflow/python/util:tf_export",
     ],
@@ -782,12 +786,22 @@ tf_py_test(
     ],
 )
 
+py_strict_library(
+    name = "fingerprinting",
+    srcs = ["fingerprinting.py"],
+    deps = [
+        ":pywrap_saved_model",
+        "//tensorflow/python/util:tf_export",
+    ],
+)
+
 tf_py_test(
     name = "fingerprinting_test",
     size = "small",
     srcs = ["fingerprinting_test.py"],
     python_version = "PY3",
     deps = [
+        ":fingerprinting",
         "//tensorflow/python/eager:test",
     ],
 )

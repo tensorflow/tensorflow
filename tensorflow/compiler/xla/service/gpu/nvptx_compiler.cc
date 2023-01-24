@@ -66,8 +66,10 @@ namespace xla {
 namespace gpu {
 
 Status NVPTXCompiler::OptimizeHloConvolutionCanonicalization(
-    HloModule* hlo_module, se::CudaComputeCapability cuda_compute_capability,
+    HloModule* hlo_module, GpuVersion gpu_version,
     se::DeviceMemoryAllocator* device_allocator) {
+  auto cuda_compute_capability =
+      std::get<se::CudaComputeCapability>(gpu_version);
   // Convert convolutions into CustomCalls to cudnn, then canonicalize them
   // (GpuConvPaddingLegalization). Also expand cuSolver calls.
   HloPassPipeline pipeline("conv_canonicalization");
@@ -114,7 +116,8 @@ Status NVPTXCompiler::OptimizeHloConvolutionCanonicalization(
 Status NVPTXCompiler::OptimizeHloPostLayoutAssignment(
     HloModule* hlo_module, se::StreamExecutor* stream_exec,
     se::DeviceMemoryAllocator* device_allocator,
-    const GpuTargetConfig& gpu_target_config) {
+    const GpuTargetConfig& gpu_target_config,
+    const AutotuneResults* autotune_results) {
   HloPassPipeline pre_pipeline("nvptx post-layout_assignment part 1");
 
   // This needs to run before GemmRewriter, which is part of
@@ -140,14 +143,16 @@ Status NVPTXCompiler::OptimizeHloPostLayoutAssignment(
   TF_RETURN_IF_ERROR(pre_pipeline.Run(hlo_module).status());
 
   TF_RETURN_IF_ERROR(GpuCompiler::OptimizeHloPostLayoutAssignment(
-      hlo_module, stream_exec, device_allocator, gpu_target_config));
+      hlo_module, stream_exec, device_allocator, gpu_target_config,
+      autotune_results));
 
   HloPassPipeline post_pipeline("nvptx post-layout_assignment part 2");
   if (!stream_exec) {
-    // Device not available. Use autotune results from gpu_target_config.
+    // Device not available. Use AOT autotune results.
+    CHECK(autotune_results);
     GemmAlgorithmPicker::ClearAutotuneResults();
-    TF_RETURN_IF_ERROR(GemmAlgorithmPicker::LoadAutotuneResults(
-        gpu_target_config.autotune_results));
+    TF_RETURN_IF_ERROR(
+        GemmAlgorithmPicker::LoadAutotuneResults(*autotune_results));
 
     std::string device_description_str =
         gpu_target_config.device_description_str;
@@ -475,7 +480,7 @@ std::vector<uint8_t> NVPTXCompiler::CompileGpuAsmOrGetCachedResult(
   return cache_value->cubin_data;
 }
 
-static bool UseNvlink() {
+static bool UseNvlink(const std::string& preferred_cuda_dir) {
   const bool use_nvlink_by_default =
 #ifdef TF_DISABLE_NVLINK_BY_DEFAULT
       false;
@@ -486,19 +491,29 @@ static bool UseNvlink() {
   TF_CHECK_OK(tsl::ReadBoolFromEnvVar("TF_USE_NVLINK_FOR_PARALLEL_COMPILATION",
                                       /*default_val=*/
                                       use_nvlink_by_default, &use_nvlink));
-  return use_nvlink;
+
+  if (!use_nvlink) {
+    return false;
+  }
+
+  // Make sure nvlink exists and is executable.
+  const std::string bin_path =
+      se::FindCudaExecutable("nvlink", preferred_cuda_dir);
+  return se::GetToolVersion(bin_path).ok();
 }
 
 StatusOr<bool> NVPTXCompiler::CanUseLinkModules(
     const HloModuleConfig& hlo_module_config) {
-  if (UseNvlink()) {
-    return true;
-  }
-
   // TODO(phawkins): rather than comparing version numbers, it might be more
   // robust if we simply tried to link something the first time we compile.
   auto ptxas_config =
       PtxOptsFromDebugOptions(hlo_module_config.debug_options());
+
+  static const bool use_nvlink = UseNvlink(ptxas_config.preferred_cuda_dir);
+  if (use_nvlink) {
+    return true;
+  }
+
   TF_ASSIGN_OR_RETURN(
       auto ptxas_version_tuple,
       se::GetAsmCompilerVersion(ptxas_config.preferred_cuda_dir));
@@ -529,6 +544,8 @@ StatusOr<bool> NVPTXCompiler::CanUseLinkModules(
 StatusOr<std::vector<uint8_t>> NVPTXCompiler::LinkModules(
     se::StreamExecutor* stream_exec, std::vector<std::vector<uint8_t>> modules,
     const DebugOptions& debug_options) {
+  auto ptxas_config = PtxOptsFromDebugOptions(debug_options);
+
   std::vector<stream_executor::CubinOrPTXImage> images;
   images.reserve(modules.size());
   for (std::vector<uint8_t>& module : modules) {
@@ -536,7 +553,7 @@ StatusOr<std::vector<uint8_t>> NVPTXCompiler::LinkModules(
   }
   auto context = static_cast<se::gpu::GpuContext*>(
       stream_exec->implementation()->GpuContextHack());
-  if (UseNvlink()) {
+  if (UseNvlink(ptxas_config.preferred_cuda_dir)) {
     return LinkUsingNvlink(debug_options.xla_gpu_cuda_data_dir(), context,
                            images);
   }

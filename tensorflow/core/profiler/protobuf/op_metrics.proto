@@ -4,6 +4,12 @@ package tensorflow.profiler;
 
 // Types of memory bandwidth we track in the system.
 enum MemBwType {
+  option allow_alias = true;
+
+  // We use FIRST and LAST enum values to be able to iterate over this enum
+  // in TypeScript, since the _MIN and _MAX values are not automatically
+  // available as in C++.
+  MEM_BW_TYPE_FIRST = 0;
   // Aggregated BW across on-chip and off-chip memory.
   MEM_BW_TYPE_ALL = 0;
   // Off-chip hbm memory bw, read and write combined since it's a shared bus.
@@ -12,6 +18,9 @@ enum MemBwType {
   MEM_BW_TYPE_SRAM_RD = 2;
   // On-chip memory write bw.
   MEM_BW_TYPE_SRAM_WR = 3;
+
+  // Leave last.
+  MEM_BW_TYPE_MAX = 3;
 }
 
 // Tensorflow generic memory space names.

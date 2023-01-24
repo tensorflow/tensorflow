@@ -4017,7 +4017,7 @@ def TFL_DynamicUpdateSliceOp: TFL_Op<"dynamic_update_slice", [
 //===----------------------------------------------------------------------===//
 // Quantization ops.
 //===----------------------------------------------------------------------===//
-def TFL_DequantizeOp: TFL_Op<"dequantize", []> {
+def TFL_DequantizeOp: TFL_Op<"dequantize", [NoMemoryEffect]> {
   let summary = "Dequantize operator";
 
   let description = [{
@@ -4123,7 +4123,7 @@ def TFL_SparseQConstOp : Op<TFL_Dialect, "pseudo_sparse_qconst", [
 
 def TFL_QuantizeOp: TFL_Op<"quantize", [
     FirstAttrDerivedResultType,
-    SameOperandsAndResultShape]> {
+    SameOperandsAndResultShape, NoMemoryEffect]> {
   let summary = "Quantize operator";
 
   let description = [{

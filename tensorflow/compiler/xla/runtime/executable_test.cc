@@ -27,10 +27,12 @@ limitations under the License.
 
 #include "absl/base/dynamic_annotations.h"
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
+#include "tensorflow/compiler/xla/mlir/runtime/transforms/compilation_pipeline_options.h"
 #include "tensorflow/compiler/xla/mlir/runtime/transforms/tests/testlib_pipeline.h"
 #include "tensorflow/compiler/xla/mlir/runtime/utils/async_runtime_api.h"
 #include "tensorflow/compiler/xla/runtime/arguments.h"
 #include "tensorflow/compiler/xla/runtime/async_runtime.h"
+#include "tensorflow/compiler/xla/runtime/custom_call_registry.h"
 #include "tensorflow/compiler/xla/runtime/jit_executable.h"
 #include "tensorflow/compiler/xla/runtime/logical_result.h"
 #include "tensorflow/compiler/xla/runtime/results.h"
@@ -53,11 +55,22 @@ static AsyncTaskRunner* NoRunner() {
   return reinterpret_cast<AsyncTaskRunner*>(0XDEADBEEF);
 }
 
+struct CustomCallRegistry {
+  std::function<void(DynamicCustomCallRegistry&)> dynamic_custom_calls;
+  std::function<void(DirectCustomCallRegistry&)> direct_custom_calls;
+};
+
 static absl::StatusOr<JitExecutable> Compile(
-    std::string_view module, absl::Span<const std::string_view> exported) {
+    std::string_view module, absl::Span<const std::string_view> exported,
+    const CustomCallRegistry& registry = {}) {
   JitExecutable::Options opts;
+  CompilationPipelineOptions copts;
   opts.specialization = JitExecutable::Specialization::kDisabled;
-  opts.compiler.register_dialects = RegisterXlaRuntimeTestlibDialects;
+  opts.compiler.symbols_binding = ToSymbolsBinding(
+      registry.direct_custom_calls, copts.populate_type_id_names);
+  opts.compiler.register_dialects = [&](DialectRegistry& dialects) {
+    RegisterXlaRuntimeTestlibDialects(dialects);
+  };
   opts.compiler.create_compilation_pipeline = CreateXlaRuntimeTestlibPipeline;
 
   return JitExecutable::Instantiate(module, opts, exported);
@@ -65,11 +78,23 @@ static absl::StatusOr<JitExecutable> Compile(
 
 static absl::Status Execute(JitExecutable& jit_executable, unsigned ordinal,
                             ArgumentsRef args, ResultConverter& results,
-                            AsyncTaskRunner* async_task_runner = NoRunner()) {
+                            AsyncTaskRunner* async_task_runner = NoRunner(),
+                            const CustomCallRegistry& registry = {}) {
   AsyncValuePtr<Executable> executable = jit_executable.DefaultExecutable();
   if (executable.IsError()) return executable.GetError();
 
+  // Register all dynamic custom calls.
+  DynamicCustomCallRegistry dynamic_custom_calls;
+  if (registry.dynamic_custom_calls)
+    registry.dynamic_custom_calls(dynamic_custom_calls);
+
+  CustomCall::UserData user_data;
+  // Always add a pointer to `self` to user data.
+  user_data.insert(&executable.get());
+
   Executable::ExecuteOpts execute_opts;
+  execute_opts.custom_call_registry = &dynamic_custom_calls;
+  execute_opts.custom_call_data = &user_data;
   execute_opts.async_task_runner = async_task_runner;
 
   FunctionRef function_ref = executable->function_ref(ordinal);
@@ -78,11 +103,13 @@ static absl::Status Execute(JitExecutable& jit_executable, unsigned ordinal,
 
 static absl::Status CompileAndExecute(
     std::string_view module, ArgumentsRef args, ResultConverter& results,
-    AsyncTaskRunner* async_task_runner = NoRunner()) {
-  StatusOr<JitExecutable> jit_executable = Compile(module, {"test"});
+    AsyncTaskRunner* async_task_runner = NoRunner(),
+    const CustomCallRegistry& registry = {}) {
+  StatusOr<JitExecutable> jit_executable = Compile(module, {"test"}, registry);
   if (!jit_executable.ok()) return jit_executable.status();
 
-  return Execute(*jit_executable, 0, args, results, async_task_runner);
+  return Execute(*jit_executable, 0, args, results, async_task_runner,
+                 registry);
 }
 
 //===----------------------------------------------------------------------===//
@@ -409,6 +436,50 @@ TEST(ExecutableTest, AsyncWaiting) {
 
   ASSERT_TRUE(CompileAndExecute(module, {arg0, arg1}, converter).ok());
   EXPECT_EQ(result.get(), 42);
+}
+
+TEST(ExecutableTest, AsyncCustomCall) {
+  absl::string_view source = R"(
+    func.func private @custom_call_return() -> !async.value<i32>
+      attributes { rt.dynamic, rt.custom_call = "test.custom_call_return" }
+
+    func.func private @custom_call(%arg32 : i32)
+      attributes { rt.dynamic, rt.custom_call = "test.custom_call" }
+
+    async.func @test() -> !async.token {
+      %0 = func.call @custom_call_return() : () -> !async.value<i32>
+      %1 = async.await %0 : !async.value<i32>
+      func.call @custom_call(%1) : (i32) -> ()
+      return
+    }
+  )";
+
+  auto f_result = []() -> absl::StatusOr<AsyncValueRef<int32_t>> {
+    return tsl::MakeAvailableAsyncValueRef<int32_t>(42);
+  };
+
+  int32_t i32 = 0;
+  auto f = [&](int32_t arg) {
+    i32 = arg;
+    return success();
+  };
+
+  CustomCallRegistry registry = {[&](DynamicCustomCallRegistry& registry) {
+    registry.Register(CustomCall::Bind("test.custom_call_return")
+                          .Ret<AsyncValueRef<int32_t>>()
+                          .To(f_result));
+
+    registry.Register(
+        CustomCall::Bind("test.custom_call").Arg<int32_t>().To(f));
+  }};
+
+  AsyncValueRef<Chain> result = MakeConstructedAsyncValueRef<Chain>();
+  ResultConverterSet converter(AssertNoError, ReturnAsyncToken{result.AsPtr()});
+
+  ASSERT_TRUE(
+      CompileAndExecute(source, /*args=*/{}, converter, NoRunner(), registry)
+          .ok());
+  EXPECT_EQ(i32, 42);
 }
 //===----------------------------------------------------------------------===//
 // Performance benchmarks are below.

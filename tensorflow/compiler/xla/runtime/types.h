@@ -227,6 +227,7 @@ class MemrefType : public llvm::RTTIExtends<MemrefType, Type> {
       : sizes_(sizes.begin(), sizes.end()), element_type_(element_type) {}
 
   absl::Span<const int64_t> sizes() const { return sizes_; }
+  int64_t size(size_t dim) const { return sizes_[dim]; }
   unsigned rank() const { return sizes_.size(); }
   PrimitiveType element_type() const { return element_type_; }
 
@@ -290,6 +291,8 @@ class OpaqueOperandType : public llvm::RTTIExtends<OpaqueOperandType, Type> {
 // Compiled function signature type corresponding to the mlir::FunctionType.
 //===----------------------------------------------------------------------===//
 
+// TODO(ezhulenev): Make function type copyable (replace std::unique_ptr with
+// std::shared ptr).
 class FunctionType {
  public:
   const Type* operand(unsigned index) const { return operands_[index].get(); }
@@ -301,6 +304,14 @@ class FunctionType {
   FunctionType(std::vector<std::unique_ptr<Type>> operands,
                std::vector<std::unique_ptr<Type>> results)
       : operands_(std::move(operands)), results_(std::move(results)) {}
+
+  void insert_operand(unsigned index, std::unique_ptr<Type> operand) {
+    operands_.insert(operands_.begin() + index, std::move(operand));
+  }
+
+  void insert_result(unsigned index, std::unique_ptr<Type> result) {
+    results_.insert(results_.begin() + index, std::move(result));
+  }
 
  private:
   std::vector<std::unique_ptr<Type>> operands_;

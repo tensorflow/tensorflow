@@ -16,6 +16,9 @@ limitations under the License.
 #ifndef TENSORFLOW_CC_SAVED_MODEL_FINGERPRINTING_H_
 #define TENSORFLOW_CC_SAVED_MODEL_FINGERPRINTING_H_
 
+#include <string>
+#include <unordered_map>
+
 #include "absl/strings/string_view.h"
 #include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/protobuf/fingerprint.pb.h"
@@ -32,6 +35,10 @@ FingerprintDef CreateFingerprintDef(const SavedModel& saved_model,
 // none.
 StatusOr<FingerprintDef> ReadSavedModelFingerprint(
     absl::string_view export_dir);
+
+// Converts the fingerprint into a dictionary mapping field names to values.
+std::unordered_map<std::string, uint64_t> MakeFingerprintMap(
+    const FingerprintDef& fingerprint);
 
 }  // namespace tensorflow::saved_model::fingerprinting
 

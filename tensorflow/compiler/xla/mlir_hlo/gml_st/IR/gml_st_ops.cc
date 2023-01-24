@@ -35,7 +35,7 @@ limitations under the License.
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/Dialect/Tensor/Utils/Utils.h"
 #include "mlir/Dialect/Vector/IR/VectorOps.h"
-#include "mlir/IR/BlockAndValueMapping.h"
+#include "mlir/IR/IRMapping.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/DialectImplementation.h"
@@ -427,7 +427,7 @@ struct CollapseSingleIterationLoops : public OpRewritePattern<LoopLikeOp> {
     if (filterFn && !filterFn(op))
       return rewriter.notifyMatchFailure(op, "did not match filter");
 
-    BlockAndValueMapping mapping;
+    IRMapping mapping;
     // Compute new loop bounds that omit all single-iteration loop dimensions.
     SmallVector<Value> newLowerBounds, newUpperBounds, newSteps;
     newLowerBounds.reserve(op.getLowerBound().size());
@@ -499,13 +499,31 @@ struct CollapseSingleIterationLoops : public OpRewritePattern<LoopLikeOp> {
         };
 
         if (dst.getType().template isa<TensorType>()) {
-          results.push_back(rewriter.create<tensor::InsertSliceOp>(
-              op.getLoc(), dst.getType(), mapping.lookupOrDefault(src),
-              mapping.lookupOrDefault(dst),
-              getMappedValues(tileOp.getOffsets()),
-              getMappedValues(tileOp.getSizes()),
-              getMappedValues(tileOp.getStrides()), tileOp.getStaticOffsets(),
-              tileOp.getStaticSizes(), tileOp.getStaticStrides()));
+          Value srcVal = mapping.lookupOrDefault(src);
+          if (srcVal.getType().isa<TensorType>()) {
+            results.push_back(rewriter.create<tensor::InsertSliceOp>(
+                op.getLoc(), dst.getType(), srcVal,
+                mapping.lookupOrDefault(dst),
+                getMappedValues(tileOp.getOffsets()),
+                getMappedValues(tileOp.getSizes()),
+                getMappedValues(tileOp.getStrides()), tileOp.getStaticOffsets(),
+                tileOp.getStaticSizes(), tileOp.getStaticStrides()));
+          } else {
+            SmallVector<Value> mappedOffsets =
+                getMappedValues(tileOp.getOffsets());
+            SmallVector<OpFoldResult> ofrs;
+            int idx = 0;
+            for (int64_t offset : tileOp.getStaticOffsets()) {
+              if (ShapedType::isDynamic(offset)) {
+                ofrs.push_back(mappedOffsets[idx++]);
+              } else {
+                ofrs.push_back(rewriter.getIndexAttr(offset));
+              }
+            }
+            results.push_back(rewriter.create<tensor::InsertOp>(
+                op.getLoc(), srcVal, mapping.lookupOrDefault(dst),
+                getAsValues(rewriter, op.getLoc(), ofrs)));
+          }
         } else if (dst.getType().template isa<VectorType>()) {
           results.push_back(rewriter.create<vector::InsertStridedSliceOp>(
               op.getLoc(), dst.getType(), mapping.lookupOrDefault(src),
@@ -775,7 +793,7 @@ struct RefineForOpShape : public OpRewritePattern<ForOp> {
     newFor->setAttrs(op->getAttrs());
 
     // Map outputs, insert `tensor.cast` if necessary.
-    BlockAndValueMapping bvm;
+    IRMapping bvm;
     bvm.map(op.getInductionVars(), newFor.getInductionVars());
 
     auto innerBuilder = ImplicitLocOpBuilder::atBlockEnd(loc, newFor.getBody());
@@ -832,7 +850,7 @@ struct ForOpIterArgsFolder : public OpRewritePattern<ForOp> {
     // An internal flat vector of block transfer
     // arguments `newBlockTransferArgs` keeps the 1-1 mapping of original to
     // transformed block argument mappings. This plays the role of a
-    // BlockAndValueMapping for the particular use case of calling into
+    // IRMapping for the particular use case of calling into
     // `mergeBlockBefore`.
     SmallVector<bool, 4> keepMask;
     keepMask.reserve(yieldOp.getNumUpdates());

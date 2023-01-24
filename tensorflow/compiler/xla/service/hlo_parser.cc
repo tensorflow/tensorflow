@@ -160,6 +160,7 @@ bool CanInferShape(HloOpcode code) {
     case HloOpcode::kSelectAndScatter:
     case HloOpcode::kSort:
     case HloOpcode::kSubtract:
+    case HloOpcode::kTan:
     case HloOpcode::kTanh:
     case HloOpcode::kTranspose:
     case HloOpcode::kTriangularSolve:
@@ -305,7 +306,12 @@ class HloParserImpl : public HloParser {
   bool ParseSingleInstruction(HloModule* module);
 
   // Parses a module, returning false if an error occurred.
-  bool ParseHloModule(HloModule* module);
+  // if `parse_module_without_header` is true, the parsed text is sequence of
+  // computations, and assume computation with `ENTRY` annotation or the last
+  // computation as module's entry computation, also using the entry
+  // computation's parameter and `ROOT` instruction's layout as module's layout.
+  bool ParseHloModule(HloModule* module,
+                      bool parse_module_without_header = false);
 
   bool ParseComputations(HloModule* module);
   bool ParseComputation(HloComputation** entry_computation);
@@ -651,9 +657,13 @@ bool HloParserImpl::TokenError(absl::string_view msg) {
 
 Status HloParserImpl::Run(HloModule* module) {
   lexer_.Lex();
-  if (lexer_.GetKind() == TokKind::kw_HloModule) {
+  if ((lexer_.GetKind() == TokKind::kw_HloModule) ||
+      (lexer_.GetKind() == TokKind::kw_ENTRY) ||
+      (lexer_.LookAhead() == TokKind::kLbrace)) {
     // This means that the text contains a full HLO module.
-    if (!ParseHloModule(module)) {
+    bool parse_module_without_header =
+        (lexer_.GetKind() == TokKind::kw_HloModule) ? false : true;
+    if (!ParseHloModule(module, parse_module_without_header)) {
       return InvalidArgument(
           "Syntax error when trying to parse the text as a HloModule:\n%s",
           GetError());
@@ -919,18 +929,9 @@ bool HloParserImpl::ParseCustomCallApiVersion(CustomCallApiVersion* result) {
 }
 
 // ::= 'HloModule' name computations
-bool HloParserImpl::ParseHloModule(HloModule* module) {
-  if (lexer_.GetKind() != TokKind::kw_HloModule) {
-    return TokenError("expects HloModule");
-  }
-  // Eat 'HloModule'
-  lexer_.Lex();
-
+bool HloParserImpl::ParseHloModule(HloModule* module,
+                                   bool parse_module_without_header) {
   std::string name;
-  if (!ParseName(&name)) {
-    return false;
-  }
-
   std::optional<bool> is_scheduled;
   std::optional<AliasingData> aliasing_data;
   std::optional<bool> alias_passthrough_params;
@@ -945,13 +946,35 @@ bool HloParserImpl::ParseHloModule(HloModule* module) {
   attrs["entry_computation_layout"] = {/*required=*/false,
                                        AttrTy::kComputationLayout,
                                        &entry_computation_layout};
-  if (!ParseAttributes(attrs)) {
-    return false;
+
+  if (!parse_module_without_header) {
+    if (lexer_.GetKind() != TokKind::kw_HloModule) {
+      return TokenError("expects HloModule");
+    }
+    // Eat 'HloModule'
+    lexer_.Lex();
+
+    if (!ParseName(&name)) {
+      return false;
+    }
+    if (!ParseAttributes(attrs)) {
+      return false;
+    }
+    module->set_name(name);
   }
-  module->set_name(name);
+
   if (!ParseComputations(module)) {
     return false;
   }
+
+  if (parse_module_without_header) {
+    name = "module_" + module->entry_computation()->name();
+    entry_computation_layout =
+        ComputationLayout(module->entry_computation()->ComputeProgramShape(),
+                          /*ignore_layouts*/ false);
+  }
+
+  module->set_name(name);
 
   if (is_scheduled.has_value() && *is_scheduled) {
     TF_CHECK_OK(module->set_schedule(ScheduleFromInstructionOrder(module)));
@@ -1351,6 +1374,7 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
     case HloOpcode::kSin:
     case HloOpcode::kSqrt:
     case HloOpcode::kCbrt:
+    case HloOpcode::kTan:
     case HloOpcode::kTanh: {
       if ((!preset_operands &&
            !ParseOperands(&operands, builder, /*expected_size=*/1)) ||
@@ -3679,6 +3703,9 @@ bool HloParserImpl::ParseDenseLiteral(Literal* literal, const Shape& shape) {
         break;
       }
       case TokKind::kRbrace: {
+        if (nest_level == 0) {
+          return TokenError("unexpected '}' token");
+        }
         nest_level--;
         if (elems_seen_per_dim[nest_level] != shape.dimensions(nest_level)) {
           return TokenError(absl::StrFormat(

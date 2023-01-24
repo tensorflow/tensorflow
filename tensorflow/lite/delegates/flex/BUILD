@@ -37,6 +37,7 @@ cc_library(
     name = "buffer_map",
     srcs = ["buffer_map.cc"],
     hdrs = ["buffer_map.h"],
+    compatible_with = get_compatible_with_cloud(),
     copts = tf_opts_nortti_if_lite_protos(),
     features = tf_features_nolayering_check_if_ios(),
     deps = [
@@ -58,6 +59,7 @@ cc_library(
     name = "buffer_map_util",
     srcs = ["buffer_map_util.cc"],
     hdrs = ["buffer_map_util.h"],
+    compatible_with = get_compatible_with_cloud(),
     copts = tf_opts_nortti_if_lite_protos(),
     features = tf_features_nolayering_check_if_ios(),
     deps = [
@@ -106,6 +108,7 @@ tf_cc_test(
 # )
 tflite_flex_cc_library(
     name = "delegate",
+    compatible_with = get_compatible_with_cloud(),
     visibility = ["//visibility:public"],
 )
 
@@ -132,6 +135,7 @@ cc_library(
     srcs = [
         "delegate_symbol.cc",
     ],
+    compatible_with = get_compatible_with_cloud(),
     copts = tflite_copts(),
     visibility = ["//visibility:public"],
     deps = [
@@ -153,6 +157,7 @@ cc_library(
     hdrs = [
         "delegate.h",
     ],
+    compatible_with = get_compatible_with_cloud(),
     copts = tflite_copts() + tf_opts_nortti_if_android(),
     features = tf_features_nolayering_check_if_ios(),
     visibility = ["//visibility:public"],
@@ -206,6 +211,7 @@ cc_library(
     name = "delegate_data",
     srcs = ["delegate_data.cc"],
     hdrs = ["delegate_data.h"],
+    compatible_with = get_compatible_with_cloud(),
     copts = tf_opts_nortti_if_android(),
     features = tf_features_nolayering_check_if_ios(),
     visibility = ["//visibility:public"],
@@ -258,6 +264,7 @@ tf_cc_test(
 cc_library(
     name = "subgraph_resource",
     hdrs = ["subgraph_resource.h"],
+    compatible_with = get_compatible_with_cloud(),
     features = tf_features_nolayering_check_if_ios(),
     deps = [
         "//tensorflow/lite/c:common",
@@ -312,6 +319,7 @@ cc_library(
     name = "util",
     srcs = ["util.cc"],
     hdrs = ["util.h"],
+    compatible_with = get_compatible_with_cloud(),
     features = tf_features_nolayering_check_if_ios(),
     #TODO(b/206038955): Consider restrict the visibility to '//third_party/fcp/client:__subpackages__'.
     visibility = ["//visibility:public"],
@@ -404,6 +412,7 @@ cc_library(
 cc_library(
     name = "tflite_subgraph_execute",
     srcs = ["tflite_subgraph_execute.cc"],
+    compatible_with = get_compatible_with_cloud(),
     copts = tf_opts_nortti_if_android(),
     features = tf_features_nolayering_check_if_ios(),
     deps = [

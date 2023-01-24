@@ -30,7 +30,6 @@ namespace functor {
 #define REGISTER(T) template struct ExtractImagePatchesForward<GPUDevice, T>;
 
 TF_CALL_GPU_ALL_TYPES(REGISTER);
-TF_CALL_bfloat16(REGISTER);
 
 #undef REGISTER
 

@@ -63,6 +63,7 @@ py_library(
     visibility = ["//tensorflow:internal"],
     deps = [
         ":attributes",
+        ":compiler_ir",
         ":function_spec",
         "//tensorflow/python:cond_v2",  # TODO(b/118513001): Imported via control_flow_ops; remove.
         "//tensorflow/python:control_flow_ops",
@@ -378,5 +379,50 @@ tf_py_test(
         "//tensorflow/core/function/polymorphism:function_type",
         "//tensorflow/core/function/trace_type",
         "//tensorflow/python:client_testlib",
+    ],
+)
+
+py_library(
+    name = "compiler_ir",
+    srcs = ["compiler_ir.py"],
+    srcs_version = "PY3",
+    visibility = ["//tensorflow:internal"],
+    deps = [
+        "//tensorflow/python:random_ops",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/util",
+    ],
+)
+
+tf_xla_py_test(
+    name = "compiler_ir_test",
+    srcs = ["compiler_ir_test.py"],
+    disabled_backends = [
+        "cpu_ondemand",
+    ],
+    enable_mlir_bridge = True,
+    python_version = "PY3",
+    tags = [
+        "no_mac",
+        "no_pip",
+        "no_tfrt",  # TODO(b/185944215)
+        "no_windows",
+    ],
+    use_xla_device = False,
+    deps = [
+        ":compiler_ir",
+        ":polymorphic_function",
+        "//tensorflow/compiler/tests:xla_test",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:array_ops_gen",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:variables",
+        "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:tensor_spec",
+        "//tensorflow/python/framework:test_lib",
+        "//tensorflow/python/util",
     ],
 )

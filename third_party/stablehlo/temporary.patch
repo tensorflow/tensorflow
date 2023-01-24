@@ -1,7 +1,7 @@
 diff --ruN a/stablehlo/stablehlo/dialect/TypeInference.cpp b/stablehlo/stablehlo/dialect/TypeInference.cpp
 --- stablehlo/stablehlo/dialect/TypeInference.cpp
 +++ stablehlo/stablehlo/dialect/TypeInference.cpp
-@@ -2186,7 +2186,9 @@
+@@ -2251,7 +2251,9 @@
    }
  
    auto getSliceDim = [&sliceSizes](int64_t index) -> int64_t {

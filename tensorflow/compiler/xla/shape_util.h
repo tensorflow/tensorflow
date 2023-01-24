@@ -829,6 +829,10 @@ class ShapeUtil {
 
     int64_t IncrementDim();
     bool IsZeroElementArray() const;
+
+    // Returns the number of visited elements assuming that the iteration will
+    // not be interrupted.
+    int64_t CalculateNumSteps() const;
   };
 
   static Status ForEachIndexInternal(

@@ -26,6 +26,7 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import gen_sparse_ops
 from tensorflow.python.ops import gradient_checker
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import sparse_ops
@@ -1174,6 +1175,18 @@ class SparseMinimumMaximumTest(test_util.TensorFlowTestCase):
       min_tf = sparse_ops.sparse_minimum(sp_zero, sp_zero_2)
       self._assertSparseTensorValueEqual(expected, max_tf)
       self._assertSparseTensorValueEqual(expected, min_tf)
+
+  def testInvalidSparseInputs(self):
+    with test_util.force_cpu():
+      with self.assertRaisesRegex(
+          (ValueError, errors.InvalidArgumentError),
+          ".*Index rank .* and shape rank .* do not match.*",
+      ):
+        self.evaluate(
+            gen_sparse_ops.sparse_sparse_maximum(
+                [[1]], [0], [2], [[]], [1], [2]
+            )
+        )
 
   @test_util.run_deprecated_v1
   def testRandom(self):

@@ -497,6 +497,7 @@ void BuildOpsSubmodule(py::module* m) {
   UNARY_OP(Sign);
   UNARY_OP(Cos);
   UNARY_OP(Sin);
+  UNARY_OP(Tan);
   UNARY_OP(Tanh);
   UNARY_OP(IsFinite);
   UNARY_OP(Neg);

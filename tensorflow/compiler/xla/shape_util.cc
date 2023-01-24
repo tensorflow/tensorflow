@@ -27,6 +27,7 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/container/inlined_vector.h"
+#include "absl/synchronization/blocking_counter.h"
 #include "tensorflow/compiler/xla/index_util.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/overflow_util.h"
@@ -35,6 +36,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
+#include "tensorflow/tsl/platform/threadpool.h"
 
 namespace xla {
 
@@ -1691,19 +1693,19 @@ ShapeUtil::DeduceTransposeDimensionsForBitcast(const Shape& input_shape,
 namespace {
 
 struct ParallelState {
-  ParallelState() {
-    const int kNumThreads = tsl::port::MaxParallelism();
-    pool.emplace(tsl::Env::Default(), "foreach", kNumThreads);
+  explicit ParallelState(int64_t task_count) : counter(task_count) {
+    static auto* global_pool = new tsl::thread::ThreadPool(
+        tsl::Env::Default(), "foreach", tsl::port::MaxParallelism());
+    pool = global_pool;
   }
-  ~ParallelState() {}
-  void Wait() {
-    // Waits for the scheduled work to complete.
-    pool.reset();
-  }
+  ~ParallelState() = default;
+  void Wait() { counter.Wait(); }
+  void TaskComplete() { counter.DecrementCount(); }
 
   absl::Mutex mu;
-  std::optional<tsl::thread::ThreadPool> pool;
+  tsl::thread::ThreadPool* pool;
   Status status;  // Guarded by mu
+  absl::BlockingCounter counter;
 };
 
 }  // anonymous namespace
@@ -1712,8 +1714,8 @@ struct ParallelState {
     const Shape& shape, absl::Span<const int64_t> base,
     absl::Span<const int64_t> count, absl::Span<const int64_t> incr,
     const ForEachParallelVisitorFunction& visitor_function) {
-  ParallelState pstate;
   ForEachState s(shape, base, count, incr);
+  ParallelState pstate(s.CalculateNumSteps());
   if (s.IsZeroElementArray()) {
     return pstate.status;
   }
@@ -1731,6 +1733,7 @@ struct ParallelState {
           pstate.status = result.status();
         }
       }
+      pstate.TaskComplete();
     });
     // Increments dimensions in minor to major order.
     n = s.IncrementDim();
@@ -1945,6 +1948,25 @@ int64_t ShapeUtil::ForEachState::IncrementDim() {
 
 bool ShapeUtil::ForEachState::IsZeroElementArray() const {
   return ShapeUtil::IsZeroElementArray(shape);
+}
+
+int64_t ShapeUtil::ForEachState::CalculateNumSteps() const {
+  if (IsZeroElementArray()) return 0;
+
+  int64_t size = 1;
+  // This works for rank = 0 as well.
+  for (int64_t i = 0; i < rank; ++i) {
+    // When the count is zero, it can mean that the given dimension is fixed,
+    // but we still iterate over the others.
+    if (count[i] == 0) {
+      continue;
+    }
+
+    CHECK_NE(incr[i], 0);
+    int64_t dim = 1 + (count[i] - 1) / incr[i];
+    size *= dim;
+  }
+  return size;
 }
 
 }  // namespace xla

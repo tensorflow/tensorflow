@@ -14,7 +14,6 @@
 # ==============================================================================
 """Tests for ragged_range op."""
 
-import unittest
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import test_util
@@ -105,7 +104,6 @@ class RaggedRangeOpTest(test_util.TensorFlowTestCase):
     self.assertRaises((ValueError, errors.InvalidArgumentError),
                       ragged_math_ops.range, [0], [1, 2])
 
-  @unittest.skip('b/263206856 - failed tensorflow.asan.')
   def testKernelErrors(self):
     with self.assertRaisesRegex(errors.InvalidArgumentError,
                                 r'Requires delta != 0'):

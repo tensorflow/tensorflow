@@ -139,56 +139,56 @@ TEST_F(DispatcherClientTest, GetDataServiceConfig) {
   EXPECT_EQ(config.deployment_mode(), DEPLOYMENT_MODE_COLOCATED);
 }
 
-TEST_F(DispatcherClientTest, SnapshotMetadataAndDatasetDefWritten) {
-  TF_ASSERT_OK_AND_ASSIGN(absl::flat_hash_set<std::string> directories,
+TEST_F(DispatcherClientTest, SkeletonWritten) {
+  TF_ASSERT_OK_AND_ASSIGN(absl::flat_hash_set<std::string> paths,
                           StartDummySnapshots());
-  for (const auto& directory : directories) {
-    TF_ASSERT_OK(Env::Default()->FileExists(
-        io::JoinPath(directory, "snapshot.metadata")));
-    TF_ASSERT_OK(Env::Default()->FileExists(
-        io::JoinPath(directory, "dataset_def.proto")));
+  for (const auto& path : paths) {
+    TF_ASSERT_OK(Env::Default()->FileExists(CommittedChunksDirectory(path)));
+    TF_ASSERT_OK(Env::Default()->FileExists(StreamsDirectory(path)));
   }
 }
 
-TEST_F(DispatcherClientTest, CreateCommittedChunksDirectory) {
-  TF_ASSERT_OK_AND_ASSIGN(absl::flat_hash_set<std::string> directories,
+TEST_F(DispatcherClientTest, SnapshotMetadataAndDatasetDefWritten) {
+  TF_ASSERT_OK_AND_ASSIGN(absl::flat_hash_set<std::string> paths,
                           StartDummySnapshots());
-  for (const auto& directory : directories) {
+  for (const auto& path : paths) {
     TF_ASSERT_OK(
-        Env::Default()->FileExists(CommittedChunksDirectory(directory)));
+        Env::Default()->FileExists(io::JoinPath(path, "snapshot.metadata")));
+    TF_ASSERT_OK(
+        Env::Default()->FileExists(io::JoinPath(path, "dataset_def.proto")));
   }
 }
 
 TEST_F(DispatcherClientTest, SnapshotsInHeartbeat) {
-  TF_ASSERT_OK_AND_ASSIGN(absl::flat_hash_set<std::string> directories,
+  TF_ASSERT_OK_AND_ASSIGN(absl::flat_hash_set<std::string> paths,
                           StartDummySnapshots());
   WorkerHeartbeatRequest worker_heartbeat_request;
   worker_heartbeat_request.set_worker_address(test_cluster_->WorkerAddress(0));
   TF_ASSERT_OK_AND_ASSIGN(
       WorkerHeartbeatResponse worker_heartbeat_response,
       dispatcher_client_->WorkerHeartbeat(worker_heartbeat_request));
-  ASSERT_EQ(worker_heartbeat_response.snapshots_size(), directories.size());
-  for (const auto& snapshot : worker_heartbeat_response.snapshots()) {
-    ASSERT_TRUE(directories.count(snapshot.directory()));
-    ASSERT_EQ(snapshot.stream_index(), 0);
+  ASSERT_EQ(worker_heartbeat_response.snapshot_tasks_size(), paths.size());
+  for (const auto& snapshot_task : worker_heartbeat_response.snapshot_tasks()) {
+    ASSERT_TRUE(paths.count(snapshot_task.base_path()));
+    ASSERT_EQ(snapshot_task.stream_index(), 0);
   }
 }
 
 TEST_F(DispatcherClientTest, GetSnapshotSplit) {
-  TF_ASSERT_OK_AND_ASSIGN(absl::flat_hash_set<std::string> directories,
+  TF_ASSERT_OK_AND_ASSIGN(absl::flat_hash_set<std::string> paths,
                           StartDummySnapshots());
   WorkerHeartbeatRequest worker_heartbeat_request;
   worker_heartbeat_request.set_worker_address(test_cluster_->WorkerAddress(0));
   TF_ASSERT_OK_AND_ASSIGN(
       WorkerHeartbeatResponse worker_heartbeat_response,
       dispatcher_client_->WorkerHeartbeat(worker_heartbeat_request));
-  for (const auto& snapshot : worker_heartbeat_response.snapshots()) {
+  for (const auto& snapshot_task : worker_heartbeat_response.snapshot_tasks()) {
     GetSnapshotSplitRequest get_snapshot_split_request;
     Tensor split;
     bool end_of_splits;
     TF_ASSERT_OK(dispatcher_client_->GetSnapshotSplit(
-        snapshot.directory(), snapshot.stream_index(), /*source_index=*/0,
-        split, end_of_splits));
+        snapshot_task.base_path(), snapshot_task.stream_index(),
+        /*source_index=*/0, split, end_of_splits));
     ASSERT_FALSE(end_of_splits);
   }
 }

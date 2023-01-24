@@ -16,9 +16,13 @@ exports_files([
 
 pytype_library(
     name = "test_util",
-    testonly = False,  # build_pip_package depends on this target.
+    testonly = if_google(
+        True,
+        oss_value = False,  # build_pip_package depends on this target.
+    ),
     srcs = [
         "test_backend_name.py",
+        "test_backend_util.py",
         "test_util.py",
         "test_util_ops.py",
     ],

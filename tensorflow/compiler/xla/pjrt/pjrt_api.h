@@ -35,6 +35,11 @@ xla::Status SetPjrtApi(absl::string_view device_type, const PJRT_Api* api);
 xla::Status LoadPjrtPlugin(absl::string_view device_type,
                            absl::string_view library_path);
 
+// Initializes PJRT with a PjrtApiInitFn which is dynamically loaded. This
+// method calls init_fn, and `SetPjrtApi`.
+typedef const PJRT_Api* (*PjrtApiInitFn)();
+xla::Status InitPjrtPlugin(PjrtApiInitFn init_fn,
+                           absl::string_view device_type);
 }  // namespace pjrt
 
 #endif  // TENSORFLOW_COMPILER_XLA_PJRT_PJRT_API_H_

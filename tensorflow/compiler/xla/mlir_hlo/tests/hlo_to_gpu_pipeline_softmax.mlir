@@ -126,7 +126,7 @@ func.func @imperfectly_tiled_softmax_4d(%argbuffer : memref<6x4x2047x4095xf32>,
   // CHECK:         %[[COLLAPSE_SHAPE:.*]] = memref.collapse_shape %[[ARG0]] {{\[\[}}0, 1, 2], [3{{\]\]}} : memref<6x4x2047x4095xf32> into memref<49128x4095xf32>
   // CHECK:         %[[COLLAPSE_SHAPE_2:.*]] = memref.collapse_shape %[[ARG1]] {{\[\[}}0, 1, 2], [3{{\]\]}} : memref<6x4x2047x4095xf32> into memref<49128x4095xf32>
   // CHECK:         gpu.launch_func  @imperfectly_tiled_softmax_4d_kernel::@imperfectly_tiled_softmax_4d_kernel
-  // CHECK-SAME:        args(%[[COLLAPSE_SHAPE]] : memref<49128x4095xf32>, %[[COLLAPSE_SHAPE_2]] : memref<49128x4095xf32>)
+  // CHECK-SAME:        args(%[[COLLAPSE_SHAPE_2]] : memref<49128x4095xf32>, %[[COLLAPSE_SHAPE]] : memref<49128x4095xf32>)
   // CHECK:         return
   memref.tensor_store %13, %resbuffer : memref<6x4x2047x4095xf32>
   "lmhlo.terminator"() : () -> ()

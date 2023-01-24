@@ -42,6 +42,7 @@ message GpuDeviceInfoProto {
   int64 memory_bandwidth = 11;
   int64 l2_cache_size = 12;
   float clock_rate_ghz = 13;
+  int64 device_memory_size = 14;
 }
 
 message DnnVersionInfoProto {

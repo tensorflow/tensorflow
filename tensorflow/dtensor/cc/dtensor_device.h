@@ -107,6 +107,10 @@ std::vector<TFE_TensorHandle*> Unpack(TFE_Context* context,
 std::string FetchLayout(TFE_Context* context, TFE_TensorHandle* input,
                         void* device_info, TF_Status* status);
 
+// Returns whether `input` is a dtensor.
+bool IsDTensor(TFE_Context* context, TFE_TensorHandle* input, void* device_info,
+               TF_Status* status);
+
 // Pack `indices`, `values`, `shapes` tensors into a SparseTensorWithLayout.
 TFE_TensorHandle* SparsePack(TFE_Context* context, int num_inputs,
                              TFE_TensorHandle** indices,
@@ -126,6 +130,12 @@ bool IsSparseDTensor(TFE_Context* context, TFE_TensorHandle* input,
 // 'miss'.
 std::unordered_map<std::string, int> GetFunctionCacheHitAndMissCount(
     TFE_Context* context, void* device_info, TF_Status* status);
+
+// Sets the layouts for the elements emitted by an iterator resource tensor.
+void SetIteratorElementLayouts(TFE_Context* context, TFE_TensorHandle* input,
+                               const std::vector<std::string>& string_layouts,
+                               void* device_info, TF_Status* status);
+
 }  // namespace dtensor
 }  // namespace tensorflow
 

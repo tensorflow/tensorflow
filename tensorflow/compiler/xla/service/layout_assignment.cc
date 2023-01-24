@@ -2628,6 +2628,7 @@ bool LayoutAssignment::InstructionCanChangeLayout(
     case HloOpcode::kCbrt:
     case HloOpcode::kSubtract:
     case HloOpcode::kStochasticConvert:
+    case HloOpcode::kTan:
     case HloOpcode::kTanh:
     case HloOpcode::kPopulationCount:
     case HloOpcode::kTriangularSolve:

@@ -315,6 +315,22 @@ TEST_F(XlaBuilderTest, CustomCallWithFrontendAttributes) {
       R"(%0 = mhlo.custom_call @test_call_target() {backend_config = "", mhlo.frontend_attributes = {test_name = "test_value"}} : () -> tensor<i1>)");
 }
 
+TEST_F(XlaBuilderTest, CustomCallWithLiteral) {
+  auto input = ConstantLiteral(&xla_builder_,
+                               LiteralUtil::CreateFromDimensions(F32, {5, 7}));
+  xla::Literal literal = xla::LiteralUtil::CreateR0<int32_t>(16);
+  auto custom_call = CustomCall(&xla_builder_, "OpWithLiteral", {input},
+                                xla_builder_.GetShape(input).value(),
+                                /*opaque=*/"", /*has_side_effect=*/false,
+                                /*output_operand_aliasing=*/{}, &literal);
+
+  TF_ASSERT_OK(xla_builder_.GetCurrentStatus());
+
+  ExpectHasSubstr(
+      GetMlirOpString(custom_call),
+      R"(mhlo.custom_call @OpWithLiteral(%0) {backend_config = "", mhlo.literal = dense<16> : tensor<i32>} : (tensor<5x7xf32>) -> tensor<5x7xf32>)");
+}
+
 TEST_F(XlaBuilderTest, InfeedWithTokenWithFrontendAttributes) {
   TF_ASSERT_OK(xla_builder_.GetCurrentStatus());
 

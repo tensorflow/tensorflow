@@ -1,6 +1,6 @@
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library")
-load("//tensorflow:tensorflow.bzl", "tf_cc_binary")
+load("//tensorflow:tensorflow.bzl", "tf_cc_binary", "tf_cc_test")
 load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_cloud")
 
 package(
@@ -173,13 +173,52 @@ cc_library(
 )
 
 cc_library(
+    name = "xla_legalize_targets",
+    srcs = [
+        "transforms/xla_legalize_targets.cc",
+    ],
+    hdrs = [
+        "transforms/xla_legalize_targets.h",
+    ],
+    deps = [
+        "//tensorflow/compiler/mlir/tensorflow",
+        "//tensorflow/compiler/xla/mlir_hlo",
+        "@llvm-project//mlir:ArithDialect",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:ShapeDialect",
+        "@llvm-project//mlir:TensorDialect",
+        "@llvm-project//mlir:TransformUtils",
+        "@stablehlo//:chlo_ops",
+    ],
+)
+
+tf_cc_test(
+    name = "xla_legalize_targets_test",
+    srcs = ["transforms/xla_legalize_targets_test.cc"],
+    deps = [
+        ":xla_legalize_targets",
+        "//tensorflow/compiler/mlir/tensorflow",
+        "@com_google_googletest//:gtest_main",
+        "@llvm-project//mlir:ArithDialect",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:ShapeDialect",
+        "@llvm-project//mlir:TensorDialect",
+        "@llvm-project//mlir:TransformUtils",
+        "@stablehlo//:chlo_ops",
+    ],
+)
+
+cc_library(
     name = "xla_legalize_tf",
     srcs = [
+        "transforms/convert_mhlo_quant_to_int.cc",
         "transforms/legalize_tf_collective.cc",
         "transforms/legalize_tf_communication.cc",
-        "transforms/legalize_tf_control_flow.cc",
         "transforms/legalize_tf_types.cc",
         "transforms/tf_xla_passes.h.inc",
+        "transforms/verify_tfxla_legalization.cc",
         "transforms/xla_legalize_tf.cc",
         "transforms/xla_legalize_tf_passes.h.inc",
     ],
@@ -189,6 +228,7 @@ cc_library(
     deps = [
         ":legalize_tf",
         ":legalize_utils",
+        ":xla_legalize_targets",
         ":xla_legalize_tf_passes_inc_gen",
         ":xla_legalize_tf_with_tf2xla",
         "//tensorflow/compiler/mlir/tensorflow",

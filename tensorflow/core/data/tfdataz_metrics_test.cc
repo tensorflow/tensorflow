@@ -15,6 +15,7 @@ limitations under the License.
 #include "tensorflow/core/data/tfdataz_metrics.h"
 
 #include <memory>
+#include <utility>
 
 #include "absl/time/time.h"
 #include "tensorflow/core/framework/types.h"
@@ -40,8 +41,7 @@ class TfDatazMetricsTest : public ::testing::Test {
  protected:
   void SetUp() override {
     env_ = std::make_unique<FakeClockEnv>(Env::Default());
-    tfdataz_metrics_ =
-        std::make_unique<TfDatazMetricsCollector>(DEVICE_CPU, *env_);
+    tfdataz_metrics_ = std::make_unique<TfDatazMetricsCollector>(*env_);
   }
 
   void TearDown() override {
@@ -139,6 +139,56 @@ TEST_F(TfDatazMetricsTest, GetMultipleAverageLatencies) {
   EXPECT_FLOAT_EQ(tfdataz_metrics_->GetAverageLatencyForLastFiveMinutes(), 5.0);
   EXPECT_FLOAT_EQ(tfdataz_metrics_->GetAverageLatencyForLastSixtyMinutes(),
                   5.0);
+}
+
+class ScopedTfDataMetricsRegistration {
+ public:
+  explicit ScopedTfDataMetricsRegistration(
+      std::shared_ptr<TfDatazMetricsCollector> collector)
+      : collector_(std::move(collector)) {
+    TfDatazMetricsRegistry::Register(collector_);
+  }
+
+  ~ScopedTfDataMetricsRegistration() {
+    TfDatazMetricsRegistry::Deregister(collector_);
+  }
+
+  void Deregister() { TfDatazMetricsRegistry::Deregister(collector_); }
+
+ private:
+  std::shared_ptr<TfDatazMetricsCollector> collector_;
+};
+
+TEST(TfDatazMetricsRegistryTest, Register) {
+  auto collector_one =
+      std::make_shared<TfDatazMetricsCollector>(*Env::Default());
+  auto collector_two =
+      std::make_shared<TfDatazMetricsCollector>(*Env::Default());
+
+  ScopedTfDataMetricsRegistration scoped_registration_one(collector_one);
+  ScopedTfDataMetricsRegistration scoped_registration_two(collector_two);
+
+  EXPECT_EQ(TfDatazMetricsRegistry::GetIteratorMetricCollectors().size(), 2);
+}
+
+TEST(TfDatazMetricsRegistryTest, Deregister) {
+  auto collector_one =
+      std::make_shared<TfDatazMetricsCollector>(*Env::Default());
+  auto collector_two =
+      std::make_shared<TfDatazMetricsCollector>(*Env::Default());
+  auto collector_three =
+      std::make_shared<TfDatazMetricsCollector>(*Env::Default());
+  ScopedTfDataMetricsRegistration scoped_registration_one(collector_one);
+  ScopedTfDataMetricsRegistration scoped_registration_two(collector_two);
+  ScopedTfDataMetricsRegistration scoped_registration_three(collector_three);
+  EXPECT_EQ(TfDatazMetricsRegistry::GetIteratorMetricCollectors().size(), 3);
+
+  scoped_registration_one.Deregister();
+  EXPECT_EQ(TfDatazMetricsRegistry::GetIteratorMetricCollectors().size(), 2);
+
+  scoped_registration_two.Deregister();
+  scoped_registration_three.Deregister();
+  EXPECT_EQ(TfDatazMetricsRegistry::GetIteratorMetricCollectors().size(), 0);
 }
 
 }  // namespace

@@ -298,6 +298,10 @@ llvm::Optional<Value> convertOneHotOp(PatternRewriter& rewriter, Operation* op,
                                       Value on_value, Value off_value,
                                       int32_t depth, int32_t axis);
 
+// Lowers 32-bit floating sin operator to a sequence of TOSA ops.
+llvm::Optional<Value> convertSinOp(PatternRewriter& rewriter, Operation* op,
+                                   Value input, ShapedType output_type);
+
 };  // namespace tosa
 };  // namespace mlir
 

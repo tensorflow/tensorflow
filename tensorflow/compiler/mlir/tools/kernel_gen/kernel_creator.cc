@@ -236,8 +236,8 @@ Status LowerTFtoLoops(mlir::ModuleOp module, llvm::ArrayRef<int64_t> tile_sizes,
   return OkStatus();
 }
 
-Status LowerLoopsToGPU(mlir::ModuleOp module, bool embed_memref_prints,
-                       bool index_64bit, bool apply_cl_options) {
+Status LowerLoopsToGPU(mlir::ModuleOp module, bool index_64bit,
+                       bool apply_cl_options) {
   mlir::PassManager pm(module.getContext());
   if (apply_cl_options) applyTensorflowAndCLOptions(pm);
 
@@ -299,9 +299,6 @@ Status LowerLoopsToGPU(mlir::ModuleOp module, bool embed_memref_prints,
   pm.addPass(::mlir::createConvertSCFToCFPass());
   // Map asserts to the tensorflow framework.
   pm.addPass(mlir::kernel_gen::tf_framework::CreateRewriteTFFrameworkAssert());
-  if (embed_memref_prints) {
-    pm.addPass(mlir::kernel_gen::transforms::CreateEmbedMemRefPrintsPass());
-  }
   if (failed(pm.run(module))) {
     return tensorflow::errors::Internal("Lowering to GPU kernels failed.");
   }
@@ -428,8 +425,8 @@ StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> GenerateKernelForTfCode(
     mlir::MLIRContext& context, llvm::StringRef tf_code,
     llvm::ArrayRef<std::string> architectures,
     llvm::ArrayRef<int64_t> tile_sizes, llvm::ArrayRef<int64_t> unroll_factors,
-    int64_t max_supported_rank, bool embed_memref_prints, bool print_ptx,
-    bool print_llvmir, bool enable_ftz, bool index_64bit, bool jit_compile,
+    int64_t max_supported_rank, bool print_ptx, bool print_llvmir,
+    bool enable_ftz, bool index_64bit, bool jit_compile,
     bool jit_i64_indexed_for_large_tensors, bool apply_cl_options) {
   if (jit_compile && jit_i64_indexed_for_large_tensors) {
     return tensorflow::Status(
@@ -454,8 +451,8 @@ StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> GenerateKernelForTfCode(
         LowerTFtoLoops(module.get(), tile_sizes, unroll_factors,
                        max_supported_rank, enable_ftz, index_64bit,
                        jit_i64_indexed_for_large_tensors, apply_cl_options));
-    TF_RETURN_IF_ERROR(LowerLoopsToGPU(module.get(), embed_memref_prints,
-                                       index_64bit, apply_cl_options));
+    TF_RETURN_IF_ERROR(
+        LowerLoopsToGPU(module.get(), index_64bit, apply_cl_options));
     TF_RETURN_IF_ERROR(
         LowerKernelBodiesToLowLevelIr(module.get(), apply_cl_options));
     TF_RETURN_IF_ERROR(
