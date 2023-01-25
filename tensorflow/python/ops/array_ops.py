@@ -42,14 +42,10 @@ from tensorflow.python.types import core
 from tensorflow.python.util import _pywrap_utils
 from tensorflow.python.util import deprecation
 from tensorflow.python.util import dispatch
-from tensorflow.python.util import lazy_loader
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_decorator
 from tensorflow.python.util.tf_export import tf_export
 # pylint: enable=wildcard-import
-
-math_ops = lazy_loader.LazyLoader(
-    "math_ops", globals(), "tensorflow.python.ops.math_ops")
 
 # Used for slicing to specify a new 1 size dimension
 newaxis = None
@@ -6912,13 +6908,13 @@ def repeat_with_axis(data, repeats, axis, name=None):
       # Non-XLA path implementation
       # E.g., repeats = [3, 4, 0, 2, 1].
       # E.g., repeats_scan = [3, 7, 7, 9, 10].
-      repeats_scan = math_ops.cumsum(repeats)
+      repeats_scan = gen_math_ops.cumsum(repeats)
       # This concat just prepends 0 to handle the case when repeats are empty.
       # E.g., output_size = [0, 3, 7, 7, 9, 10][-1] = 10.
       output_size = concat([zeros(1, dtype=repeats_scan.dtype), repeats_scan],
                            axis=0)[-1]
       # E.g., output_indices = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9].
-      output_indices = math_ops.range(output_size, dtype=repeats.dtype)
+      output_indices = gen_math_ops.range(output_size, dtype=repeats.dtype)
       # E.g., gather_indices = [0, 0, 0, 1, 1, 1, 1, 3, 3, 4].
       gather_indices = searchsorted(
           repeats_scan, output_indices, side="right", out_type=repeats.dtype)
