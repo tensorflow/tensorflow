@@ -1476,6 +1476,7 @@ tf_kernel_library(
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "fill_empty_rows",
     ] + [":gpu_prim_hdrs"] + if_cuda_or_rocm([
         ":gpu_prim_helpers",
     ]) + if_cuda([
@@ -4903,7 +4904,22 @@ tf_kernel_library(
 tf_kernel_library(
     name = "sparse_fill_empty_rows_op",
     prefix = "sparse_fill_empty_rows_op",
-    deps = SPARSE_DEPS + [":gpu_prim_hdrs"] + if_cuda_or_rocm([
+    deps = SPARSE_DEPS + [
+        ":gpu_prim_hdrs",
+        "fill_empty_rows",
+    ] + if_cuda_or_rocm([
+        ":gpu_prim_helpers",
+    ]) + if_cuda([
+        "//tensorflow/core/util:cuda_solvers",
+    ]) + if_rocm([
+        "//tensorflow/core/util:rocm_solvers",
+    ]),
+)
+
+tf_kernel_library(
+    name = "fill_empty_rows",
+    prefix = "fill_empty_rows",
+    deps = [":gpu_prim_hdrs"] + if_cuda_or_rocm([
         ":gpu_prim_helpers",
     ]) + if_cuda([
         "//tensorflow/core/util:cuda_solvers",
@@ -6307,6 +6323,7 @@ filegroup(
         "diag_op.h",
         "dilation_ops.h",
         "fake_quant_ops_functor.h",
+        "fill_empty_rows_op.h",
         "fused_batch_norm_op.h",
         "inplace_ops.cc",
         "inplace_ops_functor.h",
@@ -6353,7 +6370,6 @@ filegroup(
         "stateless_random_ops.h",
         "stateless_random_ops_v2.h",
         "sparse_xent_op.h",
-        "sparse_fill_empty_rows_op.h",
         "sparse_reorder_op.h",
         "sparse_slice_op.h",
         "sparse_tensor_dense_matmul_op.h",
