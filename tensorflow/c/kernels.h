@@ -190,6 +190,11 @@ TF_CAPI_EXPORT extern void TF_InputRange(TF_OpKernelContext* ctx,
                                          const char* name,
                                          TF_InputRange_Args* args);
 
+// Returns the data type of the index-th input. If index < 0 or index >=
+// TF_NumInputs(ctx), the program aborts.
+TF_CAPI_EXPORT extern TF_DataType TF_InputDatatype(TF_OpKernelContext* ctx,
+                                                   int index);
+
 // Sets the ith output of ctx to tensor. If TF_GetCode(status) is anything but
 // TF_OK, ctx is left unmodified.
 //
@@ -214,6 +219,11 @@ TF_CAPI_EXPORT extern void TF_GetSerializedFunctionDefLibrary(
 // Retrieves a serialized ConfigProto. Status will be set.
 TF_CAPI_EXPORT extern void TF_GetSerializedConfigProto(
     TF_OpKernelContext* ctx, TF_Buffer* serialized_config_proto,
+    TF_Status* status);
+
+// Retrieves a serialized ResourceHandleProto. Status will be set.
+TF_CAPI_EXPORT extern void TF_GetSerializedResourceHandleProto(
+    TF_OpKernelContext* ctx, int i, TF_Buffer* serialized_resource_handle_proto,
     TF_Status* status);
 
 // Notifies the given OpKernelConstruction that kernel construction has failed.
@@ -252,6 +262,12 @@ TF_CAPI_EXPORT extern uint64_t TF_GetFrameId(TF_OpKernelContext* ctx);
 
 // Returns the Iter ID of the given context.
 TF_CAPI_EXPORT extern int64_t TF_GetIterId(TF_OpKernelContext* ctx);
+
+// Returns the Step ID of the given context.
+TF_CAPI_EXPORT extern int64_t TF_GetStepId(TF_OpKernelContext* ctx);
+
+// Returns the Device ID of the device that the context possesses.
+TF_CAPI_EXPORT extern int TF_GetDeviceId(TF_OpKernelContext* ctx);
 
 // Returns the graph def version of the given context.
 TF_CAPI_EXPORT extern int TF_GetGraphDefVersion(TF_OpKernelContext* ctx);

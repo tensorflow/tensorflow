@@ -4,6 +4,7 @@ load(
 )
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     # To suppress build cleaner error about inclusion of schema_generate.h.
     features = ["-layering_check"],
     licenses = ["notice"],
@@ -133,11 +134,12 @@ cc_library(
         ":operator",
         ":types",
         "//tensorflow/lite:framework",
+        "//tensorflow/lite/core:framework",
+        "//tensorflow/lite/core/tools:verifier",
         "//tensorflow/lite/schema:schema_fbs",
         "//tensorflow/lite/schema:schema_utils",
         "//tensorflow/lite/toco:model",
         "//tensorflow/lite/toco:tooling_util",
-        "//tensorflow/lite/tools:verifier",
         "@flatbuffers",
     ],
 )

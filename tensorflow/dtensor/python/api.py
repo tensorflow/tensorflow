@@ -22,7 +22,6 @@ from tensorflow.dtensor.python import dtensor_device
 from tensorflow.dtensor.python import gen_dtensor_ops
 from tensorflow.dtensor.python import layout as layout_lib
 from tensorflow.python.eager import context
-from tensorflow.python.framework import config as tf_config
 from tensorflow.python.framework import ops
 from tensorflow.python.util.tf_export import tf_export
 
@@ -114,6 +113,22 @@ def device_name() -> str:
   return _dtensor_device().name
 
 
+@tf_export("experimental.dtensor.is_dtensor", v1=[])
+def is_dtensor(tensor) -> bool:
+  """Check whether the input tensor is a DTensor.
+
+  In Python, a DTensor has the same type as a `tf.Tensor`. This method will
+  let you check and handle the tensor differently if a tf.Tensor is a DTensor.
+
+  Args:
+    tensor: an object to be checked.
+
+  Returns:
+    bool, True if the given tensor is a DTensor.
+  """
+  return _dtensor_device().is_dtensor(tensor)
+
+
 # -----------------------------------------------------------------------------
 # Data transfer methods.
 
@@ -127,7 +142,7 @@ def copy_to_mesh(
 
   Copies a regular tf.Tensor onto the DTensor device. Use the mesh attached to
   `layout` as target mesh. This method currently only supports replicated
-  layouts. To get a DTensor with a sharded layout, use the `pack` method.
+  layouts, or one-to-one copies for sharded layouts.
 
   Args:
     tensor: A regular tf.Tensor to be copied as a DTensor.
@@ -139,7 +154,8 @@ def copy_to_mesh(
     A DTensor on the DTensor device with the given layout.
   """
   del source_layout
-  return _dtensor_device().copy_to_mesh(tensor, layout)
+  with run_on(layout.mesh):
+    return gen_dtensor_ops.copy_to_mesh(tensor, layout.to_string())
 
 
 @tf_export("experimental.dtensor.pack", v1=[])
@@ -397,23 +413,6 @@ def relayout(tensor: ops.Tensor, layout: layout_lib.Layout) -> ops.Tensor:
   return gen_dtensor_ops.relayout(tensor, layout_str)
 
 
-# -----------------------------------------------------------------------------
-# Private methods.
-
-
-def is_tpu_present() -> bool:
-  """Returns true if TPU devices are present."""
-  # Check if TPU is present from initialized context.
-  # TPU_SYSTEM is a logical device that indicates TPUs are present.
-  tpu_system_devices = tf_config.list_physical_devices("TPU_SYSTEM")
-  return len(tpu_system_devices) > 0  # pylint: disable=g-explicit-length-test
-
-
-def is_gpu_present() -> bool:
-  """Returns true if TPU devices are present."""
-  return len(tf_config.list_physical_devices("GPU")) > 0  # pylint: disable=g-explicit-length-test
-
-
 def _set_dtensor_device(device: dtensor_device.DTensorDevice) -> None:
   global _dtensor_singleton
   _dtensor_singleton = device
@@ -422,7 +421,8 @@ def _set_dtensor_device(device: dtensor_device.DTensorDevice) -> None:
 def _dtensor_device() -> dtensor_device.DTensorDevice:
   with _dtensor_singleton_lock:
     if _dtensor_singleton is None:
-      _set_dtensor_device(dtensor_device.DTensorDevice(meshes=[]))
+      _set_dtensor_device(
+          dtensor_device.DTensorDevice(meshes=[], is_async=True))
   return _dtensor_singleton
 
 

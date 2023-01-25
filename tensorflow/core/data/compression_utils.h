@@ -39,13 +39,6 @@ Status CompressElement(const std::vector<Tensor>& element,
 Status UncompressElement(const CompressedElement& compressed,
                          std::vector<Tensor>* out);
 
-// Compresses and serializes Tensors.
-StatusOr<std::string> CompressAndSerialize(const std::vector<Tensor>& tensors);
-
-// Deserializes and uncompresses Tensors.
-StatusOr<std::vector<Tensor>> DeserializeAndUncompress(
-    const std::string& serialized_tensors);
-
 }  // namespace data
 }  // namespace tensorflow
 

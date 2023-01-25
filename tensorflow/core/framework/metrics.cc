@@ -65,6 +65,12 @@ auto* graph_unused_outputs = tsl::monitoring::Counter<1>::New(
     "/tensorflow/core/graph_unused_outputs",
     "The number of unused outputs for ops of a given type.", "name");
 
+auto* tf_data_fetch_op_counter = tsl::monitoring::Counter<1>::New(
+    "/tensorflow/data/fetch_op",
+    "The number of times a tf.data operation that fetches output(s) of a "
+    "tf.data input pipeline (e.g. `IteratorGetNext`) was executed.",
+    "fetch_op");
+
 auto* tf_data_autotune_counter = tsl::monitoring::Counter<1>::New(
     "/tensorflow/data/autotune", "tf.data autotuning", "name");
 
@@ -268,6 +274,11 @@ auto* eager_client_error_counter = tsl::monitoring::Counter<2>::New(
     "Count the errors in eager client as a central place.", "error_source",
     "error_type");
 
+auto* mlir_bridge_first_phase_counter = tsl::monitoring::Counter<4>::New(
+    "/tensorflow/core/tf_mlir_bridge_first_phase_count",
+    "Tracks processing state in first phase of mlir bridge", "device",
+    "version", "fallback", "result");
+
 tsl::monitoring::Counter<2>* GetGraphOptimizationCounter() {
   static auto* graph_optimization_counter = tsl::monitoring::Counter<2>::New(
       "/tensorflow/core/graph_optimization_usecs",
@@ -275,6 +286,10 @@ tsl::monitoring::Counter<2>* GetGraphOptimizationCounter() {
       "optimization pass in microseconds.",
       "kind", "name");
   return graph_optimization_counter;
+}
+
+void RecordTFDataFetchOp(const string& name) {
+  tf_data_fetch_op_counter->GetCell(name)->IncrementBy(1);
 }
 
 void RecordTFDataAutotune(const string& name) {
@@ -543,13 +558,10 @@ void UpdateTfMlirBridgeFirstPhaseCounter(const std::string& device_type,
                                          const std::string& bridge_version,
                                          bool fallback_enabled,
                                          const std::string& result) {
-  static auto* metric = tsl::monitoring::Counter<4>::New(
-      "/tensorflow/core/tf_mlir_bridge_first_phase_count",
-      "Tracks processing state in first phase of mlir bridge", "device",
-      "version", "fallback", "result");
   std::string fallback_status =
       fallback_enabled ? "fallback_enabled" : "fallback_disabled";
-  metric->GetCell(device_type, bridge_version, fallback_status, result)
+  mlir_bridge_first_phase_counter
+      ->GetCell(device_type, bridge_version, fallback_status, result)
       ->IncrementBy(1);
 }
 

@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "tensorflow/compiler/xla/layout_util.h"
+#include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/shape.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 
@@ -63,10 +64,14 @@ Layout::Layout(absl::Span<const int64_t> minor_to_major)
 
 Layout::Layout(absl::Span<const int64_t> minor_to_major,
                absl::Span<const DimLevelType> dim_level_types,
-               absl::Span<const Tile> tiles, PrimitiveType index_primitive_type,
+               absl::Span<const bool> dim_unique,
+               absl::Span<const bool> dim_ordered, absl::Span<const Tile> tiles,
+               PrimitiveType index_primitive_type,
                PrimitiveType pointer_primitive_type, int64_t memory_space,
                std::unique_ptr<Shape> physical_shape)
     : dim_level_types_(dim_level_types.begin(), dim_level_types.end()),
+      dim_unique_(dim_unique.begin(), dim_unique.end()),
+      dim_ordered_(dim_ordered.begin(), dim_ordered.end()),
       minor_to_major_(minor_to_major.begin(), minor_to_major.end()),
       tiles_(tiles.begin(), tiles.end()),
       index_primitive_type_(index_primitive_type),
@@ -76,6 +81,8 @@ Layout::Layout(absl::Span<const int64_t> minor_to_major,
 
 Layout::Layout(const Layout& other)
     : dim_level_types_(other.dim_level_types_),
+      dim_unique_(other.dim_unique_),
+      dim_ordered_(other.dim_ordered_),
       minor_to_major_(other.minor_to_major_),
       tiles_(other.tiles_),
       index_primitive_type_(other.index_primitive_type_),
@@ -83,7 +90,9 @@ Layout::Layout(const Layout& other)
       memory_space_(other.memory_space_),
       physical_shape_(other.physical_shape_ != nullptr
                           ? std::make_unique<Shape>(*other.physical_shape_)
-                          : nullptr) {}
+                          : nullptr),
+      dynamic_shape_metadata_prefix_bytes_(
+          other.dynamic_shape_metadata_prefix_bytes_) {}
 
 Layout::Layout(Layout&& other) = default;
 
@@ -92,6 +101,8 @@ Layout::~Layout() = default;
 Layout& Layout::operator=(const Layout& other) {
   if (this != &other) {
     dim_level_types_ = other.dim_level_types_;
+    dim_unique_ = other.dim_unique_;
+    dim_ordered_ = other.dim_ordered_;
     minor_to_major_ = other.minor_to_major_;
     tiles_ = other.tiles_;
     index_primitive_type_ = other.index_primitive_type_;
@@ -102,6 +113,8 @@ Layout& Layout::operator=(const Layout& other) {
     } else {
       physical_shape_ = nullptr;
     }
+    dynamic_shape_metadata_prefix_bytes_ =
+        other.dynamic_shape_metadata_prefix_bytes_;
   }
   return *this;
 }
@@ -112,6 +125,12 @@ Layout& Layout::operator=(Layout&& other) = default;
   Layout layout;
   for (int dim_level_type : proto.dim_level_types()) {
     layout.add_dim_level_type(static_cast<DimLevelType>(dim_level_type));
+  }
+  for (bool dim_unique : proto.dim_unique()) {
+    layout.add_dim_unique(dim_unique);
+  }
+  for (bool dim_ordered : proto.dim_ordered()) {
+    layout.add_dim_ordered(dim_ordered);
   }
   layout.minor_to_major_.reserve(proto.minor_to_major_size());
   for (const int64_t dimension : proto.minor_to_major()) {
@@ -126,6 +145,8 @@ Layout& Layout::operator=(Layout&& other) = default;
   if (proto.has_physical_shape()) {
     *layout.mutable_physical_shape() = Shape(proto.physical_shape());
   }
+  layout.set_dynamic_shape_metadata_prefix_bytes(
+      proto.dynamic_shape_metadata_prefix_bytes());
   return layout;
 }
 
@@ -133,6 +154,12 @@ LayoutProto Layout::ToProto() const {
   LayoutProto proto;
   for (DimLevelType dim_level_type : dim_level_types()) {
     proto.add_dim_level_types(dim_level_type);
+  }
+  for (bool dim_unique : dim_unique()) {
+    proto.add_dim_unique(dim_unique);
+  }
+  for (bool dim_ordered : dim_ordered()) {
+    proto.add_dim_ordered(dim_ordered);
   }
   proto.mutable_minor_to_major()->Reserve(minor_to_major_size());
   for (const int64_t dimension : minor_to_major()) {
@@ -147,6 +174,8 @@ LayoutProto Layout::ToProto() const {
   if (has_physical_shape()) {
     *proto.mutable_physical_shape() = physical_shape_->ToProto();
   }
+  proto.set_dynamic_shape_metadata_prefix_bytes(
+      dynamic_shape_metadata_prefix_bytes_);
   return proto;
 }
 
@@ -169,14 +198,20 @@ std::string Layout::ToString() const {
   std::string colon_string;
 
   if (!dim_level_types().empty()) {
-    absl::StrAppend(
-        &colon_string, "D(",
-        absl::StrJoin(dim_level_types(), ",",
-                      [](std::string* out, DimLevelType dim_level_type) {
-                        absl::StrAppend(out,
-                                        DimLevelTypeAbbrev(dim_level_type));
-                      }),
-        ")");
+    absl::StrAppend(&colon_string, "D(");
+    for (int i = 0; i < dim_level_types().size(); ++i) {
+      if (i != 0) {
+        absl::StrAppend(&colon_string, ",");
+      }
+      absl::StrAppend(&colon_string, DimLevelTypeAbbrev(dim_level_type(i)));
+      if (!dim_unique().empty() && !dim_unique(i)) {
+        absl::StrAppend(&colon_string, "+");
+      }
+      if (!dim_ordered().empty() && !dim_ordered(i)) {
+        absl::StrAppend(&colon_string, "~");
+      }
+    }
+    absl::StrAppend(&colon_string, ")");
   }
 
   if (!tiles().empty()) {
@@ -187,17 +222,25 @@ std::string Layout::ToString() const {
   }
 
   if (index_primitive_type() != PRIMITIVE_TYPE_INVALID) {
-    absl::StrAppend(
-        &colon_string, "#(",
-        primitive_util::LowercasePrimitiveTypeName(index_primitive_type()),
-        ")");
+    if (primitive_util::IsIntegralType(index_primitive_type())) {
+      absl::StrAppend(
+          &colon_string, "#(",
+          primitive_util::LowercasePrimitiveTypeName(index_primitive_type()),
+          ")");
+    } else {
+      absl::StrAppend(&colon_string, "#(invalid)");
+    }
   }
 
   if (pointer_primitive_type() != PRIMITIVE_TYPE_INVALID) {
-    absl::StrAppend(
-        &colon_string, "*(",
-        primitive_util::LowercasePrimitiveTypeName(pointer_primitive_type()),
-        ")");
+    if (primitive_util::IsIntegralType(pointer_primitive_type())) {
+      absl::StrAppend(
+          &colon_string, "*(",
+          primitive_util::LowercasePrimitiveTypeName(pointer_primitive_type()),
+          ")");
+    } else {
+      absl::StrAppend(&colon_string, "*(invalid)");
+    }
   }
 
   if (memory_space() != 0) {
@@ -207,6 +250,11 @@ std::string Layout::ToString() const {
   if (has_physical_shape()) {
     absl::StrAppend(&colon_string, "P(",
                     physical_shape_->ToString(/*print_layout=*/true), ")");
+  }
+
+  if (dynamic_shape_metadata_prefix_bytes_ > 0) {
+    absl::StrAppend(&colon_string, "M(", dynamic_shape_metadata_prefix_bytes(),
+                    ")");
   }
 
   return absl::StrCat("{", absl::StrJoin(minor_to_major(), ","),

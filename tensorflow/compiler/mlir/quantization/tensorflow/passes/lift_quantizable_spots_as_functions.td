@@ -83,6 +83,16 @@ def LiftConv3D : Pat<
       (NamedAttr<"dilations"> $dilations))),
   [(IsNotInLiftedFunc $res)], (addBenefit 1)>;
 
+def LiftBatchMatMul : Pat<
+  (TF_BatchMatMulV2Op:$res $x, $y, $adj_x, $adj_y),
+  (LiftAsFunctionCall<"composite_batch_matmul_fn">
+    (ArgumentList $x, $y),
+    (ResultList $res),
+    (NamedAttributeList
+      (NamedAttr<"adj_x"> $adj_x),
+      (NamedAttr<"adj_y"> $adj_y))),
+  [(IsNotInLiftedFunc $res)], (addBenefit 1)>;
+
 //===----------------------------------------------------------------------===//
 // Pattern rules for lifting ops with bias as functions
 //===----------------------------------------------------------------------===//
@@ -142,6 +152,18 @@ def LiftConv3dWithBias : Pat<
       (NamedAttr<"strides"> $strides),
       (NamedAttr<"padding"> $padding),
       (NamedAttr<"dilations"> $dilations))),
+  [(IsNotInLiftedFunc $res)], (addBenefit 5)>;
+
+def LiftBatchMatMulWithBias : Pat<
+  (TF_BiasAddOp:$res
+    (TF_BatchMatMulV2Op $x, $y, $adj_x, $adj_y),
+    $bias, IsDataFormatNHWC:$bias_data_format),
+  (LiftAsFunctionCall<"composite_batch_matmul_with_bias_fn">
+    (ArgumentList $x, $y, $bias),
+    (ResultList $res),
+    (NamedAttributeList
+      (NamedAttr<"adj_x"> $adj_x),
+      (NamedAttr<"adj_y"> $adj_y))),
   [(IsNotInLiftedFunc $res)], (addBenefit 5)>;
 
 //===----------------------------------------------------------------------===//
@@ -263,6 +285,38 @@ multiclass LiftCompositeOpsWithActivation<Op ActivationOp, string ActivationName
         (NamedAttr<"dilations"> $dilations))),
     [(IsNotInLiftedFunc $res)], (addBenefit 10)>;
 
+  def LiftBatchMatMulWith#ActivationOp : Pat<
+    (ActivationOp:$res
+      (TF_BatchMatMulV2Op $x, $y, $adj_x, $adj_y)),
+    (LiftAsFunctionCall<"composite_batch_matmul_with_"# ActivationName #"_fn">
+      (ArgumentList $x, $y),
+      (ResultList $res),
+      (NamedAttributeList
+        (NamedAttr<"adj_x"> $adj_x),
+        (NamedAttr<"adj_y"> $adj_y))),
+    [(IsNotInLiftedFunc $res)], (addBenefit 10)>;
+
+  def LiftBatchMatMulWithBiasAnd#LastFusedOp : Pat<
+    (ActivationOp:$res
+      (TF_BiasAddOp
+        (TF_BatchMatMulV2Op $x, $y, $adj_x, $adj_y),
+        $bias, IsDataFormatNHWC:$bias_data_format)),
+    (LiftAsFunctionCall<"composite_batch_matmul_with_bias_and_"# ActivationName #"_fn">
+      (ArgumentList $x, $y, $bias),
+      (ResultList $res),
+      (NamedAttributeList
+        (NamedAttr<"adj_x"> $adj_x),
+        (NamedAttr<"adj_y"> $adj_y))),
+    [(IsNotInLiftedFunc $res)], (addBenefit 10)>;
 }
 defm : LiftCompositeOpsWithActivation<TF_ReluOp, "relu">;
 defm : LiftCompositeOpsWithActivation<TF_Relu6Op, "relu6">;
+
+def LiftGather : Pat<
+  (TF_GatherV2Op:$res $params, $indices, $axis, $batch_dims),
+  (LiftAsFunctionCall<"composite_gather_fn">
+    (ArgumentList $params, $indices, $axis),
+    (ResultList $res),
+    (NamedAttributeList
+      (NamedAttr<"batch_dims"> $batch_dims))),
+  [(IsNotInLiftedFunc $res), (IsConstTensor $params)], (addBenefit 1)>;

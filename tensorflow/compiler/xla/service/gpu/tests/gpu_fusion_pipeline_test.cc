@@ -18,6 +18,7 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/compiler/xla/service/gpu/fusion_merger.h"
+#include "tensorflow/compiler/xla/service/gpu/gpu_device_info_for_tests.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_fusible.h"
 #include "tensorflow/compiler/xla/service/gpu/instruction_fusion.h"
 #include "tensorflow/compiler/xla/service/gpu/multi_output_fusion.h"
@@ -33,14 +34,23 @@ namespace gpu {
 namespace {
 
 class GpuFusionPipelineTest : public GpuCodegenTest {
+  HloCostAnalysis::ShapeSizeFunction ShapeSizeBytesFunction() const {
+    return [&](const Shape& shape) {
+      constexpr int64_t kPointerSize = 8;
+      return ShapeUtil::ByteSizeOf(shape, kPointerSize);
+    };
+  }
+
  public:
   void CheckGpuFusionPipeline(absl::string_view hlo,
                               std::optional<absl::string_view> expected) {
     HloPassPipeline pipeline("gpu-fusion");
     pipeline.AddPass<GpuInstructionFusion>(/*may_duplicate=*/false);
     pipeline.AddPass<GpuInstructionFusion>(/*may_duplicate=*/true);
-    pipeline.AddPass<FusionMerger>();
-    pipeline.AddPass<GpuMultiOutputFusion>();
+    pipeline.AddPass<FusionMerger>(TestGpuDeviceInfo::RTXA6000DeviceInfo(),
+                                   ShapeSizeBytesFunction());
+    pipeline.AddPass<GpuMultiOutputFusion>(
+        TestGpuDeviceInfo::RTXA6000DeviceInfo(), ShapeSizeBytesFunction());
 
     RunAndFilecheckHloRewrite(hlo, std::move(pipeline), expected);
   }

@@ -9,6 +9,7 @@ load(
 load("//tensorflow:tensorflow.default.bzl", "filegroup", "tf_kernel_library")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//tensorflow:internal"],
     licenses = ["notice"],
 )
@@ -242,6 +243,22 @@ tf_kernel_library(
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/time",
+    ],
+)
+
+tf_kernel_library(
+    name = "distributed_save_op",
+    srcs = ["distributed_save_op.cc"],
+    hdrs = ["distributed_save_op.h"],
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/data:serialization_utils",
+        "//tensorflow/core/data/service:common_proto_cc",
+        "//tensorflow/core/data/service:dispatcher_client",
+        "//tensorflow/core/data/service:grpc_util",
+        "//tensorflow/core/data/service:py_utils",
         "@com_google_absl//absl/time",
     ],
 )
@@ -608,6 +625,7 @@ tf_kernel_library(
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
         "//tensorflow/core/data:finalization_utils",
+        "//tensorflow/core/data:unbounded_thread_pool",
         "//tensorflow/core/kernels/data:iterator_ops",
         "//tensorflow/core/platform",
     ],
@@ -623,7 +641,9 @@ tf_kernel_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core/data:dataset_utils",
+        "//tensorflow/core/data:name_utils",
         "//tensorflow/core/data:split_utils",
+        "//tensorflow/core/kernels/data:random_seed_ops",
     ],
 )
 
@@ -641,6 +661,7 @@ tf_cc_test(
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
         "//tensorflow/core/data:dataset_test_base",
+        "//tensorflow/core/kernels/data:random_seed_ops",
         "//third_party/eigen3",
     ],
 )
@@ -891,6 +912,7 @@ tf_kernel_library(
     deps = [
         ":data_service_dataset_op",
         ":data_service_ops",
+        ":distributed_save_op",
     ],
 )
 

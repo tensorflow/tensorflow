@@ -62,8 +62,4 @@ tf_class {
     name: "to_string"
     argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
   }
-  member_method {
-    name: "unravel"
-    argspec: "args=[\'self\', \'unpacked_tensors\'], varargs=None, keywords=None, defaults=None"
-  }
 }

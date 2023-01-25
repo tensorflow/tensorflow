@@ -47,6 +47,7 @@ See [Importing Data](https://tensorflow.org/guide/datasets) for an overview.
 @@ThreadingOptions
 
 @@assert_cardinality
+@@at
 @@bucket_by_sequence_length
 @@cardinality
 @@choose_from_datasets
@@ -126,6 +127,7 @@ from tensorflow.python.data.experimental.ops.lookup_ops import table_from_datase
 from tensorflow.python.data.experimental.ops.parsing_ops import parse_example_dataset
 from tensorflow.python.data.experimental.ops.prefetching_ops import copy_to_device
 from tensorflow.python.data.experimental.ops.prefetching_ops import prefetch_to_device
+from tensorflow.python.data.experimental.ops.random_access import at
 from tensorflow.python.data.experimental.ops.random_ops import RandomDataset
 from tensorflow.python.data.experimental.ops.readers import CsvDataset
 from tensorflow.python.data.experimental.ops.readers import make_batched_features_dataset
@@ -140,10 +142,10 @@ from tensorflow.python.data.experimental.ops.unique import unique
 from tensorflow.python.data.experimental.ops.writers import TFRecordWriter
 from tensorflow.python.data.ops.dataset_ops import AUTOTUNE
 from tensorflow.python.data.ops.dataset_ops import DatasetSpec as DatasetStructure
-from tensorflow.python.data.ops.dataset_ops import enable_debug_mode
 from tensorflow.python.data.ops.dataset_ops import from_variant
 from tensorflow.python.data.ops.dataset_ops import get_structure
 from tensorflow.python.data.ops.dataset_ops import to_variant
+from tensorflow.python.data.ops.debug_mode import enable_debug_mode
 from tensorflow.python.data.ops.iterator_ops import get_next_as_optional
 from tensorflow.python.data.ops.optional_ops import Optional
 from tensorflow.python.data.ops.optional_ops import OptionalSpec as OptionalStructure

@@ -2098,7 +2098,11 @@ Status ConvertConv2DHelper(const OpConverterParams* params, int group,
   if (params->use_explicit_precision) {
     TRT_ENSURE(inputs.at(1).is_tensor());
 
-    conv_layer->setInput(1, *inputs.at(1).tensor()->trt_tensor());
+    nvinfer1::IShuffleLayer* layer = params->converter->network()->addShuffle(
+        *inputs.at(1).tensor()->trt_tensor());
+    layer->setFirstTranspose({3, 2, 0, 1});
+    layer->setReshapeDimensions({4, {0, 0, 0, 0}});
+    conv_layer->setInput(1, *layer->getOutput(0));
   }
 
   params->converter->SetLayerName(conv_layer, node_def, "conv");
@@ -3647,6 +3651,24 @@ Status ConvertIdentity(const OpConverterParams* params) {
     params->outputs->push_back(params->inputs.at(i));
   }
   return OkStatus();
+}
+
+// This converter is a debug-only feature designed to allow graph segmentation
+// experiments. Its use is being controled by
+// `TF_TRT_OP_FAKELIST=OpName1,OpName2,...`.
+// See `op_converter_registry.cc` for further details.
+//
+// This converter is designed as followed:
+//   - always succeed at graph segmentation time.
+//   - always fail at TRT Engine build time.
+Status ConvertFake(const OpConverterParams* params) {
+  if (params->validation_only) return OkStatus();
+
+  return errors::Unimplemented(
+      "This converter is not valid after graph "
+      "segmentation. Building an engine using this "
+      "converter will trigger a native segment "
+      "fallback.");
 }
 
 Status ConvertSquare(const OpConverterParams* params) {
@@ -5718,7 +5740,9 @@ Status ConvertAddN(const OpConverterParams* params) {
       tensor_inputs.push_back(input.tensor());
     } else {
       auto dims = input.weights().Shape();
-      TF_RETURN_IF_ERROR(dims.RemoveBatchDimension());
+      if (params->use_implicit_batch) {
+        TF_RETURN_IF_ERROR(dims.RemoveBatchDimension());
+      }
       tensor_inputs.push_back(params->converter->CreateConstantLayer(
           input.weights(), dims.AsTrtDims()));
     }
@@ -5795,6 +5819,8 @@ REGISTER_DEFAULT_TRT_OP_CONVERTER(ConvertIdentity,
                                    "StopGradient", "_CopyFromHostToGpu"});
 REGISTER_DEFAULT_TRT_OP_CONVERTER(ConvertBatchMatMul,
                                   {"BatchMatMul", "BatchMatMulV2"});
+// Debug converter only accessible via `TF_TRT_OP_FAKELIST=OpName1,OpName2,...`
+REGISTER_DEFAULT_TRT_OP_CONVERTER(ConvertFake, "FakeOp");
 
 Status ConvertGraphDefToEngine(
     const GraphDef& gdef, OpKernelContext* ctx, TrtPrecisionMode precision_mode,

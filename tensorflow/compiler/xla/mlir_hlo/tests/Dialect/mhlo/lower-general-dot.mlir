@@ -39,7 +39,7 @@ func.func @testDebatch2(%arg0: tensor<2x3xf32>, %arg1: tensor<1x1x2xf32>) -> ten
 // -----
 
 // CHECK-LABEL: @testBatchPassthrough
-func.func @testBatchPassthrough(%arg0: tensor<2x2x3xf32>, %arg1: tensor<2x1x2xf32>) -> tensor<3x2x1xf32> {
+func.func @testBatchPassthrough(%arg0: tensor<2x2x3xf32>, %arg1: tensor<2x1x2xf32>) -> tensor<2x3x1xf32> {
   // CHECK-NEXT: "mhlo.dot_general"(%arg0, %arg1)
   %0 = "mhlo.dot_general"(%arg0, %arg1) {
     dot_dimension_numbers = #mhlo.dot<
@@ -49,8 +49,8 @@ func.func @testBatchPassthrough(%arg0: tensor<2x2x3xf32>, %arg1: tensor<2x1x2xf3
       rhs_contracting_dimensions = [2]
     >,
     precision_config = [#mhlo<precision DEFAULT>, #mhlo<precision DEFAULT>]
-  } : (tensor<2x2x3xf32>, tensor<2x1x2xf32>) -> tensor<3x2x1xf32>
-  func.return %0 : tensor<3x2x1xf32>
+  } : (tensor<2x2x3xf32>, tensor<2x1x2xf32>) -> tensor<2x3x1xf32>
+  func.return %0 : tensor<2x3x1xf32>
 }
 
 // -----
@@ -111,18 +111,22 @@ func.func @dot_general_to_dot_dynamic(%arg0: tensor<128x4x?x32xf32>, %arg1: tens
 // CHECK-DAG: %[[C8:.+]] = mhlo.constant dense<8> : tensor<1xi32>
 // CHECK-DAG: %[[TRANS0:.+]] = "mhlo.transpose"(%arg0) {permutation = dense<[2, 3, 0, 1]> : tensor<4xi64>}
 // CHECK-DAG: %[[DIM0:.+]] = "mhlo.get_dimension_size"(%arg0) {dimension = 2 : i64}
-// CHECK-DAG: %[[MUL0:.+]] = mhlo.multiply %[[DIM0]], %[[C32]]
+// CHECK-DAG: %[[RESHAPE0:.+]] = mhlo.reshape %[[DIM0]] : (tensor<i32>) -> tensor<1xi32>
+// CHECK-DAG: %[[MUL0:.+]] = mhlo.multiply %[[RESHAPE0]], %[[C32]]
 // CHECK-DAG: %[[CONCAT1:.+]] = "mhlo.concatenate"(%[[MUL0]], %[[C512]]) {dimension = 0 : i64}
 // CHECK-DAG: %[[DR1:.+]] = mhlo.dynamic_reshape %[[TRANS0]], %[[CONCAT1]]
 // CHECK-DAG: %[[TRANS1:.+]] = "mhlo.transpose"(%arg1) {permutation = dense<[2, 3, 0, 1]> : tensor<4xi64>}
 // CHECK-DAG: %[[DIM1:.+]] = "mhlo.get_dimension_size"(%arg1) {dimension = 1 : i64}
-// CHECK-DAG: %[[MUL1:.+]] = mhlo.multiply %[[DIM1]], %[[C8]]
+// CHECK-DAG: %[[RESHAPE1:.+]] = mhlo.reshape %[[DIM1]] : (tensor<i32>) -> tensor<1xi32>
+// CHECK-DAG: %[[MUL1:.+]] = mhlo.multiply %[[RESHAPE1]], %[[C8]]
 // CHECK-DAG: %[[CONCAT2:.+]] = "mhlo.concatenate"(%[[C512]], %[[MUL1]]) {dimension = 0 : i64}
 // CHECK-DAG: %[[DR2:.+]] = mhlo.dynamic_reshape %[[TRANS1]], %[[CONCAT2]]
 // CHECK-DAG: %[[DOT:.+]] = "mhlo.dot"(%[[DR1:.+]], %[[DR2:.+]])
 // CHECK-DAG: %[[DIM2:.+]] = "mhlo.get_dimension_size"(%arg0) {dimension = 2 : i64}
+// CHECK-DAG: %[[RESHAPE2:.+]] = mhlo.reshape %[[DIM2]] : (tensor<i32>) -> tensor<1xi32>
 // CHECK-DAG: %[[DIM3:.+]] = "mhlo.get_dimension_size"(%arg1) {dimension = 1 : i64}
-// CHECK-DAG: %[[CONCAT3:.+]] = "mhlo.concatenate"(%[[DIM2]], %[[C32]], %[[C8]], %[[DIM3]]) {dimension = 0 : i64}
+// CHECK-DAG: %[[RESHAPE3:.+]] = mhlo.reshape %[[DIM3]] : (tensor<i32>) -> tensor<1xi32>
+// CHECK-DAG: %[[CONCAT3:.+]] = "mhlo.concatenate"(%[[RESHAPE2]], %[[C32]], %[[C8]], %[[RESHAPE3]]) {dimension = 0 : i64}
 // CHECK-DAG: %[[DR3:.+]] = mhlo.dynamic_reshape %[[DOT]], %[[CONCAT3]]
 // CHECK: return %[[DR3]]
 

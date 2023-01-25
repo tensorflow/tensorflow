@@ -18,9 +18,12 @@ limitations under the License.
 #include <functional>
 #include <memory>
 #include <string>
+#include <vector>
 
+#include "tensorflow/core/data/service/common.pb.h"
 #include "tensorflow/core/data/service/dispatcher_client.h"
 #include "tensorflow/core/data/service/grpc_util.h"
+#include "tensorflow/core/data/standalone.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/errors.h"
@@ -74,6 +77,17 @@ Status DataServiceSplitProvider::Restore(
     IteratorStateReader* reader) {
   return errors::Unimplemented(
       "Restore is not implemented for DataServiceSplitProvider");
+}
+
+Status CreateSplitProviders(
+    const DatasetDef& dataset_def,
+    std::vector<std::unique_ptr<SplitProvider>>& split_providers) {
+  standalone::Dataset::Params params;
+  std::unique_ptr<standalone::Dataset> standalone_dataset;
+  TF_RETURN_IF_ERROR(standalone::Dataset::FromGraph(params, dataset_def.graph(),
+                                                    &standalone_dataset));
+  TF_RETURN_IF_ERROR(standalone_dataset->MakeSplitProviders(&split_providers));
+  return OkStatus();
 }
 
 }  // namespace data

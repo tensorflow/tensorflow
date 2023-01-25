@@ -25,12 +25,12 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/inlined_vector.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_sharding.h"
 #include "tensorflow/compiler/xla/service/call_graph.h"
-#include "tensorflow/compiler/xla/service/hlo_computation.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/compiler/xla/service/hlo_instructions.h"
-#include "tensorflow/compiler/xla/service/hlo_module.h"
-#include "tensorflow/compiler/xla/service/hlo_sharding.h"
 
 namespace xla {
 namespace hlo_sharding_util {
@@ -40,6 +40,14 @@ struct GatherScatterParallelDims {
   absl::InlinedVector<int64_t, 1> operand_parallel_dims;
   std::vector<int64_t> index_parallel_in_dim;
 };
+
+// Determines if the first operand 'potential_subsharding' is a subsharding of
+// the second operand 'sharding'. Subsharding means that the tiles in
+// 'potential_subsharding' define tiles that have a subset or the same data that
+// the tiles in 'sharding' define.
+bool IsSubTilingOrEqualSharding(const Shape& shape,
+                                const HloSharding& potential_subsharding,
+                                const HloSharding& sharding);
 
 // Returns true if the lhs sharding is preferable over the rhs sharding.
 // The most specific sharding is tile maximal followed by single device tile
@@ -394,6 +402,11 @@ HloSharding MergeShardingDimension(const HloSharding& sharding,
 // If none of the elements have a sharding, return nullptr.
 std::shared_ptr<const HloSharding> CreateTupleSharding(
     const Shape& shape, absl::Span<const HloInstruction* const> elements);
+
+// Tests whether the sort operand is sharded along the sort dimension and there
+// exists a free (i.e., unsharded) dimension to move the sharding into.
+bool IsSortOperandShardingMovable(const HloInstruction* sort_operand,
+                                  int64_t sort_dim);
 
 }  // namespace hlo_sharding_util
 }  // namespace xla

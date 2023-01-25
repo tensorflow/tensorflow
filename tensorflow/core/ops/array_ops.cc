@@ -17,6 +17,7 @@ limitations under the License.
 #include <ostream>
 
 #include "tensorflow/core/framework/common_shape_fns.h"
+#include "tensorflow/core/framework/full_type.pb.h"
 #include "tensorflow/core/framework/kernel_shape_util.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/shape_inference.h"
@@ -24,6 +25,7 @@ limitations under the License.
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/mirror_pad_mode.h"
 #include "tensorflow/core/util/padding.h"
@@ -1071,11 +1073,22 @@ REGISTER_OP("EditDistance")
         // or else the output shape is unknown.
         return shape_inference::UnknownShape(c);
       }
-
       if (hypothesis_shape_t->NumElements() != truth_shape_t->NumElements()) {
         return errors::InvalidArgument(
             "Num elements of hypothesis_shape does not match truth_shape: ",
             hypothesis_shape_t->NumElements(), " vs. ",
+            truth_shape_t->NumElements());
+      }
+      if (hypothesis_shape_t->NumElements() < 2) {
+        return errors::InvalidArgument(
+            "Input Hypothesis SparseTensors must have rank at least 2, but "
+            "hypothesis_shape rank is: ",
+            hypothesis_shape_t->NumElements());
+      }
+      if (truth_shape_t->NumElements() < 2) {
+        return errors::InvalidArgument(
+            "Input Truth SparseTensors must have rank at least 2, but "
+            "truth_shape rank is: ",
             truth_shape_t->NumElements());
       }
 
@@ -1591,6 +1604,7 @@ REGISTER_OP("Shape")
     .Output("output: out_type")
     .Attr("T: type")
     .Attr("out_type: {int32, int64} = DT_INT32")
+    .SetTypeConstructor(full_type::Unary(TFT_SHAPE_TENSOR, "out_type"))
     .SetShapeFn(ShapeShapeFn);
 
 REGISTER_OP("ShapeN")
@@ -2879,6 +2893,10 @@ REGISTER_OP("QuantizeAndDequantizeV2")
                                        axis);
       } else if (axis != -1) {
         ShapeHandle input;
+        if (axis >= kint32max) {
+          return errors::InvalidArgument(
+              "Axis cannot be >= kint32max value, got ", axis);
+        }
         TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(0), axis + 1, &input));
         DimensionHandle depth;
         TF_RETURN_IF_ERROR(
@@ -2914,6 +2932,10 @@ REGISTER_OP("QuantizeAndDequantizeV4")
                                        axis);
       } else if (axis != -1) {
         ShapeHandle input;
+        if (axis >= kint32max) {
+          return errors::InvalidArgument(
+              "Axis cannot be >= kint32max value, got ", axis);
+        }
         TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(0), axis + 1, &input));
         DimensionHandle depth;
         TF_RETURN_IF_ERROR(
@@ -2945,6 +2967,10 @@ REGISTER_OP("QuantizeAndDequantizeV4Grad")
                                        axis);
       } else if (axis != -1) {
         ShapeHandle input;
+        if (axis >= kint32max) {
+          return errors::InvalidArgument(
+              "Axis cannot be >= kint32max value, got ", axis);
+        }
         TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(0), axis + 1, &input));
         DimensionHandle depth;
         TF_RETURN_IF_ERROR(
@@ -2981,6 +3007,10 @@ REGISTER_OP("QuantizeAndDequantizeV3")
                                        axis);
       } else if (axis != -1) {
         ShapeHandle input;
+        if (axis >= kint32max) {
+          return errors::InvalidArgument(
+              "Axis cannot be >= kint32max value, got ", axis);
+        }
         TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(0), axis + 1, &input));
         DimensionHandle depth;
         TF_RETURN_IF_ERROR(

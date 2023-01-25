@@ -227,7 +227,7 @@ void XlaDeviceContext::CopyDeviceTensorToCPU(const Tensor* device_tensor,
   if (device_to_host_stream_) {
     device_to_host_stream = device_to_host_stream_;
   } else {
-    stream_executor::port::StatusOr<xla::StreamPool::Ptr> ptr_or_status =
+    tsl::StatusOr<xla::StreamPool::Ptr> ptr_or_status =
         client_->mutable_backend()->BorrowStream(
             stream_->parent()->device_ordinal());
     if (!ptr_or_status.status().ok()) {

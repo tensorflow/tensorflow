@@ -26,7 +26,7 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/lite/builtin_ops.h"
-#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/core/macros.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 
@@ -199,6 +199,35 @@ TfLiteStatus MultiplyAndCheckOverflow(size_t a, size_t b, size_t* product) {
   if (TFLITE_EXPECT_FALSE((a | b) >> overflow_upper_half_bit_position != 0)) {
     if (a != 0 && *product / a != b) return kTfLiteError;
   }
+  return kTfLiteOk;
+}
+
+TfLiteStatus BytesRequired(TfLiteType type, const int* dims, size_t dims_size,
+                           size_t* bytes, TfLiteContext context_) {
+  TF_LITE_ENSURE(&context_, bytes != nullptr);
+  // When 'dims_size' is 0, we simply assume it's a scalar. Therefore, we start
+  // 'count' as 1.
+  size_t count = 1;
+  for (int k = 0; k < dims_size; k++) {
+    size_t old_count = count;
+    TF_LITE_ENSURE_MSG(
+        &context_,
+        MultiplyAndCheckOverflow(old_count, dims[k], &count) == kTfLiteOk,
+        "BytesRequired number of elements overflowed.\n");
+  }
+  size_t type_size = 0;
+  TF_LITE_ENSURE_OK(&context_, GetSizeOfType(&context_, type, &type_size));
+  TF_LITE_ENSURE_MSG(
+      &context_, MultiplyAndCheckOverflow(type_size, count, bytes) == kTfLiteOk,
+      "BytesRequired number of bytes overflowed.\n");
+
+  // GetSizeOfType doesn't work for kTfLiteInt4 due to it having 2 values packed
+  // into 1 byte so the output of GetSizeOfType is the same as int8 aka 1 byte.
+  // Thus the required bytes must be divided by half after everything for int4.
+  if (type == kTfLiteInt4) {
+    *bytes = (*bytes + 1) / 2;
+  }
+
   return kTfLiteOk;
 }
 }  // namespace tflite

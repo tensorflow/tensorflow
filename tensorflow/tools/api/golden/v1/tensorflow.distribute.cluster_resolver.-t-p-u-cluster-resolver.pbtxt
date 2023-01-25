@@ -32,6 +32,10 @@ tf_class {
     argspec: "args=[\'tpu\', \'zone\', \'project\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\'], "
   }
   member_method {
+    name: "get_coordination_service_leader"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
     name: "get_job_name"
     argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
   }

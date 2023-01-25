@@ -19,7 +19,7 @@ limitations under the License.
 #include <type_traits>
 
 #include <gtest/gtest.h>
-#include "tensorflow/lite/c/c_api_types.h"
+#include "tensorflow/lite/core/c/c_api_types.h"
 #include "tensorflow/lite/portable_type_to_tflitetype.h"
 
 namespace tflite {

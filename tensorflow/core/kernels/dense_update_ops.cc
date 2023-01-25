@@ -113,7 +113,6 @@ TF_CALL_INTEGRAL_TYPES_NO_INT32(REGISTER_GPU_KERNELS);
 #undef REGISTER_GPU_KERNELS
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
-
 #define REGISTER_KERNELS(type)                                        \
   REGISTER_KERNEL_BUILDER(                                            \
       Name("AssignAdd").Device(DEVICE_CPU).TypeConstraint<type>("T"), \

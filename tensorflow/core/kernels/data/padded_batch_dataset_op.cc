@@ -187,6 +187,8 @@ class PaddedBatchDatasetOp::Dataset : public DatasetBase {
     explicit Iterator(const Params& params)
         : DatasetIterator<Dataset>(params) {}
 
+    bool SymbolicCheckpointCompatible() const override { return true; }
+
     Status Initialize(IteratorContext* ctx) override {
       return dataset()->input_->MakeIterator(ctx, this, prefix(), &input_impl_);
     }
@@ -245,17 +247,21 @@ class PaddedBatchDatasetOp::Dataset : public DatasetBase {
     Status SaveInternal(SerializationContext* ctx,
                         IteratorStateWriter* writer) override {
       mutex_lock l(mu_);
-      if (input_impl_)
+      TF_RETURN_IF_ERROR(writer->WriteScalar(
+          full_name(kExhausted), static_cast<int64_t>(!input_impl_)));
+      if (input_impl_) {
         TF_RETURN_IF_ERROR(SaveInput(ctx, writer, input_impl_));
-      else
-        TF_RETURN_IF_ERROR(writer->WriteScalar(full_name(kExhausted), ""));
+      }
       return OkStatus();
     }
 
     Status RestoreInternal(IteratorContext* ctx,
                            IteratorStateReader* reader) override {
       mutex_lock l(mu_);
-      if (reader->Contains(full_name(kExhausted))) {
+      int64_t input_exhausted;
+      TF_RETURN_IF_ERROR(
+          reader->ReadScalar(full_name(kExhausted), &input_exhausted));
+      if (static_cast<bool>(input_exhausted)) {
         input_impl_.reset();
       } else {
         TF_RETURN_IF_ERROR(

@@ -1,4 +1,4 @@
-// RUN: tf-tfrt-opt -pass-pipeline='tf-executor-to-tfrt-pipeline{target-tpurt=true}' %s | FileCheck %s
+// RUN: tf-tfrt-opt -pass-pipeline='builtin.module(tf-executor-to-tfrt-pipeline{target-tpurt=true})' %s | FileCheck %s
 
 module attributes {tf_saved_model.semantics}  {
   // CHECK-LABEL: func @main

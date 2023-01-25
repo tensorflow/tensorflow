@@ -328,14 +328,16 @@ template <typename T>
 int CountLeadingZeros(T integer_input) {
   static_assert(std::is_unsigned<T>::value,
                 "Only unsigned integer types handled.");
-#if defined(__GNUC__)
-  return integer_input ? __builtin_clz(integer_input)
-                       : std::numeric_limits<T>::digits;
-#else
   if (integer_input == 0) {
     return std::numeric_limits<T>::digits;
   }
-
+#if defined(__GNUC__)
+  if (std::is_same<T, uint32_t>::value) {
+    return __builtin_clz(integer_input);
+  } else if (std::is_same<T, uint64_t>::value) {
+    return __builtin_clzll(integer_input);
+  }
+#endif
   const T one_in_leading_positive = static_cast<T>(1)
                                     << (std::numeric_limits<T>::digits - 1);
   int leading_zeros = 0;
@@ -344,7 +346,6 @@ int CountLeadingZeros(T integer_input) {
     ++leading_zeros;
   }
   return leading_zeros;
-#endif
 }
 
 template <typename T>
@@ -388,11 +389,10 @@ constexpr int LUTSize() {
                     std::is_same<T, int8_t>::value ||
                     std::is_same<T, int16_t>::value,
                 "Only LUTs with uint8, int8 or int16 inputs are supported.");
-  if (std::is_same<T, uint8_t>::value || std::is_same<T, int8_t>::value) {
-    return 256;
-  } else {
-    return 513;
-  }
+  // As per c++11: constexpr methods cannot have more than one return statement.
+  return (std::is_same<T, uint8_t>::value || std::is_same<T, int8_t>::value)
+             ? 256
+             : 513;
 }
 
 // Use the same LUT generation code for both uint8_t and int8_t. Int8_t indexes
@@ -412,7 +412,7 @@ LUTPopulate(float input_scale, int32_t input_zero_point, float output_scale,
   for (int32_t val = minval; val <= maxval; ++val) {
     const float dequantized = input_scale * (val - input_zero_point);
     const float transformed = transform(dequantized);
-    const float rescaled = std::round(transformed * inverse_scale);
+    const float rescaled = TfLiteRound(transformed * inverse_scale);
     const int32_t quantized =
         static_cast<int32_t>(rescaled + output_zero_point);
     lut_uint8[static_cast<uint8_t>(static_cast<T>(val))] = static_cast<uint8_t>(

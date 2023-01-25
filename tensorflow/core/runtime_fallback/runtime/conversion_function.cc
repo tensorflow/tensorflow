@@ -108,7 +108,7 @@ ConvertScalarHostTensorToRuntimeFallbackTensor(
         "error copying ScalarHostTensor to DenseHostTensor");
 
   return tfrt::MakeAvailableAsyncValueRef<RuntimeFallbackTensor>(
-      CopyRefDHTToRuntimeFallbackTensor(optional_dht.getValue(), host));
+      CopyRefDHTToRuntimeFallbackTensor(optional_dht.value(), host));
 }
 
 static tfrt::AsyncValueRef<RuntimeFallbackTensor>
@@ -145,7 +145,7 @@ TransferRuntimeFallbackToAnotherDevice(const RuntimeFallbackTensor &tensor,
     return tfrt::MakeStringError(
         "Cannot get EagerContext from ExecutionContext.");
   auto expected_eager_context =
-      eager_context_resource.getValue()->GetTFEagerContext();
+      eager_context_resource.value()->GetTFEagerContext();
   if (!expected_eager_context) return expected_eager_context.takeError();
   auto *eager_context = expected_eager_context.get();
 

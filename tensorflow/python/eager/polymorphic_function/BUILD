@@ -2,7 +2,15 @@ load("//tensorflow:tensorflow.default.bzl", "cuda_py_test", "tf_py_test")
 load("//tensorflow/compiler/tests:build_defs.bzl", "tf_xla_py_test")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     licenses = ["notice"],
+)
+
+py_library(
+    name = "attributes",
+    srcs = ["attributes.py"],
+    srcs_version = "PY3",
+    deps = [],
 )
 
 py_library(
@@ -11,9 +19,10 @@ py_library(
     srcs_version = "PY3",
     visibility = ["//tensorflow/python/eager:__pkg__"],
     deps = [
+        ":attributes",
         ":function_context",
         ":function_spec",
-        ":saved_model_utils",
+        ":saved_model_exported_concrete",
         "//tensorflow/core/function/polymorphism:function_cache",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:errors",
@@ -41,7 +50,9 @@ py_library(
     srcs_version = "PY3",
     visibility = ["//tensorflow/python/eager:__pkg__"],
     deps = [
+        ":attributes",
         ":monomorphic_function",
+        "//tensorflow/core/function/capture:capture_container",
     ],
 )
 
@@ -51,6 +62,8 @@ py_library(
     srcs_version = "PY3",
     visibility = ["//tensorflow:internal"],
     deps = [
+        ":attributes",
+        ":compiler_ir",
         ":function_spec",
         "//tensorflow/python:cond_v2",  # TODO(b/118513001): Imported via control_flow_ops; remove.
         "//tensorflow/python:control_flow_ops",
@@ -221,10 +234,7 @@ py_library(
     srcs_version = "PY3",
     visibility = ["//tensorflow:internal"],
     deps = [
-        "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python/framework:composite_tensor",
-        "//tensorflow/python/framework:tensor_spec",
-        "//tensorflow/python/framework:type_spec",
         "//tensorflow/python/util",
     ],
 )
@@ -330,6 +340,16 @@ py_library(
 )
 
 py_library(
+    name = "saved_model_exported_concrete",
+    srcs = ["saved_model_exported_concrete.py"],
+    srcs_version = "PY3",
+    visibility = ["//tensorflow:internal"],
+    deps = [
+        "//tensorflow/python/trackable:base",
+    ],
+)
+
+py_library(
     name = "function_spec",
     srcs = ["function_spec.py"],
     srcs_version = "PY3",
@@ -359,5 +379,51 @@ tf_py_test(
         "//tensorflow/core/function/polymorphism:function_type",
         "//tensorflow/core/function/trace_type",
         "//tensorflow/python:client_testlib",
+    ],
+)
+
+py_library(
+    name = "compiler_ir",
+    srcs = ["compiler_ir.py"],
+    srcs_version = "PY3",
+    visibility = ["//tensorflow:internal"],
+    deps = [
+        "//tensorflow/core/function/trace_type",
+        "//tensorflow/python:random_ops",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/framework:tensor_spec",
+        "//tensorflow/python/util",
+    ],
+)
+
+tf_xla_py_test(
+    name = "compiler_ir_test",
+    srcs = ["compiler_ir_test.py"],
+    disabled_backends = [
+        "cpu_ondemand",
+    ],
+    enable_mlir_bridge = True,
+    python_version = "PY3",
+    tags = [
+        "no_mac",
+        "no_pip",
+        "no_tfrt",  # TODO(b/185944215)
+        "no_windows",
+    ],
+    use_xla_device = False,
+    deps = [
+        ":compiler_ir",
+        ":polymorphic_function",
+        "//tensorflow/compiler/tests:xla_test",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:array_ops_gen",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:variables",
+        "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:tensor_spec",
+        "//tensorflow/python/framework:test_lib",
+        "//tensorflow/python/util",
     ],
 )

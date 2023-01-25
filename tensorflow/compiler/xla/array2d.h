@@ -25,6 +25,7 @@ limitations under the License.
 #include <random>
 #include <vector>
 
+#include "absl/functional/function_ref.h"
 #include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/xla/array.h"
 #include "tensorflow/compiler/xla/types.h"
@@ -49,10 +50,12 @@ class Array2D : public Array<T> {
   Array2D(std::initializer_list<std::initializer_list<T>> values)
       : Array<T>(values) {}
 
-  // Creates an array of a floating-point type (half, bfloat16, float,
+  // Creates an array of a floating-point type (float8, half, bfloat16, float,
   // or double) from the given nested initializer list of float values.
   template <typename T2, typename = typename std::enable_if<
-                             (std::is_same<T, Eigen::half>::value ||
+                             (std::is_same<T, tsl::float8_e4m3fn>::value ||
+                              std::is_same<T, tsl::float8_e5m2>::value ||
+                              std::is_same<T, Eigen::half>::value ||
                               std::is_same<T, bfloat16>::value ||
                               std::is_same<T, float>::value ||
                               std::is_same<T, double>::value) &&
@@ -83,7 +86,7 @@ class Array2D : public Array<T> {
   }
 
   // Applies f to all cells in this array, in row-major order.
-  void Each(std::function<void(int64_t, int64_t, T*)> f) {
+  void Each(absl::FunctionRef<void(int64_t, int64_t, T*)> f) {
     for (int64_t i0 = 0; i0 < n1(); ++i0) {
       for (int64_t i1 = 0; i1 < n2(); ++i1) {
         f(i0, i1, &(*this)(i0, i1));

@@ -92,9 +92,7 @@ bool inline DoesControlEdgeExist(const Node* src, const Node* dst) {
 // TODO(intel_tf): Cleanup shall be done in future:
 //                 (1) Remove this method;
 //                 (2) Update related code wherever it is called.
-bool inline NativeFormatEnabled() {
-  return true;
-}
+bool inline NativeFormatEnabled() { return true; }
 
 // Check if the data_format attribute in the node def represents 5D tensor
 bool inline Check5DFormat(const NodeDef& ndef) {
@@ -148,7 +146,8 @@ inline string GetMklNativeOpName(const string& name) {
        0 == name.compare("BatchMatMul") || 0 == name.compare("BatchMatMulV2") ||
        0 == name.compare("Einsum") || 0 == name.compare("MatMul") ||
        0 == name.compare("Transpose") || 0 == name.compare("QuantizeV2") ||
-       0 == name.compare("Dequantize") || 0 == name.rfind("Quantized", 0));
+       0 == name.compare("Dequantize") || 0 == name.compare("Softmax") ||
+       0 == name.rfind("Quantized", 0));
 
   if (result) {
     return string(kMklOpPrefix) + name;

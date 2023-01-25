@@ -408,3 +408,47 @@ module {
     func.return %c0 : tensor<0xf32>
   }
 }
+
+// -----
+
+// Tests that entries corresponding to removed arguments in "tf._input_shapes"
+// is also removed.
+
+module {
+  func.func @f() -> tensor<0xf32> {
+    // CHECK-NOT: "tf.VarHandleOp"
+    %handle = "tf.VarHandleOp"() {container="", shared_name="var1", device = "/job:worker/replica:0/task:1/device:CPU:0"} : () -> tensor<!tf_type.resource<tensor<0xf32>>>
+    %cst = "tf.Const"() { value = dense<1.0> : tensor<0xf32> } : () -> tensor<0xf32>
+    %val = "tf.PartitionedCall"(%cst, %handle) {config = "", config_proto = "", executor_type = "", f = @f_callee} : (tensor<0xf32>, tensor<!tf_type.resource<tensor<0xf32>>>) -> (tensor<0xf32>)
+    func.return %val : tensor<0xf32>
+  }
+
+  // CHECK: func private @f_callee(%[[ARG0:.*]]: tensor<0xf32>) -> tensor<0xf32>
+  // CHECK-SAME: tf._input_shapes = [#tf_type.shape<0>]
+  func.func private @f_callee(%arg0: tensor<0xf32>, %arg1: tensor<*x!tf_type.resource>) -> tensor<0xf32> attributes {tf._input_shapes = [#tf_type.shape<0>, #tf_type.shape<>]} {
+    %0 = "tf.ReadVariableOp"(%arg1) : (tensor<*x!tf_type.resource>) -> tensor<0xf32>
+    %1 = "tf.AddV2"(%arg0, %0) : (tensor<0xf32>, tensor<0xf32>) -> tensor<0xf32>
+    func.return %1 : tensor<0xf32>
+  }
+}
+
+// -----
+
+// Tests that an error is emitted when the number of arguments and the size of
+// "tf._input_shapes" attribute doesn't match.
+
+module {
+  func.func @f() -> tensor<0xf32> {
+    %handle = "tf.VarHandleOp"() {container="", shared_name="var1", device = "/job:worker/replica:0/task:1/device:CPU:0"} : () -> tensor<!tf_type.resource<tensor<0xf32>>>
+    %cst = "tf.Const"() { value = dense<1.0> : tensor<0xf32> } : () -> tensor<0xf32>
+    %val = "tf.PartitionedCall"(%cst, %handle) {config = "", config_proto = "", executor_type = "", f = @f_callee} : (tensor<0xf32>, tensor<!tf_type.resource<tensor<0xf32>>>) -> (tensor<0xf32>)
+    func.return %val : tensor<0xf32>
+  }
+
+  // expected-error@+1 {{Number of arguments and 'tf._input_shapes' attribute size do not match. Num args: 2, tf._input_shapes size: 3}}
+  func.func private @f_callee(%arg0: tensor<0xf32>, %arg1: tensor<*x!tf_type.resource>) -> tensor<0xf32> attributes {tf._input_shapes = [#tf_type.shape<0>, #tf_type.shape<>, #tf_type.shape<9x9x9>]} {
+    %0 = "tf.ReadVariableOp"(%arg1) : (tensor<*x!tf_type.resource>) -> tensor<0xf32>
+    %1 = "tf.AddV2"(%arg0, %0) : (tensor<0xf32>, tensor<0xf32>) -> tensor<0xf32>
+    func.return %1 : tensor<0xf32>
+  }
+}

@@ -160,12 +160,13 @@ namespace xla {
   V(kStochasticConvert, "stochastic-convert", 2)                               \
   V(kCbrt, "cbrt", 1)                                                          \
   V(kSubtract, "subtract", 2)                                                  \
+  V(kTan, "tan", 1)                                                            \
   V(kTanh, "tanh", 1)                                                          \
   V(kTranspose, "transpose", 1)                                                \
   V(kTriangularSolve, "triangular-solve", 2)                                   \
   V(kTuple, "tuple", kHloOpcodeIsVariadic)                                     \
   V(kWhile, "while", 1)
-// LINT.ThenChange(../../mlir_hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.td)
+// LINT.ThenChange(../../mlir_hlo/mhlo/IR/hlo_ops.td)
 
 enum class HloOpcode {
 #define DECLARE_ENUM(enum_name, opcode_name, ...) enum_name,

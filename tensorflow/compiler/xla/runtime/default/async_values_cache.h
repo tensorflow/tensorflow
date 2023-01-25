@@ -18,20 +18,20 @@ limitations under the License.
 
 #include "absl/synchronization/mutex.h"
 #include "llvm/ADT/DenseMap.h"
-#include "tfrt/host_context/async_dispatch.h"  // from @tf_runtime
-#include "tfrt/host_context/async_value_ref.h"  // from @tf_runtime
-#include "tfrt/host_context/chain.h"  // from @tf_runtime
+#include "tfrt/concurrency/async_value.h"  // from @tf_runtime
+#include "tfrt/concurrency/async_value_ref.h"  // from @tf_runtime
+#include "tfrt/concurrency/chain.h"  // from @tf_runtime
 
 namespace xla {
 namespace runtime {
 
-using tfrt::AsyncValue;
-using tfrt::AsyncValuePtr;
-using tfrt::AsyncValueRef;
-using tfrt::Chain;
-using tfrt::MakeConstructedAsyncValueRef;
-using tfrt::MakeUnconstructedAsyncValueRef;
-using tfrt::RunWhenReady;
+using tsl::AsyncValue;
+using tsl::AsyncValuePtr;
+using tsl::AsyncValueRef;
+using tsl::Chain;
+using tsl::MakeConstructedAsyncValueRef;
+using tsl::MakeUnconstructedAsyncValueRef;
+using tsl::RunWhenReady;
 
 template <typename Key, typename Value>
 class AsyncValuesCache {

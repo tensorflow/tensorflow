@@ -55,3 +55,16 @@ index 985274e..7ebb1e1 100644
  #define NCCL_VERSION(X,Y,Z) (((X) <= 2 && (Y) <= 8) ? (X) * 1000 + (Y) * 100 + (Z) : (X) * 10000 + (Y) * 100 + (Z))
  
  #ifdef __cplusplus
+diff --git a/src/include/nvtx.h b/src/include/nvtx.h
+index 2aeb932..cdc67d2 100644
+--- a/src/include/nvtx.h
++++ b/src/include/nvtx.h
+@@ -37,7 +37,7 @@ struct nccl_domain{static constexpr char const* name{"NCCL"};};
+
+ class payload_schema {
+  public:
+-  NVTX3_RELAXED_CONSTEXPR explicit payload_schema(const nvtxPayloadSchemaEntry_t entries[], size_t numEntries, const uint64_t schemaId, const char* schemaName = nullptr) noexcept
++  explicit payload_schema(const nvtxPayloadSchemaEntry_t entries[], size_t numEntries, const uint64_t schemaId, const char* schemaName = nullptr) noexcept
+   {
+     schema_attr.name = schemaName;
+     schema_attr.entries = entries;

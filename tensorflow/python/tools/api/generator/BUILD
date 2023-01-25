@@ -7,6 +7,7 @@ load("//tensorflow/python/tools/api/generator:api_init_files_v1.bzl", "KERAS_API
 load("//tensorflow/python/tools/api/generator:api_gen.bzl", "TENSORFLOW_API_GEN_PACKAGES")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     licenses = ["notice"],
 )
 

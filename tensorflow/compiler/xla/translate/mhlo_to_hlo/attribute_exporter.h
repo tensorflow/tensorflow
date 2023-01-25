@@ -19,8 +19,8 @@ limitations under the License.
 #include <utility>
 
 #include "mlir/IR/Attributes.h"  // from @llvm-project
-#include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/lhlo_gpu/IR/lhlo_gpu_ops.h"
-#include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
+#include "tensorflow/compiler/xla/mlir_hlo/lhlo_gpu/IR/lhlo_gpu_ops.h"
+#include "tensorflow/compiler/xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/statusor.h"
@@ -43,16 +43,19 @@ StatusOr<std::vector<ReplicaGroup>> ConvertReplicaGroups(
 // Convert a (N, 2) dense attribute to a list of tuples. This is the way padding
 // and source-target pairs are defined in HLO.
 StatusOr<std::vector<std::pair<int64_t, int64_t>>> ConvertNx2Attribute(
-    llvm::Optional<mlir::DenseIntElementsAttr> optional_attr);
+    std::optional<mlir::DenseIntElementsAttr> optional_attr);
 
 StatusOr<FftType> ConvertFftType(llvm::StringRef type_string);
 StatusOr<TriangularSolveOptions::Transpose> ConvertTranspose(
     llvm::StringRef transpose_string);
 
+StatusOr<xla::CustomCallSchedule> ConvertCustomCallSchedule(
+    mlir::mhlo::CustomCallSchedule schedule);
+
 StatusOr<xla::CustomCallApiVersion> ConvertCustomCallApiVersion(
     mlir::mhlo::CustomCallApiVersion api_version);
 
 StatusOr<std::vector<std::pair<ShapeIndex, std::pair<int64_t, ShapeIndex>>>>
-ConvertCustomCallOutputOperandAliasing(mlir::ArrayAttr aliasArrayAttr);
+ConvertOutputOperandAliasing(mlir::ArrayAttr aliasArrayAttr);
 }  // namespace xla
 #endif  // TENSORFLOW_COMPILER_XLA_TRANSLATE_MHLO_TO_HLO_ATTRIBUTE_EXPORTER_H_

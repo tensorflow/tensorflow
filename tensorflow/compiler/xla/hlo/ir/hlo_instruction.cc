@@ -234,8 +234,19 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
       break;
     }
     case HloOpcode::kCopyStart: {
-      instruction = CreateCopyStart(shape, operands(0),
-                                    proto.is_cross_program_prefetch());
+      std::optional<int> cross_program_prefetch_index;
+      if (proto.optional_cross_program_prefetch_index_case() ==
+          HloInstructionProto::kCrossProgramPrefetchIndex) {
+        cross_program_prefetch_index =
+            std::make_optional(proto.cross_program_prefetch_index());
+
+        // Silently upgrade HLO protos using the old field.
+      } else if (proto.is_cross_program_prefetch()) {
+        cross_program_prefetch_index = 0;
+      }
+
+      instruction =
+          CreateCopyStart(shape, operands(0), cross_program_prefetch_index);
       break;
     }
     case HloOpcode::kCompare: {
@@ -424,6 +435,19 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
           << "No fusion computation with id " << fusion_id;
       instruction =
           CreateFusion(shape, fusion_kind, all_operands(), fused_computation);
+      std::vector<std::pair<ShapeIndex, std::pair<int64_t, ShapeIndex>>>
+          output_to_operand_aliasing;
+      for (const auto& aliasing : proto.output_operand_aliasing()) {
+        output_to_operand_aliasing.emplace_back(
+            ShapeIndex(aliasing.output_shape_index().begin(),
+                       aliasing.output_shape_index().end()),
+            std::make_pair(aliasing.operand_index(),
+                           ShapeIndex(aliasing.operand_shape_index().begin(),
+                                      aliasing.operand_shape_index().end())));
+      }
+      auto fusion_instr = DynCast<HloFusionInstruction>(instruction.get());
+      fusion_instr->set_output_to_operand_aliasing(
+          std::move(output_to_operand_aliasing));
       break;
     }
     case HloOpcode::kRng:
@@ -782,14 +806,13 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
       *custom_call_instr->mutable_precision_config() = precision_config;
       std::vector<std::pair<ShapeIndex, std::pair<int64_t, ShapeIndex>>>
           output_to_operand_aliasing;
-      for (const auto& aliasing : proto.custom_call_output_operand_aliasing()) {
+      for (const auto& aliasing : proto.output_operand_aliasing()) {
         output_to_operand_aliasing.emplace_back(
             ShapeIndex(aliasing.output_shape_index().begin(),
                        aliasing.output_shape_index().end()),
-            std::pair<int64_t, ShapeIndex>{
-                aliasing.operand_index(),
-                ShapeIndex(aliasing.operand_shape_index().begin(),
-                           aliasing.operand_shape_index().end())});
+            std::make_pair(aliasing.operand_index(),
+                           ShapeIndex(aliasing.operand_shape_index().begin(),
+                                      aliasing.operand_shape_index().end())));
       }
       custom_call_instr->set_output_to_operand_aliasing(
           std::move(output_to_operand_aliasing));
@@ -998,8 +1021,11 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
   instruction->unique_id_ = proto.id();
 
   if (proto.has_sharding()) {
-    TF_ASSIGN_OR_RETURN(const auto& sharding,
+    TF_ASSIGN_OR_RETURN(HloSharding sharding,
                         HloSharding::FromProto(proto.sharding()));
+    // To allow for existing Hlo protos to not fail verification, apply tuple
+    // sharding normalization.
+    sharding = sharding.NormalizeTupleSharding(instruction->shape());
     instruction->set_sharding(sharding);
   }
 
@@ -1106,6 +1132,7 @@ HloInstruction::CreateRngBitGenerator(const Shape& shape, HloInstruction* state,
     case HloOpcode::kSqrt:
     case HloOpcode::kCbrt:
     case HloOpcode::kTanh:
+    case HloOpcode::kTan:
       break;
     default:
       LOG(FATAL) << "Invalid unary instruction opcode "
@@ -1220,9 +1247,9 @@ HloInstruction::CreateRngBitGenerator(const Shape& shape, HloInstruction* state,
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateCopyStart(
     const Shape& shape, HloInstruction* operand,
-    bool is_cross_program_prefetch) {
+    std::optional<int> cross_program_prefetch) {
   return std::make_unique<HloCopyStartInstruction>(shape, operand,
-                                                   is_cross_program_prefetch);
+                                                   cross_program_prefetch);
 }
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateCompare(
@@ -1557,6 +1584,17 @@ HloInstruction::CreateBitcastConvert(const Shape& shape,
   return instruction;
 }
 
+/* static */ std::unique_ptr<HloInstruction>
+HloInstruction::CreateStochasticConvert(const Shape& shape,
+                                        HloInstruction* operand,
+                                        HloInstruction* random) {
+  auto instruction = absl::WrapUnique(
+      new HloInstruction(HloOpcode::kStochasticConvert, shape));
+  instruction->AppendOperand(operand);
+  instruction->AppendOperand(random);
+  return instruction;
+}
+
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateBitcast(
     const Shape& shape, HloInstruction* operand) {
   auto instruction =
@@ -1690,8 +1728,7 @@ HloInstruction::CreateSetDimensionSize(const Shape& shape,
 /* static */ std::unique_ptr<HloInstruction>
 HloInstruction::CreateBroadcastSequence(
     const Shape& output_shape, HloInstruction* operand,
-    const std::function<HloInstruction*(std::unique_ptr<HloInstruction>)>&
-        adder) {
+    absl::FunctionRef<HloInstruction*(std::unique_ptr<HloInstruction>)> adder) {
   CHECK(ShapeUtil::IsScalar(operand->shape()) ||
         operand->shape().rank() == output_shape.rank());
   Shape broadcast_shape = ShapeUtil::ChangeElementType(
@@ -2097,6 +2134,7 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
     case HloOpcode::kSin:
     case HloOpcode::kSqrt:
     case HloOpcode::kCbrt:
+    case HloOpcode::kTan:
     case HloOpcode::kTanh:
       CHECK_EQ(new_operands.size(), 1);
       clone = CreateUnary(shape, opcode_, new_operands[0]);
@@ -2118,7 +2156,6 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
     case HloOpcode::kShiftLeft:
     case HloOpcode::kShiftRightArithmetic:
     case HloOpcode::kShiftRightLogical:
-    case HloOpcode::kStochasticConvert:
       CHECK_EQ(new_operands.size(), 2);
       clone = CreateBinary(shape, opcode_, new_operands[0], new_operands[1]);
       break;
@@ -2140,6 +2177,10 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
     case HloOpcode::kBitcastConvert:
       CHECK_EQ(new_operands.size(), 1);
       clone = CreateBitcastConvert(shape, new_operands[0]);
+      break;
+    case HloOpcode::kStochasticConvert:
+      CHECK_EQ(new_operands.size(), 2);
+      clone = CreateStochasticConvert(shape, new_operands[0], new_operands[1]);
       break;
     case HloOpcode::kDynamicUpdateSlice:
       clone = CreateDynamicUpdateSlice(shape, new_operands[0], new_operands[1],
@@ -2373,9 +2414,9 @@ Status HloInstruction::CopyAllControlDepsFrom(const HloInstruction* inst) {
 
 bool HloInstruction::IdenticalInternal(
     const HloInstruction& other,
-    const std::function<bool(const HloInstruction*, const HloInstruction*)>&
+    absl::FunctionRef<bool(const HloInstruction*, const HloInstruction*)>
         eq_operands,
-    const std::function<bool(const HloComputation*, const HloComputation*)>&
+    absl::FunctionRef<bool(const HloComputation*, const HloComputation*)>
         eq_computations,
     bool layout_sensitive, bool ignore_channel_id_values,
     bool ignore_commutative_operand_order) const {
@@ -2488,7 +2529,7 @@ bool HloInstruction::HasConstantOperand() const {
 
 bool HloInstruction::IdenticalSlowPath(
     const HloInstruction& other,
-    const std::function<bool(const HloComputation*, const HloComputation*)>&
+    absl::FunctionRef<bool(const HloComputation*, const HloComputation*)>
         eq_computations) const {
   // Perform opcode specific checks.
   switch (opcode()) {
@@ -2551,6 +2592,7 @@ bool HloInstruction::IdenticalSlowPath(
     case HloOpcode::kStochasticConvert:
     case HloOpcode::kCbrt:
     case HloOpcode::kSubtract:
+    case HloOpcode::kTan:
     case HloOpcode::kTanh:
     case HloOpcode::kTuple:
       return true;
@@ -3024,6 +3066,7 @@ bool HloInstruction::IsOpElementwise(HloOpcode opcode) {
     case HloOpcode::kSin:
     case HloOpcode::kSqrt:
     case HloOpcode::kCbrt:
+    case HloOpcode::kTan:
     case HloOpcode::kTanh:
       return true;
 
@@ -3045,6 +3088,7 @@ bool HloInstruction::IsOpElementwise(HloOpcode opcode) {
     case HloOpcode::kShiftLeft:
     case HloOpcode::kShiftRightArithmetic:
     case HloOpcode::kShiftRightLogical:
+    case HloOpcode::kStochasticConvert:
       return true;
 
     // Ternary elementwise operations.
@@ -3622,6 +3666,8 @@ Status HloInstruction::Visit(DfsHloVisitorBase<HloInstructionPtr>* visitor) {
       return visitor->HandleLog(this);
     case HloOpcode::kLog1p:
       return visitor->HandleLog1p(this);
+    case HloOpcode::kTan:
+      return visitor->HandleTan(this);
     case HloOpcode::kTanh:
       return visitor->HandleTanh(this);
     case HloOpcode::kCos:
@@ -3762,11 +3808,11 @@ inline bool PushDFSChild(Visitor* visitor, DFSStack* dfs_stack,
 }
 
 using InternalCompareFunction =
-    std::function<bool(std::pair<int, const HloInstruction*>,
-                       std::pair<int, const HloInstruction*>)>;
+    absl::FunctionRef<bool(std::pair<int, const HloInstruction*>,
+                           std::pair<int, const HloInstruction*>)>;
 template <typename Visitor>
 static Status PostOrderDFS(HloInstruction* root, Visitor* visitor,
-                           const InternalCompareFunction* operand_order,
+                           std::optional<InternalCompareFunction> operand_order,
                            bool ignore_control_predecessors) {
   visitor->ReserveVisitStates(root->parent()->instruction_count());
 
@@ -3829,7 +3875,7 @@ static Status PostOrderDFS(HloInstruction* root, Visitor* visitor,
       }
     }
 
-    if (operand_order != nullptr) {
+    if (operand_order != std::nullopt) {
       std::sort(dfs_stack.begin() + old_dfs_stack_size, dfs_stack.end(),
                 *operand_order);
     }
@@ -3848,7 +3894,7 @@ Status HloInstruction::Accept(DfsHloVisitorBase<HloInstructionPtr>* visitor,
                               bool ignore_control_predecessors) {
   VLOG(3) << "HloInstruction::Accept(%" << name() << ")";
   TF_RETURN_IF_ERROR(
-      PostOrderDFS(this, visitor, nullptr, ignore_control_predecessors));
+      PostOrderDFS(this, visitor, std::nullopt, ignore_control_predecessors));
   if (call_finish_visit) {
     TF_RETURN_IF_ERROR(visitor->FinishVisit(this));
   }
@@ -3859,18 +3905,17 @@ Status HloInstruction::Accept(DfsHloVisitorBase<HloInstructionPtr>* visitor,
 template Status HloInstruction::Accept(DfsHloVisitor*, bool, bool);
 template Status HloInstruction::Accept(ConstDfsHloVisitor*, bool, bool);
 
-Status HloInstruction::AcceptWithOperandOrder(
-    DfsHloVisitor* visitor, const CompareFunction& operand_order,
-    bool call_finish_visit) {
+Status HloInstruction::AcceptWithOperandOrder(DfsHloVisitor* visitor,
+                                              CompareFunction operand_order,
+                                              bool call_finish_visit) {
   VLOG(2) << "HloInstruction::AcceptWithOperandOrder(%" << name() << ")";
-  InternalCompareFunction func = [&operand_order](
-                                     std::pair<int, const HloInstruction*> a,
-                                     std::pair<int, const HloInstruction*> b) {
+  auto func = [operand_order](std::pair<int, const HloInstruction*> a,
+                              std::pair<int, const HloInstruction*> b) {
     // Call the client's comparison function on the actual HloInstruction*
     // objects (ignoring the internal ids we also have in our stack entries)
     return operand_order(a.second, b.second);
   };
-  TF_RETURN_IF_ERROR(PostOrderDFS(this, visitor, &func,
+  TF_RETURN_IF_ERROR(PostOrderDFS(this, visitor, func,
                                   /*ignore_control_predecessors=*/false));
   if (call_finish_visit) {
     VLOG(3) << "HloInstruction::AcceptWithOperandOrder BEFORE FINISH VISIT";
@@ -4903,8 +4948,8 @@ void HloInstruction::set_called_computations_execution_thread(
       async_execution_thread, skip_async_execution_thread_overwrite);
 }
 
-bool HloInstruction::is_cross_program_prefetch() const {
-  return Cast<HloCopyStartInstruction>(this)->is_cross_program_prefetch();
+std::optional<int> HloInstruction::cross_program_prefetch_index() const {
+  return Cast<HloCopyStartInstruction>(this)->cross_program_prefetch_index();
 }
 
 ComparisonDirection HloInstruction::comparison_direction() const {
@@ -4924,8 +4969,8 @@ const CholeskyOptions& HloInstruction::cholesky_options() const {
 }
 
 const std::vector<std::pair<ShapeIndex, std::pair<int64_t, ShapeIndex>>>&
-HloInstruction::custom_call_output_operand_aliasing() const {
-  return Cast<HloCustomCallInstruction>(this)->output_to_operand_aliasing();
+HloInstruction::output_operand_aliasing() const {
+  return Cast<HloCallableInstruction>(this)->output_to_operand_aliasing();
 }
 
 }  // namespace xla

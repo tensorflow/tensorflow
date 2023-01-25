@@ -224,7 +224,7 @@ class FFTCPU : public FFTBase {
     TensorShape temp_shape{input_dims[0]};
     for (int i = 1; i <= FFTRank; ++i) {
       input_slice_sizes[i] = fft_shape[i - 1];
-      temp_shape.AddDim(fft_shape[i - 1]);
+      OP_REQUIRES_OK(ctx, temp_shape.AddDimWithStatus(fft_shape[i - 1]));
     }
     OP_REQUIRES(ctx, temp_shape.num_elements() > 0,
                 errors::InvalidArgument("Obtained a FFT shape of 0 elements: ",
@@ -267,7 +267,7 @@ class FFTCPU : public FFTBase {
     for (auto i = 1; i <= FFTRank; i++) {
       input_slice_sizes[i] =
           i == FFTRank ? fft_shape[i - 1] / 2 + 1 : fft_shape[i - 1];
-      full_fft_shape.AddDim(fft_shape[i - 1]);
+      OP_REQUIRES_OK(ctx, full_fft_shape.AddDimWithStatus(fft_shape[i - 1]));
     }
     OP_REQUIRES(ctx, full_fft_shape.num_elements() > 0,
                 errors::InvalidArgument("Obtained a FFT shape of 0 elements: ",
@@ -376,11 +376,11 @@ class CufftScratchAllocator : public se::ScratchAllocator {
   CufftScratchAllocator(int64_t memory_limit, OpKernelContext* context)
       : memory_limit_(memory_limit), total_byte_size_(0), context_(context) {}
   int64_t GetMemoryLimitInBytes() override { return memory_limit_; }
-  se::port::StatusOr<se::DeviceMemory<uint8>> AllocateBytes(
+  tsl::StatusOr<se::DeviceMemory<uint8>> AllocateBytes(
       int64_t byte_size) override {
     Tensor temporary_memory;
     if (byte_size > memory_limit_) {
-      return se::port::StatusOr<se::DeviceMemory<uint8>>();
+      return tsl::StatusOr<se::DeviceMemory<uint8>>();
     }
     AllocationAttributes allocation_attr;
     allocation_attr.retry_on_failure = false;
@@ -388,13 +388,13 @@ class CufftScratchAllocator : public se::ScratchAllocator {
         DT_UINT8, TensorShape({byte_size}), &temporary_memory,
         AllocatorAttributes(), allocation_attr));
     if (!allocation_status.ok()) {
-      return se::port::StatusOr<se::DeviceMemory<uint8>>();
+      return tsl::StatusOr<se::DeviceMemory<uint8>>();
     }
     // Hold the reference of the allocated tensors until the end of the
     // allocator.
     allocated_tensors_.push_back(temporary_memory);
     total_byte_size_ += byte_size;
-    return se::port::StatusOr<se::DeviceMemory<uint8>>(
+    return tsl::StatusOr<se::DeviceMemory<uint8>>(
         AsDeviceMemory(temporary_memory.flat<uint8>().data(),
                        temporary_memory.flat<uint8>().size()));
   }

@@ -5,6 +5,7 @@ load("//tensorflow:tensorflow.bzl", "if_google", "if_xla_available", "py_binary"
 load("//tensorflow/python/tools:tools.bzl", "saved_model_compile_aot")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//visibility:public"],
     licenses = ["notice"],
 )
@@ -329,6 +330,7 @@ py_library(
         # broken saved_model_cli.
         ":saved_model_aot_compile",
         ":saved_model_utils",
+        "@absl_py//absl/flags:argparse_flags",
         "//tensorflow/python",
         "//tensorflow/python/debug/wrappers:local_cli_wrapper",
     ] + if_google([

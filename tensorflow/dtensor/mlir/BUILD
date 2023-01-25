@@ -6,6 +6,7 @@ load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library")
 load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_cloud")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
         "//tensorflow/dtensor:dtensor-internal",
         # Allow visibility from the mlir language server.
@@ -191,6 +192,9 @@ cc_library(
         "dtensor_allreduce_sum_optimization.cc",
         "dtensor_mixed_precision_reduce.cc",
         "dtensor_mlir_passes.cc",
+        "dtensor_remove_dtensorlayout.cc",
+        "dtensor_replace_auxiliary_layout_op.cc",
+        "dtensor_set_hlo_sharding.cc",
         "function_renaming.cc",
         "handle_cross_cluster_dependencies.cc",
         "handle_sparsetensors.cc",
@@ -239,11 +243,13 @@ cc_library(
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_passes",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_types",
         "//tensorflow/compiler/mlir/tensorflow:tpu_rewrite_device_util",
+        "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla/client:sharding_builder",
         "//tensorflow/core:core_cpu_base",
         "//tensorflow/core:lib",
         "//tensorflow/dtensor/cc:constants",
         "//tensorflow/dtensor/cc:dtensor_utils",
+        "//tensorflow/dtensor/cc:layout_to_xla_sharding",
         "//tensorflow/dtensor/cc:tensor_layout",
         "//tensorflow/dtensor/mlir/dtensor_dialect:ir/dtensor_attributes",
         "//tensorflow/dtensor/mlir/utils:dtensor_mlir_passes_internal",
@@ -472,7 +478,6 @@ cc_library(
         ":tf_dtensor_dialect",
         ":value_utils",
         "//tensorflow/compiler/mlir:array_container_utils",
-        "//tensorflow/compiler/mlir:name_utils",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:convert_tensor",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_attributes",
@@ -508,6 +513,7 @@ cc_library(
     deps = [
         ":op_utils",
         ":tf_dtensor_dialect",
+        "//tensorflow/compiler/mlir/tensorflow:dynamic_shape_utils",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_passes",
         "//tensorflow/core:lib",
         "//tensorflow/dtensor/cc:dstatus",

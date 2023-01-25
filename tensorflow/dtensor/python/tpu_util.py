@@ -23,7 +23,6 @@ import numpy as np
 from tensorflow.dtensor.python import config
 from tensorflow.dtensor.python import dtensor_device
 from tensorflow.dtensor.python import gen_dtensor_ops
-from tensorflow.dtensor.python import heartbeat
 from tensorflow.dtensor.python import layout as layout_lib
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
@@ -279,13 +278,6 @@ def initialize_tpu_system():
                   + "messages above to see whether that's the case. \nIf so, "
                   + "consider to restart the job or try another machine.")
     raise e
-
-  # Optionally exchange heartbeats between workers every minute.
-  if config.num_clients() > 1 and config.heartbeat_enabled():
-    logging.info(
-        "Starting DTensor heartbeat service exchanging signals every 10 minutes"
-    )
-    heartbeat.start(period=180)
 
   # Clear out the eager context caches since the memory is invalid now.
   logging.info("Clearing out eager caches")
@@ -580,15 +572,17 @@ def _build_orthogonal_rings(
 
 
 @tf_export("experimental.dtensor.create_tpu_mesh", v1=[])
-def create_tpu_mesh(mesh_dim_names: List[str],
-                    mesh_shape: List[int],
-                    mesh_name: str,
-                    ring_dims: Optional[int] = None,
-                    ring_axes: Optional[List[str]] = None,
-                    ring_bounds: Optional[List[int]] = None,
-                    can_split_host_across_rings: bool = True,
-                    build_ring_across_rings: bool = False,
-                    rotate_ring_across_rings: bool = False) -> layout_lib.Mesh:
+def create_tpu_mesh(
+    mesh_dim_names: List[str],
+    mesh_shape: List[int],
+    mesh_name: str,
+    ring_dims: Optional[int] = None,
+    ring_axes: Optional[List[str]] = None,
+    ring_bounds: Optional[List[int]] = None,
+    can_split_host_across_rings: bool = True,
+    build_ring_across_rings: bool = False,
+    rotate_ring_across_rings: bool = False,
+    use_xla_spmd: bool = layout_lib.USE_XLA_SPMD) -> layout_lib.Mesh:
   """Returns a distributed TPU mesh optimized for AllReduce ring reductions.
 
   Only as many as leading axes specified by `ring_axes` as necessary will be
@@ -619,6 +613,8 @@ def create_tpu_mesh(mesh_dim_names: List[str],
       across model-parallel rings. This ring could be strided.
     rotate_ring_across_rings: Optional; If true, build the data-parallel ring in
       column-major instead of row-major order.
+    use_xla_spmd: Boolean when True, will use XLA SPMD instead of
+      DTensor SPMD.
   """
 
   logging.info("Building a TPU mesh %s of shape %s", mesh_name, mesh_shape)
@@ -719,7 +715,7 @@ def create_tpu_mesh(mesh_dim_names: List[str],
   global_device_ids, local_device_ids, local_device_list = _create_device_array(
       mesh_shape, _TPU_DEVICE_TYPE, None, local_device_ids=indexes)
   return layout_lib.Mesh(mesh_dim_names, global_device_ids, local_device_ids,
-                         local_device_list, mesh_name)
+                         local_device_list, mesh_name, use_xla_spmd)
 
 
 def get_device_ids(mesh: layout_lib.Mesh,

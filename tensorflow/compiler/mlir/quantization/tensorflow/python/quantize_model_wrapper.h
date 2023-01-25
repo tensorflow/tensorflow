@@ -16,34 +16,16 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_MLIR_QUANTIZATION_TENSORFLOW_PYTHON_QUANTIZE_MODEL_WRAPPER_H_
 
 #include <string>
+#include <unordered_set>
 #include <utility>
+#include <vector>
 
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "tensorflow/compiler/mlir/quantization/tensorflow/exported_model.pb.h"
 
 namespace tensorflow {
 namespace quantization {
-
-// TODO(b/247442990): Devise a better data structure to transfer this data
-// structure to python.
-std::pair<std::string, std::string> QuantizeQatModel(
-    absl::string_view saved_model_path, absl::string_view exported_names_str,
-    absl::string_view tags, absl::string_view quant_opts_serialized);
-
-std::pair<std::string, std::string> QuantizePtqDynamicRange(
-    absl::string_view saved_model_path, absl::string_view exported_names_str,
-    absl::string_view tags, absl::string_view quant_opts_serialized);
-
-// Runs the pre-calibration step of post-training quantization (PTQ). Returns
-// (serialized GraphDef, initializer node name).
-std::pair<std::string, std::string> QuantizePtqModelPreCalibration(
-    absl::string_view saved_model_path, absl::string_view exported_names_str,
-    absl::string_view tags, absl::string_view quant_opts_serialized);
-
-// Runs the post-calibration step of post-training quantization (PTQ). Returns
-// (serialized GraphDef, initializer node name).
-std::pair<std::string, std::string> QuantizePtqModelPostCalibration(
-    absl::string_view saved_model_path, absl::string_view exported_names_str,
-    absl::string_view tags, absl::string_view quant_opts_serialized);
 
 void ClearCollectedInformationFromCalibrator();
 

@@ -16,23 +16,53 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_GEMM_ALGORITHM_PICKER_H_
 
 #include <optional>
+#include <string>
+#include <variant>
 
+#include "absl/strings/string_view.h"
+#include "tensorflow/compiler/xla/autotune_results.pb.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_conv_runner.h"
-#include "tensorflow/compiler/xla/service/hlo_instructions.h"
-#include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
+#include "tensorflow/compiler/xla/stream_executor/device_description.h"
 #include "tensorflow/compiler/xla/stream_executor/device_memory_allocator.h"
 #include "tensorflow/compiler/xla/stream_executor/stream_executor.h"
-#include "tensorflow/core/protobuf/autotuning.pb.h"
+#include "tensorflow/tsl/protobuf/autotuning.pb.h"
 
 namespace xla {
 namespace gpu {
 
+// GemmAlgorithmPicker supports two modes: device and deviceless.
+// In device mode, we run autotuning on the device and store autotune results.
+// In deviceless mode, we pass in some information related to the device and
+// use stored autotune results to rewrite Gemm instructions. If the required
+// autotune result is not stored, then algorithm is set to kRuntimeAutotuning.
 class GemmAlgorithmPicker : public HloModulePass {
  public:
-  GemmAlgorithmPicker(se::StreamExecutor* stream_exec,
-                      se::DeviceMemoryAllocator* allocator)
-      : stream_exec_(stream_exec), allocator_(allocator) {}
+  static void ClearAutotuneResults();
+  static Status WriteAutotuneResults(AutotuneResults* results);
+  static Status LoadAutotuneResults(const AutotuneResults& results);
+
+  struct DeviceConfig {
+    se::StreamExecutor* stream_exec;
+    se::DeviceMemoryAllocator* allocator;
+  };
+
+  struct DevicelessConfig {
+    // The human-readable description of the device.  It can be found by using
+    // stream_exec->GetDeviceDescription().model_str() when the stream executor
+    // is available.
+    std::string model_str;
+
+    // A field to determine the architecture of the device. We only pick an
+    // algorithm for non-Ampere architectures.
+    se::CudaComputeCapability cuda_compute_capability{0, 0};
+  };
+
+  explicit GemmAlgorithmPicker(DeviceConfig config) : config_(config) {}
+
+  explicit GemmAlgorithmPicker(DevicelessConfig config) : config_(config) {}
 
   absl::string_view name() const override { return "gemm-algorithm-picker"; }
 
@@ -42,8 +72,7 @@ class GemmAlgorithmPicker : public HloModulePass {
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
  private:
-  se::StreamExecutor* stream_exec_;
-  se::DeviceMemoryAllocator* allocator_;
+  std::variant<DeviceConfig, DevicelessConfig> config_;
 };
 
 }  // namespace gpu

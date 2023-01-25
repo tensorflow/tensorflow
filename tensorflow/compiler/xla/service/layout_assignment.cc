@@ -32,18 +32,18 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "absl/types/span.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_casting_utils.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/map_util.h"
 #include "tensorflow/compiler/xla/permutation_util.h"
 #include "tensorflow/compiler/xla/service/call_graph.h"
 #include "tensorflow/compiler/xla/service/computation_layout.h"
 #include "tensorflow/compiler/xla/service/hlo_alias_analysis.h"
-#include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
-#include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_dce.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/compiler/xla/service/hlo_instructions.h"
-#include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/logical_buffer.h"
 #include "tensorflow/compiler/xla/service/tuple_points_to_analysis.h"
 #include "tensorflow/compiler/xla/service/tuple_simplifier.h"
@@ -2447,8 +2447,7 @@ StatusOr<bool> LayoutAssignment::Run(
       if (IsLayoutConstrainedCustomCall(instruction)) {
         absl::flat_hash_set<int64_t> processed;
         for (const std::pair<ShapeIndex, std::pair<int64_t, ShapeIndex>>&
-                 output_operand_pair :
-             instruction->custom_call_output_operand_aliasing()) {
+                 output_operand_pair : instruction->output_operand_aliasing()) {
           int operand_no = output_operand_pair.second.first;
           if (!processed.contains(operand_no)) {
             TF_RETURN_IF_ERROR(AddCopyForOperand(instruction, operand_no));
@@ -2629,6 +2628,7 @@ bool LayoutAssignment::InstructionCanChangeLayout(
     case HloOpcode::kCbrt:
     case HloOpcode::kSubtract:
     case HloOpcode::kStochasticConvert:
+    case HloOpcode::kTan:
     case HloOpcode::kTanh:
     case HloOpcode::kPopulationCount:
     case HloOpcode::kTriangularSolve:

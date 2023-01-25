@@ -34,7 +34,7 @@ TfAllocatorAdapter::TfAllocatorAdapter(tsl::Allocator *wrapped,
 
 TfAllocatorAdapter::~TfAllocatorAdapter() {}
 
-port::StatusOr<OwningDeviceMemory> TfAllocatorAdapter::Allocate(
+tsl::StatusOr<OwningDeviceMemory> TfAllocatorAdapter::Allocate(
     int device_ordinal, uint64_t size, bool retry_on_failure,
     int64_t memory_space) {
   CHECK_EQ(memory_space, 0);
@@ -52,13 +52,13 @@ port::StatusOr<OwningDeviceMemory> TfAllocatorAdapter::Allocate(
   return OwningDeviceMemory(DeviceMemoryBase(data, size), device_ordinal, this);
 }
 
-port::Status TfAllocatorAdapter::Deallocate(int device_ordinal,
-                                            DeviceMemoryBase mem) {
+tsl::Status TfAllocatorAdapter::Deallocate(int device_ordinal,
+                                           DeviceMemoryBase mem) {
   wrapped_->DeallocateRaw(mem.opaque());
   return ::tsl::OkStatus();
 }
 
-port::StatusOr<Stream *> TfAllocatorAdapter::GetStream(int device_ordinal) {
+tsl::StatusOr<Stream *> TfAllocatorAdapter::GetStream(int device_ordinal) {
   CHECK_EQ(stream_->parent()->device_ordinal(), device_ordinal);
   return stream_;
 }

@@ -174,7 +174,7 @@ Status UniformQuantizedConvolutionParams::ValidateOrFillParamsAndValidateShape(
   }
   if (lhs_feature_count / feature_group_count_ != rhs_input_feature_count) {
     return InvalidArgument(
-        "lhs fetaure dimension size divided by feature_group_count must equal "
+        "lhs feature dimension size divided by feature_group_count must equal "
         "the rhs input feature dimension size, but ",
         lhs_feature_count, " / ", feature_group_count_,
         " != ", rhs_input_feature_count);

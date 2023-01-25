@@ -384,6 +384,12 @@ def QuantizePass : Pass<"tfl-quantize", "mlir::func::FuncOp"> {
   ];
 }
 
+def QuantizeVariablesPass : Pass<"tfl-quantize-variables", "mlir::ModuleOp"> {
+  let summary = "Quantize variables";
+  let constructor = "CreatePrepareQuantizeVariablesPass()";
+  let dependentDialects = ["TFL::TensorFlowLiteDialect"];
+}
+
 def RaiseCustomOpsPass : Pass<"tfl-raise-custom-ops", "mlir::func::FuncOp"> {
   let summary = "Raise custom ops into tflite dialect.";
   let constructor = "CreateRaiseCustomOpsPass()";

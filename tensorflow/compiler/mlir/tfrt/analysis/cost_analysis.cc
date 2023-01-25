@@ -55,8 +55,8 @@ int64_t InferLookupTableFindV2Cost(const CostContext& context,
   constexpr int64_t kLookupTableFindCostScale = 8;
   constexpr int64_t kLookupTableFindStringKeyCostScale = 16;
 
-  auto value_type = op.values().getType().cast<mlir::TensorType>();
-  auto key_type = op.keys().getType().cast<mlir::TensorType>();
+  auto value_type = op.getValues().getType().cast<mlir::TensorType>();
+  auto key_type = op.getKeys().getType().cast<mlir::TensorType>();
 
   int64_t output_size = InferTensorSize(context, value_type);
 
@@ -71,14 +71,14 @@ int64_t InferLookupTableFindV2Cost(const CostContext& context,
 // The cost function for tf.GatherV2.
 int64_t InferGatherV2Cost(const CostContext& context, mlir::TF::GatherV2Op op) {
   return InferTensorSize(context,
-                         op.output().getType().cast<mlir::TensorType>());
+                         op.getOutput().getType().cast<mlir::TensorType>());
 }
 
 // The cost function for tf.SparseSegmentSumOp.
 template <typename OpType>
 int64_t InferSparseSegmentOpCost(const CostContext& context, OpType op) {
   return InferTensorSize(
-      context, op.output().getType().template cast<mlir::TensorType>());
+      context, op.getOutput().getType().template cast<mlir::TensorType>());
 }
 
 // CostFunctionRegistry is a map from op names to their cost functions.

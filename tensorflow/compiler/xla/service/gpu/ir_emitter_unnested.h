@@ -25,11 +25,11 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emitter.h"
 #include "tensorflow/compiler/xla/service/gpu/kernel_mapping_scheme.h"
 #include "tensorflow/compiler/xla/service/gpu/nccl_all_reduce_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/thunk.h"
-#include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/ir_array.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
 
@@ -132,11 +132,9 @@ class IrEmitterUnnested : public IrEmitter {
   // index: the index for the first output element of the current thread.
   // y_loc: The y coordinate within a tile.
   // x_loc: The x coordinate within a tile.
-  // x_iter_num: When a thread process N elements in the X dimension, x_iter_num
-  //             has a value of 0..N-1 to identify the element being process.
   using EmitElementFunction = std::function<void(
       const ThreadIdInfo& thread_id_info, const llvm_ir::IrArray::Index& index,
-      llvm::Value* y_loc, llvm::Value* x_loc, llvm::Value* x_iter_num)>;
+      llvm::Value* y_loc, llvm::Value* x_loc)>;
 
   using ConstantGenerator = std::function<llvm::Value*(int64_t)>;
 
@@ -181,6 +179,8 @@ class IrEmitterUnnested : public IrEmitter {
   IrEmitterUnnested(const HloModuleConfig& hlo_module_config,
                     IrEmitterContext* ir_emitter_context);
 
+  Status EmitUnreachable(mlir::Operation* op, std::string error_message);
+
   // IrEmitterUnnested handles the following instructions differently from
   // IrEmitter. It also mixes in some special handling for custom kernels
   // via the ThunkEmitter.
@@ -193,6 +193,7 @@ class IrEmitterUnnested : public IrEmitter {
   Status EmitGemmThunk(mlir::Operation* op);
 #if GOOGLE_CUDA
   Status EmitCublasLtMatmulThunk(mlir::Operation* op);
+  Status EmitCublasLtMatmulThunkF8(mlir::Operation* op);
 #endif  // GOOGLE_CUDA
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
   Status EmitCholeskyThunk(mlir::Operation* op);
@@ -214,13 +215,15 @@ class IrEmitterUnnested : public IrEmitter {
   Status EmitTriangularSolveCustomCall(mlir::Operation* op);
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
-  template <typename NcclThunkType, typename OpTy>
+  template <typename NcclThunkType, typename OpT>
   Status EmitNcclThunk(mlir::Operation* op);
-  Status EmitAllReduceDone(mlir::Operation* op);
+  template <typename NcclThunkType, typename OpT>
+  Status EmitNcclAsyncDone(mlir::Operation* op);
 
   template <typename ThunkType, typename OpT>
   Status EmitReplicaOrPartitionId(mlir::Operation* op);
 
+  template <typename NcclThunkType, typename OpT>
   Status EmitCollectivePermute(mlir::Operation* op);
 
   Status EmitOp(mlir::Operation* op);
@@ -475,7 +478,8 @@ class IrEmitterUnnested : public IrEmitter {
   // reduce op.
   StatusOr<ReductionCodegenInfo> ComputeReductionCodegenInfo(
       mlir::lmhlo::FusionOp fusion, HloComputation* fused_computation,
-      HloInstruction* first_reduce);
+      HloInstruction* first_reduce,
+      const std::vector<std::vector<HloInstruction*>>& instr_index_groups);
 
   // Generates code for input-fusible slices.
   //
@@ -611,6 +615,16 @@ class IrEmitterUnnested : public IrEmitter {
       const IrEmitterUnnested::ReductionOutputMap& output_arrays,
       const HloReduceInstruction* reduction, int output_idx);
 
+  // Performs the actual write of the reduction result.
+  using TypedPointer = std::pair<llvm::Value* const, llvm::Type* const>;
+  void WriteReductionOutput(
+      llvm::Type* index_ty,
+      const ReductionCodegenState& reduction_codegen_state,
+      const TilingKernelInfo& tiling_kernel_info,
+      const ReductionOutputMap& output_arrays,
+      const HloReduceInstruction* reduction, int partial_result_idx,
+      const absl::Span<TypedPointer const> values);
+
   // `current_output`: the value the tile has calculated.
   // `output_address`: address where the output value has to be written.
   void EmitReductionOutputForRowReduction(
@@ -651,8 +665,7 @@ class IrEmitterUnnested : public IrEmitter {
   // reduction: each one should get the output value.
   void EmitFullWarpShuffleDownLoopForReduce(
       const HloComputation* reducer,
-      absl::Span<std::pair<llvm::Value* const, llvm::Type* const>>
-          partial_result_addresses,
+      absl::Span<TypedPointer const> partial_result_addresses,
       int threads_per_block, int num_results_per_warp = 1);
 
   // Allocates a shared tile of given dimensions, applying scaling specified in
@@ -680,11 +693,10 @@ class IrEmitterUnnested : public IrEmitter {
 
   StatusOr<std::vector<llvm_ir::IrArray>> BuildKernelThunk(
       mlir::Operation* op, mlir::ValueRange operands,
-      Thunk::ThunkInfo thunk_info, const LaunchDimensions& launch_dimensions);
+      const LaunchDimensions& launch_dimensions);
 
   StatusOr<std::vector<llvm_ir::IrArray>> BuildKernelThunk(
-      mlir::Operation* op, Thunk::ThunkInfo thunk_info,
-      const LaunchDimensions& launch_dimensions);
+      mlir::Operation* op, const LaunchDimensions& launch_dimensions);
 
   // Returns a thunk that, given a reduce or select-and-scatter op,
   // initializes its memory to the appropriate initial value.
@@ -763,9 +775,10 @@ class IrEmitterUnnested : public IrEmitter {
   // The thunk sequence this IrEmitter generates for the input computation.
   ThunkSequence thunk_sequence_;
 
-  // Maps all-reduce-start ops to their thunk so done can access the thunk.
-  absl::flat_hash_map<mlir::Operation*, NcclAllReduceStartThunk*>
-      all_reduce_start_thunks_;
+  // Maps async start ops to their executors so done can access the thunk.
+  // Executor may be null if the start op is degenerate (so not emitted).
+  absl::flat_hash_map<mlir::Operation*, NcclCollectiveThunk::AsyncExecutor*>
+      async_executors_;
 
   // Begin optional members for XLA HLO -> LMHLO:
   absl::flat_hash_map<const mlir::Region*, std::unique_ptr<HloModule>>

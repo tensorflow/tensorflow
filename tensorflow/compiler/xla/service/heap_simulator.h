@@ -24,17 +24,18 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_schedule.h"
 #include "tensorflow/compiler/xla/service/buffer_value.h"
 #include "tensorflow/compiler/xla/service/buffer_value_containers.h"
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/compiler/xla/service/hlo_alias_analysis.h"
 #include "tensorflow/compiler/xla/service/hlo_buffer.h"
-#include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_dataflow_analysis.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_live_range.h"
 #include "tensorflow/compiler/xla/service/hlo_ordering.h"
-#include "tensorflow/compiler/xla/service/hlo_schedule.h"
+#include "tensorflow/compiler/xla/service/memory_space_assignment_repacking.h"
 #include "tensorflow/compiler/xla/service/tuple_points_to_analysis.h"
 #include "tensorflow/compiler/xla/statusor.h"
 
@@ -432,7 +433,7 @@ class GlobalDecreasingSizeBestFitHeap : public HeapAlgorithm<BufferType> {
   // end of the last co-located buffer.  There could be "holes" in the live
   // ranges of each co-located buffers, but in this heuristics we think they are
   // contiguous.
-  BufferIntervalCompare GetTemporalBufferIntervalCompare() const;
+  virtual BufferIntervalCompare GetTemporalBufferIntervalCompare() const;
 
   absl::flat_hash_map<const BufferType*, BufferInterval> buffer_intervals_;
   HeapResult result_;
@@ -446,6 +447,7 @@ class GlobalDecreasingSizeBestFitHeap : public HeapAlgorithm<BufferType> {
   // Alloc or Free call.
   int64_t current_time_ = 0;
 
+ protected:
   // Returns all transitive colocated buffers of this buffer interval. I.e., If
   // a buffer A is colocated with B and B is colocated with C, this function
   // returns all three of them.
@@ -525,6 +527,11 @@ class ChooseBestHeapAlgorithm : public HeapAlgorithm<BufferType> {
  private:
   std::vector<std::unique_ptr<HeapAlgorithm<BufferType>>> algorithms_;
 };
+
+extern template class GlobalDecreasingSizeBestFitHeap<HloValue>;
+extern template class GlobalDecreasingSizeBestFitHeap<
+    MemorySpaceAssignmentRepacker::AllocationBlock>;
+extern template class ChooseBestHeapAlgorithm<HloValue>;
 
 }  // namespace xla
 

@@ -23,9 +23,9 @@ limitations under the License.
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
-#include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
-#include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/utils/convert_op_folder.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/mlir_hlo/mhlo/IR/hlo_ops.h"
+#include "tensorflow/compiler/xla/mlir_hlo/utils/convert_op_folder.h"
 #include "tensorflow/compiler/xla/util.h"
 
 namespace xla {
@@ -60,8 +60,8 @@ static StatusOr<TypeT> ConvertTensorShapeToType(const Shape& xla_ty,
 
   bool is_dynamic = false;
   int64_t rank = xla_ty.rank();
-  llvm::SmallVector<int64_t, 4> shape(rank, mlir::ShapedType::kDynamicSize);
-  llvm::SmallVector<int64_t, 4> bounds(rank, mlir::ShapedType::kDynamicSize);
+  llvm::SmallVector<int64_t, 4> shape(rank, mlir::ShapedType::kDynamic);
+  llvm::SmallVector<int64_t, 4> bounds(rank, mlir::ShapedType::kDynamic);
   for (int64_t dim = 0; dim < rank; ++dim) {
     int64_t dim_size = xla_ty.dimensions(dim);
     if (xla_ty.is_dynamic_dimension(dim)) {

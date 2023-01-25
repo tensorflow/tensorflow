@@ -20,8 +20,8 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/compiler/xla/service/hlo_module.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 
@@ -114,7 +114,7 @@ class HloReplicationAnalysis {
         support_partial_replication_(support_partial_replication) {}
 
   // Computes hlo_replication_.
-  void ComputeHloReplication();
+  Status ComputeHloReplication();
 
   // A helper function to recursively compute hlo_replication on a computation.
   // Returns whether hlo_replication_ is changed.

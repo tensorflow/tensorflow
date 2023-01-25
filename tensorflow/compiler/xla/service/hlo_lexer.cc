@@ -151,6 +151,10 @@ TokKind HloLexer::LexToken() {
         return TokKind::kAsterisk;
       case '#':
         return TokKind::kOctothorp;
+      case '+':
+        return TokKind::kPlus;
+      case '~':
+        return TokKind::kTilde;
       case '[':
         return TokKind::kLsquare;
       case ']':
@@ -524,6 +528,10 @@ std::string TokKindToString(TokKind kind) {
       return "kAsterisk";
     case TokKind::kOctothorp:
       return "kOctothorp";
+    case TokKind::kPlus:
+      return "kPlus";
+    case TokKind::kTilde:
+      return "kTilde";
     case TokKind::kLsquare:
       return "kLsquare";
     case TokKind::kRsquare:

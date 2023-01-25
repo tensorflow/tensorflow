@@ -64,7 +64,12 @@ class DynamicStitchTestBase(object):
     # Test various datatypes in the simple case to ensure that the op was
     # registered under those types.
     dtypes_to_test = [
-        dtypes.float32, dtypes.qint8, dtypes.quint8, dtypes.qint32
+        dtypes.float32,
+        dtypes.float16,
+        dtypes.bfloat16,
+        dtypes.qint8,
+        dtypes.quint8,
+        dtypes.qint32,
     ]
     for dtype in dtypes_to_test:
       indices = [

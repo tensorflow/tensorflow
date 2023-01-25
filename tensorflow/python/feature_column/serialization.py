@@ -19,6 +19,7 @@ import six
 from tensorflow.python.feature_column import feature_column_v2 as fc_lib
 from tensorflow.python.feature_column import sequence_feature_column as sfc_lib
 from tensorflow.python.ops import init_ops
+from tensorflow.python.util import deprecation
 from tensorflow.python.util import tf_decorator
 from tensorflow.python.util import tf_inspect
 from tensorflow.python.util.tf_export import tf_export
@@ -26,14 +27,17 @@ from tensorflow.tools.docs import doc_controls
 
 _FEATURE_COLUMN_DEPRECATION_WARNING = """\
     Warning: tf.feature_column is not recommended for new code. Instead,
-    feature preprocessing can be done directly using [Keras preprocessing
-    layers](https://www.tensorflow.org/guide/migrate/migrating_feature_columns).
-    See the [migration guide](https://tensorflow.org/guide/migrate) for details.
+    feature preprocessing can be done directly using either [Keras preprocessing
+    layers](https://www.tensorflow.org/guide/migrate/migrating_feature_columns)
+    or through the one-stop utility [`tf.keras.utils.FeatureSpace`](https://www.tensorflow.org/api_docs/python/tf/keras/utils/FeatureSpace)
+    built on top of them. See the [migration guide](https://tensorflow.org/guide/migrate)
+    for details.
     """
 
 _FEATURE_COLUMN_DEPRECATION_RUNTIME_WARNING = (
-    'Use Keras preprocessing layers instead. Each of `tf.feature_column.*` has'
-    ' a functional equivalent in `tf.keras.layers` for feature preprocessing '
+    'Use Keras preprocessing layers instead, either directly or via the '
+    '`tf.keras.utils.FeatureSpace` utility. Each of `tf.feature_column.*` has '
+    'a functional equivalent in `tf.keras.layers` for feature preprocessing '
     'when training a Keras model.')
 
 _FEATURE_COLUMNS = [
@@ -50,8 +54,8 @@ _FEATURE_COLUMNS = [
 @doc_controls.header(_FEATURE_COLUMN_DEPRECATION_WARNING)
 @tf_export(
     '__internal__.feature_column.serialize_feature_column',
-    v1=[],
-    deprecation_inst=_FEATURE_COLUMN_DEPRECATION_RUNTIME_WARNING)
+    v1=[])
+@deprecation.deprecated(None, _FEATURE_COLUMN_DEPRECATION_RUNTIME_WARNING)
 def serialize_feature_column(fc):
   """Serializes a FeatureColumn or a raw string key.
 

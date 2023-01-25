@@ -1,11 +1,12 @@
 # Description:
 #   Host-platform specific StreamExecutor support code.
 
-load("//tensorflow/tsl/platform:build_config.bzl", "tsl_cc_test")
+load("//tensorflow/compiler/xla:xla.bzl", "xla_cc_test")
 load("//tensorflow/tsl/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow/compiler/xla/stream_executor:build_defs.bzl", "stream_executor_friends")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [":friends"],
     licenses = ["notice"],
 )
@@ -64,7 +65,9 @@ cc_library(
         "//tensorflow/compiler/xla/stream_executor:kernel",
         "//tensorflow/compiler/xla/stream_executor/lib",
         "//tensorflow/tsl/platform:denormal",
+        "//tensorflow/tsl/platform:env",
         "//tensorflow/tsl/platform:setround",
+        "@com_google_absl//absl/functional:any_invocable",
         "@com_google_absl//absl/synchronization",
     ],
 )
@@ -106,13 +109,14 @@ cc_library(
         "//tensorflow/compiler/xla/stream_executor/lib",
         "//tensorflow/tsl/platform:platform_port",
         "//tensorflow/tsl/platform/profile_utils:profile_utils_cpu_utils",
+        "@com_google_absl//absl/functional:any_invocable",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
     ],
     alwayslink = True,
 )
 
-tsl_cc_test(
+xla_cc_test(
     name = "host_stream_test",
     srcs = ["host_stream_test.cc"],
     deps = [
@@ -120,9 +124,7 @@ tsl_cc_test(
         "//tensorflow/compiler/xla/stream_executor",
         "//tensorflow/compiler/xla/stream_executor:multi_platform_manager",
         "//tensorflow/compiler/xla/stream_executor:platform",
-        "//tensorflow/compiler/xla/stream_executor:stream_executor_impl",
         "//tensorflow/tsl/lib/core:status_test_util",
-        "//tensorflow/tsl/platform:env_impl",
         "//tensorflow/tsl/platform:errors",
         "//tensorflow/tsl/platform:test",
         "//tensorflow/tsl/platform:test_main",

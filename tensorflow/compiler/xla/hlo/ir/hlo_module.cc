@@ -39,10 +39,10 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/compilation_environments.h"
 #include "tensorflow/compiler/xla/service/computation_placer.h"
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
+#include "tensorflow/compiler/xla/service/hlo_module_config.h"
 #include "tensorflow/compiler/xla/service/mapped_ptr_container_sorter.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
-#include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/tsl/lib/gtl/map_util.h"
 #include "tensorflow/tsl/platform/errors.h"
@@ -310,13 +310,15 @@ HloModuleProto HloModule::ToProto() const {
   *proto.mutable_input_output_alias() = input_output_alias_config().ToProto();
   *proto.mutable_dynamic_parameter_binding() =
       dynamic_parameter_binding().ToProto();
-  for (const auto& parameter_indices : CrossProgramPrefetches()) {
-    const auto& parameter = parameter_indices.first;
-    const auto& indices = parameter_indices.second;
+  for (const auto& [parameter, indices, alt_memory_offset] :
+       CrossProgramPrefetches()) {
     auto* prefetch = proto.mutable_cross_program_prefetches()->Add();
     prefetch->set_parameter(parameter);
     for (auto index : indices) {
       prefetch->add_index(index);
+    }
+    if (alt_memory_offset) {
+      prefetch->set_offset(*alt_memory_offset);
     }
   }
   proto.set_is_dynamic(is_dynamic_);
@@ -347,6 +349,13 @@ HloModuleProto HloModule::ToProto() const {
     (*proto.mutable_device_assignment()) = device_assignment;
   }
   return proto;
+}
+
+StatusOr<HloModuleProtoWithConfig> HloModule::ToProtoWithConfig() const {
+  HloModuleProtoWithConfig result;
+  TF_ASSIGN_OR_RETURN(*result.mutable_config(), config_.ToProto());
+  *result.mutable_hlo_module() = ToProto();
+  return result;
 }
 
 Status HloModule::CheckUniqueNamesAndIdsForComputationsAndInstructions() const {
@@ -475,7 +484,8 @@ StatusOr<std::unique_ptr<HloModule>> HloModule::CreateFromProto(
   for (const auto& prefetch : proto.cross_program_prefetches()) {
     module->AddCrossProgramPrefetch(
         prefetch.parameter(),
-        ShapeIndex(prefetch.index().begin(), prefetch.index().end()));
+        ShapeIndex(prefetch.index().begin(), prefetch.index().end()),
+        prefetch.offset());
   }
 
   module->set_is_dynamic(proto.is_dynamic());
@@ -556,6 +566,15 @@ StatusOr<HloModuleConfig> HloModule::CreateModuleConfigFromShape(
                  module_config.num_partitions());
       }
     }
+    std::vector<bool> param_requires_broadcast_via_collectives(
+        execution_options->param_requires_broadcast_via_collectives().begin(),
+        execution_options->param_requires_broadcast_via_collectives().end());
+    module_config.set_param_requires_broadcast_via_collectives(
+        param_requires_broadcast_via_collectives);
+    module_config.set_allow_separate_sharding_programs(
+        execution_options->allow_separate_sharding_programs());
+    HloModuleConfig::AssignStructShardableValueUpdatePairs(
+        module_config, execution_options->shardable_value_update_pairs());
   }
 
   // The module config is constructed with default layouts regardless of what is
@@ -594,6 +613,15 @@ StatusOr<HloModuleConfig> HloModule::CreateModuleConfigFromProto(
     }
   }
   return config;
+}
+
+StatusOr<std::unique_ptr<HloModule>> HloModule::CreateFromProtoWithConfig(
+    const HloModuleProtoWithConfig& proto, bool prohibit_empty_literal) {
+  auto hlo_module_proto = proto.hlo_module();
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModuleConfig> config_ptr,
+                      HloModuleConfig::CreateFromProto(proto.config()));
+  return HloModule::CreateFromProto(hlo_module_proto, *config_ptr,
+                                    prohibit_empty_literal);
 }
 
 namespace {
@@ -893,19 +921,16 @@ std::unique_ptr<HloModule> HloModule::Clone(const HloModuleConfig& config,
     }
     TF_CHECK_OK(module->set_schedule(std::move(clone_schedule)));
   }
-  for (const auto& parameter_indices : CrossProgramPrefetches()) {
-    const auto& parameter = parameter_indices.first;
-    const auto& indices = parameter_indices.second;
-    module->AddCrossProgramPrefetch(parameter, indices);
+  for (const auto& [parameter, indices, offset] : CrossProgramPrefetches()) {
+    module->AddCrossProgramPrefetch(parameter, indices, offset);
   }
 
   // To make clone behavior match uncloned behavior, we reorder
   // module->computations_ to match the order in computations_.
   using ComputationSorter = MappedPtrContainerSorter<HloComputation>;
-  ComputationSorter::MapPtrFn computation_map_fn =
-      [&context](const HloComputation* c) {
-        return context.FindComputation(c);
-      };
+  auto computation_map_fn = [&context](const HloComputation* c) {
+    return context.FindComputation(c);
+  };
   auto status = ComputationSorter::Sort(
       computation_map_fn, ComputationSorter::IndexAfterMappedElementsFn(),
       computations_, module->computations_);

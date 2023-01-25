@@ -17,6 +17,7 @@ limitations under the License.
 
 #include "absl/strings/string_view.h"
 #include "pybind11/pybind11.h"
+#include "pybind11/stl.h"
 #include "tensorflow/cc/saved_model/fingerprinting.h"
 #include "tensorflow/core/protobuf/saved_model.pb.h"
 
@@ -38,13 +39,42 @@ void DefineFingerprintingModule(py::module main_module) {
         SavedModel saved_model_pb;
         saved_model_pb.ParseFromString(serialized_saved_model);
 
-        return py::bytes(fingerprinting::CreateFingerprintDef(
-                             saved_model_pb.meta_graphs(0), export_dir)
-                             .SerializeAsString());
+        return py::bytes(
+            fingerprinting::CreateFingerprintDef(saved_model_pb, export_dir)
+                .SerializeAsString());
       },
       py::arg("saved_model"), py::arg("export_dir"),
       py::doc(
           "Returns the serialized FingerprintDef of a serialized SavedModel."));
+
+  m.def(
+      "MaybeReadSavedModelChecksum",
+      [](std::string export_dir) {
+        StatusOr<FingerprintDef> fingerprint =
+            fingerprinting::ReadSavedModelFingerprint(export_dir);
+        if (fingerprint.ok()) {
+          return fingerprint->saved_model_checksum();
+        }
+        return (uint64_t)0;
+      },
+      py::arg("export_dir"),
+      py::doc(
+          "Reads the fingerprint checksum from SavedModel directory. Returns "
+          "0 if an error occurs."));
+
+  m.def(
+      "GetFingerprintMap",
+      [](std::string export_dir) {
+        StatusOr<FingerprintDef> fingerprint =
+            fingerprinting::ReadSavedModelFingerprint(export_dir);
+        if (fingerprint.ok()) {
+          return fingerprinting::MakeFingerprintMap(*fingerprint);
+        }
+        return std::unordered_map<std::string, uint64_t>();
+      },
+      py::arg("export_dir"),
+      py::doc("Returns the fingerprint protobuf as a dictionary. Returns "
+              "an empty dictionary if invalid fingerprint file."));
 }
 
 }  // namespace python

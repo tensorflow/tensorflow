@@ -17,11 +17,14 @@ limitations under the License.
 
 #include <algorithm>
 #include <memory>
+#include <optional>
+#include <vector>
 
 #include "absl/container/flat_hash_set.h"
-#include "tensorflow/compiler/xla/service/hlo_computation.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/compiler/xla/service/hlo_opcode.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
+#include "tensorflow/compiler/xla/service/gpu/gpu_device_info.h"
 #include "tensorflow/compiler/xla/test_helpers.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/compiler/xla/tests/test_utils.h"
@@ -37,15 +40,20 @@ class GpuHloScheduleTest : public HloTestBase {
   // Pre-canned shapes.
   Shape f32_2x2_ = ShapeUtil::MakeShape(F32, {2, 2});
 
-  static SequentialHloOrdering BuildHloOrdering(HloModule* module) {
-    HloSchedule schedule =
-        ScheduleGpuModule(module, /*pointer_size=*/8).value();
-    return SequentialHloOrdering{schedule};
+  SequentialHloOrdering BuildHloOrdering(HloModule* module) {
+    Backend& test_backend = backend();
+    const GpuDeviceInfo gpu_device_info =
+        GetGpuDeviceInfo(test_backend.default_stream_executor());
+    TF_CHECK_OK(ScheduleGpuModule(module, /*pointer_size=*/8, gpu_device_info));
+    return SequentialHloOrdering{module->schedule()};
   }
 
-  std::unique_ptr<HloModule> CreateNewVerifiedModule() {
+  std::unique_ptr<HloModule> CreateNewVerifiedModule(
+      bool enable_latency_hiding_scheduler = false) {
     HloModuleConfig config;
-    auto debug_options = GetDebugOptionsForTest();
+    DebugOptions debug_options = GetDebugOptionsForTest();
+    debug_options.set_xla_gpu_enable_latency_hiding_scheduler(
+        enable_latency_hiding_scheduler);
     config.set_debug_options(debug_options);
     return std::make_unique<HloModule>("test_module", config);
   }
@@ -165,7 +173,66 @@ TEST_F(GpuHloScheduleTest, AsyncCustomCall) {
   EXPECT_TRUE(order.ExecutesBefore(blocking_call, add4));
 }
 
-TEST_F(GpuHloScheduleTest, AsyncAllReduce) {
+TEST_F(GpuHloScheduleTest, AsyncCollectivePermute) {
+  std::unique_ptr<HloModule> module = CreateNewVerifiedModule();
+
+  HloComputation::Builder builder("entry_computation");
+  HloInstruction* x = builder.AddInstruction(HloInstruction::CreateParameter(
+      /*parameter_number=*/0, f32_2x2_, /*name=*/"x"));
+  HloInstruction* y = builder.AddInstruction(HloInstruction::CreateParameter(
+      /*parameter_number=*/1, f32_2x2_, /*name=*/"y"));
+  HloInstruction* z = builder.AddInstruction(HloInstruction::CreateParameter(
+      /*parameter_number=*/2, f32_2x2_, /*name=*/"z"));
+  HloInstruction* add0 = builder.AddInstruction(
+      HloInstruction::CreateBinary(f32_2x2_, HloOpcode::kAdd, x, y));
+  HloInstruction* add1 = builder.AddInstruction(
+      HloInstruction::CreateBinary(f32_2x2_, HloOpcode::kAdd, add0, y));
+  HloInstruction* add2 = builder.AddInstruction(
+      HloInstruction::CreateBinary(f32_2x2_, HloOpcode::kAdd, add1, z));
+
+  Shape u32_scalar = ShapeUtil::MakeShape(U32, {});
+
+  Shape collective_permute_start_shape =
+      ShapeUtil::MakeTupleShape({f32_2x2_, f32_2x2_, u32_scalar, u32_scalar});
+  HloInstruction* collective_permute_start =
+      builder.AddInstruction(HloInstruction::CreateCollectivePermuteStart(
+          collective_permute_start_shape, add0,
+          /*source_target_pairs=*/{{0, 1}}, /*channel_id=*/std::nullopt));
+  // In addition, add control_dependency: add1->nonblocking_call.
+  TF_CHECK_OK(add1->AddControlDependencyTo(collective_permute_start));
+  // Blocking call, which only add4 depends on.
+  HloInstruction* collective_permute_done = builder.AddInstruction(
+      HloInstruction::CreateUnary(f32_2x2_, HloOpcode::kCollectivePermuteDone,
+                                  collective_permute_start));
+  HloInstruction* add3 = builder.AddInstruction(
+      HloInstruction::CreateBinary(f32_2x2_, HloOpcode::kAdd, add1, add2));
+  HloInstruction* add4 = builder.AddInstruction(HloInstruction::CreateBinary(
+      f32_2x2_, HloOpcode::kAdd, add3, collective_permute_done));
+
+  module->AddEntryComputation(builder.Build(add4));
+
+  SequentialHloOrdering order = BuildHloOrdering(module.get());
+  VLOG(2) << order.ToString();
+
+  // Order constrained by data dependency.
+  EXPECT_TRUE(order.ExecutesBefore(add0, collective_permute_start));
+  // Order constrained by control dependency.
+  EXPECT_TRUE(order.ExecutesBefore(add1, collective_permute_start));
+  // Test that all_reduce_start is scheduled before add2.
+  EXPECT_TRUE(order.ExecutesBefore(collective_permute_start, add2));
+  EXPECT_TRUE(order.ExecutesBefore(collective_permute_start, add3));
+  EXPECT_TRUE(order.ExecutesBefore(collective_permute_start, add4));
+
+  // Test that all_reduce_done is scheduled after add3.
+  EXPECT_TRUE(order.ExecutesBefore(add3, collective_permute_done));
+  EXPECT_TRUE(order.ExecutesBefore(collective_permute_done, add4));
+}
+
+class GpuHloScheduleParameterizedTest
+    : public GpuHloScheduleTest,
+      public ::testing::WithParamInterface<bool> {};
+
+TEST_P(GpuHloScheduleParameterizedTest, AsyncAllReduce) {
   // All-reduce reduction computation.
   HloComputation::Builder reduction_builder("add");
   HloInstruction* x0 =
@@ -180,7 +247,9 @@ TEST_F(GpuHloScheduleTest, AsyncAllReduce) {
       reduction_builder.AddInstruction(HloInstruction::CreateBinary(
           ShapeUtil::MakeScalarShape(F32), HloOpcode::kAdd, x0, y0));
 
-  std::unique_ptr<HloModule> module = CreateNewVerifiedModule();
+  const bool use_latency_hiding_scheduler = GetParam();
+  std::unique_ptr<HloModule> module =
+      CreateNewVerifiedModule(use_latency_hiding_scheduler);
   HloComputation* reduction_computation =
       module->AddEmbeddedComputation(reduction_builder.Build(add));
 
@@ -234,6 +303,9 @@ TEST_F(GpuHloScheduleTest, AsyncAllReduce) {
   EXPECT_TRUE(order.ExecutesBefore(add3, all_reduce_done));
   EXPECT_TRUE(order.ExecutesBefore(all_reduce_done, add4));
 }
+
+INSTANTIATE_TEST_SUITE_P(GpuHloScheduleParameterizedTest,
+                         GpuHloScheduleParameterizedTest, ::testing::Bool());
 
 }  // namespace gpu
 }  // namespace xla

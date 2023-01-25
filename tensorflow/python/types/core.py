@@ -179,9 +179,10 @@ class GenericFunction(Callable):
     backwards compatibility of returned IR or the allowed values of `stage`.
 
     Args:
-      *args: Arguments used for compilation; same arguments as used for calling
-        the function. Need to be eager tensors.
-      **kwargs: Keyword arguments used for compilation.
+      *args: compilation args supports inputs either: (1) all inputs are
+        TensorSpec or (2) all inputs are tf.Tensor/Python variables.
+      **kwargs: Keyword arguments used for compilation. Same requirement as
+        compiliation args.
 
     Returns:
       Function callable with the following kwargs:
@@ -230,8 +231,11 @@ class GenericFunction(Callable):
       ```
 
     Raises:
-      ValueError: If an invalid `stage` is selected or if applied to a function
-        which is not compiled (`jit_compile=True` is not set).
+      ValueError:
+        (1) If an invalid `stage` is selected
+        (2) or if applied to a function which is not compiled
+        (`jit_compile=True` is not set).
+        (3) or if input shapes are not fully defined for tf.TensorSpec inputs
       TypeError: When called with input in graph mode.
     """
     pass

@@ -325,7 +325,7 @@ class MirrorPadGradOp : public OpKernel {
                                             before, ", ", after,
                                             " not less than ", out_size));
       }
-      output_shape.AddDim(out_size);
+      OP_REQUIRES_OK(context, output_shape.AddDimWithStatus(out_size));
     }
 
     if (output_shape == in0.shape()) {

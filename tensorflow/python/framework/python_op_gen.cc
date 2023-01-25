@@ -14,13 +14,17 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/python/framework/python_op_gen.h"
 
-#include <stdio.h>
-
+#include <algorithm>
+#include <cstdio>
 #include <sstream>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
+#include <utility>
+#include <vector>
 
-#include "absl/strings/escaping.h"
+#include "absl/strings/str_join.h"
+#include "absl/types/span.h"
 #include "tensorflow/core/framework/api_def.pb.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/op.h"
@@ -28,12 +32,10 @@ limitations under the License.
 #include "tensorflow/core/framework/op_def_util.h"
 #include "tensorflow/core/framework/op_gen_lib.h"
 #include "tensorflow/core/framework/tensor.pb.h"
-#include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
-#include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/types.h"
@@ -146,14 +148,16 @@ string TensorPBString(const TensorProto& pb) {
 
 class GenEagerPythonOp : public python_op_gen_internal::GenPythonOp {
  public:
-  GenEagerPythonOp(const OpDef& op_def, const ApiDef& api_def,
-                   const string& function_name, bool add_type_annotations)
+  GenEagerPythonOp(
+      const OpDef& op_def, const ApiDef& api_def, const string& function_name,
+      bool add_type_annotations,
+      python_op_gen_internal::GeneratedCodeAnnotator* annotator = nullptr)
       : python_op_gen_internal::GenPythonOp(op_def, api_def, function_name,
-                                            add_type_annotations) {
+                                            add_type_annotations, annotator) {
     op_name_ = function_name_;
     absl::ConsumePrefix(&op_name_, "_");
   }
-  ~GenEagerPythonOp() override {}
+  ~GenEagerPythonOp() override = default;
 
   string Code() override;
 
@@ -231,10 +235,12 @@ class GenEagerPythonOp : public python_op_gen_internal::GenPythonOp {
       params_with_default_;
 };
 
-string GetEagerPythonOp(const OpDef& op_def, const ApiDef& api_def,
-                        const string& function_name,
-                        bool add_type_annotations) {
-  return GenEagerPythonOp(op_def, api_def, function_name, add_type_annotations)
+string GetEagerPythonOp(
+    const OpDef& op_def, const ApiDef& api_def, const string& function_name,
+    bool add_type_annotations,
+    python_op_gen_internal::GeneratedCodeAnnotator* annotator = nullptr) {
+  return GenEagerPythonOp(op_def, api_def, function_name, add_type_annotations,
+                          annotator)
       .Code();
 }
 
@@ -876,6 +882,12 @@ bool GenEagerPythonOp::AddEagerFastPathAndGraphCode(
   }
 
   AddExport();
+  if (annotator_ != nullptr) {
+    // The generated function name will start at the character after
+    // the current cursor + len("def ")
+    annotator_->AddAnnotation(op_def_, function_name_,
+                              /*offset_start =*/result_.length() + 5);
+  }
   AddDefLine(function_name_, parameters);
   if (add_type_annotations_) {
     AddReturnTypeAnnotation(type_annotations);
@@ -1206,8 +1218,12 @@ void GenEagerPythonOp::AddRawOpExport(const string& parameters) {
 
 string GetPythonOpsImpl(
     const OpList& ops, const ApiDefMap& api_defs,
-    const std::vector<string>& hidden_ops, const string& source_file_name = "",
-    const std::unordered_set<string> type_annotate_ops = {}) {
+    const OpRegOffsets& op_reg_offsets, absl::Span<const string> hidden_ops,
+    absl::Span<const string> source_file_list,
+    const std::unordered_set<string>& type_annotate_ops = {}) {
+  python_op_gen_internal::GeneratedCodeAnnotator annotator;
+  bool annotate = !op_reg_offsets.offsets().empty();
+
   string result;
   // Header
   // TODO(josh11b): Mention the library for which wrappers are being generated.
@@ -1218,9 +1234,9 @@ This file is MACHINE GENERATED! Do not edit.
 
   // Mention the original source file so someone tracing back through
   // generated Python code will know where to look next.
-  if (!source_file_name.empty()) {
+  if (!source_file_list.empty()) {
     strings::StrAppend(&result, "Original C++ source file: ");
-    strings::StrAppend(&result, source_file_name);
+    strings::StrAppend(&result, absl::StrJoin(source_file_list, ", "));
     strings::StrAppend(&result, "\n");
   }
 
@@ -1243,6 +1259,9 @@ from tensorflow.python.util.tf_export import tf_export
 
 from typing import TypeVar
 )");
+  if (annotate) {
+    annotator.SetBase(result.length());
+  }
 
   for (const auto& op_def : ops.op()) {
     const auto* api_def = api_defs.GetApiDef(op_def.name());
@@ -1288,9 +1307,18 @@ from typing import TypeVar
     auto iter = type_annotate_ops.find(op_def.name());
     bool add_type_annotations = iter != type_annotate_ops.end();
 
-    strings::StrAppend(&result,
-                       GetEagerPythonOp(op_def, *api_def, function_name,
-                                        add_type_annotations));
+    strings::StrAppend(
+        &result,
+        GetEagerPythonOp(op_def, *api_def, function_name, add_type_annotations,
+                         annotate ? &annotator : nullptr));
+    if (annotate) {
+      annotator.SetBase(result.length());
+    }
+  }
+
+  if (annotate) {
+    annotator.FillSourceOffsets(op_reg_offsets);
+    strings::StrAppend(&result, annotator.BuildKytheMetadata());
   }
 
   return result;
@@ -1299,19 +1327,21 @@ from typing import TypeVar
 }  // namespace
 
 string GetPythonOps(const OpList& ops, const ApiDefMap& api_defs,
-                    const std::vector<string>& hidden_ops,
-                    const string& source_file_name,
-                    const std::unordered_set<string> type_annotate_ops) {
-  return GetPythonOpsImpl(ops, api_defs, hidden_ops, source_file_name,
-                          type_annotate_ops);
+                    const OpRegOffsets& op_reg_offsets,
+                    absl::Span<const string> hidden_ops,
+                    absl::Span<const string> source_file_list,
+                    const std::unordered_set<string>& type_annotate_ops) {
+  return GetPythonOpsImpl(ops, api_defs, op_reg_offsets, hidden_ops,
+                          source_file_list, type_annotate_ops);
 }
 
 void PrintPythonOps(const OpList& ops, const ApiDefMap& api_defs,
-                    const std::vector<string>& hidden_ops,
-                    const string& source_file_name,
-                    const std::unordered_set<string> type_annotate_ops) {
-  printf("%s", GetPythonOpsImpl(ops, api_defs, hidden_ops, source_file_name,
-                                type_annotate_ops)
+                    const OpRegOffsets& op_reg_offsets,
+                    absl::Span<const string> hidden_ops,
+                    absl::Span<const string> source_file_list,
+                    const std::unordered_set<string>& type_annotate_ops) {
+  printf("%s", GetPythonOpsImpl(ops, api_defs, op_reg_offsets, hidden_ops,
+                                source_file_list, type_annotate_ops)
                    .c_str());
 }
 
@@ -1320,7 +1350,7 @@ string GetPythonWrappers(const char* op_list_buf, size_t op_list_len) {
   ops.ParseFromArray(op_list_buf, op_list_len);
 
   ApiDefMap api_def_map(ops);
-  return GetPythonOpsImpl(ops, api_def_map, {});
+  return GetPythonOpsImpl(ops, api_def_map, OpRegOffsets(), {}, {});
 }
 
 string GetArgAnnotation(

@@ -1,6 +1,7 @@
 load("//tensorflow:tensorflow.bzl", "py_test")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     licenses = ["notice"],
 )
 
@@ -14,6 +15,15 @@ filegroup(
         ],
     ),
     visibility = ["//visibility:private"],
+)
+
+py_library(
+    name = "type_registry",
+    srcs = [
+        "type_registry.py",
+    ],
+    srcs_version = "PY3",
+    visibility = ["//tensorflow:__subpackages__"],
 )
 
 py_library(
@@ -37,7 +47,6 @@ py_library(
         "//tensorflow/python:script_ops",
         "//tensorflow/python:util",
         "//tensorflow/python/autograph/pyct",
-        "//tensorflow/python/data/ops:dataset_ops",
     ],
 )
 

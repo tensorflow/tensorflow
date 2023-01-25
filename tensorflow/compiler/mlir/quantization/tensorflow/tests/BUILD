@@ -1,6 +1,7 @@
 load("//tensorflow/compiler/mlir:glob_lit_test.bzl", "glob_lit_tests")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
         "//tensorflow/compiler/mlir/quantization/tensorflow:internal_visibility_allowlist_package",
     ],
@@ -23,6 +24,8 @@ glob_lit_tests(
     data = [":test_utilities"],
     driver = "@llvm-project//mlir:run_lit.sh",
     size_override = {
+        "insert_quantized_functions.mlir": "medium",
+        "insert_quantized_functions_drq.mlir": "medium",
         "replace_cast_hacks_with_tf_xla_ops_large_constants.mlir": "medium",
     },
     tags_override = {

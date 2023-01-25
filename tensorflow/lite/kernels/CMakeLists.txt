@@ -14,6 +14,7 @@
 # limitations under the License.
 
 find_package(googletest REQUIRED)
+find_package(google_benchmark REQUIRED)
 find_package(nsync REQUIRED)
 find_package(re2 REQUIRED)
 
@@ -83,6 +84,7 @@ set(TEST_FRAMEWORK_SRC
   ${TFLITE_SOURCE_DIR}/delegates/nnapi/acceleration_test_list.cc
   ${TFLITE_SOURCE_DIR}/delegates/nnapi/acceleration_test_util.cc
   ${TFLITE_SOURCE_DIR}/profiling/memory_info.cc
+  ${TFLITE_SOURCE_DIR}/profiling/telemetry/telemetry.cc
   ${TFLITE_SOURCE_DIR}/schema/schema_conversion_utils.cc
   ${TFLITE_SOURCE_DIR}/tools/command_line_flags.cc
   ${DELEGATE_PROVIDERS}
@@ -91,10 +93,9 @@ set(TEST_FRAMEWORK_SRC
   ${TFLITE_SOURCE_DIR}/tools/optimize/quantization_utils.cc
   ${TFLITE_SOURCE_DIR}/tools/tool_params.cc
   ${TFLITE_SOURCE_DIR}/tools/versioning/op_version.cc
-  ${TFLITE_SOURCE_DIR}/tools/versioning/op_signature.cc
-  ${TF_SOURCE_DIR}/core/platform/default/env_time.cc
-  ${TF_SOURCE_DIR}/core/platform/default/logging.cc
-  ${TF_SOURCE_DIR}/core/platform/default/mutex.cc
+  ${TF_SOURCE_DIR}/tsl/platform/default/env_time.cc
+  ${TF_SOURCE_DIR}/tsl/platform/default/logging.cc
+  ${TF_SOURCE_DIR}/tsl/platform/default/mutex.cc
   internal/test_util.cc
   acceleration_test_util.cc
   acceleration_test_util_internal.cc
@@ -108,6 +109,15 @@ if(NOT _TFLITE_ENABLE_NNAPI)
   )
 endif()
 
+set(TEST_FRAMEWORK_OPTIONS "")
+if(TFLITE_ENABLE_XNNPACK)
+  list(APPEND TEST_FRAMEWORK_SRC
+    ${TFLITE_SOURCE_DIR}/tools/delegates/xnnpack_delegate_provider.cc
+    ${TFLITE_SOURCE_DIR}/core/experimental/acceleration/configuration/c/xnnpack_plugin.cc)
+else()
+  list(APPEND TEST_FRAMEWORK_OPTIONS "-DTFLITE_WITHOUT_XNNPACK")
+endif()
+
 # Base library to be later linked with the gtest OR gtest_main library
 add_library(tensorflow-lite-test-base ${TEST_FRAMEWORK_SRC})
 target_link_libraries(tensorflow-lite-test-base
@@ -115,9 +125,11 @@ target_link_libraries(tensorflow-lite-test-base
   nsync_cpp
   re2
   tensorflow-lite
+  benchmark
 )
 add_dependencies(tensorflow-lite-test-base mutable_schema_file)
 target_include_directories(tensorflow-lite-test-base PUBLIC ${SCHEMA_GENERATED_ROOT})
+target_compile_options(tensorflow-lite-test-base PUBLIC ${TEST_FRAMEWORK_OPTIONS})
 
 add_library(tensorflow-lite-test-gtest-main INTERFACE)
 target_link_libraries(tensorflow-lite-test-gtest-main INTERFACE

@@ -26,6 +26,7 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/functional/function_ref.h"
 #include "absl/strings/cord.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
@@ -97,7 +98,7 @@ class HloComputation {
     }
 
     Status ForEachInstruction(
-        const std::function<Status(const HloInstruction*)>& func) const {
+        absl::FunctionRef<Status(const HloInstruction*)> func) const {
       for (const auto& instruction : instructions_) {
         TF_RETURN_IF_ERROR(func(instruction.get()));
       }
@@ -203,7 +204,8 @@ class HloComputation {
   // removed instruction before its deallocation.
   Status RemoveInstructionAndUnusedOperands(
       HloInstruction* instruction,
-      std::function<void(HloInstruction*)> cleanup = nullptr);
+      std::optional<absl::FunctionRef<void(HloInstruction*)>> cleanup =
+          std::nullopt);
 
   // Set the root of the computation to the given instruction. The instruction
   // must have already been added to the computation. In addition it must have
@@ -310,9 +312,15 @@ class HloComputation {
             MakeUnwrappingIterator(instructions_.end())};
   }
 
+  using ChannelDependencies =
+      absl::flat_hash_map<const HloInstruction*,
+                          absl::InlinedVector<HloInstruction*, 1>>;
+
   // Compute and return a post-order of the instructions in the computation. In
   // this order, definitions of values always appear before their uses.
   std::vector<HloInstruction*> MakeInstructionPostOrder() const;
+  std::vector<HloInstruction*> MakeInstructionPostOrder(
+      const ChannelDependencies& channel_dependencies) const;
 
   int64_t instruction_count() const { return instruction_iterators_.size(); }
 
@@ -373,9 +381,10 @@ class HloComputation {
   // create alternative HLOs other than kCopy, or even pass-throughs.
   StatusOr<HloInstruction*> DeepCopyInstructionWithCustomCopier(
       HloInstruction* instruction,
-      const std::function<
-          HloInstruction*(HloInstruction* leaf, const ShapeIndex& leaf_index,
-                          HloComputation* computation)>& copy_leaf);
+      absl::FunctionRef<HloInstruction*(HloInstruction* leaf,
+                                        const ShapeIndex& leaf_index,
+                                        HloComputation* computation)>
+          copy_leaf);
 
   // Computes and returns the ProgramShape of this computation (shape of
   // parameters and result with layout).
@@ -384,8 +393,9 @@ class HloComputation {
   // Return whether `*this` and `other` are functionally equivalent.
   bool Equal(
       const HloComputation& other, bool is_layout_sensitive,
-      const std::function<bool(const HloComputation*, const HloComputation*)>&
-          computations_comparator = nullptr) const {
+      std::optional<
+          absl::FunctionRef<bool(const HloComputation*, const HloComputation*)>>
+          computations_comparator = std::nullopt) const {
     return EqualInternal(other, is_layout_sensitive, computations_comparator,
                          /*ignore_channel_id_values=*/false,
                          /*ignore_execution_thread=*/false);
@@ -396,8 +406,9 @@ class HloComputation {
   // ID.
   bool EqualIgnoringChannelIdValues(
       const HloComputation& other, bool is_layout_sensitive,
-      const std::function<bool(const HloComputation*, const HloComputation*)>&
-          computations_comparator = nullptr) const {
+      std::optional<
+          absl::FunctionRef<bool(const HloComputation*, const HloComputation*)>>
+          computations_comparator = std::nullopt) const {
     return EqualInternal(other, is_layout_sensitive, computations_comparator,
                          /*ignore_channel_id_values=*/true,
                          /*ignore_execution_thread=*/false);
@@ -406,8 +417,9 @@ class HloComputation {
   bool EqualIgnoringExecutionThread(
       const HloComputation& other, bool is_layout_sensitive,
       bool ignore_channel_id_values,
-      const std::function<bool(const HloComputation*, const HloComputation*)>&
-          computations_comparator = nullptr) const {
+      std::optional<
+          absl::FunctionRef<bool(const HloComputation*, const HloComputation*)>>
+          computations_comparator = std::nullopt) const {
     return EqualInternal(other, is_layout_sensitive, computations_comparator,
                          ignore_channel_id_values,
                          /*ignore_execution_thread=*/true);
@@ -551,13 +563,13 @@ class HloComputation {
   // make each channel complete).
   bool IsSafelyRemovable(const HloInstruction* instruction);
 
-  // Returns a map from channel-id to the group of instructions associated with
-  // the channel. These instructions will be considered as a single node for
-  // dependency purposes. Send and RecvDone are in the group, and AllReduces
-  // with the same channel id are in the group.
-  using ChannelDependencyGroup =
-      absl::flat_hash_map<int64_t, absl::InlinedVector<HloInstruction*, 1>>;
-  ChannelDependencyGroup ComputeChannelDependencies() const;
+  // Returns a map from an instruction to the group of instructions associated
+  // with the same channel. These instructions will be considered as a single
+  // node for dependency purposes.
+  // RecvDone ops will map to the corresponding Send op.
+  // Cross-partition collectives will map to every other instruction with the
+  // same channel ID (it doesn't map to itself).
+  ChannelDependencies ComputeChannelDependencies() const;
 
   // Returns true if this computation has a side effect. A computation has a
   // side effect if it contains one or more instructions with a side effect.
@@ -681,7 +693,8 @@ class HloComputation {
   // Internal helper for comparison with different options.
   bool EqualInternal(
       const HloComputation& other, bool is_layout_sensitive,
-      const std::function<bool(const HloComputation*, const HloComputation*)>&
+      std::optional<
+          absl::FunctionRef<bool(const HloComputation*, const HloComputation*)>>
           computations_comparator,
       bool ignore_channel_id_values, bool ignore_execution_thread) const;
   // Appends (fuses) HLOs in instructions_to_append into the called computation
@@ -694,17 +707,17 @@ class HloComputation {
   // returns a deep copy of the given instruction.
   StatusOr<HloInstruction*> DeepCopyHelper(
       HloInstruction* instruction, ShapeIndex* index,
-      const std::function<
-          HloInstruction*(HloInstruction* leaf, const ShapeIndex& leaf_index,
-                          HloComputation* computation)>& copy_leaf);
+      absl::FunctionRef<HloInstruction*(HloInstruction* leaf,
+                                        const ShapeIndex& leaf_index,
+                                        HloComputation* computation)>
+          copy_leaf);
 
   // Internal helper to collect unreachable roots.
   std::vector<HloInstruction*> CollectUnreachableRoots() const;
 
   enum VisitState { kVisiting, kVisited };
   void ComputeInstructionPostOrder(
-      HloInstruction* root,
-      HloComputation::ChannelDependencyGroup& channel_dependencies,
+      HloInstruction* root, const ChannelDependencies& channel_dependencies,
       absl::flat_hash_map<HloInstruction*, VisitState>& visited,
       std::vector<HloInstruction*>& post_order) const;
 

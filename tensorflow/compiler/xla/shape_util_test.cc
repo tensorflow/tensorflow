@@ -30,6 +30,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/tsl/platform/protobuf.h"
 #include "tensorflow/tsl/platform/test_benchmark.h"
+#include "tensorflow/tsl/platform/threadpool.h"
 
 namespace xla {
 namespace {
@@ -641,10 +642,153 @@ TEST(ShapeUtilTest, ForEachIndexParallel) {
 
   ShapeUtil::ForEachIndexParallel(shape, /*base=*/{0, 0}, /*count=*/{10, 10},
                                   /*incr=*/{1, 1}, set_func);
-
   for (int i = 0; i < 10; ++i) {
     for (int j = 0; j < 10; ++j) {
       EXPECT_EQ(output[i][j], init + i + j);
+    }
+  }
+}
+
+TEST(ShapeUtilTest, ForEachIndexParallel_Rank0) {
+  Shape shape = ShapeUtil::MakeShape(F32, {});
+  int64_t output = -1;
+  auto set_func = [&](absl::Span<const int64_t> indexes,
+                      int /*thread_id*/) -> StatusOr<bool> {
+    output = indexes.size();
+    return true;
+  };
+
+  ShapeUtil::ForEachIndexParallel(shape, /*base=*/{}, /*count=*/{},
+                                  /*incr=*/{}, set_func);
+
+  EXPECT_EQ(output, 0);
+}
+
+TEST(ShapeUtilTest, ForEachIndexParallel_Empty) {
+  Shape shape = ShapeUtil::MakeShape(F32, {2, 0});
+  bool called = false;
+  auto set_func = [&](absl::Span<const int64_t> indexes,
+                      int /*thread_id*/) -> StatusOr<bool> {
+    called = true;
+    return true;
+  };
+
+  ShapeUtil::ForEachIndexParallel(shape, /*base=*/{0, 0}, /*count=*/{2, 0},
+                                  /*incr=*/{1, 1}, set_func);
+
+  EXPECT_FALSE(called);
+}
+
+TEST(ShapeUtilTest, ForEachIndexParallel_DimensionPinnedWithZeros) {
+  // Some users of ForEachIndex use base = a, count = 0, incr = 0 to indicate
+  // that the given dimension should be pinned to the value "a" during the
+  // iteration. We want to be compatible with this behavior so we test it here.
+  Shape shape = ShapeUtil::MakeShape(F32, {2, 2});
+  int64_t output[2][2] = {};
+  int init = 5;
+  auto set_func = [&](absl::Span<const int64_t> indexes,
+                      int /*thread_id*/) -> StatusOr<bool> {
+    output[indexes[0]][indexes[1]] = init + indexes[0] + indexes[1];
+    return true;
+  };
+
+  ShapeUtil::ForEachIndexParallel(shape, /*base=*/{1, 0}, /*count=*/{0, 2},
+                                  /*incr=*/{0, 1}, set_func);
+
+  for (int i = 0; i < 2; ++i) {
+    for (int j = 0; j < 2; ++j) {
+      if (i == 1) {
+        EXPECT_EQ(output[i][j], init + i + j);
+      } else {
+        EXPECT_EQ(output[i][j], 0);
+      }
+    }
+  }
+}
+
+TEST(ShapeUtilTest, ForEachIndexParallel_WithSkips) {
+  Shape shape = ShapeUtil::MakeShape(F32, {10, 10});
+  int64_t output[10][10] = {};
+  int init = 5;
+  auto set_func = [&](absl::Span<const int64_t> indexes,
+                      int /*thread_id*/) -> StatusOr<bool> {
+    output[indexes[0]][indexes[1]] = init + indexes[0] + indexes[1];
+    return true;
+  };
+
+  ShapeUtil::ForEachIndexParallel(shape, /*base=*/{2, 3}, /*count=*/{3, 1},
+                                  /*incr=*/{2, 1}, set_func);
+
+  for (int i = 0; i < 10; ++i) {
+    for (int j = 0; j < 10; ++j) {
+      if ((i == 2 || i == 4) && j == 3) {
+        EXPECT_EQ(output[i][j], init + i + j);
+      } else {
+        EXPECT_EQ(output[i][j], 0);
+      }
+    }
+  }
+}
+
+TEST(ShapeUtilTest, ForEachIndexParallel_CalledTwice) {
+  Shape shape = ShapeUtil::MakeShape(F32, {10, 10});
+  int64_t output[10][10];
+  int init = 5;
+  auto set_func = [&](absl::Span<const int64_t> indexes,
+                      int /*thread_id*/) -> StatusOr<bool> {
+    output[indexes[0]][indexes[1]] = init + indexes[0] + indexes[1];
+    return true;
+  };
+  int init2 = 15;
+  auto set_func2 = [&](absl::Span<const int64_t> indexes,
+                       int /*thread_id*/) -> StatusOr<bool> {
+    output[indexes[0]][indexes[1]] = init2 + indexes[0] + indexes[1];
+    return true;
+  };
+
+  ShapeUtil::ForEachIndexParallel(shape, /*base=*/{0, 0}, /*count=*/{10, 10},
+                                  /*incr=*/{1, 1}, set_func);
+  ShapeUtil::ForEachIndexParallel(shape, /*base=*/{0, 0}, /*count=*/{10, 10},
+                                  /*incr=*/{1, 1}, set_func2);
+
+  for (int i = 0; i < 10; ++i) {
+    for (int j = 0; j < 10; ++j) {
+      EXPECT_EQ(output[i][j], init2 + i + j);
+    }
+  }
+}
+
+TEST(ShapeUtilTest, ForEachIndexParallel_CalledFromMultipleThreads) {
+  constexpr int kCallingThreads = 10;
+  constexpr int kDim0 = 10;
+  constexpr int kDim1 = 10;
+  constexpr int kInit = 5;
+  const Shape kShape = ShapeUtil::MakeShape(F32, {kDim0, kDim1});
+  int64_t output[kCallingThreads][kDim0][kDim1];
+
+  {
+    tsl::thread::ThreadPool pool(tsl::Env::Default(), "foreach",
+                                 kCallingThreads);
+    for (int t = 0; t < kCallingThreads; ++t) {
+      pool.Schedule([&output, &kShape, t] {
+        auto set_func = [&output, t](absl::Span<const int64_t> indexes,
+                                     int /*thread_id*/) -> StatusOr<bool> {
+          output[t][indexes[0]][indexes[1]] = kInit + indexes[0] + indexes[1];
+          return true;
+        };
+
+        ShapeUtil::ForEachIndexParallel(kShape, /*base=*/{0, 0},
+                                        /*count=*/{kDim0, kDim1},
+                                        /*incr=*/{1, 1}, set_func);
+      });
+    }
+  }
+
+  for (int t = 0; t < kCallingThreads; ++t) {
+    for (int i = 0; i < kDim0; ++i) {
+      for (int j = 0; j < kDim1; ++j) {
+        EXPECT_EQ(output[t][i][j], kInit + i + j);
+      }
     }
   }
 }

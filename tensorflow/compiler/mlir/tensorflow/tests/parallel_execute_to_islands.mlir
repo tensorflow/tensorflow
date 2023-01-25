@@ -1,4 +1,4 @@
-// RUN: tf-opt %s -tf-parallel-execute-to-islands | FILECHECK_OPTS="" FileCheck %s
+// RUN: tf-opt %s -tf-parallel-execute-to-islands=legacy-graph-export=false | FILECHECK_OPTS="" FileCheck %s
 
 // CHECK-LABEL: func @testEmptyRegions
 func.func @testEmptyRegions() {
@@ -17,10 +17,10 @@ func.func @testEmptyRegions() {
 }
 
 // CHECK:      [[ISLAND_0_CTRL:%.+]] = tf_executor.island {
-// CHECK:        tf_executor.yield
+// CHECK:        tf_executor.yield {_parallel_execution_ids = "p0:0"}
 // CHECK:      [[ISLAND_1_CTRL:%.+]] = tf_executor.island {
-// CHECK:        tf_executor.yield
-// CHECK:      tf_executor.fetch [[ISLAND_0_CTRL]], [[ISLAND_1_CTRL]] :
+// CHECK:        tf_executor.yield {_parallel_execution_ids = "p0:1"}
+// CHECK:      tf_executor.fetch
 
 
 // CHECK-LABEL: func @testDataOperandsAndResults
@@ -50,10 +50,10 @@ func.func @testDataOperandsAndResults(%arg0 : tensor<i1>) {
 // CHECK-NEXT:   [[OP_A_OUTPUT:%.+]] = "tf.opA"([[ARG_0]])
 // CHECK-NEXT:   tf_executor.yield [[OP_A_OUTPUT]] :
 // CHECK:      [[ISLAND_0_OUTPUT:%.+]], {{%.+}} = tf_executor.island {
-// CHECK-NEXT:   [[OP_B_OUTPUT:%.+]] = "tf.opB"([[INPUT_A]])
+// CHECK-NEXT:   [[OP_B_OUTPUT:%.+]] = "tf.opB"([[INPUT_A]]) {_parallel_execution_ids = "p0:0"}
 // CHECK:        tf_executor.yield [[OP_B_OUTPUT]] :
 // CHECK:      [[ISLAND_1_OUTPUT:%.+]], {{%.+}} = tf_executor.island {
-// CHECK-NEXT:   [[OP_C_OUTPUT:%.+]] = "tf.opC"([[INPUT_A]])
+// CHECK-NEXT:   [[OP_C_OUTPUT:%.+]] = "tf.opC"([[INPUT_A]]) {_parallel_execution_ids = "p0:1"}
 // CHECK:        tf_executor.yield [[OP_C_OUTPUT]] :
 // CHECK:      tf_executor.fetch [[ISLAND_0_OUTPUT]], [[ISLAND_1_OUTPUT]] :
 
@@ -62,6 +62,7 @@ func.func @testDataOperandsAndResults(%arg0 : tensor<i1>) {
 func.func @testControlOperands() {
   %0:2 = tf_executor.graph {
     %1 = tf_executor.island {
+      "tf.someOp"() : () -> ()
       tf_executor.yield
     }
     %2:3 = tf_executor.island(%1) {
@@ -81,10 +82,10 @@ func.func @testControlOperands() {
 
 // CHECK:      [[INPUT_CTRL:%.+]] = tf_executor.island {
 // CHECK:      [[ISLAND_0_OUTPUT:%.+]], {{%.+}} = tf_executor.island([[INPUT_CTRL]]) {
-// CHECK-NEXT:   [[OP_A_OUTPUT:%.+]] = "tf.opA"()
+// CHECK-NEXT:   [[OP_A_OUTPUT:%.+]] = "tf.opA"() {_parallel_execution_ids = "p0:0"}
 // CHECK:        tf_executor.yield [[OP_A_OUTPUT]] :
 // CHECK:      [[ISLAND_1_OUTPUT:%.+]], {{%.+}} = tf_executor.island([[INPUT_CTRL]]) {
-// CHECK-NEXT:   [[OP_B_OUTPUT:%.+]] = "tf.opB"()
+// CHECK-NEXT:   [[OP_B_OUTPUT:%.+]] = "tf.opB"() {_parallel_execution_ids = "p0:1"}
 // CHECK:        tf_executor.yield [[OP_B_OUTPUT]] :
 // CHECK:      tf_executor.fetch [[ISLAND_0_OUTPUT]], [[ISLAND_1_OUTPUT]] :
 
@@ -103,6 +104,7 @@ func.func @testControlResults() {
       tf_executor.yield %1#0, %1#1 : tensor<i1>, tensor<i32>
     }
     %3 = tf_executor.island(%0#2) {
+      "tf.someOp"() : () -> ()
       tf_executor.yield
     }
     tf_executor.fetch %3 : !tf_executor.control
@@ -111,10 +113,10 @@ func.func @testControlResults() {
 }
 
 // CHECK:      {{%.+}}, [[ISLAND_0_CTRL:%.+]] = tf_executor.island {
-// CHECK-NEXT:   [[OP_A_OUTPUT:%.+]] = "tf.opA"()
+// CHECK-NEXT:   [[OP_A_OUTPUT:%.+]] = "tf.opA"() {_parallel_execution_ids = "p0:0"}
 // CHECK:        tf_executor.yield [[OP_A_OUTPUT]] :
 // CHECK:      {{%.+}}, [[ISLAND_1_CTRL:%.+]] = tf_executor.island {
-// CHECK-NEXT:   [[OP_B_OUTPUT:%.+]] = "tf.opB"()
+// CHECK-NEXT:   [[OP_B_OUTPUT:%.+]] = "tf.opB"() {_parallel_execution_ids = "p0:1"}
 // CHECK:        tf_executor.yield [[OP_B_OUTPUT]] :
 // CHECK:      [[OUTPUT_CTRL:%.+]] = tf_executor.island([[ISLAND_0_CTRL]], [[ISLAND_1_CTRL]]) {
 // CHECK:      [[FETCH_ISLAND:%.+]] = tf_executor.island([[OUTPUT_CTRL]]) {
@@ -140,12 +142,38 @@ func.func @testSomeRegionNoUsers() {
 }
 
 // CHECK:      [[ISLAND_0_OUTPUT:%.+]], {{%.+}} = tf_executor.island {
-// CHECK-NEXT:   [[OP_A_OUTPUT:%.+]] = "tf.opA"()
+// CHECK-NEXT:   [[OP_A_OUTPUT:%.+]] = "tf.opA"() {_parallel_execution_ids = "p0:0"}
 // CHECK:        tf_executor.yield [[OP_A_OUTPUT]] :
 // CHECK:      {{%.+}}, [[ISLAND_1_CTRL:%.+]] = tf_executor.island {
-// CHECK-NEXT:   [[OP_B_OUTPUT:%.+]] = "tf.opB"()
+// CHECK-NEXT:   [[OP_B_OUTPUT:%.+]] = "tf.opB"() {_parallel_execution_ids = "p0:1"}
 // CHECK:        tf_executor.yield [[OP_B_OUTPUT]] :
-// CHECK:      tf_executor.fetch [[ISLAND_0_OUTPUT]], [[ISLAND_1_CTRL]] :
+// CHECK:      tf_executor.fetch [[ISLAND_0_OUTPUT]] :
+
+// CHECK-LABEL: @testRegionContainsMultipleOps
+func.func @testRegionContainsMultipleOps() {
+  %0:2 = tf_executor.graph {
+    %outputs:2, %control = tf_executor.island {
+      %1:2 = "tf_device.parallel_execute"() ({
+        %2 = "tf.opA"() : () -> tensor<i1>
+        %3 = "tf.opB"(%2) : (tensor<i1>) -> tensor<i1>
+        tf_device.return %3 : tensor<i1>
+      }, {
+        %2 = "tf.opC"() : () -> tensor<i32>
+        %3 = "tf.opD"(%2) : (tensor<i32>) -> tensor<i32>
+        tf_device.return %3 : tensor<i32>
+      }) : () -> (tensor<i1>, tensor<i32>)
+      tf_executor.yield %1#0, %1#1 : tensor<i1>, tensor<i32>
+    }
+    tf_executor.fetch %outputs#0, %outputs#1 : tensor<i1>, tensor<i32>
+  }
+  return
+}
+
+// CHECK: [[OUTPUT_0:%.*]], {{%.*}} = tf_executor.island wraps "tf.opA"() {_parallel_execution_ids = "p0:0"}
+// CHECK: [[OUTPUT_1:%.*]], {{%.*}} = tf_executor.island wraps "tf.opB"([[OUTPUT_0:%.*]]) {_parallel_execution_ids = "p0:0"}
+// CHECK: [[OUTPUT_2:%.*]], {{%.*}} = tf_executor.island wraps "tf.opC"() {_parallel_execution_ids = "p0:1"}
+// CHECK: [[OUTPUT_3:%.*]], {{%.*}} = tf_executor.island wraps "tf.opD"([[OUTPUT_2:%.*]]) {_parallel_execution_ids = "p0:1"}
+// CHECK: tf_executor.fetch [[OUTPUT_1:%.*]], [[OUTPUT_3:%.*]]
 
 // -----
 
@@ -175,6 +203,34 @@ func.func @testSingleton(%arg0 : tensor<i1>) {
 // CHECK-NEXT:   [[OP_A_OUTPUT:%.+]] = "tf.opA"([[ARG_0]])
 // CHECK-NEXT:   tf_executor.yield [[OP_A_OUTPUT]] :
 // CHECK:      [[ISLAND_0_OUTPUT:%.+]], {{%.+}} = tf_executor.island {
-// CHECK-NEXT:   [[OP_B_OUTPUT:%.+]] = "tf.opB"([[INPUT_A]])
+// CHECK-NEXT:   [[OP_B_OUTPUT:%.+]] = "tf.opB"([[INPUT_A]]) {_parallel_execution_ids = "p0:0"}
 // CHECK:        tf_executor.yield [[OP_B_OUTPUT]] :
 // CHECK:      tf_executor.fetch [[ISLAND_0_OUTPUT]] :
+
+// -----
+// Tests parallel_group attr can merge correctly.
+// CHECK-LABEL: func @merge_of_parallel_group_attr
+func.func @merge_of_parallel_group_attr() {
+  %0:2 = tf_executor.graph {
+    %outputs:2, %control = tf_executor.island {
+      %1:2 = "tf_device.parallel_execute"  () ({
+        %2 = "tf.opA"() : () -> tensor<i1>
+        %3 = "tf.opB"(%2) : (tensor<i1>) -> tensor<i1>
+        tf_device.return %3 : tensor<i1>
+      }, {
+        %2 = "tf.opC"() : () -> tensor<i32>
+        %3 = "tf.opD"(%2) : (tensor<i32>) -> tensor<i32>
+        tf_device.return %2 : tensor<i32>
+      }) {_parallel_execution_ids = "r4:5"} : () -> (tensor<i1>, tensor<i32>)
+      tf_executor.yield %1#0, %1#1 : tensor<i1>, tensor<i32>
+    }
+    tf_executor.fetch %outputs#0, %outputs#1 : tensor<i1>, tensor<i32>
+  }
+  return
+}
+
+// CHECK: [[OUTPUT_0:%.*]], {{%.*}} = tf_executor.island wraps "tf.opA"() {_parallel_execution_ids = "r4:5,p0:0"}
+// CHECK: [[OUTPUT_1:%.*]], {{%.*}} = tf_executor.island wraps "tf.opB"([[OUTPUT_0:%.*]]) {_parallel_execution_ids = "r4:5,p0:0"}
+// CHECK: [[OUTPUT_2:%.*]], {{%.*}} = tf_executor.island wraps "tf.opC"() {_parallel_execution_ids = "r4:5,p0:1"}
+// CHECK: [[OUTPUT_3:%.*]], {{%.*}} = tf_executor.island wraps "tf.opD"([[OUTPUT_2:%.*]]) {_parallel_execution_ids = "r4:5,p0:1"}
+// CHECK: tf_executor.fetch [[OUTPUT_1:%.*]], [[OUTPUT_3:%.*]]

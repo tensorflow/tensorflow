@@ -34,6 +34,8 @@ namespace mlir {
 namespace tf_saved_model {
 namespace {
 
+using ::mlir::tf_saved_model::kTfSavedModelExportedNamesAttr;
+
 void InitializeVariable(TF::VarHandleOp var_handle_op,
                         tensorflow::Tensor* tensor,
                         func::FuncOp session_init_func, OpBuilder builder) {
@@ -54,9 +56,6 @@ void InitializeVariable(TF::VarHandleOp var_handle_op,
                                   const_op.getResult()});
 }
 
-constexpr char kTfSavedModelExportedNameAttr[] =
-    "tf_saved_model.exported_names";
-
 func::FuncOp CreateSessionInitFunc(ModuleOp module) {
   constexpr char kSessionInitFuncName[] = "SessionInitializerFunction";
 
@@ -65,7 +64,7 @@ func::FuncOp CreateSessionInitFunc(ModuleOp module) {
       FunctionType::get(module.getContext(), /*inputs=*/{}, /*results=*/{});
   auto func = builder.create<func::FuncOp>(module->getLoc(),
                                            kSessionInitFuncName, func_type);
-  func->setAttr(kTfSavedModelExportedNameAttr,
+  func->setAttr(kTfSavedModelExportedNamesAttr,
                 builder.getStrArrayAttr({kSessionInitFuncName}));
   func->setAttr(kTfSavedModelInitializerTypeAttr,
                 builder.getStringAttr(kTfSavedModelInitializerRestoreType));

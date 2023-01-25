@@ -26,6 +26,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/inlined_vector.h"
+#include "absl/functional/function_ref.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
@@ -69,7 +70,7 @@ class HloDimensionsInstruction : public HloInstruction {
 
   bool IdenticalSlowPath(
       const HloInstruction& other,
-      const std::function<bool(const HloComputation*, const HloComputation*)>&
+      absl::FunctionRef<bool(const HloComputation*, const HloComputation*)>
           eq_computations) const override;
 
   std::vector<int64_t> dimensions_;
@@ -110,7 +111,7 @@ class HloBatchNormInstruction : public HloInstruction {
       const HloPrintOptions& options) const override;
   bool IdenticalSlowPath(
       const HloInstruction& other,
-      const std::function<bool(const HloComputation*, const HloComputation*)>&
+      absl::FunctionRef<bool(const HloComputation*, const HloComputation*)>
           eq_computations) const override;
   // A small float number added to the variance to avoid divide-by-zero error.
   float epsilon_ = 0.0f;
@@ -193,7 +194,7 @@ class HloFftInstruction : public HloInstruction {
       const HloPrintOptions& options) const override;
   bool IdenticalSlowPath(
       const HloInstruction& other,
-      const std::function<bool(const HloComputation*, const HloComputation*)>&
+      absl::FunctionRef<bool(const HloComputation*, const HloComputation*)>
           eq_computations) const override;
 
   // Implementation for non-common logic of CloneWithNewOperands.
@@ -262,7 +263,7 @@ class HloAsyncInstruction : public HloInstruction {
       const HloPrintOptions& options) const override;
   bool IdenticalSlowPath(
       const HloInstruction& other,
-      const std::function<bool(const HloComputation*, const HloComputation*)>&
+      absl::FunctionRef<bool(const HloComputation*, const HloComputation*)>
           eq_computations) const override;
   std::unique_ptr<HloInstruction> CloneWithNewOperandsImpl(
       const Shape& shape, absl::Span<HloInstruction* const> new_operands,
@@ -273,10 +274,13 @@ class HloAsyncInstruction : public HloInstruction {
 
 class HloCopyStartInstruction : public HloInstruction {
  public:
-  explicit HloCopyStartInstruction(const Shape& shape, HloInstruction* operand,
-                                   bool is_cross_program_prefetch);
+  explicit HloCopyStartInstruction(
+      const Shape& shape, HloInstruction* operand,
+      std::optional<int> cross_program_prefetch_index);
 
-  bool is_cross_program_prefetch() const { return is_cross_program_prefetch_; }
+  std::optional<int> cross_program_prefetch_index() const {
+    return cross_program_prefetch_index_;
+  }
   HloInstructionProto ToProto() const override;
 
   static bool ClassOf(const HloInstruction* hlo) {
@@ -288,13 +292,20 @@ class HloCopyStartInstruction : public HloInstruction {
       const HloPrintOptions& options) const override;
   bool IdenticalSlowPath(
       const HloInstruction& other,
-      const std::function<bool(const HloComputation*, const HloComputation*)>&
+      absl::FunctionRef<bool(const HloComputation*, const HloComputation*)>
           eq_computations) const override;
   std::unique_ptr<HloInstruction> CloneWithNewOperandsImpl(
       const Shape& shape, absl::Span<HloInstruction* const> new_operands,
       HloCloneContext* context) const override;
 
-  bool is_cross_program_prefetch_;
+  // Each cross program prefetched buffer has a unique index. The indices are
+  // assigned contiguously starting from zero in
+  // AlternateMemoryBestFitHeap::AllocateCrossProgramPrefetchBuffer. This value
+  // is used during codegen to determine which buffer is being speculated at
+  // runtime. One possible implementation is to initialize an array with boolean
+  // values indicating whether the cross program prefetch succeeds or fails for
+  // each buffer.
+  std::optional<int> cross_program_prefetch_index_;
 };
 
 class HloCompareInstruction : public HloInstruction {
@@ -317,7 +328,7 @@ class HloCompareInstruction : public HloInstruction {
       const HloPrintOptions& options) const override;
   bool IdenticalSlowPath(
       const HloInstruction& other,
-      const std::function<bool(const HloComputation*, const HloComputation*)>&
+      absl::FunctionRef<bool(const HloComputation*, const HloComputation*)>
           eq_computations) const override;
   std::unique_ptr<HloInstruction> CloneWithNewOperandsImpl(
       const Shape& shape, absl::Span<HloInstruction* const> new_operands,
@@ -347,7 +358,7 @@ class HloTriangularSolveInstruction : public HloInstruction {
       const HloPrintOptions& options) const override;
   bool IdenticalSlowPath(
       const HloInstruction& other,
-      const std::function<bool(const HloComputation*, const HloComputation*)>&
+      absl::FunctionRef<bool(const HloComputation*, const HloComputation*)>
           eq_computations) const override;
 
   // Implementation for non-common logic of CloneWithNewOperands.
@@ -376,7 +387,7 @@ class HloCholeskyInstruction : public HloInstruction {
       const HloPrintOptions& options) const override;
   bool IdenticalSlowPath(
       const HloInstruction& other,
-      const std::function<bool(const HloComputation*, const HloComputation*)>&
+      absl::FunctionRef<bool(const HloComputation*, const HloComputation*)>
           eq_computations) const override;
 
   // Implementation for non-common logic of CloneWithNewOperands.
@@ -404,7 +415,7 @@ class HloChannelInstruction : public HloInstruction {
   // channel IDs, as long as both have channel IDs or neither has a channel ID.
   virtual bool IdenticalSlowPathIgnoringChannelIdValues(
       const HloInstruction& other,
-      const std::function<bool(const HloComputation*, const HloComputation*)>&
+      absl::FunctionRef<bool(const HloComputation*, const HloComputation*)>
           eq_computations) const {
     return channel_id_.has_value() == other.channel_id().has_value();
   }
@@ -424,7 +435,7 @@ class HloChannelInstruction : public HloInstruction {
   // IdenticalSlowPathIgnoringChannelIdValues() instead.
   bool IdenticalSlowPath(
       const HloInstruction& other,
-      const std::function<bool(const HloComputation*, const HloComputation*)>&
+      absl::FunctionRef<bool(const HloComputation*, const HloComputation*)>
           eq_computations) const final;
 
   std::optional<int64_t> channel_id_;
@@ -459,7 +470,7 @@ class HloSendRecvInstruction : public HloChannelInstruction {
       const HloPrintOptions& options) const override;
   bool IdenticalSlowPathIgnoringChannelIdValues(
       const HloInstruction& other,
-      const std::function<bool(const HloComputation*, const HloComputation*)>&
+      absl::FunctionRef<bool(const HloComputation*, const HloComputation*)>
           eq_computations) const override;
   // Whether this send/recv instruction sends data to/from the host.
   bool is_host_transfer_;
@@ -565,7 +576,7 @@ class HloCollectiveInstruction : public HloChannelInstruction {
       const HloPrintOptions& options) const override;
   bool IdenticalSlowPathIgnoringChannelIdValues(
       const HloInstruction& other,
-      const std::function<bool(const HloComputation*, const HloComputation*)>&
+      absl::FunctionRef<bool(const HloComputation*, const HloComputation*)>
           eq_computations) const override;
 
   std::vector<ReplicaGroup> replica_groups_;
@@ -603,7 +614,7 @@ class HloAllGatherInstruction : public HloCollectiveInstruction {
  private:
   bool IdenticalSlowPathIgnoringChannelIdValues(
       const HloInstruction& other,
-      const std::function<bool(const HloComputation*, const HloComputation*)>&
+      absl::FunctionRef<bool(const HloComputation*, const HloComputation*)>
           eq_computations) const override;
 
   // Implementation for non-common logic of CloneWithNewOperands.
@@ -647,7 +658,7 @@ class HloAllReduceInstructionBase : public HloCollectiveInstruction {
 
   bool IdenticalSlowPathIgnoringChannelIdValues(
       const HloInstruction& other,
-      const std::function<bool(const HloComputation*, const HloComputation*)>&
+      absl::FunctionRef<bool(const HloComputation*, const HloComputation*)>
           eq_computations) const override;
 
  private:
@@ -701,7 +712,7 @@ class HloReduceScatterInstruction : public HloAllReduceInstructionBase {
  private:
   bool IdenticalSlowPathIgnoringChannelIdValues(
       const HloInstruction& other,
-      const std::function<bool(const HloComputation*, const HloComputation*)>&
+      absl::FunctionRef<bool(const HloComputation*, const HloComputation*)>
           eq_computations) const override;
 
   // Implementation for non-common logic of CloneWithNewOperands.
@@ -742,7 +753,7 @@ class HloAllToAllInstruction : public HloCollectiveInstruction {
  private:
   bool IdenticalSlowPathIgnoringChannelIdValues(
       const HloInstruction& other,
-      const std::function<bool(const HloComputation*, const HloComputation*)>&
+      absl::FunctionRef<bool(const HloComputation*, const HloComputation*)>
           eq_computations) const override;
 
   // Implementation for non-common logic of CloneWithNewOperands.
@@ -789,7 +800,7 @@ class HloCollectivePermuteInstruction : public HloChannelInstruction {
       const HloPrintOptions& options) const override;
   bool IdenticalSlowPathIgnoringChannelIdValues(
       const HloInstruction& other,
-      const std::function<bool(const HloComputation*, const HloComputation*)>&
+      absl::FunctionRef<bool(const HloComputation*, const HloComputation*)>
           eq_computations) const override;
 
   // Implementation for non-common logic of CloneWithNewOperands.
@@ -883,7 +894,7 @@ class HloReduceInstruction : public HloDimensionsInstruction {
  private:
   bool IdenticalSlowPath(
       const HloInstruction& other,
-      const std::function<bool(const HloComputation*, const HloComputation*)>&
+      absl::FunctionRef<bool(const HloComputation*, const HloComputation*)>
           eq_computations) const override;
   // Implementation for non-common logic of CloneWithNewOperands.
   std::unique_ptr<HloInstruction> CloneWithNewOperandsImpl(
@@ -916,7 +927,7 @@ class HloSortInstruction : public HloDimensionsInstruction {
       const HloPrintOptions& options) const override;
   bool IdenticalSlowPath(
       const HloInstruction& other,
-      const std::function<bool(const HloComputation*, const HloComputation*)>&
+      absl::FunctionRef<bool(const HloComputation*, const HloComputation*)>
           eq_computations) const override;
   // Implementation for non-common logic of CloneWithNewOperands.
   std::unique_ptr<HloInstruction> CloneWithNewOperandsImpl(
@@ -1000,7 +1011,7 @@ class HloReshapeInstruction : public HloInstruction {
       const HloPrintOptions& options) const override;
   bool IdenticalSlowPath(
       const HloInstruction& other,
-      const std::function<bool(const HloComputation*, const HloComputation*)>&
+      absl::FunctionRef<bool(const HloComputation*, const HloComputation*)>
           eq_computations) const override;
   // Implementation for non-common logic of CloneWithNewOperands.
   std::unique_ptr<HloInstruction> CloneWithNewOperandsImpl(
@@ -1032,7 +1043,7 @@ class HloMapInstruction : public HloInstruction {
       const HloPrintOptions& options) const override;
   bool IdenticalSlowPath(
       const HloInstruction& other,
-      const std::function<bool(const HloComputation*, const HloComputation*)>&
+      absl::FunctionRef<bool(const HloComputation*, const HloComputation*)>
           eq_computations) const override;
   // Implementation for non-common logic of CloneWithNewOperands.
   std::unique_ptr<HloInstruction> CloneWithNewOperandsImpl(
@@ -1082,7 +1093,7 @@ class HloSliceInstruction : public HloInstruction {
       const HloPrintOptions& options) const override;
   bool IdenticalSlowPath(
       const HloInstruction& other,
-      const std::function<bool(const HloComputation*, const HloComputation*)>&
+      absl::FunctionRef<bool(const HloComputation*, const HloComputation*)>
           eq_computations) const override;
   // Implementation for non-common logic of CloneWithNewOperands.
   std::unique_ptr<HloInstruction> CloneWithNewOperandsImpl(
@@ -1125,7 +1136,7 @@ class HloConstantInstruction : public HloInstruction {
       const std::optional<int64_t>& operand_idx) const override;
   bool IdenticalSlowPath(
       const HloInstruction& other,
-      const std::function<bool(const HloComputation*, const HloComputation*)>&
+      absl::FunctionRef<bool(const HloComputation*, const HloComputation*)>
           eq_computations) const override;
   std::string OperandsToStringWithCanonicalNameMap(
       const HloPrintOptions& options,
@@ -1199,9 +1210,30 @@ class HloCallableInstruction : public HloInstruction {
            hlo->opcode() == HloOpcode::kCustomCall;
   }
 
+  // Gets a list of output/operand buffer pairs that alias each other, where the
+  // output buffer is represented as a ShapeIndex, and the operand buffer is
+  // represented as the operand index and the ShapeIndex. By default this list
+  // is empty.
+  const std::vector<std::pair<ShapeIndex, std::pair<int64_t, ShapeIndex>>>&
+  output_to_operand_aliasing() const {
+    return output_to_operand_aliasing_;
+  }
+  // Sets the list of output/operand buffer pairs that alias each other.
+  void set_output_to_operand_aliasing(
+      std::vector<std::pair<ShapeIndex, std::pair<int64_t, ShapeIndex>>>
+          aliasing) {
+    output_to_operand_aliasing_ = std::move(aliasing);
+  }
+
  protected:
   // Returns the default called computation name.
   virtual std::string default_called_computation_name() const = 0;
+
+ private:
+  // A list of output/operand buffer pairs that alias each other. See comment of
+  // output_to_operand_aliasing().
+  std::vector<std::pair<ShapeIndex, std::pair<int64_t, ShapeIndex>>>
+      output_to_operand_aliasing_;
 };
 
 class HloFusionInstruction : public HloCallableInstruction {
@@ -1322,7 +1354,7 @@ class HloFusionInstruction : public HloCallableInstruction {
       const HloPrintOptions& options) const override;
   bool IdenticalSlowPath(
       const HloInstruction& other,
-      const std::function<bool(const HloComputation*, const HloComputation*)>&
+      absl::FunctionRef<bool(const HloComputation*, const HloComputation*)>
           eq_computations) const override;
 
   // Implementation for non-common logic of CloneWithNewOperands.
@@ -1374,7 +1406,7 @@ class HloRngInstruction : public HloInstruction {
       const HloPrintOptions& options) const override;
   bool IdenticalSlowPath(
       const HloInstruction& other,
-      const std::function<bool(const HloComputation*, const HloComputation*)>&
+      absl::FunctionRef<bool(const HloComputation*, const HloComputation*)>
           eq_computations) const override;
   // Implementation for non-common logic of CloneWithNewOperands.
   std::unique_ptr<HloInstruction> CloneWithNewOperandsImpl(
@@ -1425,7 +1457,7 @@ class HloParameterInstruction : public HloInstruction {
       const HloPrintOptions& options) const override;
   bool IdenticalSlowPath(
       const HloInstruction& other,
-      const std::function<bool(const HloComputation*, const HloComputation*)>&
+      absl::FunctionRef<bool(const HloComputation*, const HloComputation*)>
           eq_computations) const override;
   std::string OperandsToStringWithCanonicalNameMap(
       const HloPrintOptions& options,
@@ -1465,7 +1497,7 @@ class HloGetTupleElementInstruction : public HloInstruction {
       const HloPrintOptions& options) const override;
   bool IdenticalSlowPath(
       const HloInstruction& other,
-      const std::function<bool(const HloComputation*, const HloComputation*)>&
+      absl::FunctionRef<bool(const HloComputation*, const HloComputation*)>
           eq_computations) const override;
   // Implementation for non-common logic of CloneWithNewOperands.
   std::unique_ptr<HloInstruction> CloneWithNewOperandsImpl(
@@ -1497,7 +1529,7 @@ class HloReducePrecisionInstruction : public HloInstruction {
       const HloPrintOptions& options) const override;
   bool IdenticalSlowPath(
       const HloInstruction& other,
-      const std::function<bool(const HloComputation*, const HloComputation*)>&
+      absl::FunctionRef<bool(const HloComputation*, const HloComputation*)>
           eq_computations) const override;
   // Implementation for non-common logic of CloneWithNewOperands.
   std::unique_ptr<HloInstruction> CloneWithNewOperandsImpl(
@@ -1538,7 +1570,7 @@ class HloInfeedInstruction : public HloInstruction {
       const HloPrintOptions& options) const override;
   bool IdenticalSlowPath(
       const HloInstruction& other,
-      const std::function<bool(const HloComputation*, const HloComputation*)>&
+      absl::FunctionRef<bool(const HloComputation*, const HloComputation*)>
           eq_computations) const override;
   // Implementation for non-common logic of CloneWithNewOperands.
   std::unique_ptr<HloInstruction> CloneWithNewOperandsImpl(
@@ -1576,7 +1608,7 @@ class HloOutfeedInstruction : public HloInstruction {
       const HloPrintOptions& options) const override;
   bool IdenticalSlowPath(
       const HloInstruction& other,
-      const std::function<bool(const HloComputation*, const HloComputation*)>&
+      absl::FunctionRef<bool(const HloComputation*, const HloComputation*)>
           eq_computations) const override;
   // Implementation for non-common logic of CloneWithNewOperands.
   std::unique_ptr<HloInstruction> CloneWithNewOperandsImpl(
@@ -1641,7 +1673,7 @@ class HloConvolutionInstruction : public HloInstruction {
       const HloPrintOptions& options) const override;
   bool IdenticalSlowPath(
       const HloInstruction& other,
-      const std::function<bool(const HloComputation*, const HloComputation*)>&
+      absl::FunctionRef<bool(const HloComputation*, const HloComputation*)>
           eq_computations) const override;
   // Implementation for non-common logic of CloneWithNewOperands.
   std::unique_ptr<HloInstruction> CloneWithNewOperandsImpl(
@@ -1727,7 +1759,7 @@ class HloReduceWindowInstruction : public HloInstruction {
       const HloPrintOptions& options) const override;
   bool IdenticalSlowPath(
       const HloInstruction& other,
-      const std::function<bool(const HloComputation*, const HloComputation*)>&
+      absl::FunctionRef<bool(const HloComputation*, const HloComputation*)>
           eq_computations) const override;
   // Implementation for non-common logic of CloneWithNewOperands.
   std::unique_ptr<HloInstruction> CloneWithNewOperandsImpl(
@@ -1780,7 +1812,7 @@ class HloSelectAndScatterInstruction : public HloInstruction {
       const HloPrintOptions& options) const override;
   bool IdenticalSlowPath(
       const HloInstruction& other,
-      const std::function<bool(const HloComputation*, const HloComputation*)>&
+      absl::FunctionRef<bool(const HloComputation*, const HloComputation*)>
           eq_computations) const override;
   // Implementation for non-common logic of CloneWithNewOperands.
   std::unique_ptr<HloInstruction> CloneWithNewOperandsImpl(
@@ -1891,20 +1923,6 @@ class HloCustomCallInstruction : public HloCallableInstruction {
     CHECK(layout_constrained());
     return operand_shapes_with_layout_;
   }
-  // Gets a list of output/operand buffer pairs that alias each other, where the
-  // output buffer is represented as a ShapeIndex, and the operand buffer is
-  // represented as the operand index and the ShapeIndex. By default this list
-  // is empty.
-  const std::vector<std::pair<ShapeIndex, std::pair<int64_t, ShapeIndex>>>&
-  output_to_operand_aliasing() const {
-    return output_to_operand_aliasing_;
-  }
-  // Sets the list of output/operand buffer pairs that alias each other.
-  void set_output_to_operand_aliasing(
-      std::vector<std::pair<ShapeIndex, std::pair<int64_t, ShapeIndex>>>
-          aliasing) {
-    output_to_operand_aliasing_ = std::move(aliasing);
-  }
   void set_custom_call_schedule(CustomCallSchedule custom_call_schedule) {
     custom_call_schedule_ = custom_call_schedule;
   }
@@ -1930,7 +1948,7 @@ class HloCustomCallInstruction : public HloCallableInstruction {
       const HloPrintOptions& options) const override;
   bool IdenticalSlowPath(
       const HloInstruction& other,
-      const std::function<bool(const HloComputation*, const HloComputation*)>&
+      absl::FunctionRef<bool(const HloComputation*, const HloComputation*)>
           eq_computations) const override;
   // Implementation for non-common logic of CloneWithNewOperands.
   std::unique_ptr<HloInstruction> CloneWithNewOperandsImpl(
@@ -1957,10 +1975,6 @@ class HloCustomCallInstruction : public HloCallableInstruction {
   std::vector<Shape> operand_shapes_with_layout_;
   // Whether this custom call has a side-effect.
   bool custom_call_has_side_effect_;
-  // A list of output/operand buffer pairs that alias each other. See comment of
-  // output_to_operand_aliasing().
-  std::vector<std::pair<ShapeIndex, std::pair<int64_t, ShapeIndex>>>
-      output_to_operand_aliasing_;
   std::optional<Literal> literal_;
   // A custom-call schedule hint.
   CustomCallSchedule custom_call_schedule_;
@@ -1996,7 +2010,7 @@ class HloPadInstruction : public HloInstruction {
       const HloPrintOptions& options) const override;
   bool IdenticalSlowPath(
       const HloInstruction& other,
-      const std::function<bool(const HloComputation*, const HloComputation*)>&
+      absl::FunctionRef<bool(const HloComputation*, const HloComputation*)>
           eq_computations) const override;
   // Implementation for non-common logic of CloneWithNewOperands.
   std::unique_ptr<HloInstruction> CloneWithNewOperandsImpl(
@@ -2067,7 +2081,7 @@ class HloDynamicSliceInstruction : public HloDynamicIndexInstruction {
       const HloPrintOptions& options) const override;
   bool IdenticalSlowPath(
       const HloInstruction& other,
-      const std::function<bool(const HloComputation*, const HloComputation*)>&
+      absl::FunctionRef<bool(const HloComputation*, const HloComputation*)>
           eq_computations) const override;
   // Implementation for non-common logic of CloneWithNewOperands.
   std::unique_ptr<HloInstruction> CloneWithNewOperandsImpl(
@@ -2135,7 +2149,7 @@ class HloGatherInstruction : public HloInstruction {
       const HloPrintOptions& options) const override;
   bool IdenticalSlowPath(
       const HloInstruction& other,
-      const std::function<bool(const HloComputation*, const HloComputation*)>&
+      absl::FunctionRef<bool(const HloComputation*, const HloComputation*)>
           eq_computations) const override;
   std::unique_ptr<HloInstruction> CloneWithNewOperandsImpl(
       const Shape& shape, absl::Span<HloInstruction* const> new_operands,
@@ -2197,7 +2211,7 @@ class HloScatterInstruction : public HloInstruction {
       const HloPrintOptions& options) const override;
   bool IdenticalSlowPath(
       const HloInstruction& other,
-      const std::function<bool(const HloComputation*, const HloComputation*)>&
+      absl::FunctionRef<bool(const HloComputation*, const HloComputation*)>
           eq_computations) const override;
   // Implementation for non-common logic of CloneWithNewOperands.
   std::unique_ptr<HloInstruction> CloneWithNewOperandsImpl(
@@ -2230,7 +2244,7 @@ class HloIotaInstruction : public HloInstruction {
       const HloPrintOptions& options) const override;
   bool IdenticalSlowPath(
       const HloInstruction& other,
-      const std::function<bool(const HloComputation*, const HloComputation*)>&
+      absl::FunctionRef<bool(const HloComputation*, const HloComputation*)>
           eq_computations) const override;
   // Implementation for non-common logic of CloneWithNewOperands.
   std::unique_ptr<HloInstruction> CloneWithNewOperandsImpl(
@@ -2276,7 +2290,7 @@ class HloDotInstruction : public HloInstruction {
       const HloPrintOptions& options) const override;
   bool IdenticalSlowPath(
       const HloInstruction& other,
-      const std::function<bool(const HloComputation*, const HloComputation*)>&
+      absl::FunctionRef<bool(const HloComputation*, const HloComputation*)>
           eq_computations) const override;
   // Implementation for non-common logic of CloneWithNewOperands.
   std::unique_ptr<HloInstruction> CloneWithNewOperandsImpl(
@@ -2319,7 +2333,7 @@ class HloDomainInstruction : public HloInstruction {
       const HloPrintOptions& options) const override;
   bool IdenticalSlowPath(
       const HloInstruction& other,
-      const std::function<bool(const HloComputation*, const HloComputation*)>&
+      absl::FunctionRef<bool(const HloComputation*, const HloComputation*)>
           eq_computations) const override;
   // Implementation for non-common logic of CloneWithNewOperands.
   std::unique_ptr<HloInstruction> CloneWithNewOperandsImpl(
@@ -2350,7 +2364,7 @@ class HloGetDimensionSizeInstruction : public HloInstruction {
       const HloPrintOptions& options) const override;
   bool IdenticalSlowPath(
       const HloInstruction& other,
-      const std::function<bool(const HloComputation*, const HloComputation*)>&
+      absl::FunctionRef<bool(const HloComputation*, const HloComputation*)>
           eq_computations) const override;
   // Implementation for non-common logic of CloneWithNewOperands.
   std::unique_ptr<HloInstruction> CloneWithNewOperandsImpl(
@@ -2381,7 +2395,7 @@ class HloSetDimensionSizeInstruction : public HloInstruction {
       const HloPrintOptions& options) const override;
   bool IdenticalSlowPath(
       const HloInstruction& other,
-      const std::function<bool(const HloComputation*, const HloComputation*)>&
+      absl::FunctionRef<bool(const HloComputation*, const HloComputation*)>
           eq_computations) const override;
   // Implementation for non-common logic of CloneWithNewOperands.
   std::unique_ptr<HloInstruction> CloneWithNewOperandsImpl(
@@ -2411,7 +2425,7 @@ class HloRngGetAndUpdateStateInstruction : public HloInstruction {
       const HloPrintOptions& options) const override;
   bool IdenticalSlowPath(
       const HloInstruction& other,
-      const std::function<bool(const HloComputation*, const HloComputation*)>&
+      absl::FunctionRef<bool(const HloComputation*, const HloComputation*)>
           eq_computations) const override;
   // Implementation for non-common logic of CloneWithNewOperands.
   std::unique_ptr<HloInstruction> CloneWithNewOperandsImpl(
@@ -2438,7 +2452,7 @@ class HloRngBitGeneratorInstruction : public HloInstruction {
       const HloPrintOptions& options) const override;
   bool IdenticalSlowPath(
       const HloInstruction& other,
-      const std::function<bool(const HloComputation*, const HloComputation*)>&
+      absl::FunctionRef<bool(const HloComputation*, const HloComputation*)>
           eq_computations) const override;
   std::unique_ptr<HloInstruction> CloneWithNewOperandsImpl(
       const Shape& shape, absl::Span<HloInstruction* const> new_operands,

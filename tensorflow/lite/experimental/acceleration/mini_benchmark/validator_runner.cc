@@ -48,8 +48,10 @@ ValidatorRunner::ValidatorRunner(const ValidatorRunnerOptions& options)
       options.custom_input_data.empty()
           ? nullptr
           : std::make_unique<CustomValidationEmbedder>(
-                options.custom_input_batch_size, options.custom_input_data),
-      error_reporter_, options.nnapi_sl, options.validation_entrypoint_name);
+                options.custom_input_batch_size, options.custom_input_data,
+                options.error_reporter),
+      error_reporter_, options.nnapi_sl, options.gpu_plugin_handle,
+      options.validation_entrypoint_name, options.benchmark_result_evaluator);
 }
 
 MinibenchmarkStatus ValidatorRunner::Init() {

@@ -119,8 +119,8 @@ llvm::Error FillAttrValueMapUsingArray(const OpAttrsRawEntry& entry,
       // DTypes in BEF attributes are tfrt::DType enums. So we need
       // to convert then to tensorflow data types first.
       auto bef_dtypes =
-          llvm::makeArrayRef(static_cast<const tfrt::DType*>(op_attr.GetData()),
-                             op_attr.element_count);
+          llvm::ArrayRef(static_cast<const tfrt::DType*>(op_attr.GetData()),
+                         op_attr.element_count);
 
       llvm::SmallVector<tensorflow::DataType, 4> tf_dtypes;
       tf_dtypes.reserve(bef_dtypes.size());

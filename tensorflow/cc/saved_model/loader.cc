@@ -15,9 +15,11 @@ limitations under the License.
 
 #include "tensorflow/cc/saved_model/loader.h"
 
+#include <string>
 #include <unordered_set>
 
 #include "tensorflow/cc/saved_model/constants.h"
+#include "tensorflow/cc/saved_model/fingerprinting.h"
 #include "tensorflow/cc/saved_model/loader_util.h"
 #include "tensorflow/cc/saved_model/metrics.h"
 #include "tensorflow/cc/saved_model/reader.h"
@@ -63,8 +65,8 @@ auto* load_latency_by_stage = monitoring::Sampler<2>::New(
         "model_path",
         "stage",
     },
-    // Scale of 10, power of 1.8 with bucket count 33 (~20 minutes).
-    monitoring::Buckets::Exponential(10, 1.8, 33));
+    // Scale of 10, power of 1.8 with bucket count 37 (~258 minutes).
+    monitoring::Buckets::Exponential(10, 1.8, 37));
 
 constexpr char kLoadAttemptFail[] = "fail";
 constexpr char kLoadAttemptSuccess[] = "success";
@@ -296,6 +298,13 @@ Status LoadSavedModel(const SessionOptions& session_options,
                       const std::unordered_set<string>& tags,
                       SavedModelBundle* const bundle) {
   metrics::SavedModelReadApi(kCCLoadLabel).IncrementBy(1);
+  auto fingerprint_proto =
+      saved_model::fingerprinting::ReadSavedModelFingerprint(export_dir);
+  if (fingerprint_proto.ok()) {
+    // Set gauge cell with saved_model_checksum.
+    metrics::SavedModelReadFingerprint().Set(
+        std::to_string(fingerprint_proto->saved_model_checksum()));
+  }
 
   // TODO(robson): Add tests for the counters.
   const uint64 start_microseconds = Env::Default()->NowMicros();
@@ -309,6 +318,7 @@ Status LoadSavedModel(const SessionOptions& session_options,
   };
   if (status.ok()) {
     log_and_count(kLoadAttemptSuccess);
+    metrics::SavedModelReadPath().Set(export_dir);
   } else {
     log_and_count(kLoadAttemptFail);
   }

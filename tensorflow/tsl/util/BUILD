@@ -24,6 +24,7 @@ load(
 )
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
         "//visibility:public",
     ],
@@ -247,7 +248,7 @@ cc_library(
     ],
     copts = tsl_copts(),
     visibility = [
-        "//tensorflow:internal",
+        "//tensorflow/tsl:internal",
     ],
 )
 

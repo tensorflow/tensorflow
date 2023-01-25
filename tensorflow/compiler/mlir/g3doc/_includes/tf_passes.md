@@ -931,6 +931,11 @@ Would become the following ops (unimportant attribute, type are omitted):
   }) {num_cores_per_replica = 1, topology =  "", device_assignment =  []}
 ```
 ### `-tf-parallel-execute-to-islands`: Lowers device parallel_execute to executor islands
+
+#### Options
+```
+-legacy-graph-export : Determines whether or not this pass should execute logic that is reserved for the legacy graph export pipeline to maintain expected invariants. In the case of this pass, that means manually propagating controls to lifted parallel execute regions to the graph fetch to ensure the ops execute.
+```
 ### `-tf-promote-resources-to-args`: Promote resources reads/writes to function inputs/outputs.
 This pass promotes resource accesses in function(s) (by default, the main)
 to input arguments and outputs of the function(s).
@@ -1111,7 +1116,24 @@ tf_device.replicate([%0, %1] as %ri: tensor<*x!tf_type.resource>) {n = 2 : i32} 
   tf_device.return
 }
 ```
+### `-tf-replicate-tensor-list-init-ops`: Replicate TensorList init ops for correct shape assignments in shape inference
+If we pass same TensorList to a while op as multiple arguments or just use
+the same TensorList at multiple places and assign different
+TensorListSetItem to elements of TensorList, the shape inference is then
+unable to identify the Shape of these args and thus the input TensorList
+shape is unidentifiable.
+All of these args are supposed to be independent and not related to original
+creation of TensorList.
+
+This pass will create multiple instances of TensorList for each arg of the
+while op and each use and thus there will be not a conflict in resolving the
+shape of these different inputs.
 ### `-tf-replicate-to-island`: Lowers device replicate to executor islands
+
+#### Options
+```
+-legacy-graph-export : Determines whether or not this pass should execute logic that is reserved for the legacy graph export pipeline to maintain expected invariants. In the case of this pass, that means manually propagating controls to lifted parallel execute regions to the graph fetch to ensure the ops execute, as well as determining whether or not the islands created by this pass should be split after the replicated ops have been lifted.
+```
 ### `-tf-resource-device-inference`: Propagates the device attribute on resources from callers to callees.
 A pass that propagates device assignment of resources on a module. It
 performs in-function propagation, as well as cross-function propagation from
@@ -1549,6 +1571,7 @@ The transformation happens only for on-device variables. The above
 transformation requires `%arg0`, `%arg1` to have the same device assignment
 as the `TPUExecute` op.
 ### `-tf-tpu-parallel-execute-sink-resource-write`: Moves tf.AssignVariableOp consumers of tf_device.parallel_execute into tf_device.parallel_execute regions
+### `-tf-tpu-partitioned-op-conversion`: Rewrite all TPU Partitioned ops into their V2 counterparts.
 ### `-tf-tpu-reorder-replicate-partitioned-inputs`: Reorder replicated and partitioned input ops.
 This pass rewrites how data parallelism and model parallelism is expressed for
 inputs. It reorders `tf.TPUPartitionedInput` (model parallelism) and

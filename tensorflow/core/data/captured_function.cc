@@ -412,8 +412,11 @@ Status MakeIteratorFromInputElement(
   // Create an iterator for the dataset that was returned by `f`.
   std::string iterator_prefix = strings::StrCat(prefix, "[", thread_index, "]");
 
-  return returned_dataset->MakeIterator(MakeNestedIteratorContext(ctx), parent,
-                                        iterator_prefix, out_iterator);
+  IteratorContext nested_ctx = MakeNestedIteratorContext(ctx);
+  TF_RETURN_IF_ERROR(returned_dataset->MakeIterator(
+      &nested_ctx, parent, iterator_prefix, out_iterator));
+  ctx->MergeCheckpoint(nested_ctx.checkpoint());
+  return OkStatus();
 }
 
 IteratorContext MakeNestedIteratorContext(IteratorContext* ctx) {

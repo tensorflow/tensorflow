@@ -16,8 +16,12 @@ limitations under the License.
 #ifndef TENSORFLOW_DTENSOR_CC_DTENSOR_DEVICE_UTIL_H_
 #define TENSORFLOW_DTENSOR_CC_DTENSOR_DEVICE_UTIL_H_
 
+#include <map>
+#include <memory>
+#include <optional>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "tensorflow/c/eager/c_api.h"
 #include "tensorflow/c/eager/parallel_device/parallel_device_lib.h"
@@ -29,10 +33,12 @@ limitations under the License.
 #include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/graph/graph.h"
+#include "tensorflow/core/lib/strings/proto_serialization.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/fingerprint.h"
 #include "tensorflow/dtensor/cc/constants.h"
 #include "tensorflow/dtensor/cc/dstatus.h"
+#include "tensorflow/dtensor/cc/small_constant_optimization.h"
 #include "tensorflow/dtensor/cc/tensor_layout.h"
 
 namespace tensorflow {
@@ -133,7 +139,7 @@ struct DTensorOperation {
 
 struct EmbeddingResourceAttrs {
   int64_t table_id;
-  absl::optional<int64_t> slot_id;  // NOLINT
+  std::optional<int64_t> slot_id;  // NOLINT
   bool is_dirty = false;
 };
 
@@ -222,10 +228,10 @@ class TensorWithLayout {
 
   // A dummy TensorWithLayout without holding a ParallelTensor.
   static std::unique_ptr<TensorWithLayout> Dummy(
-      const std::vector<int64_t>& local_shape, const TF_DataType dtype,
+      const std::vector<int64_t>& local_shape, TF_DataType dtype,
       const MeshWithParallelDevice& mesh, const Layout& layout);
 
-  virtual ~TensorWithLayout() {}
+  virtual ~TensorWithLayout() = default;
 
   virtual const Layout& layout() const { return layout_; }
 
@@ -303,7 +309,7 @@ class TensorWithLayout {
     input_layout_for_shape_op_result_.emplace(layout);
   }
 
-  const absl::optional<Layout> shape_metadata_layout() const {
+  const std::optional<Layout>& shape_metadata_layout() const {
     return input_layout_for_shape_op_result_;
   }
 
@@ -314,22 +320,22 @@ class TensorWithLayout {
   // For replicated layout tensors, global shape is simply the shape of local
   // tensors on each device. For sharded tensor, this is the global shape
   // encodes layout & local shape on each device.
-  const std::vector<int64_t> global_shape() const {
+  std::vector<int64_t> global_shape() const {
     return layout().GlobalShapeFromLocalShape(local_shape());
   }
 
-  const std::vector<int64_t> local_shape() const { return local_shape_; }
+  const std::vector<int64_t>& local_shape() const { return local_shape_; }
 
-  const absl::optional<NodeDef> const_value() const { return const_value_; }
+  const std::optional<NodeDef>& const_value() const { return const_value_; }
 
-  const absl::optional<EmbeddingResourceAttrs>& attrs() const { return attrs_; }
+  const std::optional<EmbeddingResourceAttrs>& attrs() const { return attrs_; }
 
  protected:
   TensorWithLayout(std::unique_ptr<parallel_device::ParallelTensor> tensor,
                    const MeshWithParallelDevice& mesh, const Layout& layout,
                    std::vector<int64_t> local_shape,
-                   absl::optional<TF_DataType> dtype = absl::nullopt,
-                   absl::optional<NodeDef> const_value = absl::nullopt)
+                   std::optional<TF_DataType> dtype = std::nullopt,
+                   std::optional<NodeDef> const_value = std::nullopt)
       : tensor_(std::move(tensor)),
         layout_(layout),
         mesh_(mesh),
@@ -348,21 +354,21 @@ class TensorWithLayout {
   // This provides extra information to the layout propagation and SPMD passes
   // during op-by-op execution. (For example, the reduction indices for Sum,
   // target shapes for Rng/Reshape, etc).
-  absl::optional<NodeDef> const_value_;
+  std::optional<NodeDef> const_value_;
 
   // Optionally holds the original input layout for a shape Op returned Tensor.
   // This is used to preserve information for a shape op output so that future
   // uses could recover local shape.
   // TODO(hthu,allenl,xiejw): Move this into a separate class for clarity.
-  absl::optional<Layout> input_layout_for_shape_op_result_ = absl::nullopt;
+  std::optional<Layout> input_layout_for_shape_op_result_ = std::nullopt;
 
   // The local shape of tensors placed on each of `tensor_`'s component devices.
   std::vector<int64_t> local_shape_;
 
-  absl::optional<TF_DataType> dtype_;
+  std::optional<TF_DataType> dtype_;
 
   // Resource input attributes for embedding inputs.
-  absl::optional<EmbeddingResourceAttrs> attrs_;  // NOLINT
+  std::optional<EmbeddingResourceAttrs> attrs_;  // NOLINT
 };
 
 // Extension of TensorWithLayout which holds resource handle with layout.
@@ -392,6 +398,11 @@ class ResourceHandleWithLayout : public TensorWithLayout {
 
   void UpdateLayout(const Layout& new_layout, TF_Status* status) override;
 
+  void UpdateElementLayouts(const std::vector<Layout>& layouts,
+                            TF_Status* status) {
+    dereferenced_element_layouts_.emplace(layouts);
+  }
+
   void UpdateShapeAndDType(const TensorShapeProto& shape, const DataType& dtype,
                            TF_Status* status) override {
     set_dereferenced_shape(shape);
@@ -416,10 +427,15 @@ class ResourceHandleWithLayout : public TensorWithLayout {
     dereferenced_dtype_.emplace(dtype);
   }
 
-  const absl::optional<TensorShapeProto>& dereferenced_shape() const {
+  const std::optional<std::vector<Layout>>& dereferenced_element_layouts()
+      const {
+    return dereferenced_element_layouts_;
+  }
+
+  const std::optional<TensorShapeProto>& dereferenced_shape() const {
     return dereferenced_shape_;
   }
-  const absl::optional<DataType>& dereferenced_dtype() const {
+  const std::optional<DataType>& dereferenced_dtype() const {
     return dereferenced_dtype_;
   }
 
@@ -433,10 +449,13 @@ class ResourceHandleWithLayout : public TensorWithLayout {
 
  private:
   // The layout of the tensor pointed to by this handle, if any.
-  absl::optional<Layout> dereferenced_layout_;
+  std::optional<Layout> dereferenced_layout_;
+  // The layouts of the tensors emitted by this resource handle if it is an
+  // iterator resource.
+  std::optional<std::vector<Layout>> dereferenced_element_layouts_;
   // The shape and dtype of the tensor pointed to by this resource tensor.
-  absl::optional<TensorShapeProto> dereferenced_shape_;
-  absl::optional<DataType> dereferenced_dtype_;
+  std::optional<TensorShapeProto> dereferenced_shape_;
+  std::optional<DataType> dereferenced_dtype_;
 };
 
 // TensorWithLayout for SparseTensors.
@@ -501,8 +520,8 @@ class SparseTensorWithLayout : public TensorWithLayout {
       std::unique_ptr<parallel_device::ParallelTensor> dense_shapes,
       const MeshWithParallelDevice& mesh, const Layout& layout,
       std::vector<int64_t> local_shape,
-      absl::optional<TF_DataType> dtype = absl::nullopt,
-      absl::optional<NodeDef> const_value = absl::nullopt)
+      std::optional<TF_DataType> dtype = std::nullopt,
+      std::optional<NodeDef> const_value = std::nullopt)
       : TensorWithLayout(nullptr, mesh, layout, local_shape),
         indices_(std::move(indices)),
         values_(std::move(values)),
@@ -525,8 +544,28 @@ std::string ShapeToDebugString(const std::vector<T> shape_vector) {
     return shape.DebugString();
   }
 }
-// Class that holds information about DTensor Functions ran, including cached
-// lowered functions and constant folding input information per function.
+
+// Internal class with shared functions for every ExecutableManager<T>.
+class ExecutableManagerImpl {
+  template <typename T>
+  friend class ExecutableManager;
+
+ public:
+  absl::flat_hash_map<int, NodeDef> GetConstantFoldableTensors(
+      const std::vector<TensorWithLayout*>& inputs);
+
+  // Cache key for dtensor operation name, which includes the op name
+  // and the input shapes. This is needed as a higher level cache for constant
+  // folding.
+  tensorflow::Fprint128 CacheKeyForDTensorOperation(
+      const DTensorOperation& doperation) const;
+
+ private:
+  ExecutableManagerImpl() = default;
+};
+// Template Class that holds information about DTensor executable ran, including
+// cached lowered executable and constant folding input information per
+// function.
 //
 //
 // The caching policy for constant folded inputs is the following:
@@ -536,38 +575,37 @@ std::string ShapeToDebugString(const std::vector<T> shape_vector) {
 //   folded inputs to the previous constant folded inputs. We disable constant
 //   folding for the changed values, and save these new inputs.
 // TODO(b/169348205) Support cache eviction if the cache gets bloated.
-class FunctionManager {
+template <typename T>
+class ExecutableManager {
  public:
-  FunctionManager() = default;
+  ExecutableManager() = default;
 
-  // Caches the graph with the lowered 'function'.
-  const ExecutionFunctions* AddCachedFunction(const DTensorOperation& op,
-                                              tensorflow::Fprint128 cache_key,
-                                              ExecutionFunctions function);
+  // Caches the executable with ParallelExecutable.
+  const T* AddCachedExecutable(const DTensorOperation& op,
+                               tensorflow::Fprint128 cache_key, T executable);
 
-  // Returns the cache key and the cached lowered graph for the function.
-  // Returns a nullptr for the lowered graph if there is a cache miss.
+  // Returns the cache key and the cached lowered executable for the function.
+  // Returns a nullptr for the lowered executable if there is a cache miss.
   // Upon a cache miss, this will save some metadata about the function
   // and the small inputs to keep track of information for constant folding.
-  std::pair<tensorflow::Fprint128, const ExecutionFunctions*> GetCachedFunction(
+  std::pair<tensorflow::Fprint128, const T*> GetCachedExecutable(
       const DTensorOperation& doperation, const NameAttrList& attributes,
       const std::vector<TensorWithLayout*>& inputs,
       const std::vector<const Layout*>& output_layouts);
+
+  // Returns the cached lowered graph for the function.
+  // Returns a nullptr for the lowered graph if there is a cache miss.
+  // This Get operation has no side effect.
+  const T* GetCachedExecutableSimple(tensorflow::Fprint128 cache_key);
 
   // Returns whether the input at `input_index` is known to be constant
   // foldable for function `doperation`. An input is not constant foldable if we
   // have ran this function at least twice and the small input value changed
   // across separate runs.
   bool IsConstantFoldable(const DTensorOperation& doperation,
-                          const int input_index) const;
+                          int input_index) const;
 
  private:
-  // Cache key for dtensor operation name, which includes the op name
-  // and the input shapes. This is needed as a higher level cache for constant
-  // folding.
-  const tensorflow::Fprint128 CacheKeyForDTensorOperation(
-      const DTensorOperation& doperation) const;
-
   // Generates a cache key for the graph, including its attributes,
   // inputs, and outputs.
   tensorflow::Fprint128 CacheKeyForGraph(
@@ -576,8 +614,7 @@ class FunctionManager {
       const std::vector<const Layout*>& output_layouts);
 
   // Maps the hash of a graph with the lowered graph.
-  absl::flat_hash_map<tensorflow::Fprint128, ExecutionFunctions,
-                      tensorflow::Fprint128Hasher>
+  absl::flat_hash_map<tensorflow::Fprint128, T, tensorflow::Fprint128Hasher>
       function_cache_;
 
   // Maps the hash of dtensor_operation and its input shapes to a map
@@ -587,6 +624,8 @@ class FunctionManager {
   absl::flat_hash_map<tensorflow::Fprint128, absl::flat_hash_map<int, NodeDef>,
                       tensorflow::Fprint128Hasher>
       dtensor_op_and_small_inputs_;
+
+  ExecutableManagerImpl executable_manager_impl_;
 };
 
 // Returns the shape of a given tensor.
@@ -596,12 +635,12 @@ std::vector<int64_t> TensorShapeAsVector(TFE_TensorHandle* tensor,
 // Creates a Graph with _Arg and _Retval nodes surrounding an
 // `operation_name`-type node.
 Status PrepareGraphForMlir(
-    const FunctionManager& function_manager,
+    const ExecutableManager<ExecutionFunctions>& function_manager,
     const std::vector<TensorWithLayout*>& inputs,
     const DTensorOperation& doperation,
     const tensorflow::FunctionLibraryDefinition& flib_def,
-    const NameAttrList& attributes,
-    const absl::optional<Layout>& default_layout, tensorflow::Graph* graph,
+    const NameAttrList& attributes, const std::optional<Layout>& default_layout,
+    tensorflow::Graph* graph,
     std::vector<PartialTensorShape>* global_output_shapes,
     std::vector<const Layout*>* output_layouts);
 
@@ -630,6 +669,140 @@ Status InsertFunctionForTPUEmbeddingCheckpoint(
     TF_Status* status, Graph* graph,
     const std::vector<TensorWithLayout*>& inputs,
     const std::string& checkpoint_fn_name);
+
+////////////////////////////////////////////////////////////////////////////////
+// Implementation details for ExecutableManager<T>
+
+// Thread unsafe method. go/thread-unsafe
+// Generates a cache key for the graph, including its attributes,
+// inputs, and outputs.
+// Cache key computation should consider all features of an op that affects
+// the SPMD lowering. The cache keys of two ops must be different if the
+// translated functions are different.
+// - op name and attr
+// - input shapes and layouts
+// - default layout of outputs.
+// - values of constant foldable inputs.
+template <typename T>
+tensorflow::Fprint128 ExecutableManager<T>::CacheKeyForGraph(
+    const DTensorOperation& doperation, const NameAttrList& attributes,
+    const std::vector<TensorWithLayout*>& inputs,
+    const std::vector<const Layout*>& output_layouts) {
+  tensorflow::Fprint128 cache_key = tensorflow::Fingerprint128(doperation.name);
+  std::string serialized;
+  SerializeToStringDeterministic(attributes, &serialized);
+  cache_key =
+      FingerprintCat128(cache_key, tensorflow::Fingerprint128(serialized));
+  // Higher level cache based on operation name and input shapes.
+  for (int i = 0; i < inputs.size(); ++i) {
+    if (!IsConstantFoldable(doperation, i)) {
+      inputs[i]->reset_const_value();
+    }
+    cache_key = FingerprintCat128(cache_key, inputs[i]->CacheKey());
+  }
+  for (int output_index = 0; output_index < output_layouts.size();
+       ++output_index) {
+    if (output_layouts[output_index]) {
+      cache_key = FingerprintCat128(cache_key, output_index);
+      cache_key = FingerprintCat128(
+          cache_key,
+          tensorflow::Fingerprint128(output_layouts[output_index]->ToString()));
+    }
+  }
+  return cache_key;
+}
+
+// Thread-unsafe method go/thread-unsafe.
+template <typename T>
+std::pair<tensorflow::Fprint128, const T*>
+ExecutableManager<T>::GetCachedExecutable(
+    const DTensorOperation& doperation, const NameAttrList& attributes,
+    const std::vector<TensorWithLayout*>& inputs,
+    const std::vector<const Layout*>& output_layouts) {
+  tensorflow::Fprint128 cache_key =
+      CacheKeyForGraph(doperation, attributes, inputs, output_layouts);
+
+  // Early return if we have a cache hit.
+  if (auto iter = function_cache_.find(cache_key);
+      iter != function_cache_.end()) {
+    return std::pair<Fprint128, T*>(cache_key, &iter->second);
+  }
+
+  // For eager ops we early return the cache miss and do not make further
+  // optimizations.
+  if (!doperation.is_func()) {
+    return std::pair<Fprint128, std::nullptr_t>(cache_key, nullptr);
+  }
+
+  const tensorflow::Fprint128 doperation_hash =
+      executable_manager_impl_.CacheKeyForDTensorOperation(doperation);
+
+  // Save the constant folded inputs to this doperation if we have not seen this
+  // before. This is needed so that in the next call to this operation, we
+  // can compare these inputs to confirm which one is indeed a constant.
+  auto doperation_iter = dtensor_op_and_small_inputs_.find(doperation_hash);
+  if (doperation_iter == dtensor_op_and_small_inputs_.end()) {
+    dtensor_op_and_small_inputs_.insert(
+        {doperation_hash,
+         executable_manager_impl_.GetConstantFoldableTensors(inputs)});
+    return std::pair<Fprint128, std::nullptr_t>(cache_key, nullptr);
+  }
+
+  // If we are here, then we have ran this function before but constant folded
+  // some input(s) when it was not a constant input i.e. one of the small value
+  // to this function input changed. So mark those changed values as
+  // non-constant.
+  absl::flat_hash_map<int, NodeDef>& previous_small_inputs =
+      doperation_iter->second;
+  std::vector<int> non_constant_indices;
+
+  for (auto const& [index, previous_small_input] : previous_small_inputs) {
+    if (inputs[index]->const_value().has_value()) {
+      if (NodeDefsHaveDifferentTensorProto(
+              previous_small_input, inputs[index]->const_value().value())) {
+        inputs[index]->reset_const_value();
+        non_constant_indices.push_back(index);
+      }
+    }
+  }
+  for (int non_constant_index : non_constant_indices) {
+    previous_small_inputs.erase(non_constant_index);
+  }
+  // Generate a new cache key since we updated small const inputs which change
+  // the cache key.
+  cache_key = CacheKeyForGraph(doperation, attributes, inputs, output_layouts);
+  return std::pair<Fprint128, std::nullptr_t>(cache_key, nullptr);
+}
+
+// Thread-unsafe method go/thread-unsafe.
+template <typename T>
+const T* ExecutableManager<T>::GetCachedExecutableSimple(
+    tensorflow::Fprint128 cache_key) {
+  auto iter = function_cache_.find(cache_key);
+  return iter == function_cache_.end() ? nullptr : &iter->second;
+}
+
+template <typename T>
+const T* ExecutableManager<T>::AddCachedExecutable(
+    const DTensorOperation& op, tensorflow::Fprint128 cache_key, T executable) {
+  return &function_cache_.insert({cache_key, std::move(executable)})
+              .first->second;
+}
+
+template <typename T>
+bool ExecutableManager<T>::IsConstantFoldable(
+    const DTensorOperation& doperation, const int input_index) const {
+  // For eager ops, assume the inputs are constant foldable.
+  if (!doperation.is_func()) return true;
+  const tensorflow::Fprint128 doperation_hash =
+      executable_manager_impl_.CacheKeyForDTensorOperation(doperation);
+  // If we didn't see this doperation before then optimisticly assume this is
+  // foldable. The input at `input_index` is foldable only if it is one of the
+  // indices we have saved as the small inputs.
+  auto doperation_iter = dtensor_op_and_small_inputs_.find(doperation_hash);
+  return doperation_iter == dtensor_op_and_small_inputs_.end() ||
+         doperation_iter->second.contains(input_index);
+}
 
 }  // namespace dtensor
 }  // namespace tensorflow

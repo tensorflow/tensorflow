@@ -258,6 +258,8 @@ enum StatType {
   kDevCapComputeCapMinor,
   kDevCapPeakTeraflopsPerSecond,
   kDevCapPeakHbmBwGigabytesPerSecond,
+  kDevCapPeakSramRdBwGigabytesPerSecond,
+  kDevCapPeakSramWrBwGigabytesPerSecond,
   kDevVendor,
   // Batching related.
   kBatchSizeAfterPadding,

@@ -574,6 +574,7 @@ void TFDefaultLogSink::Send(const TFLogEntry& entry) {
   fprintf(vlog_file.FilePtr(), "%s.%06d: %c%s %s:%d] %s\n", time_buffer,
           micros_remainder, sev, tid_buffer, entry.FName().c_str(),
           entry.Line(), entry.ToString().c_str());
+  fflush(vlog_file.FilePtr());  // Ensure logs are written immediately.
 #endif  // PLATFORM_POSIX_ANDROID
 }
 

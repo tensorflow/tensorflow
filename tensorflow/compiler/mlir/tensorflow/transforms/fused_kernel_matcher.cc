@@ -15,6 +15,7 @@ limitations under the License.
 
 #include <cstdio>
 #include <iostream>
+#include <optional>
 #include <string>
 
 #include "llvm/ADT/StringRef.h"
@@ -82,7 +83,7 @@ BiasAddOp GetBiasAdd(Value op) {
   for (auto &use : op.getUses()) {
     auto bias_add = dyn_cast_or_null<BiasAddOp>(use.getOwner());
     // If it's a BiasAdd, check that the conv op is the first input.
-    if (bias_add && bias_add.value() == op) return bias_add;
+    if (bias_add && bias_add.getValue() == op) return bias_add;
   }
   // No BiasAddOps found among uses.
   return BiasAddOp();
@@ -162,7 +163,7 @@ class FuseContractionWithBiasAdd : public OpRewritePattern<SrcOpT> {
 
     // If there is an activation, only fuse it if this is the only op to use the
     // result of the BiasAdd.
-    bool fuse_activation = activation && bias_add.output().hasOneUse();
+    bool fuse_activation = activation && bias_add.getOutput().hasOneUse();
     Type result_type;
 
     // Include info about the activation function if applicable.
@@ -181,7 +182,7 @@ class FuseContractionWithBiasAdd : public OpRewritePattern<SrcOpT> {
     // with `bias` from the BiasAddOp appended.
     SmallVector<Value, 4> operands(contraction.operand_begin(),
                                    contraction.operand_end());
-    operands.push_back(bias_add.bias());
+    operands.push_back(bias_add.getBias());
 
     // The fused contraction has the same attributes as the original
     // contraction, with two additions: the list of ops which have been fused
@@ -241,15 +242,15 @@ const char kDeviceGpu[] = "GPU";
 llvm::Optional<std::string> GetDevice(mlir::Operation *op) {
   mlir::StringAttr device = op->getAttrOfType<mlir::StringAttr>(kDeviceAttr);
   if (!device || device.getValue().empty()) {
-    return llvm::None;
+    return std::nullopt;
   }
   const std::string device_name = device.str();
   tensorflow::DeviceNameUtils::ParsedName parsed_name;
   if (!tensorflow::DeviceNameUtils::ParseFullName(device_name, &parsed_name)) {
-    return llvm::None;
+    return std::nullopt;
   }
   if (!parsed_name.has_type) {
-    return llvm::None;
+    return std::nullopt;
   }
   return parsed_name.type;
 }
@@ -273,10 +274,11 @@ class FuseConv2DBiasAdd
   bool AreFuseCompatible(Conv2DOp conv, BiasAddOp bias_add,
                          PatternRewriter &rewriter) const override {
     // Verify that the data formats match and are valid for fusion.
-    if (conv.data_format() != bias_add.data_format()) {
+    if (conv.getDataFormat() != bias_add.getDataFormat()) {
       (void)rewriter.notifyMatchFailure(conv, [&](Diagnostic &diag) {
         diag << "data format does not match Conv2D data format ("
-             << bias_add.data_format() << " vs " << conv.data_format() << ")";
+             << bias_add.getDataFormat() << " vs " << conv.getDataFormat()
+             << ")";
       });
       return false;
     }
@@ -299,7 +301,7 @@ class FuseConv2DBiasAdd
     if (IsGpuDevice(conv)) {
       auto activation = GetActivation(bias_add);
       if (!activation || activation->getName().stripDialect() != "Relu" ||
-          !bias_add.output().hasOneUse()) {
+          !bias_add.getOutput().hasOneUse()) {
         (void)rewriter.notifyMatchFailure(conv, [&](Diagnostic &diag) {
           diag << "GPU only supports Conv2D+BiasAdd+Relu fusion";
         });

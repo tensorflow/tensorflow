@@ -25,7 +25,7 @@ limitations under the License.
 #include <stdlib.h>
 
 #include "tensorflow/lite/builtin_ops.h"
-#include "tensorflow/lite/c/c_api_types.h"  // IWYU pragma: export
+#include "tensorflow/lite/core/c/c_api_types.h"  // IWYU pragma: export
 
 // --------------------------------------------------------------------------
 /// C API for TensorFlow Lite.
@@ -84,16 +84,13 @@ extern "C" {
 // NOLINTBEGIN(modernize-redundant-void-arg)
 
 // --------------------------------------------------------------------------
-// Opaque types used by the C API.
+// Opaque types used by the C API.  (See also c_api_types.h.)
 
 // TfLiteModel wraps a loaded TensorFlow Lite model.
 typedef struct TfLiteModel TfLiteModel;
 
 // TfLiteInterpreterOptions allows customized interpreter configuration.
 typedef struct TfLiteInterpreterOptions TfLiteInterpreterOptions;
-
-// Allows delegation of nodes to alternative backends.
-typedef struct TfLiteDelegate TfLiteDelegate;
 
 // TfLiteInterpreter provides inference from a provided model.
 typedef struct TfLiteInterpreter TfLiteInterpreter;
@@ -108,9 +105,24 @@ typedef struct TfLiteTensor TfLiteTensor;
 typedef struct TfLiteRegistrationExternal TfLiteRegistrationExternal;
 
 // --------------------------------------------------------------------------
-// TfLiteVersion returns a string describing version information of the
-// TensorFlow Lite library. TensorFlow Lite uses semantic versioning.
+/// The TensorFlow Lite Runtime version.
+///
+/// Returns a pointer to a statically allocated string that is the version
+/// number of the (potentially dynamically loaded) TF Lite Runtime library.
+/// TensorFlow Lite uses semantic versioning, and the return value should be
+/// in semver 2 format <http://semver.org>, starting with MAJOR.MINOR.PATCH,
+/// e.g. "2.12.0" or "2.13.0-rc2".
 TFL_CAPI_EXPORT extern const char* TfLiteVersion(void);
+
+/// The supported TensorFlow Lite model file Schema version.
+///
+/// Returns the (major) version number of the Schema used for model
+/// files that is supported by the (potentially dynamically loaded)
+/// TensorFlow Lite Runtime.
+///
+/// Model files using schema versions different to this may not be supported by
+/// the current version of the TF Lite Runtime.
+TFL_CAPI_EXPORT int TfLiteSchemaVersion(void);
 
 // Returns a model from the provided buffer, or null on failure.
 //
@@ -122,6 +134,16 @@ TFL_CAPI_EXPORT extern const char* TfLiteVersion(void);
 TFL_CAPI_EXPORT extern TfLiteModel* TfLiteModelCreate(const void* model_data,
                                                       size_t model_size);
 
+// Same as `TfLiteModelCreate` with customizble error reporter.
+// * `reporter` takes the provided `user_data` object, as well as a C-style
+//   format string and arg list (see also vprintf).
+// * `user_data` is optional. If non-null, it is owned by the client and must
+//   remain valid for the duration of the interpreter lifetime.
+TFL_CAPI_EXPORT extern TfLiteModel* TfLiteModelCreateWithErrorReporter(
+    const void* model_data, size_t model_size,
+    void (*reporter)(void* user_data, const char* format, va_list args),
+    void* user_data);
+
 // Returns a model from the provided file, or null on failure.
 //
 // NOTE: The file's contents must not be modified during the lifetime of the
@@ -130,12 +152,29 @@ TFL_CAPI_EXPORT extern TfLiteModel* TfLiteModelCreate(const void* model_data,
 TFL_CAPI_EXPORT extern TfLiteModel* TfLiteModelCreateFromFile(
     const char* model_path);
 
+// Same as `TfLiteModelCreateFromFile` with customizble error reporter.
+// * `reporter` takes the provided `user_data` object, as well as a C-style
+//   format string and arg list (see also vprintf).
+// * `user_data` is optional. If non-null, it is owned by the client and must
+//   remain valid for the duration of the interpreter lifetime.
+TFL_CAPI_EXPORT extern TfLiteModel* TfLiteModelCreateFromFileWithErrorReporter(
+    const char* model_path,
+    void (*reporter)(void* user_data, const char* format, va_list args),
+    void* user_data);
+
 // Destroys the model instance.
 TFL_CAPI_EXPORT extern void TfLiteModelDelete(TfLiteModel* model);
 
 // Returns a new interpreter options instances.
 TFL_CAPI_EXPORT extern TfLiteInterpreterOptions*
 TfLiteInterpreterOptionsCreate();
+
+// Creates and returns a shallow copy of an options object.
+//
+// The caller is responsible for calling `TfLiteInterpreterOptionsDelete` to
+// deallocate the object pointed to by the returned pointer.
+TFL_CAPI_EXPORT extern TfLiteInterpreterOptions* TfLiteInterpreterOptionsCopy(
+    const TfLiteInterpreterOptions* from);
 
 // Destroys the interpreter options instance.
 TFL_CAPI_EXPORT extern void TfLiteInterpreterOptionsDelete(
@@ -152,19 +191,18 @@ TFL_CAPI_EXPORT extern void TfLiteInterpreterOptionsSetNumThreads(
 //
 // NOTE: The caller retains ownership of the delegate and should ensure that it
 // remains valid for the duration of any created interpreter's lifetime.
+//
+// If you are NOT using "TensorFlow Lite in Play Services", and NOT building
+// with `TFLITE_WITH_STABLE_ABI` or `TFLITE_USE_OPAQUE_DELEGATE` macros enabled,
+// it is possible to pass a `TfLiteDelegate*` rather than a
+// `TfLiteOpaqueDelegate*` to this function, since in those cases,
+// `TfLiteOpaqueDelegate` is just a typedef alias for `TfLiteDelegate`.
+// This is for compatibility with existing source code
+// and existing delegates.  For new delegates, it is recommended to
+// use `TfLiteOpaqueDelegate` rather than `TfLiteDelegate`.  (See
+// `TfLiteOpaqueDelegate` in tensorflow/lite/core/c/c_api_types.h.)
 TFL_CAPI_EXPORT extern void TfLiteInterpreterOptionsAddDelegate(
-    TfLiteInterpreterOptions* options, TfLiteDelegate* delegate);
-
-// Adds an opaque delegate to be applied during `TfLiteInterpreter` creation.
-//
-// If delegate application fails, interpreter creation will also fail with an
-// associated error logged.
-//
-// NOTE: The caller retains ownership of the delegate and should ensure that it
-// remains valid for the duration of any created interpreter's lifetime.
-TFL_CAPI_EXPORT extern void TfLiteInterpreterOptionsAddOpaqueDelegate(
-    TfLiteInterpreterOptions* options,
-    TfLiteOpaqueDelegateStruct* opaque_delegate);
+    TfLiteInterpreterOptions* options, TfLiteOpaqueDelegate* delegate);
 
 // Sets a custom error reporter for interpreter execution.
 //
@@ -384,7 +422,8 @@ TFL_CAPI_EXPORT extern TfLiteStatus TfLiteInterpreterCancel(
 // Returns the type of a tensor element.
 TFL_CAPI_EXPORT extern TfLiteType TfLiteTensorType(const TfLiteTensor* tensor);
 
-// Returns the number of dimensions that the tensor has.
+// Returns the number of dimensions that the tensor has.  Returns -1 in case
+// the 'opaque_tensor' does not have its dimensions property set.
 TFL_CAPI_EXPORT extern int32_t TfLiteTensorNumDims(const TfLiteTensor* tensor);
 
 // Returns the length of the tensor in the "dim_index" dimension.
@@ -439,6 +478,13 @@ TfLiteRegistrationExternalCreate(TfLiteBuiltinOperator builtin_code,
 // WARNING: This is an experimental API and subject to change.
 TFL_CAPI_EXPORT extern TfLiteBuiltinOperator
 TfLiteRegistrationExternalGetBuiltInCode(
+    const TfLiteRegistrationExternal* registration);
+
+// Returns the custom name of the provided 'registration'.  The returned pointer
+// will be non-null iff the op is a custom op.
+//
+// WARNING: This is an experimental API and subject to change.
+TFL_CAPI_EXPORT extern const char* TfLiteRegistrationExternalGetCustomName(
     const TfLiteRegistrationExternal* registration);
 
 // Destroys the TfLiteRegistrationExternal instance.
