@@ -12,24 +12,23 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef TENSORFLOW_LITE_KERNELS_BUILTIN_OP_KERNELS_H_
-#define TENSORFLOW_LITE_KERNELS_BUILTIN_OP_KERNELS_H_
+#ifndef TENSORFLOW_LITE_TEST_UTIL_H_
+#define TENSORFLOW_LITE_TEST_UTIL_H_
 
-#include "tensorflow/lite/core/kernels/builtin_op_kernels.h"
+#include "gtest/gtest.h"
+#include "tensorflow/lite/core/shims/c/shims_test_util.h"
 
 namespace tflite {
-namespace ops {
-namespace builtin {
+namespace testing {
 
-#define TFLITE_OP(NAME) \
-    using ::tflite::ops::builtin::NAME;
+class Test : public ::testing::Test {
+ public:
+  void SetUp() override {
+    ASSERT_EQ(TfLiteInitializeShimsForTest(), 0);
+  }
+};
 
-#include "tensorflow/lite/core/shims/builtin_ops_list.inc"
-
-#undef TFLITE_OP
-
-}  // namespace builtin
-}  // namespace ops
+}  // namespace testing
 }  // namespace tflite
 
-#endif  // TENSORFLOW_LITE_KERNELS_BUILTIN_OP_KERNELS_H_
+#endif  // TENSORFLOW_LITE_TEST_UTIL_H_

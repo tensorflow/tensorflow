@@ -1,6 +1,7 @@
 load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite", "verifier_internal_visibility_allowlist")
 load("//tensorflow/lite:build_def.bzl", "tflite_copts", "tflite_copts_warnings")
 load("//tensorflow:tensorflow.bzl", "tf_cc_binary", "tf_cc_test")
+load("//tensorflow/lite/core/shims:cc_library_with_tflite.bzl", "cc_library_with_tflite")
 load(
     "//tensorflow/core/platform:build_config.bzl",
     "tf_proto_library",
@@ -199,12 +200,15 @@ cc_test(
     ],
 )
 
-cc_library(
+cc_library_with_tflite(
     name = "verifier",
     hdrs = ["verifier.h"],
+    copts = tflite_copts_warnings(),
+    tflite_deps = [
+        "//tensorflow/lite:framework",
+    ],
     deps = [
         ":verifier_internal",
-        "//tensorflow/lite:framework",
         "//tensorflow/lite:schema_fbs_version",
         "//tensorflow/lite:string_util",
         "//tensorflow/lite:util",
@@ -218,16 +222,15 @@ cc_library(
     ],
 )
 
-cc_library(
+cc_library_with_tflite(
     name = "verifier_internal",
     hdrs = ["verifier_internal.h"],
+    copts = tflite_copts_warnings(),
     visibility = verifier_internal_visibility_allowlist() + [
         "//tensorflow/lite/core/shims:__subpackages__",
         "//tensorflow/lite/java/src/main/native:__pkg__",
     ],
-    deps = [
-        "//tensorflow/lite/core/tools:verifier_internal",
-    ],
+    deps = ["//tensorflow/lite/core/tools:verifier_internal"],
 )
 
 cc_library(
