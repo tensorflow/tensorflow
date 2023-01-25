@@ -415,11 +415,7 @@ TEST(ConstUint8MeanOpTest, Rounding) {
   m.QuantizeAndPopulate<uint8_t>(m.Input(), data);
   ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({3, 1}));
-  // Different quantization algorithms in TFLite and NNAPI can give slightly
-  // different results.
-  EXPECT_THAT(m.GetOutput<uint8_t>(),
-              testing::AnyOf(ElementsAreArray({163, 168, 192}),
-                             ElementsAreArray({163, 169, 192})));
+  EXPECT_THAT(m.GetOutput<uint8_t>(), ElementsAreArray({163, 168, 192}));
 }
 
 TEST(ConstInt8MeanOpTest, Rounding) {
@@ -429,11 +425,7 @@ TEST(ConstInt8MeanOpTest, Rounding) {
   m.QuantizeAndPopulate<int8_t>(m.Input(), data);
   ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({3, 1}));
-  // Different quantization algorithms in TFLite and NNAPI can give slightly
-  // different results.
-  EXPECT_THAT(m.GetOutput<int8_t>(),
-              testing::AnyOf(ElementsAreArray({34, 39, 63}),
-                             ElementsAreArray({34, 40, 63})));
+  EXPECT_THAT(m.GetOutput<int8_t>(), ElementsAreArray({34, 39, 63}));
 }
 
 template <typename integer_type, TensorType tensor_dtype>
