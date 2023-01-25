@@ -91,7 +91,6 @@ using RequiredSameOperandsAndResultsScaleFunc = std::function<bool(bool, int)>;
 // bool RequiredSameQuantizedAxes()
 using RequiredSameQuantizedAxesFunc = std::function<bool()>;
 
-using StringSet = absl::flat_hash_set<std::string>;
 using CustomMap = quant::CustomOpMap;
 
 // Quantization spec of an op, driving the quantization algorithm.
@@ -402,8 +401,10 @@ class QuantizationPattern : public RewritePattern {
     bool enable_verify = quant_params_.numeric_verify_spec.verify_numeric;
     bool enable_whole_model_verify =
         quant_params_.numeric_verify_spec.whole_model_verify;
-    StringSet ops_blocklist = quant_params_.quant_spec.ops_blocklist;
-    StringSet nodes_blocklist = quant_params_.quant_spec.nodes_blocklist;
+    absl::flat_hash_set<std::string> ops_blocklist =
+        quant_params_.quant_spec.ops_blocklist;
+    absl::flat_hash_set<std::string> nodes_blocklist =
+        quant_params_.quant_spec.nodes_blocklist;
     CustomMap custom_map = quant_params_.quant_spec.custom_map;
 
     // Rewrite the floating-point ops to the quantized version, by fusing

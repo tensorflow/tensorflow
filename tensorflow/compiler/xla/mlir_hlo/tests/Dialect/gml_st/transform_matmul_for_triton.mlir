@@ -40,21 +40,13 @@ func.func @matmul_fuse_output(%arg0: tensor<?x?xf32>, %arg1: tensor<?x?xf32>,
                      outs(%filled : tensor<?x?xf32>) -> tensor<?x?xf32>
   %5 = linalg.matmul ins(%arg0, %arg2 : tensor<?x?xf32>, tensor<?x?xf32>)
                      outs(%filled : tensor<?x?xf32>) -> tensor<?x?xf32>
-  %6 = linalg.map
-       ins(%5 : tensor<?x?xf32>)
-       outs(%init : tensor<?x?xf32>)
-       (%el: f32) {
-         %0 = math.absf %el: f32
-         linalg.yield %0: f32
-       }
+  %6 = linalg.map { math.absf }
+         ins(%5 : tensor<?x?xf32>)
+         outs(%init : tensor<?x?xf32>)
 
-  %result = linalg.map
-            ins(%4, %6 : tensor<?x?xf32>, tensor<?x?xf32>)
-            outs(%init : tensor<?x?xf32>)
-            (%lhs: f32, %rhs: f32) {
-              %0 = arith.addf %lhs, %rhs: f32
-              linalg.yield %0: f32
-            }
+  %result = linalg.map { arith.addf }
+              ins(%4, %6 : tensor<?x?xf32>, tensor<?x?xf32>)
+              outs(%init : tensor<?x?xf32>)
   return %result : tensor<?x?xf32>
 }
 
@@ -86,20 +78,21 @@ func.func @matmul_fuse_input_and_output(
   %cst = arith.constant 0.000000e+00 : f32
   %filled = linalg.fill ins(%cst : f32)
                         outs(%init : tensor<?x?xf32>) -> tensor<?x?xf32>
-  %mapped = linalg.map ins(%arg0 : tensor<?x?xf32>)
-       outs(%init : tensor<?x?xf32>)
-       (%el: f32) { %0 = math.absf %el: f32 linalg.yield %0: f32 }
-  %bcast = linalg.broadcast ins(%arg1 : tensor<?xf32>)
-       outs(%init : tensor<?x?xf32>)
-       dimensions = [1]
+  %mapped = linalg.map { math.absf }
+              ins(%arg0 : tensor<?x?xf32>)
+              outs(%init : tensor<?x?xf32>)
+  %bcast = linalg.broadcast
+             ins(%arg1 : tensor<?xf32>)
+             outs(%init : tensor<?x?xf32>)
+             dimensions = [1]
 
   %matmul = linalg.matmul
-       ins(%mapped, %bcast : tensor<?x?xf32>, tensor<?x?xf32>)
-       outs(%filled : tensor<?x?xf32>) -> tensor<?x?xf32>
+              ins(%mapped, %bcast : tensor<?x?xf32>, tensor<?x?xf32>)
+              outs(%filled : tensor<?x?xf32>) -> tensor<?x?xf32>
 
-  %result = linalg.map ins(%matmul : tensor<?x?xf32>)
-       outs(%init : tensor<?x?xf32>)
-       (%el: f32) { %0 = math.absf %el: f32 linalg.yield %0: f32 }
+  %result = linalg.map { math.absf }
+              ins(%matmul : tensor<?x?xf32>)
+              outs(%init : tensor<?x?xf32>)
   return %result : tensor<?x?xf32>
 }
 

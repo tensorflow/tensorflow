@@ -30,6 +30,7 @@ limitations under the License.
 #include "tensorflow/core/data/finalization_utils.h"
 #include "tensorflow/core/data/metric_utils.h"
 #include "tensorflow/core/data/serialization_utils.h"
+#include "tensorflow/core/data/tfdataz_metrics.h"
 #include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/framework/dataset_options.pb.h"
 #include "tensorflow/core/framework/function.h"
@@ -85,16 +86,20 @@ IteratorResource::IteratorResource(
     FunctionLibraryRuntime* flr)
     : metrics_collector_(flr->device()->device_type(), *env),
       unbounded_thread_pool_(env, "tf_data_iterator_resource"),
+      env_(*env),
       device_mgr_(std::move(device_mgr)),
       iterator_state_(std::make_shared<State>(std::move(flib_def),
                                               std::move(pflr), flr,
                                               /*iterator=*/nullptr)),
       output_dtypes_(output_dtypes),
       output_shapes_(output_shapes) {
+  tf_dataz_metrics_collector_ = std::make_shared<TfDatazMetricsCollector>(*env);
+  TfDatazMetricsRegistry::Register(tf_dataz_metrics_collector_);
   VLOG(2) << "creating iterator resource";
 }
 
 IteratorResource::~IteratorResource() {
+  TfDatazMetricsRegistry::Deregister(tf_dataz_metrics_collector_);
   VLOG(2) << "destroying iterator resource";
 }
 
@@ -132,6 +137,9 @@ Status IteratorResource::GetNext(OpKernelContext* ctx,
   const absl::Time start_time = metrics_collector_.RecordStart();
   auto status = iterator->GetNext(&iter_ctx, out_tensors, end_of_sequence);
   metrics_collector_.RecordStop(start_time, *out_tensors);
+  const int64_t get_next_latency_micros =
+      env_.NowMicros() - absl::ToUnixMicros(start_time);
+  tf_dataz_metrics_collector_->RecordGetNextLatency(get_next_latency_micros);
   captured_state->MergeCheckpoint(iter_ctx.checkpoint());
   return status;
 }

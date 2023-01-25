@@ -15,6 +15,7 @@ limitations under the License.
 #include "tensorflow/core/runtime_fallback/kernel/kernel_fallback_execute_compat.h"
 
 #include <cstdint>
+#include <memory>
 #include <optional>
 #include <string>
 
@@ -840,20 +841,35 @@ void KernelFallbackExecuteOpCustomAllocatorInternal(
   auto* allocator = args.front()->get<tensorflow::Allocator*>();
   args = args.drop_front();
 
-  DeviceWithCustomAllocator device_with_custom_allocator(
-      GetDeviceFromFallbackState(*fallback_request_state, *kernel_runner),
-      allocator);
+  auto* device =
+      GetDeviceFromFallbackState(*fallback_request_state, *kernel_runner);
 
-  // Different from FallbackAsyncExecuteOp, async execution is not allowed due
-  // to the lifetime of the wrapper device cannot be extended.
-  //
-  // TODO(b/200575143): Consider allowing async execution and extending the
-  // lifetime of the wrapping device.
-  KernelFallbackExecuteOpInternal(args, results,
-                                  /*op_chain=*/op_chain, attr_frame, exec_ctx,
-                                  *fallback_request_state, *kernel_runner,
-                                  /*is_async=*/false,
-                                  &device_with_custom_allocator);
+  if (!kernel_runner->IsAsync()) {
+    DeviceWithCustomAllocator device_with_custom_allocator(device, allocator);
+
+    KernelFallbackExecuteOpInternal(args, results,
+                                    /*op_chain=*/op_chain, attr_frame, exec_ctx,
+                                    *fallback_request_state, *kernel_runner,
+                                    /*is_async=*/false,
+                                    &device_with_custom_allocator);
+  } else {
+    auto device_with_custom_allocator =
+        std::make_unique<DeviceWithCustomAllocator>(device, allocator);
+
+    tfrt::AsyncValueRef<tfrt::Chain> op_ch;
+    if (op_chain == nullptr) {
+      op_chain = &op_ch;
+    }
+
+    KernelFallbackExecuteOpInternal(args, results,
+                                    /*op_chain=*/op_chain, attr_frame, exec_ctx,
+                                    *fallback_request_state, *kernel_runner,
+                                    /*is_async=*/true,
+                                    device_with_custom_allocator.get());
+
+    DCHECK(op_chain);
+    op_chain->AndThen([d = std::move(device_with_custom_allocator)]() {});
+  }
 }
 
 void FallbackAsyncExecuteOpWithAllocator(tfrt::AsyncKernelFrame* frame) {

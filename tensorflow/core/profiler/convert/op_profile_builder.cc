@@ -189,7 +189,7 @@ void PopulateOpMetricsNode(
   // https://github.com/tensorflow/profiler/blob/master/frontend/app/common/utils/utils.ts
   metrics->set_raw_time(op_metrics.time_ps());
   metrics->set_raw_flops(op_metrics.flops());
-  metrics->set_raw_bytes_accessed(op_metrics.bytes_accessed());
+  metrics->add_raw_bytes_accessed_array(op_metrics.bytes_accessed());
 
   // "time" is the op or category fraction of total time.
   metrics->set_time(SafeDivide(op_metrics.time_ps(), total_time_ps));
@@ -227,9 +227,9 @@ void PopulateOpMetricsNode(
       hbm_bw_gibibytes_per_second,
       peak_mem_gibibytes_per_second_per_core[MemBwType::MEM_BW_TYPE_HBM_RW]);
   metrics->add_bandwidth_utils(hbm_bw_utilization);
-
-  metrics->set_raw_hbm_bytes_accessed(GibiToGiga(hbm_bw_gibibytes_per_second) *
-                                      PicoToNano(op_metrics.time_ps()));
+  metrics->add_raw_bytes_accessed_array(
+      GibiToGiga(hbm_bw_gibibytes_per_second) *
+      PicoToNano(op_metrics.time_ps()));
 
   const double sram_rd_gibibytes_per_second = GigaToGibi(
       GigaBytesPerSecondPerCore(op_metrics, MemorySpace::MEMORY_SPACE_ON_CHIP,
@@ -238,6 +238,9 @@ void PopulateOpMetricsNode(
       sram_rd_gibibytes_per_second,
       peak_mem_gibibytes_per_second_per_core[MemBwType::MEM_BW_TYPE_SRAM_RD]);
   metrics->add_bandwidth_utils(sram_rd_bw_utilization);
+  metrics->add_raw_bytes_accessed_array(
+      GibiToGiga(sram_rd_gibibytes_per_second) *
+      PicoToNano(op_metrics.time_ps()));
 
   const double sram_wr_gibibytes_per_second = GigaToGibi(
       GigaBytesPerSecondPerCore(op_metrics, MemorySpace::MEMORY_SPACE_ON_CHIP,
@@ -246,6 +249,9 @@ void PopulateOpMetricsNode(
       sram_wr_gibibytes_per_second,
       peak_mem_gibibytes_per_second_per_core[MemBwType::MEM_BW_TYPE_SRAM_WR]);
   metrics->add_bandwidth_utils(sram_wr_bw_utilization);
+  metrics->add_raw_bytes_accessed_array(
+      GibiToGiga(sram_wr_gibibytes_per_second) *
+      PicoToNano(op_metrics.time_ps()));
 }
 
 // Sets the total time on the root node metrics.

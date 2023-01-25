@@ -22,8 +22,8 @@ limitations under the License.
 #include <memory>
 #include <queue>
 
+#include "absl/functional/any_invocable.h"
 #include "absl/synchronization/mutex.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/status.h"
 #include "tensorflow/compiler/xla/stream_executor/lib/threadpool.h"
 #include "tensorflow/compiler/xla/stream_executor/stream_executor_internal.h"
 
@@ -41,9 +41,9 @@ class HostStream : public internal::StreamInterface {
   // stop the stream or block any other tasks from executing; rather, the stream
   // will remember the first error encountered and return it from
   // 'BlockUntilDone'.
-  bool EnqueueTaskWithStatus(std::function<tsl::Status()> task);
+  bool EnqueueTaskWithStatus(absl::AnyInvocable<tsl::Status() &&> task);
   // Enqueue a task that doesn't report any status.
-  bool EnqueueTask(std::function<void()> task);
+  bool EnqueueTask(absl::AnyInvocable<void() &&> task);
 
   void* GpuStreamHack() override { return nullptr; }
   void** GpuStreamMemberHack() override { return nullptr; }
@@ -57,7 +57,8 @@ class HostStream : public internal::StreamInterface {
   void WorkLoop();
 
   absl::Mutex mu_;
-  std::queue<std::function<tsl::Status()>> work_queue_ ABSL_GUARDED_BY(mu_);
+  std::queue<absl::AnyInvocable<tsl::Status() &&>> work_queue_
+      ABSL_GUARDED_BY(mu_);
   std::unique_ptr<port::Thread> thread_;
   tsl::Status status_;
 };

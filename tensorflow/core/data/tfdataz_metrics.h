@@ -17,11 +17,13 @@ limitations under the License.
 
 #include <cstdint>
 #include <deque>
+#include <memory>
 #include <string>
 #include <unordered_map>
 #include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_set.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/thread_annotations.h"
@@ -88,12 +90,11 @@ class ApproximateLatencyEstimator {
 // Collects and exports the tf.data performance metrics to /tfdataz.
 class TfDatazMetricsCollector {
  public:
-  // Constructs a `TfDatazMetricsCollector`. `device_type` is one of the
-  // devices defined in `types.h` (DEVICE_CPU, DEVICE_GPU, DEVICE_TPU, etc).
+  // Constructs a `TfDatazMetricsCollector`.
   // We only collect metrics for CPU devices. This is a heuristic to avoid
   // collecting metrics for device-side iterators created by the multi-device
   // iterator mechanism.
-  TfDatazMetricsCollector(const std::string& device_type, const Env& env);
+  explicit TfDatazMetricsCollector(const Env& env);
 
   // Records `GetNext` call latency.
   void RecordGetNextLatency(int64_t get_next_latency_usec);
@@ -108,10 +109,25 @@ class TfDatazMetricsCollector {
   double GetAverageLatencyForLastSixtyMinutes();
 
  private:
-  // One of the devices defined in `types.h`
-  // (DEVICE_CPU, DEVICE_GPU, DEVICE_TPU, etc).
-  const std::string device_type_;
   ApproximateLatencyEstimator latency_estimator_;
+};
+
+// Thread-safe global registry for the /tfdataz metrics. All callers to
+// `TfDatazMetricsRegistry` use the same instance to register and deregister
+// iterator's `TfDatazMetricsCollector`.
+class TfDatazMetricsRegistry {
+ public:
+  // Registers the iterator specific `TfDatazMetricsCollector` in the global
+  // TfDatazMetricsRegistry.
+  static void Register(std::shared_ptr<TfDatazMetricsCollector> collector);
+
+  // Deregisters the iterator specific `TfDatazMetricsCollector` from the global
+  // TfDatazMetricsRegistry.
+  static void Deregister(std::shared_ptr<TfDatazMetricsCollector> collector);
+
+  // Returns all the registered `TfDatazMetricsCollector`s.
+  static absl::flat_hash_set<std::shared_ptr<TfDatazMetricsCollector>>
+  GetIteratorMetricCollectors();
 };
 
 }  // namespace data

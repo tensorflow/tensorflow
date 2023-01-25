@@ -646,6 +646,15 @@ tf_gen_op_wrapper_private_py(
 )
 
 tf_gen_op_wrapper_private_py(
+    name = "optional_ops_gen",
+    visibility = [
+        "//learning/brain/python/ops:__pkg__",
+        "//tensorflow:__subpackages__",
+        "//tensorflow/python/kernel_tests:__pkg__",
+    ],
+)
+
+tf_gen_op_wrapper_private_py(
     name = "experimental_dataset_ops_gen",
     visibility = [
         "//learning/brain/python/ops:__pkg__",
@@ -1419,7 +1428,7 @@ py_library(
         ":gradients_util",
         ":handle_data_util",
         ":pywrap_tensorflow",
-        "//tensorflow/python:dataset_ops_gen",
+        "//tensorflow/python:optional_ops_gen",
         "//tensorflow/python/compat",
         "//tensorflow/python/eager:function",
         "//tensorflow/python/framework:auto_control_deps_utils",

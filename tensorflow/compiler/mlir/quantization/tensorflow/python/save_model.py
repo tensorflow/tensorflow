@@ -40,7 +40,7 @@ _SignatureDefMap = Mapping[str, meta_graph_pb2.SignatureDef]
 def get_signatures_from_saved_model(
     saved_model_path: str,
     signature_keys: Optional[Sequence[str]] = None,
-    tags: Optional[Collection[str]] = None
+    tags: Optional[Collection[str]] = None,
 ) -> Dict[str, meta_graph_pb2.SignatureDef]:
   """Gets a map from signature keys to their SignatureDef.
 
@@ -70,7 +70,8 @@ def get_signatures_from_saved_model(
 
 
 def _restore_output_tensor_names(
-    graph_def: graph_pb2.GraphDef) -> graph_pb2.GraphDef:
+    graph_def: graph_pb2.GraphDef,
+) -> graph_pb2.GraphDef:
   """Restores the output tensor names of the converted model.
 
   During the conversion, the output tensor names of the original model are
@@ -139,15 +140,18 @@ def _create_empty_output_dir(output_directory: str) -> None:
     output_directory: Output directory.
   """
   if file_io.file_exists_v2(output_directory):
-    logging.info('Deleting existing directory for quantized model output: %s .',
-                 output_directory)
+    logging.info(
+        'Deleting existing directory for quantized model output: %s .',
+        output_directory,
+    )
     file_io.delete_recursively_v2(output_directory)
 
   file_io.recursive_create_dir_v2(output_directory)
 
 
-def _validate_signatures(signature_def_map: _SignatureDefMap,
-                         exported_graph: ops.Graph) -> _SignatureDefMap:
+def _validate_signatures(
+    signature_def_map: _SignatureDefMap, exported_graph: ops.Graph
+) -> _SignatureDefMap:
   """Validates if the tensor names in signatures are consistent with the graph.
 
   This function checks if the input and output tensor names in the signatures
@@ -178,8 +182,9 @@ def _validate_signatures(signature_def_map: _SignatureDefMap,
           tensor_info.name = prefixed_name
         except KeyError:
           raise ValueError(
-              'Cannot find the input tensor with name %s in the graph.' %
-              tensor_info.name) from exc
+              'Cannot find the input tensor with name %s in the graph.'
+              % tensor_info.name
+          ) from exc
 
     for tensor_info in signature_def.outputs.values():
       try:
@@ -191,14 +196,16 @@ def _validate_signatures(signature_def_map: _SignatureDefMap,
           tensor_info.name = prefixed_name
         except KeyError:
           raise ValueError(
-              'Cannot find the output tensor with name %s in the graph.' %
-              tensor_info.name) from exc
+              'Cannot find the output tensor with name %s in the graph.'
+              % tensor_info.name
+          ) from exc
 
   return signature_def_map
 
 
-def _find_op(graph: ops.Graph,
-             op_name: Optional[str]) -> Optional[ops.Operation]:
+def _find_op(
+    graph: ops.Graph, op_name: Optional[str]
+) -> Optional[ops.Operation]:
   """Finds the operation with `op_name`.
 
   Args:
@@ -245,7 +252,8 @@ def _find_file_prefix_tensor(graph: ops.Graph) -> Optional[core.Tensor]:
 
 
 def _create_empty_variable(
-    node_def: node_def_pb2.NodeDef) -> variables.Variable:
+    node_def: node_def_pb2.NodeDef,
+) -> variables.Variable:
   """Creates an empty `Variable`.
 
   Variables with unknown shape and empty value is created.
@@ -260,15 +268,14 @@ def _create_empty_variable(
   shared_name = str(node_def.attr['shared_name'].s, encoding='utf-8')
   dtype: dtypes.DType = dtypes.as_dtype(node_def.attr['dtype'].type)
 
-  return variables.Variable([],
-                            trainable=False,
-                            name=shared_name,
-                            dtype=dtype,
-                            shape=None)
+  return variables.Variable(
+      [], trainable=False, name=shared_name, dtype=dtype, shape=None
+  )
 
 
 def _find_variables(
-    graph_def: graph_pb2.GraphDef) -> Mapping[str, node_def_pb2.NodeDef]:
+    graph_def: graph_pb2.GraphDef,
+) -> Mapping[str, node_def_pb2.NodeDef]:
   """Finds existing `VarHandleOp`s in the graph.
 
   Args:
@@ -299,7 +306,8 @@ def save_model_v1(
     init_op_name: Optional[str] = None,
     restore_op_name: Optional[str] = None,
     checkpoint_dir: Optional[str] = None,
-    variable_shared_names: Optional[Sequence[str]] = None) -> None:
+    variable_shared_names: Optional[Sequence[str]] = None,
+) -> None:
   """Saves the model.
 
   Saves the provided graph def as SavedModel.
@@ -325,15 +333,18 @@ def save_model_v1(
   with session.Session(graph=ops.Graph()) as sess:
     importer.import_graph_def(graph_def, name='')
 
-    signature_def_map = _validate_signatures(signature_def_map,
-                                             ops.get_default_graph())
+    signature_def_map = _validate_signatures(
+        signature_def_map, ops.get_default_graph()
+    )
 
     # `restore_op_name` is non-empty & non-None when variables should be
     # restored before saving.
     if restore_op_name:
       var_mapping = _find_variables(graph_def)
-      logging.debug('Shared names of the variables to be saved: %s',
-                    str(list(var_mapping.keys())))
+      logging.debug(
+          'Shared names of the variables to be saved: %s',
+          str(list(var_mapping.keys())),
+      )
 
       for shared_name in variable_shared_names:
         var_node_def = var_mapping[shared_name]
@@ -350,12 +361,14 @@ def save_model_v1(
       # directory in `output_dir`.
       sess.run(
           _find_op(sess.graph, op_name=restore_op_name),
-          feed_dict={_find_file_prefix_tensor(sess.graph): checkpoint_dir})
+          feed_dict={_find_file_prefix_tensor(sess.graph): checkpoint_dir},
+      )
 
     v1_builder.add_meta_graph_and_variables(
         sess,
         tags,
         signature_def_map=signature_def_map,
-        main_op=_find_op(sess.graph, op_name=init_op_name))
+        main_op=_find_op(sess.graph, op_name=init_op_name),
+    )
 
   v1_builder.save()

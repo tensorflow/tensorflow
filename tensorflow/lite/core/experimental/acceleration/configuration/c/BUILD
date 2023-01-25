@@ -16,13 +16,14 @@
 # C API for delegate plugins.
 
 load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
-load("//tensorflow/lite/core/shims:cc_library_with_tflite.bzl", "cc_library_with_tflite")
 load("//tensorflow/lite/delegates/gpu:build_defs.bzl", "gpu_delegate_linkopts")
-load("//tensorflow/lite/core/c:special_rules.bzl", "vendor_delegate_allowlist")
+load("//tensorflow/lite/core/c:special_rules.bzl", "experimental_acceleration_api_allowlist")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
-    default_visibility = ["//tensorflow/lite:__subpackages__"],
+    default_visibility = [
+        "//tensorflow/lite:__subpackages__",
+    ] + experimental_acceleration_api_allowlist(),
     licenses = ["notice"],
 )
 
@@ -117,13 +118,10 @@ cc_test(
     ],
 )
 
-cc_library_with_tflite(
+cc_library(
     name = "stable_delegate",
     hdrs = ["stable_delegate.h"],
-    tflite_deps = [
-        "//tensorflow/lite/core/shims:delegate_plugin",
+    deps = [
+        "//tensorflow/lite/core/experimental/acceleration/configuration/c:delegate_plugin",
     ],
-    visibility = [
-        "//tensorflow/lite:__subpackages__",
-    ] + vendor_delegate_allowlist(),
 )

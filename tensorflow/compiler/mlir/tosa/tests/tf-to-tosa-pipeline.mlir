@@ -417,6 +417,62 @@ func.func @test_rsqrt(%arg0: tensor<13x21x3xf32>) -> tensor<13x21x3xf32> {
 
 // -----
 
+// CHECK-LABEL: test_sin
+// CHECK-SAME: -> tensor<10xf32>
+func.func @test_sin(%arg0: tensor<10xf32>) -> tensor<*xf32> {
+  // CHECK-DAG: %[[ONE:.+]] = "tosa.const"() {value = dense<1.000000e+00> : tensor<1xf32>}
+  // CHECK-DAG: %[[TWO:.+]] = "tosa.const"() {value = dense<2.000000e+00> : tensor<1xf32>}
+  // CHECK-DAG: %[[RESULT_SCALE:.+]] = "tosa.const"() {value = dense<2.38418579E-7> : tensor<1xf32>}
+  // CHECK-DAG: %[[INT_MAX:.+]] = "tosa.const"() {value = dense<3.276700e+04> : tensor<1xf32>}
+  // CHECK-DAG: %[[IN_SCALE:.+]] = "tosa.const"() {value = dense<0.159154937> : tensor<1xf32>}
+  // CHECK-DAG: %[[TBLVAL:.+]] = "tosa.const"() {value = dense<{{.+}}> : tensor<513xi16>}
+  // CHECK-DAG: %[[IN_SCALED:.+]] = "tosa.mul"(%arg0, %[[IN_SCALE]])
+  // CHECK-DAG: %[[FLOOR:.+]] = "tosa.floor"(%[[IN_SCALED]])
+  // CHECK-DAG: %[[SUB1:.+]] = "tosa.sub"(%[[IN_SCALED]], %[[FLOOR]])
+  // CHECK-DAG: %[[MUL1:.+]] = "tosa.mul"(%[[SUB1]], %[[TWO]])
+  // CHECK-DAG: %[[SUB2:.+]] = "tosa.sub"(%[[MUL1]], %[[ONE]])
+  // CHECK-DAG: %[[MUL2:.+]] = "tosa.mul"(%[[SUB2]], %[[INT_MAX]])
+  // CHECK-DAG: %[[TO_INT:.+]] = "tosa.cast"(%[[MUL2]])
+  // CHECK-DAG: %[[TABLE:.+]] = "tosa.table"(%[[TO_INT]], %[[TBLVAL]])
+  // CHECK-DAG: %[[TABLE_CAST:.+]] = "tosa.cast"(%[[TABLE]])
+  // CHECK-DAG: %[[RESULT:.+]] = "tosa.mul"(%[[TABLE_CAST:.+]], %[[RESULT_SCALE]])
+  %0 = "tf.Sin"(%arg0) : (tensor<10xf32>) -> tensor<*xf32>
+
+  // CHECK: return %[[RESULT]]
+  func.return %0 : tensor<*xf32>
+}
+
+// -----
+
+// CHECK-LABEL: test_cos
+// CHECK-SAME: -> tensor<10xf32>
+func.func @test_cos(%arg0: tensor<10xf32>) -> tensor<*xf32> {
+  // CHECK-DAG: %[[RESULT_SCALE:.+]] = "tosa.const"() {value = dense<2.38418579E-7> : tensor<1xf32>}
+  // CHECK-DAG: %[[INT_MAX:.+]] = "tosa.const"() {value = dense<3.276700e+04> : tensor<1xf32>}
+  // CHECK-DAG: %[[ONE:.+]] = "tosa.const"() {value = dense<1.000000e+00> : tensor<1xf32>}
+  // CHECK-DAG: %[[TWO:.+]] = "tosa.const"() {value = dense<2.000000e+00> : tensor<1xf32>}
+  // CHECK-DAG: %[[IN_SCALE:.+]] = "tosa.const"() {value = dense<0.159154937> : tensor<1xf32>}
+  // CHECK-DAG: %[[HALF_PI:.+]] = "tosa.const"() {value = dense<1.57079637> : tensor<1xf32>}
+  // CHECK-DAG: %[[TBLVAL:.+]] = "tosa.const"() {value = dense<{{.+}}> : tensor<513xi16>}
+  // CHECK-DAG: %[[IN_TRANSLATE:.+]] = "tosa.add"(%arg0, %[[HALF_PI]])
+  // CHECK-DAG: %[[IN_SCALED:.+]] = "tosa.mul"(%[[IN_TRANSLATE]], %[[IN_SCALE]])
+  // CHECK-DAG: %[[FLOOR:.+]] = "tosa.floor"(%[[IN_SCALED]])
+  // CHECK-DAG: %[[SUB1:.+]] = "tosa.sub"(%[[IN_SCALED]], %[[FLOOR]])
+  // CHECK-DAG: %[[MUL1:.+]] = "tosa.mul"(%[[SUB1]], %[[TWO]])
+  // CHECK-DAG: %[[SUB2:.+]] = "tosa.sub"(%[[MUL1]], %[[ONE]])
+  // CHECK-DAG: %[[MUL2:.+]] = "tosa.mul"(%[[SUB2]], %[[INT_MAX]])
+  // CHECK-DAG: %[[TO_INT:.+]] = "tosa.cast"(%[[MUL2]])
+  // CHECK-DAG: %[[TABLE:.+]] = "tosa.table"(%[[TO_INT]], %[[TBLVAL]])
+  // CHECK-DAG: %[[TABLE_CAST:.+]] = "tosa.cast"(%[[TABLE]])
+  // CHECK-DAG: %[[RESULT:.+]] = "tosa.mul"(%[[TABLE_CAST:.+]], %[[RESULT_SCALE]])
+  %0 = "tf.Cos"(%arg0) : (tensor<10xf32>) -> tensor<*xf32>
+
+  // CHECK: return %[[RESULT]]
+  func.return %0 : tensor<*xf32>
+}
+
+// -----
+
 // CHECK-LABEL: test_sigmoid
 // CHECK: %[[VAR0:.*]] = "tosa.sigmoid"(%arg0)
 func.func @test_sigmoid(%arg0: tensor<13x21x3xf32>) -> tensor<13x21x3xf32> {

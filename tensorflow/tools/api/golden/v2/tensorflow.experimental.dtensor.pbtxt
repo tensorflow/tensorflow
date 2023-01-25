@@ -93,6 +93,10 @@ tf_module {
     argspec: "args=[\'device_type\', \'enable_coordination_service\'], varargs=None, keywords=None, defaults=[\'None\', \'True\'], "
   }
   member_method {
+    name: "is_dtensor"
+    argspec: "args=[\'tensor\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
     name: "job_name"
     argspec: "args=[], varargs=None, keywords=None, defaults=None"
   }

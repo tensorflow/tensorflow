@@ -46,7 +46,7 @@ tf_cc_test(
     deps = [
         ":versioning",
         "//tensorflow/lite:builtin_op_data",
-        "//tensorflow/lite/kernels:builtin_ops",
+        "//tensorflow/lite/core/kernels:builtin_ops",
         "//tensorflow/lite/schema:schema_fbs",
         "//tensorflow/lite/schema:schema_fbs_with_mutable",
         "@com_google_googletest//:gtest_main",

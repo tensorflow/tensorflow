@@ -204,7 +204,7 @@ static ConversionTarget getRewritableTarget(MLIRContext* ctx) {
       mhlo::DivOp, mhlo::ExpOp, mhlo::Expm1Op, mhlo::FloorOp, mhlo::LogOp,
       mhlo::Log1pOp, mhlo::LogisticOp, mhlo::MulOp, mhlo::NegOp, mhlo::RoundOp,
       mhlo::RoundNearestEvenOp, mhlo::RsqrtOp, mhlo::SignOp, mhlo::SineOp,
-      mhlo::SqrtOp, mhlo::SubtractOp, mhlo::TanhOp>(
+      mhlo::SqrtOp, mhlo::SubtractOp, mhlo::TanOp, mhlo::TanhOp>(
       [&](Operation* op) { return op->hasOneUse(); });
   return target;
 }

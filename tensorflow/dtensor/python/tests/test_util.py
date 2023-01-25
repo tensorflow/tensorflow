@@ -275,19 +275,26 @@ class DTensorBaseTest(tf_test.TestCase, parameterized.TestCase):
       self.assertEqual(
           api.fetch_layout(result_dtensor),
           expected_layout,
-          msg='========\nexpected layout is\n  {}\n\nwhile got layout is\n  {}\n'
-          .format(expected_str, got_str))
+          msg=(
+              '=======\nexpected layout is\n  {}\n\nwhile got layout is\n  {}\n'
+              .format(expected_str, got_str)
+          ),
+      )
 
     layout = api.fetch_layout(result_dtensor)
     unpacked = [t.numpy() for t in api.unpack(result_dtensor)]
 
-    # Check dtype.
-    self.assertEqual(expected_result.dtype, result_dtensor.dtype,
-                     result_dtensor)
     # Check global shape.
     self.assertAllEqual(expected_result.shape, result_dtensor.shape)
 
     result_dtensor = numpy_util.to_numpy(result_dtensor)
+
+    # Check dtype.
+    # Note: This check needs be after result_dtensor is converted
+    # into numpy, due to failure with Numpy version 1.18.5.
+    self.assertEqual(
+        expected_result.dtype, result_dtensor.dtype, result_dtensor
+    )
 
     # Check value on concatenated result DTensor.
     self.assertAllClose(expected_result, result_dtensor, atol=tol, rtol=tol)

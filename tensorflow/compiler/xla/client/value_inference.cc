@@ -510,6 +510,7 @@ StatusOr<PostorderDFSNode> PostorderDFSVisitor::AnalyzeConstantValueFallback(
     case HloOpcode::kSubtract:
     case HloOpcode::kCos:
     case HloOpcode::kSin:
+    case HloOpcode::kTan:
     case HloOpcode::kNegate:
     case HloOpcode::kAbs:
     case HloOpcode::kDivide:
@@ -1125,6 +1126,7 @@ StatusOr<PostorderDFSNode> PostorderDFSVisitor::AnalyzeIsDynamic(
     case HloOpcode::kConvert:
     case HloOpcode::kSqrt:
     case HloOpcode::kCbrt:
+    case HloOpcode::kTan:
     case HloOpcode::kTanh: {
       // Forward operand as they don't change if a value is dynamic or static.
       return result.AddVisit([](Literal operand) { return operand; });

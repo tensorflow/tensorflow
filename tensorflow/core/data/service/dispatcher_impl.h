@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/core/data/service/dispatcher.pb.h"
 #include "tensorflow/core/data/service/dispatcher_state.h"
 #include "tensorflow/core/data/service/export.pb.h"
+#include "tensorflow/core/data/service/snapshot/snapshot_manager.h"
 #include "tensorflow/core/data/service/task_remover.h"
 #include "tensorflow/core/data/service/worker.grpc.pb.h"
 #include "tensorflow/core/framework/dataset.h"
@@ -43,78 +44,6 @@ limitations under the License.
 
 namespace tensorflow {
 namespace data {
-
-// Structs for maintaining the in-memory state of `Snapshot`s. This state
-// mirrors that which is on-disk.
-struct SourceState {
-  SourceState() : next_local_split_index(0), done(false) {}
-  // A counter of all assigned splits for the source.
-  int64_t next_local_split_index;
-  // If true, there are no more splits to process for the source.
-  bool done;
-};
-
-struct StreamState {
-  enum class Mode {
-    // A worker is processing the stream and is heartbeating.
-    kAssigned,
-    // A worker was processing the stream but has stopped heartbeating.
-    kOrphan,
-    // The dispatcher restarted and has yet to get a heartbeat from a worker
-    // processing the stream.
-    kUnknown,
-    // There are no more splits to process for the stream.
-    kDone,
-  };
-
-  explicit StreamState(int64_t num_sources)
-      : sources(num_sources), mode(Mode::kUnknown), worker_address("") {}
-
-  explicit StreamState(int64_t num_sources, absl::string_view worker_address)
-      : sources(num_sources),
-        mode(Mode::kAssigned),
-        worker_address(worker_address) {}
-
-  // All sources whose splits have been assigned for the stream.
-  std::vector<SourceState> sources;
-  // If `kOrphan`, the stream is a candidate to be assigned to an unoccupied
-  // worker. `kUnknown` transitions to `kAssigned` or `kOrphan` depending on
-  // whether or not the dispatcher gets a heartbeat from a worker processing the
-  // stream.
-  Mode mode;
-  // If `mode` is `kAssigned`, the address of the worker processing the stream.
-  std::string worker_address;
-  // Indices of all unfinished sources.
-  absl::flat_hash_set<int64_t> active_sources;
-};
-
-struct SnapshotState {
-  enum class Mode {
-    // No streams are done.
-    kActive,
-    // Some streams are done, but not all.
-    kWindingDown,
-    // All streams are done.
-    kDone
-  };
-
-  SnapshotState() : next_global_split_index(0), mode(Mode::kActive) {}
-
-  // Split providers for each input of the dataset being materialized.
-  std::vector<std::unique_ptr<SplitProvider>> split_providers;
-  // All streams for the snapshot.
-  std::vector<StreamState> streams;
-  // Indices of all unfinished streams with a known worker assignment, keyed by
-  // worker address.
-  absl::flat_hash_map<std::string, int64_t> assigned_streams;
-  // Indices of all unfinished streams with an unknown worker assignment.
-  absl::flat_hash_set<int64_t> unassigned_streams;
-  // A counter of all assigned splits for the snapshot.
-  int64_t next_global_split_index;
-  // If not `kActive`, at least one source of one stream has finished processing
-  // and no new streams are created or assigned.
-  Mode mode;
-};
 
 // A service which coordinates a pool of workers to serve dataset elements over
 // RPC.
@@ -329,24 +258,6 @@ class DataServiceDispatcherImpl {
       std::vector<std::shared_ptr<const DispatcherState::Task>>& tasks)
       TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
-  // Creates a `snapshots_` entry for `dataset_def` at `snapshot_directory`.
-  // Note that this does not read from `snapshot_directory`.
-  StatusOr<SnapshotState*> CreateSnapshotState(
-      const std::string& snapshot_directory, const DatasetDef& dataset_def)
-      TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
-  // Populates `response.snapshots` with information from `snapshots_`.
-  Status PopulateSnapshotInfo(absl::string_view worker_address,
-                              WorkerHeartbeatResponse* response)
-      TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
-  // Creates a new snapshot stream, both writing it on-disk to
-  // `snapshot_directory` and adding an entry in-memory to `snapshots_state`.
-  Status CreateSnapshotStream(absl::string_view snapshot_directory,
-                              absl::string_view worker_address,
-                              SnapshotState& snapshot_state);
-  // Validates `request` against `snapshots_`.
-  Status ValidateGetSnapshotSplitRequest(const GetSnapshotSplitRequest& request)
-      TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
-
   // Creates a new task for an iteration. The created task may be either
   // pending or active.
   Status CreateTask(std::shared_ptr<const DispatcherState::Iteration> iteration,
@@ -435,9 +346,10 @@ class DataServiceDispatcherImpl {
   absl::flat_hash_map<int64_t, absl::Time> latest_client_heartbeats_time_
       TF_GUARDED_BY(mu_);
 
-  // Map from snapshot directory to state mirroring that of the
-  // materialization.
-  absl::flat_hash_map<std::string, SnapshotState> snapshots_ TF_GUARDED_BY(mu_);
+  // Managers for all snapshot processes created or recovered during the
+  // lifetime of this dispatcher instance.
+  absl::flat_hash_map<std::string, std::unique_ptr<SnapshotManager>> snapshots_
+      TF_GUARDED_BY(mu_);
 
   std::optional<std::unique_ptr<JournalWriter>> journal_writer_
       TF_GUARDED_BY(mu_);

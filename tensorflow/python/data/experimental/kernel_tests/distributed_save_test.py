@@ -16,6 +16,7 @@
 
 import os
 import shutil
+import tempfile
 
 from absl.testing import parameterized
 
@@ -31,14 +32,17 @@ class DistributedSaveTest(test_base.DatasetTestBase, parameterized.TestCase):
 
   def setUp(self):
     super().setUp()
-    tmpdir = self.get_temp_dir()
-    tmpdir = os.path.join(tmpdir, "distributed_save_test")
-    os.mkdir(tmpdir)
-    self._test_dir = tmpdir
+    self._test_dir = os.path.join(
+        tempfile.mkdtemp(dir=self.get_temp_dir()),
+        "distributed_save_test",
+    )
 
   def tearDown(self):
     super().tearDown()
-    shutil.rmtree(self._test_dir)
+    try:
+      shutil.rmtree(self._test_dir)
+    except FileNotFoundError:
+      pass
 
 
 class DistributedSaveTfDataServiceTest(data_service_test_base.TestBase,

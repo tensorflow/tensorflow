@@ -824,7 +824,9 @@ void FullyConnectedInt16(const OpData* data, const TfLiteTensor* input,
                          const TfLiteTensor* filter, const TfLiteTensor* bias,
                          TfLiteTensor* output) {
   FullyConnectedParams op_params;
+  op_params.input_offset = -input->params.zero_point;
   op_params.weights_offset = -filter->params.zero_point;
+  op_params.output_offset = output->params.zero_point;
   op_params.output_multiplier = data->output_multiplier;
   op_params.output_shift = data->output_shift;
   op_params.quantized_activation_min = data->output_activation_min;
@@ -889,6 +891,8 @@ void FullyConnectedPerChannelInt16(const OpData* data,
   // op_params.weights_offset is not set (filter.params.zero_point is not used),
   // since it will be always assumed to be 0.
   FullyConnectedParams op_params;
+  op_params.input_offset = -input->params.zero_point;
+  op_params.output_offset = output->params.zero_point;
   op_params.quantized_activation_min = data->output_activation_min;
   op_params.quantized_activation_max = data->output_activation_max;
   if (bias && bias->type == kTfLiteInt64) {

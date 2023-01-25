@@ -61,6 +61,7 @@ enum class TargetDeviceFunctionID {
   kRsqrt,
   kSin,
   kSqrt,
+  kTan,
   kTanh,
 };
 

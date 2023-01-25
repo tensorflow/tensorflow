@@ -52,6 +52,7 @@ limitations under the License.
 #include "tensorflow/lite/interpreter_options.h"
 #include "tensorflow/lite/portable_type_to_tflitetype.h"
 #include "tensorflow/lite/profiling/root_profiler.h"
+#include "tensorflow/lite/profiling/telemetry/c/telemetry_setting_internal.h"
 #include "tensorflow/lite/signature_runner.h"
 #include "tensorflow/lite/stderr_reporter.h"
 #include "tensorflow/lite/string_type.h"
@@ -853,6 +854,14 @@ class Interpreter {
   // Used by InterpreterBuilder, should be called after setting up subgraphs.
   TfLiteStatus SetMetadata(const std::map<std::string, std::string>& metadata);
 
+  // Sets telemetry settings on model information and interpreter settings.
+  // Used by InterpreterBuilder.
+  TfLiteStatus SetTelemetrySettings(
+      std::unique_ptr<TfLiteTelemetryInterpreterSettings> telemetry_settings);
+
+  // Reports the telemetry settings with the given setting name.
+  TfLiteStatus ReportTelemetrySettings(const char* setting_name);
+
   /// Adds `subgraphs_to_add` subgraphs, preserving pre-existing Subgraph
   /// entries. The value pointed to by `first_new_subgraph_index` will be set to
   /// the index of the first new subgraph if `first_new_subgraph_index` is
@@ -934,6 +943,9 @@ class Interpreter {
   // Model metadata stored as mapping of name (key) to buffer (value).
   // Data is mapped from the Metadata in TFLite flatbuffer model.
   std::map<std::string, std::string> metadata_;
+
+  // Telemery data including model metadata and interpreter settings.
+  std::unique_ptr<TfLiteTelemetryInterpreterSettings> telemetry_data_;
 
   // InterpreterOptions object which is being used.
   std::unique_ptr<InterpreterOptions> options_;

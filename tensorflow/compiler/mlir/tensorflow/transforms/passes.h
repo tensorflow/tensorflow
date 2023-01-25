@@ -82,6 +82,11 @@ CreateTFRegionControlFlowToFunctional();
 std::unique_ptr<OperationPass<func::FuncOp>>
 CreateMaterializePassthroughOpPass();
 
+// Replicates the TensorList init op by undoing some CSE needed for correct
+// shape assignment in shape_inference.
+std::unique_ptr<OperationPass<func::FuncOp>>
+CreateReplicateTensorListInitOpsPass();
+
 // Performs Shape Inference on the TensorFlow dialect using the global registry.
 std::unique_ptr<OperationPass<ModuleOp>> CreateTFShapeInferencePass();
 

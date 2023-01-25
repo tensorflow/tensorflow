@@ -1,6 +1,7 @@
-// RUN: dtensor-opt %s -split-input-file -dtensor-xla-spmd-integration | FileCheck %s
+// RUN: dtensor-opt %s -split-input-file -dtensor-set-hlo-sharding='check_layout_use_xla_spmd=true' -dtensor-replace-auxiliary-layout-op -dtensor-remove-dtensorlayout | FileCheck %s
 
-// Check all inputs, outputs, and operations have sharding attributes.
+// Check after XLA SPMD integration, all inputs, outputs, and operations have sharding attributes.
+//  And all "tf.DTensorLayout" are removed.
 // CHECK-LABEL: func @check_layouts_are_converted_to_xla_sharding_attributes
 // CHECK-SAME: (%arg0: tensor<8x8xi32> {mhlo.sharding = "", tf._layout = "sharding_specs:unsharded,unsharded, mesh:|x=1|0|0|/job:localhost/replica:0/task:0/device:CPU:0|use_xla_spmd"}) -> (tensor<8x8xi32> {mhlo.sharding = ""})
 func.func @check_layouts_are_converted_to_xla_sharding_attributes(

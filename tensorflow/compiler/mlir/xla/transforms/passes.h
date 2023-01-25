@@ -55,6 +55,10 @@ std::unique_ptr<OperationPass<func::FuncOp>> createLegalizeTFPass(
 std::unique_ptr<OperationPass<ModuleOp>> createLegalizeTFModulePass(
     StringRef tf2xla_fallback_device_type = "");
 
+// Legalizes from MHLO quantized ops with MHLO quant types to MHLO primitive ops
+// like int ops.
+std::unique_ptr<OperationPass<func::FuncOp>> createConvertMHLOQuantToIntPass();
+
 /// Lowers from TF dialect to HLO dialect. When allow_partial_conversion is
 /// false, emits an error if there is any operation that can't be legalized.
 std::unique_ptr<OperationPass<func::FuncOp>> createLegalizeTFNoFallbackPass(
@@ -96,9 +100,6 @@ void PopulateLegalizeTfQuantizationPatterns(MLIRContext* context,
 /// Checks whether the op is supported by the Tf2Xla fallback for legalization.
 bool HasTf2XlaFallback(Operation* op);
 
-/// Lowers from TF dialect's control flow to HLO dialect's control flow.
-std::unique_ptr<OperationPass<ModuleOp>> createLegalizeTFControlFlowPass();
-
 /// Converts the provided Operation as well as all nested operations into HLO
 /// dialect using the conversion patterns registered by the HLO dialect. When
 /// allow_partial_conversion is false, emits an error if there is any operation
@@ -121,13 +122,18 @@ std::unique_ptr<OperationPass<ModuleOp>> CreateLegalizeTFCommunicationPass();
 // ops.
 std::unique_ptr<OperationPass<ModuleOp>> CreateLegalizeTFCollectivePass();
 
+// Verifies that the TF/XLA ops have all been lowered to MHLO.
+std::unique_ptr<OperationPass<func::FuncOp>>
+CreateVerifyTFXLALegalizationPass();
+
 #define GEN_PASS_REGISTRATION
 #define GEN_PASS_DECL_LEGALIZETF
 #define GEN_PASS_DECL_LEGALIZETFCOLLECTIVE
-#define GEN_PASS_DECL_LEGALIZETFCONTROLFLOW
 #define GEN_PASS_DECL_LEGALIZETFMODULEPASS
 #define GEN_PASS_DECL_LEGALIZETFNOFALLBACK
 #define GEN_PASS_DECL_LEGALIZETFTYPESPASS
+#define GEN_PASS_DECL_VERIFYTFXLALEGALIZATION
+#define GEN_PASS_DECL_CONVERTMHLOQUANTTOINT
 #include "tensorflow/compiler/mlir/xla/transforms/xla_legalize_tf_passes.h.inc"
 
 #define GEN_PASS_REGISTRATION

@@ -53,6 +53,7 @@ void CreateXlaRuntimeTestlibPipeline(PassManager& passes) {
 
   // Export functions to the XLA runtime.
   passes->addPass(CreateExportRuntimeFunctionsPass());
+  passes->addPass(CreateConvertCustomCallsPass());
   passes->addPass(CreateConvertAssertsPass());
 
   // Lower from high level async operations to async runtime.

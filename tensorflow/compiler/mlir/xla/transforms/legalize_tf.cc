@@ -6664,6 +6664,51 @@ class ConvertXlaReducePrecisionOp
   }
 };
 
+class LowerYieldOp : public OpConversionPattern<TF::YieldOp> {
+ public:
+  using OpConversionPattern::OpConversionPattern;
+
+  LogicalResult matchAndRewrite(
+      TF::YieldOp op, TF::YieldOp::Adaptor adaptor,
+      ConversionPatternRewriter &rewriter) const override {
+    rewriter.replaceOpWithNewOp<mhlo::ReturnOp>(op, adaptor.getOperands());
+    return success();
+  }
+};
+
+template <typename SrcOpT, typename DstOpT>
+class LowerControlFlowOp : public OpConversionPattern<SrcOpT> {
+ public:
+  using OpConversionPattern<SrcOpT>::OpConversionPattern;
+
+  LogicalResult matchAndRewrite(
+      SrcOpT op, typename SrcOpT::Adaptor adaptor,
+      ConversionPatternRewriter &rewriter) const override {
+    DstOpT mhlo_op;
+    Location loc = op.getLoc();
+    if constexpr (std::is_same<DstOpT, mhlo::CaseOp>::value) {
+      // Explicitly handle the Case op because it has variadic regions and takes
+      // the number of regions as an input along with the operands.
+      mhlo_op = rewriter.create<DstOpT>(loc, op.getResultTypes(),
+                                        adaptor.getBranchIndex(),
+                                        op.getBranches().size());
+    } else {
+      mhlo_op = rewriter.create<DstOpT>(loc, op.getResultTypes(),
+                                        adaptor.getOperands());
+    }
+
+    // Replace all uses of `op` results with the newly created op.
+    rewriter.replaceOp(op, mhlo_op.getResults());
+
+    int64_t num_regions = op.getNumRegions();
+    for (int64_t idx = 0; idx < num_regions; ++idx) {
+      rewriter.inlineRegionBefore(op.getBodyRegion(idx),
+                                  mhlo_op.getBodyRegion(idx),
+                                  mhlo_op.getBodyRegion(idx).end());
+    }
+    return success();
+  }
+};
 }  // end namespace
 
 #include "tensorflow/compiler/mlir/xla/transforms/generated_legalize_tf.inc"
@@ -6766,7 +6811,11 @@ void PopulateLegalizeTfPatterns(MLIRContext *context,
     ConvertSigmoidGradOpDynamic,
     ConvertConv2DDynamic,
     ConvertPadOpDynamic,
-    ConvertGatherNdOpDynamic>(context);
+    ConvertGatherNdOpDynamic,
+    LowerControlFlowOp<TF::CaseRegionOp, mhlo::CaseOp>,
+    LowerControlFlowOp<TF::IfRegionOp, mhlo::IfOp>,
+    LowerControlFlowOp<TF::WhileRegionOp, mhlo::WhileOp>,
+    LowerYieldOp>(context);
   // clang-format on
 }
 

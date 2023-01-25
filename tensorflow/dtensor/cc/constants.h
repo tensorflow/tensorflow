@@ -134,6 +134,11 @@ static constexpr char kLoadEmbeddingFn[] = "load_embedding_fn";
 
 // Name of dtensor retrieve embedding function.
 static constexpr char kRetrieveEmbeddingFn[] = "retrieve_embedding_fn";
+
+// Attribute which stores the layouts to be applied to the elements returned by
+// calling IteratorGetNextOp on a tf.data iterator.
+static constexpr char kIteratorElementLayouts[] = "tf._element_layouts";
+
 }  // namespace dtensor
 }  // namespace tensorflow
 

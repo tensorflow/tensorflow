@@ -244,6 +244,13 @@ Status XlaOpKernelContext::ConstantInputAsIntScalar(
   return ConstantInputAsIntScalar(index, out, mode);
 }
 
+StatusOr<int64_t> XlaOpKernelContext::ConstantInputAsIntScalar(
+    absl::string_view name, xla::ValueInferenceMode mode) {
+  int64_t out;
+  TF_RETURN_IF_ERROR(ConstantInputAsIntScalar(name, &out, mode));
+  return out;
+}
+
 Status XlaOpKernelContext::ConstantInputAsFloatScalar(
     int index, double* out, xla::ValueInferenceMode mode) {
   xla::Literal literal;

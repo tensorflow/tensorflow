@@ -461,7 +461,7 @@ Value materializeScalarRankSpecializationCase(
   }
 
   auto ifOp = b.create<scf::IfOp>(
-      loc, op->getResultTypes(), allOthersAreScalar,
+      loc, allOthersAreScalar,
       [&](OpBuilder &b, Location loc) {
         // Compute flat non-scalar shape.
         SmallVector<Value, 4> nonScalarShapes;
@@ -532,7 +532,7 @@ Value materializeEqualShapesRankSpecializationCase(
   }
 
   auto ifOp = b.create<scf::IfOp>(
-      loc, op->getResultTypes(), allShapesEqOrScalar,
+      loc, allShapesEqOrScalar,
       [&](OpBuilder &b, Location loc) {
         // Flatten non-scalar operands.
         Value flatShape = materializeFlatShape(b, loc, nonScalarShapes);

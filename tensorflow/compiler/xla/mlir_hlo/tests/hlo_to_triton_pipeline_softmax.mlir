@@ -44,8 +44,7 @@ func.func @perfectly_tiled_softmax(%argbuffer : memref<2048x4096xf32>,
 // CHECK-SAME: %[[OUT:.*]]: memref<2048x4096xf32>) kernel
 // CHECK:      %[[C0:.*]] = arith.constant 0 : index
 // CHECK:      %[[BID:.*]] = gpu.block_id  x
-// CHECK:      %[[IN_SV:.*]] = memref.subview %[[IN]][%[[BID]], 0] [1, 4096]
-// CHECK:      %[[VEC:.*]] = vector.transfer_read %[[IN_SV]][%[[C0]], %[[C0]]]
+// CHECK:      %[[VEC:.*]] = vector.transfer_read %[[IN]][%[[BID]], %[[C0]]]
 // CHECK:      %[[MAX:.*]] = vector.multi_reduction <maxf>, %[[VEC]]
 // CHECK:      %[[OUT_SV:.*]] = memref.subview %[[OUT]][%[[BID]], 0] [1, 4096]
 // CHECK:      %[[BMAX:.*]] = vector.broadcast %[[MAX]]

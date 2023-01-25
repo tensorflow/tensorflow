@@ -28,7 +28,9 @@ limitations under the License.
 #else
 #include <unistd.h>
 #endif
+#include "absl/functional/any_invocable.h"
 #include "absl/strings/ascii.h"
+#include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_split.h"
@@ -44,8 +46,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/stream_executor/lib/error.h"
 #include "tensorflow/compiler/xla/stream_executor/lib/initialize.h"
 #include "tensorflow/compiler/xla/stream_executor/lib/mathutil.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/numbers.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/path.h"
 #include "tensorflow/compiler/xla/stream_executor/lib/process_state.h"
 #include "tensorflow/compiler/xla/stream_executor/lib/statusor.h"
 #include "tensorflow/compiler/xla/stream_executor/platform.h"
@@ -56,6 +56,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/stream_executor/stream_executor_internal.h"
 #include "tensorflow/compiler/xla/stream_executor/stream_executor_pimpl.h"
 #include "tensorflow/compiler/xla/stream_executor/timer.h"
+#include "tensorflow/tsl/platform/numbers.h"
 
 // LOG(ERROR) uses a const named ERROR, so a macro with the same name is
 // always unwanted. This happens on Windows that defines such a macro.
@@ -238,7 +239,7 @@ tsl::Status GpuExecutor::LoadModuleFromPtx(const char* ptx, CUmodule* module) {
 
 tsl::Status GpuExecutor::LoadModuleFromHsaco(const char* hsaco,
                                              CUmodule* module) {
-  return port::InternalError(
+  return tsl::errors::Internal(
       "Feature not supported on CUDA platform (LoadModuleFromHsaco)");
 }
 
@@ -260,7 +261,7 @@ tsl::Status GpuExecutor::GetKernel(const MultiKernelLoaderSpec& spec,
     kernelname = &spec.cuda_ptx_in_memory().kernelname();
 
     if (cc_major_ == 0 && cc_minor_ == 0) {
-      return port::InternalError("Compute capability not set");
+      return tsl::errors::Internal("Compute capability not set");
     }
 
     const char* ptx = spec.cuda_ptx_in_memory().text(cc_major_, cc_minor_);
@@ -275,12 +276,12 @@ tsl::Status GpuExecutor::GetKernel(const MultiKernelLoaderSpec& spec,
     TF_RETURN_IF_ERROR(LoadModuleFromPtx(ptx, &module));
     kernel_to_gpu_binary_[kernel] = ptx;
   } else {
-    return port::InternalError("No method of loading CUDA kernel provided");
+    return tsl::errors::Internal("No method of loading CUDA kernel provided");
   }
   VLOG(2) << "getting function " << *kernelname << " from module " << module;
   if (!GpuDriver::GetModuleFunction(context_, module, kernelname->c_str(),
                                     cuda_kernel->gpu_function_ptr())) {
-    return port::InternalError("Could not find the corresponding function");
+    return tsl::errors::Internal("Could not find the corresponding function");
   }
 
   // We have to trust the kernel loader spec arity because there doesn't appear
@@ -342,11 +343,11 @@ tsl::Status GpuExecutor::LoadModule(const MultiModuleLoaderSpec& spec,
     return ::tsl::OkStatus();
   } else if (spec.has_cuda_ptx_in_memory()) {
     if (cc_major_ == 0 && cc_minor_ == 0) {
-      return port::InternalError("Compute capability not set");
+      return tsl::errors::Internal("Compute capability not set");
     }
 
     if (!spec.cuda_ptx_in_memory()) {
-      return port::InternalError("PTX not found in spec");
+      return tsl::errors::Internal("PTX not found in spec");
     }
 
     absl::MutexLock lock{&in_memory_modules_mu_};
@@ -356,7 +357,7 @@ tsl::Status GpuExecutor::LoadModule(const MultiModuleLoaderSpec& spec,
         const_cast<void*>(static_cast<const void*>(spec.cuda_ptx_in_memory())));
     return ::tsl::OkStatus();
   }
-  return port::InternalError("No method of loading CUDA module provided");
+  return tsl::errors::Internal("No method of loading CUDA module provided");
 }
 
 bool GpuExecutor::UnloadModule(ModuleHandle module_handle) {
@@ -413,7 +414,7 @@ GpuExecutor::CreateOrShareConstant(Stream* stream,
     DeviceMemoryBase* new_constant =
         new DeviceMemoryBase(Allocate(content.size(), /*memory_space=*/0));
     if (new_constant->opaque() == nullptr) {
-      return port::InternalError(absl::StrFormat(
+      return tsl::errors::Internal(absl::StrFormat(
           "Failed to allocate %d bytes for new constant", content.size()));
     }
 
@@ -422,7 +423,7 @@ GpuExecutor::CreateOrShareConstant(Stream* stream,
             .BlockHostUntilDone();
     if (!status.ok()) {
       Deallocate(new_constant);
-      status.Update(port::InternalError(absl::StrFormat(
+      status.Update(tsl::errors::Internal(absl::StrFormat(
           "Memcpy to device address %p failed", new_constant->opaque())));
       return status;
     }
@@ -708,13 +709,14 @@ bool GpuExecutor::MemcpyDeviceToDevice(Stream* stream,
 }
 
 bool GpuExecutor::HostCallback(Stream* stream,
-                               std::function<tsl::Status()> callback) {
-  auto callback_ptr = new std::function<void()>([callback]() {
-    tsl::Status s = callback();
-    if (!s.ok()) {
-      LOG(WARNING) << "Host callback failed: " << s;
-    }
-  });
+                               absl::AnyInvocable<tsl::Status() &&> callback) {
+  auto callback_ptr =
+      new absl::AnyInvocable<void() &&>([cb = std::move(callback)]() mutable {
+        tsl::Status s = std::move(cb)();
+        if (!s.ok()) {
+          LOG(WARNING) << "Host callback failed: " << s;
+        }
+      });
   return GpuDriver::AddStreamCallback(context_, AsGpuStreamValue(stream),
                                       InternalHostCallback, callback_ptr);
 }
@@ -722,9 +724,8 @@ bool GpuExecutor::HostCallback(Stream* stream,
 /* static */ void GpuExecutor::InternalHostCallback(CUstream stream,
                                                     CUresult status,
                                                     void* data) {
-  std::function<void()>* callback =
-      reinterpret_cast<std::function<void()>*>(data);
-  (*callback)();
+  auto* callback = reinterpret_cast<absl::AnyInvocable<void() &&>*>(data);
+  std::move (*callback)();
   delete callback;
 }
 
@@ -992,7 +993,7 @@ static int TryToReadNumaNode(const std::string& pci_bus_id,
   content = buf;
 
   int32_t value;
-  if (port::safe_strto32(content, &value)) {
+  if (absl::SimpleAtoi(content, &value)) {
     if (value < 0) {  // See http://b/18228951 for details on this path.
       LOG(INFO) << "successful NUMA node read from SysFS had negative value ("
                 << value

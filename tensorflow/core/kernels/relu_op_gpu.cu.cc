@@ -334,7 +334,7 @@ struct GeluGrad<GPUDevice, T> {
   template struct functor::Elu<GPUDevice, T>;  \
   template struct functor::Selu<GPUDevice, T>;
 
-TF_CALL_GPU_NUMBER_TYPES(DEFINE_GPU_NO_MLIR_KERNELS);
+TF_CALL_GPU_NUMBER_TYPES_NO_BF16(DEFINE_GPU_NO_MLIR_KERNELS);
 #if GOOGLE_CUDA
 TF_CALL_bfloat16(DEFINE_GPU_NO_MLIR_KERNELS);
 #endif
@@ -354,7 +354,7 @@ TF_CALL_bfloat16(DEFINE_GPU_NO_MLIR_KERNELS);
   template struct functor::Gelu<GPUDevice, T>;          \
   template struct functor::GeluGrad<GPUDevice, T>;
 
-TF_CALL_GPU_NUMBER_TYPES(DEFINE_GPU_KERNELS);
+TF_CALL_GPU_NUMBER_TYPES_NO_BF16(DEFINE_GPU_KERNELS);
 #if GOOGLE_CUDA
 TF_CALL_bfloat16(DEFINE_GPU_KERNELS);
 #endif

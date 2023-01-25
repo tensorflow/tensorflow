@@ -20,10 +20,10 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/lite/builtin_ops.h"
-#include "tensorflow/lite/c/c_api.h"
-#include "tensorflow/lite/c/c_api_opaque.h"
-#include "tensorflow/lite/c/common.h"
-#include "tensorflow/lite/core/c/c_api_types.h"
+#include "tensorflow/lite/core/shims/c/c_api.h"
+#include "tensorflow/lite/core/shims/c/c_api_opaque.h"
+#include "tensorflow/lite/core/shims/c/c_api_types.h"
+#include "tensorflow/lite/core/shims/c/common.h"
 #include "tensorflow/lite/kernels/internal/compatibility.h"
 #include "tensorflow/lite/util.h"
 
@@ -136,11 +136,9 @@ TfLiteOpaqueDelegate* TfLiteOpaqueDelegateFactory::CreateSimpleDelegate(
 
 void TfLiteOpaqueDelegateFactory::DeleteSimpleDelegate(
     TfLiteOpaqueDelegate* opaque_delegate) {
-  TfLiteDelegate* delegate = reinterpret_cast<TfLiteDelegate*>(opaque_delegate);
-  if (!delegate) return;
-  SimpleOpaqueDelegateInterface* simple_delegate =
-      reinterpret_cast<SimpleOpaqueDelegateInterface*>(
-          delegate->opaque_delegate_builder->data);
+  if (!opaque_delegate) return;
+  auto* simple_delegate = reinterpret_cast<SimpleOpaqueDelegateInterface*>(
+      TfLiteOpaqueDelegateGetData(opaque_delegate));
   delete simple_delegate;
   TfLiteOpaqueDelegateDelete(opaque_delegate);
 }

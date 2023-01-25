@@ -113,8 +113,8 @@ TFL_CAPI_EXPORT extern TfLiteStatus TfLiteOpaqueTensorCopyToBuffer(
 
 // Returns the input tensor of the given node.
 TFL_CAPI_EXPORT extern const TfLiteOpaqueTensor* TfLiteOpaqueNodeGetInput(
-    TfLiteOpaqueContext* opaque_context, const TfLiteOpaqueNode* opaque_node,
-    int index);
+    const TfLiteOpaqueContext* opaque_context,
+    const TfLiteOpaqueNode* opaque_node, int index);
 
 // Returns the output tensor of the given node.
 TFL_CAPI_EXPORT extern TfLiteOpaqueTensor* TfLiteOpaqueNodeGetOutput(
@@ -341,6 +341,39 @@ size_t TfLiteOpaqueContextGetNumTensors(
 TFL_CAPI_EXPORT
 const char* TfLiteOpaqueContextGetName(
     const struct TfLiteOpaqueContext* opaque_context);
+
+// Resizes the provided 'tensor' that is associated with the provided
+// 'context' so that the 'tensor's shape matches the dimensionality specified
+// via the provided 'new_size' array.  Returns 'kTfLiteOk' in
+// case of success.  Any other return value indicates a failure and will leave
+// the 'tensor' in an unspecified state.  The TF Lite runtime takes ownership
+// of the 'new_size' array, even in case of failure.
+TFL_CAPI_EXPORT
+TfLiteStatus TfLiteOpaqueContextResizeTensor(TfLiteOpaqueContext* context,
+                                             TfLiteOpaqueTensor* tensor,
+                                             TfLiteIntArray* new_size);
+
+// Reports an error message formed by using the provided 'format' string in
+// combination with the data provided via the unnamed arguments following the
+// the 'format' parameter ('...').  The intended usage and behavior is the same
+// as with 'printf' with regards to how the data and the formatting string
+// interact.  E.g.
+// 'TfLiteOpaqueContextReportError(opaque_context, "a=%d b=%d", a, b);'
+//
+// The provided 'opaque_context' will be used for reporting the resulting error
+// message.
+//
+// Note that TF Lite clients can use macros like 'TF_LITE_OPAQUE_ENSURE' to
+// check for certain conditions to be true, and print an error message if the
+// condition does not hold.  Direct usage of this function from application code
+// should therefore be rare.
+TFL_CAPI_EXPORT
+void TfLiteOpaqueContextReportError(struct TfLiteOpaqueContext* opaque_context,
+                                    const char* format, ...);
+TFL_CAPI_EXPORT
+void TfLiteOpaqueContextReportErrorVa(
+    struct TfLiteOpaqueContext* opaque_context, const char* format,
+    va_list vlist);
 
 #ifdef __cplusplus
 }  // extern "C"

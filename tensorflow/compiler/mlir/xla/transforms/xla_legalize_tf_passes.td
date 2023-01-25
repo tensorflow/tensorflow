@@ -76,6 +76,18 @@ def LegalizeTFModulePass : Pass<"xla-fallback-legalize-tf-module-pass", "ModuleO
                            "shape::ShapeDialect", "func::FuncDialect", "sparse_tensor::SparseTensorDialect"];
 }
 
+def ConvertMHLOQuantToInt : Pass<"convert-mhlo-quant-to-int", "mlir::func::FuncOp"> {
+  let summary = "Convert from MHLO quantized ops to MHLO primitive ops.";
+
+  let description = [{
+    Convert from MHLO quantized ops with MHLO quant types to MHLO primitive ops
+    like int ops.
+  }];
+
+  let constructor = "mlir::mhlo::createConvertMHLOQuantToIntPass()";
+  let dependentDialects = ["chlo::ChloDialect", "mhlo::MhloDialect"];
+}
+
 def LegalizeTFNoFallback : Pass<"xla-legalize-tf-no-fallback", "mlir::func::FuncOp"> {
   let summary = "Legalize from TF dialect's or HLO dialect's control flow.";
 
@@ -93,13 +105,6 @@ def LegalizeTFNoFallback : Pass<"xla-legalize-tf-no-fallback", "mlir::func::Func
   let dependentDialects = ["arith::ArithDialect", "chlo::ChloDialect",
                            "mhlo::MhloDialect",
                            "shape::ShapeDialect", "func::FuncDialect", "sparse_tensor::SparseTensorDialect"];
-}
-
-def LegalizeTFControlFlow : Pass<"xla-legalize-tf-control-flow", "ModuleOp"> {
-  let summary = "Legalize from TF dialect's to HLO dialect's control flow.";
-
-  let constructor = "mlir::mhlo::createLegalizeTFControlFlowPass()";
-  let dependentDialects = ["mhlo::MhloDialect", "sparse_tensor::SparseTensorDialect"];
 }
 
 def LegalizeTfTypesPass : Pass<"xla-legalize-tf-types"> {
@@ -125,4 +130,15 @@ def LegalizeTFCollective : Pass<"xla-legalize-tf-collective", "ModuleOp"> {
 
   let constructor = "mlir::mhlo::CreateLegalizeTFCollectivePass()";
   let dependentDialects = ["mhlo::MhloDialect", "sparse_tensor::SparseTensorDialect"];
+}
+
+def VerifyTFXLALegalization : Pass<"tfxla-verify-legalization", "mlir::func::FuncOp"> {
+  let summary = "Verifies that all TF ops have been legalized to XLA.";
+
+  let description = [{"Ensures that all Tensorflow ops have been legalized to "
+                    "XLA and reports an error about which op has not been"
+                    "legalized. This pass does not transform any ops and is just"
+                    " a verification pass to ensure invariants are true."}];
+
+  let constructor = "mlir::mhlo::CreateVerifyTFXLALegalizationPass()";
 }

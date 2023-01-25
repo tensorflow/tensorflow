@@ -57,7 +57,7 @@ func.func @matmul(%arg0: tensor<?x?xf32>, %arg1: tensor<?x?xf32>)
 // TRANSFORMED:         %[[INIT:.*]] = tensor.empty
 
 // TRANSFORMED:         %[[MAIN_PAR:.*]] = gml_st.parallel (%[[I:.*]], %[[J:.*]]) = (%[[C0]], %[[C0]]) to (%[[IUB:.*]], %[[JUB:.*]]) step
-// TRANSFORMED:           %[[MAIN_SLICE:.*]] = gml_st.materialize %[[INIT]]
+// TRANSFORMED:           %[[MAIN_SLICE:.*]] = tensor.extract_slice %[[INIT]]
 // TRANSFORMED:           %[[MAIN_FILL:.*]] = linalg.fill{{.*}}outs(%[[MAIN_SLICE]]
 // TRANSFORMED:           %[[MAIN_FOR:.*]] = gml_st.for (%[[K:.*]]) = (%[[C0]]) to (%[[KUB:.*]]) {{.*}} outs ({{.*}} = %[[MAIN_FILL]]:
 // TRANSFORMED:             %[[MAIN_PAR_MAIN_FOR_MATMUL:.*]] = linalg.matmul
@@ -68,7 +68,7 @@ func.func @matmul(%arg0: tensor<?x?xf32>, %arg1: tensor<?x?xf32>)
 // TRANSFORMED:           gml_st.set_yield %[[REM_FOR]]
 
 // TRANSFORMED:         %[[REM_RHS_PAR:.*]] = gml_st.parallel (%[[I:.*]], %[[J:.*]]) = (%[[C0]], %[[JUB]])
-// TRANSFORMED:           %[[REM_RHS_SLICE:.*]] = gml_st.materialize %[[MAIN_PAR]]
+// TRANSFORMED:           %[[REM_RHS_SLICE:.*]] = tensor.extract_slice %[[MAIN_PAR]]
 // TRANSFORMED:           %[[REM_RHS_FILL:.*]] = linalg.fill{{.*}}outs(%[[REM_RHS_SLICE]]
 // TRANSFORMED:           %[[REM_RHS_FOR:.*]] = gml_st.for (%[[K:.*]]) = (%[[C0]]) {{.*}} outs ({{.*}} = %[[REM_RHS_FILL]]:
 // TRANSFORMED:             %[[REM_RHS_PAR_MATMUL:.*]] = linalg.matmul
@@ -76,7 +76,7 @@ func.func @matmul(%arg0: tensor<?x?xf32>, %arg1: tensor<?x?xf32>)
 // TRANSFORMED:           gml_st.set_yield %[[REM_RHS_FOR]]
 
 // TRANSFORMED:         gml_st.parallel (%[[I:.*]], %[[J:.*]]) = (%[[IUB]], %[[C0]])
-// TRANSFORMED:           %[[REM_LHS_SLICE:.*]] = gml_st.materialize %[[REM_RHS_PAR]]
+// TRANSFORMED:           %[[REM_LHS_SLICE:.*]] = tensor.extract_slice %[[REM_RHS_PAR]]
 // TRANSFORMED:           %[[REM_LHS_FILL:.*]] = linalg.fill{{.*}}outs(%[[REM_LHS_SLICE]]
 // TRANSFORMED:           %[[REM_LHS_FOR:.*]] = gml_st.for (%[[K:.*]]) = (%[[C0]]) {{.*}} outs ({{.*}} = %[[REM_LHS_FILL]]:
 // TRANSFORMED:             %[[REM_LHS_PAR_MATMUL:.*]] = linalg.matmul
@@ -125,21 +125,13 @@ func.func @matmul_fuse_output(%arg0: tensor<?x?xf32>, %arg1: tensor<?x?xf32>,
                      outs(%filled : tensor<?x?xf32>) -> tensor<?x?xf32>
   %5 = linalg.matmul ins(%arg0, %arg2 : tensor<?x?xf32>, tensor<?x?xf32>)
                      outs(%filled : tensor<?x?xf32>) -> tensor<?x?xf32>
-  %6 = linalg.map
-       ins(%5 : tensor<?x?xf32>)
-       outs(%init : tensor<?x?xf32>)
-       (%el: f32) {
-         %0 = math.absf %el: f32
-         linalg.yield %0: f32
-       }
+  %6 = linalg.map { math.absf }
+         ins(%5 : tensor<?x?xf32>)
+         outs(%init : tensor<?x?xf32>)
 
-  %result = linalg.map
-            ins(%4, %6 : tensor<?x?xf32>, tensor<?x?xf32>)
-            outs(%init : tensor<?x?xf32>)
-            (%lhs: f32, %rhs: f32) {
-              %0 = arith.addf %lhs, %rhs: f32
-              linalg.yield %0: f32
-            }
+  %result = linalg.map { arith.addf }
+              ins(%4, %6 : tensor<?x?xf32>, tensor<?x?xf32>)
+              outs(%init : tensor<?x?xf32>)
   return %result : tensor<?x?xf32>
 }
 

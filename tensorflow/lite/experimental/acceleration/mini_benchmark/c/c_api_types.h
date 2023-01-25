@@ -78,6 +78,9 @@ struct TfLiteMiniBenchmarkSettings {
   // Custom error reporter to log error to. If the function is provided, errors
   // will be logged with this function.
   int (*error_reporter_func)(void* user_data, const char* format, va_list args);
+  // A handle to a gpu_plugin provided by external library. This handle will be
+  // used to lookup the shared object file that provides GPU Delegate Plugin.
+  void* gpu_plugin_handle;
 };
 
 #ifdef __cplusplus

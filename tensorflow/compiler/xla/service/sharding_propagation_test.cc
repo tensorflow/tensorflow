@@ -1010,6 +1010,47 @@ ENTRY %tuple {
   }
 }
 
+TEST_P(ParameterizedMetadataTest, TupleForwardPassAndBackWardPass) {
+  const char* const hlo_string = R"(
+HloModule module
+ENTRY %tuple {
+  %param0 =  f32[256,2]{1,0} parameter(0),
+    sharding={manual metadata={op_name="a"}}
+  %param1 =  f32[256,2]{1,0} parameter(1),
+    sharding={devices=[1,2]0,1 metadata={op_name="b"}}
+  %constant = s32[1,2]{1,0} constant({{0,1}})
+  %gather = f32[1,32,2]{2,1,0} gather(param0, constant), offset_dims={1,2}, collapsed_slice_dims={}, start_index_map={0,1}, index_vector_dim=1, slice_sizes={32,2}
+  %tuple = (f32[1,32,2]{2,1,0}, f32[256,2]{1,0}) tuple(
+    %gather, %param1)
+  ROOT %copy = (f32[1,32,2]{2,1,0}, f32[256,2]{1,0}) copy(%tuple)
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  if (GetParam().clear_metadata) {
+    ClearMetadata(module.get());
+  }
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool changed,
+      ShardingPropagation(/*is_spmd=*/true, GetParam().propagate_metadata)
+          .Run(module.get()));
+  XLA_VLOG_LINES(1, module->ToString());
+  EXPECT_TRUE(changed);
+  auto* tuple = FindInstruction(module.get(), "tuple");
+  ASSERT_NE(tuple, nullptr);
+  // Check that the sharding on param1 is not replicated on tuple element[1].
+  EXPECT_THAT(tuple, op::Sharding("{{manual}, {devices=[1,2]0,1}}"));
+  if (GetParam().propagate_metadata && !GetParam().clear_metadata) {
+    EXPECT_THAT(tuple->sharding().tuple_elements()[0],
+                ShardingMetadata({CreateMetadata("a")}));
+    EXPECT_THAT(tuple->sharding().tuple_elements()[1],
+                ShardingMetadata({CreateMetadata("b")}));
+  } else {
+    for (const HloSharding& sub_sharding : tuple->sharding().tuple_elements()) {
+      EXPECT_THAT(sub_sharding, ShardingMetadata({}));
+    }
+  }
+}
+
 TEST_P(ParameterizedMetadataTest, ForwardConvolutionForwardPass) {
   const char* const hlo_string = R"(
 HloModule module

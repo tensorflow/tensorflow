@@ -22,7 +22,6 @@ limitations under the License.
 
 namespace tensorflow {
 TF_CALL_GPU_NUMBER_TYPES(DEFINE_GPU_KERNELS);
-TF_CALL_bfloat16(DEFINE_GPU_KERNELS);
 }  // end namespace tensorflow
 
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM

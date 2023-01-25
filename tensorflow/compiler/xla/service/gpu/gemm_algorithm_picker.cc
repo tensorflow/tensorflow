@@ -465,8 +465,12 @@ StatusOr<bool> RunOnInstruction(HloInstruction* gemm,
 
   // We only set the 'algorithm' field on non-Ampere architectures, as for
   // Ampere it's ignored in any case.
-  if (algorithm && !capability.IsAtLeast(se::CudaComputeCapability::AMPERE)) {
-    updated_config.set_selected_algorithm(*algorithm);
+  if (!capability.IsAtLeast(se::CudaComputeCapability::AMPERE)) {
+    if (algorithm) {
+      updated_config.set_selected_algorithm(*algorithm);
+    } else {
+      updated_config.set_selected_algorithm(se::blas::kRuntimeAutotuning);
+    }
   }
   TF_RETURN_IF_ERROR(gemm->set_backend_config(updated_config));
   return updated_config.SerializeAsString() != gemm_config.SerializeAsString();

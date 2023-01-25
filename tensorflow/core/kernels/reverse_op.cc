@@ -17,7 +17,9 @@ limitations under the License.
 #define EIGEN_USE_THREADS
 
 #include "tensorflow/core/kernels/reverse_op.h"
+
 #include <memory>
+
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -346,7 +348,6 @@ namespace functor {
 
 TF_CALL_uint8(DECLARE_GPU_SPEC);
 TF_CALL_int8(DECLARE_GPU_SPEC);
-TF_CALL_bfloat16(DECLARE_GPU_SPEC);
 TF_CALL_GPU_ALL_TYPES(DECLARE_GPU_SPEC);
 #undef DECLARE_GPU_SPEC
 #undef DECLARE_GPU_SPEC_DIM
@@ -373,7 +374,6 @@ TF_CALL_GPU_ALL_TYPES(DECLARE_GPU_SPEC);
                           ReverseV2Op<GPUDevice, T, int64>)
 TF_CALL_uint8(REGISTER_GPU_KERNELS);
 TF_CALL_int8(REGISTER_GPU_KERNELS);
-TF_CALL_bfloat16(REGISTER_GPU_KERNELS);
 TF_CALL_GPU_ALL_TYPES(REGISTER_GPU_KERNELS);
 #undef REGISTER_GPU_KERNEL
 

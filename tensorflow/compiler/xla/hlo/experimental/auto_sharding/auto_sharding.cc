@@ -1526,6 +1526,7 @@ BuildStrategyAndCost(const HloInstructionSequence& sequence,
       case HloOpcode::kSin:
       case HloOpcode::kSqrt:
       case HloOpcode::kCbrt:
+      case HloOpcode::kTan:
       case HloOpcode::kTanh:
       // Binary elementwise operations
       case HloOpcode::kAdd:

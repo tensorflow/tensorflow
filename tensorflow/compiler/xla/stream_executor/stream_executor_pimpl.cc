@@ -25,6 +25,7 @@ limitations under the License.
 #include <utility>
 
 #include "absl/base/const_init.h"
+#include "absl/functional/any_invocable.h"
 #include "absl/strings/ascii.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
@@ -33,13 +34,13 @@ limitations under the License.
 #include "tensorflow/compiler/xla/stream_executor/fft.h"
 #include "tensorflow/compiler/xla/stream_executor/lib/env.h"
 #include "tensorflow/compiler/xla/stream_executor/lib/error.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/stacktrace.h"
 #include "tensorflow/compiler/xla/stream_executor/lib/statusor.h"
 #include "tensorflow/compiler/xla/stream_executor/lib/threadpool.h"
 #include "tensorflow/compiler/xla/stream_executor/platform/port.h"
 #include "tensorflow/compiler/xla/stream_executor/rng.h"
 #include "tensorflow/compiler/xla/stream_executor/stream.h"
 #include "tensorflow/compiler/xla/stream_executor/stream_executor_internal.h"
+#include "tensorflow/tsl/platform/stacktrace.h"
 #include "tensorflow/tsl/util/env_var.h"
 
 namespace {
@@ -51,7 +52,7 @@ namespace {
 
 std::string StackTraceIfVLOG10() {
   if (VLOG_IS_ON(10)) {
-    return absl::StrCat(" ", port::CurrentStackTrace(), "\n");
+    return absl::StrCat(" ", tsl::CurrentStackTrace(), "\n");
   } else {
     return "";
   }
@@ -132,7 +133,7 @@ MakeScopedTracer(StreamExecutor* stream_exec, BeginCallT begin_call,
 // TF_PER_DEVICE_MEMORY_LIMIT_MB environment variable is not set.
 static int64_t GetMemoryLimitBytes() {
   int64_t value;
-  SE_CHECK_OK(
+  TF_CHECK_OK(
       tsl::ReadInt64FromEnvVar("TF_PER_DEVICE_MEMORY_LIMIT_MB", 0, &value));
   return value * (1ll << 20);
 }
@@ -308,7 +309,7 @@ tsl::Status StreamExecutor::GetConvolveRunners(
     std::vector<std::unique_ptr<const dnn::ConvRunner>>* out_exec_plans) {
   dnn::DnnSupport* dnn_support = AsDnn();
   if (!dnn_support) {
-    return port::UnimplementedError("DNN library is not found.");
+    return tsl::errors::Unimplemented("DNN library is not found.");
   }
   return dnn_support->GetConvolveRunners(
       use_cudnn_frontend, kind, input_type, output_type, stream,
@@ -331,7 +332,7 @@ tsl::Status StreamExecutor::GetFusedConvolveRunners(
     std::vector<std::unique_ptr<const dnn::FusedConvRunner>>* out_exec_plans) {
   dnn::DnnSupport* dnn_support = AsDnn();
   if (!dnn_support) {
-    return port::UnimplementedError("DNN library is not found.");
+    return tsl::errors::Unimplemented("DNN library is not found.");
   }
   return dnn_support->GetFusedConvolveRunners(
       use_cudnn_frontend, kind, input_type, bias_type, output_type,
@@ -349,7 +350,7 @@ tsl::Status StreamExecutor::GetFusedMatmulRunners(
         out_exec_plans) {
   dnn::DnnSupport* dnn_support = AsDnn();
   if (!dnn_support) {
-    return port::UnimplementedError("DNN library is not found.");
+    return tsl::errors::Unimplemented("DNN library is not found.");
   }
 
   return dnn_support->GetFusedMatmulRunners(
@@ -755,13 +756,8 @@ tsl::Status StreamExecutor::Memset32(Stream* stream, DeviceMemoryBase* location,
   return implementation_->Memset32(stream, location, pattern, size);
 }
 
-bool StreamExecutor::HostCallback(Stream* stream,
-                                  std::function<void()> callback) {
-  return implementation_->HostCallback(stream, std::move(callback));
-}
-
-bool StreamExecutor::HostCallback(Stream* stream,
-                                  std::function<tsl::Status()> callback) {
+bool StreamExecutor::HostCallback(
+    Stream* stream, absl::AnyInvocable<tsl::Status() &&> callback) {
   return implementation_->HostCallback(stream, std::move(callback));
 }
 

@@ -115,13 +115,13 @@ Status DataServiceDispatcherClient::GetSplit(int64_t iteration_id,
 }
 
 Status DataServiceDispatcherClient::Snapshot(
-    const DatasetDef& dataset, const std::string& directory,
+    const DatasetDef& dataset, const std::string& path,
     const experimental::DistributedSnapshotMetadata& metadata) {
   TF_RETURN_IF_ERROR(EnsureInitialized());
 
   SnapshotRequest req;
   *req.mutable_dataset() = dataset;
-  req.set_directory(directory);
+  req.set_path(path);
   *req.mutable_metadata() = metadata;
 
   SnapshotResponse resp;
@@ -134,12 +134,12 @@ Status DataServiceDispatcherClient::Snapshot(
 }
 
 Status DataServiceDispatcherClient::GetSnapshotSplit(
-    const std::string& directory, int64_t stream_index, int64_t source_index,
+    const std::string& base_path, int64_t stream_index, int64_t source_index,
     Tensor& split, bool& end_of_splits) {
   TF_RETURN_IF_ERROR(EnsureInitialized());
 
   GetSnapshotSplitRequest req;
-  req.set_directory(directory);
+  req.set_base_path(base_path);
   req.set_stream_index(stream_index);
   req.set_source_index(source_index);
 

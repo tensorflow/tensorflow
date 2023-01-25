@@ -35,6 +35,8 @@ void addTileableOpsTransformationsForCPU(
   pm.addNestedPass<FuncOp>(createTransformTransposeForCpuPass());
   pm.addNestedPass<FuncOp>(createTransformMapForCpuPass(options.vectorSize));
   pm.addNestedPass<FuncOp>(createTransformSortForCpuPass());
+  pm.addNestedPass<mlir::func::FuncOp>(
+      mlir::gml_st::createTransformReverseForCpuPass());
 
   pm.addPass(createCSEPass());
   pm.addPass(createCanonicalizerPass());

@@ -215,7 +215,6 @@ def RewriteVectorTransposePass : Pass<"rewrite-vector-transpose", "mlir::func::F
   ];
 }
 
-
 def ScalarizationPass : Pass<"scalarize", "mlir::func::FuncOp"> {
   let summary = "Converts ops on tensors with 1 element to scalar ops.";
   let dependentDialects = [

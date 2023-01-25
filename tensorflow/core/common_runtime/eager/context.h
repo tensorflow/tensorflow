@@ -81,9 +81,6 @@ namespace eager {
 class RemoteMgr;
 }  // namespace eager
 
-class TensorHandle;
-class EagerOperation;
-
 class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
  public:
   static constexpr uint64 kInvalidContextId = 0;

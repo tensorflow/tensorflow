@@ -277,4 +277,4 @@ func.func @softmax_4d(
 // CHECK:          %[[COLLAPSE_SHAPE_1:.*]] = memref.collapse_shape %[[VIEW]] [
 // CHECK-SAME:         [0, 1, 2], [3]] : memref<4x4x8x32xf32> into memref<128x32xf32>
 // CHECK:          gpu.launch_func  @fusion_kernel::@fusion_kernel
-// CHECK-SAME:         args(%[[COLLAPSE_SHAPE_1]] : memref<128x32xf32>, %[[COLLAPSE_SHAPE]] : memref<128x32xf32>, %[[VIEW_1]] : memref<f32>)
+// CHECK-SAME:         args(%[[VIEW_1]] : memref<f32>, %[[COLLAPSE_SHAPE]] : memref<128x32xf32>, %[[COLLAPSE_SHAPE_1]] : memref<128x32xf32>)

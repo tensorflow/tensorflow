@@ -38,8 +38,8 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_util
 from tensorflow.python.ops import control_flow_util_v2 as util
 from tensorflow.python.ops import default_gradient
-from tensorflow.python.ops import gen_dataset_ops
 from tensorflow.python.ops import gen_functional_ops
+from tensorflow.python.ops import gen_optional_ops
 from tensorflow.python.ops import gradients_util
 from tensorflow.python.ops import handle_data_util
 from tensorflow.python.ops import math_ops
@@ -763,7 +763,7 @@ def _pack_sequence_as(structured_outputs, op_outputs):
 
 def _wrap_intermediates(func_graph, intermediates):
   with func_graph.as_default():
-    return [gen_dataset_ops.optional_from_value([t]) for t in intermediates]
+    return [gen_optional_ops.optional_from_value([t]) for t in intermediates]
 
 
 def _create_dummy_input(func_graph, template_tensor):
@@ -792,7 +792,7 @@ def _create_none_optionals(func_graph, n):
     A list of tensors in func_graph.
   """
   with func_graph.as_default():
-    return [gen_dataset_ops.optional_none() for _ in range(n)]
+    return [gen_optional_ops.optional_none() for _ in range(n)]
 
 
 # TODO(b/265317139): remove this function and move this dynamic dimension
@@ -1038,15 +1038,16 @@ class _CondGradFuncGraph(util.CondBranchFuncGraph):
         else:
           # 'tensor' hasn't been wrapped, do it now.
           with self._forward_graph.as_default():
-            optional = gen_dataset_ops.optional_from_value([tensor])
+            optional = gen_optional_ops.optional_from_value([tensor])
           self.op_needs_rewrite = True
         self._wrapped_intermediates[tensor_id] = optional
 
       optional = self._wrapped_intermediates[tensor_id]
       captured_optional = super(_CondGradFuncGraph,
                                 self)._capture_helper(optional, name)
-      captured_tensor = gen_dataset_ops.optional_get_value(
-          captured_optional, [tensor.dtype], [tensor.shape])[0]
+      captured_tensor = gen_optional_ops.optional_get_value(
+          captured_optional, [tensor.dtype], [tensor.shape]
+      )[0]
 
     self._indirect_captures[tensor_id] = captured_tensor
     return captured_tensor

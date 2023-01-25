@@ -149,7 +149,6 @@ namespace functor {
   extern template struct ExtractImagePatchesForward<GPUDevice, T>;
 
 TF_CALL_GPU_ALL_TYPES(DECLARE_GPU_SPEC);
-TF_CALL_bfloat16(DECLARE_GPU_SPEC);
 
 #undef DECLARE_GPU_SPEC
 
@@ -162,7 +161,6 @@ TF_CALL_bfloat16(DECLARE_GPU_SPEC);
       ExtractImagePatchesOp<GPUDevice, T>);
 
 TF_CALL_GPU_ALL_TYPES(REGISTER);
-TF_CALL_bfloat16(REGISTER);
 
 #undef REGISTER
 

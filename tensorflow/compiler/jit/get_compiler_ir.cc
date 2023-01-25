@@ -36,6 +36,7 @@ limitations under the License.
 #include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/framework/resource_handle.pb.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/statusor.h"
@@ -154,8 +155,20 @@ BuildXlaCompilerArgumentFromFuncBody(const FunctionBody* fbody) {
     bool has_function_input_shape = false;
     for (const auto& attr_value : attr.second.attr()) {
       if (attr_value.first == "_output_shapes") {
+        if (attr_value.second.list().shape().size() != 1) {
+          return errors::InvalidArgument(
+              "Invalid \"_output_shapes\" attribute value for attr_value: ",
+              attr_value.second.DebugString());
+        }
+        TensorShape s;
         TF_RETURN_IF_ERROR(TensorShape::BuildTensorShape(
-            attr_value.second.list().shape()[0], &shapes[idx]));
+            attr_value.second.list().shape()[0], &s));
+        if (idx >= input_arg_size) {
+          return errors::InvalidArgument(
+              "attribute value shape index exceeds the number of function "
+              "input args");
+        }
+        shapes.push_back(s);
         has_function_input_shape = true;
       }
     }

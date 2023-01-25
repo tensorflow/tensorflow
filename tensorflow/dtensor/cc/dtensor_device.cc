@@ -17,9 +17,11 @@ limitations under the License.
 
 #include <algorithm>
 #include <cstdint>
+#include <iterator>
 #include <memory>
 #include <optional>
 #include <string>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -303,6 +305,10 @@ class DTensorDevice {
   std::string FetchLayout(TFE_Context* context, TFE_TensorHandle* input,
                           TF_Status* status);
 
+  // Returns whether `input` is a dtensor of this DTensorDevice.
+  bool IsDTensor(TFE_Context* context, TFE_TensorHandle* input,
+                 TF_Status* status);
+
   TFE_TensorHandle* SparsePack(TFE_Context* context, int num_inputs,
                                TFE_TensorHandle** indices,
                                TFE_TensorHandle** values,
@@ -315,6 +321,10 @@ class DTensorDevice {
 
   std::unordered_map<std::string, int> GetFunctionCacheHitAndMissCount(
       TFE_Context* context, TF_Status* status) const;
+
+  void SetIteratorElementLayouts(TFE_Context* context, TFE_TensorHandle* input,
+                                 const std::vector<std::string>& string_layouts,
+                                 TF_Status* status);
 
  private:
   // If the `operation_name` of an op indicates a custom DTensor op then
@@ -663,6 +673,12 @@ std::string DTensorDevice::FetchLayout(TFE_Context* context,
       TFE_TensorHandleDevicePointer(input, status));
   if (TF_GetCode(status) != TF_OK) return {};
   return t->layout().ToString();
+}
+
+bool DTensorDevice::IsDTensor(TFE_Context* context, TFE_TensorHandle* input,
+                              TF_Status* status) {
+  const char* input_device = TFE_TensorHandleDeviceName(input, status);
+  return input_device == name_;
 }
 
 std::vector<TFE_TensorHandle*> DTensorDevice::Unpack(TFE_Context* context,
@@ -1144,6 +1160,33 @@ std::unordered_map<std::string, int>
 DTensorDevice::GetFunctionCacheHitAndMissCount(TFE_Context* context,
                                                TF_Status* status) const {
   return function_compilation_hits_and_misses_;
+}
+
+void DTensorDevice::SetIteratorElementLayouts(
+    TFE_Context* context, TFE_TensorHandle* input,
+    const std::vector<std::string>& string_layouts, TF_Status* status) {
+  const char* input_device = TFE_TensorHandleDeviceName(input, status);
+  if (input_device != name_) {
+    TF_SetStatus(
+        status, TF_INVALID_ARGUMENT,
+        absl::StrCat(
+            "SetIteratorElementLayouts expects an iterator resource placed on ",
+            "the DTensor device: ", name_,
+            ", but it was placed on device: ", input_device)
+            .c_str());
+    return;
+  }
+  ResourceHandleWithLayout* t = reinterpret_cast<ResourceHandleWithLayout*>(
+      TFE_TensorHandleDevicePointer(input, status));
+  if (TF_GetCode(status) != TF_OK) return;
+
+  std::vector<Layout> layouts;
+  std::transform(string_layouts.cbegin(), string_layouts.cend(),
+                 std::back_inserter(layouts),
+                 [](const std::string& layout_str) {
+                   return Layout::FromString(layout_str).value();
+                 });
+  t->UpdateElementLayouts(layouts, status);
 }
 
 // From `graph` containing computation for all meshes, extract/select
@@ -2281,6 +2324,12 @@ std::string FetchLayout(TFE_Context* context, TFE_TensorHandle* input,
   return device->FetchLayout(context, input, status);
 }
 
+bool IsDTensor(TFE_Context* context, TFE_TensorHandle* input, void* device_info,
+               TF_Status* status) {
+  DTensorDevice* device = reinterpret_cast<DTensorDevice*>(device_info);
+  return device->IsDTensor(context, input, status);
+}
+
 TFE_TensorHandle* SparsePack(TFE_Context* context, int num_inputs,
                              TFE_TensorHandle** indices,
                              TFE_TensorHandle** values,
@@ -2303,5 +2352,13 @@ std::unordered_map<std::string, int> GetFunctionCacheHitAndMissCount(
   DTensorDevice* device = reinterpret_cast<DTensorDevice*>(device_info);
   return device->GetFunctionCacheHitAndMissCount(context, status);
 }
+
+void SetIteratorElementLayouts(TFE_Context* context, TFE_TensorHandle* input,
+                               const std::vector<std::string>& string_layouts,
+                               void* device_info, TF_Status* status) {
+  DTensorDevice* device = reinterpret_cast<DTensorDevice*>(device_info);
+  device->SetIteratorElementLayouts(context, input, string_layouts, status);
+}
+
 }  // namespace dtensor
 }  // namespace tensorflow

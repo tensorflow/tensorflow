@@ -15,13 +15,17 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/gpu/runtime/gemm.h"
 
+#include <optional>
 #include <utility>
+#include <vector>
 
 #include "tensorflow/compiler/xla/runtime/custom_call.h"
 #include "tensorflow/compiler/xla/runtime/executable.h"
 #include "tensorflow/compiler/xla/service/gpu/matmul_utils.h"
 #include "tensorflow/compiler/xla/service/gpu/runtime/support.h"
 #include "tensorflow/compiler/xla/service/service_executable_run_options.h"
+#include "tensorflow/compiler/xla/stream_executor/blas.h"
+#include "tensorflow/compiler/xla/stream_executor/device_memory.h"
 #include "tensorflow/compiler/xla/xla.pb.h"
 
 namespace xla {
@@ -30,6 +34,47 @@ namespace gpu {
 using xla::runtime::CustomCall;
 using xla::runtime::State;
 using xla::runtime::StridedMemrefView;
+
+// Run autotuning to select the best algorithm and save the algorithm to
+// GemmConfig.
+//
+// Difference between this function and GemmAlgorithmPicker:
+// This function doesn't check correctness of the algorithms and doesn't
+// reinitialize output buffers everytime gemm runs. The result is always
+// nondeterministic.
+// TODO(anlunx): Reuse GemmAlgorithmPicker::DoGemmAutotune.
+void DoRuntimeAutotuning(se::Stream* stream, GemmConfig& config,
+                         se::DeviceMemoryBase lhs, se::DeviceMemoryBase rhs,
+                         se::DeviceMemoryBase out) {
+  if (config.algorithm != stream_executor::blas::kRuntimeAutotuning) return;
+
+  std::vector<se::blas::AlgorithmType> algorithms;
+  stream->parent()->GetBlasGemmAlgorithms(stream, &algorithms);
+  std::vector<se::blas::ProfileResult> profile_results;
+  for (const se::blas::AlgorithmType algorithm : algorithms) {
+    se::blas::ProfileResult profile_result;
+    Status autotune_run =
+        RunGemm(config, lhs, rhs, out, stream, algorithm, &profile_result);
+    if (!autotune_run.ok()) continue;
+
+    if (profile_result.is_valid()) {
+      profile_results.push_back(std::move(profile_result));
+    }
+  }
+
+  if (profile_results.empty()) {
+    config.algorithm = stream_executor::blas::kDefaultAlgorithm;
+    return;
+  }
+
+  auto selected_result = absl::c_min_element(
+      profile_results, [](const se::blas::ProfileResult& lhs,
+                          const se::blas::ProfileResult& rhs) {
+        return lhs.elapsed_time_in_ms() < rhs.elapsed_time_in_ms();
+      });
+
+  config.algorithm = selected_result->algorithm();
+}
 
 static absl::Status GemmImpl(const ServiceExecutableRunOptions* run_options,
                              const DebugOptions* debug_options,
@@ -47,10 +92,13 @@ static absl::Status GemmImpl(const ServiceExecutableRunOptions* run_options,
 
   // Get the gemm config from the state.
   absl::StatusOr<GemmConfig*> config = state.GetOrCreate([&] {
-    return ToAbsl(GetGemmConfig(lhs, rhs, out, algorithm, alpha_real,
-                                alpha_imag, beta, dot_dims.lhs_batch,
-                                dot_dims.lhs_contract, dot_dims.rhs_batch,
-                                dot_dims.rhs_contract));
+    StatusOr<GemmConfig> gemm_config =
+        GetGemmConfig(lhs, rhs, out, algorithm, alpha_real, alpha_imag, beta,
+                      dot_dims.lhs_batch, dot_dims.lhs_contract,
+                      dot_dims.rhs_batch, dot_dims.rhs_contract);
+    if (!gemm_config.ok()) return ToAbsl(gemm_config);
+    DoRuntimeAutotuning(stream, *gemm_config, lhs_data, rhs_data, output_data);
+    return ToAbsl(gemm_config);
   });
   if (!config.ok()) return config.status();
 

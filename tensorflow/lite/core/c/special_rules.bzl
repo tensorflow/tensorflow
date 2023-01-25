@@ -22,6 +22,6 @@ def common_header_visibility_allowlist():
     """Returns a list of packages that can depend on tensorflow/lite/core/c/common.h."""
     return []
 
-def vendor_delegate_allowlist():
-    """Returns a list of packages that can depend on vendor_delegate."""
+def experimental_acceleration_api_allowlist():
+    """Returns a list of packages that can depend on tensorflow/lite/core/experimental/acceleration/ subpackages.."""
     return []

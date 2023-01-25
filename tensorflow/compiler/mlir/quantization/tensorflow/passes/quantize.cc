@@ -18,6 +18,7 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "absl/container/flat_hash_set.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/StringSwitch.h"
 #include "llvm/Support/Casting.h"
@@ -92,7 +93,8 @@ struct TFQuantizationBase
 
   // All the quantized ops are supported if the quantization method is weight
   // only quantization.
-  static bool IsWeightOnlyOp(Operation* quantized_op, StringSet& ops_blocklist,
+  static bool IsWeightOnlyOp(Operation* quantized_op,
+                             absl::flat_hash_set<std::string>& ops_blocklist,
                              bool weight_only_quantization,
                              const CustomMap& custom_op_map) {
     return weight_only_quantization;

@@ -24,6 +24,14 @@ cc_library(
 )
 
 cc_library(
+    name = "format_utils",
+    hdrs = ["format_utils.h"],
+    deps = [
+        "//tensorflow/tsl/platform:logging",
+    ],
+)
+
+cc_library(
     name = "time_utils",
     hdrs = ["time_utils.h"],
     copts = tf_profiler_copts(),

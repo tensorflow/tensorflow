@@ -36,8 +36,8 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import cond_v2
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import data_flow_ops
-from tensorflow.python.ops import gen_dataset_ops
 from tensorflow.python.ops import gen_linalg_ops
+from tensorflow.python.ops import gen_optional_ops
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import logging_ops
 from tensorflow.python.ops import math_ops
@@ -49,6 +49,7 @@ from tensorflow.python.saved_model import load as load_lib
 from tensorflow.python.saved_model import save as save_lib
 from tensorflow.python.training import saver
 from tensorflow.python.util import compat
+
 
 _OPTIONAL_OPS = frozenset([
     "OptionalFromValue", "OptionalNone", "OptionalHasValue", "OptionalGetValue"
@@ -1394,12 +1395,14 @@ class CondV2Test(test.TestCase):
       x = constant_op.constant(1., name="x")
 
       def then_branch():
-        return x ** 2., gen_dataset_ops.optional_from_value(
-            [constant_op.constant(1)])
+        return x**2.0, gen_optional_ops.optional_from_value(
+            [constant_op.constant(1)]
+        )
 
       def else_branch():
-        return x ** 3., gen_dataset_ops.optional_from_value(
-            [constant_op.constant(1.)])
+        return x**3.0, gen_optional_ops.optional_from_value(
+            [constant_op.constant(1.0)]
+        )
 
       y, _ = cond_v2.cond_v2(c, then_branch, else_branch)
       return gradients_impl.gradients(y, x)

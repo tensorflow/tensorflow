@@ -76,8 +76,14 @@ bool MaybeImproveInstructionSharding(HloSharding sharding,
                                      HloInstruction* instruction,
                                      bool may_combine_partial_sharding,
                                      bool allow_aggressive_resharding = false) {
-  // We don't want to propagate tile maximal shardings.
-  if (!IsSpatiallyPartitioned(sharding)) {
+  // Allows improve from tile maximal shardings to manual shardings.
+  if (instruction->has_sharding() && instruction->sharding().IsTileMaximal() &&
+      sharding.IsManual()) {
+    instruction->set_sharding(sharding);
+    return true;
+  }
+  // We don't want to propagate tile maximal shardings or manual shardings.
+  if (!IsSpatiallyPartitioned(sharding) || sharding.IsManual()) {
     return false;
   }
   // Any sharding is better then no sharding.
@@ -218,6 +224,7 @@ const HloInstruction* PickRepresentativeOperand(
     case HloOpcode::kCbrt:
     case HloOpcode::kSubtract:
     case HloOpcode::kStochasticConvert:
+    case HloOpcode::kTan:
     case HloOpcode::kTanh:
     case HloOpcode::kWhile:
     case HloOpcode::kXor: {
@@ -765,7 +772,7 @@ bool InferShardingFromUsers(
     return false;
   }
   // Propagate manual sharding.
-  if (!instruction->has_sharding()) {
+  if (!instruction->has_sharding() || instruction->sharding().IsTileMaximal()) {
     for (const HloInstruction* user : instruction->users()) {
       if (!user->has_sharding() || !user->sharding().IsManual() ||
           user->IsCustomCall("SPMDFullToShardShape"))
@@ -1262,7 +1269,8 @@ bool IsCSEPreventionSharding(const HloSharding& sharding) {
 
 std::optional<HloSharding> InferBroadcastOperandSharding(
     const HloInstruction& instruction, bool is_spmd) {
-  if (instruction.sharding().IsReplicated()) {
+  if (instruction.sharding().IsReplicated() ||
+      instruction.sharding().IsManual()) {
     return instruction.sharding();
   }
   std::vector<int64_t> dims_to_replicate;
@@ -1785,7 +1793,7 @@ bool InferDynamicSliceOrDynamicUpdateSliceShardingFromOperands(
           ? instruction->operand(0)
           : instruction->operand(1);
   auto slice_dim_is_sharded = [&]() {
-    if (!IsSpatiallyPartitioned(operand) ||
+    if (!IsSpatiallyPartitioned(operand) || operand->sharding().IsManual() ||
         operand->sharding().NumTiles() == 1) {
       return false;
     }
@@ -1809,14 +1817,6 @@ bool InferDynamicSliceOrDynamicUpdateSliceShardingFromOperands(
     if (!IsSpatiallyPartitioned(operand)) {
       return false;
     }
-
-    if (operand->sharding().NumTiles() == 1) {
-      return MaybeImproveInstructionSharding(
-          operand->sharding(), instruction, may_combine_partial_sharding,
-          /*allow_aggressive_resharding=*/
-          ComputeNonRootUsers(instruction) == 1);
-    }
-
     if (slice_dim_is_sharded()) {
       return false;
     }
@@ -1857,7 +1857,8 @@ bool ShardingPropagation::InferShardingFromOperands(
   // Propagate manual sharding. Avoid tuple shaped HLOs that group independent
   // together. Reduce, ReduceWindow, and Sort can be tuples but the elements
   // are correlated, so we propagate manual sharding through them.
-  if (!instruction->has_sharding() &&
+  if ((!instruction->has_sharding() ||
+       instruction->sharding().IsTileMaximal()) &&
       (instruction->shape().IsArray() ||
        instruction->opcode() == HloOpcode::kReduce ||
        instruction->opcode() == HloOpcode::kSort ||

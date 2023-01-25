@@ -569,8 +569,8 @@ Status ProcessFunctionLibraryRuntime::InstantiateMultiDevice(
   // Expand the nodes assigned to a CompositeDevice before graph partition to
   // avoid generating a subgraph on a virtual device for execution.
   // This transformation should happen as late as possible, in order to run as
-  // more graph optimization passes (e.g. PRE_PLACEMENT, PLACER,
-  // POST_PLACEMENT, POST_REWRITE_FOR_EXEC) on a smaller graph as possible.
+  // many graph optimization passes (e.g. PRE_PLACEMENT, PLACER,
+  // POST_PLACEMENT, POST_REWRITE_FOR_EXEC) on the smallest graph possible.
   TF_RETURN_IF_ERROR(ReplicatePerReplicaNodesInFunctionGraph(
       options.composite_devices, graph.get()));
 
@@ -630,6 +630,9 @@ Status ProcessFunctionLibraryRuntime::InstantiateMultiDevice(
   const uint64 optimization_end_time_usecs = Env::Default()->NowMicros();
   metrics::UpdateFunctionGraphOptimizationTime(optimization_end_time_usecs -
                                                optimization_start_time_usecs);
+  VLOG(1) << "Finished graph optimizations for MultiDevice function \""
+          << function_name << "\" with target device \"" << options.target
+          << "\"";
 
   if (options.graph_collector != nullptr) {
     for (const auto& pair : *subgraphs) {

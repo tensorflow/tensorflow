@@ -102,6 +102,7 @@ real = _unary_op(math_ops.real)
 round = _unary_op(math_ops.round)
 sin = _unary_op(math_ops.sin)
 sign = _unary_op(math_ops.sign)
+tan = _unary_op(math_ops.tan)
 tanh = _unary_op(math_ops.tanh)
 
 # Bessel

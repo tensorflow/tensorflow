@@ -1,172 +1,30 @@
-diff --ruN a/stablehlo/stablehlo/dialect/ChloOps.cpp b/stablehlo/stablehlo/dialect/ChloOps.cpp
---- stablehlo/stablehlo/dialect/ChloOps.cpp
-+++ stablehlo/stablehlo/dialect/ChloOps.cpp
-@@ -43,7 +43,7 @@
- // support quantization or sparsity.
- #define INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(Op)                        \
-   LogicalResult Op::inferReturnTypeComponents(                                \
--      MLIRContext* context, Optional<Location> location,                      \
-+      MLIRContext* context, std::optional<Location> location,                 \
-       ValueShapeRange operands, DictionaryAttr attributes,                    \
-       RegionRange regions,                                                    \
-       SmallVectorImpl<ShapedTypeComponents>& inferredReturnShapes) {          \
-@@ -132,7 +132,7 @@
- }
- 
- LogicalResult InferBroadcastBinaryOpReturnTypeComponents(
--    MLIRContext* context, Optional<Location> location, ValueRange operands,
-+    MLIRContext* context, std::optional<Location> location, ValueRange operands,
-     DictionaryAttr attributes, Type elementType,
-     SmallVectorImpl<ShapedTypeComponents>& inferredReturnShapes) {
-   // Find broadcast_dimensions.
-@@ -188,8 +188,9 @@
- //===----------------------------------------------------------------------===//
- 
- LogicalResult BroadcastComplexOp::inferReturnTypeComponents(
--    MLIRContext* context, Optional<Location> location, ValueShapeRange operands,
--    DictionaryAttr attributes, RegionRange /*regions*/,
-+    MLIRContext* context, std::optional<Location> location,
-+    ValueShapeRange operands, DictionaryAttr attributes,
-+    RegionRange /*regions*/,
-     SmallVectorImpl<ShapedTypeComponents>& inferedReturnShapes) {
-   ShapedType lhsType = operands[0].getType().dyn_cast<ShapedType>();
-   if (!lhsType) {
-@@ -223,8 +224,9 @@
- }
- 
- LogicalResult BroadcastCompareOp::inferReturnTypeComponents(
--    MLIRContext* context, Optional<Location> location, ValueShapeRange operands,
--    DictionaryAttr attributes, RegionRange /*regions*/,
-+    MLIRContext* context, std::optional<Location> location,
-+    ValueShapeRange operands, DictionaryAttr attributes,
-+    RegionRange /*regions*/,
-     SmallVectorImpl<ShapedTypeComponents>& inferedReturnShapes) {
-   Type elementType = IntegerType::get(context, 1);
-   return InferBroadcastBinaryOpReturnTypeComponents(context, location, operands,
-@@ -250,7 +252,7 @@
- }
- 
- LogicalResult IsInfOp::inferReturnTypes(
--    MLIRContext* /*ctx*/, Optional<Location>, ValueRange operands,
-+    MLIRContext* /*ctx*/, std::optional<Location>, ValueRange operands,
-     DictionaryAttr, RegionRange, SmallVectorImpl<Type>& inferredReturnTypes) {
-   inferredReturnTypes.push_back(getIsInfLikeReturnType(operands.front()));
-   return success();
-@@ -261,7 +263,7 @@
- //===----------------------------------------------------------------------===//
- 
- LogicalResult IsNegInfOp::inferReturnTypes(
--    MLIRContext* /*ctx*/, Optional<Location>, ValueRange operands,
-+    MLIRContext* /*ctx*/, std::optional<Location>, ValueRange operands,
-     DictionaryAttr, RegionRange, SmallVectorImpl<Type>& inferredReturnTypes) {
-   inferredReturnTypes.push_back(getIsInfLikeReturnType(operands.front()));
-   return success();
-@@ -272,7 +274,7 @@
- //===----------------------------------------------------------------------===//
- 
- LogicalResult IsPosInfOp::inferReturnTypes(
--    MLIRContext* /*ctx*/, Optional<Location>, ValueRange operands,
-+    MLIRContext* /*ctx*/, std::optional<Location>, ValueRange operands,
-     DictionaryAttr, RegionRange, SmallVectorImpl<Type>& inferredReturnTypes) {
-   inferredReturnTypes.push_back(getIsInfLikeReturnType(operands.front()));
-   return success();
-@@ -284,7 +286,7 @@
- 
- #define BROADCAST_BINARY_OP_DEFS(Op)                                       \
-   LogicalResult Op::inferReturnTypeComponents(                             \
--      MLIRContext* context, Optional<Location> location,                   \
-+      MLIRContext* context, std::optional<Location> location,              \
-       ValueShapeRange operands, DictionaryAttr attributes,                 \
-       RegionRange regions,                                                 \
-       SmallVectorImpl<ShapedTypeComponents>& inferedReturnShapes) {        \
-@@ -346,7 +348,7 @@
- }
- 
- LogicalResult ConstantLikeOp::inferReturnTypeComponents(
--    MLIRContext* /*context*/, Optional<Location> location,
-+    MLIRContext* /*context*/, std::optional<Location> location,
-     ValueShapeRange operands, DictionaryAttr attributes,
-     RegionRange /*regions*/,
-     SmallVectorImpl<ShapedTypeComponents>& inferedReturnShapes) {
-@@ -380,7 +382,7 @@
- }
- 
- LogicalResult BroadcastSelectOp::inferReturnTypeComponents(
--    MLIRContext*, Optional<Location> location, ValueShapeRange operands,
-+    MLIRContext*, std::optional<Location> location, ValueShapeRange operands,
-     DictionaryAttr, RegionRange,
-     SmallVectorImpl<ShapedTypeComponents>& inferredReturnShapes) {
-   BroadcastSelectOp::Adaptor op(operands.getValues());
-@@ -418,7 +420,7 @@
- //===----------------------------------------------------------------------===//
- 
- void RankSpecializationClusterOp::getSuccessorRegions(
--    Optional<unsigned> index, ArrayRef<Attribute> /*operands*/,
-+    std::optional<unsigned> index, ArrayRef<Attribute> /*operands*/,
-     SmallVectorImpl<RegionSuccessor>& regions) {
-   // RankSpecializationClusterOp has unconditional control flows into the region
-   // and back to the parent, so return the correct RegionSuccessor purely based
-@@ -455,8 +457,8 @@
- //===----------------------------------------------------------------------===//
- 
- LogicalResult TopKOp::inferReturnTypeComponents(
--    MLIRContext* context, Optional<Location> location, ValueShapeRange operands,
--    DictionaryAttr attributes, RegionRange regions,
-+    MLIRContext* context, std::optional<Location> location,
-+    ValueShapeRange operands, DictionaryAttr attributes, RegionRange regions,
-     SmallVectorImpl<ShapedTypeComponents>& inferredReturnShapes) {
-   Builder builder(context);
-   TopKOp::Adaptor adaptor(operands, attributes, regions);
-@@ -498,8 +500,9 @@
- }
- 
- LogicalResult ConstantOp::inferReturnTypes(
--    MLIRContext*, Optional<Location>, ValueRange, DictionaryAttr attributes,
--    RegionRange, SmallVectorImpl<Type>& inferredReturnTypes) {
-+    MLIRContext*, std::optional<Location>, ValueRange,
-+    DictionaryAttr attributes, RegionRange,
-+    SmallVectorImpl<Type>& inferredReturnTypes) {
-   Type type = attributes.get("value").cast<TypedAttr>().getType();
-   inferredReturnTypes.push_back(type);
-   return success();
-@@ -526,12 +529,11 @@
-   // We don't have any special restrictions on what can be inlined into
-   // destination regions (e.g. while/conditional bodies). Always allow it.
-   bool isLegalToInline(Region* dest, Region* src, bool wouldBeCloned,
--                       BlockAndValueMapping& valueMapping) const final {
-+                       IRMapping& valueMapping) const final {
-     return true;
-   }
-   // Operations in CHLO dialect are always legal to inline since they are pure.
--  bool isLegalToInline(Operation*, Region*, bool,
--                       BlockAndValueMapping&) const final {
-+  bool isLegalToInline(Operation*, Region*, bool, IRMapping&) const final {
-     return true;
-   }
- };
-diff --ruN a/stablehlo/stablehlo/dialect/StablehloOps.cpp b/stablehlo/stablehlo/dialect/StablehloOps.cpp
---- stablehlo/stablehlo/dialect/StablehloOps.cpp
-+++ stablehlo/stablehlo/dialect/StablehloOps.cpp
-@@ -2484,13 +2484,13 @@
-   // We don't have any special restrictions on what can be inlined into
-   // destination regions (e.g. while/conditional bodies). Always allow it.
-   bool isLegalToInline(Region* dest, Region* src, bool wouldBeCloned,
--                       BlockAndValueMapping& valueMapping) const final {
-+                       IRMapping& valueMapping) const final {
-     return true;
-   }
-   // Operations in StableHLO dialect are always legal to inline since they are
-   // pure.
-   bool isLegalToInline(Operation*, Region*, bool,
--                       BlockAndValueMapping&) const final {
-+                       IRMapping&) const final {
-     return true;
-   }
- };
+diff --ruN a/stablehlo/stablehlo/dialect/CMakeLists.txt b/stablehlo/stablehlo/dialect/CMakeLists.txt
+--- stablehlo/stablehlo/dialect/CMakeLists.txt
++++ stablehlo/stablehlo/dialect/CMakeLists.txt
+@@ -156,14 +156,19 @@
+ mlir_tablegen(VhloOps.cpp.inc -gen-op-defs)
+ mlir_tablegen(VhloOpInterfaces.h.inc -gen-op-interface-decls)
+ mlir_tablegen(VhloOpInterfaces.cpp.inc -gen-op-interface-defs)
++set(LLVM_TARGET_DEFINITIONS VhloEnums.td)
+ mlir_tablegen(VhloEnums.h.inc -gen-enum-decls)
+ mlir_tablegen(VhloEnums.cpp.inc -gen-enum-defs)
++set(LLVM_TARGET_DEFINITIONS VhloOps.td)
+ mlir_tablegen(VhloAttrs.h.inc -gen-attrdef-decls)
+ mlir_tablegen(VhloAttrs.cpp.inc -gen-attrdef-defs)
++set(LLVM_TARGET_DEFINITIONS VhloAttrs.td)
+ mlir_tablegen(VhloAttrInterfaces.h.inc -gen-attr-interface-decls)
+ mlir_tablegen(VhloAttrInterfaces.cpp.inc -gen-attr-interface-defs)
++set(LLVM_TARGET_DEFINITIONS VhloTypes.td)
+ mlir_tablegen(VhloTypeInterfaces.h.inc -gen-type-interface-decls)
+ mlir_tablegen(VhloTypeInterfaces.cpp.inc -gen-type-interface-defs)
++set(LLVM_TARGET_DEFINITIONS VhloOps.td)
+ mlir_tablegen(VhloTypeDefs.h.inc -gen-typedef-decls --typedefs-dialect=vhlo)
+ mlir_tablegen(VhloTypeDefs.cpp.inc -gen-typedef-defs --typedefs-dialect=vhlo)
+ add_public_tablegen_target(VhloOpsIncGen)
 diff --ruN a/stablehlo/stablehlo/dialect/TypeInference.cpp b/stablehlo/stablehlo/dialect/TypeInference.cpp
 --- stablehlo/stablehlo/dialect/TypeInference.cpp
 +++ stablehlo/stablehlo/dialect/TypeInference.cpp
-@@ -2186,7 +2186,9 @@
+@@ -2242,7 +2242,9 @@
    }
  
    auto getSliceDim = [&sliceSizes](int64_t index) -> int64_t {
@@ -177,4 +35,101 @@ diff --ruN a/stablehlo/stablehlo/dialect/TypeInference.cpp b/stablehlo/stablehlo
    };
  
    return inferGatherReturnTypeComponents(
+diff --ruN a/stablehlo/stablehlo/dialect/VhloAttrs.td b/stablehlo/stablehlo/dialect/VhloAttrs.td
+--- stablehlo/stablehlo/dialect/VhloAttrs.td
++++ stablehlo/stablehlo/dialect/VhloAttrs.td
+@@ -18,6 +18,7 @@
+ #define STABLEHLO_DIALECT_VHLO_ATTRS
+ 
+ include "stablehlo/dialect/VhloBase.td"
++include "stablehlo/dialect/VhloDialect.td"
+ 
+ include "mlir/IR/AttrTypeBase.td"
+ 
+diff --ruN a/stablehlo/stablehlo/dialect/VhloDialect.td b/stablehlo/stablehlo/dialect/VhloDialect.td
+--- stablehlo/stablehlo/dialect/VhloDialect.td
++++ stablehlo/stablehlo/dialect/VhloDialect.td
+@@ -0,0 +1,40 @@
++/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
++   Copyright 2023 The StableHLO Authors.
++
++Licensed under the Apache License, Version 2.0 (the "License");
++you may not use this file except in compliance with the License.
++You may obtain a copy of the License at
++
++    http://www.apache.org/licenses/LICENSE-2.0
++
++Unless required by applicable law or agreed to in writing, software
++distributed under the License is distributed on an "AS IS" BASIS,
++WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++See the License for the specific language governing permissions and
++limitations under the License.
++==============================================================================*/
++
++#ifndef STABLEHLO_DIALECT_VHLO_DIALECT
++#define STABLEHLO_DIALECT_VHLO_DIALECT
++
++def VHLO_Dialect : Dialect {
++  let name = "vhlo";
++  let cppNamespace = "::mlir::vhlo";
++
++  let description = [{
++    A shim opset of Versioned StableHLO ops for versions 0.x.x and 1.x.x.
++
++    Version log:
++      0.3.0: Bootstrap from MHLO: https://github.com/openxla/stablehlo/pull/1.
++      0.4.0: Add AllGatherOp::use_global_device_ids: https://github.com/openxla/stablehlo/pull/272.
++             Add CollectivePermuteOp::channel_handle: https://github.com/openxla/stablehlo/pull/388.
++             Add CustomCallOp::output_operand_aliases: https://github.com/openxla/stablehlo/pull/403.
++             Add PartitionIdOp: https://github.com/openxla/stablehlo/pull/673.
++             Add AllToAllOp::channel_handle: https://github.com/openxla/stablehlo/pull/794.
++  }];
++
++  let useDefaultAttributePrinterParser = 0;
++  let useDefaultTypePrinterParser = 0;
++}
++
++#endif
+diff --ruN a/stablehlo/stablehlo/dialect/VhloOps.td b/stablehlo/stablehlo/dialect/VhloOps.td
+--- stablehlo/stablehlo/dialect/VhloOps.td
++++ stablehlo/stablehlo/dialect/VhloOps.td
+@@ -23,26 +23,7 @@
+ // Dialect and Ops
+ //===----------------------------------------------------------------------===//
+ 
+-def VHLO_Dialect : Dialect {
+-  let name = "vhlo";
+-  let cppNamespace = "::mlir::vhlo";
+-
+-  let description = [{
+-    A shim opset of Versioned StableHLO ops for versions 0.x.x and 1.x.x.
+-
+-    Version log:
+-      0.3.0: Bootstrap from MHLO: https://github.com/openxla/stablehlo/pull/1.
+-      0.4.0: Add AllGatherOp::use_global_device_ids: https://github.com/openxla/stablehlo/pull/272.
+-             Add CollectivePermuteOp::channel_handle: https://github.com/openxla/stablehlo/pull/388.
+-             Add CustomCallOp::output_operand_aliases: https://github.com/openxla/stablehlo/pull/403.
+-             Add PartitionIdOp: https://github.com/openxla/stablehlo/pull/673.
+-             Add AllToAllOp::channel_handle: https://github.com/openxla/stablehlo/pull/794.
+-  }];
+-
+-  let useDefaultAttributePrinterParser = 0;
+-  let useDefaultTypePrinterParser = 0;
+-}
+-
++include "stablehlo/dialect/VhloDialect.td"
+ include "stablehlo/dialect/VhloTypes.td"
+ include "stablehlo/dialect/VhloEnums.td"
+ include "stablehlo/dialect/VhloAttrs.td"
+diff --ruN a/stablehlo/stablehlo/dialect/VhloTypes.td b/stablehlo/stablehlo/dialect/VhloTypes.td
+--- stablehlo/stablehlo/dialect/VhloTypes.td
++++ stablehlo/stablehlo/dialect/VhloTypes.td
+@@ -18,6 +18,7 @@
+ #define STABLEHLO_DIALECT_VHLO_TYPES
+ 
+ include "stablehlo/dialect/VhloBase.td"
++include "stablehlo/dialect/VhloDialect.td"
+ 
+ include "mlir/IR/AttrTypeBase.td"
+ 
 

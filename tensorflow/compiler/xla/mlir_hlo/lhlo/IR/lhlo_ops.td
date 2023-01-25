@@ -161,6 +161,15 @@ def LHLO_CosineOp: LHLO_UnaryElementwiseOp<"cosine", LHLO_FpOrComplexBuffer> {
     https://www.tensorflow.org/xla/operation_semantics#element-wise_unary_functions.
   }];
 }
+def LHLO_TanOp: LHLO_UnaryElementwiseOp<"tan", LHLO_FpOrComplexBuffer> {
+  let summary = "Tan operator";
+  let description = [{
+    Returns `Tan(operand)` element-wise.
+
+    See
+    https://www.tensorflow.org/xla/operation_semantics#element-wise_unary_functions.
+  }];
+}
 def LHLO_ExpOp: LHLO_UnaryElementwiseOp<"exponential", LHLO_FpOrComplexBuffer> {
   let summary = "Exponential operator";
   let description = [{

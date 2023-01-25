@@ -294,9 +294,10 @@ class DispatcherState {
   // deterministically sharding a dataset among a fixed set of workers.
   StatusOr<int64_t> GetWorkerIndex(absl::string_view worker_address) const;
 
-  // Returns the directories of all active or completed snapshots.
-  const absl::flat_hash_set<std::string>& ListSnapshotDirectories() const {
-    return snapshot_directories_;
+  // Returns the paths of all snapshots inititated during the lifetime of this
+  // journal.
+  const absl::flat_hash_set<std::string>& ListSnapshotPaths() const {
+    return snapshot_paths_;
   }
 
  private:
@@ -362,8 +363,8 @@ class DispatcherState {
   // Tasks, keyed by worker addresses. The values are a map from task id to
   // task.
   absl::flat_hash_map<std::string, TasksById> tasks_by_worker_;
-  // Directories of all active or completed snapshots.
-  absl::flat_hash_set<std::string> snapshot_directories_;
+  // Paths for all snapshots initiated during the lifetime of this journal.
+  absl::flat_hash_set<std::string> snapshot_paths_;
 };
 
 }  // namespace data

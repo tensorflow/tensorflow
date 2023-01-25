@@ -3521,7 +3521,7 @@ GetCudnnOperationGraph(dnn::ConvolutionKind kind, dnn::DataType input_type,
       dnn::DataLayout::kBatchDepthYX, vector_size, vector_dim);
 
   if (vector_size == 32) {
-    return port::InternalError(
+    return tsl::errors::Internal(
         "cuDNN frontend doesn't support Tx32 at the moment.");
   }
 
@@ -3656,7 +3656,7 @@ GetCudnnFusedOperationGraph(
       dnn::DataLayout::kBatchDepthYX, vector_size, vector_dim);
 
   if (vector_size == 32) {
-    return port::InternalError(
+    return tsl::errors::Internal(
         "cuDNN frontend doesn't support Tx32 at the moment.");
   }
 
@@ -3847,9 +3847,8 @@ GetCudnnFusedOperationGraph(
       RETURN_MSG_IF_CUDNN_ERROR(*act_desc);
       break;
     default:
-      return port::InternalError(
-          absl::StrCat("Unimplemented activation mode ",
-                       dnn::ActivationModeString(activation_mode)));
+      return tsl::errors::Internal("Unimplemented activation mode ",
+                                   dnn::ActivationModeString(activation_mode));
   }
 
   std::optional<cudnn_frontend::Operation_v8> act_op;
@@ -3996,9 +3995,8 @@ GetCudnnFusedMatmulGraph(dnn::DataType input_type, dnn::DataType bias_type,
       cudnn_activation_mode = CUDNN_POINTWISE_SIGMOID_FWD;
       break;
     default:
-      return port::InternalError(
-          absl::StrCat("Unimplemented activation mode ",
-                       dnn::ActivationModeString(activation_mode)));
+      return tsl::errors::Internal("Unimplemented activation mode ",
+                                   dnn::ActivationModeString(activation_mode));
   }
 
   auto act_desc = cudnn_frontend::PointWiseDescBuilder()
@@ -4044,7 +4042,7 @@ static tsl::StatusOr<cudnn_frontend::ExecutionPlan> RebuildExecutionPlan(
     const CudnnHandle& cudnn, const dnn::AlgorithmDesc& desc,
     const cudnn_frontend::OperationGraph& op_graph) {
   if (!desc.is_cudnn_frontend()) {
-    return port::InternalError(
+    return tsl::errors::Internal(
         "Got legacy cuDNN algorithm enum in RebuildExecutionPlan.");
   }
 
@@ -4144,8 +4142,8 @@ tsl::Status CudnnSupport::DoPrepareForConvolution(
       break;
     }
     default:
-      return port::InternalError(
-          absl::StrCat("Unexpected convolution kind ", static_cast<int>(kind)));
+      return tsl::errors::Internal("Unexpected convolution kind ",
+                                   static_cast<int>(kind));
   }
 
   return ::tsl::OkStatus();
@@ -4200,7 +4198,7 @@ class CudnnLegacyConvRunner : public dnn::ConvRunner {
               /*sizeInBytes=*/&workspace_size));
           break;
         default:
-          return port::InternalError(
+          return tsl::errors::Internal(
               "Invalid ConvolutionKind for CudnnLegacyConvRunner.");
       }
     }
@@ -4232,7 +4230,7 @@ class CudnnLegacyConvRunner : public dnn::ConvRunner {
 
     if (static_cast<internal::StreamExecutorInterface*>(parent_) !=
         stream->parent()->implementation()) {
-      return port::InternalError(
+      return tsl::errors::Internal(
           "CudnnLegacyConvRunner cached across multiple StreamExecutors.");
     }
 
@@ -4335,8 +4333,8 @@ class CudnnLegacyConvRunner : public dnn::ConvRunner {
         break;
       }
       default:
-        return port::InternalError(absl::StrCat("Unexpected convolution kind ",
-                                                static_cast<int>(kind_)));
+        return tsl::errors::Internal("Unexpected convolution kind ",
+                                     static_cast<int>(kind_));
     }
 
     if (is_profiling) {
@@ -4491,7 +4489,7 @@ tsl::StatusOr<dnn::AlgorithmDesc> ExecutionPlanToAlgorithmDesc(
                              CUDNN_ATTR_EXECUTION_PLAN_ENGINE_CONFIG,
                              CUDNN_BACKEND_ENGINECFG_DESCRIPTOR));
   if (engine_cfgs.size() != 1) {
-    return port::InternalError(
+    return tsl::errors::Internal(
         "CUDNN_ATTR_EXECUTION_PLAN_ENGINE_CONFIG had more than one element.");
   }
 
@@ -4500,7 +4498,7 @@ tsl::StatusOr<dnn::AlgorithmDesc> ExecutionPlanToAlgorithmDesc(
       GetDescriptorAttribute(engine_cfgs[0].get(), CUDNN_ATTR_ENGINECFG_ENGINE,
                              CUDNN_BACKEND_ENGINE_DESCRIPTOR));
   if (engines.size() != 1) {
-    return port::InternalError(
+    return tsl::errors::Internal(
         "CUDNN_ATTR_ENGINECFG_ENGINE had more than one element.");
   }
 
@@ -4540,21 +4538,21 @@ tsl::StatusOr<dnn::AlgorithmDesc> ExecutionPlanToAlgorithmDesc(
         cudnnBackendGetAttribute(knob.get(), CUDNN_ATTR_KNOB_CHOICE_KNOB_TYPE,
                                  CUDNN_TYPE_KNOB_TYPE, 1, &n, &knob_type));
     if (n != 1) {
-      return port::InternalError(
-          absl::StrCat("Knob should have exactly one KNOB_TYPE; had ", n));
+      return tsl::errors::Internal(
+          "Knob should have exactly one KNOB_TYPE; had ", n);
     }
 
     RETURN_IF_CUDNN_ERROR(
         cudnnBackendGetAttribute(knob.get(), CUDNN_ATTR_KNOB_CHOICE_KNOB_VALUE,
                                  CUDNN_TYPE_INT64, 1, &n, &knob_value));
     if (n != 1) {
-      return port::InternalError(
-          absl::StrCat("Knob should have exactly one KNOB_VALUE; had ", n));
+      return tsl::errors::Internal(
+          "Knob should have exactly one KNOB_VALUE; had ", n);
     }
 
     auto emplaced = tuning_knobs.try_emplace(knob_type, knob_value).second;
     if (!emplaced) {
-      return port::InternalError(absl::StrFormat(
+      return tsl::errors::Internal(absl::StrFormat(
           "cuDNN gave multiple knob values for the same knob type.\n"
           "  KNOB_TYPE: %d\n"
           "  new KNOB_VALUE: %d\n"
@@ -4593,7 +4591,7 @@ class CudnnExecutionPlanRunner<void(Args...)>
                          Args... inputs) const override {
     if (static_cast<internal::StreamExecutorInterface*>(parent_) !=
         stream->parent()->implementation()) {
-      return port::InternalError(
+      return tsl::errors::Internal(
           "CudnnExecutionPlanRunner cached across multiple StreamExecutors.");
     }
 
@@ -4856,7 +4854,7 @@ tsl::Status CudnnSupport::GetConvolveRunners(
     bool got_algos = false;
     switch (kind) {
       default:
-        return port::InternalError(absl::StrFormat(
+        return tsl::errors::Internal(absl::StrFormat(
             "Unknown ConvolutionKind for unfused conv: %d", kind));
       case dnn::ConvolutionKind::FORWARD:
         got_algos = GetConvolveAlgorithms(cuda_compute_capability, input_type,
@@ -4912,7 +4910,7 @@ tsl::Status CudnnSupport::GetConvolveRunners(
       input_type, {'x', 'w', 'y'}, use_fallback, out_exec_plans,
       /*need_side_input=*/false);
 #else
-  return port::UnimplementedError(
+  return tsl::errors::Unimplemented(
       "Cudnn execution plans are only supported with Cudnn >= 8.1.");
 #endif  // CUDNN_VERSION >= 8100 && TF_ENABLE_CUDNN_FRONTEND
 }
@@ -4973,7 +4971,7 @@ CudnnSupport::ConvolveRunnerFromDesc(
   return {std::make_unique<CudnnExecutionPlanRunner<dnn::ConvSignature>>(
       std::move(runner))};
 #else
-  return port::UnimplementedError(
+  return tsl::errors::Unimplemented(
       "Cudnn execution plans are only supported with Cudnn >= 8.1.");
 #endif
 }
@@ -5029,7 +5027,7 @@ class CudnnLegacyFusedConvRunner : public dnn::FusedConvRunner {
                          DeviceMemoryBase output_data) const override {
     if (static_cast<internal::StreamExecutorInterface*>(parent_) !=
         stream->parent()->implementation()) {
-      return port::InternalError(
+      return tsl::errors::Internal(
           "CudnnLegacyFusedConvRunner cached across multiple StreamExecutors.");
     }
 
@@ -5234,7 +5232,7 @@ CudnnSupport::FusedConvolveRunnerFromDesc(
   return {std::make_unique<CudnnExecutionPlanRunner<dnn::FusedConvSignature>>(
       std::move(runner))};
 #else
-  return port::UnimplementedError(
+  return tsl::errors::Unimplemented(
       "Cudnn execution plans are only supported with Cudnn >= 8.1.");
 #endif
 }
@@ -5295,7 +5293,7 @@ tsl::Status CudnnSupport::GetFusedConvolveRunners(
 
   if (input_type == dnn::DataType::kInt8 &&
       !stream->GetCudaComputeCapability().IsAtLeast(6, 1)) {
-    return port::UnimplementedError(
+    return tsl::errors::Unimplemented(
         "cudnnConvolutionBiasActivationForward() for int8 is only supported "
         "on GPUs with compute capability 6.1 or later.");
   }
@@ -5303,7 +5301,7 @@ tsl::Status CudnnSupport::GetFusedConvolveRunners(
   if (input_type == dnn::DataType::kInt8 &&
       output_type == dnn::DataType::kFloat &&
       (CUDNN_VERSION >= 8000 && CUDNN_VERSION <= 8200)) {
-    return port::UnimplementedError(
+    return tsl::errors::Unimplemented(
         "int8 -> float fused conv is disabled for this cuDNN version. See "
         "go/nvbugs/3326122");
   }
@@ -5372,7 +5370,7 @@ tsl::Status CudnnSupport::GetFusedConvolveRunners(
       input_type, {'x', 'w', 'z', 'b', 'y'}, use_fallback, out_exec_plans,
       need_side_input);
 #else
-  return port::UnimplementedError(
+  return tsl::errors::Unimplemented(
       "Cudnn execution plans are only supported with Cudnn >= 8.1.");
 #endif  // CUDNN_VERSION >= 8100 && TF_ENABLE_CUDNN_FRONTEND
 }
@@ -5386,7 +5384,7 @@ tsl::Status CudnnSupport::GetFusedMatmulRunners(
         out_exec_plans) {
 #if CUDNN_VERSION >= 8400 && TF_ENABLE_CUDNN_FRONTEND
   if (!use_cudnn_frontend) {
-    return port::UnimplementedError(
+    return tsl::errors::Unimplemented(
         "Cudnn execution plans for matmul are only supported with cudnn "
         "frontend APIs.");
   }
@@ -5411,7 +5409,7 @@ tsl::Status CudnnSupport::GetFusedMatmulRunners(
       dnn::ConvolutionKind::INVALID, input_type, {'a', 'b', 'z', 'c'},
       use_fallback, out_exec_plans, /*need_side_input=*/true);
 #else
-  return port::UnimplementedError(
+  return tsl::errors::Unimplemented(
       "Cudnn execution plans for matmul are only supported with Cudnn >= 8.4.");
 #endif  // CUDNN_VERSION >= 8400 && TF_ENABLE_CUDNN_FRONTEND
 }
@@ -5920,9 +5918,9 @@ tsl::Status CudnnSupport::DoBatchNormalizationBackwardImpl(
   auto check_no_side_input_or_activation = [&]() -> tsl::Status {
     if (activation_mode != dnn::ActivationMode::kNone ||
         !side_input_backprop->is_null()) {
-      return port::InternalError(absl::StrCat(
+      return tsl::errors::Internal(
           "Side input and activation are not supported by cuDNN version: ",
-          CUDNN_VERSION));
+          CUDNN_VERSION);
     } else {
       return ::tsl::OkStatus();
     }
@@ -5958,7 +5956,7 @@ tsl::Status CudnnSupport::DoFusedConvolve(
     dnn::ProfileResult* output_profile_result) {
   if (input_type == dnn::DataType::kInt8 &&
       !stream->GetCudaComputeCapability().IsAtLeast(6, 1)) {
-    return port::UnimplementedError(
+    return tsl::errors::Unimplemented(
         "cudnnConvolutionBiasActivationForward() for int8 is only supported "
         "on GPUs with compute capability 6.1 or later.");
   }
@@ -5966,7 +5964,7 @@ tsl::Status CudnnSupport::DoFusedConvolve(
   if (input_type == dnn::DataType::kInt8 &&
       output_type == dnn::DataType::kFloat &&
       (CUDNN_VERSION >= 8000 && CUDNN_VERSION <= 8200)) {
-    return port::UnimplementedError(
+    return tsl::errors::Unimplemented(
         "int8 -> float fused conv is disabled for this cuDNN version. See "
         "go/nvbugs/3326122");
   }
@@ -6090,7 +6088,7 @@ tsl::Status CudnnSupport::DoPrepareForCtcLoss(
     *scratch_memory = scratch_or.value();
     return ::tsl::OkStatus();
   }
-  return port::InternalError(
+  return tsl::errors::Internal(
       "Failed to allocate scratch memory for the CuDNN CTC Loss");
 }
 

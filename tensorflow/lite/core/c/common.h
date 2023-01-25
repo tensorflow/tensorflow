@@ -42,6 +42,7 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_CORE_C_COMMON_H_
 #define TENSORFLOW_LITE_CORE_C_COMMON_H_
 
+#include <stdarg.h>
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
@@ -179,10 +180,23 @@ void TfLiteFloatArrayFree(TfLiteFloatArray* a);
       (context)->ReportError((context), __VA_ARGS__); \
     }                                                 \
   } while (false)
+#define TF_LITE_OPAQUE_KERNEL_LOG(opaque_context, ...)             \
+  do {                                                             \
+    TfLiteOpaqueContextReportError((opaque_context), __VA_ARGS__); \
+  } while (false)
+#define TF_LITE_OPAQUE_MAYBE_KERNEL_LOG(opaque_context, ...)         \
+  do {                                                               \
+    if ((opaque_context) != nullptr) {                               \
+      TfLiteOpaqueContextReportError((opaque_context), __VA_ARGS__); \
+    }                                                                \
+  } while (false)
 #else  // TF_LITE_STRIP_ERROR_STRINGS
 #define ARGS_UNUSED(...) (void)sizeof(#__VA_ARGS__)
 #define TF_LITE_KERNEL_LOG(context, ...) ARGS_UNUSED(__VA_ARGS__)
 #define TF_LITE_MAYBE_KERNEL_LOG(context, ...) ARGS_UNUSED(__VA_ARGS__)
+#define TF_LITE_OPAQUE_KERNEL_LOG(opaque_context, ...) ARGS_UNUSED(__VA_ARGS__)
+#define TF_LITE_OPAQUE_MAYBE_KERNEL_LOG(opaque_context, ...) \
+  ARGS_UNUSED(__VA_ARGS__)
 #endif  // TF_LITE_STRIP_ERROR_STRINGS
 
 // Check whether value is true, and if not return kTfLiteError from
@@ -195,6 +209,15 @@ void TfLiteFloatArrayFree(TfLiteFloatArray* a);
     }                                                  \
   } while (0)
 
+// Check whether value is true, and if not return kTfLiteError from
+// the current function (and report the error string msg).
+#define TF_LITE_OPAQUE_ENSURE_MSG(opaque_context, value, msg)        \
+  do {                                                               \
+    if (!(value)) {                                                  \
+      TF_LITE_OPAQUE_KERNEL_LOG((opaque_context), __FILE__ " " msg); \
+      return kTfLiteError;                                           \
+    }                                                                \
+  } while (0)
 // Check whether the value `a` is true, and if not return kTfLiteError from
 // the current function, while also reporting the location of the error.
 #define TF_LITE_ENSURE(context, a)                                      \
@@ -206,6 +229,16 @@ void TfLiteFloatArrayFree(TfLiteFloatArray* a);
     }                                                                   \
   } while (0)
 
+// Check whether the value `a` is true, and if not return kTfLiteError from
+// the current function, while also reporting the location of the error.
+#define TF_LITE_OPAQUE_ENSURE(opaque_context, a)                           \
+  do {                                                                     \
+    if (!(a)) {                                                            \
+      TF_LITE_OPAQUE_KERNEL_LOG(opaque_context, "%s:%d: %s was not true.", \
+                                __FILE__, __LINE__, #a);                   \
+      return kTfLiteError;                                                 \
+    }                                                                      \
+  } while (0)
 #define TF_LITE_ENSURE_STATUS(a) \
   do {                           \
     const TfLiteStatus s = (a);  \
@@ -228,6 +261,19 @@ void TfLiteFloatArrayFree(TfLiteFloatArray* a);
     }                                                                      \
   } while (0)
 
+// Check whether the value `a == b` is true, and if not return kTfLiteError from
+// the current function, while also reporting the location of the error.
+// `a` and `b` may be evaluated more than once, so no side effects or
+// extremely expensive computations should be done.
+// NOTE: Use TF_LITE_ENSURE_TYPES_EQ if comparing TfLiteTypes.
+#define TF_LITE_OPAQUE_ENSURE_EQ(opaque_context, a, b)                         \
+  do {                                                                         \
+    if ((a) != (b)) {                                                          \
+      TF_LITE_OPAQUE_KERNEL_LOG((opaque_context), "%s:%d %s != %s (%d != %d)", \
+                                __FILE__, __LINE__, #a, #b, (a), (b));         \
+      return kTfLiteError;                                                     \
+    }                                                                          \
+  } while (0)
 #define TF_LITE_ENSURE_TYPES_EQ(context, a, b)                             \
   do {                                                                     \
     if ((a) != (b)) {                                                      \
@@ -238,6 +284,15 @@ void TfLiteFloatArrayFree(TfLiteFloatArray* a);
     }                                                                      \
   } while (0)
 
+#define TF_LITE_OPAQUE_ENSURE_TYPES_EQ(opaque_context, a, b)                   \
+  do {                                                                         \
+    if ((a) != (b)) {                                                          \
+      TF_LITE_OPAQUE_KERNEL_LOG((opaque_context), "%s:%d %s != %s (%s != %s)", \
+                                __FILE__, __LINE__, #a, #b,                    \
+                                TfLiteTypeGetName(a), TfLiteTypeGetName(b));   \
+      return kTfLiteError;                                                     \
+    }                                                                          \
+  } while (0)
 #define TF_LITE_ENSURE_NEAR(context, a, b, epsilon)                          \
   do {                                                                       \
     auto delta = ((a) > (b)) ? ((a) - (b)) : ((b) - (a));                    \
@@ -249,6 +304,16 @@ void TfLiteFloatArrayFree(TfLiteFloatArray* a);
     }                                                                        \
   } while (0)
 
+#define TF_LITE_OPAQUE_ENSURE_NEAR(opaque_context, a, b, epsilon)            \
+  do {                                                                       \
+    auto delta = ((a) > (b)) ? ((a) - (b)) : ((b) - (a));                    \
+    if (delta > epsilon) {                                                   \
+      TF_LITE_OPAQUE_KERNEL_LOG(                                             \
+          (opaque_context), "%s:%d %s not near %s (%f != %f)", __FILE__,     \
+          __LINE__, #a, #b, static_cast<double>(a), static_cast<double>(b)); \
+      return kTfLiteError;                                                   \
+    }                                                                        \
+  } while (0)
 #define TF_LITE_ENSURE_OK(context, status) \
   do {                                     \
     const TfLiteStatus s = (status);       \
@@ -648,23 +713,26 @@ void TfLiteTensorReset(TfLiteType type, const char* name, TfLiteIntArray* dims,
 TfLiteStatus TfLiteTensorCopy(const TfLiteTensor* src, TfLiteTensor* dst);
 
 // Change the size of the memory block owned by `tensor` to `num_bytes`.
-// Tensors with allocation types other than kTfLiteDynamic will be ignored.
+// Tensors with allocation types other than `kTfLiteDynamic` will be ignored and
+// a kTfLiteOk will be returned.
 // `tensor`'s internal data buffer will be assigned a pointer
 // which can safely be passed to free or realloc if `num_bytes` is zero.
-// Behaviour is undefined if `tensor` is NULL.
 // If `preserve_data` is true, tensor data will be unchanged in the range from
-// the start of the region up to the minimum of the old and new sizes.
-void TfLiteTensorResizeMaybeCopy(size_t num_bytes, TfLiteTensor* tensor,
-                                 bool preserve_data);
+// the start of the region up to the minimum of the old and new sizes. In the
+// case of NULL tensor, or an error allocating new memory, returns
+// `kTfLiteError`.
+TfLiteStatus TfLiteTensorResizeMaybeCopy(size_t num_bytes, TfLiteTensor* tensor,
+                                         bool preserve_data);
 
 // Change the size of the memory block owned by `tensor` to `num_bytes`.
-// Tensors with allocation types other than kTfLiteDynamic will be ignored.
+// Tensors with allocation types other than kTfLiteDynamic will be ignored and
+// a kTfLiteOk will be returned.
 // `tensor`'s internal data buffer will be assigned a pointer
 // which can safely be passed to free or realloc if `num_bytes` is zero.
-// Behaviour is undefined if `tensor` is NULL.
 // Tensor data will be unchanged in the range from the start of the region up to
-// the minimum of the old and new sizes.
-void TfLiteTensorRealloc(size_t num_bytes, TfLiteTensor* tensor);
+// the minimum of the old and new sizes. In the case
+// of NULL tensor, or an error allocating new memory, returns `kTfLiteError`.
+TfLiteStatus TfLiteTensorRealloc(size_t num_bytes, TfLiteTensor* tensor);
 #endif  // TF_LITE_STATIC_MEMORY
 
 // WARNING: This is an experimental interface that is subject to change.
