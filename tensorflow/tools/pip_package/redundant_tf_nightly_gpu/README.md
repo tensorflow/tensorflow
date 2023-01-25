@@ -6,7 +6,7 @@ The tf-nightly package supports GPU accelerated operations via Nvidia CUDA.
 tf-nightly and tf-nightly-gpu have been the same package since TensorFlow
 2.1, released in September 2019. Although the checksums differ due to metadata,
 they were built in the same way and both provide GPU support via Nvidia CUDA.
-As of December 2022, tf-nightly-gpu has been removed and has been replaced with
+As of January 2023, tf-nightly-gpu has been removed and has been replaced with
 this new, empty package that generates an error upon installation.
 
 The TensorFlow team has stopped releasing any new tf-nightly-gpu packages, and
