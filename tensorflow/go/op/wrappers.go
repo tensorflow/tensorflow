@@ -6080,6 +6080,53 @@ func CollectiveReduce(scope *Scope, input tf.Output, group_size int64, group_key
 	return op.Output(0)
 }
 
+// CollectiveReduceScatterV2Attr is an optional argument to CollectiveReduceScatterV2.
+type CollectiveReduceScatterV2Attr func(optionalAttr)
+
+// CollectiveReduceScatterV2CommunicationHint sets the optional communication_hint attribute to value.
+// If not specified, defaults to "auto"
+func CollectiveReduceScatterV2CommunicationHint(value string) CollectiveReduceScatterV2Attr {
+	return func(m optionalAttr) {
+		m["communication_hint"] = value
+	}
+}
+
+// CollectiveReduceScatterV2TimeoutSeconds sets the optional timeout_seconds attribute to value.
+// If not specified, defaults to 0
+func CollectiveReduceScatterV2TimeoutSeconds(value float32) CollectiveReduceScatterV2Attr {
+	return func(m optionalAttr) {
+		m["timeout_seconds"] = value
+	}
+}
+
+// CollectiveReduceScatterV2MaxSubdivsPerDevice sets the optional max_subdivs_per_device attribute to value.
+// If not specified, defaults to -1
+func CollectiveReduceScatterV2MaxSubdivsPerDevice(value int64) CollectiveReduceScatterV2Attr {
+	return func(m optionalAttr) {
+		m["max_subdivs_per_device"] = value
+	}
+}
+
+// Mutually reduces multiple tensors of identical type and shape and scatters the result.
+func CollectiveReduceScatterV2(scope *Scope, input tf.Output, group_size tf.Output, group_key tf.Output, instance_key tf.Output, ordering_token []tf.Output, merge_op string, final_op string, optional ...CollectiveReduceScatterV2Attr) (data tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"merge_op": merge_op, "final_op": final_op}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "CollectiveReduceScatterV2",
+		Input: []tf.Input{
+			input, group_size, group_key, instance_key, tf.OutputList(ordering_token),
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
 // CollectiveReduceV2Attr is an optional argument to CollectiveReduceV2.
 type CollectiveReduceV2Attr func(optionalAttr)
 
