@@ -81,10 +81,13 @@ using ::tensorflow::protobuf::util::MessageDifferencer;
 constexpr char kJournalDir[] = "tf_data_dispatcher_journal";
 // The name of the datasets directory inside the dispatcher's working directory.
 constexpr char kDatasetsDir[] = "datasets";
+
+// TODO(b/266255983): Use `absl::Duration`.
 constexpr int64_t kDefaultIterationGcCheckIntervalMs =
     10 * 60 * 1000;                                              // 10 minutes.
 constexpr int64_t kDefaultIterationGcTimeoutMs = 5 * 60 * 1000;  // 5 minutes.
 constexpr int64_t kDefaultClientTimeoutMs = 2 * 60 * 1000;       // 2 minutes.
+constexpr int64_t kDefaultWorkerTimeoutMs = 1 * 60 * 1000;       // 1 minute.
 
 constexpr std::array<const char*, 8> kNodeNameSharingOps = {
     "HashTable",
@@ -156,6 +159,9 @@ DispatcherConfig ApplyConfigDefaults(const DispatcherConfig& config) {
   }
   if (new_config.client_timeout_ms() == 0) {
     new_config.set_client_timeout_ms(kDefaultClientTimeoutMs);
+  }
+  if (new_config.worker_timeout_ms() == 0) {
+    new_config.set_worker_timeout_ms(kDefaultWorkerTimeoutMs);
   }
   return new_config;
 }
@@ -347,6 +353,8 @@ Status DataServiceDispatcherImpl::WorkerHeartbeat(
           << request->worker_address();
   mutex_lock l(mu_);
   const std::string& worker_address = request->worker_address();
+  latest_worker_heartbeats_time_[worker_address] =
+      absl::FromUnixMicros(env_->NowMicros());
   // Assigned tasks from the perspective of the dispatcher.
   std::vector<std::shared_ptr<const Task>> assigned_tasks;
   Status s = state_.TasksForWorker(worker_address, assigned_tasks);
@@ -1181,13 +1189,13 @@ void DataServiceDispatcherImpl::MaintenanceThread() {
         LOG(WARNING) << "Error releasing missing clients: " << s;
       }
     }
-
     {
       Status s = GcOldIterations();
       if (!s.ok()) {
         LOG(WARNING) << "Error garbage collecting old iterations: " << s;
       }
     }
+    DetectMissingWorkers();
     next_check_micros =
         env_->NowMicros() + (config_.job_gc_check_interval_ms() * 1000);
   }
@@ -1210,6 +1218,22 @@ Status DataServiceDispatcherImpl::ReleaseMissingClients()
     }
   }
   return OkStatus();
+}
+
+void DataServiceDispatcherImpl::DetectMissingWorkers()
+    TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+  int64_t now = env_->NowMicros();
+  for (auto it = latest_worker_heartbeats_time_.begin();
+       it != latest_worker_heartbeats_time_.end();) {
+    if (absl::FromUnixMicros(now) >
+        it->second + absl::Milliseconds(config_.worker_timeout_ms())) {
+      // TODO(mpcallanan): Alert snapshot manager.
+      LOG(INFO) << "Lost worker " << it->first << " due to timeout";
+      latest_worker_heartbeats_time_.erase(it++);
+    } else {
+      ++it;
+    }
+  }
 }
 
 Status DataServiceDispatcherImpl::GcOldIterations()
