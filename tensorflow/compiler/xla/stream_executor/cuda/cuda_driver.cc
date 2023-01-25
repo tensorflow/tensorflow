@@ -261,7 +261,7 @@ static tsl::Status InternalInit() {
   if (res == CUDA_SUCCESS) {
     return ::tsl::OkStatus();
   } else if (res == CUDA_ERROR_SHARED_OBJECT_INIT_FAILED) {
-    LOG(WARNING) << "failed call to cuInit: " << ToString(res);
+    VLOG(1) << "failed call to cuInit: " << ToString(res);
   } else {
     LOG(ERROR) << "failed call to cuInit: " << ToString(res);
   }
