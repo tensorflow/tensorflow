@@ -284,6 +284,12 @@ TfLiteStatus TfLiteOpaqueContextReplaceNodeSubsetsWithDelegateKernels(
   TfLiteContext* context = reinterpret_cast<TfLiteContext*>(opaque_context);
   TfLiteDelegate* delegate = reinterpret_cast<TfLiteDelegate*>(opaque_delegate);
 
+  // Wrap the provided 'registration_external' as a regular 'TfLiteRegistration'
+  // object to reduce the places in the TF Lite runtime that need to be aware
+  // of 'TfLiteRegistrationExternal's.  Note that it is important to
+  // brace-initialize the 'TfLiteRegistration' so that we pass a registration to
+  // 'ReplaceNodeSubsetsWithDelegateKernels' that has all of its fields set to
+  // null, except the 'registration_external' one.
   TfLiteRegistration registration{};
   registration.registration_external = registration_external;
 

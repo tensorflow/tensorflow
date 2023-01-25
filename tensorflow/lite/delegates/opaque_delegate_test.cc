@@ -43,7 +43,21 @@ TEST(TestOpaqueDelegate, AddDelegate) {
   opaque_delegate_builder.Prepare = [](TfLiteOpaqueContext* opaque_context,
                                        TfLiteOpaqueDelegate* opaque_delegate,
                                        void* data) -> TfLiteStatus {
-    return kTfLiteOk;
+    // Test that an unnamed delegate kernel can be passed to the TF Lite
+    // runtime.
+    TfLiteRegistrationExternal* registration_external =
+        TfLiteRegistrationExternalCreate(kTfLiteBuiltinDelegate,
+                                         /*name*/ nullptr,
+                                         /*version=*/1);
+    TfLiteRegistrationExternalSetInit(
+        registration_external,
+        [](TfLiteOpaqueContext* context, const char* buffer,
+           size_t length) -> void* { return nullptr; });
+    TfLiteIntArray* execution_plan;
+    TF_LITE_ENSURE_STATUS(
+        TfLiteOpaqueContextGetExecutionPlan(opaque_context, &execution_plan));
+    return TfLiteOpaqueContextReplaceNodeSubsetsWithDelegateKernels(
+        opaque_context, registration_external, execution_plan, opaque_delegate);
   };
   TfLiteOpaqueDelegate* opaque_delegate =
       TfLiteOpaqueDelegateCreate(&opaque_delegate_builder);

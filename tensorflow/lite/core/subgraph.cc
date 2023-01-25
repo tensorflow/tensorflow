@@ -463,6 +463,33 @@ void PopulatePreviewDelegateParams(const NodeSubset& node_subset,
                              params->output_tensors);
 }
 
+// Returns the 'custom_name' associated with the provided 'registration', or
+// "unknown" if the registration does not have a custom name.
+//
+// Note that 'TfLiteRegistration' has a top-level 'custom_name' field and also
+// a nested 'custom_name' field defined inside the optionally set
+// 'registration_external' structure.  The top-level field takes precedence over
+// the nested field.  'TfLiteRegistration'
+// objects can optionally carry a 'TfLiteRegistrationExternal' pointer in their
+// 'registration_external' field.  If that's the case then the
+// 'TfLiteRegistration' object is merely a wrapper over a
+// 'TfLiteRegistrationExternal', with all fields except 'registration_external'
+// being null, that contains the actual logic that the registration represents.
+// See also the comment inside
+// 'TfLiteOpaqueContextReplaceNodeSubsetsWithDelegateKernels'.
+const char* GetDelegateKernalName(const TfLiteRegistration& registration) {
+  if (registration.custom_name) {
+    return registration.custom_name;
+  }
+
+  if (registration.registration_external &&
+      registration.registration_external->custom_name) {
+    return registration.registration_external->custom_name;
+  }
+
+  return "unknown";
+}
+
 }  // namespace
 
 TfLiteStatus Subgraph::PartitionGraph(const TfLiteIntArray* nodes_to_replace,
@@ -505,8 +532,7 @@ TfLiteStatus Subgraph::ReplaceNodeSubsetsWithDelegateKernels(
       tflite::TFLITE_LOG_VERBOSE,
       "Replacing %d node(s) with delegate (%s) node, yielding %zu partitions "
       "for the whole graph.",
-      nodes_to_replace->size,
-      registration.custom_name ? registration.custom_name : "unknown",
+      nodes_to_replace->size, GetDelegateKernalName(registration),
       node_subsets.size());
 
   execution_plan_.clear();
