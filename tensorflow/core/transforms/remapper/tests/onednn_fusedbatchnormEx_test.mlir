@@ -1,5 +1,5 @@
 
-// RUN: tfg-transforms-opt --pass-pipeline='tfg-shape-inference,tfg-remapper{enable-onednn-patterns=true}' %s | FileCheck %s
+// RUN: tfg-transforms-opt --pass-pipeline='builtin.module(tfg-shape-inference,tfg-remapper{enable-onednn-patterns=true})' %s | FileCheck %s
 
 // CHECK-LABEL: tfg.func @fusedbatchnorm_relu
 tfg.func @fusedbatchnorm_relu() {

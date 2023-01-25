@@ -1,4 +1,4 @@
-// RUN: tfg-transforms-opt --pass-pipeline='tfg-shape-inference,tfg-remapper' %s | FileCheck %s
+// RUN: tfg-transforms-opt --pass-pipeline='builtin.module(tfg-shape-inference,tfg-remapper)' %s | FileCheck %s
 
 // CHECK-LABEL: tfg.func @fusedbatchnorm_sideinput_relu_gpu
 tfg.func @fusedbatchnorm_sideinput_relu_gpu() {
