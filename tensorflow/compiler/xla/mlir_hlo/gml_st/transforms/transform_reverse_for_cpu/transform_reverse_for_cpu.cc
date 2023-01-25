@@ -44,8 +44,8 @@ FailureOr<TilingResult> tileReverseAndUpdateResultIfTiled(
   TilingOptions opts;
   opts.setTileSizeComputationFn(tileSizes);
   opts.distribute = distribute;
-  auto tilingResult =
-      tile(opts, rewriter, cast<TilingInterface>(reverseOp.getOperation()));
+  auto tilingResult = tileUsingGmlSt(
+      opts, rewriter, cast<TilingInterface>(reverseOp.getOperation()));
 
   if (failed(tilingResult)) return failure();
 

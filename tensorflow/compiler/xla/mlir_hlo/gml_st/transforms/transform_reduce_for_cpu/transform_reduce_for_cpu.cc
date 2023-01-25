@@ -29,6 +29,8 @@ limitations under the License.
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
 #include "mlir/Dialect/Linalg/Transforms/TilingInterfaceImpl.h"
 #include "mlir/Dialect/Linalg/Utils/Utils.h"
+#include "mlir/Dialect/SCF/IR/SCF.h"
+#include "mlir/Dialect/SCF/Transforms/TileUsingInterface.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/Dialect/Utils/StaticValueUtils.h"
 #include "mlir/IR/AffineExpr.h"
@@ -46,12 +48,12 @@ constexpr llvm::StringRef kReduceTransformedLabel =
 
 FailureOr<TilingResult> tileReduce(PatternRewriter &rewriter,
                                    linalg::ReduceOp reduceOp,
-                                   ArrayRef<int64_t> tileSizes,
-                                   bool distribute) {
+                                   ArrayRef<int64_t> tileSizes) {
   TilingOptions opts;
   opts.setTileSizeComputationFn(tileSizes);
-  opts.distribute = distribute;
-  return tile(opts, rewriter, cast<TilingInterface>(reduceOp.getOperation()));
+  opts.distribute = true;
+  return tileUsingGmlSt(opts, rewriter,
+                        cast<TilingInterface>(reduceOp.getOperation()));
 }
 
 SmallVector<int64_t> getParallelDimTileSizes(int64_t reductionDim,
@@ -106,7 +108,7 @@ struct Reduce1DTransformPattern : public OpRewritePattern<linalg::ReduceOp> {
                                          "has already been transformed.");
     }
 
-    if (isa<gml_st::ParallelOp, gml_st::ForOp>(reduceOp->getParentOp())) {
+    if (isa<gml_st::ParallelOp, scf::ForOp>(reduceOp->getParentOp())) {
       return rewriter.notifyMatchFailure(
           reduceOp, "has already been tiled by another pass.");
     }
@@ -136,7 +138,6 @@ struct Reduce1DTransformPattern : public OpRewritePattern<linalg::ReduceOp> {
     auto fillOp = reduceOp.getInits().front().getDefiningOp<linalg::FillOp>();
     if (!fillOp) return failure();
     auto neutralValue = fillOp.value();
-    // .get
 
     // fillOp.getValue();
     Type elementType = neutralValue.getType();
@@ -149,12 +150,11 @@ struct Reduce1DTransformPattern : public OpRewritePattern<linalg::ReduceOp> {
         rewriter.create<linalg::FillOp>(loc, neutralValue, emptyVector)
             .getResult(0);
 
-    auto tiledLoopBodyBuilder = [&](OpBuilder &b, Location loc, ValueRange ivs,
+    auto tiledLoopBodyBuilder = [&](OpBuilder &b, Location loc, Value iv,
                                     ValueRange inits) {
       // Tile input as tensor<TILE_SIZExELEM_TYPE> and reshape into
       // tensor<(TILE_SIZE/VECTOR_SIZE)xVECTOR_SIZExELEM_TYPE>.
-      Value inputSlice =
-          tileAndReshapeInput(b, loc, ivs.front(), input, elementType);
+      Value inputSlice = tileAndReshapeInput(b, loc, iv, input, elementType);
 
       tensor::ExtractSliceOp initSlice = create1DSlice(
           b, loc, inits.front(), b.getIndexAttr(0), b.getIndexAttr(vectorSize));
@@ -171,18 +171,13 @@ struct Reduce1DTransformPattern : public OpRewritePattern<linalg::ReduceOp> {
       rewriter.cloneRegionBefore(reduceOp.getRegion(), region, region.end());
       setLabel(tiledReduceOp, kReduceTransformedLabel);
 
-      b.create<gml_st::SetYieldOp>(
-          loc, tiledReduceOp.getResults(), inits,
-          b.create<TileOp>(loc, initSlice.getMixedOffsets(),
-                           initSlice.getMixedSizes(),
-                           initSlice.getMixedStrides())
-              .getResult());
+      b.create<scf::YieldOp>(loc, tiledReduceOp.getResults());
     };
 
     // Create a tiled loop
-    auto tiledLoop = rewriter.create<ForOp>(loc, filledVector.getType(), zero,
-                                            tileableBound, tileSizeValue,
-                                            filledVector, tiledLoopBodyBuilder);
+    auto tiledLoop =
+        rewriter.create<scf::ForOp>(loc, zero, tileableBound, tileSizeValue,
+                                    filledVector, tiledLoopBodyBuilder);
     setLabel(tiledLoop, kPerfectlyTiledLoopLabel);
 
     // Create `linalg.reduce` from tensor<VECTOR_SIZExELEM_TYPE> to
@@ -191,30 +186,25 @@ struct Reduce1DTransformPattern : public OpRewritePattern<linalg::ReduceOp> {
         cloneReduceOp(rewriter, reduceOp, tiledLoop.getResult(0),
                       reduceOp.getInits().front());
 
-    auto remainderLoopBodyBuilder = [&](OpBuilder &b, Location loc,
-                                        ValueRange ivs, ValueRange inits) {
-      Value inputSlice =
-          create1DSlice(b, loc, input, ivs.front(), remainderSize);
+    auto remainderLoopBodyBuilder = [&](OpBuilder &b, Location loc, Value iv,
+                                        ValueRange inits) {
+      Value inputSlice = create1DSlice(b, loc, input, iv, remainderSize);
 
       Value initSlice = b.create<tensor::ExtractSliceOp>(
           loc, inits.front(), /*offsets=*/SmallVector<OpFoldResult>{},
           /*sizes=*/SmallVector<OpFoldResult>{},
           /*strides=*/SmallVector<OpFoldResult>{});
 
-      auto newReduceOp = cloneReduceOp(b, reduceOp, inputSlice, initSlice);
-
-      Value initTile = b.create<gml_st::TileOp>(
-          loc, /*offsets=*/SmallVector<OpFoldResult>{});
-      b.create<gml_st::SetYieldOp>(loc, newReduceOp, inits, initTile);
+      auto newReduce = cloneReduceOp(b, reduceOp, inputSlice, initSlice);
+      b.create<scf::YieldOp>(loc, newReduce);
     };
 
     // Combine `horizontal reduce` with the tail of the input. The tail is
     // always smaller than TILE_SIZE.
     auto remainderLoop =
         rewriter
-            .create<ForOp>(loc, reduceOp.getResultTypes(), tileableBound,
-                           inputSize, tileSizeValue, horizontalReduce,
-                           remainderLoopBodyBuilder)
+            .create<scf::ForOp>(loc, tileableBound, inputSize, tileSizeValue,
+                                horizontalReduce, remainderLoopBodyBuilder)
             .getResult(0);
 
     rewriter.replaceOp(reduceOp, remainderLoop);
@@ -329,26 +319,28 @@ struct Reduce2DTransformPattern : public OpRewritePattern<linalg::ReduceOp> {
                  [&](Operation *op) { return fusionCluster.contains(op); });
 
     // Process all reduces in a fusion cluster.
-    for (auto op :
+    for (auto tiledReduceOp :
          llvm::to_vector(tilingRoot->getBlock()->getOps<linalg::ReduceOp>())) {
       // Fuse Fill.
-      if (failed(fuseOutputFill(rewriter, op))) return failure();
+      if (failed(fuseOutputFill(rewriter, tiledReduceOp))) return failure();
 
       // Second level tiling: reduction dimension.
-      auto tilingReductionDimsResult = tileReductionDims(rewriter, op);
+      auto tilingReductionDimsResult =
+          tileReductionDims(rewriter, tiledReduceOp);
       if (failed(tilingReductionDimsResult)) return failure();
 
       // Update the results if tiling occurred.
-      if (tilingReductionDimsResult->loop != nullptr) {
-        rewriter.replaceOp(op, tilingReductionDimsResult->loop->getResults());
-        op =
+      if (!tilingReductionDimsResult->loops.empty()) {
+        rewriter.replaceOp(tiledReduceOp,
+                           tilingReductionDimsResult->replacements);
+        tiledReduceOp =
             cast<linalg::ReduceOp>(tilingReductionDimsResult->tiledOps.front());
-        fuseGreedily(rewriter, *op->getBlock(),
+        fuseGreedily(rewriter, *tiledReduceOp->getBlock(),
                      [&](Operation *op) { return isa<linalg::MapOp>(op); });
       }
-      setLabel(op, kReduceTransformedLabel);
+      setLabel(tiledReduceOp, kReduceTransformedLabel);
 
-      //  Peel parallel loops.
+      // Peel reduction loops.
       if (failed(peelReduction(rewriter, tilingParallelDimsResult.value(),
                                tilingReductionDimsResult.value())))
         return failure();
@@ -404,15 +396,14 @@ struct Reduce2DTransformPattern : public OpRewritePattern<linalg::ReduceOp> {
       tilingParallelDimsResult =
           tileReduce(rewriter, reduceOp,
                      getParallelDimTileSizes(reduceOp.getDimensions()[0],
-                                             parallelDimTileSize),
-                     /*distribute=*/true);
+                                             parallelDimTileSize));
     } else if (isa<linalg::MapOp>(tilingRoot)) {
       TilingOptions opts;
       opts.setTileSizeComputationFn({parallelDimTileSize});
       opts.distribute = true;
 
       tilingParallelDimsResult =
-          tile(opts, rewriter, cast<TilingInterface>(tilingRoot));
+          tileUsingGmlSt(opts, rewriter, cast<TilingInterface>(tilingRoot));
     } else {
       return failure();
     }
@@ -420,19 +411,18 @@ struct Reduce2DTransformPattern : public OpRewritePattern<linalg::ReduceOp> {
     return tilingParallelDimsResult;
   }
 
-  FailureOr<TilingResult> tileReductionDims(PatternRewriter &rewriter,
-                                            linalg::ReduceOp reduceOp) const {
-    auto tilingReductionDimsResult =
-        tileReduce(rewriter, reduceOp,
-                   getReductionDimTileSizes(reduceOp.getDimensions()[0],
-                                            reductionDimTileSize),
-                   /*distribute=*/false);
-    return tilingReductionDimsResult;
+  FailureOr<scf::SCFTilingResult> tileReductionDims(
+      PatternRewriter &rewriter, linalg::ReduceOp reduceOp) const {
+    scf::SCFTilingOptions tilingOptions;
+    tilingOptions.setTileSizes(getReductionDimTileSizes(
+        reduceOp.getDimensions()[0], reductionDimTileSize));
+    return scf::tileUsingSCFForOp(rewriter, reduceOp.getOperation(),
+                                  tilingOptions);
   }
 
   LogicalResult peelReduction(
       PatternRewriter &rewriter, const TilingResult &tilingParallelDimsResult,
-      const TilingResult &tilingReductionDimsResult) const {
+      const scf::SCFTilingResult &tilingReductionDimsResult) const {
     // Peel parallel loops.
     if (auto loop =
             dyn_cast_or_null<ParallelOp>(tilingParallelDimsResult.loop)) {
@@ -441,34 +431,42 @@ struct Reduce2DTransformPattern : public OpRewritePattern<linalg::ReduceOp> {
 
     // Peel reduction loop inside the main parallel loop, label the main loop as
     // "perfectly tiled" one, to enable vectorization after canonicalization.
-    if (auto forLoop =
-            dyn_cast_or_null<ForOp>(tilingReductionDimsResult.loop)) {
-      auto peelingResult = peelAllLoops(forLoop, rewriter);
-      setLabel(forLoop, kPerfectlyTiledLoopLabel);
+    if (!tilingReductionDimsResult.loops.empty()) {
+      scf::ForOp forLoop = tilingReductionDimsResult.loops.front();
+      SCFForPeelingResult peelingResult = peelSCFForOp(rewriter, forLoop);
+      if (peelingResult.mainLoop) {
+        setLabel(peelingResult.mainLoop, kPerfectlyTiledLoopLabel);
+      }
 
+      if (!peelingResult.tailLoop) return success();
       // Tile ops in the peeled loop again, to size 1, so they can be
       // scalarized.
-      for (auto *loop : peelingResult) {
-        ForOp peeledLoop = dyn_cast<ForOp>(loop);
-        auto *terminatorOp = peeledLoop->getRegion(0).front().getTerminator();
-        if (!terminatorOp) return failure();
+      scf::ForOp peeledLoop = peelingResult.tailLoop;
+      auto yieldOp = cast<scf::YieldOp>(peeledLoop.getBody()->getTerminator());
+      auto reduceOp = getRootReduce(yieldOp);
+      if (!reduceOp) return failure();
 
-        auto reduceOp =
-            terminatorOp->getOperand(0).getDefiningOp<linalg::ReduceOp>();
-        if (!reduceOp) return failure();
+      scf::SCFTilingOptions opts;
+      opts.setTileSizes(
+          getReductionDimTileSizes(reduceOp.getDimensions()[0], 1));
 
-        mlir::gml_st::TilingOptions opts;
-        opts.setTileSizeComputationFn(
-            getReductionDimTileSizes(reduceOp.getDimensions()[0], 1));
-        opts.distribute = false;
-
-        if (failed(tileAndFuseGreedily(
-                rewriter, reduceOp, opts, kReduceTransformedLabel,
-                [&](Operation *op) { return isa<linalg::MapOp>(op); })))
-          return failure();
-      }
+      if (failed(tileUsingSCFForOpAndFuseGreedily(
+              rewriter, reduceOp, opts, kReduceTransformedLabel,
+              [&](Operation *op) { return isa<linalg::MapOp>(op); })))
+        return failure();
     }
     return success();
+  }
+
+  linalg::ReduceOp getRootReduce(scf::YieldOp yieldOp) const {
+    if (yieldOp.getResults().size() != 1) return nullptr;
+
+    Value reduceResult = yieldOp.getResults().front();
+    if (auto insertSliceOp =
+            reduceResult.getDefiningOp<tensor::InsertSliceOp>()) {
+      reduceResult = insertSliceOp.getSource();
+    }
+    return reduceResult.getDefiningOp<linalg::ReduceOp>();
   }
 
   int64_t parallelDimTileSize;
@@ -489,7 +487,8 @@ struct TransformReduceForCpuPass
 
   void getDependentDialects(DialectRegistry &registry) const final {
     registry.insert<mlir::gml_st::GmlStDialect, arith::ArithDialect,
-                    linalg::LinalgDialect, tensor::TensorDialect>();
+                    linalg::LinalgDialect, scf::SCFDialect,
+                    tensor::TensorDialect>();
     linalg::registerTilingInterfaceExternalModels(registry);
   }
 

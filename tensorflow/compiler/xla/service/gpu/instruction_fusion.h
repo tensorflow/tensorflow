@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/fusion_node_indexing_evaluation.h"
+#include "tensorflow/compiler/xla/service/gpu/gpu_device_info.h"
 #include "tensorflow/compiler/xla/service/instruction_fusion.h"
 
 namespace xla {
@@ -30,8 +31,9 @@ namespace gpu {
 
 class GpuInstructionFusion : public InstructionFusion {
  public:
-  explicit GpuInstructionFusion(bool may_duplicate)
-      : InstructionFusion(GpuInstructionFusion::IsExpensive, may_duplicate) {}
+  explicit GpuInstructionFusion(bool may_duplicate, const GpuDeviceInfo& d)
+      : InstructionFusion(GpuInstructionFusion::IsExpensive, may_duplicate),
+        device_info_(d) {}
 
   static bool IsExpensive(const HloInstruction& instruction);
 
@@ -69,6 +71,8 @@ class GpuInstructionFusion : public InstructionFusion {
   // indexed with different index vectors.
   absl::flat_hash_map<const HloInstruction*, FusionNodeIndexingEvaluation>
       fusion_node_evaluations_;
+
+  const GpuDeviceInfo device_info_;
 };
 
 }  // namespace gpu

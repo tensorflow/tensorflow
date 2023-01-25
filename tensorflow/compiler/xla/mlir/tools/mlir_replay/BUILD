@@ -1,4 +1,7 @@
-cc_binary(
+load("//tensorflow/compiler/xla:xla.bzl", "xla_cc_binary")
+load("//tensorflow/tsl/platform:rules_cc.bzl", "cc_library")
+
+xla_cc_binary(
     name = "mlir_replay",
     srcs = ["mlir_replay.cc"],
     deps = [

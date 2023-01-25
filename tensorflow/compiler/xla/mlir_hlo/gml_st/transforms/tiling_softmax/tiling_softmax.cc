@@ -178,7 +178,7 @@ struct TilePartialSoftmaxPattern
           tilingOptions.distributionLabel = distributionLabel;
           // Tile.
           FailureOr<TilingResult> tilingResult =
-              tile(tilingOptions, rewriter, op);
+              tileUsingGmlSt(tilingOptions, rewriter, op);
           if (failed(tilingResult)) return failure();
 
           rewriter.replaceOp(op, tilingResult->loop->getResults());

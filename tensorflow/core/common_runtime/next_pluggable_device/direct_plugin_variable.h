@@ -39,6 +39,8 @@ class DirectPluginVariable : public PluginVariable {
     return tsl::OkStatus();
   }
 
+  VariableInfo* GetVariableInfo() { return &var_info_; }
+
   friend DirectPluginOpKernelContext;
 
  private:

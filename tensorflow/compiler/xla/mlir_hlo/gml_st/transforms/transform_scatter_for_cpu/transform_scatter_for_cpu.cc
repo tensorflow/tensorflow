@@ -19,9 +19,11 @@ limitations under the License.
 #include "gml_st/IR/gml_st_ops.h"
 #include "gml_st/transforms/passes.h"
 #include "gml_st/transforms/tiling/tiling.h"
+#include "gml_st/transforms/transforms.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
-#include "mlir/Dialect/Linalg/Transforms/TilingInterfaceImpl.h"
+#include "mlir/Dialect/SCF/IR/SCF.h"
+#include "mlir/Dialect/SCF/Transforms/TileUsingInterface.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
@@ -33,23 +35,24 @@ namespace {
 #define GEN_PASS_DEF_TRANSFORMSCATTERFORCPUPASS
 #include "gml_st/transforms/passes.h.inc"
 
-struct TransformScatterForCpuPass
-    : public impl::TransformScatterForCpuPassBase<TransformScatterForCpuPass> {
-  void getDependentDialects(DialectRegistry &registry) const final {
-    registry.insert<mlir::gml_st::GmlStDialect, arith::ArithDialect,
-                    tensor::TensorDialect>();
-    linalg::registerTilingInterfaceExternalModels(registry);
-  }
+constexpr llvm::StringRef kScatterTransformedLabel =
+    "__scatter_transformed_label__";
 
-  void runOnOperation() override {
-    func::FuncOp f = getOperation();
-    MLIRContext *ctx = &getContext();
+struct TileScatterPattern : public OpRewritePattern<thlo::ScatterOp> {
+  using OpRewritePattern<thlo::ScatterOp>::OpRewritePattern;
 
-    mlir::gml_st::TilingOptions opts;
-    opts.distribute = false;  // Tile to `for` loops.
+  LogicalResult matchAndRewrite(thlo::ScatterOp op,
+                                PatternRewriter &rewriter) const override {
+    if (hasLabel(op, kScatterTransformedLabel)) return failure();
+
+    if (isa<scf::ForOp>(op->getParentOp())) {
+      return rewriter.notifyMatchFailure(
+          op, "has already been tiled by another pass.");
+    }
 
     // Tile everything to points.
-    opts.tileSizeComputationFn = [](OpBuilder &b, Operation *op) {
+    scf::SCFTilingOptions opts;
+    opts.setTileSizeComputationFunction([](OpBuilder &b, Operation *op) {
       OpBuilder::InsertionGuard guard(b);
       b.setInsertionPointToStart(
           &op->getParentOfType<func::FuncOp>().getBody().front());
@@ -57,22 +60,43 @@ struct TransformScatterForCpuPass
       auto loops = cast<TilingInterface>(op).getLoopIteratorTypes();
       return SmallVector<Value>(
           loops.size(), b.create<arith::ConstantIndexOp>(op->getLoc(), 1));
-    };
+    });
 
-    auto filterFn = [&](Operation *op) {
-      if (isa<mlir::thlo::ScatterOp>(op))
-        return success();
-      return failure();
-    };
+    auto tilingResult = scf::tileUsingSCFForOp(
+        rewriter, cast<TilingInterface>(op.getOperation()), opts);
+    if (failed(tilingResult)) return failure();
+
+    // If we did not tile, do not replace original op and just mark it as
+    // transformed then return.
+    if (!tilingResult->loops.empty()) {
+      rewriter.replaceOp(op, tilingResult->replacements);
+    }
+    setLabel(tilingResult->tiledOps.front(), kScatterTransformedLabel);
+    return success();
+  }
+};
+
+struct TransformScatterForCpuPass
+    : public impl::TransformScatterForCpuPassBase<TransformScatterForCpuPass> {
+  void getDependentDialects(DialectRegistry &registry) const final {
+    registry.insert<arith::ArithDialect, gml_st::GmlStDialect, scf::SCFDialect,
+                    tensor::TensorDialect>();
+  }
+
+  void runOnOperation() override {
+    func::FuncOp f = getOperation();
+    MLIRContext *ctx = &getContext();
 
     RewritePatternSet patterns(ctx);
-    populateTilingPatterns(ctx, filterFn, opts, &patterns);
+    patterns.add<TileScatterPattern>(ctx);
 
-    if (failed(applyPatternsAndFoldGreedily(f, std::move(patterns)))) {
+    if (failed(applyPatternsAndFoldGreedily(f, std::move(patterns))))
       return signalPassFailure();
-    }
 
-    removeTilingLabels(f);
+    // Ensure we drop the marker in the end.
+    f.walk([](thlo::ScatterOp scatterOp) {
+      removeLabel(scatterOp, kScatterTransformedLabel);
+    });
   }
 };
 

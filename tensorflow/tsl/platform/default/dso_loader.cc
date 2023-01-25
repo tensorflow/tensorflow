@@ -64,7 +64,7 @@ StatusOr<void*> GetDsoHandle(const string& name, const string& version) {
     message += absl::StrCat("; LD_LIBRARY_PATH: ", ld_library_path);
   }
 #endif
-  LOG(WARNING) << message;
+  VLOG(1) << message;
   return Status(error::FAILED_PRECONDITION, message);
 }
 }  // namespace

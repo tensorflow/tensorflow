@@ -112,6 +112,22 @@ xla_cc_binary(
     ],
 )
 
+xla_cc_test(
+    name = "replay_computation_bin_test",
+    srcs = ["replay_computation_bin_test.cc"],
+    data = [
+        "add.hlo",
+        ":replay_computation_cpu",
+        ":replay_computation_interpreter",
+    ],
+    deps = [
+        "//tensorflow/tsl/platform:path",
+        "//tensorflow/tsl/platform:subprocess",
+        "//tensorflow/tsl/platform:test",
+        "//tensorflow/tsl/platform:test_main",
+    ],
+)
+
 xla_cc_binary(
     name = "replay_computation_gpu",
     tags = ["gpu"],

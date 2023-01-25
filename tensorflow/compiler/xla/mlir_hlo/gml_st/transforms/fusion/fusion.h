@@ -61,11 +61,16 @@ FusionCluster findMapFusionCluster(Operation *op);
 // Fuses linalg.fill that is used in init argument of the op.
 LogicalResult fuseOutputFill(PatternRewriter &rewriter, Operation *op);
 
-// Tiles the op and fuses greedily according to the filter function.
-FailureOr<Operation *> tileAndFuseGreedily(
+// Tiles the op to gml_st.parallel and fuses greedily according to the filter.
+FailureOr<ParallelOp> tileUsingGmlStParallelAndFuseGreedily(
     PatternRewriter &rewriter, Operation *op,
     const mlir::gml_st::TilingOptions &opts, StringRef label,
     llvm::function_ref<bool(Operation *)> fuseFilterFn);
+
+// Tiles the op to scf.for and fuses greedily according to the filter.
+FailureOr<scf::SCFTilingResult> tileUsingSCFForOpAndFuseGreedily(
+    PatternRewriter &rewriter, Operation *op, const scf::SCFTilingOptions &opts,
+    StringRef label, llvm::function_ref<bool(Operation *)> fuseFilterFn);
 
 // Tiles the op to 1 for all dimensions and fuses greedily according to the
 // filter function.

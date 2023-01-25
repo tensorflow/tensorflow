@@ -20,6 +20,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_set.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
@@ -116,6 +117,11 @@ void AddExportPasses(const bool duplicate_shape_determining_constants,
       mlir::CreateFunctionalToExecutorDialectConversionPass());
   pm.addPass(mlir::CreateBreakUpIslandsPass());
   pm.addPass(mlir::quant::CreateMergeInitializerFunctionOpsToMainPass());
+
+  // Used to clean up the "tf._noinliner" attribute that is previously used to
+  // prevent certain functions from being inlined (see
+  // `MarkFunctionsNoinlinePass`). InlinerPass must not come after this pass.
+  pm.addPass(mlir::TF::CreateStripNoinlineAttributePass());
 }
 
 // Finds and returns the name of the node from a set of control output nodes.
@@ -139,7 +145,8 @@ std::string GetNodeName(const absl::flat_hash_set<Node *> &control_ret_nodes,
     GraphDef &&graph_def, const absl::string_view init_node_name,
     const absl::string_view restore_node_name,
     const absl::string_view checkpoint_dir,
-    const std::vector<std::string> &variable_shared_names) {
+    const std::vector<std::string> &variable_shared_names,
+    const absl::flat_hash_map<std::string, std::string> &function_aliases) {
   ExportedModel exported_model{};
   *exported_model.mutable_graph_def() = graph_def;
   exported_model.set_init_node_name(std::string(init_node_name));
@@ -148,6 +155,8 @@ std::string GetNodeName(const absl::flat_hash_set<Node *> &control_ret_nodes,
   for (auto &shared_name : variable_shared_names) {
     *exported_model.mutable_variable_shared_names()->Add() = shared_name;
   }
+  exported_model.mutable_function_aliases()->insert(function_aliases.begin(),
+                                                    function_aliases.end());
 
   return exported_model;
 }
@@ -156,7 +165,8 @@ std::string GetNodeName(const absl::flat_hash_set<Node *> &control_ret_nodes,
 // when the conversion fails.
 absl::StatusOr<ExportedModel> ConvertMlirModuleToExportedModel(
     const mlir::ModuleOp module_op, const absl::string_view checkpoint_dir,
-    const std::vector<std::string> &variable_shared_names) {
+    const std::vector<std::string> &variable_shared_names,
+    const absl::flat_hash_map<std::string, std::string> &function_aliases) {
   const GraphExportConfig config{};
   FunctionLibraryDefinition flib_def{OpRegistry::Global(),
                                      FunctionDefLibrary()};
@@ -179,7 +189,7 @@ absl::StatusOr<ExportedModel> ConvertMlirModuleToExportedModel(
 
   return CreateExportedModel(std::move(graph_def), init_node_name,
                              restore_node_name, checkpoint_dir,
-                             variable_shared_names);
+                             variable_shared_names, function_aliases);
 }
 
 // Runs MLIR passes with `module_op`. The passes are added by calling
@@ -387,14 +397,49 @@ absl::StatusOr<ExportedModel> QuantizeQatModel(
   }
 
   return ConvertMlirModuleToExportedModel(*module_ref, *checkpoint_dir,
-                                          *variable_shared_names);
+                                          *variable_shared_names,
+                                          /*function_aliases=*/{});
+}
+
+// Returns the updated function aliases. `module_op` may have different function
+// names from the original model, so it re-associates the aliases with the new
+// function names. Both the input `function_aliases` and the returned value
+// are function name -> alias mappings. `function_aliases` is the function alias
+// mapping of the original function.
+absl::flat_hash_map<std::string, std::string> UpdateFunctionAliases(
+    const absl::flat_hash_map<std::string, std::string> function_aliases,
+    mlir::ModuleOp module_op) {
+  absl::flat_hash_map<std::string, std::string> updated_function_aliases;
+
+  module_op->walk([&](mlir::func::FuncOp func_op) {
+    // We may retrieve the original function's name from the attribute.
+    // Functions without this attribute are ignored.
+    auto original_func_name =
+        func_op->getAttrOfType<mlir::StringAttr>("tf._original_func_name");
+    if (original_func_name) {
+      if (auto alias_itr = function_aliases.find(original_func_name.str());
+          alias_itr != function_aliases.end()) {
+        const std::string alias = alias_itr->second;
+        const std::string new_func_name = func_op.getSymName().str();
+
+        updated_function_aliases[new_func_name] = alias;
+
+        VLOG(1) << "Updated function alias. Alias: " << alias
+                << ", New function name: " << new_func_name
+                << ", Old function name: " << original_func_name.str();
+      }
+    }
+  });
+
+  return updated_function_aliases;
 }
 
 absl::StatusOr<ExportedModel> QuantizePtqModelPreCalibration(
     const absl::string_view saved_model_path,
     const std::vector<std::string> &signature_keys,
     const std::unordered_set<std::string> &tags,
-    const QuantizationOptions &quantization_options) {
+    const QuantizationOptions &quantization_options,
+    const absl::flat_hash_map<std::string, std::string> &function_aliases) {
   // Convert the SavedModelBundle to an MLIR module.
   mlir::MLIRContext context = CreateMlirContextForTfQuantization();
 
@@ -416,10 +461,21 @@ absl::StatusOr<ExportedModel> QuantizePtqModelPreCalibration(
   }
   mlir::OwningOpRef<mlir::ModuleOp> module_ref = std::move(module).value();
 
+  const absl::flat_hash_map<std::string, std::string> updated_function_aliases =
+      UpdateFunctionAliases(function_aliases, *module_ref);
+
+  // Collect the names of the functions that have aliases so that they may not
+  // be inlined.
+  absl::flat_hash_set<std::string> aliased_function_names;
+  absl::c_for_each(updated_function_aliases, [&](const auto &aliases) {
+    return aliased_function_names.insert(aliases.first);
+  });
+
   if (const absl::Status preprocess_status = PreprocessAndFreezeGraph(
           /*mlir_dump_file_prefix=*/kTfQuantPtqPreCalibrationStepName,
-          /*is_inliner_run=*/true, module_ref.get(), &context,
-          bundle ? bundle->GetSession() : nullptr);
+          /*is_inliner_run=*/true,
+          /*noinline_functions=*/aliased_function_names, module_ref.get(),
+          &context, bundle ? bundle->GetSession() : nullptr);
       !preprocess_status.ok()) {
     return preprocess_status;
   }
@@ -456,14 +512,16 @@ absl::StatusOr<ExportedModel> QuantizePtqModelPreCalibration(
   }
 
   return ConvertMlirModuleToExportedModel(*module_ref, *checkpoint_dir,
-                                          *variable_shared_names);
+                                          *variable_shared_names,
+                                          updated_function_aliases);
 }
 
 absl::StatusOr<ExportedModel> QuantizePtqModelPostCalibration(
     const absl::string_view saved_model_path,
     const std::vector<std::string> &signature_keys,
     const std::unordered_set<std::string> &tags,
-    const QuantizationOptions &quantization_options) {
+    const QuantizationOptions &quantization_options,
+    const absl::flat_hash_map<std::string, std::string> &function_aliases) {
   // Convert the SavedModelBundle to an MLIR module.
   mlir::MLIRContext context = CreateMlirContextForTfQuantization();
 
@@ -486,13 +544,24 @@ absl::StatusOr<ExportedModel> QuantizePtqModelPostCalibration(
 
   mlir::OwningOpRef<mlir::ModuleOp> module_ref = std::move(module).value();
 
+  const absl::flat_hash_map<std::string, std::string> updated_function_aliases =
+      UpdateFunctionAliases(function_aliases, *module_ref);
+
+  // Collect the names of the functions that have aliases so that they may not
+  // be inlined.
+  absl::flat_hash_set<std::string> aliased_function_names;
+  absl::c_for_each(updated_function_aliases, [&](const auto &aliases) {
+    return aliased_function_names.insert(aliases.first);
+  });
+
   // Freezing is required again since variables might have been produced during
   // the pre-calibration step. `is_inliner_run = false` to prevent the functions
   // lifted for quantization from being inlined.
   if (const absl::Status preprocess_status = PreprocessAndFreezeGraph(
           /*mlir_dump_file_prefix=*/kTfQuantPtqPostCalibrationStepName,
-          /*is_inliner_run=*/false, module_ref.get(), &context,
-          bundle ? bundle->GetSession() : nullptr);
+          /*is_inliner_run=*/false,
+          /*noinline_functions=*/aliased_function_names, module_ref.get(),
+          &context, bundle ? bundle->GetSession() : nullptr);
       !preprocess_status.ok()) {
     return preprocess_status;
   }
@@ -527,7 +596,8 @@ absl::StatusOr<ExportedModel> QuantizePtqModelPostCalibration(
   }
 
   return ConvertMlirModuleToExportedModel(*module_ref, *checkpoint_dir,
-                                          *variable_shared_names);
+                                          *variable_shared_names,
+                                          updated_function_aliases);
 }
 
 absl::StatusOr<ExportedModel> QuantizePtqDynamicRange(
@@ -592,7 +662,8 @@ absl::StatusOr<ExportedModel> QuantizePtqDynamicRange(
   }
 
   return ConvertMlirModuleToExportedModel(*module_ref, *checkpoint_dir,
-                                          *variable_shared_names);
+                                          *variable_shared_names,
+                                          /*function_aliases=*/{});
 }
 
 }  // namespace internal

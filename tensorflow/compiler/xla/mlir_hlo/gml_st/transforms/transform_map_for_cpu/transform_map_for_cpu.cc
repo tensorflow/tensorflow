@@ -74,21 +74,19 @@ struct TileMapPattern : public OpRewritePattern<linalg::MapOp> {
       return tiles;
     };
 
-    auto tiledLoop = tileAndFuseGreedily(rewriter, op, opts,
-                                         kMapTransformedLabel, fuseFilterFn);
+    auto tiledLoop = tileUsingGmlStParallelAndFuseGreedily(
+        rewriter, op, opts, kMapTransformedLabel, fuseFilterFn);
     if (failed(tiledLoop)) return failure();
 
     // Peel parallel loops.
-    if (auto loop = dyn_cast_or_null<ParallelOp>(*tiledLoop)) {
-      auto peelingResult = peelAllLoops(loop, rewriter);
-      setLabel(loop, kPerfectlyTiledLoopLabel);
+    auto peelingResult = peelAllLoops(*tiledLoop, rewriter);
+    setLabel(*tiledLoop, kPerfectlyTiledLoopLabel);
 
-      // Tile ops in the peeled loop again, to size 1, so they can be
-      // scalarized.
-      if (failed(tilePeeledOpsToScalars(rewriter, peelingResult,
-                                        kMapTransformedLabel, fuseFilterFn)))
-        return failure();
-    }
+    // Tile ops in the peeled loop again, to size 1, so they can be
+    // scalarized.
+    if (failed(tilePeeledOpsToScalars(rewriter, peelingResult,
+                                      kMapTransformedLabel, fuseFilterFn)))
+      return failure();
 
     return success();
   }

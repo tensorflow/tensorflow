@@ -56,8 +56,8 @@ struct TileTransposePattern : public OpRewritePattern<linalg::TransposeOp> {
       return rewriter.notifyMatchFailure(
           op, "has already been tiled by another pass.");
 
-    auto tilingResult =
-        tile(options, rewriter, cast<TilingInterface>(op.getOperation()));
+    auto tilingResult = tileUsingGmlSt(
+        options, rewriter, cast<TilingInterface>(op.getOperation()));
     if (failed(tilingResult)) return failure();
 
     // If we did not tile (e.g. when all tile sizes are 0), do not replace

@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/mirror_pad_mode.h"
 #include "tensorflow/core/util/padding.h"
@@ -1072,11 +1073,22 @@ REGISTER_OP("EditDistance")
         // or else the output shape is unknown.
         return shape_inference::UnknownShape(c);
       }
-
       if (hypothesis_shape_t->NumElements() != truth_shape_t->NumElements()) {
         return errors::InvalidArgument(
             "Num elements of hypothesis_shape does not match truth_shape: ",
             hypothesis_shape_t->NumElements(), " vs. ",
+            truth_shape_t->NumElements());
+      }
+      if (hypothesis_shape_t->NumElements() < 2) {
+        return errors::InvalidArgument(
+            "Input Hypothesis SparseTensors must have rank at least 2, but "
+            "hypothesis_shape rank is: ",
+            hypothesis_shape_t->NumElements());
+      }
+      if (truth_shape_t->NumElements() < 2) {
+        return errors::InvalidArgument(
+            "Input Truth SparseTensors must have rank at least 2, but "
+            "truth_shape rank is: ",
             truth_shape_t->NumElements());
       }
 

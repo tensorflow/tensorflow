@@ -307,6 +307,7 @@ cc_library(
     name = "direct_plugin_variable",
     srcs = ["direct_plugin_variable.cc"],
     hdrs = ["direct_plugin_variable.h"],
+    visibility = ["//visibility:public"],
     deps = [
         ":plugin_variable",
         "//tensorflow/compiler/jit:xla_launch_util",
@@ -318,6 +319,7 @@ cc_library(
     name = "c_plugin_variable",
     srcs = ["c_plugin_variable.cc"],
     hdrs = ["c_plugin_variable.h"],
+    visibility = ["//visibility:public"],
     deps = [
         ":plugin_variable",
         "//tensorflow/c:tf_status_helper",

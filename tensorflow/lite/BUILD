@@ -1319,6 +1319,28 @@ tflite_cc_shared_object(
     ],
 )
 
+package_group(
+    name = "tflite_test_util_visibility",
+    packages = [
+        "//tensorflow/lite/...",
+        "//tensorflow_lite_support/...",
+        "//third_party/mediapipe/tasks/...",
+    ],
+)
+
+cc_library_with_tflite(
+    name = "test_util",
+    testonly = True,
+    hdrs = ["test_util.h"],
+    tflite_deps = [
+        "//tensorflow/lite/core/shims:c_shims_test_util",
+    ],
+    visibility = [":tflite_test_util_visibility"],
+    deps = [
+        "//testing/base/public:gunit_for_library_testonly",
+    ],
+)
+
 bzl_library(
     name = "build_def_bzl",
     srcs = ["build_def.bzl"],

@@ -29,6 +29,7 @@ limitations under the License.
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
+#include "mlir/Dialect/SCF/Transforms/TileUsingInterface.h"
 #include "mlir/Dialect/Shape/IR/Shape.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/IR/Attributes.h"
@@ -429,11 +430,13 @@ LogicalResult fuseOutputFill(PatternRewriter& rewriter, Operation* op) {
   return success();
 }
 
-FailureOr<Operation*> tileAndFuseGreedily(
+FailureOr<ParallelOp> tileUsingGmlStParallelAndFuseGreedily(
     PatternRewriter& rewriter, Operation* op,
     const mlir::gml_st::TilingOptions& opts, StringRef label,
     llvm::function_ref<bool(Operation*)> fuseFilterFn) {
-  auto tilingResult = tile(opts, rewriter, cast<TilingInterface>(op));
+  assert(opts.distribute == true &&
+         "gml_st.for should not be used for CPU pipeline");
+  auto tilingResult = tileUsingGmlSt(opts, rewriter, cast<TilingInterface>(op));
   if (failed(tilingResult)) return failure();
 
   // If we did not tile (e.g. when all tile sizes are 0), do not replace
@@ -446,7 +449,25 @@ FailureOr<Operation*> tileAndFuseGreedily(
                  fuseFilterFn);
   }
   setLabel(tilingResult->tiledOps.front(), label);
-  return tilingResult->loop;
+  return cast<ParallelOp>(tilingResult->loop);
+}
+
+FailureOr<scf::SCFTilingResult> tileUsingSCFForOpAndFuseGreedily(
+    PatternRewriter& rewriter, Operation* op, const scf::SCFTilingOptions& opts,
+    StringRef label, llvm::function_ref<bool(Operation*)> fuseFilterFn) {
+  auto tilingResult = scf::tileUsingSCFForOp(rewriter, op, opts);
+  if (failed(tilingResult)) return failure();
+
+  // If we did not tile (e.g. when all tile sizes are 0), do not replace
+  // original op and just mark it as transformed then return.
+  if (!tilingResult->loops.empty()) {
+    rewriter.replaceOp(op, tilingResult->replacements);
+
+    // Fuse ops into the loop.
+    fuseGreedily(rewriter, *tilingResult->loops.back().getBody(), fuseFilterFn);
+  }
+  setLabel(tilingResult->tiledOps.front(), label);
+  return tilingResult;
 }
 
 LogicalResult tilePeeledOpsToScalars(
@@ -464,8 +485,8 @@ LogicalResult tilePeeledOpsToScalars(
     opts.setTileSizeComputationFn(SmallVector<int64_t>(
         cast<linalg::LinalgOp>(definingOp).getNumLoops(), 1));
 
-    if (failed(tileAndFuseGreedily(rewriter, definingOp, opts, label,
-                                   fuseFilterFn)))
+    if (failed(tileUsingGmlStParallelAndFuseGreedily(rewriter, definingOp, opts,
+                                                     label, fuseFilterFn)))
       return failure();
   }
   return success();

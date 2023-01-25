@@ -25,7 +25,7 @@ from tensorflow.python.eager import monitoring
 from tensorflow.python.util.tf_export import tf_export
 
 _preemption_handling_counter = monitoring.Counter(
-    "third_party/tensorflow/python/distribute/preemption_watcher",
+    "/tensorflow/api/distribution_strategy/preemption_watcher",
     "Counter for number of preempions catched and handled by PreemptionWatcher")
 
 _PREEMPTION_KEY = "TF_DEFAULT_PREEMPTION_NOTICE_KEY"

@@ -19,6 +19,7 @@ limitations under the License.
 #include <functional>
 #include <string>
 
+#include "mlir/Dialect/SCF/Transforms/TileUsingInterface.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/Interfaces/TilingInterface.h"
 
@@ -53,8 +54,9 @@ struct TilingOptions {
 
 /// Create tiled operation based on the specified tiling options. The result is
 /// equivalent to original op.
-FailureOr<TilingResult> tile(const TilingOptions &options,
-                             PatternRewriter &rewriter, TilingInterface op);
+FailureOr<TilingResult> tileUsingGmlSt(const TilingOptions &options,
+                                       PatternRewriter &rewriter,
+                                       TilingInterface op);
 
 /// Populate tiling patterns.
 void populateTilingPatterns(

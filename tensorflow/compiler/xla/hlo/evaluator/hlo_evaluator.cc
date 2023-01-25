@@ -3951,7 +3951,7 @@ Status HloEvaluator::HandleReduce(HloInstruction* instr) {
     }
   }
 
-  const int num_threads = tsl::port::MaxParallelism() + 1;
+  const int num_threads = ShapeUtil::GetForEachIndexParallelThreadCount() + 1;
   std::vector<std::unique_ptr<HloEvaluator>> embedded_evaluators;
   embedded_evaluators.reserve(num_threads);
   for (int i = 0; i < num_threads; ++i) {

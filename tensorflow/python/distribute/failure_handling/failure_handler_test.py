@@ -312,7 +312,7 @@ class PreemptionCheckpointTest(test.TestCase, parameterized.TestCase):
         caught_exit = True
         # We cannot use assertRaise instead, since termination is not always
         # triggered.
-        self.assertEqual(exit_error.code, 0)  # pylint: disable=g-assert-in-except
+        self.assertEqual(exit_error.code, 42)  # pylint: disable=g-assert-in-except
 
       preemption_sender_thread.join(10)
       if not training_finished.is_set():
@@ -442,7 +442,7 @@ class PreemptionCheckpointTest(test.TestCase, parameterized.TestCase):
         caught_exit = True
         # We cannot use assertRaise instead, since termination is not always
         # triggered.
-        self.assertEqual(exit_error.code, 0)  # pylint: disable=g-assert-in-except
+        self.assertEqual(exit_error.code, 42)  # pylint: disable=g-assert-in-except
 
       preemption_sender_thread.join(10)
       if not training_finished.is_set():

@@ -315,7 +315,7 @@ TEST(ConvertXPlaneToOpStats, TestConvertMultiXSpacesToCombinedOpStats) {
 TEST(ConvertXPlaneToOpStats, RunEnvironmentExtractedFromTpuPlane) {
   XSpace xspace;
   for (int i : {0, 1, 2, 3}) {
-    GetOrCreateTpuXPlane(&xspace, i, "TPU V4", 0, 0, 0);
+    GetOrCreateTpuXPlane(&xspace, i, "TPU V4", 0, 0);
   }
 
   OpStats op_stats = ConvertXSpaceToOpStats(xspace, OpStatsOptions());
@@ -335,13 +335,11 @@ TEST(ConvertXPlaneToOpStats, TpuPerfEnv) {
   constexpr int kComputeCapMajor = 7;
   constexpr int kComputeCapMinor = 0;
   constexpr double kDevCapPeakTeraflopsPerSecond = 141.0;
-  constexpr double kDevCapPeakBwGigaBytesPerSecond = 1000.0;
   constexpr double kDevCapPeakHbmBwGigabytesPerSecond = 900.0;
 
   XPlaneBuilder device_plane(GetOrCreateTpuXPlane(
       space.get(), /*device_ordinal=*/0, "TPU V4",
-      kDevCapPeakTeraflopsPerSecond, kDevCapPeakBwGigaBytesPerSecond,
-      kDevCapPeakHbmBwGigabytesPerSecond));
+      kDevCapPeakTeraflopsPerSecond, kDevCapPeakHbmBwGigabytesPerSecond));
   /*device_plane.AddStatValue(*device_plane.GetOrCreateStatMetadata(
                             GetStatTypeStr(StatType::kDevVendor)),
                         kDeviceVendorNvidia); // "Google, Inc.");*/
@@ -372,9 +370,6 @@ TEST(ConvertXPlaneToOpStats, TpuPerfEnv) {
   const PerfEnv& perf_env = op_stats.perf_env();
   EXPECT_NEAR(141, perf_env.peak_tera_flops_per_second(), kMaxError);
   EXPECT_NEAR(
-      1000, perf_env.peak_bws_giga_bytes_per_second(MemBwType::MEM_BW_TYPE_ALL),
-      kMaxError);
-  EXPECT_NEAR(
       900,
       perf_env.peak_bws_giga_bytes_per_second(MemBwType::MEM_BW_TYPE_HBM_RW),
       kMaxError);
@@ -383,10 +378,10 @@ TEST(ConvertXPlaneToOpStats, TpuPerfEnv) {
 
 TEST(ConvertXPlaneToOpStats, TpuRunEnvironment) {
   auto space = std::make_unique<XSpace>();
-  XPlaneBuilder device_plane1(GetOrCreateTpuXPlane(
-      space.get(), /*device_ordinal=*/0, "TPU V4", 0, 0, 0));
-  XPlaneBuilder device_plane2(GetOrCreateTpuXPlane(
-      space.get(), /*device_ordinal=*/1, "TPU V4", 0, 0, 0));
+  XPlaneBuilder device_plane1(
+      GetOrCreateTpuXPlane(space.get(), /*device_ordinal=*/0, "TPU V4", 0, 0));
+  XPlaneBuilder device_plane2(
+      GetOrCreateTpuXPlane(space.get(), /*device_ordinal=*/1, "TPU V4", 0, 0));
 
   std::vector<std::unique_ptr<XSpace>> xspaces;
   xspaces.push_back(std::move(space));
@@ -410,8 +405,7 @@ TEST(ConvertXPlaneToOpStats, TpuStepDbTest) {
   constexpr int64_t kCorrelationId = 100;
   constexpr int kCoreCount = 80;
   constexpr double kDevCapPeakTeraflopsPerSecond = 141.0;
-  constexpr double kDevCapPeakBwGigaBytesPerSecond = 1000.0;
-  constexpr double kDevCapPeakHbmBwGigabytesPerSecond = 900.0;
+  constexpr double kDevCapPeakHbmBwGigabytesPerSecond = 1000.0;
 
   auto space = std::make_unique<XSpace>();
   XPlaneBuilder host_plane_builder(GetOrCreateHostXPlane(space.get()));
@@ -432,8 +426,7 @@ TEST(ConvertXPlaneToOpStats, TpuStepDbTest) {
 
   XPlaneBuilder device_plane_builder(GetOrCreateTpuXPlane(
       space.get(), /*device_ordinal=*/0, "TPU V4",
-      kDevCapPeakTeraflopsPerSecond, kDevCapPeakBwGigaBytesPerSecond,
-      kDevCapPeakHbmBwGigabytesPerSecond));
+      kDevCapPeakTeraflopsPerSecond, kDevCapPeakHbmBwGigabytesPerSecond));
   device_plane_builder.ReserveLines(1);
   device_plane_builder.AddStatValue(
       *device_plane_builder.GetOrCreateStatMetadata("core_count"), kCoreCount);
@@ -466,12 +459,10 @@ TEST(ConvertXPlaneToOpStats, TpuStepDbTest) {
 TEST(ConvertXPlaneToOpStats, TpuDeviceTraceToStepDb) {
   auto space = std::make_unique<XSpace>();
   constexpr double kDevCapPeakTeraflopsPerSecond = 141.0;
-  constexpr double kDevCapPeakBwGigaBytesPerSecond = 1000.0;
-  constexpr double kDevCapPeakHbmBwGigabytesPerSecond = 900.0;
+  constexpr double kDevCapPeakHbmBwGigabytesPerSecond = 1000.0;
   XPlaneBuilder xplane_builder(GetOrCreateTpuXPlane(
       space.get(), /*device_ordinal=*/0, "TPU V4",
-      kDevCapPeakTeraflopsPerSecond, kDevCapPeakBwGigaBytesPerSecond,
-      kDevCapPeakHbmBwGigabytesPerSecond));
+      kDevCapPeakTeraflopsPerSecond, kDevCapPeakHbmBwGigabytesPerSecond));
 
   XEventMetadata* event_metadata = xplane_builder.GetOrCreateEventMetadata(1);
   event_metadata->set_name("op_name");

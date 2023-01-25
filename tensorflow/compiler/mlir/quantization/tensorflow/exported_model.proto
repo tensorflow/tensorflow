@@ -10,6 +10,7 @@ option cc_enable_arenas = true;
 // metadata required for building a SavedModel. This message is primarily used
 // to "export" the model produced from various quantization passes in c++ to
 // Python layer.
+// Next ID: 7
 message ExportedModel {
   GraphDef graph_def = 1;
 
@@ -29,4 +30,11 @@ message ExportedModel {
   // fetching the restore op (see `restore_node_name`), this value is provided
   // to the "file_prefix" tensor to identify the checkpoint directory.
   string checkpoint_dir = 5;
+
+  // Function name -> function alias mapping. This associates the quantized
+  // functions to the original functions' aliases. This information will be used
+  // to populate `MetaInfoDef`s `function_aliases` when the quantized model is
+  // exported to the saved model. This field is usually only populated for the
+  // TF2 models.
+  map<string, string> function_aliases = 6;
 }

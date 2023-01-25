@@ -78,6 +78,9 @@ const char* GetCollectiveName(const CollectiveParams* cp, bool nccl) {
     case ALL_TO_ALL_COLLECTIVE:
       return "AllToAll";
 
+    case REDUCE_SCATTER_COLLECTIVE:
+      return nccl ? "NcclReduceScatter" : "undef";
+
     default:
       return "undef";
   }

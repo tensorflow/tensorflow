@@ -53,6 +53,7 @@ cc_library(
         "//tensorflow/tsl/platform:env",
         "//tensorflow/tsl/platform:numbers",
         "//tensorflow/tsl/platform:stacktrace",
+        "//tensorflow/tsl/platform:static_threadlocal",
     ]),
 )
 

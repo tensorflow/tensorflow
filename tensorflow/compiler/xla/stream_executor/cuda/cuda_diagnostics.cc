@@ -152,15 +152,15 @@ void Diagnostician::LogDiagnosticInformation() {
   CFRelease(kext_infos);
 #elif !defined(PLATFORM_WINDOWS)
   if (access(kDriverVersionPath, F_OK) != 0) {
-    LOG(INFO) << "kernel driver does not appear to be running on this host "
-              << "(" << tsl::port::Hostname() << "): "
-              << "/proc/driver/nvidia/version does not exist";
+    VLOG(1) << "kernel driver does not appear to be running on this host "
+            << "(" << tsl::port::Hostname() << "): "
+            << "/proc/driver/nvidia/version does not exist";
     return;
   }
   auto dev0_path = GetDevNodePath(0);
   if (access(dev0_path.c_str(), F_OK) != 0) {
-    LOG(INFO) << "no NVIDIA GPU device is present: " << dev0_path
-              << " does not exist";
+    VLOG(1) << "no NVIDIA GPU device is present: " << dev0_path
+            << " does not exist";
     return;
   }
 #endif

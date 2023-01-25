@@ -1694,6 +1694,8 @@ namespace {
 
 struct ParallelState {
   explicit ParallelState(int64_t task_count) : counter(task_count) {
+    // If this method is changed, please remember to change
+    // GetForEachIndexParallelThreadCount() as well.
     static auto* global_pool = new tsl::thread::ThreadPool(
         tsl::Env::Default(), "foreach", tsl::port::MaxParallelism());
     pool = global_pool;
@@ -1741,6 +1743,11 @@ struct ParallelState {
 
   pstate.Wait();
   return pstate.status;
+}
+
+/* static */ int ShapeUtil::GetForEachIndexParallelThreadCount() {
+  ParallelState pstate(/*task_count=*/0);
+  return pstate.pool->NumThreads();
 }
 
 /* static */ Shape ShapeUtil::DeleteDimensions(
