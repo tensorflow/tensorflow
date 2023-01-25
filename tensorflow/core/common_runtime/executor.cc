@@ -1193,7 +1193,9 @@ bool ExecutorState<PropagatorStateType>::NodeDone(
         // iterating through a tf.data input pipeline.
         if (!errors::IsOutOfRange(s)) {
           LOG(INFO) << "[" << immutable_state_.params().device->name()
-                    << "] Executor start aborting: " << s;
+                    << "] (DEBUG INFO) Executor start aborting (this does not "
+                       "indicate an error and you can ignore this message): "
+                    << s;
         } else {
           VLOG(1) << "[" << immutable_state_.params().device->name()
                   << "] Executor start aborting: " << s;
