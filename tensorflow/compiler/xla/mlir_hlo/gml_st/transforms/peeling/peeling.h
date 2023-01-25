@@ -21,6 +21,7 @@ limitations under the License.
 
 #include "gml_st/IR/gml_st_ops.h"
 #include "llvm/ADT/SmallVector.h"
+#include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/IR/PatternMatch.h"
 
 namespace mlir {
@@ -68,6 +69,13 @@ FailureOr<ForOp> peelAndCanonicalizeGmlStLoop(RewriterBase &rewriter,
 FailureOr<ParallelOp> peelAndCanonicalizeGmlStLoop(RewriterBase &rewriter,
                                                    ParallelOp loopOp,
                                                    int64_t idx);
+
+struct SCFForPeelingResult {
+  scf::ForOp mainLoop = nullptr;
+  scf::ForOp tailLoop = nullptr;
+};
+SCFForPeelingResult peelSCFForOp(RewriterBase &rewriter, scf::ForOp);
+
 }  // namespace gml_st
 }  // namespace mlir
 

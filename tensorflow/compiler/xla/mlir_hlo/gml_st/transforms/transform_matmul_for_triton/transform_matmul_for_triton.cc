@@ -49,7 +49,7 @@ FailureOr<TilingResult> tileMatmul(PatternRewriter &rewriter, Operation *op,
   opts.setTileSizeComputationFn(tileSizes);
   opts.distribute = distribute;
   opts.distributionLabel = distributionLabel;
-  return tile(opts, rewriter, cast<TilingInterface>(op));
+  return tileUsingGmlSt(opts, rewriter, cast<TilingInterface>(op));
 }
 
 /// Pattern to tile `linalg.matmul`, fuse `linalg.fill` into generated

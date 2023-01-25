@@ -18,10 +18,10 @@ func.func @matmul_static(%arg0: tensor<128x16xf32>, %arg1: tensor<16x64xf32>,
 
 // CHECK:      %[[C0:.*]] = arith.constant 0 : index
 // CHECK:      gml_st.parallel (%[[I:.*]], %[[J:.*]]) = (%[[C0]], %[[C0]])
-// CHECK:        %[[FOR:.*]] = gml_st.for (%[[K:.*]]) = (%[[C0]])
+// CHECK:        %[[FOR:.*]] = scf.for %[[K:.*]] = %[[C0]]
 // CHECK:          %[[MATMUL:.*]] = linalg.matmul
 // CHECK-SAME:       -> tensor<8x4xf32>
-// CHECK:          gml_st.set_yield %[[MATMUL]]
+// CHECK:          scf.yield %[[MATMUL]]
 // CHECK:        gml_st.set_yield %[[FOR]]
 
 // -----
@@ -59,28 +59,36 @@ func.func @matmul(%arg0: tensor<?x?xf32>, %arg1: tensor<?x?xf32>)
 // TRANSFORMED:         %[[MAIN_PAR:.*]] = gml_st.parallel (%[[I:.*]], %[[J:.*]]) = (%[[C0]], %[[C0]]) to (%[[IUB:.*]], %[[JUB:.*]]) step
 // TRANSFORMED:           %[[MAIN_SLICE:.*]] = tensor.extract_slice %[[INIT]]
 // TRANSFORMED:           %[[MAIN_FILL:.*]] = linalg.fill{{.*}}outs(%[[MAIN_SLICE]]
-// TRANSFORMED:           %[[MAIN_FOR:.*]] = gml_st.for (%[[K:.*]]) = (%[[C0]]) to (%[[KUB:.*]]) {{.*}} outs ({{.*}} = %[[MAIN_FILL]]:
+// TRANSFORMED:           %[[MAIN_FOR:.*]] = scf.for %[[K:.*]] = %[[C0]] to %[[KUB:[a-z0-9]+]]
+// TRANSFORMED-SAME:          iter_args(%{{.*}} = %[[MAIN_FILL]])
 // TRANSFORMED:             %[[MAIN_PAR_MAIN_FOR_MATMUL:.*]] = linalg.matmul
-// TRANSFORMED:             gml_st.set_yield %[[MAIN_PAR_MAIN_FOR_MATMUL]]
-// TRANSFORMED:           %[[REM_FOR:.*]] = gml_st.for (%[[K:.*]]) = (%[[KUB]]) {{.*}} outs ({{.*}} = %[[MAIN_FOR]]:
+// TRANSFORMED:             %[[UPDATE:.*]] = tensor.insert_slice %[[MAIN_PAR_MAIN_FOR_MATMUL]]
+// TRANSFORMED-NEXT:        scf.yield %[[UPDATE]]
+// TRANSFORMED:           %[[REM_FOR:.*]] = scf.for %[[K:.*]] = %[[KUB]]
+// TRANSFORMED-SAME:          iter_args(%{{.*}} = %[[MAIN_FOR]])
 // TRANSFORMED:             %[[MAIN_PAR_REM_FOR_MATMUL:.*]] = linalg.matmul
-// TRANSFORMED:             gml_st.set_yield %[[MAIN_PAR_REM_FOR_MATMUL]]
+// TRANSFORMED:             %[[UPDATE:.*]] = tensor.insert_slice %[[MAIN_PAR_REM_FOR_MATMUL]]
+// TRANSFORMED-NEXT:        scf.yield %[[UPDATE]]
 // TRANSFORMED:           gml_st.set_yield %[[REM_FOR]]
 
 // TRANSFORMED:         %[[REM_RHS_PAR:.*]] = gml_st.parallel (%[[I:.*]], %[[J:.*]]) = (%[[C0]], %[[JUB]])
 // TRANSFORMED:           %[[REM_RHS_SLICE:.*]] = tensor.extract_slice %[[MAIN_PAR]]
 // TRANSFORMED:           %[[REM_RHS_FILL:.*]] = linalg.fill{{.*}}outs(%[[REM_RHS_SLICE]]
-// TRANSFORMED:           %[[REM_RHS_FOR:.*]] = gml_st.for (%[[K:.*]]) = (%[[C0]]) {{.*}} outs ({{.*}} = %[[REM_RHS_FILL]]:
+// TRANSFORMED:           %[[REM_RHS_FOR:.*]] = scf.for %[[K:.*]] = %[[C0]]
+// TRANSFORMED-SAME:        iter_args({{.*}} = %[[REM_RHS_FILL]])
 // TRANSFORMED:             %[[REM_RHS_PAR_MATMUL:.*]] = linalg.matmul
-// TRANSFORMED:             gml_st.set_yield %[[REM_RHS_PAR_MATMUL]]
+// TRANSFORMED:             %[[UPDATE:.*]] = tensor.insert_slice %[[REM_RHS_PAR_MATMUL]]
+// TRANSFORMED-NEXT:        scf.yield %[[UPDATE]]
 // TRANSFORMED:           gml_st.set_yield %[[REM_RHS_FOR]]
 
 // TRANSFORMED:         gml_st.parallel (%[[I:.*]], %[[J:.*]]) = (%[[IUB]], %[[C0]])
 // TRANSFORMED:           %[[REM_LHS_SLICE:.*]] = tensor.extract_slice %[[REM_RHS_PAR]]
 // TRANSFORMED:           %[[REM_LHS_FILL:.*]] = linalg.fill{{.*}}outs(%[[REM_LHS_SLICE]]
-// TRANSFORMED:           %[[REM_LHS_FOR:.*]] = gml_st.for (%[[K:.*]]) = (%[[C0]]) {{.*}} outs ({{.*}} = %[[REM_LHS_FILL]]:
+// TRANSFORMED:           %[[REM_LHS_FOR:.*]] = scf.for %[[K:.*]] = %[[C0]]
+// TRANSFORMED-SAME:        iter_args({{.*}} = %[[REM_LHS_FILL]])
 // TRANSFORMED:             %[[REM_LHS_PAR_MATMUL:.*]] = linalg.matmul
-// TRANSFORMED:             gml_st.set_yield %[[REM_LHS_PAR_MATMUL]]
+// TRANSFORMED:             %[[UPDATE:.*]] = tensor.insert_slice %[[REM_LHS_PAR_MATMUL]]
+// TRANSFORMED-NEXT:        scf.yield %[[UPDATE]]
 // TRANSFORMED:           gml_st.set_yield %[[REM_LHS_FOR]]
 
 // -----
@@ -89,15 +97,15 @@ func.func @matmul(%arg0: tensor<?x?xf32>, %arg1: tensor<?x?xf32>)
 
 // MARKED:         %[[C0:.*]] = arith.constant 0 : index
 // MARKED:         gml_st.parallel (%[[I:.*]], %[[J:.*]]) = (%[[C0]], %[[C0]]) to (%[[IUB:.*]], %[[JUB:.*]]) step
-// MARKED:           gml_st.for (%[[K:.*]]) = (%[[C0]]) to (%[[KUB:.*]]) step
+// MARKED:           scf.for %[[K:.*]] = %[[C0]] to %[[KUB:.*]] step
 // MARKED:           __perfectly_tiled_loop_label__
-// MARKED:           gml_st.for (%[[K:.*]]) = (%[[KUB]])
+// MARKED:           scf.for %[[K:.*]] = %[[KUB]]
 
 // MARKED:         gml_st.parallel (%[[I:.*]], %[[J:.*]]) = (%[[C0]], %[[JUB]])
-// MARKED:           gml_st.for (%[[K:.*]]) = (%[[C0]])
+// MARKED:           scf.for %[[K:.*]] = %[[C0]]
 
 // MARKED:         gml_st.parallel (%[[I:.*]], %[[J:.*]]) = (%[[IUB]], %[[C0]])
-// MARKED:           gml_st.for (%[[K:.*]]) = (%[[C0]])
+// MARKED:           scf.for %[[K:.*]] = %[[C0]]
 
 // -----
 
@@ -139,21 +147,25 @@ func.func @matmul_fuse_output(%arg0: tensor<?x?xf32>, %arg1: tensor<?x?xf32>,
 // CHECK:      %[[C0:.*]] = arith.constant 0 : index
 
 // CHECK:      gml_st.parallel (%[[I:.*]], %[[J:.*]]) = (%[[C0]], %[[C0]])
-// CHECK:        gml_st.for (%[[K:.*]]) = (%[[C0]])
+// CHECK:        scf.for %[[K:.*]] = %[[C0]]
 // CHECK:          %[[MATMUL:.*]] = linalg.matmul
-// CHECK:          gml_st.set_yield %[[MATMUL]]
+// CHECK:          %[[UPDATE:.*]] = tensor.insert_slice %[[MATMUL]]
+// CHECK-NEXT:     scf.yield %[[UPDATE]]
 
-// CHECK:        gml_st.for
+// CHECK:        scf.for
 // CHECK:          %[[MATMUL:.*]] = linalg.matmul
-// CHECK:          gml_st.set_yield %[[MATMUL]]
+// CHECK:          %[[UPDATE:.*]] = tensor.insert_slice %[[MATMUL]]
+// CHECK-NEXT:     scf.yield %[[UPDATE]]
 
-// CHECK:        gml_st.for (%[[K:.*]]) = (%[[C0]])
+// CHECK:        scf.for %[[K:.*]] = %[[C0]]
 // CHECK:          %[[MATMUL:.*]] = linalg.matmul
-// CHECK:          gml_st.set_yield %[[MATMUL]]
+// CHECK:          %[[UPDATE:.*]] = tensor.insert_slice %[[MATMUL]]
+// CHECK-NEXT:     scf.yield %[[UPDATE]]
 
-// CHECK:        gml_st.for
+// CHECK:        scf.for
 // CHECK:          %[[MATMUL:.*]] = linalg.matmul
-// CHECK:          gml_st.set_yield %[[MATMUL]]
+// CHECK:          %[[UPDATE:.*]] = tensor.insert_slice %[[MATMUL]]
+// CHECK-NEXT:     scf.yield %[[UPDATE]]
 
 // CHECK:        linalg.map
 // CHECK:        linalg.map
@@ -161,23 +173,27 @@ func.func @matmul_fuse_output(%arg0: tensor<?x?xf32>, %arg1: tensor<?x?xf32>,
 // CHECK:        gml_st.set_yield
 
 // CHECK:      gml_st.parallel
-// CHECK:        gml_st.for
+// CHECK:        scf.for
 // CHECK:          %[[MATMUL:.*]] = linalg.matmul
-// CHECK:          gml_st.set_yield %[[MATMUL]]
-// CHECK:        gml_st.for
+// CHECK:          %[[UPDATE:.*]] = tensor.insert_slice %[[MATMUL]]
+// CHECK-NEXT:     scf.yield %[[UPDATE]]
+// CHECK:        scf.for
 // CHECK:          %[[MATMUL:.*]] = linalg.matmul
-// CHECK:          gml_st.set_yield %[[MATMUL]]
+// CHECK:          %[[UPDATE:.*]] = tensor.insert_slice %[[MATMUL]]
+// CHECK-NEXT:     scf.yield %[[UPDATE]]
 // CHECK:        linalg.map
 // CHECK:        linalg.map
 // CHECK:        gml_st.set_yield
 
 // CHECK:      gml_st.parallel
-// CHECK:        gml_st.for
+// CHECK:        scf.for
 // CHECK:          %[[MATMUL:.*]] = linalg.matmul
-// CHECK:          gml_st.set_yield %[[MATMUL]]
-// CHECK:        gml_st.for
+// CHECK:          %[[UPDATE:.*]] = tensor.insert_slice %[[MATMUL]]
+// CHECK-NEXT:     scf.yield %[[UPDATE]]
+// CHECK:        scf.for
 // CHECK:          %[[MATMUL:.*]] = linalg.matmul
-// CHECK:          gml_st.set_yield %[[MATMUL]]
+// CHECK:          %[[UPDATE:.*]] = tensor.insert_slice %[[MATMUL]]
+// CHECK-NEXT:     scf.yield %[[UPDATE]]
 // CHECK:        linalg.map
 // CHECK:        linalg.map
 // CHECK:        gml_st.set_yield

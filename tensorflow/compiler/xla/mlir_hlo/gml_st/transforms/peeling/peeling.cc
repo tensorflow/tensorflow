@@ -23,13 +23,10 @@ limitations under the License.
 
 #include "gml_st/IR/gml_st_ops.h"
 #include "gml_st/transforms/transforms.h"
-#include "llvm/ADT/SmallPtrSet.h"
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
-#include "mlir/Dialect/Arith/Utils/Utils.h"
+#include "mlir/Dialect/SCF/Transforms/Transforms.h"
 #include "mlir/Dialect/SCF/Utils/AffineCanonicalizationUtils.h"
-#include "mlir/Dialect/Tensor/Utils/Utils.h"
 #include "mlir/IR/IRMapping.h"
-#include "mlir/IR/Matchers.h"
 
 namespace mlir {
 namespace gml_st {
@@ -195,6 +192,15 @@ FailureOr<ParallelOp> peelAndCanonicalizeGmlStLoop(RewriterBase &rewriter,
                                                    ParallelOp loopOp,
                                                    int64_t idx) {
   return peelAndCanonicalizeGmlStLoopImpl<ParallelOp>(rewriter, loopOp, idx);
+}
+
+SCFForPeelingResult peelSCFForOp(RewriterBase &rewriter, scf::ForOp loop) {
+  // Peeling fails, if the step divides the upper bound. In that case,
+  // we still want to return {loop, nullptr}.
+  scf::ForOp tailLoop;
+  return succeeded(scf::peelAndCanonicalizeForLoop(rewriter, loop, tailLoop))
+             ? SCFForPeelingResult{loop, tailLoop}
+             : SCFForPeelingResult{loop, nullptr};
 }
 
 }  // namespace gml_st

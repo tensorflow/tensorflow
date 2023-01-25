@@ -51,7 +51,8 @@ FailureOr<TilingResult> tileReduce(PatternRewriter &rewriter,
   TilingOptions opts;
   opts.setTileSizeComputationFn(tileSizes);
   opts.distribute = distribute;
-  return tile(opts, rewriter, cast<TilingInterface>(reduceOp.getOperation()));
+  return tileUsingGmlSt(opts, rewriter,
+                        cast<TilingInterface>(reduceOp.getOperation()));
 }
 
 SmallVector<int64_t> getParallelDimTileSizes(int64_t reductionDim,
@@ -412,7 +413,7 @@ struct Reduce2DTransformPattern : public OpRewritePattern<linalg::ReduceOp> {
       opts.distribute = true;
 
       tilingParallelDimsResult =
-          tile(opts, rewriter, cast<TilingInterface>(tilingRoot));
+          tileUsingGmlSt(opts, rewriter, cast<TilingInterface>(tilingRoot));
     } else {
       return failure();
     }

@@ -433,7 +433,7 @@ FailureOr<Operation*> tileAndFuseGreedily(
     PatternRewriter& rewriter, Operation* op,
     const mlir::gml_st::TilingOptions& opts, StringRef label,
     llvm::function_ref<bool(Operation*)> fuseFilterFn) {
-  auto tilingResult = tile(opts, rewriter, cast<TilingInterface>(op));
+  auto tilingResult = tileUsingGmlSt(opts, rewriter, cast<TilingInterface>(op));
   if (failed(tilingResult)) return failure();
 
   // If we did not tile (e.g. when all tile sizes are 0), do not replace

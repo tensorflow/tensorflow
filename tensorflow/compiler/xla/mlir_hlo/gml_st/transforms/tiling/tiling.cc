@@ -175,7 +175,7 @@ struct TilingPattern : public OpInterfaceRewritePattern<TilingInterface> {
     if (!filterFn || failed(filterFn(op)) || hasLabel(op, kTileAppliedLabel))
       return failure();
 
-    auto tilingResult = tile(options, rewriter, op);
+    auto tilingResult = tileUsingGmlSt(options, rewriter, op);
     if (failed(tilingResult)) return failure();
 
     // If we did not tile (e.g. when all tile sizes are 0), do not replace
@@ -243,8 +243,9 @@ struct TilingPass : public impl::TilingPassBase<TilingPass> {
 
 }  // namespace
 
-FailureOr<TilingResult> tile(const TilingOptions &options,
-                             PatternRewriter &rewriter, TilingInterface op) {
+FailureOr<TilingResult> tileUsingGmlSt(const TilingOptions &options,
+                                       PatternRewriter &rewriter,
+                                       TilingInterface op) {
   rewriter.setInsertionPoint(op);
   if (!options.tileSizeComputationFn) {
     return rewriter.notifyMatchFailure(
