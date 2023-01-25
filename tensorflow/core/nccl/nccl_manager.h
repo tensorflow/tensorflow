@@ -174,6 +174,10 @@ class NcclManager {
   void AddToAllGather(std::unique_ptr<Participant> participant,
                       const Context& context);
 
+  // Adds one participant to a reduce-scatter.
+  void AddToReduceScatter(std::unique_ptr<Participant> participant,
+                          const Context& context, ncclRedOp_t reduction_op);
+
   // AddBroadcastSend and AddBroadcastRecv combine to send data from one sender
   // to all receivers.
   void AddBroadcastSend(std::unique_ptr<Participant> participant,
@@ -210,6 +214,7 @@ class NcclManager {
     kBroadcast = 2,
     kReduce = 3,
     kAllGather = 4,
+    kReduceScatter = 5,
   };
   struct Collective;
   struct Communicator;

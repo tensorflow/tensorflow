@@ -133,6 +133,8 @@
 *   `tf.test`:
     *   Added `tf.test.experimental.sync_devices`, which is useful for
         accurately measuring performance in benchmarks.
+*   `tf.experimental.dtensor`:
+    *   Added experimental support to ReduceScatter fuse on GPU (NCCL).
 
 # Bug Fixes and Other Changes
 

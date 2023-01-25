@@ -449,6 +449,12 @@ void NcclManager::AddToAllGather(std::unique_ptr<Participant> participant,
                  ncclSum /* unused */);
 }
 
+void NcclManager::AddToReduceScatter(std::unique_ptr<Participant> participant,
+                                     const Context& context,
+                                     ncclRedOp_t reduction_op) {
+  AddParticipant(std::move(participant), context, kReduceScatter, reduction_op);
+}
+
 void NcclManager::AddBroadcastSend(std::unique_ptr<Participant> participant,
                                    const Context& context) {
   participant->root = true;
@@ -834,6 +840,27 @@ void NcclManager::LoopKernelLaunches(NcclStream* nccl_stream) {
         });
         nccl_result = ncclAllGather(sendbuff, recvbuff, p->input->NumElements(),
                                     data_type, nccl_comm, *cu_stream);
+        break;
+      }
+      case kReduceScatter: {
+        const void* sendbuff = p->input->tensor_data().data();
+        void* recvbuff = const_cast<char*>(p->output->tensor_data().data());
+
+        VLOG(2) << "call NcclReduceScatter collective_key "
+                << collective->collective_key << " participant " << p_idx
+                << " num_participants " << collective->participants.size()
+                << " sendbuff " << sendbuff << " recvbuff " << recvbuff
+                << " nccl_comm " << nccl_comm << " comm_stream " << comm_stream
+                << " cuda_stream " << cu_stream;
+        profiler::AnnotatedTraceMe traceme([&] {
+          return profiler::TraceMeEncode(
+              "ncclReduceScatter",
+              {{"buffer_size", ComputeBufferSize(p, collective->data_type)},
+               {"collective_type", "reduce_scatter"}});
+        });
+        nccl_result = ncclReduceScatter(
+            sendbuff, recvbuff, p->output->NumElements(), data_type,
+            collective->reduction_op, nccl_comm, *cu_stream);
         break;
       }
     }

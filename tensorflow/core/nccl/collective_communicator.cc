@@ -160,6 +160,18 @@ void NcclCommunicator::Enqueue(std::shared_ptr<CollectiveContext> col_ctx,
       }
       break;
     }
+    case REDUCE_SCATTER_COLLECTIVE: {
+      ncclRedOp_t reduction_op;
+      Status s =
+          ReductionOp(col_params->merge_op->type_string(), &reduction_op);
+      if (!s.ok()) {
+        participant->done_callback(s);
+        return;
+      }
+      nccl_manager_.AddToReduceScatter(std::move(participant), context,
+                                       reduction_op);
+      break;
+    }
     default: {
       participant->done_callback(errors::Internal("Unexpected CollectiveType ",
                                                   col_params->instance.type));
