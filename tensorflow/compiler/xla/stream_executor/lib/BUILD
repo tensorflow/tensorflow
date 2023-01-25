@@ -31,7 +31,6 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/types:span",
-        "//tensorflow/compiler/xla/stream_executor/platform",
         "//tensorflow/tsl/platform:env",
         "//tensorflow/tsl/platform:stacktrace",
         "//tensorflow/tsl/platform:status",

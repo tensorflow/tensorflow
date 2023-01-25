@@ -37,7 +37,7 @@ constexpr char kPortPlaceholder[] = "%port%";
 }
 
 GrpcDataServerBase::GrpcDataServerBase(
-    int port, const std::string& protocol, const std::string server_type,
+    int port, const std::string& protocol, const std::string& server_type,
     std::vector<std::unique_ptr<::grpc::ServerBuilderOption>> options)
     : requested_port_(port),
       protocol_(protocol),

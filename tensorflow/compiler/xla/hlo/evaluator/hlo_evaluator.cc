@@ -222,7 +222,7 @@ Status MakeEvalErrorDueToParamOrInfeed(const HloInstruction& eval_instruction) {
   absl::little_endian::Store32(
       const_cast<char*>(error_payload.data()),
       static_cast<uint32_t>(EvalErrorDetail::kDynamicValueDependence));
-  error.SetPayload(kEvalErrorDetailUrl, error_payload);
+  error.SetPayload(kEvalErrorDetailUrl, absl::Cord(error_payload));
   return error;
 }
 

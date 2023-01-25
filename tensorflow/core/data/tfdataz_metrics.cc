@@ -88,8 +88,9 @@ absl::Duration ApproximateLatencyEstimator::GetAverageLatency(Duration duration)
   return absl::Duration(absl::Microseconds(interval_latency)) / interval_count;
 }
 
-TfDatazMetricsCollector::TfDatazMetricsCollector(const Env& env)
-    : latency_estimator_(env) {}
+TfDatazMetricsCollector::TfDatazMetricsCollector(const Env& env,
+                                                 IteratorBase* iterator)
+    : iterator_(iterator), latency_estimator_(env) {}
 
 void TfDatazMetricsCollector::RecordGetNextLatency(
     int64_t get_next_latency_usec) {
@@ -111,6 +112,10 @@ absl::Duration TfDatazMetricsCollector::GetAverageLatencyForLastFiveMinutes() {
 absl::Duration TfDatazMetricsCollector::GetAverageLatencyForLastSixtyMinutes() {
   return latency_estimator_.GetAverageLatency(
       ApproximateLatencyEstimator::Duration::kSixtyMinutes);
+}
+
+int64_t TfDatazMetricsCollector::GetIteratorTotalMemoryUsage() {
+  return iterator_->TotalBufferedBytes();
 }
 
 namespace {

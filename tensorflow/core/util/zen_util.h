@@ -23,7 +23,7 @@ limitations under the License.
 
 namespace tensorflow {
 
-int64_t GetMempool() {
+inline int64_t GetMempool() {
   static absl::once_flag once;
   static int64_t mempool = 1;
   absl::call_once(once, [&] {
@@ -34,7 +34,7 @@ int64_t GetMempool() {
   return mempool;
 }
 
-bool IsBlockedFormatEnabled() {
+inline bool IsBlockedFormatEnabled() {
   static absl::once_flag once;
   static bool blocked_format = false;
   absl::call_once(once, [&] {

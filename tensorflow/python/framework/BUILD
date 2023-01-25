@@ -1094,6 +1094,8 @@ py_library(
     name = "tensor_conversion_registry",
     srcs = ["tensor_conversion_registry.py"],
     srcs_version = "PY3",
+    # TODO(b/266747022): remove extra visibility
+    visibility = visibility + ["//learning/brain/experimental:__subpackages__"],
     deps = [
         "//tensorflow/python/eager:context",
     ],

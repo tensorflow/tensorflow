@@ -177,7 +177,7 @@ TEST(StatusGroup, AggregateWithMultipleErrorStatus) {
 
 TEST(Status, InvalidPayloadGetsIgnored) {
   Status s = Status();
-  s.SetPayload("Invalid", "Invalid Val");
+  s.SetPayload("Invalid", absl::Cord("Invalid Val"));
   ASSERT_FALSE(s.GetPayload("Invalid").has_value());
   bool is_err_erased = s.ErasePayload("Invalid");
   ASSERT_EQ(is_err_erased, false);
@@ -185,15 +185,15 @@ TEST(Status, InvalidPayloadGetsIgnored) {
 
 TEST(Status, SetPayloadSetsOrUpdatesIt) {
   Status s(error::INTERNAL, "Error message");
-  s.SetPayload("Error key", "Original");
+  s.SetPayload("Error key", absl::Cord("Original"));
   ASSERT_EQ(s.GetPayload("Error key"), absl::Cord("Original"));
-  s.SetPayload("Error key", "Updated");
+  s.SetPayload("Error key", absl::Cord("Updated"));
   ASSERT_EQ(s.GetPayload("Error key"), absl::Cord("Updated"));
 }
 
 TEST(Status, ErasePayloadRemovesIt) {
   Status s(error::INTERNAL, "Error message");
-  s.SetPayload("Error key", "Original");
+  s.SetPayload("Error key", absl::Cord("Original"));
 
   bool is_err_erased = s.ErasePayload("Error key");
   ASSERT_EQ(is_err_erased, true);

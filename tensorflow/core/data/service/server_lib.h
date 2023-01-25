@@ -44,7 +44,7 @@ class GrpcDataServerBase {
   // found by calling `BoundPort()`.
   GrpcDataServerBase(
       int requested_port, const std::string& protocol,
-      const std::string server_type,
+      const std::string& server_type,
       std::vector<std::unique_ptr<::grpc::ServerBuilderOption>> options = {});
   virtual ~GrpcDataServerBase() = default;
 

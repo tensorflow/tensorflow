@@ -18,7 +18,7 @@ limitations under the License.
 #include <utility>
 
 #include "absl/time/time.h"
-#include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/util/fake_clock_env.h"
@@ -41,7 +41,8 @@ class TfDatazMetricsTest : public ::testing::Test {
  protected:
   void SetUp() override {
     env_ = std::make_unique<FakeClockEnv>(Env::Default());
-    tfdataz_metrics_ = std::make_unique<TfDatazMetricsCollector>(*env_);
+    tfdataz_metrics_ =
+        std::make_unique<TfDatazMetricsCollector>(*env_, iterator_.get());
   }
 
   void TearDown() override {
@@ -49,6 +50,7 @@ class TfDatazMetricsTest : public ::testing::Test {
     tfdataz_metrics_.reset();
   }
 
+  std::unique_ptr<IteratorBase> iterator_;
   std::unique_ptr<FakeClockEnv> env_;
   std::unique_ptr<TfDatazMetricsCollector> tfdataz_metrics_;
 };
@@ -184,10 +186,11 @@ class ScopedTfDataMetricsRegistration {
 };
 
 TEST(TfDatazMetricsRegistryTest, Register) {
-  auto collector_one =
-      std::make_shared<TfDatazMetricsCollector>(*Env::Default());
-  auto collector_two =
-      std::make_shared<TfDatazMetricsCollector>(*Env::Default());
+  std::unique_ptr<IteratorBase> iterator;
+  auto collector_one = std::make_shared<TfDatazMetricsCollector>(
+      *Env::Default(), iterator.get());
+  auto collector_two = std::make_shared<TfDatazMetricsCollector>(
+      *Env::Default(), iterator.get());
 
   ScopedTfDataMetricsRegistration scoped_registration_one(collector_one);
   ScopedTfDataMetricsRegistration scoped_registration_two(collector_two);
@@ -196,12 +199,13 @@ TEST(TfDatazMetricsRegistryTest, Register) {
 }
 
 TEST(TfDatazMetricsRegistryTest, Deregister) {
-  auto collector_one =
-      std::make_shared<TfDatazMetricsCollector>(*Env::Default());
-  auto collector_two =
-      std::make_shared<TfDatazMetricsCollector>(*Env::Default());
-  auto collector_three =
-      std::make_shared<TfDatazMetricsCollector>(*Env::Default());
+  std::unique_ptr<IteratorBase> iterator;
+  auto collector_one = std::make_shared<TfDatazMetricsCollector>(
+      *Env::Default(), iterator.get());
+  auto collector_two = std::make_shared<TfDatazMetricsCollector>(
+      *Env::Default(), iterator.get());
+  auto collector_three = std::make_shared<TfDatazMetricsCollector>(
+      *Env::Default(), iterator.get());
   ScopedTfDataMetricsRegistration scoped_registration_one(collector_one);
   ScopedTfDataMetricsRegistration scoped_registration_two(collector_two);
   ScopedTfDataMetricsRegistration scoped_registration_three(collector_three);

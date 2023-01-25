@@ -9,6 +9,7 @@ xla_cc_binary(
         "//tensorflow/compiler/xla:debug_options_flags",
         "//tensorflow/compiler/xla/mlir/runtime/ir:rt",
         "//tensorflow/compiler/xla/mlir/tools/mlir_replay/public:compiler_trace_proto_cc",
+        "//tensorflow/compiler/xla/mlir/tools/mlir_replay/public:compiler_trace_proto_cc_impl",
         "//tensorflow/compiler/xla/mlir/tools/mlir_replay/public:execution_trace_proto_cc",
         "//tensorflow/compiler/xla/mlir_hlo:gml_st",
         "//tensorflow/compiler/xla/mlir_hlo:hlo_dialect_registration",

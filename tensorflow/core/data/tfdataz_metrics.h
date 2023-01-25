@@ -25,6 +25,7 @@ limitations under the License.
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/time/time.h"
+#include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/thread_annotations.h"
@@ -95,7 +96,7 @@ class TfDatazMetricsCollector {
   // We only collect metrics for CPU devices. This is a heuristic to avoid
   // collecting metrics for device-side iterators created by the multi-device
   // iterator mechanism.
-  explicit TfDatazMetricsCollector(const Env& env);
+  TfDatazMetricsCollector(const Env& env, IteratorBase* iterator);
 
   // Records `GetNext` call latency.
   void RecordGetNextLatency(int64_t get_next_latency_usec);
@@ -109,7 +110,13 @@ class TfDatazMetricsCollector {
   // Returns the average `GetNext` latency for past 60 minutes.
   absl::Duration GetAverageLatencyForLastSixtyMinutes();
 
+  // Returns the total memory (in bytes) used by the iterator.
+  // Total memory used by the iterator includes the total number of bytes
+  // buffered in all nodes in the subtree.
+  int64_t GetIteratorTotalMemoryUsage();
+
  private:
+  IteratorBase* iterator_;  // not owned
   ApproximateLatencyEstimator latency_estimator_;
 };
 

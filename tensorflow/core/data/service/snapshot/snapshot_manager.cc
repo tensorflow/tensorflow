@@ -187,21 +187,8 @@ Status SnapshotManager::ReadOnDiskSource(
 
     // `split_filename` must have this format:
     // "split_<local_split_index>_<global_split_index>".
-    std::vector<std::string> tokens = absl::StrSplit(split_filename, '_');
-    int64_t local_split_index;
-    int64_t global_split_index;
-    if (tokens.size() != 3 ||
-        !absl::SimpleAtoi(tokens[1], &local_split_index) ||
-        local_split_index < 0 ||
-        !absl::SimpleAtoi(tokens[2], &global_split_index) ||
-        global_split_index < 0) {
-      return InvalidArgument("can't parse the name of ", split_path);
-    }
-    if (local_split_index > global_split_index) {
-      return InvalidArgument(
-          "found conflict between local split index and global split index in ",
-          "name of ", split_path);
-    }
+    TF_ASSIGN_OR_RETURN(auto split_index, SplitIndex(split_filename));
+    auto [local_split_index, global_split_index] = split_index;
     if (local_split_index > split_filenames.size() - 1) {
       return InvalidArgument(
           "found conflict between the number of splits and name of ",
