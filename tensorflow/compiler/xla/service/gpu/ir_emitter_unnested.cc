@@ -131,7 +131,6 @@ limitations under the License.
 #include "tensorflow/tsl/platform/errors.h"
 #include "tensorflow/tsl/platform/human_readable_json.h"
 #include "tensorflow/tsl/platform/logging.h"
-#include "tensorflow/tsl/profiler/lib/nvtx_utils.h"
 #include "tensorflow/tsl/protobuf/dnn.pb.h"
 
 #if GOOGLE_CUDA
@@ -4569,12 +4568,8 @@ static bool CanVectorizeReduction(
     se::CudaComputeCapability cc, mlir::lmhlo::FusionOp fusion,
     HloComputation* fused_computation,
     const ReductionDimensions& reduction_dimensions, int num_threads_x,
-    Vector3 reduction_tiling, const Shape& input_shape, int64_t shmem_usage,
+    Vector3 reduction_tiling, const Shape& input_shape,
     bool reduction_is_race_free) {
-  // Vectorization might cause us to run out of budget.
-  if (shmem_usage * 2 > kSharedMemoryBudgetInBytes) {
-    return false;
-  }
   if (!reduction_dimensions.is_row_reduction) {
     return IsUnrollingColumnReductionBeneficial(
         fusion, fused_computation, input_shape,
@@ -4678,10 +4673,15 @@ StatusOr<ReductionCodegenInfo> IrEmitterUnnested::ComputeReductionCodegenInfo(
                                             : kLinearIndexingX;
   int64_t shmem_usage =
       ProjectedShmemUsageBytes(reduction_dimensions, instr_index_groups);
+  const int64_t shmem_budget =
+      ir_emitter_context_->gpu_device_info().shared_memory_per_block;
   bool reduction_is_race_free = ReductionIsRaceFree(reduction_dimensions);
-  bool vectorize = CanVectorizeReduction(
-      cc, fusion, fused_computation, reduction_dimensions, num_threads_x,
-      reduction_tiling, input_shape, shmem_usage, reduction_is_race_free);
+  bool vectorize =
+      // Vectorization might cause us to run out of budget.
+      (shmem_usage * 2 <= shmem_budget) &&
+      CanVectorizeReduction(cc, fusion, fused_computation, reduction_dimensions,
+                            num_threads_x, reduction_tiling, input_shape,
+                            reduction_is_race_free);
   int vector_size = vectorize ? 2 : 1;
 
   int num_partial_results = 1;
@@ -4707,7 +4707,7 @@ StatusOr<ReductionCodegenInfo> IrEmitterUnnested::ComputeReductionCodegenInfo(
     }
   }
 
-  while (shmem_usage * num_partial_results > kSharedMemoryBudgetInBytes) {
+  while (shmem_usage * num_partial_results > shmem_budget) {
     num_partial_results /= 2;
     if (num_partial_results == 1) {
       break;
