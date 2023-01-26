@@ -892,25 +892,14 @@ class DefunTest(test.TestCase, parameterized.TestCase):
       return a + b
 
     with self.assertRaisesRegex(
-        TypeError,
-        (
-            'Since input_signature is defined, keyword-only parameter `b` must'
-            ' have a default value'
-        ),
-    ):
+        ValueError, "keyword-only arguments must have default values.*'b'"):
       quarantine.defun_with_attributes(test_func, input_signature=signature)
 
     test_func_lambda = lambda a, *, b: a + b
     with self.assertRaisesRegex(
-        TypeError,
-        (
-            'Since input_signature is defined, keyword-only parameter `b` must'
-            ' have a default value'
-        ),
-    ):
+        ValueError, "keyword-only arguments must have default values.*'b'"):
       quarantine.defun_with_attributes(
-          test_func_lambda, input_signature=signature
-      )
+          test_func_lambda, input_signature=signature)
 
   def testTensorKeywordArguments(self):
 

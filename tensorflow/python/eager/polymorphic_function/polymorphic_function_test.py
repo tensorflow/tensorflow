@@ -1677,9 +1677,8 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     with self.assertRaisesRegex(TypeError, 'missing a required argument'):
       defined()
 
-    with self.assertRaisesRegex(
-        TypeError, '.*was expected to be of type.* but is.*'
-    ):
+    with self.assertRaisesRegex(ValueError,
+                                'inputs incompatible with input_signature'):
       defined.get_concrete_function(
           tensor_spec.TensorSpec(shape=(3,), dtype=dtypes.float32))
 
