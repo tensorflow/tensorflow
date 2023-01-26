@@ -28,7 +28,6 @@ limitations under the License.
 
 namespace tensorflow {
 namespace quantization {
-namespace internal {
 
 // Names of the TensorFlow Quantization steps. These names are used primarily
 // for debugging.
@@ -71,7 +70,6 @@ absl::StatusOr<ExportedModel> QuantizePtqModelPostCalibration(
     const QuantizationOptions& quant_opts,
     const absl::flat_hash_map<std::string, std::string>& function_aliases);
 
-}  // namespace internal
 }  // namespace quantization
 }  // namespace tensorflow
 

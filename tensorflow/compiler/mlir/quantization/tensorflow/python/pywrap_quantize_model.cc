@@ -36,6 +36,10 @@ namespace {
 using ::tensorflow::calibrator::CalibratorSingleton;
 using ::tensorflow::quantization::ExportedModel;
 using ::tensorflow::quantization::QuantizationOptions;
+using ::tensorflow::quantization::QuantizePtqDynamicRange;
+using ::tensorflow::quantization::QuantizePtqModelPostCalibration;
+using ::tensorflow::quantization::QuantizePtqModelPreCalibration;
+using ::tensorflow::quantization::QuantizeQatModel;
 
 // Serializes an ExportedModel. Raises python ValueError if serialization fails.
 std::string Serialize(const ExportedModel& exported_model) {
@@ -159,8 +163,8 @@ PYBIND11_MODULE(pywrap_quantize_model, m) {
          const std::unordered_set<std::string>& tags,
          const QuantizationOptions& quant_opts)
           -> absl::StatusOr<ExportedModel> {
-        return tensorflow::quantization::internal::QuantizeQatModel(
-            saved_model_path, signature_keys, tags, quant_opts);
+        return QuantizeQatModel(saved_model_path, signature_keys, tags,
+                                quant_opts);
       },
       R"pbdoc(
       Returns serialized ExportedModel that contains the quantized model's
@@ -177,8 +181,8 @@ PYBIND11_MODULE(pywrap_quantize_model, m) {
          const std::unordered_set<std::string>& tags,
          const QuantizationOptions& quant_opts)
           -> absl::StatusOr<ExportedModel> {
-        return tensorflow::quantization::internal::QuantizePtqDynamicRange(
-            saved_model_path, signature_keys, tags, quant_opts);
+        return QuantizePtqDynamicRange(saved_model_path, signature_keys, tags,
+                                       quant_opts);
       },
       R"pbdoc(
       Returns serialized ExportedModel that contains the quantized model's
@@ -196,9 +200,9 @@ PYBIND11_MODULE(pywrap_quantize_model, m) {
          const QuantizationOptions& quant_opts,
          const absl::flat_hash_map<std::string, std::string>& function_aliases)
           -> absl::StatusOr<ExportedModel> {
-        return tensorflow::quantization::internal::
-            QuantizePtqModelPreCalibration(saved_model_path, signature_keys,
-                                           tags, quant_opts, function_aliases);
+        return QuantizePtqModelPreCalibration(saved_model_path, signature_keys,
+                                              tags, quant_opts,
+                                              function_aliases);
       },
       R"pbdoc(
       Returns serialized ExportedModel that contains the model's GraphDef and
@@ -217,9 +221,9 @@ PYBIND11_MODULE(pywrap_quantize_model, m) {
          const QuantizationOptions& quant_opts,
          const absl::flat_hash_map<std::string, std::string>& function_aliases)
           -> absl::StatusOr<ExportedModel> {
-        return tensorflow::quantization::internal::
-            QuantizePtqModelPostCalibration(saved_model_path, signature_keys,
-                                            tags, quant_opts, function_aliases);
+        return QuantizePtqModelPostCalibration(saved_model_path, signature_keys,
+                                               tags, quant_opts,
+                                               function_aliases);
       },
       R"pbdoc(
       Returns serialized ExportedModel that contains the quantized model's

@@ -65,7 +65,6 @@ limitations under the License.
 
 namespace tensorflow {
 namespace quantization {
-namespace internal {
 namespace {
 
 using ::mlir::tf_saved_model::kTfSavedModelInitializerInitType;
@@ -666,6 +665,5 @@ absl::StatusOr<ExportedModel> QuantizePtqDynamicRange(
                                           /*function_aliases=*/{});
 }
 
-}  // namespace internal
 }  // namespace quantization
 }  // namespace tensorflow
