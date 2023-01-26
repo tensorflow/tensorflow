@@ -524,6 +524,7 @@ cc_library(
         ":utils",
         ":worker_thread",
         "//tensorflow/compiler/xla:literal",
+        "//tensorflow/compiler/xla:literal_util",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:util",
@@ -561,9 +562,13 @@ xla_cc_test(
     srcs = ["tfrt_cpu_pjrt_client_test.cc"],
     deps = [
         ":tfrt_cpu_pjrt_client",
+        "//tensorflow/compiler/xla:literal",
+        "//tensorflow/compiler/xla:literal_util",
         "//tensorflow/compiler/xla/service:custom_call_status_public_headers",
         "//tensorflow/compiler/xla/service:custom_call_target_registry",
         "//tensorflow/compiler/xla/service:hlo_parser",
+        "//tensorflow/tsl/platform:env",
+        "//tensorflow/tsl/platform:test",
         "@com_google_googletest//:gtest_main",
     ],
 )
