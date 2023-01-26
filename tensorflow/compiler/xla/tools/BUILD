@@ -304,10 +304,20 @@ xla_cc_binary(
     ]),
 )
 
-sh_test(
-    name = "interactive_graphviz_build_only_test",
-    srcs = ["interactive_graphviz_test.sh"],
-    data = [":interactive_graphviz"],
+xla_cc_test(
+    name = "interactive_graphviz_bin_test",
+    srcs = ["interactive_graphviz_bin_test.cc"],
+    data = [
+        "add.hlo",
+        ":interactive_graphviz",
+    ],
+    deps = [
+        "//tensorflow/tsl/platform:path",
+        "//tensorflow/tsl/platform:subprocess",
+        "//tensorflow/tsl/platform:test",
+        "//tensorflow/tsl/platform:test_main",
+        "@com_google_absl//absl/strings",
+    ],
 )
 
 cc_library(
