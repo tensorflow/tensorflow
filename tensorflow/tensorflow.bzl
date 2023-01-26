@@ -1491,7 +1491,10 @@ def tf_cc_test(
                 "-lpthread",
                 "-lm",
             ],
-            clean_dep("//third_party/compute_library:build_with_acl"): ["-fopenmp"],
+            clean_dep("//third_party/compute_library:build_with_acl"): [
+                "-fopenmp",
+                "-lm",
+            ],
         }) + linkopts + _rpath_linkopts(name),
         deps = deps + tf_binary_dynamic_kernel_deps(kernels) + if_mkl_ml(
             [
@@ -1531,7 +1534,10 @@ def tf_cc_shared_test(
                 "-lpthread",
                 "-lm",
             ],
-            clean_dep("//third_party/compute_library:build_with_acl"): ["-fopenmp"],
+            clean_dep("//third_party/compute_library:build_with_acl"): [
+                "-fopenmp",
+                "-lm",
+            ],
         }) + linkopts + _rpath_linkopts(name),
         deps = deps + tf_binary_dynamic_kernel_deps(kernels) + if_mkl_ml(
             [
