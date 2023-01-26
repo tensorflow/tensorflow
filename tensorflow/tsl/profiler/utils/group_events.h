@@ -205,10 +205,6 @@ class EventForest {
   // iteraton to `tf_loop_root_events_`.
   void ProcessTensorFlowLoop();
 
-  // Processes the worker thread by connecting a FunctionRun with the following
-  // eager ops (e.g., for Keras callback).
-  void ProcessWorker();
-
   EventNodeMap event_node_map_;
   std::vector<XPlaneVisitor> visitors_;
   // std::deque for pointer stability.

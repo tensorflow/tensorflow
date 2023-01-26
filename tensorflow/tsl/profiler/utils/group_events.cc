@@ -163,15 +163,6 @@ void ConnectContextGroups(const ContextGroupMap& context_groups) {
   }
 }
 
-bool HasFunctionRun(EventNode* event_node) {
-  for (EventNode* child : event_node->GetChildren()) {
-    if (child->GetEventVisitor().Type() == HostEventType::kFunctionRun) {
-      return true;
-    }
-  }
-  return false;
-}
-
 bool IsImplicitRootEvent(const XEventVisitor& event) {
   static const auto* const kImplicitRootEvents =
       new absl::flat_hash_set<int64_t>{
@@ -602,25 +593,6 @@ void EventForest::ProcessTensorFlowLoop() {
   }
 }
 
-void EventForest::ProcessWorker() {
-  auto eager_kernel_execute_event_list =
-      gtl::FindOrNull(event_node_map_, HostEventType::kEagerKernelExecute);
-  if (!eager_kernel_execute_event_list) return;
-  // The last EagerKernelExecute with a FunctionRun child.
-  EventNode* root_event = nullptr;
-  for (EventNode& eager_kernel_execute_event :
-       *eager_kernel_execute_event_list) {
-    if (HasFunctionRun(&eager_kernel_execute_event)) {
-      // A function op becomes a new root.
-      root_event = &eager_kernel_execute_event;
-      root_event->SetRootLevel(1);
-    } else if (root_event) {
-      // Add non-function eager ops as child.
-      root_event->AddChild(&eager_kernel_execute_event);
-    }
-  }
-}
-
 void EventForest::AddPlane(
     const std::function<XPlaneVisitor(const XPlane*)> visitor_factory,
     XPlane* plane) {
@@ -732,7 +704,6 @@ void EventForest::ConnectTfDataEvents() {
 void EventForest::GroupEvents() {
   ProcessTfDataSteps();
   ProcessTensorFlowLoop();
-  ProcessWorker();
   CreateEventGroups();
   MarkEagerlyExecutedGpuKernels();
   MarkEagerlyExecutedCpuTfOps();
