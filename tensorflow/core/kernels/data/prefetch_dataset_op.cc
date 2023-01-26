@@ -434,6 +434,10 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
         *out_tensors = std::move(buffer_.front().value);
         ctx->MergeCheckpoint(buffer_.front().checkpoint);
         RecordBufferDequeue(ctx, *out_tensors);
+        // Tells the legacy prefetch autotuner the size of an element.
+        if (legacy_autotune_ && auto_tuner_.element_size() == 0) {
+          auto_tuner_.RecordElementSize(GetAllocatedBytes(*out_tensors));
+        }
       } else {
         // If status not ok, we still record the dequeue event to make sure each
         // enqueue event is paired with a dequeue event even in the presence of
