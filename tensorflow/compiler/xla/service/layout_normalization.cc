@@ -577,6 +577,28 @@ class LayoutNormalizationVisitor : public DfsHloRewriteVisitor {
     return DefaultAction(hlo);
   }
 
+  // Pushes down bitcast across the ternary select operation: same logic as
+  // HandleElementwiseBinary.
+  Status HandleSelect(HloInstruction* hlo) override {
+    Shape s = hlo->shape();
+    HloInstruction* p = hlo->mutable_operand(0);
+    HloInstruction* i1 = hlo->mutable_operand(1);
+    HloInstruction* i2 = hlo->mutable_operand(2);
+    TF_RET_CHECK(p->shape().layout() == s.layout());
+    TF_RET_CHECK(i1->shape().layout() == s.layout());
+    TF_RET_CHECK(i2->shape().layout() == s.layout());
+
+    TF_ASSIGN_OR_RETURN(HloInstruction * p_0, GetNormalizedInput(p));
+    TF_ASSIGN_OR_RETURN(HloInstruction * i1_0, GetNormalizedInput(i1));
+    TF_ASSIGN_OR_RETURN(HloInstruction * i2_0, GetNormalizedInput(i2));
+
+    TF_ASSIGN_OR_RETURN(HloInstruction * new_select,
+                        MakeSelectHlo(p_0, i1_0, i2_0, /*derived_from=*/hlo));
+    auto bc_to_orig = MakeBitcastHlo(new_select, s);
+    TF_RETURN_IF_ERROR(ReplaceInstruction(hlo, bc_to_orig));
+    return OkStatus();
+  }
+
  private:
   bool IsZeroPadding(const PaddingConfig::PaddingConfigDimension& c) {
     return c.edge_padding_high() == 0 && c.edge_padding_low() == 0 &&

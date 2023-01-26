@@ -558,5 +558,21 @@ ENTRY main {
   )");
 }
 
+TEST_F(LayoutNormalizationTest, Select) {
+  const char* hlo = R"(
+HloModule module
+
+ENTRY main {
+  p0 = f32[1,17,9,9]{1,3,2,0} parameter(0)
+  p1 = f32[1,17,9,9]{1,3,2,0} parameter(1)
+  b = pred[1,17,9,9]{1,3,2,0} parameter(2)
+  ROOT out = f32[1,17,9,9]{1,3,2,0} select(b, p0, p1), metadata={op_name="test"}
+}
+)";
+  CheckLayoutNormalization(hlo, R"(
+// CHECK: f32[9,9,17]{2,1,0} select({{.*}}, {{.*}}, {{.*}}), metadata={op_name="test"}
+)");
+}
+
 }  // namespace
 }  // namespace xla
