@@ -880,7 +880,8 @@ GpuConvAlgorithmPicker::PickBestAlgorithmNoCacheCuda(
   }
 
   TF_ASSIGN_OR_RETURN(AutotuneResult selected_algorithm,
-                      PickBestResult(profile_results, *instr));
+                      PickBestResult(profile_results, instr->ToString(),
+                                     instr->GetModule()->config()));
   return selected_algorithm;
 }
 #endif
@@ -996,7 +997,8 @@ GpuConvAlgorithmPicker::PickBestAlgorithmNoCacheRocm(
   }
 
   TF_ASSIGN_OR_RETURN(AutotuneResult selected_algorithm,
-                      PickBestResult(profile_results, *instr));
+                      PickBestResult(profile_results, instr->ToString(),
+                                     instr->GetModule()->config()));
   return selected_algorithm;
 }
 
