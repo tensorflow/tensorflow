@@ -784,6 +784,19 @@ class PoolingTest(test.TestCase, parameterized.TestCase):
         t = self.evaluate(
             nn_ops.max_pool(t, ksize=[1, 1, 2, 1], strides=1, padding="VALID"))
 
+  @test_util.run_in_graph_and_eager_modes
+  def testMaxPoolWithArgmaxKsizeOverflow(self):
+    with self.assertRaisesRegex(
+        (ValueError, errors_impl.InvalidArgumentError),
+        "ksize must be a postive int32 value"):
+      with self.cached_session():
+        t = gen_nn_ops.max_pool_with_argmax(
+            input=[[[[1, 1, 1]]]],
+            ksize=[1, -2**31, 4, 1],
+            strides=[1, 1000, 1, 7],
+            padding="SAME")
+        self.evaluate(t)
+
   # Tests for DepthwiseMaxPooling on CPU only.
   @parameterized.parameters(
       GetTestConfigsDicts(
@@ -1069,9 +1082,9 @@ class PoolingTest(test.TestCase, parameterized.TestCase):
           t = constant_op.constant(tensor_input, shape=[2, 2, 2, 1])
           argmax_t = constant_op.constant(
               [0, 1, 3, 5, 0, 2, 6, 8], shape=[2, 2, 2, 1], dtype=dtypes.int64)
-          with self.assertRaisesRegexp(
-              errors_impl.UnimplementedError, "Determinism is not yet supported "
-              "for MaxPoolGradWithArgmax."):
+          with self.assertRaisesRegex(
+              errors_impl.UnimplementedError, "Determinism is not yet supported"
+              " for MaxPoolGradWithArgmax."):
             out_op = gen_nn_ops.max_pool_grad_with_argmax(
                 orig_in,
                 t,
@@ -2335,7 +2348,7 @@ class PoolingTest(test.TestCase, parameterized.TestCase):
 
   @test_util.run_deprecated_v1
   def testEdgeCasesRaiseErrors(self):
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         ValueError, "NCHW_VECT_C.*is not supported with "
         "explicit padding|XLA does not support pooling ops with explicit "
         "padding"):
@@ -2345,7 +2358,7 @@ class PoolingTest(test.TestCase, parameterized.TestCase):
           strides=[1, 2, 2, 1],
           padding=[[0, 0], [0, 1], [0, 1], [0, 0]],
           data_format="NCHW_VECT_C")
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         ValueError, "Explicit padding is not supported with an input "
                     "tensor of rank 5"):
       nn_ops.max_pool_v2(
@@ -2354,7 +2367,7 @@ class PoolingTest(test.TestCase, parameterized.TestCase):
           strides=[1, 2, 2, 1, 1],
           padding=[[0, 0], [0, 1], [0, 1], [0, 0]],
           data_format="NCHW")
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         ValueError, "Attr 'padding' of 'MaxPoolV2' Op passed "
                     "string 'EXPLICIT'"):
       gen_nn_ops.max_pool_v2(
@@ -2367,7 +2380,7 @@ class PoolingTest(test.TestCase, parameterized.TestCase):
   @test_util.run_deprecated_v1
   def testEdgeCasesExcessPadding(self):
     with self.session(use_gpu=test.is_gpu_available()) as sess:
-      with self.assertRaisesRegexp(
+      with self.assertRaisesRegex(
           (errors_impl.UnimplementedError, errors_impl.InvalidArgumentError),
           "Right padding 2 needs to be smaller than the window size 2|"
           "XLA does not support pooling ops with explicit padding"):
@@ -2385,7 +2398,7 @@ class PoolingTest(test.TestCase, parameterized.TestCase):
   @test_util.run_deprecated_v1
   def testNegativePadding(self):
     with self.session(use_gpu=test.is_gpu_available()) as sess:
-      with self.assertRaisesRegexp(
+      with self.assertRaisesRegex(
           ValueError, "All elements of explicit_paddings must be "
                       "nonnegative for"):
         input_sizes = [1, 3, 3, 1]
@@ -2402,7 +2415,7 @@ class PoolingTest(test.TestCase, parameterized.TestCase):
   @test_util.run_deprecated_v1
   def testExplicitPaddingBatch(self):
     with self.session(use_gpu=test.is_gpu_available()) as sess:
-      with self.assertRaisesRegexp(
+      with self.assertRaisesRegex(
           ValueError, "Nonzero explicit padding in the batch or depth "
                       "dimensions is not supported"):
         input_sizes = [1, 3, 3, 1]
