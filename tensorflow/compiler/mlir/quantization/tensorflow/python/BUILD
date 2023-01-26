@@ -96,11 +96,7 @@ cc_library(
 # Exports python symbols via pybind11.
 tf_python_pybind_extension(
     name = "pywrap_quantize_model",
-    srcs = [
-        "pywrap_quantize_model.cc",
-        "quantize_model_wrapper.cc",
-        "quantize_model_wrapper.h",  # Private header.
-    ],
+    srcs = ["pywrap_quantize_model.cc"],
     # All deps must be header-only.
     deps = [
         ":quantize_model_cc",

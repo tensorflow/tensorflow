@@ -13,23 +13,27 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 #include <cstring>
+#include <optional>
 #include <string>
 #include <unordered_set>
+#include <utility>
 #include <vector>
 
+#include "absl/strings/str_format.h"
 #include "pybind11/pybind11.h"
 #include "pybind11/pytypes.h"
 #include "pybind11/stl.h"
 #include "pybind11_abseil/absl_casters.h"  // from @pybind11_abseil
 #include "pybind11_abseil/status_casters.h"  // from @pybind11_abseil
+#include "tensorflow/compiler/mlir/quantization/tensorflow/calibrator/calibrator_singleton.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/exported_model.pb.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/python/quantize_model.h"
-#include "tensorflow/compiler/mlir/quantization/tensorflow/python/quantize_model_wrapper.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/quantization_options.pb.h"
 #include "tensorflow/python/lib/core/pybind11_lib.h"
 
 namespace {
 
+using ::tensorflow::calibrator::CalibratorSingleton;
 using ::tensorflow::quantization::ExportedModel;
 using ::tensorflow::quantization::QuantizationOptions;
 
@@ -45,6 +49,21 @@ std::string Serialize(const ExportedModel& exported_model) {
   }
 
   return exported_model_serialized;
+}
+
+// Retrieves collected min / max values of a `CustomAggregator` node from the
+// singleton. `id` is the identifier of the `CustomAggregator`.
+std::pair<float, float> GetCalibratorMinMax(const absl::string_view id) {
+  std::optional<std::pair<float, float>> min_max =
+      CalibratorSingleton::GetMinMax(id);
+  if (min_max == std::nullopt) {
+    throw py::value_error(
+        absl::StrFormat("Calibrated data does not exist. Cannot find min/max "
+                        "value for id: '%s'",
+                        id));
+  }
+
+  return *min_max;
 }
 
 }  // namespace
@@ -103,32 +122,30 @@ PYBIND11_MODULE(pywrap_quantize_model, m) {
   // Calibrator related functions.
   m.def(
       "clear_calibrator",
-      [] {
-        tensorflow::quantization::ClearCollectedInformationFromCalibrator();
-      },
+      [] { CalibratorSingleton::ClearCollectedInformation(); },
       R"pbdoc(
       Clears the collected metrics from the calibrator.
     )pbdoc");
   m.def(
       "clear_data_from_calibrator",
-      [](const absl::string_view id) {
-        tensorflow::quantization::ClearDataFromCalibrator(id);
-      },
+      [](const absl::string_view id) { CalibratorSingleton::ClearData(id); },
       R"pbdoc(
       Clears the collected data of the given id from calibrator.
     )pbdoc");
   m.def(
-      "get_max_from_calibrator",
+      "get_min_from_calibrator",
       [](const absl::string_view id) -> float {
-        return tensorflow::quantization::GetMaxFromCalibrator(id);
+        const std::pair<float, float> min_max = GetCalibratorMinMax(id);
+        return min_max.first;
       },
       R"pbdoc(
       Return the tuple with the min value of the given id.
     )pbdoc");
   m.def(
-      "get_min_from_calibrator",
+      "get_max_from_calibrator",
       [](const absl::string_view id) -> float {
-        return tensorflow::quantization::GetMinFromCalibrator(id);
+        const std::pair<float, float> min_max = GetCalibratorMinMax(id);
+        return min_max.second;
       },
       R"pbdoc(
       Return the tuple with the min value of the given id.
