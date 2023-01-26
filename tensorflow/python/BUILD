@@ -2667,6 +2667,7 @@ py_library(
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:tensor_shape",
         "//tensorflow/python/framework:tensor_util",
+        "//tensorflow/python/framework:type_spec_registry",
         "//tensorflow/python/util:tf_should_use",
     ],
 )
