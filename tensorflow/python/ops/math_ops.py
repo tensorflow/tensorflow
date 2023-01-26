@@ -74,7 +74,6 @@ from tensorflow.python.compat import compat as tf_compat
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import graph_util
 from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
@@ -3881,40 +3880,6 @@ sparse_matmul = deprecation.deprecated(None, "Use `tf.linalg.matmul` instead")(
     gen_math_ops.sparse_mat_mul)
 tf_export(v1=["sparse_matmul"])(sparse_matmul)
 @dispatch.add_dispatch_support
-
-
-@ops.RegisterStatistics("MatMul", "flops")
-def _calc_mat_mul_flops(graph, node):
-  """Calculates the compute resources needed for MatMul."""
-  transpose_a = node.attr["transpose_a"].b
-  a_shape = graph_util.tensor_shape_from_node_def_name(graph, node.input[0])
-  a_shape.assert_is_fully_defined()
-  if transpose_a:
-    k = int(a_shape[0])
-  else:
-    k = int(a_shape[1])
-  output_shape = graph_util.tensor_shape_from_node_def_name(graph, node.name)
-  output_shape.assert_is_fully_defined()
-  output_count = np.prod(output_shape.as_list())
-  return ops.OpStats("flops", (k * output_count * 2))
-
-
-@ops.RegisterStatistics("BatchMatMul", "flops")
-@ops.RegisterStatistics("BatchMatMulV2", "flops")
-@ops.RegisterStatistics("BatchMatMulV3", "flops")
-def _calc_batch_mat_mul_flops(graph, node):
-  """Calculates the compute resources needed for BatchMatMul."""
-  transpose_a = node.attr["transpose_a"].b
-  a_shape = graph_util.tensor_shape_from_node_def_name(graph, node.input[0])
-  a_shape.assert_is_fully_defined()
-  if transpose_a:
-    k = int(a_shape[-2])
-  else:
-    k = int(a_shape[-1])
-  output_shape = graph_util.tensor_shape_from_node_def_name(graph, node.name)
-  output_shape.assert_is_fully_defined()
-  output_count = np.prod(output_shape.as_list())
-  return ops.OpStats("flops", (k * output_count * 2))
 
 
 def _as_indexed_slices(x, optimize=True):
