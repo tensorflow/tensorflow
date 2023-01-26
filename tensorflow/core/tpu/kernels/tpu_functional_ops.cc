@@ -810,7 +810,7 @@ Status CreateConcatAndSplitNodesForInputTensor(
 
     Node* split_vec_node = nullptr;
     TensorShape split_vec_shape;
-    split_vec_shape.AddDim(1);
+    TF_RETURN_IF_ERROR(split_vec_shape.AddDimWithStatus(1));
     split_vec_shape.set_dim(0, last_dim_vec.size());
 
     Tensor split_vec_tensor(DT_INT32, split_vec_shape);
@@ -995,7 +995,7 @@ Status CreateConcatAndSplitNodesForOutputTensor(
 
     Node* split_vec_node = nullptr;
     TensorShape split_vec_shape;
-    split_vec_shape.AddDim(1);
+    TF_RETURN_IF_ERROR(split_vec_shape.AddDimWithStatus(1));
     split_vec_shape.set_dim(0, last_dim_vec.size());
 
     Tensor split_vec_tensor(DT_INT32, split_vec_shape);
