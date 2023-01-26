@@ -1416,12 +1416,23 @@ pytype_library(
         ":composite_tensor",
         ":dtypes",
         ":tensor_shape",
+        ":type_spec_registry",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/core/function/trace_type",
         "//tensorflow/python:platform",
         "//tensorflow/python/types",
         "//tensorflow/python/util",
         "//third_party/py/numpy",
+    ],
+)
+
+pytype_library(
+    name = "type_spec_registry",
+    srcs = ["type_spec_registry.py"],
+    srcs_version = "PY3",
+    visibility = visibility + ["//third_party/py/tensorflow_gnn:__subpackages__"],
+    deps = [
+        "//tensorflow/python/types",
     ],
 )
 
@@ -2018,6 +2029,7 @@ tf_py_test(
         ":for_generated_wrappers",
         ":test_lib",
         ":type_spec",
+        ":type_spec_registry",
         ":type_utils",
         "//tensorflow/core/function/trace_type",
         "//tensorflow/python:platform_test",

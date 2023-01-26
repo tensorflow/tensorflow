@@ -42,7 +42,7 @@ from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import tensor_util
-from tensorflow.python.framework import type_spec
+from tensorflow.python.framework import type_spec_registry
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.ops.ragged import ragged_tensor
@@ -499,7 +499,7 @@ class _TypeSpecCodec:
     # Check if it's a registered type.
     if isinstance(pyobj, internal.TypeSpec):
       try:
-        type_spec.get_name(type(pyobj))
+        type_spec_registry.get_name(type(pyobj))
         return True
       except ValueError:
         return False
@@ -512,7 +512,7 @@ class _TypeSpecCodec:
     type_spec_class_name = type(type_spec_value).__name__
 
     if type_spec_class is None:
-      type_spec_class_name = type_spec.get_name(type(type_spec_value))
+      type_spec_class_name = type_spec_registry.get_name(type(type_spec_value))
       if isinstance(type_spec_value, extension_type.ExtensionTypeSpec):
         type_spec_class = struct_pb2.TypeSpecProto.EXTENSION_TYPE_SPEC
       else:
@@ -546,7 +546,7 @@ class _TypeSpecCodec:
 
     if type_spec_class_enum == struct_pb2.TypeSpecProto.REGISTERED_TYPE_SPEC:
       try:
-        type_spec_class = type_spec.lookup(class_name)
+        type_spec_class = type_spec_registry.lookup(class_name)
       except ValueError as e:
         raise ValueError(
             f"The type '{class_name}' has not been registered.  It must be "
@@ -554,7 +554,7 @@ class _TypeSpecCodec:
             "its module).") from e
     elif type_spec_class_enum == struct_pb2.TypeSpecProto.EXTENSION_TYPE_SPEC:
       try:
-        type_spec_class = type_spec.lookup(class_name)
+        type_spec_class = type_spec_registry.lookup(class_name)
       except ValueError:
         type_spec_class = extension_type.AnonymousExtensionTypeSpec
         warnings.warn(f"The type '{class_name}' has not been registered. "

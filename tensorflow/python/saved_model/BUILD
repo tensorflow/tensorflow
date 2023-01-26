@@ -644,7 +644,7 @@ py_strict_library(
         "//tensorflow/python/data/ops:optional_ops",
         "//tensorflow/python/distribute:values",
         "//tensorflow/python/framework:extension_type",
-        "//tensorflow/python/framework:type_spec",
+        "//tensorflow/python/framework:type_spec_registry",
         "//tensorflow/python/ops/numpy_ops:numpy",
         "//tensorflow/python/ops/ragged:ragged_tensor",
         "//tensorflow/python/ops/ragged:row_partition",
@@ -662,6 +662,7 @@ tf_py_test(
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:framework",
         "//tensorflow/python/eager:test",
+        "//tensorflow/python/framework:type_spec_registry",
     ],
 )
 
