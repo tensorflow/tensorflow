@@ -1012,6 +1012,7 @@ void FunctionLibraryRuntimeImpl::ExecutorArgsFromOptions(
     Executor::Args* exec_args) {
   // Inherit the step_id from the caller.
   exec_args->step_id = run_opts.step_id;
+  exec_args->function_trace_id = random::New64();
   exec_args->rendezvous = run_opts.rendezvous;
   exec_args->stats_collector = run_opts.stats_collector;
   exec_args->cancellation_manager = run_opts.cancellation_manager;
@@ -1177,17 +1178,17 @@ void FunctionLibraryRuntimeImpl::Run(const Options& opts, Handle handle,
     return;
   }
 
-  profiler::TraceMeProducer activity(
-      // To TraceMeConsumers in ExecutorState::Process/Finish.
-      [&opts] {
-        return profiler::TraceMeEncode("FunctionRun",
-                                       {{"id", opts.step_id}, {"_r", 1}});
-      },
-      profiler::ContextType::kTfExecutor, opts.step_id,
-      profiler::TraceMeLevel::kInfo);
-
   Executor::Args exec_args;
   ExecutorArgsFromOptions(run_opts, frame, &exec_args);
+
+  profiler::TraceMeProducer activity(
+      // To TraceMeConsumers in ExecutorState::Process/Finish.
+      [&run_opts] {
+        return profiler::TraceMeEncode("FunctionRun",
+                                       {{"id", run_opts.step_id}, {"_r", 1}});
+      },
+      profiler::ContextType::kTfExecutor, *exec_args.function_trace_id,
+      profiler::TraceMeLevel::kInfo);
 
   bool allow_dead_tensors = run_opts.allow_dead_tensors;
   item->exec->RunAsync(
@@ -1250,17 +1251,17 @@ void FunctionLibraryRuntimeImpl::Run(const Options& opts, Handle handle,
   }
   DCHECK(run_opts.runner != nullptr);
 
+  Executor::Args exec_args;
+  ExecutorArgsFromOptions(run_opts, frame, &exec_args);
   profiler::TraceMeProducer activity(
       // To TraceMeConsumers in ExecutorState::Process/Finish.
       [&opts] {
         return profiler::TraceMeEncode("FunctionRun",
                                        {{"id", opts.step_id}, {"_r", 1}});
       },
-      profiler::ContextType::kTfExecutor, opts.step_id,
+      profiler::ContextType::kTfExecutor, *exec_args.function_trace_id,
       profiler::TraceMeLevel::kInfo);
 
-  Executor::Args exec_args;
-  ExecutorArgsFromOptions(run_opts, frame, &exec_args);
   item->exec->RunAsync(exec_args, std::move(done));
 }
 
