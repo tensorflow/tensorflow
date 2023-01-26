@@ -334,6 +334,7 @@ py_library(
         "//tensorflow/python:tensor_spec",
         "//tensorflow/python:tensor_util",
         "//tensorflow/python:util",
+        "//tensorflow/python/framework:type_spec_registry",
         "//third_party/py/numpy",
     ],
 )
@@ -365,6 +366,7 @@ py_library(
         "//tensorflow/python:util",
         "//tensorflow/python/framework:composite_tensor",
         "//tensorflow/python/framework:composite_tensor_gradient",
+        "//tensorflow/python/framework:type_spec_registry",
         "//third_party/py/numpy",
     ],
 )

@@ -29,6 +29,7 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.framework import type_spec
+from tensorflow.python.framework import type_spec_registry
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import control_flow_ops
@@ -1205,7 +1206,7 @@ class RowPartition(composite_tensor.CompositeTensor):
 # of precomputed row-partition encodings (rather than always using row_splits).
 
 
-@type_spec.register("tf.RowPartitionSpec")
+@type_spec_registry.register("tf.RowPartitionSpec")
 class RowPartitionSpec(type_spec.TypeSpec):
   """Type specification for a `tf.RowPartition`."""
 
