@@ -7461,7 +7461,6 @@ cc_binary(
     linkstatic = 1,
     tags = [
         "manual",
-        "no_mac_arm64",
         "notap",
     ],
     deps = [
@@ -7484,6 +7483,7 @@ tf_cc_test(
     name = "quantized_instance_norm_test",
     size = "small",
     srcs = ["quantized_instance_norm_test.cc"],
+    tags = ["no_mac_arm64"],
     deps = [
         ":ops_testutil",
         ":ops_util",
