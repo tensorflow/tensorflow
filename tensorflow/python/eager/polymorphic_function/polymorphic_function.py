@@ -736,8 +736,6 @@ class Function(core.GenericFunction, trackable.Trackable):
       kwds: Keyword arguments to the python callable.
       add_initializers_to: Where to collect variable initializers, if not None.
     """
-    self.function_spec.validate_input_signature_with_argspec()
-
     created_variables = []
     lifted_initializer_graph = func_graph_module.FuncGraph("initializer")
 

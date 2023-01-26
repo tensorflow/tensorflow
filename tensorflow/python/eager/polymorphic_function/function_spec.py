@@ -33,7 +33,6 @@ from tensorflow.python.framework import type_spec
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.util import _pywrap_utils
 from tensorflow.python.util import nest
-from tensorflow.python.util import tf_inspect
 
 # Sentinel value used by with ConcreteFunction's structured signature to
 # indicate that a non-tensor parameter should use the value that was
@@ -197,7 +196,6 @@ class FunctionSpec(object):
       instance of FunctionSpec
     """
     _validate_signature(input_signature)
-    _validate_python_function(python_function, input_signature)
 
     function_type = function_type_lib.FunctionType.from_callable(
         python_function)
@@ -236,12 +234,14 @@ class FunctionSpec(object):
     function_type, default_values = to_function_type(fullargspec)
     if input_signature:
       input_signature = tuple(input_signature)
+      _validate_signature(input_signature)
       function_type = function_type_lib.add_type_constraints(
           function_type, input_signature, default_values)
 
     return FunctionSpec(function_type, default_values, is_bound_method, is_pure,
                         name, jit_compile)
 
+  # TODO(fmuham): Remove redundant is_bound_method.
   def __init__(self,
                function_type,
                default_values,
@@ -270,39 +270,7 @@ class FunctionSpec(object):
 
     # TODO(edloper): Include name when serializing for SavedModel?
     self._name = name or "f"
-
-    if self._is_bound_method:
-      # Remove `self`: default arguments shouldn't be matched to it.
-      # TODO(b/127938157): Should this error out if there is no arg to
-      # be removed?
-      args = self.fullargspec.args[1:]
-    else:
-      args = self.fullargspec.args
-
-    # A cache mapping from argument name to index, for canonicalizing
-    # arguments that are called in a keyword-like fashion.
-    self._args_to_indices = {arg: i for i, arg in enumerate(args)}
-    self._arg_names = args
-
-    # A cache mapping from arg index to default value, for canonicalization.
-    default_values = self.fullargspec.defaults
-    offset = len(args) - len(default_values or [])
-    self._arg_indices_to_default_values = {
-        offset + index: default
-        for index, default in enumerate(default_values or [])
-    }
-    self._arg_indices_no_default_values = set(range(len(args))) - set(
-        self._arg_indices_to_default_values)
-
-    input_signature = to_input_signature(function_type)
-    _validate_signature(input_signature)
-    if input_signature is None:
-      self._input_signature = None
-    else:
-      self._input_signature = tuple(input_signature)
-      self._flat_input_signature = tuple(
-          nest.flatten(input_signature, expand_composites=True))
-    self.validate_input_signature_with_argspec()
+    self._input_signature = to_input_signature(function_type)
 
   @property
   def default_values(self):
@@ -318,27 +286,21 @@ class FunctionSpec(object):
   def fullargspec(self):
     return self._fullargspec
 
-  # TODO(fmuham): Rename to is_bound_method.
+  # TODO(fmuham): Remove redundant property.
   @property
   def is_method(self):
     """Returns True if the function is a method with a class instance bound."""
     return self._is_bound_method
 
-  @property
-  def args_to_indices(self):
-    return self._args_to_indices
-
-  @property
-  def kwargs_to_include(self):
-    return self._kwargs_to_include
-
+  # TODO(fmuham): Replace usages with FunctionType and remove.
   @property
   def input_signature(self):
     return self._input_signature
 
+  # TODO(fmuham): Replace usages with FunctionType and remove.
   @property
   def flat_input_signature(self):
-    return self._flat_input_signature
+    return tuple(nest.flatten(self.input_signature, expand_composites=True))
 
   @property
   def is_pure(self):
@@ -348,17 +310,17 @@ class FunctionSpec(object):
   def jit_compile(self):
     return self._jit_compile
 
+  # TODO(fmuham): Replace usages and remove.
   @property
   def arg_names(self):
-    return self._arg_names
-
-  @property
-  def vararg_name(self):
-    return self._fullargspec.varargs
-
-  @property
-  def varkw_name(self):
-    return self._fullargspec.varkw
+    return list(
+        p.name
+        for p in self.function_type.parameters.values()
+        if (
+            p.kind is function_type_lib.Parameter.POSITIONAL_ONLY
+            or p.kind is function_type_lib.Parameter.POSITIONAL_OR_KEYWORD
+        )
+    )
 
   def make_canonicalized_monomorphic_type(
       self,
@@ -404,57 +366,6 @@ class FunctionSpec(object):
         if default_values and arg_name in self._fullargspec.kwonlydefaults:
           args[-1] += "={}".format(self._fullargspec.kwonlydefaults[arg_name])
     return f"{self._name}({', '.join(args)})"
-
-  def validate_input_signature_with_argspec(self):
-    """Checks the python_function's args to be valid against input_signature."""
-    if self.input_signature is not None:
-      arglen = len(self.input_signature)
-      arg_names_len = len(self.arg_names)
-      defaults = self.fullargspec.defaults or ()
-      unbound_self_arg = 1 if (not self.is_method and arg_names_len > 0 and
-                               self.arg_names[0] == "self") else 0
-      if not all(d is BOUND_VALUE for d in defaults):
-        default_arg_len = len(defaults)
-        required_arg_len = arg_names_len - default_arg_len - unbound_self_arg
-        # The input signature must cover all required function arguments.
-        if arglen < required_arg_len:
-          missing_tensor_specs = self.arg_names[arglen:required_arg_len]
-          raise TypeError(
-              f"The decorated tf.function has {required_arg_len} "
-              f"required argument(s), but tf.function was only passed an "
-              f"input_signature of length {arglen}. This covers {arglen} "
-              f"required argument(s): {self.arg_names[:arglen]}, "
-              f"but TensorSpecs are still required for the remaining "
-              f"{len(missing_tensor_specs)} argument(s):"
-              f" {missing_tensor_specs}.")
-
-  def validate_inputs_with_signature(self, args, kwargs):
-    """Checks args and kwargs against the specified input_signature."""
-    if kwargs:
-      raise ValueError("Cannot define a TensorFlow function from a Python "
-                       "function with keyword arguments when "
-                       "input_signature is provided, got keyword arguments "
-                       f"({kwargs}) with input_signature "
-                       f"({self.input_signature}).")
-    if args:
-      # If args are provided, they must match the input signature.
-      input_signature_args = args[:len(self.input_signature)]
-      if not is_same_structure(self.input_signature, input_signature_args):
-        raise ValueError("Structure of Python function inputs does not match "
-                         f"input_signature: inputs ({args}), "
-                         f"input_signature ({self.input_signature}).")
-      flat_inputs = nest.flatten(input_signature_args, expand_composites=True)
-      if any(not isinstance(arg, (ops.Tensor, tensor_spec.DenseSpec,
-                                  resource_variable_ops.BaseResourceVariable))
-             for arg in flat_inputs):
-        raise ValueError("When input_signature is provided, all inputs to "
-                         "the Python function must be Tensors, Variables, "
-                         "tf.TensorSpec or tf.VariableSpec objects.")
-      if any(not spec.is_compatible_with(other)
-             for spec, other in zip(self.flat_input_signature, flat_inputs)):
-        raise ValueError("Python inputs incompatible with input_signature: "
-                         f"inputs ({args}), input_signature "
-                         f"({self.input_signature}).")
 
   def canonicalize_function_inputs(self, args, kwargs):
     """Canonicalizes `args` and `kwargs`.
@@ -543,40 +454,6 @@ def _validate_signature(signature):
     raise TypeError("input_signature must be a possibly nested sequence of "
                     f"TensorSpec objects, got invalid args {bad_args} with "
                     f"types {list(six.moves.map(type, bad_args))}.")
-
-
-def _validate_python_function(python_function, input_signature):
-  """Checks the python_function to be valid against the input_signature."""
-  if not callable(python_function):
-    raise TypeError(f"{python_function} is not a callable object.")
-
-  if input_signature is not None:
-    fullargspec = tf_inspect.getfullargspec(python_function)
-    if set(fullargspec.kwonlyargs) - set(fullargspec.kwonlydefaults or ()):
-      nodefault_kwonlyargs = set(fullargspec.kwonlyargs)
-      if fullargspec.kwonlydefaults is not None:
-        nodefault_kwonlyargs -= set(fullargspec.kwonlydefaults)
-      raise ValueError("Cannot build TF function from "
-                       f"{python_function.__name__}: keyword-only arguments "
-                       "must have default values when input_signature is "
-                       "provided. Got keyword-only arguments without default "
-                       f"values: {sorted(nodefault_kwonlyargs)}.")
-
-
-def is_same_structure(structure1, structure2, check_values=False):
-  """Check two structures for equality, optionally of types and of values."""
-  try:
-    nest.assert_same_structure(structure1, structure2, expand_composites=True)
-  except (ValueError, TypeError):
-    return False
-  if check_values:
-    flattened1 = nest.flatten(structure1, expand_composites=True)
-    flattened2 = nest.flatten(structure2, expand_composites=True)
-    # First check the types to avoid AttributeErrors.
-    if any(type(f1) is not type(f2) for f1, f2 in zip(flattened1, flattened2)):
-      return False
-    return flattened1 == flattened2
-  return True
 
 
 def _to_tensor_or_tensor_spec(x):
@@ -721,3 +598,20 @@ def _get_variable_specs(args):
       # arg is a CompositeTensor spec.
       variable_specs.extend(_get_variable_specs(arg._component_specs))  # pylint: disable=protected-access
   return variable_specs
+
+
+# TODO(fmuham): Replace usages with TraceType and remove.
+def is_same_structure(structure1, structure2, check_values=False):
+  """Check two structures for equality, optionally of types and of values."""
+  try:
+    nest.assert_same_structure(structure1, structure2, expand_composites=True)
+  except (ValueError, TypeError):
+    return False
+  if check_values:
+    flattened1 = nest.flatten(structure1, expand_composites=True)
+    flattened2 = nest.flatten(structure2, expand_composites=True)
+    # First check the types to avoid AttributeErrors.
+    if any(type(f1) is not type(f2) for f1, f2 in zip(flattened1, flattened2)):
+      return False
+    return flattened1 == flattened2
+  return True
