@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_DATA_SERVICE_DISPATCHER_IMPL_H_
 #define TENSORFLOW_CORE_DATA_SERVICE_DISPATCHER_IMPL_H_
 
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <string>
