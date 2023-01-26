@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <algorithm>
 #include <array>
 #include <cstdint>
 #include <cstdlib>
@@ -26,7 +27,6 @@ limitations under the License.
 #include <vector>
 
 #include "absl/base/dynamic_annotations.h"
-#include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/mlir/runtime/transforms/compilation_pipeline_options.h"
 #include "tensorflow/compiler/xla/mlir/runtime/transforms/tests/testlib_pipeline.h"
 #include "tensorflow/compiler/xla/mlir/runtime/utils/async_runtime_api.h"
@@ -138,6 +138,25 @@ static absl::StatusOr<ExecutionReference> CompileAndExecute(
 
 //===----------------------------------------------------------------------===//
 
+namespace {
+
+// An owning wrapper around Memref desciptor that releases the underlying buffer
+// when destructed. Used for testing passing ownerhip of memrefs allocated in
+// the compiled executables to the C++ caller.
+struct OwnedMemref {
+  ~OwnedMemref() {
+    if (desc.has_value()) std::free(desc->data());
+  }
+
+  MemrefDesc* operator->() { return &desc.value(); }
+
+  std::optional<MemrefDesc> desc;
+};
+
+}  // namespace
+
+//===----------------------------------------------------------------------===//
+
 static void AssertNoError(const absl::Status& status) {
   assert(false && "Unexpected call to `ReturnError`");
 }
@@ -173,7 +192,7 @@ struct ReturnMemref {
     auto desc = ConvertReturnedMemref<MemrefDesc>(*this, memref, ret);
     if (failed(desc)) return failure();
 
-    *ptr = std::move(*desc);
+    ptr->desc = std::move(*desc);
     return success();
   }
 
@@ -184,7 +203,7 @@ struct ReturnMemref {
     return MemrefDesc(element_type, base_ptr, offset, sizes, strides);
   }
 
-  std::optional<MemrefDesc>* ptr = nullptr;
+  OwnedMemref* ptr = nullptr;
 };
 
 struct ReturnAsyncToken {
@@ -195,7 +214,7 @@ struct ReturnAsyncToken {
     // Load the pointer to the async token from a pointer to result storage.
     ABSL_ANNOTATE_MEMORY_IS_INITIALIZED(result_ptr, sizeof(void*));
     void* ret = *reinterpret_cast<void**>(result_ptr);
-    auto* token = static_cast<mlir::runtime::AsyncToken*>(ret);
+    auto* token = static_cast<AsyncRuntime::Token*>(ret);
     auto* async_value = AsyncRuntime::GetAsyncValue(token);
     CHECK(async_value->IsAvailable());
     chain.SetStateConcrete();
@@ -210,21 +229,61 @@ struct ReturnAsyncI32 {
   LogicalResult operator()(unsigned result_index, const Type* type,
                            const Type* runtime_type, void* result_ptr) const {
     auto* value_type = llvm::dyn_cast<AsyncValueType>(type);
-    if (!value_type) return mlir::failure();
+    if (!value_type) return failure();
 
     // Load the pointer to the async value from a pointer to result storage.
     ABSL_ANNOTATE_MEMORY_IS_INITIALIZED(result_ptr, sizeof(void*));
     void* ret = *reinterpret_cast<void**>(result_ptr);
-    auto* value = static_cast<mlir::runtime::AsyncValue*>(ret);
+    auto* value = static_cast<AsyncRuntime::Value*>(ret);
     auto* scalar = llvm::dyn_cast<ScalarType>(&value_type->value_type());
+
     if (scalar && scalar->type() == PrimitiveType::S32) {
       ExtractAsyncValue(value, ptr.value(), Emplace);
       return success();
     }
+
     return failure();
   }
 
   AsyncValuePtr<int32_t> ptr;
+};
+
+struct ReturnAsyncMemref {
+  LogicalResult operator()(unsigned result_index, const Type* type,
+                           const Type* runtime_type, void* result_ptr) const {
+    auto* value_type = llvm::dyn_cast<AsyncValueType>(type);
+    if (!value_type) return failure();
+
+    // Load the pointer to the async memref from a pointer to result storage.
+    ABSL_ANNOTATE_MEMORY_IS_INITIALIZED(result_ptr, sizeof(void*));
+    void* ret = *reinterpret_cast<void**>(result_ptr);
+    auto* value = static_cast<AsyncRuntime::Value*>(ret);
+    auto* memref = llvm::dyn_cast<MemrefType>(&value_type->value_type());
+
+    if (memref) {
+      // TODO(ezhulenev): Emplace function captures `memref` by reference, and
+      // if `value` is not available, then it will lead to asan errors. We need
+      // an `ExtractAsyncValue` that can take absl::AnyInvocable callback, that
+      // will capture all referenced values. Alternative solution is a large
+      // switch statement that will dispatch for different types and ranks.
+      ExtractAsyncValue(value, ptr.value(), [&](void* data, AsyncValue* dst) {
+        auto desc = ConvertReturnedMemref<MemrefDesc>(*this, memref, data);
+        if (succeeded(desc)) dst->get<OwnedMemref>().desc = std::move(*desc);
+      });
+      return success();
+    }
+
+    return failure();
+  }
+
+  MemrefDesc operator()(PrimitiveType element_type, void* base_ptr,
+                        void* data_ptr, int64_t offset,
+                        absl::Span<const int64_t> sizes,
+                        absl::Span<const int64_t> strides) const {
+    return MemrefDesc(element_type, base_ptr, offset, sizes, strides);
+  }
+
+  AsyncValuePtr<OwnedMemref> ptr;
 };
 
 // Execute all tasks in the caller thread immediately.
@@ -264,17 +323,14 @@ TEST(ExecutableTest, ReturnMemref) {
     }
   )";
 
-  std::optional<MemrefDesc> result;
+  OwnedMemref result;
   ResultConverterSet converter(AssertNoError, ReturnMemref{&result});
 
   ASSERT_TRUE(CompileAndExecute(module, {}, converter).ok());
-  ASSERT_TRUE(result.has_value());
+  ASSERT_TRUE(result.desc.has_value());
   EXPECT_EQ(result->rank(), 2);
   EXPECT_EQ(result->size(0), 1);
   EXPECT_EQ(result->size(1), 2);
-
-  // Result converter passed onwership of the underlying buffer to MemrefDesc.
-  std::free(result->data());
 }
 
 TEST(ExecutableTest, ScalarArgs) {
@@ -439,6 +495,38 @@ TEST(ExecutableTest, AsyncScalarRet) {
 
   ASSERT_TRUE(CompileAndExecute(module, {arg0, arg1}, converter).ok());
   EXPECT_EQ(result.get(), 42);
+}
+
+TEST(ExecutableTest, AsyncMemrefRet) {
+  absl::string_view module = R"(
+    async.func @test(%arg0: index) -> !async.value<memref<?xf32>> {
+      %c0 = arith.constant 0 : index
+      %c1 = arith.constant 1 : index
+
+      %0 = memref.alloc(%arg0) : memref<?xf32>
+      scf.for %i = %c0 to %arg0 step %c1 {
+        %c42 = arith.constant 42.0 : f32
+        memref.store %c42, %0[%i] : memref<?xf32>
+      }
+
+      return %0 : memref<?xf32>
+    }
+  )";
+
+  AsyncValueRef<OwnedMemref> result =
+      MakeConstructedAsyncValueRef<OwnedMemref>();
+  ResultConverterSet converter(AssertNoError,
+                               ReturnAsyncMemref{result.AsPtr()});
+
+  ScalarArg arg0(static_cast<int64_t>(32));
+
+  ASSERT_TRUE(CompileAndExecute(module, {arg0}, converter).ok());
+  ASSERT_TRUE(result.get().desc.has_value());
+  EXPECT_EQ(result.get()->rank(), 1);
+  EXPECT_EQ(result.get()->size(0), 32);
+
+  float* data = reinterpret_cast<float*>(result.get()->data());
+  EXPECT_TRUE(std::all_of(data, data + 32, [](float v) { return v == 42.0f; }));
 }
 
 TEST(ExecutableTest, AsyncWaiting) {
