@@ -40,6 +40,7 @@ limitations under the License.
 #include "mlir/Dialect/MemRef/IR/MemRef.h"  // from @llvm-project
 #include "mlir/Dialect/MemRef/Transforms/Passes.h"  // from @llvm-project
 #include "mlir/Dialect/SCF/IR/SCF.h"  // from @llvm-project
+#include "mlir/Dialect/SparseTensor/IR/SparseTensor.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Target/LLVMIR/Dialect/AMX/AMXToLLVMIRTranslation.h"  // from @llvm-project
 #include "mlir/Target/LLVMIR/Dialect/ArmNeon/ArmNeonToLLVMIRTranslation.h"  // from @llvm-project
@@ -59,12 +60,13 @@ namespace runtime {
 
 void RegisterDefaultXlaCpuRuntimeDialects(DialectRegistry& dialects) {
   // Register MLIR dialects supported by the compiled executables.
-  dialects->insert<mlir::AffineDialect, mlir::arith::ArithDialect,
-                   mlir::async::AsyncDialect, mlir::cf::ControlFlowDialect,
-                   mlir::linalg::LinalgDialect, mlir::math::MathDialect,
-                   mlir::memref::MemRefDialect, mlir::scf::SCFDialect,
-                   mlir::func::FuncDialect, mlir::tensor::TensorDialect,
-                   mlir::vector::VectorDialect, RuntimeDialect>();
+  dialects->insert<
+      mlir::AffineDialect, mlir::arith::ArithDialect, mlir::async::AsyncDialect,
+      mlir::cf::ControlFlowDialect, mlir::linalg::LinalgDialect,
+      mlir::math::MathDialect, mlir::memref::MemRefDialect,
+      mlir::scf::SCFDialect, mlir::func::FuncDialect,
+      mlir::sparse_tensor::SparseTensorDialect, mlir::tensor::TensorDialect,
+      mlir::vector::VectorDialect, RuntimeDialect>();
 
   // Register MLIR dialects that can be translated to LLVM IR.
   mlir::registerArmNeonDialectTranslation(*dialects);
