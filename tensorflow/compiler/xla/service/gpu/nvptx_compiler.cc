@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/algebraic_simplifier.h"
 #include "tensorflow/compiler/xla/service/call_inliner.h"
+#include "tensorflow/compiler/xla/service/convert_mover.h"
 #include "tensorflow/compiler/xla/service/dump.h"
 #include "tensorflow/compiler/xla/service/gpu/cublas_cudnn.h"
 #include "tensorflow/compiler/xla/service/gpu/cublas_pad_for_gemms.h"
@@ -50,6 +51,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_pass_pipeline.h"
 #include "tensorflow/compiler/xla/service/hlo_verifier.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
+#include "tensorflow/compiler/xla/service/reshape_mover.h"
 #include "tensorflow/compiler/xla/service/tuple_simplifier.h"
 #include "tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.h"
 #include "tensorflow/compiler/xla/stream_executor/cuda/cuda_platform_id.h"
@@ -100,9 +102,18 @@ Status NVPTXCompiler::OptimizeHloConvolutionCanonicalization(
   pipeline.AddPass<CudnnSimplifyPadding>();
 
   // tf2xla bridge, DepthwiseConvolutionConverter, GpuConvRewriter, and
-  // CudnnSimplifyPadding introduce reshapes and transposes that can be
-  // eliminated using AlgebraicSimplifier  We run algsimp to a fixed point.
-  pipeline.AddPass<HloPassFix<AlgebraicSimplifier>>(algsimp_options);
+  // CudnnSimplifyPadding introduce reshapes and transposes.
+  pipeline.AddPass<HloPassFix<ReshapeMover>>();
+  // The reshapes and transposes can possibly be eliminated using
+  // AlgebraicSimplifier. ConvertMover and ReshapeMover fight with each other.
+  // ConvertMover wants to move some converts down the graph, but ReshapeMover
+  // wants to move them up the graph. We run ConvertMover and algsimp to a fixed
+  // point.
+  [&, &pipeline = pipeline.AddPass<HloPassFix<HloPassPipeline>>(
+          "simplify_after_conv_canonicalization")] {
+    pipeline.AddPass<ConvertMover>();
+    pipeline.AddPass<AlgebraicSimplifier>(algsimp_options);
+  }();
 
   // GpuConvRewriter, GpuConvPaddingLegalization and
   // CudnnConvPadForTensorCores may add instructions which can be simplified
