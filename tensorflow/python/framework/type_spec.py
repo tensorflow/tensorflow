@@ -246,7 +246,8 @@ class TypeSpec(
     return self._from_components(component_placeholders)
 
   def _to_tensors(self, value):
-    assert value._type_spec == self  # pylint: disable=protected-access
+    value_spec = type_spec_from_value(value)
+    assert value_spec.is_subtype_of(self)
     return [arg for arg in nest.flatten(value, expand_composites=True)
             if isinstance(arg, ops.Tensor)]
 
