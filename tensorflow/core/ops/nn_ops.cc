@@ -1007,6 +1007,14 @@ REGISTER_OP("MaxPoolWithArgmax")
     .Output("argmax: Targmax")
     .Attr("T: realnumbertype")
     .SetShapeFn([](InferenceContext* c) {
+      std::vector<int32> ksize;
+      TF_RETURN_IF_ERROR(c->GetAttr("ksize", &ksize));
+      for (int i = 0; i < ksize.size(); ++i) {
+        if (ksize[i] <= 0) {
+          return errors::InvalidArgument(
+              "ksize must be a postive int32 value, got:", ksize[i]);
+        }
+      }
       TF_RETURN_IF_ERROR(shape_inference::MaxPoolShape(c));
       c->set_output(1, c->output(0));
       return OkStatus();
