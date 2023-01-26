@@ -608,5 +608,45 @@ ENTRY main {
 )");
 }
 
+TEST_F(LayoutNormalizationTest, DynamicUpdateSlice) {
+  const char* hlo = R"(
+HloModule m
+
+ENTRY main {
+  to_update = f32[3,1,32]{1,0,2} parameter(0)
+  updates = f32[1,1,32]{1,0,2} parameter(1)
+  p0 = s32[] parameter(2)
+  p1 = s32[] parameter(3)
+  p2 = s32[] parameter(4)
+
+  ROOT out = f32[3,1,32]{1,0,2} dynamic-update-slice(to_update, updates, p0, p1, p2), metadata={op_name="test"}
+}
+)";
+
+  CheckLayoutNormalization(hlo, R"(
+// CHECK: f32[32,3]{1,0} dynamic-update-slice({{.*}}, {{.*}}, {{.*}}, {{.*}}), metadata={op_name="test"}
+)");
+}
+
+TEST_F(LayoutNormalizationTest, DynamicUpdateSliceNonDeg) {
+  const char* hlo = R"(
+HloModule m
+
+ENTRY main {
+  to_update = f32[5,3,32]{1,0,2} parameter(0)
+  updates = f32[1,1,32]{1,0,2} parameter(1)
+  p0 = s32[] parameter(2)
+  p1 = s32[] parameter(3)
+  p2 = s32[] parameter(4)
+
+  ROOT out = f32[5,3,32]{1,0,2} dynamic-update-slice(to_update, updates, p0, p1, p2), metadata={op_name="test"}
+}
+)";
+
+  CheckLayoutNormalization(hlo, R"(
+// CHECK: f32[32,5,3]{2,1,0} dynamic-update-slice
+)");
+}
+
 }  // namespace
 }  // namespace xla
