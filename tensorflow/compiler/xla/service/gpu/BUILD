@@ -1047,7 +1047,6 @@ xla_cc_test(
     srcs = ["gpu_conv_algorithm_picker_test.cc"],
     tags = [
         "gpu",
-        "no_oss",
         "noasan",
         "nomsan",
         "requires-gpu-sm70",
