@@ -1312,6 +1312,7 @@ py_library(
         ":ops",
         ":tensor_util",
         ":type_spec",
+        ":type_spec_registry",
         "//tensorflow/python/types",
     ],
 )
@@ -1365,6 +1366,7 @@ py_library(
         ":tensor_shape",
         ":tensor_spec",
         ":type_spec",
+        ":type_spec_registry",
         # TODO(b/232002704) remove `:type_utils` import when used internally (by non-tests)
         # elsewhere
         ":type_utils",
@@ -1462,6 +1464,7 @@ py_library(
         ":dtypes",
         ":tensor_shape",
         ":type_spec",
+        ":type_spec_registry",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/core/function/trace_type",
         "//tensorflow/python/eager:graph_only_ops",
@@ -1971,6 +1974,7 @@ tf_py_test(
     deps = [
         ":extension_type",
         ":test_lib",
+        ":type_spec_registry",
         ":type_utils",
         "@absl_py//absl/testing:parameterized",
     ],

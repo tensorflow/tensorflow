@@ -28,6 +28,7 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.framework import type_spec
+from tensorflow.python.framework import type_spec_registry
 from tensorflow.python.ops import gen_sparse_ops
 from tensorflow.python.types import internal
 from tensorflow.python.util import _pywrap_utils
@@ -370,7 +371,7 @@ _pywrap_utils.RegisterType("SparseTensorValue", SparseTensorValue)
 
 
 @tf_export("SparseTensorSpec")
-@type_spec.register("tf.SparseTensorSpec")
+@type_spec_registry.register("tf.SparseTensorSpec")
 class SparseTensorSpec(type_spec.BatchableTypeSpec):
   """Type specification for a `tf.sparse.SparseTensor`."""
 

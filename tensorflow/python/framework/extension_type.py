@@ -26,6 +26,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import type_spec
+from tensorflow.python.framework import type_spec_registry
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import composite_tensor_ops
 from tensorflow.python.ops import gen_math_ops
@@ -951,7 +952,7 @@ def _add_type_spec(cls):
   # If the user included an explicit `__name__` attribute, then use that to
   # register the TypeSpec (so it can be used in SavedModel signatures).
   if '__name__' in cls.__dict__:
-    type_spec.register(cls.__dict__['__name__'] + '.Spec')(spec)
+    type_spec_registry.register(cls.__dict__['__name__'] + '.Spec')(spec)
 
 
 # ==============================================================================
@@ -1031,7 +1032,7 @@ class AnonymousExtensionType(ExtensionType):
     return self._tf_extension_type_cached_type_spec
 
 
-@type_spec.register('tf.AnonymousExtensionType.Spec')
+@type_spec_registry.register('tf.AnonymousExtensionType.Spec')
 class AnonymousExtensionTypeSpec(ExtensionTypeSpec):
   """TypeSpec for AnonymousExtensionType."""
 

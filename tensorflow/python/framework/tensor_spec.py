@@ -28,6 +28,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.framework import type_spec
+from tensorflow.python.framework import type_spec_registry
 from tensorflow.python.ops import handle_data_util
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.types import core as core_tf_types
@@ -135,7 +136,7 @@ class DenseSpec(type_spec.TypeSpec):
 
 
 @tf_export("TensorSpec")
-@type_spec.register("tf.TensorSpec")
+@type_spec_registry.register("tf.TensorSpec")
 class TensorSpec(DenseSpec, type_spec.BatchableTypeSpec,
                  trace_type.Serializable, internal.TensorSpec):
   """Describes the type of a tf.Tensor.
@@ -374,7 +375,7 @@ trace_type.register_serializable(TensorSpec)
 
 
 # TODO(b/133606651): Should is_compatible_with should check min/max bounds?
-@type_spec.register("tf.BoundedTensorSpec")
+@type_spec_registry.register("tf.BoundedTensorSpec")
 class BoundedTensorSpec(TensorSpec, trace_type.Serializable):
   """A `TensorSpec` that specifies minimum and maximum values.
 
