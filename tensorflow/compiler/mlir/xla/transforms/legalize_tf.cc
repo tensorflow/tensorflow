@@ -5859,9 +5859,32 @@ class ConvertRandomShuffleOp : public OpRewritePattern<TF::RandomShuffleOp> {
         /*collapsed_slice_dims=*/{0},
         /*start_index_map=*/{0},
         /*index_vector_dim=*/1);
-    rewriter.replaceOpWithNewOp<mhlo::GatherOp>(
-        op, op.getType(), op.getValue(), swaped_indices, dims_attr,
-        GetI64ElementsAttr(slice_sizes, &rewriter));
+
+    SmallVector<Value> slice_sizes_values;
+    for (auto i = 0; i < slice_sizes.size(); ++i) {
+      if (slice_sizes[i] == tensorflow::kTFDynamicSize) {
+        Value i_const = rewriter.create<arith::ConstantOp>(
+            op.getLoc(), rewriter.getIndexAttr(i));
+        Value slice_size_index =
+            rewriter.create<shape::DimOp>(op.getLoc(), op.getValue(), i_const);
+        Value index_to_i64 = rewriter.create<arith::IndexCastOp>(
+            op.getLoc(), rewriter.getI64Type(), slice_size_index);
+        Value i64_to_tensor = rewriter.create<tensor::FromElementsOp>(
+            op.getLoc(),
+            tensorflow::GetTypeFromTFTensorShape({1}, rewriter.getI64Type()),
+            index_to_i64);
+        slice_sizes_values.push_back(i64_to_tensor);
+      } else {
+        slice_sizes_values.push_back(rewriter.create<mhlo::ConstantOp>(
+            op.getLoc(), GetI64ElementsAttr({slice_sizes[i]}, &rewriter)));
+      }
+    }
+
+    auto slice_sizes_concat = rewriter.create<mhlo::ConcatenateOp>(
+        op.getLoc(), slice_sizes_values, rewriter.getI64IntegerAttr(0));
+    rewriter.replaceOpWithNewOp<mhlo::DynamicGatherOp>(
+        op, op.getType(), op.getValue(), swaped_indices, slice_sizes_concat,
+        dims_attr);
 
     return success();
   }

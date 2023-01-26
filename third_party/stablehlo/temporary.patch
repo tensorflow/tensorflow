@@ -22,18 +22,4 @@ diff --ruN a/stablehlo/stablehlo/dialect/AssemblyFormat.h b/stablehlo/stablehlo/
  
  // ExponentMantissa - Abbreviated printing of exponent and mantissa as e#m#.
  //
-diff --ruN a/stablehlo/stablehlo/dialect/TypeInference.cpp b/stablehlo/stablehlo/dialect/TypeInference.cpp
---- stablehlo/stablehlo/dialect/TypeInference.cpp
-+++ stablehlo/stablehlo/dialect/TypeInference.cpp
-@@ -2251,7 +2251,9 @@
-   }
- 
-   auto getSliceDim = [&sliceSizes](int64_t index) -> int64_t {
--    return sliceSizes.getValues<int64_t>()[index];
-+    return sliceSizes.getValues<int64_t>()[index] == -1
-+               ? ShapedType::kDynamic
-+               : sliceSizes.getValues<int64_t>()[index];
-   };
- 
-   return inferGatherReturnTypeComponents(
 
