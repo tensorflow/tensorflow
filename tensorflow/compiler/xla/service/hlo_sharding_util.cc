@@ -30,6 +30,7 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
+#include "absl/strings/str_join.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/array.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_casting_utils.h"
@@ -2075,6 +2076,8 @@ GroupedSharding GroupShardingOnDims(const HloSharding& sharding,
   CHECK(!sharding.IsTileMaximal());
   std::vector<int64_t> grouped_tiling_dims =
       sharding.tile_assignment().dimensions();
+  VLOG(0) << "Group dims:" << absl::StrJoin(group_dims, ",");
+  VLOG(0) << "Group dim shards:" << absl::StrJoin(group_dim_shards, ",");
   std::vector<int64_t> group_dim_sizes(group_dims.size());
   for (int64_t i = 0; i < group_dims.size(); ++i) {
     CHECK_EQ(grouped_tiling_dims[group_dims[i]] % group_dim_shards[i], 0);
@@ -2197,6 +2200,78 @@ GroupedSharding GetManualSubgroupSharding(const HloSharding& sharding) {
         group_sharding.sharding.tile_assignment(), sharding.metadata());
   }
   return group_sharding;
+}
+
+std::optional<GroupedSharding>
+PartialReplicatedGroupShardingWithAssignedDeviceGroups(
+    const HloSharding& sharding, int64_t num_shards,
+    const std::vector<std::vector<int64_t>>& device_groups) {
+  if (!sharding.ReplicateOnLastTileDim() ||
+      sharding.tile_assignment().dimensions().back() % device_groups.size() !=
+          0) {
+    VLOG(5) << "Failed because not partial replicated or not divisible";
+    return std::nullopt;
+  }
+  std::vector<std::vector<int64_t>> device_to_index(
+      Product(sharding.tile_assignment().dimensions()),
+      std::vector<int64_t>(sharding.tile_assignment().num_dimensions()));
+  sharding.tile_assignment().Each(
+      [&device_to_index](absl::Span<const int64_t> indices, int64_t device) {
+        device_to_index[device].assign(indices.begin(), indices.end());
+      });
+  std::vector<int64_t> grouped_tiling_dims =
+      sharding.tile_assignment().dimensions();
+  grouped_tiling_dims.back() /= device_groups.size();
+  std::optional<HloSharding> final_sharding;
+  const int64_t shard_size_on_replicated_dim =
+      sharding.tile_assignment().dimensions().back() / num_shards;
+  for (int64_t group_idx = 0; group_idx < device_groups.size(); ++group_idx) {
+    HloSharding group_sharding = HloSharding::Replicate();
+    Array<int64_t> grouped_tiling(grouped_tiling_dims);
+    Array<int64_t> stacked_pos(
+        absl::MakeConstSpan(grouped_tiling_dims.data(),
+                            grouped_tiling_dims.size() - 1),
+        0);
+    for (int64_t device_idx = 0; device_idx < device_groups[group_idx].size();
+         ++device_idx) {
+      VLOG(5) << "Device idx: " << device_idx;
+      const int64_t device = device_groups[group_idx][device_idx];
+      const auto& indices = device_to_index[device];
+      absl::Span<const int64_t> stacked_pos_idx =
+          absl::MakeConstSpan(indices.data(), indices.size() - 1);
+      int64_t& position = stacked_pos(stacked_pos_idx);
+      if (position == num_shards) {
+        VLOG(5) << "Fail because stacked position overflow " << position
+                << " device_groups " << device_groups.size() << " ["
+                << absl::StrJoin(indices, ",") << "]";
+        VLOG(5) << "Device: " << device << " "
+                << device_groups[group_idx][device_idx];
+        VLOG(5) << "Indices: " << absl::StrJoin(indices, ",");
+        VLOG(5) << "Grouped tiling: " << grouped_tiling.ToString();
+        return std::nullopt;
+      }
+      auto stacked_indices = indices;
+      stacked_indices.back() = position++;
+      grouped_tiling(stacked_indices) = device_idx;
+    }
+    group_sharding =
+        HloSharding::PartialTile(grouped_tiling, sharding.metadata());
+    if (!final_sharding) {
+      final_sharding = group_sharding;
+      continue;
+    }
+    if (*final_sharding != group_sharding) {
+      VLOG(5) << "Fail because final sharding different from group sharding: "
+              << final_sharding->ToString() << " vs "
+              << group_sharding.ToString();
+      return std::nullopt;
+    }
+  }
+  return GroupedSharding(device_groups,
+                         {sharding.tile_assignment().num_dimensions() - 1},
+                         {shard_size_on_replicated_dim},
+                         sharding.tile_assignment().num_dimensions() - 1,
+                         *final_sharding, /*subgroup_manual=*/false);
 }
 
 HloSharding UngroupSharding(const GroupedSharding& grouped_sharding) {

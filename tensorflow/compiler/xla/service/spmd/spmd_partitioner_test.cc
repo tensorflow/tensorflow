@@ -13010,6 +13010,24 @@ ENTRY %main.21 {
   EXPECT_EQ(FindInstruction(module.get(), HloOpcode::kAllReduce), nullptr);
 }
 
+TEST_F(SpmdPartitioningTest, MatchOutputAlignmentNonContractingDot) {
+  const char* const hlo_string = R"(
+HloModule pjit
+
+ENTRY %main.21 {
+  multiply.3535 = f32[4,4]{1,0} parameter(0), sharding={devices=[2,4,2]0,8,1,9,2,10,3,11,4,12,5,13,6,14,7,15 last_tile_dim_replicate}
+  reshape.4221 = f32[4,4]{1,0} parameter(1), sharding={devices=[4,1,4]0,8,4,12,1,9,5,13,2,10,6,14,3,11,7,15 last_tile_dim_replicate}
+  dot.11597 = f32[4,4]{1,0} dot(multiply.3535, reshape.4221), lhs_contracting_dims={1}, rhs_contracting_dims={0}, sharding={devices=[2,1,8]0,8,1,9,2,10,3,11,4,12,5,13,6,14,7,15 last_tile_dim_replicate}
+  ROOT copy.1 = f32[4,4]{1,0} copy(dot.11597), sharding={devices=[2,1,8]0,8,1,9,2,10,3,11,4,12,5,13,6,14,7,15 last_tile_dim_replicate}
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/16));
+  EXPECT_EQ(FindInstruction(module.get(), HloOpcode::kCollectivePermute),
+            nullptr);
+}
+
 }  // namespace
 }  // namespace spmd
 }  // namespace xla
