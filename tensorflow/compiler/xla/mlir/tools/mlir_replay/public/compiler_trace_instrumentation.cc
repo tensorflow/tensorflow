@@ -52,6 +52,7 @@ MlirCompilerTraceInstrumentation::~MlirCompilerTraceInstrumentation() {
     }
     absl::StrAppend(&filename, ".mlir-trace.pb");
     filename = tsl::io::JoinPath(dirname_, filename);
+    TF_CHECK_OK(tsl::Env::Default()->RecursivelyCreateDir(dirname_));
     TF_CHECK_OK(tsl::WriteBinaryProto(tsl::Env::Default(), filename, trace_));
   }
 }

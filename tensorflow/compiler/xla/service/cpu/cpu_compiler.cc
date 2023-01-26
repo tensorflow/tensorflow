@@ -341,7 +341,8 @@ runtime::JitExecutable::Options GetXlaRuntimeJitExecutableOptions(
     }
     runtime::CreateDefaultXlaCpuRuntimeCompilationPipeline(passes, copts);
 
-    if (module.config().debug_options().xla_dump_hlo_snapshots()) {
+    if (DumpingEnabledForHloModule(module) &&
+        module.config().debug_options().xla_dump_hlo_snapshots()) {
       passes->addInstrumentation(
           std::make_unique<mlir::interpreter::MlirCompilerTraceInstrumentation>(
               module.config().debug_options().xla_dump_to(), module.unique_id(),
