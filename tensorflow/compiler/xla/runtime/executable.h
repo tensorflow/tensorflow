@@ -44,11 +44,18 @@ namespace runtime {
 
 struct ExecutionContext;
 
-// If executable has async results, execution context reference keeps that
+struct DestroyExecutionContext {
+  void operator()(ExecutionContext* ctx);
+};
+
+// If executable has async results, ExecutionReference keeps that
 // execution context alive. For sync executables `Execute` always returns
-// nullopt.
-using ExecutionReference =
-    std::unique_ptr<ExecutionContext, void (*)(ExecutionContext*)>;
+// ExecutionReference with nullptr.
+class ExecutionReference
+    : public std::unique_ptr<ExecutionContext, DestroyExecutionContext> {
+  // Bring std::unique_ptr constructors in scope.
+  using std::unique_ptr<ExecutionContext, DestroyExecutionContext>::unique_ptr;
+};
 
 class FunctionRef;
 class JitCompiler;

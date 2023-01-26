@@ -68,6 +68,8 @@ struct ExecutionContext {
   const DiagnosticEngine* diagnostic_engine = nullptr;
 };
 
+void DestroyExecutionContext::operator()(ExecutionContext* ctx) { delete ctx; }
+
 //===----------------------------------------------------------------------===//
 // Conversion from custom calls and type id registries to symbols binding.
 //===----------------------------------------------------------------------===//
@@ -342,8 +344,7 @@ ExecutionReference Executable::Execute(unsigned ordinal, CallFrame& call_frame,
   // executable.
   AsyncRuntime::Set(AsyncRuntime(opts.async_task_runner));
 
-  auto execuction_ctx_deleter = [](ExecutionContext* ctx) { delete ctx; };
-  ExecutionReference exec_ref(nullptr, execuction_ctx_deleter);
+  ExecutionReference exec_ref;
   ExecutionContext* execution_ctx_ptr = nullptr;
   // For sync executable, runtime execution context can be used only by the
   // compiled function and can be safely allocated on the stack.
@@ -353,11 +354,9 @@ ExecutionReference Executable::Execute(unsigned ordinal, CallFrame& call_frame,
   if (IsAsync()) {
     // With custom calls inside async functions the lifetime of the execution
     // context must be extended until all pending async tasks are completed.
-    exec_ref = ExecutionReference(
-        new ExecutionContext{&fn.results_memory_layout, &call_frame,
-                             opts.custom_call_data, opts.custom_call_registry,
-                             opts.diagnostic_engine},
-        execuction_ctx_deleter);
+    exec_ref = ExecutionReference(new ExecutionContext{
+        &fn.results_memory_layout, &call_frame, opts.custom_call_data,
+        opts.custom_call_registry, opts.diagnostic_engine});
     execution_ctx_ptr = exec_ref.get();
   } else {
     // Override the execution context argument.
