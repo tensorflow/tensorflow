@@ -388,9 +388,9 @@ py_library(
     srcs = ["optional_ops.py"],
     srcs_version = "PY3",
     deps = [
-        "//tensorflow/python:dataset_ops_gen",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
+        "//tensorflow/python:optional_ops_gen",
         "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python:tensor_shape",
         "//tensorflow/python:util",
