@@ -78,7 +78,7 @@ class ParallelConcatUpdate : public OpKernel {
     OP_REQUIRES(
         ctx, value.dim_size(0) > loc_,
         errors::InvalidArgument("0th dimension of value = ", value.dim_size(0),
-                                " is less than loc_=", loc_));
+                                " must be greater than loc_ = ", loc_));
 
     auto update = ctx->input(1);
 
