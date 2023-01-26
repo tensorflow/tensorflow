@@ -6676,6 +6676,17 @@ class LowerYieldOp : public OpConversionPattern<TF::YieldOp> {
   }
 };
 
+// Returns a new tensor type from the given type with element type updated to
+// the given type.
+TensorType UpdateElementTypeTo(Type ty, Type element_ty) {
+  auto ranked_ty = ty.dyn_cast<RankedTensorType>();
+  if (!ranked_ty) {
+    return UnrankedTensorType::get(element_ty);
+  }
+  return RankedTensorType::get(ranked_ty.getShape(), element_ty,
+                               ranked_ty.getEncoding());
+}
+
 template <typename SrcOpT, typename DstOpT>
 class LowerControlFlowOp : public OpConversionPattern<SrcOpT> {
  public:
@@ -6686,12 +6697,35 @@ class LowerControlFlowOp : public OpConversionPattern<SrcOpT> {
       ConversionPatternRewriter &rewriter) const override {
     DstOpT mhlo_op;
     Location loc = op.getLoc();
+
+    // To handle quant type conversions, use the converted operands' element
+    // types and original source op's shapes and encoding to get converted op's
+    // result types. This is only done for the While op for now.
+    llvm::SmallVector<Type, 4> element_types;
+    int64_t num_results = op.getNumResults();
+    if constexpr (std::is_same<DstOpT, mhlo::WhileOp>::value) {
+      element_types.reserve(num_results);
+      for (Value value : adaptor.getOperands()) {
+        element_types.push_back(getElementTypeOrSelf(value.getType()));
+      }
+    }
+
     if constexpr (std::is_same<DstOpT, mhlo::CaseOp>::value) {
       // Explicitly handle the Case op because it has variadic regions and takes
       // the number of regions as an input along with the operands.
       mhlo_op = rewriter.create<DstOpT>(loc, op.getResultTypes(),
                                         adaptor.getBranchIndex(),
                                         op.getBranches().size());
+    } else if constexpr (std::is_same<DstOpT, mhlo::WhileOp>::value) {
+      llvm::SmallVector<Type, 4> while_result_types;
+      while_result_types.reserve(num_results);
+      for (int64_t idx = 0; idx < num_results; ++idx) {
+        auto ty = UpdateElementTypeTo(op.getType(idx), element_types[idx]);
+        while_result_types.push_back(ty);
+      }
+
+      mhlo_op = rewriter.create<DstOpT>(loc, TypeRange(while_result_types),
+                                        adaptor.getOperands());
     } else {
       mhlo_op = rewriter.create<DstOpT>(loc, op.getResultTypes(),
                                         adaptor.getOperands());
@@ -6702,9 +6736,22 @@ class LowerControlFlowOp : public OpConversionPattern<SrcOpT> {
 
     int64_t num_regions = op.getNumRegions();
     for (int64_t idx = 0; idx < num_regions; ++idx) {
-      rewriter.inlineRegionBefore(op.getBodyRegion(idx),
-                                  mhlo_op.getBodyRegion(idx),
-                                  mhlo_op.getBodyRegion(idx).end());
+      Region &region = mhlo_op.getBodyRegion(idx);
+      rewriter.inlineRegionBefore(op.getBodyRegion(idx), region, region.end());
+
+      // Update region's entry blocks argument types to handle quantized element
+      // types.
+      if constexpr (std::is_same<DstOpT, mhlo::WhileOp>::value) {
+        TypeConverter::SignatureConversion signature(num_results);
+        Block &block = region.front();
+        for (auto &[block_idx, original_ty] :
+             llvm::enumerate(block.getArgumentTypes())) {
+          TensorType updated_ty =
+              UpdateElementTypeTo(original_ty, element_types[block_idx]);
+          signature.addInputs(block_idx, {updated_ty});
+        }
+        rewriter.applySignatureConversion(&region, signature);
+      }
     }
     return success();
   }
