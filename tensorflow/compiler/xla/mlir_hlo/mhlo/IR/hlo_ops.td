@@ -2654,6 +2654,8 @@ def MHLO_ReverseOp: MHLO_Op<"reverse",
     I64ElementsAttr:$dimensions
   );
 
+  let hasVerifier = 1;
+
   let results = (outs MHLO_Tensor);
 
   let hasFolder = 1;
