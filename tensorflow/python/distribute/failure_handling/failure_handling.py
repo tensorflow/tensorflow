@@ -30,10 +30,10 @@ import time
 from tensorflow.core.distributed_runtime.preemption import gen_check_preemption_op
 from tensorflow.python.checkpoint import checkpoint as checkpoint_lib
 from tensorflow.python.checkpoint import checkpoint_management
+from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute import multi_worker_util
 from tensorflow.python.distribute.failure_handling import failure_handling_util
 from tensorflow.python.eager import context
-from tensorflow.python.eager import monitoring
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
@@ -571,7 +571,7 @@ class PreemptionCheckpointHandler(object):
     # step number to save a checkpoint has been aligned.
     self._received_checkpoint_step = threading.Event()
 
-    distribution_strategy_api_counter.get_cell(
+    distribute_lib.distribution_strategy_input_api_counter.get_cell(
         self._platform_device.name,
         'PreemptionCheckpointHandler').increase_by(1)
 
@@ -955,7 +955,7 @@ class PreemptionCheckpointHandler(object):
 
   def _save_checkpoint(self, *args, **kwargs):
     """Saves the checkpoint and exit program."""
-    distribution_strategy_api_counter.get_cell(
+    distribute_lib.distribution_strategy_input_api_counter.get_cell(
         self._platform_device.name,
         'PreemptionCheckpointHandler Saving Checkpoint').increase_by(1)
     logging.info('PreemptionCheckpointHandler: Starting saving a checkpoint.')
@@ -1163,12 +1163,3 @@ class PreemptionCheckpointHandler(object):
 # TODO(wxinyi): remove this line after we move the Keras callback prototype and
 # change gce test usage.
 WorkerPreemptionHandler = PreemptionCheckpointHandler
-
-
-# ------------------------------------------------------------------------------
-# Metrics to track which distribution strategy APIs (reusable by future APIs)
-distribution_strategy_api_counter = monitoring.Counter(
-    '/tensorflow/api/distribution_strategy/api',
-    'Counter to track the usage of the distribute strategy APIs',
-    'platform or accelerator',
-    'api')
