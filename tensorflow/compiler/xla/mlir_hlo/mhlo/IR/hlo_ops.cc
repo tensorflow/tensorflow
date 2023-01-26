@@ -3124,56 +3124,9 @@ LogicalResult RealDynamicSliceOp::reifyReturnTypeShapes(
 // InfeedOp
 //===----------------------------------------------------------------------===//
 
-// Checks that the result type is of the form `zero_or_more_type(s),
-// mhlo::token`
 LogicalResult InfeedOp::verify() {
-  auto resultTypes = getResultTypes();
-  if (resultTypes.empty())
-    return emitOpError()
-           << "result is expected to be at least of size 1, but got "
-           << resultTypes.size();
-
-  if (!resultTypes[resultTypes.size() - 1].isa<TokenType>())
-    return emitOpError() << "last element of result types is expected to "
-                            "be of token type, but got "
-                         << resultTypes[resultTypes.size() - 1];
-
-  // Verify layout attribute
-  constexpr char kLayoutAttr[] = "layout";
-  if (!getOperation()->hasAttr(kLayoutAttr)) return success();
-
-  mlir::ArrayAttr layout =
-      getOperation()->getAttrOfType<mlir::ArrayAttr>(kLayoutAttr);
-  if (!layout)
-    return emitOpError() << "layout-attribute expected to be of array-type.";
-
-  if (layout.size() != resultTypes.size() - 1) {
-    return emitOpError() << "layout-attribute size must be "
-                         << resultTypes.size() - 1
-                         << " (which is the number of "
-                            "op-results - 1 (for token result)), but got "
-                         << layout.size();
-  }
-
-  for (auto childLayout : layout) {
-    mlir::ArrayAttr childLayoutArr = childLayout.dyn_cast<mlir::ArrayAttr>();
-    if (!childLayoutArr) {
-      return emitOpError() << "layout-attribute expected to have "
-                              "elements of type array, but got "
-                           << childLayout;
-    }
-
-    for (auto i : childLayoutArr) {
-      mlir::IntegerAttr attr = i.dyn_cast<mlir::IntegerAttr>();
-      if (!attr) {
-        return emitOpError() << "layout-attribute's leaf elements are "
-                                "expected to be of type integer, but got "
-                             << i;
-      }
-    }
-  }
-
-  return success();
+  auto dialect = getContext()->getLoadedDialect<MhloDialect>();
+  return hlo::verifyInfeedOp(dialect, getLoc(), getLayout(), getResults());
 }
 
 //===----------------------------------------------------------------------===//
@@ -3237,19 +3190,9 @@ LogicalResult SendOp::inferReturnTypes(
 // RecvOp
 //===----------------------------------------------------------------------===//
 
-// Checks that the result type is of the form `zero_or_more_type(s),
-// mhlo::token`
 LogicalResult RecvOp::verify() {
-  auto resultTypes = getResultTypes();
-  if (resultTypes.empty())
-    return emitOpError()
-           << "result is expected to be at least of size 1, but got "
-           << resultTypes.size();
-  if (!resultTypes[resultTypes.size() - 1].isa<TokenType>())
-    return emitOpError() << "last element of result types is expected to "
-                            "be of token type, but got "
-                         << resultTypes[resultTypes.size() - 1];
-  return success();
+  auto dialect = getContext()->getLoadedDialect<MhloDialect>();
+  return hlo::verifyRecvOp(dialect, getLoc(), getResults());
 }
 
 //===----------------------------------------------------------------------===//
@@ -4022,16 +3965,8 @@ LogicalResult RngBitGeneratorOp::verify() {
 //===----------------------------------------------------------------------===//
 
 LogicalResult RngOp::verify() {
-  auto dist = getRngDistribution();
-  if (dist == RngDistribution::UNIFORM) {
-    return success();
-  }
-  auto muTy = getA().getType().cast<TensorType>().getElementType();
-  auto sigmaTy = getB().getType().cast<TensorType>().getElementType();
-  if (muTy.isa<FloatType>() && sigmaTy.isa<FloatType>()) {
-    return success();
-  }
-  return emitOpError() << "mu and sigma must be floats";
+  return hlo::verifyRngOp(getLoc(), getA(), getB(),
+                          getRngDistribution() == RngDistribution::UNIFORM);
 }
 
 LogicalResult RngOp::inferReturnTypeComponents(
