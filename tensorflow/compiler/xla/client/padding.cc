@@ -35,6 +35,16 @@ Status ValidatePaddingValues(absl::Span<const int64_t> input_dimensions,
         input_dimensions.size(), window_dimensions.size(),
         window_strides.size());
   }
+  for (size_t i = 0; i < input_dimensions.size(); ++i) {
+    if (window_dimensions[i] <= 0) {
+      return InvalidArgument("Window dimension %u has non-positive size %d", i,
+                             window_dimensions[i]);
+    }
+    if (window_strides[i] <= 0) {
+      return InvalidArgument("Window dimension %u has non-positive stride %d",
+                             i, window_strides[i]);
+    }
+  }
   return OkStatus();
 }
 
