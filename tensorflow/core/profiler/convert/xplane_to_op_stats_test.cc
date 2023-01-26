@@ -135,12 +135,17 @@ TEST(ConvertXPlaneToOpStats, CpuOnlyStepDbTest) {
   CreateXEvent(&host_plane_builder, &main_thread, HostEventType::kTraceContext,
                0, 100, {{StatType::kStepNum, kStepNum}});
   CreateXEvent(&host_plane_builder, &main_thread, HostEventType::kFunctionRun,
-               10, 90, {{StatType::kStepId, kStepId}});
+               10, 90,
+               {{StatType::kStepId, kStepId},
+                {StatType::kProducerType, int64_t{1}},
+                {StatType::kProducerId, kStepId}});
 
   auto tf_executor_thread = host_plane_builder.GetOrCreateLine(1);
   CreateXEvent(&host_plane_builder, &tf_executor_thread,
                HostEventType::kExecutorStateProcess, 20, 80,
-               {{StatType::kStepId, kStepId}});
+               {{StatType::kStepId, kStepId},
+                {StatType::kConsumerType, int64_t{1}},
+                {StatType::kConsumerId, kStepId}});
   CreateXEvent(&host_plane_builder, &tf_executor_thread, "matmul", 30, 70);
 
   OpStatsOptions options;
@@ -172,12 +177,17 @@ TEST(ConvertXPlaneToOpStats, GpuStepDbTest) {
   CreateXEvent(&host_plane_builder, &main_thread, HostEventType::kTraceContext,
                0, 100, {{StatType::kStepNum, kStepNum}});
   CreateXEvent(&host_plane_builder, &main_thread, HostEventType::kFunctionRun,
-               10, 90, {{StatType::kStepId, kStepId}});
+               10, 90,
+               {{StatType::kStepId, kStepId},
+                {StatType::kProducerType, int64_t{1}},
+                {StatType::kProducerId, kStepId}});
 
   auto tf_executor_thread = host_plane_builder.GetOrCreateLine(1);
   CreateXEvent(&host_plane_builder, &tf_executor_thread,
                HostEventType::kExecutorStateProcess, 20, 20,
-               {{StatType::kStepId, kStepId}});
+               {{StatType::kStepId, kStepId},
+                {StatType::kConsumerType, int64_t{1}},
+                {StatType::kConsumerId, kStepId}});
   CreateXEvent(&host_plane_builder, &tf_executor_thread, "matmul", 30, 10,
                {{StatType::kCorrelationId, kCorrelationId}});
 
@@ -244,12 +254,17 @@ void BuildXSpaceForTest(XSpace& xspace, absl::string_view hostname) {
   CreateXEvent(&host_plane_builder, &main_thread, HostEventType::kTraceContext,
                0, 100, {{StatType::kStepNum, kStepNum}});
   CreateXEvent(&host_plane_builder, &main_thread, HostEventType::kFunctionRun,
-               10, 90, {{StatType::kStepId, kStepId}});
+               10, 90,
+               {{StatType::kStepId, kStepId},
+                {StatType::kProducerType, int64_t{1}},
+                {StatType::kProducerId, kStepId}});
 
   auto executor_thread = host_plane_builder.GetOrCreateLine(1);
   CreateXEvent(&host_plane_builder, &executor_thread,
                HostEventType::kExecutorStateProcess, 20, 80,
-               {{StatType::kStepId, kStepId}});
+               {{StatType::kStepId, kStepId},
+                {StatType::kConsumerType, int64_t{1}},
+                {StatType::kConsumerId, kStepId}});
   // Create a TensorFlow op that runs for 70 ps.
   CreateXEvent(&host_plane_builder, &executor_thread, "aaa:bbb", 30, 70);
   xspace.add_hostnames(std::string(hostname));
@@ -415,12 +430,17 @@ TEST(ConvertXPlaneToOpStats, TpuStepDbTest) {
   CreateXEvent(&host_plane_builder, &main_thread, HostEventType::kTraceContext,
                0, 100, {{StatType::kStepNum, kStepNum}});
   CreateXEvent(&host_plane_builder, &main_thread, HostEventType::kFunctionRun,
-               10, 90, {{StatType::kStepId, kStepId}});
+               10, 90,
+               {{StatType::kStepId, kStepId},
+                {StatType::kProducerType, int64_t{1}},
+                {StatType::kProducerId, kStepId}});
 
   auto tf_executor_thread = host_plane_builder.GetOrCreateLine(1);
   CreateXEvent(&host_plane_builder, &tf_executor_thread,
                HostEventType::kExecutorStateProcess, 20, 20,
-               {{StatType::kStepId, kStepId}});
+               {{StatType::kStepId, kStepId},
+                {StatType::kConsumerType, int64_t{1}},
+                {StatType::kConsumerId, kStepId}});
   CreateXEvent(&host_plane_builder, &tf_executor_thread, "matmul", 30, 10,
                {{StatType::kCorrelationId, kCorrelationId}});
 
