@@ -78,6 +78,7 @@ from tensorflow.python.framework import graph_util
 from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
+from tensorflow.python.framework import tensor_conversion_registry
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
@@ -2182,8 +2183,8 @@ def _range_tensor_conversion_function(value, dtype=None, name=None,
   return range(value.start, value.stop, value.step, dtype=dtype, name=name)
 
 
-ops.register_tensor_conversion_function(builtins.range,
-                                        _range_tensor_conversion_function)
+tensor_conversion_registry.register_tensor_conversion_function(
+    builtins.range, _range_tensor_conversion_function)
 
 
 # Reduction operations
@@ -4098,7 +4099,7 @@ def add_n(inputs, name=None):
   if not inputs or not isinstance(inputs, collections_abc.Iterable):
     raise ValueError("Inputs must be an iterable of at least one "
                      "Tensor/IndexedSlices with the same dtype and shape.")
-  inputs = ops.convert_n_to_tensor_or_indexed_slices(inputs)
+  inputs = indexed_slices.convert_n_to_tensor_or_indexed_slices(inputs)
   if not all(
       isinstance(x, (ops.Tensor, indexed_slices.IndexedSlices))
       for x in inputs):
@@ -4175,7 +4176,7 @@ def accumulate_n(inputs, shape=None, tensor_dtype=None, name=None):
 
   if not inputs or not isinstance(inputs, (list, tuple)):
     raise _input_error()
-  inputs = ops.convert_n_to_tensor_or_indexed_slices(inputs)
+  inputs = indexed_slices.convert_n_to_tensor_or_indexed_slices(inputs)
   if not all(isinstance(x, ops.Tensor) for x in inputs):
     raise _input_error()
   if not all(x.dtype == inputs[0].dtype for x in inputs):

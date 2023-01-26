@@ -28,6 +28,7 @@ from tensorflow.python.framework import errors
 from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
+from tensorflow.python.framework import tensor_conversion_registry
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 # 'Constant' gets imported in the module 'array_ops'.
@@ -1610,8 +1611,8 @@ def _autopacking_conversion_function(v, dtype=None, name=None, as_ref=False):
 
 # NOTE: Register this conversion function to run *before* one that
 # assumes every element is a value.
-ops.register_tensor_conversion_function((list, tuple),
-                                        _autopacking_conversion_function, 99)
+tensor_conversion_registry.register_tensor_conversion_function(
+    (list, tuple), _autopacking_conversion_function, 99)
 
 
 @tf_export("unstack")
@@ -4639,19 +4640,19 @@ def squeeze_v2(input, axis=None, name=None):
   # 't' is a tensor of shape [1, 2, 1, 3, 1, 1]
   tf.shape(tf.squeeze(t, [2, 4]))  # [1, 2, 3, 1]
   ```
-  
+
   Unlike the older op `tf.compat.v1.squeeze`, this op does not accept a
   deprecated `squeeze_dims` argument.
 
   Note: if `input` is a `tf.RaggedTensor`, then this operation takes `O(N)`
   time, where `N` is the number of elements in the squeezed dimensions.
-  
+
   Note: If squeeze is performed on dimensions of unknown sizes, then the
   returned Tensor will be of unknown shape. A common situation is when the
   first (batch) dimension is of size `None`, `tf.squeeze` returns
   `<unknown>` shape which may be a surprise. Specify the `axis=` argument
   to get the expected result, as illustrated in the following example:
-  
+
   ```python
   @tf.function
   def func(x):
@@ -4662,7 +4663,7 @@ def squeeze_v2(input, axis=None, name=None):
     y = tf.squeeze(x)
     print('shape of tf.squeeze(x):', y.shape)
     return 0
- 
+
   _ = func.get_concrete_function(tf.TensorSpec([None, 1, 2], dtype=tf.int32))
   # Output is.
   # x.shape: (None, 1, 2)

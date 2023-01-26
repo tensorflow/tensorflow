@@ -1029,6 +1029,7 @@ py_library(
         "//tensorflow/python/framework:for_generated_wrappers",
         "//tensorflow/python/framework:indexed_slices",
         "//tensorflow/python/framework:sparse_tensor",
+        "//tensorflow/python/framework:tensor_conversion_registry",
         "//tensorflow/python/framework:tensor_util",
     ],
 )
@@ -1068,6 +1069,7 @@ py_library(
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:sparse_tensor",
+        "//tensorflow/python/framework:tensor_conversion_registry",
         "//tensorflow/python/framework:tensor_shape",
         "//tensorflow/python/framework:tensor_util",
         "//tensorflow/python/util",
@@ -1472,6 +1474,7 @@ py_library(
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:function_def_to_graph",
+        "//tensorflow/python/framework:indexed_slices",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:tensor_shape",
         "//tensorflow/python/framework:tensor_util",
@@ -1569,6 +1572,8 @@ py_library(
         ":variables",
         "//tensorflow/python/framework",
         "//tensorflow/python/framework:for_generated_wrappers",
+        "//tensorflow/python/framework:indexed_slices",
+        "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:tensor_shape",
         "//tensorflow/python/ops/ragged:ragged_functional_ops",
         "//tensorflow/python/ops/ragged:ragged_tensor",
@@ -1667,6 +1672,7 @@ py_library(
         "//tensorflow/python/eager:context",
         "//tensorflow/python/framework",
         "//tensorflow/python/framework:for_generated_wrappers",
+        "//tensorflow/python/framework:indexed_slices",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:tensor_util",
         "//tensorflow/python/util",
@@ -1976,8 +1982,10 @@ py_library(
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:graph_util",
+        "//tensorflow/python/framework:indexed_slices",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:sparse_tensor",
+        "//tensorflow/python/framework:tensor_conversion_registry",
         "//tensorflow/python/framework:tensor_shape",
         "//tensorflow/python/util",
         "//third_party/py/numpy",
@@ -2015,6 +2023,7 @@ py_library(
         "//tensorflow/python/framework:auto_control_deps_utils",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:ops",
+        "//tensorflow/python/framework:tensor_conversion_registry",
         "//tensorflow/python/framework:tensor_shape",
         "//tensorflow/python/util",
     ],
@@ -2684,6 +2693,7 @@ py_library(
         "//tensorflow/python/eager:monitoring",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:ops",
+        "//tensorflow/python/framework:tensor_conversion_registry",
         "//tensorflow/python/framework:tensor_shape",
         "//tensorflow/python/util",
     ],
@@ -2702,6 +2712,7 @@ py_library(
         "//tensorflow/python/eager:context",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:ops",
+        "//tensorflow/python/framework:tensor_conversion_registry",
         "//tensorflow/python/framework:tensor_shape",
         "//tensorflow/python/trackable:base",
         "//tensorflow/python/util",
@@ -4504,6 +4515,11 @@ alias(
 alias(
     name = "framework_ops",
     actual = "//tensorflow/python/framework:ops",
+)
+
+alias(
+    name = "framework_indexed_slices",
+    actual = "//tensorflow/python/framework:indexed_slices",
 )
 
 alias(
