@@ -475,6 +475,7 @@ cuda_py_test(
     ],
     python_version = "PY3",
     tags = [
+        "no_pip",  # TODO(b/266520226)
         "no_windows",  # TODO(b/184424727): Re-enable this.
         "noasan",  # TODO(b/180630068)
         "nomsan",  # TODO(b/180630068)
@@ -1246,6 +1247,7 @@ cuda_py_test(
     tags = [
         "multi_and_single_gpu",
         "no_cuda_asan",  # times out
+        "no_pip",  # TODO(b/266520226)
     ],
     deps = [
         ":collective_util",
@@ -2090,6 +2092,7 @@ cuda_py_test(
     shard_count = 12,
     tags = [
         "multi_gpu",
+        "no_pip",  # TODO(b/266520226)
         "noasan",
         "nomsan",
     ],  # b/175904958
