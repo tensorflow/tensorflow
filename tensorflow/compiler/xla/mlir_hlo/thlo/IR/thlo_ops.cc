@@ -756,8 +756,12 @@ SmallVector<Operation *> ScatterOp::getTiledImplementation(
   Value indicesSlice =
       materializeSlice(b, loc, indices, indicesOffsets, indicesSizes);
 
-  // Get full space of the `init` tensor.
-  Value init = this->getInit();
+  // Get full space of the `init` tensor. We use an extract_slice op because
+  // otherwise, tileUsingSCFForOp won't replace the arg with the bbarg.
+  int64_t initRank = getInit().getType().getRank();
+  Value init = materializeSlice(b, loc, this->getInit(),
+                                SmallVector<OpFoldResult>(initRank, zeroAttr),
+                                tensor::getMixedSizes(b, loc, this->getInit()));
 
   return {mlir::clone(b, this->getOperation(), TypeRange{init.getType()},
                       ValueRange{indicesSlice, updateSlice, init})};
