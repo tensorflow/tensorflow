@@ -48,6 +48,9 @@ struct ReplayOptions {
 };
 
 int main(int argc, char* argv[]) {
+  // Flush llvm::outs before writing errors.
+  llvm::errs().tie(&llvm::outs());
+
   ReplayOptions opts;
   std::vector<tsl::Flag> flag_list = {
       tsl::Flag("hlo_snapshot", &opts.hlo_snapshot,
@@ -112,7 +115,7 @@ int main(int argc, char* argv[]) {
     } else {
       llvm::errs() << results.status().ToString() << "\n";
       if (opts.stop_after_first_failure) {
-        return 0;
+        return 1;
       }
     }
 

@@ -139,6 +139,17 @@ tsl::StatusOr<SmallVector<InterpreterValue>> Run(
     (*module)->print(os, OpPrintingFlags().printGenericOpForm());
   }
 
+  // After xla-rt-export-functions, we have an execution context as the first
+  // argument. The interpreter currently cannot deal with these things, so we
+  // fail in that case.
+  auto function_args = main.getBody().getBlocks().front().getArguments();
+  if (!llvm::all_of(function_args, [](Value arg) {
+        return arg.getType().isa<ShapedType>();
+      })) {
+    return tsl::errors::InvalidArgument(
+        "expected all function arguments to be shaped types");
+  }
+
   TF_ASSIGN_OR_RETURN(auto args, LoadArgs(snapshot));
   auto out_args =
       main.getBody().getBlocks().front().getArguments().drop_front(args.size());
