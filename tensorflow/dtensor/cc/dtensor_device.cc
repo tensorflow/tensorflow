@@ -45,6 +45,8 @@ limitations under the License.
 #include "tensorflow/c/tf_status.h"
 #include "tensorflow/c/tf_status_helper.h"
 #include "tensorflow/c/tf_tensor_internal.h"
+#include "tensorflow/compiler/mlir/tensorflow/translate/export_graphdef.h"
+#include "tensorflow/compiler/mlir/tensorflow/translate/mlir_roundtrip_flags.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/c_api_decl.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_platform_interface.h"
@@ -313,36 +315,42 @@ class DTensorDevice {
       const absl::flat_hash_set<Mesh>& input_meshes, absl::string_view op_name,
       tensorflow::Graph* graph, std::vector<const Layout*>* output_layouts);
 
-  // Takes the description of an operation and makes a ModuleOp out of it,
-  // running DTensor MLIR passes. The resulting ModuleOp and lowering
-  // by-products are in the LoweredModuleBundle.
-  struct LoweredModuleBundle {
-    // Optional lowered MLIR module.
+  // Stores states of a DTensorOperation that will be used for lowering,
+  // including different representations (e.g. MLIR Module) of the
+  // DTensorOperation, and other states (e.g. output layouts and shapes).
+  struct DTensorOperationLoweringContext {
+    // Optional MLIR module representation of the DTensorOperation.
     // If exists, it is associated with DTensorDevice's PassRunner.
     std::optional<mlir::ModuleOp> module;
-    // Graph converted from the lowered MLIR module.
+    // Graph representation of the DTensorOperation.
     std::unique_ptr<tensorflow::Graph> graph;
-    // Derived output layout in MLIR lowering.
+    // Derived output layout of the DTensorOperation
     std::vector<const Layout*> output_layouts;
-    // Derived output shapes in MLIR lowering.
+    // Derived global output shapes of the DTensorOperation.
     std::vector<PartialTensorShape> global_output_shapes;
-    // TF Device list collected during Module lowering.
+    // TF Device list associated with the DTensorOperation.
     std::vector<tensorflow::Device*> tf_devices;
     // Cache key of the operation calculated by
     // ExecutableManager<T>::GetCachedExecutable based on the doperation and its
     // metadata (e.g. inputs).
     tensorflow::Fprint128 doperation_cache_key;
   };
-  StatusOr<LoweredModuleBundle> LowerToSPMDModule(
+
+  // Takes the description of a DTensorOperation and makes a ModuleOp out of it.
+  // The resulting ModuleOp and other derived states of the DTensorOperation are
+  // stored in the DTensorOperationLoweringContext. The Module is not
+  // transformed by DTensor passes.
+  StatusOr<DTensorOperationLoweringContext> DTensorOperationToModule(
       TFE_Context* context, const std::vector<TensorWithLayout*>& inputs,
       const DTensorOperation& doperation, const NameAttrList& eager_attributes);
 
-  // Extracts ExecutionFunctions from lowered ModuleOp bundle. Some fields
-  // (e.g. graph) of the input module bundle may be updated.
+  // Lowers the ModuleOp in the input DTensorOperationLoweringContext, and
+  // extracts ExecutionFunctions from lowered ModuleOp. Some fields (e.g. graph)
+  // of the input DTensorOperationLoweringContext may be updated.
   void ModuleToExecutionFunctions(
       TFE_Context* context, const std::vector<TensorWithLayout*>& inputs,
       const DTensorOperation& doperation, const NameAttrList& eager_attributes,
-      int num_outputs, LoweredModuleBundle& module_bundle,
+      int num_outputs, DTensorOperationLoweringContext& lowering_context,
       const ExecutionFunctions** execution_functions, TF_Status* status);
 
   // Execute a given function.
@@ -1305,14 +1313,16 @@ Status AddExecutionFunctionDefsToFunctionDefLibrary(
   return OkStatus();
 }
 
-StatusOr<DTensorDevice::LoweredModuleBundle> DTensorDevice::LowerToSPMDModule(
+StatusOr<DTensorDevice::DTensorOperationLoweringContext>
+DTensorDevice::DTensorOperationToModule(
     TFE_Context* context, const std::vector<TensorWithLayout*>& inputs,
     const DTensorOperation& doperation, const NameAttrList& eager_attributes) {
-  profiler::TraceMe activity([&] { return "DTensorDevice::LowerToSPMDModule"; },
-                             profiler::TraceMeLevel::kInfo);
+  profiler::TraceMe activity(
+      [&] { return "DTensorDevice::DTensorOperationToModule"; },
+      profiler::TraceMeLevel::kInfo);
   FunctionLibraryDefinition* flib_def =
       tensorflow::unwrap(context)->FuncLibDef();
-  LoweredModuleBundle result;
+  DTensorOperationLoweringContext result;
   result.graph = std::make_unique<tensorflow::Graph>(flib_def);
 
   const FunctionDef* function_def = doperation.function_def;
@@ -1372,16 +1382,11 @@ StatusOr<DTensorDevice::LoweredModuleBundle> DTensorDevice::LowerToSPMDModule(
   VLOG(4) << tensorflow::DumpGraphToFile("after_prepare_for_mlir",
                                          *result.graph, flib_def);
 
-  mlir::OwningOpRef<mlir::ModuleOp> mlir_module_ref;
-  // Run DTensor MLIR passes that convert input graph to SPMD version.
-  {
-    profiler::TraceMe activity([&] { return "DTensorDevice::RunMLIRPasses"; },
-                               profiler::TraceMeLevel::kInfo);
-    TF_ASSIGN_OR_RETURN(
-        mlir_module_ref,
-        pass_runner_.RunOnGraph(device_set, doperation.is_func(), flib_def,
-                                *result.graph, cache_key));
-  }
+  // Converts Graph to MLIR Module.
+  TF_ASSIGN_OR_RETURN(mlir::OwningOpRef<mlir::ModuleOp> mlir_module_ref,
+                      pass_runner_.ImportGraphToMlir(
+                          device_set, doperation.is_func(), *flib_def,
+                          *result.graph, result.doperation_cache_key));
 
   cached_mlir_module = module_manager_.AddCachedExecutable(
       doperation, cache_key, mlir_module_ref.release());
@@ -1392,7 +1397,7 @@ StatusOr<DTensorDevice::LoweredModuleBundle> DTensorDevice::LowerToSPMDModule(
 void DTensorDevice::ModuleToExecutionFunctions(
     TFE_Context* context, const std::vector<TensorWithLayout*>& inputs,
     const DTensorOperation& doperation, const NameAttrList& eager_attributes,
-    int num_outputs, LoweredModuleBundle& module_bundle,
+    int num_outputs, DTensorOperationLoweringContext& lowering_context,
     const ExecutionFunctions** execution_functions, TF_Status* status) {
   profiler::TraceMe activity(
       [&] { return "DTensorDevice::ModuleToExecutionFunctions"; },
@@ -1403,7 +1408,7 @@ void DTensorDevice::ModuleToExecutionFunctions(
 
   const ExecutionFunctions* cached_function =
       function_manager_.GetCachedExecutableSimple(
-          module_bundle.doperation_cache_key);
+          lowering_context.doperation_cache_key);
   if (cached_function != nullptr) {
     *execution_functions = cached_function;
     function_compilation_hits_and_misses_["hit"]++;
@@ -1414,20 +1419,31 @@ void DTensorDevice::ModuleToExecutionFunctions(
               << ". DTensor is (re-)computing its ExecutionFunctions.";
   }
 
-  absl::flat_hash_set<Node*> control_ret_nodes;
-  // Extract ExecutionFunctions from lowered ModuleOp.
-  if (!module_bundle.module.has_value()) {
+  // Transforms ModuleOp and extracts ExecutionFunctions from lowered ModuleOp.
+  if (!lowering_context.module.has_value()) {
     RETURN_STATUS(status, TF_INVALID_ARGUMENT,
                   "ModuleOp for ExecutionFunctions extraction is missing.");
   }
-  RETURN_C_STATUS_IF_NOT_OK(pass_runner_.AddMlirModuleToGraph(
-                                *module_bundle.module, flib_def,
-                                control_ret_nodes, &(module_bundle.graph)),
-                            status);
+  {
+    profiler::TraceMe activity([&] { return "DTensorDevice::RunMLIRPasses"; },
+                               profiler::TraceMeLevel::kInfo);
+    RETURN_C_STATUS_IF_NOT_OK(pass_runner_.Run(*lowering_context.module),
+                              status);
+  }
+  // Converts MLIR to GraphDef and merges to the global Graph.
+  absl::flat_hash_set<Node*> control_ret_nodes;
+  GraphExportConfig export_config;
+  RETURN_C_STATUS_IF_NOT_OK(
+      ConvertMlirToGraph(*lowering_context.module, export_config,
+                         &(lowering_context.graph), flib_def,
+                         &control_ret_nodes),
+      status);
+  Graph* graph = lowering_context.graph.get();
+  VLOG(4) << DumpGraphToFile("after_dtensor_mlir_pass", *graph, flib_def);
 
   if (flib_def->Contains(kLoadEmbeddingFn)) {
-    Status s = InsertFunctionForTPUEmbeddingCheckpoint(
-        status, module_bundle.graph.get(), inputs, kLoadEmbeddingFn);
+    Status s = InsertFunctionForTPUEmbeddingCheckpoint(status, graph, inputs,
+                                                       kLoadEmbeddingFn);
     RETURN_C_STATUS_IF_NOT_OK(s, status);
   }
 
@@ -1436,23 +1452,22 @@ void DTensorDevice::ModuleToExecutionFunctions(
   // for each mesh and relevant input and output information.
   ASSIGN_OR_RETURN_C_STATUS(
       ExecutionFunctions functions,
-      IdentifyAllFunctionsToExecute(*module_bundle.graph,
-                                    module_bundle.global_output_shapes),
+      IdentifyAllFunctionsToExecute(*lowering_context.graph,
+                                    lowering_context.global_output_shapes),
       status);
 
   // In order to ensure that all resource assign operations as well as side
   // effecting ops are executed, we add identity ops before function outputs
   // with control rets.
-  RETURN_C_STATUS_IF_NOT_OK(
-      MaybeInsertIdentityNodes(function_def, module_bundle.graph.get()),
-      status);
+  RETURN_C_STATUS_IF_NOT_OK(MaybeInsertIdentityNodes(function_def, graph),
+                            status);
 
   VLOG(4) << tensorflow::DumpGraphToFile("after_post_processing_graph",
-                                         *module_bundle.graph, flib_def);
+                                         *lowering_context.graph, flib_def);
 
   RETURN_C_STATUS_IF_NOT_OK(
       AddExecutionFunctionDefsToFunctionDefLibrary(
-          control_ret_nodes, context, *module_bundle.graph, &functions),
+          control_ret_nodes, context, *lowering_context.graph, &functions),
       status);
   functions.num_device_ids = 1;
   if (function_def) {
@@ -1464,7 +1479,7 @@ void DTensorDevice::ModuleToExecutionFunctions(
   }
 
   *execution_functions = function_manager_.AddCachedExecutable(
-      doperation, module_bundle.doperation_cache_key, std::move(functions));
+      doperation, lowering_context.doperation_cache_key, std::move(functions));
 }
 
 void DTensorDevice::ExecuteFunctionAndWait(
@@ -1531,15 +1546,16 @@ void DTensorDevice::ExecuteRegularOperation(
                             status);
 
   ASSIGN_OR_RETURN_C_STATUS(
-      auto module_bundle,
-      LowerToSPMDModule(context, inputs, doperation, eager_attributes), status);
+      auto lowering_context,
+      DTensorOperationToModule(context, inputs, doperation, eager_attributes),
+      status);
 
   if (parallel_executor_) {
-    if (!module_bundle.module.has_value()) {
+    if (!lowering_context.module.has_value()) {
       RETURN_STATUS(status, TF_INTERNAL,
                     "ParallelExecutor is enabled but ModuleOp is missing.");
     }
-    ParallelExecuteRegularOperation(context, inputs, *module_bundle.module,
+    ParallelExecuteRegularOperation(context, inputs, *lowering_context.module,
                                     doperation, attributes, num_outputs,
                                     outputs, status);
     return;
@@ -1547,8 +1563,8 @@ void DTensorDevice::ExecuteRegularOperation(
 
   const ExecutionFunctions* execution_functions = nullptr;
   ModuleToExecutionFunctions(context, inputs, doperation, eager_attributes,
-                             *num_outputs, module_bundle, &execution_functions,
-                             status);
+                             *num_outputs, lowering_context,
+                             &execution_functions, status);
 
   if (TF_GetCode(status) != TF_OK) return;
 
