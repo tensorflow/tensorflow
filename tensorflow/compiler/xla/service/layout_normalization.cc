@@ -98,16 +98,8 @@ class LayoutNormalizationVisitor : public DfsHloRewriteVisitor {
         ToTransposeDimensions(hlo->shape().layout());
 
     auto normalize_slice_attr = [&](absl::Span<int64_t const> input) {
-      std::vector<int64_t> v = Permute(input, layout_as_permutation);
-      std::vector<int64_t> out;
-      // Slicing on degenerate dimensions only produces degenerate dimensions,
-      // so these can be safely ignored.
-      for (int i = 0; i < v.size(); i++) {
-        if (normalized_w_degen.dimensions(i) != 1) {
-          out.push_back(v[i]);
-        }
-      }
-      return out;
+      return PermuteSliceAttributes(input, layout_as_permutation,
+                                    normalized_w_degen);
     };
 
     TF_ASSIGN_OR_RETURN(HloInstruction * normalized_slice,
@@ -599,7 +591,75 @@ class LayoutNormalizationVisitor : public DfsHloRewriteVisitor {
     return OkStatus();
   }
 
+  // DyanmicSlice is layout-preserving, so handling is analoguous to elementwise
+  // unary, and transposing the elements inside the metadata, as well as the
+  // operands specifying dimension sizes.
+  Status HandleDynamicSlice(HloInstruction* hlo) override {
+    const Shape& s = hlo->shape();
+    HloInstruction* operand = hlo->mutable_operand(0);
+    const Shape& operand_shape = operand->shape();
+    TF_RET_CHECK(s.layout() == operand_shape.layout());
+
+    TF_ASSIGN_OR_RETURN(HloInstruction * normalized_input,
+                        GetNormalizedInput(operand));
+
+    Shape normalized_w_degen =
+        ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
+            operand_shape);
+
+    std::vector<int64_t> layout_as_permutation =
+        ToTransposeDimensions(hlo->shape().layout());
+    std::vector<HloInstruction*> start_indices;
+    for (int i = 1; i < hlo->operand_count(); i++) {
+      start_indices.push_back(hlo->mutable_operand(i));
+    }
+
+    std::vector<HloInstruction*> permuted_start_indices =
+        Permute(start_indices, layout_as_permutation);
+    std::vector<HloInstruction*> new_start_indices;
+    for (int i = 0; i < permuted_start_indices.size(); i++) {
+      if (normalized_w_degen.dimensions(i) != 1) {
+        new_start_indices.push_back(permuted_start_indices[i]);
+      }
+    }
+
+    auto normalize_slice_attr = [&](absl::Span<int64_t const> input) {
+      return PermuteSliceAttributes(input, layout_as_permutation,
+                                    normalized_w_degen);
+    };
+    TF_ASSIGN_OR_RETURN(
+        HloInstruction * normalized_dynamic_slice,
+        MakeDynamicSliceHlo(normalized_input, new_start_indices,
+                            normalize_slice_attr(hlo->dynamic_slice_sizes()),
+                            &hlo->metadata()));
+    *normalized_dynamic_slice->mutable_shape()->mutable_layout() =
+        normalized_input->shape().layout();
+    Shape normalized_shape = Normalize(s);
+    // Output of slice might contain degenerate dimensions.
+    HloInstruction* bc_to_normalized =
+        MakeBitcastHlo(normalized_dynamic_slice, normalized_shape);
+    HloInstruction* bc_to_orig = MakeBitcastHlo(bc_to_normalized, s);
+    TF_RETURN_IF_ERROR(ReplaceInstruction(hlo, bc_to_orig));
+    return OkStatus();
+  }
+
  private:
+  std::vector<int64_t> PermuteSliceAttributes(
+      absl::Span<int64_t const> input,
+      absl::Span<int64_t const> layout_as_permutation,
+      const Shape& normalized_operand_w_degen) {
+    std::vector<int64_t> v = Permute(input, layout_as_permutation);
+    std::vector<int64_t> out;
+    // Slicing on degenerate dimensions only produces degenerate dimensions,
+    // so these can be safely ignored.
+    for (int i = 0; i < v.size(); i++) {
+      if (normalized_operand_w_degen.dimensions(i) != 1) {
+        out.push_back(v[i]);
+      }
+    }
+    return out;
+  }
+
   bool IsZeroPadding(const PaddingConfig::PaddingConfigDimension& c) {
     return c.edge_padding_high() == 0 && c.edge_padding_low() == 0 &&
            c.interior_padding() == 0;
