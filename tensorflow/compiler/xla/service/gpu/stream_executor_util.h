@@ -16,8 +16,6 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_GPU_STREAM_EXECUTOR_UTIL_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_STREAM_EXECUTOR_UTIL_H_
 
-#include <string_view>
-
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/layout.h"
@@ -107,8 +105,7 @@ StatusOr<se::dnn::DataType> GetDNNDataTypeFromPrimitiveType(PrimitiveType type);
 // If deterministic output is requested, returns first (not failing) result.
 StatusOr<tensorflow::AutotuneResult> PickBestResult(
     absl::Span<tensorflow::AutotuneResult const> profile_results,
-    std::optional<std::string_view> instr_str,
-    HloModuleConfig hlo_module_config);
+    const HloInstruction& instr);
 
 // Returns whether determinism is required.
 bool RequireDeterminism(const HloModuleConfig& config);
