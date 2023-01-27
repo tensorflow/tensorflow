@@ -1352,7 +1352,8 @@ TfLiteStatus Subgraph::RemoveUnusedInputs() {
     refcounts[tensor_index]++;
   }
   // Count references to node input tensors.
-  for (size_t i = 0; i < graph_info->num_execution_nodes(); ++i) {
+  const size_t num_execution_nodes = graph_info->num_execution_nodes();
+  for (size_t i = 0; i < num_execution_nodes; ++i) {
     const TfLiteNode& node = graph_info->node(i);
     TfLiteIntArray* node_inputs = node.inputs;
     for (int j = 0; j < node_inputs->size; ++j) {
