@@ -35,6 +35,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/tsl/platform/env.h"
 #include "tensorflow/tsl/platform/init_main.h"
+#include "tensorflow/tsl/platform/path.h"
 #include "tensorflow/tsl/platform/status.h"
 #include "tensorflow/tsl/util/command_line_flags.h"
 
@@ -120,13 +121,17 @@ int main(int argc, char* argv[]) {
     }
 
     if (!opts.execution_trace_dir.empty()) {
-      std::string filename =
-          absl::StrFormat("%.4d.%s.mlir", pass_id, state.after_pass());
+      TF_CHECK_OK(
+          tsl::Env::Default()->RecursivelyCreateDir(opts.execution_trace_dir));
+      std::string filename = tsl::io::JoinPath(
+          opts.execution_trace_dir,
+          absl::StrFormat("%.4d.%s.mlir", pass_id, state.after_pass()));
       TF_CHECK_OK(tsl::WriteStringToFile(tsl::Env::Default(), filename,
                                          execution_trace.ir()));
 
-      filename =
-          absl::StrFormat("%.4d.%s.trace.pb", pass_id, state.after_pass());
+      filename = tsl::io::JoinPath(
+          opts.execution_trace_dir,
+          absl::StrFormat("%.4d.%s.trace.pb", pass_id, state.after_pass()));
       TF_CHECK_OK(tsl::WriteBinaryProto(tsl::Env::Default(), filename,
                                         execution_trace));
     }
