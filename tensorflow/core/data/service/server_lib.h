@@ -22,6 +22,7 @@ limitations under the License.
 
 #include "grpcpp/server.h"
 #include "grpcpp/server_builder.h"
+#include "tensorflow/core/data/service/common.pb.h"
 #include "tensorflow/core/data/service/data_transfer.h"
 #include "tensorflow/core/data/service/export.pb.h"
 #include "tensorflow/core/lib/core/status.h"
@@ -113,6 +114,16 @@ class DispatchGrpcDataServer : public GrpcDataServerBase {
   GrpcDispatcherImpl* service_;
 };
 
+// A wrapper for `SnapshotTaskProgress` for use with pybind.
+struct SnapshotTaskProgressWrapper {
+  SnapshotTaskProgressWrapper() = default;
+  explicit SnapshotTaskProgressWrapper(const SnapshotTaskProgress& progress)
+      : snapshot_task_base_path(progress.snapshot_task().base_path()),
+        snapshot_task_stream_index(progress.snapshot_task().stream_index()) {}
+  std::string snapshot_task_base_path;
+  int64_t snapshot_task_stream_index;
+};
+
 class WorkerGrpcDataServer : public GrpcDataServerBase {
  public:
   explicit WorkerGrpcDataServer(
@@ -122,6 +133,11 @@ class WorkerGrpcDataServer : public GrpcDataServerBase {
 
   // Returns the number of tasks currently being executed by the worker.
   Status NumTasks(int* num_tasks);
+
+  // Returns the progresses of the snapshot tasks currently being executed by
+  // the worker.
+  Status SnapshotTaskProgresses(
+      std::vector<SnapshotTaskProgressWrapper>* snapshot_task_progresses);
 
   ServerStateExport ExportState() const override;
 

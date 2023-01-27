@@ -118,6 +118,9 @@ class TestWorker:
   def num_tasks(self):
     return self._server._num_tasks()
 
+  def snapshot_task_progresses(self):
+    return self._server._snapshot_task_progresses()
+
   def worker_address(self):
     return self._server._address
 

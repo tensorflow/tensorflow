@@ -662,6 +662,7 @@ cc_library(
     deps = [
         ":credentials_factory",
         ":data_transfer",
+        ":common_proto_cc",
         ":export_proto_cc",
         ":grpc_dispatcher_impl",
         ":grpc_util",

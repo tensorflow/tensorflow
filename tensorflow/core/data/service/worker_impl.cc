@@ -439,6 +439,15 @@ Status DataServiceWorkerImpl::GetWorkerTasks(
   return OkStatus();
 }
 
+Status DataServiceWorkerImpl::GetSnapshotTaskProgresses(
+    const GetSnapshotTaskProgressesRequest* request,
+    GetSnapshotTaskProgressesResponse* response) {
+  for (const auto& snapshot_task_progress : GetSnapshotTaskProgress()) {
+    *response->add_snapshot_task_progresses() = snapshot_task_progress;
+  }
+  return OkStatus();
+}
+
 void DataServiceWorkerImpl::TaskCompletionThread() TF_LOCKS_EXCLUDED(mu_) {
   while (true) {
     {
