@@ -266,16 +266,18 @@ Status SnapshotManager::GetSnapshotSplit(const GetSnapshotSplitRequest& request,
     return OkStatus();
   }
 
-  std::string split_path = SplitPath(
-      path_, request.stream_index(), request.source_index(),
-      stream.num_assigned_splits[request.source_index()], num_assigned_splits_);
+  int64_t local_split_index =
+      stream.num_assigned_splits[request.source_index()];
+  int64_t global_split_index = num_assigned_splits_;
+  std::string split_path =
+      SplitPath(path_, request.stream_index(), request.source_index(),
+                local_split_index, global_split_index);
   TF_RETURN_IF_ERROR(AtomicallyWriteTFRecord(split_path, split, env_));
+  split.AsProtoTensorContent(response.mutable_split()->mutable_split());
+  response.mutable_split()->set_local_split_index(local_split_index);
 
   ++stream.num_assigned_splits[request.source_index()];
   ++num_assigned_splits_;
-
-  split.AsProtoTensorContent(response.mutable_split());
-
   return OkStatus();
 }
 

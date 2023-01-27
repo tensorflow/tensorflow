@@ -52,12 +52,15 @@ Status SnapshotSplitProvider::GetNext(Tensor* split, bool* end_of_splits)
     dispatcher_ = std::make_unique<DataServiceDispatcherClient>(
         dispatcher_address_, dispatcher_protocol_);
   }
+  // TODO(b/258691097): Checks the local_split_index and read splits from disk
+  // if the local_split_index is unexpected.
+  int64_t local_split_index = 0;
   return grpc_util::Retry(
-      [this, split, end_of_splits] {
+      [this, split, &local_split_index, end_of_splits] {
         return dispatcher_->GetSnapshotSplit(
             worker_address_, snapshot_task_.base_path(),
             snapshot_task_.stream_index(), source_index_, *split,
-            *end_of_splits);
+            local_split_index, *end_of_splits);
       },
       "Get next split for snapshot",
       /*deadline_micros=*/Env::Default()->NowMicros() +

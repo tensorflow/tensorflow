@@ -15,6 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_DATA_SERVICE_DISPATCHER_CLIENT_H_
 #define TENSORFLOW_CORE_DATA_SERVICE_DISPATCHER_CLIENT_H_
 
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <string>
@@ -72,7 +73,7 @@ class DataServiceDispatcherClient : public DataServiceClientBase {
   Status GetSnapshotSplit(const std::string& worker_address,
                           const std::string& base_path, int64_t stream_index,
                           int64_t source_index, Tensor& split,
-                          bool& end_of_splits);
+                          int64_t& local_split_index, bool& end_of_splits);
 
   // Initiates the process of materializing `dataset`'s output to `path`.
   Status Snapshot(const DatasetDef& dataset, const std::string& path,
