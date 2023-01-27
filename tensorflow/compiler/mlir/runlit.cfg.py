@@ -75,6 +75,7 @@ tool_names = [
     'kernel-gen-opt',
     'lhlo-tfrt-opt',
     'mhlo-tosa-opt',
+    'mlir-bisect',
     'mlir-hlo-opt',
     'mlir-interpreter-runner',
     'mlir-opt',
