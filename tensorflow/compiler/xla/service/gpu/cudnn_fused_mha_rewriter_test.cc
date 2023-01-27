@@ -81,7 +81,7 @@ HloModule fmha_test, entry_computation_layout={(bf16[20,40,64]{2,1,0},bf16[20,64
 
 ENTRY main.6 {
   Arg_0.1 = bf16[20,40,64]{2,1,0} parameter(0)
-  Arg_1.2 = bf16[20,64,40]{2,1,0} parameter(1)
+  Arg_1.2 = bf16[20,64,40]{1,2,0} parameter(1)
   custom-call = bf16[20,40,40]{2,1,0} custom-call(Arg_0.1, Arg_1.2), custom_call_target="__cublas$gemm", backend_config="{\"alpha_real\":1,\"alpha_imag\":0,\"beta\":0,\"dot_dimension_numbers\":{\"lhs_contracting_dimensions\":[\"2\"],\"rhs_contracting_dimensions\":[\"1\"],\"lhs_batch_dimensions\":[\"0\"],\"rhs_batch_dimensions\":[\"0\"]},\"precision_config\":{\"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]},\"epilogue\":\"DEFAULT\"}"
   Arg_2.3 = bf16[20,40,64]{2,1,0} parameter(2)
   ROOT custom-call.1 = bf16[20,40,64]{2,1,0} custom-call(custom-call, Arg_2.3), custom_call_target="__cublas$gemm", backend_config="{\"alpha_real\":1,\"alpha_imag\":0,\"beta\":0,\"dot_dimension_numbers\":{\"lhs_contracting_dimensions\":[\"2\"],\"rhs_contracting_dimensions\":[\"1\"],\"lhs_batch_dimensions\":[\"0\"],\"rhs_batch_dimensions\":[\"0\"]},\"precision_config\":{\"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]},\"epilogue\":\"DEFAULT\"}"
@@ -106,6 +106,87 @@ ENTRY main.6 {
                           fmha->backend_config<CudnnfMHABackendConfig>());
   EXPECT_EQ(config.fmha_scale(), 1.0);
   EXPECT_EQ(config.dropout_rate(), 0.0);
+}
+
+TEST_F(CudnnFusedMhaRewriterTestHloTest,
+       BF16Bmm1Bmm2Pattern_bmm1_rhs_contracting_dim_not_most_minor) {
+  if (!GetCudaComputeCapability().IsAtLeast(
+          se::CudaComputeCapability::AMPERE)) {
+    GTEST_SKIP() << "Fused MHA is supported with the Nvidia Ampere+ GPUs.";
+  }
+  const char* module_str = R"(
+HloModule fmha_test, entry_computation_layout={(bf16[20,40,64]{2,1,0},bf16[20,64,40]{2,1,0},bf16[20,40,64]{2,1,0})->bf16[20,40,64]{2,1,0}}
+
+ENTRY main.6 {
+  Arg_0.1 = bf16[20,40,64]{2,1,0} parameter(0)
+  Arg_1.2 = bf16[20,64,40]{2,1,0} parameter(1)
+  custom-call = bf16[20,40,40]{2,1,0} custom-call(Arg_0.1, Arg_1.2), custom_call_target="__cublas$gemm", backend_config="{\"alpha_real\":1,\"alpha_imag\":0,\"beta\":0,\"dot_dimension_numbers\":{\"lhs_contracting_dimensions\":[\"2\"],\"rhs_contracting_dimensions\":[\"1\"],\"lhs_batch_dimensions\":[\"0\"],\"rhs_batch_dimensions\":[\"0\"]},\"precision_config\":{\"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]},\"epilogue\":\"DEFAULT\"}"
+  Arg_2.3 = bf16[20,40,64]{2,1,0} parameter(2)
+  ROOT custom-call.1 = bf16[20,40,64]{2,1,0} custom-call(custom-call, Arg_2.3), custom_call_target="__cublas$gemm", backend_config="{\"alpha_real\":1,\"alpha_imag\":0,\"beta\":0,\"dot_dimension_numbers\":{\"lhs_contracting_dimensions\":[\"2\"],\"rhs_contracting_dimensions\":[\"1\"],\"lhs_batch_dimensions\":[\"0\"],\"rhs_batch_dimensions\":[\"0\"]},\"precision_config\":{\"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]},\"epilogue\":\"DEFAULT\"}"
+}
+
+
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto m, ParseAndReturnVerifiedModule(module_str, GetModuleConfig()));
+  CudnnFusedMHARewriter fusedMhaRewriter{GetCudaComputeCapability()};
+  TF_ASSERT_OK_AND_ASSIGN(bool result, RunHloPass(&fusedMhaRewriter, m.get()));
+  EXPECT_FALSE(result);
+}
+
+TEST_F(CudnnFusedMhaRewriterTestHloTest,
+       BF16Bmm1Bmm2Pattern_bmm1_lhs_contracting_dim_not_most_minor) {
+  if (!GetCudaComputeCapability().IsAtLeast(
+          se::CudaComputeCapability::AMPERE)) {
+    GTEST_SKIP() << "Fused MHA is supported with the Nvidia Ampere+ GPUs.";
+  }
+  const char* module_str = R"(
+HloModule fmha_test, entry_computation_layout={(bf16[20,40,64]{2,1,0},bf16[20,64,40]{2,1,0},bf16[20,40,64]{2,1,0})->bf16[20,40,64]{2,1,0}}
+
+ENTRY main.6 {
+  Arg_0.1 = bf16[20,40,64]{1,2,0} parameter(0)
+  Arg_1.2 = bf16[20,64,40]{2,1,0} parameter(1)
+  custom-call = bf16[20,40,40]{2,1,0} custom-call(Arg_0.1, Arg_1.2), custom_call_target="__cublas$gemm", backend_config="{\"alpha_real\":1,\"alpha_imag\":0,\"beta\":0,\"dot_dimension_numbers\":{\"lhs_contracting_dimensions\":[\"2\"],\"rhs_contracting_dimensions\":[\"1\"],\"lhs_batch_dimensions\":[\"0\"],\"rhs_batch_dimensions\":[\"0\"]},\"precision_config\":{\"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]},\"epilogue\":\"DEFAULT\"}"
+  Arg_2.3 = bf16[20,40,64]{2,1,0} parameter(2)
+  ROOT custom-call.1 = bf16[20,40,64]{2,1,0} custom-call(custom-call, Arg_2.3), custom_call_target="__cublas$gemm", backend_config="{\"alpha_real\":1,\"alpha_imag\":0,\"beta\":0,\"dot_dimension_numbers\":{\"lhs_contracting_dimensions\":[\"2\"],\"rhs_contracting_dimensions\":[\"1\"],\"lhs_batch_dimensions\":[\"0\"],\"rhs_batch_dimensions\":[\"0\"]},\"precision_config\":{\"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]},\"epilogue\":\"DEFAULT\"}"
+}
+
+
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto m, ParseAndReturnVerifiedModule(module_str, GetModuleConfig()));
+  CudnnFusedMHARewriter fusedMhaRewriter{GetCudaComputeCapability()};
+  TF_ASSERT_OK_AND_ASSIGN(bool result, RunHloPass(&fusedMhaRewriter, m.get()));
+  EXPECT_FALSE(result);
+}
+
+TEST_F(CudnnFusedMhaRewriterTestHloTest,
+       BF16Bmm1Bmm2Pattern_bmm2_non_contracting_dim_not_most_minor) {
+  if (!GetCudaComputeCapability().IsAtLeast(
+          se::CudaComputeCapability::AMPERE)) {
+    GTEST_SKIP() << "Fused MHA is supported with the Nvidia Ampere+ GPUs.";
+  }
+  const char* module_str = R"(
+HloModule fmha_test, entry_computation_layout={(bf16[20,40,64]{2,1,0},bf16[20,64,40]{2,1,0},bf16[20,40,64]{2,1,0})->bf16[20,40,64]{2,1,0}}
+
+ENTRY main.6 {
+  Arg_0.1 = bf16[20,40,64]{2,1,0} parameter(0)
+  Arg_1.2 = bf16[20,64,40]{1,2,0} parameter(1)
+  custom-call = bf16[20,40,40]{2,1,0} custom-call(Arg_0.1, Arg_1.2), custom_call_target="__cublas$gemm", backend_config="{\"alpha_real\":1,\"alpha_imag\":0,\"beta\":0,\"dot_dimension_numbers\":{\"lhs_contracting_dimensions\":[\"2\"],\"rhs_contracting_dimensions\":[\"1\"],\"lhs_batch_dimensions\":[\"0\"],\"rhs_batch_dimensions\":[\"0\"]},\"precision_config\":{\"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]},\"epilogue\":\"DEFAULT\"}"
+  Arg_2.3 = bf16[20,40,64]{1,2,0} parameter(2)
+  ROOT custom-call.1 = bf16[20,40,64]{2,1,0} custom-call(custom-call, Arg_2.3), custom_call_target="__cublas$gemm", backend_config="{\"alpha_real\":1,\"alpha_imag\":0,\"beta\":0,\"dot_dimension_numbers\":{\"lhs_contracting_dimensions\":[\"2\"],\"rhs_contracting_dimensions\":[\"1\"],\"lhs_batch_dimensions\":[\"0\"],\"rhs_batch_dimensions\":[\"0\"]},\"precision_config\":{\"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]},\"epilogue\":\"DEFAULT\"}"
+}
+
+
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto m, ParseAndReturnVerifiedModule(module_str, GetModuleConfig()));
+  CudnnFusedMHARewriter fusedMhaRewriter{GetCudaComputeCapability()};
+  TF_ASSERT_OK_AND_ASSIGN(bool result, RunHloPass(&fusedMhaRewriter, m.get()));
+  EXPECT_FALSE(result);
 }
 
 TEST_F(CudnnFusedMhaRewriterTestHloTest, F16Bmm1Bmm2Pattern) {

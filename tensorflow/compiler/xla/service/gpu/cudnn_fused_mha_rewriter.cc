@@ -100,14 +100,18 @@ Status SetName(HloModule* module, HloInstruction* fmha) {
 }
 
 bool IsComputeCapabilitySupported(stream_executor::CudaComputeCapability cc) {
-  return true;
   if (!(cc.IsAtLeast(
-          se::CudaComputeCapability::AMPERE) /* && cc.minor == 0 */)) {
+          se::CudaComputeCapability::AMPERE)  && cc.minor == 0 )) {
       VLOG(2) << "CudnnFusedMHARewriter did not run. Unsupported compute "
-                 "capability";
+                 "capability. Only GA100 supported.";
     return false;
   }
   return true;
+}
+
+bool IsDimensionMostMinor(absl::Span<const int64_t> minor_to_major,
+                          int64_t dim_num) {
+  return minor_to_major[0] == dim_num;
 }
 
 bool IsSupportedPrimitiveType(const HloInstruction* bmm) {
@@ -166,7 +170,8 @@ StatusOr<bool> IsSupportedBMM1(const HloInstruction* bmm_1) {
               << absl::StrJoin(lhs_non_contracting_dims_bmm1, ",")
               << " BMM1 rhs_non_contracting_dims: "
               << absl::StrJoin(rhs_non_contracting_dims_bmm1, ",")
-              << " are not supported.";
+              << " are not supported. The non-contracting dims should be less "
+                 "than 512. This is a criteria for current cuDNN 8.8 support.";
     }
     return false;
   }
@@ -178,15 +183,25 @@ StatusOr<bool> IsSupportedBMM1(const HloInstruction* bmm_1) {
       GetDimensionVector(bmm_1->operand(1)->shape().dimensions(),
                          dot_dims_bmm1.rhs_contracting_dimensions());
 
-  // The contracting dimensions for BMM1 need to be 64.
+  // The contracting dimensions for BMM1 (both lhs and rhs) need to be 64 and should be the fastest moving dimension.
+  absl::Span<const int64_t> rhs_minor_to_major_bmm1 =
+      bmm_1->operand(1)->shape().layout().minor_to_major();
+  absl::Span<const int64_t> lhs_minor_to_major_bmm1 =
+      bmm_1->operand(0)->shape().layout().minor_to_major();
   if (!IsContractingDimSupported(lhs_contracting_dims_bmm1) ||
-      !IsContractingDimSupported(rhs_contracting_dims_bmm1)) {
+      !IsDimensionMostMinor(lhs_minor_to_major_bmm1,
+                            dot_dims_bmm1.lhs_contracting_dimensions()[0]) ||
+      !IsContractingDimSupported(rhs_contracting_dims_bmm1) ||
+      !IsDimensionMostMinor(rhs_minor_to_major_bmm1,
+                            dot_dims_bmm1.rhs_contracting_dimensions()[0])) {
     if (VLOG_IS_ON(2)) {
       VLOG(2) << "BMM1 lhs_contracting_dims: "
-              << absl::StrJoin(lhs_contracting_dims_bmm1, ",")
+              << bmm_1->operand(0)->shape().ToString(/*print layout*/ true)
               << " BMM1 rhs_contracting_dims: "
-              << absl::StrJoin(rhs_contracting_dims_bmm1, ",")
-              << " are not supported.";
+              << bmm_1->operand(1)->shape().ToString(true)
+              << " are not supported. Either contracting dim is not equal to "
+                 "64 or they are not the fastest moving. This is a criteria "
+                 "for current cuDNN 8.8 supports";
     }
     return false;
   }
@@ -209,16 +224,43 @@ StatusOr<bool> IsSupportedBMM2(const HloInstruction* bmm_2) {
       GetDimensionVector(bmm_2->operand(1)->shape().dimensions(),
                          rhs_non_contracting_dim_nums_bmm2);
   // The non contracting dimension for BMM2 needs to be 64 for the input matrix.
-  // The input matrix is the second argument to BMM2 i.e, rhs.
+  // The input matrix is the second argument to BMM2 i.e, rhs. It should also be the fastest moving dimension.
+  absl::Span<const int64_t> rhs_minor_to_major_bmm2 =
+      bmm_2->operand(1)->shape().layout().minor_to_major();
   if (!absl::c_all_of(rhs_non_contracting_dims_bmm2,
-                      [](int64_t dim) { return dim == 64; })) {
+                      [](int64_t dim) { return dim == 64; }) ||
+      !IsDimensionMostMinor(rhs_minor_to_major_bmm2,
+                            rhs_non_contracting_dim_nums_bmm2[0])) {
     if (VLOG_IS_ON(2)) {
-      VLOG(2) << " BMM1 rhs_non_contracting_dims: "
-              << absl::StrJoin(rhs_non_contracting_dims_bmm2, ",")
-              << " are not supported.";
+      VLOG(2)
+          << " BMM1 rhs_non_contracting_dims: "
+          << bmm_2->operand(1)->shape().ToString(true)
+          << " is not supported. Either non-contracting dim is not equal to "
+             "64 or it is not the fastest moving. This is a criteria "
+             "for current cuDNN 8.8 supports";
     }
     return false;
   }
+  return true;
+}
+
+StatusOr<bool> IsMHABlockSupported(HloInstruction* bmm_1,
+                                   HloInstruction* bmm_2) {
+  // cuDNN 8.8 currently only supports BF16 and F16 data types.
+  if (!IsSupportedPrimitiveType(bmm_1) || !IsSupportedPrimitiveType(bmm_2)) {
+    if (VLOG_IS_ON(2)) {
+      VLOG(2) << "Unsupported primitive type for cuDNN MHA fusion:\n"
+              << bmm_1->ToString() << "\nOR\n"
+              << bmm_2->ToString() << "\n"
+              << "BF16 and F16 are the supported Dtypes.";
+    }
+    return false;
+  }
+
+  TF_ASSIGN_OR_RETURN(bool is_bmm1_supported, IsSupportedBMM1(bmm_1));
+  if (!is_bmm1_supported) return false;
+  TF_ASSIGN_OR_RETURN(bool is_bmm2_supported, IsSupportedBMM2(bmm_2));
+  if (!is_bmm2_supported) return false;
   return true;
 }
 
@@ -256,21 +298,9 @@ StatusOr<bool> FuseBatchedMatmuls(HloComputation* comp,
       continue;
     }
 
-    // cuDNN 8.8 currently only supports BF16 and F16 data types.
-    if (!IsSupportedPrimitiveType(bmm_1) || !IsSupportedPrimitiveType(bmm_2)) {
-      if (VLOG_IS_ON(2)) {
-        VLOG(2) << "Unsupported primitive type for cuDNN MHA fusion:\n"
-                << bmm_1->ToString() << "\nOR\n"
-                << bmm_2->ToString() << "\n"
-                << "BF16 and F16 are the supported Dtypes.";
-      }
-      continue;
-    }
-
-    TF_ASSIGN_OR_RETURN(bool is_bmm1_supported, IsSupportedBMM1(bmm_1));
-    if (!is_bmm1_supported) continue;
-    TF_ASSIGN_OR_RETURN(bool is_bmm2_supported, IsSupportedBMM2(bmm_2));
-    if (!is_bmm2_supported) continue;
+    TF_ASSIGN_OR_RETURN(bool is_mha_module_supported,
+                        IsMHABlockSupported(bmm_1, bmm_2));
+    if (!is_mha_module_supported) continue;
 
     TF_ASSIGN_OR_RETURN(auto config_bmm1,
                         bmm_1->backend_config<GemmBackendConfig>());
