@@ -1367,9 +1367,6 @@ py_library(
         ":tensor_spec",
         ":type_spec",
         ":type_spec_registry",
-        # TODO(b/232002704) remove `:type_utils` import when used internally (by non-tests)
-        # elsewhere
-        ":type_utils",
         "//tensorflow/python:composite_tensor_ops",
     ],
 )
