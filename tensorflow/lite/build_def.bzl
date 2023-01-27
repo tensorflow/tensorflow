@@ -17,6 +17,9 @@ def tflite_copts():
         clean_dep("//tensorflow:android_arm"): [
             "-mfpu=neon",
         ],
+        # copybara:uncomment_begin(google-only)
+        # clean_dep("//tensorflow:chromiumos_x86_64"): [],
+        # copybara:uncomment_end
         clean_dep("//tensorflow:ios_x86_64"): [
             "-msse4.1",
         ],
