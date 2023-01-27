@@ -1,1 +1,156 @@
 Auto generated patch. Do not edit or delete it, even if empty.
+diff -ruN --strip-trailing-cr a/llvm/lib/Analysis/IVDescriptors.cpp b/llvm/lib/Analysis/IVDescriptors.cpp
+--- a/llvm/lib/Analysis/IVDescriptors.cpp
++++ b/llvm/lib/Analysis/IVDescriptors.cpp
+@@ -754,13 +754,6 @@
+   if (m_FMul(m_Value(Op1), m_Value(Op2)).match(I1) && (I1->isFast()))
+     return InstDesc(Kind == RecurKind::FMul, SI);
+ 
+-  if ((m_Add(m_Value(Op1), m_Value(Op2)).match(I1) ||
+-       m_Sub(m_Value(Op1), m_Value(Op2)).match(I1)))
+-    return InstDesc(Kind == RecurKind::Add, SI);
+-
+-  if (m_Mul(m_Value(Op1), m_Value(Op2)).match(I1))
+-    return InstDesc(Kind == RecurKind::Mul, SI);
+-
+   return InstDesc(false, I);
+ }
+ 
+@@ -794,8 +787,7 @@
+     return InstDesc(Kind == RecurKind::FAdd, I,
+                     I->hasAllowReassoc() ? nullptr : I);
+   case Instruction::Select:
+-    if (Kind == RecurKind::FAdd || Kind == RecurKind::FMul ||
+-        Kind == RecurKind::Add || Kind == RecurKind::Mul)
++    if (Kind == RecurKind::FAdd || Kind == RecurKind::FMul)
+       return isConditionalRdxPattern(Kind, I);
+     [[fallthrough]];
+   case Instruction::FCmp:
+diff -ruN --strip-trailing-cr a/llvm/test/Transforms/LoopVectorize/if-reduction.ll b/llvm/test/Transforms/LoopVectorize/if-reduction.ll
+--- a/llvm/test/Transforms/LoopVectorize/if-reduction.ll
++++ b/llvm/test/Transforms/LoopVectorize/if-reduction.ll
+@@ -821,124 +821,5 @@
+   ret float %sum.0.lcssa
+ }
+ 
+-; CHECK-LABEL: @fcmp_0_add_select1(
+-; CHECK: %[[V1:.*]] = fcmp ogt <4 x float> %[[V0:.*]], zeroinitializer
+-; CHECK: %[[V3:.*]] = add <4 x i32> %[[V2:.*]], <i32 2, i32 2, i32 2, i32 2>
+-; CHECK: select <4 x i1> %[[V1]], <4 x i32> %[[V3]], <4 x i32> %[[V2]]
+-define i32 @fcmp_0_add_select1(ptr noalias %x, i32 %N) nounwind readonly {
+-entry:
+-  %cmp.1 = icmp sgt i32 %N, 0
+-  br i1 %cmp.1, label %for.header, label %for.end
+-
+-for.header:                                       ; preds = %entry
+-  %zext = zext i32 %N to i64
+-  br label %for.body
+-
+-for.body:                                         ; preds = %header, %for.body
+-  %indvars.iv = phi i64 [ 0, %for.header ], [ %indvars.iv.next, %for.body ]
+-  %sum.1 = phi i32 [ 0, %for.header ], [ %sum.2, %for.body ]
+-  %arrayidx = getelementptr inbounds float, ptr %x, i64 %indvars.iv
+-  %0 = load float, ptr %arrayidx, align 4
+-  %cmp.2 = fcmp ogt float %0, 0.000000e+00
+-  %add = add nsw i32 %sum.1, 2
+-  %sum.2 = select i1 %cmp.2, i32 %add, i32 %sum.1
+-  %indvars.iv.next = add nuw nsw i64 %indvars.iv, 1
+-  %exitcond = icmp eq i64 %indvars.iv.next, %zext
+-  br i1 %exitcond, label %for.end, label %for.body
+-
+-for.end:                                          ; preds = %for.body, %entry
+-  %1 = phi i32 [ 0, %entry ], [ %sum.2, %for.body ]
+-  ret i32 %1
+-}
+-
+-; CHECK-LABEL: @fcmp_0_add_select2(
+-; CHECK: %[[V1:.*]] = fcmp ogt <4 x float> %[[V0:.*]], zeroinitializer
+-; CHECK: %[[V3:.*]] = add <4 x i64> %[[V2:.*]], <i64 2, i64 2, i64 2, i64 2>
+-; CHECK: select <4 x i1> %[[V1]], <4 x i64> %[[V3]], <4 x i64> %[[V2]]
+-define i64 @fcmp_0_add_select2(ptr noalias %x, i64 %N) nounwind readonly {
+-entry:
+-  %cmp.1 = icmp sgt i64 %N, 0
+-  br i1 %cmp.1, label %for.header, label %for.end
+-
+-for.header:                                       ; preds = %entry
+-  br label %for.body
+-
+-for.body:                                         ; preds = %header, %for.body
+-  %indvars.iv = phi i64 [ 0, %for.header ], [ %indvars.iv.next, %for.body ]
+-  %sum.1 = phi i64 [ 0, %for.header ], [ %sum.2, %for.body ]
+-  %arrayidx = getelementptr inbounds float, ptr %x, i64 %indvars.iv
+-  %0 = load float, ptr %arrayidx, align 4
+-  %cmp.2 = fcmp ogt float %0, 0.000000e+00
+-  %add = add nsw i64 %sum.1, 2
+-  %sum.2 = select i1 %cmp.2, i64 %add, i64 %sum.1
+-  %indvars.iv.next = add nuw nsw i64 %indvars.iv, 1
+-  %exitcond = icmp eq i64 %indvars.iv.next, %N
+-  br i1 %exitcond, label %for.end, label %for.body
+-
+-for.end:                                          ; preds = %for.body, %entry
+-  %1 = phi i64 [ 0, %entry ], [ %sum.2, %for.body ]
+-  ret i64 %1
+-}
+-
+-; CHECK-LABEL: @fcmp_0_sub_select1(
+-; CHECK: %[[V1:.*]] = fcmp ogt <4 x float> %[[V0:.*]], zeroinitializer
+-; CHECK: %[[V3:.*]] = sub <4 x i32> %[[V2:.*]], <i32 2, i32 2, i32 2, i32 2>
+-; CHECK: select <4 x i1> %[[V1]], <4 x i32> %[[V3]], <4 x i32> %[[V2]]
+-define i32 @fcmp_0_sub_select1(ptr noalias %x, i32 %N) nounwind readonly {
+-entry:
+-  %cmp.1 = icmp sgt i32 %N, 0
+-  br i1 %cmp.1, label %for.header, label %for.end
+-
+-for.header:                                       ; preds = %entry
+-  %zext = zext i32 %N to i64
+-  br label %for.body
+-
+-for.body:                                         ; preds = %header, %for.body
+-  %indvars.iv = phi i64 [ 0, %for.header ], [ %indvars.iv.next, %for.body ]
+-  %sum.1 = phi i32 [ 0, %for.header ], [ %sum.2, %for.body ]
+-  %arrayidx = getelementptr inbounds float, ptr %x, i64 %indvars.iv
+-  %0 = load float, ptr %arrayidx, align 4
+-  %cmp.2 = fcmp ogt float %0, 0.000000e+00
+-  %sub = sub nsw i32 %sum.1, 2
+-  %sum.2 = select i1 %cmp.2, i32 %sub, i32 %sum.1
+-  %indvars.iv.next = sub nuw nsw i64 %indvars.iv, 1
+-  %exitcond = icmp eq i64 %indvars.iv.next, %zext
+-  br i1 %exitcond, label %for.end, label %for.body
+-
+-for.end:                                          ; preds = %for.body, %entry
+-  %1 = phi i32 [ 0, %entry ], [ %sum.2, %for.body ]
+-  ret i32 %1
+-}
+-
+-; CHECK-LABEL: @fcmp_0_mult_select1(
+-; CHECK: %[[V1:.*]] = fcmp ogt <4 x float> %[[V0:.*]], zeroinitializer
+-; CHECK: %[[V3:.*]] = mul <4 x i32> %[[V2:.*]], <i32 2, i32 2, i32 2, i32 2>
+-; CHECK: select <4 x i1> %[[V1]], <4 x i32> %[[V3]], <4 x i32> %[[V2]]
+-define i32 @fcmp_0_mult_select1(ptr noalias %x, i32 %N) nounwind readonly {
+-entry:
+-  %cmp.1 = icmp sgt i32 %N, 0
+-  br i1 %cmp.1, label %for.header, label %for.end
+-
+-for.header:                                       ; preds = %entry
+-  %zext = zext i32 %N to i64
+-  br label %for.body
+-
+-for.body:                                         ; preds = %for.body, %for.header
+-  %indvars.iv = phi i64 [ 0, %for.header ], [ %indvars.iv.next, %for.body ]
+-  %sum.1 = phi i32 [ 0, %for.header ], [ %sum.2, %for.body ]
+-  %arrayidx = getelementptr inbounds float, ptr %x, i64 %indvars.iv
+-  %0 = load float, ptr %arrayidx, align 4
+-  %cmp.2 = fcmp ogt float %0, 0.000000e+00
+-  %mult = mul nsw i32 %sum.1, 2
+-  %sum.2 = select i1 %cmp.2, i32 %mult, i32 %sum.1
+-  %indvars.iv.next = add nuw nsw i64 %indvars.iv, 1
+-  %exitcond = icmp eq i64 %indvars.iv.next, %zext
+-  br i1 %exitcond, label %for.end, label %for.body
+-
+-for.end:                                          ; preds = %for.body, %entry
+-  %1 = phi i32 [ 0, %entry ], [ %sum.2, %for.body ]
+-  ret i32 %1
+-}
+-
+ ; Make sure any check-not directives are not triggered by function declarations.
+ ; CHECK: declare
