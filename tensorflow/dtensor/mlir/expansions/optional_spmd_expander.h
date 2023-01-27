@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_DTENSOR_MLIR_EXPANSIONS_ITERATOR_SPMD_EXPANDER_H_
-#define TENSORFLOW_DTENSOR_MLIR_EXPANSIONS_ITERATOR_SPMD_EXPANDER_H_
+#ifndef TENSORFLOW_DTENSOR_MLIR_EXPANSIONS_OPTIONAL_SPMD_EXPANDER_H_
+#define TENSORFLOW_DTENSOR_MLIR_EXPANSIONS_OPTIONAL_SPMD_EXPANDER_H_
 
 #include "tensorflow/dtensor/cc/dstatus.h"
 #include "tensorflow/dtensor/mlir/spmd_expander.h"
@@ -22,7 +22,7 @@ limitations under the License.
 namespace tensorflow {
 namespace dtensor {
 
-class IteratorGetNextSPMDExpander final : public SPMDExpanderBase {
+class OptionalGetValueSPMDExpander final : public SPMDExpanderBase {
  public:
   StatusOr<mlir::Operation*> ExpandOp(mlir::Operation* op) override;
 
@@ -35,7 +35,7 @@ class IteratorGetNextSPMDExpander final : public SPMDExpanderBase {
       const llvm::DenseMap<int, Layout>& output_layouts) override;
 };
 
-class IteratorGetNextAsOptionalSPMDExpander final : public SPMDExpanderBase {
+class OptionalHasValueSPMDExpander final : public SPMDExpanderBase {
  public:
   StatusOr<mlir::Operation*> ExpandOp(mlir::Operation* op) override;
 
@@ -51,4 +51,4 @@ class IteratorGetNextAsOptionalSPMDExpander final : public SPMDExpanderBase {
 }  // namespace dtensor
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_DTENSOR_MLIR_EXPANSIONS_ITERATOR_SPMD_EXPANDER_H_
+#endif  // TENSORFLOW_DTENSOR_MLIR_EXPANSIONS_OPTIONAL_SPMD_EXPANDER_H_

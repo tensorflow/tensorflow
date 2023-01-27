@@ -135,6 +135,9 @@ static constexpr char kRetrieveEmbeddingFn[] = "retrieve_embedding_fn";
 // calling IteratorGetNextOp on a tf.data iterator.
 static constexpr char kIteratorElementLayouts[] = "tf._element_layouts";
 
+// Attribute used in tf.data ops which stores the shapes of the output elements.
+static constexpr char kIteratorOutputShapes[] = "output_shapes";
+
 }  // namespace dtensor
 }  // namespace tensorflow
 

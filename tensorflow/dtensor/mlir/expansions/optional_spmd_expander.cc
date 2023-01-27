@@ -13,34 +13,23 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/dtensor/mlir/expansions/iterator_spmd_expander.h"
+#include "tensorflow/dtensor/mlir/expansions/optional_spmd_expander.h"
 
-#include <algorithm>
-#include <vector>
-
-#include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/FormatVariadic.h"
-#include "mlir/IR/Attributes.h"  // from @llvm-project
-#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
-#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
-#include "mlir/IR/Operation.h"  // from @llvm-project
-#include "mlir/Support/LLVM.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/tensorflow/ir/tf_attributes.h"
 #include "tensorflow/dtensor/cc/constants.h"
 #include "tensorflow/dtensor/cc/dstatus.h"
-#include "tensorflow/dtensor/cc/tensor_layout.h"
 #include "tensorflow/dtensor/mlir/dtensor_location.h"
 #include "tensorflow/dtensor/mlir/layout_parsing.h"
 #include "tensorflow/dtensor/mlir/shape_utils.h"
+#include "tensorflow/dtensor/mlir/value_utils.h"
 
 namespace tensorflow {
 namespace dtensor {
 
-StatusOr<mlir::Operation*> IteratorGetNextSPMDExpander::ExpandOp(
+StatusOr<mlir::Operation*> OptionalGetValueSPMDExpander::ExpandOp(
     mlir::Operation* op) {
-  mlir::TF::IteratorGetNextOp original_op =
-      mlir::cast<mlir::TF::IteratorGetNextOp>(op);
+  auto original_op = mlir::cast<mlir::TF::OptionalGetValueOp>(op);
   mlir::OpBuilder builder(op);
 
   TF_ASSIGN_OR_RETURN(std::vector<Layout> output_layouts,
@@ -51,14 +40,13 @@ StatusOr<mlir::Operation*> IteratorGetNextSPMDExpander::ExpandOp(
   for (int i = 0; i < original_op->getNumResults(); ++i) {
     mlir::TensorType global_output_type =
         original_op.getResult(i).getType().cast<mlir::TensorType>();
-    std::vector<int64_t> local_shape =
-        output_layouts[i].LocalShapeFromGlobalShape(
-            global_output_type.getShape());
-    local_types[i] = mlir::RankedTensorType::get(
-        local_shape, global_output_type.getElementType());
+    TF_ASSIGN_OR_RETURN(
+        mlir::TensorType local_type,
+        LocalTypeFromGlobalType(output_layouts[i], global_output_type));
+    local_types[i] = local_type;
   }
 
-  auto new_op = builder.create<mlir::TF::IteratorGetNextOp>(
+  auto new_op = builder.create<mlir::TF::OptionalGetValueOp>(
       DT_LOC(op->getLoc()), local_types, original_op->getOperand(0));
 
   for (int i = 0; i < original_op->getNumResults(); ++i) {
@@ -69,10 +57,10 @@ StatusOr<mlir::Operation*> IteratorGetNextSPMDExpander::ExpandOp(
 }
 
 StatusOr<llvm::DenseMap<int, Layout>>
-IteratorGetNextSPMDExpander::ComputeLayoutForward(
+OptionalGetValueSPMDExpander::ComputeLayoutForward(
     mlir::Operation* op, const llvm::DenseMap<int, Layout>& input_layouts) {
-  // Extract the output element layouts from the `tf._element_layouts` attribute
-  // of the iterator resource tensor.
+  // Extract the output element layouts from some op in the input chain that has
+  // the `tf._element_layouts` attribute set.
   TF_ASSIGN_OR_RETURN(const auto layouts,
                       ExtractElementLayoutsFromOperand(op->getOpOperand(0)));
 
@@ -84,64 +72,32 @@ IteratorGetNextSPMDExpander::ComputeLayoutForward(
 }
 
 StatusOr<llvm::DenseMap<int, Layout>>
-IteratorGetNextSPMDExpander::ComputeLayoutBackward(
+OptionalGetValueSPMDExpander::ComputeLayoutBackward(
     mlir::Operation* op, const llvm::DenseMap<int, Layout>& output_layouts) {
   TF_ASSIGN_OR_RETURN(const Mesh mesh, ExtractDeviceMeshEnclosingCluster(op));
-
-  // Iterator resource tensors are always 0-dimensional.
   return llvm::DenseMap<int, Layout>(
-      {{0, Layout::ReplicatedOnMesh(mesh, /*rank=*/0)}});
+      {{0, Layout::ReplicatedOnMesh(mesh, ValueRank(op->getOperand(0)))}});
 }
 
-StatusOr<mlir::Operation*> IteratorGetNextAsOptionalSPMDExpander::ExpandOp(
+StatusOr<mlir::Operation*> OptionalHasValueSPMDExpander::ExpandOp(
     mlir::Operation* op) {
-  // Extract the output element layouts from the `tf._element_layouts` attribute
-  // of the iterator resource tensor.
-  TF_ASSIGN_OR_RETURN(const auto output_layouts,
-                      ExtractElementLayoutsFromOperand(op->getOpOperand(0)));
-
-  auto array_attr = op->getAttrOfType<mlir::ArrayAttr>(kIteratorOutputShapes);
-  if (!array_attr)
-    return errors::InvalidArgument(
-        llvm::formatv("Could not find `{0}` attribute of op: {1}",
-                      kIteratorOutputShapes, op->getName())
-            .str());
-
-  llvm::SmallVector<mlir::Attribute, 4> output_shape_attrs(array_attr.size());
-  for (int i = 0; i < array_attr.size(); ++i) {
-    std::vector<int64_t> local_shape =
-        output_layouts[i].LocalShapeFromGlobalShape(
-            array_attr[i].cast<mlir::TF::ShapeAttr>().getShape());
-    output_shape_attrs[i] =
-        mlir::TF::ShapeAttr::get(op->getContext(), {local_shape})
-            .cast<mlir::Attribute>();
-  }
-
-  // Update the `output_shapes` attribute on the op to match the local shape
-  // based on the iterator element layouts.
-  op->setAttr(kIteratorOutputShapes,
-              mlir::ArrayAttr::get(op->getContext(), output_shape_attrs));
   return InferSPMDExpandedLocalShape(op);
 }
 
 StatusOr<llvm::DenseMap<int, Layout>>
-IteratorGetNextAsOptionalSPMDExpander::ComputeLayoutForward(
+OptionalHasValueSPMDExpander::ComputeLayoutForward(
     mlir::Operation* op, const llvm::DenseMap<int, Layout>& input_layouts) {
   TF_ASSIGN_OR_RETURN(const Mesh mesh, ExtractDeviceMeshEnclosingCluster(op));
-
-  // Variant tensors are always 0-dimensional.
   return llvm::DenseMap<int, Layout>(
       {{0, Layout::ReplicatedOnMesh(mesh, /*rank=*/0)}});
 }
 
 StatusOr<llvm::DenseMap<int, Layout>>
-IteratorGetNextAsOptionalSPMDExpander::ComputeLayoutBackward(
+OptionalHasValueSPMDExpander::ComputeLayoutBackward(
     mlir::Operation* op, const llvm::DenseMap<int, Layout>& output_layouts) {
   TF_ASSIGN_OR_RETURN(const Mesh mesh, ExtractDeviceMeshEnclosingCluster(op));
-
-  // Iterator resource tensors are always 0-dimensional.
   return llvm::DenseMap<int, Layout>(
-      {{0, Layout::ReplicatedOnMesh(mesh, /*rank=*/0)}});
+      {{0, Layout::ReplicatedOnMesh(mesh, ValueRank(op->getOperand(0)))}});
 }
 
 }  // namespace dtensor
