@@ -662,8 +662,8 @@ DataServiceWorkerImpl::MakeSnapshotTaskIterator(
     split_providers.push_back(std::make_unique<SnapshotSplitProvider>(
         config_.dispatcher_address(), config_.protocol(), worker_address_,
         snapshot_task,
-        /*source_index=*/i,
-        absl::Milliseconds(config_.dispatcher_timeout_ms())));
+        /*source_index=*/i, absl::Milliseconds(config_.dispatcher_timeout_ms()),
+        Env::Default()));
   }
   std::unique_ptr<standalone::Iterator> iterator;
   TF_RETURN_IF_ERROR(
