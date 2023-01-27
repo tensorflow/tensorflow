@@ -53,6 +53,10 @@ struct SnapshotWriterParams {
   // The maximum number of bytes in each chunk.
   int64_t max_chunk_size_bytes = kDefaultMaxChunkSizeBytes;
 
+  // If true, keep temporary files (e.g., checkpoints) after completing the
+  // snapshot. Used only for unit testing.
+  bool test_only_keep_temp_files = false;
+
   std::string StreamDirectory() const {
     return tensorflow::data::StreamDirectory(snapshot_path, stream_index);
   }

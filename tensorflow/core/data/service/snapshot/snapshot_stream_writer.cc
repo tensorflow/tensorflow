@@ -238,6 +238,10 @@ Status SnapshotStreamWriter::Save() {
 }
 
 Status SnapshotStreamWriter::DeleteOutdatedCheckpoints() {
+  if (params_.test_only_keep_temp_files) {
+    return OkStatus();
+  }
+
   std::vector<std::string> checkpoint_filenames;
   TF_RETURN_IF_ERROR(params_.env->GetChildren(params_.CheckpointsDirectory(),
                                               &checkpoint_filenames));
