@@ -398,16 +398,6 @@ class FuncGraph(ops.Graph):
           assert isinstance(
               graph,
               FuncGraph), "This API should only be used in TF2 enviroment."
-          # In the case of control flow, we need to capture the
-          # external_captures (deferred or not) of the body_graph (i.e.
-          # `WhileBodyFuncGraph) in `cond_graph` (i.e. WhileCondFuncGraph) and
-          # create the corresponding placeholders in `cond_graph` so that it
-          # expects to receive these as arguments. However, doing so requires
-          # having evaluated the call_time_value already (and maybe repeatedly),
-          # so we skip adding deferred_captures to the control flow graph but
-          # add it to its outer graph.
-          while graph.is_control_flow_graph:
-            graph = graph.outer_graph
 
           with graph.as_default():
             ret_nest = graph.capture_call_time_value(
