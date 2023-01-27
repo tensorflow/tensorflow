@@ -34,6 +34,7 @@ limitations under the License.
 #include "tensorflow/tsl/platform/status.h"
 #include "tensorflow/tsl/platform/status_matchers.h"
 #include "tensorflow/tsl/platform/statusor.h"
+#include "tensorflow/tsl/platform/test.h"
 
 namespace tensorflow {
 namespace data {

@@ -7461,7 +7461,6 @@ cc_binary(
     linkstatic = 1,
     tags = [
         "manual",
-        "no_mac_arm64",
         "notap",
     ],
     deps = [
@@ -7484,6 +7483,7 @@ tf_cc_test(
     name = "quantized_instance_norm_test",
     size = "small",
     srcs = ["quantized_instance_norm_test.cc"],
+    tags = ["no_mac_arm64"],
     deps = [
         ":ops_testutil",
         ":ops_util",
@@ -7611,6 +7611,14 @@ tf_kernel_library(
     deps = [
         "//tensorflow/core:framework",
         "@icu//:common",
+    ],
+)
+
+tf_kernel_library(
+    name = "sync_ops",
+    prefix = "sync_ops",
+    deps = [
+        "//tensorflow/core:framework",
     ],
 )
 

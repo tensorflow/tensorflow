@@ -42,11 +42,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/stream_executor/cuda/cuda_stream.h"
 #include "tensorflow/compiler/xla/stream_executor/cuda/cuda_timer.h"
 #include "tensorflow/compiler/xla/stream_executor/kernel_cache_config.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/env.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/error.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/initialize.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/statusor.h"
 #include "tensorflow/compiler/xla/stream_executor/platform.h"
+#include "tensorflow/compiler/xla/stream_executor/platform/initialize.h"
 #include "tensorflow/compiler/xla/stream_executor/platform/logging.h"
 #include "tensorflow/compiler/xla/stream_executor/platform/port.h"
 #include "tensorflow/compiler/xla/stream_executor/plugin_registry.h"
@@ -54,7 +51,10 @@ limitations under the License.
 #include "tensorflow/compiler/xla/stream_executor/stream_executor_internal.h"
 #include "tensorflow/compiler/xla/stream_executor/stream_executor_pimpl.h"
 #include "tensorflow/compiler/xla/stream_executor/timer.h"
+#include "tensorflow/tsl/platform/env.h"
+#include "tensorflow/tsl/platform/errors.h"
 #include "tensorflow/tsl/platform/numbers.h"
+#include "tensorflow/tsl/platform/statusor.h"
 
 // LOG(ERROR) uses a const named ERROR, so a macro with the same name is
 // always unwanted. This happens on Windows that defines such a macro.
@@ -158,7 +158,7 @@ bool GpuExecutor::FindOnDiskForComputeCapability(
 
   std::string cc_specific =
       absl::StrCat(filename, ".cc", cc_major_, cc_minor_, canonical_suffix);
-  if (port::FileExists(cc_specific).ok()) {
+  if (tsl::Env::Default()->FileExists(cc_specific).ok()) {
     VLOG(2) << "found compute-capability-specific file, using that: "
             << cc_specific;
     *found_filename = cc_specific;
@@ -167,7 +167,7 @@ bool GpuExecutor::FindOnDiskForComputeCapability(
 
   VLOG(2) << "could not find compute-capability specific file at: "
           << cc_specific;
-  if (port::FileExists(std::string(filename)).ok()) {
+  if (tsl::Env::Default()->FileExists(std::string(filename)).ok()) {
     *found_filename = std::string(filename);
     return true;
   }
@@ -188,7 +188,7 @@ bool GpuExecutor::FindOnDiskForISAVersion(absl::string_view filename,
 //                 returned string. Example: calling this from /usr/bin/foo
 //                 would return /usr/bin.
 static std::string GetBinaryDir(bool strip_exe) {
-  std::string exe_path = port::GetExecutablePath();
+  std::string exe_path = tsl::Env::Default()->GetExecutablePath();
   if (strip_exe) {
     // The exe is the last component of the path, so remove one component.
     std::vector<std::string> components = absl::StrSplit(exe_path, '/');
@@ -745,7 +745,7 @@ tsl::Status GpuExecutor::WaitForEvent(Stream* stream, Event* event) {
     return ::tsl::OkStatus();
   } else {
     return tsl::Status(
-        port::error::INTERNAL,
+        tsl::error::INTERNAL,
         absl::StrFormat("error recording waiting for CUDA event on stream %p",
                         stream));
   }

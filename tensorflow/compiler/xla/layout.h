@@ -103,7 +103,8 @@ class Layout {
                   PrimitiveType index_primitive_type = PRIMITIVE_TYPE_INVALID,
                   PrimitiveType element_primitive_type = PRIMITIVE_TYPE_INVALID,
                   int64_t memory_space = 0,
-                  std::unique_ptr<Shape> physical_shape = nullptr);
+                  std::unique_ptr<Shape> physical_shape = nullptr,
+                  int64_t dynamic_shape_metadata_prefix_bytes = 0);
 
   Layout& operator=(const Layout& other);
   Layout& operator=(Layout&& other);

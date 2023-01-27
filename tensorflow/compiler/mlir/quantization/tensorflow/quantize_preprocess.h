@@ -15,6 +15,9 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_QUANTIZATION_TENSORFLOW_QUANTIZE_PREPROCESS_H_
 #define TENSORFLOW_COMPILER_MLIR_QUANTIZATION_TENSORFLOW_QUANTIZE_PREPROCESS_H_
 
+#include <string>
+
+#include "absl/container/flat_hash_set.h"
 #include "absl/status/status.h"
 #include "absl/strings/string_view.h"
 #include "llvm/ADT/Optional.h"
@@ -36,11 +39,11 @@ inline constexpr absl::string_view kDefaultTfQuantMlirDumpFilePrefix =
 // `mlir_dump_file_prefix` is primarily used for debugging and does not affect
 // the preprocessing behavior. Instructions for producing MLIR dump files are in
 // the comments of `tensorflow::quantization::MaybeEnableIrPrinting` function.
-absl::Status PreprocessAndFreezeGraph(absl::string_view mlir_dump_file_prefix,
-                                      bool is_inliner_run,
-                                      mlir::ModuleOp module_op,
-                                      mlir::MLIRContext* context,
-                                      llvm::Optional<Session*> session);
+absl::Status PreprocessAndFreezeGraph(
+    absl::string_view mlir_dump_file_prefix, bool is_inliner_run,
+    const absl::flat_hash_set<std::string>& noinline_functions,
+    mlir::ModuleOp module_op, mlir::MLIRContext* context,
+    llvm::Optional<Session*> session);
 
 // Overload of `PreprocessAndFreezeGraph` that uses the default MLIR dump file
 // prefix.
@@ -49,7 +52,8 @@ inline absl::Status PreprocessAndFreezeGraph(mlir::ModuleOp module_op,
                                              llvm::Optional<Session*> session) {
   return PreprocessAndFreezeGraph(
       /*mlir_dump_file_prefix=*/kDefaultTfQuantMlirDumpFilePrefix,
-      /*is_inliner_run=*/true, module_op, context, session);
+      /*is_inliner_run=*/true, /*noinline_functions=*/{}, module_op, context,
+      session);
 }
 
 }  // namespace quantization

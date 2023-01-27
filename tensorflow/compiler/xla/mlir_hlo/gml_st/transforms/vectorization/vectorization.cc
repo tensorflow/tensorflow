@@ -868,7 +868,7 @@ struct VectorizePerfectlyTiledLoopsPass
       });
     };
     auto isPerfectlyTiledLoop = [&](Operation *op) {
-      return (isa<ForOp>(op) || isa<ParallelOp>(op)) &&
+      return (isa<ForOp, ParallelOp, scf::ForOp>(op)) &&
              hasLabel(op, kPerfectlyTiledLoopLabel);
     };
     auto isInsidePerfectlyTiledLoop = [&](Operation *op) {

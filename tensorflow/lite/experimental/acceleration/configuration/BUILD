@@ -190,9 +190,10 @@ cc_test(
     ],
 )
 
-cc_library(
+cc_library_with_tflite(
     name = "delegate_registry",
     hdrs = ["delegate_registry.h"],
+    copts = tflite_copts_warnings(),
     deps = [
         ":configuration_fbs",
         "//tensorflow/lite/core/c:common",

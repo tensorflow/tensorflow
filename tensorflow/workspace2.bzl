@@ -43,6 +43,7 @@ load("//third_party/sobol_data:workspace.bzl", sobol_data = "repo")
 load("//third_party/stablehlo:workspace.bzl", stablehlo = "repo")
 load("//third_party/vulkan_headers:workspace.bzl", vulkan_headers = "repo")
 load("//third_party/tensorrt:workspace.bzl", tensorrt = "repo")
+load("//third_party/triton:workspace.bzl", triton = "repo")
 
 # Import external repository rules.
 load("@bazel_tools//tools/build_defs/repo:java.bzl", "java_import_external")
@@ -80,6 +81,7 @@ def _initialize_third_party():
     stablehlo()
     vulkan_headers()
     tensorrt()
+    triton()
 
     # copybara: tsl vendor
 
@@ -139,9 +141,9 @@ def _tf_repositories():
     # LINT.IfChange
     tf_http_archive(
         name = "XNNPACK",
-        sha256 = "ca3a5316b8161214f8f22a578fb638f1fccd0585eee40301363ffd026310379a",
-        strip_prefix = "XNNPACK-a50369c0fdd15f0f35b1a91c964644327a88d480",
-        urls = tf_mirror_urls("https://github.com/google/XNNPACK/archive/a50369c0fdd15f0f35b1a91c964644327a88d480.zip"),
+        sha256 = "0a7ad183dcb4db36e82c4c24376a28281c30e986bd2d71311e624405229a7618",
+        strip_prefix = "XNNPACK-659147817805d17c7be2d60bd7bbca7e780f9c82",
+        urls = tf_mirror_urls("https://github.com/google/XNNPACK/archive/659147817805d17c7be2d60bd7bbca7e780f9c82.zip"),
     )
     # LINT.ThenChange(//tensorflow/lite/tools/cmake/modules/xnnpack.cmake)
 
@@ -160,17 +162,10 @@ def _tf_repositories():
     )
 
     tf_http_archive(
-        name = "clog",
-        strip_prefix = "cpuinfo-5e63739504f0f8e18e941bd63b2d6d42536c7d90",
-        sha256 = "18eca9bc8d9c4ce5496d0d2be9f456d55cbbb5f0639a551ce9c8bac2e84d85fe",
-        urls = tf_mirror_urls("https://github.com/pytorch/cpuinfo/archive/5e63739504f0f8e18e941bd63b2d6d42536c7d90.tar.gz"),
-    )
-
-    tf_http_archive(
         name = "cpuinfo",
-        strip_prefix = "cpuinfo-5e63739504f0f8e18e941bd63b2d6d42536c7d90",
-        sha256 = "18eca9bc8d9c4ce5496d0d2be9f456d55cbbb5f0639a551ce9c8bac2e84d85fe",
-        urls = tf_mirror_urls("https://github.com/pytorch/cpuinfo/archive/5e63739504f0f8e18e941bd63b2d6d42536c7d90.tar.gz"),
+        strip_prefix = "cpuinfo-3dc310302210c1891ffcfb12ae67b11a3ad3a150",
+        sha256 = "ba668f9f8ea5b4890309b7db1ed2e152aaaf98af6f9a8a63dbe1b75c04e52cb9",
+        urls = tf_mirror_urls("https://github.com/pytorch/cpuinfo/archive/3dc310302210c1891ffcfb12ae67b11a3ad3a150.zip"),
     )
 
     tf_http_archive(
@@ -437,9 +432,9 @@ def _tf_repositories():
         name = "dill_archive",
         build_file = "//third_party:dill.BUILD",
         system_build_file = "//third_party/systemlibs:dill.BUILD",
-        urls = tf_mirror_urls("https://pypi.python.org/packages/source/d/dill/dill-0.3.4.zip"),
-        sha256 = "9f9734205146b2b353ab3fec9af0070237b6ddae78452af83d2fca84d739e675",
-        strip_prefix = "dill-0.3.4",
+        urls = tf_mirror_urls("https://github.com/uqfoundation/dill/releases/download/dill-0.3.6/dill-0.3.6.zip"),
+        sha256 = "2159ca9e7568ff47dc7be2e35a6edf18014351da95ad1b59c0930a14dcf37be7",
+        strip_prefix = "dill-0.3.6",
     )
 
     tf_http_archive(

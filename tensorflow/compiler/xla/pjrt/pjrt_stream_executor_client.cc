@@ -113,7 +113,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/stream_executor/device_memory.h"
 #include "tensorflow/compiler/xla/stream_executor/device_memory_allocator.h"
 #include "tensorflow/compiler/xla/stream_executor/host/host_platform_id.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/statusor.h"
 #include "tensorflow/compiler/xla/stream_executor/stream.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"

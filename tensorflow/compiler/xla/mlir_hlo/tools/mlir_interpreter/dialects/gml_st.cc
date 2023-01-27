@@ -75,6 +75,10 @@ llvm::SmallVector<InterpreterValue> gmlStLoop(
 
   SmallVector<int64_t> iterSizes;
   for (auto [lb, ub, step] : llvm::zip(lbs, ubs, steps)) {
+    if (step == 0) {
+      state.addFailure("invalid step");
+      return {};
+    }
     iterSizes.push_back((ub - lb + (step - 1)) / step);
   }
 

@@ -433,3 +433,11 @@ class WorkerServer:
   def _num_tasks(self):
     """Returns the number of tasks currently being executed on the worker."""
     return self._server.num_tasks()
+
+  def _snapshot_task_progresses(self):
+    """Returns the progresses of the snapshot tasks currently being executed.
+
+    Returns:
+      An `Iterable[common_pb2.SnapshotTaskProgress]`.
+    """
+    return self._server.snapshot_task_progresses()

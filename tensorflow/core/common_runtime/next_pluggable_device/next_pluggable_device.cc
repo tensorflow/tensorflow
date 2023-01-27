@@ -19,9 +19,9 @@ limitations under the License.
 #include <utility>
 
 #include "absl/flags/flag.h"
+#include "tensorflow/compiler/jit/pjrt_device_context.h"
 #include "tensorflow/core/common_runtime/dma_helper.h"
 #include "tensorflow/core/common_runtime/next_pluggable_device/next_pluggable_device_allocator.h"
-#include "tensorflow/core/common_runtime/next_pluggable_device/pjrt_device_context.h"
 #include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/status.h"

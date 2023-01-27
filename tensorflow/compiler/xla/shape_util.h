@@ -722,10 +722,18 @@ class ShapeUtil {
   // A parallel version of ForEachIndex(WithStatus). This can only be used if
   // the visitor_function is thread-safe and the order of iteration does not
   // matter.
+  //
+  // Please use GetForEachIndexParallelThreadCount() to get the number of
+  // threads in the threadpool of ForEachIndexParallel*. This will not change
+  // during the runtime of the process. Please DO NOT use
+  // tsl::port::MaxParallelism() for this purpose, as it may change.
   static void ForEachIndexParallel(
       const Shape& shape, absl::Span<const int64_t> base,
       absl::Span<const int64_t> count, absl::Span<const int64_t> incr,
       const ForEachParallelVisitorFunction& visitor_function);
+
+  // Returns the number of threads in the threadpool of ForEachIndexParallel*.
+  static int GetForEachIndexParallelThreadCount();
 
   static Status ForEachIndexParallelWithStatus(
       const Shape& shape, absl::Span<const int64_t> base,

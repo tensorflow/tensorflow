@@ -235,8 +235,9 @@ StatusOr<const NcclUniqueIdCallback*> GetNcclUniqueIdCallback(
       << "If non-local devices are taking part of a collective API on "
          "GPU, the nccl_unique_id_callback must be provided by the client.";
 
-  static NcclUniqueIdCallback local_callback(LocalNcclUniqueIdCallback);
-  return &local_callback;
+  static auto* local_callback =
+      new NcclUniqueIdCallback(LocalNcclUniqueIdCallback);
+  return local_callback;
 }
 
 StatusOr<NcclComm::Lock> AcquireNcclComm(

@@ -44,6 +44,22 @@ using tensor::ExtractOp;
 using tensor::FromElementsOp;
 using tensor::InsertOp;
 
+Value materializePoint(OpBuilder &b, Location loc, Value valueToTile,
+                       ArrayRef<OpFoldResult> offsets) {
+  auto tensorType = valueToTile.getType().cast<RankedTensorType>();
+  int64_t rank = tensorType.getRank();
+
+  IntegerAttr oneAttr = b.getIndexAttr(1);
+  SmallVector<OpFoldResult> sizes(rank, oneAttr);
+  SmallVector<OpFoldResult> strides(rank, oneAttr);
+
+  Value slice = b.create<tensor::ExtractSliceOp>(loc, valueToTile, offsets,
+                                                 sizes, strides);
+  Value zero = b.create<arith::ConstantIndexOp>(loc, 0);
+  return b.create<tensor::ExtractOp>(loc, slice,
+                                     SmallVector<Value>(rank, zero));
+}
+
 struct ScalarizeLinalgOp : public OpInterfaceRewritePattern<LinalgOp> {
   using OpInterfaceRewritePattern<LinalgOp>::OpInterfaceRewritePattern;
 
@@ -199,13 +215,11 @@ struct ScalarizeScatterOp : public OpRewritePattern<thlo::ScatterOp> {
                       bodyLoc, initIndex[en.index()], en.value());
                 }
 
-                Value updateValue = gml_st::materializePoint(
-                    thenBuilder, loc, updates, getAsOpFoldResult(updateIndex),
-                    /*useExtractSlice=*/false);
+                Value updateValue = materializePoint(
+                    thenBuilder, loc, updates, getAsOpFoldResult(updateIndex));
                 Value currentValue =
-                    gml_st::materializePoint(thenBuilder, loc, initBlockArg,
-                                             getAsOpFoldResult(initIndex),
-                                             /*useExtractSlice=*/false);
+                    materializePoint(thenBuilder, loc, initBlockArg,
+                                     getAsOpFoldResult(initIndex));
 
                 // Combine update with the value in the output.
                 Block *body = scatterOp.getBody();
@@ -315,9 +329,8 @@ struct ScalarizeGatherOp : public OpRewritePattern<thlo::GatherOp> {
           SmallVector<OpFoldResult> ones(initRank, oneAttr);
           Value tile = nestedBuilder.create<gml_st::TileOp>(
               bodyLoc, SmallVector<OpFoldResult>(ivs), ones, ones);
-          Value val = gml_st::materializePoint(nestedBuilder, bodyLoc, operand,
-                                               getAsOpFoldResult(readIndices),
-                                               /*useExtractSlice=*/false);
+          Value val = materializePoint(nestedBuilder, bodyLoc, operand,
+                                       getAsOpFoldResult(readIndices));
           nestedBuilder.create<gml_st::SetYieldOp>(bodyLoc, val,
                                                    loopInits.front(), tile);
         });

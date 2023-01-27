@@ -56,7 +56,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/statusor.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/window_util.h"
@@ -223,7 +222,7 @@ Status MakeEvalErrorDueToParamOrInfeed(const HloInstruction& eval_instruction) {
   absl::little_endian::Store32(
       const_cast<char*>(error_payload.data()),
       static_cast<uint32_t>(EvalErrorDetail::kDynamicValueDependence));
-  error.SetPayload(kEvalErrorDetailUrl, error_payload);
+  error.SetPayload(kEvalErrorDetailUrl, absl::Cord(error_payload));
   return error;
 }
 
@@ -3952,7 +3951,7 @@ Status HloEvaluator::HandleReduce(HloInstruction* instr) {
     }
   }
 
-  const int num_threads = tsl::port::MaxParallelism() + 1;
+  const int num_threads = ShapeUtil::GetForEachIndexParallelThreadCount() + 1;
   std::vector<std::unique_ptr<HloEvaluator>> embedded_evaluators;
   embedded_evaluators.reserve(num_threads);
   for (int i = 0; i < num_threads; ++i) {

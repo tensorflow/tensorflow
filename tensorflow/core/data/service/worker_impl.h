@@ -85,6 +85,9 @@ class DataServiceWorkerImpl {
                     GetElementResponse* response);
   Status GetWorkerTasks(const GetWorkerTasksRequest* request,
                         GetWorkerTasksResponse* response);
+  Status GetSnapshotTaskProgresses(
+      const GetSnapshotTaskProgressesRequest* request,
+      GetSnapshotTaskProgressesResponse* response);
 
   // Exports the worker state for debugging.
   WorkerStateExport ExportState() const;

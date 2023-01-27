@@ -35,8 +35,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
 #include "tensorflow/compiler/xla/shape.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
+#include "tensorflow/tsl/platform/statusor.h"
 
 namespace xla {
 

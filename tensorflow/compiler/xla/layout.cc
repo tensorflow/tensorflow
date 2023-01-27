@@ -68,7 +68,8 @@ Layout::Layout(absl::Span<const int64_t> minor_to_major,
                absl::Span<const bool> dim_ordered, absl::Span<const Tile> tiles,
                PrimitiveType index_primitive_type,
                PrimitiveType pointer_primitive_type, int64_t memory_space,
-               std::unique_ptr<Shape> physical_shape)
+               std::unique_ptr<Shape> physical_shape,
+               int64_t dynamic_shape_metadata_prefix_bytes)
     : dim_level_types_(dim_level_types.begin(), dim_level_types.end()),
       dim_unique_(dim_unique.begin(), dim_unique.end()),
       dim_ordered_(dim_ordered.begin(), dim_ordered.end()),
@@ -77,7 +78,9 @@ Layout::Layout(absl::Span<const int64_t> minor_to_major,
       index_primitive_type_(index_primitive_type),
       pointer_primitive_type_(pointer_primitive_type),
       memory_space_(memory_space),
-      physical_shape_(std::move(physical_shape)) {}
+      physical_shape_(std::move(physical_shape)),
+      dynamic_shape_metadata_prefix_bytes_(
+          dynamic_shape_metadata_prefix_bytes) {}
 
 Layout::Layout(const Layout& other)
     : dim_level_types_(other.dim_level_types_),

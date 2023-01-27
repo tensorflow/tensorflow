@@ -298,6 +298,39 @@ def _find_variables(
   return var_mapping
 
 
+def _save_function_alias(
+    saved_model_dir: str,
+    tags: Collection[str],
+    function_aliases: Mapping[str, str],
+) -> None:
+  """Saves the function alias to the SavedModel.
+
+  SavedModelBuilder (TF1 saved model saver) does not support saving function
+  aliases, so this function loads the SavedModel proto and adds the
+  `function_aliases` field.
+
+  Args:
+    saved_model_dir: Path to the saved model directory.
+    tags: A collection of tags to specify the meta graph.
+    function_aliases: Function name -> function alias mapping.
+  """
+  loader = saved_model_loader.SavedModelLoader(saved_model_dir)
+  meta_graph_def = loader.get_meta_graph_def_from_tags(tags)
+
+  for function_name, function_alias in function_aliases.items():
+    meta_graph_def.meta_info_def.function_aliases[function_name] = (
+        function_alias
+    )
+
+  saved_model_proto_serialized = loader.saved_model.SerializeToString()
+
+  # TODO(b/266015731): Also update and set the SavedModel fingerprint.
+  path = file_io.join(
+      saved_model_dir, saved_model_constants.SAVED_MODEL_FILENAME_PB
+  )
+  file_io.atomic_write_string_to_file(path, saved_model_proto_serialized)
+
+
 def save_model_v1(
     graph_def: graph_pb2.GraphDef,
     output_dir: str,
@@ -307,6 +340,7 @@ def save_model_v1(
     restore_op_name: Optional[str] = None,
     checkpoint_dir: Optional[str] = None,
     variable_shared_names: Optional[Sequence[str]] = None,
+    function_aliases: Optional[Mapping[str, str]] = None,
 ) -> None:
   """Saves the model.
 
@@ -322,6 +356,7 @@ def save_model_v1(
     restore_op_name: Name of the node for restoration.
     checkpoint_dir: Path to checkpoint file where variable values are saved.
     variable_shared_names: Shared name of the variables in the model.
+    function_aliases: Function name -> function alias mapping.
 
   Raises:
     ValueError iff the graph does not contain a valid signature.
@@ -372,3 +407,6 @@ def save_model_v1(
     )
 
   v1_builder.save()
+
+  if function_aliases:
+    _save_function_alias(output_dir, tags, function_aliases)

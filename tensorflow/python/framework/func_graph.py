@@ -45,6 +45,7 @@ from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.saved_model import save_context
+from tensorflow.python.types import internal
 from tensorflow.python.util import compat
 from tensorflow.python.util import nest
 from tensorflow.python.util import object_identity
@@ -370,15 +371,10 @@ class FuncGraph(ops.Graph):
 
       if placeholder is None:
 
-        def convert_to_placeholder(s):
-          if not isinstance(s, tensor_spec.DenseSpec):
-            raise TypeError(
-                "Expected a nest of `TypeSpec` objects, found %s of type %s." %
-                (s, type(s)))
-          return array_ops.placeholder(dtype=s.dtype, shape=s.shape)
-
-        placeholder = nest.map_structure(
-            convert_to_placeholder, spec, expand_composites=True)
+        trace_ctx = trace_type.InternalTracingContext(False)
+        capture_trace_type = trace_type.from_value(spec, trace_ctx)
+        placeholder_ctx = trace_type.InternalPlaceholderContext(self)
+        placeholder = capture_trace_type.placeholder_value(placeholder_ctx)
 
       def wrapped_closure():
 
@@ -423,8 +419,23 @@ class FuncGraph(ops.Graph):
         # This uses the tensor dtype defined in `spec` when converting values
         # in `ret_nest` to tensors.
         # pylint: disable=protected-access
+        def _components_helper(s, r):
+          if isinstance(s, internal.TensorSpec):
+            try:
+              r = ops.convert_to_tensor(r, s.dtype)
+            except (TypeError, ValueError):
+              raise ValueError(
+                  f"Value {r} is not convertible to a tensor with "
+                  f"dtype {s.dtype} and shape {s.shape}."
+              )
+            if not r.shape.is_compatible_with(s.shape):
+              raise ValueError(
+                  f"Value {r} is not convertible to a tensor with "
+                  f"dtype {s.dtype} and shape {s.shape}."
+              )
+          return s._to_components(r)
         y = nest.map_structure(
-            lambda s, r: s._to_components(r),
+            _components_helper,
             spec,
             ret_nest,
             expand_composites=False)

@@ -20,11 +20,13 @@ limitations under the License.
 #include <string>
 #include <string_view>
 #include <utility>
+#include <vector>
 
 #include "tensorflow/core/common_runtime/next_pluggable_device/plugin_coordination_service_agent_helper.h"
 #include "tensorflow/core/common_runtime/next_pluggable_device/plugin_op_kernel.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/resource_mgr.h"
 
 namespace tensorflow {
 
@@ -35,6 +37,8 @@ class DirectPluginOpKernelConstruction : public PluginOpKernelConstruction {
 
   Status GetBoolAttr(std::string_view attr_name, bool* value) const override;
   Status GetInt32Attr(std::string_view attr_name, int* value) const override;
+  Status GetInt32AttrList(std::string_view attr_name,
+                          std::vector<int32_t>* value) const override;
   Status GetInt64Attr(std::string_view attr_name,
                       int64_t* value) const override;
   Status GetStringAttr(std::string_view attr_name,
@@ -74,6 +78,11 @@ class DirectPluginOpKernelContext : public PluginOpKernelContext {
         ctx_->coordination_service_agent());
   }
 
+  Status CreatePluginVariable(int index,
+                              PluginVariable** variable) const override;
+
+  Status AllocateTempForPluginVariable(PluginVariable* variable) override;
+
   int NumInputs() const override { return ctx_->num_inputs(); }
 
   Status GetInput(int index, Tensor* tensor) const override;
@@ -82,6 +91,10 @@ class DirectPluginOpKernelContext : public PluginOpKernelContext {
 
   Status GetInputRange(std::string_view name,
                        std::pair<int, int>* range) const override;
+
+  DataType GetInputDataType(int index) const override {
+    return ctx_->input_dtype(index);
+  }
 
   std::string_view GetOpKernelRequestedInput(int index) const override {
     return ctx_->op_kernel().requested_input(index);
@@ -108,7 +121,7 @@ class DirectPluginOpKernelContext : public PluginOpKernelContext {
     return OkStatus();
   }
 
-  void MaybeDeleteConfigProto(const ConfigProto* config_proto) override {
+  void MaybeDeleteConfigProto(const ConfigProto* config_proto) const override {
     // We don't need to specifically delete ConfigProto since it is obtained
     // from FunctionLibraryRuntime in `ctx_`.
   }
@@ -123,6 +136,17 @@ class DirectPluginOpKernelContext : public PluginOpKernelContext {
       const FunctionLibraryDefinition* flib_def) const override {
     // We don't need to specifically delete FunctionLibraryDefinition since it
     // is obtained from FunctionLibraryRuntime in `ctx_`.
+  }
+
+  Status GetResourceHandle(int index,
+                           const ResourceHandle** handle) const override {
+    *handle = &HandleFromInput(ctx_, index);
+    return OkStatus();
+  }
+
+  void MaybeDeleteResourceHandle(const ResourceHandle* handle) const override {
+    // We don't need to specifically delete ResourceHandle since it is obtained
+    // from `ctx_`.
   }
 
   int GetGraphDefVersion() const override {

@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/tsl/platform/mutex.h"
 #include "tensorflow/tsl/platform/status.h"
+#include "tensorflow/tsl/platform/thread_annotations.h"
 
 namespace tensorflow {
 namespace data {
@@ -34,9 +35,11 @@ namespace data {
 // Split provider that supports writing distributed snapshots.
 class SnapshotSplitProvider : public SplitProvider {
  public:
-  SnapshotSplitProvider(const std::string& address, const std::string& protocol,
+  SnapshotSplitProvider(const std::string& dispatcher_address,
+                        const std::string& dispatcher_protocol,
+                        const std::string& worker_address,
                         const SnapshotTaskDef& snapshot_task,
-                        int64_t source_index, absl::Duration timeout);
+                        int64_t source_index, absl::Duration timeout, Env* env);
 
   Status GetNext(Tensor* split, bool* end_of_splits) override;
   Status Reset() override;
@@ -46,14 +49,28 @@ class SnapshotSplitProvider : public SplitProvider {
                  IteratorStateReader* reader) override;
 
  private:
-  const std::string address_;
-  const std::string protocol_;
+  const std::string dispatcher_address_;
+  const std::string dispatcher_protocol_;
+  const std::string worker_address_;
   const SnapshotTaskDef snapshot_task_;
   const int64_t source_index_;
   const absl::Duration timeout_;
+  Env* const env_;
 
-  mutex mu_;
-  std::unique_ptr<DataServiceDispatcherClient> dispatcher_;
+  // If the next split is written to the file system, returns the name of the
+  // split file. If it is not written to the file system, returns NotFound.
+  StatusOr<std::string> GetSplitFilename() const;
+
+  // Gets the next split by reading from the splits directory.
+  Status GetSplitFromFile(const std::string& split_file, Tensor* split,
+                          bool* end_of_splits);
+
+  // Gets the next split by sending an RPC to the dispatcher.
+  Status GetSplitFromDispatcher(Tensor* split, bool* end_of_splits);
+
+  mutable mutex mu_;
+  std::unique_ptr<DataServiceDispatcherClient> dispatcher_ TF_GUARDED_BY(mu_);
+  int64_t next_split_index_ TF_GUARDED_BY(mu_) = 0;
 };
 
 }  // namespace data

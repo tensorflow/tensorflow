@@ -351,9 +351,9 @@ XlaDeviceFlags* GetXlaDeviceFlags() {
   return device_flags;
 }
 
-const XlaOpsCommonFlags& GetXlaOpsCommonFlags() {
+XlaOpsCommonFlags* GetXlaOpsCommonFlags() {
   absl::call_once(flags_init, &AllocateAndParseFlags);
-  return *ops_flags;
+  return ops_flags;
 }
 
 MlirCommonFlags* GetMlirCommonFlags() {

@@ -90,8 +90,8 @@ class NativeInterpreterWrapper implements AutoCloseable {
     // by passing the tflite::Model in to here, and then traversing that?)
     ArrayList<Long> delegateHandles = new ArrayList<>();
     boolean useXnnpack = true;
-    if (options.useXNNPACK != null) {
-      useXnnpack = options.useXNNPACK;
+    if (options.getUseXNNPACK() != null) {
+      useXnnpack = options.getUseXNNPACK();
     }
     this.interpreterHandle =
         createInterpreter(

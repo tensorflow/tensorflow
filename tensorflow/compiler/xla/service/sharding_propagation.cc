@@ -77,19 +77,44 @@ bool MaybeImproveInstructionSharding(HloSharding sharding,
                                      bool may_combine_partial_sharding,
                                      bool allow_aggressive_resharding = false) {
   // Allows improve from tile maximal shardings to manual shardings.
-  if (instruction->has_sharding() && instruction->sharding().IsTileMaximal() &&
-      sharding.IsManual()) {
-    instruction->set_sharding(sharding);
-    return true;
+  if (instruction->has_sharding()) {
+    bool no_worse = true;
+    bool changed = false;
+    const std::vector<HloSharding>& flattened_instruction_shardings =
+        instruction->sharding().tuple_elements();
+    const std::vector<HloSharding>& flatten_shardings =
+        sharding.tuple_elements();
+    CHECK_EQ(flattened_instruction_shardings.size(), flatten_shardings.size());
+    for (int i = 0; i != flattened_instruction_shardings.size(); ++i) {
+      if (flattened_instruction_shardings[i] != flatten_shardings[i]) {
+        changed = true;
+        if (!flattened_instruction_shardings[i].IsTileMaximal() ||
+            !flatten_shardings[i].IsManual()) {
+          no_worse = false;
+          break;
+        }
+      }
+    }
+    // Replace sharding if we are know that it strictly improves(i.e. the
+    // sharding is changed and no worse than before) from tile maximal
+    // (sub)shardings to manual shardings. Otherwise pass through.
+    if (no_worse && changed) {
+      instruction->set_sharding(sharding);
+      return true;
+    }
   }
-  // We don't want to propagate tile maximal shardings or manual shardings.
-  if (!IsSpatiallyPartitioned(sharding) || sharding.IsManual()) {
+  // We don't want to propagate tile maximal shardings.
+  if (!IsSpatiallyPartitioned(sharding)) {
     return false;
   }
   // Any sharding is better then no sharding.
   if (!instruction->has_sharding()) {
     instruction->set_sharding(std::move(sharding));
     return true;
+  }
+  // We don't want to propagate manual shardings.
+  if (sharding.IsManual()) {
+    return false;
   }
   int64_t sharding_tiles = sharding.NumTiles();
   if (hlo_sharding_util::MergeSharding(instruction->sharding(), &sharding,
@@ -2198,12 +2223,16 @@ bool ShardingPropagation::InferShardingFromOperands(
       if (!operand || !IsSpatiallyPartitioned(operand)) {
         return false;
       }
-
+      HloSortInstruction* sort = DynCast<HloSortInstruction>(instruction);
+      CHECK(sort);
+      const int64_t sort_dim = sort->sort_dimension();
       if (!operand->sharding().IsTileMaximal() &&
-          operand->sharding().tile_assignment().dim(
-              instruction->dimensions(0)) != 1) {
-        // Doesn't support sharding the sorting dimension.
-        return false;
+          operand->sharding().tile_assignment().dim(sort_dim) != 1) {
+        // In case of a sort operand sharded along the sort dimension, the
+        // sharding is propagated only if there exists a free (unsharded)
+        // dimension that we can later move the sharding into.
+        if (!hlo_sharding_util::IsSortOperandShardingMovable(operand, sort_dim))
+          return false;
       }
 
       if (instruction->shape().IsTuple()) {

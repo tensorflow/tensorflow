@@ -23,13 +23,10 @@ limitations under the License.
 
 #include "gml_st/IR/gml_st_ops.h"
 #include "gml_st/transforms/transforms.h"
-#include "llvm/ADT/SmallPtrSet.h"
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
-#include "mlir/Dialect/Arith/Utils/Utils.h"
+#include "mlir/Dialect/SCF/Transforms/Transforms.h"
 #include "mlir/Dialect/SCF/Utils/AffineCanonicalizationUtils.h"
-#include "mlir/Dialect/Tensor/Utils/Utils.h"
 #include "mlir/IR/IRMapping.h"
-#include "mlir/IR/Matchers.h"
 
 namespace mlir {
 namespace gml_st {
@@ -43,25 +40,8 @@ bool hasTensorSemantics(Operation *op) {
          llvm::all_of(op->getOperandTypes(), isATensor);
 }
 
-/// Rewrite a LoopOp/ParallelOp/ForOp with bounds/step that potentially do not
-/// divide evenly into two LoopOp/ParallelOp/ForOps: One where the step divides
-/// the iteration space evenly, followed another one for the last (partial)
-/// iteration (if any). This function only rewrites the `idx`-th loop of the
-/// loop nest represented by the LoopOp/ParallelOp/ForOp. To peel the entire
-/// loop nest, this function must be called multiple times.
-///
-/// This function rewrites the given LoopOp/ParallelOp/ForOp in-place and
-/// creates a new LoopOp/ParallelOp/ForOp for the last iteration. It replaces
-/// all uses of the original LoopOp/ParallelOp/ForOp with the results of the
-/// newly generated one.
-///
-/// The newly generated LoopOp/ParallelOp/ForOp is returned via `result`. The
-/// boundary at which the loop is split (new upper bound) is returned via
-/// `splitBound`.  The return value indicates whether the
-/// LoopOp/ParallelOp/ForOp was rewritten or not.
-template <typename LoopTy>
-LogicalResult peelLoop(RewriterBase &b, LoopTy loopOp, int64_t idx,
-                       LoopTy &result, Value &splitBound) {
+LogicalResult peelLoop(RewriterBase &b, ParallelOp loopOp, int64_t idx,
+                       ParallelOp &result, Value &splitBound) {
   if (!hasTensorSemantics(loopOp)) return failure();
 
   Value lb = loopOp.getLowerBound()[idx], ub = loopOp.getUpperBound()[idx],
@@ -93,7 +73,7 @@ LogicalResult peelLoop(RewriterBase &b, LoopTy loopOp, int64_t idx,
     bvm.map(termDst, res);
   }
   b.setInsertionPointAfter(loopOp);
-  auto remainderLoop = cast<LoopTy>(b.clone(*loopOp.getOperation(), bvm));
+  auto remainderLoop = cast<ParallelOp>(b.clone(*loopOp.getOperation(), bvm));
 
   Operation *remainderLoopOp = remainderLoop.getOperation();
 
@@ -137,17 +117,31 @@ void rewriteAffineOpAfterPeeling(RewriterBase &rewriter, Operation *mainLoop,
   });
 }
 
-template <typename LoopTy>
-FailureOr<LoopTy> peelAndCanonicalizeGmlStLoopImpl(RewriterBase &rewriter,
-                                                   LoopTy loopOp, int64_t idx) {
+}  // namespace
+
+PeelingResult peelAllLoops(ParallelOp loop, mlir::PatternRewriter &rewriter) {
+  setLabel(loop, kPeelingAppliedLabel);
+  PeelingResult peelingResult;
+  for (unsigned peeledIdx = 0; peeledIdx < loop.getNumLoops(); ++peeledIdx) {
+    auto peel = peelAndCanonicalizeGmlStLoop(rewriter, loop, peeledIdx);
+    if (failed(peel)) continue;
+    // Mark the new loop if one was created.
+    setLabel(peel->getOperation(), kPeelingAppliedLabel);
+    peelingResult.push_back(*peel);
+  }
+  return peelingResult;
+}
+
+FailureOr<ParallelOp> peelAndCanonicalizeGmlStLoop(RewriterBase &rewriter,
+                                                   ParallelOp loopOp,
+                                                   int64_t idx) {
   int64_t numLoops = loopOp.getNumLoops();
   if (idx < 0 || numLoops <= idx) return failure();
 
   Value ub = loopOp.getUpperBound()[idx];
-  LoopTy remainderLoop;
+  ParallelOp remainderLoop;
   Value splitBound;
-  if (failed(
-          peelLoop<LoopTy>(rewriter, loopOp, idx, remainderLoop, splitBound)))
+  if (failed(peelLoop(rewriter, loopOp, idx, remainderLoop, splitBound)))
     return failure();
 
   // Rewrite affine.min and affine.max ops.
@@ -162,39 +156,13 @@ FailureOr<LoopTy> peelAndCanonicalizeGmlStLoopImpl(RewriterBase &rewriter,
   return remainderLoop;
 }
 
-template <typename LoopTy>
-PeelingResult peelAllLoopsImpl(LoopTy loop, mlir::PatternRewriter &rewriter) {
-  setLabel(loop, kPeelingAppliedLabel);
-  PeelingResult peelingResult;
-  for (unsigned peeledIdx = 0; peeledIdx < loop.getNumLoops(); ++peeledIdx) {
-    auto peel =
-        peelAndCanonicalizeGmlStLoopImpl<LoopTy>(rewriter, loop, peeledIdx);
-    if (failed(peel)) continue;
-    // Mark the new loop if one was created.
-    setLabel(peel->getOperation(), kPeelingAppliedLabel);
-    peelingResult.push_back(*peel);
-  }
-  return peelingResult;
-}
-}  // namespace
-
-PeelingResult peelAllLoops(ForOp loop, mlir::PatternRewriter &rewriter) {
-  return peelAllLoopsImpl<ForOp>(loop, rewriter);
-}
-
-PeelingResult peelAllLoops(ParallelOp loop, mlir::PatternRewriter &rewriter) {
-  return peelAllLoopsImpl<ParallelOp>(loop, rewriter);
-}
-
-FailureOr<ForOp> peelAndCanonicalizeGmlStLoop(RewriterBase &rewriter,
-                                              ForOp loopOp, int64_t idx) {
-  return peelAndCanonicalizeGmlStLoopImpl<ForOp>(rewriter, loopOp, idx);
-}
-
-FailureOr<ParallelOp> peelAndCanonicalizeGmlStLoop(RewriterBase &rewriter,
-                                                   ParallelOp loopOp,
-                                                   int64_t idx) {
-  return peelAndCanonicalizeGmlStLoopImpl<ParallelOp>(rewriter, loopOp, idx);
+SCFForPeelingResult peelSCFForOp(RewriterBase &rewriter, scf::ForOp loop) {
+  // Peeling fails, if the step divides the upper bound. In that case,
+  // we still want to return {loop, nullptr}.
+  scf::ForOp tailLoop;
+  return succeeded(scf::peelAndCanonicalizeForLoop(rewriter, loop, tailLoop))
+             ? SCFForPeelingResult{loop, tailLoop}
+             : SCFForPeelingResult{loop, nullptr};
 }
 
 }  // namespace gml_st

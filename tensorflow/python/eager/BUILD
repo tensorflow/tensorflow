@@ -154,7 +154,6 @@ py_library(
     srcs_version = "PY3",
     visibility = ["//tensorflow:internal"],
     deps = [
-        ":context",
         "//tensorflow/python:errors",
         "//tensorflow/python:pywrap_tfe",
     ],
@@ -442,7 +441,6 @@ py_library(
     srcs_version = "PY3",
     visibility = ["//tensorflow:internal"],
     deps = [
-        ":core",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_ops",
     ],
@@ -784,10 +782,10 @@ tf_py_test(
     python_version = "PY3",
     deps = [
         "lift_to_graph",
+        ":test",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:util",
-        "//tensorflow/python/eager:test",
     ],
 )
 
@@ -889,12 +887,12 @@ cuda_py_test(
         "no_oss",  # This test launches local server
     ],
     deps = [
+        ":remote",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:framework",
         "//tensorflow/python:math_ops",
-        "//tensorflow/python/eager:remote",
         "@absl_py//absl/testing:parameterized",
     ],
 )
@@ -979,10 +977,7 @@ py_library(
 py_binary(
     name = "gen_gradient_input_output_exclusions",
     srcs = ["gen_gradient_input_output_exclusions.py"],
-    deps = [
-        ":gradient_input_output_exclusions",
-        "//tensorflow:tensorflow_py",
-    ],
+    deps = [":gradient_input_output_exclusions"],
 )
 
 # Needed for the test below.
@@ -994,7 +989,7 @@ py_test(
     name = "gradient_input_output_exclusions_test",
     srcs = ["gradient_input_output_exclusions_test.py"],
     data = [
-        "//tensorflow/python/eager:pywrap_gradient_exclusions.cc",
+        ":pywrap_gradient_exclusions.cc",
     ],
     python_version = "PY3",
     srcs_version = "PY3",

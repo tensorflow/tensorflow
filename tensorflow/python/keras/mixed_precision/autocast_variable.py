@@ -17,6 +17,7 @@
 import threading
 from tensorflow.python.eager import context
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_conversion_registry
 from tensorflow.python.keras.distribute import distributed_training_utils
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
@@ -490,8 +491,8 @@ class AutoCastVariable(variables.Variable, core.Tensor):
   # pylint: enable=multiple-statements
 
 
-ops.register_tensor_conversion_function(AutoCastVariable,
-                                        AutoCastVariable._dense_var_to_tensor)  # pylint:disable=protected-access
+tensor_conversion_registry.register_tensor_conversion_function(
+    AutoCastVariable, AutoCastVariable._dense_var_to_tensor)  # pylint:disable=protected-access
 
 
 def create_autocast_variable(variable):

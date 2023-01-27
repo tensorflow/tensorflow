@@ -530,12 +530,12 @@ void XlaCompileOp::Compute(OpKernelContext* ctx) {
     if (must_compile_) {
       return DeviceCompileMode::kStrict;
     }
-    return GetXlaOpsCommonFlags().tf_xla_async_compilation
+    return GetXlaOpsCommonFlags()->tf_xla_async_compilation
                ? DeviceCompileMode::kAsync
                : DeviceCompileMode::kLazy;
   }();
 
-  if (GetXlaOpsCommonFlags().tf_xla_always_defer_compilation ||
+  if (GetXlaOpsCommonFlags()->tf_xla_always_defer_compilation ||
       cannot_compile_cluster) {
     executable = nullptr;
   } else {

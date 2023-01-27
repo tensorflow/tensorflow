@@ -5,6 +5,16 @@
 * <DOCUMENT BREAKING CHANGES HERE>
 * <THIS SECTION SHOULD CONTAIN API, ABI AND BEHAVIORAL BREAKING CHANGES>
 
+*   Build, Compilation and Packaging
+
+    *   Removal of redundant packages: the `tensorflow-gpu` and `tf-nightly-gpu`
+        packages have been effectively removed and replaced with packages that
+        direct users to switch to `tensorflow` or `tf-nightly` respectively.
+        The naming difference was the only difference between the two sets of
+        packages ever since TensorFlow 2.1, so there is no loss of functionality
+        or GPU support. See
+        https://pypi.org/project/tensorflow-gpu for more details.
+
 *   `tf.function`:
 
     *   tf.function now uses the Python inspect library directly for parsing
@@ -65,13 +75,14 @@
 
     *   Add 16-bit float type support for built-in op `fill`.
     *   Transpose now supports 6D tensors.
-    *   Float LSTM now supports diagonal recurrent tensors: https://arxiv.org/abs/1903.08023
+    *   Float LSTM now supports diagonal recurrent tensors:
+        https://arxiv.org/abs/1903.08023
 
 *   `tf.keras`:
 
     *   The new Keras model saving format (`.keras`) is available. You can start
-        using it via `model.save(f"{fname}.keras", save_format="keras_v3")`.
-        In the future it will become the default for all files with the `.keras`
+        using it via `model.save(f"{fname}.keras", save_format="keras_v3")`. In
+        the future it will become the default for all files with the `.keras`
         extension. This file format targets the Python runtime only.
     *   Added utility `tf.keras.utils.FeatureSpace`, a one-stop shop for
         structured data preprocessing and encoding.
@@ -92,27 +103,29 @@
     *   Add ability to save a `tf.keras.utils.FeatureSpace` object, via
         `feature_space.save("myfeaturespace.keras")`, and reload it via
         `feature_space = tf.keras.models.load_model("myfeaturespace.keras")`.
+    *   Added utility `tf.keras.utils.to_ordinal` to convert class vector to
+        ordinal regression / classification matrix.
 
 *   `tf.experimental.dtensor`:
 
-    *   Coordination service now works with `dtensor.initialize_accelerator_system`,
-        and enabled by default.
-    *   Add `tf.experimental.dtensor.is_dtensor` to check if a tensor
-        is a DTensor instance.
+    *   Coordination service now works with
+        `dtensor.initialize_accelerator_system`, and enabled by default.
+    *   Add `tf.experimental.dtensor.is_dtensor` to check if a tensor is a
+        DTensor instance.
 
 *   `tf.data`:
 
     *   Added support for alternative checkpointing protocol which makes it
-        possible to checkpoint the state of the input pipeline without having
-        to store the contents of internal buffers. The new functionality can
-        be enabled through the `experimental_symbolic_checkpoint` option of
+        possible to checkpoint the state of the input pipeline without having to
+        store the contents of internal buffers. The new functionality can be
+        enabled through the `experimental_symbolic_checkpoint` option of
         `tf.data.Options()`.
     *   Added a new `rerandomize_each_iteration` argument for the
         `tf.data.Dataset.random()` operation, which controls whether the
         sequence of generated random numbers should be re-randomized every epoch
         or not (the default behavior). If `seed` is set and
-        `rerandomize_each_iteration=True`, the `random()` operation will
-        produce a different (deterministic) sequence of numbers every epoch.
+        `rerandomize_each_iteration=True`, the `random()` operation will produce
+        a different (deterministic) sequence of numbers every epoch.
     *   Added a new `rerandomize_each_iteration` argument for the
         `tf.data.Dataset.sample_from_datasets()` operation, which controls
         whether the sequence of generated random numbers used for sampling
@@ -120,6 +133,15 @@
         `rerandomize_each_iteration=True`, the `sample_from_datasets()`
         operation will use a different (deterministic) sequence of numbers every
         epoch.
+
+*   `tf.test`:
+
+    *   Added `tf.test.experimental.sync_devices`, which is useful for
+        accurately measuring performance in benchmarks.
+
+*   `tf.experimental.dtensor`:
+
+    *   Added experimental support to ReduceScatter fuse on GPU (NCCL).
 
 # Bug Fixes and Other Changes
 
@@ -144,6 +166,10 @@
 * `tf.types.experimental.GenericFunction`
   * The `experimental_get_compiler_ir` method supports tf.TensorSpec
    compilation arguments.
+*  `tf.config.experimental.mlir_bridge_rollout`
+    *   Removed enums `MLIR_BRIDGE_ROLLOUT_SAFE_MODE_ENABLED` and
+    `MLIR_BRIDGE_ROLLOUT_SAFE_MODE_FALLBACK_ENABLED` which are no longer used by
+    the tf2xla bridge
 
 
 # Thanks to our Contributors

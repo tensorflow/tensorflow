@@ -18,6 +18,22 @@ py_library(
     ],
 )
 
+py_test(
+    name = "flops_registry_test",
+    srcs = ["flops_registry_test.py"],
+    python_version = "PY3",
+    srcs_version = "PY3",
+    deps = [
+        ":flops_registry",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:random_ops",
+        "//tensorflow/python:variables",
+        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/framework:test_lib",
+    ],
+)
+
 py_library(
     name = "model_analyzer_testlib",
     srcs = ["model_analyzer_testlib.py"],

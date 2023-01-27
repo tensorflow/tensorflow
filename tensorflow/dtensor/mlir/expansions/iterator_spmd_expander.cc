@@ -18,16 +18,20 @@ limitations under the License.
 #include <algorithm>
 #include <vector>
 
+#include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/FormatVariadic.h"
+#include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
+#include "mlir/IR/Operation.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_attributes.h"
 #include "tensorflow/dtensor/cc/constants.h"
 #include "tensorflow/dtensor/cc/dstatus.h"
 #include "tensorflow/dtensor/cc/tensor_layout.h"
 #include "tensorflow/dtensor/mlir/dtensor_location.h"
 #include "tensorflow/dtensor/mlir/layout_parsing.h"
-#include "tensorflow/dtensor/mlir/op_utils.h"
 #include "tensorflow/dtensor/mlir/shape_utils.h"
 
 namespace tensorflow {
@@ -81,6 +85,57 @@ IteratorGetNextSPMDExpander::ComputeLayoutForward(
 
 StatusOr<llvm::DenseMap<int, Layout>>
 IteratorGetNextSPMDExpander::ComputeLayoutBackward(
+    mlir::Operation* op, const llvm::DenseMap<int, Layout>& output_layouts) {
+  TF_ASSIGN_OR_RETURN(const Mesh mesh, ExtractDeviceMeshEnclosingCluster(op));
+
+  // Iterator resource tensors are always 0-dimensional.
+  return llvm::DenseMap<int, Layout>(
+      {{0, Layout::ReplicatedOnMesh(mesh, /*rank=*/0)}});
+}
+
+StatusOr<mlir::Operation*> IteratorGetNextAsOptionalSPMDExpander::ExpandOp(
+    mlir::Operation* op) {
+  // Extract the output element layouts from the `tf._element_layouts` attribute
+  // of the iterator resource tensor.
+  TF_ASSIGN_OR_RETURN(const auto output_layouts,
+                      ExtractElementLayoutsFromOperand(op->getOpOperand(0)));
+
+  auto array_attr = op->getAttrOfType<mlir::ArrayAttr>(kIteratorOutputShapes);
+  if (!array_attr)
+    return errors::InvalidArgument(
+        llvm::formatv("Could not find `{0}` attribute of op: {1}",
+                      kIteratorOutputShapes, op->getName())
+            .str());
+
+  llvm::SmallVector<mlir::Attribute, 4> output_shape_attrs(array_attr.size());
+  for (int i = 0; i < array_attr.size(); ++i) {
+    std::vector<int64_t> local_shape =
+        output_layouts[i].LocalShapeFromGlobalShape(
+            array_attr[i].cast<mlir::TF::ShapeAttr>().getShape());
+    output_shape_attrs[i] =
+        mlir::TF::ShapeAttr::get(op->getContext(), {local_shape})
+            .cast<mlir::Attribute>();
+  }
+
+  // Update the `output_shapes` attribute on the op to match the local shape
+  // based on the iterator element layouts.
+  op->setAttr(kIteratorOutputShapes,
+              mlir::ArrayAttr::get(op->getContext(), output_shape_attrs));
+  return InferSPMDExpandedLocalShape(op);
+}
+
+StatusOr<llvm::DenseMap<int, Layout>>
+IteratorGetNextAsOptionalSPMDExpander::ComputeLayoutForward(
+    mlir::Operation* op, const llvm::DenseMap<int, Layout>& input_layouts) {
+  TF_ASSIGN_OR_RETURN(const Mesh mesh, ExtractDeviceMeshEnclosingCluster(op));
+
+  // Variant tensors are always 0-dimensional.
+  return llvm::DenseMap<int, Layout>(
+      {{0, Layout::ReplicatedOnMesh(mesh, /*rank=*/0)}});
+}
+
+StatusOr<llvm::DenseMap<int, Layout>>
+IteratorGetNextAsOptionalSPMDExpander::ComputeLayoutBackward(
     mlir::Operation* op, const llvm::DenseMap<int, Layout>& output_layouts) {
   TF_ASSIGN_OR_RETURN(const Mesh mesh, ExtractDeviceMeshEnclosingCluster(op));
 

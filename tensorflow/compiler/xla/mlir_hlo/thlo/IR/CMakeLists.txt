@@ -31,7 +31,6 @@ add_mlir_dialect_library(THLODialect
 
   DEPENDS
   MLIRthlo_opsIncGen
-  MLIRGmlStTilingInterfaceIncGen
 
   LINK_LIBS PUBLIC
   GmlStDialect

@@ -159,7 +159,8 @@ def _DefaultGradYs(grad_ys,
   if len(grad_ys) != len(ys):
     raise ValueError(f"Length mismatch. Passed {len(grad_ys)} grad_ys for "
                      f"{len(ys)} ys")
-  grad_ys = ops.convert_n_to_tensor_or_indexed_slices(grad_ys, name="grad_y")
+  grad_ys = indexed_slices.convert_n_to_tensor_or_indexed_slices(
+      grad_ys, name="grad_y")
   new_grad_ys = []
   for i, (y, grad_y) in enumerate(zip(ys, grad_ys)):
     with _maybe_colocate_with(y.op, gradient_uid, colocate_gradients_with_ops):
@@ -531,8 +532,8 @@ def _GradientsHelper(ys,
     # Get a uid for this call to gradients that can be used to help
     # cluster ops for compilation.
     gradient_uid = ops.get_default_graph().unique_name("uid")
-    ys = ops.convert_n_to_tensor_or_indexed_slices(ys, name="y")
-    xs = ops.internal_convert_n_to_tensor_or_indexed_slices(
+    ys = indexed_slices.convert_n_to_tensor_or_indexed_slices(ys, name="y")
+    xs = indexed_slices.internal_convert_n_to_tensor_or_indexed_slices(
         xs, name="x", as_ref=True)
     xs_set = object_identity.ObjectIdentitySet(xs)
     grad_ys = _DefaultGradYs(grad_ys, ys, colocate_gradients_with_ops,

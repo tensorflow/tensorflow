@@ -237,7 +237,7 @@ static StatusOr<std::unique_ptr<PjRtLoadedExecutable>> InitializeArgsAndCompile(
 
   RETURN_STATUS_IF_ERROR(c_api->PJRT_Client_Compile(&args), c_api);
   std::unique_ptr<PjRtLoadedExecutable> ret =
-      std::make_unique<PjRtCApiExecutable>(api_client, args.executable);
+      std::make_unique<PjRtCApiLoadedExecutable>(api_client, args.executable);
   return ret;
 }
 
@@ -264,9 +264,9 @@ StatusOr<std::unique_ptr<PjRtLoadedExecutable>> PjRtCApiClient::Compile(
 StatusOr<std::unique_ptr<PjRtLoadedExecutable>>
 PjRtCApiClient::DeserializeExecutable(absl::string_view serialized,
                                       std::optional<CompileOptions> options) {
-  PJRT_Executable_Deserialize_Args des_args;
+  PJRT_Executable_DeserializeAndLoad_Args des_args;
 
-  des_args.struct_size = PJRT_Executable_Deserialize_Args_STRUCT_SIZE;
+  des_args.struct_size = PJRT_Executable_DeserializeAndLoad_Args_STRUCT_SIZE;
   des_args.priv = nullptr;
   des_args.client = c_client_.get();
   des_args.serialized_executable = serialized.data();
@@ -274,12 +274,12 @@ PjRtCApiClient::DeserializeExecutable(absl::string_view serialized,
 
   const PJRT_Api* api = pjrt_c_api();
 
-  RETURN_STATUS_IF_ERROR(api->PJRT_Executable_Deserialize(&des_args), api);
-  PJRT_Executable* c_exec = des_args.deserialized_executable;
+  RETURN_STATUS_IF_ERROR(api->PJRT_Executable_DeserializeAndLoad(&des_args),
+                         api);
+  PJRT_LoadedExecutable* c_exec = des_args.loaded_executable;
   CHECK(c_exec != nullptr);
-  std::unique_ptr<PjRtLoadedExecutable> deserialized_executable =
-      std::make_unique<PjRtCApiExecutable>(this, c_exec);
-  return deserialized_executable;
+  return std::unique_ptr<PjRtLoadedExecutable>(
+      std::make_unique<PjRtCApiLoadedExecutable>(this, c_exec));
 }
 
 StatusOr<std::uintptr_t> PjRtCApiClient::UnsafeBufferPointer(
@@ -313,7 +313,7 @@ StatusOr<std::unique_ptr<PjRtLoadedExecutable>> PjRtCApiClient::WrapExecutable(
   TF_ASSIGN_OR_RETURN(std::unique_ptr<PjRtLoadedExecutable> executable,
                       std::move(to_wrap));
   return std::unique_ptr<PjRtLoadedExecutable>(
-      std::make_unique<PjRtCApiExecutable>(this, std::move(executable)));
+      std::make_unique<PjRtCApiLoadedExecutable>(this, std::move(executable)));
 }
 
 StatusOr<std::unique_ptr<PjRtBuffer>> PjRtCApiClient::WrapBuffer(
@@ -534,63 +534,63 @@ absl::string_view PjRtCApiDevice::ToString() const {
 
 // ------------------------------- Executables ---------------------------------
 
-PjRtCApiExecutable::PjRtCApiExecutable(
-    PjRtCApiClient* client, std::unique_ptr<PjRtLoadedExecutable> wrapped)
-    : PjRtCApiExecutable(client, new PJRT_Executable{std::move(wrapped),
-                                                     client->pjrt_c_client()}) {
-}
-
-PjRtCApiExecutable::PjRtCApiExecutable(PjRtCApiClient* client,
+PjRtCApiExecutable::PjRtCApiExecutable(const PJRT_Api* c_api,
                                        PJRT_Executable* executable)
-    : client_(client),
-      executable_(executable,
-                  ::pjrt::MakeExecutableDeleter(client->pjrt_c_api())) {
-  InitDevices();
+    : c_api_(c_api),
+      executable_(executable, ::pjrt::MakeExecutableDeleter(c_api)) {}
+
+PjRtExecutable* PjRtCApiExecutable::wrapped() const {
+  return c_executable()->get();
 }
 
-void PjRtCApiExecutable::InitDevices() {
-  PJRT_Executable_AddressableDevices_Args args;
-  args.struct_size = PJRT_Executable_AddressableDevices_Args_STRUCT_SIZE;
+absl::string_view PjRtCApiExecutable::name() const {
+  auto* c_api = pjrt_c_api();
+  auto* executable = c_executable();
+  PJRT_Executable_Name_Args args;
+  args.executable = executable;
+  args.struct_size = PJRT_Executable_Name_Args_STRUCT_SIZE;
   args.priv = nullptr;
-  args.executable = executable_.get();
-  args.addressable_devices = nullptr;
-  args.num_addressable_devices = 0;
+  pjrt::LogFatalIfPjrtError(c_api->PJRT_Executable_Name(&args), c_api);
 
-  const PJRT_Api* api = pjrt_c_api();
-  pjrt::LogFatalIfPjrtError(api->PJRT_Executable_AddressableDevices(&args),
-                            api);
+  return absl::string_view(args.executable_name, args.executable_name_size);
+}
 
-  const size_t num_addressable_devices = args.num_addressable_devices;
-  addressable_devices_.reserve(num_addressable_devices);
+int64_t PjRtCApiExecutable::SizeOfGeneratedCodeInBytes() const {
+  auto* c_api = pjrt_c_api();
+  auto* executable = c_executable();
+  PJRT_Executable_SizeOfGeneratedCodeInBytes_Args args;
+  args.struct_size =
+      PJRT_Executable_SizeOfGeneratedCodeInBytes_Args_STRUCT_SIZE;
+  args.priv = nullptr;
+  args.executable = executable;
 
-  for (size_t i = 0; i < num_addressable_devices; ++i) {
-    PJRT_Device* device = args.addressable_devices[i];
-    PjRtCApiDevice* c_api_device = client_->GetCppDevice(device);
-    addressable_devices_.push_back(c_api_device);
-  }
+  pjrt::LogFatalIfPjrtError(
+      c_api->PJRT_Executable_SizeOfGeneratedCodeInBytes(&args), c_api);
+  return args.size_in_bytes;
 }
 
 StatusOr<std::vector<std::shared_ptr<HloModule>>>
 PjRtCApiExecutable::GetHloModules() const {
+  auto* c_api = pjrt_c_api();
+  auto* executable = c_executable();
   PJRT_Executable_OptimizedProgram_Args args;
   args.struct_size = PJRT_Executable_OptimizedProgram_Args_STRUCT_SIZE;
   args.priv = nullptr;
-  args.executable = executable_.get();
+  args.executable = executable;
   PJRT_Program program;
   program.struct_size = PJRT_Program_STRUCT_SIZE;
   program.priv = nullptr;
   program.code = nullptr;
   args.program = &program;
 
-  const PJRT_Api* api = pjrt_c_api();
-  RETURN_STATUS_IF_ERROR(api->PJRT_Executable_OptimizedProgram(&args), api);
+  RETURN_STATUS_IF_ERROR(c_api->PJRT_Executable_OptimizedProgram(&args), c_api);
 
   constexpr size_t TWO_GIBIBYTES = 2ull * 1024 * 1024 * 1024;
   const size_t code_size = args.program->code_size;
   CHECK(code_size < TWO_GIBIBYTES);
   std::string code(code_size, ' ');
   args.program->code = code.data();
-  RETURN_STATUS_IF_ERROR(api->PJRT_Executable_OptimizedProgram(&args), api);
+  RETURN_STATUS_IF_ERROR(c_api->PJRT_Executable_OptimizedProgram(&args), c_api);
 
   absl::string_view program_format(program.format, program.format_size);
   if (program_format != ::pjrt::kHloWithConfigFormat) {
@@ -605,6 +605,88 @@ PjRtCApiExecutable::GetHloModules() const {
                       HloModule::CreateFromProtoWithConfig(proto));
   out.push_back(std::move(module));
   return out;
+}
+
+StatusOr<std::string> PjRtCApiExecutable::SerializeExecutable() const {
+  auto* c_api = pjrt_c_api();
+  auto* executable = c_executable();
+  PJRT_Executable_Serialize_Args ser_args;
+  ser_args.struct_size = PJRT_Executable_Serialize_Args_STRUCT_SIZE;
+  ser_args.priv = nullptr;
+  ser_args.executable = executable;
+  ser_args.serialized_executable = nullptr;
+
+  RETURN_STATUS_IF_ERROR(c_api->PJRT_Executable_Serialize(&ser_args), c_api);
+  PJRT_SerializedExecutable* c_serialized_exec = ser_args.serialized_executable;
+  std::unique_ptr<PJRT_SerializedExecutable,
+                  ::pjrt::PJRT_SerializedExecutableDeleter>
+      serialized_executable(c_serialized_exec,
+                            ::pjrt::MakeSerializedExecutableDeleter(c_api));
+
+  PJRT_SerializedExecutable_Data_Args data_args;
+  data_args.struct_size = PJRT_SerializedExecutable_Data_Args_STRUCT_SIZE;
+  data_args.priv = nullptr;
+  data_args.serialized_executable = c_serialized_exec;
+  data_args.data = nullptr;
+  data_args.data_size = 0;
+
+  RETURN_STATUS_IF_ERROR(c_api->PJRT_SerializedExecutable_Data(&data_args),
+                         c_api);
+
+  return std::string(data_args.data, data_args.data_size);
+}
+
+// ------------------------ Loaded Executables ---------------------------------
+
+PjRtCApiLoadedExecutable::PjRtCApiLoadedExecutable(
+    PjRtCApiClient* client, std::unique_ptr<PjRtLoadedExecutable> wrapped)
+    : client_(client),
+      loaded_executable_(
+          new PJRT_LoadedExecutable{std::move(wrapped),
+                                    client->pjrt_c_client()},
+          ::pjrt::MakeLoadedExecutableDeleter(client->pjrt_c_api())) {
+  executable_ = std::make_unique<PjRtCApiExecutable>(
+      pjrt_c_api(), new PJRT_Executable{loaded_executable_->executable});
+  InitDevices();
+}
+
+PjRtCApiLoadedExecutable::PjRtCApiLoadedExecutable(
+    PjRtCApiClient* client, PJRT_LoadedExecutable* executable)
+    : client_(client),
+      loaded_executable_(executable, ::pjrt::MakeLoadedExecutableDeleter(
+                                         client->pjrt_c_api())) {
+  PJRT_LoadedExecutable_GetExecutable_Args args;
+  args.struct_size = PJRT_LoadedExecutable_GetExecutable_Args_STRUCT_SIZE;
+  args.priv = nullptr;
+  args.loaded_executable = c_loaded_executable();
+  args.executable = nullptr;
+  pjrt::LogFatalIfPjrtError(
+      pjrt_c_api()->PJRT_LoadedExecutable_GetExecutable(&args), pjrt_c_api());
+  executable_ =
+      std::make_unique<PjRtCApiExecutable>(pjrt_c_api(), args.executable);
+  InitDevices();
+}
+
+void PjRtCApiLoadedExecutable::InitDevices() {
+  PJRT_LoadedExecutable_AddressableDevices_Args args;
+  args.struct_size = PJRT_LoadedExecutable_AddressableDevices_Args_STRUCT_SIZE;
+  args.priv = nullptr;
+  args.executable = c_loaded_executable();
+  args.addressable_devices = nullptr;
+  args.num_addressable_devices = 0;
+
+  const PJRT_Api* api = pjrt_c_api();
+  pjrt::LogFatalIfPjrtError(
+      api->PJRT_LoadedExecutable_AddressableDevices(&args), api);
+
+  const size_t num_addressable_devices = args.num_addressable_devices;
+  addressable_devices_.reserve(num_addressable_devices);
+
+  for (size_t i = 0; i < num_addressable_devices; ++i) {
+    PJRT_Device* device = args.addressable_devices[i];
+    PjRtCApiDevice* c_api_device = client_->GetCppDevice(device);
+    addressable_devices_.push_back(c_api_device);
+  }
 }
 
 static std::vector<std::vector<PJRT_Buffer*>> Convert2DCppBuffersToCBuffers(
@@ -637,8 +719,8 @@ Convert2DCBuffersToCppBuffers(PJRT_Buffer*** c_lists, size_t outer_size,
   return ret;
 }
 
-xla::StatusOr<PJRT_Executable_Execute_Args>
-PjRtCApiExecutable::GetCommonExecuteArgs(
+xla::StatusOr<PJRT_LoadedExecutable_Execute_Args>
+PjRtCApiLoadedExecutable::GetCommonExecuteArgs(
     absl::Span<const std::vector<PjRtBuffer*>> argument_handles,
     const ExecuteOptions& options, PJRT_ExecuteOptions& c_options,
     std::vector<std::vector<PJRT_Buffer*>>& c_argument_lists_storage,
@@ -646,10 +728,10 @@ PjRtCApiExecutable::GetCommonExecuteArgs(
     std::vector<std::vector<PJRT_Buffer*>>& c_output_lists_storage,
     std::vector<PJRT_Buffer**>& c_output_lists,
     std::optional<std::vector<PJRT_Event*>>& device_complete_events) {
-  PJRT_Executable_Execute_Args args;
-  args.struct_size = PJRT_Executable_Execute_Args_STRUCT_SIZE;
+  PJRT_LoadedExecutable_Execute_Args args;
+  args.struct_size = PJRT_LoadedExecutable_Execute_Args_STRUCT_SIZE;
   args.priv = nullptr;
-  args.executable = executable_.get();
+  args.executable = c_loaded_executable();
   args.options = &c_options;
   args.options->struct_size = PJRT_ExecuteOptions_STRUCT_SIZE;
   args.options->launch_id = options.launch_id;
@@ -671,12 +753,12 @@ PjRtCApiExecutable::GetCommonExecuteArgs(
   args.argument_lists = c_arguments.data();
 
   // Allocates memory for output. `c_buffer_lists_storage` and `c_buffer_lists`
-  // needs to stay alive during the call of `PJRT_Executable_Execute`.
+  // needs to stay alive during the call of `PJRT_LoadedExecutable_Execute`.
 
   PJRT_Executable_NumOutputs_Args numoutputs_args;
   numoutputs_args.struct_size = PJRT_Executable_NumOutputs_Args_STRUCT_SIZE;
   numoutputs_args.priv = nullptr;
-  numoutputs_args.executable = executable_.get();
+  numoutputs_args.executable = c_executable();
   RETURN_STATUS_IF_ERROR(
       pjrt_c_api()->PJRT_Executable_NumOutputs(&numoutputs_args), pjrt_c_api());
   size_t outer_size = args.num_devices;
@@ -693,7 +775,7 @@ PjRtCApiExecutable::GetCommonExecuteArgs(
 }
 
 StatusOr<std::vector<std::vector<std::unique_ptr<PjRtBuffer>>>>
-PjRtCApiExecutable::Execute(
+PjRtCApiLoadedExecutable::Execute(
     absl::Span<const std::vector<PjRtBuffer*>> argument_handles,
     const ExecuteOptions& options,
     std::optional<std::vector<PjRtFuture<Status>>>& returned_futures) {
@@ -707,7 +789,7 @@ PjRtCApiExecutable::Execute(
     device_complete_events.emplace();
   }
   TF_ASSIGN_OR_RETURN(
-      PJRT_Executable_Execute_Args args,
+      PJRT_LoadedExecutable_Execute_Args args,
       GetCommonExecuteArgs(argument_handles, options, c_options,
                            c_argument_lists_storage, c_arguments,
                            c_output_lists_storage, c_output_lists,
@@ -715,7 +797,7 @@ PjRtCApiExecutable::Execute(
 
   args.execute_device = nullptr;
 
-  RETURN_STATUS_IF_ERROR(pjrt_c_api()->PJRT_Executable_Execute(&args),
+  RETURN_STATUS_IF_ERROR(pjrt_c_api()->PJRT_LoadedExecutable_Execute(&args),
                          pjrt_c_api());
 
   if (returned_futures.has_value()) {
@@ -732,7 +814,7 @@ PjRtCApiExecutable::Execute(
 }
 
 StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>>
-PjRtCApiExecutable::ExecuteWithSingleDevice(
+PjRtCApiLoadedExecutable::ExecuteWithSingleDevice(
     absl::Span<PjRtBuffer* const> argument_handles, PjRtDevice* device,
     const ExecuteOptions& options,
     std::optional<PjRtFuture<Status>>& returned_future, bool fill_future) {
@@ -749,7 +831,7 @@ PjRtCApiExecutable::ExecuteWithSingleDevice(
     device_complete_events.emplace();
   }
   TF_ASSIGN_OR_RETURN(
-      PJRT_Executable_Execute_Args args,
+      PJRT_LoadedExecutable_Execute_Args args,
       GetCommonExecuteArgs(argument_handles_vec, options, c_options,
                            c_argument_lists_storage, c_arguments,
                            c_output_lists_storage, c_output_lists,
@@ -758,7 +840,7 @@ PjRtCApiExecutable::ExecuteWithSingleDevice(
   args.execute_device =
       tensorflow::down_cast<PjRtCApiDevice*>(device)->c_device();
 
-  RETURN_STATUS_IF_ERROR(pjrt_c_api()->PJRT_Executable_Execute(&args),
+  RETURN_STATUS_IF_ERROR(pjrt_c_api()->PJRT_LoadedExecutable_Execute(&args),
                          pjrt_c_api());
 
   if (fill_future) {
@@ -771,7 +853,7 @@ PjRtCApiExecutable::ExecuteWithSingleDevice(
 }
 
 StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>>
-PjRtCApiExecutable::ExecuteSharded(
+PjRtCApiLoadedExecutable::ExecuteSharded(
     absl::Span<PjRtBuffer* const> argument_handles, PjRtDevice* device,
     const ExecuteOptions& options,
     std::optional<PjRtFuture<Status>>& returned_future, bool fill_future) {
@@ -780,7 +862,7 @@ PjRtCApiExecutable::ExecuteSharded(
 }
 
 StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>>
-PjRtCApiExecutable::ExecutePortable(
+PjRtCApiLoadedExecutable::ExecutePortable(
     absl::Span<PjRtBuffer* const> argument_handles, PjRtDevice* device,
     const ExecuteOptions& options,
     std::optional<PjRtFuture<Status>>& returned_future, bool fill_future) {
@@ -788,67 +870,43 @@ PjRtCApiExecutable::ExecutePortable(
                                  returned_future, fill_future);
 }
 
-PjRtLoadedExecutable* PjRtCApiExecutable::wrapped() const {
-  return executable_->executable.get();
+PjRtLoadedExecutable* PjRtCApiLoadedExecutable::wrapped() const {
+  return c_loaded_executable()->get();
 }
 
-absl::string_view PjRtCApiExecutable::name() const {
-  const PJRT_Api* c_api = pjrt_c_api();
-  PJRT_Executable_Name_Args args;
-  args.executable = executable_.get();
-  args.struct_size = PJRT_Executable_Name_Args_STRUCT_SIZE;
+void PjRtCApiLoadedExecutable::Delete() {
+  PJRT_LoadedExecutable_Delete_Args args;
+  args.struct_size = PJRT_LoadedExecutable_Delete_Args_STRUCT_SIZE;
   args.priv = nullptr;
-  pjrt::LogFatalIfPjrtError(c_api->PJRT_Executable_Name(&args), c_api);
-
-  absl::string_view executable_name(args.executable_name,
-                                    args.executable_name_size);
-  return executable_name;
+  args.executable = c_loaded_executable();
+  const PJRT_Api* c_api = pjrt_c_api();
+  pjrt::LogFatalIfPjrtError(c_api->PJRT_LoadedExecutable_Delete(&args), c_api);
 }
 
-void PjRtCApiExecutable::Delete() {
-  PJRT_Executable_Delete_Args args;
-  args.struct_size = PJRT_Executable_Delete_Args_STRUCT_SIZE;
+bool PjRtCApiLoadedExecutable::IsDeleted() {
+  PJRT_LoadedExecutable_IsDeleted_Args args;
+  args.struct_size = PJRT_LoadedExecutable_IsDeleted_Args_STRUCT_SIZE;
   args.priv = nullptr;
-  args.executable = executable_.get();
-  const PJRT_Api* c_api = pjrt_c_api();
-  pjrt::LogFatalIfPjrtError(c_api->PJRT_Executable_Delete(&args), c_api);
-}
-
-bool PjRtCApiExecutable::IsDeleted() {
-  PJRT_Executable_IsDeleted_Args args;
-  args.struct_size = PJRT_Executable_IsDeleted_Args_STRUCT_SIZE;
-  args.priv = nullptr;
-  args.executable = executable_.get();
+  args.executable = c_loaded_executable();
 
   const PJRT_Api* c_api = pjrt_c_api();
-  pjrt::LogFatalIfPjrtError(c_api->PJRT_Executable_IsDeleted(&args), c_api);
+  pjrt::LogFatalIfPjrtError(c_api->PJRT_LoadedExecutable_IsDeleted(&args),
+                            c_api);
   return args.is_deleted;
 }
 
-int64_t PjRtCApiExecutable::SizeOfGeneratedCodeInBytes() const {
-  PJRT_Executable_SizeOfGeneratedCodeInBytes_Args args;
-  args.struct_size =
-      PJRT_Executable_SizeOfGeneratedCodeInBytes_Args_STRUCT_SIZE;
-  args.priv = nullptr;
-  args.executable = executable_.get();
-
-  const PJRT_Api* c_api = pjrt_c_api();
-  pjrt::LogFatalIfPjrtError(
-      c_api->PJRT_Executable_SizeOfGeneratedCodeInBytes(&args), c_api);
-  return args.size_in_bytes;
-}
-
 StatusOr<absl::flat_hash_map<std::string, PjRtValueType>>
-PjRtCApiExecutable::GetCostAnalysis() const {
+PjRtCApiLoadedExecutable::GetCostAnalysis() const {
   // Initialize function call args
-  PJRT_Executable_GetCostAnalysis_Args args;
-  args.struct_size = PJRT_Executable_GetCostAnalysis_Args_STRUCT_SIZE;
+  PJRT_LoadedExecutable_GetCostAnalysis_Args args;
+  args.struct_size = PJRT_LoadedExecutable_GetCostAnalysis_Args_STRUCT_SIZE;
   args.priv = nullptr;
-  args.executable = executable_.get();
+  args.executable = c_loaded_executable();
 
   // Make PJRT C API call
   const PJRT_Api* c_api = pjrt_c_api();
-  RETURN_STATUS_IF_ERROR(c_api->PJRT_Executable_GetCostAnalysis(&args), c_api);
+  RETURN_STATUS_IF_ERROR(c_api->PJRT_LoadedExecutable_GetCostAnalysis(&args),
+                         c_api);
 
   // Copy returned properties to output map
   absl::flat_hash_map<std::string, PjRtValueType> output_map;
@@ -878,43 +936,16 @@ PjRtCApiExecutable::GetCostAnalysis() const {
       // not supported by this client). Failing here to prevent undefined
       // behavior.
       default:
-        LOG(FATAL) << "PJRT_Executable_GetCostAnalysis() returned attribute '"
-                   << args.properties[i].name << "' with unsupported type '"
-                   << args.properties[i].type
-                   << "' to PjRtCApiExecutable::GetCostAnalysis()";
+        LOG(FATAL)
+            << "PJRT_LoadedExecutable_GetCostAnalysis() returned attribute '"
+            << args.properties[i].name << "' with unsupported type '"
+            << args.properties[i].type
+            << "' to PjRtCApiLoadedExecutable::GetCostAnalysis()";
         break;
     }
   }
 
   return output_map;
-}
-
-StatusOr<std::string> PjRtCApiExecutable::SerializeExecutable() const {
-  PJRT_Executable_Serialize_Args ser_args;
-  ser_args.struct_size = PJRT_Executable_Serialize_Args_STRUCT_SIZE;
-  ser_args.priv = nullptr;
-  ser_args.executable = c_executable();
-  ser_args.serialized_executable = nullptr;
-
-  const PJRT_Api* api = pjrt_c_api();
-
-  RETURN_STATUS_IF_ERROR(api->PJRT_Executable_Serialize(&ser_args), api);
-  PJRT_SerializedExecutable* c_serialized_exec = ser_args.serialized_executable;
-  std::unique_ptr<PJRT_SerializedExecutable,
-                  ::pjrt::PJRT_SerializedExecutableDeleter>
-      serialized_executable(c_serialized_exec,
-                            ::pjrt::MakeSerializedExecutableDeleter(api));
-
-  PJRT_SerializedExecutable_Data_Args data_args;
-  data_args.struct_size = PJRT_SerializedExecutable_Data_Args_STRUCT_SIZE;
-  data_args.priv = nullptr;
-  data_args.serialized_executable = c_serialized_exec;
-  data_args.data = nullptr;
-  data_args.data_size = 0;
-
-  RETURN_STATUS_IF_ERROR(api->PJRT_SerializedExecutable_Data(&data_args), api);
-
-  return std::string(data_args.data, data_args.data_size);
 }
 
 // ---------------------------------- Buffers ----------------------------------

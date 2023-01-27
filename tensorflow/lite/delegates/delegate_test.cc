@@ -578,6 +578,33 @@ TEST(TestOpaqueDelegate, PrepareCopyFromFree) {
   EXPECT_TRUE(delegate_state.free_buffer_handle_called);
 }
 
+TEST(TestDelegateKernel, WithoutName) {
+  std::unique_ptr<tflite::FlatBufferModel> model =
+      tflite::FlatBufferModel::BuildFromFile(
+          "third_party/tensorflow/lite/testdata/add.bin");
+  ASSERT_NE(model, nullptr);
+
+  tflite::ops::builtin::BuiltinOpResolver resolver;
+  tflite::InterpreterBuilder builder(*model, resolver);
+  TfLiteDelegate tflite_delegate{};
+  tflite_delegate.Prepare =
+      [](TfLiteContext* context,
+         struct TfLiteDelegate* delegate) -> TfLiteStatus {
+    TfLiteIntArray* execution_plan;
+    TF_LITE_ENSURE_STATUS(context->GetExecutionPlan(context, &execution_plan));
+    TfLiteRegistration registration{};
+    registration.init = [](TfLiteContext* context, const char* buffer,
+                           size_t length) -> void* { return nullptr; };
+    context->ReplaceNodeSubsetsWithDelegateKernels(context, registration,
+                                                   execution_plan, delegate);
+    return kTfLiteOk;
+  };
+  builder.AddDelegate(&tflite_delegate);
+  std::unique_ptr<tflite::Interpreter> interpreter;
+  builder(&interpreter);
+  ASSERT_NE(interpreter, nullptr);
+}
+
 TEST_F(TestDelegate, DelegateCustomOpResolution) {
   // Build a flatbuffer model that contains the "my_add" custom op which gets
   // resolved only after SimpleDelegate is applied.

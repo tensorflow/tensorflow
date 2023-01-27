@@ -278,7 +278,8 @@ StatusOr<llvm::SmallVector<Layout, 4>> ExtractElementLayoutsFromOperand(
   auto defining_op = input_value.get().getDefiningOp();
 
   if (defining_op) {
-    if (mlir::isa<mlir::TF::DTensorLayout>(defining_op)) {
+    if (mlir::isa<mlir::TF::DTensorLayout,
+                  mlir::TF::IteratorGetNextAsOptionalOp>(defining_op)) {
       return ExtractElementLayoutsFromOperand(defining_op->getOpOperand(0));
     }
   }

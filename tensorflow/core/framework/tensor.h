@@ -35,6 +35,11 @@ limitations under the License.
 #include "tensorflow/core/platform/mem.h"
 #include "tensorflow/core/platform/types.h"
 
+#if !defined(PLUGGABLE_DEVICE_SUPPORTED_MACOS) && defined(__APPLE__) && \
+    !defined(ANDROID) && !defined(__ANDROID__) && !TARGET_OS_IOS
+#define PLUGGABLE_DEVICE_SUPPORTED_MACOS 1
+#endif
+
 namespace tensorflow {
 
 // Forward declarations.  In particular, we forward declare protos so that their
@@ -65,7 +70,7 @@ Status CopyContiguousSlices(const Tensor& src, int64_t src_offset,
 class TensorBuffer : public core::RefCounted {
  public:
   explicit TensorBuffer(void* data_ptr) : data_(data_ptr) {}
-  ~TensorBuffer() override {}
+  ~TensorBuffer() override = default;
 
   /// \brief data() points to a memory region of size() bytes.
   ///
@@ -314,7 +319,7 @@ class Tensor {
 
   /// Returns true iff this tensor is aligned.
   bool IsAligned() const {
-#if EIGEN_MAX_ALIGN_BYTES == 0
+#if EIGEN_MAX_ALIGN_BYTES == 0 || PLUGGABLE_DEVICE_SUPPORTED_MACOS
     return true;
 #else
     void* ptr = base<void>();
@@ -715,7 +720,7 @@ class Tensor {
 
   // Only needed by variable op to set the shape of an uninitialized
   // Tensor.
-  // TODO: Remove this when we have a better story for detecting
+  // TODO(westbrook): Remove this when we have a better story for detecting
   // uninitialized tensors.
   void set_shape(const TensorShape& shape) {
     DataType dt = dtype();

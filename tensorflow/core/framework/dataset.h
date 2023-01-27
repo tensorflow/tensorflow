@@ -959,6 +959,13 @@ class IteratorBase : public Checkpointable {
     return OkStatus();
   }
 
+  // Returns the total number of bytes buffered by the iterator across all nodes
+  // in the subtree for which autotuning is enabled.
+  int64_t TotalBufferedBytes() const {
+    if (node_) return node_->TotalBufferedBytes();
+    return 0;
+  }
+
  protected:
   // Returns a node that models this iterator.
   virtual std::shared_ptr<model::Node> CreateNode(

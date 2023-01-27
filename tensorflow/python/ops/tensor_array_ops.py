@@ -31,6 +31,7 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.framework import type_spec
+from tensorflow.python.framework import type_spec_registry
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_util
 from tensorflow.python.ops import gen_control_flow_ops
@@ -1343,7 +1344,7 @@ def _check_dtypes(value, dtype):
 
 
 @tf_export("TensorArraySpec")
-@type_spec.register("tf.TensorArraySpec")
+@type_spec_registry.register("tf.TensorArraySpec")
 class TensorArraySpec(type_spec.TypeSpec):
   """Type specification for a `tf.TensorArray`."""
 

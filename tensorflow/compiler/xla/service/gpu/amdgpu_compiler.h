@@ -34,7 +34,7 @@ class AMDGPUCompiler : public GpuCompiler {
   ~AMDGPUCompiler() override {}
 
   Status OptimizeHloConvolutionCanonicalization(
-      HloModule* hlo_module, se::CudaComputeCapability cuda_compute_capability,
+      HloModule* hlo_module, GpuVersion gpu_version,
       se::DeviceMemoryAllocator* device_allocator) override;
 
   Status OptimizeHloPostLayoutAssignment(

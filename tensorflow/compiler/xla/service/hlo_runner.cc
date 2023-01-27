@@ -89,8 +89,25 @@ StatusOr<Literal> HloRunner::TransferLiteralFromDevice(
     const ShapedBuffer& buffer) {
   TF_ASSIGN_OR_RETURN(
       auto stream, backend().BorrowStream(backend().default_stream_executor()));
+
+  if (buffer.on_device_shape().is_static()) {
+    return backend().transfer_manager()->TransferLiteralFromDevice(stream.get(),
+                                                                   buffer);
+  }
+
+  Shape device_shape = buffer.on_device_shape();
+  // Read real literal's shape first.
+  TF_RETURN_IF_ERROR(backend().transfer_manager()->ReadDynamicShapes(
+      stream.get(), &buffer, &device_shape));
+
+  ShapedBuffer shaped_buffer(device_shape, buffer.device_ordinal());
+  // Populate buffer element by element since the shapes differ now.
+  shaped_buffer.buffers().ForEachMutableElement(
+      [&](const xla::ShapeIndex& index, se::DeviceMemoryBase* base_buffer) {
+        *base_buffer = buffer.buffer(index);
+      });
   return backend().transfer_manager()->TransferLiteralFromDevice(stream.get(),
-                                                                 buffer);
+                                                                 shaped_buffer);
 }
 
 StatusOr<Literal> HloRunner::Execute(std::unique_ptr<HloModule> module,

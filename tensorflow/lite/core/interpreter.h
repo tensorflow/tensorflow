@@ -111,6 +111,12 @@ class InterpreterWrapper;  // Class for friend declarations.
 ///
 /// \warning This class is *not* thread-safe. The client is responsible for
 /// ensuring serialized interaction to avoid data races and undefined behavior.
+using Interpreter = impl::Interpreter;
+
+namespace impl {
+
+class InterpreterBuilder;  // Class for friend declarations.
+
 class Interpreter {
  public:
   // Instantiate an interpreter. All errors associated with reading and
@@ -765,7 +771,7 @@ class Interpreter {
   ErrorReporter* error_reporter() const { return error_reporter_; }
 
  private:
-  friend class InterpreterBuilder;
+  friend class tflite::impl::InterpreterBuilder;
 #ifndef DOXYGEN_SKIP
   friend class tflite::InterpreterTest;
   friend class tflite::delegates::InterpreterUtils;
@@ -967,6 +973,8 @@ class Interpreter {
   std::atomic_flag continue_invocation_{false};
   bool cancellation_enabled_ = false;
 };
+
+}  // namespace impl
 
 }  // namespace tflite
 #endif  // TENSORFLOW_LITE_CORE_INTERPRETER_H_

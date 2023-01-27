@@ -138,6 +138,21 @@ func.func @alltoall(%data: tensor<4x16xf32>) -> tensor<16x4xindex> {
 
 // -----
 
+// CHECK-LABEL: func @alltoall_bounds
+func.func @alltoall_bounds(%data: tensor<16x?xf32, #mhlo.type_extensions<bounds = [?, 5]>>) -> tensor<*xindex> {
+  %0 = "mhlo.all_to_all"(%data) {
+    split_dimension = 0 : i64,
+    concat_dimension = 1 : i64,
+    split_count = 4 : i64,
+    replica_groups = dense<[[0, 1, 2, 3]]> : tensor<1x4xi64>
+  } : (tensor<16x?xf32, #mhlo.type_extensions<bounds = [?, 5]>>) -> tensor<*xf32>
+  // CHECK: types0 = tensor<4x?xf32, #mhlo.type_extensions<bounds = [?, 20]>>
+  %1 = "mhlo_test.get_return_types"(%0) : (tensor<*xf32>) -> tensor<*xindex>
+  func.return %1 : tensor<*xindex>
+}
+
+// -----
+
 // CHECK-LABEL: func @abs
 func.func @abs(%arg0: tensor<1x2xf32>) -> tensor<1x2xindex> {
   %0 = "mhlo.abs"(%arg0) {} : (tensor<1x2xf32>) -> tensor<1x2xf32>
@@ -587,6 +602,26 @@ func.func @sort(%input0: tensor<16x16xf32>, %input1: tensor<16x16xi32>) -> (tens
   // CHECK: (tensor<16x16xi32>) -> tensor<16x16xindex>
   %2 = "mhlo_test.get_return_type_components"(%0#1) : (tensor<16x16xi32>) -> tensor<16x16xindex>
   func.return %1, %2 : tensor<16x16xindex>, tensor<16x16xindex>
+}
+
+// -----
+
+// CHECK-LABEL: @sort_bounds_and_unknown_rank
+func.func @sort_bounds_and_unknown_rank(%input0: tensor<*xf32>, %input1: tensor<5x?x?xi32, #mhlo.type_extensions<bounds = [?, 7, 6]>>) {
+  %0, %1 = "mhlo.sort"(%input0, %input1) ({
+  ^bb0(%arg0: tensor<f32>, %arg1: tensor<f32>, %arg2: tensor<i32>, %arg3: tensor<i32>):
+    %pred = "mhlo.compare"(%arg0, %arg1) {
+      comparison_direction = #mhlo<comparison_direction GT>
+    } : (tensor<f32>, tensor<f32>) -> tensor<i1>
+    "mhlo.return"(%pred) : (tensor<i1>) -> ()
+  }) { dimension = 1 : i64, is_stable = true } : (
+    tensor<*xf32>,
+    tensor<5x?x?xi32, #mhlo.type_extensions<bounds = [?, 7, 6]>>
+  ) -> (tensor<*xf32>, tensor<*xi32>)
+  // CHECK: types0 = tensor<*xf32>
+  // CHECK-SAME: types1 = tensor<5x?x?xi32, #mhlo.type_extensions<bounds = [?, 7, 6]>>
+  %2 = "mhlo_test.get_return_types"(%0) : (tensor<*xf32>) -> tensor<*xindex>
+  func.return
 }
 
 // -----

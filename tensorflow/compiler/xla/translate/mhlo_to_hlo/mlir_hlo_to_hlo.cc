@@ -70,12 +70,12 @@ limitations under the License.
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/status_macros.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/statusor.h"
 #include "tensorflow/compiler/xla/translate/mhlo_to_hlo/attribute_exporter.h"
 #include "tensorflow/compiler/xla/translate/mhlo_to_hlo/location_exporter.h"
 #include "tensorflow/compiler/xla/translate/mhlo_to_hlo/type_to_shape.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/tsl/platform/float8.h"
+#include "tensorflow/tsl/platform/statusor.h"
 
 using ::int64_t;
 using ::tsl::int16;

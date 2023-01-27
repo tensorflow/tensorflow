@@ -240,8 +240,8 @@ FusionDecision FusionInstructionMerger::ShouldFuse(HloInstruction* producer) {
     // Skip 'fusion' instruction if merging it into at least one of the users
     // would make the fusion use too much shared memory or registers.
     FusionDecision fits = FusionFitsInBudget(
-        *user, *producer, /*is_consumer_producer_fusion=*/true,
-        &fusion_info_cache_);
+        *user, *producer, gpu_device_info_,
+        /*is_consumer_producer_fusion=*/true, &fusion_info_cache_);
     if (!fits) {
       ++num_fail_fusion_too_large_;
       return fits;

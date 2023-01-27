@@ -53,12 +53,12 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/mlir_roundtrip_flags.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/tf_mlir_translate_cl.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/statusor.h"
 #include "tensorflow/compiler/xla/translate/hlo_to_mhlo/translate.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/lite/model.h"
 #include "tensorflow/lite/schema/schema_generated.h"
+#include "tensorflow/tsl/platform/statusor.h"
 
 using mlir::MLIRContext;
 using mlir::ModuleOp;

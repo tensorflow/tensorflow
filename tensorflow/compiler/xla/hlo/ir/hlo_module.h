@@ -529,6 +529,23 @@ class HloModule {
     return profile_info_list_;
   }
 
+  void add_autofdo_pre_pass_fingerprint(absl::string_view fingerprint) {
+    autofdo_pre_pass_fingerprints_.push_back(std::string(fingerprint));
+  }
+
+  void set_autofdo_pre_pass_fingerprints(
+      const std::vector<std::string>& fingerprints) {
+    autofdo_pre_pass_fingerprints_ = fingerprints;
+  }
+
+  const std::vector<std::string>& autofdo_pre_pass_fingerprints() const {
+    return autofdo_pre_pass_fingerprints_;
+  }
+
+  bool has_module_autofdo_profiles() const {
+    return !autofdo_pre_pass_fingerprints_.empty();
+  }
+
   void set_relative_speedup(double relative_speedup) {
     relative_speedup_ = relative_speedup;
   }
@@ -617,6 +634,10 @@ class HloModule {
 
   // The unoptimized module fingerprint.
   std::string autofdo_fingerprint_;
+
+  // The pre-pass module fingerprints used to retrieve the optimization profiles
+  // this module contains.
+  std::vector<std::string> autofdo_pre_pass_fingerprints_;
 
   bool use_auto_spmd_partitioning_ = false;
 

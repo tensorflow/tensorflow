@@ -23,6 +23,7 @@ from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_array_ops
+from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 from tensorflow.python.util import nest
@@ -150,6 +151,34 @@ class CompilerIrTest(xla_test.XLATestCase):
         )
         concrete_fn = f4.get_concrete_function(**kwargs_spec)
         _ = compiler_ir.from_concrete_function(concrete_fn)(stage='hlo')
+
+  def test_make_handledata_tensor_specs(self):
+    with ops.device('device:{}:0'.format(self.device)):
+      v1 = variables.Variable([0.1, 0.1])
+      v3 = variables.Variable([1], dtype=dtypes.int32)
+
+      @polymorphic_function.function(jit_compile=True)
+      def f4(a, b):
+        return (a + b) * v1 - math_ops.cast(v3, dtypes.float32)
+
+      a = constant_op.constant([1.1, 1.1])
+      b = constant_op.constant([2.2, 2.2])
+
+      kwargs = {'b': a, 'a': b}
+
+      kwargs_spec = nest.map_structure(
+          tensor_spec.TensorSpec.from_tensor, kwargs
+      )
+      concrete_fn = f4.get_concrete_function(**kwargs_spec)
+      captured_inputs = concrete_fn.captured_inputs
+      captured_spec = compiler_ir.make_handledata_tensor_specs(captured_inputs)
+      self.assertEqual(len(captured_spec), 2)
+      self.assertEqual(
+          captured_spec[0], tensor_spec.TensorSpec((2), dtype=dtypes.float32)
+      )
+      self.assertEqual(
+          captured_spec[1], tensor_spec.TensorSpec((1), dtype=dtypes.int32)
+      )
 
 
 if __name__ == '__main__':

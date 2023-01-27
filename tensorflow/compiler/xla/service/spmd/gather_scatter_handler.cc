@@ -32,7 +32,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/spmd/spmd_partitioner.h"
 #include "tensorflow/compiler/xla/service/spmd/spmd_partitioner_util.h"
 #include "tensorflow/compiler/xla/status.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/statusor.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/tsl/platform/statusor.h"
 

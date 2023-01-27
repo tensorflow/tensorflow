@@ -257,7 +257,6 @@ enum StatType {
   kDevCapComputeCapMajor,
   kDevCapComputeCapMinor,
   kDevCapPeakTeraflopsPerSecond,
-  kDevCapPeakBwGigabytesPerSecond,
   kDevCapPeakHbmBwGigabytesPerSecond,
   kDevCapPeakSramRdBwGigabytesPerSecond,
   kDevCapPeakSramWrBwGigabytesPerSecond,

@@ -29,18 +29,20 @@ limitations under the License.
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/thread_annotations.h"
 
 namespace tensorflow {
 namespace data {
 
-Status DataServiceSplitProvider::GetNext(Tensor* split, bool* end_of_splits) {
+Status DataServiceSplitProvider::GetNext(Tensor* split, bool* end_of_splits)
+    TF_LOCKS_EXCLUDED(mu_) {
   mutex_lock l(mu_);
   if (!dispatcher_) {
     dispatcher_ =
         std::make_unique<DataServiceDispatcherClient>(address_, protocol_);
   }
   TF_RETURN_IF_ERROR(grpc_util::Retry(
-      [this, split, end_of_splits] {
+      [this, split, end_of_splits]() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
         return dispatcher_->GetSplit(iteration_id_, repetition_,
                                      split_provider_index_, *split,
                                      *end_of_splits);
@@ -59,7 +61,7 @@ Status DataServiceSplitProvider::GetNext(Tensor* split, bool* end_of_splits) {
   return OkStatus();
 }
 
-Status DataServiceSplitProvider::Reset() {
+Status DataServiceSplitProvider::Reset() TF_LOCKS_EXCLUDED(mu_) {
   mutex_lock l(mu_);
   repetition_++;
   return OkStatus();

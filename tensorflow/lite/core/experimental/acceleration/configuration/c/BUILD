@@ -121,6 +121,7 @@ cc_test(
 cc_library(
     name = "stable_delegate",
     hdrs = ["stable_delegate.h"],
+    compatible_with = get_compatible_with_portable(),
     deps = [
         "//tensorflow/lite/core/experimental/acceleration/configuration/c:delegate_plugin",
     ],

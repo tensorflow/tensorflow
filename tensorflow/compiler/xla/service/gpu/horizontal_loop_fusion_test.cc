@@ -16,9 +16,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/horizontal_loop_fusion.h"
 
 #include "tensorflow/compiler/xla/literal.h"
-#include "tensorflow/compiler/xla/service/gpu/fusion_merger.h"
+#include "tensorflow/compiler/xla/service/gpu/gpu_device_info_for_tests.h"
 #include "tensorflow/compiler/xla/service/gpu/instruction_fusion.h"
-#include "tensorflow/compiler/xla/service/gpu/multi_output_fusion.h"
 #include "tensorflow/compiler/xla/service/hlo_dce.h"
 #include "tensorflow/compiler/xla/service/hlo_matchers.h"
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
@@ -28,7 +27,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/test_helpers.h"
-#include "tensorflow/compiler/xla/tests/filecheck.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/tsl/lib/core/status_test_util.h"
 
@@ -192,8 +190,11 @@ TEST_F(HorizontalLoopFusionTest, HorizontalLoopFusionAfterVerticalFusion) {
                     .value();
 
   HloPassPipeline fusion("fusion");
-  fusion.AddPass<xla::gpu::GpuInstructionFusion>(/*may_duplicate=*/false);
-  fusion.AddPass<xla::gpu::GpuInstructionFusion>(/*may_duplicate=*/true);
+  const GpuDeviceInfo device_info = TestGpuDeviceInfo::RTXA6000DeviceInfo();
+  fusion.AddPass<xla::gpu::GpuInstructionFusion>(/*may_duplicate=*/false,
+                                                 device_info);
+  fusion.AddPass<xla::gpu::GpuInstructionFusion>(/*may_duplicate=*/true,
+                                                 device_info);
   EXPECT_TRUE(fusion.Run(module.get()).value());
   EXPECT_TRUE(GpuHorizontalLoopFusion().Run(module.get()).value());
   TF_ASSERT_OK(verifier().Run(module.get()).status());

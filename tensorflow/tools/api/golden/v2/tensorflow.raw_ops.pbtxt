@@ -833,6 +833,10 @@ tf_module {
     argspec: "args=[\'input\', \'group_size\', \'group_key\', \'instance_key\', \'merge_op\', \'final_op\', \'subdiv_offsets\', \'wait_for\', \'communication_hint\', \'timeout_seconds\', \'name\'], varargs=None, keywords=None, defaults=[\'[]\', \'auto\', \'0\', \'None\'], "
   }
   member_method {
+    name: "CollectiveReduceScatterV2"
+    argspec: "args=[\'input\', \'group_size\', \'group_key\', \'instance_key\', \'ordering_token\', \'merge_op\', \'final_op\', \'communication_hint\', \'timeout_seconds\', \'max_subdivs_per_device\', \'name\'], varargs=None, keywords=None, defaults=[\'auto\', \'0\', \'-1\', \'None\'], "
+  }
+  member_method {
     name: "CollectiveReduceV2"
     argspec: "args=[\'input\', \'group_size\', \'group_key\', \'instance_key\', \'ordering_token\', \'merge_op\', \'final_op\', \'communication_hint\', \'timeout_seconds\', \'max_subdivs_per_device\', \'name\'], varargs=None, keywords=None, defaults=[\'auto\', \'0\', \'-1\', \'None\'], "
   }
@@ -4883,6 +4887,10 @@ tf_module {
   member_method {
     name: "SymbolicGradient"
     argspec: "args=[\'input\', \'Tout\', \'f\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "SyncDevice"
+    argspec: "args=[\'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "TFRecordDataset"

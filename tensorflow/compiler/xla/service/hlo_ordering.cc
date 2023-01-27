@@ -327,6 +327,19 @@ bool HloOrdering::UsesBeforeValueDefinition(
         return true;
       }
     }
+    // The use at an async call occurs before values that are defined in the
+    // called computation of the async wrapped instruction.
+    if (use.instruction->IsAsynchronous() &&
+        use.instruction->async_wrapped_opcode() == HloOpcode::kCall) {
+      const HloInstruction* async = use.instruction;
+      if (call_graph_->InstructionIsNestedIn(
+              value.defining_instruction(),
+              async->async_wrapped_instruction()->to_apply())) {
+        VLOG(4) << "  use is async " << use.instruction->name()
+                << " and def is in called computation";
+        return true;
+      }
+    }
     if (use.instruction->opcode() == HloOpcode::kConditional) {
       const HloInstruction* conditional = use.instruction;
       // In general the use of a value in the conditional parameter should be

@@ -2173,10 +2173,13 @@ def _rebatch_as_dynamic(per_replica_spec):
   # pylint: enable=protected-access
 
 
-def _ag_enumerate_not_implemented():
-  raise NotImplementedError(
-      "use a for loop over the dataset and keep a separate counter"
+def _ag_enumerate_not_implemented(s, unused_start):
+  msg = (
+      f"enumerate not supported with {s.__class__.__name__} types within "
+      "tf.functions. Use a for loop over the dataset and keep a separate "
+      "counter instead."
   )
+  raise NotImplementedError(msg)
 
 
 py_builtins.enumerate_registry.register(

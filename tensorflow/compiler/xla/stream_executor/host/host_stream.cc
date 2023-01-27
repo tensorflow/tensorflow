@@ -22,7 +22,6 @@ limitations under the License.
 
 #include "absl/functional/any_invocable.h"
 #include "absl/synchronization/notification.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/env.h"
 #include "tensorflow/tsl/platform/denormal.h"
 #include "tensorflow/tsl/platform/env.h"
 #include "tensorflow/tsl/platform/setround.h"
@@ -41,7 +40,7 @@ tsl::ThreadOptions GetThreadOptions(size_t stack_size_in_bytes) {
 }  // namespace
 
 HostStream::HostStream(size_t stack_size_in_bytes)
-    : thread_(port::Env::Default()->StartThread(
+    : thread_(tsl::Env::Default()->StartThread(
           GetThreadOptions(stack_size_in_bytes), "host_executor",
           [this]() { WorkLoop(); })) {}
 

@@ -166,7 +166,7 @@ Status UpdatePlaceholderShape(
       for (const auto& dim : output_shapes.dim()) {
         auto size = dim.size();
         if (size == -1) size = cfg.placeholder_unknown_output_shape_dim;
-        shape.AddDim(size);
+        TF_RETURN_IF_ERROR(shape.AddDimWithStatus(size));
         shape_proto.add_dim()->set_size(size);
       }
     }

@@ -16,8 +16,8 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_MLIR_TFR_INTEGRATION_NODE_EXPANSION_PASS_H_
 
 #include "tensorflow/compiler/mlir/tfr/integration/tfr_decompose_ctx.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/statusor.h"
 #include "tensorflow/core/common_runtime/eager/eager_op_rewrite_registry.h"
+#include "tensorflow/tsl/platform/statusor.h"
 
 namespace tensorflow {
 namespace tfr {

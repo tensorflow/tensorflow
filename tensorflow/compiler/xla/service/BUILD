@@ -549,6 +549,7 @@ cc_library(
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
     ],
 )
@@ -562,6 +563,7 @@ xla_cc_test(
         ":hlo_sharding_util",
         "//tensorflow/compiler/xla:test",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
+        "//tensorflow/compiler/xla/hlo/ir:hlo",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
     ],
 )

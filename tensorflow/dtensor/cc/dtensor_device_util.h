@@ -26,7 +26,6 @@ limitations under the License.
 #include "tensorflow/c/eager/c_api.h"
 #include "tensorflow/c/eager/parallel_device/parallel_device_lib.h"
 #include "tensorflow/c/eager/tfe_context_internal.h"
-#include "tensorflow/core/common_runtime/composite_device.h"
 #include "tensorflow/core/common_runtime/eager/context.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/function.pb.h"
@@ -149,11 +148,9 @@ class MeshWithParallelDevice {
  public:
   MeshWithParallelDevice(
       const Mesh& mesh_config,
-      std::unique_ptr<parallel_device::ParallelDevice> parallel_device,
-      const std::string& composite_device_name = "")
+      std::unique_ptr<parallel_device::ParallelDevice> parallel_device)
       : mesh_config_(mesh_config),
         parallel_device_(std::move(parallel_device)),
-        composite_device_name_(composite_device_name),
         // Device IDs are constructed lazily because we don't have a context
         // until we start executing ops.
         device_ids_tensor_(nullptr) {}
@@ -171,35 +168,9 @@ class MeshWithParallelDevice {
 
   const dtensor::Mesh& mesh_config() const { return mesh_config_; }
 
-  // Creates a CompositeDevice in eager context if it not exists.
-  // Called when parallel_device_ contains a subset of global devices, e.g.
-  // pipelining is enabled.
-  StatusOr<CompositeDevice*> FindOrCreateCompositeDevice(TFE_Context* context) {
-    if (composite_device_ == nullptr && !composite_device_name_.empty()) {
-      if (mesh_config_.global_devices().empty()) {
-        return errors::InvalidArgument(
-            "Expect non-empty global devices when creating a CompositeDevice.");
-      }
-      TF_RETURN_IF_ERROR(ContextFromInterface(tensorflow::unwrap(context))
-                             ->FindOrCreateCompositeDevice(
-                                 mesh_config_.global_devices(),
-                                 composite_device_name_, &composite_device_));
-    }
-    return composite_device_;
-  }
-
-  CompositeDevice* composite_device() const { return composite_device_; }
-
  private:
   dtensor::Mesh mesh_config_;
   std::unique_ptr<parallel_device::ParallelDevice> parallel_device_;
-
-  // Set when parallel_device_ contains a subset of global devices, e.g.
-  // pipelining is enabled.
-  const std::string composite_device_name_;
-  // A tensorflow::Device that represents underlying devices of
-  // parallel_device_. Set when composite_device_name_ is not empty.
-  CompositeDevice* composite_device_ = nullptr;  // owned by eager context
 
   // Constructed lazily; contains a parallel tensor with scalar integer device
   // IDs for each device.

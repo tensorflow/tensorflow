@@ -56,6 +56,14 @@ using PJRT_ExecutableDeleter = std::function<void(PJRT_Executable*)>;
 // The lifetime of the Api pointed to must be longer than the executable.
 PJRT_ExecutableDeleter MakeExecutableDeleter(const PJRT_Api* api);
 
+using PJRT_LoadedExecutableDeleter =
+    std::function<void(PJRT_LoadedExecutable*)>;
+
+// Creates a custom deleter for smart pointers.
+// Pass in pointer `api` to the PJRT C API.
+// The lifetime of the Api pointed to must be longer than the executable.
+PJRT_LoadedExecutableDeleter MakeLoadedExecutableDeleter(const PJRT_Api* api);
+
 using PJRT_EventDeleter = std::function<void(PJRT_Event*)>;
 
 // Pass in an API pointer; receive a custom deleter for smart pointers.

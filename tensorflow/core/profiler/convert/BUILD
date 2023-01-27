@@ -570,6 +570,7 @@ cc_library(
         "//tensorflow/core/profiler/protobuf:diagnostics_proto_cc",
         "//tensorflow/core/profiler/protobuf:hardware_types_proto_cc",
         "//tensorflow/core/profiler/protobuf:kernel_stats_proto_cc",
+        "//tensorflow/core/profiler/protobuf:op_metrics_proto_cc",
         "//tensorflow/core/profiler/protobuf:op_stats_proto_cc",
         "//tensorflow/core/profiler/protobuf:steps_db_proto_cc",
         "//tensorflow/core/profiler/protobuf:topology_proto_cc",

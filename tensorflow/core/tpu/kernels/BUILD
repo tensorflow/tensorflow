@@ -888,6 +888,7 @@ cc_library(
         "//tensorflow/compiler/tf2xla/kernels:while_op",
         "//tensorflow/compiler/tf2xla/kernels:xla_ops",
         "//tensorflow/compiler/xla:literal_util",
+        "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla/client:xla_builder",
         "//tensorflow/compiler/xla/stream_executor/tpu:c_api_conversions",

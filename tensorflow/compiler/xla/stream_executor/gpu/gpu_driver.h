@@ -24,9 +24,9 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/stream_executor/device_options.h"
 #include "tensorflow/compiler/xla/stream_executor/gpu/gpu_types.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/status.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/statusor.h"
 #include "tensorflow/compiler/xla/stream_executor/platform/port.h"
+#include "tensorflow/tsl/platform/status.h"
+#include "tensorflow/tsl/platform/statusor.h"
 
 namespace stream_executor {
 namespace gpu {

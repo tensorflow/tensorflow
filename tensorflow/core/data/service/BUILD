@@ -662,6 +662,7 @@ cc_library(
     deps = [
         ":credentials_factory",
         ":data_transfer",
+        ":common_proto_cc",
         ":export_proto_cc",
         ":grpc_dispatcher_impl",
         ":grpc_util",
@@ -701,6 +702,11 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core/data:standalone",
+        "//tensorflow/core/platform:env",
+        "//tensorflow/core/platform:errors",
+        "//tensorflow/core/platform:mutex",
+        "//tensorflow/core/platform:status",
+        "//tensorflow/core/platform:thread_annotations",
     ],
 )
 
@@ -1075,6 +1081,7 @@ cc_library(
         "//tensorflow/core/platform:status",
         "//tensorflow/core/platform:statusor",
         "//tensorflow/core/platform:thread_annotations",
+        "//tensorflow/core/platform:types",
     ] + tf_grpc_cc_dependencies(),
 )
 
