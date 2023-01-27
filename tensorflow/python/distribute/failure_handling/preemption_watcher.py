@@ -24,9 +24,15 @@ from tensorflow.python.eager import context
 from tensorflow.python.eager import monitoring
 from tensorflow.python.util.tf_export import tf_export
 
+
+_preemption_watcher_initialization_counter = monitoring.Counter(
+    "/tensorflow/api/distribution_strategy/preemption_watcher_initialized",
+    "Counter for usages of PreemptionWatcher",
+)
 _preemption_handling_counter = monitoring.Counter(
-    "/tensorflow/api/distribution_strategy/preemption_watcher",
-    "Counter for number of preempions catched and handled by PreemptionWatcher")
+    "/tensorflow/api/distribution_strategy/preemption_watcher_handled",
+    "Counter for number of preempions catched and handled by PreemptionWatcher",
+)
 
 _PREEMPTION_KEY = "TF_DEFAULT_PREEMPTION_NOTICE_KEY"
 
@@ -85,6 +91,7 @@ class PreemptionWatcher:
       logging.warning("Preemption watcher does not support environment: %s",
                       platform)
     else:
+      _preemption_watcher_initialization_counter.get_cell().increase_by(1)
       threading.Thread(target=self._watch_preemption_key, daemon=True).start()
 
   @property
