@@ -218,6 +218,34 @@ cc_library(
 )
 
 tf_cc_test(
+    name = "snapshot_stream_writer_checkpoint_test",
+    size = "small",
+    srcs = ["snapshot_stream_writer_checkpoint_test.cc"],
+    deps = [
+        ":path_utils",
+        ":snapshot_reader",
+        ":snapshot_stream_writer",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/data:snapshot_utils",
+        "//tensorflow/core/data:standalone",
+        "//tensorflow/core/data/service:common_proto_cc",
+        "//tensorflow/core/data/service:task_runner",
+        "//tensorflow/core/data/service:test_util",
+        "//tensorflow/tsl/platform:env",
+        "//tensorflow/tsl/platform:errors",
+        "//tensorflow/tsl/platform:path",
+        "//tensorflow/tsl/platform:status",
+        "//tensorflow/tsl/platform:status_matchers",
+        "//tensorflow/tsl/platform:statusor",
+        "//tensorflow/tsl/protobuf:protos_all_cc",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+tf_cc_test(
     name = "snapshot_stream_writer_test",
     size = "small",
     srcs = ["snapshot_stream_writer_test.cc"],
