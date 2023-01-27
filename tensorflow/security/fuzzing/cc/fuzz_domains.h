@@ -13,25 +13,27 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_SECURITY_FUZZING_CC_FUZZ_HELPERS_H_
-#define TENSORFLOW_SECURITY_FUZZING_CC_FUZZ_HELPERS_H_
+#ifndef TENSORFLOW_SECURITY_FUZZING_CC_FUZZ_DOMAINS_H_
+#define TENSORFLOW_SECURITY_FUZZING_CC_FUZZ_DOMAINS_H_
 
-#include <cstdint>
-
+#include "fuzztest/fuzztest.h"
 #include "tensorflow/core/platform/status.h"
 
 namespace helper {
 
-inline tensorflow::error::Code BuildRandomErrorCode(uint32_t code) {
+inline fuzztest::Domain<tensorflow::error::Code> AnyErrorCode() {
   // We cannot build a `Status` with error_code of 0 and a message, so force
   // error code to be non-zero.
-  if (code == 0) {
-    return tensorflow::error::UNKNOWN;
-  }
-
-  return static_cast<tensorflow::error::Code>(code);
+  return fuzztest::Map(
+      [](uint32_t code) {
+        return static_cast<tensorflow::error::Code>(code);
+      },
+      fuzztest::Filter(
+        [](uint32_t code) { return code != 0; },
+        fuzztest::Arbitrary<uint32_t>()
+      ));
 }
 
 }  // namespace helper
 
-#endif  // TENSORFLOW_SECURITY_FUZZING_CC_FUZZ_HELPERS_H_
+#endif  // TENSORFLOW_SECURITY_FUZZING_CC_FUZZ_DOMAINS_H_
