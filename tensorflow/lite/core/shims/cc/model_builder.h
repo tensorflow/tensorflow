@@ -16,11 +16,10 @@ limitations under the License.
 #define TENSORFLOW_LITE_CORE_SHIMS_CC_MODEL_BUILDER_H_
 
 /// For documentation, see third_party/tensorflow/lite/model_builder.h.
-
-#include "tensorflow/lite/core/model_builder.h"
+#include "tensorflow/lite/model_builder.h"
 
 namespace tflite_shims {
-using FlatBufferModel = ::tflite::impl::FlatBufferModel;
+using FlatBufferModel = ::tflite::FlatBufferModel;
 }  // namespace tflite_shims
 
 #endif  // TENSORFLOW_LITE_CORE_SHIMS_CC_MODEL_BUILDER_H_
