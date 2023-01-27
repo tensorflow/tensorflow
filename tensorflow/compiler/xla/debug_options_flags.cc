@@ -707,7 +707,7 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       int32_setter_for(
           &DebugOptions::set_xla_gpu_force_compilation_parallelism),
       debug_options->xla_gpu_force_compilation_parallelism(),
-      "Overrides normal multi-threaded compilation settting to use this many "
+      "Overrides normal multi-threaded compilation setting to use this many "
       "threads. Setting to 0 (the default value) means no enforcement."));
   flag_list->push_back(
       tsl::Flag("xla_gpu_deterministic_ops",

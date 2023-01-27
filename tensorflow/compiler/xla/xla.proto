@@ -352,7 +352,7 @@ message DebugOptions {
   // modules will be dumped.
   bool xla_detailed_logging_and_dumping = 143;
 
-  // Overrides normal multi-threaded compilation settting to use this many
+  // Overrides normal multi-threaded compilation setting to use this many
   // threads. Setting to 0 (the default value) means no enforcement.
   int32 xla_gpu_force_compilation_parallelism = 147;
 
