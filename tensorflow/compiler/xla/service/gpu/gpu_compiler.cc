@@ -785,8 +785,6 @@ Status GpuCompiler::OptimizeHloModule(
     AlgebraicSimplifierOptions options = layout_insensitive_algsimp_opts;
     options.set_is_layout_sensitive(true);
     pipeline.AddPass<AlgebraicSimplifier>(options);
-    pipeline.AddPass<OptimizationBarrierExpander>();
-    pipeline.AddPass<TupleSimplifier>();
 
     TF_RETURN_IF_ERROR(pipeline.Run(hlo_module).status());
   }
@@ -1225,6 +1223,12 @@ static Status CompileModuleToLlvmIrImpl(
 
   TF_RETURN_IF_ERROR(
       ScheduleGpuModule(hlo_module, pointer_size, gpu_device_info));
+  {
+    HloPassPipeline pipeline("opt-barrier-expander");
+    pipeline.AddPass<OptimizationBarrierExpander>();
+
+    TF_RETURN_IF_ERROR(pipeline.Run(hlo_module).status());
+  }
 
   auto buffer_size_bytes_function =
       [pointer_size](const BufferValue& buffer_value) -> int64_t {
