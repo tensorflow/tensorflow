@@ -371,15 +371,10 @@ class FuncGraph(ops.Graph):
 
       if placeholder is None:
 
-        def convert_to_placeholder(s):
-          if not isinstance(s, tensor_spec.DenseSpec):
-            raise TypeError(
-                "Expected a nest of `TypeSpec` objects, found %s of type %s." %
-                (s, type(s)))
-          return array_ops.placeholder(dtype=s.dtype, shape=s.shape)
-
-        placeholder = nest.map_structure(
-            convert_to_placeholder, spec, expand_composites=True)
+        trace_ctx = trace_type.InternalTracingContext(False)
+        capture_trace_type = trace_type.from_value(spec, trace_ctx)
+        placeholder_ctx = trace_type.InternalPlaceholderContext(self)
+        placeholder = capture_trace_type.placeholder_value(placeholder_ctx)
 
       def wrapped_closure():
 
