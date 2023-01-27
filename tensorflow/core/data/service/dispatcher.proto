@@ -240,8 +240,11 @@ message SnapshotRequest {
 // Next tag: 1
 message SnapshotResponse {}
 
-// Next tag: 4
+// Next tag: 5
 message GetSnapshotSplitRequest {
+  // The address of the worker requesting the split.
+  string worker_address = 4;
+
   // The base path of the snapshot materialization.
   string base_path = 1;
 

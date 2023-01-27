@@ -34,11 +34,13 @@ namespace tensorflow {
 namespace data {
 
 SnapshotSplitProvider::SnapshotSplitProvider(
-    const std::string& address, const std::string& protocol,
+    const std::string& dispatcher_address,
+    const std::string& dispatcher_protocol, const std::string& worker_address,
     const SnapshotTaskDef& snapshot_task, int64_t source_index,
     absl::Duration timeout)
-    : address_(address),
-      protocol_(protocol),
+    : dispatcher_address_(dispatcher_address),
+      dispatcher_protocol_(dispatcher_protocol),
+      worker_address_(worker_address),
       snapshot_task_(snapshot_task),
       source_index_(source_index),
       timeout_(timeout) {}
@@ -47,14 +49,15 @@ Status SnapshotSplitProvider::GetNext(Tensor* split, bool* end_of_splits)
     TF_LOCKS_EXCLUDED(mu_) {
   mutex_lock l(mu_);
   if (!dispatcher_) {
-    dispatcher_ =
-        std::make_unique<DataServiceDispatcherClient>(address_, protocol_);
+    dispatcher_ = std::make_unique<DataServiceDispatcherClient>(
+        dispatcher_address_, dispatcher_protocol_);
   }
   return grpc_util::Retry(
       [this, split, end_of_splits] {
         return dispatcher_->GetSnapshotSplit(
-            snapshot_task_.base_path(), snapshot_task_.stream_index(),
-            source_index_, *split, *end_of_splits);
+            worker_address_, snapshot_task_.base_path(),
+            snapshot_task_.stream_index(), source_index_, *split,
+            *end_of_splits);
       },
       "Get next split for snapshot",
       /*deadline_micros=*/Env::Default()->NowMicros() +

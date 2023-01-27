@@ -69,7 +69,8 @@ class DataServiceDispatcherClient : public DataServiceClientBase {
   // Gets the next split for the specified source of a stream of the snapshot in
   // `base_path`. If `end_of_splits` returns true, then there are no more splits
   // to be processed for the specified stream source.
-  Status GetSnapshotSplit(const std::string& base_path, int64_t stream_index,
+  Status GetSnapshotSplit(const std::string& worker_address,
+                          const std::string& base_path, int64_t stream_index,
                           int64_t source_index, Tensor& split,
                           bool& end_of_splits);
 

@@ -34,7 +34,9 @@ namespace data {
 // Split provider that supports writing distributed snapshots.
 class SnapshotSplitProvider : public SplitProvider {
  public:
-  SnapshotSplitProvider(const std::string& address, const std::string& protocol,
+  SnapshotSplitProvider(const std::string& dispatcher_address,
+                        const std::string& dispatcher_protocol,
+                        const std::string& worker_address,
                         const SnapshotTaskDef& snapshot_task,
                         int64_t source_index, absl::Duration timeout);
 
@@ -46,8 +48,9 @@ class SnapshotSplitProvider : public SplitProvider {
                  IteratorStateReader* reader) override;
 
  private:
-  const std::string address_;
-  const std::string protocol_;
+  const std::string dispatcher_address_;
+  const std::string dispatcher_protocol_;
+  const std::string worker_address_;
   const SnapshotTaskDef snapshot_task_;
   const int64_t source_index_;
   const absl::Duration timeout_;

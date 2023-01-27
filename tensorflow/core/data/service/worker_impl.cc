@@ -660,7 +660,8 @@ DataServiceWorkerImpl::MakeSnapshotTaskIterator(
   split_providers.reserve(snapshot_task.num_sources());
   for (int i = 0; i < snapshot_task.num_sources(); ++i) {
     split_providers.push_back(std::make_unique<SnapshotSplitProvider>(
-        config_.dispatcher_address(), config_.protocol(), snapshot_task,
+        config_.dispatcher_address(), config_.protocol(), worker_address_,
+        snapshot_task,
         /*source_index=*/i,
         absl::Milliseconds(config_.dispatcher_timeout_ms())));
   }

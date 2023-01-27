@@ -187,7 +187,8 @@ TEST_F(DispatcherClientTest, GetSnapshotSplit) {
     Tensor split;
     bool end_of_splits;
     TF_ASSERT_OK(dispatcher_client_->GetSnapshotSplit(
-        snapshot_task.base_path(), snapshot_task.stream_index(),
+        test_cluster_->WorkerAddress(0), snapshot_task.base_path(),
+        snapshot_task.stream_index(),
         /*source_index=*/0, split, end_of_splits));
     ASSERT_FALSE(end_of_splits);
   }
