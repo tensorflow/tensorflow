@@ -166,6 +166,10 @@
 * `tf.types.experimental.GenericFunction`
   * The `experimental_get_compiler_ir` method supports tf.TensorSpec
    compilation arguments.
+*  `tf.config.experimental.mlir_bridge_rollout`
+    *   Removed enums `MLIR_BRIDGE_ROLLOUT_SAFE_MODE_ENABLED` and
+    `MLIR_BRIDGE_ROLLOUT_SAFE_MODE_FALLBACK_ENABLED` which are no longer used by
+    the tf2xla bridge
 
 
 # Thanks to our Contributors
