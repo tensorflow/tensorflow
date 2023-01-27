@@ -1,26 +1,31 @@
-## Getting started - basic example
+# Compile a StableHLO program with XLA
 
-The following code sample shows how to use XLA to compute a simple vector
-expression: $$\alpha x+y$$ ("axpy"). The full code sample is
-[here](https://github.com/openxla/xla/blob/test/xla/examples/axpy/stablehlo_compile_test.cc).
+This tutorial and the code in this directory shows how to write a simple
+StableHLO program and then compile it with XLA. The purpose is simply to
+show how XLA can injest a StableHLO program and produce an executable
+that's compatible with the local device. As such, the program is very
+simple: $\alpha x+y$ ("axpy").
 
-This sample presents an example XLA program using [MLIR](https://mlir.llvm.org/)
-and [StableHLO](https://github.com/openxla/stablehlo) that takes data as input,
-uses XLA to build a graph to compute the expression and returns the resulting
-data.
+The process includes just a few steps:
 
-This is done in several steps:
+1.  Construct a StableHLO program using the StableHLO dialect.
+2.  Tell XLA to create a "computation" based on this program. In this example,
+    we will use PjRt (Pretty much just another Runtime) to achieve that.
+3.  Run the compiled executable with some inputs to compute results.
 
-1.  Construct an XLA graph that encodes the expression we want to compute. The
-    graph's nodes are XLA operations (sometimes called "ops" or HLOs for
-    "high-level operations"), and its edges represent the data flow between
-    operations. We will create this graph using an MLIR module in the
-    [StableHLO](https://github.com/openxla/stablehlo) dialect.
-2.  Ask XLA to create a "computation" based on this graph. In this example, we
-    will use PjRt (Pretty much just another Runtime) to compile our module.
-3.  Use the previously compiled executable and input data to compute results.
+All the code is already provided in this directory, which you can build and
+run using the steps at the end of this page.
 
-The XLA graph we construct for axpy is:
+## 1. Create the StableHLO program
+
+We'll define the computation axpy as a StableHLO program, using an
+[MLIR](https://mlir.llvm.org/) file in the
+[StableHLO](https://github.com/openxla/stablehlo) dialect.
+
+It can be helpful to consider the computation as a graph, where each node is an
+operation (an "op" or "HLO" which means "high-level operation") and the graph
+edges are the data flow between operations. So the graph for axpy looks like
+this:
 
 ```mermaid
 graph TD
@@ -29,31 +34,31 @@ graph TD
     p2(y 4xf32) --> add
 ```
 
-Here is the MLIR module (in the StableHLO dialect) that XLA will use to
-construct our graph (step 1):
+And here's how we define the program using MLIR (in the StableHLO dialect):
 
 ```mlir
-module @axpy {
-  func.func public @main(
-    %alpha: tensor<f32>,
-    %x: tensor<4 x f32>,
-    %y: tensor<4 x f32>
-  ) -> tensor<4 x f32> {
-    %a = "stablehlo.broadcast_in_dim" (%alpha) {
-      broadcast_dimensions = dense<[]> : tensor<0 x i64>
-    } : (tensor<f32>) -> tensor<4 x f32>
-    %ax = stablehlo.multiply %a, %x : tensor<4 x f32>
-    %result = stablehlo.add %ax, %y : tensor<4 x f32>
-    return %result: tensor<4 x f32>
-  }
+func.func @main(
+  %alpha: tensor<f32>, %x: tensor<4xf32>, %y: tensor<4xf32>
+) -> tensor<4xf32> {
+  %0 = stablehlo.broadcast_in_dim %alpha, dims = []
+    : (tensor<f32>) -> tensor<4xf32>
+  %1 = stablehlo.multiply %0, %x : tensor<4xf32>
+  %2 = stablehlo.add %1, %y : tensor<4xf32>
+  func.return %2: tensor<4xf32>
 }
 ```
 
-Notably, StableHLO doesn't support implicit broadcasting, so we will use
+This code is in [`stablehlo_axpy.mlir`](stablehlo_axpy.mlir).
+
+**Note:** StableHLO expresses broadcasting explicitly, so we use
 `"stablehlo.broadcast_in_dim"` to broadcast our scalar to a rank-1 tensor.
 
-At the start of our test, we will set up a PjRtStreamExecutorClient that will
-allow us to compile our StableHLO module:
+## 2. Compile the StableHLO program
+
+Our program for this tutorial is set up as a test in
+[`stablehlo_compile_test.cc`](stablehlo_compile_test.cc). In this file,
+you'll see that we first set up a `PjRtStreamExecutorClient` that
+allows us to compile our StableHLO program:
 
 ```c++
 // Setup client
@@ -93,44 +98,48 @@ auto pjrt_se_client = PjRtStreamExecutorClient(
     /*gpu_run_options=*/nullptr);
 ```
 
-Then we will read our StableHLO module to a string:
+Then we read the StableHLO program from our MLIR file into a string:
 
 ```c++
-// Read StableHLO module to string
-std::string module_path = tsl::io::JoinPath(
+// Read StableHLO program to string
+std::string program_path = tsl::io::JoinPath(
     tsl::testing::XlaSrcRoot(), "examples", "axpy", "stablehlo_axpy.mlir");
-std::string module_string;
+std::string program_string;
 
 TF_ASSERT_OK(
-    tsl::ReadFileToString(tsl::Env::Default(), module_path, &module_string));
+    tsl::ReadFileToString(tsl::Env::Default(), program_path, &program_string));
 ```
 
-In order to parse the StableHLO module, we must register the appropriate MLIR
-dialects:
+In order to parse the StableHLO program, we must first register the appropriate
+MLIR dialects:
 
 ```c++
-// Register MLIR dialects necessary to parse our module. In our case this is
+// Register MLIR dialects necessary to parse our program. In our case this is
 // just the Func dialect and StableHLO.
 mlir::DialectRegistry dialects;
 dialects.insert<mlir::func::FuncDialect>();
 mlir::stablehlo::registerAllDialects(dialects);
 
-// Parse StableHLO module.
+// Parse StableHLO program.
 auto ctx = std::make_unique<mlir::MLIRContext>(dialects);
-mlir::OwningOpRef<mlir::ModuleOp> module =
-    mlir::parseSourceString<mlir::ModuleOp>(module_string, ctx.get());
+mlir::OwningOpRef<mlir::ModuleOp> program =
+    mlir::parseSourceString<mlir::ModuleOp>(program_string, ctx.get());
 ```
 
-Now that we've set up our client and parsed the StableHLO module we can
-compile it to an executable (step 2):
+Now that we've set up our client and parsed the StableHLO program we can
+compile it to an executable:
 
 ```c++
-// Use our client to compile our StableHLO module to an executable.
+// Use our client to compile our StableHLO program to an executable.
 TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtLoadedExecutable> executable,
-                        pjrt_se_client.Compile(*module, CompileOptions{}));
+                        pjrt_se_client.Compile(*program, CompileOptions{}));
 ```
 
-And finally we can feed the executable some inputs (step 3):
+## 3. Execute the computation
+
+Finally, in [`stablehlo_compile_test.cc`](stablehlo_compile_test.cc),
+we can feed the executable some inputs for the three arguments and
+compute the results:
 
 ```c++
 // Create inputs to our computation.
@@ -169,29 +178,33 @@ xla::LiteralTestUtil::ExpectR1Near<float>({13.64f, 26.78f, 39.92f, 53.06f},
                                           xla::ErrorSpec(0.01f));
 ```
 
-Sample output from our test should look like this:
+## 4. Build and run the code
+
+You can build and run this example as follows using
+[Bazelisk](https://github.com/bazelbuild/bazelisk#readme) or
+[Bazel](https://bazel.build/) (run from within `xla/examples/axpy/`):
 
 ```sh
-$ bazel test --nocheck_visibility --test_output=all examples/axpy:stablehlo_compile_test
-==================== Test output for //third_party/tensorflow/compiler/xla/examples/axpy:stablehlo_compile_test:
+bazelisk test :stablehlo_compile_test --test_output=all --nocheck_visibility
+```
+
+Sample output from the test should look like this:
+
+```sh
+==================== Test output for //xla/examples/axpy:stablehlo_compile_test:
 [==========] Running 1 test from 1 test suite.
 [----------] Global test environment set-up.
 [----------] 1 test from StableHloAxpyTest
 [ RUN      ] StableHloAxpyTest.LoadAndRunCpuExecutable
-Loaded StableHLO module from /path/to/runfiles/xla/examples/axpy/stablehlo_axpy.mlir:
-module @axpy {
-  func.func public @main(
-    %alpha: tensor<f32>,
-    %x: tensor<4 x f32>,
-    %y: tensor<4 x f32>
-  ) -> tensor<4 x f32> {
-    %a = "stablehlo.broadcast_in_dim" (%alpha) {
-      broadcast_dimensions = dense<[]> : tensor<0 x i64>
-    } : (tensor<f32>) -> tensor<4 x f32>
-    %ax = stablehlo.multiply %a, %x : tensor<4 x f32>
-    %result = stablehlo.add %ax, %y : tensor<4 x f32>
-    return %result: tensor<4 x f32>
-  }
+Loaded StableHLO program from xla/examples/axpy/stablehlo_axpy.mlir:
+func.func @main(
+  %alpha: tensor<f32>, %x: tensor<4xf32>, %y: tensor<4xf32>
+) -> tensor<4xf32> {
+  %0 = stablehlo.broadcast_in_dim %alpha, dims = []
+    : (tensor<f32>) -> tensor<4xf32>
+  %1 = stablehlo.multiply %0, %x : tensor<4xf32>
+  %2 = stablehlo.add %1, %y : tensor<4xf32>
+  func.return %2: tensor<4xf32>
 }
 
 Computation inputs:
@@ -199,10 +212,10 @@ Computation inputs:
         x:f32[4] {1, 2, 3, 4}
         y:f32[4] {10.5, 20.5, 30.5, 40.5}
 Computation output: f32[4] {13.64, 26.78, 39.920002, 53.06}
-[       OK ] StableHloAxpyTest.LoadAndRunCpuExecutable (105 ms)
-[----------] 1 test from StableHloAxpyTest (105 ms total)
+[       OK ] StableHloAxpyTest.LoadAndRunCpuExecutable (264 ms)
+[----------] 1 test from StableHloAxpyTest (264 ms total)
 
 [----------] Global test environment tear-down
-[==========] 1 test from 1 test suite ran. (105 ms total)
+[==========] 1 test from 1 test suite ran. (264 ms total)
 [  PASSED  ] 1 test.
 ```
