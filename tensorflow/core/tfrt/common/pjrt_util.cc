@@ -18,6 +18,9 @@ limitations under the License.
 #include <optional>
 #include <set>
 
+#include "tensorflow/compiler/tf2xla/xla_op_registry.h"
+#include "tensorflow/compiler/xla/pjrt/gpu/gpu_helpers.h"
+#include "tensorflow/compiler/xla/pjrt/gpu/se_gpu_pjrt_client.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/status.h"
@@ -92,13 +95,24 @@ StatusOr<xla::PjRtClient*> GetOrCreatePjRtClient(
   }
   // TODO(b/260799193): use XlaPlatformInfo to pass device-specific options.
   // This info should be set in the plugin init for next pluggable device.
-  // TODO(b/265435743): add GetStreamExecutorGpuClient for DEVICE_GPU when the
-  // cuda_platform dependency in se_gpu_pjrt_client is changed to be compatible
-  // with tf_cuda_cc_test.
-  return errors::Unimplemented(
-      "The PJRT client for ", device_type,
-      " is not created explicitly before its first use and creating this "
-      "PJRT client on the first use is not implemented.");
+  if (device_type != DEVICE_XLA_GPU) {
+    return errors::Unimplemented(
+        "The PJRT client for ", device_type,
+        " is not created explicitly before its first use and creating this "
+        "PJRT client on the first use is not implemented.");
+  }
+  xla::GpuAllocatorConfig allocator_config;
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<xla::PjRtClient> pjrt_client,
+                      xla::GetStreamExecutorGpuClient(
+                          /*asynchronous=*/true, allocator_config,
+                          /*distributed_client=*/nullptr,
+                          /*node_id=*/0, allowed_devices));
+  // Gets a pointer of pjrt_client because the ownership of pjrt_client will be
+  // transferred in the SetPjRtClientInTFGlobalResourceManager call below.
+  auto pjrt_client_ptr = pjrt_client.get();
+  TF_RETURN_IF_ERROR(SetPjRtClientInTFGlobalResourceManager(
+      device_type, std::move(pjrt_client)));
+  return pjrt_client_ptr;
 }
 
 }  // namespace tensorflow
