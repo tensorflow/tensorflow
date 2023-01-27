@@ -23,10 +23,17 @@ limitations under the License.
 #include "tensorflow/compiler/xla/runtime/executable.h"
 #include "tensorflow/compiler/xla/service/gpu/matmul_utils.h"
 #include "tensorflow/compiler/xla/service/gpu/runtime/support.h"
+#include "tensorflow/compiler/xla/service/hlo_module_config.h"
 #include "tensorflow/compiler/xla/service/service_executable_run_options.h"
+#include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/stream_executor/blas.h"
 #include "tensorflow/compiler/xla/stream_executor/device_memory.h"
 #include "tensorflow/compiler/xla/xla.pb.h"
+
+#if GOOGLE_CUDA
+#include "tensorflow/compiler/xla/service/gpu/gemm_algorithm_picker.h"
+#include "tensorflow/compiler/xla/stream_executor/gpu/redzone_allocator.h"
+#endif
 
 namespace xla {
 namespace gpu {
@@ -35,46 +42,53 @@ using xla::runtime::CustomCall;
 using xla::runtime::State;
 using xla::runtime::StridedMemrefView;
 
-// Run autotuning to select the best algorithm and save the algorithm to
-// GemmConfig.
-//
-// Difference between this function and GemmAlgorithmPicker:
-// This function doesn't check correctness of the algorithms and doesn't
-// reinitialize output buffers everytime gemm runs. The result is always
-// nondeterministic.
-// TODO(anlunx): Reuse GemmAlgorithmPicker::DoGemmAutotune.
-void DoRuntimeAutotuning(se::Stream* stream, GemmConfig& config,
-                         se::DeviceMemoryBase lhs, se::DeviceMemoryBase rhs,
-                         se::DeviceMemoryBase out) {
-  if (config.algorithm != stream_executor::blas::kRuntimeAutotuning) return;
-
+#if GOOGLE_CUDA
+Status DoRuntimeAutotuning(se::Stream* stream, GemmConfig& config,
+                           se::DeviceMemoryBase lhs, se::DeviceMemoryBase rhs,
+                           se::DeviceMemoryBase out, const Shape& output_shape,
+                           double beta, const DebugOptions* debug_options) {
+  VLOG(3) << "Running GEMM runtime autotuning";
   std::vector<se::blas::AlgorithmType> algorithms;
   stream->parent()->GetBlasGemmAlgorithms(stream, &algorithms);
-  std::vector<se::blas::ProfileResult> profile_results;
-  for (const se::blas::AlgorithmType algorithm : algorithms) {
-    se::blas::ProfileResult profile_result;
-    Status autotune_run =
-        RunGemm(config, lhs, rhs, out, stream, algorithm, &profile_result);
-    if (!autotune_run.ok()) continue;
 
-    if (profile_result.is_valid()) {
-      profile_results.push_back(std::move(profile_result));
-    }
+  // Set autotune_level to 3 to disable correctness checking, which avoids
+  // memory allocation during runtime.
+  AutotuneConfig autotune_config{
+      /*autotune_level=*/3,
+      /*should_crash_on_check_failure=*/true,
+  };
+
+  // RedzoneAllocator will have size 0 for this autotune_level.
+  se::RedzoneAllocator buffer_allocator =
+      CreateRedzoneAllocator(stream, stream->parent()->GetAllocator(),
+                             *debug_options, autotune_config);
+
+  TF_ASSIGN_OR_RETURN(
+      auto best_algorithm_idx,
+      GetBestBlasAlgorithm(
+          stream, buffer_allocator, /*gemm_str=*/std::nullopt, autotune_config,
+          lhs, rhs, out, algorithms, output_shape, HloModuleConfig(), beta,
+          [&](const se::blas::AlgorithmType& algorithm)
+              -> StatusOr<se::blas::ProfileResult> {
+            se::blas::ProfileResult profile_result;
+            // We expect GemmWithAlgorithm to fail sometimes -- in fact, it will
+            // fail for all algorithms if we're targeting < sm_50.  But because
+            // we pass a non-null ProfileResult, DoGemmWithAlgorithm should
+            // always return true, and the actual success-ness is returned in
+            // ProfileResult::is_valid.
+            TF_RETURN_IF_ERROR(RunGemm(config, lhs, rhs, out, stream, algorithm,
+                                       &profile_result));
+            return std::move(profile_result);
+          }));
+
+  if (best_algorithm_idx.has_value()) {
+    config.algorithm = algorithms[best_algorithm_idx.value()];
+    return OkStatus();
+  } else {
+    return InternalError("Runtime autotuning failed to select an algorithm");
   }
-
-  if (profile_results.empty()) {
-    config.algorithm = stream_executor::blas::kDefaultAlgorithm;
-    return;
-  }
-
-  auto selected_result = absl::c_min_element(
-      profile_results, [](const se::blas::ProfileResult& lhs,
-                          const se::blas::ProfileResult& rhs) {
-        return lhs.elapsed_time_in_ms() < rhs.elapsed_time_in_ms();
-      });
-
-  config.algorithm = selected_result->algorithm();
 }
+#endif
 
 static absl::Status GemmImpl(const ServiceExecutableRunOptions* run_options,
                              const DebugOptions* debug_options,
@@ -89,6 +103,7 @@ static absl::Status GemmImpl(const ServiceExecutableRunOptions* run_options,
 
   VLOG(3) << "Running GEMM";
   se::Stream* stream = run_options->stream();
+  Shape output_shape = ToShape(out);
 
   // Get the gemm config from the state.
   absl::StatusOr<GemmConfig*> config = state.GetOrCreate([&] {
@@ -96,8 +111,17 @@ static absl::Status GemmImpl(const ServiceExecutableRunOptions* run_options,
         GetGemmConfig(lhs, rhs, out, algorithm, alpha_real, alpha_imag, beta,
                       dot_dims.lhs_batch, dot_dims.lhs_contract,
                       dot_dims.rhs_batch, dot_dims.rhs_contract);
+#if GOOGLE_CUDA
     if (!gemm_config.ok()) return ToAbsl(gemm_config);
-    DoRuntimeAutotuning(stream, *gemm_config, lhs_data, rhs_data, output_data);
+    if (gemm_config->algorithm == stream_executor::blas::kRuntimeAutotuning) {
+      auto status =
+          DoRuntimeAutotuning(stream, *gemm_config, lhs_data, rhs_data,
+                              output_data, output_shape, beta, debug_options);
+      if (!status.ok())
+        return absl::StatusOr<GemmConfig>(
+            absl::InternalError(status.ToString()));
+    }
+#endif
     return ToAbsl(gemm_config);
   });
   if (!config.ok()) return config.status();
