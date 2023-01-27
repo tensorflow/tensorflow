@@ -75,6 +75,7 @@ case "${TENSORFLOW_TARGET}" in
       --copt=-O3 --copt=-fno-tree-pre --copt=-fpermissive
       --define tensorflow_mkldnn_contraction_kernel=0
       --define=raspberry_pi_with_neon=true"
+    ;;
   aarch64)
     BAZEL_FLAGS="--config=elinux_aarch64
       --define tensorflow_mkldnn_contraction_kernel=0
