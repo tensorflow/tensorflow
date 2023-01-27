@@ -43,6 +43,7 @@ load("//third_party/sobol_data:workspace.bzl", sobol_data = "repo")
 load("//third_party/stablehlo:workspace.bzl", stablehlo = "repo")
 load("//third_party/vulkan_headers:workspace.bzl", vulkan_headers = "repo")
 load("//third_party/tensorrt:workspace.bzl", tensorrt = "repo")
+load("//third_party/triton:workspace.bzl", triton = "repo")
 
 # Import external repository rules.
 load("@bazel_tools//tools/build_defs/repo:java.bzl", "java_import_external")
@@ -80,6 +81,7 @@ def _initialize_third_party():
     stablehlo()
     vulkan_headers()
     tensorrt()
+    triton()
 
     # copybara: tsl vendor
 
