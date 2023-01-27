@@ -1,5 +1,5 @@
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
-load("//tensorflow:tensorflow.bzl", "if_libtpu", "if_with_tpu_support", "tf_cc_test", "tf_copts")
+load("//tensorflow:tensorflow.bzl", "if_libtpu", "if_with_tpu_support", "tf_cc_test", "tf_copts", "tf_cuda_cc_test")
 load("//tensorflow/compiler/xla/stream_executor:build_defs.bzl", "if_cuda_or_rocm")
 load("//tensorflow:tensorflow.default.bzl", "cc_header_only_library", "filegroup", "tf_custom_op_py_library", "tf_jit_compilation_passes_extra_deps")
 load("//tensorflow/core/platform:build_config.bzl", "tf_additional_all_protos", "tf_proto_library")
@@ -227,6 +227,8 @@ cc_library(
 
 XLA_DEVICE_DEPS = [
     ":common",
+    ":pjrt_device_context",
+    ":xla_compile_util",
     ":xla_launch_util",
     ":xla_tensor",
     "@com_google_absl//absl/base",
@@ -280,6 +282,7 @@ XLA_DEVICE_DEPS = [
     "//tensorflow/core/kernels/data:prefetch_dataset_op",
     "//tensorflow/core/kernels/data:options_dataset_op",
     "//tensorflow/core/profiler/lib:traceme",
+    "//tensorflow/core/tfrt/common:async_value_tensor",
     "//tensorflow/compiler/xla/stream_executor:tf_allocator_adapter",
     "//tensorflow/compiler/xla/stream_executor/platform",
 ]
@@ -1426,6 +1429,22 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core/platform:errors",
         "//tensorflow/tsl/protobuf:error_codes_proto_impl_cc",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+tf_cuda_cc_test(
+    name = "device_context_test",
+    srcs = ["device_context_test.cc"],
+    tags = tf_cuda_tests_tags(),
+    deps = [
+        ":flags",
+        ":xla_device",
+        ":xla_gpu_device",
+        "//tensorflow/compiler/tf2xla:xla_op_registry",
+        "//tensorflow/core:framework_internal",
+        "//tensorflow/core:test",
+        "//tensorflow/core/framework:tensor_testutil",
         "@com_google_googletest//:gtest_main",
     ],
 )
