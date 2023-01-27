@@ -22,7 +22,6 @@ limitations under the License.
 
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
-#include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/mlir/tools/mlir_replay/public/execution_trace.pb.h"
 #include "tensorflow/compiler/xla/mlir/tools/mlir_replay/public/execution_trace_utils.h"
 

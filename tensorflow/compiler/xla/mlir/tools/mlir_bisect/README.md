@@ -51,7 +51,8 @@ To add a reduction, create a function that generates the candidates and register
 it:
 
 ```
-SmallVector<ModuleOp> FrobulateAndDefenestrate(BisectState&, dialect::SomeOp some_op) {
+SmallVector<OwningOpRef<ModuleOp>>
+FrobulateAndDefenestrate(BisectState&, dialect::SomeOp some_op) {
   auto [cloned_module_1, cloned_op_1] = CloneModuleFor(some_op);
   Frobulate(cloned_op_1);
 

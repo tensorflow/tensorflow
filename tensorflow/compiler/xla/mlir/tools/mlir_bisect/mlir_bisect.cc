@@ -34,6 +34,7 @@ limitations under the License.
 #include "mlir/Tools/ParseUtilities.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/mlir/runtime/ir/rt_dialect.h"
 #include "tensorflow/compiler/xla/mlir/tools/mlir_bisect/bisect_lib.h"
+#include "tensorflow/compiler/xla/mlir/tools/mlir_bisect/test_passes.h"
 #include "tensorflow/compiler/xla/mlir/tools/mlir_replay/public/execution_trace_utils.h"
 #include "tensorflow/compiler/xla/mlir_hlo/gml_st/IR/gml_st_ops.h"
 #include "tensorflow/compiler/xla/mlir_hlo/gml_st/interfaces/bufferizable_op_interface_impl.h"
@@ -236,6 +237,7 @@ int main(int argc, char* argv[]) {
   mlir::DialectRegistry registry;
   mlir::registerAllDialects(registry);
   mlir::registerAllPasses();
+  mlir::bisect::test::RegisterTestPasses();
   mlir::mhlo::registerAllMhloPasses();
   mlir::lmhlo::registerAllLmhloPasses();
   mlir::thlo::registerAllThloPasses();
@@ -263,7 +265,11 @@ int main(int argc, char* argv[]) {
 
   mlir::interpreter::ExecutionTrace trace;
   if (!mlir::bisect::Run(*module, &trace, options).succeeded()) {
-    llvm::errs() << "Did not find bug in initial module\n";
+    llvm::outs() << "Did not find bug in initial module\n";
+    if (options.pass_pipeline.hasAnyOccurrences() &&
+        mlir::succeeded(mlir::bisect::RunPipeline(*module, options))) {
+      llvm::outs() << "Module after running pipeline:\n" << *module << "\n";
+    }
     return 1;
   }
 
