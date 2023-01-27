@@ -2076,8 +2076,6 @@ GroupedSharding GroupShardingOnDims(const HloSharding& sharding,
   CHECK(!sharding.IsTileMaximal());
   std::vector<int64_t> grouped_tiling_dims =
       sharding.tile_assignment().dimensions();
-  VLOG(0) << "Group dims:" << absl::StrJoin(group_dims, ",");
-  VLOG(0) << "Group dim shards:" << absl::StrJoin(group_dim_shards, ",");
   std::vector<int64_t> group_dim_sizes(group_dims.size());
   for (int64_t i = 0; i < group_dims.size(); ++i) {
     CHECK_EQ(grouped_tiling_dims[group_dims[i]] % group_dim_shards[i], 0);
