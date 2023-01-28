@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <algorithm>
+#include <iterator>
 #include <memory>
 #include <optional>
 #include <string>
@@ -172,33 +174,46 @@ LogicalResult Canonicalize(ModuleOp module) {
   return pm.run(module.getOperation());
 }
 
-std::optional<OwningOpRef<ModuleOp>> ApplyReduceStep(ModuleOp module,
-                                                     BisectState& state,
-                                                     const Options& options) {
-  // This could be a lot smarter than round robin (e.g. pruning previously
-  // attempted approaches, moving previously unsuccessful strategies to the
-  // end of the list, etc.).
-  for (auto [name, strategy] : detail::GetStrategies()) {
-    for (auto& candidate : detail::GetCandidates(strategy, state, module)) {
-      if (!Canonicalize(*candidate).succeeded()) {
-        continue;
+OwningOpRef<ModuleOp> ReduceModule(OwningOpRef<ModuleOp> module,
+                                   BisectState& state, const Options& options) {
+  auto strategies = llvm::to_vector(mlir::bisect::detail::GetStrategies());
+
+  auto apply_step = [&]() -> std::optional<OwningOpRef<ModuleOp>> {
+    for (auto it = strategies.begin(); it != strategies.end(); ++it) {
+      for (auto& candidate :
+           detail::GetCandidates(it->second, state, *module)) {
+        if (!Canonicalize(*candidate).succeeded()) {
+          continue;
+        }
+
+        interpreter::ExecutionTrace trace;
+        // Verify that the candidate is still buggy.
+        if (!Run(*candidate, &trace, options).succeeded()) {
+          continue;
+        }
+
+        // Print the new buggy module.
+        llvm::outs() << "module after " << it->first << ":\n"
+                     << *candidate << "\n\n";
+
+        // Update the trace.
+        state.SetTrace(trace);
+
+        // Move failed strategies to the end.
+        decltype(strategies) new_strategies;
+        std::copy(it, strategies.end(), std::back_inserter(new_strategies));
+        std::copy(strategies.begin(), it, std::back_inserter(new_strategies));
+        strategies = new_strategies;
+        return {std::move(candidate)};
       }
-
-      interpreter::ExecutionTrace trace;
-      // Verify that the candidate is still buggy.
-      if (!Run(*candidate, &trace, options).succeeded()) {
-        continue;
-      }
-
-      // Print the new buggy module.
-      llvm::outs() << "module after " << name << ":\n" << *candidate << "\n\n";
-
-      // Update the trace.
-      state.SetTrace(trace);
-      return {std::move(candidate)};
     }
+    return std::nullopt;
+  };
+
+  while (auto new_module = apply_step()) {
+    module = std::move(*new_module);
   }
-  return std::nullopt;
+  return module;
 }
 
 void ReplaceArgsWithConstants(ModuleOp module,
@@ -289,10 +304,8 @@ int main(int argc, char* argv[]) {
     return some_failed ? 1 : 0;
   }
 
-  while (auto new_module =
-             mlir::bisect::ApplyReduceStep(*module, state, options)) {
-    module = std::move(*new_module);
-  }
+  module = mlir::bisect::ReduceModule(std::move(module), state, options);
+
   llvm::outs() << "Final module:\n" << *module << "\n";
   if (options.pass_pipeline.hasAnyOccurrences() &&
       mlir::succeeded(mlir::bisect::RunPipeline(*module, options))) {
