@@ -130,16 +130,6 @@ absl::StatusOr<AsyncValueRef<se::Event>> SendRecvEvents::PopEvent(
 // Send/Recv custom call implementation.
 //===----------------------------------------------------------------------===//
 
-// Asynchronous send/recv operations can fail long after we finished submitting
-// all work to the stream, and we can't do anything about it. In this case we
-// will have some garbage data on device, and it's up to the higher level
-// of the stack to discard it.
-static void OnError(Status error) {
-  LOG(ERROR) << "Received asynchronous Send/Recv error: "
-             << error.error_message() << ". "
-             << "Previously computed results are likely incorrect.";
-}
-
 static absl::Status SendImpl(const ServiceExecutableRunOptions* run_options,
                              SendRecvEvents* events, StridedMemrefView arg,
                              ChannelHandle channel, bool is_host_transfer,
@@ -167,8 +157,8 @@ static absl::Status SendImpl(const ServiceExecutableRunOptions* run_options,
 
   // Send buffer to a handler registered with the run options.
   if (auto* send = run_options->run_options().send_device_memory_function()) {
-    auto done_event = (*send)(channel.handle, stream, ToShape(arg),
-                              GetDeviceAddress(arg), OnError);
+    auto done_event =
+        (*send)(channel.handle, stream, ToShape(arg), GetDeviceAddress(arg));
     if (!done_event.ok()) return ToAbslStatus(done_event.status());
     return events->PushEvent(channel.handle, std::move(*done_event));
   }
@@ -204,8 +194,7 @@ static absl::Status RecvImpl(const ServiceExecutableRunOptions* run_options,
   // Recv buffer from a handler registered with the run options.
   if (auto* recv = run_options->run_options().recv_device_memory_function()) {
     auto dst = GetDeviceAddress(arg);
-    auto done_event =
-        (*recv)(channel.handle, stream, ToShape(arg), &dst, OnError);
+    auto done_event = (*recv)(channel.handle, stream, ToShape(arg), &dst);
     if (!done_event.ok()) return ToAbslStatus(done_event.status());
     return events->PushEvent(channel.handle, std::move(*done_event));
   }

@@ -137,7 +137,43 @@ TEST(StreamExecutorGpuClientTest, SendRecvChunked) {
                                      *result_literal));
 }
 
-TEST(StreamExecutorGpuClientTest, SendRecvErrorNoDeadLock) {
+TEST(StreamExecutorGpuClientTest, SendErrorNoDeadLock) {
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto client, GetStreamExecutorGpuClient(true, /*allocator_config=*/{},
+                                              /*distributed_client=*/nullptr,
+                                              /*node_id=*/0));
+
+  TF_ASSERT_OK_AND_ASSIGN(auto executable,
+                          CompileExecutable(kProgram, *client));
+
+  // Always-failing Send handler.
+  SendCallback send_callback = {
+      /*channel_id=*/1,
+      [&](const PjRtTransferMetadata&, PjRtChunk, int64_t, bool) {
+        return InternalError("Uh-oh, can send chunk to host");
+      }};
+
+  // No-op Recv handler.
+  RecvCallback recv_callback = {
+      /*channel_id=*/2,
+      [&](const PjRtTransferMetadata& m,
+          std::unique_ptr<CopyToDeviceStream> stream) { return OkStatus(); }};
+
+  // Callbacks for point-to-point communication ops.
+  std::vector<std::vector<SendCallback>> send_callbacks = {{send_callback}};
+  std::vector<std::vector<RecvCallback>> recv_callbacks = {{recv_callback}};
+
+  ExecuteOptions opts;
+  opts.send_callbacks = send_callbacks;
+  opts.recv_callbacks = recv_callbacks;
+
+  // Check that send error safely rejected and we do not dead lock.
+  auto result = executable->Execute(/*argument_handles=*/{{}}, opts);
+  EXPECT_TRUE(absl::StrContains(result.status().error_message(),
+                                "Uh-oh, can send chunk to host"));
+}
+
+TEST(StreamExecutorGpuClientTest, RecvErrorNoDeadLock) {
   TF_ASSERT_OK_AND_ASSIGN(
       auto client, GetStreamExecutorGpuClient(true, /*allocator_config=*/{},
                                               /*distributed_client=*/nullptr,

@@ -1937,8 +1937,8 @@ static SendDeviceMemoryFunction ConvertSendCallbacksToSendFunction(
     tsl::thread::ThreadPool* thread_pool) {
   // Check if we have callbacks registered for the given device ordinal.
   if (device_ordinal >= options.send_callbacks.size()) {
-    return [=](int64_t channel_id, se::Stream*, const Shape&,
-               const se::DeviceMemoryBase&, SendRecvErrorHandler) {
+    return [device_ordinal](int64_t channel_id, se::Stream*, const Shape&,
+                            const se::DeviceMemoryBase&) {
       return InvalidArgument(
           "Failed to send a buffer to the channel_id=%d, there was no send "
           "callbacks registered for the device_ordinal=%d",
@@ -1950,9 +1950,9 @@ static SendDeviceMemoryFunction ConvertSendCallbacksToSendFunction(
   absl::Span<const SendCallback> callbacks =
       options.send_callbacks[device_ordinal];
 
-  return [callbacks](int64_t channel_id, se::Stream* stream, const Shape& shape,
-                     const se::DeviceMemoryBase& src,
-                     SendRecvErrorHandler on_error)
+  return [callbacks, thread_pool](int64_t channel_id, se::Stream* stream,
+                                  const Shape& shape,
+                                  const se::DeviceMemoryBase& src)
              -> StatusOr<AsyncValueRef<se::Event>> {
     VLOG(3) << "Send " << src.size() << " bytes to channel #" << channel_id
             << " (shape=" << shape.ToString() << ")";
@@ -1972,32 +1972,38 @@ static SendDeviceMemoryFunction ConvertSendCallbacksToSendFunction(
       return InternalError("Failed to initialize done event (channel_id=%d)",
                            channel_id);
 
-    // Allocate chunk on the host for copying data from device.
-    PjRtChunk chunk = PjRtChunk::AllocateDefault(src.size());
+    thread_pool->Schedule([done_event, stream, src, channel_id, shape, send] {
+      tsl::profiler::TraceMe trace([&] {
+        return tsl::profiler::TraceMeEncode(
+            "PjRtStreamExecutorExecutable::Send", {{"channel_id", channel_id}});
+      });
 
-    tsl::profiler::TraceMe trace([&] {
-      return tsl::profiler::TraceMeEncode("PjRtStreamExecutorExecutable::Send",
-                                          {{"channel_id", channel_id}});
+      // Allocate chunk on the host for copying data from device.
+      PjRtChunk chunk = PjRtChunk::AllocateDefault(src.size());
+
+      stream->ThenMemcpy(chunk.data(), src, src.size());
+      stream->ThenRecordEvent(&done_event.get());
+
+      // Wait for the data to be available on the host.
+      if (auto st = stream->BlockHostUntilDone(); !st.ok()) {
+        done_event.SetError(absl::InternalError(absl::StrFormat(
+            "failed to synchronize send operation with a stream: %s",
+            st.error_message())));
+        return;
+      }
+
+      // Pass chunk to the registered callback.
+      auto sent = send->callback({shape}, std::move(chunk),
+                                 /*total_size_in_bytes=*/src.size(),
+                                 /*done=*/true);
+
+      if (!sent.ok()) {
+        done_event.SetError(ToAbslStatus(sent));
+      } else {
+        done_event.SetStateConcrete();
+      }
     });
 
-    stream->ThenMemcpy(chunk.data(), src, src.size());
-    stream->ThenRecordEvent(&done_event.get());
-
-    if (auto st = stream->BlockHostUntilDone(); !st.ok()) {
-      return InternalError(
-          "failed to synchronize send operation with a stream: %s",
-          st.error_message());
-    }
-
-    // Pass chunk to the registered callback.
-    auto sent = send->callback({shape}, std::move(chunk),
-                               /*total_size_in_bytes=*/src.size(),
-                               /*done=*/true);
-    if (!sent.ok())
-      return InternalError("failed to send a buffer to a callback: %s",
-                           sent.error_message());
-
-    done_event.SetStateConcrete();
     return std::move(done_event);
   };
 }
@@ -2083,8 +2089,8 @@ static RecvDeviceMemoryFunction ConvertRecvCallbacksToRecvFunction(
     int device_ordinal, const ExecuteOptions& options) {
   // Check if we have callbacks registered for the given device ordinal.
   if (device_ordinal >= options.send_callbacks.size()) {
-    return [=](int64_t channel_id, se::Stream*, const Shape&,
-               se::DeviceMemoryBase*, SendRecvErrorHandler) {
+    return [device_ordinal](int64_t channel_id, se::Stream*, const Shape&,
+                            se::DeviceMemoryBase*) {
       return InvalidArgument(
           "Failed to receive a buffer from the channel_id=%d, there was no "
           "recv callbacks registered for the device_ordinal=%d",
@@ -2096,9 +2102,9 @@ static RecvDeviceMemoryFunction ConvertRecvCallbacksToRecvFunction(
   absl::Span<const RecvCallback> callbacks =
       options.recv_callbacks[device_ordinal];
 
-  return [callbacks](int64_t channel_id, se::Stream* stream, const Shape& shape,
-                     se::DeviceMemoryBase* dst, SendRecvErrorHandler on_error)
-             -> StatusOr<AsyncValueRef<se::Event>> {
+  return [callbacks](
+             int64_t channel_id, se::Stream* stream, const Shape& shape,
+             se::DeviceMemoryBase* dst) -> StatusOr<AsyncValueRef<se::Event>> {
     VLOG(3) << "Recv from channel #" << channel_id
             << " (shape=" << shape.ToString() << ")";
 
