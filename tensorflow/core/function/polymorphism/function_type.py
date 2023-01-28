@@ -323,10 +323,11 @@ sanitization_warnings_given = 0
 
 
 # TODO(fmuham): In future, replace warning with exception.
+# TODO(fmuham): Sanitize to graph node conventions.
 def sanitize_arg_name(name: str) -> str:
   """Sanitizes function argument names.
 
-  Matches Graph Node and Python naming conventions.
+  Matches Python symbol naming rules.
 
   Without sanitization, names that are not legal Python parameter names can be
   set which makes it challenging to represent callables supporting the named
@@ -339,7 +340,7 @@ def sanitize_arg_name(name: str) -> str:
     A string that meets Python parameter conventions.
   """
   # Lower case and replace non-alphanumeric chars with '_'
-  swapped = "".join([c if c.isalnum() else "_" for c in name.lower()])
+  swapped = "".join([c if c.isalnum() else "_" for c in name])
   result = swapped if swapped[0].isalpha() else "arg_" + swapped
 
   global sanitization_warnings_given

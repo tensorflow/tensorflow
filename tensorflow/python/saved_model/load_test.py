@@ -1747,8 +1747,9 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     self.assertIn(expected_message, logs.output)
 
     loaded_signature = imported.signatures["serving_default"].inputs
-    self.assertEqual("a_b:0", loaded_signature[0].name)
-    self.assertEqual("a_d:0", loaded_signature[1].name)
+    self.assertTrue(
+        {"a_b:0", "a_d:0"}.issubset({arg.name for arg in loaded_signature}),
+    )
 
   def test_multiple_argument_signatures_no_positional(
       self, cycles, use_cpp_bindings
