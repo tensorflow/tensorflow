@@ -44,8 +44,7 @@ public class GpuDelegate implements Delegate {
             options.areQuantizedModelsAllowed(),
             options.getInferencePreference(),
             options.getSerializationDir(),
-            options.getModelToken(),
-            options.getForceBackend().value());
+            options.getModelToken());
   }
 
   @UsedByReflection("TFLiteSupport/model/GpuDelegateProxy")
@@ -84,8 +83,7 @@ public class GpuDelegate implements Delegate {
       boolean quantizedModelsAllowed,
       int preference,
       String serializationDir,
-      String modelToken,
-      int forceBackend);
+      String modelToken);
 
   private static native void deleteDelegate(long delegateHandle);
 }
