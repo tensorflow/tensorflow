@@ -51,6 +51,19 @@ const absl::string_view kCudnnConvBiasActivationForwardCallTarget =
 const absl::string_view kCudnnConvForwardCallTarget = "__cudnn$convForward";
 const absl::string_view kTriangularSolveCallTarget = "__cublas$triangularSolve";
 
+// fMHA call targets.
+const absl::string_view kCudnnfMHADefaultCallTarget = "__cudnn$fhmaDefault";
+const absl::string_view kCudnnfMHAScaleBiasMaskSoftmaxCallTarget =
+    "__cudnn$fhmaScaleBiasMaskSoftmax";
+const absl::string_view kCudnnfMHAScaleBiasMaskSoftmaxDropoutCallTarget =
+    "__cudnn$fhmaScaleBiasMaskSoftmaxDropout";
+const absl::string_view kCudnnfMHAScaleMaskSoftmaxCallTarget =
+    "__cudnn$fhmaScaleMaskSoftmax";
+const absl::string_view kCudnnfMHAScaleMaskSoftmaxDropoutCallTarget =
+    "__cudnn$fhmaScaleMaskSoftmaxDropout";
+const absl::string_view kCudnnfMHASoftmaxDropoutCallTarget =
+    "__cudnn$fhmaSoftmaxDropout";
+
 bool IsCustomCallToDnnConvolution(const HloInstruction& hlo) {
   if (hlo.opcode() != HloOpcode::kCustomCall) {
     return false;

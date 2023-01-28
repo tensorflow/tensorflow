@@ -108,6 +108,14 @@ extern const absl::string_view kCudnnConvForwardCallTarget;
 extern const absl::string_view kCudnnConvBackwardInputCallTarget;
 extern const absl::string_view kCudnnConvBackwardFilterCallTarget;
 extern const absl::string_view kCudnnConvBiasActivationForwardCallTarget;
+// fMHA call targets.
+extern const absl::string_view kCudnnfMHADefaultCallTarget;
+extern const absl::string_view kCudnnfMHAScaleBiasMaskSoftmaxCallTarget;
+extern const absl::string_view kCudnnfMHAScaleBiasMaskSoftmaxDropoutCallTarget;
+extern const absl::string_view kCudnnfMHAScaleMaskSoftmaxCallTarget;
+extern const absl::string_view kCudnnfMHAScaleMaskSoftmaxDropoutCallTarget;
+extern const absl::string_view kCudnnfMHASoftmaxDropoutCallTarget;
+
 
 // Returns true if `hlo` will be implemented as a call to a cuDNN convolution
 // routine.
