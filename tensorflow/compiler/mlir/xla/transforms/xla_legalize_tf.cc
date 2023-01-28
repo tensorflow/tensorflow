@@ -560,6 +560,7 @@ void EmitLegalizationErrors(Operation *op,
 /// Returns ops that should use MLIR legalization only in the case of
 /// prefer_tf2xla. All other ops not in this list should use XlaOpKernel
 /// legalization only or not be legalized by the new bridge.
+// LINT.IfChange
 const llvm::DenseSet<mlir::TypeID> &MlirPreferredOps() {
   // The static variable is a pointer in order to avoid destruction upon thread
   // termination.
@@ -647,10 +648,17 @@ const llvm::DenseSet<mlir::TypeID> &MlirPreferredOps() {
     TypeID::get<TF::RandomUniformOp>(),
     TypeID::get<TF::StridedSliceOp>(),
     TypeID::get<TF::SliceOp>(),
+
+    // Conditional ops
+    TypeID::get<TF::IfRegionOp>(),
+    TypeID::get<TF::WhileRegionOp>(),
+    TypeID::get<TF::CaseRegionOp>(),
+    TypeID::get<TF::YieldOp>(),
   };
   // clang-format on
   return *ops;
 }
+// LINT.ThenChange(:PopulateLegalizeTfPatterns)
 
 // Patterns whose root op is in the set `include_ops` are moved from the set
 // `from` to the returned set. This is used to partition patterns by op so they
