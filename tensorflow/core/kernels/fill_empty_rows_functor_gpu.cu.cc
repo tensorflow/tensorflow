@@ -199,7 +199,7 @@ struct FillEmptyRows<GPUDevice, T, Tindex, RaggedOperands> {
                                                     TensorShape({0}), &unused));
       }
       done();
-      return Status::OK();
+      return OkStatus();
     }
 
     // The algorithm as currently implemented is summarized as follows:
@@ -425,7 +425,7 @@ struct FillEmptyRows<GPUDevice, T, Tindex, RaggedOperands> {
     context->device()
         ->tensorflow_accelerator_device_info()
         ->event_mgr->ThenExecute(stream, async_finish_computation);
-    return Status::OK();
+    return OkStatus();
   }
 
  private:
@@ -464,7 +464,7 @@ struct FillEmptyRows<GPUDevice, T, Tindex, RaggedOperands> {
     } else {
       *reverse_index_map = nullptr;
     }
-    return Status::OK();
+    return OkStatus();
   }
 
   Status ArgSortByRows(OpKernelContext* context, const GPUDevice& device,
