@@ -1476,7 +1476,7 @@ tf_kernel_library(
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
-        "fill_empty_rows",
+        "fill_empty_rows_functor",
     ] + [":gpu_prim_hdrs"] + if_cuda_or_rocm([
         ":gpu_prim_helpers",
     ]) + if_cuda([
@@ -4906,7 +4906,7 @@ tf_kernel_library(
     prefix = "sparse_fill_empty_rows_op",
     deps = SPARSE_DEPS + [
         ":gpu_prim_hdrs",
-        "fill_empty_rows",
+        "fill_empty_rows_functor",
     ] + if_cuda_or_rocm([
         ":gpu_prim_helpers",
     ]) + if_cuda([
@@ -4917,9 +4917,12 @@ tf_kernel_library(
 )
 
 tf_kernel_library(
-    name = "fill_empty_rows",
-    prefix = "fill_empty_rows",
-    deps = [":gpu_prim_hdrs"] + if_cuda_or_rocm([
+    name = "fill_empty_rows_functor",
+    prefix = "fill_empty_rows_functor",
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+    ] + [":gpu_prim_hdrs"] + if_cuda_or_rocm([
         ":gpu_prim_helpers",
     ]) + if_cuda([
         "//tensorflow/core/util:cuda_solvers",
@@ -6323,7 +6326,7 @@ filegroup(
         "diag_op.h",
         "dilation_ops.h",
         "fake_quant_ops_functor.h",
-        "fill_empty_rows_op.h",
+        "fill_empty_rows_functor.h",
         "fused_batch_norm_op.h",
         "inplace_ops.cc",
         "inplace_ops_functor.h",
