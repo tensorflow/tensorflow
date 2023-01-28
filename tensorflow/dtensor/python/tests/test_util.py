@@ -17,7 +17,6 @@ import collections
 import copy
 import itertools
 import json
-import os
 import typing
 
 from absl import flags
@@ -34,6 +33,7 @@ from tensorflow.dtensor.python import numpy_util
 from tensorflow.dtensor.python.config import is_gpu_present  # pylint: disable=unused-import
 from tensorflow.dtensor.python.config import is_tpu_present  # pylint: disable=unused-import
 from tensorflow.dtensor.python.config import preferred_device_type  # pylint: disable=unused-import
+from tensorflow.dtensor.python.tests.test_backend_name import DTENSOR_TEST_UTIL_BACKEND
 from tensorflow.dtensor.python.tests.test_backend_name import DTensorTestUtilBackend
 from tensorflow.dtensor.python.tests.test_backend_util import DTensorTestBackendConfigurator
 from tensorflow.python.compat import v2_compat
@@ -50,10 +50,6 @@ v2_compat.enable_v2_behavior()
 DEFAULT_TOL = 1e-5
 
 _DEFAULT_GPU_MEMORY_LIMIT = 200  # MB
-
-
-DTENSOR_TEST_UTIL_BACKEND = DTensorTestUtilBackend(
-    os.getenv('DTENSOR_TEST_UTIL_BACKEND', default='unspecified'))
 
 
 def create_device_ids_array(shape):
