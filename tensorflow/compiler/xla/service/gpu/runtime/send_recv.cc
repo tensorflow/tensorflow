@@ -31,6 +31,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/service_executable_run_options.h"
 #include "tensorflow/tsl/profiler/lib/traceme.h"
 #include "tensorflow/tsl/profiler/lib/traceme_encode.h"
+#include "tfrt/concurrency/async_value.h"  // from @tf_runtime
+#include "tfrt/concurrency/async_value_ref.h"  // from @tf_runtime
 
 namespace xla {
 namespace gpu {
@@ -39,6 +41,7 @@ using absl::InternalError;
 using absl::InvalidArgumentError;
 using absl::StrFormat;
 
+using tsl::AsyncValueRef;
 using tsl::profiler::TraceMe;
 using tsl::profiler::TraceMeEncode;
 
@@ -105,7 +108,7 @@ void PopulateSendRecvAttrEncoding(CustomCallAttrEncodingSet& encoding) {
 //===----------------------------------------------------------------------===//
 
 absl::Status SendRecvEvents::PushEvent(int32_t handle,
-                                       std::shared_ptr<se::Event> event) {
+                                       AsyncValueRef<se::Event> event) {
   absl::MutexLock lock(&mutex_);
   if (auto it = events_.try_emplace(handle, std::move(event)); it.second)
     return absl::OkStatus();
@@ -114,7 +117,7 @@ absl::Status SendRecvEvents::PushEvent(int32_t handle,
       StrFormat("Async send/recv event already exists (handle=%d)", handle));
 }
 
-absl::StatusOr<std::shared_ptr<se::Event>> SendRecvEvents::PopEvent(
+absl::StatusOr<AsyncValueRef<se::Event>> SendRecvEvents::PopEvent(
     int32_t handle) {
   absl::MutexLock lock(&mutex_);
   if (auto event = events_.extract(handle)) return std::move(event.mapped());
@@ -224,7 +227,16 @@ static absl::Status SendDoneImpl(const ServiceExecutableRunOptions* run_options,
   auto done_event = events->PopEvent(channel.handle);
   if (!done_event.ok()) return done_event.status();
 
-  run_options->stream()->ThenWaitFor(done_event->get());
+  // Wait until send handler will record an event on the stream.
+  BlockUntilReady(done_event->GetAsyncValue());
+  if (done_event->IsError()) return done_event->GetError();
+
+  VLOG(5) << "Completed Send operation: "
+          << " channel=" << channel.handle
+          << " is_host_transfer=" << is_host_transfer;
+
+  // Once event is recorded we can add a stream dependency.
+  run_options->stream()->ThenWaitFor(&done_event->get());
   return absl::OkStatus();
 }
 
@@ -242,7 +254,16 @@ static absl::Status RecvDoneImpl(const ServiceExecutableRunOptions* run_options,
   auto done_event = events->PopEvent(channel.handle);
   if (!done_event.ok()) return done_event.status();
 
-  run_options->stream()->ThenWaitFor(done_event->get());
+  // Wait until send handler will record an event on the stream.
+  BlockUntilReady(done_event->GetAsyncValue());
+  if (done_event->IsError()) return done_event->GetError();
+
+  VLOG(5) << "Completed Recv operation: "
+          << " channel=" << channel.handle
+          << " is_host_transfer=" << is_host_transfer;
+
+  // Once event is recorded we can add a stream dependency.
+  run_options->stream()->ThenWaitFor(&done_event->get());
   return absl::OkStatus();
 }
 

@@ -41,6 +41,8 @@ namespace tsl {
 class Status;
 template <typename T>
 class StatusOr;
+template <typename T>
+class AsyncValueRef;
 }  // namespace tsl
 
 namespace xla {
@@ -112,7 +114,7 @@ using SendRecvErrorHandler = std::function<void(Status)>;
 // recorded on a `stream` once the send operation is completed and data was
 // copied from the `src` memory.
 using SendDeviceMemoryFunction =
-    std::function<StatusOr<std::shared_ptr<stream_executor::Event>>(
+    std::function<StatusOr<tsl::AsyncValueRef<stream_executor::Event>>(
         int64_t channel_id, stream_executor::Stream* stream, const Shape& shape,
         const stream_executor::DeviceMemoryBase& src,
         SendRecvErrorHandler error_handler)>;
@@ -121,7 +123,7 @@ using SendDeviceMemoryFunction =
 // recorded on a `stream` once the recv operation is completed and data was
 // copied into the `dst` memory.
 using RecvDeviceMemoryFunction =
-    std::function<StatusOr<std::shared_ptr<stream_executor::Event>>(
+    std::function<StatusOr<tsl::AsyncValueRef<stream_executor::Event>>(
         int64_t channel_id, stream_executor::Stream* stream, const Shape& shape,
         stream_executor::DeviceMemoryBase* dst,
         SendRecvErrorHandler error_handler)>;
