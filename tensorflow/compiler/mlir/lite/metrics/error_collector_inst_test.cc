@@ -115,7 +115,8 @@ TEST(ErrorCollectorTest, TessSuccessPass) {
   auto module = LoadModule(&context, input_file);
   EXPECT_EQ(module.ok(), true);
 
-  PassManager pm(&context, OpPassManager::Nesting::Implicit);
+  PassManager pm(module.value().get()->getName(),
+                 OpPassManager::Nesting::Implicit);
   pm.addPass(std::make_unique<MockSuccessPass>());
 
   pm.addInstrumentation(
@@ -142,7 +143,8 @@ TEST(ErrorCollectorTest, TessFailurePass) {
       LoadModule(&context, tensorflow::GetDataDependencyFilepath(input_file));
   EXPECT_EQ(module.ok(), true);
 
-  PassManager pm(&context, OpPassManager::Nesting::Implicit);
+  PassManager pm(module.value().get()->getName(),
+                 OpPassManager::Nesting::Implicit);
   pm.addPass(std::make_unique<MockSuccessPass>());
   pm.addPass(std::make_unique<MockFailurePass>());
 
