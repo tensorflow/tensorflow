@@ -169,6 +169,7 @@ tensorflow/tools/toolchains/win/bazel_211/BUILD:
 tensorflow/tools/toolchains/win/tf_win_01072022/BUILD:
 tensorflow/tools/toolchains/win/tf_win_01112023/BUILD:
 tensorflow/tools/toolchains/win/tf_win_01122022/BUILD:
+tensorflow/tools/toolchains/win/tf_win_01232023/BUILD:
 tensorflow/tools/toolchains/win/tf_win_01242022/BUILD:
 tensorflow/tools/toolchains/win/tf_win_01252022/BUILD:
 tensorflow/tools/toolchains/win/tf_win_02042022/BUILD:
