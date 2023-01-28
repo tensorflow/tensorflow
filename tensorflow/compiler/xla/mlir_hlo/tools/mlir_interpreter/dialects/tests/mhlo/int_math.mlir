@@ -76,18 +76,6 @@ func.func @and_i16() -> tensor<i16> {
 // CHECK-NEXT: Results
 // CHECK-NEXT: <i16>: 3
 
-func.func @atan2() -> tensor<1xi32> {
-  // Why would you ever do this?
-  %c10 = mhlo.constant dense<10> : tensor<1xi32>
-  %c1 = mhlo.constant dense<1> : tensor<1xi32>
-  %ret = mhlo.atan2 %c10, %c1 : tensor<1xi32>
-  return %ret : tensor<1xi32>
-}
-
-// CHECK-LABEL: @atan2
-// CHECK-NEXT: Results
-// CHECK-NEXT: [1]
-
 func.func @clz_negative()
     -> (tensor<1xi8>, tensor<1xi16>, tensor<1xi32>, tensor<1xi64>) {
   %c-1_8 = mhlo.constant dense<-1> : tensor<1xi8>

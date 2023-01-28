@@ -190,7 +190,7 @@ def MHLO_AbsOp: MHLO_UnaryElementwiseOp<"abs",
 }
 
 def MHLO_CbrtOp: MHLO_UnaryElementwiseOp<"cbrt",
-    [Pure, HLO_CompatibleOperandsAndResultType], MHLO_FpTensor> {
+    [Pure, HLO_CompatibleOperandsAndResultType], MHLO_FpOrComplexTensor> {
   let summary = "Cubic root operator";
   let description = [{
     Returns element-wise cubic root of the operand.
@@ -656,12 +656,13 @@ def MHLO_TanhOp: MHLO_UnaryElementwiseOp<"tanh",
 //===----------------------------------------------------------------------===//
 // See https://www.tensorflow.org/xla/operation_semantics#element-wise_binary_arithmetic_operations
 
-class MHLO_BinaryElementwiseOp<string mnemonic, list<Trait> traits> :
+class MHLO_BinaryElementwiseOp<string mnemonic, list<Trait> traits,
+    Type OperandType = MHLO_Tensor, Type ResultType = OperandType> :
     MHLO_Op<mnemonic, traits # [InferShapedTypeOpInterface,
     SameOperandsAndResultShape, Elementwise]> {
   let arguments = (ins
-    MHLO_Tensor:$lhs,
-    MHLO_Tensor:$rhs
+    OperandType:$lhs,
+    OperandType:$rhs
   );
 
   let extraClassDeclaration = [{
@@ -677,7 +678,7 @@ class MHLO_BinaryElementwiseOp<string mnemonic, list<Trait> traits> :
     }
   }];
 
-  let results = (outs MHLO_Tensor:$result);
+  let results = (outs ResultType:$result);
 
   let assemblyFormat = [{
     $lhs `,` $rhs attr-dict
@@ -705,7 +706,7 @@ def MHLO_AddOp : MHLO_BinaryElementwiseOp<"add",
 }
 
 def MHLO_Atan2Op : MHLO_BinaryElementwiseOp<"atan2",
-      [Pure, HLO_CompatibleOperandsAndResultType]> {
+      [Pure, HLO_CompatibleOperandsAndResultType], MHLO_FpOrComplexTensor> {
   let summary = "Atan2 operator";
   let description = [{
     Returns `atan2(lhs/rhs)` element-wise.
@@ -722,7 +723,8 @@ def MHLO_Atan2Op : MHLO_BinaryElementwiseOp<"atan2",
 }
 
 def MHLO_ComplexOp: MHLO_BinaryElementwiseOp<"complex", [Pure,
-    SameOperandsElementType, DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
+    SameOperandsElementType, SameOperandsAndResultShape,
+    DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
   let summary = "Complex operator";
   let description = [{
     Performs element-wise conversion of a pair of real and imaginary values to
@@ -747,7 +749,7 @@ def MHLO_ComplexOp: MHLO_BinaryElementwiseOp<"complex", [Pure,
 }
 
 def MHLO_DivOp : MHLO_BinaryElementwiseOp<"divide",
-      [Pure, HLO_CompatibleOperandsAndResultType]> {
+      [Pure, HLO_CompatibleOperandsAndResultType], MHLO_IntFpOrComplexTensor> {
   let summary = "Division operator";
   let description = [{
     Returns `lhs / rhs` element-wise.
@@ -819,7 +821,7 @@ def MHLO_MulOp : MHLO_BinaryElementwiseOp<"multiply",
 }
 
 def MHLO_PowOp : MHLO_BinaryElementwiseOp<"power",
-      [Pure, HLO_CompatibleOperandsAndResultType]> {
+      [Pure, HLO_CompatibleOperandsAndResultType], MHLO_IntFpOrComplexTensor> {
   let summary = "Power operator";
   let description = [{
     Returns `lhs ^ rhs` element-wise.
@@ -835,7 +837,7 @@ def MHLO_PowOp : MHLO_BinaryElementwiseOp<"power",
   }];
 }
 def MHLO_RemOp : MHLO_BinaryElementwiseOp<"remainder",
-      [Pure, HLO_CompatibleOperandsAndResultType]> {
+      [Pure, HLO_CompatibleOperandsAndResultType], MHLO_IntFpOrComplexTensor> {
   let summary = "Remainder operator";
   let description = [{
     Returns `lhs % rhs` element-wise.
@@ -846,14 +848,14 @@ def MHLO_RemOp : MHLO_BinaryElementwiseOp<"remainder",
     Example:
 
     ```mlir
-    %0 = mhlo.remainder %arg0, %arg1 : (ensor<4xi64>
+    %0 = mhlo.remainder %arg0, %arg1 : tensor<4xi64>
     ```
   }];
   let hasFolder = 1;
 }
 
 def MHLO_ShiftLeftOp : MHLO_BinaryElementwiseOp<"shift_left",
-      [Pure, HLO_CompatibleOperandsAndResultType]> {
+      [Pure, HLO_CompatibleOperandsAndResultType], MHLO_IntTensor> {
   let summary = "Shift Left operator";
   let description = [{
     Returns `lhs << rhs` element-wise.
@@ -870,7 +872,7 @@ def MHLO_ShiftLeftOp : MHLO_BinaryElementwiseOp<"shift_left",
 }
 
 def MHLO_ShiftRightArithmeticOp : MHLO_BinaryElementwiseOp<"shift_right_arithmetic",
-      [Pure, HLO_CompatibleOperandsAndResultType]> {
+      [Pure, HLO_CompatibleOperandsAndResultType], MHLO_IntTensor> {
   let summary = "Shift right arithmetic operator";
   let description = [{
     Returns arithmetic `lhs >> rhs` element-wise.
@@ -888,7 +890,7 @@ def MHLO_ShiftRightArithmeticOp : MHLO_BinaryElementwiseOp<"shift_right_arithmet
 }
 
 def MHLO_ShiftRightLogicalOp : MHLO_BinaryElementwiseOp<"shift_right_logical",
-      [Pure, HLO_CompatibleOperandsAndResultType]> {
+      [Pure, HLO_CompatibleOperandsAndResultType], MHLO_IntTensor> {
   let summary = "Shift right logical operator";
   let description = [{
     Returns logical `lhs >> rhs` element-wise.
@@ -905,7 +907,7 @@ def MHLO_ShiftRightLogicalOp : MHLO_BinaryElementwiseOp<"shift_right_logical",
 }
 
 def MHLO_SubtractOp : MHLO_BinaryElementwiseOp<"subtract",
-      [Pure, HLO_CompatibleOperandsAndResultType]> {
+      [Pure, HLO_CompatibleOperandsAndResultType], MHLO_IntFpOrComplexTensor> {
   let summary = "Subtraction operator";
   let description = [{
     Returns `lhs - rhs` element-wise.
