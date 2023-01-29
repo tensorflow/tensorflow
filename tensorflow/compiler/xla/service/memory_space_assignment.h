@@ -390,17 +390,14 @@ class MemorySpaceAssignmentCostAnalysis;
 // The value for buffer size for max async copy is a mechanism to prevent
 // copying small buffers between the two memories unnecessarily. For calculating
 // the max time that the buffer can reside in alternate memory, we use the
-// larger of this value and the actual size of the buffer. A shape override can
-// also be provided which causes the interval picker to use that shape for async
-// copy durations instead of the actual shape of the copy.
+// larger of this value and the actual size of the buffer.
 class CostAnalysisPrefetchIntervalPicker : public PrefetchIntervalPicker {
  public:
   CostAnalysisPrefetchIntervalPicker(
       const MemorySpaceAssignmentCostAnalysis& cost_analysis,
       float min_overlap_to_async_copy_ratio,
       float preferred_overlap_to_async_copy_ratio,
-      float max_overlap_to_mem_size_async_copy_ratio, int64_t mem_size_bytes,
-      const Shape* shape_override = nullptr);
+      float max_overlap_to_mem_size_async_copy_ratio, int64_t mem_size_bytes);
 
   bool CanAllocateInAlternateMemoryNoCopy(const Shape& shape,
                                           int64_t start_time,
@@ -478,10 +475,6 @@ class CostAnalysisPrefetchIntervalPicker : public PrefetchIntervalPicker {
   int64_t decreasing_prefetch_time_iterator_;
 
   std::vector<float> while_execution_counts_;
-  // Shape override is used to override the shape of the shape of the async copy
-  // to treat all async copies the same duration. Having an override forces
-  // prefetches to be scheduled roughly in FIFO order.
-  std::optional<Shape> shape_override_;
 };
 
 // MemorySpaceAssignment assigns memory spaces (default or alternate) to each

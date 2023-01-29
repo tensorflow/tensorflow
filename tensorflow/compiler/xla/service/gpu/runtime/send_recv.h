@@ -41,12 +41,12 @@ void PopulateSendRecvAttrEncoding(runtime::CustomCallAttrEncodingSet& encoding);
 
 class SendRecvEvents {
  public:
-  absl::Status PushEvent(int32_t handle, std::shared_ptr<se::Event> event);
-  absl::StatusOr<std::shared_ptr<se::Event>> PopEvent(int32_t handle);
+  absl::Status PushEvent(int32_t handle, tsl::AsyncValueRef<se::Event> event);
+  absl::StatusOr<tsl::AsyncValueRef<se::Event>> PopEvent(int32_t handle);
 
  private:
   absl::Mutex mutex_;
-  absl::flat_hash_map<int, std::shared_ptr<se::Event>> events_
+  absl::flat_hash_map<int, tsl::AsyncValueRef<se::Event>> events_
       ABSL_GUARDED_BY(mutex_);
 };
 

@@ -43,6 +43,17 @@
 
     * Added a `model.export(filepath)` API to create a lightweight SavedModel
       artifact that can be used for inference (e.g. with TF-Serving).
+    * Added `keras.saving.ExportArchive` class for low-level customization of
+      the process of exporting SavedModel artifacts for inference.
+    * Moved all saving-related utilities to a new namespace, `keras.saving`,
+      i.e. `keras.saving.load_model`, `keras.saving.save_model`,
+      `keras.saving.custom_object_scope`, `keras.saving.get_custom_objects`,
+      `keras.saving.register_keras_serializable`,
+      `keras.saving.get_registered_name` and
+      `keras.saving.get_registered_object`.
+      The previous API locations (in `keras.utils` and `keras.models`) will
+      stay available indefinitely, but we recommend that you update your code
+      to point to the new API locations.
     * Improvements and fixes in Keras loss masking:
         * Whether you represent a ragged tensor as a `tf.RaggedTensor` or using
           [keras masking](https://www.tensorflow.org/guide/keras/masking_and_padding),

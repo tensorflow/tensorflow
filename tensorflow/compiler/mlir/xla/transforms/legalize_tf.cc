@@ -6787,7 +6787,7 @@ class LowerControlFlowOp : public OpConversionPattern<SrcOpT> {
 }  // end namespace
 
 #include "tensorflow/compiler/mlir/xla/transforms/generated_legalize_tf.inc"
-
+// LINT.IfChange
 void PopulateLegalizeTfPatterns(MLIRContext *context,
                                 RewritePatternSet *patterns) {
   populateWithGenerated(*patterns);
@@ -6893,6 +6893,6 @@ void PopulateLegalizeTfPatterns(MLIRContext *context,
     LowerYieldOp>(context);
   // clang-format on
 }
-
+// LINT.ThenChange(:MlirPreferredOps)
 }  // end namespace mhlo
 }  // end namespace mlir

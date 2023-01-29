@@ -1,5 +1,6 @@
 // RUN: mlir-bisect %s \
 // RUN: --pass-pipeline="builtin.module(test-break-linalg-transpose)" \
+// RUN: --max-steps-per-run=200 \
 // RUN: | FileCheck %s
 
 func.func @main() -> (memref<2x2xindex>, memref<2x2xindex>) {
@@ -38,6 +39,7 @@ func.func @main() -> (memref<2x2xindex>, memref<2x2xindex>) {
 //     CHECK: Final module
 //     CHECK: func @main() -> memref<2x2xindex> {
 // CHECK-NOT: scf.while
+// CHECK-NOT: scf.for
 //     CHECK: linalg.transpose {{.*}} permutation = [1, 0]
 
 //     CHECK: Final module after running pipeline

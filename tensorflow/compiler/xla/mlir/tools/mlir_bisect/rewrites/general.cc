@@ -95,6 +95,37 @@ llvm::SmallVector<OwningOpRef<ModuleOp>> ReplaceOpWithConstant(
   return result;
 }
 
+llvm::SmallVector<OwningOpRef<ModuleOp>> ReplaceOperandWithConstant(
+    BisectState& state, Operation* op) {
+  llvm::SmallVector<OwningOpRef<ModuleOp>> result;
+  if (IsTopLevelOp(op) || op->getNumOperands() == 0) {
+    return result;
+  }
+
+  for (auto* execution : state.GetExecutions(op)) {
+    for (int64_t i = 0; i < op->getNumOperands(); ++i) {
+      auto operand = op->getOperand(i);
+      if (operand.getDefiningOp() &&
+          operand.getDefiningOp()->hasTrait<OpTrait::ConstantLike>()) {
+        continue;
+      }
+      auto type = op->getOperandTypes()[i];
+      auto value = *interpreter::TracedValueToValue(
+          execution->args(static_cast<int>(i)));
+      auto attribute = interpreter::ValueToAttribute(value, type);
+      if (attribute.size() == 1) {
+        auto [module_clone, op_clone] = CloneModuleFor(op);
+        OpBuilder b(op_clone);
+        op_clone->setOperand(
+            i, b.create<arith::ConstantOp>(op_clone->getLoc(),
+                                           attribute.front(), type));
+        result.push_back(std::move(module_clone));
+      }
+    }
+  }
+  return result;
+}
+
 // Replaces an op's result with some other value with the same type defined
 // previously in the same region.
 llvm::SmallVector<OwningOpRef<ModuleOp>> ReplaceOpWithValue(BisectState&,
@@ -135,6 +166,7 @@ llvm::SmallVector<OwningOpRef<ModuleOp>> ReplaceOpWithValue(BisectState&,
 REGISTER_MLIR_REDUCE_STRATEGY(EraseOpWithoutResults);
 REGISTER_MLIR_REDUCE_STRATEGY(ReplaceOpWithConstant);
 REGISTER_MLIR_REDUCE_STRATEGY(ReplaceOpWithValue);
+REGISTER_MLIR_REDUCE_STRATEGY(ReplaceOperandWithConstant);
 
 }  // namespace
 }  // namespace bisect

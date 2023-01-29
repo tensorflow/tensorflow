@@ -457,14 +457,14 @@ def _tf_repositories():
     tf_http_archive(
         name = "com_google_protobuf",
         patch_file = ["//third_party/protobuf:protobuf.patch"],
-        sha256 = "cfcba2df10feec52a84208693937c17a4b5df7775e1635c1e3baffc487b24c9b",
-        strip_prefix = "protobuf-3.9.2",
+        sha256 = "f66073dee0bc159157b0bd7f502d7d1ee0bc76b3c1eac9836927511bdc4b3fc1",
+        strip_prefix = "protobuf-3.21.9",
         system_build_file = "//third_party/systemlibs:protobuf.BUILD",
         system_link_files = {
             "//third_party/systemlibs:protobuf.bzl": "protobuf.bzl",
             "//third_party/systemlibs:protobuf_deps.bzl": "protobuf_deps.bzl",
         },
-        urls = tf_mirror_urls("https://github.com/protocolbuffers/protobuf/archive/v3.9.2.zip"),
+        urls = tf_mirror_urls("https://github.com/protocolbuffers/protobuf/archive/v3.21.9.zip"),
     )
 
     tf_http_archive(
@@ -567,10 +567,10 @@ def _tf_repositories():
 
     tf_http_archive(
         name = "boringssl",
-        sha256 = "fd0e06a8a57dcba1132f91fef1c1327191e913b6c50a84633f7175090972196c",
-        strip_prefix = "boringssl-f9eff21461cf79556a0fb8ca9b1bf60c3b283ce8",
+        sha256 = "b460f8673f3393e58ce506e9cdde7f2c3b2575b075f214cb819fb57d809f052b",
+        strip_prefix = "boringssl-bb41bc007079982da419c0ec3186e510cbcf09d0",
         system_build_file = "//third_party/systemlibs:boringssl.BUILD",
-        urls = tf_mirror_urls("https://github.com/google/boringssl/archive/f9eff21461cf79556a0fb8ca9b1bf60c3b283ce8.tar.gz"),
+        urls = tf_mirror_urls("https://github.com/google/boringssl/archive/bb41bc007079982da419c0ec3186e510cbcf09d0.zip"),
     )
 
     # Note: if you update this, you have to update libpng too. See cl/437813808

@@ -1696,13 +1696,6 @@ Status DynamicDimensionInferenceVisitor::HandleScatter(HloInstruction* hlo) {
       hlo,
       [&](HloInstruction* operand, ShapeIndex dynamic_index, int64_t dimension,
           int64_t operand_index, HloInstruction* operand_dynamic_size) {
-        // Sometimes the incoming operand dimension is no longer dynamic,
-        // although it is still marked as dynamic in the parent computation.
-        // Simply return OK in this case.
-        if (!ShapeUtil::GetSubshape(operand->shape(), dynamic_index)
-                 .is_dynamic_dimension(dimension)) {
-          return OkStatus();
-        }
         if (operand_index == 0) {
           parent_->SetDynamicSize(hlo, {}, dimension, operand_dynamic_size);
           return OkStatus();
@@ -1729,16 +1722,22 @@ Status DynamicDimensionInferenceVisitor::HandleScatter(HloInstruction* hlo) {
               const Shape& update_shape = hlo->operand(2)->shape();
               int64_t dim_in_operand = update_window_dims_in_operand[i];
               if (operand_shape.dimensions(dim_in_operand) !=
-                      update_shape.dimensions(dimension) ||
-                  !operand_shape.is_dynamic_dimension(dim_in_operand)) {
+                  update_shape.dimensions(dimension)) {
                 return Unimplemented(
                     "Dynamic dimension of update window dims that are not the "
                     "same as corresponding operand dim is not supported: "
-                    "%s",
-                    hlo->ToString());
+                    "%s : %d : %d : %d",
+                    hlo->ToString(), i, update_shape.dimensions(dimension),
+                    operand_shape.dimensions(dim_in_operand));
               }
               HloInstruction* base_dynamic_size = parent_->GetDynamicSize(
                   hlo->mutable_operand(0), {}, dim_in_operand);
+              // Sometimes the incoming operand dimension is no longer dynamic,
+              // Simply return OK in this case.
+              if (base_dynamic_size == nullptr ||
+                  !operand_shape.is_dynamic_dimension(dim_in_operand)) {
+                return OkStatus();
+              }
               if (base_dynamic_size != operand_dynamic_size) {
                 return Unimplemented(
                     "Dynamic dimension size of update window dims that are not "
