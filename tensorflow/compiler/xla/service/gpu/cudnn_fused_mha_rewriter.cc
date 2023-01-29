@@ -280,8 +280,7 @@ StatusOr<bool> IsMHABlockSupported(HloInstruction* bmm_1,
 StatusOr<bool> FuseBatchedMatmuls(HloComputation* comp,
                                   stream_executor::CudaComputeCapability cc) {
   const DebugOptions& debug_options = comp->parent()->config().debug_options();
-  if (!debug_options.xla_gpu_enable_cudnn_fmha() ||
-      !IsComputeCapabilitySupported(cc)) {
+  if (!IsComputeCapabilitySupported(cc)) {
     return false;
   }
 

@@ -59,16 +59,7 @@ class CudnnFusedMhaRewriterTestHloTest : public HloTestBase {
   CudnnFusedMhaRewriterTestHloTest()
       : HloTestBase(/*verifier_layout_sensitive=*/false,
                     /*allow_mixed_precision_in_hlo_verifier=*/false,
-                    /*instruction_can_change_layout_func=*/{}) {
-    module_config_ = GetModuleConfigForTest();
-    DebugOptions debug_opts = module_config_.debug_options();
-    debug_opts.set_xla_gpu_enable_cudnn_fmha(true);
-    module_config_.set_debug_options(debug_opts);
-  }
-  const HloModuleConfig& GetModuleConfig() { return module_config_; }
-
- private:
-  HloModuleConfig module_config_;
+                    /*instruction_can_change_layout_func=*/{}) {}
 };
 
 TEST_F(CudnnFusedMhaRewriterTestHloTest, BF16Bmm1Bmm2Pattern) {
@@ -90,8 +81,7 @@ ENTRY main.6 {
 
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto m, ParseAndReturnVerifiedModule(module_str, GetModuleConfig()));
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
   CudnnFusedMHARewriter fusedMhaRewriter{GetCudaComputeCapability()};
   TF_ASSERT_OK(RunHloPass(&fusedMhaRewriter, m.get()).status());
   const HloInstruction* fmha;
@@ -128,8 +118,7 @@ ENTRY main.6 {
 
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto m, ParseAndReturnVerifiedModule(module_str, GetModuleConfig()));
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
   CudnnFusedMHARewriter fusedMhaRewriter{GetCudaComputeCapability()};
   TF_ASSERT_OK_AND_ASSIGN(bool result, RunHloPass(&fusedMhaRewriter, m.get()));
   EXPECT_FALSE(result);
@@ -155,8 +144,7 @@ ENTRY main.6 {
 
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto m, ParseAndReturnVerifiedModule(module_str, GetModuleConfig()));
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
   CudnnFusedMHARewriter fusedMhaRewriter{GetCudaComputeCapability()};
   TF_ASSERT_OK_AND_ASSIGN(bool result, RunHloPass(&fusedMhaRewriter, m.get()));
   EXPECT_FALSE(result);
@@ -182,8 +170,7 @@ ENTRY main.6 {
 
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto m, ParseAndReturnVerifiedModule(module_str, GetModuleConfig()));
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
   CudnnFusedMHARewriter fusedMhaRewriter{GetCudaComputeCapability()};
   TF_ASSERT_OK_AND_ASSIGN(bool result, RunHloPass(&fusedMhaRewriter, m.get()));
   EXPECT_FALSE(result);
@@ -199,7 +186,7 @@ HloModule fmha_test, entry_computation_layout={(f16[20,40,64]{2,1,0},f16[20,64,4
 
 ENTRY main.6 {
   Arg_0.1 = f16[20,40,64]{2,1,0} parameter(0)
-  Arg_1.2 = f16[20,64,40]{2,1,0} parameter(1)
+  Arg_1.2 = f16[20,64,40]{1,2,0} parameter(1)
   custom-call = f16[20,40,40]{2,1,0} custom-call(Arg_0.1, Arg_1.2), custom_call_target="__cublas$gemm", backend_config="{\"alpha_real\":1,\"alpha_imag\":0,\"beta\":0,\"dot_dimension_numbers\":{\"lhs_contracting_dimensions\":[\"2\"],\"rhs_contracting_dimensions\":[\"1\"],\"lhs_batch_dimensions\":[\"0\"],\"rhs_batch_dimensions\":[\"0\"]},\"precision_config\":{\"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]},\"epilogue\":\"DEFAULT\"}"
   Arg_2.3 = f16[20,40,64]{2,1,0} parameter(2)
   ROOT custom-call.1 = f16[20,40,64]{2,1,0} custom-call(custom-call, Arg_2.3), custom_call_target="__cublas$gemm", backend_config="{\"alpha_real\":1,\"alpha_imag\":0,\"beta\":0,\"dot_dimension_numbers\":{\"lhs_contracting_dimensions\":[\"2\"],\"rhs_contracting_dimensions\":[\"1\"],\"lhs_batch_dimensions\":[\"0\"],\"rhs_batch_dimensions\":[\"0\"]},\"precision_config\":{\"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]},\"epilogue\":\"DEFAULT\"}"
@@ -208,8 +195,7 @@ ENTRY main.6 {
 
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto m, ParseAndReturnVerifiedModule(module_str, GetModuleConfig()));
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
   CudnnFusedMHARewriter fusedMhaRewriter{GetCudaComputeCapability()};
   TF_ASSERT_OK(RunHloPass(&fusedMhaRewriter, m.get()).status());
   const HloInstruction* fmha;
