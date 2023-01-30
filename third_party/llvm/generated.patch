@@ -20,14 +20,3 @@ diff -ruN --strip-trailing-cr a/lldb/test/API/tools/lldb-vscode/completions/Test
                  }
              ],
          )
-diff -ruN --strip-trailing-cr a/utils/bazel/llvm-project-overlay/llvm/BUILD.bazel b/utils/bazel/llvm-project-overlay/llvm/BUILD.bazel
---- a/utils/bazel/llvm-project-overlay/llvm/BUILD.bazel
-+++ b/utils/bazel/llvm-project-overlay/llvm/BUILD.bazel
-@@ -2200,6 +2200,7 @@
-             ":MCParser",
-             ":Support",
-             ":Target",
-+            ":TargetParser",
-             ":" + target["name"] + "CodeGen",
-             ":" + target["name"] + "CommonTableGen",
-             ":" + target["name"] + "Info",

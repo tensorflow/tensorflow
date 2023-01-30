@@ -1443,7 +1443,7 @@ bool FunctionTable::MayBeCall(Operation* op) const {
   if (IsLegacyCall(op)) return true;
   // The operation might be a call if it references a symbol.
   bool references_symbol = false;
-  op->getAttrDictionary().walkSubAttrs(
+  op->getAttrDictionary().walk(
       [&](Attribute attr) { references_symbol |= attr.isa<SymbolRefAttr>(); });
   return references_symbol;
 }

@@ -96,7 +96,9 @@ SmallVector<SmallVector<int64_t>> FlattenLayoutAttribute(Attribute attr) {
   };
 
   if (auto array = attr.dyn_cast<ArrayAttr>()) {
-    array.walkSubAttrs(visit_attr);
+    for (int64_t i = 0; i < array.size(); ++i) {
+      visit_attr(array[i]);
+    }
   } else {
     visit_attr(attr);
   }
