@@ -5386,6 +5386,7 @@ cc_library(
     srcs = ["computation_layout.cc"],
     hdrs = ["computation_layout.h"],
     deps = [
+        "//tensorflow/compiler/xla:printer",
         "//tensorflow/compiler/xla:shape_layout",
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:xla_data_proto_cc",

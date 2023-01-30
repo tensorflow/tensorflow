@@ -37,6 +37,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/hlo/ir/hlo_module_metadata.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_schedule.h"
 #include "tensorflow/compiler/xla/iterator_util.h"
+#include "tensorflow/compiler/xla/printer.h"
 #include "tensorflow/compiler/xla/service/compilation_environments.h"
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/compiler/xla/service/hlo_module_config.h"
@@ -318,6 +319,15 @@ class HloModule {
 
   bool is_dynamic() const { return is_dynamic_; }
   void set_is_dynamic(bool is_dynamic) { is_dynamic_ = is_dynamic; }
+
+  // Prints a string representation of the module.
+  //
+  // (We express the default options using an overload rather than a default
+  // param because gdb ignores default params, but does resolve overloads.)
+  void Print(Printer* printer) const {
+    return Print(printer, HloPrintOptions());
+  }
+  void Print(Printer* printer, const HloPrintOptions& options) const;
 
   // Return a string representation of the module.
   //

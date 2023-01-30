@@ -43,6 +43,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/map_util.h"
+#include "tensorflow/compiler/xla/printer.h"
 #include "tensorflow/compiler/xla/service/mapped_ptr_container_sorter.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
@@ -571,36 +572,37 @@ std::vector<HloComputation*> HloComputation::MakeEmbeddedComputationsList()
   return post_order;
 }
 
-std::string HloComputation::ToString(const HloPrintOptions& options) const {
-  return ToString(options, MakeInstructionPostOrder());
+void HloComputation::Print(Printer* printer,
+                           const HloPrintOptions& options) const {
+  Print(printer, options, MakeInstructionPostOrder());
 }
 
-std::string HloComputation::ToString(
-    const HloPrintOptions& options,
+void HloComputation::Print(
+    Printer* printer, const HloPrintOptions& options,
     absl::Span<const HloInstruction* const> instruction_order) const {
   CHECK_EQ(instruction_order.size(), instruction_count());
   const std::string tab(2 * options.indent_amount(), ' ');
 
-  std::string result;
-  absl::StrAppend(&result, tab);
+  printer->Append(tab);
 
   if (!options.is_in_nested_computation()) {
     if (options.print_percent()) {
-      absl::StrAppend(&result, "%");
+      printer->Append("%");
     }
     if (options.print_ids()) {
       // When print_ids() is false, exclude entry computation's name because it
       // includes and leads to non-deterministic fingerprint.
-      absl::StrAppend(&result, name(), " ");
+      printer->Append(name());
+      printer->Append(" ");
     }
   }
 
   if (options.print_program_shape()) {
-    absl::StrAppend(
-        &result,
-        ShapeUtil::HumanString(ComputeProgramShape(options.print_ids())), " ");
+    ShapeUtil::PrintHumanString(printer,
+                                ComputeProgramShape(options.print_ids()));
+    printer->Append(" ");
   }
-  absl::StrAppend(&result, "{\n");
+  printer->Append("{\n");
 
   {
     // Print the instructions in this computation.
@@ -613,24 +615,37 @@ std::string HloComputation::ToString(
     for (const HloInstruction* const instruction : instruction_order) {
       DCHECK_EQ(this, instruction->parent());
       // 2 more spaces than just 'tab' due to indent_amount()+1 above
-      absl::StrAppend(&result, tab, "  ");
+      printer->Append(tab);
+      printer->Append("  ");
       if (instruction == root_instruction_) {
-        absl::StrAppend(&result, "ROOT ");
+        printer->Append("ROOT ");
       }
-      absl::StrAppend(
-          &result,
-          instruction->ToStringWithCanonicalNameMap(new_options, &name_map),
-          "\n");
+      instruction->PrintWithCanonicalNameMap(printer, new_options, &name_map);
+      printer->Append("\n");
     }
   }
 
-  absl::StrAppend(&result, tab, "}");
+  printer->Append(tab);
+  printer->Append("}");
   if (options.print_ids() && !IsMainThread()) {
     // When print_ids() is false, exclude entry computation's thread name
     // because it includes and leads to non-deterministic fingerprint.
-    absl::StrAppend(&result, ", execution_thread=\"", execution_thread(), "\"");
+    printer->Append(", execution_thread=\"");
+    printer->Append(execution_thread());
+    printer->Append("\"");
   }
-  return result;
+}
+
+std::string HloComputation::ToString(const HloPrintOptions& options) const {
+  return ToString(options, MakeInstructionPostOrder());
+}
+
+std::string HloComputation::ToString(
+    const HloPrintOptions& options,
+    absl::Span<const HloInstruction* const> instruction_order) const {
+  StringPrinter printer;
+  Print(&printer, options, instruction_order);
+  return std::move(printer).ToString();
 }
 
 absl::Cord HloComputation::ToCord(const HloPrintOptions& options) const {
@@ -640,7 +655,9 @@ absl::Cord HloComputation::ToCord(const HloPrintOptions& options) const {
 absl::Cord HloComputation::ToCord(
     const HloPrintOptions& options,
     absl::Span<const HloInstruction* const> instruction_order) const {
-  return absl::Cord(ToString(options, instruction_order));
+  CordPrinter printer;
+  Print(&printer, options, instruction_order);
+  return std::move(printer).ToCord();
 }
 
 HloComputationProto HloComputation::ToProto() const {
@@ -894,7 +911,7 @@ ProgramShape HloComputation::ComputeProgramShape(bool include_ids) const {
   for (auto* param_instruction : param_instructions_) {
     *program_shape.add_parameters() = param_instruction->shape();
     *program_shape.add_parameter_names() =
-        PrintName(param_instruction->name(), include_ids);
+        std::string(PrintName(param_instruction->name(), include_ids));
   }
   *program_shape.mutable_result() = root_instruction_->shape();
 
