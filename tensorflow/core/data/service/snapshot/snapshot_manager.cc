@@ -260,21 +260,21 @@ Status SnapshotManager::GetSnapshotSplit(const GetSnapshotSplitRequest& request,
       &split, &end_of_splits));
 
   Stream& stream = streams_[request.stream_index()];
+  int64_t local_split_index =
+      stream.num_assigned_splits[request.source_index()];
+  int64_t global_split_index = num_assigned_splits_;
+  response.set_local_split_index(local_split_index);
   if (end_of_splits) {
     // TODO(mpcallanan): Handle doneness.
     response.set_end_of_splits(true);
     return OkStatus();
   }
 
-  int64_t local_split_index =
-      stream.num_assigned_splits[request.source_index()];
-  int64_t global_split_index = num_assigned_splits_;
   std::string split_path =
       SplitPath(path_, request.stream_index(), request.source_index(),
                 local_split_index, global_split_index);
   TF_RETURN_IF_ERROR(AtomicallyWriteTFRecord(split_path, split, env_));
-  split.AsProtoTensorContent(response.mutable_split()->mutable_split());
-  response.mutable_split()->set_local_split_index(local_split_index);
+  split.AsProtoTensorContent(response.mutable_split());
 
   ++stream.num_assigned_splits[request.source_index()];
   ++num_assigned_splits_;

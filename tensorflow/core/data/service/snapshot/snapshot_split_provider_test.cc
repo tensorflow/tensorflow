@@ -20,6 +20,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_set.h"
 #include "absl/time/time.h"
 #include "tensorflow/core/data/service/common.h"
 #include "tensorflow/core/data/service/common.pb.h"
@@ -48,7 +49,7 @@ namespace {
 
 using testing::CreateDummyDistributedSnapshotMetadata;
 using ::testing::ElementsAre;
-using ::testing::IsEmpty;
+using ::testing::HasSubstr;
 using testing::LocalTempFilename;
 using testing::RangeDataset;
 using tsl::testing::IsOkAndHolds;
@@ -160,7 +161,20 @@ Status ClearSnapshot(const std::string& base_path, int64_t stream_index,
   return OkStatus();
 }
 
-TEST(SnapshotSplitProviderTest, ReadSplitsFromFiles) {
+TEST(SnapshotSplitProviderTest, GetSplitFromDispatcher) {
+  TestSnapshotCluster data_service(/*num_workers=*/1);
+  DatasetDef dataset = RangeDataset(10);
+  experimental::DistributedSnapshotMetadata metadata =
+      CreateDummyDistributedSnapshotMetadata();
+  std::string snapshot_path = LocalTempFilename();
+  TF_ASSERT_OK(
+      data_service.dispatcher().Snapshot(dataset, snapshot_path, metadata));
+  TF_ASSERT_OK(WaitUntilSnapshotComplete(snapshot_path));
+  EXPECT_THAT(ReadSnapshot<int64_t>(snapshot_path, tsl::io::compression::kNone),
+              IsOkAndHolds(ElementsAre(0, 1, 2, 3, 4, 5, 6, 7, 8, 9)));
+}
+
+TEST(SnapshotSplitProviderTest, GetSplitFromFiles) {
   // The first pass generates split files.
   TestSnapshotCluster data_service(/*num_workers=*/1);
   DatasetDef dataset = RangeDataset(10);
@@ -184,7 +198,7 @@ TEST(SnapshotSplitProviderTest, ReadSplitsFromFiles) {
               IsOkAndHolds(ElementsAre(0, 1, 2, 3, 4, 5, 6, 7, 8, 9)));
 }
 
-TEST(SnapshotSplitProviderTest, ReadSplitsFromDispatcher) {
+TEST(SnapshotSplitProviderTest, SplitNotFound) {
   // The first pass generates split files.
   TestSnapshotCluster data_service(/*num_workers=*/1);
   DatasetDef dataset = RangeDataset(10);
@@ -197,17 +211,21 @@ TEST(SnapshotSplitProviderTest, ReadSplitsFromDispatcher) {
   EXPECT_THAT(ReadSnapshot<int64_t>(snapshot_path, tsl::io::compression::kNone),
               IsOkAndHolds(ElementsAre(0, 1, 2, 3, 4, 5, 6, 7, 8, 9)));
 
-  // Clears the snapshot and split files. When there are no split files, the
-  // workers will read splits from the dispatcher. Since the dispatcher has
-  // assigned all splits in the first pass, there will be no splits left, and
-  // the result will be empty.
+  // Clears the snapshot and split files. The dispatcher replies with the last
+  // split, but the previous splits are not found in the source directory. In
+  // this case, the workers fail.
   TF_ASSERT_OK(ClearSnapshot(snapshot_path, /*stream_index=*/0,
                              /*source_index=*/0,
                              /*clear_split_files=*/true));
   TF_ASSERT_OK(data_service.RestartWorker(0));
-  TF_ASSERT_OK(WaitUntilSnapshotComplete(snapshot_path));
-  EXPECT_THAT(ReadSnapshot<int64_t>(snapshot_path, tsl::io::compression::kNone),
-              IsOkAndHolds(IsEmpty()));
+  std::string error_file_path = tsl::io::JoinPath(
+      StreamDirectory(snapshot_path, /*stream_index=*/0), "ERROR");
+  TF_ASSERT_OK(WaitUntilFileExists(error_file_path));
+  std::string error_message;
+  TF_ASSERT_OK(
+      ReadFileToString(Env::Default(), error_file_path, &error_message));
+  EXPECT_THAT(error_message,
+              HasSubstr("not all splits between [0, 9] are found"));
 }
 
 // TODO(b/266126556): Add a test for checkpointing the split provider.
