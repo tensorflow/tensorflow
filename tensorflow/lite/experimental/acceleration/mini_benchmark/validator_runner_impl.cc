@@ -188,8 +188,8 @@ void ValidatorRunnerImpl::TriggerValidationAsync(
                     fbb, CreateTFLiteSettings(fbb, &tflite_settings_obj),
                     BenchmarkEventType_ERROR, /* result */ 0,
                     CreateBenchmarkError(fbb, BenchmarkStage_INITIALIZATION,
-                                         status, signal, /* error_code */ {},
-                                         exitcode),
+                                         exitcode, signal, /* error_code */ {},
+                                         status),
                     Validator::BootTimeMicros(), Validator::WallTimeMicros()));
             continue;
           }
@@ -228,8 +228,8 @@ void ValidatorRunnerImpl::TriggerValidationAsync(
                 CreateBenchmarkEvent(
                     fbb, CreateTFLiteSettings(fbb, &tflite_settings_obj),
                     BenchmarkEventType_ERROR, /* result */ 0,
-                    CreateBenchmarkError(fbb, BenchmarkStage_UNKNOWN, status,
-                                         signal, {}, exitcode),
+                    CreateBenchmarkError(fbb, BenchmarkStage_UNKNOWN, exitcode,
+                                         signal, {}, status),
                     Validator::BootTimeMicros(), Validator::WallTimeMicros()));
           }
         }
