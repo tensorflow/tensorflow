@@ -2434,6 +2434,13 @@ cc_library(
     name = "cudnn_fused_mha_rewriter",
     srcs = ["cudnn_fused_mha_rewriter.cc"],
     hdrs = ["cudnn_fused_mha_rewriter.h"],
+    tags = [
+        "gpu",
+        "no_oss",
+        "noasan",
+        "nomsan",
+        "requires-gpu-sm80",
+    ],
     deps = [
         ":backend_configs_cc",
         ":cublas_cudnn",
