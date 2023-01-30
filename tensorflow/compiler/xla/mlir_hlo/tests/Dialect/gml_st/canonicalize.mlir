@@ -206,13 +206,13 @@ func.func @inline_single_iteration_parallel(
   %cst = arith.constant 0.000000e+00 : f32
   %0 = tensor.empty() : tensor<8x8xf32>
   %13 = gml_st.parallel (%arg4, %arg5) = (%c0, %c0) to (%c1, %c1)
-        step (%c8, %c8) {
-    %20 = tensor.extract_slice %0[%arg4, %arg5] [8, 8] [1, 1]
+        step (%c8, %c8) outs (%out_ = %0: tensor<8x8xf32>) {
+    %20 = tensor.extract_slice %out_[%arg4, %arg5] [8, 8] [1, 1]
       : tensor<8x8xf32> to tensor<8x8xf32>
     %11 = linalg.fill ins(%cst : f32) outs(%20 : tensor<8x8xf32>)
           -> tensor<8x8xf32>
     %19 = gml_st.tile [%arg4, %arg5] [8, 8] [1, 1] : !gml_st.tile<8x8>
-    gml_st.set_yield %11 into %0[%19] : tensor<8x8xf32>
+    gml_st.set_yield %11 into %out_[%19] : tensor<8x8xf32>
           into tensor<8x8xf32>[!gml_st.tile<8x8>]
   } : tensor<8x8xf32>
   return %13 : tensor<8x8xf32>
@@ -233,11 +233,11 @@ func.func @collapse_one_dim_parallel(%in: tensor<8x8xf32>) -> tensor<8x8xf32> {
   %cst = arith.constant 0.000000e+00 : f32
   %0 = tensor.empty() : tensor<8x8xf32>
   %13 = gml_st.parallel (%arg4, %arg5) = (%c0, %c0) to (%c1, %c16)
-        step (%c8, %c8) {
+        step (%c8, %c8) outs (%out_ = %0: tensor<8x8xf32>) {
     %19 = gml_st.tile [%arg4, %arg5] [8, 8] [1, 1] : !gml_st.tile<8x8>
-    %11 = linalg.fill ins(%cst : f32) outs(%0 : tensor<8x8xf32>)
+    %11 = linalg.fill ins(%cst : f32) outs(%out_ : tensor<8x8xf32>)
           -> tensor<8x8xf32>
-    gml_st.set_yield %11 into %0[%19] : tensor<8x8xf32>
+    gml_st.set_yield %11 into %out_[%19] : tensor<8x8xf32>
           into tensor<8x8xf32>[!gml_st.tile<8x8>]
   } : tensor<8x8xf32>
   return %13 : tensor<8x8xf32>
@@ -259,11 +259,11 @@ func.func @remove_empty_parallel(%in: tensor<8x8xf32>) -> tensor<8x8xf32> {
   %cst = arith.constant 0.000000e+00 : f32
   %0 = tensor.empty() : tensor<8x8xf32>
   %13 = gml_st.parallel (%arg4, %arg5) = (%c0, %c16) to (%c1, %c16)
-        step (%c8, %c8) {
+        step (%c8, %c8) outs (%out_ = %0: tensor<8x8xf32>) {
     %19 = gml_st.tile [%arg4, %arg5] [8, 8] [1, 1] : !gml_st.tile<8x8>
-    %11 = linalg.fill ins(%cst : f32) outs(%0 : tensor<8x8xf32>)
+    %11 = linalg.fill ins(%cst : f32) outs(%out_ : tensor<8x8xf32>)
           -> tensor<8x8xf32>
-    gml_st.set_yield %11 into %0[%19] : tensor<8x8xf32>
+    gml_st.set_yield %11 into %out_[%19] : tensor<8x8xf32>
           into tensor<8x8xf32>[!gml_st.tile<8x8>]
   } : tensor<8x8xf32>
   return %13 : tensor<8x8xf32>

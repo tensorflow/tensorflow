@@ -192,10 +192,10 @@ func.func @gpu_launch() -> memref<64xf32> {
 
       %init = vector.broadcast %cst : vector<1xf32> to vector<1x32xf32>
       %3 = gml_st.parallel (%arg3) = (%c0) to (%c32) step (%c1)
-          distribution ("thread") {
+          outs (%out_ = %init: vector<1x32xf32>) distribution ("thread") {
         %tile = gml_st.tile [0, %arg3] [1, 1] [1, 1] : !gml_st.tile<1x1>
         %elem = arith.constant dense<1.0> : vector<1x1xf32>
-        gml_st.set_yield %elem into %init[%tile]
+        gml_st.set_yield %elem into %out_[%tile]
           : vector<1x1xf32> into vector<1x32xf32>[!gml_st.tile<1x1>]
       } : vector<1x32xf32>
 

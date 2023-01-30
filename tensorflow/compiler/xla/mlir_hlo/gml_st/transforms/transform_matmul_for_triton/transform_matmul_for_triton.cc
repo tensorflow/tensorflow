@@ -98,24 +98,21 @@ struct MatmulTransformPattern : public OpRewritePattern<linalg::MatmulOp> {
       rewriter.replaceOp(tilingRoot,
                          tilingParallelDimsResult->loop->getResults());
       tilingRoot = tilingParallelDimsResult->tiledOps.front();
+      // Fuse ops into the loop.
+      fuseGreedily(rewriter, *tilingRoot->getBlock(),
+                   [&](Operation *op) { return fusionCluster.contains(op); });
+      (void)fuseFillOpsIntoParallelOp(
+          rewriter, cast<ParallelOp>(tilingParallelDimsResult->loop));
     }
 
-    // Fuse ops into the loop.
-    fuseGreedily(rewriter, *tilingRoot->getBlock(), [&](Operation *op) {
-      return llvm::is_contained(fusionCluster, op);
-    });
-
     auto inputFusionFilterFn = [&](Operation *op) {
-      return isa<linalg::BroadcastOp, linalg::MapOp>(op);
+      return isa<linalg::BroadcastOp, linalg::FillOp, linalg::MapOp>(op);
     };
 
     // Second level tiling: reduction dimension.
     SmallVector<int64_t> reductionDimsTileSizes{0, 0, reductionDimTileSize};
     for (auto op :
          llvm::to_vector(tilingRoot->getBlock()->getOps<linalg::MatmulOp>())) {
-      // Fusion into the output.
-      if (failed(fuseOutputFill(rewriter, op))) return failure();
-
       fuseGreedily(rewriter, *op->getBlock(), inputFusionFilterFn);
 
       auto tilingReductionDimsResult = tileMatmul(

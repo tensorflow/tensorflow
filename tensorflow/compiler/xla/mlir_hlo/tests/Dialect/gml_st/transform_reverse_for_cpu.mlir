@@ -13,15 +13,16 @@ func.func @reverse_static_perfect_tiles(
 // CHECK-LABEL: @reverse_static_perfect_tiles(
 //  CHECK-SAME: %[[IN:.*]]: tensor<64xf32>, %[[INIT:.*]]: tensor<64xf32>
 //       CHECK:   %[[PARALLEL:.*]] = gml_st.parallel (%[[IDX:.*]]) =
+//  CHECK-SAME:       outs (%[[INIT_:.*]] = %[[INIT]]:
 //       CHECK:     %[[TEMP:.*]] = arith.subi
 //       CHECK:     %[[IN_IDX:.*]] = arith.subi %[[TEMP]]
 //   CHECK-DAG:     %[[IN_SLICE:.*]] = tensor.extract_slice %[[IN]][%[[IN_IDX]]]
-//   CHECK-DAG:     %[[INIT_SLICE:.*]] = tensor.extract_slice %[[INIT]][%[[IDX]]]
+//   CHECK-DAG:     %[[INIT_SLICE:.*]] = tensor.extract_slice %[[INIT_]][%[[IDX]]]
 //  CHECK-NEXT:     %[[REVERSED:.*]] = thlo.reverse
 //  CHECK-SAME:       ins(%[[IN_SLICE]] : tensor<8xf32>)
 //  CHECK-SAME:       outs(%[[INIT_SLICE]] : tensor<8xf32>)
 //  CHECK-NEXT:     %[[TILE:.*]] = gml_st.tile [%[[IDX]]] [8] [1]
-//  CHECK-NEXT:   gml_st.set_yield %[[REVERSED]] into %[[INIT]][%[[TILE]]]
+//  CHECK-NEXT:   gml_st.set_yield %[[REVERSED]] into %[[INIT_]][%[[TILE]]]
 //       CHECK:   return %[[PARALLEL]]
 
 // -----

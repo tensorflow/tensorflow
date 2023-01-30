@@ -57,7 +57,8 @@ func.func @matmul(%arg0: tensor<?x?xf32>, %arg1: tensor<?x?xf32>)
 // TRANSFORMED:         %[[INIT:.*]] = tensor.empty
 
 // TRANSFORMED:         %[[MAIN_PAR:.*]] = gml_st.parallel (%[[I:.*]], %[[J:.*]]) = (%[[C0]], %[[C0]]) to (%[[IUB:.*]], %[[JUB:.*]]) step
-// TRANSFORMED:           %[[MAIN_SLICE:.*]] = tensor.extract_slice %[[INIT]]
+// TRANSFORMED:           outs (%[[INIT_:.*]] = %[[INIT]]
+// TRANSFORMED:           %[[MAIN_SLICE:.*]] = tensor.extract_slice %[[INIT_]]
 // TRANSFORMED:           %[[MAIN_FILL:.*]] = linalg.fill{{.*}}outs(%[[MAIN_SLICE]]
 // TRANSFORMED:           %[[MAIN_FOR:.*]] = scf.for %[[K:.*]] = %[[C0]] to %[[KUB:[a-z0-9]+]]
 // TRANSFORMED-SAME:          iter_args(%{{.*}} = %[[MAIN_FILL]])
@@ -72,7 +73,8 @@ func.func @matmul(%arg0: tensor<?x?xf32>, %arg1: tensor<?x?xf32>)
 // TRANSFORMED:           gml_st.set_yield %[[REM_FOR]]
 
 // TRANSFORMED:         %[[REM_RHS_PAR:.*]] = gml_st.parallel (%[[I:.*]], %[[J:.*]]) = (%[[C0]], %[[JUB]])
-// TRANSFORMED:           %[[REM_RHS_SLICE:.*]] = tensor.extract_slice %[[MAIN_PAR]]
+// TRANSFORMED:           outs (%[[MAIN_PAR_:.*]] = %[[MAIN_PAR]]
+// TRANSFORMED:           %[[REM_RHS_SLICE:.*]] = tensor.extract_slice %[[MAIN_PAR_]]
 // TRANSFORMED:           %[[REM_RHS_FILL:.*]] = linalg.fill{{.*}}outs(%[[REM_RHS_SLICE]]
 // TRANSFORMED:           %[[REM_RHS_FOR:.*]] = scf.for %[[K:.*]] = %[[C0]]
 // TRANSFORMED-SAME:        iter_args({{.*}} = %[[REM_RHS_FILL]])
@@ -82,7 +84,8 @@ func.func @matmul(%arg0: tensor<?x?xf32>, %arg1: tensor<?x?xf32>)
 // TRANSFORMED:           gml_st.set_yield %[[REM_RHS_FOR]]
 
 // TRANSFORMED:         gml_st.parallel (%[[I:.*]], %[[J:.*]]) = (%[[IUB]], %[[C0]])
-// TRANSFORMED:           %[[REM_LHS_SLICE:.*]] = tensor.extract_slice %[[REM_RHS_PAR]]
+// TRANSFORMED:           outs (%[[REM_RHS_PAR_:.*]] = %[[REM_RHS_PAR]]
+// TRANSFORMED:           %[[REM_LHS_SLICE:.*]] = tensor.extract_slice %[[REM_RHS_PAR_]]
 // TRANSFORMED:           %[[REM_LHS_FILL:.*]] = linalg.fill{{.*}}outs(%[[REM_LHS_SLICE]]
 // TRANSFORMED:           %[[REM_LHS_FOR:.*]] = scf.for %[[K:.*]] = %[[C0]]
 // TRANSFORMED-SAME:        iter_args({{.*}} = %[[REM_LHS_FILL]])

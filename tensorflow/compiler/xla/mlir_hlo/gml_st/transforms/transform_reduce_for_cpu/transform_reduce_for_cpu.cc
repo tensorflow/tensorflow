@@ -317,13 +317,12 @@ struct Reduce2DTransformPattern : public OpRewritePattern<linalg::ReduceOp> {
     // Fuse greedily into root op.
     fuseGreedily(rewriter, *tilingRoot->getBlock(),
                  [&](Operation *op) { return fusionCluster.contains(op); });
+    (void)fuseFillOpsIntoParallelOp(
+        rewriter, cast<ParallelOp>(tilingParallelDimsResult->loop));
 
     // Process all reduces in a fusion cluster.
     for (auto tiledReduceOp :
          llvm::to_vector(tilingRoot->getBlock()->getOps<linalg::ReduceOp>())) {
-      // Fuse Fill.
-      if (failed(fuseOutputFill(rewriter, tiledReduceOp))) return failure();
-
       // Second level tiling: reduction dimension.
       auto tilingReductionDimsResult =
           tileReductionDims(rewriter, tiledReduceOp);

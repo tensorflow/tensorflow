@@ -1,6 +1,6 @@
-// RUN: mlir-hlo-opt %s \
+// RUN: mlir-hlo-opt %s --split-input-file \
 // RUN:  -xla-triton-transform-matmul="tile-sizes=8,4,2 distribution-label=test" \
-// RUN: | FileCheck %s
+// RUN: | FileCheck %s --dump-input=always
 
 func.func @matmul_static(%arg0: tensor<128x16xf32>, %arg1: tensor<16x64xf32>,
                          %output: tensor<128x64xf32>) -> tensor<128x64xf32> {

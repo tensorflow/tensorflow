@@ -314,8 +314,7 @@ void convertTensorOperandsToVector(Operation *op, IRMapping &bvm,
 // `op`'s results to the newly generated tensors. Expects that the operation's
 // results are vectors, and the destinations tensors.
 void convertVectorResultsToTensor(ValueRange results, ValueRange destinations,
-                                  IRMapping &bvm,
-                                  OpBuilder &builder) {
+                                  IRMapping &bvm, OpBuilder &builder) {
   for (auto [result, dest] : llvm::zip(results, destinations)) {
     Value mappedResult = bvm.lookupOrDefault(result);
     // Skip over scalars and leave them as is.
@@ -581,8 +580,7 @@ SmallVector<Type, 1> convertToVectorTypes(TypeRange types) {
 // Copies the body of a loop `op` that is being vectorized, vectorizing the
 // terminator, and stores the mapping to new values into `bvm`.
 void copyLoopBodyAndVectorizeTerminator(LoopLikeOpInterface op,
-                                        OpBuilder &builder,
-                                        IRMapping &bvm) {
+                                        OpBuilder &builder, IRMapping &bvm) {
   auto &blocks = op.getLoopBody().getBlocks();
   assert(blocks.size() == 1 && "loop body should contain a single block");
   Block &block = blocks.front();
@@ -597,22 +595,28 @@ void copyLoopBodyAndVectorizeTerminator(LoopLikeOpInterface op,
 // values into `bvm`.
 ParallelOp vectorizeLoopLikeOp(ParallelOp op, IRMapping &bvm,
                                PatternRewriter &rewriter) {
+  convertTensorOperandsToVector(op, bvm, rewriter);
+  auto outputs = llvm::to_vector(llvm::map_range(
+      op.getOutputs(), [&](Value v) { return bvm.lookupOrDefault(v); }));
+
   std::optional<StringAttr> distTypeAttr;
   if (auto distType = op.getDistributionType())
     distTypeAttr = rewriter.getStringAttr(*distType);
   return rewriter.create<ParallelOp>(
       op.getLoc(), convertToVectorTypes(op->getResultTypes()),
-      op.getLowerBound(), op.getUpperBound(), op.getStep(), distTypeAttr,
-      [&](OpBuilder &builder, Location, ValueRange inductionVars) {
+      op.getLowerBound(), op.getUpperBound(), op.getStep(), outputs,
+      distTypeAttr,
+      [&](OpBuilder &builder, Location, ValueRange inductionVars,
+          ValueRange outputs) {
         bvm.map(op.getInductionVars(), inductionVars);
+        bvm.map(op.getRegionOutputArgs(), outputs);
         copyLoopBodyAndVectorizeTerminator(op, builder, bvm);
       });
 }
 
 // Vectorizes a gml_st.for `op`, and stores the mapping from old to new
 // values into `bvm`.
-ForOp vectorizeLoopLikeOp(ForOp op, IRMapping &bvm,
-                          PatternRewriter &rewriter) {
+ForOp vectorizeLoopLikeOp(ForOp op, IRMapping &bvm, PatternRewriter &rewriter) {
   convertTensorOperandsToVector(op, bvm, rewriter);
   auto outputs = llvm::to_vector(llvm::map_range(
       op.getOutputs(), [&](Value v) { return bvm.lookupOrDefault(v); }));

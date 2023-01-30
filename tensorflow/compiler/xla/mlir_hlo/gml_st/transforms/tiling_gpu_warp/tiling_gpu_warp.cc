@@ -122,8 +122,8 @@ struct TilingCwisePattern : OpRewritePattern<linalg::MapOp> {
     Value dimSizePlusWarpSizeMinusOne =
         rewriter.createOrFold<arith::AddIOp>(loc, dimSize, cGroupSizeMinusOne);
     auto ploop = rewriter.create<gml_st::ParallelOp>(
-        loc, ploopTy, c0, cGroupSize, c1, threadDistrLabel,
-        [&](OpBuilder& b, Location loc, ValueRange ivs) {
+        loc, ploopTy, c0, cGroupSize, c1, ValueRange{init}, threadDistrLabel,
+        [&](OpBuilder& b, Location loc, ValueRange ivs, ValueRange initBbArg) {
           // Compute the lane tile with a stride of `warpSize`. This tile
           // defines the subset of the result that is produced by the lane.
           // The `laneId` defines the initial offset into the tensor. The
@@ -139,7 +139,7 @@ struct TilingCwisePattern : OpRewritePattern<linalg::MapOp> {
               b.create<arith::SubIOp>(loc, dimSizePlusWarpSizeMinusOne, laneId),
               cGroupSize);
           Value laneInit = b.create<tensor::ExtractSliceOp>(
-              loc, init, OpFoldResults{zeroAttr, laneId},
+              loc, initBbArg.front(), OpFoldResults{zeroAttr, laneId},
               OpFoldResults{oneAttr, laneTileSize},
               OpFoldResults{oneAttr, groupSizeAttr});
 
@@ -184,7 +184,8 @@ struct TilingCwisePattern : OpRewritePattern<linalg::MapOp> {
               loc, OpFoldResults{zeroAttr, laneId},
               OpFoldResults{oneAttr, laneTileSize},
               OpFoldResults{oneAttr, groupSizeAttr});
-          b.create<gml_st::SetYieldOp>(loc, sloop.getResult(0), init, laneTile);
+          b.create<gml_st::SetYieldOp>(loc, sloop.getResult(0), initBbArg,
+                                       laneTile);
         });
 
     rewriter.replaceOp(mapOp, ploop.getResults());
@@ -247,10 +248,11 @@ struct TilingReductionPattern : OpRewritePattern<linalg::ReduceOp> {
 
     // Create gml_st.parallel finalizing the partial result.
     auto parallelOpBodyBuilderFn = [&](OpBuilder& b, Location loc,
-                                       ValueRange ivs) {
+                                       ValueRange ivs,
+                                       ValueRange parallelLoopOutputs) {
       Value laneId = ivs.front();
       Value laneResult = b.create<tensor::ExtractSliceOp>(
-          loc, warpResult, OpFoldResults{zeroAttr, laneId},
+          loc, parallelLoopOutputs.front(), OpFoldResults{zeroAttr, laneId},
           OpFoldResults{oneAttr, oneAttr}, OpFoldResults{oneAttr, oneAttr});
 
       // Create gml_st.for sequentially reducing parts of the row.
@@ -288,12 +290,14 @@ struct TilingReductionPattern : OpRewritePattern<linalg::ReduceOp> {
                        .getResult(0);
 
       Value laneTile = b.create<TileOp>(loc, OpFoldResults{zeroAttr, laneId});
-      b.create<gml_st::SetYieldOp>(loc, laneResult, warpResult, laneTile);
+      b.create<gml_st::SetYieldOp>(loc, laneResult, parallelLoopOutputs.front(),
+                                   laneTile);
     };
     warpResult = rewriter
                      .create<gml_st::ParallelOp>(
                          loc, warpResult.getType(), c0, cGroupSize, c1,
-                         threadDistrLabel, parallelOpBodyBuilderFn)
+                         /*outputs=*/ValueRange{warpResult}, threadDistrLabel,
+                         parallelOpBodyBuilderFn)
                      .getResult(0);
 
     // Change existing linalg.generic to warp-reduce the partial results.

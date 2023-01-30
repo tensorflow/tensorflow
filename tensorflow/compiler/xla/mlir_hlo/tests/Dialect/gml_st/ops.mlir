@@ -81,7 +81,8 @@ func.func @parallel_loop(%lhs: tensor<8xf32>, %rhs: tensor<8xf32>,
   %c4 = arith.constant 4 : index
   %c8 = arith.constant 8 : index
 
-  %sum = gml_st.parallel (%i) = (%c0) to (%c8) step (%c4) {
+  %sum = gml_st.parallel (%i) = (%c0) to (%c8) step (%c4)
+      outs(%out_ = %output : tensor<8xf32>) {
     %lhs_sub = tensor.extract_slice %lhs[%i] [4] [1]
       : tensor<8xf32> to tensor<4xf32>
     %rhs_sub = tensor.extract_slice %rhs[%i] [4] [1]
@@ -100,7 +101,7 @@ func.func @parallel_loop(%lhs: tensor<8xf32>, %rhs: tensor<8xf32>,
     } -> tensor<4xf32>
 
     %tile = gml_st.tile [%i] [4] [1] : !gml_st.tile<4>
-    gml_st.set_yield %result_sub into %output[%tile]
+    gml_st.set_yield %result_sub into %out_[%tile]
       : tensor<4xf32> into tensor<8xf32>[!gml_st.tile<4>]
   } : tensor<8xf32>
   func.return %sum : tensor<8xf32>
@@ -115,9 +116,10 @@ func.func @loop_on_points(%output: tensor<8xf32>) -> tensor<8xf32> {
   %c8 = arith.constant 8 : index
   %c0_f32 = arith.constant 0.0 : f32
 
-  %sum = gml_st.parallel (%i) = (%c0) to (%c8) step (%c1) {
+  %sum = gml_st.parallel (%i) = (%c0) to (%c8) step (%c1)
+      outs(%out_ = %output : tensor<8xf32>) {
     %tile = gml_st.tile [%i] [1] [1] : !gml_st.tile<1>
-    gml_st.set_yield %c0_f32 into %output[%tile]
+    gml_st.set_yield %c0_f32 into %out_[%tile]
       : f32 into tensor<8xf32>[!gml_st.tile<1>]
   } : tensor<8xf32>
   func.return %sum : tensor<8xf32>
@@ -131,9 +133,10 @@ func.func @parallel_with_distribution(%output: tensor<8xf32>) -> tensor<8xf32> {
   %c8 = arith.constant 8 : index
   %c0_f32 = arith.constant 0.0 : f32
 
-  %sum = gml_st.parallel (%i) = (%c0) to (%c8) step (%c1) distribution ("x") {
+  %sum = gml_st.parallel (%i) = (%c0) to (%c8) step (%c1)
+      outs(%out_ = %output : tensor<8xf32>) distribution ("x") {
     %tile = gml_st.tile [%i] [1] [1] : !gml_st.tile<1>
-    gml_st.set_yield %c0_f32 into %output[%tile]
+    gml_st.set_yield %c0_f32 into %out_[%tile]
       : f32 into tensor<8xf32>[!gml_st.tile<1>]
   } : tensor<8xf32>
   func.return %sum : tensor<8xf32>
@@ -149,9 +152,10 @@ func.func @loop_on_vector(%output: vector<8xf32>, %fill: vector<2xf32>)
   %c2 = arith.constant 2 : index
   %c8 = arith.constant 8 : index
 
-  %sum = gml_st.parallel (%i) = (%c0) to (%c8) step (%c2) {
+  %sum = gml_st.parallel (%i) = (%c0) to (%c8) step (%c2) 
+      outs(%out_ = %output : vector<8xf32>)  {
     %tile = gml_st.tile [%i] [2] [1] : !gml_st.tile<2>
-    gml_st.set_yield %fill into %output[%tile]
+    gml_st.set_yield %fill into %out_[%tile]
       : vector<2xf32> into vector<8xf32>[!gml_st.tile<2>]
   } : vector<8xf32>
   func.return %sum : vector<8xf32>
@@ -210,7 +214,8 @@ func.func @trivial_acc_region(%lhs: tensor<8xf32>,
   %c4 = arith.constant 4 : index
   %c8 = arith.constant 8 : index
 
-  %sum = gml_st.parallel (%i) = (%c0) to (%c8) step (%c4) {
+  %sum = gml_st.parallel (%i) = (%c0) to (%c8) step (%c4)
+      outs(%out_ = %output : tensor<8xf32>)  {
     %lhs_sub = tensor.extract_slice %lhs [%i] [4] [1]
       : tensor<8xf32> to tensor<4xf32>
     %rhs_sub = tensor.extract_slice %rhs[%i] [4] [1]
@@ -229,7 +234,7 @@ func.func @trivial_acc_region(%lhs: tensor<8xf32>,
     } -> tensor<4xf32>
 
     %tile = gml_st.tile [%i] [4] [1] : !gml_st.tile<4>
-    gml_st.set_yield %result_sub into %output[%tile]
+    gml_st.set_yield %result_sub into %out_[%tile]
       acc (%new, %old: tensor<4xf32>) {
         gml_st.yield %new : tensor<4xf32>
       } : tensor<4xf32> into tensor<8xf32>[!gml_st.tile<4>]
@@ -253,7 +258,8 @@ func.func @two_acc_region(%lhs: tensor<8xf32>, %rhs: tensor<8xf32>,
   %c4 = arith.constant 4 : index
   %c8 = arith.constant 8 : index
 
-  %result:2 = gml_st.parallel (%i) = (%c0) to (%c8) step (%c4) {
+  %result:2 = gml_st.parallel (%i) = (%c0) to (%c8) step (%c4)
+      outs(%out_ = %output : tensor<8xf32>, %out2_ = %output_2 : tensor<8xf32>) {
     %lhs_sub = tensor.extract_slice %lhs [%i] [4] [1]
       : tensor<8xf32> to tensor<4xf32>
     %rhs_sub = tensor.extract_slice %rhs [%i] [4] [1]
@@ -275,10 +281,10 @@ func.func @two_acc_region(%lhs: tensor<8xf32>, %rhs: tensor<8xf32>,
 
     %tile = gml_st.tile [%i] [4] [1] : !gml_st.tile<4>
     gml_st.set_yield
-      %result_sub into %output[%tile] acc (%new, %old: tensor<4xf32>) {
+      %result_sub into %out_[%tile] acc (%new, %old: tensor<4xf32>) {
         gml_st.yield %new : tensor<4xf32>
       } : tensor<4xf32> into tensor<8xf32>[!gml_st.tile<4>],
-      %result_sub into %output_2[%tile] acc (%new, %old: tensor<4xf32>) {
+      %result_sub into %out2_[%tile] acc (%new, %old: tensor<4xf32>) {
         %sum = linalg.generic {
            indexing_maps = [#id_1d, #id_1d],
            iterator_types = ["parallel"]}
@@ -315,7 +321,8 @@ func.func @accumulator_region(%lhs: tensor<8xf32>,
   %c4 = arith.constant 4 : index
   %c8 = arith.constant 8 : index
 
-  %sum = gml_st.parallel (%i) = (%c0) to (%c8) step (%c4) {
+  %sum = gml_st.parallel (%i) = (%c0) to (%c8) step (%c4)
+      outs(%out_ = %output : tensor<8xf32>) {
     %lhs_sub = tensor.extract_slice %lhs [%i] [4] [1]
       : tensor<8xf32> to tensor<4xf32>
     %rhs_sub = tensor.extract_slice %rhs [%i] [4] [1]
@@ -334,7 +341,7 @@ func.func @accumulator_region(%lhs: tensor<8xf32>,
     } -> tensor<4xf32>
 
     %tile = gml_st.tile [%i] [4] [1] : !gml_st.tile<4>
-    gml_st.set_yield %result_sub into %output[%tile]
+    gml_st.set_yield %result_sub into %out_[%tile]
       acc (%new, %old: tensor<4xf32>) {
         %sum = linalg.generic {
            indexing_maps = [#id_1d, #id_1d],
@@ -369,7 +376,8 @@ func.func @reduce_tiles(%arg: tensor<8xf32>,
   %c8 = arith.constant 8 : index
   %c0_f32 = arith.constant 0.0 : f32
 
-  %sum = gml_st.parallel (%i) = (%c0) to (%c8) step (%c4) {
+  %sum = gml_st.parallel (%i) = (%c0) to (%c8) step (%c4)
+      outs(%out_ = %output : tensor<f32>) {
     %arg_sub = tensor.extract_slice %arg [%i] [4] [1]
       : tensor<8xf32> to tensor<4xf32>
 
@@ -389,7 +397,7 @@ func.func @reduce_tiles(%arg: tensor<8xf32>,
     } -> tensor<f32>
 
     %init_tile = gml_st.tile [] [] [] : !gml_st.tile<>
-    gml_st.set_yield %result_sub into %output[%init_tile]
+    gml_st.set_yield %result_sub into %out_[%init_tile]
         acc (%in, %out: tensor<f32>) {
       %in_pt = tensor.extract %in[] : tensor<f32>
       %out_pt = tensor.extract %out[] : tensor<f32>
@@ -419,7 +427,8 @@ func.func @column_reduction(%arg: tensor<128x16xf32>,
   %c128 = arith.constant 128 : index
   %cst = arith.constant 0.000000e+00 : f32
 
-  %sum = gml_st.parallel (%i, %j) = (%c0, %c0) to (%c128, %c16) step (%c8, %c8) {
+  %sum = gml_st.parallel (%i, %j) = (%c0, %c0) to (%c128, %c16) step (%c8, %c8)
+      outs(%out_ = %out : tensor<16xf32>) {
     %arg_sub = tensor.extract_slice %arg[%i, %j] [8, 8] [1, 1]
       : tensor<128x16xf32> to tensor<8x8xf32>
 
@@ -438,7 +447,7 @@ func.func @column_reduction(%arg: tensor<128x16xf32>,
     } -> tensor<8xf32>
 
     %out_tile = gml_st.tile [%j] [8] [1] : !gml_st.tile<8>
-    gml_st.set_yield %result_sub into %out[%out_tile]
+    gml_st.set_yield %result_sub into %out_[%out_tile]
         acc (%new, %old: tensor<8xf32>) {
       %acc = linalg.generic {
           indexing_maps = [#id_1d, #id_1d],
