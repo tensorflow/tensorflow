@@ -825,7 +825,11 @@ def _ConstantValue(tensor, partial):
       if value is None and not partial:
         return None
       values.append(value)
-    return np.array(values)
+    try:
+      return np.array(values)
+    except ValueError:
+      # If partial=True, some of the elements of values may be None.
+      return np.array(values, dtype=object)
   elif tensor.op.type == "Unpack":
     # We can't handle axis != 0 Unpacks at the moment.
     if tensor.op.get_attr("axis") != 0:

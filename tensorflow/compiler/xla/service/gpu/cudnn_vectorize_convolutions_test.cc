@@ -71,7 +71,7 @@ TEST_F(CudnnVectorizeConvolutionsTest, VectorizeTo4) {
       root,
       GmockMatch(m::Tuple(
           m::Reshape(m::GetTupleElement(
-                         m::CustomCall(&conv, kCudnnConvForwardCallTarget,
+                         m::CustomCall(&conv, {kCudnnConvForwardCallTarget},
                                        m::Reshape(m::Parameter(0))
                                            .WithShape(S8, {10, 20, 30, 10, 4}),
                                        m::Reshape(m::Parameter(1))
@@ -146,7 +146,7 @@ TEST_F(CudnnVectorizeConvolutionsTest, VectorizeTo4NCHW) {
       root,
       GmockMatch(m::Tuple(
           m::Reshape(m::GetTupleElement(
-                         m::CustomCall(&conv, kCudnnConvForwardCallTarget,
+                         m::CustomCall(&conv, {kCudnnConvForwardCallTarget},
                                        m::Reshape(m::Parameter(0))
                                            .WithShape(S8, {10, 12, 4, 20, 30}),
                                        m::Reshape(m::Parameter(1))
@@ -199,7 +199,7 @@ TEST_F(CudnnVectorizeConvolutionsTest, IncrementAllDnums) {
       root,
       GmockMatch(m::Tuple(
           m::Reshape(m::GetTupleElement(
-                         m::CustomCall(&conv, kCudnnConvForwardCallTarget,
+                         m::CustomCall(&conv, {kCudnnConvForwardCallTarget},
                                        m::Reshape(m::Parameter(0))
                                            .WithShape(S8, {4, 4, 16, 16, 16}),
                                        m::Reshape(m::Parameter(1))
@@ -252,7 +252,7 @@ TEST_F(CudnnVectorizeConvolutionsTest, FilterDnums) {
       root,
       GmockMatch(m::Tuple(
           m::Reshape(m::GetTupleElement(
-                         m::CustomCall(&conv, kCudnnConvForwardCallTarget,
+                         m::CustomCall(&conv, {kCudnnConvForwardCallTarget},
                                        m::Reshape(m::Parameter(0))
                                            .WithShape(S8, {1, 5, 4, 9, 9}),
                                        m::Reshape(m::Parameter(1))
@@ -362,7 +362,7 @@ TEST_F(CudnnVectorizeConvolutionsTest, VectorizeTo32) {
       root,
       GmockMatch(m::Tuple(
           m::Reshape(m::GetTupleElement(
-                         m::CustomCall(&conv, kCudnnConvForwardCallTarget,
+                         m::CustomCall(&conv, {kCudnnConvForwardCallTarget},
                                        m::Reshape(m::Parameter(0))
                                            .WithShape(S8, {10, 20, 30, 2, 32}),
                                        m::Reshape(m::Parameter(1))
@@ -397,7 +397,7 @@ TEST_F(CudnnVectorizeConvolutionsTest, BiasAndSideInput) {
       root,
       GmockMatch(m::Tuple(
           m::Reshape(m::GetTupleElement(
-                         m::CustomCall(&conv, kCudnnConvForwardCallTarget,
+                         m::CustomCall(&conv, {kCudnnConvForwardCallTarget},
                                        m::Reshape(m::Parameter(0))
                                            .WithShape(S8, {10, 20, 30, 2, 32}),
                                        m::Reshape(m::Parameter(1))
@@ -432,7 +432,7 @@ TEST_F(CudnnVectorizeConvolutionsTest, NoVectorizeTo32) {
       root,
       GmockMatch(m::Tuple(
           m::Reshape(m::GetTupleElement(
-                         m::CustomCall(&conv, kCudnnConvForwardCallTarget,
+                         m::CustomCall(&conv, {kCudnnConvForwardCallTarget},
                                        m::Reshape(m::Parameter(0))
                                            .WithShape(S8, {10, 20, 30, 16, 4}),
                                        m::Reshape(m::Parameter(1))
@@ -466,7 +466,7 @@ TEST_F(CudnnVectorizeConvolutionsTest, Vectorize4To32) {
   auto conv_pat =
       m::GetTupleElement(
           m::CustomCall(
-              &conv, kCudnnConvForwardCallTarget,
+              &conv, {kCudnnConvForwardCallTarget},
               m::Reshape(m::Transpose(m::Reshape(m::Parameter(0))
                                           .WithShape(S8, {10, 20, 30, 2, 8, 4}))
                              .WithShape(S8, {10, 20, 30, 2, 8, 4}))
@@ -536,7 +536,7 @@ TEST_F(CudnnVectorizeConvolutionsTest, Vectorize4To32NCHW) {
   auto conv_pat =
       m::GetTupleElement(
           m::CustomCall(
-              &conv, kCudnnConvForwardCallTarget,
+              &conv, {kCudnnConvForwardCallTarget},
               m::Reshape(m::Transpose(m::Reshape(m::Parameter(0))
                                           .WithShape(S8, {10, 2, 8, 20, 30, 4}))
                              .WithShape(S8, {10, 2, 20, 30, 8, 4}))
@@ -604,7 +604,7 @@ TEST_F(CudnnVectorizeConvolutionsTest, Vectorize4To32VectorDimFirst) {
   auto conv_pat =
       m::GetTupleElement(
           m::CustomCall(
-              &conv, kCudnnConvForwardCallTarget,
+              &conv, {kCudnnConvForwardCallTarget},
               m::Reshape(m::Transpose(m::Reshape(m::Parameter(0))
                                           .WithShape(S8, {4, 10, 20, 30, 2, 8}))
                              .WithShape(S8, {8, 4, 10, 20, 30, 2}))

@@ -45,6 +45,7 @@ tflite_cc_library_with_c_headers_test(
     hdrs = [
         "c_api.h",
     ],
+    compatible_with = get_compatible_with_portable(),
     copts = tflite_copts(),
     visibility = [
         "//tensorflow/lite:__subpackages__",
@@ -75,6 +76,7 @@ tflite_cc_library_with_c_headers_test(
     name = "c_api_without_op_resolver",
     srcs = ["c_api.cc"],
     hdrs = ["c_api.h"],
+    compatible_with = get_compatible_with_portable(),
     copts = tflite_copts(),
     tags = ["allow_undefined_symbols"],  # For tflite::CreateOpResolver().
     visibility = [
@@ -83,7 +85,6 @@ tflite_cc_library_with_c_headers_test(
     deps = [
         ":c_api_types",
         "//tensorflow/lite:builtin_ops",
-        "//tensorflow/lite:framework",
         "//tensorflow/lite:version",
         "//tensorflow/lite/c:c_api_internal",
         "//tensorflow/lite/c:common_internal",
@@ -233,6 +234,7 @@ cc_test(
     deps = [
         ":c_api_types",
         ":common",
+        "//tensorflow/lite:util",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -252,7 +254,6 @@ tflite_cc_library_with_c_headers_test(
     ] + common_header_visibility_allowlist(),
     deps = [
         ":c_api_types",
-        "//tensorflow/lite:tflite_kernel_use_xnnpack_optional",
     ] + select({
         "//tensorflow/lite:tensorflow_profiler_config": [
             "//tensorflow/lite:macros",
@@ -288,7 +289,7 @@ tflite_cc_library_with_c_headers_test(
         ":c_api",
         ":common",
         "//tensorflow/lite:builtin_ops",
-        "//tensorflow/lite:framework",
+        "//tensorflow/lite:signature_runner",
         "//tensorflow/lite/c:c_api_internal",
         "//tensorflow/lite/core:framework",
         "//tensorflow/lite/profiling/telemetry:profiler",

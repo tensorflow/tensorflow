@@ -151,7 +151,8 @@ tsl::Status OptimizeAndConvertHloToLmhlo(std::unique_ptr<HloModule> hlo_module,
   }
 
   tsl::StatusOr<std::unique_ptr<BufferAssignment>> assignment =
-      backend->compiler()->AssignBuffers(optimized_hlo_module->get());
+      backend->compiler()->AssignBuffers(optimized_hlo_module->get(),
+                                         backend->default_stream_executor());
   TF_RETURN_WITH_CONTEXT_IF_ERROR(assignment.status(),
                                   "running XLA buffer assigment");
 
@@ -469,6 +470,7 @@ tsl::StatusOr<mlir::Operation*> LhloDialectEmitter::EmitOp(
     case HloOpcode::kSqrt:
     case HloOpcode::kSubtract:
     case HloOpcode::kStochasticConvert:
+    case HloOpcode::kTan:
     case HloOpcode::kTanh:
     case HloOpcode::kTranspose:
     case HloOpcode::kXor:
@@ -1554,11 +1556,13 @@ tsl::Status LhloDialectEmitter::ImportAsLmhloRegion(
       [this, after] { builder_.restoreInsertionPoint(after); });
 
   builder_ = OpBuilder(region);
-  const xla::HloInstructionSequence* schedule =
-      assignment_.hlo_ordering().SequentialOrder(*computation);
-  if (!schedule)
+  xla::HloModule* hlo_module = computation->parent();
+  if (!hlo_module->has_schedule()) {
     return tsl::errors::Unimplemented(
         "Missing sequential order for the computation");
+  }
+  const xla::HloInstructionSequence* schedule =
+      &hlo_module->schedule().sequence(computation);
   TF_RETURN_IF_ERROR(
       computation->AcceptOrdered(this, schedule->instructions()));
   builder_.create<lmhlo::TerminatorOp>(builder_.getUnknownLoc());
@@ -2005,10 +2009,10 @@ tsl::Status HloToLhloModule(const BufferAssignment& assignment,
 
   const xla::HloInstructionSequence* schedule =
       assignment.hlo_ordering().SequentialOrder(*computation);
-  if (!schedule)
+  if (!schedule) {
     return tsl::errors::Unimplemented(
         "Missing sequential order for the computation");
-
+  }
   BaseScopedDiagnosticHandler status_handler(module.getContext());
 
   const std::vector<HloInstruction*>& ordering = schedule->instructions();

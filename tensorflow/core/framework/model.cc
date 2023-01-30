@@ -2853,7 +2853,8 @@ void ModelTiming::ComputePipelineRatios(const Node::NodeVector& bfs_nodes) {
       parent_pipeline_ratio = output_timing.pipeline_ratio;
       if (node->num_elements() > 0 && node->output()->num_elements() > 0) {
         parent_ratio = static_cast<double>(node->num_elements()) /
-                       static_cast<double>(node->output()->num_elements());
+                       static_cast<double>(node->output()->num_elements() +
+                                           node->output()->buffered_elements());
       } else {
         parent_ratio = node->output()->Ratio();
       }
@@ -2888,9 +2889,10 @@ void ModelTiming::ComputeNonAsyncInterleaveManyTotalTime(const Node& node) {
     // dynamic quantity should closely match the static one for nodes other than
     // interleave nodes and is more generic since its value is specific to an
     // input to output pair rather than a single numnber for the output node.
-    input_total_time_nsec += timing_nodes_[input.get()].total_time_nsec *
-                             static_cast<double>(input->num_elements()) /
-                             static_cast<double>(node.num_elements());
+    input_total_time_nsec +=
+        timing_nodes_[input.get()].total_time_nsec *
+        static_cast<double>(input->num_elements()) /
+        static_cast<double>(node.num_elements() + node.buffered_elements());
   }
   node_timing.total_time_nsec =
       node_timing.self_time_nsec + input_total_time_nsec;
@@ -3000,7 +3002,8 @@ double ModelTiming::ComputeAsyncInterleaveManyFirstInputTotalTime(
       << "Input " << (*first_input)->long_name() << " of node "
       << node.long_name() << " has no timing node.";
   return timing_nodes_[(*first_input).get()].total_time_nsec *
-         (*first_input)->num_elements() / node.num_elements();
+         (*first_input)->num_elements() /
+         (node.num_elements() + node.buffered_elements());
 }
 
 void ModelTiming::ComputeTotalTimes(const Node::NodeVector& reverse_bfs_nodes) {

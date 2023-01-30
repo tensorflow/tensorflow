@@ -466,8 +466,12 @@ void KernelAndDeviceFunc::RunAsync(
     const absl::optional<EagerFunctionParams>& eager_func_params,
     tsl::CoordinationServiceAgent* coordination_service_agent,
     std::function<void(const Status&)> done) {
-  profiler::TraceMe activity("KernelAndDeviceFunc::RunAsync",
-                             profiler::TraceMeLevel::kInfo);
+  profiler::TraceMe activity(
+      [] {
+        return profiler::TraceMeEncode("KernelAndDeviceFunc::RunAsync",
+                                       {{"_r", 1}});
+      },
+      profiler::TraceMeLevel::kInfo);
   std::shared_ptr<FunctionLibraryRuntime::Options> opts = PrepareForRun(
       step_container, outputs, cancellation_manager, eager_func_params,
       absl::nullopt, coordination_service_agent);

@@ -70,12 +70,12 @@ limitations under the License.
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/status_macros.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/statusor.h"
 #include "tensorflow/compiler/xla/translate/mhlo_to_hlo/attribute_exporter.h"
 #include "tensorflow/compiler/xla/translate/mhlo_to_hlo/location_exporter.h"
 #include "tensorflow/compiler/xla/translate/mhlo_to_hlo/type_to_shape.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/tsl/platform/float8.h"
+#include "tensorflow/tsl/platform/statusor.h"
 
 using ::int64_t;
 using ::tsl::int16;
@@ -93,6 +93,7 @@ constexpr char kShardingAttr[] = "mhlo.sharding";
 constexpr char kFrontendAttributesAttr[] = "mhlo.frontend_attributes";
 constexpr char kReplicationAttr[] = "mhlo.is_same_data_across_replicas";
 constexpr char kParameterReplicationAttr[] = "mhlo.parameter_replication";
+constexpr char kLiteralAttr[] = "mhlo.literal";
 
 // Array attribute. Same shape as infeed result, but contains a
 // minor_to_major array for every tensor.
@@ -142,6 +143,46 @@ bool IsBoundedOrStatic(mlir::Type ty) {
       return false;
   }
   return true;
+}
+
+StatusOr<xla::Literal> CreateArrayLiteralFromAttr(mlir::ElementsAttr attr,
+                                                  xla::Layout layout) {
+  auto dense_attr = attr.dyn_cast<mlir::DenseElementsAttr>();
+  if (!dense_attr)
+    return tsl::errors::Unimplemented("Only dense elements attr are supported");
+
+  xla::Shape shape = xla::TypeToShape(dense_attr.getType());
+
+#define ELEMENTS_ATTR_TO_LITERAL(xla_type, cpp_type)                         \
+  case xla_type: {                                                           \
+    xla::Array<cpp_type> source_data(shape.dimensions());                    \
+    source_data.SetValues(dense_attr.getValues<cpp_type>());                 \
+    return xla::LiteralUtil::CreateFromArrayWithLayout(source_data, layout); \
+  }
+
+  switch (shape.element_type()) {
+    ELEMENTS_ATTR_TO_LITERAL(xla::PrimitiveType::PRED, bool)
+    ELEMENTS_ATTR_TO_LITERAL(xla::PrimitiveType::F32, float)
+    ELEMENTS_ATTR_TO_LITERAL(xla::PrimitiveType::F64, double)
+    ELEMENTS_ATTR_TO_LITERAL(xla::PrimitiveType::S8, int8)
+    ELEMENTS_ATTR_TO_LITERAL(xla::PrimitiveType::S16, int16)
+    ELEMENTS_ATTR_TO_LITERAL(xla::PrimitiveType::S32, int32)
+    ELEMENTS_ATTR_TO_LITERAL(xla::PrimitiveType::S64, int64_t)
+    ELEMENTS_ATTR_TO_LITERAL(xla::PrimitiveType::U8, uint8)
+    ELEMENTS_ATTR_TO_LITERAL(xla::PrimitiveType::U16, uint16)
+    ELEMENTS_ATTR_TO_LITERAL(xla::PrimitiveType::U32, uint32)
+    ELEMENTS_ATTR_TO_LITERAL(xla::PrimitiveType::U64, uint64)
+    ELEMENTS_ATTR_TO_LITERAL(xla::PrimitiveType::C64, std::complex<float>)
+    ELEMENTS_ATTR_TO_LITERAL(xla::PrimitiveType::C128, std::complex<double>)
+    ELEMENTS_ATTR_TO_LITERAL(xla::PrimitiveType::F16, Eigen::half)
+    ELEMENTS_ATTR_TO_LITERAL(xla::PrimitiveType::BF16, Eigen::bfloat16)
+    ELEMENTS_ATTR_TO_LITERAL(xla::PrimitiveType::F8E5M2, tsl::float8_e5m2)
+    ELEMENTS_ATTR_TO_LITERAL(xla::PrimitiveType::F8E4M3FN, tsl::float8_e4m3fn)
+    default:
+      return tsl::errors::Internal(absl::StrCat(  // NOLINT
+          "Unsupported type: ", xla::PrimitiveType_Name(shape.element_type())));
+  }
+#undef ELEMENTS_ATTR_TO_LITERAL
 }
 
 // Convert APInt into an int.
@@ -775,9 +816,9 @@ LogicalResult ExportXlaOp(CstrReshapableOp, OpLoweringContext) {
 mlir::LogicalResult ExportXlaOp(mlir::mhlo::CopyOp op, OpLoweringContext ctx) {
   // If it's the only thing in a function we assume it's part of an async copy
   // op
-  if (op.getIsCrossProgramPrefetch() && !SimplyReturnedOp(op))
+  if (op.getCrossProgramPrefetchIndex() && !SimplyReturnedOp(op))
     return op->emitOpError() << "synchronous CopyOp should not include "
-                                "is_cross_program_prefetch attribute.";
+                                "cross_program_prefetch_index attribute.";
   auto& value_map = *ctx.values;
   auto result = op.getResult();
   xla::XlaOp xla_arg_0;
@@ -981,8 +1022,12 @@ LogicalResult ExportXlaOp(AsyncStartOp op, OpLoweringContext ctx) {
   }
   auto copy_op = dyn_cast_or_null<CopyOp>(callee.getBody().front().front());
   if (copy_op && SimplyReturnedOp(copy_op)) {
+    std::optional<int> cross_program_prefetch_index =
+        copy_op.getCrossProgramPrefetchIndex()
+            ? std::make_optional(*copy_op.getCrossProgramPrefetchIndex())
+            : std::nullopt;
     value_map[result] = xla::internal::XlaBuilderFriend::BuildCopyStart(
-        ctx.builder, operands[0], copy_op.getIsCrossProgramPrefetch());
+        ctx.builder, operands[0], cross_program_prefetch_index);
     return mlir::success();
   }
   auto send_op = dyn_cast_or_null<SendOp>(callee.getBody().front().front());
@@ -1252,6 +1297,17 @@ LogicalResult ExportXlaOp(CosineOp op, OpLoweringContext ctx) {
   if (failed(GetXlaOp(*op.getODSOperands(0).begin(), value_map, &arg, op)))
     return mlir::failure();
   auto xla_result = xla::Cos(Unwrap(arg));
+  value_map[result] = xla_result;
+  return mlir::success();
+}
+
+LogicalResult ExportXlaOp(TanOp op, OpLoweringContext ctx) {
+  auto& value_map = *ctx.values;
+  auto result = op.getResult();
+  xla::XlaOp arg;
+  if (failed(GetXlaOp(*op.getODSOperands(0).begin(), value_map, &arg, op)))
+    return mlir::failure();
+  auto xla_result = xla::Tan(Unwrap(arg));
   value_map[result] = xla_result;
   return mlir::success();
 }
@@ -1560,6 +1616,13 @@ LogicalResult ExportXlaOp(CustomCallOp op, OpLoweringContext ctx) {
     }
   }
 
+  StatusOr<xla::Literal> literal;
+  auto literal_attr = op->getAttrOfType<DenseElementsAttr>(kLiteralAttr);
+  if (literal_attr) {
+    literal = CreateArrayLiteralFromAttr(literal_attr, {});
+    if (!literal.ok()) return failure();
+  }
+
   auto& value_map = *ctx.values;
   auto aliasInfo =
       xla::ConvertOutputOperandAliasing(op.getOutputOperandAliases());
@@ -1577,7 +1640,7 @@ LogicalResult ExportXlaOp(CustomCallOp op, OpLoweringContext ctx) {
         ctx.builder, std::string(op.getCallTargetName()), args, computation,
         xla::TypeToShape(result.getType()), backend_config,
         op.getHasSideEffect(), output_operand_aliasing,
-        /*literal=*/nullptr,
+        /*literal=*/literal.ok() ? &*literal : nullptr,
         /*schedule=*/*custom_call_schedule,
         /*api_version=*/*xla_api_version);
     return success();
@@ -1592,7 +1655,7 @@ LogicalResult ExportXlaOp(CustomCallOp op, OpLoweringContext ctx) {
         ctx.builder, std::string(op.getCallTargetName()), args,
         result_shape_with_layout, operand_shapes_with_layout, backend_config,
         op.getHasSideEffect(), output_operand_aliasing,
-        /*literal=*/nullptr,
+        /*literal=*/literal.ok() ? &*literal : nullptr,
         /*schedule=*/*custom_call_schedule,
         /*api_version=*/*xla_api_version);
     return success();
@@ -1602,7 +1665,7 @@ LogicalResult ExportXlaOp(CustomCallOp op, OpLoweringContext ctx) {
       xla::CustomCall(ctx.builder, std::string(op.getCallTargetName()), args,
                       xla::TypeToShape(result.getType()), backend_config,
                       op.getHasSideEffect(), output_operand_aliasing,
-                      /*literal=*/nullptr,
+                      /*literal=*/literal.ok() ? &*literal : nullptr,
                       /*schedule=*/*custom_call_schedule,
                       /*api_version=*/*xla_api_version);
   return success();
@@ -2256,46 +2319,6 @@ LogicalResult ExportXlaOp(UniformDequantizeOp op, OpLoweringContext ctx) {
 
 namespace mlir {
 namespace {
-
-StatusOr<xla::Literal> CreateArrayLiteralFromAttr(ElementsAttr attr,
-                                                  xla::Layout layout) {
-  auto dense_attr = attr.dyn_cast<DenseElementsAttr>();
-  if (!dense_attr)
-    return tsl::errors::Unimplemented("Only dense elements attr are supported");
-
-  xla::Shape shape = xla::TypeToShape(dense_attr.getType());
-
-#define ELEMENTS_ATTR_TO_LITERAL(xla_type, cpp_type)                         \
-  case xla_type: {                                                           \
-    xla::Array<cpp_type> source_data(shape.dimensions());                    \
-    source_data.SetValues(dense_attr.getValues<cpp_type>());                 \
-    return xla::LiteralUtil::CreateFromArrayWithLayout(source_data, layout); \
-  }
-
-  switch (shape.element_type()) {
-    ELEMENTS_ATTR_TO_LITERAL(xla::PrimitiveType::PRED, bool)
-    ELEMENTS_ATTR_TO_LITERAL(xla::PrimitiveType::F32, float)
-    ELEMENTS_ATTR_TO_LITERAL(xla::PrimitiveType::F64, double)
-    ELEMENTS_ATTR_TO_LITERAL(xla::PrimitiveType::S8, int8)
-    ELEMENTS_ATTR_TO_LITERAL(xla::PrimitiveType::S16, int16)
-    ELEMENTS_ATTR_TO_LITERAL(xla::PrimitiveType::S32, int32)
-    ELEMENTS_ATTR_TO_LITERAL(xla::PrimitiveType::S64, int64_t)
-    ELEMENTS_ATTR_TO_LITERAL(xla::PrimitiveType::U8, uint8)
-    ELEMENTS_ATTR_TO_LITERAL(xla::PrimitiveType::U16, uint16)
-    ELEMENTS_ATTR_TO_LITERAL(xla::PrimitiveType::U32, uint32)
-    ELEMENTS_ATTR_TO_LITERAL(xla::PrimitiveType::U64, uint64)
-    ELEMENTS_ATTR_TO_LITERAL(xla::PrimitiveType::C64, std::complex<float>)
-    ELEMENTS_ATTR_TO_LITERAL(xla::PrimitiveType::C128, std::complex<double>)
-    ELEMENTS_ATTR_TO_LITERAL(xla::PrimitiveType::F16, Eigen::half)
-    ELEMENTS_ATTR_TO_LITERAL(xla::PrimitiveType::BF16, Eigen::bfloat16)
-    ELEMENTS_ATTR_TO_LITERAL(xla::PrimitiveType::F8E5M2, tsl::float8_e5m2)
-    ELEMENTS_ATTR_TO_LITERAL(xla::PrimitiveType::F8E4M3FN, tsl::float8_e4m3fn)
-    default:
-      return tsl::errors::Internal(absl::StrCat(  // NOLINT
-          "Unsupported type: ", xla::PrimitiveType_Name(shape.element_type())));
-  }
-#undef ELEMENTS_ATTR_TO_LITERAL
-}
 
 LogicalResult ConvertLayout(mlir::Operation* op, const mlir::ArrayAttr& layout,
                             xla::ShapeProto* shape) {

@@ -54,6 +54,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/transforms/lower_tf.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/mangling_util.h"
 #include "tensorflow/compiler/mlir/xla/transforms/passes.h"
+#include "tensorflow/compiler/mlir/xla/transforms/xla_legalize_targets.h"
 #include "tensorflow/compiler/xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "tensorflow/compiler/xla/mlir_hlo/mhlo/transforms/rewriters.h"
 #include "tensorflow/compiler/xla/translate/hlo_to_mhlo/attribute_importer.h"
@@ -559,6 +560,7 @@ void EmitLegalizationErrors(Operation *op,
 /// Returns ops that should use MLIR legalization only in the case of
 /// prefer_tf2xla. All other ops not in this list should use XlaOpKernel
 /// legalization only or not be legalized by the new bridge.
+// LINT.IfChange
 const llvm::DenseSet<mlir::TypeID> &MlirPreferredOps() {
   // The static variable is a pointer in order to avoid destruction upon thread
   // termination.
@@ -574,6 +576,7 @@ const llvm::DenseSet<mlir::TypeID> &MlirPreferredOps() {
     TypeID::get<TF::CeilOp>(),
     TypeID::get<TF::CheckNumericsOp>(),
     TypeID::get<TF::CosOp>(),
+    TypeID::get<TF::TanOp>(),
     TypeID::get<TF::DiagPartOp>(),
     TypeID::get<TF::EinsumOp>(),
     TypeID::get<TF::ExpOp>(),
@@ -645,10 +648,17 @@ const llvm::DenseSet<mlir::TypeID> &MlirPreferredOps() {
     TypeID::get<TF::RandomUniformOp>(),
     TypeID::get<TF::StridedSliceOp>(),
     TypeID::get<TF::SliceOp>(),
+
+    // Conditional ops
+    TypeID::get<TF::IfRegionOp>(),
+    TypeID::get<TF::WhileRegionOp>(),
+    TypeID::get<TF::CaseRegionOp>(),
+    TypeID::get<TF::YieldOp>(),
   };
   // clang-format on
   return *ops;
 }
+// LINT.ThenChange(:PopulateLegalizeTfPatterns)
 
 // Patterns whose root op is in the set `include_ops` are moved from the set
 // `from` to the returned set. This is used to partition patterns by op so they
@@ -676,18 +686,8 @@ RewritePatternSet PatternsIncludeOps(
 mlir::LogicalResult ApplyPatterns(Operation *op, RewritePatternSet &patterns,
                                   bool legalize_chlo,
                                   bool allow_partial_conversion) {
-  ConversionTarget target(*op->getContext());
-  if (legalize_chlo) {
-    target.addIllegalDialect<chlo::ChloDialect>();
-  } else {
-    target.addLegalDialect<chlo::ChloDialect>();
-  }
-  target.addLegalDialect<MhloDialect>();
-  target.addLegalDialect<arith::ArithDialect>();
-  target.addLegalDialect<func::FuncDialect>();
-  target.addLegalDialect<tensor::TensorDialect>();
-  target.addLegalDialect<shape::ShapeDialect>();
-  target.addLegalOp<func::CallOp>();
+  ConversionTarget target =
+      GetDefaultLegalConversionTargets(*op->getContext(), legalize_chlo);
 
   if (!allow_partial_conversion) {
     // Fully qualify ReturnOp here as mhlo dialect also defines a ReturnOp.

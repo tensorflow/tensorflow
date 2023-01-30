@@ -16,6 +16,7 @@ def repo():
         strip_prefix = "pybind11_abseil-{commit}".format(commit = PA_COMMIT),
         urls = tf_mirror_urls("https://github.com/pybind/pybind11_abseil/archive/{commit}.tar.gz".format(commit = PA_COMMIT)),
         build_file = "//third_party/pybind11_abseil:BUILD",
+        patch_file = ["//third_party/pybind11_abseil:remove_license.patch"],
     )
 
     # pybind11_bazel is a dependency of pybind11_abseil.

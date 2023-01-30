@@ -14,6 +14,8 @@ message CompilationLogEntry {
     UNSPECIFIED = 0;
     END_TO_END = 1;
     HLO_PASSES = 2;
+    CODE_GENERATION = 3;
+    BACKEND_PASSES = 4;
   }
   // Compilation stage recorded by this log entry.
   CompilationStage stage = 2;

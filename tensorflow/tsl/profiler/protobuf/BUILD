@@ -63,6 +63,13 @@ tf_proto_library(
     visibility = ["//visibility:public"],
 )
 
+tf_proto_library(
+    name = "trace_events_proto",
+    srcs = ["trace_events.proto"],
+    cc_api_version = 2,
+    visibility = [":friends"],
+)
+
 # This is needed because of how tf_android_core_proto_sources parses proto paths.
 exports_files(
     srcs = ["xplane.proto"],

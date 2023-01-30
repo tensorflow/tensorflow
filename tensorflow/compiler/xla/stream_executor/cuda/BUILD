@@ -84,6 +84,7 @@ cc_library(
         "//tensorflow/compiler/xla/stream_executor/gpu:gpu_diagnostics_header",
         "//tensorflow/compiler/xla/stream_executor/lib",
         "//tensorflow/compiler/xla/stream_executor/platform",
+        "//tensorflow/tsl/platform:platform_port",
     ]) + ["@com_google_absl//absl/strings:str_format"],
 )
 
@@ -114,6 +115,8 @@ cc_library(
         "//tensorflow/compiler/xla/stream_executor/lib",
         "//tensorflow/compiler/xla/stream_executor/platform",
         "//tensorflow/compiler/xla/stream_executor/platform:dso_loader",
+        "//tensorflow/tsl/platform:env",
+        "//tensorflow/tsl/platform:static_threadlocal",
     ] + tf_additional_cuda_driver_deps()) + select({
         # include dynamic loading implementation only when if_cuda_is_configured and build dynamically
         "//tensorflow/tsl:is_cuda_enabled_and_oss": ["cudart_stub"],
@@ -529,6 +532,17 @@ cc_library(
 )
 
 cc_library(
+    name = "cuda_graph",
+    srcs = if_cuda_is_configured(["cuda_graph.cc"]),
+    hdrs = if_cuda_is_configured(["cuda_graph.h"]),
+    deps = if_cuda_is_configured([
+        "@com_google_absl//absl/strings:str_format",
+        "@local_config_cuda//cuda:cuda_headers",
+        "//tensorflow/compiler/xla/stream_executor/gpu:gpu_stream",
+    ]),
+)
+
+cc_library(
     name = "cuda_stream",
     srcs = [],
     hdrs = if_cuda_is_configured(["cuda_stream.h"]),
@@ -597,7 +611,10 @@ cc_library(
         "//tensorflow/compiler/xla/stream_executor/platform",
         "//tensorflow/compiler/xla/stream_executor/platform:dso_loader",
     ]) + [
+        "@com_google_absl//absl/functional:any_invocable",
         "@com_google_absl//absl/strings:str_format",
+        "//tensorflow/tsl/platform:numbers",
+        "//tensorflow/tsl/platform:statusor",
     ],
     alwayslink = True,
 )

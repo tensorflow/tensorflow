@@ -69,7 +69,7 @@ class CompilationEnvironments {
   // function via this method for each type of CompilationEnvironment they wish
   // to use in code.
   //
-  // The input env may be null.
+  // The input env to a ProcessNewEnvFn may be null.
   //
   // REQUIRES:
   // - The output is *not* allowed to be null, even for null input.
@@ -107,10 +107,10 @@ class CompilationEnvironments {
   // Returns the ProcessNewEnvFn for the given env type. Returns nullptr if no
   // ProcessNewEnvFn has been registered for the env type.
   static ProcessNewEnvFn GetProcessNewEnvFn(
-      const tsl::protobuf::Descriptor* descriptor);
+      const tsl::protobuf::Descriptor& descriptor);
 
-  // Called by GetEnv() when it calls lazily creates a new environment, to
-  // globally track stats about how many such environments are created by
+  // Called by GetEnv(), when it lazily creates a new environment, to globally
+  // track stats about how many such environments are created by
   // CompilationEnvironments.
   static void DefaultEnvCreatedByCompilationEnvironments(
       std::string_view env_type);
@@ -119,8 +119,8 @@ class CompilationEnvironments {
   // are added to CompilationEnvironments.
   static void EnvAdded(std::string_view env_type);
 
-  // Implements the part of AddEnv() after the ProcessNewEnvFn() call.
-  void AddProcessedEnv(std::unique_ptr<tsl::protobuf::Message> env);
+  Status AddEnvImpl(const tsl::protobuf::Descriptor& descriptor,
+                    std::unique_ptr<tsl::protobuf::Message> env);
 
   absl::flat_hash_map<const tsl::protobuf::Descriptor*,
                       std::unique_ptr<tsl::protobuf::Message>>
@@ -134,10 +134,7 @@ T& CompilationEnvironments::GetMutableEnv() {
   auto descriptor = T::descriptor();
   auto it = environments_.find(descriptor);
   if (it == environments_.end()) {
-    auto process_new_env = GetProcessNewEnvFn(descriptor);
-    CHECK(process_new_env) << "Unknown compilation environment type: "
-                           << descriptor->full_name();
-    AddProcessedEnv(process_new_env(nullptr));
+    TF_CHECK_OK(AddEnvImpl(*descriptor, nullptr));
     DefaultEnvCreatedByCompilationEnvironments(descriptor->full_name());
     it = environments_.find(descriptor);
   }

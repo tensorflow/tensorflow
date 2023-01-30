@@ -224,6 +224,7 @@ Status MlirFunctionOptimizationPass::Run(
   AddDevicesToOp(*module_ref, &device_set);
 
   int per_pass_state_index = 0;
+  bool is_module_updated = false;
   for (auto& pass_registration : registry_->passes()) {
     llvm::StringRef name = pass_registration.pass->name();
 
@@ -235,13 +236,24 @@ Status MlirFunctionOptimizationPass::Run(
     auto pass_state = per_pass_state[per_pass_state_index++];
     if (pass_state == MlirOptimizationPassState::Enabled) {
       VLOG(2) << "Run MLIR graph optimization pass: " << StringRefToView(name);
+      VLOG(2) << "Graph #nodes " << (*graph)->num_nodes() << " #edges "
+              << (*graph)->num_edges();
       timings.Reset({kTfMlirCategory, name.str()});
       pass_status = pass_registration.pass->Run(config_proto, *module_ref,
                                                 **graph, *flib_def);
       timings.ReportAndStop();
+      if (pass_status.ok()) {
+        VLOG(2) << "Finished MLIR graph optimization pass: "
+                << StringRefToView(name);
+        VLOG(2) << "Graph #nodes " << (*graph)->num_nodes() << " #edges "
+                << (*graph)->num_edges();
+        is_module_updated = true;
+      }
     } else if (pass_state == MlirOptimizationPassState::FallbackEnabled) {
       VLOG(2) << "Run MLIR graph optimization pass with fallback: "
               << StringRefToView(name);
+      VLOG(2) << "Graph #nodes " << (*graph)->num_nodes() << " #edges "
+              << (*graph)->num_edges();
       // Make sure when the pass is FallbackEnabled, it only modifies the MLIR
       // module in case of no failures.
       auto module_ref_clone = module_ref->clone();
@@ -250,10 +262,16 @@ Status MlirFunctionOptimizationPass::Run(
                                                 **graph, *flib_def);
       timings.ReportAndStop();
 
-      if (pass_status.ok())
+      if (pass_status.ok()) {
+        VLOG(2) << "Finished MLIR graph optimization pass with fallback: "
+                << StringRefToView(name);
+        VLOG(2) << "Graph #nodes " << (*graph)->num_nodes() << " #edges "
+                << (*graph)->num_edges();
         module_ref = module_ref_clone;
-      else
+        is_module_updated = true;
+      } else {
         module_ref_clone->destroy();
+      }
     } else {
       VLOG(2) << "MLIR graph optimization pass: " << StringRefToView(name)
               << " is disabled and will not be run.";
@@ -283,6 +301,11 @@ Status MlirFunctionOptimizationPass::Run(
     }
   }
 
+  if (!is_module_updated) {
+    VLOG(2) << "MLIR module is not updated. Using the original graph. "
+            << "Do not convert mlir module back to graph";
+    return OkStatus();
+  }
   GraphExportConfig export_config;
   absl::flat_hash_set<Node*> control_ret_nodes;
 
@@ -325,7 +348,6 @@ Status MlirV1CompatGraphOptimizationPass::Run(
   auto pass_state =
       pass->GetPassState(options.device_set, options.session_options->config,
                          **options.graph, *options.flib_def);
-
 
   if (pass_state == MlirOptimizationPassState::Disabled) {
     LOG_FIRST_N(INFO, 1) << "MLIR V1 optimization pass is not enabled";

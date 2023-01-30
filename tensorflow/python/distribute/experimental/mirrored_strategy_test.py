@@ -17,14 +17,18 @@
 from absl.testing import parameterized
 import numpy as np
 
+from tensorflow.dtensor.python import api as d_api
 from tensorflow.dtensor.python import d_variable
 from tensorflow.dtensor.python import layout
 from tensorflow.dtensor.python import mesh_util
 from tensorflow.dtensor.python.tests import test_util
+from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute.experimental import mirrored_strategy
 from tensorflow.python.eager import test
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
+from tensorflow.python.ops import stateless_random_ops
 from tensorflow.python.ops import variables
 
 
@@ -177,6 +181,150 @@ class StrategyCreationTest(test_util.DTensorBaseTest):
         ValueError, 'Mesh and devices can not be provided at the same time'):
       _ = mirrored_strategy.MirroredStrategy(mesh=mesh, devices=device_list)
 
+
+class StrategyDatasetTest(test_util.DTensorBaseTest):
+
+  def setUp(self):
+    super().setUp()
+    global_ids = test_util.create_device_ids_array((2,))
+    local_ids = np.ravel(global_ids).tolist()
+    mesh_dict = {
+        device: layout.Mesh(['batch'], global_ids, local_ids,
+                            test_util.create_device_list((2,), device))
+        for device in ['TPU', 'GPU', 'CPU']
+    }
+    self.mesh = self.configTestMesh(mesh_dict)
+
+    self.images = stateless_random_ops.stateless_random_uniform(
+        [8, 8, 3], seed=(1, 2), minval=0, maxval=255)
+    self.labels = stateless_random_ops.stateless_random_uniform(
+        [1], seed=(1, 2), minval=0, maxval=10)
+
+    self.dataset = dataset_ops.Dataset.from_tensors(
+        (self.images, self.labels)).repeat()
+
+  def test_create_batched_dataset(self):
+    strategy = mirrored_strategy.MirroredStrategy(self.mesh)
+    global_batch_size = 8
+    dataset = self.dataset.batch(global_batch_size).prefetch(2)
+
+    distributed_dataset = strategy.experimental_distribute_dataset(dataset)
+    element = next(iter(distributed_dataset))
+    batched_image, batched_label = element
+    self.assertEqual(batched_image.shape, [global_batch_size, 8, 8, 3])
+    self.assertEqual(batched_label.shape, [global_batch_size, 1])
+
+    # Make sure when unpack the tensor, each of them has enough shards.
+    self.assertLen(d_api.unpack(batched_image), self.mesh.num_local_devices())
+    self.assertLen(d_api.unpack(batched_label), self.mesh.num_local_devices())
+
+  def test_uneven_batched_dataset(self):
+    elements = [[1, 2, 3], [1, 2], [1, 2, 3, 4]]
+    dataset = dataset_ops.Dataset.from_generator(
+        lambda: elements, dtypes.int64).repeat()
+    strategy = mirrored_strategy.MirroredStrategy(self.mesh)
+    with self.assertRaisesRegex(ValueError, 'requires a static batch size'):
+      strategy.experimental_distribute_dataset(dataset)
+
+  def test_create_partial_batched_dataset(self):
+    # TODO(b/210887657): Support last partial batch.
+    self.skipTest('Test failed due to last partial batch')
+    dataset = dataset_ops.Dataset.from_tensors(
+        (self.images, self.labels)).repeat(30)  # There is a last partial batch
+
+    strategy = mirrored_strategy.MirroredStrategy(self.mesh)
+    global_batch_size = 8
+    dataset = dataset.batch(global_batch_size).prefetch(2)
+
+    distributed_dataset = strategy.experimental_distribute_dataset(dataset)
+    expected_element_batch_size = [8, 8, 8, 6]
+    # The last batch with 6 element will fail to produce with StopIteration.
+    iterator = iter(distributed_dataset)
+    for batch_size in expected_element_batch_size:
+      element = next(iterator)
+      batched_image, batched_label = element
+      self.assertEqual(batched_image.shape, [batch_size, 8, 8, 3])
+      self.assertEqual(batched_label.shape, [batch_size, 1])
+
+      # Make sure when unpack the tensor, each of them has enough shards.
+      self.assertLen(d_api.unpack(batched_image), self.mesh.num_local_devices())
+      self.assertLen(d_api.unpack(batched_label), self.mesh.num_local_devices())
+
+  def test_deprecated_strategy_methods(self):
+    strategy = mirrored_strategy.MirroredStrategy(self.mesh)
+    with self.assertRaisesRegex(
+        NotImplementedError, 'only available in the V1 API'):
+      strategy.make_dataset_iterator(self.dataset)
+
+    with self.assertRaisesRegex(
+        NotImplementedError, 'only available in the V1 API'):
+      strategy.make_input_fn_iterator(lambda _: self.dataset)
+
+  def test_distribute_dataset_from_fn(self):
+    local_batch_size = 4
+    global_batch_size = 8
+    def dataset_fn(option):
+      del option
+      return dataset_ops.Dataset.from_tensors(
+          (self.images, self.labels)).repeat().batch(
+              local_batch_size, drop_remainder=True).prefetch(2)
+    strategy = mirrored_strategy.MirroredStrategy(self.mesh)
+    distributed_dataset = strategy.distribute_datasets_from_function(
+        dataset_fn, None)
+
+    element = next(iter(distributed_dataset))
+    batched_image, batched_label = element
+    self.assertEqual(batched_image.shape, [global_batch_size, 8, 8, 3])
+    self.assertEqual(batched_label.shape, [global_batch_size, 1])
+
+    # Make sure there are two shards when unpack, and each of them has 4 as
+    # batch size
+    unpacked_images = d_api.unpack(batched_image)
+    self.assertLen(unpacked_images, self.mesh.num_local_devices())
+    self.assertEqual(unpacked_images[0].shape, [local_batch_size, 8, 8, 3])
+    self.assertEqual(unpacked_images[1].shape, [local_batch_size, 8, 8, 3])
+
+  def test_distribute_values_from_function(self):
+    array_value = np.array([3., 2., 1.])
+    def value_fn(ctx):
+      return array_value[ctx.replica_id_in_sync_group]
+    strategy = mirrored_strategy.MirroredStrategy(self.mesh)
+    distributed_values = (
+        strategy.experimental_distribute_values_from_function(
+            value_fn))
+    self.assertDTensorEqual(
+        constant_op.constant([3., 2.], dtype=dtypes.float64),
+        layout.Layout.batch_sharded(self.mesh, batch_dim='batch', rank=1),
+        distributed_values)
+
+  def test_distribute_values_from_function_with_nested_structure(self):
+    array_value = np.array([3., 2., 1.])
+    def value_fn(ctx):
+      value = array_value[ctx.replica_id_in_sync_group]
+      return {'a': value,
+              'b': constant_op.constant([value + 1.0, value + 2.0])}
+    strategy = mirrored_strategy.MirroredStrategy(self.mesh)
+    distributed_values = (
+        strategy.experimental_distribute_values_from_function(
+            value_fn))
+    self.assertIsInstance(distributed_values, dict)
+    self.assertDTensorEqual(
+        constant_op.constant([3., 2.], dtype=dtypes.float64),
+        layout.Layout.batch_sharded(self.mesh, batch_dim='batch', rank=1),
+        distributed_values['a'])
+    unpacked_a = d_api.unpack(distributed_values['a'])
+    # Note that this might have a slight behavior difference, the original
+    # mirrored strategy may return scalar for each PerReplica. The DTensor
+    # implementation is more strict and always ensures the PerReplica
+    # value has the same rank as the global-view Tensor.
+    self.assertAllClose(unpacked_a[0], [3.])
+    self.assertAllClose(unpacked_a[1], [2.])
+    self.assertDTensorEqual(
+        constant_op.constant([4., 5., 3., 4.], dtype=dtypes.float64),
+        layout.Layout.batch_sharded(self.mesh, batch_dim='batch', rank=1),
+        distributed_values['b'])
+
+  # TODO(scottzhu): Add test for unpacking the dataset in tf.function
 
 if __name__ == '__main__':
   test.main()

@@ -1125,7 +1125,7 @@ class TransposeOpToTransposeConverter
         llvm::to_vector(op.getPermutation().getValues<int64_t>()));
 
     rewriter.replaceOpWithNewOp<linalg::TransposeOp>(
-        op, op.getOperand(), emptyTensor, permutation,
+        op, adaptor.getOperand(), emptyTensor, permutation,
         linalg::getPrunedAttributeList(op));
     return success();
   }
@@ -4082,6 +4082,7 @@ void populateHloToLinalgConversionPattern(MLIRContext* context,
       PointwiseToLinalgMapConverter<mhlo::SineOp>,
       PointwiseToLinalgMapConverter<mhlo::SqrtOp>,
       PointwiseToLinalgMapConverter<mhlo::SubtractOp>,
+      PointwiseToLinalgMapConverter<mhlo::TanOp>,
       PointwiseToLinalgMapConverter<mhlo::TanhOp>,
       PointwiseToLinalgMapConverter<mhlo::XorOp>,
       ReduceOpToReduceConverter,
@@ -4138,6 +4139,7 @@ void populateHloToLinalgConversionPattern(MLIRContext* context,
       PointwiseToLinalgConverter<mhlo::SineOp>,
       PointwiseToLinalgConverter<mhlo::SqrtOp>,
       PointwiseToLinalgConverter<mhlo::SubtractOp>,
+      PointwiseToLinalgConverter<mhlo::TanOp>,
       PointwiseToLinalgConverter<mhlo::TanhOp>,
       PointwiseToLinalgConverter<mhlo::XorOp>,
       ReduceOpToGenericConverter,

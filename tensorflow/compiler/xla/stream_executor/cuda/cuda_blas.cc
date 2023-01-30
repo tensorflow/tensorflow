@@ -63,13 +63,13 @@ limitations under the License.
 #include "tensorflow/compiler/xla/stream_executor/gpu/gpu_stream.h"
 #include "tensorflow/compiler/xla/stream_executor/gpu/gpu_timer.h"
 #include "tensorflow/compiler/xla/stream_executor/gpu/gpu_types.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/initialize.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/status.h"
+#include "tensorflow/compiler/xla/stream_executor/platform/initialize.h"
 #include "tensorflow/compiler/xla/stream_executor/platform/logging.h"
 #include "tensorflow/compiler/xla/stream_executor/platform/port.h"
 #include "tensorflow/compiler/xla/stream_executor/plugin_registry.h"
 #include "tensorflow/compiler/xla/stream_executor/scratch_allocator.h"
 #include "tensorflow/compiler/xla/stream_executor/stream_executor.h"
+#include "tensorflow/tsl/platform/status.h"
 #include "tensorflow/tsl/platform/tensor_float_32_utils.h"
 
 namespace stream_executor {
@@ -389,7 +389,7 @@ tsl::Status CUDABlas::DoBlasInternalImpl(FuncT cublas_func, Stream *stream,
 
   CHECK(blas_ != nullptr);
   if (!SetStream(stream)) {
-    return port::InternalError("Failed setting stream");
+    return tsl::errors::Internal("Failed setting stream");
   }
 
 #if CUDA_VERSION >= 9000
@@ -401,7 +401,7 @@ tsl::Status CUDABlas::DoBlasInternalImpl(FuncT cublas_func, Stream *stream,
   if (math_type == CUBLAS_TENSOR_OP_MATH) {
 #endif
     if (!math_mode.Init(math_type)) {
-      return port::InternalError("Failed initializing math mode");
+      return tsl::errors::Internal("Failed initializing math mode");
     }
   }
 #endif
@@ -410,13 +410,13 @@ tsl::Status CUDABlas::DoBlasInternalImpl(FuncT cublas_func, Stream *stream,
   ScopedCublasPointerMode pointer_mode{blas_};
   if (!pointer_mode.Init(pointer_mode_host ? CUBLAS_POINTER_MODE_HOST
                                            : CUBLAS_POINTER_MODE_DEVICE)) {
-    return port::InternalError("Failed setting error mode");
+    return tsl::errors::Internal("Failed setting error mode");
   }
   cublasStatus_t ret = cublas_func(blas_, args...);
   if (ret == CUBLAS_STATUS_SUCCESS) {
     return ::tsl::OkStatus();
   }
-  return port::InternalError(ToString(ret));
+  return tsl::errors::Internal(ToString(ret));
 }
 
 // cublas_func may be overloaded, so we need to figure out which one we really
@@ -682,7 +682,7 @@ tsl::Status CUDABlas::DoBlasGemm(Stream *stream, blas::Transpose transa,
   switch (dtype) {
     case blas::DataType::kHalf: {
 #if CUDA_VERSION < 7050
-      return port::InternalError(
+      return tsl::errors::Internal(
           "fp16 sgemm is not implemented in this cuBLAS version "
           "(need at least CUDA 7.5)");
 #endif
@@ -747,8 +747,8 @@ tsl::Status CUDABlas::DoBlasGemm(Stream *stream, blas::Transpose transa,
           static_cast<GpuDoubleComplexType *>(c->opaque()), ldc);
     }
     default:
-      return port::InternalError(absl::StrCat("Unsupported datatype for GEMM: ",
-                                              blas::DataTypeString(dtype)));
+      return tsl::errors::Internal("Unsupported datatype for GEMM: ",
+                                   blas::DataTypeString(dtype));
   }
 }
 
@@ -925,43 +925,43 @@ static bool UsesTensorOps(blas::AlgorithmType algo) {
 #endif
 }
 
-static port::StatusOr<cublasMath_t> GetMathTypeForGemmEx(
+static tsl::StatusOr<cublasMath_t> GetMathTypeForGemmEx(
     Stream *stream, blas::AlgorithmType algorithm, blas::DataType type_a,
     blas::DataType type_b, blas::ComputePrecision precision) {
   if (type_a != type_b) {
-    return port::InternalError("Types of inputs mismatch");
+    return tsl::errors::Internal("Types of inputs mismatch");
   }
 
   // GPUs < sm_50 don't support cublasGemmEx.
   CudaComputeCapability cc = stream->GetCudaComputeCapability();
   if (cc.major < 5) {
-    return port::InternalError(absl::StrCat(
-        "sm_", cc.major, " does not support explicit gemm algorithms."));
+    return tsl::errors::Internal("sm_", cc.major,
+                                 " does not support explicit gemm algorithms.");
   }
 
   bool algo_uses_tensor_ops = UsesTensorOps(algorithm);
   cublasMath_t math_type = CUBLAS_DEFAULT_MATH;
   if (algo_uses_tensor_ops) {
     if (cc.major < 7) {
-      return port::InternalError(absl::StrCat(
+      return tsl::errors::Internal(
           "Algorithm ", algorithm,
           " uses tensor ops, but tensor ops are not available in sm", cc.major,
-          "X devices."));
+          "X devices.");
     } else if (type_a == blas::DataType::kFloat) {
 #if CUDA_VERSION < 11000
-      return port::InternalError(absl::StrCat(
+      return tsl::errors::Internal(
           "Algorithm ", algorithm,
-          " uses tensor ops, but tensor ops are not available for fp32"));
+          " uses tensor ops, but tensor ops are not available for fp32");
 #else
       if (cc.major < 8) {
-        return port::InternalError(absl::StrCat(
+        return tsl::errors::Internal(
             "Algorithm ", algorithm,
             " uses tensor ops, but tensor ops are not available in sm",
-            cc.major, "X devices for float input types."));
+            cc.major, "X devices for float input types.");
       } else if (!tsl::tensor_float_32_execution_enabled()) {
-        return port::InternalError(absl::StrCat(
+        return tsl::errors::Internal(
             "Algorithm ", algorithm,
-            " uses tensor ops, but tensor ops are disabled for fp32 inputs"));
+            " uses tensor ops, but tensor ops are disabled for fp32 inputs");
       }
       math_type = CUBLAS_TF32_TENSOR_OP_MATH;
 #endif
@@ -970,9 +970,9 @@ static port::StatusOr<cublasMath_t> GetMathTypeForGemmEx(
       math_type = CUBLAS_TENSOR_OP_MATH;
 #endif
     } else {
-      return port::InternalError(
-          absl::StrCat("Algorithm ", algorithm,
-                       " uses tensor ops which are not supported for input"));
+      return tsl::errors::Internal(
+          "Algorithm ", algorithm,
+          " uses tensor ops which are not supported for input");
     }
   }
   if (precision > blas::kDefaultComputePrecision) {
@@ -984,7 +984,7 @@ static port::StatusOr<cublasMath_t> GetMathTypeForGemmEx(
 #if CUDA_VERSION >= 9000 && CUDA_VERSION < 9020
   if ((algorithm == CUBLAS_GEMM_DEFAULT || algorithm >= CUBLAS_GEMM_ALGO13) &&
       std::max({m, n, k}) >= 2097153 && cc_major < 7) {
-    return port::InternalError(
+    return tsl::errors::Internal(
         "DoBlasGemmWithAlgorithm returning false to work around cudnn "
         "<9.2 bug with m, n, or k >= 2097153.  See b/79126339.");
   }
@@ -992,14 +992,14 @@ static port::StatusOr<cublasMath_t> GetMathTypeForGemmEx(
   return math_type;
 }
 
-static port::StatusOr<std::unique_ptr<GpuTimer, GpuTimerDeleter>>
+static tsl::StatusOr<std::unique_ptr<GpuTimer, GpuTimerDeleter>>
 StartGpuTimerForProfile(Stream *stream, GpuExecutor *executor,
                         blas::ProfileResult *output_profile_result) {
   std::unique_ptr<GpuTimer, GpuTimerDeleter> timer;
   if (output_profile_result) {
     timer.reset(new GpuTimer(executor));
     if (!timer->Init() || !timer->Start(AsGpuStream(stream))) {
-      return port::InternalError(
+      return tsl::errors::Internal(
           "output_profile_result given, but unable to create a GpuTimer");
     }
   }
@@ -1013,7 +1013,7 @@ static tsl::Status PopulateProfileFromTimer(
     // GpuTimer will CHECK-fail if we Stop() it while the stream is in an error
     // state.
     if (!timer->Stop(AsGpuStream(stream))) {
-      return port::InternalError("unable to stop GpuTimer.");
+      return tsl::errors::Internal("unable to stop GpuTimer.");
     }
     output_profile_result->set_is_valid(true);
     output_profile_result->set_algorithm(algorithm);
@@ -1265,7 +1265,7 @@ tsl::Status CUDABlas::DoBlasGemmBatchedInternal(
   if (!stream->ThenMemcpy(&a, a_raw_ptrs.data(), size).ok() ||
       !stream->ThenMemcpy(&b, b_raw_ptrs.data(), size).ok() ||
       !stream->ThenMemcpy(&c, c_raw_ptrs.data(), size).ok()) {
-    return tsl::Status(port::error::INTERNAL,
+    return tsl::Status(tsl::error::INTERNAL,
                        "failed to copy memory from host to device in "
                        "CUDABlas::DoBlasGemmBatched");
   }
@@ -1330,7 +1330,7 @@ tsl::Status CUDABlas::DoBlasGemmBatchedInternal(
     if (ok) {
       return ::tsl::OkStatus();
     }
-    return tsl::Status(port::error::INTERNAL,
+    return tsl::Status(tsl::error::INTERNAL,
                        "failed BLAS call, see log for details");
   } else {
     // Fall back to a loop for fp16
@@ -1588,8 +1588,8 @@ tsl::Status CUDABlas::DoBlasGemmStridedBatched(
           batch_count);
     }
     default:
-      return port::InternalError(absl::StrCat("Unsupported datatype for GEMM: ",
-                                              blas::DataTypeString(dtype)));
+      return tsl::errors::Internal("Unsupported datatype for GEMM: ",
+                                   blas::DataTypeString(dtype));
   }
 }
 
@@ -1709,7 +1709,7 @@ tsl::Status CUDABlas::GetVersion(std::string *version) {
   int v;
   auto status = cublasGetVersion(blas_, &v);
   if (status != CUBLAS_STATUS_SUCCESS) {
-    return port::InternalError(ToString(status));
+    return tsl::errors::Internal(ToString(status));
   }
   *version = std::to_string(v);
   return ::tsl::OkStatus();

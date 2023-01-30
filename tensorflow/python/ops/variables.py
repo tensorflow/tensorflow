@@ -27,6 +27,7 @@ from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_conversion_registry
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
@@ -3139,8 +3140,8 @@ class PartitionedVariable:
 
 # Register a conversion function which reads the value of the variable,
 # allowing instances of the class to be used as tensors.
-ops.register_tensor_conversion_function(RefVariable,
-                                        RefVariable._TensorConversionFunction)  # pylint: disable=protected-access
+tensor_conversion_registry.register_tensor_conversion_function(
+    RefVariable, RefVariable._TensorConversionFunction)  # pylint: disable=protected-access
 
 
 @tf_export(v1=["global_variables"])
@@ -3499,5 +3500,5 @@ def report_uninitialized_variables(var_list=None,
         return array_ops.boolean_mask(variable_names_tensor, variables_mask)
 
 
-ops.register_tensor_conversion_function(
+tensor_conversion_registry.register_tensor_conversion_function(
     PartitionedVariable, PartitionedVariable._TensorConversionFunction)  # pylint: disable=protected-access

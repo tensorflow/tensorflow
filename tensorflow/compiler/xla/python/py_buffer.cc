@@ -30,6 +30,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
 #include "tensorflow/compiler/xla/python/ifrt/array.h"
 #include "tensorflow/compiler/xla/python/ifrt/device.h"
+#include "tensorflow/compiler/xla/python/pjrt_ifrt/pjrt_array.h"
 #include "tensorflow/compiler/xla/python/py_client.h"
 #include "tensorflow/compiler/xla/python/python_ref_manager.h"
 #include "tensorflow/compiler/xla/python/python_utils.h"
@@ -82,6 +83,28 @@ void PyBuffer_tp_dealloc(PyObject* self) {
   o->buffer.~PyBuffer();
   tp->tp_free(self);
   Py_DECREF(tp);
+}
+
+// Returns if shape has a major-to-minor layout.
+bool HasMajorToMinorLayout(const xla::Shape& shape) {
+  if (shape.has_layout()) {
+    for (int i = 0; i < shape.layout().minor_to_major_size(); ++i) {
+      if (shape.layout().minor_to_major(i) !=
+          shape.layout().minor_to_major_size() - 1 - i) {
+        return false;
+      }
+    }
+  }
+  return true;
+}
+
+// Returns byte_strides if shape has a non-major-to-minor layout.
+std::optional<std::vector<int64_t>> ByteStridesOrDefaultForShapeInt64(
+    const Shape& shape) {
+  if (!shape.has_layout() || HasMajorToMinorLayout(shape)) {
+    return std::nullopt;
+  }
+  return ByteStridesForShapeInt64(shape);
 }
 
 }  // namespace
@@ -152,12 +175,16 @@ PyBuffer::~PyBuffer() {
 }
 
 StatusOr<int64_t> PyBuffer::size() {
-  Shape max_buffer_shape = pjrt_buffer()->on_device_shape();
-  if (max_buffer_shape.is_dynamic()) {
-    TF_ASSIGN_OR_RETURN(const auto* dynamic_shape, xla_dynamic_shape());
-    return ShapeUtil::ElementsIn(*dynamic_shape);
+  if (llvm::isa<ifrt::PjRtCompatibleArray>(ifrt_array_.get())) {
+    Shape max_buffer_shape = pjrt_buffer()->on_device_shape();
+    if (max_buffer_shape.is_dynamic()) {
+      TF_ASSIGN_OR_RETURN(const auto* dynamic_shape, xla_dynamic_shape());
+      return ShapeUtil::ElementsIn(*dynamic_shape);
+    }
+    return ShapeUtil::ElementsIn(max_buffer_shape);
+  } else {
+    return ifrt_array_->shape().num_elements();
   }
-  return ShapeUtil::ElementsIn(max_buffer_shape);
 }
 
 StatusOr<const Shape*> PyBuffer::xla_dynamic_shape() {
@@ -180,11 +207,12 @@ StatusOr<const Shape*> PyBuffer::xla_dynamic_shape() {
 }
 
 pybind11::tuple PyBuffer::python_shape() const {
-  return SpanToTuple(pjrt_buffer()->on_device_shape().dimensions());
+  return SpanToTuple(ifrt_array_->shape().dims());
 }
 
 pybind11::dtype PyBuffer::python_dtype() const {
-  PrimitiveType primitive = pjrt_buffer()->on_device_shape().element_type();
+  // TODO(hyeontaek): Support non-XLA types such as xla::ifrt::DType::kString.
+  PrimitiveType primitive = ifrt::ToPrimitiveType(ifrt_array_->dtype()).value();
   return PrimitiveTypeToDtype(primitive).value();
 }
 
@@ -260,7 +288,9 @@ Status PyBuffer::BlockHostUntilReady() {
 }
 
 Status PyBuffer::CopyToHostAsync() {
-  if (!pjrt_buffer()->IsOnCpu() && !host_value_) {
+  if ((!llvm::isa<ifrt::PjRtCompatibleArray>(ifrt_array_.get()) ||
+       !pjrt_buffer()->IsOnCpu()) &&
+      !host_value_) {
     auto transfer_guard_formatter = [this] {
       auto shape = py::cast<std::string>(py::str(python_shape()));
       auto dtype = py::cast<std::string>(py::str(python_dtype()));
@@ -275,18 +305,37 @@ Status PyBuffer::CopyToHostAsync() {
     // TODO(b/182461453): This is a blocking call. If we further implemented
     // populating dynamic shape metadata while fetching the literal, we wouldn't
     // need this static approach.
-    TF_ASSIGN_OR_RETURN(const auto* dynamic_shape, xla_dynamic_shape());
+    const xla::Shape* dynamic_shape;
+    std::optional<xla::Shape> shape_holder;
+    if (llvm::isa<ifrt::PjRtCompatibleArray>(ifrt_array_.get())) {
+      TF_ASSIGN_OR_RETURN(dynamic_shape, xla_dynamic_shape());
+    } else {
+      // Skip querying the dynamic shape for a non-PjRt Array.
+      TF_ASSIGN_OR_RETURN(xla::PrimitiveType type,
+                          ifrt::ToPrimitiveType(ifrt_array_->dtype()));
+      shape_holder = ShapeUtil::MakeShapeWithDescendingLayout(
+          type, ifrt_array_->shape().dims());
+      dynamic_shape = &*shape_holder;
+    }
 
     py::gil_scoped_release gil;
-    // TODO(hyeontaek): Add a version using ifrt::Array::ToHostBuffer().
-    host_value->value = std::make_shared<Literal>(
-        ShapeUtil::DeviceShapeToHostShape(*dynamic_shape));
-    Literal* literal = host_value->value.get();
-    pjrt_buffer()->ToLiteral(
-        literal, [host_value{std::move(host_value)}](Status status) {
-          host_value->status = std::move(status);
-          host_value->ready.Notify();
-        });
+    xla::Shape host_shape = ShapeUtil::DeviceShapeToHostShape(*dynamic_shape);
+    // TODO(hyeontaek): Several PjRt runtimes assume that the host buffer uses
+    // the same transposition as the device buffer. This is different from
+    // PjRtBuffer::ToLiteral()'s semantics that the runtime respects the layout
+    // of the host buffer literal. On the other hand, the runtime often knows
+    // better about an efficient layout for the host buffer. It will be useful
+    // to revisit the semantics of PjRtBuffer::ToLiteral() to see if it is
+    // desirable for the runtime to choose the layout.
+    host_value->value = std::make_shared<Literal>(host_shape);
+    ifrt::Future<Status> copy_future = ifrt_array_->CopyToHostBuffer(
+        host_value->value->untyped_data(),
+        ByteStridesOrDefaultForShapeInt64(host_shape),
+        ifrt::ArrayCopySemantics::kReuseInput);
+    copy_future.OnReady([host_value{std::move(host_value)}](Status status) {
+      host_value->status = std::move(status);
+      host_value->ready.Notify();
+    });
   }
   return OkStatus();
 }
@@ -295,32 +344,35 @@ StatusOr<pybind11::object> PyBuffer::AsNumPyArray(py::handle this_obj) {
   if (ifrt_array_->IsDeleted()) {
     return InvalidArgument("DeviceArray has been deleted.");
   }
-  TF_RET_CHECK(pjrt_buffer()->on_device_shape().IsArray());
-  // On CPU, we can return the value in a zero-copy way.
-  if (pjrt_buffer()->IsOnCpu()) {
-    TF_ASSIGN_OR_RETURN(const auto* shape, xla_dynamic_shape());
-    TF_ASSIGN_OR_RETURN(py::dtype dtype,
-                        PrimitiveTypeToDtype(shape->element_type()));
-    // Objects that must be kept alive while the array is alive.
-    struct Hold {
-      py::object buffer;
-      std::unique_ptr<PjRtBuffer::ExternalReference> external_reference_hold;
-    };
-    auto hold = std::make_unique<Hold>();
-    TF_ASSIGN_OR_RETURN(hold->external_reference_hold,
-                        pjrt_buffer()->AcquireExternalReference());
-    hold->buffer = py::reinterpret_borrow<py::object>(this_obj);
-    void* data = hold->external_reference_hold->OpaqueDeviceMemoryDataPointer();
-    py::capsule hold_capsule(hold.release(),
-                             [](void* h) { delete static_cast<Hold*>(h); });
-    py::array array(dtype, shape->dimensions(), ByteStridesForShape(*shape),
-                    data, hold_capsule);
-    array.attr("flags").attr("writeable") = Py_False;
-    {
-      py::gil_scoped_release gil;
-      TF_RETURN_IF_ERROR(ifrt_array_->GetReadyFuture().Await());
+  if (llvm::isa<ifrt::PjRtCompatibleArray>(ifrt_array_.get())) {
+    TF_RET_CHECK(pjrt_buffer()->on_device_shape().IsArray());
+    // On CPU, we can return the value in a zero-copy way.
+    if (pjrt_buffer()->IsOnCpu()) {
+      TF_ASSIGN_OR_RETURN(const auto* shape, xla_dynamic_shape());
+      TF_ASSIGN_OR_RETURN(py::dtype dtype,
+                          PrimitiveTypeToDtype(shape->element_type()));
+      // Objects that must be kept alive while the array is alive.
+      struct Hold {
+        py::object buffer;
+        std::unique_ptr<PjRtBuffer::ExternalReference> external_reference_hold;
+      };
+      auto hold = std::make_unique<Hold>();
+      TF_ASSIGN_OR_RETURN(hold->external_reference_hold,
+                          pjrt_buffer()->AcquireExternalReference());
+      hold->buffer = py::reinterpret_borrow<py::object>(this_obj);
+      void* data =
+          hold->external_reference_hold->OpaqueDeviceMemoryDataPointer();
+      py::capsule hold_capsule(hold.release(),
+                               [](void* h) { delete static_cast<Hold*>(h); });
+      py::array array(dtype, shape->dimensions(), ByteStridesForShape(*shape),
+                      data, hold_capsule);
+      array.attr("flags").attr("writeable") = Py_False;
+      {
+        py::gil_scoped_release gil;
+        TF_RETURN_IF_ERROR(ifrt_array_->GetReadyFuture().Await());
+      }
+      return array;
     }
-    return array;
   }
 
   TF_RETURN_IF_ERROR(CopyToHostAsync());

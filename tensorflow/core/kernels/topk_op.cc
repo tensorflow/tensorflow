@@ -22,6 +22,7 @@ limitations under the License.
 #include <algorithm>
 #include <numeric>
 #include <vector>
+
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
@@ -264,7 +265,6 @@ namespace functor {
   extern template struct functor::TopKFunctor<GPUDevice, T>;
 
 TF_CALL_GPU_NUMBER_TYPES(DECLARE_GPU_SPEC);
-TF_CALL_bfloat16(DECLARE_GPU_SPEC);
 TF_CALL_INTEGRAL_TYPES(DECLARE_GPU_SPEC);
 
 #undef DECLARE_GPU_SPEC
@@ -282,7 +282,6 @@ TF_CALL_INTEGRAL_TYPES(DECLARE_GPU_SPEC);
                           TopK<GPUDevice, type>)
 
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_KERNELS);
-TF_CALL_bfloat16(REGISTER_KERNELS);
 TF_CALL_INTEGRAL_TYPES(REGISTER_KERNELS);
 #undef REGISTER_KERNELS
 

@@ -258,6 +258,45 @@ class DTensorSPMDTest(test_util.DTensorBaseTest):
     self.assertDTensorEqual(dtensor_result, self.first_dimension_sharded_layout,
                             dtensor_scattered_result)
 
+  def testReduceScatterLastDimSharded(
+      self,
+  ):
+    # ReduceScatter on non-0th dimension which requires a transpose.
+    a, b, c = 128, 128, 128
+    seed = [0, 1]
+    first_dim_sharded = self.first_dimension_sharded_layout
+    second_dim_sharded = self.last_dimension_sharded_layout
+
+    @polymorphic_function.function
+    def uniform(shape, seed, layout):
+      return api.relayout(
+          stateless_random_ops.stateless_random_uniform(shape=shape, seed=seed),
+          layout=layout,
+      )
+
+    with api.run_on(self.mesh):
+      m1 = uniform(layout=second_dim_sharded, shape=[a, b], seed=seed)
+      m2 = uniform(layout=first_dim_sharded, shape=[b, c], seed=seed)
+
+    @polymorphic_function.function
+    def func():
+      m3 = math_ops.matmul(m1, m2)
+      return m3
+
+    @polymorphic_function.function
+    def scattered_func():
+      m3 = math_ops.matmul(m1, m2)
+      return api.relayout(m3, self.last_dimension_sharded_layout)
+
+    dtensor_result = func()
+    dtensor_scattered_result = scattered_func()
+
+    self.assertDTensorEqual(
+        dtensor_result,
+        self.last_dimension_sharded_layout,
+        dtensor_scattered_result,
+    )
+
   def testExpandDimsDifferentInputAndOutputLayouts(self,):
     src_numpy = np.random.uniform(size=[10, 10])
     src = constant_op.constant(src_numpy, dtype=dtypes.float32)

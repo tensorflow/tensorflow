@@ -32,9 +32,11 @@ limitations under the License.
 #include "tensorflow/dtensor/mlir/expansions/identity_n_spmd_expander.h"
 #include "tensorflow/dtensor/mlir/expansions/in_top_k_spmd_expander.h"
 #include "tensorflow/dtensor/mlir/expansions/io_op_spmd_expander.h"
+#include "tensorflow/dtensor/mlir/expansions/iterator_spmd_expander.h"
 #include "tensorflow/dtensor/mlir/expansions/matmul_spmd_expander.h"
 #include "tensorflow/dtensor/mlir/expansions/meta_spmd_expander.h"
 #include "tensorflow/dtensor/mlir/expansions/nullary_spmd_expander.h"
+#include "tensorflow/dtensor/mlir/expansions/optional_spmd_expander.h"
 #include "tensorflow/dtensor/mlir/expansions/qr_spmd_expander.h"
 #include "tensorflow/dtensor/mlir/expansions/random_op_spmd_expander.h"
 #include "tensorflow/dtensor/mlir/expansions/range_spmd_expander.h"
@@ -523,6 +525,18 @@ REGISTER_SPMD(DisableCopyOnRead, TF::DisableCopyOnReadOp,
               DisableCopyOnReadSPMDExpander);
 REGISTER_SPMD(ShardedFilename, TF::ShardedFilenameOp, ReplicatedOpSPMDExpander);
 
+// tf.data Optional ops
+REGISTER_SPMD(OptionalHasValue, TF::OptionalHasValueOp,
+              OptionalHasValueSPMDExpander);
+REGISTER_SPMD(OptionalGetValue, TF::OptionalGetValueOp,
+              OptionalGetValueSPMDExpander);
+
+// tf.data Iterator ops
+REGISTER_SPMD(IteratorGetNext, TF::IteratorGetNextOp,
+              IteratorGetNextSPMDExpander);
+REGISTER_SPMD(IteratorGetNextAsOptional, TF::IteratorGetNextAsOptionalOp,
+              IteratorGetNextAsOptionalSPMDExpander);
+
 // Unsupported ops.
 REGISTER_SPMD(RandomNormal, TF::RandomUniformOp, UnsupportedOpSPMDExpander,
               /*error_message=*/
@@ -537,5 +551,6 @@ REGISTER_SPMD(RandomNormalInt, TF::RandomUniformIntOp,
 // Unique
 REGISTER_SPMD(Unique, TF::UniqueOp, ReplicatedOpSPMDExpander,
               /*relayout_when_sharded=*/true);
+
 }  // namespace dtensor
 }  // namespace tensorflow

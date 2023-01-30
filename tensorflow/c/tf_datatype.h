@@ -69,8 +69,8 @@ typedef enum TF_DataType {
   TF_VARIANT = 21,
   TF_UINT32 = 22,
   TF_UINT64 = 23,
-  TF_FLOAT8_E5M2 = 24,    // 5 exponent bits, 3 mantissa bits.
-  TF_FLOAT8_E4M3FN = 25,  // 4 exponent bits, 2 mantissa bits, finite-only, with
+  TF_FLOAT8_E5M2 = 24,    // 5 exponent bits, 2 mantissa bits.
+  TF_FLOAT8_E4M3FN = 25,  // 4 exponent bits, 3 mantissa bits, finite-only, with
                           // 2 NaNs (0bS1111111).
 } TF_DataType;
 

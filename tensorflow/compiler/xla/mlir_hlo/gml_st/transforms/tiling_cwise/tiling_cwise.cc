@@ -18,7 +18,6 @@ limitations under the License.
 #include <utility>
 
 #include "gml_st/IR/gml_st_ops.h"
-#include "gml_st/interfaces/tiling_interface_impl.h"
 #include "gml_st/transforms/fusion/fusion.h"
 #include "gml_st/transforms/passes.h"
 #include "gml_st/transforms/tiling/tiling.h"
@@ -30,6 +29,7 @@ limitations under the License.
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
+#include "mlir/Dialect/Linalg/Transforms/TilingInterfaceImpl.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 
@@ -43,7 +43,8 @@ namespace {
 bool isRootOfCwiseExpr(Operation *op) {
   return isCwiseGenericOp(op) &&
          llvm::none_of(op->getUsers(), [](Operation *user) {
-           return isCwiseGenericOp(user) || llvm::isa<MaterializeOp>(user);
+           return isCwiseGenericOp(user) ||
+                  llvm::isa<tensor::ExtractSliceOp>(user);
          });
 }
 
@@ -59,7 +60,7 @@ struct TilingCwisePass : public impl::TilingCwisePassBase<TilingCwisePass> {
   void getDependentDialects(DialectRegistry &registry) const final {
     registry
         .insert<GmlStDialect, linalg::LinalgDialect, tensor::TensorDialect>();
-    registerGmlStTilingInterfaceExternalModels(registry);
+    linalg::registerTilingInterfaceExternalModels(registry);
   }
 
   void runOnOperation() override {
@@ -91,7 +92,7 @@ struct TilingCwisePass : public impl::TilingCwisePassBase<TilingCwisePass> {
     auto tileRootOfCwiseExprFn = [](TilingInterface op) {
       return success(isRootOfCwiseExpr(op));
     };
-    auto fuseCwiseOperandsGreedilyFn = [](MaterializeOp op) {
+    auto fuseCwiseOperandsGreedilyFn = [](tensor::ExtractSliceOp op) {
       return success(isCwiseGenericOp(op.getSource().getDefiningOp()));
     };
 

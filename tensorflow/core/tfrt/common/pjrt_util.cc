@@ -18,6 +18,7 @@ limitations under the License.
 #include <optional>
 #include <set>
 
+#include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/compiler/xla/pjrt/gpu/gpu_helpers.h"
 #include "tensorflow/compiler/xla/pjrt/gpu/se_gpu_pjrt_client.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
@@ -94,7 +95,7 @@ StatusOr<xla::PjRtClient*> GetOrCreatePjRtClient(
   }
   // TODO(b/260799193): use XlaPlatformInfo to pass device-specific options.
   // This info should be set in the plugin init for next pluggable device.
-  if (device_type != DEVICE_GPU) {
+  if (device_type != DEVICE_XLA_GPU) {
     return errors::Unimplemented(
         "The PJRT client for ", device_type,
         " is not created explicitly before its first use and creating this "

@@ -9,13 +9,9 @@ func.func @reduce_row_sum_2d_dynamic(%input: tensor<?x?xf32>) -> tensor<?xf32> {
       : (tensor<?x?xf32>, tensor<1xi32>) -> tensor<?xf32>
   func.return %0 : tensor<?xf32>
 }
-// CHECK: scf.parallel
-// CHECK:   scf.for
-// CHECK:     arith.addf %{{.*}}, %{{.*}} : vector<4xf32>
-// CHECK:     arith.addf %{{.*}}, %{{.*}} : vector<4xf32>
-// CHECK:     arith.addf %{{.*}}, %{{.*}} : vector<4xf32>
-// CHECK:     arith.addf %{{.*}}, %{{.*}} : vector<4xf32>
-// CHECK-NOT: arith.addf %{{.*}}, %{{.*}} : vector<4xf32>
+// CHECK:         scf.parallel
+// CHECK:           scf.for
+// CHECK-COUNT-4:     arith.addf %{{.*}}, %{{.*}} : vector<4xf32>
 
 // -----
 

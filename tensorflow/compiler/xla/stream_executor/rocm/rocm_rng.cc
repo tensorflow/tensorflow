@@ -20,13 +20,12 @@ limitations under the License.
 #include "tensorflow/compiler/xla/stream_executor/gpu/gpu_helpers.h"
 #include "tensorflow/compiler/xla/stream_executor/gpu/gpu_rng.h"
 #include "tensorflow/compiler/xla/stream_executor/gpu/gpu_stream.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/env.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/initialize.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/status.h"
 #include "tensorflow/compiler/xla/stream_executor/platform/dso_loader.h"
+#include "tensorflow/compiler/xla/stream_executor/platform/initialize.h"
 #include "tensorflow/compiler/xla/stream_executor/platform/logging.h"
 #include "tensorflow/compiler/xla/stream_executor/rng.h"
 #include "tensorflow/compiler/xla/stream_executor/rocm/rocm_platform_id.h"
+#include "tensorflow/tsl/platform/env.h"
 
 // Formats hiprandStatus_t to output prettified values into a log stream.
 std::ostream& operator<<(std::ostream& in, const hiprandStatus_t& status) {
@@ -80,12 +79,12 @@ namespace wrap {
     using FuncPtrT = std::add_pointer<decltype(::__name)>::type;          \
     static void* GetDsoHandle() {                                         \
       auto s = internal::CachedDsoLoader::GetRocrandDsoHandle();          \
-      return s.value();                                              \
+      return s.value();                                                   \
     }                                                                     \
     static FuncPtrT LoadOrDie() {                                         \
       void* f;                                                            \
-      auto s = port::Env::Default()->GetSymbolFromLibrary(GetDsoHandle(), \
-                                                          kName, &f);     \
+      auto s = tsl::Env::Default()->GetSymbolFromLibrary(GetDsoHandle(),  \
+                                                         kName, &f);      \
       CHECK(s.ok()) << "could not find " << kName                         \
                     << " in rocrand DSO; dlerror: " << s.error_message(); \
       return reinterpret_cast<FuncPtrT>(f);                               \

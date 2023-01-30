@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <cstdint>
 #include <functional>
+#include <memory>
 #include <string>
 
 // These classes are forward declared so that ExecutableRunOptions can be linked
@@ -26,6 +27,7 @@ limitations under the License.
 // need to be linked).
 namespace stream_executor {
 class Stream;
+class Event;
 class Platform;
 class DeviceMemoryAllocator;
 class DeviceMemoryBase;
@@ -37,11 +39,16 @@ struct ThreadPoolDevice;
 
 namespace tsl {
 class Status;
+template <typename T>
+class StatusOr;
+template <typename T>
+class AsyncValueRef;
 }  // namespace tsl
 
 namespace xla {
 
-using ::tsl::Status;  // TENSORFLOW_STATUS_OK
+using ::tsl::Status;    // TENSORFLOW_STATUS_OK
+using ::tsl::StatusOr;  // TENSORFLOW_STATUS_OK
 
 class DeviceAssignment;
 class ExecutionProfile;
@@ -87,25 +94,21 @@ class RunId {
 using ThenExecuteFunction =
     std::function<void(stream_executor::Stream*, std::function<void()>)>;
 
-// TODO(ezhulenev): Send/Recv API declared below forces blocking the caller
-// thread on the host, because for example when `recv` function is called, data
-// might not be available. Instead send/recv should return events that will
-// become ready when send/recv operation is completed and device memory can be
-// freed (send) or used in subsequent computations (recv). This is also required
-// for efficient implementation of Send/Recv and SendDone/RecvDone operations
-// that would allow overlapping data transfers with compute. Once simple proof
-// of concept send/recv will work, we should revisit these APIs and base them on
-// top of events (and async values?).
+// Callback for sending device buffer to a channel. Returned event will be
+// recorded on a `stream` once the send operation is completed and data was
+// copied from the `src` memory.
+using SendDeviceMemoryFunction =
+    std::function<StatusOr<tsl::AsyncValueRef<stream_executor::Event>>(
+        int64_t channel_id, stream_executor::Stream* stream, const Shape& shape,
+        const stream_executor::DeviceMemoryBase& src)>;
 
-// Callback for sending device buffer to a channel.
-using SendDeviceMemoryFunction = std::function<Status(
-    int64_t channel_id, stream_executor::Stream* stream, const Shape& shape,
-    const stream_executor::DeviceMemoryBase& stc)>;
-
-// Callback for receiving device buffer from a channel.
-using RecvDeviceMemoryFunction = std::function<Status(
-    int64_t channel_id, stream_executor::Stream* stream, const Shape& shape,
-    stream_executor::DeviceMemoryBase* dst)>;
+// Callback for receiving device buffer from a channel. Returned event will be
+// recorded on a `stream` once the recv operation is completed and data was
+// copied into the `dst` memory.
+using RecvDeviceMemoryFunction =
+    std::function<StatusOr<tsl::AsyncValueRef<stream_executor::Event>>(
+        int64_t channel_id, stream_executor::Stream* stream, const Shape& shape,
+        stream_executor::DeviceMemoryBase* dst)>;
 
 // Class containing options for running a LocalExecutable.
 class ExecutableRunOptions {
@@ -129,12 +132,20 @@ class ExecutableRunOptions {
   ExecutableRunOptions& set_stream(stream_executor::Stream* stream);
   stream_executor::Stream* stream() const;
 
-  // If set, this is the stream to perform any pre-computation transfers on.
-  // The platform of the stream must match the platform the executable was
-  // built for.  A value of nullptr indicates the option has not been set.
+  // If set, this is the stream to perform host to device transfers on (e.g. any
+  // pre-computation transfers). The platform of the stream must match the
+  // platform the executable was built for. A value of nullptr indicates the
+  // option has not been set.
   ExecutableRunOptions& set_host_to_device_stream(
       stream_executor::Stream* stream);
   stream_executor::Stream* host_to_device_stream() const;
+
+  // If set, this is the stream to perform device to host transfers on.
+  // The platform of the stream must match the platform the executable was
+  // built for. A value of nullptr indicates the option has not been set.
+  ExecutableRunOptions& set_device_to_host_stream(
+      stream_executor::Stream* stream);
+  stream_executor::Stream* device_to_host_stream() const;
 
   // Sets the thread pool device on which to run Eigen subcomputations.
   //
@@ -213,6 +224,7 @@ class ExecutableRunOptions {
   ExecutionProfile* execution_profile_ = nullptr;
   int rng_seed_ = 0;
   int32_t launch_id_ = 0;
+  stream_executor::Stream* device_to_host_stream_ = nullptr;
   stream_executor::Stream* host_to_device_stream_ = nullptr;
   ThenExecuteFunction* then_execute_function_ = nullptr;
   SendDeviceMemoryFunction* send_device_memory_function_ = nullptr;

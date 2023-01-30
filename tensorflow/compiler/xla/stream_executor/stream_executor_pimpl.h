@@ -28,20 +28,21 @@ limitations under the License.
 #include "absl/base/attributes.h"
 #include "absl/base/macros.h"
 #include "absl/base/thread_annotations.h"
+#include "absl/functional/any_invocable.h"
 #include "absl/memory/memory.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/optional.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/stream_executor/device_memory_allocator.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/status.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/statusor.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/threadpool.h"
 #include "tensorflow/compiler/xla/stream_executor/platform.h"
 #include "tensorflow/compiler/xla/stream_executor/platform/logging.h"
 #include "tensorflow/compiler/xla/stream_executor/platform/port.h"
 #include "tensorflow/compiler/xla/stream_executor/rng.h"
 #include "tensorflow/compiler/xla/stream_executor/stream_executor_internal.h"
 #include "tensorflow/compiler/xla/stream_executor/trace_listener.h"
+#include "tensorflow/tsl/platform/status.h"
+#include "tensorflow/tsl/platform/statusor.h"
+#include "tensorflow/tsl/platform/threadpool.h"
 #include "tensorflow/tsl/protobuf/dnn.pb.h"
 
 namespace stream_executor {
@@ -124,7 +125,7 @@ class StreamExecutor {
   // Unloads the module with handle `module_handle`.
   bool UnloadModule(ModuleHandle module_handle);
 
-  port::StatusOr<std::shared_ptr<DeviceMemoryBase>> CreateOrShareConstant(
+  tsl::StatusOr<std::shared_ptr<DeviceMemoryBase>> CreateOrShareConstant(
       Stream* stream, const std::vector<uint8_t>& content);
 
   // Synchronously allocates an array on the device of type T with element_count
@@ -181,11 +182,11 @@ class StreamExecutor {
   // - Note: symbol_name should include its namespace as well. For example,
   //         pass "nms0::symbol" if referring to nms0::symbol.
   template <typename T>
-  port::StatusOr<DeviceMemory<T>> GetSymbol(const std::string& symbol_name,
-                                            ModuleHandle module_handle);
+  tsl::StatusOr<DeviceMemory<T>> GetSymbol(const std::string& symbol_name,
+                                           ModuleHandle module_handle);
 
   // An untyped version of GetSymbol.
-  port::StatusOr<DeviceMemoryBase> GetUntypedSymbol(
+  tsl::StatusOr<DeviceMemoryBase> GetUntypedSymbol(
       const std::string& symbol_name, ModuleHandle module_handle);
 
   // Deallocate the DeviceMemory previously allocated via this interface.
@@ -429,7 +430,7 @@ class StreamExecutor {
 
   // Create an RNN descriptor based on model shapes and configurations.
   // The caller retains the ownership of the descriptor.
-  port::StatusOr<std::unique_ptr<dnn::RnnDescriptor>> createRnnDescriptor(
+  tsl::StatusOr<std::unique_ptr<dnn::RnnDescriptor>> createRnnDescriptor(
       int num_layers, int hidden_size, int input_size, int cell_size,
       int batch_size, dnn::RnnInputMode input_mode,
       dnn::RnnDirectionMode direction_mode, dnn::RnnMode rnn_mode,
@@ -439,11 +440,11 @@ class StreamExecutor {
 
   // Create a RNN sequence descriptor that specifies either the input or output
   // sequence. The caller retains the ownership of the returned descriptor.
-  port::StatusOr<std::unique_ptr<dnn::RnnSequenceTensorDescriptor>>
+  tsl::StatusOr<std::unique_ptr<dnn::RnnSequenceTensorDescriptor>>
   createRnnSequenceTensorDescriptor(int max_seq_length, int batch_size,
                                     int data_size, dnn::DataType data_type);
 
-  port::StatusOr<std::unique_ptr<dnn::RnnSequenceTensorDescriptor>>
+  tsl::StatusOr<std::unique_ptr<dnn::RnnSequenceTensorDescriptor>>
   createRnnSequenceTensorDescriptor(int max_seq_length, int batch_size,
                                     int data_size,
                                     const absl::Span<const int>& seq_lengths,
@@ -451,7 +452,7 @@ class StreamExecutor {
 
   // Create an RNN state descriptor that specifies the input or hidden state.
   // The caller retains the ownership of the returned descriptor.
-  port::StatusOr<std::unique_ptr<dnn::RnnStateTensorDescriptor>>
+  tsl::StatusOr<std::unique_ptr<dnn::RnnStateTensorDescriptor>>
   createRnnStateTensorDescriptor(int num_layer, int batch_size, int data_size,
                                  dnn::DataType data_type);
 
@@ -471,7 +472,7 @@ class StreamExecutor {
   // The canonical storage for both ptx and cubin_data should outlive the
   // lifetime of the kernel.
   template <typename... Args>
-  port::StatusOr<std::unique_ptr<TypedKernel<Args...>>> CreateTypedKernel(
+  tsl::StatusOr<std::unique_ptr<TypedKernel<Args...>>> CreateTypedKernel(
       absl::string_view kernel_name, absl::string_view ptx,
       absl::Span<const uint8_t> cubin_data);
 
@@ -617,12 +618,9 @@ class StreamExecutor {
 
   // Entrains on a stream a user-specified function to be run on the host.
   // See Stream::ThenDoHostCallback for full details.
-  bool HostCallback(Stream* stream, std::function<void()> callback);
-
-  // Entrains on a stream a user-specified function to be run on the host.
-  // See Stream::ThenDoHostCallback for full details.
   // This is the preferred form for a callback that may return an error.
-  bool HostCallback(Stream* stream, std::function<tsl::Status()> callback);
+  bool HostCallback(Stream* stream,
+                    absl::AnyInvocable<tsl::Status() &&> callback);
 
   // Performs platform-specific allocation and initialization of an event.
   tsl::Status AllocateEvent(Event* event);
@@ -667,7 +665,7 @@ class StreamExecutor {
   // ownership transfer to caller.
   std::unique_ptr<DeviceDescription> CreateDeviceDescription() const;
 
-  // Adds a task to the port::ThreadPool work queue. These tasks must be
+  // Adds a task to the tsl::thread::ThreadPool work queue. These tasks must be
   // fire-and-forget and have no external data or timing dependencies; their
   // execution order and completion time have no guarantees.
   // For an example of an appropriate task, see HostBlas::DoBlasGemmInternal;
@@ -750,7 +748,7 @@ class StreamExecutor {
   // here.
   //
   // Immutable post-initialization. Object is thread-safe.
-  std::unique_ptr<port::ThreadPool> background_threads_;
+  std::unique_ptr<tsl::thread::ThreadPool> background_threads_;
 
   // Counter for the current number of live streams. This is used to check
   // for accidentally-outstanding streams at StreamExecutor teardown time, as
@@ -820,7 +818,7 @@ class ScopedModuleHandle {
 // Inlines
 
 template <typename... Args>
-inline port::StatusOr<std::unique_ptr<TypedKernel<Args...>>>
+inline tsl::StatusOr<std::unique_ptr<TypedKernel<Args...>>>
 StreamExecutor::CreateTypedKernel(absl::string_view kernel_name,
                                   absl::string_view ptx,
                                   absl::Span<const uint8_t> cubin_data) {
@@ -845,9 +843,9 @@ inline DeviceMemory<T> StreamExecutor::AllocateArray(uint64_t element_count,
 }
 
 template <typename T>
-inline port::StatusOr<DeviceMemory<T>> StreamExecutor::GetSymbol(
+inline tsl::StatusOr<DeviceMemory<T>> StreamExecutor::GetSymbol(
     const std::string& symbol_name, ModuleHandle module_handle) {
-  port::StatusOr<DeviceMemoryBase> untyped_symbol =
+  tsl::StatusOr<DeviceMemoryBase> untyped_symbol =
       GetUntypedSymbol(symbol_name, module_handle);
   if (!untyped_symbol.ok()) {
     return untyped_symbol.status();

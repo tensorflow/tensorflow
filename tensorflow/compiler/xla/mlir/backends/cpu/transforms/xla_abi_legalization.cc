@@ -20,7 +20,7 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
-#include "mlir/IR/BlockAndValueMapping.h"  // from @llvm-project
+#include "mlir/IR/IRMapping.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/ImplicitLocOpBuilder.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
@@ -96,7 +96,9 @@ SmallVector<SmallVector<int64_t>> FlattenLayoutAttribute(Attribute attr) {
   };
 
   if (auto array = attr.dyn_cast<ArrayAttr>()) {
-    array.walkSubAttrs(visit_attr);
+    for (int64_t i = 0; i < array.size(); ++i) {
+      visit_attr(array[i]);
+    }
   } else {
     visit_attr(attr);
   }
@@ -124,7 +126,7 @@ struct RewriteInputArgs : OpRewritePattern<func::FuncOp> {
 
     ImplicitLocOpBuilder b(op.getLoc(), rewriter);
     b.setInsertionPointToStart(&op.getBody().front());
-    BlockAndValueMapping bvm;
+    IRMapping bvm;
     for (const auto&& [param, layout] :
          llvm::zip(op.getArguments(), param_layouts)) {
       NormalizeInputInPlace(b, param, layout);

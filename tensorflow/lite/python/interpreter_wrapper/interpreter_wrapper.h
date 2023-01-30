@@ -34,7 +34,10 @@ struct TfLiteDelegate;
 // We forward declare TFLite classes here to avoid exposing them to SWIG.
 namespace tflite {
 class MutableOpResolver;
+
+namespace impl {
 class FlatBufferModel;
+}
 
 namespace interpreter_wrapper {
 
@@ -42,7 +45,7 @@ class PythonErrorReporter;
 
 class InterpreterWrapper {
  public:
-  using Model = FlatBufferModel;
+  using Model = impl::FlatBufferModel;
 
   // SWIG caller takes ownership of pointer.
   static InterpreterWrapper* CreateWrapperCPPFromFile(

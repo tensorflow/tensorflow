@@ -242,6 +242,8 @@ class TFRecordReader : public Reader {
 
   Status Initialize(Env* env) override;
 
+  // Reads Tensors into `read_tensors`. Returns OK on success, OutOfRange for
+  // end of file, or an error status if there is an error.
   Status ReadTensors(std::vector<Tensor>* read_tensors) override;
 
   ~TFRecordReader() override = default;

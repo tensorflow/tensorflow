@@ -32,6 +32,7 @@ cc_library(
         "//tensorflow/compiler/xla/stream_executor/gpu:gpu_diagnostics_header",
         "//tensorflow/compiler/xla/stream_executor/lib",
         "//tensorflow/compiler/xla/stream_executor/platform",
+        "//tensorflow/tsl/platform:platform_port",
     ]),
 )
 
@@ -50,6 +51,10 @@ cc_library(
         "//tensorflow/compiler/xla/stream_executor/platform",
         "//tensorflow/compiler/xla/stream_executor/platform:dso_loader",
         "@local_config_rocm//rocm:rocm_headers",
+        "//tensorflow/tsl/platform:env",
+        "//tensorflow/tsl/platform:numbers",
+        "//tensorflow/tsl/platform:stacktrace",
+        "//tensorflow/tsl/platform:static_threadlocal",
     ]),
 )
 
@@ -89,6 +94,7 @@ cc_library(
         ":rocm_event",
         ":rocm_kernel",
         ":rocm_platform_id",
+        "@com_google_absl//absl/functional:any_invocable",
         "@com_google_absl//absl/strings",
         "//tensorflow/compiler/xla/stream_executor:event",
         "//tensorflow/compiler/xla/stream_executor:plugin_registry",
@@ -103,6 +109,7 @@ cc_library(
         "//tensorflow/compiler/xla/stream_executor/lib",
         "//tensorflow/compiler/xla/stream_executor/platform",
         "//tensorflow/compiler/xla/stream_executor/platform:dso_loader",
+        "//tensorflow/tsl/platform:env",
     ]),
     alwayslink = True,
 )
@@ -164,6 +171,8 @@ cc_library(
         "//tensorflow/compiler/xla/stream_executor/lib",
         "//tensorflow/compiler/xla/stream_executor/platform",
         "//tensorflow/compiler/xla/stream_executor/platform:dso_loader",
+        "//tensorflow/tsl/platform:env",
+        "//tensorflow/tsl/util:determinism_for_kernels",
     ]),
     alwayslink = True,
 )
@@ -228,6 +237,7 @@ cc_library(
         "//tensorflow/compiler/xla/stream_executor/platform",
         "//tensorflow/compiler/xla/stream_executor/platform:dso_loader",
         "@local_config_rocm//rocm:rocm_headers",
+        "//tensorflow/tsl/platform:env",
     ]),
     alwayslink = True,
 )
@@ -272,6 +282,7 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
         "@local_config_rocm//rocm:rocm_headers",
+        "//tensorflow/tsl/platform:env",
         "//tensorflow/tsl/util:env_var",
         "//tensorflow/tsl/util:determinism_for_kernels",
     ]),
@@ -305,6 +316,7 @@ cc_library(
         "//tensorflow/compiler/xla/stream_executor/lib",
         "//tensorflow/compiler/xla/stream_executor/platform",
         "//tensorflow/compiler/xla/stream_executor/platform:dso_loader",
+        "//tensorflow/tsl/platform:env",
     ]),
     alwayslink = True,
 )
@@ -328,6 +340,7 @@ cc_library(
         "//tensorflow/compiler/xla/stream_executor/lib",
         "//tensorflow/compiler/xla/stream_executor/platform",
         "//tensorflow/compiler/xla/stream_executor/platform:dso_loader",
+        "//tensorflow/tsl/platform:env",
     ]),
     alwayslink = True,
 )
@@ -351,6 +364,7 @@ cc_library(
         "//tensorflow/compiler/xla/stream_executor/lib",
         "//tensorflow/compiler/xla/stream_executor/platform",
         "//tensorflow/compiler/xla/stream_executor/platform:dso_loader",
+        "//tensorflow/tsl/platform:env",
     ]),
     alwayslink = True,
 )
@@ -374,6 +388,7 @@ cc_library(
         "//tensorflow/compiler/xla/stream_executor/lib",
         "//tensorflow/compiler/xla/stream_executor/platform",
         "//tensorflow/compiler/xla/stream_executor/platform:dso_loader",
+        "//tensorflow/tsl/platform:env",
     ]),
     alwayslink = True,
 )
@@ -397,6 +412,7 @@ cc_library(
         "//tensorflow/compiler/xla/stream_executor/lib",
         "//tensorflow/compiler/xla/stream_executor/platform",
         "//tensorflow/compiler/xla/stream_executor/platform:dso_loader",
+        "//tensorflow/tsl/platform:env",
     ]),
     alwayslink = True,
 )

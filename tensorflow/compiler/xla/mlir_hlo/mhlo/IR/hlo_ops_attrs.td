@@ -168,7 +168,7 @@ def MHLO_ChannelHandle : AttrDef<MHLO_Dialect, "ChannelHandle"> {
 
 def MHLO_CrossProgramPrefetch : AttrDef<MHLO_Dialect, "CrossProgramPrefetch"> {
   let mnemonic = "cross_program_prefetch";
-  let parameters = (ins "int64_t":$parameter, MHLO_Dims:$indices);
+  let parameters = (ins "int64_t":$parameter, MHLO_Dims:$indices, "Optional<int64_t>":$offset);
   let summary = "Argument that is prefetched from another program";
   let description = [{
     This attribute captures an argument that is prefetched from another program.

@@ -29,6 +29,7 @@ import sys
 
 import flatbuffers
 from tensorflow.lite.python import schema_py_generated as schema_fb
+from tensorflow.lite.python import schema_util
 from tensorflow.python.platform import gfile
 
 _TFLITE_FILE_IDENTIFIER = b'TFL3'
@@ -163,6 +164,8 @@ def randomize_weights(model, random_seed=0, buffers_to_skip=None):
   buffer_types = {}
   for graph in model.subgraphs:
     for op in graph.operators:
+      if op.inputs is None:
+        break
       for input_idx in op.inputs:
         tensor = graph.tensors[input_idx]
         buffer_types[tensor.buffer] = type_to_name(tensor.type)
@@ -348,3 +351,24 @@ def byte_swap_tflite_buffer(tflite_model, from_endiness, to_endiness):
    # Return a TFLite flatbuffer as a byte array.
   return convert_object_to_bytearray(model)
 
+
+
+def count_resource_variables(model):
+  """Calculates the number of unique resource variables in a model.
+
+  Args:
+    model: the input tflite model, either as bytearray or object.
+
+  Returns:
+    An integer number representing the number of unique resource variables.
+  """
+  if not isinstance(model, schema_fb.ModelT):
+    model = convert_bytearray_to_object(model)
+  unique_shared_names = set()
+  for subgraph in model.subgraphs:
+    for op in subgraph.operators:
+      builtin_code = schema_util.get_builtin_code_from_operator_code(
+          model.operatorCodes[op.opcodeIndex])
+      if builtin_code == schema_fb.BuiltinOperator.VAR_HANDLE:
+        unique_shared_names.add(op.builtinOptions.sharedName)
+  return len(unique_shared_names)

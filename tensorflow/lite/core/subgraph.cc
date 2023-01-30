@@ -26,6 +26,7 @@ limitations under the License.
 #include <iterator>
 #include <memory>
 #include <string>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -44,6 +45,7 @@ limitations under the License.
 #include "tensorflow/lite/graph_info.h"
 #include "tensorflow/lite/memory_planner.h"
 #include "tensorflow/lite/minimal_logging.h"
+#include "tensorflow/lite/profiling/telemetry/telemetry.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/util.h"
 #ifdef TFLITE_USE_SIMPLE_MEMORY_PLANNER
@@ -461,6 +463,33 @@ void PopulatePreviewDelegateParams(const NodeSubset& node_subset,
                              params->output_tensors);
 }
 
+// Returns the 'custom_name' associated with the provided 'registration', or
+// "unknown" if the registration does not have a custom name.
+//
+// Note that 'TfLiteRegistration' has a top-level 'custom_name' field and also
+// a nested 'custom_name' field defined inside the optionally set
+// 'registration_external' structure.  The top-level field takes precedence over
+// the nested field.  'TfLiteRegistration'
+// objects can optionally carry a 'TfLiteRegistrationExternal' pointer in their
+// 'registration_external' field.  If that's the case then the
+// 'TfLiteRegistration' object is merely a wrapper over a
+// 'TfLiteRegistrationExternal', with all fields except 'registration_external'
+// being null, that contains the actual logic that the registration represents.
+// See also the comment inside
+// 'TfLiteOpaqueContextReplaceNodeSubsetsWithDelegateKernels'.
+const char* GetDelegateKernalName(const TfLiteRegistration& registration) {
+  if (registration.custom_name) {
+    return registration.custom_name;
+  }
+
+  if (registration.registration_external &&
+      registration.registration_external->custom_name) {
+    return registration.registration_external->custom_name;
+  }
+
+  return "unknown";
+}
+
 }  // namespace
 
 TfLiteStatus Subgraph::PartitionGraph(const TfLiteIntArray* nodes_to_replace,
@@ -503,8 +532,7 @@ TfLiteStatus Subgraph::ReplaceNodeSubsetsWithDelegateKernels(
       tflite::TFLITE_LOG_VERBOSE,
       "Replacing %d node(s) with delegate (%s) node, yielding %zu partitions "
       "for the whole graph.",
-      nodes_to_replace->size,
-      registration.custom_name ? registration.custom_name : "unknown",
+      nodes_to_replace->size, GetDelegateKernalName(registration),
       node_subsets.size());
 
   execution_plan_.clear();
@@ -863,6 +891,27 @@ TfLiteStatus Subgraph::AllocateTensors() {
   // index that uses the tensor.
   InitializeTensorReleaseMap();
 
+  // Temporary tensors allocated during Prepare for nodes which are subsequently
+  // delegated are not required and can be freed.
+  if (!pre_delegation_execution_plan_.empty()) {
+    // NOLINTNEXTLINE - absl::flat_hash_set increases binary size by 106kB.
+    std::unordered_set<int> delegated_nodes;
+    for (int pre_delegation_node_index : pre_delegation_execution_plan_) {
+      delegated_nodes.insert(pre_delegation_node_index);
+    }
+    for (int pose_delegation_node_index : execution_plan_) {
+      delegated_nodes.erase(pose_delegation_node_index);
+    }
+    for (int node_index : delegated_nodes) {
+      TfLiteNode& node = nodes_and_registration_[node_index].first;
+      // Free all temporary tensors allocated by delegated nodes.
+      for (int i = 0; i < node.temporaries->size; ++i) {
+        TfLiteTensor* temporary_tensor = tensor(node.temporaries->data[i]);
+        TfLiteTensorDataFree(temporary_tensor);
+        temporary_tensor->bytes = 0;
+      }
+    }
+  }
   return kTfLiteOk;
 }
 
@@ -1303,7 +1352,8 @@ TfLiteStatus Subgraph::RemoveUnusedInputs() {
     refcounts[tensor_index]++;
   }
   // Count references to node input tensors.
-  for (size_t i = 0; i < graph_info->num_execution_nodes(); ++i) {
+  const size_t num_execution_nodes = graph_info->num_execution_nodes();
+  for (size_t i = 0; i < num_execution_nodes; ++i) {
     const TfLiteNode& node = graph_info->node(i);
     TfLiteIntArray* node_inputs = node.inputs;
     for (int j = 0; j < node_inputs->size; ++j) {
@@ -1331,6 +1381,11 @@ TfLiteStatus Subgraph::RemoveUnusedInputs() {
 }
 
 TfLiteStatus Subgraph::Invoke() {
+  auto status = InvokeImpl();
+  telemetry::TelemetryReportEvent(&context_, "Invoke", status);
+  return status;
+}
+TfLiteStatus Subgraph::InvokeImpl() {
   if (!consistent_) {
     ReportError("Invoke called on model that is not consistent.");
     return kTfLiteError;
@@ -1862,7 +1917,7 @@ TfLiteStatus Subgraph::RedoAllDelegates() {
   std::vector<TfLiteDelegate*> delegates_to_apply;
   delegates_applied_.swap(delegates_to_apply);
   for (auto* delegate : delegates_to_apply) {
-    TF_LITE_ENSURE_STATUS(ModifyGraphWithDelegate(delegate));
+    TF_LITE_ENSURE_STATUS(ModifyGraphWithDelegateImpl(delegate));
   }
   return kTfLiteOk;
 }
@@ -1910,6 +1965,12 @@ TfLiteStatus Subgraph::EnsureMemoryAllocations() {
 }
 
 TfLiteStatus Subgraph::ModifyGraphWithDelegate(TfLiteDelegate* delegate) {
+  auto status = ModifyGraphWithDelegateImpl(delegate);
+  telemetry::TelemetryReportEvent(&context_, "ModifyGraphWithDelegate", status);
+  return status;
+}
+
+TfLiteStatus Subgraph::ModifyGraphWithDelegateImpl(TfLiteDelegate* delegate) {
   TFLITE_SCOPED_TAGGED_DEFAULT_PROFILE(profiler_.get(),
                                        "ModifyGraphWithDelegate");
 

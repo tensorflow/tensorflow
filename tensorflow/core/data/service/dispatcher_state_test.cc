@@ -144,10 +144,10 @@ Status FinishTask(int64_t task_id, DispatcherState& state) {
   return state.Apply(update);
 }
 
-Status Snapshot(const std::string& directory, DispatcherState& state) {
+Status Snapshot(const std::string& path, DispatcherState& state) {
   Update update;
   SnapshotUpdate* snapshot = update.mutable_snapshot();
-  snapshot->set_directory(directory);
+  snapshot->set_path(path);
   return state.Apply(update);
 }
 
@@ -695,13 +695,13 @@ TEST(DispatcherState, ListActiveClients) {
   EXPECT_THAT(state.ListActiveClientIds(), UnorderedElementsAre(6, 8));
 }
 
-TEST(DispatcherState, ListSnapshotDirectories) {
+TEST(DispatcherState, ListSnapshotPaths) {
   DispatcherState state;
-  absl::flat_hash_set<std::string> snapshot_directories = {"p1", "p2"};
-  for (const auto& snapshot_directory : snapshot_directories) {
-    TF_EXPECT_OK(Snapshot(snapshot_directory, state));
+  absl::flat_hash_set<std::string> snapshot_paths = {"p1", "p2"};
+  for (const auto& snapshot_path : snapshot_paths) {
+    TF_EXPECT_OK(Snapshot(snapshot_path, state));
   }
-  EXPECT_EQ(state.ListSnapshotDirectories(), snapshot_directories);
+  EXPECT_EQ(state.ListSnapshotPaths(), snapshot_paths);
 }
 
 }  // namespace data

@@ -851,11 +851,6 @@ static StatusOr<HloModuleConfigProto> MakeTestModuleConfigProto() {
   }
   proto.set_phase_index(2);
 
-  // flag config
-  for (int idx = 1; idx <= 3; ++idx) {
-    proto.mutable_flag_config()->insert(
-        {absl::StrCat("Flag", idx), absl::StrCat("Value", idx)});
-  }
   proto.set_allow_spmd_sharding_propagation_to_output(true);
   for (int idx = 1; idx <= 3; ++idx) {
     int64_t allowance = 35 * idx;

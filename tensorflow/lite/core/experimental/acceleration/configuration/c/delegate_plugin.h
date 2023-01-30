@@ -88,6 +88,14 @@ typedef struct TfLiteOpaqueDelegatePlugin {
   TfLiteOpaqueDelegatePluginGetDelegateErrnoFunc *get_delegate_errno;
 } TfLiteOpaqueDelegatePlugin;
 
+#else
+
+typedef TfLiteDelegatePluginCreateFunc TfLiteOpaqueDelegatePluginCreateFunc;
+typedef TfLiteDelegatePluginDestroyFunc TfLiteOpaqueDelegatePluginDestroyFunc;
+typedef TfLiteDelegatePluginGetDelegateErrnoFunc
+    TfLiteOpaqueDelegatePluginGetDelegateErrnoFunc;
+typedef TfLiteDelegatePlugin TfLiteOpaqueDelegatePlugin;
+
 #endif  // TFLITE_USE_OPAQUE_DELEGATE
 
 #ifdef __cplusplus

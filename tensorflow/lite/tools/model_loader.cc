@@ -107,10 +107,8 @@ bool PipeModelLoader::InitInternal() {
 #endif  // !_WIN32
 
 std::unique_ptr<ModelLoader> CreateModelLoaderFromPath(absl::string_view path) {
+#ifndef _WIN32
   if (absl::StartsWith(path, "fd:")) {
-#ifdef _WIN32
-    return kMinibenchmarkUnsupportedPlatform;
-#endif  // _WIN32
     std::vector<std::string> parts = absl::StrSplit(path, ':');
     int model_fd;
     size_t model_offset, model_size;
@@ -123,9 +121,6 @@ std::unique_ptr<ModelLoader> CreateModelLoaderFromPath(absl::string_view path) {
                                              model_size);
   }
   if (absl::StartsWith(path, "pipe:")) {
-#ifdef _WIN32
-    return kMinibenchmarkUnsupportedPlatform;
-#endif  // _WIN32
     std::vector<std::string> parts = absl::StrSplit(path, ':');
     int read_fd, write_fd;
     size_t model_size;
@@ -140,6 +135,7 @@ std::unique_ptr<ModelLoader> CreateModelLoaderFromPath(absl::string_view path) {
     }
     return std::make_unique<PipeModelLoader>(read_fd, model_size);
   }
+#endif  // !_WIN32
   return std::make_unique<PathModelLoader>(path);
 }
 

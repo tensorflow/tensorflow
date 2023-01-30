@@ -151,17 +151,6 @@ struct BuildXlaOpsPassFlags {
   bool tf_xla_disable_constant_folding;
 };
 
-// Flags for the IntroduceFloatingPointJitter pass.
-struct IntroduceFloatingPointJitterPassFlags {
-  // The amount of jitter to introduce.  This amount is added to each element in
-  // the tensors named in `tensor_names.
-  float jitter_amount;
-
-  // The Tensors to add the jitter to.  The tensors are named in the TensorId
-  // format of <node name>:<output idx>.
-  std::vector<string> tensor_names;
-};
-
 // Flags for common MLIR configurations.
 struct MlirCommonFlags {
   ConfigProto::Experimental::MlirBridgeRollout tf_mlir_enable_mlir_bridge;
@@ -204,10 +193,7 @@ struct JitRtFlags {
 MarkForCompilationPassFlags* GetMarkForCompilationPassFlags();
 BuildXlaOpsPassFlags* GetBuildXlaOpsPassFlags();
 XlaDeviceFlags* GetXlaDeviceFlags();
-const XlaOpsCommonFlags& GetXlaOpsCommonFlags();
-
-const IntroduceFloatingPointJitterPassFlags&
-GetIntroduceFloatingPointJitterPassFlags();
+XlaOpsCommonFlags* GetXlaOpsCommonFlags();
 
 MlirCommonFlags* GetMlirCommonFlags();
 

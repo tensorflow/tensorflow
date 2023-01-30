@@ -43,10 +43,10 @@ profiler = _xla.profiler
 
 # Just an internal arbitrary increasing number to help with backward-compatible
 # changes.
-_version = 115
+_version = 120
 
 # Version number for MLIR:Python components.
-mlir_api_version = 42
+mlir_api_version = 43
 
 xla_platform_names = {
     'cpu': 'Host',
@@ -103,16 +103,16 @@ def make_tfrt_tpu_c_api_client():
 
 def _use_pjrt_c_api() -> bool:
   use_pjrt_c_api = os.getenv('JAX_USE_PJRT_C_API_ON_TPU', 'false')
-  if use_pjrt_c_api not in ('1', 'true', 'false'):
+  if use_pjrt_c_api not in ('1', '0', 'true', 'false'):
     raise ValueError(
-        'JAX_USE_PJRT_C_API_ON_TPU env var must be "1", "true" or "false", '
-        f'got "{use_pjrt_c_api}"')
+        'JAX_USE_PJRT_C_API_ON_TPU env var must be "0", "1", "true" or '
+        f'"false", got "{use_pjrt_c_api}"')
   return use_pjrt_c_api in ('1', 'true')
 
 
-def make_tpu_client():
+def make_tpu_client(use_pjrt_c_api: bool = False):
   """Returns a TPU client. Defaults to allowing 32 in-flight computations."""
-  if _use_pjrt_c_api():
+  if use_pjrt_c_api or _use_pjrt_c_api():
     return make_tfrt_tpu_c_api_client()
 
   max_inflight_computations = os.getenv(

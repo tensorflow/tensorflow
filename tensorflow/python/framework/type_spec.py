@@ -16,7 +16,6 @@
 
 import abc
 import functools
-import re
 from typing import Any, List, Optional, Sequence, Type
 import warnings
 
@@ -27,7 +26,9 @@ from tensorflow.core.protobuf import struct_pb2
 from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.framework import type_spec_registry
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.types import internal
 from tensorflow.python.types import trace
 from tensorflow.python.util import _pywrap_utils
 from tensorflow.python.util import compat
@@ -39,9 +40,6 @@ from tensorflow.python.util.tf_export import tf_export
 from tensorflow.tools.docs import doc_controls
 
 # Use LazyLoader to avoid circular dependencies.
-tensor_spec = LazyLoader(
-    "tensor_spec", globals(),
-    "tensorflow.python.framework.tensor_spec")
 ops = LazyLoader("ops", globals(),
                  "tensorflow.python.framework.ops")
 # TODO(b/238903802): Remove this dependency.
@@ -52,7 +50,11 @@ nested_structure_coder = LazyLoader(
 
 @tf_export("TypeSpec", v1=["TypeSpec", "data.experimental.Structure"])
 class TypeSpec(
-    trace.TraceType, trace_type.Serializable, metaclass=abc.ABCMeta):
+    internal.TypeSpec,
+    trace.TraceType,
+    trace_type.Serializable,
+    metaclass=abc.ABCMeta,
+):
   """Specifies a TensorFlow value type.
 
   A `tf.TypeSpec` provides metadata describing an object accepted or returned
@@ -235,13 +237,17 @@ class TypeSpec(
       A `CompositeTensor` placeholder whose components are recursively composed
         of placeholders themselves.
     """
+    if placeholder_context.unnest_only:
+      return self
+
     component_placeholders = nest.map_structure(
         lambda x: x.placeholder_value(placeholder_context),
         self._component_specs)
     return self._from_components(component_placeholders)
 
   def _to_tensors(self, value):
-    assert value._type_spec == self  # pylint: disable=protected-access
+    value_spec = type_spec_from_value(value)
+    assert value_spec.is_subtype_of(self)
     return [arg for arg in nest.flatten(value, expand_composites=True)
             if isinstance(arg, ops.Tensor)]
 
@@ -848,7 +854,7 @@ class BatchableTypeSpec(TypeSpec, metaclass=abc.ABCMeta):
 
 def get_batchable_flat_tensor_specs(spec, context_spec=None):
   """Returns the flat tensor specs for `spec`."""
-  if isinstance(spec, tensor_spec.TensorSpec):
+  if isinstance(spec, internal.TensorSpec):
     return [spec]
   elif hasattr(spec, "__batch_encoder__"):
     encoding_specs = nest.map_structure(
@@ -866,7 +872,7 @@ def get_batchable_flat_tensor_specs(spec, context_spec=None):
 
 def batchable_to_tensor_list(spec, value, minimum_rank=0):
   """Returns a list of tensors encoding `value`, whose type is `spec`."""
-  if isinstance(spec, tensor_spec.TensorSpec):
+  if isinstance(spec, internal.TensorSpec):
     return [value]
   elif hasattr(spec, "__batch_encoder__"):
     encoded_value = spec.__batch_encoder__.encode(spec, value, minimum_rank)
@@ -881,7 +887,7 @@ def batchable_to_tensor_list(spec, value, minimum_rank=0):
 
 def batchable_from_tensor_list(spec, tensor_list):
   """Returns a value with type `spec` decoded from `tensor_list`."""
-  if isinstance(spec, tensor_spec.TensorSpec):
+  if isinstance(spec, internal.TensorSpec):
     assert len(tensor_list) == 1
     return tensor_list[0]
   elif hasattr(spec, "__batch_encoder__"):
@@ -950,7 +956,7 @@ def _type_spec_from_value(value) -> TypeSpec:
   """Returns a `TypeSpec` that represents the given `value`."""
   if isinstance(value, ops.Tensor):
     # Note: we do not include Tensor names when constructing TypeSpecs.
-    return tensor_spec.TensorSpec(value.shape, value.dtype)
+    return trace_type.from_value(value)
 
   if isinstance(value, composite_tensor.CompositeTensor):
     return value._type_spec  # pylint: disable=protected-access
@@ -1002,69 +1008,11 @@ def register_type_spec_from_value_converter(type_object,
 
 _pywrap_utils.RegisterType("TypeSpec", TypeSpec)
 
-_TYPE_SPEC_TO_NAME = {}
-_NAME_TO_TYPE_SPEC = {}
-
-# Regular expression for valid TypeSpec names.
-_REGISTERED_NAME_RE = re.compile(r"^(\w+\.)+\w+$")
-
-
-# TODO(b/173744905) tf_export this as "tf.register_type_spec".  (And add a
-# usage example to the docstring, once the API is public.)
-#
-# TODO(b/173744905) Update this decorator to apply to ExtensionType rather than
-# TypeSpec (once we do refactoring to move to_components/from_components from
-# TypeSpec to ExtensionType).
-def register(name):
-  """Decorator used to register a globally unique name for a TypeSpec subclass.
-
-  Args:
-    name: The name of the type spec.  Must be globally unique.  Must have the
-      form `"{project_name}.{type_name}"`.  E.g. `"my_project.MyTypeSpec"`.
-
-  Returns:
-    A class decorator that registers the decorated class with the given name.
-  """
-  if not isinstance(name, str):
-    raise TypeError("Expected `name` to be a string; got %r" % (name,))
-  if not _REGISTERED_NAME_RE.match(name):
-    raise ValueError(
-        "Registered name must have the form '{project_name}.{type_name}' "
-        "(e.g. 'my_project.MyTypeSpec'); got %r." % name)
-
-  def decorator_fn(cls):
-    if not (isinstance(cls, type) and issubclass(cls, TypeSpec)):
-      raise TypeError("Expected `cls` to be a TypeSpec; got %r" % (cls,))
-    if cls in _TYPE_SPEC_TO_NAME:
-      raise ValueError("Class %s.%s has already been registered with name %s." %
-                       (cls.__module__, cls.__name__, _TYPE_SPEC_TO_NAME[cls]))
-    if name in _NAME_TO_TYPE_SPEC:
-      raise ValueError("Name %s has already been registered for class %s.%s." %
-                       (name, _NAME_TO_TYPE_SPEC[name].__module__,
-                        _NAME_TO_TYPE_SPEC[name].__name__))
-    _TYPE_SPEC_TO_NAME[cls] = name
-    _NAME_TO_TYPE_SPEC[name] = cls
-    return cls
-
-  return decorator_fn
-
-
-# TODO(edloper) tf_export this as "tf.get_type_spec_name" (or some similar name)
-def get_name(cls):
-  """Returns the registered name for TypeSpec `cls`."""
-  if not (isinstance(cls, type) and issubclass(cls, TypeSpec)):
-    raise TypeError("Expected `cls` to be a TypeSpec; got %r" % (cls,))
-  if cls not in _TYPE_SPEC_TO_NAME:
-    raise ValueError("TypeSpec %s.%s has not been registered." %
-                     (cls.__module__, cls.__name__))
-  return _TYPE_SPEC_TO_NAME[cls]
-
-
-# TODO(edloper) tf_export this as "tf.lookup_type_spec" (or some similar name)
-def lookup(name):
-  """Returns the TypeSpec that has been registered with name `name`."""
-  if not isinstance(name, str):
-    raise TypeError("Expected `name` to be a string; got %r" % (name,))
-  if name not in _NAME_TO_TYPE_SPEC:
-    raise ValueError("No TypeSpec has been registered with name %r" % (name,))
-  return _NAME_TO_TYPE_SPEC[name]
+# TODO(flang) delete type_spec.py's dependency on type_spec_registry.py once
+# all legacy references type_spec's registry functions below have migrated
+_TYPE_SPEC_TO_NAME = type_spec_registry._TYPE_SPEC_TO_NAME  # pylint: disable=protected-access
+_NAME_TO_TYPE_SPEC = type_spec_registry._NAME_TO_TYPE_SPEC  # pylint: disable=protected-access
+lookup = type_spec_registry.lookup
+get_name = type_spec_registry.get_name
+register = type_spec_registry.register
+_REGISTERED_NAME_RE = type_spec_registry._REGISTERED_NAME_RE  # pylint: disable=protected-access

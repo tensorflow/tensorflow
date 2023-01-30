@@ -31,7 +31,7 @@ limitations under the License.
 #include "mlir/AsmParser/AsmParser.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
-#include "mlir/IR/BlockAndValueMapping.h"  // from @llvm-project
+#include "mlir/IR/IRMapping.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
@@ -903,6 +903,14 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
             "backend_config", builder_->getStringAttr(raw_backend_config)));
       }
 
+      if (custom_call->HasLiteral()) {
+        const Literal& literal = custom_call->literal();
+        auto attr = CreateDenseElementsAttrFromLiteral(literal, *builder_);
+        if (!attr.ok()) return attr.status();
+        attributes.push_back(
+            builder_->getNamedAttr("mhlo.literal", attr.value()));
+      }
+
       attributes.push_back(builder_->getNamedAttr(
           "api_version", mlir::mhlo::CustomCallApiVersionAttr::get(
                              builder_->getContext(), mlir_api_version)));
@@ -1136,9 +1144,12 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
     }
     case HloOpcode::kCopyStart: {
       auto copy_start_instruction = Cast<HloCopyStartInstruction>(instruction);
-      if (copy_start_instruction->is_cross_program_prefetch()) {
-        attributes.push_back(builder_->getNamedAttr("is_cross_program_prefetch",
-                                                    builder_->getUnitAttr()));
+      if (auto cross_program_prefetch_index =
+              copy_start_instruction->cross_program_prefetch_index()) {
+        attributes.push_back(builder_->getNamedAttr(
+            "cross_program_prefetch_index",
+            builder_->getIntegerAttr(builder_->getIntegerType(32),
+                                     *cross_program_prefetch_index)));
         // Cross-program prefetch allows copy ops to accept tuples, in which
         // case, we need to double-wrap inputs and outputs in tuples.
         if (operands[0].getType().isa<mlir::TupleType>()) {
@@ -1879,6 +1890,7 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
       NO_ATTRIBUTE_CASE(kSin, SineOp);
       NO_ATTRIBUTE_CASE(kSqrt, SqrtOp);
       NO_ATTRIBUTE_CASE(kSubtract, SubtractOp);
+      NO_ATTRIBUTE_CASE(kTan, TanOp);
       NO_ATTRIBUTE_CASE(kTanh, TanhOp);
       NO_ATTRIBUTE_CASE(kTuple, TupleOp);
       NO_ATTRIBUTE_CASE(kXor, XorOp);

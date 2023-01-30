@@ -126,6 +126,8 @@ class SimpleOrcJIT : public llvm::JITEventListener {
   // free this, but the function is poorly named and really just returns a
   // pointer to a static object.
   llvm::JITEventListener* gdb_jit_event_listener_;
+
+  llvm::JITEventListener* perf_jit_event_listener_;
 };
 
 }  // namespace cpu

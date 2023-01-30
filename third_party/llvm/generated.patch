@@ -1,1 +1,22 @@
 Auto generated patch. Do not edit or delete it, even if empty.
+diff -ruN --strip-trailing-cr a/lldb/test/API/tools/lldb-vscode/completions/TestVSCode_completions.py b/lldb/test/API/tools/lldb-vscode/completions/TestVSCode_completions.py
+--- a/lldb/test/API/tools/lldb-vscode/completions/TestVSCode_completions.py
++++ b/lldb/test/API/tools/lldb-vscode/completions/TestVSCode_completions.py
+@@ -41,7 +41,7 @@
+             [
+                 {
+                     "text": "var",
+-                    "label": "var -- vector<basic_string<char> > &",
++                    "label": "var -- vector<basic_string<char>> &",
+                 }
+             ],
+             [{"text": "var1", "label": "var1 -- int &"}],
+@@ -66,7 +66,7 @@
+             [
+                 {
+                     "text": "var",
+-                    "label": "var -- vector<basic_string<char> > &",
++                    "label": "var -- vector<basic_string<char>> &",
+                 }
+             ],
+         )

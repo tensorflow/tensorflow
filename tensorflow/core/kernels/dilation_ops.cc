@@ -503,7 +503,6 @@ TF_CALL_REAL_NUMBER_TYPES(REGISTER);
                           DilationBackpropFilterOp<GPUDevice, T>);
 
 TF_CALL_GPU_NUMBER_TYPES(REGISTER);
-TF_CALL_bfloat16(REGISTER);
 
 #undef REGISTER
 

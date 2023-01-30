@@ -399,6 +399,7 @@ class AutoMixedPrecisionListsMkl : public AutoMixedPrecisionLists {
                                      "BiasAdd",
                                      "BiasAddGrad",
                                      "BiasAddV1",
+                                     "Erf",
                                      "FusedBatchNormV2",
                                      "FusedBatchNormGradV2",
                                      "FusedBatchNormV3",

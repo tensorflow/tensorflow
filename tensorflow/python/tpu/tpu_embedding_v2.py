@@ -181,7 +181,7 @@ class TPUEmbedding(autotrackable.AutoTrackable):
       strategy.run(tpu_step, args=(tpu_features, ))
 
   @tf.function
-  def evalution_step(dataset_iterator, num_steps):
+  def evaluation_step(dataset_iterator, num_steps):
     def tpu_step(tpu_features):
       activations = embedding.dequeue()
       model_output = model(activations)
@@ -325,7 +325,7 @@ class TPUEmbedding(autotrackable.AutoTrackable):
 
     if self._using_tpu:
       # Extract a list of callable learning rates also in fixed order. Each
-      # table in the config proto will get a index into this list and we will
+      # table in the config proto will get an index into this list, and we will
       # pass this list in the same order after evaluation to the
       # send_tpu_embedding_gradients op.
       self._dynamic_learning_rates = []
@@ -890,6 +890,15 @@ class TPUEmbedding(autotrackable.AutoTrackable):
         # Add one dimension to the last axis.
         sample_indices = array_ops.pad(
             sample_indices, paddings=[[0, 0], [0, 1]])
+    else:
+      if feature.max_sequence_length > 0:
+        logging.warning(
+            (
+                "Input tensor is rank %d which is above 2, the"
+                " max_sequence_length setting will be ignored."
+            ),
+            tensor.shape.rank,
+        )
     indices.append(sample_indices)
     values.append(math_ops.cast(tensor.values, dtypes.int64))
     # If we have weights they must be a SparseTensor.
@@ -1102,7 +1111,7 @@ class TPUEmbedding(autotrackable.AutoTrackable):
            a. If feature config has max_sequence_length equals 0 or output shape
               set (the max_sequence_length setting will be ignored), the
               output shape will be the input shape excluding the last dimension.
-           b. Otherwize if the tensor is rank 2, the output shape will be input
+           b. Otherwise, if the tensor is rank 2, the output shape will be input
               shape  with last dimension set as max_sequence_length. If the
               tensor is above rank 2, the output shape will be the input shape
               excluding the last dimension and the last dimension of the output

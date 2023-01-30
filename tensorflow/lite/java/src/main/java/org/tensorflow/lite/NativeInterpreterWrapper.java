@@ -89,13 +89,13 @@ class NativeInterpreterWrapper implements AutoCloseable {
     // (Alternatively, we could determine this without needing to recreate the interpreter
     // by passing the tflite::Model in to here, and then traversing that?)
     ArrayList<Long> delegateHandles = new ArrayList<>();
-    boolean useXnnpack = true;
-    if (options.useXNNPACK != null) {
-      useXnnpack = options.useXNNPACK;
-    }
     this.interpreterHandle =
         createInterpreter(
-            modelHandle, errorHandle, options.getNumThreads(), useXnnpack, delegateHandles);
+            modelHandle,
+            errorHandle,
+            options.getNumThreads(),
+            options.getUseXNNPACK(),
+            delegateHandles);
     this.originalGraphHasUnresolvedFlexOp = hasUnresolvedFlexOp(interpreterHandle);
     addDelegates(options);
     initDelegatesWithInterpreterFactory();
@@ -108,7 +108,11 @@ class NativeInterpreterWrapper implements AutoCloseable {
       delete(/* errorHandle= */ 0, /* modelHandle= */ 0, this.interpreterHandle);
       this.interpreterHandle =
           createInterpreter(
-              modelHandle, errorHandle, options.getNumThreads(), useXnnpack, delegateHandles);
+              modelHandle,
+              errorHandle,
+              options.getNumThreads(),
+              options.getUseXNNPACK(),
+              delegateHandles);
     }
     if (options.allowFp16PrecisionForFp32 != null) {
       allowFp16PrecisionForFp32(interpreterHandle, options.allowFp16PrecisionForFp32);

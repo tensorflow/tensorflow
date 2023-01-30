@@ -112,7 +112,7 @@ xla::XlaOp XlaExpression::AsXlaOp(xla::XlaBuilder* builder) const {
   });
 }
 
-StatusOr<Tensor> XlaExpression::ResolveDynamism(xla::Client* client) const {
+StatusOr<Tensor> XlaExpression::ResolveDynamism() const {
   switch (kind()) {
     case Kind::kConstant: {
       // Constant values are considered static.

@@ -4330,5 +4330,109 @@ llvm::Optional<Value> convertOneHotOp(PatternRewriter& rewriter, Operation* op,
       .getResult();
 }
 
+// Lowers Sin operator to a sequence of TOSA ops.
+llvm::Optional<Value> convertSinOp(PatternRewriter& rewriter, Operation* op,
+                                   Value input, ShapedType output_type) {
+  RankedTensorType input_type = input.getType().dyn_cast<RankedTensorType>();
+  Location loc = op->getLoc();
+
+  Type input_ety = input_type.getElementType();
+  Type output_ety = output_type.getElementType();
+
+  if (!input) return llvm::None;
+
+  if (input_ety != output_ety) {
+    (void)rewriter.notifyMatchFailure(op,
+                                      "input/output element type must match");
+    return llvm::None;
+  }
+
+  bool input_is_fp = input_ety.isF32();
+  bool output_is_fp = output_ety.isF32();
+
+  if (!input_is_fp || !output_is_fp) {
+    (void)rewriter.notifyMatchFailure(op, "input/result must be fp32");
+    return llvm::None;
+  }
+
+  // To perform a sin operation we remap the sin domain to be over a single
+  // period of the function, remapping to the domain of the table function.
+  // We then remap the range of the table function to map to the range of the
+  // sin operation.
+
+  // 1. Normalize the period of the domain from [0, 2π) to [0, 1).
+  auto fp_scalar_ty = RankedTensorType::get({}, rewriter.getF32Type());
+  Value fp_scale = rewriter.create<tosa::ConstOp>(
+      loc, fp_scalar_ty,
+      DenseElementsAttr::get(fp_scalar_ty, {static_cast<float>(0.5 / M_PI)}));
+
+  // 2. Remap the periodic behavior of the domain to line up within [0, 1).
+  Value fp_scaled =
+      CreateOpAndInfer<tosa::MulOp>(rewriter, loc, input_type, input, fp_scale,
+                                    rewriter.getI32IntegerAttr(0));
+  auto floored =
+      CreateOpAndInfer<tosa::FloorOp>(rewriter, loc, input_type, fp_scaled);
+  auto repeated = CreateOpAndInfer<tosa::SubOp>(rewriter, loc, input_type,
+                                                fp_scaled, floored);
+
+  // 3. Scale and translate the normalized domain to the table domain. This
+  // includes a translating and scaling to [-int16_max, int16_max] and casting
+  // to an i16.
+  Value one = rewriter.create<tosa::ConstOp>(
+      loc, fp_scalar_ty, DenseElementsAttr::get(fp_scalar_ty, {1.0f}));
+
+  Value two = rewriter.create<tosa::ConstOp>(
+      loc, fp_scalar_ty, DenseElementsAttr::get(fp_scalar_ty, {2.0f}));
+  auto scale_up = CreateOpAndInfer<tosa::MulOp>(
+      rewriter, loc, input_type, repeated, two, rewriter.getI32IntegerAttr(0));
+  auto translate =
+      CreateOpAndInfer<tosa::SubOp>(rewriter, loc, input_type, scale_up, one);
+
+  Value int_limit = rewriter.create<tosa::ConstOp>(
+      loc, fp_scalar_ty,
+      DenseElementsAttr::get(
+          fp_scalar_ty,
+          {static_cast<float>(std::numeric_limits<int16_t>::max())}));
+  auto int_scaled =
+      CreateOpAndInfer<tosa::MulOp>(rewriter, loc, input_type, translate,
+                                    int_limit, rewriter.getI32IntegerAttr(0));
+
+  auto int16_ty = input_type.clone(rewriter.getIntegerType(16));
+  auto casted =
+      CreateOpAndInfer<tosa::CastOp>(rewriter, loc, int16_ty, int_scaled);
+
+  // 4. Compute the lookup table using the range of [-255, 255] for sin.
+  llvm::SmallVector<int16_t> values;
+  const int num_values = 513;
+  values.resize(num_values, 0);
+  // First and last values should be 0;
+  for (int i = 1; i < num_values - 1; ++i)
+    values[i] = std::numeric_limits<int16_t>::max() *
+                sin(static_cast<float>(i) * 2.0 * M_PI / (num_values - 1.0));
+
+  auto table_ty =
+      RankedTensorType::get({num_values}, rewriter.getIntegerType(16));
+  Value table = rewriter.create<tosa::ConstOp>(
+      loc, table_ty, DenseElementsAttr::get(table_ty, llvm::ArrayRef(values)));
+
+  auto table_result_ty = input_type.clone(rewriter.getIntegerType(32));
+  auto table_result = CreateOpAndInfer<tosa::TableOp>(
+      rewriter, loc, table_result_ty, casted, table);
+
+  // 5. The range of table is a 23-bit two's compliment value. Normalize the
+  // range by casting to an fp32 and dividing by 2^22.
+  auto table_result_fp =
+      CreateOpAndInfer<CastOp>(rewriter, loc, input_type, table_result);
+  auto output_scale = rewriter.create<ConstOp>(
+      loc, fp_scalar_ty,
+      DenseElementsAttr::get(
+          fp_scalar_ty,
+          {static_cast<float>(1.0 / static_cast<float>(1 << 22))}));
+
+  return CreateOpAndInfer<MulOp>(rewriter, loc, output_type, table_result_fp,
+                                 output_scale, rewriter.getI32IntegerAttr(0))
+      .getResult();
+}
+
 };  // namespace tosa
 };  // namespace mlir

@@ -83,8 +83,9 @@ class StackOpTest(test.TestCase):
       y = gen_array_ops.parallel_concat(values=[["tf"]], shape=0)
       return y
 
-    with self.assertRaisesRegex(errors.InvalidArgumentError,
-                                r"0th dimension of value .* is less than"):
+    with self.assertRaisesRegex(
+        errors.InvalidArgumentError, r"0th dimension .* must be greater than"
+    ):
       f()
 
   def testSimpleParallelGPU(self):

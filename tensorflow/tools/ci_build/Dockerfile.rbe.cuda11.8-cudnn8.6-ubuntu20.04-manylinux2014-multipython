@@ -8,7 +8,7 @@
 #  --tag "gcr.io/tensorflow-testing/nosla-cuda11.8-cudnn8.6-ubuntu20.04-manylinux2014-multipython" .
 # $ docker push gcr.io/tensorflow-testing/nosla-cuda11.8-cudnn8.6-ubuntu20.04-manylinux2014-multipython
 
-FROM gcr.io/tensorflow-sigs/build@sha256:f0b1e238ba04236818c0856ac987051a55f685d0bbe4104483f993691b2764cc
+FROM gcr.io/tensorflow-sigs/build@sha256:a88f88dda0131155466f0b7ee2314a32d02a3a01d98195bb151705dbf2726d1c
 
 # Copy and run the install scripts.
 ARG DEBIAN_FRONTEND=noninteractive

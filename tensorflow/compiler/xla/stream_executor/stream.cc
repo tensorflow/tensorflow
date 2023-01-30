@@ -16,21 +16,23 @@ limitations under the License.
 #include "tensorflow/compiler/xla/stream_executor/stream.h"
 
 #include <cstdint>
+#include <functional>
 #include <limits>
 #include <memory>
 #include <utility>
 #include <vector>
 
+#include "absl/functional/any_invocable.h"
 #include "absl/strings/str_cat.h"
 #include "third_party/eigen3/Eigen/Core"
 #include "tensorflow/compiler/xla/stream_executor/blas.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/stacktrace.h"
 #include "tensorflow/compiler/xla/stream_executor/platform.h"
 #include "tensorflow/compiler/xla/stream_executor/platform/logging.h"
 #include "tensorflow/compiler/xla/stream_executor/platform/port.h"
 #include "tensorflow/compiler/xla/stream_executor/rng.h"
 #include "tensorflow/compiler/xla/stream_executor/stream_executor_internal.h"
 #include "tensorflow/compiler/xla/stream_executor/stream_executor_pimpl.h"
+#include "tensorflow/tsl/platform/stacktrace.h"
 
 namespace stream_executor {
 
@@ -110,6 +112,11 @@ std::string ToVlogString(const std::complex<T> &c) {
 
 template <class T>
 std::string ToVlogString(const std::function<T> &f) {
+  return f == nullptr ? "null" : "<non-null function>";
+}
+
+template <class T>
+std::string ToVlogString(const absl::AnyInvocable<T> &f) {
   return f == nullptr ? "null" : "<non-null function>";
 }
 
@@ -224,7 +231,7 @@ std::string CallStr(const char *function_name, Stream *stream,
   }
   absl::StrAppend(&str, ")");
   if (VLOG_IS_ON(10)) {
-    absl::StrAppend(&str, " ", port::CurrentStackTrace(), "\n");
+    absl::StrAppend(&str, " ", tsl::CurrentStackTrace(), "\n");
   }
   return str;
 }
@@ -256,7 +263,7 @@ Stream::Stream(StreamExecutor *parent)
     : parent_(parent),
       implementation_(parent->implementation()->GetStreamImplementation()),
       allocated_(false),
-      status_(port::InternalError("Uninitialized stream")),
+      status_(tsl::errors::Internal("Uninitialized stream")),
       temporary_memory_manager_(this) {
   VLOG_CALL(PARAM(parent));
 }
@@ -282,7 +289,7 @@ tsl::Status Stream::RefreshStatus() {
   tsl::Status status = parent_->GetStatus(this);
   // We should not put the stream in an error state, just because the GetStatus
   // method is unimplemented.
-  if (status != tsl::Status(port::error::UNIMPLEMENTED,
+  if (status != tsl::Status(tsl::error::UNIMPLEMENTED,
                             "GetStatus is not supported on this executor.")) {
     CheckStatus(status);
   }
@@ -2371,19 +2378,15 @@ Stream &Stream::ThenTransformTensor(const dnn::BatchDescriptor &input_desc,
   return *this;
 }
 
-Stream &Stream::ThenDoHostCallback(std::function<void()> callback) {
-  VLOG_CALL(PARAM(callback));
-
-  if (!ok()) {
-    LOG(INFO) << DebugStreamPointers()
-              << " was in error state before adding host callback";
-  }
-  CheckError(parent_->HostCallback(this, std::move(callback)));
-  return *this;
+Stream &Stream::ThenDoHostCallback(absl::AnyInvocable<void() &&> callback) {
+  return ThenDoHostCallbackWithStatus([cb = std::move(callback)]() mutable {
+    std::move(cb)();
+    return ::tsl::OkStatus();
+  });
 }
 
 Stream &Stream::ThenDoHostCallbackWithStatus(
-    std::function<tsl::Status()> callback) {
+    absl::AnyInvocable<tsl::Status() &&> callback) {
   VLOG_CALL(PARAM(callback));
 
   if (!ok()) {
@@ -2395,7 +2398,7 @@ Stream &Stream::ThenDoHostCallbackWithStatus(
 }
 
 Stream &Stream::ThenRunAfterNextBlockHostUntilDone(
-    std::function<void()> callback) {
+    absl::AnyInvocable<void() &&> callback) {
   VLOG_CALL(PARAM(callback));
 
   if (!ok()) {
@@ -2413,7 +2416,7 @@ void Stream::CheckError(bool operation_retcode) {
     return;
   }
   absl::MutexLock lock(&mu_);
-  status_ = port::InternalError("Unknown error");
+  status_ = tsl::errors::Internal("Unknown error");
 }
 
 Stream &Stream::ThenFft(fft::Plan *plan,
@@ -2531,7 +2534,7 @@ tsl::Status Stream::BlockHostUntilDone() {
     absl::MutexLock lock(&mu_);
     LOG(INFO) << status_.ToString();
     tsl::Status status = tsl::Status(
-        port::error::INTERNAL,
+        tsl::error::INTERNAL,
         "stream did not block host until done; was already in an error state");
     LOG(INFO) << DebugStreamPointers() << " " << status;
     return status;
@@ -2547,13 +2550,13 @@ tsl::Status Stream::BlockHostUntilDone() {
 }
 
 void Stream::RunAfterBlockHostUntilDoneCallbacks() {
-  std::vector<std::function<void()>> callbacks;
+  std::vector<absl::AnyInvocable<void() &&>> callbacks;
   {
     absl::MutexLock lock(&mu_);
     std::swap(callbacks, after_block_host_until_done_callbacks_);
   }
-  for (const auto &fn : callbacks) {
-    fn();
+  for (auto &fn : callbacks) {
+    std::move(fn)();
   }
 }
 

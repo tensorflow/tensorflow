@@ -37,6 +37,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/hlo/ir/hlo_module_metadata.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_schedule.h"
 #include "tensorflow/compiler/xla/iterator_util.h"
+#include "tensorflow/compiler/xla/printer.h"
 #include "tensorflow/compiler/xla/service/compilation_environments.h"
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/compiler/xla/service/hlo_module_config.h"
@@ -319,6 +320,15 @@ class HloModule {
   bool is_dynamic() const { return is_dynamic_; }
   void set_is_dynamic(bool is_dynamic) { is_dynamic_ = is_dynamic; }
 
+  // Prints a string representation of the module.
+  //
+  // (We express the default options using an overload rather than a default
+  // param because gdb ignores default params, but does resolve overloads.)
+  void Print(Printer* printer) const {
+    return Print(printer, HloPrintOptions());
+  }
+  void Print(Printer* printer, const HloPrintOptions& options) const;
+
   // Return a string representation of the module.
   //
   // (We express the default options using an overload rather than a default
@@ -467,14 +477,36 @@ class HloModule {
     spmd_output_sharding_ = sharding;
   }
 
+  // Describes a buffer to be used for cross program prefetching.
+  struct CrossProgramPrefetchInfo {
+    // The parameter to prefetch.
+    int64_t parameter;
+    // Index of the buffer within a tuple-typed parameter.
+    ShapeIndex index;
+    // Offset into alt memory where the cross program pretched buffer will be
+    // stored.
+    std::optional<int64_t> alt_memory_offset;
+  };
+
   // Add a program argument to be prefetched across programs.
-  void AddCrossProgramPrefetch(int64_t parameter, const ShapeIndex& index) {
-    cross_program_prefetches_.emplace_back(parameter, index);
+  void AddCrossProgramPrefetch(
+      int64_t parameter, const ShapeIndex& index,
+      std::optional<int64_t> alt_memory_offset = std::nullopt) {
+    cross_program_prefetches_.emplace_back(
+        CrossProgramPrefetchInfo{parameter, index, alt_memory_offset});
+  }
+
+  Status SetCrossProgramPrefetchOffset(int64_t prefetch_index, int64_t offset) {
+    TF_RET_CHECK(prefetch_index < cross_program_prefetches_.size());
+    auto& [parameter, index, optional_offset] =
+        cross_program_prefetches_[prefetch_index];
+    TF_RET_CHECK(!optional_offset.has_value());
+    optional_offset = offset;
+    return OkStatus();
   }
 
   // Get the list of program arguments to be prefetch across programs.
-  absl::Span<const std::pair<int64_t, ShapeIndex>> CrossProgramPrefetches()
-      const {
+  absl::Span<const CrossProgramPrefetchInfo> CrossProgramPrefetches() const {
     return cross_program_prefetches_;
   }
 
@@ -505,6 +537,23 @@ class HloModule {
 
   const std::vector<HloModuleProto::ProfileInfo>& profile_info() const {
     return profile_info_list_;
+  }
+
+  void add_autofdo_pre_pass_fingerprint(absl::string_view fingerprint) {
+    autofdo_pre_pass_fingerprints_.push_back(std::string(fingerprint));
+  }
+
+  void set_autofdo_pre_pass_fingerprints(
+      const std::vector<std::string>& fingerprints) {
+    autofdo_pre_pass_fingerprints_ = fingerprints;
+  }
+
+  const std::vector<std::string>& autofdo_pre_pass_fingerprints() const {
+    return autofdo_pre_pass_fingerprints_;
+  }
+
+  bool has_module_autofdo_profiles() const {
+    return !autofdo_pre_pass_fingerprints_.empty();
   }
 
   void set_relative_speedup(double relative_speedup) {
@@ -575,7 +624,7 @@ class HloModule {
   std::optional<HloSharding> spmd_output_sharding_;
 
   // Arguments to be prefetched across programs.
-  std::vector<std::pair<int64_t, ShapeIndex>> cross_program_prefetches_;
+  std::vector<CrossProgramPrefetchInfo> cross_program_prefetches_;
 
   // Metadata for this module, such as its canonical id and the HLO passes run.
   HloModuleMetadata metadata_;
@@ -595,6 +644,10 @@ class HloModule {
 
   // The unoptimized module fingerprint.
   std::string autofdo_fingerprint_;
+
+  // The pre-pass module fingerprints used to retrieve the optimization profiles
+  // this module contains.
+  std::vector<std::string> autofdo_pre_pass_fingerprints_;
 
   bool use_auto_spmd_partitioning_ = false;
 

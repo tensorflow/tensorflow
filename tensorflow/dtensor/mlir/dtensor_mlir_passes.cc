@@ -283,7 +283,10 @@ void CreateDTensorMLIRPass(const mlir::TF::StandardPipelineOptions &options,
     // Prepare for XLA SPMD integration for XLA SPMD mesh. If there are layout
     // operations on XLA SPMD mesh, then convert all of them to appropriate
     // XLA sharding attributes.
-    pm->addPass(CreateDTensorXlaSpmdIntegration());
+    pm->addPass(CreateDTensorSetHloShardingPass(
+        /*check_layout_use_xla_spmd=*/true));
+    pm->addPass(CreateDTensorReplaceAuxiliaryDTensorLayoutOpPass());
+    pm->addPass(CreateDTensorRemoveDTensorLayoutPass());
 
     // Rename functions with unique names, to avoid collisions in the function
     // library.

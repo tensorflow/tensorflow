@@ -21,7 +21,6 @@ limitations under the License.
 #include <utility>
 
 #include "gml_st/IR/gml_st_ops.h"
-#include "gml_st/interfaces/tiling_interface_impl.h"
 #include "gml_st/transforms/fusion/fusion.h"
 #include "gml_st/transforms/passes.h"
 #include "gml_st/transforms/tiling/tiling.h"
@@ -29,7 +28,7 @@ limitations under the License.
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
-#include "mlir/Dialect/Linalg/Utils/Utils.h"
+#include "mlir/Dialect/Linalg/Transforms/TilingInterfaceImpl.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
@@ -50,7 +49,7 @@ FailureOr<TilingResult> tileMatmul(PatternRewriter &rewriter, Operation *op,
   opts.setTileSizeComputationFn(tileSizes);
   opts.distribute = distribute;
   opts.distributionLabel = distributionLabel;
-  return tile(opts, rewriter, cast<TilingInterface>(op));
+  return tileUsingGmlSt(opts, rewriter, cast<TilingInterface>(op));
 }
 
 /// Pattern to tile `linalg.matmul`, fuse `linalg.fill` into generated
@@ -99,24 +98,21 @@ struct MatmulTransformPattern : public OpRewritePattern<linalg::MatmulOp> {
       rewriter.replaceOp(tilingRoot,
                          tilingParallelDimsResult->loop->getResults());
       tilingRoot = tilingParallelDimsResult->tiledOps.front();
+      // Fuse ops into the loop.
+      fuseGreedily(rewriter, *tilingRoot->getBlock(),
+                   [&](Operation *op) { return fusionCluster.contains(op); });
+      (void)fuseFillOpsIntoParallelOp(
+          rewriter, cast<ParallelOp>(tilingParallelDimsResult->loop));
     }
 
-    // Fuse ops into the loop.
-    fuseGreedily(rewriter, *tilingRoot->getBlock(), [&](Operation *op) {
-      return llvm::is_contained(fusionCluster, op);
-    });
-
     auto inputFusionFilterFn = [&](Operation *op) {
-      return isa<linalg::BroadcastOp, linalg::MapOp>(op);
+      return isa<linalg::BroadcastOp, linalg::FillOp, linalg::MapOp>(op);
     };
 
     // Second level tiling: reduction dimension.
     SmallVector<int64_t> reductionDimsTileSizes{0, 0, reductionDimTileSize};
     for (auto op :
          llvm::to_vector(tilingRoot->getBlock()->getOps<linalg::MatmulOp>())) {
-      // Fusion into the output.
-      if (failed(fuseOutputFill(rewriter, op))) return failure();
-
       fuseGreedily(rewriter, *op->getBlock(), inputFusionFilterFn);
 
       auto tilingReductionDimsResult = tileMatmul(
@@ -159,7 +155,7 @@ struct TransformMatmulForTritonPass
   void getDependentDialects(DialectRegistry &registry) const final {
     registry.insert<mlir::gml_st::GmlStDialect, arith::ArithDialect,
                     linalg::LinalgDialect, tensor::TensorDialect>();
-    mlir::gml_st::registerGmlStTilingInterfaceExternalModels(registry);
+    linalg::registerTilingInterfaceExternalModels(registry);
   }
 
   void runOnOperation() override {

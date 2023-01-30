@@ -208,7 +208,6 @@ class SoftmaxOpGPU : public OpKernel {
           context, const_cast<T*>(max_logits.flat<T>().data()),
           reinterpret_cast<const T*>(logits_in_.flat<T>().data()), rows, cols);
 
-
       gpuprim::CountingInputIterator<int> counting_iterator(0);
       using InputIterType =
           gpuprim::TransformInputIterator<acc_type,
@@ -267,7 +266,6 @@ class SoftmaxOpGPU : public OpKernel {
       Name("Softmax").Device(DEVICE_GPU).TypeConstraint<T>("T"), \
       SoftmaxOpGPU<T>);
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU);
-TF_CALL_bfloat16(REGISTER_GPU);
 
 #undef REGISTER_GPU
 #define REGISTER_GPU(T)                                             \
@@ -275,7 +273,6 @@ TF_CALL_bfloat16(REGISTER_GPU);
       Name("LogSoftmax").Device(DEVICE_GPU).TypeConstraint<T>("T"), \
       SoftmaxOpGPU<T>);
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU);
-TF_CALL_bfloat16(REGISTER_GPU);
 
 #undef REGISTER_GPU
 

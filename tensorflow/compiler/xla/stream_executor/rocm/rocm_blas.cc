@@ -32,16 +32,16 @@ limitations under the License.
 #include "tensorflow/compiler/xla/stream_executor/gpu/gpu_helpers.h"
 #include "tensorflow/compiler/xla/stream_executor/gpu/gpu_stream.h"
 #include "tensorflow/compiler/xla/stream_executor/gpu/gpu_timer.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/env.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/initialize.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/status.h"
 #include "tensorflow/compiler/xla/stream_executor/platform/dso_loader.h"
+#include "tensorflow/compiler/xla/stream_executor/platform/initialize.h"
 #include "tensorflow/compiler/xla/stream_executor/platform/logging.h"
 #include "tensorflow/compiler/xla/stream_executor/platform/port.h"
 #include "tensorflow/compiler/xla/stream_executor/plugin_registry.h"
 #include "tensorflow/compiler/xla/stream_executor/rocm/rocm_platform_id.h"
 #include "tensorflow/compiler/xla/stream_executor/scratch_allocator.h"
 #include "tensorflow/compiler/xla/stream_executor/stream_executor.h"
+#include "tensorflow/tsl/util/determinism.h"
+using tsl::OpDeterminismRequired;
 
 namespace stream_executor {
 namespace gpu {
@@ -193,7 +193,19 @@ bool ROCMBlas::DoBlasInternalImpl(FuncT rocblas_func, Stream *stream,
   }
 
   gpu::ScopedActivateExecutorContext sac{parent_};
-  rocblas_status ret = rocblas_func(blas_, args...);
+
+  // set the atomics mode, leaving default to library
+  bool allow_atomics = !OpDeterminismRequired();
+  rocblas_status ret;
+  if (!allow_atomics) {
+    ret = wrap::rocblas_set_atomics_mode(blas_, rocblas_atomics_not_allowed);
+    if (err_on_failure && ret != rocblas_status_success) {
+      LOG(ERROR) << "failed to to set atomics mode before "
+                 << rocblas_func.kName << ": " << ToString(ret);
+    }
+  }
+
+  ret = rocblas_func(blas_, args...);
   if (err_on_failure && ret != rocblas_status_success) {
     LOG(ERROR) << "failed to run ROCBLAS routine " << rocblas_func.kName << ": "
                << ToString(ret);
@@ -502,8 +514,8 @@ tsl::Status ROCMBlas::DoBlasGemm(Stream *stream, blas::Transpose transa,
           cb_beta, static_cast<rocblas_double_complex *>(c->opaque()), ldc);
     }
     default:
-      return port::InternalError(absl::StrCat("Unsupported datatype for GEMM: ",
-                                              blas::DataTypeString(dtype)));
+      return tsl::errors::Internal("Unsupported datatype for GEMM: ",
+                                   blas::DataTypeString(dtype));
   }
 }
 
@@ -633,7 +645,7 @@ tsl::Status ROCMBlas::DoBlasGemmWithAlgorithm(
     blas::AlgorithmType algorithm, blas::ComputePrecision precision,
     blas::ProfileResult *output_profile_result) {
   // ROCM TODO: properly implement the interface
-  return port::InternalError("Not implemented on ROCm");
+  return tsl::errors::Internal("Not implemented on ROCm");
 }
 
 tsl::Status ROCMBlas::DoBlasGemmStridedBatchedWithAlgorithm(
@@ -646,7 +658,7 @@ tsl::Status ROCMBlas::DoBlasGemmStridedBatchedWithAlgorithm(
     blas::AlgorithmType algorithm, blas::ComputePrecision precision,
     blas::ProfileResult *output_profile_result) {
   // ROCM TODO: properly implement the interface
-  return port::InternalError("Not implemented on ROCm");
+  return tsl::errors::Internal("Not implemented on ROCm");
 }
 
 bool ROCMBlas::GetBlasGemmAlgorithms(
@@ -684,7 +696,7 @@ tsl::Status ReorganizeMemory(Stream *stream,
               : stream->ThenMemcpy(&src_mem, target_mem, cur_stride_size).ok();
       if (!a_status) {
         return tsl::Status(
-            port::error::INTERNAL,
+            tsl::error::INTERNAL,
             "failed to copy device memory in ROCMBlas::DoBlasGemmBatched");
       }
       src_ptr = reinterpret_cast<char *>(raw_ptrs[i]);
@@ -700,7 +712,7 @@ tsl::Status ReorganizeMemory(Stream *stream,
              : stream->ThenMemcpy(&src_mem, target_mem, cur_stride_size).ok();
   if (!a_status)
     return tsl::Status(
-        port::error::INTERNAL,
+        tsl::error::INTERNAL,
         "failed to copy device memory in ROCMBlas::DoBlasGemmBatched");
   return tsl::OkStatus();
 }
@@ -837,21 +849,24 @@ tsl::Status ROCMBlas::DoBlasGemmBatchedInternal(
     return c_allocation_status;
   }
 
-  MAPPED_T *alpha_ptr = reinterpret_cast<MAPPED_T *>(&alpha);
-  MAPPED_T *beta_ptr = reinterpret_cast<MAPPED_T *>(&beta);
-
   bool ok;
-  if constexpr (std::is_same<T, Eigen::bfloat16>::value) {
+  if constexpr (std::is_same_v<T, Eigen::bfloat16>) {
+    float alpha_ = static_cast<float>(alpha);
+    float beta_ = static_cast<float>(beta);
+    const void *alpha_ptr = reinterpret_cast<const void *>(&alpha_);
+    const void *beta_ptr = reinterpret_cast<const void *>(&beta_);
+
     ok = DoBlasInternal(
         rocblas_func, stream, /* pointer_mode_host = */ true,
         ROCMBlasTranspose(transa), ROCMBlasTranspose(transb), m, n, k,
-        GpuComplex(alpha_ptr), GpuMemory(a), rocblas_datatype_bf16_r, lda,
-        batch_stride_a, GpuMemory(b), rocblas_datatype_bf16_r, ldb,
-        batch_stride_b, GpuComplex(beta_ptr), GpuMemoryMutable(&c),
-        rocblas_datatype_bf16_r, ldc, batch_stride_c, GpuMemoryMutable(&c),
+        alpha_ptr, a.opaque(), rocblas_datatype_bf16_r, lda, batch_stride_a,
+        b.opaque(), rocblas_datatype_bf16_r, ldb, batch_stride_b, beta_ptr,
+        c.opaque(), rocblas_datatype_bf16_r, ldc, batch_stride_c, c.opaque(),
         rocblas_datatype_bf16_r, ldc, batch_stride_c, batch_count,
         rocblas_datatype_f32_r, rocblas_gemm_algo_standard, 0, 0);
   } else {
+    MAPPED_T *alpha_ptr = reinterpret_cast<MAPPED_T *>(&alpha);
+    MAPPED_T *beta_ptr = reinterpret_cast<MAPPED_T *>(&beta);
     ok = DoBlasInternal(rocblas_func, stream, /* pointer_mode_host = */ true,
                         ROCMBlasTranspose(transa), ROCMBlasTranspose(transb), m,
                         n, k, GpuComplex(alpha_ptr), GpuMemory(a), lda,
@@ -860,7 +875,7 @@ tsl::Status ROCMBlas::DoBlasGemmBatchedInternal(
                         batch_stride_c, batch_count);
   }
   if (!ok)
-    return tsl::Status(port::error::INTERNAL,
+    return tsl::Status(tsl::error::INTERNAL,
                        "failed BLAS call, see log for details");
   if (reallocated_c)
     return ReorganizeMemory(stream, &c, c_raw_ptrs, batch_count, batch_stride_c,
@@ -1187,13 +1202,13 @@ tsl::Status ROCMBlas::DoBlasGemmStridedBatched(
           batch_count);
     }
     default:
-      return port::InternalError(absl::StrCat("Unsupported datatype for GEMM: ",
-                                              blas::DataTypeString(dtype)));
+      return tsl::errors::Internal(absl::StrCat(
+          "Unsupported datatype for GEMM: ", blas::DataTypeString(dtype)));
   }
 }
 
 tsl::Status ROCMBlas::GetVersion(string *version) {
-  return port::UnimplementedError("");
+  return tsl::errors::Unimplemented("");
 }
 
 }  // namespace gpu

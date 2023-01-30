@@ -30,6 +30,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/functional/any_invocable.h"
 #include "absl/types/optional.h"
 #include "tensorflow/compiler/xla/stream_executor/allocator_stats.h"
 #include "tensorflow/compiler/xla/stream_executor/device_description.h"
@@ -41,13 +42,13 @@ limitations under the License.
 #include "tensorflow/compiler/xla/stream_executor/kernel_cache_config.h"
 #include "tensorflow/compiler/xla/stream_executor/kernel_spec.h"
 #include "tensorflow/compiler/xla/stream_executor/launch_dim.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/status.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/statusor.h"
 #include "tensorflow/compiler/xla/stream_executor/module_spec.h"
 #include "tensorflow/compiler/xla/stream_executor/platform.h"
 #include "tensorflow/compiler/xla/stream_executor/platform/port.h"
 #include "tensorflow/compiler/xla/stream_executor/plugin_registry.h"
 #include "tensorflow/compiler/xla/stream_executor/trace_listener.h"
+#include "tensorflow/tsl/platform/status.h"
+#include "tensorflow/tsl/platform/statusor.h"
 
 namespace stream_executor {
 
@@ -184,21 +185,21 @@ class StreamExecutorInterface {
 
   virtual tsl::Status GetKernel(const MultiKernelLoaderSpec& spec,
                                 KernelBase* kernel) {
-    return port::UnimplementedError("Not Implemented");
+    return tsl::errors::Unimplemented("Not Implemented");
   }
   virtual bool UnloadModule(ModuleHandle module_handle) { return false; }
   virtual tsl::Status LoadModule(const MultiModuleLoaderSpec& spec,
                                  ModuleHandle* module_handle) {
-    return port::UnimplementedError("Not Implemented");
+    return tsl::errors::Unimplemented("Not Implemented");
   }
-  virtual port::StatusOr<std::shared_ptr<DeviceMemoryBase>>
+  virtual tsl::StatusOr<std::shared_ptr<DeviceMemoryBase>>
   CreateOrShareConstant(Stream* stream, const std::vector<uint8_t>& content) {
-    return port::UnimplementedError("Not Implemented");
+    return tsl::errors::Unimplemented("Not Implemented");
   }
   virtual tsl::Status Launch(Stream* stream, const ThreadDim& thread_dims,
                              const BlockDim& block_dims, const KernelBase& k,
                              const KernelArgsArrayBase& args) {
-    return port::UnimplementedError("Not Implemented");
+    return tsl::errors::Unimplemented("Not Implemented");
   }
 
   // Releases any state associated with the kernel.
@@ -241,7 +242,7 @@ class StreamExecutorInterface {
                               uint64_t size) = 0;
   virtual tsl::Status Memset(Stream* stream, DeviceMemoryBase* location,
                              uint8 pattern, uint64_t size) {
-    return port::InternalError("Not implemented");
+    return tsl::errors::Internal("Not implemented");
   }
   virtual tsl::Status Memset32(Stream* stream, DeviceMemoryBase* location,
                                uint32_t pattern, uint64_t size) = 0;
@@ -252,9 +253,8 @@ class StreamExecutorInterface {
   virtual bool MemcpyDeviceToDevice(Stream* stream, DeviceMemoryBase* gpu_dst,
                                     const DeviceMemoryBase& gpu_src,
                                     uint64_t size) = 0;
-  virtual bool HostCallback(Stream* stream, std::function<void()> callback);
   virtual bool HostCallback(Stream* stream,
-                            std::function<tsl::Status()> callback) = 0;
+                            absl::AnyInvocable<tsl::Status() &&> callback) = 0;
   virtual tsl::Status AllocateEvent(Event* event) = 0;
   virtual tsl::Status DeallocateEvent(Event* event) = 0;
   virtual tsl::Status RecordEvent(Stream* stream, Event* event) = 0;
@@ -269,7 +269,7 @@ class StreamExecutorInterface {
   virtual bool StopTimer(Stream* stream, Timer* timer) = 0;
   virtual tsl::Status BlockHostUntilDone(Stream* stream) = 0;
   virtual tsl::Status GetStatus(Stream* stream) {
-    return tsl::Status(port::error::UNIMPLEMENTED,
+    return tsl::Status(tsl::error::UNIMPLEMENTED,
                        "GetStatus is not supported on this executor.");
   }
   virtual int PlatformDeviceCount() = 0;
@@ -299,7 +299,7 @@ class StreamExecutorInterface {
 
   // Creates a new DeviceDescription object. Ownership is transferred to the
   // caller.
-  virtual port::StatusOr<std::unique_ptr<DeviceDescription>>
+  virtual tsl::StatusOr<std::unique_ptr<DeviceDescription>>
   CreateDeviceDescription() const = 0;
 
   // Attempts to register the provided TraceListener with the device-specific

@@ -90,6 +90,8 @@ class LatencyEstimator {
                                      const HloGraphNode& target) const = 0;
   // Uses the approximate or cost model function for NodeCost based on a flag.
   virtual TimeCost NodeCost(const HloInstruction* node) const = 0;
+  // Returns the core frequency used in latency estimation.
+  virtual int CyclesPerMicrosecond() const = 0;
   virtual ~LatencyEstimator() = default;
 };
 
@@ -97,12 +99,14 @@ class LatencyEstimator {
 class ApproximateLatencyEstimator : public LatencyEstimator {
  public:
   // Returns a latency estimation between two instructions.
-  // Currently this is in abstract units. When the real/accurate cost model will
-  // be implemented this will be in the units that will be.
+  // Currently this is in abstract units. When the real/accurate cost model is
+  // implemented this will be in cycles.
   TimeCost GetLatencyBetween(const HloGraphNode& from,
                              const HloGraphNode& target) const override;
   // Uses the approximate or cost model function for NodeCost based on a flag.
   TimeCost NodeCost(const HloInstruction* instr) const override;
+  // ApproximateLatencyEstimator uses abstract units so this returns 1.
+  int CyclesPerMicrosecond() const override { return 1; }
 };
 
 // Helper class to keep track of which instructions are to be supported and
@@ -631,7 +635,7 @@ class DefaultSchedulerCore : public SchedulerCore {
   void DumpLatencyHidingSchedule(
       const HloComputation* computation, const HloScheduleGraph& schedule_graph,
       const std::vector<HloInstruction*>& instructions,
-      const DebugOptions& debug_options);
+      int cycles_per_microsecond, const DebugOptions& debug_options);
 
   HloCostAnalysis::ShapeSizeFunction shape_size_bytes_;
   std::unique_ptr<ModulePressureState> module_pressure_state_;

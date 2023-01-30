@@ -89,7 +89,7 @@ template_rule(
     substitutions = {
         "@DNNL_VERSION_MAJOR@": "2",
         "@DNNL_VERSION_MINOR@": "7",
-        "@DNNL_VERSION_PATCH@": "1",
+        "@DNNL_VERSION_PATCH@": "3",
         "@DNNL_VERSION_HASH@": "N/A",
     },
 )

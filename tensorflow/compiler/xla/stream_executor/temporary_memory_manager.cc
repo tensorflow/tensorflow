@@ -92,14 +92,14 @@ bool TemporaryMemoryManager::HasAllocated(const DeviceMemoryBase& device_memory,
   return it->second.allocation_generation == generation;
 }
 
-port::StatusOr<std::unique_ptr<TemporaryDeviceMemoryBase>>
+tsl::StatusOr<std::unique_ptr<TemporaryDeviceMemoryBase>>
 TemporaryMemoryManager::AllocateArrayBase(uint64_t element_count,
                                           uint64_t element_size) {
   uint64_t byte_size = element_count * element_size;
   DeviceMemoryBase device_memory =
       stream_->parent()->AllocateArray<uint8_t>(byte_size);
   if (device_memory == nullptr) {
-    return tsl::Status(port::error::RESOURCE_EXHAUSTED,
+    return tsl::Status(tsl::error::RESOURCE_EXHAUSTED,
                        absl::StrCat("could not allocate temporary memory of ",
                                     byte_size, " bytes"));
   }

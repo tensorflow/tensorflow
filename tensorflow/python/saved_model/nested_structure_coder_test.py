@@ -29,6 +29,7 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.framework import type_spec
+from tensorflow.python.framework import type_spec_registry
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.platform import test
 from tensorflow.python.saved_model import nested_structure_coder
@@ -445,7 +446,7 @@ class UnregisteredTypeSpec(type_spec.TypeSpec):
 
 
 # Trivial TypeSpec class for testing.
-@type_spec.register("NestedStructureTest.RegisteredTypeSpec")
+@type_spec_registry.register("NestedStructureTest.RegisteredTypeSpec")
 class RegisteredTypeSpec(type_spec.TypeSpec):
   value_type = property(lambda self: None)
   _component_specs = property(lambda self: ())

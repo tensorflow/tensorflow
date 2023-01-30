@@ -33,9 +33,9 @@ limitations under the License.
 #include "mlir/Support/FileUtilities.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/metrics/types_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/statusor.h"
 #include "tensorflow/core/platform/resource_loader.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/tsl/platform/statusor.h"
 
 namespace mlir {
 namespace TFL {
@@ -115,7 +115,8 @@ TEST(ErrorCollectorTest, TessSuccessPass) {
   auto module = LoadModule(&context, input_file);
   EXPECT_EQ(module.ok(), true);
 
-  PassManager pm(&context, OpPassManager::Nesting::Implicit);
+  PassManager pm(module.value().get()->getName(),
+                 OpPassManager::Nesting::Implicit);
   pm.addPass(std::make_unique<MockSuccessPass>());
 
   pm.addInstrumentation(
@@ -142,7 +143,8 @@ TEST(ErrorCollectorTest, TessFailurePass) {
       LoadModule(&context, tensorflow::GetDataDependencyFilepath(input_file));
   EXPECT_EQ(module.ok(), true);
 
-  PassManager pm(&context, OpPassManager::Nesting::Implicit);
+  PassManager pm(module.value().get()->getName(),
+                 OpPassManager::Nesting::Implicit);
   pm.addPass(std::make_unique<MockSuccessPass>());
   pm.addPass(std::make_unique<MockFailurePass>());
 

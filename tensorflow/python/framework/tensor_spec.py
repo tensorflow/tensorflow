@@ -28,8 +28,11 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.framework import type_spec
+from tensorflow.python.framework import type_spec_registry
 from tensorflow.python.ops import handle_data_util
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.types import core as core_tf_types
+from tensorflow.python.types import internal
 from tensorflow.python.util import _pywrap_utils
 from tensorflow.python.util import compat
 from tensorflow.python.util.tf_export import tf_export
@@ -133,9 +136,9 @@ class DenseSpec(type_spec.TypeSpec):
 
 
 @tf_export("TensorSpec")
-@type_spec.register("tf.TensorSpec")
+@type_spec_registry.register("tf.TensorSpec")
 class TensorSpec(DenseSpec, type_spec.BatchableTypeSpec,
-                 trace_type.Serializable):
+                 trace_type.Serializable, internal.TensorSpec):
   """Describes the type of a tf.Tensor.
 
   >>> t = tf.constant([[1,2,3],[4,5,6]])
@@ -215,6 +218,9 @@ class TensorSpec(DenseSpec, type_spec.BatchableTypeSpec,
 
   def placeholder_value(self, placeholder_context):
     """Generates a graph_placholder with the given TensorSpec information."""
+    if placeholder_context.unnest_only:
+      return self
+
     name = self.name or placeholder_context.naming_scope
     context_graph = placeholder_context.context_graph
     placeholder = self._graph_placeholder(context_graph, name=name)
@@ -313,14 +319,7 @@ class TensorSpec(DenseSpec, type_spec.BatchableTypeSpec,
     return ops.Tensor
 
   def _to_components(self, value):
-    try:
-      value = ops.convert_to_tensor(value, self._dtype)
-    except (TypeError, ValueError):
-      raise ValueError(f"Value {value} is not convertible to a tensor with "
-                       f"dtype {self._dtype} and shape {self._shape}.")
-    if not value.shape.is_compatible_with(self._shape):
-      raise ValueError(f"Value {value} is not convertible to a tensor with "
-                       f"dtype {self._dtype} and shape {self._shape}.")
+    assert isinstance(value, core_tf_types.Tensor)
     return value
 
   def _from_components(self, components):
@@ -376,7 +375,7 @@ trace_type.register_serializable(TensorSpec)
 
 
 # TODO(b/133606651): Should is_compatible_with should check min/max bounds?
-@type_spec.register("tf.BoundedTensorSpec")
+@type_spec_registry.register("tf.BoundedTensorSpec")
 class BoundedTensorSpec(TensorSpec, trace_type.Serializable):
   """A `TensorSpec` that specifies minimum and maximum values.
 

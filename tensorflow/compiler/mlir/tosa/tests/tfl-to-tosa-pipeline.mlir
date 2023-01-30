@@ -640,6 +640,47 @@ func.func @test_cos(%arg0: tensor<10xf32>) -> tensor<*xf32> {
 
 // -----
 
+// CHECK-LABEL: test_atan2
+// CHECK-SAME: -> tensor<13x21x3xf32>
+// CHECK-DAG: %[[VAL_2:.*]] = "tosa.const"() {value = dense<2.000000e+00> : tensor<1x1x1xf32>} : () -> tensor<1x1x1xf32>
+// CHECK-DAG: %[[VAL_3:.*]] = "tosa.const"() {value = dense<1.000000e+00> : tensor<1x1x1xf32>} : () -> tensor<1x1x1xf32>
+// CHECK-DAG: %[[VAL_4:.*]] = "tosa.const"() {value = dense<3.276700e+04> : tensor<1x1x1xf32>} : () -> tensor<1x1x1xf32>
+// CHECK-DAG: %[[VAL_5:.*]] = "tosa.const"() {value = dense<2.38418579E-7> : tensor<1x1x1xf32>} : () -> tensor<1x1x1xf32>
+// CHECK-DAG: %[[VAL_6:.*]] = "tosa.const"() {value = dense<1.57079637> : tensor<1x1x1xf32>} : () -> tensor<1x1x1xf32>
+// CHECK-DAG: %[[VAL_7:.*]] = "tosa.const"() {value = dense<3.14159274> : tensor<1x1x1xf32>} : () -> tensor<1x1x1xf32>
+// CHECK-DAG: %[[VAL_8:.*]] = "tosa.const"() {value = dense<0.000000e+00> : tensor<1x1x1xf32>} : () -> tensor<1x1x1xf32>
+// CHECK-DAG: %[[VAL_9:.*]] = "tosa.const"() {value = dense<{{.+}}> : tensor<513xi16>} : () -> tensor<513xi16>
+// CHECK: %[[VAL_10:.*]] = "tosa.abs"(%arg0) : (tensor<13x21x3xf32>) -> tensor<13x21x3xf32>
+// CHECK: %[[VAL_11:.*]] = "tosa.abs"(%arg1) : (tensor<13x21x3xf32>) -> tensor<13x21x3xf32>
+// CHECK: %[[VAL_12:.*]] = "tosa.minimum"(%[[VAL_10]], %[[VAL_11]]) : (tensor<13x21x3xf32>, tensor<13x21x3xf32>) -> tensor<13x21x3xf32>
+// CHECK: %[[VAL_13:.*]] = "tosa.maximum"(%[[VAL_10]], %[[VAL_11]]) : (tensor<13x21x3xf32>, tensor<13x21x3xf32>) -> tensor<13x21x3xf32>
+// CHECK: %[[VAL_14:.*]] = "tosa.reciprocal"(%[[VAL_13]]) : (tensor<13x21x3xf32>) -> tensor<13x21x3xf32>
+// CHECK: %[[VAL_15:.*]] = "tosa.mul"(%[[VAL_14]], %[[VAL_12]]) {shift = 0 : i32} : (tensor<13x21x3xf32>, tensor<13x21x3xf32>) -> tensor<13x21x3xf32>
+// CHECK: %[[VAL_16:.*]] = "tosa.mul"(%[[VAL_15]], %[[VAL_2]]) {shift = 0 : i32} : (tensor<13x21x3xf32>, tensor<1x1x1xf32>) -> tensor<13x21x3xf32>
+// CHECK: %[[VAL_17:.*]] = "tosa.sub"(%[[VAL_16]], %[[VAL_3]]) : (tensor<13x21x3xf32>, tensor<1x1x1xf32>) -> tensor<13x21x3xf32>
+// CHECK: %[[VAL_18:.*]] = "tosa.mul"(%[[VAL_17]], %[[VAL_4]]) {shift = 0 : i32} : (tensor<13x21x3xf32>, tensor<1x1x1xf32>) -> tensor<13x21x3xf32>
+// CHECK: %[[VAL_19:.*]] = "tosa.cast"(%[[VAL_18]]) : (tensor<13x21x3xf32>) -> tensor<13x21x3xi16>
+// CHECK: %[[VAL_20:.*]] = "tosa.table"(%[[VAL_19]], %[[VAL_9]]) : (tensor<13x21x3xi16>, tensor<513xi16>) -> tensor<13x21x3xi32>
+// CHECK: %[[VAL_21:.*]] = "tosa.cast"(%[[VAL_20]]) : (tensor<13x21x3xi32>) -> tensor<13x21x3xf32>
+// CHECK: %[[VAL_22:.*]] = "tosa.mul"(%[[VAL_21]], %[[VAL_5]]) {shift = 0 : i32} : (tensor<13x21x3xf32>, tensor<1x1x1xf32>) -> tensor<13x21x3xf32>
+// CHECK: %[[VAL_23:.*]] = "tosa.sub"(%[[VAL_6]], %[[VAL_22]]) : (tensor<1x1x1xf32>, tensor<13x21x3xf32>) -> tensor<13x21x3xf32>
+// CHECK: %[[VAL_24:.*]] = "tosa.greater"(%[[VAL_10]], %[[VAL_11]]) : (tensor<13x21x3xf32>, tensor<13x21x3xf32>) -> tensor<13x21x3xi1>
+// CHECK: %[[VAL_25:.*]] = "tosa.select"(%[[VAL_24]], %[[VAL_23]], %[[VAL_22]]) : (tensor<13x21x3xi1>, tensor<13x21x3xf32>, tensor<13x21x3xf32>) -> tensor<13x21x3xf32>
+// CHECK: %[[VAL_26:.*]] = "tosa.sub"(%[[VAL_7]], %[[VAL_25]]) : (tensor<1x1x1xf32>, tensor<13x21x3xf32>) -> tensor<13x21x3xf32>
+// CHECK: %[[VAL_27:.*]] = "tosa.greater"(%[[VAL_8]], %arg1) : (tensor<1x1x1xf32>, tensor<13x21x3xf32>) -> tensor<13x21x3xi1>
+// CHECK: %[[VAL_28:.*]] = "tosa.select"(%[[VAL_27]], %[[VAL_26]], %[[VAL_25]]) : (tensor<13x21x3xi1>, tensor<13x21x3xf32>, tensor<13x21x3xf32>) -> tensor<13x21x3xf32>
+// CHECK: %[[VAL_29:.*]] = "tosa.negate"(%[[VAL_28]]) : (tensor<13x21x3xf32>) -> tensor<13x21x3xf32>
+// CHECK: %[[VAL_30:.*]] = "tosa.greater"(%[[VAL_8]], %arg0) : (tensor<1x1x1xf32>, tensor<13x21x3xf32>) -> tensor<13x21x3xi1>
+// CHECK: %[[VAL_31:.*]] = "tosa.select"(%[[VAL_30]], %[[VAL_29]], %[[VAL_28]]) : (tensor<13x21x3xi1>, tensor<13x21x3xf32>, tensor<13x21x3xf32>) -> tensor<13x21x3xf32>
+// CHECK: return %[[VAL_31]] : tensor<13x21x3xf32>
+func.func @test_atan2(%arg0: tensor<13x21x3xf32>, %arg1: tensor<13x21x3xf32>) -> tensor<*xf32> {
+  %0 = "tfl.atan2"(%arg0, %arg1) : (tensor<13x21x3xf32>, tensor<13x21x3xf32>) -> tensor<*xf32>
+  func.return %0 : tensor<*xf32>
+}
+
+// -----
+
+
 // CHECK-LABEL: test_sigmoid
 // CHECK: %[[VAR0:.*]] = "tosa.sigmoid"(%arg0)
 func.func @test_sigmoid(%arg0: tensor<13x21x3xf32>) -> tensor<*xf32> {
@@ -2190,3 +2231,53 @@ func.func @test_tfl_custom(%arg0: tensor<1x64x64x32xf32>) -> (tensor<1x32x32x32x
   %0, %1 = "tfl.custom"(%arg0) {custom_option = #tfl<const_bytes : "0x01000000020000000200000002000000020000000000000000000000000000000000000000000000">, custom_code = "MaxPoolingWithArgmax2D"} : (tensor<1x64x64x32xf32>) -> (tensor<1x32x32x32xf32>, tensor<1x32x32x32xf32>)
   func.return %0, %1 : tensor<1x32x32x32xf32>, tensor<1x32x32x32xf32>
 }
+
+// -----
+// CHECK-LABEL: test_tfl_while_loop
+// CHECK: %[[VAL_0:.*]]: tensor<1x4x4x4xf32> {tf_saved_model.index_path = ["placeholder_0"]}) -> (tensor<1x4x4x4xf32> {tf_saved_model.index_path = ["output_0"]}) {
+// CHECK: %[[VAL_1:.*]] = "tosa.const"() {value = dense<2.000000e+00> : tensor<1xf32>} : () -> tensor<1xf32>
+// CHECK: %[[VAL_2:.*]] = "tosa.while_loop"(%[[VAL_0]]) ({
+// CHECK: ^bb0(%[[VAL_3:.*]]: tensor<1x4x4x4xf32>):
+// CHECK: %[[VAL_4:.*]] = "tosa.reduce_sum"(%[[VAL_3]]) {axis = 1 : i64} : (tensor<1x4x4x4xf32>) -> tensor<1x1x4x4xf32>
+// CHECK: %[[VAL_5:.*]] = "tosa.reduce_sum"(%[[VAL_4]]) {axis = 2 : i64} : (tensor<1x1x4x4xf32>) -> tensor<1x1x1x4xf32>
+// CHECK: %[[VAL_6:.*]] = "tosa.reduce_sum"(%[[VAL_5]]) {axis = 3 : i64} : (tensor<1x1x1x4xf32>) -> tensor<1x1x1x1xf32>
+// CHECK: %[[VAL_7:.*]] = "tosa.reshape"(%[[VAL_6]]) {new_shape = array<i64: 1>} : (tensor<1x1x1x1xf32>) -> tensor<1xf32>
+// CHECK: %[[VAL_8:.*]] = "tosa.greater"(%[[VAL_1]], %[[VAL_7]]) : (tensor<1xf32>, tensor<1xf32>) -> tensor<1xi1>
+// CHECK: %[[VAL_9:.*]] = "tosa.reshape"(%[[VAL_8]]) {new_shape = array<i64>} : (tensor<1xi1>) -> tensor<i1>
+// CHECK: "tosa.yield"(%[[VAL_9]]) : (tensor<i1>) -> ()
+// CHECK: }, {
+// CHECK: ^bb0(%[[VAL_10:.*]]: tensor<1x4x4x4xf32>):
+// CHECK: %[[VAL_11:.*]] = "tosa.sigmoid"(%[[VAL_10]]) : (tensor<1x4x4x4xf32>) -> tensor<1x4x4x4xf32>
+// CHECK: %[[VAL_12:.*]] = "tosa.add"(%[[VAL_10]], %[[VAL_11]]) : (tensor<1x4x4x4xf32>, tensor<1x4x4x4xf32>) -> tensor<1x4x4x4xf32>
+// CHECK: "tosa.yield"(%[[VAL_12]]) : (tensor<1x4x4x4xf32>) -> ()
+// CHECK: }) : (tensor<1x4x4x4xf32>) -> tensor<1x4x4x4xf32>
+// CHECK: return %[[VAL_13:.*]] : tensor<1x4x4x4xf32>
+// CHECK: }
+func.func @test_tfl_while_loop(%arg0: tensor<1x4x4x4xf32> {tf_saved_model.index_path = ["placeholder_0"]}) -> (tensor<1x4x4x4xf32> {tf_saved_model.index_path = ["output_0"]}) {
+  %0 = "tfl.while"(%arg0) ({
+  ^bb0(%arg1: tensor<1x4x4x4xf32>):
+    %1 = func.call @result_cond(%arg1) : (tensor<1x4x4x4xf32>) -> tensor<i1>
+    "tfl.yield"(%1) : (tensor<i1>) -> ()
+  }, {
+  ^bb0(%arg1: tensor<1x4x4x4xf32>):
+    %1 = func.call @result_body(%arg1) : (tensor<1x4x4x4xf32>) -> tensor<1x4x4x4xf32>
+    "tfl.yield"(%1) : (tensor<1x4x4x4xf32>) -> ()
+  }) : (tensor<1x4x4x4xf32>) -> tensor<1x4x4x4xf32>
+  func.return %0 : tensor<1x4x4x4xf32>
+}
+func.func private @result_cond(%arg0: tensor<1x4x4x4xf32>) -> tensor<i1> {
+  %0 = "tfl.pseudo_const"() {value = dense<[0, 1, 2, 3]> : tensor<4xi32>} : () -> tensor<4xi32>
+  %1 = "tfl.sum"(%arg0, %0) {keep_dims = false} : (tensor<1x4x4x4xf32>, tensor<4xi32>) -> tensor<f32>
+  %2 = "tfl.pseudo_const"() {value = dense<2.000000e+00> : tensor<1xf32>} : () -> tensor<1xf32>
+  %3 = tfl.less(%1, %2) : (tensor<f32>, tensor<1xf32>) -> tensor<1xi1>
+  %4 = "tfl.pseudo_const"() {value = dense<> : tensor<0xi32>} : () -> tensor<0xi32>
+  %5 = "tfl.reshape"(%3, %4) : (tensor<1xi1>, tensor<0xi32>) -> tensor<i1>
+  func.return %5 : tensor<i1>
+}
+func.func private @result_body(%arg0: tensor<1x4x4x4xf32>) -> tensor<1x4x4x4xf32> {
+  %0 = "tfl.logistic"(%arg0) : (tensor<1x4x4x4xf32>) -> tensor<1x4x4x4xf32>
+  %1 = tfl.add %arg0, %0 {fused_activation_function = "NONE"} : tensor<1x4x4x4xf32>
+  func.return %1 : tensor<1x4x4x4xf32>
+}
+
+

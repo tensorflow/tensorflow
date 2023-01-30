@@ -15,7 +15,10 @@ limitations under the License.
 
 #include "tensorflow/dtensor/cc/dtensor_device_util.h"
 
+#include <algorithm>
 #include <cstddef>
+#include <iterator>
+#include <optional>
 #include <string>
 #include <utility>
 
@@ -179,8 +182,8 @@ std::unique_ptr<TensorWithLayout> BroadcastResourceTensor(
   return std::move(*result);
 }
 
-bool LayoutsAreCompatible(absl::optional<Layout> first_layout,
-                          absl::optional<Layout> second_layout) {
+bool LayoutsAreCompatible(std::optional<Layout> first_layout,
+                          std::optional<Layout> second_layout) {
   if (!first_layout.has_value() && !second_layout.has_value()) {
     return true;
   }
@@ -298,7 +301,7 @@ std::unique_ptr<TensorWithLayout> TensorWithLayout::Broadcast(
     auto layout = Layout::ReplicatedOnMesh(mesh.mesh_config(), shape.size());
 
     auto ret = TensorWithLayout::Dummy(shape, dtype, mesh, layout);
-    absl::optional<NodeDef> const_value =
+    std::optional<NodeDef> const_value =
         ExtractSmallTensorValue(context, tensor, layout, status);
     if (TF_GetCode(status) != TF_OK) return nullptr;
     if (const_value) {
@@ -321,7 +324,7 @@ std::unique_ptr<TensorWithLayout> TensorWithLayout::Broadcast(
   size_t num_dims = shape->size();
   const Layout layout = Layout::ReplicatedOnMesh(mesh.mesh_config(), num_dims);
 
-  absl::optional<NodeDef> const_value =
+  std::optional<NodeDef> const_value =
       ExtractSmallTensorValue(context, tensor, layout, status);
   if (TF_GetCode(status) != TF_OK) return nullptr;
 
@@ -392,6 +395,14 @@ void ResourceHandleWithLayout::EncodeAttributes(
   }
   if (dereferenced_dtype().has_value()) {
     builder.Attr("_handle_dtypes", {*dereferenced_dtype()});
+  }
+  if (dereferenced_element_layouts().has_value()) {
+    std::vector<std::string> layout_strs;
+    std::transform(dereferenced_element_layouts()->begin(),
+                   dereferenced_element_layouts()->end(),
+                   std::back_inserter(layout_strs),
+                   [](const Layout& layout) { return layout.ToString(); });
+    builder.Attr("_element_layouts", layout_strs);
   }
 }
 
@@ -523,8 +534,8 @@ Status PrepareGraphForMlir(
     const std::vector<TensorWithLayout*>& inputs,
     const DTensorOperation& doperation,
     const tensorflow::FunctionLibraryDefinition& flib_def,
-    const NameAttrList& attributes,
-    const absl::optional<Layout>& default_layout, tensorflow::Graph* graph,
+    const NameAttrList& attributes, const std::optional<Layout>& default_layout,
+    tensorflow::Graph* graph,
     std::vector<PartialTensorShape>* global_output_shapes,
     std::vector<const Layout*>* output_layouts) {
   // We run shape inference on the graph to find output shapes, which may
@@ -866,7 +877,7 @@ StatusOr<std::vector<parallel_device::ParallelTensor*>> PrepareEmbeddingInputs(
   for (int64_t i = 0; i < inputs.size(); ++i) {
     if (inputs[i]->tensor_type() != kResource) continue;
 
-    const absl::optional<EmbeddingResourceAttrs>& resource_attrs =
+    const std::optional<EmbeddingResourceAttrs>& resource_attrs =
         inputs[i]->attrs();
     if (resource_attrs.has_value()) {
       table_vars_input_index[resource_attrs->table_id].push_back(i);

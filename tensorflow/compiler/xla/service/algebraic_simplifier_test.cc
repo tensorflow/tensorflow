@@ -8994,6 +8994,27 @@ TEST_F(AlgebraicSimplifierTest, SwapConstantEwboWithReverse2) {
                                       m::Reverse(m::Parameter(0)))));
 }
 
+// Don't replace root instruction with the copy-to-operand optimization if
+// sharding is applied.
+TEST_F(AlgebraicSimplifierTest, RootCopySharding) {
+  const char* kModuleStr = R"(
+    HloModule m
+    test {
+      p0 = bf16[8] parameter(0)
+      ROOT r0 = bf16[8] copy(p0), sharding={devices=[8]0,1,2,3,4,5,6,7}
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  SCOPED_TRACE("Before rewrite\n" + m->ToString());
+  AlgebraicSimplifierOptions options;
+  AlgebraicSimplifier simplifier(options);
+  auto returned = simplifier.Run(m.get()).value();
+  SCOPED_TRACE("After rewrite\n" + m->ToString());
+  ASSERT_FALSE(returned);
+  auto* root = m->entry_computation()->root_instruction();
+  EXPECT_THAT(root, GmockMatch(m::Copy(m::Parameter(0))));
+}
+
 // non-contiguous degenerate dimensions adding
 // reverse(DegenerateDimensionAddingReshape(x)) ==>
 // DegenerateDimensionAddingReshape(reverse(x))

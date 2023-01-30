@@ -282,10 +282,11 @@ def tensor_shape_from_node_def_name(graph, input_name):
   return shape
 
 
+# TODO(b/266958376): Remove once all references to this are moved to
+# convert_variables_to_constants.
 @deprecation.deprecated(
     date=None,
     instructions=_DEPRECATION_MSG)
-@tf_export(v1=["graph_util.convert_variables_to_constants"])
 def convert_variables_to_constants(sess,
                                    input_graph_def,
                                    output_node_names,
@@ -314,13 +315,13 @@ def convert_variables_to_constants(sess,
     RuntimeError: if a DT_RESOURCE op is found whose ancestor Variables are both
       denylisted AND whitelisted for freezing.
   """
-  ret = convert_to_constants.convert_variables_to_constants_from_session_graph(
-      session=sess,
-      graph_def=input_graph_def,
-      output_node_names=output_node_names,
-      variable_names_allowlist=variable_names_whitelist,
-      variable_names_denylist=variable_names_blacklist)
-  return ret
+  return convert_to_constants.convert_variables_to_constants(
+      sess,
+      input_graph_def,
+      output_node_names,
+      variable_names_whitelist,
+      variable_names_blacklist,
+  )
 
 
 @deprecation.deprecated(
@@ -375,15 +376,23 @@ def remove_training_nodes(input_graph, protected_nodes=None):
   types_to_splice = {"Identity": True}
   control_input_names = set()
   node_names_with_control_input = set()
+  node_in_colocated = set()
+
   for node in nodes_after_removal:
     for node_input in node.input:
       if "^" in node_input:
         control_input_names.add(node_input.replace("^", ""))
         node_names_with_control_input.add(node.name)
+    # Prevent colocated nodes from being lost.
+    if "_class" in node.attr:
+      for colocated_node_name in node.attr["_class"].list.s:
+        node_in_colocated.add(_get_colocated_node_name(colocated_node_name))
 
   names_to_splice = {}
   for node in nodes_after_removal:
     if node.op in types_to_splice and node.name not in protected_nodes:
+      if node.name in node_in_colocated:
+        continue
       # We don't want to remove nodes that have control edge inputs, because
       # they might be involved in subtle dependency issues that removing them
       # will jeopardize.

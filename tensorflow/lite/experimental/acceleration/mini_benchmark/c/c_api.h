@@ -59,6 +59,8 @@ void TfLiteMiniBenchmarkSettingsSetErrorReporter(
     TfLiteMiniBenchmarkSettings* settings, void* error_reporter_user_data,
     int (*error_reporter_func)(void* user_data, const char* format,
                                va_list args));
+void TfLiteMiniBenchmarkSettingsSetGpuPluginHandle(
+    TfLiteMiniBenchmarkSettings* settings, void* gpu_plugin_handle);
 void TfLiteMiniBenchmarkSettingsFree(TfLiteMiniBenchmarkSettings* settings);
 
 // Others.

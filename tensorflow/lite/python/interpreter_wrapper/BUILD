@@ -37,7 +37,7 @@ cc_library(
         "//tensorflow/lite/core:framework",
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/core/c:common",
-        "//tensorflow/lite/kernels:builtin_ops",
+        "//tensorflow/lite/core/kernels:builtin_ops",
         "//tensorflow/lite/kernels:reference_ops",
         "//tensorflow/lite/kernels/internal:compatibility",
         "//third_party/python_runtime:headers",  # buildcleaner: keep

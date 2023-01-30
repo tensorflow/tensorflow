@@ -77,6 +77,16 @@ PJRT_ExecutableDeleter MakeExecutableDeleter(const PJRT_Api* api) {
   };
 }
 
+PJRT_LoadedExecutableDeleter MakeLoadedExecutableDeleter(const PJRT_Api* api) {
+  return [api](PJRT_LoadedExecutable* executable) -> void {
+    PJRT_LoadedExecutable_Destroy_Args args;
+    args.struct_size = PJRT_LoadedExecutable_Destroy_Args_STRUCT_SIZE;
+    args.priv = nullptr;
+    args.executable = executable;
+    pjrt::LogFatalIfPjrtError(api->PJRT_LoadedExecutable_Destroy(&args), api);
+  };
+}
+
 xla::Status PjrtErrorToStatus(const PJRT_Error* error, const PJRT_Api* api) {
   xla::Status status;
   if (error != nullptr) {

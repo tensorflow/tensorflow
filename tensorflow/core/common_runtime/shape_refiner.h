@@ -322,9 +322,7 @@ class ShapeRefiner {
 
   // Cache the graph corresponding to each function definition for which shapes
   // are refined.
-  absl::flat_hash_map<const FunctionDef*, std::unique_ptr<const Graph>,
-                      hash<const FunctionDef*>>
-      functions_;
+  absl::flat_hash_map<string, std::unique_ptr<const Graph>> functions_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(ShapeRefiner);
 };

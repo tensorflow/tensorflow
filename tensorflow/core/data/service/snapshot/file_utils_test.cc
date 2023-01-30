@@ -15,7 +15,13 @@ limitations under the License.
 #include "tensorflow/core/data/service/snapshot/file_utils.h"
 
 #include <string>
+#include <vector>
 
+#include "tensorflow/core/data/dataset_test_base.h"
+#include "tensorflow/core/data/service/test_util.h"
+#include "tensorflow/core/data/snapshot_utils.h"
+#include "tensorflow/core/framework/types.pb.h"
+#include "tensorflow/core/platform/env.h"
 #include "tensorflow/tsl/lib/core/status_test_util.h"
 #include "tensorflow/tsl/platform/env.h"
 #include "tensorflow/tsl/platform/errors.h"
@@ -55,6 +61,45 @@ TEST_P(AtomicallyWriteStringToFileTest, WriteString) {
 
 INSTANTIATE_TEST_SUITE_P(FileContents, AtomicallyWriteStringToFileTest,
                          ::testing::ValuesIn<std::string>({"OK", ""}));
+
+TEST(FileUtilsTest, AtomicallyWriteBinaryProto) {
+  TF_ASSERT_OK_AND_ASSIGN(std::string directory, CreateTestDirectory());
+  std::string test_file = tsl::io::JoinPath(directory, "test_file");
+  DatasetDef out = testing::RangeDataset(/*range=*/10);
+  TF_ASSERT_OK(AtomicallyWriteBinaryProto(test_file, out, tsl::Env::Default()));
+
+  DatasetDef in;
+  TF_EXPECT_OK(tsl::Env::Default()->FileExists(test_file));
+  TF_ASSERT_OK(ReadBinaryProto(tsl::Env::Default(), test_file, &in));
+  EXPECT_THAT(in, testing::EqualsProto(out));
+}
+
+TEST(FileUtilsTest, AtomicallyWriteTextProto) {
+  TF_ASSERT_OK_AND_ASSIGN(std::string directory, CreateTestDirectory());
+  std::string test_file = tsl::io::JoinPath(directory, "test_file");
+  DatasetDef out = testing::RangeDataset(/*range=*/10);
+  TF_ASSERT_OK(AtomicallyWriteTextProto(test_file, out, tsl::Env::Default()));
+
+  DatasetDef in;
+  TF_EXPECT_OK(tsl::Env::Default()->FileExists(test_file));
+  TF_ASSERT_OK(ReadTextProto(tsl::Env::Default(), test_file, &in));
+  EXPECT_THAT(in, testing::EqualsProto(out));
+}
+
+TEST(FileUtilsTest, AtomicallyWriteTFRecord) {
+  TF_ASSERT_OK_AND_ASSIGN(std::string directory, CreateTestDirectory());
+  std::string test_file = tsl::io::JoinPath(directory, "test_file");
+  Tensor out = CreateTensor<int64_t>(TensorShape({2}), {1, 2});
+  TF_ASSERT_OK(AtomicallyWriteTFRecord(test_file, out, tsl::Env::Default()));
+
+  std::vector<Tensor> in;
+  TF_EXPECT_OK(tsl::Env::Default()->FileExists(test_file));
+  snapshot_util::TFRecordReader reader(test_file, tsl::io::compression::kNone,
+                                       {DT_INT64});
+  TF_ASSERT_OK(reader.Initialize(tsl::Env::Default()));
+  TF_ASSERT_OK(reader.ReadTensors(&in));
+  EXPECT_EQ(out.DebugString(), in.front().DebugString());
+}
 
 }  // namespace
 }  // namespace data

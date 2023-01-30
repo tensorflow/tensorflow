@@ -17,6 +17,8 @@ package org.tensorflow.lite.gpu;
 
 import static com.google.common.truth.Truth.assertThat;
 import static java.util.concurrent.TimeUnit.MICROSECONDS;
+import static org.junit.Assert.assertThrows;
+import static org.tensorflow.lite.gpu.GpuDelegateFactory.Options.GpuBackend.OPENCL;
 
 import com.google.common.base.Stopwatch;
 import java.io.File;
@@ -117,6 +119,22 @@ public final class GpuDelegateTest {
       assertThat(interpreter.getOutputTensor(0).shape()).isEqualTo(new int[] {1, 1001});
       // 653 == "military uniform"
       assertThat(getTopKLabels(output, 3)).contains(653);
+    }
+  }
+
+  @Test
+  public void testInterpreterWithGpu_forceOpenCl_throwsException() {
+    Interpreter.Options options = new Interpreter.Options();
+    try (GpuDelegate delegate =
+        new GpuDelegate(new GpuDelegateFactory.Options().setForceBackend(OPENCL))) {
+      IllegalArgumentException e =
+          assertThrows(
+              IllegalArgumentException.class,
+              // Create interpreter fails because OpenCL is not available on device.
+              () ->
+                  new Interpreter(MOBILENET_QUANTIZED_MODEL_BUFFER, options.addDelegate(delegate)));
+
+      assertThat(e).hasMessageThat().contains("Can not open OpenCL library");
     }
   }
 

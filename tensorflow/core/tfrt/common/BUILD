@@ -2,6 +2,7 @@ load("//tensorflow:tensorflow.bzl", "tf_cc_test", "tf_cuda_cc_test")
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load(
     "//tensorflow/tsl/platform:build_config_root.bzl",
+    "if_static",
     "tf_cuda_tests_tags",
 )
 
@@ -21,6 +22,7 @@ package_group(
         # copybara:uncomment "//learning/brain/tfrc/...",
         # copybara:uncomment "//learning/brain/tfrt/...",
         "//tensorflow/c/...",
+        "//tensorflow/compiler/jit/...",
         "//tensorflow/core/common_runtime/next_pluggable_device/...",
         "//tensorflow/core/tfrt/...",
         "//tensorflow/core/tfrt/eager/backends/tpu/...",
@@ -94,13 +96,16 @@ cc_library(
     deps = [
         ":global_state",
         ":pjrt_state",
+        "//tensorflow/compiler/tf2xla:xla_op_registry",
         "//tensorflow/compiler/xla/pjrt:pjrt_client",
         "//tensorflow/compiler/xla/pjrt/gpu:gpu_helpers",
-        "//tensorflow/compiler/xla/pjrt/gpu:se_gpu_pjrt_client",
         "//tensorflow/core:framework_types_hdr",
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:status",
-    ],
+    ] + if_static(
+        ["//tensorflow/compiler/xla/pjrt/gpu:se_gpu_pjrt_client"],
+        ["//tensorflow/compiler/xla/pjrt/gpu:se_gpu_pjrt_client_no_cudamallocasync_allocator"],
+    ),
 )
 
 tf_cc_test(
@@ -119,23 +124,22 @@ tf_cc_test(
     ],
 )
 
-# copybara:uncomment_begin(TODO(b/260802979): kokoro build fails when se_gpu_pjrt_client is added)
-# tf_cuda_cc_test(
-#     name = "pjrt_util_test",
-#     srcs = ["pjrt_util_test.cc"],
-#     tags = tf_cuda_tests_tags(),
-#     deps = [
-#         ":global_state",
-#         ":pjrt_state",
-#         ":pjrt_util",
-#         "//tensorflow/compiler/xla/pjrt:pjrt_client",
-#         "//tensorflow/compiler/xla/pjrt:tfrt_cpu_pjrt_client",
-#         "//tensorflow/compiler/xla/service:gpu_plugin",
-#         "//tensorflow/core:framework",
-#         "//tensorflow/tsl/lib/core:status_test_util",
-#         "//tensorflow/tsl/platform:status_matchers",
-#         "//tensorflow/tsl/platform:test_main",
-#         "//tensorflow/tsl/protobuf:error_codes_proto_impl_cc",
-#     ],
-# )
-# copybara:uncomment_end
+tf_cuda_cc_test(
+    name = "pjrt_util_test",
+    srcs = ["pjrt_util_test.cc"],
+    tags = tf_cuda_tests_tags(),
+    deps = [
+        ":global_state",
+        ":pjrt_state",
+        ":pjrt_util",
+        "//tensorflow/compiler/tf2xla:xla_op_registry",
+        "//tensorflow/compiler/xla/pjrt:pjrt_client",
+        "//tensorflow/compiler/xla/pjrt:tfrt_cpu_pjrt_client",
+        "//tensorflow/compiler/xla/service:gpu_plugin",
+        "//tensorflow/core:framework",
+        "//tensorflow/tsl/lib/core:status_test_util",
+        "//tensorflow/tsl/platform:status_matchers",
+        "//tensorflow/tsl/platform:test_main",
+        "//tensorflow/tsl/protobuf:error_codes_proto_impl_cc",
+    ],
+)

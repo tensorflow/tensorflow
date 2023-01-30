@@ -27,7 +27,7 @@ limitations under the License.
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/raw_ostream.h"
-#include "mlir/IR/BlockAndValueMapping.h"  // from @llvm-project
+#include "mlir/IR/IRMapping.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/DialectRegistry.h"  // from @llvm-project
 #include "mlir/IR/SymbolTable.h"  // from @llvm-project
@@ -253,11 +253,11 @@ void MaybeAddEntryFunctionInput(const StringRef input_name,
 }
 
 // Creates new arguments to the main function that corresponds to the source
-// function's arguments. Returns the `BlockAndValueMapping` that contains the
+// function's arguments. Returns the `IRMapping` that contains the
 // relationship.
-BlockAndValueMapping CloneSrcFuncArgumentsToMainFunc(
+IRMapping CloneSrcFuncArgumentsToMainFunc(
     func::FuncOp src_func_op, func::FuncOp main_func_op) {
-  BlockAndValueMapping mapper{};
+  IRMapping mapper{};
 
   for (auto [src_arg_idx, src_arg] :
        llvm::enumerate(src_func_op.getArguments())) {
@@ -310,7 +310,7 @@ SmallVector<Value> CopyOpsToMainFunction(func::FuncOp src_func_op,
   };
 
   // TODO(b/245473863): Handle when assets are actually used in the body.
-  BlockAndValueMapping mapper =
+  IRMapping mapper =
       CloneSrcFuncArgumentsToMainFunc(src_func_op, main_func_op);
 
   // Clones each op from src to main_body.

@@ -95,6 +95,7 @@ void CreateTPUBridgePipelineImpl(OpPassManager &pm) {
   // Run shape inference so that tf_executor/tf_device ops created later will
   // likely to inherit more concrete types.
   pm.addPass(TF::CreateTFShapeInferencePass());
+  pm.addNestedPass<func::FuncOp>(CreateTPUPartitionedOpConversionPass());
   pm.addNestedPass<func::FuncOp>(
       CreateTPUReorderReplicateAndPartitionedInputsPass());
   pm.addNestedPass<func::FuncOp>(TF::CreateDecomposeReduceDatasetPass());

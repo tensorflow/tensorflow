@@ -104,11 +104,13 @@ class InternalPlaceholderContext(trace.PlaceholderContext):
   def __init__(self,
                context_graph=None,
                placeholder_mapping=None,
-               handledata_mapping=None):
+               handledata_mapping=None,
+               unnest_only=False):
     self._alias_id_to_placeholder = placeholder_mapping or {}
     self._spec_id_to_handledata = handledata_mapping or {}
     self._naming_scope = None
     self._context_graph = context_graph
+    self._unnest_only = unnest_only
 
   def has_placeholder(self, alias_id: Hashable) -> bool:
     return alias_id in self._alias_id_to_placeholder
@@ -144,6 +146,10 @@ class InternalPlaceholderContext(trace.PlaceholderContext):
   @property
   def context_graph(self):
     return self._context_graph
+
+  @property
+  def unnest_only(self) -> bool:
+    return self._unnest_only
 
 
 def from_value(value: Any,

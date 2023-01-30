@@ -22,6 +22,7 @@ limitations under the License.
 
 #include "tensorflow/core/data/dataset_utils.h"
 #include "tensorflow/core/data/metric_utils.h"
+#include "tensorflow/core/data/tfdataz_metrics.h"
 #include "tensorflow/core/data/unbounded_thread_pool.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/function_handle_cache.h"
@@ -135,9 +136,11 @@ class IteratorResource : public ResourceBase {
   };
 
   IteratorMetricsCollector metrics_collector_;
+  std::shared_ptr<TfDatazMetricsCollector> tf_dataz_metrics_collector_;
   UnboundedThreadPool unbounded_thread_pool_;
 
   mutex mu_;
+  const Env& env_;
   const std::unique_ptr<DeviceMgr> device_mgr_ TF_GUARDED_BY(mu_);
   std::shared_ptr<State> iterator_state_ TF_GUARDED_BY(mu_);
   const DataTypeVector output_dtypes_;

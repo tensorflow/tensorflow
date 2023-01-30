@@ -26,7 +26,7 @@ load(
 )
 load("//tensorflow/compiler/xla/stream_executor:build_defs.bzl", "if_gpu_is_configured")
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
-load("//tensorflow/compiler/xla/service:xla_compile.bzl", "xla_aot_compile_cpu", "xla_aot_compile_gpu")
+load("//tensorflow/compiler/xla/service:xla_compile.bzl", "xla_aot_compile_cpu", "xla_aot_compile_gpu", "xla_aot_compile_gpu_runtime_autotuning")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -98,9 +98,9 @@ cc_library(
     srcs = ["async_collective_creator.cc"],
     hdrs = ["async_collective_creator.h"],
     deps = [
-        ":computation_placer_hdr",
         ":hlo_pass",
         ":shape_inference",
+        "//tensorflow/compiler/xla:frontend_attributes",
         "//tensorflow/compiler/xla/hlo/ir:hlo",
         "//tensorflow/tsl/platform:errors",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -549,6 +549,7 @@ cc_library(
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
     ],
 )
@@ -562,6 +563,7 @@ xla_cc_test(
         ":hlo_sharding_util",
         "//tensorflow/compiler/xla:test",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
+        "//tensorflow/compiler/xla/hlo/ir:hlo",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
     ],
 )
@@ -4540,6 +4542,7 @@ cc_library(
         ":hlo_pass",
         ":logical_buffer",
         ":tuple_simplifier",
+        "//tensorflow/compiler/xla:frontend_attributes",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:types",
@@ -5383,6 +5386,7 @@ cc_library(
     srcs = ["computation_layout.cc"],
     hdrs = ["computation_layout.h"],
     deps = [
+        "//tensorflow/compiler/xla:printer",
         "//tensorflow/compiler/xla:shape_layout",
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
@@ -5629,6 +5633,7 @@ cc_library(
     hdrs = ["hlo_runner_pjrt.h"],
     deps = [
         ":executable",
+        ":hlo_module_util",
         ":hlo_runner_interface",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla/client:xla_computation",
@@ -5636,8 +5641,6 @@ cc_library(
         "//tensorflow/compiler/xla/pjrt:pjrt_client",
         "//tensorflow/compiler/xla/pjrt:pjrt_executable",
         "//tensorflow/compiler/xla/pjrt:pjrt_future",
-        "//tensorflow/compiler/xla/service:hlo_module_util",
-        "//tensorflow/compiler/xla/tests:pjrt_client_registry",
         "//tensorflow/tsl/platform:errors",
         "//tensorflow/tsl/platform:statusor",
     ],
@@ -7047,6 +7050,7 @@ xla_cc_binary(
         "//tensorflow/tsl/platform:protobuf",
         "//tensorflow/tsl/util:command_line_flags",
         "@stablehlo//:register",
+        "//tensorflow/compiler/xla:autotune_results_proto_cc",
     ] + if_cuda_is_configured([
         "//tensorflow/compiler/xla/service/gpu:executable_proto_cc",
         "//tensorflow/compiler/xla/service/gpu:gpu_compiler",
@@ -7067,24 +7071,34 @@ xla_aot_compile_cpu(
 
 xla_aot_compile_gpu(
     name = "xla_aot_compile_test_gpu_executable",
+    autotune_results = "xla_aot_compile_test_autotune_results.prototxt",
     gpu_target_config = "xla_aot_compile_test_gpu_target_config.prototxt",
     module = "xla_aot_compile_test.mlir",
 )
 
 xla_aot_compile_gpu(
     name = "xla_aot_compile_test_gpu_executable_constant",
+    autotune_results = "xla_aot_compile_test_autotune_results.prototxt",
     gpu_target_config = "xla_aot_compile_test_gpu_target_config.prototxt",
     module = "xla_aot_compile_test_constant.mlir",
 )
 
 xla_aot_compile_gpu(
     name = "xla_aot_compile_test_gpu_executable_gemm",
+    autotune_results = "xla_aot_compile_test_autotune_results.prototxt",
+    gpu_target_config = "xla_aot_compile_test_gpu_target_config.prototxt",
+    module = "xla_aot_compile_test_gemm.mlir",
+)
+
+xla_aot_compile_gpu_runtime_autotuning(
+    name = "xla_aot_compile_test_gpu_executable_gemm_runtime_autotuning",
     gpu_target_config = "xla_aot_compile_test_gpu_target_config.prototxt",
     module = "xla_aot_compile_test_gemm.mlir",
 )
 
 xla_aot_compile_gpu(
     name = "xla_aot_compile_test_gpu_executable_convolution",
+    autotune_results = "xla_aot_compile_test_autotune_results.prototxt",
     gpu_target_config = "xla_aot_compile_test_gpu_target_config.prototxt",
     module = "xla_aot_compile_test_convolution.mlir",
 )
@@ -7104,7 +7118,7 @@ xla_cc_test(
         "//tensorflow/compiler/xla/service/cpu:cpu_compiler",
         "//tensorflow/tsl/lib/core:status_test_util",
         "//tensorflow/tsl/platform:env",
-        "//tensorflow/tsl/platform:resource_loader",
+        "//tensorflow/tsl/platform:path",
         "//tensorflow/tsl/platform:statusor",
         "//tensorflow/tsl/platform:test",
         "@com_google_googletest//:gtest_main",
@@ -7115,7 +7129,6 @@ xla_cc_test(
     name = "xla_aot_compile_stablehlo_cpu_test",
     srcs = ["xla_aot_compile_stablehlo_cpu_test.cc"],
     data = [":xla_aot_compile_stablehlo_test_cpu_executable"],
-    tags = ["no_oss"],
     deps = [
         ":cpu_plugin",
         ":platform_util",
@@ -7127,7 +7140,7 @@ xla_cc_test(
         "//tensorflow/compiler/xla/tests:literal_test_util",
         "//tensorflow/tsl/lib/core:status_test_util",
         "//tensorflow/tsl/platform:env",
-        "//tensorflow/tsl/platform:resource_loader",
+        "//tensorflow/tsl/platform:path",
         "//tensorflow/tsl/platform:statusor",
         "//tensorflow/tsl/platform:test",
         "@com_google_googletest//:gtest_main",
@@ -7141,6 +7154,7 @@ xla_cc_test(
         ":xla_aot_compile_test_gpu_executable",
         ":xla_aot_compile_test_gpu_executable_constant",
         ":xla_aot_compile_test_gpu_executable_gemm",
+        ":xla_aot_compile_test_gpu_executable_gemm_runtime_autotuning",
         ":xla_aot_compile_test_gpu_executable_convolution",
     ]),
     env = {
@@ -7164,7 +7178,7 @@ xla_cc_test(
         "//tensorflow/compiler/xla/service/cpu:cpu_compiler",
         "//tensorflow/tsl/lib/core:status_test_util",
         "//tensorflow/tsl/platform:env",
-        "//tensorflow/tsl/platform:resource_loader",
+        "//tensorflow/tsl/platform:path",
         "//tensorflow/tsl/platform:statusor",
         "//tensorflow/tsl/platform:test",
     ]),

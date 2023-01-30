@@ -26,15 +26,14 @@ limitations under the License.
 #include "tensorflow/compiler/xla/stream_executor/cuda/cuda_platform_id.h"
 #include "tensorflow/compiler/xla/stream_executor/cuda/cuda_stream.h"
 #include "tensorflow/compiler/xla/stream_executor/device_memory.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/env.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/initialize.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/status.h"
+#include "tensorflow/compiler/xla/stream_executor/platform/initialize.h"
 #include "tensorflow/compiler/xla/stream_executor/platform/logging.h"
 #include "tensorflow/compiler/xla/stream_executor/platform/port.h"
 #include "tensorflow/compiler/xla/stream_executor/plugin_registry.h"
 #include "tensorflow/compiler/xla/stream_executor/stream.h"
 #include "tensorflow/compiler/xla/stream_executor/stream_executor_internal.h"
 #include "tensorflow/tsl/platform/errors.h"
+#include "tensorflow/tsl/platform/status.h"
 
 namespace stream_executor {
 namespace gpu {
@@ -78,13 +77,13 @@ bool SetStream(GpuExecutor *parent, cufftHandle plan, Stream *stream) {
 
 // Populates array of 32b integers from 64b integers, or an error if the
 // numbers don't fit in 32b (signed).
-port::StatusOr<std::array<int32_t, 3>> Downsize64bArray(
+tsl::StatusOr<std::array<int32_t, 3>> Downsize64bArray(
     std::array<long long, 3> source, int32_t rank) {  // NOLINT
   std::array<int32_t, 3> downsized = {0};
   for (int32_t i = 0; i < rank; ++i) {
     if (source[i] > std::numeric_limits<int32_t>::max()) {
-      return port::InvalidArgumentError(absl::StrCat(
-          source[i], " exceeds max 32b signed integer. Conversion failed."));
+      return tsl::errors::InvalidArgument(
+          source[i], " exceeds max 32b signed integer. Conversion failed.");
     }
     downsized[i] = static_cast<int32_t>(source[i]);
   }
@@ -99,7 +98,7 @@ tsl::Status CUDAFftPlan::Initialize(
     uint64_t *output_embed, uint64 output_stride, uint64 output_distance,
     fft::Type type, int batch_count, ScratchAllocator *scratch_allocator) {
   if (IsInitialized()) {
-    return port::InternalError("cuFFT is already initialized.");
+    return tsl::errors::Internal("cuFFT is already initialized.");
   }
   is_initialized_ = true;
   scratch_allocator_ = scratch_allocator;
@@ -130,7 +129,7 @@ tsl::Status CUDAFftPlan::Initialize(
                             1 /* = batch */);
           if (ret != CUFFT_SUCCESS) {
             LOG(ERROR) << "Failed to create cuFFT 1d plan: " << ret;
-            return port::InternalError("Failed to create cuFFT 1d plan.");
+            return tsl::errors::Internal("Failed to create cuFFT 1d plan.");
           }
           return ::tsl::OkStatus();
         case 2:
@@ -139,7 +138,7 @@ tsl::Status CUDAFftPlan::Initialize(
                             CUDAFftType(type));
           if (ret != CUFFT_SUCCESS) {
             LOG(ERROR) << "Failed to create cuFFT 2d plan: " << ret;
-            return port::InternalError("Failed to create cuFFT 2d plan.");
+            return tsl::errors::Internal("Failed to create cuFFT 2d plan.");
           }
           return ::tsl::OkStatus();
         case 3:
@@ -148,26 +147,26 @@ tsl::Status CUDAFftPlan::Initialize(
                             elem_count_[2], CUDAFftType(type));
           if (ret != CUFFT_SUCCESS) {
             LOG(ERROR) << "Failed to create cuFFT 3d plan: " << ret;
-            return port::InternalError("Failed to create cuFFT 3d plan.");
+            return tsl::errors::Internal("Failed to create cuFFT 3d plan.");
           }
           return ::tsl::OkStatus();
         default:
           LOG(ERROR) << "Invalid rank value for cufftPlan. "
                         "Requested 1, 2, or 3, given: "
                      << rank;
-          return port::InvalidArgumentError(
+          return tsl::errors::InvalidArgument(
               "cufftPlan only takes rank 1, 2, or 3.");
       }
     } else {
       ret = cufftCreate(&plan_);
       if (ret != CUFFT_SUCCESS) {
         LOG(ERROR) << "Failed to create cuFFT plan: " << ret;
-        return port::InternalError("Failed to create cuFFT plan.");
+        return tsl::errors::Internal("Failed to create cuFFT plan.");
       }
       ret = cufftSetAutoAllocation(plan_, 0);
       if (ret != CUFFT_SUCCESS) {
         LOG(ERROR) << "Failed to set auto allocation for cuFFT plan: " << ret;
-        return port::InternalError(
+        return tsl::errors::Internal(
             "Failed to set auto allocation for cuFFT plan.");
       }
       switch (rank) {
@@ -176,7 +175,7 @@ tsl::Status CUDAFftPlan::Initialize(
                                 /*batch=*/1, &scratch_size_bytes_);
           if (ret != CUFFT_SUCCESS) {
             LOG(ERROR) << "Failed to make cuFFT 1d plan: " << ret;
-            return port::InternalError("Failed to make cuFFT 1d plan.");
+            return tsl::errors::Internal("Failed to make cuFFT 1d plan.");
           }
           break;
         case 2:
@@ -184,7 +183,7 @@ tsl::Status CUDAFftPlan::Initialize(
                                 CUDAFftType(type), &scratch_size_bytes_);
           if (ret != CUFFT_SUCCESS) {
             LOG(ERROR) << "Failed to make cuFFT 2d plan: " << ret;
-            return port::InternalError("Failed to make cuFFT 2d plan.");
+            return tsl::errors::Internal("Failed to make cuFFT 2d plan.");
           }
           break;
         case 3:
@@ -193,14 +192,14 @@ tsl::Status CUDAFftPlan::Initialize(
                                 &scratch_size_bytes_);
           if (ret != CUFFT_SUCCESS) {
             LOG(ERROR) << "Failed to make cuFFT 3d plan: " << ret;
-            return port::InternalError("Failed to make cuFFT 3d plan.");
+            return tsl::errors::Internal("Failed to make cuFFT 3d plan.");
           }
           break;
         default:
           LOG(ERROR) << "Invalid rank value for cufftPlan. "
                         "Requested 1, 2, or 3, given: "
                      << rank;
-          return port::InvalidArgumentError(
+          return tsl::errors::InvalidArgument(
               "cufftPlan only takes rank 1, 2, or 3.");
       }
       return UpdateScratchAllocator(stream, scratch_allocator);
@@ -222,19 +221,19 @@ tsl::Status CUDAFftPlan::Initialize(
           output_stride, output_distance, CUDAFftType(type), batch_count);
       if (ret != CUFFT_SUCCESS) {
         LOG(ERROR) << "Failed to create cuFFT batched plan: " << ret;
-        return port::InternalError("Failed to create cuFFT batched plan.");
+        return tsl::errors::Internal("Failed to create cuFFT batched plan.");
       }
     } else {
       auto ret = cufftCreate(&plan_);
       if (ret != CUFFT_SUCCESS) {
         LOG(ERROR) << "Failed to create cuFFT batched plan: " << ret;
-        return port::InternalError("Failed to create cuFFT batched plan.");
+        return tsl::errors::Internal("Failed to create cuFFT batched plan.");
       }
       ret = cufftSetAutoAllocation(plan_, 0);
       if (ret != CUFFT_SUCCESS) {
         LOG(ERROR) << "Failed to set auto allocation for cuFFT batched plan: "
                    << ret;
-        return port::InternalError(
+        return tsl::errors::Internal(
             "Failed to set auto allocation for cuFFT batched plan.");
       }
       ret = cufftMakePlanMany64(
@@ -245,7 +244,7 @@ tsl::Status CUDAFftPlan::Initialize(
           &scratch_size_bytes_);
       if (ret != CUFFT_SUCCESS) {
         LOG(ERROR) << "Failed to make cuFFT batched plan: " << ret;
-        return port::InternalError("Failed to make cuFFT batched plan.");
+        return tsl::errors::Internal("Failed to make cuFFT batched plan.");
       }
       return UpdateScratchAllocator(stream, scratch_allocator);
     }
@@ -280,7 +279,7 @@ tsl::Status CUDAFftPlan::UpdateScratchAllocator(
   cufftResult_t ret = cufftSetWorkArea(plan_, scratch_.opaque());
   if (ret != CUFFT_SUCCESS) {
     LOG(ERROR) << "Failed to set work area for cuFFT plan: " << ret;
-    return port::InternalError("Failed to set work area for cuFFT plan.");
+    return tsl::errors::Internal("Failed to set work area for cuFFT plan.");
   }
   return ::tsl::OkStatus();
 }

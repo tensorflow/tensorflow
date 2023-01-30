@@ -255,11 +255,14 @@ XlaOp XlaBuilderFriend::BuildAllReduceDone(XlaBuilder* builder,
   });
 }
 
-XlaOp XlaBuilderFriend::BuildCopyStart(XlaBuilder* builder, const XlaOp operand,
-                                       bool is_cross_program_prefetch) {
+XlaOp XlaBuilderFriend::BuildCopyStart(
+    XlaBuilder* builder, const XlaOp operand,
+    std::optional<int> cross_program_prefetch_index) {
   return builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     HloInstructionProto instr;
-    instr.set_is_cross_program_prefetch(is_cross_program_prefetch);
+    if (cross_program_prefetch_index) {
+      instr.set_cross_program_prefetch_index(*cross_program_prefetch_index);
+    }
 
     TF_ASSIGN_OR_RETURN(const Shape* operand_shape,
                         builder->GetShapePtr(operand));
@@ -5108,6 +5111,9 @@ XlaOp Cos(const XlaOp operand) {
 }
 XlaOp Sin(const XlaOp operand) {
   return operand.builder()->UnaryOp(HloOpcode::kSin, operand);
+}
+XlaOp Tan(const XlaOp operand) {
+  return operand.builder()->UnaryOp(HloOpcode::kTan, operand);
 }
 XlaOp Tanh(const XlaOp operand) {
   return operand.builder()->UnaryOp(HloOpcode::kTanh, operand);

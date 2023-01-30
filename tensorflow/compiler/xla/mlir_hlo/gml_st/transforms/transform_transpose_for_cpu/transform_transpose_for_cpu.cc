@@ -17,7 +17,6 @@ limitations under the License.
 #include <utility>
 
 #include "gml_st/IR/gml_st_ops.h"
-#include "gml_st/interfaces/tiling_interface_impl.h"
 #include "gml_st/transforms/fusion/fusion.h"
 #include "gml_st/transforms/passes.h"
 #include "gml_st/transforms/peeling/peeling.h"
@@ -26,6 +25,7 @@ limitations under the License.
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
+#include "mlir/Dialect/Linalg/Transforms/TilingInterfaceImpl.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/Interfaces/LoopLikeInterface.h"
 #include "mlir/Pass/Pass.h"
@@ -56,8 +56,8 @@ struct TileTransposePattern : public OpRewritePattern<linalg::TransposeOp> {
       return rewriter.notifyMatchFailure(
           op, "has already been tiled by another pass.");
 
-    auto tilingResult =
-        tile(options, rewriter, cast<TilingInterface>(op.getOperation()));
+    auto tilingResult = tileUsingGmlSt(
+        options, rewriter, cast<TilingInterface>(op.getOperation()));
     if (failed(tilingResult)) return failure();
 
     // If we did not tile (e.g. when all tile sizes are 0), do not replace
@@ -100,7 +100,7 @@ struct TransformTransposeForCpuPass
   void getDependentDialects(DialectRegistry &registry) const final {
     registry.insert<GmlStDialect, arith::ArithDialect, linalg::LinalgDialect,
                     tensor::TensorDialect>();
-    registerGmlStTilingInterfaceExternalModels(registry);
+    linalg::registerTilingInterfaceExternalModels(registry);
   }
 
   void runOnOperation() override {

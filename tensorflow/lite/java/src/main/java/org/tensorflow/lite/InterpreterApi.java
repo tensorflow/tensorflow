@@ -100,6 +100,7 @@ public interface InterpreterApi extends AutoCloseable {
       this.delegateFactories = new ArrayList<>(other.delegateFactories);
       this.runtime = other.runtime;
       this.validatedAccelerationConfig = other.validatedAccelerationConfig;
+      this.useXNNPACK = other.useXNNPACK;
     }
 
     /**
@@ -281,9 +282,35 @@ public interface InterpreterApi extends AutoCloseable {
       return this.validatedAccelerationConfig;
     }
 
+    /**
+     * Enable or disable an optimized set of CPU kernels (provided by XNNPACK). Enabled by default.
+     */
+    public Options setUseXNNPACK(boolean useXNNPACK) {
+      this.useXNNPACK = useXNNPACK;
+      return this;
+    }
+
+    public boolean getUseXNNPACK() {
+      // A null value indicates the default behavior, which is currently to apply the delegate.
+      return useXNNPACK == null || useXNNPACK.booleanValue();
+    }
+
     TfLiteRuntime runtime = TfLiteRuntime.FROM_APPLICATION_ONLY;
     int numThreads = -1;
     Boolean useNNAPI;
+
+    /**
+     * Note: the initial "null" value indicates default behavior (XNNPACK delegate will be applied
+     * by default whenever possible).
+     *
+     * <p>Disabling this flag will disable use of a highly optimized set of CPU kernels provided via
+     * the XNNPACK delegate. Currently, this is restricted to a subset of floating point operations.
+     * See
+     * https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/delegates/xnnpack/README.md
+     * for more details.
+     */
+    Boolean useXNNPACK;
+
     Boolean allowCancellation;
     ValidatedAccelerationConfig validatedAccelerationConfig;
 

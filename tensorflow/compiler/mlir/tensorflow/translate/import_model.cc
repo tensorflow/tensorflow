@@ -91,7 +91,6 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/utils/mangling_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/translate_utils.h"
 #include "tensorflow/compiler/xla/status_macros.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/statusor.h"
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/common_runtime/shape_refiner.h"
@@ -1989,11 +1988,7 @@ mlir::Operation* ImporterBase::CreateOperation(
             resource = true;
             return true;
           }
-          if (auto with_subtype =
-                  type.dyn_cast<mlir::SubElementTypeInterface>()) {
-            with_subtype.walkSubTypes(
-                [&](mlir::Type t) { record_resource(t); });
-          }
+          type.walk([&](mlir::Type t) { record_resource(t); });
           return resource;
         };
 

@@ -186,9 +186,16 @@ class PyTreeDef {
     int arity = 0;
 
     // Kind-specific auxiliary data. For a kNamedTuple, contains the tuple type
-    // object. For a kDict, contains a sorted list of keys. For a kCustom type,
-    // contains the auxiliary data returned by the `to_iterable` function.
+    // object. For a kDict, use `sorted_dict_keys` field below. For a kCustom
+    // type, contains the auxiliary data returned by the `to_iterable` function.
     pybind11::object node_data;
+
+    // Kind-specific auxiliary data specialized for kDict. Use a c++ vector
+    // to hold the sorted dict keys instead of a py::list to avoid creating
+    // a new python list object when flattening kDict. For deeply nested dict,
+    // using c++ vector instead of py::list avoids creating too many python
+    // objects that make python gc sweep slow.
+    std::vector<pybind11::object> sorted_dict_keys;
 
     // Custom type registration. Must be null for non-custom types.
     const PyTreeTypeRegistry::Registration* custom = nullptr;

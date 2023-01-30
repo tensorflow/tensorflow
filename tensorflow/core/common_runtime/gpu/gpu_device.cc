@@ -341,6 +341,15 @@ class BaseGPUDevice::StreamGroupFactory {
     streams_.clear();
   }
 
+  std::optional<tsl::TfDeviceId> FindTfDeviceId(se::Stream* compute) const {
+    for (const auto& item : streams_) {
+      if (item.second.compute == compute) {
+        return tsl::TfDeviceId(std::get<0>(item.first));
+      }
+    }
+    return std::nullopt;
+  }
+
  private:
   // Returns priority for the given virtual GPU id from the session options.
   // Returns 0 if no virtual devices are specified.
@@ -556,6 +565,11 @@ string BaseGPUDevice::ComputeOpKernelDebugString(const OpKernel& op_kernel,
   return strings::StrCat(op_kernel.name(), " op ", op_kernel.type_string(),
                          " on GPU ", tf_device_id_.value(), " stream[",
                          stream_id, "]");
+}
+
+std::optional<tsl::TfDeviceId> BaseGPUDevice::FindTfDeviceId(
+    se::Stream* compute) {
+  return StreamGroupFactory::Global().FindTfDeviceId(compute);
 }
 
 namespace {
@@ -1382,7 +1396,13 @@ Status BaseGPUDeviceFactory::CreateDevices(
                          std::make_pair(priority_low, priority_high)));
 #endif
     }
-    // Reset to the original device.
+    // Reset to the original device, if it is a valid visible gpu. Otherwise use
+    // the first valid device.
+    if (std::find(valid_platform_device_ids.begin(),
+                  valid_platform_device_ids.end(),
+                  original_device) == valid_platform_device_ids.end()) {
+      original_device = valid_platform_device_ids[0].value();
+    }
 #if GOOGLE_CUDA
     err = cudaSetDevice(original_device);
     if (err != cudaSuccess) {
