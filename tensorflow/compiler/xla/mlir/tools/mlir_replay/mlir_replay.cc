@@ -15,6 +15,7 @@ limitations under the License.
 
 #include <memory>
 #include <string>
+#include <variant>
 #include <vector>
 
 #include "absl/strings/str_format.h"
@@ -26,6 +27,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/mlir/tools/mlir_replay/mlir_replay_lib.h"
 #include "tensorflow/compiler/xla/mlir/tools/mlir_replay/public/compiler_trace.pb.h"
 #include "tensorflow/compiler/xla/mlir/tools/mlir_replay/public/execution_trace.pb.h"
+#include "tensorflow/compiler/xla/mlir/tools/mlir_replay/public/execution_trace_utils.h"
 #include "tensorflow/compiler/xla/mlir_hlo/gml_st/IR/gml_st_ops.h"
 #include "tensorflow/compiler/xla/mlir_hlo/lhlo/IR/lhlo_ops.h"
 #include "tensorflow/compiler/xla/mlir_hlo/lhlo_gpu/IR/lhlo_gpu_ops.h"
@@ -42,11 +44,80 @@ limitations under the License.
 struct ReplayOptions {
   std::string hlo_snapshot;
   std::string mlir_compilation_trace;
+  std::string mlir_compilation_trace_dir = "";
   std::string execution_trace_dir = "";
   std::string entry_point = "main";
   bool print_changes_only = false;
   bool stop_after_first_failure = false;
 };
+
+bool ResultsMatch(const xla::HloSnapshot& snapshot,
+                  const llvm::SmallVector<mlir::interpreter::InterpreterValue>&
+                      first_pass_results,
+                  std::vector<std::string>& failures) {
+  auto actual = mlir::interpreter::LiteralToValue(snapshot.result());
+  TF_CHECK_OK(actual.status());
+
+  // We assume this is MHLO, so multiple results will be in a tuple.
+  if (first_pass_results.size() != 1) {
+    failures.push_back("expected one result");
+    return false;
+  }
+
+  if (!(*actual == first_pass_results[0])) {
+    failures.push_back("result mismatch: " + actual->toString() +
+                       " != " + first_pass_results[0].toString());
+    return false;
+  }
+  return true;
+}
+
+void TestAll(mlir::MLIRContext& context, const ReplayOptions& opts) {
+  std::vector<std::string> traces;
+  TF_CHECK_OK(tsl::Env::Default()->GetMatchingPaths(
+      opts.mlir_compilation_trace_dir + "/*.mlir-trace.pb", &traces));
+
+  for (const auto& trace_path : traces) {
+    mlir::interpreter::MlirCompilationTrace trace;
+    TF_CHECK_OK(tsl::ReadBinaryProto(tsl::Env::Default(), trace_path, &trace))
+        << "Failed to load " << trace_path;
+
+    std::vector<std::string> snapshots;
+    std::string prefix =
+        trace_path.substr(0, trace_path.length() - strlen(".mlir-trace.pb"));
+    TF_CHECK_OK(tsl::Env::Default()->GetMatchingPaths(prefix + "*.snapshot.*",
+                                                      &snapshots));
+    CHECK_NE(snapshots.size(), 0)
+        << "No snapshots found for module " << trace_path << ".";
+
+    std::vector<std::string> failures;
+    for (const auto& snapshot_path : snapshots) {
+      xla::HloSnapshot snapshot;
+      TF_CHECK_OK(
+          tsl::ReadBinaryProto(tsl::Env::Default(), snapshot_path, &snapshot));
+
+      auto results =
+          mlir::interpreter::Run(context, trace.passes(0).mlir_module(),
+                                 snapshot, nullptr, opts.entry_point);
+      if (!results.status().ok()) {
+        failures.push_back("Failed to execute " + snapshot_path + ": " +
+                           results.status().ToString());
+      } else {
+        if (!ResultsMatch(snapshot, *results, failures)) {
+          failures.push_back(
+              std::string("run :mlir_replay -- --mlir_compilation_trace=") +
+              trace_path + " --hlo_snapshot=" + snapshot_path +
+              " --print_changes_only --stop_after_first_failure");
+        }
+      }
+    }
+
+    if (!failures.empty()) {
+      llvm::errs() << "Failures for " << trace_path << ":\n  "
+                   << absl::StrJoin(failures, "\n  ") << "\n";
+    }
+  }
+}
 
 int main(int argc, char* argv[]) {
   // Flush llvm::outs before writing errors.
@@ -58,6 +129,10 @@ int main(int argc, char* argv[]) {
                 "Filename of an HloSnapshot proto. Only used to read inputs."),
       tsl::Flag("mlir_compilation_trace", &opts.mlir_compilation_trace,
                 "Filename of an MlirCompilerTrace proto."),
+      tsl::Flag("mlir_compilation_trace_dir", &opts.mlir_compilation_trace_dir,
+                "Directory from which to load MlirCompilerTrace and "
+                "HloSnapshot protos. The tool will run all snapshots and "
+                "report the ones with bugs."),
       tsl::Flag("execution_trace_dir", &opts.execution_trace_dir,
                 "Directory where to store the execution traces (optional)."),
       tsl::Flag("entry_point", &opts.entry_point,
@@ -77,6 +152,14 @@ int main(int argc, char* argv[]) {
   }
   tsl::port::InitMain(usage_string.c_str(), &argc, &argv);
 
+  CHECK(opts.mlir_compilation_trace.empty() !=
+        opts.mlir_compilation_trace_dir.empty())
+      << "Exactly one of --mlir_compilation_trace and "
+         "--mlir_compilation_trace_dir must be specified.";
+
+  CHECK(opts.mlir_compilation_trace_dir.empty() || opts.hlo_snapshot.empty())
+      << "If --mlir_compilation_trace_dir is set, --hlo_snapshot must not be.";
+
   mlir::DialectRegistry registry;
   mlir::registerAllDialects(registry);
   mlir::mhlo::registerAllMhloDialects(registry);
@@ -85,6 +168,11 @@ int main(int argc, char* argv[]) {
                   xla::runtime::RuntimeDialect>();
 
   mlir::MLIRContext context(registry);
+
+  if (!opts.mlir_compilation_trace_dir.empty()) {
+    TestAll(context, opts);
+    return 0;
+  }
 
   xla::HloSnapshot snapshot;
   if (!opts.hlo_snapshot.empty()) {
