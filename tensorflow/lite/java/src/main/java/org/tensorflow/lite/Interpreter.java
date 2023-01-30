@@ -89,7 +89,7 @@ public final class Interpreter extends InterpreterImpl implements InterpreterApi
     }
 
     @Override
-    public Options setUseXNNPACK(Boolean useXNNPACK) {
+    public Options setUseXNNPACK(boolean useXNNPACK) {
       super.setUseXNNPACK(useXNNPACK);
       return this;
     }
