@@ -90,7 +90,7 @@ ENTRY main.6 {
   EXPECT_THAT(
       m->entry_computation()->root_instruction(),
       GmockMatch(m::GetTupleElement(
-                     m::CustomCall(&fmha, kCudnnfMHADefaultCallTarget), 0)
+                     m::CustomCall(&fmha, {kCudnnfMHADefaultCallTarget}), 0)
                      .WithShape(BF16, {20, 40, 64})));
   TF_ASSERT_OK_AND_ASSIGN(auto config,
                           fmha->backend_config<CudnnfMHABackendConfig>());
@@ -204,7 +204,7 @@ ENTRY main.6 {
   EXPECT_THAT(
       m->entry_computation()->root_instruction(),
       GmockMatch(m::GetTupleElement(
-                     m::CustomCall(&fmha, kCudnnfMHADefaultCallTarget), 0)
+                     m::CustomCall(&fmha, {kCudnnfMHADefaultCallTarget}), 0)
                      .WithShape(F16, {20, 40, 64})));
   TF_ASSERT_OK_AND_ASSIGN(auto config,
                           fmha->backend_config<CudnnfMHABackendConfig>());
