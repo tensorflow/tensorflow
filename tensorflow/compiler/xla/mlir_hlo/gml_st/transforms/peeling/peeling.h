@@ -29,7 +29,10 @@ namespace gml_st {
 
 constexpr llvm::StringRef kPeelingAppliedLabel = "__peeling_applied_label__";
 
-using PeelingResult = SmallVector<Operation *>;
+struct GmlStPeelingResult {
+  Operation *mainLoop = nullptr;
+  SmallVector<Operation *> tailLoops = {};
+};
 
 /// Rewrite a gml_st::ParallelOp with bounds/step that potentially do not divide
 /// evenly into a gml_st::ParallelOp where the step divides the iteration space
@@ -39,31 +42,8 @@ using PeelingResult = SmallVector<Operation *>;
 /// These functions peel all loops in the loop nest by calling
 /// peelAndCanonicalizeGmlStLoop. Additionally, they mark all loops (main and
 /// remainder loops) as peeled, so the same loop is not rewritten a second time.
-PeelingResult peelAllLoops(ParallelOp loop, mlir::PatternRewriter &rewriter);
-
-/// These functions peel the `idx`-th loop of the gml_st::ParallelOp. To peel
-/// all loops in the loop nest, these functions must be called multiple times.
-///
-/// After loop peeling, these functions try to simplify/canonicalize affine.min
-/// and affine.max ops in the body of the two gml_st::ParallelOps.  For more
-/// details, refer to `mlir::scf::peelAndCanonicalizeForLoop`.
-///
-/// The return value indicates whether the loop was rewritten or not. Loops are
-/// not rewritten if:
-/// * Loop step size is 1 or
-/// * Loop bounds and step size are static, and step already divides the
-///   iteration space evenly.
-///
-/// Note: These functions rewrite the given gml_st::ParallelOp in-place and
-/// clone the gml_st::ParallelOp operation for the last iteration. They replace
-/// all uses of the unpeeled gml_st::ParallelOp with the results of the newly
-/// generated gml_st::ParallelOp.
-///
-/// Note: These functions do not mark the loops as peeled. This should be
-/// handled by the caller.
-FailureOr<ParallelOp> peelAndCanonicalizeGmlStLoop(RewriterBase &rewriter,
-                                                   ParallelOp loopOp,
-                                                   int64_t idx);
+GmlStPeelingResult peelAllLoops(ParallelOp loop,
+                                mlir::PatternRewriter &rewriter);
 
 struct SCFForPeelingResult {
   scf::ForOp mainLoop = nullptr;

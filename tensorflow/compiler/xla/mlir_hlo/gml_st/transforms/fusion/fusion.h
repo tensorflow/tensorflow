@@ -75,7 +75,7 @@ FailureOr<scf::SCFTilingResult> tileUsingSCFForOpAndFuseGreedily(
 // Tiles the op to 1 for all dimensions and fuses greedily according to the
 // filter function.
 LogicalResult tilePeeledOpsToScalars(
-    PatternRewriter &rewriter, const PeelingResult &peelingResult,
+    PatternRewriter &rewriter, const GmlStPeelingResult &peelingResult,
     StringRef label, llvm::function_ref<bool(Operation *)> fuseFilterFn);
 
 }  // namespace gml_st

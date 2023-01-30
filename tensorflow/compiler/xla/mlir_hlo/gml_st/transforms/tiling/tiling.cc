@@ -306,7 +306,7 @@ FailureOr<TilingResult> tileUsingGmlSt(const TilingOptions &options,
       return rewriter.notifyMatchFailure(
           op, "failed to get slice of result produced");
     }
-    outputTiles.push_back(rewriter.create<TileOp>(
+    outputTiles.push_back(rewriter.createOrFold<TileOp>(
         loc, resultOffsetsList, resultSizesList,
         SmallVector<OpFoldResult>(resultSizesList.size(), oneAttr)));
   }

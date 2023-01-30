@@ -471,9 +471,9 @@ FailureOr<scf::SCFTilingResult> tileUsingSCFForOpAndFuseGreedily(
 }
 
 LogicalResult tilePeeledOpsToScalars(
-    PatternRewriter& rewriter, const PeelingResult& peelingResult,
+    PatternRewriter& rewriter, const GmlStPeelingResult& peelingResult,
     StringRef label, llvm::function_ref<bool(Operation*)> fuseFilterFn) {
-  for (auto* loop : peelingResult) {
+  for (auto* loop : peelingResult.tailLoops) {
     ParallelOp peeledLoop = dyn_cast<ParallelOp>(loop);
     auto* terminatorOp = peeledLoop->getRegion(0).front().getTerminator();
     if (!terminatorOp) return failure();
