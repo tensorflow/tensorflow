@@ -783,7 +783,6 @@ cc_library(
     name = "lmhlo_passes",
     srcs = [
         "lhlo/transforms/legalize_to_tensor_op/legalize_to_tensor_op.cc",
-        "lhlo/transforms/lhlo_fuse_linalg/lhlo_fuse_linalg.cc",
         "lhlo/transforms/lhlo_legalize_to_affine/lhlo_legalize_to_affine.cc",
         "lhlo/transforms/lhlo_legalize_to_gpu/lhlo_legalize_to_gpu.cc",
         "lhlo/transforms/lhlo_legalize_to_parallel_loops/lhlo_legalize_to_parallel_loops.cc",
@@ -803,7 +802,6 @@ cc_library(
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:GPUDialect",
         "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:LinalgAnalysis",
         "@llvm-project//mlir:LinalgDialect",
         "@llvm-project//mlir:LinalgTransforms",
         "@llvm-project//mlir:MemRefDialect",
