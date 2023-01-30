@@ -32,6 +32,7 @@ cc_library(
         "//tensorflow/compiler/xla/stream_executor/gpu:gpu_diagnostics_header",
         "//tensorflow/compiler/xla/stream_executor/lib",
         "//tensorflow/compiler/xla/stream_executor/platform",
+        "//tensorflow/tsl/platform:platform_port",
     ]),
 )
 
