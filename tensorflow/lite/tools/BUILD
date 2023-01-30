@@ -127,6 +127,7 @@ py_library(
     srcs_version = "PY3",
     deps = [
         "//tensorflow/lite/python:schema_py",
+        "//tensorflow/lite/python:schema_util",
         "//tensorflow/python/platform",
         "@flatbuffers//:runtime_py",
     ],
