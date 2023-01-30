@@ -60,6 +60,12 @@ def TosaStripQuantTypesPass : Pass<"tosa-strip-quant-types", "mlir::func::FuncOp
   let dependentDialects = ["TosaDialect"];
 }
 
+def TosaStripComplexTypesPass : Pass<"tosa-strip-complex-types", "mlir::func::FuncOp"> {
+  let summary = "Convert all complex types to their storage type.";
+  let constructor = "createStripComplexTypesPass()";
+  let dependentDialects = ["TosaDialect"];
+}
+
 def TosaDequantizeTFLSoftmaxPass : Pass<"tosa-dequantize-tfl-softmax", "mlir::func::FuncOp"> {
   let summary = "Dequantize TFLite Softmax ops.";
   let description = [{
