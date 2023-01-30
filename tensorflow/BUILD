@@ -124,6 +124,7 @@ PACKAGE_STATIC_DEPS = [
     "@clog//:__subpackages__",
     "@flatbuffers//:__subpackages__",
     "@nccl_archive//:__subpackages__",
+    "@triton//:__subpackages__",
 ] + tsl_async_value_deps()
 
 package(
