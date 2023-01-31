@@ -331,7 +331,7 @@ def AddDependencyOp : XlaCpu_Op<"add_dependency", [BufferizableOpInterface]> {
         const bufferization::BufferizationOptions &options);
     bufferization::BufferRelation bufferRelation(OpResult opResult,
         const bufferization::AnalysisState &state) {
-      return bufferization::BufferRelation::None;
+      return bufferization::BufferRelation::Unknown;
     }
   }];
 }

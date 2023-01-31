@@ -1802,6 +1802,7 @@ xla_test(
 
 xla_test(
     name = "matrix_ops_simple_test",
+    timeout = "long",
     srcs = ["matrix_ops_simple_test.cc"],
     deps = [
         ":test_macros_header",
