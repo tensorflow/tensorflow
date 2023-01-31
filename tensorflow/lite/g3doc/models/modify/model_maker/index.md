@@ -64,17 +64,14 @@ There are two ways to install Model Maker.
 
 ```shell
 pip install tflite-model-maker
-```
+pip install tflite-model-maker-nightly # installs nightly version
 
-If you want to install nightly version, please follow the command:
-
-```shell
-pip install tflite-model-maker-nightly
 ```
 
 *   Clone the source code from GitHub and install.
 
 ```shell
+#Go for this method if pip installation fails
 git clone https://github.com/tensorflow/examples
 cd examples/tensorflow_examples/lite/model_maker/pip_package
 pip install -e .
