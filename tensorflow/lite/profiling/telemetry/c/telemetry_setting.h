@@ -91,10 +91,10 @@ typedef struct TfLiteTelemetryGpuDelegateSettings
     TfLiteTelemetryGpuDelegateSettings;
 
 size_t TfLiteTelemetryGpuDelegateSettingsGetNumNodesDelegated(
-    TfLiteTelemetryGpuDelegateSettings* settings);
+    const TfLiteTelemetryGpuDelegateSettings* settings);
 
 int TfLiteTelemetryGpuDelegateSettingsGetBackend(
-    TfLiteTelemetryGpuDelegateSettings* settings);
+    const TfLiteTelemetryGpuDelegateSettings* settings);
 
 #ifdef __cplusplus
 }  // extern "C"
