@@ -287,7 +287,7 @@ void IteratorResource::State::DowncastAndSetIteratorAndDataset(
   }
 }
 
-void IteratorResource::State::MergeCheckpoint(const MemoryCheckpoint& other) {
+void IteratorResource::State::MergeCheckpoint(MemoryCheckpoint* other) {
   if (SymbolicCheckpointEnabled(dataset_->options())) {
     checkpoint_.Merge(other);
   }

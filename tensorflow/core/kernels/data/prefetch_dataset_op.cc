@@ -432,7 +432,7 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
           VLOG(2) << "Setting slack_us_: " << slack_us_;
         }
         *out_tensors = std::move(buffer_.front().value);
-        ctx->MergeCheckpoint(buffer_.front().checkpoint);
+        ctx->MergeCheckpoint(&buffer_.front().checkpoint);
         RecordBufferDequeue(ctx, *out_tensors);
         // Tells the legacy prefetch autotuner the size of an element.
         if (legacy_autotune_ && auto_tuner_.element_size() == 0) {
@@ -521,7 +521,7 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
               profiler::kInfo);
           buffer_element.status = input_impl_->GetNext(
               ctx.get(), &buffer_element.value, &end_of_sequence);
-          buffer_element.checkpoint = ctx->checkpoint();
+          buffer_element.checkpoint.Merge(ctx->checkpoint());
         }
         if (buffer_element.status.ok() && end_of_sequence) {
           mutex_lock l(*mu_);

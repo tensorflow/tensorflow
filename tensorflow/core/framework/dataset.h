@@ -16,10 +16,14 @@ limitations under the License.
 #define TENSORFLOW_CORE_FRAMEWORK_DATASET_H_
 
 #include <deque>
+#include <iterator>
 #include <memory>
+#include <string>
 #include <unordered_map>
+#include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/memory/memory.h"
 #include "absl/strings/str_cat.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
@@ -88,6 +92,7 @@ constexpr int kUnknownCardinality = -2;
 // This constant is a magic number that is used (as a prefix) to identify keys
 // used for serialization of iterator state.
 constexpr char kFullNameRandomHex[] = "60d899aa0d8ce4351e7c3b419e92d25b";
+constexpr int kFullNameRandomHexLen = std::size(kFullNameRandomHex) - 1;
 constexpr char kPipe[] = "|";
 constexpr char kColon[] = ":";
 
@@ -406,6 +411,12 @@ class MemoryCheckpoint : public IteratorStateWriter {
  public:
   MemoryCheckpoint() = default;
 
+  MemoryCheckpoint(MemoryCheckpoint&& other) = default;
+
+  static MemoryCheckpoint CreateRootCheckpoint() {
+    return MemoryCheckpoint(/*is_root=*/true);
+  }
+
   // BEGIN implementation of `IteratorStateWriter` interface
   Status WriteScalar(StringPiece key, int64_t val) override {
     int_values_[key] = val;
@@ -433,18 +444,34 @@ class MemoryCheckpoint : public IteratorStateWriter {
   // END implementation of `IteratorStateWriter` interface
 
   // String representation for the in-memory checkpoint suitable for debugging.
-  std::string DebugString() const {
-    std::string result = absl::StrCat("status=", status_.ToString(), "\n");
+  std::string DebugString(bool verbose = false) const {
+    std::string result = absl::StrCat("status=", status_.ToString(),
+                                      ", "
+                                      "root=",
+                                      (is_root_ ? "true" : "false"), "\n");
     absl::StrAppend(&result, "number of integers: ", int_values_.size(), "\n");
-    for (const auto& pair : int_values_) {
-      absl::StrAppend(&result, "  ", pair.first, " ", pair.second, "\n");
+    if (verbose) {
+      for (const auto& pair : int_values_) {
+        absl::StrAppend(&result, "  ", pair.first, " ", pair.second, "\n");
+      }
     }
     absl::StrAppend(&result, "number of strings: ", str_values_.size(), "\n");
-    for (const auto& pair : str_values_) {
-      absl::StrAppend(&result, "  ", pair.first, " ", pair.second, "\n");
+    if (verbose) {
+      for (const auto& pair : str_values_) {
+        absl::StrAppend(&result, "  ", pair.first, " ", pair.second, "\n");
+      }
     }
     absl::StrAppend(&result, "number of tensors: ", tensor_values_.size(),
                     "\n");
+
+    absl::StrAppend(&result,
+                    "number of expired prefixes: ", expired_prefixes_.size(),
+                    "\n");
+    if (verbose) {
+      for (const auto& prefix : expired_prefixes_) {
+        absl::StrAppend(&result, "  ", prefix, "\n");
+      }
+    }
     return result;
   }
 
@@ -454,26 +481,49 @@ class MemoryCheckpoint : public IteratorStateWriter {
   // Merges key-values pair of another checkpoint with this checkpoint. If a key
   // exists with another checkpoint, then the key-value pair from the `other`
   // argument is used.
-  void Merge(const MemoryCheckpoint& other) {
+  //
+  // Merge also garbage collects expired prefixes.
+  void Merge(MemoryCheckpoint* other) {
     if (!status_.ok()) {
       return;
     }
 
-    if (!other.status_.ok()) {
-      status_ = other.status_;
+    if (!other->status_.ok()) {
+      status_ = other->status_;
       int_values_.clear();
       str_values_.clear();
       tensor_values_.clear();
     }
 
-    for (const auto& pair : other.int_values_) {
+    for (const auto& pair : other->int_values_) {
       int_values_[pair.first] = pair.second;
     }
-    for (const auto& pair : other.str_values_) {
+    for (const auto& pair : other->str_values_) {
       str_values_[pair.first] = pair.second;
     }
-    for (const auto& pair : other.tensor_values_) {
+    for (const auto& pair : other->tensor_values_) {
       tensor_values_[pair.first] = pair.second;
+    }
+
+    // Get the expired prefixes from `other`. Since the info only needs to be
+    // propagated once downstream, we also clean the `expired_prefixes_` of
+    // `other` here.
+    for (const auto& prefix : other->expired_prefixes_) {
+      Purge(prefix);
+    }
+
+    other->expired_prefixes_.clear();
+    VLOG(5) << "MemoryCheckpoint::Merge " << DebugString();
+  }
+
+  // Purge removes all keys with given prefix from checkpoint. It also adds the
+  // prefix for tracking unless it is the root checkpoint.
+  void Purge(const std::string& prefix) {
+    PurgePrefixFromMap(int_values_, prefix);
+    PurgePrefixFromMap(str_values_, prefix);
+    PurgePrefixFromMap(tensor_values_, prefix);
+    if (!is_root_) {
+      expired_prefixes_.insert(prefix);
     }
   }
 
@@ -501,10 +551,34 @@ class MemoryCheckpoint : public IteratorStateWriter {
   void UpdateStatus(Status status) { status_.Update(status); }
 
  private:
+  explicit MemoryCheckpoint(bool is_root) : is_root_(is_root) {}
+  TF_DISALLOW_COPY_AND_ASSIGN(MemoryCheckpoint);
+
+  template <typename T>
+  void PurgePrefixFromMap(absl::flat_hash_map<std::string, T>& m,
+                          const std::string& prefix) {
+    // TODO(zhenkai): use trie/prefix tree to speed up lookup.
+    for (auto it = m.cbegin(); it != m.cend();) {
+      // start pos is kFullNameRandomHexLen + 1 (for pipe)
+      if (it->first.compare(kFullNameRandomHexLen + 1, prefix.length(),
+                            prefix) == 0) {
+        m.erase(it++);
+      } else {
+        ++it;
+      }
+    }
+  }
+
   Status status_ = OkStatus();
+  // Only set to true for the checkpoint in IteratorResource.
+  // Root checkpoint does not track expired prefixes.
+  const bool is_root_ = false;
   absl::flat_hash_map<std::string, int64_t> int_values_;
   absl::flat_hash_map<std::string, std::string> str_values_;
   absl::flat_hash_map<std::string, Tensor> tensor_values_;
+
+  // Keeps track of expired prefixes for propagation. Cleaned after it's merged.
+  absl::flat_hash_set<std::string> expired_prefixes_;
 };
 
 // Aggregates runtime support needed for dataset and iterator serialization.
@@ -728,6 +802,11 @@ class IteratorContext {
 
   explicit IteratorContext(Params params) : params_(std::move(params)) {}
 
+  IteratorContext(const IteratorContext& other) : params_(other.params_) {
+    // MemoryCheckpoint should not be copied over as the child context should
+    // not care what's in the checkpoint of parent context.
+  }
+
   Allocator* allocator(AllocatorAttributes attrs) {
     return params_.allocator_getter(attrs);
   }
@@ -752,7 +831,7 @@ class IteratorContext {
     return params_.function_handle_cache;
   }
 
-  const MemoryCheckpoint& checkpoint() const { return checkpoint_; }
+  MemoryCheckpoint* checkpoint() { return &checkpoint_; }
 
   int64 interleave_depth() { return params_.interleave_depth; }
 
@@ -817,9 +896,21 @@ class IteratorContext {
   //   ...
   // }
   // ```
-  void MergeCheckpoint(const MemoryCheckpoint& checkpoint) {
+  void MergeCheckpoint(MemoryCheckpoint* checkpoint) {
     if (symbolic_checkpoint()) {
       checkpoint_.Merge(checkpoint);
+    }
+  }
+
+  // Removes any keys with the given prefix from the checkpoint.
+  //
+  // The intended use for this API is to clean the stale state in checkpoint,
+  // e.g. when a pipeline created by `flat_map` is exhausted, the state
+  // associated with the iterator of that pipeline is no longer needed and
+  // should be removed.
+  void PurgeCheckpoint(const std::string& prefix) {
+    if (symbolic_checkpoint()) {
+      checkpoint_.Purge(prefix);
     }
   }
 

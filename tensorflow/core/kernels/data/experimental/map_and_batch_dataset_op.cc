@@ -268,7 +268,7 @@ class MapAndBatchDatasetOp::Dataset : public DatasetBase {
       if (result->output_allocated) {
         RecordBufferDequeue(ctx, result->output);
       }
-      ctx->MergeCheckpoint(result->checkpoint);
+      ctx->MergeCheckpoint(&result->checkpoint);
       TF_RETURN_IF_ERROR(
           ProcessBatch(dataset()->batch_size_, result->num_elements,
                        dataset()->drop_remainder_, result->status, ctx,

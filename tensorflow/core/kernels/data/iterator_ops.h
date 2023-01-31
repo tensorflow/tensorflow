@@ -89,7 +89,8 @@ class IteratorResource : public ResourceBase {
           flr_(flr),
           pflr_(std::move(pflr)),
           function_handle_cache_(std::make_unique<FunctionHandleCache>(flr)),
-          iterator_(std::move(iterator)) {}
+          iterator_(std::move(iterator)),
+          checkpoint_(MemoryCheckpoint::CreateRootCheckpoint()) {}
 
     ~State() { cancellation_manager_.StartCancel(); }
 
@@ -121,7 +122,7 @@ class IteratorResource : public ResourceBase {
                                           const DatasetBase* dataset);
 
     // Merges the given checkpoint with the checkpoint of this state.
-    void MergeCheckpoint(const MemoryCheckpoint& other);
+    void MergeCheckpoint(MemoryCheckpoint* other);
 
    private:
     std::shared_ptr<FunctionLibraryDefinition> flib_def_;
