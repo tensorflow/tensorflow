@@ -185,6 +185,7 @@ cc_library(
         ":tensor_view",
         ":tflite_tensor_view",
         "//tensorflow/lite:mutable_op_resolver",
+        "//tensorflow/lite:string_util",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/kernels:kernel_util",
         "@com_google_absl//absl/status",
