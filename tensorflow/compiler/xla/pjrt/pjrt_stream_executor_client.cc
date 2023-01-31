@@ -2836,10 +2836,14 @@ PjRtStreamExecutorClient::DeserializeExecutable(
       "PjRtStreamExecutorClient::DeserializeExecutable");
   VLOG(1) << "PjRtStreamExecutorClient::DeserializeExecutable";
 
-  std::string xla_flags(std::getenv("XLA_FLAGS"));
-  if (!absl::StrContains(xla_flags,
-                         "--xla_gpu_enable_xla_runtime_executable=true")) {
-    return InternalError("Desirialization requires enabling JitRt");
+  if (char* xla_flags = std::getenv("XLA_FLAGS")) {
+    std::string xla_flags_str(xla_flags);
+    if (!absl::StrContains(xla_flags_str,
+                           "--xla_gpu_enable_xla_runtime_executable=true")) {
+      return InternalError("Deserialization requires XLA Runtime enabled");
+    }
+  } else {
+    return InternalError("Deserialization requires XLA Runtime enabled");
   }
 
   TF_ASSIGN_OR_RETURN(ExecutableExtras extras, GetExecutableExtras(&*options));
