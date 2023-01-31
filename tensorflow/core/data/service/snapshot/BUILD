@@ -20,6 +20,7 @@ tf_cc_test(
     deps = [
         ":path_utils",
         ":snapshot_reader",
+        ":test_utils",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/time",
         "//tensorflow/core:framework",
