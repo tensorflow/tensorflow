@@ -2456,6 +2456,10 @@ xla_cc_test(
     srcs = ["cudnn_fused_mha_rewriter_test.cc"],
     tags = [
         "gpu",
+        "no_oss",
+        "noasan",
+        "nomsan",
+        "requires-gpu-sm80",
     ],
     deps = [
         ":backend_configs_cc",
