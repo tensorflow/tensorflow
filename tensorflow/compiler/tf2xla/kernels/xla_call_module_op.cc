@@ -308,6 +308,35 @@ Status RefineDynamicShapes(XlaOpKernelContext *ctx,
   if (!mlir::succeeded(pm.run(**module))) {
     return errors::InvalidArgument("Module shape inference failed");
   }
+
+  // Finally, make sure that no dynamic shapes are left, otherwise all sorts of
+  // weirdness might happen in the HLO exporter.
+  bool moduleHasDynamicShapes = false;
+  auto hasDynamicShape = [](mlir::Value value) {
+    auto shaped_type = value.getType().dyn_cast<mlir::ShapedType>();
+    return shaped_type ? !shaped_type.hasStaticShape() : false;
+  };
+  (*module)->walk([&](mlir::Operation *op) {
+    // It's sufficient to only check results because operands either come from
+    // results or from block arguments which are checked below.
+    bool opHasDynamicShapes = false;
+    opHasDynamicShapes |= llvm::any_of(op->getResults(), hasDynamicShape);
+    for (mlir::Region &region : op->getRegions()) {
+      opHasDynamicShapes |=
+          llvm::any_of(region.getArguments(), hasDynamicShape);
+    }
+    moduleHasDynamicShapes |= opHasDynamicShapes;
+    if (opHasDynamicShapes) {
+      std::string opStr;
+      llvm::raw_string_ostream os(opStr);
+      op->print(os);
+      VLOG(3) << "Operation still has dynamic shapes: " << opStr;
+    }
+  });
+  if (moduleHasDynamicShapes) {
+    return errors::InvalidArgument("Module still has dynamic shapes");
+  }
+
   VLOG(3) << "XlaCallModule module with inferred types: "
           << debugString(**module);
   return OkStatus();
