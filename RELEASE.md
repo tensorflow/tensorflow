@@ -43,7 +43,7 @@
 
     * Added a `model.export(filepath)` API to create a lightweight SavedModel
       artifact that can be used for inference (e.g. with TF-Serving).
-    * Added `keras.saving.ExportArchive` class for low-level customization of
+    * Added `keras.export.ExportArchive` class for low-level customization of
       the process of exporting SavedModel artifacts for inference.
     * Moved all saving-related utilities to a new namespace, `keras.saving`,
       i.e. `keras.saving.load_model`, `keras.saving.save_model`,
