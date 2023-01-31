@@ -43,6 +43,10 @@ using xla::runtime::State;
 using xla::runtime::StridedMemrefView;
 
 #if GOOGLE_CUDA
+// TODO(anlunx): Runtime autotuning should be protected by an exclusive lock to
+// achieve precision. Right now it is protected by a reader lock acquired by
+// GpuExecutable::ExecuteAsyncOnStreamImpl, so it may run cuncurrently with
+// another runtime autotuning.
 Status DoRuntimeAutotuning(se::Stream* stream, GemmConfig& config,
                            se::DeviceMemoryBase lhs, se::DeviceMemoryBase rhs,
                            se::DeviceMemoryBase out, const Shape& output_shape,
