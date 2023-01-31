@@ -19,7 +19,9 @@ limitations under the License.
 
 #include <fstream>
 #include <string>
+#include <tuple>
 #include <utility>
+#include <variant>
 
 #include "absl/base/call_once.h"
 #include "absl/strings/str_format.h"
@@ -27,6 +29,8 @@ limitations under the License.
 #include "llvm/Support/SourceMgr.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/algebraic_simplifier.h"
+#include "tensorflow/compiler/xla/service/bfloat16_normalization.h"
+#include "tensorflow/compiler/xla/service/bfloat16_support.h"
 #include "tensorflow/compiler/xla/service/call_inliner.h"
 #include "tensorflow/compiler/xla/service/convert_mover.h"
 #include "tensorflow/compiler/xla/service/dump.h"
@@ -66,9 +70,37 @@ limitations under the License.
 
 namespace xla {
 namespace gpu {
+namespace {
+
+class ConvBfloat16Support : public BFloat16Support {
+ public:
+  explicit ConvBfloat16Support(
+      se::dnn::VersionInfo cudnn_version,
+      se::CudaComputeCapability cuda_compute_capability)
+      : is_conv_bf16_supported_((cudnn_version.major_version() > 8 ||
+                                 (cudnn_version.major_version() == 8 &&
+                                  cudnn_version.minor_version() >= 2)) &&
+                                cuda_compute_capability.IsAtLeast(
+                                    se::CudaComputeCapability::AMPERE)) {}
+
+  bool SupportsBF16Operand(const HloInstruction& hlo,
+                           int64_t operand_index) const override {
+    return (hlo.opcode() != HloOpcode::kConvolution) || is_conv_bf16_supported_;
+  }
+
+  bool SupportsBF16Output(const HloInstruction& hlo) const override {
+    return (hlo.opcode() != HloOpcode::kConvolution) || is_conv_bf16_supported_;
+  }
+
+ private:
+  bool is_conv_bf16_supported_;
+};
+
+}  // namespace
 
 Status NVPTXCompiler::OptimizeHloConvolutionCanonicalization(
     HloModule* hlo_module, GpuVersion gpu_version,
+    se::dnn::VersionInfo dnn_version,
     se::DeviceMemoryAllocator* device_allocator) {
   auto cuda_compute_capability =
       std::get<se::CudaComputeCapability>(gpu_version);
@@ -78,6 +110,11 @@ Status NVPTXCompiler::OptimizeHloConvolutionCanonicalization(
   pipeline.AddInvariantCheckerDebug<HloVerifier>(
       /*layout_sensitive=*/false,
       /*allow_mixed_precision=*/false);
+
+  // Convert upsupported bf16 convolutions to f32.
+  ConvBfloat16Support conv_bf16_support(dnn_version, cuda_compute_capability);
+  pipeline.AddPass<BFloat16Normalization>(&conv_bf16_support);
+
   pipeline.AddPass<GpusolverRewriter>();
   pipeline.AddPass<GpuConvRewriter>();
   pipeline.AddPass<CudnnFusedConvRewriter>(cuda_compute_capability);
