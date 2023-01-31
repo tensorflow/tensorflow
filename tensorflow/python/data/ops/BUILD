@@ -126,6 +126,7 @@ py_library(
         ":unique_op",
         ":window_op",
         ":zip_op",
+        "//tensorflow/core:protos_all_py",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:dataset_ops_gen",
@@ -151,6 +152,7 @@ py_library(
         "//tensorflow/python/data/util:structure",
         "//tensorflow/python/data/util:traverse",
         "//tensorflow/python/ops/ragged:ragged_tensor",
+        "//tensorflow/python/saved_model:nested_structure_coder",
         "//tensorflow/python/trackable:asset",
         "//tensorflow/python/trackable:base",
         "//tensorflow/python/trackable:resource",
@@ -254,6 +256,7 @@ py_library(
     deps = [
         ":optional_ops",
         ":options",
+        "//tensorflow/core:protos_all_py",
         "//tensorflow/python:dataset_ops_gen",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
@@ -265,6 +268,7 @@ py_library(
         "//tensorflow/python/data/util:sparse",
         "//tensorflow/python/data/util:structure",
         "//tensorflow/python/eager:context",
+        "//tensorflow/python/saved_model:nested_structure_coder",
         "//tensorflow/python/trackable:base",
     ],
 )
@@ -389,6 +393,8 @@ py_library(
     srcs = ["optional_ops.py"],
     srcs_version = "PY3",
     deps = [
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/python:dataset_ops_gen",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:optional_ops_gen",
@@ -396,6 +402,7 @@ py_library(
         "//tensorflow/python:tensor_shape",
         "//tensorflow/python:util",
         "//tensorflow/python/data/util:structure",
+        "//tensorflow/python/saved_model:nested_structure_coder",
     ],
 )
 

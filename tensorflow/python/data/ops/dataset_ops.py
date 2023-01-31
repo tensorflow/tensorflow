@@ -24,6 +24,7 @@ import numpy as np
 from tensorflow.core.framework import dataset_metadata_pb2
 from tensorflow.core.framework import dataset_options_pb2
 from tensorflow.core.framework import graph_pb2
+from tensorflow.core.protobuf import struct_pb2
 from tensorflow.python import tf2
 from tensorflow.python.data.ops import dataset_autograph
 from tensorflow.python.data.ops import debug_mode
@@ -58,6 +59,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import string_ops
 from tensorflow.python.ops.ragged import ragged_tensor
+from tensorflow.python.saved_model import nested_structure_coder
 from tensorflow.python.trackable import asset
 from tensorflow.python.trackable import base as tracking_base
 from tensorflow.python.trackable import resource as resource_lib
@@ -4625,6 +4627,13 @@ class DatasetSpec(type_spec.BatchableTypeSpec):
     return (isinstance(other, DatasetSpec) and
             self._element_spec == other._element_spec and
             self._dataset_shape == other._dataset_shape)
+
+
+nested_structure_coder.register_codec(
+    nested_structure_coder.BuiltInTypeSpecCodec(
+        DatasetSpec, struct_pb2.TypeSpecProto.DATA_DATASET_SPEC
+    )
+)
 
 
 class _NumpyIterator:

@@ -17,6 +17,7 @@
 import copy
 import weakref
 
+from tensorflow.core.protobuf import struct_pb2
 from tensorflow.python.distribute import device_util
 from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute import distribution_strategy_context as ds_context
@@ -36,6 +37,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variable_scope as vs
 from tensorflow.python.ops import variables as variables_lib
+from tensorflow.python.saved_model import nested_structure_coder
 from tensorflow.python.trackable import base as trackable
 from tensorflow.python.training.saving import saveable_object
 from tensorflow.python.types import core
@@ -411,6 +413,13 @@ class PerReplicaSpec(type_spec.TypeSpec):
 
   def _from_components(self, tensor_list):
     return PerReplica(tensor_list)
+
+
+nested_structure_coder.register_codec(
+    nested_structure_coder.BuiltInTypeSpecCodec(
+        PerReplicaSpec, struct_pb2.TypeSpecProto.PER_REPLICA_SPEC
+    )
+)
 
 
 # Note that unlike PerReplica, Mirrored values inherit from
