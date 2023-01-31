@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/permutation_util.h"
 #include "tensorflow/compiler/xla/service/hlo_creation_utils.h"
+#include "tensorflow/compiler/xla/service/shape_inference.h"
 #include "tensorflow/compiler/xla/shape.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/util.h"
@@ -567,23 +568,7 @@ class LayoutNormalizationVisitor : public DfsHloRewriteVisitor {
   // Pushes down bitcast across the ternary select operation: same logic as
   // HandleElementwiseBinary.
   Status HandleSelect(HloInstruction* hlo) override {
-    Shape s = hlo->shape();
-    HloInstruction* p = hlo->mutable_operand(0);
-    HloInstruction* i1 = hlo->mutable_operand(1);
-    HloInstruction* i2 = hlo->mutable_operand(2);
-    TF_RET_CHECK(p->shape().layout() == s.layout());
-    TF_RET_CHECK(i1->shape().layout() == s.layout());
-    TF_RET_CHECK(i2->shape().layout() == s.layout());
-
-    TF_ASSIGN_OR_RETURN(HloInstruction * p_0, GetNormalizedInput(p));
-    TF_ASSIGN_OR_RETURN(HloInstruction * i1_0, GetNormalizedInput(i1));
-    TF_ASSIGN_OR_RETURN(HloInstruction * i2_0, GetNormalizedInput(i2));
-
-    TF_ASSIGN_OR_RETURN(HloInstruction * new_select,
-                        MakeSelectHlo(p_0, i1_0, i2_0, /*derived_from=*/hlo));
-    auto bc_to_orig = MakeBitcastHlo(new_select, s);
-    TF_RETURN_IF_ERROR(ReplaceInstruction(hlo, bc_to_orig));
-    return OkStatus();
+    return HandleTernary(hlo);
   }
 
   // DyanmicSlice is layout-preserving, so handling is analoguous to elementwise
@@ -665,7 +650,38 @@ class LayoutNormalizationVisitor : public DfsHloRewriteVisitor {
     return OkStatus();
   }
 
+  Status HandleClamp(HloInstruction* hlo) override {
+    return HandleTernary(hlo);
+  }
+
  private:
+  // Replace clamp/select ternary operation with a normalized one.
+  Status HandleTernary(HloInstruction* hlo) {
+    Shape s = hlo->shape();
+    HloOpcode opcode = hlo->opcode();
+    TF_RET_CHECK(opcode == HloOpcode::kClamp || opcode == HloOpcode::kSelect);
+    HloInstruction* p = hlo->mutable_operand(0);
+    HloInstruction* i1 = hlo->mutable_operand(1);
+    HloInstruction* i2 = hlo->mutable_operand(2);
+    TF_RET_CHECK(p->shape().layout() == s.layout());
+    TF_RET_CHECK(i1->shape().layout() == s.layout());
+    TF_RET_CHECK(i2->shape().layout() == s.layout());
+
+    TF_ASSIGN_OR_RETURN(HloInstruction * p_0, GetNormalizedInput(p));
+    TF_ASSIGN_OR_RETURN(HloInstruction * i1_0, GetNormalizedInput(i1));
+    TF_ASSIGN_OR_RETURN(HloInstruction * i2_0, GetNormalizedInput(i2));
+
+    TF_ASSIGN_OR_RETURN(Shape new_shape, ShapeInference::InferTernaryOpShape(
+                                             opcode, p_0, i1_0, i2_0));
+    HloInstruction* normalized = hlo->parent()->AddInstruction(
+        HloInstruction::CreateTernary(new_shape, opcode, p_0, i1_0, i2_0));
+    hlo->SetupDerivedInstruction(normalized);
+
+    HloInstruction* bc_to_orig = MakeBitcastHlo(normalized, s);
+    TF_RETURN_IF_ERROR(ReplaceInstruction(hlo, bc_to_orig));
+    return OkStatus();
+  }
+
   std::vector<HloInstruction*> FindNonDegenerateStartIdxs(
       HloInstruction* hlo, int param_offset, const Shape& operand_shape) {
     std::vector<int64_t> layout_as_permutation =
