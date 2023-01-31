@@ -27,6 +27,7 @@ from tensorflow.python.eager import context
 from tensorflow.python.eager import tape
 from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_conversion_registry
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.framework import type_spec
 from tensorflow.python.ops import array_ops
@@ -379,7 +380,8 @@ def _per_replica_to_tensor(var, dtype=None, name=None, as_ref=False):
 
 # Register a conversion function to provide a useful error message when users
 # try to use PerReplica values in the wrong contexts
-ops.register_tensor_conversion_function(PerReplica, _per_replica_to_tensor)
+tensor_conversion_registry.register_tensor_conversion_function(
+    PerReplica, _per_replica_to_tensor)
 
 
 class PerReplicaSpec(type_spec.TypeSpec):
@@ -1430,8 +1432,8 @@ def _tensor_conversion_distributed_var(var,
   return var._dense_var_to_tensor(dtype=dtype, name=name, as_ref=as_ref)  # pylint: disable=protected-access
 
 
-ops.register_tensor_conversion_function(DistributedVariable,
-                                        _tensor_conversion_distributed_var)
+tensor_conversion_registry.register_tensor_conversion_function(
+    DistributedVariable, _tensor_conversion_distributed_var)
 
 
 # MirroredVariables
@@ -1439,8 +1441,8 @@ def _tensor_conversion_mirrored(var, dtype=None, name=None, as_ref=False):
   return var._dense_var_to_tensor(dtype=dtype, name=name, as_ref=as_ref)  # pylint: disable=protected-access
 
 
-ops.register_tensor_conversion_function(MirroredVariable,
-                                        _tensor_conversion_mirrored)
+tensor_conversion_registry.register_tensor_conversion_function(
+    MirroredVariable, _tensor_conversion_mirrored)
 
 
 # Mirrored Values
@@ -1449,8 +1451,8 @@ def _tensor_conversion_mirrored_val(value, dtype=None, name=None, as_ref=False):
       value._get(), dtype=dtype, name=name, as_ref=as_ref)  # pylint: disable=protected-access
 
 
-ops.register_tensor_conversion_function(Mirrored,
-                                        _tensor_conversion_mirrored_val)
+tensor_conversion_registry.register_tensor_conversion_function(
+    Mirrored, _tensor_conversion_mirrored_val)
 
 
 # SyncOnReadVariables
@@ -1458,8 +1460,8 @@ def _tensor_conversion_sync_on_read(var, dtype=None, name=None, as_ref=False):
   return var._dense_var_to_tensor(dtype=dtype, name=name, as_ref=as_ref)  # pylint: disable=protected-access
 
 
-ops.register_tensor_conversion_function(SyncOnReadVariable,
-                                        _tensor_conversion_sync_on_read)
+tensor_conversion_registry.register_tensor_conversion_function(
+    SyncOnReadVariable, _tensor_conversion_sync_on_read)
 
 
 class VariablePolicy(object):

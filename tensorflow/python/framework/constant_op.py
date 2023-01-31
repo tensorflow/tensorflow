@@ -26,6 +26,7 @@ from tensorflow.python.eager import execute
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import op_callbacks
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_conversion_registry
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.profiler import trace
@@ -343,9 +344,9 @@ def _constant_tensor_conversion_function(v, dtype=None, name=None,
   return constant(v, dtype=dtype, name=name)
 
 
-ops.register_tensor_conversion_function(
+tensor_conversion_registry.register_tensor_conversion_function(
     (list, tuple), _constant_tensor_conversion_function, 100)
-ops.register_tensor_conversion_function(
+tensor_conversion_registry.register_tensor_conversion_function(
     object, _constant_tensor_conversion_function, 200)
 
 
@@ -379,7 +380,7 @@ def _tensor_shape_tensor_conversion_function(s,
   return constant(s_list, dtype=dtype, name=name)
 
 
-ops.register_tensor_conversion_function(
+tensor_conversion_registry.register_tensor_conversion_function(
     tensor_shape.TensorShape, _tensor_shape_tensor_conversion_function, 100)
 
 
@@ -402,5 +403,5 @@ def _dimension_tensor_conversion_function(d,
   return constant(d.value, dtype=dtype, name=name)
 
 
-ops.register_tensor_conversion_function(
+tensor_conversion_registry.register_tensor_conversion_function(
     tensor_shape.Dimension, _dimension_tensor_conversion_function, 100)
