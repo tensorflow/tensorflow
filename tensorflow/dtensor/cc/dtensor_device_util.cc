@@ -116,9 +116,10 @@ std::unique_ptr<TensorWithLayout> BroadcastResourceTensor(
   // associated device of the resource itself.
   ResourceHandle r = t.flat<ResourceHandle>()(0);
 
+  const Mesh& target_mesh = mesh.mesh_config();
   // Only broadcast resource tensors onto a CPU mesh. Copying
   // resource tensors to non CPU device is not supported.
-  if (!mesh.mesh_config().is_cpu_mesh()) {
+  if (!target_mesh.is_cpu_mesh()) {
     std::string error_message =
         "Using a non-DTensor variable with DTensor is only supported for "
         "copying to a CPU mesh. If you are using a scope "
@@ -134,13 +135,13 @@ std::unique_ptr<TensorWithLayout> BroadcastResourceTensor(
   }
 
   LOG(INFO) << "Broadcasting resource tensor to a dtensor resource tensor.";
-  if (mesh.mesh_config().is_remote()) {
+  if (target_mesh.is_remote()) {
     TF_DataType dtype = TFE_TensorHandleDataType(tensor);
     std::vector<int64_t> shape(TensorShapeAsVector(tensor, status));
     if (TF_GetCode(status) != TF_OK) return nullptr;
-    auto layout = Layout::ReplicatedOnMesh(mesh.mesh_config(), shape.size());
+    auto layout = Layout::ReplicatedOnMesh(target_mesh, shape.size());
 
-    auto ret = TensorWithLayout::Dummy(shape, dtype, mesh, layout);
+    auto ret = TensorWithLayout::Dummy(shape, dtype, target_mesh, layout);
     return ret;
   }
 
@@ -152,9 +153,9 @@ std::unique_ptr<TensorWithLayout> BroadcastResourceTensor(
                  ? 0
                  : r.dtypes_and_shapes().begin()->shape.dims();
 
-  StatusOr<std::unique_ptr<TensorWithLayout>> result = TensorWithLayout::Wrap(
-      std::move(parallel_tensor), mesh,
-      Layout::ReplicatedOnMesh(mesh.mesh_config(), rank));
+  StatusOr<std::unique_ptr<TensorWithLayout>> result =
+      TensorWithLayout::Wrap(std::move(parallel_tensor), target_mesh,
+                             Layout::ReplicatedOnMesh(target_mesh, rank));
   if (!result.ok()) {
     TF_SetStatus(
         status, TF_INTERNAL,
@@ -294,13 +295,14 @@ std::unique_ptr<TensorWithLayout> TensorWithLayout::Broadcast(
                                    status);
   }
 
-  if (mesh.mesh_config().is_remote()) {
+  const Mesh& target_mesh = mesh.mesh_config();
+  if (target_mesh.is_remote()) {
     TF_DataType dtype = TFE_TensorHandleDataType(tensor);
     std::vector<int64_t> shape(TensorShapeAsVector(tensor, status));
     if (TF_GetCode(status) != TF_OK) return nullptr;
-    auto layout = Layout::ReplicatedOnMesh(mesh.mesh_config(), shape.size());
+    auto layout = Layout::ReplicatedOnMesh(target_mesh, shape.size());
 
-    auto ret = TensorWithLayout::Dummy(shape, dtype, mesh, layout);
+    auto ret = TensorWithLayout::Dummy(shape, dtype, target_mesh, layout);
     std::optional<NodeDef> const_value =
         ExtractSmallTensorValue(context, tensor, layout, status);
     if (TF_GetCode(status) != TF_OK) return nullptr;
@@ -322,21 +324,21 @@ std::unique_ptr<TensorWithLayout> TensorWithLayout::Broadcast(
     return nullptr;
   }
   size_t num_dims = shape->size();
-  const Layout layout = Layout::ReplicatedOnMesh(mesh.mesh_config(), num_dims);
+  const Layout layout = Layout::ReplicatedOnMesh(target_mesh, num_dims);
 
   std::optional<NodeDef> const_value =
       ExtractSmallTensorValue(context, tensor, layout, status);
   if (TF_GetCode(status) != TF_OK) return nullptr;
 
   std::unique_ptr<TensorWithLayout> result(new TensorWithLayout(
-      std::move(parallel_tensor), mesh, std::move(layout), *shape,
+      std::move(parallel_tensor), target_mesh, std::move(layout), *shape,
       /*dtype=*/absl::nullopt, std::move(const_value)));
   return result;
 }
 
 StatusOr<std::unique_ptr<TensorWithLayout>> TensorWithLayout::Wrap(
-    std::unique_ptr<parallel_device::ParallelTensor> tensor,
-    const MeshWithParallelDevice& mesh, const Layout& layout) {
+    std::unique_ptr<parallel_device::ParallelTensor> tensor, const Mesh& mesh,
+    const Layout& layout) {
   const std::vector<int64_t>* shape;
   TF_RETURN_IF_ERROR(tensor->Shape(&shape));
 
@@ -351,7 +353,7 @@ StatusOr<std::unique_ptr<TensorWithLayout>> TensorWithLayout::Wrap(
 
 std::unique_ptr<TensorWithLayout> TensorWithLayout::Dummy(
     const std::vector<int64_t>& local_shape, const TF_DataType dtype,
-    const MeshWithParallelDevice& mesh, const Layout& layout) {
+    const Mesh& mesh, const Layout& layout) {
   if (dtype != TF_RESOURCE) {
     return std::unique_ptr<TensorWithLayout>(new TensorWithLayout(
         /*tensor=*/nullptr, mesh, layout, local_shape, dtype));
@@ -448,8 +450,7 @@ StatusOr<std::unique_ptr<TensorWithLayout>> SparseTensorWithLayout::Wrap(
     std::unique_ptr<parallel_device::ParallelTensor> indices_tensor,
     std::unique_ptr<parallel_device::ParallelTensor> values_tensor,
     std::unique_ptr<parallel_device::ParallelTensor> shapes_tensor,
-    const MeshWithParallelDevice& mesh, const Layout& layout,
-    std::vector<int64_t> local_shape) {
+    const Mesh& mesh, const Layout& layout, std::vector<int64_t> local_shape) {
   return std::unique_ptr<TensorWithLayout>(new SparseTensorWithLayout(
       std::move(indices_tensor), std::move(values_tensor),
       std::move(shapes_tensor), mesh, layout, local_shape));
@@ -606,7 +607,7 @@ Status PrepareGraphForMlir(
             .Attr("T", dtype)
             .Attr("index", i + 1)  // Indices are offset by 1 for device_id
             .Attr(kLayoutAttr, input->layout().ToString())
-            .Attr(kMeshAttr, input->mesh().mesh_config().ToString())
+            .Attr(kMeshAttr, input->mesh().ToString())
             .Finalize(&arg_node_def, /*consume=*/true));
     Node* arg_node = graph->AddNode(arg_node_def, &status);
     TF_RETURN_IF_ERROR(status);

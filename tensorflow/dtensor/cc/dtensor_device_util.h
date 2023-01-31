@@ -194,13 +194,13 @@ class TensorWithLayout {
 
   // Given an already-parallel tensor, wraps it with a mesh and a layout.
   static StatusOr<std::unique_ptr<TensorWithLayout>> Wrap(
-      std::unique_ptr<parallel_device::ParallelTensor> tensor,
-      const MeshWithParallelDevice& mesh, const Layout& layout);
+      std::unique_ptr<parallel_device::ParallelTensor> tensor, const Mesh& mesh,
+      const Layout& layout);
 
   // A dummy TensorWithLayout without holding a ParallelTensor.
   static std::unique_ptr<TensorWithLayout> Dummy(
       const std::vector<int64_t>& local_shape, TF_DataType dtype,
-      const MeshWithParallelDevice& mesh, const Layout& layout);
+      const Mesh& mesh, const Layout& layout);
 
   virtual ~TensorWithLayout() = default;
 
@@ -284,7 +284,7 @@ class TensorWithLayout {
     return input_layout_for_shape_op_result_;
   }
 
-  const MeshWithParallelDevice& mesh() const { return mesh_; }
+  const Mesh& mesh() const { return mesh_; }
 
   // Compute global shape from layout & local tensor shape.
   //
@@ -303,7 +303,7 @@ class TensorWithLayout {
 
  protected:
   TensorWithLayout(std::unique_ptr<parallel_device::ParallelTensor> tensor,
-                   const MeshWithParallelDevice& mesh, const Layout& layout,
+                   const Mesh& mesh, const Layout& layout,
                    std::vector<int64_t> local_shape,
                    std::optional<TF_DataType> dtype = std::nullopt,
                    std::optional<NodeDef> const_value = std::nullopt)
@@ -318,7 +318,7 @@ class TensorWithLayout {
 
   Layout layout_;
 
-  const MeshWithParallelDevice& mesh_;
+  const Mesh& mesh_;
 
   // Optionally holds the value of a small, non-resource tensor. Small constants
   // are directly folded into the SPMD graph instead of being passed as inputs.
@@ -412,9 +412,8 @@ class ResourceHandleWithLayout : public TensorWithLayout {
 
  public:
   ResourceHandleWithLayout(
-      std::unique_ptr<parallel_device::ParallelTensor> tensor,
-      const MeshWithParallelDevice& mesh, const Layout& layout,
-      std::vector<int64_t> local_shape)
+      std::unique_ptr<parallel_device::ParallelTensor> tensor, const Mesh& mesh,
+      const Layout& layout, std::vector<int64_t> local_shape)
       : TensorWithLayout(std::move(tensor), mesh, layout, local_shape,
                          TF_RESOURCE) {}
 
@@ -442,13 +441,12 @@ class SparseTensorWithLayout : public TensorWithLayout {
       std::unique_ptr<parallel_device::ParallelTensor> indices_tensor,
       std::unique_ptr<parallel_device::ParallelTensor> values_tensor,
       std::unique_ptr<parallel_device::ParallelTensor> shapes_tensor,
-      const MeshWithParallelDevice& mesh, const Layout& layout,
-      std::vector<int64_t> local_shape);
+      const Mesh& mesh, const Layout& layout, std::vector<int64_t> local_shape);
 
   // A dummy TensorWithLayout without holding a ParallelTensor.
   static std::unique_ptr<TensorWithLayout> Dummy(
-      const std::vector<int64_t>& local_shape,
-      const MeshWithParallelDevice& mesh, const Layout& layout) {
+      const std::vector<int64_t>& local_shape, const Mesh& mesh,
+      const Layout& layout) {
     return std::unique_ptr<TensorWithLayout>(new SparseTensorWithLayout(
         /*indices=*/nullptr, /*values=*/nullptr, /*dense_shapes=*/nullptr, mesh,
         layout, local_shape));
@@ -489,8 +487,7 @@ class SparseTensorWithLayout : public TensorWithLayout {
       std::unique_ptr<parallel_device::ParallelTensor> indices,
       std::unique_ptr<parallel_device::ParallelTensor> values,
       std::unique_ptr<parallel_device::ParallelTensor> dense_shapes,
-      const MeshWithParallelDevice& mesh, const Layout& layout,
-      std::vector<int64_t> local_shape,
+      const Mesh& mesh, const Layout& layout, std::vector<int64_t> local_shape,
       std::optional<TF_DataType> dtype = std::nullopt,
       std::optional<NodeDef> const_value = std::nullopt)
       : TensorWithLayout(nullptr, mesh, layout, local_shape),
