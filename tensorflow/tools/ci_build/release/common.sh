@@ -122,7 +122,8 @@ function install_ubuntu_16_pip_deps {
   done
 
   # First, upgrade pypi wheels
-  "${PIP_CMD}" install --user --upgrade 'setuptools' pip wheel
+  "${PIP_CMD}" install --user setuptools==65
+  "${PIP_CMD}" install --user --upgrade pip wheel
 
   # LINT.IfChange(linux_pip_installations_orig)
   # Remove any historical keras package if they are installed.
@@ -151,7 +152,8 @@ function install_ubuntu_16_python_pip_deps {
   done
 
   # First, upgrade pypi wheels
-  ${PIP_CMD} install --user --upgrade 'setuptools' pip wheel virtualenv
+  ${PIP_CMD} install --user setuptools==65
+  ${PIP_CMD} install --user --upgrade pip wheel virtualenv
 
   # LINT.IfChange(linux_pip_installations)
   # Remove any historical keras package if they are installed.
