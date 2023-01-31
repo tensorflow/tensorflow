@@ -71,6 +71,14 @@ SnapshotStreamWriter::SnapshotStreamWriter(
 }
 
 void SnapshotStreamWriter::WriteSnapshotAndLog() TF_LOCKS_EXCLUDED(mu_) {
+  if (StreamAlreadyCompleted()) {
+    LOG(INFO) << "Distributed tf.data snapshot stream has already been "
+              << "completed for " << params_.DebugString();
+    mutex_lock l(mu_);
+    completed_ = true;
+    return;
+  }
+
   LOG(INFO) << "Writing distributed tf.data snapshot stream: "
             << params_.DebugString();
   Status status = WriteSnapshot();
@@ -97,6 +105,12 @@ Status SnapshotStreamWriter::WriteSnapshot() TF_LOCKS_EXCLUDED(mu_) {
   }
   mutex_lock l(mu_);
   return completed_.status();
+}
+
+bool SnapshotStreamWriter::StreamAlreadyCompleted() const {
+  std::string done_file_path =
+      StreamDoneFilePath(params_.snapshot_path, params_.stream_index);
+  return params_.env->FileExists(done_file_path).ok();
 }
 
 Status SnapshotStreamWriter::InitializeDirectories() {
@@ -212,7 +226,20 @@ void SnapshotStreamWriter::Cancel() TF_LOCKS_EXCLUDED(mu_) {
 
 bool SnapshotStreamWriter::ShouldSave() const TF_LOCKS_EXCLUDED(mu_) {
   mutex_lock l(mu_);
-  return !end_of_sequence_ && completed_.ok();
+  if (end_of_sequence_) {
+    // If this is the last chunk, we only write checkpoints when there are more
+    // than one chunk. For example, if there are 3 chunks, the files will be:
+    // 1. Write checkpoint 1
+    // 2. Commit chunk 1
+    // 3. Write checkpoint 2
+    // 4. Commit chunk 2
+    // 5. Write checkpoint 3
+    // 6. Commit chunk 3
+    // 7. Write DONE file
+    // If there is only one chunk, we do not need to write a checkpoint.
+    return chunk_index_ > 0 && chunk_size_bytes_ > 0;
+  }
+  return completed_.ok();
 }
 
 Status SnapshotStreamWriter::Save() {
