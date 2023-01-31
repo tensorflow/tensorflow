@@ -380,14 +380,20 @@ cc_library(
 
 cc_library(
     name = "c_api_experimental",
-    hdrs = ["c/c_api_experimental.h"],
+    hdrs = [
+        "c/c_api_experimental.h",
+        "c/c_api_opaque.h",
+    ],
     copts = tflite_copts_warnings(),
     visibility = [
         "//tensorflow/lite:__subpackages__",
         "@mediapipe//mediapipe:__subpackages__",
         "@org_tensorflow_lite_support//tensorflow_lite_support:__subpackages__",
     ],
-    deps = ["//tensorflow/lite/core/c:c_api_experimental"],
+    deps = [
+        "//tensorflow/lite/c:c_api_experimental",
+        "//tensorflow/lite/core/c:c_api_experimental",
+    ],
 )
 
 cc_library(
