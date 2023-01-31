@@ -324,7 +324,6 @@ cc_library(
         "//tensorflow/compiler/xla/client:xla_builder",
         "//tensorflow/compiler/xla/mlir_hlo",
         "//tensorflow/compiler/xla/stream_executor:timer",
-        "//tensorflow/compiler/xla/stream_executor/lib",
         "//tensorflow/compiler/xla/translate/hlo_to_mhlo:mlir_hlo_builder",
         "//tensorflow/core:core_cpu_lib",
         "//tensorflow/core:framework",

@@ -224,7 +224,6 @@ cc_library(
         "//tensorflow/compiler/mlir/tensorflow:export_graphdef",
         "//tensorflow/compiler/mlir/tensorflow:mlir_roundtrip_flags",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_passes",
-        "//tensorflow/compiler/xla/stream_executor/lib",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
@@ -265,7 +264,6 @@ cc_library(
     deps = [
         ":tfr_decompose_ctx",
         "//tensorflow/compiler/mlir:mlir_graph_optimization_pass",
-        "//tensorflow/compiler/xla/stream_executor/lib",
         "//tensorflow/core:lib",
         "//tensorflow/core/common_runtime:device_set",
         "@llvm-project//mlir:IR",
@@ -297,7 +295,6 @@ cc_library(
     hdrs = ["integration/node_expansion_pass.h"],
     deps = [
         ":tfr_decompose_ctx",
-        "//tensorflow/compiler/xla/stream_executor/lib",
         "//tensorflow/core:lib",
         "//tensorflow/core/common_runtime/eager:core_no_xla",
         "//tensorflow/core/common_runtime/eager:eager_op_rewrite_registry",
