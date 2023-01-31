@@ -591,6 +591,14 @@ static bool AllOptionalShardingsAreSet(
                       });
 }
 
+static bool SomeOptionalShardingsAreSet(
+    llvm::ArrayRef<std::optional<xla::OpSharding>> shardings) {
+  return llvm::any_of(shardings,
+                      [](const std::optional<xla::OpSharding>& sharding) {
+                        return sharding.has_value();
+                      });
+}
+
 // Extracts argument and result shardings from function.
 static void ExtractShardingsFromFunction(
     mlir::func::FuncOp function,
@@ -2665,7 +2673,7 @@ LogicalResult ConvertToHloModule::Lower(
     // returned, then return it directly, else create a tuple and return.
     unsigned num_return_values = inst->getNumOperands();
     const bool has_ret_shardings =
-        !ret_shardings.empty() && AllOptionalShardingsAreSet(ret_shardings);
+        !ret_shardings.empty() && SomeOptionalShardingsAreSet(ret_shardings);
     if ((return_tuple_ && is_entry_function) || num_return_values != 1) {
       std::vector<xla::XlaOp> returns(num_return_values);
       for (OpOperand& ret : inst->getOpOperands()) {
@@ -2693,7 +2701,13 @@ LogicalResult ConvertToHloModule::Lower(
         xla::OpSharding sharding;
         sharding.set_type(xla::OpSharding::TUPLE);
         for (auto& ret_sharding : ret_shardings)
-          *sharding.add_tuple_shardings() = *ret_sharding;
+          if (ret_sharding) {
+            *sharding.add_tuple_shardings() = *ret_sharding;
+          } else {
+            xla::OpSharding fallback_sharding;
+            fallback_sharding.set_type(xla::OpSharding::REPLICATED);
+            *sharding.add_tuple_shardings() = fallback_sharding;
+          }
 
         builder->SetSharding(sharding);
       }
