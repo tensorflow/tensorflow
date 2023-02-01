@@ -424,6 +424,7 @@ cc_library(
         "//tensorflow/compiler/tf2xla:common",
         "//tensorflow/compiler/tf2xla:xla_compiler",
         "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla/client:client_library",
         "//tensorflow/compiler/xla/client:local_client",
@@ -563,6 +564,7 @@ cc_library(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/common_runtime:core_cpu_internal",
         "//tensorflow/core/common_runtime/eager:tensor_handle",
+        "//tensorflow/tsl/platform:status",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/types:span",
@@ -577,10 +579,9 @@ cc_library(
     textual_hdrs = ["get_compiler_ir.h"],
     visibility = [":internal"],
     deps = [
-        "//tensorflow/compiler/xla:statusor",
-        "@com_google_absl//absl/memory",
+        "//tensorflow/compiler/tf2xla:xla_compiler",
+        "//tensorflow/core/platform:statusor",
         "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/types:span",
     ],
 )

@@ -1045,9 +1045,11 @@ class Function(core.GenericFunction, trackable.Trackable):
       device_name = compiler_ir.maybe_get_device_name(device_name)
       res_bytes = context.context().get_compiler_ir(
           device_name=device_name,
-          stage=stage,
           function_name=fn_name,
-          args=list(filtered_flat_args) + concrete_fn.captured_inputs)
+          flat_args=list(filtered_flat_args),
+          captured_inputs=concrete_fn.captured_inputs,
+          stage=stage,
+      )
       if stage in ("hlo_serialized", "optimized_hlo_serialized",
                    "optimized_hlo_proto_serialized"):
         return res_bytes
