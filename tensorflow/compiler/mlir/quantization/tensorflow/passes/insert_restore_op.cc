@@ -119,7 +119,7 @@ BlockArgument InsertFilePrefixArgument(func::FuncOp func_op,
                                        OpBuilder& builder) {
   const auto filename_op_type = RankedTensorType::get(
       /*shape=*/{}, /*elementType=*/builder.getType<TF::StringType>());
-  const auto file_prefix_attr = builder.getStringAttr("file_prefix");
+  const auto file_prefix_attr = builder.getStringAttr("__tf_file_prefix");
   const auto arg_attrs = builder.getDictionaryAttr({builder.getNamedAttr(
       kTfSavedModelIndexPathAttr, builder.getArrayAttr({file_prefix_attr}))});
 
