@@ -186,6 +186,25 @@ auto OptionalBitcast(HloInstruction **optional_bitcast, Pattern pattern) {
                                   std::move(pattern));
 }
 
+template <typename Pattern>
+auto OptionalReshape(HloInstruction **optional_reshape, Pattern pattern) {
+  return m::AnyOf<HloInstruction>(m::Reshape(optional_reshape, pattern),
+                                  std::move(pattern));
+}
+
+template <typename Pattern>
+auto OptionalCopy(HloInstruction **optional_copy, Pattern pattern) {
+  return m::AnyOf<HloInstruction>(m::Copy(optional_copy, pattern),
+                                  std::move(pattern));
+}
+
+template <typename Pattern>
+auto OptionalReshapeOrBitcast(HloInstruction **optional_op,
+                              Pattern pattern) {
+  return m::AnyOf<HloInstruction>(OptionalReshape(optional_op, pattern),
+                                  OptionalBitcast(optional_op, pattern));
+}
+
 // The rewriting proceeds in a bottom-up way:
 //
 // (kDot A B) is rewritten into a (kCustomCall:gemm A B)
@@ -262,20 +281,29 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
                 m::AnyOf<HloInstruction>(
                     OptionalBitcast(
                         &a_bitcast,
-                        m::MultiplyAnyOrder(&a_binary, m::Convert(m::Op(&a)),
-                                            m::Broadcast(m::Op(&a_scale)))),
-                    OptionalBitcast(&a_bitcast,
+                        OptionalCopy(&a_copy, OptionalReshapeOrBitcast(&a_bitcast2, 
+                                     m::MultiplyAnyOrder(&a_binary, m::Convert(m::Op(&a)),
+                                     m::Broadcast(m::Op(&a_scale)))))
+                        ),
+                    OptionalBitcast(
+                        &a_bitcast,
+                        OptionalCopy(&a_copy, OptionalReshapeOrBitcast(&a_bitcast2,
                                     m::Divide(&a_binary, m::Convert(m::Op(&a)),
-                                              m::Broadcast(m::Op(&a_scale))))),
+                                              m::Broadcast(m::Op(&a_scale))))))
+                        ),
                 m::AnyOf<HloInstruction>(
                     OptionalBitcast(
                         &b_bitcast,
-                        m::MultiplyAnyOrder(&b_binary, m::Convert(m::Op(&b)),
-                                            m::Broadcast(m::Op(&b_scale)))),
-                    OptionalBitcast(
-                        &b_bitcast,
-                        m::Divide(&b_binary, m::Convert(m::Op(&b)),
-                                  m::Broadcast(m::Op(&b_scale)))))))) {
+                        OptionalCopy(&b_copy, OptionalReshapeOrBitcast(&b_bitcast2, 
+                                     m::MultiplyAnyOrder(&b_binary, m::Convert(m::Op(&b)),
+                                     m::Broadcast(m::Op(&b_scale)))))
+                        ),
+                    OptionalBitcast(&b_bitcast,
+                        OptionalCopy(&b_copy, OptionalReshapeOrBitcast(&b_bitcast2,
+                                    m::Divide(&b_binary, m::Convert(m::Op(&b)),
+                                              m::Broadcast(m::Op(&b_scale)))))
+                        ))))) {
+                          std::cout<<"Hooray!  matched!\n";
       TF_ASSIGN_OR_RETURN(
           bool created_call,
           CreateF8CustomCall(
