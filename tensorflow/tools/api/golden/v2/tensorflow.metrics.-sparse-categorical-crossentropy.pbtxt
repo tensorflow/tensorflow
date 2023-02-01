@@ -1,6 +1,6 @@
 path: "tensorflow.metrics.SparseCategoricalCrossentropy"
 tf_class {
-  is_instance: "<class \'keras.metrics.metrics.SparseCategoricalCrossentropy\'>"
+  is_instance: "<class \'keras.metrics.probabilistic_metrics.SparseCategoricalCrossentropy\'>"
   is_instance: "<class \'keras.metrics.base_metric.MeanMetricWrapper\'>"
   is_instance: "<class \'keras.metrics.base_metric.Mean\'>"
   is_instance: "<class \'keras.metrics.base_metric.Reduce\'>"
