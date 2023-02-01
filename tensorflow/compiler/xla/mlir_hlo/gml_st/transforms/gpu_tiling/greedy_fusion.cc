@@ -34,7 +34,7 @@ namespace mlir {
 namespace gml_st {
 namespace {
 
-#define GEN_PASS_DEF_GREEDYTILINGANDFUSIONPASS
+#define GEN_PASS_DEF_GREEDYFUSIONPASS
 #include "gml_st/transforms/passes.h.inc"
 
 namespace {
@@ -81,10 +81,9 @@ class FuseTensorExtractPattern : public OpRewritePattern<tensor::ExtractOp> {
 
 }  // namespace
 
-struct GreedyTilingAndFusionPass
-    : public impl::GreedyTilingAndFusionPassBase<GreedyTilingAndFusionPass> {
-  GreedyTilingAndFusionPass() = default;
-  GreedyTilingAndFusionPass(bool distr, ArrayRef<int64_t> ts, StringRef dl) {
+struct GreedyFusionPass : public impl::GreedyFusionPassBase<GreedyFusionPass> {
+  GreedyFusionPass() = default;
+  GreedyFusionPass(bool distr, ArrayRef<int64_t> ts, StringRef dl) {
     this->distribute = distr;
     this->tileSizes = ts;
     this->distributionLabel = dl.str();
@@ -146,14 +145,14 @@ struct GreedyTilingAndFusionPass
 
 }  // namespace
 
-std::unique_ptr<OperationPass<func::FuncOp>> createGreedyTilingAndFusionPass() {
-  return std::make_unique<GreedyTilingAndFusionPass>();
+std::unique_ptr<OperationPass<func::FuncOp>> createGreedyFusionPass() {
+  return std::make_unique<GreedyFusionPass>();
 }
 
-std::unique_ptr<OperationPass<func::FuncOp>> createGreedyTilingAndFusionPass(
+std::unique_ptr<OperationPass<func::FuncOp>> createGreedyFusionPass(
     bool distribute, ArrayRef<int64_t> tileSizes, StringRef distributionLabel) {
-  return std::make_unique<GreedyTilingAndFusionPass>(distribute, tileSizes,
-                                                     distributionLabel);
+  return std::make_unique<GreedyFusionPass>(distribute, tileSizes,
+                                            distributionLabel);
 }
 
 }  // namespace gml_st

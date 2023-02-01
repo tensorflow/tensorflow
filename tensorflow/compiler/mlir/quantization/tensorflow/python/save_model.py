@@ -228,13 +228,13 @@ def _find_op(
   return init_op
 
 
-# TODO(b/263453914): Pass the name of "file_prefix" tensor from the c++ layer.
 def _find_file_prefix_tensor(graph: ops.Graph) -> Optional[core.Tensor]:
   """Finds the "file_prefix" tensor used for identifying the checkpoint path.
 
-  This function relies on the fact that the initializer_type (== "restore_op")
-  is used as a prefix for the file_prefix tensor when creating a `RestoreV2Op`
-  from `MergeInitializerFunctionOpsToMainPass`.
+  File prefix tensor can be identified as the output of an `_Arg` node which has
+  the value "__tf_file_prefix" in its "tf_saved_model.index_path" attribute.
+  This attribute should have been set to the file prefix argument by the
+  `InsertRestoreOpPass` when creating the `RestoreV2Op` for the variables.
 
   Args:
     graph: The graph to find the file_prefix tensor from.
@@ -243,10 +243,11 @@ def _find_file_prefix_tensor(graph: ops.Graph) -> Optional[core.Tensor]:
     None if not found. True if a "file_prefix" tensor is found.
   """
   for op in graph.get_operations():
-    if op.type == '_Arg':
+    if op.type == '_Arg' and (
+        b'__tf_file_prefix' in op.get_attr('tf_saved_model.index_path')
+    ):
       candidate_tensor = op.outputs[0]
-      if candidate_tensor.name.startswith('restore_op'):
-        return candidate_tensor
+      return candidate_tensor
 
   return None
 

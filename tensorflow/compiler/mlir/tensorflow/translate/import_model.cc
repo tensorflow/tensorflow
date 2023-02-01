@@ -1988,11 +1988,7 @@ mlir::Operation* ImporterBase::CreateOperation(
             resource = true;
             return true;
           }
-          if (auto with_subtype =
-                  type.dyn_cast<mlir::SubElementTypeInterface>()) {
-            with_subtype.walkSubTypes(
-                [&](mlir::Type t) { record_resource(t); });
-          }
+          type.walk([&](mlir::Type t) { record_resource(t); });
           return resource;
         };
 

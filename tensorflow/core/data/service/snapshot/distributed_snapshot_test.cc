@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/core/data/service/dispatcher_client.h"
 #include "tensorflow/core/data/service/snapshot/path_utils.h"
 #include "tensorflow/core/data/service/snapshot/snapshot_reader.h"
+#include "tensorflow/core/data/service/snapshot/test_utils.h"
 #include "tensorflow/core/data/service/test_cluster.h"
 #include "tensorflow/core/data/service/test_util.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -101,26 +102,6 @@ tsl::Status WaitUntilSnapshotComplete(const std::string& base_path) {
   return tsl::OkStatus();
 }
 
-// Reads the records from a distributed tf.data snapshot written at `base_path`.
-template <class T>
-tsl::StatusOr<std::vector<T>> ReadSnapshot(const std::string& base_path,
-                                           const std::string& compression) {
-  experimental::DistributedSnapshotMetadata metadata;
-  metadata.set_compression(compression);
-  SnapshotReaderParams params{base_path, metadata, DataTypeVector{DT_INT64},
-                              Env::Default()};
-  SnapshotReader reader(params);
-  std::vector<T> result;
-  while (true) {
-    TF_ASSIGN_OR_RETURN(GetNextResult next, reader.GetNext());
-    if (next.end_of_sequence) {
-      return result;
-    }
-    result.push_back(next.tensors[0].unaligned_flat<T>().data()[0]);
-  }
-  return result;
-}
-
 class DistributedSnapshotTest : public ::testing::TestWithParam<int64_t> {
  protected:
   int64_t NumWorkers() const { return GetParam(); }
@@ -136,12 +117,13 @@ TEST_P(DistributedSnapshotTest, WriteSnapshot) {
       data_service.dispatcher().Snapshot(dataset, snapshot_path, metadata));
   TF_ASSERT_OK(WaitUntilSnapshotComplete(snapshot_path));
   if (NumWorkers() == 1) {
-    EXPECT_THAT(
-        ReadSnapshot<int64_t>(snapshot_path, tsl::io::compression::kNone),
-        IsOkAndHolds(ElementsAre(0, 1, 2, 3, 4, 5, 6, 7, 8, 9)));
+    EXPECT_THAT(testing::ReadSnapshot<int64_t>(snapshot_path,
+                                               tsl::io::compression::kNone),
+                IsOkAndHolds(ElementsAre(0, 1, 2, 3, 4, 5, 6, 7, 8, 9)));
   } else {  // More than 1 workers: The element order is non-deterministic.
     EXPECT_THAT(
-        ReadSnapshot<int64_t>(snapshot_path, tsl::io::compression::kNone),
+        testing::ReadSnapshot<int64_t>(snapshot_path,
+                                       tsl::io::compression::kNone),
         IsOkAndHolds(UnorderedElementsAre(0, 1, 2, 3, 4, 5, 6, 7, 8, 9)));
   }
 }
@@ -161,12 +143,14 @@ TEST_P(DistributedSnapshotTest, WriteMultipleSnapshots) {
   TF_ASSERT_OK(WaitUntilSnapshotComplete(snapshots[0]));
   TF_ASSERT_OK(WaitUntilSnapshotComplete(snapshots[1]));
   TF_ASSERT_OK(WaitUntilSnapshotComplete(snapshots[2]));
-  EXPECT_THAT(ReadSnapshot<int64_t>(snapshots[0], tsl::io::compression::kNone),
-              IsOkAndHolds(IsEmpty()));
-  EXPECT_THAT(ReadSnapshot<int64_t>(snapshots[1], tsl::io::compression::kNone),
-              IsOkAndHolds(UnorderedElementsAre(0, 1, 2, 3, 4, 5, 6, 7, 8, 9)));
   EXPECT_THAT(
-      ReadSnapshot<int64_t>(snapshots[2], tsl::io::compression::kNone),
+      testing::ReadSnapshot<int64_t>(snapshots[0], tsl::io::compression::kNone),
+      IsOkAndHolds(IsEmpty()));
+  EXPECT_THAT(
+      testing::ReadSnapshot<int64_t>(snapshots[1], tsl::io::compression::kNone),
+      IsOkAndHolds(UnorderedElementsAre(0, 1, 2, 3, 4, 5, 6, 7, 8, 9)));
+  EXPECT_THAT(
+      testing::ReadSnapshot<int64_t>(snapshots[2], tsl::io::compression::kNone),
       IsOkAndHolds(UnorderedElementsAre(0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11,
                                         12, 13, 14, 15, 16, 17, 18, 19)));
 }
@@ -180,7 +164,8 @@ TEST_P(DistributedSnapshotTest, EmptyDataset) {
   TF_ASSERT_OK(
       data_service.dispatcher().Snapshot(dataset, snapshot_path, metadata));
   TF_ASSERT_OK(WaitUntilSnapshotComplete(snapshot_path));
-  EXPECT_THAT(ReadSnapshot<int64_t>(snapshot_path, tsl::io::compression::kNone),
+  EXPECT_THAT(testing::ReadSnapshot<int64_t>(snapshot_path,
+                                             tsl::io::compression::kNone),
               IsOkAndHolds(IsEmpty()));
 }
 
@@ -205,7 +190,7 @@ TEST_P(DistributedSnapshotCompressionTest, Compression) {
       data_service.dispatcher().Snapshot(dataset, snapshot_path, metadata));
   TF_ASSERT_OK(WaitUntilSnapshotComplete(snapshot_path));
   EXPECT_THAT(
-      ReadSnapshot<int64_t>(snapshot_path, Compression()),
+      testing::ReadSnapshot<int64_t>(snapshot_path, Compression()),
       IsOkAndHolds(UnorderedElementsAre(0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11,
                                         12, 13, 14, 15, 16, 17, 18, 19)));
 }

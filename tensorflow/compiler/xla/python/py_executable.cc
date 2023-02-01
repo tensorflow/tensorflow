@@ -22,10 +22,12 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
-#include "tensorflow/compiler/xla/python/ifrt/array.h"
-#include "tensorflow/compiler/xla/python/ifrt/device.h"
 #include "tensorflow/compiler/xla/pjrt/host_callback.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
+#include "tensorflow/compiler/xla/python/ifrt/array.h"
+#include "tensorflow/compiler/xla/python/ifrt/device.h"
+#include "tensorflow/compiler/xla/python/ifrt/executable.h"
+#include "tensorflow/compiler/xla/python/ifrt/future.h"
 #include "tensorflow/tsl/platform/fingerprint.h"
 
 namespace xla {
@@ -97,12 +99,10 @@ std::vector<ClientAndPtr<PjRtDevice>> PyLoadedExecutable::AddressableDevices()
   return devices;
 }
 
-StatusOr<std::pair<std::vector<PyBuffer::object>, PyToken>>
-PyLoadedExecutable::ExecuteInternal(
-    absl::Span<PyBuffer::object const> args, PjRtDevice* device,
-    std::optional<std::vector<PjRtFuture<Status>>>& returned_futures) {
-  std::vector<tsl::RCReference<ifrt::Array>> output_arrays;
-  std::unique_ptr<ifrt::Future<Status>> returned_future;
+StatusOr<std::pair<std::vector<PyBuffer::object>, ifrt::Future<Status>>>
+PyLoadedExecutable::ExecuteInternal(absl::Span<PyBuffer::object const> args,
+                                    PjRtDevice* device) {
+  ifrt::LoadedExecutable::ExecuteResult result;
   {
     auto options = options_;
     std::shared_ptr<HostCallbackStates> host_callback_states;
@@ -114,8 +114,6 @@ PyLoadedExecutable::ExecuteInternal(
         return InternalError("Host callback not supported for runtime type: %s",
                              client()->runtime_type());
       }
-
-      returned_futures.emplace();
 
       host_callback_states = std::make_shared<HostCallbackStates>();
       auto& contexts = host_callback_states->contexts.emplace_back();
@@ -142,61 +140,43 @@ PyLoadedExecutable::ExecuteInternal(
 
     if (device) {
       TF_ASSIGN_OR_RETURN(
-          auto result,
-          ifrt_loaded_executable()->Execute(
-              absl::MakeSpan(arg_arrays), options,
-              /*devices=*/
-              ifrt::DeviceList(ifrt::DeviceList::Devices({device}))));
-      if (returned_futures.has_value()) {
-        returned_futures->push_back(std::move(result.status));
-      }
-      output_arrays = std::move(result.outputs);
+          result, ifrt_loaded_executable()->Execute(
+                      absl::MakeSpan(arg_arrays), options,
+                      /*devices=*/
+                      ifrt::DeviceList(ifrt::DeviceList::Devices({device}))));
     } else {
-      TF_ASSIGN_OR_RETURN(auto result, ifrt_loaded_executable()->Execute(
-                                           absl::MakeSpan(arg_arrays), options,
-                                           /*devices=*/std::nullopt));
-      if (returned_futures.has_value()) {
-        returned_futures->push_back(std::move(result.status));
-      }
-      output_arrays = std::move(result.outputs);
+      TF_ASSIGN_OR_RETURN(result, ifrt_loaded_executable()->Execute(
+                                      absl::MakeSpan(arg_arrays), options,
+                                      /*devices=*/std::nullopt));
     }
 
     if (!host_callbacks_.empty()) {
-      // For host callbacks to work, `returned_futures` must not be nullopt.
-      returned_futures->at(0).OnReady([host_callback_states](Status) mutable {
+      result.status.OnReady([host_callback_states](Status) mutable {
         host_callback_states.reset();
       });
     }
   }
   auto traceback = Traceback::Get();
   std::vector<PyBuffer::object> outputs;
-  outputs.reserve(output_arrays.size());
-  for (auto& array : output_arrays) {
+  outputs.reserve(result.outputs.size());
+  for (auto& array : result.outputs) {
     outputs.push_back(PyBuffer::Make(client_, std::move(array), traceback));
   }
-
-  if (!returned_futures.has_value()) {
-    return std::pair<std::vector<PyBuffer::object>, PyToken>(
-        std::move(outputs), PyToken::ReadyPyToken());
-  }
-  return std::pair<std::vector<PyBuffer::object>, PyToken>(
-      std::move(outputs), PyToken(std::move(returned_futures->at(0))));
+  return std::pair<std::vector<PyBuffer::object>, ifrt::Future<Status>>(
+      std::move(outputs), std::move(result.status));
 }
 
 StatusOr<std::pair<std::vector<PyBuffer::object>, PyToken>>
 PyLoadedExecutable::ExecuteWithToken(absl::Span<PyBuffer::object const> args,
                                      PjRtDevice* device) {
-  std::optional<std::vector<PjRtFuture<Status>>> returned_futures;
-  returned_futures.emplace();
-  return ExecuteInternal(args, device, returned_futures);
+  TF_ASSIGN_OR_RETURN(auto out, ExecuteInternal(args, device));
+  return std::make_pair(std::move(out.first), PyToken(std::move(out.second)));
 }
 
 StatusOr<std::vector<PyBuffer::object>> PyLoadedExecutable::Execute(
     absl::Span<PyBuffer::object const> args, PjRtDevice* device) {
-  std::optional<std::vector<PjRtFuture<Status>>> returned_futures;
-  TF_ASSIGN_OR_RETURN(auto outputs_and_token,
-                      ExecuteInternal(args, device, returned_futures));
-  return std::move(outputs_and_token.first);
+  TF_ASSIGN_OR_RETURN(auto out, ExecuteInternal(args, device));
+  return std::move(out.first);
 }
 
 namespace {
@@ -262,8 +242,7 @@ struct ShardedBufferAdapter<std::vector<PyBuffer::object>> {
 void PopulateExecuteShardedResults(
     const std::shared_ptr<PyClient>& client,
     std::vector<tsl::RCReference<ifrt::Array>> ifrt_arrays,
-    int num_computations,
-    std::vector<PyShardedBuffer>& outputs) {
+    int num_computations, std::vector<PyShardedBuffer>& outputs) {
   auto traceback = Traceback::Get();
   int num_output_buffers = ifrt_arrays.size();
   outputs.reserve(num_output_buffers);
@@ -275,8 +254,7 @@ void PopulateExecuteShardedResults(
 void PopulateExecuteShardedResults(
     const std::shared_ptr<PyClient>& client,
     std::vector<tsl::RCReference<ifrt::Array>> ifrt_arrays,
-    int num_computations,
-    std::vector<std::vector<PyBuffer::object>>& outputs) {
+    int num_computations, std::vector<std::vector<PyBuffer::object>>& outputs) {
   auto traceback = Traceback::Get();
   DCHECK_GT(num_computations, 0);
   int num_output_buffers = ifrt_arrays.size();

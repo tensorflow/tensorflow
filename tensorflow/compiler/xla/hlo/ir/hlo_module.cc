@@ -36,6 +36,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_schedule.h"
 #include "tensorflow/compiler/xla/map_util.h"
+#include "tensorflow/compiler/xla/printer.h"
 #include "tensorflow/compiler/xla/service/compilation_environments.h"
 #include "tensorflow/compiler/xla/service/computation_placer.h"
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
@@ -233,40 +234,35 @@ void HloModule::ReplaceComputations(
   computations_ = std::move(new_computations);
 }
 
-std::string HloModule::ToString(const HloPrintOptions& options) const {
-  return std::string(ToCord(options));
-}
-
-absl::Cord HloModule::ToCord(const HloPrintOptions& options) const {
-  absl::Cord result;
-  result.Append("HloModule ");
+void HloModule::Print(Printer* printer, const HloPrintOptions& options) const {
+  printer->Append("HloModule ");
   if (options.print_ids()) {
     // When print_ids() is false, exclude module's name because it includes and
     // leads to non-deterministic fingerprint.
-    result.Append(name());
+    printer->Append(name());
   }
   if (has_schedule()) {
     TF_CHECK_OK(schedule().Verify());
-    result.Append(", is_scheduled=true");
+    printer->Append(", is_scheduled=true");
   }
   std::string serialized_aliasing = input_output_alias_config().ToShortString();
   if (!serialized_aliasing.empty()) {
-    result.Append(", input_output_alias={ ");
-    result.Append(std::move(serialized_aliasing));
-    result.Append(" }");
+    printer->Append(", input_output_alias={ ");
+    printer->Append(std::move(serialized_aliasing));
+    printer->Append(" }");
   }
   if (config_.alias_passthrough_params()) {
-    result.Append(", alias_passthrough_params=true");
+    printer->Append(", alias_passthrough_params=true");
   }
   if (config_.has_entry_computation_layout()) {
-    result.Append(", entry_computation_layout={");
-    result.Append(entry_computation_layout().ToString());
-    result.Append("}");
+    printer->Append(", entry_computation_layout={");
+    entry_computation_layout().Print(printer);
+    printer->Append("}");
   }
   if (config_.allow_spmd_sharding_propagation_to_output()) {
-    result.Append(", allow_spmd_sharding_propagation_to_output=true");
+    printer->Append(", allow_spmd_sharding_propagation_to_output=true");
   }
-  result.Append("\n\n");
+  printer->Append("\n\n");
   const auto& computations = options.canonicalize_computations()
                                  ? MakeComputationSorted()
                                  : MakeComputationPostOrder();
@@ -277,17 +273,28 @@ absl::Cord HloModule::ToCord(const HloPrintOptions& options) const {
       continue;
     }
     if (computation == entry_computation()) {
-      result.Append("ENTRY ");
+      printer->Append("ENTRY ");
     }
     if (has_schedule() && schedule().is_computation_scheduled(computation)) {
-      result.Append(computation->ToCord(
-          options, schedule().sequence(computation).instructions()));
+      computation->Print(printer, options,
+                         schedule().sequence(computation).instructions());
     } else {
-      result.Append(computation->ToCord(options));
+      computation->Print(printer, options);
     }
-    result.Append("\n\n");
+    printer->Append("\n\n");
   }
-  return result;
+}
+
+std::string HloModule::ToString(const HloPrintOptions& options) const {
+  StringPrinter printer;
+  Print(&printer, options);
+  return std::move(printer).ToString();
+}
+
+absl::Cord HloModule::ToCord(const HloPrintOptions& options) const {
+  CordPrinter printer;
+  Print(&printer, options);
+  return std::move(printer).ToCord();
 }
 
 HloModuleProto HloModule::ToProto() const {

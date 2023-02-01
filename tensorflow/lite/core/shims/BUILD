@@ -96,7 +96,7 @@ cc_library(
         "//tensorflow/lite:allocation",
         "//tensorflow/lite:arena_planner",
         "//tensorflow/lite:external_cpu_backend_context",
-        "//tensorflow/lite:framework_stable",
+        "//tensorflow/lite:framework",
         "//tensorflow/lite:kernel_api",
         "//tensorflow/lite:memory_planner",
         "//tensorflow/lite:minimal_logging",
@@ -137,7 +137,7 @@ cc_library(
         "//tensorflow/lite:allocation",
         "//tensorflow/lite:arena_planner",
         "//tensorflow/lite:external_cpu_backend_context",
-        "//tensorflow/lite:framework_experimental",
+        "//tensorflow/lite:framework",
         "//tensorflow/lite:graph_info",
         "//tensorflow/lite:kernel_api",
         "//tensorflow/lite:memory_planner",
@@ -245,7 +245,6 @@ cc_library(
         "//tensorflow/lite:cc_api",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/core/kernels:builtin_ops",
-        "//tensorflow/lite/kernels:builtin_ops",
     ],
 )
 
@@ -266,7 +265,6 @@ cc_library(
         "@org_tensorflow_lite_support//tensorflow_lite_support:__subpackages__",
     ],
     deps = [
-        "//tensorflow/lite:create_op_resolver_header",
         "//tensorflow/lite:op_resolver",
     ],
 )
@@ -309,7 +307,6 @@ cc_library(
     ],
     deps = [
         "//tensorflow/lite/core/experimental/acceleration/configuration:delegate_registry",
-        "//tensorflow/lite/experimental/acceleration/configuration:delegate_registry",
     ],
 )
 
@@ -331,7 +328,6 @@ cc_library(
     ],
     deps = [
         "//tensorflow/lite/core/tools:verifier",
-        "//tensorflow/lite/tools:verifier",
     ],
 )
 
@@ -344,7 +340,6 @@ cc_library(
     ],
     deps = [
         "//tensorflow/lite/core/tools:verifier_internal",
-        "//tensorflow/lite/tools:verifier_internal",
     ],
 )
 
@@ -385,14 +380,20 @@ cc_library(
 
 cc_library(
     name = "c_api_experimental",
-    hdrs = ["c/c_api_experimental.h"],
+    hdrs = [
+        "c/c_api_experimental.h",
+        "c/c_api_opaque.h",
+    ],
     copts = tflite_copts_warnings(),
     visibility = [
         "//tensorflow/lite:__subpackages__",
         "@mediapipe//mediapipe:__subpackages__",
         "@org_tensorflow_lite_support//tensorflow_lite_support:__subpackages__",
     ],
-    deps = ["//tensorflow/lite/core/c:c_api_experimental"],
+    deps = [
+        "//tensorflow/lite/c:c_api_experimental",
+        "//tensorflow/lite/core/c:c_api_experimental",
+    ],
 )
 
 cc_library(
@@ -552,7 +553,6 @@ cc_library(
     ],
     deps = [
         ":c_shims_test_util",
-        "//tensorflow/lite:test_util",
         "@com_google_googletest//:gtest",
     ],
 )

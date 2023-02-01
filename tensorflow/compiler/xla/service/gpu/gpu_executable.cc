@@ -494,9 +494,10 @@ StatusOr<ExecutionOutput> GpuExecutable::ExecuteAsyncOnStreamImpl(
 
   se::StreamExecutor* executor = run_options->stream()->parent();
 
-  // Lock the GPU with an exclusive lock so that runtime autotuning doesn't run
-  // with autotuning in other xla computations concurrently on the sam GPU.
-  absl::MutexLock gpu_lock(&GetGpuMutex(executor));
+  // Lock the GPU with a shared lock so that we don't interfere with autotuning
+  // that may be running during JIT compilation while allowing multiple XLA
+  // computations to use the same GPU simultaneously.
+  absl::ReaderMutexLock gpu_lock(&GetGpuMutex(executor));
 
   const GpuExecutable::BufferAllocToDeviceMemoryMap* globals;
   {

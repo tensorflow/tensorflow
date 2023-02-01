@@ -85,13 +85,13 @@ const char** TfLiteTelemetrySubgraphInfoGetCustomOpNames(
 }
 
 size_t TfLiteTelemetryGpuDelegateSettingsGetNumNodesDelegated(
-    TfLiteTelemetryGpuDelegateSettings* settings) {
+    const TfLiteTelemetryGpuDelegateSettings* settings) {
   if (settings == nullptr) return 0;
   return settings->num_nodes_delegated;
 }
 
 int TfLiteTelemetryGpuDelegateSettingsGetBackend(
-    TfLiteTelemetryGpuDelegateSettings* settings) {
+    const TfLiteTelemetryGpuDelegateSettings* settings) {
   if (settings == nullptr) return 0;
   return settings->backend;
 }

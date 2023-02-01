@@ -15,9 +15,14 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/device/device_event_mgr.h"
 
+#include <functional>
+#include <memory>
+#include <utility>
+
 #include "tensorflow/core/platform/stacktrace.h"
 #include "tensorflow/core/platform/stream_executor.h"
 #include "tensorflow/core/protobuf/config.pb.h"
+#include "tensorflow/tsl/platform/thread_annotations.h"
 
 namespace tensorflow {
 
@@ -103,16 +108,13 @@ EventMgr::EventMgr(se::StreamExecutor* se, const GPUOptions& gpu_options)
 EventMgr::~EventMgr() {
   StopPollingLoop();
 
-  // Events are owned by this object.
-  for (auto& e : free_events_) {
-    delete e;
+  for (auto& [stream, stream_callbacks] : callbacks_) {
+    for (auto& [event, callback] : stream_callbacks) {
+      threadpool_.Schedule(std::move(callback));
+    }
   }
-  while (!used_events_.empty()) {
-    InUse* ue = &used_events_[0];
-    delete ue->event;
-    if (ue->func != nullptr) threadpool_.Schedule(ue->func);
-    used_events_.pop_front();
-  }
+  // The threadpool's destructor will block waiting for all outstanding
+  // callbacks to complete.
 }
 
 void EventMgr::StartPollingLoop() {
@@ -121,7 +123,7 @@ void EventMgr::StartPollingLoop() {
     mutex_lock l(mu_);
     stop_polling_ = false;
   }
-  polling_stopped_.reset(new Notification);
+  polling_stopped_ = std::make_unique<Notification>();
   threadpool_.Schedule([this]() { PollLoop(); });
 }
 
@@ -142,7 +144,6 @@ void EventMgr::StopPollingLoop() {
 // While one or more events is outstanding, poll for completed events.  When no
 // events are outstanding, we sleep until one is enqueued.
 void EventMgr::PollLoop() {
-  ToFreeVector to_free;
   while (true) {
     bool events_still_pending;
     {
@@ -150,14 +151,12 @@ void EventMgr::PollLoop() {
       if (stop_polling_) {
         break;
       }
-      if (used_events_.empty()) {
+      if (callbacks_.empty()) {
         events_pending_.wait(l);
       }
-      PollEvents(true, &to_free);
-      events_still_pending = !used_events_.empty();
+      PollEvents(/*stream=*/nullptr);  // poll all streams
+      events_still_pending = !callbacks_.empty();
     }
-    FreeMemory(to_free);
-    to_free.clear();
 
     if (events_still_pending) {
       Env::Default()->SleepForMicroseconds(polling_active_delay_usecs_);
@@ -166,23 +165,28 @@ void EventMgr::PollLoop() {
   polling_stopped_->Notify();
 }
 
-void EventMgr::QueueInUse(se::Stream* stream, InUse in_use) {
-  VLOG(2) << "QueueInUse  free_events_ " << free_events_.size()
-          << " used_events_ " << used_events_.size();
+void EventMgr::EnqueueCallback(se::Stream* stream, std::function<void()> func) {
+  VLOG(2) << "EnqueueCallback with one or more callbacks pending on "
+          << callbacks_.size() << " streams and " << free_events_.size()
+          << " unused event objects.";
   // Events are created on demand, and repeatedly reused.  There is no
   // limit placed here on the number of allocated Events.
   if (free_events_.empty()) {
-    free_events_.push_back(new se::Event(exec_));
+    free_events_.push_back(std::make_unique<se::Event>(exec_));
     free_events_.back()->Init();
   }
-  se::Event* e = free_events_.back();
+
+  std::unique_ptr<se::Event> e = std::move(free_events_.back());
   free_events_.pop_back();
-  stream->ThenRecordEvent(e);
-  in_use.event = e;
-  bool was_empty = used_events_.empty();
-  used_events_.push_back(in_use);
-  // Maybe wake up the polling thread
-  if (was_empty) events_pending_.notify_all();
+  stream->ThenRecordEvent(e.get());
+
+  bool was_empty = callbacks_.empty();
+  callbacks_[stream].push_back({std::move(e), std::move(func)});
+
+  // Wake up the polling thread if it was sleeping.
+  if (was_empty) {
+    events_pending_.notify_all();
+  }
 }
 
 // This function must be called periodically to check whether pending
@@ -192,53 +196,75 @@ void EventMgr::QueueInUse(se::Stream* stream, InUse in_use) {
 // spikes of up to several hundred outstanding.  (If GPUKernelTracker
 // is used to cap pending kernels there should never be more than
 // that many.)
-//
-// NOTE: If all events are on the same stream, no later event will
-// complete before an earlier event, except possibly if the earlier
-// event transitions to an error state, so there's no advantage in
-// looking past the first kPending event.  However, if we're using
-// multiple streams there may be some gain in looking deeper.
-// As a compromise, PollEvent() calls that are triggered by the queueing
-// of a single event never look past the first kPending event.  Consequently
-// those calls do an expected constant amount of work, unaffected by the
-// length of the pending queue.  Calls coming from the dedicated
-// polling thread always sweep the full queue.
-void EventMgr::PollEvents(bool is_dedicated_poller,
-                          gtl::InlinedVector<InUse, 4>* to_free) {
-  VLOG(2) << "PollEvents  free_events_ " << free_events_.size()
-          << " used_events_ " << used_events_.size();
-  // Sweep the remaining events in order.  If this is the dedicated
-  // polling thread, check the entire set.  Otherwise, just sweep up to
-  // the first non-complete record that is still pending.
-  for (auto& iu : used_events_) {
-    if (iu.event == nullptr) continue;
-    se::Event::Status s = iu.event->PollForStatus();
-    switch (s) {
-      case se::Event::Status::kUnknown:
-      case se::Event::Status::kError:
-        // We don't expect to see these.  Someday maybe propagate
-        // a Status error, but for now fail hard.
-        LOG(FATAL) << "Unexpected Event status: " << static_cast<int>(s);
-        break;
-      case se::Event::Status::kPending:
-        if (!is_dedicated_poller) return;  // quit processing queue
-        break;
-      case se::Event::Status::kComplete:
-        // Make a copy of the InUse record so we can free it after releasing
-        // the lock
-        to_free->push_back(iu);
-        free_events_.push_back(iu.event);
-        // Mark this InUse record as completed.
-        iu.event = nullptr;
+void EventMgr::PollEvents(se::Stream* stream /*=nullptr*/) {
+  VLOG(2) << "PollEvents with one or more callbacks pending on "
+          << callbacks_.size() << " streams and " << free_events_.size()
+          << " unused event objects.";
+
+  // Polls the events for one stream.
+  //
+  // `stream_it` should be an iterator into callbacks_.  Modifies stream_it so
+  // it points to the next element of callbacks_.
+  auto poll_events_for_stream_it =
+      [&](auto& stream_it) TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+        auto& stream_callbacks = stream_it->second;
+
+        auto it = stream_callbacks.begin();
+        while (it != stream_callbacks.end()) {
+          auto& [event, callback] = *it;
+
+          se::Event::Status s = event->PollForStatus();
+          bool keep_looping = true;
+          switch (s) {
+            case se::Event::Status::kUnknown:
+            case se::Event::Status::kError:
+              // We don't expect to see these.  Someday maybe propagate
+              // a Status error, but for now fail hard.
+              LOG(FATAL) << "Unexpected Event status: " << static_cast<int>(s);
+              break;
+            case se::Event::Status::kPending:
+              // If this event is still pending, then all events after it are
+              // guaranteed to be pending as well, so we can stop looping.
+              keep_looping = false;
+              break;
+            case se::Event::Status::kComplete:
+              free_events_.push_back(std::move(event));
+              threadpool_.Schedule(std::move(callback));
+              // std::deque::erase() does invalidate iterators, so we can't
+              // erase `it` here.  Instead, we'll wait until the end of the loop
+              // over stream_callbacks and erase all of the completed events at
+              // that point.
+              ++it;
+              break;
+          }
+
+          if (!keep_looping) {
+            break;
+          }
+        }
+
+        // Erase all completed events from stream_callbacks.
+        stream_callbacks.erase(stream_callbacks.begin(), it);
+
+        if (stream_callbacks.empty()) {
+          // absl::flat_hash_map::erase doesn't invalidate iterators, so this is
+          // safe.
+          callbacks_.erase(stream_it++);
+        } else {
+          stream_it++;
+        }
+      };
+
+  // If `stream` is non-null, poll events just for that stream.  Otherwise, poll
+  // events for all streams.
+  if (stream != nullptr) {
+    auto stream_it = callbacks_.find(stream);
+    if (stream_it != callbacks_.end()) {
+      poll_events_for_stream_it(stream_it);
     }
-  }
-  // Then clear any completed InUse records from the front of the queue.
-  while (!used_events_.empty()) {
-    InUse& iu = used_events_.front();
-    if (iu.event == nullptr) {
-      used_events_.pop_front();
-    } else {
-      break;
+  } else {
+    for (auto stream_it = callbacks_.begin(); stream_it != callbacks_.end();) {
+      poll_events_for_stream_it(stream_it);
     }
   }
 }

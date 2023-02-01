@@ -382,9 +382,6 @@ def is_packed(value):
 # ==============================================================================
 # Base class for the tf.ExtensionType TypeSpecs
 # ==============================================================================
-# TODO(b/184565242) Support customizing type relaxation for tracing.
-# TODO(b/184565242) Support conversion to/from FullType.
-# TODO(b/195884675) Support batch and unbatch.
 
 
 class ExtensionTypeSpec(type_spec.TypeSpec):
@@ -823,7 +820,6 @@ def _wrap_user_constructor(cls):
 _NO_DEFAULT = extension_type_field.ExtensionTypeField.NO_DEFAULT
 
 
-# TODO(b/184565242) Consider using the templating system from autograph here.
 def _build_extension_type_constructor(cls):
   """Builds a constructor for tf.ExtensionType subclass `cls`."""
   fields = cls._tf_extension_type_fields()  # pylint: disable=protected-access

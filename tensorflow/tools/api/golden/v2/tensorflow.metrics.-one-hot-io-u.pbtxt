@@ -1,8 +1,8 @@
 path: "tensorflow.metrics.OneHotIoU"
 tf_class {
-  is_instance: "<class \'keras.metrics.metrics.OneHotIoU\'>"
-  is_instance: "<class \'keras.metrics.metrics.IoU\'>"
-  is_instance: "<class \'keras.metrics.metrics._IoUBase\'>"
+  is_instance: "<class \'keras.metrics.iou_metrics.OneHotIoU\'>"
+  is_instance: "<class \'keras.metrics.iou_metrics.IoU\'>"
+  is_instance: "<class \'keras.metrics.iou_metrics._IoUBase\'>"
   is_instance: "<class \'keras.metrics.base_metric.Metric\'>"
   is_instance: "<class \'keras.engine.base_layer.Layer\'>"
   is_instance: "<class \'tensorflow.python.module.module.Module\'>"

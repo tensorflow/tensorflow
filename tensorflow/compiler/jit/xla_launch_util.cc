@@ -31,6 +31,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/client_library.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
 #include "tensorflow/compiler/xla/shape_util.h"
+#include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/core/common_runtime/dma_helper.h"
 #include "tensorflow/core/common_runtime/function.h"
@@ -44,7 +45,9 @@ limitations under the License.
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/refcount.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/util/stream_executor_util.h"
+#include "tensorflow/tsl/platform/status.h"
 
 namespace tensorflow {
 namespace {
@@ -659,6 +662,20 @@ Status XlaComputationLaunchContext::PopulateOutputs(
   return OkStatus();
 }
 
+Status CreateVariableInfoLookup(
+    absl::Span<VariableInfo const> variable_args,
+    absl::flat_hash_map<int, const VariableInfo*>& variable_info_lookup) {
+  for (const VariableInfo& info : variable_args) {
+    if (!(!info.var() || info.lock_held() || info.shared_lock_held())) {
+      return errors::Internal(
+          "Need to hold the lock on resource variables "
+          "before calling BuildXlaCompilerArguments");
+    }
+    variable_info_lookup.emplace(info.index(), &info);
+  }
+  return OkStatus();
+}
+
 StatusOr<std::vector<XlaCompiler::Argument>>
 XlaComputationLaunchContext::BuildXlaCompilerArguments(
     absl::Span<int const> must_be_constant_idxs,
@@ -687,13 +704,7 @@ XlaComputationLaunchContext::BuildXlaCompilerArguments(
   }
 
   absl::flat_hash_map<int, const VariableInfo*> variable_info_lookup;
-  for (const VariableInfo& info : variable_args) {
-    CHECK(!info.var() || info.lock_held() || info.shared_lock_held())
-        << "Need to hold the lock on resource variables "
-           "before calling BuildXlaCompilerArguments";
-    variable_info_lookup.emplace(info.index(), &info);
-  }
-
+  TF_CHECK_OK(CreateVariableInfoLookup(variable_args, variable_info_lookup));
   for (int64_t input_num = 0; input_num < inputs.size(); ++input_num) {
     const Tensor* input = inputs[input_num];
 

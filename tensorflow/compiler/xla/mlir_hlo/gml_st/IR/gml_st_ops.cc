@@ -22,7 +22,7 @@ limitations under the License.
 #include <tuple>
 #include <utility>
 
-#include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/MapVector.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/Sequence.h"
 #include "llvm/ADT/SmallVector.h"
@@ -30,8 +30,6 @@ limitations under the License.
 #include "llvm/Support/Casting.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Arith/Utils/Utils.h"
-#include "mlir/Dialect/MemRef/IR/MemRef.h"
-#include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/Dialect/Tensor/Utils/Utils.h"
 #include "mlir/Dialect/Vector/IR/VectorOps.h"
@@ -55,10 +53,11 @@ void printShapeTypeDimensionsList(AsmPrinter &printer,
   llvm::interleave(
       integers, printer,
       [&](int64_t val) {
-        if (val == ShapedType::kDynamic)
+        if (val == ShapedType::kDynamic) {
           printer << '?';
-        else
+        } else {
           printer << val;
+        }
       },
       "x");
 }
@@ -76,6 +75,46 @@ ParseResult parseShapeTypeDimensionsList(AsmParser &parser,
 
 Type inferReturnType(ShapedType sourceType, ArrayRef<int64_t> tileShape) {
   return sourceType.clone(tileShape, sourceType.getElementType());
+}
+
+LogicalResult verifyCompatibleExtractedSubset(Operation *op,
+                                              ShapedType shapedType,
+                                              Type extractedType,
+                                              ArrayRef<int64_t> tileShape) {
+  auto sourceRank = shapedType.getRank();
+  auto elementType = shapedType.getElementType();
+
+  // If the result is a scalar, check that the tile had a single element.
+  if (!extractedType.isa<ShapedType>()) {
+    if (extractedType != elementType) {
+      return op->emitOpError("expected the result type ")
+             << extractedType << " to match source element type "
+             << elementType;
+    }
+    if (!ShapedType::isDynamicShape(tileShape) &&
+        ShapedType::getNumElements(tileShape) == 1)
+      return success();
+
+    return op->emitOpError("expected tile type ")
+           << tileShape << " to have a single element shape";
+  }
+
+  // If the result is a shaped type, compare with the inferred type.
+  auto extractedShapedType = extractedType.cast<ShapedType>();
+  unsigned tileRank = tileShape.size();
+  if (tileRank != sourceRank) {
+    return op->emitOpError("expected source rank = ")
+           << sourceRank << " to match tile rank = " << tileRank;
+  }
+
+  auto inferredType = shapedType.clone(tileShape, shapedType.getElementType());
+  if (extractedShapedType != inferredType) {
+    return op->emitOpError("expected result type = ")
+           << extractedShapedType
+           << " to match the inferred type = " << inferredType;
+  }
+
+  return success();
 }
 
 }  // namespace
@@ -164,46 +203,6 @@ void MaterializeOp::build(OpBuilder &b, OperationState &result, Value source,
   SmallVector<OpFoldResult> unitSizesAndStrides(offsets.size(),
                                                 b.getIndexAttr(1));
   build(b, result, source, offsets, unitSizesAndStrides, unitSizesAndStrides);
-}
-
-LogicalResult verifyCompatibleExtractedSubset(Operation *op,
-                                              ShapedType shapedType,
-                                              Type extractedType,
-                                              ArrayRef<int64_t> tileShape) {
-  auto sourceRank = shapedType.getRank();
-  auto elementType = shapedType.getElementType();
-
-  // If the result is a scalar, check that the tile had a single element.
-  if (!extractedType.isa<ShapedType>()) {
-    if (extractedType != elementType) {
-      return op->emitOpError("expected the result type ")
-             << extractedType << " to match source element type "
-             << elementType;
-    }
-    if (!ShapedType::isDynamicShape(tileShape) &&
-        ShapedType::getNumElements(tileShape) == 1)
-      return success();
-
-    return op->emitOpError("expected tile type ")
-           << tileShape << " to have a single element shape";
-  }
-
-  // If the result is a shaped type, compare with the inferred type.
-  auto extractedShapedType = extractedType.cast<ShapedType>();
-  int64_t tileRank = tileShape.size();
-  if (tileRank != sourceRank) {
-    return op->emitOpError("expected source rank = ")
-           << sourceRank << " to match tile rank = " << tileRank;
-  }
-
-  auto inferredType = shapedType.clone(tileShape, shapedType.getElementType());
-  if (extractedShapedType != inferredType) {
-    return op->emitOpError("expected result type = ")
-           << extractedShapedType
-           << " to match the inferred type = " << inferredType;
-  }
-
-  return success();
 }
 
 LogicalResult MaterializeOp::verify() {
@@ -315,7 +314,7 @@ ParseResult parseLoopLikeOpOutputArgs(
         parser.parseType(outputTypes.emplace_back())) {
       return failure();
     }
-    *outputCount = outputs.size();
+    *outputCount = static_cast<int32_t>(outputs.size());
     return success();
   };
   if (succeeded(parser.parseOptionalKeyword("outs"))) {
@@ -701,11 +700,110 @@ ParseResult ParallelOp::parse(OpAsmParser &parser, OperationState &result) {
   return parseLoopLikeOp<ParallelOp>(parser, result);
 }
 
+namespace {
+
+/// Fold tensor.dim(gml_st.parallel outs(... = %t)) to tensor.dim(%t).
+struct DimOfParallelOp : public OpRewritePattern<tensor::DimOp> {
+  using OpRewritePattern<tensor::DimOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(tensor::DimOp dimOp,
+                                PatternRewriter &rewriter) const final {
+    auto parallelOp = dimOp.getSource().getDefiningOp<ParallelOp>();
+    if (!parallelOp) return failure();
+
+    OpOperand &out =
+        parallelOp.getOpOperandForResult(dimOp.getSource().cast<OpResult>());
+    rewriter.updateRootInPlace(
+        dimOp, [&]() { dimOp.getSourceMutable().assign(out.get()); });
+    return success();
+  }
+};
+
+/// Fold tensor.casts into the output arguments of gml_st.parallel.
+struct FoldTensorCastIntoParallelOp
+    : public OpRewritePattern<gml_st::ParallelOp> {
+  using OpRewritePattern<gml_st::ParallelOp>::OpRewritePattern;
+
+  struct TypeCast {
+    Type srcType;
+    Type dstType;
+  };
+
+  LogicalResult matchAndRewrite(gml_st::ParallelOp parallelOp,
+                                PatternRewriter &rewriter) const final {
+    llvm::SmallMapVector<unsigned, TypeCast, 2> tensorCastProducers;
+    llvm::SmallVector<Value> newOutputTensors = parallelOp.getOutputs();
+    for (auto &en : llvm::enumerate(newOutputTensors)) {
+      if (auto castOp = en.value().getDefiningOp<tensor::CastOp>()) {
+        tensorCastProducers[en.index()] =
+            TypeCast{castOp.getSource().getType(), castOp.getType()};
+        en.value() = castOp.getSource();
+      }
+    }
+
+    if (tensorCastProducers.empty()) return failure();
+
+    // Create new loop.
+    Location loc = parallelOp.getLoc();
+    std::optional<StringAttr> distTypeAttr;
+    if (auto distType = parallelOp.getDistributionType())
+      distTypeAttr = rewriter.getStringAttr(*distType);
+    auto newParallelOp = rewriter.create<ParallelOp>(
+        loc, TypeRange{ValueRange{newOutputTensors}},
+        parallelOp.getLowerBound(), parallelOp.getUpperBound(),
+        parallelOp.getStep(), newOutputTensors, distTypeAttr, nullptr);
+
+    Block *loopBody = newParallelOp.getBody();
+
+    // Cast bbArgs back to the original types.
+    OpBuilder::InsertionGuard g(rewriter);
+    rewriter.setInsertionPointToStart(loopBody);
+    SmallVector<Value> castBBArgs =
+        ValueRange{newParallelOp.getRegionOutputArgs()};
+    for (auto &item : tensorCastProducers) {
+      Value &oldTypeBBArg = castBBArgs[item.first];
+      oldTypeBBArg = rewriter.create<tensor::CastOp>(loc, item.second.dstType,
+                                                     oldTypeBBArg);
+    }
+
+    // Move old body into new parallel loop.
+    SmallVector<Value> blockArgs = newParallelOp.getInductionVars();
+    blockArgs.append(castBBArgs);
+    rewriter.mergeBlocks(parallelOp.getBody(), loopBody, blockArgs);
+
+    // Cast `set_yield` destination operands to the new types.
+    SetYieldOp terminator = newParallelOp.getTerminator();
+    rewriter.setInsertionPoint(terminator);
+    SmallVector<Value> castDsts = terminator.getDsts();
+    for (auto &item : tensorCastProducers) {
+      Value &newTypeDsts = castDsts[item.first];
+      newTypeDsts = rewriter.create<tensor::CastOp>(loc, item.second.srcType,
+                                                    newTypeDsts);
+    }
+    terminator.getDstsMutable().assign(castDsts);
+
+    // Cast results back to the original types.
+    rewriter.setInsertionPointAfter(newParallelOp);
+    SmallVector<Value> castResults = newParallelOp.getResults();
+    for (auto &item : tensorCastProducers) {
+      Value &oldTypeResult = castResults[item.first];
+      oldTypeResult = rewriter.create<tensor::CastOp>(loc, item.second.dstType,
+                                                      oldTypeResult);
+    }
+    rewriter.replaceOp(parallelOp, castResults);
+
+    return success();
+  }
+};
+
+}  // namespace
+
 void ParallelOp::getCanonicalizationPatterns(RewritePatternSet &results,
                                              MLIRContext *context) {
   results.add<CollapseSingleIterationLoops<ParallelOp>>(
       context,
       [&](ParallelOp op) { return !op.getDistributionType().has_value(); });
+  results.add<DimOfParallelOp, FoldTensorCastIntoParallelOp>(context);
 }
 
 //===----------------------------------------------------------------------===//

@@ -24,7 +24,9 @@ from tensorflow.dtensor.python import mesh_util
 from tensorflow.dtensor.python.tests import test_util
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.distribute import distribute_lib
+from tensorflow.python.distribute import values as values_lib
 from tensorflow.python.distribute.experimental import mirrored_strategy
+from tensorflow.python.eager import def_function
 from tensorflow.python.eager import test
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -117,6 +119,43 @@ class StrategyBaseTest(test_util.DTensorBaseTest):
   def test_in_multi_worker_mode(self):
     strategy = mirrored_strategy.MirroredStrategy(self.mesh)
     self.assertFalse(strategy.extended._in_multi_worker_mode())
+
+  def test_run_with_tensor_inputs(self):
+    strategy = mirrored_strategy.MirroredStrategy(self.mesh)
+    tensor_input = constant_op.constant(3.0)
+
+    @def_function.function
+    def replica_fn(inputs):
+      return inputs * 2.0
+
+    result = strategy.run(replica_fn, args=(tensor_input,))
+    self.assertIsInstance(result, values_lib.PerReplica)
+    self.assertLen(result.values, 2)
+    self.assertAllClose(result.values[0], constant_op.constant(6.0))
+    self.assertAllClose(result.values[1], constant_op.constant(6.0))
+
+  def test_run_with_distribute_value_input(self):
+    strategy = mirrored_strategy.MirroredStrategy(self.mesh)
+
+    def value_fn(value_context):
+      return value_context.num_replicas_in_sync
+    distributed_values = (
+        strategy.experimental_distribute_values_from_function(
+            value_fn))
+
+    @def_function.function
+    def replica_fn(inputs):
+      return inputs * 2
+
+    result = strategy.run(replica_fn, args=(distributed_values,))
+    self.assertIsInstance(result, values_lib.PerReplica)
+    self.assertLen(result.values, 2)
+    # Note that the scalar value from
+    # experimental_distribute_values_from_function will be up rank to 1D since
+    # batched shared dtensor need at least be 1D. So the result from the
+    # strategy.run is [4], instead of just 4.
+    self.assertAllClose(result.values[0], constant_op.constant([4]))
+    self.assertAllClose(result.values[1], constant_op.constant([4]))
 
 
 class InvalidMeshTest(test_util.DTensorBaseTest):

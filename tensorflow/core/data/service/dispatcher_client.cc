@@ -187,15 +187,15 @@ Status DataServiceDispatcherClient::GetSnapshotSplit(
   if (!status.ok()) {
     return grpc_util::WrapError("Failed to get snapshot split", status);
   }
+  local_split_index = resp.local_split_index();
   end_of_splits = resp.end_of_splits();
   if (end_of_splits) {
     return OkStatus();
   }
-  if (!split.FromProto(resp.split().split())) {
+  if (!split.FromProto(resp.split())) {
     return errors::Internal("Failed to parse split tensor proto: ",
                             resp.split().DebugString());
   }
-  local_split_index = resp.split().local_split_index();
   return OkStatus();
 }
 

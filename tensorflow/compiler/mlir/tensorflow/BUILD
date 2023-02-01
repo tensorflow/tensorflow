@@ -767,6 +767,21 @@ gentbl_cc_library(
     ],
 )
 
+tf_cc_test(
+    name = "tf_saved_model_test",
+    srcs = ["ir/tf_saved_model_test.cc"],
+    deps = [
+        ":tensorflow",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/platform:test",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Parser",
+        "@llvm-project//mlir:Support",
+    ],
+)
+
 cc_library(
     name = "decompose_resource_ops",
     srcs = [
@@ -1964,7 +1979,6 @@ cc_library(
         ":tensorflow_types",
         "//tensorflow/c:tf_status",
         "//tensorflow/compiler/xla/stream_executor",
-        "//tensorflow/compiler/xla/stream_executor/lib",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "@llvm-project//llvm:Support",
@@ -1993,7 +2007,6 @@ cc_library(
         ":mlir_roundtrip_flags",
         ":tensorflow",
         "//tensorflow/compiler/tf2xla:functionalize_control_flow_pass_registration",
-        "//tensorflow/compiler/xla/stream_executor/lib",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
         "//tensorflow/core:graph",
@@ -2193,7 +2206,6 @@ COMPILE_MLIR_UTIL_DEPS = [
     "//tensorflow/core/platform:error_payloads",
     "//tensorflow/core/platform:logging",
     "//tensorflow/core/tpu:tpu_defs",
-    "//tensorflow/compiler/xla/stream_executor/lib",
     "//tensorflow/compiler/mlir/tf2xla:mlir_bridge_rollout_policy",
     "@llvm-project//mlir:TensorDialect",
 ]

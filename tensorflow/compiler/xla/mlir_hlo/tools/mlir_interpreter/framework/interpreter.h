@@ -59,6 +59,10 @@ struct InterpreterOptions {
   // trigger an assertion. This flag disables all alloctions, which can be
   // useful when debugging IR that includes a use-after-free bug.
   bool disableDeallocations = false;
+  std::function<void(llvm::StringRef)> errorHandler =
+      [](llvm::StringRef failure) {
+        llvm::errs() << "Interpreter failure: " << failure << "\n";
+      };
 };
 
 class InterpreterState {
@@ -75,6 +79,12 @@ class InterpreterState {
   }
   void addFailure(llvm::StringRef failure);
   bool hasFailure() const { return failed; }
+  void checkSuccess(LogicalResult result, llvm::StringRef failure) {
+    if (!result.succeeded()) {
+      addFailure(failure);
+    }
+  }
+
   InterpreterScope* getTopScope() { return topScope; }
   const mlir::SymbolTable& getSymbols() const { return symbols; }
   const InterpreterOptions& getOptions() { return options; }
@@ -106,13 +116,17 @@ class InterpreterScope {
       : state(state), parentScope(state.topScope) {
     state.topScope = this;
   }
-  ~InterpreterScope() { state.topScope = parentScope; }
+  ~InterpreterScope();
 
   void Set(Value v, InterpreterValue iv) { values[v] = std::move(iv); }
 
   const InterpreterValue& Get(Value v) {
     auto ret = values.find(v);
     if (ret == values.end()) {
+      if (!parentScope) {
+        v.dump();
+      }
+
       assert(parentScope && "value not found");
       return parentScope->Get(v);
     }

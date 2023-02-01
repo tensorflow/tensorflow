@@ -96,7 +96,18 @@ InterpreterState::InterpreterState(const mlir::SymbolTable& symbols,
 
 void InterpreterState::addFailure(llvm::StringRef failure) {
   failed = true;
-  llvm::errs() << "Interpreter failure: " << failure << "\n";
+  options.errorHandler(failure);
+}
+
+InterpreterScope::~InterpreterScope() {
+  for (auto& [_, value] : values) {
+    if (value.isTensor() && value.buffer()->hasOutOfBoundsAccess()) {
+      state.addFailure("Out of bounds access");
+      break;
+    }
+  }
+
+  state.topScope = parentScope;
 }
 
 mlir::FailureOr<SmallVector<InterpreterValue>> runInterpreter(

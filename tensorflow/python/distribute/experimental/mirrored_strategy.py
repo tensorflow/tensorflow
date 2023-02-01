@@ -28,6 +28,7 @@ from tensorflow.dtensor.python import mesh_util
 from tensorflow.python.data.experimental.ops import distribute
 from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute import distribute_utils
+from tensorflow.python.distribute import values as values_lib
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.util import nest
@@ -273,6 +274,55 @@ class MirroredExtended(distribute_lib.StrategyExtendedV2):
     map_fn = functools.partial(_convert_per_replica_to_dtensor, mesh=self._mesh)
     return nest.map_structure(map_fn, result)
 
+  def call_for_each_replica(self, fn, args, kwargs):
+    """Run `fn` once per replica.
+
+    This is a method that expected by the strategy base class in its `run()`.
+
+    Args:
+      fn: function to run (will be run once per replica).
+      args: Tuple or list with positional arguments for `fn`.
+      kwargs: Dict with keyword arguments for `fn`.
+
+    Returns:
+      Merged return value of `fn` across all replicas.
+    """
+    # Comparing to the existing MirroredStrategy, which will run the fn on
+    # each of the replica with individual thread, the DTensor will just run
+    # the fn once with the DTensor inputs, and the distribution will be handled
+    # by the DTensor.
+
+    distribute_lib._require_cross_replica_or_default_context_extended(self)   # pylint: disable=protected-access
+    if kwargs is None:
+      kwargs = {}
+
+    # For any value that is not DTensor, eg normal tf.Tensor or
+    # DistributedValues, we need to convert them into DTensor.
+    map_fn = functools.partial(_convert_inputs_to_dtensor, mesh=self._mesh)
+    d_args = nest.map_structure(map_fn, args)
+    d_kwargs = nest.map_structure(map_fn, kwargs)
+
+    with self._container_strategy().scope():
+      # TODO(scottzhu): Add support for get_replica_context() within the fn.
+      dtensor_result = fn(*d_args, **d_kwargs)
+
+    # Strategy requires to return a PerReplica instance
+    return distribute_utils.regroup(d_api.unpack(dtensor_result),
+                                    always_wrap=True)
+
+
+def _convert_inputs_to_dtensor(inputs, mesh):
+  if d_api.is_dtensor(inputs):
+    return inputs
+  elif isinstance(inputs, values_lib.DistributedValues):
+    return _convert_per_replica_to_dtensor(inputs, mesh)
+  else:
+    # For the rest of the types, we will convert it to dtensor.
+    # Any of the inputs will be replicate to all the devices.
+    rank = len(inputs.shape)
+    replicated_layout = layout.Layout.replicated(mesh, rank=rank)
+    return d_api.copy_to_mesh(inputs, replicated_layout)
+
 
 def _convert_per_replica_to_dtensor(per_replica_value, mesh):
   """Convert a PreReplica result to a DTensor instance.
@@ -287,10 +337,11 @@ def _convert_per_replica_to_dtensor(per_replica_value, mesh):
       layout.
   """
   values = per_replica_value.values
-  rank = len(values[0].shape)
+  if isinstance(values[0], (float, int)):
+    rank = 0
+  else:
+    rank = len(values[0].shape)
 
-  batch_layout = layout.Layout.batch_sharded(
-      mesh, batch_dim=_DEFAULT_BATCH_MESH_DIM_NAME, rank=rank)
   if rank == 0:
     result = []
     # dtensor.pack requires each component to have same rank as the packed
@@ -298,6 +349,14 @@ def _convert_per_replica_to_dtensor(per_replica_value, mesh):
     # 1D tensor.
     for v in values:
       result.append(array_ops.expand_dims_v2(v, axis=0))
+    rank += 1
   else:
     result = list(values)   # dtensor.pack requires a list as input.
+
+  # TODO(scottzhu): Note that the result tensor could be a partial value and
+  # not always batch shard or fully replicaed. See
+  # http://screenshot/6ERkXyX95KqftCw as an example.
+  batch_layout = layout.Layout.batch_sharded(
+      mesh, batch_dim=_DEFAULT_BATCH_MESH_DIM_NAME, rank=rank)
+
   return d_api.pack(result, batch_layout)

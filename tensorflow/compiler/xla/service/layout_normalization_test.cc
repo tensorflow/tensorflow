@@ -648,5 +648,22 @@ ENTRY main {
 )");
 }
 
+TEST_F(LayoutNormalizationTest, Clamp) {
+  const char* hlo = R"(
+HloModule m
+
+ENTRY main {
+  p0 = f32[64,1,32]{1,0,2} parameter(0)
+  p1 = f32[64,1,32]{1,0,2} parameter(1)
+  p2 = f32[64,1,32]{1,0,2} parameter(2)
+  ROOT out = f32[64,1,32]{1,0,2} clamp(f32[64,1,32]{1,0,2} p0, f32[64,1,32]{1,0,2} p1, f32[64,1,32]{1,0,2} p2), metadata={op_name="test"}
+}
+)";
+
+  CheckLayoutNormalization(hlo, R"(
+// CHECK: f32[32,64]{1,0} clamp({{.*}}, {{.*}}, {{.*}}), metadata={op_name="test"}
+)");
+}
+
 }  // namespace
 }  // namespace xla

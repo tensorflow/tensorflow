@@ -89,7 +89,7 @@ InterpreterValue subview(InterpreterState& state, memref::SubViewOp subview,
                                       dynamicStrides, subview);
   auto out = memref;
   auto& outView = out.view();
-  if (!outView.subview(v.offsets, v.sizes, v.strides)) {
+  if (!outView.subview(v.offsets, v.sizes, v.strides).succeeded()) {
     state.addFailure("subview out of bounds");
     return {};
   }

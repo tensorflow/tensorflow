@@ -33,6 +33,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/overflow_util.h"
 #include "tensorflow/compiler/xla/permutation_util.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
+#include "tensorflow/compiler/xla/printer.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
@@ -647,84 +648,107 @@ ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
   return IsScalar(shape) && shape.element_type() == element_type;
 }
 
-/* static */ std::string ShapeUtil::HumanString(const Shape& shape) {
+/* static */ void ShapeUtil::PrintHumanString(xla::Printer* printer,
+                                              const Shape& shape) {
   if (shape.IsTuple()) {
-    std::string text = "(";
+    printer->Append("(");
     const auto& tuple_shapes = shape.tuple_shapes();
     for (int64_t i = 0; i < tuple_shapes.size(); ++i) {
       const Shape& elem_shape = tuple_shapes[i];
       if (i != 0) {
-        StrAppend(&text, ", ");
+        printer->Append(", ");
         if (i % kAnnotationPrintInterval == 0) {
-          StrAppend(&text, absl::StrFormat("/*index=%lld*/", i));
+          printer->Append(absl::StrFormat("/*index=%lld*/", i));
         }
       }
-      StrAppend(&text, HumanString(elem_shape));
+      PrintHumanString(printer, elem_shape);
     }
-    text += ")";
-    return text;
+    printer->Append(")");
+    return;
   }
-  std::vector<std::string> dim_elements;
+  printer->Append(
+      primitive_util::LowercasePrimitiveTypeName(shape.element_type()));
+  printer->Append("[");
   const auto dimensions_size = shape.dimensions_size();
-  dim_elements.reserve(dimensions_size);
   for (int i = 0; i < dimensions_size; ++i) {
+    if (i != 0) printer->Append(",");
     if (shape.is_dynamic_dimension(i)) {
-      dim_elements.push_back(StrCat("<=", shape.dimensions(i)));
+      printer->Append(StrCat("<=", shape.dimensions(i)));
     } else {
-      dim_elements.push_back(StrCat(shape.dimensions(i)));
+      printer->Append(StrCat(shape.dimensions(i)));
     }
   }
-  return StrCat(
-      primitive_util::LowercasePrimitiveTypeName(shape.element_type()), "[",
-      absl::StrJoin(dim_elements, ","), "]");
+  printer->Append("]");
 }
 
-/* static */ std::string ShapeUtil::HumanStringWithLayout(const Shape& shape) {
+/* static */ void ShapeUtil::PrintHumanStringWithLayout(xla::Printer* printer,
+                                                        const Shape& shape) {
   if (shape.IsTuple()) {
-    std::string text = "(";
+    printer->Append("(");
     const auto& tuple_shapes = shape.tuple_shapes();
     for (int64_t i = 0; i < tuple_shapes.size(); ++i) {
       const Shape& elem_shape = tuple_shapes[i];
       if (i != 0) {
-        StrAppend(&text, ", ");
+        printer->Append(", ");
         if (i % kAnnotationPrintInterval == 0) {
-          StrAppend(&text, absl::StrFormat("/*index=%lld*/", i));
+          printer->Append(absl::StrFormat("/*index=%lld*/", i));
         }
       }
-      StrAppend(&text, HumanStringWithLayout(elem_shape));
+      PrintHumanStringWithLayout(printer, elem_shape);
     }
-    text += ")";
-    return text;
+    printer->Append(")");
+    return;
   }
-  std::string result = HumanString(shape);
+  PrintHumanString(printer, shape);
   if (shape.has_layout()) {
     if (IsScalar(shape)) {
       std::string layout_str = LayoutUtil::HumanString(shape.layout());
       // Don't print "{}" as layout for scalars.
       if (layout_str != "{}") {
-        StrAppend(&result, layout_str);
+        printer->Append(layout_str);
       }
     } else if (shape.IsArray()) {
-      StrAppend(&result, LayoutUtil::HumanString(shape.layout()));
+      LayoutUtil::PrintHumanString(printer, shape.layout());
     }
   }
-  return result;
+}
+
+/* static */ void ShapeUtil::PrintHumanString(
+    xla::Printer* printer, const ProgramShape& program_shape) {
+  printer->Append("(");
+  const auto& shape_parameters = program_shape.parameters();
+  for (int i = 0; i < shape_parameters.size(); ++i) {
+    const auto& shape = shape_parameters[i];
+    if (i != 0) printer->Append(", ");
+    if (i < program_shape.parameter_names_size()) {
+      printer->Append(program_shape.parameter_names(i));
+    } else {
+      printer->Append("(unknown)");
+    }
+    printer->Append(": ");
+    PrintHumanString(printer, shape);
+  }
+  printer->Append(") -> ");
+  PrintHumanString(printer, program_shape.result());
+}
+
+/* static */ std::string ShapeUtil::HumanString(const Shape& shape) {
+  StringPrinter printer;
+  PrintHumanString(&printer, shape);
+  return std::move(printer).ToString();
+}
+
+/* static */ std::string ShapeUtil::HumanStringWithLayout(const Shape& shape) {
+  StringPrinter printer;
+  PrintHumanStringWithLayout(&printer, shape);
+  return std::move(printer).ToString();
 }
 
 /* static */ std::string ShapeUtil::HumanString(
     const ProgramShape& program_shape) {
-  std::vector<std::string> parameters;
-  const auto& shape_parameters = program_shape.parameters();
-  parameters.reserve(shape_parameters.size());
-  for (const auto& shape : shape_parameters) {
-    const int i = parameters.size();
-    parameters.push_back(StrCat(i < program_shape.parameter_names_size()
-                                    ? program_shape.parameter_names(i)
-                                    : "(unknown)",
-                                ": ", HumanString(shape)));
-  }
-  return StrCat("(", absl::StrJoin(parameters, ", "), ") -> ",
-                HumanString(program_shape.result()));
+  StringPrinter printer;
+  PrintHumanString(&printer, program_shape);
+  return std::move(printer).ToString();
 }
 
 /* static */ bool ShapeUtil::SameDimensions(const Shape& lhs,

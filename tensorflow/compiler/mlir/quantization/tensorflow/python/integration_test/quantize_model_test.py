@@ -1335,15 +1335,17 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
       )
       if enable_per_channel_quantization:
         quantized_axis_attr = attr_value_pb2.AttrValue(i=3)
-        self.assertEqual(
-            self._count_ops(
-                output_graphdef,
-                _PerChannelQuantizedOps,
-                'rhs_quantization_axis',
-                quantized_axis_attr,
-            ),
-            self._count_ops(output_graphdef, _PerChannelQuantizedOps),
-        )
+      else:
+        quantized_axis_attr = attr_value_pb2.AttrValue(i=-1)
+      self.assertEqual(
+          self._count_ops(
+              output_graphdef,
+              _PerChannelQuantizedOps,
+              'rhs_quantization_axis',
+              quantized_axis_attr,
+          ),
+          self._count_ops(output_graphdef, _PerChannelQuantizedOps),
+      )
     else:
       self.assertTrue(self._contains_quantized_function_call(output_graphdef))
     self.assertFalse(self._contains_op(output_graphdef, 'FusedBatchNormV3'))
@@ -1612,15 +1614,17 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
       )
       if enable_per_channel_quantization:
         quantized_axis_attr = attr_value_pb2.AttrValue(i=3)
-        self.assertEqual(
-            self._count_ops(
-                output_graphdef,
-                _PerChannelQuantizedOps,
-                'rhs_quantization_axis',
-                quantized_axis_attr,
-            ),
-            self._count_ops(output_graphdef, _PerChannelQuantizedOps),
-        )
+      else:
+        quantized_axis_attr = attr_value_pb2.AttrValue(i=-1)
+      self.assertEqual(
+          self._count_ops(
+              output_graphdef,
+              _PerChannelQuantizedOps,
+              'rhs_quantization_axis',
+              quantized_axis_attr,
+          ),
+          self._count_ops(output_graphdef, _PerChannelQuantizedOps),
+      )
     else:
       self.assertTrue(self._contains_quantized_function_call(output_graphdef))
     self.assertFalse(self._contains_op(output_graphdef, 'FusedBatchNormV3'))

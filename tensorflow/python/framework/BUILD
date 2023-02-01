@@ -246,6 +246,7 @@ py_library(
         ":op_def_registry",
         ":ops",
         ":registry",
+        ":tensor_conversion_registry",
         ":tensor_shape",
         ":versions",
     ],
@@ -375,6 +376,7 @@ py_library(
         ":tensor_shape",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python/eager:execute",
+        "//tensorflow/python/framework:tensor_conversion_registry",
         "//tensorflow/python/profiler:trace",
     ],
 )
@@ -1076,9 +1078,12 @@ py_library(
         ":tensor_conversion_registry",
         ":tensor_shape",
         ":type_spec",
+        "//tensorflow/python:tf2",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/types",
         "//tensorflow/python/util",
+        "//tensorflow/python/util:tf_export",
+        "//third_party/py/numpy",
     ],
 )
 

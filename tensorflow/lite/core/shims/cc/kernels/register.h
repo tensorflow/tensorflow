@@ -15,9 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_CORE_SHIMS_CC_KERNELS_REGISTER_H_
 #define TENSORFLOW_LITE_CORE_SHIMS_CC_KERNELS_REGISTER_H_
 
-/// For documentation,
-/// see third_party/tensorflow/lite/kernels/register.h.
-#include "tensorflow/lite/kernels/register.h"
+#include "tensorflow/lite/core/kernels/register.h"
 
 namespace tflite_shims {
 namespace ops {

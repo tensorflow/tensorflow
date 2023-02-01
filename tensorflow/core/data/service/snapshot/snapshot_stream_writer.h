@@ -139,6 +139,10 @@ class SnapshotStreamWriter {
   // cancelled.
   Status WriteSnapshot();
 
+  // Returns true if the stream is already completed and there is no additional
+  // work to perform.
+  bool StreamAlreadyCompleted() const;
+
   // Creates directories to store uncommitted chunks and checkpoints.
   Status InitializeDirectories();
 
@@ -178,6 +182,9 @@ class SnapshotStreamWriter {
 
   // After committing a checkpoint, deletes the previous checkpoints.
   Status DeleteOutdatedCheckpoints();
+
+  // Deletes all checkpoints.
+  Status DeleteCheckpoints();
 
   // Restores from the last checkpoint.
   Status Restore();

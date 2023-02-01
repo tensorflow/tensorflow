@@ -75,7 +75,7 @@ bool AllReduceOp::bufferizesToMemoryWrite(
   return !bufferizesToMemoryRead(opOperand, state);
 }
 
-SmallVector<OpResult> AllReduceOp::getAliasingOpResult(
+bufferization::AliasingOpResultList AllReduceOp::getAliasingOpResults(
     OpOperand &opOperand, const bufferization::AnalysisState &) {
   if (opOperand.getOperandNumber() < getNumOperands() / 2) {
     return {};

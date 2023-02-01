@@ -14,20 +14,21 @@
 # ==============================================================================
 """Test for Python APIs accessing MHLO types."""
 
-# pylint: disable=wildcard-import,undefined-variable
+# pylint: disable=wildcard-import,undefined-variable,missing-function-docstring
 
-from mlir.dialects.mhlo import *
-from mlir.ir import *
+from mlir import ir
+from mlir.dialects import mhlo
 
 
 def run(f):
-  with Context() as context:
-    register_mhlo_dialect(context)
+  with ir.Context() as context:
+    mhlo.register_mhlo_dialect(context)
     f()
   return f
 
 
 @run
 def test_token_type():
-  """Check that the Token type is available."""
-  assert str(TokenType.get()) == "!mhlo.token"
+  token_type = mhlo.TokenType.get()
+  assert token_type is not None
+  assert str(token_type) == "!mhlo.token"

@@ -23,8 +23,8 @@ limitations under the License.
 #include <vector>
 
 #include "absl/types/span.h"
-#include "tensorflow/compiler/xla/python/pjrt_ifrt/pjrt_executable.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
+#include "tensorflow/compiler/xla/python/pjrt_ifrt/pjrt_executable.h"
 #include "tensorflow/compiler/xla/python/py_buffer.h"
 #include "tensorflow/compiler/xla/python/py_client.h"
 #include "tensorflow/compiler/xla/python/traceback.h"
@@ -106,9 +106,7 @@ class PyLoadedExecutable
     TF_CHECK_OK(ifrt_loaded_executable_->Delete().Await());
   }
 
-  bool is_deleted() {
-    return ifrt_loaded_executable_->IsDeleted();
-  }
+  bool is_deleted() { return ifrt_loaded_executable_->IsDeleted(); }
 
   StatusOr<std::vector<PyBuffer::object>> Execute(
       absl::Span<PyBuffer::object const> args, PjRtDevice* device);
@@ -176,9 +174,8 @@ class PyLoadedExecutable
   void KeepAlive(pybind11::object obj);
 
  private:
-  StatusOr<std::pair<std::vector<PyBuffer::object>, PyToken>> ExecuteInternal(
-      absl::Span<PyBuffer::object const> args, PjRtDevice* device,
-      std::optional<std::vector<PjRtFuture<Status>>>& returned_futures);
+  StatusOr<std::pair<std::vector<PyBuffer::object>, ifrt::Future<Status>>>
+  ExecuteInternal(absl::Span<PyBuffer::object const> args, PjRtDevice* device);
 
   friend class PyClient;
 

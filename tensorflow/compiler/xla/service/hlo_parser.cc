@@ -937,6 +937,7 @@ bool HloParserImpl::ParseHloModule(HloModule* module,
   std::optional<bool> alias_passthrough_params;
   absl::flat_hash_map<std::string, AttrConfig> attrs;
   std::optional<ComputationLayout> entry_computation_layout;
+  std::optional<bool> allow_spmd_sharding_propagation_to_output;
 
   attrs["is_scheduled"] = {/*required=*/false, AttrTy::kBool, &is_scheduled};
   attrs["input_output_alias"] = {/*required=*/false, AttrTy::kAliasing,
@@ -946,6 +947,9 @@ bool HloParserImpl::ParseHloModule(HloModule* module,
   attrs["entry_computation_layout"] = {/*required=*/false,
                                        AttrTy::kComputationLayout,
                                        &entry_computation_layout};
+  attrs["allow_spmd_sharding_propagation_to_output"] = {
+      /*required=*/false, AttrTy::kBool,
+      &allow_spmd_sharding_propagation_to_output};
 
   if (!parse_module_without_header) {
     if (lexer_.GetKind() != TokKind::kw_HloModule) {
@@ -976,17 +980,21 @@ bool HloParserImpl::ParseHloModule(HloModule* module,
 
   module->set_name(name);
 
-  if (is_scheduled.has_value() && *is_scheduled) {
+  if (is_scheduled.value_or(false)) {
     TF_CHECK_OK(module->set_schedule(ScheduleFromInstructionOrder(module)));
   }
   HloModuleConfig config = module->config();
   bool default_config = true;
-  if (alias_passthrough_params.has_value() && *alias_passthrough_params) {
+  if (alias_passthrough_params.value_or(false)) {
     config.set_alias_passthrough_params(true);
     default_config = false;
   }
   if (entry_computation_layout.has_value()) {
     *config.mutable_entry_computation_layout() = *entry_computation_layout;
+    default_config = false;
+  }
+  if (allow_spmd_sharding_propagation_to_output.value_or(false)) {
+    config.set_allow_spmd_sharding_propagation_to_output(true);
     default_config = false;
   }
   if (!default_config) {

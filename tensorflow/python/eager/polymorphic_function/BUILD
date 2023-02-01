@@ -391,6 +391,8 @@ py_library(
         "//tensorflow/core/function/trace_type",
         "//tensorflow/python:random_ops",
         "//tensorflow/python/eager:context",
+        "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:tensor_spec",
         "//tensorflow/python/util",
     ],

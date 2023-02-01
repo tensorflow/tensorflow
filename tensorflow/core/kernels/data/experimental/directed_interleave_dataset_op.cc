@@ -219,6 +219,9 @@ class DirectedInterleaveDatasetOp::Dataset : public DatasetBase {
             return OkStatus();
           }
 
+          // End of selected input here. Do cleanup on checkpoints.
+          ctx->PurgeCheckpoint(data_input_impls_[selected_input]->prefix());
+
           if (dataset()->stop_on_empty_dataset_) {
             *end_of_sequence = true;
             ResetInputs();

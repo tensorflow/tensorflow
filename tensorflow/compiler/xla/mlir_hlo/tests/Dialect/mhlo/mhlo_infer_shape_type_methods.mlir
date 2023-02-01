@@ -322,6 +322,28 @@ func.func @concat_bounds_unranked_c1(
   func.return %1 : tensor<*xindex>
 }
 
+// -----
+
+// CHECK-LABEL: while_bounds
+func.func @while_bounds(
+  %while_arg_1: tensor<2x?xi32, #mhlo.type_extensions<bounds = [?, 4]>>,
+  %while_arg_2: tensor<3xf32>) -> tensor<*xindex> {
+  %1:2 = "mhlo.while"(%while_arg_1, %while_arg_2) ({
+  ^bb0(%arg1: tensor<2x?xi32, #mhlo.type_extensions<bounds = [?, 4]>>, %arg2: tensor<3xf32>):
+    %2 = mhlo.constant dense<1> : tensor<i1>
+    "mhlo.return"(%2) : (tensor<i1>) -> ()
+  },  {
+  ^bb0(%arg1: tensor<2x?xi32, #mhlo.type_extensions<bounds = [?, 4]>>, %arg2: tensor<3xf32>):
+    "mhlo.return"(%arg1, %arg2) : (tensor<2x?xi32, #mhlo.type_extensions<bounds = [?, 4]>>, tensor<3xf32>) -> ()
+  }) : (tensor<2x?xi32, #mhlo.type_extensions<bounds = [?, 4]>>, tensor<3xf32>) -> (tensor<*xi32>, tensor<*xf32>)
+  // CHECK: types0 = tensor<2x?xi32, #mhlo.type_extensions<bounds = [?, 4]>>,
+  // CHECK-SAME: types1 = tensor<3xf32>
+  %3 = "mhlo_test.get_return_types"(%1) : (tensor<*xi32>) -> tensor<*xindex>
+  func.return %3 : tensor<*xindex>
+}
+
+// -----
+
 // CHECK-LABEL: @gather
 func.func @gather(%operand : tensor<2x4x9xi32>, %start_indices : tensor<1x5x2xi32>) -> tensor<1x5x8xindex> {
   %res = "mhlo.gather"(%operand, %start_indices) {

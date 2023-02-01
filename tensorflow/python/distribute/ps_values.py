@@ -30,6 +30,7 @@ from tensorflow.python.distribute.coordinator import coordinator_context
 from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_conversion_registry
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import lookup_ops
@@ -532,8 +533,8 @@ def _tensor_conversion_aggregate(var, dtype=None, name=None, as_ref=False):
   return var._dense_var_to_tensor(dtype, name, as_ref)  # pylint: disable=protected-access
 
 
-ops.register_tensor_conversion_function(AggregatingVariable,
-                                        _tensor_conversion_aggregate)
+tensor_conversion_registry.register_tensor_conversion_function(
+    AggregatingVariable, _tensor_conversion_aggregate)
 
 
 # Register a conversion function which reads the value of the variable,
@@ -542,8 +543,8 @@ def _tensor_conversion_caching(var, dtype=None, name=None, as_ref=False):
   return var._dense_var_to_tensor(dtype, name, as_ref)  # pylint: disable=protected-access
 
 
-ops.register_tensor_conversion_function(CachingVariable,
-                                        _tensor_conversion_caching)
+tensor_conversion_registry.register_tensor_conversion_function(
+    CachingVariable, _tensor_conversion_caching)
 
 CachingVariable._overload_overloadable_operators()  # pylint: disable=protected-access
 

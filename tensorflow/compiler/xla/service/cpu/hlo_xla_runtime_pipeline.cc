@@ -167,7 +167,7 @@ static Status CreateHloXlaPipeline(
     gml_st_opts.matmulTileSizes = {4, 4, 4};
     gml_st_opts.lowerToMmt4d = true;
 
-    mlir::gml_st::addTileableOpsTransformationsForCPU(pm, gml_st_opts);
+    mlir::gml_st::addCPUTilingPipeline(pm, gml_st_opts);
   } else {
     pm.addNestedPass<mlir::func::FuncOp>(
         mlir::createLinalgElementwiseOpFusionPass());

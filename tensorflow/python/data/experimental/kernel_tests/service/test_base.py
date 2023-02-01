@@ -32,6 +32,8 @@ NO_WORK_DIR = ""
 # We use a faster than normal heartbeat interval so that tests run faster.
 TEST_HEARTBEAT_INTERVAL_MS = 100
 TEST_DISPATCHER_TIMEOUT_MS = 1000
+TEST_WORKER_TIMEOUT_MS = 200
+TEST_JOB_GC_CHECK_INTERNAL_MS = 1000
 PROTOCOL = "grpc"
 
 
@@ -128,16 +130,19 @@ class TestWorker:
 class TestCluster:
   """Test tf.data service cluster."""
 
-  def __init__(self,
-               num_workers,
-               dispatcher_port=0,
-               work_dir=TMP_WORK_DIR,
-               fault_tolerant_mode=True,
-               job_gc_check_interval_ms=None,
-               job_gc_timeout_ms=None,
-               worker_shutdown_quiet_period_ms=0,
-               start=True,
-               data_transfer_protocol=None):
+  def __init__(
+      self,
+      num_workers,
+      dispatcher_port=0,
+      work_dir=TMP_WORK_DIR,
+      fault_tolerant_mode=True,
+      job_gc_check_interval_ms=TEST_JOB_GC_CHECK_INTERNAL_MS,
+      job_gc_timeout_ms=None,
+      worker_timeout_ms=TEST_WORKER_TIMEOUT_MS,
+      worker_shutdown_quiet_period_ms=0,
+      start=True,
+      data_transfer_protocol=None,
+  ):
     """Creates a tf.data service test cluster.
 
     Args:
@@ -153,6 +158,8 @@ class TestCluster:
         delete old and unused jobs, in milliseconds.
       job_gc_timeout_ms: How long a job needs to be unused before it becomes a
         candidate for garbage collection, in milliseconds.
+      worker_timeout_ms: How long to wait for a worker to heartbeat before
+        considering it missing, in milliseconds.
       worker_shutdown_quiet_period_ms: When shutting down a worker, how long to
         wait for the gRPC server to process the final requests.
       start: Whether to immediately start the servers in the cluster. If
@@ -172,8 +179,11 @@ class TestCluster:
             protocol=PROTOCOL,
             fault_tolerant_mode=fault_tolerant_mode,
             job_gc_check_interval_ms=job_gc_check_interval_ms,
-            job_gc_timeout_ms=job_gc_timeout_ms),
-        start=start)
+            job_gc_timeout_ms=job_gc_timeout_ms,
+            worker_timeout_ms=worker_timeout_ms,
+        ),
+        start=start,
+    )
 
     self.workers = []
     for _ in range(num_workers):
@@ -232,6 +242,9 @@ class TestCluster:
 
   def num_tasks_on_workers(self):
     return sum(worker.num_tasks() for worker in self.workers)
+
+  def snapshot_streams(self, path):
+    return self.dispatcher._snapshot_streams(path)
 
   def __del__(self):
     # Destroy workers before the dispatcher for clean shutdown.

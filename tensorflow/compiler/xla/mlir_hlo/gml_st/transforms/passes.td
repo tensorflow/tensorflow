@@ -76,11 +76,10 @@ def TilingSoftmaxPass : Pass<"gml-tiling-softmax", "mlir::func::FuncOp"> {
   ];
 }
 
-def GreedyTilingAndFusionPass : Pass<"gml-greedy-tiling-and-fusion",
-    "mlir::func::FuncOp"> {
+def GreedyFusionPass : Pass<"gml-greedy-fusion", "mlir::func::FuncOp"> {
   let summary = "Pass to tile the root operation and to greedily fuse "
       "producers into it.";
-  let constructor = "::mlir::gml_st::createGreedyTilingAndFusionPass()";
+  let constructor = "::mlir::gml_st::createGreedyFusionPass()";
   let options = [
     Option<"distribute", "distribute", "bool", /*default=*/"true",
            "Generate gml_st.parallel or gml_st.for">,
@@ -107,10 +106,10 @@ def CollapseShapePass : Pass<"gml-collapse-shape", "mlir::func::FuncOp"> {
   let dependentDialects = ["::mlir::tensor::TensorDialect"];
 }
 
-def CollapseMaterializeOpsPass : Pass<"gml-collapse-materialize-ops",
+def ComposeExtractInsertSlicePass : Pass<"gml-compose-extract-insert-slice",
     "mlir::func::FuncOp"> {
-  let summary = "Collapse (or uncollapse) materialize operations.";
-  let constructor = "::mlir::gml_st::createCollapseMaterializeOpsPass()";
+  let summary = "Compose tensor.extract_slice/insert_slice ops.";
+  let constructor = "::mlir::gml_st::createComposeExtractInsertSlicePass()";
 }
 
 def GmlStToScf : Pass<"gml-st-to-scf", "mlir::func::FuncOp"> {
@@ -148,12 +147,9 @@ def GmlStSimtfyPass : Pass<"gml-st-simtfy", "mlir::func::FuncOp"> {
   ];
 }
 
-def VectorizeGmlStLoopsPass :
-    Pass<"vectorize-gml-st-loops", "mlir::func::FuncOp"> {
-  let summary =
-      "Pass to vectorize linalg.generic ops tiled to gml_st.parallel and " #
-      "gml_st.for loops.";
-  let constructor = "::mlir::gml_st::createVectorizeGmlStLoopsPass()";
+def VectorizeForGPUPass : Pass<"vectorize-for-gpu", "mlir::func::FuncOp"> {
+  let summary = "Pass to vectorize compute ops and gml_st.loops.";
+  let constructor = "::mlir::gml_st::createVectorizeForGPUPass()";
   let options = [
     Option<"vectorizeGmlStOps", "vectorize-gml-st-ops", "bool", "false",
            "If true, vectorizes GmlSt ops in addition to linalg ops">,
@@ -166,10 +162,9 @@ def VectorizeGmlStLoopsPass :
   let dependentDialects = ["::mlir::vector::VectorDialect"];
 }
 
-def VectorizePerfectlyTiledLoopsPass :
-    Pass<"vectorize-perfectly-tiled-loops", "mlir::func::FuncOp"> {
+def VectorizeForCPUPass : Pass<"vectorize-for-cpu", "mlir::func::FuncOp"> {
   let summary = "Pass to vectorize gml_st.for loops that are tiled perfectly.";
-  let constructor = "::mlir::gml_st::createVectorizePerfectlyTiledLoopsPass()";
+  let constructor = "::mlir::gml_st::createVectorizeForCPUPass()";
   let dependentDialects = [
     "::mlir::vector::VectorDialect",
     "::mlir::tensor::TensorDialect"
@@ -317,4 +312,11 @@ def TransformSortForCpuPass :
   let summary = "Transform sort ops for running on CPU";
 
   let constructor = "createTransformSortForCpuPass()";
+}
+
+def AddDebugInfoPass :
+    Pass<"add-debug-info", "mlir::ModuleOp"> {
+  let summary = "Add debug info for the whole module";
+  let constructor = "::mlir::gml_st::createAddDebugInfoPass()";
+  let dependentDialects = ["::mlir::LLVM::LLVMDialect"];
 }

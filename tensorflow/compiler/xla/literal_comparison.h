@@ -30,6 +30,11 @@ namespace literal_comparison {
 // primitive types.
 Status EqualShapes(const Shape& expected, const Shape& actual);
 
+// Returns ok if the given literals share identical dynamic shapes and
+// dimension sizes.
+Status EqualDynamicShapesAndDimensions(const LiteralSlice& expected,
+                                       const LiteralSlice& actual);
+
 // Returns ok if the expected and actual literals are (bitwise) equal for all
 // elements in the literal. Also, asserts that the rank, dimensions sizes, and
 // primitive type are equal.

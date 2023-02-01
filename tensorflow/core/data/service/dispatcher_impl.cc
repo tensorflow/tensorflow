@@ -24,6 +24,8 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "tensorflow/tsl/platform/errors.h"
+
 #ifdef PLATFORM_GOOGLE
 #include "file/logging/log_lines.h"
 #endif
@@ -1081,6 +1083,21 @@ Status DataServiceDispatcherImpl::Snapshot(const SnapshotRequest* request,
   return OkStatus();
 }
 
+Status DataServiceDispatcherImpl::GetSnapshotStreams(
+    const GetSnapshotStreamsRequest* request,
+    GetSnapshotStreamsResponse* response) {
+  TF_RETURN_IF_ERROR(CheckStarted());
+  mutex_lock l(mu_);
+
+  auto it = snapshots_.find(request->path());
+  if (it == snapshots_.end()) {
+    return errors::InvalidArgument(
+        "the dispatcher does not know of a snapshot at ", request->path());
+  }
+  TF_RETURN_IF_ERROR(it->second->GetSnapshotStreams(*response));
+  return OkStatus();
+}
+
 Status DataServiceDispatcherImpl::GetSnapshotSplit(
     const GetSnapshotSplitRequest* request,
     GetSnapshotSplitResponse* response) {
@@ -1196,6 +1213,11 @@ void DataServiceDispatcherImpl::MaintenanceThread() {
         LOG(WARNING) << "Error garbage collecting old iterations: " << s;
       }
     }
+    {
+      for (const auto& [ignore, snapshot_manager] : snapshots_) {
+        snapshot_manager->UpdateStreams();
+      }
+    }
     DetectMissingWorkers();
     next_check_micros =
         env_->NowMicros() + (config_.job_gc_check_interval_ms() * 1000);
@@ -1228,7 +1250,9 @@ void DataServiceDispatcherImpl::DetectMissingWorkers()
        it != latest_worker_heartbeats_time_.end();) {
     if (absl::FromUnixMicros(now) >
         it->second + absl::Milliseconds(config_.worker_timeout_ms())) {
-      // TODO(mpcallanan): Alert snapshot manager.
+      for (const auto& [ignore, snapshot_manager] : snapshots_) {
+        snapshot_manager->HandleMissingWorker(it->first);
+      }
       LOG(INFO) << "Lost worker " << it->first << " due to timeout";
       latest_worker_heartbeats_time_.erase(it++);
     } else {

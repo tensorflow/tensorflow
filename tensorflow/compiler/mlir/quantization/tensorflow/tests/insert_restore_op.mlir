@@ -15,8 +15,8 @@ module attributes {tf_saved_model.semantics} {
   }
 
 // CHECK: func.func @init_func_restore_op
-// Check that an argument ("file_prefix") is created.
-// CHECK-SAME: %[[ARG_0:.*]]: tensor<!tf_type.string> {tf_saved_model.index_path = ["file_prefix"]}
+// Check that an argument ("__tf_file_prefix") is created.
+// CHECK-SAME: %[[ARG_0:.*]]: tensor<!tf_type.string> {tf_saved_model.index_path = ["__tf_file_prefix"]}
 
 // CHECK-DAG: %[[VAR_HANDLE:.*]] = "tf.VarHandleOp"() {{.*shared_name = "var_0".*}} : () -> tensor<!tf_type.resource<tensor<2xf32>>>
 // CHECK-DAG: %[[CST_0:.*]] = "tf.Const"() {{.*value = dense<"var_0"> : tensor<1x!tf_type.string>.*}}
@@ -47,8 +47,8 @@ module attributes {tf_saved_model.semantics} {
   }
 
 // CHECK: func.func @init_func_restore_op_multiple_variables
-// Check that an argument ("file_prefix") is created.
-// CHECK-SAME: %[[ARG_0:.*]]: tensor<!tf_type.string> {tf_saved_model.index_path = ["file_prefix"]}
+// Check that an argument ("__tf_file_prefix") is created.
+// CHECK-SAME: %[[ARG_0:.*]]: tensor<!tf_type.string> {tf_saved_model.index_path = ["__tf_file_prefix"]}
 
 // CHECK-DAG: %[[VAR_HANDLE_0:.*]] = "tf.VarHandleOp"() {{.*shared_name = "var_0".*}} : () -> tensor<!tf_type.resource<tensor<2xf32>>>
 // CHECK-DAG: %[[VAR_HANDLE_1:.*]] = "tf.VarHandleOp"() {{.*shared_name = "var_1".*}} : () -> tensor<!tf_type.resource<tensor<4xi32>>>
@@ -108,8 +108,8 @@ module attributes {tf_saved_model.semantics} {
   }
 
 // CHECK: func.func @init_func_restore_op_multiple_variables_sharing_const
-// Check that an argument ("file_prefix") is created.
-// CHECK-SAME: %[[ARG_0:.*]]: tensor<!tf_type.string> {tf_saved_model.index_path = ["file_prefix"]}
+// Check that an argument ("__tf_file_prefix") is created.
+// CHECK-SAME: %[[ARG_0:.*]]: tensor<!tf_type.string> {tf_saved_model.index_path = ["__tf_file_prefix"]}
 
 // CHECK-DAG: %[[VAR_HANDLE_0:.*]] = "tf.VarHandleOp"() {{.*shared_name = "var_0".*}} : () -> tensor<!tf_type.resource<tensor<2xf32>>>
 // CHECK-DAG: %[[VAR_HANDLE_1:.*]] = "tf.VarHandleOp"() {{.*shared_name = "var_1".*}} : () -> tensor<!tf_type.resource<tensor<2xf32>>>
