@@ -1273,13 +1273,28 @@ LogicalResult GatherOp::inferReturnTypeComponents(
 // Canonicalize mhlo.dynamic_gather to mhlo.gather when slice_sizes is constant.
 LogicalResult simplifyDynamicGatherToGather(DynamicGatherOp op,
                                             PatternRewriter& rewriter) {
-  DenseIntElementsAttr sliceSizes;
-  if (!matchPattern(op.getSliceSizes(), m_Constant(&sliceSizes))) {
+  DenseIntElementsAttr dynamicGatherSliceSizes;
+  if (!matchPattern(op.getSliceSizes(), m_Constant(&dynamicGatherSliceSizes))) {
     return failure();
   }
+
+  // DynamicGatherOp's slice_sizes is 1DTensorOf<[HLO_DimensionValue]>
+  // where HLO_DimensionValue is AnyTypeOf<[Index, HLO_Int]>.
+  // However, GatherOp's slice_sizes is I64ElementsAttr.
+  // Therefore, we need to convert the elements in case there is a mismatch
+  // of element types.
+  DenseIntElementsAttr gatherSliceSizes = dynamicGatherSliceSizes;
+  if (!dynamicGatherSliceSizes.getType().getElementType().isInteger(64)) {
+    SmallVector<int64_t> sliceSizes;
+    for (APInt sliceSize : dynamicGatherSliceSizes.getValues<APInt>()) {
+      sliceSizes.push_back(sliceSize.getSExtValue());
+    }
+    gatherSliceSizes = rewriter.getI64TensorAttr(sliceSizes);
+  }
+
   rewriter.replaceOpWithNewOp<mhlo::GatherOp>(
       op, op.getOperand(), op.getStartIndices(), op.getDimensionNumbersAttr(),
-      sliceSizes, op.getIndicesAreSortedAttr());
+      gatherSliceSizes, op.getIndicesAreSortedAttr());
   return success();
 }
 
