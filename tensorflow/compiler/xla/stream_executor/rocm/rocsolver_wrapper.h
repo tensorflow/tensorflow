@@ -26,7 +26,6 @@ limitations under the License.
 #else
 #include "rocm/include/rocsolver.h"
 #endif
-#include "tensorflow/compiler/xla/stream_executor/lib/env.h"
 #include "tensorflow/compiler/xla/stream_executor/platform/dso_loader.h"
 #include "tensorflow/compiler/xla/stream_executor/platform/port.h"
 #include "tensorflow/tsl/platform/env.h"
