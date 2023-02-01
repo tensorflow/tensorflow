@@ -338,7 +338,8 @@ llvm::SmallSetVector<Value, 4> GetStaticExternalOperands(
   llvm::SmallSetVector<Value, 4> external_values;
   for (Operation* op : cluster_ops) {
     op->walk([&](Operation* walked_op) {
-      if (llvm::isa<TF::_XlaRecvAtHostV2Op, TF::_XlaSendFromHostV2Op>(
+      if (llvm::isa<TF::_XlaRecvAtHostOp, TF::_XlaRecvAtHostV2Op,
+                    TF::_XlaSendFromHostOp, TF::_XlaSendFromHostV2Op>(
               walked_op))
         return WalkResult::advance();
       for (Value v : walked_op->getOperands()) {
@@ -347,7 +348,10 @@ llvm::SmallSetVector<Value, 4> GetStaticExternalOperands(
           if (!op->isAncestor(defining_op) &&
               tpu_cluster->isAncestor(defining_op) &&
               !HasOutsideCompilationAncestor(defining_op) &&
-              !llvm::isa<TF::_XlaRecvAtHostV2Op>(defining_op)) {
+              // Ignore operands that have already been received by a previously
+              // created cluster.
+              !llvm::isa<TF::_XlaRecvAtHostOp, TF::_XlaRecvAtHostV2Op>(
+                  defining_op)) {
             external_values.insert(v);
           }
           continue;

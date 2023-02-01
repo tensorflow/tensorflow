@@ -1806,6 +1806,27 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
     func.return
   }
 
+  // Reproducer for an operand #x does not dominate this use
+
+  // CHECK-LABEL: func @op_dominate_repro
+  func.func @op_dominate_repro(%writer: tensor<*x!tf_type.resource> {tf.device = "/job:localhost/replica:0/task:0/device:CPU:0"}) -> () {
+    %step = "tf.Const"() {device = "", value = dense<0> : tensor<i64>} : () -> tensor<i64>
+    %tag = "tf.Const"() {device = "", value = dense<""> : tensor<!tf_type.string>} : () -> tensor<!tf_type.string>
+    %wmetadata = "tf.Const"() {device = "", value = dense<""> : tensor<!tf_type.string>} : () -> tensor<!tf_type.string>
+    %pred = "tf.Const"() {device = "", value = dense<0> : tensor<i1>} : () -> tensor<i1>
+    "tf_device.cluster"() ({
+      "tf.IfRegion"(%pred) ({
+        %wtensor = "tf.Const"() {device = "", value = dense<0.0> : tensor<f32>} : () -> tensor<f32>
+        "tf.WriteSummary"(%writer, %step, %wtensor, %tag, %wmetadata) {_xla_outside_compilation = "auto"} : (tensor<*x!tf_type.resource>, tensor<i64>, tensor<f32>, tensor<!tf_type.string>, tensor<!tf_type.string>) -> ()
+        "tf.WriteSummary"(%writer, %step, %wtensor, %tag, %wmetadata) {_xla_outside_compilation = "auto"} : (tensor<*x!tf_type.resource>, tensor<i64>, tensor<f32>, tensor<!tf_type.string>, tensor<!tf_type.string>) -> ()
+        "tf.Yield"() : () -> ()
+      }, {
+        "tf.Yield"() : () -> ()
+      }) {is_stateless = false} : (tensor<i1>) -> ()
+      tf_device.return
+    }) {_replication_info = "cluster__train_single_step", _xla_compile_device_type = "TPU", allow_soft_placement = true, computation_shape = [], device = "", device_assignment = [], host_compute_core = [], num_cores_per_replica = 1 : i64, num_replicas = 1, padding_map = [], step_marker_location = "STEP_MARK_AT_ENTRY", topology = "", tpu_compile_options_proto = "", use_spmd_for_xla_partitioning = false, use_tpu = true} : () -> ()
+    return
+  }
 }
 
 // -----
