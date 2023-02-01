@@ -42,7 +42,7 @@ def cuda_default_copts():
     return if_cuda([
         "-x", "cuda",
         "-DGOOGLE_CUDA=1",
-        "-Xcuda-fatbinary=--compress-all",
+        "-Xcuda-fatbinary", "--compress-all",
     ] + %{cuda_extra_copts}) + if_cuda_clang_opt(
         # Some important CUDA optimizations are only enabled at O3.
         ["-O3"]
