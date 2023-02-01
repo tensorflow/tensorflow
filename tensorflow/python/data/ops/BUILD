@@ -156,6 +156,7 @@ py_library(
         "//tensorflow/python/trackable:asset",
         "//tensorflow/python/trackable:base",
         "//tensorflow/python/trackable:resource",
+        "//tensorflow/python/types",
         "//third_party/py/numpy",
     ],
 )
