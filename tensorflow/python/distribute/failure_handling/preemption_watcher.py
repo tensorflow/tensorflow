@@ -71,7 +71,7 @@ class PreemptionWatcher:
       train_model(strategy)
       keep_running = False
     except Exception as e:
-      if preemption_watcher and preemption_watcher.preemption_msg:
+      if preemption_watcher and preemption_watcher.preemption_message:
         keep_running = True
       else:
         raise e
