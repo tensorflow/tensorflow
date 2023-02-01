@@ -97,6 +97,17 @@ class DynamicStitchOpImplBase : public OpKernel {
 
     *first_dim_size = max_index + 1;
 
+    for (const Tensor& indices : *indices_inputs) {
+      auto indices_vec = indices.flat<int32>();
+
+      for (int i = 0; i < indices_vec.size(); i++) {
+        int32_t index = internal::SubtleMustCopy(indices_vec(i));
+        OP_REQUIRES(
+            c, FastBoundsCheck(index, *first_dim_size),
+            errors::InvalidArgument("indices[", i, "] is out of range"));
+      }
+    }
+
     // Validate that data[i].shape = indices[i].shape + constant
     OP_REQUIRES_OK(c, c->input_list("data", data_inputs));
     const Tensor& data0 = (*data_inputs)[0];
@@ -265,9 +276,6 @@ class DynamicStitchOpImplCPU : public DynamicStitchOpImplBase<T> {
           const T* data_base = data_flat.data();
           for (int i = 0; i < indices_vec.size(); i++) {
             int32_t index = internal::SubtleMustCopy(indices_vec(i));
-            OP_REQUIRES(
-                c, FastBoundsCheck(index, first_dim_size),
-                errors::InvalidArgument("indices[", i, "] is out of range"));
             memcpy(merged_base + index * slice_size, data_base + i * slice_size,
                    slice_bytes);
           }
@@ -277,9 +285,6 @@ class DynamicStitchOpImplCPU : public DynamicStitchOpImplBase<T> {
             // Copy slice data[i] to merged[indices[i]]
             Eigen::DSizes<Eigen::DenseIndex, 2> data_indices(i, 0);
             int32_t index = internal::SubtleMustCopy(indices_vec(i));
-            OP_REQUIRES(
-                c, FastBoundsCheck(index, first_dim_size),
-                errors::InvalidArgument("indices[", i, "] is out of range"));
             Eigen::DSizes<Eigen::DenseIndex, 2> merged_indices(index, 0);
             merged_flat.slice(merged_indices, sizes) =
                 data_flat.slice(data_indices, sizes);
