@@ -22,27 +22,67 @@ limitations under the License.
 namespace xla {
 namespace {
 
-TEST(RunHloModuleTest, AddHlo) {
-  // Get relevant paths to run_hlo_module and add.hlo
-  std::string run_hlo_module_bin =
-      tsl::io::JoinPath(tsl::testing::XlaSrcRoot(), "tools", "run_hlo_module");
+class RunHloModuleTest : public ::testing::Test {
+ protected:
+  void RunHlo(const std::string& file_name) {
+    std::string run_hlo_module_bin = tsl::io::JoinPath(
+        tsl::testing::XlaSrcRoot(), "tools", "run_hlo_module");
 
-  std::string add_hlo_path =
-      tsl::io::JoinPath(tsl::testing::XlaSrcRoot(), "tools", "add.hlo");
+    std::string hlo_path = tsl::io::JoinPath(tsl::testing::XlaSrcRoot(),
+                                             "tools", "data", file_name);
 
-  tsl::SubProcess proc;
-  proc.SetProgram(run_hlo_module_bin,
-                  {run_hlo_module_bin, add_hlo_path, "--platform=Host"});
-  proc.SetChannelAction(tsl::CHAN_STDOUT, tsl::ACTION_PIPE);
-  proc.SetChannelAction(tsl::CHAN_STDERR, tsl::ACTION_PIPE);
-  EXPECT_TRUE(proc.Start());
+    tsl::SubProcess proc;
+    proc.SetProgram(run_hlo_module_bin,
+                    {run_hlo_module_bin, hlo_path, "--platform=Host"});
+    proc.SetChannelAction(tsl::CHAN_STDOUT, tsl::ACTION_PIPE);
+    proc.SetChannelAction(tsl::CHAN_STDERR, tsl::ACTION_PIPE);
+    EXPECT_TRUE(proc.Start());
 
-  std::string out, err;
-  int status = proc.Communicate(nullptr, &out, &err);
-  EXPECT_TRUE(WIFEXITED(status));
-  EXPECT_EQ(0, WEXITSTATUS(status));
-  ASSERT_THAT(err, testing::HasSubstr(
-                       "Results on Host and Interpreter are close enough."));
+    stdout_output_ = stderr_output_ = "";
+    int status = proc.Communicate(nullptr, &stdout_output_, &stderr_output_);
+    exited_normally_ = WIFEXITED(status);
+    exit_status_ = exited_normally_ ? WEXITSTATUS(status) : -1;
+  }
+
+  std::string stdout_output_;
+  std::string stderr_output_;
+  bool exited_normally_ = false;
+  int exit_status_ = -1;
+};
+
+TEST_F(RunHloModuleTest, AddHlo) {
+  RunHlo("add.hlo");
+
+  EXPECT_TRUE(exited_normally_);
+  EXPECT_EQ(exit_status_, 0);
+  ASSERT_THAT(
+      stderr_output_,
+      testing::HasSubstr("Results on Host and Interpreter are close enough."));
+  EXPECT_THAT(stderr_output_,
+              testing::Not(testing::HasSubstr("memory allocation bug")));
+}
+
+TEST_F(RunHloModuleTest, MustAlias) {
+  RunHlo("must_alias.hlo");
+
+  EXPECT_TRUE(exited_normally_);
+  EXPECT_EQ(exit_status_, 0);
+  EXPECT_THAT(
+      stderr_output_,
+      testing::HasSubstr("Results on Host and Interpreter are close enough."));
+  EXPECT_THAT(stderr_output_,
+              testing::Not(testing::HasSubstr("memory allocation bug")));
+}
+
+TEST_F(RunHloModuleTest, MustAliasWithSharding) {
+  RunHlo("must_alias_with_sharding.hlo");
+
+  EXPECT_TRUE(exited_normally_);
+  EXPECT_EQ(exit_status_, 255);
+  EXPECT_THAT(stderr_output_,
+              testing::HasSubstr("Failed to execute on Interpreter"));
+  EXPECT_THAT(stderr_output_,
+              testing::Not(testing::HasSubstr("memory allocation bug")));
 }
 
 }  // namespace
