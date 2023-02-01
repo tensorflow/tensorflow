@@ -439,6 +439,9 @@ Status HasTPUReplication(const EagerOperation& op, const EagerContext& ctx,
 
 Status MustCompileWithXLA(const EagerOperation* op, const EagerContext& ctx,
                           bool* compile_with_xla) {
+#if defined(PLUGGABLE_DEVICE_SUPPORTED_MACOS)
+  *compile_with_xla = false;
+#else
   if (!op->is_function()) {
     *compile_with_xla = false;
     return OkStatus();
@@ -468,6 +471,7 @@ Status MustCompileWithXLA(const EagerOperation* op, const EagerContext& ctx,
   } else {
     *compile_with_xla = false;
   }
+#endif
 
   return OkStatus();
 }
