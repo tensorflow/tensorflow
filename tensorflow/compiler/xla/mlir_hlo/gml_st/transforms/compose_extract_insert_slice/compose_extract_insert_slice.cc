@@ -18,7 +18,6 @@ limitations under the License.
 #include <utility>
 
 #include "gml_st/transforms/passes.h"
-#include "gml_st/transforms/rewriters.h"
 #include "mlir/Dialect/Affine/ViewLikeInterfaceUtils.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
@@ -68,7 +67,7 @@ struct ComposeExtractInsertSlicePass
   void runOnOperation() override {
     MLIRContext* ctx = &getContext();
     RewritePatternSet patterns(ctx);
-    populateCollapseMaterializeOpsPatterns(ctx, &patterns);
+    patterns.add<CollapseExtractSliceOpPattern>(ctx);
 
     if (failed(applyPatternsAndFoldGreedily(getOperation(),
                                             std::move(patterns)))) {
@@ -78,11 +77,6 @@ struct ComposeExtractInsertSlicePass
 };
 
 }  // namespace
-
-void populateCollapseMaterializeOpsPatterns(MLIRContext* ctx,
-                                            RewritePatternSet* patterns) {
-  patterns->add<CollapseExtractSliceOpPattern>(ctx);
-}
 
 std::unique_ptr<OperationPass<func::FuncOp>>
 createComposeExtractInsertSlicePass() {

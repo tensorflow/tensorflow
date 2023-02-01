@@ -36,34 +36,8 @@ namespace mlir {
 namespace gml_st {
 namespace {
 
-#define GEN_PASS_DEF_TESTGMLSTBUFFERIZATION
 #define GEN_PASS_DEF_TESTGMLSTGREEDYFUSION
 #include "gml_st/transforms/test_passes.h.inc"
-
-struct TestGmlStBufferizationPass
-    : public impl::TestGmlStBufferizationBase<TestGmlStBufferizationPass> {
-  void getDependentDialects(DialectRegistry &registry) const override {
-    registry
-        .insert<bufferization::BufferizationDialect, memref::MemRefDialect>();
-    linalg::registerBufferizableOpInterfaceExternalModels(registry);
-    gml_st::registerBufferizableOpInterfaceExternalModels(registry);
-  }
-
-  void runOnOperation() override {
-    bufferization::OneShotBufferizationOptions opts;
-    opts.allowUnknownOps = true;
-    opts.allowReturnAllocs = true;
-    opts.bufferizeFunctionBoundaries = true;
-    opts.functionBoundaryTypeConversion =
-        bufferization::LayoutMapOption::IdentityLayoutMap;
-
-    ModuleOp module = getOperation();
-    if (failed(bufferization::runOneShotModuleBufferize(module, opts))) {
-      signalPassFailure();
-      return;
-    }
-  }
-};
 
 static constexpr llvm::StringRef kTestFusionAppliedLabel =
     "__test_fusion_applied_label__";
@@ -112,10 +86,6 @@ struct TestGmlStGreedyFusionPass
 };
 
 }  // namespace
-
-std::unique_ptr<OperationPass<ModuleOp>> createTestGmlStBufferizationPass() {
-  return std::make_unique<TestGmlStBufferizationPass>();
-}
 
 std::unique_ptr<OperationPass<func::FuncOp>> createTestGmlStGreedyFusionPass() {
   return std::make_unique<TestGmlStGreedyFusionPass>();
