@@ -1,38 +1,62 @@
-# TensorFlow Lite Delegate Performance Benchmark with Android Apk
+# TensorFlow Lite Delegate Performance Benchmark (Android APK)
 
 ## Description
 
-This Android Delegate Performance Benchmark app is a simple wrapper around the
-TensorFlow Lite
+This Android Delegate Performance Benchmark (DPB) app is a simple wrapper around
+the TensorFlow Lite
 [benchmark tool](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/tools/benchmark)
 and
-[MiniBenchmark](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/experimental/acceleration/mini_benchmark).
+[MiniBenchmark](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/experimental/acceleration/mini_benchmark)
+with the focus on testing Tensorflow Lite delegates that implement stable
+delegate ABI.
 
-Development against TensorFlow Lite needs both accuracy and latency evaluations
-for catching potential performance regressions. Pushing and executing both
-latency and accuracy testing binaries directly on an Android device is a valid
-approach to benchmarking, but it can result in subtle (but observable)
-differences in performance relative to execution within an actual Android app.
-In particular, Android's scheduler tailors behavior based on thread and process
-priorities, which differ between a foreground Activity/Application and a regular
-background binary executed via `adb shell ...`.
+Development of TensorFlow Lite delegates needs both accuracy and latency
+evaluations for catching potential performance regressions. Pushing and
+executing both latency and accuracy testing binaries directly on an Android
+device is a valid approach to benchmarking, but it can result in subtle (but
+observable) differences in performance relative to execution within an actual
+Android app. In particular, Android's scheduler tailors behavior based on thread
+and process priorities, which differ between a foreground Activity/Application
+and a regular background binary executed via `adb shell ...`.
 
 In addition to that, having multiple benchmarking apps for different performance
 metric evaluations could potentially cost development effort unnecessarily.
 
 To those ends, this app offers a more faithful view of runtime performance
-(accuracy and latency) that developers can expect when deploying TensorFlow Lite
-with their application, and the app provides a single entrypoint to various
-performance metrics to avoid the need to switch between different benchmarking
-apps.
+(accuracy and latency) that developers can expect when using TensorFlow Lite
+delegates with Android apps, and the app provides a single entrypoint to
+various performance metrics to avoid the need to switch between different
+benchmarking apps.
 
 ## To build/install/run
 
 ### Build
+1.  Clone the TensorFlow repo with
+
+    ```
+    git clone --recurse-submodules https://github.com/tensorflow/tensorflow.git
+    ```
+
+    Note: --recurse-submodules is necessary to prevent some issues with protobuf
+    compilation.
 
 1.  Refer to
-    https://github.com/tensorflow/tensorflow/tree/master/tensorflow/tools/android/test
-    to edit the `WORKSPACE` to configure the android NDK/SDK.
+    [this page](https://www.tensorflow.org/lite/android/lite_build#set_up_build_environment_without_docker)
+    for setting up a development environment. Although there are several
+    practical tips:
+
+    -   When installing Bazel, for Ubuntu Linux, `sudo apt update && sudo apt
+        install bazel` may be the easiest way. However sometimes you may need
+        `sudo apt update && sudo apt install bazel-5.3.0` if prompted.
+    -   When installing Android NDK and SDK, using Android Studio's SDK Manager
+        may be the easiest way.
+    -   The versions which we have verified are working:
+        -   Android NDK API level: 21
+        -   Android SDK API level: 33
+        -   Android build tools version: 30.0.0
+    -   Run the `./configure` script in the root TensorFlow checkout directory,
+        and answer "Yes" when the script asks to interactively configure the
+        `./WORKSPACE` for Android builds.
 
 1.  Build for your specific platform, e.g.:
 
@@ -44,16 +68,76 @@ apps.
 
 ### Install
 
-1.  Connect your phone. Install the benchmark APK on your phone with adb:
+1.  Connect to a physical device. Install the benchmark APK with adb:
 
-```
-adb install -r -d -g bazel-bin/tensorflow/lite/tools/benchmark/experimental/delegate_performance/android/delegate_performance_benchmark.apk
-```
+    ```
+    adb install -r -d -g bazel-bin/tensorflow/lite/tools/benchmark/experimental/delegate_performance/android/delegate_performance_benchmark.apk
+    ```
 
-Note: Make sure to install with "-g" option to grant the permission for reading
-external storage.
+    Note: Make sure to install with "-g" option to grant the permission for
+    reading external storage.
 
 ### Run
+
+#### Benchmarking with stable delegates
+
+The delegate-under-test must implement the
+[stable_delegate_interface](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/delegates/utils/experimental/stable_delegate/stable_delegate_interface.h)
+API. The stable delegate provider dynamically loads stable delegate symbols
+from the provided binary (shared object) file. In order to use Delegate
+Performance Benchmark with a stable delegate, you would need to push the shared
+object file to the file directory of Delegate Performance Benchmark:
+`/data/data/org.tensorflow.lite.benchmark.delegateperformance/files/`.
+
+
+1.  Build and push the stable delegate binary that you want to test.
+    Here we use the
+    [sample stable delegate](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/delegates/utils/experimental/sample_stable_delegate)
+    as an example.
+
+    ```
+    bazel build -c opt \
+      --config=android_arm64 \
+      tensorflow/lite/delegates/utils/experimental/sample_stable_delegate:tensorflowlite_sample_stable_delegate
+
+    # Set the permissions so that we can overwrite a previously installed delegate.
+    chmod 755 bazel-bin/tensorflow/lite/delegates/utils/experimental/sample_stable_delegate/libtensorflowlite_sample_stable_delegate.so
+
+    # Ensure the delegateperformance files path exists.
+    adb shell run-as org.tensorflow.lite.benchmark.delegateperformance mkdir -p /data/data/org.tensorflow.lite.benchmark.delegateperformance/files
+
+    # Install the sample delegate.
+    adb push \
+      bazel-bin/tensorflow/lite/delegates/utils/experimental/sample_stable_delegate/libtensorflowlite_sample_stable_delegate.so \
+      /data/local/tmp/
+    adb shell run-as org.tensorflow.lite.benchmark.delegateperformance \
+      cp /data/local/tmp/libtensorflowlite_sample_stable_delegate.so \
+        /data/data/org.tensorflow.lite.benchmark.delegateperformance/files/
+    ```
+
+1. Dump the test sample delegate settings file on device. Example command:
+
+    ```
+    adb shell 'echo "{
+      \"stable_delegate_loader_settings\": {
+        \"delegate_path\": \"/data/data/org.tensorflow.lite.benchmark.delegateperformance/files/libtensorflowlite_sample_stable_delegate.so\"
+      }
+      // Add concrete delegate settings for the test target delegate.
+    }
+    "> /data/local/tmp/stable_delegate_settings.json'
+    ```
+
+#### Supported models
+
+Currently DPB uses a `mobilenet_v1_1.0_224.tflite` and
+`mobilenet_quant_v1_224.tflite` model for latency and accuracy benchmarking. The
+TF Lite model files are bundled into the app during the build process. We plan
+to expand the supported models based on future use cases.
+
+Note: The sample stable delegate provided here only supports ADD and SUB
+operations thus aforementioned mobilenet models would not actually be delegated.
+To test your own delegate against the models, please update
+`stable_delegate_loader_settings` with your delegate path.
 
 #### Latency benchmarking
 
@@ -66,78 +150,64 @@ external storage.
     and can be appended to the `args` string (note that all args must be nested
     in the single quoted string that follows the args key).
 
-Currently the tool uses a 'mobilenet_v1_1.0_224.tflite' and
-'mobilenet_quant_v1_224.tflite' model for latency and accuracy benchmarking. The
-TF Lite model files are bundled into the app during the build process. We plan
-to expand the number of models in the future.
+##### Steps
 
-1.  Dump the test target delegate settings file on device. Example command:
-
-    ```
-    adb shell 'echo "{
-    \"delegate\": XNNPACK
-    }
-    "> /data/local/tmp/xnnpack_settings.json'
-    ```
-
-1.  Run the benchmark by supplying the settings file via the required
+1.  Run the latency benchmark by supplying the settings file via the required
     `--tflite_settings_files` flag.
 
     ```
     adb shell "am start -S \
-    -n org.tensorflow.lite.benchmark.delegateperformance/org.tensorflow.lite.benchmark.delegateperformance.BenchmarkLatencyActivity \
-    --esa --tflite_settings_files '/data/local/tmp/xnnpack_settings.json'"
+  -n org.tensorflow.lite.benchmark.delegateperformance/org.tensorflow.lite.benchmark.delegateperformance.BenchmarkLatencyActivity \
+  --esa --tflite_settings_files '/data/local/tmp/stable_delegate_settings.json'"
     ```
 
 1.  The results will be available in Android logcat as well as the app's file
     directory, e.g.:
 
     ```
-    adb logcat | grep "Inference timings in us"
+    adb logcat -c && adb logcat -v color  | grep "Inference timings in us"
 
-    ... tflite  : Inference timings in us: Init: 1007529, First inference: 4098, Warmup (avg): 1686.59, Inference (avg): 1687.92
+    ... tflite  : Inference timings in us: Init: 5811, First inference: 67743, Warmup (avg): 65539, Inference (avg): 65155.5
     ```
 
     The tool also shows overall results.
 
     ```
-    adb logcat | grep 'Latency benchmark result'
+    adb logcat -c && adb logcat -v color  | grep 'Latency benchmark result'
     ```
 
     which might show output like the following.
 
     ```
-    01-13 15:00:04.407 24897 24897 I TfLiteLatencyImpl: Latency benchmark result for /data/local/tmp/xnnpack_settings.json: PASS
+    ... TfLiteLatencyImpl: Latency benchmark result for /data/local/tmp/stable_delegate_settings.json: PASS
     ```
 
-    To obtain the generated report run.  Note that in order for this command to
-    succeed the APK needs to be debuggable (e.g. built with `-c dbg`).
+    For a summarized view, run
 
     ```
-    adb shell run-as org.tensorflow.lite.benchmark.delegateperformance "cat /data/user/0/org.tensorflow.lite.benchmark.delegateperformance/files/delegate_performance_result/latency/mobilenet_v1_1.0_224.csv"
+    adb shell run-as org.tensorflow.lite.benchmark.delegateperformance "cat /data/user/0/org.tensorflow.lite.benchmark.delegateperformance/files/delegate_performance_result/latency/mobilenet_v1_1.0_224.csv" | column -t -s,
     ```
 
-    This might produce output like the following:
+    It would produce output like the following:
 
-    ```
-    Metric,0 (default_delegate),4 (/data/local/tmp/xnnpack_settings.json),%
-    inference_latency_average_us,93703.56,93609.74,-0.1%
-    initialization_memory_total_allocated_mebibyte,0.0,0.0,0%
-    overall_memory_max_rss_mebibyte,42.191406,0.0,-100.0%
-    model_size_megabyte,-1.0E-6,-1.0E-6,0%
-    initialization_latency_us,43174.0,39517.0,-8.5%
-    warmup_latency_standard_deviation,1918.0,1524.0,-20.5%
-    initialization_memory_in_use_mebibyte,21.564835,21.541794,-0.1%
-    overall_memory_in_use_mebibyte,23.624878,23.622772,-0.0%
-    warmup_latency_max_us,98737.0,97734.0,-1.0%
-    warmup_latency_min_us,93500.0,93415.0,-0.1%
-    inference_latency_min_us,93312.0,93228.0,-0.1%
-    overall_memory_total_allocated_mebibyte,0.0,0.0,0%
-    inference_latency_max_us,94186.0,94942.0,0.8%
-    initialization_memory_max_rss_mebibyte,34.625,0.0,-100.0%
-    warmup_latency_average_us,94449.836,94348.664,-0.1%
-    inference_latency_standard_deviation,161.0,251.0,55.9%
-    ```
+    |Metric|0 (default_delegate)|0 (/data/local/tmp/stable_delegate_settings.json)|%|
+    |---|---|---|---|
+    |inference_latency_average_us|97936.44|97963.66|0.0%|
+    |initialization_memory_total_allocated_mebibyte|0.0|0.0|0%|
+    |overall_memory_max_rss_mebibyte|43.246094|0.65625|-98.5%|
+    |model_size_megabyte|-1.0E-6|-1.0E-6|0%|
+    |initialization_latency_us|39640.0|40155.0|1.3%|
+    |warmup_latency_standard_deviation|1644.0|1463.0|-11.0%|
+    |initialization_memory_in_use_mebibyte|23.091217|27.671188|19.8%|
+    |overall_memory_in_use_mebibyte|25.15126|29.752167|18.3%|
+    |warmup_latency_max_us|102423.0|101935.0|-0.5%|
+    |warmup_latency_min_us|97855.0|97868.0|0.0%|
+    |inference_latency_min_us|97597.0|97657.0|0.1%|
+    |overall_memory_total_allocated_mebibyte|0.0|0.0|0%|
+    |inference_latency_max_us|98295.0|98370.0|0.1%|
+    |initialization_memory_max_rss_mebibyte|34.39453|0.0|-100.0%|
+    |warmup_latency_average_us|98752.836|98672.164|-0.1%|
+    |inference_latency_standard_deviation|146.0|143.0|-2.1%|
 
 #### Accuracy benchmarking
 
@@ -148,97 +218,34 @@ to expand the number of models in the future.
 
 ##### Steps
 
-1.  Dump the test target delegate settings file on device. Example command:
-
-    ```
-    adb shell 'echo "{
-    \"delegate\": XNNPACK
-    }
-    "> /data/local/tmp/xnnpack_settings.json'
-    ```
-
-1.  Run the benchmark. Currently the accuracy benchmark only supports parsing
-    arguments for delegate selection.
-
-    Run the test with the XNNPack delegate (default):
+1.  Run the accuracy benchmark by supplying the settings file via the required
+    `--tflite_settings_files` flag.
 
     ```
     adb shell "am start -S \
-    -n org.tensorflow.lite.benchmark.delegateperformance/org.tensorflow.lite.benchmark.delegateperformance.BenchmarkAccuracyActivity \
-    --esa --tflite_settings_files '/data/local/tmp/xnnpack_settings.json'"
+  -n org.tensorflow.lite.benchmark.delegateperformance/org.tensorflow.lite.benchmark.delegateperformance.BenchmarkAccuracyActivity \
+  --esa --tflite_settings_files '/data/local/tmp/stable_delegate_settings.json'"
     ```
 
 1.  The results will be available in Android logcat, e.g.:
 
-    TODO(b/250877013): improve performance thresholding and result reporting
-
     ```
-    adb logcat | grep "tflite"
+    adb logcat -c && adb logcat -v color | grep "tflite"
 
     ... tflite  : tflite  :   accuracy: ok
     ```
 
-#### Benchmarking with stable delegates
-
-The stable delegate provider dynamically loads a stable delegate symbol from the
-provided binary (shared object) file. In order to use Delegate Performance
-Benchmark with a stable delegate, users will need to push the shared object file
-to the file directory of Delegate Performance Benchmark:
-`/data/data/org.tensorflow.lite.benchmark.delegateperformance/files/`.
-
-Example steps to start the latency benchmark with a stable delegate:
-
-1.  Build and push the example stable delegate binary that you want to test.
-    Here we use
-    [the sample stable delegate](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/delegates/utils/experimental/sample_stable_delegate)
-    as an example.
-
+    For a summarized view, run
+    
     ```
-    # Make sure the app is debuggable to allow copying the .so file to the app's
-    # file directory.
-    bazel build -c dbg \
-    --config=android_arm64 \
-    tensorflow/lite/delegates/utils/experimental/sample_stable_delegate:tensorflowlite_sample_stable_delegate
-
-    # Set the permissions so that we can overwrite a previously installed delegate
-    chmod 755 bazel-bin/tensorflow/lite/delegates/utils/experimental/sample_stable_delegate/libtensorflowlite_sample_stable_delegate.so
-
-    # Ensure the delegateperformance files path exists
-    adb shell run-as org.tensorflow.lite.benchmark.delegateperformance mkdir -p /data/data/org.tensorflow.lite.benchmark.delegateperformance/files
-
-    # Install the sample delegate.
-    adb push \
-    bazel-bin/tensorflow/lite/delegates/utils/experimental/sample_stable_delegate/libtensorflowlite_sample_stable_delegate.so \
-    /data/local/tmp/
-    adb shell run-as org.tensorflow.lite.benchmark.delegateperformance \
-    cp /data/local/tmp/libtensorflowlite_sample_stable_delegate.so \
-      /data/data/org.tensorflow.lite.benchmark.delegateperformance/files/
+    adb shell run-as org.tensorflow.lite.benchmark.delegateperformance "cat /data/user/0/org.tensorflow.lite.benchmark.delegateperformance/files/delegate_performance_result/accuracy/mobilenet_v1_1.0_224_with_validation.csv" | column -t -s,
     ```
 
-1. Dump the test sample delegate settings file on device. Example command:
+    It would produce output like the following:
 
-    ```
-    adb shell 'echo "{
-    \"stable_delegate_loader_settings\": {
-      \"delegate_path\": \"/data/data/org.tensorflow.lite.benchmark.delegateperformance/files/libtensorflowlite_sample_stable_delegate.so\"
-    }
-    // Add concrete delegate settings for the test target delegate.
-    }
-    "> /data/local/tmp/stable_delegate_settings.json'
-    ```
-
-##### Latency Benchmarking
-
-```
-adb shell "am start -S \
-  -n org.tensorflow.lite.benchmark.delegateperformance/org.tensorflow.lite.benchmark.delegateperformance.BenchmarkLatencyActivity \
-  --esa --tflite_settings_files '/data/local/tmp/stable_delegate_settings.json'"
-```
-
-##### Accuracy Benchmarking
-
-```
-adb shell "am start -S \
-  -n org.tensorflow.lite.benchmark.delegateperformance/org.tensorflow.lite.benchmark.delegateperformance.BenchmarkAccuracyActivity \
-  --esa --tflite_settings_files '/data/local/tmp/stable_delegate_settings.json'"
-```
+    |Metric|0 (default_delegate)|0 (/data/local/tmp/stable_delegate_settings.json)|%|
+    |---|---|---|---|
+    |max_memory_kb|0.0|0.0|0%|
+    |symmetric_kl_divergence(average)|3.5098449E-9|3.5098449E-9|0%|
+    |mse(average)|1.0153732E-16|1.0153732E-16|0%|
+    |ok|1.0|1.0|0%|
