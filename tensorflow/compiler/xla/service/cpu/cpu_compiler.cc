@@ -397,7 +397,8 @@ CpuAotCompilationResult::CpuAotCompilationResult(
       result_buffer_index_(result_buffer_index),
       hlo_profile_printer_data_(std::move(hlo_profile_printer_data)) {}
 
-CpuCompiler::CpuCompiler() {
+CpuCompiler::CpuCompiler(bool allow_sparse_shapes)
+    : allow_sparse_shapes_(allow_sparse_shapes) {
   // Initialize LLVM the first time the CpuCompiler is initialized.
   static bool llvm_initialized = []() {
     InitializeLLVMTarget();
@@ -405,6 +406,8 @@ CpuCompiler::CpuCompiler() {
   }();
   (void)llvm_initialized;
 }
+
+CpuCompiler::CpuCompiler() : CpuCompiler(false) {}
 
 StatusOr<std::vector<std::unique_ptr<Executable>>> CpuCompiler::Compile(
     std::unique_ptr<HloModuleGroup> module_group,
@@ -827,7 +830,6 @@ Status CpuCompiler::RunHloPassesAfterLayoutAssn(
 Status CpuCompiler::RunHloPasses(HloModule* module, bool is_aot_compile,
                                  llvm::TargetMachine* target_machine,
                                  bool is_mlir_compile) {
-  allow_sparse_shapes_ = is_mlir_compile;  // xla:cpu-next allows sparse shapes
   LLVMTargetMachineFeatures target_machine_features(target_machine);
   TF_RETURN_IF_ERROR(RunHloPassesThroughLayoutAssn(
       module, is_aot_compile, &target_machine_features, is_mlir_compile));
