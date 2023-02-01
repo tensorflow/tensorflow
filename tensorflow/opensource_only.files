@@ -208,7 +208,6 @@ third_party/clang_toolchain/BUILD:
 third_party/clang_toolchain/cc_configure_clang.bzl:
 third_party/clang_toolchain/download_clang.bzl:
 third_party/codegen.BUILD:
-third_party/common.bzl:
 third_party/compute_library/BUILD:
 third_party/compute_library/build_defs.bzl:
 third_party/coremltools.BUILD:
