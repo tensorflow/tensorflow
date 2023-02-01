@@ -19,6 +19,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/time/time.h"
 #include "tensorflow/core/data/service/common.pb.h"
 #include "tensorflow/core/data/service/dispatcher.pb.h"
 #include "tensorflow/core/data/service/snapshot/file_utils.h"
@@ -35,6 +36,8 @@ namespace data {
 
 using ::tsl::OkStatus;
 using ::tsl::errors::InvalidArgument;
+
+const absl::Duration kWorkerTimeout = absl::Seconds(45);
 
 StatusOr<std::unique_ptr<SnapshotManager>> SnapshotManager::Start(
     const SnapshotRequest& request, Env* env) {
@@ -71,7 +74,8 @@ Status SnapshotManager::WriteOnDiskMetadata(const SnapshotRequest& request) {
 
 StatusOr<std::unique_ptr<SnapshotManager>> SnapshotManager::Resume(
     absl::string_view path, Env* env) {
-  SnapshotManager* snapshot_manager = new SnapshotManager(path, env);
+  SnapshotManager* snapshot_manager =
+      new SnapshotManager(path, env, absl::Microseconds(env->NowMicros()));
   TF_RETURN_IF_ERROR(snapshot_manager->Resume());
   return absl::WrapUnique(snapshot_manager);
 }
@@ -167,7 +171,7 @@ Status SnapshotManager::ReadOnDiskStream(
         ReadOnDiskSource(stream_index, source_index, global_split_indices));
   }
 
-  // TODO(mpcallanan): Handle unknowns.
+  unknowns_.insert(stream_index);
 
   return OkStatus();
 }
@@ -212,8 +216,7 @@ Status SnapshotManager::ReadOnDiskSource(
   return OkStatus();
 }
 
-StatusOr<int64_t> SnapshotManager::CreateNewStream(
-    const std::string& worker_address) {
+StatusOr<int64_t> SnapshotManager::CreateNewStream() {
   int64_t new_stream_index = streams_.size();
 
   for (int64_t source_index = 0; source_index < num_sources(); ++source_index) {
@@ -222,15 +225,14 @@ StatusOr<int64_t> SnapshotManager::CreateNewStream(
   }
 
   streams_.push_back(Stream(num_sources()));
-  assignments_.insert({worker_address, new_stream_index});
-  VLOG(1) << "creating stream " << new_stream_index
-          << " and assigning it to worker " << worker_address;
 
   return new_stream_index;
 }
 
 Status SnapshotManager::WorkerHeartbeat(const WorkerHeartbeatRequest& request,
                                         WorkerHeartbeatResponse& response) {
+  // TODO(mpcallanan): Handle doneness.
+
   SnapshotTaskDef* snapshot_task = response.add_snapshot_tasks();
   snapshot_task->set_base_path(path_);
   snapshot_task->set_num_sources(num_sources());
@@ -242,17 +244,58 @@ Status SnapshotManager::WorkerHeartbeat(const WorkerHeartbeatRequest& request,
     return OkStatus();
   }
 
-  // TODO(mpcallanan): Handle orphans.
+  if (auto it = request.snapshot_task_progress().find(path_);
+      it != request.snapshot_task_progress().end() &&
+      stream_available(it->second.snapshot_task().stream_index())) {
+    VLOG(1) << "reassigning a previous assignment of stream "
+            << it->second.snapshot_task().stream_index() << " to worker "
+            << request.worker_address();
+    snapshot_task->set_stream_index(it->second.snapshot_task().stream_index());
+    assignments_[request.worker_address()] =
+        it->second.snapshot_task().stream_index();
+    orphans_.erase(it->second.snapshot_task().stream_index());
+    unknowns_.erase(it->second.snapshot_task().stream_index());
+    return OkStatus();
+  }
 
-  TF_ASSIGN_OR_RETURN(int64_t new_stream_index,
-                      CreateNewStream(request.worker_address()));
+  if (auto it = orphans_.begin(); it != orphans_.end()) {
+    VLOG(1) << "assigning an existing stream, " << *it << ", to worker "
+            << request.worker_address();
+    snapshot_task->set_stream_index(*it);
+    assignments_[request.worker_address()] = *it;
+    orphans_.erase(it);
+    return OkStatus();
+  }
+
+  TF_ASSIGN_OR_RETURN(int64_t new_stream_index, CreateNewStream());
+  VLOG(1) << "assigning a new stream, " << new_stream_index << ", to worker "
+          << request.worker_address();
   snapshot_task->set_stream_index(new_stream_index);
+  assignments_[request.worker_address()] = new_stream_index;
   return OkStatus();
 }
 
 Status SnapshotManager::GetSnapshotSplit(const GetSnapshotSplitRequest& request,
                                          GetSnapshotSplitResponse& response) {
-  // TODO(mpcallanan): Validate the request.
+  auto it = assignments_.find(request.worker_address());
+  if (it == assignments_.end()) {
+    if (stream_available(request.stream_index())) {
+      // The dispatcher doesn't know of an assignment for this worker but the
+      // worker's desired stream is available. Tell the worker to heartbeat to
+      // reregister its existing assignment.
+      response.set_heartbeat_needed(true);
+      return OkStatus();
+    }
+    return errors::Internal("worker ", request.worker_address(),
+                            " has no known assignment and its desired stream, ",
+                            request.stream_index(), " is unavailable");
+  }
+  if (it->second != request.stream_index()) {
+    return errors::Internal("worker ", request.worker_address(),
+                            " think it's assigned stream ",
+                            request.stream_index(),
+                            " but it's actually assigned stream ", it->second);
+  }
 
   Tensor split;
   bool end_of_splits;
@@ -279,6 +322,43 @@ Status SnapshotManager::GetSnapshotSplit(const GetSnapshotSplitRequest& request,
   ++stream.num_assigned_splits[request.source_index()];
   ++num_assigned_splits_;
   return OkStatus();
+}
+
+Status SnapshotManager::GetSnapshotStreams(
+    GetSnapshotStreamsResponse& response) {
+  for (int64_t i = 0; i < streams_.size(); ++i) {
+    SnapshotStreamInfo* stream = response.add_streams();
+    stream->set_index(i);
+    if (orphans_.contains(i)) {
+      stream->set_state(SnapshotStreamInfo::ORPHAN);
+    } else if (unknowns_.contains(i)) {
+      stream->set_state(SnapshotStreamInfo::UNKNOWN);
+    } else {
+      stream->set_state(SnapshotStreamInfo::ASSIGNED);
+    }
+  }
+  return OkStatus();
+}
+
+void SnapshotManager::HandleMissingWorker(absl::string_view worker_address) {
+  if (auto it = assignments_.find(worker_address); it != assignments_.end()) {
+    orphans_.insert(it->second);
+    assignments_.erase(it);
+    VLOG(1) << "deleting assignment for stream " << it->second
+            << " due to lost worker " << worker_address;
+  }
+}
+
+void SnapshotManager::UpdateStreams() {
+  // Check for streams to move from `unknowns_` to `orphans_`.
+  if (resume_time_micros_.has_value() && !unknowns_.empty() &&
+      absl::Microseconds(env_->NowMicros()) - resume_time_micros_.value() >
+          kWorkerTimeout) {
+    for (auto stream_index : unknowns_) {
+      orphans_.insert(stream_index);
+    }
+    unknowns_.clear();
+  }
 }
 
 }  // namespace data

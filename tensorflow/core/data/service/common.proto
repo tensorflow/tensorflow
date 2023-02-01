@@ -98,6 +98,23 @@ message SnapshotTaskProgress {
   string error_message = 4;
 }
 
+message SnapshotStreamInfo {
+  // The index of the stream being processed or having been processed.
+  int64 index = 1;
+
+  enum State {
+    // Unspecified.  Invalid state.
+    UNSPECIFIED = 0;
+    // The dispatcher thinks the stream has a live worker.
+    ASSIGNED = 1;
+    // The dispatcher doesn't think the stream has a live worker.
+    ORPHAN = 2;
+    // The dispatcher doesn't know whether or not the stream has a live worker.
+    UNKNOWN = 3;
+  }
+  State state = 2;
+}
+
 // Specifies which tf.data service workers to read from.
 enum TargetWorkers {
   TARGET_WORKERS_UNSPECIFIED = 0;

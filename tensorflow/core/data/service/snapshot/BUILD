@@ -177,6 +177,7 @@ cc_library(
         "//tensorflow/tsl/platform:errors",
         "//tensorflow/tsl/platform:status",
         "//tensorflow/tsl/platform:statusor",
+        "@com_google_absl//absl/time",
     ],
 )
 

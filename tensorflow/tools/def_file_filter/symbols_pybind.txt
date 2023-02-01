@@ -115,6 +115,7 @@ tensorflow::data::GrpcDataServerBase::Start
 tensorflow::data::GrpcDataServerBase::Stop
 tensorflow::data::GrpcDataServerBase::BoundPort
 tensorflow::data::DispatchGrpcDataServer::NumWorkers
+tensorflow::data::DispatchGrpcDataServer::SnapshotStreams
 tensorflow::data::WorkerGrpcDataServer::NumTasks
 tensorflow::data::WorkerGrpcDataServer::SnapshotTaskProgresses
 tensorflow::data::NewDispatchServer
