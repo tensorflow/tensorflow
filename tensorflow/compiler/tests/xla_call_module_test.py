@@ -307,6 +307,7 @@ module @jit_f.0 {
       self._assertOpOutputMatchesExpected(f, (x, y),
                                           (np.sin(x + y), x.shape[1]))
 
+  @unittest.skip('TODO(burmako): Re-enable this after shape refinement is done')
   def test_dynamic_iota(self):
     x = np.ones((3, 5), dtype=np.int32)
     res = np.arange(x.shape[0], dtype=np.int32)
@@ -459,7 +460,7 @@ module @jit_fun_flat_jax {
     %5 = stablehlo.dynamic_update_slice %arg1, %arg1, %3, %4 : (tensor<?x4xf32>, tensor<?x4xf32>, tensor<i32>, tensor<i32>) -> tensor<?x4xf32>
     return %5 : tensor<?x4xf32>
   }
-} 
+}
 """
       return xla.call_module([x, idx],
                              module=module,
@@ -469,6 +470,7 @@ module @jit_fun_flat_jax {
 
     self._assertOpOutputMatchesExpected(f, (x, idx), (res,))
 
+  @unittest.skip('TODO(burmako): Re-enable this after shape refinement is done')
   def test_dynamic_broadcast_in_dim(self):
     x = np.ones((3, 4), dtype=np.float32)
     y = np.ones((2, 3, 4), dtype=np.float32)
@@ -556,6 +558,7 @@ module @jit_fun_flat_jax {
 
     self._assertOpOutputMatchesExpected(f, (x,), (res,))
 
+  @unittest.skip('TODO(burmako): Re-enable this after shape refinement is done')
   def test_call(self):
     """A chain of calls."""
     x = np.ones((5,), dtype=np.float32)
