@@ -146,9 +146,13 @@ Status ClearSnapshot(const std::string& base_path, int64_t stream_index,
       CommittedChunksDirectory(base_path), &undeleted_files, &undeleted_dirs));
   TF_RETURN_IF_ERROR(Env::Default()->RecursivelyCreateDir(
       CommittedChunksDirectory(base_path)));
-  TF_RETURN_IF_ERROR(Env::Default()->DeleteRecursively(
-      CheckpointsDirectory(base_path, stream_index), &undeleted_files,
-      &undeleted_dirs));
+  if (Env::Default()
+          ->FileExists(CheckpointsDirectory(base_path, stream_index))
+          .ok()) {
+    TF_RETURN_IF_ERROR(Env::Default()->DeleteRecursively(
+        CheckpointsDirectory(base_path, stream_index), &undeleted_files,
+        &undeleted_dirs));
+  }
   TF_RETURN_IF_ERROR(
       Env::Default()->DeleteFile(StreamDoneFilePath(base_path, stream_index)));
   if (clear_split_files) {
