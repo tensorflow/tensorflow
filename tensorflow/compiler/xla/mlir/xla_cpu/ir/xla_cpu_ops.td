@@ -63,7 +63,7 @@ def AllReduceOp : XlaCpu_Op<"all_reduce",
         const bufferization::AnalysisState &state);
     bool bufferizesToMemoryWrite(OpOperand &opOperand,
         const bufferization::AnalysisState &state);
-    SmallVector<OpResult> getAliasingOpResult(
+    bufferization::AliasingOpResultList getAliasingOpResults(
         OpOperand &opOperand, const bufferization::AnalysisState &state);
     LogicalResult bufferize(RewriterBase &rewriter,
         const bufferization::BufferizationOptions &options);
@@ -113,7 +113,7 @@ def CollectivePermuteOp : XlaCpu_Op<"collective_permute", [BufferizableOpInterfa
         const bufferization::AnalysisState &state) {
       return opOperand.getOperandNumber() == 1;
     }
-    SmallVector<OpResult> getAliasingOpResult(
+    bufferization::AliasingOpResultList getAliasingOpResults(
         OpOperand &opOperand, const bufferization::AnalysisState &state) {
       if (opOperand.getOperandNumber() == 0) return {};
       return {getOperation()->getOpResult(0)};
@@ -157,7 +157,7 @@ def AllToAllOp : XlaCpu_Op<"all_to_all",
         const bufferization::AnalysisState &state) {
       return opOperand.getOperandNumber() >= getNumOperands() / 2;
     }
-    SmallVector<OpResult> getAliasingOpResult(
+    bufferization::AliasingOpResultList getAliasingOpResults(
         OpOperand &opOperand, const bufferization::AnalysisState &state) {
       if (bufferizesToMemoryRead(opOperand, state)) return {};
       return {getOperation()->getOpResult(opOperand.getOperandNumber() - getNumOperands() / 2)};
@@ -196,7 +196,7 @@ def FftOp : XlaCpu_Op<"fft", [BufferizableOpInterface]> {
         const bufferization::AnalysisState &state) {
       return opOperand.getOperandNumber() == 1;
     }
-    SmallVector<OpResult> getAliasingOpResult(
+    bufferization::AliasingOpResultList getAliasingOpResults(
         OpOperand &opOperand, const bufferization::AnalysisState &state) {
       if (opOperand.getOperandNumber() == 0) return {};
       return {getOperation()->getOpResult(0)};
@@ -232,7 +232,7 @@ def OutfeedOp : XlaCpu_Op<"outfeed", [BufferizableOpInterface]> {
         const bufferization::AnalysisState &state) {
       return false;
     }
-    SmallVector<OpResult> getAliasingOpResult(
+    bufferization::AliasingOpResultList getAliasingOpResults(
         OpOperand &opOperand, const bufferization::AnalysisState &state) {
       return {};
     }
@@ -286,7 +286,7 @@ def RngBitGeneratorOp : XlaCpu_Op<"rng_bit_generator", [BufferizableOpInterface]
         const bufferization::AnalysisState &state) {
       return opOperand.getOperandNumber() != 0;
     }
-    SmallVector<OpResult> getAliasingOpResult(
+    bufferization::AliasingOpResultList getAliasingOpResults(
         OpOperand &opOperand, const bufferization::AnalysisState &state) {
       if (opOperand.getOperandNumber() == 0) return {};
       return {getOperation()->getOpResult(opOperand.getOperandNumber()-1)};
@@ -321,7 +321,7 @@ def AddDependencyOp : XlaCpu_Op<"add_dependency", [BufferizableOpInterface]> {
         const bufferization::AnalysisState &state) {
       return false;
     }
-    SmallVector<OpResult> getAliasingOpResult(
+    bufferization::AliasingOpResultList getAliasingOpResults(
         OpOperand &opOperand, const bufferization::AnalysisState &state) {
       if (opOperand.getOperandNumber() == 0 || opOperand.getOperandNumber() == 1)
         return {};

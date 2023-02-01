@@ -23,6 +23,8 @@ namespace mlir {
 namespace thlo {
 namespace {
 
+using mlir::bufferization::AliasingOpOperandList;
+using mlir::bufferization::AliasingOpResultList;
 using mlir::bufferization::AnalysisState;
 using mlir::bufferization::BufferizableOpInterface;
 using mlir::bufferization::BufferizationOptions;
@@ -107,7 +109,7 @@ struct ThloSortOpBufferizationModel
     return cast<DestinationStyleOpInterface>(op).isDpsInit(&opOperand);
   }
 
-  SmallVector<OpOperand *> getAliasingOpOperand(
+  AliasingOpOperandList getAliasingOpOperands(
       Operation *op, OpResult opResult, const AnalysisState & /*state*/) const {
     auto dstStyleOp = cast<DestinationStyleOpInterface>(op);
 
@@ -115,7 +117,7 @@ struct ThloSortOpBufferizationModel
     return {dstStyleOp.getDpsInitOperand(opResult.getResultNumber())};
   }
 
-  SmallVector<OpResult> getAliasingOpResult(
+  AliasingOpResultList getAliasingOpResults(
       Operation *op, OpOperand &opOperand,
       const AnalysisState & /*state*/) const {
     auto dstStyleOp = cast<DestinationStyleOpInterface>(op);

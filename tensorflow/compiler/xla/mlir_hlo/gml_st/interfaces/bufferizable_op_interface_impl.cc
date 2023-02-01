@@ -29,6 +29,8 @@ limitations under the License.
 #include "mlir/Interfaces/ViewLikeInterface.h"
 #include "mlir/Support/LogicalResult.h"
 
+using mlir::bufferization::AliasingOpOperandList;
+using mlir::bufferization::AliasingOpResultList;
 using mlir::bufferization::AnalysisState;
 using mlir::bufferization::BufferizableOpInterface;
 using mlir::bufferization::BufferizationOptions;
@@ -105,7 +107,7 @@ struct MaterializeOpInterface
     return false;
   }
 
-  SmallVector<OpResult> getAliasingOpResult(
+  AliasingOpResultList getAliasingOpResults(
       Operation *op, OpOperand &opOperand,
       const AnalysisState & /*state*/) const {
     auto result = op->getOpResult(0);
@@ -158,7 +160,7 @@ struct ParallelOpInterface
     return true;
   }
 
-  SmallVector<OpResult> getAliasingOpResult(Operation *op, OpOperand &opOperand,
+  AliasingOpResultList getAliasingOpResults(Operation *op, OpOperand &opOperand,
                                             const AnalysisState &) const {
     auto parallelOp = cast<ParallelOp>(op);
     return {parallelOp.getResultForOpOperand(opOperand)};
@@ -256,7 +258,7 @@ struct ForOpInterface
     return true;
   }
 
-  SmallVector<OpResult> getAliasingOpResult(
+  AliasingOpResultList getAliasingOpResults(
       Operation *op, OpOperand &opOperand,
       const AnalysisState & /*state*/) const {
     auto forOp = cast<gml_st::ForOp>(op);
@@ -342,7 +344,7 @@ struct ForOpInterface
 struct SetYieldOpInterface
     : public BufferizableOpInterface::ExternalModel<SetYieldOpInterface,
                                                     SetYieldOp> {
-  SmallVector<OpResult> getAliasingOpResult(
+  AliasingOpResultList getAliasingOpResults(
       Operation * /*op*/, OpOperand & /*opOperand*/,
       const AnalysisState & /*state*/) const {
     return {};
@@ -424,8 +426,8 @@ struct SetYieldOpInterface
       if (operandType.isa<UnrankedTensorType>())
         return op->emitError("copies of unranked tensors are not supported");
 
-      SmallVector<OpResult> aliasingOpResults =
-          state.getAliasingOpResult(opOperand);
+      AliasingOpResultList aliasingOpResults =
+          state.getAliasingOpResults(opOperand);
       // Is the result yielded from a block? Or are deallocations turned off
       // entirely? In either case, mark the allocation as "escaping", so that it
       // will not be deallocated.
