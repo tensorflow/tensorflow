@@ -1205,6 +1205,30 @@ tf_xla_py_test(
     ],
 )
 
+# copybara:uncomment_begin(google-only)
+# tf_xla_py_test(
+#     name = "reverse_sequence_op_args_test",
+#     size = "medium",
+#     srcs = ["reverse_sequence_op_args_test.py"],
+#     enable_mlir_bridge = False,
+#     main = "reverse_sequence_op_args_test.py",
+#     python_version = "PY3",
+#     tags = [
+#         "no_pip",
+#         "optonly",
+#     ],
+#     deps = [
+#         ":xla_test",
+#         "//tensorflow/compiler/jit:xla_cpu_jit",  # DisableOnExport
+#         "//tensorflow/python:array_ops",
+#         "//tensorflow/python:framework",
+#         "//tensorflow/python:platform_test",
+#         "//tensorflow/python/compat:v2_compat",
+#         "//tensorflow/python/eager:function",
+#     ],
+# )
+# copybara:uncomment_end
+
 tf_xla_py_test(
     name = "rmsprop_test",
     size = "small",
