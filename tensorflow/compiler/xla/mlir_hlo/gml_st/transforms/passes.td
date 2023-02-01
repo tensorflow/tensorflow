@@ -76,11 +76,10 @@ def TilingSoftmaxPass : Pass<"gml-tiling-softmax", "mlir::func::FuncOp"> {
   ];
 }
 
-def GreedyTilingAndFusionPass : Pass<"gml-greedy-tiling-and-fusion",
-    "mlir::func::FuncOp"> {
+def GreedyFusionPass : Pass<"gml-greedy-fusion", "mlir::func::FuncOp"> {
   let summary = "Pass to tile the root operation and to greedily fuse "
       "producers into it.";
-  let constructor = "::mlir::gml_st::createGreedyTilingAndFusionPass()";
+  let constructor = "::mlir::gml_st::createGreedyFusionPass()";
   let options = [
     Option<"distribute", "distribute", "bool", /*default=*/"true",
            "Generate gml_st.parallel or gml_st.for">,
@@ -107,10 +106,10 @@ def CollapseShapePass : Pass<"gml-collapse-shape", "mlir::func::FuncOp"> {
   let dependentDialects = ["::mlir::tensor::TensorDialect"];
 }
 
-def CollapseMaterializeOpsPass : Pass<"gml-collapse-materialize-ops",
+def ComposeExtractInsertSlicePass : Pass<"gml-compose-extract-insert-slice",
     "mlir::func::FuncOp"> {
   let summary = "Collapse (or uncollapse) materialize operations.";
-  let constructor = "::mlir::gml_st::createCollapseMaterializeOpsPass()";
+  let constructor = "::mlir::gml_st::createComposeExtractInsertSlicePass()";
 }
 
 def GmlStToScf : Pass<"gml-st-to-scf", "mlir::func::FuncOp"> {

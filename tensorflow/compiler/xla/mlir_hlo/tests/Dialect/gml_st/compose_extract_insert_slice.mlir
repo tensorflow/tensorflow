@@ -1,5 +1,4 @@
-// RUN: mlir-hlo-opt %s --gml-collapse-materialize-ops | \
-// RUN: FileCheck %s
+// RUN: mlir-hlo-opt %s --gml-compose-extract-insert-slice | FileCheck %s
 
 func.func @compose_tiles(%arg: tensor<?x?xf32>, %i: index, %j: index, %k: index,
     %n: index, %a: index, %b: index) -> tensor<4x?xf32> {

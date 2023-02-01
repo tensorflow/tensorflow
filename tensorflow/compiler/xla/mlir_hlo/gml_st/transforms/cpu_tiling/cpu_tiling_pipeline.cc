@@ -22,8 +22,8 @@ limitations under the License.
 namespace mlir {
 namespace gml_st {
 
-void addTileableOpsTransformationsForCPU(
-    OpPassManager& pm, const GmlStCPUPipelineOptions& options) {
+void addCPUTilingPipeline(OpPassManager& pm,
+                          const GmlStCPUPipelineOptions& options) {
   using func::FuncOp;
 
   pm.addNestedPass<FuncOp>(createTransformScatterForCpuPass());
@@ -41,7 +41,7 @@ void addTileableOpsTransformationsForCPU(
   pm.addPass(createCSEPass());
   pm.addPass(createCanonicalizerPass());
 
-  pm.addNestedPass<FuncOp>(createCollapseMaterializeOpsPass());
+  pm.addNestedPass<FuncOp>(createComposeExtractInsertSlicePass());
   pm.addNestedPass<FuncOp>(createVectorizePerfectlyTiledLoopsPass());
   pm.addNestedPass<FuncOp>(createScalarizationPass());
   pm.addNestedPass<FuncOp>(createRewriteVectorContractPass());

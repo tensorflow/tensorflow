@@ -17,11 +17,9 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
-#include "gml_st/IR/gml_st_ops.h"
 #include "gml_st/transforms/passes.h"
 #include "gml_st/transforms/rewriters.h"
 #include "mlir/Dialect/Affine/ViewLikeInterfaceUtils.h"
-#include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/IR/PatternMatch.h"
@@ -31,7 +29,7 @@ namespace mlir {
 namespace gml_st {
 namespace {
 
-#define GEN_PASS_DEF_COLLAPSEMATERIALIZEOPSPASS
+#define GEN_PASS_DEF_COMPOSEEXTRACTINSERTSLICEPASS
 #include "gml_st/transforms/passes.h.inc"
 
 // Collapse extract_slice operations
@@ -64,8 +62,9 @@ struct CollapseExtractSliceOpPattern
   }
 };
 
-struct CollapseMaterializeOpsPass
-    : public impl::CollapseMaterializeOpsPassBase<CollapseMaterializeOpsPass> {
+struct ComposeExtractInsertSlicePass
+    : public impl::ComposeExtractInsertSlicePassBase<
+          ComposeExtractInsertSlicePass> {
   void runOnOperation() override {
     MLIRContext* ctx = &getContext();
     RewritePatternSet patterns(ctx);
@@ -86,8 +85,8 @@ void populateCollapseMaterializeOpsPatterns(MLIRContext* ctx,
 }
 
 std::unique_ptr<OperationPass<func::FuncOp>>
-createCollapseMaterializeOpsPass() {
-  return std::make_unique<CollapseMaterializeOpsPass>();
+createComposeExtractInsertSlicePass() {
+  return std::make_unique<ComposeExtractInsertSlicePass>();
 }
 
 }  // namespace gml_st
