@@ -605,14 +605,10 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
       return false;
     }
     if ((a_bitcast ? a_bitcast : a)->shape().dimensions_size() -
-                gemm_backend_config.dot_dimension_numbers()
-                    .lhs_batch_dimensions()
-                    .size() !=
+                a_batch_dims.size() !=
             2 ||
         (b_bitcast ? b_bitcast : b)->shape().dimensions_size() -
-                gemm_backend_config.dot_dimension_numbers()
-                    .rhs_batch_dimensions()
-                    .size() !=
+                b_batch_dims.size() !=
             2) {
       return false;
     }
@@ -713,9 +709,11 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
       }
       return transp_dims;
     };
-
-    auto plain_transpose = [&](const char a_or_b) {
-      if (a_or_b == 'a') {
+    
+    // Plain transpose on a or b. Plain transposes a matrix by permuting its 
+    // dimension without changing storage order.
+    auto plain_transpose = [&](const char matrix_name) {
+      if (matrix_name == 'a') {
         std::vector<int64_t> new_dim_order =
             transp_dim_order(a, a_contracting_dims[0], a_batch_dims);
         a = instr->AddInstruction(HloInstruction::CreateTranspose(
@@ -723,7 +721,7 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
                 a->shape().element_type(), transp_dims(a, new_dim_order),
                 a->shape().layout().minor_to_major()),
             a, new_dim_order));
-      } else if (a_or_b == 'b') {
+      } else if (matrix_name == 'b') {
         std::vector<int64_t> new_dim_order =
             transp_dim_order(b, b_contracting_dims[0], b_batch_dims);
         b = instr->AddInstruction(HloInstruction::CreateTranspose(
@@ -731,49 +729,47 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
                 b->shape().element_type(), transp_dims(b, new_dim_order),
                 b->shape().layout().minor_to_major()),
             b, new_dim_order));
+      } else {
+        return InternalError("Invalid matrix name.");
       }
+      return OkStatus();
     };
 
     DotDimensionNumbers *dim_nums =
         gemm_backend_config.mutable_dot_dimension_numbers();
     // Apply necessary transposes to accommodate canonicalize matmul(lhs and rhs
     // contracting dims are 1 and 0). Also assuming transpose folding pass later
-    // will remove duplcated transposes.
-    if (is_col_major) {
+    // will remove duplcated transposes. The last transpose is required by 
+    // cublas fp8 matmul restriction.
+   if (is_col_major) {
       if (a_contracting_dims[0] == 1 && b_contracting_dims[0] == 0) {
-        plain_transpose('a');
-        plain_transpose('b');
-        ;
+        TF_RETURN_IF_ERROR(plain_transpose('a'));
+        TF_RETURN_IF_ERROR(plain_transpose('b'));
       } else if (a_contracting_dims[0] == 1 && b_contracting_dims[0] == 1) {
-        plain_transpose('a');
-        dim_nums->set_rhs_contracting_dimensions(0, b_batch_dims.size() + 0);
-
+        dim_nums->set_rhs_contracting_dimensions(0, b_batch_dims.size());
+        TF_RETURN_IF_ERROR(plain_transpose('a'));
       } else if (a_contracting_dims[0] == 0 && b_contracting_dims[0] == 1) {
-        dim_nums->set_rhs_contracting_dimensions(0, b_batch_dims.size() + 0);
+        dim_nums->set_rhs_contracting_dimensions(0, b_batch_dims.size());
         dim_nums->set_lhs_contracting_dimensions(0, a_batch_dims.size() + 1);
       } else if (a_contracting_dims[0] == 0 && b_contracting_dims[0] == 0) {
-        plain_transpose('b');
         dim_nums->set_lhs_contracting_dimensions(0, a_batch_dims.size() + 1);
+        TF_RETURN_IF_ERROR(plain_transpose('b'));
       }
-      // The last transpose is required by cublas fp8 matmul restriction
-      plain_transpose('a');
+      TF_RETURN_IF_ERROR(plain_transpose('a'));
     } else {
-      if (a_contracting_dims[0] == 1 && b_contracting_dims[0] == 0) {
-        ;
-      } else if (a_contracting_dims[0] == 1 && b_contracting_dims[0] == 1) {
-        plain_transpose('b');
-        dim_nums->set_rhs_contracting_dimensions(0, b_batch_dims.size() + 0);
-
+      if (a_contracting_dims[0] == 1 && b_contracting_dims[0] == 1) {
+        dim_nums->set_rhs_contracting_dimensions(0, b_batch_dims.size());
+        TF_RETURN_IF_ERROR(plain_transpose('b'));
       } else if (a_contracting_dims[0] == 0 && b_contracting_dims[0] == 1) {
-        plain_transpose('a');
-        plain_transpose('b');
-        dim_nums->set_rhs_contracting_dimensions(0, b_batch_dims.size() + 0);
+        dim_nums->set_rhs_contracting_dimensions(0, b_batch_dims.size());
         dim_nums->set_lhs_contracting_dimensions(0, a_batch_dims.size() + 1);
+        TF_RETURN_IF_ERROR(plain_transpose('a'));
+        TF_RETURN_IF_ERROR(plain_transpose('b'));
       } else if (a_contracting_dims[0] == 0 && b_contracting_dims[0] == 0) {
-        plain_transpose('a');
         dim_nums->set_lhs_contracting_dimensions(0, a_batch_dims.size() + 1);
+        TF_RETURN_IF_ERROR(plain_transpose('a'));
       }
-      plain_transpose('b');
+      TF_RETURN_IF_ERROR(plain_transpose('b'));
     }
 
     std::unique_ptr<HloInstruction> new_custom_call =
