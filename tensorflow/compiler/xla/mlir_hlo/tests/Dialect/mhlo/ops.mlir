@@ -2409,6 +2409,14 @@ func.func @dynamic_update_slice(%input: tensor<3x4xi64>, %update: tensor<1x4xi64
 
 // -----
 
+// CHECK-LABEL: @dynamic_update_slice_dynamic_dim
+func.func @dynamic_update_slice_dynamic_dim(%input: tensor<?x4xi64>, %update: tensor<1x4xi64>, %start1: tensor<i64>, %start2: tensor<i64>) -> tensor<3x4xi64> {
+  %0 = "mhlo.dynamic_update_slice"(%input, %update, %start1, %start2) : (tensor<?x4xi64>, tensor<1x4xi64>, tensor<i64>, tensor<i64>) -> tensor<3x4xi64>
+  func.return %0 : tensor<3x4xi64>
+}
+
+// -----
+
 func.func @dynamic_update_slice_invalid_start(%input: tensor<3x4xi64>, %update: tensor<1x2xi64>, %start: tensor<2xi64>) -> tensor<3x4xi64> {
   // expected-error@+1 {{operand #2 must be 0D tensor of 4/8/16/32/64-bit signless integer or 4/8/16/32/64-bit unsigned integer values, but got 'tensor<2xi64>'}}
   %0 = "mhlo.dynamic_update_slice"(%input, %update, %start) : (tensor<3x4xi64>, tensor<1x2xi64>, tensor<2xi64>) -> tensor<3x4xi64>
