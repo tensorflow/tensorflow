@@ -1327,6 +1327,7 @@ cc_library(
 cc_library(
     name = "gml_st_passes",
     srcs = [
+        "gml_st/transforms/add_debug_info/add_debug_info.cc",
         "gml_st/transforms/collapse_materialize_ops/collapse_materialize_ops.cc",
         "gml_st/transforms/collapse_shape/collapse_shape.cc",
         "gml_st/transforms/fusion/fusion.cc",
@@ -1375,6 +1376,7 @@ cc_library(
         ":mlir_hlo",
         ":thlo",
         ":type_conversion",
+        "@llvm-project//llvm:BinaryFormat",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:AffineDialect",
         "@llvm-project//mlir:AffineUtils",

@@ -151,6 +151,9 @@ createTransformTransposeForCpuPass(ArrayRef<int64_t> tileSizes = std::nullopt);
 std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
 createTransformSortForCpuPass();
 
+/// Pass to add debug info to be propagated into LLVM backend.
+std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>> createAddDebugInfoPass();
+
 struct GmlStCPUPipelineOptions
     : public mlir::PassPipelineOptions<GmlStCPUPipelineOptions> {
   Option<bool> vectorize{*this, "vectorize",

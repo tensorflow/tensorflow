@@ -318,3 +318,10 @@ def TransformSortForCpuPass :
 
   let constructor = "createTransformSortForCpuPass()";
 }
+
+def AddDebugInfoPass :
+    Pass<"add-debug-info", "mlir::ModuleOp"> {
+  let summary = "Add debug info for the whole module";
+  let constructor = "::mlir::gml_st::createAddDebugInfoPass()";
+  let dependentDialects = ["::mlir::LLVM::LLVMDialect"];
+}

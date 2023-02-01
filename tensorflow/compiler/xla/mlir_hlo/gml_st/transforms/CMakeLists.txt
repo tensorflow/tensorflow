@@ -28,6 +28,7 @@ include_directories(BEFORE
 
 
 add_mlir_library(GmlStPasses
+  add_debug_info/add_debug_info.cc
   collapse_materialize_ops/collapse_materialize_ops.cc
   collapse_shape/collapse_shape.cc
   fusion/fusion.cc
