@@ -108,7 +108,7 @@ def CollapseShapePass : Pass<"gml-collapse-shape", "mlir::func::FuncOp"> {
 
 def ComposeExtractInsertSlicePass : Pass<"gml-compose-extract-insert-slice",
     "mlir::func::FuncOp"> {
-  let summary = "Collapse (or uncollapse) materialize operations.";
+  let summary = "Compose tensor.extract_slice/insert_slice ops.";
   let constructor = "::mlir::gml_st::createComposeExtractInsertSlicePass()";
 }
 

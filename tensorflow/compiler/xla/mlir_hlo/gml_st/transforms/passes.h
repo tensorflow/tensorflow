@@ -69,7 +69,7 @@ std::unique_ptr<OperationPass<func::FuncOp>> createCollapseShapePass();
 std::unique_ptr<OperationPass<func::FuncOp>> createCollapseShapePass(
     const CollapseShapePassOptions &options);
 
-/// Pass to collapse (or uncollapse) materialize operations.
+/// Pass to compose tensor.extract_slice/insert_slice ops.
 std::unique_ptr<OperationPass<func::FuncOp>>
 createComposeExtractInsertSlicePass();
 
