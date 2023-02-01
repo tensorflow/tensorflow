@@ -29,6 +29,7 @@ from tensorflow.python.data.experimental.ops import distribute
 from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute import distribute_utils
 from tensorflow.python.distribute import values as values_lib
+from tensorflow.python.distribute.experimental import dtensor_util
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.util import nest
@@ -306,14 +307,17 @@ class MirroredExtended(distribute_lib.StrategyExtendedV2):
       # TODO(scottzhu): Add support for get_replica_context() within the fn.
       dtensor_result = fn(*d_args, **d_kwargs)
 
-    # Strategy requires to return a PerReplica instance
-    return distribute_utils.regroup(d_api.unpack(dtensor_result),
-                                    always_wrap=True)
+    return nest.map_structure(
+        dtensor_util.DTensorDistributedValue,
+        dtensor_result)
 
 
 def _convert_inputs_to_dtensor(inputs, mesh):
+  """Convert any input types to DTensor instance."""
   if d_api.is_dtensor(inputs):
     return inputs
+  elif isinstance(inputs, dtensor_util.DTensorDistributedValue):
+    return inputs.get_dtensor()
   elif isinstance(inputs, values_lib.DistributedValues):
     return _convert_per_replica_to_dtensor(inputs, mesh)
   else:
