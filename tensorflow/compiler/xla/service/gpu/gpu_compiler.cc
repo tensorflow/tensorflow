@@ -363,9 +363,8 @@ Status GpuCompiler::OptimizeHloModule(
   layout_insensitive_algsimp_opts.set_minmax_propagate_nan(
       !debug_options.xla_gpu_enable_fast_min_max());
 
-  if (gpu_target_config.platform_name == "ROCM") {
+  if (gpu_target_config.platform_name == "ROCM")
     layout_insensitive_algsimp_opts.set_enable_conv_operand_swap(false);
-  }
 
   const int64_t num_partitions = hlo_module->config().num_partitions();
   if (num_partitions > 1) {
@@ -764,7 +763,7 @@ Status GpuCompiler::PrepareHloModuleForIrEmitting(HloModule* hlo_module) {
   pipeline.AddPass<CopyInsertion>(GetCanShareBuffer());
   // To fuse the copy.
   pipeline.AddPass<GpuHorizontalLoopFusion>("copy_");
-  pipeline.AddPass<HloDCE>();
+
   pipeline.AddPass<GpuSanitizeConstantNames>();
   return pipeline.Run(hlo_module).status();
 }
