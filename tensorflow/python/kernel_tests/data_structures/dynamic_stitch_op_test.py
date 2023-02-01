@@ -226,6 +226,19 @@ class DynamicStitchTestBase(object):
     with self.assertRaises(ValueError):
       self.stitch_op(indices, data)
 
+  def testOutOfBoundsIndexRaisesInvalidArgument(self):
+    with self.assertRaisesRegex(errors.InvalidArgumentError, "out of range"):
+      indices = [[-1000], [405], [519], [758], [1015]]
+      data = [
+          [110.27793884277344],
+          [120.29475402832031],
+          [157.2418212890625],
+          [157.2626953125],
+          [188.45382690429688],
+      ]
+
+      self.evaluate(self.stitch_op(indices, data))
+
 
 class DynamicStitchTest(DynamicStitchTestBase, test.TestCase):
 
