@@ -764,31 +764,13 @@ tsl::Status ReorganizeMemory(Stream *stream,
       bool a_status = stream->ThenMemcpy(&target_mem, src_mem, x.size).ok();
       if (!a_status) {
         return tsl::Status(
-<<<<<<< HEAD
-            port::error::INTERNAL,
-          "failed to copy device memory in ROCMBlas::DoBlasGemmBatched");
-=======
             tsl::error::INTERNAL,
-            "failed to copy device memory in ROCMBlas::DoBlasGemmBatched");
->>>>>>> upstream/master
+          "failed to copy device memory in ROCMBlas::DoBlasGemmBatched");
       }
     }
     i++;
   }
-<<<<<<< HEAD
   fflush(stdout);
-=======
-
-  DeviceMemoryBase src_mem = DeviceMemoryBase(src_ptr, cur_stride_size);
-  DeviceMemoryBase target_mem = DeviceMemoryBase(dst_ptr, cur_stride_size);
-  bool a_status =
-      gather ? stream->ThenMemcpy(&target_mem, src_mem, cur_stride_size).ok()
-             : stream->ThenMemcpy(&src_mem, target_mem, cur_stride_size).ok();
-  if (!a_status)
-    return tsl::Status(
-        tsl::error::INTERNAL,
-        "failed to copy device memory in ROCMBlas::DoBlasGemmBatched");
->>>>>>> upstream/master
   return tsl::OkStatus();
 }
 

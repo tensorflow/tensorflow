@@ -202,29 +202,6 @@ namespace {
 
 class GpuBfloat16Support : public BFloat16Support {
  public:
-<<<<<<< HEAD
-  explicit GpuBfloat16Support(bool supports_matrix_multiplication,
-                              se::StreamExecutor* stream_exec)
-      : supports_matrix_multiplication_(supports_matrix_multiplication),
-        gpu_info_(stream_exec) {}
-
-#if GOOGLE_CUDA
-  explicit GpuBfloat16Support(bool supports_matrix_multiplication,
-                              se::dnn::VersionInfo dnn_version_info,
-                              se::CudaComputeCapability cuda_compute_capability
-                            )
-      : supports_matrix_multiplication_(supports_matrix_multiplication),
-        gpu_info_(std::make_pair(cudnn_version, cuda_compute_capability)) {}
-#elif TENSORFLOW_USE_ROCM
-  explicit GpuBfloat16Support(bool supports_matrix_multiplication,
-                              se::dnn::VersionInfo dnn_version_info,
-                              se::RocmComputeCapability rocm_compute_capability
-                            )
-      : supports_matrix_multiplication_(supports_matrix_multiplication),
-        gpu_info_(std::make_pair(dnn_version_info, rocm_compute_capability)) {}
-#endif
-=======
->>>>>>> upstream/master
   bool SupportsBF16Operand(const HloInstruction& hlo,
                            int64_t operand_index) const override {
     return BFloat16Support::SupportsBF16Operand(hlo, operand_index) ||
@@ -268,68 +245,6 @@ class GpuBfloat16Support : public BFloat16Support {
         return false;
     }
   }
-<<<<<<< HEAD
-
-  bool IsConvBf16Supported() const {
-    if (std::holds_alternative<se::StreamExecutor*>(gpu_info_)) {
-      auto stream_exec = std::get<se::StreamExecutor*>(gpu_info_);
-#if GOOGLE_CUDA
-      if (se::dnn::DnnSupport* dnn = stream_exec->AsDnn()) {
-        StatusOr<se::dnn::VersionInfo> cudnn_version = dnn->GetVersion();
-        if (cudnn_version.ok()) {
-          auto cuda_compute_capability =
-              stream_exec->GetDeviceDescription().cuda_compute_capability();
-          return (cudnn_version->major_version() > 8 ||
-                  (cudnn_version->major_version() == 8 &&
-                   cudnn_version->minor_version() >= 2)) &&
-                 cuda_compute_capability.IsAtLeast(
-                     se::CudaComputeCapability::AMPERE);
-        }
-      }
-#elif TENSORFLOW_USE_ROCM && TF_ROCM_VERSION>=50000
-      auto rocm_compute_capability =
-        stream_exec->GetDeviceDescription().rocm_compute_capability();
-      return rocm_compute_capability.has_bf16_dtype_support();
-#endif
-      return false;
-    }
-
-#if GOOGLE_CUDA
-    auto pair =
-        std::get<std::pair<se::dnn::VersionInfo, se::CudaComputeCapability>>(
-            gpu_info_);
-    se::dnn::VersionInfo cudnn_version = pair.first;
-    se::CudaComputeCapability cuda_compute_capability = pair.second;
-    return (cudnn_version.major_version() > 8 ||
-            (cudnn_version.major_version() == 8 &&
-             cudnn_version.minor_version() >= 2)) &&
-           cuda_compute_capability.IsAtLeast(se::CudaComputeCapability::AMPERE);
-#elif TENSORFLOW_USE_ROCM
-    auto pair =
-        std::get<std::pair<se::dnn::VersionInfo, se::RocmComputeCapability>>(
-            gpu_info_);
-    se::dnn::VersionInfo cudnn_version = pair.first;
-    se::RocmComputeCapability rocm_compute_capability = pair.second;
-    return rocm_compute_capability.has_bf16_dtype_support();
-#endif
-  }
-
-  bool supports_matrix_multiplication_;
-
-  // During JIT compilation, store a pointer to the stream executor. During AOT
-  // compilation, store the dnn version info and the cuda compute capability
-  // from the target GPU.
-#if GOOGLE_CUDA
-  std::variant<se::StreamExecutor*,
-               std::pair<se::dnn::VersionInfo, se::CudaComputeCapability>>
-      gpu_info_;
-#elif TENSORFLOW_USE_ROCM
-  std::variant<se::StreamExecutor*,
-               std::pair<se::dnn::VersionInfo, se::RocmComputeCapability>>
-      gpu_info_;
-#endif
-=======
->>>>>>> upstream/master
 };
 
 bool ConvIsLowerable(HloInstruction* conv) {
@@ -567,26 +482,6 @@ Status GpuCompiler::OptimizeHloModule(
     // Expand the sort op to support stable sorting if required.
     pipeline.AddPass<StableSortExpander>();
 
-<<<<<<< HEAD
-    GpuBfloat16Support bf16(/*supports_matrix_multiplication=*/true,
-                            stream_exec);
-    if (!stream_exec) {
-      // Stream executor is not available during AOT compilation. We pass in
-      // relevant information from gpu_target_info.
-      bf16 = GpuBfloat16Support(
-          /*supports_matrix_multiplication=*/true,
-          gpu_target_config.dnn_version_info,
-#if GOOGLE_CUDA
-          std::get<se::CudaComputeCapability>(gpu_target_config.gpu_version)
-#elif TENSORFLOW_USE_ROCM
-          std::get<se::RocmComputeCapability>(gpu_target_config.gpu_version)
-#endif
-          );
-    }
-    pipeline.AddPass<BFloat16Normalization>(&bf16);
-
-=======
->>>>>>> upstream/master
     pipeline.AddPass<BatchNormExpander>(
         /*rewrite_training_op=*/true,
         /*rewrite_inference_op=*/true,
@@ -733,17 +628,7 @@ Status GpuCompiler::OptimizeHloModule(
   }
 
   TF_RETURN_IF_ERROR(OptimizeHloConvolutionCanonicalization(
-<<<<<<< HEAD
-      hlo_module,
-#if GOOGLE_CUDA      
-      std::get<se::CudaComputeCapability>(gpu_target_config.gpu_version),
-#elif TENSORFLOW_USE_ROCM
-      std::get<se::RocmComputeCapability>(gpu_target_config.gpu_version),
-#endif      
-      device_allocator));
-=======
       hlo_module, gpu_version, dnn_version, device_allocator));
->>>>>>> upstream/master
 
   {
     // Run layout assignment in a separate pipeline from
@@ -972,29 +857,8 @@ Status GpuCompiler::OptimizeHloPostLayoutAssignment(
                      .VerifyReshapeIsBitcast(),
                  /*debug_only=*/true);
 
-<<<<<<< HEAD
-  // Run conversion again, to catch those matrix multiplications which were not
-  // rewritten into cuBLAS calls.
-  GpuBfloat16Support bf16(/*supports_matrix_multiplication=*/false,
-                          stream_exec);
-  if (!stream_exec) {
-    // Stream executor is not available during AOT compilation. We pass in
-    // relevant information from gpu_target_info.
-    bf16 = GpuBfloat16Support(
-        /*supports_matrix_multiplication=*/false,
-        gpu_target_config.dnn_version_info,
-#if GOOGLE_CUDA
-      std::get<se::CudaComputeCapability>(gpu_target_config.gpu_version)
-#elif TENSORFLOW_USE_ROCM
-      std::get<se::RocmComputeCapability>(gpu_target_config.gpu_version)
-#endif
-      );
-  }
-  pipeline.AddPass<BFloat16Normalization>(&bf16);
-=======
   GpuBfloat16Support bf16_support;
   pipeline.AddPass<BFloat16Normalization>(&bf16_support);
->>>>>>> upstream/master
 
   // Remove `f32 -> bf16 -> f32` casts inserted by bf16 normalization.
   if (debug_options.xla_gpu_simplify_all_fp_conversions()) {

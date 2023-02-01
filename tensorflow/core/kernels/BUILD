@@ -7633,7 +7633,6 @@ tf_kernel_library(
 )
 
 tf_kernel_library(
-<<<<<<< HEAD
     name = "gpu_fusion_ops",
     prefix = "gpu_fusion_ops",
     deps = [
@@ -7650,12 +7649,14 @@ tf_kernel_library(
         "//tensorflow/core/framework:bounds_check",
         "//tensorflow/core/util:image_resizer_state",
         "//third_party/eigen3",
-=======
+    ],
+)
+
+tf_kernel_library(
     name = "sync_ops",
     prefix = "sync_ops",
     deps = [
         "//tensorflow/core:framework",
->>>>>>> upstream/master
     ],
 )
 
