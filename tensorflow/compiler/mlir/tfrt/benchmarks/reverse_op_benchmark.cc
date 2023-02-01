@@ -35,15 +35,12 @@ const char* kReverseIR = R"(
   }
 )";
 
-std::string Reverse(llvm::ArrayRef<int32_t> input_shape,
+std::string Reverse(llvm::ArrayRef<int64_t> input_shape,
                     llvm::ArrayRef<bool> dynamic_dims,
                     llvm::ArrayRef<int32_t> reverse_dims,
                     llvm::StringRef element_type) {
-  llvm::SmallVector<int64_t, 4> mlir_input_shape;
-  for (int i = 0; i < input_shape.size(); ++i) {
-    mlir_input_shape.push_back(dynamic_dims[i] ? kDynSize : input_shape[i]);
-  }
-
+  llvm::SmallVector<int64_t, 4> mlir_input_shape =
+      GetTensorTypeShape(input_shape, dynamic_dims);
   return llvm::formatv(
       kReverseIR,
       PrintTensorType(mlir_input_shape, element_type),  // Input type {0}
@@ -53,8 +50,8 @@ std::string Reverse(llvm::ArrayRef<int32_t> input_shape,
   );
 }
 
-template <int32_t INPUT_RANK, size_t N_REVERSE_DIMS>
-auto EigenReverse(std::array<int32_t, N_REVERSE_DIMS> reverse_dims) {
+template <int64_t INPUT_RANK, size_t N_REVERSE_DIMS>
+auto EigenReverse(std::array<int64_t, N_REVERSE_DIMS> reverse_dims) {
   return [reverse_dims](llvm::ArrayRef<Tensor> inputs,
                         llvm::Optional<Eigen::ThreadPoolDevice> device) {
     std::array<bool, INPUT_RANK> bool_reverse_dims;
@@ -90,7 +87,7 @@ llvm::SmallVector<InputTensorSpec> GetInputSpec(
      GetInputSpec({INPUT_SHAPE}));                                            \
   BM(Eigen, NAME,                                                             \
      (EigenReverse<INPUT_RANK>(                                               \
-         std::array<int32_t, N_REVERSE_DIMS>{REVERSE_DIMS})),                 \
+         std::array<int64_t, N_REVERSE_DIMS>{REVERSE_DIMS})),                 \
      GetInputSpec({INPUT_SHAPE}));                                            \
   BM(Tfrt, NAME,                                                              \
      Reverse({INPUT_SHAPE}, {DYNAMIC_DIMS}, {REVERSE_DIMS}, "f32"), "main",   \
