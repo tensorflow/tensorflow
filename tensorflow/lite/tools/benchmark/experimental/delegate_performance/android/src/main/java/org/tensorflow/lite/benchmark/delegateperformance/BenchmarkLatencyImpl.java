@@ -23,13 +23,13 @@ import android.content.Context;
 import android.content.res.AssetFileDescriptor;
 import android.os.Trace;
 import android.util.Log;
-import com.google.protos.tflite.proto.benchmark.DelegatePerformance.LatencyCriteria;
-import com.google.protos.tflite.proto.benchmark.DelegatePerformance.LatencyResults;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.Arrays;
 import java.util.List;
 import tflite.StableDelegateLoaderSettings;
+import tflite.proto.benchmark.DelegatePerformance.LatencyCriteria;
+import tflite.proto.benchmark.DelegatePerformance.LatencyResults;
 
 /**
  * Impl class for Delegate Performance Latency Benchmark.
