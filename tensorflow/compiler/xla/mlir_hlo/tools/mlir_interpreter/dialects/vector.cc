@@ -186,6 +186,10 @@ void compressStore(InterpreterState& state, vector::CompressStoreOp,
     return;
   }
   auto offset = dstView.getPhysicalIndex(indices);
+  if (!offset) {
+    state.addFailure("index out of bounds");
+    return;
+  }
 
   auto srcBuffer = value.buffer();
   const auto& srcView = value.view();
@@ -197,7 +201,7 @@ void compressStore(InterpreterState& state, vector::CompressStoreOp,
     if (mask.at(i)) {
       memcpy(dstBuffer->at(offset, elementSize), srcBuffer->at(i, elementSize),
              elementSize);
-      ++offset;
+      ++*offset;
     }
   }
 }
@@ -275,12 +279,12 @@ InterpreterValue expandLoad(InterpreterState& state, vector::ExpandLoadOp,
   return out;
 }
 
-InterpreterValue extract(InterpreterState&, vector::ExtractOp extract,
+InterpreterValue extract(InterpreterState& state, vector::ExtractOp extract,
                          const InterpreterValue& vector) {
   auto result = vector;
   auto& resultView = result.view();
   for (int64_t offset : extractVector<int64_t>(extract.getPosition())) {
-    resultView.slice(0, offset);
+    state.checkSuccess(resultView.slice(0, offset), "index out of bounds");
   }
   return resultView.rank() == 0 ? result.extractElement({}) : result;
 }
@@ -303,11 +307,11 @@ InterpreterValue extractSlice(InterpreterState& state,
                               vector::ExtractStridedSliceOp extract,
                               const InterpreterValue& vector) {
   auto out = vector;
-  if (!out.view().subview(extractVector<int64_t>(extract.getOffsets()),
-                          extractVector<int64_t>(extract.getSizes()),
-                          extractVector<int64_t>(extract.getStrides()))) {
-    state.addFailure("subview out of bounds");
-  }
+  state.checkSuccess(
+      out.view().subview(extractVector<int64_t>(extract.getOffsets()),
+                         extractVector<int64_t>(extract.getSizes()),
+                         extractVector<int64_t>(extract.getStrides())),
+      "subview out of bounds");
   return out;
 }
 
@@ -363,14 +367,14 @@ InterpreterValue gather(InterpreterState& state, vector::GatherOp op,
   return out;
 }
 
-InterpreterValue insert(InterpreterState&, vector::InsertOp insert,
+InterpreterValue insert(InterpreterState& state, vector::InsertOp insert,
                         const InterpreterValue& src,
                         const InterpreterValue& dst) {
   auto result = dst.clone();
   auto resultSlice = result;
   auto& resultSliceView = resultSlice.view();
   for (int64_t offset : extractVector<int64_t>(insert.getPosition())) {
-    resultSliceView.slice(0, offset);
+    state.checkSuccess(resultSliceView.slice(0, offset), "index out of bounds");
   }
   resultSlice.fill([&](auto indices) { return src.extractElement(indices); });
   return result;
@@ -399,9 +403,11 @@ InterpreterValue insertSlice(InterpreterState& state,
                              const InterpreterValue& dst) {
   auto out = dst.clone();
   auto outSlice = out;
-  if (!outSlice.view().subview(extractVector<int64_t>(insert.getOffsets()),
-                               insert.getSourceVectorType().getShape(),
-                               extractVector<int64_t>(insert.getStrides()))) {
+  if (!outSlice.view()
+           .subview(extractVector<int64_t>(insert.getOffsets()),
+                    insert.getSourceVectorType().getShape(),
+                    extractVector<int64_t>(insert.getStrides()))
+           .succeeded()) {
     state.addFailure("subview out of bounds");
   }
   for (const auto& index : src.view().indices()) {
@@ -417,9 +423,10 @@ InterpreterValue load(InterpreterState& state, vector::LoadOp load,
     return {memref.extractElement(indices)};
   }
   auto out = memref;
-  if (!out.view().subview(
-          indices, load.getVectorType().getShape(),
-          SmallVector<int64_t>(load.getVectorType().getRank(), 1))) {
+  if (!out.view()
+           .subview(indices, load.getVectorType().getShape(),
+                    SmallVector<int64_t>(load.getVectorType().getRank(), 1))
+           .succeeded()) {
     // "Not all targets may support out-of-bounds vector loads"
     state.addFailure("out of bounds loads not supported");
     return {};
@@ -473,7 +480,8 @@ void maskedStore(InterpreterState& state, vector::MaskedStoreOp,
   }
 }
 
-InterpreterValue reductionImpl(const InterpreterValue& v,
+InterpreterValue reductionImpl(InterpreterState& state,
+                               const InterpreterValue& v,
                                const InterpreterValue* acc,
                                vector::CombiningKind kind,
                                SmallVector<int64_t> dims, Type elementType) {
@@ -501,7 +509,7 @@ InterpreterValue reductionImpl(const InterpreterValue& v,
       auto src = std::get<TT>(v.storage);
       for (auto [dim, index] :
            llvm::reverse(llvm::zip(keptDims, resultIndex))) {
-        src.view.slice(dim, index);
+        state.checkSuccess(src.view.slice(dim, index), "index out of bounds");
       }
 
       T& item = result.at(resultIndex);
@@ -523,12 +531,12 @@ InterpreterValue reductionImpl(const InterpreterValue& v,
   });
 }
 
-InterpreterValue multiReduction(InterpreterState&,
+InterpreterValue multiReduction(InterpreterState& state,
                                 vector::MultiDimReductionOp reduction,
                                 const InterpreterValue& source,
                                 const InterpreterValue& acc) {
   auto elementTy = getElementTypeOrSelf(reduction->getResultTypes()[0]);
-  return {reductionImpl(source, &acc, reduction.getKind(),
+  return {reductionImpl(state, source, &acc, reduction.getKind(),
                         extractVector<int64_t>(reduction.getReductionDims()),
                         elementTy)};
 }
@@ -589,8 +597,8 @@ InterpreterValue reduction(InterpreterState& state,
     }
   }
 
-  return reductionImpl(arg, acc ? &acc.value() : nullptr, reduction.getKind(),
-                       {0}, ty);
+  return reductionImpl(state, arg, acc ? &acc.value() : nullptr,
+                       reduction.getKind(), {0}, ty);
 }
 
 InterpreterValue shapeCast(InterpreterState&, vector::ShapeCastOp op,
@@ -603,7 +611,7 @@ InterpreterValue shapeCast(InterpreterState&, vector::ShapeCastOp op,
   return out;
 }
 
-InterpreterValue shuffle(InterpreterState&, vector::ShuffleOp shuffle,
+InterpreterValue shuffle(InterpreterState& state, vector::ShuffleOp shuffle,
                          const InterpreterValue& v0,
                          const InterpreterValue& v1) {
   auto result = v0.typedAlike(shuffle.getVectorType().getShape());
@@ -616,10 +624,12 @@ InterpreterValue shuffle(InterpreterState&, vector::ShuffleOp shuffle,
   for (auto [dstIndex, srcIndex] : llvm::enumerate(mask)) {
     auto src = srcIndex < size0 ? v0 : v1;
     if (!isZeroDim) {
-      src.view().slice(0, srcIndex < size0 ? srcIndex : srcIndex - size0);
+      state.checkSuccess(
+          src.view().slice(0, srcIndex < size0 ? srcIndex : srcIndex - size0),
+          "index out of bounds");
     }
     auto dst = result;
-    dst.view().slice(0, dstIndex);
+    state.checkSuccess(dst.view().slice(0, dstIndex), "index out of bounds");
     dst.fill([&](auto indices) { return src.extractElement(indices); });
   }
   return result;
@@ -654,12 +664,13 @@ void store(InterpreterState&, vector::StoreOp, const InterpreterValue& src,
 }
 
 std::optional<InterpreterValue> extractMemorySlice(
-    const AffineMap& map, const InterpreterValue& memory,
-    const InterpreterValue& vector, ArrayRef<int64_t> offsets,
-    std::optional<ArrayAttr> inBoundsAttr) {
+    InterpreterState& state, const AffineMap& map,
+    const InterpreterValue& memory, const InterpreterValue& vector,
+    ArrayRef<int64_t> offsets, std::optional<ArrayAttr> inBoundsAttr) {
   llvm::SmallVector<bool> inBounds(offsets.size());
   if (inBoundsAttr) {
-    llvm::copy(inBoundsAttr->getAsValueRange<BoolAttr>(), inBounds.begin());
+    llvm::copy(inBoundsAttr->getAsValueRange<BoolAttr>(),
+               inBounds.end() - inBoundsAttr->size());
   }
 
   auto memSlice = memory;
@@ -671,19 +682,24 @@ std::optional<InterpreterValue> extractMemorySlice(
       if (map.getResult(j).isFunctionOfDim(i)) {
         int64_t size = memSliceView.sizes[i] - offsets[i];
         bool isInBounds = size >= vectorView.sizes[j];
-        if (!isInBounds && inBounds[i]) return std::nullopt;
-
-        memSliceView.slice(
+        if (!isInBounds && inBounds[i]) {
+          state.addFailure("index out of bounds");
+          return std::nullopt;
+        }
+        (void)memSliceView.slice(
             i, offsets[i],
             std::max(int64_t{0}, std::min(vectorView.sizes[j], size)));
         found = true;
       }
     }
     if (!found) {
-      bool isInBounds = memSliceView.sizes[i] >= offsets[i];
-      if (!isInBounds && inBounds[i]) return std::nullopt;
+      bool isInBounds = memSliceView.sizes[i] > offsets[i];
+      if (!isInBounds) {
+        state.addFailure("index out of bounds");
+        return std::nullopt;
+      }
 
-      memSliceView.slice(i, offsets[i], isInBounds ? 1 : 0);
+      (void)memSliceView.slice(i, offsets[i], isInBounds ? 1 : 0);
     }
   }
   return memSlice;
@@ -720,10 +736,10 @@ InterpreterValue transferRead(InterpreterState& state,
   }
   dst.view().isVector = true;
 
-  auto srcSlice = extractMemorySlice(transfer.getPermutationMap(), src, dst,
-                                     offsets, transfer.getInBounds());
+  auto srcSlice = extractMemorySlice(state, transfer.getPermutationMap(), src,
+                                     dst, offsets, transfer.getInBounds());
+
   if (!srcSlice) {
-    state.addFailure("bounds check failed");
     return {};
   }
   for (const auto& srcIndices : srcSlice->view().indices()) {
@@ -769,10 +785,9 @@ llvm::SmallVector<InterpreterValue> transferWrite(
          "expected matching number of results");
 
   dst = transfer.getSource().getType().isa<TensorType>() ? dst.clone() : dst;
-  auto dstSlice = extractMemorySlice(transfer.getPermutationMap(), dst, src,
-                                     offsets, transfer.getInBounds());
+  auto dstSlice = extractMemorySlice(state, transfer.getPermutationMap(), dst,
+                                     src, offsets, transfer.getInBounds());
   if (!dstSlice) {
-    state.addFailure("bounds check failed");
     return {};
   }
 
