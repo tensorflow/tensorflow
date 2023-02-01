@@ -123,6 +123,7 @@ py_library(
         ":base",
         "//tensorflow/python:lib",
         "//tensorflow/python/eager:context",
+        "//tensorflow/python/framework:tensor_conversion_registry",
     ],
 )
 
