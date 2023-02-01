@@ -368,11 +368,11 @@ std::string TensorWithLayout::SummarizeValue() const {
   Status status;
   if (dtype() != TF_RESOURCE && layout().IsFullyReplicated()) {
     status =
-        tensorflow::unwrap(tensor()->tensor(0))->SummarizeValue(value_summary);
+        tensorflow::unwrap(tensor_->tensor(0))->SummarizeValue(value_summary);
   } else {
     // Note that this just prints the local values for sharded tensors. We could
     // instead run a collective here to relayout to replicated.
-    status = tensor()->SummarizeValue(value_summary);
+    status = tensor_->SummarizeValue(value_summary);
   }
   if (!status.ok()) {
     value_summary = "<error computing value>";
@@ -381,7 +381,7 @@ std::string TensorWithLayout::SummarizeValue() const {
 }
 
 std::string TensorWithLayout::DebugString() const {
-  auto dtype = static_cast<DataType>(tensor()->dtype());
+  auto dtype = static_cast<DataType>(tensor_->dtype());
 
   const auto& shape_vector = global_shape();
   return absl::StrCat("DTensor(", SummarizeValue(),
@@ -511,11 +511,11 @@ TF_DataType SparseTensorWithLayout::dtype() const {
 TFE_TensorHandle* SparseTensorWithLayout::get_tensor(size_t index) const {
   int num_sparse_tensors = num_tensors() / 3;
   if (index < num_sparse_tensors) {
-    return indices()->tensor(index);
+    return indices_->tensor(index);
   } else if (index < 2 * num_sparse_tensors) {
-    return values()->tensor(index % num_sparse_tensors);
+    return values_->tensor(index % num_sparse_tensors);
   } else {
-    return dense_shapes()->tensor(index % num_sparse_tensors);
+    return dense_shapes_->tensor(index % num_sparse_tensors);
   }
 }
 
@@ -872,8 +872,8 @@ void AddDTensorFunctionAttr(FunctionDef& function_def) {
       {"_OutputsOnOpDevice", outputs_on_op_device});
 }
 
-StatusOr<std::vector<parallel_device::ParallelTensor*>> PrepareEmbeddingInputs(
-    const std::vector<TensorWithLayout*>& inputs) {
+StatusOr<std::vector<const parallel_device::TensorHandlePtr*>>
+PrepareEmbeddingInputs(const std::vector<TensorWithLayout*>& inputs) {
   absl::flat_hash_map<int64_t, std::vector<int64_t>> table_vars_input_index;
   for (int64_t i = 0; i < inputs.size(); ++i) {
     if (inputs[i]->tensor_type() != kResource) continue;
@@ -889,7 +889,7 @@ StatusOr<std::vector<parallel_device::ParallelTensor*>> PrepareEmbeddingInputs(
   if (table_vars_input_index.empty()) {
     return errors::Internal("There are no TPU embedding resource input found.");
   }
-  std::vector<parallel_device::ParallelTensor*> parallel_inputs;
+  std::vector<const parallel_device::TensorHandlePtr*> parallel_inputs;
   // Assure parallel inputs has numeric order as table ids.
   for (const auto& [table_id, table_vars_indices] : table_vars_input_index) {
     for (const int64_t input_index : table_vars_indices) {

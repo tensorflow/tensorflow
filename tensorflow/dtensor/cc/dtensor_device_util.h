@@ -261,13 +261,13 @@ class TensorWithLayout {
   }
 
   virtual TFE_TensorHandle* get_tensor(size_t index) const {
-    return tensor()->tensor(index);
+    return tensor_->tensor(index);
   }
 
-  virtual size_t num_tensors() const { return tensor()->num_tensors(); }
+  virtual size_t num_tensors() const { return tensor_->num_tensors(); }
 
-  virtual parallel_device::ParallelTensor* tensor() const {
-    return tensor_.get();
+  virtual const parallel_device::TensorHandlePtr* tensor() const {
+    return tensor_ != nullptr ? tensor_->tensor_data() : nullptr;
   }
 
   // Returns a string which includes just the value and layout of the tensor.
@@ -464,7 +464,7 @@ class SparseTensorWithLayout : public TensorWithLayout {
 
   TensorType tensor_type() const override { return TensorType::kSparse; }
 
-  size_t num_tensors() const override { return 3 * indices()->num_tensors(); }
+  size_t num_tensors() const override { return 3 * indices_->num_tensors(); }
 
   TFE_TensorHandle* get_tensor(size_t index) const override;
 
@@ -474,12 +474,16 @@ class SparseTensorWithLayout : public TensorWithLayout {
 
   TF_DataType dtype() const override;
 
-  parallel_device::ParallelTensor* indices() const { return indices_.get(); }
+  const parallel_device::TensorHandlePtr* indices() const {
+    return indices_->tensor_data();
+  }
 
-  parallel_device::ParallelTensor* values() const { return values_.get(); }
+  const parallel_device::TensorHandlePtr* values() const {
+    return values_->tensor_data();
+  }
 
-  parallel_device::ParallelTensor* dense_shapes() const {
-    return dense_shapes_.get();
+  const parallel_device::TensorHandlePtr* dense_shapes() const {
+    return dense_shapes_->tensor_data();
   }
 
  protected:
@@ -630,8 +634,8 @@ Status MaybeInsertIdentityNodes(const FunctionDef* function_def, Graph* graph);
 void AddDTensorFunctionAttr(FunctionDef& function_def);
 
 // Prepare inputs of embeddings for checkpoint functions.
-StatusOr<std::vector<parallel_device::ParallelTensor*>> PrepareEmbeddingInputs(
-    const std::vector<TensorWithLayout*>& inputs);
+StatusOr<std::vector<const parallel_device::TensorHandlePtr*>>
+PrepareEmbeddingInputs(const std::vector<TensorWithLayout*>& inputs);
 
 Status InsertFunctionForTPUEmbeddingCheckpoint(
     TF_Status* status, Graph* graph,
