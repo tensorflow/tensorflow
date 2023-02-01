@@ -2651,8 +2651,9 @@ xla_cc_test(
     name = "literal_test_util_test",
     srcs = ["literal_test_util_test.cc"],
     deps = [
+        ":literal_test_util",
+        "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:test_helpers",
-        "//tensorflow/compiler/xla/tests:literal_test_util",
         "//tensorflow/tsl/platform:env",
         "//tensorflow/tsl/platform:logging",
         "//tensorflow/tsl/platform:path",

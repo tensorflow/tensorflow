@@ -618,6 +618,7 @@ cc_library(
         ":error_spec",
         ":literal",
         ":literal_util",
+        ":shape_util",
         ":util",
         "//tensorflow/tsl/platform:env",
         "//tensorflow/tsl/platform:float8",
