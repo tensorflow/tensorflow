@@ -604,7 +604,8 @@ class RowPartition(composite_tensor.CompositeTensor):
 
       checks = []
 
-      if const_nvals is None and const_nrows is not None and const_uniform_row_length is not None:
+      if (const_nvals is None and const_nrows is not None and
+          const_uniform_row_length is not None):
         const_nvals = const_nrows * const_uniform_row_length
         if nvals is not None and validate:
           checks.append(check_ops.assert_equal(nvals, const_nvals))
