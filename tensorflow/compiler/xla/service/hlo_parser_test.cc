@@ -4209,6 +4209,21 @@ ENTRY TestComputation {
   EXPECT_TRUE(result.value()->config().alias_passthrough_params());
 }
 
+TEST_F(HloParserTest, CheckAllowSpmdShardingPropagationToOutput) {
+  const char* const hlo_string = R"(
+HloModule TestModule, allow_spmd_sharding_propagation_to_output=true
+
+ENTRY TestComputation {
+    p0 = f16[2048,1024] parameter(0)
+    p1 = f16[2048,1024] parameter(1)
+    ROOT root = (f16[2048,1024], f16[2048,1024]) tuple(p0, p1)
+}
+)";
+  auto result = ParseAndReturnVerifiedModule(hlo_string);
+  TF_EXPECT_OK(result.status());
+  EXPECT_TRUE((*result)->config().allow_spmd_sharding_propagation_to_output());
+}
+
 TEST_F(HloParserTest, NestedBroadcastWithoutDimensionsAttribute) {
   const char* const hlo_string = R"(
 HloModule test
