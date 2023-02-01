@@ -273,9 +273,6 @@ PYBIND11_MODULE(xla_extension, m) {
       .def("compile", &PyClient::Compile, py::arg("computation"),
            py::arg("compile_options") = CompileOptions(),
            py::arg("host_callbacks") = std::vector<py::capsule>())
-      .def("compile", &PyClient::CompileMlir, py::arg("computation"),
-           py::arg("compile_options") = CompileOptions(),
-           py::arg("host_callbacks") = std::vector<py::capsule>())
       .def("serialize_executable", &PyClient::SerializeExecutable)
       .def("deserialize_executable",
            py::overload_cast<const std::string&, CompileOptions,

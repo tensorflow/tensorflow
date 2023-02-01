@@ -975,7 +975,7 @@ Status XlaCompiler::XLAShapeForArgument(
           }
           TF_RET_CHECK(absl::holds_alternative<TensorShape>(arg.shape));
           TensorShape shape;
-          shape.AddDim(arg.max_array_size);
+          TF_RETURN_IF_ERROR(shape.AddDimWithStatus(arg.max_array_size));
           shape.AppendShape(std::get<TensorShape>(arg.shape));
           TF_RETURN_IF_ERROR(TensorShapeToXLAShape(arg.type, shape, xla_shape));
 
@@ -993,7 +993,7 @@ Status XlaCompiler::XLAShapeForArgument(
           }
           TF_RET_CHECK(absl::holds_alternative<TensorShape>(arg.shape));
           TensorShape shape;
-          shape.AddDim(arg.max_array_size);
+          TF_RETURN_IF_ERROR(shape.AddDimWithStatus(arg.max_array_size));
           shape.AppendShape(std::get<TensorShape>(arg.shape));
           xla::Shape buffer_shape;
           TF_RETURN_IF_ERROR(

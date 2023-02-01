@@ -111,8 +111,9 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
                     GetOutputSafe(context, node, kOutputTensor, &output));
   output->type = dtype;
 
-  if (IsConstantTensor(start) && IsConstantTensor(limit) &&
-      IsConstantTensor(delta)) {
+  if (IsConstantOrPersistentTensor(start) &&
+      IsConstantOrPersistentTensor(limit) &&
+      IsConstantOrPersistentTensor(delta)) {
     return ResizeOutput(context, start, limit, delta, output);
   }
 

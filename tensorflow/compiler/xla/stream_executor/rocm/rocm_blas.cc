@@ -32,9 +32,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/stream_executor/gpu/gpu_helpers.h"
 #include "tensorflow/compiler/xla/stream_executor/gpu/gpu_stream.h"
 #include "tensorflow/compiler/xla/stream_executor/gpu/gpu_timer.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/env.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/initialize.h"
 #include "tensorflow/compiler/xla/stream_executor/platform/dso_loader.h"
+#include "tensorflow/compiler/xla/stream_executor/platform/initialize.h"
 #include "tensorflow/compiler/xla/stream_executor/platform/logging.h"
 #include "tensorflow/compiler/xla/stream_executor/platform/port.h"
 #include "tensorflow/compiler/xla/stream_executor/plugin_registry.h"
@@ -765,13 +764,31 @@ tsl::Status ReorganizeMemory(Stream *stream,
       bool a_status = stream->ThenMemcpy(&target_mem, src_mem, x.size).ok();
       if (!a_status) {
         return tsl::Status(
+<<<<<<< HEAD
             port::error::INTERNAL,
           "failed to copy device memory in ROCMBlas::DoBlasGemmBatched");
+=======
+            tsl::error::INTERNAL,
+            "failed to copy device memory in ROCMBlas::DoBlasGemmBatched");
+>>>>>>> upstream/master
       }
     }
     i++;
   }
+<<<<<<< HEAD
   fflush(stdout);
+=======
+
+  DeviceMemoryBase src_mem = DeviceMemoryBase(src_ptr, cur_stride_size);
+  DeviceMemoryBase target_mem = DeviceMemoryBase(dst_ptr, cur_stride_size);
+  bool a_status =
+      gather ? stream->ThenMemcpy(&target_mem, src_mem, cur_stride_size).ok()
+             : stream->ThenMemcpy(&src_mem, target_mem, cur_stride_size).ok();
+  if (!a_status)
+    return tsl::Status(
+        tsl::error::INTERNAL,
+        "failed to copy device memory in ROCMBlas::DoBlasGemmBatched");
+>>>>>>> upstream/master
   return tsl::OkStatus();
 }
 
@@ -939,7 +956,7 @@ tsl::Status ROCMBlas::DoBlasGemmBatchedInternal(
                         batch_stride_c, batch_count);
   }
   if (!ok)
-    return tsl::Status(port::error::INTERNAL,
+    return tsl::Status(tsl::error::INTERNAL,
                        "failed BLAS call, see log for details");
   if (reallocated_c)
     return ReorganizeMemory(stream, &c, c_raw_ptrs, batch_count, batch_stride_c,

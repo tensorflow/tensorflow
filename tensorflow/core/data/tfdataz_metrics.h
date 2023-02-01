@@ -24,6 +24,8 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_set.h"
+#include "absl/time/time.h"
+#include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/thread_annotations.h"
@@ -49,7 +51,7 @@ class ApproximateLatencyEstimator {
 
   // Returns the average latency for the duration (1,5 and 60 minutes)
   // specified.
-  double GetAverageLatency(Duration duration);
+  absl::Duration GetAverageLatency(Duration duration);
 
  private:
   static constexpr int64_t kSecondsPerMinute = 60;
@@ -94,21 +96,27 @@ class TfDatazMetricsCollector {
   // We only collect metrics for CPU devices. This is a heuristic to avoid
   // collecting metrics for device-side iterators created by the multi-device
   // iterator mechanism.
-  explicit TfDatazMetricsCollector(const Env& env);
+  TfDatazMetricsCollector(const Env& env, IteratorBase* iterator);
 
   // Records `GetNext` call latency.
   void RecordGetNextLatency(int64_t get_next_latency_usec);
 
   // Returns the average `GetNext` latency for past 1 minute.
-  double GetAverageLatencyForLastOneMinute();
+  absl::Duration GetAverageLatencyForLastOneMinute();
 
   // Returns the average `GetNext` latency for past 5 minutes.
-  double GetAverageLatencyForLastFiveMinutes();
+  absl::Duration GetAverageLatencyForLastFiveMinutes();
 
   // Returns the average `GetNext` latency for past 60 minutes.
-  double GetAverageLatencyForLastSixtyMinutes();
+  absl::Duration GetAverageLatencyForLastSixtyMinutes();
+
+  // Returns the total memory (in bytes) used by the iterator.
+  // Total memory used by the iterator includes the total number of bytes
+  // buffered in all nodes in the subtree.
+  int64_t GetIteratorTotalMemoryUsage();
 
  private:
+  IteratorBase* iterator_;  // not owned
   ApproximateLatencyEstimator latency_estimator_;
 };
 

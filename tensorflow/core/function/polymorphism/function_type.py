@@ -323,10 +323,11 @@ sanitization_warnings_given = 0
 
 
 # TODO(fmuham): In future, replace warning with exception.
+# TODO(fmuham): Sanitize to graph node conventions.
 def sanitize_arg_name(name: str) -> str:
   """Sanitizes function argument names.
 
-  Matches Graph Node and Python naming conventions.
+  Matches Python symbol naming rules.
 
   Without sanitization, names that are not legal Python parameter names can be
   set which makes it challenging to represent callables supporting the named
@@ -339,7 +340,7 @@ def sanitize_arg_name(name: str) -> str:
     A string that meets Python parameter conventions.
   """
   # Lower case and replace non-alphanumeric chars with '_'
-  swapped = "".join([c if c.isalnum() else "_" for c in name.lower()])
+  swapped = "".join([c if c.isalnum() else "_" for c in name])
   result = swapped if swapped[0].isalpha() else "arg_" + swapped
 
   global sanitization_warnings_given
@@ -358,7 +359,7 @@ def _make_validated_mono_param(name, value, kind, type_context, poly_type):
   mono_type = trace_type.from_value(value, type_context)
 
   if poly_type and not mono_type.is_subtype_of(poly_type):
-    raise TypeError(f"Parameter {name} was expected to be of type "
+    raise TypeError(f"Parameter `{name}` was expected to be of type "
                     f"{poly_type} but is {mono_type}")
 
   return Parameter(name, kind, False, mono_type)
@@ -431,6 +432,7 @@ def canonicalize_to_monomorphic(
 
 
 # TODO(fmuham): Share code with canonicalize_to_monomorphic.
+# TODO(fmuham): Lift unnecessary restrictions on input_signature validity.
 def add_type_constraints(function_type: FunctionType, input_signature: Any,
                          default_values: Dict[str, Any]):
   """Adds type constraints to a FunctionType based on the input_signature."""
@@ -465,6 +467,12 @@ def add_type_constraints(function_type: FunctionType, input_signature: Any,
     elif (param.kind in [
         param.POSITIONAL_ONLY, param.POSITIONAL_OR_KEYWORD, param.KEYWORD_ONLY
     ]):
+      if param.kind is param.KEYWORD_ONLY and param.name not in default_values:
+        raise TypeError(
+            "Since input_signature is defined, keyword-only parameter"
+            f" `{param.name}` must have a default value"
+        )
+
       if constraints:
         parameters.append(
             Parameter(param.name, sanitized_kind, param.optional,

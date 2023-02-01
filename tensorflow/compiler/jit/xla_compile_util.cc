@@ -67,7 +67,7 @@ StatusOr<std::unique_ptr<Graph>> CreateSingleOpGraph(
 }
 
 bool UsePjRtForSingleDeviceCompilation() {
-  return GetXlaOpsCommonFlags().tf_xla_use_device_api;
+  return GetXlaOpsCommonFlags()->tf_xla_use_device_api;
 }
 
 }  // namespace tensorflow

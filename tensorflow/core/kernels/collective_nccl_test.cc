@@ -155,9 +155,10 @@ class NcclTestBase : public ::testing::Test {
   // Initialize `input` tensor at rank `rank`.
   virtual void InitInput(Tensor* input, const int rank) = 0;
 
-  // Initialize `expected` output at all `num_ranks` ranks.
+  // Initialize `expected` output at `current_rank` out of `num_ranks` ranks.
   virtual void InitExpected(std::vector<float>* expected,
-                            const int tensor_length, const int num_ranks) = 0;
+                            const int tensor_length, const int current_rank,
+                            const int num_ranks) = 0;
 
   // Initialize device `di` specific to the collective op.
   virtual void InitDevice(DeviceInstance* di) = 0;
@@ -191,15 +192,6 @@ class NcclTestBase : public ::testing::Test {
       return;
     }
     Init(num_ranks, instance_key);
-    std::vector<float> expected;
-    InitExpected(&expected, input_length, num_ranks);
-    if (VLOG_IS_ON(3)) {
-      string str_buf;
-      for (const auto& x : expected) {
-        strings::StrAppend(&str_buf, " ", x);
-      }
-      VLOG(3) << "Expected output " << str_buf;
-    }
     for (int rank = 0; rank < num_ranks; ++rank) {
       DeviceInstance* instance = instances_[rank].get();
       instance->InitTensor(DT_FLOAT, TensorShape({input_length}),
@@ -208,6 +200,16 @@ class NcclTestBase : public ::testing::Test {
     RunCollective();
     // Confirm that every rank computed the same correct value.
     for (int rank = 0; rank < instances_.size(); ++rank) {
+      std::vector<float> expected;
+      InitExpected(&expected, input_length, rank, num_ranks);
+      if (VLOG_IS_ON(3)) {
+        string str_buf;
+        for (const auto& x : expected) {
+          strings::StrAppend(&str_buf, " ", x);
+        }
+        VLOG(3) << "Expected output " << str_buf;
+      }
+
       TF_ASSERT_OK(instances_[rank]->status_);
       Tensor* output = &instances_[rank]->output_;
       const int output_length = output->NumElements();
@@ -242,6 +244,27 @@ class NcclTestBase : public ::testing::Test {
             .Attr("instance_key", params.instance.instance_key)
             .Attr("subdiv_offsets", params.instance.impl_details.subdiv_offsets)
             .Input(FakeInput(params.instance.data_type))
+            .Finalize(&node_def));
+    return GetKernel(node_def, device);
+  }
+
+  std::unique_ptr<OpKernel> GetCollectiveReduceScatterV2OpKernel(
+      const CollectiveParams& params, Tensor* input, DeviceBase* device) {
+    mutex_lock l(mu_);
+    NodeDef node_def;
+    NodeDefBuilder builder(
+        strings::StrCat("collective_reduce_scatter_", op_counter_++),
+        "CollectiveReduceScatterV2");
+    TF_CHECK_OK(
+        builder.Attr("T", params.instance.data_type)
+            .Attr("merge_op", "Add")
+            .Attr("final_op", "Div")
+            .Attr("subdiv_offsets", params.instance.impl_details.subdiv_offsets)
+            .Attr("communication_hint", "nccl")
+            .Input(FakeInput(params.instance.data_type))
+            .Input(FakeInput(DT_INT32))
+            .Input(FakeInput(DT_INT32))
+            .Input(FakeInput(DT_INT32))
             .Finalize(&node_def));
     return GetKernel(node_def, device);
   }
@@ -328,6 +351,74 @@ class NcclTestBase : public ::testing::Test {
       string exec_key =
           strings::StrCat(col_params_->instance.instance_key, ":0:0");
       auto* reducer = new NcclReducer();
+      auto col_ctx = std::make_shared<CollectiveContext>(
+          parent_->col_exec_, parent_->nccl_communicator_.get(),
+          parent_->dev_mgr_.get(),
+          /*OpKernelContext=*/&ctx, &op_params, col_params_, exec_key, kStepId,
+          /*input=*/&input_, /*output=*/&input_);
+      TF_CHECK_OK(reducer->InitializeCollectiveContext(col_ctx));
+      Notification note;
+      reducer->Run([this, &note](Status s) {
+        status_ = s;
+        note.Notify();
+      });
+      note.WaitForNotification();
+      if (status_.ok()) {
+        CHECK(output_.CopyFrom(*ctx.mutable_output(0), input_.shape()));
+      }
+
+      reducer->Unref();
+      op_params.op_device_context->Unref();
+    }
+
+    void RunReduceScatter() {
+      // Prepare an OpKernelContext.
+      OpKernelContext::Params op_params;
+      PrepareDeviceContext(&op_params);
+
+      // Prepare inputs and outputs to OpKernel.
+      gtl::InlinedVector<TensorValue, 4> inputs;
+      inputs.push_back(TensorValue(&input_));
+
+      Tensor group_size(DT_INT32, TensorShape({1}));
+      group_size.flat<int>()(0) = col_params_->group.group_size;
+      inputs.push_back(TensorValue(&group_size));
+
+      Tensor group_key(DT_INT32, TensorShape({1}));
+      group_key.flat<int>()(0) = col_params_->group.group_key;
+      inputs.push_back(TensorValue(&group_key));
+
+      Tensor instance_key(DT_INT32, TensorShape({1}));
+      instance_key.flat<int>()(0) = col_params_->instance.instance_key;
+      inputs.push_back(TensorValue(&instance_key));
+
+      op_params.inputs = inputs;
+      gtl::InlinedVector<AllocatorAttributes, 4> input_aa(
+          {AllocatorAttributes()});
+      op_params.input_alloc_attrs = input_aa;
+      int forward_from = 0;
+      op_params.forward_from_array = &forward_from;
+      AllocatorAttributes generic_alloc_attr;
+      op_params.output_attr_array = &generic_alloc_attr;
+      std::unique_ptr<OpKernel> op =
+          parent_->GetCollectiveReduceScatterV2OpKernel(*col_params_, &input_,
+                                                        device_);
+      op_params.op_kernel = op.get();
+      OpKernelContext ctx(&op_params, 1);
+      // We never actually execute the kernel, so we need to do the output
+      // allocation it would do, ourselves.
+      Tensor* output_tensor_ptr = nullptr;
+      auto output_shape = ctx.input(0).shape();
+      output_shape.set_dim(
+          0, output_shape.dim_size(0) / col_params_->group.group_size);
+      col_params_->instance.shape = output_shape;
+      TF_CHECK_OK(ctx.allocate_output(0, output_shape, &output_tensor_ptr));
+      CHECK_EQ(output_tensor_ptr, ctx.mutable_output(0));
+
+      // Run the reduce-scatter.
+      string exec_key =
+          strings::StrCat(col_params_->instance.instance_key, ":0:0");
+      auto* reducer = new NcclReduceScatterer();
       auto col_ctx = std::make_shared<CollectiveContext>(
           parent_->col_exec_, parent_->nccl_communicator_.get(),
           parent_->dev_mgr_.get(),
@@ -461,7 +552,7 @@ class NcclReducerTest : public NcclTestBase {
   }
 
   void InitExpected(std::vector<float>* expected, const int tensor_length,
-                    const int num_ranks) override {
+                    const int current_rank, const int num_ranks) override {
     expected->resize(tensor_length);
     for (int i = 0; i < tensor_length; ++i) {
       float expected_sum = 0.0;
@@ -481,6 +572,44 @@ class NcclReducerTest : public NcclTestBase {
   void RunCollectiveOnDevice(DeviceInstance* di) override { di->RunReduce(); }
 };
 
+class NcclReduceScattererTest : public NcclTestBase {
+ protected:
+  NcclReduceScattererTest()
+      : NcclTestBase(/*collective_type=*/REDUCE_SCATTER_COLLECTIVE,
+                     /*collective_name=*/"NcclReduceScatter") {}
+  ~NcclReduceScattererTest() override = default;
+
+  void InitInput(Tensor* input, const int rank) override {
+    for (size_t i = 0; i < input->NumElements(); ++i) {
+      float value = pow(10, rank) * i;
+      input->flat<float>()(i) = value;
+    }
+  }
+
+  void InitExpected(std::vector<float>* expected, const int tensor_length,
+                    const int current_rank, const int num_ranks) override {
+    const int output_length = tensor_length / num_ranks;
+    expected->resize(output_length);
+    for (int i = 0; i < output_length; ++i) {
+      float expected_sum = 0.0;
+      for (int rank = 0; rank < num_ranks; ++rank) {
+        float value = pow(10, rank) * (i + current_rank * output_length);
+        expected_sum += value;
+      }
+      (*expected)[i] = expected_sum / num_ranks;
+    }
+  }
+
+  void InitDevice(DeviceInstance* di) override {
+    di->col_params_->merge_op = di->merge_op_.get();
+    di->col_params_->final_op = di->final_op_.get();
+  }
+
+  void RunCollectiveOnDevice(DeviceInstance* di) override {
+    di->RunReduceScatter();
+  }
+};
+
 class NcclBroadcasterTest : public NcclTestBase {
  protected:
   NcclBroadcasterTest()
@@ -496,7 +625,7 @@ class NcclBroadcasterTest : public NcclTestBase {
   }
 
   void InitExpected(std::vector<float>* expected, const int tensor_length,
-                    const int num_ranks) override {
+                    const int current_rank, const int num_ranks) override {
     expected->resize(tensor_length);
     for (int i = 0; i < tensor_length; ++i) {
       (*expected)[i] = i;
@@ -530,7 +659,7 @@ class NcclGathererTest : public NcclTestBase {
   }
 
   void InitExpected(std::vector<float>* expected, const int tensor_length,
-                    const int num_ranks) override {
+                    const int current_rank, const int num_ranks) override {
     expected->resize(tensor_length * num_ranks, -1);
     for (int rank = 0, i = 0; rank < num_ranks; ++rank) {
       for (int j = 0; j < tensor_length; ++j, ++i) {
@@ -593,6 +722,22 @@ TEST_F(NcclGathererTest, Test8Dev128Len) {
   RunTest(/*num_ranks=*/8, /*tensor_length=*/128, /*instance_key=*/24);
 }
 TEST_F(NcclGathererTest, Test8Dev1045991Len) {
+  RunTest(/*num_ranks=*/8, /*tensor_length=*/1048576, /*instance_key=*/23);
+}
+
+TEST_F(NcclReduceScattererTest, Test2Dev16Len) {
+  RunTest(/*num_ranks=*/2, /*tensor_length=*/16, /*instance_key=*/23);
+}
+TEST_F(NcclReduceScattererTest, Test4Dev16Len) {
+  RunTest(/*num_ranks=*/4, /*tensor_length=*/16, /*instance_key=*/23);
+}
+TEST_F(NcclReduceScattererTest, Test8Dev16Len) {
+  RunTest(/*num_ranks=*/8, /*tensor_length=*/16, /*instance_key=*/23);
+}
+TEST_F(NcclReduceScattererTest, Test8Dev128Len) {
+  RunTest(/*num_ranks=*/8, /*tensor_length=*/128, /*instance_key=*/23);
+}
+TEST_F(NcclReduceScattererTest, Test8Dev1045991Len) {
   RunTest(/*num_ranks=*/8, /*tensor_length=*/1048576, /*instance_key=*/23);
 }
 

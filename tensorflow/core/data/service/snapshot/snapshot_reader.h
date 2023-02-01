@@ -22,6 +22,7 @@ limitations under the License.
 
 #include "absl/strings/substitute.h"
 #include "tensorflow/core/data/service/common.h"
+#include "tensorflow/core/data/service/snapshot/path_utils.h"
 #include "tensorflow/core/data/snapshot_utils.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/protobuf/snapshot.pb.h"
@@ -46,6 +47,10 @@ struct SnapshotReaderParams {
 
   // The Tensorflow environment.
   Env* env = nullptr;
+
+  std::string CommittedChunksDirectory() const {
+    return tensorflow::data::CommittedChunksDirectory(snapshot_path);
+  }
 
   std::string DebugString() const {
     return absl::Substitute(

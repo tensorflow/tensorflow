@@ -145,12 +145,15 @@ int Java_org_tensorflow_lite_acceleration_validation_entrypoint(int argc,
         &fbb,
         CreateBenchmarkEvent(
             fbb, CreateTFLiteSettings(fbb, &tflite_settings),
-            BenchmarkEventType_RECOVERED_ERROR, /* result */ 0,
-            CreateBenchmarkError(
-                fbb, BenchmarkStage_INITIALIZATION,
-                kMinibenchmarkUnableToSetCpuAffinity, /*signal=*/0,
-                /*error_code=*/0,
-                /*mini_benchmark_error_code=*/set_big_core_affinity_errno),
+            BenchmarkEventType_RECOVERED_ERROR, /* result = */ 0,
+            // There is no dedicated field for the errno, so we pass it as
+            // exit_code instead.
+            CreateBenchmarkError(fbb, BenchmarkStage_INITIALIZATION,
+                                 /* exit_code = */ set_big_core_affinity_errno,
+                                 /* signal = */ 0,
+                                 /* error_code = */ 0,
+                                 /* mini_benchmark_error_code = */
+                                 kMinibenchmarkUnableToSetCpuAffinity),
             Validator::BootTimeMicros(), Validator::WallTimeMicros()));
   }
 
@@ -205,7 +208,9 @@ int Java_org_tensorflow_lite_acceleration_validation_entrypoint(int argc,
       &fbb, CreateBenchmarkEvent(
                 fbb, CreateTFLiteSettings(fbb, &tflite_settings),
                 BenchmarkEventType_ERROR, /* result */ 0,
-                CreateBenchmarkError(fbb, run_status.stage, run_status.status),
+                CreateBenchmarkError(fbb, run_status.stage, /* exit_code */ 0,
+                                     /* signal */ 0, /* error_code */ 0,
+                                     run_status.status),
                 Validator::BootTimeMicros(), Validator::WallTimeMicros()));
 }
 

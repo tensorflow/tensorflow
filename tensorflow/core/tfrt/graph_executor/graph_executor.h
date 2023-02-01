@@ -26,15 +26,18 @@ limitations under the License.
 #include "learning/infra/mira/mlrt/bytecode/bytecode.h"
 #include "learning/infra/mira/mlrt/bytecode/executable.h"
 #include "learning/infra/mira/mlrt/interpreter/context.h"
+#include "absl/base/call_once.h"
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "tensorflow/core/protobuf/config.pb.h"
-#include "tensorflow/core/runtime_fallback/kernel/kernel_fallback_compat_request_state.h"
+#include "tensorflow/core/tfrt/fallback/cost_recorder.h"
 #include "tensorflow/core/tfrt/fallback/fallback_state.h"
 #include "tensorflow/core/tfrt/fallback/op_kernel_runner.h"
 #include "tensorflow/core/tfrt/graph_executor/graph_execution_options.h"
+#include "tensorflow/core/tfrt/runtime/runtime.h"
 #include "tensorflow/core/tfrt/runtime/work_queue_interface.h"
 #include "tensorflow/core/tfrt/tpu/tpu_resources.h"  // NOLINT(unused-includes): For tfrt::tpu::TpuModelResource
 #include "tensorflow/core/tfrt/utils/tfrt_graph_execution_state.h"
+#include "tensorflow/tsl/platform/thread_annotations.h"
 #include "tfrt/bef/bef_buffer.h"  // from @tf_runtime
 #include "tfrt/bef_executor/bef_file.h"  // from @tf_runtime
 #include "tfrt/core_runtime/core_runtime.h"  // from @tf_runtime
@@ -66,7 +69,7 @@ StatusOr<std::unique_ptr<RequestInfo>> CreateRequestInfo(
     const SessionMetadata& model_metadata, const Runtime& runtime,
     tensorflow::tfrt_stub::WorkQueueInterface* work_queue,
     tfrt::ResourceContext* resource_context,
-    const FallbackState& fallback_state);
+    const FallbackState& fallback_state, CostRecorder* cost_recorder = nullptr);
 
 // Runs on a function given input/output and other info.
 tensorflow::Status GraphExecutionRunOnFunction(
@@ -77,7 +80,8 @@ tensorflow::Status GraphExecutionRunOnFunction(
     std::vector<tensorflow::Tensor>* outputs,
     tfrt::ResourceContext* resource_context, const Runtime& runtime,
     const FallbackState& fallback_state,
-    tfrt::RequestDeadlineTracker* req_deadline_tracker);
+    tfrt::RequestDeadlineTracker* req_deadline_tracker,
+    CostRecorder* cost_recorder = nullptr);
 
 // Creates a ResourceContext and populate it with per model resource from
 // Runtime. If `tpu_target` is set to kTpurt, also call a special
@@ -94,16 +98,70 @@ class GraphExecutor {
   using Options = GraphExecutionOptions;
   using RunOptions = GraphExecutionRunOptions;
 
-  // The loading result of a `ClientGraph`.
-  struct LoadedClientGraph {
-    std::string name;
-    // Only one of `bef` or `mlrt_exexcution_state` should be filled for a
-    // single graph.
-    std::optional<tfrt::BefBuffer> bef;
-    std::unique_ptr<mlrt::LoadedExecutable> bytecode_executable = nullptr;
-    mlrt::bc::Buffer bytecode_buffer;
+  // Stores BEF-related data.
+  struct BefContext {
+    BefContext(tfrt::BefBuffer bef, tfrt::RCReference<tfrt::BEFFile> bef_file)
+        : bef(std::move(bef)), bef_file(std::move(bef_file)) {}
+
+    tfrt::BefBuffer bef;
     tfrt::RCReference<tfrt::BEFFile> bef_file;
-    std::unique_ptr<tfrt::ResourceContext> resource_context;
+  };
+
+  // The loading result of a `ClientGraph`.
+  class LoadedClientGraph {
+   public:
+    LoadedClientGraph(
+        std::string name,
+        std::unique_ptr<tfrt::ResourceContext> resource_context,
+        std::unique_ptr<mlir::MLIRContext> mlir_context,
+        mlir::OwningOpRef<mlir::ModuleOp> tfrt_mlir,
+        std::shared_ptr<BefContext> bef_context,
+        mlrt::bc::Buffer bytecode_buffer,
+        std::unique_ptr<mlrt::LoadedExecutable> bytecode_executable)
+        : name_(std::move(name)),
+          resource_context_(std::move(resource_context)),
+          mlir_context_(std::move(mlir_context)),
+          tfrt_mlir_(std::move(tfrt_mlir)),
+          bef_context_(std::move(bef_context)),
+          bytecode_buffer_(std::move(bytecode_buffer)),
+          bytecode_executable_(std::move(bytecode_executable)) {}
+
+    // Returns a `CostRecorder` if none has been created before for this
+    // `LoadedClientGraph`.
+    std::unique_ptr<CostRecorder> MaybeCreateCostRecorder() const;
+
+    // Updates the op cost values in this `LoadedClientGraph` with records from
+    // `cost_recorder`.
+    Status UpdateCost(const CostRecorder& cost_recorder,
+                      const Runtime& runtime);
+
+    // Getters.
+    std::shared_ptr<BefContext> bef_context() const {
+      tensorflow::mutex_lock lock(bef_context_mu_);
+      return bef_context_;
+    }
+    absl::string_view name() const { return name_; }
+    tfrt::ResourceContext& resource_context() const {
+      return *resource_context_;
+    }
+    mlrt::LoadedExecutable* bytecode_executable() const {
+      return bytecode_executable_.get();
+    }
+
+   private:
+    std::string name_;
+    std::unique_ptr<tfrt::ResourceContext> resource_context_;
+    std::unique_ptr<mlir::MLIRContext> mlir_context_;
+    // Thread-safety resulted from `create_cost_recorder_once_`.
+    mlir::OwningOpRef<mlir::ModuleOp> tfrt_mlir_;
+    // Only one of `bef_context_` or `bytecode_executable_` should be filled for
+    // a single `LoadedClientGraph`.
+    mutable tensorflow::mutex bef_context_mu_;
+    // Can be updated if online cost analysis is enabled.
+    std::shared_ptr<BefContext> bef_context_ TF_GUARDED_BY(bef_context_mu_);
+    mlrt::bc::Buffer bytecode_buffer_;
+    std::unique_ptr<mlrt::LoadedExecutable> bytecode_executable_ = nullptr;
+    mutable absl::once_flag create_cost_recorder_once_;
   };
 
   // A subgraph constructed by specifying input/output tensors.
@@ -195,7 +253,7 @@ class GraphExecutor {
 
   // Returns a `LoadedClientGraph` given input/output tensor info. If there is
   // no existing one yet, creates one first.
-  StatusOr<std::reference_wrapper<const GraphExecutor::LoadedClientGraph>>
+  StatusOr<std::reference_wrapper<GraphExecutor::LoadedClientGraph>>
   GetOrCreateLoadedClientGraph(
       const RunOptions& run_options,
       absl::Span<const std::string> input_tensor_names,

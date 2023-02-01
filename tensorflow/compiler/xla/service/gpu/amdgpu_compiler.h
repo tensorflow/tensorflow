@@ -31,10 +31,14 @@ namespace gpu {
 class AMDGPUCompiler : public GpuCompiler {
  public:
   AMDGPUCompiler();
-  ~AMDGPUCompiler() override {}
 
   Status OptimizeHloConvolutionCanonicalization(
+<<<<<<< HEAD
       HloModule* hlo_module, se::RocmComputeCapability rocm_compute_capability,
+=======
+      HloModule* hlo_module, GpuVersion gpu_version,
+      se::dnn::VersionInfo dnn_version,
+>>>>>>> upstream/master
       se::DeviceMemoryAllocator* device_allocator) override;
 
   Status OptimizeHloPostLayoutAssignment(

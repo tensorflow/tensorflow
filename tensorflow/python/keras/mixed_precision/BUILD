@@ -89,6 +89,7 @@ py_library(
         "//tensorflow/python/distribute:distribute_utils",
         "//tensorflow/python/distribute:ps_values",
         "//tensorflow/python/eager:context",
+        "//tensorflow/python/framework:tensor_conversion_registry",
         "//tensorflow/python/keras/distribute",
         "//tensorflow/python/types",
     ],

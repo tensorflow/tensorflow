@@ -1,6 +1,6 @@
 path: "tensorflow.metrics.MeanSquaredError"
 tf_class {
-  is_instance: "<class \'keras.metrics.metrics.MeanSquaredError\'>"
+  is_instance: "<class \'keras.metrics.regression_metrics.MeanSquaredError\'>"
   is_instance: "<class \'keras.metrics.base_metric.MeanMetricWrapper\'>"
   is_instance: "<class \'keras.metrics.base_metric.Mean\'>"
   is_instance: "<class \'keras.metrics.base_metric.Reduce\'>"

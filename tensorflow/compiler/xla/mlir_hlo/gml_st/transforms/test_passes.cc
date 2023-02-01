@@ -19,7 +19,6 @@ limitations under the License.
 #include <utility>
 
 #include "gml_st/interfaces/bufferizable_op_interface_impl.h"
-#include "gml_st/interfaces/tiling_interface_impl.h"
 #include "gml_st/transforms/fusion/fusion.h"
 #include "gml_st/transforms/peeling/peeling.h"
 #include "gml_st/transforms/transforms.h"
@@ -28,6 +27,7 @@ limitations under the License.
 #include "mlir/Dialect/Bufferization/Transforms/OneShotAnalysis.h"
 #include "mlir/Dialect/Bufferization/Transforms/OneShotModuleBufferize.h"
 #include "mlir/Dialect/Linalg/Transforms/BufferizableOpInterfaceImpl.h"
+#include "mlir/Dialect/Linalg/Transforms/TilingInterfaceImpl.h"
 #include "mlir/Dialect/Linalg/Transforms/Transforms.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
@@ -91,7 +91,7 @@ struct TestGmlStGreedyFusionPass
   void getDependentDialects(DialectRegistry &registry) const override {
     registry
         .insert<GmlStDialect, linalg::LinalgDialect, tensor::TensorDialect>();
-    registerGmlStTilingInterfaceExternalModels(registry);
+    linalg::registerTilingInterfaceExternalModels(registry);
   }
 
   void runOnOperation() override {

@@ -43,7 +43,6 @@ limitations under the License.
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/Diagnostics.h"  // from @llvm-project
-#include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
@@ -203,6 +202,7 @@ namespace {
 
 class GpuBfloat16Support : public BFloat16Support {
  public:
+<<<<<<< HEAD
   explicit GpuBfloat16Support(bool supports_matrix_multiplication,
                               se::StreamExecutor* stream_exec)
       : supports_matrix_multiplication_(supports_matrix_multiplication),
@@ -223,13 +223,14 @@ class GpuBfloat16Support : public BFloat16Support {
       : supports_matrix_multiplication_(supports_matrix_multiplication),
         gpu_info_(std::make_pair(dnn_version_info, rocm_compute_capability)) {}
 #endif
+=======
+>>>>>>> upstream/master
   bool SupportsBF16Operand(const HloInstruction& hlo,
                            int64_t operand_index) const override {
     return BFloat16Support::SupportsBF16Operand(hlo, operand_index) ||
            IsSupported(hlo);
   }
 
-  // Returns whether the backend supports BF16 output for the HLO instruction.
   bool SupportsBF16Output(const HloInstruction& hlo) const override {
     return BFloat16Support::SupportsBF16Output(hlo) || IsSupported(hlo);
   }
@@ -263,13 +264,11 @@ class GpuBfloat16Support : public BFloat16Support {
       // Other special ops.
       case HloOpcode::kBitcast:
         return true;
-      case HloOpcode::kConvolution:
-        return IsConvBf16Supported();
       default:
-        return supports_matrix_multiplication_ &&
-               gpu::IsMatrixMultiplication(hlo);
+        return false;
     }
   }
+<<<<<<< HEAD
 
   bool IsConvBf16Supported() const {
     if (std::holds_alternative<se::StreamExecutor*>(gpu_info_)) {
@@ -329,8 +328,9 @@ class GpuBfloat16Support : public BFloat16Support {
                std::pair<se::dnn::VersionInfo, se::RocmComputeCapability>>
       gpu_info_;
 #endif
+=======
+>>>>>>> upstream/master
 };
-
 
 bool ConvIsLowerable(HloInstruction* conv) {
   return GpuConvRewriter::ConvIsLowerable(conv);
@@ -567,6 +567,7 @@ Status GpuCompiler::OptimizeHloModule(
     // Expand the sort op to support stable sorting if required.
     pipeline.AddPass<StableSortExpander>();
 
+<<<<<<< HEAD
     GpuBfloat16Support bf16(/*supports_matrix_multiplication=*/true,
                             stream_exec);
     if (!stream_exec) {
@@ -584,6 +585,8 @@ Status GpuCompiler::OptimizeHloModule(
     }
     pipeline.AddPass<BFloat16Normalization>(&bf16);
 
+=======
+>>>>>>> upstream/master
     pipeline.AddPass<BatchNormExpander>(
         /*rewrite_training_op=*/true,
         /*rewrite_inference_op=*/true,
@@ -720,7 +723,17 @@ Status GpuCompiler::OptimizeHloModule(
 
   // Run target-specific HLO optimization passes for convolution
   // canonicalization.
+  GpuVersion gpu_version = gpu_target_config.gpu_version;
+  se::dnn::VersionInfo dnn_version = gpu_target_config.dnn_version_info;
+  if (stream_exec != nullptr) {
+    gpu_version = GetGpuVersion(stream_exec);
+    se::dnn::DnnSupport* dnn = stream_exec->AsDnn();
+    TF_RET_CHECK(dnn != nullptr);
+    TF_ASSIGN_OR_RETURN(dnn_version, dnn->GetVersion());
+  }
+
   TF_RETURN_IF_ERROR(OptimizeHloConvolutionCanonicalization(
+<<<<<<< HEAD
       hlo_module,
 #if GOOGLE_CUDA      
       std::get<se::CudaComputeCapability>(gpu_target_config.gpu_version),
@@ -728,6 +741,9 @@ Status GpuCompiler::OptimizeHloModule(
       std::get<se::RocmComputeCapability>(gpu_target_config.gpu_version),
 #endif      
       device_allocator));
+=======
+      hlo_module, gpu_version, dnn_version, device_allocator));
+>>>>>>> upstream/master
 
   {
     // Run layout assignment in a separate pipeline from
@@ -752,6 +768,8 @@ Status GpuCompiler::OptimizeHloModule(
       OptimizeHloPostLayoutAssignment(hlo_module, stream_exec, device_allocator,
                                       gpu_target_config, autotune_results));
 
+  const GpuDeviceInfo& gpu_device_info = gpu_target_config.gpu_device_info;
+
   {
     HloPassFix<HloPassPipeline> fusion("fusion");
     // We try to split variadic ops with many parameters into several such ops
@@ -762,9 +780,10 @@ Status GpuCompiler::OptimizeHloModule(
         HloVerifierOpts{}.MakeLayoutSensitive().WithInstructionCanChangeLayout(
             LayoutAssignment::InstructionCanChangeLayout),
         /*debug_only=*/true);
-    fusion.AddPass<GpuInstructionFusion>(/*may_duplicate=*/false);
-    fusion.AddPass<GpuInstructionFusion>(/*may_duplicate=*/true);
-    const GpuDeviceInfo gpu_device_info = gpu_target_config.gpu_device_info;
+    fusion.AddPass<GpuInstructionFusion>(/*may_duplicate=*/false,
+                                         gpu_device_info);
+    fusion.AddPass<GpuInstructionFusion>(/*may_duplicate=*/true,
+                                         gpu_device_info);
     fusion.AddPass<FusionMerger>(gpu_device_info, ShapeSizeBytesFunction());
     fusion.AddPass<GpuMultiOutputFusion>(gpu_device_info,
                                          ShapeSizeBytesFunction());
@@ -777,7 +796,7 @@ Status GpuCompiler::OptimizeHloModule(
   {
     HloPassFix<HloPassPipeline> horizontal_fusion("horizontal fusion");
     horizontal_fusion.AddPass<GpuHorizontalLoopFusion>();
-    horizontal_fusion.AddPass<GpuHorizontalInputFusion>();
+    horizontal_fusion.AddPass<GpuHorizontalInputFusion>(gpu_device_info);
     horizontal_fusion.AddPass<HloCSE>(/*is_layout_sensitive=*/true,
                                       /*only_fusion_computations=*/true);
     horizontal_fusion.AddPass<HloDCE>();
@@ -832,8 +851,6 @@ Status GpuCompiler::OptimizeHloModule(
     AlgebraicSimplifierOptions options = layout_insensitive_algsimp_opts;
     options.set_is_layout_sensitive(true);
     pipeline.AddPass<AlgebraicSimplifier>(options);
-    pipeline.AddPass<OptimizationBarrierExpander>();
-    pipeline.AddPass<TupleSimplifier>();
 
     TF_RETURN_IF_ERROR(pipeline.Run(hlo_module).status());
   }
@@ -955,6 +972,7 @@ Status GpuCompiler::OptimizeHloPostLayoutAssignment(
                      .VerifyReshapeIsBitcast(),
                  /*debug_only=*/true);
 
+<<<<<<< HEAD
   // Run conversion again, to catch those matrix multiplications which were not
   // rewritten into cuBLAS calls.
   GpuBfloat16Support bf16(/*supports_matrix_multiplication=*/false,
@@ -973,6 +991,10 @@ Status GpuCompiler::OptimizeHloPostLayoutAssignment(
       );
   }
   pipeline.AddPass<BFloat16Normalization>(&bf16);
+=======
+  GpuBfloat16Support bf16_support;
+  pipeline.AddPass<BFloat16Normalization>(&bf16_support);
+>>>>>>> upstream/master
 
   // Remove `f32 -> bf16 -> f32` casts inserted by bf16 normalization.
   if (debug_options.xla_gpu_simplify_all_fp_conversions()) {
@@ -1135,8 +1157,7 @@ static Status LowerToXlaGpuRuntime(mlir::ModuleOp module,
     return InternalError("No MLIR module to lower.");
   }
 
-  mlir::PassManager pm(module.getContext(),
-                       mlir::PassManager::Nesting::Implicit);
+  mlir::PassManager pm(module->getName(), mlir::PassManager::Nesting::Implicit);
 
   GpuPipelineOpts opts;
   opts.enable_cuda_graphs = debug_options.xla_gpu_enable_cuda_graphs();
@@ -1270,7 +1291,7 @@ static mlir::LogicalResult DiagnosticHandler(mlir::Diagnostic& diag) {
 static Status CompileModuleToLlvmIrImpl(
     HloModule* hlo_module, llvm::LLVMContext* llvm_context,
     const std::string& target_triple, const std::string& data_layout,
-    const std::string& platform_name, const se::Platform::Id platform_id,
+    const std::string& platform_name, se::Platform::Id platform_id,
     GpuDeviceInfo gpu_device_info,
     se::CudaComputeCapability cuda_compute_capability,
     se::RocmComputeCapability rocm_compute_capability,
@@ -1283,6 +1304,12 @@ static Status CompileModuleToLlvmIrImpl(
 
   TF_RETURN_IF_ERROR(
       ScheduleGpuModule(hlo_module, pointer_size, gpu_device_info));
+  {
+    HloPassPipeline pipeline("opt-barrier-expander");
+    pipeline.AddPass<OptimizationBarrierExpander>();
+
+    TF_RETURN_IF_ERROR(pipeline.Run(hlo_module).status());
+  }
 
   auto buffer_size_bytes_function =
       [pointer_size](const BufferValue& buffer_value) -> int64_t {

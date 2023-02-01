@@ -34,6 +34,7 @@ namespace mlir {
 namespace quant {
 namespace {
 
+using ::mlir::tf_saved_model::GetInitializerFunction;
 using ::mlir::tf_saved_model::GetSessionInitializerOp;
 using ::mlir::tf_saved_model::kTfSavedModelIndexPathAttr;
 using ::mlir::tf_saved_model::kTfSavedModelInitializerRestoreType;
@@ -67,32 +68,6 @@ class InsertRestoreOpPass
 
   void runOnOperation() override;
 };
-
-// Gets the initializer function whose initializer_type attribute matches
-// `type`. Returns a null operation if it doesn't exist.
-func::FuncOp GetInitializerFunction(
-    SessionInitializerOp session_init_op, SymbolTable symbol_table,
-    StringRef type = kTfSavedModelInitializerRestoreType) {
-  auto session_init_symbols =
-      session_init_op.getInitializers().getAsValueRange<FlatSymbolRefAttr>();
-  if (session_init_symbols.empty()) {
-    LOG(INFO) << "No session initializers exist in 'initializers' attribute of "
-                 "SessionInitializerOp. No variables are saved to checkpoint.";
-    return {};
-  }
-
-  for (const auto init_sym : session_init_symbols) {
-    auto init_func_op = symbol_table.lookup<func::FuncOp>(init_sym);
-
-    if (auto init_type = init_func_op->getAttrOfType<StringAttr>(
-            kTfSavedModelInitializerTypeAttr);
-        init_type && init_type == type) {
-      return init_func_op;
-    }
-  }
-
-  return {};
-}
 
 // Finds `tf.AssignVariableOp(tf.VarHandleOp, tf.Const)` patterns and removes
 // `tf.AssignVariableOp`s and `tf.Const`s. Collects and returns the
@@ -216,15 +191,8 @@ void CreateRestoreV2Op(std::vector<TF::VarHandleOp>& target_var_handle_ops,
 void InsertRestoreOpPass::runOnOperation() {
   ModuleOp module_op = getOperation();
 
-  SessionInitializerOp session_init_op = GetSessionInitializerOp(module_op);
-  if (!session_init_op) {
-    LOG(INFO) << "SessionInitializerOp does not exist. RestoreV2 op will not "
-                 "be created.";
-    return;
-  }
-
-  func::FuncOp session_init_func =
-      GetInitializerFunction(session_init_op, SymbolTable{module_op});
+  func::FuncOp session_init_func = GetInitializerFunction(
+      module_op, /*initializer_type=*/kTfSavedModelInitializerRestoreType);
   if (!session_init_func) {
     LOG(INFO) << "No session initializer function with type 'restore_op'. "
                  "RestoreV2 op will not be created.";

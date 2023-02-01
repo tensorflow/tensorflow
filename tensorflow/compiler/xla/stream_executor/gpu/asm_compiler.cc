@@ -32,17 +32,17 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "tensorflow/compiler/xla/stream_executor/gpu/gpu_driver.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/statusor.h"
 #include "tensorflow/tsl/platform/cuda_libdevice_path.h"
 #include "tensorflow/tsl/platform/env.h"
 #include "tensorflow/tsl/platform/errors.h"
 #include "tensorflow/tsl/platform/path.h"
 #include "tensorflow/tsl/platform/regexp.h"
+#include "tensorflow/tsl/platform/statusor.h"
 #include "tensorflow/tsl/platform/subprocess.h"
 
 namespace stream_executor {
 
-static tsl::StatusOr<absl::string_view> GetPtxasVersionString(
+static tsl::StatusOr<absl::string_view> GetToolVersionString(
     absl::string_view binary_path) {
   static absl::Mutex mu(absl::kConstInit);
   static auto* seen_binary_paths ABSL_GUARDED_BY(mu) =
@@ -75,24 +75,24 @@ static tsl::StatusOr<absl::string_view> GetPtxasVersionString(
   return absl::string_view(emplace_it.first->second);
 }
 
-tsl::StatusOr<std::array<int64_t, 3>> GetPtxasVersion(
-    absl::string_view ptxas_path) {
-  tsl::StatusOr<absl::string_view> ptxas_version =
-      GetPtxasVersionString(ptxas_path);
-  if (!ptxas_version.ok()) {
+tsl::StatusOr<std::array<int64_t, 3>> GetToolVersion(
+    absl::string_view tool_path) {
+  tsl::StatusOr<absl::string_view> tool_version =
+      GetToolVersionString(tool_path);
+  if (!tool_version.ok()) {
     return tsl::errors::FailedPrecondition(
-        "Couldn't get ptxas version string: ", ptxas_version.status());
+        "Couldn't get ptxas/nvlink version string: ", tool_version.status());
   }
   std::array<int64_t, 3> version;
   std::string vmaj_str, vmin_str, vdot_str;
-  if (!RE2::PartialMatch(ptxas_version.value(), R"(\bV(\d+)\.(\d+)\.(\d+)\b)",
+  if (!RE2::PartialMatch(tool_version.value(), R"(\bV(\d+)\.(\d+)\.(\d+)\b)",
                          &vmaj_str, &vmin_str, &vdot_str) ||
       !absl::SimpleAtoi(vmaj_str, &version[0]) ||
       !absl::SimpleAtoi(vmin_str, &version[1]) ||
       !absl::SimpleAtoi(vdot_str, &version[2])) {
     return tsl::errors::FailedPrecondition(
-        "Couldn't parse ptxas version in output of ", ptxas_path,
-        " --version:\n", ptxas_version.value());
+        "Couldn't parse ptxas/nvlink version in output of ", tool_path,
+        " --version:\n", tool_version.value());
   }
   return version;
 }
@@ -104,7 +104,7 @@ tsl::StatusOr<std::array<int64_t, 3>> GetPtxasVersion(
 //
 // Locks on entry.˝
 static void WarnIfBadPtxasVersion(absl::string_view ptxas_path) {
-  tsl::StatusOr<std::array<int64_t, 3>> version = GetPtxasVersion(ptxas_path);
+  tsl::StatusOr<std::array<int64_t, 3>> version = GetToolVersion(ptxas_path);
   if (!version.ok()) {
     LOG(WARNING) << "Couldn't get ptxas version : " << version.status();
     return;
@@ -186,7 +186,7 @@ std::string FindCudaExecutable(const std::string& binary_name,
 
   // Try searching in the default PATH first if applicable.
   if (tsl::PreferPtxasFromPath() &&
-      GetPtxasVersionString(binary_filename).ok()) {
+      GetToolVersionString(binary_filename).ok()) {
     VLOG(2) << "Using " << binary_filename;
     seen_binary_paths->emplace(std::move(cache_key), binary_filename);
     return binary_filename;
@@ -200,7 +200,7 @@ std::string FindCudaExecutable(const std::string& binary_name,
     binary_path = tsl::io::JoinPath(cuda_root, "bin", binary_filename);
     VLOG(2) << "Looking for " << binary_filename << " at " << binary_path;
     if (env->FileExists(binary_path).ok() &&
-        GetPtxasVersionString(binary_path).ok()) {
+        GetToolVersionString(binary_path).ok()) {
       break;
     }
   }
@@ -247,7 +247,7 @@ static void AppendArgsFromOptions(GpuAsmOpts options,
 tsl::StatusOr<std::array<int64_t, 3>> GetAsmCompilerVersion(
     const std::string& preferred_cuda_dir) {
   std::string ptxas_path = FindCudaExecutable("ptxas", preferred_cuda_dir);
-  return GetPtxasVersion(ptxas_path);
+  return GetToolVersion(ptxas_path);
 }
 
 tsl::StatusOr<std::vector<uint8_t>> CompileGpuAsm(int cc_major, int cc_minor,

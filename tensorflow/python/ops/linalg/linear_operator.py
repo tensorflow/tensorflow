@@ -26,6 +26,7 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.framework import type_spec
+from tensorflow.python.framework import type_spec_registry
 from tensorflow.python.module import module
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
@@ -1339,7 +1340,7 @@ def make_composite_tensor(cls, module_name="tf.linalg"):
 
   spec_name = "{}Spec".format(cls.__name__)
   spec_type = type(spec_name, (_LinearOperatorSpec,), {"value_type": cls})
-  type_spec.register("{}.{}".format(module_name, spec_name))(spec_type)
+  type_spec_registry.register("{}.{}".format(module_name, spec_name))(spec_type)
   cls._type_spec = property(spec_type.from_operator)  # pylint: disable=protected-access
   return cls
 

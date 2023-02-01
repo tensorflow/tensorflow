@@ -26,7 +26,9 @@ copy_lib() {
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/builds_common.sh"
-configure_android_workspace
+# To setup Android via `configure` script.
+export TF_SET_ANDROID_WORKSPACE=1
+yes "" | ./configure
 
 CPUS=armeabi-v7a,arm64-v8a
 

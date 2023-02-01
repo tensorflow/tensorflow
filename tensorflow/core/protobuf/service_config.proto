@@ -7,7 +7,7 @@ import "tensorflow/core/protobuf/data_service.proto";
 option go_package = "github.com/tensorflow/tensorflow/tensorflow/go/core/protobuf/for_core_protos_go_proto";
 
 // Configuration for a tf.data service DispatchServer.
-// Next id: 10
+// Next id: 11
 message DispatcherConfig {
   // The port for the dispatcher to bind to. A value of 0 indicates that the
   // dispatcher may bind to any available port.
@@ -41,6 +41,9 @@ message DispatcherConfig {
   // heartbeated to the dispatcher. A value of 0 indicates that the timeout
   // should be left to the runtime.
   int64 client_timeout_ms = 8;
+  // How long to wait for a worker to heartbeat before considering it missing.
+  // A value of 0 indicates that the timeout should be left to the runtime.
+  int64 worker_timeout_ms = 10;
 }
 
 // Configuration for a tf.data service WorkerServer.

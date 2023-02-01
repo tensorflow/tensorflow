@@ -10,7 +10,7 @@ container_digests = {
     "cuda11.8-cudnn8.6-ubuntu20.04-manylinux2014-multipython": "sha256:de84197c7d2170c103bcab5fb017ea35460a471275b21db12ff9ddcf403d40e9",
     # ROCM, probably not all of them still in use
     "rocm-ubuntu18.04-manylinux2010-multipython": "sha256:6e953a09b145df338bcb03e9e36f99b291140c29b72d0a048fb6c5905ccad5eb",
-    "rocm-ubuntu20.04-manylinux2014-multipython": "sha256:26720ebae4d6d12b1fca529616bfacfd0460990d4725af35e0f4af3c2422f227",
+    "rocm-ubuntu20.04-manylinux2014-multipython": "sha256:906faec7765fe5dd067f2b092b5d5f220c1fedde725fb42c83d031b4d6f32204",
     # Unused?
     "ubuntu16.04": "sha256:b90dcf2f35f3354909f4491bdf019c110b4b4d95ef0395ebf178bc5d523a4208",
     "centos6": "sha256:d09c12fb26fbbe8398b4973260c75172eb67d509dae9d6f4ad54279b7d6b0494",

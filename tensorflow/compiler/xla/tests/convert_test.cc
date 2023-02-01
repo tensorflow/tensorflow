@@ -542,7 +542,27 @@ XLA_TEST_F(ConvertTest, ConvertBF16F32) {
   xla::XlaOp all_bfloats_bf16 = ConstantR1<bfloat16>(&builder, all_bfloats);
   xla::XlaOp all_bfloats_f32 = ConvertElementType(all_bfloats_bf16, F32);
   BitcastConvertType(all_bfloats_f32, U32);
-  ComputeAndCompareR1<uint32_t>(&builder, expected, {});
+
+  TF_ASSERT_OK_AND_ASSIGN(const auto results, ExecuteAndTransfer(&builder, {}));
+  for (int i = 0; i < expected.size(); ++i) {
+    const auto result = results.Get<uint32_t>({i});
+    const auto correct = expected[i];
+    if (all_bfloats[i] != 0.0f &&
+        all_bfloats[i] < std::numeric_limits<float>::min()) {
+      // Subnormals may not be preserved, zero will do.
+      const float same_signed_zero =
+          Eigen::numext::signbit(all_bfloats[i]) ? -0.0f : 0.0f;
+      if (result != correct) {
+        EXPECT_EQ(result, absl::bit_cast<uint32_t>(same_signed_zero));
+      }
+    } else if (Eigen::numext::isnan(all_bfloats[i])) {
+      // NaNs may not be preserved, any NaN will do.
+      ASSERT_TRUE(std::isnan(absl::bit_cast<float>(correct)));
+      EXPECT_TRUE(std::isnan(absl::bit_cast<float>(result)));
+    } else {
+      EXPECT_EQ(result, correct);
+    }
+  }
 }
 
 XLA_TEST_F(ConvertTest, ConvertF16F8e5m2Roundtrip) {

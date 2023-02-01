@@ -2,6 +2,7 @@ load("//tensorflow:pytype.default.bzl", "pytype_library")
 load("//tensorflow:tensorflow.bzl", "if_google")
 load(
     "//tensorflow/dtensor:build_defs.bzl",
+    "ALL_BACKENDS",
     "GPU_2DEVS_BACKEND",
     "PATHWAYS",
     "TPU_V3_DONUT_BACKEND",
@@ -136,6 +137,139 @@ dtensor_test(
         "//tensorflow/python/platform:client_testlib",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+dtensor_test(
+    name = "multi_client_test",
+    srcs = ["multi_client_test.py"],
+    additional_backends = [
+        GPU_2DEVS_BACKEND,
+        TPU_V3_DONUT_BACKEND,
+    ],
+    disable = [
+        "gpu",  # multi-client gpu is tested via GPU_2DEVS_BACKEND.
+        "tpu",  # multi-client tpu is tested via TPU_V3_DONUT_BACKEND.
+    ],
+    disable_tfrt = [
+        "cpu",  # TODO(b/217969210): Re-enable in TFRT CPU.
+        GPU_2DEVS_BACKEND,  # TODO(b/230679405): Re-enable in TFRT GPU.
+    ],
+    tags = [
+        "no_windows",
+        "nosan",
+    ],  # b/195537906
+    deps = [
+        ":test_util",
+        "//tensorflow/dtensor/python:accelerator_util",
+        "//tensorflow/dtensor/python:api",
+        "//tensorflow/dtensor/python:config",
+        "//tensorflow/dtensor/python:d_variable",
+        "//tensorflow/dtensor/python:layout",
+        "//tensorflow/dtensor/python:mesh_util",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:nn_ops",
+        "//tensorflow/python:stateless_random_ops",
+        "//tensorflow/python:variables",
+        "//tensorflow/python/eager:backprop",
+        "//tensorflow/python/eager/polymorphic_function",
+        "//tensorflow/python/framework:config",
+        "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/platform:client_testlib",
+        "//third_party/py/numpy",
+        "@absl_py//absl/flags",
+    ],
+)
+
+dtensor_test(
+    name = "multi_client_test_nccl_local",  # Use a suffix for coverage, b/23027507#comment47
+    srcs = ["multi_client_test.py"],
+    additional_backends = [
+        GPU_2DEVS_BACKEND,
+    ],
+    args = [
+        "--num_clients=0",
+        "--num_devices=2",
+        "--model_dim_size=2",
+    ],
+    disable = ALL_BACKENDS,
+    env = {
+        "DTENSOR_GPU_USE_NCCL_COMMUNICATION": "1",
+        "NCCL_P2P_DISABLE": "1",  # FIXME(b/251183104): p2p detection in cuda 10.1+ is broken.
+        "DTENSOR_DO_NOT_FUSE_REDUCE_SCATTER": "1",  # FIXME(b/266609048): timeout if fused.
+    },
+    tags = [
+        "no_windows",
+        "nosan",  # b/195537906
+    ],
+    deps = [
+        ":test_util",
+        "//tensorflow/dtensor/python:accelerator_util",
+        "//tensorflow/dtensor/python:api",
+        "//tensorflow/dtensor/python:config",
+        "//tensorflow/dtensor/python:d_variable",
+        "//tensorflow/dtensor/python:layout",
+        "//tensorflow/dtensor/python:mesh_util",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:nn_ops",
+        "//tensorflow/python:stateless_random_ops",
+        "//tensorflow/python:variables",
+        "//tensorflow/python/eager:backprop",
+        "//tensorflow/python/eager/polymorphic_function",
+        "//tensorflow/python/framework:config",
+        "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/platform:client_testlib",
+        "//third_party/py/numpy",
+        "@absl_py//absl/flags",
+    ],
+)
+
+dtensor_test(
+    name = "multi_client_test_nccl",  # Use a suffix for coverage, b/23027507#comment47
+    srcs = ["multi_client_test.py"],
+    additional_backends = [
+        GPU_2DEVS_BACKEND,
+    ],
+    args = [
+        "--num_clients=2",
+        "--num_devices=1",
+        "--model_dim_size=2",
+    ],
+    disable = ALL_BACKENDS,
+    env = {
+        "DTENSOR_GPU_USE_NCCL_COMMUNICATION": "1",
+        "NCCL_P2P_DISABLE": "1",  # FIXME(b/251183104): p2p detection in cuda 10.1+ is broken.
+        "DTENSOR_DO_NOT_FUSE_REDUCE_SCATTER": "1",  # FIXME(b/266609048): timeout if fused.
+    },
+    tags = [
+        "no_windows",
+        "nosan",  # b/195537906
+    ],
+    deps = [
+        ":test_util",
+        "//tensorflow/dtensor/python:accelerator_util",
+        "//tensorflow/dtensor/python:api",
+        "//tensorflow/dtensor/python:config",
+        "//tensorflow/dtensor/python:d_variable",
+        "//tensorflow/dtensor/python:layout",
+        "//tensorflow/dtensor/python:mesh_util",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:nn_ops",
+        "//tensorflow/python:stateless_random_ops",
+        "//tensorflow/python:variables",
+        "//tensorflow/python/eager:backprop",
+        "//tensorflow/python/eager/polymorphic_function",
+        "//tensorflow/python/framework:config",
+        "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/platform:client_testlib",
+        "//third_party/py/numpy",
+        "@absl_py//absl/flags",
     ],
 )
 

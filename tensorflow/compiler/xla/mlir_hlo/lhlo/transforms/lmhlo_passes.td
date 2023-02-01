@@ -15,18 +15,6 @@ limitations under the License.
 
 include "mlir/Pass/PassBase.td"
 
-def LhloFuseLinalgPass : Pass<"lhlo-fuse-linalg", "func::FuncOp"> {
-  let summary = "Greedily fuse linalg ops obtained after LHLO lowering.";
-  let constructor = "createLhloFuseLinalgPass()";
-  let options = [
-    Option<"use_parallel_loops_", "use-parallel-loops", "bool",
-           /*default=*/"false", "Tiles GenericOp consumer to parallel loops before linalg fusion">,
-    ListOption<"tile_sizes_", "tile-sizes", "unsigned",
-           "Faster memory space number to promote fusion buffers to",
-           "llvm::cl::ZeroOrMore">,
-  ];
-}
-
 def LhloLegalizeToAffinePass : Pass<"lhlo-legalize-to-affine", "func::FuncOp"> {
   let summary = "Legalize from LHLO dialect to affine dialect.";
   let constructor = "createLhloLegalizeToAffinePass()";

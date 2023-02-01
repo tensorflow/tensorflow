@@ -71,12 +71,12 @@ inline void InsertSerializedPayloads(Status& s, std::string payloads) {
   tensorflow::distributed_runtime::GrpcPayloadContainer container;
   if (container.ParseFromString(payloads)) {
     for (const auto& key_val : container.payloads()) {
-      s.SetPayload(key_val.first, key_val.second);
+      s.SetPayload(key_val.first, absl::Cord(key_val.second));
     }
   } else {
     s.SetPayload(kGrpcPayloadsLost,
-                 tensorflow::distributed_runtime::GrpcPayloadsLost()
-                     .SerializeAsString());
+                 absl::Cord(tensorflow::distributed_runtime::GrpcPayloadsLost()
+                                .SerializeAsString()));
   }
 }
 

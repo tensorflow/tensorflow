@@ -1536,6 +1536,341 @@ gpu_kernel_library(
     unroll_factors = "4",
 )
 
+# Logarithmic and exponential kernels
+gpu_kernel_library(
+    name = "gpu_exp_kernels",
+    op = "exp",
+    tile_size = "256",
+    types = [
+        "f16",
+        "f32",
+        "f64",
+        "c64",
+        "c128",
+    ],
+    unroll_factors = "4",
+)
+
+gpu_kernel_library(
+    name = "gpu_expm1_kernels",
+    op = "expm1",
+    tile_size = "256",
+    types = [
+        "f16",
+        "f32",
+        "f64",
+    ],
+    unroll_factors = "4",
+)
+
+gpu_kernel_library(
+    name = "gpu_log_kernels",
+    op = "log",
+    tile_size = "256",
+    types = [
+        "f16",
+        "f32",
+        "f64",
+    ],
+    unroll_factors = "4",
+)
+
+gpu_kernel_library(
+    name = "gpu_log1p_kernels",
+    op = "log1p",
+    tile_size = "256",
+    types = [
+        "f16",
+        "f32",
+        "f64",
+    ],
+    unroll_factors = "4",
+)
+
+gpu_kernel_library(
+    name = "gpu_xlogy_kernels",
+    op = "xlogy",
+    tile_size = "1024",
+    types = [
+        "f16",
+        "f32",
+        "f64",
+        "c64",
+        "c128",
+    ],
+    unroll_factors = "4",
+    # For complex XlogyOp kernels, we don't use unrolling, it would only cause
+    # slowdowns.
+    unroll_factors_override = {
+        "c64": None,
+        "c128": None,
+    },
+)
+
+gpu_kernel_library(
+    name = "gpu_xlog1py_kernels",
+    op = "xlog1py",
+    tile_size = "1024",
+    types = [
+        "f16",
+        "f32",
+        "f64",
+        "c64",
+        "c128",
+    ],
+    unroll_factors = "4",
+    # For complex Xlog1pyOp kernels, we don't use unrolling, it would only cause
+    # slowdowns.
+    unroll_factors_override = {
+        "c64": None,
+        "c128": None,
+    },
+)
+
+# Square and square root kernels
+
+gpu_kernel_library(
+    name = "gpu_sqrt_kernels",
+    op = "sqrt",
+    tile_size = "256",
+    types = [
+        "f16",
+        "f32",
+        "f64",
+    ],
+    unroll_factors = "4",
+)
+
+gpu_kernel_library(
+    name = "gpu_rsqrt_kernels",
+    op = "rsqrt",
+    tile_size = "256",
+    types = [
+        "f16",
+        "f32",
+        "f64",
+    ],
+    unroll_factors = "4",
+)
+
+gpu_kernel_library(
+    name = "gpu_square_kernels",
+    jit_types = [
+        "i8",
+        "i16",
+        "ui8",
+        "ui16",
+        "ui32",
+        "ui64",
+    ],
+    op = "square",
+    tile_size = "1024",
+    types = [
+        "f16",
+        "f32",
+        "f64",
+        "i64",
+    ],
+    unroll_factors = "4",
+)
+
+gpu_kernel_library(
+    name = "gpu_squared_difference_kernels",
+    op = "squared_difference",
+    tile_size = "1024",
+    types = [
+        "f16",
+        "f32",
+        "f64",
+        "i64",
+    ],
+    unroll_factors = "4",
+)
+
+# Bitwise operations.
+
+gpu_kernel_library(
+    name = "gpu_bitwise_and_kernels",
+    op = "bitwise_and",
+    tile_size = "1024",
+    types = [
+        "i8",
+        "i16",
+        "i32",
+        "i64",
+    ],
+    unroll_factors = "4",
+)
+
+gpu_kernel_library(
+    name = "gpu_bitwise_or_kernels",
+    op = "bitwise_or",
+    tile_size = "1024",
+    types = [
+        "i8",
+        "i16",
+        "i32",
+        "i64",
+    ],
+    unroll_factors = "4",
+)
+
+gpu_kernel_library(
+    name = "gpu_bitwise_xor_kernels",
+    op = "bitwise_xor",
+    tile_size = "1024",
+    types = [
+        "i8",
+        "i16",
+        "i32",
+        "i64",
+    ],
+    unroll_factors = "4",
+)
+
+gpu_kernel_library(
+    name = "gpu_invert_kernels",
+    op = "invert",
+    tile_size = "1024",
+    types = [
+        "i8",
+        "i16",
+        "i32",
+        "i64",
+    ],
+    unroll_factors = "4",
+)
+
+gpu_kernel_library(
+    name = "gpu_left_shift_kernels",
+    op = "left_shift",
+    tile_size = "1024",
+    types = [
+        "i8",
+        "i16",
+        "i32",
+        "i64",
+    ],
+    unroll_factors = "4",
+)
+
+gpu_kernel_library(
+    name = "gpu_right_shift_kernels",
+    op = "right_shift",
+    tile_size = "1024",
+    types = [
+        "i8",
+        "i16",
+        "i32",
+        "i64",
+        "ui8",
+        "ui16",
+        "ui32",
+        "ui64",
+    ],
+    unroll_factors = "4",
+)
+
+# Logical kernels
+
+gpu_kernel_library(
+    name = "gpu_logical_not_kernels",
+    op = "logical_not",
+    tile_size = "256",
+    types = ["i1"],
+)
+
+gpu_kernel_library(
+    name = "gpu_logical_and_kernels",
+    op = "logical_and",
+    tile_size = "1024",
+    types = [
+        "i1",
+    ],
+)
+
+gpu_kernel_library(
+    name = "gpu_logical_or_kernels",
+    op = "logical_or",
+    tile_size = "1024",
+    types = [
+        "i1",
+    ],
+)
+
+# Erf kernels
+
+gpu_kernel_library(
+    name = "gpu_erf_kernels",
+    op = "erf",
+    tile_size = "256",
+    types = [
+        "f16",
+        "f32",
+        "f64",
+    ],
+    unroll_factors = "4",
+)
+
+gpu_kernel_library(
+    name = "gpu_erfc_kernels",
+    op = "erfc",
+    tile_size = "256",
+    types = [
+        "f16",
+        "f32",
+        "f64",
+    ],
+    unroll_factors = "4",
+)
+
+# Gamma kernels
+
+gpu_kernel_library(
+    name = "gpu_polygamma_kernels",
+    op = "polygamma",
+    tile_size = "256",
+    types = [
+        "f32",
+        "f64",
+    ],
+)
+
+gpu_kernel_library(
+    name = "gpu_digamma_kernels",
+    op = "digamma",
+    tile_size = "256",
+    types = [
+        "f16",
+        "f32",
+        "f64",
+    ],
+)
+
+gpu_kernel_library(
+    name = "gpu_lgamma_kernels",
+    op = "lgamma",
+    tile_size = "256",
+    types = [
+        "f16",
+        "f32",
+        "f64",
+    ],
+)
+
+gpu_kernel_library(
+    # The zeta kernels needs many registers so tile at 256.
+    name = "gpu_zeta_kernels",
+    op = "zeta",
+    tile_size = "256",
+    types = [
+        "f32",
+        "f64",
+    ],
+    # TODO(b/178388085): Enable unrolling after vectorization is fixed.
+    # unroll_factors = "4",
+)
+
 # TODO(b/160731748): Re-enable when it works again.
 # gpu_kernel_library(
 #     name = "gpu_bias_add_kernels",
@@ -1602,159 +1937,6 @@ gpu_kernel_library(
     ],
 )
 
-gpu_kernel_library(
-    name = "gpu_erf_kernels",
-    op = "erf",
-    tile_size = "256",
-    types = [
-        "f16",
-        "f32",
-        "f64",
-    ],
-    unroll_factors = "4",
-)
-
-gpu_kernel_library(
-    name = "gpu_erfc_kernels",
-    op = "erfc",
-    tile_size = "256",
-    types = [
-        "f16",
-        "f32",
-        "f64",
-    ],
-    unroll_factors = "4",
-)
-
-gpu_kernel_library(
-    name = "gpu_logical_not_kernels",
-    op = "logical_not",
-    tile_size = "256",
-    types = ["i1"],
-)
-
-gpu_kernel_library(
-    name = "gpu_polygamma_kernels",
-    op = "polygamma",
-    tile_size = "256",
-    types = [
-        "f32",
-        "f64",
-    ],
-)
-
-gpu_kernel_library(
-    name = "gpu_digamma_kernels",
-    op = "digamma",
-    tile_size = "256",
-    types = [
-        "f16",
-        "f32",
-        "f64",
-    ],
-)
-
-gpu_kernel_library(
-    name = "gpu_lgamma_kernels",
-    op = "lgamma",
-    tile_size = "256",
-    types = [
-        "f16",
-        "f32",
-        "f64",
-    ],
-)
-
-gpu_kernel_library(
-    name = "gpu_square_kernels",
-    jit_types = [
-        "i8",
-        "i16",
-        "ui8",
-        "ui16",
-        "ui32",
-        "ui64",
-    ],
-    op = "square",
-    tile_size = "1024",
-    types = [
-        "f16",
-        "f32",
-        "f64",
-        "i64",
-    ],
-    unroll_factors = "4",
-)
-
-gpu_kernel_library(
-    name = "gpu_squared_difference_kernels",
-    op = "squared_difference",
-    tile_size = "1024",
-    types = [
-        "f16",
-        "f32",
-        "f64",
-        "i64",
-    ],
-    unroll_factors = "4",
-)
-
-# Bitwise operations.
-[
-    gpu_kernel_library(
-        name = "gpu_" + op + "_kernels",
-        op = op,
-        tile_size = "1024",
-        types = [
-            "i8",
-            "i16",
-            "i32",
-            "i64",
-        ],
-        unroll_factors = "4",
-    )
-    for op in [
-        "bitwise_and",
-        "bitwise_or",
-        "bitwise_xor",
-        "invert",
-        "left_shift",
-    ]
-]
-
-gpu_kernel_library(
-    name = "gpu_right_shift_kernels",
-    op = "right_shift",
-    tile_size = "1024",
-    types = [
-        "i8",
-        "i16",
-        "i32",
-        "i64",
-        "ui8",
-        "ui16",
-        "ui32",
-        "ui64",
-    ],
-    unroll_factors = "4",
-)
-
-# Logical operations.
-[
-    gpu_kernel_library(
-        name = "gpu_" + op + "_kernels",
-        op = op,
-        tile_size = "1024",
-        types = [
-            "i1",
-        ],
-    )
-    for op in [
-        "logical_and",
-        "logical_or",
-    ]
-]
-
 # Kernels that support all floating-point types.
 [
     gpu_kernel_library(
@@ -1769,30 +1951,11 @@ gpu_kernel_library(
         unroll_factors = "4",
     )
     for op in [
-        "expm1",
-        "log",
-        "log1p",
         "relu_grad",
-        "rsqrt",
         "softplus",
         "softsign",
-        "sqrt",
     ]
 ]
-
-gpu_kernel_library(
-    name = "gpu_exp_kernels",
-    op = "exp",
-    tile_size = "256",
-    types = [
-        "f16",
-        "f32",
-        "f64",
-        "c64",
-        "c128",
-    ],
-    unroll_factors = "4",
-)
 
 gpu_kernel_library(
     name = "gpu_cast_kernels",
@@ -1828,19 +1991,6 @@ gpu_kernel_library(
 )
 
 gpu_kernel_library(
-    # The zeta kernels needs many registers so tile at 256.
-    name = "gpu_zeta_kernels",
-    op = "zeta",
-    tile_size = "256",
-    types = [
-        "f32",
-        "f64",
-    ],
-    # TODO(b/178388085): Enable unrolling after vectorization is fixed.
-    # unroll_factors = "4",
-)
-
-gpu_kernel_library(
     name = "gpu_select_v2_kernels",
     jit_types = [
         "i8",
@@ -1863,46 +2013,6 @@ gpu_kernel_library(
         "c64",
         "c128",
     ],
-)
-
-gpu_kernel_library(
-    name = "gpu_xlogy_kernels",
-    op = "xlogy",
-    tile_size = "1024",
-    types = [
-        "f16",
-        "f32",
-        "f64",
-        "c64",
-        "c128",
-    ],
-    unroll_factors = "4",
-    # For complex XlogyOp kernels, we don't use unrolling, it would only cause
-    # slowdowns.
-    unroll_factors_override = {
-        "c64": None,
-        "c128": None,
-    },
-)
-
-gpu_kernel_library(
-    name = "gpu_xlog1py_kernels",
-    op = "xlog1py",
-    tile_size = "1024",
-    types = [
-        "f16",
-        "f32",
-        "f64",
-        "c64",
-        "c128",
-    ],
-    unroll_factors = "4",
-    # For complex Xlog1pyOp kernels, we don't use unrolling, it would only cause
-    # slowdowns.
-    unroll_factors_override = {
-        "c64": None,
-        "c128": None,
-    },
 )
 
 gpu_kernel_library(

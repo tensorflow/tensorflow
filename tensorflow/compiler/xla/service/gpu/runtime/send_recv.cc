@@ -31,6 +31,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/service_executable_run_options.h"
 #include "tensorflow/tsl/profiler/lib/traceme.h"
 #include "tensorflow/tsl/profiler/lib/traceme_encode.h"
+#include "tfrt/concurrency/async_value.h"  // from @tf_runtime
+#include "tfrt/concurrency/async_value_ref.h"  // from @tf_runtime
 
 namespace xla {
 namespace gpu {
@@ -39,6 +41,7 @@ using absl::InternalError;
 using absl::InvalidArgumentError;
 using absl::StrFormat;
 
+using tsl::AsyncValueRef;
 using tsl::profiler::TraceMe;
 using tsl::profiler::TraceMeEncode;
 
@@ -105,7 +108,7 @@ void PopulateSendRecvAttrEncoding(CustomCallAttrEncodingSet& encoding) {
 //===----------------------------------------------------------------------===//
 
 absl::Status SendRecvEvents::PushEvent(int32_t handle,
-                                       std::shared_ptr<se::Event> event) {
+                                       AsyncValueRef<se::Event> event) {
   absl::MutexLock lock(&mutex_);
   if (auto it = events_.try_emplace(handle, std::move(event)); it.second)
     return absl::OkStatus();
@@ -114,7 +117,7 @@ absl::Status SendRecvEvents::PushEvent(int32_t handle,
       StrFormat("Async send/recv event already exists (handle=%d)", handle));
 }
 
-absl::StatusOr<std::shared_ptr<se::Event>> SendRecvEvents::PopEvent(
+absl::StatusOr<AsyncValueRef<se::Event>> SendRecvEvents::PopEvent(
     int32_t handle) {
   absl::MutexLock lock(&mutex_);
   if (auto event = events_.extract(handle)) return std::move(event.mapped());
@@ -126,16 +129,6 @@ absl::StatusOr<std::shared_ptr<se::Event>> SendRecvEvents::PopEvent(
 //===----------------------------------------------------------------------===//
 // Send/Recv custom call implementation.
 //===----------------------------------------------------------------------===//
-
-// Asynchronous send/recv operations can fail long after we finished submitting
-// all work to the stream, and we can't do anything about it. In this case we
-// will have some garbage data on device, and it's up to the higher level
-// of the stack to discard it.
-static void OnError(Status error) {
-  LOG(ERROR) << "Received asynchronous Send/Recv error: "
-             << error.error_message() << ". "
-             << "Previously computed results are likely incorrect.";
-}
 
 static absl::Status SendImpl(const ServiceExecutableRunOptions* run_options,
                              SendRecvEvents* events, StridedMemrefView arg,
@@ -164,8 +157,8 @@ static absl::Status SendImpl(const ServiceExecutableRunOptions* run_options,
 
   // Send buffer to a handler registered with the run options.
   if (auto* send = run_options->run_options().send_device_memory_function()) {
-    auto done_event = (*send)(channel.handle, stream, ToShape(arg),
-                              GetDeviceAddress(arg), OnError);
+    auto done_event =
+        (*send)(channel.handle, stream, ToShape(arg), GetDeviceAddress(arg));
     if (!done_event.ok()) return ToAbslStatus(done_event.status());
     return events->PushEvent(channel.handle, std::move(*done_event));
   }
@@ -201,8 +194,7 @@ static absl::Status RecvImpl(const ServiceExecutableRunOptions* run_options,
   // Recv buffer from a handler registered with the run options.
   if (auto* recv = run_options->run_options().recv_device_memory_function()) {
     auto dst = GetDeviceAddress(arg);
-    auto done_event =
-        (*recv)(channel.handle, stream, ToShape(arg), &dst, OnError);
+    auto done_event = (*recv)(channel.handle, stream, ToShape(arg), &dst);
     if (!done_event.ok()) return ToAbslStatus(done_event.status());
     return events->PushEvent(channel.handle, std::move(*done_event));
   }
@@ -224,7 +216,16 @@ static absl::Status SendDoneImpl(const ServiceExecutableRunOptions* run_options,
   auto done_event = events->PopEvent(channel.handle);
   if (!done_event.ok()) return done_event.status();
 
-  run_options->stream()->ThenWaitFor(done_event->get());
+  // Wait until send handler will record an event on the stream.
+  BlockUntilReady(done_event->GetAsyncValue());
+  if (done_event->IsError()) return done_event->GetError();
+
+  VLOG(5) << "Completed Send operation: "
+          << " channel=" << channel.handle
+          << " is_host_transfer=" << is_host_transfer;
+
+  // Once event is recorded we can add a stream dependency.
+  run_options->stream()->ThenWaitFor(&done_event->get());
   return absl::OkStatus();
 }
 
@@ -242,7 +243,16 @@ static absl::Status RecvDoneImpl(const ServiceExecutableRunOptions* run_options,
   auto done_event = events->PopEvent(channel.handle);
   if (!done_event.ok()) return done_event.status();
 
-  run_options->stream()->ThenWaitFor(done_event->get());
+  // Wait until send handler will record an event on the stream.
+  BlockUntilReady(done_event->GetAsyncValue());
+  if (done_event->IsError()) return done_event->GetError();
+
+  VLOG(5) << "Completed Recv operation: "
+          << " channel=" << channel.handle
+          << " is_host_transfer=" << is_host_transfer;
+
+  // Once event is recorded we can add a stream dependency.
+  run_options->stream()->ThenWaitFor(&done_event->get());
   return absl::OkStatus();
 }
 

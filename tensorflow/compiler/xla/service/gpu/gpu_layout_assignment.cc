@@ -100,10 +100,17 @@ HeuristicLayoutAssignment(const HloInstruction* instr,
     return kAllNHWC;
   }
 
+<<<<<<< HEAD
   // If we're not Volta/MI100/MI200 or not fp16, or not conv2D, the decision
   // is easy: Use NCHW.
 #if GOOGLE_CUDA
   if (input_ty != F16 ||
+=======
+  // If we're not Volta or not fp16/bfloat16, or not conv2D, the decision is
+  // easy: Use NCHW.
+  const bool isFloat16 = (input_ty == F16) || (input_ty == BF16);
+  if (!isFloat16 ||
+>>>>>>> upstream/master
       !stream_executor->GetDeviceDescription()
            .cuda_compute_capability()
            .IsAtLeast(se::CudaComputeCapability::VOLTA) ||

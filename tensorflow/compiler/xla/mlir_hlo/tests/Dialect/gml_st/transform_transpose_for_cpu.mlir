@@ -14,10 +14,11 @@ func.func @transpose_permutation(%input: tensor<16x32x64xf32>,
 // CHECK-SAME:      %[[INIT:.*]]: tensor<32x64x16xf32>)
 
 // CHECK:             gml_st.parallel
+// CHECK-SAME:            outs (%[[INIT_:.*]] = %[[INIT]]:
 // CHECK:               %[[INPUT_SUB:.*]] = tensor.extract_slice %[[INPUT]]
 // CHECK:      : tensor<16x32x64xf32> to tensor<8x1x8xf32>
 
-// CHECK:              %[[INIT_SUB:.*]] =  tensor.extract_slice %[[INIT]]
+// CHECK:              %[[INIT_SUB:.*]] =  tensor.extract_slice %[[INIT_]]
 // CHECK:      : tensor<32x64x16xf32> to tensor<1x8x8xf32>
 
 // CHECK:       linalg.transpose

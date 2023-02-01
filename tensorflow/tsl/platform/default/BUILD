@@ -386,6 +386,7 @@ cc_library(
     deps = [
         "//tensorflow/tsl/platform:logging",
         "//tensorflow/tsl/platform:path",
+        "//tensorflow/tsl/platform:test",
         "@bazel_tools//tools/cpp/runfiles",
     ],
 )

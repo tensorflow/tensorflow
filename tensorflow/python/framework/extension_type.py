@@ -26,6 +26,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import type_spec
+from tensorflow.python.framework import type_spec_registry
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import composite_tensor_ops
 from tensorflow.python.ops import gen_math_ops
@@ -381,9 +382,6 @@ def is_packed(value):
 # ==============================================================================
 # Base class for the tf.ExtensionType TypeSpecs
 # ==============================================================================
-# TODO(b/184565242) Support customizing type relaxation for tracing.
-# TODO(b/184565242) Support conversion to/from FullType.
-# TODO(b/195884675) Support batch and unbatch.
 
 
 class ExtensionTypeSpec(type_spec.TypeSpec):
@@ -822,7 +820,6 @@ def _wrap_user_constructor(cls):
 _NO_DEFAULT = extension_type_field.ExtensionTypeField.NO_DEFAULT
 
 
-# TODO(b/184565242) Consider using the templating system from autograph here.
 def _build_extension_type_constructor(cls):
   """Builds a constructor for tf.ExtensionType subclass `cls`."""
   fields = cls._tf_extension_type_fields()  # pylint: disable=protected-access
@@ -951,7 +948,7 @@ def _add_type_spec(cls):
   # If the user included an explicit `__name__` attribute, then use that to
   # register the TypeSpec (so it can be used in SavedModel signatures).
   if '__name__' in cls.__dict__:
-    type_spec.register(cls.__dict__['__name__'] + '.Spec')(spec)
+    type_spec_registry.register(cls.__dict__['__name__'] + '.Spec')(spec)
 
 
 # ==============================================================================
@@ -1031,7 +1028,7 @@ class AnonymousExtensionType(ExtensionType):
     return self._tf_extension_type_cached_type_spec
 
 
-@type_spec.register('tf.AnonymousExtensionType.Spec')
+@type_spec_registry.register('tf.AnonymousExtensionType.Spec')
 class AnonymousExtensionTypeSpec(ExtensionTypeSpec):
   """TypeSpec for AnonymousExtensionType."""
 

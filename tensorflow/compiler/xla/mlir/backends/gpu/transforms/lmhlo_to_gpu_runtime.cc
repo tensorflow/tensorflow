@@ -816,10 +816,12 @@ class CollectiveOpLowering : public OpRewritePattern<CollectiveOp> {
 
     // For asynchonous start operation we need to produce a fake token, that
     // will be later removed, because corresponding `done` operation doesn't
-    // have the token argument. We rely on the `unrealized_conversion_cast`
-    // operation to create a fake token from the `i8` constant.
-    if (auto start = dyn_cast<AllReduceStartOp>(op.getOperation())) {
-      Value token = start.getToken();
+    // have a token argument. We rely on the `unrealized_conversion_cast`
+    // operation to create a fake token from the `i8` constant, and on the dead
+    // code elimination pass that will remove unused fake tokens.
+    if constexpr (std::is_same_v<CollectiveOp, AllReduceStartOp> ||
+                  std::is_same_v<CollectiveOp, CollectivePermuteStartOp>) {
+      Value token = op.getToken();
       Value c0 = b.create<arith::ConstantOp>(b.getI8IntegerAttr(0));
       auto fake = b.create<UnrealizedConversionCastOp>(token.getType(), c0);
       token.replaceAllUsesWith(fake.getResult(0));

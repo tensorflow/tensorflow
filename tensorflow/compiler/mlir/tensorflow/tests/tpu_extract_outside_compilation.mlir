@@ -1778,6 +1778,34 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
     func.return %1 : tensor<2xi32>
   }
 
+  // Check that a non-XLA value is not routed through the XLA side.
+
+  // CHECK-LABEL: func @nonxla_static
+  func.func @nonxla_static() -> () {
+    "tf_device.cluster"() ({
+      %0 = "tf.A"() : () -> (tensor<i32>)
+      %1 = "tf.B"(%0) {_xla_outside_compilation = "cluster0"} : (tensor<i32>) -> tensor<!tf_type.string>
+      %2 = "tf.C"(%1) {_xla_outside_compilation = "cluster0"} : (tensor<!tf_type.string>) -> tensor<i32>
+      "tf.D"(%2) : (tensor<i32>) -> ()
+      tf_device.return
+    }) {num_cores_per_replica = 1, topology =  "", device_assignment =  []} : () -> ()
+    func.return
+  }
+
+  // Check that a non-XLA value with dynamic shape is not routed through the XLA side.
+
+  // CHECK-LABEL: func @nonxla_dynamic
+  func.func @nonxla_dynamic() -> () {
+    "tf_device.cluster"() ({
+      %0 = "tf.A"() : () -> (tensor<i32>)
+      %1 = "tf.B"(%0) {_xla_outside_compilation = "cluster0"} : (tensor<i32>) -> tensor<?x!tf_type.string>
+      %2 = "tf.C"(%1) {_xla_outside_compilation = "cluster0"} : (tensor<?x!tf_type.string>) -> tensor<i32>
+      "tf.D"(%2) : (tensor<i32>) -> ()
+      tf_device.return
+    }) {num_cores_per_replica = 1, topology =  "", device_assignment =  []} : () -> ()
+    func.return
+  }
+
 }
 
 // -----

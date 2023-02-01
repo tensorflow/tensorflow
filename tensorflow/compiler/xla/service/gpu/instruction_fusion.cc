@@ -101,7 +101,7 @@ FusionDecision GpuInstructionFusion::ShouldFuse(HloInstruction* consumer,
 
   // The following checks are potentially expensive.
   if (NoFusionPossible too_large =
-          !FusionFitsInBudget(*consumer, *producer,
+          !FusionFitsInBudget(*consumer, *producer, device_info_,
                               /*is_consumer_producer_fusion=*/true)) {
     return !too_large;
   }

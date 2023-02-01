@@ -42,6 +42,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/hlo/ir/hlo_sharding_metadata.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
+#include "tensorflow/compiler/xla/printer.h"
 #include "tensorflow/compiler/xla/protobuf_util.h"
 #include "tensorflow/compiler/xla/window_util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
@@ -1512,23 +1513,28 @@ HloConstantInstruction::CloneWithNewOperandsImpl(
                                                   this->shape());
 }
 
-std::string HloConstantInstruction::OperandsToStringWithCanonicalNameMap(
-    const HloPrintOptions& options,
+void HloConstantInstruction::PrintOperandsWithCanonicalNameMap(
+    Printer* printer, const HloPrintOptions& options,
     CanonicalNameMap* canonical_name_map) const {
   if (options.print_only_essential_constants()) {
     if (!literal_.has_value()) {
-      return "{...}";
+      printer->Append("{...}");
+      return;
     }
     if (literal().IsAll(0)) {
-      return "0";
+      printer->Append("0");
+      return;
     }
     if (literal().IsAll(1)) {
-      return "1";
+      printer->Append("1");
+      return;
     }
     if (shape().IsInteger()) {
-      return literal_->ToStringWithoutShapeOneline();
+      literal_->PrintWithoutShapeOneline(printer);
+      return;
     }
-    return "{...}";
+    printer->Append("{...}");
+    return;
   }
 
   // For constants, show the actual value in place of an empty operand list.
@@ -1537,10 +1543,10 @@ std::string HloConstantInstruction::OperandsToStringWithCanonicalNameMap(
        options.print_large_constants())) {
     // Literal::ToString emits multidimensional arrays over multiple
     // lines. Compact this into one line by stripping out white space.
-    return literal_->ToStringWithoutShapeOneline();
+    literal_->PrintWithoutShapeOneline(printer);
   } else {
     // Do not show large constants or tuples.
-    return "{...}";
+    printer->Append("{...}");
   }
 }
 
@@ -2275,10 +2281,10 @@ std::vector<std::string> HloParameterInstruction::ExtraAttributesToStringImpl(
   return result;
 }
 
-std::string HloParameterInstruction::OperandsToStringWithCanonicalNameMap(
-    const HloPrintOptions& options,
+void HloParameterInstruction::PrintOperandsWithCanonicalNameMap(
+    Printer* printer, const HloPrintOptions& options,
     CanonicalNameMap* canonical_name_map) const {
-  return StrCat(parameter_number_);
+  printer->Append(StrCat(parameter_number_));
 }
 
 bool HloParameterInstruction::IdenticalSlowPath(

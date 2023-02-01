@@ -481,7 +481,7 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
       std::vector<Tensor> input_element;
       result->status = input_impl_->GetNext(ctx.get(), &input_element,
                                             &result->end_of_input);
-      result->checkpoint = ctx->checkpoint();
+      result->checkpoint.Merge(ctx->checkpoint());
       if (result->end_of_input || !result->status.ok()) {
         CallCompleted(ctx, result);
         return;
@@ -531,7 +531,7 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
                          const std::shared_ptr<InvocationResult>& result,
                          std::vector<Tensor>* out_tensors,
                          bool* end_of_sequence) TF_LOCKS_EXCLUDED(*mu_) {
-      ctx->MergeCheckpoint(result->checkpoint);
+      ctx->MergeCheckpoint(&result->checkpoint);
       if (!result->end_of_input && result->status.ok()) {
         *out_tensors = std::move(result->return_values);
         RecordBufferDequeue(ctx, *out_tensors);

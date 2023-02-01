@@ -733,7 +733,7 @@ static void ExecuteImpl(Executable& executable, ArrayRef<MemrefDesc> memrefs,
   // notify the HostContext to emit the diagnostics for the kernel invocation.
   auto status = executable.Execute(memrefs, converter, opts);
   if (LLVM_UNLIKELY(!status.ok())) {
-    EmitError(exec_ctx, status.message());
+    EmitError(exec_ctx, status.status().message());
     return;
   }
 }

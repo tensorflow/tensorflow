@@ -39,10 +39,10 @@ limitations under the License.
 #include "tensorflow/compiler/xla/stream_executor/device_description.pb.h"
 #include "tensorflow/compiler/xla/stream_executor/device_memory.h"
 #include "tensorflow/compiler/xla/stream_executor/dnn.pb.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/status.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/statusor.h"
 #include "tensorflow/compiler/xla/stream_executor/platform/logging.h"
 #include "tensorflow/compiler/xla/stream_executor/platform/port.h"
+#include "tensorflow/tsl/platform/status.h"
+#include "tensorflow/tsl/platform/statusor.h"
 
 namespace Eigen {
 struct half;
@@ -2107,7 +2107,7 @@ class DnnSupport {
                       const dnn::AlgorithmConfig& algorithm_config,
                       float dropout, uint64_t seed,
                       ScratchAllocator* state_allocator, bool use_padded_io) {
-    return tsl::Status(port::error::UNIMPLEMENTED,
+    return tsl::Status(tsl::error::UNIMPLEMENTED,
                        "createRnnDescriptor is unimplemented");
   }
 
@@ -2123,7 +2123,7 @@ class DnnSupport {
   virtual tsl::StatusOr<std::unique_ptr<dnn::RnnSequenceTensorDescriptor>>
   createRnnSequenceTensorDescriptor(int max_seq_length, int batch_size,
                                     int data_size, dnn::DataType data_type) {
-    return tsl::Status(port::error::UNIMPLEMENTED,
+    return tsl::Status(tsl::error::UNIMPLEMENTED,
                        "createRnnSequenceTensorDescriptor is unimplemented");
   }
 
@@ -2132,7 +2132,7 @@ class DnnSupport {
                                     int data_size,
                                     const absl::Span<const int>& seq_lengths,
                                     bool time_major, dnn::DataType data_type) {
-    return tsl::Status(port::error::UNIMPLEMENTED,
+    return tsl::Status(tsl::error::UNIMPLEMENTED,
                        "createRnnSequenceTensorDescriptor is unimplemented");
   }
 
@@ -2141,7 +2141,7 @@ class DnnSupport {
   virtual tsl::StatusOr<std::unique_ptr<dnn::RnnStateTensorDescriptor>>
   createRnnStateTensorDescriptor(int num_layer, int batch_size, int data_size,
                                  dnn::DataType data_type) {
-    return tsl::Status(port::error::UNIMPLEMENTED,
+    return tsl::Status(tsl::error::UNIMPLEMENTED,
                        "createRnnStateTensorDescriptor is unimplemented");
   }
 

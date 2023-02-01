@@ -108,7 +108,7 @@ TfLiteStatus QuantizeWeights(
       serialized_model, &context, UnknownLoc::get(&context));
 
   // Apply quantization passes.
-  PassManager pm(module->getContext(), OpPassManager::Nesting::Implicit);
+  PassManager pm((*module)->getName(), OpPassManager::Nesting::Implicit);
   quant::QuantizationSpecs quant_specs;
   quant_specs.inference_type = tflite::TflTypeToTfType(inference_type);
   quant_specs.weight_quantization = true;

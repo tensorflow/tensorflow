@@ -23,35 +23,38 @@ func.func @cwise_expr(%a: tensor<?x1024x1024xf32>, %b: tensor<?x1024x1024xf32>,
   // CHECK-SAME:      (%[[I:.*]], %[[J:.*]], %[[K:.*]]) = (%[[C0]], %[[C0]], %[[C0]])
   // CHECK-SAME:      to (%[[A_D0]], %[[C1024]], %[[C1024]])
   // CHECK-SAME:      step (%[[C1]], %[[C512]], %[[C1024]])
+  // CHECK-SAME:      outs (%[[INIT_:.*]] = %[[INIT]]:
   // CHECK-DAG:     %[[A_SUB:.*]] = tensor.extract_slice %[[A]]
   // CHECK-DAG:     %[[B_SUB:.*]] = tensor.extract_slice %[[B]]
   // CHECK-DAG:     %[[C_SUB:.*]] = tensor.extract_slice %[[C]]
-  // CHECK-DAG:     %[[INIT_SUB:.*]] = tensor.extract_slice %[[INIT]]
+  // CHECK-DAG:     %[[INIT_SUB:.*]] = tensor.extract_slice %[[INIT_]]
   // CHECK:         %[[PLOOP_:.*]] = gml_st.parallel
   // CHECK-SAME:        (%[[I_:.*]], %[[J_:.*]], %[[K_:.*]]) = (%[[C0]], %[[C0]], %[[C0]])
   // CHECK-SAME:        to (%[[C1]], %[[C512]], %[[C1024]])
   // CHECK-SAME:        step (%[[C1]], %[[C64]], %[[C128]])
+  // CHECK-SAME:        outs (%[[INIT_SUB_:.*]] = %[[INIT_SUB]]:
   // CHECK-DAG:       %[[A_SUB_SUB:.*]] = tensor.extract_slice %[[A_SUB]]
   // CHECK-DAG:       %[[B_SUB_SUB:.*]] = tensor.extract_slice %[[B_SUB]]
   // CHECK-DAG:       %[[C_SUB_SUB:.*]] = tensor.extract_slice %[[C_SUB]]
-  // CHECK-DAG:       %[[INIT_SUB_SUB:.*]] = tensor.extract_slice %[[INIT_SUB]]
+  // CHECK-DAG:       %[[INIT_SUB_SUB:.*]] = tensor.extract_slice %[[INIT_SUB_]]
   // CHECK:           %[[PLOOP__:.*]] = gml_st.parallel
   // CHECK-SAME:          (%[[I__:.*]], %[[J__:.*]], %[[K__:.*]]) = (%[[C0]], %[[C0]], %[[C0]])
   // CHECK-SAME:          to (%[[C1]], %[[C64]], %[[C128]])
   // CHECK-SAME:          step (%[[C1]], %[[C1]], %[[C32]])
+  // CHECK-SAME:          outs (%[[INIT_SUB_SUB_:.*]] = %[[INIT_SUB_SUB]]:
   // CHECK-DAG:         %[[A_SUB_SUB_SUB:.*]] = tensor.extract_slice %[[A_SUB_SUB]]
   // CHECK-DAG:         %[[B_SUB_SUB_SUB:.*]] = tensor.extract_slice %[[B_SUB_SUB]]
-  // CHECK-DAG:         %[[INIT_SUB_SUB_SUB:.*]] = tensor.extract_slice %[[INIT_SUB_SUB]]
   // CHECK:             %[[AB_SUB_SUB_SUB:.*]] = linalg.generic
   // CHECK-SAME:            ins(%[[A_SUB_SUB_SUB]], %[[B_SUB_SUB_SUB]] : tensor<1x1x32xf32>, tensor<1x1x32xf32>)
-  // CHECK-SAME:            outs(%[[INIT_SUB_SUB_SUB]] : tensor<1x1x32xf32>)
+  // CHECK-SAME:            outs(%{{.*}} : tensor<1x1x32xf32>)
   // CHECK-DAG:         %[[C_SUB_SUB_SUB:.*]] = tensor.extract_slice %[[C_SUB_SUB]]
+  // CHECK-DAG:         %[[INIT_SUB_SUB_SUB_:.*]] = tensor.extract_slice %[[INIT_SUB_SUB_]]
   // CHECK:             %[[ABC_SUB_SUB_SUB:.*]] = linalg.generic
   // CHECK-SAME:            ins(%[[AB_SUB_SUB_SUB]], %[[C_SUB_SUB_SUB]] : tensor<1x1x32xf32>, tensor<1x1x32xf32>)
-  // CHECK-SAME:            outs(%[[INIT_SUB_SUB_SUB]] : tensor<1x1x32xf32>)
-  // CHECK:             gml_st.set_yield %[[ABC_SUB_SUB_SUB]] into %[[INIT_SUB_SUB]][%{{.*}}]
-  // CHECK:           gml_st.set_yield %[[PLOOP__]] into %[[INIT_SUB]][%{{.*}}]
-  // CHECK:         gml_st.set_yield %[[PLOOP_]] into %[[INIT]][%{{.*}}]
+  // CHECK-SAME:            outs(%[[INIT_SUB_SUB_SUB_]] : tensor<1x1x32xf32>)
+  // CHECK:             gml_st.set_yield %[[ABC_SUB_SUB_SUB]] into %[[INIT_SUB_SUB_]][%{{.*}}]
+  // CHECK:           gml_st.set_yield %[[PLOOP__]] into %[[INIT_SUB_]][%{{.*}}]
+  // CHECK:         gml_st.set_yield %[[PLOOP_]] into %[[INIT_]][%{{.*}}]
   // CHECK:       return %[[PLOOP]]
   %c0 = arith.constant 0 : index
   %d0 = tensor.dim %a, %c0 : tensor<?x1024x1024xf32>

@@ -18,6 +18,7 @@ limitations under the License.
 
 #include "gml_st/transforms/peeling/peeling.h"
 #include "gml_st/transforms/tiling/tiling.h"
+#include "mlir/Dialect/Linalg/IR/Linalg.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/IR/PatternMatch.h"
 
@@ -58,19 +59,25 @@ struct FusionCluster {
 // First element of the cluster is always the root for tiling.
 FusionCluster findMapFusionCluster(Operation *op);
 
-// Fuses linalg.fill that is used in init argument of the op.
-LogicalResult fuseOutputFill(PatternRewriter &rewriter, Operation *op);
+// Fuses linalg.fill that is used in output argument of the ParallelOp.
+LogicalResult fuseFillOpsIntoParallelOp(PatternRewriter &rewriter,
+                                        ParallelOp parallelOp);
 
-// Tiles the op and fuses greedily according to the filter function.
-FailureOr<Operation *> tileAndFuseGreedily(
+// Tiles the op to gml_st.parallel and fuses greedily according to the filter.
+FailureOr<ParallelOp> tileUsingGmlStParallelAndFuseGreedily(
     PatternRewriter &rewriter, Operation *op,
     const mlir::gml_st::TilingOptions &opts, StringRef label,
     llvm::function_ref<bool(Operation *)> fuseFilterFn);
 
+// Tiles the op to scf.for and fuses greedily according to the filter.
+FailureOr<scf::SCFTilingResult> tileUsingSCFForOpAndFuseGreedily(
+    PatternRewriter &rewriter, Operation *op, const scf::SCFTilingOptions &opts,
+    StringRef label, llvm::function_ref<bool(Operation *)> fuseFilterFn);
+
 // Tiles the op to 1 for all dimensions and fuses greedily according to the
 // filter function.
 LogicalResult tilePeeledOpsToScalars(
-    PatternRewriter &rewriter, const PeelingResult &peelingResult,
+    PatternRewriter &rewriter, const GmlStPeelingResult &peelingResult,
     StringRef label, llvm::function_ref<bool(Operation *)> fuseFilterFn);
 
 }  // namespace gml_st

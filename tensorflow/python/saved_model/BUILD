@@ -3,7 +3,7 @@
 
 load("//tensorflow:strict.default.bzl", "py_strict_library")
 load("//tensorflow:tensorflow.default.bzl", "cuda_py_test", "tf_py_test", "tf_pybind_cc_library_wrapper", "tf_python_pybind_extension")
-load("//tensorflow:tensorflow.bzl", "VERSION", "if_google", "tf_python_pybind_static_deps")
+load("//tensorflow:tensorflow.bzl", "if_google")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -640,12 +640,8 @@ py_strict_library(
         "//tensorflow/python:tensor_spec",
         "//tensorflow/python:tensor_util",
         "//tensorflow/python:util",
-        "//tensorflow/python/data/ops:dataset_ops",
-        "//tensorflow/python/data/ops:iterator_ops",
-        "//tensorflow/python/data/ops:optional_ops",
-        "//tensorflow/python/distribute:values",
         "//tensorflow/python/framework:extension_type",
-        "//tensorflow/python/framework:type_spec",
+        "//tensorflow/python/framework:type_spec_registry",
         "//tensorflow/python/ops/numpy_ops:numpy",
         "//tensorflow/python/ops/ragged:ragged_tensor",
         "//tensorflow/python/ops/ragged:row_partition",
@@ -663,6 +659,7 @@ tf_py_test(
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:framework",
         "//tensorflow/python/eager:test",
+        "//tensorflow/python/framework:type_spec_registry",
     ],
 )
 
@@ -741,13 +738,14 @@ tf_python_pybind_extension(
         "pywrap_saved_model_fingerprinting.h",
         "pywrap_saved_model_metrics.h",
     ],
-    dynamic_deps = ["//tensorflow/python:_pywrap_tensorflow_internal.so"] + select({
-        "//tensorflow:macos": ["//tensorflow:libtensorflow_framework.%s.dylib" % VERSION],
-        "//conditions:default": ["//tensorflow:libtensorflow_framework.so.%s" % VERSION],
-        "//tensorflow:windows": [],
-    }),
+    # This fails Windows builds. Please check b/266870200 for details.
+    #    dynamic_deps = ["//tensorflow/python:_pywrap_tensorflow_internal.so"] + select({
+    #        "//tensorflow:macos": ["//tensorflow:libtensorflow_framework.%s.dylib" % VERSION],
+    #        "//conditions:default": ["//tensorflow:libtensorflow_framework.so.%s" % VERSION],
+    #        "//tensorflow:windows": [],
+    #    }),
+    #    static_deps = tf_python_pybind_static_deps(),
     features = ["-layering_check"],
-    static_deps = tf_python_pybind_static_deps(),
     visibility = ["//tensorflow/python/training:__subpackages__"],
     deps = [
         ":pywrap_saved_model_headers",

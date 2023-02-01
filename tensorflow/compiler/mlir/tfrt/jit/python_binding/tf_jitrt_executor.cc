@@ -247,7 +247,8 @@ std::vector<py::array> TfJitRtExecutor::Execute(
   PyBindingResultConverter converter(results, results_ctx);
   converter.AddConversion(ReturnStridedMemref<MemrefToPyArray>);
   if (auto st = (*executable)->Execute(memrefs, converter, opts); !st.ok())
-    throw std::runtime_error(StrCat("Unsupported argument: ", st.message()));
+    throw std::runtime_error(
+        StrCat("Unsupported argument: ", st.status().message()));
 
   // Pull Python arrays out of async values.
   std::vector<py::array> ret_values;

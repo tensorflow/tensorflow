@@ -66,7 +66,7 @@ class GenericHostToLLVMPass
     memref::populateExpandOpsPatterns(patterns);
     memref::populateExpandStridedMetadataPatterns(patterns);
     arith::populateArithToLLVMConversionPatterns(typeConverter, patterns);
-    populateMemRefToLLVMConversionPatterns(typeConverter, patterns);
+    populateFinalizeMemRefToLLVMConversionPatterns(typeConverter, patterns);
     populateMathToLLVMConversionPatterns(typeConverter, patterns);
     populateFuncToLLVMConversionPatterns(typeConverter, patterns);
     cf::populateControlFlowToLLVMConversionPatterns(typeConverter, patterns);

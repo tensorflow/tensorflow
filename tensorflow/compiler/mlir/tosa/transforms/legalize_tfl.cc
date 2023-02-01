@@ -162,6 +162,7 @@ DECL_CONVERT_OP(DepthToSpace);
 DECL_CONVERT_OP(Bucketize);
 DECL_CONVERT_OP(Sin);
 DECL_CONVERT_OP(Cos);
+DECL_CONVERT_OP(Atan2);
 DECL_CONVERT_OP(Logistic);
 DECL_CONVERT_OP(Tanh);
 DECL_CONVERT_OP(PRelu);
@@ -2910,6 +2911,131 @@ LogicalResult ConvertTFLCosOp::matchAndRewrite(
   return success();
 }
 
+LogicalResult ConvertTFLAtan2Op::matchAndRewrite(
+    Operation* op, PatternRewriter& rewriter) const {
+  auto tfl_atan2_op = cast<TFL::Atan2Op>(op);
+  Location loc = op->getLoc();
+  Value input_y = tfl_atan2_op.getY();
+  Value input_x = tfl_atan2_op.getX();
+
+  auto input_y_ty = dyn_cast<RankedTensorType>(input_y.getType());
+  auto input_x_ty = dyn_cast<RankedTensorType>(input_x.getType());
+  auto output_ty = dyn_cast<ShapedType>(tfl_atan2_op.getResult().getType());
+
+  if (!input_y_ty || !input_x_ty || !output_ty) {
+    return rewriter.notifyMatchFailure(op, "ranked inputs/output required");
+  }
+
+  if (!input_y_ty.getElementType().isF32()) {
+    return rewriter.notifyMatchFailure(op, "input must be fp32");
+  }
+
+  // To perform an atan2 operation we make use of an atan lookup table,
+  // then determine the correct quadrant for each output. To restrict the
+  // input domain of the lookup table from [-inf, inf] to [0, 1], we make
+  // use of two identities and undo the transformation later on:
+  //
+  // acrtan(z) = π/2 - arctan(1/z)                                  (0)
+  //
+  // and
+  //
+  // arctan(-z) = -arctan(z)                                        (1)
+
+  Value pi = getTosaConstTensorSingleF32(rewriter, op, M_PI);
+  Value pi_2 = getTosaConstTensorSingleF32(rewriter, op, M_PI_2);
+  Value zero = getTosaConstTensorSingleF32(rewriter, op, 0.0);
+  Value one = getTosaConstTensorSingleF32(rewriter, op, 1.0);
+  Value two = getTosaConstTensorSingleF32(rewriter, op, 2.0);
+
+  // 1. Restrict the input to the atan lookup from [-inf, inf] to [0, 1].
+  // By utilizing (0) and (1) we compute: min(|x|, |y|) / max(|x|, |y|).
+  auto abs_y =
+      CreateOpAndInfer<tosa::AbsOp>(rewriter, loc, input_y_ty, input_y);
+  auto abs_x =
+      CreateOpAndInfer<tosa::AbsOp>(rewriter, loc, input_y_ty, input_x);
+  auto min_xy = CreateOpAndInfer<tosa::MinimumOp>(rewriter, loc, input_y_ty,
+                                                  abs_y, abs_x);
+  auto max_xy = CreateOpAndInfer<tosa::MaximumOp>(rewriter, loc, input_y_ty,
+                                                  abs_y, abs_x);
+  auto recip =
+      CreateOpAndInfer<tosa::ReciprocalOp>(rewriter, loc, input_y_ty, max_xy);
+  auto atan_input = CreateOpAndInfer<tosa::MulOp>(
+      rewriter, loc, input_y_ty, recip, min_xy, rewriter.getI32IntegerAttr(0));
+
+  // 2. Scale and translate the normalized domain to the table domain. This
+  // includes a translating and scaling to [-int16_max, int16_max] and casting
+  // to an i16 as it is the highest precision the table operation supports.
+  auto fp_scalar_ty = RankedTensorType::get({}, rewriter.getF32Type());
+  auto scale_up =
+      CreateOpAndInfer<tosa::MulOp>(rewriter, loc, input_y_ty, atan_input, two,
+                                    rewriter.getI32IntegerAttr(0));
+  auto translate =
+      CreateOpAndInfer<tosa::SubOp>(rewriter, loc, input_y_ty, scale_up, one);
+  Value int_limit = rewriter.create<tosa::ConstOp>(
+      loc, fp_scalar_ty,
+      DenseElementsAttr::get(
+          fp_scalar_ty,
+          {static_cast<float>(std::numeric_limits<int16_t>::max())}));
+  auto int_scaled =
+      CreateOpAndInfer<tosa::MulOp>(rewriter, loc, input_y_ty, translate,
+                                    int_limit, rewriter.getI32IntegerAttr(0));
+
+  auto int16_ty = input_y_ty.clone(rewriter.getIntegerType(16));
+  auto casted =
+      CreateOpAndInfer<tosa::CastOp>(rewriter, loc, int16_ty, int_scaled);
+
+  // 3. Compute a lookup table using the domain of [0, 1] for atan.
+  // Note: the implementation of std::atan2 may be different on
+  // different machines, so may result in varying numerical results.
+  auto atan_func = [](double x) -> double { return std::atan(x); };
+  Value table_const = getTosaConst16bitTable(rewriter, op, atan_func, 0.0, 1.0);
+  auto table_result = CreateOpAndInfer<tosa::TableOp>(
+      rewriter, loc, output_ty.clone(rewriter.getIntegerType(32)), casted,
+      table_const);
+
+  // 4. The range of table is a 23-bit two's complement value. Normalize the
+  // range by casting to an fp32 and dividing by 2^22.
+  auto table_result_fp =
+      CreateOpAndInfer<tosa::CastOp>(rewriter, loc, output_ty, table_result);
+  auto output_scale = rewriter.create<ConstOp>(
+      loc, fp_scalar_ty,
+      DenseElementsAttr::get(
+          fp_scalar_ty,
+          {static_cast<float>(1.0 / static_cast<float>(1 << 22))}));
+  auto table_output = CreateOpAndInfer<tosa::MulOp>(
+      rewriter, loc, output_ty, table_result_fp, output_scale,
+      rewriter.getI32IntegerAttr(0));
+
+  auto bool_ty = output_ty.clone(rewriter.getIntegerType(1));
+
+  // 5. If (0) was applied to the atan input, apply π/2 - table_output.
+  auto sub_pi_2 = CreateOpAndInfer<tosa::SubOp>(rewriter, loc, output_ty, pi_2,
+                                                table_output);
+  auto condition =
+      CreateOpAndInfer<tosa::GreaterOp>(rewriter, loc, bool_ty, abs_y, abs_x);
+  auto transform_output = CreateOpAndInfer<tosa::SelectOp>(
+      rewriter, loc, output_ty, condition, sub_pi_2, table_output);
+
+  // 6. Determine the correct atan2 quadrant.
+  // If x < 0, apply π - transform_output.
+  auto sub_pi = CreateOpAndInfer<tosa::SubOp>(rewriter, loc, output_ty, pi,
+                                              transform_output);
+  auto cond_1 =
+      CreateOpAndInfer<tosa::GreaterOp>(rewriter, loc, bool_ty, zero, input_x);
+  auto quadrant_select = CreateOpAndInfer<tosa::SelectOp>(
+      rewriter, loc, output_ty, cond_1, sub_pi, transform_output);
+
+  // 7. If (1) was applied to the atan input, negate output.
+  auto neg_r = CreateOpAndInfer<tosa::NegateOp>(rewriter, loc, output_ty,
+                                                quadrant_select);
+  auto cond_2 =
+      CreateOpAndInfer<tosa::GreaterOp>(rewriter, loc, bool_ty, zero, input_y);
+  CreateReplaceOpAndInfer<tosa::SelectOp>(rewriter, op, output_ty, cond_2,
+                                          neg_r, quadrant_select);
+
+  return success();
+}
+
 LogicalResult ConvertTFLLogisticOp::matchAndRewrite(
     Operation* op, PatternRewriter& rewriter) const {
   auto tfl_logistic_op = cast<TFL::LogisticOp>(op);
@@ -3780,6 +3906,7 @@ void populateLegalizeTFLPatterns(MLIRContext* ctx,
   DEF_PATTERN_INSERT(TFLBucketize);
   DEF_PATTERN_INSERT(TFLSin);
   DEF_PATTERN_INSERT(TFLCos);
+  DEF_PATTERN_INSERT(TFLAtan2);
   DEF_PATTERN_INSERT(TFLLogistic);
   DEF_PATTERN_INSERT(TFLTanh);
   DEF_PATTERN_INSERT(TFLPRelu);

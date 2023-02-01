@@ -52,7 +52,18 @@ struct PJRT_Device {
 };
 
 struct PJRT_Executable {
-  std::unique_ptr<xla::PjRtLoadedExecutable> executable;
+  // Must be shared_ptr so that we can share with PJRT_LoadedExecutable.
+  std::shared_ptr<xla::PjRtExecutable> executable;
+
+  explicit PJRT_Executable(std::shared_ptr<xla::PjRtExecutable> executable);
+
+  const xla::PjRtExecutable* get() const { return executable.get(); }
+  xla::PjRtExecutable* get() { return executable.get(); }
+};
+
+struct PJRT_LoadedExecutable {
+  // Must be shared_ptr so that we can share with PJRT_Executable.
+  std::shared_ptr<xla::PjRtLoadedExecutable> executable;
   PJRT_Client* client;
   // These pointers are a subset of `client`'s `addressable_devices`, i.e. those
   // addressed by the compiled executable program. `client` owns the objects
@@ -67,8 +78,11 @@ struct PJRT_Executable {
   std::vector<std::string> cost_analysis_names;
   std::vector<PJRT_NamedValue> cost_analysis_properties;
 
-  PJRT_Executable(std::unique_ptr<xla::PjRtLoadedExecutable> executable,
-                  PJRT_Client* client);
+  PJRT_LoadedExecutable(std::shared_ptr<xla::PjRtLoadedExecutable> executable,
+                        PJRT_Client* client);
+
+  const xla::PjRtLoadedExecutable* get() const { return executable.get(); }
+  xla::PjRtLoadedExecutable* get() { return executable.get(); }
 };
 
 struct PJRT_Buffer {
@@ -128,20 +142,29 @@ PJRT_Error* PJRT_Device_ToString(PJRT_Device_ToString_Args* args);
 
 PJRT_Error* PJRT_Executable_Destroy(PJRT_Executable_Destroy_Args* args);
 PJRT_Error* PJRT_Executable_Name(PJRT_Executable_Name_Args* args);
-PJRT_Error* PJRT_Executable_AddressableDevices(
-    PJRT_Executable_AddressableDevices_Args* args);
+PJRT_Error* PJRT_LoadedExecutable_AddressableDevices(
+    PJRT_LoadedExecutable_AddressableDevices_Args* args);
 PJRT_Error* PJRT_Executable_NumOutputs(PJRT_Executable_NumOutputs_Args* args);
 PJRT_Error* PJRT_Executable_SizeOfGeneratedCodeInBytes(
     PJRT_Executable_SizeOfGeneratedCodeInBytes_Args* args);
 PJRT_Error* PJRT_Executable_OptimizedProgram(
     PJRT_Executable_OptimizedProgram_Args* args);
-PJRT_Error* PJRT_Executable_GetCostAnalysis(
-    PJRT_Executable_GetCostAnalysis_Args* args);
-PJRT_Error* PJRT_Executable_Delete(PJRT_Executable_Delete_Args* args);
-PJRT_Error* PJRT_Executable_IsDeleted(PJRT_Executable_IsDeleted_Args* args);
-PJRT_Error* PJRT_Executable_Execute(PJRT_Executable_Execute_Args* args);
+
+PJRT_Error* PJRT_LoadedExecutable_Destroy(
+    PJRT_LoadedExecutable_Destroy_Args* args);
+PJRT_Error* PJRT_LoadedExecutable_GetCostAnalysis(
+    PJRT_LoadedExecutable_GetCostAnalysis_Args* args);
+PJRT_Error* PJRT_LoadedExecutable_Delete(
+    PJRT_LoadedExecutable_Delete_Args* args);
+PJRT_Error* PJRT_LoadedExecutable_IsDeleted(
+    PJRT_LoadedExecutable_IsDeleted_Args* args);
+PJRT_Error* PJRT_LoadedExecutable_Execute(
+    PJRT_LoadedExecutable_Execute_Args* args);
 PJRT_Error* PJRT_Executable_Serialize(PJRT_Executable_Serialize_Args* args);
-PJRT_Error* PJRT_Executable_Deserialize(PJRT_Executable_Deserialize_Args* args);
+PJRT_Error* PJRT_Executable_DeserializeAndLoad(
+    PJRT_Executable_DeserializeAndLoad_Args* args);
+PJRT_Error* PJRT_LoadedExecutable_GetExecutable(
+    PJRT_LoadedExecutable_GetExecutable_Args* args);
 
 PJRT_Error* PJRT_SerializedExecutable_Destroy(
     PJRT_SerializedExecutable_Destroy_Args* args);
@@ -241,19 +264,25 @@ constexpr PJRT_Api CreatePjrtApi(PJRT_Client_Create* create_fn) {
 
       .PJRT_Executable_Destroy = pjrt::PJRT_Executable_Destroy,
       .PJRT_Executable_Name = pjrt::PJRT_Executable_Name,
-      .PJRT_Executable_AddressableDevices =
-          pjrt::PJRT_Executable_AddressableDevices,
       .PJRT_Executable_NumOutputs = pjrt::PJRT_Executable_NumOutputs,
       .PJRT_Executable_SizeOfGeneratedCodeInBytes =
           pjrt::PJRT_Executable_SizeOfGeneratedCodeInBytes,
       .PJRT_Executable_OptimizedProgram =
           pjrt::PJRT_Executable_OptimizedProgram,
-      .PJRT_Executable_GetCostAnalysis = pjrt::PJRT_Executable_GetCostAnalysis,
-      .PJRT_Executable_Delete = pjrt::PJRT_Executable_Delete,
-      .PJRT_Executable_IsDeleted = pjrt::PJRT_Executable_IsDeleted,
-      .PJRT_Executable_Execute = pjrt::PJRT_Executable_Execute,
       .PJRT_Executable_Serialize = pjrt::PJRT_Executable_Serialize,
-      .PJRT_Executable_Deserialize = pjrt::PJRT_Executable_Deserialize,
+
+      .PJRT_LoadedExecutable_Destroy = pjrt::PJRT_LoadedExecutable_Destroy,
+      .PJRT_LoadedExecutable_GetExecutable =
+          pjrt::PJRT_LoadedExecutable_GetExecutable,
+      .PJRT_LoadedExecutable_AddressableDevices =
+          pjrt::PJRT_LoadedExecutable_AddressableDevices,
+      .PJRT_LoadedExecutable_GetCostAnalysis =
+          pjrt::PJRT_LoadedExecutable_GetCostAnalysis,
+      .PJRT_LoadedExecutable_Delete = pjrt::PJRT_LoadedExecutable_Delete,
+      .PJRT_LoadedExecutable_IsDeleted = pjrt::PJRT_LoadedExecutable_IsDeleted,
+      .PJRT_LoadedExecutable_Execute = pjrt::PJRT_LoadedExecutable_Execute,
+      .PJRT_Executable_DeserializeAndLoad =
+          pjrt::PJRT_Executable_DeserializeAndLoad,
 
       .PJRT_SerializedExecutable_Destroy =
           pjrt::PJRT_SerializedExecutable_Destroy,

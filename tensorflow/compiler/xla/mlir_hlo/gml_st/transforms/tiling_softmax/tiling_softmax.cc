@@ -18,7 +18,6 @@ limitations under the License.
 #include <string>
 #include <utility>
 
-#include "gml_st/interfaces/tiling_interface_impl.h"
 #include "gml_st/transforms/fusion/fusion.h"
 #include "gml_st/transforms/passes.h"
 #include "gml_st/transforms/tiling/tiling.h"
@@ -26,6 +25,7 @@ limitations under the License.
 #include "gml_st/utils/linalg_utils.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "mlir/Dialect/Linalg/Transforms/TilingInterfaceImpl.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 
@@ -178,7 +178,7 @@ struct TilePartialSoftmaxPattern
           tilingOptions.distributionLabel = distributionLabel;
           // Tile.
           FailureOr<TilingResult> tilingResult =
-              tile(tilingOptions, rewriter, op);
+              tileUsingGmlSt(tilingOptions, rewriter, op);
           if (failed(tilingResult)) return failure();
 
           rewriter.replaceOp(op, tilingResult->loop->getResults());
@@ -266,7 +266,7 @@ struct TilingSoftmaxPass
   void getDependentDialects(DialectRegistry &registry) const final {
     registry
         .insert<GmlStDialect, linalg::LinalgDialect, tensor::TensorDialect>();
-    registerGmlStTilingInterfaceExternalModels(registry);
+    linalg::registerTilingInterfaceExternalModels(registry);
   }
 
   void runOnOperation() override {

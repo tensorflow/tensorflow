@@ -39,7 +39,6 @@ Unmqr              //      ----        // rocsolver_Xunmqr  //   hipsolverXunmqr
 
 #include "tensorflow/compiler/xla/stream_executor/gpu/gpu_activation.h"
 #include "tensorflow/compiler/xla/stream_executor/gpu/gpu_executor.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/env.h"
 #include "tensorflow/compiler/xla/stream_executor/platform/default/dso_loader.h"
 #include "tensorflow/compiler/xla/stream_executor/platform/port.h"
 #include "tensorflow/compiler/xla/stream_executor/rocm/rocblas_wrapper.h"

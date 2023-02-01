@@ -25,8 +25,8 @@ limitations under the License.
 
 #include <gtest/gtest.h>
 #include "third_party/eigen3/Eigen/Core"
+#include "tensorflow/lite/core/interpreter.h"
 #include "tensorflow/lite/core/kernels/register.h"
-#include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/kernels/internal/compatibility.h"
 
 namespace tflite {
@@ -97,8 +97,9 @@ class TestDelegation {
 
   // Returns an empty interpreter that uses the same default delegates that are
   // normally enabled by default.
-  static std::unique_ptr<Interpreter> NewInterpreterWithDefaultDelegates() {
-    auto interpreter = std::make_unique<Interpreter>();
+  static std::unique_ptr<impl::Interpreter>
+  NewInterpreterWithDefaultDelegates() {
+    auto interpreter = std::make_unique<impl::Interpreter>();
     interpreter->lazy_delegate_providers_ =
         tflite::ops::builtin::BuiltinOpResolver().GetDelegateCreators();
     return interpreter;
@@ -116,7 +117,7 @@ class TestDelegation {
   void AddSubgraphs(int subgraphs_to_add,
                     int* first_new_subgraph_index = nullptr);
 
-  std::unique_ptr<Interpreter> interpreter_;
+  std::unique_ptr<impl::Interpreter> interpreter_;
 };
 
 // Tests scenarios involving a single delegate.
@@ -211,7 +212,7 @@ class TestFP16Delegation : public ::testing::TestWithParam<int> {
     bool fail_delegate_node_invoke_ = false;
   };
 
-  std::unique_ptr<Interpreter> interpreter_;
+  std::unique_ptr<impl::Interpreter> interpreter_;
   std::unique_ptr<FP16Delegate> delegate_;
   Eigen::half float16_const_;
 };

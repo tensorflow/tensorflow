@@ -42,7 +42,7 @@ std::unique_ptr<llvm::Module> MakeLLVMModule(
   // TODO(kramerb): link this to the right option, command line flag, etc.
   constexpr bool kReassociateFPReductions = true;
 
-  mlir::PassManager manager(module->getContext(),
+  mlir::PassManager manager((*module)->getName(),
                             mlir::OpPassManager::Nesting::Implicit);
   manager.addPass(mlir::createConvertLinalgToLoopsPass());
   manager.addPass(mlir::createLowerAffinePass());

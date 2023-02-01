@@ -59,7 +59,6 @@ cc_library(
         "//tensorflow/compiler/xla/service:shape_inference",
         "//tensorflow/compiler/xla/service:tuple_points_to_analysis",
         "//tensorflow/compiler/xla/service/cpu:runtime_single_threaded_matmul",
-        "//tensorflow/compiler/xla/stream_executor/lib",
         "//tensorflow/tsl/lib/core:bitmap",
         "//tensorflow/tsl/platform:errors",
         "//tensorflow/tsl/platform:logging",

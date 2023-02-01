@@ -25,11 +25,17 @@ RUN apt-get update && \
       software-properties-common \
       zlib1g-dev  \
       curl \
+      wget \
       unzip \
       git && \
     apt-get clean
 
 RUN DEBIAN_FRONTEND=noninteractive TZ=Etc/UTC apt-get -y install tzdata
+
+# Install Bazel.
+RUN wget https://github.com/bazelbuild/bazelisk/releases/download/v1.15.0/bazelisk-linux-amd64 \
+  -O /usr/local/bin/bazel && chmod +x /usr/local/bin/bazel
+
 # Install Python packages.
 RUN dpkg --add-architecture armhf
 RUN dpkg --add-architecture arm64

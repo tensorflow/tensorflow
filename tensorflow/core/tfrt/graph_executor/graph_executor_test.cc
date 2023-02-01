@@ -97,6 +97,69 @@ TEST_F(GraphExecutorTest, Vanilla) {
               ::testing::ElementsAreArray({2}));
 }
 
+TEST_F(GraphExecutorTest, BasicWithOnlineCostAnalysis) {
+  GraphDef graph_def;
+  TF_ASSERT_OK(GetSimpleGraphDef(graph_def));
+
+  auto runtime = DefaultTfrtRuntime(/*num_threads=*/1);
+  GraphExecutor::Options options(runtime.get());
+  options.enable_online_cost_analysis = true;
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto fallback_state,
+      tensorflow::tfrt_stub::FallbackState::Create(
+          CreateDefaultSessionOptions(options), graph_def.library()));
+  auto tpu_model_resource = std::make_unique<tfrt::tpu::TpuModelResource>();
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto graph_executor,
+      GraphExecutor::Create(std::move(options), *fallback_state,
+                            tpu_model_resource.get(), graph_def,
+                            GetKernelRegistry()));
+
+  // Set input 'x' to [[1, 1, 1]]
+  std::vector<std::pair<std::string, tensorflow::Tensor>> inputs;
+  inputs.push_back({"input", CreateTfTensor<int32_t>(
+                                 /*shape=*/{1, 3}, /*data=*/{1, 1, 1})});
+
+  std::vector<tensorflow::Tensor> outputs;
+
+  // A first run should trigger online cost analysis.
+  TF_ASSERT_OK(graph_executor->Run(/*run_options=*/{}, inputs,
+                                   /*output_tensor_names=*/{"rank"},
+                                   /*target_tensor_names=*/{}, &outputs));
+  ASSERT_EQ(outputs.size(), 1);
+
+  EXPECT_THAT(GetTfTensorData<int32_t>(outputs[0]),
+              ::testing::ElementsAreArray({2}));
+
+  // A second run should use re-compiled graph with online profiled costs.
+  TF_ASSERT_OK(graph_executor->Run(/*run_options=*/{}, inputs,
+                                   /*output_tensor_names=*/{"rank"},
+                                   /*target_tensor_names=*/{}, &outputs));
+  ASSERT_EQ(outputs.size(), 1);
+
+  EXPECT_THAT(GetTfTensorData<int32_t>(outputs[0]),
+              ::testing::ElementsAreArray({2}));
+}
+
+TEST_F(GraphExecutorTest, DoOnlineCostAnalysisExactlyOnce) {
+  GraphExecutor::LoadedClientGraph loaded_client_graph_0(
+      "name0", /*resource_context=*/nullptr, /*mlir_context=*/nullptr,
+      /*tfrt_mlir=*/{}, /*bef_context=*/nullptr, /*bytecode_buffer=*/{},
+      /*bytecode_executable=*/nullptr);
+  GraphExecutor::LoadedClientGraph loaded_client_graph_1(
+      "name1", /*resource_context=*/nullptr, /*mlir_context=*/nullptr,
+      /*tfrt_mlir=*/{}, /*bef_context=*/nullptr, /*bytecode_buffer=*/{},
+      /*bytecode_executable=*/nullptr);
+
+  // For each `LoadedClientGraph`, `MaybeCreateCostRecorder()` only returns a
+  // cost recorder for once.
+  EXPECT_TRUE(loaded_client_graph_0.MaybeCreateCostRecorder() != nullptr);
+  EXPECT_TRUE(loaded_client_graph_1.MaybeCreateCostRecorder() != nullptr);
+  EXPECT_TRUE(loaded_client_graph_0.MaybeCreateCostRecorder() == nullptr);
+  EXPECT_TRUE(loaded_client_graph_1.MaybeCreateCostRecorder() == nullptr);
+}
+
 TEST_F(GraphExecutorTest, Extend) {
   GraphDef graph_def;
   {

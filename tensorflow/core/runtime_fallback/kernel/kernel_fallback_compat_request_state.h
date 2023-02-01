@@ -25,6 +25,8 @@ limitations under the License.
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/platform/refcount.h"
 #include "tensorflow/core/platform/threadpool_interface.h"
+#include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/tfrt/fallback/cost_recorder.h"
 #include "tensorflow/core/tfrt/fallback/op_kernel_runner.h"
 #include "tensorflow/core/tfrt/utils/fallback_tensor.h"
 #include "tfrt/host_context/async_value_ref.h"  // from @tf_runtime
@@ -139,6 +141,14 @@ class KernelFallbackCompatRequestState {
 
   const SessionMetadata& session_metadata() const { return session_metadata_; }
 
+  // Nullable.
+  tensorflow::tfrt_stub::CostRecorder* cost_recorder() const {
+    return cost_recorder_;
+  }
+  void set_cost_recorder(tensorflow::tfrt_stub::CostRecorder* cost_recorder) {
+    cost_recorder_ = cost_recorder;
+  }
+
  private:
   // Below are resources needed by current tensorflow.
   std::function<void(std::function<void()>)>* runner_ = nullptr;
@@ -170,6 +180,9 @@ class KernelFallbackCompatRequestState {
   const tensorflow::ProcessFunctionLibraryRuntime* pflr_ = nullptr;
 
   bool log_device_placement_ = false;
+
+  // Records the cost per op.
+  tensorflow::tfrt_stub::CostRecorder* cost_recorder_ = nullptr;
 };
 
 }  // namespace tfd

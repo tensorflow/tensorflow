@@ -187,6 +187,7 @@ filegroup(
         "util.h",
         "work_sharder.h",
         "xla_config_registry.h",
+        "zen_util.h",
         "//tensorflow/tsl/util:framework_internal_private_hdrs",
     ],
 )

@@ -388,8 +388,12 @@ py_library(
     srcs_version = "PY3",
     visibility = ["//tensorflow:internal"],
     deps = [
+        "//tensorflow/core/function/trace_type",
         "//tensorflow/python:random_ops",
         "//tensorflow/python/eager:context",
+        "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/framework:tensor_spec",
         "//tensorflow/python/util",
     ],
 )
@@ -418,7 +422,6 @@ tf_xla_py_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:framework_ops",
-        "//tensorflow/python:math_ops",
         "//tensorflow/python:variables",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:tensor_spec",

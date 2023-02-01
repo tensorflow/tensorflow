@@ -227,6 +227,17 @@ xla::StatusOr<py::object> PjitFunction::Call(py::handle callable,
       [&] { return absl::StrCat("PjitFunction(", function_name_, ")"); });
   ParsedArgumentsAsBuffers arguments;
 
+  if (GetDisableJit()) {
+    if (!fun_.has_value()) {
+      throw py::value_error(
+          absl::StrFormat("Disable jit is not supported in the AOT path since "
+                          "the function is not available for (%s)",
+                          function_name_));
+    }
+    return py::reinterpret_steal<py::object>(
+        JAX_PyObject_Vectorcall(fun_.value().ptr(), args, nargs, kwnames));
+  }
+
   // Calls the cache_miss_ function. This just calls the Python function; it may
   // return nullptr value if a Python exception is thrown.
   auto cache_miss = [&]() -> py::tuple {

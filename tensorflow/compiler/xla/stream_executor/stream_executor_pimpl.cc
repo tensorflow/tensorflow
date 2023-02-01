@@ -32,15 +32,14 @@ limitations under the License.
 #include "absl/synchronization/notification.h"
 #include "tensorflow/compiler/xla/stream_executor/blas.h"
 #include "tensorflow/compiler/xla/stream_executor/fft.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/env.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/error.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/statusor.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/threadpool.h"
 #include "tensorflow/compiler/xla/stream_executor/platform/port.h"
 #include "tensorflow/compiler/xla/stream_executor/rng.h"
 #include "tensorflow/compiler/xla/stream_executor/stream.h"
 #include "tensorflow/compiler/xla/stream_executor/stream_executor_internal.h"
+#include "tensorflow/tsl/platform/errors.h"
 #include "tensorflow/tsl/platform/stacktrace.h"
+#include "tensorflow/tsl/platform/statusor.h"
+#include "tensorflow/tsl/platform/threadpool.h"
 #include "tensorflow/tsl/util/env_var.h"
 
 namespace {
@@ -60,7 +59,7 @@ std::string StackTraceIfVLOG10() {
 
 // Make sure the executor is done with its work; we know (because this isn't
 // publicly visible) that all enqueued work is quick.
-void BlockOnThreadExecutor(port::ThreadPool* executor) {
+void BlockOnThreadExecutor(tsl::thread::ThreadPool* executor) {
   absl::Notification n;
   executor->Schedule([&n]() { n.Notify(); });
   n.WaitForNotification();
@@ -145,8 +144,8 @@ StreamExecutor::StreamExecutor(
     : platform_(platform),
       implementation_(std::move(implementation)),
       device_ordinal_(device_ordinal),
-      background_threads_(new port::ThreadPool(
-          port::Env::Default(), "stream_executor", kNumBackgroundThreads)),
+      background_threads_(new tsl::thread::ThreadPool(
+          tsl::Env::Default(), "stream_executor", kNumBackgroundThreads)),
       live_stream_count_(0),
       tracing_enabled_(false),
       mem_alloc_bytes_(0),
@@ -406,7 +405,7 @@ StreamExecutor::createRnnDescriptor(
     bool use_padded_io) {
   dnn::DnnSupport* dnn_support = AsDnn();
   if (!dnn_support) {
-    return tsl::Status(port::error::UNKNOWN,
+    return tsl::Status(tsl::error::UNKNOWN,
                        "Fail to find the dnn implementation.");
   }
   return dnn_support->createRnnDescriptor(
@@ -421,7 +420,7 @@ StreamExecutor::createRnnSequenceTensorDescriptor(int max_seq_length,
                                                   dnn::DataType data_type) {
   dnn::DnnSupport* dnn_support = AsDnn();
   if (!dnn_support) {
-    return tsl::Status(port::error::UNKNOWN,
+    return tsl::Status(tsl::error::UNKNOWN,
                        "Fail to find the dnn implementation.");
   }
   return dnn_support->createRnnSequenceTensorDescriptor(
@@ -435,7 +434,7 @@ StreamExecutor::createRnnSequenceTensorDescriptor(
     dnn::DataType data_type) {
   dnn::DnnSupport* dnn_support = AsDnn();
   if (!dnn_support) {
-    return tsl::Status(port::error::UNKNOWN,
+    return tsl::Status(tsl::error::UNKNOWN,
                        "Fail to find the dnn implementation.");
   }
   return dnn_support->createRnnSequenceTensorDescriptor(
@@ -449,7 +448,7 @@ StreamExecutor::createRnnStateTensorDescriptor(int num_layer, int batch_size,
                                                dnn::DataType data_type) {
   dnn::DnnSupport* dnn_support = AsDnn();
   if (!dnn_support) {
-    return tsl::Status(port::error::UNKNOWN,
+    return tsl::Status(tsl::error::UNKNOWN,
                        "Fail to find the dnn implementation.");
   }
   return dnn_support->createRnnStateTensorDescriptor(num_layer, batch_size,
@@ -547,7 +546,7 @@ tsl::StatusOr<DeviceMemoryBase> StreamExecutor::GetUntypedSymbol(
   }
 
   return tsl::Status(
-      port::error::NOT_FOUND,
+      tsl::error::NOT_FOUND,
       absl::StrCat("Check if module containing symbol ", symbol_name,
                    " is loaded (module_handle = ",
                    reinterpret_cast<uintptr_t>(module_handle.id()), ")"));
@@ -692,7 +691,7 @@ tsl::Status StreamExecutor::SynchronousMemcpyD2H(
   result = implementation_->SynchronousMemcpy(host_dst, device_src, size);
   if (!result.ok()) {
     result = tsl::Status(
-        port::error::INTERNAL,
+        tsl::error::INTERNAL,
         absl::StrFormat("failed to synchronously memcpy device-to-host: device "
                         "%p to host %p size %d: %s",
                         device_src.opaque(), host_dst, size,
@@ -716,7 +715,7 @@ tsl::Status StreamExecutor::SynchronousMemcpyH2D(const void* host_src,
   result = implementation_->SynchronousMemcpy(device_dst, host_src, size);
   if (!result.ok()) {
     result = tsl::Status(
-        port::error::INTERNAL,
+        tsl::error::INTERNAL,
         absl::StrFormat("failed to synchronously memcpy host-to-device: host "
                         "%p to device %p size %d: %s",
                         host_src, device_dst->opaque(), size,

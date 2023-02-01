@@ -347,7 +347,7 @@ tsl::Status TpuTransferManager::LinearizeToBuffers(
 }
 
 tsl::Status TpuTransferManager::ReadDynamicShapes(
-    se::Stream* stream, xla::ShapedBuffer* device_buffer,
+    se::Stream* stream, const xla::ShapedBuffer* device_buffer,
     xla::Shape* device_shape) {
   XLA_ShapedBuffer c_device_buffer;
   XLA_Shape c_device_shape;

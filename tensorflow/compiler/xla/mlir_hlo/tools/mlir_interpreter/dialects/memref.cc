@@ -145,21 +145,26 @@ llvm::SmallVector<InterpreterValue> collapseShape(
 
 template <typename Op>
 InterpreterValue cast(InterpreterState& state, Op op, InterpreterValue memref) {
-  BufferView input_view = memref.view();
-  auto outTy = op->getResultTypes()[0].template cast<ShapedType>();
+  BufferView inputView = memref.view();
+  auto outTy = op->getResultTypes()[0].template cast<MemRefType>();
   if (outTy.getNumDynamicDims() > 0) {
     state.addFailure("dynamic dimensions unsupported.");
-    return {};
-  }
-  if (input_view.strides != BufferView::getDefaultStrides(input_view.sizes)) {
-    state.addFailure("non-standard strides unsupported.");
     return {};
   }
 
   InterpreterValue out = memref;
   auto& outView = out.view();
+  outView.strides.clear();
   outView.sizes = llvm::to_vector(outTy.getShape());
-  outView.strides = BufferView::getDefaultStrides(outView.sizes);
+  int64_t dummy;
+  if (!getStridesAndOffset(outTy, outView.strides, dummy).succeeded()) {
+    if (inputView.strides != BufferView::getDefaultStrides(inputView.sizes)) {
+      state.addFailure("unsupported strides");
+      return {};
+    }
+    outView.strides = BufferView::getDefaultStrides(outView.sizes);
+  }
+
   return out;
 }
 
@@ -175,10 +180,10 @@ InterpreterValue getGlobal(InterpreterState& state,
   return dispatchScalarType(ty, [&](auto dummy) -> InterpreterValue {
     auto values = value.getValues<decltype(dummy)>();
     auto result = TensorOrMemref<decltype(dummy)>::empty(ty.getShape());
-    auto value_it = values.begin();
+    auto valueIt = values.begin();
     for (const auto& index : result.view.indices()) {
-      result.at(index) = *value_it;
-      ++value_it;
+      result.at(index) = *valueIt;
+      ++valueIt;
     }
     return {result};
   });

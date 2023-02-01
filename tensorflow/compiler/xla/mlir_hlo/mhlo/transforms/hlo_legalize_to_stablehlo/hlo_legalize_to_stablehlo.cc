@@ -37,9 +37,9 @@ namespace mlir {
 namespace stablehlo {
 namespace {
 
-// Does this MHLO op have private non-StableHLO features?
-// This means that these features are only used inside XLA and are not used by
-// ML frontends. Such features are not a good fit for StableHLO.
+// PRIVATE MHLO features are internal to XLA and not used by any ML frontends.
+// These should never be converted to StableHLO, as they are not a good fit for
+// StableHLO.
 template <typename HloOpTy>
 bool hasPrivateFeaturesNotInStablehlo(HloOpTy hloOp) {
   // To the best of our knowledge, none of the ML frontends are using these ops
@@ -48,7 +48,7 @@ bool hasPrivateFeaturesNotInStablehlo(HloOpTy hloOp) {
   if (isa<mhlo::AddDependencyOp, mhlo::AsyncDoneOp, mhlo::AsyncStartOp,
           mhlo::AsyncUpdateOp, mhlo::BitcastOp, mhlo::CopyOp, mhlo::DomainOp,
           mhlo::FusionOp, mhlo::StochasticConvertOp,
-          mhlo::XlaRngGetAndUpdateStateOp>(hloOp)) {
+          mhlo::XlaRngGetAndUpdateStateOp>(hloOp.getOperation())) {
     return true;
   }
   if constexpr (std::is_same<HloOpTy, mhlo::ConvolutionOp>::value) {
@@ -80,12 +80,13 @@ bool hasPackedNibble(Optional<ArrayAttr> precisionConfigAttr) {
   });
 }
 
-// Does this MHLO op have public non-StableHLO features?
-// This means that these features are used by ML frontends but are not yet
-// part of StableHLO. Such features might be a good fit for StableHLO, and
-// they are usually accompanied by a StableHLO GitHub ticket.
+// EXPERIMENTAL MHLO features are being explored by ML frontends but do not have
+// any agreed upon compatibility guarantees. By default, these features cannot
+// be converted to StableHLO, although the allow-experimental-features flag can
+// be used to manually enable the conversion. Such features might be a good fit
+// for StableHLO, and they are usually accompanied by a StableHLO GitHub ticket.
 template <typename HloOpTy>
-bool hasPublicFeaturesNotInStablehlo(HloOpTy hloOp) {
+bool hasExperimentalFeaturesNotInStablehlo(HloOpTy hloOp) {
   if constexpr (std::is_same<HloOpTy, mhlo::AllToAllOp>::value) {
     // StableHLO AllToAll doesn't support the tuple form yet.
     // Proposal: https://github.com/openxla/stablehlo/issues/574.
@@ -113,6 +114,15 @@ bool hasPublicFeaturesNotInStablehlo(HloOpTy hloOp) {
     // Proposal: https://github.com/openxla/stablehlo/issues/742.
     if (hasPackedNibble(hloOp.getPrecisionConfig())) return true;
   }
+  return false;
+}
+
+// PUBLIC MHLO features are not yet in StableHLO but are agreed upon internally
+// to have limited compatibility guarantees. These features are used by ML
+// frontends but are not yet part of StableHLO. Such features might be a good
+// fit for StableHLO, and are usually accompanied by a StableHLO GitHub ticket.
+template <typename HloOpTy>
+bool hasPublicFeaturesNotInStablehlo(HloOpTy) {
   return false;
 }
 
@@ -216,7 +226,11 @@ Attribute convertAttr(Attribute hloAttr) {
 template <typename HloOpTy>
 class HloToStablehloOpConverter : public OpConversionPattern<HloOpTy> {
  public:
-  using OpConversionPattern<HloOpTy>::OpConversionPattern;
+  HloToStablehloOpConverter(TypeConverter& converter, MLIRContext* context,
+                            bool allowExperimentalFeatures)
+      : OpConversionPattern<HloOpTy>::OpConversionPattern(converter, context),
+        allowExperimentalFeatures(allowExperimentalFeatures) {}
+
   LogicalResult matchAndRewrite(
       HloOpTy hloOp, typename HloOpTy::Adaptor adaptor,
       ConversionPatternRewriter& rewriter) const final {
@@ -263,7 +277,9 @@ class HloToStablehloOpConverter : public OpConversionPattern<HloOpTy> {
     // guarantees. For example, when it is roundtripped back to MHLO, it may
     // turn out that the original MHLO op no longer exists or has different
     // attributes in the current version.
-    if (hasPublicFeaturesNotInStablehlo(hloOp)) {
+    bool hasExperimentalFeatures = hasExperimentalFeaturesNotInStablehlo(hloOp);
+    if (!allowExperimentalFeatures && hasExperimentalFeatures) return failure();
+    if (hasPublicFeaturesNotInStablehlo(hloOp) || hasExperimentalFeatures) {
       if (hloOp->getNumRegions() != 0) {
         // Extensibility protocol for regions hasn't been implemented yet.
         // In principle, it should be straightforward to implement by
@@ -332,22 +348,26 @@ class HloToStablehloOpConverter : public OpConversionPattern<HloOpTy> {
     }
     return success();
   }
+
+  bool allowExperimentalFeatures;
 };
 
 template <typename... StablehloOpTypes>
 void populateHloToStablehloPatterns(RewritePatternSet* patterns,
                                     TypeConverter* converter,
-                                    MLIRContext* context) {
+                                    MLIRContext* context,
+                                    bool allowExperimentalFeatures) {
   patterns
       ->add<HloToStablehloOpConverter<StablehloToHloOp<StablehloOpTypes>>...>(
-          *converter, context);
+          *converter, context, allowExperimentalFeatures);
 }
 
 }  // namespace
 
 void populateHloToStablehloPatterns(RewritePatternSet* patterns,
                                     TypeConverter* converter,
-                                    MLIRContext* context) {
+                                    MLIRContext* context,
+                                    bool allowExperimentalFeatures) {
   // Populate conversion patterns for all StableHLO ops.
   // Our guiding principle is to support all StableHLO functionality in MHLO.
   // The inverse is not necessarily true - some MHLO ops are missing from
@@ -357,7 +377,7 @@ void populateHloToStablehloPatterns(RewritePatternSet* patterns,
   populateHloToStablehloPatterns<
 #define GET_OP_LIST
 #include "stablehlo/dialect/StablehloOps.cpp.inc"
-      >(patterns, converter, context);
+      >(patterns, converter, context, allowExperimentalFeatures);
 }
 
 }  // namespace stablehlo

@@ -5174,6 +5174,17 @@ func.func @tensor_scatter_max(%tensor: tensor<?x?x?xf32>, %indices: tensor<?x2xi
 
 // -----
 
+// CHECK-LABEL: @random_shuffle_num_elems_le_1
+func.func @random_shuffle_num_elems_le_1() -> tensor<f32> {
+  // CHECK: [[INPUT:%.*]] = mhlo.constant dense<1.000000e+20> : tensor<f32>
+  // CHECK-NEXT: return [[INPUT]]
+  %cst = "tf.Const"() {value = dense<1.000000e+20> : tensor<f32>} : () -> tensor<f32>
+  %0 = "tf.RandomShuffle"(%cst) {device = "", seed = -4294967297 : i64, seed2 = -2147483649 : i64} : (tensor<f32>) -> tensor<f32>
+  return %0 : tensor<f32>
+}
+
+// -----
+
 // CHECK-LABEL: @random_shuffle_first_dim_1
 // CHECK-SAME: [[INPUT:%.*]]: tensor<1x?xf32>
 func.func @random_shuffle_first_dim_1(%input: tensor<1x?xf32>) -> tensor<1x?xf32> {
@@ -5242,17 +5253,23 @@ func.func @random_shuffle_3D(%input: tensor<4x?x16xf32>) -> tensor<4x?x16xf32> {
   // CHECK:   mhlo.return [[NEW_IV]], [[ITER_ARG1]], [[INDICES2]]
   // CHECK: }
 
-  // CHECK: [[GATHER:%.*]] = "mhlo.gather"([[INPUT]], [[WHILE_OUT]]#2)
+  // CHECK: [[CONSTANT1:%.*]] = mhlo.constant dense<1> : tensor<1xi64>
+  // CHECK: [[ARITH_CONSTANT:%.*]] = arith.constant 1 : index
+  // CHECK: [[SHAPE_DIM:%.*]] = shape.dim %arg0, [[ARITH_CONSTANT]] : tensor<4x?x16xf32>, index -> index
+  // CHECK: [[INDEX_CAST:%.*]] = arith.index_cast [[SHAPE_DIM]] : index to i64
+  // CHECK: [[FROM_ELEMENTS:%.*]] = tensor.from_elements [[INDEX_CAST]] : tensor<1xi64>
+  // CHECK: [[CONSTANT2:%.*]] = mhlo.constant dense<16> : tensor<1xi64>
+  // CHECK: [[CONCATENATE:%.*]] = "mhlo.concatenate"([[CONSTANT1]], [[FROM_ELEMENTS]], [[CONSTANT2]]) {dimension = 0 : i64} : (tensor<1xi64>, tensor<1xi64>, tensor<1xi64>) -> tensor<3xi64>
+  // CHECK: [[DYNAMIC_GATHER:%.*]] = "mhlo.dynamic_gather"([[INPUT]], [[WHILE_OUT]]#2, [[CONCATENATE]])
   // CHECK-SAME:   dimension_numbers =
   // CHECK-SAME:     offset_dims = [1, 2]
   // CHECK-SAME:     collapsed_slice_dims = [0]
   // CHECK-SAME:     start_index_map = [0]
   // CHECK-SAME:     index_vector_dim = 1
   // CHECK-SAME: indices_are_sorted = false
-  // CHECK-SAME: slice_sizes = dense<[1, -1, 16]>
-  // CHECK: (tensor<4x?x16xf32>, tensor<4xi32>) -> tensor<4x?x16xf32>
+  // CHECK-SAME:: (tensor<4x?x16xf32>, tensor<4xi32>, tensor<3xi64>) -> tensor<4x?x16xf32>
 
-  // CHECK: return [[GATHER]]
+  // CHECK: return [[DYNAMIC_GATHER]]
 
   %0 = "tf.RandomShuffle"(%input) : (tensor<4x?x16xf32>) -> (tensor<4x?x16xf32>)
   func.return %0: tensor<4x?x16xf32>
@@ -6918,4 +6935,81 @@ func.func @whileRegionMultipleImplicitInputs() {
   }) {is_stateless = true, parallel_iterations = 10 : i64} : () -> ()
   // CHECK: return
   func.return
+}
+
+//===----------------------------------------------------------------------===//
+// quant.uniform type handling with control flow ops
+//===----------------------------------------------------------------------===//
+
+// -----
+
+// CHECK-LABEL: func @while_region_with_quant
+func.func @while_region_with_quant(%arg0: tensor<*xf32>) -> tensor<*xf32> {
+  %scales = "tf.Const"() { value = dense<1.0> : tensor<f32> } : () -> tensor<f32>
+  %zps = "tf.Const"() { value = dense<3> : tensor<i32> } : () -> tensor<i32>
+
+  // CHECK: %[[QUANT0:.*]] = mhlo.uniform_quantize %[[ARG:.*]] : (tensor<*xf32>) -> tensor<*x!quant.uniform<i8:f32, 1.000000e+00:3>>
+  // CHECK: %[[QUANT1:.*]] = mhlo.while(%[[ITER_ARG:.*]] = %[[QUANT0]]) : tensor<*x!quant.uniform<i8:f32, 1.000000e+00:3>>
+  // CHECK: mhlo.return %[[ITER_ARG]] : tensor<*x!quant.uniform<i8:f32, 1.000000e+00:3>>
+  // CHECK: %[[RET:.*]] = mhlo.uniform_dequantize %[[QUANT1]] : (tensor<*x!quant.uniform<i8:f32, 1.000000e+00:3>>) -> tensor<*xf32>
+  // CHECK: return %[[RET]] : tensor<*xf32>
+
+  %0 = "tf.UniformQuantize"(%arg0, %scales, %zps) {
+    quantization_axis = -1 : i64, quantization_min_val = -128 : i64, quantization_max_val = 127 : i64
+  } : (tensor<*xf32>, tensor<f32>, tensor<i32>) -> tensor<*x!tf_type.qint8>
+  %1 = "tf.WhileRegion"(%0) ({
+  ^bb0(%carg0: tensor<*x!tf_type.qint8>):
+    %cst = "tf.Const"()  {value = dense<1> : tensor<i1>}  : () -> tensor<i1>
+    "tf.Yield"(%cst) : (tensor<i1>) -> ()
+    }, {
+  ^bb0(%barg0: tensor<*x!tf_type.qint8>):
+    %id = "tf.Identity"(%barg0) : (tensor<*x!tf_type.qint8>) -> tensor<*x!tf_type.qint8>
+    "tf.Yield"(%id) : (tensor<*x!tf_type.qint8>) -> ()
+  }) {is_stateless = false} : (tensor<*x!tf_type.qint8>) -> tensor<*x!tf_type.qint8>
+  %2 = "tf.UniformDequantize"(%1, %scales, %zps) {quantization_axis = -1 : i64, quantization_min_val = -128 : i64, quantization_max_val = 127 : i64} : (tensor<*x!tf_type.qint8>, tensor<f32>, tensor<i32>) -> tensor<*xf32>
+  func.return %2 : tensor<*xf32>
+}
+
+// CHECK-LABEL: func @while_region_with_quant_two_args
+func.func @while_region_with_quant_two_args(%arg0: tensor<2x2xf32>) -> (tensor<2x?xf32>, tensor<?x2xf32>) {
+  %scales = "tf.Const"() { value = dense<1.0> : tensor<f32> } : () -> tensor<f32>
+  %zps2 = "tf.Const"() { value = dense<2> : tensor<i32> } : () -> tensor<i32>
+  %zps4 = "tf.Const"() { value = dense<4> : tensor<i32> } : () -> tensor<i32>
+
+
+  // CHECK: %[[QUANT0:.*]] = mhlo.uniform_quantize %[[ARG:.*]] : (tensor<2x2xf32>) -> tensor<2x2x!quant.uniform<i8:f32, 1.000000e+00:2>>
+  %0 = "tf.UniformQuantize"(%arg0, %scales, %zps2) {
+    quantization_axis = -1 : i64, quantization_min_val = -128 : i64, quantization_max_val = 127 : i64
+  } : (tensor<2x2xf32>, tensor<f32>, tensor<i32>) -> tensor<2x2x!tf_type.qint8>
+  // CHECK: %[[QUANT1:.*]] = mhlo.uniform_quantize %[[ARG:.*]] : (tensor<2x2xf32>) -> tensor<2x2x!quant.uniform<i8:f32, 1.000000e+00:4>>
+  %1 = "tf.UniformQuantize"(%arg0, %scales, %zps4) {
+    quantization_axis = -1 : i64, quantization_min_val = -128 : i64, quantization_max_val = 127 : i64
+  } : (tensor<2x2xf32>, tensor<f32>, tensor<i32>) -> tensor<2x2x!tf_type.qint8>
+
+  // CHECK: %[[WHILE_RESULT:.*]]:2 = mhlo.while(%[[ARG0:.*]] = %[[QUANT0]], %[[ARG1:.*]] = %[[QUANT1]])
+  // CHECK-SAME: tensor<2x2x!quant.uniform<i8:f32, 1.000000e+00:2>>, tensor<2x2x!quant.uniform<i8:f32, 1.000000e+00:4>>
+
+  // CHECK: cond
+
+  // CHECK: do
+  // CHECK: mhlo.return %[[ARG0]], %[[ARG1]] : tensor<2x?x!quant.uniform<i8:f32, 1.000000e+00:2>>, tensor<?x2x!quant.uniform<i8:f32, 1.000000e+00:4>>
+
+  %2:2 = "tf.WhileRegion"(%0, %1) ({
+  ^bb0(%carg0: tensor<2x?x!tf_type.qint8>, %carg1: tensor<?x2x!tf_type.qint8>):
+    %cst = "tf.Const"()  {value = dense<1> : tensor<i1>}  : () -> tensor<i1>
+    "tf.Yield"(%cst) : (tensor<i1>) -> ()
+    }, {
+  ^bb0(%barg0: tensor<2x?x!tf_type.qint8>, %barg1: tensor<?x2x!tf_type.qint8>):
+    %id = "tf.Identity"(%barg0) : (tensor<2x?x!tf_type.qint8>) -> tensor<2x?x!tf_type.qint8>
+    "tf.Yield"(%id, %barg1) : (tensor<2x?x!tf_type.qint8>, tensor<?x2x!tf_type.qint8>) -> ()
+  }) {is_stateless = false} : (tensor<2x2x!tf_type.qint8>, tensor<2x2x!tf_type.qint8>) -> (tensor<2x?x!tf_type.qint8>, tensor<?x2x!tf_type.qint8>)
+
+  // %[[RESULT0:.*]] = mhlo.uniform_dequantize %[[WHILE_RESULT]]#0
+  %3 = "tf.UniformDequantize"(%2#0, %scales, %zps2) {quantization_axis = -1 : i64, quantization_min_val = -128 : i64, quantization_max_val = 127 : i64} : (tensor<2x?x!tf_type.qint8>, tensor<f32>, tensor<i32>) -> tensor<2x?xf32>
+
+  // %[[RESULT1:.*]] = mhlo.uniform_dequantize %[[WHILE_RESULT]]#0
+  %4 = "tf.UniformDequantize"(%2#1, %scales, %zps4) {quantization_axis = -1 : i64, quantization_min_val = -128 : i64, quantization_max_val = 127 : i64} : (tensor<?x2x!tf_type.qint8>, tensor<f32>, tensor<i32>) -> tensor<?x2xf32>
+
+  // return %[[RESULT0]], %[[RESULT1]]
+  func.return %3, %4 : tensor<2x?xf32>, tensor<?x2xf32>
 }

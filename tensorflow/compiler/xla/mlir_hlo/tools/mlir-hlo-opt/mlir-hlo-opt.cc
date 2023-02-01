@@ -68,10 +68,9 @@ int main(int argc, char** argv) {
                                       opts.experimentalSoftmax);
       });
   mlir::PassPipelineRegistration<gml_st::GmlStCPUPipelineOptions>
-      gmlStTilingAndFusionTransformations(
-          "gml-st-cpu-pipeline",
-          "Tiles, fuses, vectorizes tileable ops for CPU",
-          gml_st::addTileableOpsTransformationsForCPU);
+      gmlStCpuTilingPipeline("gml-st-cpu-tiling-pipeline",
+                             "Tiles, fuses, vectorizes tileable ops for CPU",
+                             gml_st::addCPUTilingPipeline);
 
   struct HloToTritonPipelineOptions
       : public PassPipelineOptions<HloToTritonPipelineOptions> {

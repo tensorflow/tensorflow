@@ -630,6 +630,23 @@ TEST(ShapeUtilTest, ForEachIndexWithStatus) {
   EXPECT_EQ(invocations, 5);
 }
 
+TEST(ShapeUtilTest, GetForEachIndexParallelThreadCount) {
+  const int kThreadCount = ShapeUtil::GetForEachIndexParallelThreadCount();
+
+  Shape shape = ShapeUtil::MakeShape(F32, {10, 100});
+  auto check_func = [kThreadCount](absl::Span<const int64_t> /*indexes*/,
+                                   int thread_id) -> StatusOr<bool> {
+    EXPECT_GE(thread_id, -1);
+    EXPECT_LT(thread_id, kThreadCount);
+    return true;
+  };
+
+  for (int i = 0; i < 10; ++i) {
+    ShapeUtil::ForEachIndexParallel(shape, /*base=*/{0, 0}, /*count=*/{10, 100},
+                                    /*incr=*/{1, 1}, check_func);
+  }
+}
+
 TEST(ShapeUtilTest, ForEachIndexParallel) {
   Shape shape = ShapeUtil::MakeShape(F32, {10, 10});
   int64_t output[10][10];
