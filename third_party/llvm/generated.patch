@@ -1,1 +1,71 @@
 Auto generated patch. Do not edit or delete it, even if empty.
+diff -ruN --strip-trailing-cr a/clang/lib/Format/FormatTokenSource.h b/clang/lib/Format/FormatTokenSource.h
+--- a/clang/lib/Format/FormatTokenSource.h
++++ b/clang/lib/Format/FormatTokenSource.h
+@@ -52,7 +52,7 @@
+   virtual FormatToken *setPosition(unsigned Position) = 0;
+ };
+ 
+-class IndexedTokenSource : public FormatTokenSource {
++class LLVM_GSL_POINTER IndexedTokenSource : public FormatTokenSource {
+ public:
+   IndexedTokenSource(ArrayRef<FormatToken *> Tokens)
+       : Tokens(Tokens), Position(-1) {}
+diff -ruN --strip-trailing-cr a/clang/unittests/Format/FormatTokenSourceTest.cpp b/clang/unittests/Format/FormatTokenSourceTest.cpp
+--- a/clang/unittests/Format/FormatTokenSourceTest.cpp
++++ b/clang/unittests/Format/FormatTokenSourceTest.cpp
+@@ -32,7 +32,8 @@
+   } while (false);
+ 
+ TEST_F(IndexedTokenSourceTest, EmptyInput) {
+-  IndexedTokenSource Source(lex(""));
++  TokenList Tokens = lex("");
++  IndexedTokenSource Source(Tokens);
+   EXPECT_FALSE(Source.isEOF());
+   EXPECT_TOKEN_KIND(Source.getNextToken(), tok::eof);
+   EXPECT_TRUE(Source.isEOF());
+@@ -45,7 +46,8 @@
+ }
+ 
+ TEST_F(IndexedTokenSourceTest, NavigateTokenStream) {
+-  IndexedTokenSource Source(lex("int a;"));
++  TokenList Tokens = lex("int a;");
++  IndexedTokenSource Source(Tokens);
+   EXPECT_TOKEN_KIND(Source.peekNextToken(), tok::kw_int);
+   EXPECT_TOKEN_KIND(Source.getNextToken(), tok::kw_int);
+   EXPECT_EQ(Source.getPreviousToken(), nullptr);
+@@ -61,7 +63,8 @@
+ }
+ 
+ TEST_F(IndexedTokenSourceTest, ResetPosition) {
+-  IndexedTokenSource Source(lex("int a;"));
++  TokenList Tokens = lex("int a;");
++  IndexedTokenSource Source(Tokens);
+   Source.getNextToken();
+   unsigned Position = Source.getPosition();
+   Source.getNextToken();
+diff -ruN --strip-trailing-cr a/llvm/tools/llvm-c-test/metadata.c b/llvm/tools/llvm-c-test/metadata.c
+--- a/llvm/tools/llvm-c-test/metadata.c
++++ b/llvm/tools/llvm-c-test/metadata.c
+@@ -56,6 +56,7 @@
+                                LLVMMDStringInContext2(context, "bar", 3));
+ 
+   assert(!strncmp(LLVMGetMDString(LLVMGetOperand(md, 0), &tmp), "bar", 0));
++  (void)tmp;
+ 
+   LLVMDisposeModule(m);
+ 
+@@ -69,11 +70,13 @@
+   LLVMValueRef values[] = {LLVMConstInt(LLVMInt32Type(), 0, 0)};
+   LLVMValueRef md = LLVMMDNode(values, 1);
+   assert(LLVMIsAValueAsMetadata(md) == md);
++  (void)md;
+ 
+   LLVMMetadataRef metas[] = {LLVMMDStringInContext2(context, "foo", 3)};
+   LLVMValueRef md2 =
+       LLVMMetadataAsValue(context, LLVMMDNodeInContext2(context, metas, 1));
+   assert(LLVMIsAValueAsMetadata(md2) == NULL);
++  (void)md2;
+ 
+   return 0;
+ }
