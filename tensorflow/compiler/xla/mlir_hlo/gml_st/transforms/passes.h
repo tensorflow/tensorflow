@@ -86,15 +86,13 @@ std::unique_ptr<OperationPass<func::FuncOp>> createGmlStToGpuPass(
 /// loops and memref.load/memref.store accesses.
 std::unique_ptr<OperationPass<func::FuncOp>> createGmlStToScfPass();
 
-/// Pass to vectorize linalg.generic ops tiled to gml_st.parallel and gml_st.for
-/// loops.
-std::unique_ptr<OperationPass<func::FuncOp>> createVectorizeGmlStLoopsPass(
+/// Pass to vectorize compute ops and gml_st.loops.
+std::unique_ptr<OperationPass<func::FuncOp>> createVectorizeForGPUPass(
     bool vectorizeGmlStOps = false,
     ArrayRef<StringRef> distributionLabels = {});
 
-/// Pass to vectorize gml_st.for loops that are tiled perfectly.
-std::unique_ptr<OperationPass<func::FuncOp>>
-createVectorizePerfectlyTiledLoopsPass();
+/// Pass to vectorize compute ops and scf.for loops that are tiled perfectly.
+std::unique_ptr<OperationPass<func::FuncOp>> createVectorizeForCPUPass();
 
 /// Pass to vectorize `memref.copy`.
 std::unique_ptr<OperationPass<func::FuncOp>> createVectorizeCopyPass();

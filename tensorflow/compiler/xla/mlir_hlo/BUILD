@@ -1356,6 +1356,9 @@ cc_library(
         "gml_st/transforms/transforms.h",
         "gml_st/transforms/triton_tiling/transform_matmul_for_triton.cc",
         "gml_st/transforms/vectorization/vectorization.cc",
+        "gml_st/transforms/vectorization/vectorize_copy.cc",
+        "gml_st/transforms/vectorization/vectorize_for_cpu.cc",
+        "gml_st/transforms/vectorization/vectorize_for_gpu.cc",
         "gml_st/utils/linalg_utils.cc",
     ],
     hdrs = [
@@ -1363,6 +1366,7 @@ cc_library(
         "gml_st/transforms/passes.h",
         "gml_st/transforms/peeling/peeling.h",
         "gml_st/transforms/tiling/tiling.h",
+        "gml_st/transforms/vectorization/vectorization.h",
         "gml_st/utils/linalg_utils.h",
         "gml_st/utils/vector_utils.h",
     ],

@@ -218,7 +218,7 @@ void mlir::createHloToGpuPipeline(OpPassManager &pm,
     pm.addNestedPass<FuncOp>(gml_st::createTilingGpuWarpPass());
     pm.addNestedPass<FuncOp>(gml_st::createScalarizationPass());
 
-    pm.addNestedPass<FuncOp>(gml_st::createVectorizeGmlStLoopsPass(
+    pm.addNestedPass<FuncOp>(gml_st::createVectorizeForGPUPass(
         /*vectorizeGmlStOps=*/true, /*distributionLabels=*/{
             kWarpDistributionLabel, kThreadDistributionLabel}));
   } else {

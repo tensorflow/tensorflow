@@ -1,5 +1,5 @@
 // RUN: mlir-hlo-opt %s --split-input-file \
-// RUN:     --vectorize-gml-st-loops="vectorize-gml-st-ops=true included-distribution-labels=test" \
+// RUN:     --vectorize-for-gpu="vectorize-gml-st-ops=true included-distribution-labels=test" \
 // RUN: | FileCheck %s
 
 func.func @vectorize_gml_st_parallel_op(
