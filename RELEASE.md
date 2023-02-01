@@ -41,10 +41,6 @@
 
 *   `tf.keras`
 
-    * Added a `model.export(filepath)` API to create a lightweight SavedModel
-      artifact that can be used for inference (e.g. with TF-Serving).
-    * Added `keras.export.ExportArchive` class for low-level customization of
-      the process of exporting SavedModel artifacts for inference.
     * Moved all saving-related utilities to a new namespace, `keras.saving`,
       i.e. `keras.saving.load_model`, `keras.saving.save_model`,
       `keras.saving.custom_object_scope`, `keras.saving.get_custom_objects`,
@@ -94,7 +90,24 @@
     *   The new Keras model saving format (`.keras`) is available. You can start
         using it via `model.save(f"{fname}.keras", save_format="keras_v3")`. In
         the future it will become the default for all files with the `.keras`
-        extension. This file format targets the Python runtime only.
+        extension. This file format targets the Python runtime only and makes
+        it possible to reload Python objects identical to the saved originals.
+        The format supports non-numerical state such as vocabulary files and
+        lookup tables, and it is easy to customize in the case of custom layers
+        with exotic elements of state (e.g. a FIFOQueue). The format
+        does not rely on bytecode or pickling, and is safe by default. Note
+        that as a result, Python `lambdas` are disallowed at loading time. If
+        you want to use `lambdas`, you can pass `safe_mode=False` to the loading
+        method (only do this if you trust the source of the model).
+    *   Added a `model.export(filepath)` API to create a lightweight SavedModel
+        artifact that can be used for inference (e.g. with TF-Serving).
+    *   Added `keras.export.ExportArchive` class for low-level customization of
+        the process of exporting SavedModel artifacts for inference.
+        Both ways of exporting models are based on `tf.function` tracing
+        and produce a TF program composed of TF ops. They are meant primarily
+        for environments where the TF runtime is available,
+        but not the Python interpreter, as is typical
+        for production with TF Serving.
     *   Added utility `tf.keras.utils.FeatureSpace`, a one-stop shop for
         structured data preprocessing and encoding.
     *   Added `tf.SparseTensor` input support to `tf.keras.layers.Embedding`
