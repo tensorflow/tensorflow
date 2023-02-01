@@ -454,7 +454,13 @@ message DebugOptions {
 
   bool xla_gpu_enable_latency_hiding_scheduler = 186;
 
-  // Next id: 187
+  enum PartitioningAlgorithm {
+    PARTITIONING_ALGORITHM_NOOP = 0;
+  }
+  // The partitioning algorithm to be used in the PartitionAssignment pass.
+  PartitioningAlgorithm xla_partitioning_algorithm = 187;
+
+  // Next id: 188
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.
