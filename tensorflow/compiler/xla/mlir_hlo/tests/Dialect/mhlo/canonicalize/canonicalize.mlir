@@ -2705,3 +2705,17 @@ func.func @fold_reduce_window(%arg0: tensor<1x1x20xf32>) -> tensor<1x1x20xf32> {
 
   // CHECK: return %arg0 : tensor<1x1x20xf32>
 }
+
+// CHECK-LABEL: @simplify_real_dynamic_slice
+func.func @simplify_real_dynamic_slice(%arg0: tensor<?x4xf32>) -> tensor<1x4xf32> {
+  %0 = mhlo.constant dense<[0, 0]> : tensor<2xi32>
+  %1 = mhlo.constant dense<[1, 4]> : tensor<2xi32>
+  %2 = mhlo.constant dense<[1, 1]> : tensor<2xi32>
+  %3 = mhlo.real_dynamic_slice %arg0, %0, %1, %2 : (tensor<?x4xf32>, tensor<2xi32>, tensor<2xi32>, tensor<2xi32>) -> tensor<1x4xf32>
+  // CHECK: %[[RESULT:.*]] =  "mhlo.slice"(%arg0)
+  // CHECK-DAG-SAME: start_indices = dense<[0, 0]> : tensor<2xi64>
+  // CHECK-DAG-SAME: limit_indices = dense<[1, 4]> : tensor<2xi64>
+  // CHECK-DAG-SAME: strides = dense<[1, 1]> : tensor<2xi64>}
+  // CHECK: return %[[RESULT]] : tensor<1x4xf32>
+  return %3 : tensor<1x4xf32>
+}
