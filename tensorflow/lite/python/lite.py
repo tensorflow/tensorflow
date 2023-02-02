@@ -1624,7 +1624,7 @@ class TFLiteFrozenGraphConverterV2(TFLiteConverterBaseV2):
 
     # Without the provided trackable obj, it is not able to serialize the given
     # concrete functions as a saved model format. Also when trackable obj is
-    # a function, use the original concrete function conversion pipline.
+    # a function, use the original concrete function conversion pipeline.
     if not self._trackable_obj or isinstance(
         self._trackable_obj,
         (_function.ConcreteFunction, _def_function.Function),
