@@ -25,6 +25,7 @@ from tensorflow.python.data.experimental.ops import distributed_save_op
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import combinations
+from tensorflow.python.framework import errors
 from tensorflow.python.platform import test
 
 
@@ -68,6 +69,15 @@ class DistributedSaveTfDataServiceTest(data_service_test_base.TestBase,
       distributed_save_op.distributed_save(dataset, "", 1)
     with self.assertRaisesRegex(ValueError, "must not be empty"):
       distributed_save_op.distributed_save(dataset, "", "")
+
+  @combinations.generate(test_base.eager_only_combinations())
+  def testBadCardinality(self):
+    dataset = dataset_ops.Dataset.range(10).repeat()
+    with self.assertRaisesRegex(
+        errors.InvalidArgumentError,
+        "Saving an infinite dataset is not allowed",
+    ):
+      self.save(dataset)
 
 
 if __name__ == "__main__":
