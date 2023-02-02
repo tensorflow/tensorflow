@@ -272,8 +272,8 @@ Status IteratorResource::SetIteratorFromDataset(OpKernelContext* ctx,
   new_state->MergeCheckpoint(iter_ctx.checkpoint());
   mutex_lock l(mu_);
   std::swap(iterator_state_, new_state);
-  tf_dataz_metrics_collector_ =
-      std::make_shared<TfDatazMetricsCollector>(env_, iterator.get());
+  tf_dataz_metrics_collector_ = std::make_shared<TfDatazMetricsCollector>(
+      env_, iterator_state_->iterator());
   TfDatazMetricsRegistry::Register(tf_dataz_metrics_collector_);
   return OkStatus();
 }
