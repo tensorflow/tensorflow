@@ -407,6 +407,7 @@ py_library(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:tensor_shape",
         "//tensorflow/python:tensor_util",
+        "//tensorflow/python/framework:extension_type",
         "//tensorflow/python/types",
         "//third_party/py/numpy",
     ],

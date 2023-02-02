@@ -639,7 +639,6 @@ py_strict_library(
         "//tensorflow/python:tensor_spec",
         "//tensorflow/python:tensor_util",
         "//tensorflow/python:util",
-        "//tensorflow/python/framework:extension_type",
         "//tensorflow/python/framework:type_spec_registry",
         "//tensorflow/python/ops/numpy_ops:numpy",
         "//tensorflow/python/ops/ragged:ragged_tensor",

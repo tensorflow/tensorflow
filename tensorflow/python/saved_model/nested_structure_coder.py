@@ -32,7 +32,6 @@ import warnings
 
 from tensorflow.core.protobuf import struct_pb2
 from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import extension_type
 from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
@@ -74,7 +73,9 @@ def _get_decoders():
 
 
 def _map_structure(pyobj, coders):
-  for can, do in coders:
+  # Iterate through the codecs in the reverse order they were registered in,
+  #   as the most specific codec should be checked first.
+  for can, do in reversed(coders):
     if can(pyobj):
       recursion_fn = functools.partial(_map_structure, coders=coders)
       return do(pyobj, recursion_fn)
@@ -468,19 +469,19 @@ class BuiltInTypeSpecCodec:
     type_spec_proto_enum: The proto enum value for the built-in TypeSpec class.
   """
 
-  BUILT_IN_TYPE_SPEC_PROTOS = []
-  BUILT_IN_TYPE_SPECS = []
+  _BUILT_IN_TYPE_SPEC_PROTOS = []
+  _BUILT_IN_TYPE_SPECS = []
 
   def __init__(self, type_spec_class, type_spec_proto_enum):
     if not issubclass(type_spec_class, internal.TypeSpec):
       raise ValueError(
           f"The type '{type_spec_class}' does not subclass tf.TypeSpec.")
 
-    if type_spec_class in self.BUILT_IN_TYPE_SPECS:
+    if type_spec_class in self._BUILT_IN_TYPE_SPECS:
       raise ValueError(
           f"The type '{type_spec_class}' already has an instantiated codec.")
 
-    if type_spec_proto_enum in self.BUILT_IN_TYPE_SPEC_PROTOS:
+    if type_spec_proto_enum in self._BUILT_IN_TYPE_SPEC_PROTOS:
       raise ValueError(
           f"The proto value '{type_spec_proto_enum}' is already registered."
       )
@@ -493,13 +494,15 @@ class BuiltInTypeSpecCodec:
     self.type_spec_class = type_spec_class
     self.type_spec_proto_enum = type_spec_proto_enum
 
-    self.BUILT_IN_TYPE_SPECS.append(type_spec_class)
-    self.BUILT_IN_TYPE_SPEC_PROTOS.append(type_spec_proto_enum)
+    self._BUILT_IN_TYPE_SPECS.append(type_spec_class)
+    self._BUILT_IN_TYPE_SPEC_PROTOS.append(type_spec_proto_enum)
 
   def can_encode(self, pyobj):
+    """Returns true if `pyobj` can be encoded as the built-in TypeSpec."""
     return isinstance(pyobj, self.type_spec_class)
 
   def do_encode(self, type_spec_value, encode_fn):
+    """Returns an encoded proto for the given built-in TypeSpec."""
     type_state = type_spec_value._serialize()  # pylint: disable=protected-access
     num_flat_components = len(nest.flatten(
         type_spec_value._component_specs, expand_composites=True))  # pylint: disable=protected-access
@@ -513,6 +516,7 @@ class BuiltInTypeSpecCodec:
     return encoded_type_spec
 
   def can_decode(self, value):
+    """Returns true if `value` can be decoded into its built-in TypeSpec."""
     if value.HasField("type_spec_value"):
       type_spec_class_enum = value.type_spec_value.type_spec_class
       return type_spec_class_enum == self.type_spec_proto_enum
@@ -552,12 +556,9 @@ class _TypeSpecCodec:
       (cls, enum) for (enum, cls) in TYPE_SPEC_CLASS_FROM_PROTO.items())
 
   def can_encode(self, pyobj):
-    """Returns true if `pyboj` can be encoded as a TypeSpec."""
+    """Returns true if `pyobj` can be encoded as a TypeSpec."""
     if type(pyobj) in self.TYPE_SPEC_CLASS_TO_PROTO:  # pylint: disable=unidiomatic-typecheck
       return True
-
-    if type(pyobj) in BuiltInTypeSpecCodec.BUILT_IN_TYPE_SPECS:
-      return False
 
     # Check if it's a registered type.
     if isinstance(pyobj, internal.TypeSpec):
@@ -576,15 +577,12 @@ class _TypeSpecCodec:
 
     if type_spec_class is None:
       type_spec_class_name = type_spec_registry.get_name(type(type_spec_value))
-      if isinstance(type_spec_value, extension_type.ExtensionTypeSpec):
-        type_spec_class = struct_pb2.TypeSpecProto.EXTENSION_TYPE_SPEC
-      else:
-        type_spec_class = struct_pb2.TypeSpecProto.REGISTERED_TYPE_SPEC
-        # Support for saving registered TypeSpecs is currently experimental.
-        # Issue a warning to indicate the limitations.
-        warnings.warn("Encoding a StructuredValue with type %s; loading this "
-                      "StructuredValue will require that this type be "
-                      "imported and registered." % type_spec_class_name)
+      type_spec_class = struct_pb2.TypeSpecProto.REGISTERED_TYPE_SPEC
+      # Support for saving registered TypeSpecs is currently experimental.
+      # Issue a warning to indicate the limitations.
+      warnings.warn("Encoding a StructuredValue with type %s; loading this "
+                    "StructuredValue will require that this type be "
+                    "imported and registered." % type_spec_class_name)
 
     type_state = type_spec_value._serialize()  # pylint: disable=protected-access
     num_flat_components = len(
@@ -599,12 +597,8 @@ class _TypeSpecCodec:
     return encoded_type_spec
 
   def can_decode(self, value):
-    if value.HasField("type_spec_value"):
-      type_spec_class_enum = value.type_spec_value.type_spec_class
-      return (
-          type_spec_class_enum
-          not in BuiltInTypeSpecCodec.BUILT_IN_TYPE_SPEC_PROTOS)
-    return False
+    """Returns true if `value` can be decoded into a `tf.TypeSpec`."""
+    return value.HasField("type_spec_value")
 
   def do_decode(self, value, decode_fn):
     """Returns the `tf.TypeSpec` encoded by the proto `value`."""
@@ -620,14 +614,6 @@ class _TypeSpecCodec:
             f"The type '{class_name}' has not been registered.  It must be "
             "registered before you load this object (typically by importing "
             "its module).") from e
-    elif type_spec_class_enum == struct_pb2.TypeSpecProto.EXTENSION_TYPE_SPEC:
-      try:
-        type_spec_class = type_spec_registry.lookup(class_name)
-      except ValueError:
-        type_spec_class = extension_type.AnonymousExtensionTypeSpec
-        warnings.warn(f"The type '{class_name}' has not been registered. "
-                      "Falling back to using AnonymousExtensionTypeSpec "
-                      "instead.")
     else:
       if type_spec_class_enum not in self.TYPE_SPEC_CLASS_FROM_PROTO:
         raise ValueError(
@@ -648,11 +634,11 @@ _codecs = [
     _Float64Codec(),
     _NoneCodec(),
     _Int64Codec(),
-    _TensorShapeCodec(),
     _BoolCodec(),
+    _DictCodec(),
+    _TypeSpecCodec(),
+    _TensorShapeCodec(),
     _BoundedTensorSpecCodec(),
     _TensorTypeCodec(),
-    _DictCodec(),
     _TensorSpecCodec(),
-    _TypeSpecCodec(),
 ]

@@ -1375,6 +1375,7 @@ py_library(
         ":type_spec",
         ":type_spec_registry",
         "//tensorflow/python:composite_tensor_ops",
+        "//tensorflow/python/saved_model:nested_structure_coder",
     ],
 )
 
