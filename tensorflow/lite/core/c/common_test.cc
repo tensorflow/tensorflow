@@ -364,7 +364,8 @@ TEST(TestTensorRealloc, TensorReallocLargeBytesFails) {
   tensor->dims_signature = TfLiteIntArrayCopy(dims);
   tensor->quantization.type = kTfLiteNoQuantization;
 
-  const size_t large_bytes = std::numeric_limits<size_t>::max();
+  const size_t large_bytes = std::numeric_limits<size_t>::max() - 16;
+  // Subtract 16 to account for adding 16 for XNN_EXTRA_BYTES
   EXPECT_EQ(TfLiteTensorRealloc(large_bytes, tensor), kTfLiteError);
 
   TfLiteTensorFree(tensor);
