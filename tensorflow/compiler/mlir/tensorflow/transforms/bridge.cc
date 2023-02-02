@@ -230,7 +230,11 @@ tensorflow::Status TPUBridge(ModuleOp module, bool enable_logging,
   Status status = RunTFXLABridge(module, enable_logging, [](OpPassManager &pm) {
     CreateTPUBridgePipeline(pm);
     // Add set of passes to lower back to graph (from tf_executor).
-    TF::AddGraphExportLoweringPasses(pm);
+    // Use graph export pipline V2 in TPU Bridge.
+    // TODO(hanxiong): Completely replace AddGraphExportLoweringPasses with
+    // AddGraphExortLoweringPassessV2 in all the code paths (V1 compat pipeline,
+    // CPU/GPU bridge, etc.)
+    TF::AddGraphExportLoweringPassesV2(pm);
   });
   tensorflow::metrics::UpdateTfMlirBridgeFirstPhaseCounter(
       "tpu", "v2", fallback_enabled, status.ok() ? "success" : "failure");
