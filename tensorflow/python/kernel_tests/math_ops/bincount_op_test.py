@@ -183,15 +183,9 @@ class BincountTest(test_util.TensorFlowTestCase):
       value_tensor = random_ops.random_uniform(
           [3, 1], minval=-256, maxval=257, dtype=dtypes.int32)
       value = array_ops.identity(value_tensor)
-      weights = None
-      minlength = 2
-      maxlength = 0
-      dtype = "float32"
-      axis = -1
-      binary_output = True
       out = bincount_ops.bincount(
-          value, weights=weights, minlength=minlength, maxlength=maxlength,
-          dtype=dtype, axis=axis, binary_output=binary_output)
+          value, weights=None, minlength=2, maxlength=0,
+          dtype=dtypes.float32, axis=-1, binary_output=True)
       self.evaluate(out)
 
 
