@@ -87,7 +87,7 @@ void DistributedSaveOp::Compute(OpKernelContext* ctx) {
                     std::string(serialized_metadata_)));
   }
 
-  DataServiceDispatcherClient client(address, DefaultDataTransferProtocol());
+  DataServiceDispatcherClient client(address, DefaultProtocol());
   int64_t deadline_micros =
       EnvTime::NowMicros() + absl::ToInt64Microseconds(kRetryTimeout);
   OP_REQUIRES_OK(
