@@ -137,7 +137,12 @@ to expand the supported models based on future use cases.
 Note: The sample stable delegate provided here only supports ADD and SUB
 operations thus aforementioned mobilenet models would not actually be delegated.
 To test your own delegate against the models, please update
-`stable_delegate_loader_settings` with your delegate path.
+`stable_delegate_loader_settings` with your delegate path.  To get feedback
+early in the development process, e.g. while working towards supporting more
+OPs, you can run the `benchmark_model` tool, which supports stable delegates and
+can be supplied with arbitrary models via the `--graph` CLI parameter. See [this document](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/delegates/utils/experimental/sample_stable_delegate/README.md#tf-lite-benchmark-tool)
+which shows how to run a model with ADD operations through the sample stable
+delegate.
 
 #### Latency benchmarking
 
