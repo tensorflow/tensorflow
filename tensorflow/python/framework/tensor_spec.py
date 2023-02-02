@@ -276,6 +276,20 @@ class TensorSpec(DenseSpec, type_spec.BatchableTypeSpec,
     assert isinstance(value, ops.Tensor)
     return [value]
 
+  def _cast(self, value, casting_context):
+    """Cast value to a tensor that is compatiable to this TensorSpec."""
+    # This method is mainly used to cast Python primitives to tensor.
+    # Currently, cast tensor to tensor with different types are not supported.
+    # For example, casting int32 to float32 would raise a ValueError.
+    value = ops.convert_to_tensor(value, self.dtype)
+    value_spec = self.from_tensor(value, self.name)
+    if self.name is None:
+      value_spec._name = None  # pylint: disable=protected-access
+    assert value_spec.is_subtype_of(
+        self
+    ), f"Failed to cast {value_spec!r} to tensor_spec {self!r}"
+    return value
+
   @classmethod
   def from_spec(cls, spec, name=None):
     """Returns a `TensorSpec` with the same shape and dtype as `spec`.

@@ -251,6 +251,13 @@ class TypeSpec(
     return [arg for arg in nest.flatten(value, expand_composites=True)
             if isinstance(arg, ops.Tensor)]
 
+  def _cast(self, value, casting_context):
+    cast_components = nest.map_structure(
+        lambda spec, v: spec._cast(v, casting_context),  # pylint: disable=protected-access
+        self._component_specs,
+        self._to_components(value))
+    return self._from_components(cast_components)
+
   # TODO(b/225058047): Reconsider semantics.
   def is_compatible_with(self, spec_or_value):
     """Returns true if `spec_or_value` is compatible with this TypeSpec.

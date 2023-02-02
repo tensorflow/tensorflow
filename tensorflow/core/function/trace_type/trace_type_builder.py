@@ -152,6 +152,10 @@ class InternalPlaceholderContext(trace.PlaceholderContext):
     return self._unnest_only
 
 
+class InternalCastContext(trace.CastContext):
+  """Default casting behaviors."""
+
+
 def from_value(value: Any,
                context: trace.TracingContext = None) -> trace.TraceType:
   """Returns a TraceType corresponding to the value based on the context.
