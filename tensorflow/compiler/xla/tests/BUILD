@@ -1292,6 +1292,22 @@ xla_test(
 )
 
 xla_test(
+    name = "convolution_cudnn_test",
+    timeout = "long",
+    srcs = ["convolution_cudnn_test.cc"],
+    backend_tags = {"gpu": [
+        "gpu",
+        "requires-gpu-sm70",
+    ]},
+    backends = ["gpu"],
+    deps = [
+        ":hlo_test_base",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+        "//tensorflow/tsl/platform:test",
+    ],
+)
+
+xla_test(
     name = "batch_normalization_test",
     srcs = ["batch_normalization_test.cc"],
     disabled_backends = [
