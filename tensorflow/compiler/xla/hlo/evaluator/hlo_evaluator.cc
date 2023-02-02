@@ -799,19 +799,19 @@ HloEvaluator::HloEvaluator(int64_t max_loop_iterations)
   typed_visitors_[PRED] =
       std::make_unique<HloEvaluatorTypedVisitor<bool>>(this);
   typed_visitors_[U8] =
-      std::make_unique<HloEvaluatorTypedVisitor<uint8_t>>(this);
+      std::make_unique<HloEvaluatorTypedVisitor<uint8_t, uint64_t>>(this);
   typed_visitors_[U16] =
-      std::make_unique<HloEvaluatorTypedVisitor<uint16_t>>(this);
+      std::make_unique<HloEvaluatorTypedVisitor<uint16_t, uint64_t>>(this);
   typed_visitors_[U32] =
-      std::make_unique<HloEvaluatorTypedVisitor<uint32_t>>(this);
+      std::make_unique<HloEvaluatorTypedVisitor<uint32_t, uint64_t>>(this);
   typed_visitors_[U64] =
       std::make_unique<HloEvaluatorTypedVisitor<uint64_t>>(this);
   typed_visitors_[S8] =
-      std::make_unique<HloEvaluatorTypedVisitor<int8_t>>(this);
+      std::make_unique<HloEvaluatorTypedVisitor<int8_t, int64_t>>(this);
   typed_visitors_[S16] =
-      std::make_unique<HloEvaluatorTypedVisitor<int16_t>>(this);
+      std::make_unique<HloEvaluatorTypedVisitor<int16_t, int64_t>>(this);
   typed_visitors_[S32] =
-      std::make_unique<HloEvaluatorTypedVisitor<int32_t>>(this);
+      std::make_unique<HloEvaluatorTypedVisitor<int32_t, int64_t>>(this);
   typed_visitors_[S64] =
       std::make_unique<HloEvaluatorTypedVisitor<int64_t>>(this);
   typed_visitors_[F16] =
