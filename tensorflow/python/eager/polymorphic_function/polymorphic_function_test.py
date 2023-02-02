@@ -2481,6 +2481,27 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
 
     self.assertLen(total_function_cache(foo), 1)
 
+  def testEmptyInputSignatures(self):
+
+    class Foo:
+
+      @polymorphic_function.function(input_signature=[])
+      def bar_none(self):
+        return 1
+
+      @polymorphic_function.function(input_signature=[])
+      def bar_one(self, x=0):
+        return x
+
+      @polymorphic_function.function(input_signature=[])
+      def bar_two(self, x=0, y=1):
+        return x + y
+
+    foo = Foo()
+    self.assertEqual(foo.bar_none.input_signature, ())
+    self.assertEqual(foo.bar_one.input_signature, ())
+    self.assertEqual(foo.bar_two.input_signature, ())
+
   # pylint: disable=g-long-lambda
   @parameterized.named_parameters([
       dict(
