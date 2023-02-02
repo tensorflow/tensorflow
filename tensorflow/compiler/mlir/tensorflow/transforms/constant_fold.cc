@@ -151,6 +151,10 @@ LogicalResult ConstantFoldFallbackHook(
     // with all GPU/TPU devices ignored and CPU only set to 1.
     (*config_proto.mutable_device_count())["CPU"] = 1;
     config_proto.add_device_filters("/device:CPU:*");
+    // Limit the thread pool size. Without this, TF by default creates as many
+    // threads as the number of CPUs (`port::MaxParallelism()`). This can be
+    // expensive since this TFE context persists the entire program execution.
+    config_proto.set_inter_op_parallelism_threads(2);
     std::unique_ptr<TF_Buffer, decltype(&TF_DeleteBuffer)> config(
         TF_NewBuffer(), TF_DeleteBuffer);
     DCHECK(config->data == nullptr);
