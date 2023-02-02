@@ -40,8 +40,6 @@ from tensorflow.python.framework import tensor_util
 from tensorflow.python.framework import type_spec_registry
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import tensor_array_ops
-from tensorflow.python.ops.ragged import ragged_tensor
-from tensorflow.python.ops.ragged import row_partition
 from tensorflow.python.types import internal
 from tensorflow.python.util import compat
 from tensorflow.python.util import nest
@@ -541,14 +539,10 @@ class _TypeSpecCodec:
           sparse_tensor.SparseTensorSpec,
       struct_pb2.TypeSpecProto.INDEXED_SLICES_SPEC:
           indexed_slices.IndexedSlicesSpec,
-      struct_pb2.TypeSpecProto.RAGGED_TENSOR_SPEC:
-          ragged_tensor.RaggedTensorSpec,
       struct_pb2.TypeSpecProto.TENSOR_ARRAY_SPEC:
           tensor_array_ops.TensorArraySpec,
       struct_pb2.TypeSpecProto.VARIABLE_SPEC:
           resource_variable_ops.VariableSpec,
-      struct_pb2.TypeSpecProto.ROW_PARTITION_SPEC:
-          row_partition.RowPartitionSpec,
   }
 
   # Mapping from type (TypeSpec subclass) to enum value.
