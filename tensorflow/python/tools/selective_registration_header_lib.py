@@ -54,7 +54,7 @@ def _get_ops_from_ops_list(input_file):
   return ops
 
 
-def get_ops_from_graphdef(graph_def):
+def _get_ops_from_graphdef(graph_def):
   """Gets the ops and kernels needed from the tensorflow model."""
   ops = set()
   ops.update(_get_ops_from_nodedefs(graph_def.node))
@@ -107,29 +107,6 @@ def _get_ops_from_nodedefs(node_defs):
   return ops
 
 
-def get_default_ops(default_ops_str):
-  """Gets the set of ops and kernels from the default ops string input.
-
-  Args:
-    default_ops_str: (Optional) comma-separated string of the list of
-      "op_name:kernel_name" entries.
-
-  Returns:
-    A set of (op_name, kernel_name) tuples. If `default_ops_str` is None, then
-    return an empty set.
-  """
-  if not default_ops_str:
-    return set()
-
-  ops = set()
-  for s in default_ops_str.split(','):
-    op, kernel = s.split(':')
-    op_and_kernel = (op, kernel)
-    if op_and_kernel not in ops:
-      ops.add(op_and_kernel)
-  return ops
-
-
 def get_ops_and_kernels(proto_fileformat, proto_files, default_ops_str):
   """Gets the ops and kernels needed from the model files."""
   ops = set()
@@ -148,11 +125,15 @@ def get_ops_and_kernels(proto_fileformat, proto_files, default_ops_str):
     else:
       assert proto_fileformat == 'textproto'
       graph_def = text_format.Parse(file_data, graph_pb2.GraphDef())
-    ops = ops.union(get_ops_from_graphdef(graph_def))
+    ops = ops.union(_get_ops_from_graphdef(graph_def))
 
   # Add default ops.
   if default_ops_str and default_ops_str != 'all':
-    ops |= get_default_ops(default_ops_str)
+    for s in default_ops_str.split(','):
+      op, kernel = s.split(':')
+      op_and_kernel = (op, kernel)
+      if op_and_kernel not in ops:
+        ops.add(op_and_kernel)
 
   return sorted(ops)
 
