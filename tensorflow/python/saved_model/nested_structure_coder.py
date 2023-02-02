@@ -32,7 +32,6 @@ import warnings
 
 from tensorflow.core.protobuf import struct_pb2
 from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import type_spec_registry
 from tensorflow.python.types import internal
@@ -461,9 +460,9 @@ class _TypeSpecCodec:
   """Codec for `tf.TypeSpec`."""
 
   # Mapping from enum value to type (TypeSpec subclass).
+  # Must leave this for backwards-compatibility until all external usages
+  # have been removed.
   TYPE_SPEC_CLASS_FROM_PROTO = {
-      struct_pb2.TypeSpecProto.INDEXED_SLICES_SPEC:
-          indexed_slices.IndexedSlicesSpec,
   }
 
   # Mapping from type (TypeSpec subclass) to enum value.
