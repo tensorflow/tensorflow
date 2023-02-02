@@ -33,10 +33,7 @@ import warnings
 from tensorflow.core.protobuf import struct_pb2
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import indexed_slices
-from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
-from tensorflow.python.framework import tensor_spec
-from tensorflow.python.framework import tensor_util
 from tensorflow.python.framework import type_spec_registry
 from tensorflow.python.types import internal
 from tensorflow.python.util import compat
@@ -384,74 +381,6 @@ class _TensorTypeCodec:
     return dtypes.DType(value.tensor_dtype_value)
 
 
-class _TensorSpecCodec:
-  """Codec for `TensorSpec`."""
-
-  def can_encode(self, pyobj):
-    # BoundedTensorSpec has its own decoder.
-    return (isinstance(pyobj, tensor_spec.TensorSpec) and
-            not isinstance(pyobj, tensor_spec.BoundedTensorSpec))
-
-  def do_encode(self, tensor_spec_value, encode_fn):
-    encoded_tensor_spec = struct_pb2.StructuredValue()
-    encoded_tensor_spec.tensor_spec_value.CopyFrom(
-        struct_pb2.TensorSpecProto(
-            shape=encode_fn(tensor_spec_value.shape).tensor_shape_value,
-            dtype=encode_fn(tensor_spec_value.dtype).tensor_dtype_value,
-            name=tensor_spec_value.name))
-    return encoded_tensor_spec
-
-  def can_decode(self, value):
-    return value.HasField("tensor_spec_value")
-
-  def do_decode(self, value, decode_fn):
-    name = value.tensor_spec_value.name
-    return tensor_spec.TensorSpec(
-        shape=decode_fn(
-            struct_pb2.StructuredValue(
-                tensor_shape_value=value.tensor_spec_value.shape)),
-        dtype=decode_fn(
-            struct_pb2.StructuredValue(
-                tensor_dtype_value=value.tensor_spec_value.dtype)),
-        name=(name if name else None))
-
-
-class _BoundedTensorSpecCodec:
-  """Codec for `BoundedTensorSpec`."""
-
-  def can_encode(self, pyobj):
-    return isinstance(pyobj, tensor_spec.BoundedTensorSpec)
-
-  def do_encode(self, bounded_tensor_spec_value, encode_fn):
-    """Returns an encoded proto for the given `tf.BoundedTensorSpec`."""
-    encoded_bounded_tensor_spec = struct_pb2.StructuredValue()
-    encoded_bounded_tensor_spec.bounded_tensor_spec_value.CopyFrom(
-        struct_pb2.BoundedTensorSpecProto(
-            shape=encode_fn(bounded_tensor_spec_value.shape).tensor_shape_value,
-            dtype=encode_fn(bounded_tensor_spec_value.dtype).tensor_dtype_value,
-            name=bounded_tensor_spec_value.name,
-            minimum=tensor_util.make_tensor_proto(
-                bounded_tensor_spec_value.minimum),
-            maximum=tensor_util.make_tensor_proto(
-                bounded_tensor_spec_value.maximum)))
-    return encoded_bounded_tensor_spec
-
-  def can_decode(self, value):
-    return value.HasField("bounded_tensor_spec_value")
-
-  def do_decode(self, value, decode_fn):
-    btsv = value.bounded_tensor_spec_value
-    name = btsv.name
-    return tensor_spec.BoundedTensorSpec(
-        shape=decode_fn(
-            struct_pb2.StructuredValue(tensor_shape_value=btsv.shape)),
-        dtype=decode_fn(
-            struct_pb2.StructuredValue(tensor_dtype_value=btsv.dtype)),
-        minimum=tensor_util.MakeNdarray(btsv.minimum),
-        maximum=tensor_util.MakeNdarray(btsv.maximum),
-        name=(name if name else None))
-
-
 class BuiltInTypeSpecCodec:
   """Codec for built-in `TypeSpec` classes.
 
@@ -533,8 +462,6 @@ class _TypeSpecCodec:
 
   # Mapping from enum value to type (TypeSpec subclass).
   TYPE_SPEC_CLASS_FROM_PROTO = {
-      struct_pb2.TypeSpecProto.SPARSE_TENSOR_SPEC:
-          sparse_tensor.SparseTensorSpec,
       struct_pb2.TypeSpecProto.INDEXED_SLICES_SPEC:
           indexed_slices.IndexedSlicesSpec,
   }
@@ -626,7 +553,5 @@ _codecs = [
     _DictCodec(),
     _TypeSpecCodec(),
     _TensorShapeCodec(),
-    _BoundedTensorSpecCodec(),
     _TensorTypeCodec(),
-    _TensorSpecCodec(),
 ]

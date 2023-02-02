@@ -31,6 +31,7 @@ from tensorflow.python.framework import type_spec
 from tensorflow.python.framework import type_spec_registry
 from tensorflow.python.ops import handle_data_util
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.saved_model import nested_structure_coder
 from tensorflow.python.types import core as core_tf_types
 from tensorflow.python.types import internal
 from tensorflow.python.util import _pywrap_utils
@@ -388,6 +389,41 @@ class TensorSpec(DenseSpec, type_spec.BatchableTypeSpec,
 trace_type.register_serializable(TensorSpec)
 
 
+class _TensorSpecCodec:
+  """Codec for `TensorSpec`."""
+
+  def can_encode(self, pyobj):
+    # BoundedTensorSpec has its own decoder.
+    return (isinstance(pyobj, TensorSpec) and
+            not isinstance(pyobj, BoundedTensorSpec))
+
+  def do_encode(self, tensor_spec_value, encode_fn):
+    encoded_tensor_spec = struct_pb2.StructuredValue()
+    encoded_tensor_spec.tensor_spec_value.CopyFrom(
+        struct_pb2.TensorSpecProto(
+            shape=encode_fn(tensor_spec_value.shape).tensor_shape_value,
+            dtype=encode_fn(tensor_spec_value.dtype).tensor_dtype_value,
+            name=tensor_spec_value.name))
+    return encoded_tensor_spec
+
+  def can_decode(self, value):
+    return value.HasField("tensor_spec_value")
+
+  def do_decode(self, value, decode_fn):
+    name = value.tensor_spec_value.name
+    return TensorSpec(
+        shape=decode_fn(
+            struct_pb2.StructuredValue(
+                tensor_shape_value=value.tensor_spec_value.shape)),
+        dtype=decode_fn(
+            struct_pb2.StructuredValue(
+                tensor_dtype_value=value.tensor_spec_value.dtype)),
+        name=(name if name else None))
+
+
+nested_structure_coder.register_codec(_TensorSpecCodec())
+
+
 # TODO(b/133606651): Should is_compatible_with should check min/max bounds?
 @type_spec_registry.register("tf.BoundedTensorSpec")
 class BoundedTensorSpec(TensorSpec, trace_type.Serializable):
@@ -534,6 +570,45 @@ class BoundedTensorSpec(TensorSpec, trace_type.Serializable):
 
   def _serialize(self):
     return (self._shape, self._dtype, self._minimum, self._maximum, self._name)
+
+
+class _BoundedTensorSpecCodec:
+  """Codec for `BoundedTensorSpec`."""
+
+  def can_encode(self, pyobj):
+    return isinstance(pyobj, BoundedTensorSpec)
+
+  def do_encode(self, bounded_tensor_spec_value, encode_fn):
+    """Returns an encoded proto for the given `tf.BoundedTensorSpec`."""
+    encoded_bounded_tensor_spec = struct_pb2.StructuredValue()
+    encoded_bounded_tensor_spec.bounded_tensor_spec_value.CopyFrom(
+        struct_pb2.BoundedTensorSpecProto(
+            shape=encode_fn(bounded_tensor_spec_value.shape).tensor_shape_value,
+            dtype=encode_fn(bounded_tensor_spec_value.dtype).tensor_dtype_value,
+            name=bounded_tensor_spec_value.name,
+            minimum=tensor_util.make_tensor_proto(
+                bounded_tensor_spec_value.minimum),
+            maximum=tensor_util.make_tensor_proto(
+                bounded_tensor_spec_value.maximum)))
+    return encoded_bounded_tensor_spec
+
+  def can_decode(self, value):
+    return value.HasField("bounded_tensor_spec_value")
+
+  def do_decode(self, value, decode_fn):
+    btsv = value.bounded_tensor_spec_value
+    name = btsv.name
+    return BoundedTensorSpec(
+        shape=decode_fn(
+            struct_pb2.StructuredValue(tensor_shape_value=btsv.shape)),
+        dtype=decode_fn(
+            struct_pb2.StructuredValue(tensor_dtype_value=btsv.dtype)),
+        minimum=tensor_util.MakeNdarray(btsv.minimum),
+        maximum=tensor_util.MakeNdarray(btsv.maximum),
+        name=(name if name else None))
+
+
+nested_structure_coder.register_codec(_BoundedTensorSpecCodec())
 
 trace_type.register_serializable(BoundedTensorSpec)
 _pywrap_utils.RegisterType("TensorSpec", TensorSpec)
