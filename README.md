@@ -1,5 +1,6 @@
-> **Warning** 
-> This is a temporary fork of TensorFlow for testing certian build configurations and possible new Github actions.  Please go to https://github.com/tensorflow/tensorflow to contirbute or use TensorFlow.
+> **Warning**
+>
+> This is a temporary fork of TensorFlow, used by the TensorFlow team at Google to test new build configurations and Github Actions. Please go to https://github.com/tensorflow/tensorflow to contribute to or use TensorFlow.
 
 <div align="center">
   <img src="https://www.tensorflow.org/images/tf_logo_horizontal.png">
