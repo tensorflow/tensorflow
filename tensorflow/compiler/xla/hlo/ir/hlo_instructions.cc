@@ -1530,8 +1530,16 @@ void HloConstantInstruction::PrintOperandsWithCanonicalNameMap(
       return;
     }
     if (shape().IsInteger()) {
-      literal_->PrintWithoutShapeOneline(printer);
-      return;
+      // The following prevents high compilation latencies caused by serializing
+      // large constant tensors; for example: b/265669625. The limit of 500k was
+      // chosen empirically to make sure that serialization of the `literal_` is
+      // less than a second.
+      if (auto num_constants =
+              absl::c_accumulate(shape().dimensions(), 1, std::multiplies<>());
+          num_constants <= 500'000) {
+        literal_->PrintWithoutShapeOneline(printer);
+        return;
+      }
     }
     printer->Append("{...}");
     return;
