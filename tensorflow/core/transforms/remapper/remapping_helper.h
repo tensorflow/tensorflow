@@ -56,6 +56,12 @@ struct ContractionBiasAddAddActivation {
   Operation* activation;
 };
 
+struct ContractionWithSqueezeAndBiasAdd {
+  Operation* contraction;
+  Operation* squeeze;
+  Operation* bias_add;
+};
+
 class OpPropertyHelper : public OpCatHelper {
  public:
   OpPropertyHelper() = default;
@@ -197,6 +203,11 @@ class OpPropertyHelper : public OpCatHelper {
   // Currently GPU does not supprt contraction + bias_add
   bool IsGpuCompatible(const ContractionBiasAdd&) const { return false; }
 
+  // Currently GPU does not supprt contraction + squeeze + bias_add
+  bool IsGpuCompatible(const ContractionWithSqueezeAndBiasAdd&) const {
+    return false;
+  }
+
   bool IsCpuCompatible(Operation* contraction_op) const {
     if (!util::OpHasDevice(contraction_op, tensorflow::DEVICE_CPU))
       return false;
@@ -219,11 +230,14 @@ class OpPropertyHelper : public OpCatHelper {
     if constexpr (!std::is_same<Pattern, ContractionBiasAdd>::value &&
                   !std::is_same<Pattern, ContractionBiasAddActivation>::value &&
                   !std::is_same<Pattern, ContractionBiasAddAdd>::value &&
-                  !std::is_same<Pattern, ContractionBiasAddActivation>::value) {
+                  !std::is_same<Pattern, ContractionBiasAddActivation>::value &&
+                  !std::is_same<Pattern, ContractionWithSqueezeAndBiasAdd>::value) {
       return false;
     }
     return IsGpuCompatible(pattern) || IsCpuCompatible(pattern.contraction);
   }
+
+  bool isOneDNNEnabled() const { return is_onednn_enabled_; }
 
  private:
   bool is_onednn_enabled_;

@@ -384,6 +384,68 @@ class BasePatternActivationRewriter : public BasePatternRewriter {
   }
 };
 
+class ContractionSqueezeBiasAddRewriter : public RemapperPatternBase {
+ public:
+  explicit ContractionSqueezeBiasAddRewriter(OpPropertyHelper &helper)
+      : RemapperPatternBase("tfg.BiasAdd", helper, PatternBenefit(1)) {}
+
+  LogicalResult matchAndRewrite(Operation *op,
+                                PatternRewriter &rewriter) const override {
+    // Not allowing control flow on BiasAdd
+    if (helper_.HasControlOperandsOrResultUsers(op)) return failure();
+
+    Operation *squeeze_op = op->getOperand(0).getDefiningOp();
+    if (squeeze_op == nullptr) return failure();
+    if (!helper_.getDialect()->IsSqueeze(squeeze_op) ||
+        !helper_.HaveSameDataType(op, squeeze_op) ||
+        helper_.HasControlOperandsOrResultUsers(squeeze_op) ||
+        !helper_.HasAtMostOneUserOfResult0(squeeze_op)) {
+      return failure();
+    }
+
+    // Input to Squeeze must be Conv2D/3D
+    Operation *conv_op = squeeze_op->getOperand(0).getDefiningOp();
+    if (conv_op == nullptr) return failure();
+    if (!(helper_.getDialect()->IsConv2D(conv_op) ||
+          (helper_.getDialect()->IsConv3D(conv_op) &&
+          helper_.isOneDNNEnabled())) ||
+        !helper_.HaveSameDataType(op, conv_op) ||
+        helper_.HasControlOperandsOrResultUsers(conv_op) ||
+        !helper_.HasAtMostOneUserOfResult0(conv_op)) {
+      return failure();
+    }
+
+    // Squeeze must not squeeze output channel dimension.
+    auto squeeze_dims = squeeze_op->getAttrOfType<ArrayAttr>("squeeze_dims");
+    if (!squeeze_dims) return failure();
+    for (auto& squeeze_dim : squeeze_dims) {
+      int dim = squeeze_dim.cast<IntegerAttr>().getInt();
+      if ((dim == 3 && helper_.getDialect()->IsConv2D(conv_op)) ||
+              (dim == 4 && helper_.getDialect()->IsConv3D(conv_op))) {
+            return failure();
+      }
+    }
+
+    // Check that data type and data format are supported on assigned device.
+    ContractionWithSqueezeAndBiasAdd pattern;
+    pattern.contraction = conv_op;
+    pattern.squeeze = squeeze_op;
+    pattern.bias_add = op;
+    if (!helper_.IsDeviceCompatible(pattern)) return failure();
+
+    std::unique_ptr<OperationState> state = GetContractionBiasAddOpState(
+        rewriter, helper_, pattern.contraction, pattern.bias_add);
+    Operation *fused_op = rewriter.create(*state);
+    TFOp(fused_op).setName(TFOp(conv_op).nameAttr());
+    rewriter.replaceOp(conv_op, fused_op->getResults());
+
+    // Replace BiasAdd node with new Squeeze.
+    TFOp(squeeze_op).setName(TFOp(op).nameAttr());
+    rewriter.replaceOp(op, squeeze_op->getResults());
+    return success();
+  }
+};
+
 template <template <OpKind> class PatternT, OpKind... op_kinds,
           typename... Args>
 static void InsertPatterns(RewritePatternSet &patterns, Args &&...args) {
@@ -434,6 +496,7 @@ class Remapper : public impl::RemapperBase<Remapper> {
       populateRemapperPDLLPatterns(patterns);
     }
     patterns.insert<ContractionBiasAddRewriter>(helper_);
+    patterns.insert<ContractionSqueezeBiasAddRewriter>(helper_);
     // Insert multiple pattern rewriters from template instantiations by
     // activation ops.
     InsertPatterns<ContractionBiasAddActivationRewriter, OpKind::Relu,
