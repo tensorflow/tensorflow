@@ -1270,9 +1270,9 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
                         output_dtype));
   }
 
-  StatusOr<bool> OutputIsColumnMajor(
-      const HloInstruction *instr,
-      const GemmBackendConfig &gemm_backend_config) const {
+  StatusOr<bool> MatrixIsColumnMajor(
+      const HloInstruction *instr, const GemmBackendConfig &gemm_backend_config,
+      const std::string matrix_name = "output") const {
     const HloInstruction *lhs = instr->operand(0);
     const HloInstruction *rhs = instr->operand(1);
 
@@ -1289,7 +1289,16 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
             gemm_backend_config.alpha_imag(), gemm_backend_config.beta(),
             /*algorithm*/ std::nullopt, se::blas::kDefaultComputePrecision));
 
-    return gemm_config.output_layout.order == MatrixLayout::Order::kColumnMajor;
+    if (matrix_name == "lhs" || matrix_name == "a") {
+      return gemm_config.lhs_layout.order == MatrixLayout::Order::kColumnMajor;
+    } else if (matrix_name == "rhs" || matrix_name == "b") {
+      return gemm_config.rhs_layout.order == MatrixLayout::Order::kColumnMajor;
+    } else if (matrix_name == "output" || matrix_name == "d") {
+      return gemm_config.output_layout.order ==
+             MatrixLayout::Order::kColumnMajor;
+    } else {
+      return InternalError("Invalid matrix name.");
+    }
   }
 
   StatusOr<bool> GemmIsSupportedByCublasLt(
@@ -1345,7 +1354,7 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
         gemm_backend_config.dot_dimension_numbers();
 
     TF_ASSIGN_OR_RETURN(bool output_is_column_major,
-                        OutputIsColumnMajor(instr, gemm_backend_config));
+                        MatrixIsColumnMajor(instr, gemm_backend_config));
     if (!output_is_column_major) {
       // cublasLt's matmul output is column major by default. This gemm requires
       // the output to be in row major. Later we will swap lhs & rhs (and
