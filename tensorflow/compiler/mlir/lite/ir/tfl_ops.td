@@ -4483,6 +4483,9 @@ def TFL_UnidirectionalSequenceLSTMOp :
     // Used in post-training dynamic range quantization. If the value is true,
     // input activations are asymmetrically quantized.
     OptionalAttr<BoolAttr>:$asymmetric_quantize_inputs,
+    // IndyLSTM optimizations (i.e. optimizations enabled because of diagonal
+    // recurrent weight matrices that are provided as vectors)
+    OptionalAttr<BoolAttr>:$diagonal_recurrent_tensors,
 
     // Types of the optional intermediate tensors, which exist for fully
     // quantized op and hold the ranges of the intermediate tensors.
