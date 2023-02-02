@@ -1015,6 +1015,9 @@ def _split_on_axis(np_fun_name, axis):
 
   @np_utils.np_doc(np_fun_name)
   def f(ary, indices_or_sections):
+    # for 1-D array, hsplit becomes vsplit
+    if axis == 1 and len(ary.shape) == 1:
+      axis = 0
     if isinstance(indices_or_sections, int):
       ary_shape = ary.shape[axis]
       if ary_shape is not None and ary_shape % indices_or_sections:
