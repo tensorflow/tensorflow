@@ -395,7 +395,7 @@ struct MaterializeOpVectorizationPattern
                                 PatternRewriter &rewriter) const override {
     if (!filterFn(op))
       return rewriter.notifyMatchFailure(op, "did not match filter");
-    TypedValue<ShapedType> source = op.getSource();
+    TypedValue<TensorType> source = op.getSource();
     ShapedType sourceType = source.getType();
     // TODO(b/244314345): Support imperfect tiling, which results in dynamic
     // shapes.
