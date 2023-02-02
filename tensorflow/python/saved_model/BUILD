@@ -633,7 +633,6 @@ py_strict_library(
         "//tensorflow/python:dtypes",
         "//tensorflow/python:indexed_slices",
         "//tensorflow/python:sparse_tensor",
-        "//tensorflow/python:tensor_array_ops",
         "//tensorflow/python:tensor_shape",
         "//tensorflow/python:tensor_spec",
         "//tensorflow/python:tensor_util",

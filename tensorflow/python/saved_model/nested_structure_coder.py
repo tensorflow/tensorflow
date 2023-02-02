@@ -38,7 +38,6 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.framework import type_spec_registry
-from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.types import internal
 from tensorflow.python.util import compat
 from tensorflow.python.util import nest
@@ -538,8 +537,6 @@ class _TypeSpecCodec:
           sparse_tensor.SparseTensorSpec,
       struct_pb2.TypeSpecProto.INDEXED_SLICES_SPEC:
           indexed_slices.IndexedSlicesSpec,
-      struct_pb2.TypeSpecProto.TENSOR_ARRAY_SPEC:
-          tensor_array_ops.TensorArraySpec,
   }
 
   # Mapping from type (TypeSpec subclass) to enum value.
