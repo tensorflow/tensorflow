@@ -2417,3 +2417,19 @@ tf_xla_py_test(
         "//tensorflow/python:training",
     ],
 )
+
+tf_xla_py_test(
+    name = "bincount_op_test",
+    size = "small",
+    srcs = ["bincount_op_test.py"],
+    enable_mlir_bridge = False,
+    python_version = "PY3",
+    shard_count = 10,
+    tags = [
+        "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
+    ],
+    deps = [
+        ":xla_test",
+        "//tensorflow/python:platform_test",
+    ],
+)
