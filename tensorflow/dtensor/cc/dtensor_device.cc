@@ -817,7 +817,7 @@ TFE_TensorHandle* DTensorDevice::Pack(TFE_Context* context, int num_inputs,
       component_shape.push_back(TFE_TensorHandleDim(inputs[0], i, status));
       if (TF_GetCode(status) != TF_OK) return nullptr;
     }
-    packed_tensor = TensorWithLayout::Dummy(
+    packed_tensor = CreateDummyTensorWithLayout(
         component_shape, dtype, target_parallel_device->mesh_config(),
         *target_layout);
 
@@ -876,7 +876,7 @@ TFE_TensorHandle* DTensorDevice::Pack(TFE_Context* context, int num_inputs,
       return nullptr;
     }
 
-    packed_tensor = TensorWithLayout::Wrap(
+    packed_tensor = CreateTensorWithLayout(
                         std::move(parallel_tensor),
                         target_parallel_device->mesh_config(), *target_layout)
                         .value();
@@ -1784,7 +1784,7 @@ void DTensorDevice::ExecuteRegularOperation(
             std::vector<int64_t>(dim_sizes.begin(), dim_sizes.end());
         TF_DataType dtype =
             static_cast<TF_DataType>(function.output_dtypes.at(i));
-        auto remote_output = TensorWithLayout::Dummy(
+        auto remote_output = CreateDummyTensorWithLayout(
             local_shape, dtype, parallel_device_mesh->mesh_config(),
             function.output_layouts[i]);
         output_with_layout.push_back(std::move(remote_output));
@@ -1815,7 +1815,7 @@ void DTensorDevice::ExecuteRegularOperation(
       for (int i = 0; i < result->size(); ++i) {
         ASSIGN_OR_RETURN_C_STATUS(
             auto local_output,
-            TensorWithLayout::Wrap(std::move((*result)[i]),
+            CreateTensorWithLayout(std::move((*result)[i]),
                                    parallel_device_mesh->mesh_config(),
                                    function.output_layouts[i]),
             status);
@@ -1827,9 +1827,12 @@ void DTensorDevice::ExecuteRegularOperation(
       // TODO(b/162744844): Generalize this pattern so that the extraction is
       // not special cased.
       if (function.shape_output_metadata.find(i) !=
-          function.shape_output_metadata.end()) {
-        output_with_layout[i]->set_input_layout_for_shape_op_result(
-            function.shape_output_metadata.at(i));
+              function.shape_output_metadata.end() &&
+          output_with_layout[i]->const_value_node() != nullptr) {
+        output_with_layout[i]
+            ->const_value_node()
+            ->set_input_layout_for_shape_op_result(
+                function.shape_output_metadata.at(i));
       }
 
       RecordInShapeLayoutCache(*output_with_layout[i]);
@@ -1959,12 +1962,14 @@ void DTensorDevice::Execute(const TFE_Op* original_op, int* num_outputs,
       input_meshes.insert(t->layout().mesh());
     }
     // Remote mesh inputs are not able to be read and evaluated.
-    if (!is_remote_mesh(t->layout().mesh()) && !t->const_value().has_value()) {
+    if (!is_remote_mesh(t->layout().mesh()) &&
+        t->const_value_node() != nullptr &&
+        !t->const_value_node()->const_value().has_value()) {
       std::optional<NodeDef> const_value =
           ExtractSmallTensorValue(context, input, t->layout(), status);
       if (TF_GetCode(status) != TF_OK) return;
       if (const_value.has_value()) {
-        t->set_const_value(const_value.value());
+        t->const_value_node()->set_const_value(const_value.value());
       }
     }
     typed_inputs[j] = t;
@@ -2013,12 +2018,13 @@ void DTensorDevice::Execute(const TFE_Op* original_op, int* num_outputs,
     // vector, whereas the input `TFE_TensorHandle`s maintain ownership for
     // inputs that already had layouts (and therefor had TensorWithLayout
     // objects).
-    std::unique_ptr<TensorWithLayout> wrapper = TensorWithLayout::Broadcast(
+    std::unique_ptr<TensorWithLayout> wrapper = TensorWithLayoutTf::Broadcast(
         context, input, *broadcast_mesh, name_, status);
     if (TF_GetCode(status) != TF_OK) return;
     if (!ShouldFoldInputArgument(dtensor_operation.name,
-                                 /*input_index=*/not_on_device_input_index)) {
-      wrapper->reset_const_value();
+                                 /*input_index=*/not_on_device_input_index) &&
+        wrapper->const_value_node() != nullptr) {
+      wrapper->const_value_node()->reset_const_value();
     }
     typed_inputs[not_on_device_input_index] = wrapper.get();
     inputs_with_no_layout.emplace_back(wrapper.release());

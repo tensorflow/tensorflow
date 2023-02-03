@@ -91,6 +91,19 @@ cc_library(
 )
 
 cc_library(
+    name = "tensor_with_layout",
+    hdrs = ["tensor_with_layout.h"],
+    deps = [
+        ":constants",
+        ":tensor_layout",
+        "//tensorflow/c/eager:c_api",
+        "//tensorflow/c/eager/parallel_device:parallel_device_lib",
+        "//tensorflow/core:framework",
+        "//tensorflow/core/platform:fingerprint",
+    ],
+)
+
+cc_library(
     name = "dtensor_device_util",
     srcs = ["dtensor_device_util.cc"],
     hdrs = ["dtensor_device_util.h"],
@@ -99,6 +112,7 @@ cc_library(
         ":dstatus",
         ":small_constant_optimization",
         ":tensor_layout",
+        ":tensor_with_layout",
         "//tensorflow/c:tf_status_headers",
         "//tensorflow/c/eager:c_api",
         "//tensorflow/c/eager:c_api_experimental",
