@@ -751,8 +751,7 @@ void ConvertAllocationTimeline(const HloProtoBufferWrapper& wrapper,
                                PreprocessResult* result) {
   // The color constants from https://graphviz.org/doc/info/colors.html.
   const char* lb_colors[] = {
-      "aliceblue",
-      "antiquewhite",
+      "antiquewhite3",
       "aqua",
       "aquamarine",
       "bisque",
@@ -804,7 +803,7 @@ void ConvertAllocationTimeline(const HloProtoBufferWrapper& wrapper,
       "hotpink",
       "indianred",
       "indigo",
-      "ivory",
+      "ivory3",
       "khaki",
       "lavender",
       "lavenderblush",
