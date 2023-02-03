@@ -2292,7 +2292,7 @@ std::vector<std::string> HloParameterInstruction::ExtraAttributesToStringImpl(
 void HloParameterInstruction::PrintOperandsWithCanonicalNameMap(
     Printer* printer, const HloPrintOptions& options,
     CanonicalNameMap* canonical_name_map) const {
-  printer->Append(StrCat(parameter_number_));
+  printer->Append(absl::AlphaNum(parameter_number_).Piece());
 }
 
 bool HloParameterInstruction::IdenticalSlowPath(
