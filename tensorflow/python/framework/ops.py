@@ -7211,8 +7211,9 @@ def _op_to_colocate_with(v, graph):
       return graph.capture(v.handle).op, device_only_candidate
     else:
       return v.handle.op, device_only_candidate
-
-  if isinstance(v, internal.NativeObject):
+  if isinstance(v, EagerTensor) and not context.executing_eagerly():
+    return convert_to_tensor(v, as_ref=True).op, None
+  elif isinstance(v, internal.NativeObject):
     return v.op, None
   else:
     return convert_to_tensor(v, as_ref=True).op, None
