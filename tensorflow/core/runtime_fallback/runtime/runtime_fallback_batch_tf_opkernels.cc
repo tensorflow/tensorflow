@@ -297,7 +297,12 @@ BatchFunctionFallbackKernel::BatchFunctionFallbackKernel(
         tfrt::FormRef(absl::bit_cast<const tfrt::Function*>(bef_func_intptr));
   }
 
-  DCHECK(!shared_name_.empty());
+  if (shared_name_.empty()) {
+    // If shared_name is not supplied, use name instead (prevent collisions by
+    // default).
+    shared_name_ = name();
+  }
+
   VLOG(1) << "BatchFunctionFallbackKernel(" << this
           << ") container attribute: \"" << container_
           << "\", shared_name attribute: \"" << shared_name_
