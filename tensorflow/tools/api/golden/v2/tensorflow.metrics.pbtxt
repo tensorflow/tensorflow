@@ -37,6 +37,14 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
+    name: "F1Score"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "FBetaScore"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "FalseNegatives"
     mtype: "<type \'type\'>"
   }
