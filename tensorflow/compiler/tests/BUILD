@@ -2433,3 +2433,25 @@ tf_xla_py_test(
         "//tensorflow/python:platform_test",
     ],
 )
+
+tf_xla_py_test(
+    name = "unique_ops_test",
+    size = "small",
+    srcs = ["unique_ops_test.py"],
+    enable_mlir_bridge = False,
+    enabled_backends = [
+        "cpu",
+        "gpu",
+    ],
+    python_version = "PY3",
+    tags = [
+        "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
+    ],
+    deps = [
+        ":xla_test",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:platform_test",
+    ],
+)
