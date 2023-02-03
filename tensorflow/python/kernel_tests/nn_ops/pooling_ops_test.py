@@ -1072,8 +1072,8 @@ class PoolingTest(test.TestCase, parameterized.TestCase):
       try:
         config_exec.enable_op_determinism()
         orig_input = [
-            1.0, 1.0, 1.0, 1.0, 0.0, 1.0, 1.0, 1.0, 1.0, 1.0, 0.0, 1.0, 0.0, 0.0,
-            0.0, 1.0, 0.0, 1.0
+            1.0, 1.0, 1.0, 1.0, 0.0, 1.0, 1.0, 1.0, 1.0, 1.0, 0.0, 1.0, 0.0,
+            0.0, 0.0, 1.0, 0.0, 1.0
         ]
         tensor_input = [11.0, 12.0, 13.0, 14.0, 21.0, 22.0, 23.0, 24.0]
 
@@ -1100,8 +1100,8 @@ class PoolingTest(test.TestCase, parameterized.TestCase):
       try:
         config_exec.enable_op_determinism()
         orig_input = [
-            1.0, 1.0, 1.0, 1.0, 0.0, 1.0, 1.0, 1.0, 1.0, 1.0, 0.0, 1.0, 0.0, 0.0,
-            0.0, 1.0, 0.0, 1.0
+            1.0, 1.0, 1.0, 1.0, 0.0, 1.0, 1.0, 1.0, 1.0, 1.0, 0.0, 1.0, 0.0,
+            0.0, 0.0, 1.0, 0.0, 1.0
         ]
         tensor_input = [11.0, 12.0, 13.0, 14.0, 21.0, 22.0, 23.0, 24.0]
 
