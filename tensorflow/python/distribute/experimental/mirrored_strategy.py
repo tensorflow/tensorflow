@@ -314,6 +314,18 @@ class MirroredExtended(distribute_lib.StrategyExtendedV2):
         dtensor_util.DTensorDistributedValue,
         dtensor_result)
 
+  def _gather_to_implementation(self, value, destinations, axis, options):
+    if isinstance(value, dtensor_util.DTensorDistributedValue):
+      value = value.get_dtensor()
+    if not d_api.is_dtensor(value):
+      # This is the current behavior for mirrored strategy, should we raise an
+      # error for unsupported types?
+      return value
+
+    # Unpack the dtensor components and gather the tensors on the axis
+    components = d_api.unpack(value)
+    return array_ops.concat(components, axis=axis)
+
 
 def _convert_inputs_to_dtensor(inputs, mesh):
   """Convert any input types to DTensor instance."""

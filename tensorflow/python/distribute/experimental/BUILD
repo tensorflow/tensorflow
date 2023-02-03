@@ -55,6 +55,8 @@ dtensor_test(
         "//tensorflow/dtensor/python:layout",
         "//tensorflow/dtensor/python:mesh_util",
         "//tensorflow/dtensor/python/tests:test_util",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:math_ops",
         "//tensorflow/python:stateless_random_ops",
         "//tensorflow/python:variables",
         "//tensorflow/python/data/ops:dataset_ops",

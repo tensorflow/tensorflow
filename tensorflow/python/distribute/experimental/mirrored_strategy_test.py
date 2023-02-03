@@ -31,6 +31,8 @@ from tensorflow.python.eager import def_function
 from tensorflow.python.eager import test
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import stateless_random_ops
 from tensorflow.python.ops import variables
 
@@ -233,6 +235,34 @@ class StrategyBaseTest(test_util.DTensorBaseTest):
     self.assertLen(result.values, 2)
     self.assertAllClose(result.values[0], constant_op.constant(6))
     self.assertAllClose(result.values[1], constant_op.constant(6))
+
+  def test_gather_non_dtensor_value(self):
+    strategy = mirrored_strategy.MirroredStrategy(self.mesh)
+    tensor_input = constant_op.constant(3.0)
+
+    result = strategy.gather(tensor_input, axis=0)
+    self.assertAllClose(result, tensor_input)
+
+  def test_gather_dtensor_value(self):
+    strategy = mirrored_strategy.MirroredStrategy(self.mesh)
+
+    def value_fn(value_context):
+      start = value_context.replica_id_in_sync_group
+      return array_ops.reshape(math_ops.range(start=start, limit=start + 6),
+                               shape=(1, 2, 3))
+
+    distribute_result = strategy.experimental_distribute_values_from_function(
+        value_fn)
+    result = strategy.gather(distribute_result, axis=0)
+    self.assertEqual(result.shape, [2, 2, 3])
+    self.assertAllClose(result, [[[0, 1, 2], [3, 4, 5]],
+                                 [[1, 2, 3], [4, 5, 6]]])
+    result = strategy.gather(distribute_result, axis=1)
+    self.assertEqual(result.shape, [1, 4, 3])
+    self.assertAllClose(result, [[[0, 1, 2], [3, 4, 5], [1, 2, 3], [4, 5, 6]]])
+    result = strategy.gather(distribute_result, axis=2)
+    self.assertEqual(result.shape, [1, 2, 6])
+    self.assertAllClose(result, [[[0, 1, 2, 1, 2, 3], [3, 4, 5, 4, 5, 6]]])
 
 
 class InvalidMeshTest(test_util.DTensorBaseTest):
