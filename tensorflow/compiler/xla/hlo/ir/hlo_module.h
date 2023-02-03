@@ -37,6 +37,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/hlo/ir/hlo_module_metadata.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_schedule.h"
 #include "tensorflow/compiler/xla/iterator_util.h"
+#include "tensorflow/compiler/xla/printer.h"
 #include "tensorflow/compiler/xla/service/compilation_environments.h"
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/compiler/xla/service/hlo_module_config.h"
@@ -319,6 +320,15 @@ class HloModule {
   bool is_dynamic() const { return is_dynamic_; }
   void set_is_dynamic(bool is_dynamic) { is_dynamic_ = is_dynamic; }
 
+  // Prints a string representation of the module.
+  //
+  // (We express the default options using an overload rather than a default
+  // param because gdb ignores default params, but does resolve overloads.)
+  void Print(Printer* printer) const {
+    return Print(printer, HloPrintOptions());
+  }
+  void Print(Printer* printer, const HloPrintOptions& options) const;
+
   // Return a string representation of the module.
   //
   // (We express the default options using an overload rather than a default
@@ -529,6 +539,23 @@ class HloModule {
     return profile_info_list_;
   }
 
+  void add_autofdo_pre_pass_fingerprint(absl::string_view fingerprint) {
+    autofdo_pre_pass_fingerprints_.push_back(std::string(fingerprint));
+  }
+
+  void set_autofdo_pre_pass_fingerprints(
+      const std::vector<std::string>& fingerprints) {
+    autofdo_pre_pass_fingerprints_ = fingerprints;
+  }
+
+  const std::vector<std::string>& autofdo_pre_pass_fingerprints() const {
+    return autofdo_pre_pass_fingerprints_;
+  }
+
+  bool has_module_autofdo_profiles() const {
+    return !autofdo_pre_pass_fingerprints_.empty();
+  }
+
   void set_relative_speedup(double relative_speedup) {
     relative_speedup_ = relative_speedup;
   }
@@ -617,6 +644,10 @@ class HloModule {
 
   // The unoptimized module fingerprint.
   std::string autofdo_fingerprint_;
+
+  // The pre-pass module fingerprints used to retrieve the optimization profiles
+  // this module contains.
+  std::vector<std::string> autofdo_pre_pass_fingerprints_;
 
   bool use_auto_spmd_partitioning_ = false;
 

@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <memory>
 #include <random>
+#include <string_view>
 #include <tuple>
 #include <utility>
 #include <vector>
@@ -525,7 +526,8 @@ bool RequireDeterminism(const HloModuleConfig& config) {
 
 StatusOr<AutotuneResult> PickBestResult(
     absl::Span<AutotuneResult const> profile_results,
-    const HloInstruction& instr) {
+    std::optional<std::string_view> instr_str,
+    HloModuleConfig hlo_module_config) {
   std::vector<AutotuneResult> filtered_results;
 
   // For now, we ignore WRONG_RESULT failures because false-positives are
@@ -541,8 +543,14 @@ StatusOr<AutotuneResult> PickBestResult(
 
   if (filtered_results.empty()) {
     std::ostringstream msg;
-    msg << "All algorithms tried for " << instr.ToString()
-        << " failed. Falling back to default algorithm.  Per-algorithm errors:";
+    if (instr_str.has_value()) {
+      msg << "All algorithms tried for " << instr_str.value()
+          << " failed. Falling back to default algorithm.  Per-algorithm "
+             "errors:";
+    } else {
+      msg << "All algorithms failed. Falling back to the default algorithm. "
+          << "Per-algorithm errors:";
+    }
     for (const auto& result : profile_results) {
       msg << "\n  " << result.failure().msg();
     }
@@ -550,7 +558,7 @@ StatusOr<AutotuneResult> PickBestResult(
   }
 
   auto selected_result = filtered_results.begin();
-  if (!RequireDeterminism(instr.GetModule()->config())) {
+  if (!RequireDeterminism(hlo_module_config)) {
     selected_result = absl::c_min_element(
         filtered_results,
         [](const AutotuneResult& lhs, const AutotuneResult& rhs) {

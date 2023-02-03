@@ -28,6 +28,7 @@ cuda_py_test(
 cuda_py_test(
     name = "approx_topk_test",
     srcs = ["approx_topk_test.py"],
+    tags = ["no_oss"],
     xla_enable_strict_auto_jit = True,
     xla_enabled = True,
     deps = [

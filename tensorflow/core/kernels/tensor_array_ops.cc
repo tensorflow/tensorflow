@@ -80,8 +80,9 @@ Status GetTensorArray(OpKernelContext* ctx, TensorArray** tensor_array) {
     TF_RETURN_IF_ERROR(GetHandle(ctx, &container, &ta_handle));
     ResourceMgr* rm = ctx->resource_manager();
     if (rm == nullptr) return errors::Internal("No resource manager.");
-    TF_RETURN_IF_ERROR(
-        ctx->step_container()->Lookup(rm, container + ta_handle, tensor_array));
+    ScopedStepContainer* sc = ctx->step_container();
+    if (sc == nullptr) return errors::Internal("No step container.");
+    TF_RETURN_IF_ERROR(sc->Lookup(rm, container + ta_handle, tensor_array));
     return OkStatus();
   } else {
     return LookupResource(ctx, HandleFromInput(ctx, 0), tensor_array);

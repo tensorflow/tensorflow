@@ -155,13 +155,13 @@ add {
 }
 
 // CHECK-LABEL:  func private @test_atan2
-// CHECK-SAME:    ([[VAL_0:%.*]]: tensor<4xi32>, [[VAL_1:%.*]]: tensor<4xi32>) -> tensor<4xi32>
-%test_atan2 (Arg_0.1: s32[4], Arg_1.2: s32[4]) -> s32[4] {
-  %Arg_0.1 = s32[4] parameter(0)
-  %Arg_1.2 = s32[4] parameter(1)
+// CHECK-SAME:    ([[VAL_0:%.*]]: tensor<4xf32>, [[VAL_1:%.*]]: tensor<4xf32>) -> tensor<4xf32>
+%test_atan2 (Arg_0.1: f32[4], Arg_1.2: f32[4]) -> f32[4] {
+  %Arg_0.1 = f32[4] parameter(0)
+  %Arg_1.2 = f32[4] parameter(1)
 
   // CHECK:  mhlo.atan2 [[VAL_0]], [[VAL_1]]
-  ROOT %atan2 = s32[4] atan2(s32[4] %Arg_0.1, s32[4] %Arg_1.2)
+  ROOT %atan2 = f32[4] atan2(f32[4] %Arg_0.1, f32[4] %Arg_1.2)
 }
 
 // CHECK-LABEL:  func private @test_broadcast_in_dim

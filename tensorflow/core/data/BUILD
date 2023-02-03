@@ -257,6 +257,7 @@ cc_library(
     # copybara:uncomment copts = ["-Wthread-safety-analysis"],
     visibility = ["//visibility:public"],
     deps = [
+        "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core/platform:env",
         "//tensorflow/core/platform:mutex",

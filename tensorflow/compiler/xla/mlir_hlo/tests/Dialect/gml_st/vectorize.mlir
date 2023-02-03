@@ -77,18 +77,19 @@ func.func @parallel_on_tensor(
   %c1 = arith.constant 1 : index
   %c0 = arith.constant 0 : index
   %0 = tensor.dim %arg0, %c0 : tensor<?xf32>
-  %2 = gml_st.parallel (%i) = (%c0) to (%0) step (%c4) {
+  %2 = gml_st.parallel (%i) = (%c0) to (%0) step (%c4)
+      outs (%out_ = %arg2: tensor<?xf32>) {
     %6 = tensor.extract_slice %arg0[%i] [4] [1]
       : tensor<?xf32> to tensor<4xf32>
     %7 = tensor.extract_slice %arg1[%i] [4] [1]
       : tensor<?xf32> to tensor<4xf32>
-    %8 = tensor.extract_slice %arg2[%i] [4] [1]
+    %8 = tensor.extract_slice %out_[%i] [4] [1]
       : tensor<?xf32> to tensor<4xf32>
     %9 = linalg.map { arith.addf }
            ins(%6, %7 : tensor<4xf32>, tensor<4xf32>)
            outs(%8 : tensor<4xf32>)
     %tile = gml_st.tile [%i] [4] [1] : !gml_st.tile<4>
-    gml_st.set_yield %9 into %arg2[%tile]
+    gml_st.set_yield %9 into %out_[%tile]
       : tensor<4xf32> into tensor<?xf32>[!gml_st.tile<4>]
   } : tensor<?xf32>
   func.return %2 : tensor<?xf32>

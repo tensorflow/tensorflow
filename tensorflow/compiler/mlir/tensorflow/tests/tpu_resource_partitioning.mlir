@@ -23,6 +23,27 @@ func.func @read_write_resource(%arg0: tensor<!tf_type.resource<tensor<i32>>>, %a
   func.return
 }
 
+// CHECK-LABEL: func @read_write_packed_resource
+// CHECK-SAME: ([[ARG0:%.+]]: tensor<!tf_type.resource<tensor<i32>>>)
+func.func @read_write_packed_resource(%arg0: tensor<!tf_type.resource<tensor<i32>>>) {
+  // CHECK-DAG:  [[READ0:%.+]] = "tf.ReadVariableOp"([[ARG0]])
+  // CHECK:      [[INPUT:%.+]] = "tf.TPUPartitionedInputV2"([[READ0]])
+  // CHECK-SAME: _XlaSharding = ""
+  // CHECK-SAME: is_packed = true
+  // CHECK-SAME: partition_dims = []
+  %0 = "tf.TPUPartitionedInputV2"(%arg0) {_XlaSharding = "", partition_dims = [], is_packed = true} : (tensor<!tf_type.resource<tensor<i32>>>) -> tensor<!tf_type.resource<tensor<i32>>>
+  %1 = "tf.ReadVariableOp"(%0) : (tensor<!tf_type.resource<tensor<i32>>>) -> tensor<i32>
+  // CHECK:      [[COMPUTATION:%.+]] = "tf_device.cluster_func"([[INPUT]])
+  %2 = "tf_device.cluster_func"(%1) {func = @computation, use_spmd_for_xla_partitioning = true, num_cores_per_replica = 2 : i64} : (tensor<i32>) -> tensor<i32>
+  // CHECK:      [[OUTPUT:%.+]]:2 = "tf.TPUPartitionedOutputV2"([[COMPUTATION]])
+  // CHECK-SAME: _XlaSharding = ""
+  // CHECK-SAME: partition_dims = []
+  // CHECK-DAG:  "tf.AssignVariableOp"([[ARG0]], [[OUTPUT]]#0)
+  // CHECK-DAG:  "tf.AssignVariableOp"([[ARG0]], [[OUTPUT]]#1)
+  "tf.AssignVariableOp"(%0, %2) : (tensor<!tf_type.resource<tensor<i32>>>, tensor<i32>) -> ()
+  func.return
+}
+
 // CHECK-LABEL: func @read_only_resource
 // CHECK-SAME: ([[ARG0:%.+]]: tensor<!tf_type.resource<tensor<i32>>>, [[ARG1:%.+]]: tensor<!tf_type.resource<tensor<i32>>>)
 func.func @read_only_resource(%arg0: tensor<!tf_type.resource<tensor<i32>>>, %arg1: tensor<!tf_type.resource<tensor<i32>>>) -> tensor<i32> {
@@ -122,6 +143,28 @@ func.func @resource_missing_subtype(%arg0: tensor<!tf_type.resource>, %arg1: ten
   %2 = "tf_device.cluster_func"(%1) {func = @computation, use_spmd_for_xla_partitioning = true} : (tensor<i32>) -> tensor<i32>
   // CHECK-NOT:  tf.TPUPartitionedOutputV2
   "tf.AssignVariableOp"(%0, %2) : (tensor<!tf_type.resource>, tensor<i32>) -> ()
+  func.return
+}
+
+// -----
+
+func.func @missing_num_cores_per_replica(%arg0: tensor<!tf_type.resource<tensor<i32>>>) {
+  // expected-error@+1 {{op num cores per replica unavailable}}
+  %0 = "tf.TPUPartitionedInputV2"(%arg0) {_XlaSharding = "", partition_dims = [], is_packed = true} : (tensor<!tf_type.resource<tensor<i32>>>) -> tensor<!tf_type.resource<tensor<i32>>>
+  %1 = "tf.ReadVariableOp"(%0) : (tensor<!tf_type.resource<tensor<i32>>>) -> tensor<i32>
+  %2 = "tf_device.cluster_func"(%1) {func = @computation, use_spmd_for_xla_partitioning = true} : (tensor<i32>) -> tensor<i32>
+  "tf.AssignVariableOp"(%0, %2) : (tensor<!tf_type.resource<tensor<i32>>>, tensor<i32>) -> ()
+  func.return
+}
+
+// -----
+
+func.func @mismatch_num_cores_per_replica(%arg0: tensor<!tf_type.resource<tensor<i32>>>) {
+  // expected-error@+1 {{expects 2 operands but found 3}}
+  %0 = "tf.TPUPartitionedInputV2"(%arg0, %arg0, %arg0) {_XlaSharding = "", partition_dims = []} : (tensor<!tf_type.resource<tensor<i32>>>, tensor<!tf_type.resource<tensor<i32>>>, tensor<!tf_type.resource<tensor<i32>>>) -> tensor<!tf_type.resource<tensor<i32>>>
+  %1 = "tf.ReadVariableOp"(%0) : (tensor<!tf_type.resource<tensor<i32>>>) -> tensor<i32>
+  %2 = "tf_device.cluster_func"(%1) {func = @computation, use_spmd_for_xla_partitioning = true, num_cores_per_replica = 2 : i64} : (tensor<i32>) -> tensor<i32>
+  "tf.AssignVariableOp"(%0, %2) : (tensor<!tf_type.resource<tensor<i32>>>, tensor<i32>) -> ()
   func.return
 }
 

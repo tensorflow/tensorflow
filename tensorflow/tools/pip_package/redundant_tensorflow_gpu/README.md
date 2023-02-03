@@ -1,12 +1,12 @@
 tensorflow-gpu has been removed. Please install tensorflow instead.
-The tensorflow package still supports GPU accelerated operations.
+The tensorflow package supports GPU accelerated operations via Nvidia CUDA.
 
 ## Removal Information
 
 tensorflow and tensorflow-gpu have been the same package since TensorFlow
 2.1, released in September 2019. Although the checksums differ due to metadata,
 they were built in the same way and both provide GPU support via Nvidia CUDA.
-As of December 2022, tensorflow-gpu has been removed and has been replaced with
+As of January 2023, tensorflow-gpu has been removed and has been replaced with
 this new, empty package that generates an error upon installation.
 
 All existing versions of tensorflow-gpu are still available, but the
@@ -22,7 +22,7 @@ the package.
 To build and upload this package's source distribution (sdist) to testpypi:
 
 ```
-$ vim setup.py  # update the version number and package name
+$ vim setup.cfg  # update the version number and package name
 $ python3 -m pip install --user twine
 $ python3 setup.py sdist
 $ twine upload --repository testpypi dist/*

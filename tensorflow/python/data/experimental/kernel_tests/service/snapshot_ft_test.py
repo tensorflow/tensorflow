@@ -131,14 +131,16 @@ class SnapshotFtTest(data_service_test_base.TestBase, parameterized.TestCase):
   def testSnapshotRecoveryFailsWithBadSplitNames(self, bad_split_filename):
     cluster, _ = self.setup()
     write_file(os.path.join(self.source_dir(), bad_split_filename))
-    with self.assertRaisesRegex(ValueError, "can't parse"):
+    with self.assertRaisesRegex(
+        ValueError, "Expected split_<local_split_index>_<global_split_index>"):
       cluster.restart_dispatcher()
 
   @combinations.generate(test_base.eager_only_combinations())
   def testSnapshotRecoveryFailsWithOutOfOrderSplitName(self):
     cluster, _ = self.setup()
     write_file(os.path.join(self.source_dir(), "split_1_0"))
-    with self.assertRaisesRegex(ValueError, "found conflict"):
+    with self.assertRaisesRegex(
+        ValueError, "The local split index 1 exceeds the global split index 0"):
       cluster.restart_dispatcher()
 
   @combinations.generate(test_base.eager_only_combinations())

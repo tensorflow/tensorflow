@@ -2100,7 +2100,7 @@ class Operation(object):
         control_op = None
         if isinstance(c, Operation):
           control_op = c
-        elif isinstance(c, (Tensor, IndexedSlices)):
+        elif isinstance(c, (Tensor, indexed_slices.IndexedSlices)):
           control_op = c.op
         else:
           raise TypeError(f"Control input must be an Operation, "
@@ -5101,7 +5101,7 @@ class Graph(object):
       # The hasattr(handle) is designed to match ResourceVariables. This is so
       # control dependencies on a variable or on an unread variable don't
       # trigger reads.
-      if (isinstance(c, IndexedSlices) or
+      if (isinstance(c, indexed_slices.IndexedSlices) or
           (hasattr(c, "_handle") and hasattr(c, "op"))):
         c = c.op
       c = self.as_graph_element(c)
@@ -5595,7 +5595,7 @@ def _colocate_with_for_gradient(op, gradient_uid, ignore_existing=False):
   if context.executing_eagerly():
     if op is not None:
       if not hasattr(op, "device"):
-        op = internal_convert_to_tensor_or_indexed_slices(op)
+        op = indexed_slices.internal_convert_to_tensor_or_indexed_slices(op)
       return device(op.device)
     else:
       return NullContextmanager()
@@ -7211,7 +7211,8 @@ def _op_to_colocate_with(v, graph):
       return graph.capture(v.handle).op, device_only_candidate
     else:
       return v.handle.op, device_only_candidate
-  return internal_convert_to_tensor_or_indexed_slices(v, as_ref=True).op, None
+  return indexed_slices.internal_convert_to_tensor_or_indexed_slices(
+      v, as_ref=True).op, None
 
 
 def _is_keras_symbolic_tensor(x):

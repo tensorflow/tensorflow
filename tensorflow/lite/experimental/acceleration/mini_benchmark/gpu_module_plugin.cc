@@ -15,7 +15,6 @@ limitations under the License.
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/gpu_module_plugin.h"
 
 #include <dlfcn.h>
-#include <jni.h>
 
 #include <memory>
 #include <string>
@@ -32,14 +31,10 @@ namespace tflite {
 namespace acceleration {
 
 using ::tflite::delegates::TfLiteDelegatePtr;
-using SymbolFunc = jlong(JNIEnv* env, jclass klass);
+using SymbolFunc = const TfLiteDelegatePlugin*();
 
 // Function name used to get a pointer to GpuDelegatePlugin.
-// TODO(b/266066861): Change this to TfLiteGpuDelegatePluginCApi once we
-// figure out how to install HEAD GPU Module in instrumentation test.
-constexpr char kPluginGetterSymbolName[] =
-    "Java_com_google_android_gms_tflite_gpu_dynamite_TfLiteGpuNativeApi_"
-    "getGpuDelegatePluginPtrNative";
+constexpr char kPluginGetterSymbolName[] = "TfLiteGpuDelegatePluginCApi";
 
 std::unique_ptr<delegates::DelegatePluginInterface> GpuModulePlugin::New(
     const TFLiteSettings& acceleration) {
@@ -90,8 +85,7 @@ GpuModulePlugin::GpuModulePlugin(const TFLiteSettings& tflite_settings) {
     return;
   }
 
-  plugin_handle_ = reinterpret_cast<const TfLiteDelegatePlugin*>(
-      reinterpret_cast<SymbolFunc*>(sym)(nullptr, nullptr));
+  plugin_handle_ = reinterpret_cast<SymbolFunc*>(sym)();
   if (!plugin_handle_) {
     TFLITE_LOG_PROD(
         TFLITE_LOG_WARNING,

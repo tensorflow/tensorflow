@@ -50,6 +50,10 @@ class HloProtoMap {
     return hlo_protos_by_name_.contains(name);
   }
 
+  bool contains(uint64_t program_id) const {
+    return hlo_protos_by_program_id_.contains(program_id);
+  }
+
   // Returns a list of module names (not sorted).
   std::vector<absl::string_view> GetModuleList() const;
 

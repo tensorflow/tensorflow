@@ -28,6 +28,8 @@ limitations under the License.
 #include "tensorflow/tsl/platform/host_info.h"
 #include "tensorflow/tsl/platform/status.h"
 #include "tensorflow/tsl/platform/types.h"
+#include "tensorflow/tsl/profiler/convert/trace_events_to_json.h"
+#include "tensorflow/tsl/profiler/convert/xplane_to_trace_events.h"
 #include "tensorflow/tsl/profiler/protobuf/profiler_analysis.pb.h"
 #include "tensorflow/tsl/profiler/protobuf/profiler_options.pb.h"
 #include "tensorflow/tsl/profiler/protobuf/profiler_service.pb.h"
@@ -243,9 +245,22 @@ Status Monitor(const std::string& service_addr, int duration_ms,
   return OkStatus();
 }
 
-Status ExportToTensorBoard(const XSpace& xspace, const std::string& logdir) {
-  return SaveXSpace(GetTensorBoardProfilePluginDir(logdir),
-                    GetCurrentTimeStampAsString(), port::Hostname(), xspace);
+Status ExportToTensorBoard(const XSpace& xspace, const std::string& logdir,
+                           bool also_export_trace_json) {
+  std::string repository_root =
+      tsl::profiler::GetTensorBoardProfilePluginDir(logdir);
+  std::string run = tsl::profiler::GetCurrentTimeStampAsString();
+  std::string host = tsl::port::Hostname();
+  TF_RETURN_IF_ERROR(
+      tsl::profiler::SaveXSpace(repository_root, run, host, xspace));
+  if (also_export_trace_json) {
+    tensorflow::profiler::Trace trace;
+    tsl::profiler::ConvertXSpaceToTraceEvents(xspace, &trace);
+    return tsl::profiler::SaveGzippedToolData(
+        repository_root, run, host, "trace.json.gz",
+        tsl::profiler::TraceEventsToJson(trace));
+  }
+  return OkStatus();
 }
 
 }  // namespace profiler

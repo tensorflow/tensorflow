@@ -41,6 +41,7 @@ load(
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 
 # copybara:uncomment_begin
+# load("//devtools/copybara/rules:copybara.bzl", "copybara_config_test")
 # load("//tools/build_defs/license:license.bzl", "license")
 # copybara:uncomment_end
 
@@ -123,6 +124,7 @@ PACKAGE_STATIC_DEPS = [
     "@clog//:__subpackages__",
     "@flatbuffers//:__subpackages__",
     "@nccl_archive//:__subpackages__",
+    "@triton//:__subpackages__",
 ] + tsl_async_value_deps()
 
 package(
@@ -134,6 +136,28 @@ package(
 # license(
 #     name = "license",
 #     package_name = "tensorflow",
+# )
+#
+# filegroup(
+#     name = "copybara_config",
+#     srcs = glob(
+#         [
+#             "*.bara.sky",
+#             "*.dic",
+#         ],
+#     ) + ["leakr_file_type_recipe.ftrcp"],
+#     data = [
+#         "//learning/brain/testing/copybara:all_bara_sky",
+#         "//third_party/tsl:copybara_config",
+#         "//third_party/xla:copybara_config",
+#     ],
+#     visibility = ["//visibility:public"],
+# )
+#
+# copybara_config_test(
+#     name = "copybara_config_test",
+#     config = "copy.bara.sky",
+#     deps = [":copybara_config"],
 # )
 # copybara:uncomment_end
 
@@ -970,6 +994,7 @@ package_group(
         "//learning/brain/tfrt/...",
         "//learning/lib/ami/simple_ml/...",
         "//learning/pathways/...",
+        "//learning/serving/contrib/tfrt/mlir/canonical_ops/...",
         "//perftools/accelerators/xprof/integration_tests/...",
         "//smartass/brain/configure/...",
         "//tensorflow/...",

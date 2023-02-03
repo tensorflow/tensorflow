@@ -96,11 +96,6 @@ llvm::SmallVector<InputTensorSpec> GetInputSpec(
      Reverse({INPUT_SHAPE}, {DYNAMIC_DIMS}, {REVERSE_DIMS}, "f32"), "main",   \
      GetInputSpec({INPUT_SHAPE}))
 
-// TODO(manany): For all commented test cases below, there is an issue with
-// peeling for cases of size < perfect size not functioning as intended.
-// Uncomment these cases when this issue is fixed.
-// tensorflow/compiler/xla/mlir_hlo/gml_st/transforms/peeling/peeling.cc:181
-
 ////////////////////////////////////////////////////////////////////////////////
 // Reverse 1D tensors.
 ////////////////////////////////////////////////////////////////////////////////
@@ -108,7 +103,7 @@ llvm::SmallVector<InputTensorSpec> GetInputSpec(
 #define BM_STATIC_1D(SIZE)                                               \
   BM_SUITE(ReverseStatic_1D_##SIZE, 1, INTS(SIZE), BOOLS(kStaticDim), 1, \
            INTS(0))
-// BM_STATIC_1D(3);
+BM_STATIC_1D(3);
 BM_STATIC_1D(8);
 BM_STATIC_1D(80);
 BM_STATIC_1D(800);
@@ -120,7 +115,7 @@ BM_STATIC_1D(1010131);
 #define BM_DYNAMIC_1D(SIZE)                                                \
   BM_SUITE(ReverseDynamic_1D_##SIZE, 1, INTS(SIZE), BOOLS(kDynamicDim), 1, \
            INTS(0))
-// BM_DYNAMIC_1D(3);
+BM_DYNAMIC_1D(3);
 BM_DYNAMIC_1D(8);
 BM_DYNAMIC_1D(80);
 BM_DYNAMIC_1D(800);
@@ -139,6 +134,8 @@ BM_DYNAMIC_1D(1010131);
 BM_STATIC_2D_ROW(2, 80);
 BM_STATIC_2D_ROW(8, 6);
 BM_STATIC_2D_ROW(80, 1);
+BM_STATIC_2D_ROW(80, 3);
+BM_STATIC_2D_ROW(80, 7);
 BM_STATIC_2D_ROW(80, 60);
 BM_STATIC_2D_ROW(81, 61);
 BM_STATIC_2D_ROW(800, 600);
@@ -148,8 +145,10 @@ BM_STATIC_2D_ROW(802, 602);
   BM_SUITE(ReverseStatic_2D_COL_##ROWS##_##COLS, 2, INTS(ROWS, COLS), \
            BOOLS(kStaticDim, kStaticDim), 1, INTS(1))
 BM_STATIC_2D_COL(2, 80);
-// BM_STATIC_2D_COL(8, 6);
+BM_STATIC_2D_COL(8, 6);
 BM_STATIC_2D_COL(80, 1);
+BM_STATIC_2D_COL(80, 3);
+BM_STATIC_2D_COL(80, 7);
 BM_STATIC_2D_COL(80, 60);
 BM_STATIC_2D_COL(81, 61);
 BM_STATIC_2D_COL(800, 600);
@@ -159,8 +158,10 @@ BM_STATIC_2D_COL(802, 602);
   BM_SUITE(ReverseStatic_2D_ALL_##ROWS##_##COLS, 2, INTS(ROWS, COLS), \
            BOOLS(kStaticDim, kStaticDim), 2, INTS(0, 1))
 BM_STATIC_2D_ALL(2, 80);
-// BM_STATIC_2D_ALL(8, 6);
+BM_STATIC_2D_ALL(8, 6);
 BM_STATIC_2D_ALL(80, 1);
+BM_STATIC_2D_ALL(80, 3);
+BM_STATIC_2D_ALL(80, 7);
 BM_STATIC_2D_ALL(80, 60);
 BM_STATIC_2D_ALL(81, 61);
 BM_STATIC_2D_ALL(800, 600);
@@ -172,6 +173,8 @@ BM_STATIC_2D_ALL(802, 602);
 BM_DYNAMIC_2D_ROW(2, 80);
 BM_DYNAMIC_2D_ROW(8, 6);
 BM_DYNAMIC_2D_ROW(80, 1);
+BM_DYNAMIC_2D_ROW(80, 3);
+BM_DYNAMIC_2D_ROW(80, 7);
 BM_DYNAMIC_2D_ROW(80, 60);
 BM_DYNAMIC_2D_ROW(81, 61);
 BM_DYNAMIC_2D_ROW(800, 600);
@@ -181,8 +184,10 @@ BM_DYNAMIC_2D_ROW(802, 602);
   BM_SUITE(ReverseDynamic_2D_COL_##ROWS##_##COLS, 2, INTS(ROWS, COLS), \
            BOOLS(kStaticDim, kDynamicDim), 1, INTS(1))
 BM_DYNAMIC_2D_COL(2, 80);
-// BM_DYNAMIC_2D_COL(8, 6);
+BM_DYNAMIC_2D_COL(8, 6);
 BM_DYNAMIC_2D_COL(80, 1);
+BM_DYNAMIC_2D_COL(80, 3);
+BM_DYNAMIC_2D_COL(80, 7);
 BM_DYNAMIC_2D_COL(80, 60);
 BM_DYNAMIC_2D_COL(81, 61);
 BM_DYNAMIC_2D_COL(800, 600);
@@ -192,8 +197,10 @@ BM_DYNAMIC_2D_COL(802, 602);
   BM_SUITE(ReverseDynamic_2D_ALL_##ROWS##_##COLS, 2, INTS(ROWS, COLS), \
            BOOLS(kDynamicDim, kDynamicDim), 2, INTS(0, 1))
 BM_DYNAMIC_2D_ALL(2, 80);
-// BM_DYNAMIC_2D_ALL(8, 6);
+BM_DYNAMIC_2D_ALL(8, 6);
 BM_DYNAMIC_2D_ALL(80, 1);
+BM_DYNAMIC_2D_ALL(80, 3);
+BM_DYNAMIC_2D_ALL(80, 7);
 BM_DYNAMIC_2D_ALL(80, 60);
 BM_DYNAMIC_2D_ALL(81, 61);
 BM_DYNAMIC_2D_ALL(800, 600);

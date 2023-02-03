@@ -370,10 +370,107 @@ TfLiteStatus TfLiteOpaqueContextResizeTensor(TfLiteOpaqueContext* context,
 TFL_CAPI_EXPORT
 void TfLiteOpaqueContextReportError(struct TfLiteOpaqueContext* opaque_context,
                                     const char* format, ...);
+
+// Same as 'TfLiteOpaqueContextReportError', but with the variable arguments
+// passed via a 'va_list' instead of directly.
+//
+// Callers that receive an ellipsis and want to forward it to
+// to the opaque context error reporting API can add the ellipsis content to a
+// 'va_list' and then call 'TfLiteOpaqueContextReportErrorVa'. E.g.:
+//
+// void MyErrorReporter(struct TfLiteOpaqueContext* opaque_context,
+//                                     const char* format, ...) {
+//   va_list vlist;
+//   va_start(vlist, format);
+//   TfLiteOpaqueContextReportErrorVa(opaque_context, format, vlist);
+//   va_end(vlist);
+// }
 TFL_CAPI_EXPORT
 void TfLiteOpaqueContextReportErrorVa(
     struct TfLiteOpaqueContext* opaque_context, const char* format,
     va_list vlist);
+
+// Since we must not depend on any libraries, define a minimal subset of
+// error macros while avoiding names that have pre-conceived meanings like
+// assert and check.
+
+// Try to make all reporting calls through TF_LITE_OPAQUE_KERNEL_LOG rather than
+// calling the TfLiteOpaqueContextReportError function directly, so that message
+// strings can be stripped out if the binary size needs to be severely
+// optimized.
+#ifndef TF_LITE_STRIP_ERROR_STRINGS
+#define TF_LITE_OPAQUE_KERNEL_LOG(opaque_context, ...)             \
+  do {                                                             \
+    TfLiteOpaqueContextReportError((opaque_context), __VA_ARGS__); \
+  } while (false)
+#define TF_LITE_OPAQUE_MAYBE_KERNEL_LOG(opaque_context, ...)         \
+  do {                                                               \
+    if ((opaque_context) != nullptr) {                               \
+      TfLiteOpaqueContextReportError((opaque_context), __VA_ARGS__); \
+    }                                                                \
+  } while (false)
+#else  // TF_LITE_STRIP_ERROR_STRINGS
+#define ARGS_UNUSED(...) (void)sizeof(#__VA_ARGS__)
+#define TF_LITE_OPAQUE_KERNEL_LOG(opaque_context, ...) ARGS_UNUSED(__VA_ARGS__)
+#define TF_LITE_OPAQUE_MAYBE_KERNEL_LOG(opaque_context, ...) \
+  ARGS_UNUSED(__VA_ARGS__)
+#endif  // TF_LITE_STRIP_ERROR_STRINGS
+
+// Check whether value is true, and if not return kTfLiteError from
+// the current function (and report the error string msg).
+#define TF_LITE_OPAQUE_ENSURE_MSG(opaque_context, value, msg)        \
+  do {                                                               \
+    if (!(value)) {                                                  \
+      TF_LITE_OPAQUE_KERNEL_LOG((opaque_context), __FILE__ " " msg); \
+      return kTfLiteError;                                           \
+    }                                                                \
+  } while (0)
+
+// Check whether the value `a` is true, and if not return kTfLiteError from
+// the current function, while also reporting the location of the error.
+#define TF_LITE_OPAQUE_ENSURE(opaque_context, a)                           \
+  do {                                                                     \
+    if (!(a)) {                                                            \
+      TF_LITE_OPAQUE_KERNEL_LOG(opaque_context, "%s:%d: %s was not true.", \
+                                __FILE__, __LINE__, #a);                   \
+      return kTfLiteError;                                                 \
+    }                                                                      \
+  } while (0)
+
+// Check whether the value `a == b` is true, and if not return kTfLiteError from
+// the current function, while also reporting the location of the error.
+// `a` and `b` may be evaluated more than once, so no side effects or
+// extremely expensive computations should be done.
+// NOTE: Use TF_LITE_ENSURE_TYPES_EQ if comparing TfLiteTypes.
+#define TF_LITE_OPAQUE_ENSURE_EQ(opaque_context, a, b)                         \
+  do {                                                                         \
+    if ((a) != (b)) {                                                          \
+      TF_LITE_OPAQUE_KERNEL_LOG((opaque_context), "%s:%d %s != %s (%d != %d)", \
+                                __FILE__, __LINE__, #a, #b, (a), (b));         \
+      return kTfLiteError;                                                     \
+    }                                                                          \
+  } while (0)
+
+#define TF_LITE_OPAQUE_ENSURE_TYPES_EQ(opaque_context, a, b)                   \
+  do {                                                                         \
+    if ((a) != (b)) {                                                          \
+      TF_LITE_OPAQUE_KERNEL_LOG((opaque_context), "%s:%d %s != %s (%s != %s)", \
+                                __FILE__, __LINE__, #a, #b,                    \
+                                TfLiteTypeGetName(a), TfLiteTypeGetName(b));   \
+      return kTfLiteError;                                                     \
+    }                                                                          \
+  } while (0)
+
+#define TF_LITE_OPAQUE_ENSURE_NEAR(opaque_context, a, b, epsilon)            \
+  do {                                                                       \
+    auto delta = ((a) > (b)) ? ((a) - (b)) : ((b) - (a));                    \
+    if (delta > epsilon) {                                                   \
+      TF_LITE_OPAQUE_KERNEL_LOG(                                             \
+          (opaque_context), "%s:%d %s not near %s (%f != %f)", __FILE__,     \
+          __LINE__, #a, #b, static_cast<double>(a), static_cast<double>(b)); \
+      return kTfLiteError;                                                   \
+    }                                                                        \
+  } while (0)
 
 #ifdef __cplusplus
 }  // extern "C"

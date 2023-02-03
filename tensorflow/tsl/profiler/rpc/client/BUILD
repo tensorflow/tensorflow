@@ -1,16 +1,14 @@
 load("//tensorflow/tsl/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow/tsl:tsl.default.bzl", "tsl_grpc_cc_dependencies")
-load("//tensorflow/tsl/platform:build_config.bzl", "tsl_cc_test")
+load(
+    "//tensorflow/tsl/platform:build_config.bzl",
+    "tf_protos_profiler_service",
+    "tsl_cc_test",
+)
 load(
     "//tensorflow/tsl/profiler/builds:build_config.bzl",
     "tf_profiler_copts",
     "tf_profiler_pybind_cc_library_wrapper",
-)
-
-# For platform specific build config
-load(
-    "//tensorflow/tsl/platform:build_config.bzl",
-    "tf_protos_profiler_service",
 )
 
 package(
@@ -39,6 +37,8 @@ cc_library(
         "//tensorflow/tsl/platform:platform_port",
         "//tensorflow/tsl/platform:status",
         "//tensorflow/tsl/platform:types",
+        "//tensorflow/tsl/profiler/convert:trace_events_to_json",
+        "//tensorflow/tsl/profiler/convert:xplane_to_trace_events",
         "//tensorflow/tsl/profiler/protobuf:profiler_analysis_proto_cc",
         "//tensorflow/tsl/profiler/protobuf:profiler_options_proto_cc",
         "//tensorflow/tsl/profiler/protobuf:profiler_service_proto_cc",

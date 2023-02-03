@@ -92,6 +92,16 @@ tf_cc_test(
     deps = [":cwise_op_unary_benchmark"],
 )
 
+tf_cc_test(
+    name = "concat_benchmark",
+    testonly = 1,
+    srcs = ["concat_benchmark.cc"],
+    deps = [
+        ":benchmark",
+        ":benchmark_mlir_function",
+    ],
+)
+
 tf_cc_binary(
     name = "cwise_op_fusion_benchmark",
     testonly = 1,

@@ -39,6 +39,7 @@ from tensorflow.python.framework import errors
 from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import meta_graph
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_conversion_registry
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.ops import array_ops
@@ -2273,8 +2274,8 @@ def _dense_var_to_tensor(var, dtype=None, name=None, as_ref=False):
 
 # Register a conversion function which reads the value of the variable,
 # allowing instances of the class to be used as tensors.
-ops.register_tensor_conversion_function(BaseResourceVariable,
-                                        _dense_var_to_tensor)
+tensor_conversion_registry.register_tensor_conversion_function(
+    BaseResourceVariable, _dense_var_to_tensor)
 
 
 class _UnreadVariable(BaseResourceVariable):

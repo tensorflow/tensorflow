@@ -50,6 +50,7 @@ mlir_tf_tools_dirs = [
     'tensorflow/compiler/xla/mlir/backends/cpu',
     'tensorflow/compiler/xla/mlir/backends/gpu',
     'tensorflow/compiler/xla/mlir/runtime',
+    'tensorflow/compiler/xla/mlir/tools/mlir_bisect',
     'tensorflow/compiler/xla/mlir_hlo',
     'tensorflow/compiler/xla/mlir_hlo/tosa',
     'tensorflow/compiler/xla/service/gpu/tests',

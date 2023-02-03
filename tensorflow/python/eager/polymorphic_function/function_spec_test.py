@@ -522,5 +522,22 @@ class FunctionSpecTest(test.TestCase, parameterized.TestCase):
         ]))
 
 
+# TODO(fmuham): Remove when is_same_structure is removed.
+class SameStructureTest(test.TestCase):
+
+  def test_same_structure(self):
+    self.assertTrue(function_spec.is_same_structure([1, 2, 3], [1, 2, 3], True))
+    self.assertTrue(
+        function_spec.is_same_structure([1, 2, 3], [1, 2, 4], False)
+    )
+
+    self.assertFalse(
+        function_spec.is_same_structure([1, 2, 3], [1, 2, 4], True)
+    )
+    self.assertFalse(
+        function_spec.is_same_structure([1, 2, 3], [1, 2, 3, 4], False)
+    )
+
+
 if __name__ == '__main__':
   test.main()

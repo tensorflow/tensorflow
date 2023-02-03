@@ -151,6 +151,16 @@ class PyArray : public pybind11::object {
     return GetStorage().traceback;
   }
 
+  // Returns xla::InvalidArgument if the buffer has been deleted.
+  // See `PjRtFuture` for the semantics of `IsReady` and `IsKnownReady`.
+  StatusOr<bool> IsReady() {
+    ifrt::Array* ifrt_array_ptr = ifrt_array();
+    if (ifrt_array_ptr->IsDeleted()) {
+      return InvalidArgument("Array has been deleted.");
+    }
+    return ifrt_array_ptr->GetReadyFuture().IsReady();
+  }
+
   ifrt::Array* ifrt_array() const { return GetStorage().ifrt_array.get(); }
 
   // Short-term escape hatch to get PjRtBuffers from PyArray.

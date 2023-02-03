@@ -38,7 +38,7 @@ limitations under the License.
 
 struct TfLiteModel {
   // Sharing is safe as FlatBufferModel is const.
-  std::shared_ptr<const tflite::FlatBufferModel> impl;
+  std::shared_ptr<const tflite::impl::FlatBufferModel> impl;
 };
 
 // The `TfLiteOpResolver` struct is an abstract callback interface that
@@ -121,7 +121,7 @@ struct TfLiteInterpreterOptions {
 struct TfLiteInterpreter {
   // Taking a reference to the (const) model data avoids lifetime-related issues
   // and complexity with the TfLiteModel's existence.
-  std::shared_ptr<const tflite::FlatBufferModel> model;
+  std::shared_ptr<const tflite::impl::FlatBufferModel> model;
 
   // The interpreter does not take ownership of the provided ErrorReporter
   // instance, so we ensure its validity here. Note that the interpreter may use

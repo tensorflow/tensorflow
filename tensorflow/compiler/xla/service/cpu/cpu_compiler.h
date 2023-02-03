@@ -229,6 +229,10 @@ class CpuCompiler : public LLVMCompiler {
 
   CpuCompiler(const CpuCompiler&) = delete;
   CpuCompiler& operator=(const CpuCompiler&) = delete;
+
+  // Flag that can be used to override bail-out on sparse shapes.
+  // When set, buffer assignment assigns zero sizes to these shapes.
+  bool allow_sparse_shapes_ = false;
 };
 
 }  // namespace cpu

@@ -54,6 +54,8 @@ std::unique_ptr<Allocation> GetAllocationFromFile(
   return allocation;
 }
 
+namespace impl {
+
 std::unique_ptr<FlatBufferModel> FlatBufferModel::BuildFromFile(
     const char* filename, ErrorReporter* error_reporter) {
   error_reporter = ValidateErrorReporter(error_reporter);
@@ -69,6 +71,9 @@ std::unique_ptr<FlatBufferModel> FlatBufferModel::VerifyAndBuildFromFile(
       GetAllocationFromFile(filename, error_reporter), extra_verifier,
       error_reporter);
 }
+
+}  // namespace impl
+
 #endif
 
 std::unique_ptr<FlatBufferModel> FlatBufferModel::BuildFromBuffer(

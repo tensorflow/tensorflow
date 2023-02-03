@@ -224,6 +224,19 @@ SmallVector<InterpreterValue> matmul(InterpreterState& state,
   return {result};
 }
 
+SmallVector<InterpreterValue> transpose(InterpreterState&,
+                                        linalg::TransposeOp transpose,
+                                        const InterpreterValue& input,
+                                        InterpreterValue init) {
+  auto transposed = transposeImpl(input, transpose.getPermutation());
+  if (transpose.getNumResults() == 1) {
+    return {transposed};
+  }
+
+  init.fill([&](auto index) { return transposed.extractElement(index); });
+  return {};
+}
+
 REGISTER_MLIR_INTERPRETER_OP("linalg.matmul", "mhlo.dot");
 REGISTER_MLIR_INTERPRETER_OP("linalg.yield", noOpTerminator);
 REGISTER_MLIR_INTERPRETER_OP(broadcast);
@@ -233,6 +246,7 @@ REGISTER_MLIR_INTERPRETER_OP(index);
 REGISTER_MLIR_INTERPRETER_OP(map);
 REGISTER_MLIR_INTERPRETER_OP(matmul);
 REGISTER_MLIR_INTERPRETER_OP(reduce);
+REGISTER_MLIR_INTERPRETER_OP(transpose);
 
 }  // namespace
 }  // namespace interpreter

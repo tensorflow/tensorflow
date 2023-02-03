@@ -25,9 +25,9 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/stream_executor/cuda/cuda_activation.h"
 #include "tensorflow/compiler/xla/stream_executor/dnn.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/status.h"
 #include "tensorflow/compiler/xla/stream_executor/plugin_registry.h"
 #include "tensorflow/compiler/xla/stream_executor/temporary_device_memory.h"
+#include "tensorflow/tsl/platform/status.h"
 
 namespace stream_executor {
 namespace gpu {

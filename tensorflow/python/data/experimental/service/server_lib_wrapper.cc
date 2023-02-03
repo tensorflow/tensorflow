@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include <string>
+#include <vector>
 
 #include "Python.h"
 #include "absl/strings/str_cat.h"
@@ -24,6 +25,7 @@ limitations under the License.
 #include "pybind11/pybind11.h"
 #include "pybind11/pytypes.h"
 #include "pybind11/stl.h"
+#include "tensorflow/core/data/service/common.pb.h"
 #include "tensorflow/core/data/service/dispatcher_client.h"
 #include "tensorflow/core/data/service/grpc_util.h"
 #include "tensorflow/core/data/service/server_lib.h"
@@ -64,6 +66,16 @@ PYBIND11_MODULE(_pywrap_server_lib, m) {
              tensorflow::Status status = server->NumTasks(&num_tasks);
              tensorflow::MaybeRaiseFromStatus(status);
              return num_tasks;
+           })
+      .def("snapshot_task_progresses",
+           [](tensorflow::data::WorkerGrpcDataServer* server)
+               -> std::vector<tensorflow::data::SnapshotTaskProgressWrapper> {
+             std::vector<tensorflow::data::SnapshotTaskProgressWrapper>
+                 snapshot_task_progresses;
+             tensorflow::Status status =
+                 server->SnapshotTaskProgresses(&snapshot_task_progresses);
+             tensorflow::MaybeRaiseFromStatus(status);
+             return snapshot_task_progresses;
            });
 
   m.def(
@@ -134,4 +146,19 @@ PYBIND11_MODULE(_pywrap_server_lib, m) {
       .def_property_readonly(
           "compression", &tensorflow::data::DataServiceMetadata::compression)
       .def("__repr__", &tensorflow::data::DataServiceMetadata::DebugString);
+  py::class_<tensorflow::data::SnapshotTaskProgressWrapper>
+      snapshot_task_progress_wrapper(m, "SnapshotTaskProgressWrapper");
+  snapshot_task_progress_wrapper.def(py::init<>())
+      .def_property_readonly(
+          "snapshot_task_base_path",
+          [](const tensorflow::data::SnapshotTaskProgressWrapper&
+                 snapshot_task_progress_wrapper) -> py::bytes {
+            return snapshot_task_progress_wrapper.snapshot_task_base_path;
+          })
+      .def_property_readonly(
+          "snapshot_task_stream_index",
+          [](const tensorflow::data::SnapshotTaskProgressWrapper&
+                 snapshot_task_progress_wrapper) -> int {
+            return snapshot_task_progress_wrapper.snapshot_task_stream_index;
+          });
 };

@@ -57,10 +57,9 @@ void ConvertSessionInitializerToFunctionPass::runOnOperation() {
     return;
   }
 
-  auto init = builder.create<mlir::func::FuncOp>(
+  auto init = builder.create<func::FuncOp>(
       module.getLoc(), name,
-      mlir::FunctionType::get(module.getContext(), /*inputs=*/{},
-                              /*results=*/{}));
+      FunctionType::get(module.getContext(), /*inputs=*/{}, /*results=*/{}));
 
   // Make savedmodel verification happy.
   init->setAttr("tf_saved_model.exported_names",
@@ -68,19 +67,7 @@ void ConvertSessionInitializerToFunctionPass::runOnOperation() {
 
   builder.setInsertionPointToStart(init.addEntryBlock());
 
-  for (auto attr : session_initializer.getInitializers()) {
-    auto sym = attr.dyn_cast<FlatSymbolRefAttr>();
-    if (!sym) {
-      session_initializer->emitWarning("non-symbol initializer");
-      continue;
-    }
-    Operation *function = SymbolTable::lookupSymbolIn(module, sym);
-    func::FuncOp func = llvm::dyn_cast<func::FuncOp>(function);
-    if (!func) {
-      session_initializer->emitWarning(
-          "session initializer doesn't resolve to a function");
-      continue;
-    }
+  for (func::FuncOp func : tf_saved_model::GetInitializerFunctions(module)) {
     if (func.getNumArguments() != 0) {
       session_initializer->emitWarning(
           "encountered session initializers with arguments");
@@ -89,15 +76,15 @@ void ConvertSessionInitializerToFunctionPass::runOnOperation() {
 
     // Since we're now calling this function, savedmodel verification
     // needs it to be private.
-    func.setVisibility(mlir::SymbolTable::Visibility::Private);
+    func.setVisibility(SymbolTable::Visibility::Private);
     func->removeAttr("tf_saved_model.exported_names");
 
     ArrayRef<Value> args;
-    builder.create<mlir::func::CallOp>(session_initializer.getLoc(),
-                                       func.getFunctionType().getResults(),
-                                       func.getSymName(), args);
+    builder.create<func::CallOp>(session_initializer.getLoc(),
+                                 func.getFunctionType().getResults(),
+                                 func.getSymName(), args);
   }
-  builder.create<mlir::func::ReturnOp>(session_initializer.getLoc());
+  builder.create<func::ReturnOp>(session_initializer.getLoc());
 
   session_initializer.erase();
 }

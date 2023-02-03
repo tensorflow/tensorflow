@@ -544,8 +544,9 @@ class Node {
   void UpdateProcessingTimeEma() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
     if (previous_processing_time_ == 0) {
       if (num_elements_ > 0) {
-        processing_time_ema_ = static_cast<double>(processing_time_) /
-                               static_cast<double>(num_elements_);
+        processing_time_ema_ =
+            static_cast<double>(processing_time_) /
+            static_cast<double>(num_elements_ + buffered_elements_);
       } else {
         processing_time_ema_ = static_cast<double>(processing_time_);
       }

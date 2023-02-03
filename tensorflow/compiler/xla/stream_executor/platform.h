@@ -24,11 +24,11 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/stream_executor/device_description.h"
 #include "tensorflow/compiler/xla/stream_executor/device_options.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/status.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/statusor.h"
 #include "tensorflow/compiler/xla/stream_executor/platform/port.h"
 #include "tensorflow/compiler/xla/stream_executor/plugin.h"
 #include "tensorflow/compiler/xla/stream_executor/trace_listener.h"
+#include "tensorflow/tsl/platform/status.h"
+#include "tensorflow/tsl/platform/statusor.h"
 
 namespace stream_executor {
 

@@ -48,6 +48,14 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.util import nest
 
+
+try:
+  import dill  # pylint:disable=g-import-not-at-top
+
+  _REGISTER_DECORATOR = dill.register
+except ImportError:
+  _REGISTER_DECORATOR = lambda fn, *_: fn
+
 CollectiveReplicaLauncher = cross_device_utils.CollectiveReplicaLauncher
 CommunicationImplementation = collective_util.CommunicationImplementation
 ReduceOp = reduce_util.ReduceOp
@@ -1325,6 +1333,15 @@ class CollectiveOpsTest(test.TestCase, parameterized.TestCase):
         test_util.assert_sequential_execution(order, operations)
 
     get_global_mpr(num_processes).run(replica_fn)
+
+
+@_REGISTER_DECORATOR(CollectiveOpsTest)
+def _save_test_case(pickler, obj):
+  def reconstruct(*args, **kwargs):
+    del args, kwargs
+    return CollectiveOpsTest()
+
+  return pickler.save_reduce(reconstruct, (), obj=obj)
 
 
 if __name__ == "__main__":

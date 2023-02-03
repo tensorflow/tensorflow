@@ -19,7 +19,6 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/core/data/service/common.h"
-#include "tensorflow/core/data/service/snapshot/path_utils.h"
 #include "tensorflow/core/data/snapshot_utils.h"
 #include "tensorflow/tsl/platform/env.h"
 #include "tensorflow/tsl/platform/errors.h"
@@ -64,8 +63,7 @@ Status SnapshotReader::EnsureInitialized() {
 }
 
 StatusOr<std::vector<std::string>> SnapshotReader::GetChunkFiles() {
-  std::string chunks_directory =
-      CommittedChunksDirectory(params_.snapshot_path);
+  std::string chunks_directory = params_.CommittedChunksDirectory();
   std::vector<string> chunk_files;
   TF_RETURN_IF_ERROR(params_.env->GetChildren(chunks_directory, &chunk_files));
   for (std::string& chunk_file : chunk_files) {

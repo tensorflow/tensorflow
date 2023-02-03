@@ -32,9 +32,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/stream_executor/gpu/gpu_helpers.h"
 #include "tensorflow/compiler/xla/stream_executor/gpu/gpu_stream.h"
 #include "tensorflow/compiler/xla/stream_executor/gpu/gpu_timer.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/env.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/initialize.h"
 #include "tensorflow/compiler/xla/stream_executor/platform/dso_loader.h"
+#include "tensorflow/compiler/xla/stream_executor/platform/initialize.h"
 #include "tensorflow/compiler/xla/stream_executor/platform/logging.h"
 #include "tensorflow/compiler/xla/stream_executor/platform/port.h"
 #include "tensorflow/compiler/xla/stream_executor/plugin_registry.h"
@@ -765,7 +764,7 @@ tsl::Status ReorganizeMemory(Stream *stream,
       bool a_status = stream->ThenMemcpy(&target_mem, src_mem, x.size).ok();
       if (!a_status) {
         return tsl::Status(
-            port::error::INTERNAL,
+            tsl::error::INTERNAL,
           "failed to copy device memory in ROCMBlas::DoBlasGemmBatched");
       }
     }
@@ -939,7 +938,7 @@ tsl::Status ROCMBlas::DoBlasGemmBatchedInternal(
                         batch_stride_c, batch_count);
   }
   if (!ok)
-    return tsl::Status(port::error::INTERNAL,
+    return tsl::Status(tsl::error::INTERNAL,
                        "failed BLAS call, see log for details");
   if (reallocated_c)
     return ReorganizeMemory(stream, &c, c_raw_ptrs, batch_count, batch_stride_c,

@@ -49,10 +49,10 @@ llvm::SmallVector<InterpreterValue> gmlStLoop(
   auto terminator = forOp ? forOp.getTerminator() : parallelOp.getTerminator();
 
   int64_t numOutputs = terminator.getDsts().size();
-  assert((args.size() - (forOp ? numOutputs : 0)) % 3 == 0 &&
+  assert((args.size() - numOutputs) % 3 == 0 &&
          "expected uniform sizes for lbs, ubs and steps");
 
-  int64_t numLoops = (args.size() - (forOp ? numOutputs : 0)) / 3;
+  size_t numLoops = (args.size() - numOutputs) / 3;
   auto boundArgs = args.take_front(numLoops * 3);
   auto lbs = unpackInterpreterValues<int64_t>(boundArgs.take_front(numLoops));
   auto ubs =
@@ -61,20 +61,21 @@ llvm::SmallVector<InterpreterValue> gmlStLoop(
 
   SmallVector<InterpreterValue> outputs;
   if (forOp) {
-    for (int64_t i = args.size() - numOutputs; i < args.size(); ++i) {
+    for (size_t i = args.size() - numOutputs; i < args.size(); ++i) {
       outputs.push_back(getInitOperand(op, i, args));
     }
   } else {
-    for (auto dst : terminator.getDsts()) {
-      outputs.push_back(state.getTopScope()->Get(dst));
-      if (!isBufferized) {
-        outputs.back() = outputs.back().clone();
-      }
+    for (size_t i = args.size() - numOutputs; i < args.size(); ++i) {
+      outputs.push_back(getInitOperand(op, static_cast<int64_t>(i), args));
     }
   }
 
   SmallVector<int64_t> iterSizes;
   for (auto [lb, ub, step] : llvm::zip(lbs, ubs, steps)) {
+    if (step == 0) {
+      state.addFailure("invalid step");
+      return {};
+    }
     iterSizes.push_back((ub - lb + (step - 1)) / step);
   }
 
@@ -85,9 +86,7 @@ llvm::SmallVector<InterpreterValue> gmlStLoop(
     for (auto [i, lb, step] : llvm::zip(indices, lbs, steps)) {
       args.push_back(InterpreterValue{i * step + lb});
     }
-    if (forOp) {
-      llvm::copy(outputs, std::back_inserter(args));
-    }
+    llvm::copy(outputs, std::back_inserter(args));
 
     auto yielded = interpret(state, op->getRegion(0), args);
     if (state.hasFailure()) break;

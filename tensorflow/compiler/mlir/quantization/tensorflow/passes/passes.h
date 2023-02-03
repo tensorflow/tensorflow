@@ -93,6 +93,7 @@ std::unique_ptr<OperationPass<func::FuncOp>> CreateQuantizePass(
 // Creates an instance of the PrepareQuantize pass, which will perform similar
 // transformations as TFL::PrepareQuantizePass.
 std::unique_ptr<OperationPass<func::FuncOp>> CreatePrepareQuantizePass(
+    const QuantizationSpecs& quant_specs,
     tensorflow::quantization::QuantizationMethod::ExperimentalMethod
         quantization_method);
 

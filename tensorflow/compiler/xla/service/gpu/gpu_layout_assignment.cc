@@ -100,10 +100,11 @@ HeuristicLayoutAssignment(const HloInstruction* instr,
     return kAllNHWC;
   }
 
-  // If we're not Volta/MI100/MI200 or not fp16, or not conv2D, the decision
-  // is easy: Use NCHW.
+  // If we're not Volta or not fp16/bfloat16, or not conv2D, the decision is
+  // easy: Use NCHW.
+  const bool isFloat16 = (input_ty == F16) || (input_ty == BF16);
 #if GOOGLE_CUDA
-  if (input_ty != F16 ||
+  if (!isFloat16 ||
       !stream_executor->GetDeviceDescription()
            .cuda_compute_capability()
            .IsAtLeast(se::CudaComputeCapability::VOLTA) ||
@@ -117,7 +118,7 @@ HeuristicLayoutAssignment(const HloInstruction* instr,
       /*default_val=*/false, &is_enabled));
   auto rocm_compute_capability =
       stream_executor->GetDeviceDescription().rocm_compute_capability();
-  if (input_ty != F16 || (!rocm_compute_capability.has_nhwc_layout_support()) ||
+  if (!isFloat16 || (!rocm_compute_capability.has_nhwc_layout_support()) ||
       instr->shape().tuple_shapes(0).dimensions_size() != 4 || !is_enabled) {
     return kAllNCHW;
   }

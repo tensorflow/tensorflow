@@ -65,7 +65,7 @@ void mlir::createHloToTritonPipeline(OpPassManager& pm,
 
   // Tile parallel dimensions of the softmax-like patterns and distribute them
   // across warps. Warps remain independant of each other.
-  pm.addNestedPass<FuncOp>(gml_st::createGreedyTilingAndFusionPass(
+  pm.addNestedPass<FuncOp>(gml_st::createGreedyFusionPass(
       /*distribute=*/true, blockTileDim, kBlockDistributionLabel));
   pm.addPass(createCanonicalizerPass());
   pm.addPass(createCSEPass());

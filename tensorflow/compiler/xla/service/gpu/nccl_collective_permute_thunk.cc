@@ -209,7 +209,7 @@ NcclCollectivePermuteStartThunk::NcclCollectivePermuteStartThunk(
     ThunkInfo thunk_info, mlir::lmhlo_gpu::CollectivePermuteStartOp op,
     int64_t replica_count, int64_t partition_count, const Buffer& buffer)
     : NcclCollectivePermuteThunkBase(
-          Thunk::kNcclCollectivePermute, thunk_info,
+          Thunk::kNcclCollectivePermuteStart, thunk_info,
           GetNcclCollectivePermuteConfig(op, replica_count, partition_count),
           buffer) {}
 

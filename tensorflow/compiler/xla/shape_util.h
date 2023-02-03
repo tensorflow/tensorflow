@@ -35,6 +35,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
+#include "tensorflow/compiler/xla/printer.h"
 #include "tensorflow/compiler/xla/shape.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/tsl/platform/cpu_info.h"
@@ -139,6 +140,18 @@ class ShapeUtil {
   // `ByteSizeOf(shape) == ByteSizeOfElements(shape)`. This
   // size also includes padding if present in the layout.
   static int64_t ByteSizeOfElements(const Shape& shape);
+
+  // Prints a human-readable string that represents the given shape, with or
+  // without layout. e.g. "f32[42x12] {0, 1}" or "f32[64]".
+  static void PrintHumanString(xla::Printer* printer, const Shape& shape);
+  static void PrintHumanStringWithLayout(xla::Printer* printer,
+                                         const Shape& shape);
+
+  // As above, but for program shapes, prints a string for the form:
+  //
+  // (param_name: f32[42x12], ...) -> f32[24x42]
+  static void PrintHumanString(xla::Printer* printer,
+                               const ProgramShape& program_shape);
 
   // Returns a human-readable string that represents the given shape, with or
   // without layout. e.g. "f32[42x12] {0, 1}" or "f32[64]".
@@ -722,10 +735,18 @@ class ShapeUtil {
   // A parallel version of ForEachIndex(WithStatus). This can only be used if
   // the visitor_function is thread-safe and the order of iteration does not
   // matter.
+  //
+  // Please use GetForEachIndexParallelThreadCount() to get the number of
+  // threads in the threadpool of ForEachIndexParallel*. This will not change
+  // during the runtime of the process. Please DO NOT use
+  // tsl::port::MaxParallelism() for this purpose, as it may change.
   static void ForEachIndexParallel(
       const Shape& shape, absl::Span<const int64_t> base,
       absl::Span<const int64_t> count, absl::Span<const int64_t> incr,
       const ForEachParallelVisitorFunction& visitor_function);
+
+  // Returns the number of threads in the threadpool of ForEachIndexParallel*.
+  static int GetForEachIndexParallelThreadCount();
 
   static Status ForEachIndexParallelWithStatus(
       const Shape& shape, absl::Span<const int64_t> base,

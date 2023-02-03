@@ -28,9 +28,9 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/stream_executor/gpu/gpu_asm_opts.h"
 #include "tensorflow/compiler/xla/stream_executor/kernel.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/statusor.h"
 #include "tensorflow/compiler/xla/stream_executor/platform/port.h"
 #include "tensorflow/compiler/xla/stream_executor/stream_executor_pimpl.h"
+#include "tensorflow/tsl/platform/statusor.h"
 #if GOOGLE_CUDA
 #include "tensorflow/compiler/xla/stream_executor/cuda/cuda_driver.h"
 #endif  // GOOGLE_CUDA
@@ -98,6 +98,10 @@ tsl::StatusOr<std::vector<uint8_t>> LinkUsingNvlink(
 
 std::string FindCudaExecutable(const std::string& binary_name,
                                const std::string& preferred_cuda_dir);
+
+// Runs tool --version and parses its version string.
+tsl::StatusOr<std::array<int64_t, 3>> GetToolVersion(
+    absl::string_view tool_path);
 
 // On NVIDIA GPUs, returns the CUDA toolkit version supported by the driver,
 tsl::StatusOr<std::array<int64_t, 3>> GetAsmCompilerVersion(

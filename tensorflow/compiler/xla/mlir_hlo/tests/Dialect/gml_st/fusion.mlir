@@ -341,12 +341,12 @@ func.func @matmul(%lhs: tensor<128x16xf32>,
   %fill = linalg.fill { op_label = "producer" } ins(%cst : f32)
       outs(%init : tensor<128x256xf32>) -> tensor<128x256xf32>
   %matmul = gml_st.parallel (%i, %j) = (%c0, %c0) to (%c128, %c256)
-      step (%c8, %c8) {
+      step (%c8, %c8) outs (%out = %fill: tensor<128x256xf32>) {
     %lhs_sub = tensor.extract_slice %lhs[%i, 0] [8, 16] [1, 1]
       : tensor<128x16xf32> to tensor<8x16xf32>
     %rhs_sub = tensor.extract_slice %rhs[0, %j] [16, 8] [1, 1]
       : tensor<16x256xf32> to tensor<16x8xf32>
-    %out_sub = tensor.extract_slice %fill[%i, %j] [8, 8] [1, 1]
+    %out_sub = tensor.extract_slice %out[%i, %j] [8, 8] [1, 1]
       : tensor<128x256xf32> to tensor<8x8xf32>
 
     %matmul_sub = linalg.matmul { op_label="consumer" }
@@ -354,7 +354,7 @@ func.func @matmul(%lhs: tensor<128x16xf32>,
       outs(%out_sub : tensor<8x8xf32>) -> tensor<8x8xf32>
 
     %out_tile = gml_st.tile [%i, %j] [8, 8] [1, 1] : !gml_st.tile<8x8>
-    gml_st.set_yield %matmul_sub into %fill[%out_tile]
+    gml_st.set_yield %matmul_sub into %out[%out_tile]
       : tensor<8x8xf32> into tensor<128x256xf32>[!gml_st.tile<8x8>]
   } : tensor<128x256xf32>
   return %matmul : tensor<128x256xf32>
@@ -366,11 +366,12 @@ func.func @matmul(%lhs: tensor<128x16xf32>,
 // CHECK:      %[[C0:.*]] = arith.constant 0 : index
 // CHECK:      %[[EMPTY:.*]] = tensor.empty() : tensor<128x256xf32>
 // CHECK:       gml_st.parallel (%[[I:[a-z0-9]+]], %[[J:[a-z0-9]+]])
-// CHECK:        %[[OUT_SUB:.*]] = tensor.extract_slice %[[EMPTY]][%[[I]], %[[J]]] [8, 8] [1, 1]
+// CHECK-SAME:     outs (%[[OUT_:.*]] = %[[EMPTY]]:
+// CHECK:        %[[OUT_SUB:.*]] = tensor.extract_slice %[[OUT_]][%[[I]], %[[J]]] [8, 8] [1, 1]
 // CHECK:        %[[FILL:.*]] = linalg.fill
 // CHECK-SAME:     outs(%[[OUT_SUB]] : tensor<8x8xf32>) -> tensor<8x8xf32>
 // CHECK:        %[[MATMUL:.*]] = linalg.matmul
 // CHECK-SAME:     outs(%[[FILL]] : tensor<8x8xf32>) -> tensor<8x8xf32>
 // CHECK:        %[[OUT_TILE:.*]] = gml_st.tile [%[[I]], %[[J]]] [8, 8] [1, 1]
-// CHECK:        gml_st.set_yield %[[MATMUL]] into %[[EMPTY]][%[[OUT_TILE]]]
+// CHECK:        gml_st.set_yield %[[MATMUL]] into %[[OUT_]][%[[OUT_TILE]]]
 // CHECK-SAME:     : tensor<8x8xf32> into tensor<128x256xf32>[!gml_st.tile<8x8>]

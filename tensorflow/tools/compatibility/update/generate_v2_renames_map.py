@@ -17,6 +17,8 @@
 
 To update renames_v2.py, run:
   bazel run tensorflow/tools/compatibility/update:generate_v2_renames_map
+Afterwards, you need to update reoders_v2.py by running:
+  bazel run tensorflow/tools/compatibility/update:generate_v2_reorders_map
 """
 # pylint: enable=line-too-long
 import sys

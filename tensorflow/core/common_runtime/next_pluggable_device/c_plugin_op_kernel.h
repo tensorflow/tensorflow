@@ -39,6 +39,8 @@ class CPluginOpKernelConstruction : public PluginOpKernelConstruction {
 
   Status GetBoolAttr(std::string_view attr_name, bool* value) const override;
   Status GetInt32Attr(std::string_view attr_name, int* value) const override;
+  Status GetInt32AttrList(std::string_view attr_name,
+                          std::vector<int32_t>* value) const override;
   Status GetInt64Attr(std::string_view attr_name,
                       int64_t* value) const override;
   Status GetStringAttr(std::string_view attr_name,
@@ -72,6 +74,11 @@ class CPluginOpKernelContext : public PluginOpKernelContext {
   PluginCoordinationServiceAgent* GetPluginCoordinationServiceAgent()
       const override;
 
+  Status CreatePluginVariable(int index,
+                              PluginVariable** variable) const override;
+
+  Status AllocateTempForPluginVariable(PluginVariable* variable) override;
+
   int NumInputs() const override { return TF_NumInputs(ctx_); }
 
   Status GetInput(int index, Tensor* tensor) const override;
@@ -80,6 +87,8 @@ class CPluginOpKernelContext : public PluginOpKernelContext {
 
   Status GetInputRange(std::string_view name,
                        std::pair<int, int>* range) const override;
+
+  DataType GetInputDataType(int index) const override;
 
   std::string_view GetOpKernelRequestedInput(int index) const override;
 
@@ -101,8 +110,8 @@ class CPluginOpKernelContext : public PluginOpKernelContext {
   Status GetConfigProto(const ConfigProto** config_proto) const override;
 
   // Note: this function is only meant to clear up `config_proto` created by the
-  // above `COpKernelContextWrapper::GetConfigProto()`.
-  void MaybeDeleteConfigProto(const ConfigProto* config_proto) override {
+  // above `CPluginOpKernelContext::GetConfigProto()`.
+  void MaybeDeleteConfigProto(const ConfigProto* config_proto) const override {
     delete config_proto;
   }
 
@@ -110,10 +119,19 @@ class CPluginOpKernelContext : public PluginOpKernelContext {
       const FunctionLibraryDefinition** flib_def) const override;
 
   // Note: this function is only meant to clear up `flib_def` created by the
-  // above `COpKernelContextWrapper::GetFunctionLibraryDefinition()`.
+  // above `CPluginOpKernelContext::GetFunctionLibraryDefinition()`.
   void MaybeDeleteFunctionLibraryDefinition(
       const FunctionLibraryDefinition* flib_def) const override {
     delete flib_def;
+  }
+
+  Status GetResourceHandle(int index,
+                           const ResourceHandle** handle) const override;
+
+  // Note: this function is only meant to clear up `handle` created by the above
+  // `CPluginOpKernelContext::GetResourceHandle()`.
+  void MaybeDeleteResourceHandle(const ResourceHandle* handle) const override {
+    delete handle;
   }
 
   int GetGraphDefVersion() const override {

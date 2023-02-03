@@ -30,8 +30,8 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_config.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/mlir_roundtrip_flags.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/statusor.h"
 #include "tensorflow/lite/toco/toco_flags.pb.h"
+#include "tensorflow/tsl/platform/statusor.h"
 
 namespace tensorflow {
 

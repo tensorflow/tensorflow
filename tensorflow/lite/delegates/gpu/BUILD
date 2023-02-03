@@ -100,7 +100,6 @@ objc_library(
         "//tensorflow/lite/delegates/gpu/metal:metal_spatial_tensor",
         "@com_google_absl//absl/types:span",
     ],
-    alwayslink = 1,
 )
 
 objc_library(
@@ -109,7 +108,6 @@ objc_library(
     copts = ["-std=c++17"],
     sdk_frameworks = ["Metal"],
     deps = ["//tensorflow/lite/delegates/gpu:metal_delegate"],
-    alwayslink = 1,
 )
 
 # build -c opt --config android_arm64 --copt -Os --copt -DTFLITE_GPU_BINARY_RELEASE --linkopt -s --strip always :libtensorflowlite_gpu_gl.so
@@ -167,6 +165,10 @@ ios_static_framework(
 # bazel build -c opt --copt -Os --copt -DTFLITE_GPU_BINARY_RELEASE --copt -fvisibility=hidden --linkopt -s --strip always --cxxopt=-std=c++14 :tensorflow_lite_gpu_dylib --apple_platform_type=macos
 macos_dylib(
     name = "tensorflow_lite_gpu_dylib",
+    linkopts = [
+        "-all_load",
+        "-dead_strip",
+    ],
     minimum_os_version = "10.13",
     tags = [
         "manual",

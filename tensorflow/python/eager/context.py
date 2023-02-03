@@ -1746,9 +1746,22 @@ class Context:
     pywrap_tfe.TFE_SetLogicalCpuDevices(self._context_handle, num_cpus, prefix)
     self._initialize_logical_devices()
 
-  def get_compiler_ir(self, device_name, function_name, args, stage="hlo"):
-    return pywrap_tfe.TF_GetCompilerIr(self._context_handle, function_name,
-                                       stage, device_name, args)
+  def get_compiler_ir(
+      self,
+      device_name,
+      function_name,
+      flat_args,
+      captured_inputs,
+      stage="hlo",
+  ):
+    return pywrap_tfe.TF_GetCompilerIr(
+        self._context_handle,
+        function_name,
+        stage,
+        device_name,
+        flat_args,
+        captured_inputs,
+    )
 
   @deprecated(
       None, "XLA:CPU and XLA:GPU devices are deprecated", warn_once=True)

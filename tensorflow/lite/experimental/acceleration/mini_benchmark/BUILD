@@ -920,7 +920,6 @@ cc_library(
         "//tensorflow/lite/core/experimental/acceleration/configuration:delegate_registry",
         "//tensorflow/lite/experimental/acceleration/configuration:configuration_fbs",
         "//tensorflow/lite/experimental/acceleration/configuration/c:delegate_plugin",
-        "//tensorflow/lite/java/jni",
         "@com_google_absl//absl/memory",
         "@flatbuffers",
     ],

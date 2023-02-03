@@ -29,7 +29,8 @@ namespace profiler {
 
 // Convert XSpace to tool data and saves under <logdir>/plugins/profile/.
 Status ExportToTensorBoard(const tensorflow::profiler::XSpace& xspace,
-                           const std::string& logdir);
+                           const std::string& logdir,
+                           bool also_export_trace_json = false);
 
 // Collects one sample of monitoring profile and shows user-friendly metrics.
 // If timestamp flag is true, timestamp will be displayed in "%H:%M:%S" format.

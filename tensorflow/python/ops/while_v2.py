@@ -90,7 +90,8 @@ def while_loop(cond,
   # `wrapped_body` below.
   loop_vars = _tensor_array_to_flow(loop_vars)
   loop_vars = nest.map_structure(
-      ops.internal_convert_to_tensor_or_indexed_slices, loop_vars,
+      indexed_slices.internal_convert_to_tensor_or_indexed_slices,
+      loop_vars,
       expand_composites=True)
 
   # `loop_vars_signature` is a structure of TypeSpecs and has the same

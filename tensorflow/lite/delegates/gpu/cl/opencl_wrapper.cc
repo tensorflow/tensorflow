@@ -96,6 +96,16 @@ absl::Status LoadOpenCL() {
     LoadOpenCLFunctions(libopencl, false);
     return absl::OkStatus();
   }
+  // Check if OpenCL functions are found via OpenCL ICD Loader.
+  LoadOpenCLFunctions(libopencl, false);
+  if (clGetPlatformIDs != nullptr) {
+    cl_uint num_platforms;
+    cl_int status = clGetPlatformIDs(0, nullptr, &num_platforms);
+    if (status == CL_SUCCESS && num_platforms != 0) {
+      return absl::OkStatus();
+    }
+    return absl::UnknownError("OpenCL is not supported.");
+  }
   // record error
   std::string error(dlerror());
   return absl::UnknownError(

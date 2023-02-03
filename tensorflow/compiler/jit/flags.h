@@ -193,7 +193,7 @@ struct JitRtFlags {
 MarkForCompilationPassFlags* GetMarkForCompilationPassFlags();
 BuildXlaOpsPassFlags* GetBuildXlaOpsPassFlags();
 XlaDeviceFlags* GetXlaDeviceFlags();
-const XlaOpsCommonFlags& GetXlaOpsCommonFlags();
+XlaOpsCommonFlags* GetXlaOpsCommonFlags();
 
 MlirCommonFlags* GetMlirCommonFlags();
 

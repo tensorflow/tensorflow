@@ -1,4 +1,4 @@
-// RUN: mlir-hlo-opt %s --gml-st-cpu-pipeline --split-input-file \
+// RUN: mlir-hlo-opt %s --gml-st-cpu-tiling-pipeline --split-input-file \
 // RUN: | FileCheck %s
 
 func.func @map_unary(%input: tensor<?x?xf32>, %init: tensor<?x?xf32>)

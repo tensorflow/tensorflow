@@ -2307,6 +2307,33 @@ Mutually reduces multiple tensors of identical type and shape.
   }];
 }
 
+def TF_CollectiveReduceScatterV2Op : TF_Op<"CollectiveReduceScatterV2", [DeclareOpInterfaceMethods<TF_GetResourceInstanceInterface>, TF_CollectiveReduceOrderingEffect]> {
+  let summary = [{
+Mutually reduces multiple tensors of identical type and shape and scatters the result.
+  }];
+
+  let arguments = (ins
+    TF_FpOrI32OrI64Tensor:$input,
+    TF_Int32Tensor:$group_size,
+    TF_Int32Tensor:$group_key,
+    TF_Int32Tensor:$instance_key,
+    Variadic<TF_ResourceTensor>:$ordering_token,
+
+    TF_AnyStrAttrOf<["Min", "Max", "Mul", "Add"]>:$merge_op,
+    TF_AnyStrAttrOf<["Id", "Div"]>:$final_op,
+    DefaultValuedOptionalAttr<StrAttr, "\"auto\"">:$communication_hint,
+    DefaultValuedOptionalAttr<F32Attr, "0.0f">:$timeout_seconds,
+    DefaultValuedOptionalAttr<I64Attr, "-1">:$max_subdivs_per_device
+  );
+
+  let results = (outs
+    TF_FpOrI32OrI64Tensor:$data
+  );
+
+  TF_DerivedOperandSizeAttr Nordering_token = TF_DerivedOperandSizeAttr<4>;
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
 def TF_CollectiveReduceV2Op : TF_Op<"CollectiveReduceV2", [DeclareOpInterfaceMethods<TF_GetResourceInstanceInterface>, TF_CollectiveReduceOrderingEffect]> {
   let summary = [{
 Mutually reduces multiple tensors of identical type and shape.

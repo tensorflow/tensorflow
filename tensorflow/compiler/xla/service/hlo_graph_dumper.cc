@@ -1251,6 +1251,10 @@ ExtractGemmBackendConfigProps(const gpu::GemmBackendConfig& config,
   if (config.algorithm_case() == gpu::GemmBackendConfig::kSelectedAlgorithm) {
     props.emplace_back("algorithm", StrCat(config.selected_algorithm()));
   }
+  if (config.epilogue() != gpu::GemmBackendConfig::DEFAULT) {
+    props.emplace_back(
+        "epilogue", gpu::GemmBackendConfig::Epilogue_Name(config.epilogue()));
+  }
   return props;
 }
 

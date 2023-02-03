@@ -2672,10 +2672,11 @@ LogicalResult UnidirectionalSequenceLSTMOp::inferReturnTypes(
       time_major_attr ? time_major_attr->getValue().cast<BoolAttr>().getValue()
                       : false;
 
-  int batch =
+  int64_t batch =
       time_majored ? input_type.getDimSize(1) : input_type.getDimSize(0);
-  int time = time_majored ? input_type.getDimSize(0) : input_type.getDimSize(1);
-  int n_output = output_state_type.getDimSize(1);
+  int64_t time =
+      time_majored ? input_type.getDimSize(0) : input_type.getDimSize(1);
+  int64_t n_output = output_state_type.getDimSize(1);
 
   // Build the output shape.
   SmallVector<int64_t, 3> output_shape;

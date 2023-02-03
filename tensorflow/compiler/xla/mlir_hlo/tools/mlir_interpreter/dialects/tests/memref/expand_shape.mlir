@@ -37,3 +37,16 @@ func.func @zero_rank()
 // CHECK-LABEL: @zero_rank
 // CHECK-NEXT: Results
 // CHECK-NEXT{LITERAL}: [[1]]
+
+func.func @split_dim() -> memref<3x2x2xi32, strided<[4, 2, 1], offset: 0>> {
+  %cst = arith.constant dense<[[1, 2, 3, 4], [5, 6, 7, 8], [9, 10, 11, 12]]>
+    : memref<3x4xi32, strided<[4, 1], offset: 0>>
+  %ret = memref.expand_shape %cst [[0], [1, 2]]
+    : memref<3x4xi32, strided<[4, 1], offset: 0>> into
+      memref<3x2x2xi32, strided<[4, 2, 1], offset: 0>>
+  return %ret : memref<3x2x2xi32, strided<[4, 2, 1], offset: 0>>
+}
+
+// CHECK-LABEL: @split_dim
+// CHECK-NEXT: Results
+// CHECK-NEXT{LITERAL}: [[[1, 2], [3, 4]], [[5, 6], [7, 8]], [[9, 10], [11, 12]]]

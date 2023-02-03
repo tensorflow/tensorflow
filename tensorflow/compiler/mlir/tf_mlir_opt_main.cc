@@ -52,10 +52,9 @@ int main(int argc, char **argv) {
   mlir::mhlo::registerAllMhloPasses();
   mlir::lmhlo::registerAllLmhloPasses();
   // These are in compiler/mlir/xla and not part of the above MHLO passes.
+  mlir::mhlo::registerLegalizeTfPasses();
   mlir::mhlo::registerTfXlaPasses();
   mlir::mhlo::registerXlaFrameworkPasses();
-  mlir::mhlo::registerLegalizeTFPass();
-  mlir::mhlo::registerLegalizeTfTypesPassPass();
   mlir::tosa::registerLegalizeTosaPasses();
   mlir::tosa::registerTFtoTOSALegalizationPipeline();
   mlir::tosa::registerTFLtoTOSALegalizationPipeline();

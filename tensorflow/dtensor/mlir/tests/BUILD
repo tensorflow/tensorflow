@@ -21,7 +21,6 @@ glob_lit_tests(
         "dtensor_embedding_v2.mlir": ["no_oss"],
         "embedding_optimizer.mlir": ["no_oss"],
         "dtensor_embedding_checkpoint.mlir": ["no_oss"],  # FIXME(b/264922760): The test fails on OSS.
-        "lower_send_recv.mlir": ["no_oss"],  # FIXME(b/264922760): The test fails on OSS.
         "move_compilation_to_host.mlir": ["no_oss"],  # FIXME(b/264922760): The test fails on OSS.
         "spmd_dtensor_ops.mlir": ["no_oss"],  # FIXME(b/264922760): The test fails on OSS.
         "spmd_embedding.mlir": ["no_oss"],  # FIXME(b/264922760): The test fails on OSS.

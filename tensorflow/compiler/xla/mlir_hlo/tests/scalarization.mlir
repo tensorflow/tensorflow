@@ -374,7 +374,8 @@ func.func @fold_extract_from_elements_into_gml_st(%in: tensor<8x2xf32>,
   %c2 = arith.constant 2 : index
   %c8 = arith.constant 8 : index
 
-  %copy = gml_st.parallel (%i, %j) = (%c0, %c0) to (%c8, %c2) step (%c1, %c1) {
+  %copy = gml_st.parallel (%i, %j) = (%c0, %c0) to (%c8, %c2) step (%c1, %c1)
+      outs (%out_ = %out: tensor<8x2xf32>) {
     %in_sub = tensor.extract_slice %in[%i, %j] [1, 1] [1, 1]
       : tensor<8x2xf32> to tensor<1x1xf32>
 
@@ -383,7 +384,7 @@ func.func @fold_extract_from_elements_into_gml_st(%in: tensor<8x2xf32>,
     %out_sub = tensor.from_elements %elem : tensor<1x1xf32>
 
     %tile = gml_st.tile [%i, %j] [1, 1] [1, 1] : !gml_st.tile<1x1>
-    gml_st.set_yield %out_sub into %out[%tile]
+    gml_st.set_yield %out_sub into %out_[%tile]
       : tensor<1x1xf32> into tensor<8x2xf32>[!gml_st.tile<1x1>]
   } : tensor<8x2xf32>
   func.return %copy: tensor<8x2xf32>

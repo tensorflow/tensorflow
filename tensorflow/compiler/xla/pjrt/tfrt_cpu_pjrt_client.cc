@@ -24,6 +24,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/tsl/platform/errors.h"
 
@@ -1756,6 +1757,40 @@ StatusOr<PjRtLoadedExecutable::Result> TfrtCpuExecutable::ExecuteHelper(
   return Result({/*future=*/std::move(future), /*buffers=*/std::move(res)});
 }
 
+static void MaybeDumpHloSnapshot(
+    const HloModule& module, RunId run_id,
+    const std::vector<PjRtBuffer*>& arguments,
+    const std::vector<std::unique_ptr<PjRtBuffer>>& results) {
+  if (!DumpingEnabledForHloModule(module)) {
+    return;
+  }
+  if (!module.config().debug_options().xla_dump_hlo_snapshots()) {
+    return;
+  }
+  xla::HloSnapshot hlo_snapshot;
+  *hlo_snapshot.mutable_hlo()->mutable_hlo_module() = module.ToProto();
+
+  for (auto* argument : arguments) {
+    *hlo_snapshot.add_arguments() = (*argument->ToLiteralSync())->ToProto();
+  }
+
+  // If there are multiple results, wrap them in a tuple.
+  if (results.size() == 1) {
+    *hlo_snapshot.mutable_result() = (*results[0]->ToLiteralSync())->ToProto();
+  } else {
+    std::vector<Literal> result_literals;
+    result_literals.reserve(results.size());
+    for (auto& result : results) {
+      result_literals.push_back(std::move(**result->ToLiteralSync()));
+    }
+    *hlo_snapshot.mutable_result() =
+        LiteralUtil::MakeTupleOwned(std::move(result_literals)).ToProto();
+  }
+
+  DumpToFileInDir(module, "", absl::StrCat("snapshot.", run_id.ToInt(), ".pb"),
+                  hlo_snapshot.SerializeAsString());
+}
+
 StatusOr<std::vector<std::vector<std::unique_ptr<PjRtBuffer>>>>
 TfrtCpuExecutable::Execute(
     absl::Span<const std::vector<PjRtBuffer*>> argument_handles,
@@ -1811,6 +1846,8 @@ TfrtCpuExecutable::Execute(
       (*returned_futures)[0] = std::move(*statusor->future);
     }
 
+    MaybeDumpHloSnapshot(cpu_executable_->module(), run_id, argument_handles[0],
+                         wrapped_results[0]);
   } else {
     // Gang schedule collectives to ensure that collectives with the same RunId
     // are run at the same time. We conservatively run only one collective at a

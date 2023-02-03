@@ -83,7 +83,7 @@ tsl::StatusOr<StreamExecutor*> ExecutorCache::Get(
           }
         }
         return tsl::Status(
-            port::error::NOT_FOUND,
+            tsl::error::NOT_FOUND,
             absl::StrFormat("No executors own stream %p", config.gpu_stream));
       }
     }
@@ -93,14 +93,14 @@ tsl::StatusOr<StreamExecutor*> ExecutorCache::Get(
       entry = &it->second;
     } else {
       return tsl::Status(
-          port::error::NOT_FOUND,
+          tsl::error::NOT_FOUND,
           absl::StrFormat("No executors registered for ordinal %d",
                           config.ordinal));
     }
   }
   absl::ReaderMutexLock lock{&entry->configurations_mutex};
   if (entry->configurations.empty()) {
-    return tsl::Status(port::error::NOT_FOUND,
+    return tsl::Status(tsl::error::NOT_FOUND,
                        absl::StrFormat("No executors registered for ordinal %d",
                                        config.ordinal));
   }
@@ -111,7 +111,7 @@ tsl::StatusOr<StreamExecutor*> ExecutorCache::Get(
       return iter.second.get();
     }
   }
-  return tsl::Status(port::error::NOT_FOUND,
+  return tsl::Status(tsl::error::NOT_FOUND,
                      "No executor found with a matching config.");
 }
 

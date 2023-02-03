@@ -1,6 +1,5 @@
 // RUN: mlir-hlo-opt %s --gml-st-cpu-transform-map="tile-size=8" \
-// RUN: --split-input-file \
-// RUN: | FileCheck %s
+// RUN: --split-input-file | FileCheck %s
 
 func.func @map_unary(%input: tensor<?x?xf32>, %init: tensor<?x?xf32>)
                   -> tensor<?x?xf32> {
@@ -25,39 +24,41 @@ func.func @map_unary(%input: tensor<?x?xf32>, %init: tensor<?x?xf32>)
 
 // CHECK-NEXT: %[[MAIN_PAR:.*]] = gml_st.parallel (%[[MAIN_I:.*]], %[[MAIN_J:.*]]) =
 // CHECK-SAME:     (%[[C0]], %[[C0]]) to (%[[DIM_0]], %[[MAP_DIM_1]])
-// CHECK-SAME:     step (%[[C1]], %[[C8]]) {
+// CHECK-SAME:     step (%[[C1]], %[[C8]]) outs (%[[INIT_:.*]] = %[[INIT]]
 // CHECK-NEXT:   %[[INPUT_SLICE:.*]] = tensor.extract_slice %[[INPUT]]
-// CHECK-NEXT:   %[[INIT_SLICE:.*]] = tensor.extract_slice %[[INIT]]
+// CHECK-NEXT:   %[[INIT_SLICE:.*]] = tensor.extract_slice %[[INIT_]]
 // CHECK-NEXT:   %[[MAPPED:.*]] = linalg.map { math.absf }
 // CHECK-SAME:     ins(%[[INPUT_SLICE]] : tensor<1x?xf32>)
 // CHECK-SAME:     outs(%[[INIT_SLICE]] : tensor<1x?xf32>)
 // CHECK-NEXT:   %[[TILE:.*]] = gml_st.tile [%[[MAIN_I]], %[[MAIN_J]]]
 // CHECK-SAME:                          [1, %[[C8]]] [1, 1]
-// CHECK-NEXT:   gml_st.set_yield %[[MAPPED]] into %[[INIT]][%[[TILE]]]
+// CHECK-NEXT:   gml_st.set_yield %[[MAPPED]] into %[[INIT_]][%[[TILE]]]
 // CHECK-NEXT: }
 
 // CHECK-NEXT: %[[RESULT:.*]] = gml_st.parallel (%[[I:.*]], %[[J:.*]]) =
 // CHECK-SAME:     (%[[C0]], %[[MAP_DIM_1]]) to (%[[DIM_0]], %[[DIM_1]])
-// CHECK-SAME:     step (%[[C1]], %[[C8]]) {
+// CHECK-SAME:     step (%[[C1]], %[[C8]])
+// CHECK-SAME:     outs (%[[MAIN_PAR_:.*]] = %[[MAIN_PAR]]
 // CHECK:        %[[MAP_DIM:.*]] = affine.apply #{{.*}}(%[[J]])[%[[DIM_1]]]
 // CHECK-NEXT:   %[[INPUT_SLICE:.*]] = tensor.extract_slice %[[INPUT]]
-// CHECK-NEXT:   %[[INIT_SLICE:.*]] = tensor.extract_slice %[[MAIN_PAR]]
+// CHECK-NEXT:   %[[INIT_SLICE:.*]] = tensor.extract_slice %[[MAIN_PAR_]]
 
 // CHECK:        %[[RESULT1:.*]] = gml_st.parallel (%[[I1:.*]], %[[J1:.*]]) =
+// CHECK-SAME:       outs (%[[INIT_SLICE_:.*]] = %[[INIT_SLICE]]
 // CHECK-NEXT:     %[[INPUT_SLICE1:.*]] = tensor.extract_slice %[[INPUT_SLICE]]
-// CHECK-NEXT:     %[[INIT_SLICE1:.*]] = tensor.extract_slice %[[INIT_SLICE]]
+// CHECK-NEXT:     %[[INIT_SLICE1:.*]] = tensor.extract_slice %[[INIT_SLICE_]]
 // CHECK-NEXT:     %[[MAPPED:.*]] = linalg.map { math.absf }
 // CHECK-SAME:       ins(%[[INPUT_SLICE1]] : tensor<1x1xf32>)
 // CHECK-SAME:       outs(%[[INIT_SLICE1]] : tensor<1x1xf32>)
 // CHECK-NEXT:     %[[TILE1:.*]] = gml_st.tile [%[[I1]], %[[J1]]]
 // CHECK-SAME:                                 [1, 1] [1, 1]
 // CHECK-NEXT:     gml_st.set_yield %[[MAPPED]]
-// CHECK-SAME:         into %[[INIT_SLICE]][%[[TILE1]]]
+// CHECK-SAME:         into %[[INIT_SLICE_]][%[[TILE1]]]
 // CHECK-NEXT:   }
 
 // CHECK-NEXT:   %[[TILE:.*]] = gml_st.tile [%[[I]], %[[J]]]
 // CHECK-SAME:                          [1, %[[MAP_DIM]]] [1, 1]
-// CHECK-NEXT:   gml_st.set_yield %[[RESULT1]] into %[[MAIN_PAR]][%[[TILE]]]
+// CHECK-NEXT:   gml_st.set_yield %[[RESULT1]] into %[[MAIN_PAR_]][%[[TILE]]]
 // CHECK-NEXT: }
 // CHECK-NEXT: return %[[RESULT]]
 
@@ -102,7 +103,8 @@ func.func @map_broadcast_fuse(%arg0: tensor<?xf32>, %arg1: tensor<?x?x?xf32>,
 // CHECK-SAME:     (%[[MAIN_I:.*]], %[[MAIN_J:.*]], %[[MAIN_K:.*]]) =
 // CHECK-SAME:     (%[[C0]], %[[C0]], %[[C0]]) to
 // CHECK-SAME:     (%[[DIM_0]], %[[DIM_1]], %[[MAP_DIM_2]])
-// CHECK-SAME:     step (%[[C1]], %[[C1]], %[[C8]]) {
+// CHECK-SAME:     step (%[[C1]], %[[C1]], %[[C8]])
+// CHECK-SAME:     outs (%[[INIT1_:.*]] = %[[INIT1]]:
 // CHECK-DAG:    %[[ARG0_SLICE:.*]] = tensor.extract_slice %[[ARG0]]
 // CHECK-DAG:    %[[INIT0_SLICE:.*]] = tensor.extract_slice %[[INIT0]]
 
@@ -115,28 +117,30 @@ func.func @map_broadcast_fuse(%arg0: tensor<?xf32>, %arg1: tensor<?x?x?xf32>,
 // CHECK-SAME:     ins(%[[ABS]]
 // CHECK-SAME:     outs(%[[INIT1_SLICE]]
 // CHECK:        %[[ARG1_SLICE:.*]] = tensor.extract_slice %[[ARG1]]
+// CHECK:        %[[INIT1_SLICE_:.*]] = tensor.extract_slice %[[INIT1_]]
 // CHECK-NEXT:   %[[MAPPED:.*]] = linalg.map
 // CHECK-SAME:     ins(%[[BCAST]], %[[ARG1_SLICE]] : tensor<1x1x?xf32>
-// CHECK-SAME:     outs(%[[INIT1_SLICE]] : tensor<1x1x?xf32>)
+// CHECK-SAME:     outs(%[[INIT1_SLICE_]] : tensor<1x1x?xf32>)
 // CHECK:        %[[INIT1_TILE:.*]] = gml_st.tile [%[[MAIN_I]], %[[MAIN_J]], %[[MAIN_K]]]
-// CHECK:        gml_st.set_yield %[[MAPPED]] into %[[INIT1]][%[[INIT1_TILE]]]
+// CHECK:        gml_st.set_yield %[[MAPPED]] into %[[INIT1_]][%[[INIT1_TILE]]]
 // CHECK-NEXT: }
 
 // CHECK-NEXT: %[[RESULT:.*]] = gml_st.parallel
 // CHECK-SAME:     (%[[I:.*]], %[[J:.*]], %[[K:.*]]) =
 // CHECK-SAME:     (%[[C0]], %[[C0]], %[[MAP_DIM_2]]) to
 // CHECK-SAME:     (%[[DIM_0]], %[[DIM_1]], %[[DIM_2]])
-// CHECK-SAME:     step (%[[C1]], %[[C1]], %[[C8]]) {
+// CHECK-SAME:     step (%[[C1]], %[[C1]], %[[C8]])
+// CHECK-SAME:     outs (%[[MAIN_PAR_:.*]] = %[[MAIN_PAR]]:
 // CHECK:        %[[MAP_DIM:.*]] = affine.apply #{{.*}}(%[[K]])[%[[DIM_2]]]
-// CHECK-DAG:    %[[ARG0_SLICE:.*]] = tensor.extract_slice %[[ARG0]][%[[I]]]
+// CHECK-DAG:    %[[ARG1_SLICE:.*]] = tensor.extract_slice %[[ARG1]]
 // CHECK-DAG:    %[[INIT0_SLICE:.*]] = tensor.extract_slice %[[INIT0]]
-// CHECK-DAG:    %[[INIT1_SLICE:.*]] = tensor.extract_slice %[[MAIN_PAR]]
-// CHECK-SAME:     [%[[I]], %[[J]], %[[K]]]
+// CHECK-DAG:    %[[MAIN_PAR_SLICE:.*]] = tensor.extract_slice %[[MAIN_PAR]]
+// CHECK-DAG:    %[[MAIN_PAR_SLICE_:.*]] = tensor.extract_slice %[[MAIN_PAR_]]
 
-// CHECK:        %[[ARG1_SLICE:.*]] = tensor.extract_slice %[[ARG1]]
 
 // CHECK:        %[[RESULT1:.*]] = gml_st.parallel
 // CHECK-SAME:       (%[[I1:.*]], %[[J1:.*]], %[[K1:.*]]) =
+// CHECK-SAME:       outs (%[[OUT_:.*]] = %[[MAIN_PAR_SLICE_]]:
 // CHECK-DAG:      %[[ARG0_SLICE1:.*]] = tensor.extract_slice %[[ARG0_SLICE]][%[[I1]]]
 // CHECK-DAG:      %[[INIT0_SLICE1:.*]] = tensor.extract_slice %[[INIT0_SLICE]][%[[I1]]]
 // CHECK:          %[[ABS1:.*]] = linalg.map
@@ -148,13 +152,14 @@ func.func @map_broadcast_fuse(%arg0: tensor<?xf32>, %arg1: tensor<?x?x?xf32>,
 // CHECK-SAME:       ins(%[[ABS1]]
 // CHECK-SAME:       outs(%[[INIT1_SLICE1]]
 // CHECK:          %[[ARG1_SLICE1:.*]] = tensor.extract_slice %[[ARG1_SLICE]]
+// CHECK:          %[[OUT_SLICE_:.*]] = tensor.extract_slice %[[OUT_]]
 // CHECK-NEXT:     %[[MAPPED:.*]] = linalg.map
 // CHECK-SAME:       ins(%[[BCAST]], %[[ARG1_SLICE1]] : tensor<1x1x1xf32>
-// CHECK-SAME:       outs(%[[INIT1_SLICE1]] : tensor<1x1x1xf32>)
+// CHECK-SAME:       outs(%[[OUT_SLICE_]] : tensor<1x1x1xf32>)
 // CHECK-DAG:      %[[INIT1_TILE1:.*]] = gml_st.tile [%[[I1]], %[[J1]], %[[K1]]]
-// CHECK:          gml_st.set_yield %[[MAPPED]] into %[[INIT1_SLICE]][%[[INIT1_TILE1]]]
+// CHECK:          gml_st.set_yield %[[MAPPED]] into %[[OUT_]][%[[INIT1_TILE1]]]
 // CHECK-DAG:    %[[INIT1_TILE:.*]] = gml_st.tile [%[[I]], %[[J]], %[[K]]]
-// CHECK:        gml_st.set_yield %[[RESULT1]] into %[[MAIN_PAR]][%[[INIT1_TILE]]]
+// CHECK:        gml_st.set_yield %[[RESULT1]] into %[[MAIN_PAR_]][%[[INIT1_TILE]]]
 // CHECK-NEXT: }
 // CHECK-NEXT: return %[[RESULT]]
 

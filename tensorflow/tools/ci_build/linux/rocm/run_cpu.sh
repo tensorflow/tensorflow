@@ -51,5 +51,4 @@ bazel test \
       -//tensorflow/c/eager:c_api_distributed_test \
       -//tensorflow/python/data/experimental/kernel_tests/service:local_workers_test \
       -//tensorflow/python/data/experimental/kernel_tests/service:worker_tags_test \
-      -//tensorflow/compiler/xla/mlir_hlo/tools/mlir_interpreter/framework/tests:interpreter_value_test \
-      -//tensorflow/compiler/xla/mlir_hlo/tools/mlir_interpreter/framework/tests:tensor_or_memref_test \
+      

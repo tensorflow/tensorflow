@@ -21,6 +21,7 @@ limitations under the License.
 #include <utility>
 
 #include "absl/base/attributes.h"
+#include "absl/strings/cord.h"
 #include "absl/strings/str_join.h"
 #include "tensorflow/tsl/platform/logging.h"
 #include "tensorflow/tsl/platform/macros.h"
@@ -102,7 +103,7 @@ inline void InsertPayloads(
     ::tsl::Status& status,
     const std::unordered_map<std::string, std::string>& payloads) {
   for (const auto& payload : payloads) {
-    status.SetPayload(payload.first, payload.second);
+    status.SetPayload(payload.first, absl::Cord(payload.second));
   }
 }
 
@@ -110,7 +111,7 @@ inline void InsertPayloads(
 // payloads in the destination if they exist with the same key.
 inline void CopyPayloads(const ::tsl::Status& from, ::tsl::Status& to) {
   from.ForEachPayload([&to](tsl::StringPiece key, tsl::StringPiece value) {
-    to.SetPayload(key, value);
+    to.SetPayload(key, absl::Cord(value));
   });
 }
 

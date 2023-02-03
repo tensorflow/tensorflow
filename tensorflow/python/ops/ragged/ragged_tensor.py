@@ -32,6 +32,7 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.framework import type_spec
+from tensorflow.python.framework import type_spec_registry
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import control_flow_ops
@@ -2305,7 +2306,7 @@ def match_row_splits_dtypes(*tensors, **kwargs):
 # RaggedTensorSpec
 #===============================================================================
 @tf_export("RaggedTensorSpec")
-@type_spec.register("tf.RaggedTensorSpec")
+@type_spec_registry.register("tf.RaggedTensorSpec")
 class RaggedTensorSpec(type_spec.BatchableTypeSpec):
   """Type specification for a `tf.RaggedTensor`."""
 

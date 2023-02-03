@@ -705,6 +705,7 @@ class SanitizationTest(test.TestCase):
     self.assertEqual("a___", function_type.sanitize_arg_name("a%$#"))
     self.assertEqual("arg____", function_type.sanitize_arg_name("%$#"))
     self.assertEqual("foo", function_type.sanitize_arg_name("foo"))
+    self.assertEqual("Foo", function_type.sanitize_arg_name("Foo"))
     self.assertEqual("arg_96ab_cd___53",
                      function_type.sanitize_arg_name("96ab.cd//?53"))
 

@@ -49,6 +49,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/iterator_util.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/map_util.h"
+#include "tensorflow/compiler/xla/printer.h"
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/compiler/xla/service/mapped_ptr_container_sorter.h"
 #include "tensorflow/compiler/xla/service/name_uniquer.h"
@@ -65,7 +66,7 @@ namespace xla {
 class HloComputation;
 class HloModule;
 
-std::string PrintName(const std::string& name, bool print_ids);
+absl::string_view PrintName(absl::string_view name, bool print_ids);
 
 // A bunch of switches that control how the hlo text should be printed.
 class HloPrintOptions {
@@ -1504,6 +1505,12 @@ class HloInstruction {
   // function, e.g. the signature of an F32 add is (F32, F32) -> F32.
   std::string SignatureString() const;
 
+  // Prints a debugging string that represents this instruction.
+  void Print(Printer* printer) const {
+    return Print(printer, HloPrintOptions());
+  }
+  void Print(Printer* printer, const HloPrintOptions& options) const;
+
   // Returns a debugging string that represents this instruction.
   //
   // (We express the default options using an overload rather than a default
@@ -1515,10 +1522,10 @@ class HloInstruction {
   std::string ToString() const { return ToString(HloPrintOptions()); }
   std::string ToString(const HloPrintOptions& options) const;
 
-  // Components of the ToString() representation:
+  // Components of the Print() and ToString() representation:
 
-  // Returns a string representation of the operand list.
-  std::string OperandsToString(const HloPrintOptions& options) const;
+  // Prints a string representation of the operand list.
+  void PrintOperands(Printer* printer, const HloPrintOptions& options) const;
 
   // Returns string representation of op-specific attributes.
   std::vector<std::string> ExtraAttributesToString(
@@ -1532,9 +1539,9 @@ class HloInstruction {
   // The canonical string representation needs to name operands and instruction
   // names in a consistent way. This is implemented through the
   // canonical_name_map.
-  std::string ToStringWithCanonicalNameMap(
-      const HloPrintOptions& options,
-      CanonicalNameMap* canonical_name_map) const;
+  void PrintWithCanonicalNameMap(Printer* printer,
+                                 const HloPrintOptions& options,
+                                 CanonicalNameMap* canonical_name_map) const;
 
   // Returns a serialized representation of this instruction.
   virtual HloInstructionProto ToProto() const;
@@ -2281,8 +2288,8 @@ class HloInstruction {
       const std::optional<int64_t>& operand_idx) const;
 
   // Prints an operand to a string. Accessed by friend class HloInstruction.
-  virtual std::string OperandsToStringWithCanonicalNameMap(
-      const HloPrintOptions& options,
+  virtual void PrintOperandsWithCanonicalNameMap(
+      Printer* printer, const HloPrintOptions& options,
       CanonicalNameMap* canonical_name_map) const;
 
   // See comments on Identical().
