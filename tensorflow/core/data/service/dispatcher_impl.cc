@@ -85,12 +85,10 @@ constexpr char kJournalDir[] = "tf_data_dispatcher_journal";
 // The name of the datasets directory inside the dispatcher's working directory.
 constexpr char kDatasetsDir[] = "datasets";
 
-// TODO(b/266255983): Use `absl::Duration`.
-constexpr int64_t kDefaultIterationGcCheckIntervalMs =
-    10 * 60 * 1000;                                              // 10 minutes.
-constexpr int64_t kDefaultIterationGcTimeoutMs = 5 * 60 * 1000;  // 5 minutes.
-constexpr int64_t kDefaultClientTimeoutMs = 2 * 60 * 1000;       // 2 minutes.
-constexpr int64_t kDefaultWorkerTimeoutMs = 1 * 60 * 1000;       // 1 minute.
+constexpr absl::Duration kDefaultIterationGcCheckInterval = absl::Minutes(10);
+constexpr absl::Duration kDefaultIterationGcTimeout = absl::Minutes(5);
+constexpr absl::Duration kDefaultClientTimeout = absl::Minutes(2);
+constexpr absl::Duration kDefaultWorkerTimeout = absl::Minutes(1);
 
 constexpr std::array<const char*, 8> kNodeNameSharingOps = {
     "HashTable",
@@ -155,16 +153,20 @@ void PrepareGraph(GraphDef* graph) {
 DispatcherConfig ApplyConfigDefaults(const DispatcherConfig& config) {
   DispatcherConfig new_config(config);
   if (new_config.job_gc_check_interval_ms() == 0) {
-    new_config.set_job_gc_check_interval_ms(kDefaultIterationGcCheckIntervalMs);
+    new_config.set_job_gc_check_interval_ms(
+        absl::ToInt64Milliseconds(kDefaultIterationGcCheckInterval));
   }
   if (new_config.job_gc_timeout_ms() == 0) {
-    new_config.set_job_gc_timeout_ms(kDefaultIterationGcTimeoutMs);
+    new_config.set_job_gc_timeout_ms(
+        absl::ToInt64Milliseconds(kDefaultIterationGcTimeout));
   }
   if (new_config.client_timeout_ms() == 0) {
-    new_config.set_client_timeout_ms(kDefaultClientTimeoutMs);
+    new_config.set_client_timeout_ms(
+        absl::ToInt64Milliseconds(kDefaultClientTimeout));
   }
   if (new_config.worker_timeout_ms() == 0) {
-    new_config.set_worker_timeout_ms(kDefaultWorkerTimeoutMs);
+    new_config.set_worker_timeout_ms(
+        absl::ToInt64Milliseconds(kDefaultWorkerTimeout));
   }
   return new_config;
 }
