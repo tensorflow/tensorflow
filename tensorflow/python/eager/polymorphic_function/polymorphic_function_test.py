@@ -4781,12 +4781,12 @@ class MultiDeviceTest(test.TestCase, parameterized.TestCase):
 
     # dtype mismatch
     value = constant_op.constant(1)
-    with self.assertRaisesRegex(ValueError, 'Value .* to a tensor with dtype'):
+    with self.assertRaisesRegex(ValueError, 'Tensor conversion requested'):
       lazy_capture(2.0)
 
     # shape mismatch
     value = constant_op.constant([1.0])
-    with self.assertRaisesRegex(ValueError, 'Value .* shape'):
+    with self.assertRaisesRegex(AssertionError, 'Failed to cast'):
       lazy_capture(2.0)
 
   def testDeferredCaptureReturnNestWithCompositeTensor(self):

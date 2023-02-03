@@ -45,7 +45,6 @@ from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.saved_model import save_context
-from tensorflow.python.types import internal
 from tensorflow.python.util import compat
 from tensorflow.python.util import nest
 from tensorflow.python.util import object_identity
@@ -368,13 +367,12 @@ class FuncGraph(ops.Graph):
     if key is None:
       key = object()
     if key not in self._deferred_captures:
+      trace_ctx = trace_type.InternalTracingContext(True)
+      spec = trace_type.from_value(spec, trace_ctx)
 
       if placeholder is None:
-
-        trace_ctx = trace_type.InternalTracingContext(False)
-        capture_trace_type = trace_type.from_value(spec, trace_ctx)
         placeholder_ctx = trace_type.InternalPlaceholderContext(self)
-        placeholder = capture_trace_type.placeholder_value(placeholder_ctx)
+        placeholder = spec.placeholder_value(placeholder_ctx)
 
       def wrapped_closure():
 
@@ -405,32 +403,8 @@ class FuncGraph(ops.Graph):
         else:
           ret_nest = closure()
 
-        nest.assert_same_structure(spec, ret_nest, expand_composites=True)
-        # This uses the tensor dtype defined in `spec` when converting values
-        # in `ret_nest` to tensors.
-        # pylint: disable=protected-access
-        def _components_helper(s, r):
-          if isinstance(s, internal.TensorSpec):
-            try:
-              r = ops.convert_to_tensor(r, s.dtype)
-            except (TypeError, ValueError):
-              raise ValueError(
-                  f"Value {r} is not convertible to a tensor with "
-                  f"dtype {s.dtype} and shape {s.shape}."
-              )
-            if not r.shape.is_compatible_with(s.shape):
-              raise ValueError(
-                  f"Value {r} is not convertible to a tensor with "
-                  f"dtype {s.dtype} and shape {s.shape}."
-              )
-          return s._to_components(r)
-        y = nest.map_structure(
-            _components_helper,
-            spec,
-            ret_nest,
-            expand_composites=False)
-        # pylint: enable=protected-access
-        return nest.flatten(y, expand_composites=True)
+        ret_nest = spec._cast(ret_nest, trace_type.InternalCastContext)  # pylint: disable=protected-access
+        return spec._to_tensors(ret_nest)  # pylint: disable=protected-access
 
       wrapped_closure.output_spec = spec
       self._deferred_captures[key] = (wrapped_closure, placeholder)
