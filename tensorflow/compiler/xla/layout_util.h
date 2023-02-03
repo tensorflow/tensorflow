@@ -165,8 +165,14 @@ class LayoutUtil {
 
   // Returns the minor_to_major array for the given Shape.  Requires that the
   // shape is an array.
-  static absl::Span<const int64_t> MinorToMajor(const Shape& shape);
-  static absl::Span<const int64_t> MinorToMajor(const Layout& layout);
+  static inline absl::Span<const int64_t> MinorToMajor(const Shape& shape) {
+    DCHECK(shape.IsArray());
+    return shape.layout().minor_to_major();
+  }
+
+  static inline absl::Span<const int64_t> MinorToMajor(const Layout& layout) {
+    return layout.minor_to_major();
+  }
 
   // Major(0) is the most major logical dimension number, Major(1) is the
   // second-most-major logical dimension number and so on.
@@ -182,11 +188,22 @@ class LayoutUtil {
   // the most major. Then Major(0) is the most major logical dimension, so Major
   // maps the physical dimension number 0 to the most major logical dimension
   // number Major(0).
-  static int64_t Major(const Layout& layout, int64_t physical_dimension_number);
+  static int64_t Major(const Layout& layout,
+                       int64_t physical_dimension_number) {
+    DCHECK_LE(0, physical_dimension_number);
+    DCHECK_LT(physical_dimension_number, layout.minor_to_major_size());
+    return Minor(layout,
+                 layout.minor_to_major_size() - 1 - physical_dimension_number);
+  }
 
   // Minor(0) is the most minor logical dimension number, minor(1) is the
   // second-most-minor logical dimension number and so on.
-  static int64_t Minor(const Layout& layout, int64_t physical_dimension_number);
+  static inline int64_t Minor(const Layout& layout,
+                              int64_t physical_dimension_number) {
+    DCHECK_LE(0, physical_dimension_number);
+    DCHECK_LT(physical_dimension_number, layout.minor_to_major_size());
+    return layout.minor_to_major(physical_dimension_number);
+  }
 
   // Returns the inverse mapping of the Major() function. More precisely, return
   // a vector v such that if l == Major(p), then v[l] == p.
