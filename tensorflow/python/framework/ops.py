@@ -5595,7 +5595,7 @@ def _colocate_with_for_gradient(op, gradient_uid, ignore_existing=False):
   if context.executing_eagerly():
     if op is not None:
       if not hasattr(op, "device"):
-        op = indexed_slices.internal_convert_to_tensor_or_indexed_slices(op)
+        op = convert_to_tensor(op)
       return device(op.device)
     else:
       return NullContextmanager()
@@ -7211,8 +7211,11 @@ def _op_to_colocate_with(v, graph):
       return graph.capture(v.handle).op, device_only_candidate
     else:
       return v.handle.op, device_only_candidate
-  return indexed_slices.internal_convert_to_tensor_or_indexed_slices(
-      v, as_ref=True).op, None
+
+  if isinstance(v, internal.NativeObject):
+    return v.op, None
+  else:
+    return convert_to_tensor(v, as_ref=True).op, None
 
 
 def _is_keras_symbolic_tensor(x):
