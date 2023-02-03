@@ -1433,6 +1433,7 @@ pytype_library(
         "//tensorflow/core:protos_all_py",
         "//tensorflow/core/function/trace_type",
         "//tensorflow/python:platform",
+        "//tensorflow/python/saved_model:nested_structure_coder",
         "//tensorflow/python/types",
         "//tensorflow/python/util",
         "//third_party/py/numpy",

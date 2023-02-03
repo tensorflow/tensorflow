@@ -28,6 +28,8 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import type_spec_registry
 from tensorflow.python.platform import tf_logging as logging
+# TODO(b/238903802): Remove dependency on nested_structure_coder.
+from tensorflow.python.saved_model import nested_structure_coder
 from tensorflow.python.types import internal
 from tensorflow.python.types import trace
 from tensorflow.python.util import _pywrap_utils
@@ -42,10 +44,6 @@ from tensorflow.tools.docs import doc_controls
 # Use LazyLoader to avoid circular dependencies.
 ops = LazyLoader("ops", globals(),
                  "tensorflow.python.framework.ops")
-# TODO(b/238903802): Remove this dependency.
-nested_structure_coder = LazyLoader(
-    "nested_structure_coder", globals(),
-    "tensorflow.python.saved_model.nested_structure_coder")
 
 
 @tf_export("TypeSpec", v1=["TypeSpec", "data.experimental.Structure"])
