@@ -94,6 +94,19 @@ namespace tensorflow {
 
 namespace {
 
+constexpr char kCpuDevice[] = "CPU";
+constexpr char kGpuDevice[] = "GPU";
+constexpr char kTpuDevice[] = "TPU";
+
+constexpr char kEnabled[] = "enabled";
+constexpr char kDisabled[] = "disabled";
+
+auto* function_compile_counter =
+    monitoring::Counter<2>::New("/tensorflow/core/tf_function_compile",
+                                "The number of times that TF function is "
+                                "called for different compilation options.",
+                                "device", "compilation_option");
+
 const string& DeviceNameOrUnspecified(Device* device) {
   static string* unspecified_string = new string("<unspecified>");
   return (device == nullptr) ? *unspecified_string : device->name();
@@ -474,6 +487,35 @@ Status MustCompileWithXLA(const EagerOperation* op, const EagerContext& ctx,
 #endif
 
   return OkStatus();
+}
+
+void UpdateCompileCounter(const EagerOperation* op, bool compile_with_xla,
+                          bool has_tpu_replication) {
+  if (has_tpu_replication) {
+    function_compile_counter->GetCell(kTpuDevice, kEnabled)->IncrementBy(1);
+    return;
+  }
+
+  string device_type = "Unknown";
+  if (op->GetDeviceParsedName().type == "XLA_CPU" ||
+      op->GetDeviceParsedName().type == "CPU") {
+    device_type = kCpuDevice;
+  }
+  if (op->GetDeviceParsedName().type == "XLA_GPU" ||
+      op->GetDeviceParsedName().type == "GPU") {
+    device_type = kGpuDevice;
+  }
+  if (op->GetDeviceParsedName().type == "TPU") {
+    device_type = kTpuDevice;
+  }
+
+  string compilation_option = kDisabled;
+  if (compile_with_xla) {
+    compilation_option = kEnabled;
+  }
+
+  function_compile_counter->GetCell(device_type, compilation_option)
+      ->IncrementBy(1);
 }
 
 Status VerifyWrappableInCallOp(const OpDef& opdef, EagerOperation* op) {
@@ -1157,6 +1199,7 @@ Status GetOrCreateKernelAndDevice(
       bool has_tpu_replication = false;
       TF_RETURN_IF_ERROR(MustCompileWithXLA(op, ctx, &compile_with_xla));
       TF_RETURN_IF_ERROR(HasTPUReplication(*op, ctx, &has_tpu_replication));
+      UpdateCompileCounter(op, compile_with_xla, has_tpu_replication);
 
       if (compile_with_xla && !has_tpu_replication) {
         if (ctx.JitCompileRewrite()) {
