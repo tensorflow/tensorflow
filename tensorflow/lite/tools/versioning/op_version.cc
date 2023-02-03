@@ -901,8 +901,13 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
       }
       return 2;
     case BuiltinOperator_CAST:
-      if (op_sig.inputs.at(0).type == kTfLiteUInt16 ||
-          op_sig.outputs.at(0).type == kTfLiteUInt16) {
+      if (op_sig.inputs.at(0).type == kTfLiteFloat64 ||
+          op_sig.outputs.at(0).type == kTfLiteFloat64 ||
+          op_sig.inputs.at(0).type == kTfLiteFloat16 ||
+          op_sig.outputs.at(0).type == kTfLiteFloat16) {
+        return 5;
+      } else if (op_sig.inputs.at(0).type == kTfLiteUInt16 ||
+                 op_sig.outputs.at(0).type == kTfLiteUInt16) {
         return 4;
       } else if (op_sig.inputs.at(0).type == kTfLiteInt8 ||
                  op_sig.outputs.at(0).type == kTfLiteInt8) {
