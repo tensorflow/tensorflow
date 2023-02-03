@@ -1,7 +1,8 @@
 // RUN: tf-quant-opt %s -split-input-file -verify-diagnostics \
 // RUN:   -quant-insert-restore-op | FileCheck %s
 
-// CHECK-LABEL: module
+// RestoreV2 op created for a single VarHandleOp.
+
 module attributes {tf_saved_model.semantics} {
   "tf_saved_model.session_initializer"() {initializers = [@init_func_restore_op]} : () -> ()
 
@@ -18,18 +19,23 @@ module attributes {tf_saved_model.semantics} {
 // Check that an argument ("__tf_file_prefix") is created.
 // CHECK-SAME: %[[ARG_0:.*]]: tensor<!tf_type.string> {tf_saved_model.index_path = ["__tf_file_prefix"]}
 
+// Original `AssignVariableOp(VarHandleOp, Const)` pattern persists.
+// CHECK-DAG: %[[CST_0:.*]] = "tf.Const"() {{.*value = dense<1.000000e\+00> : tensor<2xf32>.*}}
 // CHECK-DAG: %[[VAR_HANDLE:.*]] = "tf.VarHandleOp"() {{.*shared_name = "var_0".*}} : () -> tensor<!tf_type.resource<tensor<2xf32>>>
-// CHECK-DAG: %[[CST_0:.*]] = "tf.Const"() {{.*value = dense<"var_0"> : tensor<1x!tf_type.string>.*}}
-// CHECK-DAG: %[[CST_1:.*]] = "tf.Const"() {{.*value = dense<""> : tensor<1x!tf_type.string>.*}}
+// CHECK: "tf.AssignVariableOp"(%[[VAR_HANDLE]], %[[CST_0]]) : (tensor<!tf_type.resource<tensor<2xf32>>>, tensor<2xf32>) -> ()
+
+// CHECK-DAG: %[[CST_1:.*]] = "tf.Const"() {{.*value = dense<"var_0"> : tensor<1x!tf_type.string>.*}}
+// CHECK-DAG: %[[CST_2:.*]] = "tf.Const"() {{.*value = dense<""> : tensor<1x!tf_type.string>.*}}
 
 // Test that RestoreV2 op is created with 1 resulting value.
-// CHECK: %[[RESTORE:.*]] = "tf.RestoreV2"(%[[ARG_0]], %[[CST_0]], %[[CST_1]]) : (tensor<!tf_type.string>, tensor<1x!tf_type.string>, tensor<1x!tf_type.string>) -> tensor<2xf32>
+// CHECK: %[[RESTORE:.*]] = "tf.RestoreV2"(%[[ARG_0]], %[[CST_1]], %[[CST_2]]) : (tensor<!tf_type.string>, tensor<1x!tf_type.string>, tensor<1x!tf_type.string>) -> tensor<2xf32>
 // CHECK: "tf.AssignVariableOp"(%[[VAR_HANDLE]], %[[RESTORE]]) {validate_shape = false} : (tensor<!tf_type.resource<tensor<2xf32>>>, tensor<2xf32>) -> ()
 }
 
 // -----
 
-// CHECK-LABEL: module
+// RestoreV2 op created for multiple VarHandleOps.
+
 module attributes {tf_saved_model.semantics} {
   "tf_saved_model.session_initializer"() {initializers = [@init_func_restore_op_multiple_variables]} : () -> ()
 
@@ -65,7 +71,9 @@ module attributes {tf_saved_model.semantics} {
 
 // -----
 
-// CHECK-LABEL: module
+// RestoreV2 op not created for `AssignVariableOp(VarHandleOp, Const)` patterns
+// in the initializer function of "init_op" type.
+
 module attributes {tf_saved_model.semantics} {
   "tf_saved_model.session_initializer"() {initializers = [@init_func_init_op]} : () -> ()
 
@@ -89,7 +97,9 @@ module attributes {tf_saved_model.semantics} {
 
 // -----
 
-// CHECK-LABEL: module
+// Test that `RestoreV2Op` is created even when the `Const` op is shared across
+// `AssignVariableOp`s.
+
 module attributes {tf_saved_model.semantics} {
   "tf_saved_model.session_initializer"() {initializers = [@init_func_restore_op_multiple_variables_sharing_const]} : () -> ()
 
@@ -127,7 +137,8 @@ module attributes {tf_saved_model.semantics} {
 
 // -----
 
-// CHECK-LABEL: module
+// Test that "tf.RestoreV2" is not created because there are no variables.
+
 module attributes {tf_saved_model.semantics} {
   "tf_saved_model.session_initializer"() {initializers = [@init_func_restore_op_no_variable]} : () -> ()
 
@@ -138,14 +149,13 @@ module attributes {tf_saved_model.semantics} {
     return
   }
 // CHECK: func.func @init_func_restore_op_no_variable()
-// Tests that "tf.RestoreV2" is not created because there are no variables.
 // CHECK-NOT: "tf.RestoreV2"
 }
 
 // -----
 
 // Test when there are no initializers.
-// CHECK-LABEL: module
+
 module attributes {tf_saved_model.semantics} {
   "tf_saved_model.session_initializer"() {initializers = []} : () -> ()
 // CHECK-NOT: "tf.RestoreV2"
@@ -154,7 +164,7 @@ module attributes {tf_saved_model.semantics} {
 // -----
 
 // Test when there is no SessionInitializerOp.
-// CHECK-LABEL: module
+
 module attributes {tf_saved_model.semantics} {
 // CHECK-NOT: "tf.RestoreV2"
 }

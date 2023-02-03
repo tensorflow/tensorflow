@@ -345,6 +345,7 @@ cc_library(
         "passes/quantize_composite_functions.cc",
         "passes/quantize_composite_functions.inc",
         "passes/quantized_function_library.h",
+        "passes/remove_var_init_by_const.cc",
         "passes/replace_cast_hacks_with_tf_xla_ops.cc",
         "passes/replace_cast_hacks_with_tf_xla_ops.inc",
         "passes/unfreeze_constants.cc",
