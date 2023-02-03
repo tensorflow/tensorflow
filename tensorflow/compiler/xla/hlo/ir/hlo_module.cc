@@ -57,6 +57,16 @@ namespace xla {
 HloModule::HloModule(const std::string& name, HloModuleConfig config)
     : HloModule(name, config, std::make_unique<CompilationEnvironments>()) {}
 
+HloModule::HloModule(const std::string& name, HloModuleConfig config,
+                     std::unique_ptr<CompilationEnvironments> comp_envs)
+    : name_(NameUniquer::GetSanitizedName(name)),
+      config_(std::move(config)),
+      unique_id_(next_unique_module_id_++),
+      metadata_(tsl::Env::Default()),
+      comp_envs_(std::move(comp_envs)) {
+  metadata_.set_canonical_module_id(unique_id_);
+}
+
 Status HloModule::set_schedule(HloSchedule schedule) {
   TF_RET_CHECK(schedule.module() == this);
   TF_RETURN_IF_ERROR(schedule.Verify());
@@ -1007,16 +1017,6 @@ HloComputation* HloModule::GetComputationWithName(absl::string_view name) {
       computations_in_module,
       [&](HloComputation* computation) { return computation->name() == name; });
   return it == computations_in_module.end() ? nullptr : *it;
-}
-
-HloModule::HloModule(const std::string& name, HloModuleConfig config,
-                     std::unique_ptr<CompilationEnvironments> comp_envs)
-    : name_(NameUniquer::GetSanitizedName(name)),
-      config_(std::move(config)),
-      unique_id_(next_unique_module_id_++),
-      metadata_(tsl::Env::Default()),
-      comp_envs_(std::move(comp_envs)) {
-  metadata_.set_canonical_module_id(unique_id_);
 }
 
 /* static */ std::atomic<int> HloModule::next_unique_module_id_(0);
