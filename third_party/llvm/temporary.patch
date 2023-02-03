@@ -1,0 +1,21 @@
+diff --git a/mlir/include/mlir/IR/OpDefinition.h b/third_party/llvm/llvm-project/mlir/include/mlir/IR/OpDefinition.h
+--- a/mlir/include/mlir/IR/OpDefinition.h
++++ b/mlir/include/mlir/IR/OpDefinition.h
+@@ -632,12 +632,13 @@ public:
+@@ -631,13 +631,13 @@ public:
+   class Impl
+       : public TraitBase<ConcreteType, OneTypedResult<ResultType>::Impl> {
+   public:
+-    TypedValue<ResultType> getResult() {
+-      return cast<TypedValue<ResultType>>(this->getOperation()->getResult(0));
++    mlir::TypedValue<ResultType> getResult() {
++      return cast<mlir::TypedValue<ResultType>>(this->getOperation()->getResult(0));
+     }
+ 
+     /// If the operation returns a single value, then the Op can be implicitly
+     /// converted to a Value. This yields the value of the only result.
+-    operator TypedValue<ResultType>() { return getResult(); }
++    operator mlir::TypedValue<ResultType>() { return getResult(); }
+ 
+     ResultType getType() { return getResult().getType(); }
+   };
