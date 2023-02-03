@@ -164,8 +164,6 @@ class FuncGraph(ops.Graph):
       or the global default Graph.
     captures: Maps external tensor -> internal tensor (i.e. input placeholder).
       The entries are in the order they were captured.
-    control_captures: Set of external ops on which this graph has a control
-      dependency.
     seed: The graph-level random seed.
     capture_by_value: If True, the func graph will capture Variables by value
       instead of reference.
@@ -205,7 +203,6 @@ class FuncGraph(ops.Graph):
     self.inputs = []
     self.outputs = []
     self.control_outputs = []
-    self.control_captures = object_identity.ObjectIdentitySet()
     self.structured_input_signature = structured_input_signature
     self.structured_outputs = structured_outputs
     self._resource_tensor_inputs = object_identity.ObjectIdentitySet()
@@ -445,7 +442,7 @@ class FuncGraph(ops.Graph):
         graph_element = c
       if graph_element is not None and getattr(graph_element, "graph",
                                                None) is not self:
-        self.control_captures.add(graph_element)
+        self._function_captures.control.add(graph_element)
       else:
         filtered_control_inputs.append(graph_element)
     return super().control_dependencies(filtered_control_inputs)
