@@ -4296,7 +4296,7 @@ Ba et al. 'Layer Normalization'
   }];
 
   let arguments = (
-    ins TFL_TensorOf<[F32, QI8]>:$input,
+    ins TFL_TensorOf<[F32, QI8, QI16]>:$input,
 
     // Weights
     TFL_TensorOfOrNone<[F32, QI8]>:$input_to_input_weights,
