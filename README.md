@@ -173,6 +173,7 @@ Learn more about the
 *   [Machine Learning with TensorFlow on GCP from Coursera](https://www.coursera.org/specializations/machine-learning-tensorflow-gcp)
 *   [Intro to TensorFlow for Deep Learning from Udacity](https://www.udacity.com/course/intro-to-tensorflow-for-deep-learning--ud187)
 *   [Introduction to TensorFlow Lite from Udacity](https://www.udacity.com/course/intro-to-tensorflow-lite--ud190)
+*   [LinkedIn Learning Courses For Tensorflow](https://www.linkedin.com/learning/topics/tensorflow?sortBy=RECENCY)
 
 ## License
 
