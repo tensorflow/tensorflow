@@ -320,7 +320,7 @@ typedef struct XLA_HloModuleConfig {
   TpuSerializedProto static_device_assignment;
   bool has_entry_computation_layout;
   XLA_ComputationLayout entry_computation_layout;
-  bool allow_spmd_sharding_propagation_to_output;
+  BoolList allow_spmd_sharding_propagation_to_output;
 } XLA_HloModuleConfig;
 
 typedef struct SE_HloExecutionProfile SE_HloExecutionProfile;
