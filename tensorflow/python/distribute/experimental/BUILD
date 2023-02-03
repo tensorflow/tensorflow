@@ -83,9 +83,11 @@ dtensor_test(
     tags = ["no_pip"],
     deps = [
         ":dtensor_util",
+        ":mirrored_strategy",
         "//tensorflow/dtensor/python:api",
         "//tensorflow/dtensor/python:layout",
         "//tensorflow/dtensor/python/tests:test_util",
+        "//tensorflow/python/distribute:reduce_util",
         "//tensorflow/python/distribute:values",
         "//tensorflow/python/eager:test",
         "//tensorflow/python/framework:constant_op",

@@ -20,8 +20,10 @@ import numpy as np
 from tensorflow.dtensor.python import api as d_api
 from tensorflow.dtensor.python import layout
 from tensorflow.dtensor.python.tests import test_util
+from tensorflow.python.distribute import reduce_util
 from tensorflow.python.distribute import values as values_lib
 from tensorflow.python.distribute.experimental import dtensor_util
+from tensorflow.python.distribute.experimental import mirrored_strategy
 from tensorflow.python.eager import test
 from tensorflow.python.framework import constant_op
 
@@ -67,6 +69,40 @@ class DTensorDistributedValueTest(test_util.DTensorBaseTest):
     self.assertLen(per_replica_result, 2)
     self.assertAllClose(per_replica_result[0], constant_op.constant([1.0]))
     self.assertAllClose(per_replica_result[1], constant_op.constant([2.0]))
+
+
+class DTensorReplicaContextTest(test_util.DTensorBaseTest):
+
+  def setUp(self):
+    super().setUp()
+    global_ids = test_util.create_device_ids_array((2,))
+    local_ids = np.ravel(global_ids).tolist()
+    mesh_dict = {
+        device: layout.Mesh(['batch'], global_ids, local_ids,
+                            test_util.create_device_list((2,), device))
+        for device in ['TPU', 'GPU', 'CPU']
+    }
+    self.mesh = self.configTestMesh(mesh_dict)
+
+  def test_unsupported_methods(self):
+    strategy = mirrored_strategy.MirroredStrategy(self.mesh)
+    replica_context = dtensor_util.DTensorReplicaContext(strategy)
+
+    expected_error = replica_context._UNSUPPORTED_ERROR_MSG
+
+    self.assertEqual(replica_context.num_replicas_in_sync, 2)
+
+    with self.assertRaisesRegex(NotImplementedError, expected_error):
+      _ = replica_context.replica_id_in_sync_group
+
+    with self.assertRaisesRegex(NotImplementedError, expected_error):
+      replica_context.merge_call(None)
+
+    with self.assertRaisesRegex(NotImplementedError, expected_error):
+      replica_context.all_reduce(reduce_util.ReduceOp.SUM, None)
+
+    with self.assertRaisesRegex(NotImplementedError, expected_error):
+      replica_context.all_gather([], 0)
 
 
 if __name__ == '__main__':

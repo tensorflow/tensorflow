@@ -24,6 +24,7 @@ from tensorflow.dtensor.python import mesh_util
 from tensorflow.dtensor.python.tests import test_util
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.distribute import distribute_lib
+from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.distribute.experimental import dtensor_util
 from tensorflow.python.distribute.experimental import mirrored_strategy
 from tensorflow.python.eager import def_function
@@ -210,6 +211,28 @@ class StrategyBaseTest(test_util.DTensorBaseTest):
     self.assertLen(result_2.values, 2)
     self.assertAllClose(result_2.values[0], constant_op.constant(7.0))
     self.assertAllClose(result_2.values[1], constant_op.constant(7.0))
+
+  def test_get_replica_context(self):
+    strategy = mirrored_strategy.MirroredStrategy(self.mesh)
+
+    tensor_input = constant_op.constant(3)
+
+    @def_function.function
+    def replica_fn(inputs):
+      replica_context = distribution_strategy_context.get_replica_context()
+      self.assertIsInstance(replica_context, dtensor_util.DTensorReplicaContext)
+      return inputs * replica_context.num_replicas_in_sync
+
+    # Default replica context
+    self.assertIsNotNone(distribution_strategy_context.get_replica_context())
+    with strategy.scope():
+      self.assertIsNone(distribution_strategy_context.get_replica_context())
+
+      result = strategy.run(replica_fn, args=(tensor_input,))
+
+    self.assertLen(result.values, 2)
+    self.assertAllClose(result.values[0], constant_op.constant(6))
+    self.assertAllClose(result.values[1], constant_op.constant(6))
 
 
 class InvalidMeshTest(test_util.DTensorBaseTest):
