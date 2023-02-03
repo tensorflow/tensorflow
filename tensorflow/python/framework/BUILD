@@ -1415,6 +1415,7 @@ py_library(
         "//tensorflow/core/function/trace_type",
         "//tensorflow/python:tf2",
         "//tensorflow/python/eager:monitoring",
+        "//tensorflow/python/saved_model:nested_structure_coder",
         "//tensorflow/python/util",
     ],
 )

@@ -631,7 +631,6 @@ py_strict_library(
     deps = [
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:dtypes",
-        "//tensorflow/python:tensor_shape",
         "//tensorflow/python:util",
         "//tensorflow/python/framework:type_spec_registry",
         "//tensorflow/python/types",

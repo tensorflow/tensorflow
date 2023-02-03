@@ -32,7 +32,6 @@ import warnings
 
 from tensorflow.core.protobuf import struct_pb2
 from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import type_spec_registry
 from tensorflow.python.types import internal
 from tensorflow.python.util import compat
@@ -339,27 +338,6 @@ class _BoolCodec:
     return value.bool_value
 
 
-class _TensorShapeCodec:
-  """Codec for `TensorShape`."""
-
-  def can_encode(self, pyobj):
-    return isinstance(pyobj, tensor_shape.TensorShape)
-
-  def do_encode(self, tensor_shape_value, encode_fn):
-    del encode_fn
-    encoded_tensor_shape = struct_pb2.StructuredValue()
-    encoded_tensor_shape.tensor_shape_value.CopyFrom(
-        tensor_shape_value.as_proto())
-    return encoded_tensor_shape
-
-  def can_decode(self, value):
-    return value.HasField("tensor_shape_value")
-
-  def do_decode(self, value, decode_fn):
-    del decode_fn
-    return tensor_shape.TensorShape(value.tensor_shape_value)
-
-
 class _TensorTypeCodec:
   """Codec for `TensorType`."""
 
@@ -551,6 +529,5 @@ _codecs = [
     _BoolCodec(),
     _DictCodec(),
     _TypeSpecCodec(),
-    _TensorShapeCodec(),
     _TensorTypeCodec(),
 ]
