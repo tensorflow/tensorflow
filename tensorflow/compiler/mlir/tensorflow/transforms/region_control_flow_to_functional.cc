@@ -22,13 +22,11 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/Casting.h"
-#include "llvm/Support/FormatVariadic.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
-#include "mlir/IR/SymbolTable.h"  // from @llvm-project
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/IR/Verifier.h"  // from @llvm-project
@@ -63,12 +61,8 @@ struct RegionControlFlowToFunctional
   void runOnOperation() override;
 
  private:
-  LogicalResult ConvertIfOp(SymbolTableCollection& symbol_table,
-                            IfRegionOp if_region);
-  LogicalResult ConvertCaseOp(SymbolTableCollection& symbol_table,
-                              CaseRegionOp case_region);
-  LogicalResult ConvertWhileOp(SymbolTableCollection& symbol_table,
-                               WhileRegionOp while_region);
+  LogicalResult ConvertIfOp(IfRegionOp if_region);
+  LogicalResult ConvertWhileOp(WhileRegionOp while_region);
 
   // Get unique name by using the loc to name mapping.
   std::string GetName(Operation* op, StringRef suffix);
@@ -85,10 +79,10 @@ std::string RegionControlFlowToFunctional::GetName(Operation* op,
 // Returns all the external values referenced from the given regions. If the
 // external value is a constant, sink it into the region instead (and do not
 // add it to the returned vector).
-llvm::SmallVector<Value, 4> CollectExternValues(mlir::RegionRange regions) {
+llvm::SmallVector<Value, 4> CollectExternValues(Region& first, Region& second) {
   llvm::SetVector<Value> extern_values;
 
-  for (Region* region : regions) {
+  for (Region* region : {&first, &second}) {
     llvm::SetVector<Value> region_extern_values;
     getUsedValuesDefinedAbove(*region, region_extern_values);
 
@@ -126,16 +120,14 @@ void CopyAndOverrideAttributes(Operation* src, Operation* dst,
 
 // Extracts the contents of a region with a single block into a new function.
 // `extern_values` is the set of external values that the region refers to.
-// Returns the name of the newly created function.
 //
 // Inputs to the terminator of the region are converted to return values of
 // the function. If `extern_values_passthrough` is true, all the extern values
 // are also added as return values from the function
-StringRef ExtractSingleBlockRegion(
-    SymbolTableCollection& symbol_table, Region& region, StringRef name,
-    llvm::SmallVectorImpl<Value>& extern_values,
-    llvm::SmallVectorImpl<func::FuncOp>& worklist,
-    bool extern_values_passthrough) {
+void ExtractSingleBlockRegion(Region& region, StringRef name,
+                              llvm::SmallVectorImpl<Value>& extern_values,
+                              llvm::SmallVectorImpl<func::FuncOp>& worklist,
+                              bool extern_values_passthrough) {
   ModuleOp module = region.getParentOfType<ModuleOp>();
   auto builder = OpBuilder::atBlockBegin(module.getBody());
   auto loc = region.getParentOp()->getLoc();
@@ -184,13 +176,9 @@ StringRef ExtractSingleBlockRegion(
 
   outlined_func.setPrivate();
 
-  // Uniquify the function name.
-  symbol_table.getSymbolTable(module).insert(outlined_func);
-
   // Add the outlined function to the worklist in case its body has
   // IfRegion or WhileRegion ops that need to converted.
   worklist.push_back(outlined_func);
-  return outlined_func.getName();
 }
 
 // Returns call for region with single call whose result feeds into the
@@ -310,8 +298,7 @@ struct TrivialTransformInfo {
 };
 
 // Transform IfRegionOp to IfOp.
-LogicalResult RegionControlFlowToFunctional::ConvertIfOp(
-    SymbolTableCollection& symbol_table, IfRegionOp if_region) {
+LogicalResult RegionControlFlowToFunctional::ConvertIfOp(IfRegionOp if_region) {
   llvm::SmallVector<Value, 4> extern_values;
 
   // For IfOp, arguments of calls in the then and else regions match if they
@@ -336,7 +323,8 @@ LogicalResult RegionControlFlowToFunctional::ConvertIfOp(
     else_name = tti.callee_names[1].str();
   } else {
     // Collect external values that are used within the else and then bodies.
-    extern_values = CollectExternValues(if_region.getRegions());
+    extern_values = CollectExternValues(if_region.getThenBranch(),
+                                        if_region.getElseBranch());
 
     // These external values need to be added as inputs to the generated If. The
     // order is determined by the order of these values the `extern_vales`.
@@ -352,9 +340,9 @@ LogicalResult RegionControlFlowToFunctional::ConvertIfOp(
     } else {
       then_name = GetName(if_region, "_then");
     }
-    then_name = ExtractSingleBlockRegion(
-        symbol_table, if_region.getThenBranch(), then_name, extern_values,
-        worklist, /*extern_values_passthrough=*/false);
+    ExtractSingleBlockRegion(if_region.getThenBranch(), then_name,
+                             extern_values, worklist,
+                             /*extern_values_passthrough=*/false);
 
     if (if_region->hasAttrOfType<StringAttr>(kElseFuncNameAttr) &&
         !if_region.get_elseFuncNameAttr().getValue().empty()) {
@@ -364,9 +352,9 @@ LogicalResult RegionControlFlowToFunctional::ConvertIfOp(
     } else {
       else_name = GetName(if_region, "_else");
     }
-    else_name = ExtractSingleBlockRegion(
-        symbol_table, if_region.getElseBranch(), else_name, extern_values,
-        worklist, /*extern_values_passthrough=*/false);
+    ExtractSingleBlockRegion(if_region.getElseBranch(), else_name,
+                             extern_values, worklist,
+                             /*extern_values_passthrough=*/false);
   }
 
   // Look through ToBool operations for the condition.
@@ -390,46 +378,9 @@ LogicalResult RegionControlFlowToFunctional::ConvertIfOp(
   return success();
 }
 
-// Transform CaseRegion to Case.
-LogicalResult RegionControlFlowToFunctional::ConvertCaseOp(
-    SymbolTableCollection& symbol_table, CaseRegionOp case_region) {
-  llvm::SmallVector<mlir::Attribute, 2> branch_symbols;
-
-  // Collect external values that are used within all branches.
-  llvm::SmallVector<Value, 4> extern_values =
-      CollectExternValues(case_region.getRegions());
-
-  // These external values need to be added as inputs to the generated Case. The
-  // order is determined by the order of these values the `extern_vales`.
-
-  for (const auto& item : llvm::enumerate(case_region.getRegions())) {
-    std::string branch_name =
-        GetName(case_region, llvm::formatv("_branch{0}", item.index()).str());
-    branch_name = ExtractSingleBlockRegion(symbol_table, *item.value(),
-                                           branch_name, extern_values, worklist,
-                                           /*extern_values_passthrough=*/false);
-    branch_symbols.push_back(
-        SymbolRefAttr::get(case_region.getContext(), branch_name));
-  }
-
-  // Once we have the branch functions ready, replace the region based op with a
-  // functional op.
-  OpBuilder builder(case_region);
-  auto case_op = builder.create<CaseOp>(
-      case_region.getLoc(), case_region.getResultTypes(),
-      case_region.getBranchIndex(), extern_values,
-      builder.getArrayAttr(branch_symbols), case_region.getIsStateless());
-  CopyAndOverrideAttributes(case_region, case_op, &builder);
-
-  // Redirect old results to new results.
-  case_region.replaceAllUsesWith(case_op.getResults());
-  case_region.erase();
-  return success();
-}
-
 // Transform WhileRegion to WhileOp.
 LogicalResult RegionControlFlowToFunctional::ConvertWhileOp(
-    SymbolTableCollection& symbol_table, WhileRegionOp while_region) {
+    WhileRegionOp while_region) {
   // For While, the arguments of the calls in the body and cond regions match
   // if they are region arguments with the same region argument numbers. If the
   // 2 calls have the same value (an extern value) used as an argument, we
@@ -474,19 +425,17 @@ LogicalResult RegionControlFlowToFunctional::ConvertWhileOp(
     // to the region arguments, all these external references need to be added
     // as function arguments.
     llvm::SmallVector<Value, 4> extern_values =
-        CollectExternValues(while_region.getRegions());
+        CollectExternValues(while_region.getCond(), while_region.getBody());
 
     // Outline the `cond` and `body` regions by moving the bodies of these
     // regions into new functions. Replace tf.yield with a regular return.
     cond_name = GetName(while_region, "_cond");
-    cond_name = ExtractSingleBlockRegion(symbol_table, while_region.getCond(),
-                                         cond_name, extern_values, worklist,
-                                         /*extern_values_passthrough=*/false);
+    ExtractSingleBlockRegion(while_region.getCond(), cond_name, extern_values,
+                             worklist, /*extern_values_passthrough=*/false);
 
     body_name = GetName(while_region, "_body");
-    body_name = ExtractSingleBlockRegion(symbol_table, while_region.getBody(),
-                                         body_name, extern_values, worklist,
-                                         /*extern_values_passthrough=*/true);
+    ExtractSingleBlockRegion(while_region.getBody(), body_name, extern_values,
+                             worklist, /*extern_values_passthrough=*/true);
 
     // All extern values become additional inputs and additional output types
     // for the functional while.
@@ -515,7 +464,6 @@ LogicalResult RegionControlFlowToFunctional::ConvertWhileOp(
 
 void RegionControlFlowToFunctional::runOnOperation() {
   ModuleOp module = getOperation();
-  SymbolTableCollection symbol_table;
 
   // Seed worklist with all functions in the module.
   worklist = llvm::to_vector<4>(module.getOps<func::FuncOp>());
@@ -524,17 +472,12 @@ void RegionControlFlowToFunctional::runOnOperation() {
 
     auto result = function.walk([&](Operation* op) {
       if (auto if_region = llvm::dyn_cast<IfRegionOp>(op)) {
-        if (failed(ConvertIfOp(symbol_table, if_region))) {
-          op->emitOpError() << "failed to convert to functional form";
-          return WalkResult::interrupt();
-        }
-      } else if (auto case_region = llvm::dyn_cast<CaseRegionOp>(op)) {
-        if (failed(ConvertCaseOp(symbol_table, case_region))) {
+        if (failed(ConvertIfOp(if_region))) {
           op->emitOpError() << "failed to convert to functional form";
           return WalkResult::interrupt();
         }
       } else if (auto while_region = llvm::dyn_cast<WhileRegionOp>(op)) {
-        if (failed(ConvertWhileOp(symbol_table, while_region))) {
+        if (failed(ConvertWhileOp(while_region))) {
           op->emitOpError() << "failed to convert to functional form";
           return WalkResult::interrupt();
         }
