@@ -382,14 +382,15 @@ class ConvRNN2D(RNN):
       return tuple(result)
 
     # initialize state if None
+    state_size_has_len = hasattr(self.cell.state_size, '__len__')
     if self.states[0] is None:
-      if hasattr(self.cell.state_size, '__len__'):
+      if state_size_has_len:
         self.states = [backend.zeros(get_tuple_shape(dim))
                        for dim in self.cell.state_size]
       else:
         self.states = [backend.zeros(get_tuple_shape(self.cell.state_size))]
     elif states is None:
-      if hasattr(self.cell.state_size, '__len__'):
+      if state_size_has_len:
         for state, dim in zip(self.states, self.cell.state_size):
           backend.set_value(state, np.zeros(get_tuple_shape(dim)))
       else:
@@ -404,7 +405,7 @@ class ConvRNN2D(RNN):
                          'but it received ' + str(len(states)) +
                          ' state values. Input received: ' + str(states))
       for index, (value, state) in enumerate(zip(states, self.states)):
-        if hasattr(self.cell.state_size, '__len__'):
+        if state_size_has_len:
           dim = self.cell.state_size[index]
         else:
           dim = self.cell.state_size
