@@ -47,6 +47,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/map_util.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
+#include "tensorflow/compiler/xla/service/compilation_environments.h"
 #include "tensorflow/compiler/xla/service/cpu/runtime_single_threaded_matmul.h"
 #include "tensorflow/compiler/xla/service/hlo_query.h"
 #include "tensorflow/compiler/xla/service/pattern_matcher.h"
@@ -3326,7 +3327,9 @@ Status HloEvaluator::HandleFusion(HloInstruction* fusion) {
   HloModuleConfig config;
   // Attach cloned computation to an empty HLO module so the existing ones are
   // not modified.
-  HloModule empty_hlo_module("EmptyModuleForFusion", config);
+  HloModule empty_hlo_module("EmptyModuleForFusion", config,
+                             std::make_unique<CompilationEnvironments>(
+                                 fusion->GetModule()->comp_envs()));
   HloCloneContext context(&empty_hlo_module);
   auto cloned_fused_computation =
       fusion->fused_instructions_computation()->Clone(

@@ -975,7 +975,8 @@ std::unique_ptr<HloModule> HloModule::Clone(const HloModuleConfig& config,
 Status HloModule::RemoveUnusedComputations() {
   std::string suffix = "tmp";
   auto module = std::make_unique<HloModule>(
-      absl::StrCat(name_, suffix.empty() ? "" : "-", suffix), config());
+      absl::StrCat(name_, suffix.empty() ? "" : "-", suffix), config(),
+      std::make_unique<CompilationEnvironments>(*comp_envs_));
   HloCloneContext context(module.get(), suffix);
   entry_computation_->Clone(suffix, &context);
   std::vector<HloComputation*> to_remove;
