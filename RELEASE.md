@@ -9,7 +9,7 @@
 *   `tf.function`:
 
     *   `tf.function` now uses the Python inspect library directly for parsing the signature of the Python function it is decorated on.
-    *   This can break certain cases that were previously ignored where the signature is malforme, such as:
+    *   This can break certain cases that were previously ignored where the signature is malformed, such as:
         *   Using `functools.wraps` on a function with different signature
         *   Using `functools.partial` with an invalid `tf.function` input
     *   `tf.function` now enforces input parameter names to be valid Python identifiers. Incompatible names are automatically sanitized similarly to existing SavedModel signature behavior.
