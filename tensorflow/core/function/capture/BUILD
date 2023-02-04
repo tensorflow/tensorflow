@@ -85,3 +85,14 @@ py_strict_test(
         "@absl_py//absl/testing:parameterized",
     ],
 )
+
+py_library(
+    name = "restore_captures",
+    srcs = ["restore_captures.py"],
+    srcs_version = "PY3",
+    visibility = ["//tensorflow:internal"],
+    deps = [
+        "//tensorflow/python/trackable:asset",
+        "//tensorflow/python/trackable:resource",
+    ],
+)
