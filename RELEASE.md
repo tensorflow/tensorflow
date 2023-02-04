@@ -1,34 +1,3 @@
-# Release 2.13.0
-
-# Breaking Changes
-
-* <DOCUMENT BREAKING CHANGES HERE>
-* <THIS SECTION SHOULD CONTAIN API, ABI AND BEHAVIORAL BREAKING CHANGES>
-
-# Known Caveats
-
-* <CAVEATS REGARDING THE RELEASE (BUT NOT BREAKING CHANGES).>
-* <ADDING/BUMPING DEPENDENCIES SHOULD GO HERE>
-* <KNOWN LACK OF SUPPORT ON SOME PLATFORM, SHOULD GO HERE>
-
-# Major Features and Improvements
-
-*   Added Keras metrics `tf.keras.metrics.FBetaScore` and
-    `tf.keras.metrics.F1Score`.
-
-# Bug Fixes and Other Changes
-
-* <SIMILAR TO ABOVE SECTION, BUT FOR OTHER IMPORTANT CHANGES / BUG FIXES>
-* <IF A CHANGE CLOSES A GITHUB ISSUE, IT SHOULD BE DOCUMENTED HERE>
-* <NOTES SHOULD BE GROUPED PER AREA>
-
-# Thanks to our Contributors
-
-This release contains contributions from many people at Google, as well as:
-
-<INSERT>, <NAME>, <HERE>, <USING>, <GITHUB>, <HANDLE>
-
-
 # Release 2.12.0
 
 # Breaking Changes
