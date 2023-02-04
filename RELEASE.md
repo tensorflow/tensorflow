@@ -19,7 +19,7 @@
 
 *   Experimental APIs `tf.config.experimental.enable_mlir_graph_optimization` and `tf.config.experimental.disable_mlir_graph_optimization` were removed.
 
-*   `tf.keras`
+*   `tf.keras`:
 
     * Moved all saving-related utilities to a new namespace, `keras.saving`, i.e. `keras.saving.load_model`, `keras.saving.save_model`, `keras.saving.custom_object_scope`, `keras.saving.get_custom_objects`, `keras.saving.register_keras_serializable`,`keras.saving.get_registered_name` and `keras.saving.get_registered_object`. The previous API locations (in `keras.utils` and `keras.models`) will stay available indefinitely, but we recommend that you update your code to point to the new API locations.
     * Improvements and fixes in Keras loss masking:
@@ -27,7 +27,7 @@
         * If you use masked losses with Keras the loss values may be different in TensorFlow `2.12` compared to previous versions.
         * In cases where the mask was previously ignored, you will now get an error if you pass a mask with an incompatible shape.
 
-*   `tf.SavedModel`
+*   `tf.SavedModel`:
 
     * Introduced new class `tf.saved_model.experimental.Fingerprint` that contains the fingerprint of the SavedModel. See the [SavedModel Fingerprinting RFC](https://github.com/tensorflow/community/pull/415) for details.
     * Introduced API `tf.saved_model.experimental.read_fingerprint(export_dir)` for reading the fingerprint of a SavedModel.
