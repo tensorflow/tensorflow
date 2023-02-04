@@ -15,6 +15,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <ostream>
+#include <vector>
 
 #include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/framework/kernel_shape_util.h"
@@ -306,6 +307,12 @@ REGISTER_OP("ParallelConcat")
         if (!c->FullyDefined(c->input(i))) {
           return errors::InvalidArgument(
               "All input shapes must be fully defined.");
+        }
+        if (c->Rank(c->input(i)) < 1) {
+          return errors::InvalidArgument(
+              "The rank of all input shapes must be greater than 0, "
+              "but input ",
+              i, " had rank ", c->Rank(c->input(i)), ".");
         }
         DimensionHandle unused;
         if (!c->WithValue(c->Dim(c->input(i), 0), 1, &unused).ok()) {
