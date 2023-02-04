@@ -13,8 +13,14 @@
 
 # Major Features and Improvements
 
-*   Added Keras metrics `tf.keras.metrics.FBetaScore` and
-    `tf.keras.metrics.F1Score`.
+*   `tf.lite`:
+
+    *   Add 16-bit and 64-bit float type support for built-in op `cast`.
+
+*   `tf.keras`
+
+    *   Added Keras metrics `tf.keras.metrics.FBetaScore` and
+        `tf.keras.metrics.F1Score`.
 
 # Bug Fixes and Other Changes
 
@@ -114,7 +120,6 @@ This release contains contributions from many people at Google, as well as:
 *   `tf.lite`:
 
     *   Add 16-bit float type support for built-in op `fill`.
-    *   Add 16-bit and 64-bit float type support for built-in op `cast`.
     *   Transpose now supports 6D tensors.
     *   Float LSTM now supports diagonal recurrent tensors:
         https://arxiv.org/abs/1903.08023
