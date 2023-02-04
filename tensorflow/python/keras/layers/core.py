@@ -333,7 +333,7 @@ class SpatialDropout2D(Dropout):
     input_shape = array_ops.shape(inputs)
     if self.data_format == 'channels_first':
       return (input_shape[0], input_shape[1], 1, 1)
-    elif self.data_format == 'channels_last':
+    else: # channels_last
       return (input_shape[0], 1, 1, input_shape[3])
 
 
@@ -391,7 +391,7 @@ class SpatialDropout3D(Dropout):
     input_shape = array_ops.shape(inputs)
     if self.data_format == 'channels_first':
       return (input_shape[0], input_shape[1], 1, 1, 1)
-    elif self.data_format == 'channels_last':
+    else: # channels_last
       return (input_shape[0], 1, 1, 1, input_shape[4])
 
 
