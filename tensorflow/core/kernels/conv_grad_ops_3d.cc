@@ -1322,6 +1322,11 @@ class Conv3DBackpropInputOp<GPUDevice, T> : public OpKernel {
     Tensor* in_backprop;
     OP_REQUIRES_OK(context,
                    context->allocate_output(0, input_shape, &in_backprop));
+    for (std::size_t i = 0; i < input_shape.dims(); ++i) {
+      if (input_shape.dim_size(i) == 0) {
+        return;
+      }
+    }
 
     auto* stream = context->op_device_context()->stream();
     OP_REQUIRES(context, stream, errors::Internal("No GPU stream available."));
