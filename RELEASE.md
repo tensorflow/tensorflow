@@ -1,5 +1,9 @@
 # Release 2.12.0
 
+<REPLACE THIS TEXT WITH THE RELEASE NOTES>
+
+# Release 2.12.0
+
 # Breaking Changes
 
 * <DOCUMENT BREAKING CHANGES HERE>
