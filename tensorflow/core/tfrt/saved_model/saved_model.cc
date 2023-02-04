@@ -132,6 +132,13 @@ auto* saved_model_init_time_seconds =
         "/tensorflow/tfrt/saved_model/init_time",
         "Record the initialization time for the savedmodel.", "model_name");
 
+// TODO(b/239749833) clean up this retention after input spec validation is
+// enabled everywhere.
+auto* saved_model_input_spec_validation_failure =
+    tensorflow::monitoring::Gauge<bool, 1>::New(
+        "/tensorflow/tfrt/saved_model/input_spec_validation_failure",
+        "Record the models that failed input spec validation.", "model_name");
+
 tensorflow::Tensor CreateScalarStringTensor(absl::string_view str) {
   return tensorflow::Tensor(tensorflow::tstring(str));
 }
@@ -403,6 +410,10 @@ tensorflow::Status CheckInputSpecs(
 
   auto status = IsInputSpecsCorrect(signature_name, signature, input_tensors);
   if (!status.ok()) {
+    saved_model_input_spec_validation_failure
+        ->GetCell(
+            absl::StrCat(model_metadata.name(), ":", model_metadata.version()))
+        ->Set(true);
     const auto error_string =
         absl::StrCat("model: ", model_metadata.name(),
                      ", version: ", model_metadata.version(),
