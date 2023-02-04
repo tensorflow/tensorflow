@@ -111,6 +111,8 @@ message SnapshotStreamInfo {
     ORPHAN = 2;
     // The dispatcher doesn't know whether or not the stream has a live worker.
     UNKNOWN = 3;
+    // The dispatcher thinks the stream has no more splits left to be processed.
+    DONE = 4;
   }
   State state = 2;
 }

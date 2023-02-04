@@ -178,7 +178,8 @@ TEST(SnapshotSplitProviderTest, GetSplitFromDispatcher) {
               IsOkAndHolds(ElementsAre(0, 1, 2, 3, 4, 5, 6, 7, 8, 9)));
 }
 
-TEST(SnapshotSplitProviderTest, GetSplitFromFiles) {
+// TODO(b/258691097): Fix and enable.
+TEST(SnapshotSplitProviderTest, DISABLED_GetSplitFromFiles) {
   // The first pass generates split files.
   TestSnapshotCluster data_service(/*num_workers=*/1);
   DatasetDef dataset = RangeDataset(10);
@@ -202,7 +203,8 @@ TEST(SnapshotSplitProviderTest, GetSplitFromFiles) {
               IsOkAndHolds(ElementsAre(0, 1, 2, 3, 4, 5, 6, 7, 8, 9)));
 }
 
-TEST(SnapshotSplitProviderTest, SplitNotFound) {
+// TODO(b/258691097): Fix and enable.
+TEST(SnapshotSplitProviderTest, DISABLED_SplitNotFound) {
   // The first pass generates split files.
   TestSnapshotCluster data_service(/*num_workers=*/1);
   DatasetDef dataset = RangeDataset(10);

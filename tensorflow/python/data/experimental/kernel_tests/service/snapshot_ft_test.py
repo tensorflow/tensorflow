@@ -26,8 +26,9 @@ from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import combinations
 from tensorflow.python.platform import test
 
-# Enum value for `SnapshotStreamInfo::ORPHAN`.
-ORPHAN = 2
+# Enum value for `SnapshotStreamInfo` states.
+_ORPHAN = 2
+_DONE = 4
 
 
 def write_file(path):
@@ -64,8 +65,11 @@ class SnapshotFtTest(data_service_test_base.TestBase, parameterized.TestCase):
 
   # This "manual" setup function is needed due to some bad interaction between
   # `setUp` and `combinations` that causes the dataset to be out-of-scope.
-  def setup(self, num_workers=1, ds_size=10):
+  # It additionally can't take in a `Dataset` as input.
+  def setup(self, num_workers=1, ds_size=10, num_sources=1):
     ds = dataset_ops.Dataset.range(ds_size)
+    if num_sources > 1:
+      ds = dataset_ops.Dataset.zip((ds,) * num_sources)
     cluster = data_service_test_base.TestCluster(num_workers=num_workers)
     distributed_save_op.distributed_save(
         ds, self._path, cluster.dispatcher_address()
@@ -189,7 +193,7 @@ class SnapshotFtTest(data_service_test_base.TestBase, parameterized.TestCase):
   @combinations.generate(test_base.eager_only_combinations())
   def testWorkersRetainStreamAssignmentsAfterDispatcherRestart(self):
     n = 5
-    cluster, _ = self.setup(num_workers=n)
+    cluster, _ = self.setup(num_workers=n, ds_size=10000)
     assignments = get_stream_assignments(cluster, n)
     cluster.restart_dispatcher()
     while len(cluster.snapshot_streams(self._path)) != n:
@@ -203,10 +207,22 @@ class SnapshotFtTest(data_service_test_base.TestBase, parameterized.TestCase):
     cluster, _ = self.setup(num_workers=n, ds_size=10000)
     assignments = get_stream_assignments(cluster, n)
     cluster.stop_worker(0)
-    while cluster.snapshot_streams(self._path)[assignments[0]].state != ORPHAN:
+    while cluster.snapshot_streams(self._path)[assignments[0]].state != _ORPHAN:
       time.sleep(0.1)
     cluster.add_worker(start=True)
     self.assertEqual(get_stream_assignment(cluster, n), assignments[0])
+
+  @combinations.generate(test_base.eager_only_combinations())
+  def testLargeMultiSourceSnapshotRecoversAndCompletes(self):
+    n = 5
+    cluster, _ = self.setup(num_workers=n, ds_size=10000, num_sources=3)
+    cluster.restart_dispatcher()
+    streams = lambda: cluster.snapshot_streams(self._path)
+    while len(streams()) != n or any(
+        stream.state != _DONE for stream in streams()
+    ):
+      time.sleep(0.1)
+    self.assertTrue(os.path.exists(os.path.join(self._path, "DONE")))
 
 
 if __name__ == "__main__":
