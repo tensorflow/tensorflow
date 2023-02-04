@@ -99,6 +99,7 @@ uphold this code.**
 tracking requests and bugs, please see
 [TensorFlow Discuss](https://groups.google.com/a/tensorflow.org/forum/#!forum/discuss)
 for general questions and discussion, and please direct specific questions to
+[TensorFlow Forum](https://discuss.tensorflow.org/) or
 [Stack Overflow](https://stackoverflow.com/questions/tagged/tensorflow).**
 
 The TensorFlow project strives to abide by generally accepted best practices in
