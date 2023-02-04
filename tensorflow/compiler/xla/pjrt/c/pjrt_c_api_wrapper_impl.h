@@ -125,6 +125,8 @@ PJRT_Error* PJRT_Client_Devices(PJRT_Client_Devices_Args* args);
 PJRT_Error* PJRT_Client_AddressableDevices(
     PJRT_Client_AddressableDevices_Args* args);
 PJRT_Error* PJRT_Client_LookupDevice(PJRT_Client_LookupDevice_Args* args);
+PJRT_Error* PJRT_Client_LookupAddressableDevice(
+    PJRT_Client_LookupAddressableDevice_Args* args);
 PJRT_Error* PJRT_Client_Compile(PJRT_Client_Compile_Args* args);
 PJRT_Error* PJRT_Client_DefaultDeviceAssignment(
     PJRT_Client_DefaultDeviceAssignment_Args* args);
@@ -247,6 +249,8 @@ constexpr PJRT_Api CreatePjrtApi(PJRT_Client_Create* create_fn) {
       .PJRT_Client_Devices = pjrt::PJRT_Client_Devices,
       .PJRT_Client_AddressableDevices = pjrt::PJRT_Client_AddressableDevices,
       .PJRT_Client_LookupDevice = pjrt::PJRT_Client_LookupDevice,
+      .PJRT_Client_LookupAddressableDevice =
+          pjrt::PJRT_Client_LookupAddressableDevice,
       .PJRT_Client_Compile = pjrt::PJRT_Client_Compile,
       .PJRT_Client_DefaultDeviceAssignment =
           pjrt::PJRT_Client_DefaultDeviceAssignment,

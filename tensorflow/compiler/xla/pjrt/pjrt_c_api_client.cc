@@ -91,7 +91,6 @@ void PjRtCApiClient::InitDevices() {
   pjrt::LogFatalIfPjrtError(c_api_->PJRT_Client_Devices(&devices_args), c_api_);
 
   const size_t n = devices_args.num_devices;
-  wrapped_device_map_.reserve(n);
   c_to_cpp_device_map_.reserve(n);
   owned_devices_.reserve(n);
   devices_.reserve(n);
@@ -102,12 +101,6 @@ void PjRtCApiClient::InitDevices() {
         std::make_unique<PjRtCApiDevice>(device, this));
     devices_.push_back(cpp_device.get());
     c_to_cpp_device_map_[device] = cpp_device.get();
-    // Map the wrapped PjRtDevice* to the PjRtCApiDevice* that wraps it.
-    // TODO(b/237017893): remove `wrapped_device_map_` and replace it with
-    // `c_api_device_map_`
-    if (kPjRtCApiBypass) {
-      wrapped_device_map_[device->device] = cpp_device.get();
-    }
   }
 
   PJRT_Client_AddressableDevices_Args address_args;
@@ -212,6 +205,18 @@ StatusOr<PjRtDevice*> PjRtCApiClient::LookupDevice(int device_id) const {
   args.id = device_id;
   RETURN_STATUS_IF_ERROR(c_api_->PJRT_Client_LookupDevice(&args), c_api_);
   return GetCppDevice(args.device);
+}
+
+StatusOr<PjRtDevice*> PjRtCApiClient::LookupAddressableDevice(
+    int local_hardware_id) const {
+  PJRT_Client_LookupAddressableDevice_Args args;
+  args.struct_size = PJRT_Client_LookupAddressableDevice_Args_STRUCT_SIZE;
+  args.priv = nullptr;
+  args.client = c_client_.get();
+  args.local_hardware_id = local_hardware_id;
+  RETURN_STATUS_IF_ERROR(c_api_->PJRT_Client_LookupAddressableDevice(&args),
+                         c_api_);
+  return GetCppDevice(args.addressable_device);
 }
 
 // Initializes `PJRT_Client_Compile_Args`, which will be used to call

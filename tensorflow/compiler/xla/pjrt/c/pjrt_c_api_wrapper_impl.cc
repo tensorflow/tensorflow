@@ -215,6 +215,18 @@ PJRT_Error* PJRT_Client_LookupDevice(PJRT_Client_LookupDevice_Args* args) {
   return nullptr;
 }
 
+PJRT_Error* PJRT_Client_LookupAddressableDevice(
+    PJRT_Client_LookupAddressableDevice_Args* args) {
+  PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes(
+      "PJRT_Client_LookupAddressableDevice_Args",
+      PJRT_Client_LookupAddressableDevice_Args_STRUCT_SIZE, args->struct_size));
+  PJRT_ASSIGN_OR_RETURN(
+      xla::PjRtDevice * addressable_device,
+      args->client->client->LookupAddressableDevice(args->local_hardware_id));
+  args->addressable_device = GetCDevice(args->client, addressable_device);
+  return nullptr;
+}
+
 // Searches `device_list` for a PJRT_Device* that wraps a provided
 // `xla::PjRtDevice *` (`cpp_device`). If a match is found, that PJRT_Device* is
 // returned. Otherwise, returns nullptr.
