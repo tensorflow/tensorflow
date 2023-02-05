@@ -125,6 +125,9 @@ class DataServiceWorkerImpl {
 
   // Validates the worker config.
   Status ValidateWorkerConfig() const;
+  // Creates and initializes a dispatcher client.
+  StatusOr<std::unique_ptr<DataServiceDispatcherClient>>
+  CreateDispatcherClient() const;
   // Sends task status to the dispatcher and checks for dispatcher commands.
   Status SendTaskUpdates() TF_LOCKS_EXCLUDED(mu_);
   // Creates an iterator to process a task.
