@@ -865,6 +865,14 @@ class ShapeInference {
   // yields.
   bool InferShapeForIfRegion(IfRegionOp op);
 
+  // Infers the shape CaseOp outputs based on the shapes of branch function
+  // result types.
+  bool InferShapeForCase(CaseOp op);
+
+  // Infers the shape CaseRegion outputs based on the shapes of the branch
+  // yields.
+  bool InferShapeForCaseRegion(CaseRegionOp op);
+
   // Infers the shape of _XlaHostComputeMlir based on the host computation
   // module.  Returns true if a return type was changed.
   bool InferShapeForXlaHostComputeMlir(_XlaHostComputeMlirOp op);
@@ -1081,6 +1089,44 @@ bool ShapeInference::InferShapeForIfRegion(IfRegionOp op) {
     if (std::get<1>(result) != std::get<2>(result)) continue;
     changed = RefineResultType(op, std::get<0>(result), std::get<1>(result)) ||
               changed;
+  }
+  return changed;
+}
+
+bool ShapeInference::InferShapeForCase(CaseOp op) {
+  DCOMMENT_OP(op.getOperation(), "Infer shape for case ");
+
+  llvm::SmallVector<TypeRange> branch_result_types;
+  for (int i = 0; i < op.num_branches(); ++i) {
+    branch_result_types.push_back(op.ResolveBranchFunction(&symbol_table_, i)
+                                      .getFunctionType()
+                                      .getResults());
+  }
+
+  bool changed = false;
+  for (const auto& result : op.getResults()) {
+    llvm::DenseSet<Type> types;
+    for (const auto& branch_result_type : branch_result_types) {
+      types.insert(branch_result_type[result.getResultNumber()]);
+    }
+    if (types.size() == 1) {
+      changed = RefineResultType(op, result, *types.begin()) || changed;
+    }
+  }
+  return changed;
+}
+
+bool ShapeInference::InferShapeForCaseRegion(CaseRegionOp op) {
+  bool changed = false;
+  for (const auto& result : op.getResults()) {
+    llvm::DenseSet<Type> types;
+    for (auto& branch : op.getBranches()) {
+      Operation* yield = branch.front().getTerminator();
+      types.insert(yield->getOperandTypes()[result.getResultNumber()]);
+    }
+    if (types.size() == 1) {
+      changed = RefineResultType(op, result, *types.begin()) || changed;
+    }
   }
   return changed;
 }
@@ -2248,6 +2294,11 @@ bool ShapeInference::InferShapeForSingleOperation(Operation* op,
   // branches.
   if (auto if_region = dyn_cast<IfRegionOp>(op))
     return InferShapeForIfRegion(if_region);
+
+  if (auto case_op = dyn_cast<CaseOp>(op)) return InferShapeForCase(case_op);
+
+  if (auto case_region = dyn_cast<CaseRegionOp>(op))
+    return InferShapeForCaseRegion(case_region);
 
   if (auto while_op = dyn_cast<WhileOp>(op))
     return InferShapeForWhile(
