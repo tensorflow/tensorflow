@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#if defined(INTEL_MKL) && defined(ENABLE_MKL)
+#if defined(INTEL_MKL)
 
 #define EIGEN_USE_THREADS
 
@@ -115,8 +115,8 @@ void QuantizedConcatTest::TestSmall8Bit(float first_min, float first_max,
   AddInputFromArray<float>(TensorShape({}), {second_max});
   TF_ASSERT_OK(RunOpKernel());
   const Tensor& output_quantized = *GetOutput(0);
-  const float output_min = GetOutput(1)->flat<float>()(0);
-  const float output_max = GetOutput(2)->flat<float>()(0);
+  const float output_min = GetOutput(1)->scalar<float>()();
+  const float output_max = GetOutput(2)->scalar<float>()();
   Tensor output_float =
       QuantizedTensorToFloat<quint8>(output_quantized, output_min, output_max);
   test::ExpectTensorNear<float>(expected_float, output_float, 0.2);
@@ -181,8 +181,8 @@ void QuantizedConcatTest::TestSecondDim8Bit(float first_min, float first_max,
   AddInputFromArray<float>(TensorShape({}), {second_max});
   TF_ASSERT_OK(RunOpKernel());
   const Tensor& output_quantized = *GetOutput(0);
-  const float output_min = GetOutput(1)->flat<float>()(0);
-  const float output_max = GetOutput(2)->flat<float>()(0);
+  const float output_min = GetOutput(1)->scalar<float>()();
+  const float output_max = GetOutput(2)->scalar<float>()();
   Tensor output_float =
       QuantizedTensorToFloat<quint8>(output_quantized, output_min, output_max);
   // Using the same error tolerance as in Eigen QuantizedConcat test
@@ -191,4 +191,4 @@ void QuantizedConcatTest::TestSecondDim8Bit(float first_min, float first_max,
 
 }  // namespace tensorflow
 
-#endif  // INTEL_MKL && ENABLE_MKL
+#endif  // INTEL_MKL
