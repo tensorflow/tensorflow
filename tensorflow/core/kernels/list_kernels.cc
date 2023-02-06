@@ -446,6 +446,8 @@ class TensorListSetItem : public OpKernel {
  public:
   explicit TensorListSetItem(OpKernelConstruction* c) : OpKernel(c) {
     OP_REQUIRES_OK(c, c->GetAttr("element_dtype", &element_dtype_));
+    OP_REQUIRES_OK(c, c->GetAttr("resize_if_index_out_of_bounds",
+                                 &resize_if_index_out_of_bounds_));
   }
 
   void Compute(OpKernelContext* c) override {
@@ -460,11 +462,6 @@ class TensorListSetItem : public OpKernel {
         c, TensorShapeUtils::IsScalar(c->input(1).shape()),
         errors::InvalidArgument("Expected argument 1 to be a scalar. Received",
                                 c->input(1).DebugString()));
-    int32_t index = c->input(1).scalar<int32>()();
-    OP_REQUIRES(c, index < l->tensors().size(),
-                errors::InvalidArgument("Trying to modify element ", index,
-                                        " in a list with ", l->tensors().size(),
-                                        " elements."));
     const Tensor& value = c->input(2);
     OP_REQUIRES(c, l->element_shape.IsCompatibleWith(value.shape()),
                 errors::InvalidArgument(
@@ -474,11 +471,21 @@ class TensorListSetItem : public OpKernel {
                     " list shape: ", l->element_shape.DebugString()));
     TensorList* output_list = nullptr;
     OP_REQUIRES_OK(c, ForwardInputOrCreateNewList(c, 0, 0, *l, &output_list));
+    int32_t index = c->input(1).scalar<int32>()();
+    if (!resize_if_index_out_of_bounds_) {
+      OP_REQUIRES(c, index < l->tensors().size(),
+                  errors::InvalidArgument("Trying to modify element ", index,
+                                          " in a list with ",
+                                          l->tensors().size(), " elements."));
+    } else if (index >= l->tensors().size()) {
+      output_list->tensors().resize(index + 1, Tensor(DT_INVALID));
+    }
     output_list->tensors()[index] = value;
   }
 
  private:
   DataType element_dtype_;
+  bool resize_if_index_out_of_bounds_;
 };
 
 REGISTER_KERNEL_BUILDER(Name("TensorListSetItem").Device(DEVICE_CPU),
