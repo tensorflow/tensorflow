@@ -1,1 +1,12 @@
 Auto generated patch. Do not edit or delete it, even if empty.
+diff -ruN --strip-trailing-cr a/mlir/lib/Dialect/Transform/Transforms/TransformInterpreterPassBase.cpp b/mlir/lib/Dialect/Transform/Transforms/TransformInterpreterPassBase.cpp
+--- a/mlir/lib/Dialect/Transform/Transforms/TransformInterpreterPassBase.cpp
++++ b/mlir/lib/Dialect/Transform/Transforms/TransformInterpreterPassBase.cpp
+@@ -269,6 +269,7 @@
+     llvm::dbgs() << "\nEOF\n";
+     llvm::dbgs() << "===================================\n";
+   });
++  (void)root;
+   DEBUG_WITH_TYPE(DEBUG_TYPE_DUMP_FILE, {
+     saveReproToTempFile(llvm::dbgs(), target, transform, passName,
+                         debugPayloadRootTag, debugTransformRootTag, binaryName);
