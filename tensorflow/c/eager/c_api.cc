@@ -989,6 +989,10 @@ void TFE_ContextEndStep(TFE_Context* ctx) {
   tensorflow::unwrap(ctx)->EndStep();
 }
 
+void TFE_ContextResetLocalRendezvousTable(TFE_Context* ctx) {
+  tensorflow::unwrap(ctx)->ResetLocalRendezvousTable();
+}
+
 const TFE_OpAttrs* TFE_OpGetAttrs(const TFE_Op* op) {
   return tensorflow::wrap(tensorflow::unwrap(op)->GetOpAttrs());
 }

@@ -366,6 +366,36 @@ TEST_F(EagerContextTest, LocalRendezvousCreation) {
   EXPECT_EQ(rendezvous_2->RefCount(), 1);
 }
 
+TEST_F(EagerContextTest, LocalRendezvousCleanUp) {
+  InitContext(SessionOptions(), DEVICE_PLACEMENT_EXPLICIT);
+  auto rendezvous_creator = context()->RendezvousFactory();
+  context()->SetReuseRendezvousForFunctions(false);
+
+  // Create new global rendezvous and for step 1 and 2.
+  Rendezvous *global_rendezvous, *rendezvous_1, *rendezvous_2, *rendezvous_3;
+
+  TF_ASSERT_OK(rendezvous_creator(-1, nullptr, &global_rendezvous));
+  TF_ASSERT_OK(rendezvous_creator(1, nullptr, &rendezvous_1));
+  TF_ASSERT_OK(rendezvous_creator(1, nullptr, &rendezvous_2));
+  TF_ASSERT_OK(rendezvous_creator(2, nullptr, &rendezvous_3));
+
+  EXPECT_EQ(global_rendezvous->RefCount(), 2);
+  EXPECT_EQ(rendezvous_1->RefCount(), 3);
+  EXPECT_EQ(rendezvous_2->RefCount(), 3);
+  EXPECT_EQ(rendezvous_3->RefCount(), 2);
+
+  context()->ResetLocalRendezvousTable();
+
+  // Ref count of each rendezvous should be reduced by 1 after local rendezvous
+  // table is cleaned up.
+  EXPECT_EQ(rendezvous_1->RefCount(), 2);
+  EXPECT_EQ(rendezvous_2->RefCount(), 2);
+  EXPECT_EQ(rendezvous_3->RefCount(), 1);
+
+  // Only local rendezvous are cleaned, global rendezvous should not change.
+  EXPECT_EQ(global_rendezvous->RefCount(), 2);
+}
+
 void TestGlobalRendezvous(EagerContext* context, bool reuse_global_rendezvous) {
   context->SetReuseRendezvousForFunctions(reuse_global_rendezvous);
   EXPECT_EQ(context->GetReuseRendezvousForFunctions(), reuse_global_rendezvous);

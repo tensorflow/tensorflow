@@ -1150,6 +1150,10 @@ void ContextInterface::ResetGlobalRendezvousForFunction() {
   context_.GetEagerContext()->ResetGlobalRendezvousForFunction();
 }
 
+void ContextInterface::ResetLocalRendezvousTable() {
+  context_.GetEagerContext()->ResetLocalRendezvousTable();
+}
+
 std::vector<std::string> ContextInterface::GetLoggedOpsTestonly() {
   const auto& ret = GetHostContext()
                         ->GetOrCreateSharedContext<tensorflow::tfd::OpLogger>()

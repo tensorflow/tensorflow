@@ -2018,6 +2018,17 @@ class Context:
     """Returns a stack of context switches."""
     return self._context_switches
 
+  def reset_local_rendezvous_table(self):
+    """Resets all local rendezvous in the table.
+
+    Global rendezvous is not changed. When this function is called, it has to be
+    guaranteed that no nodes are being executed, otherwise a race condition
+    could happen. This function should only be used internally for testing and
+    debugging purpose.
+    """
+    if self._context_handle is not None:
+      pywrap_tfe.TFE_ContextResetLocalRendezvousTable(self._context_handle)
+
 
 class _EagerDeviceContext(object):
   """Context-manager forcing placement of ops and Tensors on a device."""

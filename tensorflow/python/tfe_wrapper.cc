@@ -912,6 +912,10 @@ PYBIND11_MODULE(_pywrap_tfe, m) {
     // NOTE: different from TFE_ContextSyncExecutors that raises potential
     // errors, deliberately ignore executor statuses in cleanup.
   });
+  m.def("TFE_ContextResetLocalRendezvousTable", [](py::handle& ctx) {
+    tensorflow::unwrap(tensorflow::InputTFE_Context(ctx))
+        ->ResetLocalRendezvousTable();
+  });
   m.def(
       "TFE_InsertConfigKeyValue",
       [](py::handle& ctx, const char* config_key, const char* config_value) {
