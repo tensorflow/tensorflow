@@ -963,6 +963,7 @@ cc_library(
         ":ir_emission_utils",
         ":matmul_utils",
         ":stream_executor_util",
+        ":gpu_serializable_autotuner",
         "@com_google_absl//absl/strings",
         "//tensorflow/compiler/xla:autotune_results_proto_cc",
         "//tensorflow/compiler/xla/hlo/ir:hlo",
@@ -983,6 +984,15 @@ cc_library(
         "//tensorflow/tsl/protobuf:autotuning_proto_cc",
         "//tensorflow/tsl/util/proto:proto_utils",
     ]),
+)
+
+cc_library(
+    name = "gpu_serializable_autotuner",
+    srcs = [],
+    hdrs = ["gpu_serializable_autotuner.h"],
+    deps = [
+        "//tensorflow/compiler/xla/service:hlo_pass",
+    ],
 )
 
 xla_cc_test(
@@ -1102,6 +1112,7 @@ cc_library(
         ":gpu_executable",
         ":hlo_algorithm_denylist",
         ":ir_emission_utils",
+        ":gpu_serializable_autotuner",
         ":stream_executor_util",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/strings",
