@@ -1138,7 +1138,6 @@ py_library(
         "//tensorflow/python/eager:graph_only_ops",
         "//tensorflow/python/eager:tape",
         "//tensorflow/python/platform",
-        "//tensorflow/python/saved_model:save_context",
         "//tensorflow/python/util",
         "//tensorflow/python/util:tf_decorator",
         "//tensorflow/python/util:tf_export",

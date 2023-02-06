@@ -44,7 +44,6 @@ from tensorflow.python.ops import handle_data_util
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.ops import variable_scope
-from tensorflow.python.saved_model import save_context
 from tensorflow.python.util import compat
 from tensorflow.python.util import nest
 from tensorflow.python.util import object_identity
@@ -291,7 +290,6 @@ class FuncGraph(ops.Graph):
                               closure,
                               spec,
                               key=None,
-                              default_value=None,
                               placeholder=None):
     """Returns a placeholder which at call time has the value closure().
 
@@ -335,10 +333,6 @@ class FuncGraph(ops.Graph):
     x = tf.constant(2)
     f()  # returns 2
     ```
-    Note that a `capture_call_time_value` function itself does not work well in
-    the saving process (since the tf.function in which it's called is not
-    invoked eagerly) unless passed a `default_value` argument. At saving time,
-    the `default_value` argument is returned instead.
 
     Args:
       closure: function which takes no arguments, to be evaluated at function
@@ -347,8 +341,6 @@ class FuncGraph(ops.Graph):
       key: optional. If not None, multiple calls to lazy_capture with the same
         key in the same graph will return the same placeholder, and the first
         closure will be used at function call time.
-      default_value: optional value to return in environments that cannot safely
-        evaluate closure.
       placeholder: optional. If not None, the graph will take the passed-in
         `placeholder` as the internal capture instead of creating a new one.
         This is useful when loading from a SavedModel.
@@ -372,22 +364,6 @@ class FuncGraph(ops.Graph):
         placeholder = spec.placeholder_value(placeholder_ctx)
 
       def wrapped_closure():
-
-        # One major case requiring returning a `default_value` is when passing a
-        # concrete function to `save`, i.e.
-        # serving_fn = serve_fn.get_concrete_function(...)
-        # model.save(save_dir, signatures={"serving_default": serving_fn})
-        # `serving_fn` has deferred captures added through
-        # `capture_call_time_value`. It can't be saved correctly since
-        # `wrapped_closure` will end up executing under a default Graph instead
-        # of FuncGraph. The user of `capture_call_time_value` also cannot
-        # conditionally avoid this call since presence of `save_context` when
-        # executing `wrapped_closure` is not known at tracing time of
-        # `serving_fn`.
-        if save_context.in_save_context() and default_value is not None:
-          return default_value
-        # TODO(wxinyi): raise an error if in save context but no default value.
-
         if not context.executing_eagerly():
           graph = ops.get_default_graph()
           assert isinstance(
@@ -395,8 +371,7 @@ class FuncGraph(ops.Graph):
               FuncGraph), "This API should only be used in TF2 enviroment."
 
           with graph.as_default():
-            ret_nest = graph.capture_call_time_value(
-                closure, spec, key=key, default_value=default_value)
+            ret_nest = graph.capture_call_time_value(closure, spec, key=key)
         else:
           ret_nest = closure()
 
@@ -852,8 +827,7 @@ class FuncGraph(ops.Graph):
                                             tensor,
                                             closure,
                                             spec,
-                                            placeholder,
-                                            default_value=None):
+                                            placeholder):
     """Replaces existing capture `tensor` with a deferred capture `closure`.
 
     Caution: It is the caller's responsibility to make sure that, after calling
@@ -870,8 +844,7 @@ class FuncGraph(ops.Graph):
     concrete_fn.graph.replace_capture_with_deferred_capture(tensor2,
                                                             closure2,
                                                             placeholder2,
-                                                            some_spec,
-                                                            some_default)
+                                                            some_spec)
     concrete_fn.set_external_captures([tensor1, closure2, tensor3])
     ```
 
@@ -882,8 +855,6 @@ class FuncGraph(ops.Graph):
       spec: nest of TypeSpec for the value to capture.
       placeholder: the internal placeholder corresponding to the captured
         `tensor`.
-      default_value: optional value to use in environments that cannot safely
-        evaluate closure.
     """
     if id(tensor) in self._captures:
       self.pop_capture(tensor)
@@ -891,7 +862,6 @@ class FuncGraph(ops.Graph):
         closure,
         spec,
         key=id(tensor),
-        default_value=default_value,
         placeholder=placeholder)
 
   def reset_captures(self, capture_list):

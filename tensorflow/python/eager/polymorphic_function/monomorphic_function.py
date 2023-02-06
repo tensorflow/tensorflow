@@ -1861,8 +1861,7 @@ class ConcreteFunction(core.ConcreteFunction, trackable.Trackable):
                                             tensor,
                                             closure,
                                             spec,
-                                            placeholder=None,
-                                            default_value=None):
+                                            placeholder=None):
     """Replaces existing capture `tensor` with a deferred capture `closure`.
 
     This API replaces the capture `tensor` from the concrete function's captured
@@ -1917,8 +1916,6 @@ class ConcreteFunction(core.ConcreteFunction, trackable.Trackable):
       spec: nest of TypeSpec for the value to capture.
       placeholder: optional. The internal placeholder corresponding to the
         captured `tensor` and the new `closure`.
-      default_value: optional value to use in environments that cannot safely
-        evaluate closure.
     """
     capture_index = None
     for i, capture in enumerate(self._captured_inputs):
@@ -1946,8 +1943,7 @@ class ConcreteFunction(core.ConcreteFunction, trackable.Trackable):
         tensor=tensor,
         closure=closure,
         spec=spec,
-        placeholder=placeholder,
-        default_value=default_value)
+        placeholder=placeholder)
 
     if capture_index is not None:
       self._captured_inputs[capture_index] = closure
