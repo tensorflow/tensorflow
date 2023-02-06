@@ -445,12 +445,14 @@ Status GpuCompiler::OptimizeHloModule(
     pipeline.AddPass<ZeroSizedHloElimination>();
 
     if (debug_options.xla_gpu_deterministic_ops()) {
-      // Scatter is nondeterministic, so eliminate all Scatters.
-      pipeline.AddPass<ScatterExpander>(ScatterExpander::kEliminateAllScatters);
-    } else {
-      // Only Scatters unsupported on XLA:GPU are eliminated.
-      pipeline.AddPass<GpuScatterExpander>();
+      // Scatter can be indeterministic if indices are not unique or a non
+      // associative combiner function is used. Eliminate these Scatter ops.
+      pipeline.AddPass<ScatterExpander>(
+          ScatterExpander::kEliminateIndeterminisitcScatters);
     }
+    // Scatters unsupported on XLA:GPU are eliminated.
+    pipeline.AddPass<GpuScatterExpander>();
+
     // TODO(phawkins): replace QR and Eigh decompositions with calls to
     // cuSOLVER.
     pipeline.AddPass<QrExpander>();

@@ -2243,11 +2243,6 @@ Status IrEmitterUnnested::EmitRngGetAndUpdateState(mlir::Operation* op) {
 Status IrEmitterUnnested::EmitScatter(mlir::Operation* op) {
   auto scatter_op = mlir::cast<mlir::lmhlo::ScatterOp>(op);
 
-  if (!scatter_op.getUniqueIndices()) {
-    TF_RETURN_IF_ERROR(
-        AssertNonDeterminismIsOkay(GetIrNameFromLoc(scatter_op.getLoc())));
-  }
-
   TF_ASSIGN_OR_RETURN(auto operand_buffer,
                       GetAllocationSlice(scatter_op.getOperand()));
   TF_ASSIGN_OR_RETURN(auto output_buffer,
@@ -2334,9 +2329,6 @@ Status IrEmitterUnnested::EmitScatter(
 
 Status IrEmitterUnnested::EmitScatter(
     const ScatterDescriptor& desc, const LaunchDimensions& launch_dimensions) {
-  if (!desc.unique_indices) {
-    TF_RETURN_IF_ERROR(AssertNonDeterminismIsOkay(desc.name));
-  }
   auto loop_body_emitter = [&](const IrArray::Index& index) -> Status {
     std::vector<llvm::Value*> raw_window_multidim;
     std::vector<llvm::Value*> input_scatter_multidim;
