@@ -75,6 +75,21 @@ class DistributedSaveTfDataServiceTest(data_service_test_base.TestBase,
     self.assertTrue(os.path.exists(os.path.join(self._test_dir, "DONE")))
 
   @combinations.generate(test_base.eager_only_combinations())
+  def testChooseFromDatasets(self):
+    datasets = [
+        dataset_ops.Dataset.from_tensor_slices(["a", "a", "a", "a", "a"]),
+        dataset_ops.Dataset.from_tensor_slices(["b", "b", "b", "b", "b"]),
+        dataset_ops.Dataset.from_tensor_slices(["c", "c", "c", "c", "c"]),
+    ]
+    choice_dataset = dataset_ops.Dataset.range(3).repeat()
+    dataset = dataset_ops.Dataset.choose_from_datasets(datasets, choice_dataset)
+    self.save(dataset)
+    # TODO(b/250921378) Test loading.
+    self.assertTrue(
+        os.path.exists(os.path.join(self._test_dir, "snapshot.metadata"))
+    )
+
+  @combinations.generate(test_base.eager_only_combinations())
   def testBadDispatcherAddress(self):
     dataset = dataset_ops.Dataset.range(10)
     with self.assertRaisesRegex(ValueError, "must be a string"):

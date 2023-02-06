@@ -201,6 +201,8 @@ Status SnapshotSplitProvider::ValidateSplitFiles(
   return OkStatus();
 }
 
+Status SnapshotSplitProvider::Reset() { return OkStatus(); }
+
 Status SnapshotSplitProvider::Save(
     std::function<std::string(std::string)> full_name,
     IteratorStateWriter* writer) TF_LOCKS_EXCLUDED(mu_) {
@@ -220,11 +222,6 @@ Status SnapshotSplitProvider::Restore(
   next_split_index_ = next_split_index;
   TF_ASSIGN_OR_RETURN(split_to_file_map_, GetSplitsFiles(next_split_index_));
   return OkStatus();
-}
-
-Status SnapshotSplitProvider::Reset() {
-  return errors::FailedPrecondition(
-      "tf.data SnapshotSplitProvider does not support `Reset`.");
 }
 
 }  // namespace data
