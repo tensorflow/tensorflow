@@ -55,7 +55,7 @@ struct TileMapPattern : public OpRewritePattern<linalg::MapOp> {
           op, "has already been tiled by another pass.");
 
     auto fuseFilterFn = [](Operation *op) {
-      return isa<linalg::BroadcastOp, linalg::MapOp>(op);
+      return isa<linalg::BroadcastOp, linalg::FillOp, linalg::MapOp>(op);
     };
 
     // Find there another linalg.map where this op can be fused.

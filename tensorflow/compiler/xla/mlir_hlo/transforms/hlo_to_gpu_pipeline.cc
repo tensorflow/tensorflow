@@ -216,7 +216,8 @@ void mlir::createHloToGpuPipeline(OpPassManager &pm,
 
     // GPU-specific tiling for ops on the warp level.
     pm.addNestedPass<FuncOp>(gml_st::createTilingGpuWarpPass());
-    pm.addNestedPass<FuncOp>(gml_st::createScalarizationPass());
+    pm.addNestedPass<FuncOp>(
+        gml_st::createScalarizationPass(/*skipFillOpScalarization=*/true));
 
     pm.addNestedPass<FuncOp>(gml_st::createVectorizeForGPUPass(
         /*vectorizeGmlStOps=*/true, /*distributionLabels=*/{
@@ -234,7 +235,8 @@ void mlir::createHloToGpuPipeline(OpPassManager &pm,
     // Convert the inner dimension into a sequential loop over all elements.
     pm.addNestedPass<FuncOp>(gml_st::createTilingCwisePass(
         /*distribute=*/false, /*tileSizes=*/1));
-    pm.addNestedPass<FuncOp>(gml_st::createScalarizationPass());
+    pm.addNestedPass<FuncOp>(
+        gml_st::createScalarizationPass(/*skipFillOpScalarization=*/true));
   }
 
   pm.addPass(createCanonicalizerPass());

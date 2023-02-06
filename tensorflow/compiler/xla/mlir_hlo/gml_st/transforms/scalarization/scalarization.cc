@@ -62,7 +62,10 @@ Value materializePoint(OpBuilder &b, Location loc, Value valueToTile,
 }
 
 struct ScalarizeLinalgOp : public OpInterfaceRewritePattern<LinalgOp> {
-  using OpInterfaceRewritePattern<LinalgOp>::OpInterfaceRewritePattern;
+  explicit ScalarizeLinalgOp(MLIRContext *context, bool skipFillOpScalarization,
+                             PatternBenefit benefit = 1)
+      : OpInterfaceRewritePattern<LinalgOp>(context, benefit),
+        skipFillOpScalarization(skipFillOpScalarization) {}
 
   static LogicalResult inlinePayload(PatternRewriter &rewriter, Location loc,
                                      LinalgOp linalgOp, ValueRange argValues) {
@@ -94,11 +97,12 @@ struct ScalarizeLinalgOp : public OpInterfaceRewritePattern<LinalgOp> {
 
   LogicalResult matchAndRewrite(LinalgOp linalgOp,
                                 PatternRewriter &rewriter) const override {
+    if (skipFillOpScalarization && isa<linalg::FillOp>(&linalgOp)) {
+      return failure();
+    }
+
     // Fail if not every argument is a scalar or a single-element tensor.
     if (!hasSingleElementOperandsAndResults(linalgOp)) return failure();
-
-    // TODO(aliia): fix scalarization of FillOp.
-    if (auto *fillOp = dyn_cast<linalg::FillOp>(&linalgOp)) return failure();
 
     // Load the data corresponding to the block arguments that
     // represent input operands.
@@ -126,6 +130,9 @@ struct ScalarizeLinalgOp : public OpInterfaceRewritePattern<LinalgOp> {
     // Inline the op payload and rewrite the operation.
     return inlinePayload(rewriter, loc, linalgOp, indexedValues);
   }
+
+ private:
+  bool skipFillOpScalarization;
 };
 
 // Returns `startIndices`[0, :] for `startIndices` of shape 1xn. Returns None if
@@ -584,20 +591,27 @@ void populateTensorInsertExtractFoldingPatterns(RewritePatternSet *patterns) {
 
 struct ScalarizationPass
     : public impl::ScalarizationPassBase<ScalarizationPass> {
+  ScalarizationPass() = default;
+
+  explicit ScalarizationPass(bool skipFillScalarization) {
+    skipFillOpScalarization = skipFillScalarization;
+  }
+
   void runOnOperation() override {
     auto func = getOperation();
     auto *context = &getContext();
 
     RewritePatternSet patterns(context);
+    patterns.add<ScalarizeLinalgOp>(context, skipFillOpScalarization);
     // clang-format off
     patterns.add<
         ScalarizeConcatenateOp,
         ScalarizeDynamicBroadcastInDimOp,
         ScalarizeGatherOp,
         ScalarizeIfOp,
-        ScalarizeLinalgOp,
         ScalarizeReverseOp,
-        ScalarizeScatterOp>(context);
+        ScalarizeScatterOp
+    >(context);
     // clang-format on
     populateTensorInsertExtractFoldingPatterns(&patterns);
     FromElementsOp::getCanonicalizationPatterns(patterns, context);
@@ -608,8 +622,9 @@ struct ScalarizationPass
 };
 }  // namespace
 
-std::unique_ptr<OperationPass<func::FuncOp>> createScalarizationPass() {
-  return std::make_unique<ScalarizationPass>();
+std::unique_ptr<OperationPass<func::FuncOp>> createScalarizationPass(
+    bool skipFillOpScalarization) {
+  return std::make_unique<ScalarizationPass>(skipFillOpScalarization);
 }
 
 }  // namespace gml_st

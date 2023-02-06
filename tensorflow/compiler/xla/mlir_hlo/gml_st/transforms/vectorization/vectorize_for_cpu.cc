@@ -176,20 +176,6 @@ struct IdentityTransposeOpFoldingPattern
   }
 };
 
-bool isInsideGmlStLoop(Operation *op) {
-  Operation *parent = op->getParentOp();
-  return isa<ParallelOp>(parent) || isa<ForOp>(parent);
-}
-
-bool isFillTiledOrSmall(linalg::FillOp fill) {
-  if (isInsideGmlStLoop(fill)) return true;
-
-  // Allow vectorization for static shapes with low number of elements.
-  auto outputType = fill.output().getType().dyn_cast<mlir::RankedTensorType>();
-  return outputType && outputType.hasStaticShape() &&
-         outputType.getNumElements() < kNumElementsThreshold;
-}
-
 struct VectorizeForCPUPass
     : public impl::VectorizeForCPUPassBase<VectorizeForCPUPass> {
   void runOnOperation() override {
@@ -204,7 +190,7 @@ struct VectorizeForCPUPass
       });
     };
     auto isPerfectlyTiledLoop = [&](Operation *op) {
-      return (isa<ForOp, ParallelOp, scf::ForOp>(op)) &&
+      return (isa<ParallelOp, scf::ForOp>(op)) &&
              hasLabel(op, kPerfectlyTiledLoopLabel);
     };
     auto isInsidePerfectlyTiledLoop = [&](Operation *op) {
@@ -220,6 +206,7 @@ struct VectorizeForCPUPass
       // clang-format off
       patterns.add<
         VectorizationPattern<BroadcastOp>,
+        VectorizationPattern<FillOp>,
         VectorizationPattern<GenericOp>,
         VectorizationPattern<MapOp>,
         VectorizationPattern<MatmulOp>,
@@ -228,7 +215,6 @@ struct VectorizeForCPUPass
         VectorizationPattern<TransposeOp>
       >(ctx, isInsidePerfectlyTiledLoopOrSmall);
       // clang-format on
-      patterns.add<VectorizationPattern<FillOp>>(ctx, isFillTiledOrSmall);
       populateTransferReadOfOneDimExpandShapePattern(patterns);
       patterns.add<ThloReverseVectorizationPattern>(ctx);
       (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
