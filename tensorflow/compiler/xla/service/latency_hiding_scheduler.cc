@@ -1263,7 +1263,7 @@ DefaultSchedulerCore::ScheduleComputation(const HloComputation* computation) {
 
   const auto& debug_options = xla::GetDebugOptionsFromFlags();
   if (debug_options.xla_dump_latency_hiding_schedule() &&
-      !absl::StrContains(computation->name(), "region")) {
+      computation->IsEntryComputation()) {
     int core_freq = latency_estimator_->CyclesPerMicrosecond();
     DumpLatencyHidingSchedule(computation, sched_state.sched_graph,
                               sched_state.new_sequence_reversed, core_freq,
