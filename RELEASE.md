@@ -19,8 +19,9 @@
 
 *   `tf.keras`
 
-    *   Added Keras metrics `tf.keras.metrics.FBetaScore` and
+    *   Added F-Score metrics `tf.keras.metrics.FBetaScore` and
         `tf.keras.metrics.F1Score`.
+    *   Added activation function `tf.keras.activations.mish`.
 
 # Bug Fixes and Other Changes
 
