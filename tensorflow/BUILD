@@ -1666,6 +1666,9 @@ py_library(
         },
     ) + [
         ":tensorflow_py_no_contrib",
+        "//tensorflow/lite/python:analyzer",
+        "//tensorflow/lite/python:lite",
+        "//tensorflow/lite/python/authoring",
         "//tensorflow/python/estimator:estimator_py",
     ],
 )
@@ -1680,6 +1683,11 @@ py_library(
     ],
     srcs_version = "PY3",
     visibility = ["//visibility:public"],
-    deps = ["//tensorflow/python:no_contrib"],
+    deps = [
+        "//tensorflow/lite/python:analyzer",
+        "//tensorflow/lite/python:lite",
+        "//tensorflow/lite/python/authoring",
+        "//tensorflow/python:no_contrib",
+    ],
 )
 # copybara:comment_end
