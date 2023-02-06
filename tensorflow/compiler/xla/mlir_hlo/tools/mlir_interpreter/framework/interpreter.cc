@@ -101,7 +101,8 @@ void InterpreterState::addFailure(llvm::StringRef failure) {
 
 InterpreterScope::~InterpreterScope() {
   for (auto& [_, value] : values) {
-    if (value.isTensor() && value.buffer()->hasOutOfBoundsAccess()) {
+    if (value.isTensor() && value.buffer() &&
+        value.buffer()->hasOutOfBoundsAccess()) {
       state.addFailure("Out of bounds access");
       break;
     }

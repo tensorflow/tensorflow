@@ -52,6 +52,14 @@ class InterpreterListener {
   virtual void leaveRegion(ArrayRef<InterpreterValue> terminatorArgs) {}
 };
 
+struct InterpreterStats {
+  // Memrefs only.
+  int64_t heapSize = 0;
+  int64_t peakHeapSize = 0;
+  int64_t numAllocations = 0;
+  int64_t numDeallocations = 0;
+};
+
 struct InterpreterOptions {
   InterpreterListener* listener = nullptr;
   std::optional<int64_t> maxSteps = std::nullopt;
@@ -63,6 +71,7 @@ struct InterpreterOptions {
       [](llvm::StringRef failure) {
         llvm::errs() << "Interpreter failure: " << failure << "\n";
       };
+  InterpreterStats* stats = nullptr;
 };
 
 class InterpreterState {

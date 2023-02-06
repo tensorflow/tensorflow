@@ -54,8 +54,21 @@ void store(InterpreterState& state, memref::StoreOp,
 }
 
 // TODO(jreiffers): Support symbol operands.
-InterpreterValue alloc(InterpreterState&, memref::AllocOp alloc,
+InterpreterValue alloc(InterpreterState& state, memref::AllocOp alloc,
                        ArrayRef<int64_t> dynamicSizes) {
+  auto ty = alloc->getResultTypes().front().cast<mlir::ShapedType>();
+  auto shape = replaceDynamicVals(ty.getShape(), dynamicSizes);
+  auto result = InterpreterValue::makeTensor(ty.getElementType(), shape);
+  if (auto* stats = state.getOptions().stats) {
+    stats->heapSize += result.buffer()->getByteSize();
+    stats->peakHeapSize = std::max(stats->peakHeapSize, stats->heapSize);
+    ++stats->numAllocations;
+  }
+  return result;
+}
+
+InterpreterValue allocA(InterpreterState&, memref::AllocaOp alloc,
+                        ArrayRef<int64_t> dynamicSizes) {
   auto ty = alloc->getResultTypes().front().cast<mlir::ShapedType>();
   auto shape = replaceDynamicVals(ty.getShape(), dynamicSizes);
   return InterpreterValue::makeTensor(ty.getElementType(), shape);
@@ -65,6 +78,10 @@ void dealloc(InterpreterState& state, memref::DeallocOp,
              InterpreterValue memref) {
   auto buffer = memref.buffer();
   const auto& view = memref.view();
+  if (auto* stats = state.getOptions().stats) {
+    stats->heapSize -= buffer->getByteSize();
+    ++stats->numDeallocations;
+  }
   if (view.getNumElements() * memref.getByteSizeOfElement() !=
       buffer->getByteSize()) {
     state.addFailure("Attempting to deallocate a subview");
@@ -195,6 +212,7 @@ int64_t dim(InterpreterState& state, memref::DimOp,
 }
 
 REGISTER_MLIR_INTERPRETER_OP(alloc);
+REGISTER_MLIR_INTERPRETER_OP(allocA);
 REGISTER_MLIR_INTERPRETER_OP(collapseShape);
 REGISTER_MLIR_INTERPRETER_OP(cast<memref::CastOp>);
 REGISTER_MLIR_INTERPRETER_OP(copy);
