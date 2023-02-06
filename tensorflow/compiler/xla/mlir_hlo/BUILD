@@ -1351,6 +1351,7 @@ cc_library(
         "gml_st/transforms/rewrite_vector_ops/rewrite_vector_multi_reduction.cc",
         "gml_st/transforms/rewrite_vector_ops/rewrite_vector_transpose.cc",
         "gml_st/transforms/scalarization/scalarization.cc",
+        "gml_st/transforms/tiling/tile_by_one.cc",
         "gml_st/transforms/tiling/tiling.cc",
         "gml_st/transforms/tiling_softmax/tiling_softmax.cc",
         "gml_st/transforms/transforms.h",

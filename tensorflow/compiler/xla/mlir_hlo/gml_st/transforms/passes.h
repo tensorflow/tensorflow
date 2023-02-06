@@ -69,6 +69,9 @@ std::unique_ptr<OperationPass<func::FuncOp>> createCollapseShapePass();
 std::unique_ptr<OperationPass<func::FuncOp>> createCollapseShapePass(
     const CollapseShapePassOptions &options);
 
+// Pass to tile all tileable ops to size 1.
+std::unique_ptr<OperationPass<func::FuncOp>> createTileByOnePass();
+
 /// Pass to compose tensor.extract_slice/insert_slice ops.
 std::unique_ptr<OperationPass<func::FuncOp>>
 createComposeExtractInsertSlicePass();
