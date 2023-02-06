@@ -1,33 +1,36 @@
 Auto generated patch. Do not edit or delete it, even if empty.
-diff -ruN --strip-trailing-cr a/mlir/include/mlir/IR/OpDefinition.h b/mlir/include/mlir/IR/OpDefinition.h
---- a/mlir/include/mlir/IR/OpDefinition.h
-+++ b/mlir/include/mlir/IR/OpDefinition.h
-@@ -631,13 +631,14 @@
-   class Impl
-       : public TraitBase<ConcreteType, OneTypedResult<ResultType>::Impl> {
-   public:
--    TypedValue<ResultType> getResult() {
--      return cast<TypedValue<ResultType>>(this->getOperation()->getResult(0));
-+   mlir::TypedValue<ResultType> getResult() {
-+      return cast<mlir::TypedValue<ResultType>>(
-+          this->getOperation()->getResult(0));
-     }
+diff -ruN --strip-trailing-cr a/utils/bazel/llvm-project-overlay/libc/BUILD.bazel b/utils/bazel/llvm-project-overlay/libc/BUILD.bazel
+--- a/utils/bazel/llvm-project-overlay/libc/BUILD.bazel
++++ b/utils/bazel/llvm-project-overlay/libc/BUILD.bazel
+@@ -733,6 +733,7 @@
+     deps = [
+         ":__support_common",
+         ":__support_fputil_fp_bits",
++        ":__support_fputil_fenv_impl",
+         ":__support_fputil_fma",
+         ":__support_fputil_nearest_integer",
+         ":__support_fputil_multiply_add",
+@@ -750,6 +751,7 @@
+     deps = [
+         ":__support_common",
+         ":__support_fputil_fp_bits",
++        ":__support_fputil_fenv_impl",
+         ":__support_fputil_fma",
+         ":__support_fputil_nearest_integer",
+         ":__support_fputil_multiply_add",
+@@ -954,6 +956,7 @@
+         ":__support_fputil_multiply_add",
+         ":__support_fputil_polyeval",
+         ":inv_trigf_utils",
++        ":math_utils",
+     ],
+ )
  
-     /// If the operation returns a single value, then the Op can be implicitly
-     /// converted to a Value. This yields the value of the only result.
--    operator TypedValue<ResultType>() { return getResult(); }
-+    operator mlir::TypedValue<ResultType>() { return getResult(); }
- 
-     ResultType getType() { return getResult().getType(); }
-   };
-diff -ruN --strip-trailing-cr a/mlir/lib/Dialect/Transform/Transforms/TransformInterpreterPassBase.cpp b/mlir/lib/Dialect/Transform/Transforms/TransformInterpreterPassBase.cpp
---- a/mlir/lib/Dialect/Transform/Transforms/TransformInterpreterPassBase.cpp
-+++ b/mlir/lib/Dialect/Transform/Transforms/TransformInterpreterPassBase.cpp
-@@ -269,6 +269,7 @@
-     llvm::dbgs() << "\nEOF\n";
-     llvm::dbgs() << "===================================\n";
-   });
-+  (void)root;
-   DEBUG_WITH_TYPE(DEBUG_TYPE_DUMP_FILE, {
-     saveReproToTempFile(llvm::dbgs(), target, transform, passName,
-                         debugPayloadRootTag, debugTransformRootTag, binaryName);
+@@ -1137,6 +1140,7 @@
+     additional_deps = [
+         ":__support_fputil_fma",
+         ":__support_fputil_multiply_add",
++        ":__support_fputil_nearest_integer",
+         ":__support_fputil_polyeval",
+         ":range_reduction",
+         ":sincosf_utils",
