@@ -1,4 +1,25 @@
 Auto generated patch. Do not edit or delete it, even if empty.
+diff -ruN --strip-trailing-cr a/mlir/include/mlir/IR/OpDefinition.h b/mlir/include/mlir/IR/OpDefinition.h
+--- a/mlir/include/mlir/IR/OpDefinition.h
++++ b/mlir/include/mlir/IR/OpDefinition.h
+@@ -631,13 +631,14 @@
+   class Impl
+       : public TraitBase<ConcreteType, OneTypedResult<ResultType>::Impl> {
+   public:
+-    TypedValue<ResultType> getResult() {
+-      return cast<TypedValue<ResultType>>(this->getOperation()->getResult(0));
++   mlir::TypedValue<ResultType> getResult() {
++      return cast<mlir::TypedValue<ResultType>>(
++          this->getOperation()->getResult(0));
+     }
+ 
+     /// If the operation returns a single value, then the Op can be implicitly
+     /// converted to a Value. This yields the value of the only result.
+-    operator TypedValue<ResultType>() { return getResult(); }
++    operator mlir::TypedValue<ResultType>() { return getResult(); }
+ 
+     ResultType getType() { return getResult().getType(); }
+   };
 diff -ruN --strip-trailing-cr a/mlir/lib/Dialect/Transform/Transforms/TransformInterpreterPassBase.cpp b/mlir/lib/Dialect/Transform/Transforms/TransformInterpreterPassBase.cpp
 --- a/mlir/lib/Dialect/Transform/Transforms/TransformInterpreterPassBase.cpp
 +++ b/mlir/lib/Dialect/Transform/Transforms/TransformInterpreterPassBase.cpp
