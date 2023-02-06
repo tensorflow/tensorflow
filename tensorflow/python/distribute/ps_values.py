@@ -616,8 +616,6 @@ class DistributedTable(lookup_ops.StaticHashTable):
     """
 
     def closure():
-      if save_context.in_save_context():
-        return self._coordinator_instance.resource_handle
       # function to be evaluated at function call time, returning a nest of
       # tensors compatible with `spec`.
       dispatch_context = coordinator_context.get_current_dispatch_context()
@@ -654,7 +652,8 @@ class DistributedTable(lookup_ops.StaticHashTable):
       closure, spec = self.resource_handle_call_time_value()
       return ops.get_default_graph().capture_call_time_value(
           closure,
-          spec)
+          spec,
+          default_value=self._coordinator_instance.resource_handle)
 
   @property
   def is_distributed_table(self):
@@ -667,6 +666,7 @@ class DistributedTable(lookup_ops.StaticHashTable):
         self._coordinator_instance.resource_handle,
         closure,
         spec,
+        default_value=self._coordinator_instance.resource_handle,
         placeholder=internal_capture)
     return concrete_function.graph.deferred_external_captures[-1]
 
