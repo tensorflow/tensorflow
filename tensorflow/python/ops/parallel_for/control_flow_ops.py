@@ -111,7 +111,8 @@ def for_loop(loop_fn, loop_fn_dtypes, iters, parallel_iterations=None):
       loop_fn_out = loop_fn(loop_var)
     except InvalidArgumentError: 
       loop_fn_out = array_ops.placeholder_with_default(0, shape=[])
-    out_shapes = [[0]+ops.convert_to_tensor(x).shape for x in nest.flatten(loop_fn_out)]
+    out_shapes = [[0]+ops.convert_to_tensor(x).shape
+            for x in nest.flatten(loop_fn_out)]
     output = [array_ops.zeros(out_shapes[i], dt)
             for i,dt in enumerate(flat_loop_fn_dtypes)]
 
