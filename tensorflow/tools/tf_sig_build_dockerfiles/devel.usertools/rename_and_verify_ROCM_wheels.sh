@@ -25,5 +25,5 @@ for wheel in /tf/pkg/*.whl; do
   NEW_TF_WHEEL=${wheel/linux/"manylinux2014"}
 
   mv $wheel $NEW_TF_WHEEL
-  auditwheel show $NEW_TF_WHEEL
+  TF_WHEEL="$NEW_TF_WHEEL" bats /usertools/wheel_verification.bats --timing
 done
