@@ -28,6 +28,7 @@ from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.framework import type_spec
+from tensorflow.python.framework.errors_impl import InvalidArgumentError
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
@@ -106,10 +107,13 @@ def for_loop(loop_fn, loop_fn_dtypes, iters, parallel_iterations=None):
     # This may happen for the case where iters == 0.
     # Pack a list of empty tensors with the proper ranks to match pfor output on 0 iters
     loop_var = array_ops.placeholder_with_default(0, shape=[])
-    loop_fn_out = nest.flatten(loop_fn(loop_var))
-    out_shapes = [[0]+ops.convert_to_tensor(x).shape for x in loop_fn_out]
+    try:
+      loop_fn_out = loop_fn(loop_var)
+    except InvalidArgumentError: 
+      loop_fn_out = array_ops.placeholder_with_default(0, shape=[])
+    out_shapes = [[0]+ops.convert_to_tensor(x).shape for x in nest.flatten(loop_fn_out)]
     output = [array_ops.zeros(out_shapes[i], dt)
-              for i,dt in enumerate(flat_loop_fn_dtypes)]
+            for i,dt in enumerate(flat_loop_fn_dtypes)]
 
   return nest.pack_sequence_as(loop_fn_dtypes, output)
 
