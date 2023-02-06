@@ -36,7 +36,13 @@ tsl::Status AtomicallyWrite(
   std::string uncommitted_filename =
       absl::StrCat(filename, "-tmp-", random::New64());
   TF_RETURN_IF_ERROR(nonatomically_write(uncommitted_filename));
-  return env->RenameFile(uncommitted_filename, std::string(filename));
+  Status status = env->RenameFile(uncommitted_filename, std::string(filename));
+  if (!status.ok()) {
+    return tsl::errors::Internal("Failed to rename file: ", status.ToString(),
+                                 ". Source: ", uncommitted_filename,
+                                 ", destination: ", filename);
+  }
+  return status;
 }
 
 }  // namespace
