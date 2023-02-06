@@ -497,6 +497,7 @@ void UpdateCompileCounter(const EagerOperation* op, bool compile_with_xla,
   }
 
   string device_type = "Unknown";
+  string compilation_option = kDisabled;
   if (op->GetDeviceParsedName().type == "XLA_CPU" ||
       op->GetDeviceParsedName().type == "CPU") {
     device_type = kCpuDevice;
@@ -507,9 +508,9 @@ void UpdateCompileCounter(const EagerOperation* op, bool compile_with_xla,
   }
   if (op->GetDeviceParsedName().type == "TPU") {
     device_type = kTpuDevice;
+    compilation_option = kEnabled;
   }
 
-  string compilation_option = kDisabled;
   if (compile_with_xla) {
     compilation_option = kEnabled;
   }
