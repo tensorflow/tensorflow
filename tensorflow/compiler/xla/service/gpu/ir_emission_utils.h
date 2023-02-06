@@ -41,6 +41,14 @@ inline constexpr int64_t kMinDimensionToTransposeTiled = 16;
 // GemmRewriter pass has finished.
 bool IsMatrixMultiplication(const HloInstruction& dot);
 
+// Filters data type conversions which should be fused into Triton GEMM.
+bool IsTritonFusibleConvert(const HloInstruction*,
+                            se::CudaComputeCapability cuda_compute_capability);
+
+// Filters GEMMs which are better to handle using Triton.
+bool IsTritonHandledGEMM(const HloInstruction&,
+                         se::CudaComputeCapability cuda_compute_capability);
+
 inline constexpr int64_t WarpSize() { return 32; }
 
 // Need at least 1024 threads/block for reasonable tree reduction
@@ -53,7 +61,12 @@ inline constexpr int64_t BatchedReductionRaceFreeBound() { return 8; }
 // Returns true if `hlo` is a matched softmax fusion.
 bool IsSoftmaxCustomCall(const HloInstruction& hlo);
 
+// Identifies Triton GEMM fusions.
+bool IsTritonCustomCall(const HloInstruction& hlo);
+
 extern const char* const kSoftmaxCallTarget;
+
+inline constexpr absl::string_view kTritonCallTarget = "__triton";
 
 // Returns true if `hlo` will be implemented as a call to a cuSolver routine.
 //
@@ -226,6 +239,9 @@ bool HasAnyTiledTransposeRoot(HloComputation* computation);
 std::optional<Vector3> FindTiledLogicalTranspose(const HloInstruction& instr);
 
 std::optional<Vector3> FindAnyTiledTranspose(const HloInstruction& instr);
+
+// Log and verify an LLVM module.
+void LogAndVerify(const llvm::Module* m);
 
 }  // namespace gpu
 }  // namespace xla

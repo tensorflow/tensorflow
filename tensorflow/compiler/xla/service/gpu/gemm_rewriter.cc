@@ -1317,6 +1317,10 @@ StatusOr<bool> GemmRewriter::Run(
   bool changed = false;
   for (HloComputation *computation :
        module->MakeNonfusionComputations(execution_threads)) {
+    if (computation->IsCustomCallComputation() &&
+        IsTritonCustomCall(*computation->CustomCallInstruction())) {
+      continue;
+    }
     TF_ASSIGN_OR_RETURN(
         bool result, RunOnComputation(computation, cuda_compute_capability_));
     changed |= result;

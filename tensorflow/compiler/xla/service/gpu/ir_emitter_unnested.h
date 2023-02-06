@@ -202,6 +202,7 @@ class IrEmitterUnnested : public IrEmitter {
   Status EmitFftThunk(mlir::Operation* op);
   Status EmitFusion(mlir::Operation* op);
   Status EmitLaunchFunc(mlir::Operation* op);
+  Status EmitTritonCustomCall(mlir::Operation* op);
   Status EmitLoopFusion(mlir::Operation* op);
   Status EmitReduce(mlir::Operation* op);
   Status EmitSelectAndScatter(mlir::Operation* op);
@@ -799,6 +800,11 @@ class IrEmitterUnnested : public IrEmitter {
       mlir::Operation::operand_range operands);
 
   GpuElementalIrEmitter elemental_emitter_;
+
+  // Cache of already compiled Triton GEMMs keyed by
+  // HLO computation fingerprint.
+  absl::flat_hash_map<std::string, std::pair<llvm::Function*, LaunchDimensions>>
+      triton_cache_;
 };
 
 }  // namespace gpu
