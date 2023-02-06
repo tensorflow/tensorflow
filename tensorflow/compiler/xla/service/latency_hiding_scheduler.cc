@@ -104,9 +104,6 @@ LatencyEstimator::TimeCost ApproximateLatencyEstimator::GetLatencyBetween(
 // Uses the approximate function for NodeCost based on a flag.
 LatencyEstimator::TimeCost ApproximateLatencyEstimator::NodeCost(
     const HloInstruction* instr) const {
-  static constexpr TimeCost kLowCost = 1.0;
-  static constexpr TimeCost kMediumCost = 1000.0;
-  static constexpr TimeCost kHighCost = 5000.0;
   if (instr->IsLoopFusion()) {
     return kMediumCost;
   }
