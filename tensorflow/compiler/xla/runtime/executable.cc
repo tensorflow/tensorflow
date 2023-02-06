@@ -332,7 +332,7 @@ absl::StatusOr<ExecutionReference> Executable::Execute(
   if (auto st = ReturnResults(ordinal, results, &call_frame); !st.ok())
     return st;
 
-  return exec_ref;
+  return {std::move(exec_ref)};
 }
 
 ExecutionReference Executable::Execute(unsigned ordinal, CallFrame& call_frame,
