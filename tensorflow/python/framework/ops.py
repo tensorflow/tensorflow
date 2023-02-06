@@ -50,7 +50,6 @@ from tensorflow.python.framework import cpp_shape_inference_pb2
 from tensorflow.python.framework import device as pydev
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
-from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import registry
 from tensorflow.python.framework import tensor_conversion_registry
 from tensorflow.python.framework import tensor_shape
@@ -2100,7 +2099,7 @@ class Operation(object):
         control_op = None
         if isinstance(c, Operation):
           control_op = c
-        elif isinstance(c, (Tensor, indexed_slices.IndexedSlices)):
+        elif isinstance(c, (Tensor, internal.IndexedSlices)):
           control_op = c.op
         else:
           raise TypeError(f"Control input must be an Operation, "
@@ -5101,7 +5100,7 @@ class Graph(object):
       # The hasattr(handle) is designed to match ResourceVariables. This is so
       # control dependencies on a variable or on an unread variable don't
       # trigger reads.
-      if (isinstance(c, indexed_slices.IndexedSlices) or
+      if (isinstance(c, internal.IndexedSlices) or
           (hasattr(c, "_handle") and hasattr(c, "op"))):
         c = c.op
       c = self.as_graph_element(c)

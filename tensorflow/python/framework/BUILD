@@ -1023,7 +1023,6 @@ py_library(
         ":device",
         ":dtypes",
         ":error_interpolation",
-        ":indexed_slices",
         ":op_def_registry",
         ":registry",
         ":tensor_conversion_registry",

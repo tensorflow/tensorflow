@@ -68,7 +68,10 @@ class IndexedSlicesCompositeTensorGradient(
 
 # TODO(mdan): Should IndexedSlices be a "tensor"?
 @tf_export("IndexedSlices")
-class IndexedSlices(internal.NativeObject, composite_tensor.CompositeTensor):
+class IndexedSlices(
+    internal.IndexedSlices,
+    internal.NativeObject,
+    composite_tensor.CompositeTensor):
   """A sparse representation of a set of tensor slices at given indices.
 
   This class is a simple wrapper for a pair of `Tensor` objects:
