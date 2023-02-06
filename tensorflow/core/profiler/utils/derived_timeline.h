@@ -41,6 +41,8 @@ class DerivedXEventBuilder {
                     std::optional<int64_t> group_id) const;
 
   void Expand(Timespan event_span);
+  Timespan GetTimespan() const { return event_.GetTimespan(); }
+  void SetTimespan(Timespan event_span) { event_.SetTimespan(event_span); }
 
  private:
   XEventBuilder event_;
@@ -84,9 +86,9 @@ class DerivedXLineBuilder {
   void ExpandOrAddLevelEvent(const XEventMetadata& event_metadata,
                              Timespan event_span,
                              std::optional<int64_t> group_id, int level);
+  void AdjustDurationForTraceViewer(int level);
 
   const XStatMetadata* group_id_stat_metadata_ = nullptr;
-  const XStatMetadata* level_stat_metadata_ = nullptr;
   XLineBuilder line_;
   absl::flat_hash_map<int, std::optional<DerivedXEventBuilder>>
       last_event_by_level_;
