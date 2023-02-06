@@ -104,6 +104,17 @@ class GemmOpLowering : public OpRewritePattern<GEMMOp> {
     call->setAttr(b.getStringAttr("beta"), op.getBetaAttr());
     call->setAttr(b.getStringAttr("dot_dims"), op.getDotDimensionNumbers());
 
+    if (auto precisions = op.getPrecisionConfig()) {
+      llvm::SmallVector<int32_t> values;
+      for (auto precision : *precisions) {
+        auto value = precision.cast<mhlo::PrecisionAttr>().getValue();
+        values.push_back(static_cast<int32_t>(value));
+      }
+      call->setAttr(b.getStringAttr("precision"), b.getI32TensorAttr(values));
+    } else {
+      call->setAttr(b.getStringAttr("precision"), b.getI32TensorAttr({0, 0}));
+    }
+
     // Erase the original gemm operation.
     rewriter.eraseOp(op);
 

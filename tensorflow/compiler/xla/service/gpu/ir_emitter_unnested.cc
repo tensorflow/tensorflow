@@ -5579,7 +5579,8 @@ Status IrEmitterUnnested::EmitLmhloRegion(mlir::Region* region) {
 void IrEmitterUnnested::GetDependentDialects(mlir::DialectRegistry& registry) {
   registry.insert<mlir::arith::ArithDialect, mlir::func::FuncDialect,
                   mlir::gpu::GPUDialect, mlir::lmhlo::LmhloDialect,
-                  mlir::lmhlo_gpu::LmhloGpuDialect, mlir::mhlo::MhloDialect>();
+                  mlir::lmhlo_gpu::LmhloGpuDialect, mlir::mhlo::MhloDialect,
+                  mlir::memref::MemRefDialect>();
   mlir::registerLLVMDialectTranslation(registry);
   mlir::registerNVVMDialectTranslation(registry);
   mlir::registerROCDLDialectTranslation(registry);

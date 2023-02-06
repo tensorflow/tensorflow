@@ -122,10 +122,16 @@ xla_cc_test(
     ],
 )
 
-xla_cc_test(
+xla_test(
     name = "mlir_gemm_test",
     srcs = ["mlir_gemm_test.cc"],
-    tags = tf_cuda_tests_tags(),
+    backend_tags = {"gpu": [
+        "requires-gpu-nvidia",
+        "requires-gpu-sm80-only",
+    ]},
+    backends = [
+        "gpu",
+    ],
     deps = [
         ":mlir_gpu_test_base",
         "//tensorflow/tsl/lib/core:status_test_util",
