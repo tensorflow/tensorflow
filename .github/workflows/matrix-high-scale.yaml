@@ -1,0 +1,9 @@
+name: Test workflow
+on:
+    workflow_dispatch:
+jobs:
+test:
+    runs-on: light-weight-runner
+    steps:
+    - name: Hello world
+        run: echo "Hello world"
