@@ -1804,8 +1804,9 @@ std::optional<HloSharding> PatternMatchPartiallyReplicateDim(
           : 1;
   CHECK_NE(target_replicated_dim, -1) << "Expected replicated dim";
   for (int i = 0; i < source.TiledDataRank(); ++i) {
-    if (source.tile_assignment().dim(i) * source_replicated_size !=
-        target.tile_assignment().dim(target_replicated_dim)) {
+    if (source.tile_assignment().dim(i) == 1 ||
+        source.tile_assignment().dim(i) * source_replicated_size !=
+            target.tile_assignment().dim(target_replicated_dim)) {
       continue;
     }
     auto replicated_sharding =
