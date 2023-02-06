@@ -56,8 +56,8 @@ class MklDequantizeOp : public OpKernel {
 
       // Get the inputs
       const Tensor& src_tensor = ctx->input(kSrcIndex);
-      const float min_range = ctx->input(kMinIndex).template flat<float>()(0);
-      const float max_range = ctx->input(kMaxIndex).template flat<float>()(0);
+      const float min_range = ctx->input(kMinIndex).template scalar<float>()();
+      const float max_range = ctx->input(kMaxIndex).template scalar<float>()();
 
       // Get MklShape
       auto src_tf_shape = src_tensor.shape();

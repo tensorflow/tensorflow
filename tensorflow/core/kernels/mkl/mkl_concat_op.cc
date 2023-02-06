@@ -17,7 +17,6 @@ limitations under the License.
 #include <unordered_map>
 #include <vector>
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "dnnl.hpp"
 #include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -32,6 +31,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/mkl_util.h"
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #ifdef DNNL_AARCH64_USE_ACL
 #include "tensorflow/core/platform/mutex.h"
 #endif
@@ -108,8 +108,8 @@ class EigenConcatBaseOp : public OpKernel {
     float overall_min = std::numeric_limits<float>::max();
     float overall_max = std::numeric_limits<float>::lowest();
     for (int i = 0; i < N; ++i) {
-      const float input_min = input_mins[i].flat<float>()(0);
-      const float input_max = input_maxes[i].flat<float>()(0);
+      const float input_min = input_mins[i].scalar<float>()();
+      const float input_max = input_maxes[i].scalar<float>()();
       input_mins_and_maxes->emplace_back(input_min, input_max);
       overall_min = std::min(overall_min, input_min);
       overall_max = std::max(overall_max, input_max);
@@ -187,13 +187,12 @@ class EigenConcatBaseOp : public OpKernel {
       const auto in = values[i];
       const bool in_is_scalar = TensorShapeUtils::IsScalar(input_shapes[i]);
       OP_REQUIRES(
-          c,
-          (input_shapes[i].dims() == input_dims) ||
-              (input_is_scalar && in_is_scalar),
+          c, (input_shapes[i].dims() == input_dims) ||
+                 (input_is_scalar && in_is_scalar),
           errors::InvalidArgument(
               "ConcatOp : Ranks of all input tensors should match: shape[0] = ",
-              input_shape.DebugString(), " vs. shape[", i,
-              "] = ", input_shapes[i].DebugString()));
+              input_shape.DebugString(), " vs. shape[", i, "] = ",
+              input_shapes[i].DebugString()));
       if (in.NumElements() > 0) {
         int64 inputs_flat_dim1 = in.NumElements() / inputs_flat_dim0;
         inputs_flat.emplace_back(new typename TTypes<T, 2>::ConstMatrix(
@@ -227,11 +226,11 @@ class EigenConcatBaseOp : public OpKernel {
     if (quantized_input) {
       Tensor* output_min_tensor = nullptr;
       OP_REQUIRES_OK(c, c->allocate_output(1, {}, &output_min_tensor));
-      output_min_tensor->flat<float>()(0) = output_min;
+      output_min_tensor->scalar<float>()() = output_min;
 
       Tensor* output_max_tensor = nullptr;
       OP_REQUIRES_OK(c, c->allocate_output(2, {}, &output_max_tensor));
-      output_max_tensor->flat<float>()(0) = output_max;
+      output_max_tensor->scalar<float>()() = output_max;
     }
   }
 };
@@ -568,12 +567,25 @@ class MklConcatOp : public OpKernel {
                     errors::InvalidArgument(
                         "QuantizedConcatOp : Expected maxes input list length ",
                         input_maxes.size(), " to equal values length ", N));
-        float input_min = input_mins[0].flat<float>()(0);
-        float input_max = input_maxes[0].flat<float>()(0);
+
+        for (int i = 0; i < N; i++) {
+          OP_REQUIRES(context,
+                      TensorShapeUtils::IsScalar(input_mins[i].shape()),
+                      errors::InvalidArgument("`input_mins[", i,
+                                              "]` must be rank 0 but is rank ",
+                                              input_mins[i].dims()));
+          OP_REQUIRES(context,
+                      TensorShapeUtils::IsScalar(input_maxes[i].shape()),
+                      errors::InvalidArgument("`input_maxes[", i,
+                                              "]` must be rank 0 but is rank ",
+                                              input_maxes[i].dims()));
+        }
+        float input_min = input_mins[0].scalar<float>()();
+        float input_max = input_maxes[0].scalar<float>()();
         const float eps = 1.0e-6;
         for (int i = 1; i < N; ++i) {
-          float min = input_mins[i].flat<float>()(0);
-          float max = input_maxes[i].flat<float>()(0);
+          float min = input_mins[i].scalar<float>()();
+          float max = input_maxes[i].scalar<float>()();
 
           if (fabs(input_min - min) > eps || fabs(input_max - max) > eps) {
             invoke_eigen = true;
@@ -805,8 +817,8 @@ class MklConcatOp : public OpKernel {
                                     output_max_mkl_shape, native_format);
           // All input tensors should have the same range, just use the
           // first one
-          output_min->flat<float>()(0) = input_mins[0].flat<float>()(0);
-          output_max->flat<float>()(0) = input_maxes[0].flat<float>()(0);
+          output_min->scalar<float>()() = input_mins[0].scalar<float>()();
+          output_max->scalar<float>()() = input_maxes[0].scalar<float>()();
         }
       } else {
         MklDnnShape dnn_shape_dst;
