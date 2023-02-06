@@ -173,16 +173,19 @@ Status NVPTXCompiler::OptimizeHloPostLayoutAssignment(
   auto cuda_compute_capability =
       std::get<se::CudaComputeCapability>(gpu_target_config.gpu_version);
   if (cuda_compute_capability.IsAtLeast(se::CudaComputeCapability::AMPERE)) {
-    pre_pipeline.AddPass<CublasPadForGemms>(PrimitiveType::BF16,
+    pre_pipeline.AddPass<CublasPadForGemms>(cuda_compute_capability,
+                                            PrimitiveType::BF16,
                                             /*pad_to_multiple_of=*/8);
   }
   if (cuda_compute_capability.IsAtLeast(se::CudaComputeCapability::VOLTA)) {
     // Pad gemms over S8 to multiples of 4 so cuBLAS can run them.
-    pre_pipeline.AddPass<CublasPadForGemms>(PrimitiveType::S8,
+    pre_pipeline.AddPass<CublasPadForGemms>(cuda_compute_capability,
+                                            PrimitiveType::S8,
                                             /*pad_to_multiple_of=*/4);
 
     // Pad the dimensions of matrices in dot operations to multiples of 8.
-    pre_pipeline.AddPass<CublasPadForGemms>(PrimitiveType::F16,
+    pre_pipeline.AddPass<CublasPadForGemms>(cuda_compute_capability,
+                                            PrimitiveType::F16,
                                             /*pad_to_multiple_of=*/8);
   }
   // Padding a gemm operand that's a constant results in pad(constant).  Run
@@ -453,7 +456,7 @@ std::vector<uint8_t> NVPTXCompiler::CompileGpuAsmOrGetCachedResult(
     if (inserted) {
       CHECK(!cache_value->compilation_done);
       if (!ptx.empty()) {
-        auto ptxas_config =
+        se::GpuAsmOpts ptxas_config =
             PtxOptsFromDebugOptions(hlo_module_config.debug_options());
         if (relocatable) {
           ptxas_config.extra_flags.push_back("-c");

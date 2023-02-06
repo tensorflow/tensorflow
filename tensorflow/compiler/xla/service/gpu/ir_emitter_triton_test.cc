@@ -63,6 +63,27 @@ ENTRY e {
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-3, 1e-3}));
 }
 
+TEST_F(TritonGemmTest, NoPadding) {
+  const char* hlo_text = R"(
+HloModule t
+
+ENTRY e {
+  p0 = f16[15,19] parameter(0)
+  p1 = s8[19,17] parameter(1)
+  cp1 = f16[19,17] convert(p1)
+  ROOT _ = f16[15,17] dot(p0, cp1),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0}
+})";
+
+  MatchOptimizedHlo(hlo_text, R"(
+; CHECK: custom_call_target="__triton",
+; CHECK-NOT: pad(
+; CHECK-NOT: slice(
+)");
+
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-3, 1e-3}));
+}
+
 struct GemmTestParams {
   PrimitiveType lhs_ty;
   PrimitiveType rhs_ty;
