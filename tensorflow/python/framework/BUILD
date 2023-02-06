@@ -1078,6 +1078,7 @@ py_library(
         ":tensor_shape",
         ":type_spec",
         "//tensorflow/core:protos_all_py",
+        "//tensorflow/python:math_ops_gen",
         "//tensorflow/python:tf2",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/saved_model:nested_structure_coder",

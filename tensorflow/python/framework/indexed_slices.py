@@ -29,6 +29,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import tensor_conversion_registry
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import type_spec
+from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.saved_model import nested_structure_coder
 from tensorflow.python.types import internal
 from tensorflow.python.util.compat import collections_abc
@@ -42,9 +43,6 @@ from tensorflow.python.util.tf_export import tf_export
 # updated to refer the symbols defined in this module directly, rather than
 # using the backwards-compatible aliases in ops.py.  (E.g.,
 # "indexed_slices.IndexedSlices" rather than "ops.IndexedSlices".)
-math_ops = LazyLoader(
-    "math_ops", globals(),
-    "tensorflow.python.ops.math_ops")
 ops = LazyLoader(
     "ops", globals(), "tensorflow.python.framework.ops")
 tensor_spec = LazyLoader(
@@ -463,7 +461,7 @@ def _indexed_slices_to_tensor(value, dtype=None, name=None, as_ref=False):
             "Converting sparse IndexedSlices to a dense Tensor with %d "
             "elements. This may consume a large amount of memory." %
             num_elements)
-  return math_ops.unsorted_segment_sum(
+  return gen_math_ops.unsorted_segment_sum(
       value.values, value.indices, value.dense_shape[0], name=name)
 
 
