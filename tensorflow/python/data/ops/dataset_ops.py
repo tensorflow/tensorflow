@@ -63,6 +63,7 @@ from tensorflow.python.saved_model import nested_structure_coder
 from tensorflow.python.trackable import asset
 from tensorflow.python.trackable import base as tracking_base
 from tensorflow.python.trackable import resource as resource_lib
+from tensorflow.python.types import data as data_types
 from tensorflow.python.types import trace
 from tensorflow.python.util import deprecation
 from tensorflow.python.util import lazy_loader
@@ -141,6 +142,7 @@ class DatasetV2(
     collections_abc.Iterable,
     tracking_base.Trackable,
     composite_tensor.CompositeTensor,
+    data_types.DatasetV2,
     metaclass=abc.ABCMeta):
   """Represents a potentially large set of elements.
 
@@ -3629,7 +3631,7 @@ name=None))
 
 
 @tf_export(v1=["data.Dataset"])
-class DatasetV1(DatasetV2):
+class DatasetV1(DatasetV2, data_types.DatasetV1):
   """Represents a potentially large set of elements.
 
   A `Dataset` can be used to represent an input pipeline as a

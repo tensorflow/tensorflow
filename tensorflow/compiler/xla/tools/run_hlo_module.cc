@@ -100,10 +100,15 @@ StatusOr<Literal> ExecuteWithRunner(std::unique_ptr<HloModule> module,
   std::cerr << "Running HLO module with runner " << runner->Name() << "...\n";
   XLA_VLOG_LINES(1, module->ToString());
   const auto start = std::chrono::high_resolution_clock::now();
-  auto result_status = runner->Execute(std::move(module), args, run_hlo_passes);
+  ExecutionProfile profile;
+  auto result_status =
+      runner->Execute(std::move(module), args, run_hlo_passes, &profile);
   const auto end = std::chrono::high_resolution_clock::now();
   std::chrono::duration<double> diff = end - start;
   std::cerr << "... compiled and ran in " << diff.count() << "s.\n";
+  double run_time = static_cast<double>(profile.compute_time_ns()) / 1e9;
+  std::cerr << "execution time for runner " << runner->Name() << ": "
+            << run_time << "s.\n";
 
   TF_RETURN_WITH_CONTEXT_IF_ERROR(
       result_status.status(),

@@ -333,9 +333,7 @@ py_library(
     deps = [
         "//tensorflow/python:constant_op",
         "//tensorflow/python/saved_model/registration",
-        "//tensorflow/python/trackable:asset",
         "//tensorflow/python/trackable:base",
-        "//tensorflow/python/trackable:resource",
     ],
 )
 

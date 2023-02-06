@@ -22,6 +22,7 @@ limitations under the License.
 #include <algorithm>
 #include <functional>
 #include <initializer_list>
+#include <numeric>
 #include <optional>
 #include <ostream>
 #include <string>
@@ -104,7 +105,16 @@ class ShapeUtil {
   // Returns the number of elements are contained within the provided shape;
   // e.g. for rank 0 (scalars) the result is always 1.
   // Precondition: shape.IsArray()
-  static int64_t ElementsIn(const Shape& shape);
+  static inline int64_t ElementsIn(const Shape& shape) {
+    DCHECK(shape.IsArray()) << ShapeUtil::HumanString(shape);
+    DCHECK_EQ(shape.dimensions_size(), shape.rank());
+    if (shape.dimensions().size() == 1) {
+      return shape.dimensions()[0];
+    }
+    return std::accumulate<decltype(shape.dimensions().begin()), int64_t>(
+        shape.dimensions().begin(), shape.dimensions().end(), 1LL,
+        std::multiplies<int64_t>());
+  }
 
   // As ElementsIn(), but recurses through tuples.
   static int64_t ElementsInRecursive(const Shape& shape);

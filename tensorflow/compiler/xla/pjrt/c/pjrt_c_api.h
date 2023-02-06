@@ -338,6 +338,25 @@ typedef PJRT_Error* PJRT_Client_LookupDevice(
 typedef struct {
   size_t struct_size;
   void* priv;
+  PJRT_Client* client;
+  int local_hardware_id;
+  // `addressable_device` has the same lifetime as `client`. It is owned by
+  // `client`.
+  PJRT_Device* addressable_device;  // out
+} PJRT_Client_LookupAddressableDevice_Args;
+
+const size_t PJRT_Client_LookupAddressableDevice_Args_STRUCT_SIZE =
+    PJRT_STRUCT_SIZE(PJRT_Client_LookupAddressableDevice_Args,
+                     addressable_device);
+
+// Returns an addressable PJRT_Device* with the specified ID as returned by
+// PJRT_Device_LocalHardwareId.
+typedef PJRT_Error* PJRT_Client_LookupAddressableDevice(
+    PJRT_Client_LookupAddressableDevice_Args* args);
+
+typedef struct {
+  size_t struct_size;
+  void* priv;
   // Serialized code in the specified format below.
   // String is owned by the caller.
   char* code;  // in/out depending on usage
@@ -1113,6 +1132,7 @@ typedef struct {
   _PJRT_API_STRUCT_FIELD(PJRT_Client_Devices);
   _PJRT_API_STRUCT_FIELD(PJRT_Client_AddressableDevices);
   _PJRT_API_STRUCT_FIELD(PJRT_Client_LookupDevice);
+  _PJRT_API_STRUCT_FIELD(PJRT_Client_LookupAddressableDevice);
   _PJRT_API_STRUCT_FIELD(PJRT_Client_Compile);
   _PJRT_API_STRUCT_FIELD(PJRT_Client_DefaultDeviceAssignment);
   _PJRT_API_STRUCT_FIELD(PJRT_Client_BufferFromHostBuffer);

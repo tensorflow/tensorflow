@@ -384,7 +384,7 @@ ENTRY %broadcast {
   TF_ASSERT_OK_AND_ASSIGN(
       bool changed,
       ShardingPropagation(/*is_spmd=*/false, GetParam().propagate_metadata,
-                          GetParam().allow_root_sharding_propagation)
+                          {GetParam().allow_root_sharding_propagation})
           .Run(module.get()));
   XLA_VLOG_LINES(1, module->ToString());
   EXPECT_TRUE(changed);
@@ -476,7 +476,7 @@ ENTRY %broadcast {
   TF_ASSERT_OK_AND_ASSIGN(
       bool changed,
       ShardingPropagation(/*is_spmd=*/false, GetParam().propagate_metadata,
-                          GetParam().allow_root_sharding_propagation)
+                          {GetParam().allow_root_sharding_propagation})
           .Run(module.get()));
   XLA_VLOG_LINES(1, module->ToString());
   EXPECT_TRUE(changed);
@@ -578,7 +578,7 @@ ENTRY %broadcast {
   TF_ASSERT_OK_AND_ASSIGN(
       bool changed,
       ShardingPropagation(/*is_spmd=*/true, GetParam().propagate_metadata,
-                          GetParam().allow_root_sharding_propagation)
+                          {GetParam().allow_root_sharding_propagation})
           .Run(module.get()));
   XLA_VLOG_LINES(1, module->ToString());
   EXPECT_TRUE(changed);
@@ -828,7 +828,7 @@ ENTRY %main {
   TF_ASSERT_OK_AND_ASSIGN(
       bool changed,
       ShardingPropagation(/*is_spmd=*/true, GetParam().propagate_metadata,
-                          GetParam().allow_root_sharding_propagation)
+                          {GetParam().allow_root_sharding_propagation})
           .Run(module.get()));
   XLA_VLOG_LINES(1, module->ToString());
   EXPECT_TRUE(changed);
@@ -880,7 +880,7 @@ ENTRY %gte {
   TF_ASSERT_OK_AND_ASSIGN(
       bool changed,
       ShardingPropagation(/*is_spmd=*/false, GetParam().propagate_metadata,
-                          GetParam().allow_root_sharding_propagation)
+                          {GetParam().allow_root_sharding_propagation})
           .Run(module.get()));
   XLA_VLOG_LINES(1, module->ToString());
   EXPECT_TRUE(changed);
@@ -3472,7 +3472,7 @@ ENTRY entry {
   TF_ASSERT_OK_AND_ASSIGN(
       bool changed,
       ShardingPropagation(/*is_spmd=*/false, GetParam().propagate_metadata,
-                          GetParam().allow_root_sharding_propagation)
+                          {GetParam().allow_root_sharding_propagation})
           .Run(module.get()));
   XLA_VLOG_LINES(1, module->ToString());
   EXPECT_TRUE(changed);
@@ -8440,7 +8440,7 @@ ENTRY %entry {
   TF_ASSERT_OK_AND_ASSIGN(
       bool changed,
       ShardingPropagation(/*is_spmd=*/true, /*propagate_metadata=*/true,
-                          /*allow_spmd_sharding_propagation_to_output=*/false,
+                          /*allow_spmd_sharding_propagation_to_output=*/{false},
                           /*cse_prevention_only=*/true)
           .Run(module.get()));
   XLA_VLOG_LINES(1, module->ToString());
@@ -8706,6 +8706,91 @@ ENTRY entry {
       FindInstruction(module.get(), "sort.0"),
       op::Sharding(
           "{{devices=[1,8]0,1,2,3,4,5,6,7}, {devices=[1,8]0,1,2,3,4,5,6,7}}"));
+}
+
+TEST_F(ShardingPropagationTest, PropagateToOutput) {
+  const char* const hlo_string = R"(
+HloModule module
+
+ENTRY %entry {
+  %param0 = f32[] parameter(0), sharding={replicated}
+  %br = f32[4] broadcast(%param0), dimensions={}
+  %annotate = f32[4] custom-call(%br), custom_call_target="Sharding",
+    backend_config="unspecified_dims=[0]", sharding={devices=[4]0,1,2,3}
+  ROOT %add = f32[4] add(%annotate, %annotate), sharding={replicated}
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool changed,
+      ShardingPropagation(/*is_spmd=*/true, /*propagate_metadata=*/true,
+                          /*allow_spmd_sharding_propagation_to_output=*/{true})
+          .Run(module.get()));
+  XLA_VLOG_LINES(1, module->ToString());
+  EXPECT_TRUE(changed);
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              op::Sharding("{devices=[4]0,1,2,3}"));
+}
+
+TEST_F(ShardingPropagationTest, PropagateToOutputTuplePartial) {
+  const char* const hlo_string = R"(
+HloModule module
+
+ENTRY %entry {
+  %param0 = f32[] parameter(0), sharding={replicated}
+  %br = f32[4] broadcast(%param0), dimensions={}
+  %annotate = f32[4] custom-call(%br), custom_call_target="Sharding",
+    backend_config="unspecified_dims=[0]", sharding={devices=[4]0,1,2,3}
+  %add = f32[4] add(%annotate, %annotate)
+  %param1 = f32[] parameter(1), sharding={replicated}
+  %br1 = f32[4] broadcast(%param1), dimensions={}
+  %annotate1 = f32[4] custom-call(%br1), custom_call_target="Sharding",
+    backend_config="unspecified_dims=[0]", sharding={devices=[4]0,1,2,3}
+  %add1 = f32[4] add(%annotate1, %annotate1)
+  ROOT t = (f32[4], f32[4]) tuple(add, add1), sharding={{replicated},{replicated}}
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool changed,
+      ShardingPropagation(
+          /*is_spmd=*/true, /*propagate_metadata=*/true,
+          /*allow_spmd_sharding_propagation_to_output=*/{true, false})
+          .Run(module.get()));
+  XLA_VLOG_LINES(1, module->ToString());
+  EXPECT_TRUE(changed);
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              op::Sharding("{{devices=[4]0,1,2,3},{replicated}}"));
+}
+
+TEST_F(ShardingPropagationTest, PropagateToOutputTupleFull) {
+  const char* const hlo_string = R"(
+HloModule module
+
+ENTRY %entry {
+  %param0 = f32[] parameter(0), sharding={replicated}
+  %br = f32[4] broadcast(%param0), dimensions={}
+  %annotate = f32[4] custom-call(%br), custom_call_target="Sharding",
+    backend_config="unspecified_dims=[0]", sharding={devices=[4]0,1,2,3}
+  %add = f32[4] add(%annotate, %annotate)
+  %param1 = f32[] parameter(1), sharding={replicated}
+  %br1 = f32[4] broadcast(%param1), dimensions={}
+  %annotate1 = f32[4] custom-call(%br1), custom_call_target="Sharding",
+    backend_config="unspecified_dims=[0]", sharding={devices=[4]0,1,2,3}
+  %add1 = f32[4] add(%annotate1, %annotate1)
+  ROOT t = (f32[4], f32[4]) tuple(add, add1), sharding={{replicated},{replicated}}
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool changed,
+      ShardingPropagation(/*is_spmd=*/true, /*propagate_metadata=*/true,
+                          /*allow_spmd_sharding_propagation_to_output=*/{true})
+          .Run(module.get()));
+  XLA_VLOG_LINES(1, module->ToString());
+  EXPECT_TRUE(changed);
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              op::Sharding("{{devices=[4]0,1,2,3},{devices=[4]0,1,2,3}}"));
 }
 
 }  // namespace

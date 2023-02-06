@@ -230,6 +230,9 @@ static Status CreateHloXlaPipeline(
 
   pm.addPass(mlir::createBufferizationToMemRefPass());
 
+  pm.addNestedPass<mlir::func::FuncOp>(
+      xla::cpu::createRemoveCopiesToOutParamsPass());
+
   // Specialize linalg.matmul to linalg.dot, linalg.matvec or linalg.vecmat,
   // and immediately canonicalize to clean up not taken branches.
   // pm.addNestedPass<mlir::func::FuncOp>(CreateLinalgMatmulSpecializationPass());

@@ -172,6 +172,10 @@ void NcclCommunicator::Enqueue(std::shared_ptr<CollectiveContext> col_ctx,
                                        reduction_op);
       break;
     }
+    case ALL_TO_ALL_COLLECTIVE: {
+      nccl_manager_.AddToAllToAll(std::move(participant), context);
+      break;
+    }
     default: {
       participant->done_callback(errors::Internal("Unexpected CollectiveType ",
                                                   col_params->instance.type));

@@ -41,7 +41,6 @@ load(
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 
 # copybara:uncomment_begin
-# load("//devtools/copybara/rules:copybara.bzl", "copybara_config_test")
 # load("//tools/build_defs/license:license.bzl", "license")
 # copybara:uncomment_end
 
@@ -136,28 +135,6 @@ package(
 # license(
 #     name = "license",
 #     package_name = "tensorflow",
-# )
-#
-# filegroup(
-#     name = "copybara_config",
-#     srcs = glob(
-#         [
-#             "*.bara.sky",
-#             "*.dic",
-#         ],
-#     ) + ["leakr_file_type_recipe.ftrcp"],
-#     data = [
-#         "//learning/brain/testing/copybara:all_bara_sky",
-#         "//third_party/tsl:copybara_config",
-#         "//third_party/xla:copybara_config",
-#     ],
-#     visibility = ["//visibility:public"],
-# )
-#
-# copybara_config_test(
-#     name = "copybara_config_test",
-#     config = "copy.bara.sky",
-#     deps = [":copybara_config"],
 # )
 # copybara:uncomment_end
 
@@ -1150,6 +1127,8 @@ tf_cc_shared_library(
                 "//tensorflow/core/util:determinism",  # Must be linked and exported to libtensorflow_framework.so.
                 "//tensorflow/lite/kernels/shim:tf_kernel_shim",
                 "//tensorflow/compiler/xla/stream_executor:stream_executor_impl",
+                "//tensorflow/tsl/framework:bfc_allocator",
+                "//tensorflow/tsl/framework:metrics",
             ] + tf_additional_binary_deps() +
             # TODO(b/259305727): Remove this select and include captured_function in macos builds.
             select({

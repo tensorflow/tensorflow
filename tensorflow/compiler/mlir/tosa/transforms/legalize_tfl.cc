@@ -2276,9 +2276,9 @@ LogicalResult ConvertTFLL2NormalizationOp::matchAndRewrite(
                                                  min_val);
     auto rsqrt = CreateOpAndInfer<tosa::RsqrtOp>(rewriter, loc, result_ty, max)
                      .getResult();
-    auto result = CreateOpAndInfer<tosa::MulOp>(rewriter, loc, result_ty, rsqrt,
-                                                input, shift)
-                      .getResult();
+    Value result = CreateOpAndInfer<tosa::MulOp>(rewriter, loc, result_ty,
+                                                 rsqrt, input, shift)
+                       .getResult();
 
     auto fused_activation_fn = tfl_l2norm_op.getFusedActivationFunctionAttr();
 

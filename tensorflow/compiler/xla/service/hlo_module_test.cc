@@ -851,7 +851,7 @@ static StatusOr<HloModuleConfigProto> MakeTestModuleConfigProto() {
   }
   proto.set_phase_index(2);
 
-  proto.set_allow_spmd_sharding_propagation_to_output(true);
+  proto.add_allow_spmd_sharding_propagation_to_output(true);
   for (int idx = 1; idx <= 3; ++idx) {
     int64_t allowance = 35 * idx;
     proto.mutable_analysis_allowance_map()->insert(

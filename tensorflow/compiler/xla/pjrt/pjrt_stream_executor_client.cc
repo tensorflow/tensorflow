@@ -2826,6 +2826,10 @@ StatusOr<std::string> PjRtStreamExecutorClient::SerializeExecutable(
 StatusOr<std::unique_ptr<PjRtLoadedExecutable>>
 PjRtStreamExecutorClient::DeserializeExecutable(
     absl::string_view serialized, std::optional<CompileOptions> options) {
+  if (serialized.empty()) {
+    return InternalError("Serialized executable is empty");
+  }
+
   if (!options.has_value()) {
     return InvalidArgument(
         "PjRtStreamExecutorClient requires `CompileOptions` for "
@@ -2835,16 +2839,6 @@ PjRtStreamExecutorClient::DeserializeExecutable(
   tsl::profiler::TraceMe traceme(
       "PjRtStreamExecutorClient::DeserializeExecutable");
   VLOG(1) << "PjRtStreamExecutorClient::DeserializeExecutable";
-
-  if (char* xla_flags = std::getenv("XLA_FLAGS")) {
-    std::string xla_flags_str(xla_flags);
-    if (!absl::StrContains(xla_flags_str,
-                           "--xla_gpu_enable_xla_runtime_executable=true")) {
-      return InternalError("Deserialization requires XLA Runtime enabled");
-    }
-  } else {
-    return InternalError("Deserialization requires XLA Runtime enabled");
-  }
 
   TF_ASSIGN_OR_RETURN(ExecutableExtras extras, GetExecutableExtras(&*options));
   std::shared_ptr<DeviceAssignment>& device_assignment =

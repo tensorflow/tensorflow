@@ -367,8 +367,9 @@ Status GpuCompiler::OptimizeHloModule(
   layout_insensitive_algsimp_opts.set_minmax_propagate_nan(
       !debug_options.xla_gpu_enable_fast_min_max());
 
-  if (gpu_target_config.platform_name == "ROCM")
+  if (gpu_target_config.platform_name == "ROCM") {
     layout_insensitive_algsimp_opts.set_enable_conv_operand_swap(false);
+  }
 
   const int64_t num_partitions = hlo_module->config().num_partitions();
   if (num_partitions > 1) {
@@ -453,12 +454,14 @@ Status GpuCompiler::OptimizeHloModule(
     pipeline.AddPass<ZeroSizedHloElimination>();
 
     if (debug_options.xla_gpu_deterministic_ops()) {
-      // Scatter is nondeterministic, so eliminate all Scatters.
-      pipeline.AddPass<ScatterExpander>(ScatterExpander::kEliminateAllScatters);
-    } else {
-      // Only Scatters unsupported on XLA:GPU are eliminated.
-      pipeline.AddPass<GpuScatterExpander>();
+      // Scatter can be indeterministic if indices are not unique or a non
+      // associative combiner function is used. Eliminate these Scatter ops.
+      pipeline.AddPass<ScatterExpander>(
+          ScatterExpander::kEliminateIndeterminisitcScatters);
     }
+    // Scatters unsupported on XLA:GPU are eliminated.
+    pipeline.AddPass<GpuScatterExpander>();
+
     // TODO(phawkins): replace QR and Eigh decompositions with calls to
     // cuSOLVER.
     pipeline.AddPass<QrExpander>();
@@ -770,9 +773,13 @@ Status GpuCompiler::PrepareHloModuleForIrEmitting(HloModule* hlo_module) {
   }
   pipeline.AddPass<LoopScheduleLinearizer>(GetCanShareBuffer());
   pipeline.AddPass<CopyInsertion>(GetCanShareBuffer());
+  // We are using a sub-pipeline here, so that the verifier only runs after both
+  // GpuHorizontalLoopFusion and HloDCE.
+  auto& sub_pipeline =
+      pipeline.AddPass<HloPassPipeline>("horizontal-loop-fusion-for-copy");
   // To fuse the copy.
-  pipeline.AddPass<GpuHorizontalLoopFusion>("copy_");
-
+  sub_pipeline.AddPass<GpuHorizontalLoopFusion>("copy_");
+  sub_pipeline.AddPass<HloDCE>();
   pipeline.AddPass<GpuSanitizeConstantNames>();
   return pipeline.Run(hlo_module).status();
 }

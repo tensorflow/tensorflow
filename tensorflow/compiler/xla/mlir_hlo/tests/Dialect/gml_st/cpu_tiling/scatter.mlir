@@ -1,7 +1,5 @@
 // RUN: mlir-hlo-opt %s -xla-cpu-transform-scatter | FileCheck %s
 
-#id_map = affine_map<(d0, d1) -> (d0, d1)>
-
 func.func @scatter_small_vector_dim(%indices: tensor<?x2xindex>,
   %updates: tensor<?x?x?xf32>, %init: tensor<?x?xf32>) -> tensor<?x?xf32> {
   %result = thlo.scatter

@@ -254,7 +254,8 @@ def _build_cond(pred,
 
   # Create the If op.
   with ops.control_dependencies(
-      list(true_graph.control_captures) + list(false_graph.control_captures)):
+      list(true_graph._function_captures.control) + list(  # pylint: disable=protected-access
+          false_graph._function_captures.control)):  # pylint: disable=protected-access
     true_stateful_ops = [
         op for op in true_graph.get_operations() if op._is_stateful
     ]
@@ -1235,7 +1236,7 @@ def _build_case(branch_index,
 
   # Create the Case op.
   with ops.control_dependencies(
-      sum((list(bg.control_captures) for bg in branch_graphs), [])):
+      sum((list(bg._function_captures.control) for bg in branch_graphs), [])):  # pylint: disable=protected-access
 
     def _make_op(inputs):
       case_op, tensors = util.get_op_and_outputs(op_fn(

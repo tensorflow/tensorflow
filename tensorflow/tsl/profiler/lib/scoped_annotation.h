@@ -44,9 +44,10 @@ namespace profiler {
 //          LaunchKernel2(); // Launches a CUDA kernel.
 //        }
 // This will add 'my kernels' to both kernels in the profiler UI
-class ScopedAnnotation {
+template <bool always_annotate = false>
+class ScopedAnnotationT {
  public:
-  explicit ScopedAnnotation(absl::string_view name) {
+  explicit ScopedAnnotationT(absl::string_view name) {
 #if !defined(IS_MOBILE_PLATFORM)
 #if GOOGLE_CUDA
     std::optional<nvtxDomainHandle_t> domain =
@@ -58,16 +59,16 @@ class ScopedAnnotation {
       ::nvtxDomainRangePushEx(domain.value(), &attrs);
     } else  // NOLINT
 #endif
-        if (TF_PREDICT_FALSE(AnnotationStack::IsEnabled())) {
+        if (always_annotate || TF_PREDICT_FALSE(AnnotationStack::IsEnabled())) {
       old_length_ = AnnotationStack::PushAnnotation(name);
     }
 #endif
   }
 
-  explicit ScopedAnnotation(const char* name)
-      : ScopedAnnotation(absl::string_view(name)) {}
+  explicit ScopedAnnotationT(const char* name)
+      : ScopedAnnotationT(absl::string_view(name)) {}
 
-  explicit ScopedAnnotation(const string& name) {
+  explicit ScopedAnnotationT(const string& name) {
 #if !defined(IS_MOBILE_PLATFORM)
 #if GOOGLE_CUDA
     std::optional<nvtxDomainHandle_t> domain =
@@ -78,13 +79,13 @@ class ScopedAnnotation {
       ::nvtxDomainRangePushEx(domain.value(), &attrs);
     } else  // NOLINT
 #endif
-        if (TF_PREDICT_FALSE(AnnotationStack::IsEnabled())) {
+        if (always_annotate || TF_PREDICT_FALSE(AnnotationStack::IsEnabled())) {
       old_length_ = AnnotationStack::PushAnnotation(name);
     }
 #endif
   }
 
-  explicit ScopedAnnotation(string&& name) {
+  explicit ScopedAnnotationT(string&& name) {
 #if !defined(IS_MOBILE_PLATFORM)
 #if GOOGLE_CUDA
     std::optional<nvtxDomainHandle_t> domain =
@@ -95,14 +96,14 @@ class ScopedAnnotation {
       ::nvtxDomainRangePushEx(domain.value(), &attrs);
     } else  // NOLINT
 #endif
-        if (TF_PREDICT_FALSE(AnnotationStack::IsEnabled())) {
+        if (always_annotate || TF_PREDICT_FALSE(AnnotationStack::IsEnabled())) {
       old_length_ = AnnotationStack::PushAnnotation(std::move(name));
     }
 #endif
   }
 
   template <typename NameGeneratorT>
-  explicit ScopedAnnotation(NameGeneratorT name_generator) {
+  explicit ScopedAnnotationT(NameGeneratorT name_generator) {
 #if !defined(IS_MOBILE_PLATFORM)
 #if GOOGLE_CUDA
     std::optional<nvtxDomainHandle_t> domain =
@@ -114,7 +115,7 @@ class ScopedAnnotation {
       ::nvtxDomainRangePushEx(domain.value(), &attrs);
     } else  // NOLINT
 #endif
-        if (TF_PREDICT_FALSE(AnnotationStack::IsEnabled())) {
+        if (always_annotate || TF_PREDICT_FALSE(AnnotationStack::IsEnabled())) {
       auto name = name_generator();
       old_length_ = AnnotationStack::PushAnnotation(name);
     }
@@ -122,7 +123,7 @@ class ScopedAnnotation {
   }
 
   // Pops the name passed in the constructor from the current annotation.
-  ~ScopedAnnotation() {
+  ~ScopedAnnotationT() {
     // TODO(b/137971921): without this memory fence, two presubmit tests will
     // fail probably due to compiler in that presubmit config.
     std::atomic_thread_fence(std::memory_order_acquire);
@@ -152,10 +153,13 @@ class ScopedAnnotation {
   // signals that annotation is disabled at the constructor.
   static constexpr size_t kInvalidLength = static_cast<size_t>(-1);
 
-  TF_DISALLOW_COPY_AND_ASSIGN(ScopedAnnotation);
+  TF_DISALLOW_COPY_AND_ASSIGN(ScopedAnnotationT);
 
   size_t old_length_ = kInvalidLength;
 };
+
+using ScopedAnnotation = ScopedAnnotationT<false>;
+using ScopedAnnotationAlways = ScopedAnnotationT<true>;
 
 }  // namespace profiler
 }  // namespace tsl

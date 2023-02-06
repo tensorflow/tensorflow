@@ -156,6 +156,7 @@ py_library(
         "//tensorflow/python/trackable:asset",
         "//tensorflow/python/trackable:base",
         "//tensorflow/python/trackable:resource",
+        "//tensorflow/python/types",
         "//third_party/py/numpy",
     ],
 )
@@ -268,6 +269,7 @@ py_library(
         "//tensorflow/python/data/util:sparse",
         "//tensorflow/python/data/util:structure",
         "//tensorflow/python/eager:context",
+        "//tensorflow/python/framework:type_utils",
         "//tensorflow/python/saved_model:nested_structure_coder",
         "//tensorflow/python/trackable:base",
     ],
@@ -281,6 +283,7 @@ py_library(
         "//tensorflow/python:experimental_dataset_ops_gen",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/platform",
+        "//tensorflow/python/saved_model:nested_structure_coder",
         "//tensorflow/python/util",
     ],
 )
@@ -330,6 +333,7 @@ py_library(
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/platform",
+        "//tensorflow/python/saved_model:nested_structure_coder",
         "//tensorflow/python/util",
     ],
 )

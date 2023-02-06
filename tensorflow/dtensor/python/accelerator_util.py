@@ -189,12 +189,14 @@ def initialize_accelerator_system(
   if config.gpu_use_nccl_communication():
     logical_gpu_count = config.num_local_devices("GPU")
     physical_gpu_count = len(tf_config.list_physical_devices("GPU"))
-    if logical_gpu_count != physical_gpu_count:
+    if logical_gpu_count > physical_gpu_count:
       raise ValueError(
-          f"DTENSOR_GPU_USE_NCCL_COMMUNICATION is set for using NCCL. "
-          f"NCCL Collectives require same number of logical and physical GPUs. "
+          "DTENSOR_GPU_USE_NCCL_COMMUNICATION is set for using NCCL. "
+          "NCCL Collectives require one to one mapping between logical and "
+          "physical GPUs. "
           f"The number of logical GPU ({logical_gpu_count}) "
-          f"differs from the number of physical GPU ({physical_gpu_count}).")
+          f"is more than the number of physical GPU ({physical_gpu_count})."
+      )
 
   # Configure logical host CPU devices for accelerators.
   if device_type in ("GPU", "TPU"):

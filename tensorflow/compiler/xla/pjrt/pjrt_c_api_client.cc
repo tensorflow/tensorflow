@@ -74,7 +74,9 @@ PjRtCApiClient::PjRtCApiClient(const PJRT_Api* c_api, PJRT_Client* c_client)
       //   Built on Mar 4 2021 15:25:57 (1614900357) cl/360760169
       platform_version_(absl::StrCat(
           "PJRT C API\n", ::pjrt::GetPlatformVersion(c_client, c_api))) {
-  wrapped_ = c_client_->client.get();
+  if (kPjRtCApiBypass) {
+    wrapped_ = c_client_->client.get();
+  }
 
   InitDevices();
   LOG(INFO) << "PjRtCApiClient created.";
@@ -89,7 +91,6 @@ void PjRtCApiClient::InitDevices() {
   pjrt::LogFatalIfPjrtError(c_api_->PJRT_Client_Devices(&devices_args), c_api_);
 
   const size_t n = devices_args.num_devices;
-  wrapped_device_map_.reserve(n);
   c_to_cpp_device_map_.reserve(n);
   owned_devices_.reserve(n);
   devices_.reserve(n);
@@ -100,10 +101,6 @@ void PjRtCApiClient::InitDevices() {
         std::make_unique<PjRtCApiDevice>(device, this));
     devices_.push_back(cpp_device.get());
     c_to_cpp_device_map_[device] = cpp_device.get();
-    // Map the wrapped PjRtDevice* to the PjRtCApiDevice* that wraps it.
-    // TODO(b/237017893): remove `wrapped_device_map_` and replace it with
-    // `c_api_device_map_`
-    wrapped_device_map_[device->device] = cpp_device.get();
   }
 
   PJRT_Client_AddressableDevices_Args address_args;
@@ -208,6 +205,18 @@ StatusOr<PjRtDevice*> PjRtCApiClient::LookupDevice(int device_id) const {
   args.id = device_id;
   RETURN_STATUS_IF_ERROR(c_api_->PJRT_Client_LookupDevice(&args), c_api_);
   return GetCppDevice(args.device);
+}
+
+StatusOr<PjRtDevice*> PjRtCApiClient::LookupAddressableDevice(
+    int local_hardware_id) const {
+  PJRT_Client_LookupAddressableDevice_Args args;
+  args.struct_size = PJRT_Client_LookupAddressableDevice_Args_STRUCT_SIZE;
+  args.priv = nullptr;
+  args.client = c_client_.get();
+  args.local_hardware_id = local_hardware_id;
+  RETURN_STATUS_IF_ERROR(c_api_->PJRT_Client_LookupAddressableDevice(&args),
+                         c_api_);
+  return GetCppDevice(args.addressable_device);
 }
 
 // Initializes `PJRT_Client_Compile_Args`, which will be used to call
@@ -400,7 +409,9 @@ const PJRT_Api* PjRtCApiClient::pjrt_c_api() const { return c_api_; }
 
 PjRtCApiDevice::PjRtCApiDevice(PJRT_Device* device, PjRtCApiClient* client)
     : client_(client), device_(device) {
-  wrapped_ = device_->device;
+  if (kPjRtCApiBypass) {
+    wrapped_ = device_->device;
+  }
   InitAttributes();
 }
 
@@ -953,8 +964,11 @@ PjRtCApiLoadedExecutable::GetCostAnalysis() const {
 PjRtCApiBuffer::PjRtCApiBuffer(PjRtCApiClient* client, PJRT_Buffer* buffer)
     : client_(client),
       buffer_(buffer, ::pjrt::MakeBufferDeleter(client->pjrt_c_api())),
-      readiness_event_(nullptr, ::pjrt::MakeEventDeleter(client->pjrt_c_api())),
-      wrapped_(buffer_->buffer.get()) {
+      readiness_event_(nullptr,
+                       ::pjrt::MakeEventDeleter(client->pjrt_c_api())) {
+  if (kPjRtCApiBypass) {
+    wrapped_ = buffer_->buffer.get();
+  }
   set_shape();
 }
 

@@ -164,8 +164,6 @@ class Status {
   //
   // This function does nothing if the Status is ok.
   void SetPayload(absl::string_view type_url, absl::Cord payload);
-  // Deprecated: use the previous function instead.
-  void SetPayload(absl::string_view type_url, absl::string_view payload);
 
   // Erases the payload corresponding to the `type_url` key.  Returns `true` if
   // the payload was present.

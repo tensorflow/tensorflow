@@ -140,5 +140,10 @@ def VerifyTFXLALegalization : Pass<"tfxla-verify-legalization", "mlir::func::Fun
                     "legalized. This pass does not transform any ops and is just"
                     " a verification pass to ensure invariants are true."}];
 
+  let options = [
+    Option<"legalize_chlo_", "legalize-chlo", "bool", /*default=*/"true",
+        "Legalizes intermediate chlo ops to hlo">
+    ];
+
   let constructor = "mlir::mhlo::CreateVerifyTFXLALegalizationPass()";
 }

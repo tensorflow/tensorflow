@@ -1,4 +1,4 @@
-// RUN: mlir-hlo-opt %s --vectorize-perfectly-tiled-loops --split-input-file |\
+// RUN: mlir-hlo-opt %s --vectorize-for-cpu --split-input-file |\
 // RUN: FileCheck %s
 
 

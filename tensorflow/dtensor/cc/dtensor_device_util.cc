@@ -141,7 +141,7 @@ std::unique_ptr<TensorWithLayout> BroadcastResourceTensor(
     if (TF_GetCode(status) != TF_OK) return nullptr;
     auto layout = Layout::ReplicatedOnMesh(target_mesh, shape.size());
 
-    auto ret = TensorWithLayout::Dummy(shape, dtype, target_mesh, layout);
+    auto ret = CreateDummyTensorWithLayout(shape, dtype, target_mesh, layout);
     return ret;
   }
 
@@ -154,7 +154,7 @@ std::unique_ptr<TensorWithLayout> BroadcastResourceTensor(
                  : r.dtypes_and_shapes().begin()->shape.dims();
 
   StatusOr<std::unique_ptr<TensorWithLayout>> result =
-      TensorWithLayout::Wrap(std::move(parallel_tensor), target_mesh,
+      CreateTensorWithLayout(std::move(parallel_tensor), target_mesh,
                              Layout::ReplicatedOnMesh(target_mesh, rank));
   if (!result.ok()) {
     TF_SetStatus(
@@ -262,21 +262,22 @@ StatusOr<Layout> GetLayoutThroughIdentityOps(Node* op, int output_index) {
 
 }  // namespace
 
-tensorflow::Fprint128 TensorWithLayout::CacheKey() const {
+tensorflow::Fprint128 TensorWithLayoutTf::CacheKey() const {
   tensorflow::Fprint128 f = tensorflow::Fingerprint128(layout_.ToString());
   // Use exact shape to compute the key.
   for (const int64_t dim : local_shape()) {
     f = FingerprintCat128(f, dim);
   }
-  if (const_value_.has_value()) {
+  if (const_value_node_->const_value().has_value()) {
     std::string serialized;
-    SerializeToStringDeterministic(const_value_.value(), &serialized);
+    SerializeToStringDeterministic(const_value_node_->const_value().value(),
+                                   &serialized);
     f = FingerprintCat128(f, tensorflow::Fingerprint128(serialized));
   }
   return f;
 }
 
-std::unique_ptr<TensorWithLayout> TensorWithLayout::Broadcast(
+std::unique_ptr<TensorWithLayout> TensorWithLayoutTf::Broadcast(
     TFE_Context* context, TFE_TensorHandle* tensor,
     const MeshWithParallelDevice& mesh, const std::string& dtensor_device_name,
     TF_Status* status) {
@@ -302,12 +303,12 @@ std::unique_ptr<TensorWithLayout> TensorWithLayout::Broadcast(
     if (TF_GetCode(status) != TF_OK) return nullptr;
     auto layout = Layout::ReplicatedOnMesh(target_mesh, shape.size());
 
-    auto ret = TensorWithLayout::Dummy(shape, dtype, target_mesh, layout);
+    auto ret = CreateDummyTensorWithLayout(shape, dtype, target_mesh, layout);
     std::optional<NodeDef> const_value =
         ExtractSmallTensorValue(context, tensor, layout, status);
     if (TF_GetCode(status) != TF_OK) return nullptr;
     if (const_value) {
-      ret->set_const_value(const_value.value());
+      ret->const_value_node()->set_const_value(const_value.value());
     }
     return ret;
   }
@@ -330,43 +331,33 @@ std::unique_ptr<TensorWithLayout> TensorWithLayout::Broadcast(
       ExtractSmallTensorValue(context, tensor, layout, status);
   if (TF_GetCode(status) != TF_OK) return nullptr;
 
-  std::unique_ptr<TensorWithLayout> result(new TensorWithLayout(
+  std::unique_ptr<TensorWithLayoutTf> result(new TensorWithLayoutTf(
       std::move(parallel_tensor), target_mesh, std::move(layout), *shape,
       /*dtype=*/absl::nullopt, std::move(const_value)));
   return result;
 }
 
-StatusOr<std::unique_ptr<TensorWithLayout>> TensorWithLayout::Wrap(
+StatusOr<std::unique_ptr<TensorWithLayout>> TensorWithLayoutTf::Wrap(
     std::unique_ptr<parallel_device::ParallelTensor> tensor, const Mesh& mesh,
     const Layout& layout) {
   const std::vector<int64_t>* shape;
   TF_RETURN_IF_ERROR(tensor->Shape(&shape));
 
-  if (tensor->dtype() != TF_RESOURCE) {
-    return std::unique_ptr<TensorWithLayout>(
-        new TensorWithLayout(std::move(tensor), mesh, layout, *shape));
-  } else {
-    return std::unique_ptr<TensorWithLayout>(
-        new ResourceHandleWithLayout(std::move(tensor), mesh, layout, *shape));
-  }
+  return std::unique_ptr<TensorWithLayout>(
+      new TensorWithLayoutTf(std::move(tensor), mesh, layout, *shape));
 }
 
-std::unique_ptr<TensorWithLayout> TensorWithLayout::Dummy(
+std::unique_ptr<TensorWithLayout> TensorWithLayoutTf::Dummy(
     const std::vector<int64_t>& local_shape, const TF_DataType dtype,
     const Mesh& mesh, const Layout& layout) {
-  if (dtype != TF_RESOURCE) {
-    return std::unique_ptr<TensorWithLayout>(new TensorWithLayout(
-        /*tensor=*/nullptr, mesh, layout, local_shape, dtype));
-  } else {
-    return std::unique_ptr<TensorWithLayout>(new ResourceHandleWithLayout(
-        /*tensor=*/nullptr, mesh, layout, local_shape));
-  }
+  return std::unique_ptr<TensorWithLayout>(new TensorWithLayoutTf(
+      /*tensor=*/nullptr, mesh, layout, local_shape, dtype));
 }
 
-std::string TensorWithLayout::SummarizeValue() const {
+std::string TensorWithLayoutTf::SummarizeValue() const {
   std::string value_summary;
   Status status;
-  if (dtype() != TF_RESOURCE && layout().IsFullyReplicated()) {
+  if (layout().IsFullyReplicated()) {
     status =
         tensorflow::unwrap(tensor_->tensor(0))->SummarizeValue(value_summary);
   } else {
@@ -380,13 +371,29 @@ std::string TensorWithLayout::SummarizeValue() const {
   return absl::StrCat(value_summary, ", layout=\"", layout().ToString(), "\"");
 }
 
-std::string TensorWithLayout::DebugString() const {
+std::string TensorWithLayoutTf::DebugString() const {
   auto dtype = static_cast<DataType>(tensor_->dtype());
 
   const auto& shape_vector = global_shape();
   return absl::StrCat("DTensor(", SummarizeValue(),
                       ", shape=", ShapeToDebugString(shape_vector),
                       ", type=", DataTypeString(dtype), ")");
+}
+
+StatusOr<std::unique_ptr<TensorWithLayout>> ResourceHandleWithLayout::Wrap(
+    std::unique_ptr<parallel_device::ParallelTensor> tensor, const Mesh& mesh,
+    const Layout& layout) {
+  const std::vector<int64_t>* shape;
+  TF_RETURN_IF_ERROR(tensor->Shape(&shape));
+  return std::unique_ptr<TensorWithLayout>(
+      new ResourceHandleWithLayout(std::move(tensor), mesh, layout, *shape));
+}
+
+std::unique_ptr<TensorWithLayout> ResourceHandleWithLayout::Dummy(
+    const std::vector<int64_t>& local_shape, const Mesh& mesh,
+    const Layout& layout) {
+  return std::unique_ptr<TensorWithLayout>(new ResourceHandleWithLayout(
+      /*tensor=*/nullptr, mesh, layout, local_shape));
 }
 
 void ResourceHandleWithLayout::EncodeAttributes(
@@ -446,12 +453,32 @@ void ResourceHandleWithLayout::UpdateAttrs(const EmbeddingResourceAttrs& attrs,
   attrs_.emplace(attrs);
 }
 
-StatusOr<std::unique_ptr<TensorWithLayout>> SparseTensorWithLayout::Wrap(
+// TODO(b/256016071): The following shares similar logic if not the same with
+// `TensorWithLayoutTf`. Deduplicate it.
+std::string ResourceHandleWithLayout::SummarizeValue() const {
+  std::string value_summary;
+  Status status = tensor_->SummarizeValue(value_summary);
+  if (!status.ok()) {
+    value_summary = "<error computing value>";
+  }
+  return absl::StrCat(value_summary, ", layout=\"", layout().ToString(), "\"");
+}
+
+std::string ResourceHandleWithLayout::DebugString() const {
+  auto dtype = static_cast<DataType>(tensor_->dtype());
+
+  const auto& shape_vector = global_shape();
+  return absl::StrCat("DTensor(", SummarizeValue(),
+                      ", shape=", ShapeToDebugString(shape_vector),
+                      ", type=", DataTypeString(dtype), ")");
+}
+
+StatusOr<std::unique_ptr<TensorWithLayoutTf>> SparseTensorWithLayout::Wrap(
     std::unique_ptr<parallel_device::ParallelTensor> indices_tensor,
     std::unique_ptr<parallel_device::ParallelTensor> values_tensor,
     std::unique_ptr<parallel_device::ParallelTensor> shapes_tensor,
     const Mesh& mesh, const Layout& layout, std::vector<int64_t> local_shape) {
-  return std::unique_ptr<TensorWithLayout>(new SparseTensorWithLayout(
+  return std::unique_ptr<TensorWithLayoutTf>(new SparseTensorWithLayout(
       std::move(indices_tensor), std::move(values_tensor),
       std::move(shapes_tensor), mesh, layout, local_shape));
 }
@@ -516,6 +543,28 @@ TFE_TensorHandle* SparseTensorWithLayout::get_tensor(size_t index) const {
     return values_->tensor(index % num_sparse_tensors);
   } else {
     return dense_shapes_->tensor(index % num_sparse_tensors);
+  }
+}
+
+std::unique_ptr<TensorWithLayout> CreateDummyTensorWithLayout(
+    const std::vector<int64_t>& local_shape, TF_DataType dtype,
+    const Mesh& mesh, const Layout& layout) {
+  switch (dtype) {
+    case TF_RESOURCE:
+      return ResourceHandleWithLayout::Dummy(local_shape, mesh, layout);
+    default:
+      return TensorWithLayoutTf::Dummy(local_shape, dtype, mesh, layout);
+  }
+}
+
+StatusOr<std::unique_ptr<TensorWithLayout>> CreateTensorWithLayout(
+    std::unique_ptr<parallel_device::ParallelTensor> tensor, const Mesh& mesh,
+    const Layout& layout) {
+  switch (tensor->dtype()) {
+    case TF_RESOURCE:
+      return ResourceHandleWithLayout::Wrap(std::move(tensor), mesh, layout);
+    default:
+      return TensorWithLayoutTf::Wrap(std::move(tensor), mesh, layout);
   }
 }
 
@@ -623,7 +672,8 @@ Status PrepareGraphForMlir(
     // Small constants are converted into constant graph nodes, instead of
     // being passed in as input arguments. This provides more information to
     // the SPMD and layout propagation passes.
-    if (!input->const_value().has_value() ||
+    if (!input->const_value_node() ||
+        !input->const_value_node()->const_value().has_value() ||
         !function_manager.IsConstantFoldable(doperation, i)) {
       graph_op_inputs.push_back(FunctionArgument{
           arg_node, NodeDefBuilder::NodeOut{arg_node->name(), i, dtype}});
@@ -631,7 +681,7 @@ Status PrepareGraphForMlir(
     } else {
       // TODO(xiejw): Refactor the TensorWithLayout representation to avoid
       // special code here.
-      NodeDef const_node = input->const_value().value();
+      NodeDef const_node = input->const_value_node()->const_value().value();
       const_node.set_name(absl::StrCat("input_", i, "_const_value"));
       Node* const_value_n = graph->AddNode(const_node, &status);
       TF_RETURN_IF_ERROR(status);
@@ -1043,8 +1093,12 @@ ExecutableManagerImpl::GetConstantFoldableTensors(
     const std::vector<TensorWithLayout*>& inputs) {
   absl::flat_hash_map<int, NodeDef> small_tensors;
   for (auto index = 0; index < inputs.size(); ++index) {
-    if (inputs[index]->const_value().has_value()) {
-      small_tensors.insert({index, inputs[index]->const_value().value()});
+    auto* const_value_node = inputs[index]->const_value_node();
+    if (const_value_node == nullptr) {
+      continue;
+    }
+    if (const_value_node->const_value().has_value()) {
+      small_tensors.insert({index, const_value_node->const_value().value()});
     }
   }
   return small_tensors;

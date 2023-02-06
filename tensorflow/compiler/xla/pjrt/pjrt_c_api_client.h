@@ -124,15 +124,7 @@ class PjRtCApiClient : public PjRtClient {
   StatusOr<PjRtDevice*> LookupDevice(int device_id) const override;
 
   StatusOr<PjRtDevice*> LookupAddressableDevice(
-      int local_hardware_id) const override {
-    if (kPjRtCApiBypass) {
-      VLOG(1) << "PJRT C API BYPASS: LookupAddressableDevice";
-      TF_ASSIGN_OR_RETURN(PjRtDevice * wrapped_device,
-                          wrapped_->LookupAddressableDevice(local_hardware_id));
-      return GetCApiDevice(wrapped_device);
-    }
-    return Unimplemented("PJRT C API does not support LookupAddressableDevice");
-  }
+      int local_hardware_id) const override;
 
   PjRtPlatformId platform_id() const override {
     if (kPjRtCApiBypass) {
@@ -254,12 +246,6 @@ class PjRtCApiClient : public PjRtClient {
 
   Status Defragment() override { return wrapped_->Defragment(); }
 
-  PjRtDevice* GetCApiDevice(PjRtDevice* wrapped_device) const {
-    auto it = wrapped_device_map_.find(wrapped_device);
-    CHECK(it != wrapped_device_map_.end());
-    return it->second;
-  }
-
   StatusOr<std::unique_ptr<PjRtLoadedExecutable>> WrapExecutable(
       StatusOr<std::unique_ptr<PjRtLoadedExecutable>> to_wrap);
 
@@ -294,7 +280,6 @@ class PjRtCApiClient : public PjRtClient {
   // marked unimplemented or implemented in terms of the C API, at which point
   // wrapped_ and related functionality should be removed.
   PjRtClient* wrapped_;
-  absl::flat_hash_map<PjRtDevice*, PjRtCApiDevice*> wrapped_device_map_;
 };
 
 class PjRtCApiBuffer : public PjRtBuffer {

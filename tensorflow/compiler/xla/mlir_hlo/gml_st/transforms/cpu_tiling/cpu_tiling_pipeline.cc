@@ -42,7 +42,7 @@ void addCPUTilingPipeline(OpPassManager& pm,
   pm.addPass(createCanonicalizerPass());
 
   pm.addNestedPass<FuncOp>(createComposeExtractInsertSlicePass());
-  pm.addNestedPass<FuncOp>(createVectorizePerfectlyTiledLoopsPass());
+  pm.addNestedPass<FuncOp>(createVectorizeForCPUPass());
   pm.addNestedPass<FuncOp>(createScalarizationPass());
   pm.addNestedPass<FuncOp>(createRewriteVectorContractPass());
 }

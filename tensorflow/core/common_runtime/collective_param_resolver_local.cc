@@ -76,7 +76,7 @@ const char* GetCollectiveName(const CollectiveParams* cp, bool nccl) {
       return "Permute";
 
     case ALL_TO_ALL_COLLECTIVE:
-      return "AllToAll";
+      return nccl ? "NcclAllToAll" : "AllToAll";
 
     case REDUCE_SCATTER_COLLECTIVE:
       return nccl ? "NcclReduceScatter" : "undef";

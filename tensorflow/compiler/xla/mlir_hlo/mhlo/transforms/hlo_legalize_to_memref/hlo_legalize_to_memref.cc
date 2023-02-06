@@ -42,6 +42,7 @@ namespace mhlo {
 
 namespace {
 
+using bufferization::AliasingOpResultList;
 using bufferization::AnalysisState;
 using bufferization::BufferizableOpInterface;
 using bufferization::BufferizationOptions;
@@ -61,7 +62,7 @@ struct CustomCallOpInterface
     return false;  // Arguments are read-only.
   }
 
-  SmallVector<OpResult> getAliasingOpResult(Operation *, OpOperand &,
+  AliasingOpResultList getAliasingOpResults(Operation *, OpOperand &,
                                             const AnalysisState &) const {
     return {};
   }
@@ -206,7 +207,7 @@ struct OutfeedOpInterface
     return false;  // Arguments are read-only.
   }
 
-  SmallVector<OpResult> getAliasingOpResult(Operation *, OpOperand &,
+  AliasingOpResultList getAliasingOpResults(Operation *, OpOperand &,
                                             const AnalysisState &) const {
     return {};
   }
@@ -238,7 +239,7 @@ struct ReshapeOpInterface
     return false;
   }
 
-  SmallVector<OpResult> getAliasingOpResult(
+  AliasingOpResultList getAliasingOpResults(
       Operation *op, OpOperand & /*opOperand*/,
       const AnalysisState & /*state*/) const {
     return {op->getResult(0)};
@@ -283,7 +284,7 @@ struct DynamicReshapeOpInterface
     return false;
   }
 
-  SmallVector<OpResult> getAliasingOpResult(
+  AliasingOpResultList getAliasingOpResults(
       Operation *op, OpOperand & /*opOperand*/,
       const AnalysisState & /*state*/) const {
     return {op->getResult(0)};
@@ -447,7 +448,7 @@ struct DynamicBroadcastInDimOpInterface
     return false;
   }
 
-  SmallVector<OpResult> getAliasingOpResult(
+  AliasingOpResultList getAliasingOpResults(
       Operation *op, OpOperand & /*opOperand*/,
       const AnalysisState & /*state*/) const {
     return {op->getResult(0)};

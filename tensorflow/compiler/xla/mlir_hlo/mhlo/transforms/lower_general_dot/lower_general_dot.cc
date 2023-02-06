@@ -208,13 +208,13 @@ struct GeneralDotConvert : public OpRewritePattern<DotGeneralOp> {
     RankedTensorType rhsTy = rhs.getType().dyn_cast<RankedTensorType>();
     if (!lhsTy || !rhsTy) return failure();
 
-    lhs = processDotArg(op.getLhs(), op.getLoc(),
-                        dotNumbers.getLhsContractingDimensions(),
-                        /*outerDimsFirst=*/true, rewriter);
+    lhs = llvm::cast<mlir::TypedValue<mlir::TensorType>>(processDotArg(
+        op.getLhs(), op.getLoc(), dotNumbers.getLhsContractingDimensions(),
+        /*outerDimsFirst=*/true, rewriter));
 
-    rhs = processDotArg(op.getRhs(), op.getLoc(),
-                        dotNumbers.getRhsContractingDimensions(),
-                        /*outerDimsFirst=*/false, rewriter);
+    rhs = llvm::cast<mlir::TypedValue<mlir::TensorType>>(processDotArg(
+        op.getRhs(), op.getLoc(), dotNumbers.getRhsContractingDimensions(),
+        /*outerDimsFirst=*/false, rewriter));
 
     // Accept only static shaped types.
     auto lhsShapeType = lhs.getType().dyn_cast_or_null<ShapedType>();

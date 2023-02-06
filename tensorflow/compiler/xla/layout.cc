@@ -47,13 +47,13 @@ void Tile::Print(Printer* printer) const {
     const auto dim = dims[i];
     if (i != 0) printer->Append(",");
     if (dim >= 0) {
-      printer->Append(std::to_string(dim));
+      printer->Append(absl::AlphaNum(dim).Piece());
     } else {
       if (dim == kCombineDimension) {
         printer->Append("*");
       } else {
         printer->Append("Invalid value ");
-        printer->Append(std::to_string(dim));
+        printer->Append(absl::AlphaNum(dim).Piece());
       }
     }
   }
@@ -270,7 +270,7 @@ void Layout::Print(Printer* printer) const {
   if (memory_space() != 0) {
     print_colon();
     printer->Append("S(");
-    printer->Append(std::to_string(memory_space()));
+    printer->Append(absl::AlphaNum(memory_space()).Piece());
     printer->Append(")");
   }
 
@@ -284,7 +284,8 @@ void Layout::Print(Printer* printer) const {
   if (dynamic_shape_metadata_prefix_bytes_ > 0) {
     print_colon();
     printer->Append("M(");
-    printer->Append(std::to_string(dynamic_shape_metadata_prefix_bytes()));
+    printer->Append(
+        absl::AlphaNum(dynamic_shape_metadata_prefix_bytes()).Piece());
     printer->Append(")");
   }
 

@@ -101,6 +101,7 @@ py_library(
         "//tensorflow/lite/toco/logging:gen_html",
         "//tensorflow/lite/toco/logging:toco_conversion_log_proto_py",
         "//tensorflow/python:util",
+        "//tensorflow/python/platform",
         "@absl_py//absl:app",
     ],
 )

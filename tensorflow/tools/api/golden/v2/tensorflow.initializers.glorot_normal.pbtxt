@@ -1,8 +1,8 @@
 path: "tensorflow.initializers.glorot_normal"
 tf_class {
-  is_instance: "<class \'keras.initializers.initializers_v2.GlorotNormal\'>"
-  is_instance: "<class \'keras.initializers.initializers_v2.VarianceScaling\'>"
-  is_instance: "<class \'keras.initializers.initializers_v2.Initializer\'>"
+  is_instance: "<class \'keras.initializers.initializers.GlorotNormal\'>"
+  is_instance: "<class \'keras.initializers.initializers.VarianceScaling\'>"
+  is_instance: "<class \'keras.initializers.initializers.Initializer\'>"
   is_instance: "<type \'object\'>"
   member_method {
     name: "__init__"

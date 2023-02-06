@@ -2208,6 +2208,7 @@ COMPILE_MLIR_UTIL_DEPS = [
     "//tensorflow/core/tpu:tpu_defs",
     "//tensorflow/compiler/mlir/tf2xla:mlir_bridge_rollout_policy",
     "@llvm-project//mlir:TensorDialect",
+    "//tensorflow/compiler/mlir/xla:xla_legalize_targets",
 ]
 
 cc_library(

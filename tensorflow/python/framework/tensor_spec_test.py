@@ -323,6 +323,25 @@ class TensorSpecTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     self.assertEqual(placeholder.dtype, spec.dtype)
     self.assertEqual(placeholder.shape, spec.shape)
 
+  def testCastPythinPrimitives(self):
+    spec = tensor_spec.TensorSpec([], dtypes.float32)
+    ctx = trace_type.InternalCastContext()
+    value = spec._cast(1, ctx)
+    self.assertEqual(value.dtype, spec.dtype)
+
+  def testCastTensor(self):
+    spec = tensor_spec.TensorSpec([], dtypes.float32)
+    ctx = trace_type.InternalCastContext()
+    # _cast does not support cast int tensor to float tensor
+    with self.assertRaises(ValueError):
+      _ = spec._cast(constant_op.constant(1, dtype=dtypes.int32), ctx)
+
+  def testCastAssert(self):
+    spec = tensor_spec.TensorSpec([], dtypes.float32)
+    ctx = trace_type.InternalCastContext()
+    with self.assertRaises(AssertionError):
+      _ = spec._cast([1, 2, 3], ctx)
+
 
 class BoundedTensorSpecTest(test_util.TensorFlowTestCase):
 

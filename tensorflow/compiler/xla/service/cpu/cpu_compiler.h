@@ -164,6 +164,7 @@ class CpuAotCompilationResult : public AotCompilationResult {
 class CpuCompiler : public LLVMCompiler {
  public:
   CpuCompiler();
+  explicit CpuCompiler(bool allow_sparse_shapes);
   ~CpuCompiler() override = default;
 
   StatusOr<std::vector<std::unique_ptr<Executable>>> Compile(
@@ -232,7 +233,7 @@ class CpuCompiler : public LLVMCompiler {
 
   // Flag that can be used to override bail-out on sparse shapes.
   // When set, buffer assignment assigns zero sizes to these shapes.
-  bool allow_sparse_shapes_ = false;
+  const bool allow_sparse_shapes_ = false;
 };
 
 }  // namespace cpu

@@ -28,6 +28,8 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import type_spec_registry
 from tensorflow.python.platform import tf_logging as logging
+# TODO(b/238903802): Remove dependency on nested_structure_coder.
+from tensorflow.python.saved_model import nested_structure_coder
 from tensorflow.python.types import internal
 from tensorflow.python.types import trace
 from tensorflow.python.util import _pywrap_utils
@@ -42,10 +44,6 @@ from tensorflow.tools.docs import doc_controls
 # Use LazyLoader to avoid circular dependencies.
 ops = LazyLoader("ops", globals(),
                  "tensorflow.python.framework.ops")
-# TODO(b/238903802): Remove this dependency.
-nested_structure_coder = LazyLoader(
-    "nested_structure_coder", globals(),
-    "tensorflow.python.saved_model.nested_structure_coder")
 
 
 @tf_export("TypeSpec", v1=["TypeSpec", "data.experimental.Structure"])
@@ -250,6 +248,13 @@ class TypeSpec(
     assert value_spec.is_subtype_of(self)
     return [arg for arg in nest.flatten(value, expand_composites=True)
             if isinstance(arg, ops.Tensor)]
+
+  def _cast(self, value, casting_context):
+    cast_components = nest.map_structure(
+        lambda spec, v: spec._cast(v, casting_context),  # pylint: disable=protected-access
+        self._component_specs,
+        self._to_components(value))
+    return self._from_components(cast_components)
 
   # TODO(b/225058047): Reconsider semantics.
   def is_compatible_with(self, spec_or_value):

@@ -1,0 +1,7 @@
+path: "tensorflow.__internal__"
+tf_module {
+  member {
+    name: "types"
+    mtype: "<type \'module\'>"
+  }
+}
