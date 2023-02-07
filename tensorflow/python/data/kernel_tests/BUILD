@@ -653,7 +653,7 @@ cuda_py_test(
     tags = [
         "no_cuda_asan",  # TODO(b/183963686)
         "notsan",  # TODO(b/144706539)
-        "no_oss",  # TODO(b/268210520)
+        "no_pip",  # TODO(b/268234547)
     ],
     xla_tags = [
         "no_cuda_asan",  # TODO(b/183963686)
