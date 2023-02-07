@@ -36,11 +36,9 @@ TEST(PjRtApiTest, SetAndGetGlobalPjRtApi) {
   EXPECT_THAT(pjrt::SetPjrtApi("CPU", &api),
               StatusIs(tensorflow::error::ALREADY_EXISTS,
                        HasSubstr("PJRT_Api already exists for device type")));
-  // TODO(b/261601433): change back to NOT_FOUND error after pytorch adds the
-  // call to LoadPjrtPlugin.
   EXPECT_THAT(pjrt::PjrtApi("TPU"),
-              StatusIs(tensorflow::error::INTERNAL,
-                       HasSubstr("Failed to open libtpu.")));
+              StatusIs(tensorflow::error::NOT_FOUND,
+                       HasSubstr("PJRT_Api not found for device type tpu")));
 }
 
 }  // namespace
