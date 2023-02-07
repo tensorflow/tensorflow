@@ -2992,7 +2992,7 @@ func.func @reverse_duplicate_dimensions(%operand: tensor<3x2xi32>) -> tensor<3x2
 func.func @reverse_invalid_dimensions_unranked(%operand: tensor<*xi32>) -> tensor<*xi32> {
   // expected-error @+1 {{all dimensions should be non-negative. Got dimension: -1.}}
   %0 = "mhlo.reverse"(%operand) {
-    dimensions = dense<-1> : tensor<i64>
+    dimensions = dense<[-1]> : tensor<1xi64>
   } : (tensor<*xi32>) -> tensor<*xi32>
   func.return %0 : tensor<*xi32>
 }
@@ -3002,7 +3002,7 @@ func.func @reverse_invalid_dimensions_unranked(%operand: tensor<*xi32>) -> tenso
 func.func @reverse_invalid_dimensions_negative(%operand: tensor<3x2xi32>) -> tensor<3x2xi32> {
   // expected-error @+1 {{all dimensions should be non-negative. Got dimension: -1.}}
   %0 = "mhlo.reverse"(%operand) {
-    dimensions = dense<-1> : tensor<i64>
+    dimensions = dense<[-1]> : tensor<1xi64>
   } : (tensor<3x2xi32>) -> tensor<3x2xi32>
   func.return %0 : tensor<3x2xi32>
 }
@@ -3012,7 +3012,7 @@ func.func @reverse_invalid_dimensions_negative(%operand: tensor<3x2xi32>) -> ten
 func.func @reverse_invalid_dimensions(%operand: tensor<3x2xi32>) -> tensor<3x2xi32> {
   // expected-error @+1 {{all dimensions should be between [0, 2). Got dimension: 2.}}
   %0 = "mhlo.reverse"(%operand) {
-    dimensions = dense<2> : tensor<i64>
+    dimensions = dense<[2]> : tensor<1xi64>
   } : (tensor<3x2xi32>) -> tensor<3x2xi32>
   func.return %0 : tensor<3x2xi32>
 }
