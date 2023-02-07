@@ -245,7 +245,6 @@ tf_kernel_library(
         "//tensorflow/core/kernels:stateless_random_ops_v2_header",
         "//tensorflow/core/tpu:tpu_defs",
         "//tensorflow/core/util:overflow",
-        "//tensorflow/compiler/xla/stream_executor/lib",
     ] + if_cuda_or_rocm(
         if_false = [],
         if_true = [":light_outside_compilation"],
