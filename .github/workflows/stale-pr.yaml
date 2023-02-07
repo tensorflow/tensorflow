@@ -21,8 +21,7 @@ jobs:
         
           #comment on PR if stale for more then 14 days. 
           close-pr-message: "Closing as stale. Please reopen if you'd like to work on this further"
-        
-       
+              
           # Number of days of inactivity before a stale PR is closed
           days-before-pr-close: 14
        
