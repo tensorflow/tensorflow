@@ -29,7 +29,6 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/rendezvous_mgr.h"
 #include "tensorflow/core/common_runtime/stats_publisher_interface.h"
 #include "tensorflow/core/framework/device_attributes.pb.h"
-#include "tensorflow/core/framework/rendezvous.h"
 #include "tensorflow/core/lib/core/refcount.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/nccl/collective_communicator.h"
@@ -49,11 +48,9 @@ limitations under the License.
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/graph_def_util.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/platform/refcount.h"
 #include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/public/version.h"
 #include "tensorflow/core/util/device_name_utils.h"
-#include "tensorflow/tsl/platform/status.h"
 #if !defined(IS_MOBILE_PLATFORM)
 #include "tensorflow/core/distributed_runtime/cluster_function_library_runtime.h"
 #include "tensorflow/core/distributed_runtime/collective_param_resolver_distributed.h"
@@ -139,20 +136,13 @@ void EagerContext::LocalRendezvousTable::Remove(int64_t step_id) {
 
 void EagerContext::LocalRendezvousTable::CleanUpAll() {
   mutex_lock l(table_lock_);
-  for (auto iter = table_.begin(); iter != table_.end();) {
-    // Copy the iter first in case the iter need to be erased.
-    // This is safe as long as the erase below doesn't invalidate other
-    // iterators.
-    auto copy_iter = iter++;
-
+  for (auto iter = table_.begin(); iter != table_.end(); iter++) {
     // Unref all redezvous instance, except for global rendezvous,
     // which is cleaned up elsewhere when necessary.
-    if (copy_iter->first == -1) {
+    if (iter->first == -1) {
       continue;
     }
-    // Unref and erase the redezvous instance from the table.
-    copy_iter->second->Unref();
-    table_.erase(copy_iter);
+    iter->second->Unref();
   }
 }
 
