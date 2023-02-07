@@ -426,7 +426,7 @@ class DelegateKernel {
     return absl::OkStatus();
   }
 
-  // Returns Ok only if serialized data is successsfully found.
+  // Returns Ok only if serialized data is successfully found.
   absl::Status MaybeInitializeSerializedOpenCL(
       TfLiteContext* context, const TfLiteDelegateParams* delegate_params,
       std::unique_ptr<InferenceBuilder>* builder, cl::InferenceOptions* options,

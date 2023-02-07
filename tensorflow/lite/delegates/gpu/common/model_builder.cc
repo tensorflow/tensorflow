@@ -3235,8 +3235,8 @@ TfLiteIntArray* GetOpsToReplace(
     return TfLiteIntArrayCreate(0);
   }
 
-  // By default, we simply get 1st largest partition as 'max_delegate_partions'
-  // is set to 1 by default.
+  // By default, we simply get 1st largest partition as
+  // 'max_delegate_partitions' is set to 1 by default.
   std::vector<int> ops_to_replace =
       partition_helper.GetNodesOfFirstNLargestPartitions(
           max_delegated_partitions);

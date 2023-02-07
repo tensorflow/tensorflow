@@ -51,7 +51,7 @@ struct OpNode {
 class GraphBuilder;
 
 // Represents a single Op in the TFLite graph.
-// For each op in TFLite there should be an OpBuidler, this builder is
+// For each op in TFLite there should be an OpBuilder, this builder is
 // responsible for constructing equivalent node(s) in the hexagon graph. A
 // single builder can create one or more ops in the hexagon graph. When adding
 // new op* users should inherit from this class and implement

@@ -82,7 +82,7 @@ class FlexDelegate : public SimpleDelegateInterface {
   // We sometimes have to create certain stub data to test FlexDelegate. To
   // achieve this, we will make a testing flex delegate class that inherits from
   // FlexDelegate to override certain things for stub data creation. Therefore,
-  // this function accepts a FlexDelegate instance to initiliaze it properly for
+  // this function accepts a FlexDelegate instance to initialize it properly for
   // create a testing flex delegate in some cases, and it is only used in
   // testing.
   static TfLiteDelegateUniquePtr Create(

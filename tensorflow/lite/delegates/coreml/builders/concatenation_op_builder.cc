@@ -37,7 +37,7 @@ TfLiteStatus ConcatenationOpBuilder::RegisterInputs(
     const TfLiteIntArray* inputs, TfLiteContext* context) {
   if (inputs->size < 2) {
     TF_LITE_KERNEL_LOG(
-        context, "ConcatenationOpBuidler: at least 2 inputs are required.");
+        context, "ConcatenationOpBuilder: at least 2 inputs are required.");
     return kTfLiteError;
   }
   for (int i = 0; i < inputs->size; ++i) {

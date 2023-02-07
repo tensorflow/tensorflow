@@ -167,7 +167,7 @@ void Conv2dOpBuilder::CheckShouldSplitDwConv(TfLiteType weights_type,
       weights_height == 5 && weights_width == 5 &&
       // Stride larger than 2x2
       conv_params->stride_height >= 2 && conv_params->stride_width >= 2 &&
-      // Depth more than 32 and is multiples of 32 so can be splitted.
+      // Depth more than 32 and is multiples of 32 so can be split.
       input_depth > kDwConv5x5Filt2x2StrideChannelCount &&
       input_depth % kDwConv5x5Filt2x2StrideChannelCount == 0 &&
       is_per_channel_quant && channel_multiplier == 1) {
