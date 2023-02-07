@@ -1062,6 +1062,7 @@ py_library(
         ":array_ops_gen",
         ":control_flow_util",
         ":math_ops_gen",
+        ":shape_util",
         "//tensorflow/python/compat",
         "//tensorflow/python/framework:common_shapes",
         "//tensorflow/python/framework:config",
@@ -2202,6 +2203,7 @@ py_library(
         ":control_flow_ops",
         ":math_ops",
         ":random_ops_gen",
+        ":shape_util",
         ":stateless_random_ops",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:ops",
@@ -2233,6 +2235,7 @@ py_library(
         ":array_ops",
         ":math_ops",
         ":random_index_shuffle_ops_gen",
+        ":shape_util",
         ":stateless_random_ops_gen",
         ":stateless_random_ops_v2_gen",
         "//tensorflow/python/framework:dtypes",
@@ -2307,6 +2310,19 @@ py_library(
         ":data_flow_ops_gen",
         "//tensorflow/python/framework:for_generated_wrappers",
         "//tensorflow/python/util",
+    ],
+)
+
+py_library(
+    name = "shape_util",
+    srcs = ["ops/shape_util.py"],
+    srcs_version = "PY3",
+    deps = [
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/framework:tensor_shape",
+        "//tensorflow/python/framework:tensor_util",
     ],
 )
 

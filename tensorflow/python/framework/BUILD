@@ -2170,6 +2170,7 @@ tf_py_test(
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:math_ops",
+        "//tensorflow/python:shape_util",
         "//tensorflow/python:state_ops_gen",
         "//third_party/py/numpy",
     ],

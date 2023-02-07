@@ -18,11 +18,11 @@ import numpy as np
 from tensorflow.core.framework import tensor_pb2
 from tensorflow.core.framework import tensor_shape_pb2
 from tensorflow.python.client import pywrap_tf_session as c_api
-from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.ops import shape_util
 from tensorflow.python.types import core
 from tensorflow.python.types import internal
 from tensorflow.python.util import compat
@@ -1135,60 +1135,6 @@ def is_tf_type(x):  # pylint: disable=invalid-name
 is_tensor = is_tf_type
 
 
-def shape_tensor(shape):  # pylint: disable=invalid-name
-  """Convert to an int32 or int64 tensor, defaulting to int32 if empty."""
-  dtype = None
-  if isinstance(shape, (tuple, list)):
-    if not shape:
-      dtype = dtypes.int32
-    else:
-      # If there are Dimension objects in the shape, unwrap them. This can be a
-      # problem if v1 and v2 TensorShape objects get mixed up in partial
-      # conversions, leading to shapes such as (1, 2, Dimension(5)), which are
-      # not convertible to Tensors because of mixed content.
-      shape = tuple(map(tensor_shape.dimension_value, shape))
-  return ops.convert_to_tensor(shape, dtype=dtype, name="shape")
-
-
-# DO NOT USE: For testing only.
-_ENABLE_MAYBE_SET_STATIC_SHAPE = True
-
-
-def maybe_set_static_shape(tensor, shape):  # pylint: disable=invalid-name
-  """Sets the shape of `tensor` to the `shape`'s constant value, if inferrable.
-
-  This is a temporary workaround to fix shape inference across functional op
-  boundaries. E.g.
-
-  ```python
-  shape = tf.constant([3])
-  @tf.function
-  def f():
-    u = tf.random_uniform(shape)
-    return u
-  ```
-
-  If we were to rely solely on C++ shape inference, the shape of `u` inside
-  `f` would be unknown because C++ shape inference is not aware of the outer
-  graph and all it sees is a Placeholder node when backtracing the captured
-  tensor for `shape`. `maybe_set_static_shape` computes the static shape value
-  of `shape` by traversing the `FuncGraph` boundaries and sets the correct
-  shape.
-
-  A longer term solution would be to fix C++ shape inference.
-
-  Args:
-    tensor: A tensor.
-    shape: A shape tensor.
-  """
-  if (_ENABLE_MAYBE_SET_STATIC_SHAPE and not context.executing_eagerly() and
-      ops.get_default_graph().building_function and
-      not tensor.shape.is_fully_defined() and is_tensor(shape)):
-    shape = shape_tensor(shape)
-    const_shape = constant_value_as_shape(shape)
-    tensor.set_shape(const_shape)
-
-
 def try_evaluate_constant(tensor):  # pylint: disable=invalid-name
   """Evaluates a symbolic tensor as a constant.
 
@@ -1202,3 +1148,8 @@ def try_evaluate_constant(tensor):  # pylint: disable=invalid-name
   with tensor.graph._c_graph.get() as c_graph:
     return c_api.TF_TryEvaluateConstant_wrapper(c_graph, tensor._as_tf_output())
   # pylint: enable=protected-access
+
+
+# TODO(flang): remove once all references have been updated
+maybe_set_static_shape = shape_util.maybe_set_static_shape
+shape_tensor = shape_util.shape_tensor
