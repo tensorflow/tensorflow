@@ -15,9 +15,7 @@
 """TraceType implementations for common Python types."""
 
 import collections
-from typing import Any, Hashable, Optional, Sequence, Type
-from typing import Dict as PythonDict
-from typing import Tuple as PythonTuple
+from typing import Any, Dict as PythonDict, Hashable, Optional, Sequence, Tuple as PythonTuple, Type
 import weakref
 
 from tensorflow.core.function.trace_type import default_types_pb2
@@ -214,7 +212,11 @@ class Tuple(trace.TraceType, serialization.Serializable):
     return flattened_values
 
   def _cast(self, value: Any, casting_context) -> Any:
-    assert isinstance(value, tuple), f"Cannot cast {value!r} to tuple type."
+    assert isinstance(value, tuple), f"Can not cast {value!r} to tuple type."
+    assert len(value) == len(
+        self.components
+    ), f"Expected {value} to have length of {len(self.components)}"
+
     return tuple(component._cast(  # pylint: disable=protected-access
         v, casting_context) for v, component in zip(value, self.components))
 
@@ -285,9 +287,8 @@ class List(trace.TraceType, serialization.Serializable):
     return self.components_tuple._to_tensors(tuple(value))  # pylint: disable=protected-access
 
   def _cast(self, value: Any, casting_context) -> Any:
-    assert isinstance(value, list), f"Cannot cast {value!r} to list type."
-    return [component._cast(v, casting_context) for v, component in zip(  # pylint: disable=protected-access
-        value, self.components_tuple.components)]
+    assert isinstance(value, list), f"Can not cast {value!r} to list type."
+    return list(self.components_tuple._cast(tuple(value), casting_context))  # pylint: disable=protected-access
 
   def __eq__(self, other: Any) -> bool:
     if not isinstance(other, trace.TraceType):
@@ -630,8 +631,8 @@ class Dict(trace.TraceType, serialization.Serializable):
   def _cast(self, value: Any, casting_context) -> Any:
     # Value must have same keys with the TraceType
     assert isinstance(
-        value, dict
-    ), f"Cannot cast {value!r} to Python dict type."
+        value, collections.abc.Mapping
+    ), f"Can not cast {value!r} to a Dict type."
     assert set(value.keys()) == set(
         self.mapping.keys()
     ), f"{value!r} has different keys with the TraceType {self!r}."

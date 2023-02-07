@@ -250,6 +250,10 @@ class TypeSpec(
             if isinstance(arg, ops.Tensor)]
 
   def _cast(self, value, casting_context):
+    if casting_context.allow_specs and isinstance(value, TypeSpec):
+      assert value.is_subtype_of(self), f"Can not cast {value!r} to {self!r}"
+      return self
+
     cast_components = nest.map_structure(
         lambda spec, v: spec._cast(v, casting_context),  # pylint: disable=protected-access
         self._component_specs,

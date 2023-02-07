@@ -1704,7 +1704,7 @@ def unstack(value, num=None, axis=0, name="unstack"):
   ...   tensors = tf.unstack(t)
   ...   return tensors[0]
   >>>
-  >>> bad(tf.constant([1,2,3]))
+  >>> bad(tf.constant([1.0, 2.0, 3.0]))
   Traceback (most recent call last):
   ...
   ValueError: Cannot infer argument `num` from shape (None,)
