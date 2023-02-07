@@ -1964,6 +1964,32 @@ tf_py_test(
     ],
 )
 
+# Test that op_allowlist works with ops with namespaces
+tf_gen_op_wrapper_py(
+    name = "test_namespace_ops",
+    out = "test_namespace_ops.py",
+    op_allowlist = ["Namespace>TestStringOutput"],
+    deps = [
+        ":test_ops_kernels",
+    ],
+)
+
+tf_py_test(
+    name = "op_allowlist_namespace_test",
+    size = "small",
+    srcs = ["op_allowlist_namespace_test.py"],
+    main = "op_allowlist_namespace_test.py",
+    python_version = "PY3",
+    tags = ["no_pip"],  # Avoid a missing test dependency error
+    deps = [
+        ":errors",
+        ":for_generated_wrappers",
+        ":framework",
+        ":test_lib",
+        ":test_namespace_ops",
+    ],
+)
+
 tf_py_test(
     name = "ops_enable_eager_test",
     size = "small",
