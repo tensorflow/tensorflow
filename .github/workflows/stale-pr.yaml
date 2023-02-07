@@ -1,3 +1,9 @@
+# This workflow alerts and then closes the stale PRs  after specific time
+# You can adjust the behavior by modifying this file.
+# For more information, see:
+# https://github.com/actions/stale
+
+
 name: 'Stale and Close PR'
 on:
   schedule:
@@ -16,7 +22,7 @@ jobs:
         with:
          
          
-          # comment on PR if not active for more then 14 days.
+           # comment on PR if not active for more then 14 days.
           stale-pr-message: 'This PR has been automatically marked as stale because it has no recent activity. It will be closed if no further activity occurs. Thank you.'
         
           #comment on PR if stale for more then 14 days. 
