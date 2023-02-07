@@ -47,7 +47,7 @@ TfLiteAsyncKernel* AsyncSubgraph::async_kernel() const {
 AsyncSubgraph::AsyncSubgraph(Subgraph* subgraph) : subgraph_(subgraph) {
   // Currently we only support one delegate and fully delegated subgph.
   if (!IsFullyDelegated()) {
-    subgraph->ReportError("Model is no fully delegated by 1 backend.");
+    subgraph->ReportError("Model is not fully delegated by 1 backend.");
     return;
   }
   // TODO(b/191883048): Add/Check delegate flag to indicate kernel support.

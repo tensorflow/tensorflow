@@ -18,9 +18,6 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
-#include "tensorflow/lite/core/c/c_api_types.h"
-#include "tensorflow/lite/core/c/common.h"
-#include "tensorflow/lite/core/interpreter.h"
 #include "tensorflow/lite/core/async/async_kernel_internal.h"
 #include "tensorflow/lite/core/async/backend_async_kernel_interface.h"
 #include "tensorflow/lite/core/async/c/task.h"
@@ -28,12 +25,16 @@ limitations under the License.
 #include "tensorflow/lite/core/async/common.h"
 #include "tensorflow/lite/core/async/testing/mock_async_kernel.h"
 #include "tensorflow/lite/core/async/testing/test_backend.h"
+#include "tensorflow/lite/core/c/c_api_types.h"
+#include "tensorflow/lite/core/c/common.h"
+#include "tensorflow/lite/core/interpreter.h"
+#include "tensorflow/lite/interpreter_test_util.h"
 #include "tensorflow/lite/kernels/builtin_op_kernels.h"
 
 namespace tflite {
 namespace async {
 
-class AsyncSignatureRunnerTest : public ::testing::Test {
+class AsyncSignatureRunnerTest : public InterpreterTest {
  protected:
   void SetUp() override {
     kernel_ =
@@ -53,41 +54,39 @@ class AsyncSignatureRunnerTest : public ::testing::Test {
     void* builtin_data_1 = malloc(sizeof(int));
     interpreter_->AddNodeWithParameters({0, 0}, {1}, nullptr, 0, builtin_data_1,
                                         reg);
-    signature_def_.signature_key = "serving_default";
-    signature_def_.inputs["input"] = 0;
-    signature_def_.outputs["output"] = 1;
-    signature_def_.subgraph_index = 0;
-  }
-
-  void BuildAsyncSignatureRunner() {
+    const char kSignatureKey[] = "serving_default";
+    BuildSignature(kSignatureKey, {{"input", 0}}, {{"output", 1}});
     interpreter_->ModifyGraphWithDelegate(backend_->get_delegate());
-    signature_runner_ = std::make_unique<AsyncSignatureRunner>(
-        &signature_def_, interpreter_->subgraph(0));
   }
 
   int GetTensorIndex(TfLiteIoType io_type, const char* name) {
     return signature_runner_->GetTensorIndex(io_type, name);
   }
 
-  void TearDown() override { signature_runner_.reset(); }
-
  protected:
   std::unique_ptr<::testing::StrictMock<testing::MockAsyncKernel>> kernel_;
   std::unique_ptr<testing::TestBackend> backend_;
-  std::unique_ptr<Interpreter> interpreter_;
   internal::SignatureDef signature_def_;
-  std::unique_ptr<AsyncSignatureRunner> signature_runner_;
+  AsyncSignatureRunner* signature_runner_ = nullptr;
 };
 
+TEST_F(AsyncSignatureRunnerTest, GetAsyncSignatureRunner) {
+  EXPECT_EQ(nullptr, signature_runner_);
+  signature_runner_ = interpreter_->GetAsyncSignatureRunner("serving_default");
+  EXPECT_NE(nullptr, signature_runner_);
+
+  EXPECT_EQ(nullptr, interpreter_->GetAsyncSignatureRunner("foo"));
+}
+
 TEST_F(AsyncSignatureRunnerTest, InputNameTest) {
-  BuildAsyncSignatureRunner();
+  signature_runner_ = interpreter_->GetAsyncSignatureRunner("serving_default");
   EXPECT_EQ(0, GetTensorIndex(TfLiteIoType::kTfLiteIoInput, "input"));
   EXPECT_EQ(-1, GetTensorIndex(TfLiteIoType::kTfLiteIoInput, "output"));
   EXPECT_EQ(-1, GetTensorIndex(TfLiteIoType::kTfLiteIoInput, "foo"));
 }
 
 TEST_F(AsyncSignatureRunnerTest, OutputNameTest) {
-  BuildAsyncSignatureRunner();
+  signature_runner_ = interpreter_->GetAsyncSignatureRunner("serving_default");
   EXPECT_EQ(1, GetTensorIndex(TfLiteIoType::kTfLiteIoOutput, "output"));
   EXPECT_EQ(-1, GetTensorIndex(TfLiteIoType::kTfLiteIoOutput, "input"));
   EXPECT_EQ(-1, GetTensorIndex(TfLiteIoType::kTfLiteIoOutput, "foo"));
@@ -96,7 +95,7 @@ TEST_F(AsyncSignatureRunnerTest, OutputNameTest) {
 TEST_F(AsyncSignatureRunnerTest, CreateTaskTest) {
   EXPECT_CALL(*kernel_, Finish(::testing::_, ::testing::_));
 
-  BuildAsyncSignatureRunner();
+  signature_runner_ = interpreter_->GetAsyncSignatureRunner("serving_default");
   auto* task = signature_runner_->CreateTask();
   EXPECT_NE(nullptr, task);
 

@@ -18,14 +18,12 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
-#include "tensorflow/lite/core/c/c_api.h"
 #include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/core/subgraph.h"
 #include "tensorflow/lite/core/async/async_kernel_internal.h"
 #include "tensorflow/lite/core/async/async_subgraph.h"
 #include "tensorflow/lite/core/async/common.h"
 #include "tensorflow/lite/internal/signature_def.h"
-#include "tensorflow/lite/signature_runner.h"
 
 namespace tflite {
 namespace async {
@@ -39,20 +37,8 @@ class AsyncSignatureRunnerTest;
 // SignatureDef.
 class AsyncSignatureRunner {
  public:
-  // TODO(b/191883048): Move ctor to private and use `Create` function as
-  // factory method.
-  // Currently we don't have way to expose signature def from interpreter
-  // without changes to interpreter.
-  //
-  // static AsyncSignatureRunner* Create(const TfLiteInterpreter* interpreter,
-  //                                     const char* signature_key);
-  // WARNING: This is a temporary constructor before we stablize the API.
-  // This if for avoiding making intrusive changes to non experimental code.
-  // For now, users can construct AsyncSignatureRunner as follows:
-  //  std::unique_ptr<tflite::Interpreter> interpreter;
-  //  InterpreterBuilder(model, resolver)(&interpreter);
-  //  AsyncSignatureRunner runner(interpreter->GetSignatureRunner("func"));
-  explicit AsyncSignatureRunner(SignatureRunner* signature_runner);
+  // Builds the AsyncSignatureRunner given the provided signature_def and
+  // subgraph.
   AsyncSignatureRunner(const internal::SignatureDef* signature_def,
                        Subgraph* subgraph);
 

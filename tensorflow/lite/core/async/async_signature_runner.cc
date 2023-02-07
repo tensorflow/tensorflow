@@ -26,23 +26,8 @@ limitations under the License.
 #include "tensorflow/lite/core/async/async_subgraph.h"
 #include "tensorflow/lite/core/async/common.h"
 #include "tensorflow/lite/core/async/task_internal.h"
-#include "tensorflow/lite/signature_runner.h"
 
 namespace tflite {
-
-// This is a temporary helper class that will be removed after this API is
-// moved out of experimental.
-class SignatureRunnerHelper {
- public:
-  static Subgraph* GetSubgraph(SignatureRunner* runner) {
-    return runner->subgraph_;
-  }
-  static const internal::SignatureDef* GetSignatureDef(
-      SignatureRunner* runner) {
-    return runner->signature_def_;
-  }
-};
-
 namespace async {
 
 namespace {
@@ -78,11 +63,6 @@ int AsyncSignatureRunner::GetTensorIndex(TfLiteIoType io_type,
   }
   return tensor_index;
 }
-
-AsyncSignatureRunner::AsyncSignatureRunner(SignatureRunner* signature_runner)
-    : AsyncSignatureRunner(
-          SignatureRunnerHelper::GetSignatureDef(signature_runner),
-          SignatureRunnerHelper::GetSubgraph(signature_runner)) {}
 
 AsyncSignatureRunner::AsyncSignatureRunner(
     const internal::SignatureDef* signature_def, Subgraph* subgraph)
