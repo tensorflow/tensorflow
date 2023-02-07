@@ -26,31 +26,17 @@ from tensorflow.python.eager import context
 from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import composite_tensor_gradient
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_conversion_registry
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.framework import tensor_spec
+from tensorflow.python.framework import tensor_util
 from tensorflow.python.framework import type_spec
 from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.saved_model import nested_structure_coder
 from tensorflow.python.types import internal
 from tensorflow.python.util.compat import collections_abc
-from tensorflow.python.util.lazy_loader import LazyLoader
 from tensorflow.python.util.tf_export import tf_export
-
-
-# Use LazyLoader to avoid circular dependencies.
-#
-# Note: these can all be changed to regular imports once all code has been
-# updated to refer the symbols defined in this module directly, rather than
-# using the backwards-compatible aliases in ops.py.  (E.g.,
-# "indexed_slices.IndexedSlices" rather than "ops.IndexedSlices".)
-ops = LazyLoader(
-    "ops", globals(), "tensorflow.python.framework.ops")
-tensor_spec = LazyLoader(
-    "tensor_spec", globals(),
-    "tensorflow.python.framework.tensor_spec")
-tensor_util = LazyLoader(
-    "tensor_util", globals(),
-    "tensorflow.python.framework.tensor_util")
 
 
 class IndexedSlicesCompositeTensorGradient(
