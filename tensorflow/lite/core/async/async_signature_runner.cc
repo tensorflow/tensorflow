@@ -20,12 +20,12 @@ limitations under the License.
 #include <string>
 #include <vector>
 
-#include "tensorflow/lite/core/c/c_api_types.h"
-#include "tensorflow/lite/core/subgraph.h"
 #include "tensorflow/lite/core/async/async_kernel_internal.h"
 #include "tensorflow/lite/core/async/async_subgraph.h"
 #include "tensorflow/lite/core/async/common.h"
 #include "tensorflow/lite/core/async/task_internal.h"
+#include "tensorflow/lite/core/c/c_api_types.h"
+#include "tensorflow/lite/core/subgraph.h"
 
 namespace tflite {
 namespace async {
@@ -68,6 +68,13 @@ AsyncSignatureRunner::AsyncSignatureRunner(
     const internal::SignatureDef* signature_def, Subgraph* subgraph)
     : signature_def_(signature_def), subgraph_(subgraph) {
   async_subgraph_ = std::make_unique<AsyncSubgraph>(subgraph);
+  // Collects the list of input and output tensor names.
+  for (const auto& it : signature_def_->inputs) {
+    input_names_.push_back(it.first.c_str());
+  }
+  for (const auto& it : signature_def_->outputs) {
+    output_names_.push_back(it.first.c_str());
+  }
 }
 
 TfLiteStatus AsyncSignatureRunner::RegisterBuffer(
@@ -133,6 +140,25 @@ TfLiteStatus AsyncSignatureRunner::Wait(TfLiteExecutionTask* task) {
 
 TfLiteStatus AsyncSignatureRunner::Finish(TfLiteExecutionTask* task) {
   return async_subgraph_->Finish(task);
+}
+const TfLiteTensor* AsyncSignatureRunner::input_tensor(
+    const char* input_name) const {
+  if (auto idx = GetTensorIndex(TfLiteIoType::kTfLiteIoInput, input_name);
+      idx >= 0) {
+    return subgraph_->tensor(idx);
+  }
+  subgraph_->ReportError("Input name %s was not found", input_name);
+  return nullptr;
+}
+
+const TfLiteTensor* AsyncSignatureRunner::output_tensor(
+    const char* output_name) const {
+  if (auto idx = GetTensorIndex(TfLiteIoType::kTfLiteIoOutput, output_name);
+      idx >= 0) {
+    return subgraph_->tensor(idx);
+  }
+  subgraph_->ReportError("Output name %s was not found", output_name);
+  return nullptr;
 }
 
 }  // namespace async

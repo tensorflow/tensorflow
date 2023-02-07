@@ -46,9 +46,9 @@ class AsyncSignatureRunnerTest : public InterpreterTest {
     interpreter_->SetInputs({0});
     interpreter_->SetOutputs({1});
     TfLiteQuantizationParams quant;
-    interpreter_->SetTensorParametersReadWrite(0, kTfLiteFloat32, "", {3},
+    interpreter_->SetTensorParametersReadWrite(0, kTfLiteFloat32, "x", {3},
                                                quant);
-    interpreter_->SetTensorParametersReadWrite(1, kTfLiteFloat32, "", {3},
+    interpreter_->SetTensorParametersReadWrite(1, kTfLiteFloat32, "a", {3},
                                                quant);
     TfLiteRegistration* reg = ops::builtin::Register_ADD();
     void* builtin_data_1 = malloc(sizeof(int));
@@ -76,6 +76,22 @@ TEST_F(AsyncSignatureRunnerTest, GetAsyncSignatureRunner) {
   EXPECT_NE(nullptr, signature_runner_);
 
   EXPECT_EQ(nullptr, interpreter_->GetAsyncSignatureRunner("foo"));
+}
+
+TEST_F(AsyncSignatureRunnerTest, InputsTest) {
+  signature_runner_ = interpreter_->GetAsyncSignatureRunner("serving_default");
+  EXPECT_EQ(1, signature_runner_->input_size());
+  auto* input_name = signature_runner_->input_names()[0];
+  EXPECT_STREQ("input", input_name);
+  EXPECT_STREQ("x", signature_runner_->input_tensor(input_name)->name);
+}
+
+TEST_F(AsyncSignatureRunnerTest, OutputsTest) {
+  signature_runner_ = interpreter_->GetAsyncSignatureRunner("serving_default");
+  EXPECT_EQ(1, signature_runner_->output_size());
+  auto* output_name = signature_runner_->output_names()[0];
+  EXPECT_STREQ("output", output_name);
+  EXPECT_STREQ("a", signature_runner_->output_tensor(output_name)->name);
 }
 
 TEST_F(AsyncSignatureRunnerTest, InputNameTest) {
