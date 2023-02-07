@@ -52,7 +52,7 @@ void TestDecodeGif(Env* env, DecodeGifTestCase testcase) {
         w = width;
         h = height;
         c = channels;
-        return new uint8[ptrdiff_t(frame_cnt) * height * width * channels];
+        return new uint8[int64_t(frame_cnt) * height * width * channels];
       },
       &error_string));
   ASSERT_NE(imgdata, nullptr);
