@@ -452,7 +452,7 @@ class DecodeImageV2Op : public OpKernel {
     // allocation til after dtype conversion is done. `gif`::Decode` supports
     // uint8 only.
     Tensor* output = nullptr;
-    ptrdiff_t buffer_size = 0;
+    int64_t buffer_size = 0;
     string error_string;
     uint8* buffer = gif::Decode(
         input.data(), input.size(),
