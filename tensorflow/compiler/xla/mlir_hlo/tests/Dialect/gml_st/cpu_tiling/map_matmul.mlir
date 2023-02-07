@@ -54,8 +54,12 @@ func.func @map_matmul(%arg0: tensor<?x?xf32>,
 // CHECK:        scf.for
 // CHECK:          linalg.matmul
 // CHECK:          scf.yield
-// CHECK:        linalg.map
-// CHECK:        linalg.map
+// CHECK:        scf.for
+// CHECK:          scf.for
+// CHECK:            math.absf
+// CHECK:        scf.for
+// CHECK:          scf.for
+// CHECK:            arith.addf
 // CHECK:        gml_st.set_yield
 
 // CHECK:      gml_st.parallel
@@ -65,6 +69,10 @@ func.func @map_matmul(%arg0: tensor<?x?xf32>,
 // CHECK:        scf.for
 // CHECK:          linalg.matmul
 // CHECK:          scf.yield
-// CHECK:        linalg.map
-// CHECK:        linalg.map
+// CHECK:        scf.for
+// CHECK:          scf.for
+// CHECK:            math.absf
+// CHECK:        scf.for
+// CHECK:          scf.for
+// CHECK:            arith.addf
 // CHECK:        gml_st.set_yield
