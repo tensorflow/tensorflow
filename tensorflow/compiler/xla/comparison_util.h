@@ -88,14 +88,6 @@ class Comparison {
   // targets may support total order floating point type comparisons.
   explicit Comparison(Direction dir, PrimitiveType type, Order order);
 
-  // Two comparisons are equivalent iff they have the same direction, precision,
-  // and ordering.
-  bool operator==(const Comparison& other) const {
-    return GetDirection() == other.GetDirection() &&
-           GetPrimitiveType() == other.GetPrimitiveType() &&
-           GetOrder() == other.GetOrder();
-  }
-
   // Returns a comparison with a primitive type matching the Comparison::Type
   // and using a default bit width of 32. For example,
   // Comparison(Direction::kLt, Type::kFloat).PrimitiveType()  /* F32 */
@@ -255,6 +247,18 @@ StatusOr<Comparison::Order> StringToComparisonOrder(absl::string_view order);
 template <typename KeyFn>
 auto LessThanByKey(KeyFn&& key_fn) {
   return [=](const auto& a, const auto& b) { return key_fn(a) < key_fn(b); };
+}
+
+// Two comparisons are equivalent iff they have the same direction, precision,
+// and ordering.
+inline bool operator==(const Comparison& a, const Comparison& b) {
+  return a.GetDirection() == b.GetDirection() &&
+         a.GetPrimitiveType() == b.GetPrimitiveType() &&
+         a.GetOrder() == b.GetOrder();
+}
+
+inline bool operator!=(const Comparison& a, const Comparison& b) {
+  return !(a == b);
 }
 
 }  // namespace xla
