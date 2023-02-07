@@ -26,6 +26,8 @@ limitations under the License.
 #include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/Dialect/SCF/Transforms/TileUsingInterface.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
+#include "mlir/IR/Attributes.h"
+#include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Support/LogicalResult.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
@@ -65,8 +67,21 @@ struct TileByOnePattern : public OpRewritePattern<OpTy> {
     // Skip ops that are already tiled.
     if (hasLabel(op, kTileByOneLabel)) return failure();
 
-    // Tile.
+    // Skip if iteration domain is statically known to be of size 1.
     auto iface = llvm::cast<TilingInterface>(op.getOperation());
+    // TODO(frgossen): Avoid creating the IR for these ranges. Instead, the
+    // tiling interface should allow to access statically known iteration
+    // domains.
+    SmallVector<Range> iterationDomain = iface.getIterationDomain(rewriter);
+    auto isRangeSizeOne = [](Range range) {
+      if (!range.size.is<Attribute>()) return false;
+      auto intAttr = range.size.get<Attribute>().dyn_cast<IntegerAttr>();
+      if (!intAttr) return false;
+      return intAttr.getInt() == 1;
+    };
+    if (llvm::all_of(iterationDomain, isRangeSizeOne)) return failure();
+
+    // Tile.
     scf::SCFTilingOptions opts;
     opts.setTileSizeComputationFunction(unitTileSizeComputationFunction);
     FailureOr<scf::SCFTilingResult> tilingResult =
