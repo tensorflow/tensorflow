@@ -147,3 +147,19 @@ def VerifyTFXLALegalization : Pass<"tfxla-verify-legalization", "mlir::func::Fun
 
   let constructor = "mlir::mhlo::CreateVerifyTFXLALegalizationPass()";
 }
+
+def TFXLADeviceSpecificTransforms : Pass<"tfxla-device-specific-transforms",
+                                            "mlir::func::FuncOp"> {
+  let summary = "Transforms ops that require device context into device independent TF Ops.";
+
+  let description = [{"Transforms device specific ops into device independent"
+                    "ops."}];
+
+  let options = [
+    Option<"device_type_", "device-type", "std::string",
+        /*default=*/"\"INVALID_DEVICE_TYPE\"",
+        "The device type being targeted.">,
+  ];
+
+  let constructor = "mlir::mhlo::CreateTFXLADeviceSpecificTransformsPass()";
+}
