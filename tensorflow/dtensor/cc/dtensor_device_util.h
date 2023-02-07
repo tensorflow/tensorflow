@@ -41,6 +41,7 @@ limitations under the License.
 #include "tensorflow/dtensor/cc/small_constant_optimization.h"
 #include "tensorflow/dtensor/cc/tensor_layout.h"
 #include "tensorflow/dtensor/cc/tensor_with_layout.h"
+#include "tensorflow/tsl/platform/fingerprint.h"
 
 namespace tensorflow {
 namespace dtensor {
@@ -116,19 +117,6 @@ struct ExecutionFunctions {
   // to a function for performance reason, since an eager op doesn't use it.
   uint64 function_mesh_fingerprint = 0;
 };
-
-// TODO(yujingzhang): move FingerprintCat128 to tensorflow/platform.
-inline tensorflow::Fprint128 FingerprintCat128(const tensorflow::Fprint128& a,
-                                               const tensorflow::Fprint128& b) {
-  return {tensorflow::FingerprintCat64(a.low64, b.low64),
-          tensorflow::FingerprintCat64(a.high64, b.high64)};
-}
-
-inline tensorflow::Fprint128 FingerprintCat128(const tensorflow::Fprint128& a,
-                                               const int64 b) {
-  auto x = tensorflow::FingerprintCat64(a.low64, b);
-  return {x, tensorflow::FingerprintCat64(a.high64, x)};
-}
 
 struct DTensorOperation {
   // For both fields: not owned. lifetime covers the whole usage.
