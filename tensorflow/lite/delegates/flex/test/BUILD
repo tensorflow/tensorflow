@@ -95,7 +95,7 @@ java_test(
 ios_static_framework(
     name = "TestTensorFlowLiteSelectTfOps_framework",
     testonly = 1,
-    avoid_deps = ["//tensorflow/lite/c:common"],
+    avoid_deps = ["//tensorflow/lite/core/c:common"],
     bundle_name = "TestTensorFlowLiteSelectTfOps",
     minimum_os_version = "11.0",
     deps = [

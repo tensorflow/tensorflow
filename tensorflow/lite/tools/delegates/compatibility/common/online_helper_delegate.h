@@ -21,7 +21,7 @@ limitations under the License.
 #include <unordered_map>
 
 #include "absl/status/status.h"
-#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/tools/delegates/compatibility/protos/compatibility_result.pb.h"
 
 namespace tflite {
