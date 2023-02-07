@@ -1438,9 +1438,16 @@ Status ApproxTopKShape(shape_inference::InferenceContext* c) {
   TF_RETURN_IF_ERROR(c->GetAttr("aggregate_to_topk", &aggregate_to_topk));
   ShapeHandle input_shape;
   TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(0), 1, &input_shape));
+  int64_t r_dim_copy = reduction_dimension;
+  int64_t rank = c->Rank(input_shape);
   if (reduction_dimension < 0) {
     // Reverse index
     reduction_dimension += c->Rank(input_shape);
+  }
+  if (reduction_dimension >= c->Rank(input_shape)) {
+    return errors::InvalidArgument("Invalid reduction dimension: ", r_dim_copy,
+                                   ". Must be within the range of [", -rank,
+                                   ", ", rank - 1, "]");
   }
   int64_t reduction_dim_value =
       c->Value(c->Dim(input_shape, reduction_dimension));
@@ -1448,6 +1455,10 @@ Status ApproxTopKShape(shape_inference::InferenceContext* c) {
   if (reduction_dim_value < k) {
     return errors::InvalidArgument("input must have last dimension >= k = ", k,
                                    " but was ", reduction_dim_value);
+  }
+  if (recall_target > 1.0 || recall_target <= 0.) {
+    return errors::InvalidArgument("Invalid recall target: ", recall_target,
+                                   ". Valid value range in : [0, 1.0].");
   }
 
   int64_t output_dim_value = [&] {

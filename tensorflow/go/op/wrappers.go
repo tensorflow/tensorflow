@@ -52609,21 +52609,37 @@ func TensorListScatterV2(scope *Scope, tensor tf.Output, indices tf.Output, elem
 	return op.Output(0)
 }
 
+// TensorListSetItemAttr is an optional argument to TensorListSetItem.
+type TensorListSetItemAttr func(optionalAttr)
+
+// TensorListSetItemResizeIfIndexOutOfBounds sets the optional resize_if_index_out_of_bounds attribute to value.
+// If not specified, defaults to false
+func TensorListSetItemResizeIfIndexOutOfBounds(value bool) TensorListSetItemAttr {
+	return func(m optionalAttr) {
+		m["resize_if_index_out_of_bounds"] = value
+	}
+}
+
 // Sets the index-th position of the list to contain the given tensor.
 //
 // input_handle: the list
 // index: the position in the list to which the tensor will be assigned
 // item: the element to be assigned to that position
 // output_handle: the new list, with the element in the proper position
-func TensorListSetItem(scope *Scope, input_handle tf.Output, index tf.Output, item tf.Output) (output_handle tf.Output) {
+func TensorListSetItem(scope *Scope, input_handle tf.Output, index tf.Output, item tf.Output, optional ...TensorListSetItemAttr) (output_handle tf.Output) {
 	if scope.Err() != nil {
 		return
+	}
+	attrs := map[string]interface{}{}
+	for _, a := range optional {
+		a(attrs)
 	}
 	opspec := tf.OpSpec{
 		Type: "TensorListSetItem",
 		Input: []tf.Input{
 			input_handle, index, item,
 		},
+		Attrs: attrs,
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0)

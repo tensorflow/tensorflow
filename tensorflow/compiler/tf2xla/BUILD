@@ -1350,7 +1350,6 @@ cc_library(
     deps = [
         ":resource_operation_table",
         "//tensorflow/compiler/xla:status_macros",
-        "//tensorflow/compiler/xla/stream_executor/lib",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:graph",
         "//tensorflow/core:lib",

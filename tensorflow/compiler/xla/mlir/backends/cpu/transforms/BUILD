@@ -32,6 +32,7 @@ cc_library(
         "legalize_collective_ops.cc",
         "legalize_i1_vector_transfers.cc",
         "lmhlo_to_cpu_runtime.cc",
+        "remove_copies_to_out_params.cc",
         "xla_abi_legalization.cc",
         "xla_cpu_memref_element_cast_to_llvm.cc",
     ],

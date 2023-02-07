@@ -1364,6 +1364,45 @@ TEST(ModelTest, ModelMetrics) {
                     HasSubstr("autotune: true")));
 }
 
+TEST(ModelTest, ModelCollectOptimizationMetrics) {
+  CellReader<std::string> cell_reader("/tensorflow/data/model");
+  model::Model model;
+  std::shared_ptr<Node> root = model::MakeUnknownNode({0, "unknown0", nullptr});
+  model.AddNode([&root](model::Node::Args args) { return root; }, root->name(),
+                nullptr, &root);
+  model.output()->record_element();
+  model.output()->record_start(100);
+  model.output()->record_stop(200);
+  std::string model_id = strings::StrCat(reinterpret_cast<uintptr_t>(&model));
+  // Before optimization, whatever metrics collected are returned.
+  EXPECT_THAT(cell_reader.Read(model_id),
+              AllOf(HasSubstr("key: 0"), HasSubstr("name: \"unknown0\""),
+                    HasSubstr("autotune: true"), HasSubstr("num_elements: 1"),
+                    HasSubstr("processing_time: 100")));
+  CancellationManager cancellation_manager;
+  model.Optimize(AutotuneAlgorithm::STAGE_BASED, /*cpu_budget=*/20,
+                 /*ram_budget=*/1000, /*model_input_time=*/50,
+                 &cancellation_manager);
+  model.output()->record_element();
+  model.output()->record_start(300);
+  model.output()->record_stop(400);
+  // After optimization, metrics collected just before optimization are
+  // returned. Metrics collected after optimization are not returned.
+  EXPECT_THAT(cell_reader.Read(model_id),
+              AllOf(HasSubstr("key: 0"), HasSubstr("name: \"unknown0\""),
+                    HasSubstr("autotune: true"), HasSubstr("num_elements: 1"),
+                    HasSubstr("processing_time: 100")));
+  // Call optimization again. Metrics collected after the first optimization
+  // should be returned as well.
+  model.Optimize(AutotuneAlgorithm::STAGE_BASED, /*cpu_budget=*/20,
+                 /*ram_budget=*/1000, /*model_input_time=*/50,
+                 &cancellation_manager);
+  EXPECT_THAT(cell_reader.Read(model_id),
+              AllOf(HasSubstr("key: 0"), HasSubstr("name: \"unknown0\""),
+                    HasSubstr("autotune: true"), HasSubstr("num_elements: 2"),
+                    HasSubstr("processing_time: 200")));
+}
+
 TEST(ModelTest, ModelCollectAndDestroyRaceCondition) {
   CellReader<std::string> cell_reader("/tensorflow/data/model");
   auto* model = new model::Model();

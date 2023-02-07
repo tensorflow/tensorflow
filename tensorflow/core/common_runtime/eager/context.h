@@ -302,6 +302,10 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
         core::RefCountPtr<Rendezvous>(rendezvous);
   }
 
+  void ResetLocalRendezvousTable() override {
+    local_rendezvous_table_->CleanUpAll();
+  }
+
   // Returns the global_rendezvous_for_functions' underlying LocalRendezvous'
   // status. If the underlying Rendezvous is not in the local_rendezvous_table_
   // returns OK.

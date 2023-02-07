@@ -106,6 +106,10 @@ std::string StreamDoneFilePath(absl::string_view snapshot_path,
                            kDoneFileName);
 }
 
+std::string SnapshotDoneFilePath(absl::string_view snapshot_path) {
+  return tsl::io::JoinPath(snapshot_path, kDoneFileName);
+}
+
 std::string CheckpointsDirectory(absl::string_view snapshot_path,
                                  int64_t stream_index) {
   return tsl::io::JoinPath(StreamDirectory(snapshot_path, stream_index),

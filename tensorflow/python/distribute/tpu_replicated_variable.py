@@ -24,6 +24,7 @@ from tensorflow.python.compiler.xla.experimental import xla_sharding
 from tensorflow.python.distribute import tpu_util
 from tensorflow.python.eager import context
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_conversion_registry
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_resource_variable_ops
 from tensorflow.python.ops import gen_tpu_partition_ops as tpu_partition_ops
@@ -316,5 +317,5 @@ def _tensor_conversion_tpu_replicated_var(var,
   return var._dense_var_to_tensor(dtype=dtype, name=name, as_ref=as_ref)  # pylint: disable=protected-access
 
 
-ops.register_tensor_conversion_function(TPUReplicatedVariable,
-                                        _tensor_conversion_tpu_replicated_var)
+tensor_conversion_registry.register_tensor_conversion_function(
+    TPUReplicatedVariable, _tensor_conversion_tpu_replicated_var)

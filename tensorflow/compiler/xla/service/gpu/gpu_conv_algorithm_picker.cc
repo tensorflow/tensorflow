@@ -386,7 +386,7 @@ StatusOr<AutotuneResult> GpuConvAlgorithmPicker::PickBestAlgorithm(
     const HloCustomCallInstruction* instr) {
   // If in deviceless mode, return the result from the autotune_cache.
   if (auto deviceless_config = std::get_if<DevicelessConfig>(&config_)) {
-    auto device_description_str = deviceless_config->device_description_str;
+    auto device_description_str = deviceless_config->model_str;
     ConvCacheKey key =
         AutotuneCacheKeyfromInstruction(instr, device_description_str);
     absl::MutexLock autotune_lock(&autotune_cache_mu);

@@ -363,7 +363,7 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
           &invocation_results_size));
       DCHECK(invocation_results_.empty());
       for (size_t i = 0; i < invocation_results_size; i++) {
-        invocation_results_.push_back(std::make_shared<InvocationResult>());
+        invocation_results_.push_back(std::make_shared<InvocationResult>(ctx));
         auto& result = *invocation_results_.back();
         std::string element_prefix =
             absl::StrCat(kInvocationResults, "[", i, "]");
@@ -425,14 +425,16 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
 
    private:
     struct InvocationResult {
-      InvocationResult() : uid(tensorflow::EnvTime::NowNanos()) {}
+      explicit InvocationResult(IteratorContext* ctx)
+          : uid(tensorflow::EnvTime::NowNanos()),
+            checkpoint(MemoryCheckpoint{ctx->id_registry()}) {}
 
       Notification notification;
       Status status;
       std::vector<Tensor> return_values;
       bool end_of_input = false;
-      MemoryCheckpoint checkpoint;
       const int64_t uid;
+      MemoryCheckpoint checkpoint;
     };
 
     void CancelThreads(bool wait) TF_LOCKS_EXCLUDED(mu_) {
@@ -481,7 +483,7 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
       std::vector<Tensor> input_element;
       result->status = input_impl_->GetNext(ctx.get(), &input_element,
                                             &result->end_of_input);
-      result->checkpoint = ctx->checkpoint();
+      result->checkpoint.Merge(ctx->checkpoint());
       if (result->end_of_input || !result->status.ok()) {
         CallCompleted(ctx, result);
         return;
@@ -531,7 +533,7 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
                          const std::shared_ptr<InvocationResult>& result,
                          std::vector<Tensor>* out_tensors,
                          bool* end_of_sequence) TF_LOCKS_EXCLUDED(*mu_) {
-      ctx->MergeCheckpoint(result->checkpoint);
+      ctx->MergeCheckpoint(&result->checkpoint);
       if (!result->end_of_input && result->status.ok()) {
         *out_tensors = std::move(result->return_values);
         RecordBufferDequeue(ctx, *out_tensors);
@@ -583,7 +585,8 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
             return;
           }
           while (!busy()) {
-            invocation_results_.push_back(std::make_shared<InvocationResult>());
+            invocation_results_.push_back(
+                std::make_shared<InvocationResult>(ctx.get()));
             new_calls.push_back(invocation_results_.back());
             num_calls_++;
           }

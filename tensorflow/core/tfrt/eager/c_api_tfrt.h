@@ -130,6 +130,8 @@ class ContextInterface : public tensorflow::ImmediateExecutionContext {
 
   void ResetGlobalRendezvousForFunction() override;
 
+  void ResetLocalRendezvousTable() override;
+
   bool UsesTFRT() override;
 
   void ListDevices(std::vector<tensorflow::DeviceAttributes>* devices) override;

@@ -60632,6 +60632,13 @@ op {
     name: "element_dtype"
     type: "type"
   }
+  attr {
+    name: "resize_if_index_out_of_bounds"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
 }
 op {
   name: "TensorListSplit"

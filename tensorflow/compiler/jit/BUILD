@@ -1,5 +1,5 @@
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
-load("//tensorflow:tensorflow.bzl", "if_libtpu", "if_with_tpu_support", "tf_cc_test", "tf_copts", "tf_cuda_cc_test")
+load("//tensorflow:tensorflow.bzl", "if_libtpu", "if_with_tpu_support", "tf_cc_test", "tf_copts")
 load("//tensorflow/compiler/xla/stream_executor:build_defs.bzl", "if_cuda_or_rocm")
 load("//tensorflow:tensorflow.default.bzl", "cc_header_only_library", "filegroup", "tf_custom_op_py_library", "tf_jit_compilation_passes_extra_deps")
 load("//tensorflow/core/platform:build_config.bzl", "tf_additional_all_protos", "tf_proto_library")
@@ -227,8 +227,6 @@ cc_library(
 
 XLA_DEVICE_DEPS = [
     ":common",
-    ":pjrt_device_context",
-    ":xla_compile_util",
     ":xla_launch_util",
     ":xla_tensor",
     "@com_google_absl//absl/base",
@@ -282,7 +280,6 @@ XLA_DEVICE_DEPS = [
     "//tensorflow/core/kernels/data:prefetch_dataset_op",
     "//tensorflow/core/kernels/data:options_dataset_op",
     "//tensorflow/core/profiler/lib:traceme",
-    "//tensorflow/core/tfrt/common:async_value_tensor",
     "//tensorflow/compiler/xla/stream_executor:tf_allocator_adapter",
     "//tensorflow/compiler/xla/stream_executor/platform",
 ]
@@ -424,6 +421,7 @@ cc_library(
         "//tensorflow/compiler/tf2xla:common",
         "//tensorflow/compiler/tf2xla:xla_compiler",
         "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla/client:client_library",
         "//tensorflow/compiler/xla/client:local_client",
@@ -563,6 +561,7 @@ cc_library(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/common_runtime:core_cpu_internal",
         "//tensorflow/core/common_runtime/eager:tensor_handle",
+        "//tensorflow/tsl/platform:status",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/types:span",
@@ -577,10 +576,9 @@ cc_library(
     textual_hdrs = ["get_compiler_ir.h"],
     visibility = [":internal"],
     deps = [
-        "//tensorflow/compiler/xla:statusor",
-        "@com_google_absl//absl/memory",
+        "//tensorflow/compiler/tf2xla:xla_compiler",
+        "//tensorflow/core/platform:statusor",
         "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/types:span",
     ],
 )
@@ -758,7 +756,6 @@ cc_library(
     deps = [
         ":shape_inference",
         "//tensorflow/compiler/tf2xla:tf2xla_util",
-        "//tensorflow/compiler/xla/stream_executor/lib",
         "//tensorflow/core:framework",
         "//tensorflow/core:graph",
         "//tensorflow/core:protos_all_cc",
@@ -851,7 +848,6 @@ cc_library(
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla/service/graphcycles",
-        "//tensorflow/compiler/xla/stream_executor/lib",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
@@ -880,7 +876,6 @@ cc_library(
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla/service/graphcycles",
-        "//tensorflow/compiler/xla/stream_executor/lib",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
@@ -1423,22 +1418,6 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core/platform:errors",
         "//tensorflow/tsl/protobuf:error_codes_proto_impl_cc",
-        "@com_google_googletest//:gtest_main",
-    ],
-)
-
-tf_cuda_cc_test(
-    name = "device_context_test",
-    srcs = ["device_context_test.cc"],
-    tags = tf_cuda_tests_tags(),
-    deps = [
-        ":flags",
-        ":xla_device",
-        ":xla_gpu_device",
-        "//tensorflow/compiler/tf2xla:xla_op_registry",
-        "//tensorflow/core:framework_internal",
-        "//tensorflow/core:test",
-        "//tensorflow/core/framework:tensor_testutil",
         "@com_google_googletest//:gtest_main",
     ],
 )

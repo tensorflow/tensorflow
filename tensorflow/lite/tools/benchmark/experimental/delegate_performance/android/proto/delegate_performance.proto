@@ -17,6 +17,8 @@ syntax = "proto3";
 
 package tflite.proto.benchmark;
 
+option java_package = "tflite.proto.benchmark";
+
 // Parameters for latency thresholds of the delegate latency benchmarking
 // results. The delegate performance benchmark app generates a "PASS" result for
 // a model if no thresholds are breached.

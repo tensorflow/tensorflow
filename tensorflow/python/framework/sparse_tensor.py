@@ -18,6 +18,7 @@ import collections
 
 import numpy as np
 
+from tensorflow.core.protobuf import struct_pb2
 from tensorflow.python import pywrap_tensorflow  # pylint: disable=unused-import
 from tensorflow.python import tf2
 from tensorflow.python.framework import composite_tensor
@@ -30,6 +31,7 @@ from tensorflow.python.framework import tensor_util
 from tensorflow.python.framework import type_spec
 from tensorflow.python.framework import type_spec_registry
 from tensorflow.python.ops import gen_sparse_ops
+from tensorflow.python.saved_model import nested_structure_coder
 from tensorflow.python.types import internal
 from tensorflow.python.util import _pywrap_utils
 from tensorflow.python.util.tf_export import tf_export
@@ -507,6 +509,13 @@ class SparseTensorSpec(type_spec.BatchableTypeSpec):
     else:
       raise TypeError("Expected SparseTensor or SparseTensorValue. Received: "
                       f"{value} of type {type(value).__name__}.")
+
+
+nested_structure_coder.register_codec(
+    nested_structure_coder.BuiltInTypeSpecCodec(
+        SparseTensorSpec, struct_pb2.TypeSpecProto.SPARSE_TENSOR_SPEC
+    )
+)
 
 
 # TODO(b/133606651) Delete the SparseTensor registration when CompositeTensor

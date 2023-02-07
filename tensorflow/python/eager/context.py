@@ -601,6 +601,21 @@ class Context:
       if self._is_global_context:
         pywrap_tfe.TFE_Py_SetCEagerContext(self._context_handle)
 
+  def ensure_uninitialized(self):
+    """Uninitialize handle and devices if not already done so."""
+    with self._initialize_lock:
+      if not self._initialized:
+        return
+      self._context_devices = None
+      self._logical_devices = None
+      self._server_def = None
+      self._initialized = False
+
+      if self._is_global_context:
+        pywrap_tfe.TFE_Py_SetCEagerContext(None)
+
+      self._context_handle = None
+
   def mark_as_global_context(self):
     # If the context was already initialized, publish it. Otherwise wait with
     # publication until it's initialized.
@@ -1746,9 +1761,22 @@ class Context:
     pywrap_tfe.TFE_SetLogicalCpuDevices(self._context_handle, num_cpus, prefix)
     self._initialize_logical_devices()
 
-  def get_compiler_ir(self, device_name, function_name, args, stage="hlo"):
-    return pywrap_tfe.TF_GetCompilerIr(self._context_handle, function_name,
-                                       stage, device_name, args)
+  def get_compiler_ir(
+      self,
+      device_name,
+      function_name,
+      flat_args,
+      captured_inputs,
+      stage="hlo",
+  ):
+    return pywrap_tfe.TF_GetCompilerIr(
+        self._context_handle,
+        function_name,
+        stage,
+        device_name,
+        flat_args,
+        captured_inputs,
+    )
 
   @deprecated(
       None, "XLA:CPU and XLA:GPU devices are deprecated", warn_once=True)
@@ -2004,6 +2032,17 @@ class Context:
   def context_switches(self):
     """Returns a stack of context switches."""
     return self._context_switches
+
+  def reset_local_rendezvous_table(self):
+    """Resets all local rendezvous in the table.
+
+    Global rendezvous is not changed. When this function is called, it has to be
+    guaranteed that no nodes are being executed, otherwise a race condition
+    could happen. This function should only be used internally for testing and
+    debugging purpose.
+    """
+    if self._context_handle is not None:
+      pywrap_tfe.TFE_ContextResetLocalRendezvousTable(self._context_handle)
 
 
 class _EagerDeviceContext(object):

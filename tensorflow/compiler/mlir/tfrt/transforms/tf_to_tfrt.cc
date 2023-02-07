@@ -331,8 +331,7 @@ mlir::LogicalResult FallbackExecuteOpConversion::ConvertToFallbackExecuteOp(
     // be relatively cheap for the host.
     cost = rewriter.getI64IntegerAttr(kDefaultCheapCost);
   } else {
-    cost = rewriter.getI64IntegerAttr(
-        cost_analysis_.GetCost(op, fallback_key.getInt()));
+    cost = rewriter.getI64IntegerAttr(cost_analysis_.GetCost(op));
   }
 
   // For now, we only consider GPU XLA clusters in the form of XlaLaunch for

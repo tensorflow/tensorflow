@@ -313,10 +313,8 @@ DeviceCompiler<ExecutableType, ClientType>::CompileStrict(
   } else {
     auto built_executable =
         compiler_client_->BuildExecutable(options, *out_compilation_result);
-    cache_value.compilation_status = built_executable.status();
-    if (built_executable.ok()) {
-      out_executable = *std::move(built_executable);
-    }
+    TF_RETURN_IF_ERROR(built_executable.status());
+    out_executable = *std::move(built_executable);
 
     TF_RETURN_IF_ERROR(device_compiler_internal::EligibleToPersist(
         cache_value.compile_state, out_executable.get()));

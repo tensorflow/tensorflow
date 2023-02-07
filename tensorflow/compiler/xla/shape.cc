@@ -161,8 +161,6 @@ void Shape::DeleteDimension(int64_t dim_to_delete) {
   }
 }
 
-int64_t Shape::dimensions(int index) const { return dimensions_.at(index); }
-
 const Shape& Shape::tuple_shapes(int index) const {
   return tuple_shapes_.at(index);
 }

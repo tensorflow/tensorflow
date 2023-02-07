@@ -13028,6 +13028,39 @@ ENTRY %main.21 {
             nullptr);
 }
 
+TEST_F(SpmdPartitioningTest, ComplexReshardPartialMerging) {
+  const char* const hlo_string = R"(
+HloModule pjit
+
+ENTRY %main.21 {
+  multiply.3535 = f32[256,256,256]{2,1,0} parameter(0), sharding={devices=[2,1,2,2]0,1,2,3,4,5,6,7 last_tile_dim_replicate}
+  ROOT copy.1 = f32[256,256,256]{2,1,0} copy(multiply.3535), sharding={devices=[1,2,1,4]0,1,2,3,4,5,6,7 last_tile_dim_replicate}
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/8));
+
+  XLA_VLOG_LINES(1, module->ToString());
+  EXPECT_NE(FindInstruction(module.get(), HloOpcode::kAllToAll), nullptr);
+}
+
+TEST_F(SpmdPartitioningTest, PartialReshardingInfiniteLoops) {
+  const char* const hlo_string = R"(
+HloModule pjit
+
+ENTRY %main.21 {
+  multiply.3535 = f32[256,256,256]{2,1,0} parameter(0), sharding={devices=[4,1,1,2]0,1,2,3,4,5,6,7 last_tile_dim_replicate}
+  ROOT copy.1 = f32[256,256,256]{2,1,0} copy(multiply.3535), sharding={devices=[2,2,1,2]0,1,2,3,4,5,6,7 last_tile_dim_replicate}
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/8));
+
+  XLA_VLOG_LINES(1, module->ToString());
+}
+
 }  // namespace
 }  // namespace spmd
 }  // namespace xla

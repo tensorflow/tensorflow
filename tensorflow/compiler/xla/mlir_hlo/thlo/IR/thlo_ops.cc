@@ -1149,7 +1149,8 @@ void ReverseOp::getAsmResultNames(
 }
 
 SmallVector<utils::IteratorType> ReverseOp::getLoopIteratorTypes() {
-  return getParallelIteratorTypes(getType().cast<ShapedType>().getRank() - 1);
+  int64_t rank = getType().cast<ShapedType>().getRank();
+  return getParallelIteratorTypes(rank);
 }
 
 SmallVector<Range> ReverseOp::getIterationDomain(OpBuilder &b) {

@@ -304,6 +304,32 @@ func.func @testToBoolFold(%arg0: tensor<i32>, %arg1: tensor<*xf32>) -> tensor<*x
 
 // -----
 
+func.func private @branch_0(tensor<!tf_type.resource>) -> tensor<*xf32>
+func.func private @branch_1(tensor<!tf_type.resource>) -> tensor<*xf32>
+
+// CHECK: func private @tf.CaseRegion_branch1{{.*}}
+// CHECK: call @branch_1
+// CHECK: func private @tf.CaseRegion_branch0{{.*}}
+// CHECK: call @branch_0
+// CHECK-LABEL: func @testCase
+func.func @testCase(%arg0: tensor<i32>, %arg1: tensor<!tf_type.resource<tensor<1x2x3xf32>>>) -> tensor<1x2x3xf32> {
+  // CHECK: [[Result:%.*]] = "tf.Case"(%arg0, %arg1)
+  // CHECK-SAME: branches = [@tf.CaseRegion_branch0{{.*}}, @tf.CaseRegion_branch1{{.*}}]
+  // CHECK-SAME: is_stateless = false
+  %0 = "tf.CaseRegion"(%arg0) ({
+    %1 = "tf.Cast"(%arg1) {Truncate = false} : (tensor<!tf_type.resource<tensor<1x2x3xf32>>>) -> tensor<!tf_type.resource>
+    %2 = func.call @branch_0(%1) : (tensor<!tf_type.resource>) -> tensor<*xf32>
+    "tf.Yield"(%2) : (tensor<*xf32>) -> ()
+  }, {
+    %1 = "tf.Cast"(%arg1) {Truncate = false} : (tensor<!tf_type.resource<tensor<1x2x3xf32>>>) -> tensor<!tf_type.resource>
+    %2 = func.call @branch_1(%1) : (tensor<!tf_type.resource>) -> tensor<*xf32>
+    "tf.Yield"(%2) : (tensor<*xf32>) -> ()
+  }) {is_stateless = false} : (tensor<i32>) -> tensor<1x2x3xf32>
+  return %0 : tensor<1x2x3xf32>
+}
+
+// -----
+
 // Simple WhileRegion
 // CHECK: func private @tf.WhileRegion_body{{.+}}
 // CHECK: "tf.Add"

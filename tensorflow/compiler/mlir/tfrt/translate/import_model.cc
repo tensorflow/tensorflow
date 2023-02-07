@@ -77,7 +77,7 @@ StatusOr<std::vector<FunctionDef>> ExportXlaFunctions(mlir::ModuleOp module) {
 
     // Visit each op in the function and find out referenced functions from the
     // attributes.
-    func_op->walk([&](mlir::SymbolUserOpInterface op) {
+    func_op->walk([&](mlir::Operation* op) {
       for (const mlir::NamedAttribute& attr : op->getAttrs()) {
         if (const auto sym =
                 attr.getValue().dyn_cast<mlir::FlatSymbolRefAttr>()) {

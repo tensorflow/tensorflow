@@ -15,6 +15,6 @@ cc_library(
     deps = if_google([
         "@tf_runtime//:hostcontext",
         # TODO(b/178227859): Remove when we have a pluggable device API.
-        "//third_party/tf_runtime_google:tpu_model_resource",
+        "//learning/brain/tfrt/tpu:tpu_model_resource",
     ]),
 )

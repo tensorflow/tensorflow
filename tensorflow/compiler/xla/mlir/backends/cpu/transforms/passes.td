@@ -96,4 +96,16 @@ def ConvertXlaCpuMemRefElementCastToLLVMPass :
   let constructor = "createConvertXlaCpuMemRefElementCastToLLVMPass()";
 }
 
+def RemoveCopiesToOutParamsPass :
+   Pass<"xla-remove-copies-to-out-params", "mlir::func::FuncOp"> {
+  let summary = "Removes redundant alloc/copy pairs to out params.";
+
+  let description = [{
+      Removes redundant alloc/alloca + copy pairs that can remain after running
+      bufferization's BufferResultsToOutParams pass.
+  }];
+
+  let constructor = "createRemoveCopiesToOutParamsPass()";
+}
+
 #endif  // TENSORFLOW_COMPILER_XLA_MLIR_TRANSFORMS_CPU_PASSES_TD_

@@ -5178,7 +5178,7 @@ tf_module {
   }
   member_method {
     name: "TensorListSetItem"
-    argspec: "args=[\'input_handle\', \'index\', \'item\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'input_handle\', \'index\', \'item\', \'resize_if_index_out_of_bounds\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'None\'], "
   }
   member_method {
     name: "TensorListSplit"

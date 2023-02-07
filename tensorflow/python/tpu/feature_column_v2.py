@@ -905,7 +905,7 @@ class _TPUDeviceSpecificEmbeddingColumnV2(_TPUEmbeddingColumnV2):
     if 'embedding_lookup_device' in kwargs:
       cls._embedding_lookup_device = kwargs['embedding_lookup_device']
       del kwargs['embedding_lookup_device']
-    return _TPUEmbeddingColumnV2.__new__(cls, *args, **kwargs)
+    return _TPUEmbeddingColumnV2.__new__(cls, *args, **kwargs)  # pytype: disable=wrong-keyword-args  # always-use-return-annotations
 
   def __init__(self, *args, **kwargs):
     # For __init__, just capture the inference dense shape and call parent.
@@ -1033,7 +1033,7 @@ class _TPUSharedDeviceSpecificEmbeddingColumnV2(_TPUSharedEmbeddingColumnV2):
       cls._embedding_lookup_device = kwargs['embedding_lookup_device']
       del kwargs['embedding_lookup_device']
 
-    return _TPUSharedEmbeddingColumnV2.__new__(cls, *args, **kwargs)
+    return _TPUSharedEmbeddingColumnV2.__new__(cls, *args, **kwargs)  # pytype: disable=wrong-keyword-args  # always-use-return-annotations
 
   def __init__(self, *args, **kwargs):
     # For __init__, just capture the inference dense shape and call parent.

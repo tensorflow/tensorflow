@@ -339,7 +339,6 @@ cc_library(
         "//tensorflow/compiler/xla/stream_executor",
         "//tensorflow/compiler/xla/stream_executor:event",
         "//tensorflow/compiler/xla/stream_executor/host:host_platform_id",
-        "//tensorflow/compiler/xla/stream_executor/lib",
         "//tensorflow/tsl/framework:allocator",
         "//tensorflow/tsl/platform:casts",
         "//tensorflow/tsl/platform:env",

@@ -17,8 +17,6 @@ package org.tensorflow.lite.benchmark.delegateperformance;
 
 import android.util.Log;
 import com.google.flatbuffers.FlatBufferBuilder;
-import com.google.protos.tflite.proto.benchmark.DelegatePerformance.BenchmarkEventType;
-import com.google.protos.tflite.proto.benchmark.DelegatePerformance.LatencyResults;
 import java.io.File;
 import java.io.IOException;
 import java.nio.ByteBuffer;
@@ -26,6 +24,8 @@ import java.util.ArrayList;
 import java.util.List;
 import tflite.BenchmarkEvent;
 import tflite.TFLiteSettings;
+import tflite.proto.benchmark.DelegatePerformance.BenchmarkEventType;
+import tflite.proto.benchmark.DelegatePerformance.LatencyResults;
 
 /** Helper class for running delegate performance benchmark. */
 class DelegatePerformanceBenchmark {
@@ -34,7 +34,7 @@ class DelegatePerformanceBenchmark {
   private static final String MODEL_EXT = ".tflite";
 
   static {
-    System.loadLibrary("tensorflowlite_delegate_performance_benchmark");
+    System.loadLibrary("delegate_performance_benchmark");
   }
 
   public static String createResultFolder(File filesDir, String resultFolder) throws IOException {

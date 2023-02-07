@@ -87,3 +87,17 @@ func.func @transfer_read_2d()-> vector<2x2xi32> {
 // CHECK-LABEL: @transfer_read_2d
 // CHECK-NEXT: Results
 // CHECK-NEXT{LITERAL}: [[4, 5], [8, 9]]
+
+func.func @transfer_read_2d_1d()-> vector<2xi32> {
+  %a = arith.constant dense<[[0, 1, 2, 3], [4, 5, 6, 7]]> : memref<2x4xi32>
+  %c0 = arith.constant 0 : index
+  %c1 = arith.constant 1 : index
+  %c-42 = arith.constant -42: i32
+  %f = vector.transfer_read %a[%c1, %c0], %c-42
+      : memref<2x4xi32>, vector<2xi32>
+  return %f : vector<2xi32>
+}
+
+// CHECK-LABEL: @transfer_read_2d_1d
+// CHECK-NEXT: Results
+// CHECK-NEXT{LITERAL}: [4, 5]

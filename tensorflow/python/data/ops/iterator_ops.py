@@ -17,6 +17,7 @@ import abc
 import threading
 import warnings
 
+from tensorflow.core.protobuf import struct_pb2
 from tensorflow.python.checkpoint import saveable_compat
 from tensorflow.python.data.ops import iterator_autograph
 from tensorflow.python.data.ops import optional_ops
@@ -31,7 +32,9 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import type_spec
+from tensorflow.python.framework import type_utils
 from tensorflow.python.ops import gen_dataset_ops
+from tensorflow.python.saved_model import nested_structure_coder
 from tensorflow.python.trackable import base as trackable
 from tensorflow.python.training.saver import BaseSaverBuilder
 from tensorflow.python.util import _pywrap_utils
@@ -78,13 +81,6 @@ GLOBAL_ITERATORS = "iterators"
 autograph_ctx = lazy_loader.LazyLoader(
     "autograph_ctx", globals(),
     "tensorflow.python.autograph.core.ag_ctx")
-
-
-# Avoid circular dependency for `type_utils` which transitively depends
-# on Autograph which in turn depends on tf.data.
-type_utils = lazy_loader.LazyLoader(
-    "type_utils", globals(),
-    "tensorflow.python.framework.type_utils")
 
 
 def _device_stack_is_empty():
@@ -955,6 +951,13 @@ class _IteratorSaveable(BaseSaverBuilder.SaveableObject):
   def restore(self, restored_tensors, restored_shapes):
     with ops.colocate_with(self.op):
       return gen_dataset_ops.deserialize_iterator(self.op, restored_tensors[0])
+
+
+nested_structure_coder.register_codec(
+    nested_structure_coder.BuiltInTypeSpecCodec(
+        IteratorSpec, struct_pb2.TypeSpecProto.DATA_ITERATOR_SPEC
+    )
+)
 
 
 @deprecation.deprecated(

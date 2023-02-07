@@ -2,6 +2,7 @@ load("//tensorflow/compiler/xla:xla.bzl", "xla_cc_test")
 load("//tensorflow/tsl/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow/tsl:tsl.default.bzl", "get_compatible_with_cloud")
 load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library")
+load("//tensorflow/tsl/platform:build_config.bzl", "if_llvm_system_z_available")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -245,7 +246,9 @@ cc_library(
         "//conditions:default": [
             "@llvm-project//llvm:X86AsmParser",
         ],
-    }),
+    }) + if_llvm_system_z_available([
+        "@llvm-project//llvm:SystemZAsmParser",
+    ]),
 )
 
 cc_library(

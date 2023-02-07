@@ -21,6 +21,7 @@ message CompilationLogEntry {
   CompilationStage stage = 2;
   // Duration of the given compilation stage.
   google.protobuf.Duration duration = 3;
-  // Task index from which this log entry was recorded.
+  // Task index from which this log entry was recorded or
+  // -1 if the task index could not be fetched.
   int32 task_index = 4;
 }

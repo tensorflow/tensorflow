@@ -34,6 +34,7 @@ namespace mlir {
 namespace quant {
 namespace {
 
+using ::mlir::tf_saved_model::GetInitializerFunction;
 using ::mlir::tf_saved_model::GetSessionInitializerOp;
 using ::mlir::tf_saved_model::kTfSavedModelIndexPathAttr;
 using ::mlir::tf_saved_model::kTfSavedModelInitializerRestoreType;
@@ -68,57 +69,22 @@ class InsertRestoreOpPass
   void runOnOperation() override;
 };
 
-// Gets the initializer function whose initializer_type attribute matches
-// `type`. Returns a null operation if it doesn't exist.
-func::FuncOp GetInitializerFunction(
-    SessionInitializerOp session_init_op, SymbolTable symbol_table,
-    StringRef type = kTfSavedModelInitializerRestoreType) {
-  auto session_init_symbols =
-      session_init_op.getInitializers().getAsValueRange<FlatSymbolRefAttr>();
-  if (session_init_symbols.empty()) {
-    LOG(INFO) << "No session initializers exist in 'initializers' attribute of "
-                 "SessionInitializerOp. No variables are saved to checkpoint.";
-    return {};
-  }
-
-  for (const auto init_sym : session_init_symbols) {
-    auto init_func_op = symbol_table.lookup<func::FuncOp>(init_sym);
-
-    if (auto init_type = init_func_op->getAttrOfType<StringAttr>(
-            kTfSavedModelInitializerTypeAttr);
-        init_type && init_type == type) {
-      return init_func_op;
-    }
-  }
-
-  return {};
-}
-
-// Finds `tf.AssignVariableOp(tf.VarHandleOp, tf.Const)` patterns and removes
-// `tf.AssignVariableOp`s and `tf.Const`s. Collects and returns the
-// `tf.VarHandleOp`s that are initialized by these `tf.AssignVariableOp`s.
-std::vector<TF::VarHandleOp> RemoveAssignVariableOpsAndConstOps(
+// Finds `tf.AssignVariableOp(tf.VarHandleOp, tf.Const)` patterns and returns
+// the `tf.VarHandleOp`s that are initialized by these `tf.AssignVariableOp`s.
+std::vector<TF::VarHandleOp> CollectVariableOps(
     func::FuncOp session_init_func) {
   std::vector<TF::VarHandleOp> var_handle_ops{};
 
   for (auto assign_variable_op : llvm::make_early_inc_range(
            session_init_func.getOps<TF::AssignVariableOp>())) {
     Value resource_operand = assign_variable_op.getOperand(0);
-    auto var_handle_op =
-        dyn_cast<TF::VarHandleOp>(resource_operand.getDefiningOp());
-    if (!var_handle_op) continue;
-
     Value assigned_value_operand = assign_variable_op.getOperand(1);
-    auto const_op =
-        dyn_cast<TF::ConstOp>(assigned_value_operand.getDefiningOp());
-    if (!const_op) continue;
 
-    var_handle_ops.emplace_back(var_handle_op);
-
-    assign_variable_op.erase();
-
-    if (const_op->use_empty()) {
-      const_op.erase();
+    if (auto var_handle_op =
+            dyn_cast<TF::VarHandleOp>(resource_operand.getDefiningOp());
+        var_handle_op &&
+        isa<TF::ConstOp>(assigned_value_operand.getDefiningOp())) {
+      var_handle_ops.emplace_back(var_handle_op);
     }
   }
 
@@ -144,7 +110,7 @@ BlockArgument InsertFilePrefixArgument(func::FuncOp func_op,
                                        OpBuilder& builder) {
   const auto filename_op_type = RankedTensorType::get(
       /*shape=*/{}, /*elementType=*/builder.getType<TF::StringType>());
-  const auto file_prefix_attr = builder.getStringAttr("file_prefix");
+  const auto file_prefix_attr = builder.getStringAttr("__tf_file_prefix");
   const auto arg_attrs = builder.getDictionaryAttr({builder.getNamedAttr(
       kTfSavedModelIndexPathAttr, builder.getArrayAttr({file_prefix_attr}))});
 
@@ -216,15 +182,8 @@ void CreateRestoreV2Op(std::vector<TF::VarHandleOp>& target_var_handle_ops,
 void InsertRestoreOpPass::runOnOperation() {
   ModuleOp module_op = getOperation();
 
-  SessionInitializerOp session_init_op = GetSessionInitializerOp(module_op);
-  if (!session_init_op) {
-    LOG(INFO) << "SessionInitializerOp does not exist. RestoreV2 op will not "
-                 "be created.";
-    return;
-  }
-
-  func::FuncOp session_init_func =
-      GetInitializerFunction(session_init_op, SymbolTable{module_op});
+  func::FuncOp session_init_func = GetInitializerFunction(
+      module_op, /*initializer_type=*/kTfSavedModelInitializerRestoreType);
   if (!session_init_func) {
     LOG(INFO) << "No session initializer function with type 'restore_op'. "
                  "RestoreV2 op will not be created.";
@@ -232,7 +191,7 @@ void InsertRestoreOpPass::runOnOperation() {
   }
 
   std::vector<TF::VarHandleOp> target_var_handle_ops =
-      RemoveAssignVariableOpsAndConstOps(session_init_func);
+      CollectVariableOps(session_init_func);
   if (target_var_handle_ops.empty()) {
     LOG(INFO) << "There are no VarHandleOps to restore. RestoreV2 op will not "
                  "be created.";

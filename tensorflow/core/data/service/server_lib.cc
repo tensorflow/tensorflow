@@ -136,6 +136,22 @@ Status DispatchGrpcDataServer::NumWorkers(int* num_workers) {
   return OkStatus();
 }
 
+Status DispatchGrpcDataServer::SnapshotStreams(
+    const std::string& path, std::vector<SnapshotStreamInfoWrapper>* streams) {
+  GetSnapshotStreamsRequest req;
+  req.set_path(path);
+  GetSnapshotStreamsResponse resp;
+  ::grpc::ServerContext ctx;
+  ::grpc::Status s = service_->GetSnapshotStreams(&ctx, &req, &resp);
+  if (!s.ok()) {
+    return grpc_util::WrapError("Failed to get snapshot streams", s);
+  }
+  for (const auto& stream : resp.streams()) {
+    streams->push_back(SnapshotStreamInfoWrapper(stream));
+  }
+  return OkStatus();
+}
+
 size_t DispatchGrpcDataServer::NumActiveIterations() {
   return service_->NumActiveIterations();
 }

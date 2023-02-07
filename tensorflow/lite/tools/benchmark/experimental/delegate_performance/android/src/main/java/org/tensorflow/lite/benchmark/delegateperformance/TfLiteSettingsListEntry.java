@@ -16,14 +16,14 @@ limitations under the License.
 package org.tensorflow.lite.benchmark.delegateperformance;
 
 import android.util.Log;
-import com.google.protos.tflite.proto.benchmark.DelegatePerformance;
-import com.google.protos.tflite.proto.benchmark.DelegatePerformance.LatencyResults;
 import java.util.HashMap;
 import tflite.BenchmarkEvent;
 import tflite.BenchmarkEventType;
 import tflite.BenchmarkMetric;
 import tflite.BenchmarkResult;
 import tflite.TFLiteSettings;
+import tflite.proto.benchmark.DelegatePerformance;
+import tflite.proto.benchmark.DelegatePerformance.LatencyResults;
 
 /**
  * Helper class for store the data before and after benchmark runs. Parses both latency and accuracy

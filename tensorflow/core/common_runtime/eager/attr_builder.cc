@@ -273,11 +273,6 @@ Status AttrTypeByName(const AttrTypeMap& m, const string& attr_name,
 }
 
 namespace {
-inline tensorflow::Fprint128 FingerprintCat128(const tensorflow::Fprint128& a,
-                                               const tensorflow::Fprint128& b) {
-  return {tensorflow::FingerprintCat64(a.low64, b.low64),
-          tensorflow::FingerprintCat64(a.high64, b.high64)};
-}
 
 void CombineUnordered(const tensorflow::Fprint128& a,
                       tensorflow::Fprint128* b) {
@@ -309,7 +304,7 @@ tensorflow::Fprint128 AttrBuilder::CacheKey(const StringPiece device) {
 tensorflow::Fprint128 AttrBuilder::BuildCacheKeyForDevice(
     const StringPiece device) const {
   tensorflow::Fprint128 f = tensorflow::Fingerprint128(op_name());
-  f = tensorflow::FingerprintCat128(f, tensorflow::Fingerprint128(device));
+  f = tsl::FingerprintCat128(f, tensorflow::Fingerprint128(device));
   for (const auto& p : encoded_attrs_) {
     CombineUnordered(
         CacheKeyHelper(p.first, tensorflow::Fingerprint128(p.second)), &f);

@@ -333,9 +333,7 @@ py_library(
     deps = [
         "//tensorflow/python:constant_op",
         "//tensorflow/python/saved_model/registration",
-        "//tensorflow/python/trackable:asset",
         "//tensorflow/python/trackable:base",
-        "//tensorflow/python/trackable:resource",
     ],
 )
 
@@ -391,6 +389,8 @@ py_library(
         "//tensorflow/core/function/trace_type",
         "//tensorflow/python:random_ops",
         "//tensorflow/python/eager:context",
+        "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:tensor_spec",
         "//tensorflow/python/util",
     ],

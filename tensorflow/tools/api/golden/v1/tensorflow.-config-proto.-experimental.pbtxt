@@ -131,6 +131,12 @@ tf_proto {
       label: LABEL_OPTIONAL
       type: TYPE_BOOL
     }
+    field {
+      name: "friendly_name"
+      number: 25
+      label: LABEL_OPTIONAL
+      type: TYPE_STRING
+    }
     enum_type {
       name: "MlirBridgeRollout"
       value {

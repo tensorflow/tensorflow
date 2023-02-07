@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "tensorflow/compiler/xla/literal_util.h"
+#include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/tsl/platform/env.h"
 #include "tensorflow/tsl/platform/float8.h"
@@ -746,7 +747,11 @@ constexpr std::array<float, 5> NearComparator<NativeT>::kErrorBucketBounds;
 Status EqualHelper(const LiteralSlice& expected, const LiteralSlice& actual,
                    const ShapeIndex& shape_index,
                    const MiscompareCallback& miscompare_callback) {
-  TF_RETURN_IF_ERROR(EqualShapes(expected.shape(), actual.shape()));
+  if (expected.shape().is_static() && actual.shape().is_static()) {
+    TF_RETURN_IF_ERROR(EqualShapes(expected.shape(), actual.shape()));
+  } else {
+    TF_RETURN_IF_ERROR(EqualDynamicShapesAndDimensions(expected, actual));
+  }
 
   Status result;
   if (expected.shape().IsTuple()) {
@@ -851,7 +856,11 @@ Status NearHelper(const LiteralSlice& expected, const LiteralSlice& actual,
                   const ShapeIndex& shape_index, const ErrorSpec& error,
                   std::optional<bool> detailed_message,
                   const MiscompareCallback& miscompare_callback) {
-  TF_RETURN_IF_ERROR(EqualShapes(expected.shape(), actual.shape()));
+  if (expected.shape().is_static() && actual.shape().is_static()) {
+    TF_RETURN_IF_ERROR(EqualShapes(expected.shape(), actual.shape()));
+  } else {
+    TF_RETURN_IF_ERROR(EqualDynamicShapesAndDimensions(expected, actual));
+  }
 
   if (expected.shape().IsTuple()) {
     Status return_status;
@@ -993,6 +1002,53 @@ Status EqualShapes(const Shape& expected, const Shape& actual) {
   }
   // Non-array, non-tuple shapes are trivially equivalent.
   return OkStatus();
+}
+
+Status EqualDynamicShapesAndDimensions(const LiteralSlice& expected,
+                                       const LiteralSlice& actual) {
+  TF_RETURN_IF_ERROR(EqualShapes(expected.shape(), actual.shape()));
+  return ShapeUtil::ForEachSubshapeWithStatus(
+      expected.shape(), [&expected, &actual](const Shape& expected_shape,
+                                             const ShapeIndex& index) {
+        auto actual_shape = ShapeUtil::GetSubshape(actual.shape(), index);
+        for (int i = 0; i < expected_shape.dimensions().size(); ++i) {
+          if (!expected_shape.is_dynamic_dimension(i) &&
+              !actual_shape.is_dynamic_dimension(i)) {
+            // We're only interested in dynamic dimensions.
+            continue;
+          }
+          if (expected_shape.is_dynamic_dimension(i) &&
+              !actual_shape.is_dynamic_dimension(i)) {
+            return InvalidArgument(
+                "mismatch at dimension %d. the expected shape %s is dynamic "
+                "while "
+                "the actual shape %s is not.",
+                i, ShapeUtil::HumanString(expected.shape()),
+                ShapeUtil::HumanString(actual.shape()));
+          }
+          if (!expected_shape.is_dynamic_dimension(i) &&
+              actual_shape.is_dynamic_dimension(i)) {
+            return InvalidArgument(
+                "mismatch at dimension %d. the expected shape %s is not "
+                "dynamic "
+                "while the actual shape %s is dynamic.",
+                i, ShapeUtil::HumanString(expected.shape()),
+                ShapeUtil::HumanString(actual.shape()));
+          }
+          // Both dimensions are dynamic. Check that they are equal.
+          int64_t expected_dynamic_size = expected.GetDynamicSize(i, index);
+          int64_t actual_dynamic_size = actual.GetDynamicSize(i, index);
+          if (expected_dynamic_size != actual_dynamic_size) {
+            return InvalidArgument(
+                "mismatch at dimension %d. The expected dynamic size does not "
+                "match "
+                "the actual dynamic size. %d vs. %d",
+                i, expected_dynamic_size, actual_dynamic_size);
+          }
+        }
+
+        return OkStatus();
+      });
 }
 
 namespace {

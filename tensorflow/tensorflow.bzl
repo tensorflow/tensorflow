@@ -70,7 +70,7 @@ def register_extension_info(**kwargs):
 # not contain rc or alpha, only numbers.
 # Also update tensorflow/core/public/version.h
 # and tensorflow/tools/pip_package/setup.py
-VERSION = "2.12.0"
+VERSION = "2.13.0"
 VERSION_MAJOR = VERSION.split(".")[0]
 two_gpu_tags = ["requires-gpu-nvidia:2", "notap", "manual", "no_pip"]
 
@@ -1397,7 +1397,7 @@ def tf_gen_op_wrapper_py(
         pygen_args.append("--hidden_op_list_filename=$(location " + hidden_file + ")")
         extra_srcs.append(hidden_file)
     elif op_allowlist:
-        pygen_args.append("--op_allowlist=" + ",".join(op_allowlist))
+        pygen_args.append("--op_allowlist=" + ",".join(["'%s'" % op for op in op_allowlist]))
 
     # Prepare ApiDef directories to pass to the genrule.
     if api_def_srcs:

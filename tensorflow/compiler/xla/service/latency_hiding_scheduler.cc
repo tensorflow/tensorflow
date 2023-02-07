@@ -104,9 +104,6 @@ LatencyEstimator::TimeCost ApproximateLatencyEstimator::GetLatencyBetween(
 // Uses the approximate function for NodeCost based on a flag.
 LatencyEstimator::TimeCost ApproximateLatencyEstimator::NodeCost(
     const HloInstruction* instr) const {
-  static constexpr TimeCost kLowCost = 1.0;
-  static constexpr TimeCost kMediumCost = 1000.0;
-  static constexpr TimeCost kHighCost = 5000.0;
   if (instr->IsLoopFusion()) {
     return kMediumCost;
   }
@@ -1266,7 +1263,7 @@ DefaultSchedulerCore::ScheduleComputation(const HloComputation* computation) {
 
   const auto& debug_options = xla::GetDebugOptionsFromFlags();
   if (debug_options.xla_dump_latency_hiding_schedule() &&
-      !absl::StrContains(computation->name(), "region")) {
+      computation->IsEntryComputation()) {
     int core_freq = latency_estimator_->CyclesPerMicrosecond();
     DumpLatencyHidingSchedule(computation, sched_state.sched_graph,
                               sched_state.new_sequence_reversed, core_freq,

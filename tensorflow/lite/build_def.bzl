@@ -834,21 +834,30 @@ def tflite_cc_library_with_c_headers_test(name, hdrs, **kwargs):
     for hdr in hdrs:
         label = _label(hdr)
         basename = "%s__test_self_contained_c__%s" % (name, label.name)
+        compatible_with = kwargs.pop("compatible_with", [])
         native.genrule(
             name = "%s_gen" % basename,
             outs = ["%s.c" % basename],
+            compatible_with = compatible_with,
             cmd = "echo '#include \"%s/%s\"' > $@" % (label.package, label.name),
             visibility = ["//visibility:private"],
             testonly = True,
         )
+        kwargs.pop("visibility", None)
+        kwargs.pop("deps", [])
+        kwargs.pop("srcs", [])
+        kwargs.pop("tags", [])
+        kwargs.pop("testonly", [])
         native.cc_library(
             name = "%s_lib" % basename,
             srcs = ["%s.c" % basename],
             deps = [":" + name],
-            copts = kwargs.get("copts", []),
+            compatible_with = compatible_with,
+            copts = kwargs.pop("copts", []),
             visibility = ["//visibility:private"],
             testonly = True,
             tags = ["allow_undefined_symbols"],
+            **kwargs
         )
         build_test(
             name = "%s_build_test" % basename,

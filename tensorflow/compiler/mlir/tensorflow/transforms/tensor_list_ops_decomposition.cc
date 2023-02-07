@@ -874,7 +874,7 @@ LogicalResult DecomposeTensorListOpsInternal(
     } else if (auto addn = llvm::dyn_cast<TF::AddNOp>(&op)) {
       auto it = buffer_to_size->find(addn.getOperand(0));
       if (it != buffer_to_size->end()) {
-        addn.getSum().setType(addn.getOperand(0).getType());
+        addn.getSum().setType(addn.getOperand(0).getType().cast<TensorType>());
         auto size = it->getSecond();
         (*buffer_to_size)[addn.getSum()] = size;
       }

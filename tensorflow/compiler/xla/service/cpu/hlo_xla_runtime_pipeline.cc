@@ -167,7 +167,7 @@ static Status CreateHloXlaPipeline(
     gml_st_opts.matmulTileSizes = {4, 4, 4};
     gml_st_opts.lowerToMmt4d = true;
 
-    mlir::gml_st::addTileableOpsTransformationsForCPU(pm, gml_st_opts);
+    mlir::gml_st::addCPUTilingPipeline(pm, gml_st_opts);
   } else {
     pm.addNestedPass<mlir::func::FuncOp>(
         mlir::createLinalgElementwiseOpFusionPass());
@@ -229,6 +229,9 @@ static Status CreateHloXlaPipeline(
       mlir::bufferization::createBufferDeallocationPass());
 
   pm.addPass(mlir::createBufferizationToMemRefPass());
+
+  pm.addNestedPass<mlir::func::FuncOp>(
+      xla::cpu::createRemoveCopiesToOutParamsPass());
 
   // Specialize linalg.matmul to linalg.dot, linalg.matvec or linalg.vecmat,
   // and immediately canonicalize to clean up not taken branches.

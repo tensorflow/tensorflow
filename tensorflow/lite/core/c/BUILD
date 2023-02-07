@@ -254,6 +254,7 @@ tflite_cc_library_with_c_headers_test(
     ] + common_header_visibility_allowlist(),
     deps = [
         ":c_api_types",
+        "//tensorflow/lite:tflite_kernel_use_xnnpack_optional",
     ] + select({
         "//tensorflow/lite:tensorflow_profiler_config": [
             "//tensorflow/lite:macros",
@@ -265,7 +266,7 @@ tflite_cc_library_with_c_headers_test(
 )
 
 # This is a private target, its visibility is set to public only to be
-# used by "tflite_custom_c_library".
+# used by "tflite_custom_c_library" and "tflite_flex_cc_library".
 # Do not use this target directly and don't consider it as a part of the public API.
 alias(
     name = "private_common",

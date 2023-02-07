@@ -57,7 +57,6 @@ cc_library(
         "//tensorflow/compiler/xla/service:gpu_plugin",
         "//tensorflow/compiler/xla/service/gpu:gpu_executable",
         "//tensorflow/compiler/xla/stream_executor:stream_executor_headers",
-        "//tensorflow/compiler/xla/stream_executor/lib",
         "//tensorflow/compiler/xla/tests:filecheck",
         "//tensorflow/compiler/xla/tests:llvm_irgen_test_base",
         "//tensorflow/compiler/xla/tests:verified_hlo_module",
@@ -123,10 +122,16 @@ xla_cc_test(
     ],
 )
 
-xla_cc_test(
+xla_test(
     name = "mlir_gemm_test",
     srcs = ["mlir_gemm_test.cc"],
-    tags = tf_cuda_tests_tags(),
+    backend_tags = {"gpu": [
+        "requires-gpu-nvidia",
+        "requires-gpu-sm80-only",
+    ]},
+    backends = [
+        "gpu",
+    ],
     deps = [
         ":mlir_gpu_test_base",
         "//tensorflow/tsl/lib/core:status_test_util",
@@ -216,7 +221,6 @@ xla_cc_test(
         "//tensorflow/compiler/xla/service/gpu:gemm_rewriter",
         "//tensorflow/compiler/xla/service/gpu:gpu_executable",
         "//tensorflow/compiler/xla/service/gpu:stream_executor_util",
-        "//tensorflow/compiler/xla/stream_executor/lib",
         "//tensorflow/compiler/xla/tests:filecheck",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/tsl/lib/core:status_test_util",
@@ -274,7 +278,6 @@ xla_cc_test(
         "//tensorflow/compiler/xla/service:hlo_module_config",
         "//tensorflow/compiler/xla/service:hlo_parser",
         "//tensorflow/compiler/xla/service/gpu:reduction_degenerate_dim_remover",
-        "//tensorflow/compiler/xla/stream_executor/lib",
         "//tensorflow/compiler/xla/tests:filecheck",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/compiler/xla/tests:llvm_irgen_test_base",
@@ -323,7 +326,6 @@ xla_cc_test(
         "//tensorflow/compiler/xla/service:hlo_module_config",
         "//tensorflow/compiler/xla/service:hlo_parser",
         "//tensorflow/compiler/xla/service/gpu:tree_reduction_rewriter",
-        "//tensorflow/compiler/xla/stream_executor/lib",
         "//tensorflow/compiler/xla/tests:filecheck",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/compiler/xla/tests:llvm_irgen_test_base",
@@ -352,7 +354,6 @@ xla_cc_test(
         "//tensorflow/compiler/xla/service:hlo_parser",
         "//tensorflow/compiler/xla/service/gpu:gemm_rewriter",
         "//tensorflow/compiler/xla/service/gpu:gpu_executable",
-        "//tensorflow/compiler/xla/stream_executor/lib",
         "//tensorflow/compiler/xla/tests:filecheck",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/compiler/xla/tests:llvm_irgen_test_base",
@@ -379,7 +380,6 @@ xla_cc_test(
         "//tensorflow/compiler/xla/service:hlo_parser",
         "//tensorflow/compiler/xla/service/gpu:gemm_rewriter",
         "//tensorflow/compiler/xla/service/gpu:gpu_executable",
-        "//tensorflow/compiler/xla/stream_executor/lib",
         "//tensorflow/compiler/xla/tests:filecheck",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/compiler/xla/tests:llvm_irgen_test_base",
@@ -404,7 +404,6 @@ xla_cc_test(
         "//tensorflow/compiler/xla/service:hlo_module_config",
         "//tensorflow/compiler/xla/service:hlo_parser",
         "//tensorflow/compiler/xla/service/gpu:reduction_dimension_grouper",
-        "//tensorflow/compiler/xla/stream_executor/lib",
         "//tensorflow/compiler/xla/tests:filecheck",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/compiler/xla/tests:llvm_irgen_test_base",
@@ -791,7 +790,6 @@ xla_cc_test(
         "//tensorflow/compiler/xla/service:hlo_module_config",
         "//tensorflow/compiler/xla/service:hlo_parser",
         "//tensorflow/compiler/xla/service/gpu:gpu_executable",
-        "//tensorflow/compiler/xla/stream_executor/lib",
         "//tensorflow/compiler/xla/tests:filecheck",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/compiler/xla/tests:llvm_irgen_test_base",

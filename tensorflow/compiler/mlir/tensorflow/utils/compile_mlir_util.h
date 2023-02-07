@@ -73,6 +73,32 @@ Status ConvertMLIRToXlaComputation(
     llvm::MutableArrayRef<std::unique_ptr<mlir::Pass>>
         custom_legalization_passes = {});
 
+// Creates a MLIR pipeline that lowers MLIR module to MHLO dialect. The input
+// module should only contain operations in tf dialect. For example, if the
+// input module contains operation in the tf_executor dialect, the pass raises
+// an error unless the tf_executor dialect ops are optimized away by
+// canonicalization.
+//
+// The pipeline is used in ConvertMLIRToXlaComputation. And it generally has the
+// following pass structure:
+// - TensorFlow passes
+// - Legalization passes
+// - MHLO passes
+//
+// device_type: XLA JIT device to use for compilation such as "XLA_CPU_JIT",
+//   "XLA_GPU_JIT" or "XLA_TPU_JIT".
+// prefer_tf2xla: when this is true, prefer tf2xla fallback kernels over MLIR
+//   native kernels for legalization to HLO.
+// custom_legalization_passes: passes to run before the default TF legalization
+//   passes for backend-specific ops.
+// allow_partial_conversion: when this is true, allow operations that can't be
+// legalized.
+void CreateConvertMlirToXlaHloPipeline(
+    mlir::OpPassManager& pm, llvm::StringRef device_type, bool prefer_tf2xla,
+    llvm::MutableArrayRef<std::unique_ptr<mlir::Pass>>
+        custom_legalization_passes,
+    bool allow_partial_conversion = false);
+
 // Helper struct representing argument tensor or resource handle shapes.
 struct TensorOrResourceShape {
   TensorShape shape;

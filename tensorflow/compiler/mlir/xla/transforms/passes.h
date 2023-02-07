@@ -123,8 +123,8 @@ std::unique_ptr<OperationPass<ModuleOp>> CreateLegalizeTFCommunicationPass();
 std::unique_ptr<OperationPass<ModuleOp>> CreateLegalizeTFCollectivePass();
 
 // Verifies that the TF/XLA ops have all been lowered to MHLO.
-std::unique_ptr<OperationPass<func::FuncOp>>
-CreateVerifyTFXLALegalizationPass();
+std::unique_ptr<OperationPass<func::FuncOp>> CreateVerifyTFXLALegalizationPass(
+    bool legalize_chlo = true);
 
 #define GEN_PASS_REGISTRATION
 #define GEN_PASS_DECL_LEGALIZETF

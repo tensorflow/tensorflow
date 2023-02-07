@@ -299,7 +299,8 @@ def while_loop(cond,
     _check_inputs_outputs_types_match(body_graph, flattened_loop_vars)
 
     with ops.control_dependencies(
-        list(cond_graph.control_captures) + list(body_graph.control_captures)):
+        list(cond_graph._function_captures.control) + list(  # pylint: disable=protected-access
+            body_graph._function_captures.control)):  # pylint: disable=protected-access
       output_shapes = [t.shape for t in body_graph.outputs]
       orig_loop_vars_range = slice(first_loop_var_index,
                                    first_loop_var_index + num_flattened_outputs)

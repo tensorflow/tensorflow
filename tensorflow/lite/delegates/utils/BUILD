@@ -21,7 +21,6 @@ cc_library(
     deps = [
         "//tensorflow/lite:kernel_api",
         "//tensorflow/lite:minimal_logging",
-        "//tensorflow/lite/c:common",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/delegates:utils",
         "//tensorflow/lite/kernels/internal:compatibility",
@@ -34,7 +33,6 @@ cc_test(
     deps = [
         "//tensorflow/lite:framework",
         "//tensorflow/lite:kernel_api",
-        "//tensorflow/lite/c:common",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/core/kernels:builtin_ops",
         "//tensorflow/lite/delegates/utils/dummy_delegate",

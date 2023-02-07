@@ -105,6 +105,11 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_enable_latency_hiding_scheduler(false);
 
   opts.set_xla_cpu_enable_mlir_tiling_and_fusion(false);
+
+  opts.set_xla_partitioning_algorithm(
+      DebugOptions::PARTITIONING_ALGORITHM_NOOP);
+
+  opts.set_xla_gpu_enable_triton_gemm(false);
   return opts;
 }
 
@@ -260,6 +265,18 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
     debug_options->set_xla_gpu_enable_mlir_lowering(value);
     return true;
   };
+
+  // Custom "sub-parser" lambda for xla_partitioning_algorithm.
+  auto setter_for_xla_partitioning_algorithm =
+      [debug_options](const std::string& value) {
+        DebugOptions::PartitioningAlgorithm partitioning_algorithm;
+        if (!DebugOptions::PartitioningAlgorithm_Parse(
+                value, &partitioning_algorithm)) {
+          return false;
+        }
+        debug_options->set_xla_partitioning_algorithm(partitioning_algorithm);
+        return true;
+      };
 
   // Custom "sub-parser" for xla_fuel.  Note that ConsumeFuel does not do any
   // locking on the fuel global variables.  This means that it's
@@ -854,6 +871,16 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
                     &DebugOptions::set_xla_gpu_enable_latency_hiding_scheduler),
                 debug_options->xla_gpu_enable_latency_hiding_scheduler(),
                 "Enable latency-hiding scheduler for XLA:GPU"));
+  flag_list->push_back(tsl::Flag(
+      "xla_partitioning_algorithm", setter_for_xla_partitioning_algorithm,
+      DebugOptions::PartitioningAlgorithm_Name(
+          debug_options->xla_partitioning_algorithm()),
+      "The partitioning algorithm to be used in the PartitionAssignment pass"));
+  flag_list->push_back(
+      tsl::Flag("xla_gpu_enable_triton_gemm",
+                bool_setter_for(&DebugOptions::set_xla_gpu_enable_triton_gemm),
+                debug_options->xla_gpu_enable_triton_gemm(),
+                "Use Triton-based matrix multiplication."));
 }  // NOLINT(readability/fn_size)
 
 // Allocates flag_values and flag_objects; this function must not be called more

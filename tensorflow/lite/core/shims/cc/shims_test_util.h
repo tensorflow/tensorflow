@@ -15,12 +15,18 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_CORE_SHIMS_CC_SHIMS_TEST_UTIL_H_
 #define TENSORFLOW_LITE_CORE_SHIMS_CC_SHIMS_TEST_UTIL_H_
 
-#include "tensorflow/lite/test_util.h"
+#include "gtest/gtest.h"
+#include "tensorflow/lite/core/shims/c/shims_test_util.h"
 
 namespace tflite_shims {
 namespace testing {
 
-using Test = tflite::testing::Test;
+class Test : public ::testing::Test {
+ public:
+  void SetUp() override {
+    ASSERT_EQ(TfLiteInitializeShimsForTest(), 0);
+  }
+};
 
 }  // namespace testing
 }  // namespace tflite_shims

@@ -19201,7 +19201,9 @@ def TF_TensorListSetItemOp : TF_Op<"TensorListSetItem", [Pure]> {
   let arguments = (ins
     TF_VariantTensor:$input_handle,
     TF_Int32Tensor:$index,
-    TF_Tensor:$item
+    TF_Tensor:$item,
+
+    DefaultValuedOptionalAttr<BoolAttr, "false">:$resize_if_index_out_of_bounds
   );
 
   let results = (outs

@@ -25,7 +25,8 @@ namespace {
 // TODO(ddunleavy): test something more specific.
 
 std::string PathToAddHlo() {
-  return tsl::io::JoinPath(tsl::testing::XlaSrcRoot(), "tools", "add.hlo");
+  return tsl::io::JoinPath(tsl::testing::XlaSrcRoot(), "tools", "data",
+                           "add.hlo");
 }
 
 TEST(ReplayComputation, AddHloHost) {

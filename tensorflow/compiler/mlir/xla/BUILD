@@ -220,7 +220,6 @@ cc_library(
         "transforms/tf_xla_passes.h.inc",
         "transforms/verify_tfxla_legalization.cc",
         "transforms/xla_legalize_tf.cc",
-        "transforms/xla_legalize_tf_no_fallback.cc",
         "transforms/xla_legalize_tf_passes.h.inc",
     ],
     hdrs = [
@@ -230,6 +229,7 @@ cc_library(
         ":legalize_tf",
         ":legalize_utils",
         ":xla_legalize_targets",
+        ":xla_legalize_tf_no_fallback",
         ":xla_legalize_tf_passes_inc_gen",
         ":xla_legalize_tf_with_tf2xla",
         "//tensorflow/compiler/mlir/tensorflow",
@@ -324,7 +324,6 @@ cc_library(
         "//tensorflow/compiler/xla/client:xla_builder",
         "//tensorflow/compiler/xla/mlir_hlo",
         "//tensorflow/compiler/xla/stream_executor:timer",
-        "//tensorflow/compiler/xla/stream_executor/lib",
         "//tensorflow/compiler/xla/translate/hlo_to_mhlo:mlir_hlo_builder",
         "//tensorflow/core:core_cpu_lib",
         "//tensorflow/core:framework",

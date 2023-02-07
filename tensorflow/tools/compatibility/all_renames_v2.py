@@ -22,6 +22,8 @@ from tensorflow.tools.compatibility import renames_v2
 # function_reorders or function_keyword_renames in tf_upgrade_v2.py,
 # use the OLD function name.
 # These renames happen after the arguments have been processed.
+# After modifying this dict, run the following to update reorders_v2.py:
+# bazel run tensorflow/tools/compatibility/update:generate_v2_reorders_map
 manual_symbol_renames = {
     "tf.batch_to_space_nd":
         "tf.batch_to_space",

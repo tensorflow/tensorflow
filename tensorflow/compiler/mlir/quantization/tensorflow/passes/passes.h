@@ -93,6 +93,7 @@ std::unique_ptr<OperationPass<func::FuncOp>> CreateQuantizePass(
 // Creates an instance of the PrepareQuantize pass, which will perform similar
 // transformations as TFL::PrepareQuantizePass.
 std::unique_ptr<OperationPass<func::FuncOp>> CreatePrepareQuantizePass(
+    const QuantizationSpecs& quant_specs,
     tensorflow::quantization::QuantizationMethod::ExperimentalMethod
         quantization_method);
 
@@ -155,6 +156,15 @@ std::unique_ptr<OperationPass<ModuleOp>> CreateInsertRestoreOpPass();
 // of the functions to mark.
 std::unique_ptr<OperationPass<func::FuncOp>> CreateMarkFunctionsNoinlinePass(
     ArrayRef<std::string> noinline_functions);
+
+// Removes `tf.AssignVariableOp(tf.VarHandleOp, tf.Const)` patterns from the
+// initializer function (type = "restore_op").
+// Note: initializing values (`tf.Const`s) will be removed and this may result
+// in an information loss and uninitialized variables eventually. Make sure that
+// this effect is desired (e.g. there is a `tf.RestoreV2Op` that restores the
+// variables instead).
+std::unique_ptr<OperationPass<ModuleOp>>
+CreateRemoveVariableInitializationByConstPass();
 
 }  // namespace quant
 }  // namespace mlir

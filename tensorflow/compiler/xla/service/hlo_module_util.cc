@@ -95,8 +95,11 @@ StatusOr<std::unique_ptr<HloModuleConfig>> CreateModuleConfig(
     }
     config->set_use_spmd_partitioning(
         execution_options->use_spmd_partitioning());
-    config->set_allow_spmd_sharding_propagation_to_output(
-        execution_options->allow_spmd_sharding_propagation_to_output());
+    if (!execution_options->allow_spmd_sharding_propagation_to_output()
+             .empty()) {
+      config->set_allow_spmd_sharding_propagation_to_output(
+          execution_options->allow_spmd_sharding_propagation_to_output());
+    }
     config->set_use_auto_spmd_partitioning(
         execution_options->use_auto_spmd_partitioning());
     std::vector<int64_t> mesh_shape;

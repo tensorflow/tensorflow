@@ -455,7 +455,8 @@ class FftPlanCache {
       cache_.erase(it);
     }
     --size_;
-    return value;
+    // Explicitly create an optional to avoid a compiler bug with gcc-7.
+    return std::optional<Value>(std::move(value));
   }
 
   // Inserts a plan into the cache as long as there is still capacity.

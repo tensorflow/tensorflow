@@ -126,6 +126,7 @@ tf_cc_test(
         "//tensorflow/core:test_main",
         "//tensorflow/core/platform:protobuf",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
     ],
 )
 
@@ -246,6 +247,7 @@ py_library(
         ":op_def_registry",
         ":ops",
         ":registry",
+        ":tensor_conversion_registry",
         ":tensor_shape",
         ":versions",
     ],
@@ -375,6 +377,7 @@ py_library(
         ":tensor_shape",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python/eager:execute",
+        "//tensorflow/python/framework:tensor_conversion_registry",
         "//tensorflow/python/profiler:trace",
     ],
 )
@@ -1021,7 +1024,6 @@ py_library(
         ":device",
         ":dtypes",
         ":error_interpolation",
-        ":indexed_slices",
         ":op_def_registry",
         ":registry",
         ":tensor_conversion_registry",
@@ -1076,9 +1078,15 @@ py_library(
         ":tensor_conversion_registry",
         ":tensor_shape",
         ":type_spec",
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/python:math_ops_gen",
+        "//tensorflow/python:tf2",
         "//tensorflow/python/eager:context",
+        "//tensorflow/python/saved_model:nested_structure_coder",
         "//tensorflow/python/types",
         "//tensorflow/python/util",
+        "//tensorflow/python/util:tf_export",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -1132,7 +1140,6 @@ py_library(
         "//tensorflow/python/eager:tape",
         "//tensorflow/python/platform",
         "//tensorflow/python/saved_model:save_context",
-        "//tensorflow/python/types",
         "//tensorflow/python/util",
         "//tensorflow/python/util:tf_decorator",
         "//tensorflow/python/util:tf_export",
@@ -1315,6 +1322,8 @@ py_library(
         ":tensor_util",
         ":type_spec",
         ":type_spec_registry",
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/python/saved_model:nested_structure_coder",
         "//tensorflow/python/types",
     ],
 )
@@ -1369,7 +1378,9 @@ py_library(
         ":tensor_spec",
         ":type_spec",
         ":type_spec_registry",
+        "//tensorflow/core:protos_all_py",
         "//tensorflow/python:composite_tensor_ops",
+        "//tensorflow/python/saved_model:nested_structure_coder",
     ],
 )
 
@@ -1404,6 +1415,7 @@ py_library(
         "//tensorflow/core/function/trace_type",
         "//tensorflow/python:tf2",
         "//tensorflow/python/eager:monitoring",
+        "//tensorflow/python/saved_model:nested_structure_coder",
         "//tensorflow/python/util",
     ],
 )
@@ -1421,6 +1433,7 @@ pytype_library(
         "//tensorflow/core:protos_all_py",
         "//tensorflow/core/function/trace_type",
         "//tensorflow/python:platform",
+        "//tensorflow/python/saved_model:nested_structure_coder",
         "//tensorflow/python/types",
         "//tensorflow/python/util",
         "//third_party/py/numpy",
@@ -1468,6 +1481,7 @@ py_library(
         "//tensorflow/core/function/trace_type",
         "//tensorflow/python/eager:graph_only_ops",
         "//tensorflow/python/platform",
+        "//tensorflow/python/saved_model:nested_structure_coder",
         "//tensorflow/python/types",
         "//tensorflow/python/util",
         "//third_party/py/numpy",
@@ -1948,6 +1962,32 @@ tf_py_test(
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:function",
         "//tensorflow/python/util",
+    ],
+)
+
+# Test that op_allowlist works with ops with namespaces
+tf_gen_op_wrapper_py(
+    name = "test_namespace_ops",
+    out = "test_namespace_ops.py",
+    op_allowlist = ["Namespace>TestStringOutput"],
+    deps = [
+        ":test_ops_kernels",
+    ],
+)
+
+tf_py_test(
+    name = "op_allowlist_namespace_test",
+    size = "small",
+    srcs = ["op_allowlist_namespace_test.py"],
+    main = "op_allowlist_namespace_test.py",
+    python_version = "PY3",
+    tags = ["no_pip"],  # Avoid a missing test dependency error
+    deps = [
+        ":errors",
+        ":for_generated_wrappers",
+        ":framework",
+        ":test_lib",
+        ":test_namespace_ops",
     ],
 )
 

@@ -166,6 +166,35 @@ TEST_P(SnapshotStreamWriterParameterizedTest, WriteSnapshot) {
               StatusIs(error::NOT_FOUND));
 }
 
+TEST_P(SnapshotStreamWriterParameterizedTest, StreamAlreadyCompleted) {
+  int64_t range = 10;
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<StandaloneTaskIterator> iterator,
+                          TestIterator(testing::RangeDataset(range)));
+
+  std::string compression = GetParam();
+  TF_ASSERT_OK_AND_ASSIGN(std::string snapshot_path, CreateSnapshotDirectory());
+  SnapshotWriterParams writer_params{snapshot_path, /*stream_index=*/0,
+                                     compression, Env::Default()};
+  SnapshotStreamWriter snapshot_writer(writer_params, std::move(iterator));
+  EXPECT_THAT(snapshot_writer.Wait(), IsOkAndHolds(true));
+
+  EXPECT_THAT(ReadSnapshot<int64_t>(
+                  tsl::io::JoinPath(writer_params.CommittedChunksDirectory(),
+                                    "chunk_0_0"),
+                  compression, range),
+              IsOkAndHolds(ElementsAre(0, 1, 2, 3, 4, 5, 6, 7, 8, 9)));
+
+  // Writes the same snapshot.
+  TF_ASSERT_OK_AND_ASSIGN(iterator, TestIterator(testing::RangeDataset(range)));
+  SnapshotStreamWriter duplicate_writer(writer_params, std::move(iterator));
+  EXPECT_THAT(snapshot_writer.Wait(), IsOkAndHolds(true));
+  EXPECT_THAT(ReadSnapshot<int64_t>(
+                  tsl::io::JoinPath(writer_params.CommittedChunksDirectory(),
+                                    "chunk_0_0"),
+                  compression, range),
+              IsOkAndHolds(ElementsAre(0, 1, 2, 3, 4, 5, 6, 7, 8, 9)));
+}
+
 TEST_P(SnapshotStreamWriterParameterizedTest, WriteSnapshotChunks) {
   int64_t range = 10;
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<StandaloneTaskIterator> iterator,

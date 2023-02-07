@@ -288,6 +288,8 @@ def PrepareQuantizePass : Pass<"tfl-prepare-quantize", "mlir::func::FuncOp"> {
                  "comma separated list of allowlisted functions to be quantized. Only used in tests">,
       Option<"quantize_signed_", "quantize-signed", "bool", "false",
              "signed inference type. Only used in tests">,
+      Option<"activation_number_of_bits_", "activation-number-of-bits", "int", "8",
+             "number of bits for inference type. Only used in tests">,
       Option<"post_training_quantize_", "post-training-quantize", "bool", "false",
              "enable post training quantization. Only used in tests">,
       Option<"legacy_float_scale_", "legacy-float-scale", "bool", "false",
@@ -333,7 +335,7 @@ def PrepareTFPass : Pass<"tfl-prepare-tf", "mlir::func::FuncOp"> {
     "mhlo::MhloDialect"
   ];
   let options = [
-      Option<"unfold_batch_matmul_", "emit-quant-adaptor-ops",
+      Option<"unfold_batch_matmul_", "unfold_batchmatmul",
              "bool", "true",
              "Unfold BatchMatMul into individual MatMul ops.">,
       Option<"allow_bf16_and_f16_type_legalization_", "allow-bf16-and-f16-type-legalization",

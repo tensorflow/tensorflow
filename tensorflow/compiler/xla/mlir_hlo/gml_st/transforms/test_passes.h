@@ -26,8 +26,6 @@ namespace gml_st {
 #define GEN_PASS_DECL
 #include "gml_st/transforms/test_passes.h.inc"
 
-std::unique_ptr<OperationPass<ModuleOp>> createTestGmlStBufferizationPass();
-
 std::unique_ptr<OperationPass<func::FuncOp>> createTestGmlStGreedyFusionPass();
 
 #define GEN_PASS_REGISTRATION

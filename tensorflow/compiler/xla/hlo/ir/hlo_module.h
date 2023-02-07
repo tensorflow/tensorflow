@@ -70,6 +70,10 @@ class HloModule {
  public:
   // Constructor.
   HloModule(const std::string& name, HloModuleConfig config);
+  // REQUIRED:
+  // - comp_envs must not be null.
+  HloModule(const std::string& name, HloModuleConfig config,
+            std::unique_ptr<CompilationEnvironments> comp_envs);
   virtual ~HloModule() = default;
 
   // Adds an entry computation to the module. A module can only have one entry
@@ -277,8 +281,8 @@ class HloModule {
       const absl::flat_hash_set<absl::string_view>& execution_threads,
       const absl::flat_hash_set<HloComputation*>& allow_list) const;
 
-  // Same as MakeComputationPostOrder() but sorting the computations by their
-  // contents. The order is longer post order.
+  // If config().content_aware_computation_sorting() is true, sorts computations
+  // by their contents, otherwise returns MakeComputationPostOrder().
   std::vector<HloComputation*> MakeComputationSorted() const {
     return MakeComputationSorted({});
   }
@@ -571,11 +575,6 @@ class HloModule {
   CompilationEnvironments& comp_envs() const { return *comp_envs_; }
 
  private:
-  // This constructor is used in Clone() to copy the CompilationEnvironments.
-  // comp_envs may be null, in which case a clean one will be created.
-  HloModule(const std::string& name, HloModuleConfig config,
-            std::unique_ptr<CompilationEnvironments> comp_envs);
-
   HloComputation* AddComputationInternal(
       std::unique_ptr<HloComputation> computation, bool is_entry,
       bool uniquify_identifiers, bool preserve_entry_layouts);

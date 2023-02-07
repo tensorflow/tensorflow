@@ -676,7 +676,7 @@ LogicalResult ApplyPatternsWithShapeResolution(
   // type stripping changing.
   func.walk([&](tosa::ConstOp op) {
     auto ety = op.getValue().getType().getElementType();
-    auto new_ty = op.getType().cast<ShapedType>().clone(ety);
+    auto new_ty = op.getType().cast<TensorType>().clone(ety);
     op.getResult().setType(new_ty);
   });
 

@@ -310,7 +310,6 @@ tf_cc_test(
     srcs = ["group_assignment_test.cc"],
     deps = [
         ":group_assignment",
-        "//tensorflow/compiler/xla/stream_executor/lib",
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
@@ -330,7 +329,6 @@ cc_library(
     deps = [
         ":tf_dtensor_dialect",
         "//tensorflow/compiler/mlir/tensorflow",
-        "//tensorflow/compiler/xla/stream_executor/lib",
         "//tensorflow/core:lib",
         "//tensorflow/dtensor/cc:constants",
         "//tensorflow/dtensor/cc:dstatus",

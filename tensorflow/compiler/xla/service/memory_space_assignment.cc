@@ -2260,9 +2260,15 @@ void AlternateMemoryBestFitHeap::AllocateCrossProgramPrefetchBuffer(
           0, instruction_schedule.size());
   float buffer_occupied_time =
       options_.prefetch_interval_picker->GetLogicalIntervalElapsed(
-          0, last_use_time) +
-      options_.prefetch_interval_picker->GetLogicalIntervalElapsed(
           end_of_program_prefetch_start_time, end_of_program_prefetch_end_time);
+  if (options_.cost_analysis) {
+    buffer_occupied_time = std::max(buffer_occupied_time,
+                                    options_.cost_analysis->GetAsyncCopyElapsed(
+                                        buffer->defining_position().shape()));
+  }
+  buffer_occupied_time +=
+      options_.prefetch_interval_picker->GetLogicalIntervalElapsed(
+          0, last_use_time);
   float buffer_occupied_ratio = buffer_occupied_time / total_execution_time;
   VLOG(2) << "Total execution time = " << total_execution_time
           << ", buffer occupied time = " << buffer_occupied_time

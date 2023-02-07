@@ -22,7 +22,6 @@ limitations under the License.
 #include "gml_st/IR/gml_st_ops.h"
 #include "gml_st/transforms/passes.h"
 #include "gml_st/transforms/peeling/peeling.h"
-#include "gml_st/transforms/rewriters.h"
 #include "gml_st/transforms/transforms.h"
 #include "llvm/ADT/STLExtras.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
@@ -471,8 +470,7 @@ FailureOr<scf::SCFTilingResult> tileUsingSCFForOpAndFuseGreedily(
 LogicalResult tilePeeledOpsToScalars(
     PatternRewriter& rewriter, const GmlStPeelingResult& peelingResult,
     StringRef label, llvm::function_ref<bool(Operation*)> fuseFilterFn) {
-  for (auto* loop : peelingResult.tailLoops) {
-    ParallelOp peeledLoop = dyn_cast<ParallelOp>(loop);
+  for (ParallelOp peeledLoop : peelingResult.tailLoops) {
     auto* terminatorOp = peeledLoop->getRegion(0).front().getTerminator();
     if (!terminatorOp) return failure();
 

@@ -28,7 +28,6 @@ cc_library(
     name = "dstatus",
     hdrs = ["dstatus.h"],
     deps = [
-        "//tensorflow/compiler/xla/stream_executor/lib",
         "//tensorflow/core:lib",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
@@ -52,7 +51,6 @@ cc_library(
     hdrs = ["tensor_layout.h"],
     deps = [
         ":dstatus",
-        "//tensorflow/compiler/xla/stream_executor/lib",
         "//tensorflow/core:core_cpu_base",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
@@ -91,6 +89,18 @@ cc_library(
 )
 
 cc_library(
+    name = "tensor_with_layout",
+    hdrs = ["tensor_with_layout.h"],
+    deps = [
+        ":constants",
+        ":tensor_layout",
+        "//tensorflow/c/eager:c_api",
+        "//tensorflow/core:framework",
+        "//tensorflow/core/platform:fingerprint",
+    ],
+)
+
+cc_library(
     name = "dtensor_device_util",
     srcs = ["dtensor_device_util.cc"],
     hdrs = ["dtensor_device_util.h"],
@@ -99,6 +109,7 @@ cc_library(
         ":dstatus",
         ":small_constant_optimization",
         ":tensor_layout",
+        ":tensor_with_layout",
         "//tensorflow/c:tf_status_headers",
         "//tensorflow/c/eager:c_api",
         "//tensorflow/c/eager:c_api_experimental",
@@ -113,6 +124,7 @@ cc_library(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/common_runtime/eager:context",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
     ],
 )

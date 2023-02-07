@@ -32,9 +32,15 @@ tf_py_test(
 
 tf_py_test(
     name = "snapshot_ft_test",
-    size = "small",
+    size = "medium",
     srcs = ["snapshot_ft_test.py"],
     shard_count = 8,
+    # TODO(b/250921378): Fix sanitizers.
+    tags = [
+        "noasan",
+        "nomsan",
+        "notsan",
+    ],
     deps = [
         ":test_base",
         "//tensorflow/python:platform_test",

@@ -120,9 +120,9 @@ void CreateTfJitRtPipeline(OpPassManager& pm,
   pm.addPass(mlir::createCSEPass());
   pm.addPass(mlir::createCanonicalizerPass());
 
-  // Group reduction and parallel dimensions of reduction operations and realize
-  // them through equivalent 1D or 2D reductions, if possible.
   pm.addNestedPass<FuncOp>(mlir::mhlo::createGroupReductionDimensionsPass());
+  pm.addNestedPass<mlir::func::FuncOp>(
+      mlir::mhlo::createHloCanonicalizeScatterPass());
 
   // Also, try to simplify reshape operations.
   pm.addNestedPass<FuncOp>(mlir::mhlo::createSymbolicShapeOptimizationPass());
@@ -175,7 +175,7 @@ void CreateTfJitRtPipeline(OpPassManager& pm,
     gml_st_opts.matmulTileSizes = options.matmul_tile_sizes;
     gml_st_opts.lowerToMmt4d = options.lower_to_mmt4d;
 
-    mlir::gml_st::addTileableOpsTransformationsForCPU(pm, gml_st_opts);
+    mlir::gml_st::addCPUTilingPipeline(pm, gml_st_opts);
   } else {
     pm.addNestedPass<FuncOp>(CreateFusionPass());
   }

@@ -1,5 +1,5 @@
 // RUN: mlir-hlo-opt %s --split-input-file \
-// RUN:     --gml-greedy-tiling-and-fusion="tile-sizes=8,16 distribute=true distribution-label=test" \
+// RUN:     --gml-greedy-fusion="tile-sizes=8,16 distribute=true distribution-label=test" \
 // RUN:     --canonicalize --cse | \
 // RUN: FileCheck %s
 
