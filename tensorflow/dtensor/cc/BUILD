@@ -28,7 +28,6 @@ cc_library(
     name = "dstatus",
     hdrs = ["dstatus.h"],
     deps = [
-        "//tensorflow/compiler/xla/stream_executor/lib",
         "//tensorflow/core:lib",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
@@ -52,7 +51,6 @@ cc_library(
     hdrs = ["tensor_layout.h"],
     deps = [
         ":dstatus",
-        "//tensorflow/compiler/xla/stream_executor/lib",
         "//tensorflow/core:core_cpu_base",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
