@@ -40,6 +40,20 @@ limitations under the License.
 namespace mlir {
 namespace tosa {
 
+// Lowers TensorFlow Conv2D to a sequence of TOSA quantization ops.
+llvm::Optional<Value> convertTFConv2DCommon(
+    PatternRewriter& rewriter, Operation* op, RankedTensorType output_type,
+    Value input, Value filter, Value bias, ArrayAttr strides_attr,
+    ArrayAttr dilations_attr, ArrayAttr explicit_padding_attr,
+    StringRef padding_ref, StringRef data_format_ref);
+
+// Preprocess TensorFlow Conv3D attributes prior to calling
+// `convertConv3DCommon`
+llvm::Optional<Value> convertTFConv3DCommon(
+    PatternRewriter& rewriter, Operation* op, ShapedType output_type,
+    Value input, Value filter, Value bias, ArrayAttr strides_attr,
+    ArrayAttr dilations_attr, StringRef padding_ref, StringRef data_format_ref);
+
 LogicalResult getDynamicDims(PatternRewriter& rewriter, Value value,
                              llvm::SmallVector<Value>& dims);
 

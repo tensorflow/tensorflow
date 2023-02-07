@@ -3533,93 +3533,6 @@ llvm::Optional<Value> convertMirrorPadCommon(PatternRewriter& rewriter,
   return result;
 }
 
-llvm::Optional<Value> convertTFConv2DCommon(
-    PatternRewriter& rewriter, Operation* op, RankedTensorType output_type,
-    Value input, Value filter, Value bias, ArrayAttr strides_attr,
-    ArrayAttr dilations_attr, ArrayAttr explicit_padding_attr,
-    StringRef padding_ref, StringRef data_format_ref) {
-  RankedTensorType input_type = input.getType().dyn_cast<RankedTensorType>();
-  RankedTensorType filter_type = filter.getType().dyn_cast<RankedTensorType>();
-  // Not a ranked tensor output
-  if (!input_type) return std::nullopt;
-  if (!filter_type) return std::nullopt;
-
-  // Transpose [H, W, I, O] to [O, H, W, I]
-  auto filter_shape = filter_type.getShape();
-  SmallVector<int64_t, 4> a1_transpose_dims;
-  a1_transpose_dims.push_back(filter_shape[3]);
-  a1_transpose_dims.push_back(filter_shape[0]);
-  a1_transpose_dims.push_back(filter_shape[1]);
-  a1_transpose_dims.push_back(filter_shape[2]);
-  llvm::Optional<Value> a1_filter_transpose_perm = getConstTensor<int32_t>(
-      rewriter, op, /*vec=*/{3, 0, 1, 2}, /*shape=*/{4});
-
-  if (!a1_filter_transpose_perm) return std::nullopt;
-
-  auto a1_filter_transpose_op = CreateOpAndInfer<tosa::TransposeOp>(
-      rewriter, op->getLoc(),
-      tensorflow::GetTypeFromTFTensorShape(a1_transpose_dims,
-                                           filter_type.getElementType()),
-      filter, a1_filter_transpose_perm.value());
-
-  // Only support NHWC now.
-  if (data_format_ref.str() != "NHWC") {
-    op->emitWarning("convertTDConv2DCommon only supports NHWC!");
-    return std::nullopt;
-  }
-
-  DenseI64ArrayAttr stride;
-  DenseI64ArrayAttr dilation;
-  DenseI64ArrayAttr pad;
-  {
-    if (!strides_attr) {
-      stride = rewriter.getDenseI64ArrayAttr({1, 1});
-    } else {
-      // Note: hardcoded to NHWC for now
-      int64_t stride_h = strides_attr[1].cast<IntegerAttr>().getInt();
-      int64_t stride_w = strides_attr[2].cast<IntegerAttr>().getInt();
-      stride = rewriter.getDenseI64ArrayAttr({stride_h, stride_w});
-    }
-  }
-  {
-    if (!dilations_attr) {
-      dilation = rewriter.getDenseI64ArrayAttr({1, 1});
-    } else {
-      // Note: hardcoded to NHWC for now
-      int64_t dilation_h = dilations_attr[1].cast<IntegerAttr>().getInt();
-      int64_t dilation_w = dilations_attr[2].cast<IntegerAttr>().getInt();
-      dilation = rewriter.getDenseI64ArrayAttr({dilation_h, dilation_w});
-    }
-  }
-  {
-    tensorflow::Padding tf_pad;
-    if (!GetPaddingFromString(padding_ref.str(), &tf_pad).ok()) {
-      op->emitWarning("Could not get padding data from padding string term!");
-      return std::nullopt;
-    }
-
-    tensorflow::TensorFormat data_format_tf;
-    if (!FormatFromString(data_format_ref.str(), &data_format_tf))
-      return std::nullopt;
-
-    if (tf_pad == tensorflow::Padding::EXPLICIT) {
-      pad = getPaddingValuesFromExplicitPadAttr(explicit_padding_attr,
-                                                data_format_tf, rewriter);
-    } else {
-      if (!getPaddingValuesFromPadType(tf_pad, data_format_tf,
-                                       0,  // tensorflow::FORMAT_HWIO
-                                       input_type, filter_type, stride,
-                                       dilation, rewriter, pad))
-        return std::nullopt;
-    }
-  }
-
-  return CreateOpAndInfer<tosa::Conv2DOp>(
-             rewriter, op->getLoc(), output_type, input,
-             a1_filter_transpose_op.getResult(), bias, pad, stride, dilation)
-      .getResult();
-}
-
 llvm::Optional<Value> convertConv3DCommon(PatternRewriter& rewriter,
                                           Operation* op, ShapedType output_type,
                                           Value input, Value filter, Value bias,
@@ -3688,37 +3601,6 @@ llvm::Optional<Value> convertConv3DCommon(PatternRewriter& rewriter,
              a1_filter_transpose_op.getResult(), bias, pads_attr, strides_attr,
              dilations_attr)
       .getResult();
-}
-
-llvm::Optional<Value> convertTFConv3DCommon(
-    PatternRewriter& rewriter, Operation* op, ShapedType output_type,
-    Value input, Value filter, Value bias, ArrayAttr strides_attr,
-    ArrayAttr dilations_attr, StringRef padding_ref,
-    StringRef data_format_ref) {
-  SmallVector<int64_t, 3> strides;
-  if (!strides_attr) {
-    // Defaults to [1, 1, 1].
-    strides = {1, 1, 1};
-  } else {
-    int64_t stride_d = strides_attr[1].cast<IntegerAttr>().getInt();
-    int64_t stride_h = strides_attr[2].cast<IntegerAttr>().getInt();
-    int64_t stride_w = strides_attr[3].cast<IntegerAttr>().getInt();
-    strides = {stride_d, stride_h, stride_w};
-  }
-
-  SmallVector<int64_t, 3> dilations;
-  if (!dilations_attr) {
-    // Defaults to [1, 1, 1].
-    dilations = {1, 1, 1};
-  } else {
-    int64_t dilation_d = dilations_attr[1].cast<IntegerAttr>().getInt();
-    int64_t dilation_h = dilations_attr[2].cast<IntegerAttr>().getInt();
-    int64_t dilation_w = dilations_attr[3].cast<IntegerAttr>().getInt();
-    dilations = {dilation_d, dilation_h, dilation_w};
-  }
-
-  return convertConv3DCommon(rewriter, op, output_type, input, filter, bias,
-                             strides, dilations, padding_ref, data_format_ref);
 }
 
 // Lowers Gather operators to a sequence of TOSA ops.

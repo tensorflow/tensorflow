@@ -256,13 +256,6 @@ llvm::Optional<Value> convertMirrorPadCommon(PatternRewriter& rewriter,
                                              Value input, Value pad,
                                              TFTFLMirrorPaddingType mode);
 
-// Lowers TensorFlow Conv2D to a sequence of TOSA quantization ops.
-llvm::Optional<Value> convertTFConv2DCommon(
-    PatternRewriter& rewriter, Operation* op, RankedTensorType output_type,
-    Value input, Value filter, Value bias, ArrayAttr strides_attr,
-    ArrayAttr dilations_attr, ArrayAttr explicit_padding_attr,
-    StringRef padding_ref, StringRef data_format_ref);
-
 // Lowers TensorFlow and TensorFlow Lite Conv3D to a sequence of TOSA
 // quantization ops.
 llvm::Optional<Value> convertConv3DCommon(PatternRewriter& rewriter,
@@ -272,13 +265,6 @@ llvm::Optional<Value> convertConv3DCommon(PatternRewriter& rewriter,
                                           ArrayRef<int64_t> dilations,
                                           StringRef padding_ref,
                                           StringRef data_format_ref);
-
-// Preprocess TensorFlow Conv3D attributes prior to calling
-// `convertConv3DCommon`
-llvm::Optional<Value> convertTFConv3DCommon(
-    PatternRewriter& rewriter, Operation* op, ShapedType output_type,
-    Value input, Value filter, Value bias, ArrayAttr strides_attr,
-    ArrayAttr dilations_attr, StringRef padding_ref, StringRef data_format_ref);
 
 // Lowers Gather operator to a sequence of TOSA ops.
 llvm::Optional<Value> convertGatherOp(PatternRewriter& rewriter, Operation* op,
