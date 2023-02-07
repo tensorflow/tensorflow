@@ -88,6 +88,14 @@ class Comparison {
   // targets may support total order floating point type comparisons.
   explicit Comparison(Direction dir, PrimitiveType type, Order order);
 
+  // Two comparisons are equivalent iff they have the same direction, precision,
+  // and ordering.
+  bool operator==(const Comparison& other) const {
+    return GetDirection() == other.GetDirection() &&
+           GetPrimitiveType() == other.GetPrimitiveType() &&
+           GetOrder() == other.GetOrder();
+  }
+
   // Returns a comparison with a primitive type matching the Comparison::Type
   // and using a default bit width of 32. For example,
   // Comparison(Direction::kLt, Type::kFloat).PrimitiveType()  /* F32 */
