@@ -92,21 +92,22 @@ from tensorflow.python.util.compat import collections_abc as _collections_abc
 from tensorflow.python.util.tf_export import tf_export
 
 
-_STRUCTURES_HAVE_MISMATCHING_LENGTHS = (
+STRUCTURES_HAVE_MISMATCHING_LENGTHS = (
     nest_util.STRUCTURES_HAVE_MISMATCHING_LENGTHS
 )
 
-_STRUCTURES_HAVE_MISMATCHING_TYPES = nest_util.STRUCTURES_HAVE_MISMATCHING_TYPES
+STRUCTURES_HAVE_MISMATCHING_TYPES = nest_util.STRUCTURES_HAVE_MISMATCHING_TYPES
 
-_SHALLOW_TREE_HAS_INVALID_KEYS = nest_util.SHALLOW_TREE_HAS_INVALID_KEYS
+SHALLOW_TREE_HAS_INVALID_KEYS = nest_util.SHALLOW_TREE_HAS_INVALID_KEYS
 
-_INPUT_TREE_SMALLER_THAN_SHALLOW_TREE = (
+INPUT_TREE_SMALLER_THAN_SHALLOW_TREE = (
     nest_util.INPUT_TREE_SMALLER_THAN_SHALLOW_TREE
 )
 
-_IF_SHALLOW_IS_SEQ_INPUT_MUST_BE_SEQ = (
+IF_SHALLOW_IS_SEQ_INPUT_MUST_BE_SEQ = (
     "If shallow structure is a sequence, input must also be a sequence. "
-    "Input has type: {}.")
+    "Input has type: {}."
+)
 
 is_namedtuple = nest_util.is_namedtuple
 _is_namedtuple = nest_util.is_namedtuple
