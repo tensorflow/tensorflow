@@ -16,7 +16,6 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_STREAM_EXECUTOR_CUDA_CUDA_GRAPH_H_
 #define TENSORFLOW_COMPILER_XLA_STREAM_EXECUTOR_CUDA_CUDA_GRAPH_H_
 
-#include <cstdint>
 #include <functional>
 #include <memory>
 
@@ -66,10 +65,6 @@ class OwnedCudaGraphExec
 
   // Launches captured graph on a given stream.
   tsl::Status Launch(stream_executor::Stream* stream);
-
- private:
-  uint64_t num_updates_ = 0;
-  uint64_t num_launches_ = 0;
 };
 
 //===----------------------------------------------------------------------===//
