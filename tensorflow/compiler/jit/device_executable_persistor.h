@@ -63,6 +63,7 @@ class DeviceExecutablePersistor {
 
   DeviceExecutablePersistor(const Config& config,
                             const DeviceType& device_type);
+  virtual ~DeviceExecutablePersistor() = default;
 
   // Returns std::nullopt if persistence is not enabled (i.e.
   // `persistent_cache_directory_` is empty) or if the serialized entry is not
@@ -81,7 +82,7 @@ class DeviceExecutablePersistor {
   // pipeline and persists that to disk.
   // TODO(b/255826209): Take in Signature instead hash and string once cache
   // is refactored.
-  Status TryToPersistExecutable(
+  virtual Status TryToPersistExecutable(
       uint64 signature_hash, const std::string& signature_str,
       const XlaCompiler::Options& options,
       const XlaCompiler::CompilationResult& compilation_result,
