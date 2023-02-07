@@ -1,7 +1,7 @@
 name: 'Stale and Close PR'
 on:
   schedule:
-    - cron: '*/6 * * * *'
+    - cron: '0 */1 * * *'
     
 permissions:
   contents: read
@@ -24,13 +24,13 @@ jobs:
         
        
           # Number of days of inactivity before a stale PR is closed
-          days-before-pr-close: 0
+          days-before-pr-close: 14
        
           # Number of days of inactivity before an PR Request becomes stale
-          days-before-pr-stale: 0
+          days-before-pr-stale: 14
          
           #Check for label to stale or close the issue/PR
-          any-of-labels: 'awaiting response'
+          any-of-labels: 'stat:awaiting response'
          
           #override stale to stalled for PR
           stale-pr-label: 'Stalled'
