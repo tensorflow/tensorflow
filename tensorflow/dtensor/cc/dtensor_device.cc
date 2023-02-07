@@ -67,6 +67,7 @@ limitations under the License.
 #include "tensorflow/core/graph/algorithm.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/lib/strings/proto_serialization.h"
+#include "tensorflow/core/platform/casts.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/fingerprint.h"
 #include "tensorflow/core/platform/types.h"
@@ -357,8 +358,7 @@ class DTensorDevice {
   void ExecuteFunctionAndWait(
       TFE_Context* context, const TranslatedFunction* function_ptr,
       const MeshWithParallelDevice* parallel_device_mesh,
-      const std::vector<const parallel_device::TensorHandlePtr*>&
-          parallel_inputs,
+      const std::vector<parallel_device::ParallelTensor*>& parallel_inputs,
       const int64_t step_id, const TFE_OpAttrs* attributes, TF_Status* status);
 
   // Execute regular operation with ParallelExecutor
@@ -1488,7 +1488,7 @@ void DTensorDevice::ModuleToExecutionFunctions(
 void DTensorDevice::ExecuteFunctionAndWait(
     TFE_Context* context, const TranslatedFunction* function_ptr,
     const MeshWithParallelDevice* parallel_device_mesh,
-    const std::vector<const parallel_device::TensorHandlePtr*>& parallel_inputs,
+    const std::vector<parallel_device::ParallelTensor*>& parallel_inputs,
     const int64_t step_id, const TFE_OpAttrs* attributes, TF_Status* status) {
   const std::string mesh_str = function_ptr->function_mesh.ToString();
   VLOG(4) << "Launching computation for mesh : " << mesh_str;
@@ -1562,6 +1562,12 @@ void DTensorDevice::ExecuteRegularOperation(
                                     doperation, attributes, num_outputs,
                                     outputs, status);
     return;
+  }
+
+  std::vector<TensorWithLayoutTf*> inputs_tf;
+  inputs_tf.reserve(inputs.size());
+  for (const auto& input : inputs) {
+    inputs_tf.push_back(down_cast<TensorWithLayoutTf*>(input));
   }
 
   const ExecutionFunctions* execution_functions = nullptr;
@@ -1665,8 +1671,8 @@ void DTensorDevice::ExecuteRegularOperation(
   }
 
   if (load_embedding_ptr != nullptr) {
-    StatusOr<std::vector<const parallel_device::TensorHandlePtr*>>
-        parallel_inputs = PrepareEmbeddingInputs(inputs);
+    StatusOr<std::vector<parallel_device::ParallelTensor*>> parallel_inputs =
+        PrepareEmbeddingInputs(inputs_tf);
     if (!parallel_inputs.ok()) {
       RETURN_STATUS(status, TF_INTERNAL,
                     parallel_inputs.status().error_message().c_str());
@@ -1683,11 +1689,10 @@ void DTensorDevice::ExecuteRegularOperation(
 
   // Extract the global parallel inputs and flatten SparseTensors
   // into the three component tensors.
-  std::vector<const parallel_device::TensorHandlePtr*> global_parallel_inputs;
-  std::vector<const parallel_device::TensorHandlePtr*>
-      global_parallel_sparse_inputs;
+  std::vector<parallel_device::ParallelTensor*> global_parallel_inputs;
+  std::vector<parallel_device::ParallelTensor*> global_parallel_sparse_inputs;
   absl::flat_hash_set<int> global_sparse_input_indices;
-  for (auto input : inputs) {
+  for (auto input : inputs_tf) {
     if (input->tensor_type() == TensorType::kSparse) {
       SparseTensorWithLayout* sparse_input =
           dynamic_cast<SparseTensorWithLayout*>(input);
@@ -1726,7 +1731,7 @@ void DTensorDevice::ExecuteRegularOperation(
         function_name_and_mesh_mapping[translated_function_name];
 
     // Gather the local inputs for this function.
-    std::vector<const parallel_device::TensorHandlePtr*> parallel_inputs;
+    std::vector<parallel_device::ParallelTensor*> parallel_inputs;
     parallel_inputs.reserve(inputs.size() + 1);
     auto input_mapping = function.input_index_map;
 
@@ -1742,7 +1747,7 @@ void DTensorDevice::ExecuteRegularOperation(
 
       if (global_index < execution_functions->num_device_ids) {
         parallel_inputs.push_back(
-            parallel_device_mesh->DeviceIDs(context, status)->tensor_data());
+            parallel_device_mesh->DeviceIDs(context, status));
         if (TF_GetCode(status) != TF_OK) return;
       } else {
         parallel_inputs.push_back(global_parallel_inputs[input_index]);

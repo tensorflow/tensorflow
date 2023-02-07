@@ -97,7 +97,6 @@ cc_library(
         ":constants",
         ":tensor_layout",
         "//tensorflow/c/eager:c_api",
-        "//tensorflow/c/eager/parallel_device:parallel_device_lib",
         "//tensorflow/core:framework",
         "//tensorflow/core/platform:fingerprint",
     ],
@@ -127,6 +126,7 @@ cc_library(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/common_runtime/eager:context",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
     ],
 )
