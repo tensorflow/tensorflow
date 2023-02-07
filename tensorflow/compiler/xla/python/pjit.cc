@@ -21,6 +21,7 @@ limitations under the License.
 #include <optional>
 #include <stdexcept>
 #include <string>
+#include <tuple>
 #include <utility>
 #include <vector>
 
@@ -53,7 +54,7 @@ struct PjitCacheEntry {
   std::vector<bool> out_committed;
   xla::PyTreeDef out_pytree_def;
   // Bitvector of kept arguments from Jaxpr DCE pass. Used to drop some `args`
-  // in CompiledFunction::Call before calling into compiled computation.
+  // in PjitFunction::Call before calling into compiled computation.
   std::vector<bool> kept_var_bitvec;
 
   // Ensures a single thread performs the compilation for a given executable.
@@ -66,23 +67,113 @@ struct PjitCacheEntry {
   bool fall_back_to_python = false;
 };
 
+// A PjitFunctionCache represents a cache of compiled functions that can be
+// shared between one or more PjitFunction objects. It serves two goals:
+// - reduce the number of lru caches (hash map) across multiple JITs.
+// - make the cache global to increase cache hits (e.g. calling jit(f)(3) twice)
+//   keeping entries alive as long as the underlying function f is alive.
+// Assume the cache is protected by the GIL.
+class PjitFunctionCache {
+ public:
+  static constexpr int kDefaultCapacity = 4096;
+  explicit PjitFunctionCache(int capacity);
+
+  // Cache entries are shared_ptr<>s because it's possible the cache entry
+  // might be evicted before we finish tracing/compiling.
+  typedef xla::LRUCache<CallSignature, std::shared_ptr<PjitCacheEntry>> Cache;
+
+  // We include as part of the cache key `donate_argnums` (and any other fields
+  // that aren't subsumed by the CallSignature we compute for each call).
+  std::shared_ptr<Cache> Lookup(pybind11::handle function,
+                                absl::Span<const int> donate_argnums);
+  std::shared_ptr<Cache> DefaultCache();
+
+  int Size() const { return lru_list_.Size(); }
+  int Capacity() const { return lru_list_.Capacity(); }
+  void Clear() { lru_list_.Clear(); }
+
+ private:
+  struct Key {
+    pybind11::handle function;  // Does not hold a reference.
+
+    // Other fields that are part of the arguments to `jit`, but are not
+    // otherwise part of CallSignature.
+    std::vector<int> donate_argnums;
+
+    bool operator==(const Key& other) const {
+      return std::tie(function, donate_argnums) ==
+             std::tie(other.function, other.donate_argnums);
+    }
+  };
+
+  template <typename H>
+  friend H AbslHashValue(H h, const Key& key) {
+    h = H::combine(std::move(h), key.function.ptr());
+    h = H::combine_contiguous(std::move(h), key.donate_argnums.data(),
+                              key.donate_argnums.size());
+    return h;
+  }
+
+  struct Value {
+    explicit Value(std::shared_ptr<Cache> cache) : cache(std::move(cache)) {}
+    std::shared_ptr<Cache> cache;
+
+    // A weak reference to the key function. We use the weak reference to
+    // register a callback that is triggered when the key function is destroyed.
+    // We use a weak pointer because we want to allow caching across multiple
+    // calls to `pjit(f)` if `f` remains alive, but we do not want the cache
+    // to keep `f` alive if all other references are dropped.
+    pybind11::weakref weakref;
+  };
+
+  Cache::LRUList lru_list_;
+  absl::flat_hash_map<Key, std::unique_ptr<Value>> functions_;
+};
+
+PjitFunctionCache::PjitFunctionCache(int capacity) : lru_list_(capacity) {}
+
+std::shared_ptr<PjitFunctionCache::Cache> PjitFunctionCache::DefaultCache() {
+  return std::make_shared<Cache>(&lru_list_);
+}
+
+std::shared_ptr<PjitFunctionCache::Cache> PjitFunctionCache::Lookup(
+    pybind11::handle function, absl::Span<const int> donate_argnums) {
+  Key key;
+  key.function = function;
+  key.donate_argnums =
+      std::vector<int>(donate_argnums.begin(), donate_argnums.end());
+  auto insert = functions_.emplace(key, nullptr);
+  if (!insert.second) {
+    return insert.first->second->cache;
+  }
+  std::shared_ptr<Cache> cache = std::make_shared<Cache>(&lru_list_);
+  pybind11::cpp_function callback(
+      [this, key{std::move(key)}](pybind11::handle weakref) {
+        functions_.erase(key);
+      });
+  PyObject* weakref = PyWeakref_NewRef(function.ptr(), callback.ptr());
+  if (weakref) {
+    std::unique_ptr<Value>& entry = insert.first->second;
+    entry = std::make_unique<Value>(cache);
+    entry->weakref = pybind11::reinterpret_steal<pybind11::weakref>(weakref);
+  } else {
+    PyErr_Clear();
+    // `function` is not weak-referenceable. Don't bother adding it to the
+    // shared cache in that case; the `jit` object will hold the only shared
+    // reference to the cache entry.
+    functions_.erase(insert.first);
+  }
+  return cache;
+}
+
 class PjitFunction {
  public:
   PjitFunction(std::string function_name, std::optional<py::function> fun,
                py::function cache_miss, std::vector<int> static_argnums,
-               std::vector<py::str> static_argnames, int executables_cache_size)
-      : function_name_(std::move(function_name)),
-        fun_(std::move(fun)),
-        cache_miss_(std::move(cache_miss)),
-        static_argnums_(std::move(static_argnums)),
-        static_argnames_(std::move(static_argnames)),
-        lru_list_(std::make_unique<Cache::LRUList>(executables_cache_size)),
-        executables_(std::make_unique<Cache>(lru_list_.get())) {
-    std::sort(static_argnums_.begin(), static_argnums_.end());
-    for (py::str& s : static_argnames_) {
-      PyUnicode_InternInPlace(&s.ptr());
-    }
-  }
+               std::vector<py::str> static_argnames,
+               std::vector<int> donate_argnums,
+               std::shared_ptr<PjitFunctionCache> cache);
+  ~PjitFunction();
 
   PjitFunction(const PjitFunction&) = delete;
   PjitFunction& operator=(const PjitFunction&) = delete;
@@ -111,8 +202,6 @@ class PjitFunction {
   xla::StatusOr<py::object> Call(py::handle callable, PyObject* const* args,
                                  size_t nargs, PyObject* kwnames);
 
-  using Cache = xla::LRUCache<CallSignature, std::shared_ptr<PjitCacheEntry>>;
-
   void ClearPythonReferences();
 
   const std::string& function_name() const { return function_name_; }
@@ -123,8 +212,12 @@ class PjitFunction {
   const std::vector<py::str>& static_argnames() const {
     return static_argnames_;
   }
+  const std::vector<int>& donate_argnums() const { return donate_argnums_; }
+  const std::shared_ptr<PjitFunctionCache>& cache() const { return cache_; }
 
-  int cache_capacity() const { return executables_->Capacity(); }
+  int cache_capacity() const { return executables_->Size(); }
+
+  void ClearCache() { executables_->Clear(); }
 
   py::object PythonSignature() {
     if (!fun_.has_value()) {
@@ -148,10 +241,62 @@ class PjitFunction {
   py::function cache_miss_;
   std::vector<int> static_argnums_;
   std::vector<py::str> static_argnames_;
-
-  std::unique_ptr<Cache::LRUList> lru_list_;
-  std::unique_ptr<Cache> executables_;
+  std::vector<int> donate_argnums_;
+  std::shared_ptr<PjitFunctionCache> cache_;
+  std::shared_ptr<PjitFunctionCache::Cache> executables_;
 };
+
+// thread-compatible.
+class PjitFunctionStore {
+ public:
+  void Insert(PjitFunction* function) { compiled_functions_.insert(function); }
+
+  void Erase(PjitFunction* function) { compiled_functions_.erase(function); }
+
+  void ClearFunctionCache() {
+    for (auto* function : compiled_functions_) {
+      function->ClearCache();
+    }
+  }
+
+ private:
+  absl::flat_hash_set<PjitFunction*> compiled_functions_;
+};
+
+// Protected by GIL.
+PjitFunctionStore& GetGlobalPjitFunctionStore() {
+  static auto* const store = new PjitFunctionStore();
+  return *store;
+}
+
+PjitFunction::PjitFunction(std::string function_name,
+                           std::optional<py::function> fun,
+                           py::function cache_miss,
+                           std::vector<int> static_argnums,
+                           std::vector<py::str> static_argnames,
+                           std::vector<int> donate_argnums,
+                           std::shared_ptr<PjitFunctionCache> cache)
+    : function_name_(std::move(function_name)),
+      fun_(std::move(fun)),
+      cache_miss_(std::move(cache_miss)),
+      static_argnums_(std::move(static_argnums)),
+      static_argnames_(std::move(static_argnames)),
+      donate_argnums_(donate_argnums),
+      cache_(std::move(cache)) {
+  std::sort(static_argnums_.begin(), static_argnums_.end());
+  for (py::str& s : static_argnames_) {
+    PyUnicode_InternInPlace(&s.ptr());
+  }
+  if (!fun_.has_value()) {
+    executables_ = cache_->DefaultCache();
+  } else {
+    executables_ = cache_->Lookup(fun_.value(), donate_argnums);
+  }
+
+  GetGlobalPjitFunctionStore().Insert(this);
+}
+
+PjitFunction::~PjitFunction() { GetGlobalPjitFunctionStore().Erase(this); }
 
 // Prepares the input PjRtBuffers from the python arguments. This is equivalent
 // to shard_args() in pxla.py but for only a few supported cases.
@@ -673,17 +818,15 @@ PyObject* PjitFunction_tp_repr(PyObject* self) {
 
 }  // extern "C"
 
-void InitializePjitFunction(PjitFunctionObject* fn_obj,
-                            std::string function_name,
-                            std::optional<py::function> fun,
-                            py::function cache_miss,
-                            std::vector<int> static_argnums,
-                            std::vector<py::str> static_argnames,
-                            int executables_cache_size) {
-  new (&fn_obj->fun)
-      PjitFunction(std::move(function_name), std::move(fun),
-                   std::move(cache_miss), std::move(static_argnums),
-                   std::move(static_argnames), executables_cache_size);
+void InitializePjitFunction(
+    PjitFunctionObject* fn_obj, std::string function_name,
+    std::optional<py::function> fun, py::function cache_miss,
+    std::vector<int> static_argnums, std::vector<py::str> static_argnames,
+    std::vector<int> donate_argnums, std::shared_ptr<PjitFunctionCache> cache) {
+  new (&fn_obj->fun) PjitFunction(
+      std::move(function_name), std::move(fun), std::move(cache_miss),
+      std::move(static_argnums), std::move(static_argnames),
+      std::move(donate_argnums), std::move(cache));
 }
 
 py::object MakePjitFunction(std::string function_name,
@@ -691,13 +834,19 @@ py::object MakePjitFunction(std::string function_name,
                             py::function cache_miss,
                             std::vector<int> static_argnums,
                             std::vector<py::str> static_argnames,
-                            int executables_cache_size) {
+                            std::vector<int> donate_argnums,
+                            std::shared_ptr<PjitFunctionCache> cache) {
   py::object obj = py::reinterpret_steal<py::object>(PjitFunction_tp_new(
       reinterpret_cast<PyTypeObject*>(PjitFunction_Type), nullptr, nullptr));
   PjitFunctionObject* fn_obj = reinterpret_cast<PjitFunctionObject*>(obj.ptr());
+  if (!cache) {
+    cache = std::make_shared<PjitFunctionCache>(
+        PjitFunctionCache::kDefaultCapacity);
+  }
   InitializePjitFunction(fn_obj, std::move(function_name), std::move(fun),
                          std::move(cache_miss), std::move(static_argnums),
-                         std::move(static_argnames), executables_cache_size);
+                         std::move(static_argnames), std::move(donate_argnums),
+                         std::move(cache));
   return obj;
 }
 
@@ -708,6 +857,36 @@ const int kPjitFunctionPickleVersion = 1;
 }  // namespace
 
 void BuildPjitSubmodule(py::module& m) {
+  py::class_<PjitFunctionCache, std::shared_ptr<PjitFunctionCache>> cache(
+      m, "PjitFunctionCache");
+  cache.def(py::init<int>(),
+            py::arg("capacity") = PjitFunctionCache::kDefaultCapacity);
+  cache.def("size", &PjitFunctionCache::Size);
+  cache.def("capacity", &PjitFunctionCache::Capacity);
+  cache.def("clear", &PjitFunctionCache::Clear);
+  cache.def_static("clear_all",
+                   []() { GetGlobalPjitFunctionStore().ClearFunctionCache(); });
+  cache.def(py::pickle(
+      // __getstate__
+      // Pickles as an empty cache; the client can repopulate as needed.
+      [](const PjitFunctionCache& cache) {
+        py::dict pickle;
+        pickle["version"] = kPjitFunctionPickleVersion;
+        pickle["capacity"] = cache.Capacity();
+        return pickle;
+      },
+      // __setstate__
+      [](const py::dict& pickle) {
+        int version = py::cast<int>(pickle["version"]);
+        if (version != kPjitFunctionPickleVersion) {
+          throw std::invalid_argument(absl::StrFormat(
+              "Invalid PjitFunction pickle version, got %d, expected %d",
+              version, kPjitFunctionPickleVersion));
+        }
+        int capacity = py::cast<int>(pickle["capacity"]);
+        return std::make_shared<PjitFunctionCache>(capacity);
+      }));
+
   // We need to use heap-allocated type objects because we want to add
   // additional methods dynamically.
   py::object cfun;
@@ -760,7 +939,8 @@ void BuildPjitSubmodule(py::module& m) {
         pickle["cache_miss"] = fn->cache_miss();
         pickle["static_argnums"] = fn->static_argnums();
         pickle["static_argnames"] = fn->static_argnames();
-        pickle["cache_capacity"] = fn->cache_capacity();
+        pickle["donate_argnums"] = fn->donate_argnums();
+        pickle["cache"] = fn->cache();
         return pickle;
       },
       py::is_method(cfun_type));
@@ -785,12 +965,15 @@ void BuildPjitSubmodule(py::module& m) {
             py::cast<std::vector<int>>(pickle["static_argnums"]);
         std::vector<py::str> static_argnames =
             py::cast<std::vector<py::str>>(pickle["static_argnames"]);
-        int cache_capacity = py::cast<int>(pickle["cache_capacity"]);
+        std::vector<int> donate_argnums =
+            py::cast<std::vector<int>>(pickle["donate_argnums"]);
+        std::shared_ptr<PjitFunctionCache> cache =
+            py::cast<std::shared_ptr<PjitFunctionCache>>(pickle["cache"]);
         InitializePjitFunction(
             reinterpret_cast<PjitFunctionObject*>(self.ptr()),
             std::move(function_name), std::move(fun), std::move(cache_miss),
             std::move(static_argnums), std::move(static_argnames),
-            cache_capacity);
+            std::move(donate_argnums), std::move(cache));
       },
       py::is_method(cfun_type));
   cfun.attr("__signature__") =
@@ -801,15 +984,35 @@ void BuildPjitSubmodule(py::module& m) {
       property_readonly([](py::handle self) -> py::object {
         return AsPjitFunction(self)->cache_miss();
       });
+  // All private members are only for testing/debugging purposes
+  cfun.attr("_cache_size") = py::cpp_function(
+      [](py::handle self) -> xla::StatusOr<int> {
+        return AsPjitFunction(self)->cache_capacity();
+      },
+      py::is_method(cfun));
+  cfun.attr("_clear_cache") = py::cpp_function(
+      [](py::handle self) -> xla::Status {
+        AsPjitFunction(self)->ClearCache();
+        return ::tsl::OkStatus();
+      },
+      py::is_method(cfun));
 
-  m.def("pjit", [](std::string function_name, std::optional<py::function> fun,
-                   py::function cache_miss, std::vector<int> static_argnums,
-                   std::vector<py::str> static_argnames) {
-    return MakePjitFunction(std::move(function_name), std::move(fun),
-                            std::move(cache_miss), std::move(static_argnums),
-                            std::move(static_argnames),
-                            /*executables_cache_size=*/4096);
-  });
+  m.def(
+      "pjit",
+      [](std::string function_name, std::optional<py::function> fun,
+         py::function cache_miss, std::vector<int> static_argnums,
+         std::vector<py::str> static_argnames, std::vector<int> donate_argnums,
+         std::shared_ptr<PjitFunctionCache> cache) {
+        return MakePjitFunction(
+            std::move(function_name), std::move(fun), std::move(cache_miss),
+            std::move(static_argnums), std::move(static_argnames),
+            std::move(donate_argnums), std::move(cache));
+      },
+      py::arg("function_name"), py::arg("fun"), py::arg("cache_miss"),
+      py::arg("static_argnums"),
+      py::arg("static_argnames") = std::vector<py::str>(),
+      py::arg("donate_argnums") = std::vector<int>(),
+      py::arg("cache") = nullptr);
 }
 
 }  // namespace jax

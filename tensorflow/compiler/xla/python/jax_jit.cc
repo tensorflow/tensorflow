@@ -438,23 +438,24 @@ std::shared_ptr<CompiledFunctionCache::Cache> CompiledFunctionCache::Lookup(
   key.donate_argnums =
       std::vector<int>(donate_argnums.begin(), donate_argnums.end());
   auto insert = functions_.emplace(key, nullptr);
+  if (!insert.second) {
+    return insert.first->second->cache;
+  }
   std::shared_ptr<Cache> cache = std::make_shared<Cache>(&lru_list_);
-  if (insert.second) {
-    py::cpp_function callback([this, key{std::move(key)}](py::handle weakref) {
-      functions_.erase(key);
-    });
-    PyObject* weakref = PyWeakref_NewRef(function.ptr(), callback.ptr());
-    if (weakref) {
-      std::unique_ptr<Value>& entry = insert.first->second;
-      entry = std::make_unique<Value>(cache);
-      entry->weakref = py::reinterpret_steal<py::weakref>(weakref);
-    } else {
-      PyErr_Clear();
-      // `function` is not weak-referenceable. Don't bother adding it to the
-      // shared cache in that case; the `jit` object will hold the only shared
-      // reference to the cache entry.
-      functions_.erase(insert.first);
-    }
+  py::cpp_function callback([this, key{std::move(key)}](py::handle weakref) {
+    functions_.erase(key);
+  });
+  PyObject* weakref = PyWeakref_NewRef(function.ptr(), callback.ptr());
+  if (weakref) {
+    std::unique_ptr<Value>& entry = insert.first->second;
+    entry = std::make_unique<Value>(cache);
+    entry->weakref = py::reinterpret_steal<py::weakref>(weakref);
+  } else {
+    PyErr_Clear();
+    // `function` is not weak-referenceable. Don't bother adding it to the
+    // shared cache in that case; the `jit` object will hold the only shared
+    // reference to the cache entry.
+    functions_.erase(insert.first);
   }
   return cache;
 }
