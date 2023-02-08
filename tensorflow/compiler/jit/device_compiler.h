@@ -118,6 +118,12 @@ class DeviceCompiler : public ResourceBase {
   ClientType* client() const { return compiler_client_->client(); }
   const DeviceType& device_type() const { return persistor_->device_type(); }
   DeviceCompilationCache<ExecutableType>* cache() { return cache_.get(); }
+  DeviceExecutablePersistor<ExecutableType, ClientType>* persistor() {
+    return persistor_.get();
+  }
+  DeviceCompilerClient<ExecutableType, ClientType>* compiler_client() {
+    return compiler_client_.get();
+  }
 
   string DebugString() const override;
 

@@ -129,6 +129,10 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
+    name: "R2Score"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "Recall"
     mtype: "<type \'type\'>"
   }

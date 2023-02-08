@@ -2088,6 +2088,41 @@ func.func @test_arg_max_negative_dim(%arg0: tensor<13x21x3xf32>) -> tensor<13x21
 
 // -----
 
+// CHECK-LABEL: @test_arg_min_f32
+func.func @test_arg_min_f32(%arg0: tensor<13x21x3xf32>) -> tensor<*xf32> {
+  // CHECK: %[[NEG:.+]] = "tosa.negate"(%arg0) : (tensor<13x21x3xf32>) -> tensor<13x21x3xf32>
+  // CHECK: "tosa.argmax"(%[[NEG]]) {axis = 1 : i64}
+  %0 = "tfl.pseudo_const"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>
+  %1 = "tfl.arg_min"(%arg0, %0) : (tensor<13x21x3xf32>, tensor<i32>) -> tensor<*xf32>
+  func.return %1 : tensor<*xf32>
+}
+
+// -----
+
+// CHECK-LABEL: @test_arg_min_i32
+func.func @test_arg_min_i32(%arg0: tensor<13x21x3xi32>) -> tensor<*xi32> {
+  // CHECK: %[[ONE:.+]] = "tosa.const"() {value = dense<-1> : tensor<1x1x1xi32>}
+  // CHECK: %[[SUB:.+]] = "tosa.sub"(%[[ONE]], %arg0)
+  // CHECK: %[[ARGMAX:.+]] = "tosa.argmax"(%[[SUB]]) {axis = 1 : i64}
+  %0 = "tfl.pseudo_const"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>
+  %1 = "tfl.arg_min"(%arg0, %0) : (tensor<13x21x3xi32>, tensor<i32>) -> tensor<*xi32>
+  func.return %1 : tensor<*xi32>
+}
+
+// -----
+
+// CHECK-LABEL: @test_arg_min_ui8
+func.func @test_arg_min_ui8(%arg0: tensor<13x21x3xui8>) -> tensor<*xui8> {
+  // CHECK: %[[MAX:.+]] = "tosa.const"() {value = dense<255> : tensor<1x1x1xui8>}
+  // CHECK: %[[SUB:.+]] = "tosa.sub"(%[[MAX]], %arg0)
+  // CHECK: %[[ARGMAX:.+]] = "tosa.argmax"(%[[SUB]]) {axis = 1 : i64}
+  %0 = "tfl.pseudo_const"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>
+  %1 = "tfl.arg_min"(%arg0, %0) : (tensor<13x21x3xui8>, tensor<i32>) -> tensor<*xui8>
+  func.return %1 : tensor<*xui8>
+}
+
+// -----
+
 // CHECK-LABEL: test_fakequant
 // CHECK-DAG: %[[VAR0:.*]] = "tosa.const"() {value = dense<-2.00003052> : tensor<1x1x1xf32>}
 // CHECK-DAG: %[[VAR1:.*]] = "tosa.const"() {value = dense<1.99996948> : tensor<1x1x1xf32>}

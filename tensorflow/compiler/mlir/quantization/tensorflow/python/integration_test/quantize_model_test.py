@@ -2046,6 +2046,7 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
     )
     output_graphdef = output_loader.get_meta_graph_def_from_tags(tags).graph_def
     self.assertTrue(self._contains_quantized_function_call(output_graphdef))
+    self.assertTrue(self._contains_save_function(output_graphdef))
 
     # Tests that there are variables in the model.
     variable_node_defs = _find_variables(output_graphdef)
@@ -2783,6 +2784,7 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
     )
     output_graphdef = output_loader.get_meta_graph_def_from_tags(tags).graph_def
     self.assertTrue(self._contains_quantized_function_call(output_graphdef))
+    self.assertTrue(self._contains_save_function(output_graphdef))
 
     # Tests that there are variables in the model.
     variable_node_defs = _find_variables(output_graphdef)

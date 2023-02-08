@@ -41,6 +41,7 @@ limitations under the License.
 #include "tensorflow/dtensor/cc/small_constant_optimization.h"
 #include "tensorflow/dtensor/cc/tensor_layout.h"
 #include "tensorflow/dtensor/cc/tensor_with_layout.h"
+#include "tensorflow/tsl/platform/fingerprint.h"
 
 namespace tensorflow {
 namespace dtensor {
@@ -116,19 +117,6 @@ struct ExecutionFunctions {
   // to a function for performance reason, since an eager op doesn't use it.
   uint64 function_mesh_fingerprint = 0;
 };
-
-// TODO(yujingzhang): move FingerprintCat128 to tensorflow/platform.
-inline tensorflow::Fprint128 FingerprintCat128(const tensorflow::Fprint128& a,
-                                               const tensorflow::Fprint128& b) {
-  return {tensorflow::FingerprintCat64(a.low64, b.low64),
-          tensorflow::FingerprintCat64(a.high64, b.high64)};
-}
-
-inline tensorflow::Fprint128 FingerprintCat128(const tensorflow::Fprint128& a,
-                                               const int64 b) {
-  auto x = tensorflow::FingerprintCat64(a.low64, b);
-  return {x, tensorflow::FingerprintCat64(a.high64, x)};
-}
 
 struct DTensorOperation {
   // For both fields: not owned. lifetime covers the whole usage.
@@ -260,7 +248,7 @@ class TensorWithLayoutTf : public TensorWithLayout {
  protected:
   TensorWithLayoutTf(std::unique_ptr<parallel_device::ParallelTensor> tensor,
                      const Mesh& mesh, const Layout& layout,
-                     std::vector<int64_t> local_shape,
+                     const std::vector<int64_t>& local_shape,
                      std::optional<TF_DataType> dtype = std::nullopt,
                      std::optional<NodeDef> const_value = std::nullopt)
       : tensor_(std::move(tensor)),
@@ -371,7 +359,7 @@ class ResourceHandleWithLayout : public TensorWithLayoutTf {
  private:
   ResourceHandleWithLayout(
       std::unique_ptr<parallel_device::ParallelTensor> tensor, const Mesh& mesh,
-      const Layout& layout, std::vector<int64_t> local_shape)
+      const Layout& layout, const std::vector<int64_t>& local_shape)
       : TensorWithLayoutTf(std::move(tensor), mesh, layout, local_shape,
                            TF_RESOURCE) {}
 
@@ -398,7 +386,8 @@ class SparseTensorWithLayout : public TensorWithLayoutTf {
       std::unique_ptr<parallel_device::ParallelTensor> indices_tensor,
       std::unique_ptr<parallel_device::ParallelTensor> values_tensor,
       std::unique_ptr<parallel_device::ParallelTensor> shapes_tensor,
-      const Mesh& mesh, const Layout& layout, std::vector<int64_t> local_shape);
+      const Mesh& mesh, const Layout& layout,
+      const std::vector<int64_t>& local_shape);
 
   // A dummy TensorWithLayout without holding a ParallelTensor.
   static std::unique_ptr<SparseTensorWithLayout> Dummy(
@@ -442,7 +431,8 @@ class SparseTensorWithLayout : public TensorWithLayoutTf {
       std::unique_ptr<parallel_device::ParallelTensor> indices,
       std::unique_ptr<parallel_device::ParallelTensor> values,
       std::unique_ptr<parallel_device::ParallelTensor> dense_shapes,
-      const Mesh& mesh, const Layout& layout, std::vector<int64_t> local_shape,
+      const Mesh& mesh, const Layout& layout,
+      const std::vector<int64_t>& local_shape,
       std::optional<TF_DataType> dtype = std::nullopt,
       std::optional<NodeDef> const_value = std::nullopt)
       : TensorWithLayoutTf(nullptr, mesh, layout, local_shape),

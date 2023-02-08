@@ -1005,6 +1005,10 @@ class Model {
   std::deque<uint64_t> gap_times_usec_ TF_GUARDED_BY(gap_mu_);
   // The experiment that this job is part of.
   std::string experiment_ = "";
+  // Stores the optimization snapshot of the Model.
+  std::shared_ptr<Node> snapshot_ TF_GUARDED_BY(mu_);
+  // Stores the optimization parameters used by autotune.
+  OptimizationParams optimization_params_ TF_GUARDED_BY(mu_);
 };
 
 // Class to compute timing information for a model.

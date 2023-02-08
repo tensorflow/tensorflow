@@ -186,7 +186,7 @@ def tflite_flex_cc_library(
             ],
             "//conditions:default": [
                 clean_dep("//tensorflow/core:tensorflow"),
-                clean_dep("//tensorflow/lite/c:common"),
+                clean_dep("//tensorflow/lite/core/c:private_common"),
             ],
         }) + additional_deps + delegate_symbol,
         testonly = testonly,

@@ -912,10 +912,6 @@ PYBIND11_MODULE(_pywrap_tfe, m) {
     // NOTE: different from TFE_ContextSyncExecutors that raises potential
     // errors, deliberately ignore executor statuses in cleanup.
   });
-  m.def("TFE_ContextResetLocalRendezvousTable", [](py::handle& ctx) {
-    tensorflow::unwrap(tensorflow::InputTFE_Context(ctx))
-        ->ResetLocalRendezvousTable();
-  });
   m.def(
       "TFE_InsertConfigKeyValue",
       [](py::handle& ctx, const char* config_key, const char* config_value) {
@@ -1327,8 +1323,12 @@ PYBIND11_MODULE(_pywrap_tfe, m) {
   });
   m.def("TFE_Py_SetCEagerContext", [](const py::handle& ctx) {
     // TODO(mdan): This cast might need rewriting to ImmediateExecutionContext.
-    tensorflow::SetCEagerContext(reinterpret_cast<tensorflow::EagerContext*>(
-        tensorflow::InputTFE_Context(ctx)));
+    if (ctx.is_none()) {
+      tensorflow::SetCEagerContext(nullptr);
+    } else {
+      tensorflow::SetCEagerContext(reinterpret_cast<tensorflow::EagerContext*>(
+          tensorflow::InputTFE_Context(ctx)));
+    }
   });
   m.def("TFE_Py_RegisterVSpace", [](const py::handle& o) {
     return tensorflow::PyoOrThrow(TFE_Py_RegisterVSpace(o.ptr()));

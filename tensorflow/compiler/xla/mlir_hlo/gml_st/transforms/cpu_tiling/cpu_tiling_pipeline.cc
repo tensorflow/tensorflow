@@ -43,7 +43,11 @@ void addCPUTilingPipeline(OpPassManager& pm,
 
   pm.addNestedPass<FuncOp>(createComposeExtractInsertSlicePass());
   pm.addNestedPass<FuncOp>(createVectorizeForCPUPass());
+
+  // Tile remaining ops by size one and scalarize what we can.
+  pm.addNestedPass<FuncOp>(createTileByOnePass());
   pm.addNestedPass<FuncOp>(createScalarizationPass());
+
   pm.addNestedPass<FuncOp>(createRewriteVectorContractPass());
 }
 

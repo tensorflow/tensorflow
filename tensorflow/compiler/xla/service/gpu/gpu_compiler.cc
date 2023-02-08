@@ -193,6 +193,10 @@ limitations under the License.
 #include "tensorflow/tsl/platform/threadpool.h"
 #include "tensorflow/tsl/profiler/lib/traceme.h"
 
+#if GOOGLE_CUDA
+#include "tensorflow/compiler/xla/service/gpu/triton_autotuner.h"
+#endif  // GOOGLE_CUDA
+
 namespace xla {
 namespace gpu {
 namespace {
@@ -816,6 +820,17 @@ Status GpuCompiler::OptimizeHloPostLayoutAssignment(
     }
     pipeline.AddPass<GemmRewriter>(
         std::get<se::CudaComputeCapability>(gpu_target_config.gpu_version));
+
+#if GOOGLE_CUDA
+    // TODO(b/266210099): Make autotuning work with AOT.
+    if (stream_exec) {
+      pipeline.AddPass<TritonAutotuner>(
+          stream_exec, device_allocator,
+          debug_options.xla_gpu_force_compilation_parallelism()
+              ? debug_options.xla_gpu_force_compilation_parallelism()
+              : tsl::port::MaxParallelism());
+    }
+#endif  // GOOGLE_CUDA
 
     // Rewrite GEMMs with broadcasted inputs as strided GEMMs.
     pipeline.AddPass<GemmBroadcastFoldingRewriter>();

@@ -83,19 +83,24 @@ limitations under the License.
 #include "tensorflow/dtensor/cc/tpu_system_interface.h"
 #include "tensorflow/dtensor/proto/layout.pb.h"
 #include "tensorflow/tsl/platform/status.h"
+#include "tensorflow/tsl/platform/statusor.h"
+#include "tensorflow/tsl/util/env_var.h"
 
 namespace tensorflow {
 namespace dtensor {
 
 class DTensorDevice {
  public:
-  explicit DTensorDevice(absl::string_view name)
-      : name_(name),
-        same_shape_policy_enabled_(false),
-        cancellation_manager_(std::make_unique<CancellationManager>()) {
-    // FIXME(b/258703996): Use tsl.
-    if (getenv("DTENSOR_USE_PARALLEL_EXECUTOR") != nullptr) {
-      parallel_executor_ = CreateDefaultParallelExecutor();
+  static StatusOr<DTensorDevice*> Create(absl::string_view name) {
+    std::string use_parallel_executor;
+    TF_RETURN_IF_ERROR(tsl::ReadStringFromEnvVar(
+        "DTENSOR_USE_PARALLEL_EXECUTOR", "", &use_parallel_executor));
+    if (use_parallel_executor.empty()) {
+      return new DTensorDevice(name, nullptr);
+    } else {
+      TF_ASSIGN_OR_RETURN(auto parallel_executor,
+                          CreateDefaultParallelExecutor());
+      return new DTensorDevice(name, std::move(parallel_executor));
     }
   }
 
@@ -301,6 +306,13 @@ class DTensorDevice {
                                  TF_Status* status);
 
  private:
+  DTensorDevice(absl::string_view name,
+                std::unique_ptr<ParallelExecutor> parallel_executor)
+      : name_(name),
+        same_shape_policy_enabled_(false),
+        cancellation_manager_(std::make_unique<CancellationManager>()),
+        parallel_executor_(std::move(parallel_executor)) {}
+
   // If the `operation_name` of an op indicates a custom DTensor op then
   // separately handle those custom ops instead of running default DTensor graph
   // compilation.
@@ -2157,13 +2169,25 @@ bool PinToDTensorDevice(const TFE_Op* op, TF_Status* s) {
 }
 
 void AllocateDTensorDevice(absl::string_view device_name,
-                           TFE_CustomDevice* device, void** device_info) {
+                           TFE_CustomDevice* device, void** device_info,
+                           TF_Status* status) {
+  DTensorDevice* dtensor_device = nullptr;
+  if (status) {
+    ASSIGN_OR_RETURN_C_STATUS(dtensor_device,
+                              DTensorDevice::Create(device_name), status);
+  } else {
+    // TODO(b/268241383): Remove this branch.
+    auto device_status = DTensorDevice::Create(device_name);
+    TF_CHECK_OK(device_status.status());
+    dtensor_device = device_status.value();
+  }
+
   device->copy_tensor_to_device = &CopyToDTensorDevice;
   device->copy_tensor_from_device = &CopyFromDTensorDevice;
   device->delete_device = &DeleteDTensorDevice;
   device->execute = &ExecuteOnDTensorDevice;
   device->shall_pin_to_this_device = &PinToDTensorDevice;
-  *device_info = new DTensorDevice(device_name);
+  *device_info = dtensor_device;
 }
 
 void AddMesh(const std::string& serialized_mesh, void* device_info,

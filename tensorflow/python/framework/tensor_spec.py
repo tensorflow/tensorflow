@@ -176,7 +176,7 @@ class TensorSpec(DenseSpec, type_spec.BatchableTypeSpec,
   >>> constrained_foo(tf.constant([[1., 2], [3, 4]])).numpy()
   Traceback (most recent call last):
   ...
-  ValueError: Python inputs incompatible with input_signature
+  TypeError: Binding inputs to tf.function `constrained_foo` failed ...
 
   """
 
@@ -278,17 +278,25 @@ class TensorSpec(DenseSpec, type_spec.BatchableTypeSpec,
     return [value]
 
   def _cast(self, value, casting_context):
-    """Cast value to a tensor that is compatiable to this TensorSpec."""
+    """Cast value to a tensor that is a subtype of this TensorSpec."""
     # This method is mainly used to cast Python primitives to tensor.
     # Currently, cast tensor to tensor with different types are not supported.
     # For example, casting int32 to float32 would raise a ValueError.
+    if casting_context.allow_specs and isinstance(value, TensorSpec):
+      assert value.is_subtype_of(self), f"Can not cast {value!r} to {self!r}"
+      return self
+
     value = ops.convert_to_tensor(value, self.dtype)
     value_spec = self.from_tensor(value, self.name)
     if self.name is None:
       value_spec._name = None  # pylint: disable=protected-access
-    assert value_spec.is_subtype_of(
-        self
-    ), f"Failed to cast {value_spec!r} to tensor_spec {self!r}"
+
+    if casting_context.allow_supertype_tensors:
+      check_fn = lambda v: v.is_subtype_of(self) or self.is_subtype_of(v)
+    else:
+      check_fn = lambda v: v.is_subtype_of(self)
+
+    assert check_fn(value_spec), f"Can not cast {value_spec!r} to {self!r}"
     return value
 
   @classmethod
@@ -550,6 +558,14 @@ class BoundedTensorSpec(TensorSpec, trace_type.Serializable):
   def maximum(self):
     """Returns a NumPy array specifying the maximum bounds (inclusive)."""
     return self._maximum
+
+  def _cast(self, value, casting_context):
+    if casting_context.allow_specs and isinstance(value, BoundedTensorSpec):
+      assert value.is_subtype_of(self), f"Can not cast {value!r} to {self!r}"
+      return self
+
+    actual_spec = TensorSpec(shape=self.shape, dtype=self.dtype, name=self.name)
+    return actual_spec._cast(value, casting_context)  # pylint: disable=protected-access
 
   def __repr__(self):
     s = "BoundedTensorSpec(shape={}, dtype={}, name={}, minimum={}, maximum={})"

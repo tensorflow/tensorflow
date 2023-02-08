@@ -323,6 +323,7 @@ cc_library(
         "passes/insert_main_function.cc",
         "passes/insert_quantized_functions.cc",
         "passes/insert_restore_op.cc",
+        "passes/insert_save_op.cc",
         "passes/issue_ids_of_custom_aggregation_ops.cc",
         "passes/lift_quantizable_spots_as_functions.cc",
         "passes/lift_quantizable_spots_as_functions.inc",

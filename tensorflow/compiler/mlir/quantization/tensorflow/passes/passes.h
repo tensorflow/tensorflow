@@ -151,6 +151,15 @@ CreateDuplicateShapeDeterminingConstantsPass();
 // function and replaces tf.Consts with the results of RestoreV2.
 std::unique_ptr<OperationPass<ModuleOp>> CreateInsertRestoreOpPass();
 
+// Creates a pass that creates a new function that wraps the newly created
+// SaveV2 op. The new function's name is "tf_quant__save". The function accepts
+// a single string tensor as argument, which specifies the path to the
+// checkpoint to which the variable's tensor values are saved. It finds
+// `tf.AssignVariableOp(tf.VarHandleOp, tf.Const)` pattern in the initializer
+// function of type "restore_op" to identify the VarHandleOps that should be
+// saved using the SaveV2 op.
+std::unique_ptr<OperationPass<ModuleOp>> CreateInsertSaveOpPass();
+
 // Creates a pass that marks functions with the attribute `tf._noinline = true`
 // to avoid being inlined by the `InlinerPass`. `noinline_functions` is the name
 // of the functions to mark.

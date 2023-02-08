@@ -294,18 +294,6 @@ Status GetOutputDTypes(EagerOperation* op, DataTypeVector* output_dtypes) {
   return OkStatus();
 }
 
-inline tensorflow::Fprint128 FingerprintCat128(const tensorflow::Fprint128& a,
-                                               const tensorflow::Fprint128& b) {
-  return {tensorflow::FingerprintCat64(a.low64, b.low64),
-          tensorflow::FingerprintCat64(a.high64, b.high64)};
-}
-
-inline tensorflow::Fprint128 FingerprintCat128(const tensorflow::Fprint128& a,
-                                               const int64_t b) {
-  auto x = tensorflow::FingerprintCat64(a.low64, b);
-  return {x, tensorflow::FingerprintCat64(a.high64, x)};
-}
-
 const KernelDef* GetKernelDef(const EagerOperation& op, const NodeDef* node_def,
                               const Device* op_device) {
   if (node_def == nullptr || op_device == nullptr) return nullptr;
@@ -393,11 +381,11 @@ void AppendTensorShapeToFingerprint(const PartialTensorShape& shape,
                                     Fprint128* fingerprint) {
   if (shape.unknown_rank()) {
     char c = '?';
-    *fingerprint = FingerprintCat128(*fingerprint, c);
+    *fingerprint = tsl::FingerprintCat128(*fingerprint, c);
   } else {
     for (int i = 0; i < shape.dims(); i++) {
       int64_t dim = shape.dim_size(i);
-      *fingerprint = FingerprintCat128(*fingerprint, dim);
+      *fingerprint = tsl::FingerprintCat128(*fingerprint, dim);
     }
   }
 }
@@ -987,12 +975,12 @@ StatusOr<Fprint128> GetKernelCacheKey(
   Fprint128 cache_key = op_cache_key;
   /// Include soft placement policy in cache key since the placement strategy
   // can change and thus affect which kernel is picked.
-  cache_key = FingerprintCat128(cache_key, ctx.AllowSoftPlacement());
+  cache_key = tsl::FingerprintCat128(cache_key, ctx.AllowSoftPlacement());
 
   // Include run_eager_op_as_function policy in cache key since the execution
   // strategy can change and affect which kernel is picked.
   VLOG(3) << "ctx.RunEagerOpAsFunction(): " << ctx.RunEagerOpAsFunction();
-  cache_key = FingerprintCat128(cache_key, ctx.RunEagerOpAsFunction());
+  cache_key = tsl::FingerprintCat128(cache_key, ctx.RunEagerOpAsFunction());
 
   // When running in eager_op_as_function mode Send/Recv ops need to be
   // placed on the same rendezvous to match the behaviour of eager mode.
@@ -1001,11 +989,11 @@ StatusOr<Fprint128> GetKernelCacheKey(
       ctx.GetReuseRendezvousForFunctions();
   // The launch-time rendezvous reuse setting is bundled with the kernel, so we
   // need to include it in the cache key.
-  cache_key = FingerprintCat128(cache_key, reuse_rendezvous_for_functions);
+  cache_key = tsl::FingerprintCat128(cache_key, reuse_rendezvous_for_functions);
 
   for (int i = 0, end = input_device_ptrs.size(); i < end; ++i) {
-    cache_key = FingerprintCat128(cache_key,
-                                  Fingerprint128(input_device_ptrs[i]->name()));
+    cache_key = tsl::FingerprintCat128(
+        cache_key, Fingerprint128(input_device_ptrs[i]->name()));
 
     auto input_resource = input_resource_variable_dtypes_and_shapes.find(i);
     if (input_resource != input_resource_variable_dtypes_and_shapes.end()) {
@@ -1013,8 +1001,8 @@ StatusOr<Fprint128> GetKernelCacheKey(
       const DtypeAndPartialTensorShape& dtype_and_shape =
           input_resource->second;
       // Add _Arg index, dtype and shape to "cache_key".
-      cache_key = FingerprintCat128(cache_key, i);
-      cache_key = FingerprintCat128(cache_key, dtype_and_shape.dtype);
+      cache_key = tsl::FingerprintCat128(cache_key, i);
+      cache_key = tsl::FingerprintCat128(cache_key, dtype_and_shape.dtype);
       AppendTensorShapeToFingerprint(dtype_and_shape.shape, &cache_key);
     }
   }
@@ -1116,7 +1104,7 @@ Status SetOpDevice(EagerContext& ctx, EagerOperation* op, Device** device) {
 Fprint128 GetDeviceCacheKey(EagerOperation* op, const EagerContext& ctx) {
   Fprint128 device_cache_key = op->MutableAttrs()->CacheKey(op->DeviceName());
   device_cache_key =
-      FingerprintCat128(device_cache_key, ctx.AllowSoftPlacement());
+      tsl::FingerprintCat128(device_cache_key, ctx.AllowSoftPlacement());
   return device_cache_key;
 }
 

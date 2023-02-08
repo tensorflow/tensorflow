@@ -50,7 +50,7 @@ class ParallelExecutor {
 };
 
 // Factory method for Default ParallelExecutor instance.
-std::unique_ptr<ParallelExecutor> CreateDefaultParallelExecutor();
+StatusOr<std::unique_ptr<ParallelExecutor>> CreateDefaultParallelExecutor();
 
 }  // namespace dtensor
 }  // namespace tensorflow

@@ -18,7 +18,6 @@ cc_library(
         "dummy_delegate.h",
     ],
     deps = [
-        "//tensorflow/lite/c:common",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/delegates/utils:simple_delegate",
     ],
@@ -34,7 +33,6 @@ cc_binary(
     linkstatic = 1,
     deps = [
         ":dummy_delegate",
-        "//tensorflow/lite/c:common",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/delegates/external:external_delegate_interface",
         "//tensorflow/lite/tools:command_line_flags",

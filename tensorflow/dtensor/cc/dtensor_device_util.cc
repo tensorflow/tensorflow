@@ -266,7 +266,7 @@ StatusOr<Layout> GetLayoutThroughIdentityOps(Node* op, int output_index) {
 tensorflow::Fprint128 TensorWithLayoutTf::CacheKey() const {
   tensorflow::Fprint128 f = tensorflow::Fingerprint128(layout_.ToString());
   // Use exact shape to compute the key.
-  for (const int64_t dim : local_shape()) {
+  for (const int64_t dim : local_shape_) {
     f = FingerprintCat128(f, dim);
   }
   if (const_value_node_->const_value().has_value()) {
@@ -334,7 +334,7 @@ std::unique_ptr<TensorWithLayoutTf> TensorWithLayoutTf::Broadcast(
 
   std::unique_ptr<TensorWithLayoutTf> result(new TensorWithLayoutTf(
       std::move(parallel_tensor), target_mesh, std::move(layout), *shape,
-      /*dtype=*/absl::nullopt, std::move(const_value)));
+      /*dtype=*/std::nullopt, std::move(const_value)));
   return result;
 }
 
@@ -459,7 +459,8 @@ StatusOr<std::unique_ptr<SparseTensorWithLayout>> SparseTensorWithLayout::Wrap(
     std::unique_ptr<parallel_device::ParallelTensor> indices_tensor,
     std::unique_ptr<parallel_device::ParallelTensor> values_tensor,
     std::unique_ptr<parallel_device::ParallelTensor> shapes_tensor,
-    const Mesh& mesh, const Layout& layout, std::vector<int64_t> local_shape) {
+    const Mesh& mesh, const Layout& layout,
+    const std::vector<int64_t>& local_shape) {
   return absl::WrapUnique(new SparseTensorWithLayout(
       std::move(indices_tensor), std::move(values_tensor),
       std::move(shapes_tensor), mesh, layout, local_shape));

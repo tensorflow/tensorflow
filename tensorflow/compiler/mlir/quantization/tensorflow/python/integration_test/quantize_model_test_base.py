@@ -167,6 +167,26 @@ class QuantizedModelTest(test.TestCase, parameterized.TestCase):
         if node.op == op_name
     )
 
+  def _contains_save_function(self, graphdef: graph_pb2.GraphDef) -> bool:
+    """Determines if the graph contains a save function.
+
+    The save function wraps a SaveV2 op that saves the tensor values of the
+    variables to the checkpoint. The save function's name should be
+    "tf_quant__save". See `InsertSaveOpPass` for details.
+
+    Args:
+      graphdef: A GraphDef object.
+
+    Returns:
+      True iff the graph def contains a save function.
+    """
+    return any(
+        map(
+            lambda func: func.signature.name == 'tf_quant__save',
+            graphdef.library.function,
+        )
+    )
+
   def _contains_quantized_function_call(
       self, graphdef: graph_pb2.GraphDef
   ) -> bool:
