@@ -711,25 +711,6 @@ xla_cc_test(
     ],
 )
 
-xla_test(
-    name = "elemental_ir_emitter_test",
-    srcs = ["elemental_ir_emitter_test.cc"],
-    backend_tags = {"gpu": [
-        "requires-gpu-nvidia",
-        "requires-gpu-sm70-only",
-        "requires-gpu-sm80-only",
-    ]},
-    backends = [
-        "gpu",
-    ],
-    deps = [
-        ":gpu_codegen_test",
-        "//tensorflow/compiler/xla/tests:filecheck",
-        "//tensorflow/tsl/platform:test",
-        "//tensorflow/tsl/platform:test_main",
-    ],
-)
-
 xla_cc_test(
     name = "gpu_input_fusible_slice_test",
     srcs = ["gpu_input_fusible_slice_test.cc"],
