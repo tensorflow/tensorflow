@@ -289,13 +289,19 @@ string SummarizeAttrValue(const AttrValue& attr_value) {
           pieces.push_back(SummarizeFunc(attr_value.list().func(i)));
         }
       }
-      constexpr int kMaxListSummarySize = 15;
+      constexpr int kMaxListSummarySize = 30;
       if (pieces.size() >= kMaxListSummarySize) {
-        pieces[5] = strings::StrCat(Fingerprint64(
-            absl::StrJoin(pieces.begin() + 5, pieces.end() - 5, ",")));
-        pieces.erase(pieces.begin() + 6, pieces.end() - 5);
+        // The message is exposed to users, so create a separate fingerprint
+        // ID in the case of long lists.
+        uint64_t fingerprint =
+            Fingerprint64(absl::StrJoin(pieces.begin(), pieces.end(), ","));
+        pieces.erase(pieces.begin() + 5, pieces.end() - 6);
+        pieces[5] = "...";
+        return strings::StrCat("[", absl::StrJoin(pieces, ", "),
+                               "]{attr_hash=", fingerprint, "}");
+      } else {
+        return strings::StrCat("[", absl::StrJoin(pieces, ", "), "]");
       }
-      return strings::StrCat("[", absl::StrJoin(pieces, ", "), "]");
     }
     case AttrValue::kFunc: {
       return SummarizeFunc(attr_value.func());
