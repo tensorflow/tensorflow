@@ -21,6 +21,7 @@ limitations under the License.
 #include <optional>
 #include <stdexcept>
 #include <string>
+#include <thread>  // NOLINT
 #include <tuple>
 #include <utility>
 #include <vector>
@@ -63,6 +64,8 @@ struct PjitCacheEntry {
   // a signature and if the object has been inserted already, other threads
   // will wait for the notification.
   absl::Notification compilation_complete;
+
+  std::thread::id thread_id = std::this_thread::get_id();
 
   bool fall_back_to_python = false;
 };
@@ -310,11 +313,38 @@ PrepareIfrtInputs(const xla::PyLoadedExecutable& executable,
   std::vector<tsl::RCReference<xla::ifrt::Array>> num_args_arrays;
   num_args_arrays.reserve(num_args);
 
+  xla::DevicePutOptions options;
+  options.squash_64bit_types = !arguments.signature.jax_enable_x64;
+  options.allow_zero_copy = true;
+  xla::PjRtDevice* data_device = nullptr;
+  if (executable.ifrt_loaded_executable()->num_devices() == 1) {
+    data_device = executable.ifrt_loaded_executable()->addressable_devices()[0];
+  }
+
   for (int i = 0; i < num_args; ++i) {
     if (!kept_args[i]) {
       continue;
     }
     const py::object& arg = arguments.flat_dynamic_args[i];
+
+    if (arg.get_type() != xla::PyArray::type()) {
+      if (data_device != nullptr) {
+        py::handle arg = arguments.flat_dynamic_args[i];
+        TF_ASSIGN_OR_RETURN(
+            xla::DevicePutResult on_device,
+            DevicePut(arg, executable.ifrt_loaded_executable()->client(),
+                      data_device, options));
+
+        num_args_arrays.push_back(std::move(on_device.ifrt_array));
+        if (on_device.owning_pybuffer) {
+          arguments.keep_alive_objects.push_back(
+              std::move(on_device.owning_pybuffer));
+        }
+        continue;
+      }
+
+      return xla::Unimplemented("Unhandled non PyArray argument.");
+    }
 
     xla::PyArray py_array = arg;
     const auto& sharding = py_array.sharding();
@@ -372,6 +402,14 @@ xla::StatusOr<py::object> PjitFunction::Call(py::handle callable,
       [&] { return absl::StrCat("PjitFunction(", function_name_, ")"); });
   ParsedArgumentsAsBuffers arguments;
 
+  // Make sure we trigger a garbage collection on JIT function calls. Otherwise
+  // code like
+  // f = jit(...)
+  // while True:
+  //   f(x)
+  // may never free temporary buffers for copies of arguments.
+  xla::GlobalPyRefManager()->MaybeCollectGarbage();
+
   if (GetDisableJit()) {
     if (!fun_.has_value()) {
       throw py::value_error(
@@ -415,13 +453,13 @@ xla::StatusOr<py::object> PjitFunction::Call(py::handle callable,
 
   // Perform a few checks for the arguments. Currently we are only allowing
   // committed PyArray inputs. For other cases, e.g. Tracers or ShapedArray, it
-  // will fallback to python.
+  // will fallback to python. For jit, numpy arrays and scalars are also
+  // allowed, which we will check later.
   for (const auto& arg : arguments.flat_dynamic_args) {
     if (arg.get_type() != xla::PyArray::type()) {
-      VLOG(2) << "Only PyArray arguments are supported in cpp pjit, but got: "
-              << py::cast<std::string>(arg.get_type().str());
-      return fallback_to_cache_miss();
+      continue;
     }
+
     xla::PyArray py_array = arg;
     if (!py_array.fastpath_enabled()) {
       return fallback_to_cache_miss();
@@ -447,6 +485,7 @@ xla::StatusOr<py::object> PjitFunction::Call(py::handle callable,
     return fallback_to_cache_miss();
   }
 
+  VLOG(2) << "CallSignature:\n" << arguments.signature.DebugString();
   bool inserted = false;
   std::shared_ptr<PjitCacheEntry> cache_entry =
       executables_->GetOrCreateIfAbsent(
@@ -485,6 +524,12 @@ xla::StatusOr<py::object> PjitFunction::Call(py::handle callable,
       // because any donated buffers will now be invalid.
       return py::object(out_tuple[0]);
     } else {
+      if (cache_entry->thread_id == std::this_thread::get_id()) {
+        auto error_string = absl::StrCat("Recursively calling jit: ",
+                                         arguments.signature.DebugString());
+        PyErr_SetString(PyExc_RecursionError, error_string.c_str());
+        throw pybind11::error_already_set();
+      }
       // Release the GIL while we wait, making sure the compile thread can
       // lock it.
       py::gil_scoped_release release;
@@ -500,6 +545,7 @@ xla::StatusOr<py::object> PjitFunction::Call(py::handle callable,
   // A vector of [num_inputs].
   auto num_args_arrays = PrepareIfrtInputs(*cache_entry->executable, arguments,
                                            cache_entry->kept_var_bitvec);
+
   if (!num_args_arrays.ok()) {
     VLOG(2) << "Failed to prepare IFRT inputs: " << num_args_arrays.status();
     return fallback_to_cache_miss();
@@ -569,6 +615,7 @@ xla::Status PjitFunction::UpdateArgsSignature(
   JitState& tls = jax::ThreadLocalJitState();
   bool jax_enable_x64 = GetEnableX64();
 
+  arguments.signature.default_device = GetDefaultDevice();
   arguments.signature.jax_enable_x64 = jax_enable_x64;
 
   auto& dynamic_arg_signatures = arguments.signature.dynamic_arg_signatures;
@@ -583,12 +630,15 @@ xla::Status PjitFunction::UpdateArgsSignature(
 
     // It should be already checked previously in the entry point of
     // PjitFunction::Call().
-    DCHECK(arg.get_type() == xla::PyArray::type());
+    if (arg.get_type() == xla::PyArray::type()) {
+      auto py_array = py::reinterpret_borrow<xla::PyArray>(arg);
 
-    auto py_array = py::reinterpret_borrow<xla::PyArray>(arg);
-
-    arguments.signature.dynamic_arg_shardings.push_back(py_array.sharding());
-    arguments.signature.committed_args.push_back(py_array.committed());
+      arguments.signature.dynamic_arg_shardings.push_back(py_array.sharding());
+      arguments.signature.committed_args.push_back(py_array.committed());
+    } else {
+      arguments.signature.dynamic_arg_shardings.push_back(py::none());
+      arguments.signature.committed_args.push_back(false);
+    }
   }
 
   arguments.signature.thread_local_extra_jit_context = tls.extra_jit_context;

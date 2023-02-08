@@ -176,6 +176,7 @@ std::string CallSignature::DebugString() const {
       "dynamic arg keyword names: %s\n"
       "dynamic arg treedefs: %s\n"
       "device: %s\n"
+      "default_device: %s\n"
       "jax_enable_x64: %d\n"
       "jax_array: %d\n"
       "global_extra_jit_context: %s\n"
@@ -187,8 +188,9 @@ std::string CallSignature::DebugString() const {
       absl::StrJoin(committed_args, ",", bool_formatter),
       absl::StrJoin(dynamic_arg_names, ",", py_object_formatter),
       absl::StrJoin(dynamic_arg_treedefs, "| ", treedef_formatter),  // new line
-      device != nullptr ? device->DebugString() : "nullptr", jax_enable_x64,
-      jax_array, OptionalDebugString(global_extra_jit_context),
+      device != nullptr ? device->DebugString() : "nullptr",
+      OptionalDebugString(default_device), jax_enable_x64, jax_array,
+      OptionalDebugString(global_extra_jit_context),
       OptionalDebugString(thread_local_extra_jit_context));
 }
 
@@ -230,6 +232,9 @@ bool CallSignature::operator==(const CallSignature& other) const {
           other.global_extra_jit_context.has_value()) &&
          (!global_extra_jit_context.has_value() ||
           global_extra_jit_context->equal(*other.global_extra_jit_context)) &&
+         (default_device.has_value() == other.default_device.has_value()) &&
+         (!default_device.has_value() ||
+          default_device->equal(*other.default_device)) &&
          (thread_local_extra_jit_context.has_value() ==
           other.thread_local_extra_jit_context.has_value()) &&
          (!thread_local_extra_jit_context.has_value() ||
