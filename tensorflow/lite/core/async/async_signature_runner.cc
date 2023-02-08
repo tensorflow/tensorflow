@@ -93,11 +93,11 @@ TfLiteStatus AsyncSignatureRunner::UnregisterBuffer(TfLiteBufferHandle handle) {
   return async_subgraph_->UnregisterBuffer(handle);
 }
 
-std::vector<const char*> AsyncSignatureRunner::SupportedBufferTypes(
+const std::vector<const char*>& AsyncSignatureRunner::SupportedBufferTypes(
     TfLiteIoType io_type) const {
   return async_subgraph_->SupportedBufferTypes(io_type);
 }
-std::vector<const char*> AsyncSignatureRunner::SupportedSynchronizations(
+const std::vector<const char*>& AsyncSignatureRunner::SupportedSynchronizations(
     TfLiteIoType io_type) const {
   return async_subgraph_->SupportedSynchronizations(io_type);
 }

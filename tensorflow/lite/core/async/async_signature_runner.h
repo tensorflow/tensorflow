@@ -22,7 +22,6 @@ limitations under the License.
 #include "tensorflow/lite/core/async/async_kernel_internal.h"
 #include "tensorflow/lite/core/async/async_subgraph.h"
 #include "tensorflow/lite/core/async/common.h"
-#include "tensorflow/lite/core/c/c_api_types.h"
 #include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/core/subgraph.h"
 #include "tensorflow/lite/internal/signature_def.h"
@@ -77,10 +76,11 @@ class AsyncSignatureRunner {
   TfLiteStatus UnregisterBuffer(TfLiteBufferHandle handle);
 
   // Returns a list of names of supported buffer types.
-  std::vector<const char*> SupportedBufferTypes(TfLiteIoType io_type) const;
+  const std::vector<const char*>& SupportedBufferTypes(
+      TfLiteIoType io_type) const;
 
   // Returns a list of names of supported synchronization types.
-  std::vector<const char*> SupportedSynchronizations(
+  const std::vector<const char*>& SupportedSynchronizations(
       TfLiteIoType io_type) const;
 
   // Reconciles registrations with all backends depending on I/O tensor `name`

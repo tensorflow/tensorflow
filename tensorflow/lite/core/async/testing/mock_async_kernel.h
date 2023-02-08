@@ -15,8 +15,11 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_CORE_ASYNC_TESTING_MOCK_ASYNC_KERNEL_H_
 #define TENSORFLOW_LITE_CORE_ASYNC_TESTING_MOCK_ASYNC_KERNEL_H_
 
+#include <vector>
+
 #include <gmock/gmock.h>
 #include "tensorflow/lite/core/async/backend_async_kernel_interface.h"
+#include "tensorflow/lite/core/async/common.h"
 
 namespace tflite {
 namespace async {
@@ -36,10 +39,6 @@ class MockAsyncKernel : public delegates::BackendAsyncKernelInterface {
               (override));
   MOCK_METHOD(TfLiteStatus, UnregisterBuffer,
               (TfLiteOpaqueContext*, TfLiteBufferHandle), (override));
-  MOCK_METHOD(std::vector<const char*>, SupportedBufferTypes, (TfLiteIoType),
-              (const, override));
-  MOCK_METHOD(std::vector<const char*>, SupportedSynchronizations,
-              (TfLiteIoType), (const, override));
   MOCK_METHOD(bool, ReconcileRestrictions,
               (TfLiteOpaqueContext*, TfLiteOpaqueNode*, int,
                const TfLiteAttributeMap*, TfLiteAttributeMap*,
@@ -58,6 +57,19 @@ class MockAsyncKernel : public delegates::BackendAsyncKernelInterface {
               (override));
   MOCK_METHOD(TfLiteStatus, Finish,
               (TfLiteOpaqueContext*, TfLiteExecutionTask*), (override));
+
+  const std::vector<const char*>& SupportedBufferTypes(
+      TfLiteIoType io_type) const override {
+    return buffer_types_;
+  }
+  const std::vector<const char*>& SupportedSynchronizations(
+      TfLiteIoType io_type) const override {
+    return sync_types_;
+  }
+
+ private:
+  const std::vector<const char*> buffer_types_{"buffer_type"};
+  const std::vector<const char*> sync_types_{"sync_type"};
 };
 
 }  // namespace testing
