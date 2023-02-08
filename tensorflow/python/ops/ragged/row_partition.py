@@ -21,6 +21,7 @@
 
 import numpy as np
 
+from tensorflow.core.protobuf import struct_pb2
 from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -36,6 +37,7 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_ragged_math_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops.ragged import segment_id_ops
+from tensorflow.python.saved_model import nested_structure_coder
 from tensorflow.python.util.tf_export import tf_export
 
 #===============================================================================
@@ -1382,6 +1384,13 @@ class RowPartitionSpec(type_spec.TypeSpec):
                           tensor_shape.dimension_value(
                               self._uniform_row_length[0]))
     return RowPartitionSpec(nrows, nvals, uniform_row_length, dtype)
+
+
+nested_structure_coder.register_codec(
+    nested_structure_coder.BuiltInTypeSpecCodec(
+        RowPartitionSpec, struct_pb2.TypeSpecProto.ROW_PARTITION_SPEC
+    )
+)
 
 
 #===============================================================================

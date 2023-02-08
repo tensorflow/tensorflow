@@ -288,6 +288,8 @@ def PrepareQuantizePass : Pass<"tfl-prepare-quantize", "mlir::func::FuncOp"> {
                  "comma separated list of allowlisted functions to be quantized. Only used in tests">,
       Option<"quantize_signed_", "quantize-signed", "bool", "false",
              "signed inference type. Only used in tests">,
+      Option<"activation_number_of_bits_", "activation-number-of-bits", "int", "8",
+             "number of bits for inference type. Only used in tests">,
       Option<"post_training_quantize_", "post-training-quantize", "bool", "false",
              "enable post training quantization. Only used in tests">,
       Option<"legacy_float_scale_", "legacy-float-scale", "bool", "false",

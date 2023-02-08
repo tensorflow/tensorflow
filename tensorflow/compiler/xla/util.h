@@ -539,7 +539,7 @@ constexpr uint64_t QuietNanWithoutPayload() {
   static_assert(!std::is_same<T, tsl::float8_e4m3fn>::value,
                 "E4M3FN does not have payload");
   if (const int bits = NanPayloadBits<T>()) {
-    return uint64_t{1} << (bits - 1);
+    return uint64_t{1} << (bits > 0 ? (bits - 1) : 0);
   }
   return 0;
 }

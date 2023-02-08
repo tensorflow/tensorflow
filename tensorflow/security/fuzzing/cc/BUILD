@@ -19,7 +19,7 @@ tf_cc_fuzz_test(
     srcs = ["status_fuzz.cc"],
     tags = ["no_oss"],
     deps = [
-        ":fuzz_helpers",
+        ":fuzz_domains",
         "//tensorflow/core/platform:status",
     ],
 )
@@ -118,16 +118,18 @@ tf_cc_fuzz_test(
     srcs = ["status_group_fuzz.cc"],
     tags = ["no_oss"],
     deps = [
-        ":fuzz_helpers",
+        ":fuzz_domains",
         "//tensorflow/core/platform:status",
     ],
 )
 
 cc_library(
-    name = "fuzz_helpers",
-    hdrs = ["fuzz_helpers.h"],
+    name = "fuzz_domains",
+    testonly = True,
+    hdrs = ["fuzz_domains.h"],
     deps = [
         "//tensorflow/core/platform:status",
+        "@com_google_fuzztest//fuzztest",
     ],
 )
 

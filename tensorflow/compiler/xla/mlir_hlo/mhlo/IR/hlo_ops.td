@@ -1446,13 +1446,6 @@ def MHLO_AllReduceOp : MHLO_Op<"all_reduce",
   );
   let regions = (region SizedRegion<1>:$computation);
   let results = (outs MHLO_Tensor);
-  // use_global_device_ids is rarely used, so we add a simplified builder method
-  // for convenience.
-  let builders = [
-    OpBuilder<(ins
-      "::mlir::Type":$result_type, "::mlir::Value":$operand,
-      "::mlir::DenseIntElementsAttr":$replica_groups,
-      "::mlir::mhlo::ChannelHandleAttr":$channel_handle)>];
   let hasVerifier = 1;
 
   let hasCustomHLOConverter = 1;

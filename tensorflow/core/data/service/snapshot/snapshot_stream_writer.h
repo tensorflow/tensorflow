@@ -183,6 +183,9 @@ class SnapshotStreamWriter {
   // After committing a checkpoint, deletes the previous checkpoints.
   Status DeleteOutdatedCheckpoints();
 
+  // Deletes all checkpoints.
+  Status DeleteCheckpoints();
+
   // Restores from the last checkpoint.
   Status Restore();
 

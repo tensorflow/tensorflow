@@ -11,6 +11,7 @@ tf_cc_test(
     data = [
         "testdata/test.mlir",
         "testdata/xla_launch.mlir",
+        "testdata/xla_launch_xla_reduce_window.mlir",
     ],
     tags = ["no_oss"],
     deps = [

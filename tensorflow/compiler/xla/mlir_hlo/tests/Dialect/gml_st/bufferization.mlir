@@ -1,6 +1,6 @@
 // RUN: mlir-hlo-opt %s -empty-tensor-to-alloc-tensor \
-// RUN:   -test-gml-st-bufferization -canonicalize -cse -canonicalize \
-// RUN:   -split-input-file | FileCheck %s
+// RUN: -hlo-one-shot-bufferize -canonicalize -cse -canonicalize \
+// RUN: -split-input-file | FileCheck %s
 
 func.func @set_tile(%input: tensor<?x?xf32>) -> tensor<2x4xf32> {
   %c0 = arith.constant 0 : index

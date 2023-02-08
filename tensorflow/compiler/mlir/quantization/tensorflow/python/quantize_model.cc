@@ -271,13 +271,17 @@ absl::StatusOr<std::vector<std::string>> UnfreezeConstantsAndSaveVariables(
     return variable_save_status.status();
   }
 
-  if (const absl::Status pass_run_status =
-          RunPasses(/*name=*/kTfQuantInsertRestoreOpStepName,
-                    /*add_passes_func=*/
-                    [](mlir::PassManager &pm) {
-                      pm.addPass(mlir::quant::CreateInsertRestoreOpPass());
-                    },
-                    ctx, module_op);
+  if (const absl::Status pass_run_status = RunPasses(
+          /*name=*/kTfQuantInsertRestoreOpStepName,
+          /*add_passes_func=*/
+          [](mlir::PassManager &pm) {
+            pm.addPass(mlir::quant::CreateInsertRestoreOpPass());
+            // Initialization by `tf.ConstOp` is no longer required as there is
+            // a `tf.RestoreV2Op` now.
+            pm.addPass(
+                mlir::quant::CreateRemoveVariableInitializationByConstPass());
+          },
+          ctx, module_op);
       !pass_run_status.ok()) {
     return pass_run_status;
   }

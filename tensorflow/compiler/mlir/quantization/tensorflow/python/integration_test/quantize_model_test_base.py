@@ -239,6 +239,7 @@ class QuantizedModelTest(test.TestCase, parameterized.TestCase):
       op_names: Collection[str],
       attr_name: str = '',
       attr_val: _AttrValType = None,
+      get_op_name: bool = False,
   ) -> int:
     """Returns the number of given ops in a graph def.
 
@@ -247,6 +248,7 @@ class QuantizedModelTest(test.TestCase, parameterized.TestCase):
       op_names: Names of the operations to find within the graph.
       attr_name: Name of the attribute of the ops to match.
       attr_val: Value of the attr_name to check.
+      get_op_name: If set True, checks node.name rather than node.op.
 
     Returns:
       The number of occurrences of the given ops in a graph. The ops will be
@@ -261,6 +263,7 @@ class QuantizedModelTest(test.TestCase, parameterized.TestCase):
           op_name=op_name,
           attr_name=attr_name,
           attr_val=attr_val,
+          get_op_name=get_op_name,
       )
 
       # Check the graph genederated from user defined functions
@@ -270,6 +273,7 @@ class QuantizedModelTest(test.TestCase, parameterized.TestCase):
             op_name=op_name,
             attr_name=attr_name,
             attr_val=attr_val,
+            get_op_name=get_op_name,
         )
     return op_count
 
@@ -279,6 +283,7 @@ class QuantizedModelTest(test.TestCase, parameterized.TestCase):
       op_name: str,
       attr_name: str,
       attr_val: _AttrValType,
+      get_op_name: bool = False,
   ) -> int:
     """Determine the number of nodes whose operation name matches `op_name`.
 
@@ -290,18 +295,28 @@ class QuantizedModelTest(test.TestCase, parameterized.TestCase):
       op_name: Name of the op to match.
       attr_name: Name of the attribute of the op to match.
       attr_val: Value of the attr_name to check.
+      get_op_name: If set True, checks node.name rather than node.op.
 
     Returns:
       The number of occurrences of nodes whose name match `op_name` and
       'attr_val' if 'attr_name' is given.
     """
-    return len(
-        [
-            node.attr.get(attr_name) == attr_val
-            for node in nodes
-            if node.op == op_name
-        ]
-    )
+    if get_op_name:
+      return len(
+          [
+              node.attr.get(attr_name) == attr_val
+              for node in nodes
+              if node.name == op_name
+          ]
+      )
+    else:
+      return len(
+          [
+              node.attr.get(attr_name) == attr_val
+              for node in nodes
+              if node.op == op_name
+          ]
+      )
 
   def _create_simple_tf1_conv_model(
       self,

@@ -649,6 +649,25 @@ class TypeSpecTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     spec = type_spec.type_spec_from_value(value)
     self.assertEqual(spec, TwoTensorsSpec.from_value(value))
 
+  def testCast(self):
+    spec = TwoTensorsSpec([], dtypes.int32, [], dtypes.float32)
+    foo = spec._from_components([1, 2.3])
+    ctx = trace_type.InternalCastContext()
+    value = spec._cast(foo, ctx)
+    tensor_type = type(ops.convert_to_tensor([1, 2, 3]))
+    self.assertIsInstance(value.x, tensor_type)
+    self.assertIsInstance(value.y, tensor_type)
+    self.assertEqual(value.x.dtype, dtypes.int32)
+    self.assertEqual(value.y.dtype, dtypes.float32)
+
+    bar = TwoComposites(
+        ragged_factory_ops.constant([[1, 2], [3]], dtypes.int32),
+        ragged_factory_ops.constant([[5], [6, 7, 8]], dtypes.float32))
+    bar_spec = type_spec.type_spec_from_value(bar)
+    value = bar_spec._cast(bar, ctx)
+    self.assertEqual(value.x.dtype, dtypes.int32)
+    self.assertEqual(value.y.dtype, dtypes.float32)
+
   def testNestedRagged(self):
     # Check that TwoCompositeSpecs are compatible if one has a nested
     # RaggedTensorSpec w/ ragged_rank=0 and the other has a corresponding

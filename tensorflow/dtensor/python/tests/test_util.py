@@ -94,8 +94,8 @@ def reset_logical_devices(device_type, count):
                      '%s' % device_type)
 
   if count < len(devices):
-    raise ValueError(f'Cannot set {count} logical devices, which is '
-                     f'less than ({len(devices)}) physical devices.')
+    devices = devices[:count]
+    tf_config.set_visible_devices(devices, device_type=device_type.upper())
 
   for i, device in enumerate(devices):
     n = (i + 1) * count // len(devices) - i * count // len(devices)

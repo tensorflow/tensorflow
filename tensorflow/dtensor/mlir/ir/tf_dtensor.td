@@ -520,7 +520,7 @@ def TF_DTensorAllReduceOp : TF_Op<"DTensorAllReduce", [Pure]> {
   let summary = "";
 
   let arguments = (ins
-    TensorOf<[TF_Bfloat16, TF_Bool, TF_Float16, TF_Float32, TF_Int32, TF_Int64, TF_Uint32]>:$input,
+    TensorOf<[TF_Bfloat16, TF_Bool, TF_Float16, TF_Float32, TF_Float64, TF_Int32, TF_Int64, TF_Uint32]>:$input,
     TF_Int32Tensor:$group_assignment,
 
     TF_AnyStrAttrOf<["Min", "Max", "Mul", "Add", "Mean", "Any", "All"]>:$reduce_op,
@@ -528,7 +528,7 @@ def TF_DTensorAllReduceOp : TF_Op<"DTensorAllReduce", [Pure]> {
   );
 
   let results = (outs
-    TensorOf<[TF_Bfloat16, TF_Bool, TF_Float16, TF_Float32, TF_Int32, TF_Int64, TF_Uint32]>:$output
+    TensorOf<[TF_Bfloat16, TF_Bool, TF_Float16, TF_Float32, TF_Float64, TF_Int32, TF_Int64, TF_Uint32]>:$output
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;

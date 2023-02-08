@@ -11,7 +11,7 @@ package(
 )
 
 tflite_jni_binary(
-    name = "libtensorflowlite_delegate_performance_benchmark.so",
+    name = "libdelegate_performance_benchmark.so",
     srcs = ["delegate_performance_benchmark_jni.cc"],
     deps = [
         ":accuracy_benchmark",
@@ -76,6 +76,6 @@ cc_library(
 )
 
 cc_library(
-    name = "tensorflowlite_delegate_performance_benchmark_native",
-    srcs = ["libtensorflowlite_delegate_performance_benchmark.so"],
+    name = "benchmark_native",
+    srcs = ["libdelegate_performance_benchmark.so"],
 )

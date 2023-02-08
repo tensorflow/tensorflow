@@ -382,7 +382,7 @@ mlir::Operation* EmitCollectiveGather(
   auto dim_0_shape = input_shape[0];
   std::vector<int64> output_shape = {input_shape.begin(), input_shape.end()};
   output_shape[0] = dim_0_shape * group_size;
-  ::mlir::Type output_type =
+  auto output_type =
       mlir::RankedTensorType::get(output_shape, input_type.getElementType());
 
   mlir::Value group_key_scalar;
@@ -491,7 +491,7 @@ mlir::LogicalResult ConvertBoolReduce(ReduceOpType reduce_op) {
     mlir::TF::CastOp cast_to_int32 = builder.create<mlir::TF::CastOp>(
         loc, integer_input_type, reduce_op.getInput());
     reduce_op.setOperand(0, cast_to_int32.getY());
-    const mlir::Type integer_output_type = mlir::RankedTensorType::get(
+    auto integer_output_type = mlir::RankedTensorType::get(
         tensor_output_type.getShape(), builder.getIntegerType(32));
     reduce_op.getOutput().setType(integer_output_type);
 

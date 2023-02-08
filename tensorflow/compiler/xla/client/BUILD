@@ -108,6 +108,8 @@ cc_library(
         "//tensorflow/compiler/xla/service:computation_placer",
         "//tensorflow/tsl/platform:env",
         "//tensorflow/tsl/platform:statusor",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
     ],

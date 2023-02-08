@@ -21,12 +21,8 @@ from tensorflow.python.data.ops import structured_function
 from tensorflow.python.eager import context
 from tensorflow.python.ops import gen_experimental_dataset_ops as ged_ops
 from tensorflow.python.platform import gfile
-from tensorflow.python.util import lazy_loader
-
 # TODO(b/238903802): Use TypeSpec serialization methods directly.
-nested_structure_coder = lazy_loader.LazyLoader(
-    "nested_structure_coder", globals(),
-    "tensorflow.python.saved_model.nested_structure_coder")
+from tensorflow.python.saved_model import nested_structure_coder
 
 
 def _load(path, element_spec, compression, reader_func):

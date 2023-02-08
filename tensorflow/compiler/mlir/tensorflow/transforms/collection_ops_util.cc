@@ -317,7 +317,7 @@ Value ScatterAccumulateElements(Value indices, Value updates, Value buffer,
         GetElement(index, buffer, builder, loc, /*keep_slice_shape=*/true);
     starts_in_update[0] = i;
     auto update_slice_starts = GetR1Const(starts_in_update, builder, loc);
-    auto slice =
+    Value slice =
         builder
             .create<TF::SliceOp>(
                 loc, ArrayRef<Type>{old_slice.getType()},

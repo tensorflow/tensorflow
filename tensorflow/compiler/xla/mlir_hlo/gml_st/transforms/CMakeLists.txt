@@ -54,6 +54,9 @@ add_mlir_library(GmlStPasses
   tiling_softmax/tiling_softmax.cc
   triton_tiling/transform_matmul_for_triton.cc
   vectorization/vectorization.cc
+  vectorization/vectorize_copy.cc
+  vectorization/vectorize_for_cpu.cc
+  vectorization/vectorize_for_gpu.cc
 
   DEPENDS
   MLIRGmlStPassIncGen

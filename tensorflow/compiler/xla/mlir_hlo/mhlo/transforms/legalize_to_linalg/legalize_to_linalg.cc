@@ -1994,8 +1994,9 @@ class MapOpToMapConverter : public OpConversionPattern<mhlo::MapOp> {
 
     Location loc = op.getLoc();
     Value operand0 = adaptor.getOperands()[0];
-    Value operand1 = coerceTensorShape(rewriter, loc, adaptor.getOperands()[1],
-                                       operand0.getType());
+    Value operand1 = coerceTensorShape(
+        rewriter, loc, cast<TypedValue<ShapedType>>(adaptor.getOperands()[1]),
+        operand0.getType());
     Value output = rewriter.create<tensor::EmptyOp>(
         loc, tensor::getMixedSizes(rewriter, loc, operand0),
         resultType.getElementType());
@@ -3877,8 +3878,9 @@ class PointwiseToLinalgMapConverter : public OpConversionPattern<OpTy> {
     SmallVector<Value> scalarInputs;
     for (Value input : adaptor.getOperands()) {
       if (getRank(input) == maxRank) {
-        mappedInputs.push_back(
-            coerceTensorShape(rewriter, loc, input, emptyTensor.getType()));
+        mappedInputs.push_back(coerceTensorShape(
+            rewriter, loc, cast<TypedValue<ShapedType>>(input),
+            emptyTensor.getType()));
         scalarInputs.push_back(nullptr);
       } else {
         scalarInputs.push_back(rewriter.create<tensor::ExtractOp>(loc, input));

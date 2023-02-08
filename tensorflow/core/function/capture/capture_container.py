@@ -24,6 +24,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import type_spec
 from tensorflow.python.types import core
 from tensorflow.python.util import nest
+from tensorflow.python.util import object_identity
 
 
 @dataclasses.dataclass(frozen=True)
@@ -54,6 +55,8 @@ class FunctionCaptures(object):
     # Dict that maps capture identifier -> CaptureContainer
     self._by_ref = py_collections.OrderedDict()
     self._by_val = py_collections.OrderedDict()
+    # Set of external ops on which the graph has a control dependency
+    self.control = object_identity.ObjectIdentitySet()
 
   def capture_by_val(self,
                      value: Any,

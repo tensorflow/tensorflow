@@ -27,7 +27,7 @@ REGISTER_OP("DTensorAllReduce")
     .Input("input: T")
     .Input("group_assignment: int32")
     .Output("output: T")
-    .Attr("T: {half, bfloat16, float, int32, uint32, int64, bool}")
+    .Attr("T: {half, bfloat16, float, float64, int32, uint32, int64, bool}")
     .Attr("reduce_op: {'Min', 'Max', 'Mul', 'Add', 'Mean', 'Any', 'All'}")
     .Attr("device_type: string")  // e.g. "/device:TPU"
     .SetShapeFn(shape_inference::UnchangedShape);

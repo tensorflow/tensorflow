@@ -97,7 +97,6 @@ void SnapshotStreamWriter::WriteSnapshotAndLog() TF_LOCKS_EXCLUDED(mu_) {
 
 Status SnapshotStreamWriter::WriteSnapshot() TF_LOCKS_EXCLUDED(mu_) {
   // TODO(b/258691097): Write the "LEASE" file periodically.
-  // TODO(b/258691097): Clean up checkpoints when the snapshot is complete.
   TF_RETURN_IF_ERROR(InitializeDirectories());
   TF_RETURN_IF_ERROR(Restore());
   while (ShouldWriteChunk()) {
@@ -191,6 +190,11 @@ Status SnapshotStreamWriter::FinalizeStream(Status status) {
     // the former status.
     WriteErrorFile(status).IgnoreError();
   }
+  Status s = DeleteCheckpoints();
+  if (!s.ok()) {
+    LOG(ERROR) << "Failed to clean up checkpoints at "
+               << params_.CheckpointsDirectory() << ": " << s;
+  }
   return status;
 }
 
@@ -280,6 +284,18 @@ Status SnapshotStreamWriter::DeleteOutdatedCheckpoints() {
     if (checkpoint_index < chunk_index_) {
       TF_RETURN_IF_ERROR(params_.env->DeleteFile(checkpoint_filepath));
     }
+  }
+  return OkStatus();
+}
+
+Status SnapshotStreamWriter::DeleteCheckpoints() {
+  if (params_.test_only_keep_temp_files) {
+    return OkStatus();
+  }
+  if (params_.env->FileExists(params_.CheckpointsDirectory()).ok()) {
+    int64_t undeleted_files, undeleted_dirs;
+    return params_.env->DeleteRecursively(params_.CheckpointsDirectory(),
+                                          &undeleted_files, &undeleted_dirs);
   }
   return OkStatus();
 }

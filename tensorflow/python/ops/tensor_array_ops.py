@@ -22,6 +22,7 @@ import weakref
 
 import numpy as np
 
+from tensorflow.core.protobuf import struct_pb2
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -39,6 +40,7 @@ from tensorflow.python.ops import gen_data_flow_ops
 from tensorflow.python.ops import list_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.saved_model import nested_structure_coder
 from tensorflow.python.util import tf_should_use
 from tensorflow.python.util.tf_export import tf_export
 
@@ -1472,6 +1474,13 @@ class TensorArraySpec(type_spec.TypeSpec):
 
   def _to_legacy_output_classes(self):
     return TensorArray
+
+
+nested_structure_coder.register_codec(
+    nested_structure_coder.BuiltInTypeSpecCodec(
+        TensorArraySpec, struct_pb2.TypeSpecProto.TENSOR_ARRAY_SPEC
+    )
+)
 
 
 # Register the TypeSpec for TensorArray.  If TensorArray is updated to be a

@@ -286,10 +286,6 @@ void Status::IgnoreError() const {
   // no-op
 }
 
-void Status::SetPayload(absl::string_view type_url, absl::string_view payload) {
-  SetPayload(type_url, absl::Cord(payload));
-}
-
 void Status::SetPayload(absl::string_view type_url, absl::Cord payload) {
   if (ok()) return;
   state_->payloads[std::string(type_url)] = payload;

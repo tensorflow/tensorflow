@@ -603,17 +603,6 @@ ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
                                               complex_shape.element_type()));
 }
 
-/* static */ int64_t ShapeUtil::ElementsIn(const Shape& shape) {
-  DCHECK(shape.IsArray()) << ShapeUtil::HumanString(shape);
-  DCHECK_EQ(shape.dimensions_size(), shape.rank());
-  if (shape.dimensions().size() == 1) {
-    return shape.dimensions()[0];
-  }
-  return std::accumulate<decltype(shape.dimensions().begin()), int64_t>(
-      shape.dimensions().begin(), shape.dimensions().end(), 1LL,
-      std::multiplies<int64_t>());
-}
-
 /* static */ int64_t ShapeUtil::ElementsInRecursive(const Shape& shape) {
   CHECK(shape.IsArray() || shape.IsTuple());
   if (shape.IsArray()) {
@@ -673,10 +662,9 @@ ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
   for (int i = 0; i < dimensions_size; ++i) {
     if (i != 0) printer->Append(",");
     if (shape.is_dynamic_dimension(i)) {
-      printer->Append(StrCat("<=", shape.dimensions(i)));
-    } else {
-      printer->Append(StrCat(shape.dimensions(i)));
+      printer->Append("<=");
     }
+    printer->Append(absl::AlphaNum(shape.dimensions(i)).Piece());
   }
   printer->Append("]");
 }

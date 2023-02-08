@@ -173,6 +173,7 @@ cc_library(
         ":test_util",
         "//tensorflow/tsl/lib/core:status_test_util",
         "//tensorflow/tsl/platform:test",
+        "@com_google_absl//absl/time",
         "@com_google_absl//absl/types:span",
     ],
     alwayslink = 1,

@@ -157,6 +157,15 @@ std::unique_ptr<OperationPass<ModuleOp>> CreateInsertRestoreOpPass();
 std::unique_ptr<OperationPass<func::FuncOp>> CreateMarkFunctionsNoinlinePass(
     ArrayRef<std::string> noinline_functions);
 
+// Removes `tf.AssignVariableOp(tf.VarHandleOp, tf.Const)` patterns from the
+// initializer function (type = "restore_op").
+// Note: initializing values (`tf.Const`s) will be removed and this may result
+// in an information loss and uninitialized variables eventually. Make sure that
+// this effect is desired (e.g. there is a `tf.RestoreV2Op` that restores the
+// variables instead).
+std::unique_ptr<OperationPass<ModuleOp>>
+CreateRemoveVariableInitializationByConstPass();
+
 }  // namespace quant
 }  // namespace mlir
 

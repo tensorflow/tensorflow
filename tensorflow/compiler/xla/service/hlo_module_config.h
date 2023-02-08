@@ -23,6 +23,8 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/inlined_vector.h"
+#include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/compiler/xla/debug_options_flags.h"
 #include "tensorflow/compiler/xla/service/computation_layout.h"
@@ -331,13 +333,13 @@ class HloModuleConfig {
   int phase_index() const { return phase_index_; }
   void set_phase_index(const int phase_index) { phase_index_ = phase_index; }
 
-  void set_allow_spmd_sharding_propagation_to_output(
-      bool allow_spmd_sharding_propagation_to_output) {
-    allow_spmd_sharding_propagation_to_output_ =
-        allow_spmd_sharding_propagation_to_output;
-  }
-  bool allow_spmd_sharding_propagation_to_output() const {
+  absl::Span<const bool> allow_spmd_sharding_propagation_to_output() const {
     return allow_spmd_sharding_propagation_to_output_;
+  }
+  void set_allow_spmd_sharding_propagation_to_output(
+      absl::Span<const bool> data) {
+    return allow_spmd_sharding_propagation_to_output_.assign(data.begin(),
+                                                             data.end());
   }
 
   const std::vector<uint64_t>& memory_space_assignment_config() const {
@@ -461,7 +463,13 @@ class HloModuleConfig {
   // which can be used by higher level framework as a way to query intermediate
   // sharding of operations when multiple computation would be chained and
   // merged together.
-  bool allow_spmd_sharding_propagation_to_output_ = false;
+  // Each boolean in the vector specifies if the propagation is allowed to
+  // change the sharding of a specific leaf in tuple output. One single boolean
+  // in the vector means we are applying this to every value in the tuple
+  // output. If the output is not a tuple then only a single value is valid
+  // here.
+  absl::InlinedVector<bool, 1> allow_spmd_sharding_propagation_to_output_ = {
+      false};
 
   // Each Hlo analysis is allowed at least a constant number of
   // abstract cost units, before it is considered for early termination.

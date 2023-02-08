@@ -51,6 +51,14 @@ DatasetDef RangeDatasetWithShardHint(int64_t range);
 // tf.data.Dataset.range(100000000).repeat().
 DatasetDef InfiniteDataset();
 
+// Returns a test dataset representing
+// datasets = [tf.data.Dataset.from_tensors("a").repeat(10),
+//             tf.data.Dataset.from_tensors("b").repeat(10),
+//             tf.data.Dataset.from_tensors("c").repeat(10)]
+// choice_dataset = tf.data.Dataset.range(3).repeat()
+// dataset = tf.data.Dataset.choose_from_datasets(datasets, choice_dataset)
+StatusOr<DatasetDef> ChooseFromDatasets();
+
 // Returns a distributed snapshot metadata for a dummy dataset.
 experimental::DistributedSnapshotMetadata
 CreateDummyDistributedSnapshotMetadata();

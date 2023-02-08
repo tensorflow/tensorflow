@@ -48,6 +48,10 @@ DistributedSaveOp::DistributedSaveOp(OpKernelConstruction* ctx)
 void DistributedSaveOp::Compute(OpKernelContext* ctx) {
   DatasetBase* dataset;
   OP_REQUIRES_OK(ctx, GetDatasetFromVariantTensor(ctx->input(0), &dataset));
+  OP_REQUIRES(
+      ctx, dataset->Cardinality() != kInfiniteCardinality,
+      errors::InvalidArgument("Saving an infinite dataset is not allowed: ",
+                              dataset->DebugString()));
 
   tstring directory;
   OP_REQUIRES_OK(ctx, ParseScalarArgument(ctx, kDirectory, &directory));
@@ -83,7 +87,7 @@ void DistributedSaveOp::Compute(OpKernelContext* ctx) {
                     std::string(serialized_metadata_)));
   }
 
-  DataServiceDispatcherClient client(address, DefaultDataTransferProtocol());
+  DataServiceDispatcherClient client(address, DefaultProtocol());
   int64_t deadline_micros =
       EnvTime::NowMicros() + absl::ToInt64Microseconds(kRetryTimeout);
   OP_REQUIRES_OK(

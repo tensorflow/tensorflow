@@ -17,10 +17,12 @@ limitations under the License.
 #include <string>
 
 #include "absl/functional/function_ref.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/core/data/snapshot_utils.h"
 #include "tensorflow/tsl/platform/env.h"
 #include "tensorflow/tsl/platform/errors.h"
+#include "tensorflow/tsl/platform/random.h"
 #include "tensorflow/tsl/platform/status.h"
 
 namespace tensorflow {
@@ -31,10 +33,8 @@ namespace {
 tsl::Status AtomicallyWrite(
     absl::string_view filename, tsl::Env* env,
     absl::FunctionRef<tsl::Status(const std::string&)> nonatomically_write) {
-  std::string uncommitted_filename;
-  if (!env->LocalTempFilename(&uncommitted_filename)) {
-    return tsl::errors::Internal("Failed to write file at ", filename);
-  }
+  std::string uncommitted_filename =
+      absl::StrCat(filename, "-tmp-", random::New64());
   TF_RETURN_IF_ERROR(nonatomically_write(uncommitted_filename));
   return env->RenameFile(uncommitted_filename, std::string(filename));
 }

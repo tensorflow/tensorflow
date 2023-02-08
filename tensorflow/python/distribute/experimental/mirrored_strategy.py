@@ -29,6 +29,7 @@ from tensorflow.python.data.experimental.ops import distribute
 from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute import distribute_utils
 from tensorflow.python.distribute import values as values_lib
+from tensorflow.python.distribute.experimental import dtensor_util
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.util import nest
@@ -167,6 +168,9 @@ class MirroredExtended(distribute_lib.StrategyExtendedV2):
     # In the single client mesh DTensor context, this is False.
     return False
 
+  def _get_local_replica_id(self, replica_id_in_sync_group):
+    return replica_id_in_sync_group
+
   def _experimental_distribute_dataset(self, dataset, options):
     # Strategy always assume the user input data is a batched dataset for
     # experimental_distribute_dataset().
@@ -303,17 +307,32 @@ class MirroredExtended(distribute_lib.StrategyExtendedV2):
     d_kwargs = nest.map_structure(map_fn, kwargs)
 
     with self._container_strategy().scope():
-      # TODO(scottzhu): Add support for get_replica_context() within the fn.
-      dtensor_result = fn(*d_args, **d_kwargs)
+      with dtensor_util.DTensorReplicaContext(self._container_strategy()):
+        dtensor_result = fn(*d_args, **d_kwargs)
 
-    # Strategy requires to return a PerReplica instance
-    return distribute_utils.regroup(d_api.unpack(dtensor_result),
-                                    always_wrap=True)
+    return nest.map_structure(
+        dtensor_util.DTensorDistributedValue,
+        dtensor_result)
+
+  def _gather_to_implementation(self, value, destinations, axis, options):
+    if isinstance(value, dtensor_util.DTensorDistributedValue):
+      value = value.get_dtensor()
+    if not d_api.is_dtensor(value):
+      # This is the current behavior for mirrored strategy, should we raise an
+      # error for unsupported types?
+      return value
+
+    # Unpack the dtensor components and gather the tensors on the axis
+    components = d_api.unpack(value)
+    return array_ops.concat(components, axis=axis)
 
 
 def _convert_inputs_to_dtensor(inputs, mesh):
+  """Convert any input types to DTensor instance."""
   if d_api.is_dtensor(inputs):
     return inputs
+  elif isinstance(inputs, dtensor_util.DTensorDistributedValue):
+    return inputs.get_dtensor()
   elif isinstance(inputs, values_lib.DistributedValues):
     return _convert_per_replica_to_dtensor(inputs, mesh)
   else:

@@ -66,10 +66,18 @@ _ExperimentalMethod = quant_opts_pb2.QuantizationMethod.ExperimentalMethod
 
 _TensorShape = Sequence[Union[int, None]]
 
-_PerChannelQuantizedOps = (
+_PER_CHANNEL_QUANTIZED_OPS = (
     'UniformQuantizedConvolution',
     'UniformQuantizedConvolutionHybrid',
     'UniformQuantizedDotHybrid',
+)
+
+# Lists of ops whose channel dimension should be changed if per_channel
+# quantization is enabled. Respectively refers to (scale, zero_point).
+_SUFFIXES = ('/filter1', '/filter2')
+_PER_CHANNEL_OP_NAMES = (
+    f'{op}{suffix}'
+    for op, suffix in itertools.product(_PER_CHANNEL_QUANTIZED_OPS, _SUFFIXES)
 )
 
 
@@ -1329,23 +1337,57 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
     if target_opset == quant_opts_pb2.XLA:
       self.assertTrue(self._contains_op(output_graphdef, 'XlaConvV2'))
     elif target_opset == quant_opts_pb2.UNIFORM_QUANTIZED:
-      # _contains_op for UQ ops also checks _contains_quantized_function_call.
       self.assertTrue(
           self._contains_op(output_graphdef, 'UniformQuantizedConvolution')
       )
       if enable_per_channel_quantization:
-        quantized_axis_attr = attr_value_pb2.AttrValue(i=3)
+        quantized_axis = 3
+        quantized_dim_size_attr = attr_value_pb2.AttrValue(
+            list=attr_value_pb2.AttrValue.ListValue(
+                shape=[
+                    tensor_shape_pb2.TensorShapeProto(
+                        dim=[
+                            tensor_shape_pb2.TensorShapeProto.Dim(
+                                size=filter_shape[quantized_axis]
+                            )
+                        ]
+                    )
+                ]
+            )
+        )
       else:
-        quantized_axis_attr = attr_value_pb2.AttrValue(i=-1)
+        quantized_axis = -1
+        # Empty dimension. Per-tensor quantization has singular channel.
+        quantized_dim_size_attr = attr_value_pb2.AttrValue(
+            list=attr_value_pb2.AttrValue.ListValue(
+                shape=[tensor_shape_pb2.TensorShapeProto()]
+            )
+        )
+      quantized_axis_attr = attr_value_pb2.AttrValue(i=quantized_axis)
       self.assertEqual(
           self._count_ops(
               output_graphdef,
-              _PerChannelQuantizedOps,
+              _PER_CHANNEL_QUANTIZED_OPS,
               'rhs_quantization_axis',
               quantized_axis_attr,
           ),
-          self._count_ops(output_graphdef, _PerChannelQuantizedOps),
+          self._count_ops(output_graphdef, _PER_CHANNEL_QUANTIZED_OPS),
       )
+      self.assertEqual(
+          self._count_ops(
+              output_graphdef,
+              _PER_CHANNEL_OP_NAMES,
+              '_output_shapes',
+              quantized_dim_size_attr,
+              get_op_name=True,
+          ),
+          self._count_ops(
+              output_graphdef,
+              _PER_CHANNEL_OP_NAMES,
+              get_op_name=True,
+          ),
+      )
+      self.assertFalse(self._contains_op(output_graphdef, 'Conv2D'))
     else:
       self.assertTrue(self._contains_quantized_function_call(output_graphdef))
     self.assertFalse(self._contains_op(output_graphdef, 'FusedBatchNormV3'))
@@ -1400,7 +1442,6 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
           self._output_saved_model_path, self._input_saved_model_path, 1 / 3
       )
     elif target_opset == quant_opts_pb2.UNIFORM_QUANTIZED:
-      # _contains_op for UQ ops also checks _contains_quantized_function_call.
       self.assertTrue(
           self._contains_op(output_graphdef, 'UniformQuantizedConvolution')
       )
@@ -1608,23 +1649,59 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
           self._contains_op(output_graphdef, 'DepthwiseConv2dNative')
       )
     elif target_opset == quant_opts_pb2.UNIFORM_QUANTIZED:
-      # _contains_op for UQ ops also checks _contains_quantized_function_call.
       self.assertTrue(
           self._contains_op(output_graphdef, 'UniformQuantizedConvolution')
       )
       if enable_per_channel_quantization:
-        quantized_axis_attr = attr_value_pb2.AttrValue(i=3)
+        quantized_axis = 3
+        quantized_dim_size_attr = attr_value_pb2.AttrValue(
+            list=attr_value_pb2.AttrValue.ListValue(
+                shape=[
+                    tensor_shape_pb2.TensorShapeProto(
+                        dim=[
+                            tensor_shape_pb2.TensorShapeProto.Dim(
+                                # Depthwise conv is reshaped to [H,W,1,CxM].
+                                size=filter_shape[quantized_axis]
+                                * filter_shape[2]
+                            )
+                        ]
+                    )
+                ]
+            )
+        )
       else:
-        quantized_axis_attr = attr_value_pb2.AttrValue(i=-1)
+        quantized_axis = -1
+        # Empty dimension. Per-tensor quantization has singular channel.
+        quantized_dim_size_attr = attr_value_pb2.AttrValue(
+            list=attr_value_pb2.AttrValue.ListValue(
+                shape=[tensor_shape_pb2.TensorShapeProto()]
+            )
+        )
+      quantized_axis_attr = attr_value_pb2.AttrValue(i=quantized_axis)
       self.assertEqual(
           self._count_ops(
               output_graphdef,
-              _PerChannelQuantizedOps,
+              _PER_CHANNEL_QUANTIZED_OPS,
               'rhs_quantization_axis',
               quantized_axis_attr,
           ),
-          self._count_ops(output_graphdef, _PerChannelQuantizedOps),
+          self._count_ops(output_graphdef, _PER_CHANNEL_QUANTIZED_OPS),
       )
+      self.assertEqual(
+          self._count_ops(
+              output_graphdef,
+              _PER_CHANNEL_OP_NAMES,
+              '_output_shapes',
+              quantized_dim_size_attr,
+              get_op_name=True,
+          ),
+          self._count_ops(
+              output_graphdef,
+              _PER_CHANNEL_OP_NAMES,
+              get_op_name=True,
+          ),
+      )
+      self.assertFalse(self._contains_op(output_graphdef, 'Conv2D'))
     else:
       self.assertTrue(self._contains_quantized_function_call(output_graphdef))
     self.assertFalse(self._contains_op(output_graphdef, 'FusedBatchNormV3'))

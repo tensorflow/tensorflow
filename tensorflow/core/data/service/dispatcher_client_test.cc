@@ -228,7 +228,7 @@ TEST_F(DispatcherClientTest, GetSnapshotSplitMultipleStreams) {
       int64_t local_split_index = 0;
       bool end_of_splits = false;
       TF_ASSERT_OK(dispatcher_client_->GetSnapshotSplit(
-          test_cluster_->WorkerAddress(0), snapshot_task.base_path(),
+          test_cluster_->WorkerAddress(i), snapshot_task.base_path(),
           snapshot_task.stream_index(),
           /*source_index=*/0, split, local_split_index, end_of_splits));
       EXPECT_EQ(local_split_index, 0);

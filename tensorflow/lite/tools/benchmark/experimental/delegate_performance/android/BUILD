@@ -19,7 +19,7 @@ android_library(
     deps = [
         "//tensorflow/lite/experimental/acceleration/configuration:configuration_fbs_android",
         "//tensorflow/lite/tools/benchmark/experimental/delegate_performance/android/proto:delegate_performance_java_proto_lite",
-        "//tensorflow/lite/tools/benchmark/experimental/delegate_performance/android/src/main/native:tensorflowlite_delegate_performance_benchmark_native",
+        "//tensorflow/lite/tools/benchmark/experimental/delegate_performance/android/src/main/native:benchmark_native",
         "@flatbuffers//:runtime_android",
     ],
 )

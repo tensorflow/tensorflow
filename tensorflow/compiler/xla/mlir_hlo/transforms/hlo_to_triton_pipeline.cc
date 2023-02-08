@@ -72,7 +72,7 @@ void mlir::createHloToTritonPipeline(OpPassManager& pm,
 
   // TODO(b/261711206): Pad to power-of-2
 
-  pm.addNestedPass<FuncOp>(gml_st::createVectorizeGmlStLoopsPass());
+  pm.addNestedPass<FuncOp>(gml_st::createVectorizeForGPUPass());
 
   pm.addPass(createCanonicalizerPass());
   pm.addPass(createCSEPass());
