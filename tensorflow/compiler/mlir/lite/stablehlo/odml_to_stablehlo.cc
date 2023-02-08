@@ -50,6 +50,7 @@ limitations under the License.
 #include "tensorflow/cc/saved_model/loader.h"
 #include "tensorflow/compiler/mlir/init_mlir.h"
 #include "tensorflow/compiler/mlir/lite/flatbuffer_export.h"
+#include "tensorflow/compiler/mlir/lite/stablehlo/serializer/flatbuffer_export.h"
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/check_accepted_ops_pass.h"
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/op_stat_pass.h"
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/stablehlo_tfl_pass.h"
@@ -180,18 +181,9 @@ tensorflow::StatusOr<OwningOpRef<mlir::ModuleOp>> ImportSavedModelOrMLIR(
 
 tensorflow::Status ConvertStableHLOToFlatbuffer(mlir::ModuleOp module,
                                                 std::string* flatbuffer_str) {
-  // Convert StableHLO MLIR to TFLite Custom Op MLIR
-  mlir::PassManager pm(module->getContext());
-  pm.addNestedPass<func::FuncOp>(CreateStablehloToTflPass());
-  if (failed(pm.run(module))) {
-    return tensorflow::errors::Aborted("HLO to TFL passes failed.");
-  }
-
-  // Convert TFLite Custom Op MLIR to TFLite Flatbuffer
-  tflite::FlatbufferExportOptions options;
-  options.toco_flags.allow_custom_ops();
-  if (!tflite::MlirToFlatBufferTranslateFunction(module, options,
-                                                 flatbuffer_str)) {
+  mlir::odml::FlatbufferExportOptions options;
+  if (!mlir::odml::MlirToFlatBufferTranslateFunction(module, options,
+                                                     flatbuffer_str)) {
     return tensorflow::errors::Aborted("Unable to export flatbuffer");
   }
 
