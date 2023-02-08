@@ -204,10 +204,10 @@ std::tuple<llvm::StringRef, llvm::StringRef, llvm::StringRef> GetResourceKey(
 }
 
 // Remove the initialization of the variables in 'var_handle_ops' from
-// the session init function 'sesion_init_func'
+// the session init function 'session_init_func'
 void RemoveVariablesInitializations(
     const llvm::SmallVector<TF::VarHandleOp, 4>& var_handle_ops,
-    func::FuncOp sesion_init_func) {
+    func::FuncOp session_init_func) {
   // We identify the variables using (device, container, shared_name) of the
   // resource. Capture them here and use them to identify the useless
   // initializations.
@@ -217,7 +217,7 @@ void RemoveVariablesInitializations(
     variables.insert(GetResourceKey(var_handle_op));
 
   llvm::SmallVector<Operation*, 4> work_list;
-  for (auto var_handle_op : sesion_init_func.getOps<TF::VarHandleOp>()) {
+  for (auto var_handle_op : session_init_func.getOps<TF::VarHandleOp>()) {
     if (variables.count(GetResourceKey(var_handle_op)))
       work_list.push_back(var_handle_op);
   }
