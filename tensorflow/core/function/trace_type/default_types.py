@@ -393,8 +393,8 @@ class NamedTuple(trace.TraceType, serialization.Serializable):
 
   def _cast(self, value: Any, casting_context) -> Any:
     # Value must have same attributes with the TraceType
-    assert (
-        isinstance(value, self._placeholder_type)  # pylint: disable=unidiomatic-typecheck
+    assert util.is_namedtuple(
+        value
     ), f"Cannot cast {value!r} to type {self._placeholder_type!r}."
     cast_value = {}
     value_dict = value._asdict()
