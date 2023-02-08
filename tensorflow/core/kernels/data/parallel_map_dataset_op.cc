@@ -628,7 +628,8 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
       return true;
     }
 
-    void StatsThread(const std::shared_ptr<IteratorContext>& ctx) {
+    void StatsThread(const std::shared_ptr<IteratorContext>& ctx)
+        TF_LOCKS_EXCLUDED(*mu_) {
       for (int64_t step = 0;; ++step) {
         int num_calls;
         int num_parallel_calls;
