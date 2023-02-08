@@ -24,15 +24,14 @@ namespace tensorflow::tpu {
 Status AppendTpuEmbeddingErrorPayload(Status obj) {
   if (obj.ok()) {
     return OkStatus();
-  } else {
-    const std::string error_message =
-        absl::StrCat(kTpuEmbeddingErrorMessage, ". ", obj.error_message());
-    Status status(obj.code(), error_message);
-    TPUEmbeddingError error_payload;
-    status.SetPayload(kTpuEmbeddingErrorUrl,
-                      absl::Cord(error_payload.SerializeAsString()));
-    return status;
   }
+  const std::string error_message =
+      absl::StrCat(kTpuEmbeddingErrorMessage, ". ", obj.error_message());
+  Status status(obj.code(), error_message);
+  TPUEmbeddingError error_payload;
+  status.SetPayload(kTpuEmbeddingErrorUrl,
+                    absl::Cord(error_payload.SerializeAsString()));
+  return status;
 }
 
 bool HasTpuEmbeddingErrorPayload(const Status& status) {

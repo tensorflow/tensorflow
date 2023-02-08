@@ -82,9 +82,8 @@ void DeviceSetFromDeviceMgr(const DeviceMgr& device_mgr,
 const std::string GetTPUSystemDevice(absl::string_view job_name) {
   if (job_name.empty()) {
     return DeviceNameUtils::LocalName(DEVICE_TPU_SYSTEM, 0);
-  } else {
-    return absl::StrCat("/job:", job_name, "/device:TPU_SYSTEM:0");
   }
+  return absl::StrCat("/job:", job_name, "/device:TPU_SYSTEM:0");
 }
 
 Status ConstructDistributedInitializationGraph(absl::string_view job_name,

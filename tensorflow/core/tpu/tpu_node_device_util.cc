@@ -27,8 +27,7 @@ bool TpuOpFilter(KernelDef* kdef) {
   // Enable const string operands to Assert op (b/69167214).
   if (op == "Const") {
     AddDtypeToKernelDefConstraint("dtype", DT_STRING, kdef);
-  }
-  if (op == "Assert") {
+  } else if (op == "Assert") {
     AddDtypeToKernelDefConstraint("T", DT_STRING, kdef);
   }
   return true;

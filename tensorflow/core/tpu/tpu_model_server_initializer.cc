@@ -58,10 +58,8 @@ bool FindAndLoadTpuModelServer() {
       env_value && strlen(env_value) > 0 ? env_value : "libtpu.so";
   LOG(INFO) << "Libtpu path is: " << libtpu_path;
   void* library = dlopen(libtpu_path, RTLD_NOW);
-  if (library) {
-    if (TryAcquireTpuLock()) {
-      InitializeTpuLibrary(library);
-    }
+  if (library && TryAcquireTpuLock()) {
+    InitializeTpuLibrary(library);
   }
   stream_executor::tpu::OpsApiFn()->TfTpu_InitializeTpuModelServerFn();
   return true;

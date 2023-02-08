@@ -29,9 +29,8 @@ StatusOr<std::string> GenerateTFStatusOr(errors::Code code,
                                          absl::string_view value = "") {
   if (code == errors::Code::OK) {
     return std::string(value);
-  } else {
-    return errors::Create(code, /*message=*/"", /*payloads=*/{});
   }
+  return errors::Create(code, /*message=*/"", /*payloads=*/{});
 }
 
 TEST(TpuEmbeddingErrors, StatusOk) {
