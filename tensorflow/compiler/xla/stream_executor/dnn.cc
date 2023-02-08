@@ -313,6 +313,8 @@ std::string ActivationModeString(ActivationMode mode) {
       return "bandpass";
     case ActivationMode::kElu:
       return "elu";
+    case ActivationMode::kLeakyRelu:
+      return "leakyrelu";
     default:
       return absl::StrCat("unknown: ", static_cast<int32_t>(mode));
   }

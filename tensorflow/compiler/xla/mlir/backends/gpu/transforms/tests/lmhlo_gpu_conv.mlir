@@ -212,6 +212,7 @@ func.func @conv_forward_fused(%input: memref<8x5x5x1xf32, #map1>,
                reverse = [0, 0]
              }
     { activation_mode = #lmhlo_gpu<activation Relu>,
+      leakyrelu_alpha = 0.0 : f64,
       backend_config = #lmhlo_gpu.convolution_backend_config<
         algorithm = 11,
         is_cudnn_frontend = true,

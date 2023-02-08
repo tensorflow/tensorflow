@@ -372,6 +372,7 @@ class ConvOpLowering : public OpRewritePattern<Conv> {
     if (auto fused = dyn_cast<ConvForwardFusedOp>(op.getOperation())) {
       call->setAttr(b.getStringAttr("activation_mode"),
                     fused.getActivationModeAttr());
+      set_attr("leakyrelu_alpha", fused.getLeakyreluAlphaAttr());
     }
 
     // Copy attributes specific for fused convolutions with side input.
