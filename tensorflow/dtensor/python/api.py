@@ -441,8 +441,17 @@ def _reset() -> None:
 
 @ops.RegisterGradient("Relayout")
 def _relayout_gradient(op, grad):
-  del op
+  grad = gen_dtensor_ops.relayout_grad(grad, forward_input=op.inputs[0])
   return grad
+
+
+@ops.RegisterGradient("RelayoutGrad")
+def _relayout_grad_gradient(op, grad):
+  # Gradient of RelayoutGrad is relayout to the original Relayout's output.
+  grad = gen_dtensor_ops.relayout_grad(grad, forward_input=op.inputs[0])
+  # Return None for forward_input's partial gradient since it is not connected
+  # to the target's gradient.
+  return grad, None
 
 
 @ops.RegisterGradient("CopyToMesh")
