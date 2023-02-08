@@ -76,6 +76,15 @@ bool HasThreeUsers(const HloInstruction* instr) {
   return user_count == 3;
 }
 
+bool IsCudaComputeCompatible(HloInstruction* instr, se::CudaComputeCapability cc) {
+  const DebugOptions& debug_options =
+      instr->GetModule()->config().debug_options();
+  if (!debug_options.xla_gpu_use_runtime_fusion() || 
+      !cc.IsAtLeast(se::CudaComputeCapability::AMPERE)) {
+    return false;
+  }
+  return true;
+}
 // Can instr be converted to type `dst_ty` without losing any precision?  For
 // our purposes, this is true if:
 //
@@ -518,10 +527,7 @@ StatusOr<bool> FuseSideInputAlpha(HloComputation* comp) {
 StatusOr<bool> FuseElu(HloComputation* comp, se::CudaComputeCapability cc) {
   bool changed = false;
   for (HloInstruction* instr : comp->MakeInstructionPostOrder()) {
-    const DebugOptions& debug_options =
-        instr->GetModule()->config().debug_options();
-    if (!debug_options.xla_gpu_use_runtime_fusion() ||
-        !cc.IsAtLeast(se::CudaComputeCapability::AMPERE)) {
+    if (!IsCudaComputeCompatible(instr, cc)) {
       return false;
     }
 
@@ -626,6 +632,96 @@ StatusOr<bool> FuseRelu(HloComputation* comp) {
     }
     TF_ASSIGN_OR_RETURN(conv, EnsureIsConvBiasActivation(conv));
     config.set_activation_mode(se::dnn::kRelu);
+    TF_RETURN_IF_ERROR(conv->set_backend_config(config));
+    TF_RETURN_IF_ERROR(comp->ReplaceInstruction(instr, gte));
+    changed = true;
+  }
+  return changed;
+}
+
+StatusOr<bool> FuseRelu6(HloComputation* comp, se::CudaComputeCapability cc) {
+  bool changed = false;
+  for (HloInstruction* instr : comp->MakeInstructionPostOrder()) {
+    if (!IsCudaComputeCompatible(instr, cc)) {
+      return false;
+    }
+    HloInstruction *gte, *conv;
+    // We don't want to upgrade depthwise convolutions to ConvBiasActivation,
+    // because the fused CUDNN functions are slower for some of those.
+    if (!Match(instr,
+               m::Clamp(
+                   m::Broadcast(m::ConstantEffectiveScalar(0)),
+                   m::GetTupleElement(
+                       &gte, m::Op(&conv)
+                                 .WithPredicate(IsNonDepthwiseConvCustomCall)
+                                 .WithOneUse())
+                       .WithElementType(F16)
+                       .WithOneUse(),
+                   m::Broadcast(m::ConstantEffectiveScalar(6))))) {
+      continue;
+    }
+    TF_ASSIGN_OR_RETURN(CudnnConvBackendConfig config,
+                        conv->backend_config<CudnnConvBackendConfig>());
+    if (config.activation_mode() != se::dnn::kNone) {
+      continue;
+    }
+
+    if (!ConsumeFuel("cudnn-fused-convolution-rewriter", [&] {
+          return absl::StrCat("FuseRelu6: ", conv->ToString());
+        })) {
+      continue;
+    }
+    TF_ASSIGN_OR_RETURN(conv, EnsureIsConvBiasActivation(conv));
+    config.set_activation_mode(se::dnn::kRelu6);
+    TF_RETURN_IF_ERROR(conv->set_backend_config(config));
+    TF_RETURN_IF_ERROR(comp->ReplaceInstruction(instr, gte));
+    changed = true;
+  }
+  return changed;
+}
+
+StatusOr<bool> FuseLeakyRelu(HloComputation* comp, se::CudaComputeCapability cc) {
+  bool changed = false;
+  for (HloInstruction* instr : comp->MakeInstructionPostOrder()) {
+    if (!IsCudaComputeCompatible(instr, cc)) {
+      return false;
+    }
+    HloInstruction *gte, *conv, *alpha;
+    // We don't want to upgrade depthwise convolutions to ConvBiasActivation,
+    // because the fused CUDNN functions are slower for some of those.
+    auto gte_pattern =
+        m::GetTupleElement(&gte,
+                           m::Op(&conv)
+                               .WithPredicate(IsNonDepthwiseConvCustomCall)
+                               .WithOneUse())
+            .WithElementType(F16)
+            .WithPredicate(HasThreeUsers);
+    if (!Match(instr,
+               m::Select(m::Compare(gte_pattern,
+                                    m::Broadcast(m::ConstantEffectiveScalar(0)))
+                             .WithComparisonDirection(ComparisonDirection::kGt)
+                             .WithOneUse(),
+                         gte_pattern,
+                         m::Multiply(gte_pattern, 
+                                     m::Broadcast(m::ConstantEffectiveScalar(&alpha)))
+                             .WithOneUse()))) {
+      continue;
+    }
+    TF_ASSIGN_OR_RETURN(CudnnConvBackendConfig config,
+                        conv->backend_config<CudnnConvBackendConfig>());
+    if (config.activation_mode() != se::dnn::kNone) {
+      continue;
+    }
+
+    if (!ConsumeFuel("cudnn-fused-convolution-rewriter", [&] {
+          return absl::StrCat("FuseLeakyRelu: ", conv->ToString());
+        })) {
+      continue;
+    }
+    TF_ASSIGN_OR_RETURN(conv, EnsureIsConvBiasActivation(conv));
+    config.set_activation_mode(se::dnn::kLeakyRelu);
+    TF_ASSIGN_OR_RETURN(Literal alpha_f64, alpha->literal().Convert(F64));
+    config.set_leakyrelu_alpha(alpha_f64.GetFirstElement<double>());
     TF_RETURN_IF_ERROR(conv->set_backend_config(config));
     TF_RETURN_IF_ERROR(comp->ReplaceInstruction(instr, gte));
     changed = true;
@@ -940,6 +1036,10 @@ StatusOr<bool> CudnnFusedConvRewriter::Run(
     any_changed |= changed;
     TF_ASSIGN_OR_RETURN(changed, FuseElu(comp, compute_capability_));
     any_changed |= changed;
+    TF_ASSIGN_OR_RETURN(changed, FuseRelu6(comp, compute_capability_));
+    any_changed |= changed;
+    TF_ASSIGN_OR_RETURN(changed, FuseLeakyRelu(comp, compute_capability_));
+    any_changed |= changed;
 
     TF_ASSIGN_OR_RETURN(changed, FuseConvertToF16(comp));
     any_changed |= changed;
@@ -958,6 +1058,10 @@ StatusOr<bool> CudnnFusedConvRewriter::Run(
     TF_ASSIGN_OR_RETURN(changed, FuseRelu(comp));
     any_changed |= changed;
     TF_ASSIGN_OR_RETURN(changed, FuseElu(comp, compute_capability_));
+    any_changed |= changed;
+    TF_ASSIGN_OR_RETURN(changed, FuseRelu6(comp, compute_capability_));
+    any_changed |= changed;
+    TF_ASSIGN_OR_RETURN(changed, FuseLeakyRelu(comp, compute_capability_));
     any_changed |= changed;
 
     // Check that we don't have any convs outputing integer types other than s8.
