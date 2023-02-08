@@ -410,7 +410,8 @@ def relayout(tensor: ops.Tensor, layout: layout_lib.Layout) -> ops.Tensor:
     A DTensor output from the Relayout op.
   """
   layout_str = layout.to_string()
-  return gen_dtensor_ops.relayout(tensor, layout_str)
+  with run_on(layout.mesh):
+    return gen_dtensor_ops.relayout(tensor, layout_str)
 
 
 def _set_dtensor_device(device: dtensor_device.DTensorDevice) -> None:

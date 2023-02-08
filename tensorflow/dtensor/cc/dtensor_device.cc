@@ -2012,8 +2012,9 @@ void DTensorDevice::Execute(const TFE_Op* original_op, int* num_outputs,
     TF_DataType dtype = TFE_TensorHandleDataType(input);
     const bool small_int_tensor = num_elements < kSmallTensorThreshold &&
                                   (dtype == TF_INT32 || dtype == TF_INT64);
-    // Only allow large constant autobroadcast for CopyToMesh op.
-    if (operation_name != std::string("CopyToMesh") &&
+    // Only allow large constant autobroadcast for CopyToMesh and Relayout ops.
+    if ((operation_name != std::string("CopyToMesh") &&
+         operation_name != std::string("Relayout")) &&
         !(num_dims == 0 || dtype == TF_STRING || small_int_tensor)) {
       std::vector<int64_t> tensor_shape(TensorShapeAsVector(input, status));
       if (TF_GetCode(status) != TF_OK) return;
