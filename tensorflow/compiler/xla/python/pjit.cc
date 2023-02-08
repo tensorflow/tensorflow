@@ -512,7 +512,7 @@ xla::StatusOr<py::object> PjitFunction::Call(py::handle callable,
 
         PopulateCacheEntry(*cache_entry, arguments.signature, out_tuple);
       } catch (const std::exception& e) {
-        LOG(ERROR) << "cache miss fail: " << e.what();
+        VLOG(2) << "cache miss fail: " << e.what();
         cache_entry->fall_back_to_python = true;
         cache_entry->compilation_complete.Notify();
         throw;
@@ -653,7 +653,7 @@ void PjitFunction::PopulateCacheEntry(PjitCacheEntry& cache_entry,
   DCHECK_EQ(out_and_fastpath_data.size(), 2);
 
   if (out_and_fastpath_data[1].is_none()) {
-    LOG(ERROR) << "fastpath_data is none";
+    VLOG(2) << "fastpath_data is none";
     cache_entry.fall_back_to_python = true;
     return;
   }
