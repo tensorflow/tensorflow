@@ -1902,9 +1902,9 @@ class MklQuantizedConvOp
     if (std::is_same<Toutput, quint8>::value ||
         std::is_same<Toutput, qint8>::value) {
       const float min_input =
-          context->input(min_input_idx_).template scalar<float>()(0);
+          context->input(min_input_idx_).template scalar<float>()();
       const float max_input =
-          context->input(max_input_idx_).template scalar<float>()(0);
+          context->input(max_input_idx_).template scalar<float>()();
       const Tensor& min_filter_vector = context->input(min_filter_idx_);
       const Tensor& max_filter_vector = context->input(max_filter_idx_);
       OP_REQUIRES(
