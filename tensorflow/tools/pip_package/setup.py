@@ -106,7 +106,6 @@ REQUIRED_PACKAGES = [
     # This is a temporary patch for now, to patch previous TF releases.
     'protobuf>=3.20.3,<5.0.0dev,!=4.21.0,!=4.21.1,!=4.21.2,!=4.21.3,!=4.21.4,!=4.21.5',
     'setuptools',
-    'six >= 1.12.0',
     'termcolor >= 1.1.0',
     'typing_extensions >= 3.6.6',
     'wrapt >= 1.11.0',
