@@ -112,10 +112,6 @@ void ProcessTfOpEvent(absl::string_view tf_op_full_name, Timespan event_span,
                       DerivedXLineBuilder& tf_name_scope_line_builder,
                       DerivedXLineBuilder& tf_op_line_builder);
 
-// Adds step names from GroupMetadataMap to "Steps" line in plane.
-// The event name is updated when converted to trace events.
-void AddGroupMetadataToStepEvents(const GroupMetadataMap& group_metadata_map,
-                                  XLineBuilder& line);
 
 // Derives "Steps" line from group_id XStat in XEvents.
 void DeriveStepEventsFromGroups(const GroupMetadataMap& group_metadata_map,

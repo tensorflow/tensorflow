@@ -226,28 +226,6 @@ void DerivedXLineBuilder::ResetLastEvents(int level) {
   }
 }
 
-void AddGroupMetadataToStepEvents(const GroupMetadataMap& group_metadata_map,
-                                  XLineBuilder& line) {
-  if (group_metadata_map.empty()) return;
-  XPlaneBuilder* plane = line.Plane();
-  const XStatMetadata* group_id_stat_metadata =
-      plane->GetStatMetadata(GetStatTypeStr(StatType::kGroupId));
-  if (group_id_stat_metadata == nullptr) return;
-  const XStatMetadata* step_name_stat_metadata =
-      plane->GetOrCreateStatMetadata(GetStatTypeStr(StatType::kStepName));
-  line.ForEachEvent([&](XEventBuilder event) {
-    const XStat* group_id_stat = event.GetStat(*group_id_stat_metadata);
-    if (group_id_stat != nullptr) {
-      int64_t group_id = group_id_stat->int64_value();
-      if (const GroupMetadata* group_metadata =
-              gtl::FindOrNull(group_metadata_map, group_id)) {
-        // TODO(b/160255693): Change the event name directly.
-        event.AddStatValue(*step_name_stat_metadata, group_metadata->name);
-      }
-    }
-  });
-}
-
 void DeriveStepEventsFromGroups(const GroupMetadataMap& group_metadata_map,
                                 XPlane* device_trace) {
   XPlaneVisitor plane_visitor = CreateTfXPlaneVisitor(device_trace);
