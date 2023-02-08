@@ -557,25 +557,18 @@ Status ProcessFunctionLibraryRuntime::InstantiateMultiDevice(
   TF_RETURN_IF_ERROR(device_mgr_->LookupDevice("CPU:0", &cpu_device));
 
   const uint64 optimization_start_time_usecs = Env::Default()->NowMicros();
-  // Look up for optimized function graph in library. If found, skip
-  // `OptimizeFunctionGraph` step.
-  OptimizedFunctionGraph* optimized_graph_proto =
-      lib_def_->FindOptimizedFunctionGraph(function_name);
-  StatusOr<OptimizedFunctionGraphInfo> optimized_graph_info =
-      optimized_graph_proto == nullptr
-          ? OptimizeFunctionGraph(function_name, attrs, options, *dev_set,
-                                  lib_def_, composite_devices, cpu_device,
-                                  default_device, env_)
-          : OptimizedFunctionGraphInfo::FromProto(*optimized_graph_proto);
-  if (!optimized_graph_info.ok()) return optimized_graph_info.status();
+  TF_ASSIGN_OR_RETURN(auto optimized_graph_info,
+                      OptimizeFunctionGraph(
+                          function_name, attrs, options, *dev_set, lib_def_,
+                          composite_devices, cpu_device, default_device, env_));
 
   // Resets the library registration correctly.
-  optimized_graph_info->function_graph->mutable_flib_def()
-      ->set_default_registry(&(optimized_graph_info->lib_def));
+  optimized_graph_info.function_graph->mutable_flib_def()
+      ->set_default_registry(&(optimized_graph_info.lib_def));
 
   TF_ASSIGN_OR_RETURN(
       auto subgraphs,
-      PreprocessAndPartitionGraph(*optimized_graph_info, options, *dev_set,
+      PreprocessAndPartitionGraph(optimized_graph_info, options, *dev_set,
                                   lib_def_, composite_devices, env_));
   const uint64 optimization_end_time_usecs = Env::Default()->NowMicros();
   metrics::UpdateFunctionGraphOptimizationTime(optimization_end_time_usecs -
@@ -596,7 +589,7 @@ Status ProcessFunctionLibraryRuntime::InstantiateMultiDevice(
   }
 
   const auto& node_name_to_control_ret =
-      optimized_graph_info->node_name_to_control_ret;
+      optimized_graph_info.node_name_to_control_ret;
   // We must preserve control returns in each of the function components,
   // otherwise after function inlining we might prune side-effectful nodes.
   const auto control_ret =
@@ -610,9 +603,9 @@ Status ProcessFunctionLibraryRuntime::InstantiateMultiDevice(
   };
 
   auto data = std::make_unique<MultiDeviceFunctionData>(
-      function_name, function_key, optimized_graph_info->num_return_nodes,
-      std::move(optimized_graph_info->lib_def),
-      std::move(optimized_graph_info->ret_types));
+      function_name, function_key, optimized_graph_info.num_return_nodes,
+      std::move(optimized_graph_info.lib_def),
+      std::move(optimized_graph_info.ret_types));
 
   int i = 0;
   // Generate a random function_name to avoid one function reuse the partition
