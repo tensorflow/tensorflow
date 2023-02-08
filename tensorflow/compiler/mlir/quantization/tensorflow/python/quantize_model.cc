@@ -276,6 +276,7 @@ absl::StatusOr<std::vector<std::string>> UnfreezeConstantsAndSaveVariables(
           /*add_passes_func=*/
           [](mlir::PassManager &pm) {
             pm.addPass(mlir::quant::CreateInsertRestoreOpPass());
+            pm.addPass(mlir::quant::CreateInsertSaveOpPass());
             // Initialization by `tf.ConstOp` is no longer required as there is
             // a `tf.RestoreV2Op` now.
             pm.addPass(
