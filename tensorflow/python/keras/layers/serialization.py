@@ -16,7 +16,7 @@
 """
 # pylint: disable=wildcard-import
 # pylint: disable=unused-import
-
+#serializing/deserializing 
 import threading
 
 from tensorflow.python import tf2
