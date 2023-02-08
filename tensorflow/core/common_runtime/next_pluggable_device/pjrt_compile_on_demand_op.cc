@@ -216,7 +216,7 @@ Status PjRtCompileOnDemandOp::Run(
   options.untuple_result = true;
   TF_ASSIGN_OR_RETURN(
       xla::PjRtDevice * device,
-      pjrt_client->LookupDevice(GetDeviceOrdinal(ctx->device())));
+      pjrt_client->LookupAddressableDevice(GetDeviceOrdinal(ctx->device())));
 
   absl::flat_hash_map<int, int> variable_lookup;
   for (int i = 0; i < variables.size(); i++) {
