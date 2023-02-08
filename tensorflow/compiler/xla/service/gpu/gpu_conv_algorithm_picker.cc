@@ -395,6 +395,7 @@ bool ShouldCheckConv(const HloModuleConfig& hlo_module_config) {
   return conv_autotune_level >= 4;
 }
 
+#if (defined(GOOGLE_CUDA) && GOOGLE_CUDA)
 StatusOr<GpuConvAlgorithmPicker::AutotuneRuntimeArguments>
 GpuConvAlgorithmPicker::AutotuneRuntimeArguments::FromInstruction(
     const HloCustomCallInstruction* instr, se::DeviceMemoryAllocator* allocator,
@@ -444,6 +445,7 @@ GpuConvAlgorithmPicker::AutotuneRuntimeArguments::FromInstruction(
 
   return runtime_arguments;
 }
+#endif 
 
 StatusOr<AutotuneResult> GpuConvAlgorithmPicker::PickBestAlgorithm(
     const HloCustomCallInstruction* instr) {
