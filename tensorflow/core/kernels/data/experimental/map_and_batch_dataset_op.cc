@@ -22,7 +22,6 @@ limitations under the License.
 #include "tensorflow/core/data/dataset_utils.h"
 #include "tensorflow/core/data/name_utils.h"
 #include "tensorflow/core/data/stats_utils.h"
-#include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/metrics.h"
 #include "tensorflow/core/framework/model.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
@@ -358,14 +357,13 @@ class MapAndBatchDatasetOp::Dataset : public DatasetBase {
     // BatchResult encapsulates the output batch, as well as ancillary
     // metadata required to execute the fused map-and-batch operation.
     struct BatchResult {
-      explicit BatchResult(int64_t batch_size, IteratorContext* ctx)
+      explicit BatchResult(int64_t batch_size)
           : end_of_input(false),
             num_elements(0),
             output_allocated(false),
             status(OkStatus()),
             status_offset(-1),
             num_calls(batch_size),
-            checkpoint(MemoryCheckpoint{ctx->id_registry()}),
             uid(tensorflow::EnvTime::NowNanos()) {}
 
       // UpdateStatus updates the batch's aggregate Status.
@@ -589,8 +587,8 @@ class MapAndBatchDatasetOp::Dataset : public DatasetBase {
 
           while (!busy()) {
             if (call_counter_ % dataset()->batch_size_ == 0) {
-              batch_results_.push_back(std::make_shared<BatchResult>(
-                  dataset()->batch_size_, ctx.get()));
+              batch_results_.push_back(
+                  std::make_shared<BatchResult>(dataset()->batch_size_));
             }
             int64_t offset = call_counter_++ % dataset()->batch_size_;
             new_calls.emplace_back(batch_results_.back(), offset);
@@ -616,7 +614,7 @@ class MapAndBatchDatasetOp::Dataset : public DatasetBase {
     Status ReadBatchResult(IteratorContext* ctx, IteratorStateReader* reader,
                            size_t index) TF_EXCLUSIVE_LOCKS_REQUIRED(*mu_) {
       batch_results_.push_back(
-          std::make_shared<BatchResult>(dataset()->batch_size_, ctx));
+          std::make_shared<BatchResult>(dataset()->batch_size_));
       std::shared_ptr<BatchResult> result = batch_results_.back();
       string batch_prefix = strings::StrCat(kBatchResults, "_", index);
       mutex_lock l(result->mu);

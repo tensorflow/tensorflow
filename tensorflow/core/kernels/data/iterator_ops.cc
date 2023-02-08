@@ -125,7 +125,6 @@ Status IteratorResource::GetNext(OpKernelContext* ctx,
   params.symbolic_checkpoint = SymbolicCheckpointEnabled(dataset->options());
   params.thread_factory = unbounded_thread_pool_.get_thread_factory();
   params.thread_pool = &unbounded_thread_pool_;
-  params.id_registry = captured_state->id_registry();
   std::function<void()> deregister_fn;
   TF_RETURN_IF_ERROR(RegisterCancellationCallback(
       ctx->cancellation_manager(),
@@ -208,7 +207,6 @@ Status IteratorResource::Restore(OpKernelContext* ctx,
       SymbolicCheckpointEnabled(input_dataset->options());
   params.thread_factory = unbounded_thread_pool_.get_thread_factory();
   params.thread_pool = &unbounded_thread_pool_;
-  params.id_registry = new_state->id_registry();
   std::function<void()> deregister_fn;
   TF_RETURN_IF_ERROR(RegisterCancellationCallback(
       ctx->cancellation_manager(),
@@ -247,7 +245,6 @@ Status IteratorResource::SetIteratorFromDataset(OpKernelContext* ctx,
   params.symbolic_checkpoint = SymbolicCheckpointEnabled(dataset->options());
   params.thread_factory = unbounded_thread_pool_.get_thread_factory();
   params.thread_pool = &unbounded_thread_pool_;
-  params.id_registry = new_state->id_registry();
   std::function<void()> deregister_fn;
   TF_RETURN_IF_ERROR(RegisterCancellationCallback(
       ctx->cancellation_manager(),
