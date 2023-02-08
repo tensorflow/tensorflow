@@ -525,7 +525,7 @@ class NullMemRefOpConverter : public ConvertOpToLLVMPattern<NullMemRefOp> {
         loc, getVoidPtrType(), sizes.front(), llvm::None);
 
     // Populate underlying ranked descriptor.
-    Type elem_ptr_ptr_type = LLVM::LLVMPointerType::get(
+    LLVM::LLVMPointerType elem_ptr_ptr_type = LLVM::LLVMPointerType::get(
         LLVM::LLVMPointerType::get(llvm_elem_type, address_space));
 
     Value null = rewriter.create<LLVM::NullOp>(
