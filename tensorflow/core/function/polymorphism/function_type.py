@@ -349,7 +349,7 @@ def sanitize_arg_name(name: str) -> str:
   Returns:
     A string that meets Python parameter conventions.
   """
-  # Lower case and replace non-alphanumeric chars with '_'
+  # Replace non-alphanumeric chars with '_'
   swapped = "".join([c if c.isalnum() else "_" for c in name])
   result = swapped if swapped[0].isalpha() else "arg_" + swapped
 
