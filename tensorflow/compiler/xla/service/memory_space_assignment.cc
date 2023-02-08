@@ -4459,6 +4459,8 @@ Status MemorySpaceAssignment::VerifyAndExportHeapSimulatorTrace() {
            ->heap_simulator_trace;
   int64_t memory_usage = 0;
   int64_t max_memory_usage = 0;
+  int64_t prev_time = 0;
+  int64_t prev_memory_usage = 0;
   for (const auto& event : events) {
     int64_t time;
     bool is_free;
@@ -4475,12 +4477,24 @@ Status MemorySpaceAssignment::VerifyAndExportHeapSimulatorTrace() {
     heap_trace_event->set_computation_name(
         value->instruction()->parent()->name());
 
+    if (prev_time != time) {
+      VLOG(2) << "Memory usage: " << std::max(memory_usage, prev_memory_usage)
+              << " at time: " << prev_time << " ("
+              << hlo_live_range->flattened_instruction_sequence()
+                     .instructions()
+                     .at(prev_time)
+                     ->name()
+              << ")";
+      prev_time = time;
+      prev_memory_usage = memory_usage;
+    }
     if (kind == HeapSimulatorTrace::Event::ALLOC) {
       memory_usage += chunk.size;
     } else {
       CHECK_EQ(kind, HeapSimulatorTrace::Event::FREE);
       memory_usage -= chunk.size;
     }
+    prev_memory_usage = std::max(prev_memory_usage, memory_usage);
     max_memory_usage = std::max(max_memory_usage, memory_usage);
     VLOG(4) << "Memory usage: " << memory_usage << " at time: " << time;
   }
