@@ -24,7 +24,7 @@ set -euxo pipefail
 # in ./venv_and_symlink_name/tensorflow to ./tensorflow. We use this for the
 # "pip" tests.
 
-python -m venv /$1
+python3 -m venv /$1
 mkdir -p $1
 rm -f ./$1/tensorflow
 ln -s $(ls /$1/lib) /$1/lib/python3
