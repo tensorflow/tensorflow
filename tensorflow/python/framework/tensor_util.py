@@ -22,7 +22,6 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
-from tensorflow.python.ops import shape_util
 from tensorflow.python.types import core
 from tensorflow.python.types import internal
 from tensorflow.python.util import compat
@@ -1148,8 +1147,3 @@ def try_evaluate_constant(tensor):  # pylint: disable=invalid-name
   with tensor.graph._c_graph.get() as c_graph:
     return c_api.TF_TryEvaluateConstant_wrapper(c_graph, tensor._as_tf_output())
   # pylint: enable=protected-access
-
-
-# TODO(flang): remove once all references have been updated
-maybe_set_static_shape = shape_util.maybe_set_static_shape
-shape_tensor = shape_util.shape_tensor
