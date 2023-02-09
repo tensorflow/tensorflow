@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "Abort"
   attr {
     name: "error_msg"
@@ -28084,6 +28084,13 @@ op {
       }
     }
   }
+  attr {
+    name: "config"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
 }
 op {
   name: "MergeSummary"
@@ -55197,6 +55204,13 @@ op {
   attr {
     name: "tuple_mask"
     type: "string"
+  }
+  attr {
+    name: "config"
+    type: "string"
+    default_value {
+      s: ""
+    }
   }
 }
 op {
