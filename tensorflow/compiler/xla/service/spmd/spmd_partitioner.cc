@@ -4753,7 +4753,9 @@ Status SpmdPartitioner::PreprocessSharding(
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   for (HloComputation* computation : module->computations(execution_threads)) {
     for (HloInstruction* hlo : computation->instructions()) {
-      if (hlo->HasSideEffectNoRecurse() && hlo->opcode() != HloOpcode::kRng) {
+      if (hlo->HasSideEffectNoRecurse() && hlo->opcode() != HloOpcode::kRng &&
+          (hlo->opcode() != HloOpcode::kCustomCall ||
+           GetCustomCallPartitioner(hlo->custom_call_target()) == nullptr)) {
         TF_RET_CHECK(hlo->has_sharding())
             << "Side-effect HLO must have sharding: " << hlo->ToString();
         TF_RET_CHECK(!HasReplicatedSharding(hlo->sharding()) ||
