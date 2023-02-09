@@ -25,6 +25,10 @@ tf_class {
     mtype: "<type \'property\'>"
   }
   member {
+    name: "ndim"
+    mtype: "<type \'property\'>"
+  }
+  member {
     name: "op"
     mtype: "<type \'property\'>"
   }

@@ -510,6 +510,11 @@ class Tensor(internal.NativeObject, core_tf_types.Tensor):
       return tensor_shape.TensorShape(shape_vec)
 
   @property
+  def ndim(self):
+    """Returns the number of Tensor dimensions."""
+    return self.shape.ndims
+
+  @property
   def _shape(self):
     logging.warning("Tensor._shape is private, use Tensor.shape "
                     "instead. Tensor._shape will eventually be removed.")
@@ -1273,11 +1278,6 @@ class _EagerTensorBase(Tensor):
   def _shape_as_list(self):
     """The shape of the tensor as a list."""
     return list(self._shape_tuple())
-
-  @property
-  def ndim(self):
-    """Returns the number of Tensor dimensions."""
-    return self.shape.ndims
 
   @deprecation.deprecated(
       None, "Use tf.identity with explicit device placement instead.")
