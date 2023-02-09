@@ -4550,12 +4550,14 @@ Status AlgebraicSimplifierVisitor::HandleReshape(HloInstruction* reshape) {
         reshape->ReshapeMerelyInsertsOrDeletes1SizedDimensions();
     // 1-sized dimensions added and removed will be one sized in both the update
     // slice and the dynamic-update-slice result.
+    // Make sure dus has only one user; otherwise an extra copy is resulted.
     if (trivial_reshape.has_value() &&
         Match(reshape->mutable_operand(0),
               m::Op(&dus)
                   .WithOpcode(HloOpcode::kDynamicUpdateSlice)
                   .WithOperand(1, m::Op(&slice))) &&
-        !dus->has_sharding() && !dus->operand(0)->has_sharding()) {
+        dus->user_count() == 1 && !dus->has_sharding() &&
+        !dus->operand(0)->has_sharding()) {
       auto new_operand = reshape->AddInstruction(HloInstruction::CreateReshape(
           reshape->shape(), dus->mutable_operand(0)));
       std::vector<int64_t> new_slice_shape;

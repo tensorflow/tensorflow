@@ -9109,5 +9109,29 @@ TEST_F(AlgebraicSimplifierTest,
               after_rewrite_rev_dims);
 }
 
+// Make sure the optimization for reshape(dynamic-update-slice) does not more
+// forward if the dus has multiple users.
+TEST_F(AlgebraicSimplifierTest, ReshapeOfDupDoNotCloneMultiUserDup) {
+  const char* kModuleStr = R"(
+    HloModule m
+    test {
+      p0 = f32[128,1184,1,128]{3,2,1,0} parameter(0)
+      p1 = f32[128,1,1,128]{3,2,1,0} parameter(1)
+      p2 = s32[] parameter(2)
+      constant.6030 = s32[] constant(0)
+      dynamic-update-slice.1854 = f32[128,1184,1,128]{3,2,1,0} dynamic-update-slice(p0, p1, constant.6030, p2, constant.6030, constant.6030)
+      reshape.33672 = f32[128,1,1184,128]{3,1,2,0} reshape(dynamic-update-slice.1854)
+      ROOT tuple.0 = (f32[128,1,1184,128]{3,1,2,0}, f32[128,1184,1,128]{3,2,1,0}) tuple(reshape.33672, dynamic-update-slice.1854)
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  SCOPED_TRACE("Before rewrite\n" + m->ToString());
+  AlgebraicSimplifierOptions options;
+  AlgebraicSimplifier simplifier(options);
+  auto g = simplifier.Run(m.get()).value();
+  SCOPED_TRACE("After rewrite\n" + m->ToString());
+  ASSERT_FALSE(g);
+}
+
 }  // namespace
 }  // namespace xla
