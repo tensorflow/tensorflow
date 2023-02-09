@@ -41,7 +41,7 @@ py_library(
     srcs_version = "PY3",
     deps = [
         ":constants",
-        "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python:control_flow_ops_gen",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:util",
