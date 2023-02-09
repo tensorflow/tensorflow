@@ -2311,7 +2311,6 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
       raise ValueError(
           'When calling model.load_weights, skip_mismatch can only be set to '
           'True when by_name is True.')
-
     filepath, save_format = _detect_save_format(filepath)
     if save_format == 'tf':
       status = self._checkpoint.read(filepath, options)
@@ -2345,6 +2344,11 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
               f, self.layers, skip_mismatch=skip_mismatch)
         else:
           hdf5_format.load_weights_from_hdf5_group(f, self.layers)
+
+        if hasattr(f, 'close'):
+          f.close()
+        elif hasattr(f.file, 'close'):
+          f.file.close()
 
     # Perform any layer defined finalization of the layer state.
     for layer in self.layers:
