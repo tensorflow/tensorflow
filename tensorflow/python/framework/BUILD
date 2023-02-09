@@ -78,11 +78,9 @@ cc_library(
     name = "python_op_gen",
     srcs = [
         "python_op_gen.cc",
-        "python_op_gen_internal.cc",
     ],
     hdrs = [
         "python_op_gen.h",
-        "python_op_gen_internal.h",
     ],
     visibility = ["//visibility:public"],
     deps = [
