@@ -447,6 +447,9 @@ message EdgeTpuSettings {
 
   // QoS class to determine chunking size for PRO onward.
   optional QosClass qos_class = 7 [default = QOS_UNDEFINED];
+
+  // Cluster IDs the model will be compiled for.
+  repeated int32 hardware_cluster_ids = 8 [packed = true];
 }
 
 // Coral Dev Board / USB accelerator delegate settings.
