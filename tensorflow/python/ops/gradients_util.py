@@ -316,6 +316,10 @@ def _MaybeCompile(scope, op, func, grad_fn):
     xla_separate_compiled_gradients = func.definition.attr[
         "_XlaSeparateCompiledGradients"].b
     xla_scope = func.definition.attr["_XlaScope"].s.decode()
+    try:
+      compile_gradients = func.definition.attr["_XlaCompileGradients"].b
+    except ValueError:
+      compile_gradients = True
   else:
     try:
       xla_compile = op.get_attr("_XlaCompile")
@@ -324,25 +328,36 @@ def _MaybeCompile(scope, op, func, grad_fn):
       xla_scope = op.get_attr("_XlaScope").decode()
     except ValueError:
       xla_compile = False
+    try:
+      compile_gradients = op.get_attr("_XlaCompileGradients")
+    except ValueError:
+      compile_gradients = True
 
-  if not xla_compile:
-    return grad_fn()  # Exit early
-
-  # If the gradients are supposed to be compiled separately, we give them a
-  # _XlaScope name that is based on the name_scope of the gradients.  Otherwise
-  # they just inherit the existing _XlaScope name, which lets them be merged
-  # together with the non-gradient computation.
-  if xla_separate_compiled_gradients:
-    xla_grad_scope = "%s_grad_%s" % (xla_scope, scope)
-  else:
-    xla_grad_scope = xla_scope
-
-  attrs = {
+  if not xla_compile and not compile_gradients:
+    attrs = {
       "_XlaCompile": attr_value_pb2.AttrValue(b=xla_compile),
-      "_XlaScope": attr_value_pb2.AttrValue(s=xla_grad_scope.encode())
-  }
-  with ops.get_default_graph()._attr_scope(attrs):  # pylint: disable=protected-access
-    return grad_fn()
+    }
+    with ops.get_default_graph()._attr_scope(attrs):  # pylint: disable=protected-access
+      return grad_fn()
+  else:
+    if not xla_compile:
+      return grad_fn()  # Exit early
+
+    # If the gradients are supposed to be compiled separately, we give them a
+    # _XlaScope name that is based on the name_scope of the gradients.  Otherwise
+    # they just inherit the existing _XlaScope name, which lets them be merged
+    # together with the non-gradient computation.
+    if xla_separate_compiled_gradients:
+      xla_grad_scope = "%s_grad_%s" % (xla_scope, scope)
+    else:
+      xla_grad_scope = xla_scope
+
+    attrs = {
+        "_XlaCompile": attr_value_pb2.AttrValue(b=xla_compile),
+        "_XlaScope": attr_value_pb2.AttrValue(s=xla_grad_scope.encode())
+    }
+    with ops.get_default_graph()._attr_scope(attrs):  # pylint: disable=protected-access
+      return grad_fn()
 
 
 def _RaiseNoGradWrtInitialLoopValError(op, from_ops, xs_set):

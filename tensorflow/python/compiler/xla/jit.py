@@ -35,7 +35,8 @@ class _XlaScope(object):
 
 @contextlib.contextmanager
 @tf_export("xla.experimental.jit_scope")
-def experimental_jit_scope(compile_ops=True, separate_compiled_gradients=False):
+def experimental_jit_scope(compile_ops=True, separate_compiled_gradients=False,
+                           compile_gradients=True):
   """Enable or disable JIT compilation of operators within the scope.
 
   NOTE: This is an experimental feature.
@@ -106,6 +107,8 @@ def experimental_jit_scope(compile_ops=True, separate_compiled_gradients=False):
       as the name of the gradients. As a result, the gradients will be compiled
       in a scope that is separate from both the forward computation, and from
       other gradients.
+    compile_gradients: Whether to compile gradients of the ops in the scope, this
+      argument only work when compile_ops is `False`.
   Raises:
     RuntimeError: if called when eager execution is enabled.
   Yields:
@@ -125,7 +128,9 @@ def experimental_jit_scope(compile_ops=True, separate_compiled_gradients=False):
       "_XlaCompile":
           xla_compile,
       "_XlaSeparateCompiledGradients":
-          attr_value_pb2.AttrValue(b=bool(separate_compiled_gradients))
+          attr_value_pb2.AttrValue(b=bool(separate_compiled_gradients)),
+      "_DisableGradients":
+          attr_value_pb2.AttrValue(b=bool(compile_gradients))
   }
 
   # Find the singleton counter for the current scoped graph.  If it
