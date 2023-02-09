@@ -18,24 +18,26 @@ limitations under the License.
 
 #include <cstdint>
 
-#include "tensorflow/lite/c/c_api_types.h"
+#include "tensorflow/lite/core/c/c_api_types.h"
 
-namespace tflite {
+namespace tflite::telemetry {
 
-// The source of a telemetry event.
+// The source of a telemetry event. Enum values intentionally follow proto
+// guidelines as they are used for Clearcut logging.
 enum class TelemetrySource : uint32_t {
-  TFLITE_INTERPRETER = 0,
+  UNKNOWN = 0,
+  TFLITE_INTERPRETER = 1,
 
   // For external delegate.
   // External delegate should identify themselves in telemetry event names by
   // prefixing the delegame name to it.
-  TFLITE_CUSTOM_DELEGATE = 1,
+  TFLITE_CUSTOM_DELEGATE = 2,
 
-  TFLITE_GPU = 2,
-  TFLITE_NNAPI = 3,
-  TFLITE_HEXAGON = 4,
-  TFLITE_XNNPACK = 5,
-  TFLITE_COREML = 6,
+  TFLITE_GPU = 3,
+  TFLITE_NNAPI = 4,
+  TFLITE_HEXAGON = 5,
+  TFLITE_XNNPACK = 6,
+  TFLITE_COREML = 7,
 };
 
 // A namespaced status code for telemetry events.
@@ -63,6 +65,6 @@ struct TelemetryStatusCode {
   }
 };
 
-}  // namespace tflite
+}  // namespace tflite::telemetry
 
 #endif  // TENSORFLOW_LITE_PROFILING_TELEMETRY_TELEMETRY_STATUS_H_

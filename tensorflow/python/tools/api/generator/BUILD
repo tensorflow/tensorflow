@@ -7,6 +7,7 @@ load("//tensorflow/python/tools/api/generator:api_init_files_v1.bzl", "KERAS_API
 load("//tensorflow/python/tools/api/generator:api_gen.bzl", "TENSORFLOW_API_GEN_PACKAGES")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     licenses = ["notice"],
 )
 
@@ -86,6 +87,9 @@ py_test(
         "no_pip",
     ],
     deps = [
+        "//tensorflow/lite/python:analyzer",
+        "//tensorflow/lite/python:lite",
+        "//tensorflow/lite/python/authoring",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_combinations",
         "//tensorflow/python:modules_with_exports",

@@ -62,7 +62,7 @@ LogicalResult BuildAliasingInfo(
     auto assign_op = llvm::dyn_cast_or_null<TF::AssignVariableOp>(
         result.use_begin()->getOwner());
     if (!assign_op) continue;
-    AliasInfo& alias_info = resource_alias_info_map[assign_op.resource()];
+    AliasInfo& alias_info = resource_alias_info_map[assign_op.getResource()];
     // TODO(b/184420848): We may not need to skip aliasing for entire function
     // in case of multiple assigns.
     if (alias_info.output_index != kUnassigned) {
@@ -82,7 +82,7 @@ LogicalResult BuildAliasingInfo(
         operand.get().getDefiningOp());
     if (!read_op) continue;
     if (!read_op->hasOneUse()) continue;
-    auto it = resource_alias_info_map.find(read_op.resource());
+    auto it = resource_alias_info_map.find(read_op.getResource());
     if (it == resource_alias_info_map.end()) continue;
     AliasInfo& alias_info = it->getSecond();
     // TODO(b/184420848): We may not need to skip aliasing for entire function

@@ -32,7 +32,6 @@ GpuCodegenTest::CreateNewVerifiedModuleWithFTZ(bool ftz) {
   HloModuleConfig config;
   auto debug_options = GetDebugOptionsFromFlags();
   debug_options.set_xla_gpu_ftz(ftz);
-  debug_options.set_xla_gpu_max_kernel_unroll_factor(1);
   // TODO(b/38354253): Change tests to use Parameters instead of Constants.
   debug_options.add_xla_disable_hlo_passes("constant_folding");
   config.set_debug_options(debug_options);

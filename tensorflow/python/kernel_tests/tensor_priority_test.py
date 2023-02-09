@@ -16,6 +16,7 @@
 import numpy as np
 
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_conversion_registry
 from tensorflow.python.platform import test as test_lib
 
 
@@ -70,7 +71,7 @@ class TensorPriorityTest(test_lib.TestCase):
       del value, dtype, name, as_ref  # Unused.
       raise TypeError
 
-    ops.register_tensor_conversion_function(
+    tensor_conversion_registry.register_tensor_conversion_function(
         NumpyArraySubclass, raise_to_delegate, priority=0)
     tensor = ops.convert_to_tensor([[10.0, 20.0]])
     rhs = NumpyArraySubclass(shape=(1, 2), buffer=np.array([1.0, 2.0]))

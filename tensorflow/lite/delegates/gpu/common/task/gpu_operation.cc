@@ -275,8 +275,9 @@ absl::Status ResolveSelectorsPass(
             kArgsPrefix + object_name + "_" + member_name;
         ReplaceAllWords(member_name, new_name, &patch);
       }
-
-      patch = linkable_patch + patch;
+      if (!linkable_patch.empty()) {
+        patch = "{\n" + linkable_patch + patch + ";\n}";
+      }
       code->replace(arg_pos, close_bracket_pos - arg_pos, patch);
       position = arg_pos + patch.size();
     } else {

@@ -270,7 +270,7 @@ class TFKernelToLLVMPass
     arith::populateArithExpandOpsPatterns(patterns);
     memref::populateExpandOpsPatterns(patterns);
     arith::populateArithToLLVMConversionPatterns(type_converter, patterns);
-    populateMemRefToLLVMConversionPatterns(type_converter, patterns);
+    populateFinalizeMemRefToLLVMConversionPatterns(type_converter, patterns);
     populateMathToLLVMConversionPatterns(type_converter, patterns);
     populateFuncToLLVMConversionPatterns(type_converter, patterns);
     cf::populateControlFlowToLLVMConversionPatterns(type_converter, patterns);

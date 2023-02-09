@@ -17,6 +17,8 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_SERVICE_MEMORY_SPACE_ASSIGNMENT_H_
 
 #include <functional>
+#include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 
@@ -26,6 +28,7 @@ limitations under the License.
 #else
 #include <map>
 #endif
+#include "absl/functional/function_ref.h"
 #include "tensorflow/compiler/xla/service/heap_simulator.h"
 #include "tensorflow/compiler/xla/service/hlo_cost_analysis.h"
 #include "tensorflow/compiler/xla/service/memory_space_assignment_repacking.h"
@@ -114,9 +117,9 @@ class MemorySpaceAssignmentCostAnalysis {
 
   // Function type that can be used to indicate which input/output values are in
   // the alternate memory.
-  using IsInAlternateMemoryFun =
-      std::function<bool(std::optional<int> /*operand_num*/,
-                         const ShapeIndex& /*index*/, const Shape& /*shape*/)>;
+  using IsInAlternateMemoryFun = absl::FunctionRef<bool(
+      std::optional<int> /*operand_num*/, const ShapeIndex& /*index*/,
+      const Shape& /*shape*/)>;
 
   virtual ~MemorySpaceAssignmentCostAnalysis() = default;
 
@@ -387,14 +390,17 @@ class MemorySpaceAssignmentCostAnalysis;
 // The value for buffer size for max async copy is a mechanism to prevent
 // copying small buffers between the two memories unnecessarily. For calculating
 // the max time that the buffer can reside in alternate memory, we use the
-// larger of this value and the actual size of the buffer.
+// larger of this value and the actual size of the buffer. A shape override can
+// also be provided which causes the interval picker to use that shape for async
+// copy durations instead of the actual shape of the copy.
 class CostAnalysisPrefetchIntervalPicker : public PrefetchIntervalPicker {
  public:
   CostAnalysisPrefetchIntervalPicker(
       const MemorySpaceAssignmentCostAnalysis& cost_analysis,
       float min_overlap_to_async_copy_ratio,
       float preferred_overlap_to_async_copy_ratio,
-      float max_overlap_to_mem_size_async_copy_ratio, int64_t mem_size_bytes);
+      float max_overlap_to_mem_size_async_copy_ratio, int64_t mem_size_bytes,
+      const Shape* shape_override = nullptr);
 
   bool CanAllocateInAlternateMemoryNoCopy(const Shape& shape,
                                           int64_t start_time,
@@ -472,6 +478,10 @@ class CostAnalysisPrefetchIntervalPicker : public PrefetchIntervalPicker {
   int64_t decreasing_prefetch_time_iterator_;
 
   std::vector<float> while_execution_counts_;
+  // Shape override is used to override the shape of the shape of the async copy
+  // to treat all async copies the same duration. Having an override forces
+  // prefetches to be scheduled roughly in FIFO order.
+  std::optional<Shape> shape_override_;
 };
 
 // MemorySpaceAssignment assigns memory spaces (default or alternate) to each
@@ -604,6 +614,9 @@ class MemorySpaceAssignment {
     int64_t start_time() const { return start_time_; }
     int64_t end_time() const { return end_time_; }
     bool is_scoped_allocation() const { return is_scoped_allocation_; }
+    virtual std::optional<int64_t> cross_program_prefetch_index() const {
+      return std::nullopt;
+    }
 
     bool operator==(const Allocation& other) const;
     virtual std::string ToString() const;
@@ -628,16 +641,17 @@ class MemorySpaceAssignment {
   // `copy_done_schedule_before_time` or earlier.
   class CopyAllocation : public Allocation {
    public:
-    CopyAllocation(const Allocation& prev_allocation, MemorySpace memory_space,
-                   std::optional<Chunk> chunk, int64_t start_time,
-                   int64_t end_time, int64_t copy_done_schedule_before_time,
-                   bool is_cross_program_prefetch = false)
+    CopyAllocation(
+        const Allocation& prev_allocation, MemorySpace memory_space,
+        std::optional<Chunk> chunk, int64_t start_time, int64_t end_time,
+        int64_t copy_done_schedule_before_time,
+        std::optional<int64_t> cross_program_prefetch_index = std::nullopt)
         : Allocation(/*defining_position=*/{nullptr, {}}, memory_space, chunk,
                      start_time, end_time, /*is_scoped_allocation=*/false),
           prev_allocation_(prev_allocation),
           copy_start_schedule_after_(start_time),
           copy_done_schedule_before_(copy_done_schedule_before_time),
-          is_cross_program_prefetch_(is_cross_program_prefetch) {}
+          cross_program_prefetch_index_(cross_program_prefetch_index) {}
 
     bool is_copy_allocation() const override { return true; }
 
@@ -683,8 +697,8 @@ class MemorySpaceAssignment {
       copy_done_schedule_before_ = copy_done_schedule_before;
     }
 
-    bool is_cross_program_prefetch() const {
-      return is_cross_program_prefetch_;
+    std::optional<int64_t> cross_program_prefetch_index() const override {
+      return cross_program_prefetch_index_;
     }
 
     bool operator==(const CopyAllocation& other) const;
@@ -698,9 +712,9 @@ class MemorySpaceAssignment {
     // is before copy_done_schedule_before_.
     int64_t copy_start_schedule_after_;
     int64_t copy_done_schedule_before_;
-    bool is_cross_program_prefetch_;
     HloInstruction* copy_start_;
     HloInstruction* copy_done_;
+    std::optional<int64_t> cross_program_prefetch_index_;
   };
 
   // An allocation in the default memory space that mirrors another Allocation
@@ -1117,6 +1131,10 @@ struct Options {
   // cross-program-prefetched buffer can be reused.
   bool enable_cross_program_prefetch_freeing = true;
 
+  // The maximum number of cross program prefetches.
+  // TODO(tjablin): Use a heuristic to determine this automatically.
+  int max_cross_program_prefetches = 1;
+
   // Enable redundant eviction optimization in/around while loops. If enabled,
   // this optimization would keep a copy of the buffer in the default memory in
   // addition to alternate memory to eliminate redundant evictions.
@@ -1125,6 +1143,9 @@ struct Options {
   // An optional memory space assignment autotuning config, which is used
   // to sort allocated buffers.
   std::optional<std::vector<uint64_t>> autotuning_config = std::nullopt;
+
+  // Scales effective bandwidth for async copies. Valid range is (0, 1].
+  float async_copy_bandwidth_scaling_factor = 1.0;
 };
 
 // A struct representing an asynchronous copy with its logical start and end
@@ -1198,6 +1219,13 @@ class AsynchronousCopyResource {
       const std::list<AsynchronousCopy>::iterator* current_copy = nullptr,
       float resource_to_free = 0.0);
 
+  // Same as the public RemoveCopy except it works on the async_copies_
+  // iterator. Assumes copy_it points to the last copy for its start time;
+  // otherwise the public RemoveCopy method is supposed to temporarily remove
+  // these later copies that share the same start time before removing the
+  // requested copy.
+  void RemoveCopy(std::list<AsynchronousCopy>::iterator& copy_it);
+
   // We maintain a linked list of asynchronous copies sorted by the start times.
   // This allows us to efficiently find the copy that starts right after another
   // one because adding a copy might push a copy further into the future.
@@ -1233,7 +1261,7 @@ class AlternateMemoryBestFitHeap
   // enables prefetching prefetch_candidate from default memory across program
   // boundaries.
   void AllocateCrossProgramPrefetchBuffer(
-      HloModule* module, std::optional<BufferInterval> prefetch_candidate);
+      HloModule* module, const BufferInterval& prefetch_candidate);
 
   HeapSimulator::Result<HloValue> Finish() override;
 
@@ -1533,13 +1561,13 @@ class AlternateMemoryBestFitHeap
   void ImportRepackedAllocations();
 
   // Adds an asynchronous copy to the allocations.
-  void AddAsyncCopy(const MemorySpaceAssignment::Allocation& prev_allocation,
-                    MemorySpace memory_space, std::optional<Chunk> chunk,
-                    int64_t start_time, int64_t end_time,
-                    int64_t copy_done_schedule_before_time,
-                    MemorySpaceAssignment::AllocationSequence* allocations,
-                    AliasedOffset* aliased_offset, float resource,
-                    bool is_cross_program_prefetch = false);
+  void AddAsyncCopy(
+      const MemorySpaceAssignment::Allocation& prev_allocation,
+      MemorySpace memory_space, std::optional<Chunk> chunk, int64_t start_time,
+      int64_t end_time, int64_t copy_done_schedule_before_time,
+      MemorySpaceAssignment::AllocationSequence* allocations,
+      AliasedOffset* aliased_offset, float resource,
+      std::optional<int> cross_program_prefetch_index = std::nullopt);
 
   // This method is used for committing the chunk candidate but adding it to
   // pending_chunks_ so that we can "uncommit" them in case we need to roll back

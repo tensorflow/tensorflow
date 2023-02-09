@@ -126,50 +126,50 @@ TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU_NO_MLIR_KERNELS);
 
 // Forward declarations of the functor specializations for GPU.
 namespace functor {
-#define DECLARE_GPU_SPEC(T)                                                    \
-  template <>                                                                  \
-  void ReluGrad<GPUDevice, T>::operator()(                                     \
-      const GPUDevice& d, typename TTypes<T>::ConstTensor gradients,           \
-      typename TTypes<T>::ConstTensor features,                                \
-      typename TTypes<T>::Tensor backprops);                                   \
-  extern template struct ReluGrad<GPUDevice, T>;                               \
-                                                                               \
-  template <>                                                                  \
-  void Relu6<GPUDevice, T>::operator()(                                        \
-      const GPUDevice& d, typename TTypes<T>::ConstTensor features,            \
-      typename TTypes<T>::Tensor activations);                                 \
-  extern template struct Relu6<GPUDevice, T>;                                  \
-                                                                               \
-  template <>                                                                  \
-  void Relu6Grad<GPUDevice, T>::operator()(                                    \
-      const GPUDevice& d, typename TTypes<T>::ConstTensor gradients,           \
-      typename TTypes<T>::ConstTensor features,                                \
-      typename TTypes<T>::Tensor backprops);                                   \
-  extern template struct Relu6Grad<GPUDevice, T>;                              \
-                                                                               \
-  template <>                                                                  \
-  void LeakyRelu<GPUDevice, T>::operator()(LeakyReluArgs args);                \
-  extern template struct LeakyRelu<GPUDevice, T>;                              \
-                                                                               \
-  template <>                                                                  \
-  void LeakyReluGrad<GPUDevice, T>::operator()(                                \
-      const GPUDevice& d, typename TTypes<T>::ConstTensor gradients,           \
-      typename TTypes<T>::ConstTensor features, T alpha,                       \
-      typename TTypes<T>::Tensor backprops);                                   \
-  extern template struct LeakyReluGrad<GPUDevice, T>;                          \
-                                                                               \
-  template <>                                                                  \
-  void EluGrad<GPUDevice, T>::operator()(                                      \
-      const GPUDevice& d, typename TTypes<T>::ConstTensor gradients,           \
-      typename TTypes<T>::ConstTensor activations,                             \
-      typename TTypes<T>::Tensor backprops);                                   \
-  extern template struct EluGrad<GPUDevice, T>;                                \
-                                                                               \
-  template <>                                                                  \
-  void SeluGrad<GPUDevice, T>::operator()(                                     \
-      const GPUDevice& d, typename TTypes<T>::ConstTensor gradients,           \
-      typename TTypes<T>::ConstTensor activations,                             \
-      typename TTypes<T>::Tensor backprops);                                   \
+#define DECLARE_GPU_SPEC(T)                                          \
+  template <>                                                        \
+  void ReluGrad<GPUDevice, T>::operator()(                           \
+      const GPUDevice& d, typename TTypes<T>::ConstTensor gradients, \
+      typename TTypes<T>::ConstTensor features,                      \
+      typename TTypes<T>::Tensor backprops);                         \
+  extern template struct ReluGrad<GPUDevice, T>;                     \
+                                                                     \
+  template <>                                                        \
+  void Relu6<GPUDevice, T>::operator()(                              \
+      const GPUDevice& d, typename TTypes<T>::ConstTensor features,  \
+      typename TTypes<T>::Tensor activations);                       \
+  extern template struct Relu6<GPUDevice, T>;                        \
+                                                                     \
+  template <>                                                        \
+  void Relu6Grad<GPUDevice, T>::operator()(                          \
+      const GPUDevice& d, typename TTypes<T>::ConstTensor gradients, \
+      typename TTypes<T>::ConstTensor features,                      \
+      typename TTypes<T>::Tensor backprops);                         \
+  extern template struct Relu6Grad<GPUDevice, T>;                    \
+                                                                     \
+  template <>                                                        \
+  void LeakyRelu<GPUDevice, T>::operator()(LeakyReluArgs args);      \
+  extern template struct LeakyRelu<GPUDevice, T>;                    \
+                                                                     \
+  template <>                                                        \
+  void LeakyReluGrad<GPUDevice, T>::operator()(                      \
+      const GPUDevice& d, typename TTypes<T>::ConstTensor gradients, \
+      typename TTypes<T>::ConstTensor features, T alpha,             \
+      typename TTypes<T>::Tensor backprops);                         \
+  extern template struct LeakyReluGrad<GPUDevice, T>;                \
+                                                                     \
+  template <>                                                        \
+  void EluGrad<GPUDevice, T>::operator()(                            \
+      const GPUDevice& d, typename TTypes<T>::ConstTensor gradients, \
+      typename TTypes<T>::ConstTensor activations,                   \
+      typename TTypes<T>::Tensor backprops);                         \
+  extern template struct EluGrad<GPUDevice, T>;                      \
+                                                                     \
+  template <>                                                        \
+  void SeluGrad<GPUDevice, T>::operator()(                           \
+      const GPUDevice& d, typename TTypes<T>::ConstTensor gradients, \
+      typename TTypes<T>::ConstTensor activations,                   \
+      typename TTypes<T>::Tensor backprops);                         \
   extern template struct SeluGrad<GPUDevice, T>;
 
 template <>

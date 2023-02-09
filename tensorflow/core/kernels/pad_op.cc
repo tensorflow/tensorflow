@@ -391,5 +391,4 @@ REGISTER_KERNEL_BUILDER(Name("PadV2")
                         PadOp<CPUDevice, int32, int64>);
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
-
 }  // end namespace tensorflow

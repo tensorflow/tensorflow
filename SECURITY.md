@@ -273,21 +273,11 @@ TensorFlow uses the following disclosure process:
 * An advisory is prepared (but not published) which details the problem and
   steps for mitigation.
 * The vulnerability is fixed and potential workarounds are identified.
-* We will attempt to cherry-pick the fix to the release branches used for all
-  releases of TensorFlow that are at most one year old (though sometimes we
-  might not patch all of them). The cherry-picks will occur as soon as possible
-  and the patch releases will come at the same time as the next quarterly
-  release.
-* Whenever patch releases are finalized, we will notify discuss@tensorflow.org.
 * We will publish a security advisory for all fixed vulnerabilities.
 
 For each vulnerability, we try to ingress it as soon as possible, given the size
 of the team and the number of reports. Vulnerabilities will, in general, be
-batched to be fixed at the same time as a quarterly release. An exception to
-this rule is for high impact vulnerabilities where exploitation of models used
-for inference in products (i.e., not models created just to showcase a
-vulnerability) is possible. In these cases, we will attempt to do patch releases
-within an accelerated timeline, not waiting for the next quarterly release.
+batched to be fixed at the same time as a quarterly release.
 
 Past security advisories are listed
 [here](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/security/README.md).

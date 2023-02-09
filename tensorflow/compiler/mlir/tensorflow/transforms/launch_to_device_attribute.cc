@@ -13,16 +13,21 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "llvm/Support/Casting.h"
+#include <memory>
+#include <vector>
+
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
-#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/Dialect.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/Visitors.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
+#include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
+#include "tensorflow/compiler/mlir/tensorflow/translate/split_into_island_per_op_pass.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/attribute_utils.h"
 
 namespace mlir {
 namespace TFDevice {
@@ -35,6 +40,11 @@ constexpr char kDeviceAttr[] = "device";
 struct LaunchToDeviceAttributePass
     : public impl::LaunchToDeviceAttributePassBase<
           LaunchToDeviceAttributePass> {
+ public:
+  explicit LaunchToDeviceAttributePass(bool legacy_graph_export) {
+    legacy_graph_export_ = legacy_graph_export;
+  }
+
   void runOnOperation() override;
 };
 
@@ -42,9 +52,14 @@ struct LaunchToDeviceAttributePass
 LogicalResult AssignDevicesInRegion(const Dialect* tf_dialect,
                                     tf_device::LaunchOp launch,
                                     Region& region) {
+  auto parallel_group_attr =
+      launch->getAttrOfType<StringAttr>(TF::kParallelExecAnnotation);
   auto result = region.walk([&](Operation* op) -> WalkResult {
     if (op->getDialect() != tf_dialect) return WalkResult::advance();
 
+    if (parallel_group_attr) {
+      op->setAttr(TF::kParallelExecAnnotation, parallel_group_attr);
+    }
     auto device_attr = op->getAttr(kDeviceAttr);
     if (!device_attr) {
       op->setAttr(kDeviceAttr, launch.getDeviceAttr());
@@ -109,13 +124,25 @@ void LaunchToDeviceAttributePass::runOnOperation() {
   });
 
   if (result.wasInterrupted()) return signalPassFailure();
+
+  if (!legacy_graph_export_) {
+    // Now, split the island into an island per op since we don't want to
+    // violate the invariant imposed by the GraphExport pipeline that every
+    // IslandOp perfectly wraps a single op.
+    auto control_type =
+        mlir::tf_executor::ControlType::get(tf_dialect->getContext());
+    getOperation().walk(
+        [&control_type](mlir::tf_executor::IslandOp curr_island) {
+          mlir::TF::SplitIsland(curr_island, control_type);
+        });
+  }
 }
 
 }  // anonymous namespace
 
-std::unique_ptr<OperationPass<func::FuncOp>>
-CreateLaunchToDeviceAttributePass() {
-  return std::make_unique<LaunchToDeviceAttributePass>();
+std::unique_ptr<OperationPass<func::FuncOp>> CreateLaunchToDeviceAttributePass(
+    bool legacy_graph_export) {
+  return std::make_unique<LaunchToDeviceAttributePass>(legacy_graph_export);
 }
 
 }  // namespace TFDevice

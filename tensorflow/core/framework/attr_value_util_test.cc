@@ -165,8 +165,10 @@ TEST(AttrValueUtil, SummarizeAttrValueElidesLongLists) {
 
   AttrValue attr_value;
   SetAttrValue(alist, &attr_value);
-  EXPECT_EQ("[0, 1, 2, 3, 4, 2587181569776227444, 105, 106, 107, 108, 109]",
-            SummarizeAttrValue(attr_value));
+  EXPECT_EQ(
+      "[0, 1, 2, 3, 4, ..., 105, 106, 107, 108, "
+      "109]{attr_hash=14506120815048308275}",
+      SummarizeAttrValue(attr_value));
 }
 
 AttrValue FromText(const string& text) {

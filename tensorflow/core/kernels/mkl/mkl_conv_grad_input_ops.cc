@@ -278,6 +278,11 @@ class MklConvBwdInputPrimitiveFactory : public MklPrimitiveFactory<T> {
     if (convBwdInputDims.native_format) {
       key_creator.AddAsKey(convBwdInputDims.tf_fmt);
     }
+#ifdef DNNL_AARCH64_USE_ACL
+    // Scratchpad memory for this primitive is cached per thread.
+    // Make sure each thread creates its own primitive.
+    key_creator.AddAsKey(std::this_thread::get_id());
+#endif
     return key_creator.GetKey();
   }
 

@@ -23,17 +23,29 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/builtin_ops.h"
+#include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/graph_info.h"
 #include "tensorflow/lite/simple_memory_arena.h"
 
 namespace tflite {
 namespace {
 
-constexpr int32_t kNodeNotAssigned = std::numeric_limits<int32_t>::max();
 constexpr int32_t kLastActiveNodeUndefined =
     std::numeric_limits<int32_t>::max();
+constexpr int32_t kNodeNotAssigned = std::numeric_limits<int32_t>::max();
 
+bool ShareFirstInputWithFirstOutputForNode(const TfLiteRegistration& node_reg) {
+  // TODO (b/254230751): add support for more ops which support forwarding.
+  switch (node_reg.builtin_code) {
+    case kTfLiteBuiltinExpandDims:
+    case kTfLiteBuiltinReshape:
+    case kTfLiteBuiltinSqueeze:
+      return true;
+    default:
+      return false;
+  }
+}
 }  // namespace
 
 ArenaPlanner::ArenaPlanner(TfLiteContext* context,
@@ -95,6 +107,56 @@ TfLiteStatus ArenaPlanner::ResetAllocationsAfter(int node) {
   return kTfLiteOk;
 }
 
+int ArenaPlanner::FindSharedTensor(int tensor_index) {
+  auto actual_tensor_it = actual_tensor_id_.find(tensor_index);
+  if (actual_tensor_it != actual_tensor_id_.end()) {
+    tensor_index = actual_tensor_it->second;
+  }
+  return tensor_index;
+}
+
+void ArenaPlanner::IdentifySharedTensors() {
+  actual_tensor_id_.clear();
+  TfLiteTensor* tensors = graph_info_->tensors();
+  const int num_execution_nodes = graph_info_->num_execution_nodes();
+  for (int i = 0; i < num_execution_nodes; ++i) {
+    const auto& reg = graph_info_->registration(i);
+    const auto& tflite_node = graph_info_->node(i);
+    if (ShareFirstInputWithFirstOutputForNode(reg)) {
+      int32_t input_tensor = tflite_node.inputs->data[0];
+      int32_t output_tensor = tflite_node.outputs->data[0];
+      bool is_input_or_output_tensor = false;
+      for (int input : graph_info_->inputs()) {
+        if (input == input_tensor) {
+          is_input_or_output_tensor = true;
+          break;
+        }
+      }
+      for (int output : graph_info_->outputs()) {
+        if (output == output_tensor) {
+          is_input_or_output_tensor = true;
+          break;
+        }
+      }
+      if (is_input_or_output_tensor) continue;
+      TfLiteAllocationType input_allocation_type =
+          tensors[input_tensor].allocation_type;
+      TfLiteAllocationType output_allocation_type =
+          tensors[output_tensor].allocation_type;
+      // Only tensors allocated in the same arena may be shared.
+      if (input_allocation_type != output_allocation_type) {
+        continue;
+      }
+      if (input_allocation_type == kTfLiteArenaRw ||
+          input_allocation_type == kTfLiteArenaRwPersistent) {
+        // Handle the case where a shared tensor is also shared.
+        int32_t actual_output_tensor_id = FindSharedTensor(input_tensor);
+        actual_tensor_id_[output_tensor] = actual_output_tensor_id;
+      }
+    }
+  }
+}
+
 TfLiteStatus ArenaPlanner::PlanAllocations() {
   // Invalidate any existing data.
   const size_t num_tensors = graph_info_->num_tensors();
@@ -137,6 +199,7 @@ TfLiteStatus ArenaPlanner::PlanAllocations() {
     refcounts[tensor_index]++;
   }
 
+  IdentifySharedTensors();
   // Variable tensors also should be ensured to be never overwritten and need to
   // be alive all the time.
   for (int tensor_index : graph_info_->variables()) {
@@ -162,27 +225,31 @@ TfLiteStatus ArenaPlanner::PlanAllocations() {
   }
 
   // Count references to node input tensors.
-  for (size_t i = 0; i < graph_info_->num_execution_nodes(); ++i) {
+  const int num_execution_nodes = graph_info_->num_execution_nodes();
+  for (size_t i = 0; i < num_execution_nodes; ++i) {
     const TfLiteNode& node = graph_info_->node(i);
     TfLiteIntArray* node_inputs = node.inputs;
     for (int j = 0; j < node_inputs->size; ++j) {
       int tensor_index = node_inputs->data[j];
       if (tensor_index != kTfLiteOptionalTensor) {
+        // Correctly count references for shared buffers.
+        tensor_index = FindSharedTensor(tensor_index);
         refcounts[tensor_index]++;
       }
     }
   }
 
   // Go through the graph in execution order.
-  for (size_t i = 0; i < graph_info_->num_execution_nodes(); ++i) {
+  for (size_t i = 0; i < num_execution_nodes; ++i) {
     const TfLiteNode& node = graph_info_->node(i);
 
     // First queue output tensors for allocation.
     TfLiteIntArray* node_outputs = node.outputs;
     for (int j = 0; j < node_outputs->size; ++j) {
       int tensor_index = node_outputs->data[j];
-      TF_LITE_ENSURE_STATUS(allocate(i, tensor_index));
+      //  Don't allocate output tensors here for shared memory parts.
       nodes_to_tensors_[i].insert(tensor_index);
+      TF_LITE_ENSURE_STATUS(allocate(i, tensor_index));
     }
 
     // Then update the ref-counts of the node's inputs, and if necessary queue
@@ -190,8 +257,11 @@ TfLiteStatus ArenaPlanner::PlanAllocations() {
     if (!preserve_all_tensors_) {
       TfLiteIntArray* node_inputs = node.inputs;
       for (int j = 0; j < node_inputs->size; ++j) {
+        // If the tensor is a ref we decrement the original tensor.
         int tensor_index = node_inputs->data[j];
         if (tensor_index != kTfLiteOptionalTensor) {
+          // Correctly count references for shared buffers.
+          tensor_index = FindSharedTensor(tensor_index);
           refcounts[tensor_index]--;
           if (refcounts[tensor_index] == 0) {
             TF_LITE_ENSURE_STATUS(deallocate(i, tensor_index));
@@ -214,9 +284,9 @@ TfLiteStatus ArenaPlanner::ExecuteAllocations(int first_node, int last_node) {
   dealloc_node_.resize(num_tensors, kNodeNotAssigned);
   allocs_.resize(num_tensors);
   // Set allocation and deallocation for temporary tensors.
-  for (size_t i = first_node; i <= static_cast<size_t>(last_node) &&
-                              i < graph_info_->num_execution_nodes();
-       ++i) {
+  const int num_execution_nodes = graph_info_->num_execution_nodes();
+  for (size_t i = first_node;
+       i <= static_cast<size_t>(last_node) && i < num_execution_nodes; ++i) {
     const TfLiteNode& node = graph_info_->node(i);
     TfLiteIntArray* node_temporaries = node.temporaries;
     for (int j = 0; j < node_temporaries->size; ++j) {
@@ -238,12 +308,12 @@ TfLiteStatus ArenaPlanner::ExecuteAllocations(int first_node, int last_node) {
   TfLiteTensor* tensors = graph_info_->tensors();
   if (arena_reallocated) {
     for (int i = 0; i < static_cast<int>(num_tensors); ++i) {
-      TF_LITE_ENSURE_STATUS(ResolveTensorAllocation(i, tensors[i]));
+      TF_LITE_ENSURE_STATUS(ResolveTensorAllocation(i, tensors));
     }
   } else {
     for (int i = 0; i < static_cast<int>(tensors_allocated.size()); ++i) {
-      TF_LITE_ENSURE_STATUS(ResolveTensorAllocation(
-          tensors_allocated[i], tensors[tensors_allocated[i]]));
+      TF_LITE_ENSURE_STATUS(
+          ResolveTensorAllocation(tensors_allocated[i], tensors));
     }
   }
 
@@ -273,7 +343,7 @@ TfLiteStatus ArenaPlanner::AcquireNonPersistentMemory() {
   for (int i = 0; i < static_cast<int>(graph_info_->num_tensors()); ++i) {
     TfLiteTensor& tensor = tensors[i];
     if (tensor.allocation_type == kTfLiteArenaRw) {
-      TF_LITE_ENSURE_STATUS(ResolveTensorAllocation(i, tensors[i]));
+      TF_LITE_ENSURE_STATUS(ResolveTensorAllocation(i, tensors));
     }
   }
   return kTfLiteOk;
@@ -387,6 +457,23 @@ TfLiteStatus ArenaPlanner::CalculateAllocations(
   // Vector of ids of already allocated tensors, ordered by offset.
   for (const auto& tensor_index : *tensors_allocated) {
     TfLiteTensor& tensor = tensors[tensor_index];
+    // Only allocate ArenaRw tensors which own their buffer.
+    auto it = actual_tensor_id_.find(tensor_index);
+    if (it != actual_tensor_id_.end()) {
+      // A tensor whose buffer is shared may have had its allocation type
+      // changed to kTfLiteCustom or kTfLiteDynamic after `PlanAllocations` was
+      // called. This means that the buffer is no longer shareable so remove its
+      // index from `actual_tensor_id_`.
+      TfLiteAllocationType allocation_type =
+          tensors[it->second].allocation_type;
+      if (allocation_type != kTfLiteArenaRwPersistent &&
+          allocation_type != kTfLiteArenaRw) {
+        actual_tensor_id_.erase(it);
+      } else {
+        // Don't allocate the tensor, it can safely share the input buffer.
+        continue;
+      }
+    }
     if (tensor.allocation_type == kTfLiteArenaRw) {
       TF_LITE_ENSURE_STATUS(
           arena_.Allocate(context_, tensor_alignment_, tensor.bytes,
@@ -394,6 +481,7 @@ TfLiteStatus ArenaPlanner::CalculateAllocations(
                           dealloc_node_[tensor_index], &allocs_[tensor_index]));
     }
     // Check allocs_[].size to prevent from reallocation of persistent tensors.
+    // Only allocate ArenaRwPersistent tensors which own their buffer.
     if (tensor.allocation_type == kTfLiteArenaRwPersistent &&
         allocs_[tensor_index].size == 0) {
       if (allocs_[tensor_index].size < tensor.bytes) {
@@ -409,8 +497,39 @@ TfLiteStatus ArenaPlanner::CalculateAllocations(
   return kTfLiteOk;
 }
 
+bool AreTensorsAllocatedInSameArena(int32_t root_tensor_index,
+                                    int32_t tensor_index,
+                                    const TfLiteTensor* tensors) {
+  if (tensors[root_tensor_index].allocation_type == kTfLiteArenaRw &&
+      tensors[tensor_index].allocation_type == kTfLiteArenaRw) {
+    return true;
+  }
+  if (tensors[root_tensor_index].allocation_type == kTfLiteArenaRwPersistent &&
+      tensors[tensor_index].allocation_type == kTfLiteArenaRwPersistent) {
+    return true;
+  }
+  return false;
+}
+
 TfLiteStatus ArenaPlanner::ResolveTensorAllocation(int32_t tensor_index,
-                                                   TfLiteTensor& tensor) {
+                                                   TfLiteTensor* tensors) {
+  // Resolve allocation for tensors which share buffers.
+  auto actual_tensor_it = actual_tensor_id_.find(tensor_index);
+  TfLiteTensor& tensor = tensors[tensor_index];
+  int32_t root_tensor_index = actual_tensor_it == actual_tensor_id_.end()
+                                  ? tensor_index
+                                  : actual_tensor_it->second;
+  const TfLiteTensor& root_tensor = tensors[root_tensor_index];
+  if (root_tensor_index != tensor_index) {
+    if (AreTensorsAllocatedInSameArena(root_tensor_index, tensor_index,
+                                       tensors)) {
+      // Make sure that the input tensor has already been allocated.
+      ResolveTensorAllocation(root_tensor_index, tensors);
+      tensor.data.data = root_tensor.data.data;
+      return kTfLiteOk;
+    }
+  }
+
   if (tensor.allocation_type == kTfLiteArenaRw) {
     // Skip resolution if the size of the tensor is zero, leaving it as a
     // nullptr.

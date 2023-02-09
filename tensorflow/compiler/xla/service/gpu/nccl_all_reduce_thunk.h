@@ -16,12 +16,16 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_GPU_NCCL_ALL_REDUCE_THUNK_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_NCCL_ALL_REDUCE_THUNK_H_
 
-#include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/lhlo/IR/lhlo_ops.h"
-#include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/lhlo_gpu/IR/lhlo_gpu_ops.h"
+#include <memory>
+#include <optional>
+#include <vector>
+
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/mlir_hlo/lhlo/IR/lhlo_ops.h"
+#include "tensorflow/compiler/xla/mlir_hlo/lhlo_gpu/IR/lhlo_gpu_ops.h"
 #include "tensorflow/compiler/xla/service/collective_ops_utils.h"
 #include "tensorflow/compiler/xla/service/gpu/buffer_allocations.h"
 #include "tensorflow/compiler/xla/service/gpu/nccl_collective_thunk.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 
 namespace xla {
@@ -44,9 +48,11 @@ class NcclAllReduceThunkBase : public NcclCollectiveThunk {
                          std::vector<Buffer> buffers);
 
  protected:
+  Status RunAllReduce(const ExecuteParams& params, se::Stream& stream,
+                      ncclComm_t comm);
+
   const NcclCollectiveConfig& config() const override { return config_.config; }
 
- protected:
   const NcclAllReduceConfig config_;
   const std::vector<Buffer> buffers_;
 };
@@ -82,28 +88,20 @@ class NcclAllReduceStartThunk : public NcclAllReduceThunkBase {
   static CollectiveOpGroupMode GetGroupMode(
       mlir::lmhlo_gpu::AllReduceStartOp op);
 
-  StatusOr<se::Event> TakeDoneEvent(int device_ordinal)
-      ABSL_LOCKS_EXCLUDED(mu_);
+  AsyncExecutor& async_executor() { return async_; }
 
  protected:
   Status RunNcclCollective(const ExecuteParams& params,
                            ncclComm_t comm) override;
 
  private:
-  absl::Mutex mu_;
-  // Store done events (by device ordinal) for the done thunk to wait on.
-  absl::flat_hash_map<int, se::Event> done_events_ ABSL_GUARDED_BY(mu_);
+  AsyncExecutor async_;
 };
 
-class NcclAllReduceDoneThunk : public Thunk {
+class NcclAllReduceDoneThunk : public NcclCollectiveDoneThunk {
  public:
-  explicit NcclAllReduceDoneThunk(ThunkInfo thunk_info,
-                                  NcclAllReduceStartThunk& start_thunk);
-
-  Status ExecuteOnStream(const ExecuteParams& params) override;
-
- private:
-  NcclAllReduceStartThunk& start_thunk_;
+  NcclAllReduceDoneThunk(ThunkInfo thunk_info,
+                         NcclCollectiveThunk::AsyncExecutor& async);
 };
 
 class NcclReduceScatterThunk : public NcclAllReduceThunkBase {

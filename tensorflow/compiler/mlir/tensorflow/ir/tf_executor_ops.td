@@ -43,8 +43,8 @@ def TfExecutor_Dialect : Dialect {
     value).
 }];
 
-  let emitAccessorPrefix = kEmitAccessorPrefix_Prefixed;
   let cppNamespace = "::mlir::tf_executor";
+  let useFoldAPI = kEmitFoldAdaptorFolder;
 }
 
 // Control type.

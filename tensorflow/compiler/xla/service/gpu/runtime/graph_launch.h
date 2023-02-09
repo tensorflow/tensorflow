@@ -17,11 +17,18 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_RUNTIME_GRAPH_LAUNCH_H_
 
 #include <memory>
+#include <optional>
 #include <string_view>
 #include <tuple>
+#include <utility>
 
+#include "absl/container/node_hash_map.h"
 #include "tensorflow/compiler/xla/runtime/custom_call_registry.h"
 #include "tensorflow/compiler/xla/stream_executor/stream_executor.h"
+
+#if GOOGLE_CUDA
+#include "tensorflow/compiler/xla/stream_executor/cuda/cuda_graph.h"
+#endif  // #if GOOGLE_CUDA
 
 namespace xla {
 namespace gpu {
@@ -29,6 +36,52 @@ namespace gpu {
 // Registers XLA Gpu runtime graph launch custom calls.
 void RegisterGraphLaunchCustomCalls(
     runtime::DirectCustomCallRegistry& registry);
+
+struct GraphInstance;                // Forward declare
+class StreamExecutorGraphInstances;  // Forward declare
+
+#if GOOGLE_CUDA
+
+// A state vector that owns all instantiated CUDA graphs. Graph capture function
+// ordinal is the key in this container.
+class StreamExecutorGraphInstances
+    : public runtime::StateVector<GraphInstance> {};
+
+// Instantiated CUDA graph instance guarded with a mutex for exclusive access.
+struct GraphInstance {
+  GraphInstance(size_t ptr_hash, se::gpu::OwnedCudaGraphExec exec)
+      : ptr_hash(ptr_hash), exec(std::move(exec)), mutex(new absl::Mutex) {}
+
+  // Graph instance is fully identified by the hash of its pointer arguments
+  // because currently it's guaranteed that all shapes and launch dimensions
+  // will be constant from run to run.
+  size_t ptr_hash ABSL_GUARDED_BY(*mutex);
+  se::gpu::OwnedCudaGraphExec exec ABSL_GUARDED_BY(*mutex);
+
+  // Access to a graph instance must be synchronized, because we potentially can
+  // run concurrent graph instance updates.
+  std::unique_ptr<absl::Mutex> mutex;
+};
+
+#else  // #if !GOOGLE_CUDA
+
+// Define empty struct and empty state when CUDA is not enabled.
+struct GraphInstance {};
+class StreamExecutorGraphInstances
+    : public runtime::StateVector<GraphInstance> {};
+
+#endif  // #if GOOGLE_CUDA
+
+// Xla executable keeps a mapping from stream executors to graph instances.
+class GraphInstances {
+ public:
+  StreamExecutorGraphInstances* operator()(se::StreamExecutor* executor);
+
+ private:
+  mutable absl::Mutex mutex_;
+  absl::node_hash_map<se::StreamExecutor*, StreamExecutorGraphInstances> graphs_
+      ABSL_GUARDED_BY(mutex_);
+};
 
 }  // namespace gpu
 }  // namespace xla

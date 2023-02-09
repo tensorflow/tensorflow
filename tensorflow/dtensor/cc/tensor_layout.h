@@ -27,9 +27,9 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/strings/string_view.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/statusor.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/dtensor/cc/dstatus.h"
 #include "tensorflow/dtensor/proto/layout.pb.h"
@@ -43,6 +43,10 @@ limitations under the License.
 // an operation with tensors of different layouts.
 namespace tensorflow {
 namespace dtensor {
+
+// Returns true if `size` is a dynamic size based on either MLIR and TF
+// standards.
+bool IsDynamicSize(int64_t size);
 
 // The location of a device in a mesh.
 //
@@ -92,18 +96,25 @@ class Mesh {
   // we use this string representation of an empty mesh instead to avoid
   // confusion.
   static constexpr const char* kEmptyMeshString = "empty_mesh";
+  static constexpr const char* kUseXLASPMDString = "use_xla_spmd";
+  static constexpr bool kUseXLASPMD = false;
+
   static Mesh Empty();
   bool IsEmpty() const;
   Mesh() = default;
 
   // Creates fully defined mesh.
-  static Mesh CreateMesh(
-      const std::string& mesh_name, const std::vector<std::string>& dim_names,
-      const std::vector<std::int64_t>& global_device_ids_shape,
-      const std::vector<std::int64_t>& global_device_ids_flatten,
-      const std::vector<std::string>& global_devices_str,
-      const std::vector<std::int64_t>& local_device_ids,
-      const std::vector<std::string>& local_devices_str);
+  //
+  // When `use_xla_spmd` is true, all ops running on this mesh will use XLA SPMD
+  // instead of DTensor SPMD.
+  static Mesh CreateMesh(const std::string& mesh_name,
+                         const std::vector<std::string>& dim_names,
+                         const std::vector<std::int64_t>& mesh_shape,
+                         const std::vector<std::int64_t>& global_device_ids,
+                         const std::vector<std::string>& global_devices_str,
+                         const std::vector<std::int64_t>& local_device_ids,
+                         const std::vector<std::string>& local_devices_str,
+                         bool use_xla_spmd = Mesh::kUseXLASPMD);
 
   // Parses from MeshProto.
   static StatusOr<Mesh> ParseFromProto(const MeshProto& proto);
@@ -128,7 +139,8 @@ class Mesh {
       const std::vector<std::int64_t>& global_device_ids,
       const std::vector<std::int64_t>& local_device_ids,
       const std::vector<std::string>& local_devices,
-      const std::vector<std::string>& global_devices);
+      const std::vector<std::string>& global_devices,
+      bool use_xla_spmd = Mesh::kUseXLASPMD);
 
   bool is_cpu_mesh() const { return device_type() == "CPU"; }
   bool is_epu_mesh() const { return device_type() == "EPU"; }
@@ -173,6 +185,7 @@ class Mesh {
     return *std::min_element(global_device_ids_.begin(),
                              global_device_ids_.end());
   }
+  int64_t num_local_devices() const { return local_devices_.size(); }
 
   absl::Span<const int64_t> global_device_ids() const {
     return global_device_ids_;
@@ -192,6 +205,7 @@ class Mesh {
 
   int64 rank() const;
   int64 size() const;
+  bool use_xla_spmd() const { return use_xla_spmd_; }
   const std::string& name() const { return name_; }
 
   // Global unique fingerprint. Same on different workers.
@@ -229,7 +243,16 @@ class Mesh {
   std::vector<int64_t> local_device_ids_;
   std::vector<int64_t> global_device_ids_;
   std::vector<std::string> global_devices_;
+  bool use_xla_spmd_ = Mesh::kUseXLASPMD;
 };
+
+// Obtain all possible forms of indexing a mesh.
+//
+// e.g. given a mesh with dimensions [x=2, y=3], returns {
+//   [0, 0], [0, 1], [0, 2],
+//   [1, 0], [1, 1], [1, 2]
+// }
+std::vector<DeviceLocation> ComputeDeviceLocations(const Mesh& mesh);
 
 class Layout {
  public:
@@ -266,6 +289,11 @@ class Layout {
 
   const Mesh& mesh() const { return mesh_; }
   static Layout ReplicatedOnMesh(const Mesh& mesh, int rank);
+  static Layout BatchShardedOnMesh(const Mesh& mesh, int rank,
+                                   const string& mesh_dim, int axis = 0);
+  static Layout ReplicatedLike(const Layout& layout);
+  static Layout BatchShardedLike(const Layout& layout, const string& mesh_dim,
+                                 int axis = 0);
   static Layout AnyOnMesh(const Mesh& mesh, int rank);
   // Creates a mesh of unique shards.
   Mesh ReducedMesh() const;
@@ -316,7 +344,7 @@ class Layout {
 
   // Compute global shape using the layout and provided local_shape.
   std::vector<int64_t> GlobalShapeFromLocalShape(
-      const std::vector<int64_t>& local_shape) const;
+      absl::Span<const int64_t> local_shape) const;
 
   std::vector<int64_t> LocalShapeFromGlobalShape(
       absl::Span<const int64_t> global_shape) const;

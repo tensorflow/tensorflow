@@ -17,9 +17,9 @@ limitations under the License.
 
 #include <gtest/gtest.h>
 #include "tensorflow/lite/core/interpreter.h"
-#include "tensorflow/lite/kernels/register.h"
+#include "tensorflow/lite/core/kernels/register.h"
+#include "tensorflow/lite/core/model.h"
 #include "tensorflow/lite/kernels/test_util.h"
-#include "tensorflow/lite/model.h"
 
 namespace tflite {
 namespace {
@@ -66,7 +66,7 @@ class BroadcastArgsOpTest : public ::testing::Test {};
 using DataTypes = ::testing::Types<int64_t, int32_t>;
 TYPED_TEST_SUITE(BroadcastArgsOpTest, DataTypes);
 
-#ifdef GTEST_HAS_DEATH_TEST
+#if GTEST_HAS_DEATH_TEST
 TYPED_TEST(BroadcastArgsOpTest, ShapeNotBroadcastable) {
   BroadcastArgsOpModel<TypeParam> m({2, 3, 4, 4}, {2, 2});
   EXPECT_DEATH(ASSERT_EQ(m.Invoke(), kTfLiteOk), "");

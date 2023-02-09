@@ -20,6 +20,7 @@ limitations under the License.
 #include <string>
 
 #include "tensorflow/core/framework/dataset.h"
+#include "tensorflow/core/framework/dataset.pb.h"
 #include "tensorflow/core/framework/variant_tensor_data.h"
 #include "tensorflow/core/lib/core/status.h"
 
@@ -161,12 +162,24 @@ class IteratorStateVariant {
   // Returns a borrowed pointer to the underlying VariantTensorData.
   const VariantTensorData* GetData() const { return data_.get(); }
 
+  // Encodes this `IteratorStateVariant` into `*data`. Data will be compressed
+  // and stored as a scalar `CompressedElement` tensor, or left uncompressed if
+  // compression fails.
   void Encode(VariantTensorData* data) const;
+
+  // Decodes from `data`. If `data` contains a single scalar `CompressedElement`
+  // tensor, it is assumed to be compressed by `Encode`, and will be
+  // uncompressed as part of `Decode`.
   bool Decode(VariantTensorData data);
 
   std::string DebugString() const;
 
  private:
+  // Returns the compressed element in `data`. If `data` does not contain a
+  // compressed element, returns nullptr.
+  static const CompressedElement* GetCompressedElement(
+      const VariantTensorData& data);
+
   std::unique_ptr<VariantTensorData> data_;
 };
 

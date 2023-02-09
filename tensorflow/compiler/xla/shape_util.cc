@@ -27,14 +27,17 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/container/inlined_vector.h"
+#include "absl/synchronization/blocking_counter.h"
 #include "tensorflow/compiler/xla/index_util.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/overflow_util.h"
 #include "tensorflow/compiler/xla/permutation_util.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
+#include "tensorflow/compiler/xla/printer.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
+#include "tensorflow/tsl/platform/threadpool.h"
 
 namespace xla {
 
@@ -46,25 +49,27 @@ namespace {
 // the size of each element of that primitive type, or 0
 // if the PrimitiveType is not a primitive type
 constexpr uint8_t primitive_byte_size[PrimitiveType_ARRAYSIZE] = {
-    0,                  // PRIMITIVE_TYPE_INVALID = 0,
-    sizeof(int8_t),     // PRED = 1
-    sizeof(int8_t),     // S8 = 2
-    sizeof(int16_t),    // S16 = 3
-    sizeof(int32_t),    // S32 = 4
-    sizeof(int64_t),    // S64 = 5
-    sizeof(uint8_t),    // U8 = 6
-    sizeof(uint16_t),   // U16 = 7
-    sizeof(uint32_t),   // U32 = 8
-    sizeof(uint64_t),   // U64 = 9
-    sizeof(float) / 2,  // F16 = 10
-    sizeof(float),      // F32 = 11
-    sizeof(double),     // F64 = 12
-    0,                  // TUPLE = 13
-    0,                  // OPAQUE_TYPE = 14
-    sizeof(complex64),  // C64 = 15
-    sizeof(float) / 2,  // BF16 = 16
-    0,                  // TOKEN = 17
-    sizeof(complex128)  // C128 = 18
+    0,                   // PRIMITIVE_TYPE_INVALID = 0,
+    sizeof(int8_t),      // PRED = 1
+    sizeof(int8_t),      // S8 = 2
+    sizeof(int16_t),     // S16 = 3
+    sizeof(int32_t),     // S32 = 4
+    sizeof(int64_t),     // S64 = 5
+    sizeof(uint8_t),     // U8 = 6
+    sizeof(uint16_t),    // U16 = 7
+    sizeof(uint32_t),    // U32 = 8
+    sizeof(uint64_t),    // U64 = 9
+    sizeof(float) / 2,   // F16 = 10
+    sizeof(float),       // F32 = 11
+    sizeof(double),      // F64 = 12
+    0,                   // TUPLE = 13
+    0,                   // OPAQUE_TYPE = 14
+    sizeof(complex64),   // C64 = 15
+    sizeof(float) / 2,   // BF16 = 16
+    0,                   // TOKEN = 17
+    sizeof(complex128),  // C128 = 18
+    sizeof(float) / 4,   // F8E5M2 = 19
+    sizeof(float) / 4,   // F8E4M3FN = 20
 };
 constexpr int64_t kAnnotationPrintInterval = 5;
 }  // namespace
@@ -90,6 +95,7 @@ StatusOr<Shape> MakeShapeWithLayoutInternal(
     PrimitiveType element_type, absl::Span<const int64_t> dimensions,
     absl::Span<const int64_t> minor_to_major,
     absl::Span<const DimLevelType> dim_level_types,
+    absl::Span<const bool> dim_unique, absl::Span<const bool> dim_ordered,
     absl::Span<const Tile> tiles, PrimitiveType index_primitive_type,
     PrimitiveType pointer_primitive_type, int64_t memory_space,
     std::optional<Shape> physical_shape) {
@@ -105,8 +111,9 @@ StatusOr<Shape> MakeShapeWithLayoutInternal(
   TF_ASSIGN_OR_RETURN(Shape shape,
                       ShapeUtil::MakeValidatedShape(element_type, dimensions));
   *shape.mutable_layout() = LayoutUtil::MakeLayout(
-      minor_to_major, dim_level_types, tiles, index_primitive_type,
-      pointer_primitive_type, memory_space, std::move(physical_shape));
+      minor_to_major, dim_level_types, dim_unique, dim_ordered, tiles,
+      index_primitive_type, pointer_primitive_type, memory_space,
+      std::move(physical_shape));
   TF_RETURN_IF_ERROR(ShapeUtil::ValidateShape(shape));
   return shape;
 }
@@ -300,7 +307,8 @@ Shape MakeTupleShapeImpl(absl::Span<ShapePtrOrRef> shapes) {
     absl::Span<const int64_t> minor_to_major, absl::Span<const Tile> tiles,
     int64_t memory_space) {
   auto ret = MakeShapeWithLayoutInternal(
-      element_type, dimensions, minor_to_major, /*dim_level_types=*/{}, tiles,
+      element_type, dimensions, minor_to_major, /*dim_level_types=*/{},
+      /*dim_unique=*/{}, /*dim_ordered=*/{}, tiles,
       /*index_primitive_type=*/PRIMITIVE_TYPE_INVALID,
       /*pointer_primitive_type=*/PRIMITIVE_TYPE_INVALID, memory_space,
       /*physical_shape=*/std::nullopt);
@@ -312,12 +320,13 @@ Shape MakeTupleShapeImpl(absl::Span<ShapePtrOrRef> shapes) {
     PrimitiveType element_type, absl::Span<const int64_t> dimensions,
     absl::Span<const int64_t> minor_to_major,
     absl::Span<const DimLevelType> dim_level_types,
+    absl::Span<const bool> dim_unique, absl::Span<const bool> dim_ordered,
     PrimitiveType index_primitive_type, PrimitiveType pointer_primitive_type,
     int64_t memory_space, std::optional<Shape> physical_shape) {
   auto ret = MakeShapeWithLayoutInternal(
-      element_type, dimensions, minor_to_major, dim_level_types, /*tiles=*/{},
-      index_primitive_type, pointer_primitive_type, memory_space,
-      std::move(physical_shape));
+      element_type, dimensions, minor_to_major, dim_level_types, dim_unique,
+      dim_ordered, /*tiles=*/{}, index_primitive_type, pointer_primitive_type,
+      memory_space, std::move(physical_shape));
   if (!ret.ok()) LOG(ERROR) << ret.status();
   return ret.value();
 }
@@ -511,6 +520,8 @@ ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
     case S16:
     case S32:
     case S64:
+    case F8E5M2:
+    case F8E4M3FN:
     case F16:
     case BF16:
     case F32:
@@ -592,17 +603,6 @@ ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
                                               complex_shape.element_type()));
 }
 
-/* static */ int64_t ShapeUtil::ElementsIn(const Shape& shape) {
-  DCHECK(shape.IsArray()) << ShapeUtil::HumanString(shape);
-  DCHECK_EQ(shape.dimensions_size(), shape.rank());
-  if (shape.dimensions().size() == 1) {
-    return shape.dimensions()[0];
-  }
-  return std::accumulate<decltype(shape.dimensions().begin()), int64_t>(
-      shape.dimensions().begin(), shape.dimensions().end(), 1LL,
-      std::multiplies<int64_t>());
-}
-
 /* static */ int64_t ShapeUtil::ElementsInRecursive(const Shape& shape) {
   CHECK(shape.IsArray() || shape.IsTuple());
   if (shape.IsArray()) {
@@ -637,84 +637,106 @@ ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
   return IsScalar(shape) && shape.element_type() == element_type;
 }
 
-/* static */ std::string ShapeUtil::HumanString(const Shape& shape) {
+/* static */ void ShapeUtil::PrintHumanString(xla::Printer* printer,
+                                              const Shape& shape) {
   if (shape.IsTuple()) {
-    std::string text = "(";
+    printer->Append("(");
     const auto& tuple_shapes = shape.tuple_shapes();
     for (int64_t i = 0; i < tuple_shapes.size(); ++i) {
       const Shape& elem_shape = tuple_shapes[i];
       if (i != 0) {
-        StrAppend(&text, ", ");
+        printer->Append(", ");
         if (i % kAnnotationPrintInterval == 0) {
-          StrAppend(&text, absl::StrFormat("/*index=%lld*/", i));
+          printer->Append(absl::StrFormat("/*index=%lld*/", i));
         }
       }
-      StrAppend(&text, HumanString(elem_shape));
+      PrintHumanString(printer, elem_shape);
     }
-    text += ")";
-    return text;
+    printer->Append(")");
+    return;
   }
-  std::vector<std::string> dim_elements;
+  printer->Append(
+      primitive_util::LowercasePrimitiveTypeName(shape.element_type()));
+  printer->Append("[");
   const auto dimensions_size = shape.dimensions_size();
-  dim_elements.reserve(dimensions_size);
   for (int i = 0; i < dimensions_size; ++i) {
+    if (i != 0) printer->Append(",");
     if (shape.is_dynamic_dimension(i)) {
-      dim_elements.push_back(StrCat("<=", shape.dimensions(i)));
-    } else {
-      dim_elements.push_back(StrCat(shape.dimensions(i)));
+      printer->Append("<=");
     }
+    printer->Append(absl::AlphaNum(shape.dimensions(i)).Piece());
   }
-  return StrCat(
-      primitive_util::LowercasePrimitiveTypeName(shape.element_type()), "[",
-      absl::StrJoin(dim_elements, ","), "]");
+  printer->Append("]");
 }
 
-/* static */ std::string ShapeUtil::HumanStringWithLayout(const Shape& shape) {
+/* static */ void ShapeUtil::PrintHumanStringWithLayout(xla::Printer* printer,
+                                                        const Shape& shape) {
   if (shape.IsTuple()) {
-    std::string text = "(";
+    printer->Append("(");
     const auto& tuple_shapes = shape.tuple_shapes();
     for (int64_t i = 0; i < tuple_shapes.size(); ++i) {
       const Shape& elem_shape = tuple_shapes[i];
       if (i != 0) {
-        StrAppend(&text, ", ");
+        printer->Append(", ");
         if (i % kAnnotationPrintInterval == 0) {
-          StrAppend(&text, absl::StrFormat("/*index=%lld*/", i));
+          printer->Append(absl::StrFormat("/*index=%lld*/", i));
         }
       }
-      StrAppend(&text, HumanStringWithLayout(elem_shape));
+      PrintHumanStringWithLayout(printer, elem_shape);
     }
-    text += ")";
-    return text;
+    printer->Append(")");
+    return;
   }
-  std::string result = HumanString(shape);
+  PrintHumanString(printer, shape);
   if (shape.has_layout()) {
     if (IsScalar(shape)) {
       std::string layout_str = LayoutUtil::HumanString(shape.layout());
       // Don't print "{}" as layout for scalars.
       if (layout_str != "{}") {
-        StrAppend(&result, layout_str);
+        printer->Append(layout_str);
       }
     } else if (shape.IsArray()) {
-      StrAppend(&result, LayoutUtil::HumanString(shape.layout()));
+      LayoutUtil::PrintHumanString(printer, shape.layout());
     }
   }
-  return result;
+}
+
+/* static */ void ShapeUtil::PrintHumanString(
+    xla::Printer* printer, const ProgramShape& program_shape) {
+  printer->Append("(");
+  const auto& shape_parameters = program_shape.parameters();
+  for (int i = 0; i < shape_parameters.size(); ++i) {
+    const auto& shape = shape_parameters[i];
+    if (i != 0) printer->Append(", ");
+    if (i < program_shape.parameter_names_size()) {
+      printer->Append(program_shape.parameter_names(i));
+    } else {
+      printer->Append("(unknown)");
+    }
+    printer->Append(": ");
+    PrintHumanString(printer, shape);
+  }
+  printer->Append(") -> ");
+  PrintHumanString(printer, program_shape.result());
+}
+
+/* static */ std::string ShapeUtil::HumanString(const Shape& shape) {
+  StringPrinter printer;
+  PrintHumanString(&printer, shape);
+  return std::move(printer).ToString();
+}
+
+/* static */ std::string ShapeUtil::HumanStringWithLayout(const Shape& shape) {
+  StringPrinter printer;
+  PrintHumanStringWithLayout(&printer, shape);
+  return std::move(printer).ToString();
 }
 
 /* static */ std::string ShapeUtil::HumanString(
     const ProgramShape& program_shape) {
-  std::vector<std::string> parameters;
-  const auto& shape_parameters = program_shape.parameters();
-  parameters.reserve(shape_parameters.size());
-  for (const auto& shape : shape_parameters) {
-    const int i = parameters.size();
-    parameters.push_back(StrCat(i < program_shape.parameter_names_size()
-                                    ? program_shape.parameter_names(i)
-                                    : "(unknown)",
-                                ": ", HumanString(shape)));
-  }
-  return StrCat("(", absl::StrJoin(parameters, ", "), ") -> ",
-                HumanString(program_shape.result()));
+  StringPrinter printer;
+  PrintHumanString(&printer, program_shape);
+  return std::move(printer).ToString();
 }
 
 /* static */ bool ShapeUtil::SameDimensions(const Shape& lhs,
@@ -794,6 +816,10 @@ ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
       return sizeof(uint32_t);
     case U64:
       return sizeof(uint64_t);
+    case F8E5M2:
+      return sizeof(float) / 4;
+    case F8E4M3FN:
+      return sizeof(float) / 4;
     case BF16:
       return sizeof(float) / 2;
     case F16:
@@ -1053,82 +1079,6 @@ bool ShapeUtil::IsLeafIndex(const Shape& shape, const ShapeIndex& index) {
 /* static */ Shape ShapeUtil::DropDegenerateDimensions(const Shape& shape) {
   return FilterDimensions(
       [&](int64_t dim) -> bool { return shape.dimensions()[dim] != 1; }, shape);
-}
-
-namespace {
-
-// Helper for ForEachSubshape which visits the subshapes of the given shape in
-// DFS pre-order starting with the index.
-Status ForEachSubshapeHelper(const Shape& shape,
-                             const ShapeUtil::StatusVisitorFunction& func,
-                             ShapeIndex* index) {
-  TF_RETURN_IF_ERROR(func(shape, *index));
-  if (shape.IsTuple()) {
-    for (int64_t i = 0; i < ShapeUtil::TupleElementCount(shape); ++i) {
-      index->push_back(i);
-      TF_RETURN_IF_ERROR(ForEachSubshapeHelper(
-          ShapeUtil::GetTupleElementShape(shape, i), func, index));
-      index->pop_back();
-    }
-  }
-  return OkStatus();
-}
-
-// Helper for ForEachMutableSubshape which visits the subshapes of the given
-// shape in DFS pre-order starting with the index.
-Status ForEachMutableSubshapeHelper(
-    Shape* shape, const ShapeUtil::MutatingStatusVisitorFunction& func,
-    ShapeIndex* index) {
-  TF_RETURN_IF_ERROR(func(shape, *index));
-  if (shape->IsTuple()) {
-    for (int64_t i = 0; i < ShapeUtil::TupleElementCount(*shape); ++i) {
-      index->push_back(i);
-      TF_RETURN_IF_ERROR(ForEachMutableSubshapeHelper(
-          shape->mutable_tuple_shapes(i), func, index));
-      index->pop_back();
-    }
-  }
-  return OkStatus();
-}
-
-}  // namespace
-
-/* static */ void ShapeUtil::ForEachSubshape(const Shape& shape,
-                                             const VisitorFunction& func) {
-  ShapeIndex index;
-  ForEachSubshapeHelper(
-      shape,
-      [&func](const Shape& subshape, const ShapeIndex& index) {
-        func(subshape, index);
-        return OkStatus();
-      },
-      &index)
-      .IgnoreError();
-}
-
-/* static */ void ShapeUtil::ForEachMutableSubshape(
-    Shape* shape, const MutatingVisitorFunction& func) {
-  ShapeIndex index;
-  ForEachMutableSubshapeHelper(
-      shape,
-      [&func](Shape* subshape, const ShapeIndex& index) {
-        func(subshape, index);
-        return OkStatus();
-      },
-      &index)
-      .IgnoreError();
-}
-
-/* static */ Status ShapeUtil::ForEachSubshapeWithStatus(
-    const Shape& shape, const StatusVisitorFunction& func) {
-  ShapeIndex index;
-  return ForEachSubshapeHelper(shape, func, &index);
-}
-
-/* static */ Status ShapeUtil::ForEachMutableSubshapeWithStatus(
-    Shape* shape, const MutatingStatusVisitorFunction& func) {
-  ShapeIndex index;
-  return ForEachMutableSubshapeHelper(shape, func, &index);
 }
 
 /* static */ Shape ShapeUtil::PermuteDimensions(
@@ -1698,18 +1648,34 @@ ShapeUtil::DeduceTransposeDimensionsForBitcast(const Shape& input_shape,
     absl::Span<const int64_t> count, absl::Span<const int64_t> incr,
     const ForEachParallelVisitorFunction& visitor_function) {
   // The parallel version of ForEachIndexInternal can never fail.
-  CHECK(ForEachIndexInternalParallel(shape, base, count, incr, visitor_function)
-            .ok());
+  CHECK(
+      ForEachIndexParallelWithStatus(shape, base, count, incr, visitor_function)
+          .ok());
+}
+
+/* static */ Status ShapeUtil::ForEachIndexParallelWithStatus(
+    const Shape& shape, absl::Span<const int64_t> base,
+    absl::Span<const int64_t> count, absl::Span<const int64_t> incr,
+    const ForEachParallelVisitorFunction& visitor_function) {
+  // The parallel version of ForEachIndexInternal can never fail.
+  return ForEachIndexInternalParallel(shape, base, count, incr,
+                                      visitor_function);
 }
 
 /* static */ void ShapeUtil::ForEachIndexParallel(
     const Shape& shape,
     const ForEachParallelVisitorFunction& visitor_function) {
+  CHECK(ForEachIndexParallelWithStatus(shape, visitor_function).ok());
+}
+
+/* static */ Status ShapeUtil::ForEachIndexParallelWithStatus(
+    const Shape& shape,
+    const ForEachParallelVisitorFunction& visitor_function) {
   std::vector<int64_t> base(shape.dimensions_size());
   std::vector<int64_t> incr(shape.dimensions_size(), 1);
-  return ForEachIndexParallel(shape, base,
-                              /*count=*/shape.dimensions(), incr,
-                              visitor_function);
+  return ForEachIndexParallelWithStatus(shape, base,
+                                        /*count=*/shape.dimensions(), incr,
+                                        visitor_function);
 }
 
 /* static */ Status ShapeUtil::ForEachIndexInternal(
@@ -1739,19 +1705,21 @@ ShapeUtil::DeduceTransposeDimensionsForBitcast(const Shape& input_shape,
 namespace {
 
 struct ParallelState {
-  ParallelState() {
-    const int kNumThreads = tsl::port::MaxParallelism();
-    pool.emplace(tsl::Env::Default(), "foreach", kNumThreads);
+  explicit ParallelState(int64_t task_count) : counter(task_count) {
+    // If this method is changed, please remember to change
+    // GetForEachIndexParallelThreadCount() as well.
+    static auto* global_pool = new tsl::thread::ThreadPool(
+        tsl::Env::Default(), "foreach", tsl::port::MaxParallelism());
+    pool = global_pool;
   }
-  ~ParallelState() {}
-  void Wait() {
-    // Waits for the scheduled work to complete.
-    pool.reset();
-  }
+  ~ParallelState() = default;
+  void Wait() { counter.Wait(); }
+  void TaskComplete() { counter.DecrementCount(); }
 
   absl::Mutex mu;
-  std::optional<tsl::thread::ThreadPool> pool;
+  tsl::thread::ThreadPool* pool;
   Status status;  // Guarded by mu
+  absl::BlockingCounter counter;
 };
 
 }  // anonymous namespace
@@ -1760,8 +1728,8 @@ struct ParallelState {
     const Shape& shape, absl::Span<const int64_t> base,
     absl::Span<const int64_t> count, absl::Span<const int64_t> incr,
     const ForEachParallelVisitorFunction& visitor_function) {
-  ParallelState pstate;
   ForEachState s(shape, base, count, incr);
+  ParallelState pstate(s.CalculateNumSteps());
   if (s.IsZeroElementArray()) {
     return pstate.status;
   }
@@ -1779,6 +1747,7 @@ struct ParallelState {
           pstate.status = result.status();
         }
       }
+      pstate.TaskComplete();
     });
     // Increments dimensions in minor to major order.
     n = s.IncrementDim();
@@ -1786,6 +1755,11 @@ struct ParallelState {
 
   pstate.Wait();
   return pstate.status;
+}
+
+/* static */ int ShapeUtil::GetForEachIndexParallelThreadCount() {
+  ParallelState pstate(/*task_count=*/0);
+  return pstate.pool->NumThreads();
 }
 
 /* static */ Shape ShapeUtil::DeleteDimensions(
@@ -1800,7 +1774,7 @@ struct ParallelState {
 }
 
 /* static */ Shape ShapeUtil::FilterDimensions(
-    const std::function<bool(int64_t)>& p, Shape shape) {
+    absl::FunctionRef<bool(int64_t)> p, Shape shape) {
   CHECK(shape.IsArray());
   std::vector<int64_t> dims_to_delete;
   for (int64_t i = shape.dimensions().size() - 1; i >= 0; --i) {
@@ -1993,6 +1967,25 @@ int64_t ShapeUtil::ForEachState::IncrementDim() {
 
 bool ShapeUtil::ForEachState::IsZeroElementArray() const {
   return ShapeUtil::IsZeroElementArray(shape);
+}
+
+int64_t ShapeUtil::ForEachState::CalculateNumSteps() const {
+  if (IsZeroElementArray()) return 0;
+
+  int64_t size = 1;
+  // This works for rank = 0 as well.
+  for (int64_t i = 0; i < rank; ++i) {
+    // When the count is zero, it can mean that the given dimension is fixed,
+    // but we still iterate over the others.
+    if (count[i] == 0) {
+      continue;
+    }
+
+    CHECK_NE(incr[i], 0);
+    int64_t dim = 1 + (count[i] - 1) / incr[i];
+    size *= dim;
+  }
+  return size;
 }
 
 }  // namespace xla

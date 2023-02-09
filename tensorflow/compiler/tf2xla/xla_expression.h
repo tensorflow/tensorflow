@@ -131,7 +131,7 @@ class XlaExpression {
 
   // ResolveDynamism computes where a value inside this op is dynamic or can be
   // inferred at compile time.
-  StatusOr<Tensor> ResolveDynamism(xla::Client* client) const;
+  StatusOr<Tensor> ResolveDynamism() const;
 
   // Returns the shape of the tensor.
   // The shape of a resource is the shape of a resource handle (i.e., a scalar),

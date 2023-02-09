@@ -27,15 +27,15 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/strings/numbers.h"
 #include "tensorflow/compiler/xla/debug_options_flags.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_casting_utils.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/map_util.h"
-#include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
-#include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_cse.h"
 #include "tensorflow/compiler/xla/service/hlo_dce.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/compiler/xla/service/hlo_instructions.h"
-#include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_pipeline.h"
 #include "tensorflow/compiler/xla/service/hlo_verifier.h"
 #include "tensorflow/compiler/xla/service/tuple_simplifier.h"
@@ -1145,6 +1145,23 @@ Status ReplaceInputAndMoveIntoBranches(
             }
           };
       UpdateTupleUsers(inserted);
+    }
+    // We can create invalid get-tuple-element() instructions when the output
+    // is not a tuple. Clean them away here.
+    // The algorithm creates some get-tuple-element() instructions, then when
+    // instructions are added to the conditional branch the algorithm can
+    // replace the operand of the GTE with an array shape. Because we use
+    // ReplaceWithDifferentShape() that's accepted. We used to rely on the
+    // TupleSimplifier to clean that up, but we shouldn't (because cleaning up
+    // invalid patterns is not the job of the TupleSimplifier).
+    // TODO(b/263496154): Change the algorithm in conditional code motion to
+    // avoid having invalid patterns lingering around at the end of the
+    // algorithm.
+    while (branch_comp->root_instruction()->opcode() ==
+               HloOpcode::kGetTupleElement &&
+           !branch_comp->root_instruction()->operand(0)->shape().IsTuple()) {
+      branch_comp->set_root_instruction(
+          branch_comp->root_instruction()->mutable_operands()[0]);
     }
   }
   return OkStatus();

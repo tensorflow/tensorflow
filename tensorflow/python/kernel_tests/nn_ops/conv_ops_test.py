@@ -171,7 +171,7 @@ class Conv2DTest(test.TestCase):
       if test_util.GpuSupportsHalfMatMulAndConv():
         out.append(dtypes.float16)
       if not test.is_built_with_rocm():
-        out.append(dtypes.float64)
+        out.extend([dtypes.float64, dtypes.bfloat16])
       return out
 
     return [dtypes.float32, dtypes.float64, dtypes.float16, dtypes.bfloat16]

@@ -31,8 +31,8 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tfrt/jit/tf_jitrt_query_of_death.h"
 #include "tensorflow/compiler/mlir/tfrt/jit/tf_jitrt_request_context.h"
 #include "tensorflow/compiler/mlir/tfrt/jit/transforms/tf_jitrt_passes.h"
-#include "tensorflow/compiler/xla/mlir/transforms/runtime/compiler.h"
-#include "tensorflow/compiler/xla/mlir/utils/runtime/async_runtime_api.h"
+#include "tensorflow/compiler/xla/mlir/runtime/transforms/compiler.h"
+#include "tensorflow/compiler/xla/mlir/runtime/utils/async_runtime_api.h"
 #include "tensorflow/compiler/xla/runtime/arguments.h"
 #include "tensorflow/compiler/xla/runtime/async_runtime.h"
 #include "tensorflow/compiler/xla/runtime/executable.h"
@@ -480,6 +480,9 @@ static Expected<AsyncValuePtr<JitExecutable>> CompileImpl(
             opts.legalize_i1_tensors = tf_jitrt_opts->legalize_i1_tensors;
           } else {
             opts.vectorize = GetJitRtFlags().vectorize;
+            opts.enable_xla_cpu_transformations =
+                tensorflow::GetJitRtFlags().enable_xla_cpu_transformations;
+            opts.lower_to_mmt4d = tensorflow::GetJitRtFlags().pack_matmul;
           }
 
           // Lower from Tensorflow to Linalg on buffers.
@@ -730,7 +733,7 @@ static void ExecuteImpl(Executable& executable, ArrayRef<MemrefDesc> memrefs,
   // notify the HostContext to emit the diagnostics for the kernel invocation.
   auto status = executable.Execute(memrefs, converter, opts);
   if (LLVM_UNLIKELY(!status.ok())) {
-    EmitError(exec_ctx, status.message());
+    EmitError(exec_ctx, status.status().message());
     return;
   }
 }

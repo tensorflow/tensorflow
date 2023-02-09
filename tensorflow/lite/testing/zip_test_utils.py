@@ -25,12 +25,12 @@ import traceback
 import zipfile
 
 import numpy as np
-import tensorflow.compat.v1 as tf
+import tensorflow as tf
 
 from google.protobuf import text_format
 from tensorflow.lite.testing import _pywrap_string_util
 from tensorflow.lite.testing import generate_examples_report as report_lib
-from tensorflow.python.framework import graph_util as tf_graph_util
+from tensorflow.python.framework import convert_to_constants
 from tensorflow.python.saved_model import signature_constants
 
 # pylint: disable=g-import-not-at-top
@@ -160,7 +160,7 @@ def freeze_graph(session, outputs):
   Returns:
     The frozen graph_def.
   """
-  return tf_graph_util.convert_variables_to_constants(
+  return convert_to_constants.convert_variables_to_constants(
       session, session.graph.as_graph_def(), [x.op.name for x in outputs])
 
 
@@ -332,7 +332,7 @@ def _get_tensor_info(tensors, default_name_prefix, normalize_func):
   for idx, tensor in enumerate(tensors):
     if not tensor.name:
       tensor.name = default_name_prefix + str(idx)
-    tensor_info = tf.saved_model.utils.build_tensor_info(tensor)
+    tensor_info = tf.compat.v1.saved_model.utils.build_tensor_info(tensor)
     tensor_name = normalize_func(tensor.name)
     tensor_info_map[tensor_name] = tensor_info
     tensor_names.append(tensor_name)
@@ -534,7 +534,7 @@ def make_zip_of_tests(options,
         # Build graph
         report["tf_log"] = ""
         report["tflite_converter_log"] = ""
-        tf.reset_default_graph()
+        tf.compat.v1.reset_default_graph()
 
         with tf.Graph().as_default():
           with tf.device("/cpu:0"):
@@ -546,7 +546,7 @@ def make_zip_of_tests(options,
               report["tf_log"] += traceback.format_exc()
               return None, report
 
-          sess = tf.Session()
+          sess = tf.compat.v1.Session()
           try:
             baseline_inputs, baseline_outputs = (
                 make_test_inputs(param_dict_real, sess, inputs, outputs))
@@ -574,14 +574,15 @@ def make_zip_of_tests(options,
           ]
 
           inference_signature = (
-              tf.saved_model.signature_def_utils.build_signature_def(
+              tf.compat.v1.saved_model.signature_def_utils.build_signature_def(
                   inputs=tensor_info_inputs,
                   outputs=tensor_info_outputs,
                   method_name="op_test"))
           saved_model_dir = tempfile.mkdtemp("op_test")
-          saved_model_tags = [tf.saved_model.tag_constants.SERVING]
+          saved_model_tags = [tf.saved_model.SERVING]
           signature_key = signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY
-          builder = tf.saved_model.builder.SavedModelBuilder(saved_model_dir)
+          builder = tf.compat.v1.saved_model.builder.SavedModelBuilder(
+              saved_model_dir)
           builder.add_meta_graph_and_variables(
               sess,
               saved_model_tags,
@@ -593,7 +594,7 @@ def make_zip_of_tests(options,
           # pylint: disable=g-long-ternary
           graph_def = freeze_graph(
               sess,
-              tf.global_variables() + inputs +
+              tf.compat.v1.global_variables() + inputs +
               outputs) if use_frozen_graph else sess.graph_def
 
         if "split_tflite_lstm_inputs" in param_dict_real:
@@ -690,9 +691,10 @@ def make_zip_of_tests(options,
   percent = 0
   if tf_success > 0:
     percent = float(converter_success) / float(tf_success) * 100.
-  tf.logging.info(("Archive %s Considered %d graphs, %d TF evaluated graphs "
-                   " and %d converted graphs (%.1f%%"), zip_path,
-                  total_conversions, tf_success, converter_success, percent)
+  tf.compat.v1.logging.info(
+      ("Archive %s Considered %d graphs, %d TF evaluated graphs "
+       " and %d converted graphs (%.1f%%"), zip_path, total_conversions,
+      tf_success, converter_success, percent)
 
   tf_failures = parameter_count - tf_success
 

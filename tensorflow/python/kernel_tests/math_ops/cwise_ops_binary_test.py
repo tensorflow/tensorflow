@@ -39,6 +39,10 @@ _TRUEDIV = lambda x, y: x / y
 _FLOORDIV = lambda x, y: x // y
 _MOD = lambda x, y: x % y
 
+# x and y must be numpy array object
+np_xlogy = lambda x, y: x * np.log(y)
+np_xlog1py = lambda x, y: x * np.log1p(y)
+
 
 # TODO(zongheng): it'd be great to factor out this function and various random
 # SparseTensor gen funcs.
@@ -260,6 +264,15 @@ class BinaryOpTest(test.TestCase):
     self.assertAllEqual(np_result, left_result)
     self.assertAllEqual(np_result, right_result)
 
+  def testBFloat16Basic(self):
+    bfloat16 = dtypes_lib.bfloat16.as_numpy_dtype
+    x = np.linspace(-20, 20, 10).reshape(1, 2, 5).astype(bfloat16)  # pylint: disable=too-many-function-args
+    # y cannot be zero
+    y = np.linspace(-20, 20, 10).reshape(1, 2, 5).astype(bfloat16)  # pylint: disable=too-many-function-args
+    self._compareCpu(x, y, np.true_divide, math_ops.xdivy)
+    self._compareCpu(x, y, np_xlogy, math_ops.xlogy)
+    self._compareCpu(x, y, np_xlog1py, math_ops.xlog1py)
+
   @test_util.run_deprecated_v1
   def testDoubleBasic(self):
     x = np.linspace(-5, 20, 15).reshape(1, 3, 5).astype(np.float64)  # pylint: disable=too-many-function-args
@@ -291,6 +304,23 @@ class BinaryOpTest(test.TestCase):
                         math_ops.igammac)
     except ImportError as e:
       tf_logging.warn("Cannot test special functions: %s" % str(e))
+
+  def testBfloat16Basic(self):
+    bf16_np = dtypes_lib.bfloat16.as_numpy_dtype
+    x = np.linspace(-5, 20, 15).reshape(1, 3, 5).astype(bf16_np)  # pylint: disable=too-many-function-args
+    y = np.linspace(20, -5, 15).reshape(1, 3, 5).astype(bf16_np)  # pylint: disable=too-many-function-args
+    self._compareBoth(x, y, np.add, math_ops.add)
+    self._compareBoth(x, y, np.subtract, math_ops.subtract)
+    self._compareBoth(x, y, np.multiply, math_ops.multiply)
+    self._compareBoth(x, bf16_np(y + 0.1), np.true_divide, math_ops.truediv)
+    self._compareBoth(x, bf16_np(y + 0.1), np.floor_divide, math_ops.floordiv)
+    self._compareBoth(x, y, np.add, _ADD)
+    self._compareBoth(x, y, np.subtract, _SUB)
+    self._compareBoth(x, y, np.multiply, _MUL)
+    self._compareBoth(x, bf16_np(y + 0.1), np.true_divide, _TRUEDIV)
+    self._compareBoth(x, bf16_np(y + 0.1), np.floor_divide, _FLOORDIV)
+    self._compareBoth(x, y, np.maximum, math_ops.maximum)
+    self._compareBoth(x, y, np.minimum, math_ops.minimum)
 
   def testUint8Basic(self):
     x = np.arange(1, 13, 2).reshape(1, 3, 2).astype(np.uint8)
@@ -851,6 +881,26 @@ class BinaryOpTest(test.TestCase):
     y = np.array([-1, 0, -2, -2, -3]).astype(np.int64)
     z = math_ops.pow(x, y)
     self.assertAllEqual(self.evaluate(z), [0, 1, 1, 1, -1])
+
+  def testFloorModInfDenominator(self):
+    """Regression test for GitHub issue #58369."""
+    if not test_util.is_gpu_available():
+      self.skipTest("Requires GPU")
+
+    dtypes = [
+        dtypes_lib.bfloat16.as_numpy_dtype,
+        np.float16,
+        np.float32,
+        np.float64,
+    ]
+
+    for dtype in dtypes:
+      x = np.array([4, 0, -1, 4, 0, -1], dtype=dtype)
+      y = np.array([np.inf, np.inf, np.inf, -np.inf, -np.inf, -np.inf],
+                   dtype=dtype)
+      expected = np.array([4, 0, np.inf, -np.inf, 0, -1], dtype=dtype)
+
+      self.assertAllClose(self.evaluate(math_ops.mod(x, y)), expected)
 
 
 class ComparisonOpTest(test.TestCase):

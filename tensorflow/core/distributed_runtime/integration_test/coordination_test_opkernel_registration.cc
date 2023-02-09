@@ -13,10 +13,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/distributed_runtime/coordination/coordination_service_agent.h"
 #include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/tsl/distributed_runtime/coordination/coordination_service_agent.h"
+#include "tensorflow/tsl/distributed_runtime/coordination/coordination_service_error_util.h"
 
 namespace tensorflow {
 namespace {
@@ -148,6 +149,8 @@ class TestReportErrorToClusterOp : public OpKernel {
     }
     tensorflow::Status s(static_cast<tensorflow::error::Code>(error_code),
                          error_message);
+    s.SetPayload(tsl::CoordinationErrorPayloadKey(),
+                 absl::Cord("testing error payload"));
     OP_REQUIRES_OK(ctx, coord_agent->ReportError(s));
   }
 };

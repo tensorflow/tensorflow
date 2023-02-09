@@ -1,8 +1,10 @@
 load("//tensorflow:tensorflow.bzl", "tf_cc_test", "tf_features_nolayering_check_if_ios")
 load("//tensorflow/lite:special_rules.bzl", "nonportable_visibility_allowlist")
+load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
 
 # Kernel for custom parse_example
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
         "//visibility:public",
     ],
@@ -19,13 +21,14 @@ cc_library(
         "example_proto_fast_parsing.h",
         "parse_example.h",
     ],
+    compatible_with = get_compatible_with_portable(),
     features = tf_features_nolayering_check_if_ios(),
     deps = [
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/container:flat_hash_map",
         "@flatbuffers",
         "//tensorflow/lite:framework",
-        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/kernels:kernel_util",
         "//tensorflow/lite/kernels/internal:tensor",
         "//tensorflow/lite:string_util",
@@ -55,10 +58,10 @@ tf_cc_test(
     deps = [
         ":parse_example",
         "@flatbuffers",
-        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/core/api:op_resolver",
-        "//tensorflow/lite/core:headers",
-        "//tensorflow/lite/kernels:builtin_ops",
+        "//tensorflow/lite/core:framework",
+        "//tensorflow/lite/core/kernels:builtin_ops",
         "//tensorflow/lite/kernels:test_main",
         "//tensorflow/lite/kernels:test_util",
         "//tensorflow/lite/schema:schema_fbs",
@@ -103,7 +106,7 @@ cc_library(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:string_util",
-        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/kernels:kernel_util",
         "//tensorflow/lite/kernels/internal:tensor",
         "@com_google_absl//absl/base",
@@ -124,9 +127,10 @@ tf_cc_test(
         "//tensorflow/lite:framework",
         "//tensorflow/lite:string_util",
         "//tensorflow/lite/c:common",
-        "//tensorflow/lite/core:headers",
+        "//tensorflow/lite/core:framework",
         "//tensorflow/lite/core/api:op_resolver",
-        "//tensorflow/lite/kernels:builtin_ops",
+        "//tensorflow/lite/core/c:common",
+        "//tensorflow/lite/core/kernels:builtin_ops",
         "//tensorflow/lite/kernels:test_main",
         "//tensorflow/lite/kernels:test_util",
         "//tensorflow/lite/schema:schema_fbs",

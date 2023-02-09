@@ -18,7 +18,7 @@ limitations under the License.
 
 #include <memory>
 
-#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/c/common.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -45,6 +45,7 @@ TfLiteDelegate* TfLiteDummyDelegateCreate(const DummyDelegateOptions* options);
 
 // Destroys a delegate created with `TfLiteDummyDelegateCreate` call.
 void TfLiteDummyDelegateDelete(TfLiteDelegate* delegate);
+
 #ifdef __cplusplus
 }
 #endif  // __cplusplus

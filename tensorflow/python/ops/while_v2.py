@@ -90,7 +90,8 @@ def while_loop(cond,
   # `wrapped_body` below.
   loop_vars = _tensor_array_to_flow(loop_vars)
   loop_vars = nest.map_structure(
-      ops.internal_convert_to_tensor_or_indexed_slices, loop_vars,
+      indexed_slices.internal_convert_to_tensor_or_indexed_slices,
+      loop_vars,
       expand_composites=True)
 
   # `loop_vars_signature` is a structure of TypeSpecs and has the same
@@ -298,7 +299,8 @@ def while_loop(cond,
     _check_inputs_outputs_types_match(body_graph, flattened_loop_vars)
 
     with ops.control_dependencies(
-        list(cond_graph.control_captures) + list(body_graph.control_captures)):
+        list(cond_graph._function_captures.control) + list(  # pylint: disable=protected-access
+            body_graph._function_captures.control)):  # pylint: disable=protected-access
       output_shapes = [t.shape for t in body_graph.outputs]
       orig_loop_vars_range = slice(first_loop_var_index,
                                    first_loop_var_index + num_flattened_outputs)
@@ -1368,12 +1370,6 @@ def _duplicate_body_captures_in_cond(cond_graph, body_graph_captures):
 def _copy_handle_data(src_tensors, tgt_tensors):
   for src_t, tgt_t in zip(src_tensors, tgt_tensors):
     handle_data_util.copy_handle_data(src_t, tgt_t)
-
-
-def _graph_name(graph):
-  if isinstance(graph, func_graph_module.FuncGraph):
-    return graph.name
-  return "Base"
 
 
 def _pack_sequence_as(loop_vars_signature, flat_orig_loop_vars, loop_vars):

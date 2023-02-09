@@ -17,11 +17,11 @@ limitations under the License.
 #include <functional>
 #include <utility>
 
-#include "tensorflow/core/profiler/profiler_options.pb.h"
 #include "tensorflow/tsl/platform/macros.h"
 #include "tensorflow/tsl/platform/status.h"
 #include "tensorflow/tsl/platform/test.h"
 #include "tensorflow/tsl/profiler/lib/profiler_interface.h"
+#include "tensorflow/tsl/profiler/protobuf/profiler_options.pb.h"
 #include "tensorflow/tsl/profiler/protobuf/xplane.pb.h"
 
 namespace tsl {

@@ -21,9 +21,9 @@ limitations under the License.
 #include <utility>
 
 #include "absl/container/inlined_vector.h"
-#include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/compiler/xla/service/hlo_module.h"
+#include "tensorflow/compiler/xla/hlo/ir/dfs_hlo_visitor_with_default.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
 #include "tensorflow/compiler/xla/util.h"
 
@@ -371,6 +371,10 @@ class AlgebraicSimplifierVisitor : public DfsHloRewriteVisitor {
 
   // Allow backend constraints on tiling etc. to invalidate optimizations.
   virtual bool IsValidLayout(const Shape& shape) { return true; }
+  // Allow backend targets to determine whether a layout is inefficient.
+  virtual bool ShouldStrengthReduceDotToReduce(const HloInstruction* hlo) {
+    return true;
+  }
 
  protected:
   // The backend-specific options selected for the algebraic simplifier.

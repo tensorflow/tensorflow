@@ -69,7 +69,7 @@ struct TensorFlowExecutorInlinerInterface : public DialectInlinerInterface {
   // Override the inlining hook to determine if 'src' can be inlined into
   // 'dest'.
   bool isLegalToInline(Region *dest, Region *src, bool wouldBeCloned,
-                       BlockAndValueMapping &value_mapping) const final {
+                       IRMapping &value_mapping) const final {
     // Allow inlining into tf.island regions if the incoming region has a single
     // block.
     return llvm::isa<tf_executor::IslandOp>(dest->getParentOp()) &&
@@ -511,7 +511,7 @@ void SwitchNOp::print(OpAsmPrinter &p) {
   p.printOperands(operands.begin(), std::next(operands.begin(), 2));
   p << " of " << (getNumResults() - 1);
   // print control dependencies if any
-  if (!llvm::empty(getControlInputs())) {
+  if (!getControlInputs().empty()) {
     p << " (";
     p.printOperands(getControlInputs());
     p << ")";
@@ -1085,7 +1085,7 @@ void ControlTriggerOp::getCanonicalizationPatterns(RewritePatternSet &results,
 // tf_executor.island
 //===----------------------------------------------------------------------===//
 
-LogicalResult IslandOp::fold(llvm::ArrayRef<Attribute> operands,
+LogicalResult IslandOp::fold(FoldAdaptor,
                              llvm::SmallVectorImpl<OpFoldResult> &results) {
   // This folds IslandOps with no inner ops, one control operand and no data
   // results. The single control operand is forwarded to the IslandOp control

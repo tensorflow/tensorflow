@@ -31,8 +31,11 @@ namespace gpu {
 // so it should go strictly later.
 class CublasPadForGemms : public HloModulePass {
  public:
-  CublasPadForGemms(PrimitiveType datatype, int32_t pad_to_multiple_of)
-      : datatype_(datatype), pad_to_multiple_of_(pad_to_multiple_of) {}
+  CublasPadForGemms(const se::CudaComputeCapability cuda_compute_capability,
+                    PrimitiveType datatype, int32_t pad_to_multiple_of)
+      : cuda_compute_capability_(cuda_compute_capability),
+        datatype_(datatype),
+        pad_to_multiple_of_(pad_to_multiple_of) {}
 
   absl::string_view name() const override { return "cublas-pad-for-gemms"; }
 
@@ -42,6 +45,7 @@ class CublasPadForGemms : public HloModulePass {
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
  private:
+  const se::CudaComputeCapability cuda_compute_capability_;
   PrimitiveType datatype_;
   int32_t pad_to_multiple_of_;
 };

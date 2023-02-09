@@ -20,9 +20,9 @@ limitations under the License.
 #include <limits>
 
 #include "ruy/profiler/instrumentation.h"  // from @ruy
-#include "tensorflow/lite/c/builtin_op_data.h"
-#include "tensorflow/lite/c/c_api_types.h"
-#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/c/builtin_op_data.h"
+#include "tensorflow/lite/core/c/c_api_types.h"
+#include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/kernels/cpu_backend_context.h"
 #include "tensorflow/lite/kernels/internal/compatibility.h"
 #include "tensorflow/lite/kernels/internal/optimized/integer_ops/mean.h"
@@ -253,7 +253,7 @@ TfLiteStatus PrepareSimple(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_OK(
       context, GetTemporarySafe(context, node, /*index=*/3, &normalized_dims));
 
-  if (!IsConstantTensor(op_context.input)) {
+  if (!IsConstantOrPersistentTensor(op_context.input)) {
     SetTensorToDynamic(normalized_dims);
   } else {
     normalized_dims->allocation_type = kTfLiteArenaRw;
@@ -261,7 +261,7 @@ TfLiteStatus PrepareSimple(TfLiteContext* context, TfLiteNode* node) {
                       ResizeTempDims(context, &op_context, normalized_dims));
   }
   // Leaves work to Eval if axis is not constant; else resizes output.
-  if (!IsConstantTensor(op_context.axis)) {
+  if (!IsConstantOrPersistentTensor(op_context.axis)) {
     SetTensorToDynamic(op_context.output);
     SetTensorToDynamic(resolved_axis);
     return kTfLiteOk;
@@ -306,7 +306,7 @@ TfLiteStatus PrepareMeanOrSum(TfLiteContext* context, TfLiteNode* node) {
   TfLiteTensor* temp_sum;
   TF_LITE_ENSURE_OK(context,
                     GetTemporarySafe(context, node, /*index=*/2, &temp_sum));
-  if (!IsConstantTensor(op_context.axis)) {
+  if (!IsConstantOrPersistentTensor(op_context.axis)) {
     SetTensorToDynamic(temp_sum);
     return kTfLiteOk;
   }
@@ -338,7 +338,7 @@ TfLiteStatus PrepareProd(TfLiteContext* context, TfLiteNode* node) {
     TF_LITE_ENSURE_EQ(context, op_context.output->params.zero_point, 0);
   }
 
-  if (!IsConstantTensor(op_context.axis)) {
+  if (!IsConstantOrPersistentTensor(op_context.axis)) {
     SetTensorToDynamic(temp_prod);
     return kTfLiteOk;
   }

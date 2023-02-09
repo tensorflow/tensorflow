@@ -49,6 +49,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/iterator_util.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/map_util.h"
+#include "tensorflow/compiler/xla/printer.h"
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/compiler/xla/service/mapped_ptr_container_sorter.h"
 #include "tensorflow/compiler/xla/service/name_uniquer.h"
@@ -65,7 +66,7 @@ namespace xla {
 class HloComputation;
 class HloModule;
 
-std::string PrintName(const std::string& name, bool print_ids);
+absl::string_view PrintName(absl::string_view name, bool print_ids);
 
 // A bunch of switches that control how the hlo text should be printed.
 class HloPrintOptions {
@@ -646,7 +647,7 @@ class HloInstruction {
   // prefetch or not.
   static std::unique_ptr<HloInstruction> CreateCopyStart(
       const Shape& shape, HloInstruction* operand,
-      bool is_cross_program_prefetch = false);
+      std::optional<int> cross_program_prefetch_index = std::nullopt);
 
   // Creates a compare op, performing the comparison specified in direction.
   static std::unique_ptr<HloInstruction> CreateCompare(
@@ -833,6 +834,12 @@ class HloInstruction {
   static std::unique_ptr<HloInstruction> CreateBitcastConvert(
       const Shape& shape, HloInstruction* operand);
 
+  // Creates a stochastic conversion instruction, where operand is the data to
+  // convert, random is a given random input to determine the rounding direction
+  // and shape is the target shape for the conversion.
+  static std::unique_ptr<HloInstruction> CreateStochasticConvert(
+      const Shape& shape, HloInstruction* operand, HloInstruction* random);
+
   // Creates an infeed instruction, which reads data of the given shape from the
   // Infeed interface of the device. infeed_shape is the shape of the data
   // received from the infeed *not* the shape of the infeed instruction which
@@ -997,7 +1004,7 @@ class HloInstruction {
   // the adder being passed by the caller would not be necessary.
   static std::unique_ptr<HloInstruction> CreateBroadcastSequence(
       const Shape& output_shape, HloInstruction* operand,
-      const std::function<HloInstruction*(std::unique_ptr<HloInstruction>)>&
+      absl::FunctionRef<HloInstruction*(std::unique_ptr<HloInstruction>)>
           adder);
 
   // Creates a pad instruction, where the operand is padded on the edges and
@@ -1281,9 +1288,9 @@ class HloInstruction {
   // Returns true if "other" performs the same computation as this instruction.
   bool Identical(
       const HloInstruction& other,
-      const std::function<bool(const HloInstruction*, const HloInstruction*)>&
+      absl::FunctionRef<bool(const HloInstruction*, const HloInstruction*)>
           eq_operands = std::equal_to<const HloInstruction*>(),
-      const std::function<bool(const HloComputation*, const HloComputation*)>&
+      absl::FunctionRef<bool(const HloComputation*, const HloComputation*)>
           eq_computations = std::equal_to<const HloComputation*>(),
       bool layout_sensitive = true) const {
     return IdenticalInternal(other, eq_operands, eq_computations,
@@ -1296,9 +1303,9 @@ class HloInstruction {
   // considers add(a,b) equal to add(b,a)).
   bool IdenticalIgnoringCommutativeOperandOrder(
       const HloInstruction& other,
-      const std::function<bool(const HloInstruction*, const HloInstruction*)>&
+      absl::FunctionRef<bool(const HloInstruction*, const HloInstruction*)>
           eq_operands = std::equal_to<const HloInstruction*>(),
-      const std::function<bool(const HloComputation*, const HloComputation*)>&
+      absl::FunctionRef<bool(const HloComputation*, const HloComputation*)>
           eq_computations = std::equal_to<const HloComputation*>(),
       bool layout_sensitive = true) const {
     return IdenticalInternal(other, eq_operands, eq_computations,
@@ -1311,9 +1318,9 @@ class HloInstruction {
   // both have channel IDs or neither has a channel ID.
   bool IdenticalIgnoringChannelIdValues(
       const HloInstruction& other,
-      const std::function<bool(const HloInstruction*, const HloInstruction*)>&
+      absl::FunctionRef<bool(const HloInstruction*, const HloInstruction*)>
           eq_operands = std::equal_to<const HloInstruction*>(),
-      const std::function<bool(const HloComputation*, const HloComputation*)>&
+      absl::FunctionRef<bool(const HloComputation*, const HloComputation*)>
           eq_computations = std::equal_to<const HloComputation*>(),
       bool layout_sensitive = true) const {
     return IdenticalInternal(other, eq_operands, eq_computations,
@@ -1422,9 +1429,9 @@ class HloInstruction {
   // visitation is determined by the given operand order; if compare(A, B) ==
   // true, A is visited before B.
   using CompareFunction =
-      std::function<bool(const HloInstruction*, const HloInstruction*)>;
+      absl::FunctionRef<bool(const HloInstruction*, const HloInstruction*)>;
   Status AcceptWithOperandOrder(DfsHloVisitor* visitor,
-                                const CompareFunction& operand_order,
+                                CompareFunction operand_order,
                                 bool call_finish_visit = true);
 
   // Visit this instruction and only this instruction with the given visitor.
@@ -1498,6 +1505,12 @@ class HloInstruction {
   // function, e.g. the signature of an F32 add is (F32, F32) -> F32.
   std::string SignatureString() const;
 
+  // Prints a debugging string that represents this instruction.
+  void Print(Printer* printer) const {
+    return Print(printer, HloPrintOptions());
+  }
+  void Print(Printer* printer, const HloPrintOptions& options) const;
+
   // Returns a debugging string that represents this instruction.
   //
   // (We express the default options using an overload rather than a default
@@ -1509,10 +1522,10 @@ class HloInstruction {
   std::string ToString() const { return ToString(HloPrintOptions()); }
   std::string ToString(const HloPrintOptions& options) const;
 
-  // Components of the ToString() representation:
+  // Components of the Print() and ToString() representation:
 
-  // Returns a string representation of the operand list.
-  std::string OperandsToString(const HloPrintOptions& options) const;
+  // Prints a string representation of the operand list.
+  void PrintOperands(Printer* printer, const HloPrintOptions& options) const;
 
   // Returns string representation of op-specific attributes.
   std::vector<std::string> ExtraAttributesToString(
@@ -1526,9 +1539,9 @@ class HloInstruction {
   // The canonical string representation needs to name operands and instruction
   // names in a consistent way. This is implemented through the
   // canonical_name_map.
-  std::string ToStringWithCanonicalNameMap(
-      const HloPrintOptions& options,
-      CanonicalNameMap* canonical_name_map) const;
+  void PrintWithCanonicalNameMap(Printer* printer,
+                                 const HloPrintOptions& options,
+                                 CanonicalNameMap* canonical_name_map) const;
 
   // Returns a serialized representation of this instruction.
   virtual HloInstructionProto ToProto() const;
@@ -1568,14 +1581,14 @@ class HloInstruction {
   // Returns the sharding unique device, if any.
   std::optional<int64_t> sharding_unique_device() const {
     if (sharding_ == nullptr) {
-      return std::optional<int64_t>();
+      return std::nullopt;
     }
     return sharding_->UniqueDevice();
   }
   // Sets the sharding of this operator. Should only be called by HloModule or
   // HloComputation methods.
   void set_sharding(const HloSharding& sharding) {
-    sharding_ = std::make_shared<const HloSharding>(sharding);
+    set_sharding(std::make_shared<const HloSharding>(sharding));
   }
   void set_sharding(std::shared_ptr<const HloSharding> sharding) {
     sharding_ = std::move(sharding);
@@ -1633,7 +1646,7 @@ class HloInstruction {
   // when we clone hlo_computations and want to let the instructions to point
   // to the newly cloned nodes.
   void ReplaceCalledComputations(
-      std::function<HloComputation*(HloComputation*)> map_function) {
+      absl::FunctionRef<HloComputation*(HloComputation*)> map_function) {
     for (int64_t i = 0; i < called_computations_.size(); ++i) {
       called_computations_[i] = map_function(called_computations_[i]);
     }
@@ -2143,8 +2156,8 @@ class HloInstruction {
       absl::string_view async_execution_thread,
       bool skip_async_execution_thread_overwrite);
 
-  // Delegates to HloCopyStartInstruction::is_cross_program_prefetch().
-  bool is_cross_program_prefetch() const;
+  // Delegates to HloCopyStartInstruction::is_cross_program_prefetch_index().
+  std::optional<int> cross_program_prefetch_index() const;
 
   // Delegates to HloCompareInstruction::direction().
   ComparisonDirection comparison_direction() const;
@@ -2157,9 +2170,9 @@ class HloInstruction {
   // Delegates to HloCholeskyInstruction::cholesky_options().
   const CholeskyOptions& cholesky_options() const;
 
-  // Delegates to HloCustomCallInstruction::output_to_operand_aliasing().
+  // Delegates to HloCallableInstruction::output_to_operand_aliasing().
   const std::vector<std::pair<ShapeIndex, std::pair<int64_t, ShapeIndex>>>&
-  custom_call_output_operand_aliasing() const;
+  output_operand_aliasing() const;
 
   // Appends operand to the list of operands and adds this instruction as a user
   // of the operand.
@@ -2245,9 +2258,9 @@ class HloInstruction {
 
   bool IdenticalInternal(
       const HloInstruction& other,
-      const std::function<bool(const HloInstruction*, const HloInstruction*)>&
+      absl::FunctionRef<bool(const HloInstruction*, const HloInstruction*)>
           eq_operands,
-      const std::function<bool(const HloComputation*, const HloComputation*)>&
+      absl::FunctionRef<bool(const HloComputation*, const HloComputation*)>
           eq_computations,
       bool layout_sensitive, bool ignore_channel_id_values,
       bool ignore_commutative_operand_order) const;
@@ -2275,14 +2288,14 @@ class HloInstruction {
       const std::optional<int64_t>& operand_idx) const;
 
   // Prints an operand to a string. Accessed by friend class HloInstruction.
-  virtual std::string OperandsToStringWithCanonicalNameMap(
-      const HloPrintOptions& options,
+  virtual void PrintOperandsWithCanonicalNameMap(
+      Printer* printer, const HloPrintOptions& options,
       CanonicalNameMap* canonical_name_map) const;
 
   // See comments on Identical().
   virtual bool IdenticalSlowPath(
       const HloInstruction& other,
-      const std::function<bool(const HloComputation*, const HloComputation*)>&
+      absl::FunctionRef<bool(const HloComputation*, const HloComputation*)>
           eq_computations) const;
 
   // Creates an n-ary elementwise operation.

@@ -12,6 +12,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include <iterator>
 #include <memory>
 #include <string>
 #include <vector>
@@ -31,6 +32,8 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/SymbolTable.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
+#include "mlir/Pass/PassOptions.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/quantization/tensorflow/cc/const_op_size.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/passes/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_saved_model.h"
@@ -41,18 +44,41 @@ namespace mlir {
 namespace quant {
 namespace {
 
+using ::mlir::tf_saved_model::GetInitializerFunction;
+using ::mlir::tf_saved_model::GetSessionInitializerOp;
+using ::mlir::tf_saved_model::kTfSavedModelExportedNamesAttr;
 using ::mlir::tf_saved_model::kTfSavedModelInitializerRestoreType;
 using ::mlir::tf_saved_model::kTfSavedModelInitializerTypeAttr;
 using ::mlir::tf_saved_model::SessionInitializerOp;
 
 constexpr absl::string_view kDefaultConstName = "const";
 
+// The default lower threshold for the constant size for unfreezing.
+constexpr int64_t kDefaultConstantSizeThresholdInBytes = 64 * 1024;  // 64KiB
+
+// This pass "unfreezes" constants found in the moudle and converts them to
+// `tf.VarHandleOp`s. Also, an initialization pattern
+// `tf.AssignVariableOp(tf.VarHandleOp, tf.ConstOp)` is inserted to the
+// initializer function of type "restore_op" for each of the unfrozen constants.
+//
+// The constants whose sizes are smaller than `size_threshold_in_bytes_` will
+// not be converted to variables.
 class UnfreezeConstantsPass
     : public PassWrapper<UnfreezeConstantsPass, OperationPass<ModuleOp>> {
  public:
   MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(UnfreezeConstantsPass)
 
-  explicit UnfreezeConstantsPass() {}
+  explicit UnfreezeConstantsPass()
+      : UnfreezeConstantsPass(kDefaultConstantSizeThresholdInBytes) {}
+
+  explicit UnfreezeConstantsPass(const int64_t size_threshold_in_bytes)
+      : size_threshold_in_bytes_(
+            CreateSizeThresholdInBytesOption(size_threshold_in_bytes)) {}
+
+  UnfreezeConstantsPass(const UnfreezeConstantsPass& other)
+      : UnfreezeConstantsPass{} {
+    size_threshold_in_bytes_ = other.size_threshold_in_bytes_.getValue();
+  }
 
   StringRef getArgument() const override { return "quant-unfreeze-constants"; }
 
@@ -63,10 +89,23 @@ class UnfreezeConstantsPass
   void runOnOperation() override;
 
  private:
+  Option<int64_t> CreateSizeThresholdInBytesOption(const int64_t init_value) {
+    return Option<int64_t>(
+        *this, "size_threshold_in_bytes", llvm::cl::init(init_value),
+        llvm::cl::desc(
+            "Lower threshold of the constant size for unfreezing. Constants "
+            "smaller than this value will not be converted to variables."));
+  }
+
   void getDependentDialects(DialectRegistry& registry) const override {
     registry.insert<TF::TensorFlowDialect,
                     tf_saved_model::TensorFlowSavedModelDialect>();
   }
+
+  // Lower-bound threshold for the size of the constant in bytes. Constants
+  // larger than this threshold will not be unfrozen and will remain as
+  // constants.
+  Option<int64_t> size_threshold_in_bytes_;
 };
 
 // Adds the symbol to the "initializers" attribute of the session_initializer
@@ -82,13 +121,31 @@ void AddSymbolToInitializersAttr(SessionInitializerOp session_init_op,
       ArrayAttr::get(session_init_op.getContext(), initializers_attrs));
 }
 
-// Create the initializer function right after the session_initializer op.
+// Returns the session_initializer op in the module if exists. Otherwise,
+// creates a new session_initializer op and returns it.
+SessionInitializerOp GetOrCreateSessionInitializerOp(ModuleOp module_op) {
+  SessionInitializerOp session_init_op = GetSessionInitializerOp(module_op);
+
+  // Create one if it doesn't exist.
+  if (!session_init_op) {
+    OpBuilder builder(&module_op.getBodyRegion());
+
+    session_init_op = builder.create<SessionInitializerOp>(
+        module_op.getLoc(), /*initializers=*/builder.getArrayAttr({}));
+  }
+
+  return session_init_op;
+}
+
+// Create the initializer function right after the SessionInitializer op.
 // Returns the newly created initializer function. The initializer function's
 // initializer_type is set to "restore_op" since it essentially serves as a
 // variable restoration function.
-func::FuncOp CreateInitializerFunc(SymbolTable& symbol_table,
-                                   SessionInitializerOp session_init_op) {
-  OpBuilder builder{session_init_op.getContext()};
+func::FuncOp CreateInitializerFunc(ModuleOp module_op) {
+  SessionInitializerOp session_init_op =
+      GetOrCreateSessionInitializerOp(module_op);
+
+  OpBuilder builder(module_op.getContext());
   builder.setInsertionPointAfter(session_init_op);
 
   const Location loc = builder.getUnknownLoc();
@@ -99,7 +156,7 @@ func::FuncOp CreateInitializerFunc(SymbolTable& symbol_table,
   builder.createBlock(&init_func.getBody(), /*insertPt=*/init_func.begin(),
                       /*arg_types=*/{}, /*arg_locs=*/{});
 
-  init_func->setAttr("tf_saved_model.exported_names",
+  init_func->setAttr(kTfSavedModelExportedNamesAttr,
                      builder.getStrArrayAttr(
                          {"tf_saved_model.session_initializer_restore_op"}));
   init_func->setAttr(
@@ -109,6 +166,7 @@ func::FuncOp CreateInitializerFunc(SymbolTable& symbol_table,
   builder.setInsertionPointToStart(&init_func.front());
   builder.create<func::ReturnOp>(loc, /*operands=*/ValueRange{});
 
+  SymbolTable symbol_table(module_op);
   symbol_table.insert(init_func);
 
   AddSymbolToInitializersAttr(
@@ -126,42 +184,19 @@ bool IsInitializerType(func::FuncOp init_func_op, StringRef initializer_type) {
 }
 
 // Returns the initializer function whose tf_saved_model.initializer_type
-// matches `initializer_type`. Creates and returns a new initializer function
-// iff such FuncOp is not found. The newly created initializer function's symbol
-// will be added to the symbol table and session_initializer op's "intializer"
-// attribute.
-func::FuncOp GetOrCreateSessionInitializerFunc(
-    SymbolTable& symbol_table, SessionInitializerOp session_init_op,
-    StringRef initializer_type) {
-  for (const auto init_sym :
-       session_init_op.getInitializers().getAsValueRange<FlatSymbolRefAttr>()) {
-    auto init_func_op = symbol_table.lookup<func::FuncOp>(init_sym);
-    if (!init_func_op) continue;
-
-    if (IsInitializerType(init_func_op, kTfSavedModelInitializerRestoreType)) {
-      return init_func_op;
-    }
+// is "restore_op". Creates and returns a new initializer function iff such
+// `FuncOp` is not found. The newly created initializer function's
+// initializer_type is "restore_op" and its symbol will be added to the symbol
+// table and session_initializer op's "intializer" attribute.
+func::FuncOp GetOrCreateInitializerFunc(ModuleOp module_op) {
+  if (auto init_func_op = GetInitializerFunction(
+          module_op, /*initializer_type=*/kTfSavedModelInitializerRestoreType);
+      init_func_op) {
+    return init_func_op;
+  } else {
+    // Create a new initializer function if the init function is not found.
+    return CreateInitializerFunc(module_op);
   }
-
-  // Create a new initializer function if the init function is not found.
-  return CreateInitializerFunc(symbol_table, session_init_op);
-}
-
-// Returns the session_initializer op in the module if exists. Otherwise,
-// creates a new session_initializer op and returns it.
-SessionInitializerOp GetOrCreateSessionInitializerOp(ModuleOp module_op) {
-  SessionInitializerOp session_init_op =
-      tf_saved_model::GetSessionInitializerOp(module_op);
-
-  // Create one if it doesn't exist.
-  if (!session_init_op) {
-    OpBuilder builder{&module_op.getBodyRegion()};
-
-    session_init_op = builder.create<SessionInitializerOp>(
-        module_op.getLoc(), /*initializers=*/builder.getArrayAttr({}));
-  }
-
-  return session_init_op;
 }
 
 // Retrieve the ConstOp's name from its loc. Returns "const" if a name cannot be
@@ -176,15 +211,18 @@ std::string GetConstOpName(TF::ConstOp const_op) {
 }
 
 // Collects the ConstOps to unfreeze.
-std::vector<TF::ConstOp> GetTargetConstOps(ModuleOp module_op) {
+std::vector<TF::ConstOp> GetTargetConstOps(const int64_t size_threshold,
+                                           ModuleOp module_op) {
   std::vector<TF::ConstOp> target_const_ops{};
 
   // TODO(b/254636388): Lift the assumption that there are no intializer
   // functions and avoid converting ConstOps inside initializer functions.
   for (auto func_op : module_op.getOps<func::FuncOp>()) {
-    auto const_ops = func_op.getOps<TF::ConstOp>();
-    target_const_ops.insert(target_const_ops.end(), const_ops.begin(),
-                            const_ops.end());
+    absl::c_copy_if(func_op.getOps<TF::ConstOp>(),
+                    std::back_inserter(target_const_ops),
+                    [size_threshold](TF::ConstOp const_op) -> bool {
+                      return GetSizeInBytes(const_op) > size_threshold;
+                    });
   }
 
   return target_const_ops;
@@ -255,11 +293,11 @@ void CreateAssignVariableOps(
     // Assign the ConstOp to each VarHandleOp. These will be used to save the
     // variable values to the checkpoint.
     auto const_op_copy =
-        builder.create<TF::ConstOp>(const_op.getLoc(), const_op.value());
+        builder.create<TF::ConstOp>(const_op.getLoc(), const_op.getValue());
 
     builder.create<TF::AssignVariableOp>(const_op.getLoc(),
                                          /*resource=*/var_handle_op,
-                                         /*value=*/const_op_copy.output());
+                                         /*value=*/const_op_copy.getOutput());
   }
 }
 
@@ -268,18 +306,13 @@ void UnfreezeConstantsPass::runOnOperation() {
 
   // Find the ConstOps to "unfreeze" into VarHandleOps.
   const std::vector<TF::ConstOp> target_const_ops =
-      GetTargetConstOps(module_op);
+      GetTargetConstOps(size_threshold_in_bytes_.getValue(), module_op);
   if (target_const_ops.empty()) {
     VLOG(1) << "No ConstOps found. UnfreezeConstantsPass is a no-op.";
     return;
   }
 
-  SessionInitializerOp session_init_op =
-      GetOrCreateSessionInitializerOp(module_op);
-
-  SymbolTable symbol_table{module_op};
-  func::FuncOp session_init_func = GetOrCreateSessionInitializerFunc(
-      symbol_table, session_init_op, kTfSavedModelInitializerRestoreType);
+  func::FuncOp session_init_func = GetOrCreateInitializerFunc(module_op);
 
   // Replace each usage of ConstOp to a VarHandleOp -> ReadVariableOp pattern.
   llvm::MapVector<TF::ConstOp, std::string> const_op_name_map =

@@ -106,9 +106,7 @@ class ModelTimingPriorityQueue {
       DCHECK(model_timing.GetTiming(root.get()) != nullptr);
       const ModelTiming::NodeTiming* root_timing =
           model_timing.GetTiming(root.get());
-      stage_roots_queue_.emplace(
-          root_timing->total_time_nsec * root_timing->pipeline_ratio,
-          root.get());
+      Push(root.get(), *root_timing);
     }
   }
 
@@ -2122,7 +2120,22 @@ Model::Model()
   model_gauge_cell_->Set(
       [this, my_safe_to_collect_metrics = this->safe_to_collect_metrics_]() {
         mutex_lock l(my_safe_to_collect_metrics->mu);
-        return my_safe_to_collect_metrics->val ? DebugString() : std::string();
+        if (!my_safe_to_collect_metrics->val) {
+          return std::string();
+        }
+        {
+          tf_shared_lock snapshot_lock(mu_);
+          if (snapshot_ != nullptr) {
+            ModelProto model_proto;
+            Status s = ModelToProtoHelper(snapshot_, &model_proto);
+            if (s.ok()) {
+              *model_proto.mutable_optimization_params() = optimization_params_;
+              return model_proto.DebugString();
+            }
+            LOG(WARNING) << s.error_message();
+          }
+        }
+        return DebugString();
       });
 }
 
@@ -2210,6 +2223,13 @@ void Model::Optimize(AutotuneAlgorithm algorithm, int64_t cpu_budget,
   }
   if (experiment_ == "autotune_buffer_optimization") {
     OptimizeBuffers(snapshot, optimization_params.ram_budget());
+  }
+  {
+    // Save the snapshot of the model proto including the parameters used by
+    // autotune. This will be used as the model proto returned in `tfstreamz`.
+    mutex_lock l(mu_);
+    snapshot_ = snapshot;
+    optimization_params_ = optimization_params;
   }
 }
 
@@ -2568,7 +2588,8 @@ void Model::OptimizeStageBasedParallelism(
     const ModelTiming::NodeTiming* root_timing =
         model_timing.GetTiming(critical_root.second);
     // If timing has not improved, stop optimizing.
-    if (critical_root.first <= root_timing->total_time_nsec) {
+    if (critical_root.first <=
+        (root_timing->total_time_nsec * root_timing->pipeline_ratio)) {
       parallelism_parameter->value -= 1.0;
       break;
     }
@@ -2852,7 +2873,13 @@ void ModelTiming::ComputePipelineRatios(const Node::NodeVector& bfs_nodes) {
     if (node->output() != nullptr || timing_nodes_.contains(node->output())) {
       const auto& output_timing = timing_nodes_[node->output()];
       parent_pipeline_ratio = output_timing.pipeline_ratio;
-      parent_ratio = node->output()->Ratio();
+      if (node->num_elements() > 0 && node->output()->num_elements() > 0) {
+        parent_ratio = static_cast<double>(node->num_elements()) /
+                       static_cast<double>(node->output()->num_elements() +
+                                           node->output()->buffered_elements());
+      } else {
+        parent_ratio = node->output()->Ratio();
+      }
       if (parent_ratio <= 0.0) {
         // Parent ratio is unknown, we use 1.0 as a guess.
         parent_ratio = 1.0;
@@ -2876,25 +2903,42 @@ void ModelTiming::ComputeNonAsyncInterleaveManyTotalTime(const Node& node) {
     DCHECK(timing_nodes_.contains(input.get()))
         << "Input " << input->long_name() << " of node " << node.long_name()
         << " has no timing node.";
-
-    input_total_time_nsec += timing_nodes_[input.get()].total_time_nsec;
+    // We use the dynamic ratio of `num_elements` of input over that of output
+    // rather than the static `Ratio()` computed based on the type of the node
+    // (e.g. batch size of a `Batch`) because the static value can be inaccurate
+    // for nodes like an interleave node where the ratio of the first input is
+    // different from the ratio of the interleaved inputs. Moreover, this
+    // dynamic quantity should closely match the static one for nodes other than
+    // interleave nodes and is more generic since its value is specific to an
+    // input to output pair rather than a single numnber for the output node.
+    input_total_time_nsec +=
+        timing_nodes_[input.get()].total_time_nsec *
+        static_cast<double>(input->num_elements()) /
+        static_cast<double>(node.num_elements() + node.buffered_elements());
   }
   node_timing.total_time_nsec =
-      node_timing.self_time_nsec + input_total_time_nsec * node.Ratio();
+      node_timing.self_time_nsec + input_total_time_nsec;
 }
 
 void ModelTiming::ComputeAsyncInterleaveManyTotalTime(const Node& node) {
   DCHECK(timing_nodes_.contains(&node));
   auto& node_timing = timing_nodes_[&node];
+  node_timing.total_time_nsec =
+      node_timing.self_time_nsec +
+      ComputeAsyncInterleaveManyFirstInputTotalTime(node) +
+      ComputeAsyncInterleaveManyInterleavedInputsTotalTime(node);
+}
+
+double ModelTiming::ComputeAsyncInterleaveManyInterleavedInputsTotalTime(
+    const Node& node) {
+  DCHECK(timing_nodes_.contains(&node));
   double max_input_total_time_nsec = 0.0;
   double sum_input_throughput = 0.0;
   auto inputs = node.inputs();
   // `ParallelInterleave` is often used to interleave processing of datasets
   // generated from the first input, e.g. reading from IO where the first input
-  // has the list of all filenames. The first input is typically not the
-  // bottleneck. We exclude the timing of the first input in the throughput
-  // computation of the remaining input. It also excluded from the total time
-  // computation of the async interleave node.
+  // has the list of all filenames. We skip it here to compute the total time of
+  // the other inputs.
   auto input = std::next(inputs.begin());
   // `num_active_inputs` holds the number of inputs that the
   // `ParallelInterleave` is reading from, not including those that are warm
@@ -2959,8 +3003,29 @@ void ModelTiming::ComputeAsyncInterleaveManyTotalTime(const Node& node) {
     }
     input_total_time_nsec = 1.0 / sum_input_throughput;
   }
-  node_timing.total_time_nsec =
-      node_timing.self_time_nsec + input_total_time_nsec;
+  return input_total_time_nsec;
+}
+
+double ModelTiming::ComputeAsyncInterleaveManyFirstInputTotalTime(
+    const Node& node) {
+  DCHECK(timing_nodes_.contains(&node));
+  // `ParallelInterleave` is often used to interleave processing of datasets
+  // generated from the first input, e.g. reading from IO where the first input
+  // has the list of all filenames. The contribution of the first input total
+  // time is proportional to the number of elements it produces over the number
+  // elements the parallel interleave node produces.
+  auto inputs = node.inputs();
+  auto first_input = inputs.begin();
+  if (first_input == inputs.end() || (*first_input)->IsAsync() ||
+      !(*first_input)->autotune() || (*first_input)->num_elements() <= 0) {
+    return 0.0;
+  }
+  DCHECK(timing_nodes_.contains((*first_input).get()))
+      << "Input " << (*first_input)->long_name() << " of node "
+      << node.long_name() << " has no timing node.";
+  return timing_nodes_[(*first_input).get()].total_time_nsec *
+         (*first_input)->num_elements() /
+         (node.num_elements() + node.buffered_elements());
 }
 
 void ModelTiming::ComputeTotalTimes(const Node::NodeVector& reverse_bfs_nodes) {

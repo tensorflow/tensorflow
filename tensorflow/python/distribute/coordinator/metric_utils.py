@@ -45,10 +45,16 @@ def _init():
       time_buckets,
       'Sampler to track the time (in seconds) for fetching remote_value.')
 
+  server_def_update_sampler = monitoring.Sampler(
+      '/tensorflow/api/ps_strategy/coordinator/server_def_update', time_buckets,
+      'Sample to track the time (in seconds) for updating the server def upon '
+      'worker recovery.')
+
   _METRICS_MAPPING = {
       'function_tracing': function_tracing_sampler,
       'closure_execution': closure_execution_sampler,
-      'remote_value_fetch': remote_value_fetch_sampler
+      'remote_value_fetch': remote_value_fetch_sampler,
+      'server_def_update': server_def_update_sampler,
   }
 
 
@@ -80,5 +86,12 @@ def get_metric_summary(metric_name):
   ret['max'] = histogram_proto.max
   ret['num'] = histogram_proto.num
   ret['sum'] = histogram_proto.sum
-  # TODO(haoyuzhang): consider reporting the distribution in buckets.
+
+  bucket_limits = histogram_proto.bucket_limit
+  bucket_vals = histogram_proto.bucket
+  ret['histogram'] = {}
+  # Add lower limit as 0, since all these metrics are durations
+  bucket_limits.insert(0, 0)
+  for lb, ub, val in zip(bucket_limits[:-1], bucket_limits[1:], bucket_vals):
+    ret['histogram'][(lb, ub)] = val
   return ret

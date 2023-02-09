@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/lib/hash/hash.h"
+#include "tensorflow/core/platform/errors.h"
 
 namespace tensorflow {
 namespace data {
@@ -43,6 +44,8 @@ namespace experimental {
     DirectedInterleaveDatasetOp::kNumInputDatasets;
 
 constexpr char kCycleLength[] = "cycle_length";
+constexpr char kDataInputImplEmpty[] = "data_input_impl_empty";
+constexpr char kSelectorInputImplEmpty[] = "selector_input_impl_empty";
 
 class DirectedInterleaveDatasetOp::Dataset : public DatasetBase {
  public:
@@ -158,18 +161,22 @@ class DirectedInterleaveDatasetOp::Dataset : public DatasetBase {
         : DatasetIterator<Dataset>(params),
           num_active_inputs_(params.dataset->data_inputs_.size()) {}
 
+    bool SymbolicCheckpointCompatible() const override { return true; }
+
     Status Initialize(IteratorContext* ctx) override {
       mutex_lock l(mu_);
       TF_ASSIGN_OR_RETURN(input_contexts_,
                           CreateInputIteratorContexts(ctx, dataset()));
       TF_RETURN_IF_ERROR(dataset()->selector_input_->MakeIterator(
           &input_contexts_[0], this, prefix(), &selector_input_impl_));
+      ctx->MergeCheckpoint(input_contexts_[0].checkpoint());
       data_input_impls_.resize(dataset()->data_inputs_.size());
       for (size_t i = 0; i < data_input_impls_.size(); ++i) {
         const DatasetBase* data_input = dataset()->data_inputs_[i];
         TF_RETURN_IF_ERROR(data_input->MakeIterator(
             &input_contexts_[i + 1], this,
             strings::StrCat(prefix(), "[", i, "]"), &data_input_impls_[i]));
+        ctx->MergeCheckpoint(input_contexts_[i + 1].checkpoint());
       }
       return OkStatus();
     }
@@ -188,6 +195,7 @@ class DirectedInterleaveDatasetOp::Dataset : public DatasetBase {
         *end_of_sequence = false;
         TF_RETURN_IF_ERROR(selector_input_impl_->GetNext(
             &input_contexts_[0], &selector_result, end_of_sequence));
+        ctx->MergeCheckpoint(input_contexts_[0].checkpoint());
         if (*end_of_sequence) {
           ResetInputs();
           return OkStatus();
@@ -205,10 +213,14 @@ class DirectedInterleaveDatasetOp::Dataset : public DatasetBase {
           TF_RETURN_IF_ERROR(data_input_impls_[selected_input]->GetNext(
               &input_contexts_[selected_input + 1], out_tensors,
               &end_of_selected_input));
-
+          ctx->MergeCheckpoint(
+              input_contexts_[selected_input + 1].checkpoint());
           if (!end_of_selected_input) {
             return OkStatus();
           }
+
+          // End of selected input here. Do cleanup on checkpoints.
+          ctx->PurgeCheckpoint(data_input_impls_[selected_input]->prefix());
 
           if (dataset()->stop_on_empty_dataset_) {
             *end_of_sequence = true;
@@ -242,20 +254,19 @@ class DirectedInterleaveDatasetOp::Dataset : public DatasetBase {
     Status SaveInternal(SerializationContext* ctx,
                         IteratorStateWriter* writer) override {
       mutex_lock l(mu_);
+      TF_RETURN_IF_ERROR(
+          writer->WriteScalar(full_name(kSelectorInputImplEmpty),
+                              static_cast<int64_t>(!selector_input_impl_)));
       if (selector_input_impl_) {
         TF_RETURN_IF_ERROR(SaveInput(ctx, writer, selector_input_impl_));
-      } else {
-        TF_RETURN_IF_ERROR(
-            writer->WriteScalar(full_name("selector_input_impl_empty"), ""));
       }
       for (size_t i = 0; i < data_input_impls_.size(); ++i) {
         const auto& data_input_impl = data_input_impls_[i];
+        TF_RETURN_IF_ERROR(writer->WriteScalar(
+            full_name(strings::StrCat(kDataInputImplEmpty, "[", i, "]")),
+            static_cast<int64_t>(!data_input_impl)));
         if (data_input_impl) {
           TF_RETURN_IF_ERROR(SaveInput(ctx, writer, data_input_impl));
-        } else {
-          TF_RETURN_IF_ERROR(writer->WriteScalar(
-              full_name(strings::StrCat("data_input_impl_empty[", i, "]")),
-              ""));
         }
       }
       return OkStatus();
@@ -264,14 +275,19 @@ class DirectedInterleaveDatasetOp::Dataset : public DatasetBase {
     Status RestoreInternal(IteratorContext* ctx,
                            IteratorStateReader* reader) override {
       mutex_lock l(mu_);
-      if (!reader->Contains(full_name("selector_input_impl_empty"))) {
+      int64_t input_empty;
+      TF_RETURN_IF_ERROR(
+          reader->ReadScalar(full_name(kSelectorInputImplEmpty), &input_empty));
+      if (!static_cast<bool>(input_empty)) {
         TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, selector_input_impl_));
       } else {
         selector_input_impl_.reset();
       }
       for (size_t i = 0; i < data_input_impls_.size(); ++i) {
-        if (!reader->Contains(
-                full_name(strings::StrCat("data_input_impl_empty[", i, "]")))) {
+        TF_RETURN_IF_ERROR(reader->ReadScalar(
+            full_name(strings::StrCat(kDataInputImplEmpty, "[", i, "]")),
+            &input_empty));
+        if (!static_cast<bool>(input_empty)) {
           TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, data_input_impls_[i]));
         } else {
           data_input_impls_[i].reset();

@@ -26,16 +26,16 @@ limitations under the License.
 #include "absl/strings/escaping.h"
 #include "absl/strings/numbers.h"
 #include "tensorflow/lite/builtin_op_data.h"
-#include "tensorflow/lite/c/c_api_types.h"
-#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/c/c_api_types.h"
+#include "tensorflow/lite/core/c/common.h"
 #if !defined(__APPLE__)
 #include "tensorflow/lite/delegates/flex/delegate.h"
 #endif
+#include "tensorflow/lite/core/kernels/register.h"
 #include "tensorflow/lite/kernels/custom_ops_register.h"
 #include "tensorflow/lite/kernels/gradient/gradient_ops.h"
 #include "tensorflow/lite/kernels/parse_example/parse_example.h"
 #include "tensorflow/lite/kernels/perception/perception_ops.h"
-#include "tensorflow/lite/kernels/register.h"
 #include "tensorflow/lite/kernels/register_ref.h"
 #include "tensorflow/lite/kernels/test_delegate_providers.h"
 #include "tensorflow/lite/signature_runner.h"
@@ -376,6 +376,8 @@ bool TfLiteDriver::DataExpectation::Check(bool verbose,
                                                                     tensor);
     case kTfLiteFloat64:
       return TypedCheck<double, double>(verbose, tensor);
+    case kTfLiteFloat16:
+      return TypedCheck<Eigen::half, float>(verbose, tensor);
     default:
       fprintf(stderr, "Unsupported type %d in Check\n", tensor.type);
       return false;
@@ -678,6 +680,15 @@ void TfLiteDriver::SetInput(const string& name, const string& csv_values) {
       SetTensorData(values, tensor->data.raw);
       break;
     }
+    case kTfLiteFloat16: {
+      const auto& values = testing::Split<Eigen::half>(csv_values, ",");
+      for (auto k : values) {
+        TFLITE_LOG(INFO) << "input" << k;
+      }
+      if (!CheckSizes<Eigen::half>(tensor->bytes, values.size())) return;
+      SetTensorData(values, tensor->data.raw);
+      break;
+    }
     default:
       Invalidate(absl::StrCat("Unsupported tensor type ",
                               TfLiteTypeGetName(tensor->type),
@@ -754,6 +765,9 @@ void TfLiteDriver::SetExpectation(const string& name,
       break;
     case kTfLiteComplex128:
       expected_output_[id]->SetData<std::complex<double>>(csv_values);
+      break;
+    case kTfLiteFloat16:
+      expected_output_[id]->SetData<Eigen::half>(csv_values);
       break;
     default:
       Invalidate(absl::StrCat("Unsupported tensor type ",

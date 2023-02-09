@@ -33,6 +33,7 @@ import fnmatch
 import os
 import re
 import sys
+import platform
 
 from setuptools import Command
 from setuptools import find_packages
@@ -46,7 +47,7 @@ from setuptools.dist import Distribution
 # result for pip.
 # Also update tensorflow/tensorflow.bzl and
 # tensorflow/core/public/version.h
-_VERSION = '2.12.0'
+_VERSION = '2.13.0'
 
 
 # We use the same setup.py for all tensorflow_* packages and for the nightly
@@ -88,8 +89,12 @@ REQUIRED_PACKAGES = [
     'gast >= 0.2.1, <= 0.4.0',
     'google_pasta >= 0.1.1',
     'h5py >= 2.9.0',
+    # TODO(b/239052279): replace with external dependency on JAX repo once JAX
+    # no longer relies on TF.
+    'jax >= 0.3.15',
     'libclang >= 13.0.0',
-    'numpy >= 1.20',
+    # TODO(b/263178356): numpy 1.24 breaks TF's tests
+    'numpy >= 1.22, <1.24',
     'opt_einsum >= 2.3.2',
     'packaging',
     # TODO(b/182876485): Protobuf 3.20 results in linker errors on Windows
@@ -99,7 +104,7 @@ REQUIRED_PACKAGES = [
     # See also: https://github.com/protocolbuffers/protobuf/issues/9954
     # See also: https://github.com/tensorflow/tensorflow/issues/56077
     # This is a temporary patch for now, to patch previous TF releases.
-    'protobuf >= 3.9.2, < 3.20',
+    'protobuf>=3.20.3,<5.0.0dev,!=4.21.0,!=4.21.1,!=4.21.2,!=4.21.3,!=4.21.4,!=4.21.5',
     'setuptools',
     'six >= 1.12.0',
     'termcolor >= 1.1.0',
@@ -118,14 +123,30 @@ REQUIRED_PACKAGES = [
     # current release version. These also usually have "alpha" or "dev" in their
     # version name.
     # These are all updated during the TF release process.
-    standard_or_nightly('tensorboard >= 2.10, < 2.11',
-                        'tb-nightly ~= 2.11.0.a'),
+    standard_or_nightly('tensorboard >= 2.11, < 2.12',
+                        'tb-nightly ~= 2.12.0.a'),
     standard_or_nightly('tensorflow_estimator >= 2.11.0rc0, < 2.12',
-                        'tf-estimator-nightly ~= 2.12.0.dev'),
+                        'tf-estimator-nightly ~= 2.13.0.dev'),
     standard_or_nightly('keras >= 2.11.0rc1, < 2.12',
-                        'keras-nightly ~= 2.12.0.dev'),
+                        'keras-nightly ~= 2.13.0.dev'),
 ]
 REQUIRED_PACKAGES = [p for p in REQUIRED_PACKAGES if p is not None]
+
+FAKE_REQUIRED_PACKAGES = [
+    # The depedencies here below are not actually used but are needed for
+    # package managers like poetry to parse as they are confused by the
+    # different architectures having different requirements.
+    # The entries here should be a simple duplicate of those in the collaborator
+    # build section.
+    standard_or_nightly('tensorflow-cpu-aws', 'tf-nightly-cpu-aws') + '==' +
+    _VERSION + ';platform_system=="Linux" and (platform_machine=="arm64" or '
+    'platform_machine=="aarch64")',
+    standard_or_nightly('tensorflow-intel', 'tf-nightly-intel') + '==' +
+    _VERSION + ';platform_system=="Windows"',
+]
+
+if platform.system() == 'Linux' and platform.machine() == 'x86_64':
+  REQUIRED_PACKAGES.append(FAKE_REQUIRED_PACKAGES)
 
 if collaborator_build:
   # If this is a collaborator build, then build an "installer" wheel and
@@ -284,6 +305,7 @@ headers = (
     list(find_files('*.proto', 'tensorflow/core')) +
     list(find_files('*.proto', 'tensorflow/python')) +
     list(find_files('*.proto', 'tensorflow/python/framework')) +
+    list(find_files('*.proto', 'tensorflow/tsl')) +
     list(find_files('*.def', 'tensorflow/compiler')) +
     list(find_files('*.h', 'tensorflow/c')) +
     list(find_files('*.h', 'tensorflow/cc')) +
@@ -300,6 +322,7 @@ headers = (
     list(find_files('*.h', 'google/com_google_protobuf/src')) +
     list(find_files('*.inc', 'google/com_google_protobuf/src')) +
     list(find_files('*', 'third_party/eigen3')) +
+    list(find_files('*', 'third_party/gpus')) +
     list(find_files('*.h', 'tensorflow/include/external/com_google_absl')) +
     list(find_files('*.inc', 'tensorflow/include/external/com_google_absl')) +
     list(find_files('*', 'tensorflow/include/external/eigen_archive')))
@@ -332,7 +355,7 @@ setup(
         'install_headers': InstallHeaders,
         'install': InstallCommand,} if not collaborator_build else {},
     # Supported Python versions
-    python_requires='>=3.7',
+    python_requires='>=3.8',
     # PyPI package information.
     classifiers=sorted([
         'Development Status :: 5 - Production/Stable',
@@ -343,10 +366,10 @@ setup(
         'Intended Audience :: Science/Research',
         'License :: OSI Approved :: Apache Software License',
         'Programming Language :: Python :: 3',
-        'Programming Language :: Python :: 3.7',
         'Programming Language :: Python :: 3.8',
         'Programming Language :: Python :: 3.9',
         'Programming Language :: Python :: 3.10',
+        'Programming Language :: Python :: 3.11',
         'Programming Language :: Python :: 3 :: Only',
         'Topic :: Scientific/Engineering',
         'Topic :: Scientific/Engineering :: Mathematics',

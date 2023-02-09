@@ -19,8 +19,6 @@ limitations under the License.
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #define EIGEN_USE_GPU
 
-#include "tensorflow/core/kernels/list_kernels.h"
-
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
@@ -28,6 +26,7 @@ limitations under the License.
 #include "tensorflow/core/framework/variant.h"
 #include "tensorflow/core/framework/variant_op_registry.h"
 #include "tensorflow/core/kernels/concat_lib.h"
+#include "tensorflow/core/kernels/list_kernels.h"
 #include "tensorflow/core/lib/core/coding.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/util/util.h"
@@ -107,7 +106,6 @@ typedef Eigen::GpuDevice GPUDevice;
 
 TF_CALL_int32(REGISTER_TENSOR_LIST_OPS_GPU);
 TF_CALL_int64(REGISTER_TENSOR_LIST_OPS_GPU);
-TF_CALL_bfloat16(REGISTER_TENSOR_LIST_OPS_GPU);
 TF_CALL_GPU_ALL_TYPES(REGISTER_TENSOR_LIST_OPS_GPU);
 
 #undef REGISTER_TENSOR_LIST_OPS_GPU

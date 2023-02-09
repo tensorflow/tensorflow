@@ -1,0 +1,28 @@
+diff --git a/src/cpu/aarch64/acl_threadpool_scheduler.cpp b/src/cpu/aarch64/acl_threadpool_scheduler.cpp
+index 418d7f30f..439ca862e 100644
+--- a/src/cpu/aarch64/acl_threadpool_scheduler.cpp
++++ b/src/cpu/aarch64/acl_threadpool_scheduler.cpp
+@@ -1,5 +1,5 @@
+ /*******************************************************************************
+-* Copyright 2022 Arm Ltd. and affiliates
++* Copyright 2022-2023 Arm Ltd. and affiliates
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+@@ -117,14 +117,14 @@ void ThreadpoolScheduler::run_workloads(
+     if (is_async) b.init(num_threads);
+     tp->parallel_for(num_threads, [&](int ithr, int nthr) {
+         bool is_main = get_active_threadpool() == tp;
+-        if (is_main) activate_threadpool(tp);
++        if (!is_main) activate_threadpool(tp);
+         // Make ThreadInfo local to avoid race conditions
+         ThreadInfo info;
+         info.cpu_info = &cpu_info();
+         info.num_threads = nthr;
+         info.thread_id = ithr;
+         process_workloads(workloads, feeder, info);
+-        if (is_main) deactivate_threadpool();
++        if (!is_main) deactivate_threadpool();
+         if (is_async) b.notify();
+     });
+     if (is_async) b.wait();

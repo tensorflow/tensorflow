@@ -58,7 +58,7 @@ const uint64 kIdTiers[] = {
     0x7fffffffffffULL,  // 47-bit (5 bytes on disk)
                         // remaining bits for future use
 };
-const int kMaxIdTier = sizeof(kIdTiers) / sizeof(uint64);
+const int kMaxIdTier = sizeof(kIdTiers) / sizeof(uint64) - 1;
 const int kIdCollisionDelayMicros = 10;
 const int kMaxIdCollisions = 21;  // sum(2**i*10µs for i in range(21))~=21s
 const int64_t kAbsent = 0LL;

@@ -16,12 +16,12 @@ limitations under the License.
 #include <string>
 
 #include "absl/strings/string_view.h"
-#include "tensorflow/core/distributed_runtime/coordination/coordination_service_agent.h"
 #include "tensorflow/core/distributed_runtime/error_payloads.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/op_requires.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/platform/errors.h"
+#include "tensorflow/tsl/distributed_runtime/coordination/coordination_service_agent.h"
 
 namespace tensorflow {
 
@@ -33,8 +33,15 @@ class CheckPreemptionOp : public OpKernel {
   }
 
   void Compute(OpKernelContext* ctx) override {
-    auto status_or_task =
-        ctx->coordination_service_agent()->TryGetKeyValue(preemption_key_);
+    tsl::CoordinationServiceAgent* agent = ctx->coordination_service_agent();
+    // TODO(b/266752863): Remove this workaround once coordination service is
+    // always enabled (even for single-host deployment).
+    if (agent == nullptr) {
+      LOG_EVERY_N_SEC(WARNING, 30) << "CheckPreemption is no-op because "
+                                      "coordination service is not enabled.";
+      return;
+    }
+    auto status_or_task = agent->TryGetKeyValue(preemption_key_);
 
     // No-op if preemption key is not found.
     if (errors::IsNotFound(status_or_task.status())) {

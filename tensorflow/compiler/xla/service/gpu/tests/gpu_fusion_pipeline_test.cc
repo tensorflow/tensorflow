@@ -18,12 +18,10 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/compiler/xla/service/gpu/fusion_merger.h"
-#include "tensorflow/compiler/xla/service/gpu/gpu_fusible.h"
+#include "tensorflow/compiler/xla/service/gpu/gpu_device_info_for_tests.h"
 #include "tensorflow/compiler/xla/service/gpu/instruction_fusion.h"
 #include "tensorflow/compiler/xla/service/gpu/multi_output_fusion.h"
 #include "tensorflow/compiler/xla/service/gpu/tests/gpu_codegen_test.h"
-#include "tensorflow/compiler/xla/service/hlo_module_config.h"
-#include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_pipeline.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/tsl/platform/test.h"
@@ -33,14 +31,24 @@ namespace gpu {
 namespace {
 
 class GpuFusionPipelineTest : public GpuCodegenTest {
+  HloCostAnalysis::ShapeSizeFunction ShapeSizeBytesFunction() const {
+    return [&](const Shape& shape) {
+      constexpr int64_t kPointerSize = 8;
+      return ShapeUtil::ByteSizeOf(shape, kPointerSize);
+    };
+  }
+
  public:
   void CheckGpuFusionPipeline(absl::string_view hlo,
                               std::optional<absl::string_view> expected) {
     HloPassPipeline pipeline("gpu-fusion");
-    pipeline.AddPass<GpuInstructionFusion>(/*may_duplicate=*/false);
-    pipeline.AddPass<GpuInstructionFusion>(/*may_duplicate=*/true);
-    pipeline.AddPass<FusionMerger>();
-    pipeline.AddPass<GpuMultiOutputFusion>();
+    const GpuDeviceInfo device_info = TestGpuDeviceInfo::RTXA6000DeviceInfo();
+    pipeline.AddPass<GpuInstructionFusion>(/*may_duplicate=*/false,
+                                           device_info);
+    pipeline.AddPass<GpuInstructionFusion>(/*may_duplicate=*/true, device_info);
+    pipeline.AddPass<FusionMerger>(device_info, ShapeSizeBytesFunction());
+    pipeline.AddPass<GpuMultiOutputFusion>(device_info,
+                                           ShapeSizeBytesFunction());
 
     RunAndFilecheckHloRewrite(hlo, std::move(pipeline), expected);
   }

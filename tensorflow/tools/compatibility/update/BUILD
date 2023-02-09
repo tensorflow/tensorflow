@@ -1,4 +1,5 @@
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//visibility:private"],
     licenses = ["notice"],
 )
@@ -9,13 +10,16 @@ py_binary(
     python_version = "PY3",
     srcs_version = "PY3",
     deps = [
+        "@six_archive//:six",
+        # copybara:uncomment "//third_party/py/tensorflow:tensorflow_compat_v1_estimator",
+        # copybara:uncomment "//third_party/py/tensorflow:tensorflow_compat_v2_estimator",
         "//tensorflow:tensorflow_py",
         "//tensorflow/python:lib",
+        "//tensorflow/python:modules_with_exports",
         "//tensorflow/python:no_contrib",
         "//tensorflow/tools/common:public_api",
         "//tensorflow/tools/common:traverse",
         "//tensorflow/tools/compatibility:all_renames_v2",
-        "@six_archive//:six",
     ],
 )
 
@@ -25,6 +29,8 @@ py_binary(
     python_version = "PY3",
     srcs_version = "PY3",
     deps = [
+        # copybara:uncomment "//third_party/py/tensorflow:tensorflow_compat_v1_estimator",
+        # copybara:uncomment "//third_party/py/tensorflow:tensorflow_compat_v2_estimator",
         "//tensorflow:tensorflow_py",
         "//tensorflow/python:lib",
         "//tensorflow/python:no_contrib",

@@ -31,6 +31,7 @@ limitations under the License.
 #include <variant>
 #include <vector>
 
+#include "absl/functional/function_ref.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/array2d.h"
@@ -39,12 +40,14 @@ limitations under the License.
 #include "tensorflow/compiler/xla/index_util.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
+#include "tensorflow/compiler/xla/printer.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/tsl/lib/core/bitmap.h"
+#include "tensorflow/tsl/platform/cpu_info.h"
 #include "tensorflow/tsl/platform/logging.h"
 #include "tensorflow/tsl/platform/protobuf.h"
 #include "tensorflow/tsl/platform/status.h"
@@ -89,15 +92,38 @@ class LiteralBase {
   // array.
   std::string GetR1U8AsString() const;
 
+  // Prints a string representation of the literal value. The Shape of the
+  // literal is a prefix of the literal value in the string.
+  //
+  // Warning: this function can take minutes for multi-million element Literals.
+  void Print(Printer* printer) const;
+
+  // Similar to Print, but prints the result in a compact one-line form.
+  void PrintOneline(Printer* printer) const;
+
+  // Prints a string representation of the literal value which does *not*
+  // include the shape string.
+  void PrintWithoutShape(Printer* printer) const;
+
+  // Similar to PrintWithoutShape, but prints the result in a compact one-line
+  // form.
+  void PrintWithoutShapeOneline(Printer* printer) const;
+
+  // Prints a string representation of the literal value which includes the
+  // shape string with its layout.does *not* include the shape string.
+  void PrintWithLayout(Printer* printer) const;
+
+  // Similar to PrintWithLayout, but prints the result in a compact one-line
+  // form.
+  void PrintWithLayoutOneline(Printer* printer) const;
+
   // Returns a string representation of the literal value. The Shape of the
   // literal is a prefix of the literal value in the string.
-
-  // Warning: this function can take minutes for multi-million
-  // element Literals.
+  //
+  // Warning: this function can take minutes for multi-million element Literals.
   std::string ToString() const;
 
-  // Similar to ToString, but return the result in a compact
-  // one-line form.
+  // Similar to ToString, but return the result in a compact one-line form.
   std::string ToStringOneline() const;
 
   // Returns a string representation of the literal value which does *not*
@@ -112,8 +138,8 @@ class LiteralBase {
   // shape string with its layout.does *not* include the shape string.
   std::string ToStringWithLayout() const;
 
-  // Similar to ToStringWithLayout, but return the result in a compact
-  // one-line form.
+  // Similar to ToStringWithLayout, but return the result in a compact one-line
+  // form.
   std::string ToStringWithLayoutOneline() const;
 
   // Gets an element in the literal at the given index. The multi_index is
@@ -151,7 +177,9 @@ class LiteralBase {
   template <typename T>
   typename std::enable_if<(std::is_arithmetic<T>::value ||
                            std::is_same<T, Eigen::half>::value ||
-                           std::is_same<T, bfloat16>::value),
+                           std::is_same<T, bfloat16>::value ||
+                           std::is_same<T, tsl::float8_e5m2>::value ||
+                           std::is_same<T, tsl::float8_e4m3fn>::value),
                           bool>::type
   IsEqualAt(absl::Span<const int64_t> multi_index, T value) const {
     if (auto as_s64 = GetIntegralAsS64(multi_index)) {
@@ -197,11 +225,12 @@ class LiteralBase {
   //
   // This literal must have a dense layout.
   void EachCellAsString(
-      const std::function<void(absl::Span<const int64_t> indices,
-                               const std::string& value)>& per_cell) const;
+      absl::FunctionRef<void(absl::Span<const int64_t> indices,
+                             const std::string& value)>
+          per_cell) const;
   template <typename NativeT>
   void EachCell(
-      std::function<void(absl::Span<const int64_t> indices, NativeT value)>
+      absl::FunctionRef<void(absl::Span<const int64_t> indices, NativeT value)>
           per_cell) const;
 
   // Checks whether all of this literal's values are equal to the given scalar
@@ -236,9 +265,8 @@ class LiteralBase {
   // if it's not an array.
   //
   // This casts value to the type of literal, then compares using ==, with the
-  // caveat that NaNs are considered equal.  The usual admonishments about
-  // floating-point equality checks apply.  We expect you to use this to check
-  // for values that can be expressed precisely as a float, e.g. -0.5.
+  // caveat that NaNs are considered equal. Unlike IsAll, this does not
+  // necessarily return false if the value does not fit in this literal's type.
   bool IsAllFloat(float value) const;
   bool IsAllComplex(complex64 value) const;
 
@@ -770,6 +798,12 @@ class LiteralBase {
   template <typename NativeT>
   Literal SliceInternal(const Shape& result_shape,
                         absl::Span<const int64_t> start_indices) const;
+
+  // Like IsAllFloat, but if round_value is false and the value is not
+  // representable with the literal's type (e.g., due to rounding error or
+  // overflow/underflow when casting the value to the literal's type), returns
+  // false.
+  bool IsAllFloatImpl(float value, bool round_value) const;
 };
 
 // Abstract base class representing a mutable literal in XLA.
@@ -803,9 +837,9 @@ class MutableLiteralBase : public LiteralBase {
   using LiteralBase::untyped_data;
 
   template <typename NativeT>
-  void MutableEachCell(
-      std::function<NativeT(absl::Span<const int64_t> indices, NativeT value)>
-          per_cell);
+  void MutableEachCell(absl::FunctionRef<NativeT(
+                           absl::Span<const int64_t> indices, NativeT value)>
+                           per_cell);
 
   // Copy values from 'src_literal' rooted at 'src_shape_index' into this
   // literal rooted at 'dest_shape_index'. The subshape of this literal rooted
@@ -890,14 +924,14 @@ class MutableLiteralBase : public LiteralBase {
   // This literal must have a dense layout.
   template <typename NativeT>
   Status Populate(
-      const std::function<NativeT(absl::Span<const int64_t>)>& generator);
+      absl::FunctionRef<NativeT(absl::Span<const int64_t>)> generator);
 
   // A parallel version of Populate(). This can be used if the generator is
   // thread-safe and the values for the shape's different elements are
   // independent.
   template <typename NativeT>
   Status PopulateParallel(
-      const std::function<NativeT(absl::Span<const int64_t>, int)>& generator);
+      absl::FunctionRef<NativeT(absl::Span<const int64_t>, int)> generator);
 
   // Fills this literal with the given value.
   template <typename NativeT>
@@ -1051,7 +1085,7 @@ class MutableLiteralBase : public LiteralBase {
   //  Status PopulateInternal(const FnType& generator, bool parallel);
   template <typename NativeT>
   Status PopulateInternal(
-      const std::function<NativeT(absl::Span<const int64_t>, int)>& generator,
+      absl::FunctionRef<NativeT(absl::Span<const int64_t>, int)> generator,
       bool parallel);
 
   friend class LiteralBase;
@@ -1295,7 +1329,7 @@ NativeT LiteralBase::GetFirstElement() const {
 
 template <typename NativeT>
 TF_ATTRIBUTE_NOINLINE void LiteralBase::EachCell(
-    std::function<void(absl::Span<const int64_t> indices, NativeT value)>
+    absl::FunctionRef<void(absl::Span<const int64_t> indices, NativeT value)>
         per_cell) const {
   CHECK(LayoutUtil::IsDenseArray(shape()))
       << __func__ << " is only supported for dense arrays: " << shape();
@@ -1315,7 +1349,7 @@ TF_ATTRIBUTE_NOINLINE void LiteralBase::EachCell(
 
 template <typename NativeT>
 TF_ATTRIBUTE_NOINLINE void MutableLiteralBase::MutableEachCell(
-    std::function<NativeT(absl::Span<const int64_t> indices, NativeT value)>
+    absl::FunctionRef<NativeT(absl::Span<const int64_t> indices, NativeT value)>
         per_cell) {
   CHECK(LayoutUtil::IsDenseArray(shape()))
       << __func__ << " is only supported for dense arrays: " << shape();
@@ -1419,7 +1453,7 @@ void MutableLiteralBase::PopulateR4FromArray4D(const Array4D<NativeT>& values) {
 
 template <typename NativeT>
 TF_ATTRIBUTE_NOINLINE Status MutableLiteralBase::PopulateInternal(
-    const std::function<NativeT(absl::Span<const int64_t>, int)>& generator,
+    absl::FunctionRef<NativeT(absl::Span<const int64_t>, int)> generator,
     bool parallel) {
   const Shape& this_shape = shape();
   const int64_t rank = this_shape.rank();
@@ -1472,7 +1506,7 @@ TF_ATTRIBUTE_NOINLINE Status MutableLiteralBase::PopulateInternal(
 
 template <typename NativeT>
 TF_ATTRIBUTE_NOINLINE Status MutableLiteralBase::Populate(
-    const std::function<NativeT(absl::Span<const int64_t>)>& generator) {
+    absl::FunctionRef<NativeT(absl::Span<const int64_t>)> generator) {
   CHECK(LayoutUtil::IsDenseArray(shape()))
       << __func__ << " is only supported for dense arrays: " << shape();
   return PopulateInternal<NativeT>(
@@ -1483,14 +1517,14 @@ TF_ATTRIBUTE_NOINLINE Status MutableLiteralBase::Populate(
 }
 template <typename NativeT>
 TF_ATTRIBUTE_NOINLINE Status MutableLiteralBase::PopulateParallel(
-    const std::function<NativeT(absl::Span<const int64_t>, int)>& generator) {
+    absl::FunctionRef<NativeT(absl::Span<const int64_t>, int)> generator) {
   CHECK(LayoutUtil::IsDenseArray(shape()))
       << __func__ << " is only supported for dense arrays: " << shape();
   return PopulateInternal<NativeT>(
       [&](absl::Span<const int64_t> indexes, int thread_id) {
         return generator(indexes, thread_id);
       },
-      /*parallel=*/true);
+      /*parallel=*/data<NativeT>().size() > 32);
 }
 
 template <typename NativeT>

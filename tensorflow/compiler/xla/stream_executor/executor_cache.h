@@ -20,9 +20,9 @@ limitations under the License.
 #include <map>
 
 #include "absl/synchronization/mutex.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/status.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/statusor.h"
 #include "tensorflow/compiler/xla/stream_executor/stream_executor_pimpl.h"
+#include "tensorflow/tsl/platform/status.h"
+#include "tensorflow/tsl/platform/statusor.h"
 
 namespace stream_executor {
 
@@ -35,14 +35,14 @@ class ExecutorCache {
   // Looks up 'config' in the cache. Returns a pointer to the existing executor,
   // if already present, or creates it using 'factory', if it does not.
   // Factories may be executed concurrently for different device ordinals.
-  typedef port::StatusOr<std::unique_ptr<StreamExecutor>> ExecutorFactory();
-  port::StatusOr<StreamExecutor*> GetOrCreate(
+  typedef tsl::StatusOr<std::unique_ptr<StreamExecutor>> ExecutorFactory();
+  tsl::StatusOr<StreamExecutor*> GetOrCreate(
       const StreamExecutorConfig& config,
       const std::function<ExecutorFactory>& factory);
 
   // Returns a pointer to the described executor (if one with a matching config
   // has been created), or a NOT_FOUND status.
-  port::StatusOr<StreamExecutor*> Get(const StreamExecutorConfig& config);
+  tsl::StatusOr<StreamExecutor*> Get(const StreamExecutorConfig& config);
 
   // Destroys all Executors and clears the cache.
   // Performs no synchronization with the executors - undefined behavior may

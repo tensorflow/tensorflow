@@ -42,6 +42,8 @@ enum class TokKind {
   kColon,      // :
   kAsterisk,   // *
   kOctothorp,  // #
+  kPlus,       // +
+  kTilde,      // ~
   kLsquare,
   kRsquare,  // [  ]
   kLbrace,

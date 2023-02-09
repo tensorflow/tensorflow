@@ -18,8 +18,8 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 
-#include "tensorflow/lite/c/builtin_op_data.h"
-#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/c/builtin_op_data.h"
+#include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/kernels/cpu_backend_context.h"
 
 namespace tflite {
@@ -121,7 +121,10 @@ TfLiteStatus EvalFloat(
     const TfLiteTensor* projection_weights, const TfLiteTensor* projection_bias,
     const TfLiteLSTMParams* params, bool forward_sequence, bool time_major,
     int output_offset, TfLiteTensor* scratch_buffer, TfLiteTensor* output_state,
-    TfLiteTensor* cell_state, TfLiteTensor* output, CpuBackendContext* context);
+    TfLiteTensor* cell_state, TfLiteTensor* output,
+    bool recurrent_to_input_is_diag, bool recurrent_to_forget_is_diag,
+    bool recurrent_to_cell_is_diag, bool recurrent_to_output_is_diag,
+    CpuBackendContext* context);
 
 TfLiteStatus EvalHybrid(
     const TfLiteTensor* input, const TfLiteTensor* input_to_input_weights,
@@ -167,7 +170,9 @@ TfLiteStatus EvalHybrid(
     TfLiteTensor* output_scratch_buffer, TfLiteTensor* output,
     TfLiteTensor* input_zp, TfLiteTensor* aux_input_zp,
     TfLiteTensor* output_state_zp, TfLiteTensor* row_sums, int row_sums_size,
-    bool* compute_row_sums, CpuBackendContext* context);
+    bool* compute_row_sums, bool recurrent_to_input_is_diag,
+    bool recurrent_to_forget_is_diag, bool recurrent_to_cell_is_diag,
+    bool recurrent_to_output_is_diag, CpuBackendContext* context);
 
 TfLiteStatus EvalInteger8x8_16(
     const TfLiteTensor* input, const TfLiteTensor* input_to_input_weights,

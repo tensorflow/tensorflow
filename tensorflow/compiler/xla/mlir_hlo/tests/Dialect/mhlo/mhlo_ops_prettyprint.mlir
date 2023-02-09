@@ -88,35 +88,35 @@ func.func @unary_ops(%arg0 : tensor<2xi32>, %arg1 : tensor<2xf32>) -> () {
 // -----
 
 // CHECK-LABEL: func @binary_ops
-func.func @binary_ops(%arg0: tensor<2xi1>, %arg1 : tensor<2xf32>) -> tensor<2xi1> {
+func.func @binary_ops(%arg0: tensor<2xi1>, %arg1 : tensor<2xf32>, %arg2 : tensor<2xi32>) -> tensor<2xi1> {
   // CHECK:      %0 = mhlo.add %arg0, %arg0 : tensor<2xi1>
   // CHECK-NEXT: %1 = mhlo.and %arg0, %arg0 : tensor<2xi1>
-  // CHECK-NEXT: %2 = mhlo.atan2 %arg0, %arg0 : tensor<2xi1>
-  // CHECK-NEXT: %3 = mhlo.divide %arg0, %arg0 : tensor<2xi1>
+  // CHECK-NEXT: %2 = mhlo.atan2 %arg1, %arg1 : tensor<2xf32>
+  // CHECK-NEXT: %3 = mhlo.divide %arg1, %arg1 : tensor<2xf32>
   // CHECK-NEXT: %4 = mhlo.maximum %arg1, %arg1 : tensor<2xf32>
   // CHECK-NEXT: %5 = mhlo.minimum %arg1, %arg1 : tensor<2xf32>
   // CHECK-NEXT: %6 = mhlo.multiply %arg1, %arg1 : tensor<2xf32>
   // CHECK-NEXT: %7 = mhlo.or %arg0, %arg0 : tensor<2xi1>
   // CHECK-NEXT: %8 = mhlo.power %arg1, %arg1 : tensor<2xf32>
   // CHECK-NEXT: %9 = mhlo.remainder %arg1, %arg1 : tensor<2xf32>
-  // CHECK-NEXT: %10 = mhlo.shift_left %arg1, %arg1 : tensor<2xf32>
-  // CHECK-NEXT: %11 = mhlo.shift_right_arithmetic %arg1, %arg1 : tensor<2xf32>
-  // CHECK-NEXT: %12 = mhlo.shift_right_logical %arg1, %arg1 : tensor<2xf32>
+  // CHECK-NEXT: %10 = mhlo.shift_left %arg2, %arg2 : tensor<2xi32>
+  // CHECK-NEXT: %11 = mhlo.shift_right_arithmetic %arg2, %arg2 : tensor<2xi32>
+  // CHECK-NEXT: %12 = mhlo.shift_right_logical %arg2, %arg2 : tensor<2xi32>
   // CHECK-NEXT: %13 = mhlo.subtract %arg1, %arg1 : tensor<2xf32>
   // CHECK-NEXT: %14 = mhlo.xor %arg0, %arg0 : tensor<2xi1>
   %0 = "mhlo.add"(%arg0, %arg0) : (tensor<2xi1>, tensor<2xi1>) -> tensor<2xi1>
   %1 = "mhlo.and"(%arg0, %arg0) : (tensor<2xi1>, tensor<2xi1>) -> tensor<2xi1>
-  %2 = "mhlo.atan2"(%arg0, %arg0) : (tensor<2xi1>, tensor<2xi1>) -> tensor<2xi1>
-  %3 = "mhlo.divide"(%arg0, %arg0) : (tensor<2xi1>, tensor<2xi1>) -> tensor<2xi1>
+  %2 = "mhlo.atan2"(%arg1, %arg1) : (tensor<2xf32>, tensor<2xf32>) -> tensor<2xf32>
+  %3 = "mhlo.divide"(%arg1, %arg1) : (tensor<2xf32>, tensor<2xf32>) -> tensor<2xf32>
   %4 = "mhlo.maximum"(%arg1, %arg1) : (tensor<2xf32>, tensor<2xf32>) -> tensor<2xf32>
   %5 = "mhlo.minimum"(%arg1, %arg1) : (tensor<2xf32>, tensor<2xf32>) -> tensor<2xf32>
   %6 = "mhlo.multiply"(%arg1, %arg1) : (tensor<2xf32>, tensor<2xf32>) -> tensor<2xf32>
   %7 = "mhlo.or"(%arg0, %arg0) : (tensor<2xi1>, tensor<2xi1>) -> tensor<2xi1>
   %8 = "mhlo.power"(%arg1, %arg1) : (tensor<2xf32>, tensor<2xf32>) -> tensor<2xf32>
   %9 = "mhlo.remainder"(%arg1, %arg1) : (tensor<2xf32>, tensor<2xf32>) -> tensor<2xf32>
-  %10 = "mhlo.shift_left"(%arg1, %arg1) : (tensor<2xf32>, tensor<2xf32>) -> tensor<2xf32>
-  %11 = "mhlo.shift_right_arithmetic"(%arg1, %arg1) : (tensor<2xf32>, tensor<2xf32>) -> tensor<2xf32>
-  %12 = "mhlo.shift_right_logical"(%arg1, %arg1) : (tensor<2xf32>, tensor<2xf32>) -> tensor<2xf32>
+  %10 = "mhlo.shift_left"(%arg2, %arg2) : (tensor<2xi32>, tensor<2xi32>) -> tensor<2xi32>
+  %11 = "mhlo.shift_right_arithmetic"(%arg2, %arg2) : (tensor<2xi32>, tensor<2xi32>) -> tensor<2xi32>
+  %12 = "mhlo.shift_right_logical"(%arg2, %arg2) : (tensor<2xi32>, tensor<2xi32>) -> tensor<2xi32>
   %13 = "mhlo.subtract"(%arg1, %arg1) : (tensor<2xf32>, tensor<2xf32>) -> tensor<2xf32>
   %14 = "mhlo.xor"(%arg0, %arg0) : (tensor<2xi1>, tensor<2xi1>) -> tensor<2xi1>
   func.return %0 : tensor<2xi1>
@@ -132,7 +132,7 @@ func.func @type_convert_ops(%arg0 : tensor<2xf32>) -> () {
   // CHECK-NEXT: %3 = mhlo.bitcast %arg0 : (tensor<2xf32>) -> tensor<2x1xf32>
   %0 = "mhlo.convert"(%arg0) : (tensor<2xf32>) -> tensor<2xf64>
   %1 = "mhlo.reshape"(%arg0) : (tensor<2xf32>) -> tensor<1x2xf32>
-  %2 = "mhlo.bitcast_convert"(%arg0) : (tensor<2xf32>) -> tensor<2xi32> 
+  %2 = "mhlo.bitcast_convert"(%arg0) : (tensor<2xf32>) -> tensor<2xi32>
   %3 = "mhlo.bitcast"(%arg0) : (tensor<2xf32>) -> tensor<2x1xf32>
   "mhlo.return"() : () -> ()
 }
@@ -221,10 +221,10 @@ func.func @compare_op(%arg0 : tensor<3xi32>) -> () {
 // -----
 
 // CHECK-LABEL: func @extensions
-func.func @extensions(%arg0 : tensor<?x?xf32, #mhlo.type_extensions<bounds = [3, -1]>>,
+func.func @extensions(%arg0 : tensor<?x?xf32, #mhlo.type_extensions<bounds = [3, ?]>>,
                 %arg1 : tensor<i32>) -> () {
-  // CHECK:      %0 = "mhlo.set_dimension_size"(%arg0, %arg1) {dimension = 1 : i64} : (tensor<?x?xf32, #mhlo.type_extensions<bounds = [3, -1]>>, tensor<i32>) -> tensor<*xf32>
-  %0 = "mhlo.set_dimension_size"(%arg0, %arg1) {dimension = 1 : i64} : (tensor<?x?xf32, #mhlo.type_extensions<bounds = [3, -1]>>, tensor<i32>) -> tensor<*xf32>
+  // CHECK:      %0 = "mhlo.set_dimension_size"(%arg0, %arg1) {dimension = 1 : i64} : (tensor<?x?xf32, #mhlo.type_extensions<bounds = [3, ?]>>, tensor<i32>) -> tensor<*xf32>
+  %0 = "mhlo.set_dimension_size"(%arg0, %arg1) {dimension = 1 : i64} : (tensor<?x?xf32, #mhlo.type_extensions<bounds = [3, ?]>>, tensor<i32>) -> tensor<*xf32>
   "mhlo.return"() : () -> ()
 }
 

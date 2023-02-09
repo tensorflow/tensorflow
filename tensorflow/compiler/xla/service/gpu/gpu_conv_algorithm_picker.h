@@ -17,16 +17,20 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_GPU_CONV_ALGORITHM_PICKER_H_
 
 #include <optional>
+#include <string>
+#include <variant>
 
 #include "absl/time/time.h"
+#include "tensorflow/compiler/xla/autotune_results.pb.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/service/compiler.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_conv_runner.h"
-#include "tensorflow/compiler/xla/service/hlo_instructions.h"
-#include "tensorflow/compiler/xla/service/hlo_module.h"
+#include "tensorflow/compiler/xla/service/gpu/gpu_serializable_autotuner.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
 #include "tensorflow/compiler/xla/stream_executor/device_memory_allocator.h"
 #include "tensorflow/compiler/xla/stream_executor/stream_executor.h"
-#include "tensorflow/core/protobuf/autotuning.pb.h"
+#include "tensorflow/tsl/protobuf/autotuning.pb.h"
 
 #if (defined(GOOGLE_CUDA) && GOOGLE_CUDA)
 #include "tensorflow/compiler/xla/stream_executor/gpu/redzone_allocator.h"
@@ -37,14 +41,23 @@ namespace gpu {
 
 // Modifies CustomCalls to cudnn convolutions, choosing the best algorithm for
 // each and adding explicit scratch space to the CustomCalls.
-class GpuConvAlgorithmPicker : public HloModulePass {
+//
+// It supports two modes: device and deviceless.
+// In device mode, we run autotuning on the device and store autotune results.
+//
+// In deviceless mode, we pass in some information related to the device and
+// use stored autotune results to rewrite convolutions. If the required autotune
+// result is not stored, then the performance of convolution will be suboptimal.
+class GpuConvAlgorithmPicker : public GpuSerializableAutotuner {
  public:
-  // If the `allocator` parameter is not null, we will use it to allocate temp
-  // memory while timing the various convolution algorithms.  If it's null,
-  // we'll use the default allocator on the StreamExecutor.
-  GpuConvAlgorithmPicker(se::StreamExecutor* stream_exec,
-                         se::DeviceMemoryAllocator* allocator)
-      : stream_exec_(stream_exec), allocator_(allocator) {}
+  static void ClearAutotuneResults();
+  static Status WriteAutotuneResults(AutotuneResults* results);
+  static Status LoadAutotuneResults(const AutotuneResults& results);
+
+  explicit GpuConvAlgorithmPicker(DeviceConfig device_config)
+      : GpuSerializableAutotuner(device_config) {}
+  explicit GpuConvAlgorithmPicker(DevicelessConfig deviceless_config)
+      : GpuSerializableAutotuner(deviceless_config) {}
 
   absl::string_view name() const override {
     return "gpu-conv-algorithm-picker";
@@ -86,9 +99,6 @@ class GpuConvAlgorithmPicker : public HloModulePass {
   StatusOr<tensorflow::AutotuneResult> PickBestAlgorithmNoCacheRocm(
       const HloCustomCallInstruction* instr,
       se::DeviceMemoryAllocator* allocator, se::Stream* stream);
-
-  se::StreamExecutor* stream_exec_;       // never null
-  se::DeviceMemoryAllocator* allocator_;  // may be null
 };
 
 }  // namespace gpu

@@ -18,12 +18,12 @@ limitations under the License.
 #include <set>
 
 #include "tensorflow/compiler/xla/debug_options_flags.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
 #include "tensorflow/compiler/xla/literal.h"
-#include "tensorflow/compiler/xla/service/hlo_computation.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_matchers.h"
-#include "tensorflow/compiler/xla/service/hlo_module.h"
-#include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/hlo_runner.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/test.h"
@@ -3382,6 +3382,84 @@ ROOT %arg_tuple.1 = (f32[]{:T(256)}, f32[]{:T(256)}) parameter(0), parameter_rep
                                /*use_region_based_live_range_analysis=*/-1);
   ASSERT_IS_OK(copy_insertion.Run(module.get()).status());
   VLOG(2) << module->ToString();
+}
+
+TEST_F(CopyInsertionTest, AsyncCallDUSNoCopy) {
+  const char* const kModuleString = R"(
+HloModule async_call
+
+%called_computation {
+  %out_param = s32[1024]{0} parameter(1)
+  %input = s32[1024]{0} parameter(0)
+  %size = s32[] constant(256)
+  %index = s32[] custom-call(), custom_call_target="Baz"
+  %start = s32[] multiply(s32[] %size, s32[] %index)
+  %input2 = s32[256]{0} dynamic-slice(s32[1024]{0} %input, s32[] %start), dynamic_slice_sizes={256}
+  %output = s32[256]{0} add(s32[256]{0} %input2, s32[256]{0} %input2)
+  ROOT %output2 = s32[1024]{0} dynamic-update-slice(s32[1024]{0} %out_param, s32[256]{0} %output, s32[] %start)
+}, execution_thread="foobar"
+
+%async_wrapped {
+  %async_param = s32[1024]{0} parameter(0)
+  %async_param.1 = s32[1024]{0} parameter(1)
+  ROOT %call = s32[1024]{0} call(s32[1024]{0} %async_param, s32[1024]{0} %async_param.1), to_apply=%called_computation
+}, execution_thread="foobar"
+
+ENTRY %main {
+  %input.1 = s32[1024]{0} parameter(0)
+  %buf = s32[1024]{0} custom-call(), custom_call_target="AllocateBuffer"
+  %async-start = ((s32[1024]{0}, s32[1024]{0}), s32[1024]{0}, u32[]) async-start(s32[1024]{0} %input.1, s32[1024]{0} %buf), async_group_id=0, async_execution_thread="foobar", calls=%async_wrapped
+  ROOT %async-done = s32[1024]{0} async-done(((s32[1024]{0}, s32[1024]{0}), s32[1024]{0}, u32[]) %async-start), async_group_id=0, async_execution_thread="foobar", calls=%async_wrapped
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
+                          ParseAndReturnUnverifiedModule(kModuleString));
+
+  CopyInsertion copy_insertion(nullptr,
+                               /*use_region_based_live_range_analysis=*/-1);
+  ASSERT_IS_OK(copy_insertion.Run(module.get(), {"foobar"}).status());
+  VLOG(2) << module->ToString();
+  EXPECT_EQ(CountCopies(*module), 0);
+}
+
+TEST_F(CopyInsertionTest, AsyncCallDUSCopy) {
+  const char* const kModuleString = R"(
+HloModule async_call
+
+%called_computation {
+  %out_param = s32[1024]{0} parameter(1)
+  %input = s32[1024]{0} parameter(0)
+  %size = s32[] constant(256)
+  %index = s32[] custom-call(), custom_call_target="Baz"
+  %start = s32[] multiply(s32[] %size, s32[] %index)
+  %input2 = s32[256]{0} dynamic-slice(s32[1024]{0} %input, s32[] %start), dynamic_slice_sizes={256}
+  %output = s32[256]{0} add(s32[256]{0} %input2, s32[256]{0} %input2)
+  ROOT %output2 = s32[1024]{0} dynamic-update-slice(s32[1024]{0} %out_param, s32[256]{0} %output, s32[] %start)
+}, execution_thread="foobar"
+
+%async_wrapped {
+  %async_param = s32[1024]{0} parameter(0)
+  %async_param.1 = s32[1024]{0} parameter(1)
+  ROOT %call = s32[1024]{0} call(s32[1024]{0} %async_param, s32[1024]{0} %async_param.1), to_apply=%called_computation
+}, execution_thread="foobar"
+
+ENTRY %main {
+  %input.1 = s32[1024]{0} parameter(0)
+  %input.2 = s32[1024]{0} parameter(1)
+  %async-start = ((s32[1024]{0}, s32[1024]{0}), s32[1024]{0}, u32[]) async-start(s32[1024]{0} %input.1, s32[1024]{0} %input.2), async_group_id=0, async_execution_thread="foobar", calls=%async_wrapped
+  ROOT %async-done = s32[1024]{0} async-done(((s32[1024]{0}, s32[1024]{0}), s32[1024]{0}, u32[]) %async-start), async_group_id=0, async_execution_thread="foobar", calls=%async_wrapped
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
+                          ParseAndReturnUnverifiedModule(kModuleString));
+
+  CopyInsertion copy_insertion(nullptr,
+                               /*use_region_based_live_range_analysis=*/-1);
+  ASSERT_IS_OK(copy_insertion.Run(module.get(), {"foobar"}).status());
+  VLOG(2) << module->ToString();
+  EXPECT_EQ(CountCopies(*module), 1);
 }
 
 }  // namespace

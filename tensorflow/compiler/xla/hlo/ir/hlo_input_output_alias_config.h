@@ -20,6 +20,7 @@ limitations under the License.
 #include <utility>
 
 #include "absl/container/flat_hash_set.h"
+#include "absl/functional/function_ref.h"
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/compiler/xla/shape_tree.h"
 #include "tensorflow/compiler/xla/shape_util.h"
@@ -109,19 +110,19 @@ class HloInputOutputAliasConfig {
                           const ShapeIndex& param_index) const;
 
   using AliasFn =
-      std::function<void(const ShapeIndex& output_index, const Alias&)>;
+      absl::FunctionRef<void(const ShapeIndex& output_index, const Alias&)>;
 
   // Iterates through each aliased output and input.
   void ForEachAlias(AliasFn fn) const;
 
   using AliasFnWithStatus =
-      std::function<Status(const ShapeIndex& output_index, const Alias&)>;
+      absl::FunctionRef<Status(const ShapeIndex& output_index, const Alias&)>;
 
   // Verifies that the given config is valid for the given module.
   // Specifically, the config's input and output should be in-bound and size of
   // the aliased buffers should match.
   Status Verify(const HloModule& module,
-                std::function<int64_t(const Shape&)> size_func_) const;
+                absl::FunctionRef<int64_t(const Shape&)> size_func) const;
 
   Status ForEachAliasWithStatus(AliasFnWithStatus fn) const;
 

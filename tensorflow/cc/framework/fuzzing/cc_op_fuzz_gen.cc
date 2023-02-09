@@ -202,11 +202,58 @@ string WriteFuzzTest(const OpInfo& op_info) {
                     }));
 }
 
-bool OpFuzzingIsOk(const OpInfo& op_info) {
-  // TODO(unda, b/249347507): should we hide fuzzers for hidden ops?
-  if (op_info.api_def.visibility() == ApiDef::HIDDEN) return false;
+string FuzzerFileStart() {
+  const string fuzz_namespace_begin = R"namespace(
+namespace tensorflow {
+namespace fuzzing {
 
-  if (op_info.api_def.visibility() == ApiDef::SKIP) return false;
+)namespace";
+
+  const string fuzz_header = strings::StrCat(
+      R"include(// This file is MACHINE GENERATED! Do not edit.
+
+#include "tensorflow/cc/ops/const_op.h"
+#include "tensorflow/cc/ops/standard_ops.h"
+#include "tensorflow/security/fuzzing/cc/fuzz_session.h"
+#include "third_party/mediapipe/framework/port/parse_text_proto.h"
+)include",
+      fuzz_namespace_begin);
+
+  return fuzz_header;
+}
+
+string FuzzerFileEnd() {
+  const string fuzz_footer = R"footer(
+}  // namespace fuzzing
+}  // namespace tensorflow
+)footer";
+
+  return fuzz_footer;
+}
+
+}  // namespace
+
+bool OpFuzzingIsOk(const OpInfo& op_info) {
+  // Skip deprecated ops.
+  if (op_info.graph_op_def.has_deprecation() &&
+      op_info.graph_op_def.deprecation().version() <= TF_GRAPH_DEF_VERSION) {
+    std::cout << "NOT fuzzing: " << op_info.graph_op_def.name()
+              << " is deprecated.\n";
+    return false;
+  }
+
+  // TODO(unda, b/249347507): should we hide fuzzers for hidden ops?
+  if (op_info.api_def.visibility() == ApiDef::HIDDEN) {
+    std::cout << "NOT fuzzing: " << op_info.graph_op_def.name()
+              << " is hidden.\n";
+    return false;
+  }
+
+  if (op_info.api_def.visibility() == ApiDef::SKIP) {
+    std::cout << "NOT fuzzing: " << op_info.graph_op_def.name()
+              << " is skipped.\n";
+    return false;
+  }
 
   // TODO(unda) : zero input ops
   std::set<string> zero_input_ops = {"Placeholder", "ImmutableConst"};
@@ -272,56 +319,10 @@ bool OpFuzzingIsOk(const OpInfo& op_info) {
   return true;
 }
 
-string FuzzerFileStart() {
-  const string fuzz_namespace_begin = R"namespace(
-namespace tensorflow {
-namespace fuzzing {
-
-)namespace";
-
-  const string fuzz_header = strings::StrCat(
-      R"include(// This file is MACHINE GENERATED! Do not edit.
-
-#include "tensorflow/cc/ops/const_op.h"
-#include "tensorflow/cc/ops/standard_ops.h"
-#include "tensorflow/security/fuzzing/cc/fuzz_session.h"
-#include "third_party/mediapipe/framework/port/parse_text_proto.h"
-)include",
-      fuzz_namespace_begin);
-
-  return fuzz_header;
-}
-
-string FuzzerFileEnd() {
-  const string fuzz_footer = R"footer(
-}  // namespace fuzzing
-}  // namespace tensorflow
-)footer";
-
-  return fuzz_footer;
-}
-
-}  // namespace
-
-string WriteFuzzers(const OpList& ops, const ApiDefMap& api_def_map) {
+string WriteSingleFuzzer(const OpInfo& op_info, bool is_fuzzable) {
   return absl::StrCat(
-      FuzzerFileStart(),
-      absl::StrJoin(
-          ops.op(), "",
-          [&api_def_map](string* out, const OpDef& op_def) {
-            // Skip deprecated ops.
-            bool skip = op_def.has_deprecation() &&
-                        op_def.deprecation().version() <= TF_GRAPH_DEF_VERSION;
-            const auto* api_Def = api_def_map.GetApiDef(op_def.name());
-            OpInfo op_info(op_def, *api_Def, std::vector<string>());
-            skip |= !OpFuzzingIsOk(op_info);
-            if (!skip) {
-              out->append(WriteClassFuzzDef(op_info));
-              out->append(WriteFuzzTest(op_info));
-              out->append("\n");
-            }
-          }),
-      FuzzerFileEnd());
+      FuzzerFileStart(), is_fuzzable ? WriteClassFuzzDef(op_info) : "",
+      is_fuzzable ? WriteFuzzTest(op_info) : "", FuzzerFileEnd());
 }
 
 }  // namespace cc_op

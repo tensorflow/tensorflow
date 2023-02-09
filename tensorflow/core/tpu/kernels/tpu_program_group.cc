@@ -14,7 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/tpu/kernels/tpu_program_group.h"
 
-#include "tensorflow/compiler/xla/service/hlo_module_group.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_module_group.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/proto_helper.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/status_helper.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_api.h"
@@ -30,7 +30,7 @@ namespace tensorflow {
 namespace tpu {
 namespace {
 namespace se_tpu = ::stream_executor::tpu;
-using stream_executor::port::Status;
+using tsl::Status;
 }  // namespace
 
 TPUExecutableInfoProto TpuProgramGroup::ConstructExecutableInfo(
@@ -38,7 +38,7 @@ TPUExecutableInfoProto TpuProgramGroup::ConstructExecutableInfo(
   VLOG(1) << "ConstructExecutableInfo";
   TpuSerializedProto serialized_executable_info = {};
   StatusHelper status;
-  OpsApiFn()->TpuProgram_GetExecutableInfoFn(
+  stream_executor::tpu::OpsApiFn()->TpuProgram_GetExecutableInfoFn(
       xla_tpu_program, &serialized_executable_info, status.c_status);
   TPUExecutableInfoProto executable_info;
   if (status.ok()) {
@@ -54,7 +54,7 @@ TPUHostTransferInfoProto TpuProgramGroup::ConstructHostTransferInfo(
   VLOG(1) << "ConstructHostTransferInfo";
   TpuSerializedProto serialized_host_transfer_info = {};
   StatusHelper status;
-  OpsApiFn()->TpuProgram_GetHostTransferInfoFn(
+  stream_executor::tpu::OpsApiFn()->TpuProgram_GetHostTransferInfoFn(
       xla_tpu_program, &serialized_host_transfer_info, status.c_status);
   TPUHostTransferInfoProto host_transfer_info;
   if (status.ok()) {
@@ -70,7 +70,7 @@ xla::HloProto TpuProgramGroup::ConstructHloMetadata(
   VLOG(1) << "ConstructHloMetadata";
   TpuSerializedProto serialized_hlo_metadata = {};
   StatusHelper status;
-  OpsApiFn()->TpuProgram_GetHloMetadataFn(
+  stream_executor::tpu::OpsApiFn()->TpuProgram_GetHloMetadataFn(
       xla_tpu_program, &serialized_hlo_metadata, status.c_status);
   xla::HloProto hlo_metadata;
   if (status.ok()) {
@@ -99,8 +99,8 @@ void TpuProgramGroup::Initialize(
   for (size_t i = 0; i < tpu_programs_.size(); ++i) {
     const XLA_TpuProgram* xla_tpu_program = tpu_programs_[i];
     bool may_modify_variables;
-    OpsApiFn()->TpuProgram_GetMayModifyVariablesFn(xla_tpu_program,
-                                                   &may_modify_variables);
+    stream_executor::tpu::OpsApiFn()->TpuProgram_GetMayModifyVariablesFn(
+        xla_tpu_program, &may_modify_variables);
     may_modify_variables_array[i] = may_modify_variables;
     executable_infos[i] = ConstructExecutableInfo(xla_tpu_program);
     host_transfer_infos[i] = ConstructHostTransferInfo(xla_tpu_program);
@@ -116,7 +116,8 @@ void TpuProgramGroup::Initialize(
 
 bool TpuProgramGroup::has_sharding_program() const {
   for (const XLA_TpuProgram* tpu_program : tpu_programs_) {
-    if (!OpsApiFn()->TpuProgram_HasShardingFn(tpu_program)) {
+    if (!stream_executor::tpu::OpsApiFn()->TpuProgram_HasShardingFn(
+            tpu_program)) {
       return false;
     }
   }
@@ -128,7 +129,8 @@ size_t TpuProgramGroup::program_count() const { return tpu_programs_.size(); }
 int64_t TpuProgramGroup::program_size() const {
   int64_t total_size = 0;
   for (const XLA_TpuProgram* tpu_program : tpu_programs_) {
-    total_size += OpsApiFn()->TpuProgram_GetProgramSizeFn(tpu_program);
+    total_size += stream_executor::tpu::OpsApiFn()->TpuProgram_GetProgramSizeFn(
+        tpu_program);
   }
   return total_size;
 }
@@ -136,7 +138,9 @@ int64_t TpuProgramGroup::program_size() const {
 bool TpuProgramGroup::LogProgramMemorySummary() {
   bool success = true;
   for (const XLA_TpuProgram* tpu_program : tpu_programs_) {
-    success &= OpsApiFn()->TpuProgram_LogProgramMemorySummaryFn(tpu_program);
+    success &=
+        stream_executor::tpu::OpsApiFn()->TpuProgram_LogProgramMemorySummaryFn(
+            tpu_program);
   }
   return success;
 }
@@ -144,7 +148,8 @@ bool TpuProgramGroup::LogProgramMemorySummary() {
 void TpuProgramGroup::UnloadAndDestroyPrograms() {
   for (XLA_TpuProgram* tpu_program : tpu_programs_) {
     StatusHelper status;
-    OpsApiFn()->TpuProgram_UnloadAndDestroyFn(tpu_program, status.c_status);
+    stream_executor::tpu::OpsApiFn()->TpuProgram_UnloadAndDestroyFn(
+        tpu_program, status.c_status);
     auto s = status.status();
     if (!s.ok()) {
       LOG(ERROR) << "TpuProgramGroup::UnloadPrograms(): " << s.ToString();
@@ -201,8 +206,8 @@ bool TpuProgramGroup::may_modify_variables(int index) const {
   CHECK_GE(index, 0);
   CHECK_LT(index, tpu_programs_.size());
   bool may_modify_variables;
-  OpsApiFn()->TpuProgram_GetMayModifyVariablesFn(tpu_programs_[index],
-                                                 &may_modify_variables);
+  stream_executor::tpu::OpsApiFn()->TpuProgram_GetMayModifyVariablesFn(
+      tpu_programs_[index], &may_modify_variables);
   return may_modify_variables;
 }
 
@@ -217,10 +222,12 @@ const std::vector<std::string>& TpuProgramGroup::fingerprints() const {
 void TpuProgramGroup::set_fingerprints() {
   for (const XLA_TpuProgram* tpu_program : tpu_programs_) {
     TpuProgramFingerprint fingerprint =
-        OpsApiFn()->TpuProgram_GetFingerprintFn(tpu_program);
+        stream_executor::tpu::OpsApiFn()->TpuProgram_GetFingerprintFn(
+            tpu_program);
     tpu_program_fingerprints_.emplace_back(
         std::string(fingerprint.bytes, fingerprint.size));
-    OpsApiFn()->TpuProgram_DestroyFingerprintFn(fingerprint);
+    stream_executor::tpu::OpsApiFn()->TpuProgram_DestroyFingerprintFn(
+        fingerprint);
   }
 }
 
@@ -269,9 +276,9 @@ Status TpuProgramGroup::CompileAndBuild(
   size_t count = 0;
   XLA_TpuProgram** xla_tpu_programs = nullptr;
   StatusHelper status;
-  OpsApiFn()->TpuCompile_CompileAndBuildFn(serialized_compilation_request,
-                                           mesh_state, &xla_tpu_programs,
-                                           &count, status.c_status);
+  stream_executor::tpu::OpsApiFn()->TpuCompile_CompileAndBuildFn(
+      serialized_compilation_request, mesh_state, &xla_tpu_programs, &count,
+      status.c_status);
   if (!status.ok()) {
     VLOG(1) << "Run CompileAndBuild failed.";
     return status.status();
@@ -286,7 +293,7 @@ Status TpuProgramGroup::CompileAndBuild(
       tensorflow::down_cast<TpuProgramGroup*>(tpu_program_group_interface);
   tpu_program_group->Initialize(
       absl::MakeConstSpan(&xla_tpu_programs[0], count));
-  OpsApiFn()->TpuProgram_FreeArrayFn(xla_tpu_programs);
+  stream_executor::tpu::OpsApiFn()->TpuProgram_FreeArrayFn(xla_tpu_programs);
   return status.status();
 }
 
@@ -303,9 +310,9 @@ Status TpuProgramGroup::CompileAndBuild(
   size_t count = 0;
   XLA_TpuProgram** xla_tpu_programs = nullptr;
   StatusHelper status;
-  OpsApiFn()->TpuCompile_XrtCompileAndBuildFn(serialized_compilation_request,
-                                              mesh_state, &xla_tpu_programs,
-                                              &count, status.c_status);
+  stream_executor::tpu::OpsApiFn()->TpuCompile_XrtCompileAndBuildFn(
+      serialized_compilation_request, mesh_state, &xla_tpu_programs, &count,
+      status.c_status);
   if (!status.ok()) {
     VLOG(1) << "Run CompileAndBuild failed.";
     return status.status();
@@ -322,7 +329,7 @@ Status TpuProgramGroup::CompileAndBuild(
       tensorflow::down_cast<TpuProgramGroup*>(tpu_program_group_interface);
   tpu_program_group->Initialize(
       absl::MakeConstSpan(&xla_tpu_programs[0], count));
-  OpsApiFn()->TpuProgram_FreeArrayFn(xla_tpu_programs);
+  stream_executor::tpu::OpsApiFn()->TpuProgram_FreeArrayFn(xla_tpu_programs);
   return status.status();
 }
 
@@ -331,9 +338,11 @@ std::vector<XLA_TpuProgram*> TpuProgramGroup::tpu_programs(
   std::vector<XLA_TpuProgram*> tpu_programs;
   tpu_programs.reserve(tpu_programs_.size());
   for (size_t i = 0; i < tpu_programs_.size(); ++i) {
-    if (OpsApiFn()->TpuProgram_HasShardingFn(tpu_programs_[i])) {
-      tpu_programs.push_back(OpsApiFn()->TpuProgram_GetTpuProgramFn(
-          tpu_programs_[i], sharding_type));
+    if (stream_executor::tpu::OpsApiFn()->TpuProgram_HasShardingFn(
+            tpu_programs_[i])) {
+      tpu_programs.push_back(
+          stream_executor::tpu::OpsApiFn()->TpuProgram_GetTpuProgramFn(
+              tpu_programs_[i], sharding_type));
       CHECK_NE(tpu_programs[i], nullptr);
     }
   }
@@ -347,11 +356,13 @@ Status TpuProgramGroup::DeserializeFromRpcResponseProtos(
 
   for (size_t i = 0; i < rpc_response_protos.size(); ++i) {
     StatusHelper status;
-    auto* xla_tpu_program = OpsApiFn()->TpuProgram_NewFn();
-    OpsApiFn()->TpuProgram_DeserializeFromGetTpuProgramResponseProtoFn(
-        rpc_response_protos[i], xla_tpu_program, status.c_status);
+    auto* xla_tpu_program =
+        stream_executor::tpu::OpsApiFn()->TpuProgram_NewFn();
+    stream_executor::tpu::OpsApiFn()
+        ->TpuProgram_DeserializeFromGetTpuProgramResponseProtoFn(
+            rpc_response_protos[i], xla_tpu_program, status.c_status);
     if (!status.status().ok()) {
-      OpsApiFn()->TpuProgram_FreeFn(xla_tpu_program);
+      stream_executor::tpu::OpsApiFn()->TpuProgram_FreeFn(xla_tpu_program);
       return status.status();
     }
     tpu_programs[i] = xla_tpu_program;
@@ -366,8 +377,8 @@ Status TpuProgramGroup::SerializeExecutable(
   CHECK_GE(index, 0);
   CHECK_LT(index, tpu_programs_.size());
   StatusHelper status;
-  OpsApiFn()->TpuProgram_SerializeTpuExecutableFn(tpu_programs_[index],
-                                                  executable, status.c_status);
+  stream_executor::tpu::OpsApiFn()->TpuProgram_SerializeTpuExecutableFn(
+      tpu_programs_[index], executable, status.c_status);
   return status.status();
 }
 
@@ -376,7 +387,7 @@ Status TpuProgramGroup::SerializeCompilerMetadata(
   CHECK_GE(index, 0);
   CHECK_LT(index, tpu_programs_.size());
   StatusHelper status;
-  OpsApiFn()->TpuProgram_SerializeCompilerMetadataFn(
+  stream_executor::tpu::OpsApiFn()->TpuProgram_SerializeCompilerMetadataFn(
       tpu_programs_[index], compiler_metadata, status.c_status);
   return status.status();
 }

@@ -23,6 +23,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/inlined_vector.h"
+#include "tensorflow/compiler/xla/printer.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 
@@ -49,6 +50,8 @@ class Tile {
     return dimensions() == other.dimensions();
   }
   bool operator!=(const Tile& other) const { return !(*this == other); }
+
+  void Print(Printer* printer) const;
 
   std::string ToString() const;
 
@@ -97,11 +100,14 @@ class Layout {
   // level types, and tiles.
   explicit Layout(absl::Span<const int64_t> minor_to_major,
                   absl::Span<const DimLevelType> dim_level_types,
+                  absl::Span<const bool> dim_unique,
+                  absl::Span<const bool> dim_ordered,
                   absl::Span<const Tile> tiles,
                   PrimitiveType index_primitive_type = PRIMITIVE_TYPE_INVALID,
                   PrimitiveType element_primitive_type = PRIMITIVE_TYPE_INVALID,
                   int64_t memory_space = 0,
-                  std::unique_ptr<Shape> physical_shape = nullptr);
+                  std::unique_ptr<Shape> physical_shape = nullptr,
+                  int64_t dynamic_shape_metadata_prefix_bytes = 0);
 
   Layout& operator=(const Layout& other);
   Layout& operator=(Layout&& other);
@@ -111,6 +117,9 @@ class Layout {
 
   // Returns a LayoutProto representation of the Layout.
   LayoutProto ToProto() const;
+
+  // Prints a human-readable string that represents this layout.
+  void Print(Printer* printer) const;
 
   // Returns a human-readable string that represents this layout.
   std::string ToString() const;
@@ -200,6 +209,46 @@ class Layout {
   }
   DimLevelTypeVector* mutable_dim_level_types() { return &dim_level_types_; }
 
+  // Methods for accessing the dim_unique array.
+  int dim_unique_size() const { return dim_unique_.size(); }
+  bool dim_unique(int index) const { return dim_unique_.at(index); }
+  Layout& set_dim_unique(int index, bool unique) {
+    dim_unique_.at(index) = unique;
+    return *this;
+  }
+  Layout& add_dim_unique(bool unique) {
+    dim_unique_.push_back(unique);
+    return *this;
+  }
+  Layout& clear_dim_unique() {
+    dim_unique_.clear();
+    return *this;
+  }
+  absl::Span<const bool> dim_unique() const { return dim_unique_; }
+  absl::InlinedVector<bool, InlineRank()>* mutable_dim_unique() {
+    return &dim_unique_;
+  }
+
+  // Methods for accessing the dim_ordered array.
+  int dim_ordered_size() const { return dim_ordered_.size(); }
+  bool dim_ordered(int index) const { return dim_ordered_.at(index); }
+  Layout& set_dim_ordered(int index, bool ordered) {
+    dim_ordered_.at(index) = ordered;
+    return *this;
+  }
+  Layout& add_dim_ordered(bool ordered) {
+    dim_ordered_.push_back(ordered);
+    return *this;
+  }
+  Layout& clear_dim_ordered() {
+    dim_ordered_.clear();
+    return *this;
+  }
+  absl::Span<const bool> dim_ordered() const { return dim_ordered_; }
+  absl::InlinedVector<bool, InlineRank()>* mutable_dim_ordered() {
+    return &dim_ordered_;
+  }
+
   // Methods for accessing the minor-to-major array.
   int minor_to_major_size() const { return minor_to_major_.size(); }
   int64_t minor_to_major(int index) const { return minor_to_major_.at(index); }
@@ -264,6 +313,13 @@ class Layout {
   Shape* mutable_physical_shape();
   void clear_physical_shape();
 
+  int64_t dynamic_shape_metadata_prefix_bytes() const {
+    return dynamic_shape_metadata_prefix_bytes_;
+  }
+  void set_dynamic_shape_metadata_prefix_bytes(int64_t bytes) {
+    dynamic_shape_metadata_prefix_bytes_ = bytes;
+  }
+
   void Swap(Layout* other) {
     using std::swap;
     swap(*this, *other);
@@ -282,6 +338,10 @@ class Layout {
   // The list of dimension level types, indicating the method that will be used
   // to represent each dimension of the array.
   DimLevelTypeVector dim_level_types_;
+
+  // Whether each DimLevelType is unique and ordered.
+  absl::InlinedVector<bool, InlineRank()> dim_unique_;
+  absl::InlinedVector<bool, InlineRank()> dim_ordered_;
 
   // A map from physical dimension numbers to logical dimension numbers.
   // The first element is the most minor physical dimension (fastest varying
@@ -309,6 +369,11 @@ class Layout {
 
   // The physical on-device shape used to represent a sparse array.
   std::unique_ptr<Shape> physical_shape_;
+
+  // The dynamic shape metadata size in bytes in front of the shape data. The
+  // field may be non-zero for a static shape whose associated buffer is for a
+  // dynamic shape, e.g. a result of SliceToDynamic.
+  int64_t dynamic_shape_metadata_prefix_bytes_ = 0;
 };
 
 std::ostream& operator<<(std::ostream& out, const Tile& Tile);

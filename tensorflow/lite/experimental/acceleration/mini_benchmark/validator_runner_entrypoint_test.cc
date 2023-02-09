@@ -121,7 +121,7 @@ TEST_F(ValidatorRunnerEntryPointTest, NoValidationRequestFound) {
 
   EXPECT_EQ(BenchmarkEventType_ERROR, event->event_type());
   EXPECT_EQ(kMinibenchmarkNoValidationRequestFound,
-            event->error()->exit_code());
+            event->error()->mini_benchmark_error_code());
 }
 
 TEST_F(ValidatorRunnerEntryPointTest, CannotSetCpuAffinity) {
@@ -134,8 +134,9 @@ TEST_F(ValidatorRunnerEntryPointTest, CannotSetCpuAffinity) {
   const tflite::BenchmarkEvent* event = events[0];
 
   EXPECT_EQ(BenchmarkEventType_RECOVERED_ERROR, event->event_type());
-  EXPECT_EQ(kMinibenchmarkUnableToSetCpuAffinity, event->error()->exit_code());
-  EXPECT_EQ(10, event->error()->mini_benchmark_error_code());
+  EXPECT_EQ(kMinibenchmarkUnableToSetCpuAffinity,
+            event->error()->mini_benchmark_error_code());
+  EXPECT_EQ(10, event->error()->exit_code());
 }
 
 TEST_F(ValidatorRunnerEntryPointTest, CannotLoadNnapi) {
@@ -179,7 +180,7 @@ TEST_F(ValidatorRunnerEntryPointTest, CannotLoadNnapi) {
   const tflite::BenchmarkEvent* event = events[1];
   EXPECT_EQ(BenchmarkEventType_ERROR, event->event_type());
   EXPECT_EQ(kMiniBenchmarkCannotLoadSupportLibrary,
-            event->error()->exit_code());
+            event->error()->mini_benchmark_error_code());
 }
 
 }  // namespace

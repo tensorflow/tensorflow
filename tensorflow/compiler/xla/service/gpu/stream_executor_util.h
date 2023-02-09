@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_GPU_STREAM_EXECUTOR_UTIL_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_STREAM_EXECUTOR_UTIL_H_
 
+#include <string_view>
+
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/layout.h"
@@ -27,7 +29,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/stream_executor/stream_executor.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/protobuf/autotuning.pb.h"
+#include "tensorflow/tsl/protobuf/autotuning.pb.h"
 
 // Helper functions for interacting with StreamExecutor.
 
@@ -80,7 +82,8 @@ absl::Mutex& GetGpuMutex(const se::StreamExecutor* stream_exec);
 // the lifetime of the kernel.
 StatusOr<std::unique_ptr<se::KernelBase>> CreateKernel(
     absl::string_view kernel_name, uint64_t num_args, absl::string_view ptx,
-    absl::Span<const uint8_t> cubin_data, se::StreamExecutor* stream_exec);
+    absl::Span<const uint8_t> cubin_data, se::StreamExecutor* stream_exec,
+    uint32_t shared_mem_bytes = 0);
 
 // Runs loaded kernel on the stream with the provided arguments.
 Status ExecuteKernelOnStream(const se::KernelBase& kernel,
@@ -104,7 +107,8 @@ StatusOr<se::dnn::DataType> GetDNNDataTypeFromPrimitiveType(PrimitiveType type);
 // If deterministic output is requested, returns first (not failing) result.
 StatusOr<tensorflow::AutotuneResult> PickBestResult(
     absl::Span<tensorflow::AutotuneResult const> profile_results,
-    const HloInstruction& instr);
+    std::optional<std::string_view> instr_str,
+    HloModuleConfig hlo_module_config);
 
 // Returns whether determinism is required.
 bool RequireDeterminism(const HloModuleConfig& config);

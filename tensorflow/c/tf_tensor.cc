@@ -247,7 +247,7 @@ Status TensorInterface::BitcastFrom(const TensorInterface& from, DataType type,
                                     const int64_t* new_dims, int num_new_dims) {
   tensorflow::TensorShape s;
   for (int i = 0; i < num_new_dims; ++i) {
-    s.AddDim(new_dims[i]);
+    TF_RETURN_IF_ERROR(s.AddDimWithStatus(new_dims[i]));
   }
   return tensor_.BitcastFrom(from.tensor_, type, s);
 }

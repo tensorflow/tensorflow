@@ -13,16 +13,15 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// This transformation pass converts stateful partitioned calls with
-// _xla_compile_device_type attribute to XLA launch ops.
+// This transformation pass converts stateful and stateless paritioned calls
+// with _xla_compile_device_type attribute to XLA launch ops.
 
-#include <memory>
-#include <string>
-#include <vector>
+#include <stack>
 
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
+#include "tensorflow/compiler/mlir/tensorflow/transforms/call_graph_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/attribute_utils.h"
 
@@ -38,8 +37,8 @@ struct XlaRewritePass : public impl::XlaRewritePassBase<XlaRewritePass> {
   void runOnOperation() override;
 };
 
-void MoveResourceArgsToEnd(mlir::func::FuncOp callee) {
-  llvm::DenseMap<mlir::BlockArgument, mlir::BlockArgument> mapping;
+void MoveResourceArgsToEnd(func::FuncOp callee) {
+  llvm::DenseMap<BlockArgument, BlockArgument> mapping;
   unsigned num_params = callee.getNumArguments();
   llvm::BitVector removed_params(num_params);
   // Copy the resource-type parameters to the end.
@@ -65,10 +64,10 @@ template <typename OpT,
           typename std::enable_if<llvm::is_one_of<
               OpT, TF::PartitionedCallOp,
               TF::StatefulPartitionedCallOp>::value>::type * = nullptr>
-void Rewrite(OpT pcall_op, SymbolTable &symtab) {
+void RewriteCall(OpT call_op, SymbolTable &symtab) {
   llvm::SmallVector<Value> non_resource_args, resource_args;
   bool has_resources = false, in_order = true;
-  for (const mlir::Value &arg : pcall_op.args()) {
+  for (const Value &arg : call_op.getArgs()) {
     if (!getElementTypeOrSelf(arg.getType()).template isa<TF::ResourceType>()) {
       non_resource_args.push_back(arg);
       if (has_resources) in_order = false;
@@ -79,39 +78,52 @@ void Rewrite(OpT pcall_op, SymbolTable &symtab) {
   }
 
   if (!in_order) {
-    // Functions do not get reused in practise, so skip the check for if the
+    // Functions do not get reused in practice, so skip the check for if the
     // callee has been updated.
-    StringAttr callee_sym = cast<FlatSymbolRefAttr>(pcall_op.fAttr()).getAttr();
-    MoveResourceArgsToEnd(cast<mlir::func::FuncOp>(symtab.lookup(callee_sym)));
+    StringAttr callee_sym =
+        cast<SymbolRefAttr>(call_op.getFAttr()).getRootReference();
+    MoveResourceArgsToEnd(symtab.lookup<func::FuncOp>(callee_sym));
   }
-  OpBuilder builder(pcall_op->getContext());
-  builder.setInsertionPoint(pcall_op);
+  OpBuilder builder(call_op->getContext());
+  builder.setInsertionPoint(call_op);
   auto xla_launch_op = builder.create<TF::XlaLaunchOp>(
-      pcall_op.getLoc(), pcall_op.getResultTypes(),
+      call_op.getLoc(), call_op.getResultTypes(),
       /*constants=*/ValueRange({}), ValueRange(non_resource_args),
-      ValueRange(resource_args), pcall_op.fAttr());
+      ValueRange(resource_args), call_op.getFAttr());
 
-  CopyDeviceAndUnderscoredAttributes(pcall_op, xla_launch_op);
-  pcall_op.replaceAllUsesWith(xla_launch_op.getResults());
-  pcall_op.erase();
+  CopyDeviceAndUnderscoredAttributes(call_op, xla_launch_op);
+  call_op.replaceAllUsesWith(xla_launch_op.getResults());
+  call_op.erase();
 }
 
 void XlaRewritePass::runOnOperation() {
-  mlir::ModuleOp module = getOperation();
+  ModuleOp module = getOperation();
   SymbolTable symtab(module);
+  module.walk([&](tf_device::ClusterOp cluster_op) {
+    cluster_op.getBody().walk([&](mlir::Operation *op) {
+      if (auto call_op = llvm::dyn_cast<TF::StatefulPartitionedCallOp>(op)) {
+        RewriteCall(call_op, symtab);
+      } else if (auto call_op = llvm::dyn_cast<TF::PartitionedCallOp>(op)) {
+        RewriteCall(call_op, symtab);
+      }
+    });
+  });
 
-  module.walk([&](mlir::Operation *op) {
-    if (!op->hasAttr(tensorflow::kCompileDeviceTypeAttr))
-      return WalkResult::advance();
-    if (auto pcall_op = dyn_cast<TF::PartitionedCallOp>(op)) {
-      Rewrite(pcall_op, symtab);
-    } else if (auto stateful_pcall_op =
-                   dyn_cast<TF::StatefulPartitionedCallOp>(op)) {
-      Rewrite(stateful_pcall_op, symtab);
+  // Verify that there are no nested XLA launch ops.
+  module.walk([&](TF::XlaLaunchOp xla_launch_op) {
+    llvm::SmallVector<mlir::Operation *> nested_launch_ops;
+    func::FuncOp root = symtab.lookup<func::FuncOp>(
+        xla_launch_op.getFunctionAttr().getRootReference());
+    if (failed(GetOutermostOpsOfType<TF::XlaLaunchOp>(root, symtab,
+                                                      nested_launch_ops)))
+      return signalPassFailure();
+    if (!nested_launch_ops.empty()) {
+      xla_launch_op.emitError() << "Nested XLA launch ops detected";
+      return signalPassFailure();
     }
-    return WalkResult::advance();
   });
 }
+
 }  // namespace
 
 namespace TFDevice {

@@ -28,6 +28,8 @@ namespace tensorflow {
 namespace {
 
 constexpr char kTestData[] = "cc/saved_model/testdata";
+// This is the value in testdata/VarsAndArithmeticObjectGraph/fingerprint.pb
+constexpr char kV2ModuleSavedModelChecksum[] = "15788619162413586750";
 
 class BundleV2Test : public ::testing::Test {
  protected:
@@ -114,6 +116,10 @@ TEST_F(BundleV2Test, UpdatesMetrics) {
   EXPECT_EQ(metrics::SavedModelRead("2").value(), read_count + 1);
   EXPECT_EQ(metrics::SavedModelReadApi(kCCLoadBundleV2Label).value(),
             api_count + 1);
+  // Check that the gauge contains the fingerprint.
+  EXPECT_EQ(metrics::SavedModelReadFingerprint().value(),
+            kV2ModuleSavedModelChecksum);
+  EXPECT_EQ(metrics::SavedModelReadPath().value(), export_dir);
 }
 
 }  // namespace

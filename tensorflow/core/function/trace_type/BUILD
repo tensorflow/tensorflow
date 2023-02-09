@@ -6,6 +6,7 @@ load(
 )
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     licenses = ["notice"],
 )
 
@@ -50,8 +51,9 @@ py_strict_test(
         "//tensorflow/python/compat:v2_compat",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/data/ops:iterator_ops",
-        "//tensorflow/python/eager:function",
+        "//tensorflow/python/eager:def_function",
         "//tensorflow/python/framework:combinations",
+        "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:tensor_spec",
         "//tensorflow/python/framework:test_lib",
@@ -71,6 +73,7 @@ pytype_strict_library(
     visibility = ["//tensorflow:internal"],
     deps = [
         ":serialization",
+        ":util",
         "//tensorflow/core/function/trace_type:default_types_proto_py",
         "//tensorflow/python/types",
     ],

@@ -54,20 +54,19 @@ case $1 in
     echo "ARMCC_PREFIX=${ARMCC_ROOT}/bin/aarch64-linux-gnu-"
 		;;
 	rpi0)
-    if [[ ! -d "${TOOLCHAINS_DIR}/arm-rpi-linux-gnueabihf" ]]; then
-      curl -L https://github.com/rvagg/rpi-newer-crosstools/archive/eb68350c5c8ec1663b7fe52c742ac4271e3217c5.tar.gz -o rpi-toolchain.tar.gz >&2
-      tar xzf rpi-toolchain.tar.gz -C ${TOOLCHAINS_DIR} >&2
-      mv ${TOOLCHAINS_DIR}/rpi-newer-crosstools-eb68350c5c8ec1663b7fe52c742ac4271e3217c5 ${TOOLCHAINS_DIR}/arm-rpi-linux-gnueabihf >&2
+    if [[ ! -d "${TOOLCHAINS_DIR}/gcc-arm-8.3-2019.03-x86_64-arm-linux-gnueabihf" ]]; then
+      curl -LO https://storage.googleapis.com/mirror.tensorflow.org/developer.arm.com/media/Files/downloads/gnu-a/8.3-2019.03/binrel/gcc-arm-8.3-2019.03-x86_64-arm-linux-gnueabihf.tar.xz >&2
+      tar xvf gcc-arm-8.3-2019.03-x86_64-arm-linux-gnueabihf.tar.xz -C ${TOOLCHAINS_DIR} >&2
     fi
-    ARMCC_ROOT=${TOOLCHAINS_DIR}/arm-rpi-linux-gnueabihf/x64-gcc-6.5.0/arm-rpi-linux-gnueabihf
-    echo "ARMCC_FLAGS=\"-march=armv6 -mfpu=vfp -funsafe-math-optimizations \
-      -isystem ${ARMCC_ROOT}/lib/gcc/arm-rpi-gnueabihf/6.5.0/include \
-      -isystem ${ARMCC_ROOT}/lib/gcc/arm-rpi-gnueabihf/6.5.0/include-fixed \
-      -isystem ${ARMCC_ROOT}/arm-rpi-linux-gnueabihf/include/c++/6.5.0 \
-      -isystem ${ARMCC_ROOT}/arm-rpi-linux-gnueabihf/sysroot/usr/include \
+    ARMCC_ROOT=${TOOLCHAINS_DIR}/gcc-arm-8.3-2019.03-x86_64-arm-linux-gnueabihf
+    echo "ARMCC_FLAGS=\"-march=armv6 -mfpu=vfp -mfloat-abi=hard -funsafe-math-optimizations \
+      -isystem ${ARMCC_ROOT}/lib/gcc/arm-linux-gnueabihf/8.3.0/include \
+      -isystem ${ARMCC_ROOT}/lib/gcc/arm-linux-gnueabihf/8.3.0/include-fixed \
+      -isystem ${ARMCC_ROOT}/arm-linux-gnueabihf/include/c++/8.3.0 \
+      -isystem ${ARMCC_ROOT}/arm-linux-gnueabihf/libc/usr/include \
       -isystem \"\${CROSSTOOL_PYTHON_INCLUDE_PATH}\" \
       -isystem /usr/include\""
-    echo "ARMCC_PREFIX=${ARMCC_ROOT}/bin/arm-rpi-linux-gnueabihf-"
+    echo "ARMCC_PREFIX=${ARMCC_ROOT}/bin/arm-linux-gnueabihf-"
     ;;
 	*)
 		echo "Usage: download_toolchains.sh [armhf|aarch64|rpi0]" >&2

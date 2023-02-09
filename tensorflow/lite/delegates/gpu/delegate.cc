@@ -26,16 +26,20 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/types/span.h"
 #include "tensorflow/lite/builtin_ops.h"
-#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/delegates/gpu/api.h"
 #include "tensorflow/lite/delegates/gpu/cl/api.h"
 #include "tensorflow/lite/delegates/gpu/cl/util.h"
 #include "tensorflow/lite/delegates/gpu/common/model_builder.h"
 #include "tensorflow/lite/delegates/gpu/common/model_builder_helper.h"
 #include "tensorflow/lite/delegates/gpu/common/quantization_util.h"
+#include "tensorflow/lite/delegates/gpu/delegate_options.h"
 #include "tensorflow/lite/delegates/serialization.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/minimal_logging.h"
+#include "tensorflow/lite/profiling/telemetry/c/telemetry_setting_internal.h"
+#include "tensorflow/lite/profiling/telemetry/telemetry.h"
+#include "tensorflow/lite/profiling/telemetry/telemetry_status.h"
 
 #ifndef CL_DELEGATE_NO_GL
 #include "tensorflow/lite/delegates/gpu/gl/api2.h"
@@ -70,6 +74,8 @@ InferenceUsage ToUsage(int32_t usage) {
       return InferenceUsage::FAST_SINGLE_ANSWER;
     case TFLITE_GPU_INFERENCE_PREFERENCE_SUSTAINED_SPEED:
       return InferenceUsage::SUSTAINED_SPEED;
+    case TFLITE_GPU_INFERENCE_PREFERENCE_BALANCED:
+      return InferenceUsage::BALANCED;
   }
   return InferenceUsage::UNKNOWN;
 }
@@ -81,6 +87,8 @@ class Delegate {
  public:
   explicit Delegate(const TfLiteGpuDelegateOptionsV2* options)
       : num_delegate_kernels_(0) {
+    telemetry_settings_ =
+        std::make_unique<TfLiteTelemetryGpuDelegateSettings>();
     delegate_.data_ = reinterpret_cast<void*>(this);
     delegate_.Prepare = DelegatePrepare;
     delegate_.CopyFromBufferHandle = nullptr;
@@ -98,6 +106,8 @@ class Delegate {
       params.model_token = options_.model_token;
       params.cache_dir = options_.serialization_dir;
       serialization_ = std::make_unique<Serialization>(params);
+      telemetry_settings_ =
+          std::make_unique<TfLiteTelemetryGpuDelegateSettings>();
     }
   }
 
@@ -113,6 +123,9 @@ class Delegate {
     return options_.max_delegated_partitions;
   }
   int num_delegate_kernels() const { return num_delegate_kernels_; }
+  TfLiteTelemetryGpuDelegateSettings* telemetry_settings() {
+    return telemetry_settings_.get();
+  }
 
  private:
   TfLiteDelegate delegate_;
@@ -120,6 +133,8 @@ class Delegate {
   int num_delegate_kernels_ = 0;
 
   std::unique_ptr<Serialization> serialization_;
+
+  std::unique_ptr<TfLiteTelemetryGpuDelegateSettings> telemetry_settings_;
 
   friend class DelegateKernel;
 };
@@ -129,6 +144,8 @@ class DelegateKernel {
  public:
   explicit DelegateKernel(Delegate* delegate) : delegate_(delegate) {
     ++delegate_->num_delegate_kernels_;
+    telemetry_settings_ =
+        std::make_unique<TfLiteTelemetryGpuDelegateSettings>();
   }
   ~DelegateKernel() { --delegate_->num_delegate_kernels_; }
 
@@ -146,11 +163,13 @@ class DelegateKernel {
 
     std::unique_ptr<InferenceBuilder> builder;
     bool graph_is_destroyed;
+    bool backend_opencl = false;
     const int experimental_flags = delegate_->options().experimental_flags;
     if (experimental_flags & TFLITE_GPU_EXPERIMENTAL_FLAGS_CL_ONLY) {
       RETURN_IF_ERROR(InitializeOpenClApi(&graph, &builder, &graph_is_destroyed,
                                           context, delegate_params,
                                           delegate_->serialization()));
+      backend_opencl = true;
     } else if (experimental_flags & TFLITE_GPU_EXPERIMENTAL_FLAGS_GL_ONLY) {
       RETURN_IF_ERROR(InitializeOpenGlApi(&graph, &builder));
     } else {
@@ -170,8 +189,17 @@ class DelegateKernel {
         }
         RETURN_IF_ERROR(InitializeOpenGlApi(
             graph_is_destroyed ? &graph2 : &graph, &builder));
+      } else {
+        backend_opencl = true;
       }
     }
+
+    telemetry_settings_->backend =
+        backend_opencl ? TfLiteTelemetryGpuDelegateSettings::OPENCL
+                       : TfLiteTelemetryGpuDelegateSettings::OPENGL;
+    telemetry::TelemetryReportDelegateSettings(
+        context, "GpuDelegateKernel::Prepare",
+        telemetry::TelemetrySource::TFLITE_GPU, telemetry_settings_.get());
 
     // At this point, TFLite hasn't allocated tensors yet, therefore, collect
     // indices and set all input and output tensors from TFLite later.
@@ -398,7 +426,7 @@ class DelegateKernel {
     return absl::OkStatus();
   }
 
-  // Returns Ok only if serialized data is successsfully found.
+  // Returns Ok only if serialized data is successfully found.
   absl::Status MaybeInitializeSerializedOpenCL(
       TfLiteContext* context, const TfLiteDelegateParams* delegate_params,
       std::unique_ptr<InferenceBuilder>* builder, cl::InferenceOptions* options,
@@ -494,6 +522,8 @@ class DelegateKernel {
   absl::flat_hash_map<int, int> quant_conversion_map_;
   std::thread::id thread_id_prepare_;  // thread id used for Prapare()
   bool enforce_same_thread_ = false;   // flag to enforce same thread for Invoke
+
+  std::unique_ptr<TfLiteTelemetryGpuDelegateSettings> telemetry_settings_;
 };
 
 inline DelegateKernel* GetDelegateKernel(TfLiteNode* node) {
@@ -577,7 +607,12 @@ TfLiteStatus DelegatePrepare(TfLiteContext* context, TfLiteDelegate* delegate) {
       context, kRegistration, ops_to_replace, delegate);
   TFLITE_LOG_PROD(TFLITE_LOG_INFO, "Created %d GPU delegate kernels.",
                   gpu_delegate->num_delegate_kernels());
+  auto* delegate_setting = gpu_delegate->telemetry_settings();
+  delegate_setting->num_nodes_delegated = ops_to_replace->size;
   TfLiteIntArrayFree(ops_to_replace);
+  telemetry::TelemetryReportDelegateSettings(
+      context, "GpuDelegate::DelegatePrepare",
+      telemetry::TelemetrySource::TFLITE_GPU, delegate_setting);
   return status;
 }
 

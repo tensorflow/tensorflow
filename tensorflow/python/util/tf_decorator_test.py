@@ -16,6 +16,7 @@
 
 # pylint: disable=unused-import
 import functools
+import inspect
 
 from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging as logging
@@ -110,24 +111,31 @@ class TfDecoratorTest(test.TestCase):
                   tf_decorator.TFDecorator('', test_function).decorated_target)
 
   def testInitCapturesDecoratorName(self):
-    self.assertEqual('decorator name',
-                     tf_decorator.TFDecorator('decorator name',
-                                              test_function).decorator_name)
+    self.assertEqual(
+        'decorator name',
+        tf_decorator.TFDecorator('decorator name',
+                                 test_function).decorator_name)
 
   def testInitCapturesDecoratorDoc(self):
-    self.assertEqual('decorator doc',
-                     tf_decorator.TFDecorator('', test_function,
-                                              'decorator doc').decorator_doc)
+    self.assertEqual(
+        'decorator doc',
+        tf_decorator.TFDecorator('', test_function,
+                                 'decorator doc').decorator_doc)
 
   def testInitCapturesNonNoneArgspec(self):
-    argspec = tf_inspect.ArgSpec(
+    argspec = tf_inspect.FullArgSpec(
         args=['a', 'b', 'c'],
         varargs=None,
-        keywords=None,
-        defaults=(1, 'hello'))
-    self.assertIs(argspec,
-                  tf_decorator.TFDecorator('', test_function, '',
-                                           argspec).decorator_argspec)
+        varkw=None,
+        defaults=(1, 'hello'),
+        kwonlyargs=[],
+        kwonlydefaults=None,
+        annotations=None,
+    )
+    self.assertIs(
+        argspec,
+        tf_decorator.TFDecorator('', test_function, '',
+                                 argspec).decorator_argspec)
 
   def testInitSetsDecoratorNameToTargetName(self):
     self.assertEqual('test_function',
@@ -177,6 +185,7 @@ class TfDecoratorTest(test.TestCase):
                      TestDecoratedClass().return_params.__doc__)
 
   def testTarget__get__IsProxied(self):
+
     class Descr(object):
 
       def __get__(self, instance, owner):
@@ -231,15 +240,34 @@ class TfMakeDecoratorTest(test.TestCase):
     del test_wrapper.foobar
 
   def testSetsTFDecoratorArgSpec(self):
-    argspec = tf_inspect.ArgSpec(
+    argspec = tf_inspect.FullArgSpec(
         args=['a', 'b', 'c'],
-        varargs=None,
-        keywords=None,
-        defaults=(1, 'hello'))
+        varargs='args',
+        kwonlyargs={},
+        defaults=(1, 'hello'),
+        kwonlydefaults=None,
+        varkw='kwargs',
+        annotations=None)
     decorated = tf_decorator.make_decorator(test_function, test_wrapper, '', '',
                                             argspec)
     decorator = getattr(decorated, '_tf_decorator')
     self.assertEqual(argspec, decorator.decorator_argspec)
+    self.assertEqual(
+        inspect.signature(decorated),
+        inspect.Signature([
+            inspect.Parameter('a', inspect.Parameter.POSITIONAL_OR_KEYWORD),
+            inspect.Parameter(
+                'b', inspect.Parameter.POSITIONAL_OR_KEYWORD, default=1
+            ),
+            inspect.Parameter(
+                'c',
+                inspect.Parameter.POSITIONAL_OR_KEYWORD,
+                default='hello',
+            ),
+            inspect.Parameter('args', inspect.Parameter.VAR_POSITIONAL),
+            inspect.Parameter('kwargs', inspect.Parameter.VAR_KEYWORD),
+        ]),
+    )
 
   def testSetsDecoratorNameToFunctionThatCallsMakeDecoratorIfAbsent(self):
 
@@ -275,10 +303,10 @@ class TfDecoratorRewrapTest(test.TestCase):
     def new_target(x):
       return x * 3
 
-    self.assertEqual((1 * 2 + 1) ** 2, test_rewrappable_decorated(1))
+    self.assertEqual((1 * 2 + 1)**2, test_rewrappable_decorated(1))
     prev_target, _ = tf_decorator.unwrap(test_rewrappable_decorated)
     tf_decorator.rewrap(test_rewrappable_decorated, prev_target, new_target)
-    self.assertEqual((1 * 3 + 1) ** 2, test_rewrappable_decorated(1))
+    self.assertEqual((1 * 3 + 1)**2, test_rewrappable_decorated(1))
 
   def testRewrapOfDecoratorFunction(self):
 
@@ -289,7 +317,7 @@ class TfDecoratorRewrapTest(test.TestCase):
     # In this case, only the outer decorator (test_injectable_decorator_square)
     # should be preserved.
     tf_decorator.rewrap(test_rewrappable_decorated, prev_target, new_target)
-    self.assertEqual((1 * 3) ** 2, test_rewrappable_decorated(1))
+    self.assertEqual((1 * 3)**2, test_rewrappable_decorated(1))
 
 
 class TfDecoratorUnwrapTest(test.TestCase):

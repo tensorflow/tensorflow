@@ -30,8 +30,7 @@ namespace mhlo {
 // location (converted). FileLineColLoc locations are populated by taking the
 // file name and line number, and populating `source_file` and `source_line`
 // respectively.
-xla::OpMetadata CreateOpMetadataFromLocation(mlir::Operation* op,
-                                             bool legalize_node_names);
+xla::OpMetadata CreateOpMetadataFromLocation(mlir::Operation* op);
 
 // Returns a name that can be used for debugging purposes, e.g., naming
 // variable names in generated IR or producing logging output.

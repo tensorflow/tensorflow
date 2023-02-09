@@ -32,37 +32,32 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/array.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/compiler/xla/service/hlo_schedule.h"
-#include "tensorflow/compiler/xla/service/hlo_sharding.h"
+#include "tensorflow/compiler/xla/hlo/experimental/auto_sharding/auto_sharding_strategy.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_schedule.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_sharding.h"
 #include "tensorflow/compiler/xla/shape_util.h"
-#include "absl/container/flat_hash_map.h"
-#include "absl/container/flat_hash_set.h"
 
 namespace xla {
 namespace spmd {
-// Type alias
-
-template <typename Key, typename Value>
-using StableHashMap = ::absl::flat_hash_map<Key, Value>;
-template <typename Key>
-using StableHashSet = ::absl::flat_hash_set<Key>;
-
-// Map an instruction to its depth.
-using InstructionDepthMap = StableHashMap<const HloInstruction*, int64_t>;
-// Map an instruction to its batch dimension.
-using InstructionBatchDimMap = StableHashMap<std::string, int>;
-// Map an instruction to its alias source parameter.
-using AliasMap = StableHashMap<const HloInstruction*, HloInstruction*>;
-// Map an instruction to its resharding cache.
-using ReshardingCache =
-    StableHashMap<const HloInstruction*,
-                  std::vector<std::pair<HloSharding, HloInstruction*>>>;
 
 inline constexpr absl::string_view kPipelineMarker = "xla_pipeline_marker";
 inline constexpr absl::string_view kIdentityMarker = "identity";
 inline constexpr absl::string_view kPipelineMarkerStartType = "start";
 inline constexpr absl::string_view kPipelineMarkerEndType = "end";
+
+inline std::pair<int, int> ParseMeshDims(const std::string& strategy_name) {
+  if (absl::StrContains(strategy_name, "{0,1}")) {
+    return {0, 1};
+  }
+  return {1, 0};
+}
+
+// Return whether the tensor shape is divisible by
+// the number of devices along multiple dimensions.
+bool IsDivisible(const HloInstruction* ins, const Array<int64_t>& device_mesh,
+                 absl::Span<const int64_t> tensor_dims,
+                 absl::Span<const int64_t> mesh_dims);
 
 // Array/Vector/Matrix Utility
 
@@ -130,86 +125,6 @@ template <typename T>
 std::string ToString(absl::Span<T> span) {
   return absl::StrCat("[", absl::StrJoin(span, ", "), "]");
 }
-
-// A simple matrix class to store and manipulate the cost matrices on edges.
-// It can create a view for matrix transpose without copying the memory.
-// TODO (zhuohan): Inherit from Array2D and add Transpose and operator+ (See
-// tensorflow/compiler/xla/array2d.h;l=39)
-class Matrix {
- public:
-  Matrix() : n_(0), m_(0), transpose_(false), data_(nullptr) {}
-
-  Matrix(size_t n, size_t m) {
-    this->n_ = n;
-    this->m_ = m;
-    transpose_ = false;
-    data_ = std::make_shared<std::vector<double>>(n * m, 0.0);
-  }
-
-  Matrix(size_t n, size_t m, bool transpose,
-         std::shared_ptr<std::vector<double>> data) {
-    this->n_ = n;
-    this->m_ = m;
-    this->transpose_ = transpose;
-    this->data_ = data;
-  }
-
-  Matrix Transpose() { return Matrix(m_, n_, !transpose_, data_); }
-
-  double operator()(size_t i, size_t j) const {
-    size_t idx;
-    if (transpose_) {
-      idx = j * n_ + i;
-    } else {
-      idx = i * m_ + j;
-    }
-    CHECK(data_ != nullptr) << n_ << " , " << m_;
-    CHECK(idx < n_ * m_) << idx << " , " << n_ << " , " << m_;
-    return (*data_)[idx];
-  }
-
-  double& operator()(size_t i, size_t j) {
-    size_t idx;
-    if (transpose_) {
-      idx = j * n_ + i;
-    } else {
-      idx = i * m_ + j;
-    }
-    CHECK(data_ != nullptr) << n_ << " , " << m_;
-    CHECK(idx < n_ * m_) << idx << " , " << n_ << " , " << m_;
-    return (*data_)[idx];
-  }
-
-  Matrix operator+(const Matrix& other) {
-    CHECK_EQ(n_, other.n_);
-    CHECK_EQ(m_, other.m_);
-    Matrix ret = Matrix(n_, m_);
-    for (size_t i = 0; i < n_; ++i) {
-      for (size_t j = 0; j < m_; ++j) {
-        ret(i, j) = operator()(i, j) + other(i, j);
-      }
-    }
-    return ret;
-  }
-
-  std::string ToString() const {
-    std::string str;
-
-    for (size_t i = 0; i < n_; ++i) {
-      for (size_t j = 0; j < m_; ++j) {
-        absl::StrAppend(&str, operator()(i, j), " ");
-      }
-      absl::StrAppend(&str, "\n");
-    }
-
-    return str;
-  }
-
-  size_t n_;
-  size_t m_;
-  bool transpose_;
-  std::shared_ptr<std::vector<double>> data_;
-};
 
 // Shape Utility
 
@@ -284,6 +199,128 @@ inline void ReplaceOperand(HloInstruction* inst,
 // Return whether this instruction is a custom call marker introduced by us.
 inline bool IsCustomCallMarker(const HloInstruction* inst) {
   return inst->IsCustomCall({kPipelineMarker, kIdentityMarker});
+}
+
+// Pass through the custom call marker and get the source instruction
+inline const HloInstruction* PassThroughCustomCallMarkerGetSource(
+    const HloInstruction* ins) {
+  while (ins->opcode() == HloOpcode::kGetTupleElement &&
+         IsCustomCallMarker(ins->operand(0))) {
+    const HloInstruction* custom_call = ins->operand(0);
+    const HloInstruction* tuple = custom_call->operand(0);
+    while (IsCustomCallMarker(tuple)) {
+      tuple = tuple->operand(0);
+    }
+    ins = tuple->operand(ins->tuple_index());
+  }
+  return ins;
+}
+
+// Pass through the custom call marker and get the acutal operand.
+inline HloInstruction* PassThroughCustomCallMarkerOperand(
+    HloInstruction* raw_operand, const HloInstruction* inst) {
+  if (!IsCustomCallMarker(raw_operand)) {
+    return raw_operand;
+  }
+
+  CHECK_EQ(inst->opcode(), HloOpcode::kGetTupleElement);
+
+  int index = inst->tuple_index();
+  return raw_operand->mutable_operand(0)->mutable_operand(index);
+}
+
+// Return whether the tuple is only used by a custom call marker.
+inline bool IsCustomCallMarkerTuple(const HloInstruction* inst) {
+  return inst->opcode() == HloOpcode::kTuple && inst->users().size() == 1 &&
+         IsCustomCallMarker(inst->users().front());
+}
+
+// Pass through the custom call marker and get the actual user.
+inline HloInstruction* PassThroughCustomCallMarkerUser(
+    HloInstruction* raw_user, const HloInstruction* inst) {
+  if (!IsCustomCallMarkerTuple(raw_user)) {
+    return raw_user;
+  }
+
+  const HloInstruction* custom_call = raw_user->users().front();
+
+  int index = -1;
+  for (int i = 0; i < raw_user->operand_count(); i++) {
+    if (raw_user->operand(i) == inst) {
+      index = i;
+      break;
+    }
+  }
+  CHECK_NE(index, -1);
+
+  HloInstruction* ret = nullptr;
+  for (HloInstruction* user : custom_call->users()) {
+    CHECK_EQ(user->opcode(), HloOpcode::kGetTupleElement);
+    if (user->tuple_index() == index) {
+      CHECK_EQ(ret, nullptr);
+      ret = user;
+    }
+  }
+
+  return ret == nullptr ? raw_user : ret;
+}
+
+// Return the users of an instruction and its alias,
+// excluding the final output tuple.
+inline StableHashSet<HloInstruction*> UsersWithAlias(
+    const HloInstruction* inst, const AliasMap& alias_map,
+    const HloInstruction* output) {
+  StableHashSet<HloInstruction*> users;
+
+  for (HloInstruction* user : inst->users()) {
+    users.insert(PassThroughCustomCallMarkerUser(user, inst));
+  }
+
+  auto iter = alias_map.find(inst);
+  if (iter != alias_map.end()) {
+    for (HloInstruction* user : iter->second->users()) {
+      users.insert(PassThroughCustomCallMarkerUser(user, iter->second));
+    }
+  }
+
+  users.erase(output);
+  return users;
+}
+
+// Return whether this instruction is a convert on a parameter.
+bool IsParameterConvert(const HloInstruction* inst);
+
+// Return whether the instruction is always replicated.
+// (e.g., constant, broadcasted constant, scalar)
+bool IsAlwaysReplicated(const HloInstruction* inst);
+
+// Try to reduce the boundary set to its common ancestor
+void TryReduceWithCommonAncestor(StableHashSet<HloInstruction*>& replicated_set,
+                                 StableHashSet<HloInstruction*>& boundary_set,
+                                 StableHashSet<HloInstruction*>& consumer_set,
+                                 const AliasMap& alias_map);
+
+// Return whether all users of an instruction is reduce.
+bool AllUsersAreReduce(const HloInstruction* inst);
+
+void UseAllReduceForGradAcc(StableHashSet<HloInstruction*>& replicated_set,
+                            const HloInstruction* inst);
+
+void SetSharding(HloInstruction* to_split, const HloSharding& output_spec,
+                 const HloInstruction* ref_inst,
+                 const HloInstruction* shape_inst,
+                 StableHashSet<const HloInstruction*>& modified);
+
+template <typename T>
+inline std::vector<int> Argsort(const std::vector<T>& scores) {
+  std::vector<int> index;
+  index.reserve(scores.size());
+  for (size_t i = 0; i < scores.size(); ++i) {
+    index.push_back(i);
+  }
+  auto cmp = [&scores](int l, int r) { return scores[l] > scores[r]; };
+  std::sort(index.begin(), index.end(), cmp);
+  return index;
 }
 
 // Return whether the reshape is a special reshape that switches the batch dim
@@ -475,6 +512,11 @@ HloSharding Tile(const Shape& tensor_shape,
                  absl::Span<const int64_t> mesh_dims,
                  const Array<int64_t>& device_mesh);
 
+AliasMap BuildAliasMap(const HloModule* module);
+
+AliasSet BuildAliasSet(const HloModule* module,
+                       const StrategyMap& strategy_map);
+
 // Transpose an array of any number of dimensions given any axes order.
 // Similar to numpy.transpose(array, axes=()) function.
 template <typename T>
@@ -536,6 +578,9 @@ std::vector<std::vector<int64_t>> DecomposeMeshShapes(
     std::vector<int64_t> mesh_shape);
 
 bool OutputInputSameShapes(const HloInstruction* ins);
+
+bool IsEntryComputationInputOrOutput(const HloModule* module,
+                                     const HloInstruction* ins);
 }  // namespace spmd
 }  // namespace xla
 

@@ -1488,6 +1488,16 @@ class MklFusedConvOp
       this->set_fuse_bn(true, epsilon);
       this->set_fuse_activation(true, dnnl::algorithm::eltwise_relu,
                                 leakyrelu_alpha);
+    } else if (fused_ops ==
+               std::vector<string>{"FusedBatchNorm", "_MklSwish"}) {
+      float epsilon;
+      OP_REQUIRES_OK(context, context->GetAttr("epsilon", &epsilon));
+      OP_REQUIRES(
+          context, num_args == 4,
+          errors::InvalidArgument(
+              "Fused Conv2D with batchnorm must have 4 extra argument"));
+      this->set_fuse_bn(true, epsilon);
+      this->set_fuse_activation(true, dnnl::algorithm::eltwise_swish, 1.0);
     } else if (fused_ops == std::vector<string>{"BiasAdd", "Add", "Relu"}) {
       this->set_fuse_biasadd(true);
       this->set_fuse_add(true);
@@ -1526,6 +1536,12 @@ class MklFusedConvOp
           context, num_args == 2,
           errors::InvalidArgument(
               "Fused Conv2D must have two extra arguments: bias and add."));
+    } else if (fused_ops == std::vector<string>{"BiasAdd", "_MklSwish"}) {
+      this->set_fuse_biasadd(true);
+      this->set_fuse_activation(true, dnnl::algorithm::eltwise_swish, 1.0);
+      OP_REQUIRES(context, num_args == 1,
+                  errors::InvalidArgument(
+                      "Fused Conv2D must have one extra argument: bias."));
     } else {
       OP_REQUIRES(context, false,
                   errors::Unimplemented("Fusion is not implemented: [",
@@ -1938,7 +1954,6 @@ class MklQuantizedConvOp
 
     if (this->get_fuse_add()) {
       // Calculate the scale (beta in oneDNN api term) for sum
-      auto iter = params.post_op_params.begin() + post_op_to_idx_["sum"];
       if (std::is_same<Toutput, quint8>::value) {
         DataType summand_dt = this->input_type(this->get_input_add_idx());
         bool summand_condition =
@@ -2198,12 +2213,11 @@ class MklQuantizedConvOp
   }
 
   inline oneDNNFusedOps StrToEnum(const string op) {
-    if (str_to_enum_.count(op) != 0) {
-      return str_to_enum_[op];
-    } else {
-      TF_CHECK_OK(
-          Status(error::Code::UNKNOWN, "Error: Unknown post op: " + op));
-    }
+    // It was not doing template substitution for the second parameter of
+    // CHECK_EQ and thus I had to do this to make it work.
+    CHECK_EQ(str_to_enum_.find(op) != str_to_enum_.end(), true)  // Crash OK
+        << "Error: Unknown post op: " << op;
+    return str_to_enum_[op];
   }
   // Allocate tensors for cached bias data and
   // cached bias memory descriptor (data format)

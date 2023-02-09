@@ -25,8 +25,9 @@ limitations under the License.
 #include "tensorflow/lite/core/api/error_reporter.h"
 #include "tensorflow/lite/core/api/op_resolver.h"
 #include "tensorflow/lite/core/interpreter.h"
-#include "tensorflow/lite/model.h"
+#include "tensorflow/lite/core/model.h"
 #include "tensorflow/lite/mutable_op_resolver.h"
+#include "tensorflow/lite/profiling/telemetry/c/profiler.h"
 #include "tensorflow/lite/signature_runner.h"
 
 // Internal structures and subroutines used by the C API. These are likely to
@@ -37,7 +38,7 @@ limitations under the License.
 
 struct TfLiteModel {
   // Sharing is safe as FlatBufferModel is const.
-  std::shared_ptr<const tflite::FlatBufferModel> impl;
+  std::shared_ptr<const tflite::impl::FlatBufferModel> impl;
 };
 
 // The `TfLiteOpResolver` struct is an abstract callback interface that
@@ -112,12 +113,15 @@ struct TfLiteInterpreterOptions {
   // Determines whether to allow to cancel invocations with
   // `Interpreter::Cancel` or `SignatureRunner::Cancel`.
   bool enable_cancellation = false;
+
+  // If not nullptr, report telemetry metrics to profiler.
+  TfLiteTelemetryProfilerStruct* telemetry_profiler = nullptr;
 };
 
 struct TfLiteInterpreter {
   // Taking a reference to the (const) model data avoids lifetime-related issues
   // and complexity with the TfLiteModel's existence.
-  std::shared_ptr<const tflite::FlatBufferModel> model;
+  std::shared_ptr<const tflite::impl::FlatBufferModel> model;
 
   // The interpreter does not take ownership of the provided ErrorReporter
   // instance, so we ensure its validity here. Note that the interpreter may use

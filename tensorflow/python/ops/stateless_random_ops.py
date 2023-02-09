@@ -16,17 +16,16 @@
 import enum
 import numpy as np
 
-from tensorflow.python.compat import compat
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
-from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import bitwise_ops
 from tensorflow.python.ops import gen_random_index_shuffle_ops
 from tensorflow.python.ops import gen_stateless_random_ops
 from tensorflow.python.ops import gen_stateless_random_ops_v2
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import shape_util
 from tensorflow.python.util import deprecation
 from tensorflow.python.util import dispatch
 from tensorflow.python.util.tf_export import tf_export
@@ -51,6 +50,25 @@ ops.NotDifferentiable("RandomIndexShuffle")
 
 @tf_export("random.Algorithm", "random.experimental.Algorithm")
 class Algorithm(enum.Enum):
+  """A random-number-generation (RNG) algorithm.
+
+  Many random-number generators (e.g. the `alg` argument of
+  `tf.random.Generator` and `tf.random.stateless_uniform`) in TF allow
+  you to choose the algorithm used to generate the (pseudo-)random
+  numbers. You can set the algorithm to be one of the options below.
+
+  * `PHILOX`: The Philox algorithm introduced in the paper ["Parallel
+    Random Numbers: As Easy as 1, 2,
+    3"](https://www.thesalmons.org/john/random123/papers/random123sc11.pdf).
+  * `THREEFRY`: The ThreeFry algorithm introduced in the paper
+    ["Parallel Random Numbers: As Easy as 1, 2,
+    3"](https://www.thesalmons.org/john/random123/papers/random123sc11.pdf).
+  * `AUTO_SELECT`: Allow TF to automatically select the algorithm
+    depending on the accelerator device. Note that with this option,
+    running the same TF program on different devices may result in
+    different random numbers. Also note that TF may select an
+    algorithm that is different from `PHILOX` and `THREEFRY`.
+  """
   # The numbers here must match framework/rng_alg.h
   PHILOX = 1
   THREEFRY = 2
@@ -170,7 +188,7 @@ def uint32s_to_uint64(x):
                              constant_op.constant(32, dtypes.uint64)))
 
 
-@tf_export("random.experimental.stateless_split")
+@tf_export("random.split", "random.experimental.stateless_split")
 @dispatch.add_dispatch_support
 def split(seed, num=2, alg="auto_select"):
   """Splits an RNG seed into `num` new seeds by adding a leading axis.
@@ -178,7 +196,7 @@ def split(seed, num=2, alg="auto_select"):
   Example:
 
   >>> seed = [1, 2]
-  >>> new_seeds = tf.random.experimental.stateless_split(seed, num=3)
+  >>> new_seeds = tf.random.split(seed, num=3)
   >>> print(new_seeds)
   tf.Tensor(
   [[1105988140 1738052849]
@@ -206,7 +224,7 @@ def split(seed, num=2, alg="auto_select"):
                                   minval=None, maxval=None, alg=alg)
 
 
-@tf_export("random.experimental.stateless_fold_in")
+@tf_export("random.fold_in", "random.experimental.stateless_fold_in")
 @dispatch.add_dispatch_support
 def fold_in(seed, data, alg="auto_select"):
   """Folds in data to an RNG seed to form a new RNG seed.
@@ -250,24 +268,35 @@ def fold_in(seed, data, alg="auto_select"):
 @tf_export("random.experimental.index_shuffle")
 @dispatch.add_dispatch_support
 def index_shuffle(index, seed, max_index):
-  """Outputs the position of `index` in a permutation of [0, ..., max_index].
+  """Outputs the position of `index` in a permutation of `[0, ..., max_index]`.
 
-  For each possible `seed` and `max_index` there is one pseudorandom permutation
-  of the sequence S=[0, ..., max_index]. Instead of materializing the full array
-  we can compute the new position of any single element in S. This can be useful
-  for very large `max_index`s.
+  For each possible `seed` and `max_index` there is one pseudorandom
+  permutation of the sequence `S=[0, ..., max_index]`. Instead of
+  materializing the full array we can compute the new position of any
+  integer `i` (`0 <= i <= max_index`) in `S`. This can be useful for
+  very large `max_index`s by avoiding allocating large chunks of
+  memory.
 
-  The input `index` and output can be used as indices to shuffle a vector.
-  For example:
+  In the simplest case, `index` and `max_index` are scalars, and
+  `seed` is a length-2 vector (as typical for stateless RNGs). But
+  you can add a leading batch dimension to all of them. If some of
+  them don't have the batch dimension while others do, `index_shuffle`
+  will add a batch dimension to the former by broadcasting.
+
+  The input `index` and output can be used as indices to shuffle a
+  vector.  For example:
 
   >>> vector = tf.constant(['e0', 'e1', 'e2', 'e3'])
-  >>> indices = tf.random.experimental.index_shuffle(tf.range(4), [5, 9], 3)
+  >>> indices = tf.random.experimental.index_shuffle(
+  ...   index=tf.range(4), seed=[5, 9], max_index=3)
+  >>> print(indices)
+  tf.Tensor([2 0 1 3], shape=(4,), dtype=int32)
   >>> shuffled_vector = tf.gather(vector, indices)
   >>> print(shuffled_vector)
   tf.Tensor([b'e2' b'e0' b'e1' b'e3'], shape=(4,), dtype=string)
 
   More usefully, it can be used in a streaming (aka online) scenario such as
-  `tf.data`,  where each element of `vector` is processed individually and the
+  `tf.data`, where each element of `vector` is processed individually and the
   whole `vector` is never materialized in memory.
 
   >>> dataset = tf.data.Dataset.range(10)
@@ -276,13 +305,12 @@ def index_shuffle(index, seed, max_index):
   >>> print(list(dataset.as_numpy_iterator()))
   [3, 8, 0, 1, 2, 7, 6, 9, 4, 5]
 
-  This operation is stateless (like other `tf.random.stateless_*` functions),
-  meaning the output is fully determined by the `seed` (other inputs being
-  equal).
-  Each `seed` choice corresponds to one permutation, so when calling this
-  function
-  multiple times for the same shuffling, please make sure to use the same
-  `seed`. For example:
+  This operation is stateless (like the `tf.random.stateless_*`
+  functions), meaning the output is fully determined by the `seed`
+  (other inputs being equal).  Each `seed` choice corresponds to one
+  permutation, so when calling this function multiple times for the
+  same shuffling, please make sure to use the same `seed`. For
+  example:
 
   >>> seed = [5, 9]
   >>> idx0 = tf.random.experimental.index_shuffle(0, seed, 3)
@@ -294,23 +322,24 @@ def index_shuffle(index, seed, max_index):
   tf.Tensor([b'e2' b'e0' b'e1' b'e3'], shape=(4,), dtype=string)
 
   Args:
-    index: An integer scalar tensor or vector with values in [0, `max_index`].
-      It can be seen as either a value `v` in the sequence `S`=[0, ...,
-      `max_index`] to be permutated, or as an index of an element `e` in a
-      shuffled vector.
-    seed: A tensor of shape [2] or [n, 2] with dtype int32/uint32/int64/uint64.
-      The RNG seed. If the rank is unknown during graph building it must be 1 at
-      runtime.
-    max_index: A non-negative tensor with the same shape and dtype as `index`.
-      The upper bound (inclusive).
+    index: An integer scalar tensor or vector with values in `[0,
+      max_index]`.  It can be seen as either a value `v` in the
+      sequence `S=[0, ..., max_index]` to be permutated, or as an
+      index of an element `e` in a shuffled vector.
+    seed: A tensor of shape [2] or [n, 2] with dtype `int32`,
+      `uint32`, `int64` or `uint64`.  The RNG seed. If the rank is
+      unknown during graph-building time it must be 1 at runtime.
+    max_index: A non-negative tensor with the same shape and dtype as
+      `index`.  The upper bound (inclusive).
 
   Returns:
-    If all inputs were scalar (shape [2] for `seed`) the output will be a scalar
-    with the same dtype as `index`. The output can be seen as the new position
-    of `v` in `S`, or as the index of `e` in the vector before shuffling.
-    If one or multiple inputs were vectors (shape [n, 2] for `seed`) then the
-    output will be a vector of the same size which each element shuffled
-    independently. Scalar values are broadcasted in this case.
+    If all inputs were scalar (shape [2] for `seed`), the output will
+    be a scalar with the same dtype as `index`. The output can be seen
+    as the new position of `v` in `S`, or as the index of `e` in the
+    vector before shuffling.  If one or multiple inputs were vectors
+    (shape [n, 2] for `seed`), then the output will be a vector of the
+    same size which each element shuffled independently. Scalar values
+    are broadcasted in this case.
   """
   # We expect users to pass a seed with shape [2] to be consistent with other
   # stateless_* ops, but the raw op expects shape [3].
@@ -468,7 +497,7 @@ def stateless_random_uniform(shape,
     maxval = 1
   with ops.name_scope(name, "stateless_random_uniform",
                       [shape, seed, minval, maxval]) as name:
-    shape = tensor_util.shape_tensor(shape)
+    shape = shape_util.shape_tensor(shape)
     if dtype.is_integer and minval is None:
       key, counter, alg = _get_key_counter_alg(seed, alg)
       result = (
@@ -492,7 +521,7 @@ def stateless_random_uniform(shape,
         rnd = gen_stateless_random_ops_v2.stateless_random_uniform_v2(
             shape, key=key, counter=counter, dtype=dtype, alg=alg)
         result = math_ops.add(rnd * (maxval - minval), minval, name=name)
-    tensor_util.maybe_set_static_shape(result, shape)
+    shape_util.maybe_set_static_shape(result, shape)
     return result
 
 
@@ -555,14 +584,14 @@ def stateless_random_binomial(shape,
   """
   with ops.name_scope(name, "stateless_random_binomial",
                       [shape, seed, counts, probs]) as name:
-    shape = tensor_util.shape_tensor(shape)
+    shape = shape_util.shape_tensor(shape)
     probs = ops.convert_to_tensor(
         probs, dtype_hint=dtypes.float32, name="probs")
     counts = ops.convert_to_tensor(
         counts, dtype_hint=probs.dtype, name="counts")
     result = gen_stateless_random_ops.stateless_random_binomial(
         shape=shape, seed=seed, counts=counts, probs=probs, dtype=output_dtype)
-    tensor_util.maybe_set_static_shape(result, shape)
+    shape_util.maybe_set_static_shape(result, shape)
     return result
 
 
@@ -651,24 +680,20 @@ def stateless_random_gamma(shape,
   """
   with ops.name_scope(name, "stateless_random_gamma",
                       [shape, seed, alpha, beta]) as name:
-    shape = tensor_util.shape_tensor(shape)
+    shape = shape_util.shape_tensor(shape)
     alpha = ops.convert_to_tensor(alpha, dtype=dtype, name="alpha")
     beta = ops.convert_to_tensor(
         beta if beta is not None else 1, name="beta", dtype=dtype)
     broadcast_shape = array_ops.broadcast_dynamic_shape(
         array_ops.shape(alpha), array_ops.shape(beta))
     alpha_broadcast = array_ops.broadcast_to(alpha, broadcast_shape)
-    if compat.forward_compatible(2022, 11, 29):
-      alg = "auto_select"
-      key, counter, alg = _get_key_counter_alg(seed, alg)
-      rnd = gen_stateless_random_ops_v2.stateless_random_gamma_v3(
-          shape, key=key, counter=counter, alg=alg, alpha=alpha_broadcast)
-    else:
-      rnd = gen_stateless_random_ops.stateless_random_gamma_v2(
-          shape, seed=seed, alpha=alpha_broadcast)
+    alg = "auto_select"
+    key, counter, alg = _get_key_counter_alg(seed, alg)
+    rnd = gen_stateless_random_ops_v2.stateless_random_gamma_v3(
+        shape, key=key, counter=counter, alg=alg, alpha=alpha_broadcast)
     result = math_ops.maximum(
         np.finfo(alpha.dtype.as_numpy_dtype).tiny, rnd / beta)
-    tensor_util.maybe_set_static_shape(result, shape)
+    shape_util.maybe_set_static_shape(result, shape)
     return result
 
 
@@ -728,10 +753,10 @@ def stateless_random_poisson(shape,
   """
   with ops.name_scope(name, "stateless_random_poisson",
                       [shape, seed, lam]) as name:
-    shape = tensor_util.shape_tensor(shape)
+    shape = shape_util.shape_tensor(shape)
     result = gen_stateless_random_ops.stateless_random_poisson(
         shape, seed=seed, lam=lam, dtype=dtype)
-    tensor_util.maybe_set_static_shape(result, shape)
+    shape_util.maybe_set_static_shape(result, shape)
     return result
 
 
@@ -771,14 +796,14 @@ def stateless_random_normal(shape,
   """
   with ops.name_scope(name, "stateless_random_normal",
                       [shape, seed, mean, stddev]) as name:
-    shape = tensor_util.shape_tensor(shape)
+    shape = shape_util.shape_tensor(shape)
     mean = ops.convert_to_tensor(mean, dtype=dtype, name="mean")
     stddev = ops.convert_to_tensor(stddev, dtype=dtype, name="stddev")
     key, counter, alg = _get_key_counter_alg(seed, alg)
     rnd = gen_stateless_random_ops_v2.stateless_random_normal_v2(
         shape, key=key, counter=counter, dtype=dtype, alg=alg)
     result = math_ops.add(rnd * stddev, mean, name=name)
-    tensor_util.maybe_set_static_shape(result, shape)
+    shape_util.maybe_set_static_shape(result, shape)
     return result
 
 
@@ -821,14 +846,14 @@ def stateless_truncated_normal(shape,
   """
   with ops.name_scope(name, "stateless_truncated_normal",
                       [shape, seed, mean, stddev]) as name:
-    shape = tensor_util.shape_tensor(shape)
+    shape = shape_util.shape_tensor(shape)
     mean = ops.convert_to_tensor(mean, dtype=dtype, name="mean")
     stddev = ops.convert_to_tensor(stddev, dtype=dtype, name="stddev")
     key, counter, alg = _get_key_counter_alg(seed, alg)
     rnd = gen_stateless_random_ops_v2.stateless_truncated_normal_v2(
         shape, key=key, counter=counter, dtype=dtype, alg=alg)
     result = math_ops.add(rnd * stddev, mean, name=name)
-    tensor_util.maybe_set_static_shape(result, shape)
+    shape_util.maybe_set_static_shape(result, shape)
     return result
 
 
@@ -990,7 +1015,7 @@ def stateless_parameterized_truncated_normal(shape,
   """
   with ops.name_scope(name, "stateless_parameterized_truncated_normal",
                       [shape, means, stddevs, minvals, maxvals]) as name:
-    shape_tensor = tensor_util.shape_tensor(shape)
+    shape_tensor = shape_util.shape_tensor(shape)
     means_tensor = ops.convert_to_tensor(means, name="means")
     stddevs_tensor = ops.convert_to_tensor(stddevs, name="stddevs")
     minvals_tensor = ops.convert_to_tensor(minvals, name="minvals")
@@ -998,5 +1023,5 @@ def stateless_parameterized_truncated_normal(shape,
     rnd = gen_stateless_random_ops.stateless_parameterized_truncated_normal(
         shape_tensor, seed, means_tensor, stddevs_tensor, minvals_tensor,
         maxvals_tensor)
-    tensor_util.maybe_set_static_shape(rnd, shape)
+    shape_util.maybe_set_static_shape(rnd, shape)
     return rnd

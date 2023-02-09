@@ -23,14 +23,17 @@ limitations under the License.
 #include <vector>
 
 #include "llvm/IR/IntrinsicsNVPTX.h"
+#include "llvm/IR/Verifier.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
-#include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
+#include "tensorflow/compiler/xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "tensorflow/compiler/xla/service/gpu/target_util.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_type_conversion_util.h"
+#include "tensorflow/compiler/xla/stream_executor/device_description.h"
 #include "tensorflow/compiler/xla/translate/mhlo_to_hlo/type_to_shape.h"
+#include "tensorflow/compiler/xla/xla_data.pb.h"
 
 namespace xla {
 namespace gpu {
@@ -101,7 +104,8 @@ bool IsMatrixMultiplication(const HloInstruction& dot) {
 
   PrimitiveType output_primitive_type = dot.shape().element_type();
   bool type_is_allowed =
-      (output_primitive_type == F16 || output_primitive_type == BF16 ||
+      (output_primitive_type == F8E4M3FN || output_primitive_type == F8E5M2 ||
+       output_primitive_type == F16 || output_primitive_type == BF16 ||
        output_primitive_type == F32 || output_primitive_type == F64 ||
        output_primitive_type == C64 || output_primitive_type == C128) ||
       (output_primitive_type == S32 && lhs_shape.element_type() == S8 &&
@@ -127,8 +131,93 @@ bool IsMatrixMultiplication(const HloInstruction& dot) {
   return true;
 }
 
-Vector3 GetReductionTiling(const ReductionDimensions& reduction_dimensions,
-                           se::CudaComputeCapability cuda_compute_capability) {
+// Data types that are tested to work in the Triton-based matmul emitter.
+bool IsTritonSupportedInputType(
+    PrimitiveType t, se::CudaComputeCapability cuda_compute_capability) {
+  switch (t) {
+    case PRED:
+    case S8:
+    case S32:
+    case F16:
+    case F32:
+      return true;
+    case BF16:
+      return cuda_compute_capability.IsAtLeast(
+          stream_executor::CudaComputeCapability::AMPERE);
+    default:
+      return false;
+  }
+}
+
+bool IsTritonFusibleConvert(const HloInstruction* input,
+                            se::CudaComputeCapability cuda_compute_capability) {
+  // TODO(b/266862494): Can pick up almost any
+  // convert, but if it's reducing the data volume it should rather be fused
+  // to the output of the producer kernel. However not all operations support
+  // output fusion - then it should be fused here anyway!
+  return IsTritonSupportedInputType(input->operand(0)->shape().element_type(),
+                                    cuda_compute_capability) &&
+         ShapeUtil::ByteSizeOf(input->operand(0)->shape()) <=
+             ShapeUtil::ByteSizeOf(input->shape());
+}
+
+bool IsTritonHandledGEMM(const HloInstruction& dot,
+                         se::CudaComputeCapability cuda_compute_capability) {
+  if (dot.opcode() != HloOpcode::kDot) {
+    return false;
+  }
+
+  // TODO(b/266860366): Support batch dimensions.
+  if (dot.dot_dimension_numbers().lhs_batch_dimensions_size()) {
+    return false;
+  }
+
+  auto supported_output_type = [&](const PrimitiveType t) {
+    switch (t) {
+      case F16:
+      case F32:
+        return true;
+      case BF16:
+        return cuda_compute_capability.IsAtLeast(
+            stream_executor::CudaComputeCapability::AMPERE);
+      default:
+        return false;
+    }
+  };
+
+  // TODO(b/266862493): Support more output types.
+  if (!supported_output_type(dot.shape().element_type())) {
+    return false;
+  }
+
+  // Traverse HLO graph looking for its part that both can be fused
+  // and is worth fusing.
+  auto is_triton_fusible_input = [&](const HloInstruction* input) {
+    while (true) {
+      if (!IsTritonSupportedInputType(input->shape().element_type(),
+                                      cuda_compute_capability)) {
+        return false;
+      }
+      switch (input->opcode()) {
+        case HloOpcode::kBitcast:
+          input = input->operand(0);
+          continue;
+        case HloOpcode::kConvert:
+          return IsTritonFusibleConvert(input, cuda_compute_capability);
+        default:
+          return false;
+      }
+    }
+  };
+
+  return is_triton_fusible_input(dot.operand(0)) ||
+         is_triton_fusible_input(dot.operand(1));
+
+  // TODO(b/266857789): either check that no output fusion (axpy, relu etc)
+  // is expected or actually support it.
+}
+
+Vector3 GetReductionTiling(const ReductionDimensions& reduction_dimensions) {
   if (reduction_dimensions.is_row_reduction) {
     int64_t tile_z = std::min(reduction_dimensions.dimensions[0],
                               BatchedReductionRaceFreeBound());
@@ -148,14 +237,20 @@ bool IsSoftmaxCustomCall(const HloInstruction& hlo) {
   return hlo.custom_call_target() == kSoftmaxCallTarget;
 }
 
+bool IsTritonCustomCall(const HloInstruction& hlo) {
+  if (hlo.opcode() != HloOpcode::kCustomCall) {
+    return false;
+  }
+  return hlo.custom_call_target() == kTritonCallTarget;
+}
+
 const char* const kCusolverCholeskyCallTarget = "__cusolver$cholesky";
 
 bool IsCustomCallToCusolver(const HloInstruction& hlo) {
   if (hlo.opcode() != HloOpcode::kCustomCall) {
     return false;
   }
-  const auto& target = hlo.custom_call_target();
-  return target == kCusolverCholeskyCallTarget;
+  return hlo.custom_call_target() == kCusolverCholeskyCallTarget;
 }
 
 static bool IsUnnestedReductionFasterThanElemental(
@@ -424,25 +519,6 @@ llvm::Value* IsBlock0Thread0(llvm::IRBuilder<>* b) {
   return b->CreateAnd(is_thread0, is_block0);
 }
 
-bool IsFusedReductionOutputConsistent(const HloInstruction* inst,
-                                      const HloInstruction* first_reduce) {
-  if (IsReductionFromOrToContiguousDimensions(*inst)) {
-    // Shapes, layouts and dimensions must be the same for all reduces
-    // inside of this fusion.
-    return ShapeUtil::EqualIgnoringElementType(first_reduce->shape(),
-                                               inst->shape()) &&
-           ShapeUtil::EqualIgnoringElementType(
-               first_reduce->operand(0)->shape(), inst->operand(0)->shape()) &&
-           ShapeUtil::EqualIgnoringElementType(
-               first_reduce->operand(1)->shape(), inst->operand(1)->shape()) &&
-           first_reduce->dimensions() == inst->dimensions();
-  }
-  return ShapeUtil::CompatibleIgnoringElementType(
-             first_reduce->operand(0)->shape(), inst->shape()) &&
-         LayoutUtil::Equal(first_reduce->operand(0)->shape().layout(),
-                           inst->shape().layout());
-}
-
 // Given an LMHLO op, returns the operand index of the first output operand.
 //
 // Notice that an operand alised to an output isn't an output, even though in
@@ -545,12 +621,18 @@ StatusOr<BufferAllocation::Slice> GetAllocationSlice(
 
   // We match the following patterns here:
   //  base := ViewOp(arg) | get_global_memref (global_memref) | arg
-  //  root := base | MemRefReinterpretCastOp(base)
+  //  root := base | MemRefReinterpretCastOp(base) | CollapseShapeOp(base)
 
   if (auto cast = mlir::dyn_cast_or_null<mlir::memref::ReinterpretCastOp>(
           v.getDefiningOp())) {
     v = cast.getViewSource();
   }
+  if (auto collapse_shape =
+          mlir::dyn_cast_or_null<mlir::memref::CollapseShapeOp>(
+              v.getDefiningOp())) {
+    v = collapse_shape.getSrc();
+  }
+
   if (auto view =
           mlir::dyn_cast_or_null<mlir::memref::ViewOp>(v.getDefiningOp())) {
     TF_RET_CHECK(view.getSource().isa<mlir::BlockArgument>());
@@ -627,8 +709,8 @@ Shape GetShape(mlir::Value value) {
   return {};
 }
 
-bool ReductionIsRaceFree(const ReductionDimensions& reduction_dimensions,
-                         const Vector3& reduction_tiling) {
+bool ReductionIsRaceFree(const ReductionDimensions& reduction_dimensions) {
+  Vector3 reduction_tiling = GetReductionTiling(reduction_dimensions);
   return (reduction_dimensions.is_row_reduction &&
           reduction_dimensions.dimensions[2] <=
               MinThreadsXRowReduction() * reduction_tiling[2] &&
@@ -747,6 +829,22 @@ bool HasAnyUnnestedReductionRoot(HloComputation* computation) {
       GetFusionRoots(computation), [&](const HloInstruction* instr) {
         return IsReductionFromOrToContiguousDimensions(*instr);
       });
+}
+
+void LogAndVerify(const llvm::Module* m) {
+  if (VLOG_IS_ON(5)) {
+    std::string llir_str;
+    llvm::raw_string_ostream llir_stream(llir_str);
+    llir_stream << *m;
+    llir_stream.flush();
+    XLA_VLOG_LINES(5, llir_str);
+  }
+
+  std::string llir_str;
+  llvm::raw_string_ostream llir_stream(llir_str);
+  bool broken = llvm::verifyModule(*m, &llir_stream);
+  llir_stream.flush();
+  CHECK(!broken) << llir_str;
 }
 
 }  // namespace gpu

@@ -37,6 +37,14 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
+    name: "F1Score"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "FBetaScore"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "FalseNegatives"
     mtype: "<type \'type\'>"
   }
@@ -118,6 +126,10 @@ tf_module {
   }
   member {
     name: "PrecisionAtRecall"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "R2Score"
     mtype: "<type \'type\'>"
   }
   member {
@@ -214,7 +226,7 @@ tf_module {
   }
   member_method {
     name: "deserialize"
-    argspec: "args=[\'config\', \'custom_objects\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'config\', \'custom_objects\', \'use_legacy_format\'], varargs=None, keywords=None, defaults=[\'None\', \'False\'], "
   }
   member_method {
     name: "get"
@@ -282,7 +294,7 @@ tf_module {
   }
   member_method {
     name: "serialize"
-    argspec: "args=[\'metric\'], varargs=None, keywords=None, defaults=None"
+    argspec: "args=[\'metric\', \'use_legacy_format\'], varargs=None, keywords=None, defaults=[\'False\'], "
   }
   member_method {
     name: "sparse_categorical_accuracy"

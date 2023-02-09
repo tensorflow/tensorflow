@@ -15,7 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_DELEGATES_COREML_BUILDERS_UTIL_H_
 #define TENSORFLOW_LITE_DELEGATES_COREML_BUILDERS_UTIL_H_
 
-#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/c/common.h"
 
 namespace tflite {
 namespace delegates {
@@ -29,6 +29,10 @@ namespace coreml {
 
 bool IsBinaryOpSupported(const TfLiteRegistration* registration,
                          const TfLiteNode* node, TfLiteContext* context);
+
+// Gets the float scalar value from the given tensor. The tensor should be a
+// constant float32/float16 tensor of size 1.
+float GetScalarFloatFromTensor(const TfLiteTensor* tensor);
 
 }  // namespace coreml
 }  // namespace delegates

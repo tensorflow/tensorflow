@@ -28,7 +28,6 @@ limitations under the License.
 #include "flatbuffers/flatbuffer_builder.h"  // from @flatbuffers
 #include "flatbuffers/flatbuffers.h"  // from @flatbuffers
 #include "flatbuffers/vector.h"  // from @flatbuffers
-#include "tensorflow/lite/core/api/error_reporter.h"
 #include "tensorflow/lite/experimental/acceleration/configuration/configuration_generated.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/embedded_mobilenet_model.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/embedded_mobilenet_validation_model.h"
@@ -62,6 +61,20 @@ class MockErrorReporter {
     return error_reporter->Log(format, args);
   }
   MOCK_METHOD(int, Log, (const char* format, va_list args));
+};
+
+class MockResultEvaluator {
+ public:
+  static bool Invoke(void* user_data, uint8_t* benchmark_result_data,
+                     int benchmark_result_data_size) {
+    MockResultEvaluator* evaluator =
+        static_cast<MockResultEvaluator*>(user_data);
+    return evaluator->HasPassedAccuracyCheck(benchmark_result_data,
+                                             benchmark_result_data_size);
+  }
+  MOCK_METHOD(bool, HasPassedAccuracyCheck,
+              (uint8_t * benchmark_result_data,
+               int benchmark_result_data_size));
 };
 
 class CApiTest : public ::testing::Test {
@@ -107,7 +120,14 @@ class CApiTest : public ::testing::Test {
       flatbuffers::Vector<flatbuffers::Offset<tflite::TFLiteSettings>>>
   CreateTFLiteSettings() {
     return mini_benchmark_fbb_.CreateVector(
-        {tflite::CreateTFLiteSettings(mini_benchmark_fbb_)});
+        {tflite::CreateTFLiteSettings(mini_benchmark_fbb_,
+#ifdef ANDROID
+                                      tflite::Delegate_GPU
+#else
+                                      tflite::Delegate_NONE
+#endif
+
+                                      )});
   }
 
   flatbuffers::FlatBufferBuilder mini_benchmark_fbb_;
@@ -126,24 +146,28 @@ TEST_F(CApiTest, SucceedWithEmbeddedValidation) {
       mini_benchmark_fbb_, CreateTFLiteSettings(),
       CreateModelFile(embedded_model_path_), CreateStoragePaths(),
       CreateValidationSettings()));
-  TfLiteMiniBenchmarkSettings settings{mini_benchmark_fbb_.GetBufferPointer(),
-                                       mini_benchmark_fbb_.GetSize()};
-
+  TfLiteMiniBenchmarkSettings* settings = TfLiteMiniBenchmarkSettingsCreate();
+  TfLiteMiniBenchmarkSettingsSetFlatBufferData(
+      settings, mini_benchmark_fbb_.GetBufferPointer(),
+      mini_benchmark_fbb_.GetSize());
   TfLiteMiniBenchmarkResult* result =
-      TfLiteBlockingValidatorRunnerTriggerValidation(&settings);
+      TfLiteBlockingValidatorRunnerTriggerValidation(settings);
   std::vector<const tflite::BenchmarkEvent*> events =
-      ToBenchmarkEvents(result->flatbuffer_data, result->flatbuffer_data_size);
+      ToBenchmarkEvents(TfLiteMiniBenchmarkResultFlatBufferData(result),
+                        TfLiteMiniBenchmarkResultFlatBufferDataSize(result));
 
-  EXPECT_THAT(result->init_status, tflite::acceleration::kMinibenchmarkSuccess);
+  EXPECT_THAT(TfLiteMiniBenchmarkResultInitStatus(result),
+              tflite::acceleration::kMinibenchmarkSuccess);
   EXPECT_THAT(events, testing::Not(testing::IsEmpty()));
   for (auto& event : events) {
     EXPECT_EQ(event->event_type(), tflite::BenchmarkEventType_END);
     EXPECT_TRUE(event->result()->ok());
   }
   TfLiteMiniBenchmarkResultFree(result);
+  TfLiteMiniBenchmarkSettingsFree(settings);
 }
 
-TEST_F(CApiTest, SucceedWithCustomValidation) {
+TEST_F(CApiTest, SucceedWithCustomValidationAndPassingRule) {
   if (!should_perform_test_) {
     std::cerr << "Skipping test";
     return;
@@ -156,25 +180,91 @@ TEST_F(CApiTest, SucceedWithCustomValidation) {
       mini_benchmark_fbb_, CreateTFLiteSettings(),
       CreateModelFile(plain_model_path_), CreateStoragePaths(),
       CreateValidationSettings()));
-  TfLiteMiniBenchmarkSettings settings{
-      mini_benchmark_fbb_.GetBufferPointer(), mini_benchmark_fbb_.GetSize(),
-      TfLiteMiniBenchmarkCustomValidationInfo{/*batch_size=*/batch_size,
-                                              /*num_input=*/1,
-                                              /*buffer_dim=*/input_size,
-                                              custom_input_data.data()}};
+  MockResultEvaluator mock_evaluator;
+  EXPECT_CALL(mock_evaluator, HasPassedAccuracyCheck(_, _))
+      .Times(1)
+      .WillRepeatedly(testing::Return(true));
+
+  TfLiteMiniBenchmarkSettings* settings = TfLiteMiniBenchmarkSettingsCreate();
+  TfLiteMiniBenchmarkSettingsSetFlatBufferData(
+      settings, mini_benchmark_fbb_.GetBufferPointer(),
+      mini_benchmark_fbb_.GetSize());
+  TfLiteMiniBenchmarkCustomValidationInfo* custom_validation =
+      TfLiteMiniBenchmarkSettingsCustomValidationInfo(settings);
+  TfLiteMiniBenchmarkCustomValidationInfoSetBuffer(custom_validation,
+                                                   /*batch_size=*/batch_size,
+                                                   custom_input_data.data(),
+                                                   /*buffer_dim=*/input_size,
+                                                   /*buffer_dim_size=*/1);
+  TfLiteMiniBenchmarkCustomValidationInfoSetAccuracyValidator(
+      custom_validation, &mock_evaluator, MockResultEvaluator::Invoke);
 
   TfLiteMiniBenchmarkResult* result =
-      TfLiteBlockingValidatorRunnerTriggerValidation(&settings);
+      TfLiteBlockingValidatorRunnerTriggerValidation(settings);
   std::vector<const tflite::BenchmarkEvent*> events =
-      ToBenchmarkEvents(result->flatbuffer_data, result->flatbuffer_data_size);
+      ToBenchmarkEvents(TfLiteMiniBenchmarkResultFlatBufferData(result),
+                        TfLiteMiniBenchmarkResultFlatBufferDataSize(result));
 
-  EXPECT_THAT(result->init_status, tflite::acceleration::kMinibenchmarkSuccess);
+  EXPECT_THAT(TfLiteMiniBenchmarkResultInitStatus(result),
+              tflite::acceleration::kMinibenchmarkSuccess);
 
   EXPECT_THAT(events, testing::Not(testing::IsEmpty()));
   for (auto& event : events) {
     EXPECT_EQ(event->event_type(), tflite::BenchmarkEventType_END);
+    EXPECT_TRUE(event->result()->ok());
   }
   TfLiteMiniBenchmarkResultFree(result);
+  TfLiteMiniBenchmarkSettingsFree(settings);
+}
+
+TEST_F(CApiTest, ReturnNotOkWhenAccuracyCheckFail) {
+  if (!should_perform_test_) {
+    std::cerr << "Skipping test";
+    return;
+  }
+
+  const int batch_size = 5;
+  size_t input_size[] = {batch_size * 224 * 224 * 3};
+  std::vector<uint8_t> custom_input_data(input_size[0], 1);
+  mini_benchmark_fbb_.Finish(tflite::CreateMinibenchmarkSettings(
+      mini_benchmark_fbb_, CreateTFLiteSettings(),
+      CreateModelFile(plain_model_path_), CreateStoragePaths(),
+      CreateValidationSettings()));
+  MockResultEvaluator mock_evaluator;
+  EXPECT_CALL(mock_evaluator, HasPassedAccuracyCheck(_, _))
+      .Times(1)
+      .WillRepeatedly(testing::Return(false));
+
+  TfLiteMiniBenchmarkSettings* settings = TfLiteMiniBenchmarkSettingsCreate();
+  TfLiteMiniBenchmarkSettingsSetFlatBufferData(
+      settings, mini_benchmark_fbb_.GetBufferPointer(),
+      mini_benchmark_fbb_.GetSize());
+  TfLiteMiniBenchmarkCustomValidationInfo* custom_validation =
+      TfLiteMiniBenchmarkSettingsCustomValidationInfo(settings);
+  TfLiteMiniBenchmarkCustomValidationInfoSetBuffer(custom_validation,
+                                                   /*batch_size=*/batch_size,
+                                                   custom_input_data.data(),
+                                                   /*buffer_dim=*/input_size,
+                                                   /*buffer_dim_size=*/1);
+  TfLiteMiniBenchmarkCustomValidationInfoSetAccuracyValidator(
+      custom_validation, &mock_evaluator, MockResultEvaluator::Invoke);
+
+  TfLiteMiniBenchmarkResult* result =
+      TfLiteBlockingValidatorRunnerTriggerValidation(settings);
+  std::vector<const tflite::BenchmarkEvent*> events =
+      ToBenchmarkEvents(TfLiteMiniBenchmarkResultFlatBufferData(result),
+                        TfLiteMiniBenchmarkResultFlatBufferDataSize(result));
+
+  EXPECT_THAT(TfLiteMiniBenchmarkResultInitStatus(result),
+              tflite::acceleration::kMinibenchmarkSuccess);
+
+  EXPECT_THAT(events, testing::Not(testing::IsEmpty()));
+  for (auto& event : events) {
+    EXPECT_EQ(event->event_type(), tflite::BenchmarkEventType_END);
+    EXPECT_FALSE(event->result()->ok());
+  }
+  TfLiteMiniBenchmarkResultFree(result);
+  TfLiteMiniBenchmarkSettingsFree(settings);
 }
 
 TEST_F(CApiTest, ReturnFailStatusWhenModelPathInvalid) {
@@ -182,22 +272,23 @@ TEST_F(CApiTest, ReturnFailStatusWhenModelPathInvalid) {
       mini_benchmark_fbb_, CreateTFLiteSettings(),
       CreateModelFile("invalid/path"), CreateStoragePaths(),
       CreateValidationSettings()));
-  TfLiteMiniBenchmarkSettings settings{
-      mini_benchmark_fbb_.GetBufferPointer(),
-      mini_benchmark_fbb_.GetSize(),
-  };
+  TfLiteMiniBenchmarkSettings* settings = TfLiteMiniBenchmarkSettingsCreate();
+  TfLiteMiniBenchmarkSettingsSetFlatBufferData(
+      settings, mini_benchmark_fbb_.GetBufferPointer(),
+      mini_benchmark_fbb_.GetSize());
 
   TfLiteMiniBenchmarkResult* result =
-      TfLiteBlockingValidatorRunnerTriggerValidation(&settings);
+      TfLiteBlockingValidatorRunnerTriggerValidation(settings);
 
-  EXPECT_THAT(result->init_status,
-              tflite::acceleration::kMinibenchmarkModelBuildFailed);
-  EXPECT_EQ(result->flatbuffer_data, nullptr);
-  EXPECT_EQ(result->flatbuffer_data_size, 0);
+  EXPECT_THAT(TfLiteMiniBenchmarkResultInitStatus(result),
+              tflite::acceleration::kMinibenchmarkModelInitFailed);
+  EXPECT_EQ(TfLiteMiniBenchmarkResultFlatBufferData(result), nullptr);
+  EXPECT_EQ(TfLiteMiniBenchmarkResultFlatBufferDataSize(result), 0);
   TfLiteMiniBenchmarkResultFree(result);
+  TfLiteMiniBenchmarkSettingsFree(settings);
 }
 
-TEST_F(CApiTest, ReturnEmptyWhenTestTimedOut) {
+TEST_F(CApiTest, ReturnErrorWhenTestTimedOut) {
   if (!should_perform_test_) {
     std::cerr << "Skipping test";
     return;
@@ -208,49 +299,62 @@ TEST_F(CApiTest, ReturnEmptyWhenTestTimedOut) {
       CreateModelFile(embedded_model_path_), CreateStoragePaths(),
       tflite::CreateValidationSettings(mini_benchmark_fbb_,
                                        /*per_test_timeout_ms=*/2)));
-  TfLiteMiniBenchmarkSettings settings{
-      mini_benchmark_fbb_.GetBufferPointer(),
-      mini_benchmark_fbb_.GetSize(),
-  };
+  TfLiteMiniBenchmarkSettings* settings = TfLiteMiniBenchmarkSettingsCreate();
+  TfLiteMiniBenchmarkSettingsSetFlatBufferData(
+      settings, mini_benchmark_fbb_.GetBufferPointer(),
+      mini_benchmark_fbb_.GetSize());
 
   TfLiteMiniBenchmarkResult* result =
-      TfLiteBlockingValidatorRunnerTriggerValidation(&settings);
+      TfLiteBlockingValidatorRunnerTriggerValidation(settings);
 
-  EXPECT_THAT(result->init_status, tflite::acceleration::kMinibenchmarkSuccess);
-  EXPECT_EQ(result->flatbuffer_data, nullptr);
-  EXPECT_EQ(result->flatbuffer_data_size, 0);
+  EXPECT_THAT(TfLiteMiniBenchmarkResultInitStatus(result),
+              tflite::acceleration::kMinibenchmarkSuccess);
+  std::vector<const tflite::BenchmarkEvent*> events =
+      ToBenchmarkEvents(TfLiteMiniBenchmarkResultFlatBufferData(result),
+                        TfLiteMiniBenchmarkResultFlatBufferDataSize(result));
+  EXPECT_THAT(events, testing::Not(testing::IsEmpty()));
+  for (auto& event : events) {
+    EXPECT_EQ(event->event_type(), tflite::BenchmarkEventType_ERROR);
+  }
   TfLiteMiniBenchmarkResultFree(result);
+  TfLiteMiniBenchmarkSettingsFree(settings);
 }
 
 TEST_F(CApiTest, UseProvidedErrorReporterWhenFail) {
   mini_benchmark_fbb_.Finish(tflite::CreateMinibenchmarkSettings(
       mini_benchmark_fbb_, CreateTFLiteSettings(), 0, 0, 0));
-  TfLiteMiniBenchmarkSettings settings{
-      mini_benchmark_fbb_.GetBufferPointer(),
-      mini_benchmark_fbb_.GetSize(),
-  };
   MockErrorReporter reporter;
   EXPECT_CALL(reporter, Log(_, _)).Times(testing::AtLeast(1));
-  settings.error_reporter_user_data = &reporter;
-  settings.error_reporter_func = &MockErrorReporter::InvokeErrorReporter;
+
+  TfLiteMiniBenchmarkSettings* settings = TfLiteMiniBenchmarkSettingsCreate();
+  TfLiteMiniBenchmarkSettingsSetFlatBufferData(
+      settings, mini_benchmark_fbb_.GetBufferPointer(),
+      mini_benchmark_fbb_.GetSize());
+  TfLiteMiniBenchmarkSettingsSetErrorReporter(
+      settings, &reporter, &MockErrorReporter::InvokeErrorReporter);
 
   TfLiteMiniBenchmarkResult* result =
-      TfLiteBlockingValidatorRunnerTriggerValidation(&settings);
-  EXPECT_THAT(result->init_status,
+      TfLiteBlockingValidatorRunnerTriggerValidation(settings);
+  EXPECT_THAT(TfLiteMiniBenchmarkResultInitStatus(result),
               tflite::acceleration::kMinibenchmarkPreconditionNotMet);
+  EXPECT_EQ(TfLiteMiniBenchmarkResultFlatBufferData(result), nullptr);
+  EXPECT_EQ(TfLiteMiniBenchmarkResultFlatBufferDataSize(result), 0);
   TfLiteMiniBenchmarkResultFree(result);
+  TfLiteMiniBenchmarkSettingsFree(settings);
 }
 
 TEST_F(CApiTest, ReturnFailStatusWhenSettingsCorrupted) {
   std::vector<uint8_t> settings_corrupted(10, 1);
-  TfLiteMiniBenchmarkSettings settings{settings_corrupted.data(),
-                                       settings_corrupted.size()};
+  TfLiteMiniBenchmarkSettings* settings = TfLiteMiniBenchmarkSettingsCreate();
+  TfLiteMiniBenchmarkSettingsSetFlatBufferData(
+      settings, settings_corrupted.data(), settings_corrupted.size());
   TfLiteMiniBenchmarkResult* result =
-      TfLiteBlockingValidatorRunnerTriggerValidation(&settings);
+      TfLiteBlockingValidatorRunnerTriggerValidation(settings);
 
   EXPECT_THAT(
-      result->init_status,
+      TfLiteMiniBenchmarkResultInitStatus(result),
       tflite::acceleration::kMinibenchmarkCorruptSizePrefixedFlatbufferFile);
   TfLiteMiniBenchmarkResultFree(result);
+  TfLiteMiniBenchmarkSettingsFree(settings);
 }
 }  // namespace

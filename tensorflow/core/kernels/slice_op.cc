@@ -109,7 +109,7 @@ void SharedSliceValidation(OpKernelContext* context, const Tensor& input,
           errors::InvalidArgument("Expected size[", i, "] in [0, ",
                                   input.dim_size(i) - b, "], but ", "got ", s));
     }
-    output_shape->AddDim(s);
+    OP_REQUIRES_OK(context, output_shape->AddDimWithStatus(s));
     const bool take_all = (b == 0) && (s == input.dim_size(i));
     (*is_identity) &= take_all;
     (*slice_dim0) &= (i == 0) || take_all;
@@ -297,7 +297,6 @@ namespace functor {
   DECLARE_GPU_SPEC(T, 7); \
   DECLARE_GPU_SPEC(T, 8);
 
-TF_CALL_bfloat16(DECLARE_FOR_N);
 TF_CALL_int8(DECLARE_FOR_N);
 TF_CALL_int32(DECLARE_FOR_N);
 TF_CALL_int64(DECLARE_FOR_N);
@@ -315,7 +314,6 @@ TF_CALL_GPU_ALL_TYPES(DECLARE_FOR_N);
                               .HostMemory("size"),       \
                           SliceOp<GPUDevice, type>)
 
-TF_CALL_bfloat16(REGISTER_GPU);
 TF_CALL_int8(REGISTER_GPU);
 TF_CALL_int64(REGISTER_GPU);
 TF_CALL_GPU_ALL_TYPES(REGISTER_GPU);

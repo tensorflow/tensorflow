@@ -16,11 +16,12 @@ limitations under the License.
 
 #include <cstring>
 #include <fstream>
+#include <memory>
 #include <string>
 #include <utility>
 
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/profiling/time.h"
 #include "tensorflow/lite/tools/evaluation/proto/evaluation_stages.pb.h"
 #include "tensorflow/lite/tools/evaluation/utils.h"
@@ -55,14 +56,14 @@ void TfliteInferenceStage::UpdateModelInfo() {
 
 TfLiteStatus TfliteInferenceStage::ResizeInputs(
     const std::vector<std::vector<int>>& shapes) {
-  const std::vector<int>& intepreter_inputs = interpreter_->inputs();
-  if (intepreter_inputs.size() != shapes.size()) {
+  const std::vector<int>& interpreter_inputs = interpreter_->inputs();
+  if (interpreter_inputs.size() != shapes.size()) {
     LOG(ERROR) << "New shape is not compatible";
     return kTfLiteError;
   }
 
   for (int j = 0; j < shapes.size(); ++j) {
-    int i = intepreter_inputs[j];
+    int i = interpreter_inputs[j];
     TfLiteTensor* t = interpreter_->tensor(i);
     if (t->type != kTfLiteString) {
       TF_LITE_ENSURE_STATUS(interpreter_->ResizeInputTensor(i, shapes[j]));
@@ -124,10 +125,12 @@ TfLiteStatus TfliteInferenceStage::Init(
     }
   }
 
-  resolver_.reset(
-      apply_default_delegates
-          ? new ops::builtin::BuiltinOpResolver()
-          : new ops::builtin::BuiltinOpResolverWithoutDefaultDelegates());
+  if (apply_default_delegates) {
+    resolver_ = std::make_unique<ops::builtin::BuiltinOpResolverWithXNNPACK>();
+  } else {
+    resolver_ = std::make_unique<
+        ops::builtin::BuiltinOpResolverWithoutDefaultDelegates>();
+  }
   InterpreterBuilder(*model_, *resolver_)(&interpreter_);
   if (!interpreter_) {
     LOG(ERROR) << "Could not build interpreter";

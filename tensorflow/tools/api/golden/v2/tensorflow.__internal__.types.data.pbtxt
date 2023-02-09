@@ -1,0 +1,7 @@
+path: "tensorflow.__internal__.types.data"
+tf_module {
+  member {
+    name: "Dataset"
+    mtype: "<type \'type\'>"
+  }
+}

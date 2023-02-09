@@ -508,9 +508,9 @@ value of each element in `x`. For example, if x is an input element and y is
 an output element, this operation computes \\(y = |x|\\).
   }];
 
-  let arguments = (ins TFL_TensorOf<[I16, F32, QI8, QI16]>:$x);
+  let arguments = (ins TFL_TensorOf<[I16, I32, F32, QI8, QI16]>:$x);
 
-  let results = (outs TFL_TensorOf<[I16, F32, QI8, QI16]>:$y);
+  let results = (outs TFL_TensorOf<[I16, I32, F32, QI8, QI16]>:$y);
 
   let hasFolder = 1;
 }
@@ -654,7 +654,8 @@ def TFL_TransposeConvOp: TFL_Op<"transpose_conv", [
     TFL_TensorOfOrNone<[F32, QI32, I64]>:$bias,
     TFL_PaddingAttr:$padding,
     ConfinedAttr<I32Attr, [IntPositive]>:$stride_h,
-    ConfinedAttr<I32Attr, [IntPositive]>:$stride_w
+    ConfinedAttr<I32Attr, [IntPositive]>:$stride_w,
+    TFL_AFAttr:$fused_activation_function
   );
 
   let results = (outs TFL_TensorOf<[F32, QI8, QUI8, QI16]>:$output);
@@ -996,7 +997,7 @@ def TFL_DepthwiseConv2DOp :
                  DynamicRangeQuantizedOpInterface]> {
   let arguments = (
     ins TFL_TensorOf<[F32, QI8, QUI8, QI16]>:$input,
-    TFL_TensorOf<[F32, QI8, QUI8]>:$filter,
+    TFL_TensorOf<[F32, QI4, QI8, QUI8]>:$filter,
     TFL_1DTensorOfOrNone<[F32, I32, I64]>:$bias,
     I32Attr:$dilation_h_factor,
     I32Attr:$dilation_w_factor,
@@ -1036,7 +1037,7 @@ def TFL_FullyConnectedOp : TFL_Op<"fully_connected", [
 
   let arguments = (ins
     TFL_TensorOf<[F32, QI8, QUI8, QI16, QUI16]>:$input,
-    TFL_TensorOf<[F32, QI8, QUI8, QI16]>:$filter,
+    TFL_TensorOf<[F32, QI4, QI8, QUI8, QI16]>:$filter,
     TFL_TensorOfOrNone<[F32, QI32, QUI32]>:$bias,
 
     TFL_AFAttr:$fused_activation_function,
@@ -2883,6 +2884,24 @@ def TFL_Relu6Op: TFL_Op<"relu6", [
   ];
 }
 
+def TFL_Relu0To1Op: TFL_Op<"relu_0_to_1", [
+    PredOpTrait<"x and y must have same element type",
+      TFL_TCresVTEtIsSameAsOp<0, 0>>,
+    Pure,
+    QuantizableResult,
+    SameOperandsAndResultShape]> {
+  let summary = "Relu0To1 operator";
+
+  let description = [{
+    Element-wise Relu0To1 operator
+      x -> max(0, min(1, x))
+  }];
+
+  let arguments = (ins TFL_TensorOf<[F32, QUI8, QI8]>:$x);
+
+  let results = (outs TFL_TensorOf<[F32, QUI8, QI8]>:$y);
+}
+
 def TFL_Relu1Op: TFL_Op<"relu_n1_to_1", [
     PredOpTrait<"x and y must have same element type",
       TFL_TCresVTEtIsSameAsOp<0, 0>>,
@@ -3439,7 +3458,7 @@ def TFL_TopKV2Op: TFL_Op<"topk_v2", [
 def TFL_TransposeOp : TFL_Op<"transpose", [
     Pure,
     QuantizableResult,
-    TFL_OperandHasRankAtMost<0, 5>,
+    TFL_OperandHasRankAtMost<0, 6>,
     TFL_OperandHasRank<1, 1>,
     PredOpTrait<"input and output must have same element type",
       TFL_TCresVTEtIsSameAsOp<0, 0>>,
@@ -3866,10 +3885,10 @@ def TFL_CastOp : TFL_Op<"cast", [
   }];
 
   let arguments = (ins
-    TFL_TensorOf<[F32, I1, I16, UI16, I32, UI32, I64, TFL_Quint8, UI8, I8, Complex<F<32>>]>:$input
+    TFL_TensorOf<[F16, F32, F64, I1, I16, UI16, I32, UI32, I64, TFL_Quint8, UI8, I8, Complex<F<32>>]>:$input
   );
 
-  let results = (outs TFL_TensorOf<[F32, I1, I16, UI16, I32, UI32, I64, TFL_Quint8, UI8, I8, Complex<F<32>>]>:$output);
+  let results = (outs TFL_TensorOf<[F16, F32, F64, I1, I16, UI16, I32, UI32, I64, TFL_Quint8, UI8, I8, Complex<F<32>>]>:$output);
 
   // TFLite's cast op does not utilize CastOptions, instead derives types
   // from the TfLiteTensors.
@@ -3998,7 +4017,7 @@ def TFL_DynamicUpdateSliceOp: TFL_Op<"dynamic_update_slice", [
 //===----------------------------------------------------------------------===//
 // Quantization ops.
 //===----------------------------------------------------------------------===//
-def TFL_DequantizeOp: TFL_Op<"dequantize", []> {
+def TFL_DequantizeOp: TFL_Op<"dequantize", [NoMemoryEffect]> {
   let summary = "Dequantize operator";
 
   let description = [{
@@ -4104,7 +4123,7 @@ def TFL_SparseQConstOp : Op<TFL_Dialect, "pseudo_sparse_qconst", [
 
 def TFL_QuantizeOp: TFL_Op<"quantize", [
     FirstAttrDerivedResultType,
-    SameOperandsAndResultShape]> {
+    SameOperandsAndResultShape, NoMemoryEffect]> {
   let summary = "Quantize operator";
 
   let description = [{
@@ -4277,7 +4296,7 @@ Ba et al. 'Layer Normalization'
   }];
 
   let arguments = (
-    ins TFL_TensorOf<[F32, QI8]>:$input,
+    ins TFL_TensorOf<[F32, QI8, QI16]>:$input,
 
     // Weights
     TFL_TensorOfOrNone<[F32, QI8]>:$input_to_input_weights,
@@ -4377,24 +4396,24 @@ def TFL_UnidirectionalSequenceLSTMOp :
            LstmProjectionWeightBiasConstraint,
            LstmCifgInputConstraint,
            LstmResultConstraint,
-           TFL_OperandHasRankAtLeast<0, 2>,    // input
-           TFL_OperandIsNoneOrHasRank<1, 2>,   // input_to_input_weights
-           TFL_OperandHasRank<2, 2>,           // input_to_forget_weights
-           TFL_OperandHasRank<3, 2>,           // input_to_cell_weights
-           TFL_OperandHasRank<4, 2>,           // input_to_output_weights
-           TFL_OperandIsNoneOrHasRank<5, 2>,   // recurrent_to_input_weights
-           TFL_OperandHasRank<6, 2>,           // recurrent_to_forget_weights
-           TFL_OperandHasRank<7, 2>,           // recurrent_to_cell_weights
-           TFL_OperandHasRank<8, 2>,           // recurrent_to_output_weights
-           TFL_OperandIsNoneOrHasRank<9, 1>,   // cell_to_input_weights
-           TFL_OperandIsNoneOrHasRank<10, 1>,  // cell_to_forget_weights
-           TFL_OperandIsNoneOrHasRank<11, 1>,  // cell_to_output_weights
-           TFL_OperandIsNoneOrHasRank<12, 1>,  // input_gate_bias
-           TFL_OperandHasRank<13, 1>,          // forget_gate_bias
-           TFL_OperandHasRank<14, 1>,          // cell_gate_bias
-           TFL_OperandHasRank<15, 1>,          // output_gate_bias
-           TFL_OperandIsNoneOrHasRank<16, 2>,  // projection_weights
-           TFL_OperandIsNoneOrHasRank<17, 1>,  // projection_bias
+           TFL_OperandHasRankAtLeast<0, 2>,       // input
+           TFL_OperandIsNoneOrHasRank<1, 2>,      // input_to_input_weights
+           TFL_OperandHasRank<2, 2>,              // input_to_forget_weights
+           TFL_OperandHasRank<3, 2>,              // input_to_cell_weights
+           TFL_OperandHasRank<4, 2>,              // input_to_output_weights
+           TFL_OperandIsNoneOrHasRankAtMost<5, 2>,// recurrent_to_input_weights
+           TFL_OperandHasRankAtMost<6, 2>,        // recurrent_to_forget_weights
+           TFL_OperandHasRankAtMost<7, 2>,        // recurrent_to_cell_weights
+           TFL_OperandHasRankAtMost<8, 2>,        // recurrent_to_output_weights
+           TFL_OperandIsNoneOrHasRank<9, 1>,      // cell_to_input_weights
+           TFL_OperandIsNoneOrHasRank<10, 1>,     // cell_to_forget_weights
+           TFL_OperandIsNoneOrHasRank<11, 1>,     // cell_to_output_weights
+           TFL_OperandIsNoneOrHasRank<12, 1>,     // input_gate_bias
+           TFL_OperandHasRank<13, 1>,             // forget_gate_bias
+           TFL_OperandHasRank<14, 1>,             // cell_gate_bias
+           TFL_OperandHasRank<15, 1>,             // output_gate_bias
+           TFL_OperandIsNoneOrHasRank<16, 2>,     // projection_weights
+           TFL_OperandIsNoneOrHasRank<17, 1>,     // projection_bias
            TFL_StatefulOp,
            DeclareOpInterfaceMethods<InferTypeOpInterface>,
            QuantizableResult,
@@ -4464,6 +4483,9 @@ def TFL_UnidirectionalSequenceLSTMOp :
     // Used in post-training dynamic range quantization. If the value is true,
     // input activations are asymmetrically quantized.
     OptionalAttr<BoolAttr>:$asymmetric_quantize_inputs,
+    // IndyLSTM optimizations (i.e. optimizations enabled because of diagonal
+    // recurrent weight matrices that are provided as vectors)
+    OptionalAttr<BoolAttr>:$diagonal_recurrent_tensors,
 
     // Types of the optional intermediate tensors, which exist for fully
     // quantized op and hold the ranges of the intermediate tensors.
@@ -4995,7 +5017,7 @@ def TFL_Atan2Op: TFL_Op<"atan2", [
 
   let summary = "Atan2 operation";
   let description = [{
-    The "atan2" operation computes the arctangent of y/x element-wise, 
+    The "atan2" operation computes the arctangent of y/x element-wise,
     respecting signs of the arguments.
   }];
 
@@ -5014,18 +5036,18 @@ def TFL_SignOp: TFL_Op<"sign", [
   SameOperandsAndResultShape,
   SameOperandsAndResultElementType
   ]> {
-  
+
   let summary = "Sign operation";
   let description = [{
     Returns NaN if x is NaN, 0 if x is 0, -1 if x < 0 and 1 if x > 0.
   }];
 
   let arguments = (ins
-    TFL_TensorOf<[F32, F64]>:$x
+    TFL_TensorOf<[F32, F64, I32]>:$x
   );
 
   let results = (outs
-    TFL_TensorOf<[F32, F64]>:$output
+    TFL_TensorOf<[F32, F64, I32]>:$output
   );
 }
 
@@ -5041,7 +5063,7 @@ def TFL_YieldOp : Op<TFL_Dialect, "yield",
     The operation takes a variable number of operands and produces no results.
     The operand number and types must match the signature of the region that contains the operation.
   }];
-  let arguments = (ins Variadic<AnyType>:$operands);
+  let arguments = (ins Variadic<AnyType>);
 
   // Default builder needed for ensureTerminator
   let builders = [

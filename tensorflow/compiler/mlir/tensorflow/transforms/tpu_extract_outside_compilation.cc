@@ -32,7 +32,7 @@ limitations under the License.
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
-#include "mlir/IR/BlockAndValueMapping.h"  // from @llvm-project
+#include "mlir/IR/IRMapping.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
@@ -96,7 +96,7 @@ func::FuncOp BuildFunction(llvm::ArrayRef<Operation*> ops,
   Block* outlined_func_block = outlined_func.addEntryBlock();
 
   // Clone the operations and remap the inputs to use the function arguments.
-  BlockAndValueMapping mapping;
+  IRMapping mapping;
   mapping.map(inputs, outlined_func.getArguments());
   builder->setInsertionPoint(outlined_func_block, outlined_func_block->begin());
   for (Operation* op : ops) {
@@ -214,19 +214,19 @@ TF::IfRegionOp CloneEmptyIfWithPredicate(TF::IfRegionOp if_region,
                                          OpBuilder& builder) {
   // Mark op as stateful due to side-effecting communication ops added later.
   auto host_side_if = builder.create<TF::IfRegionOp>(
-      if_region.getLoc(), llvm::SmallVector<Type, 4>{}, if_region.cond(),
-      /*is_stateless=*/false, if_region._then_func_nameAttr(),
-      if_region._else_func_nameAttr());
+      if_region.getLoc(), llvm::SmallVector<Type, 4>{}, if_region.getCond(),
+      /*is_stateless=*/false, if_region.get_thenFuncNameAttr(),
+      if_region.get_elseFuncNameAttr());
 
   // Create empty then branch region.
-  auto& then_branch = host_side_if.then_branch();
+  auto& then_branch = host_side_if.getThenBranch();
   then_branch.push_back(new Block);
   builder.setInsertionPointToEnd(&then_branch.front());
   builder.create<TF::YieldOp>(if_region.getLoc(),
                               /*operands=*/ArrayRef<Value>{});
 
   // Create empty else branch region.
-  auto& else_branch = host_side_if.else_branch();
+  auto& else_branch = host_side_if.getElseBranch();
   else_branch.push_back(new Block);
   builder.setInsertionPointToEnd(&else_branch.front());
   builder.create<TF::YieldOp>(if_region.getLoc(),
@@ -243,7 +243,7 @@ TF::WhileRegionOp CloneEmptyWhile(uint64_t parallel_iterations, Location loc,
       parallel_iterations, /*is_stateless=*/false, /*shape_invariant=*/false);
 
   // Create empty else branch region.
-  auto& body = host_side_while.body();
+  auto& body = host_side_while.getBody();
   body.push_back(new Block);
   builder.setInsertionPointToEnd(&body.front());
   builder.create<TF::YieldOp>(loc, /*operands=*/ArrayRef<Value>{});
@@ -321,6 +321,14 @@ bool HasDynamicExternalValues(Operation* op) {
       .wasInterrupted();
 }
 
+// Checks if `type` is allowed for XLA. String and resources are not XLA types.
+// There are other TF types that are not XLA types which will be removed by
+// successive passes in TF/XLA bridge phase 2.
+bool TypeValidForXLA(const Type& type) {
+  const Type elem = getElementTypeOrSelf(type);
+  return !elem.isa<TF::ResourceType>() && !elem.isa<TF::StringType>();
+}
+
 // Returns operands of `cluster_ops` that need to be
 // communicated from device->host. This is for the case when all operands have a
 // static shape.
@@ -330,15 +338,20 @@ llvm::SmallSetVector<Value, 4> GetStaticExternalOperands(
   llvm::SmallSetVector<Value, 4> external_values;
   for (Operation* op : cluster_ops) {
     op->walk([&](Operation* walked_op) {
-      if (llvm::isa<TF::_XlaRecvAtHostV2Op, TF::_XlaSendFromHostV2Op>(
+      if (llvm::isa<TF::_XlaRecvAtHostOp, TF::_XlaRecvAtHostV2Op,
+                    TF::_XlaSendFromHostOp, TF::_XlaSendFromHostV2Op>(
               walked_op))
         return WalkResult::advance();
       for (Value v : walked_op->getOperands()) {
+        if (!TypeValidForXLA(v.getType())) continue;
         if (auto* defining_op = v.getDefiningOp()) {
           if (!op->isAncestor(defining_op) &&
               tpu_cluster->isAncestor(defining_op) &&
               !HasOutsideCompilationAncestor(defining_op) &&
-              !llvm::isa<TF::_XlaRecvAtHostV2Op>(defining_op)) {
+              // Ignore operands that have already been received by a previously
+              // created cluster.
+              !llvm::isa<TF::_XlaRecvAtHostOp, TF::_XlaRecvAtHostV2Op>(
+                  defining_op)) {
             external_values.insert(v);
           }
           continue;
@@ -361,6 +374,7 @@ llvm::SmallSetVector<Value, 4> GetAllExternalOperands(
   for (Operation* op : cluster_ops) {
     op->walk([&](Operation* walked_op) {
       for (Value v : walked_op->getOperands()) {
+        if (!TypeValidForXLA(v.getType())) continue;
         Operation* defining_op = v.getDefiningOp();
         if (!defining_op || !cluster_ops.count(defining_op)) {
           external_values.insert(v);
@@ -406,7 +420,8 @@ void GetExternalOutputs(const llvm::SmallSetVector<Operation*, 4>& cluster_ops,
           HasDynamicOutputs(user)) {
         if (!user_set.insert(user).second) continue;
         for (Value v : user->getOperands()) {
-          if (v.getDefiningOp() == op && !isa<tf_device::ReturnOp>(user))
+          if (TypeValidForXLA(v.getType()) && v.getDefiningOp() == op &&
+              !isa<tf_device::ReturnOp>(user))
             external_outputs.insert(v);
           if (v.getDefiningOp() == op && isa<tf_device::ReturnOp>(user))
             tmp_host_outputs.push_back(v);
@@ -447,11 +462,13 @@ void MarkOutsideCompiled(Operation* op) {
 }
 
 // Returns whether an outside compilation cluster should be closed.  True when:
-// 1. There is a dynamically shaped output consumed by a non-outside compiled
+// 1. There is no non-XLA output.
+// 2. There is a dynamically shaped output consumed by a non-outside compiled
 // op.
-// 2. There is no dynamically shaped output.
+// 3. There is no dynamically shaped output.
 bool ShouldCloseCluster(llvm::ArrayRef<Value> outputs) {
   bool has_dynamic_output = false;
+  bool has_nonxla_output = false;
   for (Value v : outputs) {
     if (TF::CanBeRefined(v.getType())) {
       has_dynamic_output = true;
@@ -461,8 +478,12 @@ bool ShouldCloseCluster(llvm::ArrayRef<Value> outputs) {
           return true;
       }
     }
+    if (!TypeValidForXLA(v.getType()))
+      for (const Operation* user : v.getUsers())
+        if (!isa<tf_device::ReturnOp>(user)) has_nonxla_output = true;
   }
-  return !has_dynamic_output;
+
+  return !has_nonxla_output && !has_dynamic_output;
 }
 
 // Replaces `external_operands` with the results from `recv_at_host`.
@@ -715,14 +736,14 @@ LogicalResult DecomposeControlFlow(tf_device::ClusterOp tpu_cluster,
       if (!HasOutsideCompilationNested(op)) return WalkResult::advance();
       OpBuilder builder(if_op);
       auto host_if = CloneEmptyIfWithPredicate(if_op, builder);
-      if (failed(MoveOpsToHost(tpu_cluster, &if_op.then_branch().front(),
-                               host_if.then_branch().front().getTerminator(),
+      if (failed(MoveOpsToHost(tpu_cluster, &if_op.getThenBranch().front(),
+                               host_if.getThenBranch().front().getTerminator(),
                                compilation_key, device_ordinal,
                                default_device_ordignal,
                                communication_key_index)))
         return WalkResult::interrupt();
-      if (failed(MoveOpsToHost(tpu_cluster, &if_op.else_branch().front(),
-                               host_if.else_branch().front().getTerminator(),
+      if (failed(MoveOpsToHost(tpu_cluster, &if_op.getElseBranch().front(),
+                               host_if.getElseBranch().front().getTerminator(),
                                compilation_key, device_ordinal,
                                default_device_ordignal,
                                communication_key_index)))
@@ -734,16 +755,17 @@ LogicalResult DecomposeControlFlow(tf_device::ClusterOp tpu_cluster,
     if (auto while_op = llvm::dyn_cast<TF::WhileRegionOp>(op)) {
       if (!HasOutsideCompilationNested(op)) return WalkResult::advance();
       OpBuilder builder(while_op);
-      auto host_while = CloneEmptyWhile(while_op.parallel_iterations(),
+      auto host_while = CloneEmptyWhile(while_op.getParallelIterations(),
                                         while_op.getLoc(), builder);
       const auto condition_send_recv_key =
           llvm::formatv("while_condition_channel_{0}",
                         communication_key_index++)
               .str();
-      auto& cond = host_while.cond();
+      auto& cond = host_while.getCond();
       cond.push_back(new Block);
-      auto condition = while_op.cond().front().getTerminator()->getOperand(0);
-      builder.setInsertionPoint(while_op.cond().front().getTerminator());
+      auto condition =
+          while_op.getCond().front().getTerminator()->getOperand(0);
+      builder.setInsertionPoint(while_op.getCond().front().getTerminator());
       builder.create<TF::XlaSendToHostOp>(while_op.getLoc(), condition,
                                           condition_send_recv_key);
       builder.setInsertionPointToEnd(&cond.front());
@@ -754,13 +776,13 @@ LogicalResult DecomposeControlFlow(tf_device::ClusterOp tpu_cluster,
       builder.create<TF::YieldOp>(while_op.getLoc(),
                                   recv_condition_at_host->getResults());
 
-      if (failed(MoveOpsToHost(tpu_cluster, &while_op.cond().front(),
+      if (failed(MoveOpsToHost(tpu_cluster, &while_op.getCond().front(),
                                recv_condition_at_host, compilation_key,
                                device_ordinal, default_device_ordignal,
                                communication_key_index)))
         return WalkResult::interrupt();
-      if (failed(MoveOpsToHost(tpu_cluster, &while_op.body().front(),
-                               host_while.body().front().getTerminator(),
+      if (failed(MoveOpsToHost(tpu_cluster, &while_op.getBody().front(),
+                               host_while.getBody().front().getTerminator(),
                                compilation_key, device_ordinal,
                                default_device_ordignal,
                                communication_key_index)))
@@ -1047,12 +1069,12 @@ LogicalResult CreateParallelExecuteForOutsideCompilation(
   builder.setInsertionPoint(tmp_host_launch_op.GetBody().getTerminator());
   auto compilation_key_op =
       CreateCompilationKeyPlaceholder(tpu_cluster.getLoc(), builder);
-  Value compilation_key = compilation_key_op.program();
+  Value compilation_key = compilation_key_op.getProgram();
   auto device_ordinal_op = builder.create<TF::_TPUDeviceOrdinalPlaceholderOp>(
       tpu_cluster.getLoc(), RankedTensorType::get({}, builder.getI64Type()));
   Value device_ordinal = nullptr;
   if (tpu_cluster->getParentOfType<tf_device::ReplicateOp>()) {
-    device_ordinal = device_ordinal_op.device_ordinal();
+    device_ordinal = device_ordinal_op.getDeviceOrdinal();
   }
   int default_device_ordinal = 0;
   if (failed(GetDefaultDeviceOrdinal(tpu_cluster, default_device_ordinal))) {
@@ -1100,19 +1122,11 @@ LogicalResult CreateParallelExecuteForOutsideCompilation(
   return success();
 }
 
-// Checks if `type` is allowed for data on TPUs. String and resources cannot be
-// assigned to TPUs. There are other TF types that are not allowed on TPUs, but
-// these will be removed by successive passes in TF/XLA bridge phase 2.
-bool TypeValidForTPU(Type type) {
-  Type elem = getElementTypeOrSelf(type);
-  return !elem.isa<TF::ResourceType>() && !elem.isa<TF::StringType>();
-}
-
 // Check that cluster results are valid. An result is invalid when it does not
 // have a valid XLA type.
 LogicalResult CheckClusterResults(tf_device::ClusterOp cluster) {
   for (OpResult result : cluster.getResults()) {
-    if (!TypeValidForTPU(result.getType())) {
+    if (!TypeValidForXLA(result.getType())) {
       cluster.emitError()
           << "The TPUExtractHeadTailOutsideCompilation pass produced a TPU "
              "cluster with a result with a non-XLA type: "
@@ -1120,6 +1134,35 @@ LogicalResult CheckClusterResults(tf_device::ClusterOp cluster) {
       return failure();
     }
   }
+  return success();
+}
+
+// Check that op marked for outside compilation has an ancestor also marked for
+// outside compilation.
+LogicalResult CheckAncestorNotOutsideComp(Operation* op) {
+  if (!op->getAttrOfType<StringAttr>(kXlaOutsideCompilationAttr))
+    return success();
+  Operation* iter_op = op;
+  while (auto* parent_op = iter_op->getParentOp()) {
+    if (parent_op->getAttrOfType<StringAttr>(kXlaOutsideCompilationAttr)) {
+      op->emitOpError()
+          << "An op marked for outside compilation (having attribute "
+          << kXlaOutsideCompilationAttr
+          << ") has an ancestor marked for outside compilation.";
+      return failure();
+    }
+    iter_op = parent_op;
+  }
+  return success();
+}
+
+// Check the validity of the module, pre-pass.
+LogicalResult CheckPreconditions(ModuleOp module) {
+  auto walk_result = module.walk([&](Operation* op) {
+    if (failed(CheckAncestorNotOutsideComp(op))) return WalkResult::interrupt();
+    return WalkResult::advance();
+  });
+  if (walk_result.wasInterrupted()) return failure();
   return success();
 }
 
@@ -1136,6 +1179,8 @@ LogicalResult CheckPostconditions(ModuleOp module) {
 void TPUExtractOutsideCompilation::runOnOperation() {
   // Get runtime devices information from the closest parent module.
   auto module = getOperation();
+  if (failed(CheckPreconditions(module))) signalPassFailure();
+
   mlir::TF::RuntimeDevices devices;
   if (failed(tensorflow::GetDevicesFromOp(module, &devices)))
     return signalPassFailure();

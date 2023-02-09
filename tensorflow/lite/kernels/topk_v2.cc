@@ -18,7 +18,7 @@ limitations under the License.
 #include <iterator>
 #include <vector>
 
-#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/kernels/internal/compatibility.h"
 #include "tensorflow/lite/kernels/internal/tensor.h"
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
@@ -215,7 +215,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 
   // Set output dynamic if the `top_k` tensor is not constant, or the input has
   // dynamic dimensions (indicated by dims signature).
-  if (IsConstantTensor(top_k) && !HasUnspecifiedDimension(input)) {
+  if (IsConstantOrPersistentTensor(top_k) && !HasUnspecifiedDimension(input)) {
     TF_LITE_ENSURE_OK(context, ResizeOutput(context, node));
   } else {
     TfLiteTensor* output_indexes;
