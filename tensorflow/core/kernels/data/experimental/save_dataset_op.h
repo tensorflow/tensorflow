@@ -13,10 +13,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_CORE_KERNELS_DATA_EXPERIMENTAL_IO_OPS_H_
-#define TENSORFLOW_CORE_KERNELS_DATA_EXPERIMENTAL_IO_OPS_H_
+#ifndef TENSORFLOW_CORE_KERNELS_DATA_EXPERIMENTAL_SAVE_DATASET_OP_H_
+#define TENSORFLOW_CORE_KERNELS_DATA_EXPERIMENTAL_SAVE_DATASET_OP_H_
 
+#include <memory>
 #include <string>
+#include <vector>
 
 #include "tensorflow/core/data/captured_function.h"
 #include "tensorflow/core/framework/dataset.h"
@@ -104,35 +106,8 @@ class SaveDatasetV2Op : public UnaryDatasetOpKernel {
   std::string writer_prefix_;
 };
 
-// An operation that can load a dataset from one or more files.
-class LoadDatasetOp : public DatasetOpKernel {
- public:
-  static constexpr const char* const kCompression = "compression";
-  static constexpr const char* const kDatasetType = "Load";
-  static constexpr const char* const kOutputTypes = "output_types";
-  static constexpr const char* const kOutputShapes = "output_shapes";
-  static constexpr const char* const kPath = "path";
-  static constexpr const char* const kReaderFunc = "reader_func";
-  static constexpr const char* const kReaderFuncOtherArgs =
-      "reader_func_other_args";
-  static constexpr const char* const kReaderFuncTarguments =
-      "Treader_func_args";
-
-  explicit LoadDatasetOp(OpKernelConstruction* ctx);
-
-  void MakeDataset(OpKernelContext* ctx, DatasetBase** output) override;
-
- private:
-  class Dataset;
-
-  std::string compression_;
-  DataTypeVector output_types_;
-  std::vector<PartialTensorShape> output_shapes_;
-  std::shared_ptr<FunctionMetadata> func_metadata_;
-};
-
 }  // namespace experimental
 }  // namespace data
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_CORE_KERNELS_DATA_EXPERIMENTAL_IO_OPS_H_
+#endif  // TENSORFLOW_CORE_KERNELS_DATA_EXPERIMENTAL_SAVE_DATASET_OP_H_

@@ -367,9 +367,53 @@ tf_kernel_library(
 )
 
 tf_kernel_library(
-    name = "io_ops",
-    srcs = ["io_ops.cc"],
-    hdrs = ["io_ops.h"],
+    name = "save_dataset_op",
+    srcs = ["save_dataset_op.cc"],
+    hdrs = ["save_dataset_op.h"],
+    deps = [
+        "//tensorflow/core:experimental_dataset_ops_op_lib",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:framework_internal",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/data:captured_function",
+        "//tensorflow/core/data:dataset_utils",
+        "//tensorflow/core/data:hash_utils",
+        "//tensorflow/core/data:name_utils",
+        "//tensorflow/core/data:root_dataset",
+        "//tensorflow/core/data:snapshot_utils",
+        "//tensorflow/core/framework:op_requires",
+        "//tensorflow/core/kernels/data:iterator_ops",
+    ],
+)
+
+tf_cc_test(
+    name = "save_dataset_op_test",
+    size = "small",
+    srcs = ["save_dataset_op_test.cc"],
+    deps = [
+        ":save_dataset_op",
+        "//tensorflow/core:experimental_dataset_ops_op_lib",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/data:captured_function",
+        "//tensorflow/core/data:dataset_test_base",
+        "//tensorflow/core/data:dataset_utils",
+        "//tensorflow/core/data:name_utils",
+        "//tensorflow/core/data:serialization_utils",
+        "//tensorflow/core/framework:function_testlib",
+        "//tensorflow/core/framework:types_proto_cc",
+        "//tensorflow/core/kernels:cwise_op",
+        "//tensorflow/core/kernels:function_ops",
+        "//tensorflow/core/kernels/data:range_dataset_op",
+    ],
+)
+
+tf_kernel_library(
+    name = "load_dataset_op",
+    srcs = ["load_dataset_op.cc"],
+    hdrs = ["load_dataset_op.h"],
     deps = [
         "//tensorflow/core:experimental_dataset_ops_op_lib",
         "//tensorflow/core:framework",
@@ -385,29 +429,6 @@ tf_kernel_library(
         "//tensorflow/core/data:utils",
         "//tensorflow/core/framework:op_requires",
         "//tensorflow/core/kernels/data:iterator_ops",
-    ],
-)
-
-tf_cc_test(
-    name = "io_ops_test",
-    size = "small",
-    srcs = ["io_ops_test.cc"],
-    deps = [
-        ":io_ops",
-        "//tensorflow/core:experimental_dataset_ops_op_lib",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
-        "//tensorflow/core/data:captured_function",
-        "//tensorflow/core/data:dataset_test_base",
-        "//tensorflow/core/data:dataset_utils",
-        "//tensorflow/core/data:name_utils",
-        "//tensorflow/core/data:serialization_utils",
-        "//tensorflow/core/framework:function_testlib",
-        "//tensorflow/core/framework:types_proto_cc",
-        "//tensorflow/core/kernels:cwise_op",
-        "//tensorflow/core/kernels:function_ops",
-        "//tensorflow/core/kernels/data:range_dataset_op",
     ],
 )
 
@@ -931,7 +952,8 @@ tf_kernel_library(
         ":group_by_reducer_dataset_op",
         ":group_by_window_dataset_op",
         ":ignore_errors_dataset_op",
-        ":io_ops",
+        ":load_dataset_op",
+        ":save_dataset_op",
         ":map_and_batch_dataset_op",
         ":matching_files_dataset_op",
         ":non_serializable_dataset_op",
