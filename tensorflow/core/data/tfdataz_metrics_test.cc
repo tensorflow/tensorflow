@@ -167,6 +167,18 @@ TEST_F(TfDatazMetricsTest, GetMultipleAverageLatencies) {
                   5.0);
 }
 
+TEST_F(TfDatazMetricsTest, GetAverageLatencyWithZeroGetNextCalls) {
+  EXPECT_FLOAT_EQ(absl::ToDoubleMicroseconds(
+                      tfdataz_metrics_->GetAverageLatencyForLastOneMinute()),
+                  0);
+  EXPECT_FLOAT_EQ(absl::ToDoubleMicroseconds(
+                      tfdataz_metrics_->GetAverageLatencyForLastFiveMinutes()),
+                  0);
+  EXPECT_FLOAT_EQ(absl::ToDoubleMicroseconds(
+                      tfdataz_metrics_->GetAverageLatencyForLastSixtyMinutes()),
+                  0);
+}
+
 class ScopedTfDataMetricsRegistration {
  public:
   explicit ScopedTfDataMetricsRegistration(
