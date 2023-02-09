@@ -1304,7 +1304,7 @@ class ShapeTensorTest(test_util.TensorFlowTestCase):
   def testConversion(self):
     """Make sure fully known TensorShape objects convert to Tensors."""
     shape = tensor_shape.TensorShape([1, tensor_shape.Dimension(2)])
-    shape_tensor = tensor_util.shape_tensor(shape)
+    shape_tensor = shape_util.shape_tensor(shape)
     self.assertAllEqual((1, 2), shape_tensor)
 
 
