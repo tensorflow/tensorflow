@@ -521,7 +521,6 @@ cc_library(
         ":stablehlo_ops",
         ":stablehlo_ops_inc_gen",
         ":stablehlo_pass_inc_gen",
-        ":stablehlo_type_conversion",
         ":stablehlo_type_inference",
         ":version",
         ":vhlo_ops",
@@ -536,21 +535,6 @@ cc_library(
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TensorDialect",
         "@llvm-project//mlir:TransformUtils",
-        "@llvm-project//mlir:Transforms",
-    ],
-)
-
-cc_library(
-    name = "stablehlo_type_conversion",
-    srcs = ["stablehlo/transforms/TypeConversion.cpp"],
-    hdrs = ["stablehlo/transforms/TypeConversion.h"],
-    includes = ["."],
-    deps = [
-        ":stablehlo_ops",
-        ":vhlo_ops",
-        "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:FuncDialect",
-        "@llvm-project//mlir:FuncTransforms",
         "@llvm-project//mlir:Transforms",
     ],
 )
