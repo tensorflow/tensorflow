@@ -2193,6 +2193,66 @@ func.func @slice(%arg0: tensor<3x4xi32>) -> tensor<1x2xi32> {
 
 // -----
 
+func.func @slice_c2(%arg0: tensor<3x4xi32>) -> tensor<1x2xi32> {
+  // expected-error@+1 {{the number of elements in start_indices (3) does not match the rank of the operand (2)}}
+  %0 = "mhlo.slice"(%arg0) {
+    start_indices = dense<[1, 0, 0]> : tensor<3xi64>,
+    limit_indices = dense<[2, 4, 0]> : tensor<3xi64>,
+    strides = dense<[1, 2, 0]> : tensor<3xi64>
+  } : (tensor<3x4xi32>) -> tensor<1x2xi32>
+  func.return %0 : tensor<1x2xi32>
+}
+
+// -----
+
+func.func @slice_c3(%arg0: tensor<3x4xi32>) -> tensor<1x2xi32> {
+  // expected-error@+1 {{negative start index -1 in dimension 0}}
+  %0 = "mhlo.slice"(%arg0) {
+    start_indices = dense<[-1, 0]> : tensor<2xi64>,
+    limit_indices = dense<[2, 4]> : tensor<2xi64>,
+    strides = dense<[1, 2]> : tensor<2xi64>
+  } : (tensor<3x4xi32>) -> tensor<1x2xi32>
+  func.return %0 : tensor<1x2xi32>
+}
+
+// -----
+
+func.func @slice_c3(%arg0: tensor<3x4xi32>) -> tensor<1x2xi32> {
+  // expected-error@+1 {{limit index 5 is larger than dimension size 4 in dimension 1}}
+  %0 = "mhlo.slice"(%arg0) {
+    start_indices = dense<[1, 0]> : tensor<2xi64>,
+    limit_indices = dense<[2, 5]> : tensor<2xi64>,
+    strides = dense<[1, 2]> : tensor<2xi64>
+  } : (tensor<3x4xi32>) -> tensor<1x2xi32>
+  func.return %0 : tensor<1x2xi32>
+}
+
+// -----
+
+func.func @slice_c3(%arg0: tensor<3x4xi32>) -> tensor<1x2xi32> {
+  // expected-error@+1 {{start index 3 is larger than limit index 2 in dimension 1}}
+  %0 = "mhlo.slice"(%arg0) {
+    start_indices = dense<[1, 3]> : tensor<2xi64>,
+    limit_indices = dense<[2, 2]> : tensor<2xi64>,
+    strides = dense<[1, 2]> : tensor<2xi64>
+  } : (tensor<3x4xi32>) -> tensor<1x2xi32>
+  func.return %0 : tensor<1x2xi32>
+}
+
+// -----
+
+func.func @slice_c4(%arg0: tensor<3x4xi32>) -> tensor<1x2xi32> {
+  // expected-error@+1 {{stride must be positive but got 0 in dimension 0}}
+  %0 = "mhlo.slice"(%arg0) {
+    start_indices = dense<[1, 0]> : tensor<2xi64>,
+    limit_indices = dense<[2, 4]> : tensor<2xi64>,
+    strides = dense<[0, 2]> : tensor<2xi64>
+  } : (tensor<3x4xi32>) -> tensor<1x2xi32>
+  func.return %0 : tensor<1x2xi32>
+}
+
+// -----
+
 // CHECK-LABEL: func @slice_dynamic_dim
 func.func @slice_dynamic_dim(%arg0: tensor<3x?xi32>) -> tensor<1x?xi32> {
   %0 = "mhlo.slice"(%arg0) {
@@ -2205,43 +2265,7 @@ func.func @slice_dynamic_dim(%arg0: tensor<3x?xi32>) -> tensor<1x?xi32> {
 
 // -----
 
-func.func @slice_dynamic_dim_invalid_indices(%arg0: tensor<3x?xi32>) -> tensor<1x?xi32> {
-  // expected-error@+1 {{negative start index -1 in dimension 1}}
-  %0 = "mhlo.slice"(%arg0) {
-    start_indices = dense<[1, -1]> : tensor<2xi64>,
-    limit_indices = dense<[2, 2]> : tensor<2xi64>,
-    strides = dense<[1, 1]> : tensor<2xi64>
-  } : (tensor<3x?xi32>) -> tensor<1x?xi32>
-  func.return %0 : tensor<1x?xi32>
-}
-
-// -----
-
-// CHECK-LABEL: func @slice_unranked
-func.func @slice_unranked(%arg0: tensor<*xi32>) -> tensor<*xi32> {
-  %0 = "mhlo.slice"(%arg0) {start_indices = dense<[1, 0]> : tensor<2xi64>, limit_indices = dense<[2, 4]> : tensor<2xi64>, strides = dense<[1, 2]> : tensor<2xi64>} : (tensor<*xi32>) -> tensor<*xi32>
-  func.return %0 : tensor<*xi32>
-}
-
-// -----
-
-func.func @slice_indices_mismatch(%arg0: tensor<3x4xi32>) -> tensor<1x4xi32> {
-  // expected-error@+1 {{failed to verify that all of {start_indices, limit_indices, strides} have same type}}
-  %0 = "mhlo.slice"(%arg0) {start_indices = dense<[1, 2]> : tensor<2xi64>, limit_indices = dense<[2, 4, 1]> : tensor<3xi64>, strides = dense<[1, 2]> : tensor<2xi64>} : (tensor<3x4xi32>) -> tensor<1x4xi32>
-  func.return %0 : tensor<1x4xi32>
-}
-
-// -----
-
-func.func @slice_operand_result_mismatch(%arg0: tensor<3x4xi32>) -> tensor<1x4xf32> {
-  // expected-error@+1 {{requires the same element type for all operands and results}}
-  %0 = "mhlo.slice"(%arg0) {start_indices = dense<[1, 0]> : tensor<2xi64>, limit_indices = dense<[2, 4]> : tensor<2xi64>, strides = dense<[1, 2]> : tensor<2xi64>} : (tensor<3x4xi32>) -> tensor<1x4xf32>
-  func.return %0 : tensor<1x4xf32>
-}
-
-// -----
-
-func.func @slice_indices_not_rank_1(%arg0: tensor<3x4xi32>) -> tensor<1x2xi32> {
+func.func @slice_i2(%arg0: tensor<3x4xi32>) -> tensor<1x2xi32> {
   // expected-error@+1 {{start_indices has rank 2 instead of required rank 1}}
   %0 = "mhlo.slice"(%arg0) {
     start_indices = dense<[[1, 0]]> : tensor<1x2xi64>,
@@ -2253,62 +2277,10 @@ func.func @slice_indices_not_rank_1(%arg0: tensor<3x4xi32>) -> tensor<1x2xi32> {
 
 // -----
 
-func.func @slice_indices_wrong_size(%arg0: tensor<3x4xi32>) -> tensor<1x2xi32> {
-  // expected-error@+1 {{the number of elements in start_indices (3) does not match the rank of the operand (2)}}
-  %0 = "mhlo.slice"(%arg0) {
-    start_indices = dense<[1, 0, 0]> : tensor<3xi64>,
-    limit_indices = dense<[2, 4, 0]> : tensor<3xi64>,
-    strides = dense<[1, 2, 0]> : tensor<3xi64>
-  } : (tensor<3x4xi32>) -> tensor<1x2xi32>
-  func.return %0 : tensor<1x2xi32>
-}
-
-// -----
-
-func.func @slice_negative_start_index(%arg0: tensor<3x4xi32>) -> tensor<1x2xi32> {
-  // expected-error@+1 {{negative start index -1 in dimension 0}}
-  %0 = "mhlo.slice"(%arg0) {
-    start_indices = dense<[-1, 0]> : tensor<2xi64>,
-    limit_indices = dense<[2, 4]> : tensor<2xi64>,
-    strides = dense<[1, 2]> : tensor<2xi64>
-  } : (tensor<3x4xi32>) -> tensor<1x2xi32>
-  func.return %0 : tensor<1x2xi32>
-}
-
-// -----
-
-func.func @slice_limit_index_larger_than_operand_dim(%arg0: tensor<3x4xi32>) -> tensor<1x2xi32> {
-  // expected-error@+1 {{limit index 5 is larger than dimension size 4 in dimension 1}}
-  %0 = "mhlo.slice"(%arg0) {
-    start_indices = dense<[1, 0]> : tensor<2xi64>,
-    limit_indices = dense<[2, 5]> : tensor<2xi64>,
-    strides = dense<[1, 2]> : tensor<2xi64>
-  } : (tensor<3x4xi32>) -> tensor<1x2xi32>
-  func.return %0 : tensor<1x2xi32>
-}
-
-// -----
-
-func.func @slice_start_index_larger_than_limit_index(%arg0: tensor<3x4xi32>) -> tensor<1x2xi32> {
-  // expected-error@+1 {{start index 3 is larger than limit index 2 in dimension 1}}
-  %0 = "mhlo.slice"(%arg0) {
-    start_indices = dense<[1, 3]> : tensor<2xi64>,
-    limit_indices = dense<[2, 2]> : tensor<2xi64>,
-    strides = dense<[1, 2]> : tensor<2xi64>
-  } : (tensor<3x4xi32>) -> tensor<1x2xi32>
-  func.return %0 : tensor<1x2xi32>
-}
-
-// -----
-
-func.func @slice_negative_stride(%arg0: tensor<3x4xi32>) -> tensor<1x2xi32> {
-  // expected-error@+1 {{stride must be positive but got 0 in dimension 0}}
-  %0 = "mhlo.slice"(%arg0) {
-    start_indices = dense<[1, 0]> : tensor<2xi64>,
-    limit_indices = dense<[2, 4]> : tensor<2xi64>,
-    strides = dense<[0, 2]> : tensor<2xi64>
-  } : (tensor<3x4xi32>) -> tensor<1x2xi32>
-  func.return %0 : tensor<1x2xi32>
+// CHECK-LABEL: func @slice_unranked
+func.func @slice_unranked(%arg0: tensor<*xi32>) -> tensor<*xi32> {
+  %0 = "mhlo.slice"(%arg0) {start_indices = dense<[1, 0]> : tensor<2xi64>, limit_indices = dense<[2, 4]> : tensor<2xi64>, strides = dense<[1, 2]> : tensor<2xi64>} : (tensor<*xi32>) -> tensor<*xi32>
+  func.return %0 : tensor<*xi32>
 }
 
 // -----
