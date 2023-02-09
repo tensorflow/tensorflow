@@ -249,8 +249,12 @@ CreateTfToTfrtConversionPass(const TfrtPipelineOptions& options);
 
 // Creates a pipeline of passes that lowers MLIR TF Executor dialect to TF
 // dialect for CoreRT purposes.
-void CreateTFExecutorToTFPipeline(mlir::OpPassManager& pm,
-                                  const TfrtPipelineOptions& options);
+tsl::Status CreateTFExecutorToTFPipeline(mlir::PassManager& pm,
+                                         const TfrtPipelineOptions& options);
+
+// Creates a pipeline of passes that lowers MLIR TF dialect to TFRT dialects.
+void CreateTfToTfrtPipeline(mlir::OpPassManager& pm,
+                            const TfrtPipelineOptions& options);
 
 // Creates a pipeline of passes that lowers MLIR TF dialect from tf.function to
 // TFRT dialect. SavedModel related conversions are not included.
