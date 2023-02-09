@@ -8994,6 +8994,28 @@ TEST_F(AlgebraicSimplifierTest, SwapConstantEwboWithReverse2) {
                                       m::Reverse(m::Parameter(0)))));
 }
 
+TEST_F(AlgebraicSimplifierTest, SquaredComplexSqrtIsFloat) {
+  const char* const kModuleStr = R"(
+  HloModule module
+
+  ENTRY entry {
+    arg = c64[7]{0} parameter(0)
+    multiply = c64[7]{0} multiply(arg, arg)
+    ROOT sqrt = c64[7]{0} sqrt(multiply)
+  }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  SCOPED_TRACE("Before rewrite\n" + m->ToString());
+  AlgebraicSimplifierOptions options;
+  AlgebraicSimplifier simplifier(options);
+  auto g = simplifier.Run(m.get()).value();
+  SCOPED_TRACE("After rewrite\n" + m->ToString());
+  ASSERT_TRUE(g);
+  auto* root = m->entry_computation()->root_instruction();
+  EXPECT_THAT(root, GmockMatch(m::Convert(m::Abs(m::Parameter(0)))));
+}
+
 // Don't replace root instruction with the copy-to-operand optimization if
 // sharding is applied.
 TEST_F(AlgebraicSimplifierTest, RootCopySharding) {

@@ -6410,6 +6410,21 @@ Status AlgebraicSimplifierVisitor::HandleSqrt(HloInstruction* sqrt) {
   HloInstruction* sqrt_operand = sqrt->mutable_operand(0);
   if (sqrt_operand->opcode() == HloOpcode::kMultiply &&
       sqrt_operand->operand(0) == sqrt_operand->operand(1)) {
+    PrimitiveType element_type = sqrt_operand->shape().element_type();
+    // For 'A' of type C{64,128}, |A| has type F{32,64}, and the transformation
+    // requires an additional cast.
+    if (primitive_util::IsComplexType(element_type)) {
+      auto abs_shape = sqrt_operand->shape();
+      abs_shape.set_element_type(
+          primitive_util::ComplexComponentType(element_type));
+
+      HloInstruction* abs =
+          sqrt->parent()->AddInstruction(HloInstruction::CreateUnary(
+              abs_shape, HloOpcode::kAbs, sqrt_operand->mutable_operand(0)));
+
+      return ReplaceWithNewInstruction(
+          sqrt, HloInstruction::CreateConvert(sqrt_operand->shape(), abs));
+    }
     return ReplaceWithNewInstruction(
         sqrt, HloInstruction::CreateUnary(
                   sqrt_operand->mutable_operand(0)->shape(), HloOpcode::kAbs,
