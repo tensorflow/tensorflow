@@ -164,17 +164,29 @@ class StridedSliceOp : public XlaOpKernel {
                                     input_xla_shape.dimensions(i));
       }
 
+      auto scalar_must_be_non_negative = [ctx](xla::XlaOp value) -> bool {
+        // Check if the lower-bound of a value is always >= 0
+        auto lower_bound = ctx->value_inference().AnalyzeConstant(
+            value, xla::ValueInferenceMode::kLowerBound);
+        if (!lower_bound.ok() || !lower_bound->AllValid()) {
+          // Can't infer a lower bound.
+          return false;
+        }
+        return lower_bound->Get<int32>({}) >= 0;
+      };
       if (begin_mask) {
         begin_index = zero;
       } else {
         begin_index = xla::Slice(ctx->Input("begin"), {sparse_index},
                                  {sparse_index + 1}, {1});
         begin_index = xla::Reshape(begin_index, {});
-        // begin could be negative.
-        auto index_negative = xla::Lt(begin_index, zero);
-        auto wrapped_index = xla::Add(dim_size, begin_index);
-        // Wrap negative indices around.
-        begin_index = xla::Select(index_negative, wrapped_index, begin_index);
+        if (!scalar_must_be_non_negative(begin_index)) {
+          // begin could be negative.
+          auto index_negative = xla::Lt(begin_index, zero);
+          auto wrapped_index = xla::Add(dim_size, begin_index);
+          // Wrap negative indices around.
+          begin_index = xla::Select(index_negative, wrapped_index, begin_index);
+        }
       }
       start_indices.push_back(begin_index);
       if (end_mask) {
@@ -183,10 +195,12 @@ class StridedSliceOp : public XlaOpKernel {
         end_index = xla::Slice(ctx->Input("end"), {sparse_index},
                                {sparse_index + 1}, {1});
         end_index = xla::Reshape(end_index, {});
-        // end could be negative.
-        auto index_negative = xla::Lt(end_index, zero);
-        auto wrapped_index = xla::Add(dim_size, end_index);
-        end_index = xla::Select(index_negative, wrapped_index, end_index);
+        if (!scalar_must_be_non_negative(end_index)) {
+          // end could be negative.
+          auto index_negative = xla::Lt(end_index, zero);
+          auto wrapped_index = xla::Add(dim_size, end_index);
+          end_index = xla::Select(index_negative, wrapped_index, end_index);
+        }
       }
       // This is safe to downcast as set dimension size  makes sure that the dim
       // in the input doesn't exceed INT32 max.
