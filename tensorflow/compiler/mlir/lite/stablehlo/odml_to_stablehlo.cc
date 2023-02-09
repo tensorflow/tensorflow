@@ -245,11 +245,6 @@ tensorflow::Status ConvertTFToStableHLO(
 
   AddTFToStablehloPasses(pm, skip_resize, smuggle_disallowed_ops);
 
-  if (verbose) {
-    // Print out a detailed report of non-converted stats.
-    pm.addPass(mlir::odml::createPrintOpStatsPass());
-  }
-
   if (!skip_checks) {
     std::vector<std::string> optional_accepted_dialects;
     if (allow_tf) {
@@ -262,6 +257,13 @@ tensorflow::Status ConvertTFToStableHLO(
   }
 
   mlir::odml::AddStablehloOptimizationPasses(pm);
+
+  if (verbose) {
+    // Print out a detailed report of non-converted stats.
+    // Because this pass aborts the pass if there are unconverted ops,
+    // we need to locate createPrintOpStatsPass after all optimization.
+    pm.addPass(mlir::odml::createPrintOpStatsPass());
+  }
 
   if (failed(pm.run(tf_module))) {
     return tensorflow::errors::Aborted("Lowering to StableHLO failed.");
