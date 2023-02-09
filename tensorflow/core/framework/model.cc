@@ -46,50 +46,77 @@ constexpr uint64_t kGapDurationThresholdUsec = 10000000;  // 10 seconds
 // In outlier computation, points that are larger than `kOutlierSigmas` standard
 // deviations are considered outliers.
 constexpr double kOutlierSigmas = 2.0;
+// In target time computation, compute the target time as `kTargetTimeSigmas`
+// from the mean of the gap time distribution to account for variance in
+// processing time. For example, a value of 1 would mean that the target time is
+// faster than 84% of the gap times.
+constexpr double kTargetTimeSigmas = 1.0;
 
 // A class to prune outliers given a set of points. To use it, instantiate an
 // object and call the `GetCleanPoints()` method.
-class OutlierPruner {
+class TargetTimeCalculator {
  public:
-  explicit OutlierPruner(const std::vector<uint64_t>& points)
-      : points_(points.begin(), points.end()) {}
+  explicit TargetTimeCalculator(const std::vector<uint64_t>& points_usec,
+                                double outlier_sigmas,
+                                double target_time_sigmas)
+      : points_usec_(points_usec.begin(), points_usec.end()),
+        outlier_sigmas_(outlier_sigmas),
+        target_time_sigmas_(target_time_sigmas) {}
 
-  // Returns the remaining points after removing outliers from the original set
-  // of points.
-  std::vector<uint64_t> GetCleanPoints() {
-    if (points_.empty()) {
-      return points_;
+  double GetTargetTimeUsec() const {
+    if (points_usec_.empty()) {
+      return 0.0;
     }
-    // Compute the outlier threshold
     double mean;
     double standard_deviation;
-    ComputeMeanAndStandardDeviation(&mean, &standard_deviation);
-    double threshold = mean + standard_deviation * kOutlierSigmas;
-    std::vector<uint64_t> clean_points;
-    for (auto point : points_) {
-      if (static_cast<double>(point) > threshold) {
-        continue;
-      }
-      clean_points.push_back(point);
+    ComputeMeanAndStandardDeviation(points_usec_, &mean, &standard_deviation);
+    // Remove outliers.
+    std::vector<uint64_t> clean_points_usec =
+        GetCleanPoints(points_usec_, mean, standard_deviation);
+    if (clean_points_usec.empty()) {
+      return 0.0;
     }
-    return clean_points;
+    // Compute mean and standard deviation after outliers are removed.
+    ComputeMeanAndStandardDeviation(clean_points_usec, &mean,
+                                    &standard_deviation);
+    // Compute target time.
+    return mean - standard_deviation * target_time_sigmas_;
   }
 
  private:
-  void ComputeMeanAndStandardDeviation(double* mean,
-                                       double* standard_deviation) {
-    uint64_t sum = std::accumulate(points_.begin(), points_.end(), 0);
-    *mean = static_cast<double>(sum) / static_cast<double>(points_.size());
+  // Returns the remaining points after removing outliers from the original set
+  // of points.
+  std::vector<uint64_t> GetCleanPoints(const std::vector<uint64_t>& points_usec,
+                                       double mean,
+                                       double standard_deviation) const {
+    double threshold = mean + standard_deviation * outlier_sigmas_;
+    std::vector<uint64_t> clean_points_usec;
+    for (auto point : points_usec) {
+      if (static_cast<double>(point) > threshold) {
+        continue;
+      }
+      clean_points_usec.push_back(point);
+    }
+    return clean_points_usec;
+  }
+
+  void ComputeMeanAndStandardDeviation(const std::vector<uint64_t>& points_usec,
+                                       double* mean,
+                                       double* standard_deviation) const {
+    uint64_t sum = std::accumulate(points_usec.begin(), points_usec.end(), 0);
+    *mean = static_cast<double>(sum) / static_cast<double>(points_usec.size());
     double accum = 0.0;
-    for (auto point : points_) {
+    for (auto point : points_usec) {
       accum += (static_cast<double>(point) - *mean) *
                (static_cast<double>(point) - *mean);
     }
-    *standard_deviation = std::sqrt(accum / (points_.size() - 1));
+    *standard_deviation = std::sqrt(accum / (points_usec.size() - 1));
   }
 
   // Points to cluster.
-  std::vector<uint64_t> points_;
+  std::vector<uint64_t> points_usec_;
+  double outlier_sigmas_;
+  double target_time_sigmas_;
 };
 
 // A priority queue that holds stage roots where the top of the priority queue
@@ -2515,17 +2542,13 @@ double Model::ComputeTargetTimeNsec() {
   if (gap_times_usec_.empty()) {
     return 0.0;
   }
-  // Remove outliers.
-  std::vector<uint64_t> clean_gap_times_usec =
-      OutlierPruner({gap_times_usec_.begin(), gap_times_usec_.end()})
-          .GetCleanPoints();
-  if (clean_gap_times_usec.empty()) {
-    return 0.0;
+  double target_time_sigmas = 0.0;
+  if (experiment_ == "stage_based_autotune_v2") {
+    target_time_sigmas = kTargetTimeSigmas;
   }
-  // Compute mean after outliers are removed.
-  double sum_gap_time_usec = std::accumulate(clean_gap_times_usec.begin(),
-                                             clean_gap_times_usec.end(), 0);
-  return sum_gap_time_usec / static_cast<double>(clean_gap_times_usec.size()) *
+  return TargetTimeCalculator({gap_times_usec_.begin(), gap_times_usec_.end()},
+                              kOutlierSigmas, target_time_sigmas)
+             .GetTargetTimeUsec() *
          1.0e3;
 }
 
