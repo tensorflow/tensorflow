@@ -401,6 +401,22 @@ func.func @fold_extract_from_elements_into_gml_st(%in: tensor<8x2xf32>,
 
 // -----
 
+func.func @fold_from_elements_into_insert_slice(%elem: f32,
+    %out: tensor<8x2xf32>) -> tensor<8x2xf32>  {
+  %elem_tensor = tensor.from_elements %elem : tensor<1x1xf32>
+  %updated = tensor.insert_slice %elem_tensor into %out[0, 1] [1, 1] [1, 1]
+    : tensor<1x1xf32> into tensor<8x2xf32>
+
+  func.return %updated: tensor<8x2xf32>
+}
+// CHECK-LABEL: func @fold_from_elements_into_insert_slice
+// CHECK-SAME:      %[[ELEM:.*]]: f32, %[[OUT:.*]]: tensor<8x2xf32>
+
+// CHECK:         %[[UPDATE:.*]] = tensor.insert %[[ELEM]] into %[[OUT]]
+// CHECK-NEXT:    return %[[UPDATE]]
+
+// -----
+
 func.func @dynamic_broadcast_in_dim(%arg : tensor<1x1xf32>,
                                     %init: tensor<1x1x1xf32>)
                                     -> tensor<1x1x1xf32>  {
@@ -620,3 +636,37 @@ func.func @ite_2d(%arg0: i1, %arg1: tensor<1x1xf32>, %arg2: tensor<1x1xf32>)
 // CHECK:         scf.yield %[[EXTRACTED_0]] : f32
 // CHECK:       %[[FROM_ELEMENTS:.*]] = tensor.from_elements %[[IF]]
 // CHECK:       return %[[FROM_ELEMENTS]]
+
+
+// -----
+
+func.func @scalarize_for_op(%initValue: f32, %input: tensor<10xf32>) -> f32 {
+  %c0 = arith.constant 0 : index
+  %c1 = arith.constant 1 : index
+  %c10 = arith.constant 10 : index
+
+  %initTensor = tensor.from_elements %initValue : tensor<1xf32>
+
+  %sum = scf.for %i = %c0 to %c10 step %c1
+      iter_args(%acc = %initTensor) -> (tensor<1xf32>) {
+    %input_elem = tensor.extract %input[%i] : tensor<10xf32>
+
+    %acc_elem = tensor.extract %acc[%c0] : tensor<1xf32>
+    %add = arith.addf %acc_elem, %input_elem : f32
+    %from_elements = tensor.from_elements %add : tensor<1xf32>
+
+    scf.yield %from_elements : tensor<1xf32>
+  }
+  %sum_elem = tensor.extract %sum[%c0] : tensor<1xf32>
+  func.return %sum_elem : f32
+}
+// CHECK-LABEL: @scalarize_for_op
+
+// CHECK:      scf.for %[[I:[a-z0-9]+]] =
+// CHECK-NEXT:   %[[ELEM:.*]] = tensor.extract %{{.*}}[%[[I]]] : tensor<10xf32>
+// CHECK-NEXT:   %[[ADD:.*]] = arith.addf %{{.*}}, %[[ELEM]] : f32
+// CHECK-NEXT:   scf.yield
+// CHECK-NEXT: }
+// CHECK-NEXT: return
+
+
