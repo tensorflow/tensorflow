@@ -1362,6 +1362,24 @@ func.func @reduce_window_bound(%arg0: tensor<4x?x?x?xf32, #mhlo.type_extensions<
   func.return %1: tensor<*xindex>
 }
 
+// -----
+
+// CHECK-LABEL: func @triangular_solve_bounds
+func.func @triangular_solve_bounds(
+    %arg0: tensor<10x5x?x4xf32, #mhlo_test.type_extensions<bounds = [?, ?, 5, ?]>>,
+    %arg1: tensor<10x5x?x?xf32, #mhlo_test.type_extensions<bounds = [?, ?, ?, 7]>>) -> tensor<*xindex> {
+  %0 = "mhlo.triangular_solve"(%arg0, %arg1) {
+    left_side = false,
+    lower = true,
+    transpose_a = #mhlo<transpose NO_TRANSPOSE>,
+    unit_diagonal = true
+  } : (tensor<10x5x?x4xf32, #mhlo_test.type_extensions<bounds = [?, ?, 5, ?]>>,
+       tensor<10x5x?x?xf32, #mhlo_test.type_extensions<bounds = [?, ?, ?, 7]>>) -> tensor<*xf32>
+  // CHECK: types0 = tensor<10x5x?x?xf32, #mhlo_test.type_extensions<bounds = [?, ?, ?, 7]>>
+  %1 = "mhlo_test.get_return_types"(%0) : (tensor<*xf32>) -> tensor<*xindex>
+  func.return %1 : tensor<*xindex>
+}
+
 //-----
 
 // CHECK-LABEL: func @fft_bound
