@@ -64,7 +64,7 @@ constexpr int64_t SnapshotWriterParams::kDefaultMaxChunkSizeBytes;
 SnapshotStreamWriter::SnapshotStreamWriter(
     const SnapshotWriterParams& params, std::unique_ptr<TaskIterator> iterator)
     : params_(params), iterator_(std::move(iterator)) {
-  DCHECK_NE(iterator_, nullptr);
+  DCHECK_NE(iterator_.get(), nullptr);
   snapshot_thread_ = absl::WrapUnique(params_.env->StartThread(
       /*thread_options=*/{}, /*name=*/"tf_data_service_snapshot_thread",
       [this]() { WriteSnapshotAndLog(); }));
