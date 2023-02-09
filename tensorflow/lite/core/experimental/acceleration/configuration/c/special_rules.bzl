@@ -12,20 +12,20 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Build macros for C headers."""
+"""External-only build rules for delegate plugins."""
 
-def c_api_visibility_allowlist():
-    """Returns a list of packages that can depend on c_api."""
+def delegate_plugin_visibility_allowlist():
+    """Returns a list of packages that can depend on delegate_plugin."""
     return []
 
-def c_api_experimental_visibility_allowlist():
-    """Returns a list of packages that can depend on third_party/tensorflow/lite/core/c/c_api_experimental.h."""
+def gpu_plugin_visibility_allowlist():
+    """Returns a list of packages that can depend on gpu_plugin."""
     return []
 
-def common_header_visibility_allowlist():
-    """Returns a list of packages that can depend on tensorflow/lite/core/c/common.h."""
+def xnnpack_plugin_visibility_allowlist():
+    """Returns a list of packages that can depend on xnnpack_plugin."""
     return []
 
-def experimental_acceleration_api_allowlist():
-    """Returns a list of packages that can depend on tensorflow/lite/core/experimental/acceleration/ subpackages.."""
+def stable_delegate_visibility_allowlist():
+    """Returns a list of packages that can depend on stable_delegate."""
     return []

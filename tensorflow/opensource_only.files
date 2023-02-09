@@ -48,6 +48,7 @@ tensorflow/go/tsl/protobuf/BUILD:
 tensorflow/java/README.md:
 tensorflow/java/src/main/native/BUILD:
 tensorflow/lite/core/c/special_rules.bzl:
+tensorflow/lite/core/experimental/acceleration/configuration/c/special_rules.bzl:
 tensorflow/lite/core/interpreter.h:
 tensorflow/lite/core/interpreter_builder.h:
 tensorflow/lite/core/model_builder.h:
