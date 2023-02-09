@@ -20,6 +20,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/strings/string_view.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/service/gpu/gemm_rewriter_triton.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_pipeline.h"
@@ -39,7 +40,8 @@ class TritonAutotunerTest : public HloTestBase {
     debug_options.set_xla_gpu_enable_triton_gemm(true);
     return debug_options;
   }
-  void CheckTritonAutotuning(const char* hlo, absl::string_view expected) {
+  void CheckTritonAutotuning(absl::string_view hlo,
+                             absl::string_view expected) {
     HloPassPipeline pipeline("gemm_rewrite");
     pipeline.AddPass<GemmRewriterTriton>(backend()
                                              .default_stream_executor()
@@ -54,7 +56,7 @@ class TritonAutotunerTest : public HloTestBase {
 };
 
 TEST_F(TritonAutotunerTest, Int8FusedGemm) {
-  const char* hlo = R"(
+  const std::string hlo = R"(
 HloModule module
 
 ENTRY e {
@@ -84,7 +86,7 @@ ENTRY e {
 }
 
 TEST_F(TritonAutotunerTest, Int8FusedGemm256) {
-  const char* hlo = R"(
+  const std::string hlo = R"(
 HloModule module
 
 ENTRY e {
@@ -111,6 +113,33 @@ ENTRY e {
 )");
 
   EXPECT_TRUE(RunAndCompare(hlo, ErrorSpec{1e-2, 1e-2}));
+}
+
+TEST_F(TritonAutotunerTest, KnownBestConfig) {
+  const std::string hlo = R"(
+HloModule t
+
+ENTRY e {
+  p0 = f16[16,12288]{1,0} parameter(0)
+  p1 = s8[2304,12288]{1,0} parameter(1)
+  c = f16[2304,12288]{1,0} convert(p1)
+  ROOT _ = f16[2304,16]{1,0} dot(c, p0), lhs_contracting_dims={1}, rhs_contracting_dims={1}
+})";
+
+  // This is the fastest config amongst the currently probed ones
+  // at least on RTX A6000 and V100; feel free to modify on related changes.
+  const se::DeviceDescription& device_description =
+      GetTestPlatform()->ExecutorForDevice(0).value()->GetDeviceDescription();
+  const std::string& name = device_description.name();
+  if (name == "NVIDIA RTX A6000" || name == "Tesla V100-SXM2-16GB") {
+    CheckTritonAutotuning(hlo, R"(
+// CHECK: backend_config="{\"block_m\":\"32\",\"block_n\":\"32\",\"block_k\":\"256\",\"split_k\":\"1\",\"num_stages\":\"1\",\"num_warps\":\"4\"}"
+  )");
+  } else {
+    VLOG(1) << "Not tested on " << name;
+  }
+
+  EXPECT_TRUE(RunAndCompare(hlo, ErrorSpec{0.02, 0.01}));
 }
 
 }  // namespace
