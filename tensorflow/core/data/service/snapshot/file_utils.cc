@@ -27,14 +27,19 @@ limitations under the License.
 
 namespace tensorflow {
 namespace data {
-
 namespace {
+
+constexpr const char kTempFileSuffix[] = ".tmp";
 
 tsl::Status AtomicallyWrite(
     absl::string_view filename, tsl::Env* env,
     absl::FunctionRef<tsl::Status(const std::string&)> nonatomically_write) {
-  std::string uncommitted_filename =
-      absl::StrCat(filename, "-tmp-", random::New64());
+  // TODO(b/258691097): Write temp files in a different directory.
+  std::string uncommitted_filename(filename);
+  if (!env->CreateUniqueFileName(&uncommitted_filename, kTempFileSuffix)) {
+    return tsl::errors::Internal("Failed to write file ", filename,
+                                 ": Unable to create temporary files.");
+  }
   TF_RETURN_IF_ERROR(nonatomically_write(uncommitted_filename));
   Status status = env->RenameFile(uncommitted_filename, std::string(filename));
   if (!status.ok()) {
@@ -44,7 +49,6 @@ tsl::Status AtomicallyWrite(
   }
   return status;
 }
-
 }  // namespace
 
 tsl::Status AtomicallyWriteStringToFile(absl::string_view filename,
