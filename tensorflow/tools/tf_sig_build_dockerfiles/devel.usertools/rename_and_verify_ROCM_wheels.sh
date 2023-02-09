@@ -21,9 +21,24 @@ set -euxo pipefail
 
 for wheel in /tf/pkg/*.whl; do
   echo "Checking and renaming $wheel..."
-  # Change linux to manylinux
-  NEW_TF_WHEEL=${wheel/linux/"manylinux2014"}
+  if [[ "${wheel}" != *"manylinux"* ]]; then
+      NEW_TF_WHEEL=${wheel/linux/"manylinux2014"}
+      echo "Rename ${wheel} to ${NEW_TF_WHEEL}"
+      mv $wheel $NEW_TF_WHEEL
+  else
+      echo "${wheel} already renamed"
+      NEW_TF_WHEEL=${wheel}
+  fi
 
-  mv $wheel $NEW_TF_WHEEL
-  TF_WHEEL="$NEW_TF_WHEEL" bats /usertools/wheel_verification.bats --timing
+  # Verify the wheel, but only for the current verison of python
+  PYTRIM=$( \
+          python3 --version | \
+          awk '{print$2}' | \
+          cut -d "." -f1,2 | \
+	  tr -d ".")
+  if [[ "${NEW_TF_WHEEL}" == *"cp${PYTRIM}"* ]]; then
+      CURRENT_PY_VERS=`python3 --version`
+      echo "Verifying $NEW_TF_WHEEL for ${CURRENT_PY_VERS%.*} ..."
+      TF_WHEEL="$NEW_TF_WHEEL" bats /usertools/wheel_verification.bats --timing
+  fi
 done
