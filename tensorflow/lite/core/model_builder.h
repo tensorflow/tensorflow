@@ -186,6 +186,14 @@ class FlatBufferModel {
   // See Metadata table in TFLite schema.
   static std::map<std::string, std::string> ReadAllMetadata(
       const ::tflite::Model* model);
+  
+  // Validates if the FlatBufferModel's buffer is well-formed. Specifically, it
+  // checks if the 0th entry of the model buffers is an empty buffer (sentinel).
+  // This is a convention so that tensors without a buffer can provide 0
+  // as their buffer.
+  // NOTE: The function doesn't explicitly fail for backward compatibility
+  // reasons; it just provides a warning in case of failures.
+  void ValidateModelBuffers(ErrorReporter* error_reporter);
 
   /// Returns true if the model identifier is correct (otherwise false and
   /// reports an error).
