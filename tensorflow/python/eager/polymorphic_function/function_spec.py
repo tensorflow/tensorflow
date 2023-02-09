@@ -330,7 +330,7 @@ class FunctionSpec(object):
       kwargs: Any,
       captures: Any = None,
   ) -> Tuple[function_type_lib.FunctionType,
-             trace_type.WeakrefDeletionObserver]:
+             trace_type.InternalTracingContext]:
     """Generates function type given the function arguments."""
     if captures is None:
       captures = dict()
