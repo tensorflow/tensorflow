@@ -5818,19 +5818,24 @@ class ConvertRandomShuffleOp : public OpRewritePattern<TF::RandomShuffleOp> {
 
   LogicalResult matchAndRewrite(TF::RandomShuffleOp op,
                                 PatternRewriter &rewriter) const override {
-    auto input_type = op.value().getType().dyn_cast<RankedTensorType>();
+    auto no_op = [&]() {
+      rewriter.replaceOp(op, op.getValue());
+      return success();
+    };
+
+    auto input_type = op.getValue().getType().dyn_cast<RankedTensorType>();
     if (!input_type) return failure();
+    if (input_type.hasStaticShape() && input_type.getNumElements() <= 1)
+      // No shuffling is required, so copy input directly to output.
+      return no_op();
 
     int64_t input_rank = input_type.getRank();
     int64_t first_dim_size = input_type.getDimSize(0);
     if (ShapedType::isDynamic(first_dim_size)) return failure();
 
-    // We are shuffling along the first dimension. If its size is <= 1, then
-    // shuffling is a no-op.
-    if (first_dim_size <= 1) {
-      rewriter.replaceOp(op, op.value());
-      return success();
-    }
+    if (first_dim_size <= 1)
+      // No shuffling is required, so copy input directly to output.
+      return no_op();
 
     // For vectors, shuffle values by sorting instead of the obvious
     // Fisher-Yates algorithm. Fisher-Yates is simple to implement and correct,
