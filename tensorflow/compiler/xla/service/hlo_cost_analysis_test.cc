@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/padding.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/client/xla_computation.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/service/local_service.h"
@@ -1436,6 +1437,83 @@ TEST_F(FusionCostAnalysis, RevisitModifiedFusion) {
   EXPECT_EQ(analysis.bytes_accessed(), bytes_accessed);
   EXPECT_EQ(analysis.operand_bytes_accessed(*fusion, 0), sizeof(float) * 2 * 2);
   EXPECT_EQ(analysis.output_bytes_accessed(*fusion), sizeof(float) * 2 * 2);
+}
+
+TEST_F(FusionCostAnalysis, RevisitAlteredFusion) {
+  absl::string_view hlo_string = R"(
+HloModule m
+
+f {
+  fp0 = s8[10] parameter(0)
+  ROOT fr = s8[1] slice(fp0), slice={[0:1]}
+}
+
+ENTRY e {
+  p0 = s8[10] parameter(0)
+  ROOT r = s8[1] fusion(p0), kind=kLoop, calls=f
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  HloInstruction* root = module->entry_computation()->root_instruction();
+
+  HloCostAnalysis modified_analysis(ShapeSize);
+  ASSERT_IS_OK(root->Accept(&modified_analysis));
+  HloInstruction* fusion_root =
+      root->called_computations()[0]->root_instruction();
+  EXPECT_FLOAT_EQ(modified_analysis.operand_utilization(*fusion_root, 0), 0.1);
+
+  // Modify fusion root, revisit the fusion with the analysis and expect
+  // updated values. Compare against a complete fresh analysis.
+  fusion_root->mutable_slice_limits()->at(0) = 2;
+  fusion_root->mutable_shape()->mutable_dimensions()[0] = 2;
+  root->mutable_shape()->mutable_dimensions()[0] = 2;
+  module->config().SetDefaultComputationLayout(
+      module->entry_computation()->ComputeProgramShape());
+  ASSERT_IS_OK(modified_analysis.RevisitInstruction(root));
+
+  HloCostAnalysis unmodified_analysis(ShapeSize);
+  ASSERT_IS_OK(root->Accept(&unmodified_analysis));
+
+  EXPECT_FLOAT_EQ(modified_analysis.operand_utilization(*fusion_root, 0), 0.2);
+  EXPECT_FLOAT_EQ(modified_analysis.operand_utilization(*fusion_root, 0),
+                  unmodified_analysis.operand_utilization(*fusion_root, 0));
+}
+
+TEST_F(FusionCostAnalysis, RevisitWithSharedComputation) {
+  absl::string_view hlo_string = R"(
+HloModule m
+
+add_computation {
+  arg_0.1 = f32[] parameter(0)
+  arg_1.1 = f32[] parameter(1)
+  ROOT r = f32[] add(arg_0.1, arg_1.1)
+}
+
+ENTRY e {
+  p0 = f32[127,125] parameter(0)
+  p1 = f32[127,125] parameter(1)
+  constant_zero = f32[] constant(0)
+  r0 = f32[127] reduce(p0, constant_zero), dimensions={1}, to_apply=add_computation
+  r1 = f32[127] reduce(p0, constant_zero), dimensions={1}, to_apply=add_computation
+  ROOT _ = f32[127] add(r0, r1)
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  HloCostAnalysis analysis(ShapeSize);
+
+  // add_computation is shared by two reductions - r0 and r1.
+  // Removing/revisiting one of them should not affect the other one.
+  HloInstruction* add_root =
+      root->operand(1)->called_computations()[0]->root_instruction();
+  ASSERT_IS_OK(root->Accept(&analysis));
+  EXPECT_EQ(analysis.operand_utilization(*add_root, 0), 1);
+  ASSERT_IS_OK(analysis.RemoveInstruction(root->mutable_operand(0)));
+  EXPECT_EQ(analysis.operand_utilization(*add_root, 0), 1);
+  ASSERT_IS_OK(analysis.RevisitInstruction(root->mutable_operand(0)));
+  EXPECT_EQ(analysis.operand_utilization(*add_root, 0), 1);
 }
 
 using Properties = HloCostAnalysis::Properties;
