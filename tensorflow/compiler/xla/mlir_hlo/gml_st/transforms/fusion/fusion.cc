@@ -441,7 +441,6 @@ LogicalResult fuseFillOpsIntoParallelOp(PatternRewriter& rewriter,
     auto fillOp = output.get().getDefiningOp<linalg::FillOp>();
     if (!fillOp) continue;
 
-    llvm::errs() << "fond fill op = " << fillOp;
     fillOpsWereFused = true;
 
     // Clone `linalg.fill` op inside the loop, update the uses of bbArg.
