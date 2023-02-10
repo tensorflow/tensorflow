@@ -56,7 +56,7 @@ echo "$description"
 exit
 fi
 
-SHELL_DIR=$(dirname "$0")
+SHELL_DIR=$(dirname "$0" | sed 's/^\.\///')
 BINARY_NAME=delegate_testing
 declare -a BUILD_CONFIG
 

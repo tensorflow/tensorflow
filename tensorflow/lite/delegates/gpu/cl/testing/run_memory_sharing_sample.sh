@@ -67,7 +67,7 @@ echo "$description"
 exit
 fi
 
-SHELL_DIR=$(dirname "$0")
+SHELL_DIR=$(dirname "$0" | sed 's/^\.\///')
 BINARY_NAME=memory_sharing_sample
 declare -a BUILD_CONFIG
 
