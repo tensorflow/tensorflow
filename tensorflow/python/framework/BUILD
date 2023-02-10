@@ -1466,9 +1466,8 @@ pytype_library(
 )
 
 py_library(
-    name = "tensor_spec",
-    srcs = ["tensor_spec.py"],
-    srcs_version = "PY3",
+    name = "tensor",
+    srcs = ["tensor.py"],
     deps = [
         ":common_shapes",
         ":dtypes",
@@ -1483,6 +1482,14 @@ py_library(
         "//tensorflow/python/types",
         "//tensorflow/python/util",
         "//third_party/py/numpy",
+    ],
+)
+
+py_library(
+    name = "tensor_spec",
+    srcs = ["tensor_spec.py"],
+    deps = [
+        ":tensor",
     ],
 )
 
@@ -2079,14 +2086,14 @@ tf_py_test(
 )
 
 tf_py_test(
-    name = "tensor_spec_test",
+    name = "tensor_test",
     size = "small",
-    srcs = ["tensor_spec_test.py"],
-    main = "tensor_spec_test.py",
+    srcs = ["tensor_test.py"],
+    main = "tensor_test.py",
     python_version = "PY3",
     deps = [
         ":for_generated_wrappers",
-        ":tensor_spec",
+        ":tensor",
         ":test_lib",
         ":type_utils",
         "//tensorflow/python:platform_test",
