@@ -43,7 +43,7 @@ profiler = _xla.profiler
 
 # Just an internal arbitrary increasing number to help with backward-compatible
 # changes.
-_version = 126
+_version = 127
 
 # Version number for MLIR:Python components.
 mlir_api_version = 43
