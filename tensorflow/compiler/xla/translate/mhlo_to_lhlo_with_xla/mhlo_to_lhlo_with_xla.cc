@@ -1153,6 +1153,7 @@ tsl::StatusOr<Operation*> LhloDialectEmitter::EmitDnnConvolution(
         algorithm.math_type() ==
             stream_executor::dnn::AlgorithmProto::TENSOR_OP_MATH,
         knob_ids, knob_values, algorithm.is_cudnn_frontend(),
+        backend_config.reordered_int8_nchw_vect(),
         algorithm.has_workspace_size() ? algorithm.workspace_size().value()
                                        : -1,
         get_layout_attribute(custom_call->operand(0)->shape().layout()),
