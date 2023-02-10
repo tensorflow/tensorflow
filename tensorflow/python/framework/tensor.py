@@ -217,6 +217,16 @@ class TensorSpec(DenseSpec, type_spec.BatchableTypeSpec,
     """
     return super(TensorSpec, self).is_compatible_with(spec_or_tensor)
 
+  def is_subtype_of(self, other):
+    if not isinstance(other, TensorSpec):
+      return False
+
+    return (
+        (not self.name or self.name == other.name)
+        and self.shape.is_subtype_of(other.shape)
+        and self.dtype.is_subtype_of(other.dtype)
+    )
+
   def placeholder_value(self, placeholder_context):
     """Generates a graph_placholder with the given TensorSpec information."""
     if placeholder_context.unnest_only:

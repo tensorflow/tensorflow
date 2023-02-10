@@ -235,6 +235,17 @@ class TensorSpecTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     self.assertFalse(type_1.is_subtype_of(type_2))
     self.assertTrue(type_2.is_subtype_of(type_1))
 
+  def testSubtypeOfNamedSpec(self):
+    named = tensor.TensorSpec(
+        tensor_shape.TensorShape([1, 2, 3]), dtypes.float32,
+        "a_name")
+    not_named = tensor.TensorSpec(
+        tensor_shape.TensorShape([1, 2, 3]), dtypes.float32,
+        None)
+    self.assertNotEqual(named, not_named)
+    self.assertFalse(named.is_subtype_of(not_named))
+    self.assertTrue(not_named.is_subtype_of(named))
+
   def testFlatTensorSpecs(self):
     spec = tensor.TensorSpec([1], np.float32)
     self.assertEqual(spec._flat_tensor_specs, [spec])

@@ -3733,10 +3733,19 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     signature_args, _ = conc.structured_input_signature
     self.assertEqual('y', signature_args[0].name)
 
+    # If name is not specified, the previously named one will be returned.
     conc = f.get_concrete_function(tensor_spec.TensorSpec(None, dtypes.float32))
     conc(x=constant_op.constant(3.0))
     signature_args, _ = conc.structured_input_signature
-    self.assertEqual('x', signature_args[0].name)
+    self.assertEqual('y', signature_args[0].name)
+
+    # New name will return updated signature.
+    conc = f.get_concrete_function(
+        tensor_spec.TensorSpec(None, dtypes.float32, 'z')
+    )
+    conc(x=constant_op.constant(3.0))
+    signature_args, _ = conc.structured_input_signature
+    self.assertEqual('z', signature_args[0].name)
 
     @polymorphic_function.function
     def g(x):
