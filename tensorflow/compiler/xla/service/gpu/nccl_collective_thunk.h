@@ -114,7 +114,8 @@ class NcclCollectiveThunk : public Thunk {
             fn,
         const ExecuteParams& params, ncclComm_t comm);
     // Blocks the compute stream until async communication is complete.
-    Status Await(const ExecuteParams& params);
+    Status Await(const ExecuteParams& params,
+                 bool skip_if_no_done_found = false);
 
    private:
     absl::Mutex mu_;

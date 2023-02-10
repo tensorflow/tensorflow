@@ -205,7 +205,7 @@ static absl::Status CollectivePermuteImplCommon(
 
   return ToAbslStatus(RunCollectivePermute(source_target, (*device_buffers)[0],
                                            *stream, **comm, device_string,
-                                           current_id));
+                                           current_id, *stream));
 }
 #endif  // XLA_ENABLE_XCCL
 

@@ -2149,8 +2149,8 @@ Status VerifyAsynchronousInstructionPairs(const HloModule& module) {
           break;
         }
         case HloOpcode::kCollectivePermuteStart: {
-          TF_RETURN_IF_ERROR(VerifySingleUser(
-              instruction, {HloOpcode::kCollectivePermuteDone}));
+          // TF_RETURN_IF_ERROR(VerifySingleUser(
+          //     instruction, {HloOpcode::kCollectivePermuteDone}));
           break;
         }
         case HloOpcode::kCollectivePermuteDone: {

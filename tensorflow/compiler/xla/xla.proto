@@ -370,6 +370,9 @@ message DebugOptions {
   // Convert synchronous collective-permute ops into asynchronous.
   bool xla_gpu_enable_async_collective_permute = 183;
 
+  // Track send and recv done separately for async collective-permute.
+  bool xla_gpu_enable_cp_separate_send_recv = 189;
+
   // Size threshold (in bytes) for the GPU all-reduce combiner.
   int64 xla_gpu_all_reduce_combine_threshold_bytes = 157;
 
@@ -462,7 +465,7 @@ message DebugOptions {
 
   bool xla_gpu_enable_triton_gemm = 188;
 
-  // Next id: 189
+  // Next id: 190
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.

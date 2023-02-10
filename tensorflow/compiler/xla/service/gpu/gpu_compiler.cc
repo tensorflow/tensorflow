@@ -719,6 +719,8 @@ Status GpuCompiler::OptimizeHloModule(
     bool async_all_reduce = debug_options.xla_gpu_enable_async_all_reduce();
     bool async_collective_permute =
         debug_options.xla_gpu_enable_async_collective_permute();
+    bool async_cp_separate_send_recv =
+        debug_options.xla_gpu_enable_cp_separate_send_recv();
 
     if (async_all_reduce || async_collective_permute) {
       AsyncCollectiveCreator::CollectiveCreatorConfig config;
@@ -727,6 +729,9 @@ Status GpuCompiler::OptimizeHloModule(
       };
       config.convert_collective_permute = [=](const HloInstruction*) {
         return async_collective_permute;
+      };
+      config.track_send_recv_separately = [=](const HloInstruction*) {
+        return async_cp_separate_send_recv;
       };
       pipeline.AddPass<AsyncCollectiveCreator>(std::move(config));
     }
@@ -1000,9 +1005,9 @@ static std::optional<bool> DummyCanShareBufferFunction(const HloInstruction*,
 
 StatusOr<std::unique_ptr<BufferAssignment>> GpuCompiler::AssignBuffers(
     HloModule* hlo_module, se::StreamExecutor* stream_exec) {
-  const GpuDeviceInfo gpu_device_info = GetGpuDeviceInfo(stream_exec);
-  TF_RETURN_IF_ERROR(
-      ScheduleGpuModule(hlo_module, pointer_size_, gpu_device_info));
+  // const GpuDeviceInfo gpu_device_info = GetGpuDeviceInfo(stream_exec);
+  // TF_RETURN_IF_ERROR(
+  //     ScheduleGpuModule(hlo_module, pointer_size_, gpu_device_info));
 
   auto buffer_size_bytes_function =
       [this](const BufferValue& buffer_value) -> int64_t {
@@ -1178,8 +1183,10 @@ static Status CompileModuleToLlvmIrImpl(
   results->llvm_module->setTargetTriple(target_triple);
   results->llvm_module->setDataLayout(data_layout);
 
-  TF_RETURN_IF_ERROR(
-      ScheduleGpuModule(hlo_module, pointer_size, gpu_device_info));
+  if (!hlo_module->has_schedule()) {
+    TF_RETURN_IF_ERROR(
+        ScheduleGpuModule(hlo_module, pointer_size, gpu_device_info));
+  }
   {
     HloPassPipeline pipeline("opt-barrier-expander");
     pipeline.AddPass<OptimizationBarrierExpander>();
@@ -1637,7 +1644,7 @@ StatusOr<std::unique_ptr<Executable>> GpuCompiler::RunBackend(
           compile_module_results.executable)) {
     const ThunkSequence& thunk_sequence =
         *std::get<OwnedThunkSequence>(compile_module_results.executable);
-    DumpToFileInDirOrStdout(*module, "", "thunk_sequence",
+    DumpToFileInDirOrStdout(*module, "", "thunk_sequence.txt",
                             thunk_sequence.ToString());
   }
 

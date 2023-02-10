@@ -232,14 +232,17 @@ Status NcclCollectiveThunk::AsyncExecutor::Execute(
   return OkStatus();
 }
 
-Status NcclCollectiveThunk::AsyncExecutor::Await(const ExecuteParams& params) {
+Status NcclCollectiveThunk::AsyncExecutor::Await(const ExecuteParams& params,
+                                                 bool skip_if_no_done_found) {
   int device_ordinal = params.stream->parent()->device_ordinal();
   auto done_event = [this, device_ordinal] {
     absl::MutexLock lock(&mu_);
     return done_events_.extract(device_ordinal);
   }();
-  TF_RET_CHECK(done_event) << "done event not found";
-  params.stream->ThenWaitFor(&done_event.mapped());
+  TF_RET_CHECK(skip_if_no_done_found || done_event) << "done event not found";
+  if (done_event) {
+    params.stream->ThenWaitFor(&done_event.mapped());
+  }
   return OkStatus();
 }
 
@@ -249,7 +252,8 @@ NcclCollectiveDoneThunk::NcclCollectiveDoneThunk(
     : Thunk(kind, std::move(thunk_info)), async_(async) {}
 
 Status NcclCollectiveDoneThunk::ExecuteOnStream(const ExecuteParams& params) {
-  return async_.Await(params);
+  // If send-done is scheduled after recv-done.
+  return async_.Await(params, /*skip_if_no_done_found=*/true);
 }
 
 bool IsTypeSupportedByNccl(PrimitiveType element_type,

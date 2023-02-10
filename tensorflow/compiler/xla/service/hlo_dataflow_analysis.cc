@@ -1138,6 +1138,19 @@ bool HloDataflowAnalysis::UpdateCollectivePermuteDoneValueSet(
   return changed;
 }
 
+bool HloDataflowAnalysis::UpdateCollectivePermuteRecvDoneValueSet(
+    HloInstruction* cp_recv_done) {
+  CHECK(!cp_recv_done->shape().IsTuple());
+  const HloValueSet& operand_value_set =
+      GetValueSet(cp_recv_done->operand(0), {1});
+  HloValueSet& value_set = GetValueSet(cp_recv_done);
+  if (value_set != operand_value_set) {
+    value_set = operand_value_set;
+    return true;
+  }
+  return false;
+}
+
 bool HloDataflowAnalysis::UpdateInstructionValueSet(
     HloInstruction* instruction) {
   // Recompute from operands.
@@ -1188,6 +1201,12 @@ bool HloDataflowAnalysis::UpdateInstructionValueSet(
       return UpdateCollectivePermuteStartValueSet(instruction);
     case HloOpcode::kCollectivePermuteDone:
       return UpdateCollectivePermuteDoneValueSet(instruction);
+    case HloOpcode::kCustomCall:
+      if (instruction->custom_call_target() == "$cp_recv_done") {
+        return UpdateCollectivePermuteRecvDoneValueSet(instruction);
+      } else {
+        return false;
+      }
     case HloOpcode::kOptimizationBarrier:
       return UpdateOptimizationBarrierValueSet(instruction);
     default:
@@ -1486,6 +1505,13 @@ Status HloDataflowAnalysis::InitializeInstructionValueSets() {
           define_value_at(/*index=*/{});
           define_value_at(/*index=*/{1});
           define_value_at(/*index=*/{2});
+          break;
+        case HloOpcode::kCustomCall:
+          if (instruction->custom_call_target() == "$cp_recv_done") {
+            // recv done output aliases with input tuple element #1.
+          } else {
+            define_all_values();
+          }
           break;
         default:
           define_all_values();

@@ -64,8 +64,9 @@ class NcclCollectivePermuteThunkBase : public NcclCollectiveThunk {
                                  const Buffer& buffer);
 
  protected:
-  Status RunCollectivePermute(const ExecuteParams& params, se::Stream& stream,
-                              ncclComm_t comm);
+  Status RunCollectivePermute(const ExecuteParams& params,
+                              se::Stream& nccl_stream, ncclComm_t comm,
+                              se::Stream& memzero_stream);
 
   const NcclCollectiveConfig& config() const override { return config_.config; }
 
@@ -123,19 +124,41 @@ class NcclCollectivePermuteStartThunk : public NcclCollectivePermuteThunkBase {
                            ncclComm_t comm) override;
 
  private:
+  const bool track_send_recv_separately_;
   AsyncExecutor async_;
 };
 
+// This will also be used for async CP send-done, as it just has to wait
+// for the async CP stream to finish.
 class NcclCollectivePermuteDoneThunk : public NcclCollectiveDoneThunk {
  public:
   NcclCollectivePermuteDoneThunk(ThunkInfo thunk_info,
-                                 NcclCollectiveThunk::AsyncExecutor& async);
+                                 NcclCollectiveThunk::AsyncExecutor& async,
+                                 Thunk::Kind kind,
+                                 NcclCollectivePermuteConfig config);
+
+ private:
+  const NcclCollectivePermuteConfig config_;
+};
+
+class NcclCollectivePermuteRecvDoneThunk : public Thunk {
+ public:
+  NcclCollectivePermuteRecvDoneThunk(ThunkInfo thunk_info,
+                                     NcclCollectiveThunk::AsyncExecutor& async,
+                                     NcclCollectivePermuteConfig config);
+
+  Status ExecuteOnStream(const ExecuteParams& params) override;
+
+ private:
+  NcclCollectiveThunk::AsyncExecutor& async_;
+  const NcclCollectivePermuteConfig config_;
 };
 
 Status RunCollectivePermute(
     NcclCollectivePermuteConfig::SourceTargetMapEntry source_target,
-    DeviceBufferPair& buffer, se::Stream& stream, ncclComm_t comm,
-    absl::string_view device_string, int64_t current_id);
+    DeviceBufferPair& buffer, se::Stream& nccl_stream, ncclComm_t comm,
+    absl::string_view device_string, int64_t current_id,
+    se::Stream& memzero_stream);
 
 }  // namespace gpu
 }  // namespace xla

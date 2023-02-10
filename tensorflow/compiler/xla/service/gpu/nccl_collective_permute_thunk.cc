@@ -117,7 +117,8 @@ NcclCollectivePermuteThunkBase::NcclCollectivePermuteThunkBase(
       buffer_(buffer) {}
 
 Status NcclCollectivePermuteThunkBase::RunCollectivePermute(
-    const ExecuteParams& params, se::Stream& stream, ncclComm_t comm) {
+    const ExecuteParams& params, se::Stream& nccl_stream, ncclComm_t comm,
+    se::Stream& memzero_stream) {
   TF_ASSIGN_OR_RETURN(
       std::vector<DeviceBufferPair> device_buffers,
       ConvertToDeviceBuffers(params, {buffer_},
@@ -140,8 +141,8 @@ Status NcclCollectivePermuteThunkBase::RunCollectivePermute(
                                                    current_id);
 
   return ::xla::gpu::RunCollectivePermute(source_target, device_buffers[0],
-                                          stream, comm, device_string,
-                                          current_id);
+                                          nccl_stream, comm, device_string,
+                                          current_id, memzero_stream);
 }
 
 /*static*/ NcclCollectivePermuteConfig
@@ -178,7 +179,7 @@ NcclCollectivePermuteThunk::NcclCollectivePermuteThunk(
 
 Status NcclCollectivePermuteThunk::RunNcclCollective(
     const ExecuteParams& params, ncclComm_t comm) {
-  return RunCollectivePermute(params, *params.stream, comm);
+  return RunCollectivePermute(params, *params.stream, comm, *params.stream);
 }
 
 /*static*/ NcclCollectivePermuteConfig
@@ -211,26 +212,67 @@ NcclCollectivePermuteStartThunk::NcclCollectivePermuteStartThunk(
     : NcclCollectivePermuteThunkBase(
           Thunk::kNcclCollectivePermuteStart, thunk_info,
           GetNcclCollectivePermuteConfig(op, replica_count, partition_count),
-          buffer) {}
+          buffer),
+      track_send_recv_separately_(op->hasAttr("track_send_recv_separately")) {}
 
 Status NcclCollectivePermuteStartThunk::RunNcclCollective(
     const ExecuteParams& params, ncclComm_t comm) {
   return async_.Execute(
       [this](const ExecuteParams& params, se::Stream& stream, ncclComm_t comm) {
-        return RunCollectivePermute(params, stream, comm);
+        // For the new style async cp start, schedule the memzero if any on
+        // the main compute stream
+        se::Stream& memzero_stream = track_send_recv_separately_
+                                         ? *params.stream
+                                         : *params.async_comms_stream;
+        return RunCollectivePermute(params, stream, comm, memzero_stream);
       },
       params, comm);
 }
 
 NcclCollectivePermuteDoneThunk::NcclCollectivePermuteDoneThunk(
-    ThunkInfo thunk_info, NcclCollectiveThunk::AsyncExecutor& async)
-    : NcclCollectiveDoneThunk(Thunk::kNcclCollectivePermuteDone, thunk_info,
-                              async) {}
+    ThunkInfo thunk_info, NcclCollectiveThunk::AsyncExecutor& async,
+    Thunk::Kind kind, NcclCollectivePermuteConfig config)
+    : NcclCollectiveDoneThunk(kind, thunk_info, async),
+      config_(std::move(config)) {}
+
+NcclCollectivePermuteRecvDoneThunk::NcclCollectivePermuteRecvDoneThunk(
+    ThunkInfo thunk_info, NcclCollectiveThunk::AsyncExecutor& async,
+    NcclCollectivePermuteConfig config)
+    : Thunk(Thunk::Kind::kNcclCollectivePermuteRecvDone, std::move(thunk_info)),
+      async_(async),
+      config_(std::move(config)) {}
+
+Status NcclCollectivePermuteRecvDoneThunk::ExecuteOnStream(
+    const ExecuteParams& params) {
+  // wait on async stream only if we issued a ncclRecv and have not already
+  // waited.
+
+  TF_ASSIGN_OR_RETURN(const GlobalDeviceId global_device_id,
+                      params.nccl_params.GetGlobalDeviceId());
+  TF_ASSIGN_OR_RETURN(
+      const DeviceAssignment::LogicalID current_logical_id,
+      params.nccl_params.device_assn->LogicalIdForDevice(global_device_id));
+  const int64_t current_id =
+      config_.config.group_mode == CollectiveOpGroupMode::kCrossReplica
+          ? current_logical_id.replica_id
+          : current_logical_id.computation_id;
+
+  const NcclCollectivePermuteConfig::SourceTargetMapEntry source_target =
+      NcclCollectivePermuteConfig::GetSourceTarget(config_.id_to_source_target,
+                                                   current_id);
+
+  // issue a wait only if we are issued a ncclRecv in the start thunk.
+  if (source_target.source.has_value()) {
+    return async_.Await(params, /*skip_if_no_done_found=*/true);
+  }
+  return OkStatus();
+}
 
 Status RunCollectivePermute(
     NcclCollectivePermuteConfig::SourceTargetMapEntry source_target,
-    DeviceBufferPair& buffer, se::Stream& stream, ncclComm_t comm,
-    absl::string_view device_string, int64_t current_id) {
+    DeviceBufferPair& buffer, se::Stream& nccl_stream, ncclComm_t comm,
+    absl::string_view device_string, int64_t current_id,
+    se::Stream& memzero_stream) {
 #if XLA_ENABLE_XCCL
   // Determine the source and target IDs for this instance. The source ID is the
   // ID which will copy its data to this instance. The destination ID is the ID
@@ -256,7 +298,7 @@ Status RunCollectivePermute(
   //
   //
 
-  int device_ordinal = stream.parent()->device_ordinal();
+  int device_ordinal = nccl_stream.parent()->device_ordinal();
   VLOG(3) << "Performing collective permute from device ordinal: "
           << device_ordinal;
 
@@ -278,7 +320,7 @@ Status RunCollectivePermute(
   ncclDataType_t dtype = dtype_and_multiplier.first;
   int64_t element_count = buffer.element_count * dtype_and_multiplier.second;
 
-  se::gpu::GpuStreamHandle gpu_stream = se::gpu::AsGpuStreamValue(&stream);
+  se::gpu::GpuStreamHandle gpu_stream = se::gpu::AsGpuStreamValue(&nccl_stream);
 
   // send source buffer to target peer if needed.
   if (target_id) {
@@ -308,7 +350,7 @@ Status RunCollectivePermute(
     // buffer.
     VLOG(3) << absl::StreamFormat("%s : collective-Permute: Issuing MemZero",
                                   device_string);
-    stream.ThenMemZero(&dest_addr, dest_addr.size());
+    memzero_stream.ThenMemZero(&dest_addr, dest_addr.size());
   }
   return OkStatus();
 #else   // XLA_ENABLE_XCCL

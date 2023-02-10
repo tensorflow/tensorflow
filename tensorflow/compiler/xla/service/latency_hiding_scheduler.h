@@ -45,7 +45,7 @@ enum class ResourceType {
   kSendRecv = 5,
   kSendHost = 6,
   kRecvHost = 7,
-  kNumResources = 8,
+  kNumResources = 10,
 };
 
 enum class ResourceUsageType {
@@ -112,6 +112,10 @@ class ApproximateLatencyEstimator : public LatencyEstimator {
   static constexpr TimeCost kLowCost = 1.0;
   static constexpr TimeCost kMediumCost = 1000.0;
   static constexpr TimeCost kHighCost = 5000.0;
+
+  static constexpr TimeCost kLowLatency = 1.0;
+  static constexpr TimeCost kMediumLatency = 1000.0;
+  static constexpr TimeCost kHighLatency = 5000.0;
 };
 
 // Helper class to keep track of which instructions are to be supported and

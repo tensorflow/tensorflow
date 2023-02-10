@@ -87,6 +87,8 @@ bool NeedsAsyncCommsStream(Thunk& thunk) {
   switch (thunk.kind()) {
     case Thunk::Kind::kNcclAllReduceStart:
     case Thunk::Kind::kNcclAllReduceDone:
+    case Thunk::Kind::kNcclCollectivePermuteStart:
+    case Thunk::Kind::kNcclCollectivePermuteDone:
       return true;
     default:
       return false;

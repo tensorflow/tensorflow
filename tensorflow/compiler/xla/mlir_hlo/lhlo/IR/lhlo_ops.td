@@ -637,6 +637,7 @@ def LHLO_CustomCallOp : LHLO_Op<"custom_call", [AttrSizedOperandSegments]> {
   }];
   let arguments = (ins
     Arg<Variadic<LHLO_Buffer>, "", [MemRead]>:$args,
+    Arg<Variadic<MHLO_Token>> : $tokens,
     Arg<Variadic<LHLO_Buffer>, "", [MemWrite]>:$output,
     StrAttr:$call_target_name,
     DefaultValuedOptionalAttr<BoolAttr, "false">:$has_side_effect,

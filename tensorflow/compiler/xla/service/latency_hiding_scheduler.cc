@@ -87,8 +87,6 @@ LatencyEstimator::TimeCost ApproximateLatencyEstimator::GetLatencyBetween(
     const HloGraphNode& from, const HloGraphNode& target) const {
   // These values are empirically derived to obtain an overlap of one output
   // fusion/convolution with 1 async op or 5 loop fusions with an async op.
-  static constexpr TimeCost kLowLatency = 1.0;
-  static constexpr TimeCost kHighLatency = 5000.0;
   CanonicalAsyncOp from_op = GetCanonicalAsyncOp(from.GetInstr());
   CanonicalAsyncOp target_op = GetCanonicalAsyncOp(target.GetInstr());
   if (from_op.outer == HloOpcode::kAsyncStart &&
@@ -118,6 +116,10 @@ bool AsyncTracker::IsSupportedAsyncDone(const HloInstruction& hlo) const {
   CanonicalAsyncOp op = GetCanonicalAsyncOp(hlo);
   if (op.outer == HloOpcode::kSendDone || op.outer == HloOpcode::kRecvDone) {
     return config_.schedule_send_recvs;
+  }
+
+  if (hlo.IsCustomCall({"$cp_send_done", "$cp_recv_done"})) {
+    return true;
   }
 
   if (op.outer == HloOpcode::kAsyncDone) {
@@ -157,6 +159,19 @@ bool AsyncTracker::IsSupportedAsyncStart(const HloInstruction& hlo) const {
 
 ResourcesVector AsyncTracker::GetResourcesFromInstruction(
     const HloInstruction& hlo) const {
+  // For collective permute paired with cp_start/done, the dependence is always
+  // cp-start -> recv_done -> send_done. For now, opt these out of any resource
+  // tracking.
+  if (hlo.opcode() == HloOpcode::kCollectivePermuteStart &&
+      hlo.user_count() > 0 &&
+      hlo.users()[0]->opcode() == HloOpcode::kCustomCall) {
+    return {};
+  }
+
+  if (hlo.IsCustomCall({"$cp_send_done", "$cp_recv_done"})) {
+    return {};
+  }
+
   CanonicalAsyncOp op = GetCanonicalAsyncOp(hlo);
   auto get_resource_for_op = [](HloOpcode op) -> ResourceType {
     switch (op) {
@@ -806,13 +821,17 @@ HloGraphNode* DefaultSchedulerCore::FindAndExtractBestNodeAvailable(
   for (auto ready_node_it = sched_state.ready_set.begin(),
             e = sched_state.ready_set.end();
        ready_node_it != e; ++ready_node_it) {
+    VLOG(10) << " considering " << (*ready_node_it)->GetInstr().name();
     if (should_skip_node && should_skip_node(*ready_node_it)) {
+      VLOG(10) << " skipping " << (*ready_node_it)->GetInstr().name();
       continue;
     }
     // If this node would cause the max_concurrent_async count to go beyond the
     // limit do not schedule it and pass to the next node.
     if (scheduling_instruction_crosses_overlap_limit(
             (*ready_node_it)->GetInstr())) {
+      VLOG(10) << " will cross overlap limit "
+               << (*ready_node_it)->GetInstr().name();
       continue;
     }
     ScheduleCandidate ready_candidate =
@@ -842,6 +861,7 @@ HloGraphNode* DefaultSchedulerCore::FindAndExtractBestNodeAvailable(
     }
   }
   if (ready_chosen.node == nullptr) {
+    VLOG(10) << "none chosen";
     return nullptr;
   }
   CHECK(chosen_it != sched_state.ready_set.end());

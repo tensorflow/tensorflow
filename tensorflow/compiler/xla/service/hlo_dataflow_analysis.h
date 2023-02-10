@@ -286,6 +286,7 @@ class HloDataflowAnalysis {
       HloInstruction* collective_permute_start);
   bool UpdateCollectivePermuteDoneValueSet(
       HloInstruction* collective_permute_done);
+  bool UpdateCollectivePermuteRecvDoneValueSet(HloInstruction* cp_recv_done);
 
   // Propagates the dataflow through the module. In particular, it propagates
   // the HloValueSet from its defining instruction to the users of the

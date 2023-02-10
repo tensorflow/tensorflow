@@ -790,6 +790,18 @@ tsl::StatusOr<mlir::Operation*> LhloDialectEmitter::EmitCustomCallOp(
     num_results = result_to_target_result_mapping.size();
   }
 
+  // For cp_send_done and cp_recv_done, find the token produced by the
+  // cp_start and add it as an argument.
+  int num_tokens = 0;
+  if (instr->IsCustomCall({"$cp_send_done", "$cp_recv_done"})) {
+    auto iter = ret_tokens_.find(instr->operand(0));
+    TF_RET_CHECK(iter != ret_tokens_.end())
+        << "didn't find collective-permute-start token";
+    // insert token at the  end of arguments.
+    operands.insert(operands.begin() + num_arguments, iter->second);
+    num_tokens++;
+  }
+
   auto custom_call = CreateOpWithoutAttrs<lmhlo::CustomCallOp>(instr, operands);
   TF_ASSIGN_OR_RETURN(
       auto mlir_api_version,
@@ -817,7 +829,7 @@ tsl::StatusOr<mlir::Operation*> LhloDialectEmitter::EmitCustomCallOp(
         builder_.getStringAttr(custom_call_instr->opaque()));
   }
 
-  const int32_t segments[2] = {static_cast<int32_t>(num_arguments),
+  const int32_t segments[3] = {static_cast<int32_t>(num_arguments), num_tokens,
                                static_cast<int32_t>(num_results)};
   custom_call->setAttr(lmhlo::CustomCallOp::getOperandSegmentSizeAttr(),
                        builder_.getDenseI32ArrayAttr(segments));
@@ -1475,6 +1487,14 @@ LhloDialectEmitter::EmitCollectivePermuteStartOp(const HloInstruction* instr) {
           permute->source_target_pairs(), &builder_);
   permute_start_op->setAttr(source_target_pairs_attr.getName(),
                             source_target_pairs_attr.getValue());
+
+  // Check if this collective-permute-start is used in a custom call or a
+  // collective-permute-done and tag accordingly.
+  if (!instr->users().empty() &&
+      instr->users().front()->opcode() == xla::HloOpcode::kCustomCall) {
+    permute_start_op->setAttr("track_send_recv_separately",
+                              UnitAttr::get(permute_start_op->getContext()));
+  }
 
   auto [_, was_inserted] =
       ret_tokens_.insert({instr, permute_start_op.getToken()});

@@ -1342,9 +1342,68 @@ Status IrEmitterUnnested::EmitCholeskyThunk(mlir::Operation* op) {
 }
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
+Status IrEmitterUnnested::EmitCollectivePermuteSendDoneOp(mlir::Operation* op) {
+  auto custom_call = mlir::cast<mlir::lmhlo::CustomCallOp>(op);
+  CHECK_EQ(custom_call.getTokens().size(), 1);
+  auto start_op = custom_call.getTokens().front().getDefiningOp();
+  auto iter = async_executors_.find(start_op);
+  TF_RET_CHECK(iter != async_executors_.end())
+      << "couldn't find async executor for start op";
+  NcclCollectiveThunk::AsyncExecutor* async_executor = iter->second;
+  TF_RET_CHECK(async_executor);
+
+  // Can be null if no start thunk was created (e.g. if the start op is
+  // degenerate), in which case there's nothing to do here.
+  if (async_executor != nullptr) {
+    auto cp_start =
+        mlir::cast<mlir::lmhlo_gpu::CollectivePermuteStartOp>(start_op);
+    const int64_t replica_count = hlo_module_config_.replica_count();
+    const int64_t partition_count = hlo_module_config_.num_partitions();
+    AddThunkToThunkSequence(std::make_unique<NcclCollectivePermuteDoneThunk>(
+        GetThunkInfo(op), *async_executor,
+        Thunk::Kind::kNcclCollectivePermuteSendDone,
+        NcclCollectivePermuteStartThunk::GetNcclCollectivePermuteConfig(
+            cp_start, replica_count, partition_count)));
+  }
+  return OkStatus();
+}
+
+Status IrEmitterUnnested::EmitCollectivePermuteRecvDoneOp(mlir::Operation* op) {
+  auto custom_call = mlir::cast<mlir::lmhlo::CustomCallOp>(op);
+  CHECK_EQ(custom_call.getTokens().size(), 1);
+  auto start_op = custom_call.getTokens().front().getDefiningOp();
+  auto iter = async_executors_.find(start_op);
+  TF_RET_CHECK(iter != async_executors_.end())
+      << "couldn't find async executor for start op";
+  NcclCollectiveThunk::AsyncExecutor* async_executor = iter->second;
+  TF_RET_CHECK(async_executor);
+
+  // Can be null if no start thunk was created (e.g. if the start op is
+  // degenerate), in which case there's nothing to do here.
+  if (async_executor != nullptr) {
+    auto cp_start =
+        mlir::cast<mlir::lmhlo_gpu::CollectivePermuteStartOp>(start_op);
+    const int64_t replica_count = hlo_module_config_.replica_count();
+    const int64_t partition_count = hlo_module_config_.num_partitions();
+
+    AddThunkToThunkSequence(
+        std::make_unique<NcclCollectivePermuteRecvDoneThunk>(
+            GetThunkInfo(op), *async_executor,
+            NcclCollectivePermuteStartThunk::GetNcclCollectivePermuteConfig(
+                cp_start, replica_count, partition_count)));
+  }
+  return OkStatus();
+}
+
 Status IrEmitterUnnested::EmitCustomCallThunk(mlir::Operation* op) {
   auto custom_call = mlir::cast<mlir::lmhlo::CustomCallOp>(op);
   const std::string call_target_name = custom_call.getCallTargetName().str();
+
+  if (call_target_name == "$cp_send_done") {
+    return EmitCollectivePermuteSendDoneOp(op);
+  } else if (call_target_name == "$cp_recv_done") {
+    return EmitCollectivePermuteRecvDoneOp(op);
+  }
 
   void* call_target = CustomCallTargetRegistry::Global()->Lookup(
       call_target_name, std::string(platform_name()));
@@ -3039,6 +3098,28 @@ Status IrEmitterUnnested::EmitNcclAsyncDone(mlir::Operation* op) {
   if (async_executor.mapped() != nullptr) {
     AddThunkToThunkSequence(std::make_unique<NcclThunkType>(
         GetThunkInfo(op), *async_executor.mapped()));
+  }
+  return OkStatus();
+}
+
+template <typename NcclThunkType, typename OpT>
+Status IrEmitterUnnested::EmitNcclAsyncDone(mlir::Operation* op,
+                                            Thunk::Kind kind) {
+  auto start_op = mlir::cast<OpT>(op).getToken().getDefiningOp();
+  auto async_executor = async_executors_.extract(start_op);
+  TF_RET_CHECK(async_executor) << "couldn't find async executor for start op";
+
+  // Can be null if no start thunk was created (e.g. if the start op is
+  // degenerate), in which case there's nothing to do here.
+  if (async_executor.mapped() != nullptr) {
+    auto cp_start =
+        mlir::cast<mlir::lmhlo_gpu::CollectivePermuteStartOp>(start_op);
+    const int64_t replica_count = hlo_module_config_.replica_count();
+    const int64_t partition_count = hlo_module_config_.num_partitions();
+    AddThunkToThunkSequence(std::make_unique<NcclThunkType>(
+        GetThunkInfo(op), *async_executor.mapped(), kind,
+        NcclCollectivePermuteStartThunk::GetNcclCollectivePermuteConfig(
+            cp_start, replica_count, partition_count)));
   }
   return OkStatus();
 }
@@ -5550,7 +5631,8 @@ Status IrEmitterUnnested::EmitOp(mlir::Operation* op) {
 
   if (mlir::isa<mlir::lmhlo_gpu::CollectivePermuteDoneOp>(op)) {
     return EmitNcclAsyncDone<NcclCollectivePermuteDoneThunk,
-                             mlir::lmhlo_gpu::CollectivePermuteDoneOp>(op);
+                             mlir::lmhlo_gpu::CollectivePermuteDoneOp>(
+        op, Thunk::Kind::kNcclCollectivePermuteDone);
   }
 
   if (mlir::isa<mlir::lmhlo::AllGatherOp>(op)) {

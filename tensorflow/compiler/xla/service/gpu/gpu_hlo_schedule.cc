@@ -205,6 +205,22 @@ class GpuLatencyEstimator : public ApproximateLatencyEstimator {
     }
     return ApproximateLatencyEstimator::NodeCost(instr);
   }
+
+  TimeCost GetLatencyBetween(const HloGraphNode& from,
+                             const HloGraphNode& target) const override {
+    // Mark latency between cp-start and cp-read-done as low, but latency
+    // between cp-start and cp-send-done as high.
+    if (from.GetInstr().opcode() == HloOpcode::kCollectivePermuteStart) {
+      if (target.GetInstr().opcode() == HloOpcode::kCustomCall) {
+        if (target.GetInstr().IsCustomCall("$cp_recv_done")) {
+          return ApproximateLatencyEstimator::kMediumLatency;
+        } else if (target.GetInstr().IsCustomCall("$cp_send_done")) {
+          return ApproximateLatencyEstimator::kHighLatency;
+        }
+      }
+    }
+    return ApproximateLatencyEstimator::GetLatencyBetween(from, target);
+  }
 };
 
 }  // end namespace
@@ -234,6 +250,7 @@ Status ScheduleGpuModule(HloModule* module, int64_t pointer_size,
   if (!enable_latency_hiding_scheduler) {
     return OkStatus();
   }
+  std::cerr << "Running LHS\n";
   SchedulerConfig config = GetSchedulerConfig(gpu_info);
   auto latency_estimator = std::make_unique<GpuLatencyEstimator>();
   auto async_tracker = std::make_unique<AsyncTracker>(config);

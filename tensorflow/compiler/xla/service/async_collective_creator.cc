@@ -22,6 +22,7 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "tensorflow/compiler/xla/frontend_attributes.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_casting_utils.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_schedule.h"
 #include "tensorflow/compiler/xla/service/shape_inference.h"
@@ -146,10 +147,35 @@ StatusOr<bool> AsyncCollectiveCreator::Run(
         }
         collective_permute_start->set_metadata(cp->metadata());
         collective_permute_start->CopyBackendConfigFrom(cp);
-        HloInstruction* collective_permute_done =
-            computation->AddInstruction(HloInstruction::CreateUnary(
-                cp->shape(), HloOpcode::kCollectivePermuteDone,
-                collective_permute_start));
+        HloInstruction* collective_permute_done = nullptr;
+        if (!track_send_recv_separately_(cp)) {
+          collective_permute_done =
+              computation->AddInstruction(HloInstruction::CreateUnary(
+                  cp->shape(), HloOpcode::kCollectivePermuteDone,
+                  collective_permute_start));
+        } else {
+          /* track start done and end done separately using custom calls */
+          HloInstruction* cp_recv_done =
+              computation->AddInstruction(HloInstruction::CreateCustomCall(
+                  cp->shape(), {collective_permute_start}, "$cp_recv_done"));
+
+          HloInstruction* cp_send_done =
+              computation->AddInstruction(HloInstruction::CreateCustomCall(
+                  ShapeUtil::MakeTokenShape(), {collective_permute_start},
+                  "$cp_send_done"));
+
+          // Force cp_send_done to execute after cp_recv_done.
+          TF_RETURN_IF_ERROR(
+              cp_recv_done->AddControlDependencyTo(cp_send_done));
+
+          // Mark these custom calls as having side effects they are not dead
+          // code eliminated.
+          Cast<HloCustomCallInstruction>(cp_send_done)
+              ->set_custom_call_has_side_effect(true);
+          Cast<HloCustomCallInstruction>(cp_recv_done)
+              ->set_custom_call_has_side_effect(true);
+          collective_permute_done = cp_recv_done;
+        }
         if (should_update_schedule) {
           replaced_pairs[cp] =
               ReplacedAsync{collective_permute_start, collective_permute_done};

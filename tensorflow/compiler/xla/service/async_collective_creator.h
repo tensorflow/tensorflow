@@ -42,12 +42,18 @@ class AsyncCollectiveCreator : public HloModulePass {
     HloPredicate convert_all_to_all = [](const HloInstruction*) {
       return false;
     };
+    // Track send and recv separately for collective-permutes.
+    HloPredicate track_send_recv_separately = [](const HloInstruction*) {
+      return false;
+    };
   };
   explicit AsyncCollectiveCreator(CollectiveCreatorConfig creator_config)
       : convert_all_reduce_(creator_config.convert_all_reduce),
         convert_all_gather_(creator_config.convert_all_gather),
         convert_collective_permute_(creator_config.convert_collective_permute),
-        convert_all_to_all_(creator_config.convert_all_to_all) {}
+        convert_all_to_all_(creator_config.convert_all_to_all),
+        track_send_recv_separately_(creator_config.track_send_recv_separately) {
+  }
   absl::string_view name() const override { return "async-collective-creator"; }
 
   using HloPassInterface::Run;
@@ -60,6 +66,7 @@ class AsyncCollectiveCreator : public HloModulePass {
   HloPredicate convert_all_gather_;
   HloPredicate convert_collective_permute_;
   HloPredicate convert_all_to_all_;
+  HloPredicate track_send_recv_separately_;
 };
 
 }  // namespace xla

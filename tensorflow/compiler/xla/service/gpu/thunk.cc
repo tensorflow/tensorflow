@@ -62,6 +62,10 @@ Thunk::ExecuteParams::ExecuteParams(
       return "kNcclCollectivePermuteStart";
     case Thunk::kNcclCollectivePermuteDone:
       return "kNcclCollectivePermuteDone";
+    case Thunk::kNcclCollectivePermuteSendDone:
+      return "kNcclCollectivePermuteSendDone";
+    case Thunk::kNcclCollectivePermuteRecvDone:
+      return "kNcclCollectivePermuteRecvDone";
     case Thunk::kNcclReduceScatter:
       return "kNcclReduceScatter";
     case Thunk::kNcclAllToAll:
