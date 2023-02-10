@@ -740,6 +740,10 @@ tsl::StatusOr<mlir::Operation*> LhloDialectEmitter::EmitCustomCallOp(
     return EmitDnnConvolution(custom_call_instr);
   }
 
+  if (xla::gpu::IsCudnnConvolutionReorder(*instr)) {
+    return EmitDnnConvolutionReorderVectorized(custom_call_instr);
+  }
+
   // For custom call, if there are any token operands or results, they will not
   // be represented in LHLO so we need to remember the mapping. First create
   // operands where each token is replaced with a null Value.
@@ -1215,6 +1219,40 @@ tsl::StatusOr<Operation*> LhloDialectEmitter::EmitDnnConvolution(
       TF_RETURN_IF_ERROR(set_activation(cnn_fused_side_input));
       return set_common_conv_attributes(cnn_fused_side_input);
     }
+  }
+}
+
+tsl::StatusOr<Operation*>
+LhloDialectEmitter::EmitDnnConvolutionReorderVectorized(
+    const HloCustomCallInstruction* custom_call) {
+  auto set_common_attributes = [&, this](auto op) -> Operation* {
+    // Output shape defines the filter, it must have NCHW_VECT_C layout.
+    Shape shape = custom_call->shape();
+    if (shape.IsTuple()) {
+      shape = shape.tuple_shapes(0);
+    }
+
+    CHECK_EQ(shape.rank(), 5);
+    CHECK_EQ(shape.dimensions_minor(0), 32);
+    llvm::SmallVector<int64_t, 4> nchw = {
+        shape.dimensions_minor(4), shape.dimensions_minor(3) * 32,
+        shape.dimensions_minor(2), shape.dimensions_minor(1)};
+    op->setAttr("filter_dims", GetI64DenseElementsAttr(nchw));
+
+    return op.getOperation();
+  };
+
+  if (custom_call->operand_count() > 1) {
+    TF_ASSIGN_OR_RETURN(
+        auto reorder_filter_and_bias,
+        CreateOpWithoutAttrs<lmhlo_gpu::CudnnConvReorderFilterAndBiasOp>(
+            custom_call));
+    return set_common_attributes(reorder_filter_and_bias);
+  } else {
+    TF_ASSIGN_OR_RETURN(
+        auto reorder_filter,
+        CreateOpWithoutAttrs<lmhlo_gpu::CudnnConvReorderFilterOp>(custom_call));
+    return set_common_attributes(reorder_filter);
   }
 }
 

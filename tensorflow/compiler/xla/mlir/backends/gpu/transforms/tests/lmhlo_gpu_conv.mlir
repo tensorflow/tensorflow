@@ -312,3 +312,68 @@ func.func @conv_forward_fused_with_side_input(
 // CHECK-SAME:   memref<1x3x3x64xf64, #map{{[0-9]*}}>, memref<0xui8>
 // CHECK-SAME: ) attributes {rt.custom_call =
 // CHECK-SAME:               "xla.gpu.conv.forward.fused.side_input"}
+
+// -----
+
+#map0 = affine_map<(d0, d1, d2, d3, d4) -> (d0 + d1 + d2 + d3 * 3 + d4 * 9)>
+
+// CHECK: @conv_reorder_filter(
+// CHECK:   %[[INPUT:[a-z0-9]+]]: memref
+// CHECK:   %[[OUTPUT:[a-z0-9]+]]: memref
+// CHECK: )
+func.func @conv_reorder_filter(
+  %input: memref<1x1x3x3x32xi8, #map0>,
+  %output: memref<1x1x3x3x32xi8, #map0>) {
+
+  // CHECK: call @xla.gpu.conv.reorder.filter(
+  // CHECK-SAME: %[[INPUT]], %[[OUTPUT]]
+  // CHECK-DAG: filter_dims = array<i64: 1, 32, 3, 3>
+  "lmhlo_gpu.cudnn_conv_reorder_filter"(%input, %output) {
+    filter_dims = dense<[1, 32, 3, 3]> : tensor<4xi64>
+  }: (memref<1x1x3x3x32xi8, #map0>,
+      memref<1x1x3x3x32xi8, #map0>) -> ()
+
+  return
+}
+
+// CHECK: func private @xla.gpu.conv.reorder.filter(
+// CHECK-SAME:   memref<1x1x3x3x32xi8, #map{{[0-9]*}}>,
+// CHECK-SAME:   memref<1x1x3x3x32xi8, #map{{[0-9]*}}>
+// CHECK-SAME: ) attributes {rt.custom_call =
+// CHECK-SAME:               "xla.gpu.conv.reorder.filter"}
+
+// -----
+
+#map0 = affine_map<(d0, d1, d2, d3, d4) -> (d0 + d1 + d2 + d3 * 3 + d4 * 9)>
+
+// CHECK: @conv_reorder_filter_and_bias(
+// CHECK:   %[[FILTER_INPUT:[a-z0-9]+]]: memref
+// CHECK:   %[[BIAS_INPUT:[a-z0-9]+]]: memref
+// CHECK:   %[[FILTER_OUTPUT:[a-z0-9]+]]: memref
+// CHECK:   %[[BIAS_OUTPUT:[a-z0-9]+]]: memref
+// CHECK: )
+func.func @conv_reorder_filter_and_bias(
+  %filter_input: memref<1x1x3x3x32xi8, #map0>,
+  %bias_input: memref<32xf32>,
+  %filter_output: memref<1x1x3x3x32xi8, #map0>,
+  %bias_output: memref<32xf32>) {
+
+  // CHECK: call @xla.gpu.conv.reorder.filter_and_bias(
+  // CHECK-SAME: %[[FILTER_INPUT]], %[[BIAS_INPUT]], %[[FILTER_OUTPUT]], %[[BIAS_OUTPUT]]
+  // CHECK-DAG: filter_dims = array<i64: 1, 32, 3, 3>
+  "lmhlo_gpu.cudnn_conv_reorder_filter_and_bias"(
+      %filter_input, %bias_input, %filter_output, %bias_output) {
+    filter_dims = dense<[1, 32, 3, 3]> : tensor<4xi64>
+  }: (memref<1x1x3x3x32xi8, #map0>, memref<32xf32>,
+      memref<1x1x3x3x32xi8, #map0>, memref<32xf32>) -> ()
+
+  return
+}
+
+// CHECK: func private @xla.gpu.conv.reorder.filter_and_bias(
+// CHECK-SAME:   memref<1x1x3x3x32xi8, #map{{[0-9]*}}>,
+// CHECK-SAME:   memref<32xf32>,
+// CHECK-SAME:   memref<1x1x3x3x32xi8, #map{{[0-9]*}}>,
+// CHECK-SAME:   memref<32xf32>
+// CHECK-SAME: ) attributes {rt.custom_call =
+// CHECK-SAME:               "xla.gpu.conv.reorder.filter_and_bias"}

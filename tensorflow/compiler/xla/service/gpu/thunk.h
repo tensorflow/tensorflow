@@ -50,6 +50,7 @@ class Thunk {
     kCholesky,
     kConditional,
     kConvolution,
+    kConvolutionReorder,
     kCopy,
     kCublasLtMatmul,
     kCustomCall,
