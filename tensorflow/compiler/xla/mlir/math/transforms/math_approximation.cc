@@ -600,12 +600,83 @@ LogicalResult Log1pApproximation::matchAndRewrite(
   return mlir::success();
 }
 
+struct TanhApproximation : public OpRewritePattern<math::TanhOp> {
+ public:
+  using OpRewritePattern::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(math::TanhOp op,
+                                PatternRewriter &rewriter) const final;
+};
+
+// This approximation comes from Eigen::generic_fast_tanh function.
+LogicalResult TanhApproximation::matchAndRewrite(
+    math::TanhOp op, PatternRewriter &rewriter) const {
+  auto shape = vectorShape(op.getOperand().getType(), isF32);
+  if (!shape.has_value()) {
+    return rewriter.notifyMatchFailure(op, "unsupported operand type");
+  }
+
+  ImplicitLocOpBuilder builder(op->getLoc(), rewriter);
+  auto bcast = [&](Value value) -> Value {
+    return broadcast(builder, value, *shape);
+  };
+
+  Value x = ClampWithNormals(builder, *shape, op.getOperand(),
+                             -7.99881172180175781f, 7.99881172180175781f);
+
+  // Mask for tiny values that are approximated with `operand`.
+  Value tiny = bcast(f32Cst(builder, 0.0004f));
+  Value tiny_mask = builder.create<arith::CmpFOp>(
+      arith::CmpFPredicate::OLT, builder.create<math::AbsFOp>(op.getOperand()),
+      tiny);
+
+  // The monomial coefficients of the numerator polynomial (odd).
+  Value alpha1 = bcast(f32Cst(builder, 4.89352455891786e-03f));
+  Value alpha3 = bcast(f32Cst(builder, 6.37261928875436e-04f));
+  Value alpha5 = bcast(f32Cst(builder, 1.48572235717979e-05f));
+  Value alpha7 = bcast(f32Cst(builder, 5.12229709037114e-08f));
+  Value alpha9 = bcast(f32Cst(builder, -8.60467152213735e-11f));
+  Value alpha11 = bcast(f32Cst(builder, 2.00018790482477e-13f));
+  Value alpha13 = bcast(f32Cst(builder, -2.76076847742355e-16f));
+
+  // The monomial coefficients of the denominator polynomial (even).
+  Value beta0 = bcast(f32Cst(builder, 4.89352518554385e-03f));
+  Value beta2 = bcast(f32Cst(builder, 2.26843463243900e-03f));
+  Value beta4 = bcast(f32Cst(builder, 1.18534705686654e-04f));
+  Value beta6 = bcast(f32Cst(builder, 1.19825839466702e-06f));
+
+  // Since the polynomials are odd/even, we need x^2.
+  Value x2 = builder.create<arith::MulFOp>(x, x);
+
+  // Evaluate the numerator polynomial p.
+  Value p = builder.create<math::FmaOp>(x2, alpha13, alpha11);
+  p = builder.create<math::FmaOp>(x2, p, alpha9);
+  p = builder.create<math::FmaOp>(x2, p, alpha7);
+  p = builder.create<math::FmaOp>(x2, p, alpha5);
+  p = builder.create<math::FmaOp>(x2, p, alpha3);
+  p = builder.create<math::FmaOp>(x2, p, alpha1);
+  p = builder.create<arith::MulFOp>(x, p);
+
+  // Evaluate the denominator polynomial q.
+  Value q = builder.create<math::FmaOp>(x2, beta6, beta4);
+  q = builder.create<math::FmaOp>(x2, q, beta2);
+  q = builder.create<math::FmaOp>(x2, q, beta0);
+
+  // Divide the numerator by the denominator.
+  Value res = builder.create<arith::SelectOp>(
+      tiny_mask, x, builder.create<arith::DivFOp>(p, q));
+
+  rewriter.replaceOp(op, res);
+
+  return mlir::success();
+}
+
 void populateMathApproximationPatterns(RewritePatternSet &patterns,
                                        ArrayRef<std::string> oplist) {
   for (const std::string &op : oplist) {
     if (op == "all") {
       patterns.add<ExpApproximation, EigenExpM1Approximation, LogApproximation,
-                   Log1pApproximation, Log2Approximation>(
+                   Log1pApproximation, Log2Approximation, TanhApproximation>(
           patterns.getContext());
     } else if (op == "exp") {
       patterns.add<ExpApproximation>(patterns.getContext());
@@ -617,6 +688,8 @@ void populateMathApproximationPatterns(RewritePatternSet &patterns,
       patterns.add<Log1pApproximation>(patterns.getContext());
     } else if (op == "log2") {
       patterns.add<Log2Approximation>(patterns.getContext());
+    } else if (op == "tanh") {
+      patterns.add<TanhApproximation>(patterns.getContext());
     }
   }
 }
