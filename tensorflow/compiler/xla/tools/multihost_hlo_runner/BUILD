@@ -1,5 +1,8 @@
 load("//tensorflow/tsl/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow/compiler/xla/tests:build_defs.bzl", "xla_test")
+load("//tensorflow/tsl:tsl.bzl", "if_cuda_or_rocm")
+load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
+load("//tensorflow/compiler/xla:xla.bzl", "xla_cc_binary")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -7,24 +10,29 @@ package(
     licenses = ["notice"],
 )
 
-cc_binary(
+xla_cc_binary(
     name = "hlo_runner_main",
+    testonly = True,
     srcs = ["hlo_runner_main.cc"],
+    tags = [
+        "noasan",  # Exceeds linker limit.
+    ],
     deps = [
-        ":hlo_runner_flags",
         ":functional_hlo_runner",
+        ":hlo_runner_flags",
         "@com_google_absl//absl/strings",
         "//tensorflow/compiler/xla:debug_options_flags",
-        # This is needed to run on GPU.
-        "//tensorflow/compiler/jit:xla_gpu_jit",
-        # "//tensorflow/compiler/xla/stream_executor/cuda:cuda_platform",
         "//tensorflow/compiler/xla:status",
         "//tensorflow/tsl/platform:logging",
         "//tensorflow/tsl/platform:platform_port",
         "//tensorflow/tsl/platform:status",
         "//tensorflow/tsl/platform:statusor",
         "//tensorflow/tsl/util:command_line_flags",
-    ],
+    ] + if_cuda_or_rocm([
+        "//tensorflow/compiler/xla/service:gpu_plugin",
+    ]) + if_cuda([
+        "//tensorflow/compiler/xla/stream_executor:cuda_platform",
+    ]),
 )
 
 cc_library(
