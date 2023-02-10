@@ -4281,6 +4281,22 @@ func.func @get_dimension_size(%I: tensor<1x128x512xf32>) -> tensor<i32> {
 
 // -----
 
+func.func @get_dimension_size_negative_dimension(%I: tensor<1x128x512xf32>) -> tensor<i32> {
+  // expected-error@+1 {{requires dimension attribute in range [0, 3); found (-1)}}
+  %size = "mhlo.get_dimension_size"(%I) {dimension = -1 : i64} : (tensor<1x128x512xf32>) -> tensor<i32>
+  func.return %size : tensor<i32>
+}
+
+// -----
+
+func.func @get_dimension_size_invalid_dimension(%I: tensor<1x128x512xf32>) -> tensor<i32> {
+  // expected-error@+1 {{requires dimension attribute in range [0, 3); found (3)}}
+  %size = "mhlo.get_dimension_size"(%I) {dimension = 3 : i64} : (tensor<1x128x512xf32>) -> tensor<i32>
+  func.return %size : tensor<i32>
+}
+
+// -----
+
 func.func @set_dimension_size(%I: tensor<1x128x512xf32>) -> tensor<1x128x512xf32> {
   %dim = mhlo.constant dense<512> : tensor<1xi32>
 
@@ -4291,9 +4307,17 @@ func.func @set_dimension_size(%I: tensor<1x128x512xf32>) -> tensor<1x128x512xf32
 
 // -----
 
-func.func @set_dimension_size(%I: tensor<1x128x512xf32>) -> tensor<1x128x512xf32> {
+func.func @set_dimension_size_negative_dimension(%I: tensor<1x128x512xf32>) -> tensor<1x128x512xf32> {
   %dim = mhlo.constant dense<512> : tensor<i32>
+  // expected-error@+1 {{requires dimension attribute in range [0, 3); found (-1)}}
+  %result = "mhlo.set_dimension_size"(%I, %dim) {dimension =-1 : i64} : (tensor<1x128x512xf32>, tensor<i32>) -> tensor<1x128x512xf32>
+  func.return %result : tensor<1x128x512xf32>
+}
 
+// -----
+
+func.func @set_dimension_size_invalid_dimension(%I: tensor<1x128x512xf32>) -> tensor<1x128x512xf32> {
+  %dim = mhlo.constant dense<512> : tensor<i32>
   // expected-error@+1 {{requires dimension attribute in range [0, 3); found (3)}}
   %result = "mhlo.set_dimension_size"(%I, %dim) {dimension = 3 : i64} : (tensor<1x128x512xf32>, tensor<i32>) -> tensor<1x128x512xf32>
   func.return %result : tensor<1x128x512xf32>
@@ -6326,9 +6350,17 @@ func.func @is_finite_mismatch_return_shape(%arg0: tensor<3xf32>) -> tensor<4xi1>
 
 // -----
 
-func.func @invalid_dimension_attr(%arg0: tensor<?x?xf32, #mhlo.type_extensions<bounds = [3, -1]>>, %arg1: tensor<i32>) -> tensor<*xf32> {
+func.func @negative_dimension_attr(%arg0: tensor<?x?xf32, #mhlo.type_extensions<bounds = [3, -1]>>, %arg1: tensor<i32>) -> tensor<*xf32> {
   // expected-error@+1 {{requires dimension attribute in range [0, 2); found (-1)}}
   %result = "mhlo.set_dimension_size"(%arg0, %arg1) {dimension = -1 : i64} : (tensor<?x?xf32, #mhlo.type_extensions<bounds = [3, -1]>>, tensor<i32>) -> tensor<*xf32>
+  func.return %result : tensor<*xf32>
+}
+
+// -----
+
+func.func @invalid_dimension_attr(%arg0: tensor<?x?xf32, #mhlo.type_extensions<bounds = [3, -1]>>, %arg1: tensor<i32>) -> tensor<*xf32> {
+  // expected-error@+1 {{requires dimension attribute in range [0, 2); found (2)}}
+  %result = "mhlo.set_dimension_size"(%arg0, %arg1) {dimension = 2 : i64} : (tensor<?x?xf32, #mhlo.type_extensions<bounds = [3, -1]>>, tensor<i32>) -> tensor<*xf32>
   func.return %result : tensor<*xf32>
 }
 
