@@ -179,7 +179,6 @@ py_library(
     deps = [
         ":base",
         ":layer_utils",
-        "//tensorflow/python/saved_model:revived_types",
         "@wrapt",
     ],
 )
