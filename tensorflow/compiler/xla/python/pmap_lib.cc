@@ -205,10 +205,15 @@ xla::StatusOr<ShardArgResult> ShardArg(
     // The JAX Python shard_arg function is expected to return JAX PyBuffer
     // objects. If executing a JAX extension, it should have fallbacked to
     // Python well before this point.
-    TF_RET_CHECK(xla::PyBuffer::IsPyBuffer(per_device_pybuffers[0]));
     for (py::handle per_device_pybuffer : per_device_pybuffers) {
-      auto b = xla::PyBuffer::AsPyBuffer(per_device_pybuffer).value();
-      per_device_arrays.push_back(tsl::FormRef(b->ifrt_array()));
+      if (xla::PyArray::IsPyArray(per_device_pybuffer)) {
+        xla::PyArray py_array = py::cast<xla::PyArray>(per_device_pybuffer);
+        per_device_arrays.push_back(tsl::FormRef(py_array.ifrt_array()));
+      } else {
+        TF_RET_CHECK(xla::PyBuffer::IsPyBuffer(per_device_pybuffer));
+        auto b = xla::PyBuffer::AsPyBuffer(per_device_pybuffer).value();
+        per_device_arrays.push_back(tsl::FormRef(b->ifrt_array()));
+      }
       devices.push_back(per_device_arrays.back()->sharding().devices().front());
       shapes.push_back(per_device_arrays.back()->shape());
     }

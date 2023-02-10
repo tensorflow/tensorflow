@@ -28,6 +28,7 @@ limitations under the License.
 #include "pybind11/pytypes.h"
 #include "tensorflow/compiler/xla/pjrt/gpu/se_gpu_pjrt_client.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
+#include "tensorflow/compiler/xla/python/py_array.h"
 #include "tensorflow/compiler/xla/python/python_ref_manager.h"
 #include "tensorflow/compiler/xla/python/traceback.h"
 #include "tensorflow/compiler/xla/types.h"
@@ -282,6 +283,10 @@ StatusOr<PjRtDevice*> DeviceForDLDevice(const PjRtClient* cpu_client,
 
 StatusOr<py::capsule> BufferToDLPackManagedTensor(py::handle py_buffer,
                                                   bool take_ownership) {
+  if (PyArray::IsPyArray(py_buffer)) {
+    return BufferToDLPackManagedTensor(
+        py::cast<xla::PyArray>(py_buffer).ToPyBuffer(), take_ownership);
+  }
   TF_ASSIGN_OR_RETURN(PyBuffer * buffer, PyBuffer::AsPyBuffer(py_buffer));
   auto pack = std::make_unique<DLPackTensor>();
   if (buffer->pjrt_buffer()->on_device_shape().IsTuple()) {

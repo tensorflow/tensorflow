@@ -26,6 +26,7 @@ limitations under the License.
 #include "pybind11_abseil/absl_casters.h"  // from @pybind11_abseil
 #include "tensorflow/compiler/xla/python/ifrt/array.h"
 #include "tensorflow/compiler/xla/python/python_utils.h"
+#include "tensorflow/compiler/xla/python/sharding.h"
 #include "tensorflow/compiler/xla/python/status_casters.h"
 #include "tensorflow/compiler/xla/python/util.h"
 #include "tensorflow/compiler/xla/util.h"
@@ -272,49 +273,74 @@ void PyArray::SetIfrtArray(tsl::RCReference<ifrt::Array> ifrt_array) {
   GetStorage().ifrt_array = std::move(ifrt_array);
 }
 
+PyBuffer::object PyArray::ToPyBuffer() const {
+  return PyBuffer::Make(py_client(),
+                        ifrt_array()
+                            ->Reshard(ifrt_array()->shared_ptr_sharding(),
+                                      ifrt::ArrayCopySemantics::kReuseInput)
+                            .value(),
+                        traceback());
+}
+
+PyArray PyArray::MakeFromSingleDevice(std::shared_ptr<PyClient> py_client,
+                                      std::shared_ptr<Traceback> traceback,
+                                      tsl::RCReference<ifrt::Array> ifrt_array,
+                                      bool weak_type, bool committed) {
+  static const auto* jax_core = new py::module(py::module::import("jax.core"));
+  static const auto* shaped_array =
+      new py::handle(jax_core->attr("ShapedArray"));
+  PrimitiveType primitive = ifrt::ToPrimitiveType(ifrt_array->dtype()).value();
+  auto dtype = PrimitiveTypeToDtype(primitive).value();
+  auto aval = (*shaped_array)(SpanToTuple(ifrt_array->shape().dims()), dtype,
+                              weak_type);
+  auto shape_span = ifrt_array->shape().dims();
+  auto shape = std::vector<int64_t>(shape_span.begin(), shape_span.end());
+  auto sharding = py::cast(std::make_unique<jax::SingleDeviceSharding>(py::cast(
+      WrapWithClient(py_client, ifrt_array->sharding().devices().front()))));
+  return PyArray(std::move(aval), weak_type, dtype, std::move(shape),
+                 std::move(sharding), std::move(py_client),
+                 std::move(traceback), std::move(ifrt_array), committed);
+}
+
 py::object PyArray::arrays() {
-// For performance, we only keep pjrt buffers by default. But on python side
-// "_arrays" returns PyBuffers instead, and subsequent calls to "_arrays"
-// should return the same PyBuffers (to avoid duplicate device to host
-// transfers). So we create PyBuffers the first time it is called and reuse
-// them later.
+  // For performance, we only keep pjrt buffers by default. But on python side
+  // "_arrays" returns PyArrays instead, and subsequent calls to "_arrays"
+  // should return the same PyArrays (to avoid duplicate device to host
+  // transfers). So we create PyArrays the first time it is called and reuse
+  // them later.
   if (ifrt_array() == nullptr) return py::none();
 
-  auto& py_buffers = this->py_buffers();
+  if (llvm::isa<ifrt::SingleDeviceSharding>(&ifrt_array()->sharding())) {
+    std::vector<PyArray> py_arrays;
+    py_arrays.push_back(*this);
+    return py::cast(py_arrays);
+  }
 
-  if (py_buffers.empty()) {
-    if (llvm::isa<ifrt::SingleDeviceSharding>(&ifrt_array()->sharding())) {
-      py_buffers.reserve(1);
-      py_buffers.push_back(
-          PyBuffer::Make(py_client(),
-                         ifrt_array()
-                             ->Reshard(ifrt_array()->shared_ptr_sharding(),
-                                       ifrt::ArrayCopySemantics::kReuseInput)
-                             .value(),
-                         traceback()));
-    } else {
-      auto ifrt_arrays = ifrt_array()->DisassembleIntoSingleDeviceArrays(
-          ifrt::ArrayCopySemantics::kReuseInput);
-      if (!ifrt_arrays.ok()) {
-        throw py::value_error(
-            absl::StrCat("Failed to disassemble into single-device arrays: ",
-                         ifrt_arrays.status().ToString()));
-      }
-      py_buffers.reserve(ifrt_arrays->size());
-      for (auto& ifrt_array : *ifrt_arrays) {
-        py_buffers.push_back(
-            PyBuffer::Make(py_client(), std::move(ifrt_array), traceback()));
-      }
+  auto& py_arrays = this->py_arrays();
+
+  if (py_arrays.empty()) {
+    auto ifrt_arrays = ifrt_array()->DisassembleIntoSingleDeviceArrays(
+        ifrt::ArrayCopySemantics::kReuseInput);
+    if (!ifrt_arrays.ok()) {
+      throw py::value_error(
+          absl::StrCat("Failed to disassemble into single-device arrays: ",
+                       ifrt_arrays.status().ToString()));
+    }
+    py_arrays.reserve(ifrt_arrays->size());
+    for (auto& ifrt_array : *ifrt_arrays) {
+      py_arrays.push_back(PyArray::MakeFromSingleDevice(
+          py_client(), traceback(), std::move(ifrt_array), weak_type(),
+          committed()));
     }
   }
 
-  return py::cast(py_buffers);
+  return py::cast(py_arrays);
 }
 
 Status PyArray::set_arrays(py::object obj) {
   if (obj.is_none()) {
     SetIfrtArray(tsl::RCReference<ifrt::Array>());
-    py_buffers().clear();
+    py_arrays().clear();
     return OkStatus();
   }
 
@@ -328,7 +354,7 @@ Status PyArray::set_arrays(py::object obj) {
   if (list.empty()) return OkStatus();
 
   SetIfrtArray(tsl::RCReference<ifrt::Array>());
-  py_buffers().clear();
+  py_arrays().clear();
   std::vector<tsl::RCReference<ifrt::Array>> ifrt_arrays;
   ifrt_arrays.reserve(list.size());
   ifrt::DeviceList::Devices devices;
@@ -338,18 +364,30 @@ Status PyArray::set_arrays(py::object obj) {
   for (py::handle obj : list) {
     // TODO(chky): Currently only List[Buffer] is handled here. We need to
     // handle List[Array] as well.
-    if (obj.get_type().ptr() != PyBuffer::type()) {
+    if (obj.get_type().ptr() == PyBuffer::type()) {
+      auto* py_buffer = PyBuffer::AsPyBufferUnchecked(obj);
+      DCHECK_EQ(py_buffer->client(), py_client());
+      // TODO(hyeontaek): This should return an error instead of failing.
+      CHECK(py_buffer->ifrt_array() != nullptr);
+      ifrt_arrays.push_back(tsl::FormRef(py_buffer->ifrt_array()));
+      devices.push_back(ifrt_arrays.back()->sharding().devices().front());
+      shapes.push_back(ifrt_arrays.back()->shape());
+    } else if (obj.get_type().is(PyArray::type())) {
+      auto py_array = py::reinterpret_borrow<PyArray>(obj);
+      if (py_array.py_client() != py_client()) {
+        return InvalidArgument("Client mismatch when assigning to _arrays.");
+      }
+      if (py_array.num_shards() != 1) {
+        return InvalidArgument("Wrong number of shards: %d",
+                               py_array.num_shards());
+      }
+      ifrt_arrays.push_back(tsl::FormRef(py_array.ifrt_array()));
+      devices.push_back(ifrt_arrays.back()->sharding().devices().front());
+      shapes.push_back(ifrt_arrays.back()->shape());
+    } else {
       return InvalidArgument("Unsupported arg when setting Array._arrays: %s",
                              py::cast<std::string>(py::str(obj.get_type())));
     }
-
-    auto* py_buffer = PyBuffer::AsPyBufferUnchecked(obj);
-    DCHECK_EQ(py_buffer->client(), py_client());
-    // TODO(hyeontaek): This should return an error instead of failing.
-    CHECK(py_buffer->ifrt_array() != nullptr);
-    ifrt_arrays.push_back(tsl::FormRef(py_buffer->ifrt_array()));
-    devices.push_back(ifrt_arrays.back()->sharding().devices().front());
-    shapes.push_back(ifrt_arrays.back()->shape());
   }
   TF_ASSIGN_OR_RETURN(
       auto array,
@@ -373,6 +411,60 @@ Status PyArray::BlockUntilReady() const {
   }
   return AwaitBuffersReady(ifrt_array());
   return status;
+}
+
+StatusOr<pybind11::object> PyArray::SingleDeviceArrayAsNumPyArray() {
+  if (!llvm::isa<ifrt::SingleDeviceSharding>(&ifrt_array()->sharding())) {
+    throw xla::XlaRuntimeError(
+        InvalidArgument("_single_device_array_to_np_array only supported for "
+                        "unsharded arrays."));
+  }
+  return PyHostValue::AsNumPyArray(
+      GetStorage().host_value, GetStorage().dynamic_shape, ifrt_array(), *this);
+}
+
+Status PyArray::CopySingleDeviceArrayToHostAsync() {
+  if (!llvm::isa<ifrt::SingleDeviceSharding>(&ifrt_array()->sharding())) {
+    throw xla::XlaRuntimeError(
+        InvalidArgument("_single_device_array_to_np_array only supported for "
+                        "unsharded arrays."));
+  }
+  return PyHostValue::CopyToHostAsync(GetStorage().host_value,
+                                      GetStorage().dynamic_shape, ifrt_array());
+}
+
+StatusOr<py::object> PyArray::CopyToDevice(PjRtDevice* device) {
+  if (!llvm::isa<ifrt::SingleDeviceSharding>(&ifrt_array()->sharding())) {
+    throw xla::XlaRuntimeError(
+        InvalidArgument("copy_to_device only supported for unsharded arrays."));
+  }
+
+  if (device == IfrtHelpers::pjrt_device(ifrt_array())) {
+    tsl::RCReference<ifrt::Array> out =
+        ifrt_array()
+            ->Reshard(ifrt_array()->shared_ptr_sharding(),
+                      ifrt::ArrayCopySemantics::kReuseInput)
+            .value();
+    return py::object(PyArray::MakeFromSingleDevice(
+        py_client(), traceback(), std::move(out), weak_type(), true));
+  }
+
+  TF_ASSIGN_OR_RETURN(tsl::RCReference<ifrt::Array> out,
+                      IfrtHelpers::CopyToDevice(ifrt_array(), device));
+  return py::object(PyArray::MakeFromSingleDevice(
+      py_client(), traceback(), std::move(out), weak_type(), true));
+}
+
+Status PyArray::Delete() {
+  for (auto& arr : py_arrays()) {
+    TF_RETURN_IF_ERROR(arr.Delete());
+  }
+  py_arrays().clear();
+  if (ifrt_array() != nullptr) {
+    TF_RETURN_IF_ERROR(ifrt_array()->Delete().Await());
+    SetIfrtArray(tsl::RCReference<ifrt::Array>());
+  }
+  return OkStatus();
 }
 
 bool PyArray::IsDeleted() const {
@@ -487,6 +579,7 @@ Status PyArray::RegisterTypes(py::module& m) {
         PyArray::PyInit(self, PyArray::DisableFastpath());
       },
       py::is_method(type));
+  type.attr("delete") = py::cpp_function(&PyArray::Delete, py::is_method(type));
   type.attr("_sharding") = jax::property_readonly(&PyArray::sharding);
   type.attr("aval") = jax::property(&PyArray::aval, &PyArray::set_aval);
   type.attr("_arrays") = jax::property(&PyArray::arrays, &PyArray::set_arrays);
@@ -499,6 +592,30 @@ Status PyArray::RegisterTypes(py::module& m) {
         return self;
       },
       py::is_method(type));
+  type.attr("platform") = py::cpp_function(
+      [](PyArray self) { return self.ifrt_array()->client()->platform_name(); },
+      py::is_method(type));
+  type.attr("unsafe_buffer_pointer") = py::cpp_function(
+      [](PyArray self) {
+        return self.py_client()->pjrt_client()->UnsafeBufferPointer(
+            IfrtHelpers::pjrt_buffer(self.ifrt_array()));
+      },
+      py::is_method(type));
+  type.attr("_on_device_size_in_bytes") = py::cpp_function(
+      [](PyArray self) -> StatusOr<size_t> {
+        return IfrtHelpers::pjrt_buffer(self.ifrt_array())
+            ->GetOnDeviceSizeInBytes();
+      },
+      py::is_method(type));
+  type.attr("copy_to_device") = py::cpp_function(
+      [](PyArray self, const ClientAndPtr<PjRtDevice>& dst_device) {
+        return self.CopyToDevice(dst_device.get());
+      },
+      py::is_method(type));
+  type.attr("_single_device_array_to_np_array") = py::cpp_function(
+      &PyArray::SingleDeviceArrayAsNumPyArray, py::is_method(type));
+  type.attr("_copy_single_device_array_to_host_async") = py::cpp_function(
+      &PyArray::CopySingleDeviceArrayToHostAsync, py::is_method(type));
   type.attr("is_ready") = py::cpp_function(
       [](PyArray self) { return self.IsReady(); }, py::is_method(type));
   type.attr("is_deleted") =
