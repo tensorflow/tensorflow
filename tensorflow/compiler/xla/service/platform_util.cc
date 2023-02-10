@@ -30,6 +30,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
+#include "tensorflow/core/util/env_var.h"
 
 namespace xla {
 
@@ -179,7 +180,22 @@ PlatformUtil::GetStreamExecutors(
     device_count =
         GetDebugOptionsFromFlags().xla_force_host_platform_device_count();
   }
-  std::vector<se::StreamExecutor*> stream_executors(device_count, nullptr);
+  std::vector<std::vector<se::StreamExecutor*>> stream_executors(device_count);
+  if (platform->Name() == "CUDA") {
+    std::vector<int64> gpu_stream_group_count;
+    TF_CHECK_OK(tensorflow::ReadSeparatedInt64FromEnvVar(
+        "TF_GPU_STREAM_GROUP_COUNT",
+        /*default_val=*/1, &gpu_stream_group_count));
+    for (int i = 0; i < device_count; ++i) {
+      stream_executors[i].resize(gpu_stream_group_count.size() > 1
+                                     ? gpu_stream_group_count[i]
+                                     : gpu_stream_group_count[0]);
+    }
+  } else {
+    for (int i = 0; i < device_count; ++i) {
+      stream_executors[i].resize(1);
+    }
+  }
   VLOG(1) << "Initializing devices";
   {
     tensorflow::thread::ThreadPool thread_pool(
@@ -198,18 +214,22 @@ PlatformUtil::GetStreamExecutors(
       }
       thread_pool.Schedule([platform, i, &stream_executors]() {
         VLOG(1) << "Started device init " << i;
-        se::StreamExecutorConfig config;
-        config.ordinal = i;
-        auto executor_status = platform->GetExecutor(config);
-        if (executor_status.ok()) {
-          se::StreamExecutor* executor = executor_status.ValueOrDie();
-          if (IsDeviceSupported(executor)) {
-            stream_executors[i] = executor;
+        for (int j = 0; j < stream_executors[i].size(); ++j) {
+          se::StreamExecutorConfig config;
+          config.ordinal = i;
+          config.stream_id = j;
+          auto executor_status = platform->GetExecutor(config);
+          if (executor_status.ok()) {
+            se::StreamExecutor* executor = executor_status.ValueOrDie();
+            if (IsDeviceSupported(executor)) {
+              stream_executors[i][j] = executor;
+            }
+          } else {
+            LOG(WARNING) << "unable to create StreamExecutor for "
+                         << platform->Name() << ":" << i << ": "
+                         << "Stream ID :" << j << ": "
+                         << executor_status.status().error_message();
           }
-        } else {
-          LOG(WARNING) << "unable to create StreamExecutor for "
-                       << platform->Name() << ":" << i << ": "
-                       << executor_status.status().error_message();
         }
         VLOG(1) << "Finished device init " << i;
       });
@@ -219,9 +239,11 @@ PlatformUtil::GetStreamExecutors(
   VLOG(1) << "Device initialization complete";
 
   std::vector<se::StreamExecutor*> out;
-  for (se::StreamExecutor* executor : stream_executors) {
-    if (executor != nullptr) {
-      out.push_back(executor);
+  for (int i = 0; i < device_count; ++i) {
+    for (se::StreamExecutor* executor : stream_executors[i]) {
+      if (executor != nullptr) {
+        out.push_back(executor);
+      }
     }
   }
   if (out.empty()) {

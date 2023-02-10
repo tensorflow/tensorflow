@@ -45,6 +45,7 @@ limitations under the License.
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/protobuf/config.pb.h"
+#include "tensorflow/core/util/env_var.h"
 
 // See core/kernels/function_ops.cc for related kernels.
 
@@ -441,7 +442,11 @@ class FunctionLibraryRuntimeImpl : public FunctionLibraryRuntime {
   Status InstantiateSymbolicGradient(const NameAttrList& func,
                                      const FunctionLibraryDefinition* lib_def,
                                      std::unique_ptr<FunctionBody>* g_body);
-  bool IsLocalTarget(const InstantiateOptions& options) const;
+
+ protected:
+  virtual bool IsLocalTarget(const InstantiateOptions& options) const;
+
+ private:
   AttrValueMap FixAttrs(const AttrSlice& attrs);
   void RunRemote(const Options& opts, Handle handle,
                  gtl::ArraySlice<Tensor> args, std::vector<Tensor>* rets,
@@ -1275,6 +1280,60 @@ Status FunctionLibraryRuntimeImpl::Clone(
   }
 }
 
+class StreamFunctionLibraryRuntimeImpl : public FunctionLibraryRuntimeImpl {
+ public:
+  StreamFunctionLibraryRuntimeImpl(
+      const DeviceMgr* dmgr, Env* env, const ConfigProto* config,
+      Device* device, int graph_def_version,
+      const FunctionLibraryDefinition* lib_def,
+      thread::ThreadPool* default_thread_pool,
+      const OptimizerOptions& optimizer_options,
+      const CustomKernelCreator* custom_kernel_creator,
+      const SessionMetadata* session_metadata,
+      ProcessFunctionLibraryRuntime* parent, int32 stream_id)
+      : FunctionLibraryRuntimeImpl(
+            dmgr, env, config, dmgr->LookupStream(device, stream_id),
+            graph_def_version, lib_def, default_thread_pool, optimizer_options,
+            custom_kernel_creator, session_metadata, parent),
+        stream_id_(stream_id) {}
+
+ private:
+  bool IsLocalTarget(const InstantiateOptions& options) const override;
+  int32 stream_id_;
+};
+
+bool StreamFunctionLibraryRuntimeImpl::IsLocalTarget(
+    const InstantiateOptions& options) const {
+  auto pos1 = options.target.find("GPU:");
+  if (pos1 != string::npos) {
+    InstantiateOptions options_copy(options);
+    options_copy.target = options.target.substr(0, pos1) + "STREAM_GPU_" +
+                          options.target.substr(pos1 + 4) + ":" +
+                          std::to_string(stream_id_);
+    return FunctionLibraryRuntimeImpl::IsLocalTarget(options_copy);
+  } else {
+    static bool use_per_stream_host_allocator,
+        use_per_stream_host_allocator_flag(true);
+    if (use_per_stream_host_allocator_flag) {
+      TF_CHECK_OK(tensorflow::ReadBoolFromEnvVar(
+          "TF_PER_STREAM_HOST_ALLOCATOR",
+          /*default_val=*/false, &use_per_stream_host_allocator));
+      use_per_stream_host_allocator_flag = false;
+    }
+    if (use_per_stream_host_allocator) {
+      pos1 = options.target.find("CPU:");
+      if (pos1 != string::npos) {
+        InstantiateOptions options_copy(options);
+        options_copy.target = options.target.substr(0, pos1) + "STREAM_CPU_" +
+                              options.target.substr(pos1 + 4) + ":" +
+                              std::to_string(stream_id_);
+        return FunctionLibraryRuntimeImpl::IsLocalTarget(options_copy);
+      }
+    }
+  }
+  return FunctionLibraryRuntimeImpl::IsLocalTarget(options);
+}
+
 namespace {
 
 struct CustomCreatorSingleton {
@@ -1318,6 +1377,21 @@ std::unique_ptr<FunctionLibraryRuntime> NewFunctionLibraryRuntime(
   return std::unique_ptr<FunctionLibraryRuntime>(new FunctionLibraryRuntimeImpl(
       device_mgr, env, config, device, graph_def_version, lib_def, thread_pool,
       optimizer_options, custom_kernel_creator, session_metadata, parent));
+}
+
+std::unique_ptr<FunctionLibraryRuntime> NewStreamFunctionLibraryRuntime(
+    const DeviceMgr* device_mgr, Env* env, const ConfigProto* config,
+    Device* device, int graph_def_version,
+    const FunctionLibraryDefinition* lib_def, thread::ThreadPool* thread_pool,
+    const OptimizerOptions& optimizer_options,
+    const CustomKernelCreator* custom_kernel_creator,
+    const SessionMetadata* session_metadata,
+    ProcessFunctionLibraryRuntime* parent, int32 stream_id) {
+  return std::unique_ptr<FunctionLibraryRuntime>(
+      new StreamFunctionLibraryRuntimeImpl(
+          device_mgr, env, config, device, graph_def_version, lib_def,
+          thread_pool, optimizer_options, custom_kernel_creator,
+          session_metadata, parent, stream_id));
 }
 
 bool RemoveDeadNodes(Graph* g) {

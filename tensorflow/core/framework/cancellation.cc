@@ -192,12 +192,22 @@ bool CancellationManager::TryDeregisterCallback(CancellationToken token) {
   }
 }
 
+void CancellationManager::AddTensor(const Tensor& tensor) {
+  mutex_lock l(lock_);
+  tensors_.push_back(absl::make_unique<TensorReference>(tensor));
+}
+
 CancellationManager::~CancellationManager() {
   if (parent_) {
     parent_->DeregisterChild(this);
   }
   if (state_) {
     StartCancel();
+  }
+  mutex_lock l(lock_);
+  VLOG(3) << "Tensors to delete: " << tensors_.size();
+  for (auto& ref : tensors_) {
+    ref->Unref();
   }
 }
 

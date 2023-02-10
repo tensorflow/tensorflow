@@ -367,17 +367,19 @@ class ProcessFunctionLibraryRuntime {
       const std::unique_ptr<MultiDeviceFunctionData> data,
       const string& function_key);
 
+ protected:
   // TODO(iga): Reword
   // Pins each arg that emits a `DT_RESOURCE` tensor to the device on which the
   // corresponding resource lives. This ensures that the Placer assigns ops that
   // access these resources to the appropriate devices.
-  Status PinArgsAndRets(const std::vector<string>& input_devices,
-                        const std::vector<string>& output_devices,
-                        const DeviceSet& device_set,
-                        const std::vector<Node*>& arg_nodes,
-                        const std::vector<Node*>& ret_nodes,
-                        Device* default_device) const;
+  virtual Status PinArgsAndRets(const std::vector<string>& input_devices,
+                                const std::vector<string>& output_devices,
+                                const DeviceSet& device_set,
+                                const std::vector<Node*>& arg_nodes,
+                                const std::vector<Node*>& ret_nodes,
+                                Device* default_device) const;
 
+ private:
   void RunInternal(const FunctionLibraryRuntime::Options& opts,
                    FunctionLibraryRuntime::Handle handle,
                    const InternalArgsView& args, std::vector<Tensor>* rets,
@@ -435,7 +437,11 @@ class ProcessFunctionLibraryRuntime {
 
   Env* const env_;
   const absl::optional<const ConfigProto> config_;
+
+ protected:
   const DeviceMgr* const device_mgr_;
+
+ private:
   DeviceSet device_set_;
   const FunctionLibraryDefinition* lib_def_;
   thread::ThreadPool* default_thread_pool_;
@@ -454,11 +460,38 @@ class ProcessFunctionLibraryRuntime {
                      std::unique_ptr<MultiDeviceFunctionData>>
       mdevice_data_ TF_GUARDED_BY(mu_);
 
+ protected:
   std::unique_ptr<
       std::unordered_map<Device*, std::unique_ptr<FunctionLibraryRuntime>>>
       flr_map_;
+
+ private:
   int next_handle_ TF_GUARDED_BY(mu_);
   const SessionMetadata* const session_metadata_;
+};
+
+class StreamProcessFunctionLibraryRuntime
+    : public ProcessFunctionLibraryRuntime {
+ public:
+  // Creates FunctionLibraryRuntime objects for each device in the provided
+  // DeviceMgr. Caller needs to make sure that device_mgr, lib_def and parent
+  // (if provided) outlive this object.
+  StreamProcessFunctionLibraryRuntime(
+      const DeviceMgr* device_mgr, Env* env, const ConfigProto* config,
+      int graph_def_version, const FunctionLibraryDefinition* lib_def,
+      const OptimizerOptions& optimizer_options,
+      thread::ThreadPool* thread_pool = nullptr,
+      DistributedFunctionLibraryRuntime* parent = nullptr,
+      const CustomKernelCreator* custom_kernel_creator = nullptr,
+      const SessionMetadata* metadata = nullptr, int32 stream_id = 0);
+
+ private:
+  Status PinArgsAndRets(const std::vector<string>& input_devices,
+                        const std::vector<string>& output_devices,
+                        const DeviceSet& device_set,
+                        const std::vector<Node*>& arg_nodes,
+                        const std::vector<Node*>& ret_nodes,
+                        Device* default_device) const override;
 };
 
 }  // namespace tensorflow

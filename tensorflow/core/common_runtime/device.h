@@ -186,6 +186,12 @@ class Device : public DeviceBase {
 
   virtual bool IsLocal() const { return true; }
 
+  virtual void SetRealDevice(Device* device) {
+    LOG(FATAL) << "Device does not implement SetRealDevice()";
+  }
+
+  virtual Device* GetRealDevice() { return this; }
+
  protected:
   void DeleteResourceMgr() {
     delete rmgr_;

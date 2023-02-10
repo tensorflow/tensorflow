@@ -35,8 +35,18 @@ class GpuIdUtil {
     return gpu_manager->ExecutorForDevice(platform_gpu_id.value());
   }
   static se::port::StatusOr<se::StreamExecutor*> ExecutorForPlatformGpuId(
+      se::Platform* gpu_manager, PlatformGpuId platform_gpu_id,
+      int32 stream_id) {
+    return gpu_manager->ExecutorForDevice(platform_gpu_id.value(), stream_id);
+  }
+  static se::port::StatusOr<se::StreamExecutor*> ExecutorForPlatformGpuId(
       PlatformGpuId platform_gpu_id) {
     return ExecutorForPlatformGpuId(GPUMachineManager(), platform_gpu_id);
+  }
+  static se::port::StatusOr<se::StreamExecutor*> ExecutorForPlatformGpuId(
+      PlatformGpuId platform_gpu_id, int32 stream_id) {
+    return ExecutorForPlatformGpuId(GPUMachineManager(), platform_gpu_id,
+                                    stream_id);
   }
   static se::port::StatusOr<se::StreamExecutor*> ExecutorForTfGpuId(
       TfGpuId tf_gpu_id) {
@@ -44,6 +54,13 @@ class GpuIdUtil {
     TF_RETURN_IF_ERROR(
         GpuIdManager::TfToPlatformGpuId(tf_gpu_id, &platform_gpu_id));
     return ExecutorForPlatformGpuId(platform_gpu_id);
+  }
+  static se::port::StatusOr<se::StreamExecutor*> ExecutorForTfGpuId(
+      TfGpuId tf_gpu_id, int32 stream_id) {
+    PlatformGpuId platform_gpu_id;
+    TF_RETURN_IF_ERROR(
+        GpuIdManager::TfToPlatformGpuId(tf_gpu_id, &platform_gpu_id));
+    return ExecutorForPlatformGpuId(platform_gpu_id, stream_id);
   }
 
   // Verify that the platform_gpu_id associated with a TfGpuId is legitimate.

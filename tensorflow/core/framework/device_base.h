@@ -80,7 +80,8 @@ class DeviceContext : public core::RefCounted {
   // must be allocated to be of the same size as "cpu_tensor".
   virtual void CopyCPUTensorToDevice(const Tensor* cpu_tensor, Device* device,
                                      Tensor* device_tensor, StatusCallback done,
-                                     bool sync_dst_compute = true) const {
+                                     bool sync_dst_compute = true,
+                                     bool sync_dst_recv = true) const {
     done(errors::Internal("Unrecognized device type in CPU-to-device Copy"));
   }
 
@@ -108,6 +109,8 @@ class DeviceContext : public core::RefCounted {
                              std::function<void()> func) {
     return errors::Internal("ThenExecute not supported by device");
   }
+
+  virtual int stream_id() const { return 0; }
 };
 
 // map[i] is the DeviceContext* for the node with id i, if i < map.size().

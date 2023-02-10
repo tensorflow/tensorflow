@@ -86,4 +86,34 @@ Status ReadStringFromEnvVar(StringPiece env_var_name, StringPiece default_val,
   return Status::OK();
 }
 
+Status ReadSeparatedInt64FromEnvVar(StringPiece env_var_name, int64 default_val,
+                                    std::vector<int64>* value) {
+  string text;
+  TF_RETURN_IF_ERROR(tensorflow::ReadStringFromEnvVar(
+      env_var_name, std::to_string(default_val), &text));
+  size_t pos = 0;
+  while ((pos = text.find(',')) != string::npos) {
+    int64 val;
+    if (!strings::safe_strto64(text.substr(0, pos), &val)) {
+      value->clear();
+      value->push_back(default_val);
+      return errors::InvalidArgument(strings::StrCat(
+          "Failed to parse the env-var ${", env_var_name,
+          "} into sequenced int64. Use the default value: ", default_val));
+    }
+    value->push_back(val);
+    text.erase(0, pos + 1);
+  }
+  int64 val;
+  if (!strings::safe_strto64(text, &val)) {
+    value->clear();
+    value->push_back(default_val);
+    return errors::InvalidArgument(strings::StrCat(
+        "Failed to parse the env-var ${", env_var_name,
+        "} into sequenced int64. Use the default value: ", default_val));
+  }
+  value->push_back(val);
+  return Status::OK();
+}
+
 }  // namespace tensorflow

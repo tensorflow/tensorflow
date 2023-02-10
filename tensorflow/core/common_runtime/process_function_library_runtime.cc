@@ -196,11 +196,13 @@ Status ProcessFunctionLibraryRuntime::GetDeviceContext(
   }
   Device* device = flr->device();
   string device_type = device->parsed_name().type;
-  if (device_type == "CPU" || device_type == "TPU_SYSTEM") {
+  if (device_type == "CPU" || device_type == "TPU_SYSTEM" ||
+      device_type.find("STREAM_CPU") != string::npos) {
     // "TPU_SYSTEM" indicates that `device` is a CPU.
     return Status::OK();
   }
-  if (device_type == "GPU" || device_type == "TPU") {
+  if (device_type == "GPU" || device_type == "TPU" ||
+      device_type.find("STREAM_GPU") != string::npos) {
     auto* dev_info = flr->device()->tensorflow_gpu_device_info();
     if (dev_info) {
       *device_context = dev_info->default_context;
@@ -1474,6 +1476,85 @@ Status ProcessFunctionLibraryRuntime::Clone(
       out_lib_def->get(), optimizer_options, default_thread_pool_, parent_,
       custom_kernel_creator, session_metadata_);
   return Status::OK();
+}
+
+StreamProcessFunctionLibraryRuntime::StreamProcessFunctionLibraryRuntime(
+    const DeviceMgr* device_mgr, Env* env, const ConfigProto* config,
+    int graph_def_version, const FunctionLibraryDefinition* lib_def,
+    const OptimizerOptions& optimizer_options,
+    thread::ThreadPool* default_thread_pool,
+    DistributedFunctionLibraryRuntime* parent,
+    const CustomKernelCreator* custom_kernel_creator,
+    const SessionMetadata* session_metadata, int32 stream_id)
+    : ProcessFunctionLibraryRuntime(device_mgr, env, config, graph_def_version,
+                                    lib_def, optimizer_options,
+                                    default_thread_pool, parent,
+                                    custom_kernel_creator, session_metadata) {
+  for (auto& item : *flr_map_) {
+    (*flr_map_)[item.first] = NewStreamFunctionLibraryRuntime(
+        device_mgr, env, config, item.first, graph_def_version, lib_def,
+        default_thread_pool, optimizer_options, custom_kernel_creator,
+        session_metadata, this, stream_id);
+  }
+}
+
+Status StreamProcessFunctionLibraryRuntime::PinArgsAndRets(
+    const std::vector<string>& input_devices,
+    const std::vector<string>& output_devices, const DeviceSet& device_set,
+    const std::vector<Node*>& arg_nodes, const std::vector<Node*>& ret_nodes,
+    Device* default_device) const {
+  std::vector<string> real_input_devices, real_output_devices;
+  for (auto& device : input_devices) {
+    auto pos1 = device.find("STREAM_GPU");
+    if (pos1 != string::npos) {
+      auto pos2 = device.rfind(":");
+      if (pos2 == string::npos) {
+        return errors::InvalidArgument("Device name not supported", device);
+      }
+      real_input_devices.push_back(device.substr(0, pos1) + "GPU:" +
+                                   device.substr(pos1 + 11, pos2 - pos1 - 11));
+    } else {
+      pos1 = device.find("STREAM_CPU");
+      if (pos1 != string::npos) {
+        auto pos2 = device.rfind(":");
+        if (pos2 == string::npos) {
+          return errors::InvalidArgument("Device name not supported", device);
+        }
+        real_input_devices.push_back(
+            device.substr(0, pos1) +
+            "CPU:" + device.substr(pos1 + 11, pos2 - pos1 - 11));
+      } else {
+        real_input_devices.push_back(device);
+      }
+    }
+  }
+  for (auto& device : output_devices) {
+    auto pos1 = device.find("STREAM_GPU");
+    if (pos1 != string::npos) {
+      auto pos2 = device.rfind(":");
+      if (pos2 == string::npos) {
+        return errors::InvalidArgument("Device name not supported", device);
+      }
+      real_output_devices.push_back(device.substr(0, pos1) + "GPU:" +
+                                    device.substr(pos1 + 11, pos2 - pos1 - 11));
+    } else {
+      pos1 = device.find("STREAM_CPU");
+      if (pos1 != string::npos) {
+        auto pos2 = device.rfind(":");
+        if (pos2 == string::npos) {
+          return errors::InvalidArgument("Device name not supported", device);
+        }
+        real_output_devices.push_back(
+            device.substr(0, pos1) +
+            "CPU:" + device.substr(pos1 + 11, pos2 - pos1 - 11));
+      } else {
+        real_output_devices.push_back(device);
+      }
+    }
+  }
+  return ProcessFunctionLibraryRuntime::PinArgsAndRets(
+      real_input_devices, real_output_devices, device_set, arg_nodes, ret_nodes,
+      default_device);
 }
 
 }  // namespace tensorflow

@@ -67,4 +67,11 @@ absl::optional<AllocatorStats> GPUcudaMallocAllocator::GetStats() {
 
 bool GPUcudaMallocAllocator::TracksAllocationSizes() const { return false; }
 
+StreamcudaMallocAllocator::StreamcudaMallocAllocator(
+    Allocator* allocator, PlatformGpuId platform_gpu_id, int32 stream_id)
+    : GPUcudaMallocAllocator(allocator, platform_gpu_id) {
+  stream_exec_ = GpuIdUtil::ExecutorForPlatformGpuId(platform_gpu_id, stream_id)
+                     .ValueOrDie();
+}
+
 }  // namespace tensorflow

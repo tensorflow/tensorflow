@@ -89,6 +89,16 @@ Status ValidateDevice(OpKernelContext* ctx, const ResourceHandle& p) {
       return Status::OK();
     }
   }
+
+  auto pos1 = current_device_name.find("STREAM");
+  auto pos2 = p.device().find("STREAM");
+  auto pos3 = current_device_name.rfind(":");
+  auto pos4 = p.device().rfind(":");
+  if (pos1 != string::npos && pos2 != string::npos &&
+      current_device_name.substr(0, pos3) == p.device().substr(0, pos4)) {
+    return Status::OK();
+  }
+
   string error_message = strings::StrCat("Trying to access resource ", p.name(),
                                          " located in device ", p.device(),
                                          " from device ", current_device_name);

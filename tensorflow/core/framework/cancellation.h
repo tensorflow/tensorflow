@@ -19,6 +19,7 @@ limitations under the License.
 #include <atomic>
 #include <functional>
 
+#include "tensorflow/core/framework/tensor_reference.h"
 #include "tensorflow/core/lib/core/notification.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/gtl/flatmap.h"
@@ -146,6 +147,9 @@ class CancellationManager {
   // Returns true iff cancellation is in progress.
   bool IsCancelling();
 
+  // Add the tensor to hold.
+  void AddTensor(const Tensor& tensor);
+
  private:
   struct State {
     Notification cancelled_notification;
@@ -180,6 +184,10 @@ class CancellationManager {
 
   mutex mu_;
   std::unique_ptr<State> state_ TF_GUARDED_BY(mu_);
+
+  // The tensors that will be released at cancellation.
+  mutex lock_;
+  std::vector<std::unique_ptr<TensorReference>> tensors_ TF_GUARDED_BY(lock_);
 };
 
 }  // namespace tensorflow

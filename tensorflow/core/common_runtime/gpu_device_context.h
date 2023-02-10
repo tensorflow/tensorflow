@@ -57,11 +57,12 @@ class GPUDeviceContext : public DeviceContext {
   se::Stream* device_to_device_stream(int index) const {
     return device_to_device_stream_[index % device_to_device_stream_.size()];
   }
-  int stream_id() const { return stream_id_; }
+  int stream_id() const override { return stream_id_; }
 
   void CopyCPUTensorToDevice(const Tensor* cpu_tensor, Device* device,
                              Tensor* device_tensor, StatusCallback done,
-                             bool sync_dst_compute) const override;
+                             bool sync_dst_compute,
+                             bool sync_dst_recv = true) const override;
 
   void CopyDeviceTensorToCPU(const Tensor* device_tensor, StringPiece edge_name,
                              Device* device, Tensor* cpu_tensor,

@@ -34,7 +34,7 @@ class GPUcudaMallocAllocator : public Allocator {
   explicit GPUcudaMallocAllocator(Allocator* allocator,
                                   PlatformGpuId platform_gpu_id);
   ~GPUcudaMallocAllocator() override;
-  string Name() override { return "gpu_debug"; }
+  virtual string Name() override { return "gpu_debug"; }
   void* AllocateRaw(size_t alignment, size_t num_bytes) override;
   void DeallocateRaw(void* ptr) override;
   bool TracksAllocationSizes() const override;
@@ -43,9 +43,20 @@ class GPUcudaMallocAllocator : public Allocator {
  private:
   Allocator* base_allocator_ = nullptr;  // owned
 
+ protected:
   se::StreamExecutor* stream_exec_;  // Not owned.
 
   TF_DISALLOW_COPY_AND_ASSIGN(GPUcudaMallocAllocator);
+};
+
+class StreamcudaMallocAllocator : public GPUcudaMallocAllocator {
+ public:
+  explicit StreamcudaMallocAllocator(Allocator* allocator,
+                                     PlatformGpuId platform_gpu_id,
+                                     int32 stream_id);
+  string Name() override { return "stream_debug"; }
+
+  TF_DISALLOW_COPY_AND_ASSIGN(StreamcudaMallocAllocator);
 };
 
 }  // namespace tensorflow

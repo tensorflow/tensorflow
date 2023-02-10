@@ -84,12 +84,22 @@ class GPUProcessState {
   virtual Allocator* GetGPUAllocator(const GPUOptions& options,
                                      TfGpuId tf_gpu_id, size_t total_bytes);
 
+  virtual Allocator* GetStreamAllocator(const GPUOptions& options,
+                                        TfGpuId tf_gpu_id, size_t total_bytes,
+                                        int32 stream_id);
+
+  virtual void GetStreamAllocators(const GPUOptions& options, TfGpuId tf_gpu_id,
+                                   size_t total_bytes, size_t num_allocators,
+                                   std::vector<Allocator*>& allocators);
+
   int NumGPUAllocators() {
     mutex_lock l(mu_);
     return gpu_allocators_.size();
   }
 
   virtual Allocator* GetGpuHostAllocator(int numa_node);
+
+  virtual Allocator* GetStreamHostAllocator(int numa_node, int32 stream_id);
 
   // Registers a Visitor to be invoked on new chunks of memory allocated by the
   // SubAllocator of every GPU proximate to the specified bus.  The AllocVisitor
@@ -103,20 +113,34 @@ class GPUProcessState {
   virtual void AddGPUAllocVisitor(int bus_id,
                                   const SubAllocator::Visitor& visitor);
 
+  virtual void AddStreamAllocVisitor(int bus_id,
+                                     const SubAllocator::Visitor& visitor,
+                                     int32 stream_id);
+
   // Registers a Visitor to be invoked on new chunks of memory allocated by
   // the SubAllocator of the GpuHostAllocator for the given numa_node.
   virtual void AddGpuHostAllocVisitor(int numa_node,
                                       const SubAllocator::Visitor& visitor);
+
+  virtual void AddStreamHostAllocVisitor(int numa_node,
+                                         const SubAllocator::Visitor& visitor,
+                                         int32 stream_id);
 
   // Registers a Visitor to be invoked on each chunk handed back for freeing to
   // the SubAllocator of the GpuHostAllocator for the given numa_node.
   virtual void AddGpuHostFreeVisitor(int numa_node,
                                      const SubAllocator::Visitor& visitor);
 
+  virtual void AddStreamHostFreeVisitor(int numa_node,
+                                        const SubAllocator::Visitor& visitor,
+                                        int32 stream_id);
+
   // Returns bus_id for the given GPU id.
   virtual int BusIdForGPU(TfGpuId tf_gpu_id);
 
   SharedCounter* GPUAllocatorCounter(TfGpuId tf_gpu_id);
+
+  SharedCounter* StreamAllocatorCounter(TfGpuId tf_gpu_id, int32 stream_id);
 
  protected:
   // GPUProcessState is a singleton that should not normally be deleted except
@@ -156,6 +180,18 @@ class GPUProcessState {
       TF_GUARDED_BY(mu_);
   std::vector<std::vector<SubAllocator::Visitor>> gpu_host_free_visitors_
       TF_GUARDED_BY(mu_);
+
+  std::vector<std::vector<AllocatorParts>> stream_allocators_
+      TF_GUARDED_BY(mu_);
+  std::vector<std::vector<std::vector<SubAllocator::Visitor>>> stream_visitors_
+      TF_GUARDED_BY(mu_);
+
+  std::vector<std::vector<AllocatorParts>> stream_host_allocators_
+      TF_GUARDED_BY(mu_);
+  std::vector<std::vector<std::vector<SubAllocator::Visitor>>>
+      stream_host_alloc_visitors_ TF_GUARDED_BY(mu_);
+  std::vector<std::vector<std::vector<SubAllocator::Visitor>>>
+      stream_host_free_visitors_ TF_GUARDED_BY(mu_);
 };
 
 }  // namespace tensorflow

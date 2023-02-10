@@ -67,6 +67,15 @@ std::unique_ptr<FunctionLibraryRuntime> NewFunctionLibraryRuntime(
     const SessionMetadata* session_metadata,
     ProcessFunctionLibraryRuntime* parent);
 
+std::unique_ptr<FunctionLibraryRuntime> NewStreamFunctionLibraryRuntime(
+    const DeviceMgr* device_mgr, Env* env, const ConfigProto* config,
+    Device* device, int graph_def_version,
+    const FunctionLibraryDefinition* lib_def, thread::ThreadPool* thread_pool,
+    const OptimizerOptions& optimizer_options,
+    const CustomKernelCreator* custom_kernel_creator,
+    const SessionMetadata* session_metadata,
+    ProcessFunctionLibraryRuntime* parent, int32 stream_id);
+
 // FunctionLibraryRuntime::GetFunctionBody returns a description of an
 // instantiated function that is represented as a Graph with arg/ret
 // nodes annotated.

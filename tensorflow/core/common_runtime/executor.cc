@@ -70,6 +70,7 @@ limitations under the License.
 #include "tensorflow/core/profiler/lib/annotated_traceme.h"
 #include "tensorflow/core/profiler/lib/scoped_annotation.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
+#include "tensorflow/core/util/env_var.h"
 #include "tensorflow/core/util/tensor_slice_reader_cache.h"
 
 namespace tensorflow {
@@ -155,6 +156,9 @@ struct KernelTimer {
 // Each NodeItem is an element of exactly one GraphView.
 struct NodeItem {
   NodeItem() {}
+
+  // A graph node.
+  const Node* node = nullptr;
 
   // The index of this node's item in its GraphView.
   int node_id = -1;
@@ -653,6 +657,7 @@ Status ExecutorImpl::Initialize(const Graph& graph) {
     FrameInfo* frame_info = EnsureFrameInfo(frame_name);
 
     NodeItem* item = gview_.node(id);
+    item->node = n;
     item->node_id = id;
 
     item->input_start = frame_info->total_inputs;
@@ -1903,6 +1908,23 @@ void ExecutorState::Process(TaggedNode tagged_node, int64 scheduled_nsec) {
       } else {
         // Synchronous computes.
         OpKernelContext ctx(&params, item.num_outputs);
+        static bool gpu_stream_merge, gpu_stream_merge_flag(true);
+        if (gpu_stream_merge_flag) {
+          tensorflow::ReadBoolFromEnvVar("TF_GPU_STREAM_MERGE",
+                                         /*default_val=*/false,
+                                         &gpu_stream_merge);
+          gpu_stream_merge_flag = false;
+        }
+        if (gpu_stream_merge &&
+            (op_kernel->type_string() == "_HostSend" ||
+             (op_kernel->type_string() == "_Send" &&
+              device->parsed_name().type == "CPU")) &&
+            item.node->attrs().Find("recv_device")->s().find("GPU") !=
+                string::npos &&
+            inputs[0].tensor->NumElements() > 0) {
+          CHECK(item.num_inputs == 1);  // only one tensor to send
+          cancellation_manager_->AddTensor(*(inputs[0].tensor));
+        }
         nodestats::SetOpStart(stats);
 
         if (TF_PREDICT_FALSE(item.is_noop)) {

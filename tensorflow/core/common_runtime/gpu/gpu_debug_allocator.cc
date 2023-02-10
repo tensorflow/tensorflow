@@ -150,6 +150,14 @@ bool GPUDebugAllocator::CheckFooter(void* ptr) {
                    after_mask);
 }
 
+StreamDebugAllocator::StreamDebugAllocator(Allocator* allocator,
+                                           PlatformGpuId platform_gpu_id,
+                                           int32 stream_id)
+    : GPUDebugAllocator(allocator, platform_gpu_id) {
+  stream_exec_ = GpuIdUtil::ExecutorForPlatformGpuId(platform_gpu_id, stream_id)
+                     .ValueOrDie();
+}
+
 // -----------------------------------------------------------------------------
 // GPUNanResetAllocator
 // -----------------------------------------------------------------------------
@@ -213,5 +221,13 @@ absl::optional<AllocatorStats> GPUNanResetAllocator::GetStats() {
 }
 
 void GPUNanResetAllocator::ClearStats() { base_allocator_->ClearStats(); }
+
+StreamNanResetAllocator::StreamNanResetAllocator(Allocator* allocator,
+                                                 PlatformGpuId platform_gpu_id,
+                                                 int32 stream_id)
+    : GPUNanResetAllocator(allocator, platform_gpu_id) {
+  stream_exec_ = GpuIdUtil::ExecutorForPlatformGpuId(platform_gpu_id, stream_id)
+                     .ValueOrDie();
+}
 
 }  // namespace tensorflow

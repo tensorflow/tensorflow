@@ -67,10 +67,18 @@ class CudaPlatform : public Platform {
   port::StatusOr<std::unique_ptr<DeviceDescription>> DescriptionForDevice(
       int ordinal) const override;
 
-  port::StatusOr<StreamExecutor*> ExecutorForDevice(int ordinal) override;
+  port::StatusOr<StreamExecutor*> ExecutorForDevice(int ordinal) override {
+    return ExecutorForDevice(ordinal, 0);
+  }
+  port::StatusOr<StreamExecutor*> ExecutorForDevice(int ordinal,
+                                                    int32 stream_id) override;
 
   port::StatusOr<StreamExecutor*> ExecutorForDeviceWithPluginConfig(
-      int ordinal, const PluginConfig& config) override;
+      int ordinal, const PluginConfig& config) override {
+    return ExecutorForDeviceWithPluginConfig(ordinal, config, 0);
+  }
+  port::StatusOr<StreamExecutor*> ExecutorForDeviceWithPluginConfig(
+      int ordinal, const PluginConfig& config, int32 stream_id) override;
 
   port::StatusOr<StreamExecutor*> GetExecutor(
       const StreamExecutorConfig& config) override;

@@ -36,7 +36,7 @@ class GPUDebugAllocator : public Allocator {
   explicit GPUDebugAllocator(Allocator* allocator,
                              PlatformGpuId platform_gpu_id);
   ~GPUDebugAllocator() override;
-  string Name() override { return "gpu_debug"; }
+  virtual string Name() override { return "gpu_debug"; }
   void* AllocateRaw(size_t alignment, size_t num_bytes) override;
   void DeallocateRaw(void* ptr) override;
   bool TracksAllocationSizes() const override;
@@ -53,9 +53,19 @@ class GPUDebugAllocator : public Allocator {
  private:
   Allocator* base_allocator_ = nullptr;  // owned
 
+ protected:
   se::StreamExecutor* stream_exec_;  // Not owned.
 
   TF_DISALLOW_COPY_AND_ASSIGN(GPUDebugAllocator);
+};
+
+class StreamDebugAllocator : public GPUDebugAllocator {
+ public:
+  explicit StreamDebugAllocator(Allocator* allocator,
+                                PlatformGpuId platform_gpu_id, int32 stream_id);
+  string Name() override { return "stream_debug"; }
+
+  TF_DISALLOW_COPY_AND_ASSIGN(StreamDebugAllocator);
 };
 
 // An allocator that wraps a GPU allocator and resets the memory on
@@ -66,7 +76,7 @@ class GPUNanResetAllocator : public Allocator {
   explicit GPUNanResetAllocator(Allocator* allocator,
                                 PlatformGpuId platform_gpu_id);
   ~GPUNanResetAllocator() override;
-  string Name() override { return "gpu_nan_reset"; }
+  virtual string Name() override { return "gpu_nan_reset"; }
   void* AllocateRaw(size_t alignment, size_t num_bytes) override;
   void DeallocateRaw(void* ptr) override;
   size_t RequestedSize(const void* ptr) const override;
@@ -77,9 +87,20 @@ class GPUNanResetAllocator : public Allocator {
  private:
   Allocator* base_allocator_ = nullptr;  // owned
 
+ protected:
   se::StreamExecutor* stream_exec_;  // Not owned.
 
   TF_DISALLOW_COPY_AND_ASSIGN(GPUNanResetAllocator);
+};
+
+class StreamNanResetAllocator : public GPUNanResetAllocator {
+ public:
+  explicit StreamNanResetAllocator(Allocator* allocator,
+                                   PlatformGpuId platform_gpu_id,
+                                   int32 stream_id);
+  string Name() override { return "stream_nan_reset"; }
+
+  TF_DISALLOW_COPY_AND_ASSIGN(StreamNanResetAllocator);
 };
 
 }  // namespace tensorflow

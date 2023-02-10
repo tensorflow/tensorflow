@@ -46,6 +46,8 @@ Status ReadFloatFromEnvVar(StringPiece env_var_name, float default_val,
 Status ReadStringFromEnvVar(StringPiece env_var_name, StringPiece default_val,
                             string* value);
 
+Status ReadSeparatedInt64FromEnvVar(StringPiece env_var_name, int64 default_val,
+                                    std::vector<int64>* value);
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_CORE_UTIL_ENV_VAR_H_

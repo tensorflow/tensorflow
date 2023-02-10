@@ -34,7 +34,7 @@ port::StatusOr<StreamExecutor*> ExecutorCache::GetOrCreate(
   Entry* entry = nullptr;
   {
     absl::MutexLock lock{&mutex_};
-    entry = &cache_[config.ordinal];
+    entry = &cache_[{config.ordinal, config.stream_id}];
     // Release the map lock; the address of 'entry' is stable because
     // std::map guarantees reference stability.
   }
@@ -68,27 +68,28 @@ port::StatusOr<StreamExecutor*> ExecutorCache::Get(
   Entry* entry = nullptr;
   {
     absl::ReaderMutexLock lock{&mutex_};
-    auto it = cache_.find(config.ordinal);
+    auto it = cache_.find({config.ordinal, config.stream_id});
     if (it != cache_.end()) {
       entry = &it->second;
     } else {
       return port::Status(
           port::error::NOT_FOUND,
-          absl::StrFormat("No executors registered for ordinal %d",
-                          config.ordinal));
+          absl::StrFormat("No executors registered for ordinal %d, stream %d",
+                          config.ordinal, config.stream_id));
     }
   }
   absl::ReaderMutexLock lock{&entry->configurations_mutex};
   if (entry->configurations.empty()) {
     return port::Status(
         port::error::NOT_FOUND,
-        absl::StrFormat("No executors registered for ordinal %d",
-                        config.ordinal));
+        absl::StrFormat("No executors registered for ordinal %d, stream %d",
+                        config.ordinal, config.stream_id));
   }
   for (const auto& iter : entry->configurations) {
     if (iter.first.plugin_config == config.plugin_config &&
         iter.first.device_options == config.device_options) {
-      VLOG(2) << "hit in cache for device ordinal " << config.ordinal;
+      VLOG(2) << "hit in cache for device ordinal " << config.ordinal
+              << ", stream " << config.stream_id;
       return iter.second.get();
     }
   }

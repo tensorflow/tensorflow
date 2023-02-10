@@ -89,9 +89,10 @@ class BaseGPUDevice : public LocalDevice {
   // The caller owns the returned device.
   PerOpGpuDevice* MakeGpuDevice() override;
 
-  Status ReinitializeGpuDevice(OpKernelContext* context, PerOpGpuDevice* device,
-                               DeviceContext* dc,
-                               Allocator* allocator) override;
+  virtual Status ReinitializeGpuDevice(OpKernelContext* context,
+                                       PerOpGpuDevice* device,
+                                       DeviceContext* dc,
+                                       Allocator* allocator) override;
 
   // Returns the platform GPU id of this device within the native driver system;
   // e.g., for CUDA and ROCm this is the ordinal of the GPU within the system.
@@ -123,6 +124,10 @@ class BaseGPUDevice : public LocalDevice {
   // the compute stream and are not yet known to have completed.
   int PendingKernels();
 
+  void* GetStream() {
+    return stream_->compute->implementation()->GpuStreamMemberHack();
+  }
+
  protected:
   Allocator* gpu_allocator_;  // not owned
   Allocator* cpu_allocator_;  // not owned
@@ -130,8 +135,6 @@ class BaseGPUDevice : public LocalDevice {
   se::StreamExecutor* executor_;  // not owned
   std::unique_ptr<ScopedAllocatorMgr> scoped_allocator_mgr_;
 
- private:
-  friend class GPUDeviceTestHelper;
   struct StreamGroup {
     se::Stream* compute = nullptr;
 #if TENSORFLOW_USE_ROCM
@@ -162,6 +165,9 @@ class BaseGPUDevice : public LocalDevice {
 
   void ReinitializeDevice(OpKernelContext* context, PerOpGpuDevice* device,
                           int stream_id, Allocator* allocator);
+
+ private:
+  friend class GPUDeviceTestHelper;
 
   string ComputeOpKernelDebugString(const OpKernel& op_kernel,
                                     const int& stream_id);
@@ -351,10 +357,11 @@ class BaseGPUDeviceFactory : public DeviceFactory {
   // Creates a BaseGPUDevice associated with 'tf_gpu_id', allocates (strictly)
   // 'memory_limit' bytes of GPU memory to it, and adds it to the 'devices'
   // vector.
-  Status CreateGPUDevice(const SessionOptions& options,
-                         const string& name_prefix, TfGpuId tf_gpu_id,
-                         int64 memory_limit, const DeviceLocality& dev_locality,
-                         std::vector<std::unique_ptr<Device>>* devices);
+  virtual Status CreateGPUDevice(const SessionOptions& options,
+                                 const string& name_prefix, TfGpuId tf_gpu_id,
+                                 int64 memory_limit,
+                                 const DeviceLocality& dev_locality,
+                                 std::vector<std::unique_ptr<Device>>* devices);
 
   virtual std::unique_ptr<BaseGPUDevice> CreateGPUDevice(
       const SessionOptions& options, const string& name, Bytes memory_limit,
@@ -375,6 +382,46 @@ class BaseGPUDeviceFactory : public DeviceFactory {
   // visible_gpu_initialized_[platform_gpu_id] is true if visible GPU
   // platform_gpu_id has been initialized by the process.
   std::unordered_map<int, bool> visible_gpu_initialized_;
+};
+
+class BaseStreamDevice : public BaseGPUDevice {
+ public:
+  BaseStreamDevice(const SessionOptions& options, const string& name,
+                   Bytes memory_limit, const DeviceLocality& locality,
+                   TfGpuId tf_gpu_id, const string& physical_device_desc,
+                   Allocator* gpu_allocator, Allocator* cpu_allocator,
+                   bool sync_every_op);
+
+  Status Init(const SessionOptions& options, const int32 stream_id);
+
+  Status ReinitializeGpuDevice(OpKernelContext* context, PerOpGpuDevice* device,
+                               DeviceContext* dc,
+                               Allocator* allocator) override;
+};
+
+class BaseStreamDeviceFactory : public BaseGPUDeviceFactory {
+ private:
+  // Creates a BaseGPUDevice associated with 'tf_gpu_id', allocates (strictly)
+  // 'memory_limit' bytes of GPU memory to it, and adds it to the 'devices'
+  // vector.
+  Status CreateGPUDevice(
+      const SessionOptions& options, const string& name_prefix,
+      TfGpuId tf_gpu_id, int64 memory_limit, const DeviceLocality& dev_locality,
+      std::vector<std::unique_ptr<Device>>* devices) override;
+
+  std::unique_ptr<BaseGPUDevice> CreateGPUDevice(
+      const SessionOptions& options, const string& name, Bytes memory_limit,
+      const DeviceLocality& dev_locality, TfGpuId tf_gpu_id,
+      const string& physical_device_desc, Allocator* gpu_allocator,
+      Allocator* cpu_allocator) override {
+    return nullptr;
+  }
+
+  virtual std::unique_ptr<BaseStreamDevice> CreateGPUDevice(
+      const SessionOptions& options, const string& name, Bytes memory_limit,
+      const DeviceLocality& dev_locality, TfGpuId tf_gpu_id,
+      const string& physical_device_desc, Allocator* gpu_allocator,
+      Allocator* cpu_allocator, int32 stream_id) = 0;
 };
 
 }  // namespace tensorflow
