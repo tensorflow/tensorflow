@@ -515,12 +515,18 @@ class NullMemRefOpConverter : public ConvertOpToLLVMPattern<NullMemRefOp> {
         UnrankedMemRefDescriptor::undef(rewriter, loc, llvm_result_type);
     desc.setRank(rewriter, loc, zero);
 
+    // Extract address space and element type.
+    auto targetType =
+        null_memref_op.getResult().getType().cast<UnrankedMemRefType>();
+    unsigned addressSpace =
+        *getTypeConverter()->getMemRefAddressSpace(targetType);
+
     // Due to the current way of handling unranked memref results escaping, we
     // have to actually construct a ranked underlying descriptor instead of just
     // setting its pointer to NULL.
     SmallVector<Value, 4> sizes;
     UnrankedMemRefDescriptor::computeSizes(rewriter, loc, *getTypeConverter(),
-                                           desc, sizes);
+                                           desc, addressSpace, sizes);
     Value underlying_desc_ptr = rewriter.create<LLVM::AllocaOp>(
         loc, getVoidPtrType(), sizes.front(), llvm::None);
 
