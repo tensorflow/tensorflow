@@ -12,7 +12,11 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#if CUBLAS_VER_MAJOR >= 11
+#include "third_party/gpus/cuda/include/cublas_v2.h"
+#else
 #include "third_party/gpus/cuda/include/cublas.h"
+#endif
 #include "third_party/gpus/cuda/include/cuda.h"
 #include "tensorflow/stream_executor/lib/env.h"
 #include "tensorflow/stream_executor/platform/dso_loader.h"
@@ -62,6 +66,12 @@ typedef enum {} cublasMath_t;
 #include "tensorflow/stream_executor/cuda/cublas_9_0.inc"
 #elif CUDA_VERSION < 10010
 #include "tensorflow/stream_executor/cuda/cublas_10_0.inc"
-#else
+#elif CUDA_VERSION == 10010
 #include "tensorflow/stream_executor/cuda/cublas_10_1.inc"
+#elif CUDA_VERSION == 10020
+#include "tensorflow/stream_executor/cuda/cublas_10_2.inc"
+#elif CUBLAS_VER_MAJOR >= 11
+#include "tensorflow/stream_executor/cuda/cublas_11_0.inc"
+#else
+#error "We have no wrapper for this version."
 #endif

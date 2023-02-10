@@ -41,6 +41,23 @@ std::string AlgorithmDesc::ToString() const {
   }
 }
 
+bool DnnSupport::GetBatchNormalizationReserveSpaceSize(
+    Stream* stream, dnn::DataType input_data_type,
+    const dnn::BatchDescriptor& x_desc, size_t* reserve_size_in_bytes,
+    dnn::ActivationMode mode, bool apply_side_input) {
+  return false;
+}
+
+bool DnnSupport::GetBatchNormalizationWorkspaceSize(
+    Stream* stream, dnn::DataType input_data_type,
+    dnn::DataType scale_data_type, const dnn::BatchDescriptor& x_desc,
+    const dnn::BatchDescriptor& scale_offset_desc,
+    size_t* workspace_size_in_bytes,
+    stream_executor::BatchNormalizationKind kind, dnn::ActivationMode mode,
+    bool apply_side_input) {
+  return false;
+}
+
 bool DnnSupport::GetConvolveAlgorithms(
     bool with_winograd_nonfused, int cc_major, int cc_minor,
     std::vector<AlgorithmDesc>* out_algorithms) {
@@ -91,6 +108,8 @@ std::string QuantizedActivationModeString(QuantizedActivationMode mode) {
 
 std::string ActivationModeString(ActivationMode mode) {
   switch (mode) {
+    case ActivationMode::kNone:
+      return "identity";
     case ActivationMode::kSigmoid:
       return "sigmoid";
     case ActivationMode::kRelu:

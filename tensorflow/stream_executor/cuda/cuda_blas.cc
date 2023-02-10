@@ -17,6 +17,7 @@ limitations under the License.
 #include "third_party/gpus/cuda/include/cuda.h"
 
 #define SE_CUDA_DATA_HALF CUDA_R_16F
+#define SE_CUDA_DATA_FLOAT CUDA_R_32F
 
 #include "tensorflow/stream_executor/cuda/cuda_blas.h"
 
@@ -238,6 +239,14 @@ bool CUDABlas::Init() {
     LOG(ERROR) << "failed to create cublas handle: " << ToString(ret);
     return false;
   }
+
+#if CUBLAS_VER_MAJOR >= 11
+  ret = cublasSetMathMode(blas_, CUBLAS_TF32_TENSOR_OP_MATH);
+  if (ret != CUBLAS_STATUS_SUCCESS) {
+    LOG(ERROR) << "failed to set cublas default math mode: " << ToString(ret);
+    return false;
+  }
+#endif  // CUBLAS_VER_MAJOR >= 11
 
   return true;
 }
@@ -1652,6 +1661,7 @@ bool CUDABlas::DoBlasGemm(Stream *stream, blas::Transpose transa,
                       "precondition violation";
     }
   }
+
   return DoBlasInternal(cublasSgemm, stream, true /* = pointer_mode_host */,
                         CUDABlasTranspose(transa), CUDABlasTranspose(transb), m,
                         n, k, &alpha, GpuMemory(a), lda, GpuMemory(b), ldb,
@@ -1952,8 +1962,14 @@ bool CUDABlas::DoBlasGemmWithAlgorithmImpl(
   // If 'alpha' and 'beta' are host scalars and CompT is Eigen::half, we
   // essentially reinterpet_cast to __half, which is safe because Eigen::half
   // inherits from __half.
+  cublasStatus_t (*gemm)(cublasHandle_t, cublasOperation_t, cublasOperation_t,
+                         int, int, int, const void*, const void*,
+                         cudaDataType, int, const void*,
+                         cudaDataType, int, const void*, void*,
+                         cudaDataType, int, cudaDataType,
+                         cublasGemmAlgo_t) = cublasGemmEx;
   bool result = DoBlasInternalFailureOK(
-      cublasGemmEx, stream, /* pointer_mode_host = */ !alpha.is_pointer(),
+      gemm, stream, /* pointer_mode_host = */ !alpha.is_pointer(),
       CUDABlasTranspose(transa), CUDABlasTranspose(transb), m, n, k,
       alpha.is_pointer() ? GpuMemory(alpha.pointer()) : &alpha.value(),
       GpuMemory(a), cuda_in_type, lda, GpuMemory(b), cuda_in_type, ldb,
@@ -2226,8 +2242,14 @@ port::Status CUDABlas::DoBlasGemmBatchedInternal(
     void **c_void_ptrs =
         reinterpret_cast<void **>(const_cast<CUDA_T **>(GpuMemory(c)));
     bool ok;
+    cublasStatus_t (*gemm)(cublasHandle_t, cublasOperation_t, cublasOperation_t,
+                            int, int, int, const void*, const void *const [],
+                            cudaDataType, int, const void *const [],
+                            cudaDataType, int, const void*, void *const [],
+                            cudaDataType, int, int, cudaDataType,
+                            cublasGemmAlgo_t) = cublasGemmBatchedEx;
     ok = DoBlasInternalImpl(
-        cublasGemmBatchedEx, stream, true /* = pointer_mode_host */,
+        gemm, stream, true /* = pointer_mode_host */,
         true /* = err_on_failure */, use_tensor_ops, CUDABlasTranspose(transa),
         CUDABlasTranspose(transb), m, n, k, &alpha, a_void_ptrs, data_type, lda,
         b_void_ptrs, data_type, ldb, &beta, c_void_ptrs, data_type, ldc,
@@ -2269,6 +2291,130 @@ port::Status CUDABlas::DoBlasGemmBatchedInternal(
   }
 }
 
+// Supports tensor ops, use with half and float only
+template <typename T>
+port::Status CUDABlas::DoBlasGemmBatchedInternalV2(
+    Stream *stream, blas::Transpose transa, blas::Transpose transb, uint64 m,
+    uint64 n, uint64 k, float alpha,
+    const port::ArraySlice<DeviceMemory<T> *> &a_ptrs_to_wrappers, int lda,
+    const port::ArraySlice<DeviceMemory<T> *> &b_ptrs_to_wrappers, int ldb,
+    float beta, const port::ArraySlice<DeviceMemory<T> *> &c_ptrs_to_wrappers,
+    int ldc, int batch_count, ScratchAllocator *scratch_allocator) {
+  std::vector<T *> a_raw_ptrs, b_raw_ptrs, c_raw_ptrs;
+  for (int i = 0; i < batch_count; ++i) {
+    a_raw_ptrs.push_back(static_cast<T *>(a_ptrs_to_wrappers[i]->opaque()));
+    b_raw_ptrs.push_back(static_cast<T *>(b_ptrs_to_wrappers[i]->opaque()));
+    c_raw_ptrs.push_back(static_cast<T *>(c_ptrs_to_wrappers[i]->opaque()));
+  }
+
+  // typedef typename CUDAComplexT<T>::type CUDA_T;
+  typedef void CUDA_T;
+
+  const size_t size = batch_count * sizeof(CUDA_T *);
+
+  // Device-side copy of pointers to matrices.
+  DeviceMemory<CUDA_T *> a;
+  DeviceMemory<CUDA_T *> b;
+  DeviceMemory<CUDA_T *> c;
+
+  // If temporary space is allocated for device-side copies of pointers to
+  // matrices, that temporary space should not be freed until this function
+  // returns. Although the values for these unique_ptrs are not set here, they
+  // are declared at this scope so they will be destroyed when the function
+  // returns.
+  //
+  // If a scratch allocator is provided, these pointers will not be used at all.
+  std::unique_ptr<TemporaryDeviceMemory<CUDA_T *>> a_temporary;
+  std::unique_ptr<TemporaryDeviceMemory<CUDA_T *>> b_temporary;
+  std::unique_ptr<TemporaryDeviceMemory<CUDA_T *>> c_temporary;
+
+  // Decide how to allocate device-side copy of pointers to matrices based on
+  // whether a scratch allocator was passed.
+  if (scratch_allocator != nullptr) {
+    SE_ASSIGN_OR_RETURN(DeviceMemory<uint8> a_bytes,
+                        scratch_allocator->AllocateBytes(size));
+    SE_ASSIGN_OR_RETURN(DeviceMemory<uint8> b_bytes,
+                        scratch_allocator->AllocateBytes(size));
+    SE_ASSIGN_OR_RETURN(DeviceMemory<uint8> c_bytes,
+                        scratch_allocator->AllocateBytes(size));
+    a = DeviceMemory<CUDA_T *>(a_bytes);
+    b = DeviceMemory<CUDA_T *>(b_bytes);
+    c = DeviceMemory<CUDA_T *>(c_bytes);
+  } else {
+    SE_ASSIGN_OR_RETURN(a_temporary,
+                        stream->AllocateTemporaryArray<CUDA_T *>(batch_count));
+    SE_ASSIGN_OR_RETURN(b_temporary,
+                        stream->AllocateTemporaryArray<CUDA_T *>(batch_count));
+    SE_ASSIGN_OR_RETURN(c_temporary,
+                        stream->AllocateTemporaryArray<CUDA_T *>(batch_count));
+    a = DeviceMemory<CUDA_T *>(*a_temporary->mutable_device_memory());
+    b = DeviceMemory<CUDA_T *>(*b_temporary->mutable_device_memory());
+    c = DeviceMemory<CUDA_T *>(*c_temporary->mutable_device_memory());
+  }
+
+  if (!stream->ThenMemcpy(&a, a_raw_ptrs.data(), size).ok() ||
+      !stream->ThenMemcpy(&b, b_raw_ptrs.data(), size).ok() ||
+      !stream->ThenMemcpy(&c, c_raw_ptrs.data(), size).ok()) {
+    return port::Status(port::error::INTERNAL,
+                        "failed to copy memory from host to device in "
+                        "CUDABlas::DoBlasGemmBatched");
+  }
+
+  cudaDataType_t data_type = CUDADataType<T>::type;
+  cudaDataType_t compute_type = SE_CUDA_DATA_FLOAT;
+
+// Use batched gemm ex only with cuda 9.1
+// TODO(benbarsdell): Change this to the version in which cublasGemmBatchedEx is
+// officially available
+#if ( !defined(__aarch64__) && CUDA_VERSION >= 9000) || CUDA_VERSION >= 9010
+  int cc_major, cc_minor;
+  if (stream->parent()->GetDeviceDescription().cuda_compute_capability(
+          &cc_major, &cc_minor) &&
+      cc_major >= 5) {
+    bool use_tensor_ops = TensorOpMathEnabled() && data_type == CUDA_R_16F;
+    cublasGemmAlgo_t algo =
+        (use_tensor_ops ? CUBLAS_GEMM_DFALT_TENSOR_OP : CUBLAS_GEMM_DFALT);
+    bool ok;
+    cublasStatus_t (*gemm)(cublasHandle_t, cublasOperation_t, cublasOperation_t,
+                            int, int, int, const void*, const void *const [],
+                            cudaDataType, int, const void *const [],
+                            cudaDataType, int, const void*, void *const [],
+                            cudaDataType, int, int, cudaDataType,
+                            cublasGemmAlgo_t) = cublasGemmBatchedEx;
+    ok = DoBlasInternalImpl(
+        gemm, stream, true /* = pointer_mode_host */,
+        true /* = err_on_failure */, use_tensor_ops, CUDABlasTranspose(transa),
+        CUDABlasTranspose(transb), m, n, k, &alpha,
+        const_cast<const void **>(GpuMemory(a)), data_type, lda,
+        const_cast<const void **>(GpuMemory(b)), data_type, ldb, &beta,
+        const_cast<void **>(GpuMemory(c)), data_type, ldc, batch_count,
+        compute_type, algo);
+    if (ok) {
+      return port::Status::OK();
+    }
+    return port::Status(port::error::INTERNAL,
+                        "failed BLAS call, see log for details");
+  }
+#endif
+  // either CUDA_VERSION < 9.1 or SM < 5.0
+  if (data_type == SE_CUDA_DATA_FLOAT) {
+    bool ok = DoBlasInternal(
+        cublasSgemmBatched, stream, true /* = pointer_mode_host */,
+        CUDABlasTranspose(transa), CUDABlasTranspose(transb), m, n, k, &alpha,
+        (const float **)(GpuMemory(a)), lda, (const float **)(GpuMemory(b)),
+        ldb, &beta, (float **)(GpuMemory(c)), ldc, batch_count);
+    if (ok) {
+      return port::Status::OK();
+    }
+    return port::Status(port::error::INTERNAL,
+                        "failed BLAS call, see log for details");
+  } else {
+    // No fall back for FP16
+    return port::Status(port::error::INTERNAL,
+                        "unsupported BLAS call, see log for details");
+  }
+}
+
 bool CUDABlas::DoBlasGemmBatched(
     Stream *stream, blas::Transpose transa, blas::Transpose transb, uint64 m,
     uint64 n, uint64 k, float alpha,
@@ -2276,11 +2422,9 @@ bool CUDABlas::DoBlasGemmBatched(
     const port::ArraySlice<DeviceMemory<Eigen::half> *> &b_array, int ldb,
     float beta, const port::ArraySlice<DeviceMemory<Eigen::half> *> &c_array,
     int ldc, int batch_count, ScratchAllocator *scratch_allocator) {
-  // Note: The func passed here (cublasSgemmBatched) is not actually called,
-  // due to special handling of fp16 inside DoBlasGemmBatchedInternal.
-  port::Status status = DoBlasGemmBatchedInternal(
-      cublasSgemmBatched, stream, transa, transb, m, n, k, alpha, a_array, lda,
-      b_array, ldb, beta, c_array, ldc, batch_count, scratch_allocator);
+  port::Status status = DoBlasGemmBatchedInternalV2(
+      stream, transa, transb, m, n, k, alpha, a_array, lda, b_array, ldb, beta,
+      c_array, ldc, batch_count, scratch_allocator);
   if (!status.ok()) {
     LOG(ERROR) << status;
   }
@@ -2294,9 +2438,10 @@ bool CUDABlas::DoBlasGemmBatched(
     const port::ArraySlice<DeviceMemory<float> *> &b_array, int ldb, float beta,
     const port::ArraySlice<DeviceMemory<float> *> &c_array, int ldc,
     int batch_count, ScratchAllocator *scratch_allocator) {
-  port::Status status = DoBlasGemmBatchedInternal(
-      cublasSgemmBatched, stream, transa, transb, m, n, k, alpha, a_array, lda,
-      b_array, ldb, beta, c_array, ldc, batch_count, scratch_allocator);
+  port::Status status;
+  status = DoBlasGemmBatchedInternalV2(
+      stream, transa, transb, m, n, k, alpha, a_array, lda, b_array, ldb, beta,
+      c_array, ldc, batch_count, scratch_allocator);
   if (!status.ok()) {
     LOG(ERROR) << status;
   }
@@ -2374,8 +2519,14 @@ bool CUDABlas::DoBlasGemmStridedBatched(
     if (cc_major >= 5) {
       cublasGemmAlgo_t algo =
           (use_tensor_ops ? CUBLAS_GEMM_DFALT_TENSOR_OP : CUBLAS_GEMM_DFALT);
+    cublasStatus_t (*bgemm) (cublasHandle_t, cublasOperation_t, cublasOperation_t,
+                             int, int, int, const void*, const void*, cudaDataType,
+                             int, long long int, const void*, cudaDataType, int,
+                             long long int, const void*, void*, cudaDataType, int,
+                             long long int, int, cudaDataType,
+                             cublasGemmAlgo_t algo) = cublasGemmStridedBatchedEx;
       bool ok = DoBlasInternalImpl(
-          cublasGemmStridedBatchedEx, stream, true /* = pointer_mode_host */,
+          bgemm, stream, true /* = pointer_mode_host */,
           true /* = err_on_failure */, use_tensor_ops,
           CUDABlasTranspose(transa), CUDABlasTranspose(transb), m, n, k, &alpha,
           GpuMemory(a), CUDA_R_16F, lda, stride_a, GpuMemory(b), CUDA_R_16F,

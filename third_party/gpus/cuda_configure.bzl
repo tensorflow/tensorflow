@@ -526,28 +526,28 @@ def _find_libs(repository_ctx, check_cuda_libs_script, cuda_config):
             "cublas",
             cpu_value,
             cuda_config.config["cublas_library_dir"],
-            cuda_config.cuda_lib_version,
+            cuda_config.cublas_version,
             static = False,
         ),
         "cusolver": _check_cuda_lib_params(
             "cusolver",
             cpu_value,
-            cuda_config.config["cuda_library_dir"],
-            cuda_config.cuda_lib_version,
+            cuda_config.config["cusolver_library_dir"],
+            cuda_config.cusolver_version,
             static = False,
         ),
         "curand": _check_cuda_lib_params(
             "curand",
             cpu_value,
-            cuda_config.config["cuda_library_dir"],
-            cuda_config.cuda_lib_version,
+            cuda_config.config["curand_library_dir"],
+            cuda_config.curand_version,
             static = False,
         ),
         "cufft": _check_cuda_lib_params(
             "cufft",
             cpu_value,
-            cuda_config.config["cuda_library_dir"],
-            cuda_config.cuda_lib_version,
+            cuda_config.config["cufft_library_dir"],
+            cuda_config.cufft_version,
             static = False,
         ),
         "cudnn": _check_cuda_lib_params(
@@ -567,8 +567,8 @@ def _find_libs(repository_ctx, check_cuda_libs_script, cuda_config):
         "cusparse": _check_cuda_lib_params(
             "cusparse",
             cpu_value,
-            cuda_config.config["cuda_library_dir"],
-            cuda_config.cuda_lib_version,
+            cuda_config.config["cusparse_library_dir"],
+            cuda_config.cusparse_version,
             static = False,
         ),
     }
@@ -645,18 +645,37 @@ def _get_cuda_config(repository_ctx, find_cuda_config_script):
     cuda_version = ("64_%s%s" if is_windows else "%s.%s") % (cuda_major, cuda_minor)
     cudnn_version = ("64_%s" if is_windows else "%s") % config["cudnn_version"]
 
-    # cuda_lib_version is for libraries like cuBLAS, cuFFT, cuSOLVER, etc.
-    # It changed from 'x.y' to just 'x' in CUDA 10.1.
-    if (int(cuda_major), int(cuda_minor)) >= (10, 1):
+    if int(cuda_major) >= 11:
+        cublas_version = ("64_%s" if is_windows else "%s") % config["cublas_version"].split(".")[0]
+        cusolver_version = ("64_%s" if is_windows else "%s") % config["cusolver_version"].split(".")[0]
+        curand_version = ("64_%s" if is_windows else "%s") % config["curand_version"].split(".")[0]
+        cufft_version = ("64_%s" if is_windows else "%s") % config["cufft_version"].split(".")[0]
+        cusparse_version = ("64_%s" if is_windows else "%s") % config["cusparse_version"].split(".")[0]
+    elif (int(cuda_major), int(cuda_minor)) >= (10, 1):
+        # cuda_lib_version is for libraries like cuBLAS, cuFFT, cuSOLVER, etc.
+        # It changed from 'x.y' to just 'x' in CUDA 10.1.
         cuda_lib_version = ("64_%s" if is_windows else "%s") % cuda_major
+        cublas_version = cuda_lib_version
+        cusolver_version = cuda_lib_version
+        curand_version = cuda_lib_version
+        cufft_version = cuda_lib_version
+        cusparse_version = cuda_lib_version
     else:
-        cuda_lib_version = cuda_version
+        cublas_version = cuda_version
+        cusolver_version = cuda_version
+        curand_version = cuda_version
+        cufft_version = cuda_version
+        cusparse_version = cuda_version
 
     return struct(
         cuda_toolkit_path = toolkit_path,
         cuda_version = cuda_version,
+        cublas_version = cublas_version,
+        cusolver_version = cusolver_version,
+        curand_version = curand_version,
+        cufft_version = cufft_version,
+        cusparse_version = cusparse_version,
         cudnn_version = cudnn_version,
-        cuda_lib_version = cuda_lib_version,
         compute_capabilities = compute_capabilities(repository_ctx),
         cpu_value = cpu_value,
         config = config,
@@ -737,6 +756,10 @@ def _create_dummy_repository(repository_ctx):
             "%{copy_rules}": """
 filegroup(name="cuda-include")
 filegroup(name="cublas-include")
+filegroup(name="cusolver-include")
+filegroup(name="cufft-include")
+filegroup(name="cusparse-include")
+filegroup(name="curand-include")
 filegroup(name="cudnn-include")
 """,
         },
@@ -768,7 +791,11 @@ filegroup(name="cudnn-include")
         "cuda:cuda_config.h",
         {
             "%{cuda_version}": "",
-            "%{cuda_lib_version}": "",
+            "%{cublas_version}": "",
+            "%{cusolver_version}": "",
+            "%{curand_version}": "",
+            "%{cufft_version}": "",
+            "%{cusparse_version}": "",
             "%{cudnn_version}": "",
             "%{cuda_compute_capabilities}": ",".join([
                 "CudaVersion(\"%s\")" % c
@@ -930,6 +957,56 @@ def _create_local_cuda_repository(repository_ctx):
         ],
     ))
 
+    cusolver_include_path = cuda_config.config["cusolver_include_dir"]
+    copy_rules.append(make_copy_files_rule(
+        repository_ctx,
+        name = "cusolver-include",
+        srcs = [
+            cusolver_include_path + "/cusolver_common.h",
+            cusolver_include_path + "/cusolverDn.h",
+        ],
+        outs = [
+            "cusolver/include/cusolver_common.h",
+            "cusolver/include/cusolverDn.h",
+        ],
+    ))
+
+    cufft_include_path = cuda_config.config["cufft_include_dir"]
+    copy_rules.append(make_copy_files_rule(
+        repository_ctx,
+        name = "cufft-include",
+        srcs = [
+            cufft_include_path + "/cufft.h",
+        ],
+        outs = [
+            "cufft/include/cufft.h",
+        ],
+    ))
+
+    cusparse_include_path = cuda_config.config["cusparse_include_dir"]
+    copy_rules.append(make_copy_files_rule(
+        repository_ctx,
+        name = "cusparse-include",
+        srcs = [
+            cusparse_include_path + "/cusparse.h",
+        ],
+        outs = [
+            "cusparse/include/cusparse.h",
+        ],
+    ))
+
+    curand_include_path = cuda_config.config["curand_include_dir"]
+    copy_rules.append(make_copy_files_rule(
+        repository_ctx,
+        name = "curand-include",
+        srcs = [
+            curand_include_path + "/curand.h",
+        ],
+        outs = [
+            "curand/include/curand.h",
+        ],
+    ))
+
     check_cuda_libs_script = repository_ctx.path(Label("@org_tensorflow//third_party/gpus:check_cuda_libs.py"))
     cuda_libs = _find_libs(repository_ctx, check_cuda_libs_script, cuda_config)
     cuda_lib_srcs = []
@@ -962,11 +1039,30 @@ def _create_local_cuda_repository(repository_ctx):
         ],
     ))
 
+    if [int(x) for x in cuda_config.cudnn_version.split(".")] < [8, 0]:
+      cudnn_headers = ["cudnn.h"]
+    else:
+      cudnn_headers = ["cudnn_adv_infer.h",
+                       "cudnn_adv_train.h",
+                       "cudnn_cnn_infer.h",
+                       "cudnn_cnn_train.h",
+                       "cudnn_ops_infer.h",
+                       "cudnn_ops_train.h",
+                       "cudnn.h",          
+                       "cudnn_version.h",
+                      ]
+
+    cudnn_srcs = []
+    cudnn_outs = []
+    for header in cudnn_headers:
+      cudnn_srcs.append(cudnn_header_dir + '/' + header)
+      cudnn_outs.append("cudnn/include/" + header)
+
     copy_rules.append(make_copy_files_rule(
         repository_ctx,
         name = "cudnn-include",
-        srcs = [cudnn_header_dir + "/cudnn.h"],
-        outs = ["cudnn/include/cudnn.h"],
+        srcs = cudnn_srcs,
+        outs = cudnn_outs,
     ))
 
     # Set up BUILD file for cuda/
@@ -1135,7 +1231,11 @@ def _create_local_cuda_repository(repository_ctx):
         tpl_paths["cuda:cuda_config.h"],
         {
             "%{cuda_version}": cuda_config.cuda_version,
-            "%{cuda_lib_version}": cuda_config.cuda_lib_version,
+            "%{cublas_version}": cuda_config.cublas_version,
+            "%{cusolver_version}": cuda_config.cusolver_version,
+            "%{curand_version}": cuda_config.curand_version,
+            "%{cufft_version}": cuda_config.cufft_version,
+            "%{cusparse_version}": cuda_config.cusparse_version,
             "%{cudnn_version}": cuda_config.cudnn_version,
             "%{cuda_compute_capabilities}": ", ".join([
                 "CudaVersion(\"%s\")" % c
