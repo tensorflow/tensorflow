@@ -53,6 +53,11 @@ namespace vector = ::mlir::vector;
 
 using TypePredicate = ::llvm::function_ref<bool(Type)>;
 
+#define LN2_VALUE \
+  0.693147180559945309417232121458176568075500134360255254120680009493393621L
+#define LOG2E_VALUE \
+  1.442695040888963407359924681001892137426645954152985934135449406931109219L
+
 // Returns vector shape if the element type is matching the predicate (scalars
 // that do match the predicate have shape equal to `{1}`).
 llvm::Optional<SmallVector<int64_t, 2>> vectorShape(Type type,
@@ -145,6 +150,13 @@ Value ClampWithNormals(ImplicitLocOpBuilder &builder,
   return value;
 }
 
+// Return the maximum of the two values or NaN if value is NaN
+Value Max(ImplicitLocOpBuilder &builder, Value value, Value bound) {
+  return builder.create<arith::SelectOp>(
+      builder.create<arith::CmpFOp>(arith::CmpFPredicate::UGE, value, bound),
+      value, bound);
+}
+
 // Computes exp2 for an i32 argument.
 Value Exp2I32(ImplicitLocOpBuilder &builder, Value arg) {
   auto shape = vectorShape(arg.getType(), isI32);
@@ -165,6 +177,49 @@ Value Exp2I32(ImplicitLocOpBuilder &builder, Value arg) {
   Value exp2_f32 = builder.create<arith::BitcastOp>(f32_vec, exp2_i32);
 
   return exp2_f32;
+}
+
+// Decomposes given floating point value `arg` into a normalized fraction and
+// an integral power of two (see std::frexp). Returned values have float type.
+std::pair<Value, Value> Frexp(ImplicitLocOpBuilder &builder, Value arg,
+                              bool isPositive = false) {
+  auto shape = vectorShape(arg.getType(), isF32);
+  assert(shape.has_value() && "arg must be of f32 type");
+
+  auto bcast = [&](Value value) -> Value {
+    return broadcast(builder, value, *shape);
+  };
+
+  auto i32 = builder.getIntegerType(32);
+  auto i32_vec = broadcast(builder.getI32Type(), *shape);
+  auto f32_vec = broadcast(builder.getF32Type(), *shape);
+
+  Value cst126f = f32Cst(builder, 126.0f);
+  Value cst_half = f32Cst(builder, 0.5f);
+  Value cst_inv_mant_mask = f32FromBits(builder, ~0x7f800000u);
+
+  // Bitcast to i32 for bitwise operations.
+  Value i32_half = builder.create<arith::BitcastOp>(i32, cst_half);
+  Value i32_inv_mant_mask =
+      builder.create<arith::BitcastOp>(i32, cst_inv_mant_mask);
+  Value i32_arg = builder.create<arith::BitcastOp>(i32_vec, arg);
+
+  // Compute normalized fraction.
+  Value tmp0 = builder.create<arith::AndIOp>(i32_arg, bcast(i32_inv_mant_mask));
+  Value tmp1 = builder.create<arith::OrIOp>(tmp0, bcast(i32_half));
+  Value normalized_fraction = builder.create<arith::BitcastOp>(f32_vec, tmp1);
+
+  // Compute exponent.
+  Value arg0 = isPositive ? arg : builder.create<math::AbsFOp>(arg);
+  Value biased_exponent_bits = builder.create<arith::ShRUIOp>(
+      builder.create<arith::BitcastOp>(i32_vec, arg0),
+      bcast(i32Cst(builder, 23)));
+  Value biased_exponent =
+      builder.create<arith::SIToFPOp>(f32_vec, biased_exponent_bits);
+  Value exponent =
+      builder.create<arith::SubFOp>(biased_exponent, bcast(cst126f));
+
+  return {normalized_fraction, exponent};
 }
 
 struct EigenExpM1Approximation : public OpRewritePattern<math::ExpM1Op> {
@@ -362,16 +417,20 @@ LogicalResult ExpApproximation::matchAndRewrite(
   return mlir::success();
 }
 
-struct LogApproximation : public OpRewritePattern<math::LogOp> {
- public:
-  using OpRewritePattern::OpRewritePattern;
+template <typename Op>
+struct LogApproximationBase : public OpRewritePattern<Op> {
+  using OpRewritePattern<Op>::OpRewritePattern;
 
-  LogicalResult matchAndRewrite(math::LogOp op,
-                                PatternRewriter &rewriter) const final;
+  /// Base 2 if 'base2' is set; natural logarithm (base e) otherwise.
+  LogicalResult logMatchAndRewrite(Op op, PatternRewriter &rewriter,
+                                   bool base2) const;
 };
 
-LogicalResult LogApproximation::matchAndRewrite(
-    math::LogOp op, PatternRewriter &rewriter) const {
+// This approximation comes from Julien Pommier's SSE math library.
+// Link: http://gruntthepeon.free.fr/ssemath
+template <typename Op>
+LogicalResult LogApproximationBase<Op>::logMatchAndRewrite(
+    Op op, PatternRewriter &rewriter, bool base2) const {
   auto shape = vectorShape(op.getOperand().getType(), isF32);
   if (!shape.has_value()) {
     return rewriter.notifyMatchFailure(op, "unsupported operand type");
@@ -382,27 +441,120 @@ LogicalResult LogApproximation::matchAndRewrite(
     return broadcast(builder, value, *shape);
   };
 
-  Value cst_min_norm_pos = bcast(f32FromBits(builder, 0x00800000u));
   Value cst_zero = bcast(f32Cst(builder, 0.0f));
+  Value cst_one = bcast(f32Cst(builder, 1.0f));
+  Value cst_neg_half = bcast(f32Cst(builder, -0.5f));
+
+  // The smallest non denormalized float number.
+  Value cst_min_norm_pos = bcast(f32FromBits(builder, 0x00800000u));
+  Value cst_minus_inf = bcast(f32FromBits(builder, 0xff800000u));
+  Value cst_pos_inf = bcast(f32FromBits(builder, 0x7f800000u));
+  Value cst_nan = bcast(f32FromBits(builder, 0x7fc00000));
+
+  // Polynomial coefficients.
+  Value cst_cephes_sqrthf = bcast(f32Cst(builder, 0.707106781186547524f));
+  Value cst_cephes_log_p0 = bcast(f32Cst(builder, 7.0376836292E-2f));
+  Value cst_cephes_log_p1 = bcast(f32Cst(builder, -1.1514610310E-1f));
+  Value cst_cephes_log_p2 = bcast(f32Cst(builder, 1.1676998740E-1f));
+  Value cst_cephes_log_p3 = bcast(f32Cst(builder, -1.2420140846E-1f));
+  Value cst_cephes_log_p4 = bcast(f32Cst(builder, +1.4249322787E-1f));
+  Value cst_cephes_log_p5 = bcast(f32Cst(builder, -1.6668057665E-1f));
+  Value cst_cephes_log_p6 = bcast(f32Cst(builder, +2.0000714765E-1f));
+  Value cst_cephes_log_p7 = bcast(f32Cst(builder, -2.4999993993E-1f));
+  Value cst_cephes_log_p8 = bcast(f32Cst(builder, +3.3333331174E-1f));
 
   Value x = op.getOperand();
 
-  // Flush positive denormals to zero.
-  Value less_than_zero =
-      builder.create<arith::CmpFOp>(arith::CmpFPredicate::OLT, x, cst_zero);
-  Value less_than_min_norm_pos = builder.create<arith::CmpFOp>(
-      arith::CmpFPredicate::OLT, x, cst_min_norm_pos);
-  x = builder.create<arith::SelectOp>(
-      less_than_min_norm_pos,
-      builder.create<arith::SelectOp>(less_than_zero, x, cst_zero), x);
+  // Truncate input values to the minimum positive normal.
+  x = Max(builder, x, cst_min_norm_pos);
 
-  // Emit Log2Op instead of LogOp to avoid an infinite match-and-rewrite loop.
-  Value log2 = builder.create<math::Log2Op>(x);
-  Value cst = bcast(f32Cst(builder, 6.93147181e-1f));
-  Value res = builder.create<arith::MulFOp>(cst, log2);
-  rewriter.replaceOp(op, res);
+  // Extract significant in the range [0.5,1) and exponent.
+  std::pair<Value, Value> pair = Frexp(builder, x, /*isPositive=*/true);
+  x = pair.first;
+  Value e = pair.second;
+
+  // Shift the inputs from the range [0.5,1) to [sqrt(1/2), sqrt(2)) and shift
+  // by -1.0. The values are then centered around 0, which improves the
+  // stability of the polynomial evaluation:
+  //
+  //   if( x < SQRTHF ) {
+  //     e -= 1;
+  //     x = x + x - 1.0;
+  //   } else { x = x - 1.0; }
+  Value mask = builder.create<arith::CmpFOp>(arith::CmpFPredicate::OLT, x,
+                                             cst_cephes_sqrthf);
+  Value tmp = builder.create<arith::SelectOp>(mask, x, cst_zero);
+
+  x = builder.create<arith::SubFOp>(x, cst_one);
+  e = builder.create<arith::SubFOp>(
+      e, builder.create<arith::SelectOp>(mask, cst_one, cst_zero));
+  x = builder.create<arith::AddFOp>(x, tmp);
+
+  Value x2 = builder.create<arith::MulFOp>(x, x);
+  Value x3 = builder.create<arith::MulFOp>(x2, x);
+
+  // Evaluate the polynomial approximant of degree 8 in three parts.
+  Value y0, y1, y2;
+  y0 = builder.create<math::FmaOp>(cst_cephes_log_p0, x, cst_cephes_log_p1);
+  y1 = builder.create<math::FmaOp>(cst_cephes_log_p3, x, cst_cephes_log_p4);
+  y2 = builder.create<math::FmaOp>(cst_cephes_log_p6, x, cst_cephes_log_p7);
+  y0 = builder.create<math::FmaOp>(y0, x, cst_cephes_log_p2);
+  y1 = builder.create<math::FmaOp>(y1, x, cst_cephes_log_p5);
+  y2 = builder.create<math::FmaOp>(y2, x, cst_cephes_log_p8);
+  y0 = builder.create<math::FmaOp>(y0, x3, y1);
+  y0 = builder.create<math::FmaOp>(y0, x3, y2);
+  y0 = builder.create<arith::MulFOp>(y0, x3);
+
+  y0 = builder.create<math::FmaOp>(cst_neg_half, x2, y0);
+  x = builder.create<arith::AddFOp>(x, y0);
+
+  if (base2) {
+    Value cst_log2e = bcast(f32Cst(builder, static_cast<float>(LOG2E_VALUE)));
+    x = builder.create<math::FmaOp>(x, cst_log2e, e);
+  } else {
+    Value cst_ln2 = bcast(f32Cst(builder, static_cast<float>(LN2_VALUE)));
+    x = builder.create<math::FmaOp>(e, cst_ln2, x);
+  }
+
+  Value invalid_mask = builder.create<arith::CmpFOp>(arith::CmpFPredicate::ULT,
+                                                     op.getOperand(), cst_zero);
+  Value zero_mask = builder.create<arith::CmpFOp>(arith::CmpFPredicate::OEQ,
+                                                  op.getOperand(), cst_zero);
+  Value pos_inf_mask = builder.create<arith::CmpFOp>(
+      arith::CmpFPredicate::OEQ, op.getOperand(), cst_pos_inf);
+
+  // Filter out invalid values:
+  //  • x == 0     -> -INF
+  //  • x < 0      ->  NAN
+  //  • x == +INF  -> +INF
+  Value aproximation = builder.create<arith::SelectOp>(
+      zero_mask, cst_minus_inf,
+      builder.create<arith::SelectOp>(
+          invalid_mask, cst_nan,
+          builder.create<arith::SelectOp>(pos_inf_mask, cst_pos_inf, x)));
+
+  rewriter.replaceOp(op, aproximation);
+
   return mlir::success();
 }
+
+struct Log2Approximation : public LogApproximationBase<math::Log2Op> {
+  using LogApproximationBase::LogApproximationBase;
+
+  LogicalResult matchAndRewrite(math::Log2Op op,
+                                PatternRewriter &rewriter) const final {
+    return logMatchAndRewrite(op, rewriter, /*base2=*/true);
+  }
+};
+
+struct LogApproximation : public LogApproximationBase<math::LogOp> {
+  using LogApproximationBase::LogApproximationBase;
+
+  LogicalResult matchAndRewrite(math::LogOp op,
+                                PatternRewriter &rewriter) const final {
+    return logMatchAndRewrite(op, rewriter, /*base2=*/false);
+  }
+};
 
 struct Log1pApproximation : public OpRewritePattern<math::Log1pOp> {
  public:
@@ -453,7 +605,8 @@ void populateMathApproximationPatterns(RewritePatternSet &patterns,
   for (const std::string &op : oplist) {
     if (op == "all") {
       patterns.add<ExpApproximation, EigenExpM1Approximation, LogApproximation,
-                   Log1pApproximation>(patterns.getContext());
+                   Log1pApproximation, Log2Approximation>(
+          patterns.getContext());
     } else if (op == "exp") {
       patterns.add<ExpApproximation>(patterns.getContext());
     } else if (op == "expm1") {
@@ -462,6 +615,8 @@ void populateMathApproximationPatterns(RewritePatternSet &patterns,
       patterns.add<LogApproximation>(patterns.getContext());
     } else if (op == "log1p") {
       patterns.add<Log1pApproximation>(patterns.getContext());
+    } else if (op == "log2") {
+      patterns.add<Log2Approximation>(patterns.getContext());
     }
   }
 }
