@@ -1663,7 +1663,7 @@ py_library(
         ":control_flow_state",
         ":control_flow_util",
         ":default_gradient",
-        ":functional_ops",
+        ":functional_ops_gen",
         ":math_ops",
         ":platform",
         ":resource_variable_ops",
