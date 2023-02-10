@@ -54,6 +54,9 @@ Single-GPU HLO:
     --num_replicas=1 \
     --num_partitions=2 \
     --hlo_file=path/to/hlo_module
+
+Tip: If the input generation takes too long, consider using
+--hlo_argument_mode=use_zeros_as_input.
 )";
 
 }  // namespace

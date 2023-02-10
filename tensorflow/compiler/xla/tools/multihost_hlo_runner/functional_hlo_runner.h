@@ -89,11 +89,13 @@ class FunctionalHloRunner {
   enum class ModuleArgumentMode {
     // Use device ID (casted to proper type) as arguments.
     kUseDeviceIdAsInput,
-    // Use random values are arguments.
+    // Use random values as arguments.
     kUseRandomInputs,
-    // Use random values are arguments, and different local devices share the
+    // Use random values as arguments, and different local devices share the
     // same argument values.
-    kUseSharedRandomInputs
+    kUseSharedRandomInputs,
+    // Use arguments which have all of their bytes set to 0.
+    kUseZerosAsInput,
   };
 
   enum class ModuleOutputMode {

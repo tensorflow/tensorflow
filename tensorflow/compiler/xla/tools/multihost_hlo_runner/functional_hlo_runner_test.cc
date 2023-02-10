@@ -79,5 +79,35 @@ TEST_F(FunctionalHloRunnerTest, Sharded2Devices) {
       {GetHloPath("sharded_2_devices.hlo")}, InputFormat::kText));
 }
 
+TEST_F(FunctionalHloRunnerTest, UnspecifiedInputs) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::PjRtClient> client,
+                          xla::FunctionalHloRunner::CreateGpuClient());
+
+  constexpr int kRequiredDeviceCount = 2;
+  const int kDeviceCount = client->device_count();
+  if (kDeviceCount < kRequiredDeviceCount) {
+    GTEST_SKIP() << "Requires " << kRequiredDeviceCount
+                 << " devices, but found only " << kDeviceCount;
+    return;
+  }
+
+  // Options corresponding to:
+  // --use_spmd_partitioning=true --num_replicas=1 --num_partitions=2
+  // --hlo_argument_mode=use_zeros_as_input
+  FunctionalHloRunner::PreprocessingOptions preproc_options;
+  FunctionalHloRunner::RawCompileOptions raw_compile_options;
+  raw_compile_options.spmd_mode =
+      FunctionalHloRunner::SpmdMode::kUseSpmdPartitioning;
+  raw_compile_options.num_replicas = 1;
+  raw_compile_options.num_partitions = 2;
+  FunctionalHloRunner::RunningOptions running_options;
+  running_options.module_argument_mode =
+      FunctionalHloRunner::ModuleArgumentMode::kUseZerosAsInput;
+
+  TF_EXPECT_OK(FunctionalHloRunner::LoadAndRunAndDump(
+      *client, preproc_options, raw_compile_options, running_options,
+      {GetHloPath("sharded_2_devices.hlo")}, InputFormat::kText));
+}
+
 }  // namespace
 }  // namespace xla

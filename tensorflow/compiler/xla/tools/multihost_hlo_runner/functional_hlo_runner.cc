@@ -204,6 +204,10 @@ bool AbslParseFlag(absl::string_view text,
         FunctionalHloRunner::ModuleArgumentMode::kUseSharedRandomInputs;
     return true;
   }
+  if (text == "use_zeros_as_input") {
+    *argument_mode = FunctionalHloRunner::ModuleArgumentMode::kUseZerosAsInput;
+    return true;
+  }
   *error =
       "Unrecognized module argument mode specified. Expect "
       "\"use_device_id_as_input\", \"use_random_inputs\", or "
@@ -220,6 +224,8 @@ std::string AbslUnparseFlag(
       return "use_random_inputs";
     case FunctionalHloRunner::ModuleArgumentMode::kUseSharedRandomInputs:
       return "use_shared_random_inputs";
+    case FunctionalHloRunner::ModuleArgumentMode::kUseZerosAsInput:
+      return "use_zeros_as_input";
     default:
       LOG(FATAL) << "Unexpected argument mode.";
   }
@@ -969,6 +975,16 @@ FunctionalHloRunner::CreateArgumentsOnDevice(
   VLOG(1) << "FunctionalHloRunner: local_executable count = "
           << hlo_modules.size();
 
+  const bool kUseRandomInputs = running_options.module_argument_mode ==
+                                    ModuleArgumentMode::kUseRandomInputs ||
+                                running_options.module_argument_mode ==
+                                    ModuleArgumentMode::kUseSharedRandomInputs;
+  const bool kUseSharedInputs =
+      running_options.module_argument_mode ==
+          ModuleArgumentMode::kUseSharedRandomInputs ||
+      running_options.module_argument_mode ==
+          ModuleArgumentMode::kUseZerosAsInput;
+
   for (int i = 0; i < num_addressable_devices; ++i) {
     VLOG(3) << "Creating fake argument for device " << i;
     LiteralVec& argument_literals =
@@ -1028,23 +1044,21 @@ FunctionalHloRunner::CreateArgumentsOnDevice(
     } else {
       if (flatten_arguments) {
         TF_ASSIGN_OR_RETURN(LiteralVec tupled_argument_literals,
-                            MakeFakeArguments(my_hlo_module));
+                            MakeFakeArguments(my_hlo_module, kUseRandomInputs));
         CHECK_EQ(tupled_argument_literals.size(), 1);
         CHECK(tupled_argument_literals.front().shape().IsTuple());
         argument_literals = tupled_argument_literals.front().DecomposeTuple();
       } else {
         TF_ASSIGN_OR_RETURN(argument_literals,
-                            MakeFakeArguments(my_hlo_module));
+                            MakeFakeArguments(my_hlo_module, kUseRandomInputs));
       }
-      if (running_options.module_argument_mode ==
-          ModuleArgumentMode::kUseSharedRandomInputs) {
+      if (kUseSharedInputs) {
         break;
       }
     }
   }
 
-  if (running_options.module_argument_mode ==
-      ModuleArgumentMode::kUseSharedRandomInputs) {
+  if (kUseSharedInputs) {
     PerDeviceIndexVecType per_device_index_vec;
     std::vector<int> argument_indices;
     argument_indices.resize(
