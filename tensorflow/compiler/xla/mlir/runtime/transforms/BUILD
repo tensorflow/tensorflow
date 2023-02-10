@@ -2,7 +2,7 @@ load("//tensorflow/compiler/xla:xla.bzl", "xla_cc_test")
 load("//tensorflow/tsl/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow/tsl:tsl.default.bzl", "get_compatible_with_cloud")
 load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library")
-load("//tensorflow/tsl/platform:build_config.bzl", "if_llvm_system_z_available")
+load("//tensorflow/tsl/platform:build_config.bzl", "if_llvm_aarch64_available", "if_llvm_arm_available", "if_llvm_powerpc_available", "if_llvm_system_z_available", "if_llvm_x86_available")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -107,13 +107,10 @@ cc_library(
         "//tensorflow/compiler/xla/mlir/math/transforms:passes",
         "//tensorflow/compiler/xla/mlir/memref/transforms:passes",
         "//tensorflow/compiler/xla/runtime:compiler",
-        "@llvm-project//mlir:AMXToLLVMIRTranslation",
         "@llvm-project//mlir:AffineDialect",
         "@llvm-project//mlir:AffineToStandard",
         "@llvm-project//mlir:ArithDialect",
         "@llvm-project//mlir:ArithTransforms",
-        "@llvm-project//mlir:ArmNeonToLLVMIRTranslation",
-        "@llvm-project//mlir:ArmSVEToLLVMIRTranslation",
         "@llvm-project//mlir:AsyncDialect",
         "@llvm-project//mlir:AsyncToLLVM",
         "@llvm-project//mlir:AsyncTransforms",
@@ -137,8 +134,15 @@ cc_library(
         "@llvm-project//mlir:SparseTensorDialect",
         "@llvm-project//mlir:Transforms",
         "@llvm-project//mlir:VectorToLLVM",
+    ] + if_llvm_aarch64_available([
+        "@llvm-project//mlir:ArmNeonToLLVMIRTranslation",
+        "@llvm-project//mlir:ArmSVEToLLVMIRTranslation",
+    #]) + if_llvm_arm_available([
+    #    "@llvm-project//mlir:ArmNeonToLLVMIRTranslation",
+    ]) + if_llvm_x86_available([
+        "@llvm-project//mlir:AMXToLLVMIRTranslation",
         "@llvm-project//mlir:X86VectorToLLVMIRTranslation",
-    ],
+    ]),
     alwayslink = 1,  # has pipeline registration
 )
 
@@ -234,21 +238,14 @@ cc_library(
         "@llvm-project//mlir:Parser",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:ToLLVMIRTranslation",
-    ] + select({
-        "//tensorflow/tsl:arm_any": [
-            "@llvm-project//llvm:AArch64AsmParser",
-        ],
-        "//tensorflow/tsl:linux_ppc64le": [
-            "@llvm-project//llvm:PowerPCAsmParser",
-        ],
-        "//tensorflow/tsl:macos_arm64": [
-            "@llvm-project//llvm:AArch64AsmParser",
-        ],
-        "//conditions:default": [
-            "@llvm-project//llvm:X86AsmParser",
-        ],
-    }) + if_llvm_system_z_available([
+    ] + if_llvm_aarch64_available([
+        "@llvm-project//llvm:AArch64AsmParser",
+    ]) + if_llvm_powerpc_available([
+        "@llvm-project//llvm:PowerPCAsmParser",
+    ]) + if_llvm_system_z_available([
         "@llvm-project//llvm:SystemZAsmParser",
+    ]) + if_llvm_x86_available([
+        "@llvm-project//llvm:X86AsmParser",
     ]),
 )
 

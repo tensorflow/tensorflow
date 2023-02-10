@@ -70,11 +70,17 @@ void RegisterDefaultXlaCpuRuntimeDialects(DialectRegistry& dialects) {
       mlir::vector::VectorDialect, RuntimeDialect>();
 
   // Register MLIR dialects that can be translated to LLVM IR.
-  mlir::registerArmNeonDialectTranslation(*dialects);
-  mlir::registerAMXDialectTranslation(*dialects);
+#ifdef TF_LLVM_AARCH64_AVAILABLE
   mlir::registerArmSVEDialectTranslation(*dialects);
-  mlir::registerLLVMDialectTranslation(*dialects);
+#endif
+#if defined(TF_LLVM_AARCH64_AVAILABLE) || defined(TF_LLVM_ARM_AVAILABLE)
+  mlir::registerArmNeonDialectTranslation(*dialects);
+#endif
+#ifdef TF_LLVM_X86_AVAILABLE
+  mlir::registerAMXDialectTranslation(*dialects);
   mlir::registerX86VectorDialectTranslation(*dialects);
+#endif
+  mlir::registerLLVMDialectTranslation(*dialects);
 }
 
 static void CreateXlaCpuCompilationPipeline(mlir::OpPassManager& pm,

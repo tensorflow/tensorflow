@@ -859,11 +859,32 @@ def tf_google_mobile_srcs_only_runtime():
     return []
 
 def if_llvm_aarch64_available(then, otherwise = []):
-    return then
+    return select({
+        clean_dep("//tensorflow/tsl:linux_aarch64"): then,
+        "//conditions:default": otherwise,
+    })
+
+def if_llvm_arm_available(then, otherwise = []):
+    return select({
+        clean_dep("//tensorflow/tsl:linux_armhf"): then,
+        "//conditions:default": otherwise,
+    })
+
+def if_llvm_powerpc_available(then, otherwise = []):
+    return select({
+        clean_dep("//tensorflow/tsl:linux_ppc64le"): then,
+        "//conditions:default": otherwise,
+    })
 
 def if_llvm_system_z_available(then, otherwise = []):
     return select({
         clean_dep("//tensorflow/tsl:linux_s390x"): then,
+        "//conditions:default": otherwise,
+    })
+
+def if_llvm_x86_available(then, otherwise = []):
+    return select({
+        clean_dep("//tensorflow/tsl:linux_x86_64"): then,
         "//conditions:default": otherwise,
     })
 

@@ -94,8 +94,9 @@ cc_library(
         "@llvm-project//mlir:Transforms",
         "@llvm-project//mlir:VectorDialect",
         "@llvm-project//mlir:VectorTransforms",
+    ] + if_llvm_x86_available([
         "@llvm-project//mlir:X86VectorTransforms",
-    ],
+    ]),
     alwayslink = 1,
 )
 

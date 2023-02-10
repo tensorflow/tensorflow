@@ -187,29 +187,31 @@ static void InitializeTargets() {
   LLVMInitializeAArch64TargetMC();
   LLVMInitializeAArch64AsmParser();
   LLVMInitializeAArch64AsmPrinter();
-#endif
-#if TF_LLVM_S390X_AVAILABLE
-  LLVMInitializeSystemZTarget();
-  LLVMInitializeSystemZTargetInfo();
-  LLVMInitializeSystemZTargetMC();
-  LLVMInitializeSystemZAsmParser();
-  LLVMInitializeSystemZAsmPrinter();
-#endif
+#elif TF_LLVM_ARM_AVAILABLE
   LLVMInitializeARMTarget();
   LLVMInitializeARMTargetInfo();
   LLVMInitializeARMTargetMC();
   LLVMInitializeARMAsmParser();
   LLVMInitializeARMAsmPrinter();
+#elif TF_LLVM_POWERPC_AVAILABLE
   LLVMInitializePowerPCTarget();
   LLVMInitializePowerPCTargetInfo();
   LLVMInitializePowerPCTargetMC();
   LLVMInitializePowerPCAsmParser();
   LLVMInitializePowerPCAsmPrinter();
+#elif TF_LLVM_S390X_AVAILABLE
+  LLVMInitializeSystemZTarget();
+  LLVMInitializeSystemZTargetInfo();
+  LLVMInitializeSystemZTargetMC();
+  LLVMInitializeSystemZAsmParser();
+  LLVMInitializeSystemZAsmPrinter();
+#elif TF_LLVM_X86_AVAILABLE
   LLVMInitializeX86Target();
   LLVMInitializeX86TargetInfo();
   LLVMInitializeX86TargetMC();
   LLVMInitializeX86AsmParser();
   LLVMInitializeX86AsmPrinter();
+#endif
 }
 
 // Replaces {{tag.type tag.name}} in the error message with tag_name.

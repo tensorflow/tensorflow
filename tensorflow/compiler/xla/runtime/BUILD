@@ -1,6 +1,6 @@
 load("//tensorflow/compiler/xla:xla.bzl", "xla_cc_test")
 load("//tensorflow/tsl:tsl.default.bzl", "get_compatible_with_cloud")
-load("//tensorflow/tsl/platform:build_config.bzl", "if_llvm_system_z_available", "tf_platform_deps")
+load("//tensorflow/tsl/platform:build_config.bzl", "if_llvm_system_z_available", "if_llvm_aarch64_available", "if_llvm_arm_available", "if_llvm_x86_available", "tf_platform_deps")
 load("//tensorflow/tsl/platform:rules_cc.bzl", "cc_library")
 
 package(
@@ -256,26 +256,15 @@ cc_library(
         "@llvm-project//llvm:OrcJIT",
         "@llvm-project//llvm:Support",
         "@llvm-project//llvm:TransformUtils",
+    ] + if_llvm_aarch64_available([
+        "@llvm-project//llvm:AArch64AsmParser",
+        "@llvm-project//llvm:AArch64CodeGen",
+    ]) + if_llvm_arm_available([
+        "@llvm-project//llvm:ARMAsmParser",
+        "@llvm-project//llvm:ARMCodeGen",
+    ]) + if_llvm_x86_available([
         "@llvm-project//llvm:X86AsmParser",
         "@llvm-project//llvm:X86CodeGen",
-    ] + select({
-        "//tensorflow/tsl:arm_any": [
-            "@llvm-project//llvm:AArch64AsmParser",  # fixdeps: keep
-            "@llvm-project//llvm:AArch64CodeGen",  # fixdeps: keep
-        ],
-        "//tensorflow/tsl:linux_ppc64le": [
-            "@llvm-project//llvm:PowerPCAsmParser",  # fixdeps: keep
-            "@llvm-project//llvm:PowerPCCodeGen",  # fixdeps: keep
-        ],
-        "//tensorflow/tsl:macos_arm64": [
-            "@llvm-project//llvm:AArch64AsmParser",  # fixdeps: keep
-            "@llvm-project//llvm:AArch64CodeGen",  # fixdeps: keep
-        ],
-        "//conditions:default": [
-        ],
-    }) + if_llvm_system_z_available([
-        "@llvm-project//llvm:SystemZAsmParser",  # fixdeps: keep
-        "@llvm-project//llvm:SystemZCodeGen",  # fixdeps: keep
     ]),
 )
 
