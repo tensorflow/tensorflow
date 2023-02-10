@@ -171,14 +171,6 @@ struct JitRtFlags {
   // Enable vectorization, which requires tiling and peeling on different ops.
   bool vectorize;
 
-  // Enable tiling/fusion transformations shared with XLA:CPU Next.
-  bool enable_xla_cpu_transformations;
-
-  // Enable packing for matmul, which lowers the matmul op into linalg.mmt4d, to
-  // hopefully get the most optimized layout for matmul inputs, hence accelerate
-  // accesses to these during matmul computation.
-  bool pack_matmul;
-
   // Enables crash reproducer for JitRt MLIR pass manager.
   bool enable_crash_reproducer;
 };

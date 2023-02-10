@@ -68,10 +68,15 @@ int main(int argc, char** argv) {
                                       opts.threadTileDim,
                                       opts.experimentalSoftmax);
       });
-  mlir::PassPipelineRegistration<gml_st::GmlStCPUPipelineOptions>
+  mlir::PassPipelineRegistration<gml_st::GmlStCPUTilingOptions>
       gmlStCpuTilingPipeline("gml-st-cpu-tiling-pipeline",
                              "Tiles, fuses, vectorizes tileable ops for CPU",
                              gml_st::addCPUTilingPipeline);
+
+  mlir::PassPipelineRegistration<> defaultGmlStCpuTilingPipeline(
+      "default-gml-st-cpu-tiling-pipeline",
+      "Tiles, fuses, vectorizes tileable ops for CPU with default parameters",
+      gml_st::addDefaultCPUTilingPipeline);
 
   struct HloToTritonPipelineOptions
       : public PassPipelineOptions<HloToTritonPipelineOptions> {

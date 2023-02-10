@@ -161,14 +161,7 @@ static Status CreateHloXlaPipeline(
   pm.addPass(mlir::memref::createResolveShapedTypeResultDimsPass());
   pm.addPass(mlir::createCanonicalizerPass());
   if (options.enable_tiling_and_fusion) {
-    mlir::gml_st::GmlStCPUPipelineOptions gml_st_opts;
-    gml_st_opts.vectorSize = 8;
-    gml_st_opts.reduction1DTileSize = 32;
-    gml_st_opts.reduction2DTileSizes = {4, 4};
-    gml_st_opts.matmulTileSizes = {4, 4, 4};
-    gml_st_opts.lowerToMmt4d = true;
-
-    mlir::gml_st::addCPUTilingPipeline(pm, gml_st_opts);
+    mlir::gml_st::addDefaultCPUTilingPipeline(pm);
   } else {
     pm.addNestedPass<mlir::func::FuncOp>(
         mlir::createLinalgElementwiseOpFusionPass());
