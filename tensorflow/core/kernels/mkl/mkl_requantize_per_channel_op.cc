@@ -15,7 +15,7 @@ limitations under the License.
 
 // See docs in ../ops/array_ops.cc.
 
-#ifdef INTEL_MKL
+#if defined(INTEL_MKL) && !defined(ENABLE_ONEDNN_V3)
 #define EIGEN_USE_THREADS
 
 #include <math.h>
@@ -192,4 +192,4 @@ REGISTER_KERNEL_BUILDER(Name("RequantizePerChannel")
                         MklRequantizePerChannelOp<CPUDevice, quint8>);
 
 }  // namespace tensorflow
-#endif  // INTEL_MKL
+#endif  // INTEL_MKL && !ENABLE_ONEDNN_V3

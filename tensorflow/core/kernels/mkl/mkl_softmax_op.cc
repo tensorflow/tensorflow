@@ -15,7 +15,7 @@ limitations under the License.
 
 // See docs in ../ops/nn_ops.cc.
 
-#ifdef INTEL_MKL
+#if defined(INTEL_MKL) && !defined(ENABLE_ONEDNN_V3)
 
 #include "dnnl.hpp"
 #include "tensorflow/core/framework/numeric_op.h"
@@ -291,4 +291,4 @@ TF_CALL_bfloat16(REGISTER_SOFTMAX_MKL_SUPPORTED_KERNELS_TYPES);
 
 }  // namespace tensorflow
 
-#endif  // INTEL_MKL
+#endif  // INTEL_MKL && !ENABLE_ONEDNN_V3

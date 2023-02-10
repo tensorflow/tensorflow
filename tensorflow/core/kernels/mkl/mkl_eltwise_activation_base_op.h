@@ -18,7 +18,7 @@ limitations under the License.
 
 // See docs in ../ops/mkl_nn_ops.cc.
 
-#ifdef INTEL_MKL
+#if defined(INTEL_MKL) && !defined(ENABLE_ONEDNN_V3)
 
 #include <unordered_map>
 
@@ -311,5 +311,5 @@ class MklEltwiseFwdActivationOpBase : public OpKernel {
 
 }  // namespace tensorflow
 
-#endif  // INTEL_MKL
+#endif  // INTEL_MKL && !ENABLE_ONEDNN_V3
 #endif  // TENSORFLOW_CORE_KERNELS_MKL_MKL_ELTWISE_ACTIVATION_BASE_OP_H_

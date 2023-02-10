@@ -15,7 +15,7 @@ limitations under the License.
 
 // See docs in ../ops/mkl_nn_ops.cc.
 
-#ifdef INTEL_MKL
+#if defined(INTEL_MKL) && !defined(ENABLE_ONEDNN_V3)
 
 #include "tensorflow/core/kernels/mkl/mkl_eltwise_activation_base_op.h"
 
@@ -68,4 +68,4 @@ TF_CALL_bfloat16(REGISTER_SWISH_MKL_SUPPORTED_KERNELS_TYPES);
 
 }  // namespace tensorflow
 
-#endif
+#endif  // INTEL_MKL && !ENABLE_ONEDNN_V3

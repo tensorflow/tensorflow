@@ -36,7 +36,9 @@ namespace tensorflow {
 
 typedef Eigen::ThreadPoolDevice CPUDevice;
 
+#ifndef ENABLE_ONEDNN_V3
 using ConvBwdFilterDesc = dnnl::convolution_backward_weights::desc;
+#endif  // !ENABLE_ONEDNN_V3
 using ConvBwdFilterPd = dnnl::convolution_backward_weights::primitive_desc;
 
 struct MklConvBwdFilterParams {
@@ -157,11 +159,15 @@ class MklConvBwdFilterPrimitive : public MklPrimitive {
 
     // Primitive descriptor and descriptor for convolution backward filter.
     std::shared_ptr<ConvBwdFilterPd> bwd_filter_pd;
+#ifndef ENABLE_ONEDNN_V3
     std::shared_ptr<ConvBwdFilterDesc> bwd_filter_desc;
+#endif  // !ENABLE_ONEDNN_V3
 
     // Primitive descriptor and descriptor for convolution forward.
     std::shared_ptr<ConvFwdPd> fwd_pd;
+#ifndef ENABLE_ONEDNN_V3
     std::shared_ptr<ConvFwdDesc> fwd_desc;
+#endif  // !ENABLE_ONEDNN_V3
 
     // Convolution backward filter primitive.
     std::shared_ptr<dnnl::primitive> conv_bwd_filter;
@@ -182,9 +188,13 @@ class MklConvBwdFilterPrimitive : public MklPrimitive {
           diff_filter_mem(nullptr),
           diff_bias_mem(nullptr),
           diff_dst_mem(nullptr),
+#ifndef ENABLE_ONEDNN_V3
           bwd_filter_desc(nullptr),
+#endif  // !ENABLE_ONEDNN_V3
           fwd_pd(nullptr),
+#ifndef ENABLE_ONEDNN_V3
           fwd_desc(nullptr),
+#endif  // !ENABLE_ONEDNN_V3
           src_md(nullptr),
           diff_filter_md(nullptr),
           diff_bias_md(nullptr),
@@ -217,6 +227,7 @@ class MklConvBwdFilterPrimitive : public MklPrimitive {
           new memory::desc({convBwdFilterDims.diff_bias_dims}, MklDnnType<T>(),
                            memory::format_tag::x));
 
+#ifndef ENABLE_ONEDNN_V3
     // Create descriptor and primitive descriptor for convolution forward.
     context_.fwd_desc.reset(new ConvFwdDesc(
         prop_kind::forward, dnnl::algorithm::convolution_direct,
@@ -242,6 +253,29 @@ class MklConvBwdFilterPrimitive : public MklPrimitive {
     }
     context_.bwd_filter_pd.reset(new ConvBwdFilterPd(
         *context_.bwd_filter_desc, cpu_engine_, *context_.fwd_pd));
+#else
+    context_.fwd_pd.reset(new ConvFwdPd(
+        cpu_engine_, prop_kind::forward, dnnl::algorithm::convolution_direct,
+        *context_.src_md, *context_.diff_filter_md, *context_.diff_dst_md,
+        convBwdFilterDims.strides, convBwdFilterDims.dilations,
+        convBwdFilterDims.padding_left, convBwdFilterDims.padding_right));
+
+    if (!convBwdFilterDims.diff_bias_dims.empty()) {
+      context_.bwd_filter_pd.reset(new ConvBwdFilterPd(
+          cpu_engine_, dnnl::algorithm::convolution_direct, *context_.src_md,
+          *context_.diff_filter_md, *context_.diff_bias_md,
+          *context_.diff_dst_md, convBwdFilterDims.strides,
+          convBwdFilterDims.dilations, convBwdFilterDims.padding_left,
+          convBwdFilterDims.padding_right, *context_.fwd_pd));
+    } else {
+      context_.bwd_filter_pd.reset(new ConvBwdFilterPd(
+          cpu_engine_, dnnl::algorithm::convolution_direct, *context_.src_md,
+          *context_.diff_filter_md, *context_.diff_dst_md,
+          convBwdFilterDims.strides, convBwdFilterDims.dilations,
+          convBwdFilterDims.padding_left, convBwdFilterDims.padding_right,
+          *context_.fwd_pd));
+    }
+#endif  // !ENABLE_ONEDNN_V3
 
     auto bwd_filter_pd = context_.bwd_filter_pd.get();
 

@@ -12,7 +12,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#if defined(INTEL_MKL) && defined(ENABLE_MKL)
+#if defined(INTEL_MKL) && !defined(ENABLE_ONEDNN_V3) && defined(ENABLE_MKL)
 #define EIGEN_USE_THREADS
 
 #include "tensorflow/cc/ops/standard_ops.h"
@@ -261,4 +261,4 @@ TEST_F(QuantizedPoolingTest, SmallMaxPooling) {
 
 }  // namespace tensorflow
 
-#endif  // defined(INTEL_MKL) && defined(ENABLE_MKL)
+#endif  // INTEL_MKL && !ENABLE_ONEDNN_V3 && ENABLE_MKL
