@@ -246,23 +246,23 @@ class TritonAutotunerVisitor : public DfsHloRewriteVisitor {
       }
     }
 
+    std::vector<se::DeviceMemoryBase> args;
+    int64_t rng_state = 0;
+    for (const HloInstruction* param : fusion->parameter_instructions()) {
+      TF_ASSIGN_OR_RETURN(
+          se::DeviceMemoryBase param_buffer,
+          CreateBuffer(rz_allocator, *param, autotune_cfg, rng_state));
+      args.push_back(param_buffer);
+    }
+
+    TF_ASSIGN_OR_RETURN(
+        se::DeviceMemoryBase output_buffer,
+        CreateBuffer(rz_allocator, *root, autotune_cfg, rng_state));
+    args.push_back(output_buffer);
+
     for (AutotuneResult::TritonGemmKey& conf :
          GetPossibleMatmulAutotuneConfigs()) {
       VLOG(1) << "Trying triton tiling: " << conf.DebugString();
-
-      std::vector<se::DeviceMemoryBase> args;
-      int64_t rng_state = 0;
-      for (HloInstruction* param : fusion->parameter_instructions()) {
-        TF_ASSIGN_OR_RETURN(
-            se::DeviceMemoryBase param_buffer,
-            CreateBuffer(rz_allocator, *param, autotune_cfg, rng_state));
-        args.push_back(param_buffer);
-      }
-
-      TF_ASSIGN_OR_RETURN(
-          se::DeviceMemoryBase output_buffer,
-          CreateBuffer(rz_allocator, *root, autotune_cfg, rng_state));
-      args.push_back(output_buffer);
 
       AutotuneResult res;
       *res.mutable_triton() = conf;
@@ -343,6 +343,10 @@ class TritonAutotunerVisitor : public DfsHloRewriteVisitor {
         stream_->parent()->implementation());
     std::unique_ptr<se::gpu::GpuTimer, se::gpu::GpuTimerDeleter> timer(
         new se::gpu::GpuTimer(cuda_executor));
+    // Warmup: in and out buffers are reused while probing different configs, so
+    // GPU caches should be in some comparable states during measurements.
+    TF_RETURN_IF_ERROR(ExecuteKernelOnStream(*kernel, device_buffers,
+                                             launch_dimensions, stream_));
     TF_RETURN_IF_ERROR(stream_->BlockHostUntilDone());
     if (!timer->Init() || !timer->Start(se::gpu::AsGpuStream(stream_))) {
       return Status(tsl::error::INTERNAL, "Failed to start timer");
