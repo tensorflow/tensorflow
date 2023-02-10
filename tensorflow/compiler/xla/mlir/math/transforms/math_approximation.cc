@@ -222,7 +222,7 @@ std::pair<Value, Value> Frexp(ImplicitLocOpBuilder &builder, Value arg,
   return {normalized_fraction, exponent};
 }
 
-struct EigenExpM1Approximation : public OpRewritePattern<math::ExpM1Op> {
+struct ExpM1Approximation : public OpRewritePattern<math::ExpM1Op> {
  public:
   using OpRewritePattern::OpRewritePattern;
 
@@ -230,7 +230,8 @@ struct EigenExpM1Approximation : public OpRewritePattern<math::ExpM1Op> {
                                 PatternRewriter &rewriter) const final;
 };
 
-LogicalResult EigenExpM1Approximation::matchAndRewrite(
+// This approximation comes from XLA Classic.
+LogicalResult ExpM1Approximation::matchAndRewrite(
     math::ExpM1Op op, PatternRewriter &rewriter) const {
   auto shape = vectorShape(op.getOperand().getType(), isF32);
   if (!shape.has_value())
@@ -241,34 +242,33 @@ LogicalResult EigenExpM1Approximation::matchAndRewrite(
     return broadcast(builder, value, *shape);
   };
 
-  // expm1(x) = exp(x) - 1 = u - 1.
-  // We have to handle it carefully when x is near 0, i.e. u ~= 1,
-  // and when the input is ~= -inf, i.e. u - 1 ~= -1.
-  Value cstOne = bcast(f32Cst(builder, 1.0f));
-  Value cstNegOne = bcast(f32Cst(builder, -1.0f));
+  Value cst_zero = bcast(f32Cst(builder, 0.0f));
+  Value cst_half = bcast(f32Cst(builder, 0.5f));
+  Value cst_one = bcast(f32Cst(builder, 1.0f));
+
+  // expm1(x) == tanh(x/2)*(exp(x)+1)
+  // x/2 can underflow, if it does we approximate expm1 with x.
   Value x = op.getOperand();
-  Value u = builder.create<math::ExpOp>(x);
-  Value uEqOneOrNaN =
-      builder.create<arith::CmpFOp>(arith::CmpFPredicate::UEQ, u, cstOne);
-  Value uMinusOne = builder.create<arith::SubFOp>(u, cstOne);
-  Value uMinusOneEqNegOne = builder.create<arith::CmpFOp>(
-      arith::CmpFPredicate::OEQ, uMinusOne, cstNegOne);
-  // logU = log(u) ~= x
-  Value logU = builder.create<math::LogOp>(u);
+  Value x_over_two = builder.create<arith::MulFOp>(x, cst_half);
+  Value x_over_two_is_zero = builder.create<arith::CmpFOp>(
+      arith::CmpFPredicate::OEQ, x_over_two, cst_zero);
+  Value abs_x = builder.create<math::AbsFOp>(x);
 
-  // Detect exp(x) = +inf; written this way to avoid having to form +inf.
-  Value isInf =
-      builder.create<arith::CmpFOp>(arith::CmpFPredicate::OEQ, logU, u);
+  Value abs_x_is_large =
+      builder.create<arith::CmpFOp>(arith::CmpFPredicate::OGT, abs_x, cst_half);
+  Value tanh_of_x_over_two = builder.create<math::TanhOp>(x_over_two);
+  Value exp_of_x = builder.create<math::ExpOp>(x);
+  Value exp_of_x_plus_one = builder.create<arith::AddFOp>(exp_of_x, cst_one);
+  Value exp_of_x_minus_one = builder.create<arith::SubFOp>(exp_of_x, cst_one);
 
-  // (u - 1) * (x / ~x)
-  Value expm1 = builder.create<arith::MulFOp>(
-      uMinusOne, builder.create<arith::DivFOp>(x, logU));
-  expm1 = builder.create<arith::SelectOp>(isInf, u, expm1);
-  Value approximation = builder.create<arith::SelectOp>(
-      uEqOneOrNaN, x,
-      builder.create<arith::SelectOp>(uMinusOneEqNegOne, cstNegOne, expm1));
-  rewriter.replaceOp(op, approximation);
+  Value expm1_of_x =
+      builder.create<arith::MulFOp>(tanh_of_x_over_two, exp_of_x_plus_one);
+  expm1_of_x = builder.create<arith::SelectOp>(abs_x_is_large,
+                                               exp_of_x_minus_one, expm1_of_x);
+  expm1_of_x =
+      builder.create<arith::SelectOp>(x_over_two_is_zero, x, expm1_of_x);
 
+  rewriter.replaceOp(op, expm1_of_x);
   return mlir::success();
 }
 
@@ -675,13 +675,13 @@ void populateMathApproximationPatterns(RewritePatternSet &patterns,
                                        ArrayRef<std::string> oplist) {
   for (const std::string &op : oplist) {
     if (op == "all") {
-      patterns.add<ExpApproximation, EigenExpM1Approximation, LogApproximation,
+      patterns.add<ExpApproximation, ExpM1Approximation, LogApproximation,
                    Log1pApproximation, Log2Approximation, TanhApproximation>(
           patterns.getContext());
     } else if (op == "exp") {
       patterns.add<ExpApproximation>(patterns.getContext());
     } else if (op == "expm1") {
-      patterns.add<EigenExpM1Approximation>(patterns.getContext());
+      patterns.add<ExpM1Approximation>(patterns.getContext());
     } else if (op == "log") {
       patterns.add<LogApproximation>(patterns.getContext());
     } else if (op == "log1p") {
