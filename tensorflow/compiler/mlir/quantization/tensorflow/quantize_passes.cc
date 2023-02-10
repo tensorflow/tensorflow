@@ -93,6 +93,7 @@ void AddQuantizePtqDynamicRangePasses(
   pm.addPass(mlir::TF::CreateTFShapeInferencePass());
   pm.addNestedPass<mlir::func::FuncOp>(mlir::quant::CreatePrepareLiftingPass());
   pm.addPass(mlir::quant::CreateLiftQuantizableSpotsAsFunctionsDRQPass(
+      quantization_options.quantization_method().experimental_method(),
       quantization_options.min_num_elements_for_weights()));
   pm.addPass(mlir::quant::CreateInsertQuantizedFunctionsPass(
       quantization_options.quantization_method().experimental_method(),
