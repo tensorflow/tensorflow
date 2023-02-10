@@ -1210,15 +1210,16 @@ def save(obj, export_dir, signatures=None, options=None):
   Args:
     obj: A trackable object (e.g. tf.Module or tf.train.Checkpoint) to export.
     export_dir: A directory in which to write the SavedModel.
-    signatures: Optional, one of three types: * a `tf.function` with an input
-      signature specified, which will use the default serving signature key, *
-      the result of `f.get_concrete_function` on a `@tf.function`-decorated
-      function `f`, in which case `f` will be used to generate a signature for
-      the SavedModel under the default serving signature key, * a dictionary,
-      which maps signature keys to either `tf.function` instances with input
-      signatures or concrete functions. Keys of such a dictionary may be
-      arbitrary strings, but will typically be from the
-      `tf.saved_model.signature_constants` module.
+    signatures: Optional, one of three types:
+      * A `tf.function` with an input signature specified, which will use the
+        default serving signature key.
+      * The result of `f.get_concrete_function` on a `@tf.function`-decorated
+        function `f`, in which case `f` will be used to generate a signature for
+        the SavedModel under the default serving signature key.
+      * A dictionary, which maps signature keys to either `tf.function`
+        instances with input signatures or concrete functions. Keys of such a
+        dictionary may be arbitrary strings, but will typically be from the
+        `tf.saved_model.signature_constants` module.
     options: `tf.saved_model.SaveOptions` object for configuring save options.
 
   Raises:
