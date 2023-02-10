@@ -130,6 +130,8 @@ namespace breaks_if_you_move_ops {
 using ValueEquivalenceClasses =
     llvm::EquivalenceClasses<Value, detail::ValueComparator>;
 using ValueSet = std::set<Value, detail::ValueComparator>;
+template <typename T>
+using ValueMap = std::map<Value, T, detail::ValueComparator>;
 
 }  // namespace breaks_if_you_move_ops
 

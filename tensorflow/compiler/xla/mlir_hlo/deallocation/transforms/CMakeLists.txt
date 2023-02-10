@@ -12,6 +12,29 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-add_subdirectory(IR)
-add_subdirectory(transforms)
-add_subdirectory(utils)
+set(LLVM_TARGET_DEFINITIONS passes.td)
+mlir_tablegen(passes.h.inc -gen-pass-decls -name Deallocation)
+add_public_tablegen_target(MLIRDeallocationPassesIncGen)
+
+include_directories(BEFORE
+    ${CMAKE_CURRENT_BINARY_DIR}
+    ${CMAKE_CURRENT_SOURCE_DIR})
+
+add_mlir_library(DeallocationPasses
+  deallocate.cc
+
+  DEPENDS
+  MLIRDeallocationPassesIncGen
+  MLIRDeallocationUtils
+
+  LINK_COMPONENTS
+  Core
+
+  LINK_LIBS PUBLIC
+  MLIRControlFlowInterfaces
+  MLIRFuncDialect
+  MLIRIR
+  MLIRMemRefDialect
+  MLIRPass
+  MLIRSupport
+)

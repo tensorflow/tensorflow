@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "deallocation/IR/deallocation_ops.h"
+#include "deallocation/transforms/passes.h"
 #include "gml_st/IR/gml_st_ops.h"
 #include "gml_st/transforms/passes.h"
 #include "gml_st/transforms/test_passes.h"
@@ -35,13 +36,14 @@ using namespace mlir;
 
 int main(int argc, char** argv) {
   mlir::registerAllPasses();
-  mlir::hlo::registerLMHLOTransformsPasses();
-  mlir::registerLMHLOGPUTransformsPasses();
-  mlir::mhlo::registerAllMhloPasses();
-  mlir::lmhlo::registerAllLmhloPasses();
-  mlir::thlo::registerAllThloPasses();
+  mlir::deallocation::registerDeallocationPasses();
   mlir::gml_st::registerGmlStPasses();
   mlir::gml_st::registerGmlStTestPasses();
+  mlir::hlo::registerLMHLOTransformsPasses();
+  mlir::lmhlo::registerAllLmhloPasses();
+  mlir::mhlo::registerAllMhloPasses();
+  mlir::registerLMHLOGPUTransformsPasses();
+  mlir::thlo::registerAllThloPasses();
 
   struct HloToGpuPipelineOptions
       : public PassPipelineOptions<HloToGpuPipelineOptions> {

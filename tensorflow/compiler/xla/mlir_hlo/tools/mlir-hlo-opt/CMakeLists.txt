@@ -24,6 +24,7 @@ set(LIBS
         AllMhloPasses
         AllThloPasses
         DeallocationDialect
+        DeallocationPasses
         GmlStDialect
         GmlStPasses
         LmhloDialect
