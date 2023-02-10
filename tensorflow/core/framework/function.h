@@ -564,7 +564,7 @@ class FunctionLibraryDefinition : public OpRegistryInterface {
   // if not found.
   OptimizedFunctionGraph* FindOptimizedFunctionGraph(
       const std::string& function_name) const {
-    mutex_lock l(mu_);
+    tf_shared_lock l(mu_);
     if (auto it = optimized_function_graph_map_.find(function_name);
         it != optimized_function_graph_map_.end()) {
       return &(it->second);
