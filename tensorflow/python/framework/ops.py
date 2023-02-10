@@ -284,9 +284,8 @@ def disable_tensor_equality():
   Tensor._USE_EQUALITY = False  # pylint: disable=protected-access
 
 
-# TODO(mdan): This object should subclass Symbol, not just Tensor.
 @tf_export("Tensor", "experimental.numpy.ndarray", v1=["Tensor"])
-class Tensor(internal.NativeObject, core_tf_types.Tensor):
+class Tensor(internal.NativeObject, core_tf_types.Symbol):
   """A `tf.Tensor` represents a multidimensional array of elements.
 
   All elements are of a single known data type.
@@ -1051,7 +1050,7 @@ class Tensor(internal.NativeObject, core_tf_types.Tensor):
 
 # TODO(agarwal): consider getting rid of this.
 # TODO(mdan): This object should not subclass ops.Tensor.
-class _EagerTensorBase(Tensor):
+class _EagerTensorBase(Tensor, core_tf_types.Value):
   """Base class for EagerTensor."""
 
   # __complex__, __int__, __float__ and __index__ may copy the tensor to CPU and
