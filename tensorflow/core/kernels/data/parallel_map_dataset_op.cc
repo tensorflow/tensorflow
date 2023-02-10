@@ -15,6 +15,11 @@ limitations under the License.
 #include "tensorflow/core/kernels/data/parallel_map_dataset_op.h"
 
 #include <deque>
+#include <functional>
+#include <memory>
+#include <string>
+#include <utility>
+#include <vector>
 
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/input_colocation_exemption_registry.h"
@@ -335,20 +340,19 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
       for (size_t i = 0; i < invocation_results_.size(); i++) {
         const auto& result = *(invocation_results_[i]);
         std::string element_prefix =
-            absl::StrCat(kInvocationResults, "[", i, "]");
+            absl::StrCat(prefix(), "_", kInvocationResults, "[", i, "]");
         TF_RETURN_IF_ERROR(
             WriteStatusLocked(writer, element_prefix, result.status));
-        TF_RETURN_IF_ERROR(writer->WriteScalar(
-            full_name(absl::StrCat(element_prefix, "_", kSize)),
-            result.return_values.size()));
+        TF_RETURN_IF_ERROR(writer->WriteScalar(element_prefix, kSize,
+                                               result.return_values.size()));
         for (size_t j = 0; j < result.return_values.size(); j++) {
-          TF_RETURN_IF_ERROR(writer->WriteTensor(
-              full_name(absl::StrCat(element_prefix, "[", j, "]")),
-              result.return_values[j]));
+          TF_RETURN_IF_ERROR(writer->WriteTensor(element_prefix,
+                                                 absl::StrCat("[", j, "]"),
+                                                 result.return_values[j]));
         }
-        TF_RETURN_IF_ERROR(writer->WriteScalar(
-            full_name(absl::StrCat(element_prefix, "_", kEndOfInput)),
-            static_cast<int64_t>(result.end_of_input)));
+        TF_RETURN_IF_ERROR(
+            writer->WriteScalar(element_prefix, kEndOfInput,
+                                static_cast<int64_t>(result.end_of_input)));
       }
       return OkStatus();
     }
@@ -366,14 +370,13 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
         invocation_results_.push_back(std::make_shared<InvocationResult>(ctx));
         auto& result = *invocation_results_.back();
         std::string element_prefix =
-            absl::StrCat(kInvocationResults, "[", i, "]");
+            absl::StrCat(prefix(), "_", kInvocationResults, "[", i, "]");
         TF_RETURN_IF_ERROR(
             ReadStatusLocked(reader, element_prefix, &result.status));
         size_t num_return_values;
         {
           int64_t size;
-          TF_RETURN_IF_ERROR(reader->ReadScalar(
-              full_name(absl::StrCat(element_prefix, "_", kSize)), &size));
+          TF_RETURN_IF_ERROR(reader->ReadScalar(element_prefix, kSize, &size));
           num_return_values = static_cast<size_t>(size);
           if (num_return_values != size) {
             return errors::InvalidArgument(
@@ -384,14 +387,13 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
         result.return_values.reserve(num_return_values);
         for (size_t j = 0; j < num_return_values; j++) {
           result.return_values.emplace_back();
-          TF_RETURN_IF_ERROR(reader->ReadTensor(
-              ctx->flr(), full_name(absl::StrCat(element_prefix, "[", j, "]")),
-              &result.return_values.back()));
+          TF_RETURN_IF_ERROR(reader->ReadTensor(ctx->flr(), element_prefix,
+                                                absl::StrCat("[", j, "]"),
+                                                &result.return_values.back()));
         }
         int64_t end_of_input;
-        TF_RETURN_IF_ERROR(reader->ReadScalar(
-            full_name(absl::StrCat(element_prefix, "_", kEndOfInput)),
-            &end_of_input));
+        TF_RETURN_IF_ERROR(
+            reader->ReadScalar(element_prefix, kEndOfInput, &end_of_input));
         result.end_of_input = static_cast<bool>(end_of_input);
         RecordBufferEnqueue(ctx, result.return_values);
         result.notification.Notify();
