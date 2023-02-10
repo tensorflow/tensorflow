@@ -3264,7 +3264,7 @@ void HloInstruction::PrintOperandsWithCanonicalNameMap(
   const int64_t remaining = operands_.size() - slice.size();
   if (slice.size() != operands_.size()) {
     printer->Append(", ...(+");
-    printer->Append(absl::AlphaNum(remaining).Piece());
+    printer->Append(remaining);
     printer->Append(")");
   }
 }

@@ -1450,8 +1450,7 @@ void DenseArrayPrintHelper(const LiteralBase& literal,
     if (subshape.is_dynamic()) {
       printer->Append("(");
       for (int64_t i = 0; i < subshape.dimensions_size(); ++i) {
-        printer->Append(
-            absl::AlphaNum(literal.GetDynamicSize(i, shape_index)).Piece());
+        printer->Append(literal.GetDynamicSize(i, shape_index));
         if (i < subshape.dimensions_size() - 1) {
           printer->Append(",");
         }

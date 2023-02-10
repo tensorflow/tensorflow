@@ -34,13 +34,13 @@ class Printer {
   virtual ~Printer() = default;
 
   // Appends the given string to the printer.
-  virtual void Append(absl::string_view s) = 0;
+  virtual void Append(const absl::AlphaNum& a) = 0;
 };
 
 // A printer implementation that accumulates printed strings into `std::string`.
 class StringPrinter : public Printer {
  public:
-  void Append(absl::string_view s) override;
+  void Append(const absl::AlphaNum& a) override;
 
   std::string ToString() &&;
 
@@ -51,7 +51,7 @@ class StringPrinter : public Printer {
 // A printer implementation that accumulates printed strings into `absl::Cord`.
 class CordPrinter : public Printer {
  public:
-  void Append(absl::string_view s) override;
+  void Append(const absl::AlphaNum& a) override;
 
   absl::Cord ToCord() &&;
 
