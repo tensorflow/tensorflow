@@ -1121,10 +1121,6 @@ tf_module {
     argspec: "args=[\'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
-    name: "tpu_partitioned_output_v2"
-    argspec: "args=[\'inputs\', \'num_splits\', \'partition_dims\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
-  }
-  member_method {
     name: "transpose"
     argspec: "args=[\'a\', \'perm\', \'conjugate\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'False\', \'transpose\'], "
   }
