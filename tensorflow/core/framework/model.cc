@@ -2248,7 +2248,7 @@ void Model::Optimize(AutotuneAlgorithm algorithm, int64_t cpu_budget,
                  "optimization.";
       return;
   }
-  if (experiment_ == "autotune_buffer_optimization") {
+  if (experiments_.contains("autotune_buffer_optimization")) {
     OptimizeBuffers(snapshot, optimization_params.ram_budget());
   }
   {
@@ -2470,7 +2470,8 @@ void Model::OptimizeHillClimbHelper(
 
   // Skip buffer size optimization if we are running the new buffering
   // algorithm.
-  bool skip_buffer_sizes = (experiment_ == "autotune_buffer_optimization");
+  bool skip_buffer_sizes =
+      (experiments_.contains("autotune_buffer_optimization"));
   if (skip_buffer_sizes) {
     constexpr float TEN_MINUTES = 60.0 * 10.0;
     LOG_EVERY_N_SEC(INFO, TEN_MINUTES)
@@ -2543,7 +2544,7 @@ double Model::ComputeTargetTimeNsec() {
     return 0.0;
   }
   double target_time_sigmas = 0.0;
-  if (experiment_ == "stage_based_autotune_v2") {
+  if (experiments_.contains("stage_based_autotune_v2")) {
     target_time_sigmas = kTargetTimeSigmas;
   }
   return TargetTimeCalculator({gap_times_usec_.begin(), gap_times_usec_.end()},

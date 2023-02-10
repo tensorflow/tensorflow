@@ -2816,7 +2816,7 @@ TEST_F(ModelTimingTest, ComputeTargetTime) {
 
 TEST_F(ModelTimingTest, ComputeTargetTime_Experiment) {
   model_ = std::make_unique<Model>();
-  model_->SetExperiment("stage_based_autotune_v2");
+  model_->AddExperiment("stage_based_autotune_v2");
 
   model_->RecordIteratorGapTime(5);
   model_->RecordIteratorGapTime(5);

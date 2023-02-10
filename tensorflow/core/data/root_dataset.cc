@@ -145,14 +145,10 @@ class RootDataset::Iterator : public DatasetIterator<RootDataset> {
       model_ = std::make_shared<model::Model>();
       auto experiments = GetExperiments();
       if (experiments.contains("stage_based_autotune_v2")) {
-        model_->SetExperiment("stage_based_autotune_v2");
-        if (experiments.contains("autotune_buffer_optimization")) {
-          LOG(WARNING) << "Experiment `autotune_buffer_optimization` has been "
-                          "disabled because it is in conflict with "
-                          "`stage_based_autotune_v2` experiment.";
-        }
-      } else if (experiments.contains("autotune_buffer_optimization")) {
-        model_->SetExperiment("autotune_buffer_optimization");
+        model_->AddExperiment("stage_based_autotune_v2");
+      }
+      if (experiments.contains("autotune_buffer_optimization")) {
+        model_->AddExperiment("autotune_buffer_optimization");
       }
     }
     if (dataset()->params_.max_intra_op_parallelism >= 0) {
