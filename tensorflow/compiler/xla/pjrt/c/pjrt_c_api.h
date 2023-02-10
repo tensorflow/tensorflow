@@ -1045,6 +1045,88 @@ PJRT_DEFINE_STRUCT_TRAITS(PJRT_Buffer_UnsafePointer_Args, buffer_pointer);
 typedef PJRT_Error* PJRT_Buffer_UnsafePointer(
     PJRT_Buffer_UnsafePointer_Args* args);
 
+// ------------------------------ Device Topology ------------------------------
+
+typedef struct PJRT_DeviceTopology PJRT_DeviceTopology;
+
+struct PJRT_DeviceTopology_Create_Args {
+  size_t struct_size;
+  void* priv;
+  PJRT_DeviceTopology* topology;  // out
+};
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_DeviceTopology_Create_Args, topology);
+
+// Creates and initializes a new PJRT_DeviceTopology and returns in `topology`.
+typedef PJRT_Error* PJRT_DeviceTopology_Create(
+    PJRT_DeviceTopology_Create_Args* args);
+
+struct PJRT_DeviceTopology_Destroy_Args {
+  size_t struct_size;
+  void* priv;
+  PJRT_DeviceTopology* topology;
+};
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_DeviceTopology_Destroy_Args, topology);
+
+// Frees `topology`. `topology` can be nullptr.
+typedef PJRT_Error* PJRT_DeviceTopology_Destroy(
+    PJRT_DeviceTopology_Destroy_Args* args);
+
+struct PJRT_DeviceTopology_PlatformVersion_Args {
+  size_t struct_size;
+  void* priv;
+  PJRT_DeviceTopology* topology;
+  // `platform_version` has the same lifetime as `topology`. It's owned by
+  // `topology`.
+  const char* platform_version;  // out
+  size_t platform_version_size;  // out
+};
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_DeviceTopology_PlatformVersion_Args,
+                          platform_version_size);
+
+// Returns a string containing human-readable, platform-specific version info
+// (e.g. the CUDA version on GPU or libtpu version on Cloud TPU).
+typedef PJRT_Error* PJRT_DeviceTopology_PlatformVersion(
+    PJRT_DeviceTopology_PlatformVersion_Args* args);
+
+struct PJRT_DeviceTopology_PlatformName_Args {
+  size_t struct_size;
+  void* priv;
+  PJRT_DeviceTopology* topology;
+  // `platform_name` has the same lifetime as `topology`. It is owned by
+  // `topology`.
+  const char* platform_name;  // out
+  size_t platform_name_size;  // out
+};
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_DeviceTopology_PlatformName_Args,
+                          platform_name_size);
+
+// Returns a string that identifies the platform (e.g. "cpu", "gpu", "tpu").
+typedef PJRT_Error* PJRT_DeviceTopology_PlatformName(
+    PJRT_DeviceTopology_PlatformName_Args* args);
+
+struct PJRT_Compile_Args {
+  size_t struct_size;
+  void* priv;
+  const PJRT_DeviceTopology* topology;
+  // Only needs to stay alive for the duration of the Compile call.
+  // `program->format` and `program->format_size` are owned by the caller.
+  PJRT_Program* program;
+  // TODO(b/240560013): consider putting some of option fields in priv.
+  // Serialized CompileOptionsProto
+  // (https://github.com/tensorflow/tensorflow/blob/master/tensorflow/compiler/xla/pjrt/compile_options.proto)
+  const char* compile_options;
+  size_t compile_options_size;
+  // Optionally provided for performance-guided optimizations.
+  PJRT_Client* client;
+  PJRT_Executable* executable;  // out
+};
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_Compile_Args, executable);
+
+// Compiles a program in specified format (such as MLIR or HLO) with given
+// `options`. The returned executable must be loaded by a compatible
+// PJRT_Client before execution.
+typedef PJRT_Error* PJRT_Compile(PJRT_Compile_Args* args);
+
 // -------------------------------- API access ---------------------------------
 
 #define _PJRT_API_STRUCT_FIELD(fn_type) fn_type* fn_type
@@ -1116,10 +1198,16 @@ typedef struct {
   _PJRT_API_STRUCT_FIELD(PJRT_Buffer_IsOnCpu);
   _PJRT_API_STRUCT_FIELD(PJRT_Buffer_ReadyEvent);
   _PJRT_API_STRUCT_FIELD(PJRT_Buffer_UnsafePointer);
+
+  _PJRT_API_STRUCT_FIELD(PJRT_DeviceTopology_Create);
+  _PJRT_API_STRUCT_FIELD(PJRT_DeviceTopology_Destroy);
+  _PJRT_API_STRUCT_FIELD(PJRT_DeviceTopology_PlatformName);
+  _PJRT_API_STRUCT_FIELD(PJRT_DeviceTopology_PlatformVersion);
+
+  _PJRT_API_STRUCT_FIELD(PJRT_Compile);
 } PJRT_Api;
 
-const size_t PJRT_Api_STRUCT_SIZE =
-    PJRT_STRUCT_SIZE(PJRT_Api, PJRT_Buffer_UnsafePointer);
+const size_t PJRT_Api_STRUCT_SIZE = PJRT_STRUCT_SIZE(PJRT_Api, PJRT_Compile);
 
 #undef _PJRT_API_STRUCT_FIELD
 #undef PJRT_DEFINE_STRUCT_TRAITS

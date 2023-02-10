@@ -646,6 +646,7 @@ cc_library(
     deps = [
         ":pjrt_api",
         ":pjrt_client",
+        ":pjrt_compiler",
         ":pjrt_executable",
         ":pjrt_future",
         "//tensorflow/compiler/xla:shape_util",
@@ -659,6 +660,7 @@ cc_library(
         "//tensorflow/compiler/xla/stream_executor/tpu:c_api_conversions",  # TODO(b/238999986): Remove this.
         "//tensorflow/compiler/xla/stream_executor/tpu:tpu_initializer_helper",
         "//tensorflow/tsl/platform:status",
+        "@com_google_absl//absl/cleanup",
         "@com_google_absl//absl/strings",
         "@llvm-project//mlir:BytecodeWriter",
     ],
