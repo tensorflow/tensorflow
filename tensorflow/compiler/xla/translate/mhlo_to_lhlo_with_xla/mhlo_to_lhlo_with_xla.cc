@@ -1233,10 +1233,10 @@ LhloDialectEmitter::EmitDnnConvolutionReorderVectorized(
     }
 
     CHECK_EQ(shape.rank(), 5);
-    CHECK_EQ(shape.dimensions_minor(0), 32);
+    CHECK_EQ(shape.dimensions(4), 32);
     llvm::SmallVector<int64_t, 4> nchw = {
-        shape.dimensions_minor(4), shape.dimensions_minor(3) * 32,
-        shape.dimensions_minor(2), shape.dimensions_minor(1)};
+        shape.dimensions(0), shape.dimensions(1) * 32, shape.dimensions(2),
+        shape.dimensions(3)};
     op->setAttr("filter_dims", GetI64DenseElementsAttr(nchw));
 
     return op.getOperation();

@@ -16,22 +16,23 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/conv_layout_normalization.h"
 
 #include <optional>
+#include <tuple>
 #include <vector>
 
 #include "tensorflow/compiler/xla/hlo/ir/hlo_casting_utils.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
+#include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/service/gpu/cublas_cudnn.h"
 #include "tensorflow/compiler/xla/service/hlo_creation_utils.h"
+#include "tensorflow/compiler/xla/shape_util.h"
 
 namespace xla {
 namespace gpu {
+namespace {
 
-StatusOr<std::optional<HloInstruction*>>
-NormalizeLayoutForCustomCallConvolution(HloCustomCallInstruction* hlo) {
-  if (!IsCustomCallToDnnConvolution(*hlo)) {
-    return {std::nullopt};
-  }
-
+StatusOr<HloInstruction*> UpdateLayoutForCudnnConvolution(
+    HloCustomCallInstruction* hlo) {
   HloInstruction* lhs = hlo->mutable_operand(0);
   HloInstruction* rhs = hlo->mutable_operand(1);
   const ConvolutionDimensionNumbers& dim_numbers =
@@ -161,8 +162,64 @@ NormalizeLayoutForCustomCallConvolution(HloCustomCallInstruction* hlo) {
   } else {
     bc_to_orig = MakeBitcastHlo(normalized_conv, hlo->shape());
   }
+  return bc_to_orig;
+}
 
-  return std::make_optional(bc_to_orig);
+// Normalize the layout of cuDNN int8x32 filter reordering custom call
+// (implemented by calling `cudnnReorderFilterAndBias`), which should be
+// followed by a convolution.
+// Both the input and the output shape for the filter operand must have the
+// NCHW_VECT_C layout.
+HloInstruction* UpdateLayoutForCudnnConvolutionReordering(
+    HloCustomCallInstruction* hlo) {
+  // The custom call may have either one (filter) or two (filter and bias)
+  // operands. The number of outputs matches the number of inputs.
+  Shape const* filter_shape;
+  Shape const* bias_shape;
+  std::tie(filter_shape, bias_shape) =
+      hlo->shape().IsTuple() ? std::make_tuple(&hlo->shape().tuple_shapes(0),
+                                               &hlo->shape().tuple_shapes(1))
+                             : std::make_tuple(&hlo->shape(), nullptr);
+
+  // Transpose the filter to match the expected layout (NCHW_VECT_C).
+  // This bias is 1D, so the shape doesn't need to be updated.
+  auto new_filter_shape =
+      ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
+          *filter_shape);
+  auto dimensions = LayoutUtil::MakeLayoutFromMajorToMinor(
+      filter_shape->layout().minor_to_major());
+  HloInstruction* transpose = hlo->AddInstruction(
+      HloInstruction::CreateTranspose(new_filter_shape, hlo->mutable_operand(0),
+                                      dimensions.minor_to_major()));
+
+  // Create a replacement custom-call with layout-normalized inputs.
+  HloInstruction* custom_call;
+  if (bias_shape != nullptr) {
+    custom_call =
+        hlo->parent()->AddInstruction(HloInstruction::CreateCustomCall(
+            ShapeUtil::MakeTupleShape({new_filter_shape, *bias_shape}),
+            {transpose, hlo->mutable_operand(1)}, hlo->custom_call_target()));
+  } else {
+    custom_call =
+        hlo->parent()->AddInstruction(HloInstruction::CreateCustomCall(
+            new_filter_shape, {transpose}, hlo->custom_call_target()));
+  }
+  return MakeBitcastHlo(custom_call, hlo->shape());
+}
+
+}  // namespace
+
+StatusOr<std::optional<HloInstruction*>> NormalizeLayoutForGpuCustomCalls(
+    HloCustomCallInstruction* hlo) {
+  if (IsCustomCallToDnnConvolution(*hlo)) {
+    TF_ASSIGN_OR_RETURN(HloInstruction * bc_to_orig,
+                        UpdateLayoutForCudnnConvolution(hlo));
+    return std::make_optional(bc_to_orig);
+  }
+  if (IsCudnnConvolutionReorder(*hlo)) {
+    return std::make_optional(UpdateLayoutForCudnnConvolutionReordering(hlo));
+  }
+  return {std::nullopt};
 }
 
 }  // end namespace gpu

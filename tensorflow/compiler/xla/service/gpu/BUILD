@@ -1656,8 +1656,11 @@ cc_library(
     srcs = ["cudnn_vectorize_convolutions.cc"],
     hdrs = ["cudnn_vectorize_convolutions.h"],
     deps = [
+        ":backend_configs_cc",
+        ":cublas_cudnn",
         ":cudnn_support_utils",
         ":stream_executor_util",
+        "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla/client:xla_builder",
         "//tensorflow/compiler/xla/hlo/ir:hlo",
