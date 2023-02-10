@@ -113,13 +113,8 @@ struct MaterializeOpInterface
     auto result = op->getOpResult(0);
     if (result.getType().isa<RankedTensorType>() &&
         opOperand.getOperandNumber() == 0)
-      return {result};
+      return {{result, BufferRelation::Unknown}};
     return {};
-  }
-
-  BufferRelation bufferRelation(Operation * /*op*/, OpResult /*opResult*/,
-                                const AnalysisState & /*state*/) const {
-    return BufferRelation::Unknown;
   }
 
   LogicalResult bufferize(Operation *op, RewriterBase &rewriter,
@@ -163,12 +158,8 @@ struct ParallelOpInterface
   AliasingOpResultList getAliasingOpResults(Operation *op, OpOperand &opOperand,
                                             const AnalysisState &) const {
     auto parallelOp = cast<ParallelOp>(op);
-    return {parallelOp.getResultForOpOperand(opOperand)};
-  }
-
-  BufferRelation bufferRelation(Operation * /*op*/, OpResult /*opResult*/,
-                                const AnalysisState & /*state*/) const {
-    return BufferRelation::Equivalent;
+    return {{parallelOp.getResultForOpOperand(opOperand),
+             BufferRelation::Equivalent}};
   }
 
   bool isWritable(Operation * /*op*/, Value /*value*/,
@@ -262,12 +253,8 @@ struct ForOpInterface
       Operation *op, OpOperand &opOperand,
       const AnalysisState & /*state*/) const {
     auto forOp = cast<gml_st::ForOp>(op);
-    return {forOp.getResultForOpOperand(opOperand)};
-  }
-
-  BufferRelation bufferRelation(Operation * /*op*/, OpResult /*opResult*/,
-                                const AnalysisState & /*state*/) const {
-    return BufferRelation::Equivalent;
+    return {
+        {forOp.getResultForOpOperand(opOperand), BufferRelation::Equivalent}};
   }
 
   bool isWritable(Operation * /*op*/, Value /*value*/,
@@ -360,11 +347,6 @@ struct SetYieldOpInterface
     return cast<SetYieldOp>(op).isDstOperand(opOperand);
   }
 
-  BufferRelation bufferRelation(Operation * /*op*/, OpResult /* opResult*/,
-                                const AnalysisState & /*state*/) const {
-    return BufferRelation::Equivalent;
-  }
-
   LogicalResult bufferize(Operation *op, RewriterBase &rewriter,
                           const BufferizationOptions &options) const {
     auto yieldOp = cast<SetYieldOp>(op);
@@ -432,9 +414,10 @@ struct SetYieldOpInterface
       // entirely? In either case, mark the allocation as "escaping", so that it
       // will not be deallocated.
       bool escape = !state.getOptions().createDeallocs ||
-                    llvm::any_of(aliasingOpResults, [&](Value v) {
-                      return state.isTensorYielded(v);
-                    });
+                    llvm::any_of(aliasingOpResults,
+                                 [&](bufferization::AliasingOpResult a) {
+                                   return state.isTensorYielded(a.opResult);
+                                 });
 
       // In all other cases, make a copy of the OpOperand.
       outOfPlaceOpOperands.push_back(&opOperand);
