@@ -104,7 +104,8 @@ REQUIRED_PACKAGES = [
     # See also: https://github.com/protocolbuffers/protobuf/issues/9954
     # See also: https://github.com/tensorflow/tensorflow/issues/56077
     # This is a temporary patch for now, to patch previous TF releases.
-    'protobuf>=3.20.3,<5.0.0dev,!=4.21.0,!=4.21.1,!=4.21.2,!=4.21.3,!=4.21.4,!=4.21.5',
+    'protobuf~=3.20.3;python_version<"3.9"',
+    'protobuf>=3.20.3,<5.0.0dev,!=4.21.0,!=4.21.1,!=4.21.2,!=4.21.3,!=4.21.4,!=4.21.5;python_version>="3.9"',
     'setuptools',
     'six >= 1.12.0',
     'termcolor >= 1.1.0',
