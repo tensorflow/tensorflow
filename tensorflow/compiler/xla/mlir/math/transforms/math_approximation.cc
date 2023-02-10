@@ -70,6 +70,7 @@ llvm::Optional<SmallVector<int64_t, 2>> vectorShape(Type type,
 }
 
 bool isF32(Type type) { return type.isF32(); }
+bool isI32(Type type) { return type.isInteger(32); }
 
 //----------------------------------------------------------------------------//
 // Broadcast scalar types and values into vector types and values.
@@ -111,6 +112,59 @@ Value i32Cst(ImplicitLocOpBuilder &builder, int32_t value) {
 Value f32FromBits(ImplicitLocOpBuilder &builder, uint32_t bits) {
   Value i32v = i32Cst(builder, static_cast<int32_t>(bits));
   return builder.create<arith::BitcastOp>(builder.getF32Type(), i32v);
+}
+
+//----------------------------------------------------------------------------//
+// Helper functions to build math functions approximations.
+//----------------------------------------------------------------------------//
+
+// Return the clamped value or NaN if value is NaN.
+// Note: the bounds must be normal, not NaN's.
+Value ClampWithNormals(ImplicitLocOpBuilder &builder,
+                       const llvm::SmallVector<int64_t, 2> &shape, Value value,
+                       float lower_bound, float upper_bound) {
+  assert(!isnan(lower_bound));
+  assert(!isnan(upper_bound));
+
+  auto bcast = [&](Value value) -> Value {
+    return broadcast(builder, value, shape);
+  };
+
+  auto select_cmp = [&builder](auto pred, Value value, Value bound) {
+    return builder.create<arith::SelectOp>(
+        builder.create<arith::CmpFOp>(pred, value, bound), value, bound);
+  };
+
+  // Note: prefer UGE/ULE vs. UGT/ULT, since they generate vmaxps/vminps vs.
+  // vcmpleps+vmovaps on x86_64. The latter outcome is also obtained with
+  // arith::{Max,Min}FOp.
+  value = select_cmp(arith::CmpFPredicate::UGE, value,
+                     bcast(f32Cst(builder, lower_bound)));
+  value = select_cmp(arith::CmpFPredicate::ULE, value,
+                     bcast(f32Cst(builder, upper_bound)));
+  return value;
+}
+
+// Computes exp2 for an i32 argument.
+Value Exp2I32(ImplicitLocOpBuilder &builder, Value arg) {
+  auto shape = vectorShape(arg.getType(), isI32);
+  assert(shape.has_value() && "arg must be of i32 type");
+
+  auto bcast = [&](Value value) -> Value {
+    return broadcast(builder, value, *shape);
+  };
+
+  auto f32_vec = broadcast(builder.getF32Type(), *shape);
+  // The exponent of f32 located at 23-bit.
+  Value cst_exponent_bit = bcast(i32Cst(builder, 23));
+  // Set the exponent bias to zero.
+  Value cst_bias = bcast(i32Cst(builder, 127));
+
+  Value biased_arg = builder.create<arith::AddIOp>(arg, cst_bias);
+  Value exp2_i32 = builder.create<arith::ShLIOp>(biased_arg, cst_exponent_bit);
+  Value exp2_f32 = builder.create<arith::BitcastOp>(f32_vec, exp2_i32);
+
+  return exp2_f32;
 }
 
 struct EigenExpM1Approximation : public OpRewritePattern<math::ExpM1Op> {
@@ -160,6 +214,151 @@ LogicalResult EigenExpM1Approximation::matchAndRewrite(
       builder.create<arith::SelectOp>(uMinusOneEqNegOne, cstNegOne, expm1));
   rewriter.replaceOp(op, approximation);
 
+  return mlir::success();
+}
+
+struct ExpApproximation : public OpRewritePattern<math::ExpOp> {
+ public:
+  using OpRewritePattern::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(math::ExpOp op,
+                                PatternRewriter &rewriter) const final;
+};
+
+LogicalResult ExpApproximation::matchAndRewrite(
+    math::ExpOp op, PatternRewriter &rewriter) const {
+  auto shape = vectorShape(op.getOperand().getType(), isF32);
+  if (!shape.has_value()) {
+    return rewriter.notifyMatchFailure(op, "unsupported operand type");
+  }
+
+  ImplicitLocOpBuilder builder(op->getLoc(), rewriter);
+
+  auto add = [&](Value a, Value b) -> Value {
+    return builder.create<arith::AddFOp>(a, b);
+  };
+  auto bcast = [&](Value value) -> Value {
+    return broadcast(builder, value, *shape);
+  };
+  auto floor = [&](Value a) { return builder.create<math::FloorOp>(a); };
+  auto fmla = [&](Value a, Value b, Value c) {
+    return builder.create<math::FmaOp>(a, b, c);
+  };
+  auto mul = [&](Value a, Value b) -> Value {
+    return builder.create<arith::MulFOp>(a, b);
+  };
+
+  // Polynomial approximation. Originally from Cephes, but then modified for
+  // XLA Classic.
+  //
+  // To compute e^x, we re-express it as
+  //
+  //   e^x = e^(a + b)
+  //       = e^(a + n log(2))
+  //       = e^a * 2^n.
+  //
+  // We choose n = round(x / log(2)), restricting the value of `a` to
+  // (-log(2)/2, log(2)/2).  We then use a polynomial to compute e^a. The
+  // relative error between our approximation and the true value of e^a is less
+  // than 2^-22.5 for all values of `a` within this range.
+
+  // Restrict input to a small range, including some values that evaluate to
+  // +/- inf.  Note that for our lower bound, we choose log(2^-126) instead of
+  // log(F32_EPSILON). We do so because this routine always flushes denormal
+  // floating points to 0. Therefore, we only need to worry about exponentiating
+  // up to the smallest representable non-denormal floating point, which is
+  // 2^-126.
+
+  // Constants.
+  Value cst_half = bcast(f32Cst(builder, 0.5f));
+  Value cst_one = bcast(f32Cst(builder, 1.0f));
+
+  // 1/log(2)
+  Value cst_log2ef = bcast(f32Cst(builder, 1.44269504088896341f));
+
+  Value cst_exp_c1 = bcast(f32Cst(builder, -0.693359375f));
+  Value cst_exp_c2 = bcast(f32Cst(builder, 2.12194440e-4f));
+  Value cst_exp_p0 = bcast(f32Cst(builder, 1.9875691500E-4f));
+  Value cst_exp_p1 = bcast(f32Cst(builder, 1.3981999507E-3f));
+  Value cst_exp_p2 = bcast(f32Cst(builder, 8.3334519073E-3f));
+  Value cst_exp_p3 = bcast(f32Cst(builder, 4.1665795894E-2f));
+  Value cst_exp_p4 = bcast(f32Cst(builder, 1.6666665459E-1f));
+  Value cst_exp_p5 = bcast(f32Cst(builder, 5.0000001201E-1f));
+
+  // Our computations below aren't particularly sensitive to the exact choices
+  // here, so we choose values a bit larger/smaller than
+  //
+  //   log(F32_MAX) = 88.723...
+  //   log(2^-126) = -87.337...
+  Value x = op.getOperand();
+  x = ClampWithNormals(builder, *shape, x, -87.8f, 88.8f);
+  Value n = floor(fmla(x, cst_log2ef, cst_half));
+
+  // When we eventually do the multiplication in e^a * 2^n, we need to handle
+  // the case when n > 127, the max fp32 exponent (so 2^n == inf) but e^a < 1
+  // (so e^a * 2^n != inf).  There's a similar problem for n < -126, the
+  // smallest fp32 exponent.
+  //
+  // A straightforward solution would be to detect n out of range and split it
+  // up, doing
+  //
+  //   e^a * 2^n = e^a * 2^(n1 + n2)
+  //             = (2^n1 * e^a) * 2^n2.
+  //
+  // But it turns out this approach is quite slow, probably because it
+  // manipulates subnormal values.
+  //
+  // The approach we use instead is to clamp n to [-127, 127]. Let n' be the
+  // value of n clamped to [-127, 127]. In the case where n' = 127, `a` can grow
+  // up to as large as 88.8 - 127 * log(2) which is about 0.7703. Even though
+  // this value of `a` is outside our previously specified range, e^a will still
+  // only have a relative error of approximately 2^-16 at worse. In practice
+  // this seems to work well enough; it passes our exhaustive tests, breaking
+  // only one result, and by one ulp (we return exp(88.7228394) = max-float but
+  // we should return inf).
+  //
+  // In the case where n' = -127, the original input value of x is so small that
+  // e^x, our final answer, is less than 2^-126. Since 2^-126 is the smallest
+  // normal floating point, and since we flush denormals, we simply return 0. We
+  // do this in a branchless way by observing that our code for constructing 2^n
+  // produces 0 if n = -127.
+  //
+  // The proof that n' = -127 implies e^x < 2^-126 is as follows:
+  //
+  //    n' = -127 implies n <= -127
+  //              implies round(x / log(2)) <= -127
+  //              implies x/log(2) < -126.5
+  //              implies x < -126.5 * log(2)
+  //              implies e^x < e^(-126.5 * log(2))
+  //              implies e^x < 2^-126.5 < 2^-126
+  //
+  //    This proves that n' = -127 implies e^x < 2^-126.
+  n = ClampWithNormals(builder, *shape, n, -127.0f, 127.0f);
+
+  // Computes x = x - n' * log(2), the value for `a`
+  x = fmla(cst_exp_c1, n, x);
+  x = fmla(cst_exp_c2, n, x);
+
+  // Polynomial to compute z = e^a, accurate for a in (-0.5, 0.5).
+  Value z = fmla(x, cst_exp_p0, cst_exp_p1);
+  z = fmla(z, x, cst_exp_p2);
+  z = fmla(z, x, cst_exp_p3);
+  z = fmla(z, x, cst_exp_p4);
+  z = fmla(z, x, cst_exp_p5);
+  z = fmla(z, mul(x, x), x);
+  z = add(cst_one, z);
+
+  // Convert n' to an i32.  This is safe because we clamped it above.
+  auto i32_vec = broadcast(builder.getI32Type(), *shape);
+  Value n_i32 = builder.create<arith::FPToSIOp>(i32_vec, n);
+
+  // Creates the value 2^n' if -126 <= n' <= 127 and 0 if n' = -127.
+  Value pow2 = Exp2I32(builder, n_i32);
+
+  // Return z * 2^n' if -126 <= n' <= 127 and 0 if n = -127.
+  Value ret = mul(z, pow2);
+
+  rewriter.replaceOp(op, ret);
   return mlir::success();
 }
 
@@ -253,9 +452,10 @@ void populateMathApproximationPatterns(RewritePatternSet &patterns,
                                        ArrayRef<std::string> oplist) {
   for (const std::string &op : oplist) {
     if (op == "all") {
-      patterns
-          .add<EigenExpM1Approximation, LogApproximation, Log1pApproximation>(
-              patterns.getContext());
+      patterns.add<ExpApproximation, EigenExpM1Approximation, LogApproximation,
+                   Log1pApproximation>(patterns.getContext());
+    } else if (op == "exp") {
+      patterns.add<ExpApproximation>(patterns.getContext());
     } else if (op == "expm1") {
       patterns.add<EigenExpM1Approximation>(patterns.getContext());
     } else if (op == "log") {
