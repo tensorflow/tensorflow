@@ -1545,7 +1545,8 @@ Status ShapeVerifier::HandleAsyncStart(HloInstruction* async_start) {
   TF_RETURN_IF_ERROR(CheckAsyncOpComputationThreadName(async_start));
   const Shape& param_shape = async_start->shape().tuple_shapes(0);
   for (int i = 0; i < async_start->operand_count(); ++i) {
-    if (param_shape.tuple_shapes(i) != async_start->operand(i)->shape()) {
+    if (!ShapesSame(param_shape.tuple_shapes(i),
+                    async_start->operand(i)->shape())) {
       return InternalError(
           "The %s expects the shape of operand %d to match the async shape at "
           "index {0} (%s vs %s).",
@@ -1559,7 +1560,7 @@ Status ShapeVerifier::HandleAsyncStart(HloInstruction* async_start) {
 
 Status ShapeVerifier::HandleAsyncUpdate(HloInstruction* async_update) {
   TF_RETURN_IF_ERROR(CheckAsyncOpComputationThreadName(async_update));
-  if (async_update->operand(0)->shape() != async_update->shape()) {
+  if (!ShapesSame(async_update->operand(0)->shape(), async_update->shape())) {
     return InternalError(
         "The %s expects the shape of operand and output to match (%s vs %s).",
         HloOpcodeString(async_update->opcode()),
@@ -1576,7 +1577,7 @@ Status ShapeVerifier::HandleAsyncDone(HloInstruction* async_done) {
   TF_RETURN_IF_ERROR(CheckAsyncOpComputationShapes(
       async_done, async_done->operand(0)->shape()));
   const Shape& root_shape = async_done->operand(0)->shape().tuple_shapes(1);
-  if (root_shape != async_done->shape()) {
+  if (!ShapesSame(root_shape, async_done->shape())) {
     return InternalError(
         "The %s expects the shape of output to match the async shape at index "
         "{1} (%s vs %s).",
