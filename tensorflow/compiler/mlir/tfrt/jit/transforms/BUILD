@@ -1,6 +1,7 @@
 load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library")
 load("@tf_runtime//:build_defs.bzl", "tfrt_cc_library")
 load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_cloud")
+load("//tensorflow/tsl/platform:build_config.bzl", "if_llvm_x86_available")
 
 # TF to TFRT kernels conversion.
 package(
@@ -94,8 +95,9 @@ cc_library(
         "@llvm-project//mlir:Transforms",
         "@llvm-project//mlir:VectorDialect",
         "@llvm-project//mlir:VectorTransforms",
+    ] + if_llvm_x86_available([
         "@llvm-project//mlir:X86VectorTransforms",
-    ],
+    ]),
     alwayslink = 1,
 )
 

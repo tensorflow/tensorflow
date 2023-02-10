@@ -1,5 +1,6 @@
 load("//tensorflow/tsl/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow/tsl:tsl.default.bzl", "get_compatible_with_cloud")
+load("//tensorflow/tsl/platform:build_config.bzl", "if_llvm_x86_available")
 load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library")
 
 package(
@@ -47,6 +48,7 @@ cc_library(
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Transforms",
         "@llvm-project//mlir:VectorDialect",
+    ] + if_llvm_x86_available([
         "@llvm-project//mlir:X86VectorDialect",
-    ],
+    ]),
 )

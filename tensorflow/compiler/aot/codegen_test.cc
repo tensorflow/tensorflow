@@ -178,14 +178,46 @@ static void CompareWithGoldenFile(
 TEST(CodegenTest, Golden) {
   // Normally CpuCompiler::CpuCompiler does this, but in this test we've
   // bypassed the Cpu compiler so we have to do this manually.
+#if defined(TF_LLVM_AARCH64_AVAILABLE)
+  LLVMInitializeAArch64Target();
+  LLVMInitializeAArch64TargetInfo();
+  LLVMInitializeAArch64TargetMC();
+  LLVMInitializeAArch64AsmPrinter();
+#elif defined(TF_LLVM_AARCH32_AVAILABLE)
+  LLVMInitializeARMTarget();
+  LLVMInitializeARMTargetInfo();
+  LLVMInitializeARMTargetMC();
+  LLVMInitializeARMAsmPrinter();
+#elif defined(TF_LLVM_POWERPC_AVAILABLE)
+  LLVMInitializePowerPCTarget();
+  LLVMInitializePowerPCTargetInfo();
+  LLVMInitializePowerPCTargetMC();
+  LLVMInitializePowerPCAsmPrinter();
+#elif defined(TF_LLVM_S390X_AVAILABLE)
+  LLVMInitializeSystemZTarget();
+  LLVMInitializeSystemZTargetInfo();
+  LLVMInitializeSystemZTargetMC();
+  LLVMInitializeSystemZAsmPrinter();
+#elif defined(TF_LLVM_X86_AVAILABLE)
   LLVMInitializeX86Target();
   LLVMInitializeX86TargetInfo();
   LLVMInitializeX86TargetMC();
   LLVMInitializeX86AsmPrinter();
+#endif
 
   CodegenOpts opts;
   opts.class_name = "MyClass";
+#if defined(TF_LLVM_AARCH64_AVAILABLE)
+  opts.target_triple = "aarch64-linux-gnu";
+#elif defined(TF_LLVM_ARM_AVAILABLE)
+  opts.target_triple = "arm-linux-gnueabihf";
+#elif defined(TF_LLVM_POWERPC_AVAILABLE)
+  opts.target_triple = "powerpc64-linux-gnu";
+#elif defined(TF_LLVM_S390X_AVAILABLE)
+  opts.target_triple = "s390x-linux-gnu";
+#elif defined(TF_LLVM_X86_AVAILABLE)
   opts.target_triple = "x86_64-pc-linux";
+#endif
   opts.namespaces = {"foo", "bar"};
   opts.gen_name_to_index = true;
   opts.gen_program_shape = true;
