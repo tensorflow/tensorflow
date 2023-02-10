@@ -120,9 +120,8 @@ Status SnapshotManager::ReadOnDiskMetadata() {
 
 Status SnapshotManager::ReadOnDiskStreams() {
   std::string streams_path = StreamsDirectory(path_);
-
-  std::vector<std::string> stream_directories;
-  TF_RETURN_IF_ERROR(env_->GetChildren(streams_path, &stream_directories));
+  TF_ASSIGN_OR_RETURN(std::vector<std::string> stream_directories,
+                      GetChildren(streams_path, env_));
   streams_.resize(stream_directories.size(), Stream(num_sources()));
 
   absl::flat_hash_set<int64_t> global_split_indices;
@@ -164,8 +163,9 @@ Status SnapshotManager::ReadOnDiskStreams() {
 Status SnapshotManager::ReadOnDiskStream(
     int64_t stream_index, absl::flat_hash_set<int64_t>& global_split_indices) {
   std::string splits_path = SplitsDirectory(path_, stream_index);
-  std::vector<std::string> source_directories;
-  TF_RETURN_IF_ERROR(env_->GetChildren(splits_path, &source_directories));
+  TF_ASSIGN_OR_RETURN(std::vector<std::string> source_directories,
+                      GetChildren(splits_path, env_));
+
   for (const auto& source_directory : source_directories) {
     std::string source_path = io::JoinPath(splits_path, source_directory);
 
@@ -200,9 +200,8 @@ Status SnapshotManager::ReadOnDiskSource(
     int64_t stream_index, int64_t source_index,
     absl::flat_hash_set<int64_t>& global_split_indices) {
   std::string source_path = SourceDirectory(path_, stream_index, source_index);
-
-  std::vector<std::string> split_filenames;
-  TF_RETURN_IF_ERROR(env_->GetChildren(source_path, &split_filenames));
+  TF_ASSIGN_OR_RETURN(std::vector<std::string> split_filenames,
+                      GetChildren(source_path, env_));
 
   Tensor unused_tensor;
   bool unused_end_of_splits;
@@ -232,7 +231,6 @@ Status SnapshotManager::ReadOnDiskSource(
 
   streams_[stream_index].num_assigned_splits[source_index] =
       split_filenames.size();
-
   return OkStatus();
 }
 
