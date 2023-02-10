@@ -44,6 +44,7 @@ cc_library_with_tflite(
     name = "simple_opaque_delegate",
     srcs = ["simple_opaque_delegate.cc"],
     hdrs = ["simple_opaque_delegate.h"],
+    generate_opaque_delegate_target = True,
     tflite_deps = [
         "//tensorflow/lite/core/shims:c_api",
         "//tensorflow/lite/core/shims:c_api_experimental",

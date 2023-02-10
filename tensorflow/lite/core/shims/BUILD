@@ -6,7 +6,8 @@ load("//tensorflow/lite:build_def.bzl", "tflite_copts", "tflite_copts_warnings")
 load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite")
 load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
 load(":build_defs.bzl", "build_test")
-load(":cc_library_with_tflite.bzl", "custom_c_library_with_tflite")
+load(":cc_library_with_tflite.bzl", "cc_library_with_tflite", "custom_c_library_with_tflite")
+load(":cc_library_with_tflite_test.bzl", "cc_library_with_tflite_test_suite")
 
 package(
     default_visibility = ["//visibility:private"],
@@ -225,7 +226,7 @@ cc_library(
     ],
 )
 
-cc_library(
+cc_library_with_tflite(
     name = "builtin_ops",
     hdrs = [
         "cc/kernels/builtin_op_kernels.h",
@@ -235,6 +236,7 @@ cc_library(
         "//tensorflow/lite/core/kernels:builtin_op_kernels.h",
         "//tensorflow/lite/kernels:fully_connected.h",
     ],
+    generate_opaque_delegate_target = True,
     visibility = [
         "//tensorflow/lite:__subpackages__",
         "@mediapipe//mediapipe:__subpackages__",
@@ -354,10 +356,11 @@ build_test(
 #------------------------------------------------------------------------------
 # C API
 
-cc_library(
+cc_library_with_tflite(
     name = "c_api",
     hdrs = ["c/c_api.h"],
     copts = tflite_copts_warnings(),
+    generate_opaque_delegate_target = True,
     visibility = [
         "//tensorflow/lite:__subpackages__",
         "@mediapipe//mediapipe:__subpackages__",
@@ -378,13 +381,14 @@ cc_library(
     deps = ["//tensorflow/lite/c:c_api_without_op_resolver"],
 )
 
-cc_library(
+cc_library_with_tflite(
     name = "c_api_experimental",
     hdrs = [
         "c/c_api_experimental.h",
         "c/c_api_opaque.h",
     ],
     copts = tflite_copts_warnings(),
+    generate_opaque_delegate_target = True,
     visibility = [
         "//tensorflow/lite:__subpackages__",
         "@mediapipe//mediapipe:__subpackages__",
@@ -396,10 +400,11 @@ cc_library(
     ],
 )
 
-cc_library(
+cc_library_with_tflite(
     name = "c_api_types",
     hdrs = ["c/c_api_types.h"],
     copts = tflite_copts_warnings(),
+    generate_opaque_delegate_target = True,
     visibility = [
         "//tensorflow/lite:__subpackages__",
         "@mediapipe//mediapipe:__subpackages__",
@@ -408,10 +413,11 @@ cc_library(
     deps = ["//tensorflow/lite/core/c:c_api_types"],
 )
 
-cc_library(
+cc_library_with_tflite(
     name = "common",
     hdrs = ["c/common.h"],
     copts = tflite_copts_warnings(),
+    generate_opaque_delegate_target = True,
     visibility = [
         "//tensorflow/lite:__subpackages__",
         "@mediapipe//mediapipe:__subpackages__",
@@ -422,10 +428,11 @@ cc_library(
     ],
 )
 
-cc_library(
+cc_library_with_tflite(
     name = "builtin_op_data",
     hdrs = ["c/builtin_op_data.h"],
     copts = tflite_copts_warnings(),
+    generate_opaque_delegate_target = True,
     visibility = [
         "//tensorflow/lite:__subpackages__",
         "@mediapipe//mediapipe:__subpackages__",
@@ -436,10 +443,11 @@ cc_library(
     ],
 )
 
-cc_library(
+cc_library_with_tflite(
     name = "delegate_plugin",
     hdrs = ["c/experimental/acceleration/configuration/delegate_plugin.h"],
     copts = tflite_copts_warnings(),
+    generate_opaque_delegate_target = True,
     visibility = [
         "//tensorflow/lite:__subpackages__",
         "@mediapipe//mediapipe:__subpackages__",
@@ -588,6 +596,8 @@ bzl_library(
     visibility = ["//visibility:public"],
     deps = ["//tensorflow/lite:build_def_bzl"],
 )
+
+cc_library_with_tflite_test_suite(name = "cc_library_with_tflite_test_suite")
 
 #------------------------------------------------------------------------------
 
