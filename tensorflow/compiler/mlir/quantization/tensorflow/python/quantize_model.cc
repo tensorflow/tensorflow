@@ -116,6 +116,7 @@ void AddExportPasses(const bool duplicate_shape_determining_constants,
       mlir::CreateFunctionalToExecutorDialectConversionPass());
   pm.addPass(mlir::CreateBreakUpIslandsPass());
   pm.addPass(mlir::quant::CreateMergeInitializerFunctionOpsToMainPass());
+  pm.addPass(mlir::quant::CreateMergeSaveFunctionOpsToMainPass());
 
   // Used to clean up the "tf._noinliner" attribute that is previously used to
   // prevent certain functions from being inlined (see

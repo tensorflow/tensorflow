@@ -2046,7 +2046,23 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
     )
     output_graphdef = output_loader.get_meta_graph_def_from_tags(tags).graph_def
     self.assertTrue(self._contains_quantized_function_call(output_graphdef))
-    self.assertTrue(self._contains_save_function(output_graphdef))
+    # Make sure that save ops are exported.
+    self.assertEqual(
+        self._count_ops(
+            output_graphdef,
+            op_names={'tf_quant__save_op'},
+            get_op_name=True,
+        ),
+        1,
+    )
+    self.assertEqual(
+        self._count_ops(
+            output_graphdef,
+            op_names={'tf_quant__save_save_v2'},
+            get_op_name=True,
+        ),
+        1,
+    )
 
     # Tests that there are variables in the model.
     variable_node_defs = _find_variables(output_graphdef)
@@ -2784,7 +2800,23 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
     )
     output_graphdef = output_loader.get_meta_graph_def_from_tags(tags).graph_def
     self.assertTrue(self._contains_quantized_function_call(output_graphdef))
-    self.assertTrue(self._contains_save_function(output_graphdef))
+    # Make sure that save ops are exported.
+    self.assertEqual(
+        self._count_ops(
+            output_graphdef,
+            op_names={'tf_quant__save_op'},
+            get_op_name=True,
+        ),
+        1,
+    )
+    self.assertEqual(
+        self._count_ops(
+            output_graphdef,
+            op_names={'tf_quant__save_save_v2'},
+            get_op_name=True,
+        ),
+        1,
+    )
 
     # Tests that there are variables in the model.
     variable_node_defs = _find_variables(output_graphdef)

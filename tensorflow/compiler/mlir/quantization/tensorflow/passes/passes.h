@@ -131,8 +131,27 @@ CreateReplaceCastHacksWithTFXLAOpsPass();
 // will be passed on as a dependency to a new `tf.NoOp`, whose control output
 // will be merged into the main function's FetchOp. The initializer functions
 // will be removed.
+//
+// Running this pass essentially has the effect of inlining the initializer
+// functions into the main graph. This is beneficial when we wish to find and
+// fetch the node that restores resources, after the ModuleOp has been exported
+// as GraphDef.
 std::unique_ptr<OperationPass<ModuleOp>>
 CreateMergeInitializerFunctionOpsToMainPass();
+
+// Creates a pass that moves & merges the "@tf_quant__save" function to "@main"
+// function. A new `IdentityOp` will be created. It will have control dependency
+// to the save function and returns the file_prefix argument (typed
+// `tensor<!tf_type.string>`). The file_prefix argument, which can be identified
+// if the "tf_saved_model.index_path" attribute has "__tf_file_prefix", will be
+// reused if it already exist in @main. Otherwise a new file prefix argument
+// will be created. @tf_quant__save function will be erased.
+//
+// Running this pass essentially has the effect of inlining the @tf_quant__save
+// into the main graph. This is beneficial when we wish to find and fetch
+// the node that saves the variables, after the ModuleOp has been exported as
+// GraphDef.
+std::unique_ptr<OperationPass<ModuleOp>> CreateMergeSaveFunctionOpsToMainPass();
 
 // Creates a pass that "unfreezes" ConstOps into variables. Each ConstOp's use
 // will be replaced by a VarHandleOp -> ReadVariableOp pattern. The newly
