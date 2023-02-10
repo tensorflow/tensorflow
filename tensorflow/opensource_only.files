@@ -25,6 +25,7 @@ tensorflow/examples/custom_ops_doc/multiplex_1/BUILD:
 tensorflow/examples/custom_ops_doc/multiplex_1/README.md:
 tensorflow/examples/custom_ops_doc/multiplex_1/multiplex_1_op.py:
 tensorflow/examples/custom_ops_doc/multiplex_2/BUILD:
+tensorflow/examples/custom_ops_doc/multiplex_2/README.md:
 tensorflow/examples/custom_ops_doc/multiplex_2/multiplex_2_op.py:
 tensorflow/examples/custom_ops_doc/multiplex_3/BUILD:
 tensorflow/examples/custom_ops_doc/multiplex_3/multiplex_3_op.py:
