@@ -475,7 +475,7 @@ class LSTMBlockCellOp : public OpKernel {
                 errors::InvalidArgument("h_tensor must be rank 2 but is rank ",
                                         h_tensor->dims(), "."));
 
-    OP_REQUIRES_OK(ctx, functor::LSTMBlockCellFprop<Device, T, USE_CUBLAS, gate_layout>(
+    functor::LSTMBlockCellFprop<Device, T, USE_CUBLAS, gate_layout>(
         batch_size, input_size, cell_size)(
         ctx, device, forget_bias_, cell_clip_, use_peephole_,
         x_tensor->matrix<T>(), cs_prev_tensor->matrix<T>(),
@@ -484,7 +484,7 @@ class LSTMBlockCellOp : public OpKernel {
         xh_tensor.matrix<T>(), i_tensor->matrix<T>(), cs_tensor->matrix<T>(),
         f_tensor->matrix<T>(), o_tensor->matrix<T>(), ci_tensor->matrix<T>(),
         co_tensor->matrix<T>(), gates_tensor.matrix<T>(),
-        h_tensor->matrix<T>()));
+        h_tensor->matrix<T>());
   }
 
  private:
@@ -1046,7 +1046,7 @@ class BlockLSTMOp : public OpKernel {
       Tensor co_tensor = slicer.OutputSlice(co_out, t, "co_out");
       Tensor h_tensor = slicer.OutputSlice(h_out, t, "h_out");
 
-      OP_REQUIRES_OK(ctx, functor::LSTMBlockCellFprop<Device, T, USE_CUBLAS, gate_layout>(
+      functor::LSTMBlockCellFprop<Device, T, USE_CUBLAS, gate_layout>(
           batch_size, input_size, cell_size)(
           ctx, device, forget_bias_, cell_clip_, use_peephole_,
           x_tensor.matrix<T>(), cs_prev_tensor2.matrix<T>(),
@@ -1055,7 +1055,10 @@ class BlockLSTMOp : public OpKernel {
           b_tensor->vec<T>(), xh_tensor.matrix<T>(), i_tensor.matrix<T>(),
           cs_tensor.matrix<T>(), f_tensor.matrix<T>(), o_tensor.matrix<T>(),
           ci_tensor.matrix<T>(), co_tensor.matrix<T>(),
-          gates_tensor.matrix<T>(), h_tensor.matrix<T>()));
+          gates_tensor.matrix<T>(), h_tensor.matrix<T>());
+
+      if (!ctx->status().ok()) return;
+
       slicer.FinishTimeStep();
     }
 
