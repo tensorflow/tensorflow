@@ -25,6 +25,7 @@ namespace {
 
 namespace op = xla::testing::opcode_matchers;
 using memory_space_assignment::AsynchronousCopy;
+using memory_space_assignment::AsynchronousCopyOrdering;
 using memory_space_assignment::AsynchronousCopyResource;
 using memory_space_assignment::CostAnalysisPrefetchIntervalPicker;
 using memory_space_assignment::InstructionCountPrefetchIntervalPicker;
@@ -5968,6 +5969,58 @@ ENTRY entry {
 INSTANTIATE_TEST_SUITE_P(MemorySpaceAssignmentInstantiation,
                          MemorySpaceAssignmentTest,
                          ::testing::Values(false, true));
+
+using AsynchronousCopyOrderingTest = ::testing::Test;
+
+TEST_F(AsynchronousCopyOrderingTest, Simple) {
+  // Given asynchronous copies like the following, ensure the pipelining order
+  // is maintained (earlier start time must have earlier end time).
+  // 3,11       +-------+         OK
+  // 1,8      +------+            OK
+  // 5,14         +--------+      OK
+  // 7,14           +------+      OK
+  // 2,16      +-------------+    Violate
+  // 9,12             +--+        Violate
+  // 6,17          +----------+   Violate
+  // 5,13         +-------+       OK (same start as 5,14)
+  // 5,14         +--------+      OK (same as 5,14)
+  auto alternate_mem_space = MemorySpaceAssignment::MemorySpace::kAlternate;
+  AsynchronousCopyOrdering ordering;
+  EXPECT_FALSE(ordering.ViolatesOrdering(3, 11));
+  ordering.AddCopy({3, 11, 1, alternate_mem_space, 0});
+  EXPECT_FALSE(ordering.ViolatesOrdering(1, 8));
+  ordering.AddCopy({1, 8, 1, alternate_mem_space, 1});
+  EXPECT_FALSE(ordering.ViolatesOrdering(5, 14));
+  ordering.AddCopy({5, 14, 1, alternate_mem_space, 2});
+  EXPECT_FALSE(ordering.ViolatesOrdering(7, 14));
+  ordering.AddCopy({7, 14, 1, alternate_mem_space, 3});
+  EXPECT_TRUE(ordering.ViolatesOrdering(2, 16));
+  EXPECT_TRUE(ordering.ViolatesOrdering(9, 12));
+  EXPECT_TRUE(ordering.ViolatesOrdering(6, 17));
+  EXPECT_FALSE(ordering.ViolatesOrdering(5, 13));
+  ordering.AddCopy({5, 13, 1, alternate_mem_space, 4});
+  EXPECT_FALSE(ordering.ViolatesOrdering(5, 14));
+  ordering.AddCopy({5, 14, 1, alternate_mem_space, 5});
+}
+
+TEST_F(AsynchronousCopyOrderingTest, SameInterval) {
+  auto alternate_mem_space = MemorySpaceAssignment::MemorySpace::kAlternate;
+  AsynchronousCopyOrdering ordering;
+  EXPECT_FALSE(ordering.ViolatesOrdering(1, 5));
+  EXPECT_FALSE(ordering.ViolatesOrdering(2, 4));
+  ordering.AddCopy({1, 5, 1, alternate_mem_space, 0});
+  EXPECT_TRUE(ordering.ViolatesOrdering(2, 4));
+  ordering.AddCopy({1, 5, 1, alternate_mem_space, 1});
+  EXPECT_TRUE(ordering.ViolatesOrdering(2, 4));
+  ordering.AddCopy({1, 5, 1, alternate_mem_space, 2});
+  EXPECT_TRUE(ordering.ViolatesOrdering(2, 4));
+  ordering.RemoveCopy({1, 5, 1, alternate_mem_space, 1});
+  EXPECT_TRUE(ordering.ViolatesOrdering(2, 4));
+  ordering.RemoveCopy({1, 5, 1, alternate_mem_space, 2});
+  EXPECT_TRUE(ordering.ViolatesOrdering(2, 4));
+  ordering.RemoveCopy({1, 5, 1, alternate_mem_space, 0});
+  EXPECT_FALSE(ordering.ViolatesOrdering(2, 4));
+}
 
 using AsynchronousCopyResourceTest = ::testing::Test;
 

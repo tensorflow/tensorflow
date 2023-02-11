@@ -17,16 +17,16 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_SERVICE_MEMORY_SPACE_ASSIGNMENT_H_
 
 #include <functional>
+#include <map>
 #include <memory>
 #include <optional>
+#include <set>
 #include <string>
 #include <utility>
 
 // TODO(b/210891274): Use btree_map after build issue in Windows is resolved.
 #if defined(__GNUC__) || defined(__clang__)
 #include "absl/container/btree_map.h"
-#else
-#include <map>
 #endif
 #include "absl/functional/function_ref.h"
 #include "tensorflow/compiler/xla/service/heap_simulator.h"
@@ -1152,6 +1152,9 @@ struct Options {
   // If true, uses the earlier instance of the same instruction to use as
   // preferred prefetch start time.
   bool use_repeated_instance_for_preferred_prefetch_time = false;
+
+  // If true, enforces the FIFO order for prefetches.
+  bool enforce_prefetch_fifo_order = false;
 };
 
 // A struct representing an asynchronous copy with its logical start and end
@@ -1177,6 +1180,55 @@ bool operator<(const AsynchronousCopy& a, const AsynchronousCopy& b);
 
 bool operator==(const AsynchronousCopy& a, const AsynchronousCopy& b);
 bool operator!=(const AsynchronousCopy& a, const AsynchronousCopy& b);
+
+// Helper class to enforce asynchronous copy ordering. If the appropriate option
+// is enabled, we only allow asynchronous copies that are pipelined: if an
+// asynchronous copy ends earlier than another asynchronous copy, it must start
+// the same time or earlier than the other asynchronous copy; and if an
+// asynchronous copy starts earlier than another asynchronous copy, it must end
+// the same time or earlier than the other asynchronous copy.
+class AsynchronousCopyOrdering {
+ public:
+  AsynchronousCopyOrdering() = default;
+
+  // Adds an asynchronous copy.
+  void AddCopy(const AsynchronousCopy& copy);
+
+  // Removes an asynchronous copy. CHECKs that it is removed.
+  void RemoveCopy(const AsynchronousCopy& copy);
+
+  // Returns true if the addition of an asynchronous copy in the given time
+  // interval would violate the asynchronous copy ordering. E.g., consider the
+  // following scenario:
+  //                                  CS          CD
+  //  already committed async copy:   +-----------+
+  //                new async copy:     +--------+
+  //
+  // The new asynchronous copy would violate the ordering guarantee because the
+  // copy start is after an already committed asynchronous copy while its copy
+  // done is before the committed copy.
+  bool ViolatesOrdering(int64_t start_time, int64_t end_time) const;
+
+ private:
+  // We use this data structure for keys into the map that has a custom
+  // comparator for the ordering guarantees.
+  struct Interval {
+    int64_t start_time;
+    int64_t end_time;
+
+    // We allow multiple prefetches that have one or both of the same start and
+    // end times. std::map considers two values as equal if neither are less
+    // than the other.  Using this comparator, we can ensure that the only
+    // intervals that evaluate to be equal are those with the same start and end
+    // times or those with intervals that violate the FIFO order.
+    bool operator<(const Interval& other) const {
+      return (start_time < other.start_time && end_time <= other.end_time) ||
+             (start_time <= other.start_time && end_time < other.end_time);
+    }
+  };
+  // Stores asynchronous copies in a tree set respecting the pipelining order.
+  std::map<Interval, std::set<AsynchronousCopy>> ranges_;
+};
 
 // Helper class to enforce asynchronous copy resources by keeping track of
 // available copy bandwidth and elapsed times of overlapped operations. It
@@ -1647,6 +1699,7 @@ class AlternateMemoryBestFitHeap
   // prefetches and evictions.
   BufferIntervalTree prefetch_interval_tree_;
   BufferIntervalTree eviction_interval_tree_;
+  AsynchronousCopyOrdering async_copy_ordering_;
   AsynchronousCopyResource prefetch_async_copy_resource_;
   AsynchronousCopyResource eviction_async_copy_resource_;
   // A list of RepackAllocationBlock objects that mirrors allocation sequences,

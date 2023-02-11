@@ -2029,6 +2029,43 @@ bool operator!=(const AsynchronousCopy& a, const AsynchronousCopy& b) {
   return a.AsTuple() != b.AsTuple();
 }
 
+void AsynchronousCopyOrdering::AddCopy(const AsynchronousCopy& copy) {
+  auto it = ranges_.find({copy.start_time, copy.end_time});
+  if (it != ranges_.end()) {
+    CHECK_EQ(it->first.start_time, copy.start_time);
+    CHECK(it->second.insert(copy).second);
+  } else {
+    ranges_[{copy.start_time, copy.end_time}] = {copy};
+  }
+}
+
+void AsynchronousCopyOrdering::RemoveCopy(const AsynchronousCopy& copy) {
+  auto copy_it = ranges_.find({copy.start_time, copy.end_time});
+  CHECK(copy_it != ranges_.end());
+  CHECK_EQ(copy_it->first.start_time, copy.start_time);
+  CHECK_EQ(copy_it->second.erase(copy), 1);
+  if (copy_it->second.empty()) {
+    ranges_.erase(copy_it);
+  }
+}
+
+bool AsynchronousCopyOrdering::ViolatesOrdering(int64_t start_time,
+                                                int64_t end_time) const {
+  // We allow identical start and end times. It is enough to check for just the
+  // start time in case we find a match in ranges_ because the found value will
+  // either be identical to {start_time, estimated_end_time} (and this doesn't
+  // violate) or its start_time will be smaller and estimated_end_time will be
+  // larger (this violates).
+  auto copy_it = ranges_.find({start_time, end_time});
+  if (copy_it != ranges_.end() && copy_it->first.start_time != start_time) {
+    VLOG(4) << "Violates ordering: (" << start_time << ", " << end_time
+            << ") and (" << copy_it->first.start_time << ", "
+            << copy_it->first.end_time << ")";
+    return true;
+  }
+  return false;
+}
+
 bool AsynchronousCopyResource::ConsumeResource(
     int64_t start_time, int64_t end_time, float resource,
     bool update_current_resource,
@@ -2747,6 +2784,9 @@ void AlternateMemoryBestFitHeap::UncommitPendingChunks(
       prefetch_interval_tree_.Remove(interval.start_time, interval.end_time,
                                      kDummyChunk);
       prefetch_async_copy_resource_.RemoveCopy(interval);
+      if (options_.enforce_prefetch_fifo_order) {
+        async_copy_ordering_.RemoveCopy(interval);
+      }
     } else {
       eviction_interval_tree_.Remove(interval.start_time, interval.end_time,
                                      kDummyChunk);
@@ -3084,6 +3124,9 @@ void AlternateMemoryBestFitHeap::AddAsyncCopy(
     prefetch_interval_tree_.Add(start_time, copy_done_schedule_before_time,
                                 kDummyChunk);
     prefetch_async_copy_resource_.AddCopy(pending_async_copies_.back());
+    if (options_.enforce_prefetch_fifo_order) {
+      async_copy_ordering_.AddCopy(pending_async_copies_.back());
+    }
     CreateOrAddToAliasedOffset(*allocations->back(), aliased_offset);
   } else {
     eviction_interval_tree_.Add(start_time, copy_done_schedule_before_time,
@@ -3456,6 +3499,13 @@ AlternateMemoryBestFitHeap::Result AlternateMemoryBestFitHeap::Prefetch(
             prefetch_resource)) {
       VLOG(4) << "This would violate asynchronous copy resource = "
               << prefetch_resource;
+      result_mark(Result::kFailViolatesAsyncCopyResource, result);
+      continue;
+    }
+    if (options_.enforce_prefetch_fifo_order &&
+        async_copy_ordering_.ViolatesOrdering(alternate_mem_interval.start,
+                                              prefetch_end_time)) {
+      VLOG(4) << "This would violate asynchronous copy ordering.";
       result_mark(Result::kFailViolatesAsyncCopyResource, result);
       continue;
     }
