@@ -29,6 +29,11 @@ namespace deallocation {
 // canonicalization.
 std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>> createDeallocatePass();
 
+// Pass to reuse buffers (hoisting, double buffering, dealloc/alloc
+// coalescing).
+std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
+createBufferReusePass();
+
 #define GEN_PASS_REGISTRATION
 #include "deallocation/transforms/passes.h.inc"
 

@@ -408,6 +408,7 @@ gentbl_cc_library(
 cc_library(
     name = "deallocation_passes",
     srcs = [
+        "deallocation/transforms/buffer_reuse.cc",
         "deallocation/transforms/deallocate.cc",
     ],
     hdrs = [
