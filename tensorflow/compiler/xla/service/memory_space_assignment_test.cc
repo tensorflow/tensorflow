@@ -7415,7 +7415,7 @@ TEST_F(CostAnalysisPrefetchIntervalPickerTest, PrefetchIntervalOrder) {
 
   HloInstruction* root = module->entry_computation()->root_instruction();
   const HloUse use{root, /*operand_number=*/1, /*operand_index=*/{}};
-  interval_picker.Begin(use, /*start_time=*/0, /*end_time=*/22);
+  interval_picker.Begin(use, /*start_time=*/0, /*end_time=*/22, std::nullopt);
 
   // Expect that the first interval is (15, 22), which has elapsed time of 6.0,
   // twice of the async copy elased (3.0). Then we expect that intervals will be
@@ -7447,7 +7447,7 @@ TEST_F(CostAnalysisPrefetchIntervalPickerTest, PrefetchIntervalOrder) {
 
   // Expect that if the time between start_time and end_time is too short, there
   // won't be any available intervals.
-  interval_picker.Begin(use, /*start_time=*/19, /*end_time=*/22);
+  interval_picker.Begin(use, /*start_time=*/19, /*end_time=*/22, std::nullopt);
   LOG(INFO) << interval_picker.ToDebugString();
   EXPECT_TRUE(interval_picker.Done());
 }
@@ -7517,7 +7517,7 @@ TEST_F(CostAnalysisPrefetchIntervalPickerTest, PrefetchIntervalOrderWhile) {
             5);
   HloInstruction* root = module->entry_computation()->root_instruction();
   const HloUse use{root, /*operand_number=*/1, /*operand_index=*/{}};
-  interval_picker.Begin(use, /*start_time=*/0, /*end_time=*/31);
+  interval_picker.Begin(use, /*start_time=*/0, /*end_time=*/31, std::nullopt);
 
   // Because there are while loop computations between [19, 24], we ensure that
   // the interval picker avoids this interval.
@@ -7719,7 +7719,7 @@ TEST_F(CostAnalysisPrefetchIntervalPickerTest, EarliestLatestWindowTooSmall) {
 
   HloInstruction* root = module->entry_computation()->root_instruction();
   const HloUse use{root, /*operand_number=*/1, /*operand_index=*/{}};
-  interval_picker.Begin(use, /*start_time=*/1, /*end_time=*/3);
+  interval_picker.Begin(use, /*start_time=*/1, /*end_time=*/3, std::nullopt);
 
   LOG(INFO) << interval_picker.ToDebugString();
   EXPECT_FALSE(interval_picker.Done());

@@ -277,8 +277,8 @@ class PrefetchIntervalPicker {
                                           int64_t end_time) const = 0;
 
   // Begins the iterator for the first start time of the prefetch.
-  virtual void Begin(const HloUse& use, int64_t start_time,
-                     int64_t end_time) = 0;
+  virtual void Begin(const HloUse& use, int64_t start_time, int64_t end_time,
+                     std::optional<int64_t> preferred_time) = 0;
 
   // Advances the start time of the prefetch and returns that value.
   virtual int64_t Next() = 0;
@@ -359,7 +359,8 @@ class InstructionCountPrefetchIntervalPicker : public PrefetchIntervalPicker {
   float GetLogicalIntervalElapsed(int64_t start_time,
                                   int64_t end_time) const override;
 
-  void Begin(const HloUse& use, int64_t start_time, int64_t end_time) override;
+  void Begin(const HloUse& use, int64_t start_time, int64_t end_time,
+             std::optional<int64_t> preferred_time) override;
 
   int64_t Next() override;
   bool Done() const override;
@@ -427,7 +428,8 @@ class CostAnalysisPrefetchIntervalPicker : public PrefetchIntervalPicker {
   float GetLogicalIntervalElapsed(int64_t start_time,
                                   int64_t end_time) const override;
 
-  void Begin(const HloUse& use, int64_t start_time, int64_t end_time) override;
+  void Begin(const HloUse& use, int64_t start_time, int64_t end_time,
+             std::optional<int64_t> preferred_time) override;
 
   int64_t Next() override;
   bool Done() const override;
@@ -1146,6 +1148,10 @@ struct Options {
 
   // Scales effective bandwidth for async copies. Valid range is (0, 1].
   float async_copy_bandwidth_scaling_factor = 1.0;
+
+  // If true, uses the earlier instance of the same instruction to use as
+  // preferred prefetch start time.
+  bool use_repeated_instance_for_preferred_prefetch_time = false;
 };
 
 // A struct representing an asynchronous copy with its logical start and end
@@ -1338,6 +1344,7 @@ class AlternateMemoryBestFitHeap
     int64_t size;
     bool allow_no_copy_alternate_mem_allocation;
     std::optional<int64_t> earliest_prefetch_time;
+    std::optional<int64_t> preferred_prefetch_time;
     AliasedOffset* preferred_offset;
     const MemorySpaceAssignment::AllocationValue::Use* use;
     MemorySpaceAssignment::AllocationValue* allocation_value;
@@ -1627,6 +1634,11 @@ class AlternateMemoryBestFitHeap
     return allocation_block;
   }
 
+  // Returns a vector of instructions that have the same fingerprint as this
+  // instruction.
+  const std::vector<const HloInstruction*>* GetRepeatedInstructionList(
+      const HloInstruction* instruction) const;
+
   MemorySpaceAssignment::AllocationSequence* allocations_;
   const Options& options_;
   const HloAliasAnalysis& alias_analysis_;
@@ -1667,6 +1679,12 @@ class AlternateMemoryBestFitHeap
   // alternate memory (not default memory).
   int64_t memory_pressure_ = 0;
   int64_t next_async_copy_id_ = 0;
+  // Fingerprint cache.
+  absl::flat_hash_map<const HloInstruction*, std::string> fingerprint_map_;
+  // Vector of repeated instructions (that have the same fingerprint) indexed by
+  // fingerprint.
+  absl::flat_hash_map<std::string, std::vector<const HloInstruction*>>
+      repeated_inst_map_;
   // Debug strings.
   std::string buffer_info_str_;
   std::string allocation_info_str_;
