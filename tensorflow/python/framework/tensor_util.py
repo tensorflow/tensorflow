@@ -398,7 +398,7 @@ def _AssertCompatible(values, dtype):
 
 def _is_array_like(obj):  # pylint: disable=invalid-name
   """Check if a given object is array-like."""
-  if isinstance(obj, ops.Tensor) and not isinstance(obj, ops._EagerTensorBase):  # pylint: disable=protected-access
+  if isinstance(obj, ops.Tensor) and not isinstance(obj, core.Value):  # pylint: disable=protected-access
     # Tensor implements __array__ only so it can inform the user that it is not
     # a valid array.
     return False
@@ -934,7 +934,7 @@ def constant_value(tensor, partial=False):  # pylint: disable=invalid-name
   Raises:
     TypeError: if tensor is not an ops.Tensor.
   """
-  if isinstance(tensor, ops.EagerTensor):
+  if isinstance(tensor, core.Value):
     try:
       return tensor.numpy()
     except errors_impl.UnimplementedError:
@@ -972,7 +972,7 @@ def constant_value_as_shape(tensor):  # pylint: disable=invalid-name
   Raises:
     ValueError: If the shape is rank-0 and is not statically known to be -1.
   """
-  if isinstance(tensor, ops.EagerTensor):
+  if isinstance(tensor, core.Value):
     return tensor_shape.TensorShape(
         [dim if dim != -1 else None for dim in tensor.numpy()])
 
