@@ -29,6 +29,7 @@ limitations under the License.
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
 #include "stablehlo/dialect/ChloOps.h"  // from @stablehlo
 #include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_dialect.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
@@ -347,14 +348,15 @@ Status LoadAndPreprocessModule(int version,
                                mlir::MLIRContext *context, string module_str,
                                std::vector<string> dim_args_spec,
                                bool *has_dynamic_shapes, int *nr_outputs) {
-  // Allow only dialects with stability guarantees.
+  // Load a superset of dialects; we should check at serialization time that
+  // we only include allowable dialects.
   context->loadDialect<mlir::func::FuncDialect>();
-  if (version >= VERSION_START_STABLE_HLO) {
-    context->loadDialect<mlir::stablehlo::StablehloDialect>();
-  } else {
-    context->loadDialect<mlir::mhlo::MhloDialect>();
-  }
+  context->loadDialect<mlir::stablehlo::StablehloDialect>();
+  context->loadDialect<mlir::mhlo::MhloDialect>();
   context->loadDialect<mlir::chlo::ChloDialect>();
+  // Allow TF dialect for now because shape inference uses tf.Cast in
+  // intermediate stages.
+  context->loadDialect<mlir::TF::TensorFlowDialect>();
   // Parses both IR text and bytecode.
   *module = mlir::parseSourceString<mlir::ModuleOp>(llvm::StringRef(module_str),
                                                     context);
