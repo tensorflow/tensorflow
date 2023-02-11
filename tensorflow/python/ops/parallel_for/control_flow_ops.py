@@ -28,7 +28,6 @@ from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.framework import type_spec
-from tensorflow.python.framework.errors_impl import InvalidArgumentError
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
@@ -109,13 +108,12 @@ def for_loop(loop_fn, loop_fn_dtypes, iters, parallel_iterations=None):
     loop_var = array_ops.placeholder_with_default(0, shape=[])
     try:
       loop_fn_out = loop_fn(loop_var)
-    except InvalidArgumentError: 
-      loop_fn_out = array_ops.placeholder_with_default(0, shape=[])
-    out_shapes = [[0]+ops.convert_to_tensor(x).shape
+      out_shapes = [[0]+ops.convert_to_tensor(x).shape
             for x in nest.flatten(loop_fn_out)]
-    output = [array_ops.zeros(out_shapes[i], dt)
+      output = [array_ops.zeros(out_shapes[i], dt)
             for i,dt in enumerate(flat_loop_fn_dtypes)]
-
+    except Exception: 
+      output = [array_ops.zeros([0])]
   return nest.pack_sequence_as(loop_fn_dtypes, output)
 
 
