@@ -178,6 +178,7 @@ cc_library(
         "//tensorflow/compiler/xla/client:xla_computation",
         "//tensorflow/compiler/xla/hlo/ir:hlo",
         "//tensorflow/compiler/xla/service:hlo_cost_analysis",
+        "//tensorflow/tsl/framework:allocator",
         "//tensorflow/tsl/platform:errors",
         "//tensorflow/tsl/platform:fingerprint",
         "@com_google_absl//absl/base",
