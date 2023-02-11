@@ -1017,8 +1017,15 @@ def _split_on_axis(np_fun_name, axis):
   def f(ary, indices_or_sections):
     # for 1-D array, hsplit becomes vsplit
     nonlocal axis
-    if axis == 1 and len(ary.shape) == 1:
-      axis = 0
+    axis = np_utils.cond(
+      math_ops.equal(axis, 1),
+      lambda: np_utils.cond(
+        math_ops.equal(array_ops.rank(ary), 1),
+        lambda: 0,
+        lambda: 1
+      ),
+      lambda: 1
+    )
     if isinstance(indices_or_sections, int):
       ary_shape = ary.shape[axis]
       if ary_shape is not None and ary_shape % indices_or_sections:
