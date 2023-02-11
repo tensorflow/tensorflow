@@ -22,6 +22,11 @@
     *   Added F-Score metrics `tf.keras.metrics.FBetaScore`,
         `tf.keras.metrics.F1Score`, and `tf.keras.metrics.R2Score`.
     *   Added activation function `tf.keras.activations.mish`.
+    *   Added experimental `keras.metrics.experimental.PyMetric` API for metrics
+        that run Python code on the host CPU (compiled outside of the TensorFlow
+        graph). This can be used for integrating metrics from external Python
+        libraries (like sklearn or pycocotools) into Keras as first-class Keras
+        metrics.
 
 # Bug Fixes and Other Changes
 
