@@ -287,7 +287,7 @@ def _large_compatible_negative(tensor_type):
     a large negative number.
   """
   if tensor_type == dtypes.float16:
-    return dtypes.float16.min
+    return dtypes.float16.min / 2.0
   return -1e9
 
 
