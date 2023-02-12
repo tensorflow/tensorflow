@@ -286,6 +286,9 @@ def _large_compatible_negative(tensor_type):
   Returns:
     a large negative number.
   """
+  # In case of dtype=float16 (e.g., for mixed-precision), the largest
+  # negative number (dtypes.float16.min) is divided by 2, in order to
+  # avoid overflows when summing negative inputs.
   if tensor_type == dtypes.float16:
     return dtypes.float16.min / 2.0
   return -1e9
