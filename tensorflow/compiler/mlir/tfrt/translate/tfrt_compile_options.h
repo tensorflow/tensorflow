@@ -78,6 +78,18 @@ struct TfrtCompileOptions {
   // tpu host allocator. This options is experimental.
   bool use_tpu_host_allocator_for_inputs = false;
 
+  // To allow unpadded batch for TPU execution.
+  enum class TpuAllowUnpaddedBatch {
+    // Disable this feature.
+    kDisabled,
+    // Enable this feature when in-graph batching is detected.
+    kAuto,
+    // Force to enable this feature.
+    kEnforced,
+  };
+  TpuAllowUnpaddedBatch tpu_allow_unpadded_batch =
+      TpuAllowUnpaddedBatch::kDisabled;
+
   // If true, the compiler will try to hoist invariant ops (e.g., const ops and
   // their non-side-effecting consumers) to loading phase, which avoids the
   // runtime cost during later running.
