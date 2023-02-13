@@ -22,7 +22,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 
-/** Helper class for writing the final report. */
+/** Helper class for writing the final report in CSV format. */
 final class CsvWriter {
   private static final String TAG = "TfLiteCsvWriter";
 
