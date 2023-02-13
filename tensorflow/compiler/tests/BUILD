@@ -1735,7 +1735,6 @@ cuda_py_test(
     tags = [
         "no_cuda_asan",  # Times out.
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
-        "no_rocm"
     ],
     xla_enable_strict_auto_jit = False,
     xla_enabled = True,
