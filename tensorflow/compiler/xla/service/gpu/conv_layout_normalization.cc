@@ -20,6 +20,7 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/compiler/xla/hlo/ir/hlo_casting_utils.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/layout_util.h"
@@ -165,6 +166,57 @@ StatusOr<HloInstruction*> UpdateLayoutForCudnnConvolution(
   return bc_to_orig;
 }
 
+// Create an instruction sequence (reshape-transpose-reshape) that effectively
+// does the same thing as cudnnReorderFilterAndBias, but could also be constant
+// folded or fused.
+HloInstruction* CreateTransposeForCudnnFilterReordering(HloInstruction* hlo,
+                                                        const Shape& shape) {
+  // Filter shape is [O, I / 32, H, W, 32]
+  CHECK_EQ(shape.rank(), 5);
+  CHECK_EQ(shape.dimensions(0) % 32, 0);
+  CHECK_EQ(shape.dimensions(4), 32);
+
+  auto [O, I, H, W] = std::tuple(shape.dimensions(0), shape.dimensions(1),
+                                 shape.dimensions(2), shape.dimensions(3));
+  Shape shape_bitcast =
+      ShapeUtil::MakeShape(shape.element_type(), {O / 8, 4, 2, I, H, W, 8, 4});
+  Shape shape_transpose = ShapeUtil::MakeShape(
+      shape.element_type(), {I, H, W, O / 8, 2, 8, /*output*/ 4, /*input*/ 4});
+
+  // The permutation is reverse engineered from the cudnn v8.3 implementation
+  // (see go/xla-int8x32-cudnn-frontend)
+  HloInstruction* bitcast_1 =
+      hlo->AddInstruction(HloInstruction::CreateBitcast(shape_bitcast, hlo));
+  HloInstruction* transpose =
+      hlo->AddInstruction(HloInstruction::CreateTranspose(
+          shape_transpose, bitcast_1, {3, 4, 5, 0, 2, 6, 1, 7}));
+  HloInstruction* bitcast_2 =
+      hlo->AddInstruction(HloInstruction::CreateBitcast(shape, transpose));
+  return bitcast_2;
+}
+
+// Implement bias reordering, similar to the filter reordering.
+HloInstruction* CreateTransposeForCudnnBiasReordering(HloInstruction* hlo,
+                                                      const Shape& shape) {
+  CHECK_EQ(shape.rank(), 1);
+  CHECK_EQ(shape.dimensions(0), 32);
+
+  auto N = shape.dimensions(0);
+  Shape shape_bitcast =
+      ShapeUtil::MakeShape(shape.element_type(), {N / 32, 4, 2, 4});
+  Shape shape_transpose =
+      ShapeUtil::MakeShape(shape.element_type(), {N / 32, 2, 4, 4});
+
+  HloInstruction* bitcast_1 =
+      hlo->AddInstruction(HloInstruction::CreateBitcast(shape_bitcast, hlo));
+  HloInstruction* transpose =
+      hlo->AddInstruction(HloInstruction::CreateTranspose(
+          shape_transpose, bitcast_1, {0, 2, 1, 3}));
+  HloInstruction* bitcast_2 =
+      hlo->AddInstruction(HloInstruction::CreateBitcast(shape, transpose));
+  return bitcast_2;
+}
+
 // Normalize the layout of cuDNN int8x32 filter reordering custom call
 // (implemented by calling `cudnnReorderFilterAndBias`), which should be
 // followed by a convolution.
@@ -193,18 +245,17 @@ HloInstruction* UpdateLayoutForCudnnConvolutionReordering(
                                       dimensions.minor_to_major()));
 
   // Create a replacement custom-call with layout-normalized inputs.
-  HloInstruction* custom_call;
+  HloInstruction* result;
   if (bias_shape != nullptr) {
-    custom_call =
-        hlo->parent()->AddInstruction(HloInstruction::CreateCustomCall(
-            ShapeUtil::MakeTupleShape({new_filter_shape, *bias_shape}),
-            {transpose, hlo->mutable_operand(1)}, hlo->custom_call_target()));
+    result = MaybeMakeTuple(
+        {CreateTransposeForCudnnFilterReordering(transpose, new_filter_shape),
+         CreateTransposeForCudnnBiasReordering(hlo->mutable_operand(1),
+                                               *bias_shape)});
   } else {
-    custom_call =
-        hlo->parent()->AddInstruction(HloInstruction::CreateCustomCall(
-            new_filter_shape, {transpose}, hlo->custom_call_target()));
+    result =
+        CreateTransposeForCudnnFilterReordering(transpose, new_filter_shape);
   }
-  return MakeBitcastHlo(custom_call, hlo->shape());
+  return MakeBitcastHlo(result, hlo->shape());
 }
 
 }  // namespace
