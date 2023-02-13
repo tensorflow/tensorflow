@@ -84,8 +84,6 @@ TF_CALL_half(REGISTER_LEAKYRELU_KERNELS)
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
-#if !defined(MLIR_GENERATED_GPU_KERNELS_ENABLED)
-
 namespace functor {
 #define DECLARE_GPU_NO_MLIR_SPEC(T)                                            \
   template <>                                                                  \
@@ -106,7 +104,15 @@ namespace functor {
       typename TTypes<T>::Tensor activations);                                 \
   extern template struct Selu<GPUDevice, T>;
 
-TF_CALL_GPU_NUMBER_TYPES(DECLARE_GPU_NO_MLIR_SPEC);
+// TODO(trevor-m): Use TF_CALL_GPU_NUMBER_TYPES when MLIR-generated bfloat16 is
+// enabled.
+#if !defined(MLIR_GENERATED_GPU_KERNELS_ENABLED)
+TF_CALL_half(DECLARE_GPU_NO_MLIR_SPEC);
+TF_CALL_float(DECLARE_GPU_NO_MLIR_SPEC);
+TF_CALL_double(DECLARE_GPU_NO_MLIR_SPEC);
+#endif
+TF_CALL_bfloat16(DECLARE_GPU_NO_MLIR_SPEC);
+#undef DECLARE_GPU_NO_MLIR_SPEC
 }  // namespace functor
 
 #define REGISTER_GPU_NO_MLIR_KERNELS(type)                       \
@@ -120,9 +126,13 @@ TF_CALL_GPU_NUMBER_TYPES(DECLARE_GPU_NO_MLIR_SPEC);
       Name("Selu").Device(DEVICE_GPU).TypeConstraint<type>("T"), \
       SeluOp<GPUDevice, type>);
 
-TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU_NO_MLIR_KERNELS);
-#undef REGISTER_RELU_KERNEL
+#if !defined(MLIR_GENERATED_GPU_KERNELS_ENABLED)
+TF_CALL_half(REGISTER_GPU_NO_MLIR_KERNELS);
+TF_CALL_float(REGISTER_GPU_NO_MLIR_KERNELS);
+TF_CALL_double(REGISTER_GPU_NO_MLIR_KERNELS);
 #endif
+TF_CALL_bfloat16(REGISTER_GPU_NO_MLIR_KERNELS);
+#undef REGISTER_GPU_NO_MLIR_KERNELS
 
 // Forward declarations of the functor specializations for GPU.
 namespace functor {
