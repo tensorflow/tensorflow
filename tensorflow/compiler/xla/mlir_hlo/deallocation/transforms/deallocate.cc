@@ -50,9 +50,10 @@ struct TransformResult {
 };
 
 bool doesAlias(Operation* op, Value v,
-               breaks_if_you_move_ops::ValueEquivalenceClasses& aliases) {
+               breaks_if_you_move_ops::ValueEquivalenceClasses& aliases,
+               bool considerOperands = true) {
   auto eq = [&](Value other) { return aliases.isEquivalent(v, other); };
-  return op && (llvm::any_of(op->getOperands(), eq) ||
+  return op && ((considerOperands && llvm::any_of(op->getOperands(), eq)) ||
                 llvm::any_of(op->getResults(), eq) ||
                 llvm::any_of(op->getRegions(), [&](Region& region) {
                   return llvm::any_of(region.getOps(), [&](Operation& subOp) {
@@ -150,6 +151,11 @@ llvm::SmallVector<Value> Deallocator::transformBlock(Block& block,
           retained;
     }
   }
+  for (auto [result, yielded] : llvm::zip(results, yieldedMemrefs)) {
+    if (!result) {
+      result = b.create<NullOp>(yielded.getType()).getResult();
+    }
+  }
   return results;
 }
 
@@ -245,9 +251,11 @@ TransformResult Deallocator::transformOp(
   // can transfer ownership.
   for (auto operand : llvm::make_filter_range(operands, isMemref)) {
     auto isLastUse = [&]() {
-      auto* candidate = op.getOperation();
-      while ((candidate = candidate->getNextNode()) != nullptr) {
-        if (doesAlias(candidate, operand, aliases)) return false;
+      for (auto* candidate = op.getOperation(); candidate != nullptr;
+           candidate = candidate->getNextNode()) {
+        if (doesAlias(candidate, operand, aliases,
+                      /*considerOperands=*/candidate != op.getOperation()))
+          return false;
       }
       return true;
     };

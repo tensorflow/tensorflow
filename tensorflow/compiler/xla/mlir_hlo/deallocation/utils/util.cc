@@ -80,8 +80,11 @@ RegionBranchOpInterface moveRegionsToNewOpButKeepOldOp(
                                  op->getOperands()[1], op->getOperands()[2],
                                  op->getOperands().drop_front(3));
   } else if (llvm::isa<scf::WhileOp>(op)) {
-    newOp = b.create<scf::WhileOp>(op.getLoc(), TypeRange{op->getOperands()},
-                                   op->getOperands());
+    newOp = b.create<scf::WhileOp>(
+        op.getLoc(),
+        TypeRange{op->getRegion(0).front().getTerminator()->getOperands()}
+            .drop_front(),
+        op->getOperands());
   } else if (llvm::isa<scf::IfOp>(op)) {
     newOp = b.create<scf::IfOp>(
         op.getLoc(),

@@ -171,3 +171,29 @@ func.func @if_without_else() {
 // CHECK-CANON-NEXT:    memref.alloc
 // CHECK-CANON-NEXT:    test.use
 // CHECK-CANON-NEXT:    memref.dealloc
+
+func.func private @yield_same_alloc_twice() {
+  %alloc = memref.alloc() : memref<f32>
+  scf.while (%a = %alloc, %b = %alloc) : (memref<f32>, memref<f32>) -> () {
+    %cond = "test.make_condition"() : () -> i1
+    scf.condition(%cond)
+  } do {
+  ^bb0():
+    scf.yield %alloc, %alloc : memref<f32>, memref<f32>
+  }
+  return
+}
+
+// CHECK-LABEL: @yield_same_alloc_twice
+// CHECK-NEXT: %[[ALLOC:.*]] = memref.alloc
+// CHECK-NEXT: %[[NULL1:.*]] = deallocation.null
+// CHECK-NEXT: %[[NULL2:.*]] = deallocation.null
+// CHECK: scf.while
+// CHECK-SAME: %[[ALLOC]]
+// CHECK-SAME: %[[ALLOC]]
+// CHECK-SAME: %[[NULL1]]
+// CHECK-SAME: %[[NULL2]]
+// CHECK: } do {
+// CHECK-NEXT: %[[RETAIN:.*]]:2 = deallocation.retain(%[[ALLOC]], %[[ALLOC]]) of()
+// CHECK-NEXT: %[[NULL:.*]] = deallocation.null
+// CHECK-NEXT: scf.yield %[[ALLOC]], %[[ALLOC]], %[[RETAIN]]#1, %[[NULL]]
