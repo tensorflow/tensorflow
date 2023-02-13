@@ -828,6 +828,7 @@ cc_library(
     srcs = ["transforms/update_op_cost_in_tfrt_mlir.cc"],
     hdrs = ["transforms/update_op_cost_in_tfrt_mlir.h"],
     deps = [
+        ":cost_analysis",
         "//tensorflow/core/tfrt/fallback:cost_recorder",
         "@llvm-project//mlir:IR",
     ],

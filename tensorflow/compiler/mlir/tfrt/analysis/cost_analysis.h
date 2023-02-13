@@ -79,6 +79,8 @@ struct CostFunctionRegistration {
   }
 };
 
+bool HasCostFunctionRegistered(absl::string_view op_name);
+
 }  // namespace tfrt_compiler
 }  // namespace tensorflow
 
