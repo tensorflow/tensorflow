@@ -47,6 +47,17 @@ class XlaCallModuleOpTest(xla_test.XLATestCase):
         equality_fn = self.assertAllClose
       equality_fn(result, expected, rtol=1e-3)
 
+  def testing_platform(self):
+    """Current testing platform, one of CPU, GPU, TPU."""
+    if self.device in ['CPU', 'XLA_CPU']:
+      return 'CPU'
+    elif self.device in ['GPU', 'XLA_GPU']:
+      return 'GPU'
+    elif self.device in ['TPU', 'XLA_TPU']:
+      return 'TPU'
+    else:
+      assert False, f'Unexpected {self.device=}'
+
   def test_basic(self):
     x = np.array([1., 2., 3.], dtype=np.float32)
 
@@ -215,7 +226,8 @@ module @jit_f.0 {
     dim_args_spec = ['0.0', '0.0', '0.0', '0.0']  # Too many dim_args_spec
     with self.assertRaisesRegex(
         errors.InvalidArgumentError,
-        'The module should have 4 dimension arguments, '
+        'The module should have 0 platform index arguments and '
+        '4 dimension arguments, '
         'but it has only 4 total arguments'):
       self._assertOpOutputMatchesExpected(f, (x, y),
                                           (np.sin(x + y), x.shape[1]))
@@ -239,7 +251,8 @@ module @jit_f.0 {
     with self.assertRaisesRegex(
         errors.InvalidArgumentError,
         'Incorrect number of arguments for XlaCallModule: 2. '
-        'The module has 4 of which 1 were declared to be dimension arguments.'):
+        'The module has 4 of which 0 platform index arguments '
+        'and 1 dimension arguments.'):
       self._assertOpOutputMatchesExpected(f, (x, y),
                                           (np.sin(x + y), x.shape[1]))
 
@@ -265,6 +278,156 @@ module @jit_f.0 {
         "is 3 in dim_arg_spec '0.3'"):
       self._assertOpOutputMatchesExpected(f, (x, y),
                                           (np.sin(x + y), x.shape[1]))
+
+  def test_platforms_basic(self):
+    x = np.float32(0.)
+
+    #  returns x + 2. on CPU, x + 3. on GPU and x + 4. on TPU
+    module = """
+module @jit_f.0 {
+  func.func public @main(%arg_platform_idx: tensor<i32>, %arg0: tensor<f32>) -> tensor<f32> {
+    %to_add = "stablehlo.case"(%arg_platform_idx) ({
+      %cpu_val = stablehlo.constant dense<2.> : tensor<f32>
+      stablehlo.return %cpu_val : tensor<f32>
+    }, {
+      %gpu_val = stablehlo.constant dense<3.> : tensor<f32>
+      stablehlo.return %gpu_val : tensor<f32>
+    }, {
+      %tpu_val = stablehlo.constant dense<4.> : tensor<f32>
+      stablehlo.return %tpu_val : tensor<f32>
+    }) : (tensor<i32>) -> tensor<f32>
+    %0 = stablehlo.add %arg0, %to_add : tensor<f32>
+    return %0 : tensor<f32>
+  }
+}
+"""
+    platforms = ['CPU', 'GPU', 'TPU']
+    def f(x):
+      return xla.call_module([x],
+                             version=3,
+                             module=module,
+                             Tout=[np.float32],
+                             Sout=[()],
+                             platforms=platforms)
+
+    expected_value = x + dict(CPU=2., GPU=3., TPU=4.)[self.testing_platform()]
+    self._assertOpOutputMatchesExpected(f, (x,), (expected_value,))
+
+  @unittest.skip('TODO(burmako): Re-enable this after shape refinement is done')
+  def test_platforms_with_dim_vars(self):
+    x = np.ones((3,), dtype=np.float32)
+    y = np.arange(3., dtype=np.float32)
+
+    #  returns x + x on CPU and x - x on TPU
+    module = """
+module @jit_f.0 {
+  func.func public @main(%arg_platform_idx: tensor<i32>, %arg_dim0: tensor<i32>, %arg0: tensor<?xf32>, %arg1: tensor<?xf32>) -> tensor<?xf32> {
+    %res = "stablehlo.case"(%arg_platform_idx) ({
+      %0 = stablehlo.add %arg0, %arg1 : tensor<?xf32>
+      stablehlo.return %0 : tensor<?xf32>
+    }, {
+      %1 = stablehlo.subtract %arg0, %arg1 : tensor<?xf32>
+      stablehlo.return %1 : tensor<?xf32>
+    }) : (tensor<i32>) -> tensor<?xf32>
+    return %res : tensor<?xf32>
+  }
+}
+"""
+    def f(x, y):
+      return xla.call_module([x, y],
+                             version=3,
+                             module=module,
+                             Tout=[np.float32],
+                             Sout=[(None,)],
+                             platforms=['CPU', 'TPU'],
+                             dim_args_spec=['0.0'])
+
+    expected_value = x + (x if self.testing_platform() == 'CPU' else -x)
+    if self.testing_platform() in ['CPU', 'TPU']:
+      self._assertOpOutputMatchesExpected(f, (x, y), (expected_value,))
+
+  def test_platforms_errors(self):
+    """Error reporting for the platforms attribute."""
+    x = np.float32(0.)
+
+    module = """
+module @jit_f.0 {
+  func.func public @main(%arg_platform_idx: tensor<i32>, %arg0: tensor<f32>) -> tensor<f32> {
+    return %arg0 : tensor<f32>
+  }
+}
+"""
+    platforms = []
+    version = 3
+    def f(x):
+      return xla.call_module([x],
+                             version=version,
+                             module=module,
+                             Tout=[np.float32],
+                             Sout=[()],
+                             platforms=platforms)
+
+    # With empty platforms, there should be no platform_index argument
+    with self.assertRaisesRegex(
+        errors.InvalidArgumentError,
+        'Call applied function arity must match number of arguments'):
+      self._assertOpOutputMatchesExpected(f, (x,), (x,))
+
+    # Same with a single platform
+    platforms = ['CPU']
+    if self.testing_platform() == 'CPU':
+      with self.assertRaisesRegex(
+          errors.InvalidArgumentError,
+          'Call applied function arity must match number of arguments'):
+        self._assertOpOutputMatchesExpected(f, (x,), (x,))
+
+    #  Same if the version is 2
+    platforms = ['CPU', 'GPU', 'TPU']
+    version = 2
+    with self.assertRaisesRegex(
+        errors.InvalidArgumentError,
+        'Call applied function arity must match number of arguments'):
+      self._assertOpOutputMatchesExpected(f, (x,), (x,))
+
+    version = 3
+    platforms = ['RANDOM_PLATFORM_1', 'RANDOM_PLATFORM_2']
+    with self.assertRaisesRegex(
+        errors.NotFoundError,
+        'The current platform .* is not among the platforms'):
+      self._assertOpOutputMatchesExpected(f, (x,), (x,))
+
+    platforms = ['CPU', 'GPU']
+    if self.testing_platform() not in platforms:
+      with self.assertRaisesRegex(
+          errors.NotFoundError,
+          'The current platform .* is not among the platforms'):
+        self._assertOpOutputMatchesExpected(f, (x,), (x,))
+    else:
+      self._assertOpOutputMatchesExpected(f, (x,), (x,))
+
+    # The module cannot have i64 %arg_platform_idx
+    module = module.replace('i32', 'i64')
+    platforms = ['CPU', 'GPU', 'TPU']
+    with self.assertRaisesRegex(
+        errors.InvalidArgumentError,
+        'Module argument at index 0 should be a 0-dimensional '
+        '32-bit integer-tensor platform index argument .* has type '
+        'tensor<i64>'):
+      self._assertOpOutputMatchesExpected(f, (x,), (x,))
+
+    # A module without the platform index argument
+    module = """
+module @jit_f.0 {
+  func.func public @main(%arg0: tensor<i32>) -> tensor<i32> {
+    return %arg0 : tensor<i32>
+  }
+}
+"""
+    with self.assertRaisesRegex(
+        errors.InvalidArgumentError,
+        'The module should have 1 platform index arguments and 0 dimension '
+        'arguments, but it has only 1 total arguments'):
+      self._assertOpOutputMatchesExpected(f, (x,), (x,))
 
   @unittest.skip('TODO(burmako): Re-enable this after shape refinement is done')
   def test_dynamic_iota(self):
