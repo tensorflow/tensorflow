@@ -101,6 +101,7 @@ cc_library(
         "//tensorflow/lite/core/async/interop:attribute_keys",
         "//tensorflow/lite/core/async/interop/c:attribute_map",
         "//tensorflow/lite/core/async/interop/c:constants",
+        "//tensorflow/lite/core/async/interop/c:types",
         "@com_google_absl//absl/log:check",
     ],
 )
