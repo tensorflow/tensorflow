@@ -15,16 +15,17 @@ limitations under the License.
 package org.tensorflow.lite.benchmark.delegateperformance;
 
 import static org.tensorflow.lite.benchmark.delegateperformance.DelegatePerformanceBenchmark.checkNotNull;
+import static org.tensorflow.lite.benchmark.delegateperformance.DelegatePerformanceBenchmark.checkState;
 
 import android.util.Log;
+import java.util.LinkedHashMap;
+import java.util.Map;
+import tflite.proto.benchmark.DelegatePerformance.BenchmarkEventType;
+import tflite.proto.benchmark.DelegatePerformance.BenchmarkMetric;
 import tflite.proto.benchmark.DelegatePerformance.LatencyCriteria;
 import tflite.proto.benchmark.DelegatePerformance.LatencyResults;
 
-/**
- * Model-level latency benchmark report class.
- *
- * <p>TODO(b/250877013): Add concrete implementation.
- */
+/** Model-level latency benchmark report class. */
 final class LatencyBenchmarkReport extends ModelBenchmarkReport<LatencyResults> {
   private static final String TAG = "LatencyBenchmarkReport";
 
@@ -44,7 +45,30 @@ final class LatencyBenchmarkReport extends ModelBenchmarkReport<LatencyResults> 
    * further processing.
    */
   @Override
-  public void addResults(LatencyResults results, TfLiteSettingsListEntry entry) {}
+  public void addResults(LatencyResults results, TfLiteSettingsListEntry entry) {
+    if (results.getEventType() != BenchmarkEventType.BENCHMARK_EVENT_TYPE_END) {
+      Log.i(TAG, "The latency benchmarking is not completed successfully for " + entry.filePath());
+      return;
+    }
+    // Use {@code LinkedHashMap} to keep the metrics insertion order.
+    Map<String, Float> metrics = new LinkedHashMap<>();
+    for (BenchmarkMetric metric : results.getMetricsList()) {
+      if (metric != null) {
+        metrics.put(metric.getName(), metric.getValue());
+      }
+    }
+    checkState(metrics.containsKey("initialization_latency_us"));
+    checkState(metrics.containsKey("warmup_latency_average_us"));
+    checkState(metrics.containsKey("inference_latency_average_us"));
+    metrics.put(
+        "startup_overhead_latency_us",
+        metrics.get("initialization_latency_us")
+            + metrics.get("warmup_latency_average_us")
+            - metrics.get("inference_latency_average_us"));
+    rawDelegateMetrics.add(
+        RawDelegateMetricsEntry.create(
+            entry.tfliteSettings().delegate(), entry.filePath(), entry.isTestTarget(), metrics));
+  }
 
   static ModelBenchmarkReport<LatencyResults> create(String modelName, LatencyCriteria criteria) {
     return new LatencyBenchmarkReport(modelName, criteria);

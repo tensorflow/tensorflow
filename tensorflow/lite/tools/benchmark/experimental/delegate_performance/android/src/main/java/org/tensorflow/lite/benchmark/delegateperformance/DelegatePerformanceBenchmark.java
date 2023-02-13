@@ -143,7 +143,8 @@ class DelegatePerformanceBenchmark {
       tfliteSettingsList.add(
           TfLiteSettingsListEntry.create(
               TFLiteSettings.getRootAsTFLiteSettings(tfliteSettingsBuilder.dataBuffer()),
-              "default_delegate"));
+              "default_delegate",
+              /* isTestTarget= */ false));
     }
     for (String jsonFilePath : jsonFilePaths) {
       byte[] tfliteSettingsByteArray = loadTfLiteSettingsJsonNative(jsonFilePath);
@@ -155,7 +156,11 @@ class DelegatePerformanceBenchmark {
       ByteBuffer byteBuffer = ByteBuffer.wrap(tfliteSettingsByteArray);
       tfliteSettingsList.add(
           TfLiteSettingsListEntry.create(
-              TFLiteSettings.getRootAsTFLiteSettings(byteBuffer), jsonFilePath));
+              TFLiteSettings.getRootAsTFLiteSettings(byteBuffer),
+              jsonFilePath,
+              // TODO(b/250877013): Correct the flag value. This flag is not in use now and will be
+              // used when the result aggregation logic is updated.
+              /* isTestTarget= */ false));
     }
     return tfliteSettingsList;
   }
