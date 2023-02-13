@@ -105,6 +105,11 @@ TEST(PathUtilsTest, DatasetDefFilePath) {
               MatchesRegex("/path/to/snapshot.dataset_def.proto"));
 }
 
+TEST(PathUtilsTest, DatasetSpefFilePath) {
+  EXPECT_THAT(DatasetSpecFilePath("/path/to/snapshot"),
+              MatchesRegex("/path/to/snapshot.dataset_spec.pb"));
+}
+
 TEST(PathUtilsTest, CheckpointsDirectory) {
   EXPECT_THAT(CheckpointsDirectory("/path/to/snapshot", /*stream_index=*/0),
               MatchesRegex("/path/to/snapshot.streams.stream_0.checkpoints"));

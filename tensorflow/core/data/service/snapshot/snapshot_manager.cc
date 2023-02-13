@@ -69,6 +69,8 @@ Status SnapshotManager::WriteOnDiskSkeleton() {
 Status SnapshotManager::WriteOnDiskMetadata(const SnapshotRequest& request) {
   TF_RETURN_IF_ERROR(WriteTextProto(env_, SnapshotMetadataFilePath(path_),
                                     request.metadata()));
+  TF_RETURN_IF_ERROR(WriteStringToFile(env_, DatasetSpecFilePath(path_),
+                                       request.metadata().element_spec()));
   TF_RETURN_IF_ERROR(
       WriteBinaryProto(env_, DatasetDefFilePath(path_), request.dataset()));
   return OkStatus();

@@ -49,7 +49,10 @@ class LoadDatasetOp : public DatasetOpKernel {
   void MakeDataset(OpKernelContext* ctx, DatasetBase** output) override;
 
  private:
-  class Dataset;
+  // Dataset classes for different formats. V1 loads the output of a
+  // `SaveDataset()`. V2 loads the output of a `DistributedSaveDataset()`.
+  class DatasetV1;
+  class DatasetV2;
 
   std::string compression_;
   DataTypeVector output_types_;
