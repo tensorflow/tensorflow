@@ -125,10 +125,6 @@ tf_class {
     argspec: "args=[\'self\', \'tensor\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
-    name: "clear_captures"
-    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
-  }
-  member_method {
     name: "clear_collection"
     argspec: "args=[\'self\', \'name\'], varargs=None, keywords=None, defaults=None"
   }
@@ -205,10 +201,6 @@ tf_class {
     argspec: "args=[\'self\', \'name\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
-    name: "pop_capture"
-    argspec: "args=[\'self\', \'tensor\'], varargs=None, keywords=None, defaults=None"
-  }
-  member_method {
     name: "prevent_feeding"
     argspec: "args=[\'self\', \'tensor\'], varargs=None, keywords=None, defaults=None"
   }
@@ -223,10 +215,6 @@ tf_class {
   member_method {
     name: "replace_capture_with_deferred_capture"
     argspec: "args=[\'self\', \'tensor\', \'closure\', \'spec\', \'placeholder\', \'default_value\'], varargs=None, keywords=None, defaults=[\'None\'], "
-  }
-  member_method {
-    name: "reset_captures"
-    argspec: "args=[\'self\', \'capture_list\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "switch_to_thread_local"

@@ -22,6 +22,7 @@ performance parity.
 import collections
 
 from tensorflow.core.framework import attr_value_pb2
+from tensorflow.core.function.capture import capture_container
 from tensorflow.python.client import pywrap_tf_session as c_api
 from tensorflow.python.eager import backprop_util
 from tensorflow.python.framework import auto_control_deps_utils as acd
@@ -1363,7 +1364,9 @@ def _duplicate_body_captures_in_cond(cond_graph, body_graph_captures):
   # newly created placeholders.
   tuples = zip(body_graph_captures, tensors)
   keys = [id(t) for t in body_graph_captures]
-  cond_graph._captures.update(zip(keys, tuples))
+  for k, v in zip(keys, tuples):
+    capture = capture_container.CaptureContainer(v[0], v[1], k, False)
+    cond_graph._function_captures._by_val[k] = capture  # pylint: disable=protected-access
   cond_graph.inputs.extend(tensors)
 
 
