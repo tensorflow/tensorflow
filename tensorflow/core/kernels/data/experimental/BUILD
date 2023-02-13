@@ -253,6 +253,7 @@ tf_kernel_library(
     hdrs = ["distributed_save_op.h"],
     deps = [
         "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/data:serialization_utils",
         "//tensorflow/core/data/service:common_proto_cc",
