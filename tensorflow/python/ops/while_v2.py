@@ -1435,6 +1435,7 @@ class _OperationWithOutputs(ops.Operation):
   """
 
   def __init__(self, c_op, g):
+    super(ops.Operation, self).__init__()
     self._c_op = c_op
     self._graph = g
     self._outputs = None  # Initialized by _duplicate_body_captures_in_cond().
