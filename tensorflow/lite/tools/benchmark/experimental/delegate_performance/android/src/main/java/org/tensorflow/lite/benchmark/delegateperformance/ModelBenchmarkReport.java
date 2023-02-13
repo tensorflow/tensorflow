@@ -14,10 +14,15 @@ limitations under the License.
 ==============================================================================*/
 package org.tensorflow.lite.benchmark.delegateperformance;
 
+import static org.tensorflow.lite.benchmark.delegateperformance.DelegatePerformanceBenchmark.checkState;
+
+import android.util.Log;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import org.json.JSONArray;
 import org.json.JSONException;
@@ -49,7 +54,7 @@ public abstract class ModelBenchmarkReport<ResultsT> implements ModelBenchmarkRe
    */
   protected final List<DelegateMetricsEntry> processedDelegateMetrics = new ArrayList<>();
   /** Model-level pass status. The field will be updated by {@link #computeModelReport()}. */
-  protected final BenchmarkResultType result = BenchmarkResultType.UNKNOWN;
+  protected BenchmarkResultType result = BenchmarkResultType.UNKNOWN;
 
   protected ModelBenchmarkReport(String modelName) {
     this.modelName = modelName;
@@ -84,11 +89,61 @@ public abstract class ModelBenchmarkReport<ResultsT> implements ModelBenchmarkRe
    * the list of {@link RawDelegateMetricsEntry} before calling this method.
    *
    * <p>TODO(b/268595172): Remove the above precondition.
-   *
-   * <p>TODO(b/250877013): Add concrete implementation to this method.
    */
   @Override
-  public void computeModelReport() {}
+  public void computeModelReport() {
+    if (!processedDelegateMetrics.isEmpty()) {
+      // Metrics are computed.
+      Log.i(TAG, "Delegate metrics are already computed. Skips the computation.");
+      return;
+    }
+    // At least 2 delegates (the default delegate and the test target delegate) are tested.
+    checkState(rawDelegateMetrics.size() >= 2);
+    // The test target delegate is the last delegate to benchmark. The order will be guaranteed by
+    // DelegatePerformanceBenchmark#loadTfLiteSettingsList().
+    RawDelegateMetricsEntry testTarget = rawDelegateMetrics.get(rawDelegateMetrics.size() - 1);
+    checkState(testTarget.isTestTarget());
+    // Use {@code LinkedHashMap} to keep the insertion order.
+    Map<String, MetricsEntry> metrics = new LinkedHashMap<>();
+    for (String metricName : testTarget.metrics().keySet()) {
+      metrics.put(
+          metricName,
+          MetricsEntry.create(
+              testTarget.metrics().get(metricName), "N/A", BenchmarkResultType.NOT_APPLICABLE));
+    }
+    processedDelegateMetrics.add(
+        DelegateMetricsEntry.create(
+            testTarget.delegateIdentifier(), metrics, BenchmarkResultType.NOT_APPLICABLE));
+
+    // Processes the reference delegate results. Compute the performance regressions by comparing
+    // them with the results from the test target delegate.
+    List<BenchmarkResultType> referenceResults = new ArrayList<>();
+    for (RawDelegateMetricsEntry entry :
+        rawDelegateMetrics.subList(0, rawDelegateMetrics.size() - 1)) {
+      Map<String, MetricsEntry> referenceMetrics = new LinkedHashMap<>();
+      List<BenchmarkResultType> metricResults = new ArrayList<>();
+      for (String metricName : testTarget.metrics().keySet()) {
+        MetricsEntry metricEntry =
+            computeReferenceMetricEntry(
+                entry.metrics().get(metricName), testTarget.metrics().get(metricName), metricName);
+        referenceMetrics.put(metricName, metricEntry);
+        // Filters for the metrics that are involved in the Pass/Pass with Warning/Fail result
+        // generation.
+        if (metricEntry.result() != BenchmarkResultType.NOT_APPLICABLE) {
+          metricResults.add(metricEntry.result());
+        }
+      }
+      // TODO(b/267488243): Load the delegate name from the native layer.
+      boolean sameDelegateType = entry.delegateName().equals(testTarget.delegateName());
+      BenchmarkResultType referenceDelegateResult =
+          DelegatePerformanceBenchmark.aggregateResults(sameDelegateType, metricResults);
+      referenceResults.add(referenceDelegateResult);
+      processedDelegateMetrics.add(
+          DelegateMetricsEntry.create(
+              entry.delegateIdentifier(), referenceMetrics, referenceDelegateResult));
+    }
+    result = DelegatePerformanceBenchmark.aggregateResults(/* strict= */ true, referenceResults);
+  }
 
   @Override
   public JSONObject toJsonObject() throws JSONException {
@@ -111,5 +166,50 @@ public abstract class ModelBenchmarkReport<ResultsT> implements ModelBenchmarkRe
     }
     jsonObject.put("max_regression_percentage_allowed", maxRegressionPercentageAllowedObject);
     return jsonObject;
+  }
+
+  private MetricsEntry computeReferenceMetricEntry(
+      Float referenceValue, Float testTargetValue, String metricName) {
+    boolean checkRegression = maxRegressionPercentageAllowed.containsKey(metricName);
+    String regression = "N/A";
+    BenchmarkResultType result =
+        checkRegression ? BenchmarkResultType.FAIL : BenchmarkResultType.NOT_APPLICABLE;
+    if (referenceValue == null || testTargetValue == null) {
+      return MetricsEntry.create(referenceValue, regression, result);
+    }
+    // Here is a mitigation to the lack of support for criteria operators. "ok" metric is handled
+    // specifically for the accuracy benchmarking results.
+    // TODO(b/267313326): remove the mitigation after the criteria operators are added.
+    if (metricName.equals("ok")) {
+      if (testTargetValue == AccuracyBenchmarkReport.PASS) {
+        // The test target delegate passed the accuracy checks.
+        result = BenchmarkResultType.PASS;
+      } else if (referenceValue == AccuracyBenchmarkReport.FAIL) {
+        // Both the test target and the reference delegates failed the accuracy checks. Therefore,
+        // it is not considered as a regression.
+        result = BenchmarkResultType.PASS_WITH_WARNING;
+      }
+      return MetricsEntry.create(referenceValue, regression, result);
+    }
+
+    // Here we assume that lower values of the metric are better, for all of our metrics.
+    // TODO(b/267313326): Remove the assumption with the criteria operator support.
+    float regressionValue = 0f;
+    if (!testTargetValue.equals(referenceValue)) {
+      regressionValue = (testTargetValue - referenceValue) / referenceValue;
+    }
+    if (checkRegression) {
+      if (regressionValue <= 0) {
+        result = BenchmarkResultType.PASS;
+      } else if (regressionValue <= maxRegressionPercentageAllowed.get(metricName) / 100f) {
+        result = BenchmarkResultType.PASS_WITH_WARNING;
+      }
+    }
+    regression = toPercentage(regressionValue);
+    return MetricsEntry.create(referenceValue, regression, result);
+  }
+
+  private String toPercentage(float n) {
+    return String.format(Locale.ENGLISH, "%.1f", n * 100) + "%";
   }
 }

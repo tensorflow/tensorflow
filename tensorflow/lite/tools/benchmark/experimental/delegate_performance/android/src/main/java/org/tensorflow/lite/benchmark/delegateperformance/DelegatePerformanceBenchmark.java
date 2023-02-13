@@ -21,7 +21,9 @@ import java.io.File;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
+import java.util.EnumSet;
 import java.util.List;
+import java.util.Set;
 import tflite.BenchmarkEvent;
 import tflite.TFLiteSettings;
 import tflite.proto.benchmark.DelegatePerformance.BenchmarkEventType;
@@ -163,6 +165,74 @@ class DelegatePerformanceBenchmark {
               /* isTestTarget= */ false));
     }
     return tfliteSettingsList;
+  }
+
+  /**
+   * Aggregates a list of {@link BenchmarkResultType} into a {@link BenchmarkResultType} based on
+   * the requirements. {@code strict} is set to {@code true} when comparing two delegates with the
+   * same types or aggregating the results into model-level and session-level. {@code strict} is set
+   * to {@code false} when comparing two delegates with different types.
+   *
+   * <p>If {@code strict} is set to {@code true}, returns:
+   *
+   * <ul>
+   *   <li>PASS if all elements in {@code results} are PASS.
+   *   <li>PASS_WITH_WARNING if at least one element in {@code results} is PASS_WITH_WARNING and
+   *       {@code results} doesn't contain FAIL.
+   *   <li>FAIL if at least one element in {@code results} is FAIL.
+   * </ul>
+   *
+   * Otherwise, returns:
+   *
+   * <ul>
+   *   <li>PASS if all elements in {@code results} are PASS.
+   *   <li>PASS_WITH_WARNING if at least one element in {@code results} is PASS_WITH_WARNING or
+   *       PASS.
+   *   <li>FAIL if all elements in {@code results} are FAIL.
+   * </ul>
+   */
+  public static BenchmarkResultType aggregateResults(
+      boolean strict, List<BenchmarkResultType> results) {
+    checkState(!results.isEmpty());
+    checkState(
+        allMatch(
+            results,
+            EnumSet.of(
+                BenchmarkResultType.PASS,
+                BenchmarkResultType.PASS_WITH_WARNING,
+                BenchmarkResultType.FAIL)));
+
+    if (strict) {
+      if (results.contains(BenchmarkResultType.FAIL)) {
+        return BenchmarkResultType.FAIL;
+      }
+      if (results.contains(BenchmarkResultType.PASS_WITH_WARNING)) {
+        return BenchmarkResultType.PASS_WITH_WARNING;
+      }
+      return BenchmarkResultType.PASS;
+    } else {
+      if (allMatch(results, EnumSet.of(BenchmarkResultType.PASS))) {
+        return BenchmarkResultType.PASS;
+      }
+      if (allMatch(results, EnumSet.of(BenchmarkResultType.FAIL))) {
+        return BenchmarkResultType.FAIL;
+      }
+      return BenchmarkResultType.PASS_WITH_WARNING;
+    }
+  }
+
+  /**
+   * Returns {@code true} when all elements in {@code results} are in the value range specified by
+   * {@code targets}.
+   */
+  private static boolean allMatch(
+      List<BenchmarkResultType> results, Set<BenchmarkResultType> targets) {
+    for (BenchmarkResultType result : results) {
+      if (!targets.contains(result)) {
+        return false;
+      }
+    }
+    return true;
   }
 
   /**

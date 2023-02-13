@@ -50,13 +50,16 @@ final class BenchmarkReport {
   }
 
   void export() {
-    // TODO(b/250877013): update the result value after computing the metrics.
-    result = BenchmarkResultType.PASS;
+    if (result == BenchmarkResultType.UNKNOWN) {
+      // The result is not computed.
+      computeBenchmarkReport();
+    }
     for (ReportWriter writer : writers) {
       writer.writeReport(this);
     }
   }
 
+  // TODO(b/268338967): Use a more informative name for the report.
   String name() {
     return NAME;
   }
@@ -79,6 +82,15 @@ final class BenchmarkReport {
     jsonObject.put("reports", jsonArray);
     jsonObject.put("result", result.toString());
     return jsonObject;
+  }
+
+  private void computeBenchmarkReport() {
+    List<BenchmarkResultType> results = new ArrayList<>();
+    for (ModelBenchmarkReportInterface modelBenchmarkReport : modelBenchmarkReports) {
+      modelBenchmarkReport.computeModelReport();
+      results.add(modelBenchmarkReport.result());
+    }
+    result = DelegatePerformanceBenchmark.aggregateResults(/* strict= */ true, results);
   }
 
   static BenchmarkReport create() {
