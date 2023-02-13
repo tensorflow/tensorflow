@@ -41,8 +41,13 @@ EIGEN_MPL2_SOURCES = glob(
     ],
 )
 
-cc_library(
+alias(
     name = "eigen3",
+    actual = "@org_tensorflow//third_party/eigen3",
+)
+
+cc_library(
+    name = "eigen3_internal",
     srcs = EIGEN_MPL2_SOURCES,
     hdrs = EIGEN_HEADERS,
     defines = [
