@@ -22,6 +22,7 @@ limitations under the License.
 #include <algorithm>
 #include <functional>
 #include <initializer_list>
+#include <numeric>
 #include <optional>
 #include <ostream>
 #include <string>
@@ -35,6 +36,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
+#include "tensorflow/compiler/xla/printer.h"
 #include "tensorflow/compiler/xla/shape.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/tsl/platform/cpu_info.h"
@@ -103,7 +105,16 @@ class ShapeUtil {
   // Returns the number of elements are contained within the provided shape;
   // e.g. for rank 0 (scalars) the result is always 1.
   // Precondition: shape.IsArray()
-  static int64_t ElementsIn(const Shape& shape);
+  static inline int64_t ElementsIn(const Shape& shape) {
+    DCHECK(shape.IsArray()) << ShapeUtil::HumanString(shape);
+    DCHECK_EQ(shape.dimensions_size(), shape.rank());
+    if (shape.dimensions().size() == 1) {
+      return shape.dimensions()[0];
+    }
+    return std::accumulate<decltype(shape.dimensions().begin()), int64_t>(
+        shape.dimensions().begin(), shape.dimensions().end(), 1LL,
+        std::multiplies<int64_t>());
+  }
 
   // As ElementsIn(), but recurses through tuples.
   static int64_t ElementsInRecursive(const Shape& shape);
@@ -139,6 +150,18 @@ class ShapeUtil {
   // `ByteSizeOf(shape) == ByteSizeOfElements(shape)`. This
   // size also includes padding if present in the layout.
   static int64_t ByteSizeOfElements(const Shape& shape);
+
+  // Prints a human-readable string that represents the given shape, with or
+  // without layout. e.g. "f32[42x12] {0, 1}" or "f32[64]".
+  static void PrintHumanString(xla::Printer* printer, const Shape& shape);
+  static void PrintHumanStringWithLayout(xla::Printer* printer,
+                                         const Shape& shape);
+
+  // As above, but for program shapes, prints a string for the form:
+  //
+  // (param_name: f32[42x12], ...) -> f32[24x42]
+  static void PrintHumanString(xla::Printer* printer,
+                               const ProgramShape& program_shape);
 
   // Returns a human-readable string that represents the given shape, with or
   // without layout. e.g. "f32[42x12] {0, 1}" or "f32[64]".

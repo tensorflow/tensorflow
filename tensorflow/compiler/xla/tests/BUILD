@@ -231,6 +231,7 @@ xla_cc_binary(
         "//tensorflow/tsl/platform:logging",
         "//tensorflow/tsl/platform:platform_port",
         "@llvm-project//llvm:Support",
+        "@llvm-project//llvm:TargetParser",
     ],
 )
 
@@ -1292,6 +1293,23 @@ xla_test(
 )
 
 xla_test(
+    name = "convolution_cudnn_test",
+    timeout = "long",
+    srcs = ["convolution_cudnn_test.cc"],
+    backend_tags = {"gpu": [
+        "gpu",
+        "requires-gpu-sm80",
+    ]},
+    backends = ["gpu"],
+    deps = [
+        ":hlo_test_base",
+        ":xla_internal_test_main",
+        "//tensorflow/tsl/platform:test",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+xla_test(
     name = "batch_normalization_test",
     srcs = ["batch_normalization_test.cc"],
     disabled_backends = [
@@ -1802,6 +1820,7 @@ xla_test(
 
 xla_test(
     name = "matrix_ops_simple_test",
+    timeout = "long",
     srcs = ["matrix_ops_simple_test.cc"],
     deps = [
         ":test_macros_header",
@@ -2650,8 +2669,9 @@ xla_cc_test(
     name = "literal_test_util_test",
     srcs = ["literal_test_util_test.cc"],
     deps = [
+        ":literal_test_util",
+        "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:test_helpers",
-        "//tensorflow/compiler/xla/tests:literal_test_util",
         "//tensorflow/tsl/platform:env",
         "//tensorflow/tsl/platform:logging",
         "//tensorflow/tsl/platform:path",

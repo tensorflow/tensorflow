@@ -18,6 +18,7 @@ limitations under the License.
 #include <optional>
 #include <vector>
 
+#include "absl/time/time.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/python/ifrt/array.h"
 #include "tensorflow/compiler/xla/python/ifrt/client.h"
@@ -32,58 +33,167 @@ namespace {
 using ::testing::ElementsAreArray;
 using ::testing::SizeIs;
 
-TEST(ArrayImplTest, MakeArrayFromHostBufferImmutableOnlyDuringCall) {
+TEST(ArrayImplTest, MakeArrayFromHostBuffer) {
   TF_ASSERT_OK_AND_ASSIGN(auto client, test_util::GetClient());
 
   DType dtype(DType::kF32);
   Shape shape({2, 3});
-  std::vector<float> data(6);
-  std::iota(data.begin(), data.end(), 0);
+  auto data = std::make_unique<std::vector<float>>(6);
+  std::iota(data->begin(), data->end(), 0);
   Device* device = client->addressable_devices().at(0);
   auto sharding = SingleDeviceSharding::Create(device);
 
   TF_ASSERT_OK_AND_ASSIGN(
       auto array, client->MakeArrayFromHostBuffer(
-                      data.data(), dtype, shape,
+                      data->data(), dtype, shape,
                       /*byte_strides=*/std::nullopt, sharding,
                       Client::HostBufferSemantics::kImmutableOnlyDuringCall,
-                      /*on_done_with_host_buffer=*/{}));
+                      /*on_done_with_host_buffer=*/nullptr));
 
   EXPECT_EQ(array->dtype(), dtype);
   EXPECT_EQ(array->shape(), shape);
   EXPECT_EQ(array->shared_ptr_sharding().get(), sharding.get());
 }
 
-TEST(ArrayImplTest, MakeArrayFromHostBufferCallsOnDoneCallback) {
-  // This test checks if the `on_done_with_host_buffer` callback is called as
-  // expected.
-  // It also establishes (indirectly) that the `MakeArrayFromHostBuffer` works
-  // correctly with the `kImmutableUntilTransferCompletes` semantics.
+class ArrayImplWithHostBufferSemanticsTest
+    : public testing::TestWithParam<Client::HostBufferSemantics> {};
+
+TEST_P(ArrayImplWithHostBufferSemanticsTest,
+       MakeArrayFromHostBufferCallsWithOnDoneWithHostBuffer) {
   TF_ASSERT_OK_AND_ASSIGN(auto client, test_util::GetClient());
+  Client::HostBufferSemantics semantics = GetParam();
 
   DType dtype(DType::kF32);
   Shape shape({2, 3});
-  std::vector<float> data(6);
-  std::iota(data.begin(), data.end(), 0);
+  auto data = std::make_unique<std::vector<float>>(6);
+  std::iota(data->begin(), data->end(), 0);
   Device* device = client->addressable_devices().at(0);
   auto sharding = SingleDeviceSharding::Create(device);
 
   absl::Notification done_with_host_buffer;
-  auto on_done = [&]() { done_with_host_buffer.Notify(); };
+  auto on_done_with_host_buffer = [&]() { done_with_host_buffer.Notify(); };
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto array, client->MakeArrayFromHostBuffer(
+                      data->data(), dtype, shape,
+                      /*byte_strides=*/std::nullopt, sharding, semantics,
+                      std::move(on_done_with_host_buffer)));
+
+  // Regardless of the host buffer semantics chosen, the host buffer must not be
+  // used by the runtime once `on_done_with_host_buffer` has been called.
+  if (semantics == Client::HostBufferSemantics::kZeroCopy) {
+    // `on_done_with_host_buffer` is called only when the `Array` is destroyed
+    // if the runtime implements `kZeroCopy`. A deadlock will occur if we keep
+    // the `Array` instance.
+    array.reset();
+
+    // `done_with_host_buffer` is very likely to have been called after
+    // sleeping. This method has false positives (sleeping was not long enough
+    // for the callback to be called asynchronously), but it may greatly
+    // increases the chance of detecting an incorrect implementation as a form
+    // of test flakes.
+    absl::SleepFor(absl::Seconds(3));
+    ASSERT_TRUE(done_with_host_buffer.HasBeenNotified());
+  } else {
+    done_with_host_buffer.WaitForNotification();
+  }
+  data = nullptr;
+  // There should be no use-after-free.
+}
+
+INSTANTIATE_TEST_CASE_P(
+    AllHostBufferSemantics, ArrayImplWithHostBufferSemanticsTest,
+    testing::Values(
+        Client::HostBufferSemantics::kImmutableOnlyDuringCall,
+        Client::HostBufferSemantics::kImmutableUntilTransferCompletes,
+        Client::HostBufferSemantics::kZeroCopy));
+
+TEST(ArrayImplTest, MakeArrayFromHostBufferImmutableOnlyDuringCall) {
+  TF_ASSERT_OK_AND_ASSIGN(auto client, test_util::GetClient());
+
+  DType dtype(DType::kF32);
+  Shape shape({2, 3});
+  auto data = std::make_unique<std::vector<float>>(6);
+  std::iota(data->begin(), data->end(), 0);
+  Device* device = client->addressable_devices().at(0);
+  auto sharding = SingleDeviceSharding::Create(device);
+
+  absl::Notification done_with_host_buffer;
+  auto on_done_with_host_buffer = [&]() {
+    // Sleeping facilitates testing if `MakeArrayFromHostBuffer()` calls
+    // `on_done_with_host_buffer` synchronously before returning. This method
+    // has false negatives (when a call to
+    // `done_with_host_buffer.HasBeenNotified()` is delayed), but it may greatly
+    // increases the chance of detecting an incorrect implementation as a form
+    // of test flakes.
+    absl::SleepFor(absl::Seconds(3));
+
+    done_with_host_buffer.Notify();
+  };
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto array, client->MakeArrayFromHostBuffer(
+                      data->data(), dtype, shape,
+                      /*byte_strides=*/std::nullopt, sharding,
+                      Client::HostBufferSemantics::kImmutableOnlyDuringCall,
+                      std::move(on_done_with_host_buffer)));
+
+  // `on_done_with_host_buffer` should have been called before returning from
+  // `MakeArrayFromHostBuffer`.
+  ASSERT_TRUE(done_with_host_buffer.HasBeenNotified());
+  data = nullptr;
+  // There should be no use-after-free.
+}
+
+TEST(ArrayImplTest, MakeArrayFromHostBufferImmutableUntilTransferCompletes) {
+  TF_ASSERT_OK_AND_ASSIGN(auto client, test_util::GetClient());
+
+  DType dtype(DType::kF32);
+  Shape shape({2, 3});
+  auto data = std::make_unique<std::vector<float>>(6);
+  std::iota(data->begin(), data->end(), 0);
+  Device* device = client->addressable_devices().at(0);
+  auto sharding = SingleDeviceSharding::Create(device);
 
   TF_ASSERT_OK_AND_ASSIGN(
       auto array,
       client->MakeArrayFromHostBuffer(
-          data.data(), dtype, shape,
+          data->data(), dtype, shape,
           /*byte_strides=*/std::nullopt, sharding,
           Client::HostBufferSemantics::kImmutableUntilTransferCompletes,
-          std::move(on_done)));
+          /*on_done_with_host_buffer=*/nullptr));
 
-  EXPECT_EQ(array->dtype(), dtype);
-  EXPECT_EQ(array->shape(), shape);
-  EXPECT_EQ(array->shared_ptr_sharding().get(), sharding.get());
+  // Once the `Array` has become ready, the host buffer is not accessed.
+  TF_ASSERT_OK(array->GetReadyFuture().Await());
+  data = nullptr;
+  // There should be no use-after-free.
+}
 
-  done_with_host_buffer.WaitForNotification();
+TEST(ArrayImplTest, MakeArrayFromHostBufferZeroCopy) {
+  TF_ASSERT_OK_AND_ASSIGN(auto client, test_util::GetClient());
+
+  DType dtype(DType::kF32);
+  Shape shape({2, 3});
+  auto data = std::make_unique<std::vector<float>>(6);
+  std::iota(data->begin(), data->end(), 0);
+  Device* device = client->addressable_devices().at(0);
+  auto sharding = SingleDeviceSharding::Create(device);
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto array,
+      client->MakeArrayFromHostBuffer(data->data(), dtype, shape,
+                                      /*byte_strides=*/std::nullopt, sharding,
+                                      Client::HostBufferSemantics::kZeroCopy,
+                                      /*on_done_with_host_buffer=*/nullptr));
+
+  // The `Array` may alias the host buffer, but once the transfer is done and
+  // the `Array` is destroyed, the host buffer is not accessed. This test would
+  // pass trivially on the implementations that downgrade `kZeroCopy`, if
+  // `MakeArrayFromHostBufferImmutableUntilTransferCompletes` already passes.
+  TF_ASSERT_OK(array->GetReadyFuture().Await());
+  array.reset();
+  data = nullptr;
+  // There should be no use-after-free.
 }
 
 TEST(ArrayImplTest, MakeArrayFromHostBufferAndCopyToHostBuffer) {

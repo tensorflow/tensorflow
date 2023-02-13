@@ -47,9 +47,6 @@ LogicalResult peelLoop(RewriterBase &b, ParallelOp loopOp, int64_t idx,
   Value lb = loopOp.getLowerBound()[idx], ub = loopOp.getUpperBound()[idx],
         step = loopOp.getStep()[idx];
   auto ubInt = getConstantIntValue(ub);
-  auto stepInt = getConstantIntValue(step);
-  // No specialization necessary if step is greater than upper bound.
-  if (ubInt && stepInt && ubInt < stepInt) return failure();
 
   auto loc = loopOp.getLoc();
   AffineExpr exprLb, exprUb, exprStep;
@@ -62,6 +59,7 @@ LogicalResult peelLoop(RewriterBase &b, ParallelOp loopOp, int64_t idx,
   RewriterBase::InsertionGuard guard(b);
   b.setInsertionPoint(loopOp);
   splitBound = b.createOrFold<AffineApplyOp>(loc, modMap, operands);
+
   // No specialization necessary if step already divides upper bound evenly.
   if (splitBound == ub || (ubInt && ubInt == getConstantIntValue(splitBound)))
     return failure();
@@ -119,41 +117,54 @@ void rewriteAffineOpAfterPeeling(RewriterBase &rewriter, Operation *mainLoop,
 
 }  // namespace
 
-PeelingResult peelAllLoops(ParallelOp loop, mlir::PatternRewriter &rewriter) {
+GmlStPeelingResult peelAllLoops(ParallelOp loop,
+                                mlir::PatternRewriter &rewriter) {
   setLabel(loop, kPeelingAppliedLabel);
-  PeelingResult peelingResult;
+  GmlStPeelingResult peelingResult;
+
+  bool hasMainLoop = true;
   for (unsigned peeledIdx = 0; peeledIdx < loop.getNumLoops(); ++peeledIdx) {
-    auto peel = peelAndCanonicalizeGmlStLoop(rewriter, loop, peeledIdx);
-    if (failed(peel)) continue;
+    int64_t numLoops = loop.getNumLoops();
+    if (peeledIdx < 0 || numLoops <= peeledIdx) continue;
+
+    Value ub = loop.getUpperBound()[peeledIdx];
+    Value step = loop.getStep()[peeledIdx];
+    auto ubInt = getConstantIntValue(ub);
+    auto stepInt = getConstantIntValue(step);
+
+    // If the loop is smaller than the step, then append loop as tail. Needs to
+    // be done only once.
+    if (ubInt && stepInt && ubInt < stepInt) {
+      if (hasMainLoop) {
+        peelingResult.tailLoops.push_back(loop);
+        hasMainLoop = false;
+      }
+      continue;
+    }
+
+    ParallelOp remainderLoop;
+    Value splitBound;
+    if (failed(peelLoop(rewriter, loop, peeledIdx, remainderLoop, splitBound)))
+      continue;
+
+    // Rewrite affine.min and affine.max ops.
+    Value mainIv = loop.getInductionVars()[peeledIdx],
+          remainderIv = remainderLoop.getInductionVars()[peeledIdx];
+
+    rewriteAffineOpAfterPeeling<AffineMinOp>(rewriter, loop, remainderLoop,
+                                             mainIv, remainderIv, ub, step);
+    rewriteAffineOpAfterPeeling<AffineMaxOp>(rewriter, loop, remainderLoop,
+                                             mainIv, remainderIv, ub, step);
+
     // Mark the new loop if one was created.
-    setLabel(peel->getOperation(), kPeelingAppliedLabel);
-    peelingResult.push_back(*peel);
+    setLabel(remainderLoop.getOperation(), kPeelingAppliedLabel);
+    peelingResult.tailLoops.push_back(remainderLoop);
   }
+
+  // Update main loop if applicable.
+  if (hasMainLoop) peelingResult.mainLoop = loop;
+
   return peelingResult;
-}
-
-FailureOr<ParallelOp> peelAndCanonicalizeGmlStLoop(RewriterBase &rewriter,
-                                                   ParallelOp loopOp,
-                                                   int64_t idx) {
-  int64_t numLoops = loopOp.getNumLoops();
-  if (idx < 0 || numLoops <= idx) return failure();
-
-  Value ub = loopOp.getUpperBound()[idx];
-  ParallelOp remainderLoop;
-  Value splitBound;
-  if (failed(peelLoop(rewriter, loopOp, idx, remainderLoop, splitBound)))
-    return failure();
-
-  // Rewrite affine.min and affine.max ops.
-  Value mainIv = loopOp.getInductionVars()[idx], step = loopOp.getStep()[idx],
-        remainderIv = remainderLoop.getInductionVars()[idx];
-
-  rewriteAffineOpAfterPeeling<AffineMinOp>(rewriter, loopOp, remainderLoop,
-                                           mainIv, remainderIv, ub, step);
-  rewriteAffineOpAfterPeeling<AffineMaxOp>(rewriter, loopOp, remainderLoop,
-                                           mainIv, remainderIv, ub, step);
-
-  return remainderLoop;
 }
 
 SCFForPeelingResult peelSCFForOp(RewriterBase &rewriter, scf::ForOp loop) {

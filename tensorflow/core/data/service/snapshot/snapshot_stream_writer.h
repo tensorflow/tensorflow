@@ -106,12 +106,10 @@ struct SnapshotWriterParams {
 //         - checkpoint_<chunk_index>
 //
 // This class is thread-safe.
-// TODO(b/258691666): Support chunking, checkpointing, and fault tolerance.
 class SnapshotStreamWriter {
  public:
   // Creates a SnapshotStreamWriter. Once created, it will start writing the
   // snapshot stream. Users can call `Wait` to wait for it to finish.
-  // TODO(b/258691666): Create a new `TaskIterator` that persists splits.
   explicit SnapshotStreamWriter(const SnapshotWriterParams& params,
                                 std::unique_ptr<TaskIterator> iterator);
   virtual ~SnapshotStreamWriter() = default;
@@ -138,6 +136,10 @@ class SnapshotStreamWriter {
   // Writes the snapshot. Returns an error if writing fails or the task has been
   // cancelled.
   Status WriteSnapshot();
+
+  // Returns true if the stream is already completed and there is no additional
+  // work to perform.
+  bool StreamAlreadyCompleted() const;
 
   // Creates directories to store uncommitted chunks and checkpoints.
   Status InitializeDirectories();
@@ -178,6 +180,9 @@ class SnapshotStreamWriter {
 
   // After committing a checkpoint, deletes the previous checkpoints.
   Status DeleteOutdatedCheckpoints();
+
+  // Deletes all checkpoints.
+  Status DeleteCheckpoints();
 
   // Restores from the last checkpoint.
   Status Restore();

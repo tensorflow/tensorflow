@@ -79,7 +79,6 @@ cc_library(
         "//tensorflow/compiler/xla/mlir_hlo:mhlo_passes",
         "//tensorflow/compiler/xla/service:hlo_parser",
         "//tensorflow/compiler/xla/service/gpu:backend_configs_cc",
-        "//tensorflow/compiler/xla/stream_executor/lib",
         "//tensorflow/tsl/platform:float8",
         "//tensorflow/tsl/platform:statusor",
         "@com_google_absl//absl/types:span",

@@ -21,15 +21,17 @@ func.func @fuse_broadcast_map(%arg0: tensor<16xf32>, %arg1: tensor<16x32xf32>)
 
 // CHECK:      %[[INIT:.*]] = tensor.empty()
 // CHECK:      %[[RESULT:.*]] = gml_st.parallel
+// CHECK-SAME:    outs (%[[INIT_:.*]] = %[[INIT]]:
 // CHECK-DAG:  %[[INIT_SLICE:.*]] = tensor.extract_slice %[[INIT]]
 // CHECK-DAG:  %[[ARG0_SLICE:.*]] = tensor.extract_slice %[[ARG0]]
 // CHECK:      %[[BCAST:.*]] = linalg.broadcast
 // CHECK-SAME:   ins(%[[ARG0_SLICE]]
 // CHECK-SAME:   outs(%[[INIT_SLICE]]
 // CHECK:      %[[ARG1_SLICE:.*]] = tensor.extract_slice %[[ARG1]]
+// CHECK-DAG:  %[[INIT_SLICE_:.*]] = tensor.extract_slice %[[INIT_]]
 // CHECK:      %[[MAPPED:.*]] = linalg.map
 // CHECK-SAME:   ins(%[[BCAST]], %[[ARG1_SLICE]]
-// CHECK-SAME:   outs(%[[INIT_SLICE]]
+// CHECK-SAME:   outs(%[[INIT_SLICE_]]
 // CHECK:      gml_st.set_yield %[[MAPPED]]
 // CHECK:      return %[[RESULT]]
 
@@ -55,9 +57,10 @@ func.func @do_not_fuse_map_reduce(%arg0: tensor<16x32xf32>, %arg1: tensor<16xf32
 // CHECK:      %[[INIT:.*]] = tensor.empty()
 // CHECK:      %[[REDUCE:.*]] = linalg.reduce
 // CHECK:      %[[RESULT:.*]] = gml_st.parallel
+// CHECK-SAME:    outs (%[[INIT_:.*]] = %[[INIT]]:
 // CHECK-DAG:  %[[REDUCE_SLICE:.*]] = tensor.extract_slice %[[REDUCE]]
 // CHECK-DAG:  %[[ARG1_SLICE:.*]] = tensor.extract_slice %[[ARG1]]
-// CHECK-DAG:  %[[INIT_SLICE:.*]] = tensor.extract_slice %[[INIT]]
+// CHECK-DAG:  %[[INIT_SLICE:.*]] = tensor.extract_slice %[[INIT_]]
 // CHECK:      %[[MAPPED:.*]] = linalg.map
 // CHECK-SAME:   ins(%[[REDUCE_SLICE]], %[[ARG1_SLICE]]
 // CHECK-SAME:   outs(%[[INIT_SLICE]]

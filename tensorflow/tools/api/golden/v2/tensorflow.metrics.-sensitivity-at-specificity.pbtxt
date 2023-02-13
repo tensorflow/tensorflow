@@ -1,7 +1,7 @@
 path: "tensorflow.metrics.SensitivityAtSpecificity"
 tf_class {
-  is_instance: "<class \'keras.metrics.metrics.SensitivityAtSpecificity\'>"
-  is_instance: "<class \'keras.metrics.metrics.SensitivitySpecificityBase\'>"
+  is_instance: "<class \'keras.metrics.confusion_metrics.SensitivityAtSpecificity\'>"
+  is_instance: "<class \'keras.metrics.confusion_metrics.SensitivitySpecificityBase\'>"
   is_instance: "<class \'keras.metrics.base_metric.Metric\'>"
   is_instance: "<class \'keras.engine.base_layer.Layer\'>"
   is_instance: "<class \'tensorflow.python.module.module.Module\'>"

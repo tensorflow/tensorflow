@@ -3541,12 +3541,9 @@ ENTRY test {
   x = bf16[8,16] parameter(0)
   y = bf16[16,8] parameter(1)
   bias = bf16[2,4,8] parameter(2)
-  bias_f32 = f32[2,4,8] convert(bias)
   dot = bf16[8,8] dot(x, y), lhs_contracting_dims={1}, rhs_contracting_dims={0}
-  dot_bitcast = bf16[2,4,8] bitcast(dot)
-  dot_bitcast_f32 = f32[2,4,8] convert(dot_bitcast)
-  add_f32 = add(dot_bitcast_f32, bias_f32)
-  ROOT out = bf16[2,4,8] convert(add_f32)
+  bitcast = bf16[2,4,8] bitcast(dot)
+  ROOT out = bf16[2,4,8] add(bitcast, bias)
 }
 
 )";
@@ -3560,10 +3557,11 @@ ENTRY test {
   EXPECT_THAT(
       module->entry_computation()->root_instruction(),
       GmockMatch(
-          m::Bitcast(m::CustomCall({"__cublas$lt$matmul"},
-                                   m::Parameter(0).WithShape(BF16, {8, 16}),
-                                   m::Parameter(1).WithShape(BF16, {16, 8}),
-                                   m::Parameter(2).WithShape(BF16, {2, 4, 8})))
+          m::Bitcast(m::CustomCall(
+                         {"__cublas$lt$matmul"},
+                         m::Parameter(0).WithShape(BF16, {8, 16}),
+                         m::Parameter(1).WithShape(BF16, {16, 8}),
+                         m::Bitcast(m::Parameter(2)).WithShape(BF16, {8, 8})))
               .WithShape(BF16, {2, 4, 8})));
 }
 
@@ -3949,34 +3947,6 @@ ENTRY test {
 ; CHECK-DAG:         \"epilogue\":\"BIAS_RELU\"
 ; CHECK:           }"
       )");
-}
-
-TEST_F(CublasLtGemmRewriteTest, MergeBitcastAndAdd) {
-  const char* hlo_text = R"(
-HloModule test
-ENTRY test {
-  x = f32[2,2] parameter(0)
-  y = f32[2,2] parameter(1)
-  bias = f32[4] parameter(2)
-  dot = f32[2,2] dot(x, y), lhs_contracting_dims={1}, rhs_contracting_dims={0}
-  ROOT out = f32[4] add(f32[4] bitcast(dot), bias)
-}
-)";
-
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_text));
-  GemmRewriter pass(GetCudaComputeCapability());
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, this->RunHloPass(&pass, module.get()));
-  EXPECT_TRUE(changed);
-
-  EXPECT_THAT(module->entry_computation()->root_instruction(),
-              GmockMatch(m::Add(m::Bitcast(m::CustomCall({"__cublas$lt$matmul"},
-                                                         m::Parameter(0),
-                                                         m::Parameter(1))
-                                               .WithShape(F32, {2, 2}))
-                                    .WithShape(F32, {4}),
-                                m::Parameter(2))
-                             .WithShape(F32, {4})));
 }
 
 TEST_F(CublasLtGemmRewriteTest, FoldConstantBias) {

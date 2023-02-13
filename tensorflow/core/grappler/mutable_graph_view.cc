@@ -186,11 +186,11 @@ void SwapFanoutsMapValues(FanoutsMap* fanouts,
   if (from_exists && to_exists) {
     std::swap(from_fanouts->second, to_fanouts->second);
   } else if (from_exists) {
-    fanouts->emplace(to_port, std::move(from_fanouts->second));
-    fanouts->erase(from_port);
+    auto node = fanouts->extract(from_fanouts);
+    fanouts->emplace(to_port, std::move(node.mapped()));
   } else if (to_exists) {
-    fanouts->emplace(from_port, std::move(to_fanouts->second));
-    fanouts->erase(to_port);
+    auto node = fanouts->extract(to_port);
+    fanouts->emplace(from_port, std::move(node.mapped()));
   }
 }
 
@@ -206,11 +206,10 @@ void SwapRegularFanoutsAndMaxPortValues(FanoutsMap* fanouts,
                                    int end) {
     for (int i = start; i <= end; ++i) {
       MutableGraphView::OutputPort from_port(from, i);
-      auto from_fanouts = fanouts->find(from_port);
-      if (from_fanouts != fanouts->end()) {
+      auto node = fanouts->extract(from_port);
+      if (!node.empty()) {
         MutableGraphView::OutputPort to_port(to, i);
-        fanouts->emplace(to_port, std::move(from_fanouts->second));
-        fanouts->erase(from_port);
+        fanouts->emplace(to_port, std::move(node.mapped()));
       }
     }
   };

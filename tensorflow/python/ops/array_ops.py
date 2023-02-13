@@ -35,6 +35,7 @@ from tensorflow.python.framework import tensor_util
 from tensorflow.python.framework.constant_op import constant
 from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import gen_math_ops
+from tensorflow.python.ops import shape_util
 # go/tf-wildcard-import
 # pylint: disable=wildcard-import
 from tensorflow.python.ops.gen_array_ops import *
@@ -194,7 +195,7 @@ def reshape(tensor, shape, name=None):  # pylint: disable=redefined-outer-name
     A `Tensor`. Has the same type as `tensor`.
   """
   result = gen_array_ops.reshape(tensor, shape, name)
-  tensor_util.maybe_set_static_shape(result, shape)
+  shape_util.maybe_set_static_shape(result, shape)
   return result
 
 
@@ -238,7 +239,7 @@ def fill(dims, value, name=None):
   @end_compatibility
   """
   result = gen_array_ops.fill(dims, value, name=name)
-  tensor_util.maybe_set_static_shape(result, dims)
+  shape_util.maybe_set_static_shape(result, dims)
   return result
 
 
@@ -1704,7 +1705,7 @@ def unstack(value, num=None, axis=0, name="unstack"):
   ...   tensors = tf.unstack(t)
   ...   return tensors[0]
   >>>
-  >>> bad(tf.constant([1,2,3]))
+  >>> bad(tf.constant([1.0, 2.0, 3.0]))
   Traceback (most recent call last):
   ...
   ValueError: Cannot infer argument `num` from shape (None,)

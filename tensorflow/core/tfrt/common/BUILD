@@ -2,7 +2,6 @@ load("//tensorflow:tensorflow.bzl", "tf_cc_test", "tf_cuda_cc_test")
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load(
     "//tensorflow/tsl/platform:build_config_root.bzl",
-    "if_static",
     "tf_cuda_tests_tags",
 )
 
@@ -99,13 +98,11 @@ cc_library(
         "//tensorflow/compiler/tf2xla:xla_op_registry",
         "//tensorflow/compiler/xla/pjrt:pjrt_client",
         "//tensorflow/compiler/xla/pjrt/gpu:gpu_helpers",
+        "//tensorflow/compiler/xla/pjrt/gpu:se_gpu_pjrt_client",
         "//tensorflow/core:framework_types_hdr",
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:status",
-    ] + if_static(
-        ["//tensorflow/compiler/xla/pjrt/gpu:se_gpu_pjrt_client"],
-        ["//tensorflow/compiler/xla/pjrt/gpu:se_gpu_pjrt_client_no_cudamallocasync_allocator"],
-    ),
+    ],
 )
 
 tf_cc_test(

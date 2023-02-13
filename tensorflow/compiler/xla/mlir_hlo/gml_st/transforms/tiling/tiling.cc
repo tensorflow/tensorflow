@@ -139,9 +139,9 @@ Operation *generateTileLoopNest(OpBuilder &builder, Location loc,
                            getValueOrCreateConstantIndexOp(builder, loc, lbs),
                            getValueOrCreateConstantIndexOp(builder, loc, ubs),
                            getValueOrCreateConstantIndexOp(builder, loc, steps),
-                           distributionLabelAttr,
+                           dstOperands, distributionLabelAttr,
                            [&](OpBuilder &nestedBuilder, Location bodyLoc,
-                               ValueRange ivs) {
+                               ValueRange ivs, ValueRange /*outputs*/) {
                              buildBody(nestedBuilder, bodyLoc, ivs);
                            })
                        .getOperation()
@@ -241,6 +241,30 @@ struct TilingPass : public impl::TilingPassBase<TilingPass> {
   }
 };
 
+template <typename LoopTy>
+void insertTerminatorAndUpdateOutputs(PatternRewriter &rewriter,
+                                      const TilingResult &tilingResult,
+                                      SetYieldOp terminator,
+                                      ValueRange dstOperands,
+                                      ValueRange outputTiles) {
+  auto parallelLoop = cast<LoopTy>(tilingResult.loop);
+  rewriter.replaceOpWithNewOp<SetYieldOp>(
+      terminator, tilingResult.tiledOps.front()->getResults(),
+      parallelLoop.getRegionOutputArgs(), outputTiles);
+
+  if (auto dstOp = dyn_cast<DestinationStyleOpInterface>(
+          tilingResult.tiledOps.front())) {
+    for (auto [dst, regionArg] :
+         llvm::zip(dstOperands, parallelLoop.getRegionOutputArgs())) {
+      dst.replaceUsesWithIf(regionArg, [&](OpOperand &operand) {
+        Operation *owner = operand.getOwner();
+        return isa<tensor::ExtractSliceOp, TilingInterface>(owner) &&
+               owner->getParentOfType<LoopTy>() == parallelLoop.getOperation();
+      });
+    }
+  }
+}
+
 }  // namespace
 
 FailureOr<TilingResult> tileUsingGmlSt(const TilingOptions &options,
@@ -287,7 +311,7 @@ FailureOr<TilingResult> tileUsingGmlSt(const TilingOptions &options,
       rewriter, loc, iterationDomain, tileSizeVector, dstOperands,
       options.distribute, options.distributionLabel, offsets, sizes);
   Block *loopBody = &tilingResult.loop->getRegion(0).front();
-  Operation *terminator = loopBody->getTerminator();
+  auto terminator = cast<SetYieldOp>(loopBody->getTerminator());
   rewriter.setInsertionPoint(terminator);
 
   // 4. Insert the tiled implementation within the loop.
@@ -306,7 +330,7 @@ FailureOr<TilingResult> tileUsingGmlSt(const TilingOptions &options,
       return rewriter.notifyMatchFailure(
           op, "failed to get slice of result produced");
     }
-    outputTiles.push_back(rewriter.create<TileOp>(
+    outputTiles.push_back(rewriter.createOrFold<TileOp>(
         loc, resultOffsetsList, resultSizesList,
         SmallVector<OpFoldResult>(resultSizesList.size(), oneAttr)));
   }
@@ -314,27 +338,11 @@ FailureOr<TilingResult> tileUsingGmlSt(const TilingOptions &options,
   // 6. Add a `set_yield` terminator, update the uses of `outputs` with the
   // output bbArgs.
   if (options.distribute) {
-    rewriter.replaceOpWithNewOp<SetYieldOp>(
-        terminator, tilingResult.tiledOps.front()->getResults(), dstOperands,
-        outputTiles);
+    insertTerminatorAndUpdateOutputs<ParallelOp>(
+        rewriter, tilingResult, terminator, dstOperands, outputTiles);
   } else {
-    auto forLoop = cast<gml_st::ForOp>(tilingResult.loop);
-    rewriter.replaceOpWithNewOp<SetYieldOp>(
-        terminator, tilingResult.tiledOps.front()->getResults(),
-        forLoop.getRegionOutputArgs(), outputTiles);
-
-    if (auto dstOp = dyn_cast<DestinationStyleOpInterface>(
-            tilingResult.tiledOps.front())) {
-      for (auto [dst, regionArg] :
-           llvm::zip(dstOperands, forLoop.getRegionOutputArgs())) {
-        dst.replaceUsesWithIf(regionArg, [&](OpOperand &operand) {
-          Operation *owner = operand.getOwner();
-          return isa<tensor::ExtractSliceOp, TilingInterface>(owner) &&
-                 owner->getParentOfType<gml_st::ForOp>() ==
-                     forLoop.getOperation();
-        });
-      }
-    }
+    insertTerminatorAndUpdateOutputs<ForOp>(rewriter, tilingResult, terminator,
+                                            dstOperands, outputTiles);
   }
   return tilingResult;
 }

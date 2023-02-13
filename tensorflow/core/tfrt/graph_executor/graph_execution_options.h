@@ -57,6 +57,10 @@ struct GraphExecutionOptions {
   // TODO(b/266251216): Maybe flip the default value or remote it.
   bool enable_online_cost_analysis = false;
 
+  // If true, the MLRT interpreter will be used instead of the BEF executor.
+  // This option is experimental.
+  bool enable_mlrt = false;
+
   tensorflow::TfrtCompileOptions compile_options;
 };
 

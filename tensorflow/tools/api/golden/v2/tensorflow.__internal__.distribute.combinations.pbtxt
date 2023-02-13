@@ -33,6 +33,10 @@ tf_module {
     mtype: "<class \'tensorflow.python.distribute.combinations.NamedDistribution\'>"
   }
   member {
+    name: "mirrored_strategy_with_two_cpus"
+    mtype: "<class \'tensorflow.python.distribute.combinations.NamedDistribution\'>"
+  }
+  member {
     name: "mirrored_strategy_with_two_gpus"
     mtype: "<class \'tensorflow.python.distribute.combinations.NamedDistribution\'>"
   }

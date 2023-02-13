@@ -894,7 +894,7 @@ std::unique_ptr<tflite::OpResolver> BenchmarkTfLiteModel::GetOpResolver()
     resolver =
         new tflite::ops::builtin::BuiltinOpResolverWithoutDefaultDelegates();
   } else {
-    resolver = new tflite::ops::builtin::BuiltinOpResolver();
+    resolver = new tflite::ops::builtin::BuiltinOpResolverWithXNNPACK();
   }
   RegisterSelectedOps(resolver);
   return std::unique_ptr<tflite::OpResolver>(resolver);

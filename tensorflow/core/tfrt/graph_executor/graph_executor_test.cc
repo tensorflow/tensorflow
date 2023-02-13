@@ -44,7 +44,7 @@ namespace tensorflow {
 namespace tfrt_stub {
 namespace {
 
-class GraphExecutorTest : public grappler::GrapplerTest {};
+class GraphExecutorTest : public ::testing::TestWithParam<bool> {};
 
 tensorflow::Status GetSimpleGraphDef(GraphDef& graph_def) {
   auto scope = tensorflow::Scope::NewRootScope().WithDevice("/device:CPU:0");
@@ -64,12 +64,14 @@ std::unique_ptr<mlrt::KernelRegistry> GetKernelRegistry() {
   return kernel_registry;
 }
 
-TEST_F(GraphExecutorTest, Vanilla) {
+TEST_P(GraphExecutorTest, Vanilla) {
   GraphDef graph_def;
   TF_ASSERT_OK(GetSimpleGraphDef(graph_def));
 
   auto runtime = DefaultTfrtRuntime(/*num_threads=*/1);
   GraphExecutor::Options options(runtime.get());
+  options.enable_mlrt = GetParam();
+
   TF_ASSERT_OK_AND_ASSIGN(
       auto fallback_state,
       tensorflow::tfrt_stub::FallbackState::Create(
@@ -96,6 +98,9 @@ TEST_F(GraphExecutorTest, Vanilla) {
   EXPECT_THAT(GetTfTensorData<int32_t>(outputs[0]),
               ::testing::ElementsAreArray({2}));
 }
+
+INSTANTIATE_TEST_SUITE_P(GraphExecutorTestSuite, GraphExecutorTest,
+                         ::testing::Bool());
 
 TEST_F(GraphExecutorTest, BasicWithOnlineCostAnalysis) {
   GraphDef graph_def;

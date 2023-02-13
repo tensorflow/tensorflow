@@ -116,7 +116,7 @@ xla_cc_test(
     name = "replay_computation_bin_test",
     srcs = ["replay_computation_bin_test.cc"],
     data = [
-        "add.hlo",
+        "data/add.hlo",
         ":replay_computation_cpu",
         ":replay_computation_interpreter",
     ],
@@ -267,10 +267,10 @@ cc_library(
     deps = [
         "//tensorflow/compiler/xla:status",
         "//tensorflow/compiler/xla/hlo/ir:hlo",
+        "//tensorflow/compiler/xla/service:compilation_environments",
         "//tensorflow/compiler/xla/service:hlo_verifier",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
-        "@com_google_absl//absl/memory",
     ],
 )
 
@@ -308,7 +308,7 @@ xla_cc_test(
     name = "interactive_graphviz_bin_test",
     srcs = ["interactive_graphviz_bin_test.cc"],
     data = [
-        "add.hlo",
+        "data/add.hlo",
         ":interactive_graphviz",
     ],
     deps = [
@@ -446,7 +446,9 @@ xla_cc_test(
     name = "run_hlo_module_bin_test",
     srcs = ["run_hlo_module_bin_test.cc"],
     data = [
-        "add.hlo",
+        "data/add.hlo",
+        "data/must_alias.hlo",
+        "data/must_alias_with_sharding.hlo",
         ":run_hlo_module",
     ],
     deps = [

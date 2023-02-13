@@ -96,6 +96,18 @@ xla::Status PjrtErrorToStatus(const PJRT_Error* error, const PJRT_Api* api) {
   return status;
 }
 
+PJRT_DeviceTopologyDeleter MakeDeviceTopologyDeleter(const PJRT_Api* api) {
+  return [api](PJRT_DeviceTopology* topology) -> void {
+    PJRT_DeviceTopology_Destroy_Args destroy_args;
+    destroy_args.struct_size = PJRT_DeviceTopology_Destroy_Args_STRUCT_SIZE;
+    destroy_args.priv = nullptr;
+    destroy_args.topology = topology;
+
+    pjrt::LogFatalIfPjrtError(api->PJRT_DeviceTopology_Destroy(&destroy_args),
+                              api);
+  };
+}
+
 tsl::error::Code PjrtErrorToStatusCode(const PJRT_Error* error,
                                        const PJRT_Api* api) {
   PJRT_Error_GetCode_Args args;

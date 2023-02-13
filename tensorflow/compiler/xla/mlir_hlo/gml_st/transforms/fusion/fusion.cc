@@ -22,9 +22,7 @@ limitations under the License.
 #include "gml_st/IR/gml_st_ops.h"
 #include "gml_st/transforms/passes.h"
 #include "gml_st/transforms/peeling/peeling.h"
-#include "gml_st/transforms/rewriters.h"
 #include "gml_st/transforms/transforms.h"
-#include "llvm/ADT/STLExtras.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
@@ -32,10 +30,12 @@ limitations under the License.
 #include "mlir/Dialect/SCF/Transforms/TileUsingInterface.h"
 #include "mlir/Dialect/Shape/IR/Shape.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
+#include "mlir/Dialect/Utils/StructuredOpsUtils.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/Interfaces/SideEffectInterfaces.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
+#include "mlir/Transforms/RegionUtils.h"
 #include "thlo/IR/thlo_ops.h"
 
 namespace mlir {
@@ -72,12 +72,12 @@ struct DimOpReificationPattern : public OpRewritePattern<tensor::DimOp> {
 
     // TODO(pifon): Split this pattern into many.
     // Case tensor::ExtractSliceOp.
-    if (auto materializeOp = llvm::dyn_cast<tensor::ExtractSliceOp>(def)) {
-      assert(materializeOp->getNumResults() == 1 && "assume single result");
+    if (auto extractSliceOp = llvm::dyn_cast<tensor::ExtractSliceOp>(def)) {
+      assert(extractSliceOp->getNumResults() == 1 && "assume single result");
       auto dimConstantIndex = op.getConstantIndex();
       if (!dimConstantIndex.has_value()) return failure();
 
-      rewriter.replaceOp(op, materializeOp.getSizes()[*dimConstantIndex]);
+      rewriter.replaceOp(op, extractSliceOp.getSizes()[*dimConstantIndex]);
       return success();
     }
     // Case LinalgOp.
@@ -131,25 +131,6 @@ struct DimOpReificationPattern : public OpRewritePattern<tensor::DimOp> {
   }
 };
 
-// Finds the `dst` operand of `setYieldOp` that matches `currentDst` and then
-// replaces it with the corresponding `init` operand of the defining op of
-// `currentDst`. At the moment this update is restricted to `linalg.fill` only,
-// later it can be relaxed to support fusion of transposes into
-// `gml_st.parallel`.
-LogicalResult replaceSetYieldDstByProducerInit(SetYieldOp setYieldOp,
-                                               Value currentDst) {
-  auto fillOp = currentDst.getDefiningOp<linalg::FillOp>();
-  if (!fillOp) return failure();
-
-  Value init = fillOp.getDpsInitOperand(0)->get();
-  for (OpOperand& operand : setYieldOp->getOpOperands()) {
-    if (operand.get() != currentDst) continue;
-    operand.set(init);
-    return success();
-  }
-  return failure();
-}
-
 class FusionPattern : public OpRewritePattern<tensor::ExtractSliceOp> {
  public:
   FusionPattern(MLIRContext* context,
@@ -158,12 +139,26 @@ class FusionPattern : public OpRewritePattern<tensor::ExtractSliceOp> {
       : OpRewritePattern<tensor::ExtractSliceOp>(context, benefit),
         filterFn(filterFn) {}
 
-  LogicalResult matchAndRewrite(tensor::ExtractSliceOp materializeOp,
+  LogicalResult matchAndRewrite(tensor::ExtractSliceOp extractSliceOp,
                                 PatternRewriter& rewriter) const override {
     assert(filterFn && "expect filter function");
-    if (failed(filterFn(materializeOp)))
-      return rewriter.notifyMatchFailure(materializeOp, "filtered");
-    return fuse(rewriter, materializeOp);
+    if (failed(filterFn(extractSliceOp)))
+      return rewriter.notifyMatchFailure(extractSliceOp, "filtered");
+
+    // If there is an output argument produced by `linalg.fill`, then we can
+    // also fuse it into the parallel loop. To check that, we verify that the
+    // `src` of `extract_slice` is the bbArg of `gml_st.parallel` and that the
+    // corresponding operand of `gml_st.parallel` is defined by `linalg.fill`.
+    if (auto bbArg = dyn_cast<BlockArgument>(extractSliceOp.getSource())) {
+      if (auto parallelOp =
+              dyn_cast_or_null<ParallelOp>(bbArg.getOwner()->getParentOp())) {
+        Value loopOperand =
+            parallelOp.getOpOperandForRegionOutputArg(bbArg).get();
+        if (loopOperand.getDefiningOp<linalg::FillOp>())
+          return fuseFillOpsIntoParallelOp(rewriter, parallelOp);
+      }
+    }
+    return fuse(rewriter, extractSliceOp);
   }
 
  private:
@@ -185,6 +180,9 @@ struct FusionPass : public impl::FusionPassBase<FusionPass> {
 
     auto filterFn = [&](tensor::ExtractSliceOp op) {
       Operation* producerOp = op.getSource().getDefiningOp();
+      if (auto bbArg = dyn_cast<BlockArgument>(op.getSource())) {
+        if (isa<ParallelOp>(bbArg.getOwner()->getParentOp())) return success();
+      }
       if (!producerOp || (!producerLabel.empty() &&
                           !hasMatchingLabel(producerOp, producerLabel))) {
         return failure();
@@ -219,8 +217,7 @@ bool isEqualOp(const Operation* lhsC, const Operation* rhsC) {
   return OperationEquivalence::isEquivalentTo(
       const_cast<Operation*>(lhsC), const_cast<Operation*>(rhsC),
       OperationEquivalence::exactValueMatch,
-      OperationEquivalence::ignoreValueEquivalence,
-      OperationEquivalence::IgnoreLocations);
+      /*markEquivalent=*/nullptr, OperationEquivalence::IgnoreLocations);
 }
 
 template <class OpTy>
@@ -280,10 +277,31 @@ void reifyDimOpsUsers(PatternRewriter& rewriter, Operation* op) {
   }
 }
 
+LogicalResult fuseTensorCast(PatternRewriter& rewriter, tensor::CastOp castOp,
+                             tensor::ExtractSliceOp sliceOp) {
+  if (!tensor::canFoldIntoConsumerOp(castOp)) return failure();
+
+  /// Deduce the type of the result to use for the canonicalized operation.
+  RankedTensorType resultType =
+      tensor::ExtractSliceOp::inferCanonicalRankReducedResultType(
+          sliceOp.getType().getRank(), sliceOp.getSourceType(),
+          sliceOp.getMixedOffsets(), sliceOp.getMixedSizes(),
+          sliceOp.getMixedStrides());
+  OpBuilder::InsertionGuard g(rewriter);
+  rewriter.setInsertionPointAfter(sliceOp);
+  Value newSlice = rewriter.create<tensor::ExtractSliceOp>(
+      sliceOp.getLoc(), resultType, castOp.getSource(), sliceOp.getOffsets(),
+      sliceOp.getSizes(), sliceOp.getStrides(), sliceOp.getStaticOffsets(),
+      sliceOp.getStaticSizes(), sliceOp.getStaticStrides());
+  rewriter.replaceOpWithNewOp<tensor::CastOp>(sliceOp, sliceOp.getType(),
+                                              newSlice);
+  return success();
+}
+
 // Iterates over tensor::ExtractSliceOp inside the block, finds a suitable
 // candidate for fusion and fuses it. The fusion candidate should satisfy the
-// filter function and not have uses outside of the block. Fails if nothing can
-// be fused.
+// filter function and not have uses outside of the block. Fails if nothing
+// can be fused.
 LogicalResult fuseGreedilyOneOpIntoBlock(
     PatternRewriter& rewriter, Block& block,
     llvm::function_ref<bool(Operation*)> filterFn) {
@@ -291,21 +309,23 @@ LogicalResult fuseGreedilyOneOpIntoBlock(
   // after previous fusions. Running the whole CSE pass would be to expensive
   // here and unnecessary. Without removing those duplicate, some ops will be
   // fused multiple times resulting in exponential code growth.
-  eliminateEqualOps<TileOp>(rewriter, block);
   eliminateEqualOps<tensor::ExtractSliceOp>(rewriter, block);
 
-  for (auto materializeOp : block.getOps<tensor::ExtractSliceOp>()) {
-    auto* fusionCandidate = materializeOp.getSource().getDefiningOp();
-    // Do not fuse if there is no defining op. Of example if it's a materialize
-    // from a function argument.
+  SetVector<Value> valuesFromAbove;
+  getUsedValuesDefinedAbove(*block.getParent(), valuesFromAbove);
+
+  for (Value valueFromAbove : valuesFromAbove) {
+    auto* fusionCandidate = valueFromAbove.getDefiningOp();
+    // Do not fuse if there is no defining op. Of example if it's a
+    // materialize from a function argument.
     if (!fusionCandidate) continue;
 
     if (filterFn && !filterFn(fusionCandidate)) continue;
 
     // Ad-hoc DCE to trim the fusion candidate from dead users that could have
     // been added in the previous fusion cycles. Normally those ops would be
-    // garbage collected after the pattern rewriter driver finished working, but
-    // here it requires manual handling.
+    // garbage collected after the pattern rewriter driver finished working,
+    // but here it requires manual handling.
     eliminateTriviallyDeadUsers(rewriter, fusionCandidate);
 
     // Push tensor.dim ops 'above' the fusion candidate. This is normally done
@@ -313,14 +333,35 @@ LogicalResult fuseGreedilyOneOpIntoBlock(
     // pipeline here is too expensive.
     reifyDimOpsUsers(rewriter, fusionCandidate);
 
-    // After the previous steps, materializeOp should be only one user of the
+    // After the previous steps, extractSliceOp should be only one user of the
     // fusion candidate. Otherwise this candidate should not be fused.
     auto fusionCandidateUsers = llvm::to_vector(fusionCandidate->getUsers());
-    if (fusionCandidateUsers.size() != 1 ||
-        fusionCandidateUsers[0] != materializeOp)
-      continue;
+    if (fusionCandidateUsers.size() != 1) continue;
 
-    if (succeeded(fuse(rewriter, materializeOp))) return success();
+    Operation* candidateUser = fusionCandidateUsers.front();
+
+    // If the user of the fusion candidate is `tensor.extract_slice`, we use
+    // TilingInterface to rewrite `tensor.extract_slice(fusionOp)` into
+    // `tiledFusionOp(tensor.extract_slice)`.
+    if (auto extractSliceOp = dyn_cast<tensor::ExtractSliceOp>(candidateUser)) {
+      if (auto castOp = dyn_cast<tensor::CastOp>(fusionCandidate)) {
+        return fuseTensorCast(rewriter, castOp, extractSliceOp);
+      }
+      return fuse(rewriter, extractSliceOp);
+    }
+
+    // TODO(shyshkov): Implement fusion into `tensor.extract` using
+    // TilingInterface.
+    if (auto extractOp = dyn_cast<tensor::ExtractOp>(candidateUser)) {
+      return failure();
+    }
+
+    // Otherwise, the fusion candidate op is moved inside of the region.
+    OpBuilder::InsertionGuard g(rewriter);
+    rewriter.setInsertionPoint(candidateUser);
+    Operation* clonedCandidate = rewriter.clone(*fusionCandidate);
+    rewriter.replaceOp(fusionCandidate, clonedCandidate->getResults());
+    return success();
   }
   return failure();
 }
@@ -328,43 +369,22 @@ LogicalResult fuseGreedilyOneOpIntoBlock(
 }  // namespace
 
 FailureOr<Operation*> fuse(PatternRewriter& rewriter,
-                           tensor::ExtractSliceOp materializeOp) {
-  Location loc = materializeOp.getLoc();
-  FailureOr<Value> fusedOr = createFusedOp(rewriter, materializeOp);
+                           tensor::ExtractSliceOp extractSliceOp) {
+  Location loc = extractSliceOp.getLoc();
+  FailureOr<Value> fusedOr = createFusedOp(rewriter, extractSliceOp);
   if (failed(fusedOr)) return failure();  // Match failure already notified.
 
   // Insert cast if needed.
   Value fused = *fusedOr;
-  if (fused.getType() != materializeOp.getType()) {
-    if (!materializeOp.getType().isa<RankedTensorType>()) {
-      // the result should be a scalar, insert tensor.extract
-      auto tensorType = fused.getType().dyn_cast<RankedTensorType>();
-      assert(tensorType && tensorType.getNumElements() == 1 &&
-             "resulting tensor should contain a single element");
-      auto zero = rewriter.create<arith::ConstantIndexOp>(loc, 0);
-      fused = rewriter.create<tensor::ExtractOp>(
-          loc, fused, SmallVector<Value>(tensorType.getRank(), zero));
-    } else {
-      // The result should be a tensor, cast it to the correct shape
-      OpBuilder::InsertionGuard g(rewriter);
-      rewriter.setInsertionPointAfter(fused.getDefiningOp());
-      fused =
-          rewriter.create<tensor::CastOp>(loc, materializeOp.getType(), fused);
-    }
+  if (fused.getType() != extractSliceOp.getType()) {
+    // The result should be a tensor, cast it to the correct shape
+    OpBuilder::InsertionGuard g(rewriter);
+    rewriter.setInsertionPointAfter(fused.getDefiningOp());
+    fused =
+        rewriter.create<tensor::CastOp>(loc, extractSliceOp.getType(), fused);
   }
 
-  // Update destination argument of SetYieldOp if we are fusing into the
-  // output tile.
-  if (auto parallelOp = dyn_cast<ParallelOp>(materializeOp->getParentOp())) {
-    SetYieldOp setYieldOp = parallelOp.getTerminator();
-    Value src = materializeOp.getSource();
-    if (llvm::is_contained(src.getUsers(), setYieldOp)) {
-      if (failed(replaceSetYieldDstByProducerInit(setYieldOp, src)))
-        return failure();
-    }
-  }
-
-  rewriter.replaceOp(materializeOp, fused);
+  rewriter.replaceOp(extractSliceOp, fused);
   return fused.getDefiningOp();
 }
 
@@ -411,23 +431,50 @@ FusionCluster findMapFusionCluster(Operation* op) {
   return {resultOps, rootOp};
 }
 
-LogicalResult fuseOutputFill(PatternRewriter& rewriter, Operation* op) {
-  // Fusion into the output.
-  Operation* definingOp =
-      cast<linalg::LinalgOp>(op).getDpsInitOperand(0)->get().getDefiningOp();
+LogicalResult fuseFillOpsIntoParallelOp(PatternRewriter& rewriter,
+                                        ParallelOp parallelOp) {
+  OpBuilder::InsertionGuard g(rewriter);
+  rewriter.setInsertionPointToStart(parallelOp.getBody());
+  bool fillOpsWereFused = false;
+  for (OpOperand& output :
+       parallelOp->getOpOperands().take_back(parallelOp.getNumOutputs())) {
+    auto fillOp = output.get().getDefiningOp<linalg::FillOp>();
+    if (!fillOp) continue;
 
-  // linalg.fill has already been fused for another matmul.
-  if (isa<linalg::FillOp>(definingOp)) return success();
+    fillOpsWereFused = true;
 
-  auto materialize = dyn_cast<tensor::ExtractSliceOp>(definingOp);
-  if (!materialize) {
-    return rewriter.notifyMatchFailure(
-        op, "has failed to 'materialize' output during 'linalg.fill' fusion.");
+    // Clone `linalg.fill` op inside the loop, update the uses of bbArg.
+    BlockArgument regionOutputArg =
+        parallelOp.getRegionOutputArgForOpOperand(output);
+    auto clonedFill = cast<linalg::FillOp>(
+        mlir::clone(rewriter, fillOp, fillOp.getResultTypes(),
+                    {fillOp.value(), regionOutputArg}));
+
+    output.set(fillOp.output());
+
+    SmallVector<tensor::ExtractSliceOp> sliceOps;
+    regionOutputArg.replaceUsesWithIf(
+        clonedFill.getResult(0), [&](OpOperand& operand) {
+          Operation* owner = operand.getOwner();
+          if (auto sliceOp = dyn_cast_or_null<tensor::ExtractSliceOp>(owner))
+            sliceOps.push_back(sliceOp);
+          return owner != clonedFill && !isa<SetYieldOp>(owner) &&
+                 owner->getParentOfType<ParallelOp>() == parallelOp;
+        });
+
+    // Use standard fusion logic to swap extract_slice(fill) ->
+    // fill(extract_slice).
+    for (tensor::ExtractSliceOp sliceOp : sliceOps)
+      (void)fuse(rewriter, sliceOp);
   }
-  if (materialize.getSource().getDefiningOp<linalg::FillOp>()) {
-    if (failed(fuse(rewriter, materialize))) return failure();
-  }
-  return success();
+  return success(fillOpsWereFused);
+}
+
+gml_st::TilingOptions getGmlStTilingOptions(ArrayRef<int64_t> tileSizes) {
+  gml_st::TilingOptions opts;
+  opts.distribute = true;
+  opts.setTileSizeComputationFn(tileSizes);
+  return opts;
 }
 
 FailureOr<ParallelOp> tileUsingGmlStParallelAndFuseGreedily(
@@ -452,6 +499,12 @@ FailureOr<ParallelOp> tileUsingGmlStParallelAndFuseGreedily(
   return cast<ParallelOp>(tilingResult->loop);
 }
 
+scf::SCFTilingOptions getSCFTilingOptions(ArrayRef<int64_t> tileSizes) {
+  scf::SCFTilingOptions opts;
+  opts.setTileSizes(tileSizes);
+  return opts;
+}
+
 FailureOr<scf::SCFTilingResult> tileUsingSCFForOpAndFuseGreedily(
     PatternRewriter& rewriter, Operation* op, const scf::SCFTilingOptions& opts,
     StringRef label, llvm::function_ref<bool(Operation*)> fuseFilterFn) {
@@ -464,17 +517,17 @@ FailureOr<scf::SCFTilingResult> tileUsingSCFForOpAndFuseGreedily(
     rewriter.replaceOp(op, tilingResult->replacements);
 
     // Fuse ops into the loop.
-    fuseGreedily(rewriter, *tilingResult->loops.back().getBody(), fuseFilterFn);
+    scf::ForOp innerLoop = tilingResult->loops.back();
+    fuseGreedily(rewriter, *innerLoop.getBody(), fuseFilterFn);
   }
   setLabel(tilingResult->tiledOps.front(), label);
   return tilingResult;
 }
 
 LogicalResult tilePeeledOpsToScalars(
-    PatternRewriter& rewriter, const PeelingResult& peelingResult,
+    PatternRewriter& rewriter, const GmlStPeelingResult& peelingResult,
     StringRef label, llvm::function_ref<bool(Operation*)> fuseFilterFn) {
-  for (auto* loop : peelingResult) {
-    ParallelOp peeledLoop = dyn_cast<ParallelOp>(loop);
+  for (ParallelOp peeledLoop : peelingResult.tailLoops) {
     auto* terminatorOp = peeledLoop->getRegion(0).front().getTerminator();
     if (!terminatorOp) return failure();
 
@@ -493,19 +546,22 @@ LogicalResult tilePeeledOpsToScalars(
 }
 
 FailureOr<Value> createFusedOp(PatternRewriter& rewriter,
-                               tensor::ExtractSliceOp materializeOp) {
-  auto tileableOp = materializeOp.getSource().getDefiningOp<TilingInterface>();
+                               tensor::ExtractSliceOp extractSliceOp) {
+  Value src = extractSliceOp.getSource();
+  if (!src) return failure();
+  auto tileableOp = src.getDefiningOp<TilingInterface>();
   if (!tileableOp) {
     return rewriter.notifyMatchFailure(
-        materializeOp, "expected source to be defined by tiling interface op ");
+        extractSliceOp,
+        "expected source to be defined by tiling interface op ");
   }
 
-  SmallVector<OpFoldResult> offsets = materializeOp.getMixedOffsets();
-  SmallVector<OpFoldResult> sizes = materializeOp.getMixedSizes();
+  SmallVector<OpFoldResult> offsets = extractSliceOp.getMixedOffsets();
+  SmallVector<OpFoldResult> sizes = extractSliceOp.getMixedSizes();
 
   // Tile the producer.
   OpBuilder::InsertionGuard guard(rewriter);
-  rewriter.setInsertionPoint(materializeOp);
+  rewriter.setInsertionPoint(extractSliceOp);
   FailureOr<Value> tiledProducer = tileableOp.generateResultTileValue(
       rewriter, /*resultNumber=*/0, offsets, sizes);
   if (failed(tiledProducer)) {

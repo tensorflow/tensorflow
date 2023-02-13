@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/container/inlined_vector.h"
 #include "tensorflow/compiler/xla/layout.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
+#include "tensorflow/compiler/xla/printer.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 
 namespace xla {
@@ -54,6 +55,10 @@ class Shape {
 
   // Returns a ShapeProto representation of the Shape.
   ShapeProto ToProto() const;
+
+  // Prints a human-readable string that represents the given shape, with or
+  // without layout. e.g. "F32[42,12] {0, 1}" or "F32[64]".
+  void Print(Printer* printer, bool print_layout = false) const;
 
   // Returns a human-readable string that represents the given shape, with or
   // without layout. e.g. "F32[42,12] {0, 1}" or "F32[64]".
@@ -118,7 +123,8 @@ class Shape {
 
   // Methods for accessing the dimensions array.
   int dimensions_size() const { return dimensions_.size(); }
-  int64_t dimensions(int index) const;
+  int64_t dimensions(int index) const { return dimensions_.at(index); }
+
   int64_t dimensions_minor(int index) const {
     CHECK(has_layout());
     return dimensions_.at(layout_->minor_to_major(index));
@@ -327,6 +333,8 @@ class ProgramShape {
 
   // Returns a proto representation of the object.
   ProgramShapeProto ToProto() const;
+
+  void Print(Printer* printer) const;
 
   std::string ToString() const;
 

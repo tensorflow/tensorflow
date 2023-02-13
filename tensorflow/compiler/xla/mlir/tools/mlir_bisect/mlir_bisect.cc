@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <algorithm>
+#include <iterator>
 #include <memory>
 #include <optional>
 #include <string>
@@ -34,6 +36,7 @@ limitations under the License.
 #include "mlir/Tools/ParseUtilities.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/mlir/runtime/ir/rt_dialect.h"
 #include "tensorflow/compiler/xla/mlir/tools/mlir_bisect/bisect_lib.h"
+#include "tensorflow/compiler/xla/mlir/tools/mlir_bisect/test_passes.h"
 #include "tensorflow/compiler/xla/mlir/tools/mlir_replay/public/execution_trace_utils.h"
 #include "tensorflow/compiler/xla/mlir_hlo/gml_st/IR/gml_st_ops.h"
 #include "tensorflow/compiler/xla/mlir_hlo/gml_st/interfaces/bufferizable_op_interface_impl.h"
@@ -65,11 +68,21 @@ struct Options {
       llvm::cl::desc("If set, print all reductions for the given strategy and "
                      "exit. For testing."),
       llvm::cl::init("")};
+  llvm::cl::opt<std::string> expected_error{
+      "expected-error",
+      llvm::cl::desc("If set, expect the given error message after applying "
+                     "the pass instead of a successful execution."),
+      llvm::cl::init("")};
   llvm::cl::opt<int64_t> max_steps_per_run{
       "max-steps-per-run",
       llvm::cl::desc("Maximum number of steps to execute for each attempt."),
       llvm::cl::init(100000)};
   mlir::PassPipelineCLParser pass_pipeline{"", "Passes to run"};
+  llvm::cl::opt<bool> canonicalize{
+      "enable-canonicalization",
+      llvm::cl::desc("If set, canonicalize candidates before trying them. Set "
+                     "to false if you're bisecting --canonicalize."),
+      llvm::cl::init(true)};
 };
 
 namespace mlir {
@@ -138,13 +151,29 @@ LogicalResult Run(ModuleOp module, interpreter::ExecutionTrace* trace,
 
   SymbolTable symbol_table_after{*clone};
   interpreter_options.listener = nullptr;
+  bool found_expected_error = false;
+  if (!options.expected_error.empty()) {
+    auto original_handler = interpreter_options.errorHandler;
+    interpreter_options.errorHandler = [&](llvm::StringRef failure) {
+      found_expected_error |=
+          failure.find(options.expected_error) != std::string::npos;
+      original_handler(failure);
+    };
+  }
+
   auto results_after_pass = interpreter::runInterpreter(
       symbol_table_after,
       llvm::cast<func::FuncOp>(symbol_table_after.lookup("main")), {},
       interpreter_options);
 
   if (!succeeded(results_after_pass)) {
+    if (found_expected_error) {
+      return success();
+    }
     llvm::errs() << "Interpreter failed\n";
+    return failure();
+  } else if (!options.expected_error.empty()) {
+    llvm::errs() << "Expected error not seen\n";
     return failure();
   }
 
@@ -171,33 +200,49 @@ LogicalResult Canonicalize(ModuleOp module) {
   return pm.run(module.getOperation());
 }
 
-std::optional<OwningOpRef<ModuleOp>> ApplyReduceStep(ModuleOp module,
-                                                     BisectState& state,
-                                                     const Options& options) {
-  // This could be a lot smarter than round robin (e.g. pruning previously
-  // attempted approaches, moving previously unsuccessful strategies to the
-  // end of the list, etc.).
-  for (auto [name, strategy] : detail::GetStrategies()) {
-    for (auto& candidate : detail::GetCandidates(strategy, state, module)) {
-      if (!Canonicalize(*candidate).succeeded()) {
-        continue;
+OwningOpRef<ModuleOp> ReduceModule(OwningOpRef<ModuleOp> module,
+                                   BisectState& state, const Options& options) {
+  auto strategies = llvm::to_vector(mlir::bisect::detail::GetStrategies());
+
+  auto apply_step = [&]() -> std::optional<OwningOpRef<ModuleOp>> {
+    for (auto it = strategies.begin(); it != strategies.end(); ++it) {
+      for (auto& candidate :
+           detail::GetCandidates(it->second, state, *module)) {
+        if (!mlir::verify(*candidate).succeeded()) {
+          continue;
+        }
+        if (options.canonicalize && !Canonicalize(*candidate).succeeded()) {
+          continue;
+        }
+
+        interpreter::ExecutionTrace trace;
+        // Verify that the candidate is still buggy.
+        if (!Run(*candidate, &trace, options).succeeded()) {
+          continue;
+        }
+
+        // Print the new buggy module.
+        llvm::outs() << "module after " << it->first << ":\n"
+                     << *candidate << "\n\n";
+
+        // Update the trace.
+        state.SetTrace(trace);
+
+        // Move failed strategies to the end.
+        decltype(strategies) new_strategies;
+        std::copy(it, strategies.end(), std::back_inserter(new_strategies));
+        std::copy(strategies.begin(), it, std::back_inserter(new_strategies));
+        strategies = new_strategies;
+        return {std::move(candidate)};
       }
-
-      interpreter::ExecutionTrace trace;
-      // Verify that the candidate is still buggy.
-      if (!Run(*candidate, &trace, options).succeeded()) {
-        continue;
-      }
-
-      // Print the new buggy module.
-      llvm::outs() << "module after " << name << ":\n" << *candidate << "\n\n";
-
-      // Update the trace.
-      state.SetTrace(trace);
-      return {std::move(candidate)};
     }
+    return std::nullopt;
+  };
+
+  while (auto new_module = apply_step()) {
+    module = std::move(*new_module);
   }
-  return std::nullopt;
+  return module;
 }
 
 void ReplaceArgsWithConstants(ModuleOp module,
@@ -227,6 +272,8 @@ void ReplaceArgsWithConstants(ModuleOp module,
 }  // namespace mlir
 
 int main(int argc, char* argv[]) {
+  llvm::errs().tie(&llvm::outs());
+  llvm::outs().tie(&llvm::errs());
   int dummy_argc = 1;
   tsl::port::InitMain("", &dummy_argc, &argv);
 
@@ -236,6 +283,7 @@ int main(int argc, char* argv[]) {
   mlir::DialectRegistry registry;
   mlir::registerAllDialects(registry);
   mlir::registerAllPasses();
+  mlir::bisect::test::RegisterTestPasses();
   mlir::mhlo::registerAllMhloPasses();
   mlir::lmhlo::registerAllLmhloPasses();
   mlir::thlo::registerAllThloPasses();
@@ -263,7 +311,11 @@ int main(int argc, char* argv[]) {
 
   mlir::interpreter::ExecutionTrace trace;
   if (!mlir::bisect::Run(*module, &trace, options).succeeded()) {
-    llvm::errs() << "Did not find bug in initial module\n";
+    llvm::outs() << "Did not find bug in initial module\n";
+    if (options.pass_pipeline.hasAnyOccurrences() &&
+        mlir::succeeded(mlir::bisect::RunPipeline(*module, options))) {
+      llvm::outs() << "Module after running pipeline:\n" << *module << "\n";
+    }
     return 1;
   }
 
@@ -283,10 +335,8 @@ int main(int argc, char* argv[]) {
     return some_failed ? 1 : 0;
   }
 
-  while (auto new_module =
-             mlir::bisect::ApplyReduceStep(*module, state, options)) {
-    module = std::move(*new_module);
-  }
+  module = mlir::bisect::ReduceModule(std::move(module), state, options);
+
   llvm::outs() << "Final module:\n" << *module << "\n";
   if (options.pass_pipeline.hasAnyOccurrences() &&
       mlir::succeeded(mlir::bisect::RunPipeline(*module, options))) {

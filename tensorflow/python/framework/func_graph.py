@@ -45,7 +45,6 @@ from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.saved_model import save_context
-from tensorflow.python.types import internal
 from tensorflow.python.util import compat
 from tensorflow.python.util import nest
 from tensorflow.python.util import object_identity
@@ -165,8 +164,6 @@ class FuncGraph(ops.Graph):
       or the global default Graph.
     captures: Maps external tensor -> internal tensor (i.e. input placeholder).
       The entries are in the order they were captured.
-    control_captures: Set of external ops on which this graph has a control
-      dependency.
     seed: The graph-level random seed.
     capture_by_value: If True, the func graph will capture Variables by value
       instead of reference.
@@ -206,7 +203,6 @@ class FuncGraph(ops.Graph):
     self.inputs = []
     self.outputs = []
     self.control_outputs = []
-    self.control_captures = object_identity.ObjectIdentitySet()
     self.structured_input_signature = structured_input_signature
     self.structured_outputs = structured_outputs
     self._resource_tensor_inputs = object_identity.ObjectIdentitySet()
@@ -368,13 +364,12 @@ class FuncGraph(ops.Graph):
     if key is None:
       key = object()
     if key not in self._deferred_captures:
+      trace_ctx = trace_type.InternalTracingContext(True)
+      spec = trace_type.from_value(spec, trace_ctx)
 
       if placeholder is None:
-
-        trace_ctx = trace_type.InternalTracingContext(False)
-        capture_trace_type = trace_type.from_value(spec, trace_ctx)
         placeholder_ctx = trace_type.InternalPlaceholderContext(self)
-        placeholder = capture_trace_type.placeholder_value(placeholder_ctx)
+        placeholder = spec.placeholder_value(placeholder_ctx)
 
       def wrapped_closure():
 
@@ -398,16 +393,6 @@ class FuncGraph(ops.Graph):
           assert isinstance(
               graph,
               FuncGraph), "This API should only be used in TF2 enviroment."
-          # In the case of control flow, we need to capture the
-          # external_captures (deferred or not) of the body_graph (i.e.
-          # `WhileBodyFuncGraph) in `cond_graph` (i.e. WhileCondFuncGraph) and
-          # create the corresponding placeholders in `cond_graph` so that it
-          # expects to receive these as arguments. However, doing so requires
-          # having evaluated the call_time_value already (and maybe repeatedly),
-          # so we skip adding deferred_captures to the control flow graph but
-          # add it to its outer graph.
-          while graph.is_control_flow_graph:
-            graph = graph.outer_graph
 
           with graph.as_default():
             ret_nest = graph.capture_call_time_value(
@@ -415,32 +400,8 @@ class FuncGraph(ops.Graph):
         else:
           ret_nest = closure()
 
-        nest.assert_same_structure(spec, ret_nest, expand_composites=True)
-        # This uses the tensor dtype defined in `spec` when converting values
-        # in `ret_nest` to tensors.
-        # pylint: disable=protected-access
-        def _components_helper(s, r):
-          if isinstance(s, internal.TensorSpec):
-            try:
-              r = ops.convert_to_tensor(r, s.dtype)
-            except (TypeError, ValueError):
-              raise ValueError(
-                  f"Value {r} is not convertible to a tensor with "
-                  f"dtype {s.dtype} and shape {s.shape}."
-              )
-            if not r.shape.is_compatible_with(s.shape):
-              raise ValueError(
-                  f"Value {r} is not convertible to a tensor with "
-                  f"dtype {s.dtype} and shape {s.shape}."
-              )
-          return s._to_components(r)
-        y = nest.map_structure(
-            _components_helper,
-            spec,
-            ret_nest,
-            expand_composites=False)
-        # pylint: enable=protected-access
-        return nest.flatten(y, expand_composites=True)
+        ret_nest = spec._cast(ret_nest, trace_type.InternalCastContext)  # pylint: disable=protected-access
+        return spec._to_tensors(ret_nest)  # pylint: disable=protected-access
 
       wrapped_closure.output_spec = spec
       self._deferred_captures[key] = (wrapped_closure, placeholder)
@@ -481,7 +442,7 @@ class FuncGraph(ops.Graph):
         graph_element = c
       if graph_element is not None and getattr(graph_element, "graph",
                                                None) is not self:
-        self.control_captures.add(graph_element)
+        self._function_captures.control.add(graph_element)
       else:
         filtered_control_inputs.append(graph_element)
     return super().control_dependencies(filtered_control_inputs)
@@ -1244,10 +1205,6 @@ def func_graph_from_py_func(name,
     finally:
       current_scope.set_use_resource(default_use_resource)
 
-    # Variables in `func_args`, `func_kwargs` should be explicit inputs
-    # to the function, not captured inputs.
-    graph_variables = list(func_graph._watched_variables)  # pylint: disable=protected-access
-    arg_variables = object_identity.ObjectIdentitySet()
     inputs = []
     for arg in composite_tensor_utils.flatten_with_variables([func_args,
                                                               func_kwargs]):
@@ -1258,11 +1215,9 @@ def func_graph_from_py_func(name,
         resource_placeholder = func_graph.pop_capture(arg.handle)
         if resource_placeholder is None:
           continue
-        arg_variables.add(arg)
         inputs.append(resource_placeholder)
       elif isinstance(arg, ops.Tensor):
         inputs.append(arg)
-    variables = [v for v in graph_variables if v not in arg_variables]
     func_graph.inputs = (
         inputs + func_graph.internal_captures + nest.flatten(
             func_graph.deferred_internal_captures, expand_composites=True))
@@ -1273,7 +1228,7 @@ def func_graph_from_py_func(name,
         for x in flatten(func_graph.structured_outputs)
         if x is not None)
 
-    func_graph.variables = variables
+    func_graph.variables = func_graph._watched_variables  # pylint: disable=protected-access
 
   if add_control_dependencies:
     func_graph.control_outputs.extend(deps_control_manager.ops_which_must_run)

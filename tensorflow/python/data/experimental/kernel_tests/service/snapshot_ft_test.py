@@ -15,6 +15,7 @@
 """Fault tolerance tests for tf.data service snapshots."""
 import os
 import tempfile
+import time
 
 from absl.testing import parameterized
 
@@ -25,11 +26,32 @@ from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import combinations
 from tensorflow.python.platform import test
 
+# Enum value for `SnapshotStreamInfo` states.
+_ORPHAN = 2
+_DONE = 4
+
 
 def write_file(path):
   os.makedirs(os.path.dirname(path), exist_ok=True)
   with open(path, "w") as _:
     pass
+
+
+def get_stream_assignment(cluster, worker_idx, snapshot_idx=0):
+  while not cluster.workers[worker_idx].snapshot_task_progresses():
+    time.sleep(0.1)
+  return (
+      cluster.workers[worker_idx]
+      .snapshot_task_progresses()[snapshot_idx]
+      .snapshot_task_stream_index
+  )
+
+
+def get_stream_assignments(cluster, n, snapshot_idx=0):
+  assignments = {}
+  for i in range(n):
+    assignments[i] = get_stream_assignment(cluster, i, snapshot_idx)
+  return assignments
 
 
 class SnapshotFtTest(data_service_test_base.TestBase, parameterized.TestCase):
@@ -43,9 +65,12 @@ class SnapshotFtTest(data_service_test_base.TestBase, parameterized.TestCase):
 
   # This "manual" setup function is needed due to some bad interaction between
   # `setUp` and `combinations` that causes the dataset to be out-of-scope.
-  def setup(self):
-    ds = dataset_ops.Dataset.range(10)
-    cluster = data_service_test_base.TestCluster(num_workers=1)
+  # It additionally can't take in a `Dataset` as input.
+  def setup(self, num_workers=1, ds_size=10, num_sources=1):
+    ds = dataset_ops.Dataset.range(ds_size)
+    if num_sources > 1:
+      ds = dataset_ops.Dataset.zip((ds,) * num_sources)
+    cluster = data_service_test_base.TestCluster(num_workers=num_workers)
     distributed_save_op.distributed_save(
         ds, self._path, cluster.dispatcher_address()
     )
@@ -164,6 +189,40 @@ class SnapshotFtTest(data_service_test_base.TestBase, parameterized.TestCase):
     write_file(os.path.join(self.source_dir(stream_idx=1), "split_0_1"))
     with self.assertRaisesRegex(ValueError, "found duplicate global"):
       cluster.restart_dispatcher()
+
+  @combinations.generate(test_base.eager_only_combinations())
+  def testWorkersRetainStreamAssignmentsAfterDispatcherRestart(self):
+    n = 5
+    cluster, _ = self.setup(num_workers=n, ds_size=10000)
+    assignments = get_stream_assignments(cluster, n)
+    cluster.restart_dispatcher()
+    while len(cluster.snapshot_streams(self._path)) != n:
+      time.sleep(0.1)
+    for i in range(n):
+      self.assertEqual(get_stream_assignment(cluster, i), assignments[i])
+
+  @combinations.generate(test_base.eager_only_combinations())
+  def testOrphanGetsReassigned(self):
+    n = 5
+    cluster, _ = self.setup(num_workers=n, ds_size=10000)
+    assignments = get_stream_assignments(cluster, n)
+    cluster.stop_worker(0)
+    while cluster.snapshot_streams(self._path)[assignments[0]].state != _ORPHAN:
+      time.sleep(0.1)
+    cluster.add_worker(start=True)
+    self.assertEqual(get_stream_assignment(cluster, n), assignments[0])
+
+  @combinations.generate(test_base.eager_only_combinations())
+  def testLargeMultiSourceSnapshotRecoversAndCompletes(self):
+    n = 5
+    cluster, _ = self.setup(num_workers=n, ds_size=10000, num_sources=3)
+    cluster.restart_dispatcher()
+    streams = lambda: cluster.snapshot_streams(self._path)
+    while len(streams()) != n or any(
+        stream.state != _DONE for stream in streams()
+    ):
+      time.sleep(0.1)
+    self.assertTrue(os.path.exists(os.path.join(self._path, "DONE")))
 
 
 if __name__ == "__main__":

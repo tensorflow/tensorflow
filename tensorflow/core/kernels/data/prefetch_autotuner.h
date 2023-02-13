@@ -16,9 +16,6 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_KERNELS_DATA_PREFETCH_AUTOTUNER_H_
 #define TENSORFLOW_CORE_KERNELS_DATA_PREFETCH_AUTOTUNER_H_
 
-#include <optional>
-
-#include "tensorflow/core/platform/mem.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
@@ -42,33 +39,13 @@ namespace data {
 // PrefetchAutotuner is NOT thread safe.
 class PrefetchAutotuner {
  public:
-  // The autotuner is enabled if the `initial_buffer_size` is `AUTOTUNE`. It is
-  // disabled otherwise.
   explicit PrefetchAutotuner(int64_t initial_buffer_size,
                              int64_t buffer_size_min);
 
-  // Returns the upper limit of the buffer size, i.e. the number of buffer
-  // elements the buffer is allowed to hold.
   int64_t buffer_limit() const { return buffer_limit_; }
-  // Returns the element size in bytes.
-  int64_t element_size() const {
-    return element_size_bytes_.has_value() ? element_size_bytes_.value() : 0;
-  }
-  // Records the size of each element used to compute the max buffer size.
-  void RecordElementSize(int64_t element_size_bytes) {
-    element_size_bytes_ = element_size_bytes;
-  }
-  // Tells the autotuner the `current_buffer_size`. The autotuner uses this
-  // information to monitor the ongoing values of the buffer size and increases
-  // its limit if necessary up to the `free_memory_bytes`.
-  void RecordConsumption(size_t current_buffer_size,
-                         std::optional<int64_t> free_memory_bytes);
-  void RecordConsumption(size_t current_buffer_size) {
-    RecordConsumption(current_buffer_size, std::nullopt);
-  }
-  // Tells the autotuner that the buffer is empty. This may trigger the
-  // autotuner to increase its buffer limit.
-  void RecordEmpty() { RecordConsumption(0, port::GetMemoryInfo().free); }
+
+  void RecordConsumption(size_t current_buffer_size);
+  void RecordEmpty() { RecordConsumption(0); }
 
  private:
   // PrefetchAutotuner operates as a state machine.
@@ -85,12 +62,7 @@ class PrefetchAutotuner {
     kDownswing,
   };
 
-  // This is the upper limit of the buffer size.
   int64_t buffer_limit_;
-  // This is the size of each element in the buffer in bytes.
-  std::optional<int64_t> element_size_bytes_;
-
-  // Operating mode/state of the autotuner.
   Mode mode_ = Mode::kDisabled;
 };
 

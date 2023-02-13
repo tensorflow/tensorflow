@@ -18,6 +18,7 @@ import os
 from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_conversion_registry
 from tensorflow.python.lib.io import file_io
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import resource_variable_ops
@@ -111,5 +112,5 @@ class Asset(base.Trackable):
     return [self.asset_path]
 
 
-ops.register_tensor_conversion_function(
+tensor_conversion_registry.register_tensor_conversion_function(
     Asset, lambda asset, **kw: ops.convert_to_tensor(asset.asset_path, **kw))

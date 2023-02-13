@@ -36,14 +36,22 @@ xla_cc_binary(
 
 cc_library(
     name = "bisect_lib",
-    srcs = ["bisect_lib.cc"],
-    hdrs = ["bisect_lib.h"],
+    srcs = [
+        "bisect_lib.cc",
+        "test_passes.cc",
+    ],
+    hdrs = [
+        "bisect_lib.h",
+        "test_passes.h",
+    ],
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/compiler/xla/mlir/tools/mlir_replay/public:execution_trace_proto_cc",
         "//tensorflow/compiler/xla/mlir/tools/mlir_replay/public:execution_trace_proto_cc_impl",
         "//tensorflow/compiler/xla/mlir/tools/mlir_replay/public:execution_trace_utils",
         "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:LinalgDialect",
+        "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Support",
     ],
 )

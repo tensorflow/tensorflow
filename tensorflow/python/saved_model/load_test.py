@@ -1215,7 +1215,9 @@ class LoadTest(test.TestCase, parameterized.TestCase):
 
     imported = cycle(root, cycles, use_cpp_bindings=use_cpp_bindings)
 
-    with self.assertRaisesRegex(ValueError, "Python inputs incompatible"):
+    with self.assertRaisesRegex(
+        TypeError, "Binding inputs to tf.function `f` failed"
+    ):
       # We cannot call the function with a constant of shape ().
       imported.f(constant_op.constant(2)).numpy()
 
@@ -1747,8 +1749,9 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     self.assertIn(expected_message, logs.output)
 
     loaded_signature = imported.signatures["serving_default"].inputs
-    self.assertEqual("a_b:0", loaded_signature[0].name)
-    self.assertEqual("a_d:0", loaded_signature[1].name)
+    self.assertTrue(
+        {"a_b:0", "a_d:0"}.issubset({arg.name for arg in loaded_signature}),
+    )
 
   def test_multiple_argument_signatures_no_positional(
       self, cycles, use_cpp_bindings

@@ -19,6 +19,7 @@ import functools
 import os
 import sys
 
+from tensorflow.core.function.capture import restore_captures
 from tensorflow.core.protobuf import graph_debug_info_pb2
 from tensorflow.python.checkpoint import checkpoint
 from tensorflow.python.checkpoint import checkpoint_options
@@ -369,7 +370,7 @@ class Loader(object):
     concrete_function = self._concrete_functions[concrete_function_name]
     proto = self._proto.concrete_functions[concrete_function_name]
     inputs = [nodes[node_id] for node_id in proto.bound_inputs]
-    function_saved_model_utils.restore_captures(concrete_function, inputs)
+    restore_captures.restore_captures(concrete_function, inputs)
 
   def _initialize_loaded_nodes(self):
     nodes = {}

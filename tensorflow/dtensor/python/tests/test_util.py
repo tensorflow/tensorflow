@@ -34,6 +34,7 @@ from tensorflow.dtensor.python import numpy_util
 from tensorflow.dtensor.python.config import is_gpu_present  # pylint: disable=unused-import
 from tensorflow.dtensor.python.config import is_tpu_present  # pylint: disable=unused-import
 from tensorflow.dtensor.python.config import preferred_device_type  # pylint: disable=unused-import
+from tensorflow.dtensor.python.tests.test_backend_name import DTENSOR_TEST_UTIL_BACKEND
 from tensorflow.dtensor.python.tests.test_backend_name import DTensorTestUtilBackend
 from tensorflow.dtensor.python.tests.test_backend_util import DTensorTestBackendConfigurator
 from tensorflow.python.compat import v2_compat
@@ -52,8 +53,18 @@ DEFAULT_TOL = 1e-5
 _DEFAULT_GPU_MEMORY_LIMIT = 200  # MB
 
 
-DTENSOR_TEST_UTIL_BACKEND = DTensorTestUtilBackend(
-    os.getenv('DTENSOR_TEST_UTIL_BACKEND', default='unspecified'))
+def get_use_xla_spmd(device_type):
+  """Returns True when device_type is TPU and environment variable is set.
+
+  Args:
+    device_type: A str representing the type of device on the mesh.
+
+  Returns:
+    bool: True when device_type is TPU and environment variable is set.
+  """
+  return device_type == 'TPU' and bool(
+      os.environ.get('DTENSOR_TEST_USE_XLA_SPMD', 'False')
+  )
 
 
 def create_device_ids_array(shape):
@@ -98,8 +109,8 @@ def reset_logical_devices(device_type, count):
                      '%s' % device_type)
 
   if count < len(devices):
-    raise ValueError(f'Cannot set {count} logical devices, which is '
-                     f'less than ({len(devices)}) physical devices.')
+    devices = devices[:count]
+    tf_config.set_visible_devices(devices, device_type=device_type.upper())
 
   for i, device in enumerate(devices):
     n = (i + 1) * count // len(devices) - i * count // len(devices)

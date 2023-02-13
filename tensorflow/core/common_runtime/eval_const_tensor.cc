@@ -16,12 +16,6 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/eval_const_tensor.h"
 
 #include <deque>
-#include <limits>
-#include <memory>
-#include <unordered_map>
-#include <unordered_set>
-#include <utility>
-#include <vector>
 
 #include "tensorflow/core/common_runtime/graph_runner.h"
 #include "tensorflow/core/common_runtime/shape_refiner.h"
@@ -336,7 +330,7 @@ Status ExtractConstantSubgraph(
     bool recursed = false;
   };
 
-  std::unordered_map<const Node*, NodeAndRecursed> old_to_new_and_recursed;
+  std::map<const Node*, NodeAndRecursed> old_to_new_and_recursed;
   Node* target_node_copy = out_graph->CopyNode(&target_node);
   old_to_new_and_recursed[&target_node].new_node = target_node_copy;
   old_to_new_and_recursed[&target_node].recursed = true;
@@ -416,13 +410,8 @@ Status ExtractConstantSubgraph(
             // computable, shape refiner will re-run the shape inference for
             // this function with this tensor's value.
             outer_context->request_input_tensor(index);
-            // SUBTLE: Even though the subgraph cannot be fully folded just yet,
-            // we do not return right away and keep traversing to attend and
-            // request all reachable Arg nodes. Otherwise, the shape refiner
-            // might have to rerun expensive shape inference for every
-            // unattended Arg node.
             *is_constant_graph = false;
-            continue;
+            return OkStatus();
           }
         }
       } else if (!current_node->IsConstant()) {
@@ -577,7 +566,8 @@ Status EvaluateConstantTensor(OutputTensor tensor, const ShapeRefiner& refiner,
 
   std::unique_ptr<GraphRunner> graph_runner_storage;
   if (graph_runner == nullptr) {
-    graph_runner_storage = std::make_unique<GraphRunner>(Env::Default());
+    // TODO(skyewm): Convert to std::make_unique when available.
+    graph_runner_storage.reset(new GraphRunner(Env::Default()));
     graph_runner = graph_runner_storage.get();
   }
 

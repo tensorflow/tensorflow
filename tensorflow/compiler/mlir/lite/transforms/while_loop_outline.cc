@@ -79,8 +79,10 @@ bool IsAlreadyOutlined(WhileOp while_op) {
 
 bool IsCompatibleTypeWithTFLCastOp(Type type) {
   auto elemType = getElementTypeOrSelf(type);
-  // F32 and BF16 types are allowed.
-  if (elemType.isBF16() || elemType.isF32()) return true;
+  // F16, F32, F64, BF16 types are allowed.
+  if (elemType.isBF16() || elemType.isF16() || elemType.isF32() ||
+      elemType.isF64())
+    return true;
 
   // I1, I8 I16, I32, I64 types are allowed.
   if (elemType.isInteger(1) || elemType.isInteger(8) ||

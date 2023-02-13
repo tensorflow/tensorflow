@@ -17,13 +17,14 @@ limitations under the License.
 
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/dtensor/cc/parallel_executor.h"
+#include "tensorflow/tsl/platform/statusor.h"
 
 namespace tensorflow {
 namespace dtensor {
 
-std::unique_ptr<ParallelExecutor> CreateDefaultParallelExecutor() {
+StatusOr<std::unique_ptr<ParallelExecutor>> CreateDefaultParallelExecutor() {
   LOG(ERROR) << __func__ << " not implemented.";
-  return nullptr;
+  return std::unique_ptr<ParallelExecutor>();
 }
 
 }  // namespace dtensor

@@ -178,6 +178,8 @@ class DataServiceDispatcherImpl {
   Status Snapshot(const SnapshotRequest* request, SnapshotResponse* response);
   Status GetSnapshotSplit(const GetSnapshotSplitRequest* request,
                           GetSnapshotSplitResponse* response);
+  Status GetSnapshotStreams(const GetSnapshotStreamsRequest* request,
+                            GetSnapshotStreamsResponse* response);
 
   // Exports the dispatcher state for debugging.
   DispatcherStateExport ExportState() const;

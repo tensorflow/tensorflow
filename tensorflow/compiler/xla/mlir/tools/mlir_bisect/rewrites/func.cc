@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include <functional>
+#include <iterator>
 #include <utility>
 
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
@@ -24,6 +25,13 @@ namespace mlir {
 namespace bisect {
 namespace {
 
+void SetReturnValues(func::FuncOp func, ValueRange values) {
+  // We only operate on functions without arguments.
+  func.setFunctionType(mlir::FunctionType::get(func.getContext(), /*inputs=*/{},
+                                               values.getTypes()));
+  func.getBody().getBlocks().front().getTerminator()->setOperands(values);
+}
+
 SmallVector<OwningOpRef<ModuleOp>> TruncateFunction(BisectState&,
                                                     func::FuncOp func) {
   SmallVector<OwningOpRef<ModuleOp>> result;
@@ -32,19 +40,35 @@ SmallVector<OwningOpRef<ModuleOp>> TruncateFunction(BisectState&,
         ret.getResults()) {
       continue;
     }
-    auto [module_clone, ret_clone] = CloneModuleFor(&ret);
-    auto func_clone = ret_clone->getParentOfType<func::FuncOp>();
-    // We only operate on functions without arguments.
-    func_clone.setFunctionType(mlir::FunctionType::get(
-        func_clone.getContext(), /*inputs=*/{}, ret_clone->getResultTypes()));
-    func_clone.getBody().getBlocks().front().getTerminator()->setOperands(
-        ret_clone->getResults());
-    result.push_back(std::move(module_clone));
+    auto [module, ret_clone] = CloneModuleFor(&ret);
+    SetReturnValues(ret_clone->getParentOfType<func::FuncOp>(),
+                    ret_clone->getResults());
+    result.push_back(std::move(module));
   }
   return result;
 }
 
+SmallVector<OwningOpRef<ModuleOp>> ReturnOperandsOfTerminatorOperands(
+    BisectState&, func::FuncOp func) {
+  SmallVector<OwningOpRef<ModuleOp>> result;
+  auto [module, func_clone] = CloneModuleFor(func);
+  auto* terminator = func_clone.getBody().getBlocks().front().getTerminator();
+  SmallVector<Value> new_operands;
+  for (auto operand : terminator->getOperands()) {
+    if (operand.getDefiningOp()) {
+      llvm::copy(operand.getDefiningOp()->getOperands(),
+                 std::back_inserter(new_operands));
+    } else {
+      return result;
+    }
+  }
+  SetReturnValues(func_clone, new_operands);
+  result.push_back(std::move(module));
+  return result;
+}
+
 REGISTER_MLIR_REDUCE_STRATEGY(TruncateFunction);
+REGISTER_MLIR_REDUCE_STRATEGY(ReturnOperandsOfTerminatorOperands);
 
 }  // namespace
 }  // namespace bisect

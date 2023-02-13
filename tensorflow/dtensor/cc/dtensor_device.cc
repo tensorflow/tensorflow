@@ -67,6 +67,7 @@ limitations under the License.
 #include "tensorflow/core/graph/algorithm.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/lib/strings/proto_serialization.h"
+#include "tensorflow/core/platform/casts.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/fingerprint.h"
 #include "tensorflow/core/platform/types.h"
@@ -82,19 +83,24 @@ limitations under the License.
 #include "tensorflow/dtensor/cc/tpu_system_interface.h"
 #include "tensorflow/dtensor/proto/layout.pb.h"
 #include "tensorflow/tsl/platform/status.h"
+#include "tensorflow/tsl/platform/statusor.h"
+#include "tensorflow/tsl/util/env_var.h"
 
 namespace tensorflow {
 namespace dtensor {
 
 class DTensorDevice {
  public:
-  explicit DTensorDevice(absl::string_view name)
-      : name_(name),
-        same_shape_policy_enabled_(false),
-        cancellation_manager_(std::make_unique<CancellationManager>()) {
-    // FIXME(b/258703996): Use tsl.
-    if (getenv("DTENSOR_USE_PARALLEL_EXECUTOR") != nullptr) {
-      parallel_executor_ = CreateDefaultParallelExecutor();
+  static StatusOr<DTensorDevice*> Create(absl::string_view name) {
+    std::string use_parallel_executor;
+    TF_RETURN_IF_ERROR(tsl::ReadStringFromEnvVar(
+        "DTENSOR_USE_PARALLEL_EXECUTOR", "", &use_parallel_executor));
+    if (use_parallel_executor.empty()) {
+      return new DTensorDevice(name, nullptr);
+    } else {
+      TF_ASSIGN_OR_RETURN(auto parallel_executor,
+                          CreateDefaultParallelExecutor());
+      return new DTensorDevice(name, std::move(parallel_executor));
     }
   }
 
@@ -300,6 +306,13 @@ class DTensorDevice {
                                  TF_Status* status);
 
  private:
+  DTensorDevice(absl::string_view name,
+                std::unique_ptr<ParallelExecutor> parallel_executor)
+      : name_(name),
+        same_shape_policy_enabled_(false),
+        cancellation_manager_(std::make_unique<CancellationManager>()),
+        parallel_executor_(std::move(parallel_executor)) {}
+
   // If the `operation_name` of an op indicates a custom DTensor op then
   // separately handle those custom ops instead of running default DTensor graph
   // compilation.
@@ -676,7 +689,7 @@ std::vector<TFE_TensorHandle*> DTensorDevice::Unpack(TFE_Context* context,
       TFE_TensorHandleDevicePointer(input, status));
   if (TF_GetCode(status) != TF_OK) return outputs;
 
-  if (is_remote_mesh(t->mesh().mesh_config())) {
+  if (is_remote_mesh(t->mesh())) {
     TF_SetStatus(status, TF_UNIMPLEMENTED,
                  "DTensorUnpack is not supported on a remote mesh.");
     return outputs;
@@ -816,8 +829,9 @@ TFE_TensorHandle* DTensorDevice::Pack(TFE_Context* context, int num_inputs,
       component_shape.push_back(TFE_TensorHandleDim(inputs[0], i, status));
       if (TF_GetCode(status) != TF_OK) return nullptr;
     }
-    packed_tensor = TensorWithLayout::Dummy(
-        component_shape, dtype, *target_parallel_device, *target_layout);
+    packed_tensor = CreateDummyTensorWithLayout(
+        component_shape, dtype, target_parallel_device->mesh_config(),
+        *target_layout);
 
   } else {
     auto local_devices = target_parallel_device->mesh_config().local_devices();
@@ -874,10 +888,10 @@ TFE_TensorHandle* DTensorDevice::Pack(TFE_Context* context, int num_inputs,
       return nullptr;
     }
 
-    packed_tensor =
-        TensorWithLayout::Wrap(std::move(parallel_tensor),
-                               *target_parallel_device, *target_layout)
-            .value();
+    packed_tensor = CreateTensorWithLayout(
+                        std::move(parallel_tensor),
+                        target_parallel_device->mesh_config(), *target_layout)
+                        .value();
   }
 
   RecordInShapeLayoutCache(*packed_tensor);
@@ -966,7 +980,8 @@ TFE_TensorHandle* DTensorDevice::SparsePack(
   if (is_remote_mesh(target_parallel_device->mesh_config())) {
     // Create a dummy SparseTensorWithLayout.
     packed_tensor = SparseTensorWithLayout::Dummy(
-        local_shape, *target_parallel_device, target_layout.value());
+        local_shape, target_parallel_device->mesh_config(),
+        target_layout.value());
   } else {
     // Parse the indices, values, and dense_shape tensors and put them into
     // parallel tensors, and then pack it into a single SparseTensorWithLayout.
@@ -1021,7 +1036,7 @@ TFE_TensorHandle* DTensorDevice::SparsePack(
         SparseTensorWithLayout::Wrap(std::move(parallel_indices_tensor),
                                      std::move(parallel_values_tensor),
                                      std::move(parallel_dense_shapes_tensor),
-                                     *target_parallel_device,
+                                     target_parallel_device->mesh_config(),
                                      target_layout.value(), local_shape)
             .value();
   }
@@ -1561,6 +1576,12 @@ void DTensorDevice::ExecuteRegularOperation(
     return;
   }
 
+  std::vector<TensorWithLayoutTf*> inputs_tf;
+  inputs_tf.reserve(inputs.size());
+  for (const auto& input : inputs) {
+    inputs_tf.push_back(down_cast<TensorWithLayoutTf*>(input));
+  }
+
   const ExecutionFunctions* execution_functions = nullptr;
   ModuleToExecutionFunctions(context, inputs, doperation, eager_attributes,
                              *num_outputs, lowering_context,
@@ -1663,7 +1684,7 @@ void DTensorDevice::ExecuteRegularOperation(
 
   if (load_embedding_ptr != nullptr) {
     StatusOr<std::vector<parallel_device::ParallelTensor*>> parallel_inputs =
-        PrepareEmbeddingInputs(inputs);
+        PrepareEmbeddingInputs(inputs_tf);
     if (!parallel_inputs.ok()) {
       RETURN_STATUS(status, TF_INTERNAL,
                     parallel_inputs.status().error_message().c_str());
@@ -1683,7 +1704,7 @@ void DTensorDevice::ExecuteRegularOperation(
   std::vector<parallel_device::ParallelTensor*> global_parallel_inputs;
   std::vector<parallel_device::ParallelTensor*> global_parallel_sparse_inputs;
   absl::flat_hash_set<int> global_sparse_input_indices;
-  for (auto input : inputs) {
+  for (auto input : inputs_tf) {
     if (input->tensor_type() == TensorType::kSparse) {
       SparseTensorWithLayout* sparse_input =
           dynamic_cast<SparseTensorWithLayout*>(input);
@@ -1780,9 +1801,9 @@ void DTensorDevice::ExecuteRegularOperation(
             std::vector<int64_t>(dim_sizes.begin(), dim_sizes.end());
         TF_DataType dtype =
             static_cast<TF_DataType>(function.output_dtypes.at(i));
-        auto remote_output =
-            TensorWithLayout::Dummy(local_shape, dtype, *parallel_device_mesh,
-                                    function.output_layouts[i]);
+        auto remote_output = CreateDummyTensorWithLayout(
+            local_shape, dtype, parallel_device_mesh->mesh_config(),
+            function.output_layouts[i]);
         output_with_layout.push_back(std::move(remote_output));
       }
     } else {
@@ -1811,8 +1832,8 @@ void DTensorDevice::ExecuteRegularOperation(
       for (int i = 0; i < result->size(); ++i) {
         ASSIGN_OR_RETURN_C_STATUS(
             auto local_output,
-            TensorWithLayout::Wrap(std::move((*result)[i]),
-                                   *parallel_device_mesh,
+            CreateTensorWithLayout(std::move((*result)[i]),
+                                   parallel_device_mesh->mesh_config(),
                                    function.output_layouts[i]),
             status);
         output_with_layout.push_back(std::move(local_output));
@@ -1823,9 +1844,12 @@ void DTensorDevice::ExecuteRegularOperation(
       // TODO(b/162744844): Generalize this pattern so that the extraction is
       // not special cased.
       if (function.shape_output_metadata.find(i) !=
-          function.shape_output_metadata.end()) {
-        output_with_layout[i]->set_input_layout_for_shape_op_result(
-            function.shape_output_metadata.at(i));
+              function.shape_output_metadata.end() &&
+          output_with_layout[i]->const_value_node() != nullptr) {
+        output_with_layout[i]
+            ->const_value_node()
+            ->set_input_layout_for_shape_op_result(
+                function.shape_output_metadata.at(i));
       }
 
       RecordInShapeLayoutCache(*output_with_layout[i]);
@@ -1955,12 +1979,14 @@ void DTensorDevice::Execute(const TFE_Op* original_op, int* num_outputs,
       input_meshes.insert(t->layout().mesh());
     }
     // Remote mesh inputs are not able to be read and evaluated.
-    if (!is_remote_mesh(t->layout().mesh()) && !t->const_value().has_value()) {
+    if (!is_remote_mesh(t->layout().mesh()) &&
+        t->const_value_node() != nullptr &&
+        !t->const_value_node()->const_value().has_value()) {
       std::optional<NodeDef> const_value =
           ExtractSmallTensorValue(context, input, t->layout(), status);
       if (TF_GetCode(status) != TF_OK) return;
       if (const_value.has_value()) {
-        t->set_const_value(const_value.value());
+        t->const_value_node()->set_const_value(const_value.value());
       }
     }
     typed_inputs[j] = t;
@@ -1986,8 +2012,9 @@ void DTensorDevice::Execute(const TFE_Op* original_op, int* num_outputs,
     TF_DataType dtype = TFE_TensorHandleDataType(input);
     const bool small_int_tensor = num_elements < kSmallTensorThreshold &&
                                   (dtype == TF_INT32 || dtype == TF_INT64);
-    // Only allow large constant autobroadcast for CopyToMesh op.
-    if (operation_name != std::string("CopyToMesh") &&
+    // Only allow large constant autobroadcast for CopyToMesh and Relayout ops.
+    if ((operation_name != std::string("CopyToMesh") &&
+         operation_name != std::string("Relayout")) &&
         !(num_dims == 0 || dtype == TF_STRING || small_int_tensor)) {
       std::vector<int64_t> tensor_shape(TensorShapeAsVector(input, status));
       if (TF_GetCode(status) != TF_OK) return;
@@ -2009,12 +2036,13 @@ void DTensorDevice::Execute(const TFE_Op* original_op, int* num_outputs,
     // vector, whereas the input `TFE_TensorHandle`s maintain ownership for
     // inputs that already had layouts (and therefor had TensorWithLayout
     // objects).
-    std::unique_ptr<TensorWithLayout> wrapper = TensorWithLayout::Broadcast(
+    std::unique_ptr<TensorWithLayout> wrapper = TensorWithLayoutTf::Broadcast(
         context, input, *broadcast_mesh, name_, status);
     if (TF_GetCode(status) != TF_OK) return;
     if (!ShouldFoldInputArgument(dtensor_operation.name,
-                                 /*input_index=*/not_on_device_input_index)) {
-      wrapper->reset_const_value();
+                                 /*input_index=*/not_on_device_input_index) &&
+        wrapper->const_value_node() != nullptr) {
+      wrapper->const_value_node()->reset_const_value();
     }
     typed_inputs[not_on_device_input_index] = wrapper.get();
     inputs_with_no_layout.emplace_back(wrapper.release());
@@ -2059,7 +2087,7 @@ TFE_TensorHandle* CopyFromDTensorDevice(TFE_Context* context,
 
     return nullptr;
   }
-  if (typed_input->tensor()->dtype() == TF_RESOURCE) {
+  if (typed_input->dtype() == TF_RESOURCE) {
     TF_SetStatus(status, TF_UNIMPLEMENTED,
                  "Trying to copy a DTensor resource handle is not supported.");
     return nullptr;
@@ -2142,13 +2170,25 @@ bool PinToDTensorDevice(const TFE_Op* op, TF_Status* s) {
 }
 
 void AllocateDTensorDevice(absl::string_view device_name,
-                           TFE_CustomDevice* device, void** device_info) {
+                           TFE_CustomDevice* device, void** device_info,
+                           TF_Status* status) {
+  DTensorDevice* dtensor_device = nullptr;
+  if (status) {
+    ASSIGN_OR_RETURN_C_STATUS(dtensor_device,
+                              DTensorDevice::Create(device_name), status);
+  } else {
+    // TODO(b/268241383): Remove this branch.
+    auto device_status = DTensorDevice::Create(device_name);
+    TF_CHECK_OK(device_status.status());
+    dtensor_device = device_status.value();
+  }
+
   device->copy_tensor_to_device = &CopyToDTensorDevice;
   device->copy_tensor_from_device = &CopyFromDTensorDevice;
   device->delete_device = &DeleteDTensorDevice;
   device->execute = &ExecuteOnDTensorDevice;
   device->shall_pin_to_this_device = &PinToDTensorDevice;
-  *device_info = new DTensorDevice(device_name);
+  *device_info = dtensor_device;
 }
 
 void AddMesh(const std::string& serialized_mesh, void* device_info,

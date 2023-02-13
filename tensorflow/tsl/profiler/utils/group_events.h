@@ -31,6 +31,7 @@ limitations under the License.
 #include "tensorflow/tsl/platform/logging.h"
 #include "tensorflow/tsl/platform/types.h"
 #include "tensorflow/tsl/profiler/protobuf/xplane.pb.h"
+#include "tensorflow/tsl/profiler/utils/xplane_builder.h"
 #include "tensorflow/tsl/profiler/utils/xplane_visitor.h"
 
 namespace tsl {
@@ -226,6 +227,24 @@ void GroupTfEvents(tensorflow::profiler::XSpace* space);
 
 // Returns true if the given space has TF's loop ops.
 bool CheckLoopOp(const tensorflow::profiler::XSpace& space);
+
+// Adds step names from GroupMetadataMap to "Steps" line in plane.
+// The event name is updated when converted to trace events.
+void AddGroupMetadataToStepEvents(const GroupMetadataMap& group_metadata_map,
+                                  XLineBuilder& line);
+
+void GroupHostAndPlanes(
+    tensorflow::profiler::XSpace* space,
+    const std::vector<tensorflow::profiler::XPlane*>& device_traces,
+    EventForest* event_forest);
+
+void GroupXplaneEvents(tensorflow::profiler::XPlane* plane,
+                       const GroupMetadataMap& group_metadata_map);
+
+void GroupTpuEventsOSS(
+    tensorflow::profiler::XSpace* space,
+    const std::vector<tensorflow::profiler::XPlane*>& device_traces,
+    EventForest* event_forest);
 
 }  // namespace profiler
 }  // namespace tsl

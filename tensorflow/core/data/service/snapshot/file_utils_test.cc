@@ -27,12 +27,19 @@ limitations under the License.
 #include "tensorflow/tsl/platform/errors.h"
 #include "tensorflow/tsl/platform/path.h"
 #include "tensorflow/tsl/platform/status.h"
+#include "tensorflow/tsl/platform/status_matchers.h"
 #include "tensorflow/tsl/platform/statusor.h"
 #include "tensorflow/tsl/platform/test.h"
+#include "tensorflow/tsl/protobuf/error_codes.pb.h"
 
 namespace tensorflow {
 namespace data {
 namespace {
+
+using ::testing::ElementsAre;
+using ::testing::IsEmpty;
+using tsl::testing::IsOkAndHolds;
+using tsl::testing::StatusIs;
 
 tsl::StatusOr<std::string> CreateTestDirectory() {
   std::string directory;
@@ -99,6 +106,27 @@ TEST(FileUtilsTest, AtomicallyWriteTFRecord) {
   TF_ASSERT_OK(reader.Initialize(tsl::Env::Default()));
   TF_ASSERT_OK(reader.ReadTensors(&in));
   EXPECT_EQ(out.DebugString(), in.front().DebugString());
+}
+
+TEST(FileUtilsTest, GetChildren) {
+  TF_ASSERT_OK_AND_ASSIGN(std::string directory, CreateTestDirectory());
+  std::string test_file = tsl::io::JoinPath(directory, "test_file");
+  TF_ASSERT_OK(AtomicallyWriteStringToFile(test_file, "", tsl::Env::Default()));
+  std::string tmp_file = tsl::io::JoinPath(directory, "test_file.tmp");
+  TF_ASSERT_OK(AtomicallyWriteStringToFile(tmp_file, "", tsl::Env::Default()));
+  EXPECT_THAT(GetChildren(directory, tsl::Env::Default()),
+              IsOkAndHolds(ElementsAre("test_file")));
+}
+
+TEST(FileUtilsTest, GetChildrenEmptyDirectory) {
+  TF_ASSERT_OK_AND_ASSIGN(std::string empty_directory, CreateTestDirectory());
+  EXPECT_THAT(GetChildren(empty_directory, tsl::Env::Default()),
+              IsOkAndHolds(IsEmpty()));
+}
+
+TEST(FileUtilsTest, GetChildrenDirectoryNotFound) {
+  EXPECT_THAT(GetChildren("Not exist", tsl::Env::Default()),
+              StatusIs(tsl::error::NOT_FOUND));
 }
 
 }  // namespace

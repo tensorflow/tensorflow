@@ -591,6 +591,14 @@ static bool AllOptionalShardingsAreSet(
                       });
 }
 
+static bool SomeOptionalShardingsAreSet(
+    llvm::ArrayRef<std::optional<xla::OpSharding>> shardings) {
+  return llvm::any_of(shardings,
+                      [](const std::optional<xla::OpSharding>& sharding) {
+                        return sharding.has_value();
+                      });
+}
+
 // Extracts argument and result shardings from function.
 static void ExtractShardingsFromFunction(
     mlir::func::FuncOp function,
@@ -2665,7 +2673,7 @@ LogicalResult ConvertToHloModule::Lower(
     // returned, then return it directly, else create a tuple and return.
     unsigned num_return_values = inst->getNumOperands();
     const bool has_ret_shardings =
-        !ret_shardings.empty() && AllOptionalShardingsAreSet(ret_shardings);
+        !ret_shardings.empty() && SomeOptionalShardingsAreSet(ret_shardings);
     if ((return_tuple_ && is_entry_function) || num_return_values != 1) {
       std::vector<xla::XlaOp> returns(num_return_values);
       for (OpOperand& ret : inst->getOpOperands()) {
@@ -2693,7 +2701,13 @@ LogicalResult ConvertToHloModule::Lower(
         xla::OpSharding sharding;
         sharding.set_type(xla::OpSharding::TUPLE);
         for (auto& ret_sharding : ret_shardings)
-          *sharding.add_tuple_shardings() = *ret_sharding;
+          if (ret_sharding) {
+            *sharding.add_tuple_shardings() = *ret_sharding;
+          } else {
+            xla::OpSharding fallback_sharding;
+            fallback_sharding.set_type(xla::OpSharding::REPLICATED);
+            *sharding.add_tuple_shardings() = fallback_sharding;
+          }
 
         builder->SetSharding(sharding);
       }
@@ -2821,16 +2835,19 @@ LogicalResult ConvertToHloModule::RunOnFunction(mlir::func::FuncOp f) {
     computation.mutable_proto()->mutable_computations(0)->set_execution_thread(
         execution_thread.str());
   }
-  for (int i = 0; i < f.getNumArguments(); ++i)
+  for (int i = 0; i < f.getNumArguments(); ++i) {
     if (auto pr =
-            f.getArgAttrOfType<mlir::ArrayAttr>(i, kParameterReplicationAttr))
+            f.getArgAttrOfType<mlir::ArrayAttr>(i, kParameterReplicationAttr)) {
       for (auto b : pr.getValue())
-        computation.mutable_proto()
-            ->mutable_computations(0)
-            ->mutable_instructions(i)
-            ->mutable_parameter_replication()
-            ->add_replicated_at_leaf_buffers(
-                b.cast<mlir::BoolAttr>().getValue());
+        for (auto& instr : *computation.mutable_proto()
+                                ->mutable_computations(0)
+                                ->mutable_instructions())
+          if (instr.parameter_number() == i)
+            instr.mutable_parameter_replication()
+                ->add_replicated_at_leaf_buffers(
+                    b.cast<mlir::BoolAttr>().getValue());
+    }
+  }
   lowered_computation_[f] = std::move(computation);
   return success();
 }

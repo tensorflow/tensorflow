@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/runtime/jit_executable.h"
 #include "tensorflow/compiler/xla/service/gpu/runtime/cholesky.h"
 #include "tensorflow/compiler/xla/service/gpu/runtime/conv.h"
+#include "tensorflow/compiler/xla/service/gpu/runtime/conv_reorder.h"
 #include "tensorflow/compiler/xla/service/gpu/runtime/cublas_lt_matmul.h"
 #include "tensorflow/compiler/xla/service/gpu/runtime/custom_call.h"
 #include "tensorflow/compiler/xla/service/gpu/runtime/fft.h"
@@ -87,6 +88,7 @@ void RegisterXlaGpuRuntimeCustomCalls(DirectCustomCallRegistry& registry) {
   RegisterCollectiveCustomCalls(registry);
   RegisterGemmCustomCalls(registry);
   RegisterConvCustomCalls(registry);
+  RegisterConvReorderCustomCalls(registry);
   RegisterMemcpyCustomCalls(registry);
   RegisterIoFeedCustomCalls(registry);
   RegisterMemsetCustomCalls(registry);
@@ -373,12 +375,13 @@ Status GpuRuntimeExecutable::Execute(
 #endif  // GOOGLE_CUDA
 
   // Initialize state required for running functions exported from FFI modules.
-  FfiStateVector ffi_state = ffi_modules_state_.state_vector();
+  absl::StatusOr<FfiStateVector> ffi_state = ffi_modules_state_.state_vector();
+  if (!ffi_state.ok()) return FromAbslStatus(ffi_state.status());
 
   // Pass auxiliary data to the custom call handlers.
   runtime::CustomCall::UserData user_data(
       run_options, &executable, &debug_options_, &temp_buffer, &asm_text,
-      &ffi_state, &binary, &kernels, &gemm_configs, &conv_runners,
+      &ffi_state.value(), &binary, &kernels, &gemm_configs, &conv_runners,
       &collectives_, &fft_plans, &send_recv_events,
 #if GOOGLE_CUDA
       // Auxiliary data that is available only if compiled with CUDA support.

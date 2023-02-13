@@ -150,7 +150,10 @@ py_strict_test(
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/eager:execute",
+        "//tensorflow/python/eager:remote",
         "//tensorflow/python/framework:constant_op",
+        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/framework:test_lib",
         "//tensorflow/python/platform:client_testlib",
     ],
 )

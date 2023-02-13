@@ -99,7 +99,7 @@ def initialize_tpu_system(cluster_resolver=None):
     job = "{}/replica:0/task:0".format(cluster_resolver.get_job_name())
 
   if context.executing_eagerly():
-    @function
+    @function(autograph=False)
     def _tpu_init_fn():
       # In TF1, we usually close chips when compilation fails to clear the data
       # in infeed. In TF2, we don't need to do this because infeed is no longer
@@ -121,7 +121,7 @@ def initialize_tpu_system(cluster_resolver=None):
           " tf.tpu.experimental.initialize_tpu_system requires tf.function to"
           " work. This primitive will override the disable."
       )
-    run_functions_eagerly(False)
+      run_functions_eagerly(False)
     try:
       with ops.device(tpu._tpu_system_device_name(job)):  # pylint: disable=protected-access
         output = _tpu_init_fn()
@@ -227,7 +227,7 @@ def shutdown_tpu_system(cluster_resolver=None):
       # avoid the output node match multiple devices error.
       job = "{}/replica:0/task:0".format(cluster_resolver.get_job_name())
 
-    @function
+    @function(autograph=False)
     def _tpu_shutdown_fn():
       tpu.shutdown_system(job=job)
 
@@ -242,7 +242,7 @@ def shutdown_tpu_system(cluster_resolver=None):
           " tf.tpu.experimental.shutdown_tpu_system requires tf.function to"
           " work. This primitive will override the disable."
       )
-    run_functions_eagerly(False)
+      run_functions_eagerly(False)
     try:
       with ops.device(tpu._tpu_system_device_name(job)):  # pylint: disable=protected-access
         _tpu_shutdown_fn()

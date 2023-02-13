@@ -41,6 +41,7 @@ limitations under the License.
 
 #include "tensorflow/lite/allocation.h"
 #include "tensorflow/lite/core/api/error_reporter.h"
+#include "tensorflow/lite/core/async/async_signature_runner.h"
 #include "tensorflow/lite/core/api/profiler.h"
 #include "tensorflow/lite/core/c/common.h"  // IWYU pragma: export
 #include "tensorflow/lite/core/subgraph.h"
@@ -343,6 +344,14 @@ class Interpreter {
   /// Note, the pointed instance has lifetime same as the Interpreter object
   /// and the SignatureRunner class is *not* thread-safe.
   SignatureRunner* GetSignatureRunner(const char* signature_key);
+
+  /// \warning Experimental interface, subject to change. \n
+  /// \brief Returns a pointer to the AsyncSignatureRunner instance to run the
+  /// part of the graph identified by a SignatureDef. The nullptr is returned if
+  /// the given signature key is not valid.
+  /// The async delegate should be applied before calling this function.
+  async::AsyncSignatureRunner* GetAsyncSignatureRunner(
+      const char* signature_key);
 
   /// \warning Experimental interface, subject to change. \n
   /// \brief Return the subgraph index that corresponds to a SignatureDef,
@@ -945,6 +954,12 @@ class Interpreter {
   // A SignatureRunner is basically a wrapper of the Subgraph corresponding to
   // its SignatureDef.
   std::map<std::string, SignatureRunner> signature_runner_map_;
+
+  // Map of signature key to its corresponding AsyncSignatureRunner object.
+  // An AsyncSignatureRunner is basically a wrapper of the AsyncSubgraph
+  // corresponding to its SignatureDef.
+  std::map<std::string, async::AsyncSignatureRunner>
+      async_signature_runner_map_;
 
   // Model metadata stored as mapping of name (key) to buffer (value).
   // Data is mapped from the Metadata in TFLite flatbuffer model.

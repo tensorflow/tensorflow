@@ -173,8 +173,6 @@ Status DataServiceDispatcherClient::GetSnapshotSplit(
     const std::string& worker_address, const std::string& base_path,
     int64_t stream_index, int64_t source_index, Tensor& split,
     int64_t& local_split_index, bool& end_of_splits) {
-  TF_RETURN_IF_ERROR(EnsureInitialized());
-
   GetSnapshotSplitRequest req;
   req.set_worker_address(worker_address);
   req.set_base_path(base_path);
@@ -187,15 +185,15 @@ Status DataServiceDispatcherClient::GetSnapshotSplit(
   if (!status.ok()) {
     return grpc_util::WrapError("Failed to get snapshot split", status);
   }
+  local_split_index = resp.local_split_index();
   end_of_splits = resp.end_of_splits();
   if (end_of_splits) {
     return OkStatus();
   }
-  if (!split.FromProto(resp.split().split())) {
+  if (!split.FromProto(resp.split())) {
     return errors::Internal("Failed to parse split tensor proto: ",
                             resp.split().DebugString());
   }
-  local_split_index = resp.split().local_split_index();
   return OkStatus();
 }
 

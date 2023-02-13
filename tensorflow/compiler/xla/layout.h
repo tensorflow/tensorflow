@@ -23,6 +23,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/inlined_vector.h"
+#include "tensorflow/compiler/xla/printer.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 
@@ -49,6 +50,8 @@ class Tile {
     return dimensions() == other.dimensions();
   }
   bool operator!=(const Tile& other) const { return !(*this == other); }
+
+  void Print(Printer* printer) const;
 
   std::string ToString() const;
 
@@ -114,6 +117,9 @@ class Layout {
 
   // Returns a LayoutProto representation of the Layout.
   LayoutProto ToProto() const;
+
+  // Prints a human-readable string that represents this layout.
+  void Print(Printer* printer) const;
 
   // Returns a human-readable string that represents this layout.
   std::string ToString() const;

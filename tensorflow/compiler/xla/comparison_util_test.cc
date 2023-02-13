@@ -24,12 +24,7 @@ limitations under the License.
 namespace xla {
 namespace {
 
-// Returns whether the members of `a` and `b` are equal.
-bool Equal(const Comparison& a, const Comparison& b) {
-  return a.GetDirection() == b.GetDirection() && a.GetType() == b.GetType() &&
-         a.GetPrimitiveType() == b.GetPrimitiveType() &&
-         a.GetOrder() == b.GetOrder();
-}
+using ::testing::Eq;
 
 TEST(Comparison, FloatsDefaultToPartialOrder) {
   EXPECT_EQ(
@@ -131,17 +126,17 @@ TEST(Comparison, TotalOrderAntiReflexivity) {
 }
 
 TEST(Comparison, Converse) {
-  EXPECT_TRUE(Equal(
+  EXPECT_THAT(
       Comparison(Comparison::Direction::kLe, PrimitiveType::S8).Converse(),
-      Comparison(Comparison::Direction::kGe, PrimitiveType::S8)));
+      Eq(Comparison(Comparison::Direction::kGe, PrimitiveType::S8)));
 
-  EXPECT_TRUE(Equal(
+  EXPECT_THAT(
       Comparison(Comparison::Direction::kEq, PrimitiveType::U16).Converse(),
-      Comparison(Comparison::Direction::kEq, PrimitiveType::U16)));
+      Eq(Comparison(Comparison::Direction::kEq, PrimitiveType::U16)));
 
-  EXPECT_TRUE(Equal(
+  EXPECT_THAT(
       Comparison(Comparison::Direction::kGt, PrimitiveType::F32).Converse(),
-      Comparison(Comparison::Direction::kLt, PrimitiveType::F32)));
+      Eq(Comparison(Comparison::Direction::kLt, PrimitiveType::F32)));
 }
 
 TEST(Comparison, PartialOrderFloatsShouldNotHaveInverse) {
@@ -151,19 +146,19 @@ TEST(Comparison, PartialOrderFloatsShouldNotHaveInverse) {
 }
 
 TEST(Comparison, Inverse) {
-  EXPECT_TRUE(Equal(
+  EXPECT_THAT(
       *Comparison(Comparison::Direction::kLe, PrimitiveType::S64).Inverse(),
-      Comparison(Comparison::Direction::kGt, PrimitiveType::S64)));
+      Eq(Comparison(Comparison::Direction::kGt, PrimitiveType::S64)));
 
-  EXPECT_TRUE(Equal(
+  EXPECT_THAT(
       *Comparison(Comparison::Direction::kEq, PrimitiveType::U16).Inverse(),
-      Comparison(Comparison::Direction::kNe, PrimitiveType::U16)));
+      Eq(Comparison(Comparison::Direction::kNe, PrimitiveType::U16)));
 
-  EXPECT_TRUE(Equal(*Comparison(Comparison::Direction::kGt, PrimitiveType::F32,
-                                Comparison::Order::kTotal)
-                         .Inverse(),
-                    Comparison(Comparison::Direction::kLe, PrimitiveType::F32,
-                               Comparison::Order::kTotal)));
+  EXPECT_THAT(*Comparison(Comparison::Direction::kGt, PrimitiveType::F32,
+                          Comparison::Order::kTotal)
+                   .Inverse(),
+              Eq(Comparison(Comparison::Direction::kLe, PrimitiveType::F32,
+                            Comparison::Order::kTotal)));
 }
 
 TEST(Comparison, ToString) {

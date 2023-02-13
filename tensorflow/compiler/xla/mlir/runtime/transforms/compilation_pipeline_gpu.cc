@@ -84,8 +84,8 @@ static void CreateDefaultXlaGpuRuntimeCompilationPipeline(
   // Convert async dialect to LLVM once everything else is in the LLVM dialect.
   pm.addPass(mlir::createConvertAsyncToLLVMPass());
 
-  // Convert everythinG else to LLVM dialect.
-  pm.addPass(mlir::createMemRefToLLVMConversionPass());
+  // Convert everything else to LLVM dialect.
+  pm.addPass(mlir::createFinalizeMemRefToLLVMConversionPass());
   pm.addPass(mlir::createConvertFuncToLLVMPass());
   pm.addPass(mlir::createReconcileUnrealizedCastsPass());
 

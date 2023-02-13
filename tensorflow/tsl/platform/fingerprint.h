@@ -86,7 +86,7 @@ inline uint64_t Fingerprint64(const tsl::StringPiece s) {
   // modified to keep using Farmhash.
   // LINT.IfChange
   return farmhash::Fingerprint64(s.data(), s.size());
-  // LINT.ThenChange(//third_party/tensorflow/core/kernels/fingerprint_op.cc)
+  // LINT.ThenChange(//tensorflow/core/kernels/fingerprint_op.cc)
 #endif
 }
 
@@ -109,6 +109,16 @@ inline Fprint128 Fingerprint128(const tsl::StringPiece s) {
   const auto fingerprint = farmhash::Fingerprint128(s.data(), s.size());
   return {absl::Uint128Low64(fingerprint), absl::Uint128High64(fingerprint)};
 #endif
+}
+
+inline Fprint128 FingerprintCat128(const Fprint128& a, const Fprint128& b) {
+  return {FingerprintCat64(a.low64, b.low64),
+          FingerprintCat64(a.high64, b.high64)};
+}
+
+inline Fprint128 FingerprintCat128(const Fprint128& a, const uint64_t b) {
+  auto x = FingerprintCat64(a.low64, b);
+  return {x, FingerprintCat64(a.high64, x)};
 }
 
 }  // namespace tsl

@@ -299,7 +299,7 @@ Status XlaDevice::EnsureStreamOkLocked(xla::Backend* backend,
   return OkStatus();
 }
 
-StatusOr<std::vector<XlaDeviceContext*>> XlaDevice::GetDeviceContextLocked() {
+StatusOr<std::vector<DeviceContext*>> XlaDevice::GetDeviceContextLocked() {
   TF_ASSIGN_OR_RETURN(xla::LocalClient * client, GetOrCreateClient());
   xla::Backend* backend = client->mutable_backend();
 
@@ -397,13 +397,13 @@ StatusOr<std::vector<XlaDeviceContext*>> XlaDevice::GetDeviceContextLocked() {
   return device_contexts_;
 }
 
-StatusOr<XlaDeviceContext*> XlaDevice::GetDeviceContextWithIndex(int index) {
+StatusOr<DeviceContext*> XlaDevice::GetDeviceContextWithIndex(int index) {
   mutex_lock lock(mu_);
   TF_ASSIGN_OR_RETURN(auto device_contexts, GetDeviceContextLocked());
   return device_contexts.at(index);
 }
 
-StatusOr<XlaDeviceContext*> XlaDevice::GetDeviceContextDefault() {
+StatusOr<DeviceContext*> XlaDevice::GetDeviceContextDefault() {
   return GetDeviceContextWithIndex(0);
 }
 
@@ -502,7 +502,7 @@ void XlaDevice::Sync(const DoneCallback& done) {
   });
 }
 
-Status XlaDevice::MakeTensorFromProto(XlaDeviceContext* device_context,
+Status XlaDevice::MakeTensorFromProto(DeviceContext* device_context,
                                       const TensorProto& tensor_proto,
                                       const AllocatorAttributes alloc_attrs,
                                       Tensor* tensor) {
@@ -534,7 +534,7 @@ Status XlaDevice::MakeTensorFromProto(const TensorProto& tensor_proto,
                                       const AllocatorAttributes alloc_attrs,
                                       Tensor* tensor) {
   VLOG(1) << "XlaDevice::MakeTensorFromProto";
-  XlaDeviceContext* device_context;
+  DeviceContext* device_context;
   TF_ASSIGN_OR_RETURN(device_context, GetDeviceContextDefault());
   return MakeTensorFromProto(device_context, tensor_proto, alloc_attrs, tensor);
 }

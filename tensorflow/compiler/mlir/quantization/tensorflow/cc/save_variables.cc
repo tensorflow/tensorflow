@@ -37,37 +37,11 @@ namespace quantization {
 namespace {
 
 using ::mlir::func::FuncOp;
+using ::mlir::tf_saved_model::GetInitializerFunction;
 using ::mlir::tf_saved_model::GetSessionInitializerOp;
 using ::mlir::tf_saved_model::kTfSavedModelInitializerRestoreType;
 using ::mlir::tf_saved_model::kTfSavedModelInitializerTypeAttr;
 using ::mlir::tf_saved_model::SessionInitializerOp;
-
-// Gets the initializer function whose initializer_type attribute matches
-// `type`. Returns a null operation if it doesn't exist.
-FuncOp GetInitializerFunction(
-    SessionInitializerOp session_init_op, mlir::SymbolTable symbol_table,
-    llvm::StringRef type = kTfSavedModelInitializerRestoreType) {
-  auto session_init_symbols = session_init_op.getInitializers()
-                                  .getAsValueRange<mlir::FlatSymbolRefAttr>();
-  if (session_init_symbols.empty()) {
-    LOG(INFO) << "No session initializers exist in 'initializers' attribute of "
-                 "SessionInitializerOp. No variables are saved to checkpoint.";
-    return {};
-  }
-
-  FuncOp session_init_func_type_restore_op{};
-  for (const auto init_sym : session_init_symbols) {
-    auto init_func_op = symbol_table.lookup<FuncOp>(init_sym);
-
-    if (auto init_type = init_func_op->getAttrOfType<mlir::StringAttr>(
-            kTfSavedModelInitializerTypeAttr);
-        init_type && init_type == type) {
-      session_init_func_type_restore_op = init_func_op;
-    }
-  }
-
-  return session_init_func_type_restore_op;
-}
 
 // Adds the tensor that initializes the variable through the provided
 // `assign_var_op` to the `bundle_writer` for saving to checkpoint. Returns the
@@ -114,17 +88,10 @@ absl::StatusOr<std::string> AddTensorToBundleWriter(
 
 absl::StatusOr<std::vector<std::string>> SaveVariablesToCheckpoint(
     const absl::string_view prefix, mlir::ModuleOp module_op) {
-  SessionInitializerOp session_init_op = GetSessionInitializerOp(module_op);
-  if (!session_init_op) {
-    LOG(INFO) << "SessionInitializerOp does not exist. No variables are saved "
-                 "to checkpoint.";
-    return std::vector<std::string>{};
-  }
-
   // Only the "tf.AssignVariableOp" patterns inside this initializer function
   // will be searched.
-  FuncOp session_init_func_type_restore_op =
-      GetInitializerFunction(session_init_op, mlir::SymbolTable(module_op));
+  FuncOp session_init_func_type_restore_op = GetInitializerFunction(
+      module_op, /*initializer_type=*/kTfSavedModelInitializerRestoreType);
   if (!session_init_func_type_restore_op) {
     LOG(INFO) << "No session initializer function with type 'restore_op'. No "
                  "variables are saved to checkpoint.";

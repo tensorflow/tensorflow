@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/core/data/service/py_utils.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/protobuf/snapshot.pb.h"
+#include "tensorflow/tsl/lib/io/compression.h"
 
 namespace tensorflow {
 namespace data {
@@ -48,6 +49,10 @@ DistributedSaveOp::DistributedSaveOp(OpKernelConstruction* ctx)
 void DistributedSaveOp::Compute(OpKernelContext* ctx) {
   DatasetBase* dataset;
   OP_REQUIRES_OK(ctx, GetDatasetFromVariantTensor(ctx->input(0), &dataset));
+  OP_REQUIRES(
+      ctx, dataset->Cardinality() != kInfiniteCardinality,
+      errors::InvalidArgument("Saving an infinite dataset is not allowed: ",
+                              dataset->DebugString()));
 
   tstring directory;
   OP_REQUIRES_OK(ctx, ParseScalarArgument(ctx, kDirectory, &directory));
@@ -82,8 +87,11 @@ void DistributedSaveOp::Compute(OpKernelContext* ctx) {
                     "Failed to parse DistributedSnapshotMetadata from string: ",
                     std::string(serialized_metadata_)));
   }
+  if (metadata.compression() == "AUTO") {
+    metadata.set_compression(tsl::io::compression::kSnappy);
+  }
 
-  DataServiceDispatcherClient client(address, DefaultDataTransferProtocol());
+  DataServiceDispatcherClient client(address, DefaultProtocol());
   int64_t deadline_micros =
       EnvTime::NowMicros() + absl::ToInt64Microseconds(kRetryTimeout);
   OP_REQUIRES_OK(

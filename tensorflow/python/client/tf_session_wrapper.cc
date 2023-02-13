@@ -19,9 +19,10 @@ limitations under the License.
 #include "pybind11/complex.h"
 #include "pybind11/functional.h"
 #include "pybind11/pybind11.h"
+#include "pybind11_protobuf/native_proto_caster.h"  // from @pybind11_protobuf
 #include "pybind11/stl.h"
-// clang-format on
 
+// clang-format on
 #include "Python.h"
 
 // Must be included first
@@ -107,12 +108,54 @@ PYBIND11_MAKE_OPAQUE(TF_Server);
 PYBIND11_MAKE_OPAQUE(TF_DeviceList);
 PYBIND11_MAKE_OPAQUE(TF_Status);
 
+class TensorHandle {};
+
+class OperationHandle {
+ public:
+  const TF_Operation* op() { return op_; }
+  void set_op(TF_Operation* op) { op_ = op; }
+
+  py::bytes node_def() {
+    return py::bytes(op_->node.def().SerializeAsString());
+  }
+  py::bytes op_def() {
+    return py::bytes(op_->node.op_def().SerializeAsString());
+  }
+  const std::string& type() { return op_->node.type_string(); }
+
+  TF_Output _tf_output(int idx) { return TF_Output{op_, idx}; }
+  TF_Input _tf_input(int idx) { return TF_Input{op_, idx}; }
+
+ private:
+  TF_Operation* op_;
+};
+
+class GraphHandle {
+ public:
+};
+
 PYBIND11_MODULE(_pywrap_tf_session, m) {
+  pybind11_protobuf::ImportNativeProtoCasters();
+
   // Numpy initialization code for array checks.
   tsl::ImportNumpy();
 
   py::class_<TF_Graph> TF_Graph_class(m, "TF_Graph");
-  py::class_<TF_Operation> TF_Operation_class(m, "TF_Operation");
+
+  py::class_<TF_Operation, std::unique_ptr<TF_Operation, py::nodelete>>
+      TF_Operation_class(m, "TF_Operation");
+
+  py::class_<GraphHandle>(m, "GraphHandle").def(py::init<>());
+
+  py::class_<OperationHandle>(m, "OperationHandle")
+      .def(py::init<>())
+      .def("_tf_output", &OperationHandle::_tf_output)
+      .def("_tf_input", &OperationHandle::_tf_input)
+      .def_property_readonly("_op_def", &OperationHandle::op_def)
+      .def_property_readonly("_node_def", &OperationHandle::node_def)
+      .def_property_readonly("type", &OperationHandle::type)
+      .def_property("_c_op", &OperationHandle::op, &OperationHandle::set_op,
+                    py::return_value_policy::reference);
 
   py::class_<TF_Output>(m, "TF_Output")
       .def(py::init<>())
@@ -688,7 +731,8 @@ PYBIND11_MODULE(_pywrap_tf_session, m) {
   m.def("SetRequestedDevice", tensorflow::SetRequestedDevice);
 
   // TF_Buffer util methods
-  // TODO(amitpatankar): Consolidate Buffer methods into a separate header file.
+  // TODO(amitpatankar): Consolidate Buffer methods into a separate header
+  // file.
   m.def("TF_NewBuffer", TF_NewBuffer, py::return_value_policy::reference);
   m.def("TF_GetBuffer", [](TF_Buffer* buf) {
     TF_Buffer buffer = TF_GetBuffer(buf);
@@ -726,8 +770,8 @@ PYBIND11_MODULE(_pywrap_tf_session, m) {
         });
 
   // Note: users should prefer using tf.cast or equivalent, and only when
-  // it's infeasible to set the type via OpDef's type constructor and inference
-  // function.
+  // it's infeasible to set the type via OpDef's type constructor and
+  // inference function.
   m.def("SetFullType", [](TF_Graph* graph, TF_Operation* op,
                           const std::string& serialized_full_type) {
     tensorflow::FullTypeDef proto;

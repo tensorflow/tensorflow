@@ -313,13 +313,9 @@ Value getTosaConst16bitTable(PatternRewriter& rewriter, Operation* op,
   table.push_back(
       static_cast<int16_t>(std::min(std::max(max_val, -32768), 32767)));
 
-  auto element_qtype =
-      UniformQuantizedType::get(true, rewriter.getIntegerType(16),
-                                rewriter.getF32Type(), 1.0f, 0, -32768, 32767);
-  auto const_type = tensorflow::GetTypeFromTFTensorShape({513}, element_qtype);
-  auto storage_type = tensorflow::GetTypeFromTFTensorShape(
-      {513}, element_qtype.getStorageType());
-  auto const_attr = DenseElementsAttr::get(storage_type, llvm::ArrayRef(table));
+  auto const_type =
+      tensorflow::GetTypeFromTFTensorShape({513}, rewriter.getIntegerType(16));
+  auto const_attr = DenseElementsAttr::get(const_type, llvm::ArrayRef(table));
 
   auto const_op =
       rewriter.create<tosa::ConstOp>(op->getLoc(), const_type, const_attr);
@@ -680,7 +676,7 @@ LogicalResult ApplyPatternsWithShapeResolution(
   // type stripping changing.
   func.walk([&](tosa::ConstOp op) {
     auto ety = op.getValue().getType().getElementType();
-    auto new_ty = op.getType().cast<ShapedType>().clone(ety);
+    auto new_ty = op.getType().cast<TensorType>().clone(ety);
     op.getResult().setType(new_ty);
   });
 

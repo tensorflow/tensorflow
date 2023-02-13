@@ -232,45 +232,6 @@ static void replaceOpWithRegion(PatternRewriter& rewriter, Operation* op,
 
 #include "mhlo/IR/mhlo_canonicalize.inc"
 
-// Common shape function helper for RngNormal and RngUniform.
-static LogicalResult rngInferReturnTypeComponents(
-    MLIRContext* context, Optional<Location> location, ValueRange operands,
-    DictionaryAttr attributes, RegionRange regions,
-    SmallVectorImpl<ShapedTypeComponents>& inferredReturnShapes) {
-  if (operands.size() != 3)
-    return emitOptionalError(location, "expected 3 operands");
-
-  SmallVector<int64_t> shapeVector;
-  Value shapeOperand = operands[2];
-  auto shapeOperandType = shapeOperand.getType().cast<ShapedType>();
-  Type elementType = getElementTypeOrSelf(operands[1]);
-
-  // Operand `shape` (1D by ODS) may be a constant or not, if `shape` is:
-  // 1, not constant and have dynimic dim (tensor<?x>): infer tensor<*x>.
-  // 2. not constant nor dynimic (e.g. tensor<3xi64>): infer tensor<?x?x?x>.
-  // 3. constant (e.g. dense<[2, 3, 5]>): infer tensor<2x3x5x>.
-
-  // Match to check whether the `shape` operand is a constant.
-  DenseIntElementsAttr shape;
-  if (!matchPattern(shapeOperand, m_Constant(&shape))) {
-    int size = shapeOperandType.getDimSize(0);
-    if (hlo::isDynamicDimSize(size)) {
-      inferredReturnShapes.emplace_back(elementType);
-      return success();
-    }
-    shapeVector.resize(size, ShapedType::kDynamic);
-    inferredReturnShapes.emplace_back(shapeVector, elementType);
-    return success();
-  }
-
-  // `shape` operand is a constant.
-  shapeVector.reserve(shape.size());
-  for (const APInt& fp : shape.getValues<APInt>())
-    shapeVector.push_back(fp.getSExtValue());
-  inferredReturnShapes.emplace_back(shapeVector, elementType);
-  return success();
-}
-
 // Returns a new scalar integer value having type `type`. Here `type` must be
 // an integer or index type.
 Value maybeCastTo(OpBuilder& b, Location loc, Value value, Type type) {
@@ -1273,13 +1234,28 @@ LogicalResult GatherOp::inferReturnTypeComponents(
 // Canonicalize mhlo.dynamic_gather to mhlo.gather when slice_sizes is constant.
 LogicalResult simplifyDynamicGatherToGather(DynamicGatherOp op,
                                             PatternRewriter& rewriter) {
-  DenseIntElementsAttr sliceSizes;
-  if (!matchPattern(op.getSliceSizes(), m_Constant(&sliceSizes))) {
+  DenseIntElementsAttr dynamicGatherSliceSizes;
+  if (!matchPattern(op.getSliceSizes(), m_Constant(&dynamicGatherSliceSizes))) {
     return failure();
   }
+
+  // DynamicGatherOp's slice_sizes is 1DTensorOf<[HLO_DimensionValue]>
+  // where HLO_DimensionValue is AnyTypeOf<[Index, HLO_Int]>.
+  // However, GatherOp's slice_sizes is I64ElementsAttr.
+  // Therefore, we need to convert the elements in case there is a mismatch
+  // of element types.
+  DenseIntElementsAttr gatherSliceSizes = dynamicGatherSliceSizes;
+  if (!dynamicGatherSliceSizes.getType().getElementType().isInteger(64)) {
+    SmallVector<int64_t> sliceSizes;
+    for (APInt sliceSize : dynamicGatherSliceSizes.getValues<APInt>()) {
+      sliceSizes.push_back(sliceSize.getSExtValue());
+    }
+    gatherSliceSizes = rewriter.getI64TensorAttr(sliceSizes);
+  }
+
   rewriter.replaceOpWithNewOp<mhlo::GatherOp>(
       op, op.getOperand(), op.getStartIndices(), op.getDimensionNumbersAttr(),
-      sliceSizes, op.getIndicesAreSortedAttr());
+      gatherSliceSizes, op.getIndicesAreSortedAttr());
   return success();
 }
 
@@ -2676,7 +2652,7 @@ LogicalResult ConcatenateOp::inferReturnTypes(
     DictionaryAttr attributes, RegionRange regions,
     SmallVectorImpl<Type>& inferredReturnTypes) {
   ConcatenateOp::Adaptor adaptor(operands, attributes, regions);
-  return hlo::inferConcatenateOp(location, adaptor.getVal(),
+  return hlo::inferConcatenateOp(location, adaptor.getVal().getTypes(),
                                  adaptor.getDimension(), inferredReturnTypes);
 }
 
@@ -2990,9 +2966,10 @@ LogicalResult DynamicSliceOp::inferReturnTypeComponents(
     DictionaryAttr attributes, RegionRange regions,
     SmallVectorImpl<ShapedTypeComponents>& inferredReturnShapes) {
   DynamicSliceOp::Adaptor adaptor(operands, attributes, regions);
-  return hlo::inferDynamicSliceOp(
-      location, adaptor.getOperand(), adaptor.getStartIndices(),
-      adaptor.getSliceSizes(), inferredReturnShapes);
+  return hlo::inferDynamicSliceOp(location, adaptor.getOperand().getType(),
+                                  adaptor.getStartIndices().getTypes(),
+                                  adaptor.getSliceSizes(),
+                                  inferredReturnShapes);
 }
 
 //===----------------------------------------------------------------------===//
@@ -3006,63 +2983,60 @@ LogicalResult RealDynamicSliceOp::verify() {
 }
 
 namespace {
-// Canonicalizes RealDynamicSlice ops that can be replaced instead with Slice
-// ops. This canonicalization is applied the case when the `begin` input values
-// are compile time constants and thus can be made into a tensor.
-struct RealDynamicSliceIsStatic : public OpRewritePattern<RealDynamicSliceOp> {
+struct RealDSliceToDSlice : public OpRewritePattern<RealDynamicSliceOp> {
   using OpRewritePattern<RealDynamicSliceOp>::OpRewritePattern;
 
-  LogicalResult matchAndRewrite(RealDynamicSliceOp realDynamicSlice,
+  LogicalResult matchAndRewrite(RealDynamicSliceOp op,
                                 PatternRewriter& rewriter) const override {
-    Location loc = realDynamicSlice.getLoc();
-    Value input = realDynamicSlice.getOperand();
-    Value output = realDynamicSlice.getResult();
-    auto inputTy = input.getType().dyn_cast<RankedTensorType>();
-    auto outputTy = output.getType().dyn_cast<RankedTensorType>();
+    // This rewrite only works for unit strides because DynamicSliceOp
+    // doesn't support strides (i.e. it implicitly has unit strides).
+    DenseIntElementsAttr stridesAttr;
+    if (!matchPattern(op.getStrides(), m_Constant(&stridesAttr)))
+      return rewriter.notifyMatchFailure(op, "requires constant strides");
+    if (!llvm::all_of(stridesAttr.getValues<APInt>(),
+                      [&](APInt stride) { return stride == 1; }))
+      return rewriter.notifyMatchFailure(op, "requires unit strides");
 
-    if (!inputTy || !outputTy || !inputTy.hasStaticShape() ||
-        !outputTy.hasStaticShape()) {
-      return failure();
+    // Check that slice sizes are fully static (DynamicSliceOp style).
+    // To detect that, we check whether `limit_indices` is defined as
+    // `start_indices + constant` or `constant + start_indices`.
+    DenseIntElementsAttr sliceSizesAttr;
+    auto m_startIndices = matchers::m_Val(op.getStartIndices());
+    if (!matchPattern(
+            op.getLimitIndices(),
+            m_Op<AddOp>(m_startIndices, m_Constant(&sliceSizesAttr))) &&
+        !matchPattern(op.getLimitIndices(),
+                      m_Op<AddOp>(m_Constant(&sliceSizesAttr), m_startIndices)))
+      return rewriter.notifyMatchFailure(
+          op, "requires limit indices equal to start indices plus constant");
+
+    // RealDynamicSliceOp can take tensors of integer or index element types.
+    // DynamicSliceOp::slice_sizes only supports i64 element type.
+    // Adapt accordingly in order to be compatible with DynamicSliceOp.
+    SmallVector<int64_t> sliceSizes;
+    for (auto element : sliceSizesAttr.getValues<APInt>()) {
+      sliceSizes.push_back(element.getSExtValue());
     }
 
-    int64_t inputRank = inputTy.getRank();
-
-    auto startVal = realDynamicSlice.getStartIndices();
-    auto limitVal = realDynamicSlice.getLimitIndices();
-    auto strideVal = realDynamicSlice.getStrides();
-    auto startOp = startVal.getDefiningOp<mlir::arith::ConstantOp>();
-    auto limitOp = limitVal.getDefiningOp<mlir::arith::ConstantOp>();
-    auto strideOp = strideVal.getDefiningOp<mlir::arith::ConstantOp>();
-    if (!startOp || !limitOp || !strideOp) return failure();
-
-    auto startAttr =
-        startOp.getValue().dyn_cast_or_null<DenseIntElementsAttr>();
-    auto limitAttr =
-        limitOp.getValue().dyn_cast_or_null<DenseIntElementsAttr>();
-    auto strideAttr =
-        strideOp.getValue().dyn_cast_or_null<DenseIntElementsAttr>();
-    if (!startAttr || !limitAttr || !strideAttr) return failure();
-
-    SmallVector<int64_t, 4> tempStartIndices;
-    SmallVector<int64_t, 4> tempLimitIndices;
-    SmallVector<int64_t, 4> tempStride;
-    for (int64_t dimIdx = 0; dimIdx < inputRank; dimIdx++) {
-      int64_t start = startAttr.getValues<IntegerAttr>()[dimIdx].getInt();
-      tempStartIndices.push_back(start);
-      int64_t limit = limitAttr.getValues<IntegerAttr>()[dimIdx].getInt();
-      tempLimitIndices.push_back(limit);
-      int64_t end = strideAttr.getValues<IntegerAttr>()[dimIdx].getInt();
-      tempStride.push_back(end);
+    // RealDynamicSliceOp::start_indices is a 1-dimensional tensor.
+    // DynamicSliceOp::start_indices is a vararg of 0-dimensional tensors.
+    // Adapt accordingly in order to be compatible with DynamicSliceOp.
+    SmallVector<Value> startIndices;
+    for (auto i = 0; i < static_cast<int64_t>(sliceSizes.size()); ++i) {
+      auto startIndex1D = rewriter.create<SliceOp>(
+          op.getLoc(), op.getStartIndices(), rewriter.getI64TensorAttr(i),
+          rewriter.getI64TensorAttr(i + 1), rewriter.getI64TensorAttr(1));
+      auto startIndex0DType = RankedTensorType::get(
+          {},
+          op.getStartIndices().getType().cast<ShapedType>().getElementType());
+      auto startIndex0D = rewriter.create<ReshapeOp>(
+          op.getLoc(), startIndex0DType, startIndex1D);
+      startIndices.push_back(startIndex0D);
     }
 
-    DenseIntElementsAttr sliceStartIndices =
-        rewriter.getI64TensorAttr(tempStartIndices);
-    DenseIntElementsAttr sliceLimitIndices =
-        rewriter.getI64TensorAttr(tempLimitIndices);
-    DenseIntElementsAttr sliceStrides = rewriter.getI64TensorAttr(tempStride);
-    auto result = rewriter.create<SliceOp>(loc, input, sliceStartIndices,
-                                           sliceLimitIndices, sliceStrides);
-    rewriter.replaceOp(realDynamicSlice, {result});
+    rewriter.replaceOpWithNewOp<mhlo::DynamicSliceOp>(
+        op, op.getOperand(), startIndices,
+        rewriter.getI64TensorAttr(sliceSizes));
     return success();
   }
 };
@@ -3070,7 +3044,7 @@ struct RealDynamicSliceIsStatic : public OpRewritePattern<RealDynamicSliceOp> {
 
 void RealDynamicSliceOp::getCanonicalizationPatterns(RewritePatternSet& results,
                                                      MLIRContext* context) {
-  results.add<RealDynamicSliceIsStatic, RealDSliceToSlice>(context);
+  results.add<RealDSliceToSlice, RealDSliceToDSlice>(context);
 }
 
 LogicalResult RealDynamicSliceOp::reifyReturnTypeShapes(
@@ -3810,9 +3784,9 @@ LogicalResult ReduceOp::inferReturnTypeComponents(
     DictionaryAttr attributes, RegionRange regions,
     SmallVectorImpl<ShapedTypeComponents>& inferredReturnShapes) {
   ReduceOp::Adaptor adaptor(operands, attributes, regions);
-  return hlo::inferReduceOp(location, adaptor.getInputs(),
-                            adaptor.getInitValues(), adaptor.getDimensions(),
-                            inferredReturnShapes);
+  return hlo::inferReduceOp(location, adaptor.getInputs().getTypes(),
+                            adaptor.getInitValues().getTypes(),
+                            adaptor.getDimensions(), inferredReturnShapes);
 }
 
 LogicalResult ReduceOp::verify() {
@@ -3933,17 +3907,6 @@ LogicalResult OptimizationBarrierOp::inferReturnTypes(
 }
 
 //===----------------------------------------------------------------------===//
-// ReturnOp
-//===----------------------------------------------------------------------===//
-LogicalResult ReturnOp::inferReturnTypes(
-    MLIRContext*, Optional<Location> location, ValueRange operands,
-    DictionaryAttr attributes, RegionRange,
-    SmallVectorImpl<Type>& inferredReturnTypes) {
-  ReturnOp::Adaptor adaptor(operands, attributes);
-  return hlo::inferReturnOp(location, inferredReturnTypes);
-}
-
-//===----------------------------------------------------------------------===//
 // ReverseOp
 //===----------------------------------------------------------------------===//
 LogicalResult ReverseOp::verify() {
@@ -3964,17 +3927,15 @@ LogicalResult RngBitGeneratorOp::verify() {
 // RngOp
 //===----------------------------------------------------------------------===//
 
-LogicalResult RngOp::verify() {
-  return hlo::verifyRngOp(getLoc(), getA(), getB(),
-                          getRngDistribution() == RngDistribution::UNIFORM);
-}
-
 LogicalResult RngOp::inferReturnTypeComponents(
     MLIRContext* context, Optional<Location> location, ValueShapeRange operands,
     DictionaryAttr attributes, RegionRange regions,
     SmallVectorImpl<ShapedTypeComponents>& inferredReturnShapes) {
-  return rngInferReturnTypeComponents(context, location, operands, attributes,
-                                      regions, inferredReturnShapes);
+  RngOp::Adaptor adaptor(operands, attributes, regions);
+  return hlo::inferRngOp(
+      location, adaptor.getA(), adaptor.getB(), adaptor.getShape(),
+      adaptor.getRngDistribution() == RngDistribution::UNIFORM,
+      inferredReturnShapes);
 }
 
 LogicalResult RngOp::reifyReturnTypeShapes(
@@ -5133,7 +5094,7 @@ LogicalResult SliceOp::inferReturnTypes(
     DictionaryAttr attributes, RegionRange /*regions*/,
     SmallVectorImpl<Type>& inferredReturnTypes) {
   SliceOpAdaptor adaptor(operands, attributes);
-  return hlo::inferSliceOp(location, adaptor.getOperand(),
+  return hlo::inferSliceOp(location, adaptor.getOperand().getType(),
                            adaptor.getStartIndices(), adaptor.getLimitIndices(),
                            adaptor.getStrides(), inferredReturnTypes);
 }

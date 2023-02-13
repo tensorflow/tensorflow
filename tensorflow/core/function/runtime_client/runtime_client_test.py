@@ -22,7 +22,10 @@ from tensorflow.python import tf2
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import execute
+from tensorflow.python.eager import remote
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import ops
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
 
@@ -199,6 +202,74 @@ class RuntimeClientTest(test.TestCase):
     self.assertAllEqual(self.evaluate(f(one, one)), 1)
 
 
+class RuntimeClientMultiWorkersTest(test.TestCase):
+
+  @test_util.run_v2_only
+  def setUp(self):
+    super().setUp()
+
+    workers, _ = test_util.create_local_cluster(2, 0)
+
+    remote.connect_to_remote_host(
+        [workers[0].target, workers[1].target])
+
+    self.device0 = "/job:worker/replica:0/task:0/device:CPU:0"
+    self.device1 = "/job:worker/replica:0/task:1/device:CPU:0"
+
+  @test_util.run_v2_only
+  def tearDown(self):
+    super().tearDown()
+    # Clear the current device scope to avoid polluting other test cases.
+    ops.device(None).__enter__()
+    # Reset the context to avoid polluting other test cases.
+    context._reset_context()
+
+  @test_util.run_v2_only
+  def test_transform_function_in_remote_contexts(self):
+    """Tests if function_defs in remote contexts could be transformed."""
+
+    @def_function.function
+    def add(x, y):
+      return math_ops.add(x, y, name="x_plus_y")
+
+    inputs = [1.0, 2.0]
+
+    with ops.device(self.device0):
+      result = add(*inputs)
+
+    self.assertAllEqual(result, 3.0)
+    self.assertEqual(result.device, self.device0)
+
+    with ops.device(self.device1):
+      result = add(*inputs)
+
+    self.assertAllEqual(result, 3.0)
+    self.assertEqual(result.device, self.device1)
+
+    cf = add.get_concrete_function(*inputs)
+    function_name = cf.function_def.signature.name
+
+    ctx = runtime_client.GlobalPythonEagerContext()
+    rt = runtime_client.Runtime(ctx)
+    # "test-pass" converts add to multiply.
+    rt.TransformFunction(function_name, "test-pass")
+    fndef = rt.GetFunctionProto(function_name)
+    rt.CreateFunction(fndef)
+
+    with ops.device(self.device0):
+      result = add(*inputs)
+
+    self.assertAllEqual(result, 2.0)
+    self.assertEqual(result.device, self.device0)
+
+    with ops.device(self.device1):
+      result = add(*inputs)
+
+    self.assertAllEqual(result, 2.0)
+    self.assertEqual(result.device, self.device1)
+
+
 if __name__ == "__main__":
+  context.set_soft_device_placement(False)
   test_pass.RegisterTestPass()
   test.main()

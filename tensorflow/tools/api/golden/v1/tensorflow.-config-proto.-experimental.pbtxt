@@ -168,5 +168,9 @@ tf_proto {
       start: 20
       end: 21
     }
+    reserved_range {
+      start: 25
+      end: 26
+    }
   }
 }

@@ -288,15 +288,21 @@ def main():
     def_fp.write("\t ?NewSession@tensorflow@@YAPEAVSession@1@AEBUSessionOptions@1@@Z\n")
     def_fp.write("\t ??1SavedModelBundleInterface@tensorflow@@UEAA@XZ\n")
     def_fp.write("\t ?MaybeSavedModelDirectory@tensorflow@@YA_NAEBV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@@Z\n")
-    def_fp.write("\t ?_TensorShapeProto_default_instance_@tensorflow@@3VTensorShapeProtoDefaultTypeInternal@1@A\n")
-    def_fp.write("\t ?_GraphDef_default_instance_@tensorflow@@3VGraphDefDefaultTypeInternal@1@A\n")
     def_fp.write("\t ??_7HistogramProto@tensorflow@@6B@\n")
     def_fp.write("\t ??_7ConfigProto@tensorflow@@6B@\n") # for _pywrap_tfe
     def_fp.write("\t ??_7CoordinatedTask@tensorflow@@6B@\n") # for _pywrap_tfe
-    def_fp.write("\t ??0CoordinatedTask@tensorflow@@QEAA@XZ\n") # for _pywrap_tfe
     def_fp.write("\t ?InternalSwap@CoordinatedTask@tensorflow@@AEAAXPEAV12@@Z\n") # for _pywrap_tfe
     def_fp.write("\t ?kSeed@MixingHashState@hash_internal@lts_20220623@absl@@0QEBXEB\n") # for _pywrap_tfcompile
     def_fp.write("\t ?kEmptyGroup@container_internal@lts_20220623@absl@@3QBW4ctrl_t@123@B\n") # for _pywrap_tfcompile
+    def_fp.write("\t ??_7GraphDef@tensorflow@@6B@\n")
+    def_fp.write("\t ??_7DeviceProperties@tensorflow@@6B@\n")
+    def_fp.write("\t ??_7MetaGraphDef@tensorflow@@6B@\n")
+    def_fp.write("\t ??_7SavedModel@tensorflow@@6B@\n")
+    def_fp.write("\t ??0CoordinatedTask@tensorflow@@QEAA@XZ\n") # for _pywrap_tfe
+    def_fp.write("\t ?Set@ArenaStringPtr@internal@protobuf@google@@QEAAXAEBV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@PEAVArena@34@@Z\n") # _pywrap_tfe
+    def_fp.write("\t ??1CoordinatedTask@tensorflow@@UEAA@XZ\n") # for _pywrap_tfe
+    def_fp.write("\t ?CopyFrom@CoordinatedTask@tensorflow@@QEAAXAEBV12@@Z\n") # for _pywrap_tfe
+    def_fp.write("\t ??0CoordinatedTask@tensorflow@@IEAA@PEAVArena@protobuf@google@@_N@Z\n") # for _pywrap_tfe
 
     # Each symbols returned by undname matches the same position in candidates.
     # We compare on undname but use the decorated name from candidates.

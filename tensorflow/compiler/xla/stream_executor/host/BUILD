@@ -44,7 +44,6 @@ cc_library(
         "//tensorflow/compiler/xla/stream_executor:executor_cache",
         "//tensorflow/compiler/xla/stream_executor:multi_platform_manager",
         "//tensorflow/compiler/xla/stream_executor:stream_executor_headers",
-        "//tensorflow/compiler/xla/stream_executor/lib",
         "//tensorflow/compiler/xla/stream_executor/platform",
         "//tensorflow/tsl/platform:errors",
         "@com_google_absl//absl/memory",
@@ -63,7 +62,6 @@ cc_library(
     ],
     deps = [
         "//tensorflow/compiler/xla/stream_executor:kernel",
-        "//tensorflow/compiler/xla/stream_executor/lib",
         "//tensorflow/tsl/platform:denormal",
         "//tensorflow/tsl/platform:env",
         "//tensorflow/tsl/platform:setround",

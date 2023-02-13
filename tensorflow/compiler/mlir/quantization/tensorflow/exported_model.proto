@@ -10,8 +10,11 @@ option cc_enable_arenas = true;
 // metadata required for building a SavedModel. This message is primarily used
 // to "export" the model produced from various quantization passes in c++ to
 // Python layer.
-// Next ID: 7
+// Next ID: 8
 message ExportedModel {
+  reserved 4;
+  reserved 'variable_shared_names';
+
   GraphDef graph_def = 1;
 
   // Name of the initialization node (TF Operation) used for initializing
@@ -22,8 +25,10 @@ message ExportedModel {
   // restores variables from the checkpoint file specified by `checkpoint_dir`.
   string restore_node_name = 3;
 
-  // A set of variable `shared_name`s to restore for the quantized model.
-  repeated string variable_shared_names = 4;
+  // Name of the save node. When fetched it runs the `SaveV2` op that saves
+  // variables to the checkpoint file specified by `checkpoint_dir`. The op
+  // should output the file prefix (equal to the checkpoint_dir) string tensor.
+  string save_node_name = 7;
 
   // Path to the directory where checkpoint files are saved. This directoy is
   // not expected to be persistent (usually a temporary directory). When

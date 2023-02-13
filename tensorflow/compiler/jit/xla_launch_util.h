@@ -278,6 +278,10 @@ class XlaTensorBuffer : public TensorBuffer {
   Allocator* allocator_;
 };
 
+Status CreateVariableInfoLookup(
+    absl::Span<VariableInfo const> variable_args,
+    absl::flat_hash_map<int, const VariableInfo*>& variable_info_lookup);
+
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_COMPILER_JIT_XLA_LAUNCH_UTIL_H_

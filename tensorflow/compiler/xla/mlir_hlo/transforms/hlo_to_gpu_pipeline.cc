@@ -205,20 +205,21 @@ void mlir::createHloToGpuPipeline(OpPassManager &pm,
 
     // Tile parallel dimensions of the softmax-like patterns and distribute them
     // across warps. Warps remain independant of each other.
-    pm.addNestedPass<FuncOp>(gml_st::createGreedyTilingAndFusionPass(
+    pm.addNestedPass<FuncOp>(gml_st::createGreedyFusionPass(
         /*distribute=*/true, blockTileDim, kBlockDistributionLabel));
     pm.addPass(createCanonicalizerPass());
     pm.addPass(createCSEPass());
-    pm.addNestedPass<FuncOp>(gml_st::createGreedyTilingAndFusionPass(
+    pm.addNestedPass<FuncOp>(gml_st::createGreedyFusionPass(
         /*distribute=*/true, warpTileDim, kWarpDistributionLabel));
     pm.addPass(createCanonicalizerPass());
     pm.addPass(createCSEPass());
 
     // GPU-specific tiling for ops on the warp level.
     pm.addNestedPass<FuncOp>(gml_st::createTilingGpuWarpPass());
-    pm.addNestedPass<FuncOp>(gml_st::createScalarizationPass());
+    pm.addNestedPass<FuncOp>(
+        gml_st::createScalarizationPass(/*skipFillOpScalarization=*/true));
 
-    pm.addNestedPass<FuncOp>(gml_st::createVectorizeGmlStLoopsPass(
+    pm.addNestedPass<FuncOp>(gml_st::createVectorizeForGPUPass(
         /*vectorizeGmlStOps=*/true, /*distributionLabels=*/{
             kWarpDistributionLabel, kThreadDistributionLabel}));
   } else {
@@ -234,7 +235,8 @@ void mlir::createHloToGpuPipeline(OpPassManager &pm,
     // Convert the inner dimension into a sequential loop over all elements.
     pm.addNestedPass<FuncOp>(gml_st::createTilingCwisePass(
         /*distribute=*/false, /*tileSizes=*/1));
-    pm.addNestedPass<FuncOp>(gml_st::createScalarizationPass());
+    pm.addNestedPass<FuncOp>(
+        gml_st::createScalarizationPass(/*skipFillOpScalarization=*/true));
   }
 
   pm.addPass(createCanonicalizerPass());

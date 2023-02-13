@@ -37,6 +37,14 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
+    name: "F1Score"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "FBetaScore"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "FalseNegatives"
     mtype: "<type \'type\'>"
   }
@@ -121,6 +129,10 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
+    name: "R2Score"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "Recall"
     mtype: "<type \'type\'>"
   }
@@ -171,6 +183,10 @@ tf_module {
   member {
     name: "TruePositives"
     mtype: "<type \'type\'>"
+  }
+  member {
+    name: "experimental"
+    mtype: "<type \'module\'>"
   }
   member_method {
     name: "KLD"

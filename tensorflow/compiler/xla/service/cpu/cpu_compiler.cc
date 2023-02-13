@@ -37,7 +37,6 @@ limitations under the License.
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/StringRef.h"
-#include "llvm/ADT/Triple.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Mangler.h"
@@ -50,6 +49,7 @@ limitations under the License.
 #include "llvm/Support/TargetSelect.h"
 #include "llvm/Target/TargetMachine.h"
 #include "llvm/Target/TargetOptions.h"
+#include "llvm/TargetParser/Triple.h"
 #include "mlir/Conversion/AffineToStandard/AffineToStandard.h"  // from @llvm-project
 #include "mlir/Conversion/ReconcileUnrealizedCasts/ReconcileUnrealizedCasts.h"  // from @llvm-project
 #include "mlir/Dialect/Affine/IR/AffineOps.h"  // from @llvm-project
@@ -397,7 +397,8 @@ CpuAotCompilationResult::CpuAotCompilationResult(
       result_buffer_index_(result_buffer_index),
       hlo_profile_printer_data_(std::move(hlo_profile_printer_data)) {}
 
-CpuCompiler::CpuCompiler() {
+CpuCompiler::CpuCompiler(bool allow_sparse_shapes)
+    : allow_sparse_shapes_(allow_sparse_shapes) {
   // Initialize LLVM the first time the CpuCompiler is initialized.
   static bool llvm_initialized = []() {
     InitializeLLVMTarget();
@@ -405,6 +406,8 @@ CpuCompiler::CpuCompiler() {
   }();
   (void)llvm_initialized;
 }
+
+CpuCompiler::CpuCompiler() : CpuCompiler(false) {}
 
 StatusOr<std::vector<std::unique_ptr<Executable>>> CpuCompiler::Compile(
     std::unique_ptr<HloModuleGroup> module_group,
@@ -515,10 +518,15 @@ class CollectProfileCandidates : public DfsHloVisitorWithDefault {
 };
 
 // Adds the HloVerifier for CPU to the given pipeline.
-void AddHloVerifier(HloPassPipeline* pipeline, HloVerifierOpts&& opts = {},
-                    bool debug_only = false) {
-  std::unique_ptr<TargetVerifierMetadata> verifier_metadata =
-      std::make_unique<CpuVerifierMetadata>(std::move(opts));
+void AddHloVerifier(HloPassPipeline* pipeline, bool allow_sparse_shapes,
+                    HloVerifierOpts&& opts = {}, bool debug_only = false) {
+  std::unique_ptr<TargetVerifierMetadata> verifier_metadata;
+  if (allow_sparse_shapes) {
+    verifier_metadata =
+        std::make_unique<DefaultVerifierMetadata>(std::move(opts));
+  } else {
+    verifier_metadata = std::make_unique<CpuVerifierMetadata>(std::move(opts));
+  }
   if (debug_only) {
     pipeline->AddInvariantCheckerDebug<HloVerifier>(
         std::move(verifier_metadata), "hlo verifier (debug)");
@@ -543,7 +551,7 @@ Status CpuCompiler::RunHloPassesThroughLayoutAssn(
     HloPassPipeline spmd_pipeline("spmd-partitioner");
     // Run some IR cleanup passes before running the SPMD partitioning
     // passes.
-    AddHloVerifier(&spmd_pipeline);
+    AddHloVerifier(&spmd_pipeline, allow_sparse_shapes_);
     spmd_pipeline.AddPass<CallInliner>();
     spmd_pipeline.AddPass<ZeroSizedHloElimination>();
     spmd_pipeline.AddPass<ConditionalCanonicalizer>();
@@ -556,7 +564,7 @@ Status CpuCompiler::RunHloPassesThroughLayoutAssn(
     TF_RETURN_IF_ERROR(spmd_pipeline.Run(module).status());
   } else {
     HloPassPipeline sharding_removal_pipeline("sharding-removal");
-    AddHloVerifier(&sharding_removal_pipeline);
+    AddHloVerifier(&sharding_removal_pipeline, allow_sparse_shapes_);
     // Remove redundant sharding ops when partition_count == 1.
     sharding_removal_pipeline.AddPass<ShardingRemover>();
     sharding_removal_pipeline.AddPass<HloDCE>();
@@ -564,7 +572,7 @@ Status CpuCompiler::RunHloPassesThroughLayoutAssn(
   }
 
   HloPassPipeline pipeline("HLO passes through layout assignment");
-  AddHloVerifier(&pipeline);
+  AddHloVerifier(&pipeline, allow_sparse_shapes_);
 
   pipeline.AddPass<OperandUpcaster>();
   pipeline.AddPass<ResultCaster>();
@@ -664,9 +672,10 @@ Status CpuCompiler::RunHloPassesThroughLayoutAssn(
   }
 
   // Run the following passes to a fixed point.
-  [&pipeline =
-       pipeline.AddPass<HloPassFix<HloPassPipeline>>("simplification")] {
-    AddHloVerifier(&pipeline, HloVerifierOpts{}, /*debug_only=*/true);
+  [&pipeline = pipeline.AddPass<HloPassFix<HloPassPipeline>>("simplification"),
+   this] {
+    AddHloVerifier(&pipeline, allow_sparse_shapes_, HloVerifierOpts{},
+                   /*debug_only=*/true);
 
     AlgebraicSimplifierOptions options;
     options.set_enable_dot_strength_reduction(false);
@@ -762,8 +771,8 @@ Status CpuCompiler::RunHloPassesAfterLayoutAssn(
 
   // After layout assignment, use a layout-sensitive verifier.
   pipeline.AddPass<HloPassPipeline>("after layout assignment");
-  AddHloVerifier(&pipeline, HloVerifierOpts{}.MakeLayoutSensitive(),
-                 /*debug_only=*/true);
+  AddHloVerifier(&pipeline, allow_sparse_shapes_,
+                 HloVerifierOpts{}.MakeLayoutSensitive(), /*debug_only=*/true);
 
   pipeline.AddPass<ReshapeDecomposer>();
 
@@ -774,9 +783,10 @@ Status CpuCompiler::RunHloPassesAfterLayoutAssn(
   // duplicate or NOPs, so remove them with algebraic simplification and CSE.
   // Run this to a fixed point.
   [&pipeline = pipeline.AddPass<HloPassFix<HloPassPipeline>>(
-       "simplification after layout assignment")] {
+       "simplification after layout assignment"),
+   this] {
     AddHloVerifier(
-        &pipeline,
+        &pipeline, allow_sparse_shapes_,
         HloVerifierOpts{}.MakeLayoutSensitive().WithInstructionCanChangeLayout(
             LayoutAssignment::InstructionCanChangeLayout),
         /*debug_only=*/true);
@@ -1715,8 +1725,18 @@ se::Platform::Id CpuCompiler::PlatformId() const {
   return se::host::kHostPlatformId;
 }
 
+// A special version that assigns zero size to sparse types
+// and passes all other shapes to the cpu executable function.
+static int64_t ShapeSizeBytesZeroSparse(const Shape& shape) {
+  if (LayoutUtil::IsSparseArray(shape)) {
+    return 0;
+  }
+  return CpuExecutable::ShapeSizeBytes(shape);
+}
+
 HloCostAnalysis::ShapeSizeFunction CpuCompiler::ShapeSizeBytesFunction() const {
-  return CpuExecutable::ShapeSizeBytes;
+  return allow_sparse_shapes_ ? ShapeSizeBytesZeroSparse
+                              : CpuExecutable::ShapeSizeBytes;
 }
 
 StatusOr<std::unique_ptr<AotCompilationResult>> CpuCompiler::Export(

@@ -25,6 +25,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_random_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import shape_util
 from tensorflow.python.ops import stateless_random_ops
 
 # go/tf-wildcard-import
@@ -84,7 +85,7 @@ def random_normal(shape,
     A tensor of the specified shape filled with random normal values.
   """
   with ops.name_scope(name, "random_normal", [shape, mean, stddev]) as name:
-    shape_tensor = tensor_util.shape_tensor(shape)
+    shape_tensor = shape_util.shape_tensor(shape)
     mean_tensor = ops.convert_to_tensor(mean, dtype=dtype, name="mean")
     stddev_tensor = ops.convert_to_tensor(stddev, dtype=dtype, name="stddev")
     seed1, seed2 = random_seed.get_seed(seed)
@@ -92,7 +93,7 @@ def random_normal(shape,
         shape_tensor, dtype, seed=seed1, seed2=seed2)
     mul = rnd * stddev_tensor
     value = math_ops.add(mul, mean_tensor, name=name)
-    tensor_util.maybe_set_static_shape(value, shape)
+    shape_util.maybe_set_static_shape(value, shape)
     return value
 
 
@@ -135,7 +136,7 @@ def parameterized_truncated_normal(shape,
   """
   with ops.name_scope(name, "parameterized_truncated_normal",
                       [shape, means, stddevs, minvals, maxvals]) as name:
-    shape_tensor = tensor_util.shape_tensor(shape)
+    shape_tensor = shape_util.shape_tensor(shape)
     means_tensor = ops.convert_to_tensor(means, dtype=dtype, name="means")
     stddevs_tensor = ops.convert_to_tensor(stddevs, dtype=dtype, name="stddevs")
     minvals_tensor = ops.convert_to_tensor(minvals, dtype=dtype, name="minvals")
@@ -149,7 +150,7 @@ def parameterized_truncated_normal(shape,
         maxvals_tensor,
         seed=seed1,
         seed2=seed2)
-    tensor_util.maybe_set_static_shape(rnd, shape)
+    shape_util.maybe_set_static_shape(rnd, shape)
     return rnd
 
 
@@ -193,7 +194,7 @@ def truncated_normal(shape,
     A tensor of the specified shape filled with random truncated normal values.
   """
   with ops.name_scope(name, "truncated_normal", [shape, mean, stddev]) as name:
-    shape_tensor = tensor_util.shape_tensor(shape)
+    shape_tensor = shape_util.shape_tensor(shape)
     mean_tensor = ops.convert_to_tensor(mean, dtype=dtype, name="mean")
     stddev_tensor = ops.convert_to_tensor(stddev, dtype=dtype, name="stddev")
     seed1, seed2 = random_seed.get_seed(seed)
@@ -201,7 +202,7 @@ def truncated_normal(shape,
         shape_tensor, dtype, seed=seed1, seed2=seed2)
     mul = rnd * stddev_tensor
     value = math_ops.add(mul, mean_tensor, name=name)
-    tensor_util.maybe_set_static_shape(value, shape)
+    shape_util.maybe_set_static_shape(value, shape)
     return value
 
 
@@ -293,7 +294,7 @@ def random_uniform(shape,
       raise ValueError("Must specify maxval for integer dtype %r" % dtype)
     maxval = 1
   with ops.name_scope(name, "random_uniform", [shape, minval, maxval]) as name:
-    shape = tensor_util.shape_tensor(shape)
+    shape = shape_util.shape_tensor(shape)
     # In case of [0,1) floating results, minval and maxval is unused. We do an
     # `is` comparison here since this is cheaper than isinstance or  __eq__.
     minval_is_zero = isinstance(minval, int) and minval == 0
@@ -317,7 +318,7 @@ def random_uniform(shape,
     # cross FuncGraph boundaries since that information is only available in
     # python. So we manually get the static shape using
     # `constant_value_as_shape` which *does* cross function boundaries.
-    tensor_util.maybe_set_static_shape(result, shape)
+    shape_util.maybe_set_static_shape(result, shape)
     return result
 
 
@@ -551,7 +552,7 @@ def _maybe_set_static_shape_helper(tensor, shape, postfix_tensor):
   if (not context.executing_eagerly() and
       ops.get_default_graph().building_function and
       not tensor.shape.is_fully_defined()):
-    shape = tensor_util.shape_tensor(shape)
+    shape = shape_util.shape_tensor(shape)
     const_shape = tensor_util.constant_value_as_shape(shape)
     postfix_tensor = ops.convert_to_tensor(postfix_tensor)
     tensor.set_shape(const_shape.concatenate(postfix_tensor.shape))

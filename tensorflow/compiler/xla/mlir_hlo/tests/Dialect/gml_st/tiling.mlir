@@ -9,7 +9,7 @@
 // RUN: FileCheck %s --check-prefix=CHECK-FOR
 
 // RUN: mlir-hlo-opt %s --split-input-file \
-// RUN: --gml-tiling="tile-sizes=256,512 distribute=true op-label=tile-2d" \
+// RUN: --gml-tiling="tile-sizes=256,512 distribute=true op-label=tile-3d" \
 // RUN: --cse | \
 // RUN: FileCheck %s --check-prefix=CHECK-PARALLEL
 
@@ -59,6 +59,41 @@ func.func @dynamic_broadcast_in_dim_at_tile(%init : tensor<?x?x?xf32>,
 // CHECK-FOR:       return %[[FOR]]
 
 // CHECK-PARALLEL-LABEL: @dynamic_broadcast_in_dim_at_tile
+// CHECK-PARALLEL-SAME:  %[[INIT:.*]]: tensor<?x?x?xf32>, %[[ARG:.*]]: tensor<?x?xf32>
+
+// CHECK-PARALLEL:       %[[C0:.*]] = arith.constant 0
+// CHECK-PARALLEL:       %[[C1:.*]] = arith.constant 1
+// CHECK-PARALLEL:       %[[C2:.*]] = arith.constant 2
+// CHECK-PARALLEL:       %[[C256:.*]] = arith.constant 256
+// CHECK-PARALLEL:       %[[C512:.*]] = arith.constant 512
+// CHECK-PARALLEL:       %[[INIT_DIM_0:.*]] = tensor.dim %[[INIT]], %[[C0]]
+// CHECK-PARALLEL:       %[[INIT_DIM_1:.*]] = tensor.dim %[[INIT]], %[[C1]]
+// CHECK-PARALLEL:       %[[INIT_DIM_2:.*]] = tensor.dim %[[INIT]], %[[C2]]
+// CHECK-PARALLEL:       %[[PARALLEL:.*]] = gml_st.parallel (%[[I:.*]], %[[J:.*]]) =
+// CHECK-PARALLEL-SAME:      (%[[C0]], %[[C0]])
+// CHECK-PARALLEL-SAME:      to (%[[INIT_DIM_0]], %[[INIT_DIM_1]])
+// CHECK-PARALLEL-SAME:      step (%[[C256]], %[[C512]])
+// CHECK-PARALLEL-SAME:      outs (%[[OUT:.*]] = %[[INIT]]: tensor<?x?x?xf32>)
+// CHECK-PARALLEL:         %[[MIN:.*]] = affine.min #map{{[0-9]*}}(%[[I]])[%[[INIT_DIM_0]]]
+// CHECK-PARALLEL:         %[[MIN_0:.*]] = affine.min #map{{[0-9]*}}(%[[J]])[%[[INIT_DIM_1]]]
+// CHECK-PARALLEL:         %[[ARG_DIM_0:.*]] = tensor.dim %[[ARG]], %[[C0]]
+// CHECK-PARALLEL:         %[[ARG_DIM_1:.*]] = tensor.dim %[[ARG]], %[[C1]]
+// CHECK-PARALLEL:         %[[CMPI:.*]] = arith.cmpi ne, %[[ARG_DIM_0]], %[[INIT_DIM_0]]
+// CHECK-PARALLEL:         %[[CMPI_0:.*]] = arith.cmpi ne, %[[ARG_DIM_1]], %[[INIT_DIM_2]]
+// CHECK-PARALLEL:         %[[SELECT:.*]] = arith.select %[[CMPI]], %[[C0]], %[[I]]
+// CHECK-PARALLEL:         %[[SELECT_0:.*]] = arith.select %[[CMPI]], %[[C1]], %[[MIN]]
+// CHECK-PARALLEL:         %[[SELECT_1:.*]] = arith.select %[[CMPI_0]], %[[C1]], %[[INIT_DIM_2]]
+// CHECK-PARALLEL:         %[[MATERIALIZE:.*]] = tensor.extract_slice %[[OUT]]
+// CHECK-PARALLEL-SAME:      [%[[I]], %[[J]], %[[C0]]] [%[[MIN]], %[[MIN_0]], %[[INIT_DIM_2]]] [1, 1, 1]
+// CHECK-PARALLEL:         %[[MATERIALIZE_0:.*]] = tensor.extract_slice %[[ARG]]
+// CHECK-PARALLEL-SAME:      [%[[SELECT]], %[[C0]]] [%[[SELECT_0]], %[[SELECT_1]]] [1, 1]
+// CHECK-PARALLEL:         %[[DYNAMIC:.*]] = thlo.dynamic_broadcast_in_dim
+// CHECK-PARALLEL-SAME:        ins(%[[MATERIALIZE_0]]
+// CHECK-PARALLEL-SAME:        outs(%[[MATERIALIZE]]
+// CHECK-PARALLEL-SAME:        broadcast_dimensions = [0, 2]
+// CHECK-PARALLEL:         %[[TILE:.*]] = gml_st.tile [%[[I]], %[[J]], %[[C0]]] [%[[MIN]], %[[MIN_0]], %[[INIT_DIM_2]]] [1, 1, 1]
+// CHECK-PARALLEL:         gml_st.set_yield %[[DYNAMIC]] into %[[OUT]][%[[TILE]]]
+// CHECK-PARALLEL:       return %[[PARALLEL]]
 
 // -----
 

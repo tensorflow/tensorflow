@@ -69,7 +69,7 @@ import weakref
 from google.protobuf import text_format as _text_format
 from google.protobuf.message import DecodeError
 from tensorflow.core.framework import attr_value_pb2
-from tensorflow.core.function.trace_type import default_types
+from tensorflow.core.function import trace_type
 from tensorflow.python.distribute.parallel_device import parallel_device
 from tensorflow.python.eager import context
 from tensorflow.python.eager import lift_to_graph
@@ -736,8 +736,6 @@ class Function(core.GenericFunction, trackable.Trackable):
       kwds: Keyword arguments to the python callable.
       add_initializers_to: Where to collect variable initializers, if not None.
     """
-    self.function_spec.validate_input_signature_with_argspec()
-
     created_variables = []
     lifted_initializer_graph = func_graph_module.FuncGraph("initializer")
 
@@ -1047,9 +1045,11 @@ class Function(core.GenericFunction, trackable.Trackable):
       device_name = compiler_ir.maybe_get_device_name(device_name)
       res_bytes = context.context().get_compiler_ir(
           device_name=device_name,
-          stage=stage,
           function_name=fn_name,
-          args=list(filtered_flat_args) + concrete_fn.captured_inputs)
+          flat_args=list(filtered_flat_args),
+          captured_inputs=concrete_fn.captured_inputs,
+          stage=stage,
+      )
       if stage in ("hlo_serialized", "optimized_hlo_serialized",
                    "optimized_hlo_proto_serialized"):
         return res_bytes
@@ -1259,8 +1259,8 @@ class Function(core.GenericFunction, trackable.Trackable):
     concrete._garbage_collector.release()  # pylint: disable=protected-access
     return concrete
 
-  def __tf_tracing_type__(self, signature_context):
-    return default_types.Weakref(weakref.ref(self))
+  def __tf_tracing_type__(self, _):
+    return trace_type.Weakref(weakref.ref(self))
 
   def __get__(self, instance, owner):
     """Makes it possible to decorate instance methods."""

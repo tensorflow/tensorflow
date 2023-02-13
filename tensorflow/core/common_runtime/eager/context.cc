@@ -889,6 +889,42 @@ Status EagerContext::MaybeRegisterFunctionRemotely(const FunctionDef& fdef) {
   return OkStatus();
 }
 
+Status EagerContext::MaybeRemoveFunctionRemotely(const string& function_name) {
+  // Only client context can remove function on remote worker context.
+  if (!remote_device_manager_.Owned()) {
+    return OkStatus();
+  }
+
+#if !defined(IS_MOBILE_PLATFORM)
+  auto request = std::make_shared<eager::EnqueueRequest>();
+  request->set_context_id(GetContextId());
+
+  eager::RemoveFunctionOp* remove_function =
+      request->add_queue()->mutable_remove_function();
+  *remove_function->mutable_function_name() = function_name;
+
+  auto remote_contexts = GetRemoteContexts();
+  for (const auto& target : remote_contexts) {
+    core::RefCountPtr<eager::EagerClient> eager_client;
+    TF_RETURN_IF_ERROR(GetClient(target, &eager_client));
+
+    auto response = std::make_shared<eager::EnqueueResponse>();
+    eager_client->StreamingEnqueueAsync(
+        this->Executor().StreamingEnqueue(),
+        /*call_opts=*/nullptr, request.get(), response.get(),
+        [request, response](const Status& status) {
+          if (!status.ok()) {
+            LOG(ERROR) << "Failed to remove function remotely due to "
+                       << status.error_message()
+                       << "\nThis could happen if the remote target has been "
+                          "disconnected from the client.";
+          }
+        });
+  }
+#endif  // !IS_MOBILE_PLATFORM
+  return OkStatus();
+}
+
 Status EagerContext::RegisterExistingFunctionsOnRemoteWorkers(
     const std::vector<string>& remote_workers) {
 #if !defined(IS_MOBILE_PLATFORM)
@@ -1001,23 +1037,30 @@ std::vector<string> EagerContext::ListFunctionNames() {
 
 Status EagerContext::RemoveFunction(const string& func) {
   // TODO(mdan): The context owns these functions. Why check refcount then?
-  mutex_lock l(cache_mu_);
-  auto* registered_function = gtl::FindPtrOrNull(registered_functions_, func);
-  if (registered_function == nullptr) {
-    return errors::InvalidArgument("Tried to remove non-existent function '",
-                                   func, "'.");
-  }
-  bool is_last_ref = registered_function->RefCountIsOne();
-  if (is_last_ref) {
-    for (auto& key : *registered_function->cached_kernel_keys) {
-      kernel_cache_.erase(key);
+  bool is_last_ref = false;
+  {
+    mutex_lock l(cache_mu_);
+    auto* registered_function = gtl::FindPtrOrNull(registered_functions_, func);
+    if (registered_function == nullptr) {
+      return errors::InvalidArgument("Tried to remove non-existent function '",
+                                     func, "'.");
     }
-    registered_functions_.erase(func);
+    is_last_ref = registered_function->RefCountIsOne();
+    if (is_last_ref) {
+      for (auto& key : *registered_function->cached_kernel_keys) {
+        kernel_cache_.erase(key);
+      }
+      registered_functions_.erase(func);
+    }
+    registered_function->Unref();
+    if (is_last_ref) {
+      TF_RETURN_IF_ERROR(func_lib_def_.RemoveFunction(func));
+    }
   }
-  registered_function->Unref();
+  // MaybeRemoveFunctionRemotely contains rpc calls. Including it to mutex lock
+  // will cause error.
   if (is_last_ref) {
-    // TODO(fishx): Remove remote function as well.
-    return func_lib_def_.RemoveFunction(func);
+    return MaybeRemoveFunctionRemotely(func);
   }
   return OkStatus();
 }

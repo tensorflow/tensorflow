@@ -299,7 +299,8 @@ def while_loop(cond,
     _check_inputs_outputs_types_match(body_graph, flattened_loop_vars)
 
     with ops.control_dependencies(
-        list(cond_graph.control_captures) + list(body_graph.control_captures)):
+        list(cond_graph._function_captures.control) + list(  # pylint: disable=protected-access
+            body_graph._function_captures.control)):  # pylint: disable=protected-access
       output_shapes = [t.shape for t in body_graph.outputs]
       orig_loop_vars_range = slice(first_loop_var_index,
                                    first_loop_var_index + num_flattened_outputs)
@@ -1371,12 +1372,6 @@ def _copy_handle_data(src_tensors, tgt_tensors):
     handle_data_util.copy_handle_data(src_t, tgt_t)
 
 
-def _graph_name(graph):
-  if isinstance(graph, func_graph_module.FuncGraph):
-    return graph.name
-  return "Base"
-
-
 def _pack_sequence_as(loop_vars_signature, flat_orig_loop_vars, loop_vars):
   """Like `nest.pack_sequence_as` but also replaces flows with TensorArrays."""
 
@@ -1440,6 +1435,7 @@ class _OperationWithOutputs(ops.Operation):
   """
 
   def __init__(self, c_op, g):
+    super(ops.Operation, self).__init__()
     self._c_op = c_op
     self._graph = g
     self._outputs = None  # Initialized by _duplicate_body_captures_in_cond().

@@ -20,6 +20,10 @@ load(
     "//tensorflow/core/platform:rules_cc.bzl",
     "cc_library",
 )
+load(
+    "//tensorflow/security/fuzzing:tf_fuzzing.bzl",
+    "tf_cc_fuzz_test",
+)
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -28,6 +32,7 @@ package(
         "//tensorflow/security/fuzzing:__subpackages__",
         # TODO(pedaveeraiah): to be removed when summary.proto.h deps moves to TSL
         "//tensorflow/tsl/lib:__subpackages__",
+        # copybara:uncomment "//learning/brain/tfrt/aot:__subpackages__",
     ],
     licenses = ["notice"],
 )
@@ -1836,5 +1841,15 @@ tf_proto_library(
     ],
     tags = [
         "alt_dep=//third_party/tensorflow/core:protos_all",
+    ],
+)
+
+tf_cc_fuzz_test(
+    name = "tensor_shape_fuzz",
+    srcs = ["tensor_shape_fuzz.cc"],
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/security/fuzzing/cc/core/framework:tensor_shape_domains",
+        "//tensorflow/tsl/lib/core:status_test_util",
     ],
 )

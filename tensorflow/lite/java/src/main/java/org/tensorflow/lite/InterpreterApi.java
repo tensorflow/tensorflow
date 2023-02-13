@@ -285,13 +285,14 @@ public interface InterpreterApi extends AutoCloseable {
     /**
      * Enable or disable an optimized set of CPU kernels (provided by XNNPACK). Enabled by default.
      */
-    public Options setUseXNNPACK(Boolean useXNNPACK) {
+    public Options setUseXNNPACK(boolean useXNNPACK) {
       this.useXNNPACK = useXNNPACK;
       return this;
     }
 
-    public Boolean getUseXNNPACK() {
-      return useXNNPACK;
+    public boolean getUseXNNPACK() {
+      // A null value indicates the default behavior, which is currently to apply the delegate.
+      return useXNNPACK == null || useXNNPACK.booleanValue();
     }
 
     TfLiteRuntime runtime = TfLiteRuntime.FROM_APPLICATION_ONLY;

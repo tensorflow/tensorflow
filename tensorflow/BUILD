@@ -124,6 +124,7 @@ PACKAGE_STATIC_DEPS = [
     "@clog//:__subpackages__",
     "@flatbuffers//:__subpackages__",
     "@nccl_archive//:__subpackages__",
+    "@triton//:__subpackages__",
 ] + tsl_async_value_deps()
 
 package(
@@ -138,17 +139,28 @@ package(
 # )
 #
 # filegroup(
-#     name = "copybara_config",
+#     name = "copybara_library",
 #     srcs = glob(
 #         [
 #             "*.bara.sky",
 #             "*.dic",
+#             "*.ftrcp",
 #         ],
-#     ) + ["leakr_file_type_recipe.ftrcp"],
+#         exclude = [
+#             "copy.bara.sky",
+#         ],
+#     ),
+#     visibility = ["//visibility:public"],
+# )
+#
+# filegroup(
+#     name = "copybara_config",
+#     srcs = ["copy.bara.sky"],
 #     data = [
+#         ":copybara_library",
 #         "//learning/brain/testing/copybara:all_bara_sky",
-#         "//third_party/tsl:copybara_config",
-#         "//third_party/xla:copybara_config",
+#         "//third_party/tsl:copybara_library",
+#         "//third_party/xla:copybara_library",
 #     ],
 #     visibility = ["//visibility:public"],
 # )
@@ -156,6 +168,16 @@ package(
 # copybara_config_test(
 #     name = "copybara_config_test",
 #     config = "copy.bara.sky",
+#     tags = [
+#         "noasan",
+#         "nodfsan",
+#         "nogotsan",
+#         "nogpu",
+#         "nomsan",
+#         "nosan",
+#         "notsan",
+#         "noubsan",
+#     ],
 #     deps = [":copybara_config"],
 # )
 # copybara:uncomment_end
@@ -1149,6 +1171,8 @@ tf_cc_shared_library(
                 "//tensorflow/core/util:determinism",  # Must be linked and exported to libtensorflow_framework.so.
                 "//tensorflow/lite/kernels/shim:tf_kernel_shim",
                 "//tensorflow/compiler/xla/stream_executor:stream_executor_impl",
+                "//tensorflow/tsl/framework:bfc_allocator",
+                "//tensorflow/tsl/framework:metrics",
             ] + tf_additional_binary_deps() +
             # TODO(b/259305727): Remove this select and include captured_function in macos builds.
             select({
@@ -1642,6 +1666,9 @@ py_library(
         },
     ) + [
         ":tensorflow_py_no_contrib",
+        "//tensorflow/lite/python:analyzer",
+        "//tensorflow/lite/python:lite",
+        "//tensorflow/lite/python/authoring",
         "//tensorflow/python/estimator:estimator_py",
     ],
 )
@@ -1656,6 +1683,11 @@ py_library(
     ],
     srcs_version = "PY3",
     visibility = ["//visibility:public"],
-    deps = ["//tensorflow/python:no_contrib"],
+    deps = [
+        "//tensorflow/lite/python:analyzer",
+        "//tensorflow/lite/python:lite",
+        "//tensorflow/lite/python/authoring",
+        "//tensorflow/python:no_contrib",
+    ],
 )
 # copybara:comment_end

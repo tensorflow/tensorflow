@@ -20,6 +20,7 @@ tf_cc_test(
     deps = [
         ":path_utils",
         ":snapshot_reader",
+        ":test_utils",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/time",
         "//tensorflow/core:framework",
@@ -52,6 +53,7 @@ cc_library(
         "//tensorflow/tsl/platform:env",
         "//tensorflow/tsl/platform:errors",
         "//tensorflow/tsl/platform:protobuf",
+        "//tensorflow/tsl/platform:random",
         "//tensorflow/tsl/platform:status",
         "@com_google_absl//absl/functional:function_ref",
         "@com_google_absl//absl/strings",
@@ -74,7 +76,9 @@ tf_cc_test(
         "//tensorflow/tsl/platform:errors",
         "//tensorflow/tsl/platform:path",
         "//tensorflow/tsl/platform:status",
+        "//tensorflow/tsl/platform:status_matchers",
         "//tensorflow/tsl/platform:statusor",
+        "//tensorflow/tsl/protobuf:protos_all_cc",
     ],
 )
 
@@ -109,16 +113,48 @@ cc_library(
     hdrs = ["snapshot_split_provider.h"],
     compatible_with = get_compatible_with_portable(),
     deps = [
+        ":file_utils",
+        ":path_utils",
         "//tensorflow/core:framework",
+        "//tensorflow/core/data:snapshot_utils",
         "//tensorflow/core/data/service:dispatcher_client",
         "//tensorflow/core/data/service:dispatcher_proto_cc",
         "//tensorflow/core/data/service:grpc_util",
         "//tensorflow/tsl/platform:env",
         "//tensorflow/tsl/platform:errors",
         "//tensorflow/tsl/platform:mutex",
+        "//tensorflow/tsl/platform:path",
         "//tensorflow/tsl/platform:status",
+        "//tensorflow/tsl/platform:statusor",
         "//tensorflow/tsl/platform:thread_annotations",
+        "@com_google_absl//absl/container:btree",
         "@com_google_absl//absl/time",
+    ],
+)
+
+tf_cc_test(
+    name = "snapshot_split_provider_test",
+    srcs = ["snapshot_split_provider_test.cc"],
+    # copybara:uncomment extra_copts = ["-Wthread-safety-analysis"],
+    deps = [
+        ":file_utils",
+        ":path_utils",
+        ":snapshot_split_provider",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/data/service:common_proto_cc",
+        "//tensorflow/core/data/service:dispatcher_client",
+        "//tensorflow/core/data/service:test_util",
+        "//tensorflow/core/framework:tensor_testutil",
+        "//tensorflow/tsl/platform:env",
+        "//tensorflow/tsl/platform:errors",
+        "//tensorflow/tsl/platform:path",
+        "//tensorflow/tsl/platform:status",
+        "//tensorflow/tsl/platform:status_matchers",
+        "//tensorflow/tsl/protobuf:protos_all_cc",
     ],
 )
 
@@ -141,6 +177,7 @@ cc_library(
         "//tensorflow/tsl/platform:errors",
         "//tensorflow/tsl/platform:status",
         "//tensorflow/tsl/platform:statusor",
+        "@com_google_absl//absl/time",
     ],
 )
 
