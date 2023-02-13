@@ -44,12 +44,6 @@ class RaiseBfloat16Error : public OpKernel {
   REGISTER_KERNEL_BUILDER(                                                    \
       Name("_FusedConv2D").Device(DEVICE_CPU).TypeConstraint<T>("T"),         \
       RaiseBfloat16Error);                                                    \
-  REGISTER_KERNEL_BUILDER(                                                    \
-      Name("AvgPool").Device(DEVICE_CPU).TypeConstraint<T>("T"),              \
-      RaiseBfloat16Error);                                                    \
-  REGISTER_KERNEL_BUILDER(                                                    \
-      Name("AvgPoolGrad").Device(DEVICE_CPU).TypeConstraint<T>("T"),          \
-      RaiseBfloat16Error);                                                    \
   REGISTER_KERNEL_BUILDER(Name("FusedBatchNormV3")                            \
                               .Device(DEVICE_CPU)                             \
                               .TypeConstraint<bfloat16>("T")                  \
