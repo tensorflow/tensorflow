@@ -181,3 +181,19 @@ def CastBFloat16ConvToFloat32 : Pat<
    (IsBF16ElementType $filter)],
   (addBenefit 1)>;
 
+def CastBFloat16AvgPoolToFloat32 : Pat<
+  (TF_AvgPoolOp:$res
+    $input, $ksize, $strides, $padding,
+    IsDataFormatNHWC:$data_format),
+  (TF_CastOp
+    (TF_AvgPoolOp
+      (TF_CastOp
+        $input, /*truncate=*/ConstBoolAttrFalse,
+        (returnType (CloneTypeWithF32ElementType $input))),
+      $ksize, $strides, $padding,
+      IsDataFormatNHWC:$data_format,
+      (returnType (CloneTypeWithF32ElementType $res))),
+    /*truncate=*/ConstBoolAttrFalse),
+  [(IsBF16ElementType $input)],
+  (addBenefit 1)>;
+
