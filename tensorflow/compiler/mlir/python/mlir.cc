@@ -86,7 +86,6 @@ static void RegisterPasses() {
     mlir::lmhlo::registerAllLmhloPasses();
     // These are in compiler/mlir/xla and not part of the above MHLO
     // passes.
-    mlir::mhlo::registerXlaFrameworkPasses();
     mlir::mhlo::registerTfXlaPasses();
     mlir::mhlo::registerLegalizeTFPass();
     mlir::mhlo::registerLegalizeTfTypesPassPass();
@@ -95,6 +94,7 @@ static void RegisterPasses() {
     mlir::tosa::registerTFLtoTOSALegalizationPipeline();
     mlir::tosa::registerTFTFLtoTOSALegalizationPipeline();
     mlir::tf_saved_model::registerTensorFlowSavedModelPasses();
+    mlir::xla_framework::registerXlaFrameworkPasses();
     tensorflow::RegisterMlProgramPasses();
     return true;
   }();

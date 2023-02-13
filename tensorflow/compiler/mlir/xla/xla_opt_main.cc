@@ -38,7 +38,6 @@ int main(int argc, char **argv) {
   mlir::lmhlo::registerAllLmhloPasses();
   // These are in compiler/mlir/xla and not part of the above MHLO passes.
   mlir::mhlo::registerTfXlaPasses();
-  mlir::mhlo::registerXlaFrameworkPasses();
   mlir::mhlo::RegisterAdjustLayoutPass();
   mlir::mhlo::registerLegalizeTfPasses();
   mlir::RegisterMhloToLhloWithXlaPass();
@@ -46,6 +45,7 @@ int main(int argc, char **argv) {
   mlir::registerAllDialects(registry);
   mlir::mhlo::registerAllMhloDialects(registry);
   mlir::stablehlo::registerAllDialects(registry);
+  mlir::xla_framework::registerXlaFrameworkPasses();
   xla::cpu::RegisterHloXlaRuntimePipelineDialects(registry);
   registry.insert<mlir::xla_framework::XLAFrameworkDialect,
                   mlir::TF::TensorFlowDialect, mlir::tf_type::TFTypeDialect>();

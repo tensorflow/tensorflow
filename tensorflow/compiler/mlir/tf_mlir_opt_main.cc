@@ -54,12 +54,12 @@ int main(int argc, char **argv) {
   // These are in compiler/mlir/xla and not part of the above MHLO passes.
   mlir::mhlo::registerLegalizeTfPasses();
   mlir::mhlo::registerTfXlaPasses();
-  mlir::mhlo::registerXlaFrameworkPasses();
   mlir::tosa::registerLegalizeTosaPasses();
   mlir::tosa::registerTFtoTOSALegalizationPipeline();
   mlir::tosa::registerTFLtoTOSALegalizationPipeline();
   mlir::tosa::registerTFTFLtoTOSALegalizationPipeline();
   mlir::tf_test::registerTensorFlowTestPasses();
+  mlir::xla_framework::registerXlaFrameworkPasses();
   tensorflow::RegisterConvertMlirToXlaHloPipelineWithDefaults();
   tensorflow::RegisterGraphOptimizationPasses();
   tensorflow::RegisterMlProgramPasses();

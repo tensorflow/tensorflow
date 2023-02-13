@@ -51,6 +51,11 @@ void RegisterDefaultXlaCpuRuntimeDialects(DialectRegistry& dialects);
 void CreateDefaultXlaCpuRuntimeCompilationPipeline(
     PassManager& passes, const CpuPipelineOptions& opts);
 
+// Creates default XLA-CPU runtime compilation pipeline that lowers
+// `xla_framework` and `rt` dialects to the LLVMIR dialect.
+void CreateDefaultXlaCpuAOTCompilationPipeline(PassManager& passes,
+                                               const CpuPipelineOptions& opts);
+
 }  // namespace runtime
 }  // namespace xla
 
