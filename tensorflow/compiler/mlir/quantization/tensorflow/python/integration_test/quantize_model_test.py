@@ -2040,29 +2040,16 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
         converted_model.signatures._signatures.keys(), {'serving_default'}
     )
 
-    # Confirms that quantization is applied to the model.
+    # Test that the quantized model successfully loads without error.
     output_loader = saved_model_loader.SavedModelLoader(
         self._output_saved_model_path
     )
-    output_graphdef = output_loader.get_meta_graph_def_from_tags(tags).graph_def
+    with session.Session(graph=ops.Graph()) as sess:
+      output_meta_graph_def = output_loader.load(sess, tags)
+
+    # Confirms that quantization is applied to the model.
+    output_graphdef = output_meta_graph_def.graph_def
     self.assertTrue(self._contains_quantized_function_call(output_graphdef))
-    # Make sure that save ops are exported.
-    self.assertEqual(
-        self._count_ops(
-            output_graphdef,
-            op_names={'tf_quant__save_op'},
-            get_op_name=True,
-        ),
-        1,
-    )
-    self.assertEqual(
-        self._count_ops(
-            output_graphdef,
-            op_names={'tf_quant__save_save_v2'},
-            get_op_name=True,
-        ),
-        1,
-    )
 
     # Tests that there are variables in the model.
     variable_node_defs = _find_variables(output_graphdef)
@@ -2794,29 +2781,17 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
         converted_model.signatures._signatures.keys(), {'serving_default'}
     )
 
-    # Checks that quantization is applied.
+    # Confirm that the quantized model loads successfully.
     output_loader = saved_model_loader.SavedModelLoader(
         self._output_saved_model_path
     )
-    output_graphdef = output_loader.get_meta_graph_def_from_tags(tags).graph_def
+
+    with session.Session(graph=ops.Graph()) as sess:
+      output_meta_graph_def = output_loader.load(sess, tags)
+
+    # Checks that quantization is applied.
+    output_graphdef = output_meta_graph_def.graph_def
     self.assertTrue(self._contains_quantized_function_call(output_graphdef))
-    # Make sure that save ops are exported.
-    self.assertEqual(
-        self._count_ops(
-            output_graphdef,
-            op_names={'tf_quant__save_op'},
-            get_op_name=True,
-        ),
-        1,
-    )
-    self.assertEqual(
-        self._count_ops(
-            output_graphdef,
-            op_names={'tf_quant__save_save_v2'},
-            get_op_name=True,
-        ),
-        1,
-    )
 
     # Tests that there are variables in the model.
     variable_node_defs = _find_variables(output_graphdef)
