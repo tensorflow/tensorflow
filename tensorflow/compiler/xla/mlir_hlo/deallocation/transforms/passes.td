@@ -15,6 +15,18 @@ limitations under the License.
 
 include "mlir/Pass/PassBase.td"
 
+def SplitAllocTensorsPass :
+    Pass<"hlo-split-alloc-tensors", "mlir::func::FuncOp"> {
+  let summary = "Split bufferization.alloc_tensor ops.";
+  let description = [{
+    `bufferization.alloc_tensor` ops that are reused for non-conflicting ops
+    prevent buffer reuse. This pass replaces each use of an alloc tensor with a
+    fresh alloc.
+  }];
+  let constructor = "::mlir::deallocation::createSplitAllocTensorsPass()";
+  let dependentDialects = ["::mlir::bufferization::BufferizationDialect"];
+}
+
 def DeallocatePass : Pass<"hlo-deallocate", "mlir::func::FuncOp"> {
   let summary = "Deallocate buffers by inserting `deallocation.retain` ops.";
   let description = [{

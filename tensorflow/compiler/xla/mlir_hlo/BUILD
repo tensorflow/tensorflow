@@ -410,6 +410,7 @@ cc_library(
     srcs = [
         "deallocation/transforms/buffer_reuse.cc",
         "deallocation/transforms/deallocate.cc",
+        "deallocation/transforms/split_alloc_tensors.cc",
     ],
     hdrs = [
         "deallocation/transforms/passes.h",
@@ -420,6 +421,7 @@ cc_library(
         ":deallocation_passes_inc_gen",
         ":deallocation_utils",
         "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:BufferizationDialect",
         "@llvm-project//mlir:ControlFlowInterfaces",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
