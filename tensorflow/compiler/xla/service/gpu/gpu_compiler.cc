@@ -193,15 +193,12 @@ limitations under the License.
 #include "tensorflow/tsl/platform/threadpool.h"
 #include "tensorflow/tsl/profiler/lib/traceme.h"
 
-<<<<<<< HEAD
 #if TENSORFLOW_USE_ROCM
 #include "rocm/rocm_config.h"
 #endif
-=======
 #if GOOGLE_CUDA
 #include "tensorflow/compiler/xla/service/gpu/triton_autotuner.h"
 #endif  // GOOGLE_CUDA
->>>>>>> google_upstream/master
 
 namespace xla {
 namespace gpu {
@@ -846,16 +843,9 @@ Status GpuCompiler::OptimizeHloPostLayoutAssignment(
 
     // Rewrite GEMMs with broadcasted inputs as strided GEMMs.
     pipeline.AddPass<GemmBroadcastFoldingRewriter>();
-<<<<<<< HEAD
 #endif
-    if (hlo_module->config().debug_options().xla_gpu_normalize_layouts()) {
-      pipeline.AddPass<LayoutNormalization>(
-          &NormalizeLayoutForCustomCallConvolution);
-=======
-
     if (debug_options.xla_gpu_normalize_layouts()) {
       pipeline.AddPass<LayoutNormalization>(&NormalizeLayoutForGpuCustomCalls);
->>>>>>> google_upstream/master
       pipeline.AddPass<HloPassFix<AlgebraicSimplifier>>(options);
     }
     pipeline.AddPass<BroadcastCanonicalizer>();

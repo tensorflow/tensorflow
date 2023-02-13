@@ -103,12 +103,9 @@ Now let's build `tf-nightly`.
    Hub](https://hub.docker.com/r/tensorflow/build/tags). The options for the
    `master` branch are:
 
-<<<<<<< HEAD
 For CUDA
 
-=======
     - `tensorflow/build:latest-python3.11`
->>>>>>> google_upstream/master
     - `tensorflow/build:latest-python3.10`
     - `tensorflow/build:latest-python3.9`
     - `tensorflow/build:latest-python3.8`
