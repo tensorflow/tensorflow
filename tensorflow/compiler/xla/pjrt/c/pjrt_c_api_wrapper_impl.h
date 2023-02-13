@@ -24,6 +24,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/pjrt/c/pjrt_c_api.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
+#include "tensorflow/compiler/xla/pjrt/pjrt_compiler.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_future.h"
 
 struct PJRT_Error {
@@ -103,6 +104,10 @@ struct PJRT_SerializedExecutable {
   std::string serialized;
 };
 
+struct PJRT_DeviceTopology {
+  std::unique_ptr<xla::PjRtDeviceTopology> topology;
+};
+
 namespace pjrt {
 
 // C API definitions
@@ -151,6 +156,7 @@ PJRT_Error* PJRT_Executable_SizeOfGeneratedCodeInBytes(
     PJRT_Executable_SizeOfGeneratedCodeInBytes_Args* args);
 PJRT_Error* PJRT_Executable_OptimizedProgram(
     PJRT_Executable_OptimizedProgram_Args* args);
+PJRT_Error* PJRT_Executable_Serialize(PJRT_Executable_Serialize_Args* args);
 
 PJRT_Error* PJRT_LoadedExecutable_Destroy(
     PJRT_LoadedExecutable_Destroy_Args* args);
@@ -162,7 +168,6 @@ PJRT_Error* PJRT_LoadedExecutable_IsDeleted(
     PJRT_LoadedExecutable_IsDeleted_Args* args);
 PJRT_Error* PJRT_LoadedExecutable_Execute(
     PJRT_LoadedExecutable_Execute_Args* args);
-PJRT_Error* PJRT_Executable_Serialize(PJRT_Executable_Serialize_Args* args);
 PJRT_Error* PJRT_Executable_DeserializeAndLoad(
     PJRT_Executable_DeserializeAndLoad_Args* args);
 PJRT_Error* PJRT_LoadedExecutable_GetExecutable(
@@ -186,6 +191,14 @@ PJRT_Error* PJRT_Buffer_ToHostBuffer(PJRT_Buffer_ToHostBuffer_Args* args);
 PJRT_Error* PJRT_Buffer_IsOnCpu(PJRT_Buffer_IsOnCpu_Args* args);
 PJRT_Error* PJRT_Buffer_ReadyEvent(PJRT_Buffer_ReadyEvent_Args* args);
 PJRT_Error* PJRT_Buffer_UnsafePointer(PJRT_Buffer_UnsafePointer_Args* args);
+
+PJRT_Error* PJRT_DeviceTopology_Destroy(PJRT_DeviceTopology_Destroy_Args* args);
+PJRT_Error* PJRT_DeviceTopology_PlatformName(
+    PJRT_DeviceTopology_PlatformName_Args* args);
+PJRT_Error* PJRT_DeviceTopology_PlatformVersion(
+    PJRT_DeviceTopology_PlatformVersion_Args* args);
+
+PJRT_Error* PJRT_Compile(PJRT_Compile_Args* args);
 
 // Helper macros and functions
 
@@ -219,6 +232,12 @@ PJRT_Error* PJRT_Buffer_UnsafePointer(PJRT_Buffer_UnsafePointer_Args* args);
 // Does not check the program format itself.
 std::string ProgramFormatErrorMsg(absl::string_view program_format);
 
+// Creates a C PJRT topology from a C++ PJRT topology.
+// The returned topology is owned by the caller and
+// should be destroyed with PJRT_DeviceTopology_Destroy.
+PJRT_DeviceTopology* CreateWrapperDeviceTopology(
+    std::unique_ptr<xla::PjRtDeviceTopology> cpp_topology);
+
 // Creates a C PJRT client from a C++ PJRT client and creates C PJRT devices
 // from cpp_client's devices. The returned client is owned by the caller and
 // should be destroyed with PJRT_Client_Destroy.
@@ -226,7 +245,9 @@ PJRT_Client* CreateWrapperClient(std::unique_ptr<xla::PjRtClient> cpp_client);
 
 // Creates a PJRT_Api with create_fn from the input and other functions in
 // pjrt_c_api_wrapper_impl.
-constexpr PJRT_Api CreatePjrtApi(PJRT_Client_Create* create_fn) {
+constexpr PJRT_Api CreatePjrtApi(
+    PJRT_Client_Create* create_fn,
+    PJRT_DeviceTopology_Create* topology_create_fn) {
   return PJRT_Api{
       .struct_size = PJRT_Api_STRUCT_SIZE,
       .priv = nullptr,
@@ -304,6 +325,15 @@ constexpr PJRT_Api CreatePjrtApi(PJRT_Client_Create* create_fn) {
       .PJRT_Buffer_IsOnCpu = pjrt::PJRT_Buffer_IsOnCpu,
       .PJRT_Buffer_ReadyEvent = pjrt::PJRT_Buffer_ReadyEvent,
       .PJRT_Buffer_UnsafePointer = pjrt::PJRT_Buffer_UnsafePointer,
+
+      .PJRT_DeviceTopology_Create = topology_create_fn,
+      .PJRT_DeviceTopology_Destroy = pjrt::PJRT_DeviceTopology_Destroy,
+      .PJRT_DeviceTopology_PlatformName =
+          pjrt::PJRT_DeviceTopology_PlatformName,
+      .PJRT_DeviceTopology_PlatformVersion =
+          pjrt::PJRT_DeviceTopology_PlatformVersion,
+
+      .PJRT_Compile = pjrt::PJRT_Compile,
   };
 }
 

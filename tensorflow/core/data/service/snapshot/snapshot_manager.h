@@ -41,6 +41,7 @@ namespace data {
 //   - DONE
 //   - snapshot.metadata
 //   - dataset_def.proto
+//   - dataset_spec.pb
 //   - chunks
 //     - chunk_<stream_index>_<chunk_index>
 //   - streams

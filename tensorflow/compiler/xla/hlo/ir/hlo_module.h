@@ -281,8 +281,8 @@ class HloModule {
       const absl::flat_hash_set<absl::string_view>& execution_threads,
       const absl::flat_hash_set<HloComputation*>& allow_list) const;
 
-  // Same as MakeComputationPostOrder() but sorting the computations by their
-  // contents. The order is longer post order.
+  // If config().content_aware_computation_sorting() is true, sorts computations
+  // by their contents, otherwise returns MakeComputationPostOrder().
   std::vector<HloComputation*> MakeComputationSorted() const {
     return MakeComputationSorted({});
   }

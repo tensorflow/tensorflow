@@ -301,7 +301,7 @@ struct MaterializeUpdateTransferWriteTensorOperand
                                 PatternRewriter &rewriter) const override {
     if (!op->getParentOfType<ForOp>()) return failure();
 
-    // Sanity checks of TransferWriteOp.
+    // Soundness checks of TransferWriteOp.
     if (op.hasOutOfBoundsDim()) return failure();
     if (op.getVectorType().getRank() != op.getShapedType().getRank())
       return failure();
@@ -347,7 +347,7 @@ struct SetYieldUpdateTransferWriteTensorOperand
          llvm::zip(op.getSrcs(), op.getDsts(), op.getSets())) {
       auto xferOp = src.getDefiningOp<vector::TransferWriteOp>();
 
-      // Sanity checks of TransferWriteOp.
+      // Soundness checks of TransferWriteOp.
       if (!xferOp) continue;
       if (xferOp.getSource() == dst) continue;
       if (xferOp.hasOutOfBoundsDim()) continue;

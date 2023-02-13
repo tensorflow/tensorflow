@@ -507,3 +507,26 @@ func.func @sequential_column_reduction(%arg: tensor<128x16xf32>,
 }
 // CHECK-LABEL: func @sequential_column_reduction
 // CHECK:       gml_st.set_yield
+
+// -----
+
+func.func @fusion_cluster(%arg0: tensor<?x?xf32>, %arg1: tensor<?x?xf32>,
+    %init: tensor<?x?xf32>) -> tensor<?x?xf32> {
+  %0 = "gml_st.fusion" (%arg0, %arg1, %init) ({
+    ^bb0(%a0: tensor<?x?xf32>, %a1: tensor<?x?xf32>, %in: tensor<?x?xf32>):
+      %map0 = linalg.map { math.exp }
+        ins(%a0 : tensor<?x?xf32>)
+        outs(%in : tensor<?x?xf32>)
+      %map1 = linalg.map { arith.mulf }
+        ins(%map0, %a1 : tensor<?x?xf32>, tensor<?x?xf32>)
+        outs(%in : tensor<?x?xf32>)
+      gml_st.yield %map1 : tensor<?x?xf32>
+  }) : (tensor<?x?xf32>, tensor<?x?xf32>, tensor<?x?xf32>) -> tensor<?x?xf32>
+  func.return %0 : tensor<?x?xf32>
+}
+
+// CHECK-LABEL: func @fusion_cluster
+// CHECK:       gml_st.fusion
+// CHECK:         linalg.map
+// CHECK:         linalg.map
+// CHECK:         gml_st.yield

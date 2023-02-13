@@ -306,10 +306,15 @@ Status NVPTXTargetModuleLinker(llvm::Module* module, GpuVersion gpu_version,
 std::unique_ptr<llvm::TargetMachine> NVPTXGetTargetMachine(
     llvm::Triple target_triple, se::CudaComputeCapability compute_capability,
     const HloModuleConfig& hlo_module_config) {
+  // TODO(b/266678775): Make it always PTX 7.1 as soon as TF driver requirements
+  // are updated.
+  const std::string ptx_ver =
+      hlo_module_config.debug_options().xla_gpu_enable_triton_gemm() ? "+ptx71"
+                                                                     : "+ptx60";
   // Figure out the exact name of the processor as known to the NVPTX backend
   // from the gpu_architecture flag.
   return GetTargetMachine(target_triple, GetSmName(compute_capability),
-                          hlo_module_config, "+ptx60");
+                          hlo_module_config, ptx_ver);
 }
 
 using TargetModuleLinker = std::function<Status(

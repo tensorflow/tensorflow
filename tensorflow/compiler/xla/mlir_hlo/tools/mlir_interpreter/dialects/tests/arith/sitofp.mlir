@@ -19,3 +19,13 @@ func.func @i1() -> f64 {
 // CHECK-LABEL: @i1
 // CHECK-NEXT: Results
 // CHECK-NEXT{LITERAL}: 1.000000e+00
+
+func.func @vector() -> vector<1xf32> {
+  %c-1 = arith.constant dense<-1> : vector<1xi8>
+  %r = arith.sitofp %c-1 : vector<1xi8> to vector<1xf32>
+  return %r : vector<1xf32>
+}
+
+// CHECK-LABEL: @vector
+// CHECK-NEXT: Results
+// CHECK-NEXT{LITERAL}: vector<1xf32>: [-1.000000e+00]

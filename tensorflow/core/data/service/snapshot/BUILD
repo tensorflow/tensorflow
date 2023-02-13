@@ -76,7 +76,9 @@ tf_cc_test(
         "//tensorflow/tsl/platform:errors",
         "//tensorflow/tsl/platform:path",
         "//tensorflow/tsl/platform:status",
+        "//tensorflow/tsl/platform:status_matchers",
         "//tensorflow/tsl/platform:statusor",
+        "//tensorflow/tsl/protobuf:protos_all_cc",
     ],
 )
 
@@ -111,6 +113,7 @@ cc_library(
     hdrs = ["snapshot_split_provider.h"],
     compatible_with = get_compatible_with_portable(),
     deps = [
+        ":file_utils",
         ":path_utils",
         "//tensorflow/core:framework",
         "//tensorflow/core/data:snapshot_utils",

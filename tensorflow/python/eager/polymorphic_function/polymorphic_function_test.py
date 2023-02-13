@@ -1664,11 +1664,24 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     signature = [tensor_spec.TensorSpec(shape=(2,), dtype=dtypes.float32)]
     defined = polymorphic_function.function(foo, input_signature=signature)
 
+    # Valid call
+    defined(array_ops.ones([2]))
+
     # Invalid shapes.
-    with self.assertRaisesRegex(ValueError, 'Python inputs incompatible.*'):
+    with self.assertRaisesRegex(
+        TypeError,
+        (
+            'Tensor conversion requested dtype float32 for Tensor with dtype'
+            ' int32.*'
+        ),
+    ):
+      defined(array_ops.ones([3], dtype=dtypes.int32))
+
+    # Invalid shapes.
+    with self.assertRaisesRegex(TypeError, 'Can not cast.*'):
       defined(array_ops.ones([3]))
 
-    with self.assertRaisesRegex(ValueError, 'Python inputs incompatible.*'):
+    with self.assertRaisesRegex(TypeError, 'Can not cast.*'):
       defined(array_ops.ones([2, 1]))
 
     # Wrong number of arguments.
@@ -3720,10 +3733,19 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     signature_args, _ = conc.structured_input_signature
     self.assertEqual('y', signature_args[0].name)
 
+    # If name is not specified, the previously named one will be returned.
     conc = f.get_concrete_function(tensor_spec.TensorSpec(None, dtypes.float32))
     conc(x=constant_op.constant(3.0))
     signature_args, _ = conc.structured_input_signature
-    self.assertEqual('x', signature_args[0].name)
+    self.assertEqual('y', signature_args[0].name)
+
+    # New name will return updated signature.
+    conc = f.get_concrete_function(
+        tensor_spec.TensorSpec(None, dtypes.float32, 'z')
+    )
+    conc(x=constant_op.constant(3.0))
+    signature_args, _ = conc.structured_input_signature
+    self.assertEqual('z', signature_args[0].name)
 
     @polymorphic_function.function
     def g(x):
@@ -4786,7 +4808,7 @@ class MultiDeviceTest(test.TestCase, parameterized.TestCase):
 
     # shape mismatch
     value = constant_op.constant([1.0])
-    with self.assertRaisesRegex(AssertionError, 'Failed to cast'):
+    with self.assertRaisesRegex(AssertionError, 'Can not cast'):
       lazy_capture(2.0)
 
   def testDeferredCaptureReturnNestWithCompositeTensor(self):

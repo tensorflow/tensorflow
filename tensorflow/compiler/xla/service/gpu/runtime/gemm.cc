@@ -100,7 +100,8 @@ static absl::Status GemmImpl(const ServiceExecutableRunOptions* run_options,
                              StridedMemrefView rhs, StridedMemrefView out,
                              int64_t algorithm, double alpha_real,
                              double alpha_imag, double beta,
-                             DotDimensionNumbers dot_dims) {
+                             DotDimensionNumbers dot_dims,
+                             absl::Span<const int32_t> precision) {
   se::DeviceMemoryBase lhs_data = GetDeviceAddress(lhs);
   se::DeviceMemoryBase rhs_data = GetDeviceAddress(rhs);
   se::DeviceMemoryBase output_data = GetDeviceAddress(out);
@@ -114,7 +115,9 @@ static absl::Status GemmImpl(const ServiceExecutableRunOptions* run_options,
     StatusOr<GemmConfig> gemm_config =
         GetGemmConfig(lhs, rhs, out, algorithm, alpha_real, alpha_imag, beta,
                       dot_dims.lhs_batch, dot_dims.lhs_contract,
-                      dot_dims.rhs_batch, dot_dims.rhs_contract);
+                      dot_dims.rhs_batch, dot_dims.rhs_contract,
+                      precision.empty() ? se::blas::kDefaultComputePrecision
+                                        : *absl::c_max_element(precision));
 #if GOOGLE_CUDA
     if (!gemm_config.ok()) return ToAbsl(gemm_config);
     if (gemm_config->algorithm == stream_executor::blas::kRuntimeAutotuning) {
@@ -150,7 +153,8 @@ XLA_RUNTIME_DEFINE_CUSTOM_CALL(
         .Attr<double>("alpha_real")
         .Attr<double>("alpha_imag")
         .Attr<double>("beta")
-        .Attr<DotDimensionNumbers>("dot_dims"));
+        .Attr<DotDimensionNumbers>("dot_dims")
+        .Attr<absl::Span<const int32_t>>("precision"));
 
 void RegisterGemmCustomCalls(runtime::DirectCustomCallRegistry& registry) {
   registry.Register("xla.gpu.gemm", Gemm);

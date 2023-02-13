@@ -166,6 +166,10 @@ bool DeviceCompilationProfiler::ShouldCompileCluster(
     return false;
   }
 
+  // TODO(b/255826209): Figure out if Lazy compilation is still needed given
+  // that we always compile a cluster the first time it is executed (explained
+  // below) regardless of compilation mode. If it is not, clean up the related
+  // logic.
   // We always compile a cluster the very first time it is executed.  This is an
   // optimistic guess that pays off for statically shaped TensorFlow graphs
   // (since they get the benefit of XLA right away without waiting for warmup)

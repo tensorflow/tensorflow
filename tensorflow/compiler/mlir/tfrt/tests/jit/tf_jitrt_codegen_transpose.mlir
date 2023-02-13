@@ -1,4 +1,4 @@
-// RUN: tf-tfrt-opt -tf-jitrt-pipeline="vectorize codegen-transpose" -split-input-file %s | FileCheck %s
+// RUN: tf-tfrt-opt -tf-jitrt-pipeline="vectorize" -split-input-file %s | FileCheck %s
 
 func.func @transpose_2d(%arg0: tensor<?x?xf32>) -> tensor<?x?xf32> {
   %0 = "tf.Const"()

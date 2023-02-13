@@ -18,6 +18,7 @@
 # C API for delegate plugins.
 
 load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
+load("//tensorflow/lite/core/shims:cc_library_with_tflite.bzl", "cc_library_with_tflite")
 
 package(
     default_visibility = ["//visibility:private"],
@@ -85,9 +86,10 @@ test_suite(
     ],
 )
 
-cc_library(
+cc_library_with_tflite(
     name = "stable_delegate",
     hdrs = ["stable_delegate.h"],
+    generate_opaque_delegate_target = True,
     visibility = [
         "//tensorflow/lite:__subpackages__",
         "@org_tensorflow_lite_support//tensorflow_lite_support:__subpackages__",

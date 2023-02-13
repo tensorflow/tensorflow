@@ -18,6 +18,7 @@ limitations under the License.
 #include <utility>
 
 #include "absl/strings/escaping.h"
+#include "absl/strings/str_format.h"
 #include "absl/strings/str_split.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/test.h"
@@ -107,6 +108,10 @@ TEST(PythonOpGenAnnotatorTest, AddAnnotationWithSourceOffsetsAndNonZeroBase) {
 
   EXPECT_EQ(actual.meta(0).type(), MappingRule::ANCHOR_ANCHOR);
   EXPECT_EQ(actual.meta(0).edge(), "/kythe/edge/imputes");
+  EXPECT_EQ(
+      actual.meta(0).source_vname().signature(),
+      absl::StrFormat("@7:11@tensorflow/op#fake_op#%s#file/path/to/fake_op.cc",
+                      kKytheCorpus));
   EXPECT_EQ(actual.meta(0).source_vname().path(), "file/path/to/fake_op.cc");
   EXPECT_EQ(actual.meta(0).source_begin(), 7);
   EXPECT_EQ(actual.meta(0).source_end(), 11);

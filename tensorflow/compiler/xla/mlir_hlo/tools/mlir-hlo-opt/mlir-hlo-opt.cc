@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "deallocation/IR/deallocation_ops.h"
+#include "deallocation/transforms/passes.h"
 #include "gml_st/IR/gml_st_ops.h"
 #include "gml_st/transforms/passes.h"
 #include "gml_st/transforms/test_passes.h"
@@ -34,13 +36,14 @@ using namespace mlir;
 
 int main(int argc, char** argv) {
   mlir::registerAllPasses();
-  mlir::hlo::registerLMHLOTransformsPasses();
-  mlir::registerLMHLOGPUTransformsPasses();
-  mlir::mhlo::registerAllMhloPasses();
-  mlir::lmhlo::registerAllLmhloPasses();
-  mlir::thlo::registerAllThloPasses();
+  mlir::deallocation::registerDeallocationPasses();
   mlir::gml_st::registerGmlStPasses();
   mlir::gml_st::registerGmlStTestPasses();
+  mlir::hlo::registerLMHLOTransformsPasses();
+  mlir::lmhlo::registerAllLmhloPasses();
+  mlir::mhlo::registerAllMhloPasses();
+  mlir::registerLMHLOGPUTransformsPasses();
+  mlir::thlo::registerAllThloPasses();
 
   struct HloToGpuPipelineOptions
       : public PassPipelineOptions<HloToGpuPipelineOptions> {
@@ -67,10 +70,15 @@ int main(int argc, char** argv) {
                                       opts.threadTileDim,
                                       opts.experimentalSoftmax);
       });
-  mlir::PassPipelineRegistration<gml_st::GmlStCPUPipelineOptions>
+  mlir::PassPipelineRegistration<gml_st::GmlStCPUTilingOptions>
       gmlStCpuTilingPipeline("gml-st-cpu-tiling-pipeline",
                              "Tiles, fuses, vectorizes tileable ops for CPU",
                              gml_st::addCPUTilingPipeline);
+
+  mlir::PassPipelineRegistration<> defaultGmlStCpuTilingPipeline(
+      "default-gml-st-cpu-tiling-pipeline",
+      "Tiles, fuses, vectorizes tileable ops for CPU with default parameters",
+      gml_st::addDefaultCPUTilingPipeline);
 
   struct HloToTritonPipelineOptions
       : public PassPipelineOptions<HloToTritonPipelineOptions> {
@@ -88,7 +96,8 @@ int main(int argc, char** argv) {
   mlir::registerAllDialects(registry);
   mlir::mhlo::registerAllMhloDialects(registry);
   mlir::stablehlo::registerAllDialects(registry);
-  registry.insert<mlir::lmhlo::LmhloDialect, mlir::lmhlo_gpu::LmhloGpuDialect,
+  registry.insert<mlir::deallocation::DeallocationDialect,
+                  mlir::lmhlo::LmhloDialect, mlir::lmhlo_gpu::LmhloGpuDialect,
                   mlir::gml_st::GmlStDialect, mlir::thlo::THLODialect>();
 
   return failed(

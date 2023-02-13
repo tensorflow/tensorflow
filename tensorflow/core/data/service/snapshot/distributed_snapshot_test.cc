@@ -41,6 +41,7 @@ namespace tensorflow {
 namespace data {
 namespace {
 
+using testing::ChooseFromDatasets;
 using testing::CreateDummyDistributedSnapshotMetadata;
 using ::testing::ElementsAre;
 using ::testing::IsEmpty;
@@ -142,6 +143,28 @@ TEST_P(DistributedSnapshotTest, WriteMultipleSnapshots) {
       testing::ReadSnapshot<int64_t>(snapshots[2], tsl::io::compression::kNone),
       IsOkAndHolds(UnorderedElementsAre(0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11,
                                         12, 13, 14, 15, 16, 17, 18, 19)));
+}
+
+TEST_P(DistributedSnapshotTest, ChooseFromDatasets) {
+  // Tests snapshotting this dataset:
+  // datasets = [tf.data.Dataset.from_tensor_slices(["a", "a", "a", "a", "a"]),
+  //             tf.data.Dataset.from_tensor_slices(["b", "b", "b", "b", "b"]),
+  //             tf.data.Dataset.from_tensor_slices(["c", "c", "c", "c", "c"])]
+  // choice_dataset = tf.data.Dataset.range(3).repeat()
+  // dataset = tf.data.Dataset.choose_from_datasets(datasets, choice_dataset)
+  TestSnapshotCluster data_service(NumWorkers());
+  TF_ASSERT_OK_AND_ASSIGN(DatasetDef dataset, ChooseFromDatasets());
+  experimental::DistributedSnapshotMetadata metadata =
+      CreateDummyDistributedSnapshotMetadata();
+  std::string snapshot_path = LocalTempFilename();
+  TF_ASSERT_OK(
+      data_service.dispatcher().Snapshot(dataset, snapshot_path, metadata));
+  TF_ASSERT_OK(WaitForSnapshotComplete(snapshot_path));
+  EXPECT_THAT(
+      testing::ReadSnapshot<tstring>(snapshot_path,
+                                     tsl::io::compression::kNone),
+      IsOkAndHolds(UnorderedElementsAre("a", "b", "c", "a", "b", "c", "a", "b",
+                                        "c", "a", "b", "c", "a", "b", "c")));
 }
 
 TEST_P(DistributedSnapshotTest, EmptyDataset) {

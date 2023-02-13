@@ -42,6 +42,8 @@ bool IsCublasLtMatmulF8(const HloInstruction& hlo) {
 const absl::string_view kGemmCallTarget = "__cublas$gemm";
 const absl::string_view kCublasLtMatmulCallTarget = "__cublas$lt$matmul";
 const absl::string_view kCublasLtMatmulF8CallTarget = "__cublas$lt$matmul$f8";
+const absl::string_view kTriangularSolveCallTarget = "__cublas$triangularSolve";
+
 const absl::string_view kCudnnConvBackwardInputCallTarget =
     "__cudnn$convBackwardInput";
 const absl::string_view kCudnnConvBackwardFilterCallTarget =
@@ -49,7 +51,10 @@ const absl::string_view kCudnnConvBackwardFilterCallTarget =
 const absl::string_view kCudnnConvBiasActivationForwardCallTarget =
     "__cudnn$convBiasActivationForward";
 const absl::string_view kCudnnConvForwardCallTarget = "__cudnn$convForward";
-const absl::string_view kTriangularSolveCallTarget = "__cublas$triangularSolve";
+const absl::string_view kCudnnConvReorderFilterCallTarget =
+    "__cudnn$convReorderFilter";
+const absl::string_view kCudnnConvReorderFilterAndBiasCallTarget =
+    "__cudnn$convReorderFilterAndBias";
 
 bool IsCustomCallToDnnConvolution(const HloInstruction& hlo) {
   if (hlo.opcode() != HloOpcode::kCustomCall) {
@@ -60,6 +65,15 @@ bool IsCustomCallToDnnConvolution(const HloInstruction& hlo) {
          target == kCudnnConvBackwardInputCallTarget ||
          target == kCudnnConvBackwardFilterCallTarget ||
          target == kCudnnConvBiasActivationForwardCallTarget;
+}
+
+bool IsCudnnConvolutionReorder(const HloInstruction& hlo) {
+  if (hlo.opcode() != HloOpcode::kCustomCall) {
+    return false;
+  }
+  const auto& target = hlo.custom_call_target();
+  return target == kCudnnConvReorderFilterCallTarget ||
+         target == kCudnnConvReorderFilterAndBiasCallTarget;
 }
 
 StatusOr<CudnnConvKind> GetCudnnConvKind(

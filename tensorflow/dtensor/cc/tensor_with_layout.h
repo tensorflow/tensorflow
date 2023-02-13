@@ -21,7 +21,6 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/c/eager/c_api.h"
-#include "tensorflow/c/eager/parallel_device/parallel_device_lib.h"
 #include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/platform/fingerprint.h"
 #include "tensorflow/dtensor/cc/constants.h"
@@ -133,11 +132,6 @@ class TensorWithLayout {
 
   // Gets the number of tensors.
   virtual size_t num_tensors() const = 0;
-
-  // Gets the tensor handle pointer pointing to the beginning of the tensors.
-  // This makes sense only when the implementation owns a list of tensor
-  // handles. Otherwise this returns `nullptr`.
-  virtual const parallel_device::TensorHandlePtr* tensor() const = 0;
 
   // Returns a string which includes just the value and layout of the tensors.
   virtual std::string SummarizeValue() const = 0;

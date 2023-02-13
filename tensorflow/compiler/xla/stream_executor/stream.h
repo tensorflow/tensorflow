@@ -25,7 +25,9 @@ limitations under the License.
 #include <cstdint>
 #include <functional>
 #include <memory>
+#include <optional>
 #include <type_traits>
+#include <utility>
 
 #include "absl/base/thread_annotations.h"
 #include "absl/functional/any_invocable.h"
@@ -417,6 +419,20 @@ class Stream {
           convolution_descriptor, side_input_data, side_input_scale,
           bias_descriptor, biases, activation_mode, output_descriptor, *output,
           scratch_allocator, algorithm_config, output_profile_result);
+    }
+    return tsl::errors::Unimplemented("DNN library is not found.");
+  }
+
+  tsl::Status CudnnReorderConvolutionFilterAndBias(
+      const dnn::FilterDescriptor &filter_descriptor,
+      const DeviceMemory<int8_t> &filter_input,
+      DeviceMemory<int8_t> *filter_output,
+      std::optional<const DeviceMemory<float>> bias_input,
+      std::optional<DeviceMemory<float>> bias_output) {
+    if (dnn::DnnSupport *dnn = parent_->AsDnn()) {
+      return dnn->CudnnReorderConvolutionFilterAndBias(
+          this, filter_descriptor, filter_input, filter_output,
+          std::move(bias_input), std::move(bias_output));
     }
     return tsl::errors::Unimplemented("DNN library is not found.");
   }

@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/core/data/service/dispatcher.pb.h"
 #include "tensorflow/core/data/service/dispatcher_client.h"
 #include "tensorflow/core/data/service/grpc_util.h"
+#include "tensorflow/core/data/service/snapshot/file_utils.h"
 #include "tensorflow/core/data/service/snapshot/path_utils.h"
 #include "tensorflow/core/data/snapshot_utils.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -134,18 +135,15 @@ SnapshotSplitProvider::GetSplitsFiles(int64_t start_index) const
   std::string splits_directory = SourceDirectory(
       snapshot_task_.base_path(), snapshot_task_.stream_index(), source_index_);
   absl::btree_map<int64_t, std::string> splits;
-  std::vector<std::string> split_filenames;
-  Status status = env_->GetChildren(splits_directory, &split_filenames);
-  if (errors::IsNotFound(status)) {
-    return splits;
-  }
-  TF_RETURN_IF_ERROR(status);
-  for (const std::string& split_filename : split_filenames) {
-    TF_ASSIGN_OR_RETURN(auto split_index, SplitIndex(split_filename));
+
+  TF_ASSIGN_OR_RETURN(std::vector<std::string> split_files,
+                      GetChildren(splits_directory, env_));
+  for (const std::string& split_file : split_files) {
+    TF_ASSIGN_OR_RETURN(auto split_index, SplitIndex(split_file));
     auto [local_split_index, global_split_index] = split_index;
     if (local_split_index >= next_split_index_) {
       splits[local_split_index] =
-          tsl::io::JoinPath(splits_directory, split_filename);
+          tsl::io::JoinPath(splits_directory, split_file);
     }
   }
   TF_RETURN_IF_ERROR(ValidateSplitFiles(splits, start_index));
@@ -201,6 +199,8 @@ Status SnapshotSplitProvider::ValidateSplitFiles(
   return OkStatus();
 }
 
+Status SnapshotSplitProvider::Reset() { return OkStatus(); }
+
 Status SnapshotSplitProvider::Save(
     std::function<std::string(std::string)> full_name,
     IteratorStateWriter* writer) TF_LOCKS_EXCLUDED(mu_) {
@@ -220,11 +220,6 @@ Status SnapshotSplitProvider::Restore(
   next_split_index_ = next_split_index;
   TF_ASSIGN_OR_RETURN(split_to_file_map_, GetSplitsFiles(next_split_index_));
   return OkStatus();
-}
-
-Status SnapshotSplitProvider::Reset() {
-  return errors::FailedPrecondition(
-      "tf.data SnapshotSplitProvider does not support `Reset`.");
 }
 
 }  // namespace data

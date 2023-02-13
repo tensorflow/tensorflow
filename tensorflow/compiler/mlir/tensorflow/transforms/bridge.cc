@@ -23,6 +23,7 @@ limitations under the License.
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
 #include "tensorflow/compiler/jit/flags.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_dialect.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/bridge_logger.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/dump_mlir_util.h"
@@ -54,6 +55,17 @@ namespace {
 tensorflow::Status RunTFXLABridge(
     ModuleOp module, bool enable_logging,
     llvm::function_ref<void(OpPassManager &pm)> pipeline_builder) {
+  // Explicitly check that the TensorFlow dialect can constant fold ops.
+  // Constant folding is essential for the bridge. Without this check, the
+  // bridge may fail with an error that is difficult to understand and not
+  // actionable.
+  if (!TF::TensorFlowDialect::HasConstantFoldHook()) {
+    return tensorflow::errors::Internal(
+        "TensorFlow dialect missing constant fold hook in TFXLA bridge phase "
+        "1; this could happen if the binary doesn't link the constant fold "
+        "hook registration library.");
+  }
+
   PassManager bridge(module.getContext());
   ::tensorflow::applyTensorflowAndCLOptions(bridge);
 

@@ -218,6 +218,7 @@ cc_library(
         "transforms/legalize_tf_communication.cc",
         "transforms/legalize_tf_types.cc",
         "transforms/tf_xla_passes.h.inc",
+        "transforms/tfxla_device_specific_transforms.cc",
         "transforms/verify_tfxla_legalization.cc",
         "transforms/xla_legalize_tf.cc",
         "transforms/xla_legalize_tf_passes.h.inc",

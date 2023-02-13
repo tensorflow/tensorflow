@@ -37,6 +37,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/flatbuffer_export.h"
 #include "tensorflow/compiler/mlir/lite/metrics/error_collector_inst.h"
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_config.h"
+#include "tensorflow/compiler/mlir/lite/stablehlo/serializer/flatbuffer_export.h"
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/op_stat_pass.h"
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/stablehlo_tfl_pass.h"
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/transforms.h"
@@ -246,18 +247,8 @@ Status ConvertTFExecutorToStablehloFlatbuffer(
     return statusHandler.ConsumeStatus();
   }
 
-  // Convert StableHLO MLIR to TFLite Custom Op MLIR
-  pass_manager.addNestedPass<mlir::func::FuncOp>(
-      mlir::odml::CreateStablehloToTflPass());
-  if (failed(pass_manager.run(module))) {
-    return statusHandler.ConsumeStatus();
-  }
-
-  // Write TFLite Custom Op MLIR to Flatbuffer
-  // TODO(b/260112687): will serialize StableHLO to Flatbuffer directly
-  tflite::FlatbufferExportOptions options;
-  options.toco_flags.set_allow_custom_ops(true);
-  if (!tflite::MlirToFlatBufferTranslateFunction(module, options, result)) {
+  mlir::odml::FlatbufferExportOptions options;
+  if (!mlir::odml::MlirToFlatBufferTranslateFunction(module, options, result)) {
     return statusHandler.ConsumeStatus();
   }
 

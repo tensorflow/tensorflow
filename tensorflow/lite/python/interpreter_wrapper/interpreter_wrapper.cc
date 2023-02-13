@@ -205,7 +205,8 @@ InterpreterWrapper* InterpreterWrapper::CreateInterpreterWrapper(
   std::unique_ptr<tflite::MutableOpResolver> resolver;
   switch (op_resolver_id) {
     case kBuiltinOpResolver:
-      resolver = std::make_unique<tflite::ops::builtin::BuiltinOpResolver>();
+      resolver = std::make_unique<
+          tflite::ops::builtin::BuiltinOpResolverWithXNNPACK>();
       break;
     case kBuiltinRefOpResolver:
       resolver = std::make_unique<tflite::ops::builtin::BuiltinRefOpResolver>();

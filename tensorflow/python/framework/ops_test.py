@@ -102,6 +102,16 @@ class TensorAndShapeTest(test_util.TensorFlowTestCase):
     t.set_shape([1, 2, 3])
     self.assertEqual([1, 2, 3], t.get_shape())
 
+  def testNdim(self):
+
+    @def_function.function
+    def f(a):
+      self.assertEqual(a.ndim, 2)
+      return 0
+
+    x = array_ops.zeros((3, 4))
+    f(x)
+
   def testIterable(self):
     if not context.executing_eagerly():
       self.skipTest("Eager-mode test")

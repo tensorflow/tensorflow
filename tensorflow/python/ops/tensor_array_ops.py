@@ -322,7 +322,12 @@ class _GraphTensorArray:
         name=name,
         element_shape_except0=self.element_shape[1:])
     if self.element_shape:
-      value.set_shape([None] + self.element_shape.dims[1:])
+      dim0 = None
+      if self._infer_shape:
+        size = tensor_util.constant_value(self.size())
+        if size is not None and self.element_shape[0] is not None:
+          dim0 = size * self.element_shape[0]
+      value.set_shape([dim0] + self.element_shape.dims[1:])
     return value
 
   @tf_should_use.should_use_result

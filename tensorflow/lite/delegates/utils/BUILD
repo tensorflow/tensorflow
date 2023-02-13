@@ -21,7 +21,6 @@ cc_library(
     deps = [
         "//tensorflow/lite:kernel_api",
         "//tensorflow/lite:minimal_logging",
-        "//tensorflow/lite/c:common",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/delegates:utils",
         "//tensorflow/lite/kernels/internal:compatibility",
@@ -34,7 +33,6 @@ cc_test(
     deps = [
         "//tensorflow/lite:framework",
         "//tensorflow/lite:kernel_api",
-        "//tensorflow/lite/c:common",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/core/kernels:builtin_ops",
         "//tensorflow/lite/delegates/utils/dummy_delegate",
@@ -46,6 +44,7 @@ cc_library_with_tflite(
     name = "simple_opaque_delegate",
     srcs = ["simple_opaque_delegate.cc"],
     hdrs = ["simple_opaque_delegate.h"],
+    generate_opaque_delegate_target = True,
     tflite_deps = [
         "//tensorflow/lite/core/shims:c_api",
         "//tensorflow/lite/core/shims:c_api_experimental",
@@ -89,5 +88,53 @@ cc_test(
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
+    name = "async_type_helpers",
+    srcs = ["async_type_helpers.cc"],
+    hdrs = ["async_type_helpers.h"],
+    deps = [
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/async:async_kernel_internal",
+        "//tensorflow/lite/core/async/interop:attribute_keys",
+        "//tensorflow/lite/core/async/interop/c:attribute_map",
+        "//tensorflow/lite/core/async/interop/c:constants",
+        "@com_google_absl//absl/log:check",
+    ],
+)
+
+cc_library(
+    name = "utils",
+    srcs = ["utils.cc"],
+    hdrs = ["utils.h"],
+    deps = [
+        "//tensorflow/lite/core/shims:c_api_experimental",
+        "//tensorflow/lite/core/shims:c_api_types",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+    ],
+)
+
+cc_library(
+    name = "ret_macros",
+    srcs = [],
+    hdrs = ["ret_macros.h"],
+    deps = [
+        "//tensorflow/lite/core/c:c_api_types",
+        "@com_google_absl//absl/log",
+    ],
+)
+
+cc_library(
+    name = "sync_fence",
+    srcs = ["sync_fence.cc"],
+    hdrs = ["sync_fence.h"],
+    deps = [
+        ":ret_macros",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/types:span",
     ],
 )

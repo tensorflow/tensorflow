@@ -72,7 +72,6 @@ using ::std::any_cast;
 
 using ::llvm::cast;
 using ::llvm::Expected;
-using ::llvm::MutableArrayRef;
 using ::llvm::None;
 using ::llvm::Optional;
 
@@ -84,8 +83,6 @@ using ::tfrt::AsyncValueRef;
 using ::tfrt::Attribute;
 using ::tfrt::Chain;
 using ::tfrt::CompilationUnitAttribute;
-using ::tfrt::DecodedDiagnostic;
-using ::tfrt::DType;
 using ::tfrt::EmitErrorAsync;
 using ::tfrt::ExecutionContext;
 using ::tfrt::HostContext;
@@ -480,9 +477,6 @@ static Expected<AsyncValuePtr<JitExecutable>> CompileImpl(
             opts.legalize_i1_tensors = tf_jitrt_opts->legalize_i1_tensors;
           } else {
             opts.vectorize = GetJitRtFlags().vectorize;
-            opts.enable_xla_cpu_transformations =
-                tensorflow::GetJitRtFlags().enable_xla_cpu_transformations;
-            opts.lower_to_mmt4d = tensorflow::GetJitRtFlags().pack_matmul;
           }
 
           // Lower from Tensorflow to Linalg on buffers.

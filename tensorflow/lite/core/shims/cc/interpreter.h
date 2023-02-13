@@ -16,11 +16,10 @@ limitations under the License.
 #define TENSORFLOW_LITE_CORE_SHIMS_CC_INTERPRETER_H_
 
 /// For documentation, see third_party/tensorflow/lite/interpreter.h.
-
-#include "tensorflow/lite/core/interpreter.h"
+#include "tensorflow/lite/interpreter.h"
 
 namespace tflite_shims {
-using Interpreter = ::tflite::impl::Interpreter;
+using Interpreter = ::tflite::Interpreter;
 }  // namespace tflite_shims
 
 #endif  // TENSORFLOW_LITE_CORE_SHIMS_CC_INTERPRETER_H_

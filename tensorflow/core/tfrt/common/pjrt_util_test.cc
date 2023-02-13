@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/tfrt/common/pjrt_util.h"
 
+#include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
 #include "tensorflow/compiler/xla/pjrt/tfrt_cpu_pjrt_client.h"
 #include "tensorflow/core/framework/resource_mgr.h"
@@ -72,6 +73,14 @@ TEST(PjRtStateResourceManagerTest, GetNotExistPjRtClientNotImplemented) {
                          "before its first use and creating this PJRT client "
                          "on the first use is not implemented.")));
 }
+
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+TEST(PjRtStateResourceManagerTest, GetNotExistGpuPjRtClient) {
+  TF_ASSERT_OK_AND_ASSIGN(auto pjrt_client,
+                          GetOrCreatePjRtClient(DEVICE_XLA_GPU));
+  EXPECT_THAT(pjrt_client, ::testing::NotNull());
+}
+#endif
 
 }  // namespace
 }  // namespace tensorflow

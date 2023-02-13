@@ -412,7 +412,6 @@ tsl_gpu_library(
     hdrs = ["gpu_cudamallocasync_allocator.h"],
     cuda_deps = [
         "//tensorflow/compiler/xla/stream_executor/cuda:cuda_activation",
-        "//tensorflow/compiler/xla/stream_executor/cuda:cuda_platform",
     ],
     deps = [
         ":gpu_init_impl",

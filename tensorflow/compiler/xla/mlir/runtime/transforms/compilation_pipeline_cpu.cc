@@ -137,8 +137,8 @@ static void CreateDefaultXlaCpuRuntimeCompilationPipeline(
   pm.addPass(xla::CreateMathLegalizationPass(/*enable_approximations=*/false));
 
   // Convert everything else to LLVM dialect.
-  mlir::LowerVectorToLLVMOptions vector_to_llvm_opts;
-  if (opts.math_avx2) vector_to_llvm_opts.enableX86Vector();
+  mlir::ConvertVectorToLLVMPassOptions vector_to_llvm_opts;
+  if (opts.math_avx2) vector_to_llvm_opts.x86Vector = true;
   pm.addPass(mlir::createConvertVectorToLLVMPass(vector_to_llvm_opts));
   pm.addPass(mlir::createFinalizeMemRefToLLVMConversionPass());
   pm.addPass(mlir::createConvertFuncToLLVMPass());

@@ -408,36 +408,36 @@ TfLiteStatus EvalQuantizedPerChannel(TfLiteContext* context, TfLiteNode* node,
   if (filter->type == kTfLiteInt4) {
     effective_kernel_type = kReference;
   }
+  const int8_t* filter_data;
+  const size_t bytes_unpacked = filter->bytes * 2;
+  auto unpacked_filter_data = std::make_unique<int8_t[]>(bytes_unpacked);
+
+  if (filter->type == kTfLiteInt4) {
+    tflite::tensor_utils::UnpackDenseInt4IntoInt8(
+        GetTensorData<int8_t>(filter), GetTensorShape(filter).FlatSize(),
+        unpacked_filter_data.get());
+    filter_data = unpacked_filter_data.get();
+  } else {
+    filter_data = GetTensorData<int8>(filter);
+  }
 
   switch (effective_kernel_type) {
     case kReference: {
       switch (filter->type) {
-        case kTfLiteInt4: {
-          const size_t bytes_unpacked = filter->bytes * 2;
-          auto unpacked_filter_data =
-              std::make_unique<int8_t[]>(bytes_unpacked);
-          reference_integer_ops::DepthwiseConvPerChannelWithPackedInt4Weights(
-              op_params, data->per_channel_output_multiplier.data(),
-              data->per_channel_output_shift.data(), GetTensorShape(input),
-              GetTensorData<int8_t>(input), GetTensorShape(filter),
-              GetTensorData<int8_t>(filter), unpacked_filter_data.get(),
-              GetTensorShape(bias), GetTensorData<int32_t>(bias),
-              GetTensorShape(output), GetTensorData<int8_t>(output));
-          break;
-        }
+        case kTfLiteInt4:
         case kTfLiteInt8: {
           reference_integer_ops::DepthwiseConvPerChannel(
               op_params, data->per_channel_output_multiplier.data(),
               data->per_channel_output_shift.data(), GetTensorShape(input),
-              GetTensorData<int8>(input), GetTensorShape(filter),
-              GetTensorData<int8>(filter), GetTensorShape(bias),
-              GetTensorData<int32>(bias), GetTensorShape(output),
-              GetTensorData<int8>(output));
+              GetTensorData<int8>(input), GetTensorShape(filter), filter_data,
+              GetTensorShape(bias), GetTensorData<int32>(bias),
+              GetTensorShape(output), GetTensorData<int8>(output));
           break;
         }
         default: {
-          printf("Weight type %s (%d) not supported.",
-                 TfLiteTypeGetName(filter->type), filter->type);
+          TF_LITE_KERNEL_LOG(context,
+                             "Weight type %s (%d) not supported for filter.",
+                             TfLiteTypeGetName(filter->type), filter->type);
           break;
         }
       }
@@ -445,15 +445,25 @@ TfLiteStatus EvalQuantizedPerChannel(TfLiteContext* context, TfLiteNode* node,
     }
     case kGenericOptimized:
     case kNeonOptimized: {
-      optimized_integer_ops::DepthwiseConvPerChannel(
-          op_params, data->per_channel_output_multiplier.data(),
-          data->per_channel_output_shift.data(), GetTensorShape(input),
-          GetTensorData<int8>(input), GetTensorShape(filter),
-          GetTensorData<int8>(filter), GetTensorShape(bias),
-          GetTensorData<int32>(bias), GetTensorShape(output),
-          GetTensorData<int8>(output),
-          CpuBackendContext::GetFromContext(context));
-      break;
+      switch (filter->type) {
+        case kTfLiteInt4:
+        case kTfLiteInt8: {
+          optimized_integer_ops::DepthwiseConvPerChannel(
+              op_params, data->per_channel_output_multiplier.data(),
+              data->per_channel_output_shift.data(), GetTensorShape(input),
+              GetTensorData<int8>(input), GetTensorShape(filter), filter_data,
+              GetTensorShape(bias), GetTensorData<int32>(bias),
+              GetTensorShape(output), GetTensorData<int8>(output),
+              CpuBackendContext::GetFromContext(context));
+          break;
+        }
+        default: {
+          TF_LITE_KERNEL_LOG(context,
+                             "Weight type %s (%d) not supported for filter.",
+                             TfLiteTypeGetName(filter->type), filter->type);
+          break;
+        }
+      }
     }
   }
   return kTfLiteOk;

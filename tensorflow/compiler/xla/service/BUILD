@@ -5319,11 +5319,6 @@ cc_library(
 xla_test(
     name = "elemental_ir_emitter_test",
     srcs = ["elemental_ir_emitter_test.cc"],
-    backend_tags = {"gpu": [
-        "requires-gpu-nvidia",
-        "requires-gpu-sm70-only",
-        "requires-gpu-sm80-only",
-    ]},
     backends = [
         "cpu",
         "gpu",

@@ -3353,6 +3353,7 @@ cc_library(
         ":function_utils",
         ":optimization_registry",
         ":placer",
+        ":replicate_per_replica_nodes",
         "//tensorflow/core:core_cpu_base",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",

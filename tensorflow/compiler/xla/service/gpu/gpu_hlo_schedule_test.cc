@@ -48,14 +48,19 @@ class GpuHloScheduleTest : public HloTestBase {
     return SequentialHloOrdering{module->schedule()};
   }
 
-  std::unique_ptr<HloModule> CreateNewVerifiedModule(
-      bool enable_latency_hiding_scheduler = false) {
+  HloModuleConfig GetModuleConfig(bool enable_latency_hiding_scheduler) {
     HloModuleConfig config;
     DebugOptions debug_options = GetDebugOptionsForTest();
     debug_options.set_xla_gpu_enable_latency_hiding_scheduler(
         enable_latency_hiding_scheduler);
     config.set_debug_options(debug_options);
-    return std::make_unique<HloModule>("test_module", config);
+    return config;
+  }
+
+  std::unique_ptr<HloModule> CreateNewVerifiedModule(
+      bool enable_latency_hiding_scheduler = false) {
+    return std::make_unique<HloModule>(
+        "test_module", GetModuleConfig(enable_latency_hiding_scheduler));
   }
 };
 
@@ -226,6 +231,74 @@ TEST_F(GpuHloScheduleTest, AsyncCollectivePermute) {
   // Test that all_reduce_done is scheduled after add3.
   EXPECT_TRUE(order.ExecutesBefore(add3, collective_permute_done));
   EXPECT_TRUE(order.ExecutesBefore(collective_permute_done, add4));
+}
+
+TEST_F(GpuHloScheduleTest, LHSCostModel) {
+  const char* hlo_text = R"(
+  HloModule AsyncAR
+  apply_op {
+    x = f32[] parameter(0)
+    y = f32[] parameter(1)
+    ROOT apply_op = f32[] add(x, y)
+  }
+
+  ENTRY ar {
+    p0 = f32[32] parameter(0)
+    p1 = f32[32, 32] parameter(1)
+    p2 = f32[32, 32] parameter(2)
+    p3 = f32[32] parameter(3)
+   
+    dot0 = f32[32,32]{1,0} custom-call(p1, p2), custom_call_target="__cublas$gemm"
+    dot1 = f32[32,32]{1,0} custom-call(dot0, p2), custom_call_target="__cublas$gemm"
+    dot2 = f32[32,32]{1,0} custom-call(dot1, p2), custom_call_target="__cublas$gemm"
+    dot3 = f32[32,32]{1,0} custom-call(dot2, p2), custom_call_target="__cublas$gemm"
+    dot4 = f32[32,32]{1,0} custom-call(dot3, p2), custom_call_target="__cublas$gemm"
+    dot5 = f32[32,32]{1,0} custom-call(dot4, p2), custom_call_target="__cublas$gemm"
+    dot6 = f32[32,32]{1,0} custom-call(dot5, p2), custom_call_target="__cublas$gemm"
+  
+    ar-start = f32[32] all-reduce-start(p0), to_apply=apply_op
+    ar-done = f32[32] all-reduce-done(ar-start)
+
+    ar-start1 = f32[32] all-reduce-start(p3), to_apply=apply_op
+    ar-done1 = f32[32] all-reduce-done(ar-start1)
+
+    add0 = f32[32,32] add(dot0, dot1)
+    add1 = f32[32,32] add(add0, dot2)
+    add2 = f32[32,32] add(add1, dot3)
+    add3 = f32[32,32] add(add2, dot4)
+    add4 = f32[32,32] add(add3, dot5)
+    add5 = f32[32,32] add(add4, dot6)
+   
+    ROOT t = (f32[32], f32[32], f32[32,32]) tuple(ar-done, ar-done1, add5)
+  })";
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto module,
+      ParseAndReturnVerifiedModule(
+          hlo_text, GetModuleConfig(/*enable_latency_hiding_scheduler=*/true)));
+  SequentialHloOrdering order = BuildHloOrdering(module.get());
+
+  // With a better cost model, the latency hiding scheduler should distribute
+  // the dots between both ar-start/done pairs. With a Nop cost model, they will
+  // be clustered between only one of the pairs.
+  HloComputation* entry = module->entry_computation();
+  std::vector<int64_t> count_between_pairs;
+  bool in_between = false;
+  for (const HloInstruction* inst :
+       order.SequentialOrder(*entry)->instructions()) {
+    if (inst->opcode() == HloOpcode::kAllReduceStart) {
+      in_between = true;
+      count_between_pairs.push_back(0);
+    } else if (inst->opcode() == HloOpcode::kAllReduceDone) {
+      in_between = false;
+    } else if (in_between && inst->opcode() == HloOpcode::kCustomCall) {
+      count_between_pairs.back()++;
+    }
+  }
+
+  EXPECT_EQ(count_between_pairs.size(), 2);
+  EXPECT_GT(count_between_pairs[0], 0);
+  EXPECT_GT(count_between_pairs[1], 0);
 }
 
 class GpuHloScheduleParameterizedTest

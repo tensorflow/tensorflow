@@ -96,9 +96,11 @@ static absl::Status CublasLtMatmulImpl(
 
   // Find the gemm config for this instance of matmul.
   absl::StatusOr<GemmConfig*> config = gemm_config.GetOrCreate([&] {
-    return ToAbsl(GetGemmConfig(a, b, c, algorithm, alpha_real, alpha_imag,
-                                beta, dot_dims.lhs_batch, dot_dims.lhs_contract,
-                                dot_dims.rhs_batch, dot_dims.rhs_contract));
+    return ToAbsl(GetGemmConfig(
+        a, b, c, algorithm, alpha_real, alpha_imag, beta, dot_dims.lhs_batch,
+        dot_dims.lhs_contract, dot_dims.rhs_batch, dot_dims.rhs_contract,
+        precision.empty() ? se::blas::kDefaultComputePrecision
+                          : *absl::c_max_element(precision)));
   });
   if (!config.ok()) return config.status();
 
