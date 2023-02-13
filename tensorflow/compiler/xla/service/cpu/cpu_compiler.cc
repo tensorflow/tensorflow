@@ -1031,7 +1031,14 @@ Status LowerMLIRModule(mlir::ModuleOp mlir_module,
   mlir::PassManager pm(&mlir_context);
   if (VLOG_IS_ON(5)) {
     mlir_context.disableMultithreading();
-    pm.enableIRPrinting();
+    // Do not print large constants.
+    mlir::OpPrintingFlags printing_flags;
+    printing_flags.elideLargeElementsAttrs(32);
+    pm.enableIRPrinting(
+        [](mlir::Pass* pass, mlir::Operation* op) { return true; },
+        [](mlir::Pass* pass, mlir::Operation* op) { return true; },
+        /*printModuleScope=*/true, /*printAfterOnlyOnChange=*/true,
+        /*printAfterOnlyOnFailure=*/false, llvm::errs(), printing_flags);
   }
 
   xla::runtime::PassManager xla_pm(&pm);
