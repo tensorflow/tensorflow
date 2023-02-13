@@ -466,7 +466,7 @@ cc_library(
         "//tensorflow/compiler/jit:flags",
         "//tensorflow/compiler/jit:shape_inference",
         "//tensorflow/compiler/jit:xla_compile_util",
-        "//tensorflow/compiler/mlir:array_container_utils",
+        "//tensorflow/compiler/mlir/utils:array_container_utils",
         "//tensorflow/compiler/xla/translate/mhlo_to_hlo:layout_util",
         "//tensorflow/compiler/mlir/tensorflow:compile_mlir_util_no_tf_dialect_passes",
         "//tensorflow/compiler/xla/client:value_inference",
@@ -1336,8 +1336,8 @@ cc_library(
     deps = [
         ":xla_compiler",
         "//tensorflow/compiler/jit:xla_compile_util",
-        "//tensorflow/compiler/mlir:array_container_utils",
         "//tensorflow/compiler/mlir/tensorflow:compile_mlir_util_no_tf_dialect_passes",
+        "//tensorflow/compiler/mlir/utils:array_container_utils",
         "@llvm-project//mlir:IR",
     ],
 )
