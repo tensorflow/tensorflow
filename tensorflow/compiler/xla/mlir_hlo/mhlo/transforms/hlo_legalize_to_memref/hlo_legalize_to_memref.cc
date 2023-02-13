@@ -242,12 +242,7 @@ struct ReshapeOpInterface
   AliasingOpResultList getAliasingOpResults(
       Operation *op, OpOperand & /*opOperand*/,
       const AnalysisState & /*state*/) const {
-    return {op->getResult(0)};
-  }
-
-  BufferRelation bufferRelation(Operation * /*op*/, OpResult /*opResult*/,
-                                const AnalysisState & /*state*/) const {
-    return BufferRelation::Equivalent;
+    return {{op->getResult(0), BufferRelation::Equivalent}};
   }
 
   LogicalResult bufferize(Operation *op, RewriterBase &rewriter,
@@ -287,12 +282,7 @@ struct DynamicReshapeOpInterface
   AliasingOpResultList getAliasingOpResults(
       Operation *op, OpOperand & /*opOperand*/,
       const AnalysisState & /*state*/) const {
-    return {op->getResult(0)};
-  }
-
-  BufferRelation bufferRelation(Operation * /*op*/, OpResult /*opResult*/,
-                                const AnalysisState & /*state*/) const {
-    return BufferRelation::Equivalent;
+    return {{op->getResult(0), BufferRelation::Equivalent}};
   }
 
   LogicalResult bufferize(Operation *op, RewriterBase &rewriter,
@@ -451,13 +441,7 @@ struct DynamicBroadcastInDimOpInterface
   AliasingOpResultList getAliasingOpResults(
       Operation *op, OpOperand & /*opOperand*/,
       const AnalysisState & /*state*/) const {
-    return {op->getResult(0)};
-  }
-
-  BufferRelation bufferRelation(Operation * /*op*/, OpResult /*opResult*/,
-                                const AnalysisState & /*state*/) const {
-    // The op may allocate.
-    return BufferRelation::Unknown;
+    return {{op->getResult(0), BufferRelation::Unknown}};
   }
 
   LogicalResult bufferize(Operation *op, RewriterBase &rewriter,

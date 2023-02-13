@@ -302,10 +302,6 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
         core::RefCountPtr<Rendezvous>(rendezvous);
   }
 
-  void ResetLocalRendezvousTable() override {
-    local_rendezvous_table_->CleanUpAll();
-  }
-
   // Returns the global_rendezvous_for_functions' underlying LocalRendezvous'
   // status. If the underlying Rendezvous is not in the local_rendezvous_table_
   // returns OK.
@@ -646,6 +642,7 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
   ~EagerContext() override;
 
   Status MaybeRegisterFunctionRemotely(const FunctionDef& fdef);
+  Status MaybeRemoveFunctionRemotely(const string& function_name);
   Status RegisterExistingFunctionsOnRemoteWorkers(
       const std::vector<string>& remote_workers);
 

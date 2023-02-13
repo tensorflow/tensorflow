@@ -493,8 +493,8 @@ int RowReductionGetRowsPerWarp(int reduced_dimension_size) {
 IrEmitterUnnested::IrEmitterUnnested(const HloModuleConfig& hlo_module_config,
                                      IrEmitterContext* ir_emitter_context)
     : IrEmitter(hlo_module_config, ir_emitter_context, /*is_nested=*/false),
-      elemental_emitter_(hlo_module_config_, module_, &b_, GetNestedComputer(),
-                         ir_emitter_context) {}
+      elemental_emitter_(hlo_module_config_, module_, &b_,
+                         GetNestedComputer()) {}
 
 StatusOr<std::unique_ptr<IrEmitterUnnested>> IrEmitterUnnested::Create(
     const HloModuleConfig& hlo_module_config,
@@ -1032,6 +1032,8 @@ Status IrEmitterUnnested::EmitConvolutionThunk(mlir::Operation* op) {
     }
     descriptor.backend_config.set_conv_result_scale(
         op.getResultScale().convertToDouble());
+    descriptor.backend_config.set_reordered_int8_nchw_vect(
+        op.getBackendConfig().getIsCudnnReorderedInt8());
   };
 
   auto set_activation_mode = [&](auto op) -> Status {
@@ -1150,6 +1152,53 @@ Status IrEmitterUnnested::EmitCublasLtMatmulThunkF8(mlir::Operation* op) {
   auto thunk = std::make_unique<CublasLtMatmulThunk>(
       GetThunkInfo(op), std::move(plan), matmul.getAlgorithm(), a, b, c, d,
       bias, aux, a_scale, b_scale, c_scale, d_scale, d_amax);
+
+  AddThunkToThunkSequence(std::move(thunk));
+  return OkStatus();
+}
+
+Status IrEmitterUnnested::EmitConvolutionReorderThunk(mlir::Operation* op) {
+  using mlir::dyn_cast;
+  using mlir::lmhlo_gpu::CudnnConvReorderFilterAndBiasOp;
+  using mlir::lmhlo_gpu::CudnnConvReorderFilterOp;
+
+  std::vector<BufferAllocation::Slice> operand_slices;
+  std::vector<BufferAllocation::Slice> result_slices;
+  std::vector<int64_t> filter_dims;
+
+  auto set_filter_data = [&](auto op) -> Status {
+    TF_ASSIGN_OR_RETURN(BufferAllocation::Slice filter_input,
+                        GetAllocationSlice(op.getFilterInput()));
+    operand_slices.push_back(filter_input);
+
+    TF_ASSIGN_OR_RETURN(BufferAllocation::Slice filter_output,
+                        GetAllocationSlice(op.getFilterOutput()));
+    result_slices.push_back(filter_output);
+
+    auto filter_dims_values = op.getFilterDims().template getValues<int64_t>();
+    filter_dims.assign(filter_dims_values.begin(), filter_dims_values.end());
+    return OkStatus();
+  };
+
+  if (auto reorder = dyn_cast<CudnnConvReorderFilterAndBiasOp>(op)) {
+    TF_RETURN_IF_ERROR(set_filter_data(reorder));
+
+    TF_ASSIGN_OR_RETURN(BufferAllocation::Slice bias_input,
+                        GetAllocationSlice(reorder.getBiasInput()));
+    operand_slices.push_back(bias_input);
+
+    TF_ASSIGN_OR_RETURN(BufferAllocation::Slice bias_output,
+                        GetAllocationSlice(reorder.getBiasOutput()));
+    result_slices.push_back(bias_output);
+  } else if (auto reorder = dyn_cast<CudnnConvReorderFilterOp>(op)) {
+    TF_RETURN_IF_ERROR(set_filter_data(reorder));
+  } else {
+    return InternalError("Unexpected operation");
+  }
+
+  auto thunk = std::make_unique<ConvolutionReorderThunk>(
+      GetThunkInfo(op), absl::MakeSpan(filter_dims), std::move(operand_slices),
+      std::move(result_slices));
 
   AddThunkToThunkSequence(std::move(thunk));
   return OkStatus();
@@ -5428,6 +5477,10 @@ Status IrEmitterUnnested::EmitOp(mlir::Operation* op) {
   }
   if (mlir::isa<mlir::lmhlo_gpu::CublasLtMatmulF8Op>(op)) {
     return EmitCublasLtMatmulThunkF8(op);
+  }
+  if (mlir::isa<mlir::lmhlo_gpu::CudnnConvReorderFilterOp,
+                mlir::lmhlo_gpu::CudnnConvReorderFilterAndBiasOp>(op)) {
+    return EmitConvolutionReorderThunk(op);
   }
 #endif  // GOOGLE_CUDA
 

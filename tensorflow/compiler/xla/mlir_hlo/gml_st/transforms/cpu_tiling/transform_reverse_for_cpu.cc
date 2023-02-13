@@ -79,9 +79,10 @@ struct ReverseTransformPattern : public OpRewritePattern<thlo::ReverseOp> {
     if (hasLabel(reverseOp, kReverseTransformedLabel))
       return rewriter.notifyMatchFailure(reverseOp,
                                          "has already been transformed.");
-    if (isa<gml_st::ParallelOp, gml_st::ForOp>(reverseOp->getParentOp()))
+    if (isa<gml_st::ParallelOp, scf::ForOp>(reverseOp->getParentOp())) {
       return rewriter.notifyMatchFailure(
           reverseOp, "has already been tiled by another pass.");
+    }
 
     // Parallel dimension tiling. Tiling will be of the form
     // 1x1x..x1xVectorSize.

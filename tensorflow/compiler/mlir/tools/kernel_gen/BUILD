@@ -96,6 +96,7 @@ tf_cc_binary(
     ],
     deps = [
         ":kernel_creator",
+        "@llvm-project//llvm:TargetParser",
         "//tensorflow/compiler/mlir:init_mlir",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/core:lib",

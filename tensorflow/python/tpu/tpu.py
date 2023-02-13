@@ -32,7 +32,6 @@ from tensorflow.python.compiler.xla import xla
 from tensorflow.python.distribute import device_util
 from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.framework import auto_control_deps
-from tensorflow.python.framework import c_api_util
 from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import config
 from tensorflow.python.framework import constant_op
@@ -318,9 +317,7 @@ class TPUReplicateContext(control_flow_ops.XLAControlFlowContext):
     self._gradient_colocation_stack = []
     self._host_compute_core = []
     self._name = name
-    self._name_as_bytes = compat.as_bytes(name)
-    self._tpu_relicate_attr_buf = c_api_util.ScopedTFBuffer(
-        attr_value_pb2.AttrValue(s=self._name_as_bytes).SerializeToString())
+    self._tpu_replicate_attr = attr_value_pb2.AttrValue(s=compat.as_bytes(name))
     self._unsupported_ops = []
     self._pivot = pivot
     self._replicated_vars = {}
@@ -373,7 +370,8 @@ class TPUReplicateContext(control_flow_ops.XLAControlFlowContext):
         else:
           raise ValueError(
               "Failed to find a variable on any device in replica {} for "
-              "current device assignment".format(replica_id))
+              "current device assignment".format(replica_id)
+          )
     else:
       replicated_vars = vars_
 
@@ -610,8 +608,7 @@ class TPUReplicateContext(control_flow_ops.XLAControlFlowContext):
     if (_TPU_REPLICATE_ATTR in op.node_def.attr and
         "_cloned" not in op.node_def.attr):
       raise ValueError(f"TPU computations cannot be nested on op ({op})")
-    op._set_attr_with_buf(_TPU_REPLICATE_ATTR,
-                          self._tpu_relicate_attr_buf.buffer)
+    op._set_attr(_TPU_REPLICATE_ATTR, self._tpu_replicate_attr)
     if self._outside_compilation_cluster:
       op._set_attr(
           _OUTSIDE_COMPILATION_ATTR,

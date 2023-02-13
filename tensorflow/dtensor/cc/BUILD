@@ -275,6 +275,7 @@ cc_library(
     deps = [
         ":parallel_executor_interface",
         "//tensorflow/core/platform:logging",
+        "//tensorflow/tsl/platform:statusor",
     ],
 )
 
@@ -338,6 +339,7 @@ cc_library(
         "//tensorflow/compiler/xla/stream_executor/tpu:tpu_platform_interface",
         "//tensorflow/compiler/xla/stream_executor/tpu:tpu_topology_external",
         "//tensorflow/tsl/platform:status",
+        "//tensorflow/tsl/util:env_var",
     ] + tf_dtensor_tpu_dependencies(),
 )
 

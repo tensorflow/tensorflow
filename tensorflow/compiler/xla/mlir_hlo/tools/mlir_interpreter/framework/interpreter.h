@@ -142,6 +142,8 @@ class InterpreterScope {
     return ret->second;
   }
 
+  void verify() const;
+
   // Retrieves the side channel of the given type in this scope or one of its
   // ancestor scopes. If `optional` is set, returns nullptr if not found,
   // otherwise asserts.
@@ -164,6 +166,8 @@ class InterpreterScope {
   void setSideChannel(std::shared_ptr<InterpreterSideChannel> sideChannel) {
     sideChannels.push_back(std::move(sideChannel));
   }
+
+  InterpreterScope* getParentScope() const { return parentScope; }
 
  private:
   DenseMap<Value, InterpreterValue> values;

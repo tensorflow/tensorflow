@@ -1867,7 +1867,9 @@ Status MarkForCompilation(
           .optimizer_options()
           .cpu_global_jit(),
       /*cluster_name_prefix=*/options.session_options != nullptr
-          ? options.session_options->config.experimental().friendly_name()
+          ? options.session_options->config.experimental()
+                .session_metadata()
+                .name()
           : ""}
       .Run();
 }

@@ -91,11 +91,7 @@ void RunJitRtBenchmark(::testing::benchmark::State& state,
                       : CreateSingleThreadedHostContext();
 
   TfJitRtPipelineOptions tf_jitrt_opts;
-  tf_jitrt_opts.enable_xla_cpu_transformations =
-      tensorflow::GetJitRtFlags().enable_xla_cpu_transformations;
-  tf_jitrt_opts.lower_to_mmt4d = tensorflow::GetJitRtFlags().pack_matmul;
   tf_jitrt_opts.vectorize = vectorize;
-  tf_jitrt_opts.codegen_transpose = codegen_transpose;
   JitExecutable& jit_executable =
       CreateJitExecutable(*host, mlir_input, function_name,
                           /*lower_from_tensorflow=*/true, tf_jitrt_opts);

@@ -15,8 +15,11 @@ limitations under the License.
 #include "tensorflow/core/data/service/snapshot/file_utils.h"
 
 #include <string>
+#include <utility>
+#include <vector>
 
 #include "absl/functional/function_ref.h"
+#include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/core/data/snapshot_utils.h"
@@ -27,14 +30,18 @@ limitations under the License.
 
 namespace tensorflow {
 namespace data {
-
 namespace {
+
+constexpr const char kTempFileSuffix[] = ".tmp";
 
 tsl::Status AtomicallyWrite(
     absl::string_view filename, tsl::Env* env,
     absl::FunctionRef<tsl::Status(const std::string&)> nonatomically_write) {
-  std::string uncommitted_filename =
-      absl::StrCat(filename, "-tmp-", random::New64());
+  std::string uncommitted_filename(filename);
+  if (!env->CreateUniqueFileName(&uncommitted_filename, kTempFileSuffix)) {
+    return tsl::errors::Internal("Failed to write file ", filename,
+                                 ": Unable to create temporary files.");
+  }
   TF_RETURN_IF_ERROR(nonatomically_write(uncommitted_filename));
   Status status = env->RenameFile(uncommitted_filename, std::string(filename));
   if (!status.ok()) {
@@ -44,7 +51,6 @@ tsl::Status AtomicallyWrite(
   }
   return status;
 }
-
 }  // namespace
 
 tsl::Status AtomicallyWriteStringToFile(absl::string_view filename,
@@ -98,6 +104,23 @@ tsl::Status AtomicallyWriteTFRecord(absl::string_view filename,
       AtomicallyWrite(filename, env, nonatomically_write),
       "Requested to write tensor: ", tensor.DebugString());
   return tsl::OkStatus();
+}
+
+tsl::StatusOr<std::vector<std::string>> GetChildren(absl::string_view directory,
+                                                    tsl::Env* env) {
+  std::vector<std::string> files, result;
+  TF_RETURN_IF_ERROR(env->FileExists(std::string(directory)));
+  Status status = env->GetChildren(std::string(directory), &files);
+  if (errors::IsNotFound(status)) {
+    return result;
+  }
+
+  for (std::string& file : files) {
+    if (!absl::EndsWith(file, kTempFileSuffix)) {
+      result.push_back(std::move(file));
+    }
+  }
+  return result;
 }
 
 }  // namespace data

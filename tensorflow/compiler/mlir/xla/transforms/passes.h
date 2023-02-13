@@ -126,14 +126,20 @@ std::unique_ptr<OperationPass<ModuleOp>> CreateLegalizeTFCollectivePass();
 std::unique_ptr<OperationPass<func::FuncOp>> CreateVerifyTFXLALegalizationPass(
     bool legalize_chlo = true);
 
+// Transforms TFXLA Device specific ops into device independent ops.
+std::unique_ptr<OperationPass<func::FuncOp>>
+CreateTFXLADeviceSpecificTransformsPass(
+    llvm::Optional<StringRef> tf2xla_fallback_device_type = llvm::None);
+
 #define GEN_PASS_REGISTRATION
+#define GEN_PASS_DECL_CONVERTMHLOQUANTTOINT
 #define GEN_PASS_DECL_LEGALIZETF
 #define GEN_PASS_DECL_LEGALIZETFCOLLECTIVE
 #define GEN_PASS_DECL_LEGALIZETFMODULEPASS
 #define GEN_PASS_DECL_LEGALIZETFNOFALLBACK
 #define GEN_PASS_DECL_LEGALIZETFTYPESPASS
+#define GEN_PASS_DECL_TFXLADEVICESPECIFICTRANSFORMS
 #define GEN_PASS_DECL_VERIFYTFXLALEGALIZATION
-#define GEN_PASS_DECL_CONVERTMHLOQUANTTOINT
 #include "tensorflow/compiler/mlir/xla/transforms/xla_legalize_tf_passes.h.inc"
 
 #define GEN_PASS_REGISTRATION

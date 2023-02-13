@@ -9,6 +9,7 @@ package(
     default_visibility = [
         # TODO(jpienaar): Make the visibility more restrictive.
         ":friends",
+        "//learning/brain/mobile/programmability:__subpackages__",
         "//tensorflow/lite/experimental/tf_runtime:__subpackages__",
         "//tensorflow/lite/testing:__subpackages__",
     ],
@@ -1266,6 +1267,7 @@ cc_library(
         "//tensorflow/compiler/mlir/lite/stablehlo:op_stat_pass",
         "//tensorflow/compiler/mlir/lite/stablehlo:stablehlo_tfl",
         "//tensorflow/compiler/mlir/lite/stablehlo:transforms",
+        "//tensorflow/compiler/mlir/lite/stablehlo/serializer:flatbuffer_export",
         "//tensorflow/compiler/mlir/quantization/tensorflow:quantization_options_proto_cc",
         "//tensorflow/compiler/mlir/quantization/tensorflow:quantize_passes",
         "//tensorflow/compiler/mlir/quantization/tensorflow:quantize_preprocess",

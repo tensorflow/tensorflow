@@ -32,6 +32,7 @@ package(
         "//tensorflow/security/fuzzing:__subpackages__",
         # TODO(pedaveeraiah): to be removed when summary.proto.h deps moves to TSL
         "//tensorflow/tsl/lib:__subpackages__",
+        # copybara:uncomment "//learning/brain/tfrt/aot:__subpackages__",
     ],
     licenses = ["notice"],
 )

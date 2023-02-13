@@ -245,6 +245,7 @@ if(NOT "${CMAKE_SYSTEM_NAME}" STREQUAL "iOS")
 endif()
 populate_tflite_source_vars("core" TFLITE_CORE_SRCS)
 populate_tflite_source_vars("core/api" TFLITE_CORE_API_SRCS)
+populate_tflite_source_vars("core/async" TFLITE_CORE_ASYNC_SRCS)
 populate_tflite_source_vars("core/c" TFLITE_CORE_C_SRCS)
 populate_tflite_source_vars("core/experimental/acceleration/configuration" TFLITE_CORE_EXPERIMENTAL_SRCS)
 populate_tflite_source_vars("core/kernels" TFLITE_CORE_KERNELS_SRCS)
@@ -512,6 +513,7 @@ set(_ALL_TFLITE_SRCS
   ${TFLITE_CORE_EXPERIMENTAL_SRCS}
   ${TFLITE_CORE_KERNELS_SRCS}
   ${TFLITE_CORE_SRCS}
+  ${TFLITE_CORE_ASYNC_SRCS}
   ${TFLITE_CORE_TOOLS_SRCS}
   ${TFLITE_C_SRCS}
   ${TFLITE_DELEGATES_FLEX_SRCS}

@@ -184,6 +184,10 @@ tf_module {
     name: "TruePositives"
     mtype: "<type \'type\'>"
   }
+  member {
+    name: "experimental"
+    mtype: "<type \'module\'>"
+  }
   member_method {
     name: "KLD"
     argspec: "args=[\'y_true\', \'y_pred\'], varargs=None, keywords=None, defaults=None"

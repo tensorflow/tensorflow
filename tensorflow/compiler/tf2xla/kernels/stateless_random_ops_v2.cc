@@ -18,6 +18,7 @@ limitations under the License.
 #include <cmath>
 
 #include "tensorflow/compiler/tf2xla/kernels/random_ops_util.h"
+#include "tensorflow/compiler/tf2xla/kernels/rng_converter_utils.h"
 #include "tensorflow/compiler/tf2xla/lib/random.h"
 #include "tensorflow/compiler/tf2xla/mlir_xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
@@ -71,18 +72,6 @@ std::tuple<xla::XlaOp, xla::XlaOp> GetKeyCounter(
         xla::ShapeUtil::MakeShape(xla::U64, {RNG_MAX_COUNTER_SIZE});
     auto counter = xla::Zeros(key.builder(), counter_shape);
     return std::make_tuple(key, counter);
-  }
-}
-
-xla::RandomAlgorithm DefaultRngAlgForDeviceType(
-    absl::string_view device_type_string) {
-  // The Philox algorithm may cause performance regression on other devices.
-  // Turn on the Philox algorithm for the CPU and GPU backends only.
-  if (device_type_string == DEVICE_GPU_XLA_JIT ||
-      device_type_string == DEVICE_CPU_XLA_JIT) {
-    return xla::RandomAlgorithm::RNG_PHILOX;
-  } else {
-    return xla::RandomAlgorithm::RNG_DEFAULT;
   }
 }
 
@@ -534,20 +523,6 @@ class GetKeyCounterOp : public XlaOpKernel {
 // TODO(hinsu): Dis-allow unsupported int64 seed types.
 REGISTER_XLA_OP(Name("StatelessRandomGetKeyCounter"), GetKeyCounterOp);
 
-Algorithm DecideOutputAlgorithm(xla::RandomAlgorithm alg) {
-  switch (alg) {
-    case xla::RandomAlgorithm::RNG_PHILOX:
-      return RNG_ALG_PHILOX;
-    case xla::RandomAlgorithm::RNG_THREE_FRY:
-      return RNG_ALG_THREEFRY;
-    case xla::RandomAlgorithm::RNG_DEFAULT:  // fall through
-    default:
-      // The output counter will have the maximal size, so it's safe to let
-      // downstream RNG ops choose the algorithm.
-      return RNG_ALG_AUTO_SELECT;
-  }
-}
-
 class GetAlgOp : public XlaOpKernel {
  public:
   explicit GetAlgOp(OpKernelConstruction* ctx)
@@ -558,7 +533,7 @@ class GetAlgOp : public XlaOpKernel {
     auto alg = DefaultRngAlgForDeviceType(device_type_string_);
     auto builder = ctx->builder();
     ctx->SetOutput(
-        0, ConstantR0(builder, static_cast<int>(DecideOutputAlgorithm(alg))));
+        0, ConstantR0(builder, static_cast<int>(ToTensorflowAlgorithm(alg))));
   }
 
  private:
@@ -594,7 +569,7 @@ class GetKeyCounterAlgOp : public XlaOpKernel {
     ctx->SetOutput(0, key);
     ctx->SetOutput(1, counter);
     ctx->SetOutput(
-        2, ConstantR0(builder, static_cast<int>(DecideOutputAlgorithm(alg))));
+        2, ConstantR0(builder, static_cast<int>(ToTensorflowAlgorithm(alg))));
   }
 
  private:

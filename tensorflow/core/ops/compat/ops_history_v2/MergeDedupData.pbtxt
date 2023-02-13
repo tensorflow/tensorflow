@@ -39,4 +39,11 @@ op 	 {
       }
     }
   }
+  attr {
+    name: "config"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
 }

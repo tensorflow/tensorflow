@@ -66,6 +66,10 @@ std::string SnapshotMetadataFilePath(absl::string_view snapshot_path);
 // Returns the path of the serialized graph of the dataset for a snapshot.
 std::string DatasetDefFilePath(absl::string_view snapshot_path);
 
+// Returns the path of the serialized element spec of the dataset for a
+// snapshot.
+std::string DatasetSpecFilePath(absl::string_view snapshot_path);
+
 // Returns the directory path for snapshot checkpoints.
 std::string CheckpointsDirectory(absl::string_view snapshot_path,
                                  int64_t stream_index);

@@ -343,10 +343,11 @@ class LocalTaskGarbageCollectTest(data_service_test_base.TestBase,
     # reads from the same task as the first, which has been deleted.
     dataset = self._make_distributed_infinite_range_dataset(
         cluster, job_name="shared_job_name")
-    get_next = self.getNext(dataset)
     with self.assertRaisesRegex(errors.FailedPreconditionError,
                                 "which has been deleted."):
-      _ = self.evaluate(get_next())
+      get_next = self.getNext(dataset)
+      while True:
+        _ = self.evaluate(get_next())
 
   @combinations.generate(
       combinations.times(test_base.graph_only_combinations(),

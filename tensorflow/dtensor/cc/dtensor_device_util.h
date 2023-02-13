@@ -248,7 +248,7 @@ class TensorWithLayoutTf : public TensorWithLayout {
  protected:
   TensorWithLayoutTf(std::unique_ptr<parallel_device::ParallelTensor> tensor,
                      const Mesh& mesh, const Layout& layout,
-                     std::vector<int64_t> local_shape,
+                     const std::vector<int64_t>& local_shape,
                      std::optional<TF_DataType> dtype = std::nullopt,
                      std::optional<NodeDef> const_value = std::nullopt)
       : tensor_(std::move(tensor)),
@@ -359,7 +359,7 @@ class ResourceHandleWithLayout : public TensorWithLayoutTf {
  private:
   ResourceHandleWithLayout(
       std::unique_ptr<parallel_device::ParallelTensor> tensor, const Mesh& mesh,
-      const Layout& layout, std::vector<int64_t> local_shape)
+      const Layout& layout, const std::vector<int64_t>& local_shape)
       : TensorWithLayoutTf(std::move(tensor), mesh, layout, local_shape,
                            TF_RESOURCE) {}
 
@@ -386,7 +386,8 @@ class SparseTensorWithLayout : public TensorWithLayoutTf {
       std::unique_ptr<parallel_device::ParallelTensor> indices_tensor,
       std::unique_ptr<parallel_device::ParallelTensor> values_tensor,
       std::unique_ptr<parallel_device::ParallelTensor> shapes_tensor,
-      const Mesh& mesh, const Layout& layout, std::vector<int64_t> local_shape);
+      const Mesh& mesh, const Layout& layout,
+      const std::vector<int64_t>& local_shape);
 
   // A dummy TensorWithLayout without holding a ParallelTensor.
   static std::unique_ptr<SparseTensorWithLayout> Dummy(
@@ -430,7 +431,8 @@ class SparseTensorWithLayout : public TensorWithLayoutTf {
       std::unique_ptr<parallel_device::ParallelTensor> indices,
       std::unique_ptr<parallel_device::ParallelTensor> values,
       std::unique_ptr<parallel_device::ParallelTensor> dense_shapes,
-      const Mesh& mesh, const Layout& layout, std::vector<int64_t> local_shape,
+      const Mesh& mesh, const Layout& layout,
+      const std::vector<int64_t>& local_shape,
       std::optional<TF_DataType> dtype = std::nullopt,
       std::optional<NodeDef> const_value = std::nullopt)
       : TensorWithLayoutTf(nullptr, mesh, layout, local_shape),

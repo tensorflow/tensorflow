@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/gpu/triton_autotuner.h"
 
+#include <cstdint>
 #include <iterator>
 #include <limits>
 #include <memory>
@@ -25,6 +26,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/node_hash_map.h"
+#include "absl/time/time.h"
 #include "tensorflow/compiler/xla/hlo/ir/dfs_hlo_visitor_with_default.h"
 #include "tensorflow/compiler/xla/service/gpu/buffer_comparator.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_asm_opts_util.h"
@@ -37,6 +39,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/target_constants.h"
 #include "tensorflow/compiler/xla/service/gpu/target_util.h"
 #include "tensorflow/compiler/xla/stream_executor/gpu/asm_compiler.h"
+#include "tensorflow/compiler/xla/stream_executor/gpu/gpu_stream.h"
+#include "tensorflow/compiler/xla/stream_executor/gpu/gpu_timer.h"
 #include "tensorflow/compiler/xla/stream_executor/gpu/redzone_allocator.h"
 #include "tensorflow/tsl/platform/statusor.h"
 #include "tensorflow/tsl/util/proto/proto_utils.h"
@@ -75,7 +79,8 @@ GetPossibleMatmulAutotuneConfigs() {
           GemmKey(128, 128, 128, 1, 4, 4), GemmKey(128, 64, 64, 1, 4, 4),
           GemmKey(64, 128, 64, 1, 4, 4),   GemmKey(128, 32, 64, 1, 4, 4),
           GemmKey(64, 32, 64, 1, 4, 4),    GemmKey(32, 128, 32, 1, 4, 4),
-          GemmKey(64, 32, 64, 1, 2, 8),    GemmKey(128, 128, 32, 1, 4, 4)};
+          GemmKey(64, 32, 64, 1, 2, 8),    GemmKey(128, 128, 32, 1, 4, 4),
+          GemmKey(32, 32, 256, 1, 1, 4)};
 }
 
 // We assume that the string representation is general enough for caching
@@ -241,23 +246,23 @@ class TritonAutotunerVisitor : public DfsHloRewriteVisitor {
       }
     }
 
+    std::vector<se::DeviceMemoryBase> args;
+    int64_t rng_state = 0;
+    for (const HloInstruction* param : fusion->parameter_instructions()) {
+      TF_ASSIGN_OR_RETURN(
+          se::DeviceMemoryBase param_buffer,
+          CreateBuffer(rz_allocator, *param, autotune_cfg, rng_state));
+      args.push_back(param_buffer);
+    }
+
+    TF_ASSIGN_OR_RETURN(
+        se::DeviceMemoryBase output_buffer,
+        CreateBuffer(rz_allocator, *root, autotune_cfg, rng_state));
+    args.push_back(output_buffer);
+
     for (AutotuneResult::TritonGemmKey& conf :
          GetPossibleMatmulAutotuneConfigs()) {
       VLOG(1) << "Trying triton tiling: " << conf.DebugString();
-
-      std::vector<se::DeviceMemoryBase> args;
-      int64_t rng_state = 0;
-      for (HloInstruction* param : fusion->parameter_instructions()) {
-        TF_ASSIGN_OR_RETURN(
-            se::DeviceMemoryBase param_buffer,
-            CreateBuffer(rz_allocator, *param, autotune_cfg, rng_state));
-        args.push_back(param_buffer);
-      }
-
-      TF_ASSIGN_OR_RETURN(
-          se::DeviceMemoryBase output_buffer,
-          CreateBuffer(rz_allocator, *root, autotune_cfg, rng_state));
-      args.push_back(output_buffer);
 
       AutotuneResult res;
       *res.mutable_triton() = conf;
@@ -326,9 +331,7 @@ class TritonAutotunerVisitor : public DfsHloRewriteVisitor {
     absl::MutexLock gpu_lock(&GetGpuMutex(stream_->parent()));
 
     auto& [ptx, cubin, launch_dimensions] = *res;
-    TF_RETURN_IF_ERROR(stream_->BlockHostUntilDone());
 
-    uint64_t start_nanos = tsl::Env::Default()->NowNanos();
     TF_ASSIGN_OR_RETURN(
         std::unique_ptr<se::KernelBase> kernel,
         // TODO(cheshire): Where is "1" coming from?
@@ -336,11 +339,24 @@ class TritonAutotunerVisitor : public DfsHloRewriteVisitor {
                      ptx, cubin, stream_->parent(),
                      launch_dimensions.SharedMemBytes()));
 
+    se::gpu::GpuExecutor* cuda_executor = dynamic_cast<se::gpu::GpuExecutor*>(
+        stream_->parent()->implementation());
+    std::unique_ptr<se::gpu::GpuTimer, se::gpu::GpuTimerDeleter> timer(
+        new se::gpu::GpuTimer(cuda_executor));
+    // Warmup: in and out buffers are reused while probing different configs, so
+    // GPU caches should be in some comparable states during measurements.
     TF_RETURN_IF_ERROR(ExecuteKernelOnStream(*kernel, device_buffers,
                                              launch_dimensions, stream_));
     TF_RETURN_IF_ERROR(stream_->BlockHostUntilDone());
-    uint64_t end_nanos = tsl::Env::Default()->NowNanos();
-    return std::make_optional(absl::Nanoseconds(end_nanos - start_nanos));
+    if (!timer->Init() || !timer->Start(se::gpu::AsGpuStream(stream_))) {
+      return Status(tsl::error::INTERNAL, "Failed to start timer");
+    }
+    TF_RETURN_IF_ERROR(ExecuteKernelOnStream(*kernel, device_buffers,
+                                             launch_dimensions, stream_));
+    if (!timer->Stop(se::gpu::AsGpuStream(stream_))) {
+      return Status(tsl::error::INTERNAL, "Failed to stop timer");
+    }
+    return std::make_optional(absl::Nanoseconds(timer->Nanoseconds()));
   }
 
   // Compile a given computation with a given autotuning config, utilizing

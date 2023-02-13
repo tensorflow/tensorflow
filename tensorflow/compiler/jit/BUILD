@@ -1,5 +1,5 @@
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
-load("//tensorflow:tensorflow.bzl", "if_libtpu", "if_with_tpu_support", "tf_cc_test", "tf_copts")
+load("//tensorflow:tensorflow.bzl", "if_libtpu", "if_with_tpu_support", "tf_cc_test", "tf_copts", "tf_cuda_cc_test")
 load("//tensorflow/compiler/xla/stream_executor:build_defs.bzl", "if_cuda_or_rocm")
 load("//tensorflow:tensorflow.default.bzl", "cc_header_only_library", "filegroup", "tf_custom_op_py_library", "tf_jit_compilation_passes_extra_deps")
 load("//tensorflow/core/platform:build_config.bzl", "tf_additional_all_protos", "tf_proto_library")
@@ -1298,6 +1298,8 @@ cc_library(
         ":xla_device_compiler_client",
         "//tensorflow/compiler/tf2xla:xla_compiler",
         "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla/client:local_client",
+        "//tensorflow/compiler/xla/pjrt:pjrt_client",
         "//tensorflow/compiler/xla/service:hlo_proto_cc",
         "//tensorflow/core:core_cpu_base",
         "//tensorflow/core:framework",
@@ -1392,6 +1394,7 @@ tf_cc_test(
     deps = [
         ":device_compiler_client",
         ":device_executable_persistor",
+        ":pjrt_device_compiler_client",
         ":xla_compilation_cache_proto_cc",
         ":xla_cpu_device",
         ":xla_cpu_jit",
@@ -1402,10 +1405,13 @@ tf_cc_test(
         "//tensorflow/compiler/xla/client:client_library",
         "//tensorflow/compiler/xla/client:executable_build_options",
         "//tensorflow/compiler/xla/client:local_client",
+        "//tensorflow/compiler/xla/pjrt:pjrt_client",
+        "//tensorflow/compiler/xla/pjrt:tfrt_cpu_pjrt_client",
         "//tensorflow/core:test",
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:status_matchers",
         "//tensorflow/core/platform:statusor",
+        "//tensorflow/core/tfrt/common:pjrt_util",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -1418,6 +1424,44 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core/platform:errors",
         "//tensorflow/tsl/protobuf:error_codes_proto_impl_cc",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+# TODO(b/261212343): Support running this test on CPU and OSS.
+tf_cuda_cc_test(
+    name = "device_compiler_test",
+    srcs = ["device_compiler_test.cc"],
+    env = {
+        "XLA_FLAGS": "--xla_gpu_enable_xla_runtime_executable",
+    },
+    tags = [
+        "config-cuda-only",
+        "no_oss",  # This test only runs with GPU.
+        "requires-gpu-nvidia",
+        "xla",
+    ],
+    deps = [
+        ":device_compilation_cluster_signature",
+        ":device_compiler",
+        ":device_compiler_client",
+        ":xla_device_compiler_client",
+        ":xla_gpu_device",
+        ":xla_gpu_jit",
+        "//tensorflow/cc:function_ops",
+        "//tensorflow/cc:math_ops",
+        "//tensorflow/cc:scope",
+        "//tensorflow/compiler/jit/tests:device_compiler_test_helper",
+        "//tensorflow/compiler/xla/client:client_library",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:test",
+        "//tensorflow/core/framework:fake_input",
+        "//tensorflow/core/kernels:ops_testutil",
+        "//tensorflow/core/platform:errors",
+        "//tensorflow/core/platform:notification",
+        "//tensorflow/core/platform:status",
+        "//tensorflow/core/platform:status_matchers",
+        "//tensorflow/core/platform:statusor",
         "@com_google_googletest//:gtest_main",
     ],
 )

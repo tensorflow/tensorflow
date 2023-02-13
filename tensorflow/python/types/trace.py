@@ -26,9 +26,12 @@ traced (a process known as retracing).
 """
 
 import abc
-from typing import Optional, Sequence, Any
+from typing import Any, List, Optional, Sequence
+
 from typing_extensions import Protocol
 from typing_extensions import runtime_checkable
+
+from tensorflow.python.types import core
 from tensorflow.python.util.tf_export import tf_export
 from tensorflow.tools.docs import doc_controls
 
@@ -196,13 +199,17 @@ class TraceType(metaclass=abc.ABCMeta):
     """
 
   @doc_controls.do_not_doc_inheritable
-  def _to_tensors(self, value):
+  def _to_tensors(self, value) -> List[core.Tensor]:
     """Breaks down a value of this type into Tensors.
 
     Args:
       value: An input value belonging to this TraceType
+
+    Returns:
+      List of Tensors.
     """
-    raise NotImplementedError
+    del value
+    return []
 
   @doc_controls.do_not_doc_inheritable
   def _cast(self, value, casting_context) -> Any:  # pylint:disable=unused-argument

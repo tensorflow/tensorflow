@@ -123,11 +123,11 @@ REQUIRED_PACKAGES = [
     # current release version. These also usually have "alpha" or "dev" in their
     # version name.
     # These are all updated during the TF release process.
-    standard_or_nightly('tensorboard >= 2.11, < 2.12',
-                        'tb-nightly ~= 2.12.0.a'),
-    standard_or_nightly('tensorflow_estimator >= 2.11.0rc0, < 2.12',
+    standard_or_nightly('tensorboard >= 2.12, < 2.13',
+                        'tb-nightly ~= 2.13.0.a'),
+    standard_or_nightly('tensorflow_estimator >= 2.12.0rc0, < 2.13',
                         'tf-estimator-nightly ~= 2.13.0.dev'),
-    standard_or_nightly('keras >= 2.11.0rc1, < 2.12',
+    standard_or_nightly('keras >= 2.12.0rc0, < 2.13',
                         'keras-nightly ~= 2.13.0.dev'),
 ]
 REQUIRED_PACKAGES = [p for p in REQUIRED_PACKAGES if p is not None]
@@ -305,6 +305,7 @@ headers = (
     list(find_files('*.proto', 'tensorflow/core')) +
     list(find_files('*.proto', 'tensorflow/python')) +
     list(find_files('*.proto', 'tensorflow/python/framework')) +
+    list(find_files('*.proto', 'tensorflow/tsl')) +
     list(find_files('*.def', 'tensorflow/compiler')) +
     list(find_files('*.h', 'tensorflow/c')) +
     list(find_files('*.h', 'tensorflow/cc')) +

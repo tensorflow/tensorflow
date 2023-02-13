@@ -41,9 +41,10 @@ namespace tensorflow {
         ->mutable_optimizer_options()
         ->set_global_jit_level(OptimizerOptions::ON_2);
   }
-  if (!options.friendly_name.empty()) {
-    session_options.config.mutable_experimental()->set_friendly_name(
-        options.friendly_name);
+  if (!options.session_name.empty()) {
+    session_options.config.mutable_experimental()
+        ->mutable_session_metadata()
+        ->set_name(options.session_name);
   }
 
   // Call AddDevices to register the XLA devices.

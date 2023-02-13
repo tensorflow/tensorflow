@@ -664,7 +664,7 @@ ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
     if (shape.is_dynamic_dimension(i)) {
       printer->Append("<=");
     }
-    printer->Append(absl::AlphaNum(shape.dimensions(i)).Piece());
+    printer->Append(shape.dimensions(i));
   }
   printer->Append("]");
 }

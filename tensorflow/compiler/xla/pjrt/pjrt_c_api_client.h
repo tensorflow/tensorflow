@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/pjrt/c/pjrt_c_api.h"
 #include "tensorflow/compiler/xla/pjrt/c/pjrt_c_api_helpers.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
+#include "tensorflow/compiler/xla/pjrt/pjrt_compiler.h"
 
 namespace xla {
 // If false, PjRtCApiClient will raise an error on methods unimplemented in the
@@ -547,7 +548,52 @@ class PjRtCApiLoadedExecutable : public PjRtLoadedExecutable {
   void InitDevices();
 };
 
+class PjRtCApiCompiler : public PjRtCompiler {
+ public:
+  explicit PjRtCApiCompiler(const PJRT_Api* c_api) : c_api_(c_api) {}
+
+  StatusOr<std::unique_ptr<PjRtExecutable>> Compile(
+      CompileOptions options, const XlaComputation& computation,
+      const PjRtDeviceTopology& topology, PjRtClient* client) override;
+
+  StatusOr<std::unique_ptr<PjRtExecutable>> Compile(
+      CompileOptions options, mlir::ModuleOp module,
+      const PjRtDeviceTopology& topology, PjRtClient* client) override;
+
+ private:
+  const PJRT_Api* c_api_;
+};
+
+class PjRtCApiDeviceTopology : public PjRtDeviceTopology {
+ public:
+  PjRtCApiDeviceTopology(const PJRT_Api* c_api,
+                         PJRT_DeviceTopology* c_topology);
+
+  PjRtPlatformId platform_id() const override {
+    CHECK(false) << "PJRT C API does not support platform_id.";
+  }
+
+  absl::string_view platform_name() const override;
+
+  absl::string_view platform_version() const override;
+
+  std::optional<PjRtCompiler*> compiler() const override {
+    return compiler_.get();
+  }
+
+  const PJRT_DeviceTopology* c_topology() const { return c_topology_.get(); }
+
+ private:
+  std::unique_ptr<PjRtCApiCompiler> compiler_;
+  const PJRT_Api* c_api_;
+  std::unique_ptr<PJRT_DeviceTopology, ::pjrt::PJRT_DeviceTopologyDeleter>
+      c_topology_;
+};
+
 StatusOr<std::unique_ptr<PjRtClient>> GetCApiClient(
+    absl::string_view device_type);
+
+StatusOr<std::unique_ptr<PjRtDeviceTopology>> GetCApiTopology(
     absl::string_view device_type);
 
 }  // namespace xla

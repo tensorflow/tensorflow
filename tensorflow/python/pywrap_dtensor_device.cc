@@ -92,8 +92,14 @@ PYBIND11_MODULE(_pywrap_dtensor_device, m) {
     std::unique_ptr<PyObject, decltype(&PyXDecref)> device_capsule(
         PyCapsule_New(device, "TFE_CustomDevice", &CallDelete_Device),
         PyXDecref);
-    void* device_info;
-    AllocateDTensorDevice(name, device, &device_info);
+    void* device_info = nullptr;
+    std::unique_ptr<TF_Status, decltype(&TF_DeleteStatus)> status(
+        TF_NewStatus(), TF_DeleteStatus);
+    AllocateDTensorDevice(name, device, &device_info, status.get());
+    if (TF_GetCode(status.get()) != TF_OK) {
+      PyErr_SetString(PyExc_ValueError, TF_Message(status.get()));
+      throw py::error_already_set();
+    }
     std::unique_ptr<PyObject, decltype(&PyXDecref)> device_info_capsule(
         PyCapsule_New(device_info, "TFE_CustomDevice_DeviceInfo",
                       &CallDelete_DeviceInfo),

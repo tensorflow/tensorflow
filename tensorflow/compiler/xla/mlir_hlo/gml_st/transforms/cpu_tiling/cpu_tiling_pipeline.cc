@@ -22,8 +22,18 @@ limitations under the License.
 namespace mlir {
 namespace gml_st {
 
+GmlStCPUTilingOptions getDefaultCPUPipelineOptions() {
+  GmlStCPUTilingOptions opts;
+  opts.vectorSize = 8;
+  opts.reduction1DTileSize = 32;
+  opts.reduction2DTileSizes = {4, 4};
+  opts.matmulTileSizes = {4, 4, 4};
+  opts.lowerToMmt4d = false;
+  return opts;
+}
+
 void addCPUTilingPipeline(OpPassManager& pm,
-                          const GmlStCPUPipelineOptions& options) {
+                          const GmlStCPUTilingOptions& options) {
   using func::FuncOp;
 
   pm.addNestedPass<FuncOp>(createTransformScatterForCpuPass());
@@ -49,6 +59,10 @@ void addCPUTilingPipeline(OpPassManager& pm,
   pm.addNestedPass<FuncOp>(createScalarizationPass());
 
   pm.addNestedPass<FuncOp>(createRewriteVectorContractPass());
+}
+
+void addDefaultCPUTilingPipeline(OpPassManager& pm) {
+  addCPUTilingPipeline(pm, getDefaultCPUPipelineOptions());
 }
 
 }  // namespace gml_st

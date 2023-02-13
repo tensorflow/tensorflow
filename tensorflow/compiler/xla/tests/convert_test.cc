@@ -598,11 +598,16 @@ XLA_TEST_F(ConvertTest, ConvertF16F8e5m2Roundtrip) {
     inputs.push_back(Eigen::half{test_case.input});
     expected_roundtrip.push_back(Eigen::half{test_case.expected_roundtrip});
   }
-
   auto f8 =
       ConvertElementType(ConstantR1<Eigen::half>(&builder, inputs), F8E5M2);
   ConvertElementType(f8, F16);
+  const bool saved =
+      execution_options_.debug_options().xla_allow_excess_precision();
+  execution_options_.mutable_debug_options()->set_xla_allow_excess_precision(
+      false);
   ComputeAndCompareR1<Eigen::half>(&builder, expected_roundtrip, {});
+  execution_options_.mutable_debug_options()->set_xla_allow_excess_precision(
+      saved);
 }
 
 XLA_TEST_F(ConvertTest, ConvertF8e5m2F16RoundtripExhaustive) {

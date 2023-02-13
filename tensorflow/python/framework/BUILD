@@ -78,11 +78,9 @@ cc_library(
     name = "python_op_gen",
     srcs = [
         "python_op_gen.cc",
-        "python_op_gen_internal.cc",
     ],
     hdrs = [
         "python_op_gen.h",
-        "python_op_gen_internal.h",
     ],
     visibility = ["//visibility:public"],
     deps = [
@@ -1107,7 +1105,11 @@ py_library(
     # TODO(b/266747022): remove extra visibility
     visibility = visibility + ["//learning/brain/experimental:__subpackages__"],
     deps = [
-        "//tensorflow/python/eager:context",
+        ":dtypes",
+        "//tensorflow/python/types",
+        "//tensorflow/python/util",
+        "//tensorflow/python/util:tf_export",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -1468,9 +1470,8 @@ pytype_library(
 )
 
 py_library(
-    name = "tensor_spec",
-    srcs = ["tensor_spec.py"],
-    srcs_version = "PY3",
+    name = "tensor",
+    srcs = ["tensor.py"],
     deps = [
         ":common_shapes",
         ":dtypes",
@@ -1485,6 +1486,14 @@ py_library(
         "//tensorflow/python/types",
         "//tensorflow/python/util",
         "//third_party/py/numpy",
+    ],
+)
+
+py_library(
+    name = "tensor_spec",
+    srcs = ["tensor_spec.py"],
+    deps = [
+        ":tensor",
     ],
 )
 
@@ -2081,14 +2090,14 @@ tf_py_test(
 )
 
 tf_py_test(
-    name = "tensor_spec_test",
+    name = "tensor_test",
     size = "small",
-    srcs = ["tensor_spec_test.py"],
-    main = "tensor_spec_test.py",
+    srcs = ["tensor_test.py"],
+    main = "tensor_test.py",
     python_version = "PY3",
     deps = [
         ":for_generated_wrappers",
-        ":tensor_spec",
+        ":tensor",
         ":test_lib",
         ":type_utils",
         "//tensorflow/python:platform_test",
@@ -2170,6 +2179,7 @@ tf_py_test(
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:math_ops",
+        "//tensorflow/python:shape_util",
         "//tensorflow/python:state_ops_gen",
         "//third_party/py/numpy",
     ],

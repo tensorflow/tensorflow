@@ -31,8 +31,6 @@ TEST(BackendAsyncKernelInterfaceTest, BasicTest) {
   EXPECT_CALL(kernel, RegisterBuffer(_, _, _, _, _));
   EXPECT_CALL(kernel, RegisterBufferSlice(_, _, _, _));
   EXPECT_CALL(kernel, UnregisterBuffer(_, _));
-  EXPECT_CALL(kernel, SupportedBufferTypes(_));
-  EXPECT_CALL(kernel, SupportedSynchronizations(_));
   EXPECT_CALL(kernel, ReconcileRestrictions(_, _, _, _, _, _));
   EXPECT_CALL(kernel, SetAttributes(_, _, _, _));
   EXPECT_CALL(kernel, Prepare(_, _));
@@ -46,8 +44,6 @@ TEST(BackendAsyncKernelInterfaceTest, BasicTest) {
                                  0);
   tflite_kernel->register_buffer_slice(tflite_kernel, nullptr, 0, nullptr, 0);
   tflite_kernel->unregister_buffer(tflite_kernel, nullptr, 0);
-  tflite_kernel->supported_buffer_types(tflite_kernel, 0);
-  tflite_kernel->supported_synchronizations(tflite_kernel, 0);
   tflite_kernel->reconcile_restrictions(tflite_kernel, nullptr, nullptr, 0,
                                         nullptr, nullptr, nullptr);
   tflite_kernel->set_attributes(tflite_kernel, nullptr, nullptr, 0, nullptr);

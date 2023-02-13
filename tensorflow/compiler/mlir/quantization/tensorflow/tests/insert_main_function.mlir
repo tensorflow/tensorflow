@@ -35,9 +35,9 @@ module attributes {tf.versions = {producer = 930 : i32}, tf_saved_model.semantic
 // CHECK-NOT: f = @NoOp
 // CHECK:   %[[PARTITIONEDCALL_0:.*]] = "tf.PartitionedCall"(%arg0, %arg1) {config = "", config_proto = "", executor_type = "", f = @mul1} : (tensor<1xf32>, tensor<1xf32>) -> tensor<1xf32>
 // CHECK:   %[[PARTITIONEDCALL_1:.*]] = "tf.PartitionedCall"(%arg2, %arg3) {config = "", config_proto = "", executor_type = "", f = @mul2} : (tensor<1xf32>, tensor<1xf32>) -> tensor<1xf32>
-// CHECK:   %[[IDENTITY_0:.*]] = "tf.Identity"(%[[PARTITIONEDCALL_1]])
-// CHECK:   %[[IDENTITY_1:.*]] = "tf.Identity"(%[[PARTITIONEDCALL_0]])
-// CHECK:   return %[[IDENTITY_1]], %[[IDENTITY_0]] : tensor<1xf32>, tensor<1xf32>
+// CHECK-DAG:   %[[IDENTITY_0:.*]] = "tf.Identity"(%[[PARTITIONEDCALL_0]])
+// CHECK-DAG:   %[[IDENTITY_1:.*]] = "tf.Identity"(%[[PARTITIONEDCALL_1]])
+// CHECK:   return %[[IDENTITY_0]], %[[IDENTITY_1]] : tensor<1xf32>, tensor<1xf32>
 // CHECK: }
 }
 

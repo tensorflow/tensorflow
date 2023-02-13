@@ -300,6 +300,10 @@ cc_library(
 cc_library(
     name = "thread_pool",
     hdrs = ["thread_pool.h"],
+    visibility = [
+        ":friends",
+        # copybara:uncomment "//smartass/brain/server:__pkg__",
+    ],
     deps = [
         "//tensorflow/core:lib",
         "//tensorflow/core/platform:threadpool_interface",

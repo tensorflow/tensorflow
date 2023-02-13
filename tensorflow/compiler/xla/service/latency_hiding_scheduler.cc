@@ -236,7 +236,6 @@ int64_t AsyncTracker::CollectivesPerInstruction(
   if (instr.called_computations().empty() ||
       instr.opcode() == HloOpcode::kAsyncStart ||
       instr.opcode() == HloOpcode::kAsyncDone) {
-    auto resources = GetResourcesFromInstruction(instr);
     return absl::c_any_of(GetResourcesFromInstruction(instr),
                           [async_done](const ResourcePair& resource) {
                             return resource.second ==

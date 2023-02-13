@@ -292,7 +292,10 @@ void PrepareLiftingPass::runOnOperation() {
   RewritePatternSet patterns(ctx);
   populateWithGenerated(patterns);
   patterns.add<TF::ConvertTFEinsumOp, RemoveIdentity>(ctx);
-  (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
+  if (failed(applyPatternsAndFoldGreedily(func, std::move(patterns)))) {
+    func.emitError() << "quant-internal-prepare-lifting failed.";
+    signalPassFailure();
+  }
 }
 
 }  // namespace

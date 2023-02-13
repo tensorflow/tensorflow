@@ -163,9 +163,7 @@ void AllocateAndParseJitRtFlags() {
   jitrt_flags->always_specialize = false;
   jitrt_flags->cost_driven_async_parallel_for = false;
   jitrt_flags->enable_crash_reproducer = false;
-  jitrt_flags->enable_xla_cpu_transformations = false;
   jitrt_flags->log_query_of_death = false;
-  jitrt_flags->pack_matmul = false;
   jitrt_flags->vectorize = false;
   jitrt_flag_list = new std::vector<Flag>({
       Flag("always_specialize", &jitrt_flags->always_specialize, ""),
@@ -173,10 +171,7 @@ void AllocateAndParseJitRtFlags() {
            &jitrt_flags->cost_driven_async_parallel_for, ""),
       Flag("enable_crash_reproducer", &jitrt_flags->enable_crash_reproducer,
            ""),
-      Flag("enable_xla_cpu_transformations",
-           &jitrt_flags->enable_xla_cpu_transformations, ""),
       Flag("log_query_of_death", &jitrt_flags->log_query_of_death, ""),
-      Flag("pack_matmul", &jitrt_flags->pack_matmul, ""),
       Flag("vectorize", &jitrt_flags->vectorize, ""),
   });
   xla::ParseFlagsFromEnvAndDieIfUnknown("TF_JITRT_FLAGS", *jitrt_flag_list);

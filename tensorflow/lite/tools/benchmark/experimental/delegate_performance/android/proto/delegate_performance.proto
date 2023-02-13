@@ -19,37 +19,36 @@ package tflite.proto.benchmark;
 
 option java_package = "tflite.proto.benchmark";
 
+// TODO(b/250877013): Update the README file to reflect the criteria.
 // Parameters for latency thresholds of the delegate latency benchmarking
-// results. The delegate performance benchmark app generates a "PASS" result for
-// a model if no thresholds are breached.
+// results. The delegate performance benchmark app generates a
+// "PASS"/"PASS_WITH_WARNING"/"FAIL" result for each pair of test target
+// delegate with a reference delegate and an overall result by aggregating all
+// the results. The result computation involves computing the test target
+// delegate performance regressions and checking if the regression thresholds,
+// specified by LatencyCriteria, are breached.
+//
+// Please see
+// tensorflow/lite/tools/benchmark/experimental/delegate_performance/android/src/main/java/org/tensorflow/lite/benchmark/delegateperformance/BenchmarkResultType.java
+// for the meanings of "PASS", "PASS_WITH_WARNING" and "FAIL".
 //
 // The latency criteria is designed to be model specific.
 //
-// Next ID: 4
+// Next ID: 3
 message LatencyCriteria {
-  // The maximum regression (%) of initialization time that is allowed.
+  // The maximum regression (%) of startup overhead time that is allowed.
   // If initialization_max_regression_percentage_allow is 5 and the
   // initialization time of the test delegate is slower than the reference
-  // delegate by more than 5%, it will fail the latency benchmarking.
+  // delegate by more than 5%, the threshold is breached.
   //
-  // Note: It is only applied when comparing two stable delegates.
-  optional float initialization_max_regression_percentage_allowed = 1;
-  // The maximum regression (%) of warmup time that is allowed. The warmup is
-  // the inferences before the benchmark run. The default number of warmup
-  // inferences times is 1 and the number is configurable via TFLite Benchmark
-  // Tool arguments.
-  //
-  // If average_warm_up_max_regression_percentage_allowed is 5 and the warmup
-  // time of the test delegate is slower than the reference delegate by more
-  // than 5%, it will fail the latency benchmarking.
-  //
-  // Note: It is only applied when comparing two stable delegates.
-  optional float average_warm_up_max_regression_percentage_allowed = 2;
+  // Startup overhead time is calculated as below:
+  // initialization time + average warmup time - average inference time
+  optional float startup_overhead_max_regression_percentage_allowed = 1;
   // The maximum regression (%) of inference time that is allowed.
   // If average_inference_max_regression_percentage_allowed is 5 and the
   // inference time of the test delegate is slower than the reference delegate
-  // by more than 5%, it will fail the latency benchmarking.
-  optional float average_inference_max_regression_percentage_allowed = 3;
+  // by more than 5%, the threshold is breached.
+  optional float average_inference_max_regression_percentage_allowed = 2;
 }
 
 // Which stage of benchmarking the event is for.

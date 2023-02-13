@@ -63,12 +63,9 @@ import tflite.proto.benchmark.DelegatePerformance.LatencyResults;
  * The metrics for generating the Pass/Fail decision:
  *
  * <ul>
- *   <li>1. initialization latency: model loading and interpreter initialization before the first
- *       inference. This metric is only used in the above case #2.
- *   <li>2. averge warmup latency: average time for the warmup inferences before the benchmark run.
- *       The default number of warmup inferences is 1. This metric is only used in the above case
- *       #2.
- *   <li>3. average inference latency: average time for the inferences in the benchmark run.
+ *   <li>1. startup overhead latency: it is equal to (initialization time + average warmup latency -
+ *       average inference time).
+ *   <li>2. average inference latency: average time for the inferences in the benchmark run.
  * </ul>
  */
 public final class BenchmarkLatencyImpl {
@@ -192,7 +189,7 @@ public final class BenchmarkLatencyImpl {
    * <p>Returns {@code BenchmarkResultType.SKIP} is the latency module shouldn't produce a Pass/Fail
    * result. Otherwise, returns {@code BenchmarkResultType.PASS} if the test target acceleration
    * configuration doesn't breach the thresholds in the or {@code BenchmarkResultType.FAIL} if not.
-   * latency criteria file. Returns {@code BenchmarkResultType.UNKONWN} if the benchmark task
+   * latency criteria file. Returns {@code BenchmarkResultType.UNKNOWN} if the benchmark task
    * encounters errors.
    */
   private BenchmarkResultType benchmarkModel(
@@ -232,7 +229,7 @@ public final class BenchmarkLatencyImpl {
     } catch (IOException e) {
       Log.e(TAG, "Failed to open asset file " + LATENCY_FOLDER_NAME + "/" + modelFilename);
     }
-    return BenchmarkResultType.UNKONWN;
+    return BenchmarkResultType.UNKNOWN;
   }
 
   /**
@@ -299,19 +296,13 @@ public final class BenchmarkLatencyImpl {
       // Check for inference latency regression only when the number of input files is one.
       return checkInferenceRegression;
     }
-    boolean checkInitializationRegression =
+    boolean checkStartupRegression =
         checkLatencyThreshold(
             reference,
             target,
-            "initialization_latency_us",
-            latencyCriteria.getInitializationMaxRegressionPercentageAllowed());
-    boolean checkWarmupRegression =
-        checkLatencyThreshold(
-            reference,
-            target,
-            "warmup_latency_average_us",
-            latencyCriteria.getAverageWarmUpMaxRegressionPercentageAllowed());
-    return checkInferenceRegression && checkInitializationRegression && checkWarmupRegression;
+            "startup_overhead_latency_us",
+            latencyCriteria.getStartupOverheadMaxRegressionPercentageAllowed());
+    return checkInferenceRegression && checkStartupRegression;
   }
 
   /**

@@ -18,7 +18,28 @@ def _concat(lists):
         result = result + selected_list
     return result
 
-def alias_with_tflite(name, actual, **kwargs):
+def _is_not_package_relative_label(label):
+    """Tests whether a label is not relative to the current package."""
+    return label.startswith("//") or label.startswith("@")
+
+def add_suffix(label, suffix):
+    """Appends a suffix to the given label.
+
+    Args:
+      label: (str) target in relative or absolute form.
+      suffix: (str) string to add after the label.
+
+    Returns:
+      Suffixed label in relative or absolute form.
+    """
+    if label.find(":") == -1 and _is_not_package_relative_label(label):
+        # Handles labels like @repo//foo/bar, which is equivalent to
+        # @repo//foo/bar:bar.
+        _, _, target = label.rpartition("/")
+        return "%s:%s%s" % (label, target, suffix)
+    return label + suffix
+
+def alias_with_tflite(name, actual, generate_opaque_delegate_target = False, **kwargs):
     """Defines an alias for a target that uses the TFLite shims.
 
     This rule 'alias_with_tflite' should be used instead of the native
@@ -28,9 +49,13 @@ def alias_with_tflite(name, actual, **kwargs):
     Args:
       name: determines the name used for the alias target.
       actual: the target that the alias target is aliased to.
+      generate_opaque_delegate_target: (bool) If set, generates an additional
+        alias for the _opaque_delegate variant.
       **kwargs: additional alias parameters.
     """
     native.alias(name = name, actual = actual, **kwargs)
+    if generate_opaque_delegate_target:
+        native.alias(name = name + "_opaque_delegate", actual = actual + "_opaque_delegate", **kwargs)
 
 def android_library_with_tflite(
         name,
@@ -73,6 +98,7 @@ def cc_library_with_tflite(
         deps = [],
         tflite_deps = [],
         tflite_deps_selects = [],
+        generate_opaque_delegate_target = False,
         **kwargs):
     """Defines a cc_library that uses the TFLite shims.
 
@@ -94,6 +120,12 @@ def cc_library_with_tflite(
         'cc_library_with_tflite'.
       tflite_deps_selects: A list of dictionaries that will be converted to dependencies
         with select on rules.
+      generate_opaque_delegate_target: (bool) If set, generates an additional
+        cc_library target, which has "_opaque_delegate" appended to the name.
+        The target depends on
+        //third_party/tensorflow/lite/core/shims:tflite_use_opaque_delegate
+        which enables the truly opaque delegate type. This macro ensures that
+        dependencies listed in 'tflite_deps' use _opaque_delegate variant.
       **kwargs: Additional cc_library parameters.
     """
     native.cc_library(
@@ -102,6 +134,18 @@ def cc_library_with_tflite(
         deps = deps + tflite_deps + _concat([select(map) for map in tflite_deps_selects]),
         **kwargs
     )
+
+    if generate_opaque_delegate_target:
+        tflite_deps_renamed = [add_suffix(tflite_dep, "_opaque_delegate") for tflite_dep in tflite_deps]
+        tflite_deps_selects_renamed = [{key: [add_suffix(dep, "_opaque_delegate") for dep in value] for (key, value) in map.items()} for map in tflite_deps_selects]
+        native.cc_library(
+            name = name + "_opaque_delegate",
+            srcs = srcs + tflite_jni_binaries,
+            deps = deps + tflite_deps_renamed + _concat([select(map) for map in tflite_deps_selects_renamed]) + [
+                "//tensorflow/lite/core/shims:tflite_use_opaque_delegate",
+            ],
+            **kwargs
+        )
 
 def cc_library_with_stable_tflite_abi(
         deps = [],

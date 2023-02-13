@@ -35,6 +35,7 @@ cc_library_with_tflite(
         "sample_stable_delegate.h",
     ],
     copts = tflite_copts(),
+    generate_opaque_delegate_target = True,
     tflite_deps = [
         "//tensorflow/lite/core/shims:builtin_ops",
         "//tensorflow/lite/core/shims:builtin_op_data",
@@ -57,7 +58,7 @@ cc_test(
         "//tensorflow/lite:testdata/add.bin",
     ],
     deps = [
-        ":sample_stable_delegate",
+        ":sample_stable_delegate_opaque_delegate",
         "//tensorflow/lite/c:c_api",
         "//tensorflow/lite/c:c_api_experimental",
         "//tensorflow/lite/c:c_api_types",
@@ -74,6 +75,7 @@ cc_library_with_tflite(
         "sample_stable_delegate_external.cc",
     ],
     copts = tflite_copts(),
+    generate_opaque_delegate_target = True,
     tflite_deps = [
         ":sample_stable_delegate",
         "//tensorflow/lite/core/shims:c_api",
@@ -99,7 +101,7 @@ tflite_cc_shared_object(
     }),
     per_os_targets = True,
     deps = [
-        ":sample_stable_delegate_external",
+        ":sample_stable_delegate_external_opaque_delegate",
         "//tensorflow/lite/delegates/utils/experimental/stable_delegate:version_script.lds",
     ],
 )
@@ -112,7 +114,7 @@ cc_test(
         "//tensorflow/lite:testdata/add.bin",
     ],
     deps = [
-        ":sample_stable_delegate",
+        ":sample_stable_delegate_opaque_delegate",
         "//tensorflow/lite/c:c_api",
         "//tensorflow/lite/c:c_api_experimental",
         "//tensorflow/lite/c:c_api_types",

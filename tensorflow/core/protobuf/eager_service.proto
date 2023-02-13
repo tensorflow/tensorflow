@@ -70,6 +70,8 @@ message QueueItem {
     // nodes to finish on the remote executor and report status.
     SyncRemoteExecutorForStream sync_remote_executor_for_stream = 6;
     SendPackedHandleOp send_packed_handle = 7;
+    // Takes a FunctionDef signature name and remove it from the remote worker.
+    RemoveFunctionOp remove_function = 8;
   }
 }
 
@@ -221,6 +223,11 @@ message RegisterFunctionOp {
   // add FunctionDefs here to the function cache in EagerContext since they
   // won't be executed as KernelAndDevices.
   FunctionDefLibrary library = 3;
+}
+
+message RemoveFunctionOp {
+  // The signature name of function_def to be removed from remote workers.
+  string function_name = 1;
 }
 
 // Cleanup the step state of a multi-device function (e.g. tensors buffered by

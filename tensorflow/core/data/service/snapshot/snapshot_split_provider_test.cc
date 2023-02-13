@@ -171,6 +171,7 @@ TEST(SnapshotSplitProviderTest, SplitNotFound) {
                       SetArgReferee<5>(10),     // local_split_index
                       SetArgReferee<6>(false),  // end_of_splits
                       Return(OkStatus())));
+  TF_ASSERT_OK(WriteSplits(snapshot_task, /*num_splits=*/0));
 
   SnapshotSplitProvider split_provider(
       "worker_address", snapshot_task, /*source_index=*/0,

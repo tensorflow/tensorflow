@@ -31,11 +31,6 @@ The motivation for this change is twofold:
    arrays.
 """
 
-# TODO(b/267651762): The _sparse_tensor import here is unused, but is needed
-# else some windows kokoro test fails. Figure out why.
-# pylint: disable=unused-import
-from tensorflow.python.framework import sparse_tensor as _sparse_tensor
-from tensorflow.python.util import _pywrap_utils
 from tensorflow.python.util import nest_util
 
 

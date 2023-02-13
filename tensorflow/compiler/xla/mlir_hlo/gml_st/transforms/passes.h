@@ -157,11 +157,16 @@ createTransformSortForCpuPass();
 /// Pass to add debug info to be propagated into LLVM backend.
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>> createAddDebugInfoPass();
 
-struct GmlStCPUPipelineOptions
-    : public mlir::PassPipelineOptions<GmlStCPUPipelineOptions> {
-  Option<bool> vectorize{*this, "vectorize",
-                         llvm::cl::desc("Enable tiling for vectorization."),
-                         llvm::cl::init(false)};
+struct GmlStCPUTilingOptions
+    : public mlir::PassPipelineOptions<GmlStCPUTilingOptions> {
+  GmlStCPUTilingOptions() = default;
+  GmlStCPUTilingOptions(const GmlStCPUTilingOptions &opts) {
+    this->lowerToMmt4d = opts.lowerToMmt4d;
+    this->matmulTileSizes = opts.matmulTileSizes;
+    this->reduction1DTileSize = opts.reduction1DTileSize;
+    this->reduction2DTileSizes = opts.reduction2DTileSizes;
+    this->vectorSize = opts.vectorSize;
+  }
 
   Option<int64_t> vectorSize{*this, "vector-size",
                              llvm::cl::desc("Vector size for a 1D reduction."),
@@ -188,14 +193,16 @@ struct GmlStCPUPipelineOptions
       llvm::cl::init(false)};
 };
 
-// Make GmlStCPUPipelineOptions hashable.
-inline ::llvm::hash_code hashValue(const GmlStCPUPipelineOptions &opts) {
-  return ::llvm::hash_value(static_cast<bool>(opts.vectorize));
-}
+// Returns default "optimized" tiling parameters.
+GmlStCPUTilingOptions getDefaultCPUPipelineOptions();
 
 // Adds tiling-fusion-vectorization passes for tHLO/Linalg ops mix.
 void addCPUTilingPipeline(OpPassManager &pm,
-                          const GmlStCPUPipelineOptions &options);
+                          const GmlStCPUTilingOptions &options);
+
+// Adds tiling-fusion-vectorization passes for tHLO/Linalg ops mix with the
+// "optimized" tiling parameters.
+void addDefaultCPUTilingPipeline(OpPassManager &pm);
 
 #define GEN_PASS_REGISTRATION
 #include "gml_st/transforms/passes.h.inc"

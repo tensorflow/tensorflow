@@ -16,6 +16,7 @@ package(
         "//research/graph:__subpackages__",
         "//tensorflow:__subpackages__",
         "//third_party/py/jax_tpu_embedding:__subpackages__",
+        "//third_party/py/lingvo:__subpackages__",
         "//waymo/ml/deploy/sync_test/tools:__subpackages__",
     ],
     licenses = ["notice"],

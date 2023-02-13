@@ -1394,6 +1394,19 @@ class DnnSupport {
         scratch_allocator, algorithm_desc, scratch_memory);
   }
 
+  // cuDNN-specific input transformation that allows running int8x32
+  // convolutions faster using Tensor Core IMMA instruction.
+  virtual tsl::Status CudnnReorderConvolutionFilterAndBias(
+      Stream* stream, const FilterDescriptor& filter_descriptor,
+      const DeviceMemory<int8_t>& filter_input,
+      DeviceMemory<int8_t>* filter_output,
+      std::optional<const DeviceMemory<float>> bias_input,
+      std::optional<DeviceMemory<float>> bias_output) {
+    return tsl::errors::Unimplemented(
+        "DnnSupport::CudnnReorderConvolutionFilterAndBias is specific to CUDA "
+        "convolution implementation.");
+  }
+
   // Enqueues a single-precision convolution operation onto the stream.
   //
   // Arguments (all borrowed):

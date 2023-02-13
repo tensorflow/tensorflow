@@ -29,7 +29,6 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/rendezvous_mgr.h"
 #include "tensorflow/core/common_runtime/stats_publisher_interface.h"
 #include "tensorflow/core/framework/device_attributes.pb.h"
-#include "tensorflow/core/framework/rendezvous.h"
 #include "tensorflow/core/lib/core/refcount.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/nccl/collective_communicator.h"
@@ -49,11 +48,9 @@ limitations under the License.
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/graph_def_util.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/platform/refcount.h"
 #include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/public/version.h"
 #include "tensorflow/core/util/device_name_utils.h"
-#include "tensorflow/tsl/platform/status.h"
 #if !defined(IS_MOBILE_PLATFORM)
 #include "tensorflow/core/distributed_runtime/cluster_function_library_runtime.h"
 #include "tensorflow/core/distributed_runtime/collective_param_resolver_distributed.h"
@@ -139,20 +136,13 @@ void EagerContext::LocalRendezvousTable::Remove(int64_t step_id) {
 
 void EagerContext::LocalRendezvousTable::CleanUpAll() {
   mutex_lock l(table_lock_);
-  for (auto iter = table_.begin(); iter != table_.end();) {
-    // Copy the iter first in case the iter need to be erased.
-    // This is safe as long as the erase below doesn't invalidate other
-    // iterators.
-    auto copy_iter = iter++;
-
+  for (auto iter = table_.begin(); iter != table_.end(); iter++) {
     // Unref all redezvous instance, except for global rendezvous,
     // which is cleaned up elsewhere when necessary.
-    if (copy_iter->first == -1) {
+    if (iter->first == -1) {
       continue;
     }
-    // Unref and erase the redezvous instance from the table.
-    copy_iter->second->Unref();
-    table_.erase(copy_iter);
+    iter->second->Unref();
   }
 }
 
@@ -899,6 +889,42 @@ Status EagerContext::MaybeRegisterFunctionRemotely(const FunctionDef& fdef) {
   return OkStatus();
 }
 
+Status EagerContext::MaybeRemoveFunctionRemotely(const string& function_name) {
+  // Only client context can remove function on remote worker context.
+  if (!remote_device_manager_.Owned()) {
+    return OkStatus();
+  }
+
+#if !defined(IS_MOBILE_PLATFORM)
+  auto request = std::make_shared<eager::EnqueueRequest>();
+  request->set_context_id(GetContextId());
+
+  eager::RemoveFunctionOp* remove_function =
+      request->add_queue()->mutable_remove_function();
+  *remove_function->mutable_function_name() = function_name;
+
+  auto remote_contexts = GetRemoteContexts();
+  for (const auto& target : remote_contexts) {
+    core::RefCountPtr<eager::EagerClient> eager_client;
+    TF_RETURN_IF_ERROR(GetClient(target, &eager_client));
+
+    auto response = std::make_shared<eager::EnqueueResponse>();
+    eager_client->StreamingEnqueueAsync(
+        this->Executor().StreamingEnqueue(),
+        /*call_opts=*/nullptr, request.get(), response.get(),
+        [request, response](const Status& status) {
+          if (!status.ok()) {
+            LOG(ERROR) << "Failed to remove function remotely due to "
+                       << status.error_message()
+                       << "\nThis could happen if the remote target has been "
+                          "disconnected from the client.";
+          }
+        });
+  }
+#endif  // !IS_MOBILE_PLATFORM
+  return OkStatus();
+}
+
 Status EagerContext::RegisterExistingFunctionsOnRemoteWorkers(
     const std::vector<string>& remote_workers) {
 #if !defined(IS_MOBILE_PLATFORM)
@@ -1011,23 +1037,30 @@ std::vector<string> EagerContext::ListFunctionNames() {
 
 Status EagerContext::RemoveFunction(const string& func) {
   // TODO(mdan): The context owns these functions. Why check refcount then?
-  mutex_lock l(cache_mu_);
-  auto* registered_function = gtl::FindPtrOrNull(registered_functions_, func);
-  if (registered_function == nullptr) {
-    return errors::InvalidArgument("Tried to remove non-existent function '",
-                                   func, "'.");
-  }
-  bool is_last_ref = registered_function->RefCountIsOne();
-  if (is_last_ref) {
-    for (auto& key : *registered_function->cached_kernel_keys) {
-      kernel_cache_.erase(key);
+  bool is_last_ref = false;
+  {
+    mutex_lock l(cache_mu_);
+    auto* registered_function = gtl::FindPtrOrNull(registered_functions_, func);
+    if (registered_function == nullptr) {
+      return errors::InvalidArgument("Tried to remove non-existent function '",
+                                     func, "'.");
     }
-    registered_functions_.erase(func);
+    is_last_ref = registered_function->RefCountIsOne();
+    if (is_last_ref) {
+      for (auto& key : *registered_function->cached_kernel_keys) {
+        kernel_cache_.erase(key);
+      }
+      registered_functions_.erase(func);
+    }
+    registered_function->Unref();
+    if (is_last_ref) {
+      TF_RETURN_IF_ERROR(func_lib_def_.RemoveFunction(func));
+    }
   }
-  registered_function->Unref();
+  // MaybeRemoveFunctionRemotely contains rpc calls. Including it to mutex lock
+  // will cause error.
   if (is_last_ref) {
-    // TODO(fishx): Remove remote function as well.
-    return func_lib_def_.RemoveFunction(func);
+    return MaybeRemoveFunctionRemotely(func);
   }
   return OkStatus();
 }

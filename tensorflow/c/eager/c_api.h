@@ -445,13 +445,6 @@ TF_CAPI_EXPORT extern void TFE_ContextStartStep(TFE_Context* ctx);
 // TFE_ContextEndStep while ops that rely on the step container may be running.
 TF_CAPI_EXPORT extern void TFE_ContextEndStep(TFE_Context* ctx);
 
-// Reset all local rendezvous in the local rendezvous table. The global
-// rendezvous is not changed. When this function is called, it has be guaranteed
-// that no node is be executed, otherwise a race condition could happen. This
-// function should only be used internally for testing and debugging purpose.
-TF_CAPI_EXPORT extern void TFE_ContextResetLocalRendezvousTable(
-    TFE_Context* ctx);
-
 #ifdef __cplusplus
 } /* end extern "C" */
 #endif

@@ -141,12 +141,13 @@ pytype_strict_library(
         "//tensorflow/python:variables",
         "//tensorflow/python/client:session",
         "//tensorflow/python/framework:dtypes",
-        "//tensorflow/python/framework:tensor_shape",
         "//tensorflow/python/lib/io:lib",
         "//tensorflow/python/saved_model:builder",
         "//tensorflow/python/saved_model:constants",
         "//tensorflow/python/saved_model:loader",
         "//tensorflow/python/saved_model:tag_constants",
+        "//tensorflow/python/training:saver",
+        "//tensorflow/python/training:training_lib",
         "//tensorflow/python/types",
         "@absl_py//absl/logging",
     ],
@@ -271,7 +272,7 @@ pytype_strict_library(
 tf_py_test(
     name = "representative_dataset_test",
     srcs = ["representative_dataset_test.py"],
-    tags = ["no_pip"],  # b/241528672
+    tags = ["no_pip"],
     deps = [
         ":representative_dataset",
         "//tensorflow/python/client:session",

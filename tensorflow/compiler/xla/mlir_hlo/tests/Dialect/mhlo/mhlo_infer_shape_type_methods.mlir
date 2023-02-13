@@ -1361,3 +1361,71 @@ func.func @reduce_window_bound(%arg0: tensor<4x?x?x?xf32, #mhlo.type_extensions<
   %1 = "mhlo_test.get_return_types"(%0#0) : (tensor<*xf32>) -> tensor<*xindex>
   func.return %1: tensor<*xindex>
 }
+
+// -----
+
+// CHECK-LABEL: func @triangular_solve_bounds
+func.func @triangular_solve_bounds(
+    %arg0: tensor<10x5x?x4xf32, #mhlo_test.type_extensions<bounds = [?, ?, 5, ?]>>,
+    %arg1: tensor<10x5x?x?xf32, #mhlo_test.type_extensions<bounds = [?, ?, ?, 7]>>) -> tensor<*xindex> {
+  %0 = "mhlo.triangular_solve"(%arg0, %arg1) {
+    left_side = false,
+    lower = true,
+    transpose_a = #mhlo<transpose NO_TRANSPOSE>,
+    unit_diagonal = true
+  } : (tensor<10x5x?x4xf32, #mhlo_test.type_extensions<bounds = [?, ?, 5, ?]>>,
+       tensor<10x5x?x?xf32, #mhlo_test.type_extensions<bounds = [?, ?, ?, 7]>>) -> tensor<*xf32>
+  // CHECK: types0 = tensor<10x5x?x?xf32, #mhlo_test.type_extensions<bounds = [?, ?, ?, 7]>>
+  %1 = "mhlo_test.get_return_types"(%0) : (tensor<*xf32>) -> tensor<*xindex>
+  func.return %1 : tensor<*xindex>
+}
+
+//-----
+
+// CHECK-LABEL: func @fft_bound
+func.func @fft_bound(%arg0: tensor<?x9xcomplex<f32>, #mhlo.type_extensions<bounds = [3, ?]>>) -> tensor<*xindex> {
+  %0 = "mhlo.fft"(%arg0) {
+    fft_length = dense<9> : tensor<1xi64>, fft_type = #mhlo<fft_type FFT>
+  } : (tensor<?x9xcomplex<f32>, #mhlo.type_extensions<bounds = [3, ?]>>) -> tensor<*xcomplex<f32>>
+  // CHECK: types0 = tensor<?x9xcomplex<f32>, #mhlo.type_extensions<bounds = [3, ?]>>
+  %1 = "mhlo_test.get_return_types"(%0) : (tensor<*xcomplex<f32>>) -> tensor<*xindex>
+  func.return %1 : tensor<*xindex>
+}
+
+// -----
+
+// CHECK-LABEL: func @rfft_with_bound
+func.func @rfft_with_bound(%arg0: tensor<3x?x?xf32, #mhlo.type_extensions<bounds = [?, 3, 10]>>) -> tensor<*xindex> {
+  %0 = "mhlo.fft"(%arg0) {
+    fft_length = dense<9> : tensor<1xi64>, fft_type = #mhlo<fft_type RFFT>
+  } : (tensor<3x?x?xf32, #mhlo.type_extensions<bounds = [?, 3, 10]>>) -> tensor<*xcomplex<f32>>
+  // CHECK: types0 = tensor<3x?x5xcomplex<f32>, #mhlo.type_extensions<bounds = [?, 3, ?]>>
+  %1 = "mhlo_test.get_return_types"(%0) : (tensor<*xcomplex<f32>>) -> tensor<*xindex>
+  func.return %1 : tensor<*xindex>
+}
+
+// -----
+
+// CHECK-LABEL: func @irfft_with_bound
+func.func @irfft_with_bound(%arg0: tensor<3x?x?xcomplex<f32>, #mhlo.type_extensions<bounds = [?, 3, 17]>>) -> tensor<*xindex> {
+  %0 = "mhlo.fft"(%arg0) {
+    fft_length = dense<9> : tensor<1xi64>, fft_type = #mhlo<fft_type IRFFT>
+  } : (tensor<3x?x?xcomplex<f32>, #mhlo.type_extensions<bounds = [?, 3, 17]>>) -> tensor<*xf32>
+  // CHECK: types0 = tensor<3x?x9xf32, #mhlo.type_extensions<bounds = [?, 3, ?]>>
+  %1 = "mhlo_test.get_return_types"(%0) : (tensor<*xf32>) -> tensor<*xindex>
+  func.return %1 : tensor<*xindex>
+}
+
+// -----
+
+// CHECK-LABEL: @select
+func.func @select(%pred : tensor<i1>,
+    %a : tensor<?x2x3x?xf32, #mhlo.type_extensions<bounds = [5, ?, ?, 7]>>,
+    %b : tensor<1x?x3x?xf32, #mhlo.type_extensions<bounds = [?, 6, ?, 8]>>) -> tensor<*xindex> {
+  %0 = "mhlo.select"(%pred, %a, %b) : (tensor<i1>,
+      tensor<?x2x3x?xf32, #mhlo.type_extensions<bounds = [5, ?, ?, 7]>>,
+      tensor<1x?x3x?xf32, #mhlo.type_extensions<bounds = [?, 6, ?, 8]>>) -> tensor<*xf32>
+  // CHECK: types0 = tensor<1x2x3x?xf32, #mhlo.type_extensions<bounds = [?, ?, ?, 7]>>
+  %1 = "mhlo_test.get_return_types"(%0) : (tensor<*xf32>) -> tensor<*xindex>
+  func.return %1 : tensor<*xindex>
+}

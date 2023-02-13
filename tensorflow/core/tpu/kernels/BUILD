@@ -877,7 +877,6 @@ cc_library(
     name = "tpu_embedding_ops",
     srcs = ["tpu_embedding_ops.cc"],
     deps = [
-        ":tpu_mesh_state_interface",
         "//tensorflow/compiler/tf2xla:xla_compiler",
         "//tensorflow/compiler/tf2xla:xla_context",
         "//tensorflow/compiler/tf2xla:xla_helpers",
@@ -898,7 +897,7 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core/framework:tensor_proto_cc",
         "//tensorflow/core/protobuf/tpu:tpu_embedding_configuration_proto_cc",
-        "//tensorflow/core/tpu:tpu_configuration",
+        "//tensorflow/core/tpu:tpu_embedding_spmd_sharding_utils",
         "//tensorflow/core/tpu/ops:tpu_embedding_ops",
         "@com_google_absl//absl/cleanup",
     ],

@@ -92,6 +92,20 @@ cc_library(
 )
 
 cc_library(
+    name = "tpu_embedding_spmd_sharding_utils",
+    srcs = ["tpu_embedding_spmd_sharding_utils.cc"],
+    hdrs = ["tpu_embedding_spmd_sharding_utils.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:xla_data_proto_cc",
+        "//tensorflow/compiler/xla/client:xla_builder",
+        "//tensorflow/core/platform:errors",
+        "//tensorflow/core/platform:statusor",
+    ],
+)
+
+cc_library(
     name = "tpu_embedding_configuration_proto_rewrite",
     srcs = ["tpu_embedding_configuration_proto_rewrite.cc"],
     hdrs = ["tpu_embedding_configuration_proto_rewrite.h"],

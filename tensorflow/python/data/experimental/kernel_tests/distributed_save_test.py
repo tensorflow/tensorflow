@@ -56,8 +56,8 @@ class DistributedSaveTest(test_base.DatasetTestBase, parameterized.TestCase):
 class DistributedSaveTfDataServiceTest(data_service_test_base.TestBase,
                                        DistributedSaveTest):
 
-  def save(self, dataset):
-    cluster = data_service_test_base.TestCluster(num_workers=1)
+  def save(self, dataset, num_workers=1):
+    cluster = data_service_test_base.TestCluster(num_workers=num_workers)
     distributed_save_op.distributed_save(dataset, self._test_dir,
                                          cluster.dispatcher_address())
     return cluster
@@ -66,13 +66,13 @@ class DistributedSaveTfDataServiceTest(data_service_test_base.TestBase,
   def testSimple(self):
     dataset = dataset_ops.Dataset.range(10)
     cluster = self.save(dataset)
-    # TODO(b/250921378) Test loading.
-    self.assertTrue(
-        os.path.exists(os.path.join(self._test_dir, "snapshot.metadata")))
     streams = lambda: cluster.snapshot_streams(self._test_dir)
     while len(streams()) != 1 or streams()[0].state != _DONE:
       time.sleep(0.1)
     self.assertTrue(os.path.exists(os.path.join(self._test_dir, "DONE")))
+    self.assertDatasetsEqual(dataset, dataset_ops.Dataset.load(self._test_dir))
+
+  # TODO(mpcallanan): Add test for multiple workers.
 
   @combinations.generate(test_base.eager_only_combinations())
   def testChooseFromDatasets(self):

@@ -691,9 +691,7 @@ message ConfigProto {
     // aims to negate its value.
     bool disable_optimize_for_static_graph = 24;
 
-    // A human-readable name for the session.  This is propagated down into e.g.
-    // the module names of any XLA clusters created for this session.
-    string friendly_name = 25;
+    reserved 25;
 
     // Next: 26
   }

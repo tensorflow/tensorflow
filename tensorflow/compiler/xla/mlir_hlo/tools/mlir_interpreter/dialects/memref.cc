@@ -36,6 +36,10 @@ namespace {
 InterpreterValue load(InterpreterState& state, memref::LoadOp,
                       const InterpreterValue& memref,
                       ArrayRef<int64_t> indices) {
+  if (!memref.buffer()) {
+    state.addFailure("null pointer dereference.");
+    return {};
+  }
   if (!memref.view().inBounds(indices)) {
     state.addFailure("array index out of bounds");
     return {};
@@ -71,11 +75,17 @@ InterpreterValue allocA(InterpreterState&, memref::AllocaOp alloc,
                         ArrayRef<int64_t> dynamicSizes) {
   auto ty = alloc->getResultTypes().front().cast<mlir::ShapedType>();
   auto shape = replaceDynamicVals(ty.getShape(), dynamicSizes);
-  return InterpreterValue::makeTensor(ty.getElementType(), shape);
+  auto result = InterpreterValue::makeTensor(ty.getElementType(), shape);
+  result.buffer()->setIsAlloca();
+  return result;
 }
 
 void dealloc(InterpreterState& state, memref::DeallocOp,
              InterpreterValue memref) {
+  if (!memref.buffer()) {
+    state.addFailure("attempting to deallocate null pointer.");
+    return;
+  }
   auto buffer = memref.buffer();
   const auto& view = memref.view();
   if (auto* stats = state.getOptions().stats) {

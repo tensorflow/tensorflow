@@ -34,6 +34,7 @@ limitations under the License.
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/OpDefinition.h"  // from @llvm-project
+#include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
 #include "stablehlo/dialect/Register.h"  // from @stablehlo
@@ -325,6 +326,39 @@ bool CanInlineFunctionsPostLegalization(llvm::StringRef device_type) {
   return device_type == DEVICE_TPU_XLA_JIT;
 }
 
+// These passes are grouped together and must run in this specific order.
+void AddLegalizationPasses(mlir::OpPassManager& pm, bool legalize_chlo,
+                           llvm::StringRef device_type, bool prefer_tf2xla) {
+  // Run LegalizeTFPass with allow_partial_conversion = true as we verify
+  // in VerifyTFXLALegalization that full conversion happened.
+  // TODO(b/188389290): Cleanup allow_partial_conversion as a legalization
+  // parameter.
+  pm.addNestedPass<mlir::func::FuncOp>(mlir::mhlo::createLegalizeTFPass(
+      /*allow_partial_conversion=*/true, legalize_chlo,
+      /*tf2xla_fallback_device_type=*/device_type, prefer_tf2xla));
+
+  // TODO(b/188389290): Delete this second one. We run this AGAIN because some
+  // TF ops get legalized in the first round, but createLegalizeTFPass is a
+  // staright conversion. Some ops that weren't eligible for legalization in
+  // the first pass can get legalized the second time after lowering to MHLO.
+  pm.addNestedPass<mlir::func::FuncOp>(mlir::mhlo::createLegalizeTFPass(
+      /*allow_partial_conversion=*/true, legalize_chlo,
+      /*tf2xla_fallback_device_type=*/device_type, prefer_tf2xla));
+
+  // This has to run after legalization.
+  pm.addNestedPass<mlir::func::FuncOp>(mlir::mhlo::CreateAdjustLayoutPass());
+
+  // This has to run after legalization to delete non legal but dead ops.
+  pm.addNestedPass<mlir::func::FuncOp>(mlir::createCanonicalizerPass());
+
+  // Run shape inference pass to propagate shapes through tensor_cast operations
+  // from static to dynamic shapes. This could be generated if the shape
+  // inference was originally missing in a TF op but the corresponding HLO op
+  // had static shape after lowering.
+  // This has to run after canonicalization.
+  pm.addPass(mlir::TF::CreateTFShapeInferencePass());
+}
+
 }  //  namespace
 
 void CreateConvertMlirToXlaHloPipeline(
@@ -396,28 +430,15 @@ void CreateConvertMlirToXlaHloPipeline(
   pm.addPass(mlir::mhlo::createLegalizeTFModulePass(
       /*tf2xla_fallback_device_type=*/device_type));
 
-  pm.addNestedPass<mlir::func::FuncOp>(mlir::mhlo::createLegalizeTFPass(
-      /*allow_partial_conversion=*/true, legalize_chlo,
-      /*tf2xla_fallback_device_type=*/device_type, prefer_tf2xla));
   for (auto& target_pass : custom_legalization_passes) {
     pm.addNestedPass<mlir::func::FuncOp>(std::move(target_pass));
   }
-  pm.addNestedPass<mlir::func::FuncOp>(mlir::mhlo::CreateAdjustLayoutPass());
   pm.addPass(mlir::mhlo::CreateLegalizeTFCollectivePass());
-  pm.addNestedPass<mlir::func::FuncOp>(mlir::createCanonicalizerPass());
-  // Run shape inference pass to propagate shapes through tensor_cast operations
-  // from static to dynamic shapes. This could be generated if the shape
-  // inference was originally missing in a TF op but the corresponding HLO op
-  // had static shape after lowering.
-  pm.addPass(mlir::TF::CreateTFShapeInferencePass());
 
-  // Run LegalizeTFPass again because the previous legalization passes can
-  // expose more graph pruning and canonicalization opportunities that are
-  // necessary for the second LegalizeTFPass(allow_partial_conversion=false)
-  // invocation.
-  pm.addNestedPass<mlir::func::FuncOp>(mlir::mhlo::createLegalizeTFPass(
-      /*allow_partial_conversion=*/allow_partial_conversion, legalize_chlo,
-      /*tf2xla_fallback_device_type=*/device_type, prefer_tf2xla));
+  // These passes are grouped together as they have to run in specific order.
+  // Passes before this can run relativley in any order, as long as they happen
+  // before legalization.
+  AddLegalizationPasses(pm, legalize_chlo, device_type, prefer_tf2xla);
 
   // This pass operates on MHLO control flow ops so it should be legalized after
   // the control flow ops are legalized.

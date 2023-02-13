@@ -874,6 +874,14 @@ def _tf_repositories():
     )
 
     tf_http_archive(
+        name = "pybind11_protobuf",
+        urls = tf_mirror_urls("https://github.com/pybind/pybind11_protobuf/archive/80f3440cd8fee124e077e2e47a8a17b78b451363.zip"),
+        sha256 = "c7ab64b1ccf9a678694a89035a8c865a693e4e872803778f91f0965c2f281d78",
+        strip_prefix = "pybind11_protobuf-80f3440cd8fee124e077e2e47a8a17b78b451363",
+        patch_file = ["//third_party/pybind11_protobuf:remove_license.patch"],
+    )
+
+    tf_http_archive(
         name = "wrapt",
         build_file = "//third_party:wrapt.BUILD",
         sha256 = "866211ed43c2639a2452cd017bd38589e83687b1d843817c96b99d2d9d32e8d7",

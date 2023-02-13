@@ -178,9 +178,6 @@ py_library(
         ":weights_broadcast_ops",
         ":while_v2",
         "//tensorflow/core:protos_all_py",
-        "//tensorflow/lite/python:analyzer",
-        "//tensorflow/lite/python:lite",
-        "//tensorflow/lite/python/authoring",
         "//tensorflow/python/client",
         "//tensorflow/python/client:_pywrap_events_writer",
         "//tensorflow/python/client:pywrap_tf_session",
@@ -612,6 +609,7 @@ tf_gen_op_wrapper_private_py(
     name = "control_flow_ops_gen",
     visibility = [
         "//learning/brain/python/ops:__pkg__",
+        "//tensorflow:__subpackages__",
         "//tensorflow/python/kernel_tests:__pkg__",
         "//tensorflow/python/kernel_tests/control_flow:__pkg__",
     ],
@@ -1062,6 +1060,7 @@ py_library(
         ":array_ops_gen",
         ":control_flow_util",
         ":math_ops_gen",
+        ":shape_util",
         "//tensorflow/python/compat",
         "//tensorflow/python/framework:common_shapes",
         "//tensorflow/python/framework:config",
@@ -1661,7 +1660,7 @@ py_library(
         ":control_flow_state",
         ":control_flow_util",
         ":default_gradient",
-        ":functional_ops",
+        ":functional_ops_gen",
         ":math_ops",
         ":platform",
         ":resource_variable_ops",
@@ -2202,6 +2201,7 @@ py_library(
         ":control_flow_ops",
         ":math_ops",
         ":random_ops_gen",
+        ":shape_util",
         ":stateless_random_ops",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:ops",
@@ -2233,6 +2233,7 @@ py_library(
         ":array_ops",
         ":math_ops",
         ":random_index_shuffle_ops_gen",
+        ":shape_util",
         ":stateless_random_ops_gen",
         ":stateless_random_ops_v2_gen",
         "//tensorflow/python/framework:dtypes",
@@ -2307,6 +2308,19 @@ py_library(
         ":data_flow_ops_gen",
         "//tensorflow/python/framework:for_generated_wrappers",
         "//tensorflow/python/util",
+    ],
+)
+
+py_library(
+    name = "shape_util",
+    srcs = ["ops/shape_util.py"],
+    srcs_version = "PY3",
+    deps = [
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/framework:tensor_shape",
+        "//tensorflow/python/framework:tensor_util",
     ],
 )
 

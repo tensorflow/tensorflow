@@ -368,6 +368,121 @@ gentbl_cc_library(
 )
 
 td_library(
+    name = "deallocation_ops_td_files",
+    srcs = glob(["deallocation/IR/*.td"]),
+    compatible_with = get_compatible_with_cloud(),
+    includes = ["."],
+    deps = [
+        "@llvm-project//mlir:OpBaseTdFiles",
+        "@llvm-project//mlir:SideEffectInterfacesTdFiles",
+    ],
+)
+
+gentbl_cc_library(
+    name = "deallocation_ops_inc_gen",
+    compatible_with = get_compatible_with_cloud(),
+    strip_include_prefix = ".",
+    tbl_outs = [
+        (
+            ["-gen-op-decls"],
+            "deallocation/IR/deallocation_ops.h.inc",
+        ),
+        (
+            ["-gen-op-defs"],
+            "deallocation/IR/deallocation_ops.cc.inc",
+        ),
+        (
+            ["-gen-dialect-decls"],
+            "deallocation/IR/deallocation_dialect.h.inc",
+        ),
+        (
+            ["-gen-dialect-defs"],
+            "deallocation/IR/deallocation_dialect.cc.inc",
+        ),
+    ],
+    tblgen = "@llvm-project//mlir:mlir-tblgen",
+    td_file = "deallocation/IR/deallocation_ops.td",
+    deps = [":deallocation_ops_td_files"],
+)
+
+cc_library(
+    name = "deallocation_passes",
+    srcs = [
+        "deallocation/transforms/buffer_reuse.cc",
+        "deallocation/transforms/deallocate.cc",
+        "deallocation/transforms/split_alloc_tensors.cc",
+    ],
+    hdrs = [
+        "deallocation/transforms/passes.h",
+    ],
+    strip_include_prefix = ".",
+    deps = [
+        ":deallocation",
+        ":deallocation_passes_inc_gen",
+        ":deallocation_utils",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:BufferizationDialect",
+        "@llvm-project//mlir:ControlFlowInterfaces",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:MemRefDialect",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:SCFDialect",
+        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:Transforms",
+    ],
+)
+
+gentbl_cc_library(
+    name = "deallocation_passes_inc_gen",
+    compatible_with = get_compatible_with_cloud(),
+    strip_include_prefix = ".",
+    tbl_outs = [
+        (
+            [
+                "-gen-pass-decls",
+                "-name=Deallocation",
+            ],
+            "deallocation/transforms/passes.h.inc",
+        ),
+    ],
+    tblgen = "@llvm-project//mlir:mlir-tblgen",
+    td_file = "deallocation/transforms/passes.td",
+    deps = ["@llvm-project//mlir:PassBaseTdFiles"],
+)
+
+cc_library(
+    name = "deallocation",
+    srcs = ["deallocation/IR/deallocation_ops.cc"],
+    hdrs = ["deallocation/IR/deallocation_ops.h"],
+    strip_include_prefix = ".",
+    deps = [
+        ":deallocation_ops_inc_gen",
+        ":deallocation_utils",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:ControlFlowInterfaces",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:MemRefDialect",
+        "@llvm-project//mlir:SCFDialect",
+    ],
+)
+
+cc_library(
+    name = "deallocation_utils",
+    srcs = ["deallocation/utils/util.cc"],
+    hdrs = ["deallocation/utils/util.h"],
+    strip_include_prefix = ".",
+    deps = [
+        ":deallocation_ops_inc_gen",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:ControlFlowInterfaces",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:MemRefDialect",
+        "@llvm-project//mlir:SCFDialect",
+    ],
+)
+
+td_library(
     name = "lhlo_ops_td_files",
     srcs = glob(["lhlo/IR/*.td"]),
     compatible_with = get_compatible_with_cloud(),
@@ -1031,12 +1146,14 @@ cc_library(
     srcs = [
         # These are not exposed as headers in the dependent targets, and
         # shouldn't be. Ideally, this entire target should be removed.
+        "deallocation/transforms/passes.h.inc",
         "lhlo/transforms/lmhlo_passes.h.inc",
         "gml_st/transforms/passes.h.inc",
         "thlo/transforms/thlo_passes.h.inc",
         "transforms/passes.h.inc",
     ],
     hdrs = [
+        "deallocation/transforms/passes.h",
         "gml_st/transforms/passes.h",
         "lhlo/transforms/passes.h",
         "mhlo/transforms/passes.h",
@@ -1046,6 +1163,8 @@ cc_library(
     strip_include_prefix = ".",
     deps = [
         ":chlo_legalize_to_hlo",
+        ":deallocation_passes",
+        ":deallocation_passes_inc_gen",
         ":gml_st_passes",
         ":gml_st_passes_inc_gen",
         ":lhlo",
@@ -1478,6 +1597,7 @@ cc_binary(
     srcs = ["tools/mlir-hlo-opt/mlir-hlo-opt.cc"],
     deps = [
         ":all_passes",
+        ":deallocation",
         ":gml_st",
         ":gml_st_passes",
         ":gml_st_test_passes",
