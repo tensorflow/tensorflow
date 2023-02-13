@@ -35,7 +35,6 @@ from tensorflow.python.eager import wrap_function
 from tensorflow.python.framework import convert_to_constants
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
-from tensorflow.python.framework import graph_util
 from tensorflow.python.framework import importer
 from tensorflow.python.framework import ops
 from tensorflow.python.grappler import tf_optimizer
@@ -617,7 +616,7 @@ class TrtGraphConverter(object):
 
       # Freeze the variables in the SavedModel graph and copy the frozen
       # graph over.
-      frozen_graph_def = graph_util.convert_variables_to_constants(
+      frozen_graph_def = convert_to_constants.convert_variables_to_constants(
           sess, sess.graph.as_graph_def(add_shapes=True),
           list(output_node_names))
       self._grappler_meta_graph_def = meta_graph_pb2.MetaGraphDef()
