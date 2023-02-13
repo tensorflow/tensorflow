@@ -1105,7 +1105,11 @@ py_library(
     # TODO(b/266747022): remove extra visibility
     visibility = visibility + ["//learning/brain/experimental:__subpackages__"],
     deps = [
-        "//tensorflow/python/eager:context",
+        ":dtypes",
+        "//tensorflow/python/types",
+        "//tensorflow/python/util",
+        "//tensorflow/python/util:tf_export",
+        "//third_party/py/numpy",
     ],
 )
 
