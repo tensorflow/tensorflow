@@ -261,11 +261,11 @@ cc_library(
         "@llvm-project//llvm:PowerPCAsmParser",
         "@llvm-project//llvm:PowerPCCodeGen",
         "@llvm-project//llvm:Support",
+        "@llvm-project//llvm:SystemZAsmParser",
+        "@llvm-project//llvm:SystemZCodeGen",
         "@llvm-project//llvm:TransformUtils",
         "@llvm-project//llvm:X86AsmParser",
         "@llvm-project//llvm:X86CodeGen",
-        "@llvm-project//llvm:SystemZAsmParser",
-        "@llvm-project//llvm:SystemZCodeGen",
     ],
 )
 
