@@ -192,7 +192,7 @@ public final class BenchmarkLatencyImpl {
    * <p>Returns {@code BenchmarkResultType.SKIP} is the latency module shouldn't produce a Pass/Fail
    * result. Otherwise, returns {@code BenchmarkResultType.PASS} if the test target acceleration
    * configuration doesn't breach the thresholds in the or {@code BenchmarkResultType.FAIL} if not.
-   * latency criteria file. Returns {@code BenchmarkResultType.UNKONWN} if the benchmark task
+   * latency criteria file. Returns {@code BenchmarkResultType.UNKNOWN} if the benchmark task
    * encounters errors.
    */
   private BenchmarkResultType benchmarkModel(
@@ -232,7 +232,7 @@ public final class BenchmarkLatencyImpl {
     } catch (IOException e) {
       Log.e(TAG, "Failed to open asset file " + LATENCY_FOLDER_NAME + "/" + modelFilename);
     }
-    return BenchmarkResultType.UNKONWN;
+    return BenchmarkResultType.UNKNOWN;
   }
 
   /**
