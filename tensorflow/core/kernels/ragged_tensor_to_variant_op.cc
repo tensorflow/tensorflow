@@ -97,7 +97,7 @@ Status UnbatchRaggedZerothDim(
       auto start = batched_splits_top_vec(i);
       auto limit = batched_splits_top_vec(i + 1);
       auto num_values = limit - start;
-      values_shape.set_dim(0, num_values);
+      TF_RETURN_IF_ERROR(values_shape.SetDimWithStatus(0, num_values));
       (*ragged_components)[i].set_values(
           Tensor(DataTypeToEnum<VALUE_TYPE>::value, values_shape));
       auto ragged_component_values_flat =
@@ -154,7 +154,7 @@ Status UnbatchRaggedZerothDim(
   int64_t value_index = 0;
   for (auto i = decltype(num_components){}; i < num_components; i++) {
     SPLIT_TYPE num_values = ragged_component_values_size[i];
-    values_shape.set_dim(0, num_values);
+    TF_RETURN_IF_ERROR(values_shape.SetDimWithStatus(0, num_values));
     (*ragged_components)[i].set_values(
         Tensor(DataTypeToEnum<VALUE_TYPE>::value, values_shape));
     auto ragged_component_values_flat =

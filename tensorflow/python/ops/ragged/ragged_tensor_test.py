@@ -2014,6 +2014,15 @@ class RaggedTensorTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     with self.assertRaises(ValueError):
       rt._set_shape([5, None, None])
 
+  def testToVariantInvalidInputs(self):
+    self.assertRaisesRegex(
+        (ValueError, errors.InvalidArgumentError),
+        'must be less than 0, got 0|Shape must be at least rank 1 but is rank 0',
+        gen_ragged_conversion_ops.ragged_tensor_to_variant,
+        rt_nested_splits=[[150, 38, -243]],
+        rt_dense_values=198,
+        batched_input=True)
+
 
 @test_util.run_all_in_graph_and_eager_modes
 class RaggedTensorSpecTest(test_util.TensorFlowTestCase,
