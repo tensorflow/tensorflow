@@ -642,6 +642,7 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
   ~EagerContext() override;
 
   Status MaybeRegisterFunctionRemotely(const FunctionDef& fdef);
+  Status MaybeRemoveFunctionRemotely(const string& function_name);
   Status RegisterExistingFunctionsOnRemoteWorkers(
       const std::vector<string>& remote_workers);
 
