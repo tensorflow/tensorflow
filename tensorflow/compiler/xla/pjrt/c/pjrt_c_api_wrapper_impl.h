@@ -149,6 +149,9 @@ PJRT_Error* PJRT_Device_ToString(PJRT_Device_ToString_Args* args);
 
 PJRT_Error* PJRT_Executable_Destroy(PJRT_Executable_Destroy_Args* args);
 PJRT_Error* PJRT_Executable_Name(PJRT_Executable_Name_Args* args);
+PJRT_Error* PJRT_Executable_NumReplicas(PJRT_Executable_NumReplicas_Args* args);
+PJRT_Error* PJRT_Executable_NumPartitions(
+    PJRT_Executable_NumPartitions_Args* args);
 PJRT_Error* PJRT_LoadedExecutable_AddressableDevices(
     PJRT_LoadedExecutable_AddressableDevices_Args* args);
 PJRT_Error* PJRT_Executable_NumOutputs(PJRT_Executable_NumOutputs_Args* args);
@@ -289,6 +292,8 @@ constexpr PJRT_Api CreatePjrtApi(
 
       .PJRT_Executable_Destroy = pjrt::PJRT_Executable_Destroy,
       .PJRT_Executable_Name = pjrt::PJRT_Executable_Name,
+      .PJRT_Executable_NumReplicas = pjrt::PJRT_Executable_NumReplicas,
+      .PJRT_Executable_NumPartitions = pjrt::PJRT_Executable_NumPartitions,
       .PJRT_Executable_NumOutputs = pjrt::PJRT_Executable_NumOutputs,
       .PJRT_Executable_SizeOfGeneratedCodeInBytes =
           pjrt::PJRT_Executable_SizeOfGeneratedCodeInBytes,

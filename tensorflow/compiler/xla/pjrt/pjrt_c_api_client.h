@@ -413,15 +413,13 @@ class PjRtCApiExecutable : public PjRtExecutable {
   PjRtCApiExecutable(const PJRT_Api* c_api, PJRT_Executable* executable);
 
   absl::string_view name() const override;
-  int num_replicas() const override { return wrapped()->num_replicas(); }
-  int num_partitions() const override { return wrapped()->num_partitions(); }
+  int num_replicas() const override;
+  int num_partitions() const override;
 
   int64_t SizeOfGeneratedCodeInBytes() const override;
 
   StatusOr<std::vector<std::shared_ptr<HloModule>>> GetHloModules()
       const override;
-
-  PjRtExecutable* wrapped() const;
 
   const PJRT_Api* pjrt_c_api() const { return c_api_; }
   PJRT_Executable* c_executable() const { return executable_.get(); }
@@ -443,8 +441,8 @@ class PjRtCApiLoadedExecutable : public PjRtLoadedExecutable {
 
   PjRtClient* client() const override { return client_; }
   absl::string_view name() const override { return executable_->name(); }
-  int num_replicas() const override { return wrapped()->num_replicas(); }
-  int num_partitions() const override { return wrapped()->num_partitions(); }
+  int num_replicas() const override { return executable_->num_replicas(); }
+  int num_partitions() const override { return executable_->num_partitions(); }
 
   int64_t SizeOfGeneratedCodeInBytes() const override {
     return executable_->SizeOfGeneratedCodeInBytes();
@@ -506,13 +504,6 @@ class PjRtCApiLoadedExecutable : public PjRtLoadedExecutable {
   }
 
   PjRtLoadedExecutable* wrapped() const;
-
-  static PjRtLoadedExecutable* GetWrapped(
-      const PjRtLoadedExecutable* c_api_executable) {
-    return tensorflow::down_cast<const PjRtCApiLoadedExecutable*>(
-               c_api_executable)
-        ->wrapped();
-  }
 
   const PJRT_Api* pjrt_c_api() const { return client_->pjrt_c_api(); }
   PJRT_Executable* c_executable() const { return executable_->c_executable(); }

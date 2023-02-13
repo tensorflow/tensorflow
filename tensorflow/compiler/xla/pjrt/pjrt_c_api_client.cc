@@ -551,10 +551,6 @@ PjRtCApiExecutable::PjRtCApiExecutable(const PJRT_Api* c_api,
     : c_api_(c_api),
       executable_(executable, ::pjrt::MakeExecutableDeleter(c_api)) {}
 
-PjRtExecutable* PjRtCApiExecutable::wrapped() const {
-  return c_executable()->get();
-}
-
 absl::string_view PjRtCApiExecutable::name() const {
   auto* c_api = pjrt_c_api();
   auto* executable = c_executable();
@@ -565,6 +561,30 @@ absl::string_view PjRtCApiExecutable::name() const {
   pjrt::LogFatalIfPjrtError(c_api->PJRT_Executable_Name(&args), c_api);
 
   return absl::string_view(args.executable_name, args.executable_name_size);
+}
+
+int PjRtCApiExecutable::num_replicas() const {
+  auto* c_api = pjrt_c_api();
+  auto* executable = c_executable();
+  PJRT_Executable_NumReplicas_Args args;
+  args.executable = executable;
+  args.struct_size = PJRT_Executable_NumReplicas_Args_STRUCT_SIZE;
+  args.priv = nullptr;
+  pjrt::LogFatalIfPjrtError(c_api->PJRT_Executable_NumReplicas(&args), c_api);
+
+  return args.num_replicas;
+}
+
+int PjRtCApiExecutable::num_partitions() const {
+  auto* c_api = pjrt_c_api();
+  auto* executable = c_executable();
+  PJRT_Executable_NumPartitions_Args args;
+  args.executable = executable;
+  args.struct_size = PJRT_Executable_NumPartitions_Args_STRUCT_SIZE;
+  args.priv = nullptr;
+  pjrt::LogFatalIfPjrtError(c_api->PJRT_Executable_NumPartitions(&args), c_api);
+
+  return args.num_partitions;
 }
 
 int64_t PjRtCApiExecutable::SizeOfGeneratedCodeInBytes() const {
