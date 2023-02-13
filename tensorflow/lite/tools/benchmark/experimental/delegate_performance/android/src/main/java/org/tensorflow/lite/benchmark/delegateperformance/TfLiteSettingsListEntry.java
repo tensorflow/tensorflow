@@ -15,6 +15,8 @@ limitations under the License.
 
 package org.tensorflow.lite.benchmark.delegateperformance;
 
+import static org.tensorflow.lite.benchmark.delegateperformance.DelegatePerformanceBenchmark.checkState;
+
 import android.util.Log;
 import java.util.HashMap;
 import tflite.BenchmarkEvent;
@@ -67,6 +69,14 @@ final class TfLiteSettingsListEntry {
         metrics.put(metric.getName(), metric.getValue());
       }
     }
+    checkState(metrics.containsKey("initialization_latency_us"));
+    checkState(metrics.containsKey("warmup_latency_average_us"));
+    checkState(metrics.containsKey("inference_latency_average_us"));
+    metrics.put(
+        "startup_overhead_latency_us",
+        metrics.get("initialization_latency_us")
+            + metrics.get("warmup_latency_average_us")
+            - metrics.get("inference_latency_average_us"));
   }
 
   void setAccuracyResults(BenchmarkEvent accuracyEvent) {

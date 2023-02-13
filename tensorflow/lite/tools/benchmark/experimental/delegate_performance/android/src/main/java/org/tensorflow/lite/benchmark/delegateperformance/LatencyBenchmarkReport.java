@@ -32,6 +32,8 @@ final class LatencyBenchmarkReport extends ModelBenchmarkReport<LatencyResults> 
     super(modelName);
     checkNotNull(criteria);
     this.maxRegressionPercentageAllowed.put(
+        "startup_overhead_latency_us", criteria.getStartupOverheadMaxRegressionPercentageAllowed());
+    this.maxRegressionPercentageAllowed.put(
         "inference_latency_average_us",
         criteria.getAverageInferenceMaxRegressionPercentageAllowed());
     Log.i(TAG, "Creating a latency benchmark report for " + modelName);
