@@ -614,6 +614,11 @@ tf_py_test(
     size = "medium",
     srcs = ["map_test.py"],
     shard_count = 19,
+    tags = [
+        # TODO(b/269174420): Re-enable after fixing OOM.
+        "nomsan",
+        "notsan",
+    ],
     deps = [
         ":checkpoint_test_base",
         ":test_base",
