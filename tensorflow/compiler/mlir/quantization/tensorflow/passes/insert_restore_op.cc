@@ -25,6 +25,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/quantization/tensorflow/passes/constants.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/passes/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_dialect.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
@@ -110,7 +111,7 @@ BlockArgument InsertFilePrefixArgument(func::FuncOp func_op,
                                        OpBuilder& builder) {
   const auto filename_op_type = RankedTensorType::get(
       /*shape=*/{}, /*elementType=*/builder.getType<TF::StringType>());
-  const auto file_prefix_attr = builder.getStringAttr("__tf_file_prefix");
+  const auto file_prefix_attr = builder.getStringAttr(kTfFilePrefix);
   const auto arg_attrs = builder.getDictionaryAttr({builder.getNamedAttr(
       kTfSavedModelIndexPathAttr, builder.getArrayAttr({file_prefix_attr}))});
 

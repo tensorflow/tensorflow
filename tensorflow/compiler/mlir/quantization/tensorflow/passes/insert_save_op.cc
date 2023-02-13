@@ -20,6 +20,8 @@ limitations under the License.
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/IRMapping.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/quantization/tensorflow/passes/constants.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/passes/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_saved_model.h"
 
@@ -30,9 +32,8 @@ namespace {
 using ::mlir::tf_saved_model::GetInitializerFunction;
 using ::mlir::tf_saved_model::kTfSavedModelInitializerRestoreType;
 
-// Name of the newly created save function. The "tf_quant__" prefix is for
-// avoiding conflict with existing function's name.
-constexpr StringRef kTfQuantSaveFuncName = "tf_quant__save";
+constexpr StringRef kTfQuantSaveV2OpName = "tf_quant__save_save_v2";
+constexpr StringRef kTfQuantSaveReturnOpName = "tf_quant__save_return";
 
 // A pass that creates a new function that wraps the newly created SaveV2 op.
 // The new function's name is "tf_quant__save". The function accepts a single
@@ -161,7 +162,7 @@ TF::SaveV2Op CreateSaveV2Op(func::FuncOp save_func,
 
   BlockArgument filename_arg = save_func.getArgument(0);
   return builder.create<TF::SaveV2Op>(
-      NameLoc::get(builder.getStringAttr(kTfQuantSaveFuncName + "_save_v2")),
+      NameLoc::get(builder.getStringAttr(kTfQuantSaveV2OpName)),
       /*prefix=*/filename_arg, tensor_names_const, shape_and_slices_const,
       /*tensors=*/tensor_values);
 }
@@ -203,7 +204,7 @@ void CreateSaveFunc(ModuleOp module_op,
   // Create a "func.return".
   auto builder = OpBuilder::atBlockEnd(&save_func.getBody().front());
   builder.create<func::ReturnOp>(
-      NameLoc::get(builder.getStringAttr(kTfQuantSaveFuncName + "_return")));
+      NameLoc::get(builder.getStringAttr(kTfQuantSaveReturnOpName)));
 }
 
 void InsertSaveOpPass::runOnOperation() {

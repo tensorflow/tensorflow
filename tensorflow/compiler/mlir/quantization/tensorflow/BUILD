@@ -354,6 +354,7 @@ cc_library(
         "passes/unfreeze_constants.cc",
     ],
     hdrs = [
+        "passes/constants.h",
         "passes/passes.h",
     ],
     compatible_with = get_compatible_with_cloud(),
