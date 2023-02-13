@@ -197,6 +197,15 @@ std::unique_ptr<OperationPass<func::FuncOp>> CreateMarkFunctionsNoinlinePass(
 std::unique_ptr<OperationPass<ModuleOp>>
 CreateRemoveVariableInitializationByConstPass();
 
+// Creates a pass that converts TPU models for CPU by removing TPU related ops
+// such as TPUPartitionedCall, TPUReplicatedOp, etc. The TF quantizer does not
+// work with models specifically designed for TPU, so this pass makes the input
+// TPU model compatible with the TF quantizer by rewriting the TPU ops. The
+// output model of this pass is expected to be ready for the TF quantizer. If
+// the model is optimized with bfloat16, then it should be fallbacked to float32
+// before applying quantization, which will be done in PrepareLiftingPass.
+std::unique_ptr<OperationPass<ModuleOp>> CreateConvertTpuModelToCpuPass();
+
 }  // namespace quant
 }  // namespace mlir
 

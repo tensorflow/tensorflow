@@ -318,6 +318,7 @@ cc_library(
         "passes/convert_custom_aggregation_op_to_quant_stats.cc",
         "passes/convert_fake_quant_to_qdq.cc",
         "passes/convert_tf_quant_ops_to_mhlo.cc",
+        "passes/convert_tpu_model_to_cpu.cc",
         "passes/duplicate_shape_determining_constants.cc",
         "passes/insert_custom_aggregation_ops.cc",
         "passes/insert_main_function.cc",
