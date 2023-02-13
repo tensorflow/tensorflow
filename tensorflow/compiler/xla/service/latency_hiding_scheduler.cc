@@ -585,6 +585,18 @@ class ReadySetLt {
             ShouldScheduleAsyncDone(*b.node), b, "kScheduleDone")) {
       return *value;
     }
+    const ApproximateLatencyEstimator::TimeCost a_ready_interval =
+        std::max(a.node->GetReadyTime() - sched_state_.current_time, 0.0);
+    const ApproximateLatencyEstimator::TimeCost b_ready_interval =
+        std::max(b.node->GetReadyTime() - sched_state_.current_time, 0.0);
+    // Make sure that between two instructions that are not ready we first emit
+    // the one that causes less stall. This allows to potentially expose more
+    // opportunities for the other to overlap.
+    if (auto value = DefaultSchedulerCore::ChooseBestCandidate(
+            a_ready_interval < b_ready_interval, a,
+            b_ready_interval < a_ready_interval, b, "kLessStall")) {
+      return *value;
+    }
     if (sched_state_.config.aggressive_scheduling_policies) {
       // If an instruction releasing a resource is not resource constrained and
       // has an async depth of 0, delay it as much as possible to avoid
@@ -600,12 +612,6 @@ class ReadySetLt {
               b, "kStartAtZeroDepth")) {
         return *value;
       }
-    }
-    if (auto value = DefaultSchedulerCore::ChooseBestCandidate(
-            a.node->GetReadyTime() - sched_state_.current_time <= 0.0, a,
-            b.node->GetReadyTime() - sched_state_.current_time <= 0.0, b,
-            "kReady")) {
-      return *value;
     }
     if (auto value = DefaultSchedulerCore::ChooseBestCandidate(
             a.node->DoesReleaseAnyResource() && IsResourceConstrained(a), a,
