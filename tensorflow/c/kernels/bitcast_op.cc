@@ -54,35 +54,31 @@ static void* BitcastOp_Create(TF_OpKernelConstruction* ctx) {
 
   TF_Status* s = TF_NewStatus();
   TF_OpKernelConstruction_GetAttrType(ctx, "T", &kernel->input_data_type, s);
+  TF_OpKernelConstruction_GetAttrType(ctx, "type", &kernel->output_data_type, s);
 
-  if (TF_GetCode(s) == TF_OK) {
-    TF_OpKernelConstruction_GetAttrType(ctx, "type", &kernel->output_data_type,
-                                        s);
-  }
-
-  if (TF_GetCode(s) == TF_OK) {
+    if (TF_GetCode(s) != TF_OK) {
+    TF_OpKernelConstruction_Failure(ctx, s);
+    delete kernel;
+    kernel = nullptr;
+  } else {
     kernel->in_size = TF_DataTypeSize(kernel->input_data_type);
     kernel->out_size = TF_DataTypeSize(kernel->output_data_type);
 
-    size_t check_size = std::max(kernel->in_size, kernel->out_size) %
-                        std::min(kernel->in_size, kernel->out_size);
+    size_t check_size = std::max(kernel->in_size, kernel->out_size) &
+                        (std::min(kernel->in_size, kernel->out_size) - 1);
     if (check_size != 0) {
       std::ostringstream err;
       err << "cannot convert between datatype " << kernel->input_data_type
           << " and " << kernel->output_data_type;
       TF_SetStatus(s, TF_INVALID_ARGUMENT, err.str().c_str());
+      TF_OpKernelConstruction_Failure(ctx, s);
+      delete kernel;
+      kernel = nullptr;
     }
-  }
-
-  if (TF_GetCode(s) != TF_OK) {
-    TF_OpKernelConstruction_Failure(ctx, s);
-    delete kernel;
-    kernel = nullptr;
   }
 
   TF_DeleteStatus(s);
   return kernel;
-}
 
 static void BitcastOp_Delete(void* kernel) {
   delete static_cast<BitcastOp*>(kernel);
@@ -92,9 +88,8 @@ static void BitcastOp_Compute(void* kernel, TF_OpKernelContext* ctx) {
   auto* k = static_cast<BitcastOp*>(kernel);
   int dim_count = 0;
 
-  TF_Tensor* tensor;
   TF_Status* status = TF_NewStatus();
-  TF_GetInput(ctx, 0, &tensor, status);
+  TF_Tensor* tensor = TF_GetInputTensor(ctx, 0, status);
   if (TF_GetCode(status) == TF_OK) {
     dim_count = TF_NumDims(tensor);
     if (!(k->in_size >= k->out_size ||
@@ -108,7 +103,7 @@ static void BitcastOp_Compute(void* kernel, TF_OpKernelContext* ctx) {
   }
 
   if (TF_GetCode(status) == TF_OK) {
-    auto* dims = new int64_t[dim_count + 1];
+    std::vector<int64_t> dims(dim_count + 1);
     int new_dim_count = dim_count;
     for (int dim = 0; dim < dim_count; ++dim) {
       dims[dim] = TF_Dim(tensor, dim);
@@ -119,20 +114,21 @@ static void BitcastOp_Compute(void* kernel, TF_OpKernelContext* ctx) {
       --new_dim_count;
     }
 
-    TF_Tensor* output = TF_AllocateTensor(k->output_data_type, dims, 0,
+    TF_Tensor* output = TF_AllocateTensor(k->output_data_type, &dims[0], new_dim_count,
                                           TF_DataTypeSize(k->output_data_type));
-    TF_TensorBitcastFrom(tensor, k->output_data_type, output, dims,
+    TF_TensorBitcastFrom(tensor, k->output_data_type, output, &dims[0],
                          new_dim_count, status);
     if (TF_GetCode(status) == TF_OK) {
       TF_SetOutput(ctx, 0, output, status);
+      TF_DeleteTensor(output);
+    } else {
+      TF_DeleteTensor(output);
+      TF_OpKernelContext_Failure(ctx, status);
     }
-    delete[] dims;
-    TF_DeleteTensor(output);
-  }
-
-  if (TF_GetCode(status) != TF_OK) {
+  } else {
     TF_OpKernelContext_Failure(ctx, status);
   }
+
   TF_DeleteStatus(status);
   TF_DeleteTensor(tensor);
 }
