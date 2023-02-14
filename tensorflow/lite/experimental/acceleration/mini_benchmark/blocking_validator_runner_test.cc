@@ -187,6 +187,7 @@ TEST_F(BlockingValidatorRunnerTest, ReturnErrorWhenTimedOut) {
     const BenchmarkEvent* event =
         GetRoot<BenchmarkEvent>(result.GetBufferPointer());
     EXPECT_EQ(event->event_type(), BenchmarkEventType_ERROR);
+    ASSERT_NE(nullptr, event->error());
 #ifdef __ANDROID__
     EXPECT_EQ(event->error()->mini_benchmark_error_code(),
               kMinibenchmarkCommandTimedOut);
