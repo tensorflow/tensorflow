@@ -27,11 +27,6 @@
         * If you use masked losses with Keras the loss values may be different in TensorFlow `2.12` compared to previous versions.
         * In cases where the mask was previously ignored, you will now get an error if you pass a mask with an incompatible shape.
 
-*   `tf.SavedModel`:
-
-    * Introduced new class `tf.saved_model.experimental.Fingerprint` that contains the fingerprint of the SavedModel. See the [SavedModel Fingerprinting RFC](https://github.com/tensorflow/community/pull/415) for details.
-    * Introduced API `tf.saved_model.experimental.read_fingerprint(export_dir)` for reading the fingerprint of a SavedModel.
-
 # Major Features and Improvements
 
 *   `tf.lite`:
@@ -74,6 +69,11 @@
 *   `tf.experimental.dtensor`:
 
     *   Added experimental support to ReduceScatter fuse on GPU (NCCL).
+
+*   `tf.SavedModel`:
+
+    * Introduced new class `tf.saved_model.experimental.Fingerprint` that contains the fingerprint of the SavedModel. See the [SavedModel Fingerprinting RFC](https://github.com/tensorflow/community/pull/415) for details.
+    * Introduced API `tf.saved_model.experimental.read_fingerprint(export_dir)` for reading the fingerprint of a SavedModel.
 
 # Bug Fixes and Other Changes
 
