@@ -166,18 +166,18 @@ class FlatBufferModel {
   /// Byte swap the buffers field of a TFLite ModelT instance in place.
   static void ByteSwapTFLiteModelT(tflite::ModelT* tfl_modelt);
 
-  /// Convert the TFLite buffers field between LE and BE format in a 
+  /// Convert the TFLite buffers field between LE and BE format in a
   /// FlatBufferModel which is not empty and return the converted instance.
   static std::unique_ptr<FlatBufferModel> ByteConvertModel(
-      std::unique_ptr<FlatBufferModel> model, 
+      std::unique_ptr<FlatBufferModel> model,
       ErrorReporter* error_reporter = DefaultErrorReporter());
 
   /// Byte Swap the TFLite buffers field in a FlatBufferModel and return the
   /// swapped instance.
   static std::unique_ptr<FlatBufferModel> ByteSwapFlatBufferModel(
-      std::unique_ptr<FlatBufferModel> model, 
+      std::unique_ptr<FlatBufferModel> model,
       ErrorReporter* error_reporter = DefaultErrorReporter());
-  
+
   /// Byte Swap the serialized String of a TFLite model in place.
   static void ByteSwapSerializedModel(std::string* serialized_model);
 #endif
@@ -213,7 +213,7 @@ class FlatBufferModel {
   // See Metadata table in TFLite schema.
   static std::map<std::string, std::string> ReadAllMetadata(
       const ::tflite::Model* model);
-  
+
   // Validates if the FlatBufferModel's buffer is well-formed. Specifically, it
   // checks if the 0th entry of the model buffers is an empty buffer (sentinel).
   // This is a convention so that tensors without a buffer can provide 0
