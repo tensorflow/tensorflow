@@ -18,10 +18,10 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
-#include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "tensorflow/lite/core/shims/c/c_api_opaque.h"
 #include "tensorflow/lite/core/shims/c/c_api_types.h"
+#include "tensorflow/lite/delegates/utils/ret_macros.h"
 
 namespace tflite::delegates::utils {
 
@@ -38,7 +38,7 @@ inline bool IsPowerOfTwo(size_t x) { return x && ((x & (x - 1)) == 0); }
 // Round up "size" to the nearest multiple of "multiple".
 // "multiple" must be a power of 2.
 inline uint32_t RoundUp(uint32_t size, uint32_t multiple) {
-  CHECK(IsPowerOfTwo(multiple)) << multiple;  // Crash OK
+  TFLITE_ABORT_CHECK(IsPowerOfTwo(multiple), "");  // Crash OK
   return (size + (multiple - 1)) & ~(multiple - 1);
 }
 
