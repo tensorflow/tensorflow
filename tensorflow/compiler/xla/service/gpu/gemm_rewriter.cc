@@ -405,6 +405,12 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
       instr = new_add;
     }
 
+    // Do not fuse broadcast unless we can fuse its input, as it will cause
+    // broadcast materialization.
+    auto is_not_broadcast = [](const HloInstruction *instr) {
+      return instr->opcode() != HloOpcode::kBroadcast;
+    };
+
     // add(bitcast(gemm(a, b)), bias) ->
     //   bitcast(add(gemm(a, b), bitcast(bias))) ->
     //   bitcast(gemm(a, b, bitcast(bias))) (later down in this function).
@@ -420,7 +426,7 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
               m::AddAnyOrder(
                   m::Bitcast(GemmOrCublasLtMatmul(&existing_gemm).WithOneUser())
                       .WithOneUser(),
-                  m::Op(&bias)))) {
+                  m::Op(&bias).WithPredicate(is_not_broadcast)))) {
       HloInstruction *new_bitcast =
           MakeBitcastHlo(bias, existing_gemm->shape(), &bias->metadata());
       TF_ASSIGN_OR_RETURN(HloInstruction * new_add,
@@ -435,7 +441,7 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
 
     if (Match(instr,
               m::AddAnyOrder(GemmOrCublasLtMatmul(&existing_gemm).WithOneUser(),
-                             m::Op(&bias)))) {
+                             m::Op(&bias).WithPredicate(is_not_broadcast)))) {
       return FuseMatrixBiasAdd(instr, bias, existing_gemm);
     }
 
