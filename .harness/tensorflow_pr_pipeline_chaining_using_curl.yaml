@@ -24,7 +24,7 @@ pipeline:
                   identifier: Run_1
                   spec:
                     shell: Sh
-                    command: echo "<+secrets.getValue("parsonapikey")"
+                    command: echo "<+secrets.getValue("parsonapikey")">
     - stage:
         name: Pipeline Trigger with Curl
         identifier: Component_A
@@ -61,4 +61,4 @@ pipeline:
     - name: parson_demo_key_secret
       type: String
       description: ""
-      value: <+secrets.getValue("parsonapikey")
+      value: <+secrets.getValue("parsonapikey")>
