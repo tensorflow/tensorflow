@@ -486,13 +486,14 @@ static int64_t NumUnnestedReductions(const HloInstruction& instr,
 // to true to enable more fusion.
 FusionDecision FusionFitsInBudget(const HloInstruction& instr1,
                                   const HloInstruction& instr2,
+                                  const GpuDeviceInfo& device_info,
                                   bool is_consumer_producer_fusion,
                                   FusionInfoCache* cache /*=nullptr*/) {
   if (SharedMemoryUsage(instr1, cache) + SharedMemoryUsage(instr2, cache) >
-      kSharedMemoryBudgetInBytes) {
+      device_info.shared_memory_per_block) {
     return FusionDecision{}
            << "shared memory usage would be over the budget of "
-           << kSharedMemoryBudgetInBytes << "B";
+           << device_info.shared_memory_per_block << "B";
   }
 
   if (NumUnnestedReductions(instr1, cache) +

@@ -36,6 +36,10 @@ namespace {
 InterpreterValue load(InterpreterState& state, memref::LoadOp,
                       const InterpreterValue& memref,
                       ArrayRef<int64_t> indices) {
+  if (!memref.buffer()) {
+    state.addFailure("null pointer dereference.");
+    return {};
+  }
   if (!memref.view().inBounds(indices)) {
     state.addFailure("array index out of bounds");
     return {};
@@ -54,17 +58,40 @@ void store(InterpreterState& state, memref::StoreOp,
 }
 
 // TODO(jreiffers): Support symbol operands.
-InterpreterValue alloc(InterpreterState&, memref::AllocOp alloc,
+InterpreterValue alloc(InterpreterState& state, memref::AllocOp alloc,
                        ArrayRef<int64_t> dynamicSizes) {
   auto ty = alloc->getResultTypes().front().cast<mlir::ShapedType>();
   auto shape = replaceDynamicVals(ty.getShape(), dynamicSizes);
-  return InterpreterValue::makeTensor(ty.getElementType(), shape);
+  auto result = InterpreterValue::makeTensor(ty.getElementType(), shape);
+  if (auto* stats = state.getOptions().stats) {
+    stats->heapSize += result.buffer()->getByteSize();
+    stats->peakHeapSize = std::max(stats->peakHeapSize, stats->heapSize);
+    ++stats->numAllocations;
+  }
+  return result;
+}
+
+InterpreterValue allocA(InterpreterState&, memref::AllocaOp alloc,
+                        ArrayRef<int64_t> dynamicSizes) {
+  auto ty = alloc->getResultTypes().front().cast<mlir::ShapedType>();
+  auto shape = replaceDynamicVals(ty.getShape(), dynamicSizes);
+  auto result = InterpreterValue::makeTensor(ty.getElementType(), shape);
+  result.buffer()->setIsAlloca();
+  return result;
 }
 
 void dealloc(InterpreterState& state, memref::DeallocOp,
              InterpreterValue memref) {
+  if (!memref.buffer()) {
+    state.addFailure("attempting to deallocate null pointer.");
+    return;
+  }
   auto buffer = memref.buffer();
   const auto& view = memref.view();
+  if (auto* stats = state.getOptions().stats) {
+    stats->heapSize -= buffer->getByteSize();
+    ++stats->numDeallocations;
+  }
   if (view.getNumElements() * memref.getByteSizeOfElement() !=
       buffer->getByteSize()) {
     state.addFailure("Attempting to deallocate a subview");
@@ -89,7 +116,7 @@ InterpreterValue subview(InterpreterState& state, memref::SubViewOp subview,
                                       dynamicStrides, subview);
   auto out = memref;
   auto& outView = out.view();
-  if (!outView.subview(v.offsets, v.sizes, v.strides)) {
+  if (!outView.subview(v.offsets, v.sizes, v.strides).succeeded()) {
     state.addFailure("subview out of bounds");
     return {};
   }
@@ -145,21 +172,26 @@ llvm::SmallVector<InterpreterValue> collapseShape(
 
 template <typename Op>
 InterpreterValue cast(InterpreterState& state, Op op, InterpreterValue memref) {
-  BufferView input_view = memref.view();
-  auto outTy = op->getResultTypes()[0].template cast<ShapedType>();
+  BufferView inputView = memref.view();
+  auto outTy = op->getResultTypes()[0].template cast<MemRefType>();
   if (outTy.getNumDynamicDims() > 0) {
     state.addFailure("dynamic dimensions unsupported.");
-    return {};
-  }
-  if (input_view.strides != BufferView::getDefaultStrides(input_view.sizes)) {
-    state.addFailure("non-standard strides unsupported.");
     return {};
   }
 
   InterpreterValue out = memref;
   auto& outView = out.view();
+  outView.strides.clear();
   outView.sizes = llvm::to_vector(outTy.getShape());
-  outView.strides = BufferView::getDefaultStrides(outView.sizes);
+  int64_t dummy;
+  if (!getStridesAndOffset(outTy, outView.strides, dummy).succeeded()) {
+    if (inputView.strides != BufferView::getDefaultStrides(inputView.sizes)) {
+      state.addFailure("unsupported strides");
+      return {};
+    }
+    outView.strides = BufferView::getDefaultStrides(outView.sizes);
+  }
+
   return out;
 }
 
@@ -175,10 +207,10 @@ InterpreterValue getGlobal(InterpreterState& state,
   return dispatchScalarType(ty, [&](auto dummy) -> InterpreterValue {
     auto values = value.getValues<decltype(dummy)>();
     auto result = TensorOrMemref<decltype(dummy)>::empty(ty.getShape());
-    auto value_it = values.begin();
+    auto valueIt = values.begin();
     for (const auto& index : result.view.indices()) {
-      result.at(index) = *value_it;
-      ++value_it;
+      result.at(index) = *valueIt;
+      ++valueIt;
     }
     return {result};
   });
@@ -190,6 +222,7 @@ int64_t dim(InterpreterState& state, memref::DimOp,
 }
 
 REGISTER_MLIR_INTERPRETER_OP(alloc);
+REGISTER_MLIR_INTERPRETER_OP(allocA);
 REGISTER_MLIR_INTERPRETER_OP(collapseShape);
 REGISTER_MLIR_INTERPRETER_OP(cast<memref::CastOp>);
 REGISTER_MLIR_INTERPRETER_OP(copy);

@@ -25,7 +25,7 @@ import numpy as np
 # pylint: disable=invalid-import-order,g-bad-import-order
 from tensorflow.python import pywrap_tensorflow  # pylint: disable=unused-import
 
-from tensorflow.compiler.mlir.quantization.tensorflow.python import pywrap_quantize_model as quantize_model_wrapper
+from tensorflow.compiler.mlir.quantization.tensorflow.python import pywrap_quantize_model
 from tensorflow.compiler.mlir.quantization.tensorflow.python import representative_dataset as repr_dataset
 from tensorflow.compiler.mlir.quantization.tensorflow.python import save_model
 from tensorflow.compiler.mlir.quantization.tensorflow import exported_model_pb2
@@ -536,7 +536,7 @@ def _run_static_range_qat(
       the quantized graph to SavedModel.
   """
   logging.info('Running static-range quantization for QAT model.')
-  exported_model_serialized = quantize_model_wrapper.quantize_qat_model(
+  exported_model_serialized = pywrap_quantize_model.quantize_qat_model(
       saved_model_path,
       list(signature_def_keys),
       set(tags),
@@ -567,9 +567,9 @@ def _add_calibration_statistics(graph_def: graph_pb2.GraphDef) -> None:
 
       node_id = node_def.attr['id'].s
       try:
-        min_val = quantize_model_wrapper.get_min_from_calibrator(node_id)
-        max_val = quantize_model_wrapper.get_max_from_calibrator(node_id)
-        quantize_model_wrapper.clear_data_from_calibrator(node_id)
+        min_val = pywrap_quantize_model.get_min_from_calibrator(node_id)
+        max_val = pywrap_quantize_model.get_max_from_calibrator(node_id)
+        pywrap_quantize_model.clear_data_from_calibrator(node_id)
         node_def.attr['min'].f = float(min_val)
         node_def.attr['max'].f = float(max_val)
       except ValueError:
@@ -619,12 +619,19 @@ def _run_static_range_ptq(
       according to the quantized graph to match the original signature defs.
   """
   logging.info('Running post-training quantization pre-calibration step.')
+
+  loader = saved_model_loader.SavedModelLoader(saved_model_path)
+  function_aliases = loader.get_meta_graph_def_from_tags(
+      tags
+  ).meta_info_def.function_aliases
+
   exported_model_serialized = (
-      quantize_model_wrapper.quantize_ptq_model_pre_calibration(
+      pywrap_quantize_model.quantize_ptq_model_pre_calibration(
           saved_model_path,
           list(signature_def_keys),
           set(tags),
           quant_opts.SerializeToString(),
+          dict(function_aliases),
       )
   )
 
@@ -646,8 +653,9 @@ def _run_static_range_ptq(
       tags,
       exported_model.init_node_name,
       exported_model.restore_node_name,
+      exported_model.save_node_name,
       exported_model.checkpoint_dir,
-      exported_model.variable_shared_names,
+      exported_model.function_aliases,
   )
 
   # Uses the representative dataset to collect statistics for calibration.
@@ -667,17 +675,18 @@ def _run_static_range_ptq(
       tags,
       exported_model.init_node_name,
       exported_model.restore_node_name,
+      exported_model.save_node_name,
       exported_model.checkpoint_dir,
-      exported_model.variable_shared_names,
   )
 
   logging.info('Running post-training quantization post-calibration step.')
   exported_model_serialized = (
-      quantize_model_wrapper.quantize_ptq_model_post_calibration(
+      pywrap_quantize_model.quantize_ptq_model_post_calibration(
           calibrated_model_dir,
           list(signature_def_keys),
           set(tags),
           quant_opts.SerializeToString(),
+          dict(exported_model.function_aliases),
       )
   )
 
@@ -685,10 +694,7 @@ def _run_static_range_ptq(
       exported_model_serialized
   )
 
-  return (
-      exported_model,
-      signature_def_map,
-  )
+  return exported_model, signature_def_map
 
 
 def _static_range_quantize(
@@ -777,9 +783,10 @@ def _static_range_quantize(
       signature_def_map,
       tags,
       init_op_name=exported_model.init_node_name,
+      save_op_name=exported_model.save_node_name,
       restore_op_name=exported_model.restore_node_name,
       checkpoint_dir=exported_model.checkpoint_dir,
-      variable_shared_names=exported_model.variable_shared_names,
+      function_aliases=exported_model.function_aliases,
   )
 
   return saved_model_load(output_directory)
@@ -851,7 +858,7 @@ def _dynamic_range_quantize(
     )
 
   # Apply post-training dynamic range quantization to the model.
-  exported_model_serialized = quantize_model_wrapper.quantize_ptq_dynamic_range(
+  exported_model_serialized = pywrap_quantize_model.quantize_ptq_dynamic_range(
       saved_model_path,
       list(signature_keys),
       set(tags),

@@ -273,7 +273,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":status",
-        "//tensorflow/compiler/xla/stream_executor/lib",
+        "//tensorflow/tsl/platform:statusor",
     ],
 )
 
@@ -399,6 +399,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":permutation_util",
+        ":printer",
         ":status",
         ":status_macros",
         ":statusor",
@@ -532,6 +533,7 @@ cc_library(
         ":array3d",
         ":array4d",
         ":permutation_util",
+        ":printer",
         ":shape_util",
         ":status_macros",
         ":types",
@@ -547,7 +549,6 @@ cc_library(
         "//tensorflow/tsl/util:byte_swap_array",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/functional:function_ref",
-        "@com_google_absl//absl/hash",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/types:span",
@@ -616,6 +617,7 @@ cc_library(
         ":error_spec",
         ":literal",
         ":literal_util",
+        ":shape_util",
         ":util",
         "//tensorflow/tsl/platform:env",
         "//tensorflow/tsl/platform:float8",
@@ -901,6 +903,7 @@ cc_library(
     hdrs = ["shape_layout.h"],
     visibility = ["//visibility:public"],
     deps = [
+        ":printer",
         ":shape_util",
         ":types",
         ":util",
@@ -1138,6 +1141,17 @@ cc_library(
         "//tensorflow/compiler/xla/service/gpu:gemm_algorithm_picker",
         "//tensorflow/compiler/xla/service/gpu:gpu_conv_algorithm_picker",
     ]),
+)
+
+cc_library(
+    name = "printer",
+    srcs = ["printer.cc"],
+    hdrs = ["printer.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:cord",
+    ],
 )
 
 filegroup(

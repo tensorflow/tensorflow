@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <utility>
 
+#include "mlir/Dialect/Linalg/Transforms/TilingInterfaceImpl.h"
 #include "mlir/Conversion/BufferizationToMemRef/BufferizationToMemRef.h"  // from @llvm-project
 #include "mlir/Conversion/ComplexToStandard/ComplexToStandard.h"  // from @llvm-project
 #include "mlir/Conversion/ReconcileUnrealizedCasts/ReconcileUnrealizedCasts.h"  // from @llvm-project
@@ -24,7 +25,6 @@ limitations under the License.
 #include "mlir/Conversion/TensorToLinalg/TensorToLinalgPass.h"  // from @llvm-project
 #include "mlir/Conversion/VectorToSCF/VectorToSCF.h"  // from @llvm-project
 #include "mlir/Dialect/Arith/Transforms/BufferizableOpInterfaceImpl.h"  // from @llvm-project
-#include "mlir/Dialect/Arith/Transforms/Passes.h"  // from @llvm-project
 #include "mlir/Dialect/Bufferization/Transforms/FuncBufferizableOpInterfaceImpl.h"  // from @llvm-project
 #include "mlir/Dialect/Bufferization/Transforms/OneShotAnalysis.h"  // from @llvm-project
 #include "mlir/Dialect/Bufferization/Transforms/Passes.h"  // from @llvm-project
@@ -77,6 +77,7 @@ mlir::bufferization::OneShotBufferizationOptions GetBufferizationOptions() {
 }
 
 void AddSparsificationPasses(mlir::OpPassManager& pm) {
+  pm.addNestedPass<FuncOp>(createSparseCustomCallToPackUnpackOpPass());
   pm.addNestedPass<FuncOp>(mlir::createLinalgGeneralizationPass());
   pm.addNestedPass<FuncOp>(
       mlir::bufferization::createEmptyTensorToAllocTensorPass());
@@ -160,14 +161,7 @@ static Status CreateHloXlaPipeline(
   pm.addPass(mlir::memref::createResolveShapedTypeResultDimsPass());
   pm.addPass(mlir::createCanonicalizerPass());
   if (options.enable_tiling_and_fusion) {
-    mlir::gml_st::GmlStCPUPipelineOptions gml_st_opts;
-    gml_st_opts.vectorSize = 8;
-    gml_st_opts.reduction1DTileSize = 32;
-    gml_st_opts.reduction2DTileSizes = {4, 4};
-    gml_st_opts.matmulTileSizes = {4, 4, 4};
-    gml_st_opts.lowerToMmt4d = true;
-
-    mlir::gml_st::addTileableOpsTransformationsForCPU(pm, gml_st_opts);
+    mlir::gml_st::addDefaultCPUTilingPipeline(pm);
   } else {
     pm.addNestedPass<mlir::func::FuncOp>(
         mlir::createLinalgElementwiseOpFusionPass());
@@ -218,7 +212,7 @@ static Status CreateHloXlaPipeline(
   pm.addPass(mlir::bufferization::createBufferResultsToOutParamsPass(
       out_params_options));
   if (options.outline_with_xla_framework) {
-    pm.addPass(mlir::mhlo::CreateOutlineWithXLAFrameworkPass());
+    pm.addPass(mlir::xla_framework::CreateOutlineWithXLAFrameworkPass());
   }
   pm.addPass(mlir::createInlinerPass());
   if (!options.sparse_bufferization) {
@@ -229,6 +223,9 @@ static Status CreateHloXlaPipeline(
       mlir::bufferization::createBufferDeallocationPass());
 
   pm.addPass(mlir::createBufferizationToMemRefPass());
+
+  pm.addNestedPass<mlir::func::FuncOp>(
+      xla::cpu::createRemoveCopiesToOutParamsPass());
 
   // Specialize linalg.matmul to linalg.dot, linalg.matvec or linalg.vecmat,
   // and immediately canonicalize to clean up not taken branches.
@@ -272,6 +269,7 @@ void RegisterHloXlaRuntimePipelineDialects(mlir::DialectRegistry& dialects) {
       dialects);
   mlir::gml_st::registerBufferizableOpInterfaceExternalModels(dialects);
   mlir::linalg::registerBufferizableOpInterfaceExternalModels(dialects);
+  mlir::linalg::registerTilingInterfaceExternalModels(dialects);
   mlir::mhlo::registerBufferizableOpInterfaceExternalModels(dialects);
   mlir::scf::registerBufferizableOpInterfaceExternalModels(dialects);
   mlir::shape::registerBufferizableOpInterfaceExternalModels(dialects);

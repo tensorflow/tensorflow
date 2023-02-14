@@ -333,6 +333,36 @@ func.func @main(%arg0: tensor<i32>  {},
 
 // -----
 
+// Check that RelayoutGrad propagates the original Relayout input's layout to
+// the output gradient.
+
+// CHECK-LABEL: func @main
+func.func @main(
+    %arg0: tensor<i32> {},
+    %arg1: tensor<8x8xf32> {
+      tf._global_shape = #tf_type.shape<8x8>,
+      tf._layout = "sharding_specs:unsharded,unsharded, mesh:|x=2,y=2|0,1,2,3|0,1,2,3|/job:localhost/replica:0/task:0/device:CPU:0,/job:localhost/replica:0/task:0/device:CPU:1,/job:localhost/replica:0/task:0/device:CPU:2,/job:localhost/replica:0/task:0/device:CPU:3"
+    }) -> (tensor<8x8xf32> {tf._global_shape = #tf_type.shape<8x8>}) {
+  %0 = "tf_device.cluster"() ({
+    %cst = "tf.Const"() {_global_shape = [#tf_type.shape<8x8>], value = dense<1.000000e+00> : tensor<8x8xf32>} : () -> tensor<8x8xf32>
+    %1 = "tf.DTensorLayout"(%arg1) {global_shape = #tf_type.shape<8x8>, layout = #dtensor.layout<sharding_specs:unsharded,unsharded, mesh:|x=2,y=2|0,1,2,3|0,1,2,3|/job:localhost/replica:0/task:0/device:CPU:0,/job:localhost/replica:0/task:0/device:CPU:1,/job:localhost/replica:0/task:0/device:CPU:2,/job:localhost/replica:0/task:0/device:CPU:3>} : (tensor<8x8xf32>) -> tensor<8x8xf32>
+    // CHECK:        %[[RELAYOUT_OUT:.*]] = "tf.Relayout"
+    // CHECK-NEXT:   "tf.DTensorLayout"(%[[RELAYOUT_OUT]])
+    // CHECK-SAME:       layout = #dtensor.layout<sharding_specs:unsharded,x, mesh:|x=2,y=2|0,1,2,3|0,1,2,3|/job:localhost/replica:0/task:0/device:CPU:0,/job:localhost/replica:0/task:0/device:CPU:1,/job:localhost/replica:0/task:0/device:CPU:2,/job:localhost/replica:0/task:0/device:CPU:3>
+    %2 = "tf.Relayout"(%1) {global_shape = #tf_type.shape<8x8>, layout = "sharding_specs:unsharded,x, mesh:|x=2,y=2|0,1,2,3|0,1,2,3|/job:localhost/replica:0/task:0/device:CPU:0,/job:localhost/replica:0/task:0/device:CPU:1,/job:localhost/replica:0/task:0/device:CPU:2,/job:localhost/replica:0/task:0/device:CPU:3"} : (tensor<8x8xf32>) -> tensor<8x8xf32>
+    %3 = "tf.Identity"(%cst) {_global_shape = [#tf_type.shape<8x8>]} : (tensor<8x8xf32>) -> tensor<8x8xf32>
+    %4 = "tf.AddN"(%2, %3) {_global_shape = [#tf_type.shape<8x8>]} : (tensor<8x8xf32>, tensor<8x8xf32>) -> tensor<8x8xf32>
+    // CHECK:        %[[RELAYOUT_GRAD_OUT:.*]] = "tf.RelayoutGrad"
+    // CHECK-NEXT:   "tf.DTensorLayout"(%[[RELAYOUT_GRAD_OUT]])
+    // CHECK-SAME:       layout = #dtensor.layout<sharding_specs:unsharded,unsharded, mesh:|x=2,y=2|0,1,2,3|0,1,2,3|/job:localhost/replica:0/task:0/device:CPU:0,/job:localhost/replica:0/task:0/device:CPU:1,/job:localhost/replica:0/task:0/device:CPU:2,/job:localhost/replica:0/task:0/device:CPU:3>
+    %5 = "tf.RelayoutGrad"(%4, %1) {_global_shape = [#tf_type.shape<8x8>]} : (tensor<8x8xf32>, tensor<8x8xf32>) -> tensor<8x8xf32>
+    tf_device.return %5 : tensor<8x8xf32>
+  }) {_mesh = "|x=2,y=2|0,1,2,3|0,1,2,3|/job:localhost/replica:0/task:0/device:CPU:0,/job:localhost/replica:0/task:0/device:CPU:1,/job:localhost/replica:0/task:0/device:CPU:2,/job:localhost/replica:0/task:0/device:CPU:3"} : () -> tensor<8x8xf32>
+  return %0 : tensor<8x8xf32>
+}
+
+// -----
+
 // Check that the contracted dimension of the reduce op is set to any.
 //
 // We verify that this is correct because tf.Const's sharding specs were set to

@@ -44,8 +44,7 @@ class TfJitRtExecutor {
   // execute function.
   Handle Compile(const std::string& mlir_module, const std::string& entrypoint,
                  Specialization specialization, bool vectorize,
-                 bool codegen_transpose, bool legalize_i1_tensors, bool peel,
-                 bool enable_xla_cpu_transformations, bool pack_matmul);
+                 bool legalize_i1_tensors);
 
   // Executes compiled mlir module with Python array arguments. Converts
   // returned memrefs into Python arrays.

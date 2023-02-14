@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_DATA_SERVICE_DISPATCHER_IMPL_H_
 #define TENSORFLOW_CORE_DATA_SERVICE_DISPATCHER_IMPL_H_
 
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <string>
@@ -177,13 +178,15 @@ class DataServiceDispatcherImpl {
   Status Snapshot(const SnapshotRequest* request, SnapshotResponse* response);
   Status GetSnapshotSplit(const GetSnapshotSplitRequest* request,
                           GetSnapshotSplitResponse* response);
+  Status GetSnapshotStreams(const GetSnapshotStreamsRequest* request,
+                            GetSnapshotStreamsResponse* response);
 
   // Exports the dispatcher state for debugging.
   DispatcherStateExport ExportState() const;
 
  private:
   // A thread which periodically checks for iterations to clean up, clients to
-  // release, and snapshot streams to reassign.
+  // release, workers to consider missing, and snapshot streams to reassign.
   void MaintenanceThread();
 
   // Restores split providers from the state in `iteration` and stores them in
@@ -307,6 +310,9 @@ class DataServiceDispatcherImpl {
       TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
   // Releases iteration clients that haven't heartbeated recently.
   Status ReleaseMissingClients() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
+  // Checks for workers that haven't heartbeated recently and alerts the
+  // snapshot managers.
+  void DetectMissingWorkers() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
   // Scans for old iterations and marks them as finished.
   Status GcOldIterations() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
   // Gets a `DatasetDef` from `dataset_store_` for the given dataset id, and
@@ -344,6 +350,9 @@ class DataServiceDispatcherImpl {
       remove_task_requests_ TF_GUARDED_BY(mu_);
   // Map from client id to the time of the client's last heartbeat.
   absl::flat_hash_map<int64_t, absl::Time> latest_client_heartbeats_time_
+      TF_GUARDED_BY(mu_);
+  // Map from worker address to the time of the worker's last heartbeat.
+  absl::flat_hash_map<std::string, absl::Time> latest_worker_heartbeats_time_
       TF_GUARDED_BY(mu_);
 
   // Managers for all snapshot processes created or recovered during the

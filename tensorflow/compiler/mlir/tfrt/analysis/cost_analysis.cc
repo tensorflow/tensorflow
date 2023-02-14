@@ -128,14 +128,11 @@ void RegisterCostFunction(absl::string_view op_name,
                        std::move(cost_function));
 }
 
-int64_t CostAnalysis::GetCost(mlir::Operation* op, int64_t op_key) const {
-  // Try to use its measured cost.
-  const auto& measured_cost_map = op_cost_map_proto_.op_cost_map();
-  if (const auto op_cost = measured_cost_map.find(op_key);
-      op_cost != measured_cost_map.end()) {
-    return op_cost->second;
-  }
+bool HasCostFunctionRegistered(absl::string_view op_name) {
+  return GetCostFunctionRegistry().contains(op_name);
+}
 
+int64_t CostAnalysis::GetCost(mlir::Operation* op) const {
   assert(cost_map_.count(op) > 0);
   return cost_map_.lookup(op);
 }
@@ -199,17 +196,6 @@ void CostAnalysis::EvaluateCost(mlir::Operation* op) {
   }
 
   cost_map_[op] = cost;
-}
-
-Status CostAnalysis::ReadMeasuredCosts() {
-  const char* env_var = getenv("TF_TFRT_MEASURED_COST_PATH");
-  // No need to read because the cost measurement is disabled.
-  if (env_var == nullptr) return OkStatus();
-
-  tensorflow::Env* env = Env::Default();
-  const std::string measured_cost_path(env_var);
-  TF_RETURN_IF_ERROR(env->FileExists(measured_cost_path));
-  return ReadTextProto(env, measured_cost_path, &op_cost_map_proto_);
 }
 
 }  // namespace tfrt_compiler

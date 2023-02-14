@@ -15,6 +15,7 @@
 """A type for representing values that may or may not exist."""
 import abc
 
+from tensorflow.core.protobuf import struct_pb2
 from tensorflow.python.data.util import structure
 from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import dtypes
@@ -22,6 +23,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import type_spec
 from tensorflow.python.ops import gen_optional_ops
+from tensorflow.python.saved_model import nested_structure_coder
 from tensorflow.python.util import deprecation
 from tensorflow.python.util.tf_export import tf_export
 
@@ -260,3 +262,10 @@ class OptionalSpec(type_spec.TypeSpec):
 
   def _to_legacy_output_classes(self):
     return self
+
+
+nested_structure_coder.register_codec(
+    nested_structure_coder.BuiltInTypeSpecCodec(
+        OptionalSpec, struct_pb2.TypeSpecProto.OPTIONAL_SPEC
+    )
+)

@@ -68,6 +68,7 @@ struct ConvBackendConfig {
   int64_t algorithm;
   bool tensor_ops_enabled;
   bool is_cudnn_frontend;
+  bool is_cudnn_reordered_int8;
   absl::Span<const int64_t> knob_ids;
   absl::Span<const int64_t> knob_values;
   absl::Span<const int64_t> operand_0_layout;
@@ -106,6 +107,7 @@ XLA_RUNTIME_REGISTER_AGGREGATE_ATTR_DECODING(
     AggregateMember<int64_t>("algorithm"),
     AggregateMember<bool>("tensor_ops_enabled"),
     AggregateMember<bool>("is_cudnn_frontend"),
+    AggregateMember<bool>("is_cudnn_reordered_int8"),
     AggregateMember<absl::Span<const int64_t>>("knob_ids"),
     AggregateMember<absl::Span<const int64_t>>("knob_values"),
     AggregateMember<absl::Span<const int64_t>>("operand_0_layout"),
@@ -163,16 +165,18 @@ void PopulateConvAttrEncoding(runtime::CustomCallAttrEncodingSet& encoding) {
   {  // --- Encode `lmhlo_gpu::ConvolutionBackendConfigAttr`.
     using Attr = lmhlo_gpu::ConvolutionBackendConfigAttr;
     encoding.Add<AggregateAttrEncoding<Attr, ConvBackendConfig>>(
-        encoding, AggregateAttrDef<Attr>()
-                      .Add("algorithm", &Attr::getAlgorithm)
-                      .Add("tensor_ops_enabled", &Attr::getTensorOpsEnabled)
-                      .Add("is_cudnn_frontend", &Attr::getIsCudnnFrontend)
-                      .Add("knob_ids", &Attr::getKnobIds)
-                      .Add("knob_values", &Attr::getKnobValues)
-                      .Add("operand_0_layout", &Attr::getOperand_0Layout)
-                      .Add("operand_1_layout", &Attr::getOperand_1Layout)
-                      .Add("result_layout", &Attr::getResultLayout)
-                      .Add("workspace_size", &Attr::getWorkspaceSize));
+        encoding,
+        AggregateAttrDef<Attr>()
+            .Add("algorithm", &Attr::getAlgorithm)
+            .Add("tensor_ops_enabled", &Attr::getTensorOpsEnabled)
+            .Add("is_cudnn_frontend", &Attr::getIsCudnnFrontend)
+            .Add("is_cudnn_reordered_int8", &Attr::getIsCudnnReorderedInt8)
+            .Add("knob_ids", &Attr::getKnobIds)
+            .Add("knob_values", &Attr::getKnobValues)
+            .Add("operand_0_layout", &Attr::getOperand_0Layout)
+            .Add("operand_1_layout", &Attr::getOperand_1Layout)
+            .Add("result_layout", &Attr::getResultLayout)
+            .Add("workspace_size", &Attr::getWorkspaceSize));
   }
 }
 
@@ -276,6 +280,8 @@ static GpuConvDescriptor GetConvDescriptor(
   descriptor.scratch_size = scratch.size_in_bytes;
   descriptor.feature_group_count = attrs.feature_group_count;
   descriptor.backend_config.set_conv_result_scale(attrs.result_scale);
+  descriptor.backend_config.set_reordered_int8_nchw_vect(
+      b.is_cudnn_reordered_int8);
 
   // Set up convolution algorigthm.
   auto* algo = descriptor.backend_config.mutable_algorithm();

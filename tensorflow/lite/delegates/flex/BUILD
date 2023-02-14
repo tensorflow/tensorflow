@@ -43,7 +43,6 @@ cc_library(
     deps = [
         ":util",
         ":buffer_map_util",
-        "//tensorflow/lite/c:common",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite:string",
         "//tensorflow/lite/kernels/internal:compatibility",
@@ -64,7 +63,6 @@ cc_library(
     features = tf_features_nolayering_check_if_ios(),
     deps = [
         ":util",
-        "//tensorflow/lite/c:common",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite:string_util",
         "//tensorflow/lite/experimental/resource",
@@ -169,7 +167,6 @@ cc_library(
         "@flatbuffers",
         "@com_google_absl//absl/strings",
         "//tensorflow/lite/core/api",
-        "//tensorflow/lite/c:common",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite:kernel_api",
         "//tensorflow/lite:macros",
@@ -222,7 +219,6 @@ cc_library(
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
         "@flatbuffers",
-        "//tensorflow/lite/c:common",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/schema:schema_fbs",
         "//tensorflow/lite:cc_api",
@@ -231,7 +227,7 @@ cc_library(
         "//tensorflow/core:portable_tensorflow_lib_lite",
     ]) + if_not_mobile([
         "//tensorflow/core/common_runtime/eager:context",
-        "//tensorflow/core/common_runtime/eager:core",
+        "//tensorflow/core/common_runtime/eager:core_no_xla",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
@@ -250,7 +246,6 @@ tf_cc_test(
         "//tensorflow/core/platform:protobuf",
         "//tensorflow/core/platform:status",
         "//tensorflow/lite:framework",
-        "//tensorflow/lite/c:common",
         "//tensorflow/lite/core/api:error_reporter",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/kernels:subgraph_test_util",
@@ -267,7 +262,6 @@ cc_library(
     compatible_with = get_compatible_with_cloud(),
     features = tf_features_nolayering_check_if_ios(),
     deps = [
-        "//tensorflow/lite/c:common",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite:cc_api",
     ] + if_mobile([
@@ -292,7 +286,6 @@ tf_cc_test(
         ":test_util",
         "//tensorflow/core/platform:status",
         "//tensorflow/core/tfrt/fallback:op_kernel_runner",
-        "//tensorflow/lite/c:common",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/delegates/utils:simple_delegate",
         "//tensorflow/lite/kernels:kernel_util",
@@ -324,7 +317,6 @@ cc_library(
     #TODO(b/206038955): Consider restrict the visibility to '//third_party/fcp/client:__subpackages__'.
     visibility = ["//visibility:public"],
     deps = [
-        "//tensorflow/lite/c:common",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite:kernel_api",
         "@com_google_absl//absl/strings:str_format",
@@ -352,7 +344,6 @@ tf_cc_test(
         "//tensorflow/lite:string",
         "//tensorflow/lite:string_util",
         "//tensorflow/lite:util",
-        "//tensorflow/lite/c:common",
         "//tensorflow/lite/core/c:c_api_types",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/testing:util",
@@ -425,7 +416,6 @@ cc_library(
         "//tensorflow/lite:cc_api",
         "//tensorflow/lite:string_util",
         "//tensorflow/lite/core/c:c_api_types",
-        "//tensorflow/lite/c:common",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/kernels:builtin_ops",
         "//tensorflow/lite/kernels:kernel_util",

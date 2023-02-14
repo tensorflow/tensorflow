@@ -462,7 +462,8 @@ LogicalResult PadOp::FoldOperandsPermutation(ArrayRef<int64_t> permutation) {
 
   // Change the result type.
   getResult().setType(ShuffleRankedTensorType(getResult().getType(),
-                                              ReversePermutation(permutation)));
+                                              ReversePermutation(permutation))
+                          .cast<TensorType>());
 
   return success();
 }
@@ -2663,6 +2664,32 @@ LogicalResult ToBoolOp::inferReturnTypes(
     SmallVectorImpl<Type> &inferredReturnTypes) {
   inferredReturnTypes.push_back(
       tensorflow::GetTypeFromTFTensorShape({}, IntegerType::get(context, 1)));
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// TPUPartitionedInputV2
+//===----------------------------------------------------------------------===//
+
+// This method mimics this op's core/TF-level shape inference logic
+LogicalResult TPUPartitionedInputV2Op::verify() {
+  TPUPartitionedInputV2Op op = *this;
+
+  int num_partitions = 1;
+  const mlir::ArrayAttr partition_dims = op.getPartitionDims();
+  for (const mlir::Attribute &dim : partition_dims) {
+    num_partitions *= dim.cast<IntegerAttr>().getInt();
+  }
+
+  const bool is_packed = op.getIsPacked();
+  const bool replicated = partition_dims.empty();
+  const int num_inputs_expected = is_packed ? 1 : num_partitions;
+
+  if (!((replicated && !is_packed) || (op.getN() == num_inputs_expected))) {
+    return op.emitOpError() << "expected " << num_inputs_expected
+                            << " inputs, got " << op.getN();
+  }
+
   return success();
 }
 

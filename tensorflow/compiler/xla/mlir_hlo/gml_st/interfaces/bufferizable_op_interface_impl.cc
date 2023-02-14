@@ -25,15 +25,18 @@ limitations under the License.
 #include "mlir/Dialect/Bufferization/IR/BufferizableOpInterface.h"
 #include "mlir/Dialect/Bufferization/IR/Bufferization.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
+#include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/Interfaces/ViewLikeInterface.h"
 #include "mlir/Support/LogicalResult.h"
 
+using mlir::bufferization::AliasingOpOperandList;
+using mlir::bufferization::AliasingOpResultList;
 using mlir::bufferization::AnalysisState;
 using mlir::bufferization::BufferizableOpInterface;
 using mlir::bufferization::BufferizationOptions;
 using mlir::bufferization::BufferRelation;
-using mlir::bufferization::ToMemrefOp;
 using mlir::bufferization::ToTensorOp;
+using mlir::tensor::ExtractSliceOp;
 
 namespace mlir {
 namespace gml_st {
@@ -104,19 +107,14 @@ struct MaterializeOpInterface
     return false;
   }
 
-  SmallVector<OpResult> getAliasingOpResult(
+  AliasingOpResultList getAliasingOpResults(
       Operation *op, OpOperand &opOperand,
       const AnalysisState & /*state*/) const {
     auto result = op->getOpResult(0);
     if (result.getType().isa<RankedTensorType>() &&
         opOperand.getOperandNumber() == 0)
-      return {result};
+      return {{result, BufferRelation::Unknown}};
     return {};
-  }
-
-  BufferRelation bufferRelation(Operation * /*op*/, OpResult /*opResult*/,
-                                const AnalysisState & /*state*/) const {
-    return BufferRelation::None;
   }
 
   LogicalResult bufferize(Operation *op, RewriterBase &rewriter,
@@ -141,23 +139,27 @@ struct MaterializeOpInterface
 struct ParallelOpInterface
     : public BufferizableOpInterface::ExternalModel<ParallelOpInterface,
                                                     ParallelOp> {
-  SmallVector<OpOperand *> getAliasingOpOperand(
-      Operation *op, OpResult opResult, const AnalysisState & /*state*/) const {
+  bool bufferizesToMemoryRead(Operation *op, OpOperand &opOperand,
+                              const AnalysisState &state) const {
     auto parallelOp = cast<ParallelOp>(op);
-    return {
-        parallelOp.getTerminator().getDstOperand(opResult.getResultNumber())};
+
+    // gml_st.parallel alone doesn't bufferize to a memory read, one of the uses
+    // of its matching bbArg may.
+    return state.isValueRead(
+        parallelOp.getRegionOutputArgForOpOperand(opOperand));
   }
 
-  bool isMemoryWrite(Operation *, OpResult, const AnalysisState &) const {
-    // This op is a memory write. Stop lookup here to avoid finding false
-    // conflicts involving this op and one of the ops in the region. This is
-    // similar to how scf.if ops are analyzed.
+  bool bufferizesToMemoryWrite(Operation * /*op*/, OpOperand & /*opOperand*/,
+                               const AnalysisState & /*state*/) const {
+    // Outputs of gml_st::ParallelOp are always considered as a write.
     return true;
   }
 
-  BufferRelation bufferRelation(Operation * /*op*/, OpResult /*opResult*/,
-                                const AnalysisState & /*state*/) const {
-    return BufferRelation::Equivalent;
+  AliasingOpResultList getAliasingOpResults(Operation *op, OpOperand &opOperand,
+                                            const AnalysisState &) const {
+    auto parallelOp = cast<ParallelOp>(op);
+    return {{parallelOp.getResultForOpOperand(opOperand),
+             BufferRelation::Equivalent}};
   }
 
   bool isWritable(Operation * /*op*/, Value /*value*/,
@@ -166,24 +168,71 @@ struct ParallelOpInterface
   }
 
   LogicalResult bufferize(Operation *op, RewriterBase &rewriter,
-                          const BufferizationOptions & /*options*/) const {
-    auto loopOp = cast<ParallelOp>(op);
+                          const BufferizationOptions &options) const {
+    auto parallelOp = cast<ParallelOp>(op);
 
-    // Create new TiledLoopOp.
+    // Get the bufferized output arguments.
+    Location loc = op->getLoc();
+    SmallVector<Value> bufferizedOutputs;
+    bufferizedOutputs.reserve(parallelOp.getNumOutputs());
+    for (Value output : parallelOp.getOutputs()) {
+      FailureOr<Value> maybeBuffer = getBuffer(rewriter, output, options);
+      if (failed(maybeBuffer)) return failure();
+      bufferizedOutputs.push_back(*maybeBuffer);
+    }
+
+    // Create new ParallelOp.
     std::optional<StringAttr> distTypeAttr;
     if (auto distType = cast<ParallelOp>(op).getDistributionType())
       distTypeAttr = rewriter.getStringAttr(*distType);
-    auto newLoopOp = rewriter.create<ParallelOp>(
-        loopOp.getLoc(), TypeRange{std::nullopt}, loopOp.getLowerBound(),
-        loopOp.getUpperBound(), loopOp.getStep(), distTypeAttr);
 
-    // Move the old body into the new loop.
-    rewriter.mergeBlocks(loopOp.getBody(), newLoopOp.getBody(),
-                         newLoopOp.getInductionVars());
+    auto newParallelOp = rewriter.create<ParallelOp>(
+        loc, TypeRange{}, parallelOp.getLowerBound(),
+        parallelOp.getUpperBound(), parallelOp.getStep(), ValueRange{},
+        distTypeAttr, nullptr);
+    Block *loopBody = newParallelOp.getBody();
 
-    // Remove the old op.
-    rewriter.eraseOp(op);
+    // Add conversions to tensor so that we can reuse the old loop body.
+    rewriter.setInsertionPointToStart(loopBody);
+    SmallVector<Value> outputsToTensors;
+    for (auto buf : bufferizedOutputs) {
+      Value tensor = rewriter.create<bufferization::ToTensorOp>(loc, buf);
+      outputsToTensors.push_back(tensor);
+    }
+    SmallVector<Value> blockArgs = newParallelOp.getInductionVars();
+    blockArgs.append(outputsToTensors);
+
+    // Move old body into new for loop.
+    rewriter.mergeBlocks(parallelOp.getBody(), loopBody, blockArgs);
+
+    // Replace results and delete old op.
+    bufferization::replaceOpWithBufferizedValues(rewriter, op,
+                                                 bufferizedOutputs);
     return success();
+  }
+
+  FailureOr<BaseMemRefType> getBufferType(
+      Operation *op, Value value, const BufferizationOptions &options,
+      const DenseMap<Value, BaseMemRefType> &fixedTypes) const {
+    auto parallelOp = cast<ParallelOp>(op);
+
+    if (auto bbArg = value.dyn_cast<BlockArgument>()) {
+      // A tensor block argument has the same bufferized type as the
+      // corresponding output operand.
+      return bufferization::getBufferType(
+          parallelOp.getOpOperandForRegionOutputArg(bbArg).get(), options,
+          fixedTypes);
+    }
+
+    // The bufferized result type is the same as the bufferized type of the
+    // corresponding output operand.
+    return bufferization::getBufferType(
+        parallelOp.getOutputs()[value.cast<OpResult>().getResultNumber()],
+        options, fixedTypes);
+  }
+
+  bool isRepetitiveRegion(Operation * /*op*/, unsigned /*index*/) const {
+    return true;
   }
 };
 
@@ -200,16 +249,12 @@ struct ForOpInterface
     return true;
   }
 
-  SmallVector<OpResult> getAliasingOpResult(
+  AliasingOpResultList getAliasingOpResults(
       Operation *op, OpOperand &opOperand,
       const AnalysisState & /*state*/) const {
     auto forOp = cast<gml_st::ForOp>(op);
-    return {forOp.getResultForOpOperand(opOperand)};
-  }
-
-  BufferRelation bufferRelation(Operation * /*op*/, OpResult /*opResult*/,
-                                const AnalysisState & /*state*/) const {
-    return BufferRelation::Equivalent;
+    return {
+        {forOp.getResultForOpOperand(opOperand), BufferRelation::Equivalent}};
   }
 
   bool isWritable(Operation * /*op*/, Value /*value*/,
@@ -286,7 +331,7 @@ struct ForOpInterface
 struct SetYieldOpInterface
     : public BufferizableOpInterface::ExternalModel<SetYieldOpInterface,
                                                     SetYieldOp> {
-  SmallVector<OpResult> getAliasingOpResult(
+  AliasingOpResultList getAliasingOpResults(
       Operation * /*op*/, OpOperand & /*opOperand*/,
       const AnalysisState & /*state*/) const {
     return {};
@@ -294,8 +339,7 @@ struct SetYieldOpInterface
 
   bool bufferizesToMemoryRead(Operation *op, OpOperand &opOperand,
                               const AnalysisState & /*state*/) const {
-    return op->getNumRegions() > 0 ||
-           !cast<SetYieldOp>(op).isDstOperand(opOperand);
+    return true;
   }
 
   bool bufferizesToMemoryWrite(Operation *op, OpOperand &opOperand,
@@ -303,17 +347,10 @@ struct SetYieldOpInterface
     return cast<SetYieldOp>(op).isDstOperand(opOperand);
   }
 
-  BufferRelation bufferRelation(Operation * /*op*/, OpResult /* opResult*/,
-                                const AnalysisState & /*state*/) const {
-    return BufferRelation::Equivalent;
-  }
-
   LogicalResult bufferize(Operation *op, RewriterBase &rewriter,
                           const BufferizationOptions &options) const {
     auto yieldOp = cast<SetYieldOp>(op);
     Operation *loop = yieldOp->getParentOp();
-    if (!isa<ForOp, ParallelOp>(loop))
-      return yieldOp->emitError("unsupported gml_st::SetYieldOp parent");
 
     rewriter.setInsertionPoint(op);
     for (const auto &it :
@@ -371,15 +408,16 @@ struct SetYieldOpInterface
       if (operandType.isa<UnrankedTensorType>())
         return op->emitError("copies of unranked tensors are not supported");
 
-      SmallVector<OpResult> aliasingOpResults =
-          state.getAliasingOpResult(opOperand);
+      AliasingOpResultList aliasingOpResults =
+          state.getAliasingOpResults(opOperand);
       // Is the result yielded from a block? Or are deallocations turned off
       // entirely? In either case, mark the allocation as "escaping", so that it
       // will not be deallocated.
       bool escape = !state.getOptions().createDeallocs ||
-                    llvm::any_of(aliasingOpResults, [&](Value v) {
-                      return state.isTensorYielded(v);
-                    });
+                    llvm::any_of(aliasingOpResults,
+                                 [&](bufferization::AliasingOpResult a) {
+                                   return state.isTensorYielded(a.opResult);
+                                 });
 
       // In all other cases, make a copy of the OpOperand.
       outOfPlaceOpOperands.push_back(&opOperand);
@@ -403,32 +441,34 @@ struct SetYieldOpInterface
   }
 
   bool areEquivalentSlices(const AnalysisState &state,
-                           MaterializeOp materializeOp, SetYieldOp setYieldOp,
+                           ExtractSliceOp extractSliceOp, SetYieldOp setYieldOp,
                            int64_t updateIdx) const {
-    if (!materializeOp || !setYieldOp) return false;
-    if (materializeOp != setYieldOp &&
-        !state.areEquivalentBufferizedValues(materializeOp.getSource(),
+    if (!extractSliceOp || !setYieldOp) return false;
+    if (extractSliceOp != setYieldOp &&
+        !state.areEquivalentBufferizedValues(extractSliceOp.getSource(),
                                              setYieldOp.getDsts()[updateIdx])) {
       return false;
     }
     if (!sameOffsetsSizesAndStrides(
-            materializeOp,
+            extractSliceOp,
             setYieldOp.getSets()[updateIdx].getDefiningOp<TileOp>(),
             isEqualConstantIntOrValue))
       return false;
     return true;
   }
 
-  /// Return true if `value` is originating from an MaterializeOp that matches
+  /// Return true if `value` is originating from an ExtractSliceOp that matches
   /// the given SetYieldOp.
   bool matchesInsertDestination(const AnalysisState &state, Value value,
                                 SetYieldOp setYieldOp,
                                 int64_t updateIdx) const {
     // Look for matching slices.
     auto matchesSlice = [&](Value val) {
-      if (auto materializeOp = val.getDefiningOp<MaterializeOp>())
-        if (areEquivalentSlices(state, materializeOp, setYieldOp, updateIdx))
+      if (auto materializeOp = val.getDefiningOp<ExtractSliceOp>()) {
+        if (areEquivalentSlices(state, materializeOp, setYieldOp, updateIdx)) {
           return true;
+        }
+      }
       return false;
     };
     return llvm::all_of(
@@ -447,7 +487,7 @@ struct SetYieldOpInterface
     Operation *readingOp = uRead->getOwner();
     Operation *conflictingWritingOp = uConflictingWrite->getOwner();
 
-    // Special rules for matching SetYieldOp/MaterializeOp pairs. If
+    // Special rules for matching SetYieldOp/ExtractSliceOp pairs. If
     // uRead is an SetYieldOp...
     if (auto setYieldOp = dyn_cast<SetYieldOp>(readingOp)) {
       for (int64_t updateIdx :

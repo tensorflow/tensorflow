@@ -155,13 +155,12 @@ cc_library(
     deps = [
         ":logging",
         ":macros",
-        ":platform",
         ":status",
         ":str_util",
         ":strcat",
-        ":types",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:cord",
     ],
 )
 
@@ -1786,5 +1785,12 @@ tsl_cc_test(
         ":test",
         ":test_main",
         "//tensorflow/tsl/lib/core:status_test_util",
+    ],
+)
+
+cc_library(
+    name = "static_threadlocal",
+    hdrs = [
+        "static_threadlocal.h",
     ],
 )

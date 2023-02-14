@@ -60,6 +60,7 @@ class GrpcWorkerImpl : public WorkerService::Service {
   HANDLER(ProcessTask);
   HANDLER(GetElement);
   HANDLER(GetWorkerTasks);
+  HANDLER(GetSnapshotTaskProgresses);
 #undef HANDLER
 
  private:

@@ -125,6 +125,7 @@ sh_test(
     ],
     tags = [
         "no_windows",
+        "noasan",
         "v1only",
     ],
 )

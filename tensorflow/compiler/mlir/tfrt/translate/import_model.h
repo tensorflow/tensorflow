@@ -20,8 +20,11 @@ limitations under the License.
 
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
 #include "tensorflow/compiler/mlir/tfrt/function/function.h"
+#include "tensorflow/compiler/mlir/tfrt/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tfrt/translate/tfrt_compile_options.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/platform/status.h"
@@ -50,6 +53,13 @@ Status ConvertFunctionToBef(
 Status ConvertTfMlirToBef(const TfrtCompileOptions& options,
                           mlir::ModuleOp module, tfrt::BefBuffer* bef_buffer,
                           tfrt_stub::FallbackState* fallback_state = nullptr);
+
+Status ConvertTfMlirToRuntimeExecutable(
+    const TfrtCompileOptions& options, mlir::ModuleOp module,
+    absl::FunctionRef<Status(mlir::PassManager&, mlir::ModuleOp,
+                             const tensorflow::TfrtPipelineOptions& options)>
+        emit_executable,
+    tfrt_stub::FallbackState* fallback_state = nullptr);
 
 }  // namespace tensorflow
 

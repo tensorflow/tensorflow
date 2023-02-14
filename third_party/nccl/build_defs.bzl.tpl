@@ -181,12 +181,6 @@ _device_link = rule(
 def _prune_relocatable_code_impl(ctx):
     """Clears __nv_relfatbin section containing relocatable device code."""
 
-    if _cuda_clang == "1":
-        # Clang is incompatible with nvprune due to a bug
-        # TODO(juanantoniomc): Remove this return when the fix is released.
-        # Fix: https://reviews.llvm.org/D135832
-        return ctx.attr.input[DefaultInfo]
-
     if _cuda_version < (11, 3):
         # -no-relocatable-elf not supported, return unpruned input.
         return ctx.attr.input[DefaultInfo]

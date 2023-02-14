@@ -104,7 +104,7 @@ class DataServiceClientBase {
   // first RPC will perform any necessary initialization. However, it can be
   // useful to call `Initialize()` proactively so that any errors that happen
   // during initialization can be surfaced earlier.
-  Status Initialize() { return EnsureInitialized(); }
+  virtual Status Initialize() { return EnsureInitialized(); }
 
  protected:
   // Initializes the client if it isn't already initialized.

@@ -35,6 +35,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/iterator_util.h"
 #include "tensorflow/compiler/xla/map_util.h"
+#include "tensorflow/compiler/xla/printer.h"
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/compiler/xla/service/name_uniquer.h"
 #include "tensorflow/compiler/xla/shape_tree.h"
@@ -238,6 +239,17 @@ class HloComputation {
   // Use the given NameUniquer to select a unique name for the computation based
   // on the computation's existing name.
   void UniquifyName(NameUniquer* name_uniquer);
+
+  // Prints a string representation of the computation.
+  //
+  // (We express the default options using an overload rather than a default
+  // param because gdb ignores default params, but does resolve overloads.)
+  void Print(Printer* printer) const {
+    return Print(printer, HloPrintOptions());
+  }
+  void Print(Printer* printer, const HloPrintOptions& options) const;
+  void Print(Printer* printer, const HloPrintOptions& options,
+             absl::Span<const HloInstruction* const> instruction_order) const;
 
   // Return a string representation of the computation.
   //

@@ -41,6 +41,7 @@ limitations under the License.
 
 #include "tensorflow/lite/allocation.h"
 #include "tensorflow/lite/core/api/error_reporter.h"
+#include "tensorflow/lite/core/async/async_signature_runner.h"
 #include "tensorflow/lite/core/api/profiler.h"
 #include "tensorflow/lite/core/c/common.h"  // IWYU pragma: export
 #include "tensorflow/lite/core/subgraph.h"
@@ -111,6 +112,12 @@ class InterpreterWrapper;  // Class for friend declarations.
 ///
 /// \warning This class is *not* thread-safe. The client is responsible for
 /// ensuring serialized interaction to avoid data races and undefined behavior.
+using Interpreter = impl::Interpreter;
+
+namespace impl {
+
+class InterpreterBuilder;  // Class for friend declarations.
+
 class Interpreter {
  public:
   // Instantiate an interpreter. All errors associated with reading and
@@ -337,6 +344,14 @@ class Interpreter {
   /// Note, the pointed instance has lifetime same as the Interpreter object
   /// and the SignatureRunner class is *not* thread-safe.
   SignatureRunner* GetSignatureRunner(const char* signature_key);
+
+  /// \warning Experimental interface, subject to change. \n
+  /// \brief Returns a pointer to the AsyncSignatureRunner instance to run the
+  /// part of the graph identified by a SignatureDef. The nullptr is returned if
+  /// the given signature key is not valid.
+  /// The async delegate should be applied before calling this function.
+  async::AsyncSignatureRunner* GetAsyncSignatureRunner(
+      const char* signature_key);
 
   /// \warning Experimental interface, subject to change. \n
   /// \brief Return the subgraph index that corresponds to a SignatureDef,
@@ -765,7 +780,7 @@ class Interpreter {
   ErrorReporter* error_reporter() const { return error_reporter_; }
 
  private:
-  friend class InterpreterBuilder;
+  friend class tflite::impl::InterpreterBuilder;
 #ifndef DOXYGEN_SKIP
   friend class tflite::InterpreterTest;
   friend class tflite::delegates::InterpreterUtils;
@@ -940,6 +955,12 @@ class Interpreter {
   // its SignatureDef.
   std::map<std::string, SignatureRunner> signature_runner_map_;
 
+  // Map of signature key to its corresponding AsyncSignatureRunner object.
+  // An AsyncSignatureRunner is basically a wrapper of the AsyncSubgraph
+  // corresponding to its SignatureDef.
+  std::map<std::string, async::AsyncSignatureRunner>
+      async_signature_runner_map_;
+
   // Model metadata stored as mapping of name (key) to buffer (value).
   // Data is mapped from the Metadata in TFLite flatbuffer model.
   std::map<std::string, std::string> metadata_;
@@ -967,6 +988,8 @@ class Interpreter {
   std::atomic_flag continue_invocation_{false};
   bool cancellation_enabled_ = false;
 };
+
+}  // namespace impl
 
 }  // namespace tflite
 #endif  // TENSORFLOW_LITE_CORE_INTERPRETER_H_

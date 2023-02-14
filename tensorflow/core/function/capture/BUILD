@@ -3,9 +3,7 @@ load("//tensorflow:strict.default.bzl", "py_strict_test")
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
-        "//tensorflow/core/function/capture:__subpackages__",
-        "//tensorflow/python/eager/polymorphic_function:__subpackages__",
-        "//tensorflow/python/framework:__subpackages__",
+        "//tensorflow:internal",
     ],
 )
 
@@ -83,5 +81,16 @@ py_strict_test(
         "//tensorflow/python/platform:client_testlib",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+py_library(
+    name = "restore_captures",
+    srcs = ["restore_captures.py"],
+    srcs_version = "PY3",
+    visibility = ["//tensorflow:internal"],
+    deps = [
+        "//tensorflow/python/trackable:asset",
+        "//tensorflow/python/trackable:resource",
     ],
 )

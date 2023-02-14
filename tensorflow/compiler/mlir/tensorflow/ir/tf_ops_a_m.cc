@@ -1074,6 +1074,12 @@ std::optional<std::string> CollectiveReduceV2Op::GetResourceInstanceStr() {
                                   : std::nullopt;
 }
 
+std::optional<std::string>
+CollectiveReduceScatterV2Op::GetResourceInstanceStr() {
+  return getNorderingToken() == 0 ? std::optional<std::string>("")
+                                  : std::nullopt;
+}
+
 //===----------------------------------------------------------------------===//
 // ConcatOp and ConcatV2Op
 //===----------------------------------------------------------------------===//

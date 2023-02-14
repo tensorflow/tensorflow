@@ -36,7 +36,7 @@ cc_library(
     includes = if_mkl(["./mkl_include"]),
     visibility = ["//visibility:public"],
     deps = [
-        "@eigen_archive//:eigen3",
+        "@eigen_archive//:eigen3_internal",
     ],
 )
 

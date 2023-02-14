@@ -39,8 +39,6 @@ namespace interpreter {
 struct InterpreterValue;
 
 struct Tuple {
-  Tuple() = default;
-
   bool operator==(const Tuple& other) const;
 
   SmallVector<std::shared_ptr<InterpreterValue>> values;
@@ -98,7 +96,7 @@ struct InterpreterValue {
   BufferView& view();
   const BufferView& view() const;
   // Returns the underlying tensor's buffer. Must be a tensor.
-  std::shared_ptr<Buffer> buffer();
+  std::shared_ptr<Buffer> buffer() const;
 
   bool isTensor() const;
 

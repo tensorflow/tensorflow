@@ -28,6 +28,7 @@ py_library(
         "//tensorflow/python:errors",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:func_graph",
+        "//tensorflow/python:functional_ops",
         "//tensorflow/python:gradients_impl",
         "//tensorflow/python:graph_to_function_def",
         "//tensorflow/python:handle_data_util",
@@ -333,9 +334,7 @@ py_library(
     deps = [
         "//tensorflow/python:constant_op",
         "//tensorflow/python/saved_model/registration",
-        "//tensorflow/python/trackable:asset",
         "//tensorflow/python/trackable:base",
-        "//tensorflow/python/trackable:resource",
     ],
 )
 
@@ -388,8 +387,12 @@ py_library(
     srcs_version = "PY3",
     visibility = ["//tensorflow:internal"],
     deps = [
+        "//tensorflow/core/function/trace_type",
         "//tensorflow/python:random_ops",
         "//tensorflow/python/eager:context",
+        "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/framework:tensor_spec",
         "//tensorflow/python/util",
     ],
 )
@@ -418,7 +421,6 @@ tf_xla_py_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:framework_ops",
-        "//tensorflow/python:math_ops",
         "//tensorflow/python:variables",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:tensor_spec",

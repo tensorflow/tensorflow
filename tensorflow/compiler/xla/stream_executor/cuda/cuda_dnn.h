@@ -20,14 +20,15 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_STREAM_EXECUTOR_CUDA_CUDA_DNN_H_
 
 #include <cstdint>
+#include <optional>
 
 #include "absl/base/thread_annotations.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/stream_executor/cuda/cuda_activation.h"
 #include "tensorflow/compiler/xla/stream_executor/dnn.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/status.h"
 #include "tensorflow/compiler/xla/stream_executor/plugin_registry.h"
 #include "tensorflow/compiler/xla/stream_executor/temporary_device_memory.h"
+#include "tensorflow/tsl/platform/status.h"
 
 namespace stream_executor {
 namespace gpu {
@@ -399,6 +400,13 @@ class CudnnSupport : public dnn::DnnSupport {
       DeviceMemoryBase output_data, ScratchAllocator* scratch_allocator,
       const dnn::AlgorithmConfig& algorithm_config,
       dnn::ProfileResult* output_profile_result) override;
+
+  tsl::Status CudnnReorderConvolutionFilterAndBias(
+      Stream* stream, const dnn::FilterDescriptor& filter_descriptor,
+      const DeviceMemory<int8_t>& filter_input,
+      DeviceMemory<int8_t>* filter_output,
+      std::optional<const DeviceMemory<float>> bias_input,
+      std::optional<DeviceMemory<float>> bias_output) override;
 
   bool DoConvolveQuantized(
       Stream* stream, const dnn::BatchDescriptor& input_descriptor,

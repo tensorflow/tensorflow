@@ -22,7 +22,7 @@ tf_module {
   }
   member {
     name: "Graph"
-    mtype: "<type \'type\'>"
+    mtype: "<class \'pybind11_builtins.pybind11_type\'>"
   }
   member {
     name: "IndexedSlices"
@@ -38,7 +38,7 @@ tf_module {
   }
   member {
     name: "Operation"
-    mtype: "<type \'type\'>"
+    mtype: "<class \'pybind11_builtins.pybind11_type\'>"
   }
   member {
     name: "OptionalSpec"
@@ -1119,10 +1119,6 @@ tf_module {
   member_method {
     name: "timestamp"
     argspec: "args=[\'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
-  }
-  member_method {
-    name: "tpu_partitioned_output_v2"
-    argspec: "args=[\'inputs\', \'num_splits\', \'partition_dims\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "transpose"

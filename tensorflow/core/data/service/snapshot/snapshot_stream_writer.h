@@ -22,6 +22,7 @@ limitations under the License.
 
 #include "absl/strings/substitute.h"
 #include "tensorflow/core/data/service/common.pb.h"
+#include "tensorflow/core/data/service/snapshot/path_utils.h"
 #include "tensorflow/core/data/service/task_runner.h"
 #include "tensorflow/core/data/service/worker.pb.h"
 #include "tensorflow/core/data/snapshot_utils.h"
@@ -51,6 +52,27 @@ struct SnapshotWriterParams {
 
   // The maximum number of bytes in each chunk.
   int64_t max_chunk_size_bytes = kDefaultMaxChunkSizeBytes;
+
+  // If true, keep temporary files (e.g., checkpoints) after completing the
+  // snapshot. Used only for unit testing.
+  bool test_only_keep_temp_files = false;
+
+  std::string StreamDirectory() const {
+    return tensorflow::data::StreamDirectory(snapshot_path, stream_index);
+  }
+
+  std::string CommittedChunksDirectory() const {
+    return tensorflow::data::CommittedChunksDirectory(snapshot_path);
+  }
+
+  std::string UncommittedChunksDirectory() const {
+    return tensorflow::data::UncommittedChunksDirectory(snapshot_path,
+                                                        stream_index);
+  }
+
+  std::string CheckpointsDirectory() const {
+    return tensorflow::data::CheckpointsDirectory(snapshot_path, stream_index);
+  }
 
   std::string DebugString() const {
     return absl::Substitute(
@@ -84,12 +106,10 @@ struct SnapshotWriterParams {
 //         - checkpoint_<chunk_index>
 //
 // This class is thread-safe.
-// TODO(b/258691666): Support chunking, checkpointing, and fault tolerance.
 class SnapshotStreamWriter {
  public:
   // Creates a SnapshotStreamWriter. Once created, it will start writing the
   // snapshot stream. Users can call `Wait` to wait for it to finish.
-  // TODO(b/258691666): Create a new `TaskIterator` that persists splits.
   explicit SnapshotStreamWriter(const SnapshotWriterParams& params,
                                 std::unique_ptr<TaskIterator> iterator);
   virtual ~SnapshotStreamWriter() = default;
@@ -116,6 +136,10 @@ class SnapshotStreamWriter {
   // Writes the snapshot. Returns an error if writing fails or the task has been
   // cancelled.
   Status WriteSnapshot();
+
+  // Returns true if the stream is already completed and there is no additional
+  // work to perform.
+  bool StreamAlreadyCompleted() const;
 
   // Creates directories to store uncommitted chunks and checkpoints.
   Status InitializeDirectories();
@@ -157,6 +181,9 @@ class SnapshotStreamWriter {
   // After committing a checkpoint, deletes the previous checkpoints.
   Status DeleteOutdatedCheckpoints();
 
+  // Deletes all checkpoints.
+  Status DeleteCheckpoints();
+
   // Restores from the last checkpoint.
   Status Restore();
 
@@ -172,10 +199,6 @@ class SnapshotStreamWriter {
   std::string CheckpointPath(int64_t chunk_index) const;
 
   const SnapshotWriterParams params_;
-  const std::string stream_directory_;
-  const std::string committed_chunks_directory_;
-  const std::string uncommitted_chunks_directory_;
-  const std::string checkpoints_directory_;
 
   // The dataset iterator that produces the dataset elements.
   std::unique_ptr<TaskIterator> iterator_;

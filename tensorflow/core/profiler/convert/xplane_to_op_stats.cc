@@ -71,7 +71,8 @@ PerfEnv MakePerfEnv(double peak_tera_flops_per_second,
   for (const auto bw : peak_bws) {
     result.add_peak_bws_giga_bytes_per_second(bw);
   }
-  result.set_ridge_point(TeraToGiga(peak_tera_flops_per_second) / peak_bws[1]);
+  result.set_ridge_point(TeraToGiga(peak_tera_flops_per_second) /
+                         peak_bws[MemBwType::MEM_BW_TYPE_HBM_RW]);
   return result;
 }
 
@@ -90,12 +91,6 @@ PerfEnv GetPerfEnvFromXPlane(const XPlane& device_plane) {
     auto peak_tera_flops_per_second_val =
         peak_tera_flops_per_second.has_value()
             ? peak_tera_flops_per_second->DoubleValue()
-            : 0.0;
-    auto peak_bw_giga_bytes_per_second =
-        visitor.GetStat(StatType::kDevCapPeakBwGigabytesPerSecond);
-    auto peak_bw_giga_bytes_per_second_val =
-        peak_bw_giga_bytes_per_second.has_value()
-            ? peak_bw_giga_bytes_per_second->DoubleValue()
             : 0.0;
     auto peak_hbm_bw_giga_bytes_per_second =
         visitor.GetStat(StatType::kDevCapPeakHbmBwGigabytesPerSecond);
@@ -116,8 +111,7 @@ PerfEnv GetPerfEnvFromXPlane(const XPlane& device_plane) {
             ? peak_sram_wr_bw_giga_bytes_per_second->DoubleValue()
             : 0.0;
     return MakePerfEnv(peak_tera_flops_per_second_val,
-                       {peak_bw_giga_bytes_per_second_val,
-                        peak_hbm_bw_giga_bytes_per_second_val,
+                       {peak_hbm_bw_giga_bytes_per_second_val,
                         peak_sram_rd_bw_giga_bytes_per_second_val,
                         peak_sram_wr_bw_giga_bytes_per_second_val});
   }

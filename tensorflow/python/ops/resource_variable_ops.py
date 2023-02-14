@@ -24,6 +24,7 @@ import numpy as np
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.framework import variable_pb2
 from tensorflow.core.function import trace_type
+from tensorflow.core.protobuf import struct_pb2
 from tensorflow.python.checkpoint import tensor_callable
 from tensorflow.python.client import pywrap_tf_session
 from tensorflow.python.compat import compat as forward_compat
@@ -39,6 +40,7 @@ from tensorflow.python.framework import errors
 from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import meta_graph
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_conversion_registry
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.ops import array_ops
@@ -53,6 +55,7 @@ from tensorflow.python.ops import variables
 # pylint: disable=wildcard-import
 from tensorflow.python.ops.gen_resource_variable_ops import *
 # pylint: enable=wildcard-import
+from tensorflow.python.saved_model import nested_structure_coder
 from tensorflow.python.trackable import base as trackable
 from tensorflow.python.types import core
 from tensorflow.python.util import _pywrap_utils
@@ -2273,8 +2276,8 @@ def _dense_var_to_tensor(var, dtype=None, name=None, as_ref=False):
 
 # Register a conversion function which reads the value of the variable,
 # allowing instances of the class to be used as tensors.
-ops.register_tensor_conversion_function(BaseResourceVariable,
-                                        _dense_var_to_tensor)
+tensor_conversion_registry.register_tensor_conversion_function(
+    BaseResourceVariable, _dense_var_to_tensor)
 
 
 class _UnreadVariable(BaseResourceVariable):
@@ -2729,6 +2732,13 @@ class VariableSpec(tensor_spec.DenseSpec):
     return (type(self) is type(other) and self.shape == other.shape and
             self.dtype == other.dtype and self.trainable == other.trainable and
             self.alias_id == other.alias_id)
+
+
+nested_structure_coder.register_codec(
+    nested_structure_coder.BuiltInTypeSpecCodec(
+        VariableSpec, struct_pb2.TypeSpecProto.VARIABLE_SPEC
+    )
+)
 
 
 _pywrap_utils.RegisterType("VariableSpec", VariableSpec)

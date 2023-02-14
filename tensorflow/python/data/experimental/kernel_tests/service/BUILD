@@ -30,16 +30,15 @@ tf_py_test(
     ],
 )
 
-# TODO(b/266126556): Reenable this test.
 tf_py_test(
     name = "snapshot_ft_test",
-    size = "small",
+    size = "medium",
     srcs = ["snapshot_ft_test.py"],
     shard_count = 8,
+    # TODO(b/250921378): Fix sanitizers.
     tags = [
         "noasan",
         "nomsan",
-        "notap",
         "notsan",
     ],
     deps = [

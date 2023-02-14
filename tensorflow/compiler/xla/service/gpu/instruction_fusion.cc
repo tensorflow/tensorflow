@@ -101,7 +101,7 @@ FusionDecision GpuInstructionFusion::ShouldFuse(HloInstruction* consumer,
 
   // The following checks are potentially expensive.
   if (NoFusionPossible too_large =
-          !FusionFitsInBudget(*consumer, *producer,
+          !FusionFitsInBudget(*consumer, *producer, device_info_,
                               /*is_consumer_producer_fusion=*/true)) {
     return !too_large;
   }
@@ -139,11 +139,13 @@ std::vector<HloComputation*> GpuInstructionFusion::GetFusionComputations(
   std::vector<HloComputation*> computations =
       InstructionFusion::GetFusionComputations(module, execution_threads);
   computations.erase(
-      std::remove_if(computations.begin(), computations.end(),
-                     [](HloComputation* c) {
-                       return c->IsCustomCallComputation() &&
-                              IsSoftmaxCustomCall(*c->CustomCallInstruction());
-                     }),
+      std::remove_if(
+          computations.begin(), computations.end(),
+          [](const HloComputation* c) {
+            return c->IsCustomCallComputation() &&
+                   (IsSoftmaxCustomCall(*c->CustomCallInstruction()) ||
+                    IsTritonCustomCall(*c->CustomCallInstruction()));
+          }),
       computations.end());
   return computations;
 }

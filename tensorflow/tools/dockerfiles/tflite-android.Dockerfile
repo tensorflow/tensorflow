@@ -22,7 +22,7 @@ RUN cd ${ANDROID_DEV_HOME} && \
     rm ${ANDROID_SDK_FILENAME}
 
 # Install Android NDK.
-ENV ANDROID_NDK_FILENAME android-ndk-r19c-linux-x86_64.zip
+ENV ANDROID_NDK_FILENAME android-ndk-r21e-linux-x86_64.zip
 ENV ANDROID_NDK_URL https://dl.google.com/android/repository/${ANDROID_NDK_FILENAME}
 ENV ANDROID_NDK_HOME ${ANDROID_DEV_HOME}/ndk
 ENV PATH ${PATH}:${ANDROID_NDK_HOME}

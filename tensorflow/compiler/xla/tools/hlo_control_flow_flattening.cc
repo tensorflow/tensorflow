@@ -258,12 +258,13 @@ Status HloControlFlowFlattening::RemoveInfeed(
   HloInstruction* custom_call = computation->AddInstruction(
       HloInstruction::CreateCustomCall(infeed_shape, {}, kNopCustomCallTarget));
 
-  // Create a new tuple consisting op the constant and the token that was
+  // Create a new tuple consisting of the constant and the token that was
   // originally the operand of infeed, and replace the infeed operation.
   auto new_tuple = HloInstruction::CreateTuple(
       {custom_call, infeed_hlo->mutable_operand(0)});
   TF_RETURN_IF_ERROR(
       computation->ReplaceWithNewInstruction(infeed_hlo, std::move(new_tuple)));
+  custom_call->SetAndSanitizeName(infeed_hlo->name());
 
   return OkStatus();
 }
@@ -320,6 +321,7 @@ Status HloControlFlowFlattening::RemoveOutfeed(
   Cast<HloCustomCallInstruction>(custom_call)
       ->set_custom_call_has_side_effect(true);
   TF_RETURN_IF_ERROR(computation->ReplaceInstruction(outfeed_hlo, custom_call));
+  custom_call->SetAndSanitizeName(outfeed_hlo->name());
 
   return OkStatus();
 }

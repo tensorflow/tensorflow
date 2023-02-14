@@ -2561,6 +2561,26 @@ func.func @testInvalidToBool(%arg0: tensor<i32>) -> tensor<1xi1> {
 
 // -----
 
+// Test invalid tf.TPUPartitionedInputV2 with packing
+func.func @testPackedTPUPartitionedInputV2(tensor<2x4xf32>, tensor<2x4xf32>) -> tensor<4x4xf32> {
+^bb0(%arg0: tensor<2x4xf32>, %arg1: tensor<2x4xf32>):
+  // expected-error @+1 {{expected 1 inputs, got 2}}
+  %0 = "tf.TPUPartitionedInputV2"(%arg0, %arg1) {partition_dims = [2, 1], is_packed = true} : (tensor<2x4xf32>, tensor<2x4xf32>) -> tensor<4x4xf32>
+  func.return %0 : tensor<4x4xf32>
+}
+
+// -----
+
+// Test invalid tf.TPUPartitionedInputV2 without packing
+func.func @testUnpackedTPUPartitionedInputV2(tensor<2x4xf32>, tensor<2x4xf32>) -> tensor<4x4xf32> {
+^bb0(%arg0: tensor<2x4xf32>, %arg1: tensor<2x4xf32>):
+  // expected-error @+1 {{expected 2 inputs, got 1}}
+  %0 = "tf.TPUPartitionedInputV2"(%arg0) {partition_dims = [2, 1], is_packed = false} : (tensor<2x4xf32>) -> tensor<4x4xf32>
+  func.return %0 : tensor<4x4xf32>
+}
+
+// -----
+
 // Test valid tf.Transpose
 // CHECK-LABEL: testTranspose
 func.func @testTranspose(tensor<2x3xf32>) -> tensor<3x2xf32> {

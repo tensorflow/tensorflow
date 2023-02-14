@@ -45,7 +45,7 @@ struct TfLiteTelemetryGpuDelegateSettings {
   size_t num_nodes_delegated;
 
   // Reported by "GpuDelegateKernel::Prepare" event.
-  enum Backend {
+  enum Backend : int {
     UNKNOWN = 0,
     OPENCL = 1,
     OPENGL = 2,

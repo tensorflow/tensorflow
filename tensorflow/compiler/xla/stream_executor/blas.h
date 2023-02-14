@@ -46,8 +46,8 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/stream_executor/data_type.h"
 #include "tensorflow/compiler/xla/stream_executor/device_memory.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/statusor.h"
 #include "tensorflow/compiler/xla/stream_executor/platform/port.h"
+#include "tensorflow/tsl/platform/statusor.h"
 #include "tensorflow/tsl/protobuf/dnn.pb.h"
 
 namespace Eigen {

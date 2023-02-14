@@ -29,7 +29,16 @@ llvm::SmallVector<InterpreterValue> unrealizedConversionCast(
     return {args[0]};
   }
 
-  llvm::errs() << "Unimplemented cast: " << op << "\n";
+  if (auto r = llvm::dyn_cast<ShapedType>(resultTy)) {
+    if (auto o = llvm::dyn_cast<ShapedType>(operandTy)) {
+      if (r.getElementType() == o.getElementType() &&
+          r.getRank() == o.getRank()) {
+        return {args[0]};
+      }
+    }
+  }
+
+  llvm::errs() << "Unimplemented cast: " << *op << "\n";
   llvm_unreachable("unimplemented cast");
 }
 

@@ -166,7 +166,7 @@ class XlaDevice : public LocalDevice {
                              const AllocatorAttributes alloc_attrs,
                              Tensor* tensor) override TF_LOCKS_EXCLUDED(mu_);
 
-  Status MakeTensorFromProto(XlaDeviceContext* device_context,
+  Status MakeTensorFromProto(DeviceContext* device_context,
                              const TensorProto& tensor_proto,
                              const AllocatorAttributes alloc_attrs,
                              Tensor* tensor);
@@ -184,9 +184,9 @@ class XlaDevice : public LocalDevice {
   // Two convenient methods to get the underlying device context.
   // Get the default device context, created by the first
   // shape_representation_fn.
-  StatusOr<XlaDeviceContext*> GetDeviceContextDefault();
+  StatusOr<DeviceContext*> GetDeviceContextDefault();
   // Get the device context given the index.
-  StatusOr<XlaDeviceContext*> GetDeviceContextWithIndex(int index);
+  StatusOr<DeviceContext*> GetDeviceContextWithIndex(int index);
 
   // Instructs this XlaDevice to set a AcceleratorDeviceInfo, which holds extra
   // information for GPU and TPU devices.
@@ -214,7 +214,7 @@ class XlaDevice : public LocalDevice {
 
   // Return a vector of device context, ordered by the sequence in the given
   // shape_representation_fns.
-  StatusOr<std::vector<XlaDeviceContext*>> GetDeviceContextLocked()
+  StatusOr<std::vector<DeviceContext*>> GetDeviceContextLocked()
       TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   // Handles error when RefreshStatus sees !status.ok().
@@ -260,8 +260,8 @@ class XlaDevice : public LocalDevice {
   // calls to EnsureDeviceContextOk. The number of device conetexts is based on
   // the number of shape representation functions in XlaDevice::Options. If
   // accelerator_device_info_ is non-null, this pointer is also filled in to
-  // that struct. XlaDeviceContext is a ref-counted object.
-  std::vector<XlaDeviceContext*> device_contexts_ TF_GUARDED_BY(mu_);
+  // that struct. DeviceContext is a ref-counted object.
+  std::vector<DeviceContext*> device_contexts_ TF_GUARDED_BY(mu_);
 
   // Holds extra information for GPU and TPU devices, e.g. the device context.
   bool use_accelerator_device_info_ TF_GUARDED_BY(mu_) = false;

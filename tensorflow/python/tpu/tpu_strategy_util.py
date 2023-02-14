@@ -22,6 +22,8 @@ from tensorflow.python.distribute.cluster_resolver.tpu_cluster_resolver import T
 from tensorflow.python.eager import context
 from tensorflow.python.eager import monitoring
 from tensorflow.python.eager.def_function import function
+from tensorflow.python.eager.def_function import functions_run_eagerly
+from tensorflow.python.eager.def_function import run_functions_eagerly
 from tensorflow.python.framework import device
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
@@ -97,7 +99,7 @@ def initialize_tpu_system(cluster_resolver=None):
     job = "{}/replica:0/task:0".format(cluster_resolver.get_job_name())
 
   if context.executing_eagerly():
-    @function
+    @function(autograph=False)
     def _tpu_init_fn():
       # In TF1, we usually close chips when compilation fails to clear the data
       # in infeed. In TF2, we don't need to do this because infeed is no longer
@@ -111,6 +113,15 @@ def initialize_tpu_system(cluster_resolver=None):
     # The TPU_SYSTEM device must match the device used in tpu.initialize_system
     # exactly, otherwise you can get errors if there are multiple TPU_SYSTEM
     # devices available.
+    run_eagerly = functions_run_eagerly()
+    if run_eagerly:
+      logging.warning(
+          "It looks like tf.function behavior was disabled, perhaps using"
+          " tf.config.run_functions_eagerly."
+          " tf.tpu.experimental.initialize_tpu_system requires tf.function to"
+          " work. This primitive will override the disable."
+      )
+      run_functions_eagerly(False)
     try:
       with ops.device(tpu._tpu_system_device_name(job)):  # pylint: disable=protected-access
         output = _tpu_init_fn()
@@ -120,7 +131,9 @@ def initialize_tpu_system(cluster_resolver=None):
           None, None,
           "TPUs not found in the cluster. Failed in initialization: "
           + str(e))
-
+    finally:
+      if run_eagerly is not None:
+        run_functions_eagerly(run_eagerly)
     # Clear out the eager context caches since the memory is invalid now.
     context.context()._initialize_logical_devices()  # pylint: disable=protected-access
 
@@ -214,15 +227,28 @@ def shutdown_tpu_system(cluster_resolver=None):
       # avoid the output node match multiple devices error.
       job = "{}/replica:0/task:0".format(cluster_resolver.get_job_name())
 
-    @function
+    @function(autograph=False)
     def _tpu_shutdown_fn():
       tpu.shutdown_system(job=job)
 
     # The TPU_SYSTEM device must match the device used in tpu.shutdown_system
     # exactly, otherwise you can get errors if there are multiple TPU_SYSTEM
     # devices available.
-    with ops.device(tpu._tpu_system_device_name(job)):  # pylint: disable=protected-access
-      _tpu_shutdown_fn()
+    run_eagerly = functions_run_eagerly()
+    if run_eagerly:
+      logging.warning(
+          "It looks like tf.function behavior was disabled, perhaps using"
+          " tf.config.run_functions_eagerly."
+          " tf.tpu.experimental.shutdown_tpu_system requires tf.function to"
+          " work. This primitive will override the disable."
+      )
+      run_functions_eagerly(False)
+    try:
+      with ops.device(tpu._tpu_system_device_name(job)):  # pylint: disable=protected-access
+        _tpu_shutdown_fn()
+    finally:
+      if run_eagerly is not None:
+        run_functions_eagerly(run_eagerly)
 
     # Clear out the eager context caches since the memory is invalid now.
     logging.info("Clearing out eager caches")

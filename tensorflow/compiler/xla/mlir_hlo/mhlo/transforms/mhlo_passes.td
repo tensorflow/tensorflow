@@ -329,6 +329,12 @@ def HloLegalizeToStablehloPass : Pass<"hlo-legalize-to-stablehlo", "ModuleOp"> {
   let summary = "Legalize HLO to StableHLO.";
   let constructor = "createHloLegalizeToStablehloPass()";
   let dependentDialects = ["stablehlo::StablehloDialect"];
+  let options = [
+    Option<"allow_experimental_features_", "allow-experimental-features",
+           "bool", /*default=*/"false",
+           "Allow legalization of experimental MHLO features via StableHLO "
+           "custom_call">
+  ];
 }
 
 def StablehloLegalizeToHloPass : Pass<"stablehlo-legalize-to-hlo", "ModuleOp"> {

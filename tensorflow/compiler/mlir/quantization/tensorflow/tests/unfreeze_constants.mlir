@@ -33,7 +33,7 @@ module attributes {tf_saved_model.semantics} {
 
 // -----
 
-// Tests the case when there's no tf_saved_model.sesion_initializer.
+// Tests the case when there's no tf_saved_model.session_initializer.
 module attributes {tf_saved_model.semantics} {
 
 // Check that a new tf_saved_model.session_initializer is created, along with an initialier function.
@@ -70,7 +70,7 @@ module attributes {tf_saved_model.semantics} {
 
 // -----
 
-// Tests the case when there's a tf_saved_model.sesion_initializer and an empty init function.
+// Tests the case when there's a tf_saved_model.session_initializer and an empty init function.
 module attributes {tf_saved_model.semantics} {
 
   "tf_saved_model.session_initializer"() {initializers = [@init]} : () -> ()
@@ -110,7 +110,7 @@ module attributes {tf_saved_model.semantics} {
 
 // -----
 
-// Tests the case when there's a tf_saved_model.sesion_initializer and an init function whose type is "init_op".
+// Tests the case when there's a tf_saved_model.session_initializer and an init function whose type is "init_op".
 module attributes {tf_saved_model.semantics} {
 
   "tf_saved_model.session_initializer"() {initializers = [@init]} : () -> ()

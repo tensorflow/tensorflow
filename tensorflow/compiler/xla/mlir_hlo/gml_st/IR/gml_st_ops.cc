@@ -22,7 +22,7 @@ limitations under the License.
 #include <tuple>
 #include <utility>
 
-#include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/MapVector.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/Sequence.h"
 #include "llvm/ADT/SmallVector.h"
@@ -30,15 +30,13 @@ limitations under the License.
 #include "llvm/Support/Casting.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Arith/Utils/Utils.h"
-#include "mlir/Dialect/MemRef/IR/MemRef.h"
-#include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/Dialect/Tensor/Utils/Utils.h"
 #include "mlir/Dialect/Vector/IR/VectorOps.h"
-#include "mlir/IR/IRMapping.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/DialectImplementation.h"
+#include "mlir/IR/IRMapping.h"
 #include "mlir/IR/ImplicitLocOpBuilder.h"
 #include "mlir/IR/OpDefinition.h"
 #include "mlir/IR/OpImplementation.h"
@@ -55,16 +53,17 @@ void printShapeTypeDimensionsList(AsmPrinter &printer,
   llvm::interleave(
       integers, printer,
       [&](int64_t val) {
-        if (val == ShapedType::kDynamic)
+        if (val == ShapedType::kDynamic) {
           printer << '?';
-        else
+        } else {
           printer << val;
+        }
       },
       "x");
 }
 
-ParseResult parseShapeTypeDimensionsList(
-    AsmParser &parser, FailureOr<SmallVector<int64_t>> &dims) {
+ParseResult parseShapeTypeDimensionsList(AsmParser &parser,
+                                         SmallVectorImpl<int64_t> &dims) {
   SmallVector<int64_t> vals;
   if (failed(parser.parseDimensionList(vals, /*allowDynamic=*/true,
                                        /*withTrailingX=*/false))) {
@@ -76,6 +75,46 @@ ParseResult parseShapeTypeDimensionsList(
 
 Type inferReturnType(ShapedType sourceType, ArrayRef<int64_t> tileShape) {
   return sourceType.clone(tileShape, sourceType.getElementType());
+}
+
+LogicalResult verifyCompatibleExtractedSubset(Operation *op,
+                                              ShapedType shapedType,
+                                              Type extractedType,
+                                              ArrayRef<int64_t> tileShape) {
+  auto sourceRank = shapedType.getRank();
+  auto elementType = shapedType.getElementType();
+
+  // If the result is a scalar, check that the tile had a single element.
+  if (!extractedType.isa<ShapedType>()) {
+    if (extractedType != elementType) {
+      return op->emitOpError("expected the result type ")
+             << extractedType << " to match source element type "
+             << elementType;
+    }
+    if (!ShapedType::isDynamicShape(tileShape) &&
+        ShapedType::getNumElements(tileShape) == 1)
+      return success();
+
+    return op->emitOpError("expected tile type ")
+           << tileShape << " to have a single element shape";
+  }
+
+  // If the result is a shaped type, compare with the inferred type.
+  auto extractedShapedType = extractedType.cast<ShapedType>();
+  unsigned tileRank = tileShape.size();
+  if (tileRank != sourceRank) {
+    return op->emitOpError("expected source rank = ")
+           << sourceRank << " to match tile rank = " << tileRank;
+  }
+
+  auto inferredType = shapedType.clone(tileShape, shapedType.getElementType());
+  if (extractedShapedType != inferredType) {
+    return op->emitOpError("expected result type = ")
+           << extractedShapedType
+           << " to match the inferred type = " << inferredType;
+  }
+
+  return success();
 }
 
 }  // namespace
@@ -164,46 +203,6 @@ void MaterializeOp::build(OpBuilder &b, OperationState &result, Value source,
   SmallVector<OpFoldResult> unitSizesAndStrides(offsets.size(),
                                                 b.getIndexAttr(1));
   build(b, result, source, offsets, unitSizesAndStrides, unitSizesAndStrides);
-}
-
-LogicalResult verifyCompatibleExtractedSubset(Operation *op,
-                                              ShapedType shapedType,
-                                              Type extractedType,
-                                              ArrayRef<int64_t> tileShape) {
-  auto sourceRank = shapedType.getRank();
-  auto elementType = shapedType.getElementType();
-
-  // If the result is a scalar, check that the tile had a single element.
-  if (!extractedType.isa<ShapedType>()) {
-    if (extractedType != elementType) {
-      return op->emitOpError("expected the result type ")
-             << extractedType << " to match source element type "
-             << elementType;
-    }
-    if (!ShapedType::isDynamicShape(tileShape) &&
-        ShapedType::getNumElements(tileShape) == 1)
-      return success();
-
-    return op->emitOpError("expected tile type ")
-           << tileShape << " to have a single element shape";
-  }
-
-  // If the result is a shaped type, compare with the inferred type.
-  auto extractedShapedType = extractedType.cast<ShapedType>();
-  int64_t tileRank = tileShape.size();
-  if (tileRank != sourceRank) {
-    return op->emitOpError("expected source rank = ")
-           << sourceRank << " to match tile rank = " << tileRank;
-  }
-
-  auto inferredType = shapedType.clone(tileShape, shapedType.getElementType());
-  if (extractedShapedType != inferredType) {
-    return op->emitOpError("expected result type = ")
-           << extractedShapedType
-           << " to match the inferred type = " << inferredType;
-  }
-
-  return success();
 }
 
 LogicalResult MaterializeOp::verify() {
@@ -298,7 +297,7 @@ void MaterializeOp::getCanonicalizationPatterns(RewritePatternSet &results,
 
 namespace {
 
-ParseResult parseForOpOutputArgs(
+ParseResult parseLoopLikeOpOutputArgs(
     OpAsmParser &parser, OperationState &result,
     SmallVectorImpl<OpAsmParser::UnresolvedOperand> &regionOperands,
     SmallVectorImpl<Type> &regionTypes, int32_t *outputCount) {
@@ -315,7 +314,7 @@ ParseResult parseForOpOutputArgs(
         parser.parseType(outputTypes.emplace_back())) {
       return failure();
     }
-    *outputCount = outputs.size();
+    *outputCount = static_cast<int32_t>(outputs.size());
     return success();
   };
   if (succeeded(parser.parseOptionalKeyword("outs"))) {
@@ -365,9 +364,14 @@ ParseResult parseLoopLikeOp(OpAsmParser &parser, OperationState &result) {
       parser.resolveOperands(steps, builder.getIndexType(), result.operands))
     return failure();
 
-  SmallVector<int32_t> segmentSizes{static_cast<int32_t>(lower.size()),
-                                    static_cast<int32_t>(upper.size()),
-                                    static_cast<int32_t>(steps.size())};
+  // Parse the output tensors and the body.
+  SmallVector<OpAsmParser::UnresolvedOperand, 4> regionOperands(ivs);
+  SmallVector<Type, 4> regionTypes(ivs.size(), builder.getIndexType());
+
+  int32_t outputCount = 0;
+  if (failed(parseLoopLikeOpOutputArgs(parser, result, regionOperands,
+                                       regionTypes, &outputCount)))
+    return failure();
 
   // Parse distribution type (only for ParallelOp)
   if (std::is_same<LoopTy, ParallelOp>::value) {
@@ -379,18 +383,6 @@ ParseResult parseLoopLikeOp(OpAsmParser &parser, OperationState &result) {
       result.addAttribute(ParallelOp::getDistributionTypeAttrName(result.name),
                           distributionType);
     }
-  }
-
-  // Parse the output tensors (only for ForOp) and the body.
-  SmallVector<OpAsmParser::UnresolvedOperand, 4> regionOperands(ivs);
-  SmallVector<Type, 4> regionTypes(ivs.size(), builder.getIndexType());
-
-  if (std::is_same<LoopTy, ForOp>::value) {
-    int32_t outputCount = 0;
-    if (parseForOpOutputArgs(parser, result, regionOperands, regionTypes,
-                             &outputCount))
-      return failure();
-    segmentSizes.push_back(outputCount);
   }
 
   SmallVector<OpAsmParser::Argument, 4> regionArgs;
@@ -409,9 +401,51 @@ ParseResult parseLoopLikeOp(OpAsmParser &parser, OperationState &result) {
 
   // Add segment sizes.
   result.addAttribute(LoopTy::getOperandSegmentSizeAttr(),
-                      builder.getDenseI32ArrayAttr(segmentSizes));
+                      builder.getDenseI32ArrayAttr(
+                          {static_cast<int32_t>(lower.size()),
+                           static_cast<int32_t>(upper.size()),
+                           static_cast<int32_t>(steps.size()), outputCount}));
 
   return success();
+}
+
+template <typename LoopTy>
+void buildLoopLikeOp(
+    OpBuilder &builder, OperationState &result, TypeRange resultTypes,
+    ValueRange lowerBounds, ValueRange upperBounds, ValueRange steps,
+    ValueRange outputs,
+    function_ref<void(OpBuilder &, Location, ValueRange, ValueRange)>
+        bodyBuilderFn) {
+  result.addOperands(lowerBounds);
+  result.addOperands(upperBounds);
+  result.addOperands(steps);
+  result.addOperands(outputs);
+  result.addTypes(resultTypes);
+  result.addAttribute(
+      LoopTy::getOperandSegmentSizeAttr(),
+      builder.getDenseI32ArrayAttr({static_cast<int32_t>(lowerBounds.size()),
+                                    static_cast<int32_t>(upperBounds.size()),
+                                    static_cast<int32_t>(steps.size()),
+                                    static_cast<int32_t>(outputs.size())}));
+
+  OpBuilder::InsertionGuard guard(builder);
+  unsigned numIvs = steps.size();
+  SmallVector<Type, 8> argTypes(numIvs, builder.getIndexType());
+  SmallVector<Location, 8> argLocs(numIvs, result.location);
+  for (Value output : outputs) {
+    argTypes.push_back(output.getType());
+    argLocs.push_back(output.getLoc());
+  }
+  Region *bodyRegion = result.addRegion();
+  Block *bodyBlock = builder.createBlock(bodyRegion, {}, argTypes, argLocs);
+
+  if (bodyBuilderFn) {
+    builder.setInsertionPointToStart(bodyBlock);
+    bodyBuilderFn(builder, result.location,
+                  bodyBlock->getArguments().take_front(numIvs),
+                  bodyBlock->getArguments().take_back(outputs.size()));
+    LoopTy::ensureTerminator(*bodyRegion, builder, result.location);
+  }
 }
 
 template <typename LoopLikeOp>
@@ -449,11 +483,7 @@ struct CollapseSingleIterationLoops : public OpRewritePattern<LoopLikeOp> {
       // Remove the loop if it performs zero iterations.
       if (lowerBoundConstant && upperBoundConstant &&
           *lowerBoundConstant == *upperBoundConstant) {
-        if constexpr (std::is_same_v<LoopLikeOp, ParallelOp>) {
-          rewriter.replaceOp(op, op.getTerminator().getDsts());
-        } else {
-          rewriter.replaceOp(op, op.getOutputs());
-        }
+        rewriter.replaceOp(op, op.getOutputs());
         return success();
       }
       // Replace the loop induction variable by the lower bound if the loop
@@ -473,9 +503,7 @@ struct CollapseSingleIterationLoops : public OpRewritePattern<LoopLikeOp> {
 
     // All of the loop dimensions perform a single iteration. Inline loop body.
     if (newLowerBounds.empty()) {
-      if constexpr (std::is_same_v<LoopLikeOp, ForOp>) {
-        mapping.map(op.getRegionOutputArgs(), op.getOutputs());
-      }
+      mapping.map(op.getRegionOutputArgs(), op.getOutputs());
       for (auto &bodyOp : op.getBody()->without_terminator()) {
         rewriter.clone(bodyOp, mapping);
       }
@@ -543,9 +571,10 @@ struct CollapseSingleIterationLoops : public OpRewritePattern<LoopLikeOp> {
     // Replace the loop by a lower-dimensional loop.
     LoopLikeOp newOp;
     if constexpr (std::is_same_v<LoopLikeOp, ParallelOp>) {
-      newOp =
-          rewriter.create<ParallelOp>(op.getLoc(), op.getResultTypes(),
-                                      newLowerBounds, newUpperBounds, newSteps);
+      auto parallelLoop = cast<ParallelOp>(op);
+      newOp = rewriter.create<ParallelOp>(op.getLoc(), op.getResultTypes(),
+                                          newLowerBounds, newUpperBounds,
+                                          newSteps, parallelLoop.getOutputs());
     } else {
       newOp = rewriter.create<ForOp>(op.getLoc(), op.getResultTypes(),
                                      newLowerBounds, newUpperBounds, newSteps,
@@ -582,45 +611,75 @@ SetYieldOp ParallelOp::getTerminator() {
   return cast<SetYieldOp>(getBody()->getTerminator());
 }
 
-LogicalResult ParallelOp::verify() { return success(); }
+LogicalResult ParallelOp::verify() {
+  if (getNumResults() != getNumOutputs()) {
+    return emitOpError() << "expected the number of output arguments to match "
+                            "the number of results";
+  }
+
+  // Check if types of output arguments match region args types.
+  for (auto &item : llvm::enumerate(
+           llvm::zip(getOutputs(), getRegionOutputArgs(), getResultTypes()))) {
+    Value output, outputRegionArg;
+    Type resultType;
+    unsigned index = item.index();
+    std::tie(output, outputRegionArg, resultType) = item.value();
+    if (output.getType() != outputRegionArg.getType()) {
+      return emitOpError("expected output arg ")
+             << index << " with type = " << output.getType()
+             << " to match region arg " << index + getNumLoops()
+             << " type = " << outputRegionArg.getType();
+    }
+    if (output.getType() != resultType) {
+      return emitOpError("expected output arg ")
+             << index << " with type = " << output.getType()
+             << " to match resultType " << index << " type = " << resultType;
+    }
+    auto terminator = getTerminator();
+    auto numDstOperands = terminator.getNumDstOperands();
+    if (index >= numDstOperands) {
+      const auto *s = index ? "s" : "";
+      return terminator.emitOpError("expected to have at least ")
+             << index + 1 << " destination operand" << s << " (currently "
+             << numDstOperands << ")";
+    }
+
+    if (terminator.getDstOperand(index)->get() != outputRegionArg) {
+      return terminator.emitOpError("expected output block argument ")
+             << index << " to match set_yield destination";
+    }
+  }
+  return success();
+}
 
 void ParallelOp::build(
     OpBuilder &builder, OperationState &result, TypeRange resultTypes,
     ValueRange lowerBounds, ValueRange upperBounds, ValueRange steps,
-    std::optional<StringAttr> distributionType,
-    function_ref<void(OpBuilder &, Location, ValueRange)> bodyBuilderFn) {
-  result.addOperands(lowerBounds);
-  result.addOperands(upperBounds);
-  result.addOperands(steps);
-  result.addTypes(resultTypes);
-  result.addAttribute(
-      ParallelOp::getOperandSegmentSizeAttr(),
-      builder.getDenseI32ArrayAttr({static_cast<int32_t>(lowerBounds.size()),
-                                    static_cast<int32_t>(upperBounds.size()),
-                                    static_cast<int32_t>(steps.size())}));
-
+    ValueRange outputs, std::optional<StringAttr> distributionType,
+    function_ref<void(OpBuilder &, Location, ValueRange, ValueRange)>
+        bodyBuilderFn) {
   if (distributionType.has_value())
     result.addAttribute(getDistributionTypeAttrName(result.name),
                         distributionType.value());
 
-  OpBuilder::InsertionGuard guard(builder);
-  unsigned numIvs = steps.size();
-  SmallVector<Type, 8> argTypes(numIvs, builder.getIndexType());
-  SmallVector<Location, 8> argLocs(numIvs, result.location);
-  Region *bodyRegion = result.addRegion();
-  Block *bodyBlock = builder.createBlock(bodyRegion, {}, argTypes, argLocs);
-
-  if (bodyBuilderFn) {
-    builder.setInsertionPointToStart(bodyBlock);
-    bodyBuilderFn(builder, result.location,
-                  bodyBlock->getArguments().take_front(numIvs));
-    ParallelOp::ensureTerminator(*bodyRegion, builder, result.location);
-  }
+  buildLoopLikeOp<ParallelOp>(builder, result, resultTypes, lowerBounds,
+                              upperBounds, steps, outputs, bodyBuilderFn);
 }
 
 void ParallelOp::print(OpAsmPrinter &p) {
   p << " (" << getInductionVars() << ") = (" << getLowerBound() << ") to ("
     << getUpperBound() << ") step (" << getStep() << ") ";
+
+  if (!getOutputs().empty()) {
+    p << "outs (";
+    llvm::interleaveComma(
+        llvm::zip(getRegionOutputArgs(), getOutputs()), p, [&](auto it) {
+          Value outputRegionArg, output;
+          std::tie(outputRegionArg, output) = it;
+          p << outputRegionArg << " = " << output << ": " << output.getType();
+        });
+    p << ") ";
+  }
 
   if (getDistributionType().has_value())
     p << "distribution (" << getDistributionTypeAttr() << ") ";
@@ -641,15 +700,110 @@ ParseResult ParallelOp::parse(OpAsmParser &parser, OperationState &result) {
   return parseLoopLikeOp<ParallelOp>(parser, result);
 }
 
-ValueRange ParallelOp::getLoopLikeOpInits() {
-  return getTerminator().getDsts();
-}
+namespace {
+
+/// Fold tensor.dim(gml_st.parallel outs(... = %t)) to tensor.dim(%t).
+struct DimOfParallelOp : public OpRewritePattern<tensor::DimOp> {
+  using OpRewritePattern<tensor::DimOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(tensor::DimOp dimOp,
+                                PatternRewriter &rewriter) const final {
+    auto parallelOp = dimOp.getSource().getDefiningOp<ParallelOp>();
+    if (!parallelOp) return failure();
+
+    OpOperand &out =
+        parallelOp.getOpOperandForResult(dimOp.getSource().cast<OpResult>());
+    rewriter.updateRootInPlace(
+        dimOp, [&]() { dimOp.getSourceMutable().assign(out.get()); });
+    return success();
+  }
+};
+
+/// Fold tensor.casts into the output arguments of gml_st.parallel.
+struct FoldTensorCastIntoParallelOp
+    : public OpRewritePattern<gml_st::ParallelOp> {
+  using OpRewritePattern<gml_st::ParallelOp>::OpRewritePattern;
+
+  struct TypeCast {
+    Type srcType;
+    Type dstType;
+  };
+
+  LogicalResult matchAndRewrite(gml_st::ParallelOp parallelOp,
+                                PatternRewriter &rewriter) const final {
+    llvm::SmallMapVector<unsigned, TypeCast, 2> tensorCastProducers;
+    llvm::SmallVector<Value> newOutputTensors = parallelOp.getOutputs();
+    for (auto &en : llvm::enumerate(newOutputTensors)) {
+      if (auto castOp = en.value().getDefiningOp<tensor::CastOp>()) {
+        tensorCastProducers[en.index()] =
+            TypeCast{castOp.getSource().getType(), castOp.getType()};
+        en.value() = castOp.getSource();
+      }
+    }
+
+    if (tensorCastProducers.empty()) return failure();
+
+    // Create new loop.
+    Location loc = parallelOp.getLoc();
+    std::optional<StringAttr> distTypeAttr;
+    if (auto distType = parallelOp.getDistributionType())
+      distTypeAttr = rewriter.getStringAttr(*distType);
+    auto newParallelOp = rewriter.create<ParallelOp>(
+        loc, TypeRange{ValueRange{newOutputTensors}},
+        parallelOp.getLowerBound(), parallelOp.getUpperBound(),
+        parallelOp.getStep(), newOutputTensors, distTypeAttr, nullptr);
+
+    Block *loopBody = newParallelOp.getBody();
+
+    // Cast bbArgs back to the original types.
+    OpBuilder::InsertionGuard g(rewriter);
+    rewriter.setInsertionPointToStart(loopBody);
+    SmallVector<Value> castBBArgs =
+        ValueRange{newParallelOp.getRegionOutputArgs()};
+    for (auto &item : tensorCastProducers) {
+      Value &oldTypeBBArg = castBBArgs[item.first];
+      oldTypeBBArg = rewriter.create<tensor::CastOp>(loc, item.second.dstType,
+                                                     oldTypeBBArg);
+    }
+
+    // Move old body into new parallel loop.
+    SmallVector<Value> blockArgs = newParallelOp.getInductionVars();
+    blockArgs.append(castBBArgs);
+    rewriter.mergeBlocks(parallelOp.getBody(), loopBody, blockArgs);
+
+    // Cast `set_yield` destination operands to the new types.
+    SetYieldOp terminator = newParallelOp.getTerminator();
+    rewriter.setInsertionPoint(terminator);
+    SmallVector<Value> castDsts = terminator.getDsts();
+    for (auto &item : tensorCastProducers) {
+      Value &newTypeDsts = castDsts[item.first];
+      newTypeDsts = rewriter.create<tensor::CastOp>(loc, item.second.srcType,
+                                                    newTypeDsts);
+    }
+    terminator.getDstsMutable().assign(castDsts);
+
+    // Cast results back to the original types.
+    rewriter.setInsertionPointAfter(newParallelOp);
+    SmallVector<Value> castResults = newParallelOp.getResults();
+    for (auto &item : tensorCastProducers) {
+      Value &oldTypeResult = castResults[item.first];
+      oldTypeResult = rewriter.create<tensor::CastOp>(loc, item.second.dstType,
+                                                      oldTypeResult);
+    }
+    rewriter.replaceOp(parallelOp, castResults);
+
+    return success();
+  }
+};
+
+}  // namespace
 
 void ParallelOp::getCanonicalizationPatterns(RewritePatternSet &results,
                                              MLIRContext *context) {
   results.add<CollapseSingleIterationLoops<ParallelOp>>(
       context,
       [&](ParallelOp op) { return !op.getDistributionType().has_value(); });
+  results.add<DimOfParallelOp, FoldTensorCastIntoParallelOp>(context);
 }
 
 //===----------------------------------------------------------------------===//
@@ -663,17 +817,28 @@ SetYieldOp ForOp::getTerminator() {
 }
 
 LogicalResult ForOp::verify() {
+  if (getNumResults() != getNumOutputs()) {
+    return emitOpError() << "expected the number of output arguments to match "
+                            "the number of results";
+  }
+
   // Check if types of output arguments match region args types.
-  for (auto &item :
-       llvm::enumerate(llvm::zip(getOutputs(), getRegionOutputArgs()))) {
+  for (auto &item : llvm::enumerate(
+           llvm::zip(getOutputs(), getRegionOutputArgs(), getResultTypes()))) {
     Value output, outputRegionArg;
+    Type resultType;
     unsigned index = item.index();
-    std::tie(output, outputRegionArg) = item.value();
+    std::tie(output, outputRegionArg, resultType) = item.value();
     if (output.getType() != outputRegionArg.getType()) {
       return emitOpError("expected output arg ")
              << index << " with type = " << output.getType()
              << " to match region arg " << index + getNumLoops()
              << " type = " << outputRegionArg.getType();
+    }
+    if (output.getType() != resultType) {
+      return emitOpError("expected output arg ")
+             << index << " with type = " << output.getType()
+             << " to match resultType " << index << " type = " << resultType;
     }
     auto terminator = getTerminator();
     auto numDstOperands = terminator.getNumDstOperands();
@@ -698,36 +863,8 @@ void ForOp::build(
     ValueRange outputs,
     function_ref<void(OpBuilder &, Location, ValueRange, ValueRange)>
         bodyBuilderFn) {
-  result.addOperands(lowerBounds);
-  result.addOperands(upperBounds);
-  result.addOperands(steps);
-  result.addOperands(outputs);
-  result.addTypes(resultTypes);
-  result.addAttribute(
-      ForOp::getOperandSegmentSizeAttr(),
-      builder.getDenseI32ArrayAttr({static_cast<int32_t>(lowerBounds.size()),
-                                    static_cast<int32_t>(upperBounds.size()),
-                                    static_cast<int32_t>(steps.size()),
-                                    static_cast<int32_t>(outputs.size())}));
-
-  OpBuilder::InsertionGuard guard(builder);
-  unsigned numIvs = steps.size();
-  SmallVector<Type, 8> argTypes(numIvs, builder.getIndexType());
-  SmallVector<Location, 8> argLocs(numIvs, result.location);
-  for (Value output : outputs) {
-    argTypes.push_back(output.getType());
-    argLocs.push_back(output.getLoc());
-  }
-  Region *bodyRegion = result.addRegion();
-  Block *bodyBlock = builder.createBlock(bodyRegion, {}, argTypes, argLocs);
-
-  if (bodyBuilderFn) {
-    builder.setInsertionPointToStart(bodyBlock);
-    bodyBuilderFn(builder, result.location,
-                  bodyBlock->getArguments().take_front(numIvs),
-                  bodyBlock->getArguments().take_back(outputs.size()));
-    ForOp::ensureTerminator(*bodyRegion, builder, result.location);
-  }
+  buildLoopLikeOp<ForOp>(builder, result, resultTypes, lowerBounds, upperBounds,
+                         steps, outputs, bodyBuilderFn);
 }
 
 void ForOp::print(OpAsmPrinter &p) {

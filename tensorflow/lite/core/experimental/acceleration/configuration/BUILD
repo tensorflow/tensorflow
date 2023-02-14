@@ -1,3 +1,4 @@
+load("//tensorflow/lite/core:special_rules.bzl", "delegate_registry_visibility_allowlist")
 load("//tensorflow/lite/core/c:special_rules.bzl", "experimental_acceleration_api_allowlist")
 
 package(
@@ -11,7 +12,7 @@ cc_library(
     hdrs = ["delegate_registry.h"],
     visibility = [
         "//tensorflow/lite:__subpackages__",
-    ],
+    ] + delegate_registry_visibility_allowlist(),
     deps = [
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/experimental/acceleration/configuration:configuration_fbs",

@@ -59,6 +59,8 @@ cc_library(
         "//tensorflow/tsl/platform:env",
         "//tensorflow/tsl/platform:path",
         "//tensorflow/tsl/platform:status",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
@@ -94,11 +96,7 @@ cc_library(
 # Exports python symbols via pybind11.
 tf_python_pybind_extension(
     name = "pywrap_quantize_model",
-    srcs = [
-        "pywrap_quantize_model.cc",
-        "quantize_model_wrapper.cc",
-        "quantize_model_wrapper.h",  # Private header.
-    ],
+    srcs = ["pywrap_quantize_model.cc"],
     # All deps must be header-only.
     deps = [
         ":quantize_model_cc",
@@ -143,12 +141,13 @@ pytype_strict_library(
         "//tensorflow/python:variables",
         "//tensorflow/python/client:session",
         "//tensorflow/python/framework:dtypes",
-        "//tensorflow/python/framework:tensor_shape",
         "//tensorflow/python/lib/io:lib",
         "//tensorflow/python/saved_model:builder",
         "//tensorflow/python/saved_model:constants",
         "//tensorflow/python/saved_model:loader",
         "//tensorflow/python/saved_model:tag_constants",
+        "//tensorflow/python/training:saver",
+        "//tensorflow/python/training:training_lib",
         "//tensorflow/python/types",
         "@absl_py//absl/logging",
     ],
@@ -273,7 +272,7 @@ pytype_strict_library(
 tf_py_test(
     name = "representative_dataset_test",
     srcs = ["representative_dataset_test.py"],
-    tags = ["no_pip"],  # b/241528672
+    tags = ["no_pip"],
     deps = [
         ":representative_dataset",
         "//tensorflow/python/client:session",

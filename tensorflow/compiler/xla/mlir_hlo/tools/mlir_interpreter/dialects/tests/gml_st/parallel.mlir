@@ -6,9 +6,10 @@ func.func @yield_scalar() -> tensor<8xindex> {
   %c8 = arith.constant 8 : index
 
   %init = tensor.empty() : tensor<8xindex>
-  %iota = gml_st.parallel (%i) = (%c0) to (%c8) step (%c1) {
+  %iota = gml_st.parallel (%i) = (%c0) to (%c8) step (%c1)
+      outs (%out_ = %init: tensor<8xindex>) {
     %tile = gml_st.tile [%i] [1] [1] : !gml_st.tile<1>
-    gml_st.set_yield %i into %init[%tile]
+    gml_st.set_yield %i into %out_[%tile]
       : index into tensor<8xindex>[!gml_st.tile<1>]
   } : tensor<8xindex>
   func.return %iota : tensor<8xindex>

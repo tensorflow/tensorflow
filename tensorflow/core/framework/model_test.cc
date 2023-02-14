@@ -16,8 +16,10 @@ limitations under the License.
 #include "tensorflow/core/framework/model.h"
 
 #include <algorithm>
+#include <cstdlib>
 #include <memory>
 #include <string>
+#include <tuple>
 #include <utility>
 
 #include "tensorflow/core/framework/cancellation.h"
@@ -1364,6 +1366,45 @@ TEST(ModelTest, ModelMetrics) {
                     HasSubstr("autotune: true")));
 }
 
+TEST(ModelTest, ModelCollectOptimizationMetrics) {
+  CellReader<std::string> cell_reader("/tensorflow/data/model");
+  model::Model model;
+  std::shared_ptr<Node> root = model::MakeUnknownNode({0, "unknown0", nullptr});
+  model.AddNode([&root](model::Node::Args args) { return root; }, root->name(),
+                nullptr, &root);
+  model.output()->record_element();
+  model.output()->record_start(100);
+  model.output()->record_stop(200);
+  std::string model_id = strings::StrCat(reinterpret_cast<uintptr_t>(&model));
+  // Before optimization, whatever metrics collected are returned.
+  EXPECT_THAT(cell_reader.Read(model_id),
+              AllOf(HasSubstr("key: 0"), HasSubstr("name: \"unknown0\""),
+                    HasSubstr("autotune: true"), HasSubstr("num_elements: 1"),
+                    HasSubstr("processing_time: 100")));
+  CancellationManager cancellation_manager;
+  model.Optimize(AutotuneAlgorithm::STAGE_BASED, /*cpu_budget=*/20,
+                 /*ram_budget=*/1000, /*model_input_time=*/50,
+                 &cancellation_manager);
+  model.output()->record_element();
+  model.output()->record_start(300);
+  model.output()->record_stop(400);
+  // After optimization, metrics collected just before optimization are
+  // returned. Metrics collected after optimization are not returned.
+  EXPECT_THAT(cell_reader.Read(model_id),
+              AllOf(HasSubstr("key: 0"), HasSubstr("name: \"unknown0\""),
+                    HasSubstr("autotune: true"), HasSubstr("num_elements: 1"),
+                    HasSubstr("processing_time: 100")));
+  // Call optimization again. Metrics collected after the first optimization
+  // should be returned as well.
+  model.Optimize(AutotuneAlgorithm::STAGE_BASED, /*cpu_budget=*/20,
+                 /*ram_budget=*/1000, /*model_input_time=*/50,
+                 &cancellation_manager);
+  EXPECT_THAT(cell_reader.Read(model_id),
+              AllOf(HasSubstr("key: 0"), HasSubstr("name: \"unknown0\""),
+                    HasSubstr("autotune: true"), HasSubstr("num_elements: 2"),
+                    HasSubstr("processing_time: 200")));
+}
+
 TEST(ModelTest, ModelCollectAndDestroyRaceCondition) {
   CellReader<std::string> cell_reader("/tensorflow/data/model");
   auto* model = new model::Model();
@@ -2393,7 +2434,8 @@ TEST_F(ModelTimingTest, OptimizeStageBased_OneStage) {
         id: 1
         name: "ParallelMapV2"
         autotune: true
-        num_elements: 100
+        num_elements: 97
+        buffered_elements: 3
         processing_time: 5000
         bytes_produced: 10000
         node_class: ASYNC_KNOWN_RATIO
@@ -2430,7 +2472,6 @@ TEST_F(ModelTimingTest, OptimizeStageBased_OneStage) {
         num_elements: 100
         processing_time: 1000
         node_class: KNOWN_RATIO
-        ratio: 2
       }
     }
     output: 1
@@ -2761,16 +2802,32 @@ TEST_F(ModelTimingTest, OptimizeStageBased_PipelineRatioLessThanOne) {
 TEST_F(ModelTimingTest, ComputeTargetTime) {
   model_ = std::make_unique<Model>();
 
+  model_->RecordIteratorGapTime(5);
+  model_->RecordIteratorGapTime(5);
   model_->RecordIteratorGapTime(10);
-  model_->RecordIteratorGapTime(10);
-  model_->RecordIteratorGapTime(10);
-  model_->RecordIteratorGapTime(10);
-  model_->RecordIteratorGapTime(10);
+  model_->RecordIteratorGapTime(15);
+  model_->RecordIteratorGapTime(15);
   model_->RecordIteratorGapTime(1000);
   // Gap times that are >= 10 seconds are always dropped.
   model_->RecordIteratorGapTime(10000000);
 
   EXPECT_DOUBLE_EQ(10, model_->ComputeTargetTimeNsec() * 1e-3);
+}
+
+TEST_F(ModelTimingTest, ComputeTargetTime_Experiment) {
+  model_ = std::make_unique<Model>();
+  model_->AddExperiment("stage_based_autotune_v2");
+
+  model_->RecordIteratorGapTime(5);
+  model_->RecordIteratorGapTime(5);
+  model_->RecordIteratorGapTime(10);
+  model_->RecordIteratorGapTime(15);
+  model_->RecordIteratorGapTime(15);
+  model_->RecordIteratorGapTime(1000);
+  // Gap times that are >= 10 seconds are always dropped.
+  model_->RecordIteratorGapTime(10000000);
+
+  EXPECT_DOUBLE_EQ(5, model_->ComputeTargetTimeNsec() * 1e-3);
 }
 
 TEST_F(ModelTimingTest, ComputeTargetTime_NoOutlier) {

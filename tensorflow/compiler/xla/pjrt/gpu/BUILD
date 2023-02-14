@@ -83,6 +83,7 @@ xla_cc_test(
         "//tensorflow/compiler/xla/service:hlo_parser",
         "//tensorflow/compiler/xla/tests:literal_test_util",
         "//tensorflow/tsl/platform:test_main",
+        "@com_google_absl//absl/strings",
     ],
 )
 

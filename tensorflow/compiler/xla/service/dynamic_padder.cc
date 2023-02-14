@@ -1850,14 +1850,39 @@ StatusOr<HloInstruction*> InsertPadToStaticOnInstruction(HloInstruction* inst) {
 
 // Inserts PadToStatic for parameters and custom-calls which "materialize"
 // dynamic outputs given only static inputs.
-Status InsertPadToStaticAfterModuleInputs(HloModule* module) {
+Status InsertPadToStaticAfterModuleInputs(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
   std::vector<HloInstruction*> params;
   HloComputation* entry = module->entry_computation();
   for (HloComputation* comp : module->MakeNonfusionComputationsSorted()) {
+    if (!HloInstruction::IsThreadIncluded(comp->execution_thread(),
+                                          execution_threads)) {
+      continue;
+    }
     for (HloInstruction* instr : comp->instructions()) {
+      auto should_do_pad_to_static =
+          [&execution_threads](HloInstruction* instr) {
+            for (auto user : instr->users()) {
+              if (user->opcode() == HloOpcode::kAsyncStart) {
+                if (HloInstruction::IsThreadIncluded(
+                        user->async_execution_thread(), execution_threads)) {
+                  return true;
+                }
+              } else {
+                return true;
+              }
+            }
+            // If there are users, they must be the bypassing cases. Don't to
+            // pad-to-static.
+            return instr->users().empty();
+          };
+
       if (!instr->shape().is_static() &&
           ((instr->opcode() == HloOpcode::kParameter && comp == entry) ||
-           instr->opcode() == HloOpcode::kCustomCall) &&
+           instr->opcode() == HloOpcode::kCustomCall ||
+           instr->opcode() == HloOpcode::kAsyncDone) &&
+          should_do_pad_to_static(instr) &&
           absl::c_all_of(instr->operands(), [&](HloInstruction* operand) {
             return operand->shape().is_static();
           })) {
@@ -1909,6 +1934,9 @@ class DynamicShapeRemovingVisitor : public DfsHloVisitorWithDefault {
   Status HandleGetTupleElement(HloInstruction* hlo) override;
 
   Status HandleParameter(HloInstruction* hlo) override;
+
+  Status HandleAsyncStart(HloInstruction* hlo) override;
+  Status HandleAsyncDone(HloInstruction* hlo) override;
 
   static Status Run(HloComputation* computation,
                     const DynamicPadderOptions::OpSupportsDynamismHandler&
@@ -2113,6 +2141,16 @@ Status DynamicShapeRemovingVisitor::HandleCustomCall(HloInstruction* hlo) {
   return DefaultAction(hlo);
 }
 
+Status DynamicShapeRemovingVisitor::HandleAsyncStart(HloInstruction* hlo) {
+  // async-start is handled specially in InsertPadToStaticAfterModuleInputs().
+  return OkStatus();
+}
+
+Status DynamicShapeRemovingVisitor::HandleAsyncDone(HloInstruction* hlo) {
+  // async-done is handled specially in InsertPadToStaticAfterModuleInputs().
+  return OkStatus();
+}
+
 }  // namespace
 
 StatusOr<bool> DynamicPadder::Run(
@@ -2152,7 +2190,8 @@ StatusOr<bool> DynamicPadder::Run(
         return OkStatus();
       }));
 
-  TF_RETURN_IF_ERROR(InsertPadToStaticAfterModuleInputs(module));
+  TF_RETURN_IF_ERROR(
+      InsertPadToStaticAfterModuleInputs(module, execution_threads));
   TF_ASSIGN_OR_RETURN(
       DynamicDimensionInference dynamic_dimension_inference,
       DynamicDimensionInference::Run(module, options_.custom_call_handler,

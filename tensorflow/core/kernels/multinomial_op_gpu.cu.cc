@@ -82,6 +82,9 @@ struct MultinomialFunctor<GPUDevice, T, OutputType> {
     Eigen::IndexList<Eigen::type2index<1>, int, Eigen::type2index<1>> oso;
     oso.set(1, num_samples);
 
+    Eigen::IndexList<int> flat_shape;
+    flat_shape.set(0, batch_size * num_samples * num_classes);
+
     // Calculates "scores = logits - log(-log(noises))"; B*C*S elements.
     // NOTE: we don't store back to "noises" because having it appear on both
     // sides is potentially unsafe (e.g. Eigen may use ldg() to load RHS data).
@@ -89,9 +92,12 @@ struct MultinomialFunctor<GPUDevice, T, OutputType> {
     // not affect any of the other numbers (smallest is ~1e-7), but not so small
     // that log(x) == -inf, which is why it needs to be larger than 0 in the
     // first place.
-    To32Bit(scores).device(d) =
-        To32Bit(logits).reshape(boc).broadcast(oso).template cast<float>() -
-        ((-((To32Bit(noises) + 2e-30f).log())).log());
+    To32Bit(scores).device(d) = To32Bit(logits)
+                                    .reshape(boc)
+                                    .broadcast(oso)
+                                    .template cast<float>()
+                                    .reshape(flat_shape) -
+                                ((-((To32Bit(noises) + 2e-30f).log())).log());
 
     // Max-reduce along classes for each (batch, sample).
     typedef const Eigen::array<TTypes<float>::Tensor::Index, 1>& ReductionAxes;

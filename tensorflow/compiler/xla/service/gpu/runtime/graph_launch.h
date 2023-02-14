@@ -27,7 +27,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/stream_executor/stream_executor.h"
 
 #if GOOGLE_CUDA
-#include "third_party/gpus/cuda/include/cuda_runtime_api.h"
+#include "tensorflow/compiler/xla/stream_executor/cuda/cuda_graph.h"
 #endif  // #if GOOGLE_CUDA
 
 namespace xla {
@@ -45,33 +45,18 @@ class StreamExecutorGraphInstances;  // Forward declare
 // A state vector that owns all instantiated CUDA graphs. Graph capture function
 // ordinal is the key in this container.
 class StreamExecutorGraphInstances
-    : public runtime::StateVector<GraphInstance> {
-  // Deleters for CUDA graph and graph exec instance that check the returned
-  // status and terminate if it's not `cudaSuccess`.
-  struct DestroyGraph {
-    void operator()(cudaGraph_t);
-  };
-  struct DestroyGraphExec {
-    void operator()(cudaGraphExec_t);
-  };
-
- public:
-  using OwnedGraph =
-      std::unique_ptr<std::remove_pointer_t<cudaGraph_t>, DestroyGraph>;
-  using OwnedGraphExec =
-      std::unique_ptr<std::remove_pointer_t<cudaGraphExec_t>, DestroyGraphExec>;
-};
+    : public runtime::StateVector<GraphInstance> {};
 
 // Instantiated CUDA graph instance guarded with a mutex for exclusive access.
 struct GraphInstance {
-  GraphInstance(size_t ptr_hash, cudaGraphExec_t exec)
-      : ptr_hash(ptr_hash), exec(exec), mutex(new absl::Mutex) {}
+  GraphInstance(size_t ptr_hash, se::gpu::OwnedCudaGraphExec exec)
+      : ptr_hash(ptr_hash), exec(std::move(exec)), mutex(new absl::Mutex) {}
 
   // Graph instance is fully identified by the hash of its pointer arguments
   // because currently it's guaranteed that all shapes and launch dimensions
   // will be constant from run to run.
   size_t ptr_hash ABSL_GUARDED_BY(*mutex);
-  StreamExecutorGraphInstances::OwnedGraphExec exec ABSL_GUARDED_BY(*mutex);
+  se::gpu::OwnedCudaGraphExec exec ABSL_GUARDED_BY(*mutex);
 
   // Access to a graph instance must be synchronized, because we potentially can
   // run concurrent graph instance updates.

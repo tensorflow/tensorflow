@@ -289,7 +289,7 @@ tsl::Status Stream::RefreshStatus() {
   tsl::Status status = parent_->GetStatus(this);
   // We should not put the stream in an error state, just because the GetStatus
   // method is unimplemented.
-  if (status != tsl::Status(port::error::UNIMPLEMENTED,
+  if (status != tsl::Status(tsl::error::UNIMPLEMENTED,
                             "GetStatus is not supported on this executor.")) {
     CheckStatus(status);
   }
@@ -2534,7 +2534,7 @@ tsl::Status Stream::BlockHostUntilDone() {
     absl::MutexLock lock(&mu_);
     LOG(INFO) << status_.ToString();
     tsl::Status status = tsl::Status(
-        port::error::INTERNAL,
+        tsl::error::INTERNAL,
         "stream did not block host until done; was already in an error state");
     LOG(INFO) << DebugStreamPointers() << " " << status;
     return status;

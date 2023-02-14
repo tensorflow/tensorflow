@@ -74,7 +74,7 @@ std::string CompileHloConvAndGetMlir(absl::string_view hlo_text) {
     mlir::PassManager pm(mlir_module->getContext());
     pm.addPass(mlir::createLowerAffinePass());
     pm.addPass(mlir::createConvertSCFToCFPass());
-    pm.addPass(mlir::createMemRefToLLVMConversionPass());
+    pm.addPass(mlir::createFinalizeMemRefToLLVMConversionPass());
     pm.addPass(mlir::createConvertFuncToLLVMPass());
     CHECK(mlir::succeeded(pm.run(*mlir_module)));
   }

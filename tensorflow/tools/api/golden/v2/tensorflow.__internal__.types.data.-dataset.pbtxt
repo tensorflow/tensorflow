@@ -1,0 +1,8 @@
+path: "tensorflow.__internal__.types.data.Dataset"
+tf_class {
+  is_instance: "<class \'tensorflow.python.types.data.DatasetV2\'>"
+  is_instance: "<class \'abc.ABC\'>"
+  member_method {
+    name: "__init__"
+  }
+}

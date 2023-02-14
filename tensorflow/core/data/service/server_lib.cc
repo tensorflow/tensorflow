@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/data/service/server_lib.h"
 
+#include <iterator>
 #include <memory>
 #include <string>
 #include <utility>
@@ -22,6 +23,7 @@ limitations under the License.
 
 #include "grpcpp/server.h"
 #include "grpcpp/server_builder.h"
+#include "tensorflow/core/data/service/common.pb.h"
 #include "tensorflow/core/data/service/credentials_factory.h"
 #include "tensorflow/core/data/service/export.pb.h"
 #include "tensorflow/core/data/service/grpc_dispatcher_impl.h"
@@ -37,7 +39,7 @@ constexpr char kPortPlaceholder[] = "%port%";
 }
 
 GrpcDataServerBase::GrpcDataServerBase(
-    int port, const std::string& protocol, const std::string server_type,
+    int port, const std::string& protocol, const std::string& server_type,
     std::vector<std::unique_ptr<::grpc::ServerBuilderOption>> options)
     : requested_port_(port),
       protocol_(protocol),
@@ -134,6 +136,22 @@ Status DispatchGrpcDataServer::NumWorkers(int* num_workers) {
   return OkStatus();
 }
 
+Status DispatchGrpcDataServer::SnapshotStreams(
+    const std::string& path, std::vector<SnapshotStreamInfoWrapper>* streams) {
+  GetSnapshotStreamsRequest req;
+  req.set_path(path);
+  GetSnapshotStreamsResponse resp;
+  ::grpc::ServerContext ctx;
+  ::grpc::Status s = service_->GetSnapshotStreams(&ctx, &req, &resp);
+  if (!s.ok()) {
+    return grpc_util::WrapError("Failed to get snapshot streams", s);
+  }
+  for (const auto& stream : resp.streams()) {
+    streams->push_back(SnapshotStreamInfoWrapper(stream));
+  }
+  return OkStatus();
+}
+
 size_t DispatchGrpcDataServer::NumActiveIterations() {
   return service_->NumActiveIterations();
 }
@@ -195,6 +213,21 @@ Status WorkerGrpcDataServer::NumTasks(int* num_tasks) {
     return grpc_util::WrapError("Failed to get tasks", s);
   }
   *num_tasks = resp.tasks_size();
+  return OkStatus();
+}
+
+Status WorkerGrpcDataServer::SnapshotTaskProgresses(
+    std::vector<SnapshotTaskProgressWrapper>* snapshot_task_progresses) {
+  GetSnapshotTaskProgressesRequest req;
+  GetSnapshotTaskProgressesResponse resp;
+  ::grpc::ServerContext ctx;
+  ::grpc::Status s = service_->GetSnapshotTaskProgresses(&ctx, &req, &resp);
+  if (!s.ok()) {
+    return grpc_util::WrapError("Failed to get tasks", s);
+  }
+  for (const auto& progress : resp.snapshot_task_progresses()) {
+    snapshot_task_progresses->push_back(SnapshotTaskProgressWrapper(progress));
+  }
   return OkStatus();
 }
 

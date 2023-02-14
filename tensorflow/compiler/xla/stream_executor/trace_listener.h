@@ -21,7 +21,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/stream_executor/device_memory.h"
 #include "tensorflow/compiler/xla/stream_executor/kernel.h"
 #include "tensorflow/compiler/xla/stream_executor/launch_dim.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/status.h"
+#include "tensorflow/tsl/platform/status.h"
 
 namespace stream_executor {
 

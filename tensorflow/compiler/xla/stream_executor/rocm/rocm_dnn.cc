@@ -31,11 +31,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/stream_executor/gpu/gpu_executor.h"
 #include "tensorflow/compiler/xla/stream_executor/gpu/gpu_stream.h"
 #include "tensorflow/compiler/xla/stream_executor/gpu/gpu_timer.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/env.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/error.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/initialize.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/threadpool.h"
 #include "tensorflow/compiler/xla/stream_executor/platform/dso_loader.h"
+#include "tensorflow/compiler/xla/stream_executor/platform/initialize.h"
 #include "tensorflow/compiler/xla/stream_executor/platform/logging.h"
 #include "tensorflow/compiler/xla/stream_executor/plugin_registry.h"
 #include "tensorflow/compiler/xla/stream_executor/rocm/rocm_diagnostics.h"
@@ -43,6 +40,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/stream_executor/scratch_allocator.h"
 #include "tensorflow/compiler/xla/stream_executor/stream.h"
 #include "tensorflow/compiler/xla/stream_executor/stream_executor_pimpl.h"
+#include "tensorflow/tsl/platform/env.h"
+#include "tensorflow/tsl/platform/errors.h"
 #include "tensorflow/tsl/platform/hash.h"
 #include "tensorflow/tsl/util/determinism.h"
 #include "tensorflow/tsl/util/env_var.h"
@@ -223,31 +222,31 @@ namespace wrap {
 
 #else
 
-#define STREAM_EXECUTOR_MIOPEN_WRAP(__name)                               \
-  struct DynLoadShim__##__name {                                          \
-    static const char* kName;                                             \
-    using FuncPtrT = std::add_pointer<decltype(::__name)>::type;          \
-    static void* GetDsoHandle() {                                         \
-      auto s = internal::CachedDsoLoader::GetMiopenDsoHandle();           \
-      return s.value();                                              \
-    }                                                                     \
-    static FuncPtrT LoadOrDie() {                                         \
-      void* f;                                                            \
-      auto s = port::Env::Default()->GetSymbolFromLibrary(GetDsoHandle(), \
-                                                          kName, &f);     \
-      CHECK(s.ok()) << "could not find " << kName                         \
-                    << " in miopen DSO; dlerror: " << s.error_message();  \
-      return reinterpret_cast<FuncPtrT>(f);                               \
-    }                                                                     \
-    static FuncPtrT DynLoad() {                                           \
-      static FuncPtrT f = LoadOrDie();                                    \
-      return f;                                                           \
-    }                                                                     \
-    template <typename... Args>                                           \
-    miopenStatus_t operator()(Args... args) {                             \
-      return DynLoad()(args...);                                          \
-    }                                                                     \
-  } __name;                                                               \
+#define STREAM_EXECUTOR_MIOPEN_WRAP(__name)                              \
+  struct DynLoadShim__##__name {                                         \
+    static const char* kName;                                            \
+    using FuncPtrT = std::add_pointer<decltype(::__name)>::type;         \
+    static void* GetDsoHandle() {                                        \
+      auto s = internal::CachedDsoLoader::GetMiopenDsoHandle();          \
+      return s.value();                                                  \
+    }                                                                    \
+    static FuncPtrT LoadOrDie() {                                        \
+      void* f;                                                           \
+      auto s = tsl::Env::Default()->GetSymbolFromLibrary(GetDsoHandle(), \
+                                                         kName, &f);     \
+      CHECK(s.ok()) << "could not find " << kName                        \
+                    << " in miopen DSO; dlerror: " << s.error_message(); \
+      return reinterpret_cast<FuncPtrT>(f);                              \
+    }                                                                    \
+    static FuncPtrT DynLoad() {                                          \
+      static FuncPtrT f = LoadOrDie();                                   \
+      return f;                                                          \
+    }                                                                    \
+    template <typename... Args>                                          \
+    miopenStatus_t operator()(Args... args) {                            \
+      return DynLoad()(args...);                                         \
+    }                                                                    \
+  } __name;                                                              \
   const char* DynLoadShim__##__name::kName = #__name;
 
 #endif
@@ -751,7 +750,7 @@ tsl::Status MIOpenSupport::Init() {
     }
   }
 
-  return tsl::Status{port::error::INTERNAL,
+  return tsl::Status{tsl::error::INTERNAL,
                      absl::StrCat("miopen library could not create a handle: ",
                                   ToString(status))};
 }
@@ -1879,7 +1878,7 @@ class MixinBase<void> {};
 #define RETURN_IF_MIOPEN_ERROR(STATUS, ...)                              \
   if (!SE_PREDICT_TRUE((STATUS) == miopenStatusSuccess)) {               \
     string error_msg = absl::StrCat(ToString(STATUS), " ", __VA_ARGS__); \
-    SetFailure(::tsl::Status(port::error::UNKNOWN, error_msg));          \
+    SetFailure(::tsl::Status(tsl::error::UNKNOWN, error_msg));           \
     LOG(ERROR) << error_msg;                                             \
     return;                                                              \
   }
@@ -2045,7 +2044,7 @@ class MIOpenRnnSequenceTensorDescriptor
       string error_msg =
           absl::StrCat("sequence length must be positive: ", seq_length);
       LOG(ERROR) << error_msg;
-      SetFailure(tsl::Status(port::error::UNKNOWN, error_msg));
+      SetFailure(tsl::Status(tsl::error::UNKNOWN, error_msg));
       return;
     }
     auto status = wrap::miopenCreateTensorDescriptor(&handle);
@@ -2664,7 +2663,7 @@ tsl::Status MIOpenSupport::DoCtcLoss(
     int ctc_loss_algo_id) {
   // Current MIOPen CTC Loss only supports the float datatype
   if (element_type != dnn::DataType::kFloat) {
-    return tsl::Status(port::error::INVALID_ARGUMENT,
+    return tsl::Status(tsl::error::INVALID_ARGUMENT,
                        "MIOpenCTCLossDescriptor is supported only when the "
                        "DataType is float");
   }
@@ -2694,14 +2693,14 @@ MIOpenSupport::createRnnDescriptor(
   // ROCM TODO: batch_size is used in dynamic persistent RNN algorithm and is
   // not supported by MIOpen now.
   if (use_padded_io) {
-    return tsl::Status(port::error::INVALID_ARGUMENT,
+    return tsl::Status(tsl::error::INVALID_ARGUMENT,
                        "ROCm MIOpen only supports packed input output.");
   }
 
   bool use_projection = cell_size != 0 && hidden_size < cell_size;
   if (use_projection) {
     return tsl::Status(
-        port::error::INVALID_ARGUMENT,
+        tsl::error::INVALID_ARGUMENT,
         "ROCm MIOpen does not support RNN ProjectionLayers yet.");
   }
 
@@ -3112,14 +3111,14 @@ class RocmConvRunner : public dnn::ConvRunner {
     if (is_profiling) {
       timer.reset(new GpuTimer(parent_));
       if (!timer->Init()) {
-        return tsl::Status(port::error::INTERNAL, "Failed to init timer");
+        return tsl::Status(tsl::error::INTERNAL, "Failed to init timer");
       }
       // The start and stop of the timer should be as close to the MIOpen call
       // as possible. It is still possible for other threads to issue workload
       // on to this stream. So it could take multiple profiling measurements.
       if (!timer->Start(AsGpuStream(stream))) {
         timer->Destroy();
-        return tsl::Status(port::error::INTERNAL, "Failed to start timer");
+        return tsl::Status(tsl::error::INTERNAL, "Failed to start timer");
       }
     }
 
@@ -3191,7 +3190,7 @@ class RocmConvRunner : public dnn::ConvRunner {
     if (is_profiling) {
       if (!timer->Stop(AsGpuStream(stream))) {
         timer->Destroy();
-        return tsl::Status(port::error::INTERNAL, "Failed to stop timer");
+        return tsl::Status(tsl::error::INTERNAL, "Failed to stop timer");
       }
       if (status == miopenStatusSuccess) {
         dnn::AlgorithmDesc algotype(algo_id_, false);
@@ -3282,7 +3281,7 @@ tsl::Status MIOpenSupport::GetConvolveRunners(
           filter_descriptor, filter_data, output_descriptor, output_data,
           convolution_descriptor, scratch_allocator, &profile_results)) {
     return tsl::Status(
-        port::error::UNKNOWN,
+        tsl::error::UNKNOWN,
         "GetConvolveRunners: GetMIOpenConvolveAlgorithms failed");
   }
 
@@ -4138,7 +4137,7 @@ tsl::Status MIOpenSupport::DoPoolForward(
     const dnn::BatchDescriptor& output_dimensions, DeviceMemoryBase output_data,
     ScratchAllocator* workspace_allocator) {
   if (element_type == dnn::DataType::kDouble) {
-    return tsl::Status(port::error::INVALID_ARGUMENT,
+    return tsl::Status(tsl::error::INVALID_ARGUMENT,
                        "MIOpen does not support pooling for double type yet");
   }
 
@@ -4297,7 +4296,7 @@ tsl::Status MIOpenSupport::DoPoolBackward(
     DeviceMemoryBase input_diff_data, DeviceMemoryBase output_diff_data,
     ScratchAllocator* workspace_allocator) {
   if (element_type == dnn::DataType::kDouble) {
-    return tsl::Status(port::error::INVALID_ARGUMENT,
+    return tsl::Status(tsl::error::INVALID_ARGUMENT,
                        "MIOpen does not support pooling for double type yet");
   }
 

@@ -70,7 +70,7 @@ void CreateXlaRuntimeTestlibPipeline(PassManager& passes) {
   passes->addPass(mlir::createConvertAsyncToLLVMPass());
 
   // Convert everything else to LLVM dialect.
-  passes->addPass(mlir::createMemRefToLLVMConversionPass());
+  passes->addPass(mlir::createFinalizeMemRefToLLVMConversionPass());
   passes->addPass(mlir::createConvertFuncToLLVMPass());
   passes->addPass(mlir::createReconcileUnrealizedCastsPass());
 

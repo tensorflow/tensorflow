@@ -15,12 +15,16 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_CORE_SHIMS_CC_EXPERIMENTAL_ACCELERATION_CONFIGURATION_DELEGATE_REGISTRY_H_
 #define TENSORFLOW_LITE_CORE_SHIMS_CC_EXPERIMENTAL_ACCELERATION_CONFIGURATION_DELEGATE_REGISTRY_H_
 
-#include "tensorflow/lite/core/experimental/acceleration/configuration/delegate_registry.h"
+// NOLINTBEGIN(whitespace/line_length)
+/// For documentation, see
+/// third_party/tensorflow/lite/experimental/acceleration/configuration/delegate_registry.h.
+// NOLINTEND(whitespace/line_length)
+#include "tensorflow/lite/experimental/acceleration/configuration/delegate_registry.h"
 
 namespace tflite_shims {
 namespace delegates {
 
-using TfLiteOpaqueDelegatePtr = ::tflite::delegates::TfLiteDelegatePtr;
+using TfLiteOpaqueDelegatePtr = ::tflite::delegates::TfLiteOpaqueDelegatePtr;
 using DelegatePluginInterface = ::tflite::delegates::DelegatePluginInterface;
 using DelegatePluginRegistry = ::tflite::delegates::DelegatePluginRegistry;
 

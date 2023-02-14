@@ -147,10 +147,6 @@ class CoreRTConverter : public mlir::TypeConverter {
 
   mlir::TypeAttr ConvertTypeAttribute(mlir::TypeAttr type_attr);
 
-  mlir::StringAttr ConvertSymbolAttrToStringAttr(
-      const mlir::SymbolTable &symbol_table,
-      mlir::FlatSymbolRefAttr symbol_attr, bool use_mlir_func_name = false);
-
   mlir::Builder builder_;
 
   const mlir::TF::SideEffectAnalysis::Info &side_effect_analysis_;

@@ -36,12 +36,12 @@ limitations under the License.
 #include "ruy/profiler/profiler.h"  // from @ruy
 #include "tensorflow/lite/core/c/c_api_types.h"
 #include "tensorflow/lite/core/c/common.h"
+#include "tensorflow/lite/core/kernels/register.h"
 #include "tensorflow/lite/core/model.h"
 #include "tensorflow/lite/core/model_builder.h"
 #include "tensorflow/lite/core/subgraph.h"
 #include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/kernels/cpu_backend_context.h"
-#include "tensorflow/lite/kernels/register.h"
 #include "tensorflow/lite/op_resolver.h"
 #include "tensorflow/lite/optional_debug_tools.h"
 #include "tensorflow/lite/profiling/profile_summary_formatter.h"
@@ -894,7 +894,7 @@ std::unique_ptr<tflite::OpResolver> BenchmarkTfLiteModel::GetOpResolver()
     resolver =
         new tflite::ops::builtin::BuiltinOpResolverWithoutDefaultDelegates();
   } else {
-    resolver = new tflite::ops::builtin::BuiltinOpResolver();
+    resolver = new tflite::ops::builtin::BuiltinOpResolverWithXNNPACK();
   }
   RegisterSelectedOps(resolver);
   return std::unique_ptr<tflite::OpResolver>(resolver);

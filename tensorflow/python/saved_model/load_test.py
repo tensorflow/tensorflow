@@ -1215,7 +1215,9 @@ class LoadTest(test.TestCase, parameterized.TestCase):
 
     imported = cycle(root, cycles, use_cpp_bindings=use_cpp_bindings)
 
-    with self.assertRaisesRegex(ValueError, "Python inputs incompatible"):
+    with self.assertRaisesRegex(
+        TypeError, "Binding inputs to tf.function `f` failed"
+    ):
       # We cannot call the function with a constant of shape ().
       imported.f(constant_op.constant(2)).numpy()
 
@@ -1747,8 +1749,9 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     self.assertIn(expected_message, logs.output)
 
     loaded_signature = imported.signatures["serving_default"].inputs
-    self.assertEqual("a_b:0", loaded_signature[0].name)
-    self.assertEqual("a_d:0", loaded_signature[1].name)
+    self.assertTrue(
+        {"a_b:0", "a_d:0"}.issubset({arg.name for arg in loaded_signature}),
+    )
 
   def test_multiple_argument_signatures_no_positional(
       self, cycles, use_cpp_bindings
@@ -2773,6 +2776,9 @@ class SingleCycleTests(test.TestCase, parameterized.TestCase):
       self.skipTest("Not implemented for cpp.")
     if sys.version_info.major < 3:
       self.skipTest("Not working in Python 2")
+    if sys.version_info.major == 3 and sys.version_info.minor == 11:
+      # TODO(b/264948173)
+      self.skipTest("Not working in Python 3.11")
     root = module.Module()
     root.v = variables.Variable(1.0)
     root.f = def_function.function(

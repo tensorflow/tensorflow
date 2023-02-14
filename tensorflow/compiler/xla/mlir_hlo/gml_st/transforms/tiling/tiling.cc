@@ -17,13 +17,12 @@ limitations under the License.
 
 #include <functional>
 #include <memory>
+#include <optional>
 #include <sstream>
 #include <string>
 #include <utility>
 
 #include "gml_st/IR/gml_st_ops.h"
-#include "gml_st/interfaces/tiling_interface.h"
-#include "gml_st/interfaces/tiling_interface_impl.h"
 #include "gml_st/transforms/passes.h"
 #include "gml_st/transforms/transforms.h"
 #include "llvm/ADT/ArrayRef.h"
@@ -34,6 +33,7 @@ limitations under the License.
 #include "mlir/Dialect/Arith/Utils/Utils.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
+#include "mlir/Dialect/Linalg/Transforms/TilingInterfaceImpl.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
@@ -55,7 +55,7 @@ namespace {
 #define GEN_PASS_DEF_TILINGPASS
 #include "gml_st/transforms/passes.h.inc"
 
-static constexpr llvm::StringRef kTileAppliedLabel = "__tile_applied_label__";
+constexpr llvm::StringRef kTileAppliedLabel = "__tile_applied_label__";
 
 // Compute tile size for the tile that starts at `offset`, has size `tileSize`
 // for the tensor with the dimension size `dimSize`.
@@ -139,9 +139,9 @@ Operation *generateTileLoopNest(OpBuilder &builder, Location loc,
                            getValueOrCreateConstantIndexOp(builder, loc, lbs),
                            getValueOrCreateConstantIndexOp(builder, loc, ubs),
                            getValueOrCreateConstantIndexOp(builder, loc, steps),
-                           distributionLabelAttr,
+                           dstOperands, distributionLabelAttr,
                            [&](OpBuilder &nestedBuilder, Location bodyLoc,
-                               ValueRange ivs) {
+                               ValueRange ivs, ValueRange /*outputs*/) {
                              buildBody(nestedBuilder, bodyLoc, ivs);
                            })
                        .getOperation()
@@ -160,30 +160,6 @@ Operation *generateTileLoopNest(OpBuilder &builder, Location loc,
   return loop;
 }
 
-struct DimOfMaterializedTilePattern : public OpRewritePattern<tensor::DimOp> {
-  using OpRewritePattern<tensor::DimOp>::OpRewritePattern;
-
-  LogicalResult matchAndRewrite(tensor::DimOp op,
-                                PatternRewriter &rewriter) const override {
-    Operation *def = op.getSource().getDefiningOp();
-    if (!def) return failure();
-
-    auto materializeOp = llvm::dyn_cast<MaterializeOp>(def);
-    if (!materializeOp) return failure();
-
-    std::optional<int64_t> indexOr = op.getConstantIndex();
-    if (!indexOr.has_value()) return failure();
-
-    Value tileSizeValue =
-        materializeOp.isDynamicSize(*indexOr)
-            ? materializeOp.getDynamicSize(*indexOr)
-            : rewriter.create<arith::ConstantIndexOp>(
-                  op.getLoc(), materializeOp.getStaticSize(*indexOr));
-    rewriter.replaceOp(op, tileSizeValue);
-    return success();
-  }
-};
-
 /// Pattern to tile an op that implements the `TilingInterface` using
 /// `gml_st.for` for iterating over the tiles.
 struct TilingPattern : public OpInterfaceRewritePattern<TilingInterface> {
@@ -199,7 +175,7 @@ struct TilingPattern : public OpInterfaceRewritePattern<TilingInterface> {
     if (!filterFn || failed(filterFn(op)) || hasLabel(op, kTileAppliedLabel))
       return failure();
 
-    auto tilingResult = tile(options, rewriter, op);
+    auto tilingResult = tileUsingGmlSt(options, rewriter, op);
     if (failed(tilingResult)) return failure();
 
     // If we did not tile (e.g. when all tile sizes are 0), do not replace
@@ -229,7 +205,7 @@ struct TilingPass : public impl::TilingPassBase<TilingPass> {
   void getDependentDialects(DialectRegistry &registry) const final {
     registry.insert<GmlStDialect, tensor::TensorDialect, linalg::LinalgDialect,
                     scf::SCFDialect>();
-    registerGmlStTilingInterfaceExternalModels(registry);
+    linalg::registerTilingInterfaceExternalModels(registry);
   }
 
   void runOnOperation() override {
@@ -257,7 +233,6 @@ struct TilingPass : public impl::TilingPassBase<TilingPass> {
     };
     RewritePatternSet patterns(ctx);
     populateTilingPatterns(ctx, filterFn, opts, &patterns);
-    patterns.add<DimOfMaterializedTilePattern>(ctx);
     if (failed(applyPatternsAndFoldGreedily(f, std::move(patterns))))
       return signalPassFailure();
 
@@ -266,10 +241,35 @@ struct TilingPass : public impl::TilingPassBase<TilingPass> {
   }
 };
 
+template <typename LoopTy>
+void insertTerminatorAndUpdateOutputs(PatternRewriter &rewriter,
+                                      const TilingResult &tilingResult,
+                                      SetYieldOp terminator,
+                                      ValueRange dstOperands,
+                                      ValueRange outputTiles) {
+  auto parallelLoop = cast<LoopTy>(tilingResult.loop);
+  rewriter.replaceOpWithNewOp<SetYieldOp>(
+      terminator, tilingResult.tiledOps.front()->getResults(),
+      parallelLoop.getRegionOutputArgs(), outputTiles);
+
+  if (auto dstOp = dyn_cast<DestinationStyleOpInterface>(
+          tilingResult.tiledOps.front())) {
+    for (auto [dst, regionArg] :
+         llvm::zip(dstOperands, parallelLoop.getRegionOutputArgs())) {
+      dst.replaceUsesWithIf(regionArg, [&](OpOperand &operand) {
+        Operation *owner = operand.getOwner();
+        return isa<tensor::ExtractSliceOp, TilingInterface>(owner) &&
+               owner->getParentOfType<LoopTy>() == parallelLoop.getOperation();
+      });
+    }
+  }
+}
+
 }  // namespace
 
-FailureOr<TilingResult> tile(const TilingOptions &options,
-                             PatternRewriter &rewriter, TilingInterface op) {
+FailureOr<TilingResult> tileUsingGmlSt(const TilingOptions &options,
+                                       PatternRewriter &rewriter,
+                                       TilingInterface op) {
   rewriter.setInsertionPoint(op);
   if (!options.tileSizeComputationFn) {
     return rewriter.notifyMatchFailure(
@@ -311,12 +311,11 @@ FailureOr<TilingResult> tile(const TilingOptions &options,
       rewriter, loc, iterationDomain, tileSizeVector, dstOperands,
       options.distribute, options.distributionLabel, offsets, sizes);
   Block *loopBody = &tilingResult.loop->getRegion(0).front();
-  Operation *terminator = loopBody->getTerminator();
+  auto terminator = cast<SetYieldOp>(loopBody->getTerminator());
   rewriter.setInsertionPoint(terminator);
 
   // 4. Insert the tiled implementation within the loop.
-  tilingResult.tiledOps = op.getTiledImplementation(rewriter, offsets, sizes,
-                                                    /*useExtractSlice=*/false);
+  tilingResult.tiledOps = op.getTiledImplementation(rewriter, offsets, sizes);
 
   // 5. Compute tiles for the insertion.
   int64_t numResults = op->getNumResults();
@@ -331,7 +330,7 @@ FailureOr<TilingResult> tile(const TilingOptions &options,
       return rewriter.notifyMatchFailure(
           op, "failed to get slice of result produced");
     }
-    outputTiles.push_back(rewriter.create<TileOp>(
+    outputTiles.push_back(rewriter.createOrFold<TileOp>(
         loc, resultOffsetsList, resultSizesList,
         SmallVector<OpFoldResult>(resultSizesList.size(), oneAttr)));
   }
@@ -339,24 +338,11 @@ FailureOr<TilingResult> tile(const TilingOptions &options,
   // 6. Add a `set_yield` terminator, update the uses of `outputs` with the
   // output bbArgs.
   if (options.distribute) {
-    rewriter.replaceOpWithNewOp<SetYieldOp>(
-        terminator, tilingResult.tiledOps.front()->getResults(), dstOperands,
-        outputTiles);
+    insertTerminatorAndUpdateOutputs<ParallelOp>(
+        rewriter, tilingResult, terminator, dstOperands, outputTiles);
   } else {
-    auto forLoop = cast<gml_st::ForOp>(tilingResult.loop);
-    rewriter.replaceOpWithNewOp<SetYieldOp>(
-        terminator, tilingResult.tiledOps.front()->getResults(),
-        forLoop.getRegionOutputArgs(), outputTiles);
-
-    if (auto dstOp = dyn_cast<DestinationStyleOpInterface>(
-            tilingResult.tiledOps.front())) {
-      for (auto [dst, regionArg] :
-           llvm::zip(dstOperands, forLoop.getRegionOutputArgs())) {
-        dst.replaceUsesWithIf(regionArg, [&](OpOperand &operand) {
-          return isa<MaterializeOp>(operand.getOwner());
-        });
-      }
-    }
+    insertTerminatorAndUpdateOutputs<ForOp>(rewriter, tilingResult, terminator,
+                                            dstOperands, outputTiles);
   }
   return tilingResult;
 }

@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_COMMON_RUNTIME_EXECUTOR_H_
 #define TENSORFLOW_CORE_COMMON_RUNTIME_EXECUTOR_H_
 
+#include <optional>
+
 #include "absl/time/time.h"
 #include "absl/types/optional.h"
 #include "tensorflow/core/common_runtime/device.h"
@@ -91,6 +93,9 @@ class Executor {
   // execution. Used for system-wide latency metrics.
   struct Args {
     int64_t step_id = 0;
+    // Used only by tracer/profiler, applicable only when running under
+    // FunctionRuntimeLibrary, unique per invocation.
+    std::optional<int64_t> function_trace_id;
     RendezvousInterface* rendezvous = nullptr;
     StepStatsCollectorInterface* stats_collector = nullptr;
     CallFrameInterface* call_frame = nullptr;

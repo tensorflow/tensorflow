@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_pass_fix.h"
 #include "tensorflow/compiler/xla/service/pattern_matcher.h"
 #include "tensorflow/compiler/xla/service/pattern_matcher_gmock.h"
+#include "tensorflow/compiler/xla/service/reshape_mover.h"
 #include "tensorflow/compiler/xla/service/tuple_simplifier.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
@@ -64,6 +65,9 @@ class CudnnSimplifyPaddingTest : public HloTestBase {
     TF_ASSIGN_OR_RETURN(bool changed,
                         RunHloPass(CudnnSimplifyPadding(), module));
     VLOG(1) << "after simplify_padding:\n" << module->ToString();
+
+    TF_RETURN_IF_ERROR(RunHloPass(HloPassFix<ReshapeMover>(), module).status());
+    VLOG(1) << "after reshape mover:\n" << module->ToString();
 
     TF_RETURN_IF_ERROR(RunHloPass(HloPassFix<AlgebraicSimplifier>(
                                       AlgebraicSimplifierOptions()),
@@ -148,6 +152,35 @@ TEST_F(CudnnSimplifyPaddingTest, EndToEnd) {
                   m::CustomCall({"__cudnn$convBiasActivationForward"}), 0),
               m::Op(), m::Op(), m::Op())))),
           m::Op())));
+}
+
+TEST_F(CudnnSimplifyPaddingTest, EndToEndNCHW) {
+  auto module = ParseAndReturnVerifiedModule(R"(
+  HloModule TestModule
+
+  ENTRY TestComputation {
+    conv1 = (s8[1,64,480,400], u8[0]) custom-call(
+        s8[1,112,480,400] parameter(0), s8[3,3,112,64] parameter(1),
+        f32[64] parameter(2)),
+      window={size=3x3}, dim_labels=bf01_01io->bf01,
+      custom_call_target="__cudnn$convBiasActivationForward"
+    conv1_result = get-tuple-element(conv1), index=0
+    convert = f32[1,64,480,400] convert(conv1_result)
+    constant = f32[] constant(0.349002093)
+    broadcast = f32[1,64,480,400] broadcast(constant)
+    ROOT multiply = f32[1,64,480,400] multiply(convert, broadcast)
+  })")
+                    .value();
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunEndToEnd({7, 5}, module.get()));
+  // The SimplifyPadding pass itself does not do anything.
+  EXPECT_FALSE(changed);
+
+  SCOPED_TRACE(module->ToString());
+  auto* root = module->entry_computation()->root_instruction();
+
+  // The reshape introduced by CudnnVectorizeConvolutions should have been moved
+  // to the root.
+  EXPECT_THAT(root, GmockMatch(m::Reshape(m::Multiply())));
 }
 
 TEST_F(CudnnSimplifyPaddingTest, PaddedWeights) {

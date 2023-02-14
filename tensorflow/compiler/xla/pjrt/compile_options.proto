@@ -71,7 +71,13 @@ message ExecutableBuildOptionsProto {
   // which can be used by higher level framework as a way to query intermediate
   // sharding of operations when multiple computation would be chained and
   // merged together.
-  bool allow_spmd_sharding_propagation_to_output = 12;
+  // This is a vector of bool, because the user can control (if the output of
+  // the computation is a tuple) which elements of the tuple can have the
+  // sharding substituted and which don't. If only one boolean value is passed
+  // in the vector that's interpreted as the value to be applied for every
+  // single element of the output tuple. One value per element of the tuple
+  // means that each value is attached to one of the output elements.
+  repeated bool allow_spmd_sharding_propagation_to_output = 12;
 }
 
 message CompileOptionsProto {

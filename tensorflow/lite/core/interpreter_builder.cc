@@ -235,7 +235,8 @@ InterpreterBuilder::InterpreterBuilder(
     const InterpreterOptions* options_experimental)
     : model_(model),
       op_resolver_(op_resolver),
-      error_reporter_(ValidateErrorReporter(error_reporter)) {
+      error_reporter_(ValidateErrorReporter(error_reporter)),
+      metadata_(FlatBufferModel::ReadAllMetadata(model_)) {
   if (options_experimental) {
     options_ = *options_experimental;
   }

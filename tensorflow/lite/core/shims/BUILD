@@ -6,7 +6,8 @@ load("//tensorflow/lite:build_def.bzl", "tflite_copts", "tflite_copts_warnings")
 load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite")
 load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
 load(":build_defs.bzl", "build_test")
-load(":cc_library_with_tflite.bzl", "custom_c_library_with_tflite")
+load(":cc_library_with_tflite.bzl", "cc_library_with_tflite", "custom_c_library_with_tflite")
+load(":cc_library_with_tflite_test.bzl", "cc_library_with_tflite_test_suite")
 
 package(
     default_visibility = ["//visibility:private"],
@@ -21,7 +22,7 @@ exports_files(
     ],
     visibility = [
         "//tensorflow/lite:__subpackages__",
-        "@mediapipe//mediapipe/tasks:__subpackages__",
+        "@mediapipe//mediapipe:__subpackages__",
         "@org_tensorflow_lite_support//tensorflow_lite_support:__subpackages__",
     ],
 )
@@ -76,7 +77,7 @@ alias(
     actual = "framework_experimental",
     visibility = [
         "//tensorflow/lite:__subpackages__",
-        "@mediapipe//mediapipe/tasks:__subpackages__",
+        "@mediapipe//mediapipe:__subpackages__",
         "@org_tensorflow_lite_support//tensorflow_lite_support:__subpackages__",
     ],
 )
@@ -89,14 +90,14 @@ cc_library(
     copts = tflite_copts() + tflite_copts_warnings(),
     visibility = [
         "//tensorflow/lite:__subpackages__",
-        "@mediapipe//mediapipe/tasks:__subpackages__",
+        "@mediapipe//mediapipe:__subpackages__",
         "@org_tensorflow_lite_support//tensorflow_lite_support:__subpackages__",
     ],
     deps = [
         "//tensorflow/lite:allocation",
         "//tensorflow/lite:arena_planner",
         "//tensorflow/lite:external_cpu_backend_context",
-        "//tensorflow/lite:framework",
+        "//tensorflow/lite:framework_stable",
         "//tensorflow/lite:kernel_api",
         "//tensorflow/lite:memory_planner",
         "//tensorflow/lite:minimal_logging",
@@ -130,14 +131,14 @@ cc_library(
     copts = tflite_copts() + tflite_copts_warnings(),
     visibility = [
         "//tensorflow/lite:__subpackages__",
-        "@mediapipe//mediapipe/tasks:__subpackages__",
+        "@mediapipe//mediapipe:__subpackages__",
         "@org_tensorflow_lite_support//tensorflow_lite_support:__subpackages__",
     ],
     deps = [
         "//tensorflow/lite:allocation",
         "//tensorflow/lite:arena_planner",
         "//tensorflow/lite:external_cpu_backend_context",
-        "//tensorflow/lite:framework",
+        "//tensorflow/lite:framework_experimental",
         "//tensorflow/lite:graph_info",
         "//tensorflow/lite:kernel_api",
         "//tensorflow/lite:memory_planner",
@@ -225,7 +226,7 @@ cc_library(
     ],
 )
 
-cc_library(
+cc_library_with_tflite(
     name = "builtin_ops",
     hdrs = [
         "cc/kernels/builtin_op_kernels.h",
@@ -235,16 +236,16 @@ cc_library(
         "//tensorflow/lite/core/kernels:builtin_op_kernels.h",
         "//tensorflow/lite/kernels:fully_connected.h",
     ],
+    generate_opaque_delegate_target = True,
     visibility = [
         "//tensorflow/lite:__subpackages__",
-        "@mediapipe//mediapipe/tasks:__subpackages__",
+        "@mediapipe//mediapipe:__subpackages__",
         "@org_tensorflow_lite_support//tensorflow_lite_support:__subpackages__",
     ],
     deps = [
         ":builtin_ops_list",
         "//tensorflow/lite:cc_api",
         "//tensorflow/lite/core/c:common",
-        "//tensorflow/lite/core/kernels:builtin_ops",
         "//tensorflow/lite/kernels:builtin_ops",
     ],
 )
@@ -262,11 +263,11 @@ cc_library(
     ],
     visibility = [
         "//tensorflow/lite:__subpackages__",
-        "@mediapipe//mediapipe/tasks:__subpackages__",
+        "@mediapipe//mediapipe:__subpackages__",
         "@org_tensorflow_lite_support//tensorflow_lite_support:__subpackages__",
     ],
     deps = [
-        "//tensorflow/lite:op_resolver",
+        "//tensorflow/lite:create_op_resolver_header",
     ],
 )
 
@@ -274,7 +275,7 @@ cc_library(
     name = "create_op_resolver_with_builtin_ops",
     visibility = [
         "//tensorflow/lite:__subpackages__",
-        "@mediapipe//mediapipe/tasks:__subpackages__",
+        "@mediapipe//mediapipe:__subpackages__",
         "@org_tensorflow_lite_support//tensorflow_lite_support:__subpackages__",
     ],
     deps = [
@@ -303,11 +304,11 @@ cc_library(
     copts = tflite_copts_warnings(),
     visibility = [
         "//tensorflow/lite:__subpackages__",
-        "@mediapipe//mediapipe/tasks:__subpackages__",
+        "@mediapipe//mediapipe:__subpackages__",
         "@org_tensorflow_lite_support//tensorflow_lite_support:__subpackages__",
     ],
     deps = [
-        "//tensorflow/lite/core/experimental/acceleration/configuration:delegate_registry",
+        "//tensorflow/lite/experimental/acceleration/configuration:delegate_registry",
     ],
 )
 
@@ -324,11 +325,11 @@ cc_library(
     copts = tflite_copts_warnings(),
     visibility = [
         "//tensorflow/lite:__subpackages__",
-        "@mediapipe//mediapipe/tasks:__subpackages__",
+        "@mediapipe//mediapipe:__subpackages__",
         "@org_tensorflow_lite_support//tensorflow_lite_support:__subpackages__",
     ],
     deps = [
-        "//tensorflow/lite/core/tools:verifier",
+        "//tensorflow/lite/tools:verifier",
     ],
 )
 
@@ -340,7 +341,7 @@ cc_library(
         "//tensorflow/lite/java/src/main/native:__pkg__",
     ],
     deps = [
-        "//tensorflow/lite/core/tools:verifier_internal",
+        "//tensorflow/lite/tools:verifier_internal",
     ],
 )
 
@@ -355,13 +356,14 @@ build_test(
 #------------------------------------------------------------------------------
 # C API
 
-cc_library(
+cc_library_with_tflite(
     name = "c_api",
     hdrs = ["c/c_api.h"],
     copts = tflite_copts_warnings(),
+    generate_opaque_delegate_target = True,
     visibility = [
         "//tensorflow/lite:__subpackages__",
-        "@mediapipe//mediapipe/tasks:__subpackages__",
+        "@mediapipe//mediapipe:__subpackages__",
         "@org_tensorflow_lite_support//tensorflow_lite_support:__subpackages__",
     ],
     deps = ["//tensorflow/lite/c:c_api"],
@@ -373,43 +375,52 @@ cc_library(
     copts = tflite_copts_warnings(),
     visibility = [
         "//tensorflow/lite:__subpackages__",
-        "@mediapipe//mediapipe/tasks:__subpackages__",
+        "@mediapipe//mediapipe:__subpackages__",
         "@org_tensorflow_lite_support//tensorflow_lite_support:__subpackages__",
     ],
     deps = ["//tensorflow/lite/c:c_api_without_op_resolver"],
 )
 
-cc_library(
+cc_library_with_tflite(
     name = "c_api_experimental",
-    hdrs = ["c/c_api_experimental.h"],
+    hdrs = [
+        "c/c_api_experimental.h",
+        "c/c_api_opaque.h",
+    ],
     copts = tflite_copts_warnings(),
+    generate_opaque_delegate_target = True,
     visibility = [
         "//tensorflow/lite:__subpackages__",
-        "@mediapipe//mediapipe/tasks:__subpackages__",
+        "@mediapipe//mediapipe:__subpackages__",
         "@org_tensorflow_lite_support//tensorflow_lite_support:__subpackages__",
     ],
-    deps = ["//tensorflow/lite/core/c:c_api_experimental"],
+    deps = [
+        "//tensorflow/lite/c:c_api_experimental",
+        "//tensorflow/lite/core/c:c_api_experimental",
+    ],
 )
 
-cc_library(
+cc_library_with_tflite(
     name = "c_api_types",
     hdrs = ["c/c_api_types.h"],
     copts = tflite_copts_warnings(),
+    generate_opaque_delegate_target = True,
     visibility = [
         "//tensorflow/lite:__subpackages__",
-        "@mediapipe//mediapipe/tasks:__subpackages__",
+        "@mediapipe//mediapipe:__subpackages__",
         "@org_tensorflow_lite_support//tensorflow_lite_support:__subpackages__",
     ],
     deps = ["//tensorflow/lite/core/c:c_api_types"],
 )
 
-cc_library(
+cc_library_with_tflite(
     name = "common",
     hdrs = ["c/common.h"],
     copts = tflite_copts_warnings(),
+    generate_opaque_delegate_target = True,
     visibility = [
         "//tensorflow/lite:__subpackages__",
-        "@mediapipe//mediapipe/tasks:__subpackages__",
+        "@mediapipe//mediapipe:__subpackages__",
         "@org_tensorflow_lite_support//tensorflow_lite_support:__subpackages__",
     ],
     deps = [
@@ -417,13 +428,14 @@ cc_library(
     ],
 )
 
-cc_library(
+cc_library_with_tflite(
     name = "builtin_op_data",
     hdrs = ["c/builtin_op_data.h"],
     copts = tflite_copts_warnings(),
+    generate_opaque_delegate_target = True,
     visibility = [
         "//tensorflow/lite:__subpackages__",
-        "@mediapipe//mediapipe/tasks:__subpackages__",
+        "@mediapipe//mediapipe:__subpackages__",
         "@org_tensorflow_lite_support//tensorflow_lite_support:__subpackages__",
     ],
     deps = [
@@ -431,13 +443,14 @@ cc_library(
     ],
 )
 
-cc_library(
+cc_library_with_tflite(
     name = "delegate_plugin",
     hdrs = ["c/experimental/acceleration/configuration/delegate_plugin.h"],
     copts = tflite_copts_warnings(),
+    generate_opaque_delegate_target = True,
     visibility = [
         "//tensorflow/lite:__subpackages__",
-        "@mediapipe//mediapipe/tasks:__subpackages__",
+        "@mediapipe//mediapipe:__subpackages__",
         "@org_tensorflow_lite_support//tensorflow_lite_support:__subpackages__",
     ],
     deps = [
@@ -451,7 +464,7 @@ cc_library(
     copts = tflite_copts_warnings(),
     visibility = [
         "//tensorflow/lite:__subpackages__",
-        "@mediapipe//mediapipe/tasks:__subpackages__",
+        "@mediapipe//mediapipe:__subpackages__",
         "@org_tensorflow_lite_support//tensorflow_lite_support:__subpackages__",
     ],
     deps = [
@@ -465,7 +478,7 @@ cc_library(
     copts = tflite_copts_warnings(),
     visibility = [
         "//tensorflow/lite:__subpackages__",
-        "@mediapipe//mediapipe/tasks:__subpackages__",
+        "@mediapipe//mediapipe:__subpackages__",
         "@org_tensorflow_lite_support//tensorflow_lite_support:__subpackages__",
     ],
     deps = [
@@ -479,7 +492,7 @@ cc_library(
     copts = tflite_copts_warnings(),
     visibility = [
         "//tensorflow/lite:__subpackages__",
-        "@mediapipe//mediapipe/tasks:__subpackages__",
+        "@mediapipe//mediapipe:__subpackages__",
         "@org_tensorflow_lite_support//tensorflow_lite_support:__subpackages__",
     ],
     deps = [
@@ -532,7 +545,7 @@ cc_library(
     hdrs = ["c/shims_test_util.h"],
     visibility = [
         "//tensorflow/lite:__subpackages__",
-        "@mediapipe//mediapipe/tasks:__subpackages__",
+        "@mediapipe//mediapipe:__subpackages__",
         "@org_tensorflow_lite_support//tensorflow_lite_support:__subpackages__",
     ],
 )
@@ -543,12 +556,11 @@ cc_library(
     hdrs = ["cc/shims_test_util.h"],
     visibility = [
         "//tensorflow/lite:__subpackages__",
-        "@mediapipe//mediapipe/tasks:__subpackages__",
+        "@mediapipe//mediapipe:__subpackages__",
         "@org_tensorflow_lite_support//tensorflow_lite_support:__subpackages__",
     ],
     deps = [
-        ":c_shims_test_util",
-        "@com_google_googletest//:gtest",
+        "//tensorflow/lite:test_util",
     ],
 )
 
@@ -584,6 +596,8 @@ bzl_library(
     visibility = ["//visibility:public"],
     deps = ["//tensorflow/lite:build_def_bzl"],
 )
+
+cc_library_with_tflite_test_suite(name = "cc_library_with_tflite_test_suite")
 
 #------------------------------------------------------------------------------
 

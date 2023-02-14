@@ -21,8 +21,8 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "tensorflow/compiler/xla/stream_executor/host/host_gpu_executor.h"
 #include "tensorflow/compiler/xla/stream_executor/host/host_platform_id.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/error.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/initialize.h"
+#include "tensorflow/compiler/xla/stream_executor/platform/initialize.h"
+#include "tensorflow/tsl/platform/errors.h"
 
 namespace stream_executor {
 namespace host {
@@ -75,7 +75,7 @@ HostPlatform::GetUncachedExecutor(const StreamExecutorConfig& config) {
   auto init_status = executor->Init(config.device_options);
   if (!init_status.ok()) {
     return tsl::Status(
-        port::error::INTERNAL,
+        tsl::error::INTERNAL,
         absl::StrFormat(
             "failed initializing StreamExecutor for device ordinal %d: %s",
             config.ordinal, init_status.ToString().c_str()));

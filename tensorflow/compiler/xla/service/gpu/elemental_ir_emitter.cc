@@ -17,10 +17,8 @@ limitations under the License.
 
 #include <stddef.h>
 
-#include <utility>
 #include <vector>
 
-#include "llvm/IR/IntrinsicsNVPTX.h"
 #include "tensorflow/tsl/platform/logging.h"
 // IWYU pragma: no_include "llvm/IR/Attributes.gen.inc"
 // IWYU pragma: no_include "llvm/IR/Intrinsics.gen.inc"
@@ -73,12 +71,10 @@ bool IsFPLiteralWithValue(const HloInstruction* operand, float value) {
 
 GpuElementalIrEmitter::GpuElementalIrEmitter(
     const HloModuleConfig& hlo_module_config, llvm::Module* module,
-    llvm::IRBuilder<>* b, NestedComputer compute_nested,
-    IrEmitterContext* ir_emitter_context)
+    llvm::IRBuilder<>* b, NestedComputer compute_nested)
     : ElementalIrEmitter(module, b),
       hlo_module_config_(hlo_module_config),
-      compute_nested_(std::move(compute_nested)),
-      ir_emitter_context_(ir_emitter_context) {}
+      compute_nested_(std::move(compute_nested)) {}
 
 StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitDeviceMathCall(
     TargetDeviceFunctionID funcid, absl::Span<llvm::Value* const> operands,
@@ -343,17 +339,6 @@ llvm::Value* GpuElementalIrEmitter::EmitThreadId() {
       EmitCallToTargetIntrinsic(TargetIntrinsicID::kBlockDimx, {}, {}, b()),
       b()->getIntNTy(128), /*isSigned=*/true, "threads_per_block");
   return NSWAdd(NSWMul(block_id, threads_per_block), thread_id_in_block);
-}
-
-StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitF32ToBF16(
-    llvm::Value* f32_value) {
-  if (ir_emitter_context_->cuda_compute_capability().IsAtLeast(8)) {
-    return llvm_ir::EmitCallToIntrinsic(llvm::Intrinsic::nvvm_f2bf16_rn,
-                                        {f32_value}, {}, b());
-  } else {
-    // More complex fallback solution.
-    return ElementalIrEmitter::EmitF32ToBF16(f32_value);
-  }
 }
 
 }  // namespace gpu

@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/compiler/jit/xla_compilation_cache.pb.h"
 #include "tensorflow/compiler/jit/xla_device_compiler_client.h"
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
+#include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/framework/device.h"
@@ -63,6 +64,7 @@ class DeviceExecutablePersistor {
 
   DeviceExecutablePersistor(const Config& config,
                             const DeviceType& device_type);
+  virtual ~DeviceExecutablePersistor() = default;
 
   // Returns std::nullopt if persistence is not enabled (i.e.
   // `persistent_cache_directory_` is empty) or if the serialized entry is not
@@ -81,7 +83,7 @@ class DeviceExecutablePersistor {
   // pipeline and persists that to disk.
   // TODO(b/255826209): Take in Signature instead hash and string once cache
   // is refactored.
-  Status TryToPersistExecutable(
+  virtual Status TryToPersistExecutable(
       uint64 signature_hash, const std::string& signature_str,
       const XlaCompiler::Options& options,
       const XlaCompiler::CompilationResult& compilation_result,
@@ -99,6 +101,10 @@ class DeviceExecutablePersistor {
   // cache.
   XlaSerializedCacheKey BuildSerializedCacheKey(
       uint64 signature_hash, const xla::HloModuleProto& hlo_module) const;
+
+  XlaSerializedCacheKey BuildSerializedCacheKey(
+      uint64 signature_hash, const xla::HloModuleProto& hlo_module,
+      bool compiled_using_pjrt) const;
 
   // Serializes the signature and its corresponding entry to a proto message.
   StatusOr<XlaSerializedCacheEntry> SerializeEntry(
@@ -154,7 +160,10 @@ std::string DeviceExecutablePersistor<ExecutableType, ClientType>::
       key.prefix(), key.prefix().empty() ? "" : kXlaSerializedCacheKeySeparator,
       key.signature_fingerprint(), kXlaSerializedCacheKeySeparator,
       key.cluster_fingerprint(), kXlaSerializedCacheKeySeparator,
-      key.device_type());
+      key.device_type(),
+      key.compiled_using_pjrt()
+          ? absl::StrCat(kXlaSerializedCacheKeySeparator, "pjrt")
+          : "");
 }
 
 template <typename ExecutableType, typename ClientType>
@@ -168,14 +177,32 @@ std::string DeviceExecutablePersistor<ExecutableType, ClientType>::GetFilePath(
 template <typename ExecutableType, typename ClientType>
 XlaSerializedCacheKey
 DeviceExecutablePersistor<ExecutableType, ClientType>::BuildSerializedCacheKey(
+    uint64 signature_hash, const xla::HloModuleProto& hlo_module,
+    bool compiled_using_pjrt) const {
+  XlaSerializedCacheKey key;
+  key.set_signature_fingerprint(signature_hash);
+  key.set_cluster_fingerprint(DeterministicProtoHash64(hlo_module));
+  key.set_device_type(device_type().type_string());
+  key.set_prefix(persistence_prefix());
+  key.set_compiled_using_pjrt(compiled_using_pjrt);
+  return key;
+}
+
+template <typename ExecutableType, typename ClientType>
+XlaSerializedCacheKey
+DeviceExecutablePersistor<ExecutableType, ClientType>::BuildSerializedCacheKey(
     uint64 signature_hash, const xla::HloModuleProto& hlo_module) const {
-  XlaSerializedCacheKey serialized_cache_key;
-  serialized_cache_key.set_signature_fingerprint(signature_hash);
-  serialized_cache_key.set_cluster_fingerprint(
-      DeterministicProtoHash64(hlo_module));
-  serialized_cache_key.set_device_type(device_type().type_string());
-  serialized_cache_key.set_prefix(persistence_prefix());
-  return serialized_cache_key;
+  return BuildSerializedCacheKey(signature_hash, hlo_module, false);
+}
+
+// This template specialization sets compiled_using_prjt to true in the cache
+// key when the template arguments are PjRtLoadedExecutable and PjRtClient.
+template <>
+inline XlaSerializedCacheKey
+DeviceExecutablePersistor<xla::PjRtLoadedExecutable, xla::PjRtClient>::
+    BuildSerializedCacheKey(uint64 signature_hash,
+                            const xla::HloModuleProto& hlo_module) const {
+  return BuildSerializedCacheKey(signature_hash, hlo_module, true);
 }
 
 template <typename ExecutableType, typename ClientType>

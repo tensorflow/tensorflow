@@ -3885,10 +3885,10 @@ def TFL_CastOp : TFL_Op<"cast", [
   }];
 
   let arguments = (ins
-    TFL_TensorOf<[F32, I1, I16, UI16, I32, UI32, I64, TFL_Quint8, UI8, I8, Complex<F<32>>]>:$input
+    TFL_TensorOf<[F16, F32, F64, I1, I16, UI16, I32, UI32, I64, TFL_Quint8, UI8, I8, Complex<F<32>>]>:$input
   );
 
-  let results = (outs TFL_TensorOf<[F32, I1, I16, UI16, I32, UI32, I64, TFL_Quint8, UI8, I8, Complex<F<32>>]>:$output);
+  let results = (outs TFL_TensorOf<[F16, F32, F64, I1, I16, UI16, I32, UI32, I64, TFL_Quint8, UI8, I8, Complex<F<32>>]>:$output);
 
   // TFLite's cast op does not utilize CastOptions, instead derives types
   // from the TfLiteTensors.
@@ -4296,7 +4296,7 @@ Ba et al. 'Layer Normalization'
   }];
 
   let arguments = (
-    ins TFL_TensorOf<[F32, QI8]>:$input,
+    ins TFL_TensorOf<[F32, QI8, QI16]>:$input,
 
     // Weights
     TFL_TensorOfOrNone<[F32, QI8]>:$input_to_input_weights,
@@ -4396,24 +4396,24 @@ def TFL_UnidirectionalSequenceLSTMOp :
            LstmProjectionWeightBiasConstraint,
            LstmCifgInputConstraint,
            LstmResultConstraint,
-           TFL_OperandHasRankAtLeast<0, 2>,    // input
-           TFL_OperandIsNoneOrHasRank<1, 2>,   // input_to_input_weights
-           TFL_OperandHasRank<2, 2>,           // input_to_forget_weights
-           TFL_OperandHasRank<3, 2>,           // input_to_cell_weights
-           TFL_OperandHasRank<4, 2>,           // input_to_output_weights
-           TFL_OperandIsNoneOrHasRank<5, 2>,   // recurrent_to_input_weights
-           TFL_OperandHasRank<6, 2>,           // recurrent_to_forget_weights
-           TFL_OperandHasRank<7, 2>,           // recurrent_to_cell_weights
-           TFL_OperandHasRank<8, 2>,           // recurrent_to_output_weights
-           TFL_OperandIsNoneOrHasRank<9, 1>,   // cell_to_input_weights
-           TFL_OperandIsNoneOrHasRank<10, 1>,  // cell_to_forget_weights
-           TFL_OperandIsNoneOrHasRank<11, 1>,  // cell_to_output_weights
-           TFL_OperandIsNoneOrHasRank<12, 1>,  // input_gate_bias
-           TFL_OperandHasRank<13, 1>,          // forget_gate_bias
-           TFL_OperandHasRank<14, 1>,          // cell_gate_bias
-           TFL_OperandHasRank<15, 1>,          // output_gate_bias
-           TFL_OperandIsNoneOrHasRank<16, 2>,  // projection_weights
-           TFL_OperandIsNoneOrHasRank<17, 1>,  // projection_bias
+           TFL_OperandHasRankAtLeast<0, 2>,       // input
+           TFL_OperandIsNoneOrHasRank<1, 2>,      // input_to_input_weights
+           TFL_OperandHasRank<2, 2>,              // input_to_forget_weights
+           TFL_OperandHasRank<3, 2>,              // input_to_cell_weights
+           TFL_OperandHasRank<4, 2>,              // input_to_output_weights
+           TFL_OperandIsNoneOrHasRankAtMost<5, 2>,// recurrent_to_input_weights
+           TFL_OperandHasRankAtMost<6, 2>,        // recurrent_to_forget_weights
+           TFL_OperandHasRankAtMost<7, 2>,        // recurrent_to_cell_weights
+           TFL_OperandHasRankAtMost<8, 2>,        // recurrent_to_output_weights
+           TFL_OperandIsNoneOrHasRank<9, 1>,      // cell_to_input_weights
+           TFL_OperandIsNoneOrHasRank<10, 1>,     // cell_to_forget_weights
+           TFL_OperandIsNoneOrHasRank<11, 1>,     // cell_to_output_weights
+           TFL_OperandIsNoneOrHasRank<12, 1>,     // input_gate_bias
+           TFL_OperandHasRank<13, 1>,             // forget_gate_bias
+           TFL_OperandHasRank<14, 1>,             // cell_gate_bias
+           TFL_OperandHasRank<15, 1>,             // output_gate_bias
+           TFL_OperandIsNoneOrHasRank<16, 2>,     // projection_weights
+           TFL_OperandIsNoneOrHasRank<17, 1>,     // projection_bias
            TFL_StatefulOp,
            DeclareOpInterfaceMethods<InferTypeOpInterface>,
            QuantizableResult,
@@ -4483,6 +4483,9 @@ def TFL_UnidirectionalSequenceLSTMOp :
     // Used in post-training dynamic range quantization. If the value is true,
     // input activations are asymmetrically quantized.
     OptionalAttr<BoolAttr>:$asymmetric_quantize_inputs,
+    // IndyLSTM optimizations (i.e. optimizations enabled because of diagonal
+    // recurrent weight matrices that are provided as vectors)
+    OptionalAttr<BoolAttr>:$diagonal_recurrent_tensors,
 
     // Types of the optional intermediate tensors, which exist for fully
     // quantized op and hold the ranges of the intermediate tensors.

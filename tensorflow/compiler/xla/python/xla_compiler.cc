@@ -798,9 +798,15 @@ void BuildXlaCompilerSubmodule(py::module& m) {
           &ExecutableBuildOptions::set_auto_spmd_partitioning_mesh_ids)
       .def_property(
           "allow_spmd_sharding_propagation_to_output",
-          &ExecutableBuildOptions::allow_spmd_sharding_propagation_to_output,
-          &ExecutableBuildOptions::
-              set_allow_spmd_sharding_propagation_to_output);
+          [](const ExecutableBuildOptions& options) -> std::vector<bool> {
+            return std::vector<bool>(
+                options.allow_spmd_sharding_propagation_to_output().begin(),
+                options.allow_spmd_sharding_propagation_to_output().end());
+          },
+          [](ExecutableBuildOptions& options, std::vector<bool> values) {
+            absl::InlinedVector<bool, 1> v(values.begin(), values.end());
+            options.set_allow_spmd_sharding_propagation_to_output(v);
+          });
 
   py::enum_<OpSharding::Type> op_sharding_type(m, "OpSharding_Type");
   op_sharding_type.value("REPLICATED", OpSharding::REPLICATED)

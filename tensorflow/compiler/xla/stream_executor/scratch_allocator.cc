@@ -18,8 +18,8 @@ limitations under the License.
 #include <cstdint>
 
 #include "tensorflow/compiler/xla/stream_executor/device_memory.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/statusor.h"
 #include "tensorflow/compiler/xla/stream_executor/stream.h"
+#include "tensorflow/tsl/platform/statusor.h"
 
 namespace stream_executor {
 

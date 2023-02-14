@@ -47,7 +47,7 @@ from setuptools.dist import Distribution
 # result for pip.
 # Also update tensorflow/tensorflow.bzl and
 # tensorflow/core/public/version.h
-_VERSION = '2.12.0'
+_VERSION = '2.13.0'
 
 
 # We use the same setup.py for all tensorflow_* packages and for the nightly
@@ -94,7 +94,7 @@ REQUIRED_PACKAGES = [
     'jax >= 0.3.15',
     'libclang >= 13.0.0',
     # TODO(b/263178356): numpy 1.24 breaks TF's tests
-    'numpy >= 1.20, <1.24',
+    'numpy >= 1.22, <1.24',
     'opt_einsum >= 2.3.2',
     'packaging',
     # TODO(b/182876485): Protobuf 3.20 results in linker errors on Windows
@@ -104,7 +104,7 @@ REQUIRED_PACKAGES = [
     # See also: https://github.com/protocolbuffers/protobuf/issues/9954
     # See also: https://github.com/tensorflow/tensorflow/issues/56077
     # This is a temporary patch for now, to patch previous TF releases.
-    'protobuf >= 3.9.2, < 3.20',
+    'protobuf>=3.20.3,<5.0.0dev,!=4.21.0,!=4.21.1,!=4.21.2,!=4.21.3,!=4.21.4,!=4.21.5',
     'setuptools',
     'six >= 1.12.0',
     'termcolor >= 1.1.0',
@@ -123,12 +123,12 @@ REQUIRED_PACKAGES = [
     # current release version. These also usually have "alpha" or "dev" in their
     # version name.
     # These are all updated during the TF release process.
-    standard_or_nightly('tensorboard >= 2.11, < 2.12',
-                        'tb-nightly ~= 2.12.0.a'),
-    standard_or_nightly('tensorflow_estimator >= 2.11.0rc0, < 2.12',
-                        'tf-estimator-nightly ~= 2.12.0.dev'),
-    standard_or_nightly('keras >= 2.11.0rc1, < 2.12',
-                        'keras-nightly ~= 2.12.0.dev'),
+    standard_or_nightly('tensorboard >= 2.12, < 2.13',
+                        'tb-nightly ~= 2.13.0.a'),
+    standard_or_nightly('tensorflow_estimator >= 2.12.0rc0, < 2.13',
+                        'tf-estimator-nightly ~= 2.13.0.dev'),
+    standard_or_nightly('keras >= 2.12.0rc0, < 2.13',
+                        'keras-nightly ~= 2.13.0.dev'),
 ]
 REQUIRED_PACKAGES = [p for p in REQUIRED_PACKAGES if p is not None]
 
@@ -305,6 +305,7 @@ headers = (
     list(find_files('*.proto', 'tensorflow/core')) +
     list(find_files('*.proto', 'tensorflow/python')) +
     list(find_files('*.proto', 'tensorflow/python/framework')) +
+    list(find_files('*.proto', 'tensorflow/tsl')) +
     list(find_files('*.def', 'tensorflow/compiler')) +
     list(find_files('*.h', 'tensorflow/c')) +
     list(find_files('*.h', 'tensorflow/cc')) +

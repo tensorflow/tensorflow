@@ -67,6 +67,7 @@ cc_library(
 cc_library(
     name = "legacy_types",
     hdrs = ["legacy_types.h"],
+    compatible_with = get_compatible_with_portable(),
     copts = tflite_copts(),
     deps = [
         ":types",
@@ -341,6 +342,7 @@ cc_library(
         "optimized/legacy_optimized_ops.h",
         "optimized/optimized_ops.h",
     ],
+    compatible_with = get_compatible_with_portable(),
     copts = tflite_copts(),
     deps = [
         ":common",
@@ -688,6 +690,7 @@ cc_library(
         "reference/transpose.h",
         "reference/transpose_conv.h",
     ],
+    compatible_with = get_compatible_with_portable(),
     copts = tflite_copts(),
     # We are disabling parse_headers for this header-only target so that the
     # external and internal builds are consistent. The primary issue here is

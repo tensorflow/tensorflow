@@ -665,6 +665,8 @@ Status EagerServiceImpl::Enqueue(CallOptions* call_opts,
       s = SendPackedHandle(item.send_packed_handle(), context->Context());
     } else if (item.has_register_function()) {
       s = RegisterFunction(item.register_function(), context->Context());
+    } else if (item.has_remove_function()) {
+      s = RemoveFunction(item.remove_function(), context->Context());
     } else if (item.has_cleanup_function()) {
       s = CleanupFunction(item.cleanup_function());
     } else {
@@ -746,6 +748,11 @@ Status EagerServiceImpl::RegisterFunction(
   return eager_context->AddFunctionDef(
       register_function.function_def(), register_function.library(),
       register_function.is_component_function());
+}
+
+Status EagerServiceImpl::RemoveFunction(const RemoveFunctionOp& remove_function,
+                                        EagerContext* eager_context) {
+  return eager_context->RemoveFunction(remove_function.function_name());
 }
 
 Status EagerServiceImpl::CleanupFunction(

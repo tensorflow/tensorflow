@@ -19,8 +19,9 @@ limitations under the License.
 #include <string>
 
 #include "tensorflow/lite/builtin_ops.h"
-#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/core/interpreter_builder.h"
+#include "tensorflow/lite/core/kernels/register.h"
 #include "tensorflow/lite/core/model_builder.h"
 #include "tensorflow/lite/delegates/gpu/common/gpu_info.h"
 #include "tensorflow/lite/delegates/gpu/common/model.h"
@@ -33,7 +34,6 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/metal/inference_context.h"
 #include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
-#include "tensorflow/lite/kernels/register.h"
 
 namespace tflite {
 namespace gpu {
@@ -103,14 +103,14 @@ absl::Status CompareCPUGPUResults(tflite::Interpreter* cpu, const std::vector<Va
           printed++;
         }
         if (printed == kMaxPrint) {
-          std::cout << "Printed " << kMaxPrint << " different elements, threshhold - "
+          std::cout << "Printed " << kMaxPrint << " different elements, threshold - "
                     << per_element_eps << ", next different elements skipped" << std::endl;
           printed++;
         }
       }
     }
     std::cout << "Total " << total_different << " different elements, for output #" << i
-              << ", threshhold - " << per_element_eps << std::endl;
+              << ", threshold - " << per_element_eps << std::endl;
   }
   return absl::OkStatus();
 }

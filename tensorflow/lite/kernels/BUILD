@@ -2,6 +2,7 @@ load("//tensorflow/lite:build_def.bzl", "tflite_combine_cc_tests", "tflite_copts
 load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite_combined")
 load("//tensorflow:tensorflow.bzl", "tf_opts_nortti_if_android")
 load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable", "pybind_extension")
+load("//tensorflow/lite/core/shims:cc_library_with_tflite.bzl", "cc_library_with_tflite")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -189,7 +190,6 @@ cc_library(
     hdrs = ["test_util.h"],
     deps = [
         ":acceleration_test_util",
-        ":builtin_ops",
         ":test_delegate_providers_lib",
         "//tensorflow/core/platform:logging",
         "//tensorflow/lite:framework_stable",
@@ -202,6 +202,7 @@ cc_library(
         "//tensorflow/lite/core:subgraph",
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/core/c:common",
+        "//tensorflow/lite/core/kernels:builtin_ops",
         "//tensorflow/lite/delegates/nnapi:acceleration_test_util",
         "//tensorflow/lite/delegates/nnapi:nnapi_delegate",
         "//tensorflow/lite/kernels/internal:tensor_utils",
@@ -703,6 +704,7 @@ BUILTIN_KERNEL_DEPS = [
     "//tensorflow/lite:framework_stable",
     "//tensorflow/lite:minimal_logging",
     "//tensorflow/lite:string_util",
+    "//tensorflow/lite:tflite_kernel_use_xnnpack_optional",
     "//tensorflow/lite/core:subgraph",
     "//tensorflow/lite:util",
     "//tensorflow/lite/core/c:common",
@@ -724,6 +726,11 @@ BUILTIN_KERNEL_DEPS = [
     "//conditions:default": [
         ":eigen_support",
         "//tensorflow/lite/kernels/internal:optimized_eigen",
+    ],
+}) + select({
+    "//tensorflow/lite:tflite_with_xnnpack_explicit_false": [],
+    "//conditions:default": [
+        "@XNNPACK//:xnnpack_for_tflite",
     ],
 })
 
@@ -881,8 +888,17 @@ cc_library(
     copts = tflite_copts(),
 )
 
-# For internal usage by shared libraries only.
 cc_library(
+    name = "builtin_ops_list",
+    compatible_with = get_compatible_with_portable(),
+    textual_hdrs = ["builtin_ops_list.inc"],
+    visibility = [
+        "//tensorflow/lite:__subpackages__",
+    ],
+)
+
+# For internal usage by shared libraries only.
+cc_library_with_tflite(
     name = "builtin_ops_all_linked",
     hdrs = [
         "builtin_op_kernels.h",
@@ -890,13 +906,16 @@ cc_library(
         "register.h",
     ],
     copts = tflite_copts(),
+    tflite_deps = [
+        "//tensorflow/lite:framework_stable",
+    ],
     # Limit visibility to TFLite only.
     visibility = [
         "//tensorflow/lite:__subpackages__",
     ],
     deps = [
         ":builtin_op_kernels",
-        "//tensorflow/lite:framework_stable",
+        ":builtin_ops_list",
         "//tensorflow/lite:tflite_with_xnnpack_optional",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/core/kernels:builtin_ops_all_linked",
@@ -904,7 +923,7 @@ cc_library(
     ],
 )
 
-cc_library(
+cc_library_with_tflite(
     name = "builtin_ops",
     hdrs = [
         "builtin_op_kernels.h",
@@ -912,9 +931,13 @@ cc_library(
         "register.h",
     ],
     compatible_with = get_compatible_with_portable(),
+    generate_opaque_delegate_target = True,
+    tflite_deps = [
+        "//tensorflow/lite:cc_api_stable",
+    ],
     deps = [
         ":builtin_op_kernels",  # buildcleaner: keep
-        "//tensorflow/lite:cc_api_stable",
+        ":builtin_ops_list",
         "//tensorflow/lite:mutable_op_resolver",
         "//tensorflow/lite:tflite_with_xnnpack_optional",
         "//tensorflow/lite/core/c:common",
@@ -1181,11 +1204,11 @@ cc_test(
     size = "small",
     srcs = ["broadcast_args_test.cc"],
     deps = [
-        ":builtin_ops",
         ":test_main",
         ":test_util",
         "//tensorflow/lite:framework_stable",
         "//tensorflow/lite/core:framework_stable",
+        "//tensorflow/lite/core/kernels:builtin_ops",
         "@com_google_googletest//:gtest",
     ],
 )
@@ -1195,11 +1218,11 @@ cc_test(
     size = "small",
     srcs = ["broadcast_to_test.cc"],
     deps = [
-        ":builtin_ops",
         ":test_main",
         ":test_util",
         "//tensorflow/lite:framework_stable",
         "//tensorflow/lite/core:framework_stable",
+        "//tensorflow/lite/core/kernels:builtin_ops",
         "@com_google_googletest//:gtest",
     ],
 )
@@ -1280,7 +1303,7 @@ cc_test(
         "//tensorflow/lite:framework_stable",
         "//tensorflow/lite/core:framework_stable",
         "//tensorflow/lite/core/c:common",
-        "//tensorflow/lite/kernels:builtin_ops",
+        "//tensorflow/lite/core/kernels:builtin_ops",
         "//tensorflow/lite/tools:logging",
         "@com_google_googletest//:gtest_main",
     ],

@@ -196,11 +196,11 @@ tf_python_pybind_extension(
     ],
 )
 
-pybind_extension(
+tf_python_pybind_extension(
     name = "_pywrap_cpu_feature_guard",
     srcs = ["cpu_feature_guard_wrapper.cc"],
     deps = [
-        "//tensorflow/core/platform:cpu_feature_guard",
+        "//tensorflow/core/platform:cpu_feature_guard_hdr",  # Only depend on header to avoid ODR issues.
         "//third_party/python_runtime:headers",
         "@pybind11",
     ],

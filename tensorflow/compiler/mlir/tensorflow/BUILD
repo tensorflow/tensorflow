@@ -767,6 +767,21 @@ gentbl_cc_library(
     ],
 )
 
+tf_cc_test(
+    name = "tf_saved_model_test",
+    srcs = ["ir/tf_saved_model_test.cc"],
+    deps = [
+        ":tensorflow",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/platform:test",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Parser",
+        "@llvm-project//mlir:Support",
+    ],
+)
+
 cc_library(
     name = "decompose_resource_ops",
     srcs = [
@@ -903,7 +918,7 @@ cc_library(
     deps = [
         ":session_utils",
         ":tensorflow_ops",
-        "//tensorflow/compiler/mlir:string_container_utils",
+        "//tensorflow/compiler/mlir/utils:string_container_utils",
         "//tensorflow/core:core_cpu_base",
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
@@ -940,7 +955,7 @@ cc_library(
     deps = [
         ":tensorflow",
         ":tensorflow_ops",
-        "//tensorflow/compiler/mlir:string_container_utils",
+        "//tensorflow/compiler/mlir/utils:string_container_utils",
         "//tensorflow/core:core_cpu_base",
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
@@ -1552,8 +1567,8 @@ cc_library(
         ":tensorflow",
         ":translate_utils",
         ":verify_suitable_for_graph_export",
-        "//tensorflow/compiler/mlir:name_utils",
         "//tensorflow/compiler/mlir:op_or_arg_name_mapper",
+        "//tensorflow/compiler/mlir/utils:name_utils",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
@@ -1741,7 +1756,7 @@ cc_library(
         ":convert_type",
         ":export_utils",
         ":tensorflow",
-        "//tensorflow/compiler/mlir:string_container_utils",
+        "//tensorflow/compiler/mlir/utils:string_container_utils",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
@@ -1964,7 +1979,6 @@ cc_library(
         ":tensorflow_types",
         "//tensorflow/c:tf_status",
         "//tensorflow/compiler/xla/stream_executor",
-        "//tensorflow/compiler/xla/stream_executor/lib",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "@llvm-project//llvm:Support",
@@ -1993,7 +2007,6 @@ cc_library(
         ":mlir_roundtrip_flags",
         ":tensorflow",
         "//tensorflow/compiler/tf2xla:functionalize_control_flow_pass_registration",
-        "//tensorflow/compiler/xla/stream_executor/lib",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
         "//tensorflow/core:graph",
@@ -2054,6 +2067,7 @@ cc_library(
         "//tensorflow/core:ops",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/grappler/utils:transitive_fanin",
+        "//tensorflow/core/util/tensor_bundle:byteswaptensor",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
@@ -2192,9 +2206,9 @@ COMPILE_MLIR_UTIL_DEPS = [
     "//tensorflow/core/platform:error_payloads",
     "//tensorflow/core/platform:logging",
     "//tensorflow/core/tpu:tpu_defs",
-    "//tensorflow/compiler/xla/stream_executor/lib",
     "//tensorflow/compiler/mlir/tf2xla:mlir_bridge_rollout_policy",
     "@llvm-project//mlir:TensorDialect",
+    "//tensorflow/compiler/mlir/xla:xla_legalize_targets",
 ]
 
 cc_library(
@@ -2235,7 +2249,7 @@ cc_library(
         ":serialize_mlir_module_utils",
         ":tensorflow",
         ":translate_cl_options",
-        "//tensorflow/compiler/mlir:string_container_utils",
+        "//tensorflow/compiler/mlir/utils:string_container_utils",
         "//tensorflow/compiler/tf2xla:xla_argument",
         "//tensorflow/compiler/tf2xla:xla_helpers",
         "//tensorflow/compiler/xla/hlo/ir:hlo",
@@ -2351,7 +2365,7 @@ cc_library(
     hdrs = ["utils/tpu_rewrite_device_util.h"],
     deps = [
         ":tensorflow",
-        "//tensorflow/compiler/mlir:string_container_utils",
+        "//tensorflow/compiler/mlir/utils:string_container_utils",
         "//tensorflow/compiler/xla:array4d",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla/service:computation_placer",

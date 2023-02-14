@@ -22,6 +22,7 @@ limitations under the License.
 
 #include "absl/strings/substitute.h"
 #include "tensorflow/core/data/service/common.h"
+#include "tensorflow/core/data/service/snapshot/path_utils.h"
 #include "tensorflow/core/data/snapshot_utils.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/protobuf/snapshot.pb.h"
@@ -41,11 +42,14 @@ struct SnapshotReaderParams {
   experimental::DistributedSnapshotMetadata metadata;
 
   // Data types of the snapshot data elements.
-  // TODO(b/258691097): Parse the metadata to get the output types.
   DataTypeVector output_types;
 
   // The Tensorflow environment.
   Env* env = nullptr;
+
+  std::string CommittedChunksDirectory() const {
+    return tensorflow::data::CommittedChunksDirectory(snapshot_path);
+  }
 
   std::string DebugString() const {
     return absl::Substitute(

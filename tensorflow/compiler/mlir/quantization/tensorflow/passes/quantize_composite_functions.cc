@@ -1092,11 +1092,12 @@ void QuantizeCompositeFunctionsPass::runOnOperation() {
   pm.addPass(CreatePreprocessOpPass(quant_specs, target_opset_));
 
   quant_specs.inference_type = tensorflow::DT_QINT8;
+  quant_specs.disable_per_channel = !enable_per_channel_quantization_;
   // Apply activation-weight quantization.
   if (quantization_method_ ==
       tensorflow::quantization::QuantizationMethod::STATIC_RANGE) {
     pm.addNestedPass<func::FuncOp>(
-        CreatePrepareQuantizePass(quantization_method_));
+        CreatePrepareQuantizePass(quant_specs, quantization_method_));
     pm.addNestedPass<func::FuncOp>(
         CreateQuantizePass(quant_specs, target_opset_));
     pm.addNestedPass<func::FuncOp>(CreatePostQuantizePass());
@@ -1109,8 +1110,6 @@ void QuantizeCompositeFunctionsPass::runOnOperation() {
     // weights even in SRQ.
     quant_specs.minimum_elements_for_weights = min_num_elements_for_weights_;
     quant_specs.weight_quantization = true;
-    // Consider putting this in front of the pass to allow per-channel for SRQ
-    quant_specs.disable_per_channel = !enable_per_channel_quantization_;
     pm.addPass(CreatePrepareQuantizeDRQPass(quant_specs, target_opset_));
     if (quantization_method_ !=
         tensorflow::quantization::QuantizationMethod::DYNAMIC_RANGE) {

@@ -265,7 +265,6 @@ const StatTypeMap& GetStatTypeMap() {
       {"compute_cap_major", kDevCapComputeCapMajor},
       {"compute_cap_minor", kDevCapComputeCapMinor},
       {"peak_teraflops_per_second", kDevCapPeakTeraflopsPerSecond},
-      {"peak_bw_gigabytes_per_second", kDevCapPeakBwGigabytesPerSecond},
       {"peak_hbm_bw_gigabytes_per_second", kDevCapPeakHbmBwGigabytesPerSecond},
       {"peak_sram_rd_bw_gigabytes_per_second",
        kDevCapPeakSramRdBwGigabytesPerSecond},
@@ -291,6 +290,11 @@ const StatTypeMap& GetStatTypeMap() {
       {"hlo_category", kHloCategory},
       {"tf_op_name", kTfOpName},
       {"dma_stall_duration_ps", kDmaStallDurationPs},
+      {"key", kKey},
+      {"payload_size_bytes", kPayloadSizeBytes},
+      {"duration_us", kDuration},
+      {"buffer_size", kBufferSize},
+      {"transfers", kTransfers},
   });
   DCHECK_EQ(stat_type_map->size(), kNumStatTypes);
   return *stat_type_map;

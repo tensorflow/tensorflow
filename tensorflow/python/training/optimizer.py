@@ -677,7 +677,7 @@ class Optimizer(
       if g is not None:
         try:
           # Convert the grad to Tensor or IndexedSlices if necessary.
-          g = ops.convert_to_tensor_or_indexed_slices(g)
+          g = indexed_slices.convert_to_tensor_or_indexed_slices(g)
         except TypeError:
           raise TypeError(
               "Gradient must be convertible to a Tensor"
@@ -779,7 +779,7 @@ class Optimizer(
 
       try:
         # Convert the grad to Tensor or IndexedSlices if necessary.
-        g = ops.convert_to_tensor_or_indexed_slices(g)
+        g = indexed_slices.convert_to_tensor_or_indexed_slices(g)
       except TypeError:
         raise TypeError("Gradient must be convertible to a Tensor"
                         " or IndexedSlices, or None: %s" % g)

@@ -757,7 +757,7 @@ class MklMatMulPrimitive : public MklPrimitive {
     context_.b_mem.reset(
         new dnnl::memory(*context_.b_md, cpu_engine_, DummyData));
     context_.c_mem.reset(
-        new dnnl::memory(*context_.b_md, cpu_engine_, DummyData));
+        new dnnl::memory(*context_.c_md, cpu_engine_, DummyData));
     auto scratchpad_md = context_.prim_desc->scratchpad_desc();
     context_.sp_mem.reset(
         new dnnl::memory(scratchpad_md, cpu_engine_, DummyData));

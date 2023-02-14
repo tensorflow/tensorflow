@@ -178,14 +178,13 @@ def _rocm_include_path(repository_ctx, rocm_config, bash_bin):
     inc_dirs.append(rocm_config.rocm_toolkit_path + "/hsa/include")
 
     # Add HIP headers (needs to match $HIP_PATH)
+    inc_dirs.append(rocm_config.rocm_toolkit_path + "/hip/include")
     if int(rocm_config.rocm_version_number) >= 50200:
         inc_dirs.append(rocm_config.rocm_toolkit_path + "/include")
         inc_dirs.append(rocm_config.rocm_toolkit_path + "/include/hip")
         inc_dirs.append(rocm_config.rocm_toolkit_path + "/include/rocprim")
         inc_dirs.append(rocm_config.rocm_toolkit_path + "/include/rocsolver")
         inc_dirs.append(rocm_config.rocm_toolkit_path + "/include/rocblas")
-    else:
-        inc_dirs.append(rocm_config.rocm_toolkit_path + "/hip/include")
 
     # Add HIP-Clang headers (realpath relative to compiler binary)
     rocm_toolkit_path = realpath(repository_ctx, rocm_config.rocm_toolkit_path, bash_bin)

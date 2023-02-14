@@ -33,6 +33,7 @@ cc_library_with_tflite(
 cc_library_with_tflite(
     name = "stable_delegate_inferface",
     hdrs = ["stable_delegate_interface.h"],
+    generate_opaque_delegate_target = True,
     tflite_deps = ["//tensorflow/lite/experimental/acceleration/configuration/c:stable_delegate"],
     visibility = ["//visibility:public"],
 )

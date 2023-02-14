@@ -52,6 +52,15 @@ struct GraphExecutionOptions {
   // Model metadata used for monitoring and tracing.
   tensorflow::SessionMetadata model_metadata;
 
+  // If true, for each client graph, the op costs of the first request will be
+  // recorded and used to re-compile the client graph.
+  // TODO(b/266251216): Maybe flip the default value or remote it.
+  bool enable_online_cost_analysis = false;
+
+  // If true, the MLRT interpreter will be used instead of the BEF executor.
+  // This option is experimental.
+  bool enable_mlrt = false;
+
   tensorflow::TfrtCompileOptions compile_options;
 };
 

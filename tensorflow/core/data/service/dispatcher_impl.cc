@@ -17,11 +17,14 @@ limitations under the License.
 
 #include <algorithm>
 #include <array>
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <string>
 #include <utility>
 #include <vector>
+
+#include "tensorflow/tsl/platform/errors.h"
 
 #ifdef PLATFORM_GOOGLE
 #include "file/logging/log_lines.h"
@@ -81,10 +84,11 @@ using ::tensorflow::protobuf::util::MessageDifferencer;
 constexpr char kJournalDir[] = "tf_data_dispatcher_journal";
 // The name of the datasets directory inside the dispatcher's working directory.
 constexpr char kDatasetsDir[] = "datasets";
-constexpr int64_t kDefaultIterationGcCheckIntervalMs =
-    10 * 60 * 1000;                                              // 10 minutes.
-constexpr int64_t kDefaultIterationGcTimeoutMs = 5 * 60 * 1000;  // 5 minutes.
-constexpr int64_t kDefaultClientTimeoutMs = 2 * 60 * 1000;       // 2 minutes.
+
+constexpr absl::Duration kDefaultIterationGcCheckInterval = absl::Minutes(10);
+constexpr absl::Duration kDefaultIterationGcTimeout = absl::Minutes(5);
+constexpr absl::Duration kDefaultClientTimeout = absl::Minutes(2);
+constexpr absl::Duration kDefaultWorkerTimeout = absl::Minutes(1);
 
 constexpr std::array<const char*, 8> kNodeNameSharingOps = {
     "HashTable",
@@ -149,13 +153,20 @@ void PrepareGraph(GraphDef* graph) {
 DispatcherConfig ApplyConfigDefaults(const DispatcherConfig& config) {
   DispatcherConfig new_config(config);
   if (new_config.job_gc_check_interval_ms() == 0) {
-    new_config.set_job_gc_check_interval_ms(kDefaultIterationGcCheckIntervalMs);
+    new_config.set_job_gc_check_interval_ms(
+        absl::ToInt64Milliseconds(kDefaultIterationGcCheckInterval));
   }
   if (new_config.job_gc_timeout_ms() == 0) {
-    new_config.set_job_gc_timeout_ms(kDefaultIterationGcTimeoutMs);
+    new_config.set_job_gc_timeout_ms(
+        absl::ToInt64Milliseconds(kDefaultIterationGcTimeout));
   }
   if (new_config.client_timeout_ms() == 0) {
-    new_config.set_client_timeout_ms(kDefaultClientTimeoutMs);
+    new_config.set_client_timeout_ms(
+        absl::ToInt64Milliseconds(kDefaultClientTimeout));
+  }
+  if (new_config.worker_timeout_ms() == 0) {
+    new_config.set_worker_timeout_ms(
+        absl::ToInt64Milliseconds(kDefaultWorkerTimeout));
   }
   return new_config;
 }
@@ -347,6 +358,8 @@ Status DataServiceDispatcherImpl::WorkerHeartbeat(
           << request->worker_address();
   mutex_lock l(mu_);
   const std::string& worker_address = request->worker_address();
+  latest_worker_heartbeats_time_[worker_address] =
+      absl::FromUnixMicros(env_->NowMicros());
   // Assigned tasks from the perspective of the dispatcher.
   std::vector<std::shared_ptr<const Task>> assigned_tasks;
   Status s = state_.TasksForWorker(worker_address, assigned_tasks);
@@ -1072,6 +1085,21 @@ Status DataServiceDispatcherImpl::Snapshot(const SnapshotRequest* request,
   return OkStatus();
 }
 
+Status DataServiceDispatcherImpl::GetSnapshotStreams(
+    const GetSnapshotStreamsRequest* request,
+    GetSnapshotStreamsResponse* response) {
+  TF_RETURN_IF_ERROR(CheckStarted());
+  mutex_lock l(mu_);
+
+  auto it = snapshots_.find(request->path());
+  if (it == snapshots_.end()) {
+    return errors::InvalidArgument(
+        "the dispatcher does not know of a snapshot at ", request->path());
+  }
+  TF_RETURN_IF_ERROR(it->second->GetSnapshotStreams(*response));
+  return OkStatus();
+}
+
 Status DataServiceDispatcherImpl::GetSnapshotSplit(
     const GetSnapshotSplitRequest* request,
     GetSnapshotSplitResponse* response) {
@@ -1181,13 +1209,18 @@ void DataServiceDispatcherImpl::MaintenanceThread() {
         LOG(WARNING) << "Error releasing missing clients: " << s;
       }
     }
-
     {
       Status s = GcOldIterations();
       if (!s.ok()) {
         LOG(WARNING) << "Error garbage collecting old iterations: " << s;
       }
     }
+    {
+      for (const auto& [ignore, snapshot_manager] : snapshots_) {
+        snapshot_manager->UpdateStreams();
+      }
+    }
+    DetectMissingWorkers();
     next_check_micros =
         env_->NowMicros() + (config_.job_gc_check_interval_ms() * 1000);
   }
@@ -1210,6 +1243,24 @@ Status DataServiceDispatcherImpl::ReleaseMissingClients()
     }
   }
   return OkStatus();
+}
+
+void DataServiceDispatcherImpl::DetectMissingWorkers()
+    TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+  int64_t now = env_->NowMicros();
+  for (auto it = latest_worker_heartbeats_time_.begin();
+       it != latest_worker_heartbeats_time_.end();) {
+    if (absl::FromUnixMicros(now) >
+        it->second + absl::Milliseconds(config_.worker_timeout_ms())) {
+      for (const auto& [ignore, snapshot_manager] : snapshots_) {
+        snapshot_manager->HandleMissingWorker(it->first);
+      }
+      LOG(INFO) << "Lost worker " << it->first << " due to timeout";
+      latest_worker_heartbeats_time_.erase(it++);
+    } else {
+      ++it;
+    }
+  }
 }
 
 Status DataServiceDispatcherImpl::GcOldIterations()
