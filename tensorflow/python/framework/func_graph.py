@@ -916,10 +916,6 @@ class FuncGraph(ops.Graph):
         forward_function=lambda x: [x])
     return graph_const
 
-  def captured(self, tensor):
-    """Check if the specified tensor has been captured."""
-    return id(tensor) in self._function_captures.by_val_captures
-
   @property
   def external_captures(self):
     """External tensors captured by this function."""

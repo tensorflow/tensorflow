@@ -1138,7 +1138,7 @@ class _WhileBodyGradFuncGraph(util.WhileBodyFuncGraph):
       return captured_tensor
 
     if tensor.graph is not self._forward_graph:
-      already_captured = self.captured(tensor)
+      already_captured = id(tensor) in self._function_captures.by_val_captures  # pylint: disable=protected-access
       captured_tensor = super(_WhileBodyGradFuncGraph, self)._capture_helper(
           tensor, name)
       if not already_captured:
