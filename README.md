@@ -82,7 +82,7 @@ $ python
 3
 >>> hello = tf.constant('Hello, TensorFlow!')
 >>> hello.numpy()
-b'Hello, TensorFlow!'
+b'Hello, TensorFlow! Test'
 ```
 
 For more examples, see the
