@@ -941,7 +941,12 @@ class Optimizer(
     for (name, _), variable_object in sorted(self._non_slot_dict.items(),
                                              # Avoid comparing graphs
                                              key=lambda item: item[0][0]):
-      if variable_object._graph_key == current_graph_key:  # pylint: disable=protected-access
+      # Skip checking for graph key for eager mode since there's only one graph.
+      # This is necessary because there are cases where _trackable_children() is
+      # called in a differenr thread from the main thread (e.g., async
+      # checkpoint) and hence the default graph key would be different.
+      if (context.executing_eagerly()
+          or variable_object._graph_key == current_graph_key):  # pylint: disable=protected-access
         current_graph_non_slot_variables[name] = variable_object
     current_graph_non_slot_variables.update(
         super(Optimizer, self)._trackable_children(save_type, **kwargs))
