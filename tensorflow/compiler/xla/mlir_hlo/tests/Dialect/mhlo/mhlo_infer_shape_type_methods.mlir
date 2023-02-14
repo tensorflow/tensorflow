@@ -317,6 +317,62 @@ func.func @concat_bounds_unranked_c1(
 
 // -----
 
+// This test covers all cases (except "error out") of inferBranchedDimAndBound()
+// CHECK-LABEL: func @if_bounds
+func.func @if_bounds(%pred : tensor<i1>,
+    %true_branch_operand : tensor<2x3x4x?x?x?xf32, #mhlo.type_extensions<bounds = [?, ?, ?, ?, ?, 6]>>,
+    %false_branch_operand : tensor<2x?x?x?x?x?xf32, #mhlo.type_extensions<bounds = [?, ?, 4, ?, 5, 7]>>) -> tensor<*xindex> {
+  %0 = "mhlo.if"(%pred) ({
+      "mhlo.return"(%true_branch_operand) : (
+        tensor<2x3x4x?x?x?xf32, #mhlo.type_extensions<bounds = [?, ?, ?, ?, ?, 6]>>) -> ()
+    }, {
+      "mhlo.return"(%false_branch_operand) : (
+        tensor<2x?x?x?x?x?xf32, #mhlo.type_extensions<bounds = [?, ?, 4, ?, 5, 7]>>) -> ()
+    }) : (tensor<i1>) -> tensor<*xf32>
+  // CHECK: types0 = tensor<2x?x?x?x?x?xf32, #mhlo.type_extensions<bounds = [?, ?, 4, ?, ?, 7]>>
+  %1 = "mhlo_test.get_return_types"(%0) : (tensor<*xf32>) -> tensor<*xindex>
+  func.return %1 : tensor<*xindex>
+}
+
+// -----
+
+func.func @if_bounds_unranked(%pred : tensor<i1>,
+    %true_branch_operand : tensor<2x3x4x?x?x?xf32, #mhlo.type_extensions<bounds = [?, ?, ?, ?, ?, 6]>>,
+    %false_branch_operand : tensor<*xf32>) -> tensor<*xindex> {
+  %0 = "mhlo.if"(%pred) ({
+      "mhlo.return"(%true_branch_operand) : (
+        tensor<2x3x4x?x?x?xf32, #mhlo.type_extensions<bounds = [?, ?, ?, ?, ?, 6]>>) -> ()
+    }, {
+      "mhlo.return"(%false_branch_operand) : (
+        tensor<*xf32>) -> ()
+    }) : (tensor<i1>) -> tensor<*xf32>
+  // CHECK: types0 = tensor<*xf32>
+  %1 = "mhlo_test.get_return_types"(%0) : (tensor<*xf32>) -> tensor<*xindex>
+  func.return %1 : tensor<*xindex>
+}
+
+// -----
+
+// This test covers only a few cases of inferBranchedDimAndBound() with more branches
+// as test "if_bounds" above covers all cases
+// CHECK-LABEL: func @case_bounds
+func.func @case_bounds(%index : tensor<i32>,
+    %branch_0_operand : tensor<2xf32, #mhlo.type_extensions<bounds = [?]>>,
+    %branch_2_operand : tensor<?xf32, #mhlo.type_extensions<bounds = [3]>>) -> tensor<*xindex> {
+  %0 = "mhlo.case"(%index) ({
+      "mhlo.return"(%branch_0_operand) : (tensor<2xf32, #mhlo.type_extensions<bounds = [?]>>) -> ()
+  }, {
+      "mhlo.return"(%branch_0_operand) : (tensor<2xf32, #mhlo.type_extensions<bounds = [?]>>) -> ()
+  }, {
+      "mhlo.return"(%branch_2_operand) : (tensor<?xf32, #mhlo.type_extensions<bounds = [3]>>) -> ()
+  }) : (tensor<i32>) -> tensor<*xf32>
+  // CHECK: types0 = tensor<?xf32, #mhlo.type_extensions<bounds = [3]>>
+  %1 = "mhlo_test.get_return_types"(%0) : (tensor<*xf32>) -> tensor<*xindex>
+  func.return %1 : tensor<*xindex>
+}
+
+// -----
+
 // CHECK-LABEL: while_bounds
 func.func @while_bounds(
   %while_arg_1: tensor<2x?xi32, #mhlo.type_extensions<bounds = [?, 4]>>,
