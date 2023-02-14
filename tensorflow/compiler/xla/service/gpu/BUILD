@@ -395,7 +395,9 @@ xla_test(
     backends = [
         "gpu",
     ],
-    tags = ["nomac"],
+    tags = ["nomac",
+	    "no_rocm",
+	   ],
     deps = [
         ":ir_emitter_triton",
         "//tensorflow/compiler/xla:comparison_util",
