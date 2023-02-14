@@ -6,24 +6,17 @@ pipeline:
   tags: {}
   stages:
     - stage:
-        name: test
-        identifier: test
+        name: Child 1
+        identifier: Child_1
         description: ""
-        type: CI
+        type: Pipeline
         spec:
-          cloneCodebase: false
-          platform:
-            os: Linux
-            arch: Amd64
-          runtime:
-            type: Cloud
-            spec: {}
-          execution:
-            steps:
-              - step:
-                  type: Run
-                  name: Run_1
-                  identifier: Run_1
-                  spec:
-                    shell: Sh
-                    command: echo "hello world"
+          org: SE_Sandbox
+          pipeline: tensorflow_chained_child_pipeline_1
+          project: parson
+          inputs:
+            identifier: tensorflow_chained_child_pipeline_1
+            properties:
+              ci:
+                codebase:
+                  build: <+input>
