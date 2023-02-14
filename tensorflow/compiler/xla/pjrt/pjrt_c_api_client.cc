@@ -318,14 +318,6 @@ StatusOr<std::uintptr_t> PjRtCApiClient::UnsafeBufferPointer(
   return args.buffer_pointer;
 }
 
-StatusOr<std::unique_ptr<PjRtLoadedExecutable>> PjRtCApiClient::WrapExecutable(
-    StatusOr<std::unique_ptr<PjRtLoadedExecutable>> to_wrap) {
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<PjRtLoadedExecutable> executable,
-                      std::move(to_wrap));
-  return std::unique_ptr<PjRtLoadedExecutable>(
-      std::make_unique<PjRtCApiLoadedExecutable>(this, std::move(executable)));
-}
-
 StatusOr<std::unique_ptr<PjRtBuffer>> PjRtCApiClient::WrapBuffer(
     StatusOr<std::unique_ptr<PjRtBuffer>> to_wrap) {
   TF_ASSIGN_OR_RETURN(std::unique_ptr<PjRtBuffer> buffer, std::move(to_wrap));
@@ -671,18 +663,6 @@ StatusOr<std::string> PjRtCApiExecutable::SerializeExecutable() const {
 // ------------------------ Loaded Executables ---------------------------------
 
 PjRtCApiLoadedExecutable::PjRtCApiLoadedExecutable(
-    PjRtCApiClient* client, std::unique_ptr<PjRtLoadedExecutable> wrapped)
-    : client_(client),
-      loaded_executable_(
-          new PJRT_LoadedExecutable{std::move(wrapped),
-                                    client->pjrt_c_client()},
-          ::pjrt::MakeLoadedExecutableDeleter(client->pjrt_c_api())) {
-  executable_ = std::make_unique<PjRtCApiExecutable>(
-      pjrt_c_api(), new PJRT_Executable{loaded_executable_->executable});
-  InitDevices();
-}
-
-PjRtCApiLoadedExecutable::PjRtCApiLoadedExecutable(
     PjRtCApiClient* client, PJRT_LoadedExecutable* executable)
     : client_(client),
       loaded_executable_(executable, ::pjrt::MakeLoadedExecutableDeleter(
@@ -902,10 +882,6 @@ PjRtCApiLoadedExecutable::ExecutePortable(
                                  returned_future, fill_future);
 }
 
-PjRtLoadedExecutable* PjRtCApiLoadedExecutable::wrapped() const {
-  return c_loaded_executable()->get();
-}
-
 void PjRtCApiLoadedExecutable::Delete() {
   PJRT_LoadedExecutable_Delete_Args args;
   args.struct_size = PJRT_LoadedExecutable_Delete_Args_STRUCT_SIZE;
@@ -987,9 +963,6 @@ PjRtCApiBuffer::PjRtCApiBuffer(PjRtCApiClient* client, PJRT_Buffer* buffer)
       buffer_(buffer, ::pjrt::MakeBufferDeleter(client->pjrt_c_api())),
       readiness_event_(nullptr,
                        ::pjrt::MakeEventDeleter(client->pjrt_c_api())) {
-  if (kPjRtCApiBypass) {
-    wrapped_ = buffer_->buffer.get();
-  }
   set_shape();
 }
 
