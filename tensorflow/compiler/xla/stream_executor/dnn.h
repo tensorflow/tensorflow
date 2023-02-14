@@ -1095,7 +1095,7 @@ std::string ElementwiseOperationString(ElementwiseOperation op);
 // See PR#16309 and issue #18402 for links discussing the issue.
 class VersionInfo {
  public:
-  VersionInfo(int major = 0, int minor = 0, int patch = 0)
+  explicit VersionInfo(int major = 0, int minor = 0, int patch = 0)
       : major_(major), minor_(minor), patch_(patch) {}
   explicit VersionInfo(DnnVersionInfoProto proto)
       : major_(proto.major()), minor_(proto.minor()), patch_(proto.patch()) {}
@@ -1111,6 +1111,29 @@ class VersionInfo {
   int major_version() const { return major_; }
   int minor_version() const { return minor_; }
   int patch() const { return patch_; }
+
+  std::tuple<int, int, int> as_tuple() const {
+    return std::make_tuple(major_, minor_, patch_);
+  }
+
+  friend bool operator<(const VersionInfo& a, const VersionInfo& b) {
+    return a.as_tuple() < b.as_tuple();
+  }
+  friend bool operator>(const VersionInfo& a, const VersionInfo& b) {
+    return a.as_tuple() > b.as_tuple();
+  }
+  friend bool operator<=(const VersionInfo& a, const VersionInfo& b) {
+    return a.as_tuple() <= b.as_tuple();
+  }
+  friend bool operator>=(const VersionInfo& a, const VersionInfo& b) {
+    return a.as_tuple() >= b.as_tuple();
+  }
+  friend bool operator==(const VersionInfo& a, const VersionInfo& b) {
+    return a.as_tuple() == b.as_tuple();
+  }
+  friend bool operator!=(const VersionInfo& a, const VersionInfo& b) {
+    return a.as_tuple() != b.as_tuple();
+  }
 
  private:
   int major_;
