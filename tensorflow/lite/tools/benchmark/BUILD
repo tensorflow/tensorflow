@@ -191,6 +191,7 @@ cc_library(
     hdrs = ["benchmark_performance_options.h"],
     copts = common_copts,
     deps = [
+        ":benchmark_multirun_stats_recorder",
         ":benchmark_model_lib",
         ":benchmark_params",
         ":benchmark_utils",

@@ -68,7 +68,6 @@ class MultiRunStatsRecorder : public BenchmarkListener {
 
   virtual std::string PerfOptionName(const BenchmarkParams& params) const;
 };
-
 }  // namespace benchmark
 }  // namespace tflite
 
