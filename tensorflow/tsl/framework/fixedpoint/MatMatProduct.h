@@ -206,7 +206,7 @@ gebp_kernel<QInt8, QUInt8, Index, DataMapper, mr, nr, ConjugateLhs,
 }
 #endif
 
-// This definition tackle the case where the khs is encoded using unsigned 8bit
+// This definition tackle the case where the lhs is encoded using unsigned 8bit
 // integers and the rhs using signed 8bit integers.
 #ifndef EIGEN_USE_OPTIMIZED_UINT8_INT8_MAT_MAT_PRODUCT
 template <bool _ConjLhs, bool _ConjRhs>
