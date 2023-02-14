@@ -82,7 +82,7 @@ class Literal(trace.TraceType, serialization.Serializable):
     raise ValueError("Can not serialize Literal of type " +
                      type(self.value).__name__)
 
-  def placeholder_value(self, placeholder_context=None) -> Any:
+  def placeholder_value(self, placeholder_context) -> Any:
     # TODO(b/263505796): Remove this check when a range's placeholder output
     # is expected to be a range and not a list.
     if isinstance(self.value, range):
@@ -123,7 +123,7 @@ class Weakref(trace.TraceType):
       self, types: Sequence[trace.TraceType]) -> Optional["Weakref"]:
     return self if all(self == other for other in types) else None
 
-  def placeholder_value(self, placeholder_context=None) -> Any:
+  def placeholder_value(self, placeholder_context) -> Any:
     return self._ref()
 
   def _to_tensors(self, value: Any) -> Any:

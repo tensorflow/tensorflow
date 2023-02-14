@@ -571,7 +571,7 @@ class TypeHierarchyTest(test.TestCase):
       def most_specific_common_supertype(self, others):
         return self
 
-      def placeholder_value(self, placeholder_context=None):
+      def placeholder_value(self, placeholder_context):
         raise NotImplementedError
 
       def __eq__(self, other):
@@ -590,7 +590,7 @@ class TypeHierarchyTest(test.TestCase):
       def most_specific_common_supertype(self, others):
         return supertype
 
-      def placeholder_value(self, placeholder_context=None):
+      def placeholder_value(self, placeholder_context):
         raise NotImplementedError
 
       def __eq__(self, other):
