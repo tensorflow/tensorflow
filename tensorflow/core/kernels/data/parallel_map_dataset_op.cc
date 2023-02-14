@@ -666,12 +666,11 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
                              const std::string& prefix, const Status& status)
         TF_EXCLUSIVE_LOCKS_REQUIRED(*mu_) {
       TF_RETURN_IF_ERROR(
-          writer->WriteScalar(full_name(absl::StrCat(prefix, "_", kErrorCode)),
+          writer->WriteScalar(prefix, absl::StrCat("_", kErrorCode),
                               static_cast<int64_t>(status.code())));
       if (!status.ok()) {
         TF_RETURN_IF_ERROR(writer->WriteScalar(
-            full_name(absl::StrCat(prefix, "_", kErrorMessage)),
-            status.error_message()));
+            prefix, absl::StrCat("_", kErrorMessage), status.error_message()));
       }
       return OkStatus();
     }
@@ -680,15 +679,14 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
                             const std::string& prefix, Status* status)
         TF_EXCLUSIVE_LOCKS_REQUIRED(*mu_) {
       int64_t code_int;
-      TF_RETURN_IF_ERROR(reader->ReadScalar(
-          full_name(absl::StrCat(prefix, "_", kErrorCode)), &code_int));
+      TF_RETURN_IF_ERROR(
+          reader->ReadScalar(prefix, absl::StrCat("_", kErrorCode), &code_int));
       error::Code code = static_cast<error::Code>(code_int);
 
       if (code != error::Code::OK) {
         tstring error_message;
         TF_RETURN_IF_ERROR(reader->ReadScalar(
-            full_name(absl::StrCat(prefix, "_", kErrorMessage)),
-            &error_message));
+            prefix, absl::StrCat("_", kErrorMessage), &error_message));
         *status = Status(code, error_message);
       } else {
         *status = OkStatus();
