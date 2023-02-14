@@ -534,7 +534,7 @@ extern __host__ cudaError_t CUDARTAPI cudaStreamGetCaptureInfo(
       cudaStream_t, enum cudaStreamCaptureStatus *, unsigned long long *,
       cudaGraph_t *, const cudaGraphNode_t **, size_t *);
   static auto func_ptr =
-      LoadSymbol<FuncPtr>("__CUDART_API_PTSZ(cudaStreamGetCaptureInfo_v2)");
+      LoadSymbol<FuncPtr>("cudaStreamGetCaptureInfo_v2");
   if (!func_ptr) return GetSymbolNotFoundError();
   return func_ptr(stream, captureStatus_out, id_out, graph_out,
                   dependencies_out, numDependencies_out);
@@ -677,7 +677,7 @@ extern __host__ cudaError_t CUDARTAPI cudaSignalExternalSemaphoresAsync(
                                const struct cudaExternalSemaphoreSignalParams *,
                                unsigned int, cudaStream_t);
   static auto func_ptr = LoadSymbol<FuncPtr>(
-      "__CUDART_API_PTSZ(cudaSignalExternalSemaphoresAsync_v2)");
+      "cudaSignalExternalSemaphoresAsync_v2");
   if (!func_ptr) return GetSymbolNotFoundError();
   return func_ptr(extSemArray, paramsArray, numExtSems, stream);
 }
@@ -691,7 +691,7 @@ extern __host__ cudaError_t CUDARTAPI cudaWaitExternalSemaphoresAsync(
                                const struct cudaExternalSemaphoreWaitParams *,
                                unsigned int, cudaStream_t);
   static auto func_ptr = LoadSymbol<FuncPtr>(
-      "__CUDART_API_PTSZ(cudaWaitExternalSemaphoresAsync_v2)");
+      "cudaWaitExternalSemaphoresAsync_v2");
   if (!func_ptr) return GetSymbolNotFoundError();
   return func_ptr(extSemArray, paramsArray, numExtSems, stream);
 }
