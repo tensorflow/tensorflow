@@ -8,10 +8,9 @@ pipeline:
     - stage:
         name: test
         identifier: test
-        description: ""
         type: CI
         spec:
-          cloneCodebase: false
+          cloneCodebase: true
           platform:
             os: Linux
             arch: Amd64
@@ -27,3 +26,9 @@ pipeline:
                   spec:
                     shell: Sh
                     command: echo "child pipeline 1"
+  properties:
+    ci:
+      codebase:
+        connectorRef: parsonghmyaccount
+        repoName: tensorflow
+        build: <+input>
