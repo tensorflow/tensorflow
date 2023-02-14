@@ -22,6 +22,7 @@ limitations under the License.
 
 #include "flatbuffers/flatbuffer_builder.h"  // from @flatbuffers
 #include "tensorflow/lite/core/api/error_reporter.h"
+#include "tensorflow/lite/experimental/acceleration/configuration/c/delegate_plugin.h"
 #include "tensorflow/lite/experimental/acceleration/configuration/configuration_generated.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/benchmark_result_evaluator.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/fb_storage.h"
@@ -45,6 +46,7 @@ class ValidatorRunnerImpl {
       const std::string& data_directory_path, int timeout_ms,
       std::unique_ptr<CustomValidationEmbedder> custom_validation_embedder,
       ErrorReporter* error_reporter, const NnApiSLDriverImplFL5* nnapi_sl,
+      const TfLiteDelegatePlugin* gpu_plugin_handle,
       const std::string& validation_entrypoint_name,
       AbstractBenchmarkResultEvaluator* benchmark_evaluator)
       : fd_or_model_path_(fd_or_model_path),
@@ -55,6 +57,7 @@ class ValidatorRunnerImpl {
         error_reporter_(error_reporter),
         storage_(storage_path_, error_reporter_),
         nnapi_helper_(nnapi_sl),
+        gpu_helper_(gpu_plugin_handle),
         validation_entrypoint_helper_(validation_entrypoint_name,
                                       error_reporter_),
         benchmark_evaluator_(benchmark_evaluator) {}
@@ -67,8 +70,15 @@ class ValidatorRunnerImpl {
       std::unique_ptr<std::vector<flatbuffers::FlatBufferBuilder>>
           tflite_settings);
 
-  std::vector<const BenchmarkEvent*> GetSuccessfulResults();
+  // Returns the unmodified successful BenchmarkEvent from storage. If a
+  // BenchmarkEvent is considered pass with the BenchmarkResultEvaluator, but
+  // its result.ok is set to false, the BenchmarkEvent will be returned as-is.
+  std::vector<const BenchmarkEvent*> GetSuccessfulResultsFromStorage();
   int GetNumCompletedResults();
+
+  // Returns the completed BenchmarkEvent. BenchmarkResult::ok() will be set to
+  // the result from BenchmarkResultEvaluator.
+  std::vector<flatbuffers::FlatBufferBuilder> GetCompletedResults();
 
  private:
   class NnapiHelper {
@@ -87,6 +97,19 @@ class ValidatorRunnerImpl {
    private:
     const NnApiSLDriverImplFL5* nnapi_sl_;
     std::string nnapi_sl_path_;
+  };
+
+  // Lookup the GPU Module .so file path if gpu_plugin_handle is provided.
+  class GpuHelper {
+   public:
+    explicit GpuHelper(const TfLiteDelegatePlugin* gpu_plugin_handle)
+        : gpu_plugin_handle_(gpu_plugin_handle) {}
+    MinibenchmarkStatus Load();
+    const std::string& gpu_so_path() const { return gpu_so_path_; }
+
+   private:
+    const TfLiteDelegatePlugin* gpu_plugin_handle_;
+    std::string gpu_so_path_;
   };
 
   class ValidationEntrypointHelper {
@@ -127,6 +150,7 @@ class ValidatorRunnerImpl {
   ErrorReporter* error_reporter_;
   FlatbufferStorage<BenchmarkEvent> storage_;
   NnapiHelper nnapi_helper_;
+  GpuHelper gpu_helper_;
   ValidationEntrypointHelper validation_entrypoint_helper_;
   AbstractBenchmarkResultEvaluator* benchmark_evaluator_ = nullptr;
 };

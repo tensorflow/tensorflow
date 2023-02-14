@@ -26,6 +26,7 @@ limitations under the License.
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/Dialect/Tensor/IR/TensorInferTypeOpInterfaceImpl.h"
+#include "mlir/Dialect/Tensor/Transforms/Transforms.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 
 namespace mlir {
@@ -78,9 +79,9 @@ struct CollapseBcastPattern : OpRewritePattern<linalg::BroadcastOp> {
 
     bool firstDimsBroadcasted = true;
     if (!nonBroadcastedDims.empty()) {
-      int i = 0;
-      while (i < nonBroadcastedDims.size() && nonBroadcastedDims[i] == i &&
-             i < numCollapsedDims) {
+      int64_t i = 0;
+      while (i < (int64_t)nonBroadcastedDims.size() &&
+             nonBroadcastedDims[i] == i && i < numCollapsedDims) {
         ++i;
       }
       if (i >= numCollapsedDims) {
@@ -239,7 +240,7 @@ linalg::MapOp createCollapsedMapOp(
   auto collapsedInitTy = collapsedInit.getType().cast<RankedTensorType>();
   auto collapsedMapOp = rewriter.create<linalg::MapOp>(
       loc, collapsedInitTy, collapsedOperands, collapsedInit);
-  BlockAndValueMapping bvm;
+  IRMapping bvm;
   mapOp.getBodyRegion().cloneInto(&collapsedMapOp.getRegion(), bvm);
   return collapsedMapOp;
 }
@@ -327,6 +328,7 @@ struct CollapseShapePass
     tensor::CollapseShapeOp::getCanonicalizationPatterns(patterns, ctx);
     tensor::EmptyOp::getCanonicalizationPatterns(patterns, ctx);
     tensor::ExpandShapeOp::getCanonicalizationPatterns(patterns, ctx);
+    tensor::populateFoldTensorEmptyPatterns(patterns);
 
     if (failed(applyPatternsAndFoldGreedily(f, std::move(patterns)))) {
       return signalPassFailure();

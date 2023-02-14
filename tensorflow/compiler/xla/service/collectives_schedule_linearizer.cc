@@ -24,18 +24,11 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
-#include "absl/strings/str_join.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
-#include "tensorflow/compiler/xla/literal.h"
-#include "tensorflow/compiler/xla/service/hlo_domain_map.h"
-#include "tensorflow/compiler/xla/service/hlo_query.h"
 #include "tensorflow/compiler/xla/service/hlo_reachability.h"
-#include "tensorflow/compiler/xla/service/shape_inference.h"
-#include "tensorflow/compiler/xla/shape_util.h"
-#include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/tsl/platform/errors.h"
 
@@ -48,21 +41,44 @@ StatusOr<bool> CollectivesScheduleLinearizer::Run(
   bool changed = false;
   for (HloComputation* computation :
        module->MakeNonfusionComputations(execution_threads)) {
-    std::unique_ptr<HloReachabilityMap> reachability =
-        HloReachabilityMap::Build(computation);
-    HloCollectiveInstruction* prev = nullptr;
-    for (HloInstruction* instruction :
-         computation->MakeInstructionPostOrder()) {
-      if (auto* next = DynCast<HloCollectiveInstruction>(instruction)) {
-        if (prev != nullptr && !reachability->IsConnected(next, prev)) {
-          // If prev and next are independent, enforce ordering.
-          TF_RETURN_IF_ERROR(prev->AddControlDependencyTo(next));
-          VLOG(1) << "Adding control dependency from " << prev->ToString()
-                  << " to " << next->ToString();
-          changed = true;
-        }
-        prev = next;
+    std::unique_ptr<HloReachabilityMap> reachability;
+    HloInstruction* prev_done = nullptr;
+    for (HloInstruction* inst : computation->MakeInstructionPostOrder()) {
+      auto* next = DynCast<HloCollectiveInstruction>(inst);
+      if (!next) {
+        continue;
       }
+      // Build reachability map on demand if we actually see collectives.
+      if (!reachability) {
+        reachability = HloReachabilityMap::Build(computation);
+      }
+      // Derive the 'start' and 'done' peers of this instruction. For non-async
+      // variants of collectives, they are the same as this instruction. For
+      // async variants, the start is this instruction and the 'done' is the
+      // matching async-done instruction.
+      HloInstruction* start = next;
+      HloInstruction* done = next;
+      switch (next->opcode()) {
+        case HloOpcode::kAllReduceStart:
+        case HloOpcode::kAllGatherStart:
+        case HloOpcode::kCollectivePermuteStart:
+        case HloOpcode::kAsyncStart:
+          // Find the async-done corresponding to this async start instruction.
+          CHECK_EQ(start->user_count(), 1);
+          done = start->users()[0];
+          break;
+        default:
+          break;
+      }
+
+      if (prev_done && !reachability->IsConnected(start, prev_done)) {
+        // If prev_done and start are independent, enforce ordering.
+        TF_RETURN_IF_ERROR(prev_done->AddControlDependencyTo(next));
+        VLOG(1) << "Adding control dependency from " << prev_done->ToString()
+                << " to " << start->ToString();
+        changed = true;
+      }
+      prev_done = done;
     }
   }
   return changed;

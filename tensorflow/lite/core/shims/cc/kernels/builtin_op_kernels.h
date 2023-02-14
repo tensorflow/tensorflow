@@ -15,6 +15,8 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_CORE_SHIMS_CC_KERNELS_BUILTIN_OP_KERNELS_H_
 #define TENSORFLOW_LITE_CORE_SHIMS_CC_KERNELS_BUILTIN_OP_KERNELS_H_
 
+/// For documentation,
+/// see third_party/tensorflow/lite/kernels/builtin_op_kernels.h.
 #include "tensorflow/lite/kernels/builtin_op_kernels.h"
 
 namespace tflite_shims {

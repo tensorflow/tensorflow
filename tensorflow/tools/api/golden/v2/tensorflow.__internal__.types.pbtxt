@@ -4,4 +4,8 @@ tf_module {
     name: "Tensor"
     mtype: "<type \'type\'>"
   }
+  member {
+    name: "data"
+    mtype: "<type \'module\'>"
+  }
 }

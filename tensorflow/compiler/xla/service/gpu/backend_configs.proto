@@ -38,6 +38,16 @@ message CudnnConvBackendConfig {
   // The scaling factor multiplied with the side input. If no side input buffer
   // is provided, this field must be 0.
   double side_input_scale = 5;
+
+  // If the filter (and bias, if present) have been reordered, set this flag.
+  // It's placed into a `oneof` block to skip the serialization when not set.
+  oneof filter_and_bias_reordering_oneof {
+    // cuDNN int8x32 vectorized convolutions (NCHW_VECT_C data layout) can be
+    // optimized by reordering the filter and bias (if present). The logical
+    // layout stays the same, but the data is shuffled in a way that is
+    // compatible with NVidia's IMMA instruction (sm75+).
+    bool reordered_int8_nchw_vect = 7;
+  }
 }
 
 // Backend config for the GEMM operation running through cuBLAS.

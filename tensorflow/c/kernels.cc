@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/c/kernels.h"
 
 #include <memory>
+#include <vector>
 
 #include "tensorflow/c/c_api_internal.h"
 #include "tensorflow/c/c_api_macros.h"
@@ -26,6 +27,7 @@ limitations under the License.
 #include "tensorflow/core/framework/kernel_def_builder.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
+#include "tensorflow/core/framework/resource_handle.pb.h"
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/framework/types.h"
 // Required for IS_MOBILE_PLATFORM definition
@@ -295,6 +297,13 @@ void TF_InputRange(TF_OpKernelContext* ctx, const char* name,
   tensorflow::Set_TF_Status_from_Status(args->status, status);
 }
 
+TF_DataType TF_InputDatatype(TF_OpKernelContext* ctx, int index) {
+  auto* cc_ctx = reinterpret_cast<::tensorflow::OpKernelContext*>(ctx);
+  CHECK_GE(index, 0);                     // Crash OK
+  CHECK_LT(index, cc_ctx->num_inputs());  // Crash OK
+  return static_cast<TF_DataType>(cc_ctx->input_dtype(index));
+}
+
 void TF_SetOutput(TF_OpKernelContext* ctx, int i, const TF_Tensor* tensor,
                   TF_Status* status) {
   auto* cc_ctx = reinterpret_cast<::tensorflow::OpKernelContext*>(ctx);
@@ -351,6 +360,18 @@ void TF_GetSerializedConfigProto(TF_OpKernelContext* ctx,
   }
   auto cc_status =
       tensorflow::MessageToBuffer(config_proto, serialized_config_proto);
+  tensorflow::Set_TF_Status_from_Status(status, cc_status);
+}
+
+void TF_GetSerializedResourceHandleProto(
+    TF_OpKernelContext* ctx, int i, TF_Buffer* serialized_resource_handle_proto,
+    TF_Status* status) {
+  auto* cc_ctx = reinterpret_cast<::tensorflow::OpKernelContext*>(ctx);
+  const tensorflow::ResourceHandle& handle = HandleFromInput(cc_ctx, i);
+  tensorflow::ResourceHandleProto handle_proto;
+  handle.AsProto(&handle_proto);
+  auto cc_status = tensorflow::MessageToBuffer(
+      handle_proto, serialized_resource_handle_proto);
   tensorflow::Set_TF_Status_from_Status(status, cc_status);
 }
 
@@ -650,6 +671,18 @@ int64_t TF_GetIterId(TF_OpKernelContext* ctx) {
   return reinterpret_cast<::tensorflow::OpKernelContext*>(ctx)
       ->frame_iter()
       .iter_id;
+}
+
+int64_t TF_GetStepId(TF_OpKernelContext* ctx) {
+  return reinterpret_cast<::tensorflow::OpKernelContext*>(ctx)->step_id();
+}
+
+int TF_GetDeviceId(TF_OpKernelContext* ctx) {
+  // TensorFlow always sets device in OpKernelContext.
+  auto* device =
+      reinterpret_cast<::tensorflow::OpKernelContext*>(ctx)->device();
+  if (!device->parsed_name().has_id) return -1;
+  return device->parsed_name().id;
 }
 
 TF_StringView TF_GetOpKernelName(TF_OpKernelContext* ctx) {

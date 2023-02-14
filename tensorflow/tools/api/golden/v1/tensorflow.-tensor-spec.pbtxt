@@ -1,11 +1,13 @@
 path: "tensorflow.TensorSpec"
 tf_class {
-  is_instance: "<class \'tensorflow.python.framework.tensor_spec.TensorSpec\'>"
-  is_instance: "<class \'tensorflow.python.framework.tensor_spec.DenseSpec\'>"
+  is_instance: "<class \'tensorflow.python.framework.tensor.TensorSpec\'>"
+  is_instance: "<class \'tensorflow.python.framework.tensor.DenseSpec\'>"
   is_instance: "<class \'tensorflow.python.framework.type_spec.BatchableTypeSpec\'>"
   is_instance: "<class \'tensorflow.python.framework.type_spec.TypeSpec\'>"
+  is_instance: "<class \'tensorflow.python.types.internal.TypeSpec\'>"
   is_instance: "<class \'tensorflow.python.types.trace.TraceType\'>"
   is_instance: "<class \'tensorflow.core.function.trace_type.serialization.Serializable\'>"
+  is_instance: "<class \'tensorflow.python.types.internal.TensorSpec\'>"
   is_instance: "<type \'object\'>"
   member {
     name: "dtype"
@@ -62,5 +64,9 @@ tf_class {
   member_method {
     name: "most_specific_compatible_type"
     argspec: "args=[\'self\', \'other\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "placeholder_value"
+    argspec: "args=[\'self\', \'placeholder_context\'], varargs=None, keywords=None, defaults=None"
   }
 }

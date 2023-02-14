@@ -159,6 +159,15 @@ class LaunchFuncOpLowering : public OpRewritePattern<LaunchFuncOp> {
         cast(op.getGridSizeZ()),  cast(op.getBlockSizeX()),
         cast(op.getBlockSizeY()), cast(op.getBlockSizeZ())};
 
+    // Shared memory size is optional for the `gpu.launch` but mandatory for the
+    // Xla runtime kernel launch custom call.
+    if (op.getDynamicSharedMemorySize()) {
+      args.insert(args.begin(), op.getDynamicSharedMemorySize());
+    } else {
+      auto zero = b.create<arith::ConstantIntOp>(0, b.getI32Type());
+      args.insert(args.begin(), zero);
+    }
+
     // Add kernel arguments.
     llvm::copy(op.getKernelOperands(), std::back_inserter(args));
 

@@ -325,11 +325,14 @@ class CheckpointPosition(object):
 
     return existing_restore_ops, named_saveables
 
-  def restore_ops(self):
+  def restore_ops(self, reader=None):
     """Create or fetch restore ops for this object's attributes.
 
     Requires that the `Trackable` Python object has been bound to an object
     ID in the checkpoint.
+
+    Args:
+      reader: A `CheckpointReader`. If None, a new instance will be created.
 
     Returns:
       A list of operations when graph building, or an empty list when executing
@@ -341,7 +344,8 @@ class CheckpointPosition(object):
     (restore_ops, tensor_saveables, python_positions,
      _) = self.gather_ops_or_named_saveables()
     restore_ops.extend(
-        self._checkpoint.restore_saveables(tensor_saveables, python_positions))
+        self._checkpoint.restore_saveables(
+            tensor_saveables, python_positions, reader=reader))
     return restore_ops
 
   @property

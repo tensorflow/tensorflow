@@ -133,10 +133,7 @@ cc_library(
     name = "metrics",
     srcs = ["metrics.cc"],
     hdrs = ["metrics.h"],
-    deps = [
-        "//tensorflow/tsl/lib/monitoring:counter",
-        "@com_google_absl//absl/base:core_headers",
-    ],
+    deps = ["//tensorflow/tsl/lib/monitoring:counter"],
 )
 
 xla_cc_binary(
@@ -147,6 +144,7 @@ xla_cc_binary(
         "//tensorflow/compiler/xla:status",
         "//tensorflow/compiler/xla/hlo/ir:hlo",
         "//tensorflow/compiler/xla/service:hlo_parser",
+        "//tensorflow/compiler/xla/stream_executor:dnn",
         "//tensorflow/compiler/xla/tools:hlo_module_loader",
         "//tensorflow/tsl/platform:platform_port",
     ],

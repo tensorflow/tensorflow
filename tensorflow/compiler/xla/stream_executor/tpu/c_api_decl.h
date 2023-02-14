@@ -244,6 +244,7 @@ typedef struct XLA_Layout {
   int index_primitive_type;
   int pointer_primitive_type;
   int64_t memory_space;
+  int64_t dynamic_shape_metadata_prefix_bytes;
 } XLA_Layout;
 
 // Represents an XLA shape tree.
@@ -319,7 +320,7 @@ typedef struct XLA_HloModuleConfig {
   TpuSerializedProto static_device_assignment;
   bool has_entry_computation_layout;
   XLA_ComputationLayout entry_computation_layout;
-  bool allow_spmd_sharding_propagation_to_output;
+  BoolList allow_spmd_sharding_propagation_to_output;
 } XLA_HloModuleConfig;
 
 typedef struct SE_HloExecutionProfile SE_HloExecutionProfile;

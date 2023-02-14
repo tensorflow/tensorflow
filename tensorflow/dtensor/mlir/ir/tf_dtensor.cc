@@ -197,7 +197,7 @@ mlir::LogicalResult DTensorAllScatterOp::verify() {
 }
 
 LogicalResult DTensorLayout::inferReturnTypes(
-    MLIRContext* context, Optional<Location> location, ValueRange operands,
+    MLIRContext* context, std::optional<Location> location, ValueRange operands,
     DictionaryAttr attributes, RegionRange regions,
     SmallVectorImpl<Type>& inferredReturnTypes) {
   assert(operands.size() == 1);

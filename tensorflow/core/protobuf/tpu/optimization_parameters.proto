@@ -476,11 +476,14 @@ message LowDimensionalPackingStatus {
 // that is currently disabled (by default).
 message HotIdReplicationConfiguration {
   // Whether to enable or disable hot ID optimization.
-  // If UNSPECIFIED (default), hot ID optimization is DISABLED.
+  // If set to UNSPECIFIED (default), hot ID optimization is DISABLED.
+  // If set to ENABLED, hot ID replication is turned ON.
+  // If set to MIGRATION_ONLY, hot ID migration is turned ON.
   enum Status {
     UNSPECIFIED = 0;
     ENABLED = 1;
     DISABLED = 2;
+    MIGRATION_ONLY = 3;
   }
   Status status = 1;
 }

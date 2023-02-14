@@ -3,6 +3,7 @@ tf_class {
   is_instance: "<class \'tensorflow.python.trackable.base.CheckpointInitialValue\'>"
   is_instance: "<class \'tensorflow.python.framework.ops.Tensor\'>"
   is_instance: "<class \'tensorflow.python.types.internal.NativeObject\'>"
+  is_instance: "<class \'tensorflow.python.types.core.Symbol\'>"
   is_instance: "<class \'tensorflow.python.types.core.Tensor\'>"
   is_instance: "<type \'object\'>"
   member {
@@ -27,6 +28,10 @@ tf_class {
   }
   member {
     name: "name"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "ndim"
     mtype: "<type \'property\'>"
   }
   member {

@@ -22,9 +22,7 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "pybind11/pybind11.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
-#ifdef JAX_ENABLE_IFRT
 #include "tensorflow/compiler/xla/python/ifrt/array.h"
-#endif
 #include "tensorflow/compiler/xla/status.h"
 
 namespace xla {
@@ -98,12 +96,7 @@ void PythonDeprecationWarning(const absl::FormatSpec<Args...>& format,
 
 // Requests if given buffers are ready, awaits for results and returns OK if
 // all of the buffers are ready or the last non-ok status.
-#ifdef JAX_ENABLE_IFRT
 Status AwaitBuffersReady(ifrt::Array* ifrt_array);
-#else
-Status AwaitBuffersReady(
-    absl::Span<const std::shared_ptr<PjRtBuffer> > buffers);
-#endif
 
 }  // namespace xla
 

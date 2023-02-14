@@ -1,6 +1,6 @@
 path: "tensorflow.metrics.Recall"
 tf_class {
-  is_instance: "<class \'keras.metrics.metrics.Recall\'>"
+  is_instance: "<class \'keras.metrics.confusion_metrics.Recall\'>"
   is_instance: "<class \'keras.metrics.base_metric.Metric\'>"
   is_instance: "<class \'keras.engine.base_layer.Layer\'>"
   is_instance: "<class \'tensorflow.python.module.module.Module\'>"

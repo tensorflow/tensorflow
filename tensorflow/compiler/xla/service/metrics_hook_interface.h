@@ -17,6 +17,8 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_SERVICE_METRICS_HOOK_INTERFACE_H_
 
 #include "absl/strings/string_view.h"
+#include "absl/time/time.h"
+#include "tensorflow/compiler/xla/service/metrics.pb.h"
 
 namespace xla {
 
@@ -45,6 +47,10 @@ class MetricsHookInterface {
   // XLA compilation stage (empty pass field)
   virtual void RecordStageError(absl::string_view stage,
                                 absl::string_view error_status) const = 0;
+
+  // Captures latency for a given XLA compilation stage.
+  virtual void RecordStageLatency(CompilationLogEntry::CompilationStage stage,
+                                  absl::Duration latency) const = 0;
 };
 }  // namespace xla
 #endif  // TENSORFLOW_COMPILER_XLA_SERVICE_METRICS_HOOK_INTERFACE_H_

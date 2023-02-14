@@ -84,6 +84,12 @@ class HloRunner : public HloRunnerInterface {
 
   // As Execute(), but accepts and returns device buffers instead of host
   // buffers.
+  //
+  // ExecuteWithMovedDeviceBuffers is more memory-safe, but it consumes the
+  // arguments. Please consider using that.
+  //
+  // This may overwrite the values of the arguments if the the module has
+  // aliasing.
   StatusOr<ExecutionOutput> ExecuteWithDeviceBuffers(
       std::unique_ptr<HloModule> module,
       absl::Span<ScopedShapedBuffer const> arguments,
@@ -91,6 +97,20 @@ class HloRunner : public HloRunnerInterface {
 
   StatusOr<ExecutionOutput> ExecuteWithDeviceBuffers(
       Executable* executable, absl::Span<ScopedShapedBuffer const> arguments,
+      ExecutionProfile* profile = nullptr);
+
+  // As Execute(), but accepts and returns device buffers instead of host
+  // buffers.
+  //
+  // This is a memory-safer version of ExecuteWithDeviceBuffers, but it consumes
+  // the arguments.
+  StatusOr<ExecutionOutput> ExecuteWithMovedDeviceBuffers(
+      std::unique_ptr<HloModule> module,
+      std::vector<ScopedShapedBuffer> arguments, bool run_hlo_passes = true,
+      ExecutionProfile* profile = nullptr);
+
+  StatusOr<ExecutionOutput> ExecuteWithMovedDeviceBuffers(
+      Executable* executable, std::vector<ScopedShapedBuffer> arguments,
       ExecutionProfile* profile = nullptr);
 
   // Creates an executable object given an HLO module. If run_hlo_passes is
@@ -147,6 +167,10 @@ class HloRunner : public HloRunnerInterface {
   }
 
  private:
+  StatusOr<ExecutionOutput> ExecuteWithExecutionInputs(
+      Executable* executable, std::vector<ExecutionInput> arguments,
+      ExecutionProfile* profile);
+
   // Creates a ServiceExecutableRunOptions object to configure a run on device,
   // using the provided stream object. If device_assignment is not nullptr, it
   // will be used to configure the replication parameters. Replicated executions

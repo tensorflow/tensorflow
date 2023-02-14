@@ -14,21 +14,21 @@
 # ==============================================================================
 """High level TF Function transformation API."""
 
-from typing import Optional, Callable, Union, List, Iterator, Dict
+from typing import Any, Callable, Iterator, Optional, Union
 
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.framework import function_pb2
-from tensorflow.core.function import runtime_client
+from tensorflow.core.function.capture import restore_captures
+from tensorflow.core.function.runtime_client import runtime_client
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import function as function_lib
-from tensorflow.python.eager.polymorphic_function import saved_model_utils
 from tensorflow.python.framework import func_graph as func_graph_module
 from tensorflow.python.framework import function_def_to_graph as function_def_lib
 from tensorflow.python.framework import ops
-from tensorflow.python.framework import tensor_spec
 from tensorflow.python.ops import custom_gradient as custom_gradient_lib
 from tensorflow.python.ops import default_gradient
 from tensorflow.python.ops import handle_data_util
+from tensorflow.python.platform import tf_logging
 from tensorflow.python.util import compat
 
 _TensorType = Union[ops.EagerTensor, ops.Tensor]
@@ -37,17 +37,17 @@ _FunctionDefTransformerType = Callable[[function_pb2.FunctionDef], None]
 
 def transform_function(
     f: def_function.Function,
-    inputs: Optional[Union[List[tensor_spec.TensorSpec],
-                           List[ops.Tensor]]] = None,
+    inputs: Optional[list[Any]] = None,
+    kw_inputs: Optional[dict[str, Any]] = None,
     transform_fn: Optional[Union[_FunctionDefTransformerType,
-                                 List[_FunctionDefTransformerType]]] = None,
-    mlir_pipeline: Optional[Union[str, List[str]]] = None,
-    nested_fn_transforms: Optional[Dict[
+                                 list[_FunctionDefTransformerType]]] = None,
+    mlir_pipeline: Optional[Union[str, list[str]]] = None,
+    nested_fn_transforms: Optional[dict[
         str, Optional[Union[_FunctionDefTransformerType,
-                            List[_FunctionDefTransformerType]]]]] = None,
-    nested_mlir_transforms: Optional[Dict[str,
+                            list[_FunctionDefTransformerType]]]]] = None,
+    nested_mlir_transforms: Optional[dict[str,
                                           Optional[Union[str,
-                                                         List[str]]]]] = None,
+                                                         list[str]]]]] = None,
 ) -> function_lib.ConcreteFunction:
   """Applies a transformation to a tf.function to produce a new callable.
 
@@ -93,6 +93,9 @@ def transform_function(
     inputs: The inputs or input_signature of the tf.function. This does not need
       to be specified if the `input_signature` was specified in the tf.function
       decorator.
+    kw_inputs: The keyword inputs of the tf.function. This does not need to be
+      specified if the `input_signature` was specified in the tf.function
+      decorator.
     transform_fn: A single transformation function or a list of transformation
       functions to apply on the `FunctionDef`.
     mlir_pipeline: A single MLIR pass or a list of MLIR passes to transform the
@@ -125,17 +128,24 @@ def transform_function(
   else:
     mlir_pipelines = [mlir_pipeline]
 
+  nested_fn_transforms = (
+      nested_fn_transforms if nested_fn_transforms is not None else {})
+  nested_mlir_transforms = (
+      nested_mlir_transforms if nested_mlir_transforms is not None else {})
+
   # Extract the `ConcreteFunction` from the `tf.function.`
-  if inputs is not None:
-    cf = f.get_concrete_function(*inputs)
+  if inputs is not None or kw_inputs is not None:
+    inputs = [] if inputs is None else inputs
+    kw_inputs = {} if kw_inputs is None else kw_inputs
+    cf = f.get_concrete_function(*inputs, **kw_inputs)
   else:
     cf = f.get_concrete_function()
 
   # Promote all library functions to the parent scope so that any replicated
   # functions can also re-use them.
   graph = ops.get_default_graph()
-  for _, eager_def_func in cf._func_graph._functions.items():  # pylint: disable=protected-access
-    eager_def_func.add_to_graph(graph)
+  for edf in cf.graph._functions.values():  # pylint: disable=protected-access
+    edf.add_to_graph(graph, overwrite=False)
 
   # Initialize the `runtime_client`.
   eager_ctx = runtime_client.GlobalPythonEagerContext()
@@ -155,11 +165,7 @@ def transform_function(
     transform_fn(fndef)
 
   # Apply a transform to any of the nested _EagerDefinedFunctions(EDF) if
-  # `nested_fn_transforms` is provided.
-  nested_fn_transforms = (
-      nested_fn_transforms if nested_fn_transforms is not None else {})
-  nested_mlir_transforms = (
-      nested_mlir_transforms if nested_mlir_transforms is not None else {})
+  # `nested_fn_transforms` or `nested_mlir_transforms` is provided.
   if nested_fn_transforms or nested_mlir_transforms:
     nested_functions = cf.graph._functions  # pylint: disable=protected-access
 
@@ -178,7 +184,7 @@ def transform_function(
         edf_mlir_pipeline = nested_mlir_transforms.get(edf_name, [])
         transformed_edf = transform_eager_defined_function(
             rt, nested_functions[edf_name], edf_transform_fn, edf_mlir_pipeline)
-        transformed_edf.add_to_graph(graph)
+        transformed_edf.add_to_graph(graph, overwrite=True)
         transformed_edf_name = compat.as_str(transformed_edf.name)
         transformed_nested_functions[transformed_edf_name] = transformed_edf
         nested_transforms_map[edf_name] = transformed_edf_name
@@ -229,14 +235,14 @@ def transform_function(
   # Set arg_keywords and positional_args
   updated_cf._arg_keywords = cf._arg_keywords
   updated_cf._num_positional_args = cf._num_positional_args
-  saved_model_utils.restore_captures(updated_cf, cf.captured_inputs)
+  restore_captures.restore_captures(updated_cf, cf.captured_inputs)
   # pylint: enable=protected-access
 
   # Register the ConcreteFunction with the python Graph.
   if nested_fn_transforms or nested_mlir_transforms:
     for transformed_edf in transformed_nested_functions.values():
-      transformed_edf.add_to_graph(updated_cf.graph)
-  updated_cf.add_to_graph(graph)
+      transformed_edf.add_to_graph(updated_cf.graph, overwrite=True)
+  updated_cf.add_to_graph(graph, overwrite=True)
 
   return updated_cf
 
@@ -245,8 +251,8 @@ def transform_eager_defined_function(
     rt: runtime_client.Runtime,
     f: function_lib._EagerDefinedFunction,
     transform_fn: Union[_FunctionDefTransformerType,
-                        List[_FunctionDefTransformerType]],
-    mlir_pipeline: Union[str, List[str]],
+                        list[_FunctionDefTransformerType]],
+    mlir_pipeline: Union[str, list[str]],
 ) -> function_lib._EagerDefinedFunction:
   """Applies transforms on an _EagerDefinedFunction."""
   transform_fns = (
@@ -310,9 +316,11 @@ def _replicate_gradient_functions(
     try:
       grad_fn = def_function.function(custom_gradient).get_concrete_function(
           None, *op.inputs)
-    except Exception as e:
-      raise ValueError("Error when tracing gradients for",
-                       replicated_graph) from e
+    except Exception:  # pylint: disable=broad-except
+      # TODO(xjun): Figure out why tracing of custom_gradient will fail.
+      tf_logging.exception(
+          f"Error when tracing gradients for {replicated_graph}.")
+      continue
 
     # Re-bind all captures to values within the replicated graph.
     remapped_captures = []
@@ -333,7 +341,7 @@ def _replicate_gradient_functions(
 
       remapped_captures.append(
           replicated_graph.get_tensor_by_name(outer_capture.name))
-    saved_model_utils.restore_captures(grad_fn, remapped_captures)
+    restore_captures.restore_captures(grad_fn, remapped_captures)
     new_gradient_op_type = custom_gradient_lib.generate_name()
     op._set_attr(  # pylint: disable=protected-access
         "_gradient_op_type",
@@ -376,7 +384,7 @@ def _get_outer_most_capture(
 
 
 def _ops_with_custom_gradients(
-    operations: List[ops.Operation]) -> Iterator[tuple[str, ops.Operation]]:
+    operations: list[ops.Operation]) -> Iterator[tuple[str, ops.Operation]]:
   """Returns an iterator over ops having custom_gradients."""
   for op in operations:
     try:

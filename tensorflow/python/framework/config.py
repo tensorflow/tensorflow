@@ -237,6 +237,8 @@ def set_optimizer_experimental_options(options):
       - disable_meta_optimizer: Disable the entire meta optimizer.
       - min_graph_nodes: The minimum number of nodes in a graph to optimizer.
         For smaller graphs, optimization is skipped.
+      - auto_parallel: Automatically parallelizes graphs by splitting along
+        the batch dimension
   """
   context.context().set_optimizer_experimental_options(options)
 

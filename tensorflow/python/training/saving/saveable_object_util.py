@@ -29,6 +29,7 @@ from tensorflow.python.framework import tensor_util
 from tensorflow.python.framework import type_spec
 
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import gen_control_flow_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variables
@@ -622,23 +623,29 @@ def saveable_objects_from_trackable(obj, tf1_saver=False):
 
       specs = []
       local_names = []
-      prefix = saveable_compat.get_saveable_name(obj) or ""
       for tensor_name, maybe_tensor in tensor_dict.items():
         local_names.append(tensor_name)
-        spec_name = name + trackable_utils.escape_local_name(tensor_name)
 
         if not isinstance(maybe_tensor, dict):
           maybe_tensor = {"": maybe_tensor}
 
+        spec_name = name + trackable_utils.escape_local_name(tensor_name)
         # Create separate specs for each slice spec.
         for slice_spec, tensor in maybe_tensor.items():
-          specs.append(saveable_object.SaveSpec(tensor, slice_spec, spec_name))
+          if isinstance(tensor, saveable_object.SaveSpec):
+            spec = tensor
+            spec.name = spec_name
+            spec.slice_spec = slice_spec
+          else:
+            spec = saveable_object.SaveSpec(tensor, slice_spec, spec_name)
+          specs.append(spec)
+
       return TrackableSaveable(
           obj=obj,
           specs=specs,
           name=name,
           local_names=local_names,
-          prefix=prefix,
+          prefix=saveable_compat.get_saveable_name(obj) or "",
           call_with_mapped_captures=call_with_mapped_captures)
 
     return {trackable_utils.SERIALIZE_TO_TENSORS_NAME: create_saveable}
@@ -666,25 +673,22 @@ class TrackableSaveable(saveable_object.SaveableObject):
     restore_fn = self._trackable._restore_from_tensors  # pylint: disable=protected-access
 
     # When restoring a RefVariable, call the restore function directly.
-    if (not ops.executing_eagerly_outside_functions()
-        and any([spec.tensor.op.type in _REF_VARIABLE_OPS
-                 for spec in self.specs])):
+    # pylint: disable=protected-access
+    if not ops.executing_eagerly_outside_functions() and any([
+        spec._tensor.op.type in _REF_VARIABLE_OPS
+        for spec in self.specs
+        if isinstance(spec._tensor, ops.Tensor)]):
       return restore_fn(restored_tensor_dict)
+    # pylint: enable=protected-access
 
-    # Wrap the restore function so that it can be converted to a tf.function
-    # when in graph mode (e.g. when creating a graph for SavedModel export).
-    def restore_from_tensors():
-      if (self._call_with_mapped_captures and
-          isinstance(restore_fn, core.ConcreteFunction)):
-        self._call_with_mapped_captures(restore_fn, [restored_tensor_dict])
-      else:
-        restore_fn(restored_tensor_dict)
-      return constant_op.constant(1)
-
-    if not ops.executing_eagerly_outside_functions():
-      restore_from_tensors = def_function.function(restore_from_tensors,
-                                                   autograph=False)
-    return restore_from_tensors()
+    if (self._call_with_mapped_captures and
+        isinstance(restore_fn, core.ConcreteFunction)):
+      ret = self._call_with_mapped_captures(restore_fn, [restored_tensor_dict])
+    else:
+      ret = restore_fn(restored_tensor_dict)
+    if ret is not None:
+      return ret
+    return gen_control_flow_ops.no_op()
 
   def get_proto_names_and_checkpoint_keys(self):
     return [(self._prefix + local_name, spec.name)

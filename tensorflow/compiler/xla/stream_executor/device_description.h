@@ -41,7 +41,12 @@ struct CudaComputeCapability {
   int minor = 0;
 
   // MSVC does not like "PASCAL" symbol.
-  enum CudaComputeCapabilities { PASCAL_ = 6, VOLTA = 7, AMPERE = 8 };
+  enum CudaComputeCapabilities {
+    PASCAL_ = 6,
+    VOLTA = 7,
+    AMPERE = 8,
+    HOPPER = 9
+  };
 
   CudaComputeCapability() {}
   CudaComputeCapability(int major, int minor) {
@@ -214,6 +219,16 @@ class DeviceDescription {
   // Returns the name that the device reports. Vendor dependent.
   const std::string &name() const { return name_; }
 
+  // Gets a human-readable description of the device, e.g. "nvidia GPU
+  // supporting sm75 with 32GB RAM, 80 SMs, ...".  This is intended to be the
+  // same if and only if two devices are "the same" (e.g. the same make/model of
+  // GPU), though it may not completely succeed at this for all platforms.
+  //
+  // This string is not guaranteed to be stable between versions.  Please DO NOT
+  // rely on it never changing.  (Within one version of the code, it won't
+  // change, don't worry.)
+  const std::string &model_str() const { return model_str_; }
+
   // Returns the PCI bus identifier for this device, of the form
   // [domain]:[bus]:[device].[function]
   const std::string &pci_bus_id() const { return pci_bus_id_; }
@@ -341,6 +356,7 @@ class DeviceDescription {
   std::string runtime_version_;
   std::string pci_bus_id_;
   std::string name_;
+  std::string model_str_;
 
   ThreadDim thread_dim_limit_;
   BlockDim block_dim_limit_;
@@ -405,6 +421,9 @@ class DeviceDescriptionBuilder {
   }
   void set_name(const std::string &value) {
     device_description_->name_ = value;
+  }
+  void set_model_str(const std::string &value) {
+    device_description_->model_str_ = value;
   }
 
   void set_thread_dim_limit(const ThreadDim &value) {
@@ -496,10 +515,6 @@ class DeviceDescriptionBuilder {
 // VLOG(2) for this module.
 bool ThreadDimOk(const DeviceDescription &device_description,
                  const ThreadDim &thread_dim);
-
-// Equivalent to ceil(double(element_count) / threads_per_block).
-ABSL_DEPRECATED("Use MathUtil::CeilOfRatio directly instead.")
-int64_t DivideCeil(int64_t x, int64_t y);
 
 // Calculate the number of threads/blocks required to process element_count
 // elements. Note that you can still end up with more threads than

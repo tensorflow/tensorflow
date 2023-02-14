@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef MLIR_HLO_DIALECT_MHLO_TRANSFORMS_REWRITERS_H
-#define MLIR_HLO_DIALECT_MHLO_TRANSFORMS_REWRITERS_H
+#ifndef MLIR_HLO_MHLO_TRANSFORMS_REWRITERS_H
+#define MLIR_HLO_MHLO_TRANSFORMS_REWRITERS_H
 
 #include <functional>
 #include <memory>
@@ -188,7 +188,8 @@ namespace stablehlo {
 // illegal types also get converted.
 void populateHloToStablehloPatterns(RewritePatternSet *patterns,
                                     TypeConverter *converter,
-                                    MLIRContext *context);
+                                    MLIRContext *context,
+                                    bool allowExperimentalFeatures);
 
 // Populates StableHLO ops to MHLO ops rewriting patterns.
 // Also see `stablehlo::registerFuncOpsForTypeConversion` for helper patterns
@@ -202,4 +203,4 @@ void populateStablehloToHloPatterns(RewritePatternSet *patterns,
 
 }  // namespace mlir
 
-#endif  // MLIR_HLO_DIALECT_MHLO_TRANSFORMS_REWRITERS_H
+#endif  // MLIR_HLO_MHLO_TRANSFORMS_REWRITERS_H

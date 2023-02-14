@@ -17,10 +17,12 @@ limitations under the License.
 #define TENSORFLOW_CORE_COMMON_RUNTIME_DEVICE_DEVICE_EVENT_MGR_H_
 
 #include <deque>
+#include <functional>
+#include <memory>
+#include <utility>
 #include <vector>
 
-#include "tensorflow/core/framework/log_memory.h"
-#include "tensorflow/core/framework/tensor.h"
+#include "absl/container/flat_hash_map.h"
 #include "tensorflow/core/lib/core/notification.h"
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
@@ -28,12 +30,7 @@ limitations under the License.
 #include "tensorflow/core/platform/stream_executor.h"
 #include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/platform/types.h"
-
-namespace stream_executor {
-class Event;
-class Stream;
-class StreamExecutor;
-}  // namespace stream_executor
+#include "tensorflow/tsl/platform/thread_annotations.h"
 
 namespace tensorflow {
 
@@ -58,91 +55,60 @@ namespace device_event_mgr {
 // trace.
 void WarnIfInCallback(std::function<void()> f);
 }  // namespace device_event_mgr
-#define WARN_IF_IN_EVENT_MGR_THREAD device_event_mgr::WarnIfInCallback(nullptr)
+#define WARN_IF_IN_EVENT_MGR_THREAD \
+  ::tensorflow::device_event_mgr::WarnIfInCallback(nullptr)
 
-// An object to keep track of pending Events in the StreamExecutor streams
-// and associated Tensors that cannot safely be deleted until the associated
-// Events are recorded.
+// EventMgr lets you register a callback to be executed when a given
+// StreamExecutor stream completes all the work that's thus-far been enqueued on
+// the stream.
 class EventMgr {
  public:
   virtual ~EventMgr();
 
-  // Execute func when all pending stream actions have completed.
-  // func must be brief and non-blocking since it executes in the one
-  // thread used for all such callbacks and also buffer deletions.
-  inline void ThenExecute(se::Stream* stream, std::function<void()> func) {
-    ToFreeVector to_free;
-    {
-      mutex_lock l(mu_);
-      QueueFunc(stream, std::move(func));
-      PollEvents(false, &to_free);
-    }
-    FreeMemory(to_free);
-  }
+  // Executes `func` when all pending stream actions have completed.  func must
+  // be brief and non-blocking since it executes in a shared threadpool used for
+  // all such callbacks.
+  void ThenExecute(se::Stream* stream, std::function<void()> func);
 
  private:
   friend class TEST_EventMgr;
   friend class TEST_EventMgrHelper;
   friend class EventMgrFactory;
-  se::StreamExecutor* const exec_;
-  const int32 polling_active_delay_usecs_;
-  mutex mu_;
-  condition_variable events_pending_ TF_GUARDED_BY(mu_);
-
-  struct InUse {
-    se::Event* event;
-    std::function<void()> func;
-  };
-
-  typedef gtl::InlinedVector<InUse, 4> ToFreeVector;
 
   EventMgr(se::StreamExecutor* se, const GPUOptions& gpu_options);
 
-  void FreeMemory(const ToFreeVector& to_free) {
-    for (const auto& iu : to_free) {
-      // The function must be called in another thread.
-      if (iu.func != nullptr) threadpool_.Schedule(iu.func);
-    }
-  }
-
-  // Stream-enqueue an unused Event and save with it a collection of
-  // Tensors and/or a BufRec to be deleted only after the Event
-  // records.
-  void QueueInUse(se::Stream* stream, InUse in_use)
-      TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
-
-  void QueueFunc(se::Stream* stream, std::function<void()> func)
-      TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-    QueueInUse(stream, {nullptr, std::move(func)});
-  }
-
-  // This function should be called at roughly the same tempo as
-  // QueueTensors() to check whether pending events have recorded,
-  // and then retire them.  It appends InUse elements that need cleanup
-  // to "*to_free".  The caller should call FreeMemory(to_free)
-  // when this returns.
-  void PollEvents(bool is_dedicated_poller, ToFreeVector* to_free)
-      TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
-
-  // An internal polling loop that runs at a low frequency to clear
-  // straggler Events.
-  void PollLoop();
-
-  // Setup/Teardown functions for the polling loop.
-  void StartPollingLoop();
-  void StopPollingLoop();
-
-  // A stack of unused events
-  std::vector<se::Event*> free_events_ TF_GUARDED_BY(mu_);
-
-  // A FIFO queue of InUse events and associated tensors.
-  std::deque<InUse> used_events_ TF_GUARDED_BY(mu_);
-
-  bool stop_polling_ TF_GUARDED_BY(mu_);
-  std::unique_ptr<Notification> polling_stopped_;
-
-  // The main PollLoop for the event manager runs in this threadpool.
+  mutex mu_;
+  se::StreamExecutor* const exec_;
   thread::ThreadPool threadpool_;
+
+  // Stacks of currently-unused events and streams.
+  std::vector<std::unique_ptr<se::Event>> free_events_ TF_GUARDED_BY(mu_);
+  std::vector<std::unique_ptr<se::Stream>> free_streams_ TF_GUARDED_BY(mu_);
+
+  // Logically, we want a call to ThenExecute(stream, func) to enqueue a CUDA
+  // host callback (StreamExecutor ThenDoHostCallback) that runs `func` onto
+  // `stream`.
+  //
+  // But CUDA host callbacks execute synchronously with respect to the GPU work
+  // on their stream -- in other words, they block the stream.  Blocking a
+  // stream is potentially very expensive to the GPU work there; it essentially
+  // flushes the work queue and can result in gaps in GPU execution.
+  //
+  // We therefore build an "asynchronous CUDA callback" as follows:
+  //  - A user calls ThenExecute(stream, func).
+  //  - We enqueue a CUDA event onto `stream`; this lets us find out when
+  //    `stream` completes all the work that's currently pending.
+  //  - A *separate* stream, managed by EventMgr, waits on the event and then
+  //    enqueues a synchronous CUDA callback that runs `func`.
+  //
+  // This way we're never blocking the stream that actually executes GPU work.
+  //
+  // callback_streams_ maps the first stream (that was passed to ThenExecute) to
+  // the second one (owned by EventMgr).
+  absl::flat_hash_map<se::Stream* /*user stream*/,
+                      std::pair<std::unique_ptr<se::Stream> /*callback stream*/,
+                                int64_t /*num_pending_events*/>>
+      callback_streams_ TF_GUARDED_BY(mu_);
 };
 
 // Manages all the EventMgr instances.
@@ -157,7 +123,8 @@ class EventMgrFactory {
 
   // Maintain one EventMgr per physical device (StreamExecutor is
   // per-physical-device).
-  std::map<se::StreamExecutor*, EventMgr*> event_mgr_map_ TF_GUARDED_BY(mu_);
+  absl::flat_hash_map<se::StreamExecutor*, EventMgr*> event_mgr_map_
+      TF_GUARDED_BY(mu_);
 };
 
 }  // namespace tensorflow

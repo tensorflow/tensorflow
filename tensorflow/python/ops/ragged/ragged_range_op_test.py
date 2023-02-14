@@ -14,8 +14,10 @@
 # ==============================================================================
 """Tests for ragged_range op."""
 
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import test_util
+from tensorflow.python.ops import gen_ragged_math_ops
 from tensorflow.python.ops.ragged import ragged_math_ops
 from tensorflow.python.platform import googletest
 
@@ -110,6 +112,14 @@ class RaggedRangeOpTest(test_util.TensorFlowTestCase):
     with self.assertRaisesRegex(errors.InvalidArgumentError,
                                 r'Requires \(\(limit - start\) / delta\) <='):
       self.evaluate(ragged_math_ops.range(0.1, 1e10, 1e-10))
+
+    with self.assertRaisesRegex(errors.InvalidArgumentError, 'overflowed'):
+      self.evaluate(
+          gen_ragged_math_ops.ragged_range(
+              starts=[0, 0],
+              limits=[2**31 - 1, 1],
+              deltas=[1, 1],
+              Tsplits=dtypes.int32))
 
   def testShape(self):
     self.assertAllEqual(

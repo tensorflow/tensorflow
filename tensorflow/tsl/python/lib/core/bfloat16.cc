@@ -190,10 +190,23 @@ bool Initialize() {
   if (!custom_float_internal::RegisterNumpyDtype<bfloat16>(numpy.get())) {
     return false;
   }
-  if (!custom_float_internal::RegisterNumpyDtype<float8_e4m3b11>(numpy.get())) {
+  bool float8_already_registered;
+  if (!custom_float_internal::RegisterNumpyDtype<float8_e4m3b11>(
+          numpy.get(), &float8_already_registered)) {
     return false;
   }
-  // TODO(parkers): Enable CanCast to-from fp8 and bf16 and f16.
+
+  // Casts between bfloat16 and float8_e4m3b11. Only perform the cast if
+  // float8_e4m3b11 hasn't been previously registered, presumably by a different
+  // library. In this case, we assume the cast has also already been registered,
+  // and registering it again can cause segfaults due to accessing an
+  // uninitialized type descriptor in this library.
+  if (!float8_already_registered &&
+      !custom_float_internal::RegisterCustomFloatCast<float8_e4m3b11,
+                                                      bfloat16>()) {
+    return false;
+  }
+
   return true;
 }
 
@@ -226,6 +239,10 @@ int Bfloat16NumpyType() {
 PyObject* Float8_E4M3B11Dtype() {
   return reinterpret_cast<PyObject*>(
       custom_float_internal::TypeDescriptor<float8_e4m3b11>::type_ptr);
+}
+
+int Float8_E4M3B11NumpyType() {
+  return custom_float_internal::TypeDescriptor<float8_e4m3b11>::Dtype();
 }
 
 }  // namespace tsl

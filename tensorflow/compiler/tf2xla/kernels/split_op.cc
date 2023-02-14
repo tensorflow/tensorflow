@@ -59,8 +59,19 @@ class SplitOp : public XlaOpKernel {
         errors::InvalidArgument(
             "Number of ways to split should be > 0, but got ", num_split));
 
+    xla::XlaBuilder* builder = ctx->builder();
+    xla::XlaOp input = ctx->Input(1);
+    auto shape_or = builder->GetShape(input);
+    OP_REQUIRES_OK(ctx, shape_or.status());
+
+    xla::Shape xla_shape = shape_or.value();
     OP_REQUIRES(
-        ctx, input_shape.dim_size(split_dim) % num_split == 0,
+        ctx, !xla_shape.is_dynamic_dimension(split_dim),
+        errors::InvalidArgument(
+            "Split op doesn't support split for the dynamic dimension"));
+
+    OP_REQUIRES(
+        ctx, xla_shape.dimensions(split_dim) % num_split == 0,
         errors::InvalidArgument(
             "Number of ways to split should evenly divide the split "
             "dimension, but got split_dim ",
@@ -82,8 +93,6 @@ class SplitOp : public XlaOpKernel {
       int64_t dim = input_shape.dim_size(i);
       limits[i] = dim;
     }
-
-    auto input = ctx->Input(1);
 
     // Create each of the outputs.
     for (int i = 0; i < num_split; ++i) {
@@ -164,12 +173,23 @@ class SplitVOp : public XlaOpKernel {
       }
     }
 
+    xla::XlaBuilder* builder = ctx->builder();
+    auto shape_or = builder->GetShape(input);
+    OP_REQUIRES_OK(ctx, shape_or.status());
+
+    // TODO(b/265880112): Support this using the SetDimensionSize op.
+    xla::Shape xla_shape = shape_or.value();
+    OP_REQUIRES(
+        ctx, !xla_shape.is_dynamic_dimension(split_dim),
+        errors::Unimplemented("SplitV op doesn't yet support dynamic split "
+                              "dimension."));
+
     OP_REQUIRES(
         ctx,
         (neg_one_dim == -1 &&
-         total_split_size == input_shape.dim_size(split_dim)) ||
+         total_split_size == xla_shape.dimensions(split_dim)) ||
             (neg_one_dim >= 0 &&
-             total_split_size <= input_shape.dim_size(split_dim)),
+             total_split_size <= xla_shape.dimensions(split_dim)),
         errors::InvalidArgument("Determined shape must either match "
                                 "input shape along split_dim exactly if "
                                 "fully specified, or be less than the size of "

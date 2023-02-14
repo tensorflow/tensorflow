@@ -18,6 +18,7 @@ from tensorflow.python.eager import backprop
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import tensor_spec
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
@@ -90,6 +91,20 @@ class ArrayOpTest(test.TestCase):
 
     conc = g.get_concrete_function(tensor_spec.TensorSpec([10, None]))
     self.assertAllEqual(conc.output_shapes.as_list(), [10])
+
+  @test_util.run_in_graph_and_eager_modes
+  def testParallelConcatFailsWithRankZeroShape(self):
+    op = array_ops.ParallelConcat
+    para = {"shape": 0, "values": [1]}
+
+    def func():
+      y = op(**para)
+      return y
+
+    with self.assertRaisesRegex(
+        Exception, "(rank|dimension) of .* must be greater than .* 0"
+    ):
+      func()
 
 
 if __name__ == "__main__":

@@ -19,6 +19,7 @@ import numpy as np
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
@@ -109,6 +110,18 @@ class CastOpTest(test.TestCase):
     with self.cached_session():
       b = math_ops.cast(math_ops.cast(a, dtypes.bfloat16), dtypes.float32)
       self.assertAllClose(a, self.evaluate(b), rtol=1 / 128.)
+
+  def testFloat8(self):
+    a = np.random.uniform(-100, 100, 100).astype(np.float32)
+    for float8 in (dtypes.float8_e4m3fn, dtypes.float8_e5m2):
+      # Including float8_e4m3fn should cover the float8 combinations without
+      # loss of precision.
+      for dtype in (dtypes.float32, dtypes.bfloat16, dtypes.float16,
+                    dtypes.float8_e4m3fn):
+        with self.cached_session(use_gpu=True):
+          b = ops.convert_to_tensor(a, float8)
+          c = math_ops.cast(math_ops.cast(b, dtype), float8)
+          self.assertAllEqual(b, c)
 
   def testRandom(self):
     self._testAll(np.random.normal(0, 10, 210).reshape([2, 3, 5, 7]))

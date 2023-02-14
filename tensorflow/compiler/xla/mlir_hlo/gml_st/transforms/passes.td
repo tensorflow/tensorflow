@@ -76,11 +76,10 @@ def TilingSoftmaxPass : Pass<"gml-tiling-softmax", "mlir::func::FuncOp"> {
   ];
 }
 
-def GreedyTilingAndFusionPass : Pass<"gml-greedy-tiling-and-fusion",
-    "mlir::func::FuncOp"> {
+def GreedyFusionPass : Pass<"gml-greedy-fusion", "mlir::func::FuncOp"> {
   let summary = "Pass to tile the root operation and to greedily fuse "
       "producers into it.";
-  let constructor = "::mlir::gml_st::createGreedyTilingAndFusionPass()";
+  let constructor = "::mlir::gml_st::createGreedyFusionPass()";
   let options = [
     Option<"distribute", "distribute", "bool", /*default=*/"true",
            "Generate gml_st.parallel or gml_st.for">,
@@ -91,6 +90,15 @@ def GreedyTilingAndFusionPass : Pass<"gml-greedy-tiling-and-fusion",
   ];
 }
 
+def TileByOnePass : Pass<"gml-tile-by-one", "mlir::func::FuncOp"> {
+  let summary = "Tile all tileable ops by size 1";
+  let description = [{
+    Tile all tileable ops to size 1. This is meant as a fallback for those ops
+    that were not previously tiled and vectorized.
+  }];
+  let constructor = "::mlir::gml_st::createTileByOnePass()";
+}
+
 def CollapseShapePass : Pass<"gml-collapse-shape", "mlir::func::FuncOp"> {
   let summary = "Collapse dimensions of bcasts, reductions, and cwise ops";
   let description = [{
@@ -98,6 +106,7 @@ def CollapseShapePass : Pass<"gml-collapse-shape", "mlir::func::FuncOp"> {
     number of trailing dimensions remains untouched while the remaining leading
     dimensions will be collapsed where possible.
   }];
+  let constructor = "::mlir::gml_st::createCollapseShapePass()";
   let options = [
     Option<"retainTrailingDims", "retain-trailing-dims", "int64_t",
            /*default=*/"0",
@@ -106,10 +115,10 @@ def CollapseShapePass : Pass<"gml-collapse-shape", "mlir::func::FuncOp"> {
   let dependentDialects = ["::mlir::tensor::TensorDialect"];
 }
 
-def CollapseMaterializeOpsPass : Pass<"gml-collapse-materialize-ops",
+def ComposeExtractInsertSlicePass : Pass<"gml-compose-extract-insert-slice",
     "mlir::func::FuncOp"> {
-  let summary = "Collapse (or uncollapse) materialize operations.";
-  let constructor = "::mlir::gml_st::createCollapseMaterializeOpsPass()";
+  let summary = "Compose tensor.extract_slice/insert_slice ops.";
+  let constructor = "::mlir::gml_st::createComposeExtractInsertSlicePass()";
 }
 
 def GmlStToScf : Pass<"gml-st-to-scf", "mlir::func::FuncOp"> {
@@ -120,6 +129,7 @@ def GmlStToScf : Pass<"gml-st-to-scf", "mlir::func::FuncOp"> {
 
 def GmlStToGpuPass : Pass<"gml-st-to-gpu", "mlir::func::FuncOp"> {
   let summary = "Lower nested `gml_st.parallel` to `gpu.launch`";
+  let constructor = "::mlir::gml_st::createGmlStToGpuPass()";
   let dependentDialects = ["::mlir::gpu::GPUDialect",
                            "::mlir::vector::VectorDialect",
                            "::mlir::memref::MemRefDialect"];
@@ -133,6 +143,7 @@ def GmlStToGpuPass : Pass<"gml-st-to-gpu", "mlir::func::FuncOp"> {
 
 def GmlStSimtfyPass : Pass<"gml-st-simtfy", "mlir::func::FuncOp"> {
   let summary = "Lower nested `gml_st.parallel` to `gpu.launch`";
+  let constructor = "::mlir::gml_st::createGmlStSimtfyPass()";
   let dependentDialects = ["::mlir::AffineDialect",
                            "::mlir::arith::ArithDialect",
                            "::mlir::gpu::GPUDialect",
@@ -145,12 +156,9 @@ def GmlStSimtfyPass : Pass<"gml-st-simtfy", "mlir::func::FuncOp"> {
   ];
 }
 
-def VectorizeGmlStLoopsPass :
-    Pass<"vectorize-gml-st-loops", "mlir::func::FuncOp"> {
-  let summary =
-      "Pass to vectorize linalg.generic ops tiled to gml_st.parallel and " #
-      "gml_st.for loops.";
-  let constructor = "::mlir::gml_st::createVectorizeGmlStLoopsPass()";
+def VectorizeForGPUPass : Pass<"vectorize-for-gpu", "mlir::func::FuncOp"> {
+  let summary = "Pass to vectorize compute ops and gml_st.loops.";
+  let constructor = "::mlir::gml_st::createVectorizeForGPUPass()";
   let options = [
     Option<"vectorizeGmlStOps", "vectorize-gml-st-ops", "bool", "false",
            "If true, vectorizes GmlSt ops in addition to linalg ops">,
@@ -163,19 +171,70 @@ def VectorizeGmlStLoopsPass :
   let dependentDialects = ["::mlir::vector::VectorDialect"];
 }
 
-def VectorizePerfectlyTiledLoopsPass :
-    Pass<"vectorize-perfectly-tiled-loops", "mlir::func::FuncOp"> {
+def VectorizeForCPUPass : Pass<"vectorize-for-cpu", "mlir::func::FuncOp"> {
   let summary = "Pass to vectorize gml_st.for loops that are tiled perfectly.";
-  let constructor = "::mlir::gml_st::createVectorizePerfectlyTiledLoopsPass()";
+  let constructor = "::mlir::gml_st::createVectorizeForCPUPass()";
+  let dependentDialects = [
+    "::mlir::vector::VectorDialect",
+    "::mlir::tensor::TensorDialect"
+  ];
+}
+
+def VectorizeCopyPass :
+    Pass<"vectorize-copy", "mlir::func::FuncOp"> {
+  let summary = "Pass to vectorize `memref.copy`.";
+  let constructor = "::mlir::gml_st::createVectorizeCopyPass()";
   let dependentDialects = ["::mlir::vector::VectorDialect"];
 }
 
-def LowerVectorContractPass :
-    Pass<"lower-vector-contract", "mlir::func::FuncOp"> {
-  let summary = "Pass to lower vector.contract";
-  let constructor = "::mlir::gml_st::createLowerVectorContractPass()";
+def SimplifyDeadCopyPass :
+    Pass<"simplify-dead-copy", "mlir::func::FuncOp"> {
+  let summary = "Pass to simplify dead `memref.copy`.";
+  let constructor = "::mlir::gml_st::createSimplifyDeadCopyPass()";
   let dependentDialects = ["::mlir::vector::VectorDialect",
-                           "::mlir::gml_st::GmlStDialect"];
+                           "::mlir::memref::MemRefDialect"];
+}
+
+def RewriteVectorContractPass :
+    Pass<"rewrite-vector-contract", "mlir::func::FuncOp"> {
+  let summary = "Pass to rewrite vector.contract.";
+  let constructor = "::mlir::gml_st::createRewriteVectorContractPass()";
+  let dependentDialects = ["::mlir::vector::VectorDialect"];
+}
+
+
+def RewriteVectorMultiReductionPass :
+    Pass<"rewrite-vector-multi-reduction", "mlir::func::FuncOp"> {
+  let summary = "Pass to rewrite vector.multi_reduction.";
+  let constructor = "::mlir::gml_st::createRewriteVectorMultiReductionPass()";
+  let dependentDialects = ["::mlir::vector::VectorDialect"];
+}
+
+def RewriteVectorTransposePass : Pass<"rewrite-vector-transpose", "mlir::func::FuncOp"> {
+  let summary = "Pass to rewrite vector.transpose.";
+  let constructor = "::mlir::gml_st::createRewriteVectorTransposePass()";
+  let dependentDialects = [
+    "::mlir::LLVM::LLVMDialect",
+    "::mlir::vector::VectorDialect",
+  ];
+}
+
+def ScalarizationPass : Pass<"scalarize", "mlir::func::FuncOp"> {
+  let summary = "Converts ops on tensors with 1 element to scalar ops.";
+  let dependentDialects = [
+    "arith::ArithDialect",
+    "gml_st::GmlStDialect",
+    "scf::SCFDialect",
+    "tensor::TensorDialect"
+  ];
+  let constructor = "createScalarizationPass()";
+
+  let options = [
+    // TODO(b/268020816): Remove this flag.
+    Option<"skipFillOpScalarization", "block-fill-scalarization", "bool",
+      /*default=*/"false", "Do not scalarize `linalg.fill`. This is needed for "
+      "XLA:GPU pipeline for softmax.">,
+  ];
 }
 
 def TransformScatterForCpuPass :
@@ -196,6 +255,20 @@ def TransformMatmulForCpuPass :
            "If true, lower linalg.matmul into linalg.mmt4d">,
     ListOption<"tileSizes", "tile-sizes", "int64_t",
                "Tile sizes for a `linalg.matmul`">,
+  ];
+}
+
+def TransformMatmulForTritonPass :
+    Pass<"xla-triton-transform-matmul", "mlir::func::FuncOp"> {
+  let summary = "Transform matmul ops for lowering to Triton";
+
+  let constructor = "createTransformMatmulForTritonPass()";
+
+  let options = [
+    ListOption<"tileSizes", "tile-sizes", "int64_t",
+               "Tile sizes for a `linalg.matmul`">,
+    Option<"distributionLabel", "distribution-label", "std::string",
+           /*default=*/"", "Distribution label for generated gml_st.parallel">,
   ];
 }
 
@@ -240,9 +313,26 @@ def TransformReduceForCpuPass :
   ];
 }
 
+def TransformReverseForCpuPass :
+  Pass<"xla-cpu-transform-reverse", "mlir::func::FuncOp"> {
+    let summary = "Transform reverse ops for running on CPU";
+    let constructor = "createTransformReverseForCpuPass()";
+    let options = [
+      Option<"vectorSize", "vector-size", "int64_t", "8",
+           "Vector size for 'thlo.reverse`">,
+    ];
+  }
+
 def TransformSortForCpuPass :
     Pass<"gml-st-cpu-transform-sort", "mlir::func::FuncOp"> {
   let summary = "Transform sort ops for running on CPU";
 
   let constructor = "createTransformSortForCpuPass()";
+}
+
+def AddDebugInfoPass :
+    Pass<"add-debug-info", "mlir::ModuleOp"> {
+  let summary = "Add debug info for the whole module";
+  let constructor = "::mlir::gml_st::createAddDebugInfoPass()";
+  let dependentDialects = ["::mlir::LLVM::LLVMDialect"];
 }

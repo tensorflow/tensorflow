@@ -1,6 +1,6 @@
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library")
-load("//tensorflow:tensorflow.bzl", "tf_cc_binary")
+load("//tensorflow:tensorflow.bzl", "tf_cc_binary", "tf_cc_test")
 load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_cloud")
 
 package(
@@ -92,6 +92,7 @@ cc_library(
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:SparseTensorDialect",
         "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:TransformUtils",
     ],
 )
 
@@ -143,6 +144,7 @@ cc_library(
         "@llvm-project//mlir:ShapeDialect",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TensorDialect",
+        "@llvm-project//mlir:TransformUtils",
         "@stablehlo//:chlo_ops",
     ],
 )
@@ -171,13 +173,53 @@ cc_library(
 )
 
 cc_library(
+    name = "xla_legalize_targets",
+    srcs = [
+        "transforms/xla_legalize_targets.cc",
+    ],
+    hdrs = [
+        "transforms/xla_legalize_targets.h",
+    ],
+    deps = [
+        "//tensorflow/compiler/mlir/tensorflow",
+        "//tensorflow/compiler/xla/mlir_hlo",
+        "@llvm-project//mlir:ArithDialect",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:ShapeDialect",
+        "@llvm-project//mlir:TensorDialect",
+        "@llvm-project//mlir:TransformUtils",
+        "@stablehlo//:chlo_ops",
+    ],
+)
+
+tf_cc_test(
+    name = "xla_legalize_targets_test",
+    srcs = ["transforms/xla_legalize_targets_test.cc"],
+    deps = [
+        ":xla_legalize_targets",
+        "//tensorflow/compiler/mlir/tensorflow",
+        "@com_google_googletest//:gtest_main",
+        "@llvm-project//mlir:ArithDialect",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:ShapeDialect",
+        "@llvm-project//mlir:TensorDialect",
+        "@llvm-project//mlir:TransformUtils",
+        "@stablehlo//:chlo_ops",
+    ],
+)
+
+cc_library(
     name = "xla_legalize_tf",
     srcs = [
+        "transforms/convert_mhlo_quant_to_int.cc",
         "transforms/legalize_tf_collective.cc",
         "transforms/legalize_tf_communication.cc",
-        "transforms/legalize_tf_control_flow.cc",
         "transforms/legalize_tf_types.cc",
         "transforms/tf_xla_passes.h.inc",
+        "transforms/tfxla_device_specific_transforms.cc",
+        "transforms/verify_tfxla_legalization.cc",
         "transforms/xla_legalize_tf.cc",
         "transforms/xla_legalize_tf_passes.h.inc",
     ],
@@ -187,6 +229,8 @@ cc_library(
     deps = [
         ":legalize_tf",
         ":legalize_utils",
+        ":xla_legalize_targets",
+        ":xla_legalize_tf_no_fallback",
         ":xla_legalize_tf_passes_inc_gen",
         ":xla_legalize_tf_with_tf2xla",
         "//tensorflow/compiler/mlir/tensorflow",
@@ -259,14 +303,19 @@ cc_library(
     srcs = [
         "transforms/legalize_tf_with_tf2xla.cc",
     ],
+    hdrs = [
+        "transforms/passes.h",
+    ],
     deps = [
         ":tf_xla_passes_inc_gen",
+        ":xla_legalize_tf_passes_inc_gen",
         "//tensorflow/compiler/mlir:op_or_arg_name_mapper",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:convert_tensor",
         "//tensorflow/compiler/mlir/tensorflow:convert_type",
         "//tensorflow/compiler/mlir/tensorflow:export_tf_dialect_op",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_ops",
+        "//tensorflow/compiler/mlir/tensorflow:tpu_embedding_ops_registry",
         "//tensorflow/compiler/mlir/tensorflow:translate_utils",
         "//tensorflow/compiler/tf2xla:xla_compilation_device",
         "//tensorflow/compiler/tf2xla:xla_context",
@@ -276,7 +325,6 @@ cc_library(
         "//tensorflow/compiler/xla/client:xla_builder",
         "//tensorflow/compiler/xla/mlir_hlo",
         "//tensorflow/compiler/xla/stream_executor:timer",
-        "//tensorflow/compiler/xla/stream_executor/lib",
         "//tensorflow/compiler/xla/translate/hlo_to_mhlo:mlir_hlo_builder",
         "//tensorflow/core:core_cpu_lib",
         "//tensorflow/core:framework",

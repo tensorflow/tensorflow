@@ -21,6 +21,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <functional>
+#include <memory>
 #include <string>
 #include <type_traits>
 #include <unordered_map>
@@ -36,7 +37,7 @@ limitations under the License.
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/QuantTypes.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
-#include "mlir/IR/BlockAndValueMapping.h"  // from @llvm-project
+#include "mlir/IR/IRMapping.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
@@ -75,7 +76,7 @@ constexpr absl::string_view QuantTraitValues[] = {"fully_quantizable",
 
 constexpr double kNearZeroTolerance = 1.0e-6;
 
-using QuantParams = mlir::quant::QuantizedType;
+using QuantParams = QuantizedType;
 using QuantSpec = QuantizationSpecs;
 using SignedInteger = std::pair<unsigned, unsigned>;  // bitwidth and sign
 using QuantParamsForResults = llvm::SmallVector<QuantParams, 4>;
@@ -90,7 +91,6 @@ using RequiredSameOperandsAndResultsScaleFunc = std::function<bool(bool, int)>;
 // bool RequiredSameQuantizedAxes()
 using RequiredSameQuantizedAxesFunc = std::function<bool()>;
 
-using StringSet = absl::flat_hash_set<std::string>;
 using CustomMap = quant::CustomOpMap;
 
 // Quantization spec of an op, driving the quantization algorithm.
@@ -119,6 +119,11 @@ struct OpQuantSpec {
   absl::flat_hash_set<int> quantizable_operands;
 };
 
+// A function signature for getting the particular OpQuantSpec for the provided
+// op.
+using OpQuantSpecGetter =
+    std::function<std::unique_ptr<OpQuantSpec>(Operation*)>;
+
 // Quantization scale spec of an op. The information defined in the MLIR
 // interfaces FixedOutputRangeInterface and SameOperandsAndResultsScale should
 // be checked first if present.
@@ -137,6 +142,11 @@ struct OpQuantScaleSpec {
     return true;
   };
 };
+
+// A function signature for getting the particular OpQuantScaleSpec for the
+// provided op.
+using OpQuantScaleSpecGetter =
+    std::function<std::unique_ptr<OpQuantScaleSpec>(Operation*)>;
 
 // Used in TFL Numeric Verify
 struct NumericVerifySpec {
@@ -162,14 +172,6 @@ struct QuantPassSpec {
   // Variables related to quantization
   QuantSpec quant_spec;
 };
-
-// A function signature for getting the particular OpQuantSpec for the provided
-// op.
-typedef std::unique_ptr<OpQuantSpec> (*OpQuantSpecGetter)(Operation* op);
-// A function signature for getting the particular OpQuantScaleSpec for the
-// provided op.
-typedef std::unique_ptr<OpQuantScaleSpec> (*OpQuantScaleSpecGetter)(
-    Operation* op);
 
 // Re-calculates scales again in float instead of simply downcasting existing
 // scales.
@@ -208,6 +210,7 @@ struct ConvertStatsToQDQs : public OpRewritePattern<quantfork::StatisticsOp> {
     SmallVector<double, 4> mins, maxs;
 
     if (op.getAxisStats().has_value()) {
+      // Per axis quantization (or per channel quantization)
       int stats_num = op.getAxisStats()->getNumElements();
       if (stats_num == 0 || stats_num % 2 != 0) return failure();
       auto stats = op.getAxisStats()->dyn_cast<DenseFPElementsAttr>();
@@ -221,6 +224,13 @@ struct ConvertStatsToQDQs : public OpRewritePattern<quantfork::StatisticsOp> {
         // So here we adjust the range to include 0.0.
         rmin = std::min(rmin, 0.0);
         rmax = std::max(rmax, 0.0);
+        if (num_bits == 16) {
+          // TODO(b/266536261): Since the kernel implementation assumes that
+          // 16x8 integer quantization is symmetric, this MLIR quantizer
+          // supports only symmetric quantization.
+          rmax = std::max(std::abs(rmin), std::abs(rmax));
+          rmin = -rmax;
+        }
         TensorRangeSanityCheck(op, rmin, rmax);
         mins.push_back(rmin);
         maxs.push_back(rmax);
@@ -233,6 +243,7 @@ struct ConvertStatsToQDQs : public OpRewritePattern<quantfork::StatisticsOp> {
       }
     } else if (auto stats =
                    op.getLayerStats().dyn_cast<DenseFPElementsAttr>()) {
+      // Per tensor quantization
       auto statValues = stats.getValues<APFloat>();
       double rmin = FloatAttr::getValueAsDouble(statValues[0]);
       double rmax = FloatAttr::getValueAsDouble(statValues[1]);
@@ -241,6 +252,13 @@ struct ConvertStatsToQDQs : public OpRewritePattern<quantfork::StatisticsOp> {
       // So here we adjust the range to include 0.0.
       rmin = std::min(rmin, 0.0);
       rmax = std::max(rmax, 0.0);
+      if (num_bits == 16) {
+        // TODO(b/266536261): Since the kernel implementation assumes that
+        // 16x8 integer quantization is symmetric, this MLIR quantizer supports
+        // only symmetric quantization.
+        rmax = std::max(std::abs(rmin), std::abs(rmax));
+        rmin = -rmax;
+      }
       TensorRangeSanityCheck(op, rmin, rmax);
       quant_type =
           quantfork::fakeQuantAttrsToType(op.getLoc(), num_bits, rmin, rmax,
@@ -399,8 +417,10 @@ class QuantizationPattern : public RewritePattern {
     bool enable_verify = quant_params_.numeric_verify_spec.verify_numeric;
     bool enable_whole_model_verify =
         quant_params_.numeric_verify_spec.whole_model_verify;
-    StringSet ops_blocklist = quant_params_.quant_spec.ops_blocklist;
-    StringSet nodes_blocklist = quant_params_.quant_spec.nodes_blocklist;
+    absl::flat_hash_set<std::string> ops_blocklist =
+        quant_params_.quant_spec.ops_blocklist;
+    absl::flat_hash_set<std::string> nodes_blocklist =
+        quant_params_.quant_spec.nodes_blocklist;
     CustomMap custom_map = quant_params_.quant_spec.custom_map;
 
     // Rewrite the floating-point ops to the quantized version, by fusing
@@ -559,7 +579,7 @@ class QuantizationPattern : public RewritePattern {
              llvm::enumerate(quantizing_op->getRegions())) {
           Region& target_region =
               quantized_op->getRegion(indexed_regions.index());
-          BlockAndValueMapping mapping;
+          IRMapping mapping;
           indexed_regions.value().cloneInto(&target_region, mapping);
         }
       }
@@ -633,7 +653,7 @@ class QuantizationPattern : public RewritePattern {
                 *quantized_op->getResult(i).getUsers().begin())) {
           result = quantize_op->getResult(0);
         } else {
-          quantize_op->emitError()
+          quantized_op->emitError()
               << "Output[" << i
               << "] is expected to have only one user [QUANTIZE]";
           return;

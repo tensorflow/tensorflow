@@ -1297,6 +1297,9 @@ template <>
 string SummarizeArray<bool>(int64_t limit, int64_t num_elts,
                             const TensorShape& tensor_shape, const char* data,
                             const bool print_v2) {
+  if (data == nullptr) {
+    return strings::StrCat("");  // we already print type and shape
+  }
   // We first convert all chars to be 0/1 to not get InvalidEnumValue sanitizer
   // error
   auto mutable_data = std::unique_ptr<char[]>(new char[num_elts]);

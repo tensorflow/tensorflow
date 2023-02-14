@@ -30,10 +30,10 @@ import time
 from tensorflow.core.distributed_runtime.preemption import gen_check_preemption_op
 from tensorflow.python.checkpoint import checkpoint as checkpoint_lib
 from tensorflow.python.checkpoint import checkpoint_management
+from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute import multi_worker_util
 from tensorflow.python.distribute.failure_handling import failure_handling_util
 from tensorflow.python.eager import context
-from tensorflow.python.eager import monitoring
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
@@ -54,7 +54,6 @@ _ACKNOWLEDGE_KEY = 'RECEIVED_SIGNAL'
 _ITERATION_VARIABLE = 'checkpointed_runs'
 _STOP_WATCHING_CLUSTER_VALUE = 'STOP_WATCHER'
 PREEMPTION_KEY = 'TF_DEFAULT_PREEMPTION_NOTICE_KEY'
-ENABLE_TESTING_FOR_TPU = False
 
 
 # TODO(wxinyi): add type annotations.
@@ -230,10 +229,7 @@ class BorgTPUTerminationConfig(TerminationConfig):
       grace_period=None,
       save_fn=None):
     self.termination_watcher_fn = termination_watcher_fn
-    if exit_fn:
-      self.exit_fn = lambda unused_time: exit_fn()
-    else:
-      self.exit_fn = failure_handling_util.default_tpu_exit_fn
+    self.exit_fn = exit_fn or failure_handling_util.default_tpu_exit_fn
     self.grace_period = grace_period or 0
     self.save_fn = save_fn
 
@@ -494,12 +490,7 @@ class PreemptionCheckpointHandler(object):
                                 'usage with TPU or CPU device on GCP.')
 
     elif self._platform_device == failure_handling_util.PlatformDevice.INTERNAL_TPU:
-      if ENABLE_TESTING_FOR_TPU:
-        self._initialize_for_tpu_strategy()
-
-      else:
-        raise NotImplementedError('PreemptionCheckpointHandler does not support'
-                                  ' usage with TPU yet.')
+      self._initialize_for_tpu_strategy()
 
     else:
       self._initialize_for_multi_worker_mirrored()
@@ -513,6 +504,7 @@ class PreemptionCheckpointHandler(object):
     self._cluster_wise_termination_watcher_thread = None
     self._maybe_create_checkpoint_manager()
     self._read_checkpoint_manager.restore_or_initialize()
+    self._run_counter = 0
 
   def _initialize_for_multi_worker_mirrored(self):
     """Makes configurations and start watchers for using with MWMS."""
@@ -579,7 +571,7 @@ class PreemptionCheckpointHandler(object):
     # step number to save a checkpoint has been aligned.
     self._received_checkpoint_step = threading.Event()
 
-    distribution_strategy_api_counter.get_cell(
+    distribute_lib.distribution_strategy_input_api_counter.get_cell(
         self._platform_device.name,
         'PreemptionCheckpointHandler').increase_by(1)
 
@@ -749,6 +741,10 @@ class PreemptionCheckpointHandler(object):
     value to infer the starting epoch and step after training restores, as shown
     in the example above.
     """
+    if (self._platform_device ==
+        failure_handling_util.PlatformDevice.INTERNAL_TPU):
+      raise NotImplementedError('Please create variables saved in checkpoint '
+                                'to keep track of steps and epochs.')
     return self._run_counter
 
   def run(self,
@@ -843,7 +839,7 @@ class PreemptionCheckpointHandler(object):
                                      **kwargs):
     """PreemptionCheckpointManager.run implementation for MWMS."""
     try:
-      self._checkpoint_if_preempted()
+      self._check_preemption_and_maybe_checkpoint()
       run_begin_time = time.time()
       result = distributed_train_function(*args, **kwargs)
       new_run_time = time.time() - run_begin_time
@@ -912,13 +908,15 @@ class PreemptionCheckpointHandler(object):
           context.async_clear_error()
           self._save_checkpoint(*args, **kwargs)
 
-          self._exit_fn(self._checkpoint_time)
+          # For TPU training, the default behavior is that it will block until
+          # workers are down and returns with error.
+          self._exit_fn()
 
         else:
           raise
 
     else:
-      self._checkpoint_if_preempted(*args, **kwargs)
+      self._check_preemption_and_maybe_checkpoint(*args, **kwargs)
       self._run_counter += 1
       self._estimated_run_time = 0
 
@@ -926,26 +924,38 @@ class PreemptionCheckpointHandler(object):
   def _watch_error_scope(self):
     """Sync error and maybe save checkpoint."""
     # TODO(wxinyi): export as public API
-    try:
-      with context.async_scope():
+    if self._platform_device == failure_handling_util.PlatformDevice.INTERNAL_TPU:
+      try:
+        with context.async_scope():
+          yield
+      except errors.AbortedError as abort_error:
+        if abort_error.experimental_payloads.get(
+            b'type.googleapis.com/tensorflow.distributed_runtime.WorkerPreemption'
+        ):
+          logging.info('Clearing preemption error to save checkpoint...')
+
+          context.async_clear_error()
+          self._save_checkpoint()
+
+          self._exit_fn()
+
+        else:
+          raise
+    else:
+      try:
         yield
-    except errors.AbortedError as abort_error:
-      if abort_error.experimental_payloads.get(
-          b'type.googleapis.com/tensorflow.distributed_runtime.WorkerPreemption'
-      ):
-        logging.info('Clearing preemption error to save checkpoint...')
-
-        context.async_clear_error()
-        self._save_checkpoint()
-
-        self._exit_fn(self._checkpoint_time)
-
-      else:
+      except errors.OpError as e:
+        if not self._local_mode:
+          logging.info('Propagating error to cluster: %r: %s', e, e)
+          try:
+            context.context().report_error_to_cluster(e.error_code, e.message)
+          except Exception as ex:  # pylint: disable=broad-except
+            logging.info('Ignoring error during error propagation: %r:%s', ex, ex)
         raise
 
   def _save_checkpoint(self, *args, **kwargs):
     """Saves the checkpoint and exit program."""
-    distribution_strategy_api_counter.get_cell(
+    distribute_lib.distribution_strategy_input_api_counter.get_cell(
         self._platform_device.name,
         'PreemptionCheckpointHandler Saving Checkpoint').increase_by(1)
     logging.info('PreemptionCheckpointHandler: Starting saving a checkpoint.')
@@ -966,7 +976,7 @@ class PreemptionCheckpointHandler(object):
                  self._write_checkpoint_manager.directory)
     self._checkpoint_time = end_time - start_time
 
-  def _checkpoint_if_preempted(self, *args, **kwargs):
+  def _check_preemption_and_maybe_checkpoint(self, *args, **kwargs):
     """Checkpoint if any worker has received a preemption signal.
 
     This function handles preemption signal reported by any worker in the
@@ -991,6 +1001,10 @@ class PreemptionCheckpointHandler(object):
       *args: args for `tf.train.CheckpointManager.save()` to save checkpoint.
       **kwargs: kwargs for `tf.train.CheckpointManager.save()` to save.
     """
+    if self._platform_device == failure_handling_util.PlatformDevice.INTERNAL_TPU:
+      gen_check_preemption_op.check_preemption(preemption_key=PREEMPTION_KEY)
+      return
+
     if self._final_checkpoint_countdown:
       run_count_config_key = _FINAL_RUN_COUNT_KEY
 
@@ -1070,8 +1084,8 @@ class PreemptionCheckpointHandler(object):
     # means it's time to exit: when there is a grace period, a worker
     # receives preemption signal and sets the step key. Then all workers
     # receive the step key and set their local _received_checkpoint_step
-    # event, enters this branch in _checkpoint_if_preempted, make a
-    # checkpoint. Then they set _final_checkpoint_countdown to True, clear
+    # event, enters this branch in _check_preemption_and_maybe_checkpoint, make
+    # a checkpoint. Then they set _final_checkpoint_countdown to True, clear
     # _received_checkpoint_step, and continue training. New preemption
     # signals anywhere in the cluster will not be handled, because
     # _PREEMPTION_WORKER_KEY is occupied. The only chance that
@@ -1116,7 +1130,7 @@ class PreemptionCheckpointHandler(object):
     # value so we can join the thread executing _watch_step_to_save_key.
     if step_value != _STOP_WATCHING_CLUSTER_VALUE:
       # This must be set before we set the ack key below, otherwise its value
-      # in _checkpoint_if_preempted may be outdated.
+      # in _check_preemption_and_maybe_checkpoint may be outdated.
       self._step_to_checkpoint = step_value
       self._received_checkpoint_step.set()
 
@@ -1127,7 +1141,8 @@ class PreemptionCheckpointHandler(object):
           'preemption awareness acknowledged', ack_key)
 
       # If a positive grace_period is not configured, we get the
-      # _INITIAL_RUN_COUNT_KEY and then we're done. _checkpoint_if_preempted
+      # _INITIAL_RUN_COUNT_KEY and then we're done.
+      # _check_preemption_and_maybe_checkpoint
       # will save a checkpoint and then exit. Otherwise, we need to move on to
       # wait for the _FINAL_RUN_COUNT_KEY, the one that the preempted worker
       # will set after we utilize the extended grace period to train, so that
@@ -1148,12 +1163,3 @@ class PreemptionCheckpointHandler(object):
 # TODO(wxinyi): remove this line after we move the Keras callback prototype and
 # change gce test usage.
 WorkerPreemptionHandler = PreemptionCheckpointHandler
-
-
-# ------------------------------------------------------------------------------
-# Metrics to track which distribution strategy APIs (reusable by future APIs)
-distribution_strategy_api_counter = monitoring.Counter(
-    '/tensorflow/api/distribution_strategy/api',
-    'Counter to track the usage of the distribute strategy APIs',
-    'platform or accelerator',
-    'api')

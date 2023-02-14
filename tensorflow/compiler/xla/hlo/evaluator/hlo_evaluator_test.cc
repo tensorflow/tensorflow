@@ -461,6 +461,12 @@ TEST_P(HloEvaluatorBf16Test, DoesSinR2) {
   TestUnaryOp(HloOpcode::kSin, std::move(expected), std::move(operand),
               use_bfloat16_ ? 0.031250 : 9.5367431640625E-7);
 }
+TEST_P(HloEvaluatorBf16Test, DoesTanR2) {
+  auto operand = LiteralUtil::CreateR2<float>({{0, M_PI}, {-M_PI, 2 * M_PI}});
+  auto expected = LiteralUtil::CreateR2<float>({{0, 0}, {0, 0}});
+  TestUnaryOp(HloOpcode::kTan, std::move(expected), std::move(operand),
+              use_bfloat16_ ? 0.031250 : 9.5367431640625E-7);
+}
 TEST_F(HloEvaluatorTest, DoesNotR2) {
   auto operand =
       LiteralUtil::CreateR2<int32_t>({{0, std::numeric_limits<int>::min()},

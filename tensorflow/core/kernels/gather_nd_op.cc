@@ -17,6 +17,7 @@ limitations under the License.
 #define EIGEN_USE_THREADS
 
 #include "tensorflow/core/kernels/gather_nd_op.h"
+
 #include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/lib/strings/str_util.h"
@@ -105,7 +106,6 @@ namespace functor {
 TF_CALL_int32(DECLARE_GPU_SPECS);
 TF_CALL_int64(DECLARE_GPU_SPECS);
 TF_CALL_GPU_NUMBER_TYPES(DECLARE_GPU_SPECS);
-TF_CALL_bfloat16(DECLARE_GPU_SPECS);
 TF_CALL_COMPLEX_TYPES(DECLARE_GPU_SPECS);
 
 #undef DECLARE_GPU_SPECS
@@ -118,7 +118,6 @@ TF_CALL_COMPLEX_TYPES(DECLARE_GPU_SPECS);
 TF_CALL_int32(REGISTER_GATHER_ND_GPU);
 TF_CALL_int64(REGISTER_GATHER_ND_GPU);
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_GATHER_ND_GPU);
-TF_CALL_bfloat16(REGISTER_GATHER_ND_GPU);
 TF_CALL_COMPLEX_TYPES(REGISTER_GATHER_ND_GPU);
 
 #undef REGISTER_GATHER_ND_GPU

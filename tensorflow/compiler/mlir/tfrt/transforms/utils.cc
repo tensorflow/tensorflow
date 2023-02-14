@@ -15,6 +15,9 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/tfrt/transforms/utils.h"
 
+#include <optional>
+#include <string>
+
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
@@ -54,6 +57,39 @@ bool IsResultVariable(const mlir::Value &original_operand,
     return false;
   }
   return IsResourceArgument(operand);
+}
+
+std::optional<std::string> CanonicalizeTensorflowFunctionName(
+    const mlir::SymbolTable &symbol_table, absl::string_view mlir_func_name,
+    bool use_mlir_func_name) {
+  if (use_mlir_func_name) {
+    return std::string(mlir_func_name);
+  }
+
+  // Currently in TF graph to MLIR importing, a "0" is appended to the original
+  // function name. The renaming is for TF/XLA v1 bridge use cases. Refer to
+  // b/142268695, b/141617294 for more context.
+  //
+  // TFRT currently uses the original function library. Hence, we retrieve the
+  // original function name from the function attributes. Longer term, we
+  // probably want to export the MLIR functions.
+  auto callee =
+      symbol_table.lookup<mlir::func::FuncOp>(std::string(mlir_func_name));
+  if (!callee) return std::nullopt;
+
+  mlir::StringAttr original_func_name =
+      callee->getAttrOfType<mlir::StringAttr>("tf._original_func_name");
+  if (!original_func_name) {
+    // If there is no function attribute "tf._original_func_name" in the callee,
+    // we use the workaround to recover the original function name by removing
+    // the last char of the MLIR function name.
+    // TODO(b/259138201): Remove this workwaround after we make sure
+    // "tf._original_func_name" is present in callees in all code paths.
+    mlir_func_name.remove_suffix(1);
+    return std::string(mlir_func_name);
+  }
+
+  return original_func_name.str();
 }
 
 }  // namespace tensorflow

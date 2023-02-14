@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/lite/builtin_ops.h"
 #include "tensorflow/lite/core/c/c_api.h"
 #include "tensorflow/lite/core/c/common.h"
+#include "tensorflow/lite/profiling/telemetry/c/profiler.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -402,6 +403,14 @@ TFL_CAPI_EXPORT extern TfLiteStatus TfLiteSignatureRunnerCancel(
 /// WARNING: This is an experimental API and subject to change.
 TFL_CAPI_EXPORT extern void TfLiteSignatureRunnerDelete(
     TfLiteSignatureRunner* signature_runner);
+
+/// Registers the telemetry profiler to the interpreter.
+/// Note: The interpreter does not take the ownership of profiler, but callers
+/// must ensure profiler->data outlives the lifespan of the interpreter.
+///
+/// WARNING: This is an experimental API and subject to change.
+TFL_CAPI_EXPORT extern void TfLiteInterpreterOptionsSetTelemetryProfiler(
+    TfLiteInterpreterOptions* options, TfLiteTelemetryProfilerStruct* profiler);
 
 #ifdef __cplusplus
 }  // extern "C"

@@ -283,6 +283,7 @@ Status TensorSliceReader::GetTensor(
     READER_COPY(DT_INT8);
     READER_COPY(DT_INT64);
     READER_COPY(DT_STRING);
+    READER_COPY(DT_BOOL);
     default:
       return errors::Unimplemented("Data type not supported");
   }

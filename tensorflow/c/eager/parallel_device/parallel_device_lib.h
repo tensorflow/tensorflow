@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_C_EAGER_PARALLEL_DEVICE_PARALLEL_DEVICE_LIB_H_
 
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -44,6 +45,8 @@ class TensorHandleDeleter {
   }
 };
 
+// TODO(b/256016071): Replace this with `Safe_TFE_TensorHandlePtr` when
+// `Safe_TFE_TensorHandlePtr` is marked to be compatible on non-prod env.
 using TensorHandlePtr = std::unique_ptr<TFE_TensorHandle, TensorHandleDeleter>;
 
 class ParallelTensor;
@@ -123,7 +126,7 @@ class ParallelDevice {
                     const char* operation_name, const TFE_OpAttrs* attributes,
                     int expected_max_outputs,
                     CancellationManager& cancellation_manager,
-                    absl::optional<int64_t> step_id = absl::nullopt) const;
+                    std::optional<int64_t> step_id = std::nullopt) const;
 
   // Blocks until the previous `StartExecute` has run `TFE_Execute` on each
   // device. If is_async=false (constructor argument) this means the ops have

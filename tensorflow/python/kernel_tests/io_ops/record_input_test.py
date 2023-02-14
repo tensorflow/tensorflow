@@ -16,8 +16,8 @@
 
 import os
 
+from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import test_util
-from tensorflow.python.framework.errors_impl import NotFoundError
 from tensorflow.python.lib.io import tf_record
 from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import variables
@@ -145,7 +145,7 @@ class RecordInputOpTest(test.TestCase):
       record_input = data_flow_ops.RecordInput(file_pattern="foo")
       yield_op = record_input.get_yield_op()
       self.evaluate(variables.global_variables_initializer())
-      with self.assertRaises(NotFoundError):
+      with self.assertRaises(errors_impl.NotFoundError):
         self.evaluate(yield_op)
 
   @test_util.run_deprecated_v1
@@ -177,6 +177,22 @@ class RecordInputOpTest(test.TestCase):
           for r in op_list:
             self.assertTrue(r[0] not in epoch_set)
             epoch_set.add(r[0])
+
+  def testInvalidParams(self):
+    with self.session():
+      with self.assertRaises(errors_impl.InvalidArgumentError):
+        self.evaluate(
+            data_flow_ops.gen_data_flow_ops.record_input(
+                file_pattern="nan",
+                file_buffer_size=-90,
+                file_parallelism=-438,
+                file_shuffle_shift_ratio=-784,
+                batch_size=-933,
+                file_random_seed=-678,
+                compression_type="nan",
+            )
+        )
+
 
 if __name__ == "__main__":
   test.main()

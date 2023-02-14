@@ -37,9 +37,6 @@ struct CpuPipelineOptions {
 #else
   bool math_avx2 = false;
 #endif
-
-  // Disables fast approximate math optimizations.
-  bool disable_math_optimizations = false;
 };
 
 // Registers dialects, interfaces and dialects translations with the registry
@@ -53,6 +50,11 @@ void RegisterDefaultXlaCpuRuntimeDialects(DialectRegistry& dialects);
 // pipelines from the available XLA and MLIR passes.
 void CreateDefaultXlaCpuRuntimeCompilationPipeline(
     PassManager& passes, const CpuPipelineOptions& opts);
+
+// Creates default XLA-CPU runtime compilation pipeline that lowers
+// `xla_framework` and `rt` dialects to the LLVMIR dialect.
+void CreateDefaultXlaCpuAOTCompilationPipeline(PassManager& passes,
+                                               const CpuPipelineOptions& opts);
 
 }  // namespace runtime
 }  // namespace xla

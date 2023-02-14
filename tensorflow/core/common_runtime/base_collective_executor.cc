@@ -303,14 +303,16 @@ void BaseCollectiveExecutor::ExecuteAsync(OpKernelContext* ctx,
   }
 
   Tensor* output = ctx->mutable_output(0);
-  const Tensor* input = (col_params->instance.type == REDUCTION_COLLECTIVE ||
-                         col_params->instance.type == GATHER_COLLECTIVE ||
-                         col_params->instance.type == PERMUTE_COLLECTIVE ||
-                         col_params->instance.type == ALL_TO_ALL_COLLECTIVE ||
-                         (col_params->instance.type == BROADCAST_COLLECTIVE &&
-                          col_params->is_source))
-                            ? &ctx->input(0)
-                            : nullptr;
+  const Tensor* input =
+      (col_params->instance.type == REDUCTION_COLLECTIVE ||
+       col_params->instance.type == GATHER_COLLECTIVE ||
+       col_params->instance.type == PERMUTE_COLLECTIVE ||
+       col_params->instance.type == ALL_TO_ALL_COLLECTIVE ||
+       col_params->instance.type == REDUCE_SCATTER_COLLECTIVE ||
+       (col_params->instance.type == BROADCAST_COLLECTIVE &&
+        col_params->is_source))
+          ? &ctx->input(0)
+          : nullptr;
   CollectiveImplementationInterface* col_impl = nullptr;
   Status status = CreateCollective(*col_params, &col_impl);
   if (!status.ok()) {

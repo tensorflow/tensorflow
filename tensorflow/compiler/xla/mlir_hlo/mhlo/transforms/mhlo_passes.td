@@ -232,6 +232,17 @@ def ShapeReificationPass : Pass<"shape-reification", "func::FuncOp"> {
   let constructor = "createShapeReificationPass()";
 }
 
+def SymbolicShapeOptimization : Pass<"symbolic-shape-optimization", "func::FuncOp"> {
+  let summary = "Analyzes shapes and performs shape-related optimizations";
+  let constructor = "createSymbolicShapeOptimizationPass()";
+}
+
+def ShapeSimplification
+    : Pass<"shape-simplification", "mlir::func::FuncOp"> {
+  let summary = "Simplify shape ops";
+  let constructor = "createShapeSimplification()";
+}
+
 def ConstraintFusionPass : Pass<"constraint-fusion", "func::FuncOp"> {
   let summary = "Fuse shape constraints and merge all assuming regions.";
   let constructor = "createConstraintFusionPass()";
@@ -318,6 +329,12 @@ def HloLegalizeToStablehloPass : Pass<"hlo-legalize-to-stablehlo", "ModuleOp"> {
   let summary = "Legalize HLO to StableHLO.";
   let constructor = "createHloLegalizeToStablehloPass()";
   let dependentDialects = ["stablehlo::StablehloDialect"];
+  let options = [
+    Option<"allow_experimental_features_", "allow-experimental-features",
+           "bool", /*default=*/"false",
+           "Allow legalization of experimental MHLO features via StableHLO "
+           "custom_call">
+  ];
 }
 
 def StablehloLegalizeToHloPass : Pass<"stablehlo-legalize-to-hlo", "ModuleOp"> {

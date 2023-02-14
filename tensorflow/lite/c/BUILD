@@ -50,6 +50,7 @@ tflite_cc_library_with_c_headers_test(
     hdrs = [
         "c_api.h",
     ],
+    compatible_with = get_compatible_with_portable(),
     copts = tflite_copts(),
     deps = [
         ":c_api_without_op_resolver",
@@ -77,6 +78,7 @@ tflite_cc_library_with_c_headers_test(
 tflite_cc_library_with_c_headers_test(
     name = "c_api_without_op_resolver",
     hdrs = ["c_api.h"],
+    compatible_with = get_compatible_with_portable(),
     copts = tflite_copts(),
     tags = ["allow_undefined_symbols"],  # For tflite::CreateOpResolver().
     deps = [
@@ -186,8 +188,8 @@ tflite_cc_library_with_c_headers_test(
 
 cc_library(
     name = "c_api_internal",
-    srcs = ["c_api_internal.cc"],
     hdrs = ["c_api_internal.h"],
+    compatible_with = get_compatible_with_portable(),
     copts = tflite_copts(),
     visibility = [
         "//tensorflow/lite/core/c:__subpackages__",
@@ -200,6 +202,7 @@ cc_library(
         "//tensorflow/lite/core:framework",
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/core/c:common",
+        "//tensorflow/lite/profiling/telemetry/c:profiler",
     ],
 )
 

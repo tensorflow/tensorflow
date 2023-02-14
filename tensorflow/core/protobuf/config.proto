@@ -595,7 +595,8 @@ message ConfigProto {
     // If set, this can be used by the runtime and the Ops for debugging,
     // monitoring, etc.
     //
-    // NOTE: This is currently used and propagated only by the direct session.
+    // NOTE: This is currently used and propagated only by the direct session
+    // and EagerContext.
     SessionMetadata session_metadata = 11;
 
     // If true, the session may treat the graph as being static for optimization
@@ -628,18 +629,9 @@ message ConfigProto {
       MLIR_BRIDGE_ROLLOUT_ENABLED = 1;
       // Disabling the MLIR bridge disables it for all graphs in this session.
       MLIR_BRIDGE_ROLLOUT_DISABLED = 2;
-      // Enable the MLIR bridge on a per graph basis based on an analysis of
-      // the features used in the graph. If the features used by the graph are
-      // supported by the MLIR bridge, the MLIR bridge will be used to run the
-      // graph.
-      MLIR_BRIDGE_ROLLOUT_SAFE_MODE_ENABLED = 3;
-      // Enable the MLIR bridge in a fallback mode on a per graph basis based
-      // on an analysis of the features used in the graph.
-      // Running the MLIR bridge in the fallback mode means that it is
-      // executed and it commits all the changes to the TF graph in case
-      // of success. And it does not in case of failures and let the old bridge
-      // to process the TF graph.
-      MLIR_BRIDGE_ROLLOUT_SAFE_MODE_FALLBACK_ENABLED = 4;
+      reserved 3, 4;
+      reserved "MLIR_BRIDGE_ROLLOUT_SAFE_MODE_ENABLED",
+          "MLIR_BRIDGE_ROLLOUT_SAFE_MODE_FALLBACK_ENABLED";
     }
     // Whether to enable the MLIR-based TF->XLA bridge.
     MlirBridgeRollout mlir_bridge_rollout = 17;
@@ -688,7 +680,20 @@ message ConfigProto {
     // Distributed coordination service configurations.
     CoordinationServiceConfig coordination_config = 23;
 
-    // Next: 24
+    // If true, the session will treat the graph as being non-static for
+    // optimization purposes.
+    //
+    // If this option is set to true when a session is created, the full
+    // GraphDef will be retained to enable calls to Session::Extend().
+    // Calling Extend() without setting this flag will result in errors.
+    //
+    // This option is meant to replace `optimize_for_static_graph` and it
+    // aims to negate its value.
+    bool disable_optimize_for_static_graph = 24;
+
+    reserved 25;
+
+    // Next: 26
   }
 
   Experimental experimental = 16;

@@ -14,6 +14,7 @@ PATHWAYS = "pw"
 # )
 
 # FIXME(feyu): Gradually increase the coverage of OSS tests.
+# LINT.IfChange
 def _get_configurations(
         disable,
         enable,
@@ -26,11 +27,41 @@ def _get_configurations(
     disabled_tags = ["manual", "disabled"]
     disabled_tfrt_configs = [d + "_tfrt" for d in disable_tfrt]
     disabled_backends = [backend for backend in disable if backend not in enable]
+
+    backend_variant_deps = {
+        "gpu": [],
+        "tpu": [
+        ],
+        TPU_V3_DONUT_BACKEND: [
+        ],
+        TPU_V4_DONUT_BACKEND: [
+        ],
+        PATHWAYS: [
+        ],
+    }
     configurations = [
         dict(suffix = "cpu", backend = "cpu", tags = [], flags = [], env = {}, deps = []),
+        dict(
+            suffix = "gpu",
+            backend = "gpu",
+            tags = ["requires-gpu", "gpu"],
+            flags = [],
+            env = {},
+            deps = [],
+        ),
     ]
-
-    backend_variant_deps = {}
+    if GPU_2DEVS_BACKEND in additional_backends:
+        configurations = configurations + [
+            dict(
+                suffix = GPU_2DEVS_BACKEND,
+                backend = GPU_2DEVS_BACKEND,
+                tags = ["requires-gpu:2", "gpu"],
+                flags = [],
+                env = {
+                },
+                deps = [],
+            ),
+        ]
 
     # Post processing configurations.
     for config in configurations:
@@ -47,6 +78,8 @@ def _get_configurations(
         )
         config["shard_count"] = shard_count.get(config["backend"], None) if shard_count else None
     return configurations
+
+# LINT.ThenChange(build_defs.bzl)
 
 def dtensor_test(
         name,
@@ -65,7 +98,8 @@ def dtensor_test(
         main = None,
         shard_count = None,
         size = None,
-        get_configurations = _get_configurations):
+        get_configurations = _get_configurations,
+        test_rule = py_strict_test):
     """Defines a set of per-platform DTensor test targets.
 
     Generates test targets named:
@@ -118,7 +152,6 @@ def dtensor_test(
 
         all_tests.append(config_name)
 
-        test_rule = py_strict_test
         python_version = "PY3"
         test_env = {}
         test_env.update(config["env"])

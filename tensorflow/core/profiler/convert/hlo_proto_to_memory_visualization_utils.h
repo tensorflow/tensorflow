@@ -25,6 +25,8 @@ limitations under the License.
 namespace tensorflow {
 namespace profiler {
 
+constexpr int kSmallBufferSize = 16 * 1024;
+
 // Convert HloProto to PreprocessResult proto for memory visualization.
 // small_buffer_size sets the byte size within which we collapse buffer entries
 // for the max-heap display.
@@ -33,8 +35,8 @@ namespace profiler {
 // simulator trace id from <memory_color>.
 // By default the memory color is 0, which is HBM.
 absl::StatusOr<PreprocessResult> ConvertHloProtoToPreprocessResult(
-    const xla::HloProto& hlo_proto, int64_t small_buffer_size,
-    int64_t heap_simulator_trace_id = -1, int64_t memory_color = 0);
+    const xla::HloProto& hlo_proto,
+    int64_t small_buffer_size = kSmallBufferSize, int64_t memory_color = 0);
 
 }  // namespace profiler
 }  // namespace tensorflow

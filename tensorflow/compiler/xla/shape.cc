@@ -22,6 +22,7 @@ limitations under the License.
 
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
+#include "tensorflow/compiler/xla/printer.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 
 namespace xla {
@@ -93,6 +94,14 @@ ShapeProto Shape::ToProto() const {
   return proto;
 }
 
+void Shape::Print(Printer* printer, bool print_layout) const {
+  if (print_layout) {
+    ShapeUtil::PrintHumanStringWithLayout(printer, *this);
+  } else {
+    ShapeUtil::PrintHumanString(printer, *this);
+  }
+}
+
 std::string Shape::ToString(bool print_layout) const {
   if (print_layout) {
     return ShapeUtil::HumanStringWithLayout(*this);
@@ -151,8 +160,6 @@ void Shape::DeleteDimension(int64_t dim_to_delete) {
     }
   }
 }
-
-int64_t Shape::dimensions(int index) const { return dimensions_.at(index); }
 
 const Shape& Shape::tuple_shapes(int index) const {
   return tuple_shapes_.at(index);
@@ -267,15 +274,12 @@ ProgramShapeProto ProgramShape::ToProto() const {
   return proto;
 }
 
+void ProgramShape::Print(Printer* printer) const {
+  ShapeUtil::PrintHumanString(printer, *this);
+}
+
 std::string ProgramShape::ToString() const {
-  std::vector<std::string> parameter_strings(parameters_size());
-  for (int i = 0; i < parameters_size(); ++i) {
-    parameter_strings[i] = absl::StrCat(
-        i < parameter_names_size() ? parameter_names(i) : "(unknown)", ": ",
-        ShapeUtil::HumanString(parameters(i)));
-  }
-  return absl::StrCat("(", absl::StrJoin(parameter_strings, ", "), ") -> ",
-                      ShapeUtil::HumanString(result()));
+  return ShapeUtil::HumanString(*this);
 }
 
 std::ostream& operator<<(std::ostream& out, const ProgramShape& program_shape) {

@@ -121,6 +121,26 @@ func.func @dangling_print(%arg0: tensor<*xi32>, %arg1: tensor<i32>) -> (tensor<*
 // CHECK:  }
 // CHECK:  return %[[GRAPH]]#0, %[[GRAPH]]#1
 
+func.func @drop_fetch_control_dep(%arg0: tensor<*xi32>, %arg1: tensor<i32>) -> (tensor<*xi32>, tensor<*xi32>) {
+  %graph:2 = tf_executor.graph {
+    %island1:3 = tf_executor.island {
+      %add1 = "tf.Add"(%arg0, %arg1) : (tensor<*xi32>, tensor<i32>) -> tensor<*xi32>
+      %add2 = "tf.Add"(%add1, %arg1) : (tensor<*xi32>, tensor<i32>) -> tensor<*xi32>
+      tf_executor.yield %add1, %add2 : tensor<*xi32>, tensor<*xi32>
+    }
+    tf_executor.fetch %island1#0, %island1#1, %island1#2 : tensor<*xi32>, tensor<*xi32>, !tf_executor.control
+  }
+  func.return %graph#0, %graph#1 : tensor<*xi32>, tensor<*xi32>
+}
+
+// CHECK-LABEL:  func @drop_fetch_control_dep
+// CHECK:  %[[GRAPH:.*]]:2 = tf_executor.graph {
+// CHECK:    %[[ADD1:.*]], %[[ADD1_control:.*]] = tf_executor.island wraps "tf.Add"(%arg0, %arg1)
+// CHECK:    %[[ADD2:.*]], %[[ADD2_control:.*]] = tf_executor.island wraps "tf.Add"(%[[ADD1]], %arg1)
+// CHECK:    tf_executor.fetch %[[ADD1]], %[[ADD2]] :
+// CHECK:  }
+// CHECK:  return %[[GRAPH]]#0, %[[GRAPH]]#1
+
 func.func @fetching_arg(%arg0: tensor<*xi32>) {
   tf_executor.graph {
     %island:3 = tf_executor.island {

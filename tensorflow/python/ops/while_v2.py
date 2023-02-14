@@ -22,6 +22,7 @@ performance parity.
 import collections
 
 from tensorflow.core.framework import attr_value_pb2
+from tensorflow.core.function.capture import capture_container
 from tensorflow.python.client import pywrap_tf_session as c_api
 from tensorflow.python.eager import backprop_util
 from tensorflow.python.framework import auto_control_deps_utils as acd
@@ -90,7 +91,8 @@ def while_loop(cond,
   # `wrapped_body` below.
   loop_vars = _tensor_array_to_flow(loop_vars)
   loop_vars = nest.map_structure(
-      ops.internal_convert_to_tensor_or_indexed_slices, loop_vars,
+      indexed_slices.internal_convert_to_tensor_or_indexed_slices,
+      loop_vars,
       expand_composites=True)
 
   # `loop_vars_signature` is a structure of TypeSpecs and has the same
@@ -298,7 +300,8 @@ def while_loop(cond,
     _check_inputs_outputs_types_match(body_graph, flattened_loop_vars)
 
     with ops.control_dependencies(
-        list(cond_graph.control_captures) + list(body_graph.control_captures)):
+        list(cond_graph._function_captures.control) + list(  # pylint: disable=protected-access
+            body_graph._function_captures.control)):  # pylint: disable=protected-access
       output_shapes = [t.shape for t in body_graph.outputs]
       orig_loop_vars_range = slice(first_loop_var_index,
                                    first_loop_var_index + num_flattened_outputs)
@@ -1361,19 +1364,15 @@ def _duplicate_body_captures_in_cond(cond_graph, body_graph_captures):
   # newly created placeholders.
   tuples = zip(body_graph_captures, tensors)
   keys = [id(t) for t in body_graph_captures]
-  cond_graph._captures.update(zip(keys, tuples))
+  for k, v in zip(keys, tuples):
+    capture = capture_container.CaptureContainer(v[0], v[1], k, False)
+    cond_graph._function_captures._by_val[k] = capture  # pylint: disable=protected-access
   cond_graph.inputs.extend(tensors)
 
 
 def _copy_handle_data(src_tensors, tgt_tensors):
   for src_t, tgt_t in zip(src_tensors, tgt_tensors):
     handle_data_util.copy_handle_data(src_t, tgt_t)
-
-
-def _graph_name(graph):
-  if isinstance(graph, func_graph_module.FuncGraph):
-    return graph.name
-  return "Base"
 
 
 def _pack_sequence_as(loop_vars_signature, flat_orig_loop_vars, loop_vars):
@@ -1439,6 +1438,7 @@ class _OperationWithOutputs(ops.Operation):
   """
 
   def __init__(self, c_op, g):
+    super(ops.Operation, self).__init__()
     self._c_op = c_op
     self._graph = g
     self._outputs = None  # Initialized by _duplicate_body_captures_in_cond().

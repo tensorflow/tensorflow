@@ -29,39 +29,11 @@ filegroup(
 )
 
 cc_library(
-    name = "string_container_utils",
-    hdrs = ["utils/string_container_utils.h"],
-    deps = [
-        "@com_google_absl//absl/strings",
-        "@llvm-project//llvm:Support",
-    ],
-)
-
-cc_library(
-    name = "array_container_utils",
-    hdrs = ["utils/array_container_utils.h"],
-    deps = [
-        "@com_google_absl//absl/types:span",
-        "@llvm-project//llvm:Support",
-    ],
-)
-
-cc_library(
-    name = "name_utils",
-    srcs = ["utils/name_utils.cc"],
-    hdrs = ["utils/name_utils.h"],
-    deps = [
-        "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:IR",
-    ],
-)
-
-cc_library(
     name = "op_or_arg_name_mapper",
     srcs = ["op_or_arg_name_mapper.cc"],
     hdrs = ["op_or_arg_name_mapper.h"],
     deps = [
-        ":name_utils",
+        "//tensorflow/compiler/mlir/utils:name_utils",
         "@com_google_absl//absl/strings",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
@@ -93,10 +65,12 @@ cc_library(
         "//tensorflow/compiler/xla/mlir/framework/transforms:passes",
         "//tensorflow/compiler/xla/mlir_hlo:all_passes",
         "//tensorflow/compiler/xla/mlir_hlo:hlo_dialect_registration",
-        "//tensorflow/core:lib",
-        "@llvm-project//mlir:AllPassesAndDialects",
         "@llvm-project//mlir:MlirOptLib",
+        "@llvm-project//mlir:QuantOps",
         "@llvm-project//mlir:ShapeDialect",
+        "@llvm-project//mlir:TensorDialect",
+        "@llvm-project//mlir:TosaDialect",
+        "@llvm-project//mlir:Transforms",
         "@stablehlo//:register",
     ],
 )
@@ -250,6 +224,7 @@ tf_cc_test(
         "//tensorflow/core:ops",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+        "//tensorflow/core/framework:tensor_testutil",
         "@llvm-project//mlir:IR",
     ],
 )

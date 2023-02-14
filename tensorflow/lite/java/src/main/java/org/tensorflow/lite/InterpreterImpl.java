@@ -44,7 +44,6 @@ class InterpreterImpl implements InterpreterApi {
       super(other);
       allowFp16PrecisionForFp32 = other.allowFp16PrecisionForFp32;
       allowBufferHandleOutput = other.allowBufferHandleOutput;
-      useXNNPACK = other.useXNNPACK;
     }
 
     // See Interpreter.Options#setAllowFp16PrecisionForFp32(boolean).
@@ -52,11 +51,6 @@ class InterpreterImpl implements InterpreterApi {
 
     // See Interpreter.Options#setAllowBufferHandleOutput(boolean).
     Boolean allowBufferHandleOutput;
-
-    // See Interpreter.Options#setUseXNNPACK(boolean).
-    // Note: the initial "null" value indicates default behavior (XNNPACK delegate will be applied
-    // by default whenever possible).
-    Boolean useXNNPACK;
   }
 
   /**

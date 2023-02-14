@@ -44,6 +44,7 @@ from tensorflow.python.framework import function
 from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
+from tensorflow.python.framework import tensor_conversion_registry
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import tensor_util
@@ -100,6 +101,16 @@ class TensorAndShapeTest(test_util.TensorFlowTestCase):
     self.assertEqual(tensor_shape.unknown_shape(), t.get_shape())
     t.set_shape([1, 2, 3])
     self.assertEqual([1, 2, 3], t.get_shape())
+
+  def testNdim(self):
+
+    @def_function.function
+    def f(a):
+      self.assertEqual(a.ndim, 2)
+      return 0
+
+    x = array_ops.zeros((3, 4))
+    f(x)
 
   def testIterable(self):
     if not context.executing_eagerly():
@@ -3568,7 +3579,7 @@ class _MyTuple(object):
     return iter(self._components)
 
 
-ops.register_tensor_conversion_function(
+tensor_conversion_registry.register_tensor_conversion_function(
     _MyTuple, conversion_func=lambda x, *_, **__: _TupleTensor(x))
 
 

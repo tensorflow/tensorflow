@@ -955,11 +955,12 @@ operator()(OpKernelContext* ctx, bool use_cudnn, bool cudnn_use_autotune,
   auto* stream = ctx->op_device_context()->stream();
   const bool cast_to_float = !stream->GetCudaComputeCapability().IsAtLeast(
       se::CudaComputeCapability::AMPERE);
-  Tensor casted_input = input;
-  Tensor casted_out_backprop = out_backprop;
-  Tensor casted_filter_backprop = *filter_backprop;
 
   if (cast_to_float) {
+    Tensor casted_input = input;
+    Tensor casted_out_backprop = out_backprop;
+    Tensor casted_filter_backprop = *filter_backprop;
+
     const GPUDevice& device = ctx->eigen_device<GPUDevice>();
     functor::CastFunctor<GPUDevice, float, Eigen::bfloat16> cast;
     OP_REQUIRES_OK(ctx,
@@ -988,9 +989,9 @@ operator()(OpKernelContext* ctx, bool use_cudnn, bool cudnn_use_autotune,
   }
 
   LaunchConv2DBackpropFilterOpImpl<Eigen::bfloat16>(
-      ctx, use_cudnn, cudnn_use_autotune, casted_out_backprop, casted_input,
-      row_dilation, col_dilation, row_stride, col_stride, padding,
-      explicit_paddings, &casted_filter_backprop, data_format);
+      ctx, use_cudnn, cudnn_use_autotune, out_backprop, input, row_dilation,
+      col_dilation, row_stride, col_stride, padding, explicit_paddings,
+      filter_backprop, data_format);
 }
 
 // Forward declarations of the functor specializations for GPU.

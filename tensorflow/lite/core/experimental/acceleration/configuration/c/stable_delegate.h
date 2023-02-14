@@ -17,7 +17,7 @@ limitations under the License.
 
 // C API types for TFLite delegates that implement stable delegate ABI.
 
-#include "tensorflow/lite/core/shims/c/experimental/acceleration/configuration/delegate_plugin.h"
+#include "tensorflow/lite/core/experimental/acceleration/configuration/c/delegate_plugin.h"
 
 #ifdef __cplusplus
 extern "C" {

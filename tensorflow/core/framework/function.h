@@ -33,6 +33,7 @@ limitations under the License.
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/optimized_function_graph.pb.h"
 #include "tensorflow/core/framework/registration/registration.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/gtl/flatmap.h"
@@ -552,6 +553,25 @@ class FunctionLibraryDefinition : public OpRegistryInterface {
     return *empty_map;
   }
 
+  // Adds or updates an OptimizedFunctionGraph. Key is `function_name`.
+  void AddOptimizedFunctionGraph(const std::string& function_name,
+                                 const OptimizedFunctionGraph& graph) {
+    mutex_lock l(mu_);
+    optimized_function_graph_map_.emplace(function_name, graph);
+  }
+
+  // Look up for OptimizedFunctionGraph given `function_name`. Returns nullptr
+  // if not found.
+  OptimizedFunctionGraph* FindOptimizedFunctionGraph(
+      const std::string& function_name) const {
+    tf_shared_lock l(mu_);
+    if (auto it = optimized_function_graph_map_.find(function_name);
+        it != optimized_function_graph_map_.end()) {
+      return &(it->second);
+    }
+    return nullptr;
+  }
+
  private:
   // Shape inference for functions is handled separately by ShapeRefiner.
 
@@ -607,6 +627,9 @@ class FunctionLibraryDefinition : public OpRegistryInterface {
   gtl::FlatMap<string, std::shared_ptr<FunctionDefAndOpRegistration>>
       function_defs_ TF_GUARDED_BY(mu_);
   gtl::FlatMap<string, string> func_grad_ TF_GUARDED_BY(mu_);
+  // Maps from function name to optimized function graph.
+  gtl::FlatMap<string, OptimizedFunctionGraph> optimized_function_graph_map_
+      TF_GUARDED_BY(mu_);
 };
 
 // Forward declare. Defined in common_runtime/function.h

@@ -92,7 +92,13 @@ KernelFallbackCompatRequestState::KernelFallbackCompatRequestState(
   DCHECK(resource_array_);
   DCHECK(rendezvous_);
 
+  cpu_device_ = device_manager_->HostCPU();
   if (user_intra_op_threadpool != nullptr) {
+    custom_cpu_device_ = tensorflow::RenamedDevice::NewRenamedDevice(
+        cpu_device_->name(), cpu_device_, /*owns_underlying=*/false,
+        /*isolate_session_state=*/false, user_intra_op_threadpool);
+    cpu_device_ = custom_cpu_device_.get();
+
     for (auto* device : device_manager_->ListDevices()) {
       custom_device_[device] = tensorflow::RenamedDevice::NewRenamedDevice(
           device->name(), device, /*owns_underlying=*/false,

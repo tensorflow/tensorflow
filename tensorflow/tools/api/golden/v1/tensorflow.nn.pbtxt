@@ -362,7 +362,7 @@ tf_module {
   }
   member_method {
     name: "sigmoid_cross_entropy_with_logits"
-    argspec: "args=[\'_sentinel\', \'labels\', \'logits\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'None\'], "
+    argspec: "args=[\'labels\', \'logits\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\'], "
   }
   member_method {
     name: "silu"
@@ -374,7 +374,7 @@ tf_module {
   }
   member_method {
     name: "softmax_cross_entropy_with_logits"
-    argspec: "args=[\'_sentinel\', \'labels\', \'logits\', \'dim\', \'name\', \'axis\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'-1\', \'None\', \'None\'], "
+    argspec: "args=[\'labels\', \'logits\', \'dim\', \'name\', \'axis\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'-1\', \'None\', \'None\'], "
   }
   member_method {
     name: "softmax_cross_entropy_with_logits_v2"
@@ -398,7 +398,7 @@ tf_module {
   }
   member_method {
     name: "sparse_softmax_cross_entropy_with_logits"
-    argspec: "args=[\'_sentinel\', \'labels\', \'logits\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'None\'], "
+    argspec: "args=[\'labels\', \'logits\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\'], "
   }
   member_method {
     name: "static_bidirectional_rnn"

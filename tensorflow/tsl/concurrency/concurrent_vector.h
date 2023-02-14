@@ -22,8 +22,8 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
+#include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
-#include "tensorflow/tsl/platform/mutex.h"
 
 namespace tsl {
 namespace internal {
@@ -69,18 +69,24 @@ class ConcurrentVector {
   T& operator[](size_t index) {
     auto state = State::Decode(state_.load(std::memory_order_acquire));
     assert(index < state.size);
-    return all_allocated_elements_[state.last_allocated][index];
+    // .data() is a workaround for libc++ assertions in operator[], which will
+    // cause data race when container is resized from another thread.
+    return all_allocated_elements_.data()[state.last_allocated].data()[index];
   }
 
   const T& operator[](size_t index) const {
     auto state = State::Decode(state_.load(std::memory_order_acquire));
     assert(index < state.size);
-    return all_allocated_elements_[state.last_allocated][index];
+    // .data() is a workaround for libc++ assertions in operator[], which will
+    // cause data race when container is resized from another thread.
+    return all_allocated_elements_.data()[state.last_allocated].data()[index];
   }
 
   absl::Span<const T> ToConstSpan() const {
     auto state = State::Decode(state_.load(std::memory_order_acquire));
     auto& storage = all_allocated_elements_[state.last_allocated];
+    // .data() is a workaround for libc++ assertions in operator[], which will
+    // cause data race when container is resized from another thread.
     return absl::MakeConstSpan(storage.data(), state.size);
   }
 
@@ -98,7 +104,7 @@ class ConcurrentVector {
   // Returns the index of the newly inserted item.
   template <typename... Args>
   size_t emplace_back(Args&&... args) {
-    mutex_lock lock(mutex_);
+    absl::MutexLock lock(&mutex_);
 
     auto& last = all_allocated_elements_.back();
 
@@ -161,7 +167,7 @@ class ConcurrentVector {
   // relationship between emplace_back and operator[].
   std::atomic<uint64_t> state_;
 
-  mutex mutex_;
+  absl::Mutex mutex_;
   std::vector<std::vector<T>> all_allocated_elements_;
 };
 

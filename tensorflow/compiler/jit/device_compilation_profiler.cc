@@ -67,9 +67,14 @@ constexpr int64_t kMaxNumOngoingCompilations = kNumAsyncDeviceCompilerThreads;
 
 }  // namespace
 
+DeviceCompilationProfiler::~DeviceCompilationProfiler() {
+  mutex_lock lock(mu_);
+  cluster_compile_stats_.clear();
+}
+
 StatusOr<DeviceCompilationProfiler::ClusterCompileStats>
 DeviceCompilationProfiler::GetCompileStats(const NameAttrList& function) const {
-  mutex_lock lock(cluster_compile_stats_mu_);
+  mutex_lock lock(mu_);
 
   if (auto it = cluster_compile_stats_.find(function.name());
       it != cluster_compile_stats_.end()) {
@@ -82,7 +87,7 @@ DeviceCompilationProfiler::GetCompileStats(const NameAttrList& function) const {
 
 void DeviceCompilationProfiler::RegisterExecution(
     const NameAttrList& function) {
-  mutex_lock lock(cluster_compile_stats_mu_);
+  mutex_lock lock(mu_);
   auto it =
       cluster_compile_stats_.emplace(function.name(), ClusterCompileStats{})
           .first;
@@ -96,7 +101,7 @@ Status DeviceCompilationProfiler::RegisterCompilation(
 
   const std::string& function_name = function.name();
 
-  mutex_lock lock(cluster_compile_stats_mu_);
+  mutex_lock lock(mu_);
   // Create a stats entry if it doesn't already exist.
   auto it =
       cluster_compile_stats_.emplace(function.name(), ClusterCompileStats{})
@@ -140,7 +145,7 @@ bool DeviceCompilationProfiler::ShouldCompileCluster(
     return true;
   }
 
-  mutex_lock lock(cluster_compile_stats_mu_);
+  mutex_lock lock(mu_);
   // Create a stats entry if one isn't found and register an execution.
   // Determine eligibility assuming this is the first execution of the cluster
   // and this cluster has never been compiled before.
@@ -161,6 +166,10 @@ bool DeviceCompilationProfiler::ShouldCompileCluster(
     return false;
   }
 
+  // TODO(b/255826209): Figure out if Lazy compilation is still needed given
+  // that we always compile a cluster the first time it is executed (explained
+  // below) regardless of compilation mode. If it is not, clean up the related
+  // logic.
   // We always compile a cluster the very first time it is executed.  This is an
   // optimistic guess that pays off for statically shaped TensorFlow graphs
   // (since they get the benefit of XLA right away without waiting for warmup)
@@ -172,9 +181,7 @@ bool DeviceCompilationProfiler::ShouldCompileCluster(
 
   if (compile_mode == DeviceCompileMode::kAsync) {
     // Asynchronous compilation is enabled.
-    mutex_lock lock(async_compilation_state_.async_compilation_state_mu);
-    if (async_compilation_state_.num_ongoing_compilations >=
-        kMaxNumOngoingCompilations) {
+    if (num_ongoing_compilations_ >= kMaxNumOngoingCompilations) {
       VLOG(2) << "Not asynchronously compiling cluster " << function.name()
               << " because of too many ongoing compilations.";
       return false;
@@ -192,25 +199,25 @@ bool DeviceCompilationProfiler::ShouldCompileCluster(
 }
 
 void DeviceCompilationProfiler::IncrementOngoingAsyncCompilations() {
-  mutex_lock lock(async_compilation_state_.async_compilation_state_mu);
-  async_compilation_state_.num_ongoing_compilations++;
+  mutex_lock lock(mu_);
+  num_ongoing_compilations_++;
 }
 
 void DeviceCompilationProfiler::DecrementOngoingAsyncCompilations() {
-  mutex_lock lock(async_compilation_state_.async_compilation_state_mu);
-  async_compilation_state_.num_ongoing_compilations--;
+  mutex_lock lock(mu_);
+  num_ongoing_compilations_--;
 }
 
 int64_t DeviceCompilationProfiler::GetNumOngoingAsyncCompilations() const {
-  mutex_lock lock(async_compilation_state_.async_compilation_state_mu);
-  return async_compilation_state_.num_ongoing_compilations;
+  mutex_lock lock(mu_);
+  return num_ongoing_compilations_;
 }
 
 std::string DeviceCompilationProfiler::DebugString() const {
   std::string debug_string =
       "DeviceCompilationProfiler {\ncluster_compile_stats: {\n";
   {
-    mutex_lock lock(cluster_compile_stats_mu_);
+    mutex_lock lock(mu_);
 
     for (const auto& [key, stats] : cluster_compile_stats_) {
       absl::StrAppend(&debug_string, key, ": ", stats.DebugString(), "\n");

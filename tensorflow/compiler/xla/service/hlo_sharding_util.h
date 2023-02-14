@@ -41,6 +41,14 @@ struct GatherScatterParallelDims {
   std::vector<int64_t> index_parallel_in_dim;
 };
 
+// Determines if the first operand 'potential_subsharding' is a subsharding of
+// the second operand 'sharding'. Subsharding means that the tiles in
+// 'potential_subsharding' define tiles that have a subset or the same data that
+// the tiles in 'sharding' define.
+bool IsSubTilingOrEqualSharding(const Shape& shape,
+                                const HloSharding& potential_subsharding,
+                                const HloSharding& sharding);
+
 // Returns true if the lhs sharding is preferable over the rhs sharding.
 // The most specific sharding is tile maximal followed by single device tile
 // maximal and finally replicated. This order aims to primarily reduce memory
@@ -370,6 +378,13 @@ GroupedSharding GetGroupedReplicatedSharding(const int64_t num_groups,
 // Get group sharding for each manual subgroup.
 GroupedSharding GetManualSubgroupSharding(const HloSharding& sharding);
 
+// Create a group sharding over the partially replicated dimension re-using an
+// existing device group subdivision to avoid unexpected devices reordering.
+std::optional<GroupedSharding>
+PartialReplicatedGroupShardingWithAssignedDeviceGroups(
+    const HloSharding& sharding, int64_t num_shards,
+    const std::vector<std::vector<int64_t>>& device_groups);
+
 // Reconstructs the ungrouped sharding from a GroupedSharding.
 HloSharding UngroupSharding(const GroupedSharding& grouped_sharding);
 
@@ -394,6 +409,11 @@ HloSharding MergeShardingDimension(const HloSharding& sharding,
 // If none of the elements have a sharding, return nullptr.
 std::shared_ptr<const HloSharding> CreateTupleSharding(
     const Shape& shape, absl::Span<const HloInstruction* const> elements);
+
+// Tests whether the sort operand is sharded along the sort dimension and there
+// exists a free (i.e., unsharded) dimension to move the sharding into.
+bool IsSortOperandShardingMovable(const HloInstruction* sort_operand,
+                                  int64_t sort_dim);
 
 }  // namespace hlo_sharding_util
 }  // namespace xla

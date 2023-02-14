@@ -109,6 +109,16 @@ mlir::LogicalResult AllReduceStartOp::verify() {
   return lmhlo::verifyAllReduce(op);
 }
 
+//===----------------------------------------------------------------------===//
+// CollectivePermuteStartOp
+//===----------------------------------------------------------------------===//
+
+mlir::LogicalResult CollectivePermuteStartOp::verify() {
+  CollectivePermuteStartOp op = *this;
+  return mlir::hlo::verifyCollectivePermuteSourceTargetPairs(
+      op, op.getSourceTargetPairs());
+}
+
 }  // namespace lmhlo_gpu
 }  // namespace mlir
 

@@ -28,7 +28,7 @@ namespace tensorflow {
 namespace functor {
 
 Status SparseTensorToCSRSparseMatrixCPUFunctor::operator()(
-    const int64_t batch_size, const int num_rows,
+    int64_t batch_size, int num_rows, int num_cols,
     TTypes<int64_t>::ConstMatrix indices, TTypes<int32>::Vec batch_ptr,
     TTypes<int32>::Vec csr_row_ptr, TTypes<int32>::Vec csr_col_ind) {
   // Validate inputs.
@@ -50,6 +50,11 @@ Status SparseTensorToCSRSparseMatrixCPUFunctor::operator()(
         "Expected batch_size == 1 when rank is 2. Got batch_size: ",
         batch_size);
   }
+  if (rank < 2 || rank > 3) {
+    return errors::InvalidArgument(
+        "Indices must have either 2 or 3 columns.  Got size ",
+        indices.dimensions());
+  }
   if (csr_col_ind.size() != total_nnz) {
     return errors::InvalidArgument(
         "Expected csr_col_ind.size() == total_nnz. Got: ", csr_col_ind.size(),
@@ -63,21 +68,57 @@ Status SparseTensorToCSRSparseMatrixCPUFunctor::operator()(
     ++prev_batch;
 
     for (int64_t i = 0; i < total_nnz; ++i) {
+      int64_t row = indices(i, 0);
+      if (row < 0 || row >= num_rows) {
+        return errors::InvalidArgument("Row index ", row,
+                                       " is outside of valid range [0, ",
+                                       num_rows, ")");
+      }
+      int64_t col = indices(i, 1);
+      if (col < 0 || col >= num_cols) {
+        return errors::InvalidArgument("Column index ", col,
+                                       " is outside of valid range [0, ",
+                                       num_cols, ")");
+      }
       // For now, the rows pointers store the corresponding row counts.
-      int64_t ix = indices(i, 0) + 1;
+      int64_t ix = row + 1;
       if (ix >= csr_row_ptr.size()) {
         return errors::InvalidArgument("Got an index ", ix,
                                        " that is outside of csr_row_ptr");
       }
-      csr_row_ptr(indices(i, 0) + 1) += 1;
-      csr_col_ind(i) = indices(i, 1);
+
+      csr_row_ptr(ix) += 1;
+      csr_col_ind(i) = col;
     }
   } else {  // rank == 3
     for (int64_t i = 0; i < total_nnz; ++i) {
       const int cur_batch = indices(i, 0);
+      if (cur_batch < 0 || cur_batch >= batch_size) {
+        return errors::InvalidArgument("Batch index ", cur_batch,
+                                       " is outside of valid range [0, ",
+                                       batch_size, ")");
+      }
+      int64_t row = indices(i, 1);
+      if (row < 0 || row >= num_rows) {
+        return errors::InvalidArgument("Row index ", row,
+                                       " is outside of valid range [0, ",
+                                       num_rows, ")");
+      }
+      int64_t col = indices(i, 2);
+      if (col < 0 || col >= num_cols) {
+        return errors::InvalidArgument("Column index ", col,
+                                       " is outside of valid range [0, ",
+                                       num_cols, ")");
+      }
+
       // For now, the rows pointers store the corresponding row counts.
-      csr_row_ptr(cur_batch * (num_rows + 1) + indices(i, 1) + 1) += 1;
-      csr_col_ind(i) = indices(i, 2);
+      int64_t ix = cur_batch * (num_rows + 1) + row + 1;
+      if (ix >= csr_row_ptr.size()) {
+        return errors::InvalidArgument("Got an index ", ix,
+                                       " that is outside of csr_row_ptr");
+      }
+      csr_row_ptr(ix) += 1;
+      csr_col_ind(i) = col;
 
       // We're at a new batch and might have skipped over empty batches.
       while (prev_batch < cur_batch) {

@@ -25,7 +25,6 @@ include_directories(BEFORE
 add_mlir_library(LmhloPasses
   legalize_to_tensor_op/legalize_to_tensor_op.cc
   lhlo_elemental_utils.cc
-  lhlo_fuse_linalg/lhlo_fuse_linalg.cc
   lhlo_legalize_to_affine/lhlo_legalize_to_affine.cc
   lhlo_legalize_to_gpu/lhlo_legalize_to_gpu.cc
   lhlo_legalize_to_parallel_loops/lhlo_legalize_to_parallel_loops.cc
@@ -43,7 +42,6 @@ add_mlir_library(LmhloPasses
   MLIRComplexDialect
   MLIRGPUOps
   MLIRLinalgDialect
-  MLIRLinalgAnalysis
   MLIRLinalgTransforms
   MLIRMhloUtils
   MLIRIR

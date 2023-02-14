@@ -16,6 +16,7 @@ limitations under the License.
 // This file replaces some complicated HLOs such as SelectAndScatter with a
 // sequence of simpler HLOs.
 
+#include <cstddef>
 #include <memory>
 #include <numeric>
 #include <optional>
@@ -40,8 +41,7 @@ namespace mhlo {
 namespace {
 
 ShapedType getScalarizedType(ShapedType t) {
-  return t.cloneWith(llvm::makeArrayRef<int64_t>(std::nullopt),
-                     t.getElementType());
+  return t.cloneWith(llvm::ArrayRef<int64_t>(std::nullopt), t.getElementType());
 }
 
 struct SelectAndScatterExpanderPattern
@@ -72,7 +72,7 @@ struct SelectAndScatterExpanderPattern
     // to determine the indices to be scattered to.
     llvm::SmallVector<Value> iotas;
     iotas.reserve(operandShape.size());
-    for (int i = 0; i < operandShape.size(); ++i) {
+    for (size_t i = 0; i < operandShape.size(); ++i) {
       iotas.push_back(builder.create<mhlo::IotaOp>(iotaShape, i));
     }
 
@@ -146,7 +146,7 @@ struct SelectAndScatterExpanderPattern
     auto broadcastedIotaShape = RankedTensorType::get(
         broadcastedIotaDims, iotaShapeReduced.getElementType());
 
-    for (int i = 1; i < numReduceValues; ++i) {
+    for (size_t i = 1; i < numReduceValues; ++i) {
       Value element = reduceWindow.getResult(i);
       iotaIndices.push_back(
           builder.create<mhlo::ReshapeOp>(broadcastedIotaShape, element)
@@ -157,10 +157,7 @@ struct SelectAndScatterExpanderPattern
     llvm::SmallVector<int64_t> scatterDims(operandShape.size());
     std::iota(scatterDims.begin(), scatterDims.end(), 0);
     Value broadcastedInitValue = builder.create<mhlo::BroadcastOp>(
-        initValue, mlir::DenseIntElementsAttr::get(
-                       RankedTensorType::get(sasType.getShape().size(),
-                                             rewriter.getIntegerType(64, true)),
-                       sasType.getShape()));
+        initValue, rewriter.getI64TensorAttr(sasType.getShape()));
 
     llvm::SmallVector<int64_t> concatenatedIotasDims;
     concatenatedIotasDims.reserve(

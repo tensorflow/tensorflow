@@ -200,7 +200,6 @@ filegroup(
         "@com_google_protobuf//:LICENSE",
         "@com_googlesource_code_re2//:LICENSE",
         "@cpuinfo//:LICENSE",
-        "@cpuinfo//deps/clog:LICENSE",
         "@curl//:COPYING",
         "@dill_archive//:LICENSE",
         "@dlpack//:LICENSE",

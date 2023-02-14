@@ -25,6 +25,7 @@ namespace {
 
 namespace op = xla::testing::opcode_matchers;
 using memory_space_assignment::AsynchronousCopy;
+using memory_space_assignment::AsynchronousCopyOrdering;
 using memory_space_assignment::AsynchronousCopyResource;
 using memory_space_assignment::CostAnalysisPrefetchIntervalPicker;
 using memory_space_assignment::InstructionCountPrefetchIntervalPicker;
@@ -5969,6 +5970,58 @@ INSTANTIATE_TEST_SUITE_P(MemorySpaceAssignmentInstantiation,
                          MemorySpaceAssignmentTest,
                          ::testing::Values(false, true));
 
+using AsynchronousCopyOrderingTest = ::testing::Test;
+
+TEST_F(AsynchronousCopyOrderingTest, Simple) {
+  // Given asynchronous copies like the following, ensure the pipelining order
+  // is maintained (earlier start time must have earlier end time).
+  // 3,11       +-------+         OK
+  // 1,8      +------+            OK
+  // 5,14         +--------+      OK
+  // 7,14           +------+      OK
+  // 2,16      +-------------+    Violate
+  // 9,12             +--+        Violate
+  // 6,17          +----------+   Violate
+  // 5,13         +-------+       OK (same start as 5,14)
+  // 5,14         +--------+      OK (same as 5,14)
+  auto alternate_mem_space = MemorySpaceAssignment::MemorySpace::kAlternate;
+  AsynchronousCopyOrdering ordering;
+  EXPECT_FALSE(ordering.ViolatesOrdering(3, 11));
+  ordering.AddCopy({3, 11, 1, alternate_mem_space, 0});
+  EXPECT_FALSE(ordering.ViolatesOrdering(1, 8));
+  ordering.AddCopy({1, 8, 1, alternate_mem_space, 1});
+  EXPECT_FALSE(ordering.ViolatesOrdering(5, 14));
+  ordering.AddCopy({5, 14, 1, alternate_mem_space, 2});
+  EXPECT_FALSE(ordering.ViolatesOrdering(7, 14));
+  ordering.AddCopy({7, 14, 1, alternate_mem_space, 3});
+  EXPECT_TRUE(ordering.ViolatesOrdering(2, 16));
+  EXPECT_TRUE(ordering.ViolatesOrdering(9, 12));
+  EXPECT_TRUE(ordering.ViolatesOrdering(6, 17));
+  EXPECT_FALSE(ordering.ViolatesOrdering(5, 13));
+  ordering.AddCopy({5, 13, 1, alternate_mem_space, 4});
+  EXPECT_FALSE(ordering.ViolatesOrdering(5, 14));
+  ordering.AddCopy({5, 14, 1, alternate_mem_space, 5});
+}
+
+TEST_F(AsynchronousCopyOrderingTest, SameInterval) {
+  auto alternate_mem_space = MemorySpaceAssignment::MemorySpace::kAlternate;
+  AsynchronousCopyOrdering ordering;
+  EXPECT_FALSE(ordering.ViolatesOrdering(1, 5));
+  EXPECT_FALSE(ordering.ViolatesOrdering(2, 4));
+  ordering.AddCopy({1, 5, 1, alternate_mem_space, 0});
+  EXPECT_TRUE(ordering.ViolatesOrdering(2, 4));
+  ordering.AddCopy({1, 5, 1, alternate_mem_space, 1});
+  EXPECT_TRUE(ordering.ViolatesOrdering(2, 4));
+  ordering.AddCopy({1, 5, 1, alternate_mem_space, 2});
+  EXPECT_TRUE(ordering.ViolatesOrdering(2, 4));
+  ordering.RemoveCopy({1, 5, 1, alternate_mem_space, 1});
+  EXPECT_TRUE(ordering.ViolatesOrdering(2, 4));
+  ordering.RemoveCopy({1, 5, 1, alternate_mem_space, 2});
+  EXPECT_TRUE(ordering.ViolatesOrdering(2, 4));
+  ordering.RemoveCopy({1, 5, 1, alternate_mem_space, 0});
+  EXPECT_FALSE(ordering.ViolatesOrdering(2, 4));
+}
+
 using AsynchronousCopyResourceTest = ::testing::Test;
 
 TEST_F(AsynchronousCopyResourceTest, Simple) {
@@ -6269,6 +6322,89 @@ TEST_F(AsynchronousCopyResourceTest, StartAtZeroAndRemove) {
             std::vector<float>({0.0, 0.0, 0.0, 0.0, 2.0}));
 }
 
+TEST_F(AsynchronousCopyResourceTest, OutOfOrderRemovalSameStartTime) {
+  // time:      0 1 2 3 4
+  // resource:  2 2 2 2 2
+  // add:1,3,1     +-+       OK
+  // resource:  2 2 1 2 2
+  // add:1,4,2     +---+     OK
+  // resource:  2 2 0 1 2
+  // rem:1,3,1     +-+
+  // resource:  2 2 0 2 2
+  // add:1,5,1     +-----+   OK
+  // resource:  2 2 0 1 2
+  // add:1,5,1     +-----+   OK
+  // resource:  2 2 0 0 2
+  // add:1,5,1     +-----+   OK
+  // resource:  2 2 0 0 1
+  // add:1,5,1     +-----+   OK
+  // resource:  2 2 0 0 0
+  // add:1,5,1     +-----+   Violate
+  // rem:1,4,2     +---+
+  // resource:  2 2 0 0 2
+  // rem:1,5,1     +-----+
+  // resource:  2 2 0 1 2
+  // rem:1,5,1     +-----+
+  // resource:  2 2 0 2 2
+  // rem:1,5,1     +-----+
+  // resource:  2 2 1 2 2
+  // rem:1,5,1     +-----+
+  // resource:  2 2 2 2 2
+  auto alternate_mem_space = MemorySpaceAssignment::MemorySpace::kAlternate;
+  AsynchronousCopyResource resource({2.0, 2.0, 2.0, 2.0, 2.0});
+  AsynchronousCopy copy1{1, 3, 1.0, alternate_mem_space, 0};
+  AsynchronousCopy copy2{1, 4, 2.0, alternate_mem_space, 1};
+  EXPECT_TRUE(resource.HasEnoughResource(1, 3, 1.0));
+  resource.AddCopy(copy1);
+  EXPECT_EQ(resource.GetCurrentResources(),
+            std::vector<float>({2.0, 2.0, 1.0, 2.0, 2.0}));
+  EXPECT_TRUE(resource.HasEnoughResource(1, 4, 2.0));
+  resource.AddCopy(copy2);
+  EXPECT_EQ(resource.GetCurrentResources(),
+            std::vector<float>({2.0, 2.0, 0.0, 1.0, 2.0}));
+  resource.RemoveCopy(copy1);
+  EXPECT_EQ(resource.GetCurrentResources(),
+            std::vector<float>({2.0, 2.0, 0.0, 2.0, 2.0}));
+
+  AsynchronousCopy copy3{1, 5, 1.0, alternate_mem_space, 2};
+  AsynchronousCopy copy4{1, 5, 1.0, alternate_mem_space, 3};
+  AsynchronousCopy copy5{1, 5, 1.0, alternate_mem_space, 4};
+  AsynchronousCopy copy6{1, 5, 1.0, alternate_mem_space, 5};
+  EXPECT_TRUE(resource.HasEnoughResource(1, 5, 1.0));
+  resource.AddCopy(copy3);
+  EXPECT_EQ(resource.GetCurrentResources(),
+            std::vector<float>({2.0, 2.0, 0.0, 1.0, 2.0}));
+  EXPECT_TRUE(resource.HasEnoughResource(1, 5, 1.0));
+  resource.AddCopy(copy4);
+  EXPECT_EQ(resource.GetCurrentResources(),
+            std::vector<float>({2.0, 2.0, 0.0, 0.0, 2.0}));
+  EXPECT_TRUE(resource.HasEnoughResource(1, 5, 1.0));
+  resource.AddCopy(copy5);
+  EXPECT_EQ(resource.GetCurrentResources(),
+            std::vector<float>({2.0, 2.0, 0.0, 0.0, 1.0}));
+  EXPECT_TRUE(resource.HasEnoughResource(1, 5, 1.0));
+  resource.AddCopy(copy6);
+  EXPECT_EQ(resource.GetCurrentResources(),
+            std::vector<float>({2.0, 2.0, 0.0, 0.0, 0.0}));
+  EXPECT_FALSE(resource.HasEnoughResource(1, 5, 1.0));
+
+  resource.RemoveCopy(copy2);
+  EXPECT_EQ(resource.GetCurrentResources(),
+            std::vector<float>({2.0, 2.0, 0.0, 0.0, 2.0}));
+  resource.RemoveCopy(copy3);
+  EXPECT_EQ(resource.GetCurrentResources(),
+            std::vector<float>({2.0, 2.0, 0.0, 1.0, 2.0}));
+  resource.RemoveCopy(copy4);
+  EXPECT_EQ(resource.GetCurrentResources(),
+            std::vector<float>({2.0, 2.0, 0.0, 2.0, 2.0}));
+  resource.RemoveCopy(copy5);
+  EXPECT_EQ(resource.GetCurrentResources(),
+            std::vector<float>({2.0, 2.0, 1.0, 2.0, 2.0}));
+  resource.RemoveCopy(copy6);
+  EXPECT_EQ(resource.GetCurrentResources(),
+            std::vector<float>({2.0, 2.0, 2.0, 2.0, 2.0}));
+}
+
 TEST_P(MemorySpaceAssignmentTest, CrossProgramPrefetchTest) {
   HloComputation::Builder builder(TestName());
 
@@ -6302,14 +6438,83 @@ TEST_P(MemorySpaceAssignmentTest, CrossProgramPrefetchTest) {
   auto cross_program_prefetches = module->CrossProgramPrefetches();
   EXPECT_EQ(cross_program_prefetches.size(), 1);
   if (!cross_program_prefetches.empty()) {
-    EXPECT_EQ(cross_program_prefetches[0].first, 1);
-    EXPECT_EQ(cross_program_prefetches[0].second, ShapeIndex({}));
+    EXPECT_EQ(cross_program_prefetches[0].parameter, 1);
+    EXPECT_EQ(cross_program_prefetches[0].index, ShapeIndex({}));
   }
 
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               op::Dot(op::Parameter(0),
                       op::AsyncCopy(kAlternateMemorySpace, kDefaultMemorySpace,
                                     op::Parameter(1))));
+}
+
+TEST_P(MemorySpaceAssignmentTest, MultiCrossProgramPrefetchTest) {
+  HloComputation::Builder builder(TestName());
+
+  constexpr int kBatch = 8;
+  constexpr int kFeature = 8;
+  constexpr int kFirstOutput = 4;
+  constexpr int kSecondOutput = 2;
+
+  auto lhs_shape = ShapeUtil::MakeShape(F32, {kBatch, kFeature});
+  auto first_weight_shape = ShapeUtil::MakeShape(F32, {kFeature, kFirstOutput});
+  auto second_weight_shape =
+      ShapeUtil::MakeShape(F32, {kFirstOutput, kSecondOutput});
+  auto intermediate_shape = ShapeUtil::MakeShape(F32, {kBatch, kFirstOutput});
+  auto result_shape = ShapeUtil::MakeShape(F32, {kBatch, kSecondOutput});
+  HloInstruction* lhs = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, lhs_shape, "lhs"));
+  HloInstruction* first_weight = builder.AddInstruction(
+      HloInstruction::CreateParameter(1, first_weight_shape, "first_weight"));
+  HloInstruction* second_weight = builder.AddInstruction(
+      HloInstruction::CreateParameter(2, second_weight_shape, "second_weight"));
+
+  DotDimensionNumbers dot_dnums;
+  dot_dnums.add_lhs_contracting_dimensions(1);
+  dot_dnums.add_rhs_contracting_dimensions(0);
+  auto first_dot = builder.AddInstruction(
+      HloInstruction::CreateDot(intermediate_shape, lhs, first_weight,
+                                dot_dnums, DefaultPrecisionConfig(2)));
+
+  auto second_dot = builder.AddInstruction(
+      HloInstruction::CreateDot(result_shape, first_dot, second_weight,
+                                dot_dnums, DefaultPrecisionConfig(2)));
+
+  auto module = CreateNewVerifiedModule();
+  HloComputation* computation = module->AddEntryComputation(builder.Build());
+
+  HloSchedule schedule(module.get());
+  schedule.set_sequence(
+      computation, {lhs, first_weight, second_weight, first_dot, second_dot});
+  TF_CHECK_OK(module->set_schedule(schedule));
+
+  Options options;
+  options.max_cross_program_prefetches = -1;
+  options.max_size_in_bytes = 256;
+  options.alignment_in_bytes = 8;
+  options.verify = true;
+  AssignMemorySpace(module.get(), /*max_outstanding_async_copies=*/-1,
+                    /*max_prefetch_interval=*/10, /*min_prefetch_interval=*/2,
+                    options);
+
+  auto cross_program_prefetches = module->CrossProgramPrefetches();
+  EXPECT_EQ(cross_program_prefetches.size(), 2);
+  if (!cross_program_prefetches.empty()) {
+    EXPECT_EQ(cross_program_prefetches[0].parameter, 1);
+    EXPECT_EQ(cross_program_prefetches[0].index, ShapeIndex({}));
+  }
+  if (cross_program_prefetches.size() > 1) {
+    EXPECT_EQ(cross_program_prefetches[1].parameter, 2);
+    EXPECT_EQ(cross_program_prefetches[1].index, ShapeIndex({}));
+  }
+
+  EXPECT_THAT(
+      module->entry_computation()->root_instruction(),
+      op::Dot(op::Dot(op::Parameter(0),
+                      op::AsyncCopy(kAlternateMemorySpace, kDefaultMemorySpace,
+                                    op::Parameter(1))),
+              op::AsyncCopy(kAlternateMemorySpace, kDefaultMemorySpace,
+                            op::Parameter(2))));
 }
 
 TEST_P(MemorySpaceAssignmentTest, CrossProgramPrefetchTupleTest) {
@@ -6349,8 +6554,8 @@ TEST_P(MemorySpaceAssignmentTest, CrossProgramPrefetchTupleTest) {
   auto cross_program_prefetches = module->CrossProgramPrefetches();
   EXPECT_EQ(cross_program_prefetches.size(), 1);
   if (!cross_program_prefetches.empty()) {
-    EXPECT_EQ(cross_program_prefetches[0].first, 0);
-    EXPECT_EQ(cross_program_prefetches[0].second, ShapeIndex({1}));
+    EXPECT_EQ(cross_program_prefetches[0].parameter, 0);
+    EXPECT_EQ(cross_program_prefetches[0].index, ShapeIndex({1}));
   }
 }
 
@@ -6391,8 +6596,8 @@ TEST_P(MemorySpaceAssignmentTest, CrossProgramPrefetchBitcastTest) {
   auto cross_program_prefetches = module->CrossProgramPrefetches();
   EXPECT_EQ(cross_program_prefetches.size(), 1);
   if (!cross_program_prefetches.empty()) {
-    EXPECT_EQ(cross_program_prefetches[0].first, 1);
-    EXPECT_EQ(cross_program_prefetches[0].second, ShapeIndex({}));
+    EXPECT_EQ(cross_program_prefetches[0].parameter, 1);
+    EXPECT_EQ(cross_program_prefetches[0].index, ShapeIndex({}));
   }
 }
 
@@ -6437,8 +6642,8 @@ TEST_P(MemorySpaceAssignmentTest, CrossProgramPrefetchBitcastTupleTest) {
   auto cross_program_prefetches = module->CrossProgramPrefetches();
   EXPECT_EQ(cross_program_prefetches.size(), 1);
   if (!cross_program_prefetches.empty()) {
-    EXPECT_EQ(cross_program_prefetches[0].first, 0);
-    EXPECT_EQ(cross_program_prefetches[0].second, ShapeIndex({1}));
+    EXPECT_EQ(cross_program_prefetches[0].parameter, 0);
+    EXPECT_EQ(cross_program_prefetches[0].index, ShapeIndex({1}));
   }
 }
 
@@ -6916,13 +7121,14 @@ TEST_P(MemorySpaceAssignmentTest, CrossProgramPrefetchNoReuse) {
   auto cross_program_prefetches = module->CrossProgramPrefetches();
   EXPECT_EQ(cross_program_prefetches.size(), 1);
   if (!cross_program_prefetches.empty()) {
-    EXPECT_EQ(cross_program_prefetches[0].first, 1);
-    EXPECT_EQ(cross_program_prefetches[0].second, ShapeIndex({}));
+    EXPECT_EQ(cross_program_prefetches[0].parameter, 1);
+    EXPECT_EQ(cross_program_prefetches[0].index, ShapeIndex({}));
   }
 
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<HloDataflowAnalysis> dataflow_analysis,
       HloDataflowAnalysis::Run(*module));
+  LOG(ERROR) << "module: " << module->ToString();
   const HloValue& cross_program_prefetched_value =
       dataflow_analysis->GetValueDefinedAt(
           module->entry_computation()->parameter_instruction(1), {});
@@ -6930,14 +7136,14 @@ TEST_P(MemorySpaceAssignmentTest, CrossProgramPrefetchNoReuse) {
   // cross-program prefetch, the other is the end-of-program prefetch.
   auto is_cross_program_prefetch = [](const HloUse& use) {
     return use.instruction->opcode() == HloOpcode::kCopyStart &&
-           use.instruction->is_cross_program_prefetch();
+           use.instruction->cross_program_prefetch_index().has_value();
   };
   EXPECT_EQ(absl::c_count_if(cross_program_prefetched_value.GetUses(),
                              is_cross_program_prefetch),
             1);
   auto is_end_of_program_prefetch = [](const HloUse& use) {
     return use.instruction->opcode() == HloOpcode::kCopyStart &&
-           !use.instruction->is_cross_program_prefetch();
+           !use.instruction->cross_program_prefetch_index().has_value();
   };
   EXPECT_EQ(absl::c_count_if(cross_program_prefetched_value.GetUses(),
                              is_end_of_program_prefetch),
@@ -6995,8 +7201,8 @@ TEST_P(MemorySpaceAssignmentTest, CrossProgramPrefetchTupleNoReuse) {
   auto cross_program_prefetches = module->CrossProgramPrefetches();
   EXPECT_EQ(cross_program_prefetches.size(), 1);
   if (!cross_program_prefetches.empty()) {
-    EXPECT_EQ(cross_program_prefetches[0].first, 0);
-    EXPECT_EQ(cross_program_prefetches[0].second, ShapeIndex({1}));
+    EXPECT_EQ(cross_program_prefetches[0].parameter, 0);
+    EXPECT_EQ(cross_program_prefetches[0].index, ShapeIndex({1}));
   }
 
   TF_ASSERT_OK_AND_ASSIGN(
@@ -7009,14 +7215,14 @@ TEST_P(MemorySpaceAssignmentTest, CrossProgramPrefetchTupleNoReuse) {
   // cross-program prefetch, the other is the end-of-program prefetch.
   auto is_cross_program_prefetch = [](const HloUse& use) {
     return use.instruction->opcode() == HloOpcode::kCopyStart &&
-           use.instruction->is_cross_program_prefetch();
+           use.instruction->cross_program_prefetch_index().has_value();
   };
   EXPECT_EQ(absl::c_count_if(cross_program_prefetched_value.GetUses(),
                              is_cross_program_prefetch),
             1);
   auto is_end_of_program_prefetch = [](const HloUse& use) {
     return use.instruction->opcode() == HloOpcode::kCopyStart &&
-           !use.instruction->is_cross_program_prefetch();
+           !use.instruction->cross_program_prefetch_index().has_value();
   };
   EXPECT_EQ(absl::c_count_if(cross_program_prefetched_value.GetUses(),
                              is_end_of_program_prefetch),
@@ -7074,8 +7280,8 @@ TEST_P(MemorySpaceAssignmentTest, CrossProgramPrefetchReuse) {
   auto cross_program_prefetches = module->CrossProgramPrefetches();
   EXPECT_EQ(cross_program_prefetches.size(), 1);
   if (!cross_program_prefetches.empty()) {
-    EXPECT_EQ(cross_program_prefetches[0].first, 1);
-    EXPECT_EQ(cross_program_prefetches[0].second, ShapeIndex({}));
+    EXPECT_EQ(cross_program_prefetches[0].parameter, 1);
+    EXPECT_EQ(cross_program_prefetches[0].index, ShapeIndex({}));
   }
 
   TF_ASSERT_OK_AND_ASSIGN(
@@ -7088,14 +7294,14 @@ TEST_P(MemorySpaceAssignmentTest, CrossProgramPrefetchReuse) {
   // prefetch. There shouldn't be an end-of-program prefetch.
   auto is_cross_program_prefetch = [](const HloUse& use) {
     return use.instruction->opcode() == HloOpcode::kCopyStart &&
-           use.instruction->is_cross_program_prefetch();
+           use.instruction->cross_program_prefetch_index().has_value();
   };
   EXPECT_EQ(absl::c_count_if(cross_program_prefetched_value.GetUses(),
                              is_cross_program_prefetch),
             1);
   auto is_end_of_program_prefetch = [](const HloUse& use) {
     return use.instruction->opcode() == HloOpcode::kCopyStart &&
-           !use.instruction->is_cross_program_prefetch();
+           !use.instruction->cross_program_prefetch_index().has_value();
   };
   EXPECT_EQ(absl::c_count_if(cross_program_prefetched_value.GetUses(),
                              is_end_of_program_prefetch),
@@ -7134,8 +7340,8 @@ TEST_P(MemorySpaceAssignmentTest, CrossProgramPrefetchTupleReuse) {
   auto cross_program_prefetches = module->CrossProgramPrefetches();
   EXPECT_EQ(cross_program_prefetches.size(), 1);
   if (!cross_program_prefetches.empty()) {
-    EXPECT_EQ(cross_program_prefetches[0].first, 0);
-    EXPECT_EQ(cross_program_prefetches[0].second, ShapeIndex({1}));
+    EXPECT_EQ(cross_program_prefetches[0].parameter, 0);
+    EXPECT_EQ(cross_program_prefetches[0].index, ShapeIndex({1}));
   }
 
   TF_ASSERT_OK_AND_ASSIGN(
@@ -7148,14 +7354,14 @@ TEST_P(MemorySpaceAssignmentTest, CrossProgramPrefetchTupleReuse) {
   // prefetch. There shouldn't be an end-of-program prefetch.
   auto is_cross_program_prefetch = [](const HloUse& use) {
     return use.instruction->opcode() == HloOpcode::kCopyStart &&
-           use.instruction->is_cross_program_prefetch();
+           use.instruction->cross_program_prefetch_index().has_value();
   };
   EXPECT_EQ(absl::c_count_if(cross_program_prefetched_value.GetUses(),
                              is_cross_program_prefetch),
             1);
   auto is_end_of_program_prefetch = [](const HloUse& use) {
     return use.instruction->opcode() == HloOpcode::kCopyStart &&
-           !use.instruction->is_cross_program_prefetch();
+           !use.instruction->cross_program_prefetch_index().has_value();
   };
   EXPECT_EQ(absl::c_count_if(cross_program_prefetched_value.GetUses(),
                              is_end_of_program_prefetch),
@@ -7262,7 +7468,7 @@ TEST_F(CostAnalysisPrefetchIntervalPickerTest, PrefetchIntervalOrder) {
 
   HloInstruction* root = module->entry_computation()->root_instruction();
   const HloUse use{root, /*operand_number=*/1, /*operand_index=*/{}};
-  interval_picker.Begin(use, /*start_time=*/0, /*end_time=*/22);
+  interval_picker.Begin(use, /*start_time=*/0, /*end_time=*/22, std::nullopt);
 
   // Expect that the first interval is (15, 22), which has elapsed time of 6.0,
   // twice of the async copy elased (3.0). Then we expect that intervals will be
@@ -7294,7 +7500,7 @@ TEST_F(CostAnalysisPrefetchIntervalPickerTest, PrefetchIntervalOrder) {
 
   // Expect that if the time between start_time and end_time is too short, there
   // won't be any available intervals.
-  interval_picker.Begin(use, /*start_time=*/19, /*end_time=*/22);
+  interval_picker.Begin(use, /*start_time=*/19, /*end_time=*/22, std::nullopt);
   LOG(INFO) << interval_picker.ToDebugString();
   EXPECT_TRUE(interval_picker.Done());
 }
@@ -7364,7 +7570,7 @@ TEST_F(CostAnalysisPrefetchIntervalPickerTest, PrefetchIntervalOrderWhile) {
             5);
   HloInstruction* root = module->entry_computation()->root_instruction();
   const HloUse use{root, /*operand_number=*/1, /*operand_index=*/{}};
-  interval_picker.Begin(use, /*start_time=*/0, /*end_time=*/31);
+  interval_picker.Begin(use, /*start_time=*/0, /*end_time=*/31, std::nullopt);
 
   // Because there are while loop computations between [19, 24], we ensure that
   // the interval picker avoids this interval.
@@ -7566,7 +7772,7 @@ TEST_F(CostAnalysisPrefetchIntervalPickerTest, EarliestLatestWindowTooSmall) {
 
   HloInstruction* root = module->entry_computation()->root_instruction();
   const HloUse use{root, /*operand_number=*/1, /*operand_index=*/{}};
-  interval_picker.Begin(use, /*start_time=*/1, /*end_time=*/3);
+  interval_picker.Begin(use, /*start_time=*/1, /*end_time=*/3, std::nullopt);
 
   LOG(INFO) << interval_picker.ToDebugString();
   EXPECT_FALSE(interval_picker.Done());

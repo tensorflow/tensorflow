@@ -204,11 +204,13 @@ StatusOr<std::vector<int64_t>> StridesToLayout(
     if (strides[a] > strides[b]) {
       return false;
     }
-    return dims[a] == 1 && dims[b] != 1;
+    // If two dimensions have the same stride, prefer the major-to-minor
+    // interpretation of the ordering, since that's what JAX wants.
+    return b < a;
   });
   int64_t stride = 1;
   for (int64_t d : minor_to_major) {
-    if (strides[d] != stride) {
+    if (dims[d] > 1 && strides[d] != stride) {
       return Unimplemented(
           "Only DLPack tensors with trivial (compact) striding are supported; "
           "i.e., tensors whose striding represents a transposition of the "
@@ -422,16 +424,16 @@ StatusOr<PyBuffer::object> DLPackManagedTensorToBuffer(
   auto client = (cpu_client && device->client() == cpu_pjrt_client)
                     ? std::move(cpu_client)
                     : std::move(gpu_client);
-#ifdef JAX_ENABLE_IFRT
-  TF_ASSIGN_OR_RETURN(
-      auto ifrt_array,
-      ifrt::PjRtArray::Create(client->ifrt_client(), std::move(pjrt_buffer)));
+  auto* ifrt_client =
+      llvm::dyn_cast_or_null<ifrt::PjRtCompatibleClient>(client->ifrt_client());
+  if (ifrt_client == nullptr) {
+    throw XlaRuntimeError(
+        "This operation is implemented for a PjRt-compatible backend only.");
+  }
+  TF_ASSIGN_OR_RETURN(auto ifrt_array,
+                      ifrt_client->CreatePjRtArray(std::move(pjrt_buffer)));
   return PyBuffer::Make(std::move(client), std::move(ifrt_array),
                         Traceback::Get());
-#else
-  return PyBuffer::Make(std::move(client), std::move(pjrt_buffer),
-                        Traceback::Get());
-#endif
 }
 
 }  // namespace xla

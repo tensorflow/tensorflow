@@ -62,7 +62,8 @@ struct CanonicalDebugOptions {
         dump_module_metadata(opts.xla_dump_module_metadata()),
         dump_compress_protos(opts.xla_dump_compress_protos()),
         dump_hlo_metadata(!opts.xla_dump_disable_metadata()),
-        dump_as_long_text(opts.xla_dump_hlo_as_long_text()) {
+        dump_as_long_text(opts.xla_dump_hlo_as_long_text()),
+        dump_mlir_pretty_form(opts.xla_dump_enable_mlir_pretty_form()) {
     // This constructor examines the values in `opts` and turns on other flags
     // based on what we think is the user's intent.  To reduce confusion about
     // what was a user-specified value versus an extrapolated value, within this
@@ -178,6 +179,7 @@ struct CanonicalDebugOptions {
   bool dump_compress_protos;
   bool dump_hlo_metadata;
   bool dump_as_long_text;
+  bool dump_mlir_pretty_form;
 };
 
 // Helper class to hold a list of functions that produces data to be written to
@@ -627,7 +629,8 @@ void DumpToFileInDirOrStdout(const HloModule& module, string_view file_prefix,
   mlir::OpPrintingFlags print_flags = mlir::OpPrintingFlags().useLocalScope();
   // Enable debug info so that it is easier to see the corresponding HLO node.
   if (file_prefix == "lmhlo") {
-    print_flags.enableDebugInfo(/*enable=*/true, /*prettyForm=*/true);
+    print_flags.enableDebugInfo(/*enable=*/true,
+                                /*prettyForm=*/opts.dump_mlir_pretty_form);
   }
   op->print(outputFile->os(), print_flags);
   outputFile->keep();

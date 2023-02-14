@@ -51,14 +51,6 @@ void AddHloTraceAnnotationsPass::runOnOperation() {
   ModuleOp module = getOperation();
   SymbolTable sym_table(module);
 
-  // Get a unique mhlo id from the top level module.
-  auto uid = module->getAttrOfType<IntegerAttr>("mhlo.unique_id");
-  int64_t program_id = uid ? uid.getValue().getZExtValue() : -1;
-
-  // XLA HLO -> MLIR export encodes module name in the location.
-  std::string module_name =
-      mlir::mhlo::GetDebugNameFromLocation(module->getLoc());
-
   getOperation().walk([&](func::CallOp call) {
     // Check if the callee is a custom call.
     auto callee = sym_table.lookup<func::FuncOp>(call.getCallee());
@@ -66,7 +58,7 @@ void AddHloTraceAnnotationsPass::runOnOperation() {
 
     // HLO operation name is encoded in the operation location.
     std::string hlo_op = mlir::mhlo::GetDebugNameFromLocation(call->getLoc());
-    auto annotation = HloTraceAttr::get(ctx, hlo_op, module_name, program_id);
+    auto annotation = HloTraceAttr::get(ctx, std::move(hlo_op));
     call->setAttr("rt.trace", annotation);
   });
 }

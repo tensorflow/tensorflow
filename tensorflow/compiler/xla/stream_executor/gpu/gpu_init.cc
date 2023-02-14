@@ -17,15 +17,15 @@ limitations under the License.
 
 #include <string>
 
-#include "tensorflow/compiler/xla/stream_executor/lib/status.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/statusor.h"
 #include "tensorflow/compiler/xla/stream_executor/multi_platform_manager.h"
 #include "tensorflow/compiler/xla/stream_executor/platform.h"
 #include "tensorflow/tsl/platform/logging.h"
+#include "tensorflow/tsl/platform/status.h"
+#include "tensorflow/tsl/platform/statusor.h"
 
 namespace stream_executor {
 
-port::Status ValidateGPUMachineManager() {
+tsl::Status ValidateGPUMachineManager() {
   return MultiPlatformManager::PlatformWithName(GpuPlatformName()).status();
 }
 

@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/optimize_cross_host_control_deps.h"
 
+#include <utility>
 #include <vector>
 
 #include "tensorflow/core/framework/node_def.pb.h"
@@ -49,34 +50,80 @@ const string& RequestedOrAssignedDevice(const Node* n) {
   return n->requested_device();
 }
 
+// Class that assigns a number to each distinct device string, and allows to
+// quickly look up whether two devices share the same address space.
+class DeviceLookup {
+ public:
+  DeviceLookup() = default;
+
+  static StatusOr<DeviceLookup> FromGraph(Graph* graph) {
+    DeviceLookup lookup;
+    for (Node* n : graph->op_nodes()) {
+      string device;
+      TF_RETURN_IF_ERROR(DeviceNameUtils::DeviceNameToCpuDeviceName(
+          RequestedOrAssignedDevice(n), &device));
+      auto iter = lookup.device_name_to_id_.find(device);
+      int id;
+      if (iter == lookup.device_name_to_id_.end()) {
+        id = lookup.device_name_to_id_.size();
+        lookup.device_name_to_id_[device] = id;
+        lookup.device_id_to_name_[id] = device;
+      } else {
+        id = iter->second;
+      }
+      lookup.node_to_device_id_[n] = id;
+    }
+    for (auto& [device1, id1] : lookup.device_name_to_id_) {
+      for (auto& [device2, id2] : lookup.device_name_to_id_) {
+        bool b = DeviceNameUtils::IsSameAddressSpace(device1, device2);
+        lookup.is_same_address_space_[std::make_pair(id1, id2)] = b;
+      }
+    }
+    return lookup;
+  }
+
+  inline int NodeToDeviceId(const Node* node) {
+    return node_to_device_id_[node];
+  }
+
+  inline string DeviceIdToName(int id) { return device_id_to_name_[id]; }
+
+  inline bool IsSameAddressSpace(int id1, int id2) {
+    return is_same_address_space_[std::make_pair(id1, id2)];
+  }
+
+ private:
+  absl::flat_hash_map<int, string> device_id_to_name_;
+  absl::flat_hash_map<string, int> device_name_to_id_;
+  absl::flat_hash_map<const Node*, int> node_to_device_id_;
+  absl::flat_hash_map<std::pair<int, int>, bool> is_same_address_space_;
+};
+
 }  // namespace
 
 Status OptimizeCrossHostControlOutputEdges(Graph* graph,
                                            int cross_host_edges_threshold) {
-  string src_host_device;
-  string dst_host_device;
+  TF_ASSIGN_OR_RETURN(DeviceLookup lookup, DeviceLookup::FromGraph(graph));
+
   for (Node* n : graph->op_nodes()) {
     if (n->out_edges().size() < cross_host_edges_threshold) {
       continue;
     }
-    absl::flat_hash_map<string, std::vector<const Edge*>>
-        cross_host_control_edges;
-    TF_RETURN_IF_ERROR(DeviceNameUtils::DeviceNameToCpuDeviceName(
-        RequestedOrAssignedDevice(n), &src_host_device));
+    absl::flat_hash_map<int, std::vector<const Edge*>> cross_host_control_edges;
+    int src_device_id = lookup.NodeToDeviceId(n);
     for (const Edge* edge : n->out_edges()) {
       if (!edge->IsControlEdge() || edge->dst()->IsSink()) {
         continue;
       }
 
-      TF_RETURN_IF_ERROR(DeviceNameUtils::DeviceNameToCpuDeviceName(
-          RequestedOrAssignedDevice(edge->dst()), &dst_host_device));
-      if (DeviceNameUtils::IsSameAddressSpace(src_host_device,
-                                              dst_host_device)) {
+      int dst_device_id = lookup.NodeToDeviceId(edge->dst());
+
+      if (lookup.IsSameAddressSpace(src_device_id, dst_device_id)) {
         continue;
       }
-      auto iter = cross_host_control_edges.find(dst_host_device);
+      auto iter = cross_host_control_edges.find(dst_device_id);
       if (iter == cross_host_control_edges.end()) {
-        cross_host_control_edges[dst_host_device] = {edge};
+        cross_host_control_edges[dst_device_id] = {edge};
       } else {
         iter->second.push_back(edge);
       }
@@ -85,17 +132,24 @@ Status OptimizeCrossHostControlOutputEdges(Graph* graph,
       if (pair.second.size() < cross_host_edges_threshold) {
         continue;
       }
+      string device = lookup.DeviceIdToName(pair.first);
       VLOG(1) << "Optmize cross host output control edge, src node: "
-              << n->name() << " src device: " << src_host_device
-              << " dst host device: " << pair.first
+              << n->name()
+              << " src device: " << lookup.DeviceIdToName(src_device_id)
+              << " dst host device: " << device
               << " edges size: " << pair.second.size();
       Node* control_after;
       TF_RETURN_IF_ERROR(BuildNoopNode(
           *n, graph->NewName(strings::StrCat(n->name(), "/", "control_after")),
-          /*device=*/pair.first, graph, &control_after));
-      graph->AddControlEdge(n, control_after);
+          device, graph, &control_after));
+
+      // When adding control edges, set `allow_duplicates` to true since the
+      // duplication check is expensive and unnecessary here due to there
+      // shouldn't be duplicated control edges introduced by this pass.
+      graph->AddControlEdge(n, control_after, /*allow_duplicates=*/true);
       for (const Edge* edge : pair.second) {
-        graph->AddControlEdge(control_after, edge->dst());
+        graph->AddControlEdge(control_after, edge->dst(),
+                              /*allow_duplicates=*/true);
         graph->RemoveEdge(edge);
       }
     }
@@ -105,6 +159,8 @@ Status OptimizeCrossHostControlOutputEdges(Graph* graph,
 
 Status OptimizeCrossHostControlInputEdges(Graph* graph,
                                           int cross_host_edges_threshold) {
+  TF_ASSIGN_OR_RETURN(DeviceLookup lookup, DeviceLookup::FromGraph(graph));
+
   absl::flat_hash_map<Node*, std::vector<const Edge*>> node_control_input_edges;
   for (Node* n : graph->op_nodes()) {
     for (const Edge* edge : n->out_edges()) {
@@ -121,8 +177,6 @@ Status OptimizeCrossHostControlInputEdges(Graph* graph,
     }
   }
 
-  string src_host_device;
-  string dst_host_device;
   for (auto& pair : node_control_input_edges) {
     Node* dst = pair.first;
     const std::vector<const Edge*>& input_edges = pair.second;
@@ -131,20 +185,17 @@ Status OptimizeCrossHostControlInputEdges(Graph* graph,
       continue;
     }
 
-    absl::flat_hash_map<string, std::vector<const Edge*>>
-        cross_host_control_edges;
-    TF_RETURN_IF_ERROR(DeviceNameUtils::DeviceNameToCpuDeviceName(
-        RequestedOrAssignedDevice(dst), &dst_host_device));
+    absl::flat_hash_map<int, std::vector<const Edge*>> cross_host_control_edges;
+    int dst_device_id = lookup.NodeToDeviceId(dst);
+
     for (const Edge* edge : input_edges) {
-      TF_RETURN_IF_ERROR(DeviceNameUtils::DeviceNameToCpuDeviceName(
-          RequestedOrAssignedDevice(edge->src()), &src_host_device));
-      if (DeviceNameUtils::IsSameAddressSpace(src_host_device,
-                                              dst_host_device)) {
+      int src_device_id = lookup.NodeToDeviceId(edge->src());
+      if (lookup.IsSameAddressSpace(src_device_id, dst_device_id)) {
         continue;
       }
-      auto iter = cross_host_control_edges.find(src_host_device);
+      auto iter = cross_host_control_edges.find(src_device_id);
       if (iter == cross_host_control_edges.end()) {
-        cross_host_control_edges[src_host_device] = {edge};
+        cross_host_control_edges[src_device_id] = {edge};
       } else {
         iter->second.push_back(edge);
       }
@@ -153,18 +204,25 @@ Status OptimizeCrossHostControlInputEdges(Graph* graph,
       if (pair.second.size() < cross_host_edges_threshold) {
         continue;
       }
-      VLOG(0) << "Optmize cross host input control edge, dst node: "
-              << dst->name() << " dst device: " << dst_host_device
-              << " src host device: " << pair.first
+      string src_device = lookup.DeviceIdToName(pair.first);
+      VLOG(1) << "Optmize cross host input control edge, dst node: "
+              << dst->name()
+              << " dst device: " << lookup.DeviceIdToName(dst_device_id)
+              << " src host device: " << src_device
               << " edges size: " << pair.second.size();
       Node* control_before;
       TF_RETURN_IF_ERROR(BuildNoopNode(
           *dst,
           graph->NewName(strings::StrCat(dst->name(), "/", "control_before")),
-          /*device=*/pair.first, graph, &control_before));
-      graph->AddControlEdge(control_before, dst);
+          /*device=*/src_device, graph, &control_before));
+
+      // When adding control edges, set `allow_duplicates` to true since the
+      // duplication check is expensive and unnecessary here due to there
+      // shouldn't be duplicated control edges introduced by this pass.
+      graph->AddControlEdge(control_before, dst, /*allow_duplicates=*/true);
       for (const Edge* edge : pair.second) {
-        graph->AddControlEdge(edge->src(), control_before);
+        graph->AddControlEdge(edge->src(), control_before,
+                              /*allow_duplicates=*/true);
         graph->RemoveEdge(edge);
       }
     }

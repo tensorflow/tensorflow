@@ -18,7 +18,7 @@ limitations under the License.
 #include <string>
 
 #include "absl/types/optional.h"
-#include "mlir/IR/BlockAndValueMapping.h"  // from @llvm-project
+#include "mlir/IR/IRMapping.h"  // from @llvm-project
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/dtensor/cc/dstatus.h"
 #include "tensorflow/dtensor/mlir/collectives.h"
@@ -110,7 +110,7 @@ StatusOr<mlir::Operation*> InTopKSPMDExpander::ExpandOp(mlir::Operation* op) {
   }
 
   mlir::OpBuilder builder(op);
-  mlir::BlockAndValueMapping mapping;
+  mlir::IRMapping mapping;
   // Apply any input relayouts.
   if (relayout_predictions) {
     TF_ASSIGN_OR_RETURN(

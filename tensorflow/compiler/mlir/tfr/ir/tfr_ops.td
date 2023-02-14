@@ -41,6 +41,7 @@ def TFR_Dialect : Dialect {
   }];
 
   let cppNamespace = "::mlir::TFR";
+  let useFoldAPI = kEmitFoldAdaptorFolder;
 }
 
 //===----------------------------------------------------------------------===//
@@ -414,7 +415,9 @@ def TFR_TFRFuncOp : TFR_Op<"func", [HasParent<"ModuleOp">,
 
   let arguments = (ins
     TypeAttrOf<FunctionType>:$function_type,
-    StrAttr:$sym_name
+    StrAttr:$sym_name,
+    OptionalAttr<DictArrayAttr>:$arg_attrs,
+    OptionalAttr<DictArrayAttr>:$res_attrs
   );
 
   let results = (outs);

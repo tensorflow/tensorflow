@@ -18,6 +18,7 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
+#include "tensorflow/compiler/jit/flags.h"
 #include "tensorflow/core/graph/algorithm.h"
 #include "tensorflow/core/graph/node_builder.h"
 #include "tensorflow/core/util/determinism.h"
@@ -63,6 +64,10 @@ StatusOr<std::unique_ptr<Graph>> CreateSingleOpGraph(
   }
   FixupSourceAndSinkEdges(graph.get());
   return graph;
+}
+
+bool UsePjRtForSingleDeviceCompilation() {
+  return GetXlaOpsCommonFlags()->tf_xla_use_device_api;
 }
 
 }  // namespace tensorflow

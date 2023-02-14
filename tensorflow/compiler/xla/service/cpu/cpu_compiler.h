@@ -17,9 +17,10 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_SERVICE_CPU_CPU_COMPILER_H_
 
 #include <memory>
+#include <string>
 #include <string_view>
+#include <vector>
 
-#include "absl/types/span.h"
 #include "llvm/Target/TargetMachine.h"
 #include "tensorflow/compiler/xla/cpu_function_runtime.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
@@ -125,7 +126,7 @@ class CpuAotCompilationResult : public AotCompilationResult {
       std::vector<cpu_function_runtime::BufferInfo> buffer_infos,
       int64_t result_buffer_index,
       std::unique_ptr<HloProfilePrinterData> hlo_profile_printer_data);
-  ~CpuAotCompilationResult();
+  ~CpuAotCompilationResult() override = default;
 
   HloProfilePrinterData* hlo_profile_printer_data() const {
     return hlo_profile_printer_data_.get();
@@ -163,7 +164,8 @@ class CpuAotCompilationResult : public AotCompilationResult {
 class CpuCompiler : public LLVMCompiler {
  public:
   CpuCompiler();
-  ~CpuCompiler() override {}
+  explicit CpuCompiler(bool allow_sparse_shapes);
+  ~CpuCompiler() override = default;
 
   StatusOr<std::vector<std::unique_ptr<Executable>>> Compile(
       std::unique_ptr<HloModuleGroup> module_group,
@@ -175,7 +177,7 @@ class CpuCompiler : public LLVMCompiler {
       const CompileOptions& options) override;
 
   StatusOr<std::unique_ptr<BufferAssignment>> AssignBuffers(
-      const HloModule* module) override;
+      HloModule* module, se::StreamExecutor* stream_exec) override;
 
   StatusOr<std::unique_ptr<Executable>> RunBackend(
       std::unique_ptr<HloModule> module, se::StreamExecutor* stream_exec,
@@ -228,6 +230,10 @@ class CpuCompiler : public LLVMCompiler {
 
   CpuCompiler(const CpuCompiler&) = delete;
   CpuCompiler& operator=(const CpuCompiler&) = delete;
+
+  // Flag that can be used to override bail-out on sparse shapes.
+  // When set, buffer assignment assigns zero sizes to these shapes.
+  const bool allow_sparse_shapes_ = false;
 };
 
 }  // namespace cpu

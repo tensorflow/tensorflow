@@ -1099,7 +1099,8 @@ StatusOr<TrtUniquePtrType<nvinfer1::ICudaEngine>> TRTEngineOp::BuildEngine(
       segment_graph_def_, ctx, precision_mode_, batch_size, workspace_size_,
       conversion_input_shapes, &logger, cache_resource->allocator_.get(),
       calibrator, &engine, use_calibration, use_implicit_batch_, nullptr,
-      &cache_resource->profiles_, name(), use_explicit_precision_, &cluster);
+      &cache_resource->profiles_, name(), use_explicit_precision_, &cluster,
+      ctx->device()->name());
   if (!status.ok()) {
     LOG_FIRST_FEW_WARNING_WITH_PREFIX
         << "Engine creation for " << name() << " failed. "
@@ -1388,7 +1389,7 @@ Status TRTEngineOp::AllocateCalibrationResources(
         /*convert_successfully=*/nullptr,
         /*profiles=*/&cache_res->profiles_, name(),
         /*use_explicit_precision=*/use_explicit_precision_,
-        /*cluster=*/&cluster);
+        /*cluster=*/&cluster, platform_device_name);
     if (!s.ok()) {
       LOG(ERROR) << "Calibration failed: " << s;
       cres->calibrator_->setDone();  // Ignore further pushes

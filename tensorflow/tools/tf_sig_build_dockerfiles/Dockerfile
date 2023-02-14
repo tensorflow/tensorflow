@@ -12,7 +12,8 @@ RUN /setup.packages.sh /builder.packages.txt
 COPY builder.devtoolset/fixlinks.sh /fixlinks.sh
 COPY builder.devtoolset/rpm-patch.sh /rpm-patch.sh
 COPY builder.devtoolset/build_devtoolset.sh /build_devtoolset.sh
-RUN /build_devtoolset.sh devtoolset-9 /dt9 
+COPY builder.devtoolset/glibc2.17-inline.patch /glibc2.17-inline.patch
+RUN /build_devtoolset.sh devtoolset-9 /dt9
 
 ################################################################################
 FROM nvidia/cuda:11.8.0-base-ubuntu20.04 as devel
@@ -55,3 +56,7 @@ RUN /setup.python.sh $PYTHON_VERSION devel.requirements.txt
 # Setup build and environment
 COPY devel.usertools /usertools
 COPY devel.bashrc /root/.bashrc
+
+# Don't use the bazel cache when a new docker image is created.
+RUN echo build --action_env=DOCKER_CACHEBUSTER=$(date +%s%N)$RANDOM >> /etc/bazel.bazelrc
+RUN echo build --host_action_env=DOCKER_HOST_CACHEBUSTER=$(date +%s%N)$RANDOM >> /etc/bazel.bazelrc

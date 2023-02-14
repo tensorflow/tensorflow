@@ -2,7 +2,7 @@
 #    Tests for LLVM-based CPU backend for XLA.
 
 load("//tensorflow/tsl:tsl.default.bzl", "filegroup")
-load("//tensorflow:tensorflow.bzl", "tf_cc_test")
+load("//tensorflow/compiler/xla:xla.bzl", "xla_cc_test")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -37,7 +37,7 @@ cc_library(
     ],
 )
 
-tf_cc_test(
+xla_cc_test(
     name = "cpu_dyn_shape_test",
     srcs = ["cpu_dyn_shape_test.cc"],
     deps = [
@@ -51,7 +51,7 @@ tf_cc_test(
     ],
 )
 
-tf_cc_test(
+xla_cc_test(
     name = "cpu_fusion_test",
     srcs = ["cpu_fusion_test.cc"],
     deps = [
@@ -70,7 +70,7 @@ tf_cc_test(
     ],
 )
 
-tf_cc_test(
+xla_cc_test(
     name = "cpu_bytesizeof_test",
     srcs = ["cpu_bytesizeof_test.cc"],
     deps = [
@@ -81,7 +81,7 @@ tf_cc_test(
     ],
 )
 
-tf_cc_test(
+xla_cc_test(
     name = "cpu_external_constants_test",
     srcs = ["cpu_external_constants_test.cc"],
     deps = [
@@ -94,7 +94,7 @@ tf_cc_test(
     ],
 )
 
-tf_cc_test(
+xla_cc_test(
     name = "cpu_noalias_test",
     srcs = ["cpu_noalias_test.cc"],
     deps = [
@@ -115,7 +115,7 @@ tf_cc_test(
     ],
 )
 
-tf_cc_test(
+xla_cc_test(
     name = "cpu_intrinsic_test",
     srcs = ["cpu_intrinsic_test.cc"],
     deps = [
@@ -132,9 +132,10 @@ tf_cc_test(
     ],
 )
 
-tf_cc_test(
+xla_cc_test(
     name = "cpu_eigen_dot_operation_test",
     srcs = ["cpu_eigen_dot_operation_test.cc"],
+    tags = ["no_mac_arm64"],
     deps = [
         "//tensorflow/compiler/xla/hlo/ir:hlo",
         "//tensorflow/compiler/xla/service/cpu:cpu_compiler",
@@ -148,7 +149,7 @@ tf_cc_test(
     ],
 )
 
-tf_cc_test(
+xla_cc_test(
     name = "cpu_profiling_test",
     srcs = ["cpu_profiling_test.cc"],
     deps = [
@@ -165,7 +166,7 @@ tf_cc_test(
     ],
 )
 
-tf_cc_test(
+xla_cc_test(
     name = "tree_reduction_rewriter_test",
     srcs = ["tree_reduction_rewriter_test.cc"],
     deps = [
@@ -176,7 +177,6 @@ tf_cc_test(
         "//tensorflow/compiler/xla/service:hlo_module_config",
         "//tensorflow/compiler/xla/service:hlo_parser",
         "//tensorflow/compiler/xla/service/cpu:cpu_compiler",
-        "//tensorflow/compiler/xla/stream_executor/lib",
         "//tensorflow/compiler/xla/tests:codegen_test_base",
         "//tensorflow/compiler/xla/tests:filecheck",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
@@ -184,13 +184,15 @@ tf_cc_test(
         "//tensorflow/compiler/xla/tests:test_utils",
         "//tensorflow/tsl/lib/core:status_test_util",
         "//tensorflow/tsl/platform:logging",
+        "//tensorflow/tsl/platform:status",
+        "//tensorflow/tsl/platform:statusor",
         "//tensorflow/tsl/platform:test",
         "//tensorflow/tsl/platform:test_main",
         "@com_google_absl//absl/strings",
     ],
 )
 
-tf_cc_test(
+xla_cc_test(
     name = "cpu_infeed_test",
     srcs = ["cpu_infeed_test.cc"],
     deps = [
@@ -214,7 +216,7 @@ tf_cc_test(
     ],
 )
 
-tf_cc_test(
+xla_cc_test(
     name = "cpu_literal_caching_test",
     srcs = ["cpu_literal_caching_test.cc"],
     deps = [
@@ -229,7 +231,7 @@ tf_cc_test(
     ],
 )
 
-tf_cc_test(
+xla_cc_test(
     name = "cpu_outfeed_test",
     srcs = ["cpu_outfeed_test.cc"],
     deps = [
@@ -243,7 +245,7 @@ tf_cc_test(
     ],
 )
 
-tf_cc_test(
+xla_cc_test(
     name = "cpu_key_value_sort_test",
     srcs = ["cpu_key_value_sort_test.cc"],
     deps = [
@@ -257,7 +259,7 @@ tf_cc_test(
     ],
 )
 
-tf_cc_test(
+xla_cc_test(
     name = "cpu_spmd_compile_test",
     srcs = ["cpu_spmd_compile_test.cc"],
     deps = [
@@ -274,7 +276,7 @@ tf_cc_test(
     ],
 )
 
-tf_cc_test(
+xla_cc_test(
     name = "cpu_topk_test",
     srcs = ["cpu_topk_test.cc"],
     deps = [
@@ -290,7 +292,7 @@ tf_cc_test(
     ],
 )
 
-tf_cc_test(
+xla_cc_test(
     name = "cpu_vectorization_test",
     srcs = ["cpu_vectorization_test.cc"],
     deps = [
@@ -307,7 +309,7 @@ tf_cc_test(
     ],
 )
 
-tf_cc_test(
+xla_cc_test(
     name = "cpu_while_test",
     srcs = ["cpu_while_test.cc"],
     deps = [

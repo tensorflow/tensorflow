@@ -28,7 +28,6 @@ limitations under the License.
 #include "llvm/Support/SourceMgr.h"
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/OwningOpRef.h"  // from @llvm-project
-#include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/mlir/runtime/transforms/calling_convention.h"
 #include "tensorflow/compiler/xla/mlir/runtime/transforms/specialization.h"
 #include "tensorflow/compiler/xla/mlir/runtime/transforms/type_converter.h"
@@ -113,6 +112,11 @@ class JitCompiler {
       Options opts, std::string_view mlir_module,
       absl::Span<const std::string_view> exported);
 
+  // Instantiates compiler from the mlir module.
+  static absl::StatusOr<std::unique_ptr<JitCompiler>> Instantiate(
+      Options opts, mlir::ModuleOp mlir_module,
+      absl::Span<const std::string_view> exported);
+
   // Makes an executable from an instance of the JitCompiler. This is the end of
   // life for the `JitCompiler`, it effectively converts the MLIR module
   // to the executable (function pointer) using LLVM JIT code generation.
@@ -165,6 +169,10 @@ class JitCompiler {
 
  private:
   JitCompiler(Options opts, std::string_view mlir_module);
+  JitCompiler(Options opts, mlir::ModuleOp mlir_module);
+
+  absl::Status ComputeOrdinalsForExportedFunctions(
+      absl::Span<const std::string_view> exported);
 
   absl::Status Error(std::string_view error) {
     // TODO(ezhulenev): Pass diagnstic as a status payload.
@@ -172,7 +180,8 @@ class JitCompiler {
   }
 
   Options opts_;
-  std::unique_ptr<mlir::MLIRContext> context_;
+  std::unique_ptr<mlir::MLIRContext> owned_context_;  // set if context is owned
+  mlir::MLIRContext* context_;
 
   std::string diagnostic_;
   llvm::raw_string_ostream diagnostic_os_;

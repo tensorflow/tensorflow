@@ -115,7 +115,7 @@ class SpaceToBatchNDOpDynamicModel : public SpaceToBatchNDOpModel {
   }
 };
 
-#ifdef GTEST_HAS_DEATH_TEST
+#if GTEST_HAS_DEATH_TEST
 TEST(SpaceToBatchNDOpTest, InvalidShapeTest) {
   EXPECT_DEATH(
       SpaceToBatchNDOpConstModel({TensorType_FLOAT32, {1, 3, 3, 1}}, {2, 2},
@@ -231,7 +231,7 @@ class QuantizedSpaceToBatchNDOpTest : public ::testing::Test {
   }
 };
 
-#ifdef GTEST_HAS_DEATH_TEST
+#if GTEST_HAS_DEATH_TEST
 TEST_F(QuantizedSpaceToBatchNDOpTest, ZeroNotInQuantizationRange) {
   // The test_util and actual quantization code currently ensure that the range
   // must include zero, but if that ever changes, this test will catch it.

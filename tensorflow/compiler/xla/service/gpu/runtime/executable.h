@@ -31,6 +31,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/runtime/collectives.h"
 #include "tensorflow/compiler/xla/service/gpu/runtime/conv.h"
 #include "tensorflow/compiler/xla/service/gpu/runtime/cublas_lt_matmul.h"
+#include "tensorflow/compiler/xla/service/gpu/runtime/fft.h"
 #include "tensorflow/compiler/xla/service/gpu/runtime/gemm.h"
 #include "tensorflow/compiler/xla/service/gpu/runtime/graph_launch.h"
 #include "tensorflow/compiler/xla/service/gpu/runtime/kernel_launch.h"
@@ -144,10 +145,13 @@ class GpuRuntimeExecutable {
   GemmConfigs gemm_configs_;
 
   // Keep a cache for conv configs for all conv operations in the program.
-  ConvRunnerCache conv_runners_cache_;
+  ConvRunners conv_runners_;
 
   // Support for running collective operations.
   CollectivesSupport collectives_;
+
+  // Keep a cache of fft plans for all FFT operations in the program.
+  FftPlans fft_plans_;
 
 #if GOOGLE_CUDA
   // Keep matmul execution plans (only if cuBLASLt is available).

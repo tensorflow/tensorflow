@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/tensorflow/transforms/collection_ops_util.h"
 
+#include <optional>
+
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/Optional.h"
@@ -211,7 +213,7 @@ llvm::Optional<RankedTensorType> GetElementTypeFromAccess(
       if (elem_type && elem_type.hasStaticShape()) return elem_type;
     }
   }
-  return llvm::None;
+  return std::nullopt;
 }
 
 // Creates a ReadVariableOp on a local variable.
@@ -315,7 +317,7 @@ Value ScatterAccumulateElements(Value indices, Value updates, Value buffer,
         GetElement(index, buffer, builder, loc, /*keep_slice_shape=*/true);
     starts_in_update[0] = i;
     auto update_slice_starts = GetR1Const(starts_in_update, builder, loc);
-    auto slice =
+    Value slice =
         builder
             .create<TF::SliceOp>(
                 loc, ArrayRef<Type>{old_slice.getType()},

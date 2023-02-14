@@ -14,6 +14,7 @@
 # ==============================================================================
 """Tests for operations in eager execution."""
 import gc
+import sys
 import threading
 import weakref
 
@@ -434,6 +435,9 @@ class OpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     t1.join()
 
   def testWeakrefEagerTensor(self):
+    if sys.version_info.major == 3 and sys.version_info.minor == 11:
+      # TODO(b/264947738)
+      self.skipTest('Not working in Python 3.11')
     x = constant_op.constant([[1.]])
     x.at1 = constant_op.constant([[2.]])
     x.at2 = 3.

@@ -36,12 +36,12 @@ limitations under the License.
 #include "ruy/profiler/profiler.h"  // from @ruy
 #include "tensorflow/lite/core/c/c_api_types.h"
 #include "tensorflow/lite/core/c/common.h"
+#include "tensorflow/lite/core/kernels/register.h"
 #include "tensorflow/lite/core/model.h"
 #include "tensorflow/lite/core/model_builder.h"
 #include "tensorflow/lite/core/subgraph.h"
 #include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/kernels/cpu_backend_context.h"
-#include "tensorflow/lite/kernels/register.h"
 #include "tensorflow/lite/op_resolver.h"
 #include "tensorflow/lite/optional_debug_tools.h"
 #include "tensorflow/lite/profiling/profile_summary_formatter.h"
@@ -744,6 +744,15 @@ TfLiteStatus BenchmarkTfLiteModel::Init() {
   TFLITE_MAY_LOG(INFO, (created_delegates.size() >= 2))
       << "Going to apply " << created_delegates.size()
       << " delegates one after another.";
+
+  // If created_delegates is empty, 'require_full_delegation' flag will not be
+  // checked, thus CPU fallback will happen. Adding check here to avoid
+  // fallback in this situation.
+  if (created_delegates.empty() &&
+      params_.Get<bool>("require_full_delegation")) {
+    TFLITE_LOG(ERROR) << "Disallowed CPU fallback detected.";
+    return kTfLiteError;
+  }
   for (auto& created_delegate : created_delegates) {
     const auto* delegate_provider = created_delegate.provider;
     TfLiteDelegate* delegate = created_delegate.delegate.get();
@@ -885,7 +894,7 @@ std::unique_ptr<tflite::OpResolver> BenchmarkTfLiteModel::GetOpResolver()
     resolver =
         new tflite::ops::builtin::BuiltinOpResolverWithoutDefaultDelegates();
   } else {
-    resolver = new tflite::ops::builtin::BuiltinOpResolver();
+    resolver = new tflite::ops::builtin::BuiltinOpResolverWithXNNPACK();
   }
   RegisterSelectedOps(resolver);
   return std::unique_ptr<tflite::OpResolver>(resolver);

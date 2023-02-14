@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include <memory>
+#include <optional>
 #include <queue>
 #include <string>
 #include <utility>
@@ -29,7 +30,6 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops_a_m.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
-#include "tensorflow/compiler/mlir/tensorflow/ir/tpu_embedding_ops_registry.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/lower_tf.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 #include "tensorflow/compiler/mlir/xla/transforms/passes.h"
@@ -91,20 +91,22 @@ void AddSupportedOpsUsingFolding(MLIRContext* context,
   supported_ops->insert(allowlist_ops.begin(), allowlist_ops.end());
 }
 
-// Adds the list of ops that are supported through dynamic padder using op by op
-// fallback to the TF2XLA bridge.
-// TODO(b/168036682): Remove this once ops are supported using dynamic padder
-// on MLIR bridge.
+// Adds the list of ops that are only supported in the old bridge.
+// TODO(b/168036682): Remove bounded dynamism ops now that MLIR bridge supports
+// bounded dynamism.
 // TODO(b/257574556): Remove the need for this manual list by making use of old
 // bridge phase 2 op list.
-void AddSupportedOpsUsingDynamicPadder(
-    MLIRContext* context, llvm::DenseSet<OperationName>* supported_ops) {
+void AddOldBridgeOnlyOps(MLIRContext* context,
+                         llvm::DenseSet<OperationName>* supported_ops) {
   llvm::SmallDenseSet<OperationName, 8> allowlist_ops = {
       OperationName(TF::DynamicPartitionOp::getOperationName(), context),
+      OperationName(TF::OutfeedEnqueueOp::getOperationName(), context),
       OperationName(TF::WhereOp::getOperationName(), context),
       OperationName(TF::UniqueOp::getOperationName(), context),
       OperationName(TF::XlaSetDynamicDimensionSizeOp::getOperationName(),
                     context),
+      OperationName(TF::XlaSpmdFullToShardShapeOp::getOperationName(), context),
+      OperationName(TF::XlaSpmdShardToFullShapeOp::getOperationName(), context),
   };
 
   supported_ops->insert(allowlist_ops.begin(), allowlist_ops.end());
@@ -155,14 +157,6 @@ void AddRewrittenEmbeddingOps(MLIRContext* context,
       TF::RecvTPUEmbeddingActivationsOp::getOperationName(), context));
   supported_ops->insert(OperationName(
       TF::SendTPUEmbeddingGradientsOp::getOperationName(), context));
-}
-
-// These TPU embedding ops are legalized during second phase of the bridge.
-void AddOpsFromTPUEmbeddingOpsRegistry(
-    MLIRContext* context, llvm::DenseSet<OperationName>* supported_ops) {
-  for (auto op_name : TF::TPUEmbeddingOpsRegistry::Global().GetOpsNames()) {
-    supported_ops->insert(OperationName(op_name, context));
-  }
 }
 
 // Stack, TensorList and TensorArray ops are rewritten during the second phase
@@ -421,15 +415,14 @@ void MarkOpsForOutsideCompilation::runOnOperation() {
   llvm::DenseSet<OperationName> supported_ops;
   PatternApplicator(std::move(patterns))
       .walkAllPatterns([&](const Pattern& pattern) {
-        Optional<OperationName> root_kind = pattern.getRootKind();
+        std::optional<OperationName> root_kind = pattern.getRootKind();
         if (root_kind.has_value()) supported_ops.insert(root_kind.value());
       });
   AddSupportedFunctionalOps(module.getContext(), &supported_ops);
   AddSupportedOpsUsingFolding(module.getContext(), &supported_ops);
-  AddSupportedOpsUsingDynamicPadder(module.getContext(), &supported_ops);
+  AddOldBridgeOnlyOps(module.getContext(), &supported_ops);
   AddRewrittenEmbeddingOps(module.getContext(), &supported_ops);
   AddRewrittenCompositeOps(module.getContext(), &supported_ops);
-  AddOpsFromTPUEmbeddingOpsRegistry(module.getContext(), &supported_ops);
 
   auto result = module.walk([&](tf_device::ClusterOp cluster) {
     // Only if `allow_soft_placement` attribute is true should we mark ops

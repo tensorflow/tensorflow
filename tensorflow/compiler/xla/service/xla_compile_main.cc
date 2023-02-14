@@ -24,29 +24,35 @@ limitations under the License.
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/DialectRegistry.h"  // from @llvm-project
 #include "mlir/Parser/Parser.h"  // from @llvm-project
+#include "stablehlo/dialect/Register.h"  // from @stablehlo
+#include "tensorflow/compiler/xla/autotune_results.pb.h"
+#include "tensorflow/compiler/xla/debug_options_flags.h"
 #include "tensorflow/compiler/xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "tensorflow/compiler/xla/pjrt/mlir_to_hlo.h"
 #include "tensorflow/compiler/xla/service/compiler.h"
 #include "tensorflow/compiler/xla/service/cpu/cpu_compiler.h"
 #include "tensorflow/compiler/xla/service/cpu/cpu_executable.h"
-#include "tensorflow/compiler/xla/service/gpu/executable.pb.h"
-#include "tensorflow/compiler/xla/service/gpu/gpu_compiler.h"
-#include "tensorflow/compiler/xla/service/gpu/nvptx_compiler.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/tsl/platform/env.h"
 #include "tensorflow/tsl/platform/init_main.h"
 #include "tensorflow/tsl/platform/protobuf.h"
 #include "tensorflow/tsl/util/command_line_flags.h"
 
+#if GOOGLE_CUDA
+#include "tensorflow/compiler/xla/service/gpu/executable.pb.h"
+#include "tensorflow/compiler/xla/service/gpu/gpu_compiler.h"
+#include "tensorflow/compiler/xla/service/gpu/nvptx_compiler.h"
+#endif
+
 namespace xla {
 namespace xla_compile {
 
 const char kUsageHeader[] =
-    "xla_compile performs ahead-of-time compilation of a MHLO module,\n"
-    "resulting in an AotCompilationResult compiled for CPU.\n"
+    "xla_compile performs ahead-of-time compilation of an MHLO or StableHLO "
+    "module,\nresulting in an AotCompilationResult compiled for CPU.\n"
     "A typical invocation looks like this:\n"
     "\n"
-    "   $ xla_compile --mhlo_file=mymhlo.mlir --output_file=output "
+    "   $ xla_compile --module_file=mymodule.mlir --output_file=output "
     "--platform=cpu"
     "\n";
 
@@ -62,11 +68,20 @@ StatusOr<std::string> AotCompileCpuExecutable(
   return result;
 }
 
+#if GOOGLE_CUDA
 StatusOr<std::string> AotCompileGpuExecutable(
     std::unique_ptr<HloModule> hlo_module,
-    const gpu::GpuTargetConfig& gpu_target_config) {
+    const gpu::GpuTargetConfig& gpu_target_config,
+    const AutotuneResults& autotune_results = AutotuneResults()) {
   gpu::NVPTXCompiler nvptx_compiler;
-  auto module_group = std::make_unique<HloModuleGroup>(std::move(hlo_module));
+  Compiler::CompileOptions compile_options;
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module_after_opt,
+                      nvptx_compiler.RunHloPassesWithoutDevice(
+                          std::move(hlo_module), compile_options,
+                          gpu_target_config, autotune_results));
+
+  auto module_group =
+      std::make_unique<HloModuleGroup>(std::move(module_after_opt));
   AotCompilationOptions aot_options(nvptx_compiler.PlatformId());
   aot_options.set_target_config(gpu_target_config);
   TF_ASSIGN_OR_RETURN(
@@ -75,26 +90,29 @@ StatusOr<std::string> AotCompileGpuExecutable(
   TF_ASSIGN_OR_RETURN(std::string result, aot_results[0]->SerializeAsString());
   return result;
 }
+#endif
 
-xla::Status XlaCompileMain(const std::string& mhlo_path,
+xla::Status XlaCompileMain(const std::string& module_path,
                            const std::string& output_path,
                            const std::string& platform,
-                           const std::string& gpu_target_config_path) {
-  std::string mhlo_string;
+                           const std::string& gpu_target_config_path,
+                           const std::string& autotune_results_path) {
+  std::string module_string;
   TF_RETURN_IF_ERROR(
-      tsl::ReadFileToString(tsl::Env::Default(), mhlo_path, &mhlo_string));
+      tsl::ReadFileToString(tsl::Env::Default(), module_path, &module_string));
 
   mlir::DialectRegistry dialects;
   // TODO(b/248362914): Register all required dialects.
   dialects.insert<mlir::arith::ArithDialect>();
   dialects.insert<mlir::mhlo::MhloDialect>();
   dialects.insert<mlir::func::FuncDialect>();
+  mlir::stablehlo::registerAllDialects(dialects);
 
   // Parse MHLO module.
   auto threading = mlir::MLIRContext::Threading::DISABLED;
   auto ctx = std::make_unique<mlir::MLIRContext>(dialects, threading);
   mlir::OwningOpRef<mlir::ModuleOp> module =
-      mlir::parseSourceString<mlir::ModuleOp>(mhlo_string, ctx.get());
+      mlir::parseSourceString<mlir::ModuleOp>(module_string, ctx.get());
 
   // Convert Mhlo to Hlo Module.
   XlaComputation xla_computation;
@@ -103,9 +121,7 @@ xla::Status XlaCompileMain(const std::string& mhlo_path,
   HloModuleProto hlo_module_proto = xla_computation.proto();
 
   TF_ASSIGN_OR_RETURN(ProgramShape shape, xla_computation.GetProgramShape());
-  DebugOptions debug_options;
-  debug_options.set_xla_gpu_enable_xla_runtime_executable(true);
-  debug_options.set_xla_backend_optimization_level(2);
+  DebugOptions debug_options = DefaultDebugOptionsIgnoringFlags();
   HloModuleConfig config(shape);
   config.set_debug_options(debug_options);
   TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> hlo_module,
@@ -115,6 +131,7 @@ xla::Status XlaCompileMain(const std::string& mhlo_path,
   std::string result;
   if (platform == "cpu") {
     TF_ASSIGN_OR_RETURN(result, AotCompileCpuExecutable(std::move(hlo_module)));
+#if GOOGLE_CUDA
   } else if (platform == "gpu") {
     // Parse GpuTargetConfig.
     std::string gpu_target_config_string;
@@ -127,8 +144,26 @@ xla::Status XlaCompileMain(const std::string& mhlo_path,
     if (!ok) return FailedPrecondition("Failed to parse GpuTargetConfigProto");
     gpu::GpuTargetConfig gpu_target_config(gpu_target_config_proto);
 
-    TF_ASSIGN_OR_RETURN(result, AotCompileGpuExecutable(std::move(hlo_module),
-                                                        gpu_target_config));
+    if (autotune_results_path.empty()) {
+      TF_ASSIGN_OR_RETURN(result, AotCompileGpuExecutable(std::move(hlo_module),
+                                                          gpu_target_config));
+    } else {
+      // Parse AutotuneResults.
+      std::string autotune_results_string;
+      TF_RETURN_IF_ERROR(tsl::ReadFileToString(tsl::Env::Default(),
+                                               autotune_results_path,
+                                               &autotune_results_string));
+      AutotuneResults autotune_results;
+      if (!tsl::protobuf::TextFormat::ParseFromString(autotune_results_string,
+                                                      &autotune_results)) {
+        return FailedPrecondition("Failed to parse AutotuneResults");
+      }
+
+      TF_ASSIGN_OR_RETURN(
+          result, AotCompileGpuExecutable(std::move(hlo_module),
+                                          gpu_target_config, autotune_results));
+    }
+#endif
   } else {
     return Unimplemented("platform %s not supported", platform);
   }
@@ -144,17 +179,23 @@ xla::Status XlaCompileMain(const std::string& mhlo_path,
 // Read the input file containing the MHLO module, and write a Serialized
 // AotCompilationResult to the output file.
 int main(int argc, char* argv[]) {
-  std::string mhlo_path;
+  std::string module_path;
   std::string output_path;
   std::string platform;
   std::string gpu_target_config_path;
+  std::string autotune_results_path;
   std::vector<tsl::Flag> flag_list = {
-      tsl::Flag("mhlo_file", &mhlo_path, "The path to MHLO file"),
+      tsl::Flag("module_file", &module_path,
+                "The path to the MHLO or StableHLO file"),
       tsl::Flag("output_file", &output_path, "The path to the output file"),
       tsl::Flag("platform", &platform,
                 "The platform on which the built executable runs"),
       tsl::Flag("gpu_target_config", &gpu_target_config_path,
-                "The path to serialized GpuTargetConfig")};
+                "The path to serialized GpuTargetConfig, required when"
+                " compiling for GPU"),
+      tsl::Flag("autotune_results", &autotune_results_path,
+                "The path to AutotuneResults, optional when compiling for"
+                " GPU")};
 
   tsl::string usage = xla::xla_compile::kUsageHeader;
   usage += tsl::Flags::Usage(argv[0], flag_list);
@@ -169,7 +210,8 @@ int main(int argc, char* argv[]) {
   tsl::port::InitMain(usage.c_str(), &argc, &argv);
 
   xla::Status result = xla::xla_compile::XlaCompileMain(
-      mhlo_path, output_path, platform, gpu_target_config_path);
+      module_path, output_path, platform, gpu_target_config_path,
+      autotune_results_path);
   if (!result.ok()) {
     LOG(ERROR) << "Compilation failed: " << result.error_message();
     return 1;

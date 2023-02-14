@@ -653,7 +653,7 @@ func.func @testEmptyResults(%arg0: tensor<0x2xf32>) -> tensor<0x2xf32> {
 //
 // CHECK-LABEL: func @yieldOp
 func.func @yieldOp(%arg0: tensor<f32>, %arg1: tensor<f32>, %arg2: tensor<i1>) -> (tensor<f32>) {
-  // CHECK-2: tf.Yield
+  // CHECK-COUNT-2: tf.Yield
   %0 = "tf.IfRegion"(%arg2) ({
       "tf.Yield"(%arg0) : (tensor<f32>) -> ()
     }, {
@@ -696,4 +696,48 @@ func.func @range_float() -> tensor<?xf32> {
   // CHECK: return %[[CST]]
   %0 = "tf.Range"(%cst, %cst_1, %cst_2) : (tensor<f32>, tensor<f32>, tensor<f32>) -> tensor<?xf32>
   func.return %0 : tensor<?xf32>
+}
+
+// CHECK-LABEL: func @testLogicalAndFoldsWithConstantFalse
+func.func @testLogicalAndFoldsWithConstantFalse(%arg0: tensor<i1>) -> (tensor<i1>) {
+  // CHECK: [[CST:%.+]] = "tf.Const"() {value = dense<false> : tensor<i1>} : () -> tensor<i1>
+  %cst = arith.constant dense<false> : tensor<i1>
+
+  %0 = "tf.LogicalAnd"(%cst, %arg0) : (tensor<i1>, tensor<i1>) -> tensor<i1>
+
+  // CHECK: return [[CST]]
+  func.return %0: tensor<i1>
+}
+
+// CHECK-LABEL: func @testLogicalAndFoldsWithConstantFalseSecondArg
+func.func @testLogicalAndFoldsWithConstantFalseSecondArg(%arg0: tensor<i1>) -> (tensor<i1>) {
+  // CHECK: [[CST:%.+]] = "tf.Const"() {value = dense<false> : tensor<i1>} : () -> tensor<i1>
+  %cst = arith.constant dense<false> : tensor<i1>
+
+  %0 = "tf.LogicalAnd"(%arg0, %cst) : (tensor<i1>, tensor<i1>) -> tensor<i1>
+
+  // CHECK: return [[CST]]
+  func.return %0: tensor<i1>
+}
+
+// CHECK-LABEL: func @testLogicalAndNoFoldWithConstTrue
+func.func @testLogicalAndNoFoldWithConstTrue(%arg0: tensor<i1>) -> (tensor<i1>) {
+  %cst = arith.constant dense<true> : tensor<i1>
+
+  // CHECK: %[[LOGICAL_AND:.*]] = "tf.LogicalAnd"
+  %0 = "tf.LogicalAnd"(%cst, %arg0) : (tensor<i1>, tensor<i1>) -> tensor<i1>
+
+  // CHECK: return %[[LOGICAL_AND]]
+  func.return %0 : tensor<i1>
+}
+
+// CHECK-LABEL: func @testLogicalAndDoesntFoldWithConstantFalseBroadcast
+func.func @testLogicalAndDoesntFoldWithConstantFalseBroadcast(%arg0: tensor<2xi1>) -> (tensor<2xi1>) {
+  %cst = arith.constant dense<false> : tensor<i1>
+
+  // CHECK: %[[LOGICAL_AND:.*]] = "tf.LogicalAnd"
+  %0 = "tf.LogicalAnd"(%cst, %arg0) : (tensor<i1>, tensor<2xi1>) -> tensor<2xi1>
+
+  // CHECK: return %[[LOGICAL_AND]]
+  func.return %0: tensor<2xi1>
 }

@@ -72,8 +72,9 @@ class GpuCudaMallocAsyncAllocator : public tsl::Allocator {
                                        bool compute_stats = true);
   ~GpuCudaMallocAsyncAllocator() override;
   std::string Name() override { return name_; }
-  void* AllocateRaw(size_t alignment, size_t num_bytes) override;
-  void DeallocateRaw(void* ptr) override;
+  void* AllocateRaw(size_t alignment,
+                    size_t num_bytes) override ABSL_NO_THREAD_SAFETY_ANALYSIS;
+  void DeallocateRaw(void* ptr) override ABSL_NO_THREAD_SAFETY_ANALYSIS;
 
   bool TracksAllocationSizes() const override;
 
@@ -100,6 +101,8 @@ class GpuCudaMallocAsyncAllocator : public tsl::Allocator {
   }
 
  private:
+  void PrintAllocatorStatisticsNoLock() ABSL_EXCLUSIVE_LOCKS_REQUIRED(lock_);
+
 #if TF_CUDA_MALLOC_ASYNC_SUPPORTED
   StreamExecutor* stream_exec_;  // Not owned.
 

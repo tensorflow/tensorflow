@@ -33,22 +33,11 @@ using ::xla::runtime::CustomCall;
 using ::xla::runtime::MemrefView;
 using ::xla::runtime::StridedMemrefView;
 
-namespace {
-struct Cholesky {
-  absl::Status operator()(const ServiceExecutableRunOptions* run_options,
-                          const DebugOptions* debug_options,
-                          StridedMemrefView operand, StridedMemrefView a,
-                          MemrefView workspace, MemrefView info,
-                          int64_t batch_size, bool is_lower, int64_t n) const;
-  static Cholesky Handler() { return Cholesky(); }
-};
-}  // namespace
-
-absl::Status Cholesky::operator()(
-    const ServiceExecutableRunOptions* run_options,
-    const DebugOptions* debug_options, StridedMemrefView operand,
-    StridedMemrefView a, MemrefView workspace, MemrefView info,
-    int64_t batch_size, bool is_lower, int64_t n) const {
+static absl::Status CholeskyImpl(const ServiceExecutableRunOptions* run_options,
+                                 const DebugOptions* debug_options,
+                                 StridedMemrefView operand, StridedMemrefView a,
+                                 MemrefView workspace, MemrefView info,
+                                 int64_t batch_size, bool is_lower, int64_t n) {
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
   se::DeviceMemoryBase operand_buffer = GetDeviceAddress(operand);
   se::DeviceMemoryBase a_buffer = GetDeviceAddress(a);
@@ -78,7 +67,7 @@ absl::Status Cholesky::operator()(
 }
 
 XLA_RUNTIME_DEFINE_CUSTOM_CALL(
-    Cholesky, Cholesky::Handler(), checks,
+    Cholesky, FunctionWrapper<CholeskyImpl>(), checks,
     CustomCall::Bind("xla.gpu.cholesky")
         .UserData<const ServiceExecutableRunOptions*>()
         .UserData<const DebugOptions*>()
@@ -91,7 +80,7 @@ XLA_RUNTIME_DEFINE_CUSTOM_CALL(
         .Attr<int64_t>("n"));
 
 void RegisterCholeskyCustomCalls(runtime::DirectCustomCallRegistry& registry) {
-  registry.Register("xla.gpu.cholesky", &xla::gpu::Cholesky);
+  registry.Register("xla.gpu.cholesky", Cholesky);
 }
 
 }  // namespace gpu

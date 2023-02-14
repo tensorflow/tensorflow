@@ -31,48 +31,17 @@ limitations under the License.
 namespace xla {
 
 struct DevicePutResult {
-#ifdef JAX_ENABLE_IFRT
-  explicit DevicePutResult(ifrt::Array* ifrt_array, bool weak_type,
-                           pybind11::object owning_pybuffer)
-      : ifrt_array(ifrt_array),
+  explicit DevicePutResult(
+      tsl::RCReference<ifrt::Array> ifrt_array, bool weak_type,
+      pybind11::object owning_pybuffer = pybind11::object())
+      : ifrt_array(std::move(ifrt_array)),
         weak_type(weak_type),
         owning_pybuffer(owning_pybuffer) {}
-  explicit DevicePutResult(std::unique_ptr<ifrt::Array> new_ifrt_array,
-                           bool weak_type)
-      : ifrt_array(new_ifrt_array.get()),
-        weak_type(weak_type),
-        owned_ifrt_array(std::move(new_ifrt_array)) {}
-#else
-  explicit DevicePutResult(PjRtBuffer* b, bool weak_type,
-                           pybind11::object owning_pybuffer)
-      : buffer(b), weak_type(weak_type), owning_pybuffer(owning_pybuffer) {}
-  explicit DevicePutResult(std::unique_ptr<PjRtBuffer> new_buffer,
-                           bool weak_type)
-      : buffer(new_buffer.get()),
-        weak_type(weak_type),
-        owned_buffer(std::move(new_buffer)) {}
-#endif
 
-#ifdef JAX_ENABLE_IFRT
   // Points to the on-device array. Not owned.
-  ifrt::Array* ifrt_array;
-#else
-  // Points to the on-device buffer. Not owned.
-  PjRtBuffer* buffer;
-#endif
+  tsl::RCReference<ifrt::Array> ifrt_array;
   bool weak_type;
 
-#ifdef JAX_ENABLE_IFRT
-  // One of owned_array or owning_pybuffer is valid. If owned_ifrt_array is
-  // non-null, it holds ownership of the array. Otherwise owning_pybuffer is
-  // the PyBuffer object that owns the array.
-  std::unique_ptr<ifrt::Array> owned_ifrt_array;
-#else
-  // One of owned_buffer or owning_pybuffer is valid. If owned_buffer is
-  // non-null, it holds ownership of the buffer. Otherwise owning_pybuffer is
-  // the PyBuffer object that owns the buffer.
-  std::unique_ptr<PjRtBuffer> owned_buffer;
-#endif
   pybind11::object owning_pybuffer;
 };
 
@@ -89,14 +58,9 @@ struct DevicePutOptions {
   bool squash_64bit_types = false;
   bool allow_zero_copy = true;
 };
-#ifdef JAX_ENABLE_IFRT
 StatusOr<DevicePutResult> DevicePut(pybind11::handle arg, ifrt::Client* client,
                                     ifrt::Device* to_device,
                                     const DevicePutOptions& options);
-#else
-StatusOr<DevicePutResult> DevicePut(pybind11::handle arg, PjRtDevice* to_device,
-                                    const DevicePutOptions& options);
-#endif
 
 // Returns `true` if `arg` is a JAX float0 array.
 bool IsFloat0(pybind11::array arg);

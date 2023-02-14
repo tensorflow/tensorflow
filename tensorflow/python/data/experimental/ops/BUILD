@@ -61,13 +61,27 @@ py_library(
     ],
     srcs_version = "PY3",
     deps = [
+        ":compression_ops",
         "//tensorflow/python:experimental_dataset_ops_gen",
         "//tensorflow/python:framework_ops",
+        "//tensorflow/python/data/experimental/service:_pywrap_server_lib",
         "//tensorflow/python/data/experimental/service:_pywrap_utils",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/data/ops:options",
         "//tensorflow/python/data/ops:structured_function",
         "//tensorflow/python/data/util:nest",
+    ],
+)
+
+py_library(
+    name = "distributed_save_op",
+    srcs = [
+        "distributed_save_op.py",
+    ],
+    deps = [
+        "//tensorflow/python:experimental_dataset_ops_gen",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/util",
     ],
 )
 
@@ -426,6 +440,7 @@ py_library(
         ":counter",
         ":data_service_ops",
         ":distribute",
+        ":distributed_save_op",
         ":enumerate_ops",
         ":error_ops",
         ":from_list",
@@ -448,6 +463,7 @@ py_library(
         "//tensorflow/python:dataset_ops_gen",
         "//tensorflow/python:util",
         "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/data/ops:debug_mode",
         "//tensorflow/python/data/util:nest",
     ],
 )

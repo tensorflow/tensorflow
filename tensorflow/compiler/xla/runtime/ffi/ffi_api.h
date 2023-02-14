@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <cstddef>
+#include <cstdint>
 #include <iostream>
 #include <iterator>
 #include <memory>
@@ -30,6 +31,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "tensorflow/compiler/xla/runtime/ffi/ffi_abi.h"
 #include "tensorflow/compiler/xla/runtime/ffi/ffi_c_api.h"
 
 namespace xla {
@@ -90,6 +92,9 @@ class Span {
 
   size_t size() const { return size_; }
 
+  T* begin() const { return data_; }
+  T* end() const { return data_ + size_; }
+
  private:
   T* data_;
   size_t size_;
@@ -141,12 +146,11 @@ class Ffi {
  public:
   virtual ~Ffi() = default;
 
-  virtual std::string_view name() const = 0;
   virtual XLA_FFI_Error* operator()(const XLA_FFI_Api* api,
                                     XLA_FFI_ExecutionContext* ctx, void** args,
                                     void** attrs, void** rets) const = 0;
 
-  static FfiBinding<> Bind(std::string name);
+  static FfiBinding<> Binding();
 
   template <typename T>
   static bool Isa(const XLA_FFI_Api* api, XLA_FFI_TypeId type_id);
@@ -173,23 +177,26 @@ class Module {
  protected:
   Module(const XLA_FFI_Api* api, std::string module_name,
          std::vector<ExportedFunction> exported_functions,
+         XLA_FFI_Module_StateType state_type,
          XLA_FFI_Module_CreateState* create_state,
          XLA_FFI_Module_DestroyState* destroy_state)
       : api_(api),
         module_name_(std::move(module_name)),
         exported_functions_(std::move(exported_functions)) {
-    Register(create_state, destroy_state);
+    Register(state_type, create_state, destroy_state);
   }
 
  private:
   // Register `this` module with the XLA runtime.
-  void Register(XLA_FFI_Module_CreateState* create_state,
+  void Register(XLA_FFI_Module_StateType state_type,
+                XLA_FFI_Module_CreateState* create_state,
                 XLA_FFI_Module_DestroyState* destroy_state) {
     XLA_FFI_Module_Register_Args args;
     args.struct_size = XLA_FFI_Module_Register_Args_STRUCT_SIZE;
     args.priv = nullptr;
     args.name = module_name_.c_str();
     args.module = reinterpret_cast<XLA_FFI_Module*>(this);
+    args.state_type = state_type;
     args.create_state = create_state;
     args.destroy_state = destroy_state;
 
@@ -229,8 +236,11 @@ class StatefulModule : public Module {
 
  protected:
   StatefulModule(const XLA_FFI_Api* api, std::string module_name,
-                 std::vector<ExportedFunction> exported_functions)
+                 std::vector<ExportedFunction> exported_functions,
+                 bool per_execution_state = false)
       : Module(api, std::move(module_name), std::move(exported_functions),
+               per_execution_state ? XLA_FFI_Module_State_PER_EXECUTION
+                                   : XLA_FFI_Module_State_PER_EXECUTABLE,
                CreateState, DestroyState) {}
 
  private:
@@ -269,6 +279,7 @@ class StatelessModule : public Module {
   StatelessModule(const XLA_FFI_Api* api, std::string module_name,
                   std::vector<ExportedFunction> exported_functions)
       : Module(api, std::move(module_name), std::move(exported_functions),
+               /*state_type=*/XLA_FFI_Module_State_PER_EXECUTABLE,
                /*create_state=*/nullptr, /*destroy_state=*/nullptr) {}
 };
 
@@ -377,20 +388,37 @@ struct BufferArg {
   Span<const int64_t> sizes;
 };
 
+// A type tag to represent dictionary attributes that can be decoded into
+// structs using aggregate attribute decoding.
+struct Dictionary {};
+
 template <typename T>
 bool Ffi::Isa(const XLA_FFI_Api* api, XLA_FFI_TypeId type_id) {
-  if constexpr (std::is_same_v<T, float>)
-    return api->XLA_FFI_Get_Float_TypeId() == type_id;
-  else if constexpr (std::is_same_v<T, int32_t>)
-    return api->XLA_FFI_Get_Int32_TypeId() == type_id;
-  else if constexpr (std::is_same_v<T, StridedBufferArg>)
-    return api->XLA_FFI_Get_StridedBufferArg_TypeId() == type_id;
-  else if constexpr (std::is_same_v<T, BufferArg>)
-    return api->XLA_FFI_Get_BufferArg_TypeId() == type_id;
-  else
-    // Static assert has to be type-dependent, and `!sizeof` is just one of the
-    // ways to always produce `false`.
-    static_assert(!sizeof(T), "Unsupported type");
+#define ISA(type, name)                  \
+  if constexpr (std::is_same_v<T, type>) \
+    return api->XLA_FFI_Get_##name##_TypeId() == type_id;
+
+  ISA(std::string_view, String);
+
+  ISA(float, Float);
+  ISA(double, Double);
+  ISA(bool, Int1);
+  ISA(int32_t, Int32);
+  ISA(int64_t, Int64);
+
+  ISA(Span<const float>, FloatArray);
+  ISA(Span<const double>, DoubleArray);
+  ISA(Span<const int32_t>, Int32Array);
+  ISA(Span<const int64_t>, Int64Array);
+
+  ISA(StridedBufferArg, StridedBufferArg);
+  ISA(BufferArg, BufferArg);
+  ISA(Dictionary, Dictionary);
+
+  assert(false && "Unsupported type");
+  return false;
+
+#undef ISA
 }
 
 //===----------------------------------------------------------------------===//
@@ -488,8 +516,8 @@ class FfiBinding {
 
   template <typename Fn>
   std::unique_ptr<FfiHandler<Fn, Ts...>> To(Fn fn) {
-    return std::unique_ptr<FfiHandler<Fn, Ts...>>(new FfiHandler<Fn, Ts...>(
-        std::forward<Fn>(fn), std::move(name_), std::move(attrs_)));
+    return std::unique_ptr<FfiHandler<Fn, Ts...>>(
+        new FfiHandler<Fn, Ts...>(std::forward<Fn>(fn), std::move(attrs_)));
   }
 
  private:
@@ -497,53 +525,29 @@ class FfiBinding {
   friend class FfiBinding;
   friend class Ffi;
 
-  explicit FfiBinding(std::string name) : name_(std::move(name)) {
+  explicit FfiBinding() {
     static_assert(sizeof...(Ts) == 0, "ffi arguments must be empty");
   }
 
   template <typename... TTs>
   FfiBinding(FfiBinding<TTs...>&& other)  // NOLINT
-      : name_(std::move(other.name_)), attrs_(std::move(other.attrs_)) {}
+      : attrs_(std::move(other.attrs_)) {}
 
   FfiBinding(FfiBinding&) = delete;
 
-  std::string name_;                // ffi name
   std::vector<std::string> attrs_;  // names of bound attributes
 };
 
-inline FfiBinding<> Ffi::Bind(std::string name) {
-  return FfiBinding<>(std::move(name));
-}
-
-//===----------------------------------------------------------------------===//
-// C structures that XLA FFI uses internally to encode arguments and attributes.
-//===----------------------------------------------------------------------===//
-
-// TODO(ezhulenev): Structures used for encoding must be shared between FFI and
-// custom calls because it's our ABI boundary.
-
-namespace internal {
-
-struct EncodedMemref {
-  uint8_t dtype;
-  uint8_t rank;
-  void* data;
-  int64_t dims[];
-};
-
-template <typename T>
-struct EncodedArray {
-  int64_t size;
-  const T* data;
-};
-
-}  // namespace internal
+inline FfiBinding<> Ffi::Binding() { return FfiBinding<>(); }
 
 //===----------------------------------------------------------------------===//
 // Helpers for decoding opaque arguments and attributes' memory.
 //===----------------------------------------------------------------------===//
 
 namespace internal {
+
+using runtime::internal::EncodedArray;
+using runtime::internal::EncodedMemref;
 
 // Decoded pair of argument type and opaque value.
 struct DecodedArg {
@@ -797,8 +801,6 @@ class FfiHandler : public Ffi {
   }
 
  public:
-  std::string_view name() const final { return name_; }
-
   XLA_FFI_Error* operator()(const XLA_FFI_Api* api,
                             XLA_FFI_ExecutionContext* ctx, void** args,
                             void** attrs, void** rets) const final {
@@ -866,9 +868,8 @@ class FfiHandler : public Ffi {
     return ToError(api, FfiStatus::Ok());
   }
 
-  FfiHandler(Fn fn, std::string name, std::vector<std::string> attrs)
+  FfiHandler(Fn fn, std::vector<std::string> attrs)
       : fn_(std::move(fn)),
-        name_(std::move(name)),
         attrs_(std::move(attrs)),
         attrs_idx_(attrs_.size()) {
     // Sort attributes names.
@@ -885,7 +886,6 @@ class FfiHandler : public Ffi {
 
   Fn fn_;
 
-  std::string name_;
   std::vector<std::string> attrs_;
 
   // A mapping from the attribute index to its index in the lexicographically
@@ -980,8 +980,139 @@ struct FfiArgDecoding<BufferArg> {
   }
 
 XLA_FFI_REGISTER_SCALAR_ATTR_DECODING(float);
+XLA_FFI_REGISTER_SCALAR_ATTR_DECODING(double);
+XLA_FFI_REGISTER_SCALAR_ATTR_DECODING(bool);
+XLA_FFI_REGISTER_SCALAR_ATTR_DECODING(int32_t);
+XLA_FFI_REGISTER_SCALAR_ATTR_DECODING(int64_t);
 
 #undef XLA_FFI_REGISTER_SCALAR_ATTR_DECODING
+
+#define XLA_FFI_REGISTER_ARRAY_ATTR_DECODING(T)                            \
+  template <>                                                              \
+  struct FfiAttrDecoding<Span<const T>> {                                  \
+    static std::optional<Span<const T>> Decode(const XLA_FFI_Api* api,     \
+                                               std::string_view name,      \
+                                               XLA_FFI_TypeId type_id,     \
+                                               void* value) {              \
+      if (!Ffi::Isa<Span<const T>>(api, type_id)) {                        \
+        return std::nullopt;                                               \
+      }                                                                    \
+                                                                           \
+      auto* encoded = reinterpret_cast<internal::EncodedArray<T>*>(value); \
+      return Span<const T>(encoded->data, encoded->size);                  \
+    }                                                                      \
+  }
+
+XLA_FFI_REGISTER_ARRAY_ATTR_DECODING(float);
+XLA_FFI_REGISTER_ARRAY_ATTR_DECODING(double);
+XLA_FFI_REGISTER_ARRAY_ATTR_DECODING(bool);
+XLA_FFI_REGISTER_ARRAY_ATTR_DECODING(int32_t);
+XLA_FFI_REGISTER_ARRAY_ATTR_DECODING(int64_t);
+
+#undef XLA_FFI_REGISTER_ARRAY_ATTR_DECODING
+
+template <>
+struct FfiAttrDecoding<std::string_view> {
+  static std::optional<std::string_view> Decode(const XLA_FFI_Api* api,
+                                                std::string_view name,
+                                                XLA_FFI_TypeId type_id,
+                                                void* value) {
+    if (!Ffi::Isa<std::string_view>(api, type_id)) {
+      return std::nullopt;
+    }
+
+    auto* encoded = reinterpret_cast<internal::EncodedArray<char>*>(value);
+    return std::string_view(encoded->data, encoded->size);
+  }
+};
+
+//===----------------------------------------------------------------------===//
+// Register an XLA FFI attribute decoding from dictionaries to structs.
+//===----------------------------------------------------------------------===//
+
+template <typename T>
+struct AggregateMember {
+  using Type = T;
+
+  explicit AggregateMember(std::string_view name) : name(name) {}
+  std::string_view name;
+};
+
+// Example: register decoding for a user-defined struct
+//
+//   struct PairOfI64 { int64_t a; int64_t b; };
+//
+//   XLA_FFI_REGISTER_AGGREGATE_ATTR_DECODING(
+//     PairOfI64,
+//     AggregateMember<int64_t>("a"),
+//     AggregateMember<int64_t>("b"));
+//
+#define XLA_FFI_REGISTER_AGGREGATE_ATTR_DECODING(T, ...)                       \
+  template <>                                                                  \
+  struct FfiAttrDecoding<T> {                                                  \
+    static std::optional<T> Decode(const XLA_FFI_Api* api,                     \
+                                   std::string_view name,                      \
+                                   XLA_FFI_TypeId type_id, void* value) {      \
+      if (!Ffi::Isa<Dictionary>(api, type_id)) {                               \
+        return std::nullopt;                                                   \
+      }                                                                        \
+                                                                               \
+      auto decoder = internal::AggregateDecoder<T>(__VA_ARGS__);               \
+      return decltype(decoder)::Decode(api, reinterpret_cast<void**>(value),   \
+                                       internal::AggregateNames(__VA_ARGS__)); \
+    }                                                                          \
+  }
+
+namespace internal {
+// Decodes aggregate attribute into the object of type `T` that must be
+// constructible from the `Ts` types.
+template <typename T, typename... Ts>
+struct DecodeAggregateAttr {
+  static constexpr size_t kSize = sizeof...(Ts);
+
+  static std::optional<T> Decode(const XLA_FFI_Api* api, void** value,
+                                 std::array<std::string_view, kSize> names) {
+    internal::DecodedAttrs attrs(value);
+    return Decode(api, attrs, names, std::make_index_sequence<kSize>{});
+  }
+
+  template <size_t... Is>
+  static std::optional<T> Decode(const XLA_FFI_Api* api,
+                                 internal::DecodedAttrs attrs,
+                                 std::array<std::string_view, kSize> names,
+                                 std::index_sequence<Is...>) {
+    // Check that the number of encoded attributes matches the signature.
+    if (kSize != attrs.size()) return std::nullopt;
+
+    // Check that aggregate member names match the expected names.
+    for (unsigned i = 0; i < kSize; ++i)
+      if (attrs[i].name != names[i]) return std::nullopt;
+
+    // Decode all arguments into std::optional containers. It is guaranteed
+    // that initializer list will be evaluated left-to-right, and we can rely
+    // on correct offsets computation.
+    std::tuple<std::optional<Ts>...> members = {FfiAttrDecoding<Ts>::Decode(
+        api, attrs[Is].name, attrs[Is].type_id, attrs[Is].value)...};
+
+    bool all_decoded = (std::get<Is>(members).has_value() && ...);
+    if (!all_decoded) return std::nullopt;
+
+    // Forward unpacked members to the type constructor.
+    return T{std::move(*std::get<Is>(members))...};
+  }
+};
+
+template <typename... Members>
+auto AggregateNames(Members... m) {
+  return std::array<std::string_view, sizeof...(Members)>{m.name...};
+}
+
+template <typename T, typename... Members>
+auto AggregateDecoder(Members... m) {
+  return DecodeAggregateAttr<T, typename Members::Type...>();
+}
+
+}  // namespace internal
 
 //===----------------------------------------------------------------------===//
 // XLA FFI helper macro for registering FFI implementations.

@@ -24,12 +24,13 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "tensorflow/lite/builtin_op_data.h"
 #include "tensorflow/lite/context_util.h"
 #include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/core/subgraph.h"
-#include "tensorflow/lite/schema/reflection/schema_generated.h"
+#include "tensorflow/lite/schema/mutable/schema_generated.h"
 #include "tensorflow/lite/schema/schema_conversion_utils.h"
 #include "tensorflow/lite/tools/serialization/enum_mapping.h"
 #include "tensorflow/lite/tools/versioning/op_version.h"
@@ -78,7 +79,7 @@ TfLiteStatus WriteImpl(const std::string& filename, void* data, size_t size) {
 
 std::pair<BuiltinOptions, flatbuffers::Offset<void>> CreateBuiltinUnion(
     flatbuffers::FlatBufferBuilder* fbb, enum BuiltinOperator op,
-    void* builtin_op_data, const TfLiteNode& node) {
+    void* builtin_op_data, int node_inputs_size) {
   switch (op) {
 #include "tensorflow/lite/tools/serialization/option_writer_generated.h"
   }
@@ -131,7 +132,7 @@ SubgraphWriter::ExportOperators(flatbuffers::FlatBufferBuilder* fbb) {
       // builtin
       auto builtin_options_and_type = CreateBuiltinUnion(
           fbb, static_cast<enum BuiltinOperator>(registration.builtin_code),
-          node.builtin_data, node);
+          node.builtin_data, node.inputs->size);
       builtin_options = builtin_options_and_type.second;
       builtin_options_type = builtin_options_and_type.first;
     } else {
@@ -459,6 +460,22 @@ void ModelWriter::Init(const std::vector<Subgraph*>& subgraphs,
                           &builtin_op_to_opcode_, serialize_dims_signature);
     subgraph_writers_.push_back(writer);
   }
+
+  // Populate subgraph_index_mapper_.
+  if (!subgraphs.empty()) {
+    absl::flat_hash_map<Subgraph*, int> subgraph_to_new_subgraph_index;
+    for (int i = 0; i < subgraphs.size(); ++i) {
+      subgraph_to_new_subgraph_index[subgraphs[i]] = i;
+    }
+
+    auto* all_subgraphs = subgraphs[0]->GetSubgraphs();
+    for (int i = 0; i < all_subgraphs->size(); ++i) {
+      auto it = subgraph_to_new_subgraph_index.find(all_subgraphs->at(i));
+      if (it != subgraph_to_new_subgraph_index.end()) {
+        subgraph_index_mapper_[i] = it->second;
+      }
+    }
+  }
 }
 
 flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<Buffer>>>
@@ -494,6 +511,7 @@ TfLiteStatus ModelWriter::GetBuffer(std::unique_ptr<uint8_t[]>* out,
                            description, buffers);
   ::tflite::FinishModelBuffer(builder, model);
   ::tflite::UpdateOpVersion(builder.GetBufferPointer());
+  UpdateSubgraphReferences(&builder);
   const uint8_t* buffer = builder.GetBufferPointer();
   *size = builder.GetSize();
   (*out).reset(new uint8_t[*size]);
@@ -525,6 +543,47 @@ TfLiteStatus ModelWriter::RegisterCustomWriter(const std::string& custom_name,
   for (auto& subgraph_writer : subgraph_writers_) {
     subgraph_writer.RegisterCustomWriter(custom_name, custom_writer);
   }
+  return kTfLiteOk;
+}
+
+TfLiteStatus ModelWriter::UpdateSubgraphReferences(
+    flatbuffers::FlatBufferBuilder* fbb) {
+  auto model = tflite::GetMutableModel(fbb->GetBufferPointer());
+
+  for (SubGraph* subgraph : *model->mutable_subgraphs()) {
+    for (Operator* op : *subgraph->mutable_operators()) {
+      if (op->builtin_options_type() == BuiltinOptions_WhileOptions) {
+        auto while_options =
+            static_cast<tflite::WhileOptions*>(op->mutable_builtin_options());
+        auto new_cond_index =
+            subgraph_index_mapper_.find(while_options->cond_subgraph_index());
+        auto new_body_index =
+            subgraph_index_mapper_.find(while_options->body_subgraph_index());
+        if (new_cond_index == subgraph_index_mapper_.end() ||
+            new_body_index == subgraph_index_mapper_.end()) {
+          // Subgraph not found in the map.
+          return kTfLiteError;
+        }
+        while_options->mutate_cond_subgraph_index(new_cond_index->second);
+        while_options->mutate_body_subgraph_index(new_body_index->second);
+      } else if (op->builtin_options_type() == BuiltinOptions_IfOptions) {
+        auto if_options =
+            static_cast<tflite::IfOptions*>(op->mutable_builtin_options());
+        auto new_then_index =
+            subgraph_index_mapper_.find(if_options->then_subgraph_index());
+        auto new_else_index =
+            subgraph_index_mapper_.find(if_options->else_subgraph_index());
+        if (new_then_index == subgraph_index_mapper_.end() ||
+            new_else_index == subgraph_index_mapper_.end()) {
+          // Subgraph not found in the map.
+          return kTfLiteError;
+        }
+        if_options->mutate_then_subgraph_index(new_then_index->second);
+        if_options->mutate_else_subgraph_index(new_else_index->second);
+      }
+    }
+  }
+
   return kTfLiteOk;
 }
 

@@ -15,7 +15,9 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_TOOLS_MODEL_LOADER_H_
 #define TENSORFLOW_LITE_TOOLS_MODEL_LOADER_H_
 
+#ifndef _WIN32
 #include <unistd.h>
+#endif  // !_WIN32
 
 #include <cstddef>
 #include <cstdlib>
@@ -24,7 +26,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/strings/string_view.h"
-#include "tensorflow/lite/model_builder.h"
+#include "tensorflow/lite/core/model_builder.h"
 
 namespace tflite {
 namespace tools {

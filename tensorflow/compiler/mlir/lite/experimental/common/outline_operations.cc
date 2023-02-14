@@ -142,11 +142,11 @@ func::FuncOp BuildFuncOp(const Subgraph& subgraph, OpBuilder& builder,
   // it. Cloning Operation(s) will create cloned Value(s) for the results of a
   // cloned op, but it needs a reference to the new operand Value(s) which are
   // the result of the cloned ops. The approach is to traverse the subgraph in
-  // order, accumulating clones of defined Values into a `BlockAndValueMapping`
+  // order, accumulating clones of defined Values into a `IRMapping`
   // and pass that map to calls to clone ops.
   OpBuilder function_builder(new_func.getBody());
   // Prefered data structure for mapping MLIR values.
-  BlockAndValueMapping values_in_scope;
+  IRMapping values_in_scope;
   // Function arguments can appear as operands, so they clone should
   // be aware of them.
   assert(subgraph.FuncArguments().size() == new_func.getNumArguments());

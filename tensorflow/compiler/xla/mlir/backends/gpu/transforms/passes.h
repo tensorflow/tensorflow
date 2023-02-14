@@ -30,7 +30,7 @@ namespace gpu {
 #define GEN_PASS_DECL_CONVERTLMHLOTOGPULAUNCHPASS
 #define GEN_PASS_DECL_CONVERTLMHLOTOGPURUNTIMEPASS
 #define GEN_PASS_DECL_CONVERTMEMREFGETGLOBALTOARGPASS
-#define GEN_PASS_DECL_CONVERTLAUNCHFUNCTOCUDAGRAPHPASS
+#define GEN_PASS_DECL_OUTLINECUDAGRAPHSPASS
 #include "tensorflow/compiler/xla/mlir/backends/gpu/transforms/passes.h.inc"
 
 class ThunkSequence;  // forward declare
@@ -91,11 +91,11 @@ std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
 createAddHloTraceAnnotationsPass();
 
 //===----------------------------------------------------------------------===//
-// XLA runtime <-> Cuda Graphs experimental integration.
+// XLA runtime <-> Cuda Graphs integration.
 //===----------------------------------------------------------------------===//
 
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
-createConvertLaunchFuncToCudaGraphPass();
+createOutlineCudaGraphsPass();
 
 //===-----------------------------------------------------------------------===/
 

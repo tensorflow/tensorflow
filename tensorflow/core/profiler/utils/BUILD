@@ -69,9 +69,7 @@ cc_library(
 cc_library(
     name = "format_utils",
     hdrs = ["format_utils.h"],
-    deps = [
-        "//tensorflow/core:lib",
-    ],
+    deps = ["//tensorflow/tsl/profiler/utils:format_utils"],
 )
 
 cc_library(
@@ -139,6 +137,10 @@ cc_library(
     name = "timespan",
     hdrs = ["timespan.h"],
     copts = tf_profiler_copts(),
+    visibility = [
+        "//tensorflow/core/profiler:internal",
+        "//tensorflow/tsl/profiler/utils:__pkg__",
+    ],
     deps = ["//tensorflow/tsl/profiler/utils:timespan"],
 )
 
@@ -275,6 +277,10 @@ cc_library(
     srcs = ["derived_timeline.cc"],
     hdrs = ["derived_timeline.h"],
     copts = tf_profiler_copts(),
+    visibility = [
+        "//tensorflow/core/profiler:internal",
+        "//tensorflow/tsl/profiler/utils:__pkg__",
+    ],
     deps = [
         ":gpu_event_stats",
         ":group_events",
