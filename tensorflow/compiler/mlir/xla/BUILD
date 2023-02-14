@@ -371,29 +371,3 @@ tf_cc_binary(
         "@stablehlo//:register",
     ],
 )
-
-tf_cc_binary(
-    name = "xla-opt-gpu",
-    testonly = True,
-    srcs = ["xla_opt_main.cc"],
-    deps = [
-        ":adjust_layout",  # buildcleaner: keep
-        ":tf_xla_passes",  # buildcleaner: keep
-        ":xla_legalize_tf",  # buildcleaner: keep
-        ":xla_legalize_tf_no_fallback",  # buildcleaner: keep
-        "//tensorflow/compiler/mlir:init_mlir",
-        "//tensorflow/compiler/mlir/tensorflow:tensorflow_types",
-        "//tensorflow/compiler/mlir/tensorflow:tf_dialect_passes",
-        "//tensorflow/compiler/xla/mlir/framework/ir:xla_framework",
-        "//tensorflow/compiler/xla/mlir/framework/transforms:passes",
-        "//tensorflow/compiler/xla/mlir_hlo:all_passes",
-        "//tensorflow/compiler/xla/mlir_hlo:hlo_dialect_registration",
-        "//tensorflow/compiler/xla/service:gpu_plugin",
-        "//tensorflow/compiler/xla/service/cpu:hlo_xla_runtime_pipeline",
-        "//tensorflow/compiler/xla/translate/mhlo_to_lhlo_with_xla",  # buildcleaner: keep
-        "//tensorflow/core/ir/types:Dialect",
-        "@llvm-project//mlir:AllPassesAndDialects",
-        "@llvm-project//mlir:MlirOptLib",
-        "@stablehlo//:register",
-    ],
-)
