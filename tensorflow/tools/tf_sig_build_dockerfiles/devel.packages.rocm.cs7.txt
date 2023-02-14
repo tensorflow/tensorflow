@@ -43,6 +43,7 @@ re2c
 rpm 
 rpm-build 
 subversion 
+sudo 
 wget
 kernel-devel-uname-r
 
