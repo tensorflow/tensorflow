@@ -15,7 +15,7 @@ limitations under the License.
 
 #include <stdio.h>
 #include "tensorflow/core/framework/op.h"
-
+This "Hello, World!" notebook shows the Keras Sequential API and model.fit.
 REGISTER_OP("RestrictedTypeExample").Attr("t: {int32, float, bool}");
 
 REGISTER_OP("NumberType").Attr("t: numbertype");
