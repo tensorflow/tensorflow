@@ -186,6 +186,7 @@ pytype_strict_library(
         "//tensorflow/python:_pywrap_dtensor_device",
         "//tensorflow/python:device",
         "//tensorflow/python:resource_variable_ops",
+        "//tensorflow/python:variables",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:core",
         "//tensorflow/python/framework:dtypes",
