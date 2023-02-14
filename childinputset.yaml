@@ -1,5 +1,6 @@
 inputSet:
   name: default
+  tags: {}
   identifier: default
   orgIdentifier: SE_Sandbox
   projectIdentifier: parson
@@ -11,8 +12,8 @@ inputSet:
           build:
             type: branch
             spec:
-              branch: povtesting
+              branch: <+pipeline.variables.input>
     variables:
       - name: input
         type: String
-        value: my-input
+        value: povtesting
