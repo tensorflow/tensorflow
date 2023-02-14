@@ -262,7 +262,8 @@ class QuantizationMode:
     # to constants with trained scale.
     self._experimental_low_bit_qat = experimental_low_bit_qat
 
-    self._full_integer_quantization_bias_type = full_integer_quantization_bias_type
+    self._full_integer_quantization_bias_type = \
+        full_integer_quantization_bias_type
     self._validate_full_integer_quantization_bias_type()
 
     self.enable_mlir_variable_quantization = (
@@ -468,7 +469,8 @@ class QuantizationMode:
 
     if self.activations_type() == _dtypes.float32:
       raise ValueError(
-          "`full_integer_quantization_bias_type` is only supported for full integer quantization."
+          f"`full_integer_quantization_bias_type` "
+          f"is only supported for full integer quantization."
       )
 
     if self.activations_type() == _dtypes.int8 and bias_type != _dtypes.int32:
@@ -477,7 +479,9 @@ class QuantizationMode:
           f"Current setting bias type: {bias_type}")
 
     if self.activations_type(
-    ) == _dtypes.int16 and bias_type != _dtypes.int32 and bias_type != _dtypes.int64:
+    ) == _dtypes.int16 and \
+      bias_type != _dtypes.int32 and \
+        bias_type != _dtypes.int64:
       raise ValueError(
           f"Expected bias type to be `dtypes.int32` or `dtypes.int64` for "
           f"Int16Quant. Current setting bias type: {bias_type}")
@@ -781,7 +785,8 @@ class TFLiteConverterBase:
   def _get_original_model_type(self):
     """One-time getter to return original model type and set it to NONE."""
     model_type = TFLiteConverterBase._original_model_type
-    TFLiteConverterBase._original_model_type = conversion_metdata_fb.ModelType.NONE
+    TFLiteConverterBase._original_model_type = \
+        conversion_metdata_fb.ModelType.NONE
     return model_type
 
   def _save_conversion_params_metric(self,
