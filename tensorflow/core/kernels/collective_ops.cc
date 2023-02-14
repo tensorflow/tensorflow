@@ -1240,6 +1240,51 @@ REGISTER_KERNEL_BUILDER(Name("CollectiveReduceV3").Device(DEVICE_CPU),
 REGISTER_KERNEL_BUILDER(Name("CollectiveReduceV3").Device(DEVICE_GPU),
                         CollectiveReduceV3OpKernel);
 
+class CollectiveAllToAllV2OpKernel : public CollectiveOpV2Kernel {
+ public:
+  explicit CollectiveAllToAllV2OpKernel(OpKernelConstruction* c)
+      : CollectiveOpV2Kernel(c) {
+    name_ = strings::StrCat(c->def().name(), ": AllToAllV2");
+    VLOG(2) << "CollectiveAllToAllV2 " << this << " name " << name_
+            << " communication_hint " << communication_hint_;
+  }
+
+  void ComputeAsync(OpKernelContext* c, DoneCallback done) override {
+    auto col_params = new CollectiveParams();
+    auto done_with_cleanup = [col_params, done = std::move(done)]() {
+      done();
+      col_params->Unref();
+    };
+    OP_REQUIRES_OK_ASYNC(c,
+                         FillCollectiveParams(col_params, ALL_TO_ALL_COLLECTIVE,
+                                              /*group_size*/ c->input(1),
+                                              /*group_key*/ c->input(2),
+                                              /*instance_key*/ c->input(3)),
+                         done_with_cleanup);
+    col_params->instance.shape = c->input(0).shape();
+    VLOG(1) << "CollectiveAllToAllV2 group_size "
+            << col_params->group.group_size << " group_key "
+            << col_params->group.group_key << " instance_key "
+            << col_params->instance.instance_key;
+    // Allocate the output tensor.
+    Tensor* output = nullptr;
+    OP_REQUIRES_OK_ASYNC(c,
+                         c->forward_input_or_allocate_output(
+                             {0}, 0, col_params->instance.shape, &output),
+                         done_with_cleanup);
+    Run(c, col_params, std::move(done_with_cleanup));
+  }
+};
+
+REGISTER_KERNEL_BUILDER(Name("CollectiveAllToAllV2").Device(DEVICE_CPU),
+                        CollectiveAllToAllV2OpKernel);
+REGISTER_KERNEL_BUILDER(Name("CollectiveAllToAllV2")
+                            .Device(DEVICE_DEFAULT)
+                            .HostMemory("group_size")
+                            .HostMemory("group_key")
+                            .HostMemory("instance_key"),
+                        CollectiveAllToAllV2OpKernel);
+
 class CollectiveAllToAllV3OpKernel : public CollectiveOpV3Kernel {
  public:
   explicit CollectiveAllToAllV3OpKernel(OpKernelConstruction* c)
