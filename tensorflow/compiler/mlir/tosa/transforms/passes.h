@@ -58,7 +58,7 @@ std::unique_ptr<OperationPass<func::FuncOp>> createLegalizeTFLPass(
 std::unique_ptr<OperationPass<func::FuncOp>> createLegalizeTFTFLPass();
 std::unique_ptr<OperationPass<func::FuncOp>> createConvertTFLUint8Pass();
 std::unique_ptr<OperationPass<func::FuncOp>> createStripQuantTypesPass();
-std::unique_ptr<OperationPass<func::FuncOp>> createStripComplexTypesPass();
+std::unique_ptr<OperationPass<func::FuncOp>> createLowerComplexTypesPass();
 std::unique_ptr<OperationPass<func::FuncOp>> createDequantizeTFLSoftmaxPass();
 
 #define GEN_PASS_REGISTRATION
@@ -68,7 +68,7 @@ std::unique_ptr<OperationPass<func::FuncOp>> createDequantizeTFLSoftmaxPass();
 #define GEN_PASS_DECL_TOSAFUSEBIASTFPASS
 #define GEN_PASS_DECL_TOSACONVERTTFLUINT8PASS
 #define GEN_PASS_DECL_TOSASTRIPQUANTTYPESPASS
-#define GEN_PASS_DECL_TOSASTRIPCOMPLEXTYPESPASS
+#define GEN_PASS_DECL_TOSALOWERCOMPLEXTYPESPASS
 #define GEN_PASS_DECL_TOSADEQUANTIZETFLSOFTMAXPASS
 
 #include "tensorflow/compiler/mlir/tosa/transforms/passes.h.inc"

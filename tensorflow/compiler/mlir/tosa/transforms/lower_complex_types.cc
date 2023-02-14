@@ -42,20 +42,20 @@ limitations under the License.
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tosa/transforms/passes.h"
 
-#define PASS_NAME "tosa-strip-complex-types"
+#define PASS_NAME "tosa-lower-complex-types"
 #define DEBUG_TYPE PASS_NAME
 
 namespace mlir {
 namespace tosa {
 namespace {
 
-#define GEN_PASS_DEF_TOSASTRIPCOMPLEXTYPESPASS
+#define GEN_PASS_DEF_TOSALOWERCOMPLEXTYPESPASS
 #include "tensorflow/compiler/mlir/tosa/transforms/passes.h.inc"
 
-class StripComplexTypes
-    : public impl::TosaStripComplexTypesPassBase<StripComplexTypes> {
+class LowerComplexTypes
+    : public impl::TosaLowerComplexTypesPassBase<LowerComplexTypes> {
  public:
-  explicit StripComplexTypes() {}
+  explicit LowerComplexTypes() {}
   void runOnOperation() override;
 };
 
@@ -115,7 +115,7 @@ static bool isIllegalType(Type type) {
   return false;
 }
 
-void StripComplexTypes::runOnOperation() {
+void LowerComplexTypes::runOnOperation() {
   ComplexTypeConverter converter;
   ConversionTarget target(getContext());
 
@@ -154,8 +154,8 @@ void StripComplexTypes::runOnOperation() {
 
 }  // anonymous namespace
 
-std::unique_ptr<OperationPass<func::FuncOp>> createStripComplexTypesPass() {
-  return std::make_unique<StripComplexTypes>();
+std::unique_ptr<OperationPass<func::FuncOp>> createLowerComplexTypesPass() {
+  return std::make_unique<LowerComplexTypes>();
 }
 }  // namespace tosa
 }  // namespace mlir

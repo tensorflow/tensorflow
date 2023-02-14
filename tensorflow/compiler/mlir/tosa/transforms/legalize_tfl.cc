@@ -3951,11 +3951,8 @@ LogicalResult ConvertTFLRealOp::matchAndRewrite(
   // as a tensor of datatype float32 and shape [x, ..., y, 2].
   // This is because TOSA does not have support for complex
   // types. An unrealized conversion is inserted to handle
-  // this discrepency.
-  llvm::SmallVector<int64_t> cast_size;
-  for (auto dim : input_ty.getShape()) {
-    cast_size.push_back(dim);
-  }
+  // this discrepancy.
+  llvm::SmallVector<int64_t> cast_size = to_vector(input_ty.getShape());
   cast_size.push_back(2);
   auto casted_ty = RankedTensorType::get(cast_size, rewriter.getF32Type());
   Value casted = rewriter
@@ -3966,10 +3963,7 @@ LogicalResult ConvertTFLRealOp::matchAndRewrite(
   // Slice the input to get the "real" values.
   const int64_t rank = input_ty.getRank();
   llvm::SmallVector<int64_t> start(rank + 1, 0);
-  llvm::SmallVector<int64_t> size;
-  for (auto dim : input_ty.getShape()) {
-    size.push_back(dim);
-  }
+  llvm::SmallVector<int64_t> size = to_vector(input_ty.getShape());
   size.push_back(1);
   auto slice_ty = RankedTensorType::get(size, rewriter.getF32Type());
   auto slice_op =
@@ -4013,11 +4007,8 @@ LogicalResult ConvertTFLImagOp::matchAndRewrite(
   // as a tensor of datatype float32 and shape [x, ..., y, 2].
   // This is because TOSA does not have support for complex
   // types. An unrealized conversion is inserted to handle
-  // this discrepency.
-  llvm::SmallVector<int64_t> cast_size;
-  for (auto dim : input_ty.getShape()) {
-    cast_size.push_back(dim);
-  }
+  // this discrepancy.
+  llvm::SmallVector<int64_t> cast_size = to_vector(input_ty.getShape());
   cast_size.push_back(2);
   auto casted_ty = RankedTensorType::get(cast_size, rewriter.getF32Type());
   Value casted = rewriter
@@ -4026,13 +4017,9 @@ LogicalResult ConvertTFLImagOp::matchAndRewrite(
                      .getResult(0);
 
   // Slice the input to the "imag" values.
-  llvm::SmallVector<int64_t> start;
-  llvm::SmallVector<int64_t> size;
-  for (auto dim : input_ty.getShape()) {
-    start.push_back(0);
-    size.push_back(dim);
-  }
+  llvm::SmallVector<int64_t> start(input_ty.getRank(), 0);
   start.push_back(1);
+  llvm::SmallVector<int64_t> size = to_vector(input_ty.getShape());
   size.push_back(1);
 
   auto slice_ty = RankedTensorType::get(size, rewriter.getF32Type());
