@@ -32,8 +32,8 @@ ACCURACY_MODELS = [
 ]
 
 LATENCY_MODELS = [
-    "//tensorflow/lite/java/demo/app/src/main/assets:mobilenet_v1_1.0_224.tflite",
-    "//tensorflow/lite/java/demo/app/src/main/assets:mobilenet_v1_1.0_224_quant.tflite",
+    "@tflite_mobilenet_float//:mobilenet_v1_1.0_224.tflite",
+    "@tflite_mobilenet_quant//:mobilenet_v1_1.0_224_quant.tflite",
 ]
 
 COPY_CMD = """

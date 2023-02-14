@@ -46,7 +46,7 @@ std::vector<std::string> toStringVector(JNIEnv* env,
 }
 
 // Serializes the proto message into jbyteArray.
-jbyteArray CppProtoToBytes(JNIEnv* env, const proto2::MessageLite& proto) {
+jbyteArray CppProtoToBytes(JNIEnv* env, const google::protobuf::MessageLite& proto) {
   jbyteArray array = nullptr;
   const int byte_size = proto.ByteSizeLong();
   if (byte_size) {
