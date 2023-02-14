@@ -39,4 +39,4 @@ pipeline:
     - name: parson_demo_key_secret
       type: String
       description: ""
-      value: <+secrets.getValue("parsonApiKey")
+      value: <+secrets.getValue("parsonapikey")
