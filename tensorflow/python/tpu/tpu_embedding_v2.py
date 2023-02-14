@@ -335,7 +335,7 @@ class TPUEmbedding(autotrackable.AutoTrackable):
           self._dynamic_learning_rates.append(table.optimizer.learning_rate)
 
       # We need to list of host devices for the load/retrieve operations.
-      self._hosts = get_list_of_hosts(self._strategy)
+      self._hosts = tpu_embedding_v2_utils.get_list_of_hosts(self._strategy)
 
     self._built = False
     self._verify_output_shapes_on_enqueue = True
@@ -1579,25 +1579,6 @@ registration.register_tf_checkpoint_saver(
     # SavedModel.
     strict_predicate_restore=False
 )
-
-
-def get_list_of_hosts(strategy: tpu_strategy.TPUStrategy) -> List[Text]:
-  """Returns a sorted list of CPU devices for the remote jobs.
-
-  Args:
-    strategy: A TPUStrategy object.
-
-  Returns:
-    A sort list of device strings.
-  """
-  list_of_hosts = []
-  # Assume this is sorted by task
-  for tpu_device in strategy.extended.worker_devices:
-    host = device_util.get_host_for_device(tpu_device)
-    if host not in list_of_hosts:
-      list_of_hosts.append(host)
-  assert len(list_of_hosts) == strategy.extended.num_hosts
-  return list_of_hosts
 
 
 def extract_variable_info(
