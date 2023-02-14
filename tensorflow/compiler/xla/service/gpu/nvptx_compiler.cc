@@ -120,7 +120,8 @@ Status NVPTXCompiler::OptimizeHloConvolutionCanonicalization(
   pipeline.AddPass<CudnnFusedConvRewriter>(cuda_compute_capability);
   pipeline.AddPass<GpuConvPaddingLegalization>();
   pipeline.AddPass<CudnnPadForConvolutions>(cuda_compute_capability);
-  pipeline.AddPass<CudnnVectorizeConvolutions>(cuda_compute_capability);
+  pipeline.AddPass<CudnnVectorizeConvolutions>(cuda_compute_capability,
+                                               dnn_version);
   // The conv padding/vectorization passes which we need to get rid of.  They
   // also leave behind unnecessary tuple/get-tuple-element pairs that
   // TupleSimplifier fixes.
