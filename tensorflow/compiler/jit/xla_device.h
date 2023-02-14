@@ -45,6 +45,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
+#include "tensorflow/core/tfrt/common/async_value_tensor.h"
 
 namespace tensorflow {
 
@@ -233,6 +234,7 @@ class XlaDevice : public LocalDevice {
   const int intra_op_parallelism_threads_;
   // Memory allocator associated with this device.
   Allocator* xla_allocator_ TF_GUARDED_BY(mu_) = nullptr;  // Not owned.
+  std::unique_ptr<AsyncValueAllocator> pjrt_allocator_ TF_GUARDED_BY(mu_);
 
   // Stream associated with this device. Operations enqueued on this
   // stream are executed on the device. Operations include data
