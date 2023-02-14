@@ -1,0 +1,26 @@
+---
+pipeline:
+  projectIdentifier: "parson"
+  orgIdentifier: "SE_Sandbox"
+  tags: {}
+  stages:
+  - stage:
+      name: "Child 1"
+      identifier: "Child_1"
+      description: ""
+      type: "Pipeline"
+      spec:
+        org: "SE_Sandbox"
+        pipeline: "tensorflow_chained_child_pipeline_1"
+        project: "parson"
+        inputs:
+          identifier: "tensorflow_chained_child_pipeline_1"
+          properties:
+            ci:
+              codebase:
+                build: "<+input>"
+        outputs: []
+      tags: {}
+      variables: []
+  identifier: "tensorflow_pr_pipeline_chaining_using_curl"
+  name: "tensorflow pr pipeline chaining using curl"
