@@ -1,0 +1,64 @@
+pipeline:
+  projectIdentifier: parson
+  orgIdentifier: SE_Sandbox
+  tags: {}
+  stages:
+    - stage:
+        name: test
+        identifier: test
+        description: ""
+        type: CI
+        spec:
+          cloneCodebase: false
+          platform:
+            os: Linux
+            arch: Amd64
+          runtime:
+            type: Cloud
+            spec: {}
+          execution:
+            steps:
+              - step:
+                  type: Run
+                  name: Run_1
+                  identifier: Run_1
+                  spec:
+                    shell: Sh
+                    command: echo "<+secrets.getValue("parsonapikey")>"
+    - stage:
+        name: Pipeline Trigger with Curl
+        identifier: Component_A
+        type: CI
+        spec:
+          cloneCodebase: false
+          platform:
+            os: Linux
+            arch: Amd64
+          runtime:
+            type: Cloud
+            spec: {}
+          execution:
+            steps:
+              - step:
+                  type: Run
+                  name: Trigger Component A Pipeline
+                  identifier: Trigger_Component_A_Pipeline
+                  spec:
+                    shell: Sh
+                    command: |-
+                      curl -XPOST "https://app.harness.io/gateway/pipeline/api/pipeline/execute/tensorflow_chained_child_pipeline_1/inputSetList?accountIdentifier=<+account.identifier>&orgIdentifier=SE_Sandbox&projectIdentifier=parson&moduleType=ci" \
+                      -H 'content-type: application/json' \
+                      -H "x-api-key: <+pipeline.variables.parson_demo_key_secret>" \
+                      -d '{ 
+                          "inputSetReferences": [ 
+                            "default" 
+                          ], 
+                          "withMergedPipelineYaml": true 
+                      }'
+  identifier: tensorflow_pr_pipeline_chaining_using_curl
+  name: tensorflow pr pipeline chaining using curl
+  variables:
+    - name: parson_demo_key_secret
+      type: String
+      description: ""
+      value: <+secrets.getValue("parsonapikey")>

@@ -1,0 +1,42 @@
+pipeline:
+  name: tensorflow chained child pipeline 1
+  identifier: tensorflow_chained_child_pipeline_1
+  projectIdentifier: parson
+  orgIdentifier: SE_Sandbox
+  tags: {}
+  stages:
+    - stage:
+        name: test
+        identifier: test
+        type: CI
+        spec:
+          cloneCodebase: true
+          platform:
+            os: Linux
+            arch: Amd64
+          runtime:
+            type: Cloud
+            spec: {}
+          execution:
+            steps:
+              - step:
+                  type: Run
+                  name: Run_1
+                  identifier: Run_1
+                  spec:
+                    shell: Sh
+                    command: |-
+                      echo "this chained pipeline worked"
+                      echo "input:"<+pipeline.variables.input>
+  properties:
+    ci:
+      codebase:
+        connectorRef: parsonghcloudconnector
+        repoName: tensorflow
+        build: <+input>
+        depth: 1
+  variables:
+    - name: input
+      type: String
+      description: ""
+      value: <+input>

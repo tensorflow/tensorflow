@@ -1,0 +1,21 @@
+inputSet:
+  pipeline:
+    identifier: tensorflow_pr_pipeline_chaining
+    stages:
+      - stage:
+          identifier: Child_1
+          type: Pipeline
+          spec:
+            inputs:
+              identifier: tensorflow_chained_child_pipeline_1
+              properties:
+                ci:
+                  codebase:
+                    build:
+                      spec:
+                        branch: povtesting
+                      type: branch
+  name: povtesting-inputset
+  identifier: povtestinginputset
+  orgIdentifier: SE_Sandbox
+  projectIdentifier: parson

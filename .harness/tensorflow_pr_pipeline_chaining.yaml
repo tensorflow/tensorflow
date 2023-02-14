@@ -1,0 +1,25 @@
+pipeline:
+  name: tensorflow pr pipeline chaining
+  identifier: tensorflow_pr_pipeline_chaining
+  projectIdentifier: parson
+  orgIdentifier: SE_Sandbox
+  tags: {}
+  stages:
+    - stage:
+        name: Child 1
+        identifier: Child_1
+        description: ""
+        type: Pipeline
+        spec:
+          org: SE_Sandbox
+          pipeline: tensorflow_chained_child_pipeline_1
+          project: parson
+          inputs:
+            identifier: tensorflow_chained_child_pipeline_1
+            properties:
+              ci:
+                codebase:
+                  build: <+input>
+          outputs: []
+        tags: {}
+        variables: []
