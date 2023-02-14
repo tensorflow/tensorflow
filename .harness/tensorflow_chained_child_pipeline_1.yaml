@@ -32,3 +32,4 @@ pipeline:
         connectorRef: parsonghmyaccount
         repoName: tensorflow
         build: <+input>
+        depth: 1
