@@ -745,9 +745,12 @@ class ReadySetLt {
     if (!gn.DoesOccupyAnyResource()) {
       return false;
     }
-    if (gn.UsesResourceType(ResourceType::kSendHost).has_value() ||
+    return !ShouldDelaySendHostDone(gn);
+  }
+  bool ShouldDelaySendHostDone(const HloGraphNode& gn) const {
+    if (!gn.UsesResourceType(ResourceType::kSendHost).has_value() ||
         gn.GetInstr().opcode() != HloOpcode::kSendDone) {
-      return true;
+      return false;
     }
     // Try to delay the send-done for host based operations like outside
     // compilation to avoid allocating memory unnecessarily.
@@ -756,9 +759,9 @@ class ReadySetLt {
     const LatencyEstimator::TimeCost latency =
         sched_state_.latency_estimator->GetLatencyBetween(start, gn);
     if (start.GetReadyTime() - sched_state_.current_time <= latency) {
-      return true;
+      return false;
     }
-    return false;
+    return true;
   }
   // Compute and cache memory pressure change computation for candidiate.
   std::pair<int64_t, int64_t> GetMemoryPressureChanges(
