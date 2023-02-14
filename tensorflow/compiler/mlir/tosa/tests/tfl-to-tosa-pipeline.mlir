@@ -1526,6 +1526,22 @@ func.func @test_bucketize(%arg0: tensor<2x5xf32>) -> tensor<2x5xi32> {
 
 // -----
 
+// CHECK-LABEL: @test_bucketize_cast_boundaries
+// CHECK-DAG: %[[VAL_0:.*]] = "tosa.const"() {value = dense<{{\[}}0.000000e+00, 3.000000e+00, 8.000000e+00, 1.100000e+01]> : tensor<4xf32>}
+// CHECK: %[[VAL_1:.*]] = "tosa.cast"(%[[VAL_0]]) : (tensor<4xf32>) -> tensor<4xi32>
+// CHECK: %[[VAL_2:.*]] = "tosa.reshape"(%arg0) {new_shape = array<i64: 2, 5, 1>}
+// CHECK: %[[VAL_3:.*]] = "tosa.reshape"(%[[VAL_1]]) {new_shape = array<i64: 1, 1, 4>}
+// CHECK: %[[VAL_4:.*]] = "tosa.greater_equal"(%[[VAL_2]], %[[VAL_3]])
+// CHECK: %[[VAL_5:.*]] = "tosa.cast"(%[[VAL_4]]) : (tensor<2x5x4xi1>) -> tensor<2x5x4xi32>
+// CHECK: %[[VAL_6:.*]] = "tosa.reduce_sum"(%[[VAL_5]]) {axis = 2 : i64}
+// CHECK: %[[VAL_7:.*]] = "tosa.reshape"(%[[VAL_6]]) {new_shape = array<i64: 2, 5>}
+func.func @test_bucketize_cast_boundaries(%arg0: tensor<2x5xi32>) -> tensor<2x5xi32> {
+  %0 = "tfl.bucketize"(%arg0) {boundaries = [0.000000e+00 : f32, 3.000000e+00 : f32, 8.000000e+00 : f32, 1.100000e+01 : f32]} : (tensor<2x5xi32>) -> tensor<2x5xi32>
+  func.return %0 : tensor<2x5xi32>
+}
+
+// -----
+
 // CHECK-LABEL: @test_one_hot
 // CHECK-SAME:      %[[ARG0:.*]]: tensor<4x4xi32>, %[[ARG1:.*]]: tensor<f32>, %[[ARG2:.*]]: tensor<f32>
 // CHECK-DAG:     %[[RESHAPE:.*]] = "tosa.reshape"(%[[ARG1]]) {new_shape = array<i64: 1, 1, 1>}
