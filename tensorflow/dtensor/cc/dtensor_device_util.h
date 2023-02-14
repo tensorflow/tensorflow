@@ -233,10 +233,6 @@ class TensorWithLayoutTf : public TensorWithLayout {
     return layout_.GlobalShapeFromLocalShape(local_shape_);
   }
 
-  const std::vector<int64_t>& local_shape() const override {
-    return local_shape_;
-  }
-
   const std::optional<EmbeddingResourceAttrs>& attrs() const override {
     return attrs_;
   }

@@ -150,9 +150,6 @@ class TensorWithLayout {
   // encodes layout & local shape on each device.
   virtual std::vector<int64_t> global_shape() const = 0;
 
-  // Gets the local shape of the tensors.
-  virtual const std::vector<int64_t>& local_shape() const = 0;
-
   // Gets the resource input attributes for embedding inputs.
   virtual const std::optional<EmbeddingResourceAttrs>& attrs() const = 0;
 
