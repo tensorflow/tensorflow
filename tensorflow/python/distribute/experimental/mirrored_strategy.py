@@ -26,12 +26,16 @@ from tensorflow.dtensor.python import input_util
 from tensorflow.dtensor.python import layout
 from tensorflow.dtensor.python import mesh_util
 from tensorflow.python.data.experimental.ops import distribute
+from tensorflow.python.distribute import cross_device_ops as cross_device_ops_lib
+from tensorflow.python.distribute import device_util
 from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute import distribute_utils
+from tensorflow.python.distribute import reduce_util
 from tensorflow.python.distribute import values as values_lib
 from tensorflow.python.distribute.experimental import dtensor_util
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import math_ops
 from tensorflow.python.util import nest
 
 # Default dimension name used for the mesh created when user provide a list
@@ -98,6 +102,65 @@ class MirroredStrategy(distribute_lib.Strategy):
           mesh_dims=[(_DEFAULT_BATCH_MESH_DIM_NAME, len(devices))],
           device_type=device_type)
     return mesh
+
+  def reduce(self, reduce_op, value, axis):
+    # Due to the limitation of using scalar in DTensor (e.g. the rank 0 tensor
+    # loss the batch shard information), we need to override the default
+    # reduce in addition to the strategy.extend._reduce_to()
+    # Most of the logic here is a mimic of the parent class, except for how
+    # mean and sum are calculated in a global context.
+    distribute_lib._require_cross_replica_or_default_context_extended(  # pylint: disable=protected-access
+        self.extended)
+    if isinstance(reduce_op, str):
+      reduce_op = reduce_util.ReduceOp(reduce_op.upper())
+
+    distributed_input = _is_distributed_value(value)
+    if not distributed_input and axis is None:
+      # For any value that isn't distributed and doesn't need a reduction within
+      # the replica.
+      destinations = (device_util.current() or
+                      self.extended._default_device or  # pylint: disable=protected-access
+                      '/device:CPU:0')
+      devices = cross_device_ops_lib.get_devices_from(destinations)
+      with ops.device(devices[0]):
+        return array_ops.identity(
+            cross_device_ops_lib.reduce_non_distributed_value(
+                reduce_op, value, destinations, self.num_replicas_in_sync))
+
+    value = _convert_inputs_to_dtensor(value, self._mesh)
+    # At this point, the value is a DTensor instance now.
+    # There will be a final reduction step cross replica. In order to maintain
+    # the shape of each local replica, we need to add a new dim to the front.
+    # E.g. 2 replica with local shape as (4, 5, 6), the global tensor shape
+    # should be (8, 5, 6), we will reshape into (2, 4, 5, 6) and then do a
+    # reduction on axis 0.
+    if reduce_op == reduce_util.ReduceOp.MEAN:
+      reduce_op = math_ops.reduce_mean
+    else:
+      reduce_op = math_ops.reduce_sum
+
+    # TODO(scottzhu): Make sure we handle dynamic/uneven shape in future.
+    if d_api.fetch_layout(value).is_fully_replicated():
+      # In case of fully mirrored dtensor, we only need to do one reduce, and
+      # don't need to care about any per-replica logic.
+      if axis is not None:
+        value = reduce_op(value, axis=axis)
+    else:
+      new_shape = [self.num_replicas_in_sync, -1]
+      if len(value.shape) > 1:
+        new_shape.extend(array_ops.shape(value)[1:])
+      value = array_ops.reshape(value, new_shape)
+      if axis is not None:
+        # we do a reduce_sum/mean within each of the replica when axis is not
+        # None. Add 1 to the axis since there is a new dim added by reshape in
+        # front.
+        value = reduce_op(value, axis=axis + 1)
+      value = reduce_op(value, axis=0)
+
+    # Note that we return a DTensor instance here, which should have the same
+    # value as the original MirroredStrategy, but with a different type. User
+    # might want a tf.Tensor for the status quo.
+    return value
 
 
 class MirroredExtended(distribute_lib.StrategyExtendedV2):
@@ -338,13 +401,20 @@ def _convert_inputs_to_dtensor(inputs, mesh):
   else:
     # For the rest of the types, we will convert it to dtensor.
     # Any of the inputs will be replicate to all the devices.
-    rank = len(inputs.shape)
-    replicated_layout = layout.Layout.replicated(mesh, rank=rank)
-    return d_api.copy_to_mesh(inputs, replicated_layout)
+    # we infer the num_replica_in_sync from the mesh size, and this is only
+    # going to apply for the data parallel training
+    num_replica_in_sync = mesh.dim_size(_DEFAULT_BATCH_MESH_DIM_NAME)
+    values = [inputs for _ in range(num_replica_in_sync)]
+    return _convert_per_replica_to_dtensor(values_lib.PerReplica(values), mesh)
+
+
+def _is_distributed_value(value):
+  return isinstance(
+      value, values_lib.DistributedValues) or d_api.is_dtensor(value)
 
 
 def _convert_per_replica_to_dtensor(per_replica_value, mesh):
-  """Convert a PreReplica result to a DTensor instance.
+  """Convert a PerReplica result to a DTensor instance.
 
   Args:
     per_replica_value: A PerReplica instance whose value will be converted
