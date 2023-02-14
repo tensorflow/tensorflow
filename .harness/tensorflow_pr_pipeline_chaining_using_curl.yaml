@@ -1,26 +1,37 @@
----
 pipeline:
-  projectIdentifier: "parson"
-  orgIdentifier: "SE_Sandbox"
+  projectIdentifier: parson
+  orgIdentifier: SE_Sandbox
   tags: {}
   stages:
-  - stage:
-      name: "Child 1"
-      identifier: "Child_1"
-      description: ""
-      type: "Pipeline"
-      spec:
-        org: "SE_Sandbox"
-        pipeline: "tensorflow_chained_child_pipeline_1"
-        project: "parson"
-        inputs:
-          identifier: "tensorflow_chained_child_pipeline_1"
-          properties:
-            ci:
-              codebase:
-                build: "<+input>"
-        outputs: []
-      tags: {}
-      variables: []
-  identifier: "tensorflow_pr_pipeline_chaining_using_curl"
-  name: "tensorflow pr pipeline chaining using curl"
+    - stage:
+        name: Pipeline Trigger with Curl
+        identifier: Component_A
+        type: CI
+        spec:
+          cloneCodebase: false
+          platform:
+            os: Linux
+            arch: Amd64
+          runtime:
+            type: Cloud
+            spec: {}
+          execution:
+            steps:
+              - step:
+                  type: Run
+                  name: Trigger Component A Pipeline
+                  identifier: Trigger_Component_A_Pipeline
+                  spec:
+                    shell: Sh
+                    command: |-
+                      curl -XPOST "https://app.harness.io/gateway/pipeline/api/pipeline/execute/tensorflow_chained_child_pipeline_1/inputSetList?accountIdentifier=<+account.identifier>&orgIdentifier=SE_Sandbox&projectIdentifier=parson&moduleType=ci" \
+                      -H 'content-type: application/json' \
+                      -H "x-api-key: <+pipeline.variables.parson_demo_key_secret>" \
+                      -d '{ 
+                          "inputSetReferences": [ 
+                            "default" 
+                          ], 
+                          "withMergedPipelineYaml": true 
+                      }'
+  identifier: tensorflow_pr_pipeline_chaining_using_curl
+  name: tensorflow pr pipeline chaining using curl
