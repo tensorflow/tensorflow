@@ -90,6 +90,7 @@ cc_library(
 
 cc_library(
     name = "tensor_with_layout",
+    srcs = ["tensor_with_layout.cc"],
     hdrs = ["tensor_with_layout.h"],
     deps = [
         ":constants",
@@ -97,6 +98,7 @@ cc_library(
         "//tensorflow/c/eager:c_api",
         "//tensorflow/core:framework",
         "//tensorflow/core/platform:fingerprint",
+        "@llvm-project//llvm:Support",
     ],
 )
 
@@ -126,6 +128,7 @@ cc_library(
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
+        "@llvm-project//llvm:Support",
     ],
 )
 
@@ -312,6 +315,7 @@ cc_library(
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
+        "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "//tensorflow/c:c_api",
         "//tensorflow/c:c_api_experimental",

@@ -34,6 +34,7 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/strings/strip.h"
+#include "llvm/Support/Casting.h"
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/OwningOpRef.h"  // from @llvm-project
 #include "tensorflow/c/c_api_experimental.h"
@@ -1579,7 +1580,7 @@ void DTensorDevice::ExecuteRegularOperation(
   std::vector<TensorWithLayoutTf*> inputs_tf;
   inputs_tf.reserve(inputs.size());
   for (const auto& input : inputs) {
-    inputs_tf.push_back(down_cast<TensorWithLayoutTf*>(input));
+    inputs_tf.push_back(llvm::cast<TensorWithLayoutTf>(input));
   }
 
   const ExecutionFunctions* execution_functions = nullptr;

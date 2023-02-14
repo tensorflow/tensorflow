@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/memory/memory.h"
 #include "absl/strings/str_cat.h"
+#include "llvm/Support/Casting.h"
 #include "tensorflow/c/eager/c_api_internal.h"
 #include "tensorflow/c/eager/tfe_tensorhandle_internal.h"
 #include "tensorflow/c/tf_status.h"
@@ -263,6 +264,8 @@ StatusOr<Layout> GetLayoutThroughIdentityOps(Node* op, int output_index) {
 
 }  // namespace
 
+char TensorWithLayoutTf::ID = 0;
+
 tensorflow::Fprint128 TensorWithLayoutTf::CacheKey() const {
   tensorflow::Fprint128 f = tensorflow::Fingerprint128(layout_.ToString());
   // Use exact shape to compute the key.
@@ -381,6 +384,8 @@ std::string TensorWithLayoutTf::DebugString() const {
                       ", type=", DataTypeString(dtype), ")");
 }
 
+char ResourceHandleWithLayout::ID = 0;
+
 StatusOr<std::unique_ptr<ResourceHandleWithLayout>>
 ResourceHandleWithLayout::Wrap(
     std::unique_ptr<parallel_device::ParallelTensor> tensor, const Mesh& mesh,
@@ -454,6 +459,8 @@ void ResourceHandleWithLayout::UpdateAttrs(const EmbeddingResourceAttrs& attrs,
   }
   attrs_.emplace(attrs);
 }
+
+char SparseTensorWithLayout::ID = 0;
 
 StatusOr<std::unique_ptr<SparseTensorWithLayout>> SparseTensorWithLayout::Wrap(
     std::unique_ptr<parallel_device::ParallelTensor> indices_tensor,
@@ -912,7 +919,7 @@ StatusOr<std::vector<parallel_device::ParallelTensor*>> PrepareEmbeddingInputs(
     if (inputs[i]->tensor_type() != kResource) continue;
 
     const std::optional<EmbeddingResourceAttrs>& resource_attrs =
-        inputs[i]->attrs();
+        llvm::cast<ResourceHandleWithLayout>(inputs[i])->attrs();
     if (resource_attrs.has_value()) {
       table_vars_input_index[resource_attrs->table_id].push_back(i);
     }
@@ -971,8 +978,10 @@ StatusOr<std::map<int64_t, std::vector<Node*>>> GetTPUEmbeddingInputNodes(
     table_id_node_map[table_id].push_back(node);
 
     // Arg input offset due to device id.
-    if (non_sparse_inputs[arg_id - 1]->attrs().has_value()) continue;
-    non_sparse_inputs[arg_id - 1]->UpdateAttrs(embedding_input_attrs, s);
+    auto* resource =
+        llvm::dyn_cast<ResourceHandleWithLayout>(non_sparse_inputs[arg_id - 1]);
+    if (!resource || resource->attrs().has_value()) continue;
+    resource->UpdateAttrs(embedding_input_attrs, s);
     if (!s->status.ok()) {
       return errors::Internal(
           "Failed to set embedding resource attrs. \n Got error: ",
@@ -986,8 +995,8 @@ StatusOr<std::string> ValidateResourceMeshConsistency(
     const std::vector<TensorWithLayout*>& inputs) {
   std::string mesh_str;
   for (TensorWithLayout* inp : inputs) {
-    if ((inp->tensor_type() != kResource) || !inp->attrs().has_value())
-      continue;
+    auto* resource = llvm::dyn_cast<ResourceHandleWithLayout>(inp);
+    if (!resource || !resource->attrs().has_value()) continue;
     const std::string& input_mesh_str = inp->layout().mesh().ToString();
     if (mesh_str.empty()) {
       mesh_str = input_mesh_str;
