@@ -1,0 +1,18 @@
+inputSet:
+  name: default
+  identifier: default
+  orgIdentifier: SE_Sandbox
+  projectIdentifier: parson
+  pipeline:
+    identifier: tensorflow_chained_child_pipeline_1
+    properties:
+      ci:
+        codebase:
+          build:
+            type: branch
+            spec:
+              branch: povtesting
+    variables:
+      - name: input
+        type: String
+        value: my-input
