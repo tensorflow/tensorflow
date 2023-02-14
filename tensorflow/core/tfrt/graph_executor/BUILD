@@ -40,6 +40,7 @@ cc_library(
         "//learning/brain/experimental/tfrt/mlrt/application/tensorflow/compiler/transforms:parallelization",
         "//learning/brain/experimental/tfrt/mlrt/application/tensorflow/compiler/transforms:tf_to_mlrt",
         "//learning/brain/experimental/tfrt/mlrt/application/tensorflow/kernel",
+        "//learning/brain/experimental/tfrt/mlrt/application/tensorflow/kernel:context",
         "//learning/brain/experimental/tfrt/mlrt/mlir_to_bytecode",
         "//learning/brain/experimental/tfrt/native_lowering/kernels:sync_context",
         "//learning/brain/experimental/tfrt/native_lowering/saved_model:saved_model_translate",

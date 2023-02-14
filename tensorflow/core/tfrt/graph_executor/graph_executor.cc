@@ -28,6 +28,7 @@ limitations under the License.
 #include "learning/brain/experimental/tfrt/mlrt/application/tensorflow/attribute/attribute.h"
 #include "learning/brain/experimental/tfrt/mlrt/application/tensorflow/compiler/transforms/parallelization.h"
 #include "learning/brain/experimental/tfrt/mlrt/application/tensorflow/compiler/transforms/tf_to_mlrt.h"
+#include "learning/brain/experimental/tfrt/mlrt/application/tensorflow/kernel/context.h"
 #include "learning/brain/experimental/tfrt/mlrt/application/tensorflow/kernel/kernel.h"
 #include "learning/brain/experimental/tfrt/mlrt/mlir_to_bytecode/mlir_to_bytecode.h"
 #include "learning/brain/experimental/tfrt/native_lowering/kernels/sync_context.h"
@@ -122,8 +123,8 @@ tensorflow::Status RunMlrtFunction(
       std::make_unique<tfrt::SyncContext>(&exec_ctx));
 
   // Set up tf_mlrt::Context which is used for executing tensorflow::OpKernel.
-  execution_context.AddUserContext(
-      std::make_unique<tf_mlrt::Context>(fallback_request_state));
+  execution_context.AddUserContext(std::make_unique<tf_mlrt::Context>(
+      fallback_request_state, request_context->resource_context()));
 
   absl::InlinedVector<mlrt::Value, 4> mlrt_inputs;
   mlrt_inputs.reserve(inputs.size());
@@ -836,7 +837,8 @@ tensorflow::Status GraphExecutor::RunWithSyncInterpreter(
 
   auto tf_context = std::make_unique<tensorflow::tf_mlrt::Context>(
       &request_info->tfrt_request_context
-           ->GetData<tensorflow::tfd::KernelFallbackCompatRequestState>());
+           ->GetData<tensorflow::tfd::KernelFallbackCompatRequestState>(),
+      request_info->tfrt_request_context->resource_context());
   execution_context.AddUserContext(std::move(tf_context));
 
   auto serving_function =
