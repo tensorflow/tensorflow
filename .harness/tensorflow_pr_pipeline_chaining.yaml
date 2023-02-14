@@ -20,3 +20,5 @@ pipeline:
               ci:
                 codebase:
                   build: <+input>
+          outputs: []
+        tags: {}
