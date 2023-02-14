@@ -131,8 +131,13 @@ std::unique_ptr<OperationPass<func::FuncOp>>
 CreateTFXLADeviceSpecificTransformsPass(
     llvm::Optional<StringRef> tf2xla_fallback_device_type = llvm::None);
 
+// Adjusts XLA layout for Infeed ops.
+std::unique_ptr<OperationPass<func::FuncOp>>
+CreateInfeedsOpsXlaAdjustLayoutPass();
+
 #define GEN_PASS_REGISTRATION
 #define GEN_PASS_DECL_CONVERTMHLOQUANTTOINT
+#define GEN_PASS_DECL_INFEEDSOPSXLAADJUSTLAYOUT
 #define GEN_PASS_DECL_LEGALIZETF
 #define GEN_PASS_DECL_LEGALIZETFCOLLECTIVE
 #define GEN_PASS_DECL_LEGALIZETFMODULEPASS

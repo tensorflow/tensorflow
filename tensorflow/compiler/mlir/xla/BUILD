@@ -150,29 +150,6 @@ cc_library(
 )
 
 cc_library(
-    name = "adjust_layout",
-    srcs = [
-        "transforms/adjust_layout.cc",
-    ],
-    hdrs = [
-        "transforms/adjust_layout.h",
-    ],
-    deps = [
-        "//tensorflow/compiler/xla:shape_util",
-        "//tensorflow/compiler/xla/mlir_hlo",
-        "//tensorflow/compiler/xla/stream_executor/tpu:c_api_conversions",
-        "//tensorflow/compiler/xla/stream_executor/tpu:tpu_api",
-        "//tensorflow/compiler/xla/translate/mhlo_to_hlo:type_to_shape",
-        "@com_google_absl//absl/types:span",
-        "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:FuncDialect",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:Pass",
-        "@llvm-project//mlir:Support",
-    ],
-)
-
-cc_library(
     name = "xla_legalize_targets",
     srcs = [
         "transforms/xla_legalize_targets.cc",
@@ -214,6 +191,7 @@ cc_library(
     name = "xla_legalize_tf",
     srcs = [
         "transforms/convert_mhlo_quant_to_int.cc",
+        "transforms/infeed_ops_xla_adjust_layout.cc",
         "transforms/legalize_tf_collective.cc",
         "transforms/legalize_tf_communication.cc",
         "transforms/legalize_tf_types.cc",
@@ -236,6 +214,7 @@ cc_library(
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:lower_tf_lib",
         "//tensorflow/compiler/mlir/tensorflow:mangling_util",
+        "//tensorflow/compiler/mlir/tensorflow:set_tpu_infeed_layout",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_types",
         "//tensorflow/compiler/tf2xla/kernels:rng_converter_utils",
         "//tensorflow/compiler/xla:shape_util",
@@ -246,12 +225,15 @@ cc_library(
         "//tensorflow/compiler/xla/mlir_hlo",
         "//tensorflow/compiler/xla/mlir_hlo:chlo_legalize_to_hlo",
         "//tensorflow/compiler/xla/mlir_hlo:convert_op_folder",
+        "//tensorflow/compiler/xla/stream_executor/tpu:c_api_conversions",
+        "//tensorflow/compiler/xla/stream_executor/tpu:tpu_api",
         "//tensorflow/compiler/xla/translate/hlo_to_mhlo:attribute_importer",
         "//tensorflow/compiler/xla/translate/mhlo_to_hlo:type_to_shape",
         "//tensorflow/core:framework",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/util/quantization:uniform_quant_ops_params",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:ArithDialect",
         "@llvm-project//mlir:FuncDialect",
@@ -352,7 +334,6 @@ tf_cc_binary(
     testonly = True,
     srcs = ["xla_opt_main.cc"],
     deps = [
-        ":adjust_layout",  # buildcleaner: keep
         ":tf_xla_passes",  # buildcleaner: keep
         ":xla_legalize_tf",  # buildcleaner: keep
         ":xla_legalize_tf_no_fallback",  # buildcleaner: keep
