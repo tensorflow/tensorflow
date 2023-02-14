@@ -1158,14 +1158,13 @@ void DTensorDevice::SetIteratorElementLayouts(
     const std::vector<std::string>& string_layouts, TF_Status* status) {
   const char* input_device = TFE_TensorHandleDeviceName(input, status);
   if (input_device != name_) {
-    TF_SetStatus(
+    RETURN_STATUS(
         status, TF_INVALID_ARGUMENT,
         absl::StrCat(
             "SetIteratorElementLayouts expects an iterator resource placed on ",
             "the DTensor device: ", name_,
             ", but it was placed on device: ", input_device)
             .c_str());
-    return;
   }
   ResourceHandleWithLayout* t = reinterpret_cast<ResourceHandleWithLayout*>(
       TFE_TensorHandleDevicePointer(input, status));
@@ -1177,7 +1176,7 @@ void DTensorDevice::SetIteratorElementLayouts(
                  [](const std::string& layout_str) {
                    return Layout::FromString(layout_str).value();
                  });
-  t->UpdateElementLayouts(layouts, status);
+  RETURN_C_STATUS_IF_NOT_OK(t->UpdateElementLayouts(layouts), status);
 }
 
 // From `graph` containing computation for all meshes, extract/select
@@ -1598,12 +1597,14 @@ void DTensorDevice::ExecuteRegularOperation(
       // for DeviceId. This is done as the first arg is always DeviceId, and it
       // isn't mapped to input Tensors.
       const int resource_index_to_update = entry.first - 1;
-      inputs[resource_index_to_update]->UpdateLayout(entry.second, status);
-      if (TF_GetCode(status) != TF_OK) {
-        RETURN_STATUS(status, TF_GetCode(status),
+      const Status s =
+          llvm::cast<ResourceHandleWithLayout>(inputs[resource_index_to_update])
+              ->UpdateLayout(entry.second);
+      if (!s.ok()) {
+        RETURN_STATUS(status, static_cast<TF_Code>(s.code()),
                       absl::StrCat("Attempt to update layout input arg: ",
                                    resource_index_to_update,
-                                   ". Original message: ", TF_Message(status))
+                                   ". Original message: ", s.ToString())
                           .c_str());
       }
     }
@@ -1899,10 +1900,11 @@ void DTensorDevice::ExecuteRegularOperation(
     ASSIGN_OR_RETURN_C_STATUS(name_and_attrs, FetchAttributes(attributes),
                               status);
 
-    typed_outputs[0]->UpdateShapeAndDType(
-        name_and_attrs.attr().at("shape").shape(),
-        name_and_attrs.attr().at("dtype").type(), status);
-    if (TF_GetCode(status) != TF_OK) return;
+    RETURN_C_STATUS_IF_NOT_OK(
+        llvm::cast<ResourceHandleWithLayout>(typed_outputs[0].get())
+            ->UpdateShapeAndDType(name_and_attrs.attr().at("shape").shape(),
+                                  name_and_attrs.attr().at("dtype").type()),
+        status);
   }
 
   for (int i = 0; i < *num_outputs; ++i) {

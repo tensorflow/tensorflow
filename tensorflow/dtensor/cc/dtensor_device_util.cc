@@ -172,8 +172,19 @@ std::unique_ptr<TensorWithLayoutTf> BroadcastResourceTensor(
     PartialTensorShape partial_shape = r.dtypes_and_shapes().begin()->shape;
     // Set the shape/type of the tensor that the resource points to
     // so that the graph has correct shape/type information that we can use.
-    (*result)->UpdateShapeAndDType(
-        partial_shape.AsProto(), r.dtypes_and_shapes().begin()->dtype, status);
+    const Status s =
+        llvm::cast<ResourceHandleWithLayout>((*result).get())
+            ->UpdateShapeAndDType(partial_shape.AsProto(),
+                                  r.dtypes_and_shapes().begin()->dtype);
+    if (!s.ok()) {
+      TF_SetStatus(
+          status, TF_INTERNAL,
+          absl::StrCat(
+              "Error updating shape and dtype of the resource tensor: ",
+              s.error_message())
+              .c_str());
+      return nullptr;
+    }
   }
 
   if (TF_GetCode(status) != TF_OK) {
@@ -435,29 +446,31 @@ tensorflow::Fprint128 ResourceHandleWithLayout::CacheKey() const {
   return f;
 }
 
-void ResourceHandleWithLayout::UpdateLayout(const Layout& new_layout,
-                                            TF_Status* status) {
+tsl::Status ResourceHandleWithLayout::UpdateLayout(const Layout& new_layout) {
   // Only set the value for deferenced layout if the incoming layout is not
   // empty. This is still hacky as we use empty layout as placeholder for
   // eagerly placed VarHandleOp.
-  if (!dereferenced_layout_.has_value() && new_layout.IsEmpty()) return;
+  if (!dereferenced_layout_.has_value() && new_layout.IsEmpty()) {
+    return tsl::errors::InvalidArgument("New layout is empty.");
+  }
   if (dereferenced_layout_.has_value() &&
       !LayoutsAreCompatible(dereferenced_layout_, new_layout)) {
     // TODO(xiejw, allenl): Consider allowing variables to switch layouts.
-    RETURN_STATUS(status, TF_INVALID_ARGUMENT,
-                  "Attempted to overwrite an existing Layout.");
+    return tsl::errors::InvalidArgument(
+        "Attempted to overwrite an existing Layout.");
   }
   dereferenced_layout_.emplace(new_layout);
+  return tsl::OkStatus();
 }
 
-void ResourceHandleWithLayout::UpdateAttrs(const EmbeddingResourceAttrs& attrs,
-                                           TF_Status* status) {
+tsl::Status ResourceHandleWithLayout::UpdateAttrs(
+    const EmbeddingResourceAttrs& attrs) {
   if (attrs_.has_value()) {
-    RETURN_STATUS(status, TF_INVALID_ARGUMENT,
-                  "Attepted to overwrite an existing embedding resource "
-                  "attribute.");
+    return tsl::errors::InvalidArgument(
+        "Attempted to overwrite an existing embedding resource attribute.");
   }
   attrs_.emplace(attrs);
+  return tsl::OkStatus();
 }
 
 char SparseTensorWithLayout::ID = 0;
@@ -981,11 +994,14 @@ StatusOr<std::map<int64_t, std::vector<Node*>>> GetTPUEmbeddingInputNodes(
     auto* resource =
         llvm::dyn_cast<ResourceHandleWithLayout>(non_sparse_inputs[arg_id - 1]);
     if (!resource || resource->attrs().has_value()) continue;
-    resource->UpdateAttrs(embedding_input_attrs, s);
-    if (!s->status.ok()) {
+    const Status status = resource->UpdateAttrs(embedding_input_attrs);
+    if (!status.ok()) {
+      TF_SetStatus(s, static_cast<TF_Code>(status.code()),
+                   status.error_message().c_str());
+      // TODO(b/256016071): Try finding a way to append source locations.
       return errors::Internal(
           "Failed to set embedding resource attrs. \n Got error: ",
-          s->status.error_message());
+          status.error_message());
     }
   }
   return table_id_node_map;

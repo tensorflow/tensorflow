@@ -113,14 +113,6 @@ class TensorWithLayout
   // Generates a key which can be used for SPMD lowering.
   virtual tensorflow::Fprint128 CacheKey() const = 0;
 
-  // Updates the layout for the tensors.
-  virtual void UpdateLayout(const Layout& new_layout, TF_Status* status) = 0;
-
-  // Updates the local shape and dtype of the tensors.
-  virtual void UpdateShapeAndDType(const TensorShapeProto& shape,
-                                   const DataType& dtype,
-                                   TF_Status* status) = 0;
-
   // Gets the tensor handle at position `index`. This makes sense only when the
   // implementation owns a list of tensor handles. Otherwise this returns
   // `nullptr`.

@@ -197,19 +197,6 @@ class TensorWithLayoutTf
 
   tensorflow::Fprint128 CacheKey() const override;
 
-  // Updates layout for this Tensor.
-  void UpdateLayout(const Layout& new_layout, TF_Status* status) override {
-    TF_SetStatus(status, TF_INTERNAL,
-                 "Attempt to update layout on non-resource-handle");
-  }
-
-  // Update shape and dtype.
-  void UpdateShapeAndDType(const TensorShapeProto& shape, const DataType& dtype,
-                           TF_Status* status) override {
-    TF_SetStatus(status, TF_INTERNAL,
-                 "Attempt to update shape and layout on non-resource-handle");
-  }
-
   TFE_TensorHandle* get_tensor(size_t index) const override {
     return tensor_->tensor(index);
   }
@@ -299,21 +286,25 @@ class ResourceHandleWithLayout
 
   tensorflow::Fprint128 CacheKey() const override;
 
-  void UpdateLayout(const Layout& new_layout, TF_Status* status) override;
+  // Updates the layout for the tensors.
+  tsl::Status UpdateLayout(const Layout& new_layout);
 
-  void UpdateElementLayouts(const std::vector<Layout>& layouts,
-                            TF_Status* status) {
+  // Updates the element layouts for the tensors.
+  tsl::Status UpdateElementLayouts(const std::vector<Layout>& layouts) {
     dereferenced_element_layouts_.emplace(layouts);
+    return tsl::OkStatus();
   }
 
-  void UpdateShapeAndDType(const TensorShapeProto& shape, const DataType& dtype,
-                           TF_Status* status) override {
+  // Updates the local shape and dtype of the tensors.
+  tsl::Status UpdateShapeAndDType(const TensorShapeProto& shape,
+                                  const DataType& dtype) {
     set_dereferenced_shape(shape);
     set_dereferenced_dtype(dtype);
+    return tsl::OkStatus();
   }
 
   // Updates the attributes for the tensors.
-  void UpdateAttrs(const EmbeddingResourceAttrs& attrs, TF_Status* status);
+  tsl::Status UpdateAttrs(const EmbeddingResourceAttrs& attrs);
 
   ConstValueNode* const_value_node() const override { return nullptr; }
 
