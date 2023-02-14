@@ -6,8 +6,8 @@
 
 func.func @op_all_to_all_tuple(%arg0: tensor<128x4xf32>, %arg1: tensor<128x4xf32>) -> (tensor<128x4xf32>, tensor<128x4xf32>) {
   //               CHECK: "stablehlo.custom_call"(%arg0, %arg1) {
-  // CHECK-SAME{LITERAL}:    backend_config = "{replica_groups = dense<[[0, 1]]> : tensor<1x2xi64>}",
   //          CHECK-SAME:    call_target_name = "mhlo.all_to_all"
+  // CHECK-SAME{LITERAL}:    mhlo.attributes = {replica_groups = dense<[[0, 1]]> : tensor<1x2xi64>}
   //          CHECK-SAME: } : (tensor<128x4xf32>, tensor<128x4xf32>)
   // expected-error@+1 {{failed to legalize operation 'mhlo.all_to_all' that was explicitly marked illegal}}
   %0:2 = "mhlo.all_to_all"(%arg0, %arg1) {
@@ -21,8 +21,8 @@ func.func @op_all_to_all_tuple(%arg0: tensor<128x4xf32>, %arg1: tensor<128x4xf32
 
 func.func @op_custom_call_api_version_typed_ffi(%arg0: tensor<f32>) -> tensor<f32> {
   //      CHECK: "stablehlo.custom_call"(%arg0) {
-  // CHECK-SAME:   backend_config = "{api_version = 4 : i32, backend_config = {foo = \22bar\22}, call_target_name = \22foo\22}"
   // CHECK-SAME:   call_target_name = "mhlo.custom_call"
+  // CHECK-SAME:   mhlo.attributes = {api_version = 4 : i32, backend_config = {foo = "bar"}, call_target_name = "foo"}
   // CHECK-SAME: } : (tensor<f32>) -> tensor<f32>
   // expected-error@+1 {{failed to legalize operation 'mhlo.custom_call' that was explicitly marked illegal}}
   %0 = "mhlo.custom_call"(%arg0) {
@@ -38,8 +38,8 @@ func.func @op_custom_call_api_version_typed_ffi(%arg0: tensor<f32>) -> tensor<f3
 
 func.func @attr_precision_packed_nibble(%arg0: tensor<8x16xf32>, %arg1: tensor<16x8xf32>) -> tensor<8x8xf32> {
   //      CHECK: "stablehlo.custom_call"(%arg0, %arg1) {
-  // CHECK-SAME:    backend_config = "{precision_config = [#mhlo<precision PACKED_NIBBLE>]}",
   // CHECK-SAME:    call_target_name = "mhlo.dot"
+  // CHECK-SAME:    mhlo.attributes = {precision_config = ["PACKED_NIBBLE"]}
   // CHECK-SAME: } : (tensor<8x16xf32>, tensor<16x8xf32>) -> tensor<8x8xf32>
   // expected-error@+1 {{failed to legalize operation 'mhlo.dot' that was explicitly marked illegal}}
   %0 = "mhlo.dot"(%arg0, %arg1) {
