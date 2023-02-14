@@ -35,3 +35,8 @@ pipeline:
                       }'
   identifier: tensorflow_pr_pipeline_chaining_using_curl
   name: tensorflow pr pipeline chaining using curl
+  variables:
+    - name: parson_demo_key_secret
+      type: String
+      description: ""
+      value: <+secrets.getValue("parsonApiKey")
