@@ -14,6 +14,7 @@
 # ==============================================================================
 """Tests tf.data service with local and remote workers."""
 
+import multiprocessing
 from absl.testing import parameterized
 
 from tensorflow.python.data.experimental.kernel_tests.service import multi_process_cluster
@@ -21,20 +22,12 @@ from tensorflow.python.data.experimental.kernel_tests.service import test_base a
 from tensorflow.python.data.experimental.ops import data_service_ops
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
-from tensorflow.python.data.ops import test_mode
 from tensorflow.python.framework import combinations
 from tensorflow.python.framework import errors
-
-import multiprocessing
 
 
 class LocalWorkersTest(data_service_test_base.TestBase, parameterized.TestCase):
   """Tests reading from local workers if `target_workers` is `local`."""
-
-  def setUp(self):
-    super().setUp()
-    # TODO(b/268586701): Enable `warm_start` for `local_workers_test`.
-    test_mode.toggle_test_mode(False)
 
   @combinations.generate(test_base.default_test_combinations())
   def testOneLocalWorker(self):
