@@ -82,7 +82,7 @@ message DistributeOptions {
   }
 }
 
-// next: 20
+// next: 21
 message OptimizationOptions {
   // Whether to apply default graph optimizations. If False, only graph
   // optimizations that have been explicitly enabled will be applied.
@@ -148,6 +148,11 @@ message OptimizationOptions {
   // if the last transformation is synchronous; otherwise does nothing.
   oneof optional_inject_prefetch {
     bool inject_prefetch = 19;
+  }
+  // Whether to start background threads of asynchronous transformations upon
+  // iterator creation (as opposed to upon first call to `GetNext`).
+  oneof optional_warm_start {
+    bool warm_start = 20;
   }
 }
 

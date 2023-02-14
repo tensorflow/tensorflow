@@ -202,7 +202,15 @@ This release contains contributions from many people at Google, as well as:
         `rerandomize_each_iteration=True`, the `sample_from_datasets()`
         operation will use a different (deterministic) sequence of numbers every
         epoch.
-
+    *   Added a new field, `warm_start`, to
+        `tf.data.experimental.OptimizationOptions`. If it is set to `True`,
+        tf.data will start background threads of asynchronous
+        transformations upon iterator creation (as opposed to upon first call
+        to `GetNext`). To enable this behavior, set `warm_start=True` in
+        `tf.data.experimental.OptimizationOptions`. It should be noted that this
+        possibly improves the latency of the initial 'GetNext' call at the
+        expense of requiring more memory to hold prefetched elements between
+        the time of iterator construction and usage.
 *   `tf.test`:
 
     *   Added `tf.test.experimental.sync_devices`, which is useful for

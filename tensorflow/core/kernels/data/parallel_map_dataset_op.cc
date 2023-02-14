@@ -276,8 +276,12 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
       TF_RETURN_IF_ERROR(dataset()->input_->MakeIterator(
           &iter_ctx, this, prefix(), &input_impl_));
       ctx->MergeCheckpoint(iter_ctx.checkpoint());
-      return dataset()->captured_func_->Instantiate(
-          ctx, &instantiated_captured_func_);
+      TF_RETURN_IF_ERROR(dataset()->captured_func_->Instantiate(
+          ctx, &instantiated_captured_func_));
+      if (ctx->warm_start() && !ctx->is_restoring()) {
+        EnsureThreadsStarted(ctx);
+      }
+      return OkStatus();
     }
 
     Status GetNextInternal(IteratorContext* ctx,

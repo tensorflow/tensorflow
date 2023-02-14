@@ -96,6 +96,7 @@ constexpr char kSlackOpt[] = "slack";
 constexpr char kSlackPeriodOpt[] = "slack_period";
 constexpr char kMakeDeterministicOpt[] = "make_deterministic";
 constexpr char kFilterParallelizationOpt[] = "filter_parallelization";
+constexpr char kWarmStartOpt[] = "warm_start";
 
 void DefaultOptimizationGraphRewrites(
     const Options& options, absl::flat_hash_set<tstring>* optimization_enabled,
@@ -211,6 +212,14 @@ void DefaultOptimizationGraphRewrites(
       optimization_enabled->insert(kInjectPrefetchOpt);
     } else {
       optimization_disabled->insert(kInjectPrefetchOpt);
+    }
+  }
+  if (optimization_options.optional_warm_start_case() ==
+      OptimizationOptions::kWarmStart) {
+    if (optimization_options.warm_start()) {
+      optimization_enabled->insert(kWarmStartOpt);
+    } else {
+      optimization_disabled->insert(kWarmStartOpt);
     }
   }
 }

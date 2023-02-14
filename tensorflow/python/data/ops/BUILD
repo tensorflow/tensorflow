@@ -24,6 +24,11 @@ py_library(
 )
 
 py_library(
+    name = "test_mode",
+    srcs = ["test_mode.py"],
+)
+
+py_library(
     name = "batch_op",
     srcs = ["batch_op.py"],
 )
@@ -416,6 +421,7 @@ py_library(
     srcs_version = "PY3",
     deps = [
         "//tensorflow/python:util",
+        "//tensorflow/python/data/ops:test_mode",
         "//tensorflow/python/data/util:options",
     ],
 )

@@ -15,6 +15,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/data/experimental/map_and_batch_dataset_op.h"
 
 #include <atomic>
+#include <functional>
 #include <utility>
 
 #include "tensorflow/core/common_runtime/function.h"
@@ -233,8 +234,12 @@ class MapAndBatchDatasetOp::Dataset : public DatasetBase {
       TF_RETURN_IF_ERROR(dataset()->input_->MakeIterator(
           &iter_ctx, this, prefix(), &input_impl_));
       ctx->MergeCheckpoint(iter_ctx.checkpoint());
-      return dataset()->captured_func_->Instantiate(
-          ctx, &instantiated_captured_func_);
+      TF_RETURN_IF_ERROR(dataset()->captured_func_->Instantiate(
+          ctx, &instantiated_captured_func_));
+      if (ctx->warm_start() && !ctx->is_restoring()) {
+        EnsureThreadsStarted(ctx);
+      }
+      return OkStatus();
     }
 
     Status GetNextInternal(IteratorContext* ctx,
@@ -243,7 +248,7 @@ class MapAndBatchDatasetOp::Dataset : public DatasetBase {
       std::shared_ptr<BatchResult> result;
       {
         mutex_lock l(*mu_);
-        EnsureRunnerThreadStarted(ctx);
+        EnsureThreadsStarted(ctx);
         while (!cancelled_ && (batch_results_.empty() ||
                                batch_results_.front()->num_calls > 0)) {
           ++waiting_;
@@ -316,6 +321,7 @@ class MapAndBatchDatasetOp::Dataset : public DatasetBase {
     Status RestoreInternal(IteratorContext* ctx,
                            IteratorStateReader* reader) override {
       mutex_lock l(*mu_);
+      DCHECK(!runner_thread_);
       TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, input_impl_));
       TF_RETURN_IF_ERROR(
           reader->ReadScalar(full_name(kCallCounter), &call_counter_));
@@ -325,6 +331,9 @@ class MapAndBatchDatasetOp::Dataset : public DatasetBase {
       DCHECK(batch_results_.empty());
       for (int i = 0; i < batch_results_size; ++i) {
         TF_RETURN_IF_ERROR(ReadBatchResult(ctx, reader, i));
+      }
+      if (ctx->warm_start()) {
+        EnsureThreadsStarted(ctx);
       }
       return OkStatus();
     }
@@ -510,13 +519,13 @@ class MapAndBatchDatasetOp::Dataset : public DatasetBase {
       }
     }
 
-    void EnsureRunnerThreadStarted(IteratorContext* ctx)
+    void EnsureThreadsStarted(IteratorContext* ctx)
         TF_EXCLUSIVE_LOCKS_REQUIRED(*mu_) {
       if (!runner_thread_) {
-        auto ctx_copy = std::make_shared<IteratorContext>(*ctx);
-        runner_thread_ = ctx->StartThread(
-            kTFDataMapAndBatch,
-            std::bind(&Iterator::RunnerThread, this, ctx_copy));
+        auto new_ctx = std::make_shared<IteratorContext>(*ctx);
+        runner_thread_ =
+            ctx->StartThread(kTFDataMapAndBatch,
+                             std::bind(&Iterator::RunnerThread, this, new_ctx));
       }
     }
 

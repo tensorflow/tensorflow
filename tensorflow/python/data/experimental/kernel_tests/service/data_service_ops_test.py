@@ -563,7 +563,7 @@ class DataServiceOpsTest(data_service_test_base.TestBase,
         job_gc_check_interval_ms=50,
         job_gc_timeout_ms=20,
         data_transfer_protocol=self._get_data_transfer_protocol())
-    num_elements = 10
+    num_elements = 1000
     it1 = iter(
         self.make_distributed_range_dataset(
             num_elements,
