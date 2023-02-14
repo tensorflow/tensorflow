@@ -215,10 +215,8 @@ static Status CreateHloXlaPipeline(
     pm.addPass(mlir::xla_framework::CreateOutlineWithXLAFrameworkPass());
   }
   pm.addPass(mlir::createInlinerPass());
-  if (!options.sparse_bufferization) {
-    pm.addNestedPass<FuncOp>(
-        mlir::bufferization::createPromoteBuffersToStackPass(nullptr));
-  }
+  pm.addNestedPass<FuncOp>(
+      mlir::bufferization::createPromoteBuffersToStackPass(nullptr));
   pm.addNestedPass<mlir::func::FuncOp>(
       mlir::bufferization::createBufferDeallocationPass());
 
