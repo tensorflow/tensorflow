@@ -21,6 +21,8 @@ limitations under the License.
 
 #include "tensorflow/c/tf_status_helper.h"
 #include "tensorflow/compiler/jit/device_compiler_client.h"
+#include "tensorflow/compiler/jit/variable_info.h"
+#include "tensorflow/compiler/jit/variable_info_util.h"
 #include "tensorflow/compiler/jit/xla_device.h"
 #include "tensorflow/compiler/jit/xla_launch_util.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"

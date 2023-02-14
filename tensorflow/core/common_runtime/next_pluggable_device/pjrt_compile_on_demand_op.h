@@ -20,7 +20,7 @@ limitations under the License.
 #include <variant>
 #include <vector>
 
-#include "tensorflow/compiler/jit/xla_launch_util.h"
+#include "tensorflow/compiler/jit/variable_info.h"
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
 #include "tensorflow/core/lib/core/status.h"

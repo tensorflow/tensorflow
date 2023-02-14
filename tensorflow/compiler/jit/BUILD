@@ -228,6 +228,8 @@ cc_library(
 XLA_DEVICE_DEPS = [
     ":common",
     ":pjrt_device_context",
+    ":variable_info",
+    ":variable_info_util",
     ":xla_compile_util",
     ":xla_launch_util",
     ":xla_tensor",
@@ -407,6 +409,50 @@ cc_library(
 # Internal targets below this point.
 
 cc_library(
+    name = "variable_info",
+    srcs = ["variable_info.cc"],
+    hdrs = ["variable_info.h"],
+    visibility = [
+        ":internal",
+        # We reuse VariableInfo in TFRT's implementation of TpuExecuteOp.
+        "//learning/brain/tfrt/tf_tpu:__pkg__",
+        "//learning/brain/tfrt/tpu_plugin:__pkg__",
+        "//learning/brain/tfrt/tpu_common:__pkg__",
+        "//tensorflow/core/common_runtime/next_pluggable_device:__pkg__",
+    ],
+    deps = [
+        "//tensorflow/core:core_cpu_internal",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:framework_internal",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+    ],
+)
+
+cc_library(
+    name = "variable_info_util",
+    srcs = ["variable_info_util.cc"],
+    hdrs = ["variable_info_util.h"],
+    visibility = [
+        ":internal",
+        # We reuse VariableInfo in TFRT's implementation of TpuExecuteOp.
+        "//learning/brain/tfrt/tf_tpu:__pkg__",
+        "//learning/brain/tfrt/tpu_plugin:__pkg__",
+        "//learning/brain/tfrt/tpu_common:__pkg__",
+        "//tensorflow/core/common_runtime/next_pluggable_device:__pkg__",
+    ],
+    deps = [
+        ":variable_info",
+        "//tensorflow/core:core_cpu_internal",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:framework_internal",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "@com_google_absl//absl/algorithm:container",
+    ],
+)
+
+cc_library(
     name = "xla_launch_util",
     srcs = ["xla_launch_util.cc"],
     hdrs = ["xla_launch_util.h"],
@@ -419,14 +465,13 @@ cc_library(
         "//tensorflow/core/common_runtime/next_pluggable_device:__pkg__",
     ],
     deps = [
-        ":common",
+        ":variable_info",
+        ":variable_info_util",
         ":xla_tensor",
         "//tensorflow/compiler/tf2xla:common",
         "//tensorflow/compiler/tf2xla:xla_compiler",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:status_macros",
-        "//tensorflow/compiler/xla:statusor",
-        "//tensorflow/compiler/xla/client:client_library",
         "//tensorflow/compiler/xla/client:local_client",
         "//tensorflow/compiler/xla/service:shaped_buffer",
         "//tensorflow/compiler/xla/stream_executor:device_memory_allocator",
@@ -439,7 +484,6 @@ cc_library(
         "//tensorflow/core:protos_all_cc",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/cleanup",
-        "@com_google_absl//absl/memory",
     ],
 )
 
@@ -552,6 +596,8 @@ cc_library(
     deps = [
         ":compilability_check_util",
         ":device_compiler",
+        ":variable_info",
+        ":variable_info_util",
         ":xla_device_no_jit_rewrite_registration",
         ":xla_launch_util",
         "//tensorflow/compiler/tf2xla:xla_compiler",

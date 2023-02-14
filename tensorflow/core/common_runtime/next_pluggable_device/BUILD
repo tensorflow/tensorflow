@@ -98,6 +98,8 @@ cc_library(
         ":utils",
         "//tensorflow/c:tf_status_helper",
         "//tensorflow/compiler/jit:device_compiler_client",
+        "//tensorflow/compiler/jit:variable_info",
+        "//tensorflow/compiler/jit:variable_info_util",
         "//tensorflow/compiler/jit:xla_device",
         "//tensorflow/compiler/jit:xla_launch_util",
         "//tensorflow/compiler/tf2xla:common",
@@ -311,7 +313,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":plugin_variable",
-        "//tensorflow/compiler/jit:xla_launch_util",
+        "//tensorflow/compiler/jit:variable_info",
         "//tensorflow/tsl/platform:status",
     ],
 )
