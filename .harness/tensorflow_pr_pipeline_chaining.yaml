@@ -14,12 +14,8 @@ pipeline:
           org: SE_Sandbox
           pipeline: tensorflow_chained_child_pipeline_1
           project: parson
-          inputs:
-            identifier: tensorflow_chained_child_pipeline_1
-            properties:
-              ci:
-                codebase:
-                  build: <+input>
           outputs: []
+          inputSetReferences:
+            - default
         tags: {}
         variables: []
