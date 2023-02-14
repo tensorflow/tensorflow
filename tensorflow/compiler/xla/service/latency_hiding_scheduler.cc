@@ -180,75 +180,81 @@ ResourcesVector AsyncTracker::GetResourcesFromInstruction(
     ResourceUsageType usage = op.outer == HloOpcode::kAsyncStart
                                   ? ResourceUsageType::kResourceRelease
                                   : ResourceUsageType::kResourceOccupy;
-    return {std::make_pair(type, usage)};
+    return {std::make_pair(ResourceTypeToIndex(type), usage)};
   }
 
   switch (hlo.opcode()) {
     case HloOpcode::kAfterAll:
       // TODO(maggioni): Understand why AfterAll need to not be overlapped.
-      return ResourcesVector{std::make_pair(ResourceType::kSendHost,
-                                            ResourceUsageType::kNoResource)};
+      return ResourcesVector{
+          std::make_pair(ResourceTypeToIndex(ResourceType::kSendHost),
+                         ResourceUsageType::kNoResource)};
     case HloOpcode::kRecv:
       return ResourcesVector{
           static_cast<const HloSendRecvInstruction*>(&hlo)->is_host_transfer()
-              ? std::make_pair(config_.force_send_recv_to_use_same_resource
-                                   ? ResourceType::kSendHost
-                                   : ResourceType::kRecvHost,
-                               ResourceUsageType::kResourceRelease)
-              : std::make_pair(ResourceType::kSendRecv,
+              ? std::make_pair(
+                    config_.force_send_recv_to_use_same_resource
+                        ? ResourceTypeToIndex(ResourceType::kSendHost)
+                        : ResourceTypeToIndex(ResourceType::kRecvHost),
+                    ResourceUsageType::kResourceRelease)
+              : std::make_pair(ResourceTypeToIndex(ResourceType::kSendRecv),
                                ResourceUsageType::kResourceRelease)};
     case HloOpcode::kSend:
       return ResourcesVector{
           static_cast<const HloSendRecvInstruction*>(&hlo)->is_host_transfer()
-              ? std::make_pair(ResourceType::kSendHost,
+              ? std::make_pair(ResourceTypeToIndex(ResourceType::kSendHost),
                                ResourceUsageType::kResourceRelease)
-              : std::make_pair(ResourceType::kSendRecv,
+              : std::make_pair(ResourceTypeToIndex(ResourceType::kSendRecv),
                                ResourceUsageType::kResourceRelease)};
     case HloOpcode::kRecvDone:
       return ResourcesVector{
           static_cast<const HloSendRecvInstruction*>(hlo.operand(0))
                   ->is_host_transfer()
-              ? std::make_pair(config_.force_send_recv_to_use_same_resource
-                                   ? ResourceType::kSendHost
-                                   : ResourceType::kRecvHost,
-                               ResourceUsageType::kResourceOccupy)
-              : std::make_pair(ResourceType::kSendRecv,
+              ? std::make_pair(
+                    config_.force_send_recv_to_use_same_resource
+                        ? ResourceTypeToIndex(ResourceType::kSendHost)
+                        : ResourceTypeToIndex(ResourceType::kRecvHost),
+                    ResourceUsageType::kResourceOccupy)
+              : std::make_pair(ResourceTypeToIndex(ResourceType::kSendRecv),
                                ResourceUsageType::kResourceOccupy)};
     case HloOpcode::kSendDone:
       return ResourcesVector{
           static_cast<const HloSendRecvInstruction*>(hlo.operand(0))
                   ->is_host_transfer()
-              ? std::make_pair(ResourceType::kSendHost,
+              ? std::make_pair(ResourceTypeToIndex(ResourceType::kSendHost),
                                ResourceUsageType::kResourceOccupy)
-              : std::make_pair(ResourceType::kSendRecv,
+              : std::make_pair(ResourceTypeToIndex(ResourceType::kSendRecv),
                                ResourceUsageType::kResourceOccupy)};
     default:
       return ResourcesVector{};
   }
 }
 
-// Returns the number of collective instructions of the opcode 'async_done'
-// started by this instruction.
-int64_t AsyncTracker::CollectivesPerInstruction(
-    ResourceType async_done, const HloInstruction& instr) const {
+int64_t AsyncTracker::ResourcesPerInstruction(
+    ResourceType resource_type, const HloInstruction& instr) const {
+  return ResourcesPerInstruction(ResourceTypeToIndex(resource_type), instr);
+}
+
+int64_t AsyncTracker::ResourcesPerInstruction(
+    int64_t resource_type, const HloInstruction& instr) const {
   // For instructions not calling a computation then return 1 if the instruction
   // has opcode equal to 'async_done'
   if (instr.called_computations().empty() ||
       instr.opcode() == HloOpcode::kAsyncStart ||
       instr.opcode() == HloOpcode::kAsyncDone) {
     return absl::c_any_of(GetResourcesFromInstruction(instr),
-                          [async_done](const ResourcePair& resource) {
+                          [resource_type](const ResourcePair& resource) {
                             return resource.second ==
                                        ResourceUsageType::kResourceOccupy &&
-                                   async_done == resource.first;
+                                   (resource_type == resource.first);
                           })
                ? 1
                : 0;
   }
-  std::function<void(const HloComputation*)> recursively_compute_async_map =
+  std::function<void(const HloComputation*)> recursively_compute_resource_map =
       [this,
-       &recursively_compute_async_map](const HloComputation* computation) {
-        absl::flat_hash_map<ResourceType, int64_t> per_opcode_map;
+       &recursively_compute_resource_map](const HloComputation* computation) {
+        absl::flat_hash_map<int64_t, int64_t> per_opcode_map;
         for (HloInstruction* instr : computation->instructions()) {
           if (IsSupportedAsyncDone(*instr)) {
             for (auto& resource : GetResourcesFromInstruction(*instr)) {
@@ -259,7 +265,7 @@ int64_t AsyncTracker::CollectivesPerInstruction(
                instr->called_computations()) {
             auto it = async_in_computation_cache_.find(called_comp);
             if (it == async_in_computation_cache_.end()) {
-              recursively_compute_async_map(called_comp);
+              recursively_compute_resource_map(called_comp);
               it = async_in_computation_cache_.find(called_comp);
               CHECK(it != async_in_computation_cache_.end());
             }
@@ -271,21 +277,21 @@ int64_t AsyncTracker::CollectivesPerInstruction(
         }
         async_in_computation_cache_[computation] = std::move(per_opcode_map);
       };
-  int64_t total_async = 0;
+  int64_t num_resources = 0;
   for (const HloComputation* computation : instr.called_computations()) {
     auto it = async_in_computation_cache_.find(computation);
     if (it == async_in_computation_cache_.end()) {
-      recursively_compute_async_map(computation);
+      recursively_compute_resource_map(computation);
       it = async_in_computation_cache_.find(computation);
       CHECK(it != async_in_computation_cache_.end());
     }
-    auto opcode_it = it->second.find(async_done);
+    auto opcode_it = it->second.find(resource_type);
     if (opcode_it == it->second.end()) {
       continue;
     }
-    total_async += opcode_it->second;
+    num_resources += opcode_it->second;
   }
-  return total_async;
+  return num_resources;
 }
 
 BufferInfoTracker::BufferInfoTracker(
@@ -733,8 +739,7 @@ class ReadySetLt {
       auto it = sched_state_.max_concurrent_async.find(resource.first);
       cand.resource_constrained =
           it != sched_state_.max_concurrent_async.end() && it->second == 0 &&
-          sched_state_.resource_users_in_queue[ResourceTypeToIndex(
-              resource.first)] > 0;
+          sched_state_.resource_users_in_queue[resource.first] > 0;
       if (*cand.resource_constrained) {
         return *cand.resource_constrained;
       }
@@ -796,7 +801,7 @@ HloGraphNode* DefaultSchedulerCore::FindAndExtractBestNodeAvailable(
           // Number of collectives of the current considered kind that could be
           // executed overlapped by scheduling this instruction.
           const int64_t collectives_of_opcode_for_instr =
-              sched_state.async_tracker->CollectivesPerInstruction(
+              sched_state.async_tracker->ResourcesPerInstruction(
                   max_collective_value.first, instr);
           if (max_collective_value.second - collectives_of_opcode_for_instr <
               0) {
@@ -877,8 +882,7 @@ StatusOr<HloGraphNode::TimeCost> DefaultSchedulerCore::ScheduleNode(
       ++(sched_state->max_concurrent_async[resource.first]);
     } else if (resource.second == ResourceUsageType::kResourceOccupy) {
       --(sched_state->max_concurrent_async[resource.first]);
-      --(sched_state
-             ->resource_users_in_queue[ResourceTypeToIndex(resource.first)]);
+      --(sched_state->resource_users_in_queue[resource.first]);
     }
   }
   // Compute the new current time after scheduling this node. It is computed
@@ -938,8 +942,7 @@ StatusOr<HloGraphNode::TimeCost> DefaultSchedulerCore::ScheduleNode(
          sched_state->async_tracker->GetResourcesFromInstruction(
              edge.Target().GetInstr())) {
       if (resource.second == ResourceUsageType::kResourceOccupy) {
-        ++(sched_state
-               ->resource_users_in_queue[ResourceTypeToIndex(resource.first)]);
+        ++(sched_state->resource_users_in_queue[resource.first]);
       }
     }
     edge.Target().SetReadyTime(ready_time);
@@ -1207,19 +1210,26 @@ DefaultSchedulerCore::ScheduleComputation(const HloComputation* computation) {
   sched_state.sched_graph.InitializeGraphAnalysis(async_tracker_);
   VLOG(5) << "Just built graph:";
   XLA_VLOG_LINES(5, sched_state.sched_graph.ToString());
-  sched_state.max_concurrent_async[ResourceType::kCollectivePermute] =
+  sched_state.max_concurrent_async[ResourceTypeToIndex(
+      ResourceType::kCollectivePermute)] =
       config_.collective_permute_overlap_limit;
-  sched_state.max_concurrent_async[ResourceType::kAllToAll] =
+  sched_state
+      .max_concurrent_async[ResourceTypeToIndex(ResourceType::kAllToAll)] =
       config_.all_to_all_overlap_limit;
-  sched_state.max_concurrent_async[ResourceType::kAllGather] =
+  sched_state
+      .max_concurrent_async[ResourceTypeToIndex(ResourceType::kAllGather)] =
       config_.all_gather_overlap_limit;
-  sched_state.max_concurrent_async[ResourceType::kAllReduce] =
+  sched_state
+      .max_concurrent_async[ResourceTypeToIndex(ResourceType::kAllReduce)] =
       config_.all_reduce_overlap_limit;
-  sched_state.max_concurrent_async[ResourceType::kSendRecv] =
+  sched_state
+      .max_concurrent_async[ResourceTypeToIndex(ResourceType::kSendRecv)] =
       config_.send_recv_overlap_limit;
-  sched_state.max_concurrent_async[ResourceType::kSendHost] =
+  sched_state
+      .max_concurrent_async[ResourceTypeToIndex(ResourceType::kSendHost)] =
       config_.send_recv_host_overlap_limit;
-  sched_state.max_concurrent_async[ResourceType::kRecvHost] =
+  sched_state
+      .max_concurrent_async[ResourceTypeToIndex(ResourceType::kRecvHost)] =
       config_.send_recv_host_overlap_limit;
   // Collect the bottom roots of the graph (nodes that don't have any
   // successor)
