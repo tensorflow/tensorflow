@@ -29,7 +29,6 @@ limitations under the License.
 #include "tensorflow/compiler/jit/xla_launch_util.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_c_api_client.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
-#include "tensorflow/core/common_runtime/next_pluggable_device/next_pluggable_device.h"
 #include "tensorflow/core/common_runtime/next_pluggable_device/plugin_resource.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/platform/status.h"
@@ -42,13 +41,6 @@ limitations under the License.
 TF_Device* TF_GetDevice(TF_OpKernelContext* ctx) {
   auto* cc_ctx = reinterpret_cast<tensorflow::OpKernelContext*>(ctx);
   return reinterpret_cast<TF_Device*>(cc_ctx->device());
-}
-
-size_t TF_GetDeviceOrdinal(TF_Device* device) {
-  // TODO(chuanhao): make GetDeviceOrdinal a virtual member function in the base
-  // device class, instead of casting to `NextPluggableDevice`.
-  auto cc_device = reinterpret_cast<tensorflow::NextPluggableDevice*>(device);
-  return cc_device->GetDeviceOrdinal();
 }
 
 // --------------------------  Resource  ---------------------------------------

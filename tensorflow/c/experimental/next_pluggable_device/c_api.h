@@ -60,8 +60,6 @@ typedef struct TF_VariableInfo TF_VariableInfo;
 // but in theory every this is a C API for every kind of device.
 TF_CAPI_EXPORT extern TF_Device* TF_GetDevice(TF_OpKernelContext* ctx);
 
-TF_CAPI_EXPORT extern size_t TF_GetDeviceOrdinal(TF_Device* device);
-
 // --------------------------  Resource  ---------------------------------------
 // Create a `tensorflow::PluginResource` to the ResourceMgr provided by the
 // `ctx`. The `tensorflow::PluginResource` wraps a resource by plugin (as a

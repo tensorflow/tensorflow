@@ -22,7 +22,6 @@ cc_library(
         "//tensorflow/compiler/xla/pjrt:pjrt_client",
         "//tensorflow/compiler/xla/pjrt/c:pjrt_c_api_hdrs",
         "//tensorflow/core:framework",
-        "//tensorflow/core/common_runtime/next_pluggable_device",
         "//tensorflow/core/common_runtime/next_pluggable_device:plugin_resource",
         "//tensorflow/core/platform:status",
         "//tensorflow/core/tfrt/common:async_value_tensor",
