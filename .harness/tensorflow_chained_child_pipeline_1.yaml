@@ -25,7 +25,9 @@ pipeline:
                   identifier: Run_1
                   spec:
                     shell: Sh
-                    command: echo "child pipeline 1"
+                    command: |-
+                      echo "this chained pipeline worked"
+                      echo "input:"<+pipeline.variables.input>
   properties:
     ci:
       codebase:
