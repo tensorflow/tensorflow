@@ -188,7 +188,6 @@ tflite_cc_library_with_c_headers_test(
 
 cc_library(
     name = "c_api_internal",
-    srcs = ["c_api_internal.cc"],
     hdrs = ["c_api_internal.h"],
     compatible_with = get_compatible_with_portable(),
     copts = tflite_copts(),

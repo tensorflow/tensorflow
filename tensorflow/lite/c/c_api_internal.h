@@ -197,65 +197,6 @@ TfLiteInterpreter* InterpreterCreateWithOpResolver(
     const TfLiteModel* model, const TfLiteInterpreterOptions* optional_options,
     tflite::MutableOpResolver* mutable_resolver);
 
-// Sets the initialization callback for the registration.
-//
-// The callback is called when the operator is initialized.  Please refer to
-// `init` of `TfLiteRegistration` for the detail. The supplied `data` passed via
-// the second parameter is expected to be passed back into the `init` function
-// pointer as the first `data` argument.
-//
-// The purpose of the `data` parameter is to allow the caller to make additional
-// state available to the callback.  If this is not required then use
-// `TfLiteRegistrationExternalSetInit` instead.
-void TfLiteRegistrationExternalSetInitWithData(
-    TfLiteRegistrationExternal* registration, void* data,
-    void* (*init)(void* data, TfLiteOpaqueContext* context, const char* buffer,
-                  size_t length));
-
-// Sets the preparation callback for the registration.
-//
-// The callback is called when the inputs of operator have been resized.
-// Please refer `prepare` of `TfLiteRegistration` for the detail.
-// The supplied `data` passed via the second parameter is expected to be passed
-// back into the `prepare` function pointer as the first `data` argument.
-//
-// The purpose of the `data` parameter is to allow the caller to make additional
-// state available to the callback.  If this is not required then use
-// `TfLiteRegistrationExternalSetPrepare` instead.
-void TfLiteRegistrationExternalSetPrepareWithData(
-    TfLiteRegistrationExternal* registration, void* data,
-    TfLiteStatus (*prepare)(void* data, TfLiteOpaqueContext* context,
-                            TfLiteOpaqueNode* node));
-
-// Sets the invocation callback for the registration.
-//
-// The callback is called when the operator is executed.  Please refer `invoke`
-// of `TfLiteRegistration` for the detail. The supplied `data` passed via the
-// second parameter is expected to be passed back into the `invoke` function
-// pointer as the first `data` argument.
-//
-// The purpose of the `data` parameter is to allow the caller to make additional
-// state available to the callback.  If this is not required then use
-// `TfLiteRegistrationExternalSetInvoke` instead.
-void TfLiteRegistrationExternalSetInvokeWithData(
-    TfLiteRegistrationExternal* registration, void* data,
-    TfLiteStatus (*invoke)(void* data, TfLiteOpaqueContext* context,
-                           TfLiteOpaqueNode* node));
-
-// Sets the free callback for the registration.
-//
-// The callback is called when the operator is no longer needed and allows the
-// callback to release any memory that might have been allocated earlier.  The
-// supplied `data` passed via the second parameter is expected to be passed back
-// into the `free` function pointer as the first `data` argument.
-//
-// The purpose of the `data` parameter is to allow the caller to make additional
-// state available to the callback.  If this is not required then use
-// `TfLiteRegistrationExternalSetFree` instead.
-void TfLiteRegistrationExternalSetFreeWithData(
-    TfLiteRegistrationExternal* registration, void* data,
-    void (*free)(void* data, TfLiteOpaqueContext* context, void* buffer));
-
 }  // namespace internal
 }  // namespace tflite
 

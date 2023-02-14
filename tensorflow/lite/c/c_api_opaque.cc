@@ -263,7 +263,7 @@ TfLiteStatus TfLiteOpaqueContextGetNodeAndRegistration(
   // to the 'TfLiteRegistration' object.
   auto derived_registration =
       tflite::internal::CommonOpaqueConversionUtil::ObtainRegistrationExternal(
-          context, registration);
+          context, registration, node_index);
 
   if (derived_registration == nullptr) return kTfLiteError;
 

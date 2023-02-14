@@ -1073,85 +1073,6 @@ TEST(CApiSimple, CustomOpSupport) {
   TfLiteRegistrationExternalDelete(reg);
 }
 
-int g_init_data = 1;
-int g_prepare_data = 2;
-int g_invoke_data = 3;
-int g_free_data = 4;
-
-void* FlexSinhInitExpectingData(void* data, TfLiteOpaqueContext* context,
-                                const char* buffer, size_t length) {
-  EXPECT_EQ(data, &g_init_data);
-  return &g_init_data;
-}
-
-void FlexSinhFreeExpectingData(void* data, TfLiteOpaqueContext* context,
-                               void* buffer) {
-  EXPECT_EQ(data, &g_free_data);
-}
-
-TfLiteStatus FlexSinhPrepareExpectingData(void* data,
-                                          TfLiteOpaqueContext* context,
-                                          TfLiteOpaqueNode* node) {
-  EXPECT_EQ(data, &g_prepare_data);
-  return kTfLiteOk;
-}
-
-TfLiteStatus FlexSinhEvalExpectingData(void* data, TfLiteOpaqueContext* context,
-                                       TfLiteOpaqueNode* node) {
-  EXPECT_EQ((*static_cast<int*>(data)), g_invoke_data);
-
-  const TfLiteOpaqueTensor* input = TfLiteOpaqueNodeGetInput(context, node, 0);
-  size_t input_bytes = TfLiteOpaqueTensorByteSize(input);
-  void* data_ptr = TfLiteOpaqueTensorData(input);
-  float input_value;
-  memcpy(&input_value, data_ptr, input_bytes);
-
-  TfLiteOpaqueTensor* output = TfLiteOpaqueNodeGetOutput(context, node, 0);
-  float output_value = std::sinh(input_value);
-  TfLiteOpaqueTensorCopyFromBuffer(output, &output_value, sizeof(output_value));
-  return kTfLiteOk;
-}
-
-TEST(CApiSimple, CustomOpSupport_UsingFunctionsAcceptingDataArgument) {
-  TfLiteModel* model = TfLiteModelCreateFromFile(
-      "third_party/tensorflow/lite/testdata/custom_sinh.bin");
-  ASSERT_NE(model, nullptr);
-
-  TfLiteRegistrationExternal* reg =
-      TfLiteRegistrationExternalCreate(kTfLiteBuiltinCustom, "Sinh", 1);
-  tflite::internal::TfLiteRegistrationExternalSetInitWithData(
-      reg, &g_init_data, &FlexSinhInitExpectingData);
-  tflite::internal::TfLiteRegistrationExternalSetPrepareWithData(
-      reg, &g_prepare_data, &FlexSinhPrepareExpectingData);
-  tflite::internal::TfLiteRegistrationExternalSetInvokeWithData(
-      reg, &g_invoke_data, &FlexSinhEvalExpectingData);
-  tflite::internal::TfLiteRegistrationExternalSetFreeWithData(
-      reg, &g_free_data, &FlexSinhFreeExpectingData);
-
-  TfLiteInterpreterOptions* options = TfLiteInterpreterOptionsCreate();
-  TfLiteInterpreterOptionsAddRegistrationExternal(options, reg);
-
-  TfLiteInterpreter* interpreter = TfLiteInterpreterCreate(model, options);
-
-  TfLiteInterpreterOptionsDelete(options);
-  ASSERT_EQ(TfLiteInterpreterAllocateTensors(interpreter), kTfLiteOk);
-  TfLiteTensor* input_tensor = TfLiteInterpreterGetInputTensor(interpreter, 0);
-  float input_value = 1.0f;
-  TfLiteTensorCopyFromBuffer(input_tensor, &input_value, sizeof(float));
-
-  EXPECT_EQ(TfLiteInterpreterInvoke(interpreter), kTfLiteOk);
-
-  const TfLiteTensor* output_tensor =
-      TfLiteInterpreterGetOutputTensor(interpreter, 0);
-  float output_value;
-  TfLiteTensorCopyToBuffer(output_tensor, &output_value, sizeof(float));
-  EXPECT_EQ(output_value, std::sinh(1.0f));
-
-  TfLiteInterpreterDelete(interpreter);
-  TfLiteModelDelete(model);
-  TfLiteRegistrationExternalDelete(reg);
-}
-
 const TfLiteRegistration* find_builtin_op_add(void* user_data,
                                               TfLiteBuiltinOperator op,
                                               int version) {
@@ -1488,6 +1409,85 @@ TEST(CApiSimple, OpaqueApiAccessors) {
 
   EXPECT_EQ(kTfLiteOk, interpreter.ModifyGraphWithDelegate(&my_delegate));
   EXPECT_TRUE(delegate_kernel_invoked);
+}
+
+void AddNode(
+    tflite::ops::builtin::BuiltinOpResolverWithoutDefaultDelegates* resolver,
+    ::tflite::Interpreter* interpreter) {
+  const char* initial_data = "";
+  TfLiteAddParams* builtin_data =
+      reinterpret_cast<TfLiteAddParams*>(malloc(sizeof(TfLiteAddParams)));
+  builtin_data->activation = kTfLiteActNone;
+  builtin_data->pot_scale_int16 = false;
+  const TfLiteRegistration* reg =
+      resolver->FindOp(::tflite::BuiltinOperator_ADD, 1);
+  interpreter->AddNodeWithParameters({0, 1}, {2}, initial_data, 0, builtin_data,
+                                     reg);
+}
+
+TEST(CApiSimple, AddNodesAfterApplyingDelegate) {
+  // NOTE: This test does not illustrate intended usage by applications, and
+  // clients should not mimic such a scenario in their code.  This is a
+  // regression test for issue b/268405910.
+  //
+  // The test adds 'several' nodes after a delegate kernel has been applied
+  // that visits the existing nodes and registrations.  The motivation behind
+  // this scenario is that nodes (and registration) objects are stored within a
+  // dynamic data structure and adding a significant amount of nodes has the
+  // potential to exercise the scenario wherein internal re-allocations are
+  // happening within that data structure.  For test coverage purposes this test
+  // is valuable, though users should not write such code.
+
+  ::tflite::Interpreter interpreter;
+  interpreter.AddTensors(3);
+  std::vector<int> dims = {1, 3};
+  std::vector<int> dims_signature = {-1, 3};
+  interpreter.SetTensorParametersReadWrite(
+      0, kTfLiteFloat32, "a", dims, TfLiteQuantizationParams{1.0, 0},
+      /*is_variable=*/false, &dims_signature);
+  interpreter.SetTensorParametersReadWrite(
+      1, kTfLiteFloat32, "b", dims, TfLiteQuantizationParams{1.0, 0},
+      /*is_variable=*/false, &dims_signature);
+  interpreter.SetTensorParametersReadWrite(
+      2, kTfLiteFloat32, "c", dims, TfLiteQuantizationParams{1.0, 0},
+      /*is_variable=*/false, &dims_signature);
+
+  interpreter.SetInputs({0, 1});
+  interpreter.SetOutputs({2});
+  tflite::ops::builtin::BuiltinOpResolverWithoutDefaultDelegates resolver;
+  AddNode(&resolver, &interpreter);
+
+  TfLiteOpaqueDelegateBuilder opaque_delegate_builder{};
+  opaque_delegate_builder.flags = kTfLiteDelegateFlagsAllowDynamicTensors;
+  bool delegate_prepare_invoked = false;
+  opaque_delegate_builder.data = &delegate_prepare_invoked;
+  opaque_delegate_builder.Prepare = [](TfLiteOpaqueContext* context,
+                                       TfLiteOpaqueDelegate* delegate,
+                                       void* data) -> TfLiteStatus {
+    bool* delegate_prepare_invoked_pointer = static_cast<bool*>(data);
+    *delegate_prepare_invoked_pointer = true;
+
+    TfLiteIntArray* execution_plan;
+    TfLiteOpaqueContextGetExecutionPlan(context, &execution_plan);
+    EXPECT_EQ(execution_plan->size, 1);
+
+    TfLiteOpaqueNode* node = nullptr;
+    TfLiteRegistrationExternal* registration_external = nullptr;
+    TfLiteOpaqueContextGetNodeAndRegistration(context, execution_plan->data[0],
+                                              &node, &registration_external);
+    EXPECT_NE(node, nullptr);
+    EXPECT_NE(registration_external, nullptr);
+    return kTfLiteOk;
+  };
+  TfLiteDelegate my_delegate{};
+  my_delegate.opaque_delegate_builder = &opaque_delegate_builder;
+
+  EXPECT_EQ(kTfLiteOk, interpreter.ModifyGraphWithDelegate(&my_delegate));
+  EXPECT_TRUE(delegate_prepare_invoked);
+
+  for (int i = 0; i < 500; ++i) {
+    AddNode(&resolver, &interpreter);
+  }
 }
 
 }  // namespace
