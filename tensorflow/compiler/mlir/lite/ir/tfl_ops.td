@@ -1939,7 +1939,7 @@ def TFL_L2NormalizationOp : TFL_Op<"l2_normalization", [Pure,
     // zero_point = central_value
     // scale = 1. / (central_value - min_value)
     return quant::GetFixedOutputRange(is_signed, bit_width, result_type,
-        /*scale=*/1.0 / 128, /*zero_point=*/0);
+        /*scale=*/1.0 / (1<<(bit_width-1)), /*zero_point=*/0);
   }
   }];
 }
@@ -2090,7 +2090,8 @@ def TFL_LogisticOp: TFL_Op<"logistic", [
     // zero_point = 0
     // scale = 1. / (max_value + 1)
     return quant::GetFixedOutputRange(is_signed, bit_width, result_type,
-        /*scale=*/1.0 / 256, /*zero_point=*/-128);
+        /*scale=*/1.0 / (1<<(bit_width)),
+        /*zero_point=*/-(1<<(bit_width-1)));
   }
   }];
 
@@ -3224,7 +3225,8 @@ def TFL_SoftmaxOp : TFL_Op<"softmax", [
     // zero_point = 0
     // scale = 1. / (max_value + 1)
     return quant::GetFixedOutputRange(is_signed, bit_width, result_type,
-        /*scale=*/1.0 / 256, /*zero_point=*/-128);
+        /*scale=*/1.0 / (1<<(bit_width)),
+        /*zero_point=*/-(1<<(bit_width-1)));
   }
   }];
 }
@@ -3387,7 +3389,7 @@ def TFL_TanhOp: TFL_Op<"tanh", [
     // zero_point = central_value
     // scale = 1. / (central_value - min_value)
     return quant::GetFixedOutputRange(is_signed, bit_width, result_type,
-        /*scale=*/1.0 / 128, /*zero_point=*/0);
+        /*scale=*/1.0 / (1<<(bit_width-1)), /*zero_point=*/0);
   }
   }];
 }

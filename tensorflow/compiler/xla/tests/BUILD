@@ -1298,7 +1298,8 @@ xla_test(
     srcs = ["convolution_cudnn_test.cc"],
     backend_tags = {"gpu": [
         "gpu",
-        "requires-gpu-sm80",
+        "requires-gpu-sm70-only",
+        "requires-gpu-sm80-only",
     ]},
     backends = ["gpu"],
     deps = [

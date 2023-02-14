@@ -1,4 +1,3 @@
-
 // RUN: mlir-hlo-opt %s -allow-unregistered-dialect -hlo-buffer-reuse | FileCheck %s
 
 func.func @simple_reuse() {

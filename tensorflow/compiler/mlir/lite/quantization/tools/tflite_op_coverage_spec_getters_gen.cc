@@ -194,10 +194,18 @@ void GenerateStaticQuantOp(std::vector<Record *> &defs,
       // quantizer. This code is temporary until 16x8 is fully supported in MLIR
       // quantizer.
       if (act_type == InputDataType::INT16) {
-        if (absl::StrContains(op_name, "LSTMOp") && is_toco) {
-          continue;
-        } else if (!absl::StrContains(op_name, "LSTMOp") && !is_toco) {
-          continue;
+        if (is_toco) {
+          // Conditions when using TOCO.
+          if (absl::StrContains(op_name, "LSTMOp")) continue;
+        } else {
+          // Conditions when using MLIR.
+          if (!(absl::StrContains(op_name, "LSTMOp") ||
+                absl::StrContains(op_name, "SoftmaxOp") ||
+                absl::StrContains(op_name, "LogisticOp") ||
+                absl::StrContains(op_name, "L2NormalizationOp") ||
+                absl::StrContains(op_name, "TanhOp"))) {
+            continue;
+          }
         }
       }
 

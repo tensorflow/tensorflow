@@ -102,5 +102,15 @@ RegionBranchOpInterface moveRegionsToNewOpButKeepOldOp(
   return newOp;
 }
 
+Type getUnrankedMemrefType(Type ty) {
+  MemRefType memRefTy = llvm::cast<MemRefType>(ty);
+  return UnrankedMemRefType::get(memRefTy.getElementType(),
+                                 memRefTy.getMemorySpace());
+}
+
+Type getUnrankedMemrefType(Value v) {
+  return getUnrankedMemrefType(v.getType());
+}
+
 }  // namespace deallocation
 }  // namespace mlir

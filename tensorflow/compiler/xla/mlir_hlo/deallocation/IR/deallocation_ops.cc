@@ -45,7 +45,7 @@ LogicalResult retainOfNothing(RetainOp op, PatternRewriter& rewriter) {
 
   auto nulls = llvm::to_vector(
       llvm::map_range(TypeRange{op.getRetained()}, [&](Type ty) -> Value {
-        return rewriter.create<NullOp>(op.getLoc(), ty);
+        return rewriter.create<NullOp>(op.getLoc(), getUnrankedMemrefType(ty));
       }));
   rewriter.replaceOp(op, nulls);
   return success();
@@ -62,6 +62,14 @@ LogicalResult retainNoOp(RetainOp op, PatternRewriter& rewriter) {
 bool allocIsNonNullImpl(Value v, llvm::DenseSet<Value>& pending) {
   if (llvm::isa_and_present<memref::AllocOp>(v.getDefiningOp())) {
     return true;
+  }
+
+  if (llvm::isa_and_present<memref::SubViewOp, memref::CastOp,
+                            memref::ExpandShapeOp, memref::CollapseShapeOp,
+                            memref::ReshapeOp, memref::ViewOp,
+                            memref::ReinterpretCastOp, memref::TransposeOp>(
+          v.getDefiningOp())) {
+    return allocIsNonNullImpl(v.getDefiningOp()->getOperand(0), pending);
   }
 
   // If v is a block argument, check all incoming edges.

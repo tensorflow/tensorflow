@@ -31,6 +31,7 @@ limitations under the License.
 #include "mlir/IR/ImplicitLocOpBuilder.h"
 #include "mlir/IR/Operation.h"
 #include "mlir/IR/Region.h"
+#include "mlir/IR/TypeUtilities.h"
 #include "mlir/Interfaces/ControlFlowInterfaces.h"
 
 namespace mlir {
@@ -76,9 +77,25 @@ struct Deallocator {
   // them to the terminator.
   llvm::SmallVector<Value> transformBlock(Block& block, bool ownsInputs = true);
 
+  // If `value` is guaranteed to be derived from a particular alloc, returns it.
+  // Otherwise, returns null.
+  Value getUniquePossibleAlloc(Value value);
+
   breaks_if_you_move_ops::ValueEquivalenceClasses aliases;
   llvm::SmallVector<RegionBranchOpInterface> loops;
 };
+
+Value Deallocator::getUniquePossibleAlloc(Value v) {
+  Value result = {};
+  for (auto it = aliases.findLeader(v); it != aliases.member_end(); ++it) {
+    if (llvm::isa<BlockArgument>(*it) ||
+        llvm::isa<memref::AllocOp>(it->getDefiningOp())) {
+      if (result) return {};
+      result = *it;
+    }
+  }
+  return result;
+}
 
 llvm::SmallVector<Value> Deallocator::transformBlock(Block& block,
                                                      bool ownsInputs) {
@@ -89,8 +106,8 @@ llvm::SmallVector<Value> Deallocator::transformBlock(Block& block,
     for (auto arg : llvm::to_vector(
              llvm::make_filter_range(block.getArguments(), isMemref))) {
       // Add an argument for a potentially owned memref.
-      auto newArg =
-          block.addArgument(arg.getType(), block.getParent()->getLoc());
+      auto newArg = block.addArgument(getUnrankedMemrefType(arg),
+                                      block.getParent()->getLoc());
       ownedMemrefs.insert(newArg);
       aliases.unionSets(arg, newArg);
     }
@@ -143,17 +160,30 @@ llvm::SmallVector<Value> Deallocator::transformBlock(Block& block,
   SmallVector<Value> results(yieldedMemrefs.size());
   for (auto [leader, yielded] : yieldedByLeader) {
     auto& ownedGroup = ownedByLeader[leader];
-    auto retain =
-        b.create<RetainOp>(TypeRange{ValueRange{yielded}}, yielded, ownedGroup);
-    for (auto [retained, result] : llvm::zip(retain.getResults(), yielded)) {
-      aliases.unionSets(retained, result);
-      results[llvm::find(yieldedMemrefs, result) - yieldedMemrefs.begin()] =
-          retained;
+    if (ownedGroup.size() == 1 && yielded.size() == 1 &&
+        getUniquePossibleAlloc(yielded.front()) == ownedGroup.front()) {
+      // We know the alloc that the yielded memref is derived from, so we can
+      // omit the retain op. This would better be a canonicalization pattern,
+      // but it requires an alias analysis, which we already have here.
+      auto cast = results[llvm::find(yieldedMemrefs, yielded.front()) -
+                          yieldedMemrefs.begin()] =
+          b.create<memref::CastOp>(getUnrankedMemrefType(yielded.front()),
+                                   ownedGroup.front());
+      aliases.unionSets(cast, ownedGroup.front());
+    } else {
+      auto types = llvm::to_vector(llvm::map_range(
+          yielded, [](Value v) { return getUnrankedMemrefType(v); }));
+      auto retain = b.create<RetainOp>(types, yielded, ownedGroup);
+      for (auto [retained, result] : llvm::zip(retain.getResults(), yielded)) {
+        aliases.unionSets(retained, result);
+        results[llvm::find(yieldedMemrefs, result) - yieldedMemrefs.begin()] =
+            retained;
+      }
     }
   }
   for (auto [result, yielded] : llvm::zip(results, yieldedMemrefs)) {
     if (!result) {
-      result = b.create<NullOp>(yielded.getType()).getResult();
+      result = b.create<NullOp>(getUnrankedMemrefType(yielded)).getResult();
     }
   }
   return results;
@@ -260,16 +290,18 @@ TransformResult Deallocator::transformOp(
       return true;
     };
 
+    auto ty = getUnrankedMemrefType(operand);
     if (llvm::is_contained(ownedMemrefs, operand) && isLastUse() &&
         !llvm::is_contained(released, operand)) {
       // This is an alloc that is not used again, so we can pass ownership
       // to the loop.
-      op->insertOperands(op->getNumOperands(), operand);
+      auto cast = b.create<memref::CastOp>(ty, operand);
+      op->insertOperands(op->getNumOperands(), cast.getResult());
       released.push_back(operand);
     } else {
       // Either the operand is not an alloc or it's reused.
       op->insertOperands(op->getNumOperands(),
-                         b.create<NullOp>(operand.getType()).getResult());
+                         b.create<NullOp>(ty).getResult());
     }
   }
 
