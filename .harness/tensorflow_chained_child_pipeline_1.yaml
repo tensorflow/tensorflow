@@ -29,7 +29,7 @@ pipeline:
   properties:
     ci:
       codebase:
-        connectorRef: parsonghmyaccount
+        connectorRef: parsonghcloudconnector
         repoName: tensorflow
         build: <+input>
         depth: 1
