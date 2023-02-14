@@ -33,3 +33,8 @@ pipeline:
         repoName: tensorflow
         build: <+input>
         depth: 1
+  variables:
+    - name: input
+      type: String
+      description: ""
+      value: <+input>
