@@ -101,8 +101,8 @@ GraphExecutionState::~GraphExecutionState() {
   TF_RETURN_IF_ERROR(AddDefaultAttrsToGraphDef(&graph_def, *flib_def, 0));
 
   if (options.session_options->config.graph_options().place_pruned_graph() ||
-      options.session_options->config.experimental()
-          .disable_optimize_for_static_graph()) {
+      !options.session_options->config.experimental()
+           .optimize_for_static_graph()) {
     auto ret = absl::WrapUnique(new GraphExecutionState(
         std::make_unique<GraphDef>(std::move(graph_def)), std::move(flib_def),
         options));
@@ -182,11 +182,10 @@ GraphExecutionState::~GraphExecutionState() {
 Status GraphExecutionState::Extend(
     const GraphDef& extension_def,
     std::unique_ptr<GraphExecutionState>* out) const {
-  if (!session_options_->config.experimental()
-           .disable_optimize_for_static_graph()) {
+  if (session_options_->config.experimental().optimize_for_static_graph()) {
     return errors::FailedPrecondition(
         "Extending the graph is not supported when "
-        "`disable_optimize_for_static_graph` is false.");
+        "`optimize_for_static_graph` is true.");
   }
 
   GraphDef gdef;
