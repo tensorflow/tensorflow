@@ -250,21 +250,10 @@ Status SnapshotStreamWriter::Save() {
   LOG(INFO) << "Checkpointing distributed tf.data snapshot writer. Stream "
             << params_.stream_index << ", chunk " << chunk_index_
             << ", chunk size in bytes: " << chunk_size_bytes_ << ".";
-  std::string uncommitted_checkpoint_path;
-  if (!params_.env->LocalTempFilename(&uncommitted_checkpoint_path)) {
-    return errors::Internal(
-        "Failed to create temp files for distributed snapshot checkpoints.");
-  }
-  std::string committed_checkpoint_path = CheckpointPath(chunk_index_);
-
-  snapshot_util::TFRecordWriter writer(uncommitted_checkpoint_path,
-                                       params_.compression);
-  TF_RETURN_IF_ERROR(writer.Initialize(params_.env));
-  TF_ASSIGN_OR_RETURN(Tensor serialized, iterator_->Save());
-  TF_RETURN_IF_ERROR(writer.WriteTensors({serialized}));
-  TF_RETURN_IF_ERROR(writer.Close());
-  TF_RETURN_IF_ERROR(params_.env->RenameFile(uncommitted_checkpoint_path,
-                                             committed_checkpoint_path));
+  std::string checkpoint_path = CheckpointPath(chunk_index_);
+  TF_ASSIGN_OR_RETURN(Tensor serialized_iterator, iterator_->Save());
+  TF_RETURN_IF_ERROR(AtomicallyWriteTFRecord(
+      checkpoint_path, serialized_iterator, params_.compression, params_.env));
   return DeleteOutdatedCheckpoints();
 }
 

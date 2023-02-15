@@ -47,7 +47,9 @@ tsl::Status AtomicallyWriteTextProto(absl::string_view filename,
 // Atomically writes `tensor` to `filename` in TFRecord format. Overwrites
 // existing contents if the file already exists.
 tsl::Status AtomicallyWriteTFRecord(absl::string_view filename,
-                                    const Tensor& tensor, tsl::Env* env);
+                                    const Tensor& tensor,
+                                    absl::string_view compression,
+                                    tsl::Env* env);
 
 // Returns the relative paths of the children of `directory`, ignoring temporary
 // files. Returns an empty vector if the directory does not have any children.
