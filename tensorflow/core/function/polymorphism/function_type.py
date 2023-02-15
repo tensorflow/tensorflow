@@ -235,9 +235,7 @@ class FunctionType(inspect.Signature):
       if constraint:
         with_default_args[arg_name] = constraint._cast(  # pylint: disable=protected-access
             with_default_args[arg_name],
-            trace_type.InternalCastContext(
-                allow_specs=True, allow_supertype_tensors=True
-            ),
+            trace_type.InternalCastContext(allow_specs=True),
         )
     bound_arguments = inspect.BoundArguments(self, with_default_args)
     return bound_arguments
