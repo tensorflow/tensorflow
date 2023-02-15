@@ -32,6 +32,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_fix.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_pipeline.h"
+#include "tensorflow/compiler/xla/service/layout_assignment.h"
 #include "tensorflow/compiler/xla/service/pattern_matcher.h"
 #include "tensorflow/compiler/xla/service/pattern_matcher_gmock.h"
 #include "tensorflow/compiler/xla/service/shape_inference.h"
@@ -51,6 +52,12 @@ using ::testing::ElementsAre;
 namespace m = match;
 
 class AlgebraicSimplifierTest : public HloTestBase {
+ public:
+  AlgebraicSimplifierTest()
+      : HloTestBase(/*verifier_layout_sensitive=*/true,
+                    /*allow_mixed_precision_in_hlo_verifier=*/true,
+                    LayoutAssignment::InstructionCanChangeLayout) {}
+
  protected:
   AlgebraicSimplifierOptions default_options_;
 };
@@ -9131,6 +9138,32 @@ TEST_F(AlgebraicSimplifierTest, ReshapeOfDupDoNotCloneMultiUserDup) {
   auto g = simplifier.Run(m.get()).value();
   SCOPED_TRACE("After rewrite\n" + m->ToString());
   ASSERT_FALSE(g);
+}
+
+TEST_F(AlgebraicSimplifierTest, MultiplyOfConvertedPred) {
+  const char* kModuleStr = R"(
+   HloModule m
+   test {
+     p = pred[2,2]{0,1} parameter(0)
+     convert = f32[2,2]{0,1} convert(p)
+     p2 = f32[2,2]{0,1} parameter(1)
+     ROOT multiply = f32[2,2]{0,1} multiply(p2, convert)
+   }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  SCOPED_TRACE("Before rewrite\n" + m->ToString());
+  AlgebraicSimplifierOptions options;
+  options.set_is_layout_sensitive(true);
+  AlgebraicSimplifier simplifier(options);
+  auto g = simplifier.Run(m.get()).value();
+  SCOPED_TRACE("After rewrite\n" + m->ToString());
+  ASSERT_TRUE(g);
+  EXPECT_THAT(m->entry_computation()->root_instruction(),
+              GmockMatch(m::Select(m::Parameter(0), m::Parameter(1),
+                                   m::Broadcast(m::ConstantScalar(0)))));
+  // Also run the HloVerifier on the resulting module to check that the
+  // generated instructions don't have an invalid layout change now.
+  EXPECT_TRUE(verifier().Run(m.get()).status().ok());
 }
 
 }  // namespace

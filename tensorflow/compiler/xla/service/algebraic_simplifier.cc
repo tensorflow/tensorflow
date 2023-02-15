@@ -3169,8 +3169,7 @@ Status AlgebraicSimplifierVisitor::HandleMultiply(HloInstruction* multiply) {
                       m::Op(&convert_operand)
                           .WithShape(m::Shape().WithElementType(PRED)))))) {
       HloInstruction* zero_like_multiply =
-          BroadcastZeros(computation_, multiply->shape().element_type(),
-                         multiply->shape().dimensions());
+          BroadcastZeros(computation_, multiply->shape());
       return ReplaceWithNewInstruction(
           multiply, HloInstruction::CreateTernary(
                         multiply->shape(), HloOpcode::kSelect, convert_operand,
@@ -4176,8 +4175,7 @@ std::unique_ptr<HloInstruction> TryRemainderToAnd(
     int64_t b_value = c->literal().GetFirstElement<T>();
     if (b_value > 0 && absl::has_single_bit(static_cast<uint64_t>(b_value))) {
       // Handle negative dividends by negating the result of the division.
-      HloInstruction* zero_like_a = BroadcastZeros(
-          computation, a->shape().element_type(), a->shape().dimensions());
+      HloInstruction* zero_like_a = BroadcastZeros(computation, a->shape());
 
       Shape compare_shape = ShapeUtil::ChangeElementType(a->shape(), PRED);
       simplifier->UpdateLayout(&compare_shape);

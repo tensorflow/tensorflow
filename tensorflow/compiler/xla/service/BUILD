@@ -2449,6 +2449,7 @@ xla_cc_test(
         ":hlo_parser",
         ":hlo_pass",
         ":hlo_pass_pipeline",
+        ":layout_assignment",
         ":pattern_matcher",
         ":pattern_matcher_gmock",
         ":shape_inference",
