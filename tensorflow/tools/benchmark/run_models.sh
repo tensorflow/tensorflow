@@ -26,15 +26,14 @@ pwd
 date
 
 for ONEDNN in 0 1; do
-  # Build the benchmark tool. Can add code to handle different build configs
-  # when TF-oneDNN is disabled/enabled.
-  build_benchmark_tool ${ONEDNN}
   date
+  export CONFIG="$(benchmark_command ${ONEDNN})"
+  export TF_ENABLE_ONEDNN_OPTS=${ONEDNN}
+  export BENCH="${BUILDER} run ${CONFIG}"
 
   for BATCH in 1 16 64; do
     # Print information for parse_onednn_benchmarks.py
     echo "BATCH=${BATCH}, ONEDNN=${ONEDNN}"
-    export TF_ENABLE_ONEDNN_OPTS=${ONEDNN}
 
     # Run each graph.
     date
