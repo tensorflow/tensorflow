@@ -57,13 +57,7 @@ void LogFatalSymbolNotFound(const char* symbol_name) {
 cublasStatus_t GetSymbolNotFoundError() { return CUBLAS_STATUS_INTERNAL_ERROR; }
 }  // namespace
 
-#if CUDA_VERSION < 9000
-typedef enum {} cublasMath_t;
-#endif
-
-#if CUDA_VERSION < 10000
-#include "tensorflow/tsl/cuda/cublas_9_0.inc"
-#elif CUDA_VERSION < 10010
+#if CUDA_VERSION < 10010
 #include "tensorflow/tsl/cuda/cublas_10_0.inc"
 #elif CUDA_VERSION < 10020
 #include "tensorflow/tsl/cuda/cublas_10_1.inc"

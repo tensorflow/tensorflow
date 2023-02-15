@@ -486,7 +486,7 @@ class GpuSparse {
 
   // Computes sparse-sparse matrix multiplication of matrices
   // stored in CSR format.
-#if (GOOGLE_CUDA && (CUDA_VERSION < 10000)) || TENSORFLOW_USE_ROCM
+#if TENSORFLOW_USE_ROCM
   // Part one: calculate nnz of the output.
   // csrSortedRowPtrC must be preallocated on device with m + 1 entries.
   Status CsrgemmNnz(gpusparseOperation_t transA, gpusparseOperation_t transB,
@@ -510,7 +510,7 @@ class GpuSparse {
                  const int* csrSortedColIndB, const gpusparseMatDescr_t descrC,
                  Scalar* csrSortedValC, int* csrSortedRowPtrC,
                  int* csrSortedColIndC);
-#elif GOOGLE_CUDA && (CUDA_VERSION < 12000)
+#elif CUDA_VERSION < 12000
   // Part zero: calculate required workspace size.
   template <typename Scalar>
   Status CsrgemmBufferSize(
@@ -541,7 +541,7 @@ class GpuSparse {
                  Scalar* csrSortedValC, int* csrSortedRowPtrC,
                  int* csrSortedColIndC, const csrgemm2Info_t info,
                  void* workspace);
-#elif GOOGLE_CUDA  // CUDA_VERSION >= 12000
+#else  // CUDA_VERSION >= 12000
   template <typename Scalar>
   Status SpGEMM_workEstimation(GpuSparseConstSpMatDescr& matA,
                                GpuSparseConstSpMatDescr& matB,

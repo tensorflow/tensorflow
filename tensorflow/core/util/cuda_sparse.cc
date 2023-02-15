@@ -372,7 +372,7 @@ Status GpuSparse::CsrgeamNnz(
     int* csrSortedRowPtrC, int* nnzTotalDevHostPtr, void* workspace) {
   DCHECK(initialized_);
   DCHECK(nnzTotalDevHostPtr != nullptr);
-#if CUDA_VERSION >= 10000
+#if GOOGLE_CUDA
   TF_RETURN_IF_GPUSPARSE_ERROR(cusparseXcsrgeam2Nnz(
       *gpusparse_handle_, m, n, descrA, nnzA, csrSortedRowPtrA,
       csrSortedColIndA, descrB, nnzB, csrSortedRowPtrB, csrSortedColIndB,
@@ -636,48 +636,6 @@ TF_CALL_CUSPARSE_DTYPES(CSRMV_INSTANCE);
 
 #endif  // CUDA_VERSION < 10020
 
-#if CUDA_VERSION < 10000
-
-template <typename Scalar, typename SparseFnT>
-static inline Status CsrgeamImpl(
-    SparseFnT op, OpKernelContext* context, cusparseHandle_t cusparse_handle,
-    int m, int n, const Scalar* alpha, const cusparseMatDescr_t descrA,
-    int nnzA, const Scalar* csrSortedValA, const int* csrSortedRowPtrA,
-    const int* csrSortedColIndA, const Scalar* beta,
-    const cusparseMatDescr_t descrB, int nnzB, const Scalar* csrSortedValB,
-    const int* csrSortedRowPtrB, const int* csrSortedColIndB,
-    const cusparseMatDescr_t descrC, Scalar* csrSortedValC,
-    int* csrSortedRowPtrC, int* csrSortedColIndC) {
-  TF_RETURN_IF_GPUSPARSE_ERROR(
-      op(cusparse_handle, m, n, AsCudaComplex(alpha), descrA, nnzA,
-         AsCudaComplex(csrSortedValA), csrSortedRowPtrA, csrSortedColIndA,
-         AsCudaComplex(beta), descrB, nnzB, AsCudaComplex(csrSortedValB),
-         csrSortedRowPtrB, csrSortedColIndB, descrC,
-         AsCudaComplex(csrSortedValC), csrSortedRowPtrC, csrSortedColIndC));
-  return OkStatus();
-}
-
-#define CSRGEAM_INSTANCE(Scalar, sparse_prefix)                               \
-  template <>                                                                 \
-  Status GpuSparse::Csrgeam<Scalar>(                                          \
-      int m, int n, const Scalar* alpha, const cusparseMatDescr_t descrA,     \
-      int nnzA, const Scalar* csrSortedValA, const int* csrSortedRowPtrA,     \
-      const int* csrSortedColIndA, const Scalar* beta,                        \
-      const cusparseMatDescr_t descrB, int nnzB, const Scalar* csrSortedValB, \
-      const int* csrSortedRowPtrB, const int* csrSortedColIndB,               \
-      const cusparseMatDescr_t descrC, Scalar* csrSortedValC,                 \
-      int* csrSortedRowPtrC, int* csrSortedColIndC, void* workspace) {        \
-    DCHECK(initialized_);                                                     \
-    return CsrgeamImpl(SPARSE_FN(csrgeam, sparse_prefix), context_,           \
-                       *gpusparse_handle_, m, n, alpha, descrA, nnzA,         \
-                       csrSortedValA, csrSortedRowPtrA, csrSortedColIndA,     \
-                       beta, descrB, nnzB, csrSortedValB, csrSortedRowPtrB,   \
-                       csrSortedColIndB, descrC, csrSortedValC,               \
-                       csrSortedRowPtrC, csrSortedColIndC);                   \
-  }
-
-#else
-
 template <typename Scalar, typename SparseFnT>
 static inline Status Csrgeam2Impl(
     SparseFnT op, OpKernelContext* context, cusparseHandle_t cusparse_handle,
@@ -716,28 +674,7 @@ static inline Status Csrgeam2Impl(
                         csrSortedRowPtrC, csrSortedColIndC, workspace);       \
   }
 
-#endif
-
 TF_CALL_LAPACK_TYPES(CSRGEAM_INSTANCE);
-
-#if CUDA_VERSION < 10000
-
-#define CSRGEAM_BUFFERSIZE_INSTANCE(Scalar, sparse_prefix)                    \
-  template <>                                                                 \
-  Status GpuSparse::CsrgeamBufferSizeExt<Scalar>(                             \
-      int m, int n, const Scalar* alpha, const cusparseMatDescr_t descrA,     \
-      int nnzA, const Scalar* csrSortedValA, const int* csrSortedRowPtrA,     \
-      const int* csrSortedColIndA, const Scalar* beta,                        \
-      const cusparseMatDescr_t descrB, int nnzB, const Scalar* csrSortedValB, \
-      const int* csrSortedRowPtrB, const int* csrSortedColIndB,               \
-      const cusparseMatDescr_t descrC, Scalar* csrSortedValC,                 \
-      int* csrSortedRowPtrC, int* csrSortedColIndC, size_t* bufferSize) {     \
-    DCHECK(initialized_);                                                     \
-    *bufferSize = 0;                                                          \
-    return OkStatus();                                                        \
-  }
-
-#else
 
 template <typename Scalar, typename SparseFnT>
 static inline Status CsrgeamBufferSizeExtImpl(
@@ -777,11 +714,9 @@ static inline Status CsrgeamBufferSizeExtImpl(
         csrSortedRowPtrC, csrSortedColIndC, bufferSize);                       \
   }
 
-#endif
-
 TF_CALL_LAPACK_TYPES(CSRGEAM_BUFFERSIZE_INSTANCE);
 
-#if (GOOGLE_CUDA && (CUDA_VERSION < 10000)) || TENSORFLOW_USE_ROCM
+#if TENSORFLOW_USE_ROCM
 
 Status GpuSparse::CsrgemmNnz(
     cusparseOperation_t transA, cusparseOperation_t transB, int m, int k, int n,

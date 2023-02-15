@@ -579,7 +579,7 @@ class CSRSparseMatMulGPUOp : public OpKernel {
         ctx, /*transpose_a=*/false, /*adjoint_a=*/false, /*transpose_b=*/false);
     OP_REQUIRES_OK(ctx, csr_gemm.Initialize());
 
-#if GOOGLE_CUDA && (CUDA_VERSION >= 10000)
+#if GOOGLE_CUDA
     size_t maxWorkspaceSize = 0;
     for (int i = 0; i < batch_size; ++i) {
       // Calculate maximum workspace size over batch.
@@ -719,12 +719,12 @@ struct CSRSparseSparseMatrixMatMul<GPUDevice, T>
         initialized_(false),
         transpose_a_(transpose_a),
         adjoint_a_(adjoint_a),
-#if (GOOGLE_CUDA && (CUDA_VERSION < 10000)) || TENSORFLOW_USE_ROCM
+#if TENSORFLOW_USE_ROCM
         transpose_b_(transpose_b) {
 #else
         transpose_b_(transpose_b),
         info_(nullptr) {
-#endif  // CUDA_VERSION < 10000
+#endif
     // TODO(ebrevdo): Figure out why transposed implementations crash cuSparse.
     transA_ = transpose_a
                   ? (adjoint_a ? GPUSPARSE(OPERATION_TRANSPOSE)
@@ -734,7 +734,7 @@ struct CSRSparseSparseMatrixMatMul<GPUDevice, T>
                           : GPUSPARSE(OPERATION_NON_TRANSPOSE);
   }
 
-#if GOOGLE_CUDA && (CUDA_VERSION >= 10000)
+#if GOOGLE_CUDA
   ~CSRSparseSparseMatrixMatMul() {
     if (initialized_) {
       cusparseDestroyCsrgemm2Info(info_);
@@ -752,7 +752,7 @@ struct CSRSparseSparseMatrixMatMul<GPUDevice, T>
     TF_RETURN_IF_ERROR(descrA_.Initialize());
     TF_RETURN_IF_ERROR(descrB_.Initialize());
     TF_RETURN_IF_ERROR(descrC_.Initialize());
-#if GOOGLE_CUDA && (CUDA_VERSION >= 10000)
+#if GOOGLE_CUDA
     TF_RETURN_IF_GPUSPARSE_ERROR(cusparseCreateCsrgemm2Info(&info_));
 #endif
     initialized_ = true;
@@ -761,7 +761,7 @@ struct CSRSparseSparseMatrixMatMul<GPUDevice, T>
 
   Status GetWorkspaceSize(const ConstCSRComponent<T>& a,
                           const ConstCSRComponent<T>& b, size_t* bufferSize) {
-#if GOOGLE_CUDA && (CUDA_VERSION >= 10000)
+#if GOOGLE_CUDA
     DCHECK(initialized_);
     const int m =
         a.dense_shape_host(a.dense_shape_host.size() - (transpose_a_ ? 1 : 2));
@@ -813,7 +813,7 @@ struct CSRSparseSparseMatrixMatMul<GPUDevice, T>
 
     *output_nnz = -1;
 
-#if (GOOGLE_CUDA && (CUDA_VERSION < 10000)) || TENSORFLOW_USE_ROCM
+#if TENSORFLOW_USE_ROCM
     TF_RETURN_IF_ERROR(cuda_sparse_.CsrgemmNnz(
         transA_, transB_, m, n, k, descrA_.descr(), nnzA, a.row_ptr.data(),
         a.col_ind.data(), descrB_.descr(), nnzB, b.row_ptr.data(),
@@ -856,7 +856,7 @@ struct CSRSparseSparseMatrixMatMul<GPUDevice, T>
         b.dense_shape_host(b.dense_shape_host.size() - (transpose_b_ ? 2 : 1));
     DCHECK_EQ(n, c->dense_shape_host(c->dense_shape_host.size() - 1));
 
-#if (GOOGLE_CUDA && (CUDA_VERSION < 10000)) || TENSORFLOW_USE_ROCM
+#if TENSORFLOW_USE_ROCM
     TF_RETURN_IF_ERROR(cuda_sparse_.Csrgemm(
         transA_, transB_, m, k, n, descrA_.descr(), nnzA, a.values.data(),
         a.row_ptr.data(), a.col_ind.data(), descrB_.descr(), nnzB,
@@ -895,7 +895,7 @@ struct CSRSparseSparseMatrixMatMul<GPUDevice, T>
   GpuSparseMatrixDescriptor descrC_;
   gpusparseOperation_t transA_;
   gpusparseOperation_t transB_;
-#if GOOGLE_CUDA && (CUDA_VERSION >= 10000)
+#if GOOGLE_CUDA
   csrgemm2Info_t info_;
 #endif
 };
