@@ -464,7 +464,9 @@ message DebugOptions {
 
   bool xla_gpu_enable_cudnn_int8x32_convolution_reordering = 189;
 
-  // Next id: 190
+  bool xla_gpu_triton_gemm_any = 190;
+
+  // Next id: 191
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.

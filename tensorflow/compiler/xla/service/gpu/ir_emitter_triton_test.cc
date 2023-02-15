@@ -13,15 +13,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/xla/service/gpu/ir_emitter_triton.h"
-
 #include <cstdint>
 #include <string>
 
 #include "absl/strings/substitute.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/service/gpu/tests/gpu_codegen_test.h"
-#include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/tsl/platform/test.h"
 
@@ -79,6 +76,49 @@ ENTRY e {
 ; CHECK: custom_call_target="__triton",
 ; CHECK-NOT: pad(
 ; CHECK-NOT: slice(
+)");
+
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-3, 1e-3}));
+}
+
+TEST_F(TritonGemmTest, SkipF32F32) {
+  const std::string hlo_text = R"(
+HloModule t
+
+ENTRY e {
+  p0 = f32[3,5] parameter(0)
+  p1 = f32[5,7] parameter(1)
+  ROOT _ = f32[3,7] dot(p0, p1),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0}
+})";
+
+  MatchOptimizedHlo(hlo_text, R"(
+; CHECK-NOT: __triton
+)");
+}
+
+class TritonGemmTestAny : public TritonGemmTest {
+ public:
+  DebugOptions GetDebugOptionsForTest() override {
+    DebugOptions debug_options = TritonGemmTest::GetDebugOptionsForTest();
+    debug_options.set_xla_gpu_triton_gemm_any(true);
+    return debug_options;
+  }
+};
+
+TEST_F(TritonGemmTestAny, DoF32F32) {
+  const std::string hlo_text = R"(
+HloModule t
+
+ENTRY e {
+  p0 = f32[3,5] parameter(0)
+  p1 = f32[5,7] parameter(1)
+  ROOT _ = f32[3,7] dot(p0, p1),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0}
+})";
+
+  MatchOptimizedHlo(hlo_text, R"(
+; CHECK: custom_call_target="__triton",
 )");
 
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-3, 1e-3}));

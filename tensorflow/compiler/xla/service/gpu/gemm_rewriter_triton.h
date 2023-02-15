@@ -24,6 +24,10 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
+// Filters GEMMs which are better to handle using Triton.
+bool IsTritonHandledGEMM(const HloInstruction&,
+                         se::CudaComputeCapability cuda_compute_capability);
+
 // Rewrite compatible dot() calls into custom calls with fused computations
 // that target Triton-based matmul emitter.
 class GemmRewriterTriton : public HloModulePass {

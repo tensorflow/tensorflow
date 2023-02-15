@@ -41,14 +41,6 @@ inline constexpr int64_t kMinDimensionToTransposeTiled = 16;
 // GemmRewriter pass has finished.
 bool IsMatrixMultiplication(const HloInstruction& dot);
 
-// Filters data type conversions which should be fused into Triton GEMM.
-bool IsTritonFusibleConvert(const HloInstruction*,
-                            se::CudaComputeCapability cuda_compute_capability);
-
-// Filters GEMMs which are better to handle using Triton.
-bool IsTritonHandledGEMM(const HloInstruction&,
-                         se::CudaComputeCapability cuda_compute_capability);
-
 inline constexpr int64_t WarpSize() { return 32; }
 
 // Need at least 1024 threads/block for reasonable tree reduction
