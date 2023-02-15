@@ -21,6 +21,7 @@ limitations under the License.
 #include <iterator>
 #include <limits>
 #include <numeric>
+#include <optional>
 
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/Optional.h"
@@ -159,7 +160,7 @@ static llvm::Optional<int64_t> GetIntegerHLOAxisFromTFAxis(Value value,
   DenseIntElementsAttr attrs;
   if (!matchPattern(value, m_Constant(&attrs)) ||
       attrs.getType().getRank() != 0) {
-    return llvm::None;
+    return std::nullopt;
   }
   int64_t axis = attrs.getValues<IntegerAttr>()[0].getInt();
   return axis < 0 ? axis + rank : axis;
@@ -6577,7 +6578,7 @@ inline llvm::Optional<xla::RandomAlgorithm> TensorFlowRngAlgToXla(
   } else if (alg == tensorflow::RNG_ALG_AUTO_SELECT) {
     return xla::RandomAlgorithm::RNG_DEFAULT;
   }
-  return llvm::None;
+  return std::nullopt;
 }
 
 // Converts tf.XlaRngBitGenerator op to mhlo.RngBitGenerator op.

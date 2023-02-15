@@ -19,6 +19,7 @@ limitations under the License.
 #include <iterator>
 #include <limits>
 #include <map>
+#include <optional>
 #include <string>
 #include <unordered_set>
 #include <utility>
@@ -26,7 +27,6 @@ limitations under the License.
 
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/DenseMap.h"
-#include "llvm/ADT/None.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/Casting.h"
@@ -128,7 +128,7 @@ CreateFlatBufferOperator(mlir::Operation* op, uint32_t opcode_index,
   if (auto hlo_op = llvm::dyn_cast<mlir::stablehlo::ReshapeOp>(op))
     return CreateReshapeOperator(hlo_op, fbb, opcode_index, operands, results);
 
-  return llvm::None;
+  return std::nullopt;
 }
 
 // Set `isSigned` to false if the `type` is an 8-bit unsigned integer type.
@@ -149,7 +149,7 @@ llvm::Optional<::stablehlo::flatbuf::OperatorCode> GetOpCode(
     return ::stablehlo::flatbuf::OperatorCode_MAXIMUM;
   if (isa<mlir::stablehlo::ReshapeOp>(op))
     return ::stablehlo::flatbuf::OperatorCode_RESHAPE;
-  return llvm::None;
+  return std::nullopt;
 }
 
 static bool IsConst(Operation* op) {
@@ -239,7 +239,7 @@ Optional<std::string> Translator::TranslateInternal() {
   // There is a limit of 2GB for a flatbuffer.
   if (builder_.GetSize() > 2147483648) {
     LOG(ERROR) << "Model size is bigger than 2gb";
-    return llvm::None;
+    return std::nullopt;
   }
 
   // Return serialized string for the built FlatBuffer.
@@ -272,7 +272,7 @@ Optional<BufferOffset<::stablehlo::flatbuf::Tensor>> Translator::BuildTensor(
   bool is_variable = !(inst && IsConst(inst));
   if (type.hasStaticShape()) {
     llvm::ArrayRef<int64_t> shape_ref = type.getShape();
-    if (mlir::failed(check_shape(shape_ref))) return llvm::None;
+    if (mlir::failed(check_shape(shape_ref))) return std::nullopt;
 
     shape = std::vector<int32_t>(shape_ref.begin(), shape_ref.end());
   } else if (inst && IsConst(inst)) {
@@ -283,12 +283,12 @@ Optional<BufferOffset<::stablehlo::flatbuf::Tensor>> Translator::BuildTensor(
     auto tensor_attr = inst->getAttr("value").cast<mlir::TypedAttr>();
     llvm::ArrayRef<int64_t> shape_ref =
         tensor_attr.getType().cast<TensorType>().getShape();
-    if (mlir::failed(check_shape(shape_ref))) return llvm::None;
+    if (mlir::failed(check_shape(shape_ref))) return std::nullopt;
 
     shape = std::vector<int32_t>(shape_ref.begin(), shape_ref.end());
   } else if (type.hasRank()) {
     llvm::ArrayRef<int64_t> shape_ref = type.getShape();
-    if (mlir::failed(check_shape(shape_ref))) return llvm::None;
+    if (mlir::failed(check_shape(shape_ref))) return std::nullopt;
 
     shape.reserve(shape_ref.size());
     for (auto& dim : shape_ref) {
@@ -402,7 +402,7 @@ Translator::BuildSubGraph(const std::string& name, Region* region, int index) {
     if (has_input_attr)
       tensor_name = std::string(name_mapper_.GetUniqueName(arg));
     if (tensor_name.empty()) tensor_name = absl::StrCat("arg", i);
-    if (!build_tensor_and_buffer(arg, index, tensor_name)) return llvm::None;
+    if (!build_tensor_and_buffer(arg, index, tensor_name)) return std::nullopt;
   }
 
   bool failed_once = false;
@@ -417,7 +417,8 @@ Translator::BuildSubGraph(const std::string& name, Region* region, int index) {
       // activation tensor rather than its own unique name in the visualization
       // or debugging tools.
       // auto builtin_code = GetOpCode(&inst);
-      if (!build_tensor_and_buffer(val, index, tensor_name)) return llvm::None;
+      if (!build_tensor_and_buffer(val, index, tensor_name))
+        return std::nullopt;
     }
 
     // Skip constant ops as they don't represent a TFLite operator.
@@ -452,7 +453,7 @@ Translator::BuildSubGraph(const std::string& name, Region* region, int index) {
     subgraph_op_inst_map_.resize(index + 1);
   }
   subgraph_op_inst_map_[index] = operators_in_mlir;
-  if (failed_once) return llvm::None;
+  if (failed_once) return std::nullopt;
 
   // Get input and output tensor indices for the subgraph.
   std::vector<int32_t> inputs, outputs;
@@ -489,7 +490,7 @@ Optional<BufferOffset<::stablehlo::flatbuf::Buffer>> Translator::BuildBuffer(
     inst->emitError(
         Twine("failed to convert value attribute to tensor with error: " +
               status.ToString()));
-    return llvm::None;
+    return std::nullopt;
   }
 
   absl::string_view tensor_data = tensor.tensor_data();
@@ -517,13 +518,13 @@ Translator::BuildOperator(Operation* inst, std::vector<int32_t> operands,
   const auto* dialect = inst->getDialect();
   if (!dialect) {
     inst->emitOpError("dialect is not registered");
-    return llvm::None;
+    return std::nullopt;
   }
 
   if (dialect == stablehlo_dialect_) {
     auto op_code = GetOpCode(inst);
-    if (op_code == llvm::None) {
-      return inst->emitOpError("op code not found"), llvm::None;
+    if (op_code == std::nullopt) {
+      return inst->emitOpError("op code not found"), std::nullopt;
     }
 
     auto opcode_index =
@@ -537,7 +538,7 @@ Translator::BuildOperator(Operation* inst, std::vector<int32_t> operands,
     return offset;
   }
 
-  return inst->emitOpError("a stableHLO op"), llvm::None;
+  return inst->emitOpError("a stableHLO op"), std::nullopt;
 }
 
 }  // namespace odml

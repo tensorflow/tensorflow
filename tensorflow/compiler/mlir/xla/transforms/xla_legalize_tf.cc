@@ -24,7 +24,6 @@ limitations under the License.
 
 #include "absl/strings/string_view.h"
 #include "llvm/ADT/DenseSet.h"
-#include "llvm/ADT/None.h"
 #include "llvm/ADT/Optional.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringExtras.h"
@@ -776,7 +775,7 @@ LogicalResult legalizeTF(Operation *op, bool allow_partial_conversion,
 
 // Performs the lowering to XLA dialect.
 void LegalizeTF::runOnOperation() {
-  llvm::Optional<StringRef> tf2xla_fallback_device_type = llvm::None;
+  llvm::Optional<StringRef> tf2xla_fallback_device_type = std::nullopt;
   if (use_tf2xla_fallback_) {
     tf2xla_fallback_device_type = device_type_;
   }
