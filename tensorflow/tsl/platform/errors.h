@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <sstream>
 #include <string>
+#include <type_traits>
 #include <utility>
 
 #include "absl/base/attributes.h"
@@ -474,36 +475,37 @@ bool IsUnknown(const Status& status);
 // Note: The pattern below determines the regex _NODEDEF_NAME_RE in the file
 // tensorflow/python/client/session.py
 // LINT.IfChange
-inline std::string FormatNodeNameForError(const std::string& name) {
+inline std::string FormatNodeNameForError(absl::string_view name) {
   return strings::StrCat("{{node ", name, "}}");
 }
 // LINT.ThenChange(//tensorflow/python/client/session.py)
 template <typename T>
 std::string FormatNodeNamesForError(const T& names) {
   return absl::StrJoin(
-      names, ", ", [](std::string* output, const std::string& s) {
+      names, ", ", [](std::string* output, absl::string_view s) {
         ::tsl::strings::StrAppend(output, FormatNodeNameForError(s));
       });
 }
 // LINT.IfChange
-inline std::string FormatColocationNodeForError(const std::string& name) {
+inline std::string FormatColocationNodeForError(absl::string_view name) {
   return strings::StrCat("{{colocation_node ", name, "}}");
 }
 // LINT.ThenChange(//tensorflow/python/framework/error_interpolation.py)
-template <typename T>
+template <typename T, typename = std::enable_if_t<
+                          !std::is_convertible_v<T, absl::string_view>>>
 std::string FormatColocationNodeForError(const T& names) {
   return absl::StrJoin(
-      names, ", ", [](std::string* output, const std::string& s) {
+      names, ", ", [](std::string* output, absl::string_view s) {
         ::tsl::strings::StrAppend(output, FormatColocationNodeForError(s));
       });
 }
 
-inline std::string FormatFunctionForError(const std::string& name) {
+inline std::string FormatFunctionForError(absl::string_view name) {
   return strings::StrCat("{{function_node ", name, "}}");
 }
 
 inline Status ReplaceErrorFromNonCommunicationOps(const Status s,
-                                                  const std::string& op_name) {
+                                                  absl::string_view op_name) {
   assert(::tsl::errors::IsUnavailable(s));
   return Status(
       error::Code::INTERNAL,
