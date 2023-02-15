@@ -1,5 +1,7 @@
 If you open a GitHub Issue, here is our policy:
 
+TEST CHANGE
+
 1.  It must be a bug/performance issue or a feature request or a build issue or
     a documentation issue (for small doc fixes please send a PR instead).
 1.  Make sure the Issue Template is filled out.
