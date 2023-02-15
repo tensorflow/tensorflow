@@ -36,6 +36,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/conv_grad_shape_utils.h"
 #include "tensorflow/core/util/padding.h"
 #include "tensorflow/core/util/tensor_format.h"
+#include "tensorflow/compiler/mlir/lite/quantization/ir/QuantOps.h"
 
 namespace mlir {
 namespace tosa {
@@ -197,6 +198,15 @@ void CreateReplaceOpAndInfer(PatternRewriter& rewriter, Operation* op,
       CreateOpAndInfer<TosaOp>(rewriter, op->getLoc(), result_ty, args...);
   rewriter.replaceOp(op, result->getResults());
 }
+
+void TrimQuantizedIntegerRangeMin(mlir::quant::UniformQuantizedType dtype,
+                               int64_t& val_min);
+
+void TrimQuantizedIntegerRangeMax(mlir::quant::UniformQuantizedType dtype,
+                               int64_t& val_max);
+
+void TrimQuantizedIntegerRange(mlir::quant::UniformQuantizedType dtype,
+                               int64_t& val_min, int64_t& val_max);
 
 }  // namespace tosa
 }  // namespace mlir

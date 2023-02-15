@@ -321,6 +321,8 @@ LogicalResult ConvertTFLReluOp::matchAndRewrite(
             .dyn_cast<mlir::quant::UniformQuantizedType>();
 
     clamp_min = output_qtype.getZeroPoint();
+    TrimQuantizedIntegerRangeMin(input_qtype, clamp_min);
+
     clamp_in =
         buildRescale(rewriter, op, output_type, tfl_relu_op.getX(),
                      input_qtype.getScale() / output_qtype.getScale(),
@@ -377,6 +379,8 @@ LogicalResult ConvertTFLRelu1Op::matchAndRewrite(
     clamp_max = std::llround(1.0f / output_qtype.getScale()) +
                 output_qtype.getZeroPoint();
 
+    TrimQuantizedIntegerRange(input_qtype, clamp_min, clamp_max);
+
     clamp_in =
         buildRescale(rewriter, op, output_type, tfl_relu1_op.getX(),
                      input_qtype.getScale() / output_qtype.getScale(),
@@ -426,6 +430,8 @@ LogicalResult ConvertTFLRelu0To1Op::matchAndRewrite(
 
     clamp_max = std::llround(1.0f / output_qtype.getScale()) +
                 output_qtype.getZeroPoint();
+
+    TrimQuantizedIntegerRange(input_qtype, clamp_min, clamp_max);
 
     clamp_in =
         buildRescale(rewriter, op, output_type, tfl_relu0to1_op.getX(),
@@ -479,6 +485,8 @@ LogicalResult ConvertTFLRelu6Op::matchAndRewrite(
     clamp_min = output_qtype.getZeroPoint();
     clamp_max = std::llround(6.0f / output_qtype.getScale()) +
                 output_qtype.getZeroPoint();
+
+    TrimQuantizedIntegerRange(input_qtype, clamp_min, clamp_max);
 
     clamp_in =
         buildRescale(rewriter, op, output_type, tfl_relu6_op.getX(),

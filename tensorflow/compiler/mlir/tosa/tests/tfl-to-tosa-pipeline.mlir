@@ -1812,42 +1812,46 @@ func.func @test_tanh_qi8(%arg0: tensor<13x21x3x!quant.uniform<i8:f32, 0.01567312
 
 // CHECK-LABEL: test_relu_qi8
 // CHECK-DAG: %[[VAR0:.*]] = "tosa.rescale"(%arg0)
-// CHECK: %[[VAR1:.*]] = "tosa.clamp"(%0) {max_fp = 3.40282347E+38 : f32, max_int = 2147483647 : i64, min_fp = 0.000000e+00 : f32, min_int = -1 : i64}
-func.func @test_relu_qi8(%arg0: tensor<13x21x3x!quant.uniform<i8:f32, 0.015671534463763237:-1>>) -> tensor<*x!quant.uniform<i8:f32, 0.015671534463763237:-1>> {
-  %0 = "tfl.relu"(%arg0) : (tensor<13x21x3x!quant.uniform<i8:f32, 0.015671534463763237:-1>>) -> tensor<*x!quant.uniform<i8:f32, 0.015671534463763237:-1>>
-  func.return %0 : tensor<*x!quant.uniform<i8:f32, 0.015671534463763237:-1>>
+// CHECK: %[[VAL_1:.*]] = "tosa.clamp"(%0) {max_fp = 3.40282347E+38 : f32, max_int = 2147483647 : i64, min_fp = 0.000000e+00 : f32, min_int = -128 : i64}
+func.func @test_relu_qi8(%arg0: tensor<13x21x3x!quant.uniform<i8:f32, 0.015685949474573135:-1>>) -> tensor<13x21x3x!quant.uniform<i8:f32, 0.0078430203720927238:-128>> {
+  %0 = "tfl.relu"(%arg0) : (tensor<13x21x3x!quant.uniform<i8:f32, 0.015685949474573135:-1>>) -> tensor<13x21x3x!quant.uniform<i8:f32, 0.0078430203720927238:-128>>
+  func.return %0 : tensor<13x21x3x!quant.uniform<i8:f32, 0.0078430203720927238:-128>>
 }
 
 // -----
 
 // CHECK-LABEL: test_relu0To1_qi8
 // CHECK-DAG: %[[VAR0:.*]] = "tosa.rescale"(%arg0)
-// CHECK: %[[VAR1:.*]] = "tosa.clamp"(%0) {max_fp = 1.000000e+00 : f32, max_int = 64 : i64, min_fp = 0.000000e+00 : f32, min_int = 0 : i64}
-func.func @test_relu0To1_qi8(%arg0: tensor<13x21x3x!quant.uniform<i8:f32, 0.015639215707778931>>) -> tensor<*x!quant.uniform<i8:f32, 0.015639215707778931>> {
-  %0 = "tfl.relu_0_to_1"(%arg0) : (tensor<13x21x3x!quant.uniform<i8:f32, 0.015639215707778931>>) -> tensor<*x!quant.uniform<i8:f32, 0.015639215707778931>>
-  func.return %0 : tensor<*x!quant.uniform<i8:f32, 0.015639215707778931>>
+// CHECK: %[[VAL_1:.*]] = "tosa.clamp"(%0) {max_fp = 1.000000e+00 : f32, max_int = 126 : i64, min_fp = -1.000000e+00 : f32, min_int = -128 : i64}
+func.func @test_relu0To1_qi8(%arg0: tensor<13x21x3x!quant.uniform<i8:f32, 0.015686025843024254:-1>>) -> tensor<13x21x3x!quant.uniform<i8:f32, 0.0078431377187371254:-1>> {
+  %0 = "tfl.relu_n1_to_1"(%arg0) : (tensor<13x21x3x!quant.uniform<i8:f32, 0.015686025843024254:-1>>) -> tensor<13x21x3x!quant.uniform<i8:f32, 0.0078431377187371254:-1>>
+  func.return %0 : tensor<13x21x3x!quant.uniform<i8:f32, 0.0078431377187371254:-1>>
 }
 
 // -----
 
 // CHECK-LABEL: test_relu6_qi8
-// CHECK-DAG: %[[VAR0:.*]] = "tosa.rescale"(%arg0)
-// CHECK: %[[VAR1:.*]] = "tosa.clamp"(%0) {max_fp = 6.000000e+00 : f32, max_int = 384 : i64, min_fp = 0.000000e+00 : f32, min_int = 0 : i64}
-func.func @test_relu6_qi8(%arg0: tensor<13x21x3x!quant.uniform<i8:f32, 0.015639215707778931>>) -> tensor<*x!quant.uniform<i8:f32, 0.015639215707778931>> {
-  %0 = "tfl.relu6"(%arg0) : (tensor<13x21x3x!quant.uniform<i8:f32, 0.015639215707778931>>) -> tensor<*x!quant.uniform<i8:f32, 0.015639215707778931>>
-  func.return %0 : tensor<*x!quant.uniform<i8:f32, 0.015639215707778931>>
+// CHECK-DAG: %[[VAL_0:.*]] = "tosa.rescale"(%arg0)
+// CHECK: %[[VAL_1:.*]] = "tosa.clamp"(%0) {max_fp = 6.000000e+00 : f32, max_int = 127 : i64, min_fp = 0.000000e+00 : f32, min_int = -128 : i64}
+func.func @test_relu6_qi8(%arg0: tensor<13x21x3x!quant.uniform<i8:f32, 0.015686137601733208:-1>>) -> tensor<13x21x3x!quant.uniform<i8:f32, 0.0078431284055113792:-128>>  {
+    %0 = "tfl.relu6"(%arg0) : (tensor<13x21x3x!quant.uniform<i8:f32, 0.015686137601733208:-1>>) -> tensor<13x21x3x!quant.uniform<i8:f32, 0.0078431284055113792:-128>>
+    func.return %0 : tensor<13x21x3x!quant.uniform<i8:f32, 0.0078431284055113792:-128>>
 }
 
 // -----
 
 // CHECK-LABEL: test_relu6_qu8
-// CHECK: %[[CAST:.+]] = "tosa.rescale"(%arg0) {double_round = false, input_zp = 0 : i32, multiplier = array<i32: 1073741824>, output_zp = -128 : i32, per_channel = false, scale32 = true, shift = array<i32: 30>}
-// CHECK: %[[RESCALE:.+]] = "tosa.rescale"(%[[CAST]]) {double_round = false, input_zp = -128 : i32, multiplier = array<i32: 1073741824>, output_zp = -128 : i32, per_channel = false, scale32 = true, shift = array<i32: 30>}
-// CHECK: %[[CLAMP:.+]] = "tosa.clamp"(%[[RESCALE]]) {max_fp = 6.000000e+00 : f32, max_int = 22 : i64, min_fp = 0.000000e+00 : f32, min_int = -128 : i64}
-// CHECK: %[[OUT:.+]] = "tosa.rescale"(%[[CLAMP]]) {double_round = false, input_zp = -128 : i32, multiplier = array<i32: 1073741824>, output_zp = 0 : i32, per_channel = false, scale32 = true, shift = array<i32: 30>}
-func.func @test_relu6_qu8(%arg0: tensor<13x21x3x!quant.uniform<u8:f32, 0.04>>) -> tensor<*x!quant.uniform<u8:f32, 0.04>> {
-  %0 = "tfl.relu6"(%arg0) : (tensor<13x21x3x!quant.uniform<u8:f32, 0.04>>) -> tensor<*x!quant.uniform<u8:f32, 0.04>>
-  func.return %0 : tensor<*x!quant.uniform<u8:f32, 0.04>>
+// CHECK: %[[VAL_1:.*]] = "tosa.rescale"(%arg0)
+// CHECK: %[[VAL_2:.*]] = "tosa.rescale"(%[[VAL_1]])
+// CHECK: %[[VAL_3:.*]] = "tosa.rescale"(%[[VAL_2]])
+// CHECK: %[[VAL_4:.*]] = "tosa.clamp"(%[[VAL_3]]) {max_fp = 6.000000e+00 : f32, max_int = 127 : i64, min_fp = 0.000000e+00 : f32, min_int = -128 : i64}
+// CHECK: %[[VAL_5:.*]] = "tosa.rescale"(%[[VAL_4]])
+// CHECK: %[[VAL_6:.*]] = "tosa.rescale"(%[[VAL_5]])
+func.func @test_relu6_qu8(%arg0: tensor<13x21x3x!quant.uniform<u8:f32, 0.015686137601733208:127>>) -> tensor<13x21x3x!quant.uniform<u8:f32, 0.0078431284055113792>> {
+  %0 = "tfl.quantize"(%arg0) {qtype = tensor<13x21x3x!quant.uniform<i8:f32, 0.015686137601733208:-1>>} : (tensor<13x21x3x!quant.uniform<u8:f32, 0.015686137601733208:127>>) -> tensor<13x21x3x!quant.uniform<i8:f32, 0.015686137601733208:-1>>
+  %1 = "tfl.relu6"(%0) : (tensor<13x21x3x!quant.uniform<i8:f32, 0.015686137601733208:-1>>) -> tensor<13x21x3x!quant.uniform<i8:f32, 0.0078431284055113792:-128>>
+  %2 = "tfl.quantize"(%1) {qtype = tensor<13x21x3x!quant.uniform<u8:f32, 0.0078431284055113792>>} : (tensor<13x21x3x!quant.uniform<i8:f32, 0.0078431284055113792:-128>>) -> tensor<13x21x3x!quant.uniform<u8:f32, 0.0078431284055113792>>
+  func.return %2 : tensor<13x21x3x!quant.uniform<u8:f32, 0.0078431284055113792>>
 }
 
 // -----
