@@ -1431,6 +1431,7 @@ pytype_library(
         ":composite_tensor",
         ":dtypes",
         ":tensor_shape",
+        ":type_spec_registry",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/core/function/trace_type",
         "//tensorflow/python:platform",
