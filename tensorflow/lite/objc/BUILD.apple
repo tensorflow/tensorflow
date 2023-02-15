@@ -69,7 +69,6 @@ objc_library(
         "//tensorflow/lite/delegates/coreml:coreml_delegate",
         "//tensorflow/lite/delegates/gpu:metal_delegate",
         "//tensorflow/lite/delegates/xnnpack:xnnpack_delegate",
-        "//third_party/apple_frameworks:Foundation",
     ],
     alwayslink = 1,
 )
