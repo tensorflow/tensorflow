@@ -477,6 +477,7 @@ tf_cuda_cc_test(
     tags = tf_cuda_tests_tags() + [
         "no_cuda_asan",  # TODO(b/171341759): re-enable.
         "no_cuda",  # TODO(b/196608406): re-enable
+	"no_rocm",  # broken for ROCM @llvm/llvm-project@6a63e21cf4e6
     ],
     deps = [
         ":base_ops_test",
