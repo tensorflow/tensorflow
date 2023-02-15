@@ -313,7 +313,6 @@ module @jit_f.0 {
     expected_value = x + dict(CPU=2., GPU=3., TPU=4.)[self.testing_platform()]
     self._assertOpOutputMatchesExpected(f, (x,), (expected_value,))
 
-  @unittest.skip('TODO(burmako): Re-enable this after shape refinement is done')
   def test_platforms_with_dim_vars(self):
     x = np.ones((3,), dtype=np.float32)
     y = np.arange(3., dtype=np.float32)
@@ -342,7 +341,7 @@ module @jit_f.0 {
                              platforms=['CPU', 'TPU'],
                              dim_args_spec=['0.0'])
 
-    expected_value = x + (x if self.testing_platform() == 'CPU' else -x)
+    expected_value = x + (y if self.testing_platform() == 'CPU' else -y)
     if self.testing_platform() in ['CPU', 'TPU']:
       self._assertOpOutputMatchesExpected(f, (x, y), (expected_value,))
 
