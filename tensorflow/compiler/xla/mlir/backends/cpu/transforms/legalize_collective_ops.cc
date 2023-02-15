@@ -49,19 +49,19 @@ class LegalizeCollectiveOpsPass
 
 Optional<xla_cpu::ReductionKind> MatchReductionComputation(Region& region) {
   if (!region.hasOneBlock()) {
-    return llvm::None;
+    return std::nullopt;
   }
 
   auto ret = dyn_cast<mhlo::ReturnOp>(region.front().getTerminator());
   if (!ret || ret->getNumOperands() != 1) {
-    return llvm::None;
+    return std::nullopt;
   }
 
   auto computation = ret.getOperand(0).getDefiningOp();
   if (computation->getNumOperands() != 2 ||
       computation->getOperand(0) != region.front().getArgument(0) ||
       computation->getOperand(1) != region.front().getArgument(1)) {
-    return llvm::None;
+    return std::nullopt;
   }
 
   if (isa<mhlo::AddOp>(computation)) {
@@ -79,7 +79,7 @@ Optional<xla_cpu::ReductionKind> MatchReductionComputation(Region& region) {
 
   auto type = computation->getOperandTypes().front().dyn_cast<ShapedType>();
   if (!type || !type.getElementType().isInteger(1)) {
-    return llvm::None;
+    return std::nullopt;
   }
 
   if (isa<mhlo::AndOp>(computation)) {
@@ -89,7 +89,7 @@ Optional<xla_cpu::ReductionKind> MatchReductionComputation(Region& region) {
     return xla_cpu::ReductionKind::ALL_REDUCE_MAX;
   }
 
-  return llvm::None;
+  return std::nullopt;
 }
 
 // Returns a `tensor.empty` with the same shape as `tensor`.
@@ -237,7 +237,7 @@ class OutfeedLowering : public OpRewritePattern<mhlo::OutfeedOp> {
           TypeAttr::get(operand.getType().cast<ShapedType>().getElementType()));
     }
     rewriter.create<xla_cpu::OutfeedOp>(
-        op.getLoc(), llvm::None, op.getInputs(), op.getOutfeedConfigAttr(),
+        op.getLoc(), std::nullopt, op.getInputs(), op.getOutfeedConfigAttr(),
         ArrayAttr::get(op->getContext(), result_types));
 
     // Replacing the op with the token.

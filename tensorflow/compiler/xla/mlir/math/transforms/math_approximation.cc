@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 
@@ -71,7 +72,7 @@ llvm::Optional<SmallVector<int64_t, 2>> vectorShape(Type type,
     return llvm::to_vector<2>(vectorType.getShape());
   }
 
-  return llvm::None;
+  return std::nullopt;
 }
 
 bool isF32(Type type) { return type.isF32(); }

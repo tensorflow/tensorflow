@@ -666,7 +666,8 @@ class ConvertToHloModule {
   // Lower a `mlir::Region` to a `XlaComputation`
   LogicalResult LowerRegionAsComputation(
       mlir::Region* region, xla::XlaComputation* func,
-      std::optional<llvm::ArrayRef<mlir::Value>> implicit_operands = llvm::None,
+      std::optional<llvm::ArrayRef<mlir::Value>> implicit_operands =
+          std::nullopt,
       bool ensure_single_arg = false);
 
   // Lower a single `Block` to a `XlaComputation`
@@ -678,7 +679,7 @@ class ConvertToHloModule {
       llvm::ArrayRef<std::optional<xla::OpSharding>> ret_shardings,
       xla::XlaComputation* result,
       std::optional<llvm::ArrayRef<mlir::Value>> implicit_operands =
-          llvm::None);
+          std::nullopt);
 
   ::xla::HloModuleProto ConsumeMainProto() {
     auto main = module_.lookupSymbol<mlir::func::FuncOp>("main");
@@ -2164,9 +2165,10 @@ LogicalResult ExportXlaOp(WhileOp op, OpLoweringContext ctx) {
   xla::XlaComputation condition;
   xla::XlaComputation body;
   if (failed(ctx.converter->LowerRegionAsComputation(
-          &op.getBody(), &body, llvm::None, /*ensure_single_arg*/ true)) ||
+          &op.getBody(), &body, std::nullopt, /*ensure_single_arg*/ true)) ||
       failed(ctx.converter->LowerRegionAsComputation(
-          &op.getCond(), &condition, llvm::None, /*ensure_single_arg*/ true))) {
+          &op.getCond(), &condition, std::nullopt,
+          /*ensure_single_arg*/ true))) {
     return failure();
   }
 
