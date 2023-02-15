@@ -1707,9 +1707,8 @@ void DTensorDevice::ExecuteRegularOperation(
   std::vector<parallel_device::ParallelTensor*> global_parallel_sparse_inputs;
   absl::flat_hash_set<int> global_sparse_input_indices;
   for (auto input : inputs_tf) {
-    if (input->tensor_type() == TensorType::kSparse) {
-      SparseTensorWithLayout* sparse_input =
-          dynamic_cast<SparseTensorWithLayout*>(input);
+    if (auto* sparse_input = llvm::dyn_cast<SparseTensorWithLayout>(input);
+        sparse_input) {
       global_parallel_sparse_inputs.push_back(sparse_input->indices());
       global_parallel_sparse_inputs.push_back(sparse_input->dense_shapes());
       global_parallel_sparse_inputs.push_back(sparse_input->values());

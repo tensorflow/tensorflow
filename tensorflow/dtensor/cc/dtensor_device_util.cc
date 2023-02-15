@@ -929,7 +929,7 @@ StatusOr<std::vector<parallel_device::ParallelTensor*>> PrepareEmbeddingInputs(
     const std::vector<TensorWithLayoutTf*>& inputs) {
   absl::flat_hash_map<int64_t, std::vector<int64_t>> table_vars_input_index;
   for (int64_t i = 0; i < inputs.size(); ++i) {
-    if (inputs[i]->tensor_type() != kResource) continue;
+    if (!llvm::isa<ResourceHandleWithLayout>(inputs[i])) continue;
 
     const std::optional<EmbeddingResourceAttrs>& resource_attrs =
         llvm::cast<ResourceHandleWithLayout>(inputs[i])->attrs();
@@ -961,7 +961,7 @@ StatusOr<std::map<int64_t, std::vector<Node*>>> GetTPUEmbeddingInputNodes(
   std::vector<TensorWithLayout*> non_sparse_inputs;
   non_sparse_inputs.reserve(inputs.size());
   for (TensorWithLayout* input : inputs) {
-    if (input->tensor_type() != TensorType::kSparse) {
+    if (!llvm::isa<SparseTensorWithLayout>(input)) {
       non_sparse_inputs.push_back(input);
     }
   }
