@@ -369,6 +369,9 @@ void CreateConvertMlirToXlaHloPipeline(
     bool allow_partial_conversion) {
   bool legalize_chlo = true;
 
+  pm.addNestedPass<mlir::func::FuncOp>(
+      mlir::mhlo::CreateTFXLADeviceSpecificTransformsPass(device_type));
+
   // Note that the region-based control-flow produced here still contains
   // function call ops which get inlined by the subsequent inliner pass.
   pm.addPass(mlir::TF::CreateTFFunctionalControlFlowToRegions());
