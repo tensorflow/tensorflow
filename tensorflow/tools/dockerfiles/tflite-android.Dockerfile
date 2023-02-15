@@ -11,7 +11,7 @@ ENV ANDROID_SDK_URL https://dl.google.com/android/repository/${ANDROID_SDK_FILEN
 ENV ANDROID_API_LEVEL 23
 ENV ANDROID_NDK_API_LEVEL 21
 # Build Tools Version liable to change.
-ENV ANDROID_BUILD_TOOLS_VERSION 30.0.0
+ENV ANDROID_BUILD_TOOLS_VERSION 31.0.0
 ENV ANDROID_SDK_HOME ${ANDROID_DEV_HOME}/sdk
 RUN mkdir -p ${ANDROID_SDK_HOME}/cmdline-tools
 ENV PATH ${PATH}:${ANDROID_SDK_HOME}/cmdline-tools/latest/bin:${ANDROID_SDK_HOME}/platform-tools
