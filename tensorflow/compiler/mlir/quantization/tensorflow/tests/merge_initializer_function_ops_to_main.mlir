@@ -344,6 +344,37 @@ module attributes {tf_saved_model.semantics} {
 
 // -----
 
+// Test that the argument of the initializer function is correctly merged
+// into @main.
+
+// CHECK-LABEL: module
+module attributes {tf.versions = {bad_consumers = [], min_consumer = 12 : i32, producer = 1228 : i32}, tf_saved_model.semantics} {
+  "tf_saved_model.session_initializer"() {initializers = [@NoOp]} : () -> ()
+  "tf_saved_model.asset"() {filename = "assets/file.txt", sym_name = "__tf_saved_model_asset0_file.txt"} : () -> ()
+
+  func.func @NoOp(%arg: tensor<!tf_type.string> {tf_saved_model.bound_input = @__tf_saved_model_asset0_file.txt})
+    attributes {tf_saved_model.exported_names = ["__tf_saved_model_session_initializer_NoOp"], tf_saved_model.initializer_type = "init_op"} {
+    tf_executor.graph {
+      %out, %ctl = tf_executor.island wraps "tf.Identity"(%arg) : (tensor<!tf_type.string>) -> tensor<!tf_type.string>
+      tf_executor.fetch %ctl : !tf_executor.control
+    }
+    return
+  }
+
+  func.func @main() attributes {tf.entry_function = {inputs = "", outputs = ""}, tf_saved_model.exported_names = ["main"]} {
+    tf_executor.graph {
+      tf_executor.fetch
+    }
+    return
+  }
+  // CHECK: @main(%[[ARG_0:.*]]: tensor<!tf_type.string> {tf_saved_model.bound_input = @__tf_saved_model_asset0_file.txt})
+  // CHECK-SAME: tf.entry_function = {inputs = "init_op_0:0", outputs = ""}
+  // CHECK: %{{.*}}, %[[CTL:.*]] = tf_executor.island wraps "tf.Identity"(%[[ARG_0]])
+  // CHECK: tf_executor.fetch %[[CTL]]
+}
+
+// -----
+
 // Tests that the input name for the new argument created in @main (for the
 // "restore_op" initializer function) is not added when there is no
 // tf.entry_function.
@@ -461,31 +492,6 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 12 : i32, p
     return
   }
 // CHECK: func.func @main()
-}
-
-// -----
-
-// expected-error @+1 {{Validation on initializer functions failed.}}
-module attributes {tf.versions = {bad_consumers = [], min_consumer = 12 : i32, producer = 1228 : i32}, tf_saved_model.semantics} {
-  "tf_saved_model.session_initializer"() {initializers = [@NoOp]} : () -> ()
-  "tf_saved_model.asset"() {filename = "assets/file.txt", sym_name = "__tf_saved_model_asset0_file.txt"} : () -> ()
-
-  // expected-error @+1 {{Validation failed for the initializer function: NoOp. The initializer function's arguments should have no usages. Instead, argument index: 0 has number of usages: 1.}}
-  func.func @NoOp(%arg: tensor<!tf_type.string> {tf_saved_model.bound_input = @__tf_saved_model_asset0_file.txt})
-    attributes {tf_saved_model.exported_names = ["__tf_saved_model_session_initializer_NoOp"], tf_saved_model.initializer_type = "init_op"} {
-    tf_executor.graph {
-      %out, %ctl = tf_executor.island wraps "tf.Identity"(%arg) {} : (tensor<!tf_type.string>) -> tensor<!tf_type.string>
-      tf_executor.fetch %ctl : !tf_executor.control
-    }
-    return
-  }
-
-  func.func @main() attributes {tf.entry_function = {inputs = "", outputs = ""}, tf_saved_model.exported_names = ["main"]} {
-    tf_executor.graph {
-      tf_executor.fetch
-    }
-    return
-  }
 }
 
 // -----
