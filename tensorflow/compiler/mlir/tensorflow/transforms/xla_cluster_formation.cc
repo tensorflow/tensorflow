@@ -33,6 +33,8 @@ namespace {
 #define GEN_PASS_DEF_XLACLUSTERFORMATIONPASS
 #include "tensorflow/compiler/mlir/tensorflow/transforms/tf_device_passes.h.inc"
 
+constexpr char kAllowSoftPlacementAttr[] = "allow_soft_placement";
+
 // Outlines partitioned call ops with `_XlaMustCompile` to device clusters.
 struct XlaClusterFormationPass
     : public impl::XlaClusterFormationPassBase<XlaClusterFormationPass> {
@@ -44,6 +46,8 @@ void EncapsulatePartitionedCall(Operation *call_op) {
 
   auto cluster = builder.create<tf_device::ClusterOp>(
       call_op->getLoc(), call_op->getResultTypes());
+
+  cluster->setAttr(kAllowSoftPlacementAttr, builder.getBoolAttr(true));
 
   call_op->replaceAllUsesWith(cluster.getResults());
 
