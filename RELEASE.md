@@ -27,6 +27,12 @@
         graph). This can be used for integrating metrics from external Python
         libraries (like sklearn or pycocotools) into Keras as first-class Keras
         metrics.
+    *   The `SidecarEvaluatorModelExport` callback has been added to Keras as
+        `keras.callbacks.SidecarEvaluatorModelExport`. This callback allows for
+        exporting the model the best-scoring model as evaluated by a
+        `SidecarEvaluator` evaluator. The evaluator regularly evaluates the
+        model and exports it if the user-defined comparison function determines
+        that it is an improvement.
 
 ## Bug Fixes and Other Changes
 
