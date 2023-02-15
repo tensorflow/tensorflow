@@ -916,6 +916,7 @@ cc_library(
         "//tensorflow/core/lib/strings:str_util",
         "//tensorflow/core/platform:fingerprint",
         "//tensorflow/core/platform:protobuf",
+        "//tensorflow/core/util:overflow",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -1346,6 +1347,7 @@ tf_cc_tests(
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
+        "@com_google_googletest//:gtest",
     ],
 )
 
