@@ -50,13 +50,22 @@ benchmarking apps.
         `sudo apt update && sudo apt install bazel-5.3.0` if prompted.
     -   When installing Android NDK and SDK, using Android Studio's SDK Manager
         may be the easiest way.
-    -   The versions which we have verified are working:
-        -   Android NDK API level: 21
-        -   Android SDK API level: 33
-        -   Android build tools version: 30.0.0
     -   Run the `./configure` script in the root TensorFlow checkout directory,
         and answer "Yes" when the script asks to interactively configure the
         `./WORKSPACE` for Android builds.
+    -   The versions which we have verified are working:
+        -   Android NDK version: 21.4.7075529
+            -   Provide the value as part of a path when the `./configure`
+                script asks to specify the home path of the Android NDK.
+        -   Android NDK API level: 26
+            -   Provide the value when the `./configure` script asks to specify
+                the Android NDK API level.
+        -   Android SDK API level: 33
+            -   Provide the value when the `./configure` script asks to specify
+                the Android SDK API level.
+        -   Android build tools version: 30.0.0
+            -   Provide the value when the `./configure` script asks to specify
+                the Android build tools version.
 
 1.  Build for your specific platform, e.g.:
 
