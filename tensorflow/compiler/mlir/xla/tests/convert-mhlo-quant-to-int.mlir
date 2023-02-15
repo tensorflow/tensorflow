@@ -1,4 +1,4 @@
-// RUN: xla-opt -convert-mhlo-quant-to-int -split-input-file %s | FileCheck %s
+// RUN: tf-opt -convert-mhlo-quant-to-int -split-input-file %s | FileCheck %s
 
 // CHECK-LABEL: func @uniform_quantize_and_dequantize
 func.func @uniform_quantize_and_dequantize(%arg0: tensor<?x?xf32>) -> tensor<?x?xf32> {

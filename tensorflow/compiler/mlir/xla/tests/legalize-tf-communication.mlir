@@ -1,4 +1,4 @@
-// RUN: xla-opt -split-input-file -verify-diagnostics -xla-legalize-tf-communication %s | FileCheck %s
+// RUN: tf-opt -split-input-file -verify-diagnostics -xla-legalize-tf-communication %s | FileCheck %s
 
 // Test legalization of `tf._XlaHostComputeMlir` expands into individual
 // `mhlo.send` per operand and `mhlo.recv` per result. Channel Id's are uniquely

@@ -1,4 +1,4 @@
-// RUN: xla-opt "-xla-legalize-tf-no-fallback=allow-partial-conversion" -split-input-file %s | FILECHECK_OPTS="" FileCheck %s
+// RUN: tf-opt "-xla-legalize-tf-no-fallback=allow-partial-conversion" -split-input-file %s | FILECHECK_OPTS="" FileCheck %s
 
 //===----------------------------------------------------------------------===//
 // BatchNorm op legalizations.

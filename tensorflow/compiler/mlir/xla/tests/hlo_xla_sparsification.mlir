@@ -1,4 +1,4 @@
-// RUN: xla-opt -hlo-legalize-to-linalg -hlo-xla-runtime-sparsification %s | FileCheck %s
+// RUN: tf-opt -hlo-legalize-to-linalg -hlo-xla-runtime-sparsification %s | FileCheck %s
 
 #SparseVector = #sparse_tensor.encoding<{ dimLevelType = ["compressed"] }>
 

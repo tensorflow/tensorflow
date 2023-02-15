@@ -1,4 +1,4 @@
-// RUN: xla-opt "--tfxla-device-specific-transforms=device-type=XLA_CPU_JIT" -verify-diagnostics -split-input-file %s | FileCheck -dump-input=fail %s
+// RUN: tf-opt "--tfxla-device-specific-transforms=device-type=XLA_CPU_JIT" -verify-diagnostics -split-input-file %s | FileCheck -dump-input=fail %s
 
 module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, producer = 1399 : i32}} {
 
