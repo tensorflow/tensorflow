@@ -48,9 +48,11 @@ class MetricsHookInterface {
   virtual void RecordStageError(absl::string_view stage,
                                 absl::string_view error_status) const = 0;
 
-  // Captures latency for a given XLA compilation stage.
-  virtual void RecordStageLatency(CompilationLogEntry::CompilationStage stage,
-                                  absl::Duration latency) const = 0;
+  // Captures metrics for a given XLA compilation stage. The `pass_metrics` can
+  // be empty if no pass specific metrics are available.
+  virtual void RecordCompilationMetrics(
+      CompilationLogEntry::CompilationStage stage, absl::Duration latency,
+      absl::Span<const PassMetrics> pass_metrics) const = 0;
 };
 }  // namespace xla
 #endif  // TENSORFLOW_COMPILER_XLA_SERVICE_METRICS_HOOK_INTERFACE_H_
