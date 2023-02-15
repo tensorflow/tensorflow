@@ -21,6 +21,20 @@ cc_library(
     ],
 )
 
+# TODO(269360974): remove this target after pjrt_c_api_client no longer needs
+# to access wrapped objects.
+cc_library(
+    name = "pjrt_c_api_wrapper_impl_header",
+    hdrs = ["pjrt_c_api_wrapper_impl.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":pjrt_c_api_hdrs",
+        "//tensorflow/compiler/xla/pjrt:pjrt_client",
+        "//tensorflow/compiler/xla/pjrt:pjrt_compiler",
+        "//tensorflow/compiler/xla/pjrt:pjrt_future",
+    ],
+)
+
 cc_library(
     name = "pjrt_c_api_wrapper_impl",
     srcs = ["pjrt_c_api_wrapper_impl.cc"],
