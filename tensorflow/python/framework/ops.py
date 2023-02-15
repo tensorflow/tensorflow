@@ -499,7 +499,7 @@ class Tensor(internal.NativeObject, core_tf_types.Symbol):
 
   def _c_api_shape(self):
     """Returns the TensorShape of this tensor according to the C API."""
-    with self._op._graph._c_graph.get() as c_graph:  # pylint: disable=protected-access
+    with self._op.graph._c_graph.get() as c_graph:  # pylint: disable=protected-access
       shape_vec, unknown_shape = pywrap_tf_session.TF_GraphGetTensorShapeHelper(
           c_graph, self._as_tf_output())
     if unknown_shape:
@@ -826,7 +826,7 @@ class Tensor(internal.NativeObject, core_tf_types.Symbol):
         else:
           dim_list.append(dim.value)
     try:
-      with self._op._graph._c_graph.get() as c_graph:  # pylint: disable=protected-access
+      with self._op.graph._c_graph.get() as c_graph:  # pylint: disable=protected-access
         pywrap_tf_session.TF_GraphSetTensorShape_wrapper(
             c_graph, self._as_tf_output(), dim_list, unknown_shape)
     except errors.InvalidArgumentError as e:
@@ -1867,7 +1867,7 @@ def _create_c_op(graph,
     A wrapped TF_Operation*.
   """
   if op_def is None:
-    op_def = graph._get_op_def(node_def.op)  # pylint: disable=protected-access
+    op_def = graph.op_def_for_type(node_def.op)  # pylint: disable=protected-access
   # TODO(skyewm): op_def_library.apply_op() flattens the incoming inputs.
   # Refactor so we don't have to do this here.
   inputs = _reconstruct_sequence_inputs(op_def, inputs, node_def.attr)
@@ -1932,15 +1932,18 @@ class Operation(pywrap_tf_session.OperationHandle):
   calling `tf.compat.v1.get_default_session().run(op)`.
   """
 
-  def __init__(self,
-               node_def,
-               g,
-               inputs=None,
-               output_types=None,
-               control_inputs=None,
-               input_types=None,
-               original_op=None,
-               op_def=None):
+  @classmethod
+  def from_node_def(
+      cls,
+      node_def,
+      g,
+      inputs=None,
+      output_types=None,
+      control_inputs=None,
+      input_types=None,
+      original_op=None,
+      op_def=None,
+  ):
     r"""Creates an `Operation`.
 
     NOTE: This constructor validates the name of the `Operation` (passed
@@ -1978,8 +1981,10 @@ class Operation(pywrap_tf_session.OperationHandle):
         or if `inputs` are not tensors,
         or if `inputs` and `input_types` are incompatible.
       ValueError: if the `node_def` name is not valid.
+
+    Returns:
+      Operation object.
     """
-    super().__init__()
     if not isinstance(g, Graph):
       raise TypeError(f"Argument g must be a Graph. "
                       f"Received an instance of type {type(g)}")
@@ -2037,7 +2042,8 @@ class Operation(pywrap_tf_session.OperationHandle):
 
     # Initialize c_op from node_def and other inputs
     c_op = _create_c_op(g, node_def, inputs, control_input_ops, op_def=op_def)
-    self._init_from_c_op(c_op=c_op, g=g)
+    self = Operation(c_op, g)
+    self._init(g)
 
     self._original_op = original_op
 
@@ -2048,6 +2054,8 @@ class Operation(pywrap_tf_session.OperationHandle):
     # We adjust stacklevel directly to avoid triggering serialization.
     if self.traceback is not None:
       self.traceback._stacklevel += 1  # pylint: disable=protected-access
+
+    return self
 
   @classmethod
   def _from_c_op(cls, c_op, g):
@@ -2064,24 +2072,15 @@ class Operation(pywrap_tf_session.OperationHandle):
     Returns:
       an Operation object.
     """
-    self = Operation.__new__(cls)
-    self._init_from_c_op(c_op=c_op, g=g)  # pylint: disable=protected-access
+    self = Operation(c_op, g)
+    self._init(g)  # pylint: disable=protected-access
     return self
 
-  def _init_from_c_op(self, c_op, g):
+  def _init(self, graph):
     """Initializes Operation from a TF_Operation."""
 
-    if not isinstance(g, Graph):
-      raise TypeError(f"Operation initialization requires a Graph, "
-                      f"got {type(g)} for argument g.")
-
-    if not isinstance(c_op, pywrap_tf_session.TF_Operation):
-      raise TypeError(f"Operation initialization requires a TF_Operation, "
-                      f"got {type(c_op)} for argument c_op.")
-
+    self.graph = graph
     self._original_op = None
-    self._graph = g
-    self._c_op = c_op
 
     # This will be set by self.inputs.
     self._inputs_val = None
@@ -2092,7 +2091,7 @@ class Operation(pywrap_tf_session.OperationHandle):
     # Dict mapping op name to file and line information for op colocation
     # context managers.
     self._colocation_code_locations = None
-    self._control_flow_context = g._get_control_flow_context()  # pylint: disable=protected-access
+    self._control_flow_context = self.graph._get_control_flow_context()  # pylint: disable=protected-access
 
     # Gradient function for this op. There are three ways to specify gradient
     # function, and first available gradient gets used, in the following order.
@@ -2100,10 +2099,6 @@ class Operation(pywrap_tf_session.OperationHandle):
     # 2. Gradient name registered by "_gradient_op_type" attribute.
     # 3. Gradient name registered by op.type.
     self._gradient_function = None
-
-    op_def = g._get_op_def(pywrap_tf_session.TF_OperationOpType(c_op))  # pylint: disable=protected-access
-
-    self._is_stateful = op_def.is_stateful
 
     # Initialize self._outputs.
     num_outputs = pywrap_tf_session.TF_OperationNumOutputs(self._c_op)
@@ -2114,7 +2109,7 @@ class Operation(pywrap_tf_session.OperationHandle):
       tensor = Tensor._create_with_tf_output(self, i, output_type, tf_output)  # pylint: disable=protected-access
       self._outputs.append(tensor)
 
-    self._id_value = g._add_op(self, self.name)  # pylint: disable=protected-access
+    self._id_value = self.graph._add_op(self, self.name)  # pylint: disable=protected-access
 
   def _control_flow_post_processing(self, input_tensors=None):
     """Add this op to its control flow context.
@@ -2172,11 +2167,6 @@ class Operation(pywrap_tf_session.OperationHandle):
       ctx: a context object.
     """
     self._control_flow_context = ctx
-
-  @property
-  def name(self):
-    """The full name of this operation."""
-    return pywrap_tf_session.TF_OperationName(self._c_op)
 
   @property
   def _id(self):
@@ -2287,22 +2277,6 @@ class Operation(pywrap_tf_session.OperationHandle):
     """
     self._set_device_from_string(compat.as_str(_device_string(device)))
 
-  def _set_device_from_string(self, device_str):
-    """Fast path to set device if the type is known to be a string.
-
-    This function is called frequently enough during graph construction that
-    there are non-trivial performance gains if the caller can guarantee that
-    the specified device is already a string.
-
-    Args:
-      device_str: A string specifying where to place this op.
-    """
-    with self._graph._c_graph.get() as c_graph:  # pylint: disable=protected-access
-      pywrap_tf_session.SetRequestedDevice(
-          c_graph,
-          self._c_op,  # pylint: disable=protected-access
-          device_str)
-
   def _update_input(self, index, tensor):
     """Update the input to this operation at the given index.
 
@@ -2323,7 +2297,7 @@ class Operation(pywrap_tf_session.OperationHandle):
 
     # Reset cached inputs.
     self._inputs_val = None
-    with self._graph._c_graph.get() as c_graph:  # pylint: disable=protected-access
+    with self.graph._c_graph.get() as c_graph:  # pylint: disable=protected-access
       pywrap_tf_session.UpdateEdge(
           c_graph,
           tensor._as_tf_output(),  # pylint: disable=protected-access
@@ -2342,7 +2316,7 @@ class Operation(pywrap_tf_session.OperationHandle):
         or if input tensor type is not convertible to dtype.
       ValueError: if the Tensor is from a different graph.
     """
-    with self._graph._c_graph.get() as c_graph:  # pylint: disable=protected-access
+    with self.graph._c_graph.get() as c_graph:  # pylint: disable=protected-access
       for tensor in tensors:
         if not isinstance(tensor, Tensor):
           raise TypeError("tensor must be a Tensor: %s" % tensor)
@@ -2354,48 +2328,6 @@ class Operation(pywrap_tf_session.OperationHandle):
             c_graph,  # pylint: disable=protected-access
             tensor._as_tf_output(),  # pylint: disable=protected-access
             self._c_op)
-
-  def _add_control_inputs(self, ops):
-    """Add a list of new control inputs to this operation.
-
-    Args:
-      ops: the list of Operations to add as control input.
-
-    Raises:
-      TypeError: if ops is not a list of Operations.
-      ValueError: if any op in ops is from a different graph.
-    """
-    with self._graph._c_graph.get() as c_graph:  # pylint: disable=protected-access
-      for op in ops:
-        if not isinstance(op, Operation):
-          raise TypeError("op must be an Operation: %s" % op)
-        pywrap_tf_session.AddControlInput(
-            c_graph,
-            self._c_op,  # pylint: disable=protected-access
-            op._c_op)  # pylint: disable=protected-access
-
-  def _add_control_input(self, op):
-    """Add a new control input to this operation.
-
-    Args:
-      op: the Operation to add as control input.
-
-    Raises:
-      TypeError: if op is not an Operation.
-      ValueError: if op is from a different graph.
-    """
-    with self._graph._c_graph.get() as c_graph:  # pylint: disable=protected-access
-      if not isinstance(op, Operation):
-        raise TypeError("op must be an Operation: %s" % op)
-      pywrap_tf_session.AddControlInput(
-          c_graph,
-          self._c_op,  # pylint: disable=protected-access
-          op._c_op)  # pylint: disable=protected-access
-
-  def _remove_all_control_inputs(self):
-    """Removes any control inputs to this operation."""
-    with self._graph._c_graph.get() as c_graph:  # pylint: disable=protected-access
-      pywrap_tf_session.RemoveAllControlInputs(c_graph, self._c_op)  # pylint: disable=protected-access
 
   def _add_outputs(self, types, shapes):
     """Adds new Tensors to self.outputs.
@@ -2494,11 +2426,6 @@ class Operation(pywrap_tf_session.OperationHandle):
     # pylint: enable=protected-access
 
   @property
-  def graph(self):
-    """The `Graph` that contains this operation."""
-    return self._graph
-
-  @property
   def traceback(self):
     """Returns the call stack from when this operation was constructed."""
     # FIXME(b/225423591): This object contains a dangling reference if _c_op
@@ -2524,7 +2451,7 @@ class Operation(pywrap_tf_session.OperationHandle):
 
   def _set_attr_with_buf(self, attr_name, attr_buf):
     """Set an attr in the node_def with a pre-allocated buffer."""
-    with self._graph._c_graph.get() as c_graph:  # pylint: disable=protected-access
+    with self.graph._c_graph.get() as c_graph:  # pylint: disable=protected-access
       # pylint: disable=protected-access
       pywrap_tf_session.SetAttr(c_graph, self._c_op, attr_name, attr_buf)
       # pylint: enable=protected-access
@@ -2558,7 +2485,7 @@ class Operation(pywrap_tf_session.OperationHandle):
 
   def _clear_attr(self, attr_name):
     """Private method used to clear an attribute in the node_def."""
-    with self._graph._c_graph.get() as c_graph:  # pylint: disable=protected-access
+    with self.graph._c_graph.get() as c_graph:  # pylint: disable=protected-access
       # pylint: disable=protected-access
       pywrap_tf_session.ClearAttr(c_graph, self._c_op, attr_name)
       # pylint: enable=protected-access
@@ -2637,7 +2564,7 @@ class Operation(pywrap_tf_session.OperationHandle):
         must be `TFT_PRODUCT`, even for ops which only have a singlre return
         value.
     """
-    with self._graph._c_graph.get() as c_graph:  # pylint: disable=protected-access
+    with self.graph._c_graph.get() as c_graph:  # pylint: disable=protected-access
       if (type_proto.type_id
           not in (full_type_pb2.TFT_UNSET, full_type_pb2.TFT_PRODUCT)):
         raise ValueError("error setting the type of ", self.name,
@@ -3099,16 +3026,24 @@ class Graph(pywrap_tf_session.GraphHandle):
     # are pairs of tuples: (output_shape_kept_dims, tile_scaling).
     self._reduced_shape_cache = {}
 
-    # TODO(skyewm): fold as much of the above as possible into the C
-    # implementation
-    self._c_graph = c_api_util.ScopedTFGraph(self._graph_key)
-    # The C API requires all ops to have shape functions. Disable this
-    # requirement (many custom ops do not have shape functions, and we don't
-    # want to break these existing cases).
-    with self._c_graph.get() as c_graph:
-      pywrap_tf_session.SetRequireShapeInferenceFns(c_graph, False)
     if tf2.enabled():
       self.switch_to_thread_local()
+
+  # `Graph` now _is_ the C graph, but we have many places that manually attempt
+  # to manipulate the _c_graph object. Leave these accessors here until these
+  # are cleaned up.
+  @property
+  def _c_graph(self):
+    return self
+
+  def __enter__(self):
+    return self
+
+  def __exit__(self, *args):
+    return
+
+  def get(self):
+    return self
 
   # Note: this method is private because the API of tf.Graph() is public and
   # frozen, and this functionality is still not ready for public visibility.
@@ -3305,14 +3240,7 @@ class Graph(pywrap_tf_session.GraphHandle):
     Returns:
       A `VersionDef`.
     """
-    # pylint: enable=line-too-long
-    with c_api_util.tf_buffer() as buf:
-      with self._c_graph.get() as c_graph:
-        pywrap_tf_session.TF_GraphVersions(c_graph, buf)
-      data = pywrap_tf_session.TF_GetBuffer(buf)
-    version_def = versions_pb2.VersionDef()
-    version_def.ParseFromString(compat.as_bytes(data))
-    return version_def
+    return versions_pb2.VersionDef.FromString(self._version_def)
 
   @property
   def seed(self):
@@ -3696,7 +3624,7 @@ class Graph(pywrap_tf_session.GraphHandle):
     # _create_op_helper mutates the new Operation. `_mutation_lock` ensures a
     # Session.run call cannot occur between creating and mutating the op.
     with self._mutation_lock():
-      ret = Operation(
+      ret = Operation.from_node_def(
           node_def,
           self,
           inputs=inputs,
@@ -3704,7 +3632,8 @@ class Graph(pywrap_tf_session.GraphHandle):
           control_inputs=control_inputs,
           input_types=input_types,
           original_op=self._default_original_op,
-          op_def=op_def)
+          op_def=op_def,
+      )
       self._create_op_helper(ret, compute_device=compute_device)
     return ret
 
@@ -4092,22 +4021,17 @@ class Graph(pywrap_tf_session.GraphHandle):
   def _last_id(self):
     return self._next_id_counter
 
-  def _get_op_def(self, type):  # pylint: disable=redefined-builtin
+  def op_def_for_type(self, type):  # pylint: disable=redefined-builtin
     """Returns the `OpDef` proto for `type`. `type` is a string."""
     # NOTE: No locking is required because the lookup and insertion operations
     # on Python dictionaries are atomic.
     try:
       return self._op_def_cache[type]
     except KeyError:
-      with c_api_util.tf_buffer() as buf:
-        with self._c_graph.get() as c_graph:
-          pywrap_tf_session.TF_GraphGetOpDef(c_graph, compat.as_bytes(type),
-                                             buf)
-        data = pywrap_tf_session.TF_GetBuffer(buf)
-      op_def = op_def_pb2.OpDef()
-      op_def.ParseFromString(compat.as_bytes(data))
-      self._op_def_cache[type] = op_def
-      return op_def
+      self._op_def_cache[type] = op_def_pb2.OpDef.FromString(
+          self._op_def_for_type(type)
+      )
+      return self._op_def_cache[type]
 
   def as_default(self):
     """Returns a context manager that makes this `Graph` the default graph.

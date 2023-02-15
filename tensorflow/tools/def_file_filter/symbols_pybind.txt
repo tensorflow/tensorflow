@@ -292,6 +292,8 @@ tensorflow::ExtendSession
 tensorflow::GetHandleShapeAndType
 tensorflow::SetHandleShapeAndType
 tensorflow::AddWhileInputHack
+tensorflow::RecordMutation
+tensorflow::Graph::IsControlEdge
 
 [//tensorflow/tsl/python/lib/core:numpy] # tf_session
 tsl::ImportNumpy

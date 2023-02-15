@@ -1350,8 +1350,7 @@ def _duplicate_body_captures_in_cond(cond_graph, body_graph_captures):
         c_graph, types,
         compat.as_str(_build_cond_placeholders_name_prefix(cond_graph)))
   placeholder_ops = [
-      _OperationWithOutputs(ph.oper, cond_graph)
-      for ph in placeholders
+      ops.Operation._from_c_op(ph.oper, cond_graph) for ph in placeholders
   ]
 
   tensors = []
@@ -1419,31 +1418,6 @@ def _build_accumulator_name(tensor):
 def _is_loop_invariant(tensor, inputs, outputs):
   return (any(tensor is t for t in inputs) and
           any(tensor is t for t in outputs))
-
-
-class _OperationWithOutputs(ops.Operation):
-  """Operation with pre-built `TF_Output`s.
-
-  The C API for creating the extra placeholders for the cond graph returns
-  SWIG wrapped TF_Output* pointers which we can use directly for
-  `Operation.outputs`. The default constructor for `Operation` does not provide
-  a way of specifying pre-built output tensors and always creates them. This is
-  a performance overhead. It is not clear if adding that feature to the
-  `Operation` API would be generally useful so for now we just have our own
-  lightweight `Operation` implementation. Note that this does not extract a
-  stacktrace as well since we don't expect this operation to be used.
-
-  TODO(b/143286622): This should not be required once captures are separated
-  from regular loop vars.
-  """
-
-  def __init__(self, c_op, g):
-    super(ops.Operation, self).__init__()
-    self._c_op = c_op
-    self._graph = g
-    self._outputs = None  # Initialized by _duplicate_body_captures_in_cond().
-    self._id_value = g._add_op(self, self.name)
-    self._is_stateful = False
 
 
 def _set_read_only_resource_inputs_attr(op, branch_graphs):
