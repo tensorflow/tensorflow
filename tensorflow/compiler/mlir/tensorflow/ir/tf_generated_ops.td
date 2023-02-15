@@ -20954,8 +20954,8 @@ platform argument (see `platforms`) nor the dimension arguments (see
     I64Attr:$version,
     StrAttr:$module,
     TF_ShapeAttrArray:$Sout,
-    StrArrayAttr:$dim_args_spec,
-    StrArrayAttr:$platforms
+    DefaultValuedOptionalAttr<StrArrayAttr, "{}">:$dim_args_spec,
+    DefaultValuedOptionalAttr<StrArrayAttr, "{}">:$platforms
   );
 
   let results = (outs

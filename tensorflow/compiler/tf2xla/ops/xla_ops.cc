@@ -1323,8 +1323,8 @@ REGISTER_OP("XlaCallModule")
     .Attr("Sout: list(shape) >= 0")
     .Attr("Tout: list(type) >= 0")
     .Attr("Tin: list(type) >= 0")
-    .Attr("dim_args_spec: list(string) >= 0")
-    .Attr("platforms: list(string) >= 0")
+    .Attr("dim_args_spec: list(string) = []")
+    .Attr("platforms: list(string) = []")
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       std::vector<shape_inference::ShapeHandle> args_shapes;
       TF_RETURN_IF_ERROR(c->input("args", &args_shapes));
