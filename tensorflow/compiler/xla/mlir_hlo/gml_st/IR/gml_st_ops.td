@@ -642,6 +642,7 @@ def GMLST_FusionOp : GMLST_Op<"fusion", [
   let results = (outs Variadic<AnyRankedTensor>:$results);
   let regions = (region SizedRegion<1>:$region);
 
+  let hasCustomAssemblyFormat = 1;
   let hasVerifier = 0;
 }
 

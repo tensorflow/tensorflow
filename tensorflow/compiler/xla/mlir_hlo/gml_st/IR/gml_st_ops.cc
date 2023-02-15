@@ -1452,6 +1452,73 @@ void SetYieldOp::getCanonicalizationPatterns(RewritePatternSet &results,
 
 LogicalResult YieldOp::verify() { return success(); }
 
+//===----------------------------------------------------------------------===//
+// FusionOp
+//===----------------------------------------------------------------------===//
+
+void FusionOp::print(OpAsmPrinter &p) {
+  p << " (";
+  llvm::interleaveComma(
+      llvm::zip(getBody()->getArguments(), getInputs()), p, [&](auto it) {
+        Value inputRegionArg, input;
+        std::tie(inputRegionArg, input) = it;
+        p << inputRegionArg << " = " << input << ": " << input.getType();
+      });
+  p << ") ";
+
+  p.printRegion(getRegion(), /*printEntryBlockArgs=*/false);
+
+  p.printOptionalAttrDict(getOperation()->getAttrs());
+
+  if (!getResultTypes().empty()) {
+    p << " : ";
+    llvm::interleave(getResultTypes(), p, ", ");
+  }
+}
+
+ParseResult FusionOp::parse(OpAsmParser &parser, OperationState &result) {
+  SmallVector<OpAsmParser::UnresolvedOperand, 4> operands, regionOperands;
+  SmallVector<Type, 4> operandTypes;
+
+  auto parseElt = [&]() -> ParseResult {
+    if (parser.parseOperand(regionOperands.emplace_back(),
+                            /*allowResultNumber=*/false) ||
+        parser.parseEqual()) {
+      return failure();
+    }
+    if (parser.parseOperand(operands.emplace_back()) || parser.parseColon() ||
+        parser.parseType(operandTypes.emplace_back())) {
+      return failure();
+    }
+    return success();
+  };
+
+  // Parse argument list.
+  if (parser.parseCommaSeparatedList(AsmParser::Delimiter::Paren, parseElt))
+    return failure();
+
+  SMLoc loc = parser.getCurrentLocation();
+  if (parser.resolveOperands(operands, operandTypes, loc, result.operands))
+    return failure();
+
+  // Parse region.
+  SmallVector<OpAsmParser::Argument, 4> regionArgs;
+  for (auto argAndType : llvm::zip(regionOperands, operandTypes)) {
+    auto &arg = regionArgs.emplace_back();
+    std::tie(arg.ssaName, arg.type) = argAndType;
+  }
+  Region *body = result.addRegion();
+  if (parser.parseRegion(*body, regionArgs)) return failure();
+
+  // Parse attributes.
+  if (parser.parseOptionalAttrDict(result.attributes)) return failure();
+
+  // Parser result types.
+  if (parser.parseOptionalColonTypeList(result.types)) return failure();
+
+  return success();
+}
+
 }  // namespace gml_st
 }  // namespace mlir
 
