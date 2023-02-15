@@ -24,6 +24,14 @@ include "tensorflow/compiler/mlir/quantization/tensorflow/passes/utils.td"
 // Pattern rules for converting bfloat16 operations to fp32 conversions.
 //===----------------------------------------------------------------------===//
 
+// Remove unneeded redundant cast ops like (f32 -> bf16 -> f32).
+def RemoveUnneededCastOps : Pat<
+  (TF_CastOp:$output
+    (TF_CastOp
+      $input, $truncate_0), $truncate_1),
+  (replaceWithValue $input),
+  [(AreTheSameElementType $input, $output)]>;
+
 // Cast BF16 Conv2D ops to FP32 Conv2D ops. Inputs and
 // filters will be casted to fp32 as well, and unused
 // BF16 constant values will be removed by the compiler.

@@ -78,6 +78,23 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "remove_identity_op_pattern",
+    srcs = [
+        "passes/remove_identity_op_pattern.cc",
+    ],
+    hdrs = [
+        "passes/remove_identity_op_pattern.h",
+    ],
+    compatible_with = get_compatible_with_cloud(),
+    deps = [
+        "//tensorflow/compiler/mlir/tensorflow",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:TransformUtils",
+    ],
+)
+
 td_library(
     name = "quant_td_files",
     srcs = [
@@ -379,6 +396,7 @@ cc_library(
         ":constants",
         ":pass_utils",
         ":quantization_options_proto_cc",
+        ":remove_identity_op_pattern",
         ":tf_op_quant_spec",
         ":tf_quant_ops",
         "//tensorflow/compiler/mlir/lite:tensorflow_lite",

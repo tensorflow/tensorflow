@@ -14,17 +14,10 @@ func.func @cast_bf16_conv_to_fp32(%arg0: tensor<1x3x4x3xf32>) -> (tensor<1x3x2x2
 
 // CHECK: func @cast_bf16_conv_to_fp32
 // CHECK-DAG: %[[cst:.*]] = "tf.Const"() {device = "", value = dense_resource<__elided__> : tensor<2x3x3x2xbf16>} : () -> tensor<2x3x3x2xbf16>
-// CHECK: %0 = "tf.Cast"(%arg0) {Truncate = false, device = ""} : (tensor<1x3x4x3xf32>) -> tensor<1x3x4x3xbf16>
-// CHECK: %1 = "tf.Cast"(%0) {Truncate = false} : (tensor<1x3x4x3xbf16>) -> tensor<1x3x4x3xf32>
-// CHECK: %2 = "tf.Cast"(%[[cst]]) {Truncate = false} : (tensor<2x3x3x2xbf16>) -> tensor<2x3x3x2xf32>
-// CHECK: %3 = "tf.Conv2D"(%1, %2)
-// CHECK: %4 = "tf.Cast"(%3) {Truncate = false} : (tensor<1x3x2x2xf32>) -> tensor<1x3x2x2xbf16>
-// CHECK: %5 = "tf.Identity"(%4) {device = ""} : (tensor<1x3x2x2xbf16>) -> tensor<1x3x2x2xbf16>
-// CHECK: %6 = "tf.Identity"(%5) {device = ""} : (tensor<1x3x2x2xbf16>) -> tensor<1x3x2x2xbf16>
-// CHECK: %7 = "tf.Cast"(%6) {Truncate = false} : (tensor<1x3x2x2xbf16>) -> tensor<1x3x2x2xf32>
-// CHECK: %8 = "tf.Identity"(%7) {device = ""} : (tensor<1x3x2x2xf32>) -> tensor<1x3x2x2xf32>
-// CHECK: %9 = "tf.IdentityN"(%8) {device = ""} : (tensor<1x3x2x2xf32>) -> tensor<1x3x2x2xf32>
-// CHECK: return %9 : tensor<1x3x2x2xf32>
+// CHECK: %[[cast:.*]] = "tf.Cast"(%[[cst]]) {Truncate = false} : (tensor<2x3x3x2xbf16>) -> tensor<2x3x3x2xf32>
+// CHECK: %[[conv:.*]] = "tf.Conv2D"(%arg0, %[[cast]])
+// CHECK: %[[identity:.*]] = "tf.IdentityN"(%[[conv]]) {device = ""} : (tensor<1x3x2x2xf32>) -> tensor<1x3x2x2xf32>
+// CHECK: return %[[identity]] : tensor<1x3x2x2xf32>
 
 func.func @cast_bf16_avg_pool_to_fp32(%arg0: tensor<1x3x4x3xf32>) -> (tensor<1x3x2x2xf32>) {
   %cst = "tf.Const"() {device = "", value = dense<1.000000e+00> : tensor<2x3x3x2xbf16>} : () -> tensor<2x3x3x2xbf16>
@@ -41,17 +34,7 @@ func.func @cast_bf16_avg_pool_to_fp32(%arg0: tensor<1x3x4x3xf32>) -> (tensor<1x3
 
 // CHECK: func @cast_bf16_avg_pool_to_fp32
 // CHECK-DAG: %[[cst:.*]] = "tf.Const"() {value = dense<{{.*}}> : tensor<2x3x3x2xf32>} : () -> tensor<2x3x3x2xf32>
-// TODO(b/269041864): Remove redundant cast ops.
-// CHECK: %0 = "tf.Cast"(%arg0) {Truncate = false, device = ""} : (tensor<1x3x4x3xf32>) -> tensor<1x3x4x3xbf16>
-// CHECK: %1 = "tf.Cast"(%0) {Truncate = false} : (tensor<1x3x4x3xbf16>) -> tensor<1x3x4x3xf32>
-// CHECK: %2 = "tf.Conv2D"(%1, %[[cst]]) {data_format = "NHWC", dilations = [1, 1, 1, 1], explicit_paddings = [], padding = "SAME", strides = [1, 1, 2, 1], use_cudnn_on_gpu = true} : (tensor<1x3x4x3xf32>, tensor<2x3x3x2xf32>) -> tensor<1x3x2x2xf32>
-// CHECK: %3 = "tf.Cast"(%2) {Truncate = false} : (tensor<1x3x2x2xf32>) -> tensor<1x3x2x2xbf16>
-// CHECK: %4 = "tf.Cast"(%3) {Truncate = false} : (tensor<1x3x2x2xbf16>) -> tensor<1x3x2x2xf32>
-// CHECK: %5 = "tf.AvgPool"(%4) {data_format = "NHWC", ksize = [1, 1, 1, 1], padding = "SAME", strides = [1, 1, 1, 1]} : (tensor<1x3x2x2xf32>) -> tensor<1x3x2x2xf32>
-// CHECK: %6 = "tf.Cast"(%5) {Truncate = false} : (tensor<1x3x2x2xf32>) -> tensor<1x3x2x2xbf16>
-// CHECK: %7 = "tf.Identity"(%6) {device = ""} : (tensor<1x3x2x2xbf16>) -> tensor<1x3x2x2xbf16>
-// CHECK: %8 = "tf.Identity"(%7) {device = ""} : (tensor<1x3x2x2xbf16>) -> tensor<1x3x2x2xbf16>
-// CHECK: %9 = "tf.Cast"(%8) {Truncate = false} : (tensor<1x3x2x2xbf16>) -> tensor<1x3x2x2xf32>
-// CHECK: %10 = "tf.Identity"(%9) {device = ""} : (tensor<1x3x2x2xf32>) -> tensor<1x3x2x2xf32>
-// CHECK: %11 = "tf.IdentityN"(%10) {device = ""} : (tensor<1x3x2x2xf32>) -> tensor<1x3x2x2xf32>
-// CHECK: return %11 : tensor<1x3x2x2xf32>
+// CHECK: %[[conv:.*]] = "tf.Conv2D"(%arg0, %[[cst]]) {data_format = "NHWC", dilations = [1, 1, 1, 1], explicit_paddings = [], padding = "SAME", strides = [1, 1, 2, 1], use_cudnn_on_gpu = true} : (tensor<1x3x4x3xf32>, tensor<2x3x3x2xf32>) -> tensor<1x3x2x2xf32>
+// CHECK: %[[avg_pool:.*]] = "tf.AvgPool"(%[[conv]]) {data_format = "NHWC", ksize = [1, 1, 1, 1], padding = "SAME", strides = [1, 1, 1, 1]} : (tensor<1x3x2x2xf32>) -> tensor<1x3x2x2xf32>
+// CHECK: %[[identity:.*]] = "tf.IdentityN"(%[[avg_pool]]) {device = ""} : (tensor<1x3x2x2xf32>) -> tensor<1x3x2x2xf32>
+// CHECK: return %[[identity]] : tensor<1x3x2x2xf32>

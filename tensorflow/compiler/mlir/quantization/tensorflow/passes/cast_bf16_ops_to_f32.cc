@@ -22,6 +22,7 @@ limitations under the License.
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/quantization/tensorflow/passes/remove_identity_op_pattern.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/passes/utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 
@@ -54,6 +55,7 @@ void CastBf16OpsToF32Pass::runOnOperation() {
   RewritePatternSet patterns(ctx);
   auto module_op = getOperation();
 
+  patterns.add<RemoveIdentity>(ctx);
   populateWithGenerated(patterns);
 
   if (failed(applyPatternsAndFoldGreedily(module_op, std::move(patterns)))) {

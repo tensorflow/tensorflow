@@ -28,14 +28,7 @@ func.func private @tpu_func_0_optim0(%arg0: tensor<1x3x4x3xf32>) -> tensor<1x3x2
 
 // CHECK: func @tpu_conv
 // CHECK-DAG: %[[cst:.*]] = "tf.Const"() {device = "", value = dense_resource<__elided__> : tensor<2x3x3x2xbf16>} : () -> tensor<2x3x3x2xbf16>
-// CHECK: %0 = "tf.Cast"(%arg0) {Truncate = false, device = ""} : (tensor<1x3x4x3xf32>) -> tensor<1x3x4x3xbf16>
-// CHECK: %1 = "tf.Cast"(%0) {Truncate = false} : (tensor<1x3x4x3xbf16>) -> tensor<1x3x4x3xf32>
-// CHECK: %2 = "tf.Cast"(%[[cst]]) {Truncate = false} : (tensor<2x3x3x2xbf16>) -> tensor<2x3x3x2xf32>
-// CHECK: %3 = "tf.Conv2D"(%1, %2)
-// CHECK: %4 = "tf.Cast"(%3) {Truncate = false} : (tensor<1x3x2x2xf32>) -> tensor<1x3x2x2xbf16>
-// CHECK: %5 = "tf.Identity"(%4) {device = ""} : (tensor<1x3x2x2xbf16>) -> tensor<1x3x2x2xbf16>
-// CHECK: %6 = "tf.Identity"(%5) {device = ""} : (tensor<1x3x2x2xbf16>) -> tensor<1x3x2x2xbf16>
-// CHECK: %7 = "tf.Cast"(%6) {Truncate = false} : (tensor<1x3x2x2xbf16>) -> tensor<1x3x2x2xf32>
-// CHECK: %8 = "tf.Identity"(%7) {device = ""} : (tensor<1x3x2x2xf32>) -> tensor<1x3x2x2xf32>
-// CHECK: %9 = "tf.IdentityN"(%8) {device = ""} : (tensor<1x3x2x2xf32>) -> tensor<1x3x2x2xf32>
-// CHECK: return %9 : tensor<1x3x2x2xf32>
+// CHECK: %[[cast:.*]] = "tf.Cast"(%[[cst]]) {Truncate = false} : (tensor<2x3x3x2xbf16>) -> tensor<2x3x3x2xf32>
+// CHECK: %[[conv:.*]] = "tf.Conv2D"(%arg0, %[[cast]])
+// CHECK: %[[identity:.*]] = "tf.IdentityN"(%[[conv]]) {device = ""} : (tensor<1x3x2x2xf32>) -> tensor<1x3x2x2xf32>
+// CHECK: return %[[identity]] : tensor<1x3x2x2xf32>
