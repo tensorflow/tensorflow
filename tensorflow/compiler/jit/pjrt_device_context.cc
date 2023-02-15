@@ -24,7 +24,7 @@ limitations under the License.
 #include "tensorflow/core/framework/device.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/tfrt/common/async_value_tensor.h"
-#include "tensorflow/core/tfrt/common/pjrt_util.h"
+#include "tensorflow/core/tfrt/common/create_pjrt_client_util.h"
 
 namespace tensorflow {
 namespace {

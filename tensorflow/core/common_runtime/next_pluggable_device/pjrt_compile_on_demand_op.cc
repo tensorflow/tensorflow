@@ -32,7 +32,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/next_pluggable_device/utils.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/tfrt/common/async_value_tensor.h"
-#include "tensorflow/core/tfrt/common/pjrt_util.h"
+#include "tensorflow/core/tfrt/common/create_pjrt_client_util.h"
 #include "tensorflow/core/tpu/tpu_defs.h"
 #include "tensorflow/tsl/platform/errors.h"
 #include "tensorflow/tsl/platform/statusor.h"

@@ -109,7 +109,7 @@ cc_library(
         "//tensorflow/core:lib_proto_parsing",
         "//tensorflow/core/platform:status",
         "//tensorflow/core/tfrt/common:async_value_tensor",
-        "//tensorflow/core/tfrt/common:pjrt_util",
+        "//tensorflow/core/tfrt/common:create_pjrt_client_util",
         "//tensorflow/core/tpu:tpu_defs",
         "//tensorflow/core/util:determinism",
         "//tensorflow/tsl/platform:errors",

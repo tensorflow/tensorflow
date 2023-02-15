@@ -94,7 +94,7 @@ struct TF_VariableInfo {
   TF_VariableInfo() = delete;
   // TF_VariableInfo is constructed here by TensorFlow, and will be passed to
   // plugin as a opaque pointer. Plugin will need to call C APIs below to
-  // operate on TF_VaribleInfo (such as allocate temp tensor for the `var` held
+  // operate on TF_VariableInfo (such as allocate temp tensor for the `var` held
   // by the underlying tensorflow::VariableInfo.
   TF_VariableInfo(int index, const std::string& name, tensorflow::Var* var) {
     var_info = tensorflow::VariableInfo{index, name, var};
@@ -251,7 +251,7 @@ void TF_CreateAndSetPjRtCApiClient(const char* device_type, TF_Status* status) {
 
 PJRT_Client* TF_GetPjRtCClient(const char* device_type, TF_Status* status) {
   tsl::StatusOr<xla::PjRtClient*> pjrt_client =
-      tensorflow::GetOrCreatePjRtClient(tensorflow::DeviceType(device_type));
+      tensorflow::GetPjRtClient(tensorflow::DeviceType(device_type));
   if (!pjrt_client.ok()) {
     tensorflow::Set_TF_Status_from_Status(status, pjrt_client.status());
     return nullptr;
@@ -305,7 +305,7 @@ void TF_CreatePjRtBuffer(TF_Tensor* c_tensor, PJRT_Buffer* c_buffer,
     return;
   }
   auto pjrt_client =
-      tensorflow::GetOrCreatePjRtClient(tensorflow::DeviceType(device_type));
+      tensorflow::GetPjRtClient(tensorflow::DeviceType(device_type));
   if (!pjrt_client.ok()) {
     tensorflow::Set_TF_Status_from_Status(status, pjrt_client.status());
     return;
