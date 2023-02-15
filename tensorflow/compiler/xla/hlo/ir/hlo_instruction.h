@@ -415,6 +415,8 @@ class CanonicalNameMap {
     return canonical_name;
   }
 
+  void Reserve(size_t size) { canonical_name_map_.reserve(size); }
+
  private:
   absl::flat_hash_map<std::string, std::string> canonical_name_map_;
 };
@@ -1527,6 +1529,23 @@ class HloInstruction {
   // Prints a string representation of the operand list.
   void PrintOperands(Printer* printer, const HloPrintOptions& options) const;
 
+  // Helper class for PrintExtraAttributes.
+  class AttributePrinter {
+   public:
+    explicit AttributePrinter(std::function<Printer*()> next_printer)
+        : next_printer_(std::move(next_printer)) {}
+
+    void Next(absl::FunctionRef<void(Printer*)> print_func) {
+      print_func(next_printer_());
+    }
+
+   private:
+    std::function<Printer*()> next_printer_;
+  };
+  // Prints the string representation of op-specific attributes.
+  void PrintExtraAttributes(AttributePrinter& printer,
+                            const HloPrintOptions& options) const;
+
   // Returns string representation of op-specific attributes.
   std::vector<std::string> ExtraAttributesToString(
       const HloPrintOptions& options) const;
@@ -2273,11 +2292,9 @@ class HloInstruction {
     LOG(FATAL) << "Unimplemented method.";
   }
 
-  // Implementation for non-common logic of ExtraAttributesToString.
-  virtual std::vector<std::string> ExtraAttributesToStringImpl(
-      const HloPrintOptions& options) const {
-    return {};
-  }
+  // Implementation for non-common logic of PrintExtraAttributes.
+  virtual void PrintExtraAttributesImpl(AttributePrinter& printer,
+                                        const HloPrintOptions& options) const {}
 
   // Implementation for IsElementwise if operand_idx is nullopt and for
   // IsElementwiseOnOperand if otherwise.

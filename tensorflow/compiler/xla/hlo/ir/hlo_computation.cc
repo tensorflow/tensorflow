@@ -612,6 +612,7 @@ void HloComputation::Print(
             .set_is_in_nested_computation(true);
 
     CanonicalNameMap name_map;
+    name_map.Reserve(instruction_order.size());
     for (const HloInstruction* const instruction : instruction_order) {
       DCHECK_EQ(this, instruction->parent());
       // 2 more spaces than just 'tab' due to indent_amount()+1 above
