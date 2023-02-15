@@ -28,16 +28,13 @@ limitations under the License.
 #include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/gpu/backend_configs.pb.h"
-#include "tensorflow/compiler/xla/service/gpu/buffer_comparator.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_asm_opts_util.h"
 #include "tensorflow/compiler/xla/service/gpu/matmul_utils.h"
 #include "tensorflow/compiler/xla/service/gpu/stream_executor_util.h"
 #include "tensorflow/compiler/xla/stream_executor/blas.h"
-#include "tensorflow/compiler/xla/stream_executor/cuda/cuda_blas_lt.h"
 #include "tensorflow/compiler/xla/stream_executor/device_description.h"
 #include "tensorflow/compiler/xla/stream_executor/device_memory.h"
 #include "tensorflow/compiler/xla/stream_executor/device_memory_allocator.h"
-#include "tensorflow/compiler/xla/stream_executor/gpu/redzone_allocator.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/tsl/platform/errors.h"
 #include "tensorflow/tsl/platform/logger.h"
@@ -45,11 +42,18 @@ limitations under the License.
 #include "tensorflow/tsl/protobuf/autotuning.pb.h"
 #include "tensorflow/tsl/util/proto/proto_utils.h"
 
+#if (defined(GOOGLE_CUDA) && GOOGLE_CUDA)
+#include "tensorflow/compiler/xla/service/gpu/buffer_comparator.h"
+#include "tensorflow/compiler/xla/stream_executor/cuda/cuda_blas_lt.h"
+#include "tensorflow/compiler/xla/stream_executor/gpu/redzone_allocator.h"
+#endif
+
 namespace xla {
 namespace gpu {
 
 using tensorflow::AutotuneResult;
 
+#if (defined(GOOGLE_CUDA) && GOOGLE_CUDA)
 se::RedzoneAllocator CreateRedzoneAllocator(
     se::Stream* stream, se::DeviceMemoryAllocator* allocator,
     const DebugOptions& debug_options, const AutotuneConfig& config) {
@@ -62,6 +66,7 @@ se::RedzoneAllocator CreateRedzoneAllocator(
       /*memory_limit=*/std::numeric_limits<int64_t>::max(),
       /*redzone_size=*/redzone_size);
 }
+#endif
 
 // Returns the index (into `algorithms`) of the fastest algorithm.
 template <typename AlgoT>
@@ -255,14 +260,13 @@ static auto& autotune_cache ABSL_GUARDED_BY(autotune_cache_mu) =
 static int64_t autotune_cache_hits ABSL_GUARDED_BY(autotune_cache_mu) = 0;
 static int64_t autotune_cache_misses ABSL_GUARDED_BY(autotune_cache_mu) = 0;
 
+#if (defined(GOOGLE_CUDA) && GOOGLE_CUDA)
+
 StatusOr<std::optional<se::blas::AlgorithmType>> DoGemmAutotune(
     const HloInstruction* gemm, const GemmBackendConfig& gemm_config,
     se::DeviceMemoryAllocator* allocator, se::Stream* stream) {
   VLOG(3) << "Starting autotune of GemmThunk " << gemm->ToString();
 
-  TF_ASSIGN_OR_RETURN(GemmConfig config, GemmConfig::For(gemm));
-  // Don't run autotuning concurrently on the same GPU.
-  absl::MutexLock gpu_lock(&GetGpuMutex(stream->parent()));
 
   auto key = std::make_tuple(
       stream->parent()->GetDeviceDescription().model_str(),
@@ -292,6 +296,10 @@ StatusOr<std::optional<se::blas::AlgorithmType>> DoGemmAutotune(
   const DebugOptions& debug_options =
       gemm->GetModule()->config().debug_options();
   AutotuneConfig autotune_config = GetConfig(debug_options);
+
+  TF_ASSIGN_OR_RETURN(GemmConfig config, GemmConfig::For(gemm));
+  // Don't run autotuning concurrently on the same GPU.
+  absl::MutexLock gpu_lock(&GetGpuMutex(stream->parent()));
 
   se::RedzoneAllocator buffer_allocator =
       CreateRedzoneAllocator(stream, allocator, debug_options, autotune_config);
@@ -440,6 +448,8 @@ StatusOr<bool> RunOnInstruction(HloInstruction* instr, DeviceConfig config) {
   return updated_config.SerializeAsString() != gemm_config.SerializeAsString();
 }
 
+#endif
+
 // Do Gemm Autotune without stream executor. Use results from autotune cache
 // only.
 StatusOr<bool> RunOnInstruction(HloInstruction* gemm, DevicelessConfig config) {
@@ -488,8 +498,12 @@ StatusOr<bool> RunOnComputation(HloComputation* computation,
     if (IsCublasGemm(*instr)) {
       bool result;
       if (std::holds_alternative<DeviceConfig>(config)) {
+#if (defined(GOOGLE_CUDA) && GOOGLE_CUDA)
         TF_ASSIGN_OR_RETURN(
             result, RunOnInstruction(instr, std::get<DeviceConfig>(config)));
+#else
+        LOG(FATAL) << "GPU-enabled build is required to run autotuning";
+#endif
       } else {
         TF_ASSIGN_OR_RETURN(
             result,

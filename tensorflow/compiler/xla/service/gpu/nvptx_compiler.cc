@@ -41,7 +41,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/cudnn_simplify_padding.h"
 #include "tensorflow/compiler/xla/service/gpu/cudnn_vectorize_convolutions.h"
 #include "tensorflow/compiler/xla/service/gpu/cusolver_rewriter.h"
-#include "tensorflow/compiler/xla/service/gpu/gemm_algorithm_picker.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_asm_opts_util.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_conv_padding_legalization.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_conv_rewriter.h"
@@ -200,22 +199,6 @@ Status NVPTXCompiler::OptimizeHloPostLayoutAssignment(
       autotune_results));
 
   HloPassPipeline post_pipeline("nvptx post-layout_assignment part 2");
-  if (!stream_exec) {
-    // Device not available. Use AOT autotune results.
-    CHECK(autotune_results);
-    GemmAlgorithmPicker::ClearAutotuneResults();
-    TF_RETURN_IF_ERROR(
-        GemmAlgorithmPicker::LoadAutotuneResults(*autotune_results));
-
-    std::string device_description_str =
-        gpu_target_config.device_description_str;
-    DevicelessConfig deviceless_config{device_description_str,
-                                       cuda_compute_capability};
-    post_pipeline.AddPass<GemmAlgorithmPicker>(deviceless_config);
-  } else {
-    DeviceConfig device_config{stream_exec, device_allocator};
-    post_pipeline.AddPass<GemmAlgorithmPicker>(device_config);
-  }
 
   // Transform TriangularSolve ops into custom-calls, so we can add temp
   // memory.
