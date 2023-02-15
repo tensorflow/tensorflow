@@ -43,7 +43,12 @@
 //
 // WARNING: you need to manually generate and update the generated flatbuffer
 // code (configuration_generated.h) when modifying this file. See BUILD for
-// more information.
+// more information. Below are manual steps for reference:
+// bazel build
+// //tensorflow/lite/experimental/acceleration/configuration:proto_to_flatbuffer
+// && cp
+// bazel-bin/tensorflow/lite/experimental/acceleration/configuration/configuration_generated.h
+// tensorflow/lite/experimental/acceleration/configuration/configuration_generated.h.oss
 
 // LINT.IfChange
 
