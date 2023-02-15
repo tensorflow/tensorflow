@@ -54,7 +54,7 @@ tflite_cc_library_with_c_headers_test(
     copts = tflite_copts(),
     visibility = [
         "//tensorflow/lite:__subpackages__",
-    ],
+    ] + c_api_visibility_allowlist(),
     deps = [
         ":c_api_types",
         ":c_api_without_op_resolver",

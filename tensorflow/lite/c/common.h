@@ -36,8 +36,12 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_C_COMMON_H_
 #define TENSORFLOW_LITE_C_COMMON_H_
 
-/// For documentation, see
-/// third_party/tensorflow/lite/core/c/common.h.
-#include "tensorflow/lite/core/c/common.h"  // IWYU pragma: export
+#include "tensorflow/lite/core/c/common.h"
+
+// TfLiteOpaqueDelegate: allows delegation of nodes to alternative backends.
+// TfLiteOpaqueDelegate is an abstract type that is intended to have the same
+// role as TfLiteDelegate, but without necessarily exposing the implementation
+// details of how delegates are implemented.
+typedef TfLiteDelegate TfLiteOpaqueDelegate;
 
 #endif  // TENSORFLOW_LITE_C_COMMON_H_

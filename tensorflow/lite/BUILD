@@ -1335,7 +1335,7 @@ cc_library_with_tflite(
     testonly = True,
     hdrs = ["test_util.h"],
     tflite_deps = [
-        "//tensorflow/lite/core/shims:c_shims_test_util",
+        "//tensorflow/lite/c:test_util",
     ],
     visibility = [":tflite_test_util_visibility"],
     deps = [

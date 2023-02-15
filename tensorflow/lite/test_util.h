@@ -16,7 +16,7 @@ limitations under the License.
 #define TENSORFLOW_LITE_TEST_UTIL_H_
 
 #include "gtest/gtest.h"
-#include "tensorflow/lite/core/shims/c/shims_test_util.h"
+#include "tensorflow/lite/c/test_util.h"
 
 namespace tflite {
 namespace testing {

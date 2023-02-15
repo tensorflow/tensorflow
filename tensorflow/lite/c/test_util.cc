@@ -12,9 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef TENSORFLOW_LITE_C_C_API_H_
-#define TENSORFLOW_LITE_C_C_API_H_
+#include "tensorflow/lite/c/test_util.h"
 
-#include "tensorflow/lite/core/c/c_api.h"
-
-#endif  // TENSORFLOW_LITE_C_C_API_H_
+int TfLiteInitializeShimsForTest() {
+  return 0;
+}

@@ -51,6 +51,13 @@ tensorflow/java/src/main/native/BUILD:
 tensorflow/lite/async/interop/c/BUILD:
 tensorflow/lite/async/interop/c/attribute_map.h:
 tensorflow/lite/async/interop/c/types.h:
+tensorflow/lite/c/builtin_op_data.h:
+tensorflow/lite/c/c_api.h:
+tensorflow/lite/c/c_api_experimental.h:
+tensorflow/lite/c/c_api_types.h:
+tensorflow/lite/c/common.h:
+tensorflow/lite/c/test_util.cc:
+tensorflow/lite/c/test_util.h:
 tensorflow/lite/core/c/special_rules.bzl:
 tensorflow/lite/core/experimental/acceleration/configuration/c/special_rules.bzl:
 tensorflow/lite/core/interpreter.h:
