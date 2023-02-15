@@ -97,6 +97,8 @@ class KernelFallbackCompatRequestState {
       const absl::optional<SessionMetadata>& model_metadata,
       const tensorflow::ProcessFunctionLibraryRuntime* pflr);
 
+  int64_t step_id() const { return step_id_; }
+
   // Returns the user-specified custom device corresponding to the given device.
   // It is currently only used for configure per-request intra op threadpool.
   tensorflow::Device* custom_device(const tensorflow::Device* device) const {
@@ -152,6 +154,7 @@ class KernelFallbackCompatRequestState {
   }
 
  private:
+  int64_t step_id_ = 0;
   // Below are resources needed by current tensorflow.
   std::function<void(std::function<void()>)>* runner_ = nullptr;
   ::tfrt::OwnedOrUnownedPtr<ScopedStepContainer> step_container_;
