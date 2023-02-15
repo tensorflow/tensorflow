@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 
@@ -25,9 +26,9 @@ limitations under the License.
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/Shape/IR/Shape.h"  // from @llvm-project
 #include "mlir/IR/Block.h"  // from @llvm-project
-#include "mlir/IR/IRMapping.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/IRMapping.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/OperationSupport.h"  // from @llvm-project
@@ -81,7 +82,7 @@ struct TFToJITInvocationsPattern : public RewritePattern {
     // Create the JIT compile op.
     auto jit_compile_op = rewriter.create<tf_framework::JITCompileOp>(
         loc, rewriter.getType<tf_framework::JITCallableType>(),
-        /*ctx=*/llvm::None);
+        /*ctx=*/std::nullopt);
 
     // Move the TF operation into the body.
     {
