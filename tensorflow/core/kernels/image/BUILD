@@ -7,6 +7,7 @@ load(
     "tf_cc_test",
     "tf_cc_tests",
     "tf_copts",
+    "if_linux_x86_64",
 )
 load(
     "//tensorflow/core/platform:build_config_root.bzl",
@@ -91,6 +92,12 @@ tf_cc_test(
         "//tensorflow/core:testlib",
         "@com_google_absl//absl/strings",
     ],
+)
+
+cc_library(
+    name = "crop_resize_bilinear_core",
+    hdrs = ["crop_resize_bilinear_core.h"],
+    visibility = ["//visibility:private"],
 )
 
 # Public support libraries ----------------------------------------------------<
@@ -192,11 +199,10 @@ tf_kernel_library(
 
 tf_kernel_library(
     name = "crop_and_resize_op",
+    copts = tf_copts() + if_linux_x86_64(["-finline-functions"]),
     prefix = "crop_and_resize_op",
-    deps = IMAGE_DEPS + [
-        "//tensorflow/core:framework_internal",
-        "//tensorflow/core/util:determinism_for_kernels",
-    ],
+    deps = IMAGE_DEPS + ["//tensorflow/core:framework_internal",
+                         ":crop_resize_bilinear_core"],
 )
 
 tf_kernel_library(
@@ -289,11 +295,10 @@ tf_kernel_library(
 
 tf_kernel_library(
     name = "resize_bilinear_op",
+    copts = tf_copts() + if_linux_x86_64(["-finline-functions"]),
     prefix = "resize_bilinear_op",
-    deps = IMAGE_DEPS + [
-        "//tensorflow/core/kernels:cast_op",
-        "//tensorflow/core/util:determinism_for_kernels",
-    ],
+    deps = IMAGE_DEPS + ["//tensorflow/core/kernels:cast_op",
+                         ":crop_resize_bilinear_core"],
 )
 
 tf_kernel_library(
