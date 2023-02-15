@@ -439,7 +439,6 @@ tf_cc_test(
 tf_cc_fuzz_test(
     name = "saved_model_fuzz",
     srcs = ["saved_model_fuzz.cc"],
-    componentid = 893731,  # Core > ML > Frameworks > TensorFlow > Core > Saved Model
     deps = [
         ":constants",
         ":loader",
