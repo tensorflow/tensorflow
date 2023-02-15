@@ -81,6 +81,7 @@ cc_library(
 td_library(
     name = "quant_td_files",
     srcs = [
+        "passes/cast_bf16_ops_to_f32.td",
         "passes/lift_quantizable_spots_as_functions.td",
         "passes/lift_quantizable_spots_as_functions_drq.td",
         "passes/optimize.td",
@@ -101,6 +102,20 @@ td_library(
         "@llvm-project//mlir:ArithOpsTdFiles",
         "@llvm-project//mlir:FuncTdFiles",
     ],
+)
+
+gentbl_cc_library(
+    name = "cast_bf16_ops_to_f32_inc_gen",
+    compatible_with = get_compatible_with_cloud(),
+    tbl_outs = [
+        (
+            ["-gen-rewriters"],
+            "passes/cast_bf16_ops_to_f32.inc",
+        ),
+    ],
+    tblgen = "@llvm-project//mlir:mlir-tblgen",
+    td_file = "passes/cast_bf16_ops_to_f32.td",
+    deps = [":quant_td_files"],
 )
 
 gentbl_cc_library(
@@ -315,6 +330,8 @@ gentbl_cc_library(
 cc_library(
     name = "passes",
     srcs = [
+        "passes/cast_bf16_ops_to_f32.cc",
+        "passes/cast_bf16_ops_to_f32.inc",
         "passes/convert_custom_aggregation_op_to_quant_stats.cc",
         "passes/convert_fake_quant_to_qdq.cc",
         "passes/convert_tf_quant_ops_to_mhlo.cc",

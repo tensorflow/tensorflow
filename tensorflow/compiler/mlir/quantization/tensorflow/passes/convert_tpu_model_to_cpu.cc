@@ -30,6 +30,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_config.h"
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_utils.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
+#include "tensorflow/compiler/mlir/quantization/tensorflow/passes/passes.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/passes/utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 
@@ -42,8 +43,6 @@ class ConvertTpuModelToCpuPass
     : public PassWrapper<ConvertTpuModelToCpuPass, OperationPass<ModuleOp>> {
  public:
   MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(ConvertTpuModelToCpuPass)
-
-  // Constructor used by the PassRegistration. This will remove the adaptor ops.
   explicit ConvertTpuModelToCpuPass() = default;
 
   StringRef getArgument() const final {
@@ -128,10 +127,11 @@ void ConvertTpuModelToCpuPass::runOnOperation() {
     signalPassFailure();
   }
 
-  // Add passes to remove the PartitionedCall op and inline the IRs.
+  // Add passes to remove the PartitionedCall op and cast bf16 ops to f32.
   PassManager pm(ctx);
   pm.addPass(createInlinerPass());
   pm.addNestedPass<func::FuncOp>(createCanonicalizerPass());
+  pm.addPass(CreateCastBf16OpsToF32Pass());
 
   if (failed(pm.run(module_op))) {
     module_op.emitError() << "quant-internal-convert-tpu-model-to-cpu failed.";
