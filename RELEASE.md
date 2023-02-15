@@ -1,6 +1,6 @@
 # Release 2.12.0
 
-# Breaking Changes
+## Breaking Changes
 
 *   Build, Compilation and Packaging
 
@@ -27,7 +27,7 @@
         * If you use masked losses with Keras the loss values may be different in TensorFlow `2.12` compared to previous versions.
         * In cases where the mask was previously ignored, you will now get an error if you pass a mask with an incompatible shape.
 
-# Major Features and Improvements
+## Major Features and Improvements
 
 *   `tf.lite`:
 
@@ -70,13 +70,11 @@
 
     *   Added experimental support to ReduceScatter fuse on GPU (NCCL).
 
-*   `tf.SavedModel`:
+## Bug Fixes and Other Changes
 
+*   `tf.SavedModel`:
     * Introduced new class `tf.saved_model.experimental.Fingerprint` that contains the fingerprint of the SavedModel. See the [SavedModel Fingerprinting RFC](https://github.com/tensorflow/community/pull/415) for details.
     * Introduced API `tf.saved_model.experimental.read_fingerprint(export_dir)` for reading the fingerprint of a SavedModel.
-
-# Bug Fixes and Other Changes
-
 * `tf.random`
   * Added non-experimental aliases for `tf.random.split` and `tf.random.fold_in`, the experimental endpoints are still available so no code changes are necessary.
 * `tf.experimental.ExtensionType`
@@ -90,7 +88,7 @@
 *  `tf.config.experimental.mlir_bridge_rollout`
     *   Removed enums `MLIR_BRIDGE_ROLLOUT_SAFE_MODE_ENABLED` and `MLIR_BRIDGE_ROLLOUT_SAFE_MODE_FALLBACK_ENABLED` which are no longer used by the tf2xla bridge
 
-# Thanks to our Contributors
+## Thanks to our Contributors
 
 This release contains contributions from many people at Google, as well as:
 
