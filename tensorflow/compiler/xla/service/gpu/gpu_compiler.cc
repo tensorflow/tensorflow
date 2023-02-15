@@ -243,7 +243,9 @@ class GpuBfloat16Support : public BFloat16Support {
       case HloOpcode::kSlice:
       case HloOpcode::kTranspose:
       // Other special ops.
+#if GOOGLE_CUDA
       case HloOpcode::kDot:  // Handled by Triton GEMM.
+#endif
       case HloOpcode::kBitcast:
         return true;
       default:
