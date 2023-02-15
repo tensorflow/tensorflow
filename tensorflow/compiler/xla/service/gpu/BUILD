@@ -1029,6 +1029,7 @@ cc_library(
     hdrs = ["gpu_serializable_autotuner.h"],
     deps = [
         "//tensorflow/compiler/xla:types",
+        "//tensorflow/compiler/xla/hlo/ir:hlo",
         "//tensorflow/compiler/xla/stream_executor",
     ],
 )

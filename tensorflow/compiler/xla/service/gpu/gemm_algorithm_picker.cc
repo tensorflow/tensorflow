@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/gpu/backend_configs.pb.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_asm_opts_util.h"
+#include "tensorflow/compiler/xla/service/gpu/gpu_serializable_autotuner.h"
 #include "tensorflow/compiler/xla/service/gpu/matmul_utils.h"
 #include "tensorflow/compiler/xla/service/gpu/stream_executor_util.h"
 #include "tensorflow/compiler/xla/stream_executor/blas.h"
@@ -252,11 +253,8 @@ StatusOr<se::DeviceMemoryBase> CreateBuffer(se::RedzoneAllocator& allocator,
 
 static absl::Mutex autotune_cache_mu(absl::kConstInit);
 static auto& autotune_cache ABSL_GUARDED_BY(autotune_cache_mu) =
-    *new absl::flat_hash_map<
-        std::tuple<
-            std::string /*stream_exec->GetDeviceDescription()->model_str()*/,
-            std::string /*conv->ToString(HloPrintOptions::Canonical()) */>,
-        std::optional<se::blas::AlgorithmType>>();
+    *new absl::flat_hash_map<AutotuneCacheKey,
+                             std::optional<se::blas::AlgorithmType>>();
 static int64_t autotune_cache_hits ABSL_GUARDED_BY(autotune_cache_mu) = 0;
 static int64_t autotune_cache_misses ABSL_GUARDED_BY(autotune_cache_mu) = 0;
 
@@ -267,11 +265,8 @@ StatusOr<std::optional<se::blas::AlgorithmType>> DoGemmAutotune(
     se::DeviceMemoryAllocator* allocator, se::Stream* stream) {
   VLOG(3) << "Starting autotune of GemmThunk " << gemm->ToString();
 
-
-  auto key = std::make_tuple(
-      stream->parent()->GetDeviceDescription().model_str(),
-      gemm->ToString(
-          HloPrintOptions::Canonical().set_print_backend_config(true)));
+  auto key = AutotuneCacheKeyFromInstruction(
+      gemm, stream->parent()->GetDeviceDescription().model_str());
 
   {
     absl::MutexLock lock(&autotune_cache_mu);
@@ -455,10 +450,7 @@ StatusOr<bool> RunOnInstruction(HloInstruction* instr, DeviceConfig config) {
 StatusOr<bool> RunOnInstruction(HloInstruction* gemm, DevicelessConfig config) {
   VLOG(3) << "Loading the autotune result of GemmThunk " << gemm->ToString();
 
-  auto key = std::make_tuple(
-      std::string(config.model_str),
-      gemm->ToString(
-          HloPrintOptions::Canonical().set_print_backend_config(true)));
+  auto key = AutotuneCacheKeyFromInstruction(gemm, config.model_str);
 
   // Load selected algorithm from the autotune cache.
   std::optional<se::blas::AlgorithmType> algorithm;

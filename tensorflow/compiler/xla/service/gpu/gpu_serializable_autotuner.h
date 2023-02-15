@@ -16,8 +16,11 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_GPU_SERIALIZABLE_AUTOTUNER_H_
 
 #include <string>
+#include <tuple>
 #include <variant>
 
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"
 #include "tensorflow/compiler/xla/stream_executor/stream_executor_pimpl.h"
 #include "tensorflow/compiler/xla/types.h"
 
@@ -45,6 +48,17 @@ struct DevicelessConfig {
 };
 
 using AutotuningConfig = std::variant<DeviceConfig, DevicelessConfig>;
+
+using AutotuneCacheKey =
+    std::tuple<std::string /* stream_exec->GetDeviceDescription().model_str()*/,
+               std::string /* instr->ToString(HloPrintOptions::Canonical()) */>;
+
+inline AutotuneCacheKey AutotuneCacheKeyFromInstruction(
+    const HloInstruction* instr, absl::string_view model_str) {
+  auto options = HloPrintOptions::Canonical();
+  options.set_print_backend_config(true);
+  return std::make_tuple(std::string(model_str), instr->ToString(options));
+}
 
 }  // namespace gpu
 }  // namespace xla
