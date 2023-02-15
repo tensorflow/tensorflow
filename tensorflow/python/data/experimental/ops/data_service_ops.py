@@ -826,7 +826,6 @@ def _register_dataset(service, dataset, compression, dataset_id=None):
     dataset = dataset.map(
         lambda *x: compression_ops.compress(x),
         num_parallel_calls=dataset_ops.AUTOTUNE)
-  dataset = dataset.prefetch(dataset_ops.AUTOTUNE)
   dataset = dataset._apply_debug_options()  # pylint: disable=protected-access
 
   metadata = data_service_pb2.DataServiceMetadata(
