@@ -19,7 +19,9 @@ limitations under the License.
 
 #include "llvm/Support/ErrorHandling.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
+#include "mlir/Dialect/MemRef/IR/MemRef.h"  // from @llvm-project
 #include "mlir/Dialect/SparseTensor/IR/SparseTensor.h"  // from @llvm-project
+#include "mlir/Dialect/Tensor/IR/Tensor.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
@@ -59,12 +61,49 @@ class SparseCustomCallToPackRewriter
           op, ret_sp_tensor.getType(), op.getInputs()[0], op.getInputs()[1]);
       return success();
     } else if (op.getCallTargetName().equals(sparse_unpack_call_name)) {
-      // TODO(peiming): not yet implemented.
-      return failure();
+      assert(op.getResults().size() == 3 &&
+             "Must be unpacking into data/indices/nnz");
+      assert(op.getInputs().size() == 1 &&
+             "Must be unpacking from one sparse tensor");
+
+      SmallVector<Type, 3> unpack_ret_tp(op.getResults().getTypes());
+      // A scalar is treated as a zero-ranked tensor type from frontend.
+      auto nnz_type = unpack_ret_tp.back().cast<RankedTensorType>();
+      assert(nnz_type.getRank() == 0 && "nnz tensor must be zero ranked");
+      unpack_ret_tp.back() = nnz_type.getElementType();
+
+      // Constructs the UnpackOp.
+      auto unpack_op = rewriter.create<sparse_tensor::UnpackOp>(
+          op.getLoc(), unpack_ret_tp, op.getInputs());
+
+      // Converts the scalar nnz returned from UnpackOp back to tensor type.
+      SmallVector<Value, 3> unpack_ret_v(unpack_op.getResults());
+      auto scalar_nnz = unpack_op.getNnz();
+      Value tensor_nnz = rewriter.create<tensor::EmptyOp>(
+          op.getLoc(), ArrayRef<int64_t>{}, scalar_nnz.getType());
+      tensor_nnz = rewriter.create<tensor::InsertOp>(op.getLoc(), scalar_nnz,
+                                                     tensor_nnz, ValueRange{});
+      unpack_ret_v.back() = tensor_nnz;
+      rewriter.replaceOp(op, unpack_ret_v);
+      return success();
     }
     // Returns failure on unmatched call target.
     return failure();
-  };
+  }
+};
+
+class ReallocToAllocRewriter : public OpRewritePattern<memref::ReallocOp> {
+  using OpRewritePattern::OpRewritePattern;
+  // Rewrites a Realloc to alloc + copy
+  LogicalResult matchAndRewrite(memref::ReallocOp op,
+                                PatternRewriter& rewriter) const override {
+    Value alloc = rewriter.create<memref::AllocOp>(
+        op.getLoc(), op.getType(), op.getOperands().drop_front(1),
+        op.getAlignmentAttr());
+    rewriter.create<memref::CopyOp>(op.getLoc(), op.getSource(), alloc);
+    rewriter.replaceOp(op, alloc);
+    return success();
+  }
 };
 
 void SparseCustomCallToPackPass::runOnOperation() {

@@ -127,4 +127,24 @@ def SparseCustomCallToPackPass :
   let constructor = "createSparseCustomCallToPackUnpackOpPass()";
 }
 
+def RewriteReallocToAllocPass :
+    Pass<"xla-rewrite-realloc-to-alloc", "mlir::func::FuncOp"> {
+  let summary = "Rewrites realloc to alloc + copy";
+
+  let description = [{
+    Rewrites realloc to alloc + copy.
+
+    This pass is actually undesirable. However, the current buffer-deallocation
+    pass fails to handle reallocation correctly, and causes double free issues
+    when using memref::ReallocOp. We should remove this pass after the bug is
+    fixed upstream.
+  }];
+
+  let dependentDialects = [
+      "mlir::memref::MemRefDialect"
+  ];
+
+  let constructor = "createRewriteReallocToAllocPass()";
+}
+
 #endif  // TENSORFLOW_COMPILER_XLA_MLIR_TRANSFORMS_CPU_PASSES_TD_

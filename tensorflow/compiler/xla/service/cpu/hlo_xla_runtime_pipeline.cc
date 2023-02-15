@@ -193,6 +193,7 @@ static Status CreateHloXlaPipeline(
   } else {
     pm.addPass(mlir::hlo::createOneShotBufferizePass());
   }
+  pm.addNestedPass<mlir::func::FuncOp>(createRewriteReallocToAllocPass());
 
   if (options.enable_tiling_and_fusion) {
     pm.addNestedPass<FuncOp>(mlir::gml_st::createVectorizeCopyPass());
