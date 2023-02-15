@@ -533,12 +533,16 @@ void QuantizePass::runOnOperation() {
                                               target_opset_);
     patterns.add<QuantizeAvgPoolOpPattern>(ctx);
   }
-  (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
+  if (failed(applyPatternsAndFoldGreedily(func, std::move(patterns)))) {
+    func.emitWarning("Failed to converge pattern at QuantizePass.");
+  }
 
   if (!shouldKeepUnusedQdqPattern()) {
     RewritePatternSet patterns_2(&getContext());
     patterns_2.add<RemoveUnusedQdqPattern>(ctx);
-    (void)applyPatternsAndFoldGreedily(func, std::move(patterns_2));
+    if (failed(applyPatternsAndFoldGreedily(func, std::move(patterns_2)))) {
+      signalPassFailure();
+    }
   }
 }
 }  // namespace

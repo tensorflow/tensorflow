@@ -71,7 +71,9 @@ void ConvertTFQuantOpsToMHLOPass::runOnOperation() {
 
   RewritePatternSet patterns(ctx);
   mhlo::PopulateLegalizeTfQuantizationPatterns(ctx, &patterns);
-  (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
+  if (failed(applyPatternsAndFoldGreedily(func, std::move(patterns)))) {
+    signalPassFailure();
+  }
 }
 
 }  // namespace
