@@ -99,16 +99,6 @@ TfLiteStatus TfLiteOpaqueTensorGetDimSignature(
   return kTfLiteOk;
 }
 
-const TfLiteIntArray* TfLiteOpaqueTensorDims(
-    const TfLiteOpaqueTensor* opaque_tensor) {
-  return Convert(opaque_tensor)->dims;
-}
-
-const TfLiteIntArray* TfLiteOpaqueTensorDimsSignature(
-    const TfLiteOpaqueTensor* opaque_tensor) {
-  return Convert(opaque_tensor)->dims_signature;
-}
-
 int TfLiteOpaqueTensorIsVariable(const TfLiteOpaqueTensor* opaque_tensor) {
   return Convert(opaque_tensor)->is_variable ? 1 : 0;
 }
