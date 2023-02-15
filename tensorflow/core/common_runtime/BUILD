@@ -36,6 +36,10 @@ load(
     "if_mkl",
     "if_mkl_ml",
 )
+load(
+    "//tensorflow/security/fuzzing:tf_fuzzing.bzl",
+    "tf_cc_fuzz_test",
+)
 
 default_package_visibility = [
     "//tensorflow:internal",
@@ -170,6 +174,7 @@ filegroup(
             "**/*.h",
         ],
         exclude = [
+            "**/*fuzz.*",
             "**/*test.*",
             "**/*testutil*",
             "**/*testlib*",
@@ -3389,5 +3394,15 @@ tf_cc_test(
         "//tensorflow/cc:scope",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+    ],
+)
+
+tf_cc_fuzz_test(
+    name = "graph_constructor_fuzz",
+    srcs = ["graph_constructor_fuzz.cc"],
+    tags = ["no_oss"],
+    deps = [
+        ":graph_constructor",
+        "//tensorflow/core/ops",
     ],
 )
