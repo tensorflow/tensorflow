@@ -53,7 +53,7 @@ ENTRY main {
                           PlatformUtil::GetStreamExecutors(platform));
   ASSERT_GT(executors.size(), 0);
   se::StreamExecutor* stream_exec = executors[0];
-  GemmAlgorithmPicker::DeviceConfig device_config{stream_exec, nullptr};
+  DeviceConfig device_config{stream_exec, nullptr};
 
   bool changed = false;
   TF_ASSERT_OK_AND_ASSIGN(
@@ -122,7 +122,7 @@ ENTRY main {
                                            .cuda_compute_capability()),
                           m.get()));
   changed = false;
-  GemmAlgorithmPicker::DeviceConfig device_config{stream_exec, nullptr};
+  DeviceConfig device_config{stream_exec, nullptr};
   TF_ASSERT_OK_AND_ASSIGN(
       changed, RunHloPass(GemmAlgorithmPicker(device_config), m.get()));
   ASSERT_TRUE(changed);
@@ -147,7 +147,7 @@ ENTRY main {
                                            .cuda_compute_capability()),
                           m.get()));
   changed = false;
-  GemmAlgorithmPicker::DevicelessConfig deviceless_config{
+  DevicelessConfig deviceless_config{
       stream_exec->GetDeviceDescription().model_str(),
       stream_exec->GetDeviceDescription().cuda_compute_capability()};
   TF_ASSERT_OK_AND_ASSIGN(

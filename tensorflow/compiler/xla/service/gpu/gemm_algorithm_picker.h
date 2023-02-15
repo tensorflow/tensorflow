@@ -74,16 +74,14 @@ StatusOr<std::optional<size_t>> GetBestBlasAlgorithm(
 // In deviceless mode, we pass in some information related to the device and
 // use stored autotune results to rewrite Gemm instructions. If the required
 // autotune result is not stored, then algorithm is set to kRuntimeAutotuning.
-class GemmAlgorithmPicker : public GpuSerializableAutotuner {
+class GemmAlgorithmPicker : public HloModulePass {
  public:
   static void ClearAutotuneResults();
   static Status WriteAutotuneResults(AutotuneResults* results);
   static Status LoadAutotuneResults(const AutotuneResults& results);
 
-  explicit GemmAlgorithmPicker(DeviceConfig config)
-      : GpuSerializableAutotuner(config) {}
-  explicit GemmAlgorithmPicker(DevicelessConfig config)
-      : GpuSerializableAutotuner(config) {}
+  explicit GemmAlgorithmPicker(DeviceConfig config) : config_(config) {}
+  explicit GemmAlgorithmPicker(DevicelessConfig config) : config_(config) {}
 
   absl::string_view name() const override { return "gemm-algorithm-picker"; }
 
@@ -91,6 +89,9 @@ class GemmAlgorithmPicker : public GpuSerializableAutotuner {
   StatusOr<bool> Run(
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
+
+ private:
+  AutotuningConfig config_;
 };
 
 }  // namespace gpu

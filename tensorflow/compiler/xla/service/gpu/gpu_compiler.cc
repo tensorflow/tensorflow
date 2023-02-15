@@ -107,6 +107,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/gpu_reduce_scatter_creator.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_sanitize_constant_names.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_scatter_expander.h"
+#include "tensorflow/compiler/xla/service/gpu/gpu_serializable_autotuner.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_shape_verifier.h"
 #include "tensorflow/compiler/xla/service/gpu/hlo_fusion_stats.h"
 #include "tensorflow/compiler/xla/service/gpu/horizontal_input_fusion.h"
@@ -904,7 +905,7 @@ Status GpuCompiler::OptimizeHloPostLayoutAssignment(
   // wouldn't be able to simplify away the new_tuple bits.
   if (stream_exec) {
     // Autotune if stream_exec is available.
-    GpuConvAlgorithmPicker::DeviceConfig config{stream_exec, device_allocator};
+    DeviceConfig config{stream_exec, device_allocator};
     pipeline.AddPass<GpuConvAlgorithmPicker>(config);
   } else {
     // Device not available. Use autotune results from gpu_target_config.
@@ -912,8 +913,7 @@ Status GpuCompiler::OptimizeHloPostLayoutAssignment(
     TF_RETURN_IF_ERROR(
         GpuConvAlgorithmPicker::LoadAutotuneResults(*autotune_results));
 
-    GpuConvAlgorithmPicker::DevicelessConfig config{
-        gpu_target_config.device_description_str};
+    DevicelessConfig config{gpu_target_config.device_description_str};
     pipeline.AddPass<GpuConvAlgorithmPicker>(config);
   }
 

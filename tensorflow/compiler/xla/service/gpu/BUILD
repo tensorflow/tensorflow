@@ -1028,7 +1028,8 @@ cc_library(
     srcs = [],
     hdrs = ["gpu_serializable_autotuner.h"],
     deps = [
-        "//tensorflow/compiler/xla/service:hlo_pass",
+        "//tensorflow/compiler/xla:types",
+        "//tensorflow/compiler/xla/stream_executor",
     ],
 )
 
@@ -1848,6 +1849,7 @@ cc_library(
         ":gpu_sanitize_constant_names",
         ":gpu_scatter_expander",
         ":gpu_shape_verifier",
+        ":gpu_serializable_autotuner",
         ":hlo_fusion_stats",
         ":horizontal_input_fusion",
         ":horizontal_loop_fusion",
@@ -2040,6 +2042,7 @@ cc_library(
         ":metrics",
         ":target_constants",
         ":triangular_solve_rewriter",
+        ":gpu_serializable_autotuner",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/container:node_hash_map",
         "@com_google_absl//absl/strings:str_format",

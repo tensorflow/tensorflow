@@ -52,8 +52,8 @@ ENTRY main {
                           PlatformUtil::GetStreamExecutors(platform));
   ASSERT_GT(executors.size(), 0);
   se::StreamExecutor* stream_exec = executors[0];
-  GpuConvAlgorithmPicker::DeviceConfig device_config{stream_exec,
-                                                     /*allocator=*/nullptr};
+  DeviceConfig device_config{stream_exec,
+                             /*allocator=*/nullptr};
 
   bool changed = false;
   TF_ASSERT_OK_AND_ASSIGN(changed, RunHloPass(GpuConvRewriter(), m.get()));

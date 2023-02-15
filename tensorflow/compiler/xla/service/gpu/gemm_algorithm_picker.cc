@@ -408,8 +408,7 @@ StatusOr<std::optional<se::blas::AlgorithmType>> DoGemmAutotune(
   return it->second;
 }
 
-StatusOr<bool> RunOnInstruction(HloInstruction* instr,
-                                GemmAlgorithmPicker::DeviceConfig config) {
+StatusOr<bool> RunOnInstruction(HloInstruction* instr, DeviceConfig config) {
   se::StreamExecutor* executor = config.stream_exec;
   se::DeviceMemoryAllocator* allocator = config.allocator;
   if (allocator == nullptr) {
@@ -443,8 +442,7 @@ StatusOr<bool> RunOnInstruction(HloInstruction* instr,
 
 // Do Gemm Autotune without stream executor. Use results from autotune cache
 // only.
-StatusOr<bool> RunOnInstruction(HloInstruction* gemm,
-                                GemmAlgorithmPicker::DevicelessConfig config) {
+StatusOr<bool> RunOnInstruction(HloInstruction* gemm, DevicelessConfig config) {
   VLOG(3) << "Loading the autotune result of GemmThunk " << gemm->ToString();
 
   auto key = std::make_tuple(
@@ -483,25 +481,19 @@ StatusOr<bool> RunOnInstruction(HloInstruction* gemm,
   return updated_config.SerializeAsString() != gemm_config.SerializeAsString();
 }
 
-StatusOr<bool> RunOnComputation(
-    HloComputation* computation,
-    std::variant<GemmAlgorithmPicker::DeviceConfig,
-                 GemmAlgorithmPicker::DevicelessConfig>
-        config) {
+StatusOr<bool> RunOnComputation(HloComputation* computation,
+                                AutotuningConfig config) {
   bool changed = false;
   for (HloInstruction* instr : computation->instructions()) {
     if (IsCublasGemm(*instr)) {
       bool result;
-      if (std::holds_alternative<GemmAlgorithmPicker::DeviceConfig>(config)) {
+      if (std::holds_alternative<DeviceConfig>(config)) {
         TF_ASSIGN_OR_RETURN(
-            result,
-            RunOnInstruction(
-                instr, std::get<GemmAlgorithmPicker::DeviceConfig>(config)));
+            result, RunOnInstruction(instr, std::get<DeviceConfig>(config)));
       } else {
         TF_ASSIGN_OR_RETURN(
-            result, RunOnInstruction(
-                        instr, std::get<GemmAlgorithmPicker::DevicelessConfig>(
-                                   config)));
+            result,
+            RunOnInstruction(instr, std::get<DevicelessConfig>(config)));
       }
       changed |= result;
     }

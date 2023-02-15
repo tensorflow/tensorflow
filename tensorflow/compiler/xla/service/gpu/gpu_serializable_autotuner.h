@@ -18,45 +18,33 @@ limitations under the License.
 #include <string>
 #include <variant>
 
-#include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
+#include "tensorflow/compiler/xla/stream_executor/stream_executor_pimpl.h"
+#include "tensorflow/compiler/xla/types.h"
 
 namespace xla {
 namespace gpu {
 
-// An abstract class for specifying gpu autotuner for both device and
-// deviceless configs.
-class GpuSerializableAutotuner : public HloModulePass {
- public:
-  // TODO(b/267776674): Move shared functions such as WriteAutotuneResults and
-  // LoadAutotuneResults into this class.
+struct DeviceConfig {
+  se::StreamExecutor* stream_exec;  // never null
 
-  struct DeviceConfig {
-    se::StreamExecutor* stream_exec;  // never null
-
-    // If the `allocator` parameter is not null, we will use it to allocate temp
-    // memory while timing the various convolution algorithms.  If it's null,
-    // we'll use the default allocator on the StreamExecutor.
-    se::DeviceMemoryAllocator* allocator;  // may be null
-  };
-
-  struct DevicelessConfig {
-    // The human-readable description of the device.  It can be found by using
-    // stream_exec->GetDeviceDescription().model_str() when the stream executor
-    // is available.
-    std::string model_str;
-
-    // A field to determine the architecture of the device. We only pick an
-    // algorithm for non-Ampere architectures.
-    se::CudaComputeCapability cuda_compute_capability{0, 0};
-  };
-
-  explicit GpuSerializableAutotuner(DeviceConfig config) : config_(config) {}
-  explicit GpuSerializableAutotuner(DevicelessConfig config)
-      : config_(config) {}
-
- protected:
-  std::variant<DeviceConfig, DevicelessConfig> config_;
+  // If the `allocator` parameter is not null, we will use it to allocate temp
+  // memory while timing the various convolution algorithms.  If it's null,
+  // we'll use the default allocator on the StreamExecutor.
+  se::DeviceMemoryAllocator* allocator;  // may be null
 };
+
+struct DevicelessConfig {
+  // The human-readable description of the device.  It can be found by using
+  // stream_exec->GetDeviceDescription().model_str() when the stream executor
+  // is available.
+  std::string model_str;
+
+  // A field to determine the architecture of the device. We only pick an
+  // algorithm for non-Ampere architectures.
+  se::CudaComputeCapability cuda_compute_capability{0, 0};
+};
+
+using AutotuningConfig = std::variant<DeviceConfig, DevicelessConfig>;
 
 }  // namespace gpu
 }  // namespace xla
