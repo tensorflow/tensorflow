@@ -57349,6 +57349,43 @@ func XlaBroadcastHelper(scope *Scope, lhs tf.Output, rhs tf.Output, broadcast_di
 	return op.Output(0), op.Output(1)
 }
 
+// XlaCallModuleAttr is an optional argument to XlaCallModule.
+type XlaCallModuleAttr func(optionalAttr)
+
+// XlaCallModuleDimArgsSpec sets the optional dim_args_spec attribute to value.
+//
+// value: in presence of dynamic shapes, this is the specification for the
+// dimension arguments. In absence of dynamic shapes this list is empty. The
+// `module` takes one 0-dimensional integer tensor dimension argument for each
+// element of `dim_spec_args`. The dimension arguments come after the platform
+// index argument and before the actual arguments. Each specification is a
+// string of the form "<arg_idx>.<axis_idx>" that specifies that the value of
+// the corresponding dimension argument must be "args[arg_idx].shape[axis_idx]",
+// where "args" are the actual array arguments.
+// If not specified, defaults to {}
+func XlaCallModuleDimArgsSpec(value []string) XlaCallModuleAttr {
+	return func(m optionalAttr) {
+		m["dim_args_spec"] = value
+	}
+}
+
+// XlaCallModulePlatforms sets the optional platforms attribute to value.
+//
+// value: the list of platforms supported by `module`. If the list is empty,
+// the `module` is platform independent or there should be no platform checking
+// or preprocessing. The list can contain the strings "CPU", "GPU", or "TPU".
+// If the list is not empty then it is an error to compile this op for a
+// platform that does not appear in the list. If the list contains more than
+// one platform, then the `module` takes one additional 0-dimensional
+// integer-tensor parameter in the first position, encoding the index in
+// `platforms` of the current compilation platform.
+// If not specified, defaults to {}
+func XlaCallModulePlatforms(value []string) XlaCallModuleAttr {
+	return func(m optionalAttr) {
+		m["platforms"] = value
+	}
+}
+
 // Invokes a StableHLO module.
 //
 // This op is experimental and is intended for use with JAX native serialization
@@ -57377,30 +57414,14 @@ func XlaBroadcastHelper(scope *Scope, lhs tf.Output, rhs tf.Output, broadcast_di
 //
 //	Sout: List of output tensor shapes.
 //	Tout: List of output tensor data types.
-//	dim_args_spec: in presence of dynamic shapes, this is the specification for the
-//
-// dimension arguments. In absence of dynamic shapes this list is empty. The
-// `module` takes one 0-dimensional integer tensor dimension argument for each
-// element of `dim_spec_args`. The dimension arguments come after the platform
-// index argument and before the actual arguments. Each specification is a
-// string of the form "<arg_idx>.<axis_idx>" that specifies that the value of
-// the corresponding dimension argument must be "args[arg_idx].shape[axis_idx]",
-// where "args" are the actual array arguments.
-//
-//	platforms: the list of platforms supported by `module`. If the list is empty,
-//
-// the `module` is platform independent or there should be no platform checking
-// or preprocessing. The list can contain the strings "CPU", "GPU", or "TPU".
-// If the list is not empty then it is an error to compile this op for a
-// platform that does not appear in the list. If the list contains more than
-// one platform, then the `module` takes one additional 0-dimensional
-// integer-tensor parameter in the first position, encoding the index in
-// `platforms` of the current compilation platform.
-func XlaCallModule(scope *Scope, args []tf.Output, version int64, module string, Sout []tf.Shape, Tout []tf.DataType, dim_args_spec []string, platforms []string) (output []tf.Output) {
+func XlaCallModule(scope *Scope, args []tf.Output, version int64, module string, Sout []tf.Shape, Tout []tf.DataType, optional ...XlaCallModuleAttr) (output []tf.Output) {
 	if scope.Err() != nil {
 		return
 	}
-	attrs := map[string]interface{}{"version": version, "module": module, "Sout": Sout, "Tout": Tout, "dim_args_spec": dim_args_spec, "platforms": platforms}
+	attrs := map[string]interface{}{"version": version, "module": module, "Sout": Sout, "Tout": Tout}
+	for _, a := range optional {
+		a(attrs)
+	}
 	opspec := tf.OpSpec{
 		Type: "XlaCallModule",
 		Input: []tf.Input{
