@@ -47,7 +47,7 @@ void populateFusionPatterns(
     RewritePatternSet *patterns);
 
 struct FusionCluster {
-  DenseSet<Operation *> operations;
+  SetVector<Operation *> operations;
   Operation *root;
 };
 

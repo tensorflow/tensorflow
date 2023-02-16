@@ -409,7 +409,7 @@ FusionCluster findMapFusionCluster(Operation* op) {
 
   // Run a graph search to find all linalg.map and that can be fused in
   // the root op.
-  DenseSet<Operation*> resultOps;
+  SetVector<Operation*> resultOps;
   SmallVector<Operation*> remainingProducers{rootOp};
 
   while (!remainingProducers.empty()) {
