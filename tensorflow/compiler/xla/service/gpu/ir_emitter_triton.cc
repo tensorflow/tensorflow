@@ -532,7 +532,10 @@ std::optional<LaunchDimensions> TritonWrapper(
 
   LogAndVerify(ll_triton_module.get());
 
-  ll_triton_module->getNamedMDList().clear();
+  for (auto& metadata :
+       llvm::make_early_inc_range(ll_triton_module->named_metadata())) {
+    ll_triton_module->eraseNamedMDNode(&metadata);
+  }
   ll_triton_module->setDataLayout(llvm_module->getDataLayout());
   CHECK(!llvm::Linker::linkModules(*llvm_module, std::move(ll_triton_module)));
 
