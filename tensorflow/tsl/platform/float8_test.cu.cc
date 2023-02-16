@@ -393,6 +393,35 @@ TYPED_TEST(Float8Test, CallTheOperator) {
   }
 }
 
+TYPED_TEST(Float8Test, CallTheConstOperator) {
+  using Float8 = TypeParam;
+
+  for (int i = 0x00; i <= 0xFF; ++i) {
+    const Float8 a = Float8::FromRep(i);
+    for (int j = 0x00; j <= 0xFF; ++j) {
+      const Float8 b = Float8::FromRep(j);
+
+      EXPECT_THAT(a + b, EqOrIsNan(Float8{float{a} + float{b}}));
+      EXPECT_THAT(a - b, EqOrIsNan(Float8{float{a} - float{b}}));
+      EXPECT_THAT(a * b, EqOrIsNan(Float8{float{a} * float{b}}));
+      EXPECT_THAT(a / b, EqOrIsNan(Float8{float{a} / float{b}}));
+
+      Float8 c;
+      EXPECT_THAT((c = a, c += b), EqOrIsNan(Float8{float{a} + float{b}}));
+      EXPECT_THAT((c = a, c -= b), EqOrIsNan(Float8{float{a} - float{b}}));
+      EXPECT_THAT((c = a, c *= b), EqOrIsNan(Float8{float{a} * float{b}}));
+      EXPECT_THAT((c = a, c /= b), EqOrIsNan(Float8{float{a} / float{b}}));
+
+      EXPECT_EQ(a == b, float{a} == float{b}) << float{a} << " vs " << float{b};
+      EXPECT_EQ(a != b, float{a} != float{b});
+      EXPECT_EQ(a < b, float{a} < float{b});
+      EXPECT_EQ(a <= b, float{a} <= float{b});
+      EXPECT_EQ(a > b, float{a} > float{b});
+      EXPECT_EQ(a >= b, float{a} >= float{b});
+    }
+  }
+}
+
 // Helper utility for prettier test names.
 struct Float8CastTestParamNames {
   template <typename TypeParam>
@@ -529,6 +558,15 @@ TYPED_TEST(Float8CastTest, DeviceCast) {
   device.deallocate(src_device_buffer);
   device.deallocate(dst_device_buffer);
   synchronize(device);
+}
+
+TEST(Float8Test, SmallCastToDenormal) {
+  // Special edge-case where rounding to a normalized value would
+  // normally round down, but rounding to a subnormal rounds up.
+  float x = std::ldexp(1.3125, -15);
+  float8_e5m2 y = static_cast<float8_e5m2>(x);
+  float z = static_cast<float>(y);
+  EXPECT_EQ(z, std::ldexp(1.5, -15));
 }
 
 }  // namespace

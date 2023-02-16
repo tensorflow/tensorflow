@@ -558,5 +558,112 @@ ENTRY main {
   )");
 }
 
+TEST_F(LayoutNormalizationTest, Select) {
+  const char* hlo = R"(
+HloModule module
+
+ENTRY main {
+  p0 = f32[1,17,9,9]{1,3,2,0} parameter(0)
+  p1 = f32[1,17,9,9]{1,3,2,0} parameter(1)
+  b = pred[1,17,9,9]{1,3,2,0} parameter(2)
+  ROOT out = f32[1,17,9,9]{1,3,2,0} select(b, p0, p1), metadata={op_name="test"}
+}
+)";
+  CheckLayoutNormalization(hlo, R"(
+// CHECK: f32[9,9,17]{2,1,0} select({{.*}}, {{.*}}, {{.*}}), metadata={op_name="test"}
+)");
+}
+
+TEST_F(LayoutNormalizationTest, DynamicSlice) {
+  const char* hlo = R"(
+HloModule module
+
+ENTRY main {
+  input = f32[3,4,32]{1,0,2} parameter(0)
+  s1 = s32[] parameter(1)
+  s2 = s32[] parameter(2)
+  s3 = s32[] parameter(3)
+  ROOT out = f32[1,4,32]{1,0,2} dynamic-slice(input, s1, s2, s3), dynamic_slice_sizes={1,4,32}, metadata={op_name="test"}
+}
+  )";
+  CheckLayoutNormalization(hlo, R"(
+// CHECK: f32[32,1,4]{2,1,0} dynamic-slice({{.*}}, {{.*}}, {{.*}}, {{.*}}), dynamic_slice_sizes={32,1,4}, metadata={op_name="test"}
+)");
+}
+
+TEST_F(LayoutNormalizationTest, DynamicSliceHasDegenerate) {
+  const char* hlo = R"(
+HloModule module
+
+ENTRY main {
+  input = f32[1,4,32]{1,0,2} parameter(0)
+  s1 = s32[] parameter(1)
+  s2 = s32[] parameter(2)
+  s3 = s32[] parameter(3)
+  ROOT out = f32[1,4,32]{1,0,2} dynamic-slice(input, s1, s2, s3), dynamic_slice_sizes={1,4,32}, metadata={op_name="test"}
+}
+  )";
+  CheckLayoutNormalization(hlo, R"(
+// CHECK: f32[32,4]{1,0} dynamic-slice({{.*}}, {{.*}}, {{.*}}), dynamic_slice_sizes={32,4}, metadata={op_name="test"}
+)");
+}
+
+TEST_F(LayoutNormalizationTest, DynamicUpdateSlice) {
+  const char* hlo = R"(
+HloModule m
+
+ENTRY main {
+  to_update = f32[3,1,32]{1,0,2} parameter(0)
+  updates = f32[1,1,32]{1,0,2} parameter(1)
+  p0 = s32[] parameter(2)
+  p1 = s32[] parameter(3)
+  p2 = s32[] parameter(4)
+
+  ROOT out = f32[3,1,32]{1,0,2} dynamic-update-slice(to_update, updates, p0, p1, p2), metadata={op_name="test"}
+}
+)";
+
+  CheckLayoutNormalization(hlo, R"(
+// CHECK: f32[32,3]{1,0} dynamic-update-slice({{.*}}, {{.*}}, {{.*}}, {{.*}}), metadata={op_name="test"}
+)");
+}
+
+TEST_F(LayoutNormalizationTest, DynamicUpdateSliceNonDeg) {
+  const char* hlo = R"(
+HloModule m
+
+ENTRY main {
+  to_update = f32[5,3,32]{1,0,2} parameter(0)
+  updates = f32[1,1,32]{1,0,2} parameter(1)
+  p0 = s32[] parameter(2)
+  p1 = s32[] parameter(3)
+  p2 = s32[] parameter(4)
+
+  ROOT out = f32[5,3,32]{1,0,2} dynamic-update-slice(to_update, updates, p0, p1, p2), metadata={op_name="test"}
+}
+)";
+
+  CheckLayoutNormalization(hlo, R"(
+// CHECK: f32[32,5,3]{2,1,0} dynamic-update-slice
+)");
+}
+
+TEST_F(LayoutNormalizationTest, Clamp) {
+  const char* hlo = R"(
+HloModule m
+
+ENTRY main {
+  p0 = f32[64,1,32]{1,0,2} parameter(0)
+  p1 = f32[64,1,32]{1,0,2} parameter(1)
+  p2 = f32[64,1,32]{1,0,2} parameter(2)
+  ROOT out = f32[64,1,32]{1,0,2} clamp(f32[64,1,32]{1,0,2} p0, f32[64,1,32]{1,0,2} p1, f32[64,1,32]{1,0,2} p2), metadata={op_name="test"}
+}
+)";
+
+  CheckLayoutNormalization(hlo, R"(
+// CHECK: f32[32,64]{1,0} clamp({{.*}}, {{.*}}, {{.*}}), metadata={op_name="test"}
+)");
+}
+
 }  // namespace
 }  // namespace xla

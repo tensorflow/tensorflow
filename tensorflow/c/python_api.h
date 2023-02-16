@@ -48,12 +48,6 @@ void SetRequestedDevice(TF_Graph* graph, TF_Operation* op, const char* device);
 void UpdateEdge(TF_Graph* graph, TF_Output new_src, TF_Input dst,
                 TF_Status* status);
 
-void RemoveAllControlInputs(TF_Graph* graph, TF_Operation* op);
-
-// Sets whether ops missing a shape inference function should trigger an
-// error. The default is true.
-void SetRequireShapeInferenceFns(TF_Graph* graph, bool require);
-
 // Extends `session` with any new operations added to its associated graph.
 // Usually this happens automatically in TF_SessionRun. After this is called,
 // TF_SessionRun will no longer extend the session on every call.

@@ -17,6 +17,7 @@
 import copy
 import weakref
 
+from tensorflow.core.protobuf import struct_pb2
 from tensorflow.python.distribute import device_util
 from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute import distribution_strategy_context as ds_context
@@ -24,8 +25,10 @@ from tensorflow.python.distribute import packed_distributed_variable as packed
 from tensorflow.python.distribute import reduce_util
 from tensorflow.python.distribute import values_util
 from tensorflow.python.eager import context
+from tensorflow.python.eager import tape
 from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_conversion_registry
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.framework import type_spec
 from tensorflow.python.ops import array_ops
@@ -34,6 +37,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variable_scope as vs
 from tensorflow.python.ops import variables as variables_lib
+from tensorflow.python.saved_model import nested_structure_coder
 from tensorflow.python.trackable import base as trackable
 from tensorflow.python.training.saving import saveable_object
 from tensorflow.python.types import core
@@ -378,7 +382,8 @@ def _per_replica_to_tensor(var, dtype=None, name=None, as_ref=False):
 
 # Register a conversion function to provide a useful error message when users
 # try to use PerReplica values in the wrong contexts
-ops.register_tensor_conversion_function(PerReplica, _per_replica_to_tensor)
+tensor_conversion_registry.register_tensor_conversion_function(
+    PerReplica, _per_replica_to_tensor)
 
 
 class PerReplicaSpec(type_spec.TypeSpec):
@@ -408,6 +413,13 @@ class PerReplicaSpec(type_spec.TypeSpec):
 
   def _from_components(self, tensor_list):
     return PerReplica(tensor_list)
+
+
+nested_structure_coder.register_codec(
+    nested_structure_coder.BuiltInTypeSpecCodec(
+        PerReplicaSpec, struct_pb2.TypeSpecProto.PER_REPLICA_SPEC
+    )
+)
 
 
 # Note that unlike PerReplica, Mirrored values inherit from
@@ -461,8 +473,11 @@ class DistributedVariableTraceType(trace.TraceType):
   def most_specific_common_supertype(self, others):
     return self if all(self == other for other in others) else None
 
-  def _placeholder_value(self, placeholder_context):
+  def placeholder_value(self, placeholder_context=None):
     return self.distributed_variable
+
+  def _to_tensors(self, value):
+    return []
 
   def __hash__(self) -> int:
     return hash(self.components)
@@ -997,28 +1012,6 @@ class DistributedVariable(DistributedDelegate, variables_lib.Variable,
       return ops.convert_to_tensor(
           self._get(), dtype=dtype, name=name, as_ref=as_ref)
 
-  def _map_resources(self, save_options):
-    """For implementing `Trackable`."""
-    # Initialize for self._primary first, so that obj_map[self._primary] and
-    # resource_map[self._primary.handle] contain mapped values.
-    obj_map, resource_map = self._primary._map_resources(save_options)  # pylint:disable=protected-access
-    for v in [v for v in self._values if v != self._primary]:
-
-      if (save_options.experimental_variable_policy  # pylint:disable=protected-access
-          ._expand_distributed_variables()):
-        v_obj_map, v_resource_map = v._map_resources(save_options)  # pylint:disable=protected-access
-        obj_map.update(v_obj_map)
-        resource_map.update(v_resource_map)
-      else:
-        obj_map[v] = obj_map[self._primary]
-        resource_map[v.handle] = resource_map[self._primary.handle]
-    obj_map[self] = obj_map[self._primary]
-    resource_map[self] = resource_map[self._primary.handle]
-    if self._packed_var is not None:
-      resource_map[self._packed_var.packed_handle] = resource_map[
-          self._primary.handle]
-    return obj_map, resource_map
-
   def _export_to_saved_model_graph(self,
                                    object_map=None,
                                    tensor_map=None,
@@ -1083,7 +1076,13 @@ class DistributedVariable(DistributedDelegate, variables_lib.Variable,
 
   def __tf_experimental_restore_capture__(
       self, concrete_function, internal_capture):
-    concrete_function.graph.capture_distributed_variable(self, internal_capture)
+    graph = concrete_function.graph
+    # Add given distributed variable to captures with given placeholder.
+    graph.replace_capture(self, internal_capture)
+    tape.record_operation(
+        "captured_value", [internal_capture], [self],
+        backward_function=lambda x: [x],
+        forward_function=lambda x: [x])
     return self
 
 
@@ -1442,8 +1441,8 @@ def _tensor_conversion_distributed_var(var,
   return var._dense_var_to_tensor(dtype=dtype, name=name, as_ref=as_ref)  # pylint: disable=protected-access
 
 
-ops.register_tensor_conversion_function(DistributedVariable,
-                                        _tensor_conversion_distributed_var)
+tensor_conversion_registry.register_tensor_conversion_function(
+    DistributedVariable, _tensor_conversion_distributed_var)
 
 
 # MirroredVariables
@@ -1451,8 +1450,8 @@ def _tensor_conversion_mirrored(var, dtype=None, name=None, as_ref=False):
   return var._dense_var_to_tensor(dtype=dtype, name=name, as_ref=as_ref)  # pylint: disable=protected-access
 
 
-ops.register_tensor_conversion_function(MirroredVariable,
-                                        _tensor_conversion_mirrored)
+tensor_conversion_registry.register_tensor_conversion_function(
+    MirroredVariable, _tensor_conversion_mirrored)
 
 
 # Mirrored Values
@@ -1461,8 +1460,8 @@ def _tensor_conversion_mirrored_val(value, dtype=None, name=None, as_ref=False):
       value._get(), dtype=dtype, name=name, as_ref=as_ref)  # pylint: disable=protected-access
 
 
-ops.register_tensor_conversion_function(Mirrored,
-                                        _tensor_conversion_mirrored_val)
+tensor_conversion_registry.register_tensor_conversion_function(
+    Mirrored, _tensor_conversion_mirrored_val)
 
 
 # SyncOnReadVariables
@@ -1470,8 +1469,8 @@ def _tensor_conversion_sync_on_read(var, dtype=None, name=None, as_ref=False):
   return var._dense_var_to_tensor(dtype=dtype, name=name, as_ref=as_ref)  # pylint: disable=protected-access
 
 
-ops.register_tensor_conversion_function(SyncOnReadVariable,
-                                        _tensor_conversion_sync_on_read)
+tensor_conversion_registry.register_tensor_conversion_function(
+    SyncOnReadVariable, _tensor_conversion_sync_on_read)
 
 
 class VariablePolicy(object):

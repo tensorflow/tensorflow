@@ -417,8 +417,10 @@ class DepthwiseConv2dNativeOp : public BinaryOp<T> {
     OP_REQUIRES_OK(context, GetWindowedOutputSizeVerbose(
                                 input_cols, filter_cols, stride_, padding_,
                                 &out_cols, &pad_left, &pad_right));
-    TensorShape out_shape =
-        ShapeFromFormat(data_format_, batch, out_rows, out_cols, out_depth);
+    TensorShape out_shape;
+    OP_REQUIRES_OK(context,
+                   ShapeFromFormatWithStatus(data_format_, batch, out_rows,
+                                             out_cols, out_depth, &out_shape));
     OP_REQUIRES(
         context,
         (!std::is_same<Device, GPUDevice>::value ||

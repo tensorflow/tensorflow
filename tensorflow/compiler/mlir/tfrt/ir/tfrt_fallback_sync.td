@@ -32,6 +32,7 @@ def FallbackSync_Dialect : Dialect {
   }];
 
   let cppNamespace = "::tfrt::fallback_sync";
+  let useFoldAPI = kEmitFoldAdaptorFolder;
 }
 
 class FallbackSync_Op<string mnemonic, list<Trait> traits = []> :

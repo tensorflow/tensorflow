@@ -21,7 +21,6 @@ limitations under the License.
 #include "absl/strings/match.h"
 #include "tensorflow/compiler/xla/pjrt/mlir_to_hlo.h"
 #include "tensorflow/compiler/xla/runtime/ffi/ffi_api.h"
-#include "tensorflow/compiler/xla/service/custom_call_target_registry.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/compiler/xla/tests/literal_test_util.h"
 #include "tensorflow/compiler/xla/tests/test_macros.h"
@@ -39,23 +38,27 @@ class FfiTest : public HloTestBase {
   Shape tensor_4xf32_ = ShapeUtil::MakeShape(F32, {4});
 };
 
-// TODO(ezhulenev): Add support for stateless XLA FFI modules.
-struct EmptyState {};
+// State instantiated for every XLA executable and passed to FFI functions.
+struct TestModuleState {
+  explicit TestModuleState(std::vector<std::string>* trace) : trace(trace) {}
+  std::vector<std::string>* trace = nullptr;
+};
 
 // XLA FFI module encapsulating FFI functions exported to the runtime.
-struct TestModule : public runtime::ffi::StatefulModule<EmptyState> {
-  using Base = runtime::ffi::StatefulModule<EmptyState>;
+struct TestModule : public runtime::ffi::StatefulModule<TestModuleState> {
+  using Base = runtime::ffi::StatefulModule<TestModuleState>;
 
   explicit TestModule(const XLA_FFI_Api* api)
       : Base(api, "xla-ffi-module", {{"test.ffi", FFI_Impl}}) {}
 
-  std::unique_ptr<EmptyState> CreateState() const final {
-    return std::make_unique<EmptyState>();
+  std::unique_ptr<TestModuleState> CreateState() final {
+    return std::make_unique<TestModuleState>(&trace);
   }
 
   // XLA runtime binding for the C++ function.
   XLA_FFI_DEFINE_FUNCTION(FFI_Impl, Impl,
-                          Ffi::Bind("test.ffi")
+                          Ffi::Binding()
+                              .State<TestModuleState>()
                               .Arg<StridedBufferArg>()
                               .Arg<StridedBufferArg>()
                               .Arg<StridedBufferArg>()
@@ -65,31 +68,23 @@ struct TestModule : public runtime::ffi::StatefulModule<EmptyState> {
   //
   // WARNING: Buffer arguments are placed on the GPU device and we can't touch
   // the memory they are pointing to on the host.
-  static FfiStatus Impl(StridedBufferArg input0, StridedBufferArg input1,
-                        StridedBufferArg out, float foo);
+  static FfiStatus Impl(TestModuleState* state, StridedBufferArg input0,
+                        StridedBufferArg input1, StridedBufferArg out,
+                        float foo);
+
+  // Trace calls to FFI functions from this module.
+  std::vector<std::string> trace;
 };
 
-// Observe FFI arguments by adding them to the static vector.
-static std::vector<std::string>* GetFfiArgs() {
-  static auto* args = new std::vector<std::string>();
-  return args;
-}
-
-FfiStatus TestModule::Impl(StridedBufferArg input0, StridedBufferArg input1,
-                           StridedBufferArg out, float foo) {
-  auto* args = GetFfiArgs();
-  args->push_back(std::to_string(foo));
-  args->push_back(input0.ToString());
-  args->push_back(input1.ToString());
-  args->push_back(out.ToString());
+FfiStatus TestModule::Impl(TestModuleState* state, StridedBufferArg input0,
+                           StridedBufferArg input1, StridedBufferArg out,
+                           float foo) {
+  state->trace->push_back(std::to_string(foo));
+  state->trace->push_back(input0.ToString());
+  state->trace->push_back(input1.ToString());
+  state->trace->push_back(out.ToString());
   return FfiStatus::Ok();
 }
-
-// TODO(ezhulenev): We have to register stubs in the XLA custom call registry to
-// suppress errors during Thunk emissions. This stub should never be called,
-// and instead XLA will call into registered FFI handlers. Remove this hack!
-static void Abort() { LOG(FATAL) << "Custom call stub must never be called"; }
-XLA_REGISTER_CUSTOM_CALL_TARGET_WITH_SYM("test.ffi", Abort, "CUDA");
 
 XLA_TEST_F(FfiTest, Basic) {
   // Register XLA FFI module with the runtime.
@@ -141,12 +136,11 @@ XLA_TEST_F(FfiTest, Basic) {
   LiteralTestUtil::ExpectR1Equal<float>({5.0f, 5.0f, 5.0f, 5.0f}, result);
 
   // Check that FFI handler was also executed.
-  auto* args = GetFfiArgs();
-  ASSERT_EQ(args->size(), 4);
-  ASSERT_TRUE(absl::StartsWith(args->at(0), "42"));
-  ASSERT_EQ(args->at(1), "Buffer: dtype=f32 sizes=[4] strides=[1]");
-  ASSERT_EQ(args->at(2), "Buffer: dtype=f32 sizes=[4] strides=[1]");
-  ASSERT_EQ(args->at(3), "Buffer: dtype=f32 sizes=[4] strides=[1]");
+  ASSERT_EQ(ffi_module.trace.size(), 4);
+  ASSERT_TRUE(absl::StartsWith(ffi_module.trace.at(0), "42"));
+  ASSERT_EQ(ffi_module.trace.at(1), "Buffer: dtype=f32 sizes=[4] strides=[1]");
+  ASSERT_EQ(ffi_module.trace.at(2), "Buffer: dtype=f32 sizes=[4] strides=[1]");
+  ASSERT_EQ(ffi_module.trace.at(3), "Buffer: dtype=f32 sizes=[4] strides=[1]");
 }
 
 }  // namespace gpu

@@ -356,6 +356,7 @@ class ExecutorState {
   const bool log_memory_;
 
   int64_t step_id_;
+  int64_t trace_id_;  // for profiler.
   int64_t start_time_usecs_ = 0;
   // The deadline for the session to complete by. Empty if unspecified.
   absl::optional<absl::Time> deadline_;
@@ -417,6 +418,7 @@ ExecutorState<PropagatorStateType>::ExecutorState(
     : vlog_(VLOG_IS_ON(1)),
       log_memory_(LogMemory::IsEnabled()),
       step_id_(args.step_id),
+      trace_id_(args.function_trace_id ? *args.function_trace_id : step_id_),
       start_time_usecs_(args.start_time_usecs),
       deadline_(args.deadline),
       rendezvous_(args.rendezvous),
@@ -785,7 +787,7 @@ void ExecutorState<PropagatorStateType>::ProcessInline(
                 "ExecutorState::Process",
                 {{"id", step_id_}, {"iter_num", tagged_node.get_iter_num()}});
           },
-          profiler::ContextType::kTfExecutor, step_id_,
+          profiler::ContextType::kTfExecutor, trace_id_,
           profiler::TraceMeLevel::kInfo);
       last_iter_num = current_iter_num;
     }
@@ -1187,11 +1189,19 @@ bool ExecutorState<PropagatorStateType>::NodeDone(
       TRACEPRINTF("StartAbort: %s", s.ToString().c_str());
       if (cancellation_manager_) {
         // Only log when the abort happens during the actual run time.
-        // Use VLOG instead of LOG(warning) because error status is expected
-        // when the executor is run under the grappler optimization phase or
-        // when iterating through a tf.data input pipeline.
-        VLOG(1) << "[" << immutable_state_.params().device->name()
-                << "] Executor start aborting: " << s;
+        // Use LOG(INFO) instead of LOG(WARNING) because error status is
+        // expected when the executor is run under the grappler optimization
+        // phase. Do not log OutOfRange erros because they are expected when
+        // iterating through a tf.data input pipeline.
+        if (!errors::IsOutOfRange(s)) {
+          LOG(INFO) << "[" << immutable_state_.params().device->name()
+                    << "] (DEBUG INFO) Executor start aborting (this does not "
+                       "indicate an error and you can ignore this message): "
+                    << s;
+        } else {
+          VLOG(1) << "[" << immutable_state_.params().device->name()
+                  << "] Executor start aborting: " << s;
+        }
       }
 
       if (rendezvous_) {
@@ -1350,6 +1360,7 @@ void ExecutorState<PropagatorStateType>::Finish() {
   auto done_cb = std::move(done_cb_);
   auto runner = std::move(runner_);
   mu_.unlock();
+  int64_t trace_id = trace_id_;
   int64_t step_id = step_id_;
   CHECK(done_cb != nullptr);
   Device* device = immutable_state_.params().device;
@@ -1405,7 +1416,7 @@ void ExecutorState<PropagatorStateType>::Finish() {
       }
     }
     delete this;
-    runner([step_id, status, done_cb = std::move(done_cb)]() {
+    runner([step_id, trace_id, status, done_cb = std::move(done_cb)]() {
       profiler::TraceMeConsumer activity(
           // From TraceMeProducer in KernelAndDeviceFunc::RunAsync,
           // DirectSession::RunInternal or GraphMgr::ExecuteAsync.
@@ -1413,7 +1424,7 @@ void ExecutorState<PropagatorStateType>::Finish() {
             return profiler::TraceMeEncode("ExecutorDoneCallback",
                                            {{"id", step_id}});
           },
-          profiler::ContextType::kTfExecutor, step_id,
+          profiler::ContextType::kTfExecutor, trace_id,
           profiler::TraceMeLevel::kInfo);
       done_cb(status);
     });
@@ -1425,10 +1436,10 @@ void ExecutorState<PropagatorStateType>::Finish() {
     // devices like GPUs that continue to execute Ops after their Compute
     // methods have completed, this ensures that control is not returned to
     // the user until the step (and its side-effects) has actually completed.
-    device->Sync([this, step_id, runner = std::move(runner),
+    device->Sync([this, step_id, trace_id, runner = std::move(runner),
                   done_cb = std::move(done_cb)](const Status& status) mutable {
       delete this;
-      runner([step_id, status, done_cb = std::move(done_cb)]() {
+      runner([step_id, trace_id, status, done_cb = std::move(done_cb)]() {
         profiler::TraceMeConsumer activity(
             // From TraceMeProducer in KernelAndDeviceFunc::RunAsync,
             // DirectSession::RunInternal or GraphMgr::ExecuteAsync.
@@ -1436,14 +1447,14 @@ void ExecutorState<PropagatorStateType>::Finish() {
               return profiler::TraceMeEncode("ExecutorDoneCallback",
                                              {{"id", step_id}});
             },
-            profiler::ContextType::kTfExecutor, step_id,
+            profiler::ContextType::kTfExecutor, trace_id,
             profiler::TraceMeLevel::kInfo);
         done_cb(status);
       });
     });
   } else {
     delete this;
-    runner([step_id, status, done_cb = std::move(done_cb)]() {
+    runner([step_id, trace_id, status, done_cb = std::move(done_cb)]() {
       profiler::TraceMeConsumer activity(
           // From TraceMeProducer in KernelAndDeviceFunc::RunAsync,
           // DirectSession::RunInternal or GraphMgr::ExecuteAsync.
@@ -1451,7 +1462,7 @@ void ExecutorState<PropagatorStateType>::Finish() {
             return profiler::TraceMeEncode("ExecutorDoneCallback",
                                            {{"id", step_id}});
           },
-          profiler::ContextType::kTfExecutor, step_id,
+          profiler::ContextType::kTfExecutor, trace_id,
           profiler::TraceMeLevel::kInfo);
       done_cb(status);
     });

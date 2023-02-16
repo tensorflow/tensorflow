@@ -32,7 +32,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/spmd/spmd_partitioner.h"
 #include "tensorflow/compiler/xla/service/spmd/spmd_partitioner_util.h"
 #include "tensorflow/compiler/xla/status.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/statusor.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/tsl/platform/statusor.h"
 
@@ -47,7 +46,7 @@ using hlo_sharding_util::GroupedSharding;
 PartitionedHlo PerGroupPartitionedHlo(
     PartitionedHlo& phlo, const GroupedSharding& grouped_sharding,
     SpmdBuilder* b, absl::InlinedVector<std::function<void()>, 3>& clean_ups) {
-  // Make sure the shardings are in consistent state.
+  //  Make sure the shardings are in consistent state.
   phlo = phlo.Reshard(UngroupSharding(grouped_sharding));
   auto per_group_partitioner_state = CreatePerGroupPartitioningState(
       phlo.state(), grouped_sharding.device_groups, b);
@@ -862,10 +861,6 @@ StatusOr<HloInstruction*> PartitionScatterIndexParallelDimensions(
           GatherOutputOrScatterUpdateShardingFromIndicesParallelDimensions(
               indices.sharding(), updates[0].rank(), indices_parallel_dims,
               update_parallel_dims);
-      for (auto& update : updates) {
-        update = update.Reshard(update_sharding);
-      }
-
       // Refine update sharding from the operand. it should be inferred from
       // operand sharding, so that the partitioned scatter can be either 1)
       // directly created on the partitioned operand, or 2) recursively created
@@ -880,6 +875,11 @@ StatusOr<HloInstruction*> PartitionScatterIndexParallelDimensions(
             *maybe_passthrough,
             /*minimum_tiles=*/update_sharding.NumTiles() + 1, &update_sharding);
       }
+
+      for (auto& update : updates) {
+        update = update.Reshard(update_sharding);
+      }
+
       // Construct the offsets for the operand sharding to be used to adjust
       // the indices. Because we know the only dimensions partitioned are the
       // parallel ones and because the partitioning is the same across indices
@@ -1405,7 +1405,8 @@ StatusOr<HloInstruction*> PartitionScatter(
           indices.Replicate().hlo(), update_hlos, scatter->to_apply(),
           scatter->scatter_dimension_numbers(), scatter->indices_are_sorted(),
           scatter->unique_indices()));
-  new_scatter->set_sharding(HloSharding::Replicate());
+  new_scatter->set_sharding(
+      HloSharding::Replicate().NormalizeTupleSharding(new_scatter->shape()));
   new_scatter =
       PartitionedHlo(new_scatter, new_scatter->shape(), operands[0].state())
           .Reshard(output_sharding)

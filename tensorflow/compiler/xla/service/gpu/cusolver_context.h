@@ -54,7 +54,9 @@ namespace se = ::stream_executor;
 
 class GpuSolverContext {
  public:
-  static StatusOr<GpuSolverContext> Create(se::Stream* stream);
+  static StatusOr<GpuSolverContext> Create();
+
+  Status SetStream(se::Stream* stream);
 
   // Computes the Cholesky factorization of multiple matrices.  See
   // https://docs.nvidia.com/cuda/cusolver/index.html#cuSolverDN-lt-t-gt-batchpotrf

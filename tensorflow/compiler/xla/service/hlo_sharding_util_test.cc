@@ -18,6 +18,7 @@ limitations under the License.
 #include <optional>
 #include <vector>
 
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 
@@ -447,6 +448,116 @@ TEST(HloShardingUtilTest, DeviceGroupsMatch) {
   EXPECT_TRUE(DeviceGroupsAreMatch(lhs, rhs));
 }
 
+TEST(HloShardingUtilTest, IsSubShardingTiledReplicated) {
+  HloSharding rhs_sharding = HloSharding::Replicate();
+  HloSharding lhs_sharding =
+      HloSharding::Tile(Array2D<int64_t>({{0}, {1}, {2}, {3}}));
+  Shape shape = ShapeUtil::MakeShape(F32, {129, 253});
+  EXPECT_TRUE(IsSubTilingOrEqualSharding(shape, lhs_sharding, rhs_sharding));
+}
+
+TEST(HloShardingUtilTest, IsSubShardingReplicatedTiled) {
+  HloSharding rhs_sharding =
+      HloSharding::Tile(Array2D<int64_t>({{0}, {1}, {2}, {3}}));
+  HloSharding lhs_sharding = HloSharding::Replicate();
+  Shape shape = ShapeUtil::MakeShape(F32, {129, 253});
+  EXPECT_FALSE(IsSubTilingOrEqualSharding(shape, lhs_sharding, rhs_sharding));
+}
+
+TEST(HloShardingUtilTest, IsSubShardingTiledPartialReplicated) {
+  HloSharding rhs_sharding = HloSharding::Replicate();
+  HloSharding lhs_sharding =
+      HloSharding::PartialTile(Array3D<int64_t>({{{0, 1}}, {{2, 3}}}));
+  Shape shape = ShapeUtil::MakeShape(F32, {129, 253});
+  EXPECT_TRUE(IsSubTilingOrEqualSharding(shape, lhs_sharding, rhs_sharding));
+}
+
+TEST(HloShardingUtilTest, IsSubShardingReplicatedTiledPartial) {
+  HloSharding rhs_sharding =
+      HloSharding::PartialTile(Array3D<int64_t>({{{0, 1}}, {{2, 3}}}));
+  HloSharding lhs_sharding = HloSharding::Replicate();
+  Shape shape = ShapeUtil::MakeShape(F32, {129, 253});
+  EXPECT_FALSE(IsSubTilingOrEqualSharding(shape, lhs_sharding, rhs_sharding));
+}
+
+TEST(HloShardingUtilTest, IsSubShardingPartialTiledTiled) {
+  HloSharding rhs_sharding =
+      HloSharding::PartialTile(Array3D<int64_t>({{{0, 1}}, {{2, 3}}}));
+  HloSharding lhs_sharding =
+      HloSharding::Tile(Array3D<int64_t>({{{0}, {1}}, {{2}, {3}}}));
+  Shape shape = ShapeUtil::MakeShape(F32, {129, 253});
+  EXPECT_FALSE(IsSubTilingOrEqualSharding(shape, lhs_sharding, rhs_sharding));
+}
+
+TEST(HloShardingUtilTest, IsSubShardingIncompatibleTiled) {
+  HloSharding rhs_sharding =
+      HloSharding::Tile(Array2D<int64_t>({{0}, {1}, {2}, {3}}));
+  HloSharding lhs_sharding =
+      HloSharding::Tile(Array2D<int64_t>({{0, 1, 2, 3}}));
+  Shape shape = ShapeUtil::MakeShape(F32, {129, 253});
+  EXPECT_FALSE(IsSubTilingOrEqualSharding(shape, lhs_sharding, rhs_sharding));
+}
+
+TEST(HloShardingUtilTest, IsSubShardingIncompatibleShapeTiledPartialTiled) {
+  HloSharding rhs_sharding =
+      HloSharding::PartialTile(Array3D<int64_t>({{{0, 1}}, {{2, 3}}}));
+  HloSharding lhs_sharding =
+      HloSharding::Tile(Array2D<int64_t>({{0}, {1}, {2}, {3}}));
+  Shape shape = ShapeUtil::MakeShape(F32, {129, 253});
+  EXPECT_FALSE(IsSubTilingOrEqualSharding(shape, lhs_sharding, rhs_sharding));
+}
+
+TEST(HloShardingUtilTest, IsSubShardingCompatibleShapeTiledPartialTiled) {
+  HloSharding rhs_sharding =
+      HloSharding::PartialTile(Array3D<int64_t>({{{0, 1}}, {{2, 3}}}));
+  HloSharding lhs_sharding =
+      HloSharding::Tile(Array2D<int64_t>({{0}, {1}, {2}, {3}}));
+  Shape shape = ShapeUtil::MakeShape(F32, {128, 253});
+  EXPECT_TRUE(IsSubTilingOrEqualSharding(shape, lhs_sharding, rhs_sharding));
+}
+
+TEST(HloShardingUtilTest, IsSortOperandShardingMovableRankTwoOneFreeDim) {
+  HloIotaInstruction iota(ShapeUtil::MakeShape(F32, {8, 128}), 1);
+  Array<int64_t> tile_assignment({1, 2});
+  tile_assignment.FillIota(0);
+  iota.set_sharding(HloSharding::Tile(tile_assignment));
+  EXPECT_TRUE(IsSortOperandShardingMovable(&iota, 1));
+}
+
+TEST(HloShardingUtilTest, IsSortOperandShardingMovableRankTwoNoFreeDims) {
+  HloIotaInstruction iota(ShapeUtil::MakeShape(F32, {8, 128}), 1);
+  Array<int64_t> tile_assignment({2, 2});
+  tile_assignment.FillIota(0);
+  iota.set_sharding(HloSharding::Tile(tile_assignment));
+  EXPECT_FALSE(IsSortOperandShardingMovable(&iota, 1));
+}
+
+TEST(HloShardingUtilTest, IsSortOperandShardingMovableRankOne) {
+  HloIotaInstruction iota(ShapeUtil::MakeShape(F32, {1024}), 1);
+  Array<int64_t> tile_assignment({2});
+  tile_assignment.FillIota(0);
+  iota.set_sharding(HloSharding::Tile(tile_assignment));
+  EXPECT_FALSE(IsSortOperandShardingMovable(&iota, 0));
+}
+
+TEST(HloShardingUtilTest, IsSortOperandShardingMovableNoSharding) {
+  HloIotaInstruction iota(ShapeUtil::MakeShape(F32, {1024}), 1);
+  EXPECT_FALSE(IsSortOperandShardingMovable(&iota, 0));
+}
+
+TEST(HloShardingUtilTest, IsSortOperandShardingMovableReplicated) {
+  HloIotaInstruction iota(ShapeUtil::MakeShape(F32, {8, 128}), 1);
+  iota.set_sharding(HloSharding::Replicate());
+  EXPECT_FALSE(IsSortOperandShardingMovable(&iota, 1));
+}
+
+TEST(HloShardingUtilTest, IsSortOperandShardingMovableSortDimUnsharded) {
+  HloIotaInstruction iota(ShapeUtil::MakeShape(F32, {8, 128}), 1);
+  Array<int64_t> tile_assignment({1, 2});
+  tile_assignment.FillIota(0);
+  iota.set_sharding(HloSharding::Tile(tile_assignment));
+  EXPECT_FALSE(IsSortOperandShardingMovable(&iota, 0));
+}
 }  // namespace
 }  // namespace hlo_sharding_util
 }  // namespace xla

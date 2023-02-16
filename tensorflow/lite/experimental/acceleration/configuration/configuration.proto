@@ -43,7 +43,12 @@
 //
 // WARNING: you need to manually generate and update the generated flatbuffer
 // code (configuration_generated.h) when modifying this file. See BUILD for
-// more information.
+// more information. Below are manual steps for reference:
+// bazel build
+// //tensorflow/lite/experimental/acceleration/configuration:proto_to_flatbuffer
+// && cp
+// bazel-bin/tensorflow/lite/experimental/acceleration/configuration/configuration_generated.h
+// tensorflow/lite/experimental/acceleration/configuration/configuration_generated.h.oss
 
 // LINT.IfChange
 
@@ -226,7 +231,7 @@ enum GPUInferenceUsage {
 // See
 // https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/delegates/gpu/delegate.h
 message GPUSettings {
-  // Ignored if inference_priority1/2/3 are set.
+  // Obsolete: Ignored if inference_priority1/2/3 are set.
   optional bool is_precision_loss_allowed = 1;
   optional bool enable_quantized_inference = 2 [default = true];
   optional GPUBackend force_backend = 3;
@@ -447,6 +452,9 @@ message EdgeTpuSettings {
 
   // QoS class to determine chunking size for PRO onward.
   optional QosClass qos_class = 7 [default = QOS_UNDEFINED];
+
+  // Cluster IDs the model will be compiled for.
+  repeated int32 hardware_cluster_ids = 8 [packed = true];
 }
 
 // Coral Dev Board / USB accelerator delegate settings.

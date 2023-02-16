@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef MLIR_HLO_DIALECT_GML_ST_TRANSFORMS_TEST_PASSES_H
-#define MLIR_HLO_DIALECT_GML_ST_TRANSFORMS_TEST_PASSES_H
+#ifndef MLIR_HLO_GML_ST_TRANSFORMS_TEST_PASSES_H
+#define MLIR_HLO_GML_ST_TRANSFORMS_TEST_PASSES_H
 
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/BuiltinOps.h"
@@ -26,12 +26,6 @@ namespace gml_st {
 #define GEN_PASS_DECL
 #include "gml_st/transforms/test_passes.h.inc"
 
-std::unique_ptr<OperationPass<func::FuncOp>> createTestGmlStLoopPeelingPass();
-
-std::unique_ptr<OperationPass<func::FuncOp>> createTestGmlStLoopTilingPass();
-
-std::unique_ptr<OperationPass<ModuleOp>> createTestGmlStBufferizationPass();
-
 std::unique_ptr<OperationPass<func::FuncOp>> createTestGmlStGreedyFusionPass();
 
 #define GEN_PASS_REGISTRATION
@@ -40,4 +34,4 @@ std::unique_ptr<OperationPass<func::FuncOp>> createTestGmlStGreedyFusionPass();
 }  // namespace gml_st
 }  // namespace mlir
 
-#endif  // MLIR_HLO_DIALECT_GML_ST_TRANSFORMS_TEST_PASSES_H
+#endif  // MLIR_HLO_GML_ST_TRANSFORMS_TEST_PASSES_H

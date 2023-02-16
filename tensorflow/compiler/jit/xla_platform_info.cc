@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/jit/xla_platform_info.h"
 
 #include <memory>
+#include <optional>
 #include <utility>
 #include <vector>
 
@@ -28,6 +29,10 @@ limitations under the License.
 #include "tensorflow/core/tpu/tpu_defs.h"
 
 namespace tensorflow {
+namespace {
+using XlaDeviceCompiler =
+    DeviceCompiler<xla::LocalExecutable, xla::LocalClient>;
+}  // namespace
 
 xla::StatusOr<std::optional<std::set<int>>> ParseVisibleDeviceList(
     absl::string_view visible_device_list) {
@@ -50,9 +55,9 @@ xla::StatusOr<std::optional<std::set<int>>> ParseVisibleDeviceList(
   return {{gpu_ids}};
 }
 
-Status BuildXlaCompilationCache(DeviceBase* device, FunctionLibraryRuntime* flr,
-                                const XlaPlatformInfo& platform_info,
-                                XlaCompilationCache** cache) {
+Status BuildXlaDeviceCompiler(DeviceBase* device, FunctionLibraryRuntime* flr,
+                              const XlaPlatformInfo& platform_info,
+                              XlaDeviceCompiler** xla_device_compiler) {
   using XlaDeviceExecutablePersistor =
       DeviceExecutablePersistor<xla::LocalExecutable, xla::LocalClient>;
   XlaDeviceExecutablePersistor::Config persistor_config(
@@ -66,8 +71,8 @@ Status BuildXlaCompilationCache(DeviceBase* device, FunctionLibraryRuntime* flr,
         platform_info.xla_device_metadata()->jit_device_type());
     auto compiler_client = std::make_unique<XlaDeviceCompilerClient>(
         platform_info.xla_device_metadata()->client());
-    *cache = new XlaCompilationCache(std::move(persistor),
-                                     std::move(compiler_client));
+    *xla_device_compiler =
+        new XlaDeviceCompiler(std::move(persistor), std::move(compiler_client));
     return OkStatus();
   }
 
@@ -77,8 +82,8 @@ Status BuildXlaCompilationCache(DeviceBase* device, FunctionLibraryRuntime* flr,
     auto persistor = std::make_unique<XlaDeviceExecutablePersistor>(
         std::move(persistor_config), DeviceType(DEVICE_TPU_XLA_JIT));
     auto compiler_client = std::make_unique<XlaDeviceCompilerClient>(nullptr);
-    *cache = new XlaCompilationCache(std::move(persistor),
-                                     std::move(compiler_client));
+    *xla_device_compiler =
+        new XlaDeviceCompiler(std::move(persistor), std::move(compiler_client));
     return OkStatus();
   }
 
@@ -138,8 +143,8 @@ Status BuildXlaCompilationCache(DeviceBase* device, FunctionLibraryRuntime* flr,
       DeviceType(registration->compilation_device_name));
   auto compiler_client =
       std::make_unique<XlaDeviceCompilerClient>(client.value());
-  *cache =
-      new XlaCompilationCache(std::move(persistor), std::move(compiler_client));
+  *xla_device_compiler =
+      new XlaDeviceCompiler(std::move(persistor), std::move(compiler_client));
   return OkStatus();
 }
 
@@ -194,16 +199,16 @@ std::shared_ptr<se::DeviceMemoryAllocator> GetAllocator(
 }
 
 XlaCompiler::Options GenerateCompilerOptions(
-    const XlaCompilationCache& cache,
+    const XlaDeviceCompiler& xla_device_compiler,
     const FunctionLibraryRuntime& function_library, DeviceBase* device,
     se::Stream* stream, const XlaPlatformInfo& platform_info,
     bool has_ref_vars) {
   XlaCompiler::Options options;
-  options.client = static_cast<xla::LocalClient*>(cache.client());
+  options.client = static_cast<xla::LocalClient*>(xla_device_compiler.client());
   if (stream != nullptr) {
     options.device_ordinal = stream->parent()->device_ordinal();
   }
-  options.device_type = cache.device_type();
+  options.device_type = xla_device_compiler.device_type();
   options.flib_def = function_library.GetFunctionLibraryDefinition();
   options.graph_def_version = function_library.graph_def_version();
   options.allow_cpu_custom_calls =
@@ -221,11 +226,11 @@ XlaCompiler::Options GenerateCompilerOptions(
 }
 
 XlaCompiler::Options GenerateTfrtTpuCompilerOptions(
-    const XlaCompilationCache& cache,
+    const XlaDeviceCompiler& xla_device_compiler,
     const FunctionLibraryRuntime& function_library) {
   XlaCompiler::Options options;
   // TODO(b/238830423): consider device_ordinal and shape_determination_fns.
-  options.device_type = cache.device_type();
+  options.device_type = xla_device_compiler.device_type();
   options.flib_def = function_library.GetFunctionLibraryDefinition();
   options.graph_def_version = function_library.graph_def_version();
   options.allow_cpu_custom_calls = false;

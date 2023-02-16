@@ -73,10 +73,10 @@ TFL_CAPI_EXPORT extern TfLiteBufferHandle TfLiteExecutionTaskGetBufferByIndex(
 /// the sync object, it can set the sync type to default
 /// `kTfLiteSyncTypeNoSyncObj` or a nullptr TfLiteSynchronization. It means the
 /// data is ready when the application calls `Wait` on the given task. Otherwise
-/// the backend needs to provide the sync object according to the sync type
-/// and it will be signaled when the output data is ready. The underlying output
-/// sync object needs to be closed by the application (or some downstream in the
-/// pipeline). The backend will be responsible for duplicating the synch
+/// the backend needs to provide a not-null sync object according to the sync
+/// type and it will be signaled when the output data is ready. The underlying
+/// output sync object needs to be closed by the application (or some downstream
+/// in the pipeline). The backend will be responsible for duplicating the synch
 /// if TfLiteSynchronizations are not nullptr for different output tensor
 /// produced by the same backend.
 ///
@@ -90,7 +90,8 @@ TFL_CAPI_EXPORT extern TfLiteBufferHandle TfLiteExecutionTaskGetBufferByIndex(
 /// `task` and `tensor_signature_name` must not be nullptr.
 /// A nullptr `sync` esentially means the tensor data does not need
 /// synchronization.
-/// `task` does not take the ownership of `sync`.
+/// `task` does not take the ownership of `sync`, so caller needs to release
+/// `sync` when destroying the `task` with AsyncSignatureRunner::Finish.
 /// Returns kTfLiteError if the tensor is not found.
 TFL_CAPI_EXPORT extern TfLiteStatus TfLiteExecutionTaskSetSync(
     TfLiteExecutionTask* task, int32_t io_type,
@@ -117,6 +118,16 @@ TFL_CAPI_EXPORT extern void* TfLiteExecutionTaskGetDelegateExecutionData(
 
 TFL_CAPI_EXPORT extern void TfLiteExecutionTaskSetDelegateExecutionData(
     const TfLiteExecutionTask* task, TfLiteAsyncKernel* kernel, void* data);
+
+/// Task status
+/// Thread safe accessors for the lastest status of the task.
+TFL_CAPI_EXPORT extern TfLiteStatus TfLiteExecutionTaskGetStatus(
+    const TfLiteExecutionTask* task);
+
+TFL_CAPI_EXPORT extern void TfLiteExecutionTaskSetStatus(
+    const TfLiteExecutionTask* task, TfLiteStatus status);
+
+// TODO(b/262574034): Also add APIs for error code and error messages.
 
 #ifdef __cplusplus
 }  // extern "C"

@@ -1,6 +1,6 @@
 path: "tensorflow.metrics.Hinge"
 tf_class {
-  is_instance: "<class \'keras.metrics.metrics.Hinge\'>"
+  is_instance: "<class \'keras.metrics.hinge_metrics.Hinge\'>"
   is_instance: "<class \'keras.metrics.base_metric.MeanMetricWrapper\'>"
   is_instance: "<class \'keras.metrics.base_metric.Mean\'>"
   is_instance: "<class \'keras.metrics.base_metric.Reduce\'>"

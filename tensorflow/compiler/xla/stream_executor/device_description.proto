@@ -17,6 +17,8 @@ syntax = "proto3";
 
 package stream_executor;
 
+import "tensorflow/compiler/xla/autotune_results.proto";
+
 message CudaComputeCapabilityProto {
   int32 major = 1;
   int32 minor = 2;
@@ -40,11 +42,28 @@ message GpuDeviceInfoProto {
   int64 memory_bandwidth = 11;
   int64 l2_cache_size = 12;
   float clock_rate_ghz = 13;
+  int64 device_memory_size = 14;
+}
+
+message DnnVersionInfoProto {
+  int32 major = 1;
+  int32 minor = 2;
+  int32 patch = 3;
 }
 
 message GpuTargetConfigProto {
   GpuDeviceInfoProto gpu_device_info = 1;
-  CudaComputeCapabilityProto cuda_compute_capability = 2;
-  RocmComputeCapabilityProto rocm_compute_capability = 3;
+  oneof compute_capability {
+    CudaComputeCapabilityProto cuda_compute_capability = 2;
+    RocmComputeCapabilityProto rocm_compute_capability = 3;
+  }
   string platform_name = 4;
+  DnnVersionInfoProto dnn_version_info = 5;
+
+  // TODO(b/248362914): Autotuning results should be separate from
+  // GpuTargetConfig because autotuning can be updated regularly separate from
+  // the target.
+  xla.AutotuneResults autotune_results = 6;
+
+  string device_description_str = 7;
 }

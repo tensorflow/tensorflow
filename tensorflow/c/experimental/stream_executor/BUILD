@@ -44,13 +44,12 @@ cc_library(
         "//tensorflow/compiler/xla/stream_executor:executor_cache",
         "//tensorflow/compiler/xla/stream_executor:multi_platform_manager",
         "//tensorflow/compiler/xla/stream_executor:platform",
-        "//tensorflow/compiler/xla/stream_executor:stream_executor_internal",
         "//tensorflow/compiler/xla/stream_executor:stream_executor_pimpl",
         "//tensorflow/compiler/xla/stream_executor:timer",
         "//tensorflow/core:lib",
         "//tensorflow/core/common_runtime/device:device_utils",
-        "//tensorflow/core/platform:regexp",
         "//tensorflow/core/platform:strcat",
+        "@com_google_absl//absl/functional:any_invocable",
     ],
 )
 
@@ -69,7 +68,6 @@ cc_library(
         "//tensorflow/c:tf_status",
         "//tensorflow/c:tf_status_helper",
         "//tensorflow/compiler/xla/stream_executor:executor_cache",
-        "//tensorflow/compiler/xla/stream_executor/lib",
     ],
 )
 

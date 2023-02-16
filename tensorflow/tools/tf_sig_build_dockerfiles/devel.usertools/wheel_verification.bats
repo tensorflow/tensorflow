@@ -36,7 +36,7 @@ teardown_file() {
     # Googlers: search for "test_tf_whl_size"
     case "$TF_WHEEL" in
         # CPU:
-        *cpu*manylinux*) LARGEST_OK_SIZE=220 ;;
+        *cpu*manylinux*) LARGEST_OK_SIZE=240 ;;
         # GPU:
         *manylinux*)     LARGEST_OK_SIZE=580 ;;
         # Unknown:

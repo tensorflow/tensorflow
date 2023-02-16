@@ -89,8 +89,8 @@ def parse_example_v2(serialized, features, example_names=None, name=None):
   `serialized`.
 
   This op parses serialized examples into a dictionary mapping keys to `Tensor`
-  `SparseTensor`, and `RaggedTensor` objects. `features` is a dict from keys to
-  `VarLenFeature`, `SparseFeature`, `RaggedFeature`, and `FixedLenFeature`
+  `SparseTensor`, and `RaggedTensor` objects. `features` is a Mapping from keys
+  to `VarLenFeature`, `SparseFeature`, `RaggedFeature`, and `FixedLenFeature`
   objects. Each `VarLenFeature` and `SparseFeature` is mapped to a
   `SparseTensor`; each `FixedLenFeature` is mapped to a `Tensor`; and each
   `RaggedFeature` is mapped to a `RaggedTensor`.
@@ -286,7 +286,7 @@ def parse_example_v2(serialized, features, example_names=None, name=None):
   Args:
     serialized: A vector (1-D Tensor) of strings, a batch of binary
       serialized `Example` protos.
-    features: A `dict` mapping feature keys to `FixedLenFeature`,
+    features: A mapping of feature keys to `FixedLenFeature`,
       `VarLenFeature`, `SparseFeature`, and `RaggedFeature` values.
     example_names: A vector (1-D Tensor) of strings (optional), the names of
       the serialized protos in the batch.
@@ -392,7 +392,7 @@ def parse_single_example(serialized, features, name=None, example_names=None):
 
   Args:
     serialized: A scalar string Tensor, a single serialized Example.
-    features: A `dict` mapping feature keys to `FixedLenFeature` or
+    features: A mapping of feature keys to `FixedLenFeature` or
       `VarLenFeature` values.
     name: A name for this operation (optional).
     example_names: (Optional) A scalar string Tensor, the associated name.
@@ -429,7 +429,7 @@ def parse_single_example_v2(
 
   Args:
     serialized: A scalar string Tensor, a single serialized Example.
-    features: A `dict` mapping feature keys to `FixedLenFeature` or
+    features: A mapping of feature keys to `FixedLenFeature` or
       `VarLenFeature` values.
     example_names: (Optional) A scalar string Tensor, the associated name.
     name: A name for this operation (optional).
@@ -524,10 +524,10 @@ def parse_sequence_example(serialized,
   Args:
     serialized: A vector (1-D Tensor) of type string containing binary
       serialized `SequenceExample` protos.
-    context_features: A `dict` mapping feature keys to `FixedLenFeature` or
+    context_features: A mapping of feature keys to `FixedLenFeature` or
       `VarLenFeature` or `RaggedFeature` values. These features are associated
       with a `SequenceExample` as a whole.
-    sequence_features: A `dict` mapping feature keys to
+    sequence_features: A mapping of feature keys to
       `FixedLenSequenceFeature` or `VarLenFeature` or `RaggedFeature` values.
       These features are associated with data within the `FeatureList` section
       of the `SequenceExample` proto.
@@ -758,10 +758,10 @@ def parse_single_sequence_example(
   Args:
     serialized: A scalar (0-D Tensor) of type string, a single binary
       serialized `SequenceExample` proto.
-    context_features: A `dict` mapping feature keys to `FixedLenFeature` or
+    context_features: A mapping of feature keys to `FixedLenFeature` or
       `VarLenFeature` or `RaggedFeature` values. These features are associated
       with a `SequenceExample` as a whole.
-    sequence_features: A `dict` mapping feature keys to
+    sequence_features: A mapping of feature keys to
       `FixedLenSequenceFeature` or `VarLenFeature` or `RaggedFeature` values.
       These features are associated with data within the `FeatureList` section
       of the `SequenceExample` proto.

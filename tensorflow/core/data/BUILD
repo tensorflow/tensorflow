@@ -41,6 +41,8 @@ exports_files([
     "split_utils.h",
     "stats_utils.cc",
     "stats_utils.h",
+    "tfdataz_metrics.h",
+    "tfdataz_metrics.cc",
     "unbounded_thread_pool.cc",
     "unbounded_thread_pool.h",
     "utils.cc",
@@ -214,10 +216,13 @@ tf_cc_test(
 cc_library(
     name = "metric_utils",
     srcs = ["metric_utils.cc"],
-    hdrs = ["metric_utils.h"],
+    hdrs = [
+        "metric_utils.h",
+    ],
     # copybara:uncomment copts = ["-Wthread-safety-analysis"],
     visibility = ["//visibility:public"],
     deps = [
+        ":tfdataz_metrics",
         "//tensorflow/core:framework",
         "//tensorflow/core/data:utils",
         "//tensorflow/core/platform:env",
@@ -241,6 +246,39 @@ tf_cc_test(
         "//tensorflow/core/lib/monitoring:test_utils",
         "//tensorflow/core/platform:env",
         "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/time",
+    ],
+)
+
+cc_library(
+    name = "tfdataz_metrics",
+    srcs = ["tfdataz_metrics.cc"],
+    hdrs = ["tfdataz_metrics.h"],
+    # copybara:uncomment copts = ["-Wthread-safety-analysis"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core/platform:env",
+        "//tensorflow/core/platform:mutex",
+        "//tensorflow/core/platform:thread_annotations",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/time",
+    ],
+)
+
+tf_cc_test(
+    name = "tfdataz_metrics_test",
+    size = "small",
+    srcs = ["tfdataz_metrics_test.cc"],
+    # copybara:uncomment extra_copts = ["-Wthread-safety-analysis"],
+    deps = [
+        ":tfdataz_metrics",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/platform:env",
+        "//tensorflow/core/util:fake_clock_env",
         "@com_google_absl//absl/time",
     ],
 )
@@ -439,6 +477,7 @@ tf_cc_test(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+        "//tensorflow/core/data/service:test_util",
     ],
 )
 
@@ -454,10 +493,37 @@ cc_library(
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:session_options",
-        "//tensorflow/core/platform:refcount",
+        "//tensorflow/core/data:serialization_utils",
+        "//tensorflow/core/framework:graph_proto_cc",
+        "//tensorflow/tsl/platform:env",
+        "//tensorflow/tsl/platform:errors",
+        "//tensorflow/tsl/platform:refcount",
+        "//tensorflow/tsl/platform:status",
+        "//tensorflow/tsl/platform:statusor",
         "@com_google_absl//absl/memory",
     ],
+)
+
+tf_cc_test(
+    name = "standalone_save_restore_test",
+    srcs = ["standalone_save_restore_test.cc"],
+    # copybara:uncomment extra_copts = ["-Wthread-safety-analysis"],
+    deps = [
+        ":standalone",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/data/service:common_proto_cc",
+        "//tensorflow/core/data/service:test_util",
+        "//tensorflow/tsl/platform:errors",
+        "//tensorflow/tsl/platform:status",
+        "//tensorflow/tsl/platform:status_matchers",
+        "//tensorflow/tsl/platform:statusor",
+        "//tensorflow/tsl/protobuf:protos_all_cc",
+    ] + tf_protos_all(),
 )
 
 tf_cc_test(

@@ -15,6 +15,7 @@ limitations under the License.
 
 #include <map>
 #include <memory>
+#include <optional>
 #include <string>
 #include <unordered_map>
 #include <utility>
@@ -68,7 +69,7 @@ Status ConvertInputInfo(
     data_types.push_back(
         feed.type() == DT_INVALID ? "" : DataType_Name(feed.type()));
     if (feed.shape().unknown_rank()) {
-      shapes.push_back(llvm::None);
+      shapes.push_back(std::nullopt);
       continue;
     }
     std::vector<int> dims;

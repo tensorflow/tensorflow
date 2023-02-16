@@ -17,6 +17,7 @@
 import warnings
 
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.data.ops import debug_mode
 from tensorflow.python.data.util import nest
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -31,8 +32,8 @@ def _batch(input_dataset,
            deterministic=None,
            name=None):
   """See `Dataset.batch` for details."""
-  if num_parallel_calls is None or dataset_ops.DEBUG_MODE:
-    if deterministic is not None and not dataset_ops.DEBUG_MODE:
+  if num_parallel_calls is None or debug_mode.DEBUG_MODE:
+    if deterministic is not None and not debug_mode.DEBUG_MODE:
       warnings.warn("The `deterministic` argument has no effect unless the "
                     "`num_parallel_calls` argument is specified.")
     return _BatchDataset(input_dataset, batch_size, drop_remainder, name=name)

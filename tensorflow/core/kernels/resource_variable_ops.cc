@@ -72,6 +72,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/resource_variable_ops.h"
 #include "tensorflow/core/kernels/resource_variable_util.h"
 #include "tensorflow/core/kernels/scatter_functor.h"
+#include "tensorflow/core/kernels/scatter_nd_util.h"
 #include "tensorflow/core/kernels/training_op_helpers.h"
 #include "tensorflow/core/kernels/variable_ops.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -288,7 +289,6 @@ REGISTER_KERNEL_BUILDER(Name("VarHandleOp").Device(DEVICE_CPU), VarHandleOp);
   }
 
 TF_CALL_GPU_ALL_TYPES(REGISTER_GPU_KERNELS);
-TF_CALL_bfloat16(REGISTER_GPU_KERNELS);
 TF_CALL_INTEGRAL_TYPES_NO_INT32(REGISTER_GPU_KERNELS);
 TF_CALL_variant(REGISTER_GPU_KERNELS);
 #undef REGISTER_GPU_KERNELS
@@ -303,7 +303,6 @@ TF_CALL_variant(REGISTER_GPU_KERNELS);
                           VarHandleOp)
 TF_CALL_GPU_ALL_TYPES(REGISTER_DEFAULT_KERNELS);
 TF_CALL_INTEGRAL_TYPES_NO_INT32(REGISTER_DEFAULT_KERNELS);
-TF_CALL_bfloat16(REGISTER_DEFAULT_KERNELS);
 TF_CALL_variant(REGISTER_DEFAULT_KERNELS);
 #undef REGISTER_DEFAULT_KERNELS
 
@@ -564,7 +563,6 @@ TF_CALL_QUANTIZED_TYPES(REGISTER_KERNELS);
 
 TF_CALL_GPU_ALL_TYPES(REGISTER_GPU_KERNELS);
 TF_CALL_INTEGRAL_TYPES_NO_INT32(REGISTER_GPU_KERNELS);
-TF_CALL_bfloat16(REGISTER_GPU_KERNELS);
 #undef REGISTER_GPU_KERNELS
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
@@ -709,13 +707,13 @@ class ResourceGatherOp : public OpKernel {
     // indices.shape[batch_dims:] + params.shape[batch_dims+1:].
     TensorShape result_shape;
     for (int i = 0; i < batch_dims_; ++i) {
-      result_shape.AddDim(params.dim_size(i));
+      OP_REQUIRES_OK(c, result_shape.AddDimWithStatus(params.dim_size(i)));
     }
     for (int i = batch_dims_; i < indices.dims(); ++i) {
-      result_shape.AddDim(indices.dim_size(i));
+      OP_REQUIRES_OK(c, result_shape.AddDimWithStatus(indices.dim_size(i)));
     }
     for (int i = batch_dims_ + 1; i < params.dims(); ++i) {
-      result_shape.AddDim(params.dim_size(i));
+      OP_REQUIRES_OK(c, result_shape.AddDimWithStatus(params.dim_size(i)));
     }
 
     Tensor* out = nullptr;
@@ -823,7 +821,6 @@ TF_CALL_QUANTIZED_TYPES(REGISTER_GATHER_CPU);
 
 TF_CALL_INTEGRAL_TYPES_NO_INT32(REGISTER_GATHER_GPU);
 TF_CALL_GPU_ALL_TYPES(REGISTER_GATHER_GPU);
-TF_CALL_bfloat16(REGISTER_GATHER_GPU);
 
 #undef REGISTER_GATHER_GPU
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
@@ -896,7 +893,6 @@ TF_CALL_ALL_TYPES(REGISTER_GATHER_ND_CPU);
 #define REGISTER_GATHER_ND_GPU(type) REGISTER_GATHER_ND_ALL_INDICES(GPU, type)
 
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_GATHER_ND_GPU);
-TF_CALL_bfloat16(REGISTER_GATHER_ND_GPU);
 TF_CALL_INTEGRAL_TYPES_NO_INT32(REGISTER_GATHER_ND_GPU);
 
 #undef REGISTER_GATHER_ND_GPU
@@ -1010,7 +1006,7 @@ Status DoScatter(OpKernelContext* c, Tensor* params, const Tensor& indices,
                  const Tensor& updates, Index num_indices) {
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
   if (std::is_same<Device, GPUDevice>::value &&
-      tensorflow::OpDeterminismRequired()) {
+      tensorflow::OpDeterminismRequired() && !DisableScatterOpDeterminism()) {
     return DoScatterOnCpu<T, Index, op>(c, params, indices, updates,
                                         num_indices);
   }
@@ -1195,13 +1191,10 @@ TF_CALL_variant(REGISTER_SCATTER_UPDATE_CPU);
 #define REGISTER_SCATTER_UPDATE_GPU(type) REGISTER_SCATTER_UPDATE(type, GPU);
 
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_SCATTER_ARITHMETIC_GPU);
-TF_CALL_bfloat16(REGISTER_SCATTER_ARITHMETIC_GPU);
 TF_CALL_INTEGRAL_TYPES_NO_INT32(REGISTER_SCATTER_ARITHMETIC_GPU);
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_SCATTER_MINMAX_GPU);
-TF_CALL_bfloat16(REGISTER_SCATTER_MINMAX_GPU);
 TF_CALL_INTEGRAL_TYPES_NO_INT32(REGISTER_SCATTER_MINMAX_GPU);
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_SCATTER_UPDATE_GPU);
-TF_CALL_bfloat16(REGISTER_SCATTER_UPDATE_GPU);
 TF_CALL_INTEGRAL_TYPES_NO_INT32(REGISTER_SCATTER_UPDATE_GPU);
 
 REGISTER_KERNEL_BUILDER(Name("ResourceScatterUpdate")

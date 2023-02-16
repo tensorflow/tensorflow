@@ -28,7 +28,19 @@ namespace xla {
 namespace ifrt {
 namespace {
 
-TEST(OpaqueShardingTest, Explode) {
+using ::testing::ElementsAre;
+
+TEST(SingleDeviceShardingTest, IndexDomains) {
+  std::shared_ptr<const Sharding> sharding =
+      SingleDeviceSharding::Create(reinterpret_cast<Device*>(1));
+
+  Shape shape({10, 20});
+  auto index_domains = sharding->IndexDomains(shape);
+  TF_ASSERT_OK(index_domains.status());
+  EXPECT_THAT(*index_domains, ElementsAre(IndexDomain(shape)));
+}
+
+TEST(OpaqueShardingTest, Disassemble) {
   DeviceList::Devices devices;
   devices.reserve(2);
   devices.push_back(reinterpret_cast<Device*>(1));
@@ -39,13 +51,13 @@ TEST(OpaqueShardingTest, Explode) {
   shapes.reserve(2);
   shapes.push_back(Shape({10}));
   shapes.push_back(Shape({20}));
-  OpaqueSharding::ExplodeFunc explode_func =
-      OpaqueSharding::MakeExplodeFuncFromShapes(shapes);
+  OpaqueSharding::DisassembleFunc disassemble_func =
+      OpaqueSharding::MakeDisassembleFuncFromShapes(shapes);
 
   std::shared_ptr<const Sharding> sharding =
-      OpaqueSharding::Create(device_list, std::move(explode_func));
+      OpaqueSharding::Create(device_list, std::move(disassemble_func));
 
-  auto exploded = sharding->Explode(Shape({30}));
+  auto exploded = sharding->Disassemble(Shape({30}));
   TF_ASSERT_OK(exploded.status());
 
   ASSERT_THAT(*exploded, testing::SizeIs(2));

@@ -17,7 +17,7 @@
 import os.path
 
 from tensorflow.examples.speech_commands import freeze
-from tensorflow.python.framework import graph_util
+from tensorflow.python.framework import convert_to_constants
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops.variables import global_variables_initializer
 from tensorflow.python.platform import test
@@ -119,7 +119,7 @@ class FreezeTest(test.TestCase):
           model_architecture='conv',
           preprocess='micro')
       global_variables_initializer().run()
-      graph_util.convert_variables_to_constants(
+      convert_to_constants.convert_variables_to_constants(
           sess, sess.graph_def, ['labels_softmax'])
       freeze.save_saved_model(saved_model_path, sess, input_tensor,
                               output_tensor)

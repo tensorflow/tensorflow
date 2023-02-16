@@ -19,10 +19,9 @@ limitations under the License.
 
 #include <stdio.h>
 
-#include "tensorflow/core/kernels/softsign_op.h"
-
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor_types.h"
+#include "tensorflow/core/kernels/softsign_op.h"
 
 namespace tensorflow {
 

@@ -78,12 +78,14 @@ ENTRY %convolution (operand f64[2,2,2,3]{3,2,1,0}) -> (f64[2,2,4,4]{3,2,1,0}, u8
                     .value();
   ASSERT_TRUE(GpuConvPaddingLegalization().Run(module.get()).value());
   auto root = module->entry_computation()->root_instruction();
-  EXPECT_THAT(root,
-              op::Tuple(op::Slice(op::GetTupleElement(
-                            op::CustomCall(kCudnnConvBackwardInputCallTarget, _,
-                                           op::Reverse(op::Constant())),
-                            0)),
-                        op::GetTupleElement()));
+  EXPECT_THAT(
+      root,
+      op::Tuple(
+          op::Slice(op::GetTupleElement(
+              op::CustomCall(std::string(kCudnnConvBackwardInputCallTarget), _,
+                             op::Reverse(op::Constant())),
+              0)),
+          op::GetTupleElement()));
   auto slice = root->operand(0);
   Shape expected_slice_shape = ShapeUtil::MakeShape(F64, {2, 2, 4, 4});
   EXPECT_TRUE(ShapeUtil::Equal(slice->shape(), expected_slice_shape));

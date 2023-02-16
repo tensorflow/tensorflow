@@ -201,9 +201,8 @@ limitations under the License.
 #define TF_CALL_POD_STRING_TYPES(m) TF_CALL_POD_TYPES(m) TF_CALL_tstring(m)
 
 // Call "m" on all number types supported on GPU.
-// TODO(b/254095396): Add bfloat16 here
 #define TF_CALL_GPU_NUMBER_TYPES(m) \
-  TF_CALL_half(m) TF_CALL_float(m) TF_CALL_double(m)
+  TF_CALL_half(m) TF_CALL_bfloat16(m) TF_CALL_float(m) TF_CALL_double(m)
 
 // Call "m" on all types supported on GPU.
 #define TF_CALL_GPU_ALL_TYPES(m) \

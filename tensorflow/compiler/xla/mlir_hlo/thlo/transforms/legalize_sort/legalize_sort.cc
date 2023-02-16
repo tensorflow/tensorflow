@@ -15,6 +15,7 @@ limitations under the License.
 
 #include <iterator>
 #include <memory>
+#include <optional>
 #include <utility>
 
 #include "mlir/Dialect/Arith/IR/Arith.h"
@@ -22,6 +23,7 @@ limitations under the License.
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
+#include "mlir/IR/ImplicitLocOpBuilder.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/DialectConversion.h"
 #include "thlo/IR/thlo_ops.h"
@@ -50,7 +52,7 @@ Value emitComparison(ImplicitLocOpBuilder& b, SmallVector<Value>& lhs,
   assert(block.getTerminator()->getOperands().size() == 1 &&
          "Comparator must return a single value");
 
-  BlockAndValueMapping mapping;
+  IRMapping mapping;
   for (auto [idx, arg] : llvm::enumerate(comparator.getArguments())) {
     Value value = idx % 2 == 0 ? lhs[idx / 2] : rhs[idx / 2];
     mapping.map(arg, value);
@@ -281,7 +283,7 @@ Value emitBottomUpMergeSort(ImplicitLocOpBuilder& b, Value lo, Value hi,
       b.create<scf::YieldOp>(ValueRange{});
     };
     b.create<scf::ForOp>(/*lowerBound=*/zero, /*upperBound=*/size,
-                         /*step=*/insertionSortSize, /*iterArgs=*/llvm::None,
+                         /*step=*/insertionSortSize, /*iterArgs=*/std::nullopt,
                          forBody);
   }
 
@@ -370,11 +372,11 @@ struct Slicer {
         strides(inductionVariables.size() + 1, b.getI64IntegerAttr(1)) {
     sizes[sortDim] = sortDimSize;
     for (size_t i = 0; i < inductionVariables.size() + 1; ++i) {
-      if (i == sortDim) {
+      if ((int64_t)i == sortDim) {
         offsets.push_back(b.getI64IntegerAttr(0));
       } else {
         offsets.push_back(
-            inductionVariables[i - static_cast<int>(i > sortDim)]);
+            inductionVariables[i - static_cast<int>((int64_t)i > sortDim)]);
       }
     }
   }

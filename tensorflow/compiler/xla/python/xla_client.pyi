@@ -55,6 +55,8 @@ _version: int
 mlir_api_version: int
 
 bfloat16: numpy.dtype
+float8_e4m3fn: numpy.dtype
+float8_e5m2: numpy.dtype
 XLA_ELEMENT_TYPE_TO_DTYPE: Dict[PrimitiveType, numpy.dtype]
 
 
@@ -98,9 +100,14 @@ def make_tpu_client() -> Client:
   ...
 
 
-def make_plugin_device_client() -> Client:
+def make_c_api_client(plugin_name: str) -> Client:
   ...
 
+def load_pjrt_plugin_dynamically(plugin_name: str, library_path: str) -> None:
+  ...
+
+def make_plugin_device_client() -> Client:
+  ...
 
 class OpMetadata:
 

@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <string>
 
+#include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
@@ -290,54 +291,261 @@ StatusOr<mlir::Operation*> HandleConv(ConvOp conv_op) {
 template <typename ConvBackpropInputOp>
 StatusOr<mlir::Operation*> HandleConvBackpropInput(
     const Layout& output_layout, ConvBackpropInputOp conv_op) {
+  TF_ASSIGN_OR_RETURN(std::vector<Layout> input_layouts,
+                      ExtractRequiredLayoutFromOperands(conv_op));
+
+  const Layout& input_shape_layout = input_layouts[0];
+  const Layout& filter_layout = input_layouts[1];
+  const Layout& grad_layout = input_layouts[2];
+
+  // We only support batch sharding for these. In this case the output and input
+  // gradient must both be batch sharded. The filter input must be replicated.
+  if (!output_layout.IsBatchParallel() || !grad_layout.IsBatchParallel()) {
+    return errors::InvalidArgument("{0} only supports batch parallel layouts.",
+                                   conv_op->getName().getStringRef().str());
+  }
+  if (!filter_layout.IsFullyReplicated()) {
+    return errors::InvalidArgument("{0} only supports replicated filters.",
+                                   conv_op->getName().getStringRef().str());
+  }
+  if (!input_shape_layout.IsFullyReplicated()) {
+    return errors::InvalidArgument(
+        "Layout of the input shape (parameter 0) of {0} must be replicated.",
+        conv_op->getName().getStringRef().str());
+  }
+
   llvm::SmallVector<int64_t, 4> global_shape;
   Status extract_status =
       ExtractConstVectorFromValue(conv_op.getInputSizes(), &global_shape);
 
-  // Recover local shape in SPMD expansion.
-  if (extract_status.ok()) {
-    auto local_shape = output_layout.LocalShapeFromGlobalShape(global_shape);
-    mlir::OpBuilder builder(conv_op->getBlock(), conv_op->getBlock()->begin());
-    auto new_const = IntConst(
-        builder, conv_op->getLoc(),
-        llvm::SmallVector<int32_t, 4>(local_shape.begin(), local_shape.end()));
-    conv_op.getInputSizesMutable().assign(new_const);
+  // If the input is dynamic size, we expect the output is all so dynamic size
+  // since they should roughly be the same shape. Don't support this for right
+  // now. The easy way to support this is to all gather the gradient input and
+  // compute this as a large local convolution and then slice to the output
+  // layout.
+  if (!extract_status.ok()) {
+    return errors::InvalidArgument("{0} requires static shape for input size.",
+                                   conv_op->getName().getStringRef().str());
   }
 
-  return InferSPMDExpandedLocalShape(conv_op);
+  // Compute the 'true' input/output layout of the operation. E.g. batch sharded
+  // vs non-batch sharded. If at least one of the the input gradient or output
+  // gradient is batch sharded, use that dimension.
+  string batch_sharding_dimension = grad_layout.sharding_spec(0);
+  if (batch_sharding_dimension == Layout::kUnshardedDim) {
+    batch_sharding_dimension = output_layout.sharding_spec(0);
+  } else if ((output_layout.sharding_spec(0) != Layout::kUnshardedDim) &&
+             (batch_sharding_dimension != output_layout.sharding_spec(0))) {
+    return errors::InvalidArgument(
+        "Input and output layout to {2} have incompatible sharding dimensions: "
+        "\"{0}\" and \"{1}\".",
+        grad_layout.sharding_spec(0), output_layout.sharding_spec(0),
+        conv_op->getName().getStringRef().str());
+  }
+
+  const Layout desired_input_gradient_layout =
+      Layout::BatchShardedLike(grad_layout, batch_sharding_dimension);
+  const Layout desired_output_gradient_layout =
+      Layout::BatchShardedLike(output_layout, batch_sharding_dimension);
+
+  const Layout desired_input_layout = Layout::BatchShardedOnMesh(
+      grad_layout.mesh(), global_shape.size(), batch_sharding_dimension);
+  const std::vector<int64_t> local_shape =
+      desired_input_layout.LocalShapeFromGlobalShape(global_shape);
+
+  mlir::OpBuilder builder(conv_op.getOperation());
+  mlir::Value new_const = IntConst(
+      builder, conv_op->getLoc(),
+      llvm::SmallVector<int32_t, 4>(local_shape.begin(), local_shape.end()));
+  conv_op.getInputSizesMutable().assign(new_const);
+
+  TF_ASSIGN_OR_RETURN(mlir::Value local_input_gradient,
+                      EmitRelayout(conv_op.getOutBackprop(), grad_layout,
+                                   desired_input_gradient_layout));
+  conv_op.getOutBackpropMutable().assign(local_input_gradient);
+
+  InferSPMDExpandedLocalShape(conv_op);
+
+  llvm::SmallPtrSet<mlir::Operation*, 4> newly_created_ops;
+  TF_ASSIGN_OR_RETURN(
+      mlir::Value local_output_gradient,
+      EmitRelayout(conv_op.getOutput(), desired_output_gradient_layout,
+                   output_layout, &newly_created_ops));
+  conv_op.getOutput().replaceAllUsesExcept(local_output_gradient,
+                                           newly_created_ops);
+  return local_output_gradient.getDefiningOp();
+}
+
+// This expands backprop ops which take tensor inputs into those which take
+// sizes. We first convert the (currently local) input shape to global and use
+// the const rather than input. The shape will be converted back to local in
+// HandleConvBackpropInput, but this is the correct behavior as
+// HandleConvBackpropInput will decided how it wants to expand the op.
+template <typename To, typename From>
+StatusOr<mlir::Operation*> HandleConvBackpropInputTensor(
+    const Layout& output_layout, From conv_op) {
+  TF_ASSIGN_OR_RETURN(llvm::SmallVector<int64_t> local_shape,
+                      GetTFShapeFromType(conv_op.getInput().getType()));
+
+  TF_ASSIGN_OR_RETURN(const Layout input_layout,
+                      ExtractRequiredLayoutFromOperand(conv_op.getInput()));
+
+  const std::vector<int64_t> global_shape =
+      input_layout.GlobalShapeFromLocalShape(local_shape);
+
+  mlir::OpBuilder builder(conv_op);
+  mlir::Value global_input_shape = IntConst(
+      builder, conv_op->getLoc(),
+      llvm::SmallVector<int32_t, 4>(global_shape.begin(), global_shape.end()));
+
+  // Insert a replicated layout along this edge, so that we can call
+  // HandleConvBackpropInput which expects there to be a layout here.
+  mlir::TF::ShapeAttr global_input_shape_shape = mlir::TF::ShapeAttr::get(
+      builder.getContext(),
+      global_input_shape.getType().cast<mlir::TensorType>());
+  mlir::TF::DTensorLayout global_input_shape_with_layout =
+      builder.create<mlir::TF::DTensorLayout>(
+          conv_op->getLoc(), global_input_shape,
+          mlir::dtensor::LayoutAttr::get(
+              builder.getContext(),
+              Layout::ReplicatedOnMesh(input_layout.mesh(), 1)),
+          global_input_shape_shape);
+
+  To new_conv = builder.create<To>(
+      conv_op->getLoc(), conv_op->getResultTypes(),
+      mlir::ValueRange({global_input_shape_with_layout, conv_op.getFilter(),
+                        conv_op.getOutBackprop()}),
+      conv_op->getAttrs());
+
+  conv_op.getOutput().replaceAllUsesWith(new_conv.getOutput());
+  conv_op.erase();
+
+  return HandleConvBackpropInput(output_layout, new_conv);
 }
 
 template <typename ConvBackpropFilterOp>
 StatusOr<mlir::Operation*> HandleConvBackpropFilter(
     const Layout& output_layout, ConvBackpropFilterOp conv_op) {
-  TF_ASSIGN_OR_RETURN(Layout input_layout,
-                      ExtractRequiredLayoutFromOperand(conv_op.getInput()));
+  TF_ASSIGN_OR_RETURN(std::vector<Layout> input_layouts,
+                      ExtractRequiredLayoutFromOperands(conv_op));
 
-  TF_ASSIGN_OR_RETURN(
-      Layout out_backprop_layout,
-      ExtractRequiredLayoutFromOperand((conv_op.getOutBackprop())));
-  // Perform a split on batch dimension so that the each local device performs
-  // local operation.
-  // TODO(hthu): Make this work on input with rank higher than 4.
-  if (input_layout.IsBatchParallel()) {
-    mlir::OpBuilder builder(conv_op);
-    if (out_backprop_layout.IsFullyReplicated()) {
-      TF_ASSIGN_OR_RETURN(const mlir::Value batch_sharded,
-                          EmitAllScatter(builder, conv_op.getOutBackprop(),
-                                         out_backprop_layout, input_layout));
-      conv_op.getOutBackpropMutable().assign(batch_sharded);
-    }
+  const Layout& input_layout = input_layouts[0];
+  const Layout& filter_shape_layout = input_layouts[1];
+  const Layout& grad_layout = input_layouts[2];
 
-    // Perform all reduce over batch dim.
+  // We only support batch sharding for these. In this case the input
+  // activations and input gradient should both be batch sharded and
+  // the output (the filter gradient) should be replicated.
+  if (!input_layout.IsBatchParallel() || !grad_layout.IsBatchParallel()) {
+    return errors::InvalidArgument("{0} only supports batch parallel layouts.",
+                                   conv_op->getName().getStringRef().str());
+  }
+  if (!output_layout.IsFullyReplicated()) {
+    return errors::InvalidArgument("{0} only supports replicated filters.",
+                                   conv_op->getName().getStringRef().str());
+  }
+  if (!filter_shape_layout.IsFullyReplicated()) {
+    return errors::InvalidArgument(
+        "Filter shape input (parameter 1) for {0} must have replicated layout.",
+        conv_op->getName().getStringRef().str());
+  }
+
+  // Compute the 'true' input layouts of the operation. E.g. batch sharded
+  // vs non-batch sharded. Basically we get the batch sharding dimension from
+  // one of the inputs and check that the other is potentially sharded on the
+  // same dimension.
+  // TODO(b/262417847): if batch_sharding_dimension is Layout::kUnsharded, then
+  // we should consider sharding the input here. It may be faster to spread
+  // the convolution out and then all reduce after vs running it all locally.
+  string batch_sharding_dimension = input_layout.sharding_spec(0);
+  if (batch_sharding_dimension == Layout::kUnshardedDim) {
+    batch_sharding_dimension = grad_layout.sharding_spec(0);
+  } else if ((grad_layout.sharding_spec(0) != Layout::kUnshardedDim) &&
+             (batch_sharding_dimension != grad_layout.sharding_spec(0))) {
+    return errors::InvalidArgument(
+        "Input and gradient layouts for {2} have incompatible batch sharding "
+        "dimensions: \"{0}\" and \"{1}\".",
+        input_layouts[0].sharding_spec(0), input_layouts[0].sharding_spec(0),
+        conv_op->getName().getStringRef().str());
+  }
+
+  const Layout desired_input_activation_layout =
+      Layout::BatchShardedLike(input_layout, batch_sharding_dimension);
+  const Layout desired_input_gradient_layout =
+      Layout::BatchShardedLike(grad_layout, batch_sharding_dimension);
+
+  TF_ASSIGN_OR_RETURN(mlir::Value local_input_activation,
+                      EmitRelayout(conv_op.getInput(), input_layout,
+                                   desired_input_activation_layout));
+  conv_op.getInputMutable().assign(local_input_activation);
+
+  TF_ASSIGN_OR_RETURN(mlir::Value local_input_gradient,
+                      EmitRelayout(conv_op.getOutBackprop(), grad_layout,
+                                   desired_input_gradient_layout));
+  conv_op.getOutBackpropMutable().assign(local_input_gradient);
+
+  InferSPMDExpandedLocalShape(conv_op);
+
+  // Output shall be replicated. If we were batch sharded, we need to
+  // all-reduce the partial results.
+
+  if (batch_sharding_dimension != Layout::kUnshardedDim) {
+    mlir::OpBuilder builder(conv_op.getOperation());
     builder.setInsertionPointAfter(conv_op);
     return DT_CTX(EmitAllReduce(builder, output_layout,
-                                {input_layout.sharding_spec(0)}, conv_op,
+                                {batch_sharding_dimension}, conv_op,
                                 kReduceOpAdd));
-  } else {
-    return errors::InvalidArgument(
-        "Convolution backprop for spatially partitioned input not supported.");
   }
-  return InferSPMDExpandedLocalShape(conv_op);
+
+  return conv_op.getOperation();
+}
+
+// This expands backprop ops which take tensor inputs into those which take
+// sizes. We check that the filter input shape is global and then make that a
+// const, and replace the op with the version taking shapes.
+template <typename To, typename From>
+StatusOr<mlir::Operation*> HandleConvBackpropFilterTensor(
+    const Layout& output_layout, From conv_op) {
+  TF_ASSIGN_OR_RETURN(const Layout filter_layout,
+                      ExtractRequiredLayoutFromOperand(conv_op.getFilter()));
+
+  if (!filter_layout.IsFullyReplicated()) {
+    return errors::InvalidArgument(
+        "Convolution backpropation ops only support replicated filters.");
+  }
+
+  TF_ASSIGN_OR_RETURN(llvm::SmallVector<int64_t> global_filter_shape,
+                      GetTFShapeFromType(conv_op.getFilter().getType()));
+
+  mlir::OpBuilder builder(conv_op);
+  mlir::Value global_filter_shape_const =
+      IntConst(builder, conv_op->getLoc(),
+               llvm::SmallVector<int32_t, 4>(global_filter_shape.begin(),
+                                             global_filter_shape.end()));
+
+  // Insert a replicated layout along this edge, so that we can call
+  // HandleConvBackpropInput which expects there to be a layout here.
+  mlir::TF::ShapeAttr global_filter_shape_shape = mlir::TF::ShapeAttr::get(
+      builder.getContext(),
+      global_filter_shape_const.getType().cast<mlir::TensorType>());
+  mlir::TF::DTensorLayout global_filter_shape_with_layout =
+      builder.create<mlir::TF::DTensorLayout>(
+          conv_op->getLoc(), global_filter_shape_const,
+          mlir::dtensor::LayoutAttr::get(
+              builder.getContext(),
+              Layout::ReplicatedOnMesh(filter_layout.mesh(), 1)),
+          global_filter_shape_shape);
+
+  To new_conv = builder.create<To>(
+      conv_op->getLoc(), conv_op->getResultTypes(),
+      mlir::ValueRange({conv_op.getInput(), global_filter_shape_with_layout,
+                        conv_op.getOutBackprop()}),
+      conv_op->getAttrs());
+
+  conv_op.getOutput().replaceAllUsesWith(new_conv.getOutput());
+  conv_op.erase();
+
+  return HandleConvBackpropFilter(output_layout, new_conv);
 }
 
 StatusOr<mlir::Operation*> HandleMaxPoolGradOp(
@@ -386,6 +594,12 @@ StatusOr<mlir::Operation*> ConvSPMDExpander::ExpandOp(mlir::Operation* op) {
   if (llvm::isa<mlir::TF::Conv2DBackpropInputOp>(op))
     return HandleConvBackpropInput<>(
         *output_layout, llvm::cast<mlir::TF::Conv2DBackpropInputOp>(op));
+  if (auto conv_op = llvm::dyn_cast<mlir::TF::Conv2DBackpropInputV2Op>(op))
+    return HandleConvBackpropInputTensor<mlir::TF::Conv2DBackpropInputOp>(
+        *output_layout, conv_op);
+  if (auto conv_op = llvm::dyn_cast<mlir::TF::Conv3DBackpropInputOp>(op))
+    return HandleConvBackpropInputTensor<mlir::TF::Conv3DBackpropInputV2Op>(
+        *output_layout, conv_op);
   if (llvm::isa<mlir::TF::Conv3DBackpropInputV2Op>(op))
     return HandleConvBackpropInput<>(
         *output_layout, llvm::cast<mlir::TF::Conv3DBackpropInputV2Op>(op));
@@ -394,6 +608,12 @@ StatusOr<mlir::Operation*> ConvSPMDExpander::ExpandOp(mlir::Operation* op) {
   if (llvm::isa<mlir::TF::Conv2DBackpropFilterOp>(op))
     return HandleConvBackpropFilter<>(
         *output_layout, llvm::cast<mlir::TF::Conv2DBackpropFilterOp>(op));
+  if (auto conv_op = llvm::dyn_cast<mlir::TF::Conv2DBackpropFilterV2Op>(op))
+    return HandleConvBackpropFilterTensor<mlir::TF::Conv2DBackpropFilterOp>(
+        *output_layout, conv_op);
+  if (auto conv_op = llvm::dyn_cast<mlir::TF::Conv3DBackpropFilterOp>(op))
+    return HandleConvBackpropFilterTensor<mlir::TF::Conv3DBackpropFilterV2Op>(
+        *output_layout, conv_op);
   if (llvm::isa<mlir::TF::Conv3DBackpropFilterV2Op>(op))
     return HandleConvBackpropFilter<>(
         *output_layout, llvm::cast<mlir::TF::Conv3DBackpropFilterV2Op>(op));
@@ -439,27 +659,36 @@ StatusOr<llvm::DenseMap<int, Layout>> ConvSPMDExpander::ComputeLayoutForward(
       }
     }
   } else if (llvm::isa<mlir::TF::Conv2DBackpropInputOp,
-                       mlir::TF::Conv3DBackpropInputV2Op,
-                       mlir::TF::Conv2DBackpropFilterOp,
-                       mlir::TF::Conv3DBackpropFilterV2Op>(op)) {
-    // Conv BackProp ops should usually take layout from gradient for both
-    // inputs and filters.
-
-    // 'grad' layout
-    if (input_layouts.find(2) != input_layouts.end()) {
-      if (llvm::isa<mlir::TF::Conv2DBackpropInputOp,
-                    mlir::TF::Conv3DBackpropInputV2Op>(op)) {
-        // BackProp ops try to respect layout from gradients for inputs.
+                       mlir::TF::Conv2DBackpropInputV2Op,
+                       mlir::TF::Conv3DBackpropInputOp,
+                       mlir::TF::Conv3DBackpropInputV2Op>(op)) {
+    if (llvm::isa<mlir::TF::Conv2DBackpropInputOp,
+                  mlir::TF::Conv3DBackpropInputV2Op>(op)) {
+      if (input_layouts.find(2) != input_layouts.end()) {
+        // The propagate the gradient layout to the new gradient, e.g. respect
+        // the spatial partitioning of the input gradient.
         output_layouts[0] = input_layouts.lookup(2);
       }
-
-      // For filters, we currently only try to request a replicated output
-      // layout.
-      if (llvm::isa<mlir::TF::Conv2DBackpropFilterOp,
-                    mlir::TF::Conv3DBackpropFilterV2Op>(op)) {
-        output_layouts[0] =
-            Layout::ReplicatedOnMesh(mesh, ValueRank(op->getOpResult(0)));
+    } else {
+      if (input_layouts.find(0) != input_layouts.end()) {
+        // The propagate the gradient layout to the new gradient, e.g. respect
+        // the spatial partitioning of the input.
+        output_layouts[0] = input_layouts.lookup(0);
       }
+    }
+  } else if (llvm::isa<mlir::TF::Conv2DBackpropFilterOp,
+                       mlir::TF::Conv2DBackpropFilterV2Op,
+                       mlir::TF::Conv3DBackpropFilterOp,
+                       mlir::TF::Conv3DBackpropFilterV2Op>(op)) {
+    if (llvm::isa<mlir::TF::Conv2DBackpropFilterOp,
+                  mlir::TF::Conv3DBackpropFilterV2Op>(op)) {
+      // For the ops which take filter shape as input, just return a replicated
+      // output shape.
+      output_layouts[0] =
+          Layout::ReplicatedOnMesh(mesh, ValueRank(op->getOpResult(0)));
+    } else if (input_layouts.find(1) != input_layouts.end()) {
+      // For the ops taking a real filter, just copy the filter layout.
+      output_layouts[0] = input_layouts.lookup(1);
     }
   } else {
     return errors::InvalidArgument(
@@ -498,18 +727,55 @@ StatusOr<llvm::DenseMap<int, Layout>> ConvSPMDExpander::ComputeLayoutBackward(
       }
     }
   } else if (llvm::isa<mlir::TF::Conv2DBackpropInputOp,
-                       mlir::TF::Conv3DBackpropInputV2Op,
-                       mlir::TF::Conv2DBackpropFilterOp,
-                       mlir::TF::Conv3DBackpropFilterV2Op>(op)) {
-    // If suggested output layout exists, try to request grad to have output
-    // layout.
-    if (output_layouts.find(0) != output_layouts.end()) {
-      input_layouts[2] = output_layouts.lookup(0);
-      // Request inputs and filter_sizes to be replicated.
+                       mlir::TF::Conv2DBackpropInputV2Op,
+                       mlir::TF::Conv3DBackpropInputOp,
+                       mlir::TF::Conv3DBackpropInputV2Op>(op)) {
+    // Generally mark the filter as replicated.
+    input_layouts[1] =
+        Layout::ReplicatedOnMesh(mesh, ValueRank(op->getOperand(1)));
+    if (llvm::isa<mlir::TF::Conv2DBackpropInputOp,
+                  mlir::TF::Conv3DBackpropInputV2Op>(op)) {
+      // This input is a shape.
       input_layouts[0] =
           Layout::ReplicatedOnMesh(mesh, ValueRank(op->getOperand(0)));
+    }
+
+    if (output_layouts.find(0) != output_layouts.end()) {
+      Layout output_layout = output_layouts.lookup(0);
+      // Ask for the grad to have the same layout as the output. The reasoning
+      // here is that the if the output is spatially partitioned, we expect
+      // that the grad is spatially partitioned as well.
+      input_layouts[2] = output_layout;
+      if (llvm::isa<mlir::TF::Conv2DBackpropInputV2Op,
+                    mlir::TF::Conv3DBackpropInputOp>(op)) {
+        input_layouts[0] = output_layout;
+      }
+    }
+  } else if (llvm::isa<mlir::TF::Conv2DBackpropFilterOp,
+                       mlir::TF::Conv2DBackpropFilterV2Op,
+                       mlir::TF::Conv3DBackpropFilterOp,
+                       mlir::TF::Conv3DBackpropFilterV2Op>(op)) {
+    // Note for Filter op, we generally expect that the output layout would
+    // match the variable layout for the filter which is generally replicated.
+    // The gradient layout most likely needs to agree with the input layout,
+    // e.g. both spatially partitioned or not. This is somewhat similar to
+    // MatMul, for now just set both to replicated.
+
+    input_layouts[0] =
+        Layout::ReplicatedOnMesh(mesh, ValueRank(op->getOperand(0)));
+    input_layouts[2] =
+        Layout::ReplicatedOnMesh(mesh, ValueRank(op->getOperand(2)));
+
+    if (llvm::isa<mlir::TF::Conv2DBackpropFilterOp,
+                  mlir::TF::Conv3DBackpropFilterV2Op>(op)) {
+      // For ops taking filter shape as input, just use a replicated input
+      // layout.
       input_layouts[1] =
           Layout::ReplicatedOnMesh(mesh, ValueRank(op->getOperand(1)));
+    } else if (output_layouts.find(0) != output_layouts.end()) {
+      // For ops taking filer directly as input copy the output layout to the
+      // filter layout.
+      input_layouts[1] = output_layouts.lookup(0);
     }
   } else {
     return errors::InvalidArgument(

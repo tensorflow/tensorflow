@@ -138,6 +138,21 @@ pytype_strict_library(
 )
 
 pytype_strict_library(
+    name = "numpy_util",
+    srcs = ["numpy_util.py"],
+    deps = [
+        ":api",
+        ":layout",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:sparse_ops",
+        "//tensorflow/python:stateless_random_ops",
+        "//tensorflow/python/eager/polymorphic_function",
+        "//tensorflow/python/types",
+        "//third_party/py/numpy",
+    ],
+)
+
+pytype_strict_library(
     name = "save_restore",
     srcs = ["save_restore.py"],
     srcs_version = "PY3",
@@ -171,11 +186,13 @@ pytype_strict_library(
         "//tensorflow/python:_pywrap_dtensor_device",
         "//tensorflow/python:device",
         "//tensorflow/python:resource_variable_ops",
+        "//tensorflow/python:variables",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:core",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:sparse_tensor",
+        "//tensorflow/python/framework:tensor_util",
         "//third_party/py/numpy",
     ],
 )

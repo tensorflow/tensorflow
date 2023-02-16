@@ -44,6 +44,7 @@ tf_python_pybind_extension(
     ],
     deps = [
         "//third_party/eigen3",
+        "@pybind11_protobuf//pybind11_protobuf:native_proto_caster",
         "//tensorflow/python/lib/core:pybind11_lib",
         "//tensorflow/python/lib/core:pybind11_status",
         "//tensorflow/python/lib/core:safe_pyobject_ptr",
@@ -196,9 +197,15 @@ cc_library(
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core/protobuf:master_proto_cc",
         "//tensorflow/core/protobuf:replay_log_proto_cc",
-    ],
+    ] + if_static(
+        extra_deps = [
+            "//tensorflow/core/protobuf:master_proto_cc",
+        ],
+        otherwise = [
+            "//tensorflow/core/protobuf:master_proto_cc_headers_only",
+        ],
+    ),
 )
 
 tf_cuda_library(

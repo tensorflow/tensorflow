@@ -21,6 +21,8 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/algorithm/container.h"
+#include "absl/types/span.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/service/call_graph.h"
 #include "tensorflow/compiler/xla/service/custom_call_sharding_helper.h"
@@ -39,7 +41,8 @@ StatusOr<bool> ProcessShardingInstruction(
     const absl::flat_hash_set<absl::string_view>& execution_threads,
     bool replace_sharding_with_copy,
     absl::flat_hash_map<const HloInstruction*, std::vector<int64_t>>*
-        unspecified_dims);
+        unspecified_dims,
+    std::vector<HloSharding>* saved_root_shardings);
 
 int64_t ComputeNonRootUsers(const HloInstruction* instr);
 
@@ -60,13 +63,18 @@ class ShardingPropagation : public HloModulePass {
       absl::flat_hash_map<const HloComputation*, HloInstruction*>;
   explicit ShardingPropagation(
       bool is_spmd = false, bool propagate_metadata = false,
-      bool allow_spmd_sharding_propagation_to_output = false,
+      absl::Span<const bool> allow_spmd_sharding_propagation_to_output =
+          {false},
       bool cse_prevention_only = false,
       std::unique_ptr<CustomCallShardingHelper> sharding_helper = nullptr)
       : is_spmd_(is_spmd),
         propagate_metadata_(propagate_metadata),
         allow_spmd_sharding_propagation_to_output_(
-            allow_spmd_sharding_propagation_to_output),
+            absl::c_any_of(allow_spmd_sharding_propagation_to_output,
+                           [](bool v) { return v; })),
+        allow_spmd_sharding_propagation_to_output_vector_(
+            allow_spmd_sharding_propagation_to_output.begin(),
+            allow_spmd_sharding_propagation_to_output.end()),
         cse_prevention_only_(cse_prevention_only) {
     if (sharding_helper) {
       sharding_helper_ = std::move(sharding_helper);
@@ -109,6 +117,7 @@ class ShardingPropagation : public HloModulePass {
   bool is_spmd_;
   bool propagate_metadata_;
   bool allow_spmd_sharding_propagation_to_output_;
+  std::vector<bool> allow_spmd_sharding_propagation_to_output_vector_;
   // If true, the pass keeps the propagation results only on selected
   // instructions to prevent CSE across unrelated subgraphs. (A common case is
   // scalar broadcasts).

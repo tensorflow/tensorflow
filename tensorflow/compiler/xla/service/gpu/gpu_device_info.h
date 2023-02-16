@@ -39,6 +39,7 @@ struct GpuDeviceInfo {
   int64_t memory_bandwidth;
   int64_t l2_cache_size;
   float clock_rate_ghz;
+  int64_t device_memory_size;
 
   stream_executor::GpuDeviceInfoProto ToProto() const {
     stream_executor::GpuDeviceInfoProto proto;
@@ -55,6 +56,7 @@ struct GpuDeviceInfo {
     proto.set_memory_bandwidth(memory_bandwidth);
     proto.set_l2_cache_size(l2_cache_size);
     proto.set_clock_rate_ghz(clock_rate_ghz);
+    proto.set_device_memory_size(device_memory_size);
     return proto;
   }
 
@@ -73,10 +75,13 @@ struct GpuDeviceInfo {
     memory_bandwidth = proto.memory_bandwidth();
     l2_cache_size = proto.l2_cache_size();
     clock_rate_ghz = proto.clock_rate_ghz();
+    device_memory_size = proto.device_memory_size();
   }
 };
 
-GpuDeviceInfo GetGpuDeviceInfo(stream_executor::StreamExecutor* stream_exec);
+GpuDeviceInfo GetGpuDeviceInfo(
+    const stream_executor::StreamExecutor* stream_exec);
+GpuDeviceInfo GetGpuDeviceInfo(const stream_executor::Platform* platform);
 
 }  // namespace gpu
 }  // namespace xla

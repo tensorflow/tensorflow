@@ -19,12 +19,12 @@ limitations under the License.
 #include <cstdint>
 #include <initializer_list>
 #include <iterator>
+#include <optional>
 #include <queue>
 #include <stack>
 
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/Hashing.h"
-#include "llvm/ADT/None.h"
 #include "llvm/ADT/PointerUnion.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
@@ -865,6 +865,14 @@ class ShapeInference {
   // yields.
   bool InferShapeForIfRegion(IfRegionOp op);
 
+  // Infers the shape CaseOp outputs based on the shapes of branch function
+  // result types.
+  bool InferShapeForCase(CaseOp op);
+
+  // Infers the shape CaseRegion outputs based on the shapes of the branch
+  // yields.
+  bool InferShapeForCaseRegion(CaseRegionOp op);
+
   // Infers the shape of _XlaHostComputeMlir based on the host computation
   // module.  Returns true if a return type was changed.
   bool InferShapeForXlaHostComputeMlir(_XlaHostComputeMlirOp op);
@@ -1081,6 +1089,44 @@ bool ShapeInference::InferShapeForIfRegion(IfRegionOp op) {
     if (std::get<1>(result) != std::get<2>(result)) continue;
     changed = RefineResultType(op, std::get<0>(result), std::get<1>(result)) ||
               changed;
+  }
+  return changed;
+}
+
+bool ShapeInference::InferShapeForCase(CaseOp op) {
+  DCOMMENT_OP(op.getOperation(), "Infer shape for case ");
+
+  llvm::SmallVector<TypeRange> branch_result_types;
+  for (int i = 0; i < op.num_branches(); ++i) {
+    branch_result_types.push_back(op.ResolveBranchFunction(&symbol_table_, i)
+                                      .getFunctionType()
+                                      .getResults());
+  }
+
+  bool changed = false;
+  for (const auto& result : op.getResults()) {
+    llvm::DenseSet<Type> types;
+    for (const auto& branch_result_type : branch_result_types) {
+      types.insert(branch_result_type[result.getResultNumber()]);
+    }
+    if (types.size() == 1) {
+      changed = RefineResultType(op, result, *types.begin()) || changed;
+    }
+  }
+  return changed;
+}
+
+bool ShapeInference::InferShapeForCaseRegion(CaseRegionOp op) {
+  bool changed = false;
+  for (const auto& result : op.getResults()) {
+    llvm::DenseSet<Type> types;
+    for (auto& branch : op.getBranches()) {
+      Operation* yield = branch.front().getTerminator();
+      types.insert(yield->getOperandTypes()[result.getResultNumber()]);
+    }
+    if (types.size() == 1) {
+      changed = RefineResultType(op, result, *types.begin()) || changed;
+    }
   }
   return changed;
 }
@@ -1433,7 +1479,7 @@ bool ShapeInference::InferShapeForVarHandleOp(VarHandleOp op) {
 }
 
 // Helper function for creating a Window proto from user-supplied data.
-// Returns llvm::None if the user-supplied data was invalid.
+// Returns std::nullopt if the user-supplied data was invalid.
 llvm::Optional<xla::Window> InferWindowFromDimensions(
     llvm::SmallVector<int64_t> window_dimensions,
     llvm::SmallVector<int64_t> window_strides,
@@ -1458,7 +1504,7 @@ llvm::Optional<xla::Window> InferWindowFromDimensions(
         verify_size(padding.size(), "padding entries") &&
         verify_size(lhs_dilation.size(), "lhs dilation factors") &&
         verify_size(rhs_dilation.size(), "rhs dilation factors")))
-    return llvm::None;
+    return std::nullopt;
 
   xla::Window window;
   for (size_t i = 0; i < window_dimensions.size(); i++) {
@@ -1498,7 +1544,7 @@ llvm::Optional<RankedTensorType> InferWindowOutputShape(
     llvm::errs() << "Window has dimension " << window.dimensions_size()
                  << " but base shape has dimension " << base_shape.getRank()
                  << "\n";
-    return llvm::None;
+    return std::nullopt;
   }
 
   std::vector<int64_t> output_dimensions(window.dimensions_size());
@@ -1508,22 +1554,22 @@ llvm::Optional<RankedTensorType> InferWindowOutputShape(
     if (dim.size() <= 0) {
       llvm::errs() << "Window " << window.DebugString()
                    << " has a non-positive dimension.\n";
-      return llvm::None;
+      return std::nullopt;
     }
     if (dim.stride() <= 0) {
       llvm::errs() << "Window " << window.DebugString()
                    << " has a non-positive stride.\n";
-      return llvm::None;
+      return std::nullopt;
     }
     if (dim.base_dilation() < 1) {
       llvm::errs() << "Window " << window.DebugString()
                    << " has a non-positive base area dilation factor.\n";
-      return llvm::None;
+      return std::nullopt;
     }
     if (dim.window_dilation() < 1) {
       llvm::errs() << "Window " << window.DebugString()
                    << " has a non-positive window dilation factor.\n";
-      return llvm::None;
+      return std::nullopt;
     }
 
     if (base_shape.isDynamicDim(i)) {
@@ -2249,6 +2295,11 @@ bool ShapeInference::InferShapeForSingleOperation(Operation* op,
   if (auto if_region = dyn_cast<IfRegionOp>(op))
     return InferShapeForIfRegion(if_region);
 
+  if (auto case_op = dyn_cast<CaseOp>(op)) return InferShapeForCase(case_op);
+
+  if (auto case_region = dyn_cast<CaseRegionOp>(op))
+    return InferShapeForCaseRegion(case_region);
+
   if (auto while_op = dyn_cast<WhileOp>(op))
     return InferShapeForWhile(
         while_op, while_op.body_function().getFunctionType().getResults());
@@ -2321,7 +2372,7 @@ bool ShapeInference::InferShapeForSingleOperation(Operation* op,
 
   llvm::SmallVector<ShapedTypeComponents, 4> inferred_return_shapes;
   if (failed(InferReturnTypeComponentsForTFOp(
-          /*location=*/None, op, graph_version_, operand_as_constant_fn,
+          /*location=*/std::nullopt, op, graph_version_, operand_as_constant_fn,
           op_result_as_shape_fn, result_element_type_fn,
           inferred_return_shapes)))
     return false;

@@ -80,7 +80,7 @@ const tac::TargetHardware* TacModule::GetTargetHardware(
 }
 
 absl::Status TacModule::RunTacPasses(mlir::ModuleOp* module, bool debug_mode) {
-  mlir::PassManager pm(module->getContext(),
+  mlir::PassManager pm((*module)->getName(),
                        mlir::OpPassManager::Nesting::Implicit);
   AddTACPass(&pm, options_.hardware_backends);
   if (!debug_mode) {

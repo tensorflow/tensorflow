@@ -15,6 +15,7 @@ limitations under the License.
 #include "tensorflow/core/runtime_fallback/kernel/kernel_fallback_execute_compat.h"
 
 #include <cstdint>
+#include <memory>
 #include <optional>
 #include <string>
 
@@ -117,7 +118,8 @@ Status SetUpKernelFallbackCompatRequestContext(
     const tensorflow::ProcessFunctionLibraryRuntime* pflr,
     tensorflow::thread::ThreadPoolInterface* user_intra_op_threadpool,
     const absl::optional<SessionMetadata>& model_metadata,
-    std::function<void(std::function<void()>)>* runner) {
+    std::function<void(std::function<void()>)>* runner,
+    tfrt_stub::CostRecorder* cost_recorder) {
   DCHECK(builder);
   DCHECK(device_manager);
   DCHECK(pflr);
@@ -130,10 +132,13 @@ Status SetUpKernelFallbackCompatRequestContext(
       builder->resource_context()->GetOrCreateResource<FallbackResourceArray>(
           kFallbackResourceArray);
 
-  builder->context_data().emplace<KernelFallbackCompatRequestState>(
-      runner ? runner : GetDefaultRunner(), device_manager, builder->id(),
-      runner_table, resource_array, user_intra_op_threadpool, model_metadata,
-      pflr);
+  auto& fallback_request_state =
+      builder->context_data().emplace<KernelFallbackCompatRequestState>(
+          runner ? runner : GetDefaultRunner(), device_manager, builder->id(),
+          runner_table, resource_array, user_intra_op_threadpool,
+          model_metadata, pflr);
+
+  fallback_request_state.set_cost_recorder(cost_recorder);
 
   return OkStatus();
 }
@@ -545,10 +550,6 @@ TF_ATTRIBUTE_ALWAYS_INLINE static void KernelFallbackExecuteOpInternal(
 
   SetUpParams(kernel_runner, fallback_request_state, device, run_state);
 
-  bool is_cost_measurement_enabled =
-      exec_ctx.request_ctx()->IsCostMeasurementEnabled();
-  auto run_start_time =
-      is_cost_measurement_enabled ? Env::Default()->NowMicros() : 0;
   if (is_async) {
     KernelFallbackExecuteCompatAsyncInternal<
         tensorflow::tfrt_stub::FallbackTensor>(
@@ -558,17 +559,6 @@ TF_ATTRIBUTE_ALWAYS_INLINE static void KernelFallbackExecuteOpInternal(
         tensorflow::tfrt_stub::FallbackTensor>(
         exec_ctx, &fallback_request_state, &run_state, kernel_runner, op_chain,
         results);
-  }
-  if (is_cost_measurement_enabled) {
-    op_chain->AndThen([run_start_time, exec_ctx, frame] {
-      // Adds 1 to make sure it's a positive integer.
-      auto execution_time = Env::Default()->NowMicros() - run_start_time + 1;
-      // Adds op_key as a suffix to distinguish the same operation with
-      // different shape.
-      exec_ctx.host()
-          ->GetOrCreateSharedContext<tensorflow::tfrt_stub::CostRecorder>()
-          .RecordCost(frame.op_key().GetValue(), execution_time);
-    });
   }
 }
 
@@ -590,6 +580,15 @@ TF_ATTRIBUTE_ALWAYS_INLINE static void KernelFallbackExecuteOp(
     return;
   }
 
+  // Start recording the op execution time, given a non-null cost recorder.
+  auto* cost_recorder = fallback_request_state->cost_recorder();
+  uint64_t run_start_time_ns = 0;
+  tfrt::AsyncValueRef<tfrt::Chain> cost_chain;
+  if (cost_recorder != nullptr) {
+    run_start_time_ns = Env::Default()->NowNanos();
+    if (op_chain == nullptr) op_chain = &cost_chain;
+  }
+
   auto* runner_table = fallback_request_state->runner_table();
   DCHECK(runner_table);
 
@@ -604,6 +603,15 @@ TF_ATTRIBUTE_ALWAYS_INLINE static void KernelFallbackExecuteOp(
   KernelFallbackExecuteOpInternal(args, results, op_chain, frame, exec_ctx,
                                   *fallback_request_state, *kernel_runner,
                                   kernel_runner->IsAsync(), device);
+
+  // Finish recording the op execution time, given a non-null cost recorder.
+  if (cost_recorder != nullptr) {
+    op_chain->AndThen(
+        [cost_recorder, run_start_time_ns, op_key = frame.op_key().GetValue()] {
+          cost_recorder->RecordCostNanosecond(
+              op_key, Env::Default()->NowNanos() - run_start_time_ns);
+        });
+  }
 }
 
 // The BEF kernel for creating tensorflow::OpKernel to be used in kernel
@@ -726,18 +734,9 @@ void FallbackAsyncExecuteOp(tfrt::AsyncKernelFrame* frame) {
       ->GetOrCreateSharedContext<OpLogger>()
       .LogOp(attr_frame.op_name().GetValue());
 #endif
-  // Create op_chain only when cost measurement is enabled. It is used for
-  // measuring async op's actual latency.
-  if (frame->GetExecutionContext().request_ctx()->IsCostMeasurementEnabled()) {
-    auto op_chain = tfrt::MakeUnconstructedAsyncValueRef<tfrt::Chain>();
-    KernelFallbackExecuteOp(frame->GetArguments(), frame->GetResults(),
-                            &op_chain, attr_frame,
-                            frame->GetExecutionContext());
-  } else {
-    KernelFallbackExecuteOp(frame->GetArguments(), frame->GetResults(),
-                            /*op_chain=*/nullptr, attr_frame,
-                            frame->GetExecutionContext());
-  }
+  KernelFallbackExecuteOp(frame->GetArguments(), frame->GetResults(),
+                          /*op_chain=*/nullptr, attr_frame,
+                          frame->GetExecutionContext());
 }
 
 // The implementation of tfrt_fallback_async.executeop.seq kernel. It executes a
@@ -864,20 +863,35 @@ void KernelFallbackExecuteOpCustomAllocatorInternal(
   auto* allocator = args.front()->get<tensorflow::Allocator*>();
   args = args.drop_front();
 
-  DeviceWithCustomAllocator device_with_custom_allocator(
-      GetDeviceFromFallbackState(*fallback_request_state, *kernel_runner),
-      allocator);
+  auto* device =
+      GetDeviceFromFallbackState(*fallback_request_state, *kernel_runner);
 
-  // Different from FallbackAsyncExecuteOp, async execution is not allowed due
-  // to the lifetime of the wrapper device cannot be extended.
-  //
-  // TODO(b/200575143): Consider allowing async execution and extending the
-  // lifetime of the wrapping device.
-  KernelFallbackExecuteOpInternal(args, results,
-                                  /*op_chain=*/op_chain, attr_frame, exec_ctx,
-                                  *fallback_request_state, *kernel_runner,
-                                  /*is_async=*/false,
-                                  &device_with_custom_allocator);
+  if (!kernel_runner->IsAsync()) {
+    DeviceWithCustomAllocator device_with_custom_allocator(device, allocator);
+
+    KernelFallbackExecuteOpInternal(args, results,
+                                    /*op_chain=*/op_chain, attr_frame, exec_ctx,
+                                    *fallback_request_state, *kernel_runner,
+                                    /*is_async=*/false,
+                                    &device_with_custom_allocator);
+  } else {
+    auto device_with_custom_allocator =
+        std::make_unique<DeviceWithCustomAllocator>(device, allocator);
+
+    tfrt::AsyncValueRef<tfrt::Chain> op_ch;
+    if (op_chain == nullptr) {
+      op_chain = &op_ch;
+    }
+
+    KernelFallbackExecuteOpInternal(args, results,
+                                    /*op_chain=*/op_chain, attr_frame, exec_ctx,
+                                    *fallback_request_state, *kernel_runner,
+                                    /*is_async=*/true,
+                                    device_with_custom_allocator.get());
+
+    DCHECK(op_chain);
+    op_chain->AndThen([d = std::move(device_with_custom_allocator)]() {});
+  }
 }
 
 void FallbackAsyncExecuteOpWithAllocator(tfrt::AsyncKernelFrame* frame) {

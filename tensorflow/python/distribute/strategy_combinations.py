@@ -615,6 +615,9 @@ tf_export(
     _TF_INTERNAL_API_PREFIX + "mirrored_strategy_with_cpu_1_and_2",
     v1=[]).export_constant(__name__, "mirrored_strategy_with_cpu_1_and_2")
 tf_export(
+    _TF_INTERNAL_API_PREFIX + "mirrored_strategy_with_two_cpus",
+    v1=[]).export_constant(__name__, "mirrored_strategy_with_two_cpus")
+tf_export(
     _TF_INTERNAL_API_PREFIX + "mirrored_strategy_with_gpu_and_cpu",
     v1=[]).export_constant(__name__, "mirrored_strategy_with_gpu_and_cpu")
 tf_export(

@@ -24,6 +24,7 @@ pytype_strict_library(
     srcs = [
         "__init__.py",
         "core.py",
+        "data.py",
         "distribute.py",
         "internal.py",
         "trace.py",
@@ -31,7 +32,7 @@ pytype_strict_library(
     srcs_version = "PY3",
     visibility = [
         "//tensorflow:__subpackages__",
-        "//tensorflow:types_whitelist",
+        "//tensorflow:types_allowlist",
     ],
     deps = [
         ":doc_typealias",

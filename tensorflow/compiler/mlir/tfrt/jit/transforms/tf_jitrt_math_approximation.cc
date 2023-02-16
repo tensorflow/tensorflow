@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <optional>
+
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Math/IR/Math.h"
@@ -58,7 +60,7 @@ static llvm::Optional<SmallVector<int64_t, 2>> vectorShape(Type type,
     return llvm::to_vector<2>(vectorType.getShape());
   }
 
-  return llvm::None;
+  return std::nullopt;
 }
 
 // Returns vector shape of the type. If the type is a scalar returns `1`.

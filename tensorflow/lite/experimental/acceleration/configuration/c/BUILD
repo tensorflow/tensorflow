@@ -18,13 +18,15 @@
 # C API for delegate plugins.
 
 load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
+load("//tensorflow/lite:build_def.bzl", "tflite_cc_library_with_c_headers_test")
+load("//tensorflow/lite/core/shims:cc_library_with_tflite.bzl", "cc_library_with_tflite")
 
 package(
     default_visibility = ["//visibility:private"],
     licenses = ["notice"],
 )
 
-cc_library(
+tflite_cc_library_with_c_headers_test(
     name = "delegate_plugin",
     hdrs = ["delegate_plugin.h"],
     compatible_with = get_compatible_with_portable(),
@@ -34,7 +36,7 @@ cc_library(
     ],
 )
 
-cc_library(
+tflite_cc_library_with_c_headers_test(
     name = "nnapi_plugin",
     hdrs = ["nnapi_plugin.h"],
     visibility = ["//visibility:public"],
@@ -50,7 +52,7 @@ test_suite(
     ],
 )
 
-cc_library(
+tflite_cc_library_with_c_headers_test(
     name = "gpu_plugin",
     hdrs = ["gpu_plugin.h"],
     visibility = ["//visibility:public"],
@@ -69,7 +71,7 @@ test_suite(
     ],
 )
 
-cc_library(
+tflite_cc_library_with_c_headers_test(
     name = "xnnpack_plugin",
     hdrs = ["xnnpack_plugin.h"],
     visibility = ["//visibility:public"],
@@ -85,9 +87,10 @@ test_suite(
     ],
 )
 
-cc_library(
+cc_library_with_tflite(
     name = "stable_delegate",
     hdrs = ["stable_delegate.h"],
+    generate_opaque_delegate_target = True,
     visibility = [
         "//tensorflow/lite:__subpackages__",
         "@org_tensorflow_lite_support//tensorflow_lite_support:__subpackages__",

@@ -318,6 +318,7 @@ Status LoadSavedModel(const SessionOptions& session_options,
   };
   if (status.ok()) {
     log_and_count(kLoadAttemptSuccess);
+    metrics::SavedModelReadPath().Set(export_dir);
   } else {
     log_and_count(kLoadAttemptFail);
   }

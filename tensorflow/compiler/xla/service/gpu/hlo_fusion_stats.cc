@@ -60,6 +60,7 @@ class OpcodeCollector : public ConstDfsHloVisitorWithDefault {
       case HloOpcode::kSign:
       case HloOpcode::kSin:
       case HloOpcode::kSqrt:
+      case HloOpcode::kTan:
       case HloOpcode::kTanh:
       // Binary
       case HloOpcode::kAdd:

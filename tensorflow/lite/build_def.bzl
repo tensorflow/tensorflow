@@ -17,6 +17,9 @@ def tflite_copts():
         clean_dep("//tensorflow:android_arm"): [
             "-mfpu=neon",
         ],
+        # copybara:uncomment_begin(google-only)
+        # clean_dep("//tensorflow:chromiumos_x86_64"): [],
+        # copybara:uncomment_end
         clean_dep("//tensorflow:ios_x86_64"): [
             "-msse4.1",
         ],
@@ -55,6 +58,9 @@ def tflite_copts():
         "//conditions:default": [],
     }) + select({
         clean_dep("//tensorflow/lite:tensorflow_profiler_config"): ["-DTF_LITE_TENSORFLOW_PROFILER"],
+        "//conditions:default": [],
+    }) + select({
+        clean_dep("//tensorflow/lite/delegates:tflite_debug_delegate"): ["-DTFLITE_DEBUG_DELEGATE"],
         "//conditions:default": [],
     })
 
@@ -828,21 +834,30 @@ def tflite_cc_library_with_c_headers_test(name, hdrs, **kwargs):
     for hdr in hdrs:
         label = _label(hdr)
         basename = "%s__test_self_contained_c__%s" % (name, label.name)
+        compatible_with = kwargs.pop("compatible_with", [])
         native.genrule(
             name = "%s_gen" % basename,
             outs = ["%s.c" % basename],
+            compatible_with = compatible_with,
             cmd = "echo '#include \"%s/%s\"' > $@" % (label.package, label.name),
             visibility = ["//visibility:private"],
             testonly = True,
         )
+        kwargs.pop("visibility", None)
+        kwargs.pop("deps", [])
+        kwargs.pop("srcs", [])
+        kwargs.pop("tags", [])
+        kwargs.pop("testonly", [])
         native.cc_library(
             name = "%s_lib" % basename,
             srcs = ["%s.c" % basename],
             deps = [":" + name],
-            copts = kwargs.get("copts", []),
+            compatible_with = compatible_with,
+            copts = kwargs.pop("copts", []),
             visibility = ["//visibility:private"],
             testonly = True,
             tags = ["allow_undefined_symbols"],
+            **kwargs
         )
         build_test(
             name = "%s_build_test" % basename,

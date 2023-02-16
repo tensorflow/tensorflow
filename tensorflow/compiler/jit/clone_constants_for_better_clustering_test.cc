@@ -61,6 +61,29 @@ Status CloneConstantsForBetterClustering(const Scope& s,
 const char* kCPU = "/job:localhost/replica:0/task:0/device:CPU:0";
 const char* kGPU = "/job:localhost/replica:0/task:0/device:GPU:0";
 
+TEST(CloneConstantsForBetterClusteringTest, ScalarConstantPlacedOnGpu) {
+  Scope root = Scope::NewRootScope().ExitOnError();
+  Scope on_gpu = root.WithAssignedDevice(kGPU).WithDevice(kGPU);
+
+  Output in = ops::Placeholder(on_gpu.WithOpName("in"), DT_FLOAT);
+  Output c = ops::Const(on_gpu.WithOpName("const"), 1.0f, {});
+  Output add1 = ops::AddV2(on_gpu.WithOpName("add1"), in, c);
+  Output add2 = ops::AddV2(on_gpu.WithOpName("add2"), add1, c);
+
+  std::unique_ptr<Graph> result;
+  TF_ASSERT_OK(CloneConstantsForBetterClustering(root, &result));
+
+  OutputTensor add1_operand;
+  TF_ASSERT_OK(
+      FindNodeByName(result.get(), "add1")->input_tensor(1, &add1_operand));
+
+  OutputTensor add2_operand;
+  TF_ASSERT_OK(
+      FindNodeByName(result.get(), "add2")->input_tensor(1, &add2_operand));
+
+  EXPECT_NE(add1_operand.node, add2_operand.node);
+}
+
 TEST(CloneConstantsForBetterClusteringTest, HostConstantPlacedOnCpu) {
   Scope root = Scope::NewRootScope().ExitOnError();
   Scope on_gpu = root.WithAssignedDevice(kGPU).WithDevice(kGPU);
@@ -114,7 +137,7 @@ TEST(CloneConstantsForBetterClusteringTest, HostConstantPlacedOnGpu) {
   EXPECT_NE(tr0_perm.node, tr1_perm.node);
 }
 
-TEST(CloneConstantsForBetterClusteringTest, DontCloneNonHostConstants) {
+TEST(CloneConstantsForBetterClusteringTest, CloneSmallDeviceConstants) {
   Scope root = Scope::NewRootScope().ExitOnError();
   Scope on_gpu = root.WithAssignedDevice(kGPU).WithDevice(kGPU);
 
@@ -143,7 +166,7 @@ TEST(CloneConstantsForBetterClusteringTest, DontCloneNonHostConstants) {
   TF_ASSERT_OK(
       FindNodeByName(result.get(), "perm_cast_1")->input_tensor(0, &tr1_perm));
 
-  EXPECT_EQ(tr0_perm.node, tr1_perm.node);
+  EXPECT_NE(tr0_perm.node, tr1_perm.node);
 }
 
 TEST(CloneConstantsForBetterClusteringTest, DontCloneLargeConstants) {

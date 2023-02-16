@@ -65,10 +65,22 @@ genrule(
     tools = [flatc_path],
 )
 
-# Test that changes to the schema preserve binary backwards compatibility.
+# Test that changes to the proto file preserve binary backwards compatibility
+# of the generated FlatBuffer schema, relative to the one generated from the
+# previous proto file.
 flatbuffer_schema_compat_test(
     name = "configuration_abi_stability_test",
     ref_schema = ":configuration.prev.fbs",
+    schema = ":configuration.fbs",
+)
+
+# Test that changes to the proto file OR to the FlatBuffer proto-to-flatbuffer
+# schema conversion itself will preserve binary backwards compatibility of the
+# generated FlatBuffer schema, relative to an older snapshot of the
+# generated FlatBuffer schema.
+flatbuffer_schema_compat_test(
+    name = "configuration_flatbuffer_abi_stability_test",
+    ref_schema = "testdata/configuration.old.fbs",
     schema = ":configuration.fbs",
 )
 
@@ -178,9 +190,10 @@ cc_test(
     ],
 )
 
-cc_library(
+cc_library_with_tflite(
     name = "delegate_registry",
     hdrs = ["delegate_registry.h"],
+    copts = tflite_copts_warnings(),
     deps = [
         ":configuration_fbs",
         "//tensorflow/lite/core/c:common",
@@ -218,8 +231,8 @@ cc_library(
     ],
     deps = [
         ":configuration_fbs",
-        ":delegate_registry",
         "//tensorflow/lite/core/c:common",
+        "//tensorflow/lite/core/experimental/acceleration/configuration:delegate_registry",
         "//tensorflow/lite/core/experimental/acceleration/configuration/c:delegate_plugin",
         "//tensorflow/lite/delegates/nnapi:nnapi_delegate",
         "//tensorflow/lite/nnapi:nnapi_implementation_headers",
@@ -238,11 +251,11 @@ cc_test(
     ],
     deps = [
         ":configuration_fbs",
-        ":delegate_registry",
         ":nnapi_plugin",
         "//tensorflow/lite:framework",
-        "//tensorflow/lite/core:headers",
+        "//tensorflow/lite/core:framework",
         "//tensorflow/lite/core/c:common",
+        "//tensorflow/lite/core/experimental/acceleration/configuration:delegate_registry",
         "//tensorflow/lite/delegates/nnapi:nnapi_delegate",
         "//tensorflow/lite/delegates/nnapi:nnapi_delegate_mock_test",
         "//tensorflow/lite/kernels:test_util",
@@ -256,8 +269,8 @@ cc_library(
     srcs = ["hexagon_plugin.cc"],
     deps = [
         ":configuration_fbs",
-        ":delegate_registry",
         "@com_google_absl//absl/memory",
+        "//tensorflow/lite/core/experimental/acceleration/configuration:delegate_registry",
     ] + select({
         "//tensorflow:android": [
             "//tensorflow/lite/delegates/hexagon:hexagon_delegate",
@@ -295,8 +308,8 @@ cc_library(
     ],
     deps = [
         ":configuration_fbs",
-        ":delegate_registry",
         "@com_google_absl//absl/memory",
+        "//tensorflow/lite/core/experimental/acceleration/configuration:delegate_registry",
     ] + select({
         "//tensorflow/lite/delegates/gpu:supports_gpu_delegate": [
             "//tensorflow/lite/delegates/gpu:delegate",
@@ -326,9 +339,9 @@ cc_test(
     deps = [
         ":configuration_cc_proto",
         ":configuration_fbs",
-        ":delegate_registry",
         ":gpu_plugin_impl",
         ":proto_to_flatbuffer",
+        "//tensorflow/lite/core/experimental/acceleration/configuration:delegate_registry",
         "@com_google_googletest//:gtest_main",
         "@flatbuffers//:runtime_cc",
     ],
@@ -339,8 +352,8 @@ cc_library(
     srcs = ["xnnpack_plugin.cc"],
     deps = [
         ":configuration_fbs",
-        ":delegate_registry",
         "//tensorflow/lite:minimal_logging",
+        "//tensorflow/lite/core/experimental/acceleration/configuration:delegate_registry",
         "//tensorflow/lite/delegates/xnnpack:xnnpack_delegate",
         "@com_google_absl//absl/base:log_severity",
         "@com_google_absl//absl/memory",
@@ -353,8 +366,8 @@ cc_test(
     srcs = ["xnnpack_plugin_test.cc"],
     deps = [
         ":configuration_fbs",
-        ":delegate_registry",
         ":xnnpack_plugin",
+        "//tensorflow/lite/core/experimental/acceleration/configuration:delegate_registry",
         "//tensorflow/lite/delegates/xnnpack:xnnpack_delegate",
         "@com_google_googletest//:gtest_main",
         "@flatbuffers//:runtime_cc",
@@ -367,9 +380,9 @@ cc_library(
     srcs = ["coreml_plugin.cc"],
     deps = [
         ":configuration_fbs",
-        ":delegate_registry",
         "@com_google_absl//absl/memory",
         "//tensorflow/lite:minimal_logging",
+        "//tensorflow/lite/core/experimental/acceleration/configuration:delegate_registry",
     ] + select({
         "//tensorflow:macos": [
             "//tensorflow/lite/delegates/coreml:coreml_delegate",
@@ -389,7 +402,7 @@ cc_library(
     hdrs = ["stable_delegate_plugin.h"],
     deps = [
         ":configuration_fbs",
-        ":delegate_registry",
+        "//tensorflow/lite/core/experimental/acceleration/configuration:delegate_registry",
         "//tensorflow/lite/core/shims:common",
         "//tensorflow/lite/core/shims:delegate_plugin",
         "//tensorflow/lite/delegates/utils/experimental/stable_delegate:delegate_loader",
@@ -410,8 +423,8 @@ cc_test(
     ],
     deps = [
         ":configuration_fbs",
-        ":delegate_registry",
         ":stable_delegate_plugin",
+        "//tensorflow/lite/core/experimental/acceleration/configuration:delegate_registry",
         "//tensorflow/lite/delegates/xnnpack:xnnpack_delegate",
         "@com_google_googletest//:gtest_main",
         "@flatbuffers//:runtime_cc",

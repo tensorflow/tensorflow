@@ -17,7 +17,7 @@ limitations under the License.
 
 #include "fuzztest/fuzztest.h"
 #include "tensorflow/core/platform/status.h"
-#include "tensorflow/security/fuzzing/cc/fuzz_helpers.h"
+#include "tensorflow/security/fuzzing/cc/fuzz_domains.h"
 
 // This is a fuzzer for `tensorflow::StatusGroup`. Since `Status` is used almost
 // everywhere, we need to ensure that the common functionality is safe. We don't
@@ -25,10 +25,9 @@ limitations under the License.
 
 namespace {
 
-void FuzzTest(uint32_t code, bool is_derived) {
+void FuzzTest(tensorflow::error::Code error_code, bool is_derived) {
   const std::string error_message = "ERROR";
   tensorflow::StatusGroup sg;
-  tensorflow::error::Code error_code = helper::BuildRandomErrorCode(code);
   tensorflow::Status s = tensorflow::Status(error_code, error_message);
 
   if (is_derived) {
@@ -43,6 +42,7 @@ void FuzzTest(uint32_t code, bool is_derived) {
   sg.as_concatenated_status().IgnoreError();
   sg.AttachLogMessages();
 }
-FUZZ_TEST(CC_FUZZING, FuzzTest);
+FUZZ_TEST(CC_FUZZING, FuzzTest)
+    .WithDomains(helper::AnyErrorCode(), fuzztest::Arbitrary<bool>());
 
 }  // namespace

@@ -628,7 +628,7 @@ static bool IsValidConstShapeForMulConvPushDown(StringAttr data_format,
     }
 
     // TODO(chiahungduan): Symbolic shape equivalence is acceptable.
-    if (filter_shape.getShape() != llvm::makeArrayRef(broadcast_shape))
+    if (filter_shape.getShape() != llvm::ArrayRef(broadcast_shape))
       return false;
 
     // Only the last dimension could be larger than one, since broadcasting over
@@ -1089,8 +1089,7 @@ class MaterializeBroadcastGradientArgsOp
       int reduction_indices = reduce_dims[j].size();
       ElementsAttr const_attr = CreateElementsAttrOfTypeValues(
           type_attr.getValue(), {reduction_indices},
-          llvm::makeArrayRef<int64_t>(reduce_dims[j].data(),
-                                      reduction_indices));
+          llvm::ArrayRef<int64_t>(reduce_dims[j].data(), reduction_indices));
       FailureOr<TFOp> const_op = CreateConstantTensorOp(
           rewriter, op->getLoc(), TFOp(op).name(), op->getResultTypes()[j],
           TFOp(op).controlRet(), const_attr);
@@ -1181,7 +1180,7 @@ class MaterializeReductionIndices
 
     ElementsAttr const_attr = CreateElementsAttrOfTypeValues(
         indices_shape.getElementType(), {input_shape.getRank()},
-        llvm::makeArrayRef(elements));
+        llvm::ArrayRef(elements));
 
     FailureOr<TFOp> const_op = CreateConstantTensorOp(
         rewriter, indices->getLoc(), Twine(TFOp(op).name(), "/indices").str(),
@@ -2096,7 +2095,7 @@ class SimplifyReductionOp : public FolderPatternBase<SimplifyReductionOp> {
     std::iota(elements.begin(), elements.end(), 1);
     ElementsAttr const_attr = CreateElementsAttrOfTypeValues(
         builder.getIntegerType(32), {new_num_dimensions},
-        llvm::makeArrayRef(elements));
+        llvm::ArrayRef(elements));
     FailureOr<TFOp> const_op = CreateConstantTensorOp(
         builder, op->getLoc(), TFOp(op).name(),
         *(reduction_indices->result_type_begin()),
@@ -3685,7 +3684,11 @@ void ConstantFolding::runOnOperation() {
     for (Operation &op : func.SingleBlock::getBody()->without_terminator()) {
       ops.push_back(&op);
     }
-    if (!applyOpPatternsAndFold(ops, final_patterns_, /*strict=*/true)) break;
+    bool changed = false;
+    GreedyRewriteConfig config;
+    config.strictMode = GreedyRewriteStrictness::ExistingAndNewOps;
+    (void)applyOpPatternsAndFold(ops, final_patterns_, config, &changed);
+    if (!changed) break;
   } while (iteration++ < max_iterations);
 
   // TODO(chiahungduan): This is used to avoid evaluating a node multiple times.

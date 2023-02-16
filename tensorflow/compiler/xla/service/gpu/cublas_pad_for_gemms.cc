@@ -19,6 +19,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"
 #include "tensorflow/compiler/xla/literal_util.h"
+#include "tensorflow/compiler/xla/service/gpu/gemm_rewriter_triton.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/window_util.h"
@@ -153,15 +154,21 @@ bool CheckCanonical(HloDotInstruction* dot) {
 
 }  // namespace
 
-static std::vector<HloDotInstruction*> GetRelevantDots(HloComputation* comp,
-                                                       PrimitiveType datatype) {
+static std::vector<HloDotInstruction*> GetRelevantDots(
+    const se::CudaComputeCapability cuda_compute_capability,
+    HloComputation* comp, PrimitiveType datatype) {
   std::vector<HloDotInstruction*> gemms;
 
   for (HloInstruction* instr : comp->instructions()) {
     if (IsMatrixMultiplication(*instr)) {
       HloDotInstruction* dot = Cast<HloDotInstruction>(instr);
       if (instr->operand(0)->shape().element_type() == datatype &&
-          CheckCanonical(dot)) {
+          CheckCanonical(dot) &&
+          !(instr->GetModule()
+                ->config()
+                .debug_options()
+                .xla_gpu_enable_triton_gemm() &&
+            IsTritonHandledGEMM(*dot, cuda_compute_capability))) {
         gemms.push_back(dot);
       }
     }
@@ -175,7 +182,8 @@ StatusOr<bool> CublasPadForGemms::Run(
   bool changed = false;
   for (HloComputation* comp :
        module->MakeNonfusionComputations(execution_threads)) {
-    for (HloDotInstruction* dot : GetRelevantDots(comp, datatype_)) {
+    for (HloDotInstruction* dot :
+         GetRelevantDots(cuda_compute_capability_, comp, datatype_)) {
       TF_ASSIGN_OR_RETURN(bool result,
                           PadForGemm(dot, datatype_, pad_to_multiple_of_));
       changed |= result;

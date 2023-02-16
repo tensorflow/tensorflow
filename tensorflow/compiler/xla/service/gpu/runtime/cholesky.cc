@@ -29,29 +29,15 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-using xla::runtime::CustomCall;
-using xla::runtime::Executable;
+using ::xla::runtime::CustomCall;
+using ::xla::runtime::MemrefView;
+using ::xla::runtime::StridedMemrefView;
 
-namespace {
-struct Cholesky {
-  LLVM_ATTRIBUTE_ALWAYS_INLINE
-  absl::Status operator()(const ServiceExecutableRunOptions* run_options,
-                          const DebugOptions* debug_options,
-                          runtime::StridedMemrefView operand,
-                          runtime::StridedMemrefView a,
-                          runtime::MemrefView workspace,
-                          runtime::MemrefView info, int64_t batch_size,
-                          bool is_lower, int64_t n) const;
-  static Cholesky Handler() { return Cholesky(); }
-};
-}  // namespace
-
-absl::Status Cholesky::operator()(
-    const ServiceExecutableRunOptions* run_options,
-    const DebugOptions* debug_options, runtime::StridedMemrefView operand,
-    runtime::StridedMemrefView a, runtime::MemrefView workspace,
-    runtime::MemrefView info, int64_t batch_size, bool is_lower,
-    int64_t n) const {
+static absl::Status CholeskyImpl(const ServiceExecutableRunOptions* run_options,
+                                 const DebugOptions* debug_options,
+                                 StridedMemrefView operand, StridedMemrefView a,
+                                 MemrefView workspace, MemrefView info,
+                                 int64_t batch_size, bool is_lower, int64_t n) {
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
   se::DeviceMemoryBase operand_buffer = GetDeviceAddress(operand);
   se::DeviceMemoryBase a_buffer = GetDeviceAddress(a);
@@ -76,30 +62,25 @@ absl::Status Cholesky::operator()(
 
   return absl::OkStatus();
 #else  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-  return absl::InternalError("Not implemented without Gpu");
+  return absl::InternalError("Cholesky is not supported without GPU");
 #endif
 }
 
-static bool Cholesky(runtime::ExecutionContext* ctx, void** args, void** attrs,
-                     void** rets) {
-  static auto* handler = CustomCall::Bind("xla.gpu.cholesky")
-                             .UserData<const ServiceExecutableRunOptions*>()
-                             .UserData<const DebugOptions*>()
-                             .Arg<runtime::StridedMemrefView>()  // operand
-                             .Arg<runtime::StridedMemrefView>()  // a
-                             .Arg<runtime::MemrefView>()         // workspace
-                             .Arg<runtime::MemrefView>()         // info
-                             .Attr<int64_t>("batch_size")
-                             .Attr<bool>("is_lower")
-                             .Attr<int64_t>("n")
-                             .To<checks>(Cholesky::Handler())
-                             .release();
-
-  return succeeded(Executable::Call(ctx, *handler, args, attrs, rets));
-}
+XLA_RUNTIME_DEFINE_CUSTOM_CALL(
+    Cholesky, FunctionWrapper<CholeskyImpl>(), checks,
+    CustomCall::Bind("xla.gpu.cholesky")
+        .UserData<const ServiceExecutableRunOptions*>()
+        .UserData<const DebugOptions*>()
+        .Arg<StridedMemrefView>()  // operand
+        .Arg<StridedMemrefView>()  // a
+        .Arg<MemrefView>()         // workspace
+        .Arg<MemrefView>()         // info
+        .Attr<int64_t>("batch_size")
+        .Attr<bool>("is_lower")
+        .Attr<int64_t>("n"));
 
 void RegisterCholeskyCustomCalls(runtime::DirectCustomCallRegistry& registry) {
-  registry.Register("xla.gpu.cholesky", &xla::gpu::Cholesky);
+  registry.Register("xla.gpu.cholesky", Cholesky);
 }
 
 }  // namespace gpu

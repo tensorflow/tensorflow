@@ -21,16 +21,18 @@ import pprint
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.framework import function_pb2
 from tensorflow.core.function import trace_type
+from tensorflow.core.function.polymorphism import function_type as function_type_lib
 from tensorflow.python import pywrap_tfe
 from tensorflow.python.client import pywrap_tf_session
-from tensorflow.python.eager import backprop
 from tensorflow.python.eager import backprop_util
 from tensorflow.python.eager import context
 from tensorflow.python.eager import execute
 from tensorflow.python.eager import forwardprop_util
 from tensorflow.python.eager import tape
 from tensorflow.python.eager.graph_only_ops import graph_placeholder
+from tensorflow.python.eager.polymorphic_function import attributes as attributes_lib
 from tensorflow.python.eager.polymorphic_function import function_spec
+from tensorflow.python.eager.polymorphic_function import saved_model_exported_concrete
 from tensorflow.python.framework import c_api_util
 from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import dtypes
@@ -55,26 +57,9 @@ from tensorflow.python.types import core
 from tensorflow.python.util import _pywrap_utils
 from tensorflow.python.util import compat
 from tensorflow.python.util import function_utils
-from tensorflow.python.util import lazy_loader
-from tensorflow.python.util import memory
 from tensorflow.python.util import nest
 from tensorflow.python.util import object_identity
 from tensorflow.python.util import tf_inspect
-
-
-np_arrays = lazy_loader.LazyLoader(
-    "np_arrays", globals(),
-    "tensorflow.python.ops.numpy_ops.np_arrays")
-
-saved_model_utils = lazy_loader.LazyLoader(
-    "saved_model_utils", globals(),
-    "tensorflow.python.eager.polymorphic_function.saved_model_utils"
-)
-
-FORWARD_FUNCTION_ATTRIBUTE_NAME = "forward_function_name"
-BACKWARD_FUNCTION_ATTRIBUTE_NAME = "backward_function_name"
-IMPLEMENTS_ATTRIBUTE_NAME = "_implements"
-SHARED_RENDEZVOUS_ATTRIBUTE_NAME = "shared_rendezvous"
 
 
 def _is_type_subset(a, b):
@@ -100,6 +85,9 @@ def _parse_func_attrs(attributes):
   """
   attrs = {}
   for key, value in attributes.items():
+    if key not in attributes_lib.MONOMORPHIC_FUNCTION_ALLOWLIST:
+      raise ValueError(
+          f"ConcreteFunction does not support `{key}` as an attribute.")
     if isinstance(value, attr_value_pb2.AttrValue):
       attrs[key] = value
     # bool type check has to happen before int since bool is a subclass of int.
@@ -274,7 +262,7 @@ class _EagerDefinedFunction(object):
     self._num_outputs = len(signature.output_arg)
     self._output_types = [o.type for o in signature.output_arg]
     self._output_shapes = [o.shape for o in outputs]
-    self._control_captures = graph.control_captures
+    self._control_captures = graph._function_captures.control  # pylint: disable=protected-access
     # Shallow copy outputs since ConcreteFunction may mutate it.
     self._func_graph_outputs = list(outputs)
     self.grad_func_name = None
@@ -310,23 +298,38 @@ class _EagerDefinedFunction(object):
     function_def.ParseFromString(compat.as_bytes(proto_data))
     return function_def
 
-  def add_to_graph(self, g=None):
+  def add_to_graph(self, g=None, overwrite=False):
     """Add the function to the current context or a graph, if supplied.
 
     Args:
       g: the graph to add the function to. If not supplied, the function will
         be added to the current context.
+      overwrite: A bool. If True, this function will overwrite any existing
+        function of the same signature name in the graph `g` or context.
     """
     # pylint: disable=protected-access
     if not g and context.executing_eagerly():
       ctx = context.context()
-      if not ctx.has_function(self.name):
+      if ctx.has_function(self.name):
+        if overwrite:
+          ctx.remove_function(self.name)
+          ctx.add_function_def(self.definition)
+      else:
         ctx.add_function_def(self.definition)
     else:
-      if not g._is_function(self.name):
+      if g._is_function(self.name):
+        if overwrite:
+          g._remove_function(self.name)
+          g._add_function(self)
+      else:
         g._add_function(self)
+
       for f in self.graph._functions.values():
-        if not g._is_function(f.name):
+        if g._is_function(f.name):
+          if overwrite:
+            g._remove_function(f.name)
+            g._add_function(f)
+        else:
           g._add_function(f)
     # pylint: enable=protected-access
 
@@ -434,14 +437,14 @@ def _create_forward_backward_with_graph(attrs, forward_graph, backwards_graph):
   # be directly optimized downstream.
   # See for more details:
   # https://github.com/tensorflow/community/blob/master/rfcs/20190610-standardizing-composite_ops.md#appendix-future-support-for-optimizing-gradient-functions
-  common_attributes.pop(IMPLEMENTS_ATTRIBUTE_NAME, None)
+  common_attributes.pop(attributes_lib.IMPLEMENTS, None)
   backward_function_attr = _parse_func_attrs(
-      {FORWARD_FUNCTION_ATTRIBUTE_NAME: forward_function_name})
+      {attributes_lib.FORWARD_FUNCTION: forward_function_name})
   backward_function_attr.update(common_attributes)
   backward_function = ConcreteFunction(
       backwards_graph, attrs=backward_function_attr)
   forward_function_attr = _parse_func_attrs({
-      BACKWARD_FUNCTION_ATTRIBUTE_NAME:
+      attributes_lib.BACKWARD_FUNCTION:
       backward_function.name})
   forward_function_attr.update(common_attributes)
   forward_function = _EagerDefinedFunction(
@@ -931,7 +934,7 @@ class _TapeGradientFunctions(object):
                 grad_ys=gradients_wrt_output_tangents,
                 src_graph=forward_wrapper.graph)
           dinputs = [
-              backprop.aggregate_indexed_slices_gradients((existing, new))
+              backprop_util.AggregateIndexedSlicesGradients((existing, new))
               for existing, new in zip(dinputs, gradients_wrt_inputs)
               if existing is not None or new is not None]
           dinputs.extend(gradients_wrt_inputs[len(dinputs):])
@@ -1318,7 +1321,7 @@ class ConcreteFunction(core.ConcreteFunction, trackable.Trackable):
     # spec defines the structured signature.
     self._set_function_spec(spec)
 
-    if attrs and IMPLEMENTS_ATTRIBUTE_NAME in attrs:
+    if attrs and attributes_lib.IMPLEMENTS in attrs:
       # The alternative is to silently drop "implements" tag
       # but it seems likely it would lead to hard to catch bugs.
       # Another alternative is to make func_body to preserve the order
@@ -1339,8 +1342,8 @@ class ConcreteFunction(core.ConcreteFunction, trackable.Trackable):
           "To pass a variable to such function use  "
           "use variable.read_value().".format(
               name=func_graph.name,
-              attr=IMPLEMENTS_ATTRIBUTE_NAME,
-              value=attrs[IMPLEMENTS_ATTRIBUTE_NAME],
+              attr=attributes_lib.IMPLEMENTS,
+              value=attrs[attributes_lib.IMPLEMENTS],
               inputs=self.inputs,
               captured=self._captured_inputs))
     self._output_shapes = tuple(
@@ -1398,12 +1401,15 @@ class ConcreteFunction(core.ConcreteFunction, trackable.Trackable):
         kwonlydefaults=dict(
             (k, function_spec.BOUND_VALUE) for k in kwarg_specs),
         annotations=spec.fullargspec.annotations)
-    self._function_spec = function_spec.FunctionSpec(
-        fullargspec,
-        spec.is_method,
-        spec.input_signature,
-        spec.is_pure,
-        name=self._func_graph.name)
+    self._function_spec = (
+        function_spec.FunctionSpec.from_fullargspec_and_signature(
+            fullargspec,
+            spec.is_method,
+            spec.input_signature,
+            spec.is_pure,
+            name=self._func_graph.name,
+        )
+    )
 
   @property
   def variables(self):
@@ -1510,9 +1516,14 @@ class ConcreteFunction(core.ConcreteFunction, trackable.Trackable):
           f"positional arguments, got {len(args)}.")
     args = list(args)
     kwargs = dict(kwargs)
+    kwargs = {
+        function_type_lib.sanitize_arg_name(k): v for k, v in kwargs.items()
+    }
     for keyword in self._arg_keywords[len(args):]:
       try:
-        args.append(kwargs.pop(compat.as_str(keyword)))
+        args.append(
+            kwargs.pop(
+                function_type_lib.sanitize_arg_name(compat.as_str(keyword))))
       except KeyError:
         specified_keywords = (
             list(self._arg_keywords[:len(args)]) + list(kwargs.keys()))
@@ -1601,6 +1612,10 @@ class ConcreteFunction(core.ConcreteFunction, trackable.Trackable):
       name = self._function_spec.arg_names[i]
       self._structured_signature_check_arg_type(arg, spec, name,
                                                 signature_context)
+    kwarg_specs = {
+        function_type_lib.sanitize_arg_name(k): v
+        for k, v in kwarg_specs.items()
+    }
     for (name, arg) in kwargs.items():
       self._structured_signature_check_arg_type(arg, kwarg_specs[name], name,
                                                 signature_context)
@@ -1970,12 +1985,14 @@ class ConcreteFunction(core.ConcreteFunction, trackable.Trackable):
             self._func_graph.structured_outputs),
         expand_composites=False)
 
-  def add_to_graph(self, g=None):
+  def add_to_graph(self, g=None, overwrite=False):
     """Registers the function, adds it to the graph g or default graph.
 
     Args:
       g: If specified, registers the function with this graph. Defaults to the
         current context (either the default graph or the eager context).
+      overwrite: A bool. If True, its forward function will overwrite
+        any existing function of the same signature name in the graph `g`.
     """
     # If we are not executing eagerly, adds the function to default graph if no
     # graph is specified.
@@ -1984,7 +2001,7 @@ class ConcreteFunction(core.ConcreteFunction, trackable.Trackable):
 
     if not context.executing_eagerly() and not g:
       g = ops.get_default_graph()
-    self._delayed_rewrite_functions.forward().add_to_graph(g)
+    self._delayed_rewrite_functions.forward().add_to_graph(g, overwrite)
 
   def add_gradient_functions_to_graph(self, g=None):
     """Add forward/backward functions to graph `g` or the current context."""
@@ -2275,7 +2292,7 @@ class ConcreteFunction(core.ConcreteFunction, trackable.Trackable):
           (f"Unable to save function {self.name} for the following reason(s):\n"
            + "\n".join(self.graph.saving_errors)))
     self.add_to_graph()
-    object_map[self] = saved_model_utils.ExportedConcreteFunction(
+    object_map[self] = saved_model_exported_concrete.ExportedConcreteFunction(
         self, tensor_map)
     return []
 
@@ -2298,7 +2315,7 @@ class ConcreteFunctionGarbageCollector:
     self._func_graph = None
 
   def __del__(self):
-    if func_graph_module is None or memory is None or self._func_graph is None:
+    if func_graph_module is None or self._func_graph is None:
       return
     try:
       func_graph_module.dismantle_func_graph(self._func_graph)

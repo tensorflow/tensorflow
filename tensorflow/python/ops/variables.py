@@ -27,6 +27,7 @@ from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_conversion_registry
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
@@ -213,7 +214,8 @@ class VariableMetaclass(abc.ABCMeta):
                         use_resource=None,
                         synchronization=VariableSynchronization.AUTO,
                         aggregation=VariableAggregation.NONE,
-                        shape=None):
+                        shape=None,
+                        experimental_enable_variable_lifting=None):
     """Call on Variable class. Useful to force the signature."""
     previous_getter = lambda **kwargs: default_variable_creator(None, **kwargs)
     for _, getter in ops.get_default_graph()._variable_creator_stack:  # pylint: disable=protected-access
@@ -237,7 +239,9 @@ class VariableMetaclass(abc.ABCMeta):
         use_resource=use_resource,
         synchronization=synchronization,
         aggregation=aggregation,
-        shape=shape)
+        shape=shape,
+        experimental_enable_variable_lifting=experimental_enable_variable_lifting,
+        )
 
   def _variable_v2_call(cls,
                         initial_value=None,
@@ -2754,6 +2758,18 @@ class RefVariable(VariableV1, core.Tensor):
         " if you want a new python Tensor object.", 1)
     return self**other
 
+  def _serialize_to_tensors(self):
+    """Implements Trackable._serialize_to_tensors."""
+    return {trackable.VARIABLE_VALUE_KEY: self}
+
+  def _restore_from_tensors(self, restored_tensors):
+    """Implements Trackable._restore_from_tensors."""
+    restored_tensor = restored_tensors[trackable.VARIABLE_VALUE_KEY]
+    return state_ops.assign(
+        self,
+        restored_tensor,
+        validate_shape=self.get_shape().is_fully_defined())
+
 
 def _try_guard_against_uninitialized_dependencies(name, initial_value):
   """Attempt to guard against dependencies on uninitialized variables.
@@ -3127,8 +3143,8 @@ class PartitionedVariable:
 
 # Register a conversion function which reads the value of the variable,
 # allowing instances of the class to be used as tensors.
-ops.register_tensor_conversion_function(RefVariable,
-                                        RefVariable._TensorConversionFunction)  # pylint: disable=protected-access
+tensor_conversion_registry.register_tensor_conversion_function(
+    RefVariable, RefVariable._TensorConversionFunction)  # pylint: disable=protected-access
 
 
 @tf_export(v1=["global_variables"])
@@ -3487,5 +3503,5 @@ def report_uninitialized_variables(var_list=None,
         return array_ops.boolean_mask(variable_names_tensor, variables_mask)
 
 
-ops.register_tensor_conversion_function(
+tensor_conversion_registry.register_tensor_conversion_function(
     PartitionedVariable, PartitionedVariable._TensorConversionFunction)  # pylint: disable=protected-access

@@ -103,6 +103,14 @@ TEST_F(TfLiteExecutionTaskTest, NullTest) {
   EXPECT_EQ(kTfLiteNullBufferHandle,
             TfLiteExecutionTaskGetBufferByIndex(nullptr, 3));
   EXPECT_EQ(nullptr, TfLiteExecutionTaskGetSyncByIndex(nullptr, 3));
+  EXPECT_EQ(kTfLiteError, TfLiteExecutionTaskGetStatus(nullptr));
+  TfLiteExecutionTaskSetStatus(nullptr, kTfLiteOk);
+}
+
+TEST_F(TfLiteExecutionTaskTest, StatusTest) {
+  EXPECT_EQ(kTfLiteOk, TfLiteExecutionTaskGetStatus(task()));
+  TfLiteExecutionTaskSetStatus(task(), kTfLiteError);
+  EXPECT_EQ(kTfLiteError, TfLiteExecutionTaskGetStatus(task()));
 }
 
 }  // namespace

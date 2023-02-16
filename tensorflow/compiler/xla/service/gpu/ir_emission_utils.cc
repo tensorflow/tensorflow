@@ -23,6 +23,7 @@ limitations under the License.
 #include <vector>
 
 #include "llvm/IR/IntrinsicsNVPTX.h"
+#include "llvm/IR/Verifier.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
@@ -30,7 +31,9 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/target_util.h"
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_type_conversion_util.h"
+#include "tensorflow/compiler/xla/stream_executor/device_description.h"
 #include "tensorflow/compiler/xla/translate/mhlo_to_hlo/type_to_shape.h"
+#include "tensorflow/compiler/xla/xla_data.pb.h"
 
 namespace xla {
 namespace gpu {
@@ -101,7 +104,8 @@ bool IsMatrixMultiplication(const HloInstruction& dot) {
 
   PrimitiveType output_primitive_type = dot.shape().element_type();
   bool type_is_allowed =
-      (output_primitive_type == F16 || output_primitive_type == BF16 ||
+      (output_primitive_type == F8E4M3FN || output_primitive_type == F8E5M2 ||
+       output_primitive_type == F16 || output_primitive_type == BF16 ||
        output_primitive_type == F32 || output_primitive_type == F64 ||
        output_primitive_type == C64 || output_primitive_type == C128) ||
       (output_primitive_type == S32 && lhs_shape.element_type() == S8 &&
@@ -147,14 +151,20 @@ bool IsSoftmaxCustomCall(const HloInstruction& hlo) {
   return hlo.custom_call_target() == kSoftmaxCallTarget;
 }
 
+bool IsTritonCustomCall(const HloInstruction& hlo) {
+  if (hlo.opcode() != HloOpcode::kCustomCall) {
+    return false;
+  }
+  return hlo.custom_call_target() == kTritonCallTarget;
+}
+
 const char* const kCusolverCholeskyCallTarget = "__cusolver$cholesky";
 
 bool IsCustomCallToCusolver(const HloInstruction& hlo) {
   if (hlo.opcode() != HloOpcode::kCustomCall) {
     return false;
   }
-  const auto& target = hlo.custom_call_target();
-  return target == kCusolverCholeskyCallTarget;
+  return hlo.custom_call_target() == kCusolverCholeskyCallTarget;
 }
 
 static bool IsUnnestedReductionFasterThanElemental(
@@ -733,6 +743,22 @@ bool HasAnyUnnestedReductionRoot(HloComputation* computation) {
       GetFusionRoots(computation), [&](const HloInstruction* instr) {
         return IsReductionFromOrToContiguousDimensions(*instr);
       });
+}
+
+void LogAndVerify(const llvm::Module* m) {
+  if (VLOG_IS_ON(5)) {
+    std::string llir_str;
+    llvm::raw_string_ostream llir_stream(llir_str);
+    llir_stream << *m;
+    llir_stream.flush();
+    XLA_VLOG_LINES(5, llir_str);
+  }
+
+  std::string llir_str;
+  llvm::raw_string_ostream llir_stream(llir_str);
+  bool broken = llvm::verifyModule(*m, &llir_stream);
+  llir_stream.flush();
+  CHECK(!broken) << llir_str;
 }
 
 }  // namespace gpu

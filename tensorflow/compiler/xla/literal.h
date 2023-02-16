@@ -40,6 +40,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/index_util.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
+#include "tensorflow/compiler/xla/printer.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/types.h"
@@ -91,15 +92,38 @@ class LiteralBase {
   // array.
   std::string GetR1U8AsString() const;
 
+  // Prints a string representation of the literal value. The Shape of the
+  // literal is a prefix of the literal value in the string.
+  //
+  // Warning: this function can take minutes for multi-million element Literals.
+  void Print(Printer* printer) const;
+
+  // Similar to Print, but prints the result in a compact one-line form.
+  void PrintOneline(Printer* printer) const;
+
+  // Prints a string representation of the literal value which does *not*
+  // include the shape string.
+  void PrintWithoutShape(Printer* printer) const;
+
+  // Similar to PrintWithoutShape, but prints the result in a compact one-line
+  // form.
+  void PrintWithoutShapeOneline(Printer* printer) const;
+
+  // Prints a string representation of the literal value which includes the
+  // shape string with its layout.does *not* include the shape string.
+  void PrintWithLayout(Printer* printer) const;
+
+  // Similar to PrintWithLayout, but prints the result in a compact one-line
+  // form.
+  void PrintWithLayoutOneline(Printer* printer) const;
+
   // Returns a string representation of the literal value. The Shape of the
   // literal is a prefix of the literal value in the string.
-
-  // Warning: this function can take minutes for multi-million
-  // element Literals.
+  //
+  // Warning: this function can take minutes for multi-million element Literals.
   std::string ToString() const;
 
-  // Similar to ToString, but return the result in a compact
-  // one-line form.
+  // Similar to ToString, but return the result in a compact one-line form.
   std::string ToStringOneline() const;
 
   // Returns a string representation of the literal value which does *not*
@@ -114,8 +138,8 @@ class LiteralBase {
   // shape string with its layout.does *not* include the shape string.
   std::string ToStringWithLayout() const;
 
-  // Similar to ToStringWithLayout, but return the result in a compact
-  // one-line form.
+  // Similar to ToStringWithLayout, but return the result in a compact one-line
+  // form.
   std::string ToStringWithLayoutOneline() const;
 
   // Gets an element in the literal at the given index. The multi_index is
@@ -153,7 +177,9 @@ class LiteralBase {
   template <typename T>
   typename std::enable_if<(std::is_arithmetic<T>::value ||
                            std::is_same<T, Eigen::half>::value ||
-                           std::is_same<T, bfloat16>::value),
+                           std::is_same<T, bfloat16>::value ||
+                           std::is_same<T, tsl::float8_e5m2>::value ||
+                           std::is_same<T, tsl::float8_e4m3fn>::value),
                           bool>::type
   IsEqualAt(absl::Span<const int64_t> multi_index, T value) const {
     if (auto as_s64 = GetIntegralAsS64(multi_index)) {
@@ -239,9 +265,8 @@ class LiteralBase {
   // if it's not an array.
   //
   // This casts value to the type of literal, then compares using ==, with the
-  // caveat that NaNs are considered equal.  The usual admonishments about
-  // floating-point equality checks apply.  We expect you to use this to check
-  // for values that can be expressed precisely as a float, e.g. -0.5.
+  // caveat that NaNs are considered equal. Unlike IsAll, this does not
+  // necessarily return false if the value does not fit in this literal's type.
   bool IsAllFloat(float value) const;
   bool IsAllComplex(complex64 value) const;
 
@@ -773,6 +798,12 @@ class LiteralBase {
   template <typename NativeT>
   Literal SliceInternal(const Shape& result_shape,
                         absl::Span<const int64_t> start_indices) const;
+
+  // Like IsAllFloat, but if round_value is false and the value is not
+  // representable with the literal's type (e.g., due to rounding error or
+  // overflow/underflow when casting the value to the literal's type), returns
+  // false.
+  bool IsAllFloatImpl(float value, bool round_value) const;
 };
 
 // Abstract base class representing a mutable literal in XLA.

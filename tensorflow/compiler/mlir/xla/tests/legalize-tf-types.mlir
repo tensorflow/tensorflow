@@ -1,4 +1,4 @@
-// RUN: xla-opt -xla-legalize-tf-types %s | FileCheck %s
+// RUN: tf-opt -xla-legalize-tf-types %s | FileCheck %s
 
 func.func @relu_qint8(%arg0: tensor<1x!tf_type.qint8>) -> tensor<1x!tf_type.qint8> {
   // CHECK: func @relu_qint8(%arg0: tensor<1xi8>) -> tensor<1xi8> {

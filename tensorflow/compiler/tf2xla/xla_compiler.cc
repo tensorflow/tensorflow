@@ -975,7 +975,7 @@ Status XlaCompiler::XLAShapeForArgument(
           }
           TF_RET_CHECK(absl::holds_alternative<TensorShape>(arg.shape));
           TensorShape shape;
-          shape.AddDim(arg.max_array_size);
+          TF_RETURN_IF_ERROR(shape.AddDimWithStatus(arg.max_array_size));
           shape.AppendShape(std::get<TensorShape>(arg.shape));
           TF_RETURN_IF_ERROR(TensorShapeToXLAShape(arg.type, shape, xla_shape));
 
@@ -993,7 +993,7 @@ Status XlaCompiler::XLAShapeForArgument(
           }
           TF_RET_CHECK(absl::holds_alternative<TensorShape>(arg.shape));
           TensorShape shape;
-          shape.AddDim(arg.max_array_size);
+          TF_RETURN_IF_ERROR(shape.AddDimWithStatus(arg.max_array_size));
           shape.AppendShape(std::get<TensorShape>(arg.shape));
           xla::Shape buffer_shape;
           TF_RETURN_IF_ERROR(
@@ -1501,6 +1501,13 @@ Status XlaCompiler::CompileGraph(
       &num_computation_outputs, &num_nonconst_outputs, &result->outputs,
       &result->resource_updates, &result->xla_output_shape,
       result->input_mapping));
+
+  for (const auto& [key, send] : host_compute_sends_) {
+    *result->host_compute_metadata.add_device_to_host() = send;
+  }
+  for (const auto& [key, recv] : host_compute_recvs_) {
+    *result->host_compute_metadata.add_host_to_device() = recv;
+  }
 
   VLOG(2) << "Outputs: total: " << context->retvals().size()
           << " nonconstant: " << num_nonconst_outputs;

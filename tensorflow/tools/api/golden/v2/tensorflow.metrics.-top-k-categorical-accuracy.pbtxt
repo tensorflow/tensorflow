@@ -1,6 +1,6 @@
 path: "tensorflow.metrics.TopKCategoricalAccuracy"
 tf_class {
-  is_instance: "<class \'keras.metrics.metrics.TopKCategoricalAccuracy\'>"
+  is_instance: "<class \'keras.metrics.accuracy_metrics.TopKCategoricalAccuracy\'>"
   is_instance: "<class \'keras.metrics.base_metric.MeanMetricWrapper\'>"
   is_instance: "<class \'keras.metrics.base_metric.Mean\'>"
   is_instance: "<class \'keras.metrics.base_metric.Reduce\'>"

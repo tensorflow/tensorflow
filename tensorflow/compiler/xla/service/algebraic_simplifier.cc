@@ -53,7 +53,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/shape.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/window_util.h"
@@ -1338,7 +1337,9 @@ Status AlgebraicSimplifierVisitor::HandleCopy(HloInstruction* copy) {
         copy, HloInstruction::CreateUnary(copy->shape(), HloOpcode::kCopy, op));
   }
   // All copies can be eliminated (assuming layout constraints are satisfied).
-  if (ReplaceInstructionIfCompatible(copy, copy->mutable_operand(0))) {
+  if ((!copy->has_sharding() ||
+       copy->GetModule()->entry_computation()->root_instruction() != copy) &&
+      ReplaceInstructionIfCompatible(copy, copy->mutable_operand(0))) {
     return OkStatus();
   }
 
@@ -2777,7 +2778,8 @@ Status AlgebraicSimplifierVisitor::HandleDot(HloInstruction* dot) {
         lhs->shape().rank()) ||
        (dnums.rhs_contracting_dimensions_size() +
             dnums.rhs_batch_dimensions_size() ==
-        rhs->shape().rank()))) {
+        rhs->shape().rank())) &&
+      ShouldStrengthReduceDotToReduce(dot)) {
     TF_ASSIGN_OR_RETURN(HloInstruction * new_lhs,
                         NormalizeDotOperandToBatchMajorAndContractingMinor(
                             lhs, dnums.lhs_batch_dimensions(),
@@ -3167,8 +3169,7 @@ Status AlgebraicSimplifierVisitor::HandleMultiply(HloInstruction* multiply) {
                       m::Op(&convert_operand)
                           .WithShape(m::Shape().WithElementType(PRED)))))) {
       HloInstruction* zero_like_multiply =
-          BroadcastZeros(computation_, multiply->shape().element_type(),
-                         multiply->shape().dimensions());
+          BroadcastZeros(computation_, multiply->shape());
       return ReplaceWithNewInstruction(
           multiply, HloInstruction::CreateTernary(
                         multiply->shape(), HloOpcode::kSelect, convert_operand,
@@ -4174,8 +4175,7 @@ std::unique_ptr<HloInstruction> TryRemainderToAnd(
     int64_t b_value = c->literal().GetFirstElement<T>();
     if (b_value > 0 && absl::has_single_bit(static_cast<uint64_t>(b_value))) {
       // Handle negative dividends by negating the result of the division.
-      HloInstruction* zero_like_a = BroadcastZeros(
-          computation, a->shape().element_type(), a->shape().dimensions());
+      HloInstruction* zero_like_a = BroadcastZeros(computation, a->shape());
 
       Shape compare_shape = ShapeUtil::ChangeElementType(a->shape(), PRED);
       simplifier->UpdateLayout(&compare_shape);
@@ -4548,12 +4548,14 @@ Status AlgebraicSimplifierVisitor::HandleReshape(HloInstruction* reshape) {
         reshape->ReshapeMerelyInsertsOrDeletes1SizedDimensions();
     // 1-sized dimensions added and removed will be one sized in both the update
     // slice and the dynamic-update-slice result.
+    // Make sure dus has only one user; otherwise an extra copy is resulted.
     if (trivial_reshape.has_value() &&
         Match(reshape->mutable_operand(0),
               m::Op(&dus)
                   .WithOpcode(HloOpcode::kDynamicUpdateSlice)
                   .WithOperand(1, m::Op(&slice))) &&
-        !dus->has_sharding() && !dus->operand(0)->has_sharding()) {
+        dus->user_count() == 1 && !dus->has_sharding() &&
+        !dus->operand(0)->has_sharding()) {
       auto new_operand = reshape->AddInstruction(HloInstruction::CreateReshape(
           reshape->shape(), dus->mutable_operand(0)));
       std::vector<int64_t> new_slice_shape;
@@ -6318,6 +6320,50 @@ Status AlgebraicSimplifierVisitor::HandleSelect(HloInstruction* select) {
         HloInstruction::CreateTernary(select->shape(), HloOpcode::kSelect,
                                       pred_operand, on_false, on_true));
   }
+
+  // select(pred, xs, dynamic_update_slice(xs, x, i))
+  //     -> dynamic_update_slice(xs, select(pred, dynamic_slice(xs, i), x), i)
+  HloInstruction* update_slice;
+  HloInstruction* xs;
+  HloInstruction* xs2;
+  auto update_slice_op = m::Op(&update_slice)
+                             .WithOpcode(HloOpcode::kDynamicUpdateSlice)
+                             .WithOperand(0, m::Op(&xs))
+                             .WithOneUse();
+  bool match_slice_left =
+      Match(select, m::Select(m::Op(), m::Op(&xs2), update_slice_op)) &&
+      (xs == xs2);
+  bool match_slice_right =
+      Match(select, m::Select(m::Op(), update_slice_op, m::Op(&xs2))) &&
+      (xs == xs2);
+  if (match_slice_left || match_slice_right) {
+    HloInstruction* pred = select->mutable_operand(0);
+    HloInstruction* x = update_slice->mutable_operand(1);
+    absl::Span<HloInstruction* const> i =
+        absl::MakeSpan(update_slice->operands()).subspan(2);
+    HloInstruction* new_pred;
+    if (ShapeUtil::IsScalar(pred->shape())) {
+      new_pred = pred;
+    } else {
+      Shape new_pred_shape = x->shape();
+      new_pred_shape.set_element_type(pred->shape().element_type());
+      simplifier_->UpdateLayout(&new_pred_shape);
+      new_pred = select->AddInstruction(HloInstruction::CreateDynamicSlice(
+          new_pred_shape, pred, i, x->shape().dimensions()));
+    }
+    HloInstruction* new_x =
+        select->AddInstruction(HloInstruction::CreateDynamicSlice(
+            x->shape(), xs, i, x->shape().dimensions()));
+    HloInstruction* new_x2 =
+        select->AddInstruction(HloInstruction::CreateTernary(
+            x->shape(), HloOpcode::kSelect, new_pred,
+            match_slice_left ? new_x : x, match_slice_left ? x : new_x));
+    std::unique_ptr<HloInstruction> new_xs =
+        HloInstruction::CreateDynamicUpdateSlice(select->shape(), xs, new_x2,
+                                                 i);
+    return ReplaceWithNewInstruction(select, std::move(new_xs));
+  }
+
   return OkStatus();
 }
 
@@ -6364,6 +6410,21 @@ Status AlgebraicSimplifierVisitor::HandleSqrt(HloInstruction* sqrt) {
   HloInstruction* sqrt_operand = sqrt->mutable_operand(0);
   if (sqrt_operand->opcode() == HloOpcode::kMultiply &&
       sqrt_operand->operand(0) == sqrt_operand->operand(1)) {
+    PrimitiveType element_type = sqrt_operand->shape().element_type();
+    // For 'A' of type C{64,128}, |A| has type F{32,64}, and the transformation
+    // requires an additional cast.
+    if (primitive_util::IsComplexType(element_type)) {
+      auto abs_shape = sqrt_operand->shape();
+      abs_shape.set_element_type(
+          primitive_util::ComplexComponentType(element_type));
+
+      HloInstruction* abs =
+          sqrt->parent()->AddInstruction(HloInstruction::CreateUnary(
+              abs_shape, HloOpcode::kAbs, sqrt_operand->mutable_operand(0)));
+
+      return ReplaceWithNewInstruction(
+          sqrt, HloInstruction::CreateConvert(sqrt_operand->shape(), abs));
+    }
     return ReplaceWithNewInstruction(
         sqrt, HloInstruction::CreateUnary(
                   sqrt_operand->mutable_operand(0)->shape(), HloOpcode::kAbs,

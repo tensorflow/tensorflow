@@ -16,6 +16,8 @@ limitations under the License.
 #define TENSORFLOW_CORE_TFRT_COMMON_PJRT_UTIL_H_
 
 #include <memory>
+#include <optional>
+#include <set>
 
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
 #include "tensorflow/core/framework/types.h"
@@ -32,8 +34,8 @@ Status SetPjRtClientInTFGlobalResourceManager(
 Status DeletePjRtClientFromTFGlobalResourceManagerIfResourceExists(
     const DeviceType& device_type);
 
-StatusOr<xla::PjRtClient*> GetPjRtClientFromTFGlobalResourceManager(
-    const DeviceType& device_type);
+// Gets PJRT client for device_type from TFGlobalResourceManager.
+StatusOr<xla::PjRtClient*> GetPjRtClient(const DeviceType& device_type);
 
 }  // namespace tensorflow
 

@@ -9,14 +9,9 @@ func.func @reduce_row_sum_2d_dynamic(%input: tensor<?x?xf32>) -> tensor<?xf32> {
       : (tensor<?x?xf32>, tensor<1xi32>) -> tensor<?xf32>
   func.return %0 : tensor<?xf32>
 }
-// CHECK: linalg.fill
-// CHECK: scf.parallel
-// CHECK:   scf.for
-// CHECK:     arith.addf %{{.*}}, %{{.*}} : vector<4xf32>
-// CHECK:     arith.addf %{{.*}}, %{{.*}} : vector<4xf32>
-// CHECK:     arith.addf %{{.*}}, %{{.*}} : vector<4xf32>
-// CHECK:     arith.addf %{{.*}}, %{{.*}} : vector<4xf32>
-// CHECK-NOT: arith.addf %{{.*}}, %{{.*}} : vector<4xf32>
+// CHECK:         scf.parallel
+// CHECK:           scf.for
+// CHECK-COUNT-4:     arith.addf %{{.*}}, %{{.*}} : vector<4xf32>
 
 // -----
 
@@ -28,14 +23,9 @@ func.func @reduce_column_sum_2d_dynamic(%input: tensor<?x?xf32>) -> tensor<?xf32
       : (tensor<?x?xf32>, tensor<1xi32>) -> tensor<?xf32>
   func.return %0 : tensor<?xf32>
 }
-// CHECK: linalg.fill
-// CHECK: scf.parallel
-// CHECK:   scf.for
-// CHECK:     arith.addf %{{.*}}, %{{.*}} : vector<4xf32>
-// CHECK:     arith.addf %{{.*}}, %{{.*}} : vector<4xf32>
-// CHECK:     arith.addf %{{.*}}, %{{.*}} : vector<4xf32>
-// CHECK:     arith.addf %{{.*}}, %{{.*}} : vector<4xf32>
-// CHECK-NOT: arith.addf %{{.*}}, %{{.*}} : vector<4xf32>
+// CHECK:         scf.parallel
+// CHECK:           scf.for
+// CHECK-COUNT-4:     arith.addf %{{.*}}, %{{.*}} : vector<4xf32>
 
 // -----
 
@@ -47,17 +37,11 @@ func.func @reduce_row_mean_2d_dynamic(%input: tensor<?x?xf32>) -> tensor<?xf32> 
       : (tensor<?x?xf32>, tensor<1xi32>) -> tensor<?xf32>
   func.return %0 : tensor<?xf32>
 }
-// CHECK: linalg.fill
-// CHECK: scf.parallel
-// CHECK:   scf.for
-// CHECK:     arith.addf %{{.*}}, %{{.*}} : vector<4xf32>
-// CHECK:     arith.addf %{{.*}}, %{{.*}} : vector<4xf32>
-// CHECK:     arith.addf %{{.*}}, %{{.*}} : vector<4xf32>
-// CHECK:     arith.addf %{{.*}}, %{{.*}} : vector<4xf32>
-// CHECK-NOT: arith.addf %{{.*}}, %{{.*}} : vector<4xf32>
-// CHECK: scf.parallel
-// CHECK:      vector.broadcast %{{.*}} : f32 to vector<8xf32>
-// CHECK-NEXT: arith.divf %{{.*}}, %{{.*}} : vector<8xf32>
+// CHECK:         scf.parallel
+// CHECK:           scf.for
+// CHECK-COUNT-4:     arith.addf %{{.*}}, %{{.*}} : vector<4xf32>
+// CHECK:             scf.yield
+// CHECK:           arith.divf %{{.*}}, %{{.*}} : vector<4xf32>
 
 // -----
 
@@ -85,11 +69,7 @@ func.func @reduction_of_cast(%arg0: tensor<?xi64>) -> tensor<i32> {
     : (tensor<?xi32>, tensor<1xi32>) -> tensor<i32>
   func.return %1 : tensor<i32>
 }
+// CHECK: scf.parallel
+// CHECK:   arith.trunci
 // CHECK: scf.for
-// CHECK:   arith.trunci %{{.*}} : vector<4x8xi64> to vector<4x8xi32>
-// CHECK:   arith.muli %{{.*}}, %{{.*}} : vector<8xi32>
-// CHECK: vector.reduction
-// CHECK: scf.for
-// CHECK:   linalg.generic
-// CHECK:     arith.trunci
-// CHECK:     arith.muli
+// CHECK:   arith.muli

@@ -60,6 +60,35 @@ bool IsColocatedTask(const TaskInfo& task) {
   });
 }
 
+StatusOr<DataTransferServerInfo> GetDataTransferServerInfo(
+    const std::string& data_transfer_protocol, const TaskInfo& task_info) {
+  if (data_transfer_protocol == kLocalTransferProtocol) {
+    DataTransferServerInfo transfer_server;
+    transfer_server.set_protocol(kLocalTransferProtocol);
+    transfer_server.set_address(task_info.worker_address());
+    return transfer_server;
+  }
+  if (!data_transfer_protocol.empty()) {
+    for (const auto& transfer_server : task_info.transfer_servers()) {
+      if (transfer_server.protocol() == data_transfer_protocol) {
+        return transfer_server;
+      }
+    }
+    return errors::InvalidArgument(
+        "the user specified the data transfer protocol ",
+        data_transfer_protocol, " but the worker ", task_info.worker_address(),
+        " has no server for this protocol");
+  }
+  for (const auto& transfer_server : task_info.transfer_servers()) {
+    if (transfer_server.protocol() == kGrpcTransferProtocol) {
+      return transfer_server;
+    }
+  }
+  return errors::Internal(
+      "the 'grpc' protocol somehow isn't available for worker ",
+      task_info.worker_address());
+}
+
 }  // namespace
 
 DataServiceClient::DataServiceClient(const DataServiceParams& params)
@@ -307,10 +336,13 @@ void DataServiceClient::UpdateIterationFinished(bool iteration_finished)
 
 Status DataServiceClient::AddTask(const TaskInfo& task_info)
     TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<DataServiceWorkerClient> worker,
-                      CreateDataServiceWorkerClient(
-                          task_info.transfer_address(), params_.protocol,
-                          params_.data_transfer_protocol));
+  TF_ASSIGN_OR_RETURN(
+      DataTransferServerInfo transfer_server,
+      GetDataTransferServerInfo(params_.data_transfer_protocol, task_info));
+  TF_ASSIGN_OR_RETURN(
+      std::unique_ptr<DataServiceWorkerClient> worker,
+      CreateDataServiceWorkerClient(transfer_server.address(), params_.protocol,
+                                    transfer_server.protocol()));
   tasks_.push_back(std::make_shared<Task>(task_info, std::move(worker)));
   worker_thread_cv_.notify_one();
   if (IsCoordinatedRead()) {

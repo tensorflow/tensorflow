@@ -1,191 +1,141 @@
-diff --ruN a/stablehlo/stablehlo/dialect/CMakeLists.txt b/stablehlo/stablehlo/dialect/CMakeLists.txt
---- stablehlo/stablehlo/dialect/CMakeLists.txt
-+++ stablehlo/stablehlo/dialect/CMakeLists.txt
-@@ -106,6 +106,7 @@
-   LINK_LIBS PUBLIC
-   MLIRInferTypeOpInterface
-   MLIRIR
-+  StablehloAssemblyFormat
-   StablehloBase
- )
+diff --ruN a/stablehlo/stablehlo/tests/stablehlo_refine_shapes.mlir b/stablehlo/stablehlo/tests/stablehlo_refine_shapes.mlir
+--- stablehlo/stablehlo/tests/stablehlo_refine_shapes.mlir
++++ stablehlo/stablehlo/tests/stablehlo_refine_shapes.mlir
+@@ -280,6 +280,18 @@
+   %2 = stablehlo.constant dense<[3, 4]> : tensor<2xi64>
+   %3 = stablehlo.select %0, %1, %2 : tensor<2xi1>, tensor<2xi64>
+   func.return %3 : tensor<2xi64>
++}
++
++// -----
++
++// CHECK-LABEL: func @eval_sign
++func.func @eval_sign() -> tensor<3xi64> {
++  // CHECK-NOT: stablehlo.sign
++  // CHECK: [[RESULT:%.*]] = stablehlo.constant dense<[-1, 0, 1]> : tensor<3xi64>
++  // CHECK: return [[RESULT]]
++  %0 = stablehlo.constant dense<[-1, 0, 1]> : tensor<3xi64>
++  %1 = stablehlo.sign %0 : (tensor<3xi64>) -> tensor<3xi64>
++  func.return %1 : tensor<3xi64>
+ }
  
-diff --ruN a/stablehlo/stablehlo/reference/Tensor.cpp b/stablehlo/stablehlo/reference/Tensor.cpp
---- stablehlo/stablehlo/reference/Tensor.cpp
-+++ stablehlo/stablehlo/reference/Tensor.cpp
-@@ -368,24 +368,25 @@
+ // -----
+diff --ruN a/stablehlo/stablehlo/transforms/StablehloRefineShapes.cpp b/stablehlo/stablehlo/transforms/StablehloRefineShapes.cpp
+--- stablehlo/stablehlo/transforms/StablehloRefineShapes.cpp
++++ stablehlo/stablehlo/transforms/StablehloRefineShapes.cpp
+@@ -74,9 +74,36 @@
+ }
  
-     // For both f16 and bf16 floating-point types, we use uint16_t as their
-     // storage type because there are no buitin types for those.
--    return Tensor(type,
--                  HeapAsmResourceBlob::allocateAndCopy<uint16_t>(floatValues));
-+    return Tensor(
-+        type,
-+        HeapAsmResourceBlob::allocateAndCopyInferAlign<uint16_t>(floatValues));
+ template <typename OpType, typename FuncType>
++LogicalResult evalUnary(PatternRewriter& rewriter, OpType op, FuncType fn) {
++  if (op->getNumOperands() != 1)
++    llvm::report_fatal_error("expected one operand");
++
++  auto resultType = op.getResult().getType().template cast<ShapedType>();
++  if (!resultType.hasRank() || !resultType.getElementType().isIntOrIndex())
++    return rewriter.notifyMatchFailure(
++        op, "expected integer or index result tensor type");
++
++  SmallVector<APInt> operand, result;
++  if (failed(matchInts(op.getOperand(), operand)))
++    return rewriter.notifyMatchFailure(op, "expected constant operand");
++  for (const auto& operandEl : operand) {
++    result.push_back(fn(operandEl));
++  }
++
++  rewriter.replaceOpWithNewOp<ConstantOp>(
++      op, DenseIntElementsAttr::get(resultType, result));
++  return success();
++}
++
++template <typename OpType, typename FuncType>
+ LogicalResult evalBinary(PatternRewriter& rewriter, OpType op, FuncType fn) {
+   if (op->getNumOperands() != 2)
+-    return rewriter.notifyMatchFailure(op, "expected two operands");
++    llvm::report_fatal_error("expected two operands");
++
++  auto resultType = op.getResult().getType().template cast<ShapedType>();
++  if (!resultType.hasRank() || !resultType.getElementType().isIntOrIndex())
++    return rewriter.notifyMatchFailure(
++        op, "expected integer or index result tensor type");
+ 
+   SmallVector<APInt> lhs, rhs, result;
+   if (failed(matchInts(op.getLhs(), lhs)) ||
+@@ -87,7 +114,7 @@
    }
  
-   if (elemType.isF32()) {
-     auto floatValues = llvm::to_vector(llvm::map_range(
-         attr.getValues<APFloat>(),
-         [&](APFloat value) -> float { return value.convertToFloat(); }));
--    return Tensor(type,
--                  HeapAsmResourceBlob::allocateAndCopy<float>(floatValues));
-+    return Tensor(type, HeapAsmResourceBlob::allocateAndCopyInferAlign<float>(
-+                            floatValues));
+   rewriter.replaceOpWithNewOp<ConstantOp>(
+-      op, DenseIntElementsAttr::get(op.getResult().getType(), result));
++      op, DenseIntElementsAttr::get(resultType, result));
+   return success();
+ }
+ 
+@@ -191,27 +218,13 @@
+   using OpRewritePattern::OpRewritePattern;
+   LogicalResult matchAndRewrite(ConvertOp op,
+                                 PatternRewriter& rewriter) const override {
+-    auto operandType = op.getOperand().getType().dyn_cast<RankedTensorType>();
++    auto operandType = op.getOperand().getType().cast<ShapedType>();
+     auto isOperandUnsigned = operandType.getElementType().isUnsignedInteger();
+-
+-    auto resultType = op.getResult().getType().dyn_cast<RankedTensorType>();
+-    if (!resultType || !resultType.getElementType().isIntOrIndex())
+-      return rewriter.notifyMatchFailure(
+-          op, "expected integer or index result element type");
+-
+-    SmallVector<APInt> operand, result;
+-    if (failed(matchInts(op.getOperand(), operand)))
+-      return rewriter.notifyMatchFailure(op, "expected constant operand");
+-    for (const auto& operandEl : operand) {
+-      auto resultBitwidth = resultType.getElementType().getIntOrFloatBitWidth();
+-      auto resultEl =
+-          APSInt(operandEl, isOperandUnsigned).extOrTrunc(resultBitwidth);
+-      result.push_back(resultEl);
+-    }
+-
+-    rewriter.replaceOpWithNewOp<ConstantOp>(
+-        op, DenseIntElementsAttr::get(resultType, result));
+-    return success();
++    auto resultType = op.getResult().getType().cast<ShapedType>();
++    auto resultBitwidth = resultType.getElementType().getIntOrFloatBitWidth();
++    return evalUnary(rewriter, op, [&](APInt operand) {
++      return APSInt(operand, isOperandUnsigned).extOrTrunc(resultBitwidth);
++    });
    }
+ };
  
-   if (elemType.isF64()) {
-     auto floatValues = llvm::to_vector(llvm::map_range(
-         attr.getValues<APFloat>(),
-         [&](APFloat value) -> double { return value.convertToDouble(); }));
--    return Tensor(type,
--                  HeapAsmResourceBlob::allocateAndCopy<double>(floatValues));
-+    return Tensor(type, HeapAsmResourceBlob::allocateAndCopyInferAlign<double>(
-+                            floatValues));
+@@ -311,6 +324,25 @@
+     rewriter.replaceOpWithNewOp<ConstantOp>(
+         op, DenseIntElementsAttr::get(op.getResult().getType(), result));
+     return success();
++  }
++};
++
++struct EvalSignOpPattern : public OpRewritePattern<SignOp> {
++  using OpRewritePattern::OpRewritePattern;
++  LogicalResult matchAndRewrite(SignOp op,
++                                PatternRewriter& rewriter) const override {
++    auto resultType = op.getResult().getType().cast<ShapedType>();
++    auto resultBitwidth = resultType.getElementType().getIntOrFloatBitWidth();
++    return evalUnary(rewriter, op, [&](APInt operand) {
++      int64_t result;
++      if (operand.slt(0))
++        result = -1;
++      else if (operand.getSExtValue() == 0)
++        result = 0;
++      else
++        result = 1;
++      return APInt(resultBitwidth, result, /*isSigned=*/true);
++    });
    }
+ };
  
-   // Handle signed integer types.
-@@ -393,32 +394,32 @@
-     auto intValues = llvm::to_vector(llvm::map_range(
-         attr.getValues<APInt>(),
-         [&](APInt value) -> int8_t { return value.getSExtValue(); }));
--    return Tensor(type,
--                  HeapAsmResourceBlob::allocateAndCopy<int8_t>(intValues));
-+    return Tensor(type, HeapAsmResourceBlob::allocateAndCopyInferAlign<int8_t>(
-+                            intValues));
-   }
- 
-   if (elemType.isSignlessInteger(16)) {
-     auto intValues = llvm::to_vector(llvm::map_range(
-         attr.getValues<APInt>(),
-         [&](APInt value) -> int16_t { return value.getSExtValue(); }));
--    return Tensor(type,
--                  HeapAsmResourceBlob::allocateAndCopy<int16_t>(intValues));
-+    return Tensor(type, HeapAsmResourceBlob::allocateAndCopyInferAlign<int16_t>(
-+                            intValues));
-   }
- 
-   if (elemType.isSignlessInteger(32)) {
-     auto intValues = llvm::to_vector(llvm::map_range(
-         attr.getValues<APInt>(),
-         [&](APInt value) -> int32_t { return value.getSExtValue(); }));
--    return Tensor(type,
--                  HeapAsmResourceBlob::allocateAndCopy<int32_t>(intValues));
-+    return Tensor(type, HeapAsmResourceBlob::allocateAndCopyInferAlign<int32_t>(
-+                            intValues));
-   }
- 
-   if (elemType.isSignlessInteger(64)) {
-     auto intValues = llvm::to_vector(llvm::map_range(
-         attr.getValues<APInt>(),
-         [&](APInt value) -> int64_t { return value.getSExtValue(); }));
--    return Tensor(type,
--                  HeapAsmResourceBlob::allocateAndCopy<int64_t>(intValues));
-+    return Tensor(type, HeapAsmResourceBlob::allocateAndCopyInferAlign<int64_t>(
-+                            intValues));
-   }
- 
-   // Handle unsigned integer types.
-@@ -426,32 +427,35 @@
-     auto intValues = llvm::to_vector(llvm::map_range(
-         attr.getValues<APInt>(),
-         [&](APInt value) -> uint8_t { return value.getZExtValue(); }));
--    return Tensor(type,
--                  HeapAsmResourceBlob::allocateAndCopy<uint8_t>(intValues));
-+    return Tensor(type, HeapAsmResourceBlob::allocateAndCopyInferAlign<uint8_t>(
-+                            intValues));
-   }
- 
-   if (elemType.isUnsignedInteger(16)) {
-     auto intValues = llvm::to_vector(llvm::map_range(
-         attr.getValues<APInt>(),
-         [&](APInt value) -> uint16_t { return value.getZExtValue(); }));
--    return Tensor(type,
--                  HeapAsmResourceBlob::allocateAndCopy<uint16_t>(intValues));
-+    return Tensor(
-+        type,
-+        HeapAsmResourceBlob::allocateAndCopyInferAlign<uint16_t>(intValues));
-   }
- 
-   if (elemType.isUnsignedInteger(32)) {
-     auto intValues = llvm::to_vector(llvm::map_range(
-         attr.getValues<APInt>(),
-         [&](APInt value) -> uint32_t { return value.getZExtValue(); }));
--    return Tensor(type,
--                  HeapAsmResourceBlob::allocateAndCopy<uint32_t>(intValues));
-+    return Tensor(
-+        type,
-+        HeapAsmResourceBlob::allocateAndCopyInferAlign<uint32_t>(intValues));
-   }
- 
-   if (elemType.isUnsignedInteger(64)) {
-     auto intValues = llvm::to_vector(llvm::map_range(
-         attr.getValues<APInt>(),
-         [&](APInt value) -> uint64_t { return value.getZExtValue(); }));
--    return Tensor(type,
--                  HeapAsmResourceBlob::allocateAndCopy<uint64_t>(intValues));
-+    return Tensor(
-+        type,
-+        HeapAsmResourceBlob::allocateAndCopyInferAlign<uint64_t>(intValues));
-   }
- 
-   // Handle boolean type.
-@@ -459,8 +463,8 @@
-     auto boolValues = llvm::to_vector(
-         llvm::map_range(attr.getValues<bool>(),
-                         [&](bool value) -> uint8_t { return value ? 1 : 0; }));
--    return Tensor(type,
--                  HeapAsmResourceBlob::allocateAndCopy<uint8_t>(boolValues));
-+    return Tensor(type, HeapAsmResourceBlob::allocateAndCopyInferAlign<uint8_t>(
-+                            boolValues));
-   }
- 
-   // Handle complex types.
-@@ -473,9 +477,10 @@
-             return std::complex<float>(value.real().convertToFloat(),
-                                        value.imag().convertToFloat());
-           }));
--      return Tensor(type,
--                    HeapAsmResourceBlob::allocateAndCopy<std::complex<float>>(
--                        complexValues));
-+      return Tensor(
-+          type,
-+          HeapAsmResourceBlob::allocateAndCopyInferAlign<std::complex<float>>(
-+              complexValues));
-     }
-     if (complexElemTy.isF64()) {
-       auto complexValues = llvm::to_vector(llvm::map_range(
-@@ -484,9 +489,10 @@
-             return std::complex<double>(value.real().convertToDouble(),
-                                         value.imag().convertToDouble());
-           }));
--      return Tensor(type,
--                    HeapAsmResourceBlob::allocateAndCopy<std::complex<double>>(
--                        complexValues));
-+      return Tensor(
-+          type,
-+          HeapAsmResourceBlob::allocateAndCopyInferAlign<std::complex<double>>(
-+              complexValues));
-     }
-   }
- 
-diff --ruN a/stablehlo/stablehlo/tests/CMakeLists.txt b/stablehlo/stablehlo/tests/CMakeLists.txt
---- stablehlo/stablehlo/tests/CMakeLists.txt
-+++ stablehlo/stablehlo/tests/CMakeLists.txt
-@@ -53,4 +53,5 @@
-   MLIRShapeDialect
-   MLIRSupport
-   MLIRTransformUtils
-+  StablehloAssemblyFormat
- )
-diff --ruN a/stablehlo/stablehlo/tests/TestUtils.cpp b/stablehlo/stablehlo/tests/TestUtils.cpp
---- stablehlo/stablehlo/tests/TestUtils.cpp
-+++ stablehlo/stablehlo/tests/TestUtils.cpp
-@@ -36,7 +36,6 @@
- #include "mlir/Support/TypeID.h"
- #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
- #include "stablehlo/dialect/AssemblyFormat.h"
--#include "stablehlo/dialect/Base.h"
- 
- namespace mlir {
- namespace hlo {
+@@ -983,6 +1015,7 @@
+     patterns.add<EvalRemOpPattern>(&getContext());
+     patterns.add<EvalReshapeOpPattern>(&getContext());
+     patterns.add<EvalSelectOpPattern>(&getContext());
++    patterns.add<EvalSignOpPattern>(&getContext());
+     patterns.add<EvalSliceOpPattern>(&getContext());
+     patterns.add<EvalSubtractOpPattern>(&getContext());
+     patterns.add<RefineBitcastConvertOpPattern>(&getContext());
 

@@ -16,7 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_GPU_RUNTIME_COLLECTIVES_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_RUNTIME_COLLECTIVES_H_
 
-#include "llvm/ADT/DenseMap.h"
+#include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "tensorflow/compiler/xla/runtime/custom_call_registry.h"
 #include "tensorflow/compiler/xla/stream_executor/event.h"
 #include "tensorflow/compiler/xla/stream_executor/stream.h"
@@ -24,10 +25,11 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-class JitRtCollectiveSupport;
-class JitRtAsyncCollectiveSupport;
+// Support for running async collective operations communicating via events.
+// Registers XLA Gpu runtime collective custom calls.
+void RegisterCollectiveCustomCalls(runtime::DirectCustomCallRegistry& registry);
 
-class JitRtCollectiveSupport {
+class CollectivesSupport {
  public:
   // Maybe block host after the first call to the collective operation with the
   // given uid, to ensure that all devices have allocated the required buffers
@@ -35,53 +37,37 @@ class JitRtCollectiveSupport {
   // operations. Otherwise, the allocations can cause deadlock in the CUDA
   // driver.
   //
-  // This basically ports workaround form cr/435058849 to JitRt (see details in
-  // the b/215649390).
-  Status MaybeBlockAfterFirstRun(int32_t uid, int32_t device_ordinal,
-                                 se::Stream* stream);
+  // This basically ports workaround from cr/435058849 to Xla runtime (see
+  // details in the b/215649390).
+  absl::Status MaybeBlockAfterFirstRun(int32_t uid, int32_t device_ordinal,
+                                       se::Stream* stream);
 
  private:
-  static int64_t Key(int32_t uid, int32_t device_ordinal) {
-    return static_cast<int64_t>(uid) << 32 | device_ordinal;
-  }
-
-  mutable absl::Mutex mutex_;
+  absl::Mutex mutex_;
 
   // Store if a particular collective operation was executed at least once. We
   // rely on unique `uid` assigned to each collective operation by the lowering
   // pass.
-  llvm::SmallDenseMap<int64_t, bool> executed_ ABSL_GUARDED_BY(mutex_);
+  absl::flat_hash_set<int64_t> executed_ ABSL_GUARDED_BY(mutex_);
 };
 
 // Support for running async collective operations communicating via events.
-class JitRtAsyncCollectiveSupport {
+class AsyncCollectivesSupport {
  public:
-  explicit JitRtAsyncCollectiveSupport(se::Stream* async_comm_stream);
+  explicit AsyncCollectivesSupport(se::Stream* async_comm_stream);
 
-  mlir::FailureOr<se::Event> PopEvent(int32_t uid, int32_t device_ordinal);
-  mlir::LogicalResult PushEvent(int32_t uid, int32_t device_ordinal,
-                                se::Event done_event);
+  absl::Status RecordEvent(int32_t uid);
+  absl::StatusOr<se::Event> PopEvent(int32_t uid);
 
-  ::stream_executor::Stream* async_comm_stream() const {
-    return async_comm_stream_;
-  }
+  se::Stream* async_comm_stream() const { return async_comm_stream_; }
 
  private:
-  static int64_t EventKey(int32_t uid, int32_t device_ordinal) {
-    return static_cast<int64_t>(uid) << 32 | device_ordinal;
-  }
+  absl::Mutex mutex_;
+  se::Stream* async_comm_stream_;
 
-  mutable absl::Mutex mutex_;
-
-  ::stream_executor::Stream* async_comm_stream_;
-
-  // Store done events for the AllReduceDone to wait on.
-  llvm::SmallDenseMap<int64_t, se::Event> done_events_ ABSL_GUARDED_BY(mutex_);
+  // Store done events for the Done ops to wait upon.
+  absl::flat_hash_map<int, se::Event> done_events_ ABSL_GUARDED_BY(mutex_);
 };
-
-// Support for running async collective operations communicating via events.
-// Registers XLA Gpu runtime collective custom calls.
-void RegisterCollectiveCustomCalls(runtime::DirectCustomCallRegistry& registry);
 
 }  // namespace gpu
 }  // namespace xla

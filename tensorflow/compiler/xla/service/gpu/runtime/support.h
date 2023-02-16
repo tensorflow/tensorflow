@@ -29,17 +29,20 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
+template <auto T>
+using FunctionWrapper = xla::runtime::CustomCall::FunctionWrapper<T>;
+
 struct DotDimensionNumbers {
-  llvm::ArrayRef<int64_t> lhs_batch;
-  llvm::ArrayRef<int64_t> lhs_contract;
-  llvm::ArrayRef<int64_t> rhs_batch;
-  llvm::ArrayRef<int64_t> rhs_contract;
+  absl::Span<const int64_t> lhs_batch;
+  absl::Span<const int64_t> lhs_contract;
+  absl::Span<const int64_t> rhs_batch;
+  absl::Span<const int64_t> rhs_contract;
 };
 
-// Disable all CustomCall checks in optimized build.
+// Disable expensive CustomCall checks in optimized build.
 inline constexpr runtime::CustomCall::RuntimeChecks checks =  // NOLINT
 #if defined(NDEBUG)
-    runtime::CustomCall::RuntimeChecks::kNone;
+    runtime::CustomCall::RuntimeChecks::kLess;
 #else
     runtime::CustomCall::RuntimeChecks::kDefault;
 #endif
@@ -91,13 +94,12 @@ inline StatusOr<GemmConfig> GetGemmConfig(
     const runtime::StridedMemrefView& lhs,
     const runtime::StridedMemrefView& rhs,
     const runtime::StridedMemrefView& out, int64_t algorithm, double alpha_real,
-    double alpha_imag, double beta, llvm::ArrayRef<int64_t> lhs_batch,
-    llvm::ArrayRef<int64_t> lhs_contract, llvm::ArrayRef<int64_t> rhs_batch,
-    llvm::ArrayRef<int64_t> rhs_contract) {
+    double alpha_imag, double beta, absl::Span<const int64_t> lhs_batch,
+    absl::Span<const int64_t> lhs_contract, absl::Span<const int64_t> rhs_batch,
+    absl::Span<const int64_t> rhs_contract, int64_t compute_precision) {
   return GemmConfig::For(ToShape(lhs), lhs_batch, lhs_contract, ToShape(rhs),
                          rhs_batch, rhs_contract, ToShape(out), alpha_real,
-                         alpha_imag, beta, algorithm,
-                         se::blas::kDefaultComputePrecision);
+                         alpha_imag, beta, algorithm, compute_precision);
 }
 
 // adds Dot Dimension Attribute encodings for calls to Gemm and cuBLASLt
@@ -124,10 +126,10 @@ namespace runtime {
 
 XLA_RUNTIME_REGISTER_AGGREGATE_ATTR_DECODING(
     xla::gpu::DotDimensionNumbers,
-    AggregateMember<llvm::ArrayRef<int64_t>>("lhs_batch"),
-    AggregateMember<llvm::ArrayRef<int64_t>>("lhs_contract"),
-    AggregateMember<llvm::ArrayRef<int64_t>>("rhs_batch"),
-    AggregateMember<llvm::ArrayRef<int64_t>>("rhs_contract"));
+    AggregateMember<absl::Span<const int64_t>>("lhs_batch"),
+    AggregateMember<absl::Span<const int64_t>>("lhs_contract"),
+    AggregateMember<absl::Span<const int64_t>>("rhs_batch"),
+    AggregateMember<absl::Span<const int64_t>>("rhs_contract"));
 
 }  // namespace runtime
 }  // namespace xla

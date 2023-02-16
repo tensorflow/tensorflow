@@ -97,6 +97,15 @@ class CollectiveOpsV2(object):
                                              group_key, instance_key, *args,
                                              **kwargs)
 
+  @staticmethod
+  def all_to_all(t, group_size, group_key, instance_key, *args, **kwargs):
+    group_size = array_ops.identity(group_size)
+    group_key = array_ops.identity(group_key)
+    instance_key = array_ops.identity(instance_key)
+    return _collective_ops.all_to_all_v2(
+        t, group_size, group_key, instance_key, *args, **kwargs
+    )
+
 
 device_combination = (
     combinations.combine(device='CPU', communication='RING', required_gpus=0) +
@@ -297,6 +306,56 @@ class CollectiveOpsTest(test.TestCase, parameterized.TestCase):
 
     for result in run_broadcast_2devices():
       self.assertAllClose(result, [1., 2., 3.], rtol=1e-5, atol=1e-5)
+
+  def testAllToAll(self, collective_ops, device, communication):
+    if str(collective_ops) == 'v1':
+      self.skipTest('CollectiveAllToAllV1 is not implemented.')
+    devices = ['/device:%s:0' % device, '/device:%s:1' % device]
+
+    tokens = {}
+    for dev in devices:
+      with ops.device(dev):
+        tokens[dev] = create_ordering_token()
+
+    @def_function.function
+    def run_all_to_all_1device():
+      with ops.device(devices[0]):
+        in_value = constant_op.constant([1.0])
+        group_size = 1
+        group_key = 1
+        instance_key = 1
+        return collective_ops.all_to_all(
+            in_value,
+            group_size,
+            group_key,
+            instance_key,
+            communication_hint=communication,
+            ordering_token=tokens[devices[0]],
+        )
+
+    @def_function.function
+    def run_all_to_all_2devices():
+      group_size = 2
+      group_key = 2
+      instance_key = 2
+      collectives = []
+      for i in range(2):
+        with ops.device(devices[i]):
+          collectives.append(
+              collective_ops.all_to_all(
+                  constant_op.constant([i, i]),
+                  group_size,
+                  group_key,
+                  instance_key,
+                  ordering_token=tokens[devices[i]],
+                  communication_hint=communication,
+              )
+          )
+      return collectives
+
+    self.assertAllClose(run_all_to_all_1device(), [1.0])
+    for result in run_all_to_all_2devices():
+      self.assertAllClose(result, [0.0, 1.0])
 
   def testInstanceKeyScopedUnderGroupKey(self, collective_ops, device,
                                          communication):

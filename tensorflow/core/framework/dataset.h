@@ -16,10 +16,14 @@ limitations under the License.
 #define TENSORFLOW_CORE_FRAMEWORK_DATASET_H_
 
 #include <deque>
+#include <iterator>
 #include <memory>
+#include <string>
 #include <unordered_map>
+#include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/memory/memory.h"
 #include "absl/strings/str_cat.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
@@ -88,6 +92,7 @@ constexpr int kUnknownCardinality = -2;
 // This constant is a magic number that is used (as a prefix) to identify keys
 // used for serialization of iterator state.
 constexpr char kFullNameRandomHex[] = "60d899aa0d8ce4351e7c3b419e92d25b";
+constexpr int kFullNameRandomHexLen = std::size(kFullNameRandomHex) - 1;
 constexpr char kPipe[] = "|";
 constexpr char kColon[] = ":";
 
@@ -404,18 +409,91 @@ int32_t GetRunnerThreadpoolSizeFromOpKernelContext(OpKernelContext* ctx);
 // The implementation is not thread-safe.
 class MemoryCheckpoint : public IteratorStateWriter {
  public:
-  MemoryCheckpoint() = default;
+  // IdRegistry maintains the mapping between a string key and an integer.
+  // The main purpose of this registry is to allow us using integers as map keys
+  // in MemoryCheckpoint to reduce the cost in checkpoint merging.
+  class IdRegistry {
+   public:
+    IdRegistry() = default;
+
+    // Inserts the key into the registry and get the integer id for the key.
+    // If the key already exists in the registry, the corresponding id is
+    // directly returned.
+    int64_t InsertKey(const std::string& key) {
+      mutex_lock l(mu_);
+      if (key_to_id_.contains(key)) {
+        return key_to_id_[key];
+      }
+      int64_t id = next_id_++;
+      id_to_key_[id] = key;
+      key_to_id_[key] = id;
+      return id;
+    }
+
+    // Gets all ids for keys starting with the given prefix.
+    std::vector<int64_t> GetIdsWithPrefix(const std::string& prefix) {
+      mutex_lock l(mu_);
+      std::vector<int64_t> ids;
+      for (const auto& [key, id] : key_to_id_) {
+        if (key.length() >= kFullNameRandomHexLen + 1 + prefix.length() &&
+            key.compare(kFullNameRandomHexLen + 1, prefix.length(), prefix) ==
+                0) {
+          ids.push_back(id);
+        }
+      }
+      return ids;
+    }
+
+    // Gets the key corresponding to the given id.
+    std::string GetKey(int64_t id) {
+      mutex_lock l(mu_);
+      if (!id_to_key_.contains(id)) {
+        LOG(ERROR) << "Failed find key in IdRegistry: " << id
+                   << ", max id is: " << next_id_ - 1;
+      }
+      return id_to_key_[id];
+    }
+
+    // Removes the given ids from the registry along with their corresponding
+    // keys.
+    void RemoveIds(const std::vector<int64_t>& ids) {
+      mutex_lock l(mu_);
+      for (const auto& id : ids) {
+        key_to_id_.erase(id_to_key_[id]);
+        id_to_key_.erase(id);
+      }
+    }
+
+   private:
+    mutex mu_;
+    int64_t next_id_ TF_GUARDED_BY(mu_) = 0;
+    absl::flat_hash_map<int64_t, std::string> id_to_key_ TF_GUARDED_BY(mu_);
+    absl::flat_hash_map<std::string, int64_t> key_to_id_ TF_GUARDED_BY(mu_);
+  };
+
+  MemoryCheckpoint() = delete;
+  explicit MemoryCheckpoint(std::shared_ptr<IdRegistry> registry)
+      : id_registry_(registry) {}
+
+  MemoryCheckpoint(MemoryCheckpoint&& other) = default;
+
+  static MemoryCheckpoint CreateRootCheckpoint(
+      std::shared_ptr<IdRegistry> registry) {
+    return MemoryCheckpoint(/*id_registry*/ registry, /*is_root=*/true);
+  }
 
   // BEGIN implementation of `IteratorStateWriter` interface
   Status WriteScalar(StringPiece key, int64_t val) override {
-    int_values_[key] = val;
+    auto id = id_registry_->InsertKey(string(key));
+    int_values_[id] = val;
     return OkStatus();
   }
   Status WriteScalar(StringPiece name, StringPiece key, int64_t val) override {
     return WriteScalar(FullName(string(name), string(key)), val);
   }
   Status WriteScalar(StringPiece key, const tstring& val) override {
-    str_values_[key] = val;
+    auto id = id_registry_->InsertKey(string(key));
+    str_values_[id] = val;
     return OkStatus();
   }
   Status WriteScalar(StringPiece name, StringPiece key,
@@ -423,7 +501,8 @@ class MemoryCheckpoint : public IteratorStateWriter {
     return WriteScalar(FullName(string(name), string(key)), val);
   }
   Status WriteTensor(StringPiece key, const Tensor& val) override {
-    tensor_values_[key] = val;
+    auto id = id_registry_->InsertKey(string(key));
+    tensor_values_[id] = val;
     return OkStatus();
   }
   Status WriteTensor(StringPiece name, StringPiece key,
@@ -434,16 +513,18 @@ class MemoryCheckpoint : public IteratorStateWriter {
 
   // String representation for the in-memory checkpoint suitable for debugging.
   std::string DebugString() const {
-    std::string result = absl::StrCat("status=", status_.ToString(), "\n");
+    std::string result = absl::StrCat("status=", status_.ToString(),
+                                      ", "
+                                      "root=",
+                                      (is_root_ ? "true" : "false"), "\n");
     absl::StrAppend(&result, "number of integers: ", int_values_.size(), "\n");
-    for (const auto& pair : int_values_) {
-      absl::StrAppend(&result, "  ", pair.first, " ", pair.second, "\n");
-    }
+
     absl::StrAppend(&result, "number of strings: ", str_values_.size(), "\n");
-    for (const auto& pair : str_values_) {
-      absl::StrAppend(&result, "  ", pair.first, " ", pair.second, "\n");
-    }
     absl::StrAppend(&result, "number of tensors: ", tensor_values_.size(),
+                    "\n");
+
+    absl::StrAppend(&result,
+                    "number of expired prefixes: ", expired_prefixes_.size(),
                     "\n");
     return result;
   }
@@ -454,44 +535,71 @@ class MemoryCheckpoint : public IteratorStateWriter {
   // Merges key-values pair of another checkpoint with this checkpoint. If a key
   // exists with another checkpoint, then the key-value pair from the `other`
   // argument is used.
-  void Merge(const MemoryCheckpoint& other) {
+  //
+  // Merge also garbage collects expired prefixes.
+  void Merge(MemoryCheckpoint* other) {
     if (!status_.ok()) {
       return;
     }
 
-    if (!other.status_.ok()) {
-      status_ = other.status_;
+    if (!other->status_.ok()) {
+      status_ = other->status_;
       int_values_.clear();
       str_values_.clear();
       tensor_values_.clear();
     }
 
-    for (const auto& pair : other.int_values_) {
-      int_values_[pair.first] = pair.second;
+    for (const auto& [k, v] : other->int_values_) {
+      int_values_[k] = v;
     }
-    for (const auto& pair : other.str_values_) {
-      str_values_[pair.first] = pair.second;
+    for (const auto& [k, v] : other->str_values_) {
+      str_values_[k] = v;
     }
-    for (const auto& pair : other.tensor_values_) {
-      tensor_values_[pair.first] = pair.second;
+    for (const auto& [k, v] : other->tensor_values_) {
+      tensor_values_[k] = v;
+    }
+
+    // Get the expired prefixes from `other`. Since the info only needs to be
+    // propagated once downstream, we also clean the `expired_prefixes_` of
+    // `other` here.
+    for (const auto& prefix : other->expired_prefixes_) {
+      Purge(prefix);
+    }
+
+    other->expired_prefixes_.clear();
+    VLOG(5) << "MemoryCheckpoint::Merge " << DebugString();
+  }
+
+  // Purge removes all keys with given prefix from checkpoint. It also adds the
+  // prefix for tracking unless it is the root checkpoint.
+  void Purge(const std::string& prefix) {
+    std::vector<int64_t> ids = id_registry_->GetIdsWithPrefix(prefix);
+    for (const auto& id : ids) {
+      int_values_.erase(id);
+      str_values_.erase(id);
+      tensor_values_.erase(id);
+    }
+    if (!is_root_) {
+      expired_prefixes_.insert(prefix);
+    } else {
+      // We no longer need the mapping after change has been propagated all the
+      // way to root.
+      id_registry_->RemoveIds(ids);
     }
   }
 
   // Stores the in-memory checkpoint to the given writer.
   Status Save(IteratorStateWriter* writer) const {
-    for (const auto& pair : int_values_) {
-      const auto& key = pair.first;
-      const auto& value = pair.second;
+    for (const auto& [id, value] : int_values_) {
+      auto key = id_registry_->GetKey(id);
       TF_RETURN_IF_ERROR(writer->WriteScalar(key, value));
     }
-    for (const auto& pair : str_values_) {
-      const auto& key = pair.first;
-      const auto& value = pair.second;
+    for (const auto& [id, value] : str_values_) {
+      auto key = id_registry_->GetKey(id);
       TF_RETURN_IF_ERROR(writer->WriteScalar(key, value));
     }
-    for (const auto& pair : tensor_values_) {
-      const auto& key = pair.first;
-      const auto& value = pair.second;
+    for (const auto& [id, value] : tensor_values_) {
+      auto key = id_registry_->GetKey(id);
       TF_RETURN_IF_ERROR(writer->WriteTensor(key, value));
     }
     return OkStatus();
@@ -501,10 +609,22 @@ class MemoryCheckpoint : public IteratorStateWriter {
   void UpdateStatus(Status status) { status_.Update(status); }
 
  private:
+  explicit MemoryCheckpoint(std::shared_ptr<IdRegistry> registry, bool is_root)
+      : is_root_(is_root), id_registry_(registry) {}
+  TF_DISALLOW_COPY_AND_ASSIGN(MemoryCheckpoint);
+
   Status status_ = OkStatus();
-  absl::flat_hash_map<std::string, int64_t> int_values_;
-  absl::flat_hash_map<std::string, std::string> str_values_;
-  absl::flat_hash_map<std::string, Tensor> tensor_values_;
+  // Only set to true for the checkpoint in IteratorResource.
+  // Root checkpoint does not track expired prefixes.
+  const bool is_root_ = false;
+  absl::flat_hash_map<int64_t, int64_t> int_values_;
+  absl::flat_hash_map<int64_t, std::string> str_values_;
+  absl::flat_hash_map<int64_t, Tensor> tensor_values_;
+
+  // Keeps track of expired prefixes for propagation. Cleaned after it's merged.
+  absl::flat_hash_set<std::string> expired_prefixes_;
+
+  std::shared_ptr<IdRegistry> id_registry_;
 };
 
 // Aggregates runtime support needed for dataset and iterator serialization.
@@ -629,7 +749,9 @@ class IteratorContext {
           stats_aggregator(ctx->stats_aggregator()),
           symbolic_checkpoint(ctx->symbolic_checkpoint()),
           thread_factory(ctx->thread_factory()),
-          thread_pool(ctx->thread_pool()) {}
+          thread_pool(ctx->thread_pool()),
+          id_registry(ctx->id_registry()),
+          warm_start(ctx->warm_start()) {}
 
     explicit Params(OpKernelContext* ctx)
         : collective_executor(ctx->collective_executor()),
@@ -720,13 +842,35 @@ class IteratorContext {
 
     // A shared thread pool to schedule computation into.
     thread::ThreadPoolInterface* thread_pool = nullptr;
+
+    std::shared_ptr<MemoryCheckpoint::IdRegistry> id_registry =
+        std::make_shared<MemoryCheckpoint::IdRegistry>();
+
+    // If `true` background threads of asynchronous operations are started when
+    // the iterator is created. Otherwise, they are started upon first `GetNext`
+    // request. Default value is set to false to ensure backward compatibility.
+    bool warm_start = false;
   };
 
-  explicit IteratorContext(IteratorContext* ctx) : params_(Params{ctx}) {}
+  explicit IteratorContext(IteratorContext* ctx)
+      : IteratorContext(Params{ctx}) {}
 
-  explicit IteratorContext(OpKernelContext* ctx) : params_(Params{ctx}) {}
+  explicit IteratorContext(OpKernelContext* ctx)
+      : IteratorContext(Params{ctx}) {}
 
-  explicit IteratorContext(Params params) : params_(std::move(params)) {}
+  explicit IteratorContext(Params params)
+      : params_(std::move(params)),
+        checkpoint_(MemoryCheckpoint{params_.id_registry}) {}
+
+  IteratorContext(const IteratorContext& other)
+      : IteratorContext(Params{other.params_}) {
+    // MemoryCheckpoint should not be copied over as the child context should
+    // not care what's in the checkpoint of parent context.
+  }
+
+  std::shared_ptr<MemoryCheckpoint::IdRegistry> id_registry() {
+    return params_.id_registry;
+  }
 
   Allocator* allocator(AllocatorAttributes attrs) {
     return params_.allocator_getter(attrs);
@@ -752,7 +896,7 @@ class IteratorContext {
     return params_.function_handle_cache;
   }
 
-  const MemoryCheckpoint& checkpoint() const { return checkpoint_; }
+  MemoryCheckpoint* checkpoint() { return &checkpoint_; }
 
   int64 interleave_depth() { return params_.interleave_depth; }
 
@@ -783,6 +927,8 @@ class IteratorContext {
   }
 
   thread::ThreadPoolInterface* thread_pool() { return params_.thread_pool; }
+
+  bool warm_start() { return params_.warm_start; }
 
   std::unique_ptr<thread::ThreadPool> CreateThreadPool(const string& name,
                                                        int num_threads) {
@@ -817,9 +963,21 @@ class IteratorContext {
   //   ...
   // }
   // ```
-  void MergeCheckpoint(const MemoryCheckpoint& checkpoint) {
+  void MergeCheckpoint(MemoryCheckpoint* checkpoint) {
     if (symbolic_checkpoint()) {
       checkpoint_.Merge(checkpoint);
+    }
+  }
+
+  // Removes any keys with the given prefix from the checkpoint.
+  //
+  // The intended use for this API is to clean the stale state in checkpoint,
+  // e.g. when a pipeline created by `flat_map` is exhausted, the state
+  // associated with the iterator of that pipeline is no longer needed and
+  // should be removed.
+  void PurgeCheckpoint(const std::string& prefix) {
+    if (symbolic_checkpoint()) {
+      checkpoint_.Purge(prefix);
     }
   }
 
@@ -957,6 +1115,13 @@ class IteratorBase : public Checkpointable {
     VLOG(1) << "Restored " << prefix() << " in "
             << (EnvTime::NowMicros() - start_us) << "us";
     return OkStatus();
+  }
+
+  // Returns the total number of bytes buffered by the iterator across all nodes
+  // in the subtree for which autotuning is enabled.
+  int64_t TotalBufferedBytes() const {
+    if (node_) return node_->TotalBufferedBytes();
+    return 0;
   }
 
  protected:

@@ -314,13 +314,12 @@ class BlasScratchAllocator : public se::ScratchAllocator {
 
   int64_t GetMemoryLimitInBytes() override { return memory_limit_; }
 
-  se::port::StatusOr<DeviceMemoryBytes> AllocateBytes(
-      int64_t byte_size) override {
+  tsl::StatusOr<DeviceMemoryBytes> AllocateBytes(int64_t byte_size) override {
     Tensor temporary_memory;
 
     if (memory_limit_ > 0 && byte_size > memory_limit_) {
-      return se::port::Status{
-          se::port::error::UNAVAILABLE,
+      return tsl::Status{
+          tsl::error::UNAVAILABLE,
           absl::StrCat("Requested memory size (", byte_size,
                        ") exceeds the memory limit (", memory_limit_, ").")};
     }
@@ -329,8 +328,8 @@ class BlasScratchAllocator : public se::ScratchAllocator {
     Status allocation_status(context_->allocate_temp(
         DT_UINT8, TensorShape({byte_size}), &temporary_memory));
     if (!allocation_status.ok()) {
-      return se::port::Status{
-          se::port::error::UNAVAILABLE,
+      return tsl::Status{
+          tsl::error::UNAVAILABLE,
           absl::StrCat("Failed to allocate requested memory of (", byte_size,
                        ").")};
     }
@@ -338,10 +337,9 @@ class BlasScratchAllocator : public se::ScratchAllocator {
     // allocator.
     allocated_tensors_.push_back(temporary_memory);
     total_byte_size_ += byte_size;
-    return se::port::StatusOr<DeviceMemoryBytes>(
-        DeviceMemoryBytes::MakeFromByteSize(
-            temporary_memory.flat<uint8>().data(),
-            temporary_memory.flat<uint8>().size()));
+    return tsl::StatusOr<DeviceMemoryBytes>(DeviceMemoryBytes::MakeFromByteSize(
+        temporary_memory.flat<uint8>().data(),
+        temporary_memory.flat<uint8>().size()));
   }
   int64 TotalByteSize() { return total_byte_size_; }
 

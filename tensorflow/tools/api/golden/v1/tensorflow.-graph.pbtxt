@@ -1,7 +1,8 @@
 path: "tensorflow.Graph"
 tf_class {
   is_instance: "<class \'tensorflow.python.framework.ops.Graph\'>"
-  is_instance: "<type \'object\'>"
+  is_instance: "<class \'tensorflow.python.client._pywrap_tf_session.GraphHandle\'>"
+  is_instance: "<class \'pybind11_builtins.pybind11_object\'>"
   member {
     name: "building_function"
     mtype: "<type \'property\'>"
@@ -79,6 +80,10 @@ tf_class {
     argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
+    name: "get"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
     name: "get_all_collection_keys"
     argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
   }
@@ -121,6 +126,10 @@ tf_class {
   member_method {
     name: "name_scope"
     argspec: "args=[\'self\', \'name\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "op_def_for_type"
+    argspec: "args=[\'self\', \'type\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "prevent_feeding"

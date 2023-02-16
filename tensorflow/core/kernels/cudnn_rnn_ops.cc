@@ -133,7 +133,7 @@ using se::dnn::RnnMode;
 using se::dnn::RnnSequenceTensorDescriptor;
 using se::dnn::RnnStateTensorDescriptor;
 using se::dnn::ToDataType;
-using se::port::StatusOr;
+using tsl::StatusOr;
 
 uint64 HashList(const std::vector<int>& list) {
   if (list.empty()) {
@@ -323,22 +323,22 @@ DeviceMemoryBase SliceDeviceMemory(const DeviceMemoryBase& device_memory,
   return DeviceMemoryBase(offset_ptr, size);
 }
 
-inline Status FromExecutorStatus(const se::port::Status& s) {
+inline Status FromExecutorStatus(const tsl::Status& s) {
   return s.ok() ? OkStatus()
                 : Status(static_cast<error::Code>(static_cast<int>(s.code())),
                          s.error_message());
 }
 
 template <typename T>
-inline Status FromExecutorStatus(const se::port::StatusOr<T>& s) {
+inline Status FromExecutorStatus(const tsl::StatusOr<T>& s) {
   return FromExecutorStatus(s.status());
 }
 
-inline se::port::Status ToExecutorStatus(const Status& s) {
+inline tsl::Status ToExecutorStatus(const Status& s) {
   return s.ok() ? OkStatus()
-                : se::port::Status(static_cast<se::port::error::Code>(
-                                       static_cast<int>(s.code())),
-                                   s.error_message());
+                : tsl::Status(
+                      static_cast<tsl::error::Code>(static_cast<int>(s.code())),
+                      s.error_message());
 }
 
 template <typename>

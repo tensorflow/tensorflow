@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <algorithm>
 #include <array>
 #include <cmath>
 #include <functional>
@@ -43,6 +44,22 @@ limitations under the License.
 
 namespace xla {
 namespace {
+
+template <typename T>
+std::vector<T> AppendSpecialPositiveValues(std::vector<T> values) {
+  const std::vector<T> kSpecialValues = {0,
+                                         1,
+                                         std::numeric_limits<T>::min(),
+                                         std::numeric_limits<T>::epsilon(),
+                                         std::numeric_limits<T>::max(),
+                                         std::numeric_limits<T>::infinity(),
+                                         std::numeric_limits<T>::quiet_NaN()};
+  values.insert(values.end(), kSpecialValues.begin(), kSpecialValues.end());
+  // Remove duplicate values.
+  auto last = std::unique(values.begin(), values.end());
+  values.erase(last, values.end());
+  return values;
+}
 
 template <typename T>
 std::pair<std::vector<T>, std::vector<T>> AllSignedPairs(
@@ -1575,19 +1592,15 @@ XLA_TEST_F(ArrayElementwiseOpTest, CompareLtU32s) {
 XLA_TEST_F(ArrayElementwiseOpTest, PowF32s) {
   SetFastMathDisabled(true);
   XlaBuilder builder(TestName());
-  // TODO(rmlarsen): The final frontier: getting over- and underflow to match
-  // std::pow.
-  //  auto min = std::numeric_limits<float>::min();
-  //  auto max = std::numeric_limits<float>::max();
-  auto kInf = std::numeric_limits<float>::infinity();
-  auto qnan = std::numeric_limits<float>::quiet_NaN();
   auto eps = std::numeric_limits<float>::epsilon();
 
-  std::vector<float> ys;
+  const std::vector<float> kTestValues = {
+      0.1f, 1.0f / 3.0f, 2.0f / 3.0f, 0.5f,      1.0f + eps,
+      2.0f, 3.0f,        M_PI,        1e6 + 0.1, 1e2};
   std::vector<float> xs;
-  std::tie(xs, ys) = AllSignedPairs<float>(
-      {0.0f, 1e-23, eps, 0.1f, 1.0f / 3.0f, 2.0f / 3.0f, 0.5f, 1.0f, 1.0f + eps,
-       2.0f, 3.0f, M_PI, 1e6 + 0.1, 1e23, kInf, qnan});
+  std::vector<float> ys;
+  std::tie(xs, ys) =
+      AllSignedPairs<float>(AppendSpecialPositiveValues(kTestValues));
   auto lhs = ConstantR1<float>(&builder, xs);
   auto rhs = ConstantR1<float>(&builder, ys);
   Pow(lhs, rhs);
@@ -1672,7 +1685,6 @@ XLA_TEST_F(ArrayElementwiseOpTest, PowSpecialF32) {
 
   for (float exponent : exponents) {
     XlaBuilder b(TestName());
-    LOG(ERROR) << "************* exponent = " << exponent;
     Pow(ConstantR1<float>(&b, values), ConstantR0<float>(&b, exponent));
     ComputeAndCompare(&b, {}, error_spec_);
   }
@@ -2466,6 +2478,38 @@ XLA_TEST_F(ArrayElementwiseOpTest, SinF32s) {
   // This error spec corresponds to 1 ULP max relative error.
   ComputeAndCompare(&builder, {},
                     ErrorSpec(0, std::numeric_limits<float>::epsilon()));
+}
+
+XLA_TEST_F(ArrayElementwiseOpTest, TanF32s) {
+  XlaBuilder builder(TestName());
+  auto kInf = std::numeric_limits<float>::infinity();
+  auto kQNaN = std::numeric_limits<float>::quiet_NaN();
+  auto a = ConstantR1<float>(
+      &builder,
+      {-1.9938988e-28, 1.9938988e-28, -1e20f, 1e20f, -2.3564024f, -3.14159f,
+       3.14159f, -0.0f, 0.0f, -1.570796f, 1.570796f, -0.78539f, 0.78539f,
+       -2.19993846e+10, -1.70141183e+38, -kInf, kInf, kQNaN});
+  Tan(a);
+
+  // This error spec corresponds to 1 ULP max relative error.
+  ComputeAndCompare(&builder, {},
+                    ErrorSpec(0, 2 * std::numeric_limits<float>::epsilon()));
+}
+
+// TODO(rmlarsen): Fix Sin/Cos for large F64 arguments.
+XLA_TEST_F(ArrayElementwiseOpTest, TanF64s) {
+  XlaBuilder builder(TestName());
+  auto kInf = std::numeric_limits<double>::infinity();
+  auto kQNaN = std::numeric_limits<double>::quiet_NaN();
+  auto a = ConstantR1<double>(
+      &builder,
+      {-1.9938988e-28, 1.9938988e-28, -2.3564024f, -3.14159f, 3.14159f, -0.0f,
+       0.0f, -1.570796f, 1.570796f, -0.78539f, 0.78539f, kInf, kInf, kQNaN});
+  Tan(a);
+
+  // This error spec corresponds to 1 ULP max relative error.
+  ComputeAndCompare(&builder, {},
+                    ErrorSpec(0, 100 * std::numeric_limits<double>::epsilon()));
 }
 
 XLA_TEST_F(ArrayElementwiseOpTest, RealF64s) {

@@ -27,7 +27,6 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/strings/string_view.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/statusor.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/platform/errors.h"
@@ -186,6 +185,7 @@ class Mesh {
     return *std::min_element(global_device_ids_.begin(),
                              global_device_ids_.end());
   }
+  int64_t num_local_devices() const { return local_devices_.size(); }
 
   absl::Span<const int64_t> global_device_ids() const {
     return global_device_ids_;
@@ -289,6 +289,11 @@ class Layout {
 
   const Mesh& mesh() const { return mesh_; }
   static Layout ReplicatedOnMesh(const Mesh& mesh, int rank);
+  static Layout BatchShardedOnMesh(const Mesh& mesh, int rank,
+                                   const string& mesh_dim, int axis = 0);
+  static Layout ReplicatedLike(const Layout& layout);
+  static Layout BatchShardedLike(const Layout& layout, const string& mesh_dim,
+                                 int axis = 0);
   static Layout AnyOnMesh(const Mesh& mesh, int rank);
   // Creates a mesh of unique shards.
   Mesh ReducedMesh() const;
@@ -339,7 +344,7 @@ class Layout {
 
   // Compute global shape using the layout and provided local_shape.
   std::vector<int64_t> GlobalShapeFromLocalShape(
-      const std::vector<int64_t>& local_shape) const;
+      absl::Span<const int64_t> local_shape) const;
 
   std::vector<int64_t> LocalShapeFromGlobalShape(
       absl::Span<const int64_t> global_shape) const;

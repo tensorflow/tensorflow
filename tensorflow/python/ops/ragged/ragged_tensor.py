@@ -20,6 +20,7 @@ import operator
 import typing
 import numpy as np
 
+from tensorflow.core.protobuf import struct_pb2
 from tensorflow.python import tf2
 from tensorflow.python.client import session
 from tensorflow.python.framework import composite_tensor
@@ -32,6 +33,7 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.framework import type_spec
+from tensorflow.python.framework import type_spec_registry
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import control_flow_ops
@@ -41,6 +43,7 @@ from tensorflow.python.ops.ragged import ragged_config
 from tensorflow.python.ops.ragged import ragged_tensor_value
 from tensorflow.python.ops.ragged import ragged_util
 from tensorflow.python.ops.ragged.row_partition import RowPartition
+from tensorflow.python.saved_model import nested_structure_coder
 from tensorflow.python.types import core as core_types
 from tensorflow.python.types import internal as internal_types
 from tensorflow.python.util import dispatch
@@ -2305,7 +2308,7 @@ def match_row_splits_dtypes(*tensors, **kwargs):
 # RaggedTensorSpec
 #===============================================================================
 @tf_export("RaggedTensorSpec")
-@type_spec.register("tf.RaggedTensorSpec")
+@type_spec_registry.register("tf.RaggedTensorSpec")
 class RaggedTensorSpec(type_spec.BatchableTypeSpec):
   """Type specification for a `tf.RaggedTensor`."""
 
@@ -2645,6 +2648,13 @@ class RaggedTensorSpec(type_spec.BatchableTypeSpec):
           ragged_rank=value.ragged_rank,
           row_splits_dtype=value.row_splits.dtype,
           flat_values_spec=flat_values_spec)
+
+
+nested_structure_coder.register_codec(
+    nested_structure_coder.BuiltInTypeSpecCodec(
+        RaggedTensorSpec, struct_pb2.TypeSpecProto.RAGGED_TENSOR_SPEC
+    )
+)
 
 
 type_spec.register_type_spec_from_value_converter(

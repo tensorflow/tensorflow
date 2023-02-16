@@ -18,7 +18,10 @@ limitations under the License.
 #include "tensorflow/c/experimental/grappler/grappler_internal.h"
 #include "tensorflow/c/experimental/pluggable_profiler/pluggable_profiler_internal.h"
 #include "tensorflow/c/experimental/stream_executor/stream_executor_internal.h"
+#include "tensorflow/compiler/xla/pjrt/pjrt_api.h"
 #include "tensorflow/core/common_runtime/copy_tensor.h"
+#include "tensorflow/core/common_runtime/next_pluggable_device/next_pluggable_device_api.h"
+#include "tensorflow/core/common_runtime/next_pluggable_device/next_pluggable_device_factory.h"
 #include "tensorflow/core/common_runtime/pluggable_device/pluggable_device_factory.h"
 #include "tensorflow/core/common_runtime/pluggable_device/pluggable_device_util.h"
 #include "tensorflow/core/platform/env.h"
@@ -57,6 +60,48 @@ static Status InitDeviceModule(void* dso_handle) {
       /*is_pluggable_device=*/true));  // Register the Copy tensor.
 
   VLOG(1) << "Successfully initialized Device module.";
+  return OkStatus();
+}
+
+static Status InitNextPluggableDeviceModule(void* dso_handle) {
+  void* dso_symbol;
+  tensorflow::Env* env = tensorflow::Env::Default();
+
+  // Loads the next pluggable device.
+  Status status =
+      env->GetSymbolFromLibrary(dso_handle, "TFNPD_InitPlugin", &dso_symbol);
+  if (errors::IsNotFound(status)) {
+    VLOG(1) << "Next pluggable device module not found.";
+    return OkStatus();
+  } else if (status != OkStatus()) {
+    return status;
+  }
+  auto init_fn = reinterpret_cast<TFNPDInitPluginFn>(dso_symbol);
+  string device_type, compilation_device_name;
+  TF_RETURN_IF_ERROR(InitNextPluggableDevicePlugin(init_fn, &device_type,
+                                                   &compilation_device_name));
+
+  // Loads the PJRT plugin.
+  // TODO(b/265301627): use LoadPjrtPlugin when it supports windows.
+  status = env->GetSymbolFromLibrary(dso_handle, "GetPjrtApi", &dso_symbol);
+  if (errors::IsNotFound(status)) {
+    VLOG(1) << "Loading PJRT plugin failed for " << device_type << ": "
+            << status.error_message();
+    return OkStatus();
+  } else if (!status.ok()) {
+    return status;
+  }
+  auto init_pjrt_fn = reinterpret_cast<pjrt::PjrtApiInitFn>(dso_symbol);
+  TF_RETURN_IF_ERROR(pjrt::InitPjrtPlugin(init_pjrt_fn, device_type));
+
+  // TODO(b/265303775): consider let NextPluggableDevice decide the priority in
+  // TFNPDInitPluginFn.
+  DeviceFactory::Register(device_type,
+                          std::make_unique<NextPluggableDeviceFactory>(
+                              device_type, compilation_device_name),
+                          /*priority=*/200, /*is_pluggable_device=*/false);
+
+  VLOG(1) << "Successfully initialized NextPluggableDevice module.";
   return OkStatus();
 }
 
@@ -126,6 +171,7 @@ Status RegisterPluggableDevicePlugin(void* dso_handle) {
   // has issues in loading / initializing.
   // Step 1 Init Device Module.
   TF_RETURN_IF_ERROR(InitDeviceModule(dso_handle));
+  TF_RETURN_IF_ERROR(InitNextPluggableDeviceModule(dso_handle));
 
   // Step 2 Init Kernel Module.
   TF_RETURN_IF_ERROR(InitKernelModule(dso_handle));

@@ -102,7 +102,7 @@ using RequantizeStates = SmallVector<RequantizeState>;
 //
 class QuantizationDriver {
  public:
-  explicit QuantizationDriver(func::FuncOp fn, bool is_signed,
+  explicit QuantizationDriver(func::FuncOp fn, bool is_signed, int bit_width,
                               bool disable_per_channel,
                               OpQuantSpecGetter op_quant_spec_getter,
                               OpQuantScaleSpecGetter op_quant_scale_spec_getter,
@@ -110,6 +110,7 @@ class QuantizationDriver {
       : fn_(fn),
         builder_(fn.getBody()),
         is_signed_(is_signed),
+        bit_width_(bit_width),
         disable_per_channel_(disable_per_channel),
         op_quant_spec_getter_(op_quant_spec_getter),
         op_quant_scale_spec_getter_(op_quant_scale_spec_getter),
@@ -378,6 +379,7 @@ class QuantizationDriver {
   func::FuncOp fn_;
   OpBuilder builder_;
   bool is_signed_;
+  int bit_width_;
   bool disable_per_channel_;
 
   // We should distinguish weights and bias constants. Biases are specified by
@@ -943,13 +945,11 @@ bool QuantizationDriver::PropagateParams() {
         }
     }
 
-    // TODO(fengliuai): make the bit width configurable.
     if (scale_spec->has_fixed_output_range && infer_tensor_range_) {
       // Infer ranges from the activation ops. This is usually required for
       // the post-training quantization workflow.
       // TODO(fengliuai): different result can have different fixed range.
-      auto params = scale_spec->fixed_output_range_func(is_signed_,
-                                                        /*bit_width=*/8);
+      auto params = scale_spec->fixed_output_range_func(is_signed_, bit_width_);
       for (auto i = 0; i < op->getNumResults(); ++i) {
         // The range is null if the result has been quantized.
         if (params) {
@@ -1168,23 +1168,23 @@ void QuantizationDriver::Run() {
 }
 
 void ApplyQuantizationParamsPropagation(mlir::func::FuncOp func, bool is_signed,
-                                        bool disable_per_channel,
+                                        int bit_width, bool disable_per_channel,
                                         OpQuantSpecGetter op_quant_spec_getter,
                                         bool infer_tensor_ranges,
                                         bool legacy_float_scale) {
   ApplyQuantizationParamsPropagation(
-      func, is_signed, disable_per_channel, op_quant_spec_getter,
+      func, is_signed, bit_width, disable_per_channel, op_quant_spec_getter,
       GetDefaultQuantScaleSpec, infer_tensor_ranges, legacy_float_scale);
 }
 
 void ApplyQuantizationParamsPropagation(
-    mlir::func::FuncOp func, bool is_signed, bool disable_per_channel,
-    OpQuantSpecGetter op_quant_spec_getter,
+    mlir::func::FuncOp func, bool is_signed, int bit_width,
+    bool disable_per_channel, OpQuantSpecGetter op_quant_spec_getter,
     OpQuantScaleSpecGetter op_quant_scale_spec_getter, bool infer_tensor_ranges,
     bool legacy_float_scale) {
-  QuantizationDriver(func, is_signed, disable_per_channel, op_quant_spec_getter,
-                     op_quant_scale_spec_getter, infer_tensor_ranges,
-                     legacy_float_scale)
+  QuantizationDriver(func, is_signed, bit_width, disable_per_channel,
+                     op_quant_spec_getter, op_quant_scale_spec_getter,
+                     infer_tensor_ranges, legacy_float_scale)
       .Run();
 }
 

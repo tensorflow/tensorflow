@@ -10,7 +10,7 @@ tf_module {
   }
   member {
     name: "FuncGraph"
-    mtype: "<type \'type\'>"
+    mtype: "<class \'pybind11_builtins.pybind11_type\'>"
   }
   member {
     name: "autograph"

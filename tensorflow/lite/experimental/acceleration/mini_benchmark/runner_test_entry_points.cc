@@ -25,9 +25,9 @@ limitations under the License.
 #include "absl/strings/numbers.h"
 #include "flatbuffers/flatbuffers.h"  // from @flatbuffers
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/constants.h"
-#include "tensorflow/lite/experimental/acceleration/mini_benchmark/model_loader.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/status_codes.h"
 #include "tensorflow/lite/schema/mutable/schema_generated.h"
+#include "tensorflow/lite/tools/model_loader.h"
 
 extern "C" {
 
@@ -83,9 +83,9 @@ int TfLiteWriteArgs(int argc, char** argv) {
 }
 
 int TfLiteReadFromPipe(int argc, char** argv) {
-  std::unique_ptr<tflite::acceleration::ModelLoader> model_loader =
-      tflite::acceleration::CreateModelLoaderFromPath(argv[3]);
-  if (model_loader->Init() != tflite::acceleration::kMinibenchmarkSuccess) {
+  std::unique_ptr<tflite::tools::ModelLoader> model_loader =
+      tflite::tools::CreateModelLoaderFromPath(argv[3]);
+  if (!model_loader->Init()) {
     return 1;
   }
   tflite::ModelT model;
@@ -100,9 +100,10 @@ int TfLiteReadFromPipe(int argc, char** argv) {
 }
 
 int TfLiteReadFromPipeInProcess(int argc, char** argv) {
-  std::unique_ptr<tflite::acceleration::ModelLoader> model_loader =
-      tflite::acceleration::CreateModelLoaderFromPath(argv[3]);
-  return model_loader->Init();
+  std::unique_ptr<tflite::tools::ModelLoader> model_loader =
+      tflite::tools::CreateModelLoaderFromPath(argv[3]);
+  return model_loader->Init() ? ::tflite::acceleration::kMinibenchmarkSuccess
+                              : 1;
 }
 
 }  // extern "C"

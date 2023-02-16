@@ -19,12 +19,14 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
+#include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "tensorflow/compiler/xla/permutation_util.h"
+#include "tensorflow/compiler/xla/translate/hlo_to_mhlo/attribute_importer.h"
 #include "tensorflow/compiler/xla/translate/hlo_to_mhlo/hlo_function_importer.h"
 #include "tensorflow/compiler/xla/xla.pb.h"
 
@@ -41,7 +43,36 @@ HloModuleImporter::HloModuleImporter(mlir::ModuleOp module,
 }
 
 Status HloModuleImporter::Import(const xla::HloModule& hlo_module) {
-  llvm::cast<mlir::ModuleOp>(symbol_table_.getOp()).setName(hlo_module.name());
+  auto module = llvm::cast<mlir::ModuleOp>(symbol_table_.getOp());
+  module.setName(hlo_module.name());
+  module->setAttr("mhlo.cross_program_prefetches",
+                  ConvertCrossProgramPrefetches(
+                      hlo_module.CrossProgramPrefetches(), &builder_));
+  module->setAttr("mhlo.dynamic_parameter_bindings",
+                  ConvertDynamicParameterBindings(
+                      hlo_module.dynamic_parameter_binding(), &builder_));
+  module->setAttr(
+      "mhlo.is_dynamic",
+      mlir::BoolAttr::get(builder_.getContext(), hlo_module.is_dynamic()));
+  module->setAttr("mhlo.use_auto_spmd_partitioning",
+                  mlir::BoolAttr::get(builder_.getContext(),
+                                      hlo_module.use_auto_spmd_partitioning()));
+  if (hlo_module.has_spmd_output_sharding()) {
+    module->setAttr(
+        "mhlo.spmd_output_sharding",
+        builder_.getStringAttr(
+            hlo_module.spmd_output_sharding().ToProto().SerializeAsString()));
+  }
+
+  if (hlo_module.has_spmd_parameters_shardings()) {
+    llvm::SmallVector<mlir::Attribute> parameter_shardings;
+    for (const auto& sharding : hlo_module.spmd_parameters_shardings()) {
+      parameter_shardings.push_back(
+          builder_.getStringAttr(sharding.ToProto().SerializeAsString()));
+    }
+    module->setAttr("mhlo.spmd_parameters_shardings",
+                    builder_.getArrayAttr(parameter_shardings));
+  }
 
   if (!import_all_computation_)
     // Only import the entry computation, any reachable one will be imported

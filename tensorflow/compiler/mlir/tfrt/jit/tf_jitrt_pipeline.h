@@ -29,41 +29,20 @@ struct TfJitRtPipelineOptions
                          llvm::cl::desc("Enable tiling for vectorization."),
                          llvm::cl::init(false)};
 
-  Option<bool> peel{*this, "peel", llvm::cl::desc("Enable loop peeling."),
-                    llvm::cl::init(true)};
-
-  Option<bool> fuse_fill{
-      *this, "fuse-fill",
-      llvm::cl::desc("Enable fusion of `linalg.fill` into a tiled reduction."),
-      llvm::cl::init(true)};
-
-  Option<int64_t> vector_size{*this, "vector-size",
-                              llvm::cl::desc("Vector size for a 1D reduction."),
-                              llvm::cl::init(8)};
-
-  Option<int64_t> reduction_1d_tile_size{
-      *this, "reduction-1d-tile-size",
-      llvm::cl::desc("Tile size for a 1D reduction."), llvm::cl::init(32)};
-
-  ListOption<int64_t> reduction_2d_tile_sizes{
-      *this, "reduction-2d-tile-sizes",
-      llvm::cl::desc("Tile sizes for a 2D reduction."),
-      llvm::cl::list_init<int64_t>({4, 4}), llvm::cl::ZeroOrMore};
-
   ListOption<int64_t> matmul_tile_sizes{
       *this, "matmul-tile-sizes",
       llvm::cl::desc("Tile sizes for `linalg.matmul`."),
       llvm::cl::list_init<int64_t>({4, 4, 4}), llvm::cl::ZeroOrMore};
 
+  Option<bool> lower_to_mmt4d{
+      *this, "lower-to-mmt4d",
+      llvm::cl::desc("Enable the specific code generation (packing) for matmul "
+                     "operations."),
+      llvm::cl::init(false)};
+
   Option<bool> legalize_i1_tensors{
       *this, "legalize-i1-tensors",
       llvm::cl::desc("Convert i1 tensors to i8 tensors."),
-      llvm::cl::init(false)};
-
-  Option<bool> codegen_transpose{
-      *this, "codegen-transpose",
-      llvm::cl::desc(
-          "Enable the specific code generation for transpose operations."),
       llvm::cl::init(false)};
 };
 

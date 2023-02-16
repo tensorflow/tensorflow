@@ -23,19 +23,13 @@ limitations under the License.
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
 
 namespace mlir {
 
 // Creates a pass that breaks up an island with multiple ops into multiple
 // islands, each with a single op.
 std::unique_ptr<OperationPass<ModuleOp>> CreateBreakUpIslandsPass();
-
-// Creates a pass that breaks up an island with multiple ops into multiple
-// islands, each with a single op. This pass intentionally does not propagate
-// control dependencies across newly created islands, a following pass will
-// handle this.
-// TODO(b/244596254) Implement followup pass for creating control deps.
-std::unique_ptr<OperationPass<func::FuncOp>> CreateSplitIntoIslandPerOpPass();
 
 // Creates a pass that converts mlir functions consisting of mlir ops into a
 // tf_executor dialect as a single island.
@@ -87,6 +81,11 @@ CreateTFRegionControlFlowToFunctional();
 // attached as an attribute.
 std::unique_ptr<OperationPass<func::FuncOp>>
 CreateMaterializePassthroughOpPass();
+
+// Replicates the TensorList init op by undoing some CSE needed for correct
+// shape assignment in shape_inference.
+std::unique_ptr<OperationPass<func::FuncOp>>
+CreateReplicateTensorListInitOpsPass();
 
 // Performs Shape Inference on the TensorFlow dialect using the global registry.
 std::unique_ptr<OperationPass<ModuleOp>> CreateTFShapeInferencePass();
@@ -266,6 +265,12 @@ std::unique_ptr<OperationPass<ModuleOp>> CreateConstantOpDeviceAssignmentPass();
 
 // Populates the supplied passmanager with the passes required to export
 // to TensorFlow Graph.
+void AddGraphExportLoweringPassesV2(OpPassManager& pm);
+
+// Populates the supplied passmanager with the passes required to export
+// to TensorFlow Graph.
+// ***This is the legacy graph export pipeline, prefer
+// AddGraphExportLoweringPassesV2***.
 void AddGraphExportLoweringPasses(OpPassManager& pm);
 
 // Returns pass that verifies whether all functions in module are of single
@@ -306,6 +311,13 @@ std::unique_ptr<OperationPass<ModuleOp>> CreateStripTfAttributesPass();
 
 // Converts AnonymousIteratorOps to (named) IteratorOps.
 std::unique_ptr<OperationPass<ModuleOp>> CreateNameAnonymousIteratorsPass();
+
+// Creates a pass that breaks up an island with multiple ops into multiple
+// islands, each with a single op. This pass intentionally does not propagate
+// control dependencies across newly created islands, a following pass will
+// handle this.
+// TODO(b/244596254) Implement followup pass for creating control deps.
+std::unique_ptr<OperationPass<func::FuncOp>> CreateSplitIntoIslandPerOpPass();
 
 // Populates the supplied passmanager with the passes required to run the
 // CPU/GPU bridge.
@@ -356,7 +368,7 @@ CreateTFExecutorUpdateControlDependenciesPass();
 namespace TFDevice {
 // Creates a pass that forms clusters from instructions that are assigned to
 // same device.
-std::unique_ptr<OperationPass<func::FuncOp>> CreateClusterFormationPass();
+std::unique_ptr<OperationPass<ModuleOp>> CreateClusterFormationPass();
 
 // Sinks `tf.Const` operations in the ClusterOp region using them. This is
 // performed in order to limit the number of values implicitly captured in this
@@ -472,9 +484,15 @@ namespace TFTPU {
 std::unique_ptr<OperationPass<func::FuncOp>>
 CreateConvertToLegacyCompileAndReplicateAttributesPass();
 
+// Creates a pass that converts all TPUPartitionedInput to TPUPartitionedInputV2
+std::unique_ptr<OperationPass<func::FuncOp>>
+CreateTPUPartitionedOpConversionPass();
+
 // Creates a pass that forms clusters from operations of the same
 // `_replication_info` attribute.
 std::unique_ptr<OperationPass<ModuleOp>> CreateTPUClusterFormationPass();
+
+std::unique_ptr<OperationPass<ModuleOp>> CreateTPUValidateInputsPass();
 
 // Creates a pass that cleans up `_replication_info` attribute on operations
 // that are inside a cluster.
@@ -672,6 +690,7 @@ enum MoveTransposeDirection { kBegin, kEnd };
 #define GEN_PASS_DECL_TPUSHARDINGIDENTIFICATIONPASS
 #define GEN_PASS_DECL_TPUSPACETODEPTHPASS
 #define GEN_PASS_DECL_TPUUPDATEEMBEDDINGENQUEUEOPINPUTSPASS
+#define GEN_PASS_DECL_TPUVALIDATEINPUTSPASS
 #define GEN_PASS_DECL_TPUVARIABLERUNTIMEREFORMATTINGPASS
 #define GEN_PASS_DECL_TENSORARRAYOPSDECOMPOSITIONPASS
 #define GEN_PASS_DECL_TENSORDEVICECOPYCONVERSIONPASS

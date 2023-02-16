@@ -24,21 +24,7 @@ namespace xla {
 namespace gpu {
 
 using xla::runtime::CustomCall;
-using xla::runtime::Executable;
-
-namespace {
-
-struct Memset {
-  absl::Status operator()(const ServiceExecutableRunOptions* run_options,
-                          runtime::StridedMemrefView dst,
-                          CustomCall::VariantArg constant) const;
-  static Memset Handler() { return Memset(); }
-};
-
-}  // namespace
-
-// TODO(ezhulenev): Add `VariantArg` type dispatching for all scalar types
-// supported by Xla (PrimitiveType).
+using xla::runtime::StridedMemrefView;
 
 // Checks all supported data types to see if the value is zero.
 static bool IsZero(CustomCall::VariantArg constant) {
@@ -120,9 +106,9 @@ static absl::StatusOr<uint32_t> ToBitPattern(CustomCall::VariantArg constant) {
   return absl::InvalidArgumentError("Unsupported memset constant type");
 }
 
-absl::Status Memset::operator()(const ServiceExecutableRunOptions* run_options,
-                                runtime::StridedMemrefView dst,
-                                CustomCall::VariantArg constant) const {
+static absl::Status MemsetImpl(const ServiceExecutableRunOptions* run_options,
+                               StridedMemrefView dst,
+                               CustomCall::VariantArg constant) {
   se::Stream* stream = run_options->stream();
   se::DeviceMemoryBase dst_data = GetDeviceAddress(dst);
 
@@ -144,20 +130,16 @@ absl::Status Memset::operator()(const ServiceExecutableRunOptions* run_options,
   return absl::OkStatus();
 }
 
-static bool MemsetFn(runtime::ExecutionContext* ctx, void** args, void** attrs,
-                     void** rets) {
-  static auto* handler = CustomCall::Bind("xla.gpu.memset")
-                             .UserData<const ServiceExecutableRunOptions*>()
-                             .Arg<runtime::StridedMemrefView>()  // dst
-                             .Arg<CustomCall::VariantArg>()      // constant
-                             .To<checks>(Memset::Handler())
-                             .release();
-
-  return succeeded(Executable::Call(ctx, *handler, args, attrs, rets));
-}
+XLA_RUNTIME_DEFINE_CUSTOM_CALL(
+    Memset, FunctionWrapper<MemsetImpl>(), checks,
+    CustomCall::Bind("xla.gpu.memset")
+        .UserData<const ServiceExecutableRunOptions*>()
+        .Arg<StridedMemrefView>()       // dst
+        .Arg<CustomCall::VariantArg>()  // constant
+);
 
 void RegisterMemsetCustomCalls(runtime::DirectCustomCallRegistry& registry) {
-  registry.Register("xla.gpu.memset", &MemsetFn);
+  registry.Register("xla.gpu.memset", Memset);
 }
 
 }  // namespace gpu

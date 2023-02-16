@@ -26,6 +26,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
 #include "tensorflow/compiler/xla/python/ifrt/array.h"
 #include "tensorflow/compiler/xla/python/ifrt/compiler.h"
+#include "tensorflow/compiler/xla/python/ifrt/tuple.h"
+#include "tensorflow/compiler/xla/python/ifrt/value.h"
 #include "tensorflow/compiler/xla/statusor.h"
 
 namespace xla {
@@ -42,6 +44,36 @@ using DeviceAssignment = ::xla::DeviceAssignment;
 // devices and memory attached to it.
 class Client : public llvm::RTTIExtends<Client, llvm::RTTIRoot> {
  public:
+  // Describes the semantics the caller to `MakeArrayFromHostBuffer` expects
+  // from the runtime, in a total order from most restrictive to least
+  // restrictive.
+  //
+  // kImmutableOnlyDuringCall:
+  // The runtime may not hold references to `data` after the call to
+  // `MakeArrayFromHostBuffer` completes. The caller promises that `data` is
+  // immutable and will not be freed only for the duration of the
+  // `MakeArrayFromHostBuffer` call. `on_done_with_host_buffer` will be called
+  // before `MakeArrayFromHostBuffer` returns.
+
+  // kImmutableUntilTransferCompletes:
+  // The runtime may hold onto `data` after the call to
+  // `MakeArrayFromHostBuffer` returns while the runtime completes transfers to
+  // devices. The caller promises not to mutate or free `data` until the
+  // transfer completes, at which point the runtime will call
+  // `on_done_with_host_buffer`. It is also correct to wait (directly or
+  // indirectly) for the `Array`'s ready event. The runtime does not promise a
+  // certain ordering between an `on_done_with_host_buffer` call and the
+  // `Array`'s ready event.
+
+  // kZeroCopy:
+  // The `Array` may alias `data` internally and the runtime may use the `data`
+  // contents as long as the buffer is alive. The caller promises to keep `data`
+  // alive and not to mutate its contents as long as the buffer is alive; to
+  // notify the caller that the buffer may be freed, the runtime will call
+  // `on_done_with_host_buffer` when the `Array` is freed. The implementation is
+  // free to make a copy and downgrade the semantics to
+  // `kImmutableUntilTransferCompletes`. Many non-CPU runtimes will make a copy
+  // by default.
   using HostBufferSemantics = ::xla::PjRtClient::HostBufferSemantics;
 
   // Creates a new array from a host buffer.
@@ -59,16 +91,21 @@ class Client : public llvm::RTTIExtends<Client, llvm::RTTIRoot> {
   //
   // TODO(hyeontaek): Consider changing `on_done_with_host_buffer` into a
   // returned `Future<Status>` for consistency with other IFRT APIs.
-  virtual StatusOr<std::unique_ptr<Array>> MakeArrayFromHostBuffer(
+  virtual StatusOr<tsl::RCReference<Array>> MakeArrayFromHostBuffer(
       const void* data, DType dtype, Shape shape,
       std::optional<absl::Span<const int64_t>> byte_strides,
       std::shared_ptr<const Sharding> sharding, HostBufferSemantics semantics,
       std::function<void()> on_done_with_host_buffer) = 0;
 
   // Builds a larger array out of individual per-device shards.
-  virtual StatusOr<std::unique_ptr<Array>> AssembleArray(
+  virtual StatusOr<tsl::RCReference<Array>> AssembleArrayFromSingleDeviceArrays(
       Shape shape, std::shared_ptr<const Sharding> sharding,
-      absl::Span<Array* const> arrays, ArrayCopySemantics semantics) = 0;
+      absl::Span<tsl::RCReference<Array>> arrays,
+      ArrayCopySemantics semantics) = 0;
+
+  // Builds a tuple from a sequence of values.
+  virtual StatusOr<tsl::RCReference<Tuple>> MakeTuple(
+      absl::Span<tsl::RCReference<Value>> values) = 0;
 
   // The following APIs are taken from `xla::PjRtClient` for fast prototyping.
   // Most of the APIs will be factored out as a `Platform`/`Topology` in the
@@ -99,7 +136,7 @@ class Client : public llvm::RTTIExtends<Client, llvm::RTTIRoot> {
 
   // TODO(hyeontaek): Potentially remove this method to encourage supporting
   // only ahead-of-time compilation.
-  virtual Compiler* GetDefaultCompiler() const = 0;
+  virtual Compiler* GetDefaultCompiler() = 0;
 
   static char ID;  // NOLINT
 };

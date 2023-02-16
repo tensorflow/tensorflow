@@ -34,11 +34,17 @@ limitations under the License.
 
 namespace xla {
 namespace gpu {
+namespace impl {
 
-/*static*/ NcclCollectivePermuteConfig
-NcclCollectivePermuteThunk::GetNcclCollectivePermuteConfig(
-    mlir::lmhlo::CollectivePermuteOp op, int64_t replica_count,
-    int64_t partition_count) {
+template <typename OpT>
+CollectiveOpGroupMode GetGroupMode(OpT op) {
+  return GetCollectiveOpGroupMode(op.getChannelId().has_value(), std::nullopt)
+      .value();
+}
+
+template <typename OpT>
+NcclCollectivePermuteConfig GetNcclCollectivePermuteConfig(
+    OpT op, int64_t replica_count, int64_t partition_count) {
   NcclCollectivePermuteConfig collective_permute_config;
   auto& config = collective_permute_config.config;
 
@@ -78,9 +84,8 @@ NcclCollectivePermuteThunk::GetNcclCollectivePermuteConfig(
 
 // The collective permute is degenerate if all source-target pairs are identity,
 // and all the IDs appear in the list.
-/*static*/ bool NcclCollectivePermuteThunk::IsDegenerate(
-    mlir::lmhlo::CollectivePermuteOp op, int64_t replica_count,
-    int64_t partition_count) {
+template <typename OpT>
+bool IsDegenerate(OpT op, int64_t replica_count, int64_t partition_count) {
   const std::vector<std::pair<int64_t, int64_t>> source_target_pairs =
       ConvertNx2Attribute(op.getSourceTargetPairs()).value();
   // Each ID can appear only once as a source and as a target. So if all pairs
@@ -95,29 +100,29 @@ NcclCollectivePermuteThunk::GetNcclCollectivePermuteConfig(
                         });
 }
 
-/*static*/ bool NcclCollectivePermuteThunk::CanImplement(
-    mlir::lmhlo::CollectivePermuteOp op) {
+template <typename OpT>
+bool CanImplement(OpT op) {
   const Shape shape = GetShape(op.getOperand());
   return IsTypeSupportedByNccl(shape.element_type(),
                                Thunk::kNcclCollectivePermute);
 }
 
-NcclCollectivePermuteThunk::NcclCollectivePermuteThunk(
-    ThunkInfo thunk_info, mlir::lmhlo::CollectivePermuteOp op,
-    int64_t replica_count, int64_t partition_count, const Buffer& buffer)
-    : NcclCollectiveThunk(Thunk::kNcclCollectivePermute, thunk_info),
-      config_(
-          GetNcclCollectivePermuteConfig(op, replica_count, partition_count)),
+}  // namespace impl
+
+NcclCollectivePermuteThunkBase::NcclCollectivePermuteThunkBase(
+    Kind kind, ThunkInfo thunk_info, NcclCollectivePermuteConfig config,
+    const Buffer& buffer)
+    : NcclCollectiveThunk(kind, thunk_info),
+      config_(std::move(config)),
       buffer_(buffer) {}
 
-Status NcclCollectivePermuteThunk::RunNcclCollective(
-    const ExecuteParams& params, ncclComm_t comm) {
+Status NcclCollectivePermuteThunkBase::RunCollectivePermute(
+    const ExecuteParams& params, se::Stream& stream, ncclComm_t comm) {
   TF_ASSIGN_OR_RETURN(
       std::vector<DeviceBufferPair> device_buffers,
       ConvertToDeviceBuffers(params, {buffer_},
                              config_.config.operand_element_type));
-  if (device_buffers.size() != 1)
-    return FailedPrecondition("Expected a single input-output buffer pair.");
+  TF_RET_CHECK(device_buffers.size() == 1) << "Expected one buffer pair.";
 
   TF_ASSIGN_OR_RETURN(const GlobalDeviceId global_device_id,
                       params.nccl_params.GetGlobalDeviceId());
@@ -134,9 +139,93 @@ Status NcclCollectivePermuteThunk::RunNcclCollective(
       NcclCollectivePermuteConfig::GetSourceTarget(config_.id_to_source_target,
                                                    current_id);
 
-  return RunCollectivePermute(source_target, device_buffers[0], *params.stream,
-                              comm, device_string, current_id);
+  return ::xla::gpu::RunCollectivePermute(source_target, device_buffers[0],
+                                          stream, comm, device_string,
+                                          current_id);
 }
+
+/*static*/ NcclCollectivePermuteConfig
+NcclCollectivePermuteThunk::GetNcclCollectivePermuteConfig(
+    mlir::lmhlo::CollectivePermuteOp op, int64_t replica_count,
+    int64_t partition_count) {
+  return impl::GetNcclCollectivePermuteConfig(op, replica_count,
+                                              partition_count);
+}
+
+/*static*/ bool NcclCollectivePermuteThunk::CanImplement(
+    mlir::lmhlo::CollectivePermuteOp op) {
+  return impl::CanImplement(op);
+}
+
+/*static*/ bool NcclCollectivePermuteThunk::IsDegenerate(
+    mlir::lmhlo::CollectivePermuteOp op, int64_t replica_count,
+    int64_t partition_count) {
+  return impl::IsDegenerate(op, replica_count, partition_count);
+}
+
+/*static*/ CollectiveOpGroupMode NcclCollectivePermuteThunk::GetGroupMode(
+    mlir::lmhlo::CollectivePermuteOp op) {
+  return impl::GetGroupMode(op);
+}
+
+NcclCollectivePermuteThunk::NcclCollectivePermuteThunk(
+    ThunkInfo thunk_info, mlir::lmhlo::CollectivePermuteOp op,
+    int64_t replica_count, int64_t partition_count, const Buffer& buffer)
+    : NcclCollectivePermuteThunkBase(
+          Thunk::kNcclCollectivePermute, thunk_info,
+          GetNcclCollectivePermuteConfig(op, replica_count, partition_count),
+          buffer) {}
+
+Status NcclCollectivePermuteThunk::RunNcclCollective(
+    const ExecuteParams& params, ncclComm_t comm) {
+  return RunCollectivePermute(params, *params.stream, comm);
+}
+
+/*static*/ NcclCollectivePermuteConfig
+NcclCollectivePermuteStartThunk::GetNcclCollectivePermuteConfig(
+    mlir::lmhlo_gpu::CollectivePermuteStartOp op, int64_t replica_count,
+    int64_t partition_count) {
+  return impl::GetNcclCollectivePermuteConfig(op, replica_count,
+                                              partition_count);
+}
+
+/*static*/ bool NcclCollectivePermuteStartThunk::CanImplement(
+    mlir::lmhlo_gpu::CollectivePermuteStartOp op) {
+  return impl::CanImplement(op);
+}
+
+/*static*/ bool NcclCollectivePermuteStartThunk::IsDegenerate(
+    mlir::lmhlo_gpu::CollectivePermuteStartOp op, int64_t replica_count,
+    int64_t partition_count) {
+  return impl::IsDegenerate(op, replica_count, partition_count);
+}
+
+/*static*/ CollectiveOpGroupMode NcclCollectivePermuteStartThunk::GetGroupMode(
+    mlir::lmhlo_gpu::CollectivePermuteStartOp op) {
+  return impl::GetGroupMode(op);
+}
+
+NcclCollectivePermuteStartThunk::NcclCollectivePermuteStartThunk(
+    ThunkInfo thunk_info, mlir::lmhlo_gpu::CollectivePermuteStartOp op,
+    int64_t replica_count, int64_t partition_count, const Buffer& buffer)
+    : NcclCollectivePermuteThunkBase(
+          Thunk::kNcclCollectivePermuteStart, thunk_info,
+          GetNcclCollectivePermuteConfig(op, replica_count, partition_count),
+          buffer) {}
+
+Status NcclCollectivePermuteStartThunk::RunNcclCollective(
+    const ExecuteParams& params, ncclComm_t comm) {
+  return async_.Execute(
+      [this](const ExecuteParams& params, se::Stream& stream, ncclComm_t comm) {
+        return RunCollectivePermute(params, stream, comm);
+      },
+      params, comm);
+}
+
+NcclCollectivePermuteDoneThunk::NcclCollectivePermuteDoneThunk(
+    ThunkInfo thunk_info, NcclCollectiveThunk::AsyncExecutor& async)
+    : NcclCollectiveDoneThunk(Thunk::kNcclCollectivePermuteDone, thunk_info,
+                              async) {}
 
 Status RunCollectivePermute(
     NcclCollectivePermuteConfig::SourceTargetMapEntry source_target,

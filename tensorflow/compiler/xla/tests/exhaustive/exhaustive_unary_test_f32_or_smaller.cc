@@ -495,11 +495,19 @@ UNARY_TEST_F32(Tan, {
 })
 
 UNARY_TEST_F16(Tan, {
-  Run(Tan, std::tan);
+  Run(
+      Tan, std::tan, +[](NativeT) {
+        // This error spec corresponds to a maximum relative error of 2 ULP.
+        return ErrorSpec(0, 2 * std::numeric_limits<Eigen::half>::epsilon());
+      });
 })
 
 UNARY_TEST_BF16(Tan, {
-  Run(Tan, std::tan);
+  Run(
+      Tan, std::tan, +[](NativeT) {
+        // This error spec corresponds to a maximum relative error of 1 ULP.
+        return ErrorSpec(0, std::numeric_limits<Eigen::bfloat16>::epsilon());
+      });
 })
 
 // TODO(jlebar): Enable these.

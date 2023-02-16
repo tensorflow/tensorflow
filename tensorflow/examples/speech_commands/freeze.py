@@ -42,7 +42,6 @@ import tensorflow as tf
 
 import input_data
 import models
-from tensorflow.python.framework import graph_util
 from tensorflow.python.ops import gen_audio_ops as audio_ops
 
 # If it's available, load the specialized feature generator. If this doesn't
@@ -227,7 +226,7 @@ def main(_):
   models.load_variables_from_checkpoint(sess, FLAGS.start_checkpoint)
 
   # Turn all the variables into inline constants inside the graph and save it.
-  frozen_graph_def = graph_util.convert_variables_to_constants(
+  frozen_graph_def = tf.compat.v1.graph_util.convert_variables_to_constants(
       sess, sess.graph_def, ['labels_softmax'])
 
   if FLAGS.save_format == 'graph_def':

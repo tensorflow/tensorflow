@@ -18,6 +18,7 @@ import collections
 import copy
 import random
 import threading
+import time
 import unittest
 import weakref
 
@@ -33,6 +34,7 @@ from tensorflow.python.compat import compat
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import combinations
+from tensorflow.python.framework import config
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
@@ -275,9 +277,12 @@ class TestUtilTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       with ops.Graph().as_default():
         node_def = ops._NodeDef("IntOutput", "name")
         node_def_orig = ops._NodeDef("IntOutput", "orig")
-        op_orig = ops.Operation(node_def_orig, ops.get_default_graph())
-        op = ops.Operation(node_def, ops.get_default_graph(),
-                           original_op=op_orig)
+        op_orig = ops.Operation.from_node_def(
+            node_def_orig, ops.get_default_graph()
+        )
+        op = ops.Operation.from_node_def(
+            node_def, ops.get_default_graph(), original_op=op_orig
+        )
         raise errors.UnauthenticatedError(node_def, op, "true_err")
 
   @test_util.run_in_graph_and_eager_modes
@@ -1116,6 +1121,58 @@ class RunFunctionsEagerlyInV2Test(test_util.TensorFlowTestCase,
           self.assertTrue(isinstance(t, ops.Tensor) for t in results)
       else:
         self.assertTrue(isinstance(t, ops.Tensor) for t in results)
+
+
+class SyncDevicesTest(test_util.TensorFlowTestCase):
+
+  def tearDown(self):
+    super().tearDown()
+    config.set_synchronous_execution(True)
+
+  def test_sync_device_cpu(self):
+    with context.eager_mode(), ops.device("/CPU:0"):
+      config.set_synchronous_execution(False)
+      start = time.time()
+      test_ops.sleep_op(sleep_seconds=1)
+      self.assertLess(time.time() - start, 1.0)
+      test_util.sync_devices()
+      self.assertGreater(time.time() - start, 1.0)
+
+      config.set_synchronous_execution(True)
+      start = time.time()
+      test_ops.sleep_op(sleep_seconds=1)
+      self.assertGreaterEqual(time.time() - start, 1.0)
+      start = time.time()
+      test_util.sync_devices()
+      self.assertLess(time.time() - start, 1.0)
+
+  def test_sync_device_gpu(self):
+    if not test_util.is_gpu_available(min_cuda_compute_capability=(7, 0)):
+      # sleep_op requires compute capability 7.0
+      self.skipTest("Requires GPU with compute capability 7.0")
+
+    with context.eager_mode(), ops.device("/GPU:0"):
+      config.set_synchronous_execution(False)
+      start = time.time()
+      test_ops.sleep_op(sleep_seconds=1)
+      self.assertLess(time.time() - start, 1.0)
+      test_util.sync_devices()
+      self.assertGreater(time.time() - start, 1.0)
+
+      config.set_synchronous_execution(True)
+      start = time.time()
+      test_ops.sleep_op(sleep_seconds=1)
+      self.assertLess(time.time() - start, 1.0)
+      start = time.time()
+      test_util.sync_devices()
+      self.assertGreaterEqual(time.time() - start, 1.0)
+
+  def test_sync_devices_graph_mode_error(self):
+    with context.graph_mode():
+      with self.assertRaisesRegex(
+          RuntimeError, r"sync_devices\(\) must only be called in Eager mode"
+      ):
+        test_util.sync_devices()
 
 
 if __name__ == "__main__":

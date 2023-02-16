@@ -91,7 +91,6 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/utils/mangling_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/translate_utils.h"
 #include "tensorflow/compiler/xla/status_macros.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/statusor.h"
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/common_runtime/shape_refiner.h"
@@ -141,15 +140,17 @@ namespace tensorflow {
 constexpr size_t kNumThreadToConvertSignatures = 10;
 constexpr absl::string_view kOutputShapesAttrName = "_output_shapes";
 
-using mlir::NamedAttrList;
-using mlir::TensorType;
-using mlir::tf_saved_model::AssetOp;
-using mlir::tf_saved_model::GlobalTensorOp;
-using mlir::tf_saved_model::kTfSavedModelInitializerInitType;
-using mlir::tf_saved_model::kTfSavedModelInitializerRestoreType;
-using mlir::tf_saved_model::kTfSavedModelInitializerTypeAttr;
-using mlir::tf_saved_model::SessionInitializerOp;
-using stream_executor::port::StatusOr;
+using ::mlir::NamedAttrList;
+using ::mlir::TensorType;
+using ::mlir::tf_saved_model::AssetOp;
+using ::mlir::tf_saved_model::GlobalTensorOp;
+using ::mlir::tf_saved_model::kTfSavedModelExportedNamesAttr;
+using ::mlir::tf_saved_model::kTfSavedModelIndexPathAttr;
+using ::mlir::tf_saved_model::kTfSavedModelInitializerInitType;
+using ::mlir::tf_saved_model::kTfSavedModelInitializerRestoreType;
+using ::mlir::tf_saved_model::kTfSavedModelInitializerTypeAttr;
+using ::mlir::tf_saved_model::SessionInitializerOp;
+using ::tsl::StatusOr;
 
 namespace {
 
@@ -1281,7 +1282,7 @@ StatusOr<TensorType> ImporterBase::ConvertElementTypeAndShape(
   }
 
   return GetTypeFromTFTensorShape(
-      llvm::makeArrayRef(dimensions.begin(), dimensions.end()), element_type);
+      llvm::ArrayRef(dimensions.begin(), dimensions.end()), element_type);
 }
 
 StatusOr<ImporterBase::ElementSubtypes> ImporterBase::ConvertSubtypes(
@@ -1359,7 +1360,7 @@ StatusOr<mlir::Attribute> ImporterBase::ConvertAttributeValue(
           if (attr) attrs.push_back(attr);
         }
         return builder_.getArrayAttr(
-            llvm::makeArrayRef(attrs.begin(), attrs.end()));
+            llvm::ArrayRef(attrs.begin(), attrs.end()));
       }
       return ConvertNonFuncAttributeValue(value, &builder_);
     }
@@ -1797,7 +1798,7 @@ mlir::Location ImporterBase::GetLocation(const Node& node) {
 
     // If there are more locations then generate a stack trace, otherwise just
     // return the name loc.
-    auto callsite_locs = llvm::makeArrayRef(locations).drop_front();
+    auto callsite_locs = llvm::ArrayRef(locations).drop_front();
     return callsite_locs.empty()
                ? node_name_loc
                : mlir::CallSiteLoc::get(node_name_loc, callsite_locs);
@@ -1987,11 +1988,7 @@ mlir::Operation* ImporterBase::CreateOperation(
             resource = true;
             return true;
           }
-          if (auto with_subtype =
-                  type.dyn_cast<mlir::SubElementTypeInterface>()) {
-            with_subtype.walkSubTypes(
-                [&](mlir::Type t) { record_resource(t); });
-          }
+          type.walk([&](mlir::Type t) { record_resource(t); });
           return resource;
         };
 
@@ -3087,7 +3084,7 @@ StatusOr<llvm::ArrayRef<mlir::ArrayAttr>>
 StructuredValueLinearizer::GetLeafIndexPaths(
     llvm::StringRef error_context) const {
   if (error_message_.empty()) {
-    return llvm::makeArrayRef(leaf_index_paths_);
+    return llvm::ArrayRef(leaf_index_paths_);
   }
   return errors::InvalidArgument(
       error_context.str(), error_message_,
@@ -3377,7 +3374,7 @@ Status CreateSavedModelIR(
                                                   call.getResults());
       }
       func->setAttr(
-          "tf_saved_model.exported_names",
+          kTfSavedModelExportedNamesAttr,
           builder.getStrArrayAttr(object_names.GetExportedNames(node_id)));
       const SavedConcreteFunction& concrete_function =
           object_graph.concrete_functions().at(function.concrete_functions(0));
@@ -3410,7 +3407,7 @@ Status CreateSavedModelIR(
             " vs ", bound_input_base, ")");
       }
       for (auto index_path : llvm::enumerate(input_index_paths)) {
-        func.setArgAttr(index_path.index(), "tf_saved_model.index_path",
+        func.setArgAttr(index_path.index(), kTfSavedModelIndexPathAttr,
                         index_path.value());
       }
 
@@ -3437,7 +3434,7 @@ Status CreateSavedModelIR(
             " vs ", func.getNumResults(), ")");
       }
       for (auto index_path : llvm::enumerate(output_index_paths)) {
-        func.setResultAttr(index_path.index(), "tf_saved_model.index_path",
+        func.setResultAttr(index_path.index(), kTfSavedModelIndexPathAttr,
                            index_path.value());
       }
     } else if (object.kind_case() == SavedObject::kVariable) {
@@ -3476,7 +3473,7 @@ Status CreateSavedModelIR(
           /*type=*/mlir::TypeAttr::get(type),
           /*is_mutable=*/builder.getUnitAttr());
       op->setAttr(
-          "tf_saved_model.exported_names",
+          kTfSavedModelExportedNamesAttr,
           builder.getStrArrayAttr(object_names.GetExportedNames(node_id)));
     } else if (object.kind_case() == SavedObject::kConstant) {
       const SavedConstant& constant = object.constant();
@@ -3496,7 +3493,7 @@ Status CreateSavedModelIR(
           /*type=*/mlir::TypeAttr::get(value_attr.getType()),
           /*is_mutable=*/nullptr);
       op->setAttr(
-          "tf_saved_model.exported_names",
+          kTfSavedModelExportedNamesAttr,
           builder.getStrArrayAttr(object_names.GetExportedNames(node_id)));
     }
   }
@@ -3885,7 +3882,7 @@ Status SavedModelSignatureDefImporterLite::ConvertInitializer(
   // Set the exported name of init function to an reserved name for
   // tf_saved_model.
   init_func_op->setAttr(
-      "tf_saved_model.exported_names",
+      kTfSavedModelExportedNamesAttr,
       builder.getStrArrayAttr({absl::StrCat(
           "__tf_saved_model_session_initializer_", target_node_name)}));
   init_func_op->setAttr(kTfSavedModelInitializerTypeAttr,
@@ -3958,17 +3955,17 @@ Status SavedModelSignatureDefImporterLite::ConvertSignature(
       << sig_def_key << ".";
 
   // Use unique SignatureDef key as exported name.
-  func_op->setAttr("tf_saved_model.exported_names",
+  func_op->setAttr(kTfSavedModelExportedNamesAttr,
                    builder.getStrArrayAttr({sig_def_key}));
 
   // Transfer input and output parameter names to index_path attributes.
   for (auto input_and_idx : llvm::enumerate(inputs)) {
-    func_op.setArgAttr(input_and_idx.index(), "tf_saved_model.index_path",
+    func_op.setArgAttr(input_and_idx.index(), kTfSavedModelIndexPathAttr,
                        builder.getStrArrayAttr({input_and_idx.value().first}));
   }
   for (auto output_and_idx : llvm::enumerate(outputs)) {
     func_op.setResultAttr(
-        output_and_idx.index(), "tf_saved_model.index_path",
+        output_and_idx.index(), kTfSavedModelIndexPathAttr,
         builder.getStrArrayAttr({output_and_idx.value().first}));
   }
 
@@ -4258,10 +4255,9 @@ StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ConvertGraphToMlir(
                                    tf_name_to_mlir_name);
 }
 
-stream_executor::port::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>>
-ConvertFunctionToMlir(const FunctionBody* fbody,
-                      const FunctionLibraryDefinition& flib_def,
-                      mlir::MLIRContext* context) {
+tsl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ConvertFunctionToMlir(
+    const FunctionBody* fbody, const FunctionLibraryDefinition& flib_def,
+    mlir::MLIRContext* context) {
   tensorflow::GraphDebugInfo dummy_debug_info;
   tensorflow::GraphImportConfig specs;
   specs.graph_func_name = fbody->fdef.signature().name();

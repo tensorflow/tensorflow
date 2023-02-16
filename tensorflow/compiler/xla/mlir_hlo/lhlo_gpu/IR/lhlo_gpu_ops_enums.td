@@ -66,6 +66,10 @@ def ConvolutionBackendConfigAttr : AttrDef<
    I64ArrayParameter:$knob_ids,
    I64ArrayParameter:$knob_values,
    BoolParameter:$is_cudnn_frontend,
+   // If the convolution has CUDNN_TENSOR_NCHW_VECT_C layout (applicable to
+   // int8 data type only), this flag denotes that the filter (and bias, if
+   // present) are reordered using `cudnnReorderFilterAndBias`.
+   BoolParameter:$is_cudnn_reordered_int8,
    "int64_t":$workspace_size,
 
    // The following 3 attributes describe the layout as an array of integers
@@ -87,12 +91,18 @@ def CublasLtMatmulEpilogueDefault : I32EnumAttrCase<"Default", 0>;
 def CublasLtMatmulEpilogueBias : I32EnumAttrCase<"Bias", 1>;
 def CublasLtMatmulEpilogueRelu : I32EnumAttrCase<"Relu", 2>;
 def CublasLtMatmulEpilogueBiasRelu : I32EnumAttrCase<"BiasRelu", 3>;
+def CublasLtMatmulEpilogueGelu : I32EnumAttrCase<"Gelu", 4>;
+def CublasLtMatmulEpilogueBiasGelu : I32EnumAttrCase<"BiasGelu", 5>;
+def CublasLtMatmulEpilogueGeluAux : I32EnumAttrCase<"GeluAux", 6>;
+def CublasLtMatmulEpilogueBiasGeluAux : I32EnumAttrCase<"BiasGeluAux", 7>;
 
 
 def CublasLtMatmulEpilogue: I32EnumAttr<"CublasLtMatmulEpilogue",
     "Epilogue for cublasLt matmul",
     [CublasLtMatmulEpilogueDefault, CublasLtMatmulEpilogueBias,
-     CublasLtMatmulEpilogueRelu, CublasLtMatmulEpilogueBiasRelu]> {
+     CublasLtMatmulEpilogueRelu, CublasLtMatmulEpilogueBiasRelu,
+     CublasLtMatmulEpilogueGelu, CublasLtMatmulEpilogueBiasGelu,
+     CublasLtMatmulEpilogueGeluAux, CublasLtMatmulEpilogueBiasGeluAux]> {
   let genSpecializedAttr = 0;
   let cppNamespace = "::mlir::lmhlo_gpu";
 }

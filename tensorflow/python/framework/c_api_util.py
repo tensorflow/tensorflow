@@ -89,14 +89,6 @@ class ScopedTFStatus(object):
       c_api.TF_DeleteStatus(self.status)
 
 
-class ScopedTFGraph(UniquePtr):
-  """Wrapper around TF_Graph that handles deletion."""
-
-  def __init__(self, name):
-    super(ScopedTFGraph, self).__init__(
-        name, obj=c_api.TF_NewGraph(), deleter=c_api.TF_DeleteGraph)
-
-
 class ScopedTFImportGraphDefOptions(object):
   """Wrapper around TF_ImportGraphDefOptions that handles deletion."""
 

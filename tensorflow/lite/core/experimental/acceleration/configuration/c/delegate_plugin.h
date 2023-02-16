@@ -60,6 +60,44 @@ typedef struct TfLiteDelegatePlugin {
   TfLiteDelegatePluginGetDelegateErrnoFunc *get_delegate_errno;
 } TfLiteDelegatePlugin;
 
+// The following block guarded by TFLITE_USE_OPAQUE_DELEGATE has the exact same
+// functionality as the concrete types above but only uses truly opaque types.
+// Note that it has to be an addition along with the concrete types at this
+// point because the in some cases both types are used together in a same build
+// target. e.g. TFLite-in-Play Services initialization context.
+#if TFLITE_USE_OPAQUE_DELEGATE
+
+// Same as TfLiteDelegatePluginCreateFunc but uses truly opaque types.
+typedef TfLiteOpaqueDelegateStruct *TfLiteOpaqueDelegatePluginCreateFunc(
+    const void *tflite_settings);
+
+// Same as TfLiteDelegatePluginDestroyFunc but uses truly opaque types.
+typedef void TfLiteOpaqueDelegatePluginDestroyFunc(
+    TfLiteOpaqueDelegateStruct *delegate);
+
+// Same as TfLiteDelegatePluginGetDelegateErrnoFunc but uses truly opaque types.
+typedef int TfLiteOpaqueDelegatePluginGetDelegateErrnoFunc(
+    TfLiteOpaqueDelegateStruct *delegate);
+
+// Same as TfLiteDelegatePlugin but uses truly opaque types.
+typedef struct TfLiteOpaqueDelegatePlugin {
+  TfLiteOpaqueDelegatePluginCreateFunc *create;
+
+  TfLiteOpaqueDelegatePluginDestroyFunc *destroy;
+
+  TfLiteOpaqueDelegatePluginGetDelegateErrnoFunc *get_delegate_errno;
+} TfLiteOpaqueDelegatePlugin;
+
+#else
+
+typedef TfLiteDelegatePluginCreateFunc TfLiteOpaqueDelegatePluginCreateFunc;
+typedef TfLiteDelegatePluginDestroyFunc TfLiteOpaqueDelegatePluginDestroyFunc;
+typedef TfLiteDelegatePluginGetDelegateErrnoFunc
+    TfLiteOpaqueDelegatePluginGetDelegateErrnoFunc;
+typedef TfLiteDelegatePlugin TfLiteOpaqueDelegatePlugin;
+
+#endif  // TFLITE_USE_OPAQUE_DELEGATE
+
 #ifdef __cplusplus
 };  // extern "C"
 #endif

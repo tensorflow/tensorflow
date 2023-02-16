@@ -33,7 +33,7 @@ namespace TF {
 // and instead is temporary until shape functions are reimplemented/migrated to
 // being in MLIR instead of the TensorFlow op registry.
 LogicalResult InferReturnTypeComponentsForTFOp(
-    Optional<Location> location, Operation* op, int64_t graph_version,
+    std::optional<Location> location, Operation* op, int64_t graph_version,
     tfg::OperandAsConstantFn operand_as_constant_fn,
     tfg::OpResultAsShapeFn op_result_as_shape_fn,
     tfg::ResultElementTypeFn result_element_type_fn,

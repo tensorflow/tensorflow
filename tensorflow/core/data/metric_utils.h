@@ -20,6 +20,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/time/time.h"
+#include "tensorflow/core/data/tfdataz_metrics.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/mutex.h"

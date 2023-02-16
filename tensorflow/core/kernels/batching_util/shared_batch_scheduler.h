@@ -218,6 +218,9 @@ class SharedBatchScheduler
     // submit batches whose size is in a small set of allowed sizes, that can be
     // done by adding padding in the process-batch callback.
     size_t max_execution_batch_size = 1000;
+
+    // If true, the padding will not be appended.
+    bool disable_padding = false;
   };
   Status AddQueue(const QueueOptions& options,
                   std::function<void(std::unique_ptr<Batch<TaskType>>)>

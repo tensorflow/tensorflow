@@ -1102,6 +1102,7 @@ py_library(
         "//tensorflow/python/data/experimental/ops:lookup_ops",
         "//tensorflow/python/data/experimental/ops:random_access",
         "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/data/ops:test_mode",
         "//tensorflow/python/data/util:nest",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/ops/ragged",

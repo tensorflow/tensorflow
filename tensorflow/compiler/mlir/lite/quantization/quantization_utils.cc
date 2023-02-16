@@ -50,8 +50,8 @@ namespace mlir {
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_interface.cc.inc"
 
 namespace quant {
-
 namespace {
+
 constexpr double kSmallestHalfRange = kNearZeroTolerance / 2;
 using QType = quant::QuantizedType;
 
@@ -932,10 +932,10 @@ quant::UniformQuantizedType GetFixedOutputRange(bool is_signed, int bit_width,
   if (!result_type.getElementType().isa<FloatType>()) return {};
   Builder builder(result_type.getContext());
 
-  // Only support 8-bits
-  if (bit_width != 8) return {};
+  // Only support 8-bits and 16-bits
+  if (bit_width != 8 && bit_width != 16) return {};
   IntegerType storage_type = builder.getIntegerType(bit_width);
-  if (!is_signed) {
+  if (!is_signed && bit_width == 8) {
     zero_point += 128;
     storage_min += 128;
     storage_max += 128;
@@ -944,6 +944,15 @@ quant::UniformQuantizedType GetFixedOutputRange(bool is_signed, int bit_width,
       builder.getUnknownLoc(), is_signed, storage_type,
       result_type.getElementType(), scale, zero_point, storage_min,
       storage_max);
+}
+
+quant::UniformQuantizedType GetFixedOutputRange(bool is_signed, int bit_width,
+                                                Type tensor_type, double scale,
+                                                int64_t zero_point) {
+  return GetFixedOutputRange(is_signed, bit_width, tensor_type, scale,
+                             zero_point,
+                             /*storage_min=*/-(1 << (bit_width - 1)),
+                             /*storage_max=*/(1 << (bit_width - 1)) - 1);
 }
 
 Type ConvertSignedQuantizedToUnsigned(Type signed_tensor_type, Location loc) {

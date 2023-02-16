@@ -2160,6 +2160,8 @@ TfLiteStatus ParseUnidirectionalSequenceLSTM(const Operator* op,
     params->time_major = seq_lstm_params->time_major();
     params->asymmetric_quantize_inputs =
         seq_lstm_params->asymmetric_quantize_inputs();
+    params->diagonal_recurrent_tensors =
+        seq_lstm_params->diagonal_recurrent_tensors();
   }
   *builtin_data = params.release();
   return kTfLiteOk;
@@ -2338,6 +2340,9 @@ TfLiteStatus ParseTransposeConv(const Operator* op,
     params->padding = ConvertPadding(transpose_conv_params->padding());
     params->stride_width = transpose_conv_params->stride_w();
     params->stride_height = transpose_conv_params->stride_h();
+
+    params->activation =
+        ConvertActivation(transpose_conv_params->fused_activation_function());
   } else {
     // TODO(b/157480169): We should either return kTfLiteError or fill in some
     // reasonable defaults in the params struct. We are not doing so until we

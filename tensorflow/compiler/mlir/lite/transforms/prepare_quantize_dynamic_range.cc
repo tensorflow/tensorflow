@@ -419,7 +419,7 @@ void PrepareDynamicRangeQuantizePass::runOnOperation() {
 
   if (!enable_custom_op_quantization_.empty()) {
     ParseCustomOpSpecs(enable_custom_op_quantization_,
-                       quant::CustomOpUpdateOptions::kINputIndices,
+                       quant::CustomOpUpdateOptions::kInputIndices,
                        quant_specs_.custom_map);
   }
 
