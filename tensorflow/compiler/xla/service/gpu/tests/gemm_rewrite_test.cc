@@ -4476,24 +4476,29 @@ TEST_F(CublasLtF8GemmRewriteTest, ScaledABUnscaledDF8Parameterized) {
   std::vector<
       std::tuple<absl::string_view, absl::string_view, absl::string_view,
                  absl::string_view, absl::string_view, absl::string_view,
-                 absl::string_view> > combinations;
+                 absl::string_view> >
+      combinations;
   combinations.reserve(32);
-  for (auto d_is_col : {true, false}) {
-    for (auto a_is_col : {true, false}) {
-      for (auto b_is_col : {true, false}) {
-        for (auto lhs_contracting_dim : {0, 1}) {
-          for (auto rhs_contracting_dim : {0, 1}) {
-            auto lcd = lhs_contracting_dim == 1 ? "{1}" : "{0}";
-            auto rcd = rhs_contracting_dim == 1 ? "{1}" : "{0}";
-            auto a_logic = lhs_contracting_dim == 1
-                               ? "[64,32]": "[32,64]";
-            auto b_logic = rhs_contracting_dim == 0
-                               ? "[32,16]": "[16,32]";
-            auto a_physical = a_is_col ? "{0,1}" : "{1,0}";
-            auto b_physical = b_is_col ? "{0,1}" : "{1,0}";
-            auto output_physical = d_is_col ? "{0,1}" : "{1,0}";
-            combinations.emplace_back(std::tuple{lcd, rcd, a_logic, b_logic, a_physical,
-                                       b_physical, output_physical});
+  for (bool d_is_col : {true, false}) {
+    for (bool a_is_col : {true, false}) {
+      for (bool b_is_col : {true, false}) {
+        for (int lhs_contracting_dim : {0, 1}) {
+          for (int rhs_contracting_dim : {0, 1}) {
+            const absl::string_view lcd =
+                lhs_contracting_dim == 1 ? "{1}" : "{0}";
+            const absl::string_view rcd =
+                rhs_contracting_dim == 1 ? "{1}" : "{0}";
+            const absl::string_view a_logic =
+                lhs_contracting_dim == 1 ? "[64,32]" : "[32,64]";
+            const absl::string_view b_logic =
+                rhs_contracting_dim == 0 ? "[32,16]" : "[16,32]";
+            const absl::string_view a_physical = a_is_col ? "{0,1}" : "{1,0}";
+            const absl::string_view b_physical = b_is_col ? "{0,1}" : "{1,0}";
+            const absl::string_view output_physical =
+                d_is_col ? "{0,1}" : "{1,0}";
+            combinations.emplace_back(std::tuple{lcd, rcd, a_logic, b_logic,
+                                                 a_physical, b_physical,
+                                                 output_physical});
           }
         }
       }
@@ -4510,6 +4515,7 @@ TEST_F(CublasLtF8GemmRewriteTest, ScaledABUnscaledDF8Parameterized) {
     replacements["<<OPhy>>"] = std::get<6>(combination);
     const char* hlo_template = R"(
       HloModule test
+
     ENTRY test {
       x = f8e4m3fn<<ALog>><<APhy>> parameter(0)
       x_f32 = f32<<ALog>><<APhy>> convert(x)
