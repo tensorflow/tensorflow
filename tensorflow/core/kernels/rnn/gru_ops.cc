@@ -18,7 +18,6 @@ limitations under the License.
 #include "tensorflow/core/kernels/rnn/gru_ops.h"
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/op_kernel.h"
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
 namespace tensorflow {
 
