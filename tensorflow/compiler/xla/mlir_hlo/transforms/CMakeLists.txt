@@ -60,7 +60,7 @@ add_mlir_library(MLIRBufferTransforms
 
 add_mlir_library(MLIRHLOGPUTransforms
   gpu_kernel_lowering_passes.cc
-  gpu_fusion_rewrite.cc
+  gpu_passes.cc
   hlo_to_gpu_pipeline.cc
   hlo_to_triton_pipeline.cc
 

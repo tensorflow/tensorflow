@@ -1285,8 +1285,8 @@ cc_library(
 cc_library(
     name = "transforms_gpu_passes",
     srcs = [
-        "transforms/gpu_fusion_rewrite.cc",
         "transforms/gpu_kernel_lowering_passes.cc",
+        "transforms/gpu_passes.cc",
         "transforms/gpu_passes.h.inc",
         "transforms/hlo_to_gpu_pipeline.cc",
         "transforms/hlo_to_triton_pipeline.cc",

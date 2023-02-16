@@ -30,10 +30,6 @@ class GPUModuleOp;
 #define GEN_PASS_DECL
 #include "transforms/gpu_passes.h.inc"
 
-// Create a pass which lowers a subset of lmhlo.fusion ops to gpu.launch_func
-// plus a gpu.module containing the kernel.
-std::unique_ptr<OperationPass<mlir::ModuleOp>> createGpuFusionRewritePass();
-
 // Returns array of bool attributes. The value of each element specifies whether
 // the corresponding operand is written. This attribute is attached to
 // 'gpu.launc_func' ops during the fusion rewrite pass above.

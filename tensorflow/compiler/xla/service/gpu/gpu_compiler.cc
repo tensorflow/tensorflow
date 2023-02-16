@@ -1236,41 +1236,6 @@ static Status CompileModuleToLlvmIrImpl(
       entry_function, &results->allocations, &results->output_info,
       &results->output_shape, &results->entry_func_attrs));
 
-  if (hlo_module->config().debug_options().xla_gpu_enable_mlir_lowering()) {
-    mlir::PassManager pm(&mlir_context);
-    bool uses_multithreading = pm.getContext()->isMultithreadingEnabled();
-    std::optional<llvm::raw_fd_ostream> log_stream;
-    if (hlo_module->config().debug_options().xla_gpu_dump_llvmir()) {
-      const std::string basename =
-          absl::StrCat(absl::string_view(tsl::io::Basename(hlo_module->name())),
-                       ".mlir-passes.log");
-      std::string outputs_dir;
-      tsl::io::GetTestUndeclaredOutputsDir(&outputs_dir);
-      std::string path = tsl::io::JoinPath(outputs_dir, basename);
-      std::error_code err;
-      log_stream.emplace(path, err, llvm::sys::fs::OF_None);
-      if (err) {
-        log_stream.reset();
-      }
-
-      auto print_before = [](mlir::Pass*, mlir::Operation*) { return true; };
-      auto print_after = [](mlir::Pass*, mlir::Operation*) { return false; };
-      pm.getContext()->disableMultithreading();
-      pm.enableIRPrinting(print_before, print_after, true, true, false,
-                          *log_stream, {});
-    }
-    pm.addPass(mlir::createGpuFusionRewritePass());
-    if (failed(pm.run(mlir_module.get()))) {
-      return InternalError("Failed to run gpu-fusion-rewrite pass");
-    }
-    if (hlo_module->config().debug_options().xla_gpu_dump_llvmir()) {
-      pm.getContext()->enableMultithreading(uses_multithreading);
-      if (log_stream) {
-        log_stream->flush();
-      }
-    }
-  }
-
   IrEmitterContext ir_emitter_context(
       /*hlo_module=*/nullptr, /*buffer_assignment=*/nullptr, platform_name,
       gpu_device_info, cuda_compute_capability, rocm_compute_capability,
