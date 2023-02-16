@@ -40,9 +40,18 @@ class AddNTest(test.TestCase):
           dtypes.float16, dtypes.bfloat16, dtypes.float32, dtypes.float64,
           dtypes.complex64, dtypes.complex128, dtypes.int64
       ]
-    return [dtypes.int8, dtypes.int16, dtypes.int32, dtypes.int64,
-            dtypes.float16, dtypes.float32, dtypes.float64, dtypes.complex64,
-            dtypes.complex128]
+    return [
+        dtypes.int8,
+        dtypes.int16,
+        dtypes.int32,
+        dtypes.int64,
+        dtypes.bfloat16,
+        dtypes.float16,
+        dtypes.float32,
+        dtypes.float64,
+        dtypes.complex64,
+        dtypes.complex128,
+    ]
 
   def _buildData(self, shape, dtype):
     data = np.random.randn(*shape).astype(dtype.as_numpy_dtype)
@@ -62,9 +71,11 @@ class AddNTest(test.TestCase):
           expected = np.sum(np.vstack(
               [np.expand_dims(d, 0) for d in data]), axis=0)
           self.assertAllCloseAccordingToType(
-              expected, actual, rtol=2e-6, atol=2e-6,
-              float_rtol=2e-6, float_atol=2e-6, half_rtol=5e-3, half_atol=5e-3,
-              bfloat16_rtol=2e-2, bfloat16_atol=2e-2)
+              expected,
+              actual,
+              half_rtol=5e-3,
+              half_atol=5e-3,
+          )
 
   @test_util.run_deprecated_v1
   def testUnknownShapes(self):
@@ -78,9 +89,11 @@ class AddNTest(test.TestCase):
           expected = np.sum(np.vstack([np.expand_dims(data, 0)] * count),
                             axis=0)
           self.assertAllCloseAccordingToType(
-              expected, actual, rtol=2e-6, atol=2e-6,
-              float_rtol=2e-6, float_atol=2e-6, half_rtol=5e-3, half_atol=5e-3,
-              bfloat16_rtol=2e-2, bfloat16_atol=2e-2)
+              expected,
+              actual,
+              half_rtol=5e-3,
+              half_atol=5e-3,
+          )
 
   @test_util.run_deprecated_v1
   def testVariant(self):
