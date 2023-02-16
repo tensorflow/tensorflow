@@ -4,12 +4,17 @@
 
 func.func @reverse_reduce_map(%input: tensor<?x?xf32>, %init0: tensor<?x?xf32>,
                               %init1: tensor<?xf32>) -> tensor<?xf32> {
-  %reversed = thlo.reverse
+  %sorted = thlo.sort
                 ins(%input: tensor<?x?xf32>)
                 outs(%init0: tensor<?x?xf32>)
-                reverse_dimensions = [0, 1]
+                dimension = 0
+                is_stable = false
+                (%lhs: f32, %rhs: f32) {
+                  %gt = arith.cmpf ogt, %lhs, %rhs: f32
+                  thlo.yield %gt : i1
+                }
   %reduced = linalg.reduce { arith.addf }
-               ins(%reversed: tensor<?x?xf32>)
+               ins(%sorted: tensor<?x?xf32>)
                outs(%init1: tensor<?xf32>)
                dimensions = [0]
   %result = linalg.map { math.exp }
@@ -25,10 +30,10 @@ func.func @reverse_reduce_map(%input: tensor<?x?xf32>, %init0: tensor<?x?xf32>,
 // CHECK:       %[[FUSION0:.*]] = gml_st.fusion
 // CHECK-SAME:      (%[[BB_INPUT:.*]] = %[[INPUT]]: tensor<?x?xf32>,
 // CHECK-SAME:      %[[BB_INIT0:.*]] = %[[INIT0]]: tensor<?x?xf32>
-// CHECK-NEXT:    %[[REV:.*]] = thlo.reverse
+// CHECK-NEXT:    %[[SORTED:.*]] = thlo.sort
 // CHECK-SAME:      ins(%[[BB_INPUT]]
 // CHECK-SAME:      outs(%[[BB_INIT0]]
-// CHECK-NEXT:    gml_st.yield %[[REV]]
+// CHECK:         gml_st.yield %[[SORTED]]
 
 // CHECK:       %[[FUSION1:.*]] = gml_st.fusion
 // CHECK-SAME:      (%[[BB_INIT1:.*]] = %[[INIT1]]: tensor<?xf32>,
