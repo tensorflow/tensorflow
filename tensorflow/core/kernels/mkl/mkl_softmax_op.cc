@@ -15,7 +15,7 @@ limitations under the License.
 
 // See docs in ../ops/nn_ops.cc.
 
-#if defined(INTEL_MKL) && !defined(ENABLE_ONEDNN_V3)
+#ifdef INTEL_MKL
 
 #include "dnnl.hpp"
 #include "tensorflow/core/framework/numeric_op.h"
@@ -98,7 +98,9 @@ class MklSoftmaxPrimitive : public MklPrimitive {
     std::shared_ptr<memory> dst_mem;
 
     // Primitive descriptor.
+#ifndef ENABLE_ONEDNN_V3
     std::shared_ptr<dnnl::softmax_forward::desc> fwd_desc;
+#endif  // !ENABLE_ONEDNN_V3
 
     // Memory descriptor.
     std::shared_ptr<memory::desc> src_md;
@@ -113,7 +115,9 @@ class MklSoftmaxPrimitive : public MklPrimitive {
     SoftmaxFwdContext()
         : src_mem(nullptr),
           dst_mem(nullptr),
+#ifndef ENABLE_ONEDNN_V3
           fwd_desc(nullptr),
+#endif  // !ENABLE_ONEDNN_V3
           src_md(nullptr),
           fwd_pd(nullptr),
           softmax_fwd(nullptr) {}
@@ -127,10 +131,17 @@ class MklSoftmaxPrimitive : public MklPrimitive {
         new memory::desc({fwdParams.src_dims}, MklDnnType<T>(), src_format));
 
     // Create softmax descriptor and primitive descriptor.
+#ifndef ENABLE_ONEDNN_V3
     context_.fwd_desc.reset(new dnnl::softmax_forward::desc(
         prop_kind::forward_scoring, *context_.src_md, fwdParams.axis));
     context_.fwd_pd.reset(new dnnl::softmax_forward::primitive_desc(
         *context_.fwd_desc, cpu_engine_));
+#else
+    context_.fwd_pd.reset(new dnnl::softmax_forward::primitive_desc(
+        cpu_engine_, prop_kind::forward_inference,
+        dnnl::algorithm::softmax_accurate, *context_.src_md,
+        *context_.src_md /* dst_md */, fwdParams.axis));
+#endif  // !ENABLE_ONEDNN_V3
 
     // Create memory primitive based on dummy data.
     context_.src_mem.reset(
@@ -278,8 +289,8 @@ class MklSoftmaxOp : public OpKernel {
   }
 };
 
-/* Register DNN kernels for supported operations and supported types - right now
- * it is only Softmax and f32 */
+// Register oneDNN kernels for supported operations and supported types:
+// right now it is Softmax for fp32 and bf16
 #define REGISTER_SOFTMAX_MKL_SUPPORTED_KERNELS_TYPES(type)                    \
   REGISTER_KERNEL_BUILDER(Name("_MklSoftmax")                                 \
                               .Device(DEVICE_CPU)                             \
@@ -292,4 +303,4 @@ TF_CALL_bfloat16(REGISTER_SOFTMAX_MKL_SUPPORTED_KERNELS_TYPES);
 
 }  // namespace tensorflow
 
-#endif  // INTEL_MKL && !ENABLE_ONEDNN_V3
+#endif  // INTEL_MKL
