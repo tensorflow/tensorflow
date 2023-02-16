@@ -140,6 +140,14 @@ def RewriteVectorTransposePass : Pass<"rewrite-vector-transpose", "mlir::func::F
   ];
 }
 
+def OptimizeVectorTransferPass :
+    Pass<"optimize-vector-transfer", "func::FuncOp"> {
+  let summary =
+      "Run optimization transformations on vector transfer operations";
+  let constructor = "::mlir::gml_st::createOptimizeVectorTransferPass()";
+  let dependentDialects = ["::mlir::vector::VectorDialect"];
+}
+
 def ScalarizationPass : Pass<"scalarize", "mlir::func::FuncOp"> {
   let summary = "Converts ops on tensors with 1 element to scalar ops.";
   let dependentDialects = [

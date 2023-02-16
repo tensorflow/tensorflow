@@ -41,6 +41,7 @@ add_mlir_library(GmlStPasses
   cpu_tiling/transform_transpose_for_cpu.cc
   fusion/fusion.cc
   gml_st_to_scf/gml_st_to_scf.cc
+  optimize_vector_transfer/optimize_vector_transfer.cc
   peeling/peeling.cc
   rewrite_vector_ops/rewrite_vector_contract.cc
   rewrite_vector_ops/rewrite_vector_multi_reduction.cc
