@@ -132,11 +132,9 @@ class IrEmitterUnnested : public IrEmitter {
   // index: the index for the first output element of the current thread.
   // y_loc: The y coordinate within a tile.
   // x_loc: The x coordinate within a tile.
-  // x_iter_num: When a thread process N elements in the X dimension, x_iter_num
-  //             has a value of 0..N-1 to identify the element being process.
   using EmitElementFunction = std::function<void(
       const ThreadIdInfo& thread_id_info, const llvm_ir::IrArray::Index& index,
-      llvm::Value* y_loc, llvm::Value* x_loc, llvm::Value* x_iter_num)>;
+      llvm::Value* y_loc, llvm::Value* x_loc)>;
 
   using ConstantGenerator = std::function<llvm::Value*(int64_t)>;
 
@@ -181,6 +179,8 @@ class IrEmitterUnnested : public IrEmitter {
   IrEmitterUnnested(const HloModuleConfig& hlo_module_config,
                     IrEmitterContext* ir_emitter_context);
 
+  Status EmitUnreachable(mlir::Operation* op, std::string error_message);
+
   // IrEmitterUnnested handles the following instructions differently from
   // IrEmitter. It also mixes in some special handling for custom kernels
   // via the ThunkEmitter.
@@ -194,6 +194,7 @@ class IrEmitterUnnested : public IrEmitter {
 #if GOOGLE_CUDA
   Status EmitCublasLtMatmulThunk(mlir::Operation* op);
   Status EmitCublasLtMatmulThunkF8(mlir::Operation* op);
+  Status EmitConvolutionReorderThunk(mlir::Operation* op);
 #endif  // GOOGLE_CUDA
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
   Status EmitCholeskyThunk(mlir::Operation* op);
@@ -202,6 +203,7 @@ class IrEmitterUnnested : public IrEmitter {
   Status EmitFftThunk(mlir::Operation* op);
   Status EmitFusion(mlir::Operation* op);
   Status EmitLaunchFunc(mlir::Operation* op);
+  Status EmitTritonCustomCall(mlir::Operation* op);
   Status EmitLoopFusion(mlir::Operation* op);
   Status EmitReduce(mlir::Operation* op);
   Status EmitSelectAndScatter(mlir::Operation* op);
@@ -799,6 +801,11 @@ class IrEmitterUnnested : public IrEmitter {
       mlir::Operation::operand_range operands);
 
   GpuElementalIrEmitter elemental_emitter_;
+
+  // Cache of already compiled Triton GEMMs keyed by
+  // HLO computation fingerprint.
+  absl::flat_hash_map<std::string, std::pair<llvm::Function*, LaunchDimensions>>
+      triton_cache_;
 };
 
 }  // namespace gpu

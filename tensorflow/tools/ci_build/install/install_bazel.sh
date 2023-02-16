@@ -14,7 +14,6 @@
 # limitations under the License.
 # ==============================================================================
 
-# Select bazel version.
 BAZEL_VERSION="5.3.0"
 
 set +e

@@ -145,6 +145,51 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
     func.return %0 : tensor<*xf32>
   }
 
+  // CHECK-LABEL: func @shape_from_case_to_branch_functions_to_results
+  // CHECK-SAME: (%arg0: tensor<i32>, %arg1: tensor<1x2x3xf32>) -> tensor<1x2x3xf32>
+  func.func @shape_from_case_to_branch_functions_to_results(%arg0: tensor<i32>, %arg1: tensor<1x2x3xf32>) -> tensor<*xf32> {
+    %0 = "tf.Case"(%arg0, %arg1) {branches = [@case_branch0, @case_branch1], is_stateless = true} : (tensor<i32>, tensor<1x2x3xf32>) -> tensor<*xf32>
+    func.return %0 : tensor<*xf32>
+  }
+
+  // CHECK-LABEL: func @case_branch0
+  // CHECK-SAME: (%arg0: tensor<1x2x3xf32>) -> tensor<1x2x3xf32>
+  func.func @case_branch0(%arg0: tensor<*xf32>) -> tensor<*xf32> {
+    // CHECK: return
+    // CHECK-SAME: tensor<1x2x3xf32>
+    func.return %arg0 : tensor<*xf32>
+  }
+
+  // CHECK-LABEL: func @case_branch1
+  // CHECK-SAME: (%arg0: tensor<1x2x3xf32>) -> tensor<1x2x3xf32>
+  func.func @case_branch1(%arg0: tensor<*xf32>) -> tensor<*xf32> {
+    // CHECK: "tf.Identity"(%arg0) : (tensor<1x2x3xf32>) -> tensor<1x2x3xf32>
+    %0 = "tf.Identity"(%arg0) : (tensor<*xf32>) -> (tensor<*xf32>)
+    // CHECK: return
+    // CHECK-SAME: tensor<1x2x3xf32>
+    func.return %0 : tensor<*xf32>
+  }
+
+  // CHECK-LABEL: shape_from_case_to_region_bodies_to_output
+  // CHECK-SAME: -> tensor<1x2x3xf32>
+  func.func @shape_from_case_to_region_bodies_to_output(%arg0: tensor<i32>, %arg1: tensor<1x2x3xf32>) -> tensor<*xf32> {
+    %unshaped = "tf.Cast"(%arg1) : (tensor<1x2x3xf32>) -> tensor<*xf32>
+    %0 = "tf.CaseRegion"(%arg0) ({
+      // CHECK: "tf.Add"{{.+}}(tensor<1x2x3xf32>, tensor<1x2x3xf32>) -> tensor<1x2x3xf32>
+      // CHECK: "tf.Yield"{{.+}}(tensor<1x2x3xf32>) -> ()
+      %1 = "tf.Add"(%unshaped, %unshaped) : (tensor<*xf32>,  tensor<*xf32>) -> tensor<*xf32>
+      "tf.Yield"(%1) : (tensor<*xf32>) -> ()
+     }, {
+      // CHECK: "tf.Sub"{{.+}}(tensor<1x2x3xf32>, tensor<1x2x3xf32>) -> tensor<1x2x3xf32>
+      // CHECK: "tf.Yield"{{.+}}(tensor<1x2x3xf32>) -> ()
+      %2 = "tf.Sub"(%unshaped, %unshaped) : (tensor<*xf32>,  tensor<*xf32>) -> tensor<*xf32>
+      "tf.Yield"(%2) : (tensor<*xf32>) -> ()
+      // CHECK: {is_stateless = true} : (tensor<i32>) -> tensor<1x2x3xf32>
+     }) {is_stateless = true} : (tensor<i32>) -> tensor<*xf32>
+    // CHECK: return {{.*}} :  tensor<1x2x3xf32>
+    func.return %0 : tensor<*xf32>
+  }
+
   // CHECK-LABEL: func @shape_from_while_to_cond_body_functions
   func.func @shape_from_while_to_cond_body_functions(%arg0: tensor<4xf32>, %arg1: tensor<!tf_type.resource<tensor<4xf32>>>, %arg2: tensor<!tf_type.resource<tensor<*xf32>>>) -> tensor<4xf32> {
     // CHECK: "tf.While"

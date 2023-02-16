@@ -20,7 +20,10 @@ limitations under the License.
 #include <deque>
 #include <functional>
 #include <memory>
+#include <ostream>
 #include <string>
+#include <unordered_map>
+#include <utility>
 
 #include "absl/base/call_once.h"
 #include "absl/strings/cord.h"
@@ -154,13 +157,13 @@ void Status::MaybeAddSourceLocation(SourceLocation loc) {
   if (state_ == nullptr) {
     return;
   }
-  if (loc.line <= 0) {
+  if (loc.line() <= 0) {
     return;
   }
-  if (loc.file_name == nullptr) {
+  if (loc.file_name() == nullptr) {
     return;
   }
-  if (loc.file_name[0] == '\0') {
+  if (loc.file_name()[0] == '\0') {
     return;
   }
   state_->source_locations.push_back(loc);
@@ -269,10 +272,10 @@ std::string Status::ToString() const {
     result += ": ";
     result += state_->msg;
 
-    for (const std::pair<const std::string, std::string>& element :
+    for (const std::pair<const std::string, absl::Cord>& element :
          state_->payloads) {
       absl::StrAppend(&result, " [", element.first, "='",
-                      absl::CHexEscape(element.second), "']");
+                      absl::CHexEscape(std::string(element.second)), "']");
     }
 
     return result;
@@ -283,9 +286,9 @@ void Status::IgnoreError() const {
   // no-op
 }
 
-void Status::SetPayload(absl::string_view type_url, absl::string_view payload) {
+void Status::SetPayload(absl::string_view type_url, absl::Cord payload) {
   if (ok()) return;
-  state_->payloads[std::string(type_url)] = std::string(payload);
+  state_->payloads[std::string(type_url)] = payload;
 }
 
 absl::optional<absl::Cord> Status::GetPayload(
@@ -293,7 +296,7 @@ absl::optional<absl::Cord> Status::GetPayload(
   if (ok()) return absl::nullopt;
   auto payload_iter = state_->payloads.find(std::string(type_url));
   if (payload_iter == state_->payloads.end()) return absl::nullopt;
-  return absl::Cord(payload_iter->second);
+  return payload_iter->second;
 }
 
 bool Status::ErasePayload(absl::string_view type_url) {
@@ -309,7 +312,7 @@ void Status::ForEachPayload(
     const {
   if (ok()) return;
   for (const auto& payload : state_->payloads) {
-    visitor(payload.first, payload.second);
+    visitor(payload.first, std::string(payload.second));
   }
 }
 
@@ -320,26 +323,31 @@ std::ostream& operator<<(std::ostream& os, const Status& x) {
 
 Status OkStatus() { return Status(); }
 
-Status FromAbslStatus(const absl::Status& s) {
+Status FromAbslStatus(const absl::Status& s, SourceLocation loc) {
   if (s.ok()) {
     return Status();
   }
-  Status converted(static_cast<tsl::error::Code>(s.code()), s.message());
+  absl::Span<const SourceLocation> locs = internal::GetSourceLocations(s);
+  const SourceLocation first_loc = locs.empty() ? loc : locs[0];
+  Status converted(static_cast<tsl::error::Code>(s.code()), s.message(),
+                   first_loc);
+  for (int i = 1; i < locs.size(); ++i) {
+    converted.MaybeAddSourceLocation(locs[i]);
+  }
   s.ForEachPayload(
       [&converted](absl::string_view key, const absl::Cord& value) {
-        converted.SetPayload(key, std::string(value));
+        converted.SetPayload(key, value);
       });
-
   return converted;
 }
 
-absl::Status ToAbslStatus(const ::tsl::Status& s) {
+absl::Status ToAbslStatus(const ::tsl::Status& s, SourceLocation loc) {
   if (s.ok()) {
     return absl::OkStatus();
   }
 
-  absl::Status converted(static_cast<absl::StatusCode>(s.code()),
-                         s.error_message());
+  absl::Status converted = internal::MakeAbslStatus(
+      s.code(), s.error_message(), s.GetSourceLocations(), loc);
   s.ForEachPayload([&converted](tsl::StringPiece key, tsl::StringPiece value) {
     converted.SetPayload(key, absl::Cord(value));
   });
@@ -375,7 +383,7 @@ Status StatusGroup::MakeDerived(const Status& s) {
     // TODO(b/200167936): Serialize an instance of DerivedStatus proto instead
     // of using the string directly. The string is never used so it is not
     // causing any issues at the moment.
-    derived.SetPayload(kDerivedStatusProtoUrl, "");
+    derived.SetPayload(kDerivedStatusProtoUrl, absl::Cord(""));
     return derived;
   }
 }
@@ -404,13 +412,12 @@ void StatusGroup::Update(const Status& s) {
 static constexpr int kMaxAggregatedStatusMessageSize = 8 * 1024;
 static constexpr int kMaxAttachedLogMessageSize = 512;
 
-std::unordered_map<std::string, std::string> StatusGroup::GetPayloads() const {
-  std::unordered_map<std::string, std::string> payloads;
+std::unordered_map<std::string, absl::Cord> StatusGroup::GetPayloads() const {
+  std::unordered_map<std::string, absl::Cord> payloads;
   auto capture_payload = [&payloads](absl::string_view key,
                                      absl::string_view value) {
-    payloads[std::string(key)] = std::string(value);
+    payloads[std::string(key)] = absl::Cord(value);
   };
-
   for (const auto& status : derived_) {
     status.ForEachPayload(capture_payload);
   }
@@ -426,9 +433,8 @@ std::unordered_map<std::string, std::string> StatusGroup::GetPayloads() const {
   return payloads;
 }
 
-Status MakeStatus(
-    tsl::error::Code code, absl::string_view message,
-    const std::unordered_map<std::string, std::string>& payloads) {
+Status MakeStatus(tensorflow::error::Code code, absl::string_view message,
+                  const std::unordered_map<std::string, absl::Cord>& payloads) {
   Status status(code, message);
   for (const auto& payload : payloads) {
     status.SetPayload(payload.first, payload.second);

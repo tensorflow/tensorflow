@@ -54,11 +54,11 @@ enum class ResourceUsageType {
   kResourceRelease,
 };
 
-constexpr int ResourceTypeToIndex(ResourceType resource_type) {
-  return static_cast<int>(resource_type);
+constexpr int64_t ResourceTypeToIndex(ResourceType resource_type) {
+  return static_cast<int64_t>(resource_type);
 }
 
-using ResourcePair = std::pair<ResourceType, ResourceUsageType>;
+using ResourcePair = std::pair<int64_t, ResourceUsageType>;
 using ResourcesVector = absl::InlinedVector<ResourcePair, 1>;
 
 class HloGraphNode;
@@ -90,6 +90,8 @@ class LatencyEstimator {
                                      const HloGraphNode& target) const = 0;
   // Uses the approximate or cost model function for NodeCost based on a flag.
   virtual TimeCost NodeCost(const HloInstruction* node) const = 0;
+  // Returns the core frequency used in latency estimation.
+  virtual int CyclesPerMicrosecond() const = 0;
   virtual ~LatencyEstimator() = default;
 };
 
@@ -97,12 +99,19 @@ class LatencyEstimator {
 class ApproximateLatencyEstimator : public LatencyEstimator {
  public:
   // Returns a latency estimation between two instructions.
-  // Currently this is in abstract units. When the real/accurate cost model will
-  // be implemented this will be in the units that will be.
+  // Currently this is in abstract units. When the real/accurate cost model is
+  // implemented this will be in cycles.
   TimeCost GetLatencyBetween(const HloGraphNode& from,
                              const HloGraphNode& target) const override;
   // Uses the approximate or cost model function for NodeCost based on a flag.
   TimeCost NodeCost(const HloInstruction* instr) const override;
+  // ApproximateLatencyEstimator uses abstract units so this returns 1.
+  int CyclesPerMicrosecond() const override { return 1; }
+
+ public:
+  static constexpr TimeCost kLowCost = 1.0;
+  static constexpr TimeCost kMediumCost = 1000.0;
+  static constexpr TimeCost kHighCost = 5000.0;
 };
 
 // Helper class to keep track of which instructions are to be supported and
@@ -128,17 +137,19 @@ class AsyncTracker {
       HloScheduleGraph* schedule_graph,
       const LatencyEstimator* latency_estimator) const {}
 
-  // Returns the number of collective instructions of the opcode 'async_done'
-  // started by this instruction.
-  virtual int64_t CollectivesPerInstruction(ResourceType async_done,
-                                            const HloInstruction& instr) const;
+  // Returns the number of resources (of type resource_type) that are used by
+  // this instruction.
+  virtual int64_t ResourcesPerInstruction(ResourceType resource_type,
+                                          const HloInstruction& instr) const;
+  virtual int64_t ResourcesPerInstruction(int64_t resource_type,
+                                          const HloInstruction& instr) const;
 
   explicit AsyncTracker(const SchedulerConfig& config) : config_(config) {}
 
  private:
   const SchedulerConfig config_;
   mutable absl::flat_hash_map<const HloComputation*,
-                              absl::flat_hash_map<ResourceType, int64_t>>
+                              absl::flat_hash_map<int64_t, int64_t>>
       async_in_computation_cache_;
 };
 
@@ -205,9 +216,18 @@ class HloGraphNode {
     });
   }
   std::optional<ResourceUsageType> UsesResourceType(ResourceType res) const {
-    for (auto& resource : resources_) {
-      if (resource.first == res) {
-        return resource.second;
+    int64_t res_type = ResourceTypeToIndex(res);
+    for (const auto& [resource_type, usage_type] : resources_) {
+      if (resource_type == res_type) {
+        return usage_type;
+      }
+    }
+    return std::nullopt;
+  }
+  std::optional<ResourceUsageType> UsesResourceType(int64_t res) const {
+    for (const auto& [resource_type, usage_type] : resources_) {
+      if (resource_type == res) {
+        return usage_type;
       }
     }
     return std::nullopt;
@@ -507,7 +527,7 @@ class ModulePressureState {
 class DefaultSchedulerCore : public SchedulerCore {
  public:
   using ReadyQueueSet = std::vector<HloGraphNode*>;
-  using OpcodeIntMap = absl::flat_hash_map<ResourceType, int64_t>;
+  using ResourceMap = absl::flat_hash_map<int64_t, int64_t>;
   using ShouldSkipNodeFunction = std::function<bool(const HloGraphNode*)>;
 
   // Class used to cache expensive information. Currently memory pressure
@@ -572,7 +592,7 @@ class DefaultSchedulerCore : public SchedulerCore {
     ReadyQueueSet ready_set;
     // Map containing the maximum number of async ops per type that we allow can
     // happen concurrently.
-    OpcodeIntMap max_concurrent_async;
+    ResourceMap max_concurrent_async;
     // New scheduling sequence produced by the scheduler. This is in reversed
     // order (because we schedule bottom up). This will be required to be
     // reversed before assigning to the HloSchedule.
@@ -580,7 +600,7 @@ class DefaultSchedulerCore : public SchedulerCore {
     // Units of time passed in the schedule. To keep track of latency hiding.
     HloGraphNode::TimeCost current_time = 0;
     // Number of async collectives in flight.
-    OpcodeIntMap collectives_in_flight;
+    ResourceMap collectives_in_flight;
     // Number of instructions using a certain resource in the set waiting to be
     // scheduled.
     std::array<int, ResourceTypeToIndex(ResourceType::kNumResources)>
@@ -631,7 +651,7 @@ class DefaultSchedulerCore : public SchedulerCore {
   void DumpLatencyHidingSchedule(
       const HloComputation* computation, const HloScheduleGraph& schedule_graph,
       const std::vector<HloInstruction*>& instructions,
-      const DebugOptions& debug_options);
+      int cycles_per_microsecond, const DebugOptions& debug_options);
 
   HloCostAnalysis::ShapeSizeFunction shape_size_bytes_;
   std::unique_ptr<ModulePressureState> module_pressure_state_;

@@ -31,12 +31,6 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-// The amount of shared memory a CUDA kernel can use.
-//
-// Stay on the conservative side, this is smaller than full 64kB, but allows
-// some extra space for cache.
-inline constexpr int64_t kSharedMemoryBudgetInBytes = 48 * 1024;
-
 // If a dimensions is smaller than this, untiled transposition may be more
 // efficient.
 inline constexpr int64_t kMinDimensionToTransposeTiled = 16;
@@ -59,7 +53,12 @@ inline constexpr int64_t BatchedReductionRaceFreeBound() { return 8; }
 // Returns true if `hlo` is a matched softmax fusion.
 bool IsSoftmaxCustomCall(const HloInstruction& hlo);
 
+// Identifies Triton GEMM fusions.
+bool IsTritonCustomCall(const HloInstruction& hlo);
+
 extern const char* const kSoftmaxCallTarget;
+
+inline constexpr absl::string_view kTritonCallTarget = "__triton";
 
 // Returns true if `hlo` will be implemented as a call to a cuSolver routine.
 //
@@ -232,6 +231,9 @@ bool HasAnyTiledTransposeRoot(HloComputation* computation);
 std::optional<Vector3> FindTiledLogicalTranspose(const HloInstruction& instr);
 
 std::optional<Vector3> FindAnyTiledTranspose(const HloInstruction& instr);
+
+// Log and verify an LLVM module.
+void LogAndVerify(const llvm::Module* m);
 
 }  // namespace gpu
 }  // namespace xla

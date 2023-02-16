@@ -91,7 +91,6 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/utils/mangling_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/translate_utils.h"
 #include "tensorflow/compiler/xla/status_macros.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/statusor.h"
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/common_runtime/shape_refiner.h"
@@ -151,7 +150,7 @@ using ::mlir::tf_saved_model::kTfSavedModelInitializerInitType;
 using ::mlir::tf_saved_model::kTfSavedModelInitializerRestoreType;
 using ::mlir::tf_saved_model::kTfSavedModelInitializerTypeAttr;
 using ::mlir::tf_saved_model::SessionInitializerOp;
-using ::stream_executor::port::StatusOr;
+using ::tsl::StatusOr;
 
 namespace {
 
@@ -1283,7 +1282,7 @@ StatusOr<TensorType> ImporterBase::ConvertElementTypeAndShape(
   }
 
   return GetTypeFromTFTensorShape(
-      llvm::makeArrayRef(dimensions.begin(), dimensions.end()), element_type);
+      llvm::ArrayRef(dimensions.begin(), dimensions.end()), element_type);
 }
 
 StatusOr<ImporterBase::ElementSubtypes> ImporterBase::ConvertSubtypes(
@@ -1361,7 +1360,7 @@ StatusOr<mlir::Attribute> ImporterBase::ConvertAttributeValue(
           if (attr) attrs.push_back(attr);
         }
         return builder_.getArrayAttr(
-            llvm::makeArrayRef(attrs.begin(), attrs.end()));
+            llvm::ArrayRef(attrs.begin(), attrs.end()));
       }
       return ConvertNonFuncAttributeValue(value, &builder_);
     }
@@ -1799,7 +1798,7 @@ mlir::Location ImporterBase::GetLocation(const Node& node) {
 
     // If there are more locations then generate a stack trace, otherwise just
     // return the name loc.
-    auto callsite_locs = llvm::makeArrayRef(locations).drop_front();
+    auto callsite_locs = llvm::ArrayRef(locations).drop_front();
     return callsite_locs.empty()
                ? node_name_loc
                : mlir::CallSiteLoc::get(node_name_loc, callsite_locs);
@@ -1989,11 +1988,7 @@ mlir::Operation* ImporterBase::CreateOperation(
             resource = true;
             return true;
           }
-          if (auto with_subtype =
-                  type.dyn_cast<mlir::SubElementTypeInterface>()) {
-            with_subtype.walkSubTypes(
-                [&](mlir::Type t) { record_resource(t); });
-          }
+          type.walk([&](mlir::Type t) { record_resource(t); });
           return resource;
         };
 
@@ -3089,7 +3084,7 @@ StatusOr<llvm::ArrayRef<mlir::ArrayAttr>>
 StructuredValueLinearizer::GetLeafIndexPaths(
     llvm::StringRef error_context) const {
   if (error_message_.empty()) {
-    return llvm::makeArrayRef(leaf_index_paths_);
+    return llvm::ArrayRef(leaf_index_paths_);
   }
   return errors::InvalidArgument(
       error_context.str(), error_message_,
@@ -4260,10 +4255,9 @@ StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ConvertGraphToMlir(
                                    tf_name_to_mlir_name);
 }
 
-stream_executor::port::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>>
-ConvertFunctionToMlir(const FunctionBody* fbody,
-                      const FunctionLibraryDefinition& flib_def,
-                      mlir::MLIRContext* context) {
+tsl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ConvertFunctionToMlir(
+    const FunctionBody* fbody, const FunctionLibraryDefinition& flib_def,
+    mlir::MLIRContext* context) {
   tensorflow::GraphDebugInfo dummy_debug_info;
   tensorflow::GraphImportConfig specs;
   specs.graph_func_name = fbody->fdef.signature().name();

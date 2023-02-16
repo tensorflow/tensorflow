@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/elemental_ir_emitter.h"
 #include "tensorflow/compiler/xla/service/gpu/backend_configs.pb.h"
 #include "tensorflow/compiler/xla/service/gpu/cublas_cudnn.h"
+#include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
 
 namespace xla {
 namespace gpu {
@@ -243,6 +244,21 @@ Status GpuHloCostAnalysis::HandleCustomCall(const HloInstruction* custom_call) {
           current_properties_.output_bytes_accessed();
       current_properties_[kBytesAccessedKey] += output_size;
       current_properties_.set_output_bytes_accessed(output_size);
+    }
+    return OkStatus();
+  }
+
+  if (IsSoftmaxCustomCall(*custom_call)) {
+    TF_ASSIGN_OR_RETURN(current_properties_,
+                        ProcessSubcomputation(custom_call->to_apply()));
+    current_properties_[kBytesAccessedKey] = GetShapeSize(custom_call->shape());
+    current_properties_.set_output_bytes_accessed(
+        GetShapeSize(custom_call->shape()));
+
+    for (int64_t i = 0; i < custom_call->operand_count(); ++i) {
+      int64_t operand_size = GetShapeSize(custom_call->operand(i)->shape());
+      current_properties_[kBytesAccessedKey] += operand_size;
+      current_properties_.set_operand_bytes_accessed(i, operand_size);
     }
     return OkStatus();
   }

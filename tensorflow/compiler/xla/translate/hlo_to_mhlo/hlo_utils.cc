@@ -41,7 +41,7 @@ template <typename CppType>
     const ShapedType& type, const LiteralBase& literal) {
   auto data_span = literal.data<CppType>();
   return ::mlir::DenseElementsAttr::get(
-      type, llvm::makeArrayRef(data_span.data(), data_span.size()));
+      type, llvm::ArrayRef(data_span.data(), data_span.size()));
 }
 
 StatusOr<AffineMap> GetPermutationIfAvailable(const Shape& shape,
@@ -423,6 +423,8 @@ StatusOr<::xla::HloOpcode> MhloToHloOpcode(mlir::Operation* op) {
     return xla::HloOpcode::kSin;
   } else if (isa<mlir::mhlo::SqrtOp, mlir::lmhlo::SqrtOp>(op)) {
     return xla::HloOpcode::kSqrt;
+  } else if (isa<mlir::mhlo::TanOp, mlir::lmhlo::TanOp>(op)) {
+    return xla::HloOpcode::kTan;
   } else if (isa<mlir::mhlo::TanhOp, mlir::lmhlo::TanhOp>(op)) {
     return xla::HloOpcode::kTanh;
   } else if (isa<mlir::mhlo::ComplexOp, mlir::lmhlo::ComplexOp>(op)) {

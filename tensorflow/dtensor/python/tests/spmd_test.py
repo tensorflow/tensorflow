@@ -132,11 +132,15 @@ class DTensorSPMDTest(test_util.DTensorBaseTest):
 
     global_ids = test_util.create_device_ids_array((2, 4))
     local_ids = np.ravel(global_ids).tolist()
-    mesh_dict = {
-        device: Mesh([_MESH_DIM_X, _MESH_DIM_Y], global_ids, local_ids,
-                     test_util.create_device_list((2, 4), device))
-        for device in ('CPU', 'GPU', 'TPU')
-    }
+    mesh_dict = dict()
+    for device in ('CPU', 'GPU', 'TPU'):
+      mesh_dict[device] = Mesh(
+          [_MESH_DIM_X, _MESH_DIM_Y],
+          global_ids,
+          local_ids,
+          test_util.create_device_list((2, 4), device),
+          use_xla_spmd=test_util.get_use_xla_spmd(device),
+      )
     self.mesh = self.configTestMesh(mesh_dict)
 
     # Creates a bunch of common layouts used by tests later.
@@ -178,6 +182,30 @@ class DTensorSPMDTest(test_util.DTensorBaseTest):
         'inner': Layout.inner_sharded
     }
 
+  @parameterized.named_parameters(
+      ('unsharded_unsharded', [layout_lib.UNSHARDED, layout_lib.UNSHARDED]),
+      ('x_unsharded', [_MESH_DIM_X, layout_lib.UNSHARDED]),
+      ('unsharded_x', [layout_lib.UNSHARDED, _MESH_DIM_X]),
+      ('x,y', [_MESH_DIM_X, _MESH_DIM_Y]),
+  )
+  @mock.patch.dict(
+      os.environ, {'DTENSOR_ENABLE_REPLICATED_SPMD_AS_DEFAULT_TF.MOD': '1'}
+  )
+  def testDefaultReplicatedSpmd(self, shard_specs):
+    x = stateless_random_ops.stateless_random_uniform(
+        shape=[4, 8], seed=[0, 1], dtype=dtypes.float32
+    )
+    y = constant_op.constant(7, dtype=dtypes.float32)
+
+    expected_result = math_ops.Mod(x=x, y=y)
+    expected_layout = Layout.replicated(self.mesh, rank=2)
+    dtensor_result = math_ops.Mod(
+        x=numpy_util.pack_numpy(x, layout=Layout(shard_specs, self.mesh)),
+        y=numpy_util.pack_numpy(y, layout=Layout([], self.mesh)),
+    )
+
+    self.assertDTensorEqual(expected_result, expected_layout, dtensor_result)
+
   @parameterized.product(
       shard_type=['replicated', 'batch_sharded'], full_matrices=[True, False])
   def testQR(self, shard_type, full_matrices):
@@ -210,15 +238,13 @@ class DTensorSPMDTest(test_util.DTensorBaseTest):
     first_dim_sharded = self.first_dimension_sharded_layout
     second_dim_sharded = self.last_dimension_sharded_layout
 
-    @polymorphic_function.function
-    def uniform(shape, seed, layout):
-      return api.relayout(
-          stateless_random_ops.stateless_random_uniform(shape=shape, seed=seed),
-          layout=layout)
-
     with api.run_on(self.mesh):
-      m1 = uniform(layout=second_dim_sharded, shape=[a, b], seed=seed)
-      m2 = uniform(layout=first_dim_sharded, shape=[b, c], seed=seed)
+      m1 = numpy_util.stateless_random_uniform(
+          layout=second_dim_sharded, shape=[a, b], seed=seed
+      )
+      m2 = numpy_util.stateless_random_uniform(
+          layout=first_dim_sharded, shape=[b, c], seed=seed
+      )
 
     @polymorphic_function.function
     def func():
@@ -235,6 +261,45 @@ class DTensorSPMDTest(test_util.DTensorBaseTest):
 
     self.assertDTensorEqual(dtensor_result, self.first_dimension_sharded_layout,
                             dtensor_scattered_result)
+
+  def testReduceScatterLastDimSharded(
+      self,
+  ):
+    # ReduceScatter on non-0th dimension which requires a transpose.
+    a, b, c = 128, 128, 128
+    seed = [0, 1]
+    first_dim_sharded = self.first_dimension_sharded_layout
+    second_dim_sharded = self.last_dimension_sharded_layout
+
+    @polymorphic_function.function
+    def uniform(shape, seed, layout):
+      return api.relayout(
+          stateless_random_ops.stateless_random_uniform(shape=shape, seed=seed),
+          layout=layout,
+      )
+
+    with api.run_on(self.mesh):
+      m1 = uniform(layout=second_dim_sharded, shape=[a, b], seed=seed)
+      m2 = uniform(layout=first_dim_sharded, shape=[b, c], seed=seed)
+
+    @polymorphic_function.function
+    def func():
+      m3 = math_ops.matmul(m1, m2)
+      return m3
+
+    @polymorphic_function.function
+    def scattered_func():
+      m3 = math_ops.matmul(m1, m2)
+      return api.relayout(m3, self.last_dimension_sharded_layout)
+
+    dtensor_result = func()
+    dtensor_scattered_result = scattered_func()
+
+    self.assertDTensorEqual(
+        dtensor_result,
+        self.last_dimension_sharded_layout,
+        dtensor_scattered_result,
+    )
 
   def testExpandDimsDifferentInputAndOutputLayouts(self,):
     src_numpy = np.random.uniform(size=[10, 10])
@@ -1627,6 +1692,9 @@ class DTensorSPMDTest(test_util.DTensorBaseTest):
     self.assertDTensorEqual(expected, expected_layout, dtensor_result)
 
   def testResourceGather(self):
+    if self.mesh.use_xla_spmd():
+      self.skipTest('Variables not supported yet with DTensor Xla Spmd.')
+
     params = np.arange(1000 * 4).reshape((1000, 4))
     indices = np.random.randint(0, 1000, size=1000 * 3).reshape((1000, 3))
 
@@ -1643,6 +1711,9 @@ class DTensorSPMDTest(test_util.DTensorBaseTest):
     self.assertDTensorEqual(expected, expected_layout, dtensor_result)
 
   def testResourceGatherRaisesErrorWhenResourceZeroDimSharded(self):
+    if self.mesh.use_xla_spmd():
+      self.skipTest('Variables not supported yet with DTensor Xla Spmd.')
+
     sharded_tensor = numpy_util.pack_numpy(
         np.arange(1000 * 4).reshape((1000, 4)),
         layout=Layout.batch_sharded(self.mesh, _MESH_DIM_Y, 2))

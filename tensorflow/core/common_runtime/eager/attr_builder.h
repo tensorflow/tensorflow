@@ -76,9 +76,11 @@ Status AttrTypeByName(const AttrTypeMap& m, const string& attr_name,
 // tensorflow::Fprint128 cache_key = a.CacheKey("cpu:0");
 // const NodeDef& n = a.BuildNodeDef();
 //
-// Note that all calls to Set and NumInputs should happen before calling
-// BuildNodeDef. Also, calls to NumInputs or Set between multiple invocations
-// to CacheKey may cause different values to be returned by CacheKey.
+// Calls to NumInputs or Set between multiple invocations to CacheKey may cause
+// different values to be returned by CacheKey.
+//
+// If NumInputs or Set is called, BuildNodeDef should be called again to update
+// the NodeDef.
 //
 // For performance reasons, the class internally delays the actual construction
 // of the NodeDef till BuildNodeDef is called, or Set is called with certain
@@ -104,7 +106,6 @@ class AttrBuilder : public AbstractOpAttrs {
     op_name_ = op;
     num_inputs_ = 0;
     encoded_attrs_.clear();
-    node_def_initialized_ = false;
     node_def_finalized_ = false;
     cached_cache_key_ = absl::nullopt;
     device_for_cached_cache_key_.clear();
@@ -119,6 +120,7 @@ class AttrBuilder : public AbstractOpAttrs {
   AttrBuilder& Set(StringPiece attr_name, T&& value) {
     SetAttrValue(value, &attr_tmp_);
     AddAttrIfNotPresent(attr_name, attr_tmp_);
+    node_def_finalized_ = false;
     cached_cache_key_ = absl::nullopt;
     return *this;
   }
@@ -140,7 +142,7 @@ class AttrBuilder : public AbstractOpAttrs {
     // Common attributes are stored in AttrVecs. This Get() template
     // is specialized for them below. If we end up here, the type must be
     // among those that we store in the node_def_.
-    if (!node_def_initialized_) {
+    if (!node_def_finalized_) {
       return errors::NotFound("No attr named'", attr_name,
                               "' found in AttrBuilder for ", op_name_);
     }
@@ -181,10 +183,6 @@ class AttrBuilder : public AbstractOpAttrs {
 
  private:
   tensorflow::Fprint128 BuildCacheKeyForDevice(const StringPiece device) const;
-
-  // Initialize the node_def_ object.
-  // REQUIRES: node_def_initialized_ = false
-  void InitializeNodeDef();
 
   template <class T>
   void SetInAttrValueMap(AttrValueMap* m, const string& attr_name,

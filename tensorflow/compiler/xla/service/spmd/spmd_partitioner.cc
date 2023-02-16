@@ -517,9 +517,11 @@ PartitionedHlo PartitionedHlo::ReshardNoCache(const HloSharding& target,
   // two implementations below.
   if (!sharding().IsReplicated()) {
     if (!target.IsReplicated()) {
-      auto reshard = TryComplexReshardHandling(target);
-      if (reshard.has_value()) {
-        return reshard.value();
+      if (sharding().IsTiled() && target.IsTiled()) {
+        auto reshard = TryComplexReshardHandling(target);
+        if (reshard.has_value()) {
+          return reshard.value();
+        }
       }
       if (!allow_full_replication) {
         return *this;
@@ -1792,14 +1794,19 @@ std::optional<std::pair<HloSharding, int>> PatternMatchReshape(
 // targets instead.
 std::optional<HloSharding> PatternMatchPartiallyReplicateDim(
     const HloSharding& source, const HloSharding& target) {
-  if (!(!source.ReplicateOnLastTileDim() && target.ReplicateOnLastTileDim())) {
+  if (!target.ReplicateOnLastTileDim()) {
     return std::nullopt;
   }
   const int64_t target_replicated_dim = target.SubgroupReplicationDim();
+  const int64_t source_replicated_size =
+      source.HasPartialReplication()
+          ? source.tile_assignment().dim(source.SubgroupReplicationDim())
+          : 1;
   CHECK_NE(target_replicated_dim, -1) << "Expected replicated dim";
-  for (int i = 0; i < source.tile_assignment().num_dimensions(); ++i) {
-    if (source.tile_assignment().dim(i) !=
-        target.tile_assignment().dim(target_replicated_dim)) {
+  for (int i = 0; i < source.TiledDataRank(); ++i) {
+    if (source.tile_assignment().dim(i) == 1 ||
+        source.tile_assignment().dim(i) * source_replicated_size !=
+            target.tile_assignment().dim(target_replicated_dim)) {
       continue;
     }
     auto replicated_sharding =
@@ -2626,7 +2633,88 @@ Status SpmdPartitioningVisitor::HandleSort(HloInstruction* hlo) {
 
     return OkStatus();
   }
-
+  auto sort = DynCast<HloSortInstruction>(hlo);
+  auto sort_dim = sort->sort_dimension();
+  VLOG(2) << "sort dim: " << sort_dim;
+  auto cur_sharding = sharding;
+  bool same_subsharding = true;
+  if (sharding.IsTuple()) {
+    cur_sharding = sharding.GetSubSharding(hlo->shape(), {0});
+    for (int64_t i = 1; i != input_count; ++i) {
+      if (cur_sharding != hlo->sharding().GetSubSharding(hlo->shape(), {i})) {
+        same_subsharding = false;
+        break;
+      }
+    }
+  }
+  auto subshape = hlo->operand(0)->shape();
+  // If the sort is sharded along the sorting dimension, then we try to move the
+  // sharding into another dimension and apply it to all operands if
+  // -- operand rank is at least two
+  // -- output tuple elements have the same sharding
+  // -- the current sharding is tiled
+  if (subshape.rank() > 1 && same_subsharding && cur_sharding.IsTiled() &&
+      !cur_sharding.IsTileMaximal() &&
+      cur_sharding.tile_assignment().dim(sort_dim) != 1) {
+    Array<int64_t> tile_assignment = cur_sharding.tile_assignment();
+    std::vector<int64_t> tile_assignment_dims = tile_assignment.dimensions();
+    // Pick the new dimension to move the sharding into
+    int64_t picked_dim = -1;
+    int64_t first_nonsort_nonsharded_dim = -1;
+    auto nshards = tile_assignment_dims[sort_dim];
+    for (int64_t dim = 0; dim < subshape.rank(); ++dim) {
+      if (dim == sort_dim || tile_assignment_dims[dim] != 1) {
+        continue;
+      }
+      if (first_nonsort_nonsharded_dim == -1) {
+        first_nonsort_nonsharded_dim = dim;
+      }
+      if (subshape.dimensions(dim) % nshards != 0) {
+        continue;
+      }
+      picked_dim = dim;
+      break;
+    }
+    if (picked_dim == -1) {
+      picked_dim = first_nonsort_nonsharded_dim;
+    }
+    VLOG(2)
+        << "Sort partitioning - picked target dimension to move the sharding: "
+        << picked_dim;
+    // The sharding cannot exist in the sort dimension if there are no free
+    // dimensions to move the sharding into. In other words, we propagated the
+    // operand sharding which is on the sort dimension only because we knew we
+    // could pick a free dimension to move it into now.
+    CHECK_NE(picked_dim, -1)
+        << "Sort partitioning - sharding cannot exist in the sort dimension if "
+           "there are no free dimensions to move it into";
+    // Move the sharding to the picked dimension
+    std::vector<int64_t> permutation(
+        cur_sharding.tile_assignment().dimensions());
+    absl::c_iota(permutation, 0);
+    std::swap(permutation[sort_dim], permutation[picked_dim]);
+    auto new_sharding =
+        hlo_sharding_util::TransposeSharding(cur_sharding, permutation);
+    VLOG(2) << "Sort partitioning - new sharding: " << new_sharding.ToString();
+    std::vector<HloInstruction*> new_operands;
+    std::vector<HloSharding> new_shardings;
+    for (auto& operand : hlo->operands()) {
+      new_operands.push_back(
+          GetPartitionedHlo(operand).Reshard(new_sharding).hlo());
+      new_shardings.push_back(new_sharding);
+    }
+    auto new_output_sharding = new_sharding;
+    if (sharding.IsTuple()) {
+      new_output_sharding = HloSharding::Tuple(sort->shape(), new_shardings);
+    }
+    auto final_sort = b_.AddInstruction(hlo->CloneWithNewOperands(
+        MakePartitionedShape(sort->shape(), new_output_sharding),
+        new_operands));
+    final_sort->set_sharding(new_output_sharding);
+    PartitionedHlo psort(final_sort, sort->shape(), MakePartitioningState());
+    SetPartitionedHlo(sort, psort.Reshard(sort->sharding()));
+    return OkStatus();
+  }
   if (hlo->shape().IsTuple()) {
     // Check that all elements are sharded in the same way.
     if (hlo->shape().tuple_shapes_size() == 0) {
@@ -4665,7 +4753,9 @@ Status SpmdPartitioner::PreprocessSharding(
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   for (HloComputation* computation : module->computations(execution_threads)) {
     for (HloInstruction* hlo : computation->instructions()) {
-      if (hlo->HasSideEffectNoRecurse() && hlo->opcode() != HloOpcode::kRng) {
+      if (hlo->HasSideEffectNoRecurse() && hlo->opcode() != HloOpcode::kRng &&
+          (hlo->opcode() != HloOpcode::kCustomCall ||
+           GetCustomCallPartitioner(hlo->custom_call_target()) == nullptr)) {
         TF_RET_CHECK(hlo->has_sharding())
             << "Side-effect HLO must have sharding: " << hlo->ToString();
         TF_RET_CHECK(!HasReplicatedSharding(hlo->sharding()) ||

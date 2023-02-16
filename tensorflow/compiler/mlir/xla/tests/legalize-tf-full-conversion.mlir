@@ -1,4 +1,4 @@
-// RUN: xla-opt %s -xla-legalize-tf -split-input-file -verify-diagnostics
+// RUN: tf-opt %s -xla-legalize-tf -split-input-file -verify-diagnostics
 
 // expected-error@below{{The following operations cannot be legalized: tf.OpA (count: 1). These legalization failure(s) may be due to missing TF to HLO lowerings and/or unsupported attributes, etc.}}
 func.func @tf_unknown_op(%arg0: tensor<2xi32>) -> tensor<2xi32> {

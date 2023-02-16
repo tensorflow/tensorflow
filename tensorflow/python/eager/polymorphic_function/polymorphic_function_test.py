@@ -37,7 +37,7 @@ from tensorflow.python.eager import backprop
 from tensorflow.python.eager import cancellation
 from tensorflow.python.eager import context
 from tensorflow.python.eager import lift_to_graph
-from tensorflow.python.eager.polymorphic_function import monomorphic_function
+from tensorflow.python.eager.polymorphic_function import attributes as attributes_lib
 from tensorflow.python.eager.polymorphic_function import polymorphic_function
 from tensorflow.python.eager.polymorphic_function import tracing_compiler
 from tensorflow.python.framework import composite_tensor
@@ -288,12 +288,12 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
         name = f.signature.name
         if 'forward' in name or 'backward' in name:
           not_present += 1
-          self.assertNotIn(monomorphic_function.IMPLEMENTS_ATTRIBUTE_NAME,
+          self.assertNotIn(attributes_lib.IMPLEMENTS,
                            f.attr, f)
         else:
           present += 1
           self.assertEqual(
-              f.attr[monomorphic_function.IMPLEMENTS_ATTRIBUTE_NAME].s,
+              f.attr[attributes_lib.IMPLEMENTS].s,
               'func'.encode('ascii'), f)
       self.assertEqual(not_present, 2, fdefs)
       self.assertEqual(present, 1, fdefs)
@@ -335,13 +335,13 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
       functions = ops.get_default_graph().as_graph_def().library.function
       # Verify that we created only one function
       self.assertLen(functions, 1)
-      # Verify that eval() reads the current values.
+      # Verify that self.evaluate() reads the current values.
       a.initializer.run()
       b.initializer.run()
-      self.assertEqual(r1.eval(), 2)
+      self.assertEqual(self.evaluate(r1), 2)
 
-      a.assign_add([1]).eval()
-      self.assertEqual(r1.eval(), 3)
+      self.evaluate(a.assign_add([1]))
+      self.assertEqual(self.evaluate(r1), 3)
 
   def testImplementsAttributeWorksOnConstants(self):
     with context.graph_mode(), self.cached_session():
@@ -353,10 +353,10 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
       functions = ops.get_default_graph().as_graph_def().library.function
       self.assertLen(functions, 1)
       self.assertLen(functions[0].signature.input_arg, 2)
-      # Verify that eval() reads the current values.
+      # Verify that self.evaluate() reads the current values.
       a.initializer.run()
-      self.assertEqual(r1.eval(), 3)
-      self.assertEqual(r2.eval(), 3)
+      self.assertEqual(self.evaluate(r1), 3)
+      self.assertEqual(self.evaluate(r2), 3)
 
   def testImplementsAttributeSpecializes(self):
     with context.graph_mode(), self.cached_session():
@@ -371,10 +371,10 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
 
       self.assertLen(functions[0].signature.input_arg, 2)
       self.assertLen(functions[1].signature.input_arg, 2)
-      # Verify that eval() reads the current values.
+      # Verify that self.evaluate() reads the current values.
       a.initializer.run()
-      numpy.testing.assert_equal(r1.eval(), [3.])
-      numpy.testing.assert_equal(r2.eval(), [3., 3.])
+      numpy.testing.assert_equal(self.evaluate(r1), [3.])
+      numpy.testing.assert_equal(self.evaluate(r2), [3., 3.])
 
   def testImplementsWorksWithTensorSpec(self):
     v = polymorphic_function.function(
@@ -404,11 +404,11 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
         name = f.signature.name
         if 'forward' in name or 'backward' in name:
           not_present += 1
-          self.assertNotIn(monomorphic_function.IMPLEMENTS_ATTRIBUTE_NAME,
+          self.assertNotIn(attributes_lib.IMPLEMENTS,
                            f.attr, f)
         else:
           present += 1
-          attr_value = f.attr[monomorphic_function.IMPLEMENTS_ATTRIBUTE_NAME]
+          attr_value = f.attr[attributes_lib.IMPLEMENTS]
           self.assertIsNotNone(attr_value.func, f)
           self.assertEqual(attr_value.func.name, 'embedding_matmul')
           name_attrs = attr_value.func.attr
@@ -1664,11 +1664,24 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     signature = [tensor_spec.TensorSpec(shape=(2,), dtype=dtypes.float32)]
     defined = polymorphic_function.function(foo, input_signature=signature)
 
+    # Valid call
+    defined(array_ops.ones([2]))
+
     # Invalid shapes.
-    with self.assertRaisesRegex(ValueError, 'Python inputs incompatible.*'):
+    with self.assertRaisesRegex(
+        TypeError,
+        (
+            'Tensor conversion requested dtype float32 for Tensor with dtype'
+            ' int32.*'
+        ),
+    ):
+      defined(array_ops.ones([3], dtype=dtypes.int32))
+
+    # Invalid shapes.
+    with self.assertRaisesRegex(TypeError, 'Can not cast.*'):
       defined(array_ops.ones([3]))
 
-    with self.assertRaisesRegex(ValueError, 'Python inputs incompatible.*'):
+    with self.assertRaisesRegex(TypeError, 'Can not cast.*'):
       defined(array_ops.ones([2, 1]))
 
     # Wrong number of arguments.
@@ -1677,8 +1690,9 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     with self.assertRaisesRegex(TypeError, 'missing a required argument'):
       defined()
 
-    with self.assertRaisesRegex(ValueError,
-                                'inputs incompatible with input_signature'):
+    with self.assertRaisesRegex(
+        TypeError, '.*was expected to be of type.* but is.*'
+    ):
       defined.get_concrete_function(
           tensor_spec.TensorSpec(shape=(3,), dtype=dtypes.float32))
 
@@ -2469,6 +2483,37 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     self.assertAllEqual(
         g(a='f', l='e', m='a', p='g', q='d', r='b', v='c'),
         b'a=f, l=e, m=a, p=g, q=d, r=b, v=c')
+
+  def testSameConcreteFunctionDifferentKwargOrder(self):
+    @polymorphic_function.function
+    def foo(**kwargs):
+      return kwargs['a'] + math_ops.cast(kwargs['b'], dtypes.float32)
+
+    foo(a=constant_op.constant(1.0), b=constant_op.constant(1))
+    foo(b=constant_op.constant(1), a=constant_op.constant(1.0))
+
+    self.assertLen(total_function_cache(foo), 1)
+
+  def testEmptyInputSignatures(self):
+
+    class Foo:
+
+      @polymorphic_function.function(input_signature=[])
+      def bar_none(self):
+        return 1
+
+      @polymorphic_function.function(input_signature=[])
+      def bar_one(self, x=0):
+        return x
+
+      @polymorphic_function.function(input_signature=[])
+      def bar_two(self, x=0, y=1):
+        return x + y
+
+    foo = Foo()
+    self.assertEqual(foo.bar_none.input_signature, ())
+    self.assertEqual(foo.bar_one.input_signature, ())
+    self.assertEqual(foo.bar_two.input_signature, ())
 
   # pylint: disable=g-long-lambda
   @parameterized.named_parameters([
@@ -3533,22 +3578,20 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     m = MyModule()
     tf_func_dec = polymorphic_function.function(
         input_signature=(tensor_spec.TensorSpec([], dtypes.int32),))
-    at_declare_error_msg = 'TensorSpecs are still required.*arg2.*arg3'
-    at_call_error_msg = 'too many positional arguments'
-
-    with self.assertRaisesRegex(TypeError, at_call_error_msg):
+    error_message = 'input_signature missing type constraint'
+    with self.assertRaisesRegex(TypeError, error_message):
       tf_func_dec(m.f1)(1, 2, 3)
 
-    with self.assertRaisesRegex(TypeError, at_call_error_msg):
+    with self.assertRaisesRegex(TypeError, error_message):
       tf_func_dec(m.f2)(1, 2, 3)
 
-    with self.assertRaisesRegex(TypeError, at_declare_error_msg):
+    with self.assertRaisesRegex(TypeError, error_message):
       tf_func_dec(m.f3)(1, 2, 3)
 
-    with self.assertRaisesRegex(TypeError, at_call_error_msg):
+    with self.assertRaisesRegex(TypeError, error_message):
       tf_func_dec(m.f4)(1, 2, 3)
 
-    with self.assertRaisesRegex(TypeError, at_call_error_msg):
+    with self.assertRaisesRegex(TypeError, error_message):
       tf_func_dec(m.f5)(1, 2, 3)
 
     self.assertEqual(tf_func_dec(m.f6)(1).numpy(), 5)
@@ -3556,37 +3599,36 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
   def testInputSignatureMissingTensorSpecsFunction(self):
     tf_func_dec = polymorphic_function.function(
         input_signature=(tensor_spec.TensorSpec([], dtypes.int32),))
-    at_dec_error_msg = 'TensorSpecs are still required.*arg2.*arg3'
-    at_call_error_msg = 'too many positional arguments'
+    error_message = 'input_signature missing type constraint'
     # pylint: disable=unused-argument
     def f1(arg1, arg2, arg3):
       pass
 
-    with self.assertRaisesRegex(TypeError, at_call_error_msg):
+    with self.assertRaisesRegex(TypeError, error_message):
       tf_func_dec(f1)(1, 2, 3)
 
     def f2(arg1, arg2, arg3, **kwargs):
       pass
 
-    with self.assertRaisesRegex(TypeError, at_call_error_msg):
+    with self.assertRaisesRegex(TypeError, error_message):
       tf_func_dec(f2)(1, 2, 3)
 
     def f3(arg1, arg2, arg3, arg4=4, **kwargs):
       pass
 
-    with self.assertRaisesRegex(TypeError, at_dec_error_msg):
+    with self.assertRaisesRegex(TypeError, error_message):
       tf_func_dec(f3)(1, 2, 3)
 
     def f4(arg1, arg2, arg3, *args):
       pass
 
-    with self.assertRaisesRegex(TypeError, at_call_error_msg):
+    with self.assertRaisesRegex(TypeError, error_message):
       tf_func_dec(f4)(1, 2, 3)
 
     def f5(arg1, arg2, arg3, *args, **kwargs):
       pass
 
-    with self.assertRaisesRegex(TypeError, at_call_error_msg):
+    with self.assertRaisesRegex(TypeError, error_message):
       tf_func_dec(f5)(1, 2, 3)
     # pyline: enable=unused-argument
 
@@ -3597,21 +3639,20 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
   def testInputSignatureMissingTensorSpecsLambdaFunction(self):
     tf_func_dec = polymorphic_function.function(
         input_signature=(tensor_spec.TensorSpec([], dtypes.int32),))
-    at_dec_error_msg = 'TensorSpecs are still required.*arg2.*arg3'
-    at_call_error_msg = 'too many positional arguments'
-    with self.assertRaisesRegex(TypeError, at_call_error_msg):
+    error_message = 'input_signature missing type constraint'
+    with self.assertRaisesRegex(TypeError, error_message):
       tf_func_dec(lambda ar1, arg2, arg3: None)(1, 2, 3)
 
-    with self.assertRaisesRegex(TypeError, at_call_error_msg):
+    with self.assertRaisesRegex(TypeError, error_message):
       tf_func_dec(lambda arg1, arg2, arg3, **kwargs: None)(1, 2, 3)
 
-    with self.assertRaisesRegex(TypeError, at_dec_error_msg):
+    with self.assertRaisesRegex(TypeError, error_message):
       tf_func_dec(lambda arg1, arg2, arg3, arg4=4, **kwargs: None)(1, 2, 3)
 
-    with self.assertRaisesRegex(TypeError, at_call_error_msg):
+    with self.assertRaisesRegex(TypeError, error_message):
       tf_func_dec(lambda arg1, arg2, arg3, *args: None)(1, 2, 3)
 
-    with self.assertRaisesRegex(TypeError, at_call_error_msg):
+    with self.assertRaisesRegex(TypeError, error_message):
       tf_func_dec(lambda arg1, arg2, arg3, *args, **kwargs: None)(1, 2, 3)
 
     self.assertEqual(
@@ -3633,20 +3674,23 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     else:  # lambda_function
       f = lambda arg1, arg2, arg3, arg4=4: arg1 + arg2 + arg3 + arg4
 
+    error_message = 'input_signature missing type constraint'
     tf_func_dec = polymorphic_function.function(
-        input_signature=(tensor_spec.TensorSpec([], dtypes.int32),))
-    with self.assertRaisesRegex(TypeError,
-                                'TensorSpecs are still required.*arg3'):
+        input_signature=(tensor_spec.TensorSpec([], dtypes.int32),)
+    )
+    with self.assertRaisesRegex(TypeError, error_message):
       tf_func_dec(functools.partial(f, 1))(2, 3)
 
-    with self.assertRaisesRegex(TypeError, 'too many positional argument'):
+    with self.assertRaisesRegex(TypeError, error_message):
       tf_func_dec(functools.partial(f, arg4=5))(1, 2, 3)
 
-    with self.assertRaisesRegex(TypeError, 'too many positional argument'):
+    with self.assertRaisesRegex(TypeError, error_message):
       tf_func_dec(functools.partial(f, 1, arg4=5))(2, 3)
 
-    self.assertAllEqual(tf_func_dec(functools.partial(f, 1, 2, arg4=5))(3),
-                        array_ops.constant(11))
+    self.assertAllEqual(
+        tf_func_dec(functools.partial(f, 1, 2, arg4=5))(3),
+        array_ops.constant(11),
+    )
 
   @test_util.run_in_graph_and_eager_modes
   def test_variable_naming(self):
@@ -3689,10 +3733,19 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     signature_args, _ = conc.structured_input_signature
     self.assertEqual('y', signature_args[0].name)
 
+    # If name is not specified, the previously named one will be returned.
     conc = f.get_concrete_function(tensor_spec.TensorSpec(None, dtypes.float32))
     conc(x=constant_op.constant(3.0))
     signature_args, _ = conc.structured_input_signature
-    self.assertEqual('x', signature_args[0].name)
+    self.assertEqual('y', signature_args[0].name)
+
+    # New name will return updated signature.
+    conc = f.get_concrete_function(
+        tensor_spec.TensorSpec(None, dtypes.float32, 'z')
+    )
+    conc(x=constant_op.constant(3.0))
+    signature_args, _ = conc.structured_input_signature
+    self.assertEqual('z', signature_args[0].name)
 
     @polymorphic_function.function
     def g(x):
@@ -3839,6 +3892,15 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
                  constant_op.constant(2.),
                  constant_op.constant(3.),
                  constant_op.constant(4.)))
+
+  def testDuplicatedSanitizedNames(self):
+    @polymorphic_function.function
+    def foo(**kwargs):
+      return kwargs['a_b'] + kwargs['a/b']
+
+    error_message = 'Name collision after sanitization.'
+    with self.assertRaisesRegex(ValueError, error_message):
+      foo(**{'a_b': 1, 'a/b': 2})
 
   def testVariableCreatorScope(self):
     created_variables = []
@@ -4059,7 +4121,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     self.assertEqual(func._name, cloned._name)
     self.assertEqual(input_signature, cloned.input_signature)
     self.assertEqual(autograph, cloned._autograph)
-    self.assertEqual(implements, cloned._implements)
+    self.assertEqual(func._attributes, cloned._attributes)
     self.assertEqual(autograph_options, cloned._experimental_autograph_options)
     self.assertEqual(relax_shapes, cloned._reduce_retracing)
     self.assertEqual(compile_, cloned._jit_compile)
@@ -4135,7 +4197,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     self.assertEqual(func._name, cloned._name)
     self.assertEqual(input_signature, cloned.input_signature)
     self.assertEqual(autograph, cloned._autograph)
-    self.assertEqual(implements, cloned._implements)
+    self.assertEqual(func._attributes, cloned._attributes)
     self.assertEqual(autograph_options, cloned._experimental_autograph_options)
     self.assertEqual(relax_shapes, cloned._reduce_retracing)
 
@@ -4359,6 +4421,22 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     obj2.testDouble(constant_op.constant('a'))
     self.assertAllEqual(obj2.testDouble.experimental_get_tracing_count(), 3)
     self.assertAllEqual(obj1.testDouble.experimental_get_tracing_count(), 2)
+
+  def test_tensor_shape_casted_to_specific(self):
+    @polymorphic_function.function(
+        input_signature=[tensor_spec.TensorSpec([1])]
+    )
+    def specific(x):
+      self.assertEqual(x.shape, [1])
+      return x
+
+    @polymorphic_function.function(
+        input_signature=[tensor_spec.TensorSpec(None)]
+    )
+    def general(x):
+      return specific(x)
+
+    self.assertEqual(general(constant_op.constant([1.0])).numpy(), 1.0)
 
   def test_recursive_tf_function(self):
 
@@ -4741,12 +4819,12 @@ class MultiDeviceTest(test.TestCase, parameterized.TestCase):
 
     # dtype mismatch
     value = constant_op.constant(1)
-    with self.assertRaisesRegex(ValueError, 'Value .* to a tensor with dtype'):
+    with self.assertRaisesRegex(ValueError, 'Tensor conversion requested'):
       lazy_capture(2.0)
 
     # shape mismatch
     value = constant_op.constant([1.0])
-    with self.assertRaisesRegex(ValueError, 'Value .* shape'):
+    with self.assertRaisesRegex(AssertionError, 'Can not cast'):
       lazy_capture(2.0)
 
   def testDeferredCaptureReturnNestWithCompositeTensor(self):
@@ -4809,7 +4887,9 @@ class MultiDeviceTest(test.TestCase, parameterized.TestCase):
     @polymorphic_function.function
     def f():
       func = lambda: x
-      return ops.get_default_graph()._maybe_create_capture_placeholder(func)
+      # TODO(b/263520817): Remove access to private attribute.
+      return ops.get_default_graph(
+          )._function_captures._create_capture_placeholder(func)
 
     x = {
         'tensor': constant_op.constant(0),
@@ -4831,7 +4911,9 @@ class MultiDeviceTest(test.TestCase, parameterized.TestCase):
     @polymorphic_function.function
     def f():
       func = lambda: x
-      return ops.get_default_graph()._maybe_create_capture_placeholder(func)
+      # TODO(b/263520817): Remove access to private attribute.
+      return ops.get_default_graph(
+          )._function_captures._create_capture_placeholder(func)
 
     # Set is not supported
     x = set([1, 2])
@@ -4855,6 +4937,20 @@ class MultiDeviceTest(test.TestCase, parameterized.TestCase):
     x = type_after(val_after)
     _ = f()
     self.assertLen(total_function_cache(f), expected_len)
+
+  def testByRefCaptureWithInputSignature(self):
+
+    @polymorphic_function.function(input_signature=[])
+    def f():
+      func = lambda: x
+      return ops.get_default_graph()._experimental_capture_side_input_by_ref(  # pylint: disable=protected-access
+          'lambda: x', func)
+
+    x = 1
+    _ = f()
+    x = 2
+    _ = f()
+    self.assertLen(total_function_cache(f), 2)
 
   def testFunctoolsLruCache(self):
     self.skipTest(

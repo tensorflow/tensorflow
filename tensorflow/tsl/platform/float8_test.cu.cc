@@ -560,5 +560,14 @@ TYPED_TEST(Float8CastTest, DeviceCast) {
   synchronize(device);
 }
 
+TEST(Float8Test, SmallCastToDenormal) {
+  // Special edge-case where rounding to a normalized value would
+  // normally round down, but rounding to a subnormal rounds up.
+  float x = std::ldexp(1.3125, -15);
+  float8_e5m2 y = static_cast<float8_e5m2>(x);
+  float z = static_cast<float>(y);
+  EXPECT_EQ(z, std::ldexp(1.5, -15));
+}
+
 }  // namespace
 }  // namespace tsl

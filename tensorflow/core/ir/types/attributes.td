@@ -17,7 +17,6 @@ limitations under the License.
 #define TF_TYPE_ATTRIBUTES
 
 include "mlir/IR/AttrTypeBase.td"
-include "mlir/IR/SubElementInterfaces.td"
 include "tensorflow/core/ir/types/dialect.td"
 include "mlir/IR/BuiltinAttributeInterfaces.td"
 
@@ -333,7 +332,7 @@ def TFType_FullTypeAttr : AttrDef<TFTypeDialect, "FullType"> {
 // FuncAttr
 //===----------------------------------------------------------------------===//
 
-def TFType_FuncAttr : TFType_Attr<"Func", [SubElementAttrInterface]> {
+def TFType_FuncAttr : TFType_Attr<"Func", []> {
   let mnemonic = "func";
   let summary = "Models the `AttrValue.value.func` proto attribute value as a "
     "pair of SymbolRef and DictionaryAttr";
@@ -347,10 +346,6 @@ def TFType_FuncAttr : TFType_Attr<"Func", [SubElementAttrInterface]> {
 
     where the first element is the `SymbolRefAttr` and the second element is the
     `DictionaryAttr`.
-
-    So that the symbol reference and any symbol references nested in the
-    `DictionaryAttr` are visible to symbol tables, this attribute implements the
-    `SubElementAttrInterface`.
   }];
 
   let parameters = (ins

@@ -104,6 +104,19 @@ for general questions and discussion, and please direct specific questions to
 The TensorFlow project strives to abide by generally accepted best practices in
 open-source software development.
 
+## Patching guidelines
+
+Follow these steps to patch a specific version of TensorFlow, for example, to
+apply fixes to bugs or security vulnerabilities:
+
+*   Clone the TensorFlow repo and switch to the corresponding branch for your
+    desired TensorFlow version, for example, branch `r2.8` for version 2.8.
+*   Apply (that is, cherry pick) the desired changes and resolve any code
+    conflicts.
+*   Run TensorFlow tests and ensure they pass.
+*   [Build](https://www.tensorflow.org/install/source) the TensorFlow pip
+    package from source.
+
 ## Continuous build status
 
 You can find more community-supported platforms and configurations in the

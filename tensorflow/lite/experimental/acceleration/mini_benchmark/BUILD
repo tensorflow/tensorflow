@@ -55,9 +55,9 @@ cc_test(
         "//tensorflow/lite:builtin_ops",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:interpreter_test_util",
-        "//tensorflow/lite/core:headers",
+        "//tensorflow/lite/core:framework",
         "//tensorflow/lite/core/c:common",
-        "//tensorflow/lite/kernels:builtin_ops",
+        "//tensorflow/lite/core/kernels:builtin_ops",
         "//tensorflow/lite/kernels:subgraph_test_util",
         "//tensorflow/lite/testing:util",
         "@com_google_googletest//:gtest_main",
@@ -416,21 +416,23 @@ cc_library(
     deps = [
         ":call",
         ":decode_jpeg",
+        # Link in the GpuModulePlugin statically. It is created by name.
+        ":gpu_module_plugin",  # buildcleaner: keep
         ":status_codes",
+        "@com_google_absl//absl/container:flat_hash_set",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:minimal_logging",
         "//tensorflow/lite/c:c_api",
-        "//tensorflow/lite/core:headers",
+        "//tensorflow/lite/core:framework",
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/core/c:c_api",
         "//tensorflow/lite/core/c:c_api_types",
         "//tensorflow/lite/core/c:common",
+        "//tensorflow/lite/core/experimental/acceleration/configuration:delegate_registry",
+        "//tensorflow/lite/core/kernels:builtin_ops",
         "//tensorflow/lite/experimental/acceleration/configuration:configuration_fbs",
-        "//tensorflow/lite/experimental/acceleration/configuration:delegate_registry",
         "//tensorflow/lite/experimental/acceleration/mini_benchmark:constants",
-        "//tensorflow/lite/kernels:builtin_ops",
         "//tensorflow/lite/tools:model_loader",
-        "@com_google_absl//absl/container:flat_hash_set",
     ],
 )
 
@@ -443,6 +445,7 @@ cc_library(
         "//tensorflow/lite:stderr_reporter",
         "//tensorflow/lite/core/api:error_reporter",
         "//tensorflow/lite/experimental/acceleration/configuration:configuration_fbs",
+        "//tensorflow/lite/experimental/acceleration/configuration/c:delegate_plugin",
         "//tensorflow/lite/nnapi/sl:nnapi_support_library",  # buildcleaner: keep
         "//tensorflow/lite/nnapi/sl:nnapi_support_library_headers",
     ],
@@ -460,6 +463,7 @@ cc_library(
         ":status_codes",
         ":validator",
         "@flatbuffers",
+        "//tensorflow/lite/experimental/acceleration/configuration/c:delegate_plugin",
         "//tensorflow/lite:minimal_logging",
         "//tensorflow/lite/core/api:error_reporter",
         "//tensorflow/lite/experimental/acceleration/configuration:configuration_fbs",
@@ -529,7 +533,6 @@ cc_library(
         ":set_big_core_affinity_h",
         ":status_codes",
         ":validator",
-        ":validator_runner",
         "@com_google_absl//absl/strings",
         "@flatbuffers",
         "//tensorflow/lite/experimental/acceleration/configuration:configuration_fbs",
@@ -539,7 +542,6 @@ cc_library(
         "//tensorflow/lite/nnapi/sl:nnapi_support_library",  # buildcleaner: keep
         "//tensorflow/lite/nnapi/sl:nnapi_support_library_headers",
         "//tensorflow/lite/tools:model_loader",
-        "//tensorflow/lite:minimal_logging",
     ],
 )
 
@@ -906,6 +908,22 @@ cc_binary(
     deps = [
         "//tensorflow/lite/nnapi/sl:nnapi_support_library_headers",
     ],
+)
+
+cc_library(
+    name = "gpu_module_plugin",
+    srcs = ["gpu_module_plugin.cc"],
+    hdrs = ["gpu_module_plugin.h"],
+    deps = [
+        ":status_codes",
+        "//tensorflow/lite:minimal_logging",
+        "//tensorflow/lite/core/experimental/acceleration/configuration:delegate_registry",
+        "//tensorflow/lite/experimental/acceleration/configuration:configuration_fbs",
+        "//tensorflow/lite/experimental/acceleration/configuration/c:delegate_plugin",
+        "@com_google_absl//absl/memory",
+        "@flatbuffers",
+    ],
+    alwayslink = 1,
 )
 
 embedded_binary(

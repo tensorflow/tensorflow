@@ -19,7 +19,7 @@ limitations under the License.
 
 #include "absl/container/flat_hash_set.h"
 #include "llvm/ADT/SmallSet.h"
-#include "mlir/IR/BlockAndValueMapping.h"  // from @llvm-project
+#include "mlir/IR/IRMapping.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/statusor.h"
@@ -75,7 +75,7 @@ StatusOr<mlir::Operation*> MatMulSPMDExpander::ExpandOp(mlir::Operation* op) {
 
   mlir::OpBuilder builder(op);
 
-  mlir::BlockAndValueMapping mapping;
+  mlir::IRMapping mapping;
   mapping.map(op->getOperand(0), left);
   mapping.map(op->getOperand(1), right);
   mlir::Operation* new_op = builder.clone(*op, mapping);

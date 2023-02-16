@@ -13,12 +13,14 @@
 # limitations under the License.
 # ==============================================================================
 import functools
+import sys
 
 from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.python import pywrap_tfe
 from tensorflow.python.eager import backprop
+from tensorflow.python.eager import backprop_util
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import tape as tape_lib
@@ -1670,6 +1672,9 @@ class BackpropTest(test.TestCase, parameterized.TestCase):
 
   @test_util.assert_no_new_pyobjects_executing_eagerly
   def testRecomputeGradWithDifferentShape(self):
+    if sys.version_info.major == 3 and sys.version_info.minor == 11:
+      # TODO(b/264947738)
+      self.skipTest('Not working in Python 3.11')
 
     @custom_gradient.recompute_grad
     def outer(x):
@@ -1700,6 +1705,9 @@ class BackpropTest(test.TestCase, parameterized.TestCase):
   @parameterized.parameters([(True), (False)])
   @test_util.assert_no_new_pyobjects_executing_eagerly
   def testRecomputeGradWithNestedFunctionAndWhileLoop(self, reduce_retracing):
+    if sys.version_info.major == 3 and sys.version_info.minor == 11:
+      # TODO(b/264947738)
+      self.skipTest('Not working in Python 3.11')
 
     @custom_gradient.recompute_grad
     @def_function.function(reduce_retracing=reduce_retracing)
@@ -2079,12 +2087,12 @@ class AggregateIndexedSlicesGradientsTest(test_util.TensorFlowTestCase):
         self.evaluate(ops.convert_to_tensor(right)))
 
   def testNoGradients(self):
-    self.assertIsNone(backprop.aggregate_indexed_slices_gradients([]))
+    self.assertIsNone(backprop_util.AggregateIndexedSlicesGradients([]))
 
   def testOneGradient(self):
     t = math_ops._as_indexed_slices(
         constant_op.constant([[1., 2.], [0, 0], [3., 4.]]))
-    result = backprop.aggregate_indexed_slices_gradients([t])
+    result = backprop_util.AggregateIndexedSlicesGradients([t])
     self._assert_indexed_slices_equal(t, result)
 
   def testMultipleGradients(self):
@@ -2093,7 +2101,7 @@ class AggregateIndexedSlicesGradientsTest(test_util.TensorFlowTestCase):
     t1 = math_ops._as_indexed_slices(
         constant_op.constant([[0., 0.], [5, 6], [7., 8.]]))
     total = constant_op.constant([[1., 2.], [5, 6], [10., 12.]])
-    result = backprop.aggregate_indexed_slices_gradients([t0, t1])
+    result = backprop_util.AggregateIndexedSlicesGradients([t0, t1])
     self._assert_indexed_slices_equal(total, result)
 
   def testMultipleGradientsWithNones(self):
@@ -2103,7 +2111,7 @@ class AggregateIndexedSlicesGradientsTest(test_util.TensorFlowTestCase):
         constant_op.constant([[0., 0.], [5, 6], [7., 8.]]))
     t3 = None
     total = constant_op.constant([[1., 2.], [5, 6], [10., 12.]])
-    result = backprop.aggregate_indexed_slices_gradients([t0, t1, t3])
+    result = backprop_util.AggregateIndexedSlicesGradients([t0, t1, t3])
     self._assert_indexed_slices_equal(total, result)
 
   def testMixedTensorAndIndexedSlices(self):
@@ -2111,7 +2119,7 @@ class AggregateIndexedSlicesGradientsTest(test_util.TensorFlowTestCase):
         constant_op.constant([[1., 2.], [0, 0], [3., 4.]]))
     t1 = constant_op.constant([[0., 0.], [5, 6], [7., 8.]])
     total = constant_op.constant([[1., 2.], [5, 6], [10., 12.]])
-    result = backprop.aggregate_indexed_slices_gradients([t0, t1])
+    result = backprop_util.AggregateIndexedSlicesGradients([t0, t1])
     self._assert_indexed_slices_equal(total, result)
 
 

@@ -74,7 +74,7 @@ Value transposeReshape(Value arg, Location loc,
 
   auto transposePermutationAttr =
       DenseIntElementsAttr::get(transposePermutationType,
-                                llvm::makeArrayRef(transposePermutation))
+                                llvm::ArrayRef(transposePermutation))
           .cast<DenseIntElementsAttr>();
 
   // Compute the resulting shape.
@@ -208,13 +208,13 @@ struct GeneralDotConvert : public OpRewritePattern<DotGeneralOp> {
     RankedTensorType rhsTy = rhs.getType().dyn_cast<RankedTensorType>();
     if (!lhsTy || !rhsTy) return failure();
 
-    lhs = processDotArg(op.getLhs(), op.getLoc(),
-                        dotNumbers.getLhsContractingDimensions(),
-                        /*outerDimsFirst=*/true, rewriter);
+    lhs = llvm::cast<mlir::TypedValue<mlir::TensorType>>(processDotArg(
+        op.getLhs(), op.getLoc(), dotNumbers.getLhsContractingDimensions(),
+        /*outerDimsFirst=*/true, rewriter));
 
-    rhs = processDotArg(op.getRhs(), op.getLoc(),
-                        dotNumbers.getRhsContractingDimensions(),
-                        /*outerDimsFirst=*/false, rewriter);
+    rhs = llvm::cast<mlir::TypedValue<mlir::TensorType>>(processDotArg(
+        op.getRhs(), op.getLoc(), dotNumbers.getRhsContractingDimensions(),
+        /*outerDimsFirst=*/false, rewriter));
 
     // Accept only static shaped types.
     auto lhsShapeType = lhs.getType().dyn_cast_or_null<ShapedType>();
@@ -223,16 +223,11 @@ struct GeneralDotConvert : public OpRewritePattern<DotGeneralOp> {
 
     ArrayAttr precisionConfig;
     if (op.getPrecisionConfig()) precisionConfig = *op.getPrecisionConfig();
-    SmallVector<Type, 1> results;
-    LogicalResult res =
-        DotOp::inferReturnTypes(rewriter.getContext(), std::nullopt, {lhs, rhs},
-                                op->getAttrDictionary(), {}, results);
-    (void)res;
-    assert(succeeded(res) && "invalid input to dot");
 
     ShapedType resultTy = op.getType().cast<ShapedType>();
-    ShapedType newTy =
-        results.front().cast<ShapedType>().clone(resultTy.getElementType());
+    ShapedType newTy = RankedTensorType::get(
+        {lhsShapeType.getShape()[0], rhsShapeType.getShape()[1]},
+        resultTy.getElementType());
     Value newDotOp =
         rewriter.create<DotOp>(op.getLoc(), newTy, lhs, rhs, precisionConfig);
     if (static_cast<int64_t>(lhsContractingDims.size()) ==

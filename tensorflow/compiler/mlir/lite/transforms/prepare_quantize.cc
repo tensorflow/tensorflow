@@ -326,8 +326,14 @@ void PrepareQuantizePass::runOnOperation() {
   MLIRContext* ctx = func.getContext();
   ScopedTFLQuantOpsToMlirQuantOpsConverter converter(func);
   if (use_quantization_flags_) {
-    quant_specs_.inference_type =
-        this->quantize_signed_ ? tensorflow::DT_QINT8 : tensorflow::DT_QUINT8;
+    quant_specs_.inference_type = GetQuantizedInferenceType(
+        this->quantize_signed_, this->activation_number_of_bits_);
+    if (quant_specs_.inference_type == tensorflow::DT_INVALID) {
+      func.emitError() << "prepare-quantize pass failed: unsupported "
+                          "inference type specification";
+      signalPassFailure();
+      return;
+    }
     quant_specs_.post_training_quantization = post_training_quantize_;
     quant_specs_.legacy_float_scale = legacy_float_scale_;
     quant_specs_.disable_set_input_nodes_quantization_params =
@@ -377,16 +383,14 @@ void PrepareQuantizePass::runOnOperation() {
   if (is_signed) {
     patterns_2.add<quant::ConvertUnsignedToSigned<quantfork::QuantizeCastOp>>(
         ctx);
-    // Convert quant stats to int8 quantization parameters.
-    // Currently, only activation stats are imported, so narrow_range = false.
-    patterns_2.add<PrepareQuantStats>(bit_width, false, true,
-                                      quant_specs_.legacy_float_scale, ctx);
-  } else {
-    // Convert quant stats to uint8 quantization parameters.
-    // Currently, only activation stats are imported, so narrow_range = false.
-    patterns_2.add<PrepareQuantStats>(bit_width, false, false,
-                                      quant_specs_.legacy_float_scale, ctx);
   }
+  // Convert quant stats to int8, unit8, int16 quantization parameters.
+  // Currently, only activation stats are imported, so narrow_range = false.
+  // TODO(b/266524882): Support narrow_range in TFLite converter(ODML
+  // converter).
+  patterns_2.add<PrepareQuantStats>(bit_width, /*narrow_range=*/false,
+                                    is_signed, quant_specs_.legacy_float_scale,
+                                    ctx);
 
   if (quant_specs_.post_training_quantization) {
     patterns_2.add<ConvertLstmStatsToQDQs<LSTMOp>>(ctx, quant_specs_);
@@ -401,8 +405,9 @@ void PrepareQuantizePass::runOnOperation() {
   // Finally, the quantization parameters can be propagated to the rest of the
   // values (tensors).
   ApplyQuantizationParamsPropagation(
-      func, is_signed, disable_per_channel_ || quant_specs_.disable_per_channel,
-      GetOpQuantSpec, infer_tensor_range, quant_specs_.legacy_float_scale);
+      func, is_signed, bit_width,
+      disable_per_channel_ || quant_specs_.disable_per_channel, GetOpQuantSpec,
+      infer_tensor_range, quant_specs_.legacy_float_scale);
 }
 
 }  // namespace

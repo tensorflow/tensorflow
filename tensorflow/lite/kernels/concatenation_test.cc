@@ -181,7 +181,7 @@ TEST(ConcatenationOpTest, ThreeDimensionalTwoInputsDifferentShapes) {
                                                 8, 9, 10, 11, 12}));
 }
 
-#ifdef GTEST_HAS_DEATH_TEST
+#if GTEST_HAS_DEATH_TEST
 TEST(ConcatenationOpTest, ThreeDimensionalTwoInputsDifferentShapesWrongAxis) {
   EXPECT_DEATH(
       ConcatenationOpModel m0(

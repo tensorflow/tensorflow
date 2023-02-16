@@ -10,7 +10,7 @@ build:sigbuild_remote_cache_push --remote_cache="https://storage.googleapis.com/
 # Change the value of CACHEBUSTER when upgrading the toolchain, or when testing
 # different compilation methods. E.g. for a PR to test a new CUDA version, set
 # the CACHEBUSTER to the PR number.
-build --action_env=CACHEBUSTER=482629424
+build --action_env=CACHEBUSTER=501872366
 
 # Use Python 3.X as installed in container image
 build --action_env PYTHON_BIN_PATH="/usr/bin/python3"
@@ -30,6 +30,13 @@ build --distinct_host_configuration=false
 
 # Target the AVX instruction set
 build --copt=-mavx --host_copt=-mavx
+
+# Disable clang extention that rejects type definitions within offsetof. 
+# This was added in clang-16 by https://reviews.llvm.org/D133574.
+# Can be removed once upb is updated, since a type definition is used within
+# offset of in the current version of ubp.
+# See https://github.com/protocolbuffers/upb/blob/9effcbcb27f0a665f9f345030188c0b291e32482/upb/upb.c#L183.
+build --copt=-Wno-gnu-offsetof-extensions
 
 # Store performance profiling log in the mounted artifact directory.
 # The profile can be viewed by visiting chrome://tracing in a Chrome browser.

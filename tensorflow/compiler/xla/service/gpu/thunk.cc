@@ -40,6 +40,8 @@ Thunk::ExecuteParams::ExecuteParams(
       return "kConditional";
     case Thunk::kConvolution:
       return "kConvolution";
+    case Thunk::kConvolutionReorder:
+      return "kConvolutionReorder";
     case Thunk::kCopy:
       return "kCopy";
     case Thunk::kCublasLtMatmul:

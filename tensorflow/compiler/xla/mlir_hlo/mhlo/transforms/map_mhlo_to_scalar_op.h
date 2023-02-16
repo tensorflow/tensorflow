@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef MLIR_HLO_DIALECT_MHLO_TRANSFORMS_MAP_MHLO_TO_SCALAR_OP_H
-#define MLIR_HLO_DIALECT_MHLO_TRANSFORMS_MAP_MHLO_TO_SCALAR_OP_H
+#ifndef MLIR_HLO_MHLO_TRANSFORMS_MAP_MHLO_TO_SCALAR_OP_H
+#define MLIR_HLO_MHLO_TRANSFORMS_MAP_MHLO_TO_SCALAR_OP_H
 
 #include <optional>
 
@@ -56,6 +56,10 @@ template <>
 struct MhloToScalarOp<mhlo::AndOp> {
   using IOp = ::mlir::arith::AndIOp;
   using UOp = ::mlir::arith::AndIOp;
+};
+template <>
+struct MhloToScalarOp<mhlo::CbrtOp> {
+  using FOp = ::mlir::math::CbrtOp;
 };
 template <>
 struct MhloToScalarOp<mhlo::CompareOp> {
@@ -159,6 +163,11 @@ template <>
 struct MhloToScalarOp<mhlo::SineOp> {
   using FOp = ::mlir::math::SinOp;
   using COp = ::mlir::complex::SinOp;
+};
+template <>
+struct MhloToScalarOp<mhlo::TanOp> {
+  using FOp = ::mlir::math::TanOp;
+  using COp = ::mlir::complex::TanOp;
 };
 template <>
 struct MhloToScalarOp<mhlo::Atan2Op> {
@@ -319,27 +328,6 @@ inline Value getConstantOrSplat(OpBuilder* b, Location loc, Type t,
     v = SplatElementsAttr::get(vecType, v);
   }
   return b->create<arith::ConstantOp>(loc, t, v);
-}
-
-template <>
-inline Value mapMhloOpToStdScalarOp<mhlo::CbrtOp>(Location loc,
-                                                  ArrayRef<Type> resultTypes,
-                                                  ArrayRef<Type> argTypes,
-                                                  mhlo::CbrtOp::Adaptor adaptor,
-                                                  OpBuilder* b) {
-  Type elementType = getElementTypeOrSelf(argTypes.front());
-  if (auto floatType = elementType.dyn_cast<FloatType>()) {
-    // Convert cbrt(x) to copysign(cbrt(abs(x), 1.0 / 3.0), x).
-    // This is to allow cbrt using pow while still handling negative numbers. It
-    // should match most cbrt intrinsics.
-    Value abs = b->create<mlir::math::AbsFOp>(loc, adaptor.getOperand());
-    Value third = b->create<arith::ConstantOp>(
-        loc, b->getFloatAttr(floatType, 1.0 / 3.0));
-    Value pow = b->create<mlir::math::PowFOp>(loc, resultTypes[0], abs, third);
-    return b->create<mlir::math::CopySignOp>(loc, floatType, pow,
-                                             adaptor.getOperand());
-  }
-  return nullptr;
 }
 
 template <typename PredicateType>
@@ -1275,4 +1263,4 @@ struct MhloOpToStdScalarOp {
 }  // namespace mhlo
 }  // namespace mlir
 
-#endif  // MLIR_HLO_DIALECT_MHLO_TRANSFORMS_MAP_MHLO_TO_SCALAR_OP_H
+#endif  // MLIR_HLO_MHLO_TRANSFORMS_MAP_MHLO_TO_SCALAR_OP_H

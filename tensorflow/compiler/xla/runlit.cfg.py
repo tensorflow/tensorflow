@@ -64,20 +64,20 @@ tool_dirs = config.mlir_tf_tools_dirs + [
     config.mlir_tools_dir, config.llvm_tools_dir
 ]
 tool_names = [
-    'mlir-opt',
+    'hlo_to_llvm_ir',
+    'kernel-gen-opt',
+    'mhlo-tosa-opt',
+    'mlir-bisect',
     'mlir-hlo-opt',
+    'mlir-opt',
     'mlir-translate',
     'xla-cpu-opt',
     'xla-gpu-opt',
     'xla-mlir-gpu-opt',
-    'xla-opt',
-    'hlo_to_llvm_ir',
-    'kernel-gen-opt',
-    'mhlo-tosa-opt',
     'xla-runtime-opt',
     'xla-translate',
-    'xla-translate-opt',
     'xla-translate-gpu-opt',
+    'xla-translate-opt',
 ]
 tools = [ToolSubst(s, unresolved='ignore') for s in tool_names]
 llvm_config.add_tool_substitutions(tools, tool_dirs)

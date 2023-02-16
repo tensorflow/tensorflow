@@ -24,7 +24,6 @@ limitations under the License.
 
 #include "absl/strings/string_view.h"
 #include "llvm/ADT/DenseSet.h"
-#include "llvm/ADT/None.h"
 #include "llvm/ADT/Optional.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringExtras.h"
@@ -54,6 +53,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/transforms/lower_tf.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/mangling_util.h"
 #include "tensorflow/compiler/mlir/xla/transforms/passes.h"
+#include "tensorflow/compiler/mlir/xla/transforms/xla_legalize_targets.h"
 #include "tensorflow/compiler/xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "tensorflow/compiler/xla/mlir_hlo/mhlo/transforms/rewriters.h"
 #include "tensorflow/compiler/xla/translate/hlo_to_mhlo/attribute_importer.h"
@@ -199,7 +199,7 @@ FailureOr<mhlo::ConstantOp> CreateConstantOpForQint8Rhs(
   auto arr = t.flat<tensorflow::qint8>();
   auto dense_attr = mlir::DenseElementsAttr::get(
       GetSameShapeTensorType(new_rhs_type, rewriter.getIntegerType(8)),
-      llvm::makeArrayRef(arr.data(), arr.size()));
+      llvm::ArrayRef(arr.data(), arr.size()));
   return rewriter.create<mhlo::ConstantOp>(op.getLoc(), new_rhs_type,
                                            dense_attr);
 }
@@ -328,7 +328,8 @@ class ConvertUniformQuantizedDotHybridOp
       return failure();
     }
 
-    rewriter.replaceOpWithNewOp<mhlo::DotOp>(op, op.getLhs(), *rhs,
+    rewriter.replaceOpWithNewOp<mhlo::DotOp>(op, op.getType(), op.getLhs(),
+                                             *rhs,
                                              /*precision_config=*/nullptr);
     return success();
   }
@@ -558,6 +559,7 @@ void EmitLegalizationErrors(Operation *op,
 /// Returns ops that should use MLIR legalization only in the case of
 /// prefer_tf2xla. All other ops not in this list should use XlaOpKernel
 /// legalization only or not be legalized by the new bridge.
+// LINT.IfChange
 const llvm::DenseSet<mlir::TypeID> &MlirPreferredOps() {
   // The static variable is a pointer in order to avoid destruction upon thread
   // termination.
@@ -573,6 +575,7 @@ const llvm::DenseSet<mlir::TypeID> &MlirPreferredOps() {
     TypeID::get<TF::CeilOp>(),
     TypeID::get<TF::CheckNumericsOp>(),
     TypeID::get<TF::CosOp>(),
+    TypeID::get<TF::TanOp>(),
     TypeID::get<TF::DiagPartOp>(),
     TypeID::get<TF::EinsumOp>(),
     TypeID::get<TF::ExpOp>(),
@@ -644,10 +647,17 @@ const llvm::DenseSet<mlir::TypeID> &MlirPreferredOps() {
     TypeID::get<TF::RandomUniformOp>(),
     TypeID::get<TF::StridedSliceOp>(),
     TypeID::get<TF::SliceOp>(),
+
+    // Conditional ops
+    TypeID::get<TF::IfRegionOp>(),
+    TypeID::get<TF::WhileRegionOp>(),
+    TypeID::get<TF::CaseRegionOp>(),
+    TypeID::get<TF::YieldOp>(),
   };
   // clang-format on
   return *ops;
 }
+// LINT.ThenChange(:PopulateLegalizeTfPatterns)
 
 // Patterns whose root op is in the set `include_ops` are moved from the set
 // `from` to the returned set. This is used to partition patterns by op so they
@@ -675,18 +685,8 @@ RewritePatternSet PatternsIncludeOps(
 mlir::LogicalResult ApplyPatterns(Operation *op, RewritePatternSet &patterns,
                                   bool legalize_chlo,
                                   bool allow_partial_conversion) {
-  ConversionTarget target(*op->getContext());
-  if (legalize_chlo) {
-    target.addIllegalDialect<chlo::ChloDialect>();
-  } else {
-    target.addLegalDialect<chlo::ChloDialect>();
-  }
-  target.addLegalDialect<MhloDialect>();
-  target.addLegalDialect<arith::ArithDialect>();
-  target.addLegalDialect<func::FuncDialect>();
-  target.addLegalDialect<tensor::TensorDialect>();
-  target.addLegalDialect<shape::ShapeDialect>();
-  target.addLegalOp<func::CallOp>();
+  ConversionTarget target =
+      GetDefaultLegalConversionTargets(*op->getContext(), legalize_chlo);
 
   if (!allow_partial_conversion) {
     // Fully qualify ReturnOp here as mhlo dialect also defines a ReturnOp.
@@ -751,10 +751,12 @@ LogicalResult legalizeTF(Operation *op, bool allow_partial_conversion,
           ? PatternsIncludeOps(legalize_lower_patterns, MlirPreferredOps())
           : std::move(legalize_lower_patterns);
 
+  Tf2XlaTypeConverter converter;
   if (tf2xla_fallback_device_type) {
     // Add TF->HLO legalization patterns via TF2XLA fallback.
     PopulateLegalizeTfWithTf2XlaPatterns(tf2xla_fallback_device_type.value(),
-                                         patterns, context, prefer_tf2xla);
+                                         patterns, context, converter,
+                                         prefer_tf2xla);
   }
 
   // Populate with CHLO->HLO lowerings to account for TF ops legalized to
@@ -773,7 +775,7 @@ LogicalResult legalizeTF(Operation *op, bool allow_partial_conversion,
 
 // Performs the lowering to XLA dialect.
 void LegalizeTF::runOnOperation() {
-  llvm::Optional<StringRef> tf2xla_fallback_device_type = llvm::None;
+  llvm::Optional<StringRef> tf2xla_fallback_device_type = std::nullopt;
   if (use_tf2xla_fallback_) {
     tf2xla_fallback_device_type = device_type_;
   }
@@ -794,8 +796,9 @@ void LegalizeTFModulePass::runOnOperation() {
   Operation *op = getOperation();
   MLIRContext *context = op->getContext();
   RewritePatternSet patterns(context);
+  Tf2XlaTypeConverter converter;
   PopulateLegalizeTfWithTf2XlaPatterns(device_type_, patterns, context,
-                                       /*prefer_tf2xla=*/false,
+                                       converter, /*prefer_tf2xla=*/false,
                                        /*is_module_pass=*/true);
 
   if (failed(ApplyPatterns(op, patterns,

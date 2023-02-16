@@ -34,6 +34,7 @@ limitations under the License.
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/OpDefinition.h"  // from @llvm-project
+#include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
 #include "stablehlo/dialect/Register.h"  // from @stablehlo
@@ -53,8 +54,8 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/serialize_mlir_module_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/translate_utils.h"
-#include "tensorflow/compiler/mlir/xla/transforms/adjust_layout.h"
 #include "tensorflow/compiler/mlir/xla/transforms/passes.h"
+#include "tensorflow/compiler/mlir/xla/transforms/xla_legalize_targets.h"
 #include "tensorflow/compiler/tf2xla/layout_util.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/tf2xla/type_util.h"
@@ -324,7 +325,135 @@ bool CanInlineFunctionsPostLegalization(llvm::StringRef device_type) {
   return device_type == DEVICE_TPU_XLA_JIT;
 }
 
+// These passes are grouped together and must run in this specific order.
+void AddLegalizationPasses(mlir::OpPassManager& pm, bool legalize_chlo,
+                           llvm::StringRef device_type, bool prefer_tf2xla) {
+  // Run LegalizeTFPass with allow_partial_conversion = true as we verify
+  // in VerifyTFXLALegalization that full conversion happened.
+  // TODO(b/188389290): Cleanup allow_partial_conversion as a legalization
+  // parameter.
+  pm.addNestedPass<mlir::func::FuncOp>(mlir::mhlo::createLegalizeTFPass(
+      /*allow_partial_conversion=*/true, legalize_chlo,
+      /*tf2xla_fallback_device_type=*/device_type, prefer_tf2xla));
+
+  // This has to run after legalization.
+  pm.addNestedPass<mlir::func::FuncOp>(
+      mlir::mhlo::CreateInfeedsOpsXlaAdjustLayoutPass());
+
+  // This has to run after legalization to delete non legal but dead ops.
+  // This must run before Shape Inference.
+  pm.addNestedPass<mlir::func::FuncOp>(mlir::createCanonicalizerPass());
+
+  // Run shape inference pass to propagate shapes through tensor_cast operations
+  // from static to dynamic shapes. This could be generated if the shape
+  // inference was originally missing in a TF op but the corresponding HLO op
+  // had static shape after lowering.
+  // This has to run after canonicalization.
+  pm.addPass(mlir::TF::CreateTFShapeInferencePass());
+}
+
 }  //  namespace
+
+void CreateConvertMlirToXlaHloPipeline(
+    mlir::OpPassManager& pm, llvm::StringRef device_type, bool prefer_tf2xla,
+    llvm::MutableArrayRef<std::unique_ptr<mlir::Pass>>
+        custom_legalization_passes,
+    bool allow_partial_conversion) {
+  bool legalize_chlo = true;
+
+  pm.addNestedPass<mlir::func::FuncOp>(
+      mlir::mhlo::CreateTFXLADeviceSpecificTransformsPass(device_type));
+
+  // Note that the region-based control-flow produced here still contains
+  // function call ops which get inlined by the subsequent inliner pass.
+  pm.addPass(mlir::TF::CreateTFFunctionalControlFlowToRegions());
+  pm.addPass(mlir::createInlinerPass());
+  pm.addNestedPass<mlir::func::FuncOp>(
+      mlir::TF::CreateDropWhileShapeInvariantPass());
+  // Create a replicated TensorList initialization ops for all of its uses. This
+  // pass undo some CSE because shape_inference is not correctly able to
+  // identify the shapes of TensorList initialization ops.
+  // This pass requires CanonicalizerPass before
+  // CreateTensorListOpsDecompositionPass for clean-ups.
+  pm.addNestedPass<mlir::func::FuncOp>(
+      mlir::TF::CreateReplicateTensorListInitOpsPass());
+  pm.addNestedPass<mlir::func::FuncOp>(mlir::createCanonicalizerPass());
+  // The SCCP pass performs constant propagation across the IR, which, for
+  // example, propagates constant arguments into callee functions.
+  // TOOD(hinsu): Investigate if we really need SCCP pass before shape inference
+  // and can do with just one pass after the shape inference.
+  pm.addPass(mlir::createSCCPPass());
+  // Guarantee all functions have one use, which enables shape inference.
+  pm.addPass(mlir::TF::CreateGuaranteeAllFuncsOneUsePass());
+  // Run shape inference pass before tensorlist decomposition to get buffer
+  // shape of uninitialized TensorLists.
+  pm.addPass(mlir::TF::CreateTFShapeInferencePass());
+
+  // Run SCCP pass again as the availability of shapes may open up new
+  // opportunities for constant propagation. Note that the shape inference pass
+  // doesn't materialize new constants even if those are computed internally for
+  // the purpose of shape inference. These constants might be required by the
+  // legalization passes.
+  pm.addPass(mlir::createSCCPPass());
+
+  pm.addPass(mlir::TF::CreateTensorListOpsDecompositionPass());
+  pm.addPass(mlir::TF::CreateStackOpsDecompositionPass());
+  pm.addPass(mlir::TF::CreateTensorArrayOpsDecompositionPass());
+  pm.addNestedPass<mlir::func::FuncOp>(
+      mlir::TFDevice::CreateDecomposeResourceOpsPass());
+  pm.addPass(mlir::TF::CreatePromoteResourcesToArgsPass());
+  pm.addPass(mlir::createSymbolDCEPass());
+
+  // Sink constants to regions so that ops requiring constant operands can
+  // access the constant and there is no indirection through control flow region
+  // arguments. Also, note that this pass is in MHLO but it is generic and sinks
+  // constants for all ops with regions.
+  pm.addNestedPass<mlir::func::FuncOp>(
+      mlir::mhlo::createSinkConstantsToControlFlowPass());
+  pm.addPass(mlir::TF::CreateTFShapeInferencePass());
+
+  // Legalize any StableHLO ops to MHLO. Bridge still doesn't use StableHLO but
+  // such ops might be present in the input from upstream like TFRT compilation.
+  // Later on, this could be merged in the legalization pass when we migrate
+  // bridge to StableHLO.
+  // TODO(b/259459405): Avoid this peculiar use through some refactoring in
+  // the the caller.
+  // This needs to happen before legalization.
+  pm.addPass(mlir::mhlo::createStablehloLegalizeToHloPass());
+
+  pm.addNestedPass<mlir::func::FuncOp>(mlir::TF::CreateLowerQuantizedPass());
+  pm.addPass(mlir::mhlo::CreateLegalizeTfTypesPass());
+  pm.addPass(mlir::mhlo::createLegalizeTFModulePass(
+      /*tf2xla_fallback_device_type=*/device_type));
+
+  for (auto& target_pass : custom_legalization_passes) {
+    pm.addNestedPass<mlir::func::FuncOp>(std::move(target_pass));
+  }
+  pm.addPass(mlir::mhlo::CreateLegalizeTFCollectivePass());
+
+  // These passes are grouped together as they have to run in specific order.
+  // Passes before this can run relativley in any order, as long as they happen
+  // before legalization.
+  AddLegalizationPasses(pm, legalize_chlo, device_type, prefer_tf2xla);
+
+  // This pass operates on MHLO control flow ops so it should be legalized after
+  // the control flow ops are legalized.
+  pm.addPass(mlir::mhlo::CreateLegalizeTFCommunicationPass());
+
+  // Everything should be MHLO after this.
+  if (!allow_partial_conversion) {
+    pm.addNestedPass<mlir::func::FuncOp>(
+        mlir::mhlo::CreateVerifyTFXLALegalizationPass(legalize_chlo));
+  }
+
+  if (CanInlineFunctionsPostLegalization(device_type))
+    pm.addPass(mlir::createInlinerPass());
+
+  // In order to export to XLA, we must sink constants to control flow regions,
+  // since XLA uses functional control flow.
+  pm.addNestedPass<mlir::func::FuncOp>(
+      mlir::mhlo::createSinkConstantsToControlFlowPass());
+}
 
 Status RefineShapes(llvm::ArrayRef<TensorOrResourceShape> arg_shapes,
                     mlir::ModuleOp module) {
@@ -374,103 +503,6 @@ Status RefineShapes(llvm::ArrayRef<TensorOrResourceShape> arg_shapes,
         errors::Internal("MLIR Shape refinement failed"));
   }
   return error_handler.ConsumeStatus();
-}
-
-void CreateConvertMlirToXlaHloPipeline(
-    mlir::OpPassManager& pm, llvm::StringRef device_type, bool prefer_tf2xla,
-    llvm::MutableArrayRef<std::unique_ptr<mlir::Pass>>
-        custom_legalization_passes,
-    bool allow_partial_conversion) {
-  // Note that the region-based control-flow produced here still contains
-  // function call ops which get inlined by the subsequent inliner pass.
-  pm.addPass(mlir::TF::CreateTFFunctionalControlFlowToRegions());
-  pm.addPass(mlir::createInlinerPass());
-  pm.addNestedPass<mlir::func::FuncOp>(
-      mlir::TF::CreateDropWhileShapeInvariantPass());
-  pm.addNestedPass<mlir::func::FuncOp>(mlir::createCanonicalizerPass());
-  // The SCCP pass performs constant propagation across the IR, which, for
-  // example, propagates constant arguments into callee functions.
-  // TOOD(hinsu): Investigate if we really need SCCP pass before shape inference
-  // and can do with just one pass after the shape inference.
-  pm.addPass(mlir::createSCCPPass());
-  // Guarantee all functions have one use, which enables shape inference.
-  pm.addPass(mlir::TF::CreateGuaranteeAllFuncsOneUsePass());
-  // Run shape inference pass before tensorlist decomposition to get buffer
-  // shape of uninitialized TensorLists.
-  pm.addPass(mlir::TF::CreateTFShapeInferencePass());
-
-  // Run SCCP pass again as the availability of shapes may open up new
-  // opportunities for constant propagation. Note that the shape inference pass
-  // doesn't materialize new constants even if those are computed internally for
-  // the purpose of shape inference. These constants might be required by the
-  // legalization passes.
-  pm.addPass(mlir::createSCCPPass());
-
-  pm.addPass(mlir::TF::CreateTensorListOpsDecompositionPass());
-  pm.addPass(mlir::TF::CreateStackOpsDecompositionPass());
-  pm.addPass(mlir::TF::CreateTensorArrayOpsDecompositionPass());
-  pm.addNestedPass<mlir::func::FuncOp>(
-      mlir::TFDevice::CreateDecomposeResourceOpsPass());
-  pm.addPass(mlir::TF::CreatePromoteResourcesToArgsPass());
-  pm.addPass(mlir::createSymbolDCEPass());
-
-  // Sink constants to regions so that ops requiring constant operands can
-  // access the constant and there is no indirection through control flow region
-  // arguments. Also, note that this pass is in MHLO but it is generic and sinks
-  // constants for all ops with regions.
-  pm.addNestedPass<mlir::func::FuncOp>(
-      mlir::mhlo::createSinkConstantsToControlFlowPass());
-  pm.addPass(mlir::TF::CreateTFShapeInferencePass());
-  // LegalizeTFControlFlow encapsulates arguments for control flow operations
-  // with a tuple argument which break the assumption of resource lifting
-  // inside PromoteResourcesToArgs.
-  pm.addPass(mlir::mhlo::createLegalizeTFControlFlowPass());
-
-  pm.addNestedPass<mlir::func::FuncOp>(mlir::TF::CreateLowerQuantizedPass());
-  pm.addPass(mlir::mhlo::CreateLegalizeTfTypesPass());
-  pm.addPass(mlir::mhlo::createLegalizeTFModulePass(
-      /*tf2xla_fallback_device_type=*/device_type));
-  pm.addNestedPass<mlir::func::FuncOp>(mlir::mhlo::createLegalizeTFPass(
-      /*allow_partial_conversion=*/true, /*legalize_chlo=*/true,
-      /*tf2xla_fallback_device_type=*/device_type, prefer_tf2xla));
-  for (auto& target_pass : custom_legalization_passes) {
-    pm.addNestedPass<mlir::func::FuncOp>(std::move(target_pass));
-  }
-  pm.addNestedPass<mlir::func::FuncOp>(mlir::mhlo::CreateAdjustLayoutPass());
-  pm.addPass(mlir::mhlo::CreateLegalizeTFCommunicationPass());
-  pm.addPass(mlir::mhlo::CreateLegalizeTFCollectivePass());
-  pm.addNestedPass<mlir::func::FuncOp>(mlir::createCanonicalizerPass());
-  // Run shape inference pass to propagate shapes through tensor_cast operations
-  // from static to dynamic shapes. This could be generated if the shape
-  // inference was originally missing in a TF op but the corresponding HLO op
-  // had static shape after lowering.
-  pm.addPass(mlir::TF::CreateTFShapeInferencePass());
-
-  // Legalize any StableHLO ops to MHLO. Bridge still doesn't use StableHLO but
-  // such ops might be present in the input from upstream like TFRT compilation.
-  // Later on, this could be merged in the legalization pass when we migrate
-  // bridge to StableHLO.
-  //
-  // TODO(b/259459405): Avoid this peculiar use through some refactoring in
-  // the the caller.
-  pm.addPass(mlir::mhlo::createStablehloLegalizeToHloPass());
-
-  // Run LegalizeTFPass again because the previous legalization passes can
-  // expose more graph pruning and canonicalization opportunities that are
-  // necessary for the second LegalizeTFPass(allow_partial_conversion=false)
-  // invocation.
-  pm.addNestedPass<mlir::func::FuncOp>(mlir::mhlo::createLegalizeTFPass(
-      /*allow_partial_conversion=*/allow_partial_conversion,
-      /*legalize_chlo=*/true,
-      /*tf2xla_fallback_device_type=*/device_type, prefer_tf2xla));
-
-  if (CanInlineFunctionsPostLegalization(device_type))
-    pm.addPass(mlir::createInlinerPass());
-
-  // In order to export to XLA, we must sink constants to control flow regions,
-  // since XLA uses functional control flow.
-  pm.addNestedPass<mlir::func::FuncOp>(
-      mlir::mhlo::createSinkConstantsToControlFlowPass());
 }
 
 Status LegalizeToHlo(mlir::ModuleOp module_op, llvm::StringRef device_type,

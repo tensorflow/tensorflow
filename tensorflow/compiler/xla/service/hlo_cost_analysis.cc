@@ -138,7 +138,7 @@ Status HloCostAnalysis::HandleElementwiseOp(
       opcode == HloOpcode::kRsqrt || opcode == HloOpcode::kTanh ||
       opcode == HloOpcode::kSin || opcode == HloOpcode::kCos ||
       opcode == HloOpcode::kExpm1 || opcode == HloOpcode::kLog1p ||
-      opcode == HloOpcode::kAtan2) {
+      opcode == HloOpcode::kAtan2 || opcode == HloOpcode::kTan) {
     current_properties_[kTranscendentalsKey] = computation_count;
   } else {
     // Note: transcendental operations are considered a separate category from
@@ -1345,9 +1345,9 @@ StatusOr<HloCostAnalysis::Properties> HloCostAnalysis::ProcessSubcomputation(
   auto visitor = CreateNestedCostAnalysis();
   visitor->ReserveVisitStates(computation->instruction_count());
   TF_RETURN_IF_ERROR(computation->Accept(visitor.get()));
-  hlo_properties_.insert(
-      std::make_move_iterator(visitor->hlo_properties_.begin()),
-      std::make_move_iterator(visitor->hlo_properties_.end()));
+  for (auto& entry : visitor->hlo_properties_) {
+    hlo_properties_[entry.first] = std::move(entry.second);
+  }
   return visitor->properties();
 }
 

@@ -1,8 +1,8 @@
 // Note that binary elementwise tests are run with chlo legalization enabled
 // (unlike the rest), since this is the primary use case for such ops and
 // verification of shapes and broadcasts is desired.
-// RUN: xla-opt "-xla-legalize-tf=allow-partial-conversion legalize-chlo=true" -canonicalize %s | FileCheck %s
-// RUN: xla-opt "-xla-legalize-tf=allow-partial-conversion legalize-chlo=false" %s | FileCheck --check-prefix CHLO %s
+// RUN: tf-opt "-xla-legalize-tf=allow-partial-conversion legalize-chlo=true" -canonicalize %s | FileCheck %s
+// RUN: tf-opt "-xla-legalize-tf=allow-partial-conversion legalize-chlo=false" %s | FileCheck --check-prefix CHLO %s
 
 //===----------------------------------------------------------------------===//
 // Binary op legalizations.

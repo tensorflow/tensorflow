@@ -68,6 +68,27 @@ class ConvolutionThunk : public Thunk {
       runner_cache_ ABSL_GUARDED_BY(mu_);
 };
 
+// Launches the kernel that reorders input data for int8x32 convolutions.
+class ConvolutionReorderThunk : public Thunk {
+ public:
+  ConvolutionReorderThunk(ThunkInfo thunk_info, absl::Span<int64_t> filter_nchw,
+                          std::vector<BufferAllocation::Slice> operand_slices,
+                          std::vector<BufferAllocation::Slice> result_slices);
+
+  ConvolutionReorderThunk(const ConvolutionReorderThunk&) = delete;
+  ConvolutionReorderThunk& operator=(const ConvolutionReorderThunk&) = delete;
+
+  Status ExecuteOnStream(const ExecuteParams& params) override;
+
+ private:
+  static se::dnn::FilterDescriptor CreateFilterDescriptor(
+      absl::Span<int64_t> filter_nchw);
+
+  const se::dnn::FilterDescriptor filter_descriptor_;
+  std::vector<BufferAllocation::Slice> operand_buffers_;
+  std::vector<BufferAllocation::Slice> result_buffers_;
+};
+
 }  // namespace gpu
 }  // namespace xla
 

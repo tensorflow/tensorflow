@@ -1,150 +1,141 @@
-diff --ruN a/stablehlo/stablehlo/dialect/TypeInference.cpp b/stablehlo/stablehlo/dialect/TypeInference.cpp
---- stablehlo/stablehlo/dialect/TypeInference.cpp
-+++ stablehlo/stablehlo/dialect/TypeInference.cpp
-@@ -65,22 +65,6 @@
- // Utils for shape functions.
- //===----------------------------------------------------------------------===//
- 
--// WindowDimension described how the kernel window moves across the base area
--// in a particular dimension.
--// Describes the windowing in an operation such as convolution.
--// The window is moved across a base area and for each position of the
--// window a computation is performed. The field below describes the
--// window and the movement of the window across a base area.
--struct WindowDimension {
--  int64_t size = 0;
--  int64_t stride = 1;
--  int64_t paddingLow = 0;
--  int64_t paddingHigh = 0;
--  int64_t windowDilation = 1;
--  int64_t baseDilation = 1;
--  bool windowReversal = false;
--};
--
- // Checks if the vector `nums` has duplicates.
- const auto hasDuplicates = [](const ArrayRef<int64_t> nums) {
-   llvm::SmallDenseSet<int64_t> set(nums.begin(), nums.end());
-@@ -107,7 +91,7 @@
- // type. If 'ignoreFpPrecision' is True, then allow floats with different
- // precisions while checking element-types.
- bool compatibleShapeAndElementType(Type type1, Type type2,
--                                   bool ignoreFpPrecision = false) {
-+                                   bool ignoreFpPrecision) {
-   if (failed(verifyCompatibleShape(type1, type2))) return false;
-   return tensorsHaveSameElType(type1.cast<ShapedType>(),
-                                type2.cast<ShapedType>(), ignoreFpPrecision);
-@@ -2920,7 +2904,8 @@
+diff --ruN a/stablehlo/stablehlo/tests/stablehlo_refine_shapes.mlir b/stablehlo/stablehlo/tests/stablehlo_refine_shapes.mlir
+--- stablehlo/stablehlo/tests/stablehlo_refine_shapes.mlir
++++ stablehlo/stablehlo/tests/stablehlo_refine_shapes.mlir
+@@ -280,6 +280,18 @@
+   %2 = stablehlo.constant dense<[3, 4]> : tensor<2xi64>
+   %3 = stablehlo.select %0, %1, %2 : tensor<2xi1>, tensor<2xi64>
+   func.return %3 : tensor<2xi64>
++}
++
++// -----
++
++// CHECK-LABEL: func @eval_sign
++func.func @eval_sign() -> tensor<3xi64> {
++  // CHECK-NOT: stablehlo.sign
++  // CHECK: [[RESULT:%.*]] = stablehlo.constant dense<[-1, 0, 1]> : tensor<3xi64>
++  // CHECK: return [[RESULT]]
++  %0 = stablehlo.constant dense<[-1, 0, 1]> : tensor<3xi64>
++  %1 = stablehlo.sign %0 : (tensor<3xi64>) -> tensor<3xi64>
++  func.return %1 : tensor<3xi64>
  }
  
- LogicalResult verifyDotOp(Optional<Location> location, Value lhs, Value rhs,
--                          Optional<ArrayAttr> precisionConfig, Value result) {
-+                          Optional<ArrayAttr> /*precisionConfig*/,
-+                          Value result) {
-   auto lhsType = lhs.getType().dyn_cast<RankedTensorType>();
-   auto rhsType = rhs.getType().dyn_cast<RankedTensorType>();
-   auto resultType = result.getType().dyn_cast<RankedTensorType>();
-@@ -2937,7 +2922,7 @@
-         location, "inferred shape '", dimSizesToString(inferredShape), "' ",
-         "is incompatible with return type of operation ", resultType, "");
+ // -----
+diff --ruN a/stablehlo/stablehlo/transforms/StablehloRefineShapes.cpp b/stablehlo/stablehlo/transforms/StablehloRefineShapes.cpp
+--- stablehlo/stablehlo/transforms/StablehloRefineShapes.cpp
++++ stablehlo/stablehlo/transforms/StablehloRefineShapes.cpp
+@@ -74,9 +74,36 @@
+ }
  
--  return verifyPrecisionConfig(location, precisionConfig);
+ template <typename OpType, typename FuncType>
++LogicalResult evalUnary(PatternRewriter& rewriter, OpType op, FuncType fn) {
++  if (op->getNumOperands() != 1)
++    llvm::report_fatal_error("expected one operand");
++
++  auto resultType = op.getResult().getType().template cast<ShapedType>();
++  if (!resultType.hasRank() || !resultType.getElementType().isIntOrIndex())
++    return rewriter.notifyMatchFailure(
++        op, "expected integer or index result tensor type");
++
++  SmallVector<APInt> operand, result;
++  if (failed(matchInts(op.getOperand(), operand)))
++    return rewriter.notifyMatchFailure(op, "expected constant operand");
++  for (const auto& operandEl : operand) {
++    result.push_back(fn(operandEl));
++  }
++
++  rewriter.replaceOpWithNewOp<ConstantOp>(
++      op, DenseIntElementsAttr::get(resultType, result));
 +  return success();
++}
++
++template <typename OpType, typename FuncType>
+ LogicalResult evalBinary(PatternRewriter& rewriter, OpType op, FuncType fn) {
+   if (op->getNumOperands() != 2)
+-    return rewriter.notifyMatchFailure(op, "expected two operands");
++    llvm::report_fatal_error("expected two operands");
++
++  auto resultType = op.getResult().getType().template cast<ShapedType>();
++  if (!resultType.hasRank() || !resultType.getElementType().isIntOrIndex())
++    return rewriter.notifyMatchFailure(
++        op, "expected integer or index result tensor type");
+ 
+   SmallVector<APInt> lhs, rhs, result;
+   if (failed(matchInts(op.getLhs(), lhs)) ||
+@@ -87,7 +114,7 @@
+   }
+ 
+   rewriter.replaceOpWithNewOp<ConstantOp>(
+-      op, DenseIntElementsAttr::get(op.getResult().getType(), result));
++      op, DenseIntElementsAttr::get(resultType, result));
+   return success();
  }
  
- LogicalResult verifyDotGeneralOp(Optional<Location> location, Value lhs,
-diff --ruN a/stablehlo/stablehlo/dialect/TypeInference.h b/stablehlo/stablehlo/dialect/TypeInference.h
---- stablehlo/stablehlo/dialect/TypeInference.h
-+++ stablehlo/stablehlo/dialect/TypeInference.h
-@@ -39,6 +39,73 @@
-                          ArrayRef<int64_t> collapsedSliceDims,
-                          ArrayRef<int64_t> startIndexMap,
-                          int64_t indexVectorDim, SmallVectorImpl<Value>& shape);
-+
-+// TODO(zhouxin) Remove these utils when all type inference code are integrated
-+// And move `WindowDimension` to `TypeInference.cpp`
-+
-+bool compatibleShapeAndElementType(Type type1, Type type2,
-+                                   bool ignoreFpPrecision = false);
-+
-+FailureOr<SmallVector<int64_t>> convert1DAttribute(
-+    Optional<DenseIntElementsAttr> optionalAttr, Optional<Location> loc,
-+    StringRef attrName);
-+
-+FailureOr<SmallVector<std::pair<int64_t, int64_t>>> convertPaddingAttribute(
-+    Optional<DenseIntElementsAttr> optionalAttr, Optional<Location> loc);
-+
-+// Convert a 1D dense bool attribute to a list of values.
-+FailureOr<SmallVector<bool>> convertWindowReversalAttribute(
-+    Optional<DenseElementsAttr> optionalAttr, Optional<Location> loc,
-+    StringRef attrName);
-+
-+// WindowDimension described how the kernel window moves across the base area
-+// in a particular dimension.
-+// Describes the windowing in an operation such as convolution.
-+// The window is moved across a base area and for each position of the
-+// window a computation is performed. The field below describes the
-+// window and the movement of the window across a base area.
-+struct WindowDimension {
-+  int64_t size = 0;
-+  int64_t stride = 1;
-+  int64_t paddingLow = 0;
-+  int64_t paddingHigh = 0;
-+  int64_t windowDilation = 1;
-+  int64_t baseDilation = 1;
-+  bool windowReversal = false;
+@@ -191,27 +218,13 @@
+   using OpRewritePattern::OpRewritePattern;
+   LogicalResult matchAndRewrite(ConvertOp op,
+                                 PatternRewriter& rewriter) const override {
+-    auto operandType = op.getOperand().getType().dyn_cast<RankedTensorType>();
++    auto operandType = op.getOperand().getType().cast<ShapedType>();
+     auto isOperandUnsigned = operandType.getElementType().isUnsignedInteger();
+-
+-    auto resultType = op.getResult().getType().dyn_cast<RankedTensorType>();
+-    if (!resultType || !resultType.getElementType().isIntOrIndex())
+-      return rewriter.notifyMatchFailure(
+-          op, "expected integer or index result element type");
+-
+-    SmallVector<APInt> operand, result;
+-    if (failed(matchInts(op.getOperand(), operand)))
+-      return rewriter.notifyMatchFailure(op, "expected constant operand");
+-    for (const auto& operandEl : operand) {
+-      auto resultBitwidth = resultType.getElementType().getIntOrFloatBitWidth();
+-      auto resultEl =
+-          APSInt(operandEl, isOperandUnsigned).extOrTrunc(resultBitwidth);
+-      result.push_back(resultEl);
+-    }
+-
+-    rewriter.replaceOpWithNewOp<ConstantOp>(
+-        op, DenseIntElementsAttr::get(resultType, result));
+-    return success();
++    auto resultType = op.getResult().getType().cast<ShapedType>();
++    auto resultBitwidth = resultType.getElementType().getIntOrFloatBitWidth();
++    return evalUnary(rewriter, op, [&](APInt operand) {
++      return APSInt(operand, isOperandUnsigned).extOrTrunc(resultBitwidth);
++    });
+   }
+ };
+ 
+@@ -311,6 +324,25 @@
+     rewriter.replaceOpWithNewOp<ConstantOp>(
+         op, DenseIntElementsAttr::get(op.getResult().getType(), result));
+     return success();
++  }
 +};
 +
-+FailureOr<SmallVector<WindowDimension>>
-+verifyWindowAttributesAndInferWindowDimensions(
-+    ArrayRef<int64_t> windowDimensions, ArrayRef<int64_t> windowStrides,
-+    ArrayRef<std::pair<int64_t, int64_t>> padding,
-+    ArrayRef<int64_t> lhsDilation, ArrayRef<int64_t> rhsDilation,
-+    ArrayRef<bool> windowReversal, Optional<Location> loc);
-+
-+SmallVector<int64_t> inferWindowOutputShape(
-+    const ArrayRef<int64_t> baseShape, const ArrayRef<WindowDimension> window);
-+
-+unsigned potentiallyComplexBitwidth(Type type);
-+
-+LogicalResult verifyReducerShape(Optional<Location> loc, Block& block,
-+                                 ArrayRef<TensorType> inputArgTypes,
-+                                 ArrayRef<TensorType> initValueTypes,
-+                                 int64_t numInputs,
-+                                 ArrayRef<int64_t> allowedDimensions,
-+                                 bool allInputsUnranked);
-+
-+// Verifies replica groups attached to collective communication operations.
-+// P1. 'replicaGroups' must be a 2-D tensor.
-+// P2. replicaGroups' cannot be empty.
-+// P3. If `allGroupsMustHaveSameSize` is true, then each group is of the same
-+//     size.
-+// P4. All values in `replica_groups` are unique and covers all the values in
-+//     the interval [0, N-1], where N is the total number of replica ids.
-+// P5. replica group size must be equal to 'expectedGroupSize'.
-+LogicalResult verifyReplicaGroups(Optional<Location> location,
-+                                  DenseIntElementsAttr replicaGroups,
-+                                  bool allGroupsMustHaveSameSize,
-+                                  bool useGlobalDeviceIds,
-+                                  Optional<size_t> expectedGroupSize);
++struct EvalSignOpPattern : public OpRewritePattern<SignOp> {
++  using OpRewritePattern::OpRewritePattern;
++  LogicalResult matchAndRewrite(SignOp op,
++                                PatternRewriter& rewriter) const override {
++    auto resultType = op.getResult().getType().cast<ShapedType>();
++    auto resultBitwidth = resultType.getElementType().getIntOrFloatBitWidth();
++    return evalUnary(rewriter, op, [&](APInt operand) {
++      int64_t result;
++      if (operand.slt(0))
++        result = -1;
++      else if (operand.getSExtValue() == 0)
++        result = 0;
++      else
++        result = 1;
++      return APInt(resultBitwidth, result, /*isSigned=*/true);
++    });
+   }
+ };
  
- //===----------------------------------------------------------------------===//
- // Shape functions for ops.
-diff --ruN a/stablehlo/stablehlo/tests/ops_stablehlo.mlir b/stablehlo/stablehlo/tests/ops_stablehlo.mlir
---- stablehlo/stablehlo/tests/ops_stablehlo.mlir
-+++ stablehlo/stablehlo/tests/ops_stablehlo.mlir
-@@ -1485,14 +1485,6 @@
- // CHECK-LABEL: func @dot_precision_config
- func.func @dot_precision_config(%arg0: tensor<2x2xi32>, %arg1: tensor<2x2xi32>) -> tensor<2x2xi32> {
-   %0 = "stablehlo.dot"(%arg0, %arg1) {precision_config = [#stablehlo<precision HIGH>, #stablehlo<precision HIGHEST>]} : (tensor<2x2xi32>, tensor<2x2xi32>) -> tensor<2x2xi32>
--  func.return %0: tensor<2x2xi32>
--}
--
--// -----
--
--func.func @dot_precision_invalid_precision_config(%arg0: tensor<2x2xi32>, %arg1: tensor<2x2xi32>) -> tensor<2x2xi32> {
--  // expected-error@+1 {{expects precision config to be null or of size 2.}}
--  %0 = "stablehlo.dot"(%arg0, %arg1) {precision_config = [#stablehlo<precision HIGH>]} : (tensor<2x2xi32>, tensor<2x2xi32>) -> tensor<2x2xi32>
-   func.return %0: tensor<2x2xi32>
- }
- 
+@@ -983,6 +1015,7 @@
+     patterns.add<EvalRemOpPattern>(&getContext());
+     patterns.add<EvalReshapeOpPattern>(&getContext());
+     patterns.add<EvalSelectOpPattern>(&getContext());
++    patterns.add<EvalSignOpPattern>(&getContext());
+     patterns.add<EvalSliceOpPattern>(&getContext());
+     patterns.add<EvalSubtractOpPattern>(&getContext());
+     patterns.add<RefineBitcastConvertOpPattern>(&getContext());
 

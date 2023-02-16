@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/data/snapshot_utils.h"
 
+#include "tensorflow/core/data/service/test_util.h"
 #include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/io/compression.h"
@@ -27,6 +28,9 @@ namespace tensorflow {
 namespace data {
 namespace snapshot_util {
 namespace {
+
+using ::tensorflow::data::testing::EqualsProto;
+using ::tensorflow::data::testing::LocalTempFilename;
 
 void GenerateTensorVector(tensorflow::DataTypeVector& dtypes,
                           std::vector<Tensor>& tensors) {
@@ -89,6 +93,27 @@ TEST(SnapshotUtilTest, CombinationRoundTripTest) {
   SnapshotRoundTrip(io::compression::kNone, 2);
   SnapshotRoundTrip(io::compression::kGzip, 2);
   SnapshotRoundTrip(io::compression::kSnappy, 2);
+}
+
+TEST(SnapshotUtilTest, MetadataFileRoundTrip) {
+  experimental::DistributedSnapshotMetadata metadata_in;
+  metadata_in.set_compression(io::compression::kGzip);
+  std::string dir = LocalTempFilename();
+  TF_ASSERT_OK(WriteMetadataFile(Env::Default(), dir, &metadata_in));
+
+  experimental::DistributedSnapshotMetadata metadata_out;
+  bool file_exists;
+  TF_ASSERT_OK(
+      ReadMetadataFile(Env::Default(), dir, &metadata_out, &file_exists));
+  EXPECT_THAT(metadata_in, EqualsProto(metadata_out));
+}
+
+TEST(SnapshotUtilTest, MetadataFileDoesntExist) {
+  experimental::DistributedSnapshotMetadata metadata;
+  bool file_exists;
+  TF_ASSERT_OK(ReadMetadataFile(Env::Default(), LocalTempFilename(), &metadata,
+                                &file_exists));
+  EXPECT_FALSE(file_exists);
 }
 
 void SnapshotReaderBenchmarkLoop(::testing::benchmark::State& state,

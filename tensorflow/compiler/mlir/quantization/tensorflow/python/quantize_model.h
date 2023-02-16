@@ -16,15 +16,18 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_MLIR_QUANTIZATION_TENSORFLOW_PYTHON_QUANTIZE_MODEL_H_
 
 #include <string>
+#include <unordered_set>
+#include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/exported_model.pb.h"
+#include "tensorflow/compiler/mlir/quantization/tensorflow/quantization_options.pb.h"
 #include "tensorflow/core/framework/graph.pb.h"
 
 namespace tensorflow {
 namespace quantization {
-namespace internal {
 
 // Names of the TensorFlow Quantization steps. These names are used primarily
 // for debugging.
@@ -37,27 +40,36 @@ inline constexpr absl::string_view kTfQuantPtqDynamicRangeStepName =
     "tf_quant_ptq_dynamic_range";
 inline constexpr absl::string_view kTfQuantConstantUnfreezingStepName =
     "tf_quant_constant_unfreezing";
-inline constexpr absl::string_view kTfQuantCreateRestoreOpStepName =
-    "tf_quant_create_restore_op";
+inline constexpr absl::string_view kTfQuantInsertRestoreOpStepName =
+    "tf_quant_insert_restore_op";
 
 absl::StatusOr<ExportedModel> QuantizeQatModel(
-    absl::string_view saved_model_path, absl::string_view exported_names_str,
-    absl::string_view tags, absl::string_view quant_opts_serialized);
+    absl::string_view saved_model_path,
+    const std::vector<std::string>& signature_keys,
+    const std::unordered_set<std::string>& tags,
+    const QuantizationOptions& quant_opts);
 
 // Apply post-training dynamic range quantization to the model.
 absl::StatusOr<ExportedModel> QuantizePtqDynamicRange(
-    absl::string_view saved_model_path, absl::string_view exported_names_str,
-    absl::string_view tags, absl::string_view quant_opts_serialized);
+    absl::string_view saved_model_path,
+    const std::vector<std::string>& signature_keys,
+    const std::unordered_set<std::string>& tags,
+    const QuantizationOptions& quant_opts);
 
 absl::StatusOr<ExportedModel> QuantizePtqModelPreCalibration(
-    absl::string_view saved_model_path, absl::string_view exported_names_str,
-    absl::string_view tags, absl::string_view quant_opts_serialized);
+    absl::string_view saved_model_path,
+    const std::vector<std::string>& exported_names,
+    const std::unordered_set<std::string>& tags,
+    const QuantizationOptions& quant_opts,
+    const absl::flat_hash_map<std::string, std::string>& function_aliases);
 
 absl::StatusOr<ExportedModel> QuantizePtqModelPostCalibration(
-    absl::string_view saved_model_path, absl::string_view exported_names_str,
-    absl::string_view tags, absl::string_view quant_opts_serialized);
+    absl::string_view saved_model_path,
+    const std::vector<std::string>& signature_keys,
+    const std::unordered_set<std::string>& tags,
+    const QuantizationOptions& quant_opts,
+    const absl::flat_hash_map<std::string, std::string>& function_aliases);
 
-}  // namespace internal
 }  // namespace quantization
 }  // namespace tensorflow
 

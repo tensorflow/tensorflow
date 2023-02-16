@@ -29,6 +29,8 @@ limitations under the License.
 #include "tensorflow/compiler/jit/device_compiler.h"
 #include "tensorflow/compiler/jit/encapsulate_subgraphs_pass.h"
 #include "tensorflow/compiler/jit/flags.h"
+#include "tensorflow/compiler/jit/variable_info.h"
+#include "tensorflow/compiler/jit/variable_info_util.h"
 #include "tensorflow/compiler/jit/xla_activity_listener.h"
 #include "tensorflow/compiler/jit/xla_compile_util.h"
 #include "tensorflow/compiler/jit/xla_platform_info.h"
@@ -530,12 +532,12 @@ void XlaCompileOp::Compute(OpKernelContext* ctx) {
     if (must_compile_) {
       return DeviceCompileMode::kStrict;
     }
-    return GetXlaOpsCommonFlags().tf_xla_async_compilation
+    return GetXlaOpsCommonFlags()->tf_xla_async_compilation
                ? DeviceCompileMode::kAsync
                : DeviceCompileMode::kLazy;
   }();
 
-  if (GetXlaOpsCommonFlags().tf_xla_always_defer_compilation ||
+  if (GetXlaOpsCommonFlags()->tf_xla_always_defer_compilation ||
       cannot_compile_cluster) {
     executable = nullptr;
   } else {

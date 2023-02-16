@@ -22,7 +22,10 @@ cc_library(
             "dtensor_embedding_v2_stub.cc",
         ],
     ) + if_google(
-        ["collective_lowering_google.cc"],
+        [
+            "collective_lowering_google.cc",
+            "update_tpu_metadata_google.cc",
+        ],
     ),
     hdrs = ["dtensor_mlir_passes_internal.h"],
     deps = [
@@ -36,6 +39,7 @@ cc_library(
         "//tensorflow/dtensor/cc:constants",
         "//tensorflow/dtensor/cc:dstatus",
         "//tensorflow/dtensor/cc:dtensor_utils",
+        "//tensorflow/dtensor/cc:layout_to_xla_sharding",
         "//tensorflow/dtensor/cc:tensor_layout",
         "//tensorflow/dtensor/mlir:collectives_common",
         "//tensorflow/dtensor/mlir:create_dtensor_mlir_passes",
@@ -50,11 +54,13 @@ cc_library(
         "//tensorflow/dtensor/mlir:tf_dtensor_dialect",
         "//tensorflow/dtensor/mlir:value_utils",
         "//tensorflow/dtensor/mlir/dtensor_dialect:ir/dtensor_attributes",
+        "//tensorflow/tsl/util:env_var",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Parser",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:Transforms",

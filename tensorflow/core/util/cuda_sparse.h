@@ -65,12 +65,17 @@ using gpusparseSpMMAlg_t = hipsparseSpMMAlg_t;
 
 #endif
 
+#include "tensorflow/compiler/xla/stream_executor/data_type.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/stream_executor.h"
 #include "tensorflow/core/public/version.h"
+
+#if GOOGLE_CUDA
+#include "tensorflow/compiler/xla/stream_executor/cuda/cuda_blas_utils.h"
+#endif
 
 // Macro that specializes a sparse method for all 4 standard
 // numeric types.
@@ -181,6 +186,112 @@ inline gpusparseOperation_t TransposeAndConjugateToGpuSparseOp(bool transpose,
   }
 #endif
 }
+
+#if GOOGLE_CUDA && (CUDA_VERSION >= 12000)
+
+template <typename T>
+struct ToGpuSparseIndexType;
+template <>
+struct ToGpuSparseIndexType<int> {
+  static constexpr cusparseIndexType_t value = CUSPARSE_INDEX_32I;
+};
+template <>
+struct ToGpuSparseIndexType<int64_t> {
+  static constexpr cusparseIndexType_t value = CUSPARSE_INDEX_64I;
+};
+
+class GpuSparseSpGEMMDescr {
+ public:
+  GpuSparseSpGEMMDescr() : initialized_(false) {}
+  ~GpuSparseSpGEMMDescr() {
+    if (initialized_) {
+      cusparseSpGEMM_destroyDescr(descr_);
+    }
+  }
+  Status Initialize() {
+    if (initialized_) {
+      return errors::Internal("Double initializion of GpuSparseSpGEMMDescr.");
+    }
+    TF_RETURN_IF_GPUSPARSE_ERROR(cusparseSpGEMM_createDescr(&descr_));
+    initialized_ = true;
+    return OkStatus();
+  }
+  cusparseSpGEMMDescr_t& get() { return descr_; }
+
+ private:
+  bool initialized_;
+  cusparseSpGEMMDescr_t descr_;
+
+  TF_DISALLOW_COPY_AND_ASSIGN(GpuSparseSpGEMMDescr);
+};
+
+class GpuSparseSpMatDescr {
+ public:
+  GpuSparseSpMatDescr() : initialized_(false) {}
+  ~GpuSparseSpMatDescr() {
+    if (initialized_) {
+      cusparseDestroySpMat(descr_);
+    }
+  }
+  template <typename IndexType, typename FloatType>
+  Status InitializeCsr(int64_t rows, int64_t cols, int64_t nnz,
+                       IndexType* csrRowOffsets, IndexType* csrColInd,
+                       FloatType* csrValues) {
+    if (initialized_) {
+      return errors::Internal("Double initializion of gpusparseSpMatDescr.");
+    }
+    using stream_executor::cuda::AsCudaDataType;
+    using stream_executor::dnn::ToDataType;
+    TF_RETURN_IF_GPUSPARSE_ERROR(cusparseCreateCsr(
+        &descr_, rows, cols, nnz, csrRowOffsets, csrColInd, csrValues,
+        ToGpuSparseIndexType<IndexType>::value,
+        ToGpuSparseIndexType<IndexType>::value, CUSPARSE_INDEX_BASE_ZERO,
+        AsCudaDataType(ToDataType<FloatType>::value)));
+    initialized_ = true;
+    return OkStatus();
+  }
+  gpusparseSpMatDescr_t& get() { return descr_; }
+
+ private:
+  bool initialized_;
+  cusparseSpMatDescr_t descr_;
+  TF_DISALLOW_COPY_AND_ASSIGN(GpuSparseSpMatDescr);
+};
+
+class GpuSparseConstSpMatDescr {
+ public:
+  GpuSparseConstSpMatDescr() : initialized_(false) {}
+  ~GpuSparseConstSpMatDescr() {
+    if (initialized_) {
+      cusparseDestroySpMat(descr_);
+    }
+  }
+  template <typename IndexType, typename FloatType>
+  Status InitializeCsr(int64_t rows, int64_t cols, int64_t nnz,
+                       const IndexType* csrRowOffsets,
+                       const IndexType* csrColInd, const FloatType* csrValues) {
+    if (initialized_) {
+      return errors::Internal("Double initializion of gpusparseSpMatDescr.");
+    }
+    using stream_executor::cuda::AsCudaDataType;
+    using stream_executor::dnn::ToDataType;
+    TF_RETURN_IF_GPUSPARSE_ERROR(cusparseCreateConstCsr(
+        &descr_, rows, cols, nnz, csrRowOffsets, csrColInd, csrValues,
+        ToGpuSparseIndexType<IndexType>::value,
+        ToGpuSparseIndexType<IndexType>::value, CUSPARSE_INDEX_BASE_ZERO,
+        AsCudaDataType(ToDataType<FloatType>::value)));
+    initialized_ = true;
+    return OkStatus();
+  }
+  cusparseConstSpMatDescr_t& get() { return descr_; }
+
+ private:
+  bool initialized_;
+  cusparseConstSpMatDescr_t descr_;
+  TF_DISALLOW_COPY_AND_ASSIGN(GpuSparseConstSpMatDescr);
+};
+
+#endif
 
 // The GpuSparse class provides a simplified templated API for cuSparse
 // (http://docs.nvidia.com/cuda/cusparse/index.html).
@@ -373,24 +484,11 @@ class GpuSparse {
                  Scalar* csrSortedValC, int* csrSortedRowPtrC,
                  int* csrSortedColIndC, void* workspace);
 
-#if GOOGLE_CUDA && (CUDA_VERSION >= 10000)
   // Computes sparse-sparse matrix multiplication of matrices
-  // stored in CSR format.  This is part zero: calculate required workspace
-  // size.
-  template <typename Scalar>
-  Status CsrgemmBufferSize(
-      int m, int n, int k, const gpusparseMatDescr_t descrA, int nnzA,
-      const int* csrSortedRowPtrA, const int* csrSortedColIndA,
-      const gpusparseMatDescr_t descrB, int nnzB, const int* csrSortedRowPtrB,
-      const int* csrSortedColIndB, csrgemm2Info_t info, size_t* workspaceBytes);
-#endif
-
-  // Computes sparse-sparse matrix multiplication of matrices
-  // stored in CSR format.  This is part one: calculate nnz of the
-  // output.  csrSortedRowPtrC must be preallocated on device with
-  // m + 1 entries.  See:
-  // http://docs.nvidia.com/cuda/cusparse/index.html#cusparse-lt-t-gt-csrgemm.
+  // stored in CSR format.
 #if (GOOGLE_CUDA && (CUDA_VERSION < 10000)) || TENSORFLOW_USE_ROCM
+  // Part one: calculate nnz of the output.
+  // csrSortedRowPtrC must be preallocated on device with m + 1 entries.
   Status CsrgemmNnz(gpusparseOperation_t transA, gpusparseOperation_t transB,
                     int m, int k, int n, const gpusparseMatDescr_t descrA,
                     int nnzA, const int* csrSortedRowPtrA,
@@ -399,23 +497,9 @@ class GpuSparse {
                     const int* csrSortedRowPtrB, const int* csrSortedColIndB,
                     const gpusparseMatDescr_t descrC, int* csrSortedRowPtrC,
                     int* nnzTotalDevHostPtr);
-#else
-  Status CsrgemmNnz(int m, int n, int k, const gpusparseMatDescr_t descrA,
-                    int nnzA, const int* csrSortedRowPtrA,
-                    const int* csrSortedColIndA,
-                    const gpusparseMatDescr_t descrB, int nnzB,
-                    const int* csrSortedRowPtrB, const int* csrSortedColIndB,
-                    const gpusparseMatDescr_t descrC, int* csrSortedRowPtrC,
-                    int* nnzTotalDevHostPtr, csrgemm2Info_t info,
-                    void* workspace);
-#endif
-
-  // Computes sparse - sparse matrix matmul of matrices
-  // stored in CSR format.  This is part two: perform sparse-sparse
-  // addition.  csrValC and csrColIndC must be allocated on the device
-  // with nnzTotalDevHostPtr entries (as calculated by CsrgemmNnz).  See:
-  // http://docs.nvidia.com/cuda/cusparse/index.html#cusparse-lt-t-gt-csrgemm.
-#if (GOOGLE_CUDA && (CUDA_VERSION < 10000)) || TENSORFLOW_USE_ROCM
+  // Part two: perform sparse-sparse matmul.
+  // csrValC and csrColIndC must be allocated on the device with
+  // nnzTotalDevHostPtr entries (as calculated by CsrgemmNnz).
   template <typename Scalar>
   Status Csrgemm(gpusparseOperation_t transA, gpusparseOperation_t transB,
                  int m, int k, int n, const gpusparseMatDescr_t descrA,
@@ -426,7 +510,27 @@ class GpuSparse {
                  const int* csrSortedColIndB, const gpusparseMatDescr_t descrC,
                  Scalar* csrSortedValC, int* csrSortedRowPtrC,
                  int* csrSortedColIndC);
-#else
+#elif GOOGLE_CUDA && (CUDA_VERSION < 12000)
+  // Part zero: calculate required workspace size.
+  template <typename Scalar>
+  Status CsrgemmBufferSize(
+      int m, int n, int k, const gpusparseMatDescr_t descrA, int nnzA,
+      const int* csrSortedRowPtrA, const int* csrSortedColIndA,
+      const gpusparseMatDescr_t descrB, int nnzB, const int* csrSortedRowPtrB,
+      const int* csrSortedColIndB, csrgemm2Info_t info, size_t* workspaceBytes);
+  // Part one: calculate nnz of the output.
+  // csrSortedRowPtrC must be preallocated on device with m + 1 entries.
+  Status CsrgemmNnz(int m, int n, int k, const gpusparseMatDescr_t descrA,
+                    int nnzA, const int* csrSortedRowPtrA,
+                    const int* csrSortedColIndA,
+                    const gpusparseMatDescr_t descrB, int nnzB,
+                    const int* csrSortedRowPtrB, const int* csrSortedColIndB,
+                    const gpusparseMatDescr_t descrC, int* csrSortedRowPtrC,
+                    int* nnzTotalDevHostPtr, csrgemm2Info_t info,
+                    void* workspace);
+  // Part two: perform sparse-sparse matmul.
+  // csrValC and csrColIndC must be allocated on the device with
+  // nnzTotalDevHostPtr entries (as calculated by CsrgemmNnz).
   template <typename Scalar>
   Status Csrgemm(int m, int n, int k, const gpusparseMatDescr_t descrA,
                  int nnzA, const Scalar* csrSortedValA,
@@ -437,6 +541,23 @@ class GpuSparse {
                  Scalar* csrSortedValC, int* csrSortedRowPtrC,
                  int* csrSortedColIndC, const csrgemm2Info_t info,
                  void* workspace);
+#elif GOOGLE_CUDA  // CUDA_VERSION >= 12000
+  template <typename Scalar>
+  Status SpGEMM_workEstimation(GpuSparseConstSpMatDescr& matA,
+                               GpuSparseConstSpMatDescr& matB,
+                               GpuSparseSpMatDescr& matC,
+                               GpuSparseSpGEMMDescr& spgemmDescr,
+                               size_t* bufferSize1, void* externalBuffer1);
+  template <typename Scalar>
+  Status SpGEMM_compute(GpuSparseConstSpMatDescr& matA,
+                        GpuSparseConstSpMatDescr& matB,
+                        GpuSparseSpMatDescr& matC,
+                        GpuSparseSpGEMMDescr& spgemmDescr, size_t* bufferSize2,
+                        void* externalBuffer2);
+  template <typename Scalar>
+  Status SpGEMM_copy(GpuSparseConstSpMatDescr& matA,
+                     GpuSparseConstSpMatDescr& matB, GpuSparseSpMatDescr& matC,
+                     GpuSparseSpGEMMDescr& spgemmDescr);
 #endif
 
   // In-place reordering of unsorted CSR to sorted CSR.

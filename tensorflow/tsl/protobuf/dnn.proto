@@ -55,6 +55,9 @@ enum FilterLayout {
   kOutputYXInput = 1;    // cuDNN's NHWC layout
   kOutputInputYX4 = 2;   // cuDNN's NCHW_VECT_C layout with 4-elem vectors
   kOutputInputYX32 = 5;  // cuDNN's NCHW_VECT_C layout with 32-elem vectors
+  // cuDNN-specific filter reordering (using `cudnnReorderFilterAndBias`)
+  // When the filter is reordered, so is the bias (if present).
+  kOutputInputYX32_CudnnReordered = 6;
   kInputYXOutput = 3;
   kYXInputOutput = 4;
 }

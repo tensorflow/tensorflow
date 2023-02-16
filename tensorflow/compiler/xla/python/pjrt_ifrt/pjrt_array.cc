@@ -22,17 +22,19 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/inlined_vector.h"
-#include "llvm/Support/Casting.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
+#include "tensorflow/compiler/xla/pjrt/utils.h"
 #include "tensorflow/compiler/xla/python/ifrt/array.h"
 #include "tensorflow/compiler/xla/python/ifrt/sharding.h"
+#include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 
 namespace xla {
 namespace ifrt {
 
+char PjRtCompatibleArray::ID = 0;
 char PjRtArray::ID = 0;
 
 StatusOr<xla::PrimitiveType> ToPrimitiveType(DType dtype) {
@@ -192,27 +194,47 @@ Future<Status> PjRtArray::CopyToHostBuffer(
         InvalidArgument("Only single-shard is implemented, but got %d",
                         sharding_->devices().size()));
   }
-  if (byte_strides.has_value()) {
-    return Future<Status>(
-        InvalidArgument("Non-default byte_strides is not yet supported"));
-  }
 
   auto dtype = ToPrimitiveType(dtype_);
   if (!dtype.ok()) {
     return Future<Status>(std::move(dtype).status());
   }
 
-  xla::Shape xla_shape(*dtype, shape_.dims(), /*dynamic_dimensions=*/
-                       absl::InlinedVector<bool, Shape::kInlineDimensionSize>(
-                           /*n=*/shape_.dims().size(), /*v=*/false),
-                       /*tuple_shapes=*/{});
-  xla::LayoutUtil::SetToDefaultLayout(&xla_shape);
-  auto literal = std::make_unique<xla::MutableBorrowingLiteral>(
-      static_cast<char*>(data), xla_shape);
+  PjRtBuffer* pjrt_buffer = pjrt_buffers_.front().get();
+  absl::Span<const int64_t> dims;
+  StatusOr<xla::Shape> dynamic_shape;
+  if (pjrt_buffer->on_device_shape().is_static()) {
+    dims = shape_.dims();
+  } else {
+    // TODO(b/182461453): This is a blocking call. If we further implemented
+    // populating dynamic shape metadata while fetching the literal, we wouldn't
+    // need this static approach.
+    // TODO(hyeontaek): Clean up this dynamic shape access once we formalize
+    // dynamic shape support in IFRT.
+    dynamic_shape = pjrt_buffer->logical_on_device_shape();
+    if (!dynamic_shape.ok()) {
+      return Future<Status>(std::move(dynamic_shape).status());
+    }
+    dims = dynamic_shape->dimensions();
+  }
+
+  std::unique_ptr<xla::MutableBorrowingLiteral> literal;
+  if (byte_strides.has_value()) {
+    auto xla_shape =
+        MakeShapeWithTrivialByteStrides(*dtype, dims, *byte_strides);
+    if (!xla_shape.ok()) {
+      return Future<Status>(std::move(xla_shape).status());
+    }
+    literal = std::make_unique<xla::MutableBorrowingLiteral>(
+        static_cast<char*>(data), *xla_shape);
+  } else {
+    auto xla_shape = ShapeUtil::MakeShapeWithDescendingLayout(*dtype, dims);
+    literal = std::make_unique<xla::MutableBorrowingLiteral>(
+        static_cast<char*>(data), xla_shape);
+  }
   auto* literal_ptr = literal.get();
   auto promise = Future<Status>::CreatePromise();
   Future<Status> future(promise);
-  PjRtBuffer* pjrt_buffer = pjrt_buffers_.front().get();
   // TODO(hyeontaek): Handle semantics == kDonateInput.
   pjrt_buffer->ToLiteral(literal_ptr)
       .OnReady([literal = std::move(literal),
@@ -254,6 +276,13 @@ StatusOr<tsl::RCReference<Array>> PjRtArray::Reshard(
           break;
       }
     } else {
+      if (new_sharding->devices()[i]->client() == nullptr) {
+        return InvalidArgument(
+            "The destination device is owned by a non-PjRt-compatible client. "
+            "To use this Array on the destination device, the Array must be "
+            "first fetched to the host and then sent to the destination "
+            "device.");
+      }
       TF_ASSIGN_OR_RETURN(
           std::unique_ptr<xla::PjRtBuffer> copied_buffer,
           pjrt_buffers_[i]->CopyToDevice(new_sharding->devices()[i]));

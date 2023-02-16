@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/data/service/test_cluster.h"
 
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -68,12 +69,17 @@ Status TestCluster::Initialize() {
   return OkStatus();
 }
 
-Status TestCluster::AddWorker() {
+Status TestCluster::AddWorker(std::optional<int> port) {
   std::unique_ptr<WorkerGrpcDataServer> worker;
   experimental::WorkerConfig config;
+  if (port.has_value()) {
+    config.set_port(*port);
+  }
   config.set_protocol(kProtocol);
   config.set_dispatcher_address(dispatcher_address_);
-  config.set_worker_address("localhost:%port%");
+  std::string worker_address =
+      port.has_value() ? absl::StrCat("localhost:", *port) : "localhost:%port%";
+  config.set_worker_address(worker_address);
   config.set_heartbeat_interval_ms(config_.worker_heartbeat_interval_ms);
   TF_RETURN_IF_ERROR(NewWorkerServer(config, worker));
   TF_RETURN_IF_ERROR(worker->Start());

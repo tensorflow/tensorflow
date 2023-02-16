@@ -14,27 +14,27 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/tfrt/common/pjrt_util.h"
 
-#include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
 #include "tensorflow/compiler/xla/pjrt/tfrt_cpu_pjrt_client.h"
 #include "tensorflow/core/framework/resource_mgr.h"
-#include "tensorflow/core/platform/status_matchers.h"
+#include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/tfrt/common/global_state.h"
 #include "tensorflow/core/tfrt/common/pjrt_state.h"
 #include "tensorflow/tsl/lib/core/status_test_util.h"
+#include "tensorflow/tsl/platform/status_matchers.h"
+#include "tensorflow/tsl/protobuf/error_codes.pb.h"
 
 namespace tensorflow {
 namespace {
 
-using ::tensorflow::testing::StatusIs;
 using ::testing::HasSubstr;
+using ::tsl::testing::StatusIs;
 
 TEST(PjRtUtilTest, SetGetAndDeletePjRtClient) {
   TF_ASSERT_OK(SetPjRtClientInTFGlobalResourceManager(
       DEVICE_CPU,
       xla::GetTfrtCpuClient(/*asynchronous=*/true, /*cpu_device_count=*/1)
           .value()));
-  TF_ASSERT_OK_AND_ASSIGN(auto pjrt_client,
-                          GetPjRtClientFromTFGlobalResourceManager(DEVICE_CPU));
+  TF_ASSERT_OK_AND_ASSIGN(auto pjrt_client, GetPjRtClient(DEVICE_CPU));
   EXPECT_THAT(pjrt_client, ::testing::NotNull());
   TF_ASSERT_OK(
       DeletePjRtClientFromTFGlobalResourceManagerIfResourceExists(DEVICE_CPU));
@@ -61,16 +61,6 @@ TEST(PjRtUtilTest, DeleteNoPjRtStateOk) {
                                         kPjRtStateResourceName);
   TF_ASSERT_OK(
       DeletePjRtClientFromTFGlobalResourceManagerIfResourceExists(DEVICE_TPU));
-}
-
-TEST(PjRtStateResourceManagerTest, GetNotExistPjRtClient) {
-  TF_ASSERT_OK(SetPjRtClientInTFGlobalResourceManager(
-      DEVICE_CPU,
-      xla::GetTfrtCpuClient(/*asynchronous=*/true, /*cpu_device_count=*/1)
-          .value()));
-  EXPECT_THAT(GetPjRtClientFromTFGlobalResourceManager(DEVICE_TPU),
-              StatusIs(error::NOT_FOUND,
-                       HasSubstr("PjRt client not found for device type")));
 }
 
 }  // namespace

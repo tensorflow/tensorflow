@@ -66,6 +66,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <cstddef>
+#include <cstdint>
 #include <cstdlib>
 #include <cstring>
 #include <functional>
@@ -83,6 +84,7 @@ limitations under the License.
 #include "absl/strings/match.h"
 #include "absl/strings/str_format.h"
 #include "absl/synchronization/mutex.h"
+#include "absl/synchronization/notification.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
@@ -112,7 +114,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/stream_executor/device_memory.h"
 #include "tensorflow/compiler/xla/stream_executor/device_memory_allocator.h"
 #include "tensorflow/compiler/xla/stream_executor/host/host_platform_id.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/statusor.h"
 #include "tensorflow/compiler/xla/stream_executor/stream.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
@@ -122,6 +123,7 @@ limitations under the License.
 #include "tensorflow/tsl/platform/mem.h"
 #include "tensorflow/tsl/platform/status.h"
 #include "tensorflow/tsl/platform/statusor.h"
+#include "tensorflow/tsl/platform/threadpool.h"
 #include "tensorflow/tsl/profiler/lib/connected_traceme.h"
 #include "tensorflow/tsl/profiler/lib/traceme.h"
 
@@ -1916,6 +1918,223 @@ PjRtStreamExecutorExecutable::MakeExecutionInputsAndWaitForEvents(
   return execution_inputs;
 }
 
+template <typename T>
+static const T* FindCallback(int channel_id, absl::Span<const T> callbacks) {
+  // TODO(ezhulenev): Can we use binary search here assuming that callbacks
+  // are sorted by channel id? Are they always sorted?
+  auto it = absl::c_find_if(callbacks, [&](const T& callback) {
+    return callback.channel_id == channel_id;
+  });
+  return it == callbacks.end() ? nullptr : &*it;
+}
+
+using tsl::AsyncValueRef;
+using tsl::MakeConstructedAsyncValueRef;
+
+// Converts PjRt SendCallbacks to an XLA StreamExecutor send function.
+static SendDeviceMemoryFunction ConvertSendCallbacksToSendFunction(
+    int device_ordinal, const ExecuteOptions& options,
+    tsl::thread::ThreadPool* thread_pool) {
+  // Check if we have callbacks registered for the given device ordinal.
+  if (device_ordinal >= options.send_callbacks.size()) {
+    return [device_ordinal](int64_t channel_id, se::Stream*, const Shape&,
+                            const se::DeviceMemoryBase&) {
+      return InvalidArgument(
+          "Failed to send a buffer to the channel_id=%d, there was no send "
+          "callbacks registered for the device_ordinal=%d",
+          channel_id, device_ordinal);
+    };
+  }
+
+  // SendCallbacks registered for a device ordinal. Can be empty.
+  absl::Span<const SendCallback> callbacks =
+      options.send_callbacks[device_ordinal];
+
+  return [callbacks, thread_pool](int64_t channel_id, se::Stream* stream,
+                                  const Shape& shape,
+                                  const se::DeviceMemoryBase& src)
+             -> StatusOr<AsyncValueRef<se::Event>> {
+    VLOG(3) << "Send " << src.size() << " bytes to channel #" << channel_id
+            << " (shape=" << shape.ToString() << ")";
+
+    const SendCallback* send = FindCallback(channel_id, callbacks);
+    if (!send) {
+      return InvalidArgument(
+          "Failed to send a buffer to the channel_id=%d, callback not found",
+          channel_id);
+    }
+
+    // Allocate event that will signal completion of send operation. We do not
+    // actually track the completion of the send callback, we only have to keep
+    // the device memory long enough to complete the memcpy command.
+    auto done_event = MakeConstructedAsyncValueRef<se::Event>(stream->parent());
+    if (!done_event->Init())
+      return InternalError("Failed to initialize done event (channel_id=%d)",
+                           channel_id);
+
+    thread_pool->Schedule([done_event, stream, src, channel_id, shape, send] {
+      tsl::profiler::TraceMe trace([&] {
+        return tsl::profiler::TraceMeEncode(
+            "PjRtStreamExecutorExecutable::Send", {{"channel_id", channel_id}});
+      });
+
+      // Allocate chunk on the host for copying data from device.
+      PjRtChunk chunk = PjRtChunk::AllocateDefault(src.size());
+
+      stream->ThenMemcpy(chunk.data(), src, src.size());
+      stream->ThenRecordEvent(&done_event.get());
+
+      // Wait for the data to be available on the host.
+      if (auto st = stream->BlockHostUntilDone(); !st.ok()) {
+        done_event.SetError(absl::InternalError(absl::StrFormat(
+            "failed to synchronize send operation with a stream: %s",
+            st.error_message())));
+        return;
+      }
+
+      // Pass chunk to the registered callback.
+      auto sent = send->callback({shape}, std::move(chunk),
+                                 /*total_size_in_bytes=*/src.size(),
+                                 /*done=*/true);
+
+      if (!sent.ok()) {
+        done_event.SetError(ToAbslStatus(sent));
+      } else {
+        done_event.SetStateConcrete();
+      }
+    });
+
+    return std::move(done_event);
+  };
+}
+
+namespace {
+class StreamExecutorCopyToDeviceStream : public CopyToDeviceStream {
+ public:
+  StreamExecutorCopyToDeviceStream(int64_t channel_id, se::Stream* stream,
+                                   se::DeviceMemoryBase dst,
+                                   AsyncValueRef<se::Event> done)
+      : CopyToDeviceStream(dst.size(), /*granule_bytes=*/1),
+        channel_id_(channel_id),
+        stream_(stream),
+        dst_(dst),
+        done_(std::move(done)) {}
+
+  PjRtFuture<Status> AddChunk(PjRtChunk chunk) final {
+    tsl::profiler::TraceMe trace([&] {
+      return tsl::profiler::TraceMeEncode(
+          "StreamExecutorCopyToDeviceStream::AddChunk",
+          {{"channel_id", channel_id_}});
+    });
+
+    absl::ReleasableMutexLock lock(&mu_);
+
+    VLOG(3) << "Add chunk to a H2D channel #" << channel_id_ << ": "
+            << "size=" << chunk.size() << ", "
+            << "current_bytes=" << current_bytes_ << ", "
+            << "total_bytes=" << total_bytes_;
+
+    if (chunk.size() % granule_size_in_bytes() != 0) {
+      done_.SetError(absl::InvalidArgumentError(absl::StrFormat(
+          "Chunk size (%d) was not a multiple of the granule size (%d)",
+          chunk.size(), granule_size_in_bytes())));
+      return PjRtFuture<Status>(FromAbslStatus(done_.GetError()));
+    }
+
+    if (current_bytes_ + chunk.size() > total_bytes_) {
+      done_.SetError(absl::InvalidArgumentError(
+          absl::StrFormat("Adding chunk of size %d would overflow buffer of "
+                          "size %d (%d already transferred)",
+                          chunk.size(), total_bytes_, current_bytes_)));
+      return PjRtFuture<Status>(FromAbslStatus(done_.GetError()));
+    }
+
+    se::DeviceMemoryBase dst(
+        reinterpret_cast<std::byte*>(dst_.opaque()) + current_bytes_,
+        dst_.size() - current_bytes_);
+
+    current_bytes_ += chunk.size();
+    bool complete = IsCompleteLocked();
+    lock.Release();
+
+    stream_->ThenMemcpy(&dst, chunk.data(), chunk.size());
+
+    // Delete chunk once the memcpy operation completes.
+    auto* chunk_ptr = std::make_unique<PjRtChunk>(std::move(chunk)).release();
+    stream_->ThenDoHostCallback([chunk_ptr]() { delete chunk_ptr; });
+
+    // Record done event once processed the last chunk. It is the caller
+    // responsibility to synchronize with this event before submitting any new
+    // computations to the stream.
+    if (complete) {
+      stream_->ThenRecordEvent(&done_.get());
+      done_.SetStateConcrete();
+    }
+
+    return PjRtFuture<Status>(OkStatus());
+  }
+
+ private:
+  int64_t channel_id_;
+  se::Stream* stream_;
+  se::DeviceMemoryBase dst_;
+
+  // Async value will become available after we'll submit the last memcpy
+  // operation, and the event will be recorded on the stream.
+  AsyncValueRef<se::Event> done_;
+};
+}  // namespace
+
+static RecvDeviceMemoryFunction ConvertRecvCallbacksToRecvFunction(
+    int device_ordinal, const ExecuteOptions& options) {
+  // Check if we have callbacks registered for the given device ordinal.
+  if (device_ordinal >= options.send_callbacks.size()) {
+    return [device_ordinal](int64_t channel_id, se::Stream*, const Shape&,
+                            se::DeviceMemoryBase*) {
+      return InvalidArgument(
+          "Failed to receive a buffer from the channel_id=%d, there was no "
+          "recv callbacks registered for the device_ordinal=%d",
+          channel_id, device_ordinal);
+    };
+  }
+
+  // RecvCallbacks registered for a device ordinal. Can be empty.
+  absl::Span<const RecvCallback> callbacks =
+      options.recv_callbacks[device_ordinal];
+
+  return [callbacks](
+             int64_t channel_id, se::Stream* stream, const Shape& shape,
+             se::DeviceMemoryBase* dst) -> StatusOr<AsyncValueRef<se::Event>> {
+    VLOG(3) << "Recv from channel #" << channel_id
+            << " (shape=" << shape.ToString() << ")";
+
+    tsl::profiler::TraceMe trace([&] {
+      return tsl::profiler::TraceMeEncode("PjRtStreamExecutorExecutable::Recv",
+                                          {{"channel_id", channel_id}});
+    });
+
+    const RecvCallback* recv = FindCallback(channel_id, callbacks);
+    if (!recv) {
+      return InvalidArgument(
+          "Failed to recv a buffer from the channel_id=%d, callback not found",
+          channel_id);
+    }
+
+    // Allocate event that will signal completion of recv operation. We record
+    // it on a stream after submitting the memcpy for the last chunk (see
+    // `StreamExecutorCopyToDeviceStream` implementation above).
+    auto done_event = MakeConstructedAsyncValueRef<se::Event>(stream->parent());
+    if (!done_event->Init())
+      return InternalError("Failed to initialize done event (channel_id=%d)",
+                           channel_id);
+
+    recv->callback({shape}, std::make_unique<StreamExecutorCopyToDeviceStream>(
+                                channel_id, stream, *dst, done_event));
+
+    return std::move(done_event);
+  };
+}
+
 // Enqueues a computation onto the compute stream. Each buffer returned in
 // device_buffers has a usage hold added that must be dropped on error or
 // converted on success.
@@ -2020,9 +2239,20 @@ StatusOr<ScopedShapedBuffer> PjRtStreamExecutorExecutable::EnqueueExecution(
           on_device_executable_parameter_shapes_[executable_idx],
           argument_handles, *device_buffers, events));
 
+  // Schedule async send operations in the client thread pool.
+  auto* thread_pool = client_->thread_pool();
+
+  // Create a PjRt<->StreamExecutor adaptors to send/recv device memory as
+  // PjRt chunks via the user-provided callbacks.
+  SendDeviceMemoryFunction send_device_memory =
+      ConvertSendCallbacksToSendFunction(device_ordinal, options, thread_pool);
+  RecvDeviceMemoryFunction recv_device_memory =
+      ConvertRecvCallbacksToRecvFunction(device_ordinal, options);
+
   ExecutableRunOptions run_options;
   run_options.set_stream(device_state->compute_stream());
   run_options.set_host_to_device_stream(device_state->host_to_device_stream());
+  run_options.set_device_to_host_stream(device_state->GetDeviceToHostStream());
   run_options.set_allocator(client_->allocator());
   run_options.set_intra_op_thread_pool(
       client_->client()->backend().eigen_intra_op_thread_pool_device());
@@ -2031,6 +2261,8 @@ StatusOr<ScopedShapedBuffer> PjRtStreamExecutorExecutable::EnqueueExecution(
   run_options.set_rng_seed(device_state->GetNewPrngSeed());
   run_options.set_gpu_executable_run_options(client_->gpu_run_options());
   run_options.set_launch_id(options.launch_id);
+  run_options.set_send_device_memory_function(&send_device_memory);
+  run_options.set_recv_device_memory_function(&recv_device_memory);
   if (run_options.launch_id() != 0) {
     VLOG(3) << "launch id for " << name() << ": " << run_options.launch_id();
   }
@@ -2594,6 +2826,10 @@ StatusOr<std::string> PjRtStreamExecutorClient::SerializeExecutable(
 StatusOr<std::unique_ptr<PjRtLoadedExecutable>>
 PjRtStreamExecutorClient::DeserializeExecutable(
     absl::string_view serialized, std::optional<CompileOptions> options) {
+  if (serialized.empty()) {
+    return InternalError("Serialized executable is empty");
+  }
+
   if (!options.has_value()) {
     return InvalidArgument(
         "PjRtStreamExecutorClient requires `CompileOptions` for "
@@ -2603,12 +2839,6 @@ PjRtStreamExecutorClient::DeserializeExecutable(
   tsl::profiler::TraceMe traceme(
       "PjRtStreamExecutorClient::DeserializeExecutable");
   VLOG(1) << "PjRtStreamExecutorClient::DeserializeExecutable";
-
-  std::string xla_flags(std::getenv("XLA_FLAGS"));
-  if (!absl::StrContains(xla_flags,
-                         "--xla_gpu_enable_xla_runtime_executable=true")) {
-    return InternalError("Desirialization requires enabling JitRt");
-  }
 
   TF_ASSIGN_OR_RETURN(ExecutableExtras extras, GetExecutableExtras(&*options));
   std::shared_ptr<DeviceAssignment>& device_assignment =

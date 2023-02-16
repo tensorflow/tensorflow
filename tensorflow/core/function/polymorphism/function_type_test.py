@@ -571,7 +571,7 @@ class TypeHierarchyTest(test.TestCase):
       def most_specific_common_supertype(self, others):
         return self
 
-      def placeholder_value(self, placeholder_context=None):
+      def placeholder_value(self, placeholder_context):
         raise NotImplementedError
 
       def __eq__(self, other):
@@ -590,7 +590,7 @@ class TypeHierarchyTest(test.TestCase):
       def most_specific_common_supertype(self, others):
         return supertype
 
-      def placeholder_value(self, placeholder_context=None):
+      def placeholder_value(self, placeholder_context):
         raise NotImplementedError
 
       def __eq__(self, other):
@@ -705,6 +705,7 @@ class SanitizationTest(test.TestCase):
     self.assertEqual("a___", function_type.sanitize_arg_name("a%$#"))
     self.assertEqual("arg____", function_type.sanitize_arg_name("%$#"))
     self.assertEqual("foo", function_type.sanitize_arg_name("foo"))
+    self.assertEqual("Foo", function_type.sanitize_arg_name("Foo"))
     self.assertEqual("arg_96ab_cd___53",
                      function_type.sanitize_arg_name("96ab.cd//?53"))
 

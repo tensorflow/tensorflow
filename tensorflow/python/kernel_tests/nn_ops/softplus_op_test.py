@@ -17,6 +17,7 @@
 import numpy as np
 
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import gradient_checker
 from tensorflow.python.ops import gradients_impl
@@ -37,19 +38,31 @@ class SoftplusTest(test.TestCase):
     with self.cached_session(use_gpu=use_gpu):
       softplus = nn_ops.softplus(np_features)
       tf_softplus = self.evaluate(softplus)
-    self.assertAllCloseAccordingToType(np_softplus, tf_softplus)
+    self.assertAllCloseAccordingToType(
+        np_softplus, tf_softplus, bfloat16_rtol=5e-2, bfloat16_atol=5e-2
+    )
     self.assertTrue(np.all(tf_softplus > 0))
     self.assertShapeEqual(np_softplus, softplus)
 
   def testNumbers(self):
-    for t in [np.float16, np.float32, np.float64]:
+    for t in [
+        np.float16,
+        np.float32,
+        np.float64,
+        dtypes.bfloat16.as_numpy_dtype,
+    ]:
       self._testSoftplus(
           np.array([[-9, 7, -5, 3, -1], [1, -3, 5, -7, 9]]).astype(t),
           use_gpu=False)
       self._testSoftplus(
           np.array([[-9, 7, -5, 3, -1], [1, -3, 5, -7, 9]]).astype(t),
           use_gpu=True)
-      log_eps = np.log(np.finfo(t).eps)
+      if t == dtypes.bfloat16.as_numpy_dtype:
+        # bfloat16 dtype doesn't have finfo.
+        # Calculate epsilon using machine_epsilon = base ^ (-(precision - 1))
+        log_eps = np.log(2 ** (-(8 - 1)))
+      else:
+        log_eps = np.log(np.finfo(t).eps)
       one = t(1)
       ten = t(10)
       self._testSoftplus(

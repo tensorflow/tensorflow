@@ -65,8 +65,8 @@ cc_library(
     name = "gpu_diagnostics_header",
     hdrs = if_gpu_is_configured(["gpu_diagnostics.h"]),
     deps = [
-        "//tensorflow/compiler/xla/stream_executor/lib",
         "//tensorflow/compiler/xla/stream_executor/platform",
+        "//tensorflow/tsl/platform:statusor",
     ],
 )
 
@@ -82,8 +82,9 @@ cc_library(
     deps = [
         ":gpu_types_header",
         "//tensorflow/compiler/xla/stream_executor:device_options",
-        "//tensorflow/compiler/xla/stream_executor/lib",
         "//tensorflow/compiler/xla/stream_executor/platform",
+        "//tensorflow/tsl/platform:status",
+        "//tensorflow/tsl/platform:statusor",
     ] + if_libtpu(
         if_false = ["@local_config_cuda//cuda:cuda_headers"],
         if_true = [],
@@ -97,7 +98,6 @@ cc_library(
         ":gpu_driver_header",
         ":gpu_stream_header",
         "//tensorflow/compiler/xla/stream_executor:event",
-        "//tensorflow/compiler/xla/stream_executor/lib",
     ]),
 )
 
@@ -110,7 +110,8 @@ cc_library(
         ":gpu_executor_header",
         ":gpu_stream",
         "//tensorflow/compiler/xla/stream_executor:stream_executor_headers",
-        "//tensorflow/compiler/xla/stream_executor/lib",
+        "//tensorflow/tsl/platform:status",
+        "//tensorflow/tsl/platform:statusor",
     ],
 )
 
@@ -122,12 +123,13 @@ cc_library(
         "//tensorflow/compiler/xla/stream_executor:event",
         "//tensorflow/compiler/xla/stream_executor:platform",
         "//tensorflow/compiler/xla/stream_executor:stream_executor_pimpl_header",
-        "//tensorflow/compiler/xla/stream_executor/lib",
         "//tensorflow/compiler/xla/stream_executor/platform",
         "//tensorflow/tsl/platform:fingerprint",
-        "//tensorflow/tsl/platform:logging",
+        "//tensorflow/tsl/platform:status",
+        "//tensorflow/tsl/platform:statusor",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/functional:any_invocable",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -150,7 +152,7 @@ tsl_gpu_library(
         "//tensorflow/tsl:internal",
     ],
     deps = [
-        "//tensorflow/compiler/xla/stream_executor/lib",
+        "//tensorflow/tsl/platform:status",
     ] + if_static(
         [":gpu_init_impl"],
     ),
@@ -175,8 +177,9 @@ tsl_gpu_library(
     deps = [
         "//tensorflow/compiler/xla/stream_executor:multi_platform_manager",
         "//tensorflow/compiler/xla/stream_executor:platform",
-        "//tensorflow/compiler/xla/stream_executor/lib",
         "//tensorflow/tsl/platform:logging",
+        "//tensorflow/tsl/platform:status",
+        "//tensorflow/tsl/platform:statusor",
     ],
     alwayslink = True,
 )
@@ -223,7 +226,7 @@ cc_library(
         ":gpu_driver_header",
         ":gpu_executor_header",
         "//tensorflow/compiler/xla/stream_executor:stream_executor_headers",
-        "//tensorflow/compiler/xla/stream_executor/lib",
+        "//tensorflow/tsl/platform:status",
         "@com_google_absl//absl/base:core_headers",
     ],
 )
@@ -247,7 +250,7 @@ cc_library(
         ":gpu_executor_header",
         ":gpu_stream",
         "//tensorflow/compiler/xla/stream_executor:stream_executor_headers",
-        "//tensorflow/compiler/xla/stream_executor/lib",
+        "//tensorflow/tsl/platform:status",
     ],
 )
 
@@ -300,7 +303,6 @@ cc_library(
         "//tensorflow/tsl/platform:path",
         "//tensorflow/tsl/platform:cuda_libdevice_path",
         "//tensorflow/compiler/xla/stream_executor:stream_executor_headers",
-        "//tensorflow/compiler/xla/stream_executor/lib",
         "//tensorflow/compiler/xla/stream_executor/platform",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
@@ -312,7 +314,7 @@ cc_library(
         "//tensorflow/compiler/xla/stream_executor/cuda:cuda_driver",
     ]) + if_rocm_is_configured([
         "//tensorflow/compiler/xla/stream_executor/rocm:rocm_driver",
-    ]),
+    ]) + ["//tensorflow/tsl/platform:statusor"],
 )
 
 cc_library(
@@ -340,7 +342,6 @@ cc_library(
         "//tensorflow/tsl/platform:path",
         "//tensorflow/tsl/platform:cuda_libdevice_path",
         "//tensorflow/compiler/xla/stream_executor:stream_executor_headers",
-        "//tensorflow/compiler/xla/stream_executor/lib",
         "//tensorflow/compiler/xla/stream_executor/platform",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
@@ -356,7 +357,7 @@ cc_library(
         "//tensorflow/compiler/xla/stream_executor/cuda:fatbinary_wrapper",
     ]) + if_rocm_is_configured([
         "//tensorflow/compiler/xla/stream_executor/rocm:rocm_driver",
-    ]),
+    ]) + ["//tensorflow/tsl/platform:statusor"],
 )
 
 cc_library(
@@ -411,7 +412,6 @@ tsl_gpu_library(
     hdrs = ["gpu_cudamallocasync_allocator.h"],
     cuda_deps = [
         "//tensorflow/compiler/xla/stream_executor/cuda:cuda_activation",
-        "//tensorflow/compiler/xla/stream_executor/cuda:cuda_platform",
     ],
     deps = [
         ":gpu_init_impl",

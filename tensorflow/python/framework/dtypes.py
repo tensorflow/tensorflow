@@ -213,7 +213,7 @@ class DType(
     return self if all(self == other for other in types) else None
 
   @doc_controls.do_not_doc_inheritable
-  def placeholder_value(self, placeholder_context=None):
+  def placeholder_value(self, placeholder_context):
     """TensorShape does not support placeholder values."""
     raise NotImplementedError
 
@@ -262,7 +262,6 @@ trace_type.register_serializable(DType)
 # Define data type range of numpy dtype
 dtype_range = {
     np.bool_: (False, True),
-    np.bool8: (False, True),
     np.uint8: (0, 255),
     np.uint16: (0, 65535),
     np.int8: (-128, 127),

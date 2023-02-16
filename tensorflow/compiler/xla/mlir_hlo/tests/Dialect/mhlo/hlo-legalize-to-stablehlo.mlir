@@ -1,4 +1,5 @@
 // RUN: mlir-hlo-opt --hlo-legalize-to-stablehlo --mlir-print-op-generic --split-input-file --verify-diagnostics %s | FileCheck %s
+// RUN: mlir-hlo-opt --hlo-legalize-to-stablehlo=allow-experimental-features --mlir-print-op-generic --split-input-file --verify-diagnostics %s | FileCheck %s
 
 // ============ ATTRIBUTES ============
 
@@ -151,19 +152,6 @@ func.func @attr_custom_call_api_version_status_returning_unified(%arg0: tensor<f
 }
 // CHECK-LABEL: "attr_custom_call_api_version_status_returning_unified"
 
-func.func @attr_custom_call_api_version_typed_ffi(%arg0: tensor<f32>) -> tensor<f32> {
-  //      CHECK: "stablehlo.custom_call"(%arg0) {
-  // CHECK-SAME:    backend_config = "{api_version = 4 : i32, call_target_name = \22foo\22}",
-  // CHECK-SAME:    call_target_name = "mhlo.custom_call"
-  // CHECK-SAME: } : (tensor<f32>) -> tensor<f32>
-  %0 = "mhlo.custom_call"(%arg0) {
-    call_target_name = "foo",
-    api_version = 4 : i32
-  } : (tensor<f32>) -> tensor<f32>
-  func.return %0 : tensor<f32>
-}
-// CHECK-LABEL: "attr_custom_call_api_version_typed_ffi"
-
 // CustomCallSchedule aka #mhlo<custom_call_schedule> is unsupported at the moment (see negative test below).
 // DequantizeMode aka #mhlo<dequantize_mode> is unused at the moment.
 // DomainKind aka #mhlo<kind> is unsupported at the moment (see negative test below).
@@ -238,18 +226,6 @@ func.func @attr_precision_highest(%arg0: tensor<8x16xf32>, %arg1: tensor<16x8xf3
   func.return %0 : tensor<8x8xf32>
 }
 // CHECK-LABEL: "attr_precision_highest"
-
-func.func @attr_precision_packed_nibble(%arg0: tensor<8x16xf32>, %arg1: tensor<16x8xf32>) -> tensor<8x8xf32> {
-  //      CHECK: "stablehlo.custom_call"(%arg0, %arg1) {
-  // CHECK-SAME:    backend_config = "{precision_config = [#mhlo<precision PACKED_NIBBLE>]}",
-  // CHECK-SAME:    call_target_name = "mhlo.dot"
-  // CHECK-SAME: } : (tensor<8x16xf32>, tensor<16x8xf32>) -> tensor<8x8xf32>
-  %0 = "mhlo.dot"(%arg0, %arg1) {
-    precision_config = [#mhlo<precision PACKED_NIBBLE>]
-  } : (tensor<8x16xf32>, tensor<16x8xf32>) -> tensor<8x8xf32>
-  func.return %0 : tensor<8x8xf32>
-}
-// CHECK-LABEL: "attr_precision_packed_nibble"
 
 func.func @attr_rng_algorithm_default(%arg0: tensor<f32>) -> (tensor<f32>, tensor<f32>) {
   %0:2 = "mhlo.rng_bit_generator"(%arg0) {
@@ -425,17 +401,6 @@ func.func @op_all_to_all(%arg0: tensor<4x16xf32>) -> tensor<16x4xf32> {
     channel_handle = #mhlo.channel_handle<handle = 1, type = 0>
   } : (tensor<4x16xf32>) -> tensor<16x4xf32>
   func.return %0 : tensor<16x4xf32>
-}
-
-func.func @op_all_to_all_tuple(%arg0: tensor<128x4xf32>, %arg1: tensor<128x4xf32>) -> (tensor<128x4xf32>, tensor<128x4xf32>) {
-  //               CHECK: "stablehlo.custom_call"(%arg0, %arg1) {
-  // CHECK-SAME{LITERAL}:    backend_config = "{replica_groups = dense<[[0, 1]]> : tensor<1x2xi64>}",
-  //          CHECK-SAME:    call_target_name = "mhlo.all_to_all"
-  //          CHECK-SAME: } : (tensor<128x4xf32>, tensor<128x4xf32>)
-  %0:2 = "mhlo.all_to_all"(%arg0, %arg1) {
-    replica_groups = dense<[[0, 1]]> : tensor<1x2xi64>
-  } : (tensor<128x4xf32>, tensor<128x4xf32>) -> (tensor<128x4xf32>, tensor<128x4xf32>)
-  return %0#0, %0#1 : tensor<128x4xf32>, tensor<128x4xf32>
 }
 
 func.func @op_and(%arg0: tensor<i1>, %arg1: tensor<i1>) -> tensor<i1> {
@@ -739,20 +704,6 @@ func.func @op_custom_call_api_version_original(%arg0: tensor<f32>) -> tensor<f32
   func.return %0 : tensor<f32>
 }
 // CHECK-LABEL: "op_custom_call_api_version_original"
-
-func.func @op_custom_call_api_version_typed_ffi(%arg0: tensor<f32>) -> tensor<f32> {
-  //      CHECK: "stablehlo.custom_call"(%arg0) {
-  // CHECK-SAME:   backend_config = "{api_version = 4 : i32, backend_config = {foo = \22bar\22}, call_target_name = \22foo\22}"
-  // CHECK-SAME:   call_target_name = "mhlo.custom_call"
-  // CHECK-SAME: } : (tensor<f32>) -> tensor<f32>
-  %0 = "mhlo.custom_call"(%arg0) {
-    call_target_name = "foo",
-    backend_config = {foo = "bar"},
-    api_version = 4 : i32
-  } : (tensor<f32>) -> tensor<f32>
-  return %0 : tensor<f32>
-}
-// CHECK-LABEL: "op_custom_call_api_version_typed_ffi"
 
 func.func @op_divide(%arg0: tensor<f32>, %arg1: tensor<f32>) -> tensor<f32> {
   // CHECK: "stablehlo.divide"(%arg0, %arg1) : (tensor<f32>, tensor<f32>) -> tensor<f32>
@@ -1885,7 +1836,19 @@ func.func @type_tuple(%arg0: tuple<tensor<f32>>) -> tuple<!mhlo.token> {
 
 // ============ NEGATIVE TESTS ============
 // Some ops, attributes and types used in MHLO programs are not supported in StableHLO.
-// For those cases, we have negative tests below.
+// The following features are private, and not convertable to StableHLO even
+// with the experimental flag.
+
+// -----
+
+func.func @attr_precision_config_invalid() -> tensor<8x8xf32> {
+  // expected-error@+1 {{failed to legalize operation 'mhlo.custom_call' that was explicitly marked illegal}}
+  %0 = "mhlo.custom_call"() {
+    call_target_name = "foo",
+    precision_config = [#mhlo<precision PACKED_NIBBLE>, 1 : i32]
+  } : () -> tensor<8x8xf32>
+  func.return %0 : tensor<8x8xf32>
+}
 
 // -----
 

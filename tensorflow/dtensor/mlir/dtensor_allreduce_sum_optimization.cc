@@ -253,8 +253,10 @@ void OptimizeIdentityLikeOps(mlir::Operation* op, bool* changed) {
 
   mlir::Value op_output = op->getResult(0);
   dtensor_all_reduce.setOperand(0, op_output);
-  dtensor_all_reduce.getInput().setType(op_output.getType());
-  dtensor_all_reduce.getOutput().setType(op_output.getType());
+  dtensor_all_reduce.getInput().setType(
+      op_output.getType().cast<mlir::TensorType>());
+  dtensor_all_reduce.getOutput().setType(
+      op_output.getType().cast<mlir::TensorType>());
 
   llvm::SmallPtrSet<mlir::Operation*, 4> exceptions{dtensor_all_reduce};
   op_output.replaceAllUsesExcept(dtensor_all_reduce.getOutput(), exceptions);

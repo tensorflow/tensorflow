@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 // Unit test for TFLite Sequential LSTM op.
 
+#include <tuple>
 #include <vector>
 
 #include <gmock/gmock.h>
@@ -28,83 +29,6 @@ namespace tflite {
 namespace {
 
 using ::testing::ElementsAreArray;
-
-// The hybrid model has quantized weights.
-class HybridUnidirectionalLSTMOpModel : public UnidirectionalLSTMOpModel {
- public:
-  HybridUnidirectionalLSTMOpModel(
-      int n_batch, int n_input, int n_cell, int n_output, int sequence_length,
-      bool time_major, bool use_cifg, bool use_peephole,
-      bool use_projection_weights, bool use_projection_bias, float cell_clip,
-      float proj_clip, const std::vector<std::vector<int>>& input_shapes,
-      TensorType tensor_type, bool asymmetric_quantize_inputs)
-      : UnidirectionalLSTMOpModel(
-            n_batch, n_input, n_cell, n_output, sequence_length, time_major,
-            use_cifg, use_peephole, use_projection_weights, use_projection_bias,
-            cell_clip, proj_clip, input_shapes, tensor_type, false,
-            asymmetric_quantize_inputs) {
-    tensor_type_ = tensor_type;
-  }
-
-  void SetWeights(int weights_idx, const std::vector<float>& f) {
-    if (tensor_type_ == TensorType_UINT8) {
-      SymmetricQuantizeAndPopulate(weights_idx, f);
-    } else {
-      SignedSymmetricQuantizeAndPopulate(weights_idx, f);
-    }
-  }
-
-  void SetInputToInputWeights(const std::vector<float>& f) {
-    SetWeights(input_to_input_weights_, f);
-  }
-
-  void SetInputToForgetWeights(const std::vector<float>& f) {
-    SetWeights(input_to_forget_weights_, f);
-  }
-
-  void SetInputToCellWeights(const std::vector<float>& f) {
-    SetWeights(input_to_cell_weights_, f);
-  }
-
-  void SetInputToOutputWeights(const std::vector<float>& f) {
-    SetWeights(input_to_output_weights_, f);
-  }
-
-  void SetRecurrentToInputWeights(const std::vector<float>& f) {
-    SetWeights(recurrent_to_input_weights_, f);
-  }
-
-  void SetRecurrentToForgetWeights(const std::vector<float>& f) {
-    SetWeights(recurrent_to_forget_weights_, f);
-  }
-
-  void SetRecurrentToCellWeights(const std::vector<float>& f) {
-    SetWeights(recurrent_to_cell_weights_, f);
-  }
-
-  void SetRecurrentToOutputWeights(const std::vector<float>& f) {
-    SetWeights(recurrent_to_output_weights_, f);
-  }
-
-  void SetCellToInputWeights(const std::vector<float>& f) {
-    SetWeights(cell_to_input_weights_, f);
-  }
-
-  void SetCellToForgetWeights(const std::vector<float>& f) {
-    SetWeights(cell_to_forget_weights_, f);
-  }
-
-  void SetCellToOutputWeights(const std::vector<float>& f) {
-    SetWeights(cell_to_output_weights_, f);
-  }
-
-  void SetProjectionWeights(const std::vector<float>& f) {
-    SetWeights(projection_weights_, f);
-  }
-
- protected:
-  TensorType tensor_type_;
-};
 
 class BaseUnidirectionalLstmTest : public ::testing::TestWithParam<bool> {
  protected:
@@ -3095,6 +3019,369 @@ TEST(IntegerUnidirectionalSequenceLstmOpTest,
   lstm.SetInput(lstm_input);
   ASSERT_EQ(lstm.Invoke(), kTfLiteOk);
   EXPECT_THAT(lstm.GetOutput(), ElementsAreArray(expected_output));
+}
+
+class IndyLSTMOpTest
+    : public ::testing::TestWithParam<std::tuple<bool, bool, bool>> {};
+
+INSTANTIATE_TEST_SUITE_P(
+    PeepHoleAndCifg, IndyLSTMOpTest,
+    testing::Combine(/*use_cifg=*/testing::Bool(),
+                     /*use_peephole=*/testing::Bool(),
+                     /*asymmetric_quantize_inputs=*/testing::Bool()));
+
+TEST_P(IndyLSTMOpTest, HybridCheckThatDiagAndNonDiagRecurrentWeightsAreEqual) {
+  const int n_batch = 1;
+  const int n_input = 2;
+  // n_cell and n_output have the same size when diagonal recurrent weights are
+  // used.
+  const int n_cell = 4;
+  const int n_output = 4;
+  const int sequence_length = 3;
+  auto params = GetParam();
+  const bool use_cifg = std::get<0>(params);
+  const bool use_peephole = std::get<1>(params);
+  const bool asymmetric_quantize_inputs = std::get<2>(params);
+
+  // Populates the non-recurrent weights of a LSTM/IndyLSTM model with the same
+  // values.
+  auto SetLstmWeights = [&](HybridUnidirectionalLSTMOpModel& model) -> void {
+    if (!use_cifg) {
+      model.SetInputToInputWeights({-0.45018822, -0.02338299, -0.0870589,
+                                    -0.34550029, 0.04266912, -0.15680569,
+                                    -0.34856534, 0.43890524});
+    }
+
+    model.SetInputToCellWeights({-0.50013041, 0.1370284, 0.11810488, 0.2013163,
+                                 -0.20583314, 0.44344562, 0.22077113,
+                                 -0.29909778});
+
+    model.SetInputToForgetWeights({0.09701663, 0.20334584, -0.50592935,
+                                   -0.31343272, -0.40032279, 0.44781327,
+                                   0.01387155, -0.35593212});
+
+    model.SetInputToOutputWeights({-0.25065863, -0.28290087, 0.04613829,
+                                   0.40525138, 0.44272184, 0.03897077,
+                                   -0.1556896, 0.19487578});
+
+    if (!use_cifg) {
+      model.SetInputGateBias({0., 0., 0., 0.});
+    }
+
+    model.SetCellBias({0., 0., 0., 0.});
+
+    model.SetForgetGateBias({1., 1., 1., 1.});
+
+    model.SetOutputGateBias({0., 0., 0., 0.});
+    if (use_peephole) {
+      if (!use_cifg) {
+        model.SetCellToInputWeights(
+            {0.040369894,  0.030746894,  0.24704495,   0.018586371,
+             -0.037586458, -0.15312155,  -0.11812848,  -0.11465643,
+             0.20259799,   0.11418174,   -0.10116027,  -0.011334949,
+             0.12411352,   -0.076769054, -0.052169047, 0.21198851,
+             -0.38871562,  -0.09061183,  -0.09683246,  -0.21929175});
+      }
+      model.SetCellToForgetWeights(
+          {0.47485286, -0.51955009, -0.24458408, 0.31544167});
+      model.SetCellToOutputWeights(
+          {-0.17135078, 0.82760304, 0.85573703, -0.77109635});
+    }
+  };
+
+  std::vector<int> input_weights_shape{n_cell, n_input};
+  if (use_cifg) {
+    input_weights_shape = std::vector<int>{0, 0};
+  }
+  std::vector<int> recurrent_to_input_weights_shape{n_cell, n_output};
+  if (use_cifg) {
+    input_weights_shape = std::vector<int>{0, 0};
+  }
+  // Input shapes common to both the LSTM and IndyLSTM models.
+  std::vector<std::vector<int>> input_shapes = {
+      {sequence_length, n_batch, n_input},  // input tensor
+
+      // Forward cell
+      input_weights_shape,  // input_to_input_weight tensor
+      {n_cell, n_input},    // input_to_forget_weight tensor
+      {n_cell, n_input},    // input_to_cell_weight tensor
+      {n_cell, n_input},    // input_to_output_weight tensor
+
+      recurrent_to_input_weights_shape,  // recurrent_to_input_weight tensor
+      {n_cell, n_output},                // recurrent_to_forget_weight tensor
+      {n_cell, n_output},                // recurrent_to_cell_weight tensor
+      {n_cell, n_output},                // recurrent_to_output_weight tensor
+
+      {(use_peephole & !use_cifg) ? n_cell : 0},  // cell_to_input_weight tensor
+      {use_peephole ? n_cell : 0},  // cell_to_forget_weight tensor
+      {use_peephole ? n_cell : 0},  // cell_to_output_weight tensor
+
+      {n_cell},  // input_gate_bias tensor
+      {n_cell},  // forget_gate_bias tensor
+      {n_cell},  // cell_bias tensor
+      {n_cell},  // output_gate_bias tensor
+
+      {0, 0},  // projection_weight tensor
+      {0},     // projection_bias tensor
+
+      {n_batch, n_output},  // output_state tensor
+      {n_batch, n_cell},    // cell_state tensor
+  };
+
+  // Build a regular bidirectional LSTM with full diagonal recurrent matrices.
+  HybridUnidirectionalLSTMOpModel lstm(
+      n_batch, n_input, n_cell, n_output, sequence_length, /*time_major=*/true,
+      /*use_cifg=*/use_cifg,
+      /*use_peephole=*/use_peephole,
+      /*use_projection_weights=*/false,
+      /*use_projection_bias=*/false,
+      /*cell_clip=*/0.0,
+      /*proj_clip=*/0.0, input_shapes, TensorType_UINT8,
+      asymmetric_quantize_inputs, /*diagonal_recurrent_weights=*/false);
+
+  if (!use_cifg) {
+    lstm.SetRecurrentToInputWeights({-0.0063535, 0.0, 0.0, 0.0,  //
+                                     0.0, 0.08183324, 0.0, 0.0,  //
+                                     0.0, 0.0, 0.48091322, 0.0,  //
+                                     0.0, 0.0, 0.0, 0.10629296});
+  }
+
+  lstm.SetRecurrentToCellWeights({-0.3407414, 0.0, 0.0, 0.0,   //
+                                  0.0, -0.00123841, 0.0, 0.0,  //
+                                  0.0, 0.0, -0.501764, 0.0,    //
+                                  0.0, 0.0, 0.0, -0.16368064});
+
+  lstm.SetRecurrentToForgetWeights({-0.48684245, 0.0, 0.0, 0.0,  //
+                                    0.0, 0.20864892, 0.0, 0.0,   //
+                                    0.0, 0.0, 0.36447752, 0.0,   //
+                                    0.0, 0.0, 0.0, -0.01140004});
+
+  lstm.SetRecurrentToOutputWeights({0.43385774, 0.0, 0.0, 0.0,   //
+                                    0.0, -0.39835793, 0.0, 0.0,  //
+                                    0.0, 0.0, 0.20047462, 0.0,   //
+                                    0.0, 0.0, 0.0, 0.39922136});
+
+  input_shapes[5] = {n_cell};  // recurrent_to_input_weight tensor
+  input_shapes[6] = {n_cell};  // recurrent_to_forget_weight tensor
+  input_shapes[7] = {n_cell};  // recurrent_to_cell_weight tensor
+  input_shapes[8] = {n_cell};  // recurrent_to_output_weight tensor
+
+  // Build a regular unidirectional LSTM with full diagonal recurrent matrices.
+  HybridUnidirectionalLSTMOpModel indy_lstm(
+      n_batch, n_input, n_cell, n_output, sequence_length, /*time_major=*/true,
+      /*use_cifg=*/use_cifg,
+      /*use_peephole=*/use_peephole,
+      /*use_projection_weights=*/false,
+      /*use_projection_bias=*/false,
+      /*cell_clip=*/0.0,
+      /*proj_clip=*/0.0, input_shapes, TensorType_UINT8,
+      asymmetric_quantize_inputs, /*diagonal_recurrent_weights=*/true);
+  SetLstmWeights(lstm);
+  SetLstmWeights(indy_lstm);
+  if (!use_cifg) {
+    indy_lstm.SetRecurrentToInputWeights(
+        {-0.0063535, 0.08183324, 0.48091322, 0.10629296});
+  }
+
+  indy_lstm.SetRecurrentToCellWeights(
+      {-0.3407414, -0.00123841, -0.501764, -0.16368064});
+
+  indy_lstm.SetRecurrentToForgetWeights(
+      {-0.48684245, 0.20864892, 0.36447752, -0.01140004});
+
+  indy_lstm.SetRecurrentToOutputWeights(
+      {0.43385774, -0.39835793, 0.20047462, 0.39922136});
+
+  // Input should have n_input * sequence_length many values.
+  static float lstm_input[] = {2., 3., 3., 4., 1., 1.};
+  float* batch0_start = lstm_input;
+  float* batch0_end = batch0_start + lstm.num_inputs() * lstm.sequence_length();
+
+  lstm.SetInput(0, batch0_start, batch0_end);
+  indy_lstm.SetInput(0, batch0_start, batch0_end);
+
+  ASSERT_EQ(lstm.Invoke(), kTfLiteOk);
+  ASSERT_EQ(indy_lstm.Invoke(), kTfLiteOk);
+
+  EXPECT_THAT(indy_lstm.GetOutput(),
+              ElementsAreArray(ArrayFloatNear(lstm.GetOutput(), 1e-3)));
+}
+
+TEST_P(IndyLSTMOpTest, CheckThatDiagAndNonDiagRecurrentWeightsAreEqual) {
+  const int n_batch = 1;
+  const int n_input = 2;
+  // n_cell and n_output have the same size when diagonal recurrent weights are
+  // used.
+  const int n_cell = 4;
+  const int n_output = 4;
+  const int sequence_length = 3;
+  auto params = GetParam();
+  const bool use_cifg = std::get<0>(params);
+  const bool use_peephole = std::get<1>(params);
+
+  // Populates the non-recurrent weights of a LSTM/IndyLSTM model with the same
+  // values.
+  auto SetLstmWeights = [&](UnidirectionalLSTMOpModel& model) -> void {
+    if (!use_cifg) {
+      model.SetInputToInputWeights({-0.45018822, -0.02338299, -0.0870589,
+                                    -0.34550029, 0.04266912, -0.15680569,
+                                    -0.34856534, 0.43890524});
+    }
+
+    model.SetInputToCellWeights({-0.50013041, 0.1370284, 0.11810488, 0.2013163,
+                                 -0.20583314, 0.44344562, 0.22077113,
+                                 -0.29909778});
+
+    model.SetInputToForgetWeights({0.09701663, 0.20334584, -0.50592935,
+                                   -0.31343272, -0.40032279, 0.44781327,
+                                   0.01387155, -0.35593212});
+
+    model.SetInputToOutputWeights({-0.25065863, -0.28290087, 0.04613829,
+                                   0.40525138, 0.44272184, 0.03897077,
+                                   -0.1556896, 0.19487578});
+
+    if (!use_cifg) {
+      model.SetInputGateBias({0., 0., 0., 0.});
+    }
+
+    model.SetCellBias({0., 0., 0., 0.});
+
+    model.SetForgetGateBias({1., 1., 1., 1.});
+
+    model.SetOutputGateBias({0., 0., 0., 0.});
+    if (use_peephole) {
+      if (!use_cifg) {
+        model.SetCellToInputWeights(
+            {0.040369894,  0.030746894,  0.24704495,   0.018586371,
+             -0.037586458, -0.15312155,  -0.11812848,  -0.11465643,
+             0.20259799,   0.11418174,   -0.10116027,  -0.011334949,
+             0.12411352,   -0.076769054, -0.052169047, 0.21198851,
+             -0.38871562,  -0.09061183,  -0.09683246,  -0.21929175});
+      }
+      model.SetCellToForgetWeights(
+          {0.47485286, -0.51955009, -0.24458408, 0.31544167});
+      model.SetCellToOutputWeights(
+          {-0.17135078, 0.82760304, 0.85573703, -0.77109635});
+    }
+  };
+
+  std::vector<int> input_weights_shape{n_cell, n_input};
+  if (use_cifg) {
+    input_weights_shape = std::vector<int>{0, 0};
+  }
+  std::vector<int> recurrent_to_input_weights_shape{n_cell, n_output};
+  if (use_cifg) {
+    input_weights_shape = std::vector<int>{0, 0};
+  }
+  // Input shapes common to both the LSTM and IndyLSTM models.
+  std::vector<std::vector<int>> input_shapes = {
+      {sequence_length, n_batch, n_input},  // input tensor
+
+      // Forward cell
+      input_weights_shape,  // input_to_input_weight tensor
+      {n_cell, n_input},    // input_to_forget_weight tensor
+      {n_cell, n_input},    // input_to_cell_weight tensor
+      {n_cell, n_input},    // input_to_output_weight tensor
+
+      recurrent_to_input_weights_shape,  // recurrent_to_input_weight tensor
+      {n_cell, n_output},                // recurrent_to_forget_weight tensor
+      {n_cell, n_output},                // recurrent_to_cell_weight tensor
+      {n_cell, n_output},                // recurrent_to_output_weight tensor
+
+      {(use_peephole & !use_cifg) ? n_cell : 0},  // cell_to_input_weight tensor
+      {use_peephole ? n_cell : 0},  // cell_to_forget_weight tensor
+      {use_peephole ? n_cell : 0},  // cell_to_output_weight tensor
+
+      {n_cell},  // input_gate_bias tensor
+      {n_cell},  // forget_gate_bias tensor
+      {n_cell},  // cell_bias tensor
+      {n_cell},  // output_gate_bias tensor
+
+      {0, 0},  // projection_weight tensor
+      {0},     // projection_bias tensor
+
+      {n_batch, n_output},  // output_state tensor
+      {n_batch, n_cell},    // cell_state tensor
+  };
+
+  // Build a regular bidirectional LSTM with full diagonal recurrent matrices.
+  UnidirectionalLSTMOpModel lstm(n_batch, n_input, n_cell, n_output,
+                                 sequence_length, /*time_major=*/true,
+                                 /*use_cifg=*/use_cifg,
+                                 /*use_peephole=*/use_peephole,
+                                 /*use_projection_weights=*/false,
+                                 /*use_projection_bias=*/false,
+                                 /*cell_clip=*/0.0,
+                                 /*proj_clip=*/0.0, input_shapes);
+  SetLstmWeights(lstm);
+
+  if (!use_cifg) {
+    lstm.SetRecurrentToInputWeights({-0.0063535, 0.0, 0.0, 0.0,  //
+                                     0.0, 0.08183324, 0.0, 0.0,  //
+                                     0.0, 0.0, 0.48091322, 0.0,  //
+                                     0.0, 0.0, 0.0, 0.10629296});
+  }
+
+  lstm.SetRecurrentToCellWeights({-0.3407414, 0.0, 0.0, 0.0,   //
+                                  0.0, -0.00123841, 0.0, 0.0,  //
+                                  0.0, 0.0, -0.501764, 0.0,    //
+                                  0.0, 0.0, 0.0, -0.16368064});
+
+  lstm.SetRecurrentToForgetWeights({-0.48684245, 0.0, 0.0, 0.0,  //
+                                    0.0, 0.20864892, 0.0, 0.0,   //
+                                    0.0, 0.0, 0.36447752, 0.0,   //
+                                    0.0, 0.0, 0.0, -0.01140004});
+
+  lstm.SetRecurrentToOutputWeights({0.43385774, 0.0, 0.0, 0.0,   //
+                                    0.0, -0.39835793, 0.0, 0.0,  //
+                                    0.0, 0.0, 0.20047462, 0.0,   //
+                                    0.0, 0.0, 0.0, 0.39922136});
+
+  input_shapes[5] = {n_cell};  // recurrent_to_input_weight tensor
+  input_shapes[6] = {n_cell};  // recurrent_to_forget_weight tensor
+  input_shapes[7] = {n_cell};  // recurrent_to_cell_weight tensor
+  input_shapes[8] = {n_cell};  // recurrent_to_output_weight tensor
+
+  // Build a regular bidirectional LSTM with full diagonal recurrent matrices.
+  UnidirectionalLSTMOpModel indy_lstm(
+      n_batch, n_input, n_cell, n_output, sequence_length, /*time_major=*/true,
+      /*use_cifg=*/use_cifg,
+      /*use_peephole=*/use_peephole,
+      /*use_projection_weights=*/false,
+      /*use_projection_bias=*/false,
+      /*cell_clip=*/0.0,
+      /*proj_clip=*/0.0, input_shapes, TensorType_FLOAT32,
+      /*is_layer_norm=*/false, /*asymmetric_quantize_inputs=*/false,
+      /*diagonal_recurrent_weights=*/true);
+  SetLstmWeights(lstm);
+  SetLstmWeights(indy_lstm);
+  if (!use_cifg) {
+    indy_lstm.SetRecurrentToInputWeights(
+        {-0.0063535, 0.08183324, 0.48091322, 0.10629296});
+  }
+
+  indy_lstm.SetRecurrentToCellWeights(
+      {-0.3407414, -0.00123841, -0.501764, -0.16368064});
+
+  indy_lstm.SetRecurrentToForgetWeights(
+      {-0.48684245, 0.20864892, 0.36447752, -0.01140004});
+
+  indy_lstm.SetRecurrentToOutputWeights(
+      {0.43385774, -0.39835793, 0.20047462, 0.39922136});
+
+  // Input should have n_input * sequence_length many values.
+  static float lstm_input[] = {2., 3., 3., 4., 1., 1.};
+  float* batch0_start = lstm_input;
+  float* batch0_end = batch0_start + lstm.num_inputs() * lstm.sequence_length();
+
+  lstm.SetInput(0, batch0_start, batch0_end);
+  indy_lstm.SetInput(0, batch0_start, batch0_end);
+
+  ASSERT_EQ(lstm.Invoke(), kTfLiteOk);
+  ASSERT_EQ(indy_lstm.Invoke(), kTfLiteOk);
+
+  EXPECT_THAT(indy_lstm.GetOutput(),
+              ElementsAreArray(ArrayFloatNear(lstm.GetOutput(), 1e-6)));
 }
 
 #define QUANTIZE_PARAMETER_TEST(test) \

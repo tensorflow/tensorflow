@@ -47,6 +47,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/map_util.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
+#include "tensorflow/compiler/xla/service/compilation_environments.h"
 #include "tensorflow/compiler/xla/service/cpu/runtime_single_threaded_matmul.h"
 #include "tensorflow/compiler/xla/service/hlo_query.h"
 #include "tensorflow/compiler/xla/service/pattern_matcher.h"
@@ -56,7 +57,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/statusor.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/window_util.h"
@@ -223,7 +223,7 @@ Status MakeEvalErrorDueToParamOrInfeed(const HloInstruction& eval_instruction) {
   absl::little_endian::Store32(
       const_cast<char*>(error_payload.data()),
       static_cast<uint32_t>(EvalErrorDetail::kDynamicValueDependence));
-  error.SetPayload(kEvalErrorDetailUrl, error_payload);
+  error.SetPayload(kEvalErrorDetailUrl, absl::Cord(error_payload));
   return error;
 }
 
@@ -800,19 +800,19 @@ HloEvaluator::HloEvaluator(int64_t max_loop_iterations)
   typed_visitors_[PRED] =
       std::make_unique<HloEvaluatorTypedVisitor<bool>>(this);
   typed_visitors_[U8] =
-      std::make_unique<HloEvaluatorTypedVisitor<uint8_t>>(this);
+      std::make_unique<HloEvaluatorTypedVisitor<uint8_t, uint64_t>>(this);
   typed_visitors_[U16] =
-      std::make_unique<HloEvaluatorTypedVisitor<uint16_t>>(this);
+      std::make_unique<HloEvaluatorTypedVisitor<uint16_t, uint64_t>>(this);
   typed_visitors_[U32] =
-      std::make_unique<HloEvaluatorTypedVisitor<uint32_t>>(this);
+      std::make_unique<HloEvaluatorTypedVisitor<uint32_t, uint64_t>>(this);
   typed_visitors_[U64] =
       std::make_unique<HloEvaluatorTypedVisitor<uint64_t>>(this);
   typed_visitors_[S8] =
-      std::make_unique<HloEvaluatorTypedVisitor<int8_t>>(this);
+      std::make_unique<HloEvaluatorTypedVisitor<int8_t, int64_t>>(this);
   typed_visitors_[S16] =
-      std::make_unique<HloEvaluatorTypedVisitor<int16_t>>(this);
+      std::make_unique<HloEvaluatorTypedVisitor<int16_t, int64_t>>(this);
   typed_visitors_[S32] =
-      std::make_unique<HloEvaluatorTypedVisitor<int32_t>>(this);
+      std::make_unique<HloEvaluatorTypedVisitor<int32_t, int64_t>>(this);
   typed_visitors_[S64] =
       std::make_unique<HloEvaluatorTypedVisitor<int64_t>>(this);
   typed_visitors_[F16] =
@@ -3327,7 +3327,9 @@ Status HloEvaluator::HandleFusion(HloInstruction* fusion) {
   HloModuleConfig config;
   // Attach cloned computation to an empty HLO module so the existing ones are
   // not modified.
-  HloModule empty_hlo_module("EmptyModuleForFusion", config);
+  HloModule empty_hlo_module("EmptyModuleForFusion", config,
+                             std::make_unique<CompilationEnvironments>(
+                                 fusion->GetModule()->comp_envs()));
   HloCloneContext context(&empty_hlo_module);
   auto cloned_fused_computation =
       fusion->fused_instructions_computation()->Clone(
@@ -3952,7 +3954,7 @@ Status HloEvaluator::HandleReduce(HloInstruction* instr) {
     }
   }
 
-  const int num_threads = tsl::port::MaxParallelism() + 1;
+  const int num_threads = ShapeUtil::GetForEachIndexParallelThreadCount() + 1;
   std::vector<std::unique_ptr<HloEvaluator>> embedded_evaluators;
   embedded_evaluators.reserve(num_threads);
   for (int i = 0; i < num_threads; ++i) {

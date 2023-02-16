@@ -29,9 +29,9 @@ limitations under the License.
 #include "tensorflow/lite/core/api/op_resolver.h"
 #include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/core/interpreter.h"
+#include "tensorflow/lite/core/kernels/register.h"
 #include "tensorflow/lite/core/model.h"
 #include "tensorflow/lite/kernels/internal/compatibility.h"
-#include "tensorflow/lite/kernels/register.h"
 #include "tensorflow/lite/kernels/register_ref.h"
 #include "tensorflow/lite/mutable_op_resolver.h"
 #include "tensorflow/lite/python/interpreter_wrapper/numpy.h"
@@ -205,7 +205,8 @@ InterpreterWrapper* InterpreterWrapper::CreateInterpreterWrapper(
   std::unique_ptr<tflite::MutableOpResolver> resolver;
   switch (op_resolver_id) {
     case kBuiltinOpResolver:
-      resolver = std::make_unique<tflite::ops::builtin::BuiltinOpResolver>();
+      resolver = std::make_unique<
+          tflite::ops::builtin::BuiltinOpResolverWithXNNPACK>();
       break;
     case kBuiltinRefOpResolver:
       resolver = std::make_unique<tflite::ops::builtin::BuiltinRefOpResolver>();

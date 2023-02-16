@@ -1,0 +1,142 @@
+/*
+ * Copyright 2019 The Kythe Authors. All rights reserved.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+/*
+ * The content of this file is copied from
+ * https://github.com/kythe/kythe/blob/master/kythe/proto/metadata.proto and
+ * https://github.com/kythe/kythe/blob/master/kythe/proto/storage.proto
+ * and shouldn't be modified unless the protos is outdated.
+ */
+
+syntax = "proto3";
+
+package tensorflow;
+
+// Schema for the JSON-encoded Kythe metadata describing the relationship
+// between source and target code for generated code.
+message GeneratedCodeInfo {
+  enum Type {
+    NONE = 0;
+    KYTHE0 = 1;  // Initial metadata document type.
+  }
+
+  Type type = 1;
+  repeated MappingRule meta = 2;  // Only relevant if type == kythe0.
+}
+
+// Metadata for a single mapping between a generated source range and a node
+// in the source language or file.
+message MappingRule {
+  enum Type {
+    NONE = 0;
+    NOP = 1;             // Dummy rule that contains no relevant information.
+    ANCHOR_DEFINES = 2;  // Rule describing a generates edge between target
+                         // range and source definition.
+    ANCHOR_ANCHOR = 3;   // Rule describing an imputes edge between target range
+                         // and source range.
+  }
+
+  Type type = 1;
+  // If type == anchor_defines, this should generally be a reverse generates
+  // edge, %/kythe/edge/generates, indicating that the specified vname generated
+  // the source range.
+  // If type == anchor_anchor, this should generally be a forward imputes edge,
+  // /kythe/edge/imputes, indicating that the range in the source file produced
+  // the text in the target file.
+  // If semantic is not NONE, this field is ignored and the identified
+  // declaration at the indicated text range is given the associated semantic.
+  string edge = 2;
+
+  // Fields only relevant if type == anchor_defines.
+  VName vname = 3;   // The semantic node in the source language
+                     // which generated the text range.
+  uint32 begin = 4;  // Beginning of the range to match in the generated text.
+  uint32 end = 5;    // End of the range to match in the generated text.
+
+  enum Semantic {
+    SEMA_NONE = 0;
+    SEMA_WRITE = 1;
+    SEMA_READ_WRITE = 2;
+  }
+
+  Semantic semantic = 11;
+
+  // Fields only relevant if type == anchor_anchor.
+  VName source_vname = 6;   // Anchor node in the generating source file.
+                            // Note: the signature in this vname, if present,
+                            // will typically be replaced by the target indexer
+                            // using its own anchor-construction rules based on
+                            // source_begin and source_end.
+  uint32 source_begin = 7;  // loc/start of the anchor node in the source file.
+  uint32 source_end = 8;    // loc/end of the anchor node in the source file.
+  uint32 target_begin = 9;  // Start of the range in the generated text.
+  uint32 target_end = 10;   // End of the range in the generated text.
+}
+
+message VName {
+  // A language-specific signature assigned by the analyzer.
+  // e.g., "com.google.common.collect.Lists.newLinkedList<#1>()"
+  string signature = 1;
+
+  // The corpus this name belongs to.
+  // e.g., "kythe", "chromium", "github.com/creachadair/imath", "aosp"
+  // The corpus label "kythe" is reserved for internal use.
+  string corpus = 2;
+
+  // A corpus-specific root label, designating a subordinate collection within
+  // the corpus.  If a corpus stores files in unrelated directory structures,
+  // for example, the root can be used to distinguish them.  Or, if a corpus
+  // incorporates subprojects, the root can be a project ID that it governs.
+  // This may also be used to distinguish virtual subgroups of a corpus such as
+  // generated files.
+  string root = 3;
+
+  // A path-structured label describing the location of this object relative to
+  // the corpus and the root.  For code, this will generally be the relative
+  // path to the file containing the code, e.g., "storage/service.go" in kythe.
+  // The individual elements of the path are separated by "/".
+  // The path must not start with "/".
+  // The path must be normalized to a canonical form (with no path
+  // elements "", ".", or "..").
+  //
+  // However, this need not be a true file path; virtual objects like figments
+  // can assign an ad-hoc abstract ID, or omit it entirely.
+  //
+  // Examples:
+  //   "devools/kythe/platform/go/datastore.go" (a file)
+  //   "type/cpp/void.cc" (a type figment)
+  string path = 4;
+
+  // The language this name belongs to.
+  // e.g., "c++", "python", "elisp", "haskell", "java"
+  //
+  // The schema will define specific labels for each supported language, so we
+  // don't wind up with a confusion of names like "cxx", "cpp", "C++", etc.
+  // Prototype: Official language name converted to lowercase.  If a version
+  // number is necessary, include it, e.g., "python3".
+  string language = 5;
+
+  // Other fields we may need in the future, but do not currently use:
+  // branch -- a branch name within the corpus depot, e.g., "gslb_branch".
+  // client -- a source-control client ID, e.g., "sergey:googlex:8:citc".
+
+  // Note: We have intentionally NOT included a revision or timestamp here.
+  // Time should be recorded as facts belonging to the appropriate Nodes and
+  // Edges.  Having records of when something existed may be important, but time
+  // is not a good axis for a name -- a name should say "what" something is, not
+  // "when".  So we will store timestamps, revisions, and other markers of this
+  // kind as facts inside the graph.
+}

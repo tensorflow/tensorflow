@@ -268,7 +268,7 @@ class Compiler {
   // The returned 'BufferAssignment' retains a pointer to the 'HloModule', so
   // the module must live at least as long as the buffer assignments.
   virtual StatusOr<std::unique_ptr<BufferAssignment>> AssignBuffers(
-      const HloModule* module) {
+      HloModule* module, se::StreamExecutor* executor) {
     return Unimplemented("This compiler does not support this method");
   }
 
@@ -389,7 +389,8 @@ class Compiler {
 
   // Returns a MetricsHookInterface object used to instrument Compiler's
   // compilation stages.
-  virtual std::unique_ptr<MetricsHookInterface> CreateMetricsHook() const;
+  virtual std::unique_ptr<MetricsHookInterface> CreateMetricsHook(
+      absl::string_view filename_prefix) const;
 
  private:
   // Mutex that guards the platform-compiler map.

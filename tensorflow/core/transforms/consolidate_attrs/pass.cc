@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/transforms/consolidate_attrs/pass.h"
 
 #include <memory>
+#include <optional>
 #include <utility>
 
 #include "llvm/ADT/ScopeExit.h"
@@ -423,7 +424,7 @@ void PrepareAttributesForExportPassImpl::prepareFunctionAttributes(
     if (auto ranked = type.dyn_cast<RankedTensorType>()) {
       input_shapes.push_back(ShapeAttr::get(&getContext(), ranked.getShape()));
     } else {
-      input_shapes.push_back(ShapeAttr::get(&getContext(), llvm::None));
+      input_shapes.push_back(ShapeAttr::get(&getContext(), std::nullopt));
     }
   }
 
@@ -584,7 +585,7 @@ class MaterializeOutputShapesBase : public RewritePattern {
       if (auto ranked = result.getType().dyn_cast<RankedTensorType>()) {
         shapes.push_back(ShapeAttr::get(op->getContext(), ranked.getShape()));
       } else {
-        shapes.push_back(ShapeAttr::get(op->getContext(), llvm::None));
+        shapes.push_back(ShapeAttr::get(op->getContext(), std::nullopt));
       }
     }
     rewriter.updateRootInPlace(op, [&] {

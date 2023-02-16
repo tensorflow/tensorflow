@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <iterator>
 #include <memory>
 #include <string>
 #include <vector>
@@ -102,27 +103,27 @@ class ExpandHloTuplesPass
 
     // Update output signatures.
     auto returnOp = cast<mlir::func::ReturnOp>(func.getBody().back().back());
+    OpBuilder builder(returnOp);
 
     // Expand all tuples in old return operands.
     SmallVector<Value, 4> expandedReturnOperands;
     SmallVector<Type, 4> expandedResultTypes;
     for (auto value : returnOp.getOperands()) {
-      auto tuple = dyn_cast_or_null<mhlo::TupleOp>(value.getDefiningOp());
-      if (!tuple) {
+      if (auto tupleTy = value.getType().dyn_cast<TupleType>()) {
+        llvm::copy(tupleTy.getTypes(), std::back_inserter(expandedResultTypes));
+        for (auto [index, ty] : llvm::enumerate(tupleTy.getTypes())) {
+          expandedReturnOperands.push_back(
+              builder.createOrFold<mhlo::GetTupleElementOp>(value.getLoc(), ty,
+                                                            value, index));
+        }
+      } else {
         expandedReturnOperands.push_back(value);
         expandedResultTypes.push_back(value.getType());
-        continue;
-      }
-
-      for (auto tupleOperand : tuple.getOperands()) {
-        expandedReturnOperands.push_back(tupleOperand);
-        expandedResultTypes.push_back(tupleOperand.getType());
       }
     }
 
     if (returnOp.getOperands() == expandedReturnOperands) return;
 
-    OpBuilder builder(returnOp);
     builder.create<mlir::func::ReturnOp>(returnOp.getLoc(),
                                          expandedReturnOperands);
     returnOp.erase();

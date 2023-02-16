@@ -50,6 +50,7 @@ genrule(
         "passes/quantized_function_library.mlir",
         "passes/quantized_function_library_uniform_quantized_drq.mlir",
         "passes/quantized_function_library_tf_drq.mlir",
+        "passes/quantized_function_library_xla_weight_only.mlir",
     ],
     outs = [
         "passes/quantized_function_library.h",
@@ -78,9 +79,27 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "remove_identity_op_pattern",
+    srcs = [
+        "passes/remove_identity_op_pattern.cc",
+    ],
+    hdrs = [
+        "passes/remove_identity_op_pattern.h",
+    ],
+    compatible_with = get_compatible_with_cloud(),
+    deps = [
+        "//tensorflow/compiler/mlir/tensorflow",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:TransformUtils",
+    ],
+)
+
 td_library(
     name = "quant_td_files",
     srcs = [
+        "passes/cast_bf16_ops_to_f32.td",
         "passes/lift_quantizable_spots_as_functions.td",
         "passes/lift_quantizable_spots_as_functions_drq.td",
         "passes/optimize.td",
@@ -101,6 +120,20 @@ td_library(
         "@llvm-project//mlir:ArithOpsTdFiles",
         "@llvm-project//mlir:FuncTdFiles",
     ],
+)
+
+gentbl_cc_library(
+    name = "cast_bf16_ops_to_f32_inc_gen",
+    compatible_with = get_compatible_with_cloud(),
+    tbl_outs = [
+        (
+            ["-gen-rewriters"],
+            "passes/cast_bf16_ops_to_f32.inc",
+        ),
+    ],
+    tblgen = "@llvm-project//mlir:mlir-tblgen",
+    td_file = "passes/cast_bf16_ops_to_f32.td",
+    deps = [":quant_td_files"],
 )
 
 gentbl_cc_library(
@@ -289,9 +322,9 @@ cc_library(
     hdrs = ["ops/uniform_op_quant_spec.h"],
     compatible_with = get_compatible_with_cloud(),
     deps = [
+        ":tf_quant_ops",
         "//tensorflow/compiler/mlir/lite/quantization:quantization_config",
         "//tensorflow/compiler/mlir/lite/quantization:quantization_lib",
-        "//tensorflow/compiler/mlir/quantization/tensorflow:tf_quant_ops",
         "//tensorflow/compiler/mlir/tensorflow",
         "@com_google_absl//absl/container:flat_hash_set",
         "@llvm-project//mlir:IR",
@@ -315,20 +348,26 @@ gentbl_cc_library(
 cc_library(
     name = "passes",
     srcs = [
+        "passes/cast_bf16_ops_to_f32.cc",
+        "passes/cast_bf16_ops_to_f32.inc",
         "passes/convert_custom_aggregation_op_to_quant_stats.cc",
         "passes/convert_fake_quant_to_qdq.cc",
         "passes/convert_tf_quant_ops_to_mhlo.cc",
+        "passes/convert_tpu_model_to_cpu.cc",
         "passes/duplicate_shape_determining_constants.cc",
         "passes/insert_custom_aggregation_ops.cc",
         "passes/insert_main_function.cc",
         "passes/insert_quantized_functions.cc",
         "passes/insert_restore_op.cc",
+        "passes/insert_save_op.cc",
         "passes/issue_ids_of_custom_aggregation_ops.cc",
         "passes/lift_quantizable_spots_as_functions.cc",
         "passes/lift_quantizable_spots_as_functions.inc",
         "passes/lift_quantizable_spots_as_functions_drq.cc",
         "passes/lift_quantizable_spots_as_functions_drq.inc",
+        "passes/mark_functions_noinline.cc",
         "passes/merge_initializer_function_ops_to_main.cc",
+        "passes/merge_save_function_ops_to_main.cc",
         "passes/optimize.cc",
         "passes/optimize.inc",
         "passes/post_quantize.cc",
@@ -344,11 +383,13 @@ cc_library(
         "passes/quantize_composite_functions.cc",
         "passes/quantize_composite_functions.inc",
         "passes/quantized_function_library.h",
+        "passes/remove_var_init_by_const.cc",
         "passes/replace_cast_hacks_with_tf_xla_ops.cc",
         "passes/replace_cast_hacks_with_tf_xla_ops.inc",
         "passes/unfreeze_constants.cc",
     ],
     hdrs = [
+        "passes/constants.h",
         "passes/passes.h",
     ],
     compatible_with = get_compatible_with_cloud(),
@@ -356,9 +397,9 @@ cc_library(
         ":constants",
         ":pass_utils",
         ":quantization_options_proto_cc",
+        ":remove_identity_op_pattern",
         ":tf_op_quant_spec",
         ":tf_quant_ops",
-        "//tensorflow/compiler/mlir:name_utils",
         "//tensorflow/compiler/mlir/lite:tensorflow_lite",
         "//tensorflow/compiler/mlir/lite/quantization:quantization_config",
         "//tensorflow/compiler/mlir/lite/quantization:quantization_lib",
@@ -375,6 +416,7 @@ cc_library(
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_ops",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_passes",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_types",
+        "//tensorflow/compiler/mlir/utils:name_utils",
         "//tensorflow/compiler/mlir/xla:xla_legalize_tf",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla/mlir_hlo",
@@ -422,6 +464,7 @@ cc_library(
     ],
     compatible_with = get_compatible_with_cloud(),
     deps = [
+        ":passes",
         "//tensorflow/compiler/mlir/quantization/tensorflow/debugging:mlir_dump",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:error_util",
@@ -433,6 +476,7 @@ cc_library(
         "//tensorflow/core:core_cpu_base",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/platform:path",
+        "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",

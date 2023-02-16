@@ -14,6 +14,8 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/compiler/mlir/tfrt/transforms/fallback_converter.h"
 
+#include <optional>
+
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/compiler/mlir/tfrt/ir/tfrt_fallback.h"
 #include "tensorflow/compiler/mlir/tfrt/ir/tfrt_fallback_async.h"
@@ -30,14 +32,14 @@ FallbackConverter::FallbackConverter(mlir::MLIRContext *context)
   addConversion([=](mlir::TensorType type) -> llvm::Optional<mlir::Type> {
     // Ref types are not supported in both compiler and runtime.
     if (type.getElementType().isa<mlir::TF::TensorFlowRefType>()) {
-      return llvm::None;
+      return std::nullopt;
     }
 
     return builder_.getType<tfrt::fallback::TFTensorType>();
   });
   addConversion([=](mlir::Type type) -> llvm::Optional<mlir::Type> {
     if (type == builder_.getI1Type()) return type;
-    return llvm::None;
+    return std::nullopt;
   });
 }
 

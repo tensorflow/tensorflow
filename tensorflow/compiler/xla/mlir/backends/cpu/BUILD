@@ -22,8 +22,11 @@ xla_cc_binary(
         "//tensorflow/compiler/xla/service/cpu:cpu_compiler",
         "@llvm-project//mlir:BufferizationTransforms",
         "@llvm-project//mlir:LinalgDialect",
+        "@llvm-project//mlir:MemRefDialect",
         "@llvm-project//mlir:MlirOptLib",
+        "@llvm-project//mlir:SCFDialect",
         "@llvm-project//mlir:TensorDialect",
+        "@llvm-project//mlir:VectorDialect",
         "@stablehlo//:register",
     ],
 )

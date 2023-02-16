@@ -23,7 +23,7 @@ limitations under the License.
 
 namespace tensorflow {
 namespace tpu {
-using ::stream_executor::port::StatusOr;
+using ::tsl::StatusOr;
 
 TpuCompileOp::TpuCompileOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
   StatusOr<std::unique_ptr<TpuCompileOpKernelCommon>> compile_op_impl =

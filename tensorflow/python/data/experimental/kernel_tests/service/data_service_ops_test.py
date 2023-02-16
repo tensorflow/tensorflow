@@ -258,6 +258,24 @@ class DataServiceOpsTest(data_service_test_base.TestBase,
         ds, num_workers * list(range(num_elements)), assert_items_equal=True)
 
   @combinations.generate(test_base.default_test_combinations())
+  def testFromGenerator(self):
+    cluster = data_service_test_base.TestCluster(
+        num_workers=1, data_transfer_protocol=self._get_data_transfer_protocol()
+    )
+
+    def generator():
+      yield from range(10)
+    dataset = dataset_ops.Dataset.from_generator(
+        generator,
+        output_signature=tensor_spec.TensorSpec(shape=(), dtype=dtypes.int64))
+    dataset = dataset.apply(
+        data_service_ops.distribute(
+            data_service_ops.ShardingPolicy.OFF, cluster.dispatcher_address()
+        )
+    )
+    self.assertDatasetProduces(dataset, list(range(10)))
+
+  @combinations.generate(test_base.default_test_combinations())
   def testMaxOutstandingRequests(self):
     num_workers = 3
     cluster = data_service_test_base.TestCluster(
@@ -545,7 +563,7 @@ class DataServiceOpsTest(data_service_test_base.TestBase,
         job_gc_check_interval_ms=50,
         job_gc_timeout_ms=20,
         data_transfer_protocol=self._get_data_transfer_protocol())
-    num_elements = 10
+    num_elements = 1000
     it1 = iter(
         self.make_distributed_range_dataset(
             num_elements,

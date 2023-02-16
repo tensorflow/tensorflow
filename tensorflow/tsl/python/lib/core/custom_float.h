@@ -1620,8 +1620,15 @@ bool RegisterUFuncs(PyObject* numpy) {
 
 }  // namespace ufuncs
 
+// Returns true if the numpy type for T is successfully registered, including if
+// it was already registered (e.g. by a different library). If
+// `already_registered` is non-null, it's set to true if the type was already
+// registered and false otherwise.
 template <typename T>
-bool RegisterNumpyDtype(PyObject* numpy) {
+bool RegisterNumpyDtype(PyObject* numpy, bool* already_registered = nullptr) {
+  if (already_registered != nullptr) {
+    *already_registered = false;
+  }
   // If another module (presumably either TF or JAX) has registered a bfloat16
   // type, use it. We don't want two bfloat16 types if we can avoid it since it
   // leads to confusion if we have two different types with the same name. This
@@ -1640,6 +1647,9 @@ bool RegisterNumpyDtype(PyObject* numpy) {
     if (descr && descr->f && descr->f->argmax) {
       TypeDescriptor<T>::npy_type = typenum;
       TypeDescriptor<T>::type_ptr = descr->typeobj;
+      if (already_registered != nullptr) {
+        *already_registered = true;
+      }
       return true;
     }
   }

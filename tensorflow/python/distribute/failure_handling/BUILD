@@ -51,6 +51,8 @@ py_library(
     deps = [
         ":failure_handling_util",
         "//tensorflow/python/eager:context",
+        "//tensorflow/python/eager:monitoring",
+        "//tensorflow/python/framework:errors",
         "//tensorflow/python/util:tf_export",
         "@absl_py//absl/logging",
     ],
@@ -62,6 +64,7 @@ tf_py_test(
     srcs = ["failure_handler_test.py"],
     shard_count = 8,
     tags = [
+        "no_pip",  # TODO(b/266520226)
         "no_windows",  # TODO(b/197981388)
     ],
     deps = [
@@ -91,6 +94,7 @@ tf_py_test(
     srcs = ["gce_failure_handler_test.py"],
     shard_count = 8,
     tags = [
+        "no_pip",  # TODO(b/266520226)
         "noasan",  # TODO(b/226154233): Flaky test
         "nomsan",  # TODO(b/226154233): Flaky test
     ],

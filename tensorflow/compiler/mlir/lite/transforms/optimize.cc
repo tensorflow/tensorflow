@@ -309,7 +309,7 @@ DenseElementsAttr GetShape(Value output_val) {
       RankedTensorType::get(
           {static_cast<int>(shape.size())},
           mlir::IntegerType::get(output_val.getContext(), 32)),
-      llvm::makeArrayRef(shape));
+      llvm::ArrayRef(shape));
 }
 
 static Type GetShapeStrippedType(TypeAttr type_attr) {

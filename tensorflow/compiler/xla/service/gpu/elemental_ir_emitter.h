@@ -26,7 +26,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/elemental_ir_emitter.h"
-#include "tensorflow/compiler/xla/service/gpu/ir_emitter_context.h"
 #include "tensorflow/compiler/xla/service/gpu/target_util.h"
 #include "tensorflow/compiler/xla/service/hlo_module_config.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/loop_emitter.h"
@@ -44,14 +43,9 @@ class GpuElementalIrEmitter : public ElementalIrEmitter {
   using NestedComputer = std::function<StatusOr<std::vector<llvm::Value*>>(
       const HloComputation&, absl::Span<llvm::Value* const>)>;
 
-  // Constructs a GpuElementalIrEmitter.
-  //
-  // ir_emitter_context is owned by the caller and should outlive the
-  // GpuElementalIrEmitter object.
   GpuElementalIrEmitter(const HloModuleConfig& hlo_module_config,
                         llvm::Module* module, llvm::IRBuilder<>* b,
-                        NestedComputer compute_nested,
-                        IrEmitterContext* ir_emitter_context);
+                        NestedComputer compute_nested);
 
  protected:
   llvm_ir::IrArray::Index GetSourceIndexOfBitcast(
@@ -71,6 +65,9 @@ class GpuElementalIrEmitter : public ElementalIrEmitter {
                                  llvm::Value* value) override;
 
   StatusOr<llvm::Value*> EmitCos(PrimitiveType prim_type,
+                                 llvm::Value* value) override;
+
+  StatusOr<llvm::Value*> EmitTan(PrimitiveType prim_type,
                                  llvm::Value* value) override;
 
   StatusOr<llvm::Value*> EmitExp(PrimitiveType prim_type, llvm::Value* value,
@@ -107,8 +104,6 @@ class GpuElementalIrEmitter : public ElementalIrEmitter {
 
   llvm::Value* EmitThreadId() override;
 
-  StatusOr<llvm::Value*> EmitF32ToBF16(llvm::Value* f32_value) override;
-
   bool fast_min_max() override {
     return hlo_module_config_.debug_options().xla_gpu_enable_fast_min_max();
   }
@@ -144,8 +139,6 @@ class GpuElementalIrEmitter : public ElementalIrEmitter {
   const HloModuleConfig& hlo_module_config_;
 
   NestedComputer compute_nested_;
-
-  IrEmitterContext* ir_emitter_context_;
 };
 
 }  // namespace gpu

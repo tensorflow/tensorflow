@@ -17,13 +17,13 @@ limitations under the License.
 #include <functional>
 #include <iterator>
 #include <memory>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <utility>
 #include <variant>
 #include <vector>
 
-#include "llvm/ADT/None.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/Conversion/LLVMCommon/TypeConverter.h"  // from @llvm-project
@@ -706,7 +706,7 @@ void ConvertRuntimeToLLVMPass::runOnOperation() {
       // opaque pointer
       return LLVM::LLVMPointerType::get(IntegerType::get(type.getContext(), 8));
 
-    return llvm::None;
+    return std::nullopt;
   });
 
   // Use UnrealizedConversionCast as the bridge so that we don't need to pull

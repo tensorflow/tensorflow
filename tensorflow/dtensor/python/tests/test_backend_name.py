@@ -15,6 +15,7 @@
 """List of test backend names."""
 
 import enum
+import os
 
 
 # LINT.IfChange(backend_name)
@@ -30,5 +31,9 @@ class DTensorTestUtilBackend(enum.Enum):
   TPU_V4_DONUT_BACKEND = 'tpu_v4_2x2'
   PATHWAYS = 'pw'
 
+
+DTENSOR_TEST_UTIL_BACKEND = DTensorTestUtilBackend(
+    os.getenv('DTENSOR_TEST_UTIL_BACKEND', default='unspecified')
+)
 
 # LINT.ThenChange()

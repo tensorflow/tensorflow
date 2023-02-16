@@ -24,14 +24,15 @@ from tensorflow.core.function import trace_type
 from tensorflow.core.function.polymorphism import function_type as function_type_lib
 from tensorflow.python import pywrap_tfe
 from tensorflow.python.client import pywrap_tf_session
-from tensorflow.python.eager import backprop
 from tensorflow.python.eager import backprop_util
 from tensorflow.python.eager import context
 from tensorflow.python.eager import execute
 from tensorflow.python.eager import forwardprop_util
 from tensorflow.python.eager import tape
 from tensorflow.python.eager.graph_only_ops import graph_placeholder
+from tensorflow.python.eager.polymorphic_function import attributes as attributes_lib
 from tensorflow.python.eager.polymorphic_function import function_spec
+from tensorflow.python.eager.polymorphic_function import saved_model_exported_concrete
 from tensorflow.python.framework import c_api_util
 from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import dtypes
@@ -56,21 +57,9 @@ from tensorflow.python.types import core
 from tensorflow.python.util import _pywrap_utils
 from tensorflow.python.util import compat
 from tensorflow.python.util import function_utils
-from tensorflow.python.util import lazy_loader
-from tensorflow.python.util import memory
 from tensorflow.python.util import nest
 from tensorflow.python.util import object_identity
 from tensorflow.python.util import tf_inspect
-
-saved_model_utils = lazy_loader.LazyLoader(
-    "saved_model_utils", globals(),
-    "tensorflow.python.eager.polymorphic_function.saved_model_utils"
-)
-
-FORWARD_FUNCTION_ATTRIBUTE_NAME = "forward_function_name"
-BACKWARD_FUNCTION_ATTRIBUTE_NAME = "backward_function_name"
-IMPLEMENTS_ATTRIBUTE_NAME = "_implements"
-SHARED_RENDEZVOUS_ATTRIBUTE_NAME = "shared_rendezvous"
 
 
 def _is_type_subset(a, b):
@@ -96,6 +85,9 @@ def _parse_func_attrs(attributes):
   """
   attrs = {}
   for key, value in attributes.items():
+    if key not in attributes_lib.MONOMORPHIC_FUNCTION_ALLOWLIST:
+      raise ValueError(
+          f"ConcreteFunction does not support `{key}` as an attribute.")
     if isinstance(value, attr_value_pb2.AttrValue):
       attrs[key] = value
     # bool type check has to happen before int since bool is a subclass of int.
@@ -270,7 +262,7 @@ class _EagerDefinedFunction(object):
     self._num_outputs = len(signature.output_arg)
     self._output_types = [o.type for o in signature.output_arg]
     self._output_shapes = [o.shape for o in outputs]
-    self._control_captures = graph.control_captures
+    self._control_captures = graph._function_captures.control  # pylint: disable=protected-access
     # Shallow copy outputs since ConcreteFunction may mutate it.
     self._func_graph_outputs = list(outputs)
     self.grad_func_name = None
@@ -445,14 +437,14 @@ def _create_forward_backward_with_graph(attrs, forward_graph, backwards_graph):
   # be directly optimized downstream.
   # See for more details:
   # https://github.com/tensorflow/community/blob/master/rfcs/20190610-standardizing-composite_ops.md#appendix-future-support-for-optimizing-gradient-functions
-  common_attributes.pop(IMPLEMENTS_ATTRIBUTE_NAME, None)
+  common_attributes.pop(attributes_lib.IMPLEMENTS, None)
   backward_function_attr = _parse_func_attrs(
-      {FORWARD_FUNCTION_ATTRIBUTE_NAME: forward_function_name})
+      {attributes_lib.FORWARD_FUNCTION: forward_function_name})
   backward_function_attr.update(common_attributes)
   backward_function = ConcreteFunction(
       backwards_graph, attrs=backward_function_attr)
   forward_function_attr = _parse_func_attrs({
-      BACKWARD_FUNCTION_ATTRIBUTE_NAME:
+      attributes_lib.BACKWARD_FUNCTION:
       backward_function.name})
   forward_function_attr.update(common_attributes)
   forward_function = _EagerDefinedFunction(
@@ -942,7 +934,7 @@ class _TapeGradientFunctions(object):
                 grad_ys=gradients_wrt_output_tangents,
                 src_graph=forward_wrapper.graph)
           dinputs = [
-              backprop.aggregate_indexed_slices_gradients((existing, new))
+              backprop_util.AggregateIndexedSlicesGradients((existing, new))
               for existing, new in zip(dinputs, gradients_wrt_inputs)
               if existing is not None or new is not None]
           dinputs.extend(gradients_wrt_inputs[len(dinputs):])
@@ -1329,7 +1321,7 @@ class ConcreteFunction(core.ConcreteFunction, trackable.Trackable):
     # spec defines the structured signature.
     self._set_function_spec(spec)
 
-    if attrs and IMPLEMENTS_ATTRIBUTE_NAME in attrs:
+    if attrs and attributes_lib.IMPLEMENTS in attrs:
       # The alternative is to silently drop "implements" tag
       # but it seems likely it would lead to hard to catch bugs.
       # Another alternative is to make func_body to preserve the order
@@ -1350,8 +1342,8 @@ class ConcreteFunction(core.ConcreteFunction, trackable.Trackable):
           "To pass a variable to such function use  "
           "use variable.read_value().".format(
               name=func_graph.name,
-              attr=IMPLEMENTS_ATTRIBUTE_NAME,
-              value=attrs[IMPLEMENTS_ATTRIBUTE_NAME],
+              attr=attributes_lib.IMPLEMENTS,
+              value=attrs[attributes_lib.IMPLEMENTS],
               inputs=self.inputs,
               captured=self._captured_inputs))
     self._output_shapes = tuple(
@@ -1409,12 +1401,15 @@ class ConcreteFunction(core.ConcreteFunction, trackable.Trackable):
         kwonlydefaults=dict(
             (k, function_spec.BOUND_VALUE) for k in kwarg_specs),
         annotations=spec.fullargspec.annotations)
-    self._function_spec = function_spec.FunctionSpec(
-        fullargspec,
-        spec.is_method,
-        spec.input_signature,
-        spec.is_pure,
-        name=self._func_graph.name)
+    self._function_spec = (
+        function_spec.FunctionSpec.from_fullargspec_and_signature(
+            fullargspec,
+            spec.is_method,
+            spec.input_signature,
+            spec.is_pure,
+            name=self._func_graph.name,
+        )
+    )
 
   @property
   def variables(self):
@@ -2297,7 +2292,7 @@ class ConcreteFunction(core.ConcreteFunction, trackable.Trackable):
           (f"Unable to save function {self.name} for the following reason(s):\n"
            + "\n".join(self.graph.saving_errors)))
     self.add_to_graph()
-    object_map[self] = saved_model_utils.ExportedConcreteFunction(
+    object_map[self] = saved_model_exported_concrete.ExportedConcreteFunction(
         self, tensor_map)
     return []
 
@@ -2320,7 +2315,7 @@ class ConcreteFunctionGarbageCollector:
     self._func_graph = None
 
   def __del__(self):
-    if func_graph_module is None or memory is None or self._func_graph is None:
+    if func_graph_module is None or self._func_graph is None:
       return
     try:
       func_graph_module.dismantle_func_graph(self._func_graph)

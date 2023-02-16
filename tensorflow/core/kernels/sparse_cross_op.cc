@@ -898,7 +898,6 @@ class SparseCrossHashedOp : public OpKernel {
     OP_REQUIRES_OK(
         context, ValidateInput(indices_list_in, values_list_in, shapes_list_in,
                                dense_list_in, internal_type));
-
     const Tensor* num_buckets_t;
     OP_REQUIRES_OK(context, context->input("num_buckets", &num_buckets_t));
     const int64_t num_buckets = num_buckets_t->scalar<int64_t>()();
@@ -910,6 +909,12 @@ class SparseCrossHashedOp : public OpKernel {
     const Tensor* salt_t;
     OP_REQUIRES_OK(context, context->input("salt", &salt_t));
     const auto salt = salt_t->flat<int64_t>();
+    OP_REQUIRES_OK(
+        context, salt.size() == 2
+                     ? Status()
+                     : errors::InvalidArgument(
+                           "Input \"salt\" must have length 2 but has length ",
+                           salt.size()));
     std::vector<int64_t> key_{salt(0), salt(1)};
 
     std::vector<std::unique_ptr<ColumnInterface<int64_t>>> columns =

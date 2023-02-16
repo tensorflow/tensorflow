@@ -146,12 +146,11 @@ class Ffi {
  public:
   virtual ~Ffi() = default;
 
-  virtual std::string_view name() const = 0;
   virtual XLA_FFI_Error* operator()(const XLA_FFI_Api* api,
                                     XLA_FFI_ExecutionContext* ctx, void** args,
                                     void** attrs, void** rets) const = 0;
 
-  static FfiBinding<> Bind(std::string name);
+  static FfiBinding<> Binding();
 
   template <typename T>
   static bool Isa(const XLA_FFI_Api* api, XLA_FFI_TypeId type_id);
@@ -178,23 +177,26 @@ class Module {
  protected:
   Module(const XLA_FFI_Api* api, std::string module_name,
          std::vector<ExportedFunction> exported_functions,
+         XLA_FFI_Module_StateType state_type,
          XLA_FFI_Module_CreateState* create_state,
          XLA_FFI_Module_DestroyState* destroy_state)
       : api_(api),
         module_name_(std::move(module_name)),
         exported_functions_(std::move(exported_functions)) {
-    Register(create_state, destroy_state);
+    Register(state_type, create_state, destroy_state);
   }
 
  private:
   // Register `this` module with the XLA runtime.
-  void Register(XLA_FFI_Module_CreateState* create_state,
+  void Register(XLA_FFI_Module_StateType state_type,
+                XLA_FFI_Module_CreateState* create_state,
                 XLA_FFI_Module_DestroyState* destroy_state) {
     XLA_FFI_Module_Register_Args args;
     args.struct_size = XLA_FFI_Module_Register_Args_STRUCT_SIZE;
     args.priv = nullptr;
     args.name = module_name_.c_str();
     args.module = reinterpret_cast<XLA_FFI_Module*>(this);
+    args.state_type = state_type;
     args.create_state = create_state;
     args.destroy_state = destroy_state;
 
@@ -234,8 +236,11 @@ class StatefulModule : public Module {
 
  protected:
   StatefulModule(const XLA_FFI_Api* api, std::string module_name,
-                 std::vector<ExportedFunction> exported_functions)
+                 std::vector<ExportedFunction> exported_functions,
+                 bool per_execution_state = false)
       : Module(api, std::move(module_name), std::move(exported_functions),
+               per_execution_state ? XLA_FFI_Module_State_PER_EXECUTION
+                                   : XLA_FFI_Module_State_PER_EXECUTABLE,
                CreateState, DestroyState) {}
 
  private:
@@ -274,6 +279,7 @@ class StatelessModule : public Module {
   StatelessModule(const XLA_FFI_Api* api, std::string module_name,
                   std::vector<ExportedFunction> exported_functions)
       : Module(api, std::move(module_name), std::move(exported_functions),
+               /*state_type=*/XLA_FFI_Module_State_PER_EXECUTABLE,
                /*create_state=*/nullptr, /*destroy_state=*/nullptr) {}
 };
 
@@ -510,8 +516,8 @@ class FfiBinding {
 
   template <typename Fn>
   std::unique_ptr<FfiHandler<Fn, Ts...>> To(Fn fn) {
-    return std::unique_ptr<FfiHandler<Fn, Ts...>>(new FfiHandler<Fn, Ts...>(
-        std::forward<Fn>(fn), std::move(name_), std::move(attrs_)));
+    return std::unique_ptr<FfiHandler<Fn, Ts...>>(
+        new FfiHandler<Fn, Ts...>(std::forward<Fn>(fn), std::move(attrs_)));
   }
 
  private:
@@ -519,23 +525,20 @@ class FfiBinding {
   friend class FfiBinding;
   friend class Ffi;
 
-  explicit FfiBinding(std::string name) : name_(std::move(name)) {
+  explicit FfiBinding() {
     static_assert(sizeof...(Ts) == 0, "ffi arguments must be empty");
   }
 
   template <typename... TTs>
   FfiBinding(FfiBinding<TTs...>&& other)  // NOLINT
-      : name_(std::move(other.name_)), attrs_(std::move(other.attrs_)) {}
+      : attrs_(std::move(other.attrs_)) {}
 
   FfiBinding(FfiBinding&) = delete;
 
-  std::string name_;                // ffi name
   std::vector<std::string> attrs_;  // names of bound attributes
 };
 
-inline FfiBinding<> Ffi::Bind(std::string name) {
-  return FfiBinding<>(std::move(name));
-}
+inline FfiBinding<> Ffi::Binding() { return FfiBinding<>(); }
 
 //===----------------------------------------------------------------------===//
 // Helpers for decoding opaque arguments and attributes' memory.
@@ -798,8 +801,6 @@ class FfiHandler : public Ffi {
   }
 
  public:
-  std::string_view name() const final { return name_; }
-
   XLA_FFI_Error* operator()(const XLA_FFI_Api* api,
                             XLA_FFI_ExecutionContext* ctx, void** args,
                             void** attrs, void** rets) const final {
@@ -867,9 +868,8 @@ class FfiHandler : public Ffi {
     return ToError(api, FfiStatus::Ok());
   }
 
-  FfiHandler(Fn fn, std::string name, std::vector<std::string> attrs)
+  FfiHandler(Fn fn, std::vector<std::string> attrs)
       : fn_(std::move(fn)),
-        name_(std::move(name)),
         attrs_(std::move(attrs)),
         attrs_idx_(attrs_.size()) {
     // Sort attributes names.
@@ -886,7 +886,6 @@ class FfiHandler : public Ffi {
 
   Fn fn_;
 
-  std::string name_;
   std::vector<std::string> attrs_;
 
   // A mapping from the attribute index to its index in the lexicographically

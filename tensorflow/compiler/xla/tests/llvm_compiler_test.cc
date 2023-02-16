@@ -16,7 +16,9 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/llvm_compiler.h"
 
 #include <memory>
+#include <string>
 #include <utility>
+#include <vector>
 
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/literal_util.h"
@@ -45,7 +47,8 @@ class GpuDummyCompiler : public GpuCompiler {
   GpuDummyCompiler() : GpuCompiler(kDummyTestId, kDummyTriple, kDummyLayout) {}
 
   Status OptimizeHloConvolutionCanonicalization(
-      HloModule* hlo_module, se::CudaComputeCapability cuda_compute_capability,
+      HloModule* hlo_module, GpuVersion gpu_version,
+      se::dnn::VersionInfo dnn_version,
       se::DeviceMemoryAllocator* device_allocator) {
     return OkStatus();
   }
@@ -53,7 +56,8 @@ class GpuDummyCompiler : public GpuCompiler {
   Status OptimizeHloPostLayoutAssignment(
       HloModule* hlo_module, se::StreamExecutor* stream_executor,
       se::DeviceMemoryAllocator* device_allocator,
-      const GpuTargetConfig& gpu_target_config) {
+      const GpuTargetConfig& gpu_target_config,
+      const AutotuneResults* autotune_results) override {
     return OkStatus();
   }
 
@@ -63,7 +67,8 @@ class GpuDummyCompiler : public GpuCompiler {
 
   StatusOr<std::pair<std::string, std::vector<uint8_t>>> CompileTargetBinary(
       const HloModuleConfig& module_config, llvm::Module* llvm_module,
-      GpuVersion gpu_version, bool relocatable, const HloModule* debug_module) {
+      GpuVersion gpu_version, bool relocatable,
+      const HloModule* debug_module) override {
     std::vector<uint8_t> compiled_results;
     return std::pair<std::string, std::vector<uint8_t>>(
         "", std::move(compiled_results));

@@ -42,6 +42,7 @@ limitations under the License.
 #if GOOGLE_CUDA
 #include "tensorflow/compiler/xla/stream_executor/cuda/cuda_blas_lt.h"
 #include "tensorflow/compiler/xla/stream_executor/host_or_device_scalar.h"
+#include "tensorflow/tsl/platform/tensor_float_32_utils.h"
 #endif  // GOOGLE_CUDA
 
 namespace xla {
@@ -401,7 +402,7 @@ StatusOr<bool> CanFoldTransposeOperandIntoDot(const HloInstruction& dot,
 }
 
 StatusOr<se::blas::ComputationType> GetBlasComputationType(
-    PrimitiveType dtype) {
+    PrimitiveType dtype, int64_t compute_precision) {
   switch (dtype) {
     case F8E5M2:    // fall-through
     case F8E4M3FN:  // fall-through
@@ -411,7 +412,12 @@ StatusOr<se::blas::ComputationType> GetBlasComputationType(
       return se::blas::ComputationType::kF32;
     case F32:  // fall-through
     case C64:
-      return se::blas::ComputationType::kTF32AsF32;
+#if GOOGLE_CUDA
+      if (tsl::tensor_float_32_execution_enabled() && compute_precision <= 1) {
+        return se::blas::ComputationType::kTF32AsF32;
+      }
+#endif
+      return se::blas::ComputationType::kF32;
     case F64:  // fall-through
     case C128:
       return se::blas::ComputationType::kF64;
@@ -506,7 +512,7 @@ Status DoGemmWithAlgorithm(int64_t batch_size, int64_t m, int64_t n, int64_t k,
   CHECK(output.transpose == se::blas::Transpose::kNoTranspose);
   PrimitiveType output_type = primitive_util::NativeToPrimitiveType<Output>();
   TF_ASSIGN_OR_RETURN(se::blas::ComputationType computation_type,
-                      GetBlasComputationType(output_type));
+                      GetBlasComputationType(output_type, compute_precision));
   se::DeviceMemory<Output> output_data(output.data);
 
   if (batch_size != 1) {
@@ -813,8 +819,9 @@ StatusOr<se::cuda::BlasLt::Epilogue> AsBlasLtEpilogue(
 
   TF_ASSIGN_OR_RETURN(se::blas::DataType output_dtype,
                       AsBlasDataType(output_layout.dtype));
-  TF_ASSIGN_OR_RETURN(se::blas::ComputationType computation_type,
-                      GetBlasComputationType(output_layout.dtype));
+  TF_ASSIGN_OR_RETURN(
+      se::blas::ComputationType computation_type,
+      GetBlasComputationType(output_layout.dtype, config.compute_precision));
   TF_ASSIGN_OR_RETURN(
       se::cuda::BlasLt::MatmulDesc op_desc,
       se::cuda::BlasLt::MatmulDesc::Create(

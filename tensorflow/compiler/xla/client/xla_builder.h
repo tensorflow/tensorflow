@@ -106,8 +106,9 @@ struct XlaBuilderFriend {
                                           const XlaOp operands,
                                           const Shape& shape);
 
-  static XlaOp BuildCopyStart(XlaBuilder* builder, const XlaOp operand,
-                              bool is_cross_program_prefetch);
+  static XlaOp BuildCopyStart(
+      XlaBuilder* builder, XlaOp operand,
+      std::optional<int> cross_program_prefetch_index = std::nullopt);
   static XlaOp BuildCopyDone(XlaBuilder* builder, const XlaOp operand,
                              const Shape& shape);
 
@@ -1497,6 +1498,7 @@ class XlaBuilder {
   friend XlaOp Clz(XlaOp operand);
   friend XlaOp Cos(XlaOp operand);
   friend XlaOp Sin(XlaOp operand);
+  friend XlaOp Tan(XlaOp operand);
   friend XlaOp Tanh(XlaOp operand);
   friend XlaOp Real(XlaOp operand);
   friend XlaOp Imag(XlaOp operand);
@@ -1656,7 +1658,7 @@ class XlaBuilder {
   //
   // TODO(hinsu): Return const pointer within StatusOr and use
   // absl::implicit_cast at callsites. This requires implicit_cast support in
-  // stream_executor::port::StatusOr similar to absl::StatusOr.
+  // xla::StatusOr similar to absl::StatusOr.
   template <typename InstructionType>
   StatusOr<InstructionType> LookUpInstructionInternal(XlaOp op) const {
     TF_RETURN_IF_ERROR(CheckOpBuilder(op));
@@ -2561,6 +2563,9 @@ XlaOp Cos(XlaOp operand);
 
 // Enqueues a sine instruction onto the computation.
 XlaOp Sin(XlaOp operand);
+
+// Enqueues a tan instruction onto the computation.
+XlaOp Tan(XlaOp operand);
 
 // Enqueues a tanh instruction onto the computation.
 XlaOp Tanh(XlaOp operand);

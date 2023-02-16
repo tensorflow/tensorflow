@@ -961,7 +961,7 @@ class SubBuffer : public TensorBuffer {
     CHECK_LE(root_->base<T>(), this->base<T>());
     T* root_limit = root_->base<T>() + root_->size() / sizeof(T);
     CHECK_LE(this->base<T>(), root_limit);
-    CHECK_LE(this->base<T>() + n, root_limit);
+    CHECK_LE(n, root_limit - this->base<T>());
     // Hold a ref of the underlying root buffer.
     // NOTE: 'buf' is a sub-buffer inside the 'root_' buffer.
     root_->Ref();
@@ -1297,6 +1297,9 @@ template <>
 string SummarizeArray<bool>(int64_t limit, int64_t num_elts,
                             const TensorShape& tensor_shape, const char* data,
                             const bool print_v2) {
+  if (data == nullptr) {
+    return strings::StrCat("");  // we already print type and shape
+  }
   // We first convert all chars to be 0/1 to not get InvalidEnumValue sanitizer
   // error
   auto mutable_data = std::unique_ptr<char[]>(new char[num_elts]);

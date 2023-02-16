@@ -246,7 +246,7 @@ llvm::SmallVector<Value> ConstantFoldOpIfPossible(Operation* op) {
 llvm::SmallVector<Value> CloneOpWithReplacedOperands(
     OpBuilder& builder, Operation* op,
     const llvm::SmallVector<Value>& new_operands) {
-  BlockAndValueMapping mapping;
+  IRMapping mapping;
   for (const auto& arg : llvm::enumerate(new_operands)) {
     mapping.map(op->getOperand(arg.index()), arg.value());
   }

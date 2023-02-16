@@ -17,10 +17,10 @@ limitations under the License.
 // ops (TF/XLA) to the HLO dialect.
 
 #include <memory>
+#include <optional>
 #include <string>
 
 #include "llvm/ADT/DenseMap.h"
-#include "llvm/ADT/None.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/Sequence.h"
 #include "llvm/Support/ErrorHandling.h"
@@ -639,7 +639,7 @@ void RewriteControlFlowOpRegion(
 
   if (control_flow_blocks.contains(&region.front())) {
     ops_to_visit.push_back(
-        {/*region_idx=*/llvm::None, block_token, &region.front().front()});
+        {/*region_idx=*/std::nullopt, block_token, &region.front().front()});
     return;
   }
 
@@ -825,7 +825,7 @@ LogicalResult RewriteFunction(
   // Stack to keep track of region based control flow op nesting and current
   // op to visit.
   SmallVector<OpVisitorState, 4> ops_to_visit{
-      {/*region_idx=*/llvm::None, init_token, &func_body.front()}};
+      {/*region_idx=*/std::nullopt, init_token, &func_body.front()}};
 
   while (!ops_to_visit.empty()) {
     OpVisitorState op_to_visit = ops_to_visit.pop_back_val();
@@ -848,7 +848,7 @@ LogicalResult RewriteFunction(
       if (it != funcs.end()) {
         func::FuncOp clone = it->getSecond().clone;
         Optional<StringRef> symbol_name =
-            clone ? Optional<StringRef>(clone.getName()) : llvm::None;
+            clone ? Optional<StringRef>(clone.getName()) : std::nullopt;
         // If the function being called is to be cloned, update the call to also
         // point to the cloned function.
         token = RewriteCallOp(builder, call, symbol_name, token);
@@ -891,7 +891,7 @@ LogicalResult RewriteFunction(
     }
 
     // Visit next op.
-    ops_to_visit.push_back({/*region_idx=*/llvm::None, token, next_op});
+    ops_to_visit.push_back({/*region_idx=*/std::nullopt, token, next_op});
   }
 
   if (rewrite_block) UpdateFunctionType(builder, func, func_body);

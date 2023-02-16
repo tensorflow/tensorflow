@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include <algorithm>
+#include <optional>
 #include <utility>
 
 #include "mlir/Transforms/DialectConversion.h"
@@ -59,7 +60,7 @@ static Optional<Type> PromoteI1ToI8(Type input_type) {
       return integer_type.scaleElementBitwidth(8);
   }
 
-  return llvm::None;
+  return std::nullopt;
 }
 
 /// TypeConverter that turns 'i1' tensors into 'i8' tensors.

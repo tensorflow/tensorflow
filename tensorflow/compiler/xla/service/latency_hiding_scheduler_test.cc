@@ -96,8 +96,43 @@ SchedulerConfig GetDefaultSchedConfig() {
   return sched_cfg;
 }
 
+class TestLatencyEstimator : public LatencyEstimator {
+ public:
+  TimeCost GetLatencyBetween(const HloGraphNode& from,
+                             const HloGraphNode& target) const override {
+    static constexpr TimeCost kLowLatency = 1.0;
+    if (from.GetInstr().opcode() == HloOpcode::kCollectivePermuteStart &&
+        target.GetInstr().opcode() == HloOpcode::kCollectivePermuteDone) {
+      return kLowLatency *
+             ShapeUtil::ElementsIn(from.GetInstr().operand(0)->shape());
+    }
+    return kLowLatency;
+  }
+  TimeCost NodeCost(const HloInstruction* instr) const override {
+    if (instr->IsLoopFusion()) {
+      return instr->shape().IsTuple()
+                 ? kMediumCost
+                 : kLowCost * ShapeUtil::ElementsIn(instr->shape());
+    }
+    if (instr->IsOutputFusion() || instr->opcode() == HloOpcode::kConvolution) {
+      return instr->shape().IsTuple()
+                 ? kHighCost
+                 : kMediumCost * ShapeUtil::ElementsIn(instr->shape());
+    }
+    return kLowCost;
+  }
+  int CyclesPerMicrosecond() const override { return 1; }
+
+ public:
+  static constexpr TimeCost kLowCost = 1.0;
+  static constexpr TimeCost kMediumCost = 1000.0;
+  static constexpr TimeCost kHighCost = 5000.0;
+};
+
 StatusOr<bool> RunScheduler(
-    HloModule* module, SchedulerConfig sched_config = GetDefaultSchedConfig()) {
+    HloModule* module, SchedulerConfig sched_config = GetDefaultSchedConfig(),
+    std::unique_ptr<LatencyEstimator> latency_estimator =
+        std::make_unique<ApproximateLatencyEstimator>()) {
   AsyncCollectiveCreator::CollectiveCreatorConfig config{
       /*convert_all_reduce=*/[](const HloInstruction*) { return true; },
       /*convert_all_gather=*/[](const HloInstruction*) { return true; },
@@ -116,8 +151,6 @@ StatusOr<bool> RunScheduler(
     }
     return ShapeUtil::ByteSizeOfElements(shape);
   };
-  std::unique_ptr<LatencyEstimator> latency_estimator =
-      std::make_unique<ApproximateLatencyEstimator>();
   auto async_tracker = std::make_unique<AsyncTracker>(sched_config);
   auto scheduler_core = std::make_unique<DefaultSchedulerCore>(
       shape_size_bytes, async_tracker.get(), latency_estimator.get(),
@@ -2443,6 +2476,52 @@ ENTRY %module {
                                         new_instruction_sequence, "c1"),
             GetOpcodeIndexUsingMetaData(HloOpcode::kAsyncStart,
                                         new_instruction_sequence, "ata1"));
+}
+
+TEST_F(LatencyHidingSchedulerTest, ReleaseOneThatStallsLessFirst) {
+  absl::string_view hlo_string = R"(
+HloModule module, is_scheduled=true
+
+ENTRY entry {
+  p0 = f32[16,64,256]{2,1,0} parameter(0)
+  p1 = f32[16,64,256]{2,1,0} parameter(1)
+  p2 = f32[1024,2048,2048]{2,1,0} parameter(2)
+  p3 = f32[2048,2048,2048]{2,1,0} parameter(3)
+  cp1s = (f32[1024,2048,2048]{2,1,0}, f32[1024,2048,2048]{2,1,0}, u32[], u32[]) collective-permute-start(p2), source_target_pairs={{1,0},{0,3},{3,2}}
+  cp2s = (f32[2048,2048,2048]{2,1,0}, f32[2048,2048,2048]{2,1,0}, u32[], u32[]) collective-permute-start(p3), source_target_pairs={{1,0},{0,3},{3,2}}
+  c0 = f32[16,256,256]{2,1,0} convolution(p0, p1),
+    window={size=16 stride=15 lhs_dilate=16}, dim_labels=0fb_0io->0fb,
+    metadata={op_type="AllToAll" op_name="c0"}
+  cp1d = f32[1024,2048,2048]{2,1,0} collective-permute-done(cp1s)
+  cp2d = f32[2048,2048,2048]{2,1,0} collective-permute-done(cp2s)
+  ROOT tuple.2 = (f32[16,256,256]{2,1,0}, f32[1024,2048,2048]{2,1,0}, f32[2048,2048,2048]{2,1,0}) tuple(c0, cp1d, cp2d)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloText(hlo_string));
+  HloSchedule& module_schedule = hlo_module->schedule();
+  EXPECT_TRUE(hlo_module->has_entry_computation());
+  auto sched_config = GetDefaultSchedConfig();
+  sched_config.collective_permute_overlap_limit = 2;
+  sched_config.all_gather_overlap_limit = 2;
+  EXPECT_TRUE(RunScheduler(hlo_module.get(), sched_config,
+                           std::make_unique<TestLatencyEstimator>())
+                  .ok());
+  EXPECT_TRUE(hlo_module->has_entry_computation());
+
+  std::vector<HloInstruction*> new_instruction_sequence =
+      module_schedule.sequence(hlo_module->entry_computation()).instructions();
+  if (VLOG_IS_ON(1)) {
+    for (auto* new_i : new_instruction_sequence) {
+      VLOG(1) << new_i->ToString();
+    }
+  }
+
+  // Make sure that between two instructions that are not ready we first emit
+  // the one that causes less stall. This allows to potentially expose more
+  // opportunities for the other to overlap.
+  EXPECT_LT(GetIndex(new_instruction_sequence, "cp2s"),
+            GetIndex(new_instruction_sequence, "cp1s"));
 }
 
 }  // namespace xla

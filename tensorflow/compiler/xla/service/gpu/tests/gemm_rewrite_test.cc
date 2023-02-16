@@ -30,11 +30,11 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/pattern_matcher.h"
 #include "tensorflow/compiler/xla/service/pattern_matcher_gmock.h"
 #include "tensorflow/compiler/xla/statusor.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/statusor.h"
 #include "tensorflow/compiler/xla/tests/filecheck.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/compiler/xla/xla.pb.h"
 #include "tensorflow/tsl/lib/core/status_test_util.h"
+#include "tensorflow/tsl/platform/tensor_float_32_utils.h"
 #include "tensorflow/tsl/platform/test.h"
 
 namespace xla {
@@ -52,6 +52,16 @@ class GemmRewriteTest : public GpuCodegenTest {
         ->GetDeviceDescription()
         .cuda_compute_capability();
   }
+  void SetUp() override {
+    tf32_state_ = tsl::tensor_float_32_execution_enabled();
+    tsl::enable_tensor_float_32_execution(false);
+  }
+  void TearDown() override {
+    tsl::enable_tensor_float_32_execution(tf32_state_);
+  }
+
+ private:
+  bool tf32_state_;
 };
 
 TEST_F(GemmRewriteTest, CheckCustomCallTarget) {
@@ -204,6 +214,9 @@ class ParameterizedGemmRewriteTest
                          bool print_operand_shape = false) {
     GemmRewriteTest::MatchOptimizedHlo(
         hlo, absl::StrReplaceAll(pattern, replacements_), print_operand_shape);
+  }
+  absl::string_view CustomCallTarget() {
+    return replacements_[kCustomCallTargetPlaceholder];
   }
 
  private:
@@ -1067,7 +1080,7 @@ ENTRY test {
   // This is a type combination which is not supported by cublasLt, expect
   // GemmRewriter to choose legacy cublas.
   EXPECT_THAT(module->entry_computation()->root_instruction(),
-              GmockMatch(m::CustomCall("__cublas$gemm")));
+              GmockMatch(m::CustomCall({"__cublas$gemm"})));
 }
 
 TEST_P(ParameterizedGemmRewriteTest, UpcastingC64ToC128) {
@@ -1090,7 +1103,7 @@ ENTRY test {
   // This is a type combination which is not supported by cublasLt, expect
   // GemmRewriter to choose legacy cublas.
   EXPECT_THAT(module->entry_computation()->root_instruction(),
-              GmockMatch(m::CustomCall("__cublas$gemm")));
+              GmockMatch(m::CustomCall({"__cublas$gemm"})));
 }
 
 TEST_P(ParameterizedGemmRewriteTest, UpcastingF16ToF32) {
@@ -1110,10 +1123,8 @@ ENTRY test {
   TF_ASSERT_OK_AND_ASSIGN(bool changed, this->RunHloPass(&pass, module.get()));
   EXPECT_TRUE(changed);
 
-  // This is a type combination which is not supported by cublasLt, expect
-  // GemmRewriter to choose legacy cublas.
   EXPECT_THAT(module->entry_computation()->root_instruction(),
-              GmockMatch(m::CustomCall("__cublas$gemm")));
+              GmockMatch(m::CustomCall({CustomCallTarget()})));
 }
 
 TEST_P(ParameterizedGemmRewriteTest, UpcastingF16ToF64) {
@@ -1136,7 +1147,7 @@ ENTRY test {
   // This is a type combination which is not supported by cublasLt, expect
   // GemmRewriter to choose legacy cublas.
   EXPECT_THAT(module->entry_computation()->root_instruction(),
-              GmockMatch(m::CustomCall("__cublas$gemm")));
+              GmockMatch(m::CustomCall({"__cublas$gemm"})));
 }
 
 TEST_P(ParameterizedGemmRewriteTest, UpcastingF32ToF64) {
@@ -1159,7 +1170,7 @@ ENTRY test {
   // This is a type combination which is not supported by cublasLt, expect
   // GemmRewriter to choose legacy cublas.
   EXPECT_THAT(module->entry_computation()->root_instruction(),
-              GmockMatch(m::CustomCall("__cublas$gemm")));
+              GmockMatch(m::CustomCall({"__cublas$gemm"})));
 }
 
 INSTANTIATE_TEST_SUITE_P(CublasTestsBothLegacyAndLt,
@@ -1474,7 +1485,7 @@ ENTRY test {
       module->entry_computation()->root_instruction(),
       GmockMatch(
           m::Bitcast(
-              m::CustomCall("__cublas$gemm", m::Parameter(0), m::Parameter(1),
+              m::CustomCall({"__cublas$gemm"}, m::Parameter(0), m::Parameter(1),
                             m::Bitcast(m::Parameter(2)).WithShape(F32, {2, 2})))
               .WithShape(F32, {4})));
 }
@@ -1488,7 +1499,7 @@ ENTRY test {
   bias = f32[2,2] broadcast(f32[2] constant({0, 0})), dimensions={0}
 
   dot1 = f32[2,2] dot(x, y), lhs_contracting_dims={1}, rhs_contracting_dims={0}
-  bias1 = f32[2,2] broadcast(f32[2] constant({0, 0})), dimensions={0}
+  bias1 = f32[2,2] parameter(2)
   sum1 = add(dot1, bias1)
 
   dot2 = f32[2,2] dot(x, y), lhs_contracting_dims={1}, rhs_contracting_dims={0}
@@ -1515,7 +1526,7 @@ ENTRY test {
   EXPECT_THAT(
       module->entry_computation()->root_instruction(),
       GmockMatch(m::Tuple(
-          m::CustomCall(m::Parameter(0), m::Parameter(1), m::Constant()),
+          m::CustomCall(m::Parameter(0), m::Parameter(1), m::Parameter()),
           m::CustomCall(m::Parameter(0), m::Parameter(1), m::Constant()),
           m::CustomCall(m::Parameter(0), m::Parameter(1), m::Constant()),
           m::CustomCall(m::Parameter(0), m::Parameter(1), m::Constant()))));
@@ -2241,7 +2252,7 @@ ENTRY test {
   y = f32[3,4] parameter(1)
   z = f32[2] parameter(2)
   dot_a = f32[2,4] dot(x, y), lhs_contracting_dims={1}, rhs_contracting_dims={0}
-  z_bcast = f32[2,4] broadcast(z), dimensions={0}
+  z_bcast = f32[2,4] parameter(3)
   ROOT out = f32[2,4] add(dot_a, z_bcast)
 }
 
@@ -2250,11 +2261,9 @@ ENTRY test {
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-5, 1e-5}));
   MatchOptimizedHlo(hlo_text,
                     R"(
-; CHECK-LABEL: ENTRY %test (x: f32[2,3], y: f32[3,4], z: f32[2]) -> f32[2,4] {
-; CHECK-NEXT:    [[P0:%[^ ]+]] = f32[2,3]{1,0} parameter(0)
+; CHECK:    [[P0:%[^ ]+]] = f32[2,3]{1,0} parameter(0)
 ; CHECK-NEXT:    [[P1:%[^ ]+]] = f32[3,4]{1,0} parameter(1)
-; CHECK-NEXT:    [[P2:%[^ ]+]] = f32[2]{0} parameter(2)
-; CHECK-NEXT:    [[P2_BCAST:%[^ ]+]] = f32[2,4]{1,0} broadcast([[P2]]), dimensions={0}
+; CHECK-NEXT:    [[P2_BCAST:%[^ ]+]] = f32[2,4]{1,0} parameter(3)
 ; CHECK-NEXT:    ROOT [[OUT:%[^ ]+]] = f32[2,4]{1,0} custom-call([[P0]], [[P1]], [[P2_BCAST]]),
 ; CHECK:           custom_call_target="__cublas$lt$matmul",
 ; CHECK:           backend_config="{
@@ -3463,6 +3472,317 @@ ENTRY test {
 ; CHECK:           backend_config="{
 ; CHECK-DAG:         \"alpha_real\":1
 ; CHECK-DAG:         \"alpha_imag\":0
+; CHECK-DAG:         "beta\":0
+; CHECK-DAG:         \"dot_dimension_numbers\":{
+; CHECK-DAG:           \"lhs_contracting_dimensions\":[\"1\"]
+; CHECK-DAG:           \"rhs_contracting_dimensions\":[\"0\"]
+; CHECK-DAG:           \"lhs_batch_dimensions\":[]
+; CHECK-DAG:           \"rhs_batch_dimensions\":[]
+; CHECK-DAG:         }
+; CHECK-DAG:         \"precision_config\":{
+; CHECK-DAG:           \"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]
+; CHECK-DAG:         }
+; CHECK-DAG:         \"epilogue\":\"BIAS_RELU\"
+; CHECK:           }"
+      )");
+}
+
+// For bfloat16, the sizes of all dimensions of the operands are required to be
+// multiples of 8 to allow matrix bias fusion.
+TEST_F(CublasLtGemmRewriteTest, MatrixBiasBF16) {
+  const char* hlo_text = R"(
+HloModule test
+
+ENTRY test {
+  x = bf16[8,16] parameter(0)
+  y = bf16[16,8] parameter(1)
+  z = bf16[8,8] parameter(2)
+  dot_a = bf16[8,8] dot(x, y), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  ROOT out = bf16[8,8] add(dot_a, z)
+}
+
+)";
+
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-3, 1e-3}));
+  MatchOptimizedHlo(hlo_text,
+                    R"(
+
+; CHECK-LABEL: ENTRY %test (x: bf16[8,16], y: bf16[16,8], z: bf16[8,8]) -> bf16[8,8] {
+; CHECK-DAG:     [[P0:%[^ ]+]] = bf16[8,16]{1,0} parameter(0)
+; CHECK-DAG:     [[P1:%[^ ]+]] = bf16[16,8]{1,0} parameter(1)
+; CHECK-DAG:     [[P2:%[^ ]+]] = bf16[8,8]{1,0} parameter(2)
+; CHECK-NEXT:    ROOT [[OUT:%[^ ]+]] = bf16[8,8]{1,0} custom-call([[P0]], [[P1]], [[P2]]),
+; CHECK:           custom_call_target="__cublas$lt$matmul",
+; CHECK:           backend_config="{
+; CHECK-DAG:         \"alpha_real\":1
+; CHECK-DAG:         \"alpha_imag\":0
+; CHECK-DAG:         \"beta\":1
+; CHECK-DAG:         \"dot_dimension_numbers\":{
+; CHECK-DAG:           \"lhs_contracting_dimensions\":[\"1\"]
+; CHECK-DAG:           \"rhs_contracting_dimensions\":[\"0\"]
+; CHECK-DAG:           \"lhs_batch_dimensions\":[]
+; CHECK-DAG:           \"rhs_batch_dimensions\":[]
+; CHECK-DAG:         }
+; CHECK-DAG:         \"precision_config\":{
+; CHECK-DAG:           \"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]
+; CHECK-DAG:         }
+; CHECK-DAG:         \"epilogue\":\"DEFAULT\"
+; CHECK:           }"
+      )");
+}
+
+TEST_F(CublasLtGemmRewriteTest, MatrixBiasBitcastBF16) {
+  const char* hlo_text = R"(
+HloModule test
+
+ENTRY test {
+  x = bf16[8,16] parameter(0)
+  y = bf16[16,8] parameter(1)
+  bias = bf16[2,4,8] parameter(2)
+  dot = bf16[8,8] dot(x, y), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  bitcast = bf16[2,4,8] bitcast(dot)
+  ROOT out = bf16[2,4,8] add(bitcast, bias)
+}
+
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_text));
+  GemmRewriter pass(GetCudaComputeCapability());
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, this->RunHloPass(&pass, module.get()));
+  EXPECT_TRUE(changed);
+
+  EXPECT_THAT(
+      module->entry_computation()->root_instruction(),
+      GmockMatch(
+          m::Bitcast(m::CustomCall(
+                         {"__cublas$lt$matmul"},
+                         m::Parameter(0).WithShape(BF16, {8, 16}),
+                         m::Parameter(1).WithShape(BF16, {16, 8}),
+                         m::Bitcast(m::Parameter(2)).WithShape(BF16, {8, 8})))
+              .WithShape(BF16, {2, 4, 8})));
+}
+
+// For bfloat16, the operands are padded if necessary on Ampere and newer
+// architectures so that the sizes of all dimensions are multiples of 8.
+TEST_F(CublasLtGemmRewriteTest, VectorBiasBF16Unpadded) {
+  const char* hlo_text = R"(
+HloModule test
+
+ENTRY test {
+  x = bf16[8,16] parameter(0)
+  y = bf16[16,8] parameter(1)
+  z = bf16[8] parameter(2)
+  dot_a = bf16[8,8] dot(x, y), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  z_bcast = bf16[8,8] broadcast(z), dimensions={1}
+  ROOT add = bf16[8,8] add(dot_a, z_bcast)
+}
+
+)";
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{8e-3, 2e-3}));
+  MatchOptimizedHlo(hlo_text,
+                    R"(
+
+; CHECK-LABEL: ENTRY %test (x: bf16[8,16], y: bf16[16,8], z: bf16[8]) -> bf16[8,8] {
+; CHECK-DAG:     [[P0:%[^ ]+]] = bf16[8,16]{1,0} parameter(0)
+; CHECK-DAG:     [[P1:%[^ ]+]] = bf16[16,8]{1,0} parameter(1)
+; CHECK-DAG:     [[P2:%[^ ]+]] = bf16[8]{0} parameter(2)
+; CHECK-NEXT:    ROOT [[OUT:%[^ ]+]] = bf16[8,8]{1,0} custom-call([[P0]], [[P1]], [[P2]]),
+; CHECK:           custom_call_target="__cublas$lt$matmul",
+; CHECK:           backend_config="{
+; CHECK-DAG:         \"alpha_real\":1
+; CHECK-DAG:         \"alpha_imag\":0
+; CHECK-DAG:         \"beta\":0
+; CHECK-DAG:         \"dot_dimension_numbers\":{
+; CHECK-DAG:           \"lhs_contracting_dimensions\":[\"1\"]
+; CHECK-DAG:           \"rhs_contracting_dimensions\":[\"0\"]
+; CHECK-DAG:           \"lhs_batch_dimensions\":[]
+; CHECK-DAG:           \"rhs_batch_dimensions\":[]
+; CHECK-DAG:         }
+; CHECK-DAG:         \"precision_config\":{
+; CHECK-DAG:           \"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]
+; CHECK-DAG:         }
+; CHECK-DAG:         \"epilogue\":\"BIAS\"
+; CHECK:           }"
+      )");
+}
+
+TEST_F(CublasLtGemmRewriteTest, VectorBiasBF16Padded) {
+  if (!GetCudaComputeCapability().IsAtLeast(
+          se::CudaComputeCapability::AMPERE)) {
+    GTEST_SKIP() << "Padding of GEMM operands in bfloat16 only implemented on "
+                    "Ampere and newer architectures.";
+  }
+  const char* hlo_text = R"(
+HloModule test
+
+ENTRY test {
+  x = bf16[6,12] parameter(0)
+  y = bf16[12,6] parameter(1)
+  z = bf16[6] parameter(2)
+  dot_a = bf16[6,6] dot(x, y), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  z_bcast = bf16[6,6] broadcast(z), dimensions={1}
+  ROOT add = bf16[6,6] add(dot_a, z_bcast)
+}
+
+)";
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-3, 1e-3}));
+  MatchOptimizedHlo(hlo_text,
+                    R"(
+
+; CHECK-LABEL: ENTRY %test (x: bf16[6,12], y: bf16[12,6], z: bf16[6]) -> bf16[6,6] {
+; CHECK-DAG:     [[P0:%[^ ]+]] = bf16[6,12]{1,0} parameter(0)
+; CHECK-DAG:     [[C0:%[^ ]+]] = bf16[] constant(0)
+; CHECK-DAG:     [[P0_PADDED:%[^ ]+]] = bf16[8,16]{1,0} pad([[P0]], [[C0]]), padding=0_2x0_4
+; CHECK-DAG:     [[P1:%[^ ]+]] = bf16[12,6]{1,0} parameter(1)
+; CHECK-DAG:     [[P1_PADDED:%[^ ]+]] = bf16[16,8]{1,0} pad([[P1]], [[C0]]), padding=0_4x0_2
+; CHECK-DAG:     [[P2:%[^ ]+]] = bf16[6]{0} parameter(2)
+; CHECK-NEXT:    [[MATMUL:%[^ ]+]] = bf16[8,8]{1,0} custom-call([[P0_PADDED]], [[P1_PADDED]], [[P2]]),
+; CHECK:           custom_call_target="__cublas$lt$matmul",
+; CHECK:           backend_config="{
+; CHECK-DAG:         \"alpha_real\":1
+; CHECK-DAG:         \"alpha_imag\":0
+; CHECK-DAG:         \"beta\":0
+; CHECK-DAG:         \"dot_dimension_numbers\":{
+; CHECK-DAG:           \"lhs_contracting_dimensions\":[\"1\"]
+; CHECK-DAG:           \"rhs_contracting_dimensions\":[\"0\"]
+; CHECK-DAG:           \"lhs_batch_dimensions\":[]
+; CHECK-DAG:           \"rhs_batch_dimensions\":[]
+; CHECK-DAG:         }
+; CHECK-DAG:         \"precision_config\":{
+; CHECK-DAG:           \"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]
+; CHECK-DAG:         }
+; CHECK-DAG:         \"epilogue\":\"BIAS\"
+; CHECK:           }"
+; CHECK-NEXT:    [[OUT:%[^ ]+]] = bf16[6,6]{1,0} slice([[MATMUL]]), slice={[0:6], [0:6]}
+      )");
+}
+
+// For bfloat16, the operands are padded if necessary on Ampere and newer
+// architectures so that the sizes of all dimensions are multiples of 8.
+TEST_F(CublasLtGemmRewriteTest, ReluActivationBF16Unpadded) {
+  const char* hlo_text = R"(
+HloModule test
+
+ENTRY test {
+  x = bf16[8,16] parameter(0)
+  y = bf16[16,8] parameter(1)
+  dot_a = bf16[8,8] dot(x, y), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  c = bf16[] constant(0)
+  c_bcast = bf16[8,8] broadcast(c), dimensions={}
+  ROOT out = bf16[8,8] maximum(dot_a, c_bcast)
+}
+
+)";
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-3, 1e-3}));
+  MatchOptimizedHlo(hlo_text,
+                    R"(
+
+; CHECK-LABEL: ENTRY %test (x: bf16[8,16], y: bf16[16,8]) -> bf16[8,8] {
+; CHECK-DAG:     [[P0:%[^ ]+]] = bf16[8,16]{1,0} parameter(0)
+; CHECK-DAG:     [[P1:%[^ ]+]] = bf16[16,8]{1,0} parameter(1)
+; CHECK-NEXT:    ROOT [[OUT:%[^ ]+]] = bf16[8,8]{1,0} custom-call([[P0]], [[P1]]),
+; CHECK:           custom_call_target="__cublas$lt$matmul",
+; CHECK:           backend_config="{
+; CHECK-DAG:         \"alpha_real\":1
+; CHECK-DAG:         \"alpha_imag\":0
+; CHECK-DAG:         \"beta\":0
+; CHECK-DAG:         \"dot_dimension_numbers\":{
+; CHECK-DAG:           \"lhs_contracting_dimensions\":[\"1\"]
+; CHECK-DAG:           \"rhs_contracting_dimensions\":[\"0\"]
+; CHECK-DAG:           \"lhs_batch_dimensions\":[]
+; CHECK-DAG:           \"rhs_batch_dimensions\":[]
+; CHECK-DAG:         }
+; CHECK-DAG:         \"precision_config\":{
+; CHECK-DAG:           \"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]
+; CHECK-DAG:         }
+; CHECK-DAG:         \"epilogue\":\"RELU\"
+; CHECK:           }"
+      )");
+}
+
+TEST_F(CublasLtGemmRewriteTest, ReluActivationBF16Padded) {
+  if (!GetCudaComputeCapability().IsAtLeast(
+          se::CudaComputeCapability::AMPERE)) {
+    GTEST_SKIP() << "Padding of GEMM operands in bfloat16 only implemented on "
+                    "Ampere and newer architectures.";
+  }
+  const char* hlo_text = R"(
+HloModule test
+
+ENTRY test {
+  x = bf16[6,12] parameter(0)
+  y = bf16[12,6] parameter(1)
+  dot_a = bf16[6,6] dot(x, y), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  c = bf16[] constant(0)
+  c_bcast = bf16[6,6] broadcast(c), dimensions={}
+  ROOT out = bf16[6,6] maximum(dot_a, c_bcast)
+}
+
+)";
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-5, 1e-5}));
+  MatchOptimizedHlo(hlo_text,
+                    R"(
+
+; CHECK-LABEL: ENTRY %test (x: bf16[6,12], y: bf16[12,6]) -> bf16[6,6] {
+; CHECK-DAG:     [[P0:%[^ ]+]] = bf16[6,12]{1,0} parameter(0)
+; CHECK-DAG:     [[C0:%[^ ]+]] = bf16[] constant(0)
+; CHECK-DAG:     [[P0_PADDED:%[^ ]+]] = bf16[8,16]{1,0} pad([[P0]], [[C0]]), padding=0_2x0_4
+; CHECK-DAG:     [[P1:%[^ ]+]] = bf16[12,6]{1,0} parameter(1)
+; CHECK-DAG:     [[P1_PADDED:%[^ ]+]] = bf16[16,8]{1,0} pad([[P1]], [[C0]]), padding=0_4x0_2
+; CHECK-NEXT:    [[MATMUL:%[^ ]+]] = bf16[8,8]{1,0} custom-call([[P0_PADDED]], [[P1_PADDED]]),
+; CHECK:           custom_call_target="__cublas$lt$matmul",
+; CHECK:           backend_config="{
+; CHECK-DAG:         \"alpha_real\":1
+; CHECK-DAG:         \"alpha_imag\":0
+; CHECK-DAG:         \"beta\":0
+; CHECK-DAG:         \"dot_dimension_numbers\":{
+; CHECK-DAG:           \"lhs_contracting_dimensions\":[\"1\"]
+; CHECK-DAG:           \"rhs_contracting_dimensions\":[\"0\"]
+; CHECK-DAG:           \"lhs_batch_dimensions\":[]
+; CHECK-DAG:           \"rhs_batch_dimensions\":[]
+; CHECK-DAG:         }
+; CHECK-DAG:         \"precision_config\":{
+; CHECK-DAG:           \"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]
+; CHECK-DAG:         }
+; CHECK-DAG:         \"epilogue\":\"RELU\"
+; CHECK:           }"
+; CHECK-NEXT:    ROOT [[OUT:%[^ ]+]] = bf16[6,6]{1,0} slice([[MATMUL]]), slice={[0:6], [0:6]}
+      )");
+}
+
+// For bfloat16, the operands are padded if necessary on Ampere and newer
+// architectures so that the sizes of all dimensions are multiples of 8.
+TEST_F(CublasLtGemmRewriteTest, VectorBiasReluActivationBF16Unpadded) {
+  const char* hlo_text = R"(
+HloModule test
+
+ENTRY test {
+  x = bf16[8,16] parameter(0)
+  y = bf16[16,8] parameter(1)
+  z = bf16[8] parameter(2)
+  dot_a = bf16[8,8] dot(x, y), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  z_bcast = bf16[8,8] broadcast(z), dimensions={1}
+  add = bf16[8,8] add(dot_a, z_bcast)
+  c = bf16[] constant(0)
+  c_bcast = bf16[8,8] broadcast(c), dimensions={}
+  ROOT out = bf16[8,8] maximum(add, c_bcast)
+}
+
+)";
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{8e-3, 2e-3}));
+  MatchOptimizedHlo(hlo_text,
+                    R"(
+
+; CHECK-LABEL: ENTRY %test (x: bf16[8,16], y: bf16[16,8], z: bf16[8]) -> bf16[8,8] {
+; CHECK-DAG:     [[P0:%[^ ]+]] = bf16[8,16]{1,0} parameter(0)
+; CHECK-DAG:     [[P1:%[^ ]+]] = bf16[16,8]{1,0} parameter(1)
+; CHECK-DAG:     [[P2:%[^ ]+]] = bf16[8]{0} parameter(2)
+; CHECK-NEXT:    ROOT [[OUT:%[^ ]+]] = bf16[8,8]{1,0} custom-call([[P0]], [[P1]], [[P2]]),
+; CHECK:           custom_call_target="__cublas$lt$matmul",
+; CHECK:           backend_config="{
+; CHECK-DAG:         \"alpha_real\":1
+; CHECK-DAG:         \"alpha_imag\":0
 ; CHECK-DAG:         \"beta\":0
 ; CHECK-DAG:         \"dot_dimension_numbers\":{
 ; CHECK-DAG:           \"lhs_contracting_dimensions\":[\"1\"]
@@ -3475,7 +3795,60 @@ ENTRY test {
 ; CHECK-DAG:         }
 ; CHECK-DAG:         \"epilogue\":\"BIAS_RELU\"
 ; CHECK:           }"
-; CHECK-NEXT:    ROOT [[OUT:%[^ ]+]] = f16[6,6]{1,0} slice([[MATMUL]]), slice={[0:6], [0:6]}
+      )");
+}
+
+TEST_F(CublasLtGemmRewriteTest, VectorBiasReluActivationBF16Padded) {
+  if (!GetCudaComputeCapability().IsAtLeast(
+          se::CudaComputeCapability::AMPERE)) {
+    GTEST_SKIP() << "Padding of GEMM operands in bfloat16 only implemented on "
+                    "Ampere and newer architectures.";
+  }
+  const char* hlo_text = R"(
+HloModule test
+
+ENTRY test {
+  x = bf16[6,12] parameter(0)
+  y = bf16[12,6] parameter(1)
+  z = bf16[6] parameter(2)
+  dot_a = bf16[6,6] dot(x, y), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  z_bcast = bf16[6,6] broadcast(z), dimensions={1}
+  add = bf16[6,6] add(dot_a, z_bcast)
+  c = bf16[] constant(0)
+  c_bcast = bf16[6,6] broadcast(c), dimensions={}
+  ROOT out = bf16[6,6] maximum(add, c_bcast)
+}
+
+)";
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-3, 1e-3}));
+  MatchOptimizedHlo(hlo_text,
+                    R"(
+
+; CHECK-LABEL: ENTRY %test (x: bf16[6,12], y: bf16[12,6], z: bf16[6]) -> bf16[6,6] {
+; CHECK-DAG:     [[P0:%[^ ]+]] = bf16[6,12]{1,0} parameter(0)
+; CHECK-DAG:     [[C0:%[^ ]+]] = bf16[] constant(0)
+; CHECK-DAG:     [[P0_PADDED:%[^ ]+]] = bf16[8,16]{1,0} pad([[P0]], [[C0]]), padding=0_2x0_4
+; CHECK-DAG:     [[P1:%[^ ]+]] = bf16[12,6]{1,0} parameter(1)
+; CHECK-DAG:     [[P1_PADDED:%[^ ]+]] = bf16[16,8]{1,0} pad([[P1]], [[C0]]), padding=0_4x0_2
+; CHECK-DAG:     [[P2:%[^ ]+]] = bf16[6]{0} parameter(2)
+; CHECK-NEXT:    [[MATMUL:%[^ ]+]] = bf16[8,8]{1,0} custom-call([[P0_PADDED]], [[P1_PADDED]], [[P2]]),
+; CHECK:           custom_call_target="__cublas$lt$matmul",
+; CHECK:           backend_config="{
+; CHECK-DAG:         \"alpha_real\":1
+; CHECK-DAG:         \"alpha_imag\":0
+; CHECK-DAG:         \"beta\":0
+; CHECK-DAG:         \"dot_dimension_numbers\":{
+; CHECK-DAG:           \"lhs_contracting_dimensions\":[\"1\"]
+; CHECK-DAG:           \"rhs_contracting_dimensions\":[\"0\"]
+; CHECK-DAG:           \"lhs_batch_dimensions\":[]
+; CHECK-DAG:           \"rhs_batch_dimensions\":[]
+; CHECK-DAG:         }
+; CHECK-DAG:         \"precision_config\":{
+; CHECK-DAG:           \"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]
+; CHECK-DAG:         }
+; CHECK-DAG:         \"epilogue\":\"BIAS_RELU\"
+; CHECK:           }"
+; CHECK-NEXT:    ROOT [[OUT:%[^ ]+]] = bf16[6,6]{1,0} slice([[MATMUL]]), slice={[0:6], [0:6]}
       )");
 }
 
@@ -3574,34 +3947,6 @@ ENTRY test {
       )");
 }
 
-TEST_F(CublasLtGemmRewriteTest, MergeBitcastAndAdd) {
-  const char* hlo_text = R"(
-HloModule test
-ENTRY test {
-  x = f32[2,2] parameter(0)
-  y = f32[2,2] parameter(1)
-  bias = f32[4] parameter(2)
-  dot = f32[2,2] dot(x, y), lhs_contracting_dims={1}, rhs_contracting_dims={0}
-  ROOT out = f32[4] add(f32[4] bitcast(dot), bias)
-}
-)";
-
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_text));
-  GemmRewriter pass(GetCudaComputeCapability());
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, this->RunHloPass(&pass, module.get()));
-  EXPECT_TRUE(changed);
-
-  EXPECT_THAT(module->entry_computation()->root_instruction(),
-              GmockMatch(m::Add(m::Bitcast(m::CustomCall("__cublas$lt$matmul",
-                                                         m::Parameter(0),
-                                                         m::Parameter(1))
-                                               .WithShape(F32, {2, 2}))
-                                    .WithShape(F32, {4}),
-                                m::Parameter(2))
-                             .WithShape(F32, {4})));
-}
-
 TEST_F(CublasLtGemmRewriteTest, FoldConstantBias) {
   const char* hlo_text = R"(
 HloModule test
@@ -3611,7 +3956,7 @@ ENTRY test {
   bias = f32[2,2] broadcast(f32[2] constant({0, 0})), dimensions={0}
 
   dot1 = f32[2,2] dot(x, y), lhs_contracting_dims={1}, rhs_contracting_dims={0}
-  bias1 = f32[2,2] broadcast(f32[2] constant({0, 0})), dimensions={0}
+  bias1 = f32[2,2] parameter(2)
   sum1 = add(dot1, bias1)
 
   dot2 = f32[2,2] dot(x, y), lhs_contracting_dims={1}, rhs_contracting_dims={0}
@@ -3638,7 +3983,7 @@ ENTRY test {
   EXPECT_THAT(
       module->entry_computation()->root_instruction(),
       GmockMatch(m::Tuple(
-          m::CustomCall(m::Parameter(0), m::Parameter(1), m::Constant()),
+          m::CustomCall(m::Parameter(0), m::Parameter(1), m::Parameter()),
           m::CustomCall(m::Parameter(0), m::Parameter(1), m::Constant()),
           m::CustomCall(m::Parameter(0), m::Parameter(1), m::Constant()),
           m::CustomCall(m::Parameter(0), m::Parameter(1), m::Constant()))));
@@ -3789,6 +4134,102 @@ TEST_F(CublasLtF8GemmRewriteTest, ScaledABUnscaledDF8) {
 ; CHECK-DAG:           \"rhs_contracting_dimensions\":[\"0\"]
 ; CHECK-DAG:           \"lhs_batch_dimensions\":[]
 ; CHECK-DAG:           \"rhs_batch_dimensions\":[]
+; CHECK-DAG:         }
+; CHECK-DAG:         \"precision_config\":{
+; CHECK-DAG:           \"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]
+; CHECK-DAG:         }
+; CHECK-DAG:         \"epilogue\":\"DEFAULT\"
+; CHECK:           }"
+      )");
+}
+
+TEST_F(CublasLtF8GemmRewriteTest, BitcastScaledABUnscaledDF8) {
+  if (!GetCudaComputeCapability().IsAtLeast(
+          se::CudaComputeCapability::HOPPER)) {
+    GTEST_SKIP()
+        << "cuBLASLt FP8 kernels require Hopper or newer architecture.";
+  }
+  const char* hlo_text = R"(
+    HloModule test
+
+    ENTRY test {
+      x = f8e4m3fn[2,8,16] parameter(0)
+      y = f8e4m3fn[16,16] parameter(1)
+      x_f32 = f32[2,8,16] convert(x)
+      y_f32 = f32[16,16] convert(y)
+      x_scale = f32[] parameter(2)
+      y_scale = f32[] parameter(3)
+      x_scale_bcast = f32[2,8,16] broadcast(x_scale), dimensions={}
+      y_scale_bcast = f32[16,16] broadcast(y_scale), dimensions={}
+      x_unscaled = f32[2,8,16] multiply(x_f32, x_scale_bcast)
+      y_unscaled = f32[16,16] multiply(y_f32, y_scale_bcast)
+      x_bitcast = f32[16,16] bitcast(x_unscaled)
+      ROOT out = f32[16,16] dot(x_bitcast, y_unscaled), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+          }
+
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_text));
+  GemmRewriter pass(GetCudaComputeCapability());
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, this->RunHloPass(&pass, module.get()));
+  EXPECT_TRUE(changed);
+
+  EXPECT_THAT(
+      module->entry_computation()->root_instruction(),
+      GmockMatch(
+          m::CustomCall({"__cublas$lt$matmul$f8"}).WithShape(F32, {16, 16})));
+}
+
+TEST_F(CublasLtF8GemmRewriteTest, BatchedScaledABUnscaledDF8) {
+  if (!GetCudaComputeCapability().IsAtLeast(
+          se::CudaComputeCapability::HOPPER)) {
+    GTEST_SKIP()
+        << "cuBLASLt FP8 kernels require Hopper or newer architecture.";
+  }
+  const char* hlo_text = R"(
+    HloModule test
+
+    ENTRY test {
+      x = f8e4m3fn[10,16,32] parameter(0)
+      y = f8e4m3fn[10,32,16] parameter(1)
+      x_f32 = f32[10,16,32] convert(x)
+      y_f32 = f32[10,32,16] convert(y)
+      x_scale = f32[] parameter(2)
+      y_scale = f32[] parameter(3)
+      x_scale_bcast = f32[10,16,32] broadcast(x_scale), dimensions={}
+      y_scale_bcast = f32[10,32,16] broadcast(y_scale), dimensions={}
+      x_unscaled = f32[10,16,32] multiply(x_f32, x_scale_bcast)
+      y_unscaled = f32[10,32,16] multiply(y_f32, y_scale_bcast)
+      ROOT out = f32[10,16,16] dot(x_unscaled, y_unscaled), lhs_contracting_dims={2}, rhs_contracting_dims={1}, lhs_batch_dims={0}, rhs_batch_dims={0}
+          }
+
+)";
+
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-4, 0.}));
+  MatchOptimizedHlo(hlo_text,
+                    R"(
+
+; CHECK-LABEL: ENTRY %test (x: f8e4m3fn[10,16,32], y: f8e4m3fn[10,32,16], x_scale: f32[], y_scale: f32[]) -> f32[10,16,16] {
+; CHECK-NEXT:    [[P0:%[^ ]+]] = f8e4m3fn[10,16,32]{2,1,0} parameter(0)
+; CHECK-NEXT:    [[P1:%[^ ]+]] = f8e4m3fn[10,32,16]{2,1,0} parameter(1)
+; CHECK-NEXT:    [[P1_TRANSPOSE:%[^ ]+]] = f8e4m3fn[10,16,32]{2,1,0} transpose([[P1]]), dimensions={0,2,1}
+; CHECK-NEXT:    [[C0:%[^ ]+]] = f32[] constant(0)
+; CHECK-NEXT:    [[C0_BCAST:%[^ ]+]] = f32[10,16,16]{2,1,0} broadcast([[C0]]), dimensions={}
+; CHECK-NEXT:    [[P2:%[^ ]+]] = f32[] parameter(2)
+; CHECK-NEXT:    [[P3:%[^ ]+]] = f32[] parameter(3)
+; CHECK-NEXT:    [[C1:%[^ ]+]] = f32[] constant(1)
+; CHECK-NEXT:    ROOT [[OUT:%[^ ]+]] = f32[10,16,16]{2,1,0} custom-call([[P0]], [[P1_TRANSPOSE]], [[C0_BCAST]], [[P2]], [[P3]], /*index=5*/[[C1]], [[C1]]),
+; CHECK:           custom_call_target="__cublas$lt$matmul$f8",
+; CHECK:           backend_config="{
+; CHECK-DAG:         \"alpha_real\":1
+; CHECK-DAG:         \"alpha_imag\":0
+; CHECK-DAG:         \"beta\":0
+; CHECK-DAG:         \"dot_dimension_numbers\":{
+; CHECK-DAG:           \"lhs_contracting_dimensions\":[\"2\"]
+; CHECK-DAG:           \"rhs_contracting_dimensions\":[\"1\"]
+; CHECK-DAG:           \"lhs_batch_dimensions\":[\"0\"]
+; CHECK-DAG:           \"rhs_batch_dimensions\":[\"0\"]
 ; CHECK-DAG:         }
 ; CHECK-DAG:         \"precision_config\":{
 ; CHECK-DAG:           \"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]
@@ -4021,6 +4462,28 @@ TEST_F(CublasLtF8GemmRewriteTest, ScaledABScaledDWithDAmaxF8) {
 ; CHECK-DAG:         \"epilogue\":\"DEFAULT\"
 ; CHECK:           }"
       )");
+}
+
+TEST_F(GemmRewriteTest, NoFuseBiasBroadcast) {
+  const char* hlo = R"(
+
+HloModule module
+
+ENTRY main.10 {
+  Arg_0.1 = f16[384,128]{1,0} parameter(0)
+  Arg_1.2 = f16[128,256]{1,0} parameter(1)
+  dot.4 = f16[384,256]{1,0} dot(Arg_0.1, Arg_1.2), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  Arg_2.3 = f16[256]{0} parameter(2)
+  reshape.5 = f16[1,256]{1,0} reshape(Arg_2.3)
+  broadcast.6 = f16[1,256]{1,0} broadcast(reshape.5), dimensions={0,1}
+  reshape.7 = f16[256]{0} reshape(broadcast.6)
+  broadcast.8 = f16[384,256]{1,0} broadcast(reshape.7), dimensions={1}
+  ROOT add.9 = f16[384,256]{1,0} add(dot.4, broadcast.8)
+})";
+
+  MatchOptimizedHlo(hlo, R"(
+// CHECK: \"beta\":0
+  )");
 }
 
 class GemmRewriteAllocationTest : public GpuCodegenTest {

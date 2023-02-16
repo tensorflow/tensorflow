@@ -50,6 +50,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_dump_max_hlo_modules(-1);
   opts.set_xla_dump_module_metadata(false);
   opts.set_xla_dump_hlo_as_long_text(false);
+  opts.set_xla_dump_enable_mlir_pretty_form(true);
 #ifdef ENABLE_MKL
   opts.set_xla_cpu_use_mkl_dnn(true);
 #endif  // ENABLE_MKL
@@ -96,12 +97,22 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   // Set 4GB space limit for redzone scratch allocator.
   opts.set_xla_gpu_redzone_scratch_max_megabytes(1LL << 12);
   opts.set_xla_gpu_shape_checks(DebugOptions::RUNTIME);
-  opts.set_xla_cpu_enable_mlir_lowering(false);
   opts.set_xla_gpu_enable_mlir_lowering(true);
-  opts.set_xla_gpu_enable_softmax_fusion(true);
+  opts.set_xla_gpu_enable_softmax_fusion(false);
   opts.set_xla_gpu_normalize_layouts(true);
   opts.set_xla_gpu_simplify_all_fp_conversions(true);
   opts.set_xla_dump_latency_hiding_schedule(false);
+  opts.set_xla_gpu_enable_latency_hiding_scheduler(false);
+
+  opts.set_xla_cpu_enable_mlir_tiling_and_fusion(false);
+  opts.set_xla_cpu_enable_experimental_deallocation(false);
+
+  opts.set_xla_partitioning_algorithm(
+      DebugOptions::PARTITIONING_ALGORITHM_NOOP);
+
+  opts.set_xla_gpu_enable_triton_gemm(false);
+  opts.set_xla_gpu_enable_cudnn_int8x32_convolution_reordering(false);
+  opts.set_xla_gpu_triton_gemm_any(false);
   return opts;
 }
 
@@ -257,6 +268,18 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
     debug_options->set_xla_gpu_enable_mlir_lowering(value);
     return true;
   };
+
+  // Custom "sub-parser" lambda for xla_partitioning_algorithm.
+  auto setter_for_xla_partitioning_algorithm =
+      [debug_options](const std::string& value) {
+        DebugOptions::PartitioningAlgorithm partitioning_algorithm;
+        if (!DebugOptions::PartitioningAlgorithm_Parse(
+                value, &partitioning_algorithm)) {
+          return false;
+        }
+        debug_options->set_xla_partitioning_algorithm(partitioning_algorithm);
+        return true;
+      };
 
   // Custom "sub-parser" for xla_fuel.  Note that ConsumeFuel does not do any
   // locking on the fuel global variables.  This means that it's
@@ -704,7 +727,7 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       int32_setter_for(
           &DebugOptions::set_xla_gpu_force_compilation_parallelism),
       debug_options->xla_gpu_force_compilation_parallelism(),
-      "Overrides normal multi-threaded compilation settting to use this many "
+      "Overrides normal multi-threaded compilation setting to use this many "
       "threads. Setting to 0 (the default value) means no enforcement."));
   flag_list->push_back(
       tsl::Flag("xla_gpu_deterministic_ops",
@@ -775,6 +798,15 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       "If specified, dumps HLO before and after optimization passes in the "
       "pass pipelines that match this regular expression."));
   flag_list->push_back(tsl::Flag(
+      "xla_dump_enable_mlir_pretty_form",
+      bool_setter_for(&DebugOptions::set_xla_dump_enable_mlir_pretty_form),
+      debug_options->xla_dump_enable_mlir_pretty_form(),
+      "Enable dumping MLIR using pretty print form. If set to false, the "
+      "dumped "
+      "MLIR will be in the llvm-parsable format and can be processed by "
+      "mlir-opt tools. "
+      "Pretty print form is not legal MLIR."));
+  flag_list->push_back(tsl::Flag(
       "xla_gpu_enable_xla_runtime_executable",
       bool_setter_for(&DebugOptions::set_xla_gpu_enable_xla_runtime_executable),
       debug_options->xla_gpu_enable_xla_runtime_executable(),
@@ -806,11 +838,6 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       DebugOptions::ShapeChecks_Name(debug_options->xla_gpu_shape_checks()),
       "When to perform shape checks in XLA:GPU."));
   flag_list->push_back(tsl::Flag(
-      "xla_cpu_enable_mlir_lowering",
-      bool_setter_for(&DebugOptions::set_xla_cpu_enable_mlir_lowering),
-      debug_options->xla_cpu_enable_mlir_lowering(),
-      "Enable MLIR-based lowering in XLA:CPU instead of LLVM emitters."));
-  flag_list->push_back(tsl::Flag(
       "xla_gpu_enable_mlir_lowering", setter_for_xla_gpu_enable_mlir_lowering,
       debug_options->xla_gpu_enable_mlir_lowering(),
       "Enable MLIR-based lowering in XLA:GPU instead of LLVM emitters."));
@@ -836,6 +863,40 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       bool_setter_for(&DebugOptions::set_xla_dump_latency_hiding_schedule),
       debug_options->xla_dump_latency_hiding_schedule(),
       "Dump the schedule from the latency-hiding scheduler."));
+  flag_list->push_back(tsl::Flag(
+      "xla_cpu_enable_mlir_tiling_and_fusion",
+      bool_setter_for(&DebugOptions::set_xla_cpu_enable_mlir_tiling_and_fusion),
+      debug_options->xla_cpu_enable_mlir_tiling_and_fusion(),
+      "Enable MLIR tiling and fusion."));
+  flag_list->push_back(tsl::Flag(
+      "xla_cpu_enable_experimental_deallocation",
+      bool_setter_for(
+          &DebugOptions::set_xla_cpu_enable_experimental_deallocation),
+      debug_options->xla_cpu_enable_experimental_deallocation(),
+      "Enable experimental deallocation."));
+  flag_list->push_back(
+      tsl::Flag("xla_gpu_enable_latency_hiding_scheduler",
+                bool_setter_for(
+                    &DebugOptions::set_xla_gpu_enable_latency_hiding_scheduler),
+                debug_options->xla_gpu_enable_latency_hiding_scheduler(),
+                "Enable latency-hiding scheduler for XLA:GPU"));
+  flag_list->push_back(tsl::Flag(
+      "xla_partitioning_algorithm", setter_for_xla_partitioning_algorithm,
+      DebugOptions::PartitioningAlgorithm_Name(
+          debug_options->xla_partitioning_algorithm()),
+      "The partitioning algorithm to be used in the PartitionAssignment pass"));
+  flag_list->push_back(
+      tsl::Flag("xla_gpu_enable_triton_gemm",
+                bool_setter_for(&DebugOptions::set_xla_gpu_enable_triton_gemm),
+                debug_options->xla_gpu_enable_triton_gemm(),
+                "Use Triton-based matrix multiplication."));
+  flag_list->push_back(tsl::Flag(
+      "xla_gpu_enable_cudnn_int8x32_convolution_reordering",
+      bool_setter_for(
+          &DebugOptions::
+              set_xla_gpu_enable_cudnn_int8x32_convolution_reordering),
+      debug_options->xla_gpu_enable_cudnn_int8x32_convolution_reordering(),
+      "Enable cuDNN frontend for int8x32 convolutions with reordered filter."));
 }  // NOLINT(readability/fn_size)
 
 // Allocates flag_values and flag_objects; this function must not be called more

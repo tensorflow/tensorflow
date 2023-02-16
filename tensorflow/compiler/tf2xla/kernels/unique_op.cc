@@ -147,6 +147,10 @@ class UniqueOpBase : public XlaOpKernel {
     StatusOr<xla::Shape> input_shape_or = ctx->builder()->GetShape(input);
     OP_REQUIRES_OK(ctx, input_shape_or.status());
     auto input_shape = input_shape_or.value();
+    axis = axis < 0 ? axis + input_shape.rank() : axis;
+    OP_REQUIRES(ctx, 0 <= axis && axis < input_shape.rank(),
+                errors::InvalidArgument("axis has to be between [0, ",
+                                        input_shape.rank(), ")"));
     auto aux = MoveAxis(input, axis, 0, input_shape);
     auto aux_shape = ctx->builder()->GetShape(aux).value();
     int64_t leading_size = aux_shape.dimensions(0);

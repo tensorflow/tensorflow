@@ -238,7 +238,7 @@ class SymbolicGradientOp : public AsyncOpKernel {
     OP_REQUIRES_OK_ASYNC(
         ctx, lib->Instantiate(kGradientOp, AttrSlice(def()), &handle), done);
 
-    FunctionLibraryRuntime::Options opts;
+    FunctionLibraryRuntime::Options opts(ctx->step_id());
     opts.rendezvous = ctx->rendezvous();
     opts.cancellation_manager = ctx->cancellation_manager();
     opts.collective_executor = ctx->collective_executor();

@@ -78,7 +78,7 @@ class ParallelConcatUpdate : public OpKernel {
     OP_REQUIRES(
         ctx, value.dim_size(0) > loc_,
         errors::InvalidArgument("0th dimension of value = ", value.dim_size(0),
-                                " is less than loc_=", loc_));
+                                " must be greater than loc_ = ", loc_));
 
     auto update = ctx->input(1);
 
@@ -174,7 +174,6 @@ typedef Eigen::GpuDevice GPUDevice;
                               .TypeConstraint<type>("dtype"), \
                           ParallelConcatStart<GPUDevice, type>);
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_PARALLEL_CONCAT_START);
-TF_CALL_bfloat16(REGISTER_PARALLEL_CONCAT_START);
 #undef REGISTER_PARALLEL_CONCAT_START
 
 #define REGISTER_PARALLEL_CONCAT(type)                                     \
@@ -182,7 +181,6 @@ TF_CALL_bfloat16(REGISTER_PARALLEL_CONCAT_START);
       Name("ParallelConcat").Device(DEVICE_GPU).TypeConstraint<type>("T"), \
       FailureKernel);
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_PARALLEL_CONCAT);
-TF_CALL_bfloat16(REGISTER_PARALLEL_CONCAT);
 #undef REGISTER_PARALLEL_CONCAT
 
 #define REGISTER(type)                                    \
@@ -191,7 +189,6 @@ TF_CALL_bfloat16(REGISTER_PARALLEL_CONCAT);
                               .TypeConstraint<type>("T"), \
                           ParallelConcatUpdate<GPUDevice>);
 TF_CALL_GPU_NUMBER_TYPES(REGISTER);
-TF_CALL_bfloat16(REGISTER);
 #undef REGISTER
 
 // Register versions that operate on int32 data on the CPU even though the op

@@ -29,7 +29,7 @@ limitations under the License.
 #include "mlir/Dialect/MemRef/IR/MemRef.h"  // from @llvm-project
 #include "mlir/Dialect/SCF/IR/SCF.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
-#include "mlir/IR/BlockAndValueMapping.h"  // from @llvm-project
+#include "mlir/IR/IRMapping.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/ImplicitLocOpBuilder.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
@@ -389,7 +389,7 @@ class WhileOpLowering : public OpRewritePattern<WhileOp> {
     auto loop = b.create<scf::ForOp>(lb, ub, c1, ValueRange());
 
     // Move body region into the new loop operation.
-    BlockAndValueMapping mapping;
+    IRMapping mapping;
     rewriter.eraseOp(op.getBody().front().getTerminator());
     rewriter.mergeBlockBefore(&op.getBody().front(),
                               loop.getLoopBody().front().getTerminator());
@@ -411,7 +411,7 @@ class WhileOpLowering : public OpRewritePattern<WhileOp> {
     Value pred = op.getOperand(0);
 
     // Inline condition and body regions into the new loop operation.
-    BlockAndValueMapping mapping;
+    IRMapping mapping;
     rewriter.inlineRegionBefore(op.getCond(), loop.getBefore(),
                                 loop.getBefore().begin());
     rewriter.inlineRegionBefore(op.getBody(), loop.getAfter(),
@@ -816,10 +816,12 @@ class CollectiveOpLowering : public OpRewritePattern<CollectiveOp> {
 
     // For asynchonous start operation we need to produce a fake token, that
     // will be later removed, because corresponding `done` operation doesn't
-    // have the token argument. We rely on the `unrealized_conversion_cast`
-    // operation to create a fake token from the `i8` constant.
-    if (auto start = dyn_cast<AllReduceStartOp>(op.getOperation())) {
-      Value token = start.getToken();
+    // have a token argument. We rely on the `unrealized_conversion_cast`
+    // operation to create a fake token from the `i8` constant, and on the dead
+    // code elimination pass that will remove unused fake tokens.
+    if constexpr (std::is_same_v<CollectiveOp, AllReduceStartOp> ||
+                  std::is_same_v<CollectiveOp, CollectivePermuteStartOp>) {
+      Value token = op.getToken();
       Value c0 = b.create<arith::ConstantOp>(b.getI8IntegerAttr(0));
       auto fake = b.create<UnrealizedConversionCastOp>(token.getType(), c0);
       token.replaceAllUsesWith(fake.getResult(0));
@@ -948,6 +950,113 @@ class PartitionIdOpLowering : public CollectiveIdOpLowering<PartitionIdOp> {
 };
 
 //===----------------------------------------------------------------------===//
+// Point-to-Point communication ops lowering (Send/Recv).
+//===----------------------------------------------------------------------===//
+
+template <typename OpT>
+class SendRecvOpLowering : public OpRewritePattern<OpT> {
+ public:
+  SendRecvOpLowering(MLIRContext* ctx, const char* custom_call_target,
+                     CustomCallDeclarations& custom_calls)
+      : OpRewritePattern<OpT>(ctx),
+        custom_call_target_(custom_call_target),
+        custom_calls_(custom_calls) {}
+
+  LogicalResult matchAndRewrite(OpT op,
+                                PatternRewriter& rewriter) const override {
+    // Get or create a custom call function declaration.
+    ImplicitLocOpBuilder b(op.getLoc(), rewriter);
+    func::FuncOp callee = custom_calls_.GetOrCreate(
+        b, custom_call_target_, TypeRange(op.getOperands()), TypeRange());
+
+    llvm::SmallVector<NamedAttribute> custom_call_attributes = {
+        {b.getStringAttr("channel_handle"), op.getChannelHandle()},
+        {b.getStringAttr("is_host_transfer"), op.getIsHostTransferAttr()},
+        {b.getStringAttr("frontend_attributes"), op.getFrontendAttributes()}};
+
+    // Convert Send/Recv to a function call.
+    auto call = rewriter.create<func::CallOp>(op.getLoc(), callee.getName(),
+                                              TypeRange(), op.getOperands());
+    AppendCustomCallAttrs(call, custom_call_attributes);
+
+    // For communication operation we need to produce a fake token, that will be
+    // later removed, because corresponding `done` operation doesn't have the
+    // token argument. We rely on the `unrealized_conversion_cast` operation to
+    // create a fake token from the `i8` constant.
+    Value token = op.getResult();
+    Value c0 = b.create<arith::ConstantOp>(b.getI8IntegerAttr(0));
+    auto fake = b.create<UnrealizedConversionCastOp>(token.getType(), c0);
+    token.replaceAllUsesWith(fake.getResult(0));
+
+    // Erase the original operation.
+    rewriter.eraseOp(op);
+
+    return success();
+  }
+
+ private:
+  const char* custom_call_target_;
+  CustomCallDeclarations& custom_calls_;
+};
+
+template <typename OpT>
+class SendRecvDoneOpLowering : public OpRewritePattern<OpT> {
+ public:
+  SendRecvDoneOpLowering(MLIRContext* ctx, const char* custom_call_target,
+                         CustomCallDeclarations& custom_calls)
+      : OpRewritePattern<OpT>(ctx),
+        custom_call_target_(custom_call_target),
+        custom_calls_(custom_calls) {}
+
+  LogicalResult matchAndRewrite(OpT op,
+                                PatternRewriter& rewriter) const override {
+    // Get or create a custom call function declaration.
+    ImplicitLocOpBuilder b(op.getLoc(), rewriter);
+    func::FuncOp callee = custom_calls_.GetOrCreate(b, custom_call_target_,
+                                                    TypeRange(), TypeRange());
+
+    llvm::SmallVector<NamedAttribute> custom_call_attributes = {
+        {b.getStringAttr("channel_handle"), op.getChannelHandleAttr()},
+        {b.getStringAttr("is_host_transfer"), op.getIsHostTransferAttr()}};
+
+    // Convert SendDone/RecvDone to a function call.
+    auto call = rewriter.replaceOpWithNewOp<func::CallOp>(op, callee.getName(),
+                                                          TypeRange());
+    AppendCustomCallAttrs(call, custom_call_attributes);
+
+    return success();
+  }
+
+ private:
+  const char* custom_call_target_;
+  CustomCallDeclarations& custom_calls_;
+};
+
+struct SendOpLowering : public SendRecvOpLowering<lmhlo::SendOp> {
+  static constexpr const char kCustomCallTarget[] = "xla.gpu.send";
+  SendOpLowering(MLIRContext* ctx, CustomCallDeclarations& custom_calls)
+      : SendRecvOpLowering(ctx, kCustomCallTarget, custom_calls) {}
+};
+
+struct SendDoneOpLowering : public SendRecvDoneOpLowering<lmhlo::SendDoneOp> {
+  static constexpr const char kCustomCallTarget[] = "xla.gpu.send_done";
+  SendDoneOpLowering(MLIRContext* ctx, CustomCallDeclarations& custom_calls)
+      : SendRecvDoneOpLowering(ctx, kCustomCallTarget, custom_calls) {}
+};
+
+struct RecvOpLowering : public SendRecvOpLowering<lmhlo::RecvOp> {
+  static constexpr const char kCustomCallTarget[] = "xla.gpu.recv";
+  RecvOpLowering(MLIRContext* ctx, CustomCallDeclarations& custom_calls)
+      : SendRecvOpLowering(ctx, kCustomCallTarget, custom_calls) {}
+};
+
+struct RecvDoneOpLowering : public SendRecvDoneOpLowering<lmhlo::RecvDoneOp> {
+  static constexpr const char kCustomCallTarget[] = "xla.gpu.recv_done";
+  RecvDoneOpLowering(MLIRContext* ctx, CustomCallDeclarations& custom_calls)
+      : SendRecvDoneOpLowering(ctx, kCustomCallTarget, custom_calls) {}
+};
+
+//===----------------------------------------------------------------------===//
 
 template <typename StartOpT, typename DoneOpT>
 static absl::AnyInvocable<WalkResult(StartOpT)> GetAsyncUidGenerator(
@@ -1002,6 +1111,10 @@ void ConvertLmhloToGpuRuntimePass::runOnOperation() {
                   AllReduceStartOpLowering, AllToAllOpLowering,
                   CollectivePermuteOpLowering, CollectivePermuteStartOpLowering,
                   ReduceScatterOpLowering>(ctx, collective_uid, custom_calls);
+
+  // Convert lmhlo point-to-point communication operations to XLA gpu runtime.
+  patterns.insert<SendOpLowering, SendDoneOpLowering, RecvOpLowering,
+                  RecvDoneOpLowering>(ctx, custom_calls);
 
   if (failed(applyPatternsAndFoldGreedily(module, std::move(patterns))))
     return signalPassFailure();

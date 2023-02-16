@@ -50,8 +50,8 @@ class PjRtDeviceCompilerClient
       const XlaCompiler::CompilationResult& result) override;
 
   // Deserializes a serialized executable as produced by
-  // SerializeExecutable(). `serialized_executbale` must have been produced by a
-  // client of the same platform and version as this one.
+  // PjRtExecutable::SerializeExecutable(). `serialized_executable` must have
+  // been produced by a compiler of the same platform and version as this one.
   //
   // PjRt doesn't support AOT compilation yet. Loading a serialized executable
   // is currently only implemented for TfrtTpuPjrtClient and hence, this

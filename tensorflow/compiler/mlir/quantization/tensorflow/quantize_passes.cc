@@ -56,7 +56,8 @@ void AddQuantizeQatPasses(mlir::PassManager &pm,
   pm.addPass(mlir::TF::CreateTFShapeInferencePass());
   pm.addNestedPass<mlir::func::FuncOp>(mlir::quant::CreatePrepareLiftingPass());
   pm.addPass(mlir::quant::CreateLiftQuantizableSpotsAsFunctionsPass(
-      quantization_options.op_set()));
+      quantization_options.op_set(),
+      quantization_options.enable_two_input_tensors()));
   pm.addPass(mlir::quant::CreateInsertQuantizedFunctionsPass(
       quantization_options.quantization_method().experimental_method(),
       quantization_options.op_set()));
@@ -65,21 +66,22 @@ void AddQuantizeQatPasses(mlir::PassManager &pm,
   pm.addPass(mlir::quant::CreateQuantizeCompositeFunctionsPass(
       quantization_options.quantization_method().experimental_method(),
       quantization_options.op_set(),
-      quantization_options.enable_per_channel_quantization()));
+      quantization_options.enable_per_channel_quantization(),
+      quantization_options.min_num_elements_for_weights()));
   pm.addPass(mlir::createSymbolDCEPass());
   pm.addPass(mlir::TF::CreateTFShapeInferencePass());
 
-  // For XLA opset, the graph is inlined to take benefit of constant folding
-  // and the TF Conv/Matmul ops with cast-hack are converted to XLA ops.
-  if (quantization_options.op_set() == OpSet::XLA) {
+  // TODO(b/264637396): Deprecate TF opset
+  if (quantization_options.op_set() != OpSet::TF) {
     pm.addPass(mlir::createInlinerPass());
     pm.addPass(mlir::TF::CreateTFShapeInferencePass());
     pm.addNestedPass<mlir::func::FuncOp>(mlir::createCanonicalizerPass());
-    pm.addNestedPass<mlir::func::FuncOp>(
-        mlir::quant::CreateReplaceCastHacksWithTFXLAOpsPass());
+    if (quantization_options.op_set() == OpSet::XLA) {
+      pm.addNestedPass<mlir::func::FuncOp>(
+          mlir::quant::CreateReplaceCastHacksWithTFXLAOpsPass());
+    }
     pm.addNestedPass<mlir::func::FuncOp>(mlir::createCSEPass());
   }
-
   pm.addNestedPass<mlir::func::FuncOp>(mlir::quant::CreateOptimizePass());
 }
 
@@ -91,6 +93,7 @@ void AddQuantizePtqDynamicRangePasses(
   pm.addPass(mlir::TF::CreateTFShapeInferencePass());
   pm.addNestedPass<mlir::func::FuncOp>(mlir::quant::CreatePrepareLiftingPass());
   pm.addPass(mlir::quant::CreateLiftQuantizableSpotsAsFunctionsDRQPass(
+      quantization_options.quantization_method().experimental_method(),
       quantization_options.min_num_elements_for_weights()));
   pm.addPass(mlir::quant::CreateInsertQuantizedFunctionsPass(
       quantization_options.quantization_method().experimental_method(),
@@ -98,22 +101,20 @@ void AddQuantizePtqDynamicRangePasses(
   pm.addPass(mlir::quant::CreateQuantizeCompositeFunctionsPass(
       quantization_options.quantization_method().experimental_method(),
       quantization_options.op_set(),
-      quantization_options.enable_per_channel_quantization()));
+      quantization_options.enable_per_channel_quantization(),
+      quantization_options.min_num_elements_for_weights()));
   pm.addPass(mlir::createSymbolDCEPass());
   pm.addPass(mlir::TF::CreateTFShapeInferencePass());
 
-  // For XLA opset, the graph is inlined to take benefit of constant folding
-  // and the TF Conv/Matmul ops with cast-hack are converted to XLA ops.
-  // Weight only quantizaiton with XLA opset should avoid this pass to not
-  // constant folded.
-  if (quantization_options.op_set() == OpSet::XLA &&
-      quantization_options.quantization_method().experimental_method() !=
-          tensorflow::quantization::QuantizationMethod::WEIGHT_ONLY) {
+  // TODO(b/264637396): Deprecate TF opset
+  if (quantization_options.op_set() != OpSet::TF) {
     pm.addPass(mlir::createInlinerPass());
     pm.addPass(mlir::TF::CreateTFShapeInferencePass());
     pm.addNestedPass<mlir::func::FuncOp>(mlir::createCanonicalizerPass());
-    pm.addNestedPass<mlir::func::FuncOp>(
-        mlir::quant::CreateReplaceCastHacksWithTFXLAOpsPass());
+    if (quantization_options.op_set() == OpSet::XLA) {
+      pm.addNestedPass<mlir::func::FuncOp>(
+          mlir::quant::CreateReplaceCastHacksWithTFXLAOpsPass());
+    }
     pm.addNestedPass<mlir::func::FuncOp>(mlir::createCSEPass());
   }
 
@@ -128,9 +129,13 @@ void AddQuantizePtqPreCalibrationPasses(
         mlir::TF::CreateUnrollBatchMatMulPassPass());
   }
   pm.addPass(mlir::TF::CreateTFShapeInferencePass());
+  // TODO(b/268429872) Introduce a new experimental flag for the TpuModelToCpu
+  // conversion pass.
+  pm.addPass(mlir::quant::CreateConvertTpuModelToCpuPass());
   pm.addNestedPass<mlir::func::FuncOp>(mlir::quant::CreatePrepareLiftingPass());
   pm.addPass(mlir::quant::CreateLiftQuantizableSpotsAsFunctionsPass(
-      quantization_options.op_set()));
+      quantization_options.op_set(),
+      quantization_options.enable_two_input_tensors()));
   pm.addNestedPass<mlir::func::FuncOp>(
       mlir::quant::CreateInsertCustomAggregationOpsPass());
   pm.addPass(mlir::quant::CreateIssueIDsOfCustomAggregationOpsPass());
@@ -148,21 +153,22 @@ void AddQuantizePtqPostCalibrationPasses(
   pm.addPass(mlir::quant::CreateQuantizeCompositeFunctionsPass(
       quantization_options.quantization_method().experimental_method(),
       quantization_options.op_set(),
-      quantization_options.enable_per_channel_quantization()));
+      quantization_options.enable_per_channel_quantization(),
+      quantization_options.min_num_elements_for_weights()));
   pm.addPass(mlir::createSymbolDCEPass());
   pm.addPass(mlir::TF::CreateTFShapeInferencePass());
 
-  // For XLA opset, the graph is inlined to take benefit of constant folding
-  // and the TF Conv/Matmul ops with cast-hack are converted to XLA ops.
-  if (quantization_options.op_set() == OpSet::XLA) {
+  // TODO(b/264637396): Deprecate TF opset
+  if (quantization_options.op_set() != OpSet::TF) {
     pm.addPass(mlir::createInlinerPass());
     pm.addPass(mlir::TF::CreateTFShapeInferencePass());
     pm.addNestedPass<mlir::func::FuncOp>(mlir::createCanonicalizerPass());
-    pm.addNestedPass<mlir::func::FuncOp>(
-        mlir::quant::CreateReplaceCastHacksWithTFXLAOpsPass());
+    if (quantization_options.op_set() == OpSet::XLA) {
+      pm.addNestedPass<mlir::func::FuncOp>(
+          mlir::quant::CreateReplaceCastHacksWithTFXLAOpsPass());
+    }
     pm.addNestedPass<mlir::func::FuncOp>(mlir::createCSEPass());
   }
-
   pm.addNestedPass<mlir::func::FuncOp>(mlir::quant::CreateOptimizePass());
 }
 

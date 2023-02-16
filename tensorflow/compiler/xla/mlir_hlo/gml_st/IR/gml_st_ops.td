@@ -19,11 +19,12 @@ limitations under the License.
 #define GML_ST_OPS
 
 include "mlir/IR/OpBase.td"
+include "mlir/Interfaces/ControlFlowInterfaces.td"
 include "mlir/Interfaces/InferTypeOpInterface.td"
 include "mlir/Interfaces/SideEffectInterfaces.td"
+include "mlir/Interfaces/LoopLikeInterface.td"
 include "mlir/Interfaces/ViewLikeInterface.td"
 include "gml_st/IR/gml_st_ops_base.td"
-include "gml_st/IR/gml_st_legacy_ops.td"
 
 ///////////////////////////////////////////////////////////////////////////////
 // Types
@@ -78,6 +79,12 @@ def GMLST_TileType : GMLST_Set<"Tile"> {
 
 def AnySet : Type<Or<[GMLST_TileType.predicate]>, "subset type">;
 
+def Vector : AnyTypeOf<[
+  AnyVectorOfAnyRank
+], "", "::mlir::ShapedType">;
+def VectorOrScalar : AnyTypeOf<[
+  AnyVectorOfAnyRank, AnyFloat, AnyInteger, AnyComplex, Index
+]>;
 def RankedTensorOrVector : AnyTypeOf<[
   AnyRankedTensor, AnyVectorOfAnyRank
 ], "", "::mlir::ShapedType">;
@@ -154,38 +161,30 @@ def GMLST_MaterializeOp : GMLST_Op<"materialize", [
     OffsetSizeAndStrideOpInterface, Pure]> {
   let summary = "Operation to extract values from tensor or vector";
   let description = [{
-    The "materialize" operation extracts a tensor or a vector from another
-    tensor or a vector. MaterializeOp accepts a list of offsets-sizes-strides
-    type to extract tensors from tensors.
+    The "materialize" operation extracts a vector from another or a vector.
+    MaterializeOp accepts a list of offsets-sizes-strides.
 
     ```
-    %subtensor = gml_st.materialize %tensor[0, 0][42, 16][1, 1]
-      : tensor<?x?xf32>[!gml_st.tile<42x16>] to tensor<42x16xf32>
+    %subvector = gml_st.materialize %vector[0, 0][42, 16][1, 1]
+      : vector<?x?xf32>[!gml_st.tile<42x16>] to vector<42x16xf32>
     ```
 
     If `sizes` define a shape with a single element, it is also possible to
-    extract an element from a tensor.
+    extract an element from a vector.
 
     ```
-    %element = gml_st.materialize %tensor[0, 0][1, 1][1, 1]
-      : tensor<3x1xindex>[!gml_st.tile<1x1>] to index
+    %element = gml_st.materialize %vector[0, 0][1, 1][1, 1]
+      : vector<3x1xindex>[!gml_st.tile<1x1>] to index
 
-    %element = gml_st.materialize %tensor[%tile_0d]
-      : tensor<f32>[][][] to f32
+    %element = gml_st.materialize %vector[%tile_0d]
+      : vector<f32>[][][] to f32
 
-    %subtensor = gml_st.materialize %tensor[%tile_with_single_element]
-      : tensor<3x1xindex>[0, 0][1, 1][1, 1] to tensor<1x1xindex>
-    ```
-
-    MaterializeOp can also extract a vector from a vector.
-
-    ```
-    %subvector = gml_st.materialize %vector[%tile]
-      : vector<64x32xf32>[0, 0][42, 16][1, 1] to vector<42x16xf32>
+    %subvector = gml_st.materialize %vector[%tile_with_single_element]
+      : vector<3x1xindex>[0, 0][1, 1][1, 1] to vector<1x1xindex>
     ```
   }];
   let arguments = (ins
-    RankedTensorOrVector:$source,
+    Vector:$source,
     Variadic<Index>:$offsets,
     Variadic<Index>:$sizes,
     Variadic<Index>:$strides,
@@ -193,7 +192,7 @@ def GMLST_MaterializeOp : GMLST_Op<"materialize", [
     DenseI64ArrayAttr:$static_sizes,
     DenseI64ArrayAttr:$static_strides
   );
-  let results = (outs RankedTensorOrVectorOrScalar:$result);
+  let results = (outs VectorOrScalar:$result);
 
   let builders = [
    OpBuilder<(ins "Value":$source, "ArrayRef<OpFoldResult>":$offsets,
@@ -256,6 +255,58 @@ class GMLST_LoopLikeOp<string mnemonic, list<Trait> traits = []>
 
     /// Return terminator of the loop body.
     SetYieldOp getTerminator();
+
+    /// Number of output operands
+    unsigned getNumOutputs() { return getOutputs().size(); }
+
+    /// Get the region output args.
+    Block::BlockArgListType getRegionOutputArgs() {
+      return getBody()->getArguments().take_back(getNumOutputs());
+    }
+
+    /// Get the region output arg that corresponds to an OpOperand.
+    BlockArgument getRegionOutputArgForOpOperand(OpOperand &opOperand) {
+      assert(opOperand.getOperandNumber() >= getNumControlOperands() &&
+             "expected an output args operand");
+      assert(opOperand.getOwner() == getOperation() &&
+             "opOperand does not belong to this gml_st::ForOp operation");
+      return getBody()->getArgument(opOperand.getOperandNumber() -
+                                    getNumControlOperands() + getNumLoops());
+    }
+
+    /// Get the OpOperand& that corresponds to a region output arg.
+    OpOperand &getOpOperandForRegionOutputArg(BlockArgument bbArg) {
+      assert(bbArg.getArgNumber() >= getNumLoops() &&
+             "expected a bbArg that is not an induction variable");
+      assert(bbArg.getOwner()->getParentOp() == getOperation() &&
+             "bbArg does not belong to the gml_st::ForOp body");
+      return getOperation()->getOpOperand(
+        getNumControlOperands() + bbArg.getArgNumber() - getNumLoops());
+    }
+
+    /// Get the OpResult that corresponds to an OpOperand.
+    OpResult getResultForOpOperand(OpOperand &opOperand) {
+      assert(opOperand.getOperandNumber() >= getNumControlOperands() &&
+             "expected an output args operand");
+      assert(opOperand.getOwner() == getOperation() &&
+             "opOperand does not belong to this gml_st::ForOp operation");
+      return getOperation()->getResult(
+        opOperand.getOperandNumber() - getNumControlOperands());
+    }
+
+    /// Get the OpOperand& that corresponds to an OpResultOpOperand.
+    OpOperand &getOpOperandForResult(OpResult opResult) {
+      assert(opResult.getDefiningOp() == getOperation() &&
+             "opResult does not belong to the gml_st::ForOp operation");
+      return getOperation()->getOpOperand(
+        getNumControlOperands() + opResult.getResultNumber());
+    }
+
+    /// Return the destinations for a gml_st.for op.
+    ValueRange getLoopLikeOpInits() {
+      return getOutputs();
+    }
+
   }];
 
   let hasCustomAssemblyFormat = 1;
@@ -351,22 +402,19 @@ def GMLST_ParallelOp : GMLST_LoopLikeOp<"parallel", []> {
   let arguments = (ins Variadic<Index>:$lowerBound,
                        Variadic<Index>:$upperBound,
                        Variadic<Index>:$step,
+                       Variadic<AnyShaped>:$outputs,
                        OptionalAttr<StrAttr>:$distributionType);
 
   let builders = [
     OpBuilder<(ins "TypeRange":$resultTypes, "ValueRange":$lowerBounds,
-      "ValueRange":$upperBounds, "ValueRange":$steps,
+      "ValueRange":$upperBounds, "ValueRange":$steps, "ValueRange":$outputs,
       CArg<"std::optional<StringAttr>", "std::nullopt">:$distributionType,
-      CArg<"function_ref<void (OpBuilder &, Location, /*ivs=*/ValueRange)>",
+      CArg<"function_ref<void (OpBuilder &, Location, /*ivs=*/ValueRange, /*outputs=*/ValueRange)>",
       "nullptr">:$bodyBuilderFn)>,
   ];
   let skipDefaultBuilders = 1;
 
-  let extraClassDeclaration = extraBaseClassDeclaration # [{
-    /// Return the destinations for a gml_st.parallel op.
-    ValueRange getLoopLikeOpInits();
-  }];
-
+  let extraClassDeclaration = extraBaseClassDeclaration;
   let hasCanonicalizer = 1;
 }
 
@@ -446,59 +494,7 @@ def GMLST_ForOp : GMLST_LoopLikeOp<"for", []> {
         "/*outputs=*/ValueRange)>", "nullptr">:$bodyBuilderFn)>,
   ];
 
-  let extraClassDeclaration = extraBaseClassDeclaration # [{
-    /// Number of output operands
-    unsigned getNumOutputs() { return getOutputs().size(); }
-
-    /// Get the region output args.
-    Block::BlockArgListType getRegionOutputArgs() {
-      return getBody()->getArguments().take_back(getNumOutputs());
-    }
-
-    /// Get the region output arg that corresponds to an OpOperand.
-    BlockArgument getRegionOutputArgForOpOperand(OpOperand &opOperand) {
-      assert(opOperand.getOperandNumber() >= getNumControlOperands() &&
-             "expected an output args operand");
-      assert(opOperand.getOwner() == getOperation() &&
-             "opOperand does not belong to this gml_st::ForOp operation");
-      return getBody()->getArgument(opOperand.getOperandNumber() -
-                                    getNumControlOperands() + getNumLoops());
-    }
-
-    /// Get the OpOperand& that corresponds to a region output arg.
-    OpOperand &getOpOperandForRegionOutputArg(BlockArgument bbArg) {
-      assert(bbArg.getArgNumber() >= getNumLoops() &&
-             "expected a bbArg that is not an induction variable");
-      assert(bbArg.getOwner()->getParentOp() == getOperation() &&
-             "bbArg does not belong to the gml_st::ForOp body");
-      return getOperation()->getOpOperand(
-        getNumControlOperands() + bbArg.getArgNumber() - getNumLoops());
-    }
-
-    /// Get the OpResult that corresponds to an OpOperand.
-    OpResult getResultForOpOperand(OpOperand &opOperand) {
-      assert(opOperand.getOperandNumber() >= getNumControlOperands() &&
-             "expected an output args operand");
-      assert(opOperand.getOwner() == getOperation() &&
-             "opOperand does not belong to this gml_st::ForOp operation");
-      return getOperation()->getResult(
-        opOperand.getOperandNumber() - getNumControlOperands());
-    }
-
-    /// Get the OpOperand& that corresponds to an OpResultOpOperand.
-    OpOperand &getOpOperandForResult(OpResult opResult) {
-      assert(opResult.getDefiningOp() == getOperation() &&
-             "opResult does not belong to the gml_st::ForOp operation");
-      return getOperation()->getOpOperand(
-        getNumControlOperands() + opResult.getResultNumber());
-    }
-
-    /// Return the destinations for a gml_st.for op.
-    ValueRange getLoopLikeOpInits() {
-      return getOutputs();
-    }
-  }];
-
+  let extraClassDeclaration = extraBaseClassDeclaration;
   let hasCanonicalizer = 1;
 }
 
@@ -587,6 +583,23 @@ def GMLST_SetYieldOp : GMLST_Op<"set_yield", [
   let hasCanonicalizer = 1;
 }
 
+def GMLST_YieldOp : GMLST_Op<"yield", [Pure, ReturnLike, Terminator,
+    HasParent<"::mlir::gml_st::SetYieldOp, ::mlir::gml_st::FusionOp">]>,
+    Arguments<(ins AnyType:$value)> {
+  let summary = "Yield operation";
+  let description = [{
+    `gml_st.yield` is a special terminator operation for accumulator regions of
+    `gml_st.set_yield` and `gml_st.fusion` region.
+
+    Example:
+
+    ```mlir
+    gml_st.yield %f0: tensor<f32>
+    ```
+  }];
+  let assemblyFormat = "attr-dict $value `:` type($value)";
+}
+
 // TODO(b/253560795): Figure out where this operation shoud live, and how to
 // model it properly.
 def GMLST_DistributeOp : GMLST_Op<"distribute", [
@@ -616,6 +629,20 @@ def GMLST_DistributeOp : GMLST_Op<"distribute", [
       `into` type($result) `[` type($set) `]`
   }];
 
+  let hasVerifier = 0;
+}
+
+def GMLST_FusionOp : GMLST_Op<"fusion", [
+      IsolatedFromAbove,
+      SingleBlockImplicitTerminator<"gml_st::YieldOp">
+    ]> {
+  let summary = "A cluster of operations to be tiled and fused.";
+
+  let arguments = (ins Variadic<AnyRankedTensor>:$inputs);
+  let results = (outs Variadic<AnyRankedTensor>:$results);
+  let regions = (region SizedRegion<1>:$region);
+
+  let hasCustomAssemblyFormat = 1;
   let hasVerifier = 0;
 }
 

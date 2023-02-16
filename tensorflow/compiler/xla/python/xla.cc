@@ -55,6 +55,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/pjrt/pjrt_c_api_client.h"
 #include "tensorflow/compiler/xla/pjrt/tpu_client.h"
 #endif  // XLA_PYTHON_ENABLE_TPU
+#include "tensorflow/compiler/xla/pjrt/pjrt_api.h"
 #include "tensorflow/compiler/xla/python/custom_call_sharding.h"
 #include "tensorflow/compiler/xla/python/dlpack.h"
 #include "tensorflow/compiler/xla/python/jax_jit.h"
@@ -80,7 +81,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/shape.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/statusor.h"
-#include "tensorflow/compiler/xla/stream_executor/tpu/pjrt_api.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/tsl/distributed_runtime/preemption/preemption_sync_manager.h"
 #include "tensorflow/tsl/python/lib/core/bfloat16.h"
@@ -164,8 +164,8 @@ PYBIND11_MODULE(xla_extension, m) {
       .def_property_readonly("task_id", &PjRtDevice::process_index,
                              "Deprecated; please use process_index")
       .def_property_readonly("platform",
-                             [](const PjRtDevice& device) {
-                               return device.client()->platform_name();
+                             [](const ClientAndPtr<PjRtDevice>& device) {
+                               return device.client->platform_name();
                              })
       .def_property_readonly("device_kind", &PjRtDevice::device_kind)
       .def_property_readonly(
@@ -273,9 +273,6 @@ PYBIND11_MODULE(xla_extension, m) {
       .def("compile", &PyClient::Compile, py::arg("computation"),
            py::arg("compile_options") = CompileOptions(),
            py::arg("host_callbacks") = std::vector<py::capsule>())
-      .def("compile", &PyClient::CompileMlir, py::arg("computation"),
-           py::arg("compile_options") = CompileOptions(),
-           py::arg("host_callbacks") = std::vector<py::capsule>())
       .def("serialize_executable", &PyClient::SerializeExecutable)
       .def("deserialize_executable",
            py::overload_cast<const std::string&, CompileOptions,
@@ -327,8 +324,7 @@ PYBIND11_MODULE(xla_extension, m) {
   });
   m.def("load_pjrt_plugin",
         [](std::string platform_name, std::string library_path) -> Status {
-          return stream_executor::tpu::LoadPjrtPlugin(platform_name,
-                                                      library_path);
+          return pjrt::LoadPjrtPlugin(platform_name, library_path);
         });
 
 #ifdef XLA_PYTHON_ENABLE_GPU
@@ -448,7 +444,8 @@ PYBIND11_MODULE(xla_extension, m) {
       .def("execute_with_token", &PyLoadedExecutable::ExecuteWithToken,
            py::arg("arguments"), py::arg("device") = std::nullopt)
       .def("execute_sharded_on_local_devices",
-           py::overload_cast<absl::Span<const std::vector<PyBuffer::object>>>(
+           py::overload_cast<absl::Span<
+               const std::vector<std::variant<PyBuffer::object, PyArray>>>>(
                &PyLoadedExecutable::ExecuteShardedOnLocalDevices),
            py::arg("arguments"))
       .def("execute_sharded_on_local_devices",
@@ -456,7 +453,8 @@ PYBIND11_MODULE(xla_extension, m) {
                &PyLoadedExecutable::ExecuteShardedOnLocalDevices),
            py::arg("arguments"))
       .def("execute_sharded_on_local_devices_with_tokens",
-           py::overload_cast<absl::Span<const std::vector<PyBuffer::object>>>(
+           py::overload_cast<absl::Span<
+               const std::vector<std::variant<PyBuffer::object, PyArray>>>>(
                &PyLoadedExecutable::ExecuteShardedOnLocalDevicesWithTokens),
            py::arg("arguments"))
       .def("execute_sharded_on_local_devices_with_tokens",
@@ -564,7 +562,21 @@ PYBIND11_MODULE(xla_extension, m) {
             py::gil_scoped_release gil_release;
             return client.KeyValueSet(key, value);
           },
-          py::arg("key"), py::arg("value"));
+          py::arg("key"), py::arg("value"))
+      .def(
+          "key_value_dir_get",
+          [](DistributedRuntimeClient& client, std::string key) {
+            py::gil_scoped_release gil_release;
+            return client.KeyValueDirGet(key);
+          },
+          py::arg("key"))
+      .def(
+          "key_value_delete",
+          [](DistributedRuntimeClient& client, std::string key) {
+            py::gil_scoped_release gil_release;
+            return client.KeyValueDelete(key);
+          },
+          py::arg("key"));
 
   m.def(
       "get_distributed_runtime_service",

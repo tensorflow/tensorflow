@@ -530,6 +530,22 @@ func.func @custom_call(%ctx: !rt.execution_context) -> (memref<2x2xf32>) {
 
 // -----
 
+// CHECK: %[[C1:.*]] = arith.constant 1 : i32
+// CHECK: %[[RETS_ALLOCA:.*]] = llvm.alloca %[[C1]] x !llvm.array<3 x ptr>
+
+// CHECK: %[[C1_0:.*]] = arith.constant 1 : i32
+// CHECK: %[[MEMREF_ALLOCA:.*]] = llvm.alloca %[[C1_0]] x !llvm.struct<(i8, i8, ptr, array<4 x i64>)>
+
+// CHECK: call @f32_reduce
+func.func @custom_call(%ctx: !rt.execution_context)
+                          -> (!async.value<memref<2x2xf32>>) {
+  %status, %0 = rt.call %ctx["f32_reduce"] ()
+                          : () -> (!async.value<memref<2x2xf32>>)
+  return %0 : !async.value<memref<2x2xf32>>
+}
+
+// -----
+
 // Test that custom call encoding can pass a reference to exported function as a
 // custom call attribute.
 func.func @init(%ctx: !rt.execution_context)

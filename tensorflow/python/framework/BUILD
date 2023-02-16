@@ -6,9 +6,11 @@ load(
     "if_oss",
     "if_xla_available",
     "py_test",
+    "tf_cc_binary",
     "tf_cc_shared_object",
     "tf_cc_test",
     "tf_gen_op_wrapper_py",
+    "tf_kernel_library",
 )
 load("//tensorflow:tensorflow.default.bzl", "cuda_py_test", "tf_py_test", "tf_python_pybind_extension")
 load("//tensorflow:pytype.default.bzl", "pytype_library", "pytype_strict_library")
@@ -76,22 +78,54 @@ cc_library(
     name = "python_op_gen",
     srcs = [
         "python_op_gen.cc",
-        "python_op_gen_internal.cc",
     ],
     hdrs = [
         "python_op_gen.h",
-        "python_op_gen_internal.h",
     ],
     visibility = ["//visibility:public"],
     deps = [
+        ":op_reg_offset_proto_cc",
+        ":python_op_gen_annotator",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:op_gen_lib",
         "//tensorflow/core:protos_all_cc",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
     ],
     alwayslink = 1,
+)
+
+cc_library(
+    name = "python_op_gen_annotator",
+    srcs = ["python_op_gen_annotator.cc"],
+    hdrs = ["python_op_gen_annotator.h"],
+    visibility = ["//tensorflow:internal"],
+    deps = [
+        ":kythe_metadata_proto_cc",
+        ":op_reg_offset_proto_cc",
+        "//tensorflow/core:portable_gif_internal",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/platform:stringpiece",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+tf_cc_test(
+    name = "python_op_gen_annotator_test",
+    srcs = ["python_op_gen_annotator_test.cc"],
+    deps = [
+        ":kythe_metadata_proto_cc",
+        ":python_op_gen_annotator",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/platform:protobuf",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
+    ],
 )
 
 tf_python_pybind_extension(
@@ -111,6 +145,7 @@ cc_library(
     srcs = ["python_op_gen_main.cc"],
     visibility = ["//visibility:public"],
     deps = [
+        ":op_reg_offset_proto_cc",
         ":python_op_gen",
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
@@ -119,6 +154,7 @@ cc_library(
         "//tensorflow/core:op_gen_lib",
         "//tensorflow/core:protos_all_cc",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
     ],
     alwayslink = 1,
 )
@@ -127,12 +163,72 @@ tf_cc_test(
     name = "python_op_gen_test",
     srcs = ["python_op_gen_test.cc"],
     deps = [
+        ":op_reg_offset_proto_cc",
         ":python_op_gen",
         "//tensorflow/core:framework",
         "//tensorflow/core:op_gen_lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+    ],
+)
+
+tf_proto_library(
+    name = "op_reg_offset_proto",
+    srcs = ["op_reg_offset.proto"],
+    cc_api_version = 3,
+    visibility = ["//tensorflow:internal"],
+)
+
+tf_proto_library(
+    name = "kythe_metadata_proto",
+    srcs = ["kythe_metadata.proto"],
+    cc_api_version = 3,
+    visibility = ["//tensorflow:internal"],
+)
+
+tf_cc_binary(
+    name = "offset_counter",
+    srcs = ["offset_counter.cc"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":offset_counter_helper",
+        ":op_reg_offset_proto_cc",
+        "//tensorflow/tsl/platform:errors",
+        "//tensorflow/tsl/platform:platform_port",
+        "//tensorflow/tsl/platform:strcat",
+        "//tensorflow/tsl/platform:types",
+        "//tensorflow/tsl/util:command_line_flags",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
+    name = "offset_counter_helper",
+    srcs = ["offset_counter_helper.cc"],
+    hdrs = ["offset_counter_helper.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":op_reg_offset_proto_cc",
+        "//tensorflow/tsl/platform:errors",
+        "//tensorflow/tsl/platform:regexp",
+        "//tensorflow/tsl/platform:status",
+        "//tensorflow/tsl/platform:strcat",
+        "//tensorflow/tsl/platform:types",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+tf_cc_test(
+    name = "offset_counter_helper_test",
+    srcs = ["offset_counter_helper_test.cc"],
+    deps = [
+        ":offset_counter_helper",
+        ":op_reg_offset_proto_cc",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "@com_google_absl//absl/strings:str_format",
     ],
 )
 
@@ -149,6 +245,7 @@ py_library(
         ":op_def_registry",
         ":ops",
         ":registry",
+        ":tensor_conversion_registry",
         ":tensor_shape",
         ":versions",
     ],
@@ -278,6 +375,7 @@ py_library(
         ":tensor_shape",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python/eager:execute",
+        "//tensorflow/python/framework:tensor_conversion_registry",
         "//tensorflow/python/profiler:trace",
     ],
 )
@@ -441,7 +539,10 @@ py_library(
         "convert_to_constants.py",
     ],
     srcs_version = "PY3",
-    visibility = visibility + ["//platforms/darwinn:__subpackages__"],
+    visibility = visibility + [
+        "//learning/deepmind/deepfunc:__subpackages__",
+        "//platforms/darwinn:__subpackages__",
+    ],
     deps = [
         ":dtypes",
         ":ops",
@@ -449,6 +550,8 @@ py_library(
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:platform",
         "//tensorflow/python/grappler:tf_optimizer",
+        "//tensorflow/python/util",
+        "//tensorflow/python/util:tf_export",
     ],
 )
 
@@ -919,7 +1022,6 @@ py_library(
         ":device",
         ":dtypes",
         ":error_interpolation",
-        ":indexed_slices",
         ":op_def_registry",
         ":registry",
         ":tensor_conversion_registry",
@@ -974,9 +1076,15 @@ py_library(
         ":tensor_conversion_registry",
         ":tensor_shape",
         ":type_spec",
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/python:math_ops_gen",
+        "//tensorflow/python:tf2",
         "//tensorflow/python/eager:context",
+        "//tensorflow/python/saved_model:nested_structure_coder",
         "//tensorflow/python/types",
         "//tensorflow/python/util",
+        "//tensorflow/python/util:tf_export",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -994,8 +1102,14 @@ py_library(
     name = "tensor_conversion_registry",
     srcs = ["tensor_conversion_registry.py"],
     srcs_version = "PY3",
+    # TODO(b/266747022): remove extra visibility
+    visibility = visibility + ["//learning/brain/experimental:__subpackages__"],
     deps = [
-        "//tensorflow/python/eager:context",
+        ":dtypes",
+        "//tensorflow/python/types",
+        "//tensorflow/python/util",
+        "//tensorflow/python/util:tf_export",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -1015,6 +1129,7 @@ py_library(
         ":tensor_util",
         ":type_spec",
         "//tensorflow/core:protos_all_py",
+        "//tensorflow/core/function/capture:capture_container",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:handle_data_util",
         "//tensorflow/python:resource_variable_ops",
@@ -1027,7 +1142,6 @@ py_library(
         "//tensorflow/python/eager:tape",
         "//tensorflow/python/platform",
         "//tensorflow/python/saved_model:save_context",
-        "//tensorflow/python/types",
         "//tensorflow/python/util",
         "//tensorflow/python/util:tf_decorator",
         "//tensorflow/python/util:tf_export",
@@ -1209,6 +1323,9 @@ py_library(
         ":ops",
         ":tensor_util",
         ":type_spec",
+        ":type_spec_registry",
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/python/saved_model:nested_structure_coder",
         "//tensorflow/python/types",
     ],
 )
@@ -1262,10 +1379,10 @@ py_library(
         ":tensor_shape",
         ":tensor_spec",
         ":type_spec",
-        # TODO(b/232002704) remove `:type_utils` import when used internally (by non-tests)
-        # elsewhere
-        ":type_utils",
+        ":type_spec_registry",
+        "//tensorflow/core:protos_all_py",
         "//tensorflow/python:composite_tensor_ops",
+        "//tensorflow/python/saved_model:nested_structure_coder",
     ],
 )
 
@@ -1300,6 +1417,7 @@ py_library(
         "//tensorflow/core/function/trace_type",
         "//tensorflow/python:tf2",
         "//tensorflow/python/eager:monitoring",
+        "//tensorflow/python/saved_model:nested_structure_coder",
         "//tensorflow/python/util",
     ],
 )
@@ -1316,9 +1434,20 @@ pytype_library(
         "//tensorflow/core:protos_all_py",
         "//tensorflow/core/function/trace_type",
         "//tensorflow/python:platform",
+        "//tensorflow/python/saved_model:nested_structure_coder",
         "//tensorflow/python/types",
         "//tensorflow/python/util",
         "//third_party/py/numpy",
+    ],
+)
+
+pytype_library(
+    name = "type_spec_registry",
+    srcs = ["type_spec_registry.py"],
+    srcs_version = "PY3",
+    visibility = visibility + ["//third_party/py/tensorflow_gnn:__subpackages__"],
+    deps = [
+        "//tensorflow/python/types",
     ],
 )
 
@@ -1340,20 +1469,30 @@ pytype_library(
 )
 
 py_library(
-    name = "tensor_spec",
-    srcs = ["tensor_spec.py"],
-    srcs_version = "PY3",
+    name = "tensor",
+    srcs = ["tensor.py"],
     deps = [
         ":common_shapes",
         ":dtypes",
         ":tensor_shape",
         ":type_spec",
+        ":type_spec_registry",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/core/function/trace_type",
         "//tensorflow/python/eager:graph_only_ops",
         "//tensorflow/python/platform",
+        "//tensorflow/python/saved_model:nested_structure_coder",
+        "//tensorflow/python/types",
         "//tensorflow/python/util",
         "//third_party/py/numpy",
+    ],
+)
+
+py_library(
+    name = "tensor_spec",
+    srcs = ["tensor_spec.py"],
+    deps = [
+        ":tensor",
     ],
 )
 
@@ -1420,6 +1559,7 @@ py_library(
         "//tensorflow/python:pywrap_tf_session",
         "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python:session",
+        "//tensorflow/python:sync_ops_gen",
         "//tensorflow/python:tensor_array_ops",
         "//tensorflow/python:training",
         "//tensorflow/python:variables",
@@ -1759,10 +1899,11 @@ tf_gen_op_wrapper_py(
     deps = [":test_ops_kernels"],
 )
 
-cc_library(
+tf_kernel_library(
     name = "test_ops_kernels",
     srcs = ["test_ops.cc"],
-    linkstatic = 1,
+    hdrs = ["test_ops.h"],
+    gpu_srcs = ["test_ops.cu.cc"],
     deps = [
         "@com_google_absl//absl/time",
         "//tensorflow/core:framework",
@@ -1832,6 +1973,32 @@ tf_py_test(
     ],
 )
 
+# Test that op_allowlist works with ops with namespaces
+tf_gen_op_wrapper_py(
+    name = "test_namespace_ops",
+    out = "test_namespace_ops.py",
+    op_allowlist = ["Namespace>TestStringOutput"],
+    deps = [
+        ":test_ops_kernels",
+    ],
+)
+
+tf_py_test(
+    name = "op_allowlist_namespace_test",
+    size = "small",
+    srcs = ["op_allowlist_namespace_test.py"],
+    main = "op_allowlist_namespace_test.py",
+    python_version = "PY3",
+    tags = ["no_pip"],  # Avoid a missing test dependency error
+    deps = [
+        ":errors",
+        ":for_generated_wrappers",
+        ":framework",
+        ":test_lib",
+        ":test_namespace_ops",
+    ],
+)
+
 tf_py_test(
     name = "ops_enable_eager_test",
     size = "small",
@@ -1854,6 +2021,7 @@ tf_py_test(
     deps = [
         ":extension_type",
         ":test_lib",
+        ":type_spec_registry",
         ":type_utils",
         "@absl_py//absl/testing:parameterized",
     ],
@@ -1912,6 +2080,7 @@ tf_py_test(
         ":for_generated_wrappers",
         ":test_lib",
         ":type_spec",
+        ":type_spec_registry",
         ":type_utils",
         "//tensorflow/core/function/trace_type",
         "//tensorflow/python:platform_test",
@@ -1920,14 +2089,14 @@ tf_py_test(
 )
 
 tf_py_test(
-    name = "tensor_spec_test",
+    name = "tensor_test",
     size = "small",
-    srcs = ["tensor_spec_test.py"],
-    main = "tensor_spec_test.py",
+    srcs = ["tensor_test.py"],
+    main = "tensor_test.py",
     python_version = "PY3",
     deps = [
         ":for_generated_wrappers",
-        ":tensor_spec",
+        ":tensor",
         ":test_lib",
         ":type_utils",
         "//tensorflow/python:platform_test",
@@ -2009,12 +2178,13 @@ tf_py_test(
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:math_ops",
+        "//tensorflow/python:shape_util",
         "//tensorflow/python:state_ops_gen",
         "//third_party/py/numpy",
     ],
 )
 
-tf_py_test(
+cuda_py_test(
     name = "test_util_test",
     size = "small",
     srcs = ["test_util_test.py"],

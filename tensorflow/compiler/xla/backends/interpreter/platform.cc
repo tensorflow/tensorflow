@@ -21,10 +21,10 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "tensorflow/compiler/xla/backends/interpreter/executor.h"
 #include "tensorflow/compiler/xla/stream_executor/device_options.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/initialize.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/status.h"
 #include "tensorflow/compiler/xla/stream_executor/multi_platform_manager.h"
 #include "tensorflow/compiler/xla/stream_executor/platform.h"
+#include "tensorflow/compiler/xla/stream_executor/platform/initialize.h"
+#include "tensorflow/tsl/platform/status.h"
 
 namespace stream_executor {
 namespace interpreter {
@@ -41,12 +41,12 @@ int XlaInterpreterPlatform::VisibleDeviceCount() const { return 1; }
 
 const std::string& XlaInterpreterPlatform::Name() const { return name_; }
 
-port::StatusOr<std::unique_ptr<DeviceDescription>>
+tsl::StatusOr<std::unique_ptr<DeviceDescription>>
 XlaInterpreterPlatform::DescriptionForDevice(int ordinal) const {
   return XlaInterpreterExecutor::CreateDeviceDescription(ordinal);
 }
 
-port::StatusOr<StreamExecutor*> XlaInterpreterPlatform::ExecutorForDevice(
+tsl::StatusOr<StreamExecutor*> XlaInterpreterPlatform::ExecutorForDevice(
     int ordinal) {
   StreamExecutorConfig config;
   config.ordinal = ordinal;
@@ -55,7 +55,7 @@ port::StatusOr<StreamExecutor*> XlaInterpreterPlatform::ExecutorForDevice(
   return GetExecutor(config);
 }
 
-port::StatusOr<StreamExecutor*>
+tsl::StatusOr<StreamExecutor*>
 XlaInterpreterPlatform::ExecutorForDeviceWithPluginConfig(
     int device_ordinal, const PluginConfig& plugin_config) {
   StreamExecutorConfig config;
@@ -65,13 +65,13 @@ XlaInterpreterPlatform::ExecutorForDeviceWithPluginConfig(
   return GetExecutor(config);
 }
 
-port::StatusOr<StreamExecutor*> XlaInterpreterPlatform::GetExecutor(
+tsl::StatusOr<StreamExecutor*> XlaInterpreterPlatform::GetExecutor(
     const StreamExecutorConfig& config) {
   return executor_cache_.GetOrCreate(
       config, [&]() { return GetUncachedExecutor(config); });
 }
 
-port::StatusOr<std::unique_ptr<StreamExecutor>>
+tsl::StatusOr<std::unique_ptr<StreamExecutor>>
 XlaInterpreterPlatform::GetUncachedExecutor(
     const StreamExecutorConfig& config) {
   auto executor = std::make_unique<StreamExecutor>(
@@ -79,8 +79,8 @@ XlaInterpreterPlatform::GetUncachedExecutor(
       config.ordinal);
   auto init_status = executor->Init(config.device_options);
   if (!init_status.ok()) {
-    return port::Status{
-        port::error::INTERNAL,
+    return tsl::Status{
+        tsl::error::INTERNAL,
         absl::StrFormat(
             "failed initializing StreamExecutor for device ordinal %d: %s",
             config.ordinal, init_status.ToString())};
@@ -100,7 +100,7 @@ void XlaInterpreterPlatform::UnregisterTraceListener(TraceListener* listener) {
 
 static void InitializeXlaInterpreterPlatform() {
   std::unique_ptr<Platform> platform(new XlaInterpreterPlatform);
-  SE_CHECK_OK(MultiPlatformManager::RegisterPlatform(std::move(platform)));
+  TF_CHECK_OK(MultiPlatformManager::RegisterPlatform(std::move(platform)));
 }
 
 }  // namespace interpreter

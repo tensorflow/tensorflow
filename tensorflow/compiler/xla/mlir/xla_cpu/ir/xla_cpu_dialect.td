@@ -27,6 +27,7 @@ def XlaCpuDialect : Dialect {
     CPU runtime.
   }];
   let cppNamespace = "::mlir::xla_cpu";
+  let useFoldAPI = kEmitFoldAdaptorFolder;
 }
 
 #endif  // TENSORFLOW_COMPILER_XLA_MLIR_XLA_CPU_DIALECT_TD_

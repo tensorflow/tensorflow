@@ -325,9 +325,16 @@ if [[ -z "$PYTHON_BIN_PATH" ]]; then
   die "PYTHON_BIN_PATH was not provided. Did you run configure?"
 fi
 
-${PYTHON_BIN_PATH} -m pip install tb-nightly
-${PYTHON_BIN_PATH} -m pip uninstall -y protobuf
-${PYTHON_BIN_PATH} -m pip install "protobuf < 4"
+if [[ "$IS_NIGHTLY" == 1 ]]; then
+  ${PYTHON_BIN_PATH} -m pip install tb-nightly
+else
+  ${PYTHON_BIN_PATH} -m pip install tensorboard
+fi
+
+if [[ "x${PY_MAJOR_MINOR_VER}x" == "x3.8x" ]]; then
+  ${PYTHON_BIN_PATH} -m pip uninstall -y protobuf
+  ${PYTHON_BIN_PATH} -m pip install "protobuf < 4"
+fi
 
 # Bazel build the file.
 PIP_BUILD_TARGET="//tensorflow/tools/pip_package:build_pip_package"

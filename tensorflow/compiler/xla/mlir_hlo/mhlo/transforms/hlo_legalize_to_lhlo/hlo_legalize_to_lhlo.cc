@@ -36,7 +36,7 @@ limitations under the License.
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/IR/AffineMap.h"
 #include "mlir/IR/Attributes.h"
-#include "mlir/IR/BlockAndValueMapping.h"
+#include "mlir/IR/IRMapping.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/BuiltinTypes.h"
@@ -61,10 +61,7 @@ using BaseOpConversion = OpConversionPattern<T>;
 Value insertDynamicAlloc(Location loc, Value result, Value shapeOperand,
                          ConversionPatternRewriter* rewriter) {
   auto resultType = result.getType().dyn_cast<RankedTensorType>();
-  if (!resultType) {
-    result.getDefiningOp()->emitOpError()
-        << "tensor to buffer conversion expects ranked results";
-  }
+  assert(resultType);
   auto memrefType =
       MemRefType::get(resultType.getShape(), resultType.getElementType());
 
@@ -89,10 +86,7 @@ Value insertDynamicAlloc(Location loc, Value result, Value shapeOperand,
 Value insertAlloc(Location loc, OpResult result,
                   ConversionPatternRewriter* rewriter) {
   auto resultType = result.getType().dyn_cast<RankedTensorType>();
-  if (!resultType || !resultType.hasStaticShape()) {
-    result.getDefiningOp()->emitOpError()
-        << "tensor to buffer conversion expects statically shaped results";
-  }
+  assert(resultType && resultType.hasStaticShape());
   auto memrefType =
       MemRefType::get(resultType.getShape(), resultType.getElementType());
   OpBuilder::InsertionGuard guard(*rewriter);
@@ -153,8 +147,9 @@ class HloToLhloOpConverter : public BaseOpConversion<HloOpTy> {
     if (failed(convertResults(op, bufferArgs, rewriter))) return failure();
     rewriter.create<mhlo::HloToLhloOp<HloOpTy>>(op->getLoc(), std::nullopt,
                                                 bufferArgs, op->getAttrs());
-    rewriter.replaceOp(op, llvm::makeArrayRef(bufferArgs)
-                               .drop_front(adaptor.getOperands().size()));
+    rewriter.replaceOp(
+        op,
+        llvm::ArrayRef(bufferArgs).drop_front(adaptor.getOperands().size()));
     return success();
   }
 };
@@ -564,6 +559,7 @@ void populateHloToLhloConversionPattern(
       HloToLhloOpConverter<mhlo::SliceOp>,
       HloToLhloOpConverter<mhlo::SqrtOp>,
       HloToLhloOpConverter<mhlo::SubtractOp>,
+      HloToLhloOpConverter<mhlo::TanOp>,
       HloToLhloOpConverter<mhlo::TanhOp>,
       HloToLhloOpConverter<mhlo::TransposeOp>,
       HloToLhloOpConverter<mhlo::XorOp>,

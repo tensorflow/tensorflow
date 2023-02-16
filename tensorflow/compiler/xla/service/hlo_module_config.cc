@@ -86,8 +86,9 @@ std::string HloModuleConfig::compilation_cache_key() const {
     StrAppend(&key, device_type());
   }
   StrAppend(&key, "::alias_passthrough_params=", alias_passthrough_params_);
-  StrAppend(&key, "::allow_spmd_sharding_propagation_to_output=",
-            allow_spmd_sharding_propagation_to_output_);
+  StrAppend(&key, "::allow_spmd_sharding_propagation_to_output={",
+            absl::StrJoin(allow_spmd_sharding_propagation_to_output_, ","),
+            "}");
   return key;
 }
 
@@ -296,9 +297,10 @@ StatusOr<HloModuleConfigProto> HloModuleConfig::ToProto() const {
   }
   AssignProtoPhaseOrderingConfig(proto, phase_ordering_config_);
   proto.set_phase_index(phase_index_);
-  proto.mutable_flag_config()->insert(flag_config_.begin(), flag_config_.end());
-  proto.set_allow_spmd_sharding_propagation_to_output(
-      allow_spmd_sharding_propagation_to_output_);
+
+  for (bool value : allow_spmd_sharding_propagation_to_output_) {
+    proto.add_allow_spmd_sharding_propagation_to_output(value);
+  }
 
   auto proto_analysis_map = proto.mutable_analysis_allowance_map();
   for (const auto& [key, value] : analysis_allowance_map_) {
@@ -361,10 +363,9 @@ StatusOr<std::unique_ptr<HloModuleConfig>> HloModuleConfig::CreateFromProto(
       proto.memory_space_assignment_config().end());
   AssignStructPhaseOrderingConfig(*config, proto);
   config->phase_index_ = proto.phase_index();
-  config->flag_config_.insert(proto.flag_config().begin(),
-                              proto.flag_config().end());
-  config->allow_spmd_sharding_propagation_to_output_ =
-      proto.allow_spmd_sharding_propagation_to_output();
+  config->allow_spmd_sharding_propagation_to_output_.assign(
+      proto.allow_spmd_sharding_propagation_to_output().begin(),
+      proto.allow_spmd_sharding_propagation_to_output().end());
   config->analysis_allowance_map_.insert(proto.analysis_allowance_map().begin(),
                                          proto.analysis_allowance_map().end());
   config->matrix_unit_operand_precision_ =

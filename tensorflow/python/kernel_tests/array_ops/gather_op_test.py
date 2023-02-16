@@ -169,11 +169,12 @@ class GatherTest(test.TestCase, parameterized.TestCase):
                 source_slice = ((slice(None),) * outer_dims + (source_index,) +
                                 (slice(None),) * inner_dims)
                 correct_params_grad[dest_slice] += gather_grad[source_slice]
-              self.assertAllClose(
+              self.assertAllCloseAccordingToType(
                   correct_params_grad,
                   self.evaluate(params_grad),
                   atol=2e-6,
-                  rtol=2e-6)
+                  rtol=2e-6,
+              )
 
   def testHigherRankGradientTape(self):
     # We check that scalar and empty indices shapes work as well
@@ -238,11 +239,12 @@ class GatherTest(test.TestCase, parameterized.TestCase):
               source_slice = ((slice(None),) * outer_dims + (source_index,) +
                               (slice(None),) * inner_dims)
               correct_params_grad[dest_slice] += gather_grad[source_slice]
-            self.assertAllClose(
+            self.assertAllCloseAccordingToType(
                 correct_params_grad,
                 self.evaluate(params_grad),
                 atol=2e-6,
-                rtol=2e-6)
+                rtol=2e-6,
+            )
 
   def testString(self):
     params = np.array([[b"asdf", b"zxcv"], [b"qwer", b"uiop"]])

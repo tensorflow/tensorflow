@@ -952,10 +952,9 @@ class HloDynamicBroadcastInDimConverter
     rewriter.replaceOpWithNewOp<linalg::GenericOp>(
         op, TypeRange{emptyTensor.getType()}, ValueRange{operand},
         /*outputBuffers=*/ValueRange{emptyTensor},
-        llvm::makeArrayRef(
-            {AffineMap::get(/*dimCount=*/nloops, /*symbolCount=*/0, dimExprs,
-                            rewriter.getContext()),
-             rewriter.getMultiDimIdentityMap(nloops)}),
+        llvm::ArrayRef({AffineMap::get(/*dimCount=*/nloops, /*symbolCount=*/0,
+                                       dimExprs, rewriter.getContext()),
+                        rewriter.getMultiDimIdentityMap(nloops)}),
         getNParallelLoopsAttrs(nloops),
         [&](OpBuilder& nestedBuilder, Location /*nested_loc*/,
             ValueRange args) {
@@ -1126,7 +1125,7 @@ class TransposeOpToTransposeConverter
         llvm::to_vector(op.getPermutation().getValues<int64_t>()));
 
     rewriter.replaceOpWithNewOp<linalg::TransposeOp>(
-        op, op.getOperand(), emptyTensor, permutation,
+        op, adaptor.getOperand(), emptyTensor, permutation,
         linalg::getPrunedAttributeList(op));
     return success();
   }
@@ -1477,7 +1476,7 @@ class IotaConverter : public OpConversionPattern<OpTy> {
 
         ValueRange{getEmptyTensorFor(rewriter, loc, resultShapedType, iotaOp,
                                      adaptor.getOperands())},
-        llvm::makeArrayRef(rewriter.getMultiDimIdentityMap(nloops)),
+        llvm::ArrayRef(rewriter.getMultiDimIdentityMap(nloops)),
         getNParallelLoopsAttrs(nloops),
         [&](OpBuilder& nestedBuilder, Location nestedLoc, ValueRange /*args*/) {
           Value indexOp = nestedBuilder.create<linalg::IndexOp>(
@@ -1534,7 +1533,7 @@ struct ConcatenateConverter : public OpConversionPattern<mhlo::ConcatenateOp> {
         op,
         /*resultTensorTypes=*/resultType,
         /*inputs=*/ValueRange{}, /*outputBuffers=*/result,
-        llvm::makeArrayRef(rewriter.getMultiDimIdentityMap(nloops)),
+        llvm::ArrayRef(rewriter.getMultiDimIdentityMap(nloops)),
         getNParallelLoopsAttrs(nloops),
         [&](OpBuilder& nestedBuilder, Location loc, ValueRange) {
           OpBuilder b = nestedBuilder;
@@ -1995,8 +1994,9 @@ class MapOpToMapConverter : public OpConversionPattern<mhlo::MapOp> {
 
     Location loc = op.getLoc();
     Value operand0 = adaptor.getOperands()[0];
-    Value operand1 = coerceTensorShape(rewriter, loc, adaptor.getOperands()[1],
-                                       operand0.getType());
+    Value operand1 = coerceTensorShape(
+        rewriter, loc, cast<TypedValue<ShapedType>>(adaptor.getOperands()[1]),
+        operand0.getType());
     Value output = rewriter.create<tensor::EmptyOp>(
         loc, tensor::getMixedSizes(rewriter, loc, operand0),
         resultType.getElementType());
@@ -2826,10 +2826,10 @@ struct ConvolutionOpGeneralConversion
             .create<linalg::GenericOp>(
                 loc,
                 /*resultTensors=*/
-                llvm::makeArrayRef<Type>(zeroTensor.getType()),
+                llvm::ArrayRef<Type>(zeroTensor.getType()),
                 /*inputs=*/
-                llvm::makeArrayRef<Value>({modifiedLhs, modifiedRhs}),
-                /*outputs=*/llvm::makeArrayRef<Value>(zeroTensor), inferredMaps,
+                llvm::ArrayRef<Value>({modifiedLhs, modifiedRhs}),
+                /*outputs=*/llvm::ArrayRef<Value>(zeroTensor), inferredMaps,
                 iterationLoops,
                 /*bodyBuild=*/
                 [&](OpBuilder& nestedBuilder, Location nestedLoc, ValueRange) {
@@ -3878,8 +3878,9 @@ class PointwiseToLinalgMapConverter : public OpConversionPattern<OpTy> {
     SmallVector<Value> scalarInputs;
     for (Value input : adaptor.getOperands()) {
       if (getRank(input) == maxRank) {
-        mappedInputs.push_back(
-            coerceTensorShape(rewriter, loc, input, emptyTensor.getType()));
+        mappedInputs.push_back(coerceTensorShape(
+            rewriter, loc, cast<TypedValue<ShapedType>>(input),
+            emptyTensor.getType()));
         scalarInputs.push_back(nullptr);
       } else {
         scalarInputs.push_back(rewriter.create<tensor::ExtractOp>(loc, input));
@@ -4083,6 +4084,7 @@ void populateHloToLinalgConversionPattern(MLIRContext* context,
       PointwiseToLinalgMapConverter<mhlo::SineOp>,
       PointwiseToLinalgMapConverter<mhlo::SqrtOp>,
       PointwiseToLinalgMapConverter<mhlo::SubtractOp>,
+      PointwiseToLinalgMapConverter<mhlo::TanOp>,
       PointwiseToLinalgMapConverter<mhlo::TanhOp>,
       PointwiseToLinalgMapConverter<mhlo::XorOp>,
       ReduceOpToReduceConverter,
@@ -4139,6 +4141,7 @@ void populateHloToLinalgConversionPattern(MLIRContext* context,
       PointwiseToLinalgConverter<mhlo::SineOp>,
       PointwiseToLinalgConverter<mhlo::SqrtOp>,
       PointwiseToLinalgConverter<mhlo::SubtractOp>,
+      PointwiseToLinalgConverter<mhlo::TanOp>,
       PointwiseToLinalgConverter<mhlo::TanhOp>,
       PointwiseToLinalgConverter<mhlo::XorOp>,
       ReduceOpToGenericConverter,

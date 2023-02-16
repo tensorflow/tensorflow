@@ -77,6 +77,16 @@ PJRT_ExecutableDeleter MakeExecutableDeleter(const PJRT_Api* api) {
   };
 }
 
+PJRT_LoadedExecutableDeleter MakeLoadedExecutableDeleter(const PJRT_Api* api) {
+  return [api](PJRT_LoadedExecutable* executable) -> void {
+    PJRT_LoadedExecutable_Destroy_Args args;
+    args.struct_size = PJRT_LoadedExecutable_Destroy_Args_STRUCT_SIZE;
+    args.priv = nullptr;
+    args.executable = executable;
+    pjrt::LogFatalIfPjrtError(api->PJRT_LoadedExecutable_Destroy(&args), api);
+  };
+}
+
 xla::Status PjrtErrorToStatus(const PJRT_Error* error, const PJRT_Api* api) {
   xla::Status status;
   if (error != nullptr) {
@@ -84,6 +94,18 @@ xla::Status PjrtErrorToStatus(const PJRT_Error* error, const PJRT_Api* api) {
                          GetPjrtErrorMessage(error, api));
   }
   return status;
+}
+
+PJRT_DeviceTopologyDeleter MakeDeviceTopologyDeleter(const PJRT_Api* api) {
+  return [api](PJRT_DeviceTopology* topology) -> void {
+    PJRT_DeviceTopology_Destroy_Args destroy_args;
+    destroy_args.struct_size = PJRT_DeviceTopology_Destroy_Args_STRUCT_SIZE;
+    destroy_args.priv = nullptr;
+    destroy_args.topology = topology;
+
+    pjrt::LogFatalIfPjrtError(api->PJRT_DeviceTopology_Destroy(&destroy_args),
+                              api);
+  };
 }
 
 tsl::error::Code PjrtErrorToStatusCode(const PJRT_Error* error,
@@ -396,6 +418,18 @@ xla::Status CheckMatchingStructSizes(absl::string_view struct_name,
         StructSizeErrorMsg(struct_name, expected_size, actual_size));
   }
   return tsl::OkStatus();
+}
+
+absl::string_view GetPlatformVersion(PJRT_Client* client, const PJRT_Api* api) {
+  PJRT_Client_PlatformVersion_Args args;
+  args.struct_size = PJRT_Client_PlatformVersion_Args_STRUCT_SIZE;
+  args.priv = nullptr;
+  args.client = client;
+  LogFatalIfPjrtError(api->PJRT_Client_PlatformVersion(&args), api);
+
+  absl::string_view platform_version(args.platform_version,
+                                     args.platform_version_size);
+  return platform_version;
 }
 
 }  // namespace pjrt

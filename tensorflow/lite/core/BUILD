@@ -1,16 +1,29 @@
 load("//tensorflow/lite:build_def.bzl", "tflite_copts", "tflite_copts_warnings", "tflite_self_contained_libs_test_suite")
 load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
 load("//tensorflow/lite:special_rules.bzl", "internal_visibility_allowlist", "tflite_portable_test_suite")
+load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     licenses = ["notice"],
 )
 
-exports_files([
-    "macros.h",
-    "subgraph.h",
-])
+exports_files(
+    srcs = [
+        "create_op_resolver.h",
+        "macros.h",
+        "subgraph.h",
+    ],
+    visibility = [
+        "//tensorflow/lite:__subpackages__",
+    ],
+)
+
+bzl_library(
+    name = "special_rules_bzl",
+    srcs = ["special_rules.bzl"],
+    visibility = ["//tensorflow/lite:__subpackages__"],
+)
 
 cc_library(
     name = "headers",
@@ -32,11 +45,13 @@ cc_library(
         "//tensorflow/lite:type_to_tflitetype",
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/core/api:error_reporter",
+        "//tensorflow/lite/core/async:async_signature_runner",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/experimental/remat:metadata_util",
         "//tensorflow/lite/experimental/resource",
         "//tensorflow/lite/internal:signature_def",
         "//tensorflow/lite/profiling:root_profiler",
+        "//tensorflow/lite/profiling/telemetry/c:telemetry_setting_internal",
     ],
 )
 
@@ -95,11 +110,16 @@ cc_library(
         "//tensorflow/lite/c:common_internal",
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/core/api:verifier",
+        "//tensorflow/lite/core/async:async_signature_runner",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/experimental/remat:metadata_util",
         "//tensorflow/lite/experimental/resource",
         "//tensorflow/lite/internal:signature_def",
         "//tensorflow/lite/profiling:root_profiler",
+        "//tensorflow/lite/profiling/telemetry",
+        "//tensorflow/lite/profiling/telemetry:profiler",
+        "//tensorflow/lite/profiling/telemetry/c:telemetry_setting_internal",
+        "//tensorflow/lite/schema:conversion_metadata_fbs",
         "//tensorflow/lite/schema:schema_fbs",
         "@flatbuffers//:runtime_cc",
     ],
@@ -162,11 +182,16 @@ cc_library(
         "//tensorflow/lite/c:common_internal",
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/core/api:verifier",
+        "//tensorflow/lite/core/async:async_signature_runner",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/experimental/remat:metadata_util",
         "//tensorflow/lite/experimental/resource",
         "//tensorflow/lite/internal:signature_def",
         "//tensorflow/lite/profiling:root_profiler",
+        "//tensorflow/lite/profiling/telemetry",
+        "//tensorflow/lite/profiling/telemetry:profiler",
+        "//tensorflow/lite/profiling/telemetry/c:telemetry_setting_internal",
+        "//tensorflow/lite/schema:conversion_metadata_fbs",
         "//tensorflow/lite/schema:schema_fbs",
         "@flatbuffers//:runtime_cc",
     ],
@@ -215,6 +240,7 @@ cc_library(
         "//tensorflow/lite/c:common_internal",
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/core/api:verifier",
+        "//tensorflow/lite/core/async:async_signature_runner",
         "//tensorflow/lite/core/c:c_api_types",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/delegates:telemetry",
@@ -226,6 +252,10 @@ cc_library(
         "//tensorflow/lite/kernels/internal:compatibility",
         "//tensorflow/lite/profiling:platform_profiler",
         "//tensorflow/lite/profiling:root_profiler",
+        "//tensorflow/lite/profiling/telemetry",
+        "//tensorflow/lite/profiling/telemetry:profiler",
+        "//tensorflow/lite/profiling/telemetry/c:telemetry_setting_internal",
+        "//tensorflow/lite/schema:conversion_metadata_fbs",
         "//tensorflow/lite/schema:schema_fbs",
         "//tensorflow/lite/schema:schema_utils",
         "@flatbuffers//:runtime_cc",
@@ -287,12 +317,17 @@ cc_library(
         "//tensorflow/lite/c:common_internal",
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/core/api:verifier",
+        "//tensorflow/lite/core/async:async_signature_runner",
         "//tensorflow/lite/core/c:c_api_types",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/experimental/remat:metadata_util",
         "//tensorflow/lite/experimental/resource",
         "//tensorflow/lite/internal:signature_def",
         "//tensorflow/lite/profiling:root_profiler",
+        "//tensorflow/lite/profiling/telemetry",
+        "//tensorflow/lite/profiling/telemetry:profiler",
+        "//tensorflow/lite/profiling/telemetry/c:telemetry_setting_internal",
+        "//tensorflow/lite/schema:conversion_metadata_fbs",
         "//tensorflow/lite/schema:schema_fbs",
         "@flatbuffers//:runtime_cc",
         "@ruy//ruy:denormal",
@@ -349,16 +384,16 @@ cc_test(
         "tflite_smoke_test",
     ],
     deps = [
-        ":headers",
+        ":framework",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:interpreter_test_util",
         "//tensorflow/lite:string",
         "//tensorflow/lite:string_util",
-        "//tensorflow/lite/core:framework",
+        "//tensorflow/lite/c:common",
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/core/api:verifier",
         "//tensorflow/lite/core/c:common",
-        "//tensorflow/lite/kernels:builtin_ops",
+        "//tensorflow/lite/core/kernels:builtin_ops",
         "//tensorflow/lite/schema:schema_fbs",
         "//tensorflow/lite/testing:util",
         "@com_google_googletest//:gtest_main",
@@ -420,6 +455,7 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
     copts = tflite_copts() + tflite_copts_warnings(),
     visibility = [
+        "//platforms/darwinn/tflite:__subpackages__",
         "//tensorflow/lite:__subpackages__",
         "//tensorflow/lite/core:__subpackages__",
         "//tensorflow/lite/kernels:__subpackages__",
@@ -440,6 +476,7 @@ cc_library(
         "//tensorflow/lite/experimental/resource",
         "//tensorflow/lite/experimental/remat:metadata_util",
         "//tensorflow/lite/profiling:root_profiler",
+        "//tensorflow/lite/profiling/telemetry",
         "//tensorflow/lite/schema:schema_fbs",
     ] + select({
         "//tensorflow/lite:tflite_use_simple_memory_planner": [

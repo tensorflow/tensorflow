@@ -20,6 +20,7 @@ from absl import logging
 
 from tensorflow.core.framework import dataset_options_pb2
 from tensorflow.core.framework import model_pb2
+from tensorflow.python.data.ops import test_mode
 from tensorflow.python.data.util import options as options_lib
 from tensorflow.python.util import deprecation
 from tensorflow.python.util.tf_export import tf_export
@@ -387,6 +388,20 @@ class OptimizationOptions(options_lib.OptionsBase):
       docstring="Whether to fuse shuffle and repeat transformations. If None, "
       "defaults to True.")
 
+  warm_start = options_lib.create_option(
+      name="warm_start",
+      ty=bool,
+      docstring=(
+          "Whether to start background threads of asynchronous transformations"
+          " upon iterator creation (as opposed to upon first call to"
+          " `GetNext`). If None, defaults to False.  It should be noted that"
+          " this possibly improves the latency of the initial 'GetNext' call at"
+          " the expense of requiring more memory to hold prefetched elements"
+          " between the time of iterator construction and usage."
+      ),
+      default_factory=lambda: True if test_mode.TEST_MODE else False,
+  )
+
   def _to_proto(self):
     pb = dataset_options_pb2.OptimizationOptions()
     if self.apply_default_optimizations is not None:
@@ -411,6 +426,8 @@ class OptimizationOptions(options_lib.OptionsBase):
       pb.parallel_batch = self.parallel_batch
     if self.shuffle_and_repeat_fusion is not None:
       pb.shuffle_and_repeat_fusion = self.shuffle_and_repeat_fusion
+    if self.warm_start is not None:
+      pb.warm_start = self.warm_start
     return pb
 
   def _from_proto(self, pb):
@@ -436,6 +453,8 @@ class OptimizationOptions(options_lib.OptionsBase):
       self.parallel_batch = pb.parallel_batch
     if pb.WhichOneof("optional_shuffle_and_repeat_fusion") is not None:
       self.shuffle_and_repeat_fusion = pb.shuffle_and_repeat_fusion
+    if pb.WhichOneof("optional_warm_start") is not None:
+      self.warm_start = pb.warm_start
 
   def _set_mutable(self, mutable):
     """Change the mutability value to `mutable` on this options and children."""

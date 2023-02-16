@@ -539,7 +539,7 @@ class Graph {
   // Clone the current graph into a new one.
   std::unique_ptr<Graph> Clone();
 
-  static const int kControlSlot;
+  static constexpr int kControlSlot = -1;
 
   // The GraphDef version range of this graph (see graph.proto).
   const VersionDef& versions() const;

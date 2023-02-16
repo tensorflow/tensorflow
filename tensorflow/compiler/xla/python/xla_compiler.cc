@@ -652,6 +652,16 @@ void BuildXlaCompilerSubmodule(py::module& m) {
             result.ParseFromString(t[0].cast<std::string>());
             return ValueOrThrow(CompileOptions::FromProto(result));
           }))
+      .def("SerializeAsString",
+           [](const CompileOptions& self) -> py::bytes {
+             return py::bytes(ValueOrThrow(self.ToProto()).SerializeAsString());
+           })
+      .def_static("ParseFromString",
+                  [](py::bytes s) {
+                    CompileOptionsProto result;
+                    result.ParseFromString(s);
+                    return ValueOrThrow(CompileOptions::FromProto(result));
+                  })
       .def_readwrite("argument_layouts", &CompileOptions::argument_layouts)
       .def_readwrite("parameter_is_tupled_arguments",
                      &CompileOptions::parameter_is_tupled_arguments)
@@ -788,9 +798,15 @@ void BuildXlaCompilerSubmodule(py::module& m) {
           &ExecutableBuildOptions::set_auto_spmd_partitioning_mesh_ids)
       .def_property(
           "allow_spmd_sharding_propagation_to_output",
-          &ExecutableBuildOptions::allow_spmd_sharding_propagation_to_output,
-          &ExecutableBuildOptions::
-              set_allow_spmd_sharding_propagation_to_output);
+          [](const ExecutableBuildOptions& options) -> std::vector<bool> {
+            return std::vector<bool>(
+                options.allow_spmd_sharding_propagation_to_output().begin(),
+                options.allow_spmd_sharding_propagation_to_output().end());
+          },
+          [](ExecutableBuildOptions& options, std::vector<bool> values) {
+            absl::InlinedVector<bool, 1> v(values.begin(), values.end());
+            options.set_allow_spmd_sharding_propagation_to_output(v);
+          });
 
   py::enum_<OpSharding::Type> op_sharding_type(m, "OpSharding_Type");
   op_sharding_type.value("REPLICATED", OpSharding::REPLICATED)

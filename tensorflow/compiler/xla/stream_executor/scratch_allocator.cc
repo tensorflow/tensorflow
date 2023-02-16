@@ -18,12 +18,12 @@ limitations under the License.
 #include <cstdint>
 
 #include "tensorflow/compiler/xla/stream_executor/device_memory.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/statusor.h"
 #include "tensorflow/compiler/xla/stream_executor/stream.h"
+#include "tensorflow/tsl/platform/statusor.h"
 
 namespace stream_executor {
 
-port::StatusOr<DeviceMemory<uint8_t>> OneTimeScratchAllocator::AllocateBytes(
+tsl::StatusOr<DeviceMemory<uint8_t>> OneTimeScratchAllocator::AllocateBytes(
     int64_t byte_size) {
   CHECK(temporary_ == nullptr);
   TF_ASSIGN_OR_RETURN(temporary_,

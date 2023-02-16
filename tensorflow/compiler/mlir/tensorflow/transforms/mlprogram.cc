@@ -67,8 +67,6 @@ void PopulateLowerToMlProgramAndHloPipeline(mlir::OpPassManager& pm) {
       /*allow_partial_conversion=*/true, /*legalize_chlo=*/true,
       tf2xla_fallback_device_type, /*prefer_tf2xla=*/false));
 
-  pm.addPass(mlir::mhlo::createLegalizeTFControlFlowPass());
-
   pm.addPass(mlir::TF::CreateStripTfAttributesPass());
 
   pm.addPass(mlir::createCanonicalizerPass());

@@ -173,6 +173,8 @@ tf_kernel_library(
     srcs = if_nccl([
         "collective_nccl.h",
         "collective_nccl.cc",
+        "collective_nccl_all_to_all.h",
+        "collective_nccl_all_to_all.cc",
         "collective_nccl_broadcaster.h",
         "collective_nccl_broadcaster.cc",
         "collective_nccl_gatherer.h",
@@ -210,6 +212,8 @@ tf_cuda_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
+        "//tensorflow/core/common_runtime:collective_test_util",
+        "//tensorflow/core/framework:tensor_testutil",
         "//tensorflow/core/nccl:collective_communicator",
     ],
 )
@@ -1405,10 +1409,11 @@ tf_cc_test(
         ":ragged_tensor_to_variant_op",
         ":ragged_tensor_variant",
         "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
+        "//tensorflow/core/platform:status_matchers",
+        "//tensorflow/tsl/protobuf:error_codes_proto_impl_cc",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -1660,6 +1665,7 @@ tf_cuda_cc_test(
     srcs = ["conv_ops_test.cc"],
     tags = [
         "no_cuda_asan",  # TODO(b/171342275): re-enable.
+        "no_mac_arm64",
         "requires-gpu-sm70",
     ],
     deps = [
@@ -3574,6 +3580,7 @@ tf_kernel_library(
     gpu_srcs = [
         "scan_ops.h",
         "scan_ops_gpu.h",
+        "scan_ops_gpu_bfloat16.cu.cc",
         "scan_ops_gpu_double.cu.cc",
         "scan_ops_gpu_float.cu.cc",
         "scan_ops_gpu_half.cu.cc",
@@ -5920,6 +5927,7 @@ tf_cuda_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
+        "//tensorflow/core/platform:status_matchers",
     ],
 )
 
@@ -6113,7 +6121,6 @@ filegroup(
         "assign_op.h",
         "bias_op.cc",
         "bias_op.h",
-        "bias_op_gpu.h",
         "cast_op.cc",
         "cast_op.h",
         "cast_op_impl.h",
@@ -7481,6 +7488,7 @@ tf_cc_test(
     name = "quantized_instance_norm_test",
     size = "small",
     srcs = ["quantized_instance_norm_test.cc"],
+    tags = ["no_mac_arm64"],
     deps = [
         ":ops_testutil",
         ":ops_util",
@@ -7608,6 +7616,14 @@ tf_kernel_library(
     deps = [
         "//tensorflow/core:framework",
         "@icu//:common",
+    ],
+)
+
+tf_kernel_library(
+    name = "sync_ops",
+    prefix = "sync_ops",
+    deps = [
+        "//tensorflow/core:framework",
     ],
 )
 

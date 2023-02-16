@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/lite/c/common_internal.h"
 #include "tensorflow/lite/core/api/error_reporter.h"
 #include "tensorflow/lite/core/api/profiler.h"
+#include "tensorflow/lite/core/async/async_signature_runner.h"
 #include "tensorflow/lite/core/c/c_api_types.h"
 #include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/core/interpreter.h"
@@ -133,15 +134,6 @@ void Interpreter::AddProfiler(Profiler* profiler) {
   SetSubgraphProfiler();
 }
 
-void Interpreter::AddProfiler(std::unique_ptr<Profiler> profiler) {
-  if (profiler == nullptr) return;
-  if (root_profiler_ == nullptr) {
-    root_profiler_ = std::make_unique<profiling::RootProfiler>();
-  }
-  root_profiler_->AddProfiler(std::move(profiler));
-  SetSubgraphProfiler();
-}
-
 Profiler* Interpreter::GetProfiler() {
   return primary_subgraph().GetProfiler();
 }
@@ -171,6 +163,25 @@ SignatureRunner* Interpreter::GetSignatureRunner(const char* signature_key) {
       return &(status.first->second);
     }
   }
+  return nullptr;
+}
+
+async::AsyncSignatureRunner* Interpreter::GetAsyncSignatureRunner(
+    const char* signature_key) {
+  auto iter = async_signature_runner_map_.find(signature_key);
+  if (iter != async_signature_runner_map_.end()) {
+    return &(iter->second);
+  }
+
+  for (const auto& signature : signature_defs_) {
+    if (signature.signature_key == signature_key) {
+      auto status = async_signature_runner_map_.insert(
+          {signature_key, async::AsyncSignatureRunner(
+                              &signature, subgraph(signature.subgraph_index))});
+      return &(status.first->second);
+    }
+  }
+
   return nullptr;
 }
 

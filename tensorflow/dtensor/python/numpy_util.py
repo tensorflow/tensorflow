@@ -19,8 +19,10 @@ import numpy as np
 
 from tensorflow.dtensor.python import api
 from tensorflow.dtensor.python import layout as layout_lib
+from tensorflow.python.eager.polymorphic_function import polymorphic_function
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import sparse_ops
+from tensorflow.python.ops import stateless_random_ops
 from tensorflow.python.types.core import Tensor, TensorLike  # pylint: disable=g-multiple-import
 
 # FIXME(b/262894693): Functions in this file are buggy.
@@ -102,3 +104,12 @@ def pack_tf_tensor(value: Tensor, layout: layout_lib.Layout) -> Tensor:
   unpacked = unpack(
       value, layout, split_fn=array_ops.split, stack_fn=array_ops.stack)
   return api.pack(unpacked, layout)
+
+
+@polymorphic_function.function
+def stateless_random_uniform(shape, seed, layout):
+  """Creates uniform random tensor with the given layout."""
+  return api.relayout(
+      stateless_random_ops.stateless_random_uniform(shape=shape, seed=seed),
+      layout=layout,
+  )

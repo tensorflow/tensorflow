@@ -20,21 +20,12 @@ limitations under the License.
 namespace tensorflow {
 
 using ::mlir::Operation;
-using ::mlir::linalg::LinalgOp;
 
 bool IsContiguousMemref(mlir::Value value) {
   auto memref_type = value.getType().dyn_cast<mlir::MemRefType>();
   if (!memref_type) return false;
   mlir::MemRefType canonical_type = canonicalizeStridedLayout(memref_type);
   return canonical_type.getLayout().isIdentity();
-}
-
-mlir::FailureOr<Operation *> DetectCombiner(LinalgOp linalg_op) {
-  mlir::SmallVector<Operation *, 4> combiners;
-  if (!matchReduction(linalg_op.getRegionOutputArgs(), 0, combiners) ||
-      combiners.size() != 1)
-    return mlir::failure();
-  return combiners.front();
 }
 
 }  // namespace tensorflow

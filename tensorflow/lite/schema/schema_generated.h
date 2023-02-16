@@ -6456,6 +6456,7 @@ struct UnidirectionalSequenceLSTMOptionsT : public flatbuffers::NativeTable {
   float proj_clip = 0.0f;
   bool time_major = false;
   bool asymmetric_quantize_inputs = false;
+  bool diagonal_recurrent_tensors = false;
 };
 
 struct UnidirectionalSequenceLSTMOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
@@ -6466,7 +6467,8 @@ struct UnidirectionalSequenceLSTMOptions FLATBUFFERS_FINAL_CLASS : private flatb
     VT_CELL_CLIP = 6,
     VT_PROJ_CLIP = 8,
     VT_TIME_MAJOR = 10,
-    VT_ASYMMETRIC_QUANTIZE_INPUTS = 12
+    VT_ASYMMETRIC_QUANTIZE_INPUTS = 12,
+    VT_DIAGONAL_RECURRENT_TENSORS = 14
   };
   tflite::ActivationFunctionType fused_activation_function() const {
     return static_cast<tflite::ActivationFunctionType>(GetField<int8_t>(VT_FUSED_ACTIVATION_FUNCTION, 0));
@@ -6483,6 +6485,9 @@ struct UnidirectionalSequenceLSTMOptions FLATBUFFERS_FINAL_CLASS : private flatb
   bool asymmetric_quantize_inputs() const {
     return GetField<uint8_t>(VT_ASYMMETRIC_QUANTIZE_INPUTS, 0) != 0;
   }
+  bool diagonal_recurrent_tensors() const {
+    return GetField<uint8_t>(VT_DIAGONAL_RECURRENT_TENSORS, 0) != 0;
+  }
   bool Verify(flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
            VerifyField<int8_t>(verifier, VT_FUSED_ACTIVATION_FUNCTION, 1) &&
@@ -6490,6 +6495,7 @@ struct UnidirectionalSequenceLSTMOptions FLATBUFFERS_FINAL_CLASS : private flatb
            VerifyField<float>(verifier, VT_PROJ_CLIP, 4) &&
            VerifyField<uint8_t>(verifier, VT_TIME_MAJOR, 1) &&
            VerifyField<uint8_t>(verifier, VT_ASYMMETRIC_QUANTIZE_INPUTS, 1) &&
+           VerifyField<uint8_t>(verifier, VT_DIAGONAL_RECURRENT_TENSORS, 1) &&
            verifier.EndTable();
   }
   UnidirectionalSequenceLSTMOptionsT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
@@ -6516,6 +6522,9 @@ struct UnidirectionalSequenceLSTMOptionsBuilder {
   void add_asymmetric_quantize_inputs(bool asymmetric_quantize_inputs) {
     fbb_.AddElement<uint8_t>(UnidirectionalSequenceLSTMOptions::VT_ASYMMETRIC_QUANTIZE_INPUTS, static_cast<uint8_t>(asymmetric_quantize_inputs), 0);
   }
+  void add_diagonal_recurrent_tensors(bool diagonal_recurrent_tensors) {
+    fbb_.AddElement<uint8_t>(UnidirectionalSequenceLSTMOptions::VT_DIAGONAL_RECURRENT_TENSORS, static_cast<uint8_t>(diagonal_recurrent_tensors), 0);
+  }
   explicit UnidirectionalSequenceLSTMOptionsBuilder(flatbuffers::FlatBufferBuilder &_fbb)
         : fbb_(_fbb) {
     start_ = fbb_.StartTable();
@@ -6533,10 +6542,12 @@ inline flatbuffers::Offset<UnidirectionalSequenceLSTMOptions> CreateUnidirection
     float cell_clip = 0.0f,
     float proj_clip = 0.0f,
     bool time_major = false,
-    bool asymmetric_quantize_inputs = false) {
+    bool asymmetric_quantize_inputs = false,
+    bool diagonal_recurrent_tensors = false) {
   UnidirectionalSequenceLSTMOptionsBuilder builder_(_fbb);
   builder_.add_proj_clip(proj_clip);
   builder_.add_cell_clip(cell_clip);
+  builder_.add_diagonal_recurrent_tensors(diagonal_recurrent_tensors);
   builder_.add_asymmetric_quantize_inputs(asymmetric_quantize_inputs);
   builder_.add_time_major(time_major);
   builder_.add_fused_activation_function(fused_activation_function);
@@ -14283,6 +14294,7 @@ inline void UnidirectionalSequenceLSTMOptions::UnPackTo(UnidirectionalSequenceLS
   { auto _e = proj_clip(); _o->proj_clip = _e; }
   { auto _e = time_major(); _o->time_major = _e; }
   { auto _e = asymmetric_quantize_inputs(); _o->asymmetric_quantize_inputs = _e; }
+  { auto _e = diagonal_recurrent_tensors(); _o->diagonal_recurrent_tensors = _e; }
 }
 
 inline flatbuffers::Offset<UnidirectionalSequenceLSTMOptions> UnidirectionalSequenceLSTMOptions::Pack(flatbuffers::FlatBufferBuilder &_fbb, const UnidirectionalSequenceLSTMOptionsT* _o, const flatbuffers::rehasher_function_t *_rehasher) {
@@ -14298,13 +14310,15 @@ inline flatbuffers::Offset<UnidirectionalSequenceLSTMOptions> CreateUnidirection
   auto _proj_clip = _o->proj_clip;
   auto _time_major = _o->time_major;
   auto _asymmetric_quantize_inputs = _o->asymmetric_quantize_inputs;
+  auto _diagonal_recurrent_tensors = _o->diagonal_recurrent_tensors;
   return tflite::CreateUnidirectionalSequenceLSTMOptions(
       _fbb,
       _fused_activation_function,
       _cell_clip,
       _proj_clip,
       _time_major,
-      _asymmetric_quantize_inputs);
+      _asymmetric_quantize_inputs,
+      _diagonal_recurrent_tensors);
 }
 
 inline BidirectionalSequenceLSTMOptionsT *BidirectionalSequenceLSTMOptions::UnPack(const flatbuffers::resolver_function_t *_resolver) const {

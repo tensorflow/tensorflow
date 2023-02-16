@@ -405,6 +405,7 @@ cc_library(
     ],
     deps = [
         "//tensorflow/core/tfrt/fallback:op_kernel_runner",
+        "//tensorflow/core/tfrt/fallback:cost_recorder",
         "//tensorflow/core/tfrt/utils:fallback_tensor",
         "@tf_runtime//:hostcontext",
         "@tf_runtime//:support",

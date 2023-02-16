@@ -40,6 +40,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/index_util.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
+#include "tensorflow/compiler/xla/printer.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/types.h"
@@ -91,15 +92,38 @@ class LiteralBase {
   // array.
   std::string GetR1U8AsString() const;
 
+  // Prints a string representation of the literal value. The Shape of the
+  // literal is a prefix of the literal value in the string.
+  //
+  // Warning: this function can take minutes for multi-million element Literals.
+  void Print(Printer* printer) const;
+
+  // Similar to Print, but prints the result in a compact one-line form.
+  void PrintOneline(Printer* printer) const;
+
+  // Prints a string representation of the literal value which does *not*
+  // include the shape string.
+  void PrintWithoutShape(Printer* printer) const;
+
+  // Similar to PrintWithoutShape, but prints the result in a compact one-line
+  // form.
+  void PrintWithoutShapeOneline(Printer* printer) const;
+
+  // Prints a string representation of the literal value which includes the
+  // shape string with its layout.does *not* include the shape string.
+  void PrintWithLayout(Printer* printer) const;
+
+  // Similar to PrintWithLayout, but prints the result in a compact one-line
+  // form.
+  void PrintWithLayoutOneline(Printer* printer) const;
+
   // Returns a string representation of the literal value. The Shape of the
   // literal is a prefix of the literal value in the string.
-
-  // Warning: this function can take minutes for multi-million
-  // element Literals.
+  //
+  // Warning: this function can take minutes for multi-million element Literals.
   std::string ToString() const;
 
-  // Similar to ToString, but return the result in a compact
-  // one-line form.
+  // Similar to ToString, but return the result in a compact one-line form.
   std::string ToStringOneline() const;
 
   // Returns a string representation of the literal value which does *not*
@@ -114,8 +138,8 @@ class LiteralBase {
   // shape string with its layout.does *not* include the shape string.
   std::string ToStringWithLayout() const;
 
-  // Similar to ToStringWithLayout, but return the result in a compact
-  // one-line form.
+  // Similar to ToStringWithLayout, but return the result in a compact one-line
+  // form.
   std::string ToStringWithLayoutOneline() const;
 
   // Gets an element in the literal at the given index. The multi_index is

@@ -847,10 +847,7 @@ bool IsMlirLoweringEnabled() {
     return false;
   }
   return !absl::StrContains(xla_flags, "--xla_cpu_use_xla_runtime=false") &&
-         !absl::StrContains(xla_flags,
-                            "--xla_cpu_enable_mlir_lowering=false") &&
-         (absl::StrContains(xla_flags, "--xla_cpu_use_xla_runtime") ||
-          absl::StrContains(xla_flags, "--xla_cpu_enable_mlir_lowering"));
+         (absl::StrContains(xla_flags, "--xla_cpu_use_xla_runtime"));
 }
 
 }  // namespace xla

@@ -81,18 +81,21 @@ class QuantizeCompositeFunctionsPass
 
   explicit QuantizeCompositeFunctionsPass() = default;
 
-  explicit QuantizeCompositeFunctionsPass(
-      QuantMethod quantization_method, OpSet target_opset,
-      bool enable_per_channel_quantization) {
+  explicit QuantizeCompositeFunctionsPass(QuantMethod quantization_method,
+                                          OpSet target_opset,
+                                          bool enable_per_channel_quantization,
+                                          int min_num_elements_for_weights) {
     quantization_method_ = quantization_method;
     target_opset_ = target_opset;
     enable_per_channel_quantization_ = enable_per_channel_quantization;
+    min_num_elements_for_weights_ = min_num_elements_for_weights;
   }
 
   QuantizeCompositeFunctionsPass(const QuantizeCompositeFunctionsPass& other) {
     quantization_method_ = other.quantization_method_;
     target_opset_ = other.target_opset_;
     enable_per_channel_quantization_ = other.enable_per_channel_quantization_;
+    min_num_elements_for_weights_ = other.min_num_elements_for_weights_;
   }
 
   StringRef getArgument() const final {
@@ -142,6 +145,8 @@ class QuantizeCompositeFunctionsPass
   Option<bool> enable_per_channel_quantization_{
       *this, "enable-per-channel-quantization", llvm::cl::init(false),
       llvm::cl::desc("Whether enable per-channel quantized weights.")};
+
+  int min_num_elements_for_weights_;
 };
 
 LogicalResult CreateUniformQuantizedTypeParams(UniformQuantizedType qtype,
@@ -564,27 +569,28 @@ class QuantizeFunctionPattern
     if (!call_op->removeAttr(kQuantTraitAttrName) || !f_attr) {
       return failure();
     }
-
-    // Determines if all required float input/outputs are now quantized.
-    bool has_quantized_types = false;
-    if (quantization_method_ ==
-        tensorflow::quantization::QuantizationMethod::DYNAMIC_RANGE) {
-      has_quantized_types = IsQuantizedCallforDynamicRange(call_op);
-      if (f_attr.getValue().startswith(kCompositeFuncPrefix) &&
-          !has_quantized_types) {
-        call_op->emitError(
-            "Only quantizable ops need to be in composite function for dynamic"
-            "-range PTQ case.");
-        return failure();
-      }
-    } else {
-      has_quantized_types = IsQuantizedCallforStaticRange(call_op);
-    }
-
-    if (!f_attr.getValue().startswith(kCompositeFuncPrefix) ||
-        !has_quantized_types) {
+    if (!f_attr.getValue().startswith(kCompositeFuncPrefix)) {
       return failure();
     }
+    // Determines if all required float input/outputs are now quantized.
+    bool has_quantized_types = false;
+    switch (quantization_method_) {
+      case tensorflow::quantization::QuantizationMethod::DYNAMIC_RANGE:
+        has_quantized_types = IsQuantizedCallforDynamicRange(call_op);
+        break;
+      case tensorflow::quantization::QuantizationMethod::STATIC_RANGE:
+        has_quantized_types = IsQuantizedCallforStaticRange(call_op);
+        break;
+      case tensorflow::quantization::QuantizationMethod::WEIGHT_ONLY:
+        // Skipping input type check for weight-only quantization as it can be
+        // dequantized beforehand for the legacy scheme.
+        has_quantized_types = true;
+        break;
+      default:
+        call_op->emitError("The quantization method is not supported.");
+        return failure();
+    }
+    if (!has_quantized_types) return failure();
 
     SmallVector<Value, 4> args;
     SmallVector<Value, 4> qparam_args;
@@ -929,14 +935,14 @@ class QuantizationSummary {
   void Print() {
     llvm::StringMap<OpCountItem> func_count_map;
     int32_t total_quantized_func_count = 0, float_output_func_count = 0,
-            quantize_func_count = 0, dequantize_func_count = 0;
+            quantize_func_count = 0, dequantize_func_count = 0,
+            weight_only_count = 0;
 
     module_.walk([&](Operation* op) {
       if (auto call_op = llvm::dyn_cast_or_null<TF::PartitionedCallOp>(op)) {
         const auto f_attr = call_op.getFAttr().dyn_cast<FlatSymbolRefAttr>();
         if (!f_attr) return;
         StringRef func_name = f_attr.getValue();
-
         if (func_name.startswith(kQuantizedFuncPrefix)) {
           auto representative_name = GetRepresentativeName(func_name);
           if (failed(representative_name)) return;
@@ -948,9 +954,12 @@ class QuantizationSummary {
           }
         } else if (func_name.startswith(kCompositeFuncPrefix)) {
           auto representative_name = GetRepresentativeName(func_name);
-          if (failed(representative_name)) return;
-
-          func_count_map[representative_name.value()].num_float++;
+          if (failed(representative_name)) {
+            // TODO(b/264507511): Print quantization summary for weight-only.
+            weight_only_count++;
+          } else {
+            func_count_map[representative_name.value()].num_float++;
+          }
         } else if (func_name.startswith("quantize_i")) {
           quantize_func_count++;
         } else if (func_name.startswith("dequantize_i")) {
@@ -1032,13 +1041,11 @@ class QuantizationSummary {
   // Get the representative name attribute value of a composite function.
   FailureOr<StringRef> GetRepresentativeName(StringRef func_name) {
     std::string quantized_func_name = GetQuantizedFunctionName(func_name);
-
-    func::FuncOp quantized_func =
-        dyn_cast<func::FuncOp>(symbol_table_.lookup(quantized_func_name));
-    if (!quantized_func->hasAttrOfType<ArrayAttr>(kQuantizedOpsAttribute)) {
-      quantized_func->emitError()
-          << "Missing " << kQuantizedOpsAttribute
-          << " attribute in the quantized composite function.";
+    auto quantized_func = dyn_cast_or_null<func::FuncOp>(
+        symbol_table_.lookup(quantized_func_name));
+    // Quantized function does not exist for weight-only case.
+    if (!quantized_func ||
+        !quantized_func->hasAttrOfType<ArrayAttr>(kQuantizedOpsAttribute)) {
       return failure();
     }
 
@@ -1084,26 +1091,36 @@ void QuantizeCompositeFunctionsPass::runOnOperation() {
 
   QuantizationSpecs quant_specs;
   pm.addPass(CreatePreprocessOpPass(quant_specs, target_opset_));
-  if (quantization_method_ ==
-          tensorflow::quantization::QuantizationMethod::DYNAMIC_RANGE ||
-      quantization_method_ ==
-          tensorflow::quantization::QuantizationMethod::WEIGHT_ONLY) {
-    quant_specs.weight_quantization = true;
-    quant_specs.inference_type = tensorflow::DT_QINT8;
-    quant_specs.disable_per_channel = !enable_per_channel_quantization_;
-    pm.addPass(CreatePrepareQuantizeDRQPass(quant_specs, target_opset_));
-  } else {
-    pm.addNestedPass<func::FuncOp>(
-        CreatePrepareQuantizePass(quantization_method_));
-  }
-  if (quantization_method_ ==
-      tensorflow::quantization::QuantizationMethod::WEIGHT_ONLY) {
-    quant_specs.weight_only_quantization = true;
-  }
-  pm.addNestedPass<func::FuncOp>(
-      CreateQuantizePass(quant_specs, target_opset_));
 
-  pm.addNestedPass<func::FuncOp>(CreatePostQuantizePass());
+  quant_specs.inference_type = tensorflow::DT_QINT8;
+  quant_specs.disable_per_channel = !enable_per_channel_quantization_;
+  // Apply activation-weight quantization.
+  if (quantization_method_ ==
+      tensorflow::quantization::QuantizationMethod::STATIC_RANGE) {
+    pm.addNestedPass<func::FuncOp>(
+        CreatePrepareQuantizePass(quant_specs, quantization_method_));
+    pm.addNestedPass<func::FuncOp>(
+        CreateQuantizePass(quant_specs, target_opset_));
+    pm.addNestedPass<func::FuncOp>(CreatePostQuantizePass());
+  }
+  if ((quantization_method_ !=
+       tensorflow::quantization::QuantizationMethod::STATIC_RANGE) ||
+      (target_opset_ == OpSet::XLA)) {
+    // Apply weight quantization.
+    // For XLA case, weight quantization will be applied for the remaining f32
+    // weights even in SRQ.
+    quant_specs.minimum_elements_for_weights = min_num_elements_for_weights_;
+    quant_specs.weight_quantization = true;
+    pm.addPass(CreatePrepareQuantizeDRQPass(quant_specs, target_opset_));
+    if (quantization_method_ !=
+            tensorflow::quantization::QuantizationMethod::DYNAMIC_RANGE &&
+        target_opset_ != OpSet::XLA) {
+      quant_specs.weight_only_quantization = true;
+    }
+    pm.addNestedPass<func::FuncOp>(
+        CreateQuantizePass(quant_specs, target_opset_));
+    pm.addNestedPass<func::FuncOp>(CreatePostQuantizePass());
+  }
   if (failed(pm.run(module))) {
     signalPassFailure();
   }
@@ -1135,9 +1152,10 @@ void QuantizeCompositeFunctionsPass::runOnOperation() {
 
 std::unique_ptr<OperationPass<ModuleOp>> CreateQuantizeCompositeFunctionsPass(
     QuantMethod quantization_method, OpSet target_opset,
-    bool enable_per_channel_quantization) {
+    bool enable_per_channel_quantization, int min_num_elements_for_weights) {
   return std::make_unique<QuantizeCompositeFunctionsPass>(
-      quantization_method, target_opset, enable_per_channel_quantization);
+      quantization_method, target_opset, enable_per_channel_quantization,
+      min_num_elements_for_weights);
 }
 
 }  // namespace quant

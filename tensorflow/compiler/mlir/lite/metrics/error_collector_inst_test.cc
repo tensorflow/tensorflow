@@ -33,14 +33,14 @@ limitations under the License.
 #include "mlir/Support/FileUtilities.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/metrics/types_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/statusor.h"
 #include "tensorflow/core/platform/resource_loader.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/tsl/platform/statusor.h"
 
 namespace mlir {
 namespace TFL {
 namespace {
-using stream_executor::port::StatusOr;
+using tsl::StatusOr;
 
 // MockSuccessPass reports errors but doesn't fail.
 class MockSuccessPass
@@ -109,13 +109,14 @@ TEST(ErrorCollectorTest, TessSuccessPass) {
       "tensorflow/compiler/mlir/lite/metrics/testdata/strided_slice.mlir");
   MLIRContext context;
   context.getOrLoadDialect<mlir::func::FuncDialect>();
-  context.allowUnregisteredDialects();
+  context.getOrLoadDialect<TF::TensorFlowDialect>();
   context.enableMultithreading();
 
   auto module = LoadModule(&context, input_file);
   EXPECT_EQ(module.ok(), true);
 
-  PassManager pm(&context, OpPassManager::Nesting::Implicit);
+  PassManager pm(module.value().get()->getName(),
+                 OpPassManager::Nesting::Implicit);
   pm.addPass(std::make_unique<MockSuccessPass>());
 
   pm.addInstrumentation(
@@ -131,18 +132,19 @@ TEST(ErrorCollectorTest, TessFailurePass) {
   using tflite::metrics::ConverterErrorData;
   MLIRContext context;
   context.getOrLoadDialect<mlir::func::FuncDialect>();
+  context.getOrLoadDialect<TF::TensorFlowDialect>();
   const std::string input_file =
       "tensorflow/compiler/mlir/lite/metrics/testdata/strided_slice.mlir";
   auto input_file_id = StringAttr::get(&context, input_file);
 
-  context.allowUnregisteredDialects();
   context.enableMultithreading();
 
   auto module =
       LoadModule(&context, tensorflow::GetDataDependencyFilepath(input_file));
   EXPECT_EQ(module.ok(), true);
 
-  PassManager pm(&context, OpPassManager::Nesting::Implicit);
+  PassManager pm(module.value().get()->getName(),
+                 OpPassManager::Nesting::Implicit);
   pm.addPass(std::make_unique<MockSuccessPass>());
   pm.addPass(std::make_unique<MockFailurePass>());
 

@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <cstddef>
 #include <memory>
+#include <optional>
 #include <vector>
 
 #include "tensorflow/c/eager/abstract_function.h"
@@ -565,7 +566,7 @@ llvm::Optional<const TensorMetadata*> TensorHandleInterface::Metadata() const {
     context_.GetHostContext()->Await(th.GetAsyncMetadata().CopyRCRef());
   }
   if (th.IsMetadataError()) {
-    return llvm::None;
+    return std::nullopt;
   }
   return &th.GetAvailableMetadata();
 }
@@ -1226,7 +1227,7 @@ tensorflow::Status ContextInterface::RunMetadataRecordFunction(
   mutex_lock l(run_metadata_mu_);
   auto* function_graphs = run_metadata_->add_function_graphs();
   *function_graphs->mutable_pre_optimization_graph() = def;
-  // TODO(b/b/171600738): Figure out a way to record the right post optimization
+  // TODO(b/171600738): Figure out a way to record the right post optimization
   // graph and partition graph.
   *function_graphs->mutable_post_optimization_graph() = def;
   *function_graphs->add_partition_graphs() = def;
@@ -1676,8 +1677,8 @@ tensorflow::Status OperationInterface::SetAttrShape(const char* attr_name,
     }
 
     // Set RankedShapeAttr.
-    offset = bef_attr_encoder_.EncodeRankedShapeAttr(
-        llvm::makeArrayRef(dims, num_dims));
+    offset =
+        bef_attr_encoder_.EncodeRankedShapeAttr(llvm::ArrayRef(dims, num_dims));
   }
   fallback_attrs_.Set(attr_name, proto);
 
@@ -1733,7 +1734,7 @@ static size_t SerializeTFETensorToDenseAttr(
   for (int i = 0; i < tensor->NumDims(); ++i) {
     shape.push_back(tensor->Dim(i));
   }
-  auto elements = llvm::makeArrayRef(
+  auto elements = llvm::ArrayRef(
       reinterpret_cast<const uint8_t*>(tensor->Data()), tensor->ByteSize());
   return encoder->EncodeDenseAttr(static_cast<DType>(element_type), shape,
                                   elements);
