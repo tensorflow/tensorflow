@@ -18,6 +18,7 @@ limitations under the License.
 // Note that side-effecting ops are not correctly handled yet.
 
 #include <memory>
+#include <string>
 #include <vector>
 
 #include "llvm/ADT/MapVector.h"
@@ -133,9 +134,9 @@ void BuildLaunchForCluster(const TF::Cluster& c, OpBuilder* builder) {
   TF::ReorderOpResultUses(launch_op);
 }
 
-StringRef GetDevice(Operation* op) {
+std::string GetDevice(Operation* op) {
   auto device_attr = op->getAttrOfType<StringAttr>("device");
-  return device_attr ? device_attr.getValue() : "";
+  return device_attr ? device_attr.getValue().str() : "";
 }
 
 bool CanBeIgnoredInCluster(Operation* op) {

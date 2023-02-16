@@ -19,7 +19,6 @@ limitations under the License.
 #include <string>
 #include <vector>
 
-#include "llvm/ADT/MapVector.h"
 #include "llvm/ADT/StringRef.h"
 #include "mlir/IR/Block.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypeInterfaces.h"  // from @llvm-project
@@ -47,7 +46,7 @@ namespace {
 bool CanMergeIntoCluster(
     const Cluster& c, Operation* to_merge,
     const TF::SideEffectAnalysis::Info& side_effect_analysis,
-    std::function<StringRef(Operation*)> get_target) {
+    std::function<std::string(Operation*)> get_target) {
   // If any of the op's control predecessors appears after the last op in the
   // cluster, merging the op may cause control dependencies to be reordered.
   // Hence, the op cannot be merged to the cluster in such a case.
@@ -95,23 +94,23 @@ bool CanMergeIntoCluster(
 }
 }  // namespace
 
-llvm::MapVector<StringRef, SmallVector<Cluster>> BuildAllClusters(
+llvm::StringMap<SmallVector<Cluster>> BuildAllClusters(
     Block& block, const TF::SideEffectAnalysis::Info& side_effect_analysis,
-    std::function<StringRef(Operation*)> get_target,
+    std::function<std::string(Operation*)> get_target,
     std::function<bool(Operation*)> is_ignored_op) {
   // Iteratively find clusters of different targets within the `block`.
   // Whenever we see an operation that is assigned to an accelerator target
   // (ie. get_target(op) != ""), we try to merge it into the last cluster
   // of same target. If that is infeasible (say because of violating
   // def-before-use), create a new cluster with that operation and move on.
-  llvm::MapVector<StringRef, SmallVector<Cluster>> all_clusters;
+  llvm::StringMap<SmallVector<Cluster>> all_clusters;
 
-  llvm::MapVector<StringRef, Cluster> nearest_clusters;
+  llvm::StringMap<Cluster> nearest_clusters;
   for (Operation& op : llvm::make_early_inc_range(block)) {
     if (is_ignored_op(&op)) {
       continue;
     }
-    StringRef target_name = get_target(&op);
+    std::string target_name = get_target(&op);
 
     // If no cluster of same target has been formed yet, create a new cluster
     // with op alone.
@@ -142,7 +141,7 @@ llvm::MapVector<StringRef, SmallVector<Cluster>> BuildAllClusters(
   // At the end, there might be left-over found clusters that need to be
   // built.
   for (auto& target_cluster : nearest_clusters) {
-    all_clusters[target_cluster.first].push_back(target_cluster.second);
+    all_clusters[target_cluster.first()].push_back(target_cluster.second);
   }
 
   return all_clusters;

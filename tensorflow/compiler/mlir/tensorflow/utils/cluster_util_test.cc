@@ -42,9 +42,9 @@ tsl::StatusOr<OwningOpRef<ModuleOp>> GetMlirModuleFromString(
   return mlir_module;
 }
 
-StringRef GetDevice(Operation* op) {
+std::string GetDevice(Operation* op) {
   auto device_attr = op->getAttrOfType<StringAttr>("device");
-  return device_attr ? device_attr.getValue() : "";
+  return device_attr ? device_attr.getValue().str() : "";
 }
 
 bool CanBeIgnoredInCluster(Operation* op) {
@@ -52,12 +52,12 @@ bool CanBeIgnoredInCluster(Operation* op) {
   return !device_attr || device_attr.getValue().empty();
 }
 
-llvm::MapVector<StringRef, SmallVector<Cluster>> GetClusters(ModuleOp module) {
+llvm::StringMap<SmallVector<Cluster>> GetClusters(ModuleOp module) {
   TF::SideEffectAnalysis side_effect_analysis(module);
   auto main_func = module.lookupSymbol<func::FuncOp>("main");
   const TF::SideEffectAnalysis::Info& info =
       side_effect_analysis.GetAnalysisForFunc(main_func);
-  llvm::MapVector<StringRef, SmallVector<Cluster>> clusters = BuildAllClusters(
+  llvm::StringMap<SmallVector<Cluster>> clusters = BuildAllClusters(
       main_func.front(), info, GetDevice, CanBeIgnoredInCluster);
   return clusters;
 }

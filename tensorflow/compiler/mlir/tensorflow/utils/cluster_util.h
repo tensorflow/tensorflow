@@ -17,8 +17,8 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_MLIR_TENSORFLOW_UTILS_CLUSTER_UTIL_H_
 
 #include <functional>
+#include <string>
 
-#include "llvm/ADT/MapVector.h"
 #include "llvm/ADT/StringRef.h"
 #include "mlir/IR/Block.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
@@ -32,15 +32,15 @@ namespace mlir::TF {
 // assumption to perform analysis.
 struct Cluster {
   SmallVector<Operation*, 4> ops;
-  StringRef target;
+  std::string target;
 };
 
 // Builds the op clusters in the `block`. Ops are filtered by the function
 // `get_target` that takes an op and returns the target name. `is_ignored_op` is
 // a hook to ignore certain ops that are not included in any clusters.
-llvm::MapVector<StringRef, SmallVector<Cluster>> BuildAllClusters(
+llvm::StringMap<SmallVector<Cluster>> BuildAllClusters(
     Block& block, const TF::SideEffectAnalysis::Info& side_effect_analysis,
-    std::function<StringRef(Operation*)> get_target,
+    std::function<std::string(Operation*)> get_target,
     std::function<bool(Operation*)> is_ignored_op);
 
 // Reorder all users of the given op's results to after the op.
