@@ -2729,9 +2729,9 @@ def async_clear_error():
   context().clear_executor_errors()
 
 
-def add_function(fdef):
-  """Add a function definition to the context."""
-  context().add_function(fdef)
+def add_function(tf_function):
+  """Add a TF_Function to the context."""
+  context().add_function(tf_function)
 
 
 def remove_function(name):
