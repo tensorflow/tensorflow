@@ -292,7 +292,7 @@ dtensor_test(
     additional_backends = [TPU_V3_DONUT_BACKEND],
     disable = ALL_BACKENDS,
     env = {
-        "DTENSOR_TEST_USE_XLA_SPMD": "True",
+        "DTENSOR_TEST_USE_XLA_SPMD": "1",
     },
     main = "spmd_test.py",
     shard_count = {
