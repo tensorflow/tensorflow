@@ -45,31 +45,6 @@ int main(int argc, char** argv) {
   mlir::registerLMHLOGPUTransformsPasses();
   mlir::thlo::registerAllThloPasses();
 
-  struct HloToGpuPipelineOptions
-      : public PassPipelineOptions<HloToGpuPipelineOptions> {
-    ListOption<int64_t> blockTileDim{
-        *this, "block-tile",
-        llvm::cl::desc("dimensions of the subproblem processed by the block")};
-    ListOption<int64_t> warpTileDim{
-        *this, "warp-tile",
-        llvm::cl::desc("dimensions of the subproblem processed by the warp")};
-    ListOption<int64_t> threadTileDim{
-        *this, "thread-tile",
-        llvm::cl::desc("dimensions of the subproblem processed by the thread")};
-    Option<bool> experimentalSoftmax{
-        *this, "experimental-softmax",
-        llvm::cl::desc(
-            "enable the experimental variant of this pipeline for softmax"),
-        llvm::cl::init(false)};
-  };
-  mlir::PassPipelineRegistration<HloToGpuPipelineOptions>(
-      "hlo-to-gpu-pipeline",
-      "Pipeline to transform HLO to LLVM + NVVM dialects.",
-      [](OpPassManager& pm, const HloToGpuPipelineOptions& opts) {
-        return createHloToGpuPipeline(pm, opts.blockTileDim, opts.warpTileDim,
-                                      opts.threadTileDim,
-                                      opts.experimentalSoftmax);
-      });
   mlir::PassPipelineRegistration<gml_st::GmlStCPUTilingOptions>
       gmlStCpuTilingPipeline("gml-st-cpu-tiling-pipeline",
                              "Tiles, fuses, vectorizes tileable ops for CPU",
@@ -79,18 +54,6 @@ int main(int argc, char** argv) {
       "default-gml-st-cpu-tiling-pipeline",
       "Tiles, fuses, vectorizes tileable ops for CPU with default parameters",
       gml_st::addDefaultCPUTilingPipeline);
-
-  struct HloToTritonPipelineOptions
-      : public PassPipelineOptions<HloToTritonPipelineOptions> {
-    ListOption<int64_t> blockTileDim{
-        *this, "block-tile",
-        llvm::cl::desc("dimensions of the subproblem processed by the block")};
-  };
-  mlir::PassPipelineRegistration<HloToTritonPipelineOptions>(
-      "hlo-to-triton-pipeline", "Pipeline to transform HLO to Triton dialect.",
-      [](OpPassManager& pm, const HloToTritonPipelineOptions& opts) {
-        return createHloToTritonPipeline(pm, opts.blockTileDim);
-      });
 
   mlir::DialectRegistry registry;
   mlir::registerAllDialects(registry);

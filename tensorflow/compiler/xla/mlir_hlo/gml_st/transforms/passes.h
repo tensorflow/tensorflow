@@ -44,15 +44,6 @@ std::unique_ptr<OperationPass<func::FuncOp>> createTilingPass(
 std::unique_ptr<OperationPass<func::FuncOp>> createFusionPass(
     StringRef producer = "", StringRef consumer = "");
 
-/// Pass to tile and fuse all cwise ops.
-std::unique_ptr<OperationPass<func::FuncOp>> createTilingCwisePass(
-    bool distribute, ArrayRef<int64_t> tileSizes,
-    StringRef distributionLabel = "");
-std::unique_ptr<OperationPass<func::FuncOp>> createTilingCwisePass();
-
-/// Pass to tile warp-level ops on GPU.
-std::unique_ptr<OperationPass<func::FuncOp>> createTilingGpuWarpPass();
-
 /// Pass to match, tile, and fuse softmax implementations.
 std::unique_ptr<OperationPass<func::FuncOp>> createTilingSoftmaxPass(
     bool distribute, ArrayRef<int64_t> tileSizes,
@@ -76,23 +67,9 @@ std::unique_ptr<OperationPass<func::FuncOp>> createTileByOnePass();
 std::unique_ptr<OperationPass<func::FuncOp>>
 createComposeExtractInsertSlicePass();
 
-/// Pass to lower `gml_st.parallel` to `gpu.launch`, transforming the code into
-/// its SIMT interpretation.
-std::unique_ptr<OperationPass<func::FuncOp>> createGmlStSimtfyPass(
-    StringRef blockDistributionLabel = "block");
-
-/// Pass to eliminate the remaining `gml_st` ops after SIMTfication.
-std::unique_ptr<OperationPass<func::FuncOp>> createGmlStToGpuPass(
-    StringRef warpDistributionLabel = "warp");
-
 /// Create a pass to convert `gml_st.loop` to `scf.for` and `scf.parallel`
 /// loops and memref.load/memref.store accesses.
 std::unique_ptr<OperationPass<func::FuncOp>> createGmlStToScfPass();
-
-/// Pass to vectorize compute ops and gml_st.loops.
-std::unique_ptr<OperationPass<func::FuncOp>> createVectorizeForGPUPass(
-    bool vectorizeGmlStOps = false,
-    ArrayRef<StringRef> distributionLabels = {});
 
 /// Pass to vectorize compute ops and scf.for loops that are tiled perfectly.
 std::unique_ptr<OperationPass<func::FuncOp>> createVectorizeForCPUPass();
@@ -120,11 +97,6 @@ std::unique_ptr<OperationPass<func::FuncOp>> createTransformScatterForCpuPass();
 std::unique_ptr<OperationPass<func::FuncOp>> createTransformMatmulForCpuPass(
     ArrayRef<int64_t> matmulTileSizes = std::nullopt,
     bool lowerToMmt4DOp = false);
-
-/// Pass to transform a linalg.matmul op for Triton.
-std::unique_ptr<OperationPass<func::FuncOp>> createTransformMatmulForTritonPass(
-    ArrayRef<int64_t> matmulTileSizes = std::nullopt,
-    StringRef distributionLabel = "");
 
 /// Pass to fuse linalg on tensor operations.
 std::unique_ptr<OperationPass<func::FuncOp>> createFusionOfTensorOpsPass();
