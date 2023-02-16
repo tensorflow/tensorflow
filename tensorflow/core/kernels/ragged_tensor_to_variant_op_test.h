@@ -66,6 +66,32 @@ class RaggedTensorToVariantKernelTest : public ::tensorflow::OpsTestBase {
   }
 
   template <typename VALUE_TYPE, typename SPLIT_TYPE>
+  void BuildEncodeRaggedTensorGraph(
+      const std::vector<std::vector<SPLIT_TYPE>>& ragged_splits,
+      const TensorShape& ragged_values_shape, const VALUE_TYPE& ragged_values,
+      const bool batched) {
+    const auto values_dtype = DataTypeToEnum<VALUE_TYPE>::v();
+    const auto splits_dtype = DataTypeToEnum<SPLIT_TYPE>::v();
+    int64_t num_splits = ragged_splits.size();
+    TF_ASSERT_OK(
+        NodeDefBuilder("tested_op", "RaggedTensorToVariant")
+            .Input(FakeInput(num_splits, splits_dtype))  // ragged_splits
+            .Input(FakeInput(values_dtype))              // ragged_values
+            .Attr("RAGGED_RANK", num_splits)
+            .Attr("Tvalues", values_dtype)
+            .Attr("Tsplits", splits_dtype)
+            .Attr("batched_input", batched)
+            .Finalize(node_def()));
+    TF_ASSERT_OK(InitOp());
+    for (const auto& splits : ragged_splits) {
+      int64_t splits_size = splits.size();
+      AddInputFromArray<SPLIT_TYPE>(TensorShape({splits_size}), splits);
+    }
+    AddInput<VALUE_TYPE>(ragged_values_shape,
+                         [&ragged_values](int i) { return ragged_values; });
+  }
+
+  template <typename VALUE_TYPE, typename SPLIT_TYPE>
   RaggedTensorVariant CreateVariantFromRagged(
       const std::vector<std::vector<SPLIT_TYPE>>& ragged_splits,
       const TensorShape& ragged_values_shape,
