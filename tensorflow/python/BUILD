@@ -2786,9 +2786,11 @@ cuda_py_test(
     tags = ["no_windows"],
     deps = [
         ":bitwise_ops",
+        ":bitwise_ops_gen",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:test_lib",
+        "//tensorflow/python/platform:test",
     ],
 )
 
