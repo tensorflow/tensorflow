@@ -28,6 +28,11 @@ limitations under the License.
 
 namespace tensorflow {
 namespace data {
+namespace {
+
+constexpr int64_t kTFRecordReaderOutputBufferSize = 256 << 20;  // 256MB
+
+}
 
 SnapshotReader::SnapshotReader(const SnapshotReaderParams& params)
     : params_(params) {}
@@ -80,7 +85,7 @@ Status SnapshotReader::InitializeNextRecordReader() {
   }
   tfrecord_reader_ = std::make_unique<snapshot_util::TFRecordReader>(
       chunk_files_[next_chunk_index_], params_.metadata.compression(),
-      params_.output_types);
+      params_.output_types, kTFRecordReaderOutputBufferSize);
   TF_RETURN_IF_ERROR(tfrecord_reader_->Initialize(params_.env));
   LOG(INFO) << "Starting to read distributed tf.data snapshot "
             << params_.DebugString() << ", chunk " << next_chunk_index_;
