@@ -34,13 +34,14 @@
         model and exports it if the user-defined comparison function determines
         that it is an improvement.
 
-*   Embeddings:
+*   `tf.nn`
 
     *   `tf.nn.embedding_lookup_sparse` and `tf.nn.safe_embedding_lookup_sparse`
-        now support ids and weights described by RaggedTensors, which are more
-        memory efficient than SparseTensors. The new boolean argument
-        `allow_fast_lookup` enables a simplified and typically faster lookup
-        procedure.
+        now support ids and weights described by `tf.RaggedTensor`s.
+    *   Added a new boolean argument `allow_fast_lookup` to
+        `tf.nn.embedding_lookup_sparse` and
+        `tf.nn.safe_embedding_lookup_sparse`, which enables a simplified and
+        typically faster lookup procedure.
 
 ## Bug Fixes and Other Changes
 
