@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/core/ir/ops.h"
 
+#include <optional>
+
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
@@ -69,7 +71,7 @@ TEST(TestTFGRegionOps, TestIfLikeRegionOpSuccessorRegions) {
   }
 
   // Test parent -> regions
-  op.getSuccessorRegions(/*index=*/llvm::None, /*operands=*/{Attribute()},
+  op.getSuccessorRegions(/*index=*/std::nullopt, /*operands=*/{Attribute()},
                          regions);
   EXPECT_EQ(regions.size(), 2u);
   regions.clear();
@@ -78,7 +80,7 @@ TEST(TestTFGRegionOps, TestIfLikeRegionOpSuccessorRegions) {
   Builder b(&context);
   ShapedType tensor_type = RankedTensorType::get(/*shape=*/{}, b.getI1Type());
   Attribute cond = DenseElementsAttr::get(tensor_type, /*value=*/true);
-  op.getSuccessorRegions(/*index=*/llvm::None, /*operands=*/{cond}, regions);
+  op.getSuccessorRegions(/*index=*/std::nullopt, /*operands=*/{cond}, regions);
   ASSERT_EQ(regions.size(), 1u);
   EXPECT_EQ(regions.front().getSuccessor(), &op.getThenRegion());
 }
@@ -111,7 +113,7 @@ TEST(TestTFGRegionOps, TestCaseLikeRegionOpSuccessorRegions) {
   }
 
   // Test parent -> region
-  op.getSuccessorRegions(/*index=*/llvm::None, /*operands=*/{Attribute()},
+  op.getSuccessorRegions(/*index=*/std::nullopt, /*operands=*/{Attribute()},
                          regions);
   EXPECT_EQ(regions.size(), 2u);
   regions.clear();
@@ -120,7 +122,7 @@ TEST(TestTFGRegionOps, TestCaseLikeRegionOpSuccessorRegions) {
   Builder b(&context);
   ShapedType tensor_type = RankedTensorType::get(/*shape=*/{}, b.getI32Type());
   Attribute branch = DenseElementsAttr::get(tensor_type, /*value=*/1);
-  op.getSuccessorRegions(/*index=*/llvm::None, {branch}, regions);
+  op.getSuccessorRegions(/*index=*/std::nullopt, {branch}, regions);
   ASSERT_EQ(regions.size(), 1u);
   EXPECT_EQ(regions.front().getSuccessor(), &op.getBranches()[1]);
 }
@@ -148,7 +150,7 @@ TEST(TestTFGRegionOps, TestWhileLikeRegionOpSuccessorRegions) {
 
   // Test parent -> cond
   SmallVector<RegionSuccessor> regions;
-  op.getSuccessorRegions(/*index=*/llvm::None, /*operands=*/{Attribute()},
+  op.getSuccessorRegions(/*index=*/std::nullopt, /*operands=*/{Attribute()},
                          regions);
   ASSERT_EQ(regions.size(), 1u);
   EXPECT_EQ(regions.front().getSuccessor(), &op.getCondRegion());
@@ -187,7 +189,7 @@ TEST(TestTFGRegionOps, TestForLikeRegionOpSuccessorRegions) {
 
   // Test parent -> body
   SmallVector<RegionSuccessor> regions;
-  op.getSuccessorRegions(/*index=*/llvm::None, /*operands=*/{Attribute()},
+  op.getSuccessorRegions(/*index=*/std::nullopt, /*operands=*/{Attribute()},
                          regions);
   EXPECT_EQ(regions.size(), 1u);
   regions.clear();

@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/ir/types/dialect.h"
 
 #include <cstdint>
+#include <optional>
 #include <string>
 
 #include "absl/strings/escaping.h"
@@ -388,7 +389,7 @@ Attribute ShapeAttr::parse(AsmParser& parser, Type type) {
              "attribute";
       return {};
     }
-    return ShapeAttr::get(parser.getContext(), llvm::None);
+    return ShapeAttr::get(parser.getContext(), std::nullopt);
   }
 
   SmallVector<int64_t> shape;
@@ -432,7 +433,7 @@ ShapeAttr ShapeAttr::get(MLIRContext* context, ShapedType shaped_type) {
 
 llvm::Optional<ArrayRef<int64_t>> ShapeAttr::getValue() const {
   if (hasRank()) return getShape();
-  return llvm::None;
+  return std::nullopt;
 }
 
 bool ShapeAttr::hasRank() const { return !getImpl()->unranked; }
@@ -453,12 +454,12 @@ bool ShapeAttr::hasStaticShape() const {
 }
 
 namespace {
-// Returns the shape of the given value if it's ranked; returns llvm::None
+// Returns the shape of the given value if it's ranked; returns std::nullopt
 // otherwise.
 Optional<ArrayRef<int64_t>> GetShape(Value value) {
   auto shaped_type = value.getType().cast<ShapedType>();
   if (shaped_type.hasRank()) return shaped_type.getShape();
-  return llvm::None;
+  return std::nullopt;
 }
 
 // Merges cast compatible shapes and returns a more refined shape. The two
