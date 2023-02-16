@@ -647,7 +647,7 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
                         MatrixIsColumnMajor(instr, gemm_backend_config, "a"));
     TF_ASSIGN_OR_RETURN(bool b_is_col_major,                        
                         MatrixIsColumnMajor(instr, gemm_backend_config, "b"));
-    // Bitcast the operands to realign their logical and physical dimensions.
+    // Bitcast the operands so that the layout is monotonic and dim 0 is major.
     std::vector<int64_t> a_dim_order;
     a_dim_order.reserve(a_dims.size());
     absl::Span<const int64_t> a_minor_to_major =
