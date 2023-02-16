@@ -2333,6 +2333,33 @@ class PoolingTest(test.TestCase, parameterized.TestCase):
         data_format=data_format,
         use_gpu=use_gpu)
 
+  def testAvgPoolGradOutputMemoryOutOfBounds(self):
+    with self.assertRaisesRegex(
+        errors_impl.InvalidArgumentError,
+        (
+            # CPU error message
+            "(Output only has 3 elements but computation requested would use"
+            " element with index=6"
+            ")|("
+            # GPU error message
+            r"Expected grad shape to be \[1,1,3,1\], but got \[3,1,3,1\])"
+        ),
+    ):
+      self.evaluate(
+          gen_nn_ops.AvgPoolGrad(
+              orig_input_shape=[1, 1, 3, 1],
+              grad=[
+                  [[[1.0], [2.0], [3.0]]],
+                  [[[4.0], [5.0], [6.0]]],
+                  [[[7.0], [8.0], [9.0]]],
+              ],
+              ksize=[1, 1, 1, 1],
+              strides=[1, 1, 1, 2],
+              padding="VALID",
+              data_format="NHWC",
+          )
+      )
+
   @test_util.run_deprecated_v1
   def testShapeFunctionEdgeCases(self):
     # All shapes unknown.
