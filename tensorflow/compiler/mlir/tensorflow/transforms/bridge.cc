@@ -392,7 +392,12 @@ void CreateTFXLABridgePipeline(OpPassManager &pm) {
   // Lift resource operations out of device computation. This step needs to be
   // done after inlining.
   pm.addPass(TFDevice::CreateResourceOpLiftingPass());
-  pm.addPass(TFDevice::CreateMarkOpsForOutsideCompilationPass());
+  // TODO(b/267193636): Remove this flag when outside compilation
+  // for generic pipeline is landed.
+  if (tensorflow::GetMlirCommonFlags()
+          ->tf_mlir_enable_generic_outside_compilation) {
+    pm.addPass(TFDevice::CreateMarkOpsForOutsideCompilationPass());
+  }
   // Outline clusters into cluster functions.
   pm.addPass(TFDevice::CreateClusterOutliningPass());
   // Rewrite cluster functions into XLA  launch ops.
