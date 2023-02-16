@@ -30,6 +30,7 @@ from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.framework import type_spec
 from tensorflow.python.framework import type_spec_registry
+from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.ops import gen_sparse_ops
 from tensorflow.python.saved_model import nested_structure_coder
 from tensorflow.python.types import internal
@@ -466,13 +467,11 @@ class SparseTensorSpec(type_spec.BatchableTypeSpec):
           self._shape, dtype=dtypes.int64, name="shape")
     elif (self._shape.rank is not None and
           any(dim.value is not None for dim in self._shape.dims)):
-      # array_ops imports sparse_tensor.py. Local import to avoid import cycle.
-      from tensorflow.python.ops import array_ops  # pylint: disable=g-import-not-at-top
-      pieces = array_ops.unstack(dense_shape, num=self._shape.rank)
+      pieces = array_ops_stack.unstack(dense_shape, num=self._shape.rank)
       for i, dim in enumerate(self._shape.dims):
         if dim.value is not None:
           pieces[i] = constant_op.constant(dim.value, dense_shape.dtype)
-      dense_shape = array_ops.stack(pieces)
+      dense_shape = array_ops_stack.stack(pieces)
     else:
       dense_shape.set_shape([rank])
 

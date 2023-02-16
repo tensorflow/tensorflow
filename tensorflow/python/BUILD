@@ -1058,6 +1058,7 @@ py_library(
     visibility = visibility,
     deps = [
         ":array_ops_gen",
+        ":array_ops_stack",
         ":control_flow_util",
         ":math_ops_gen",
         ":shape_util",
@@ -1073,6 +1074,17 @@ py_library(
         "//tensorflow/python/framework:tensor_util",
         "//tensorflow/python/util",
         "//third_party/py/numpy",
+    ],
+)
+
+py_library(
+    name = "array_ops_stack",
+    srcs = ["ops/array_ops_stack.py"],
+    srcs_version = "PY3",
+    deps = [
+        ":array_ops_gen",
+        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/util",
     ],
 )
 
