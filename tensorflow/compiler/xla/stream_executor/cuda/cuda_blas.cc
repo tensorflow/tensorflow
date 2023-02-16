@@ -20,23 +20,6 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/stream_executor/cuda/cuda_blas.h"
 
-// Both Eigen Half.h and CUDA cuda_fp16.h provide similar typedef for __half. As
-// such, there are two ways to get the typedef for __half:
-//
-// (1) Includes cuda_fp16.h and defines EIGEN_HAS_CUDA_FP16.
-// (2) Neither includes cuda_fp16.h nor defines EIGEN_HAS_CUDA_FP16.
-//
-// Due to issue b/73793421, when the first approach is used and NVCC is used to
-// compile this file, NVCC will complain duplicated definition for
-// EIGEN_HAS_CUDA_FP16. On the other hand, when the second approach is used and
-// clang is used to compile this file, clang will not understand __half
-// due to missing the definition and macro EIGEN_HAS_CUDA_FP16.
-//
-// Because this file may be compiled with CLANG but will never be compiled with
-// NVCC, we chose the first approach for CUDA < 9.0. For CUDA >= 9.0, we have
-// to use the second approach because the data member in the __half defined
-// by CUDA > 9.0 is `__x` while Eigen expects it to be `x`.
-
 #include <complex>
 #include <cstdint>
 
