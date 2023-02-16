@@ -1,6 +1,6 @@
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library")
-load("//tensorflow:tensorflow.bzl", "tf_cc_binary", "tf_cc_test")
+load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_cloud")
 
 package(
@@ -326,30 +326,5 @@ cc_library(
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TensorDialect",
         "@llvm-project//mlir:TransformUtils",
-    ],
-)
-
-tf_cc_binary(
-    name = "xla-opt",
-    testonly = True,
-    srcs = ["xla_opt_main.cc"],
-    deps = [
-        ":tf_xla_passes",  # buildcleaner: keep
-        ":xla_legalize_tf",  # buildcleaner: keep
-        ":xla_legalize_tf_no_fallback",  # buildcleaner: keep
-        "//tensorflow/compiler/mlir:init_mlir",
-        "//tensorflow/compiler/mlir/tensorflow:tensorflow_types",
-        "//tensorflow/compiler/mlir/tensorflow:tf_dialect_passes",
-        "//tensorflow/compiler/xla/mlir/framework/ir:xla_framework",
-        "//tensorflow/compiler/xla/mlir/framework/transforms:passes",
-        "//tensorflow/compiler/xla/mlir_hlo:all_passes",
-        "//tensorflow/compiler/xla/mlir_hlo:hlo_dialect_registration",
-        "//tensorflow/compiler/xla/service:cpu_plugin",
-        "//tensorflow/compiler/xla/service/cpu:hlo_xla_runtime_pipeline",
-        "//tensorflow/compiler/xla/translate/mhlo_to_lhlo_with_xla",  # buildcleaner: keep
-        "//tensorflow/core/ir/types:Dialect",
-        "@llvm-project//mlir:AllPassesAndDialects",
-        "@llvm-project//mlir:MlirOptLib",
-        "@stablehlo//:register",
     ],
 )

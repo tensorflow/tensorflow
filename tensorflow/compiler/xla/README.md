@@ -43,7 +43,7 @@ for the directory layout:
         *   python/ (bootstrapped from mlir/hlo/python, should talk about some
             low-level LAX?)
     *   integration_tests/ (to be defined / refined)
-    *   tools/ (xla-opt, fuzzer, ir-reducer, interpreter/evaluator)
+    *   tools/ (fuzzer, ir-reducer, interpreter/evaluator)
     *   transforms/ (generic / cross dialect transforms)
     *   utils/
 *   // below are dialects and transforms folders
