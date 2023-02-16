@@ -278,10 +278,14 @@ PYBIND11_MODULE(_pywrap_dtensor_device, m) {
     std::unique_ptr<TF_Status, decltype(&TF_DeleteStatus)> status(
         TF_NewStatus(), TF_DeleteStatus);
 
-    TFE_TensorHandle* input_handle = EagerTensor_Handle(dtensor_handle.ptr());
+    if (!EagerTensor_CheckExact(dtensor_handle.ptr())) {
+      throw py::type_error(absl::StrFormat("Expecting a Tensor, got %s",
+                                           py::str(dtensor_handle.get_type())));
+    }
+    TFE_TensorHandle* tensor_handle = EagerTensor_Handle(dtensor_handle.ptr());
     std::vector<TFE_TensorHandle*> unpacked_handles = Unpack(
         static_cast<TFE_Context*>(PyCapsule_GetPointer(context.ptr(), nullptr)),
-        input_handle, device_info, status.get());
+        tensor_handle, device_info, status.get());
 
     if (tensorflow::MaybeRaiseExceptionFromTFStatus(status.get(), nullptr))
       return tensorflow::PyoOrThrow(nullptr);
@@ -300,12 +304,15 @@ PYBIND11_MODULE(_pywrap_dtensor_device, m) {
          const py::capsule& device_info) -> py::object {
         std::unique_ptr<TF_Status, decltype(&TF_DeleteStatus)> status(
             TF_NewStatus(), TF_DeleteStatus);
-
+        if (!EagerTensor_CheckExact(dtensor_handle.ptr())) {
+          return py::none();
+        }
+        TFE_TensorHandle* tensor_handle =
+            EagerTensor_Handle(dtensor_handle.ptr());
         std::string layout_string =
             FetchLayout(static_cast<TFE_Context*>(
                             PyCapsule_GetPointer(context.ptr(), nullptr)),
-                        EagerTensor_Handle(dtensor_handle.ptr()), device_info,
-                        status.get());
+                        tensor_handle, device_info, status.get());
         if (tensorflow::MaybeRaiseExceptionFromTFStatus(status.get(), nullptr))
           return tensorflow::PyoOrThrow(nullptr);
         return tensorflow::PyoOrThrow(
@@ -314,11 +321,15 @@ PYBIND11_MODULE(_pywrap_dtensor_device, m) {
   m.def("IsDTensor", [](const py::handle& context,
                         const py::handle& dtensor_handle,
                         const py::capsule& device_info) {
+    if (!EagerTensor_CheckExact(dtensor_handle.ptr())) {
+      return false;
+    }
     std::unique_ptr<TF_Status, decltype(&TF_DeleteStatus)> status(
         TF_NewStatus(), TF_DeleteStatus);
+    TFE_TensorHandle* tensor_handle = EagerTensor_Handle(dtensor_handle.ptr());
     bool is_dtensor = IsDTensor(
         static_cast<TFE_Context*>(PyCapsule_GetPointer(context.ptr(), nullptr)),
-        EagerTensor_Handle(dtensor_handle.ptr()), device_info, status.get());
+        tensor_handle, device_info, status.get());
     if (TF_GetCode(status.get()) != TF_OK) {
       PyErr_SetString(PyExc_ValueError, TF_Message(status.get()));
       throw py::error_already_set();
@@ -328,13 +339,16 @@ PYBIND11_MODULE(_pywrap_dtensor_device, m) {
   m.def("IsSparseDTensor", [](const py::handle& context,
                               const py::handle& dtensor_handle,
                               const py::capsule& device_info) {
+    if (!EagerTensor_CheckExact(dtensor_handle.ptr())) {
+      return false;
+    }
     std::unique_ptr<TF_Status, decltype(&TF_DeleteStatus)> status(
         TF_NewStatus(), TF_DeleteStatus);
 
-    TFE_TensorHandle* input_handle = EagerTensor_Handle(dtensor_handle.ptr());
+    TFE_TensorHandle* tensor_handle = EagerTensor_Handle(dtensor_handle.ptr());
     bool is_sparse = IsSparseDTensor(
         static_cast<TFE_Context*>(PyCapsule_GetPointer(context.ptr(), nullptr)),
-        input_handle, device_info, status.get());
+        tensor_handle, device_info, status.get());
 
     if (TF_GetCode(status.get()) != TF_OK) {
       PyErr_SetString(PyExc_ValueError, TF_Message(status.get()));
@@ -354,13 +368,19 @@ PYBIND11_MODULE(_pywrap_dtensor_device, m) {
         [](const py::handle& context, const py::handle& dtensor_handle,
            const std::vector<std::string>& element_layouts,
            const py::capsule& device_info) {
+          if (!EagerTensor_CheckExact(dtensor_handle.ptr())) {
+            throw py::type_error(
+                absl::StrFormat("Expecting a Tensor, got %s",
+                                py::str(dtensor_handle.get_type())));
+          }
           std::unique_ptr<TF_Status, decltype(&TF_DeleteStatus)> status(
               TF_NewStatus(), TF_DeleteStatus);
+          TFE_TensorHandle* tensor_handle =
+              EagerTensor_Handle(dtensor_handle.ptr());
           SetIteratorElementLayouts(
               static_cast<TFE_Context*>(
                   PyCapsule_GetPointer(context.ptr(), nullptr)),
-              EagerTensor_Handle(dtensor_handle.ptr()), element_layouts,
-              device_info, status.get());
+              tensor_handle, element_layouts, device_info, status.get());
         });
   py::class_<Mesh>(m, "Mesh")
       .def(py::init(&Mesh::CreateMesh))
