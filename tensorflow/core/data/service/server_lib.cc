@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/core/data/service/grpc_dispatcher_impl.h"
 #include "tensorflow/core/data/service/grpc_util.h"
 #include "tensorflow/core/data/service/grpc_worker_impl.h"
+#include "tensorflow/core/data/service/worker_client.h"
 #include "tensorflow/core/platform/errors.h"
 
 namespace tensorflow {
@@ -185,20 +186,27 @@ Status WorkerGrpcDataServer::StartServiceInternal() {
   std::string worker_address = str_util::StringReplace(
       base_address, kPortPlaceholder, absl::StrCat(bound_port()),
       /*replace_all=*/false);
-  std::string transfer_address = worker_address;
-  std::string transfer_protocol = config_.data_transfer_protocol();
-  if (!transfer_protocol.empty() && transfer_protocol != "grpc") {
+  DataTransferServerInfo grpc_transfer_server;
+  grpc_transfer_server.set_protocol(kGrpcTransferProtocol);
+  grpc_transfer_server.set_address(worker_address);
+  std::vector<DataTransferServerInfo> transfer_servers = {grpc_transfer_server};
+  if (!config_.data_transfer_protocol().empty() &&
+      config_.data_transfer_protocol() != kGrpcTransferProtocol) {
     TF_RETURN_IF_ERROR(DataTransferServer::Build(
-        transfer_protocol, service_->get_element_getter(), &transfer_server_));
+        config_.data_transfer_protocol(), service_->get_element_getter(),
+        &transfer_server_));
     TF_RETURN_IF_ERROR(transfer_server_->Start());
     LOG(INFO) << "Data transfer server started at 0.0.0.0:"
               << transfer_server_->get_port();
-    transfer_address = str_util::StringReplace(
+    DataTransferServerInfo alternative_transfer_server;
+    alternative_transfer_server.set_protocol(config_.data_transfer_protocol());
+    alternative_transfer_server.set_address(str_util::StringReplace(
         config_.data_transfer_address(), kPortPlaceholder,
         absl::StrCat(transfer_server_->get_port()),
-        /*replace_all=*/false);
+        /*replace_all=*/false));
+    transfer_servers.push_back(alternative_transfer_server);
   }
-  TF_RETURN_IF_ERROR(service_->Start(worker_address, transfer_address));
+  TF_RETURN_IF_ERROR(service_->Start(worker_address, transfer_servers));
   return OkStatus();
 }
 

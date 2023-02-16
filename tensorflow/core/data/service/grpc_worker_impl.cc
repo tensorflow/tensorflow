@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <memory>
 #include <string>
+#include <vector>
 
 #include "grpcpp/server_builder.h"
 #include "grpcpp/server_context.h"
@@ -40,10 +41,11 @@ GrpcWorkerImpl::GrpcWorkerImpl(const experimental::WorkerConfig& config,
   VLOG(1) << "Registered data service worker";
 }
 
-Status GrpcWorkerImpl::Start(const std::string& worker_address,
-                             const std::string& transfer_address) {
+Status GrpcWorkerImpl::Start(
+    const std::string& worker_address,
+    const std::vector<DataTransferServerInfo>& transfer_servers) {
   worker_address_ = worker_address;
-  TF_RETURN_IF_ERROR(impl_->Start(worker_address, transfer_address));
+  TF_RETURN_IF_ERROR(impl_->Start(worker_address, transfer_servers));
   LocalWorkers::Add(worker_address, impl_);
   return OkStatus();
 }

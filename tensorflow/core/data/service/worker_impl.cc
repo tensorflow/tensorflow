@@ -162,12 +162,13 @@ DataServiceWorkerImpl::~DataServiceWorkerImpl() {
   heartbeat_cv_.notify_one();
 }
 
-Status DataServiceWorkerImpl::Start(const std::string& worker_address,
-                                    const std::string& transfer_address) {
+Status DataServiceWorkerImpl::Start(
+    const std::string& worker_address,
+    const std::vector<DataTransferServerInfo>& transfer_servers) {
   VLOG(3) << "Starting tf.data service worker at address " << worker_address;
   TF_RETURN_IF_ERROR(ValidateWorkerConfig());
   worker_address_ = worker_address;
-  transfer_address_ = transfer_address;
+  transfer_servers_ = transfer_servers;
 
   TF_ASSIGN_OR_RETURN(dispatcher_, CreateDispatcherClient());
   auto should_retry = [this]() TF_LOCKS_EXCLUDED(mu_) {
@@ -554,7 +555,8 @@ WorkerHeartbeatRequest DataServiceWorkerImpl::BuildWorkerHeartbeatRequest()
 
   WorkerHeartbeatRequest request;
   request.set_worker_address(worker_address_);
-  request.set_transfer_address(transfer_address_);
+  *request.mutable_transfer_servers() = {transfer_servers_.begin(),
+                                         transfer_servers_.end()};
   *request.mutable_worker_tags() = config_.worker_tags();
   request.set_worker_uid(worker_uid_);
   *request.mutable_current_tasks() = {current_tasks.begin(),

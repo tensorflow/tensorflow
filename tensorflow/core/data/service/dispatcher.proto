@@ -7,16 +7,17 @@ import "tensorflow/core/framework/tensor.proto";
 import "tensorflow/core/protobuf/data_service.proto";
 import "tensorflow/core/protobuf/snapshot.proto";
 
-// Next tag: 7
+// Next tag: 8
 message WorkerHeartbeatRequest {
   string worker_address = 1;
-  string transfer_address = 3;
+  repeated DataTransferServerInfo transfer_servers = 7;
   repeated string worker_tags = 4;
   // The UID of the worker Borg job, used for telemetry.
   int64 worker_uid = 5;
   repeated int64 current_tasks = 2;
   // The status of any active snapshot tasks, keyed by snapshot path.
   map<string, SnapshotTaskProgress> snapshot_task_progress = 6;
+  reserved 3;
 }
 
 // Next tag: 4

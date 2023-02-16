@@ -371,8 +371,8 @@ Status DataServiceDispatcherImpl::WorkerHeartbeat(
     TF_RETURN_IF_ERROR(state_.ValidateWorker(worker_address));
     Update update;
     update.mutable_register_worker()->set_worker_address(worker_address);
-    update.mutable_register_worker()->set_transfer_address(
-        request->transfer_address());
+    *update.mutable_register_worker()->mutable_transfer_servers() =
+        request->transfer_servers();
     *update.mutable_register_worker()->mutable_worker_tags() =
         request->worker_tags();
     update.mutable_register_worker()->set_worker_uid(request->worker_uid());
@@ -860,7 +860,8 @@ Status DataServiceDispatcherImpl::CreatePendingTask(
                                   1);
   std::shared_ptr<const Worker> worker;
   TF_RETURN_IF_ERROR(state_.WorkerFromAddress(worker_address, worker));
-  create_task->set_transfer_address(worker->transfer_address);
+  *create_task->mutable_transfer_servers() = {worker->transfer_servers.begin(),
+                                              worker->transfer_servers.end()};
   *create_task->mutable_worker_tags() = {worker->tags.begin(),
                                          worker->tags.end()};
   create_task->set_worker_uid(worker->uid);
@@ -880,7 +881,8 @@ Status DataServiceDispatcherImpl::CreateTask(
   create_task->set_worker_address(worker_address);
   std::shared_ptr<const Worker> worker;
   TF_RETURN_IF_ERROR(state_.WorkerFromAddress(worker_address, worker));
-  create_task->set_transfer_address(worker->transfer_address);
+  *create_task->mutable_transfer_servers() = {worker->transfer_servers.begin(),
+                                              worker->transfer_servers.end()};
   *create_task->mutable_worker_tags() = {worker->tags.begin(),
                                          worker->tags.end()};
   create_task->set_worker_uid(worker->uid);
@@ -1032,7 +1034,8 @@ Status DataServiceDispatcherImpl::ClientHeartbeat(
   for (const auto& task : tasks) {
     TaskInfo* task_info = response->mutable_task_info()->Add();
     task_info->set_worker_address(task->worker_address);
-    task_info->set_transfer_address(task->transfer_address);
+    *task_info->mutable_transfer_servers() = {task->transfer_servers.begin(),
+                                              task->transfer_servers.end()};
     *task_info->mutable_worker_tags() = {task->worker_tags.begin(),
                                          task->worker_tags.end()};
     task_info->set_task_id(task->task_id);

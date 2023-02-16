@@ -59,7 +59,7 @@ class DataServiceWorkerImpl {
   // the address isn't known until the worker has started and decided which port
   // to bind to.
   Status Start(const std::string& worker_address,
-               const std::string& transfer_address);
+               const std::vector<DataTransferServerInfo>& transfer_servers);
   // Stops the worker, attempting a clean shutdown by rejecting new requests
   // and waiting for outstanding requests to complete.
   void Stop();
@@ -172,7 +172,8 @@ class DataServiceWorkerImpl {
 
   // The worker's own address.
   std::string worker_address_;
-  std::string transfer_address_;
+  // The data transfer servers available to worker clients.
+  std::vector<DataTransferServerInfo> transfer_servers_;
   std::unique_ptr<DataServiceDispatcherClient> dispatcher_;
 
   mutable mutex mu_;

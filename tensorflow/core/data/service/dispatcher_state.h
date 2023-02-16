@@ -89,13 +89,14 @@ class DispatcherState {
   struct Worker {
     explicit Worker(const RegisterWorkerUpdate& register_worker)
         : address(register_worker.worker_address()),
-          transfer_address(register_worker.transfer_address()),
+          transfer_servers({register_worker.transfer_servers().begin(),
+                            register_worker.transfer_servers().end()}),
           tags(register_worker.worker_tags().begin(),
                register_worker.worker_tags().end()),
           uid(register_worker.worker_uid()) {}
 
     const std::string address;
-    const std::string transfer_address;
+    const std::vector<DataTransferServerInfo> transfer_servers;
     const std::vector<std::string> tags;
     const int64_t uid;
   };
@@ -207,7 +208,8 @@ class DispatcherState {
         : task_id(create_task_update.task_id()),
           iteration(iteration),
           worker_address(create_task_update.worker_address()),
-          transfer_address(create_task_update.transfer_address()),
+          transfer_servers(create_task_update.transfer_servers().begin(),
+                           create_task_update.transfer_servers().end()),
           worker_tags(create_task_update.worker_tags().begin(),
                       create_task_update.worker_tags().end()),
           worker_uid(create_task_update.worker_uid()) {}
@@ -215,7 +217,7 @@ class DispatcherState {
     const int64_t task_id;
     const std::shared_ptr<Iteration> iteration;
     const std::string worker_address;
-    const std::string transfer_address;
+    const std::vector<DataTransferServerInfo> transfer_servers;
     const std::vector<std::string> worker_tags;
     const int64_t worker_uid;
     int64_t starting_round = 0;
