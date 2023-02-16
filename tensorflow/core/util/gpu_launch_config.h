@@ -123,10 +123,10 @@ CREATE_CUDA_TYPE_ALIAS(GpuLaunchConfig, CudaLaunchConfig);
 // Calculate the GPU launch config we should use for a kernel launch.
 // This is assuming the kernel is quite simple and will largely be
 // memory-limited.
-// REQUIRES: work_element_count > 0.
+// REQUIRES: work_element_count >= 0.
 inline GpuLaunchConfig GetGpuLaunchConfig(int work_element_count,
                                           const Eigen::GpuDevice& d) {
-  CHECK_GT(work_element_count, 0);
+  CHECK_GE(work_element_count, 0);
   GpuLaunchConfig config;
   const int virtual_thread_count = work_element_count;
   const int physical_thread_count = std::min(
@@ -151,13 +151,13 @@ inline CudaLaunchConfig GetCudaLaunchConfig(int work_element_count,
 
 // Calculate the GPU launch config we should use for a kernel launch. This
 // variant takes the resource limits of func into account to maximize occupancy.
-// REQUIRES: work_element_count > 0.
+// REQUIRES: work_element_count >= 0.
 template <typename DeviceFunc>
 GpuLaunchConfig GetGpuLaunchConfig(int work_element_count,
                                    const Eigen::GpuDevice& d, DeviceFunc func,
                                    size_t dynamic_shared_memory_size,
                                    int block_size_limit) {
-  CHECK_GT(work_element_count, 0);
+  CHECK_GE(work_element_count, 0);
   GpuLaunchConfig config;
   int block_count = 0;
   int thread_per_block = 0;
@@ -187,12 +187,12 @@ CREATE_CUDA_HOST_FUNCTION_ALIAS(GetGpuLaunchConfig, GetCudaLaunchConfig);
 // Calculate the GPU launch config we should use for a kernel launch. This
 // variant takes the resource limits of func into account to maximize occupancy.
 // The returned launch config has thread_per_block set to fixed_block_size.
-// REQUIRES: work_element_count > 0.
+// REQUIRES: work_element_count >= 0.
 template <typename DeviceFunc>
 GpuLaunchConfig GetGpuLaunchConfigFixedBlockSize(
     int work_element_count, const Eigen::GpuDevice& d, DeviceFunc func,
     size_t dynamic_shared_memory_size, int fixed_block_size) {
-  CHECK_GT(work_element_count, 0);
+  CHECK_GE(work_element_count, 0);
   GpuLaunchConfig config;
   int block_count = 0;
 

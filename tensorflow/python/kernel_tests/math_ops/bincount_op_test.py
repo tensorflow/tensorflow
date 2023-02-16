@@ -16,6 +16,7 @@
 from absl.testing import parameterized
 import numpy as np
 
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import errors_impl
@@ -50,6 +51,16 @@ class BincountTest(test_util.TensorFlowTestCase):
           self.evaluate(
               bincount_ops.bincount([], minlength=3, dtype=np.float64)).dtype,
           np.float64)
+      self.assertAllEqual(
+          self.evaluate(
+              bincount_ops.bincount(
+                  constant_op.constant([], shape=[0], dtype=np.int32),
+                  minlength=5,
+                  binary_output=True,
+              )
+          ),
+          [0, 0, 0, 0, 0],
+      )
 
   def test_values(self):
     with self.session():
