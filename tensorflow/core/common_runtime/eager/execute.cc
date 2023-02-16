@@ -1177,6 +1177,13 @@ Status GetOrCreateKernelAndDevice(
     VLOG(2) << "Creating new kernel for " << op->Name() << " on device "
             << DeviceNameOrUnspecified(absl::get<Device*>(op->Device()));
 
+    if (device == nullptr) {
+      TF_RETURN_IF_ERROR(SetOpDevice(ctx, op, &device));
+    } else {
+      VLOG(1) << "Device for [" << op->Name()
+              << "] already set to: " << device->name();
+    }
+
     bool run_function_with_flr = false;
     absl::optional<string> xla_compile_device_type;
     if (op->is_function()) {
@@ -1188,6 +1195,7 @@ Status GetOrCreateKernelAndDevice(
       bool has_tpu_replication = false;
       TF_RETURN_IF_ERROR(MustCompileWithXLA(op, ctx, &compile_with_xla));
       TF_RETURN_IF_ERROR(HasTPUReplication(*op, ctx, &has_tpu_replication));
+      VLOG(1) << "Compilation Device Type: " << op->GetDeviceParsedName().type;
       UpdateCompileCounter(op, compile_with_xla, has_tpu_replication);
 
       if (compile_with_xla && !has_tpu_replication) {
@@ -1208,15 +1216,8 @@ Status GetOrCreateKernelAndDevice(
       GetFuncAttr(op, ctx, kOutputsOnOpDevice, &function_outputs_on_op_device)
           .IgnoreError();
     }
-
     VLOG(2) << op->Name() << " function_outputs_on_op_device: "
             << function_outputs_on_op_device;
-    if (device == nullptr) {
-      TF_RETURN_IF_ERROR(SetOpDevice(ctx, op, &device));
-    } else {
-      VLOG(1) << "Device for [" << op->Name()
-              << "] already set to: " << device->name();
-    }
 
     // Note: We wrap the eager op AFTER the device has been inferred to ensure
     // that placement of the NodeDef in the function is exactly the same as in
