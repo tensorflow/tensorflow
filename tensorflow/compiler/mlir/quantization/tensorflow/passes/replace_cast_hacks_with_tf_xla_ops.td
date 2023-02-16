@@ -74,6 +74,25 @@ def ConvertTFConv2DToXLAConvOpDynamicRange : Pat<
    (HasStaticShapeAtDimsConstraint<"3"> $input)],
   (addBenefit 10)>;
 
+// Convert Conv2D with hybrid inputs (f32 activation/int8 weight) to XlaConv
+def ConvertTFConv2DToXLAConvOpWeightOnly : Pat<
+  (TF_Conv2DOp:$conv
+    $input,
+    (TF_CastOp (TF_IdentityOp $filter), $truncate1),
+    $strides, $use_cudnn, $padding, $explicit_padding,
+    IsDataFormatNHWC:$data_format, $dilations),
+  (CreateXLAConvOpFromTFConv2DOp
+    $input, $filter, /*input_zp=*/(CreateScalarIntegerConst<"int32_t", "0">),
+    $conv, $strides,
+    $dilations, $padding, $explicit_padding),
+  [(IsF32ElementType $input),
+   (IsInt8ElementType $filter),
+   (IsConstTensor $filter),
+   (IsF32ElementType $conv),
+   (HasStaticShapeConstraint $filter),
+   (HasStaticShapeAtDimsConstraint<"3"> $input)],
+  (addBenefit 10)>;
+
 // Same as ConvertTFConv2DToXLAConvOp but handles the case where input zero
 // point is 0 and the Sub op has been folded.
 def ConvertTFConv2DWithNoZeroPointToXLAConvOp : Pat<
@@ -140,6 +159,26 @@ def ConvertTFDepthwiseConv2DToXLAConvOpDynamicRange : Pat<
    (HasStaticShapeAtDimsConstraint<"3"> $input)],
   (addBenefit 10)>;
 
+// Convert DepthwiseConv2D with hybrid inputs (f32 activation/int8 weight) to
+// XlaConv
+def ConvertTFDepthwiseConv2DToXLAConvOpWeightOnly : Pat<
+    (TF_DepthwiseConv2dNativeOp:$conv $input,
+      (TF_CastOp (TF_IdentityOp $filter), $truncate2),
+      $strides, $padding, $explicit_padding,
+      IsDataFormatNHWC:$data_format, $dilations),
+  (CreateXLAConvOpFromTFDepthwiseConv2DOp
+    $input, $filter, /*input_zp=*/(CreateScalarIntegerConst<"int32_t", "0">),
+    $conv, $strides,
+    $dilations, $padding, $explicit_padding),
+  [(IsF32ElementType $input),
+   (IsInt8ElementType $filter),
+   (IsConstTensor $filter),
+   (IsF32ElementType $conv),
+   (HasStaticShapeConstraint $filter),
+   (HasStaticShapeAtDimsConstraint<"3"> $input)],
+  (addBenefit 10)>;
+
+
 // Same as ConvertTFDepthwiseConv2DToXLAConvOp but handles the case where input
 // zero point is 0 and the Sub op has been folded.
 def ConvertTFDepthwiseConv2DWithNoZeroPointToXLAConvOp : Pat<
@@ -198,6 +237,23 @@ def ConvertTFMatMulToXLADotV2OpDynamicRange : Pat<
    (IsInt8ElementType $weight),
    (IsConstTensor $weight),
    (IsInt32ElementType $matmul),
+   (HasStaticShapeConstraint $weight)],
+  (addBenefit 10)>;
+
+// Convert Matmul with hybrid inputs (f32 activation/int8 weight) to XlaDotV2
+def ConvertTFMatMulToXLADotV2OpWeightOnly : Pat<
+  (TF_MatMulOp:$matmul
+    $input,
+    (TF_CastOp (TF_IdentityOp $weight), $truncate1),
+    $transpose_a, $transpose_b),
+  (CreateXlaDotV2OpFromTfMatMulOp
+    $input, $weight, /*input_zp=*/(CreateScalarIntegerConst<"int32_t", "0">),
+    /*weight_zp=*/(CreateScalarIntegerConst<"int32_t", "0">),
+    $matmul, $transpose_a, $transpose_b),
+  [(IsF32ElementType $input),
+   (IsInt8ElementType $weight),
+   (IsConstTensor $weight),
+   (IsF32ElementType $matmul),
    (HasStaticShapeConstraint $weight)],
   (addBenefit 10)>;
 

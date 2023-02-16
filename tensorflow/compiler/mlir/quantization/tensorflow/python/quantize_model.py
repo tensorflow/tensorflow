@@ -945,9 +945,12 @@ def _populate_quantization_options_default_values(
   if (
       quantization_options.quantization_method.experimental_method
       == _ExperimentalMethod.WEIGHT_ONLY
-      and quantization_options.op_set == quant_opts_pb2.OpSet.UNIFORM_QUANTIZED
+      and (
+          quantization_options.op_set == quant_opts_pb2.OpSet.UNIFORM_QUANTIZED
+          or quantization_options.op_set == quant_opts_pb2.OpSet.TF
+      )
   ):
-    raise ValueError('Uniform quantized opset does not support weight-only.')
+    raise ValueError('TF/Uniform quantized opset does not support weight-only.')
 
   # Converter assumes options are specified. So set SRQ explicitly.
   if (

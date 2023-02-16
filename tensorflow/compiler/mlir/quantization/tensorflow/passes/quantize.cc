@@ -91,8 +91,9 @@ struct TFQuantizationBase
     return quantization_trait == kDynamicRangeQuantization;
   }
 
-  // All the quantized ops are supported if the quantization method is weight
-  // only quantization.
+  // If weight_only_quantization is true, the legacy weight-only quantization is
+  // applied. The legacy weight-only graph has dequantization logic at the
+  // front.
   static bool IsWeightOnlyOp(Operation* quantized_op,
                              absl::flat_hash_set<std::string>& ops_blocklist,
                              bool weight_only_quantization,

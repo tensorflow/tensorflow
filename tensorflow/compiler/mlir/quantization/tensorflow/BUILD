@@ -50,6 +50,7 @@ genrule(
         "passes/quantized_function_library.mlir",
         "passes/quantized_function_library_uniform_quantized_drq.mlir",
         "passes/quantized_function_library_tf_drq.mlir",
+        "passes/quantized_function_library_xla_weight_only.mlir",
     ],
     outs = [
         "passes/quantized_function_library.h",

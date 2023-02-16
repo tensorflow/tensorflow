@@ -17,11 +17,9 @@ module {
 // CHECK-DAG: %[[q_w:.*]] = "tf.Const"() {value = dense<0> : tensor<12x2xi8>} : () -> tensor<12x2xi8>
 // CHECK-DAG: %[[scale:.*]] = "tf.Const"() {value = dense<3.93700805E-9> : tensor<f32>} : () -> tensor<f32>
 // CHECK-DAG: %[[zp:.*]] = "tf.Const"() {value = dense<0> : tensor<i32>} : () -> tensor<i32>
-// CHECK: %[[dq_w:.*]] = "tf.PartitionedCall"(%[[q_w]], %[[scale]], %[[zp]]) {config = "", config_proto = "", executor_type = "",
-// CHECK-SAME: f = @dequantize_i8} : (tensor<12x2xi8>, tensor<f32>, tensor<i32>) -> tensor<12x2xf32>
-// CHECK: %[[quantize:.*]] = "tf.PartitionedCall"(%arg0, %[[dq_w]]) {config = "", config_proto = "", executor_type = "", f = @composite_matmul_fn_1} :
-// CHECK-SAME: (tensor<2x12xf32>, tensor<12x2xf32>) -> tensor<*xf32>
-// CHECK: return %[[quantize]]
+// CHECK: %[[out:.*]] = "tf.PartitionedCall"(%arg0, %[[q_w]], %[[scale]], %[[zp]]) {config = "", config_proto = "", executor_type = "",
+// CHECK-SAME: f = @quantized_matmul_fn_0} : (tensor<2x12xf32>, tensor<12x2xi8>, tensor<f32>, tensor<i32>) -> tensor<*xf32>
+// CHECK: return %[[out]]
 
 // -----
 
@@ -47,13 +45,11 @@ module {
 // CHECK-DAG: %[[q_w:.*]] = "tf.Const"()
 // CHECK-DAG: %[[scale:.*]] = "tf.Const"()
 // CHECK-DAG: %[[zp:.*]] = "tf.Const"()
-// CHECK: %[[dq_w:.*]] = "tf.PartitionedCall"(%[[q_w]], %[[scale]], %[[zp]]) {config = "", config_proto = "", executor_type = "",
-// CHECK-SAME: f = @dequantize_i8} : (tensor<2x3x3x2xi8>, tensor<f32>, tensor<i32>) -> tensor<2x3x3x2xf32>
-// CHECK: %[[quantize_1:.*]] = "tf.PartitionedCall"(%arg0, %[[dq_w]]) {config = "", config_proto = "", executor_type = "", f = @composite_conv2d_fn_1} :
-// CHECK-SAME: (tensor<1x2x2x3xf32>, tensor<2x3x3x2xf32>) -> tensor<*xf32>
-// CHECK: %[[quantize_2:.*]] = "tf.PartitionedCall"(%arg0, %[[dq_w]]) {config = "", config_proto = "", executor_type = "", f = @composite_conv2d_fn_2} :
-// CHECK-SAME: (tensor<1x2x2x3xf32>, tensor<2x3x3x2xf32>) -> tensor<*xf32>
-// CHECK: return %[[quantize_1]], %[[quantize_2]]
+// CHECK: %[[out_1:.*]] = "tf.PartitionedCall"(%arg0, %[[q_w]], %[[scale]], %[[zp]]) {config = "", config_proto = "", executor_type = "",
+// CHECK-SAME: f = @quantized_conv2d_fn_1} : (tensor<1x2x2x3xf32>, tensor<2x3x3x2xi8>, tensor<f32>, tensor<i32>) -> tensor<*xf32>
+// CHECK: %[[out_2:.*]] = "tf.PartitionedCall"(%arg0, %[[q_w]], %[[scale]], %[[zp]]) {config = "", config_proto = "", executor_type = "",
+// CHECK-SAME: f = @quantized_conv2d_fn_0} : (tensor<1x2x2x3xf32>, tensor<2x3x3x2xi8>, tensor<f32>, tensor<i32>) -> tensor<*xf32>
+// CHECK: return %[[out_1]], %[[out_2]]
 
 }
 
@@ -88,14 +84,10 @@ module {
 // CHECK-DAG: %[[scale:.*]] = "tf.Const"() {value = dense<0.0236220472> : tensor<f32>} : () -> tensor<f32>
 // CHECK-DAG: %[[zp:.*]] = "tf.Const"() {value = dense<0> : tensor<i32>} : () -> tensor<i32>
 // CHECK-DAG: %[[bias:.*]] = "tf.Const"() {value = dense<0.000000e+00> : tensor<3xf32>}
-// CHECK: %[[dq_w1:.*]] = "tf.PartitionedCall"(%[[q_w1]], %[[scale]], %[[zp]]) {config = "", config_proto = "", executor_type = "",
-// CHECK-SAME: f = @dequantize_i8} : (tensor<2x3x3x1xi8>, tensor<f32>, tensor<i32>) -> tensor<2x3x3x1xf32>
-// CHECK: %[[dq_w2:.*]] = "tf.PartitionedCall"(%[[q_w2]], %[[scale]], %[[zp]]) {config = "", config_proto = "", executor_type = "",
-// CHECK-SAME: f = @dequantize_i8} : (tensor<2x3x3x2xi8>, tensor<f32>, tensor<i32>) -> tensor<2x3x3x2xf32>
-// CHECK: %[[quantize_1:.*]] = "tf.PartitionedCall"(%arg0, %[[dq_w1]]) {config = "", config_proto = "", executor_type = "", f = @composite_depthwise_conv2d_fn} :
-// CHECK-SAME: (tensor<1x3x4x3xf32>, tensor<2x3x3x1xf32>) -> tensor<*xf32>
-// CHECK: %[[bias_add:.*]]  = "tf.BiasAdd"(%[[quantize_1]], %[[bias]])
-// CHECK: %[[quantize_2:.*]] = "tf.PartitionedCall"(%arg0, %[[dq_w2]]) {config = "", config_proto = "", executor_type = "", f = @composite_depthwise_conv2d_fn_1} :
-// CHECK-SAME: (tensor<1x3x4x3xf32>, tensor<2x3x3x2xf32>) -> tensor<*xf32>
-// CHECK: return %[[bias_add]], %[[quantize_2]]
+// CHECK: %[[out_1:.*]] = "tf.PartitionedCall"(%arg0, %[[q_w1]], %[[scale]], %[[zp]]) {config = "", config_proto = "", executor_type = "",
+// CHECK-SAME: f = @quantized_depthwise_conv2d_fn_1} : (tensor<1x3x4x3xf32>, tensor<2x3x3x1xi8>, tensor<f32>, tensor<i32>) -> tensor<*xf32>
+// CHECK: %[[out_1_add:.*]]  = "tf.BiasAdd"(%[[out_1]], %[[bias]])
+// CHECK: %[[out_2:.*]] = "tf.PartitionedCall"(%arg0, %[[q_w2]], %[[scale]], %[[zp]]) {config = "", config_proto = "", executor_type = "",
+// CHECK-SAME: f = @quantized_depthwise_conv2d_fn_0} : (tensor<1x3x4x3xf32>, tensor<2x3x3x2xi8>, tensor<f32>, tensor<i32>) -> tensor<*xf32>
+// CHECK: return %[[out_1_add]], %[[out_2]]
 }
