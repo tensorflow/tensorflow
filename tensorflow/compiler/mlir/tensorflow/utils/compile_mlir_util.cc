@@ -336,14 +336,6 @@ void AddLegalizationPasses(mlir::OpPassManager& pm, bool legalize_chlo,
       /*allow_partial_conversion=*/true, legalize_chlo,
       /*tf2xla_fallback_device_type=*/device_type, prefer_tf2xla));
 
-  // TODO(b/188389290): Delete this second one. We run this AGAIN because some
-  // TF ops get legalized in the first round, but createLegalizeTFPass is a
-  // staright conversion. Some ops that weren't eligible for legalization in
-  // the first pass can get legalized the second time after lowering to MHLO.
-  pm.addNestedPass<mlir::func::FuncOp>(mlir::mhlo::createLegalizeTFPass(
-      /*allow_partial_conversion=*/true, legalize_chlo,
-      /*tf2xla_fallback_device_type=*/device_type, prefer_tf2xla));
-
   // This has to run after legalization.
   pm.addNestedPass<mlir::func::FuncOp>(
       mlir::mhlo::CreateInfeedsOpsXlaAdjustLayoutPass());
