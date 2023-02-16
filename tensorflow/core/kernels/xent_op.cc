@@ -87,15 +87,16 @@ class SoftmaxXentWithLogitsOp : public OpKernel {
     // Try to reuse the logits_in buffer for the backprop output.
     OP_REQUIRES_OK(context, context->forward_input_or_allocate_output(
                                 {0}, 1, shape_in, &back_out));
-    if (shape_in.dim_size(0) > 0) {
-      functor::XentFunctor<Device, T> functor;
-      functor(context->eigen_device<Device>(), shape_in.AsEigenDSizes<2>(),
-              BCast::ToIndexArray<2>(bcast.x_bcast()),
-              BCast::ToIndexArray<2>(bcast.y_bcast()),
-              logits_in.template shaped<T, 2>(bcast.x_reshape()),
-              labels_in.template shaped<T, 2>(bcast.y_reshape()),
-              scratch.matrix<T>(), loss_out->vec<T>(), back_out->matrix<T>());
-    }
+
+    if (shape_in.dim_size(0) <= 0) return;
+
+    functor::XentFunctor<Device, T> functor;
+    functor(context->eigen_device<Device>(), shape_in.AsEigenDSizes<2>(),
+        BCast::ToIndexArray<2>(bcast.x_bcast()),
+        BCast::ToIndexArray<2>(bcast.y_bcast()),
+        logits_in.template shaped<T, 2>(bcast.x_reshape()),
+        labels_in.template shaped<T, 2>(bcast.y_reshape()),
+        scratch.matrix<T>(), loss_out->vec<T>(), back_out->matrix<T>());
   }
 };
 
@@ -113,8 +114,65 @@ struct XentFunctorBase {
                   typename TTypes<T>::Matrix scratch,
                   typename TTypes<T>::Vec loss,
                   typename TTypes<T>::Matrix backprop) {
-    XentEigenImpl<Device, T>::Compute(d, shape, logits_bcast, labels_bcast,
-                                      logits, labels, scratch, loss, backprop);
+      T* scratch_ptr = (T*)scratch.data();
+      T* backprop_ptr = (T*)backprop.data();
+
+      T* loss_ptr = (T*)loss.data();
+      T* logits_ptr = (T*)logits.data();
+      T* labels_ptr = (T*)labels.data();
+
+      int row_size = shape[1];
+
+      if (shape[0] > 0) {
+        auto reductionWorker = [&](int64_t begin, int64_t end) -> void {
+          for(int i = begin; i < end; i++) {
+            T* this_backprop = backprop_ptr + (i * row_size);
+            T* this_logits = logits_ptr + (i * row_size);
+            T* this_labels = labels_ptr + (i * row_size);
+            T max_logits = this_logits[0];
+
+            // calculating max_logits
+            for(int j = 1; j < row_size; j++) {
+                max_logits = std::max(max_logits, this_logits[j]);
+            }
+            
+            for(int j = 0; j < row_size; j++) {
+                // Note that if input is reused than this_logits and this_backprop is same buffer, 
+                // so after this calculation this_logits should no longer be trusted
+                this_backprop[j] = this_logits[j] - max_logits;
+            }
+
+            // sum(exp(logits - max_logits))
+            Eigen::IndexList<int> batch_only;
+            batch_only.set(0, shape[0]);
+            Eigen::IndexList<Eigen::type2index<1> > along_class;
+            scratch.reshape(batch_only).device(d) = backprop.exp().sum(along_class);
+
+            // loss calculation
+            T sum = scratch_ptr[i];
+            T log_sum = log(sum);
+            T loss_sum = T(0);
+            for(int j=0; j < row_size; j++) {
+                loss_sum += this_labels[j] * (log_sum - this_backprop[j]);
+            }
+            loss_ptr[i] = loss_sum;
+
+            // backprop: prob - labels, where
+            // prob = exp(logits - max_logits) / sum(exp(logits - max_logits))
+            for(int j = 0; j < row_size; j++) {
+                this_backprop[j] = (exp(this_backprop[j]) / sum) - this_labels[j];
+            }
+          }
+        };
+        const int64_t compute_cycles = 50 * row_size;
+        const int64_t input_bytes = sizeof(T) * row_size;
+        const int64_t output_bytes = sizeof(T) * row_size;
+        const Eigen::TensorOpCost cost(input_bytes, output_bytes, compute_cycles);
+
+        d.parallelFor(shape[0], cost, reductionWorker);
+      }
+    //XentEigenImpl<Device, T>::Compute(d, shape, logits_bcast, labels_bcast,
+    //                                  logits, labels, scratch, loss, backprop);
   }
 };
 
