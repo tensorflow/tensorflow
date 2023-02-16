@@ -2261,25 +2261,24 @@ llvm::Optional<Value> convertStridedSliceOp(
 
   // Limitations:
   // * This implementation only supports ellipsis_mask=0 for now
-  // * This implementation does not support reverse stride yet.  Will need
-  // to insert tosa.Reverse operators for this.
-  if (ellipsis_mask != 0) {
-    (void)rewriter.notifyMatchFailure(op, "ellipses mask not supported yet");
-  }
-
-  ShapedType input_type = input_value.getType().cast<ShapedType>();
+  auto input_type = input_value.getType().dyn_cast<RankedTensorType>();
   ShapedType result_type = result_value.getType().cast<ShapedType>();
 
-  // Extract the begin/end/stride tensors
-  SmallVector<int32_t> begin, end, strides;
-
-  DenseIntElementsAttr strides_attr;
-
-  if (!matchPattern(strides_value, m_Constant(&strides_attr))) {
-    (void)rewriter.notifyMatchFailure(op, "strides is not a constant");
+  if (ellipsis_mask != 0) {
+    (void)rewriter.notifyMatchFailure(op, "ellipses mask not supported yet");
     return std::nullopt;
   }
 
+  if (!input_type) {
+    (void)rewriter.notifyMatchFailure(op, "input type has unknown rank");
+    return std::nullopt;
+  }
+
+  int32_t input_rank = input_type.getRank();
+  Type element_type = input_type.getElementType();
+
+  // Conditionally extract begin/end values if requied.
+  SmallVector<int32_t> begin, end, strides;
   if (failed(getVectorFromValue32(strides_value, strides))) {
     (void)rewriter.notifyMatchFailure(op, "strides isn't a constant");
     return std::nullopt;
@@ -2291,9 +2290,9 @@ llvm::Optional<Value> convertStridedSliceOp(
     if (stride < -1) return std::nullopt;
 
   bool all_strides_one = true;
+  int32_t strides_size = strides.size();
   for (auto stride : strides) all_strides_one &= abs(stride) == 1;
 
-  int32_t strides_size = strides_attr.getNumElements();
 
   // If all of the masks are set we can just bypass the entire thing.
   const int32_t all_masks_one = (1 << strides_size) - 1;
@@ -2304,82 +2303,90 @@ llvm::Optional<Value> convertStridedSliceOp(
     return std::nullopt;
   }
 
-  if (failed(getVectorFromValue32(end_value, end)) &&
-      end_mask != all_masks_one) {
+  if (end_mask != all_masks_one &&
+      failed(getVectorFromValue32(end_value, end))) {
     (void)rewriter.notifyMatchFailure(op, "end isn't a constant");
     return std::nullopt;
   }
 
-  // If begin value is 0 we can set the begin_mask instead..
-  for (auto val : llvm::enumerate(begin)) {
-    if (val.value() == 0) begin_mask |= (0x1 << val.index());
+  if (llvm::any_of(strides, [](auto i) { return i < -1; })) {
+    (void)rewriter.notifyMatchFailure(op, "stride < -1 unsupported");
+    return std::nullopt;
   }
 
-  // If end value is -1 we can set the end_mask instead.
-  for (const auto& val : llvm::enumerate(end)) {
-    if (val.value() == -1) end_mask |= (0x1 << val.index());
-  }
+  // Set begin mask values if possible.
+  for (auto& val : llvm::enumerate(begin))
+    begin_mask |= (val.value() == 0) << val.index();
 
+  // If all begin/end masks are set and striding is one we can just return
+  // the matrix with reversed dims (for negative strides).
   if (all_strides_one && begin_mask == all_masks_one &&
       end_mask == all_masks_one) {
     return reverseNegativeStride(rewriter, op, input_value, strides);
   }
 
-  if (!input_type.hasRank()) {
-    return (void)rewriter.notifyMatchFailure(op,
-                                             "input type not ranked tensor"),
-           std::nullopt;
-  }
+  // Set the bits true for the remaining dimensions.
+  int32_t new_mask_bits = (1 << input_rank) - all_masks_one - 1;
+  begin_mask |= new_mask_bits;
+  end_mask |= new_mask_bits;
 
-  int32_t input_rank = input_type.getRank();
+  // Negative values are exclusive from the opposite end while TOSA is
+  // inclusive, we offset to adjust for this.
+  for (auto& b : begin)
+    if (b < 0) b = b - 1;
+  for (auto& e : end)
+    if (e < 0) e = e - 1;
 
-  // If strides is incomplete, pad out to the full size.
-  while (strides.size() < input_rank) strides.push_back(1);
+  // Fill the remaining stride and begin/end with default values.
+  strides.resize(input_rank, 1);
+  begin.resize(input_rank, 0);
+  end.resize(input_rank, -1);
 
-  // Unspecified begins should set the begin mask.
-  while (begin.size() < input_rank) {
-    begin_mask = begin_mask | (1 << begin.size());
-    begin.push_back(0);
-  }
-
-  // Unspecified ends should set the end mask.
-  while (end.size() < input_rank) {
-    end_mask = end_mask | (1 << end.size());
-    end.push_back(-1);
-  }
-
-  auto input_shape = input_type.getShape();
-
-  // Step 0: Process the begin/end masks and build the begin/sizes for the
-  // first slice
-  SmallVector<int64_t> a1_begin(input_rank), a1_size(input_rank);
+  // Set masking-bit overrides.
   for (int i = 0; i < input_rank; ++i) {
-    // Mask-bit overrides begin/end values.
     if (begin_mask & (1 << i)) begin[i] = 0;
-    if (end_mask & (1 << i)) end[i] = input_shape[i];
+    if (end_mask & (1 << i)) end[i] = -1;
+  }
 
-    if (a1_begin[i] < 0 && ShapedType::isDynamic(input_shape[i])) {
+  // If we know the static end we can adjust by it.
+  for (int i = 0; i < input_rank; ++i) {
+    if (input_type.isDynamicDim(i)) continue;
+    if (begin[i] < 0) begin[i] += input_type.getDimSize(i) + 1;
+    if (end[i] < 0) end[i] += input_type.getDimSize(i) + 1;
+  }
+
+  // Perform some final validation on the begin/end values.
+  for (int i = 0; i < input_rank; ++i) {
+    if (begin[i] < 0 && input_type.isDynamicDim(i)) {
       (void)rewriter.notifyMatchFailure(
           op, "begin offset is negative on dynamic size");
       return std::nullopt;
     }
 
+    if (end[i] < -1 && input_type.isDynamicDim(i)) {
+      (void)rewriter.notifyMatchFailure(
+          op, "end is exclusive of final entry on dynamic size");
+      return std::nullopt;
+    }
+  }
+
+  // Step 0: Process the begin/end masks and build the begin/sizes for the
+  // first slice
+  SmallVector<int64_t> a1_begin(input_rank), a1_size(input_rank);
+  for (int i = 0; i < input_rank; ++i) {
     // Wrap around index if begin and end is negative
     a1_begin[i] = begin[i];
-    if (a1_begin[i] < 0) a1_begin[i] += input_shape[i];
 
-    if (ShapedType::isDynamic(end[i]) &&
-        ShapedType::isDynamic(input_shape[i])) {
+    if (end[i] == -1 && input_type.isDynamicDim(i)) {
       // Slice using -1 as TOSA's sentinal value.
       a1_size[i] = -1;
-    } else if (end[i] < 0 && ShapedType::isDynamic(input_shape[i])) {
+    } else if (end[i] < 0 && input_type.isDynamicDim(i)) {
       // Other dynamic cases cannot be handled.
       (void)rewriter.notifyMatchFailure(
           op, "input dim is dynamic and slice end depends on the length");
       return std::nullopt;
     } else {
       a1_size[i] = end[i] - a1_begin[i];
-      if (end[i] < 0) a1_size[i] += input_shape[i];
     }
 
     // Shrink axis mask means we know the size and stride are 1.
@@ -2392,11 +2399,11 @@ llvm::Optional<Value> convertStridedSliceOp(
   // Step 1: Slice the input array
   auto a1_slice_op = CreateOpAndInfer<tosa::SliceOp>(
       rewriter, op->getLoc(),
-      tensorflow::GetTypeFromTFTensorShape(a1_size,
-                                           input_type.getElementType()),
-      input_value, rewriter.getDenseI64ArrayAttr(a1_begin),
+      tensorflow::GetTypeFromTFTensorShape(a1_size, element_type), input_value,
+      rewriter.getDenseI64ArrayAttr(a1_begin),
       rewriter.getDenseI64ArrayAttr(tensorflow::ConvertMlirShapeToTF(a1_size)));
 
+  // If unary striding is used we can reverse, reshape, and return the result.
   if (all_strides_one) {
     auto reversed =
         reverseNegativeStride(rewriter, op, a1_slice_op.getResult(), strides);
@@ -2426,8 +2433,7 @@ llvm::Optional<Value> convertStridedSliceOp(
 
   auto a2_reshape_op = CreateOpAndInfer<tosa::ReshapeOp>(
       rewriter, op->getLoc(),
-      tensorflow::GetTypeFromTFTensorShape(a2_shape,
-                                           input_type.getElementType()),
+      tensorflow::GetTypeFromTFTensorShape(a2_shape, element_type),
       a1_slice_op.getResult(),
       rewriter.getDenseI64ArrayAttr(
           tensorflow::ConvertMlirShapeToTF(a2_shape)));
@@ -2449,8 +2455,7 @@ llvm::Optional<Value> convertStridedSliceOp(
 
   auto a3_slice_op = CreateOpAndInfer<tosa::SliceOp>(
       rewriter, op->getLoc(),
-      tensorflow::GetTypeFromTFTensorShape(a3_size,
-                                           input_type.getElementType()),
+      tensorflow::GetTypeFromTFTensorShape(a3_size, element_type),
       a2_reshape_op.getResult(), rewriter.getDenseI64ArrayAttr(a3_begin),
       rewriter.getDenseI64ArrayAttr(tensorflow::ConvertMlirShapeToTF(a3_size)));
 
