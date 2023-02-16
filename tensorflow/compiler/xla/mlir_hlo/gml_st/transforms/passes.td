@@ -243,3 +243,16 @@ def AddDebugInfoPass :
   let constructor = "::mlir::gml_st::createAddDebugInfoPass()";
   let dependentDialects = ["::mlir::LLVM::LLVMDialect"];
 }
+
+def FusionPlanningForCpuPass :
+    Pass<"gml-st-cpu-fusion-planning", "mlir::func::FuncOp"> {
+  let summary = "Create fusion clusters.";
+  let constructor = "createFusionPlanningForCpu()";
+  let dependentDialects = [
+    "::mlir::gml_st::GmlStDialect",
+    "::mlir::arith::ArithDialect",
+    "::mlir::linalg::LinalgDialect",
+    "::mlir::tensor::TensorDialect"
+  ];
+}
+

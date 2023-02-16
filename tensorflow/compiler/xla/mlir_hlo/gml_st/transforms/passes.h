@@ -126,6 +126,10 @@ createTransformTransposeForCpuPass(ArrayRef<int64_t> tileSizes = std::nullopt);
 std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
 createTransformSortForCpuPass();
 
+/// Pass to create fusion clusters.
+std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
+createFusionPlanningForCpu();
+
 /// Pass to add debug info to be propagated into LLVM backend.
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>> createAddDebugInfoPass();
 

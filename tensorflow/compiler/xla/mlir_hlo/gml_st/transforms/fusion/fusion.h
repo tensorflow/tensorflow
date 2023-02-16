@@ -85,6 +85,13 @@ LogicalResult tilePeeledOpsToScalars(
     PatternRewriter &rewriter, const GmlStPeelingResult &peelingResult,
     StringRef label, llvm::function_ref<bool(Operation *)> fuseFilterFn);
 
+// Creates gml_st.fusion op with a region with ops from the fusion cluster.
+// Operands of the ops in the region are replaced with region arguments to
+// isolate the fusion cluster form above. Usages of the ops are replaces with
+// the fusion op results.
+FailureOr<gml_st::FusionOp> wrapFusionCluster(
+    PatternRewriter &rewriter, const FusionCluster &fusionCluster);
+
 }  // namespace gml_st
 }  // namespace mlir
 
