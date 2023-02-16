@@ -74,10 +74,18 @@ class SoftmaxXentWithLogitsOp : public OpKernel {
     // loss is 1-D (one per example), and size is batch_size.
 
     Tensor scratch;
-    OP_REQUIRES_OK(
+    if (std::is_same<Device, CPUDevice>::value) {
+       OP_REQUIRES_OK(
+        context, context->allocate_temp(DataTypeToEnum<T>::value,
+                                        TensorShape({shape_in.dim_size(0), shape_in.dim_size(1)}),
+                                        &scratch));
+    } else {
+       OP_REQUIRES_OK(
         context, context->allocate_temp(DataTypeToEnum<T>::value,
                                         TensorShape({shape_in.dim_size(0), 1}),
                                         &scratch));
+    }
+   
 
     Tensor* loss_out = nullptr;
     OP_REQUIRES_OK(context,
@@ -118,17 +126,17 @@ struct XentFunctorBase {
       T* backprop_ptr = (T*)backprop.data();
 
       T* loss_ptr = (T*)loss.data();
-      T* logits_ptr = (T*)logits.data();
-      T* labels_ptr = (T*)labels.data();
 
       int row_size = shape[1];
 
       if (shape[0] > 0) {
+        backprop.device(d) = logits.broadcast(logits_bcast);
+        scratch.device(d) = labels.broadcast(labels_bcast);
         auto reductionWorker = [&](int64_t begin, int64_t end) -> void {
           for(int i = begin; i < end; i++) {
             T* this_backprop = backprop_ptr + (i * row_size);
-            T* this_logits = logits_ptr + (i * row_size);
-            T* this_labels = labels_ptr + (i * row_size);
+            T* this_logits = backprop_ptr + (i * row_size);
+            T* this_labels = scratch_ptr + (i * row_size);
             T max_logits = this_logits[0];
 
             // calculating max_logits
@@ -136,32 +144,23 @@ struct XentFunctorBase {
                 max_logits = std::max(max_logits, this_logits[j]);
             }
             
+            T sum = T(0);
+            T loss_sum = T(0);
+            
             for(int j = 0; j < row_size; j++) {
                 // Note that if input is reused than this_logits and this_backprop is same buffer, 
                 // so after this calculation this_logits should no longer be trusted
                 this_backprop[j] = this_logits[j] - max_logits;
+                sum = sum + exp(this_backprop[j]);
             }
-
-            // sum(exp(logits - max_logits))
-            Eigen::IndexList<int> batch_only;
-            batch_only.set(0, shape[0]);
-            Eigen::IndexList<Eigen::type2index<1> > along_class;
-            scratch.reshape(batch_only).device(d) = backprop.exp().sum(along_class);
 
             // loss calculation
-            T sum = scratch_ptr[i];
             T log_sum = log(sum);
-            T loss_sum = T(0);
             for(int j=0; j < row_size; j++) {
                 loss_sum += this_labels[j] * (log_sum - this_backprop[j]);
-            }
-            loss_ptr[i] = loss_sum;
-
-            // backprop: prob - labels, where
-            // prob = exp(logits - max_logits) / sum(exp(logits - max_logits))
-            for(int j = 0; j < row_size; j++) {
                 this_backprop[j] = (exp(this_backprop[j]) / sum) - this_labels[j];
             }
+            loss_ptr[i] = loss_sum;
           }
         };
         const int64_t compute_cycles = 50 * row_size;
