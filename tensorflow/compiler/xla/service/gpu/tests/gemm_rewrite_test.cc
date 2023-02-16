@@ -4699,6 +4699,972 @@ TEST_F(CublasLtF8GemmRewriteTest, ScaledABScaledDWithDAmaxF8) {
       )");
 }
 
+TEST_F(CublasLtF8GemmRewriteTest, ScaledABUnscaledDF8RowRowTT) {
+  if (!GetCudaComputeCapability().IsAtLeast(
+          se::CudaComputeCapability::HOPPER)) {
+    GTEST_SKIP()
+        << "cuBLASLt FP8 kernels require Hopper or newer architecture.";
+  }
+  const char* hlo_text = R"(
+    HloModule test
+
+    ENTRY test {
+      x = f8e4m3fn[32,64]{1,0} parameter(0)
+      x_f32 = f32[32,64]{1,0} convert(x)
+      x_scale = f32[] parameter(2)
+      x_scale_bcast = f32[32,64] broadcast(x_scale), dimensions={}
+      x_unscaled = f32[32,64] multiply(x_f32, x_scale_bcast)
+      y = f8e4m3fn[16,32]{1,0} parameter(1)
+      y_f32 = f32[16,32]{1,0} convert(y)
+      y_scale = f32[] parameter(3)
+      y_scale_bcast = f32[16,32] broadcast(y_scale), dimensions={}
+      y_unscaled = f32[16,32] multiply(y_f32, y_scale_bcast)
+      ROOT out = f32[64,16] dot(x_unscaled, y_unscaled), lhs_contracting_dims={0}, rhs_contracting_dims={1}
+    }
+)";
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-4, 0.}));
+
+  MatchOptimizedHlo(hlo_text,
+                    R"(
+; CHECK:           custom_call_target="__cublas$lt$matmul$f8",
+      )");
+}
+
+TEST_F(CublasLtF8GemmRewriteTest, ScaledABUnscaledDF8RowRowNN) {
+  if (!GetCudaComputeCapability().IsAtLeast(
+          se::CudaComputeCapability::HOPPER)) {
+    GTEST_SKIP()
+        << "cuBLASLt FP8 kernels require Hopper or newer architecture.";
+  }
+  const char* hlo_text = R"(
+    HloModule test
+
+    ENTRY test {
+      x = f8e4m3fn[64,32] parameter(0)
+      y = f8e4m3fn[32,16] parameter(1)
+      x_f32 = f32[64,32] convert(x)
+      y_f32 = f32[32,16] convert(y)
+      x_scale = f32[] parameter(2)
+      y_scale = f32[] parameter(3)
+      x_scale_bcast = f32[64,32] broadcast(x_scale), dimensions={}
+      y_scale_bcast = f32[32,16] broadcast(y_scale), dimensions={}
+      x_unscaled = f32[64,32] multiply(x_f32, x_scale_bcast)
+      y_unscaled = f32[32,16] multiply(y_f32, y_scale_bcast)
+      ROOT out = f32[64,16] dot(x_unscaled, y_unscaled), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+          }
+
+)";
+
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-4, 0.}));
+  MatchOptimizedHlo(hlo_text,
+                    R"(
+; CHECK:           custom_call_target="__cublas$lt$matmul$f8",
+      )");
+}
+
+TEST_F(CublasLtF8GemmRewriteTest, ScaledABUnscaledDF8RowRowTN) {
+  if (!GetCudaComputeCapability().IsAtLeast(
+          se::CudaComputeCapability::HOPPER)) {
+    GTEST_SKIP()
+        << "cuBLASLt FP8 kernels require Hopper or newer architecture.";
+  }
+  const char* hlo_text = R"(
+    HloModule test
+
+    ENTRY test {
+      x = f8e4m3fn[32,64]{1,0} parameter(0)
+      x_f32 = f32[32,64]{1,0} convert(x)
+      x_scale = f32[] parameter(2)
+      x_scale_bcast = f32[32,64] broadcast(x_scale), dimensions={}
+      x_unscaled = f32[32,64] multiply(x_f32, x_scale_bcast)
+      y = f8e4m3fn[32,16]{1,0} parameter(1)
+      y_f32 = f32[32,16]{1,0} convert(y)
+      y_scale = f32[] parameter(3)
+      y_scale_bcast = f32[32,16] broadcast(y_scale), dimensions={}
+      y_unscaled = f32[32,16] multiply(y_f32, y_scale_bcast)
+      ROOT out = f32[64,16] dot(x_unscaled, y_unscaled), lhs_contracting_dims={0}, rhs_contracting_dims={0}
+    }
+
+)";
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-4, 0.}));
+  MatchOptimizedHlo(hlo_text,
+                    R"(
+; CHECK:           custom_call_target="__cublas$lt$matmul$f8",
+      )");
+}
+
+TEST_F(CublasLtF8GemmRewriteTest, ScaledABUnscaledDF8RowRowNT) {
+  if (!GetCudaComputeCapability().IsAtLeast(
+          se::CudaComputeCapability::HOPPER)) {
+    GTEST_SKIP()
+        << "cuBLASLt FP8 kernels require Hopper or newer architecture.";
+  }
+  const char* hlo_text = R"(
+    HloModule test
+
+    ENTRY test {
+      x = f8e4m3fn[64,32]{1,0} parameter(0)
+      x_f32 = f32[64,32]{1,0} convert(x)
+      x_scale = f32[] parameter(2)
+      x_scale_bcast = f32[64,32] broadcast(x_scale), dimensions={}
+      x_unscaled = f32[64,32] multiply(x_f32, x_scale_bcast)
+      y = f8e4m3fn[16,32]{1,0} parameter(1)
+      y_f32 = f32[16,32]{1,0} convert(y)
+      y_scale = f32[] parameter(3)
+      y_scale_bcast = f32[16,32] broadcast(y_scale), dimensions={}
+      y_unscaled = f32[16,32] multiply(y_f32, y_scale_bcast)
+      ROOT out = f32[64,16] dot(x_unscaled, y_unscaled), lhs_contracting_dims={1}, rhs_contracting_dims={1}
+    }
+
+)";
+
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-4, 0.}));
+  MatchOptimizedHlo(hlo_text,
+                    R"(
+; CHECK:           custom_call_target="__cublas$lt$matmul$f8",
+      )");
+}
+
+TEST_F(CublasLtF8GemmRewriteTest, ScaledABUnscaledDF8RowColTT) {
+  if (!GetCudaComputeCapability().IsAtLeast(
+          se::CudaComputeCapability::HOPPER)) {
+    GTEST_SKIP()
+        << "cuBLASLt FP8 kernels require Hopper or newer architecture.";
+  }
+  const char* hlo_text = R"(
+    HloModule test
+
+    ENTRY test {
+      x = f8e4m3fn[32,64]{1,0} parameter(0)
+      x_f32 = f32[32,64]{1,0} convert(x)
+      x_scale = f32[] parameter(2)
+      x_scale_bcast = f32[32,64] broadcast(x_scale), dimensions={}
+      x_unscaled = f32[32,64] multiply(x_f32, x_scale_bcast)
+      y = f8e4m3fn[16,32]{0,1} parameter(1)
+      y_f32 = f32[16,32]{0,1} convert(y)
+      y_scale = f32[] parameter(3)
+      y_scale_bcast = f32[16,32] broadcast(y_scale), dimensions={}
+      y_unscaled = f32[16,32] multiply(y_f32, y_scale_bcast)
+      ROOT out = f32[64,16] dot(x_unscaled, y_unscaled), lhs_contracting_dims={0}, rhs_contracting_dims={1}
+    }
+)";
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-4, 0.}));
+
+  MatchOptimizedHlo(hlo_text,
+                    R"(
+; CHECK:           custom_call_target="__cublas$lt$matmul$f8",
+      )");
+}
+
+TEST_F(CublasLtF8GemmRewriteTest, ScaledABUnscaledDF8RowColNN) {
+  if (!GetCudaComputeCapability().IsAtLeast(
+          se::CudaComputeCapability::HOPPER)) {
+    GTEST_SKIP()
+        << "cuBLASLt FP8 kernels require Hopper or newer architecture.";
+  }
+  const char* hlo_text = R"(
+    HloModule test
+
+    ENTRY test {
+      x = f8e4m3fn[64,32]{1,0} parameter(0)
+      x_f32 = f32[64,32]{1,0} convert(x)
+      x_scale = f32[] parameter(2)
+      x_scale_bcast = f32[64,32] broadcast(x_scale), dimensions={}
+      x_unscaled = f32[64,32] multiply(x_f32, x_scale_bcast)
+      y = f8e4m3fn[32,16]{0,1} parameter(1)
+      y_f32 = f32[32,16]{0,1} convert(y)
+      y_scale = f32[] parameter(3)
+      y_scale_bcast = f32[32,16] broadcast(y_scale), dimensions={}
+      y_unscaled = f32[32,16] multiply(y_f32, y_scale_bcast)
+      ROOT out = f32[64,16] dot(x_unscaled, y_unscaled), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+    }
+)";
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-4, 0.}));
+}
+
+TEST_F(CublasLtF8GemmRewriteTest, ScaledABUnscaledDF8RowColTN) {
+  if (!GetCudaComputeCapability().IsAtLeast(
+          se::CudaComputeCapability::HOPPER)) {
+    GTEST_SKIP()
+        << "cuBLASLt FP8 kernels require Hopper or newer architecture.";
+  }
+  const char* hlo_text = R"(
+    HloModule test
+    ENTRY test {
+      x = f8e4m3fn[32,64]{1,0} parameter(0)
+      x_f32 = f32[32,64]{1,0} convert(x)
+      x_scale = f32[] parameter(2)
+      x_scale_bcast = f32[32,64] broadcast(x_scale), dimensions={}
+      x_unscaled = f32[32,64] multiply(x_f32, x_scale_bcast)
+      y = f8e4m3fn[32,16]{0,1} parameter(1)
+      y_f32 = f32[32,16]{0,1} convert(y)
+      y_scale = f32[] parameter(3)
+      y_scale_bcast = f32[32,16] broadcast(y_scale), dimensions={}
+      y_unscaled = f32[32,16] multiply(y_f32, y_scale_bcast)
+      ROOT out = f32[64,16] dot(x_unscaled, y_unscaled), lhs_contracting_dims={0}, rhs_contracting_dims={0}
+    }
+)";
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-4, 0.}));
+  MatchOptimizedHlo(hlo_text,
+                    R"(
+; CHECK:           custom_call_target="__cublas$lt$matmul$f8",
+      )");
+}
+
+TEST_F(CublasLtF8GemmRewriteTest, ScaledABUnscaledDF8RowColNT) {
+  if (!GetCudaComputeCapability().IsAtLeast(
+          se::CudaComputeCapability::HOPPER)) {
+    GTEST_SKIP()
+        << "cuBLASLt FP8 kernels require Hopper or newer architecture.";
+  }
+  const char* hlo_text = R"(
+    HloModule test
+    ENTRY test {
+      x = f8e4m3fn[64,32]{1,0} parameter(0)
+      x_f32 = f32[64,32]{1,0} convert(x)
+      x_scale = f32[] parameter(2)
+      x_scale_bcast = f32[64,32] broadcast(x_scale), dimensions={}
+      x_unscaled = f32[64,32] multiply(x_f32, x_scale_bcast)
+      y = f8e4m3fn[16,32]{0,1} parameter(1)
+      y_f32 = f32[16,32]{0,1} convert(y)
+      y_scale = f32[] parameter(3)
+      y_scale_bcast = f32[16,32] broadcast(y_scale), dimensions={}
+      y_unscaled = f32[16,32] multiply(y_f32, y_scale_bcast)
+      ROOT out = f32[64,16] dot(x_unscaled, y_unscaled), lhs_contracting_dims={1}, rhs_contracting_dims={1}
+    }
+)";
+
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-4, 0.}));
+  MatchOptimizedHlo(hlo_text,
+                    R"(
+; CHECK:           custom_call_target="__cublas$lt$matmul$f8",
+      )");
+}
+
+TEST_F(CublasLtF8GemmRewriteTest, ScaledABUnscaledDF8ColRowNN) {
+  if (!GetCudaComputeCapability().IsAtLeast(
+          se::CudaComputeCapability::HOPPER)) {
+    GTEST_SKIP()
+        << "cuBLASLt FP8 kernels require Hopper or newer architecture.";
+  }
+  const char* hlo_text = R"(
+    HloModule test
+
+    ENTRY test {
+      x = f8e4m3fn[64,32]{0,1} parameter(0)
+      x_f32 = f32[64,32]{0,1} convert(x)
+      x_scale = f32[] parameter(2)
+      x_scale_bcast = f32[64,32] broadcast(x_scale), dimensions={}
+      x_unscaled = f32[64,32] multiply(x_f32, x_scale_bcast)
+      y = f8e4m3fn[32,16]{1,0} parameter(1)
+      y_f32 = f32[32,16]{1,0} convert(y)
+      y_scale = f32[] parameter(3)
+      y_scale_bcast = f32[32,16] broadcast(y_scale), dimensions={}
+      y_unscaled = f32[32,16] multiply(y_f32, y_scale_bcast)
+      ROOT out = f32[64,16] dot(x_unscaled, y_unscaled), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+    }
+)";
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-4, 0.}));
+}
+
+TEST_F(CublasLtF8GemmRewriteTest, ScaledABUnscaledDF8ColRowTN) {
+  if (!GetCudaComputeCapability().IsAtLeast(
+          se::CudaComputeCapability::HOPPER)) {
+    GTEST_SKIP()
+        << "cuBLASLt FP8 kernels require Hopper or newer architecture.";
+  }
+  const char* hlo_text = R"(
+    HloModule test
+    ENTRY test {
+      x = f8e4m3fn[32,64]{0,1} parameter(0)
+      x_f32 = f32[32,64]{0,1} convert(x)
+      x_scale = f32[] parameter(2)
+      x_scale_bcast = f32[32,64] broadcast(x_scale), dimensions={}
+      x_unscaled = f32[32,64] multiply(x_f32, x_scale_bcast)
+      y = f8e4m3fn[32,16]{1,0} parameter(1)
+      y_f32 = f32[32,16]{1,0} convert(y)
+      y_scale = f32[] parameter(3)
+      y_scale_bcast = f32[32,16] broadcast(y_scale), dimensions={}
+      y_unscaled = f32[32,16] multiply(y_f32, y_scale_bcast)
+      ROOT out = f32[64,16] dot(x_unscaled, y_unscaled), lhs_contracting_dims={0}, rhs_contracting_dims={0}
+    }
+)";
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-4, 0.}));
+  MatchOptimizedHlo(hlo_text,
+                    R"(
+; CHECK:           custom_call_target="__cublas$lt$matmul$f8",
+      )");
+}
+
+TEST_F(CublasLtF8GemmRewriteTest, ScaledABUnscaledDF8ColRowNT) {
+  if (!GetCudaComputeCapability().IsAtLeast(
+          se::CudaComputeCapability::HOPPER)) {
+    GTEST_SKIP()
+        << "cuBLASLt FP8 kernels require Hopper or newer architecture.";
+  }
+  const char* hlo_text = R"(
+    HloModule test
+    ENTRY test {
+      x = f8e4m3fn[64,32]{0,1} parameter(0)
+      x_f32 = f32[64,32]{0,1} convert(x)
+      x_scale = f32[] parameter(2)
+      x_scale_bcast = f32[64,32] broadcast(x_scale), dimensions={}
+      x_unscaled = f32[64,32] multiply(x_f32, x_scale_bcast)
+      y = f8e4m3fn[16,32]{1,0} parameter(1)
+      y_f32 = f32[16,32]{1,0} convert(y)
+      y_scale = f32[] parameter(3)
+      y_scale_bcast = f32[16,32] broadcast(y_scale), dimensions={}
+      y_unscaled = f32[16,32] multiply(y_f32, y_scale_bcast)
+      ROOT out = f32[64,16] dot(x_unscaled, y_unscaled), lhs_contracting_dims={1}, rhs_contracting_dims={1}
+    }
+)";
+
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-4, 0.}));
+  MatchOptimizedHlo(hlo_text,
+                    R"(
+; CHECK:           custom_call_target="__cublas$lt$matmul$f8",
+      )");
+}
+
+TEST_F(CublasLtF8GemmRewriteTest, ScaledABUnscaledDF8ColRowTT) {
+  if (!GetCudaComputeCapability().IsAtLeast(
+          se::CudaComputeCapability::HOPPER)) {
+    GTEST_SKIP()
+        << "cuBLASLt FP8 kernels require Hopper or newer architecture.";
+  }
+  const char* hlo_text = R"(
+    HloModule test
+
+    ENTRY test {
+      x = f8e4m3fn[32,64]{0,1} parameter(0)
+      x_f32 = f32[32,64]{0,1} convert(x)
+      x_scale = f32[] parameter(2)
+      x_scale_bcast = f32[32,64] broadcast(x_scale), dimensions={}
+      x_unscaled = f32[32,64] multiply(x_f32, x_scale_bcast)
+      y = f8e4m3fn[16,32]{1,0} parameter(1)
+      y_f32 = f32[16,32]{1,0} convert(y)
+      y_scale = f32[] parameter(3)
+      y_scale_bcast = f32[16,32] broadcast(y_scale), dimensions={}
+      y_unscaled = f32[16,32] multiply(y_f32, y_scale_bcast)
+      ROOT out = f32[64,16] dot(x_unscaled, y_unscaled), lhs_contracting_dims={0}, rhs_contracting_dims={1}
+    }
+)";
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-4, 0.}));
+
+  MatchOptimizedHlo(hlo_text,
+                    R"(
+; CHECK:           custom_call_target="__cublas$lt$matmul$f8",
+      )");
+}
+
+TEST_F(CublasLtF8GemmRewriteTest, ScaledABUnscaledDF8ColColTT) {
+  if (!GetCudaComputeCapability().IsAtLeast(
+          se::CudaComputeCapability::HOPPER)) {
+    GTEST_SKIP()
+        << "cuBLASLt FP8 kernels require Hopper or newer architecture.";
+  }
+  const char* hlo_text = R"(
+    HloModule test
+
+    ENTRY test {
+      x = f8e4m3fn[32,64]{0,1} parameter(0)
+      x_f32 = f32[32,64]{0,1} convert(x)
+      x_scale = f32[] parameter(2)
+      x_scale_bcast = f32[32,64] broadcast(x_scale), dimensions={}
+      x_unscaled = f32[32,64] multiply(x_f32, x_scale_bcast)
+      y = f8e4m3fn[16,32]{0,1} parameter(1)
+      y_f32 = f32[16,32]{0,1} convert(y)
+      y_scale = f32[] parameter(3)
+      y_scale_bcast = f32[16,32] broadcast(y_scale), dimensions={}
+      y_unscaled = f32[16,32] multiply(y_f32, y_scale_bcast)
+      ROOT out = f32[64,16] dot(x_unscaled, y_unscaled), lhs_contracting_dims={0}, rhs_contracting_dims={1}
+    }
+)";
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-4, 0.}));
+
+  MatchOptimizedHlo(hlo_text,
+                    R"(
+; CHECK:           custom_call_target="__cublas$lt$matmul$f8",
+      )");
+}
+
+TEST_F(CublasLtF8GemmRewriteTest, ScaledABUnscaledDF8ColColNT) {
+  if (!GetCudaComputeCapability().IsAtLeast(
+          se::CudaComputeCapability::HOPPER)) {
+    GTEST_SKIP()
+        << "cuBLASLt FP8 kernels require Hopper or newer architecture.";
+  }
+  const char* hlo_text = R"(
+    HloModule test
+
+    ENTRY test {
+      x = f8e4m3fn[64,32]{0,1} parameter(0)
+      x_f32 = f32[64,32]{0,1} convert(x)
+      x_scale = f32[] parameter(2)
+      x_scale_bcast = f32[64,32] broadcast(x_scale), dimensions={}
+      x_unscaled = f32[64,32] multiply(x_f32, x_scale_bcast)
+      y = f8e4m3fn[16,32]{0,1} parameter(1)
+      y_f32 = f32[16,32]{0,1} convert(y)
+      y_scale = f32[] parameter(3)
+      y_scale_bcast = f32[16,32] broadcast(y_scale), dimensions={}
+      y_unscaled = f32[16,32] multiply(y_f32, y_scale_bcast)
+      ROOT out = f32[64,16] dot(x_unscaled, y_unscaled), lhs_contracting_dims={1}, rhs_contracting_dims={1}
+    }
+)";
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-4, 0.}));
+
+  MatchOptimizedHlo(hlo_text,
+                    R"(
+; CHECK:           custom_call_target="__cublas$lt$matmul$f8",
+      )");
+}
+
+TEST_F(CublasLtF8GemmRewriteTest, ScaledABUnscaledDF8ColColNN) {
+  if (!GetCudaComputeCapability().IsAtLeast(
+          se::CudaComputeCapability::HOPPER)) {
+    GTEST_SKIP()
+        << "cuBLASLt FP8 kernels require Hopper or newer architecture.";
+  }
+  const char* hlo_text = R"(
+    HloModule test
+
+    ENTRY test {
+      x = f8e4m3fn[64,32]{0,1} parameter(0)
+      x_f32 = f32[64,32]{0,1} convert(x)
+      x_scale = f32[] parameter(2)
+      x_scale_bcast = f32[64,32] broadcast(x_scale), dimensions={}
+      x_unscaled = f32[64,32] multiply(x_f32, x_scale_bcast)
+      y = f8e4m3fn[32,16]{0,1} parameter(1)
+      y_f32 = f32[32,16]{0,1} convert(y)
+      y_scale = f32[] parameter(3)
+      y_scale_bcast = f32[32,16] broadcast(y_scale), dimensions={}
+      y_unscaled = f32[32,16] multiply(y_f32, y_scale_bcast)
+      ROOT out = f32[64,16] dot(x_unscaled, y_unscaled), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+    }
+)";
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-4, 0.}));
+
+  MatchOptimizedHlo(hlo_text,
+                    R"(
+; CHECK:           custom_call_target="__cublas$lt$matmul$f8",
+      )");
+}
+
+TEST_F(CublasLtF8GemmRewriteTest, ScaledABUnscaledDF8ColColTN) {
+  if (!GetCudaComputeCapability().IsAtLeast(
+          se::CudaComputeCapability::HOPPER)) {
+    GTEST_SKIP()
+        << "cuBLASLt FP8 kernels require Hopper or newer architecture.";
+  }
+  const char* hlo_text = R"(
+    HloModule test
+
+    ENTRY test {
+      x = f8e4m3fn[32,64]{0,1} parameter(0)
+      x_f32 = f32[32,64]{0,1} convert(x)
+      x_scale = f32[] parameter(2)
+      x_scale_bcast = f32[32,64] broadcast(x_scale), dimensions={}
+      x_unscaled = f32[32,64] multiply(x_f32, x_scale_bcast)
+      y = f8e4m3fn[32,16]{0,1} parameter(1)
+      y_f32 = f32[32,16]{0,1} convert(y)
+      y_scale = f32[] parameter(3)
+      y_scale_bcast = f32[32,16] broadcast(y_scale), dimensions={}
+      y_unscaled = f32[32,16] multiply(y_f32, y_scale_bcast)
+      ROOT out = f32[64,16] dot(x_unscaled, y_unscaled), lhs_contracting_dims={0}, rhs_contracting_dims={0}
+    }
+)";
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-4, 0.}));
+
+  MatchOptimizedHlo(hlo_text,
+                    R"(
+; CHECK:           custom_call_target="__cublas$lt$matmul$f8",
+      )");
+}
+
+////////////////////\\\\\\\\\\\\\\\\\\\\\\\\\
+
+TEST_F(CublasLtF8GemmRewriteTest, ScaledABUnscaledDF8RowRowTTDCol) {
+  if (!GetCudaComputeCapability().IsAtLeast(
+          se::CudaComputeCapability::HOPPER)) {
+    GTEST_SKIP()
+        << "cuBLASLt FP8 kernels require Hopper or newer architecture.";
+  }
+  const char* hlo_text = R"(
+    HloModule test
+
+    ENTRY test {
+      x = f8e4m3fn[32,64]{1,0} parameter(0)
+      x_f32 = f32[32,64]{1,0} convert(x)
+      x_scale = f32[] parameter(2)
+      x_scale_bcast = f32[32,64] broadcast(x_scale), dimensions={}
+      x_unscaled = f32[32,64] multiply(x_f32, x_scale_bcast)
+      y = f8e4m3fn[16,32]{1,0} parameter(1)
+      y_f32 = f32[16,32]{1,0} convert(y)
+      y_scale = f32[] parameter(3)
+      y_scale_bcast = f32[16,32] broadcast(y_scale), dimensions={}
+      y_unscaled = f32[16,32] multiply(y_f32, y_scale_bcast)
+      ROOT out = f32[64,16]{0,1} dot(x_unscaled, y_unscaled), lhs_contracting_dims={0}, rhs_contracting_dims={1}
+    }
+)";
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-4, 0.}));
+
+  MatchOptimizedHlo(hlo_text,
+                    R"(
+; CHECK:           custom_call_target="__cublas$lt$matmul$f8",
+      )");
+}
+
+TEST_F(CublasLtF8GemmRewriteTest, ScaledABUnscaledDF8RowRowNNDCol) {
+  if (!GetCudaComputeCapability().IsAtLeast(
+          se::CudaComputeCapability::HOPPER)) {
+    GTEST_SKIP()
+        << "cuBLASLt FP8 kernels require Hopper or newer architecture.";
+  }
+  const char* hlo_text = R"(
+    HloModule test
+
+    ENTRY test {
+      x = f8e4m3fn[64,32] parameter(0)
+      y = f8e4m3fn[32,16] parameter(1)
+      x_f32 = f32[64,32] convert(x)
+      y_f32 = f32[32,16] convert(y)
+      x_scale = f32[] parameter(2)
+      y_scale = f32[] parameter(3)
+      x_scale_bcast = f32[64,32] broadcast(x_scale), dimensions={}
+      y_scale_bcast = f32[32,16] broadcast(y_scale), dimensions={}
+      x_unscaled = f32[64,32] multiply(x_f32, x_scale_bcast)
+      y_unscaled = f32[32,16] multiply(y_f32, y_scale_bcast)
+      ROOT out = f32[64,16]{0,1} dot(x_unscaled, y_unscaled), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+          }
+
+)";
+
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-4, 0.}));
+  MatchOptimizedHlo(hlo_text,
+                    R"(
+; CHECK:           custom_call_target="__cublas$lt$matmul$f8",
+      )");
+}
+
+TEST_F(CublasLtF8GemmRewriteTest, ScaledABUnscaledDF8RowRowTNDCol) {
+  if (!GetCudaComputeCapability().IsAtLeast(
+          se::CudaComputeCapability::HOPPER)) {
+    GTEST_SKIP()
+        << "cuBLASLt FP8 kernels require Hopper or newer architecture.";
+  }
+  const char* hlo_text = R"(
+    HloModule test
+
+    ENTRY test {
+      x = f8e4m3fn[32,64]{1,0} parameter(0)
+      x_f32 = f32[32,64]{1,0} convert(x)
+      x_scale = f32[] parameter(2)
+      x_scale_bcast = f32[32,64] broadcast(x_scale), dimensions={}
+      x_unscaled = f32[32,64] multiply(x_f32, x_scale_bcast)
+      y = f8e4m3fn[32,16]{1,0} parameter(1)
+      y_f32 = f32[32,16]{1,0} convert(y)
+      y_scale = f32[] parameter(3)
+      y_scale_bcast = f32[32,16] broadcast(y_scale), dimensions={}
+      y_unscaled = f32[32,16] multiply(y_f32, y_scale_bcast)
+      ROOT out = f32[64,16]{0,1} dot(x_unscaled, y_unscaled), lhs_contracting_dims={0}, rhs_contracting_dims={0}
+    }
+
+)";
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-4, 0.}));
+  MatchOptimizedHlo(hlo_text,
+                    R"(
+; CHECK:           custom_call_target="__cublas$lt$matmul$f8",
+      )");
+}
+
+TEST_F(CublasLtF8GemmRewriteTest, ScaledABUnscaledDF8RowRowNTDCol) {
+  if (!GetCudaComputeCapability().IsAtLeast(
+          se::CudaComputeCapability::HOPPER)) {
+    GTEST_SKIP()
+        << "cuBLASLt FP8 kernels require Hopper or newer architecture.";
+  }
+  const char* hlo_text = R"(
+    HloModule test
+
+    ENTRY test {
+      x = f8e4m3fn[64,32]{1,0} parameter(0)
+      x_f32 = f32[64,32]{1,0} convert(x)
+      x_scale = f32[] parameter(2)
+      x_scale_bcast = f32[64,32] broadcast(x_scale), dimensions={}
+      x_unscaled = f32[64,32] multiply(x_f32, x_scale_bcast)
+      y = f8e4m3fn[16,32]{1,0} parameter(1)
+      y_f32 = f32[16,32]{1,0} convert(y)
+      y_scale = f32[] parameter(3)
+      y_scale_bcast = f32[16,32] broadcast(y_scale), dimensions={}
+      y_unscaled = f32[16,32] multiply(y_f32, y_scale_bcast)
+      ROOT out = f32[64,16]{0,1} dot(x_unscaled, y_unscaled), lhs_contracting_dims={1}, rhs_contracting_dims={1}
+    }
+
+)";
+
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-4, 0.}));
+  MatchOptimizedHlo(hlo_text,
+                    R"(
+; CHECK:           custom_call_target="__cublas$lt$matmul$f8",
+      )");
+}
+
+TEST_F(CublasLtF8GemmRewriteTest, ScaledABUnscaledDF8RowColTTDCol) {
+  if (!GetCudaComputeCapability().IsAtLeast(
+          se::CudaComputeCapability::HOPPER)) {
+    GTEST_SKIP()
+        << "cuBLASLt FP8 kernels require Hopper or newer architecture.";
+  }
+  const char* hlo_text = R"(
+    HloModule test
+
+    ENTRY test {
+      x = f8e4m3fn[32,64]{1,0} parameter(0)
+      x_f32 = f32[32,64]{1,0} convert(x)
+      x_scale = f32[] parameter(2)
+      x_scale_bcast = f32[32,64] broadcast(x_scale), dimensions={}
+      x_unscaled = f32[32,64] multiply(x_f32, x_scale_bcast)
+      y = f8e4m3fn[16,32]{0,1} parameter(1)
+      y_f32 = f32[16,32]{0,1} convert(y)
+      y_scale = f32[] parameter(3)
+      y_scale_bcast = f32[16,32] broadcast(y_scale), dimensions={}
+      y_unscaled = f32[16,32] multiply(y_f32, y_scale_bcast)
+      ROOT out = f32[64,16]{0,1} dot(x_unscaled, y_unscaled), lhs_contracting_dims={0}, rhs_contracting_dims={1}
+    }
+)";
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-4, 0.}));
+
+  MatchOptimizedHlo(hlo_text,
+                    R"(
+; CHECK:           custom_call_target="__cublas$lt$matmul$f8",
+      )");
+}
+
+TEST_F(CublasLtF8GemmRewriteTest, ScaledABUnscaledDF8RowColNNDCol) {
+  if (!GetCudaComputeCapability().IsAtLeast(
+          se::CudaComputeCapability::HOPPER)) {
+    GTEST_SKIP()
+        << "cuBLASLt FP8 kernels require Hopper or newer architecture.";
+  }
+  const char* hlo_text = R"(
+    HloModule test
+
+    ENTRY test {
+      x = f8e4m3fn[64,32]{1,0} parameter(0)
+      x_f32 = f32[64,32]{1,0} convert(x)
+      x_scale = f32[] parameter(2)
+      x_scale_bcast = f32[64,32] broadcast(x_scale), dimensions={}
+      x_unscaled = f32[64,32] multiply(x_f32, x_scale_bcast)
+      y = f8e4m3fn[32,16]{0,1} parameter(1)
+      y_f32 = f32[32,16]{0,1} convert(y)
+      y_scale = f32[] parameter(3)
+      y_scale_bcast = f32[32,16] broadcast(y_scale), dimensions={}
+      y_unscaled = f32[32,16] multiply(y_f32, y_scale_bcast)
+      ROOT out = f32[64,16]{0,1} dot(x_unscaled, y_unscaled), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+    }
+)";
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-4, 0.}));
+}
+
+TEST_F(CublasLtF8GemmRewriteTest, ScaledABUnscaledDF8RowColTNDCol) {
+  if (!GetCudaComputeCapability().IsAtLeast(
+          se::CudaComputeCapability::HOPPER)) {
+    GTEST_SKIP()
+        << "cuBLASLt FP8 kernels require Hopper or newer architecture.";
+  }
+  const char* hlo_text = R"(
+    HloModule test
+    ENTRY test {
+      x = f8e4m3fn[32,64]{1,0} parameter(0)
+      x_f32 = f32[32,64]{1,0} convert(x)
+      x_scale = f32[] parameter(2)
+      x_scale_bcast = f32[32,64] broadcast(x_scale), dimensions={}
+      x_unscaled = f32[32,64] multiply(x_f32, x_scale_bcast)
+      y = f8e4m3fn[32,16]{0,1} parameter(1)
+      y_f32 = f32[32,16]{0,1} convert(y)
+      y_scale = f32[] parameter(3)
+      y_scale_bcast = f32[32,16] broadcast(y_scale), dimensions={}
+      y_unscaled = f32[32,16] multiply(y_f32, y_scale_bcast)
+      ROOT out = f32[64,16]{0,1} dot(x_unscaled, y_unscaled), lhs_contracting_dims={0}, rhs_contracting_dims={0}
+    }
+)";
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-4, 0.}));
+  MatchOptimizedHlo(hlo_text,
+                    R"(
+; CHECK:           custom_call_target="__cublas$lt$matmul$f8",
+      )");
+}
+
+TEST_F(CublasLtF8GemmRewriteTest, ScaledABUnscaledDF8RowColNTDCol) {
+  if (!GetCudaComputeCapability().IsAtLeast(
+          se::CudaComputeCapability::HOPPER)) {
+    GTEST_SKIP()
+        << "cuBLASLt FP8 kernels require Hopper or newer architecture.";
+  }
+  const char* hlo_text = R"(
+    HloModule test
+    ENTRY test {
+      x = f8e4m3fn[64,32]{1,0} parameter(0)
+      x_f32 = f32[64,32]{1,0} convert(x)
+      x_scale = f32[] parameter(2)
+      x_scale_bcast = f32[64,32] broadcast(x_scale), dimensions={}
+      x_unscaled = f32[64,32] multiply(x_f32, x_scale_bcast)
+      y = f8e4m3fn[16,32]{0,1} parameter(1)
+      y_f32 = f32[16,32]{0,1} convert(y)
+      y_scale = f32[] parameter(3)
+      y_scale_bcast = f32[16,32] broadcast(y_scale), dimensions={}
+      y_unscaled = f32[16,32] multiply(y_f32, y_scale_bcast)
+      ROOT out = f32[64,16]{0,1} dot(x_unscaled, y_unscaled), lhs_contracting_dims={1}, rhs_contracting_dims={1}
+    }
+)";
+
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-4, 0.}));
+  MatchOptimizedHlo(hlo_text,
+                    R"(
+; CHECK:           custom_call_target="__cublas$lt$matmul$f8",
+      )");
+}
+
+TEST_F(CublasLtF8GemmRewriteTest, ScaledABUnscaledDF8ColRowNNDCol) {
+  if (!GetCudaComputeCapability().IsAtLeast(
+          se::CudaComputeCapability::HOPPER)) {
+    GTEST_SKIP()
+        << "cuBLASLt FP8 kernels require Hopper or newer architecture.";
+  }
+  const char* hlo_text = R"(
+    HloModule test
+
+    ENTRY test {
+      x = f8e4m3fn[64,32]{0,1} parameter(0)
+      x_f32 = f32[64,32]{0,1} convert(x)
+      x_scale = f32[] parameter(2)
+      x_scale_bcast = f32[64,32] broadcast(x_scale), dimensions={}
+      x_unscaled = f32[64,32] multiply(x_f32, x_scale_bcast)
+      y = f8e4m3fn[32,16]{1,0} parameter(1)
+      y_f32 = f32[32,16]{1,0} convert(y)
+      y_scale = f32[] parameter(3)
+      y_scale_bcast = f32[32,16] broadcast(y_scale), dimensions={}
+      y_unscaled = f32[32,16] multiply(y_f32, y_scale_bcast)
+      ROOT out = f32[64,16]{0,1} dot(x_unscaled, y_unscaled), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+    }
+)";
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-4, 0.}));
+}
+
+TEST_F(CublasLtF8GemmRewriteTest, ScaledABUnscaledDF8ColRowTNDCol) {
+  if (!GetCudaComputeCapability().IsAtLeast(
+          se::CudaComputeCapability::HOPPER)) {
+    GTEST_SKIP()
+        << "cuBLASLt FP8 kernels require Hopper or newer architecture.";
+  }
+  const char* hlo_text = R"(
+    HloModule test
+    ENTRY test {
+      x = f8e4m3fn[32,64]{0,1} parameter(0)
+      x_f32 = f32[32,64]{0,1} convert(x)
+      x_scale = f32[] parameter(2)
+      x_scale_bcast = f32[32,64] broadcast(x_scale), dimensions={}
+      x_unscaled = f32[32,64] multiply(x_f32, x_scale_bcast)
+      y = f8e4m3fn[32,16]{1,0} parameter(1)
+      y_f32 = f32[32,16]{1,0} convert(y)
+      y_scale = f32[] parameter(3)
+      y_scale_bcast = f32[32,16] broadcast(y_scale), dimensions={}
+      y_unscaled = f32[32,16] multiply(y_f32, y_scale_bcast)
+      ROOT out = f32[64,16]{0,1} dot(x_unscaled, y_unscaled), lhs_contracting_dims={0}, rhs_contracting_dims={0}
+    }
+)";
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-4, 0.}));
+  MatchOptimizedHlo(hlo_text,
+                    R"(
+; CHECK:           custom_call_target="__cublas$lt$matmul$f8",
+      )");
+}
+
+TEST_F(CublasLtF8GemmRewriteTest, ScaledABUnscaledDF8ColRowNTDCol) {
+  if (!GetCudaComputeCapability().IsAtLeast(
+          se::CudaComputeCapability::HOPPER)) {
+    GTEST_SKIP()
+        << "cuBLASLt FP8 kernels require Hopper or newer architecture.";
+  }
+  const char* hlo_text = R"(
+    HloModule test
+    ENTRY test {
+      x = f8e4m3fn[64,32]{0,1} parameter(0)
+      x_f32 = f32[64,32]{0,1} convert(x)
+      x_scale = f32[] parameter(2)
+      x_scale_bcast = f32[64,32] broadcast(x_scale), dimensions={}
+      x_unscaled = f32[64,32] multiply(x_f32, x_scale_bcast)
+      y = f8e4m3fn[16,32]{1,0} parameter(1)
+      y_f32 = f32[16,32]{1,0} convert(y)
+      y_scale = f32[] parameter(3)
+      y_scale_bcast = f32[16,32] broadcast(y_scale), dimensions={}
+      y_unscaled = f32[16,32] multiply(y_f32, y_scale_bcast)
+      ROOT out = f32[64,16]{0,1} dot(x_unscaled, y_unscaled), lhs_contracting_dims={1}, rhs_contracting_dims={1}
+    }
+)";
+
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-4, 0.}));
+  MatchOptimizedHlo(hlo_text,
+                    R"(
+; CHECK:           custom_call_target="__cublas$lt$matmul$f8",
+      )");
+}
+
+TEST_F(CublasLtF8GemmRewriteTest, ScaledABUnscaledDF8ColRowTTDCol) {
+  if (!GetCudaComputeCapability().IsAtLeast(
+          se::CudaComputeCapability::HOPPER)) {
+    GTEST_SKIP()
+        << "cuBLASLt FP8 kernels require Hopper or newer architecture.";
+  }
+  const char* hlo_text = R"(
+    HloModule test
+
+    ENTRY test {
+      x = f8e4m3fn[32,64]{0,1} parameter(0)
+      x_f32 = f32[32,64]{0,1} convert(x)
+      x_scale = f32[] parameter(2)
+      x_scale_bcast = f32[32,64] broadcast(x_scale), dimensions={}
+      x_unscaled = f32[32,64] multiply(x_f32, x_scale_bcast)
+      y = f8e4m3fn[16,32]{1,0} parameter(1)
+      y_f32 = f32[16,32]{1,0} convert(y)
+      y_scale = f32[] parameter(3)
+      y_scale_bcast = f32[16,32] broadcast(y_scale), dimensions={}
+      y_unscaled = f32[16,32] multiply(y_f32, y_scale_bcast)
+      ROOT out = f32[64,16]{0,1} dot(x_unscaled, y_unscaled), lhs_contracting_dims={0}, rhs_contracting_dims={1}
+    }
+)";
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-4, 0.}));
+
+  MatchOptimizedHlo(hlo_text,
+                    R"(
+; CHECK:           custom_call_target="__cublas$lt$matmul$f8",
+      )");
+}
+
+TEST_F(CublasLtF8GemmRewriteTest, ScaledABUnscaledDF8ColColTTDCol) {
+  if (!GetCudaComputeCapability().IsAtLeast(
+          se::CudaComputeCapability::HOPPER)) {
+    GTEST_SKIP()
+        << "cuBLASLt FP8 kernels require Hopper or newer architecture.";
+  }
+  const char* hlo_text = R"(
+    HloModule test
+
+    ENTRY test {
+      x = f8e4m3fn[32,64]{0,1} parameter(0)
+      x_f32 = f32[32,64]{0,1} convert(x)
+      x_scale = f32[] parameter(2)
+      x_scale_bcast = f32[32,64] broadcast(x_scale), dimensions={}
+      x_unscaled = f32[32,64] multiply(x_f32, x_scale_bcast)
+      y = f8e4m3fn[16,32]{0,1} parameter(1)
+      y_f32 = f32[16,32]{0,1} convert(y)
+      y_scale = f32[] parameter(3)
+      y_scale_bcast = f32[16,32] broadcast(y_scale), dimensions={}
+      y_unscaled = f32[16,32] multiply(y_f32, y_scale_bcast)
+      ROOT out = f32[64,16]{0,1} dot(x_unscaled, y_unscaled), lhs_contracting_dims={0}, rhs_contracting_dims={1}
+    }
+)";
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-4, 0.}));
+
+  MatchOptimizedHlo(hlo_text,
+                    R"(
+; CHECK:           custom_call_target="__cublas$lt$matmul$f8",
+      )");
+}
+
+TEST_F(CublasLtF8GemmRewriteTest, ScaledABUnscaledDF8ColColNTDCol) {
+  if (!GetCudaComputeCapability().IsAtLeast(
+          se::CudaComputeCapability::HOPPER)) {
+    GTEST_SKIP()
+        << "cuBLASLt FP8 kernels require Hopper or newer architecture.";
+  }
+  const char* hlo_text = R"(
+    HloModule test
+
+    ENTRY test {
+      x = f8e4m3fn[64,32]{0,1} parameter(0)
+      x_f32 = f32[64,32]{0,1} convert(x)
+      x_scale = f32[] parameter(2)
+      x_scale_bcast = f32[64,32] broadcast(x_scale), dimensions={}
+      x_unscaled = f32[64,32] multiply(x_f32, x_scale_bcast)
+      y = f8e4m3fn[16,32]{0,1} parameter(1)
+      y_f32 = f32[16,32]{0,1} convert(y)
+      y_scale = f32[] parameter(3)
+      y_scale_bcast = f32[16,32] broadcast(y_scale), dimensions={}
+      y_unscaled = f32[16,32] multiply(y_f32, y_scale_bcast)
+      ROOT out = f32[64,16]{0,1} dot(x_unscaled, y_unscaled), lhs_contracting_dims={1}, rhs_contracting_dims={1}
+    }
+)";
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-4, 0.}));
+
+  MatchOptimizedHlo(hlo_text,
+                    R"(
+; CHECK:           custom_call_target="__cublas$lt$matmul$f8",
+      )");
+}
+
+TEST_F(CublasLtF8GemmRewriteTest, ScaledABUnscaledDF8ColColNNDCol) {
+  if (!GetCudaComputeCapability().IsAtLeast(
+          se::CudaComputeCapability::HOPPER)) {
+    GTEST_SKIP()
+        << "cuBLASLt FP8 kernels require Hopper or newer architecture.";
+  }
+  const char* hlo_text = R"(
+    HloModule test
+
+    ENTRY test {
+      x = f8e4m3fn[64,32]{0,1} parameter(0)
+      x_f32 = f32[64,32]{0,1} convert(x)
+      x_scale = f32[] parameter(2)
+      x_scale_bcast = f32[64,32] broadcast(x_scale), dimensions={}
+      x_unscaled = f32[64,32] multiply(x_f32, x_scale_bcast)
+      y = f8e4m3fn[32,16]{0,1} parameter(1)
+      y_f32 = f32[32,16]{0,1} convert(y)
+      y_scale = f32[] parameter(3)
+      y_scale_bcast = f32[32,16] broadcast(y_scale), dimensions={}
+      y_unscaled = f32[32,16] multiply(y_f32, y_scale_bcast)
+      ROOT out = f32[64,16]{0,1} dot(x_unscaled, y_unscaled), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+    }
+)";
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-4, 0.}));
+
+  MatchOptimizedHlo(hlo_text,
+                    R"(
+; CHECK:           custom_call_target="__cublas$lt$matmul$f8",
+      )");
+}
+
+TEST_F(CublasLtF8GemmRewriteTest, ScaledABUnscaledDF8ColColTNDCol) {
+  if (!GetCudaComputeCapability().IsAtLeast(
+          se::CudaComputeCapability::HOPPER)) {
+    GTEST_SKIP()
+        << "cuBLASLt FP8 kernels require Hopper or newer architecture.";
+  }
+  const char* hlo_text = R"(
+    HloModule test
+
+    ENTRY test {
+      x = f8e4m3fn[32,64]{0,1} parameter(0)
+      x_f32 = f32[32,64]{0,1} convert(x)
+      x_scale = f32[] parameter(2)
+      x_scale_bcast = f32[32,64] broadcast(x_scale), dimensions={}
+      x_unscaled = f32[32,64] multiply(x_f32, x_scale_bcast)
+      y = f8e4m3fn[32,16]{0,1} parameter(1)
+      y_f32 = f32[32,16]{0,1} convert(y)
+      y_scale = f32[] parameter(3)
+      y_scale_bcast = f32[32,16] broadcast(y_scale), dimensions={}
+      y_unscaled = f32[32,16] multiply(y_f32, y_scale_bcast)
+      ROOT out = f32[64,16]{0,1} dot(x_unscaled, y_unscaled), lhs_contracting_dims={0}, rhs_contracting_dims={0}
+    }
+)";
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-4, 0.}));
+
+  MatchOptimizedHlo(hlo_text,
+                    R"(
+; CHECK:           custom_call_target="__cublas$lt$matmul$f8",
+      )");
+}
+
 class GemmRewriteAllocationTest : public GpuCodegenTest {
  public:
   void CheckNumberOfAllocations(const std::string& hlo,

@@ -643,7 +643,10 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     // TODO(philipphack): Remove once cuBLASLt supports the NN configuration.
     TF_ASSIGN_OR_RETURN(bool is_col_major,
                         MatrixIsColumnMajor(instr, gemm_backend_config, "d"));
-
+    TF_ASSIGN_OR_RETURN(bool a_is_col_major,
+                        MatrixIsColumnMajor(instr, gemm_backend_config, "a"));
+    TF_ASSIGN_OR_RETURN(bool b_is_col_major,                        
+                        MatrixIsColumnMajor(instr, gemm_backend_config, "b"));
     // Bitcast the operands to realign their logical and physical dimensions.
     std::vector<int64_t> a_dim_order;
     a_dim_order.reserve(a_dims.size());
@@ -730,41 +733,153 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     if (is_col_major) {
       if (a_contracting_dims[0] == 1 + a_batch_dim_offset &&
           b_contracting_dims[0] == b_batch_dim_offset) {
-        plain_transpose(&a, a_contracting_dims, a_batch_dims);
-        plain_transpose(&b, b_contracting_dims, b_batch_dims);
+        if (a_is_col_major && b_is_col_major) {
+          // ColCol
+          // pass
+        } else if (a_is_col_major && !b_is_col_major) {
+          // ColRow
+          plain_transpose(&b, b_contracting_dims, b_batch_dims);
+        } else if (!a_is_col_major && b_is_col_major) {
+          // RowCol
+          plain_transpose(&a, a_contracting_dims, a_batch_dims);
+        } else {
+          // RowRow
+          plain_transpose(&a, a_contracting_dims, a_batch_dims);
+          plain_transpose(&b, b_contracting_dims, b_batch_dims);
+        }
+
       } else if (a_contracting_dims[0] == 1 + a_batch_dim_offset &&
                  b_contracting_dims[0] == 1 + b_batch_dim_offset) {
         dim_nums->set_rhs_contracting_dimensions(0, b_batch_dim_offset);
-        plain_transpose(&a, a_contracting_dims, a_batch_dims);
+        if (a_is_col_major && !b_is_col_major) {
+          // ColCol
+          plain_transpose(&b, b_contracting_dims, b_batch_dims);
+        } else if (a_is_col_major && b_is_col_major) {
+          // ColRow
+          // pass
+        } else if (!a_is_col_major && !b_is_col_major) {
+          // RowCol
+          plain_transpose(&a, a_contracting_dims, a_batch_dims);
+          plain_transpose(&b, b_contracting_dims, b_batch_dims);
+        } else {
+          // RowRow
+          plain_transpose(&a, a_contracting_dims, a_batch_dims);
+        }
+
       } else if (a_contracting_dims[0] == a_batch_dim_offset &&
                  b_contracting_dims[0] == 1 + b_batch_dim_offset) {
         dim_nums->set_rhs_contracting_dimensions(0, b_batch_dim_offset);
         dim_nums->set_lhs_contracting_dimensions(0, a_batch_dim_offset + 1);
+        if (!a_is_col_major && !b_is_col_major) {
+          // ColCol
+          plain_transpose(&a, a_contracting_dims, a_batch_dims);
+          plain_transpose(&b, b_contracting_dims, b_batch_dims);
+        } else if (!a_is_col_major && b_is_col_major) {
+          // ColRow
+          plain_transpose(&a, a_contracting_dims, a_batch_dims);
+        } else if (a_is_col_major && !b_is_col_major) {
+          // RowCol
+          plain_transpose(&b, b_contracting_dims, b_batch_dims);
+        } else {
+          // RowRow
+          // pass
+        }
+
       } else if (a_contracting_dims[0] == a_batch_dim_offset &&
                  b_contracting_dims[0] == b_batch_dim_offset) {
         dim_nums->set_lhs_contracting_dimensions(0, a_batch_dim_offset + 1);
-        plain_transpose(&b, b_contracting_dims, b_batch_dims);
+
+        if (!a_is_col_major && b_is_col_major) {
+          // ColCol
+          plain_transpose(&a, a_contracting_dims, a_batch_dims);
+        } else if (!a_is_col_major && !b_is_col_major) {
+          // ColRow
+          plain_transpose(&a, a_contracting_dims, a_batch_dims);
+          plain_transpose(&b, b_contracting_dims, b_batch_dims);
+        } else if (a_is_col_major && b_is_col_major) {
+          // RowCol
+          // pass
+        } else {
+          // RowRow
+          plain_transpose(&b, b_contracting_dims, b_batch_dims);
+        }
       }
       plain_transpose(&a, a_contracting_dims, a_batch_dims);
     } else {
       if (a_contracting_dims[0] == 1 + a_batch_dim_offset &&
           b_contracting_dims[0] == 1 + b_batch_dim_offset) {
         dim_nums->set_rhs_contracting_dimensions(0, b_batch_dim_offset);
-        plain_transpose(&b, b_contracting_dims, b_batch_dims);
+        if (!a_is_col_major && b_is_col_major) {
+          // RowRow
+          plain_transpose(&b, b_contracting_dims, b_batch_dims);
+        } else if (!a_is_col_major && !b_is_col_major) {
+          // RowCol
+          // pass
+        } else if (a_is_col_major && b_is_col_major) {
+          // ColRow
+          plain_transpose(&a, a_contracting_dims, a_batch_dims);
+          plain_transpose(&b, b_contracting_dims, b_batch_dims);
+        } else {
+          // ColCol
+          plain_transpose(&a, a_contracting_dims, a_batch_dims);
+        }
+
       } else if (a_contracting_dims[0] == a_batch_dim_offset &&
                  b_contracting_dims[0] == 1 + b_batch_dim_offset) {
         dim_nums->set_rhs_contracting_dimensions(0, b_batch_dim_offset);
         dim_nums->set_lhs_contracting_dimensions(0, a_batch_dim_offset + 1);
-        plain_transpose(&a, a_contracting_dims, a_batch_dims);
-        plain_transpose(&b, b_contracting_dims, b_batch_dims);
+
+        if (a_is_col_major && b_is_col_major) {
+          // RowRow
+          plain_transpose(&a, a_contracting_dims, a_batch_dims);
+          plain_transpose(&b, b_contracting_dims, b_batch_dims);
+        } else if (a_is_col_major && !b_is_col_major) {
+          // RowCol
+          plain_transpose(&a, a_contracting_dims, a_batch_dims);
+        } else if (!a_is_col_major && b_is_col_major) {
+          // ColRow
+          plain_transpose(&b, b_contracting_dims, b_batch_dims);
+        } else {
+          // ColCol
+          // pass
+        }
+
       } else if (a_contracting_dims[0] == a_batch_dim_offset &&
                  b_contracting_dims[0] == b_batch_dim_offset) {
         dim_nums->set_lhs_contracting_dimensions(0, a_batch_dim_offset + 1);
-        plain_transpose(&a, a_contracting_dims, a_batch_dims);
+        if (a_is_col_major && !b_is_col_major) {
+          // RowRow
+          plain_transpose(&a, a_contracting_dims, a_batch_dims);
+        } else if (a_is_col_major && b_is_col_major) {
+          // RowCol
+          plain_transpose(&a, a_contracting_dims, a_batch_dims);
+          plain_transpose(&b, b_contracting_dims, b_batch_dims);
+        } else if (!a_is_col_major && !b_is_col_major) {
+          // ColRow
+          // pass
+        } else {
+          // ColCol
+          plain_transpose(&b, b_contracting_dims, b_batch_dims);
+        }
+
+      } else {
+        if (!a_is_col_major && b_is_col_major) {
+          // RowRow
+          plain_transpose(&b, b_contracting_dims, b_batch_dims);
+        } else if (!a_is_col_major && !b_is_col_major) {
+          // RowCol
+          // pass
+        } else if (a_is_col_major && !b_is_col_major) {
+          // ColRow
+          plain_transpose(&a, a_contracting_dims, a_batch_dims);
+        } else {
+          // ColCol
+          plain_transpose(&a, a_contracting_dims, a_batch_dims);
+          plain_transpose(&b, b_contracting_dims, b_batch_dims);
+        }
       }
       plain_transpose(&b, b_contracting_dims, b_batch_dims);
     }
-
     std::unique_ptr<HloInstruction> new_custom_call =
         HloInstruction::CreateCustomCall(
             instr->shape(),
