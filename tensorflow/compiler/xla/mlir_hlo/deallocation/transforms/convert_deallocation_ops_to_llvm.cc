@@ -35,11 +35,11 @@ namespace mlir {
 namespace deallocation {
 namespace {
 
-struct NullOpLowering : public ConvertOpToLLVMPattern<deallocation::NullOp> {
-  using ConvertOpToLLVMPattern<deallocation::NullOp>::ConvertOpToLLVMPattern;
+struct NullOpLowering : public ConvertOpToLLVMPattern<NullOp> {
+  using ConvertOpToLLVMPattern<NullOp>::ConvertOpToLLVMPattern;
 
   LogicalResult matchAndRewrite(
-      deallocation::NullOp nullOp, OpAdaptor /*adaptor*/,
+      NullOp nullOp, OpAdaptor /*adaptor*/,
       ConversionPatternRewriter &rewriter) const override {
     Location loc = nullOp->getLoc();
     LLVMTypeConverter typeConverter = *getTypeConverter();
@@ -114,6 +114,33 @@ struct NullOpLowering : public ConvertOpToLLVMPattern<deallocation::NullOp> {
   }
 };
 
+struct GetBufferOpLowering : public ConvertOpToLLVMPattern<GetBufferOp> {
+  using ConvertOpToLLVMPattern<GetBufferOp>::ConvertOpToLLVMPattern;
+
+  LogicalResult matchAndRewrite(
+      GetBufferOp op, OpAdaptor adaptor,
+      ConversionPatternRewriter &rewriter) const override {
+    auto loc = op->getLoc();
+    auto memref = adaptor.getMemref();
+    Value ptr;
+    if (auto unrankedTy =
+            llvm::dyn_cast<UnrankedMemRefType>(op.getMemref().getType())) {
+      Type elementType = unrankedTy.getElementType();
+      Type llvmElementTy = getTypeConverter()->convertType(elementType);
+      LLVM::LLVMPointerType elementPtrTy = getTypeConverter()->getPointerType(
+          llvmElementTy, unrankedTy.getMemorySpaceAsInt());
+      memref = UnrankedMemRefDescriptor(memref).memRefDescPtr(rewriter, loc);
+      ptr = UnrankedMemRefDescriptor::allocatedPtr(rewriter, loc, memref,
+                                                   elementPtrTy);
+    } else {
+      ptr = MemRefDescriptor(memref).allocatedPtr(rewriter, loc);
+    }
+    rewriter.replaceOpWithNewOp<LLVM::PtrToIntOp>(
+        op, getTypeConverter()->getIndexType(), ptr);
+    return success();
+  }
+};
+
 #define GEN_PASS_DEF_CONVERTDEALLOCATIONOPSTOLLVMPASS
 #include "deallocation/transforms/passes.h.inc"
 
@@ -131,7 +158,7 @@ struct ConvertDeallocationOpsToLLVMPass
     LLVMTypeConverter typeConverter(&getContext(), options,
                                     &dataLayoutAnalysis);
     RewritePatternSet patterns(&getContext());
-    patterns.add<NullOpLowering>(typeConverter);
+    patterns.add<GetBufferOpLowering, NullOpLowering>(typeConverter);
 
     LLVMConversionTarget target(getContext());
     target.addLegalOp<func::FuncOp>();

@@ -35,3 +35,29 @@ func.func @ranked_null() {
 // CHECK-NEXT: %[[DESC_5:.*]] = llvm.insertvalue %[[C1]], %[[DESC_4]][4, 0]
 // CHECK-NEXT: %[[DESC_6:.*]] = llvm.insertvalue %[[C1]], %[[DESC_5]][3, 1]
 // CHECK-NEXT: %[[DESC_7:.*]] = llvm.insertvalue %[[C1_]], %[[DESC_6]][4, 1]
+
+// -----
+
+// CHECK-LABEL: func.func @unranked_get_buffer
+func.func @unranked_get_buffer(%arg0: memref<*xf32>) -> index {
+  %ret = deallocation.get_buffer %arg0 : memref<*xf32>
+  return %ret : index
+}
+
+// CHECK-NEXT: builtin.unrealized_conversion_cast
+// CHECK-NEXT: llvm.extractvalue
+// CHECK-NEXT: llvm.bitcast
+// CHECK-NEXT: llvm.load
+// CHECK-NEXT: llvm.ptrtoint
+
+// -----
+
+// CHECK-LABEL: func.func @ranked_get_buffer
+func.func @ranked_get_buffer(%arg0: memref<2x?xf32>) -> index {
+  %ret = deallocation.get_buffer %arg0 : memref<2x?xf32>
+  return %ret : index
+}
+
+// CHECK-NEXT: builtin.unrealized_conversion_cast
+// CHECK-NEXT: llvm.extractvalue
+// CHECK-NEXT: llvm.ptrtoint

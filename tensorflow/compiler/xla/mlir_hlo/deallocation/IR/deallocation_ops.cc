@@ -109,19 +109,24 @@ bool allocIsNonNull(Value v) {
 }
 
 LogicalResult retainIsDealloc(RetainOp op, PatternRewriter& rewriter) {
-  if (!op.getRetained().empty()) {
+  if (!op.getRetained().empty() || op.getAllocs().size() != 1 ||
+      !allocIsNonNull(op.getAllocs()[0])) {
     return failure();
   }
-  bool deletedSome = false;
-  for (auto i : llvm::reverse(llvm::seq<size_t>(0, op.getAllocs().size()))) {
-    if (allocIsNonNull(op.getAllocs()[i])) {
-      rewriter.setInsertionPoint(op);
-      rewriter.create<memref::DeallocOp>(op.getLoc(), op.getAllocs()[i]);
-      op.getAllocsMutable().erase(i);
-      deletedSome = true;
-    }
+  rewriter.replaceOpWithNewOp<memref::DeallocOp>(op, op.getAllocs()[0]);
+  return success();
+}
+
+LogicalResult splitRetain(RetainOp op, PatternRewriter& rewriter) {
+  if (!op.getRetained().empty() || op.getAllocs().size() <= 1) {
+    return failure();
   }
-  return success(deletedSome);
+  for (Value alloc : op.getAllocs()) {
+    rewriter.create<deallocation::RetainOp>(op.getLoc(), TypeRange{},
+                                            ValueRange{}, ValueRange{alloc});
+  }
+  op.erase();
+  return success();
 }
 
 }  // namespace
@@ -131,6 +136,7 @@ void RetainOp::getCanonicalizationPatterns(RewritePatternSet& results,
   results.add(retainOfNothing);
   results.add(retainNoOp);
   results.add(retainIsDealloc);
+  results.add(splitRetain);
 }
 
 }  // namespace deallocation

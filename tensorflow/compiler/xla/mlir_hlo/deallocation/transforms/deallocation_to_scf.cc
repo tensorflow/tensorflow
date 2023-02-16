@@ -35,25 +35,52 @@ namespace {
 
 LogicalResult rewriteRetain(RetainOp op, PatternRewriter& rewriter) {
   assert(!op.getAllocs().empty() && "run canonicalization first");
-  assert(op.getRetained().empty() && "not supported yet");
+  assert(op.getAllocs().size() == 1 && "not supported yet");
+  assert(op.getRetained().size() <= 1 && "not supported yet");
 
-  if (op.getRetained().empty()) {
-    ImplicitLocOpBuilder b(op.getLoc(), rewriter);
-    auto zero = b.create<arith::ConstantIndexOp>(0);
-    for (auto alloc : op.getAllocs()) {
-      auto buffer = b.create<GetBufferOp>(b.getIndexType(), alloc);
-      auto isNonNull =
-          b.create<arith::CmpIOp>(arith::CmpIPredicate::ne, buffer, zero);
-      b.create<scf::IfOp>(isNonNull,
-                          [&](mlir::OpBuilder& thenB, mlir::Location loc) {
-                            thenB.create<memref::DeallocOp>(loc, alloc);
-                            thenB.create<scf::YieldOp>(loc);
-                          });
-    }
+  // dealloc happens to lower to free, which accepts null pointers. We still
+  // guard it with if, because this behavior is not documented.
+
+  auto loc = op.getLoc();
+  ImplicitLocOpBuilder b(loc, rewriter);
+  Value alloc = op.getAllocs().front();
+  Value returnValue = {};
+  auto allocBuffer = b.create<GetBufferOp>(b.getIndexType(), alloc);
+  auto zero = b.create<arith::ConstantIndexOp>(0);
+  OpBuilder deallocBuilder = rewriter;
+  if (op.getRetained().size() == 1) {
+    auto retainedBuffer =
+        b.create<GetBufferOp>(b.getIndexType(), op.getRetained().front());
+    auto isSameBuffer = b.create<arith::CmpIOp>(arith::CmpIPredicate::eq,
+                                                allocBuffer, retainedBuffer);
+    auto ifOp =
+        b.create<scf::IfOp>(TypeRange{alloc.getType()}, isSameBuffer, true);
+    ifOp.getThenBodyBuilder().create<scf::YieldOp>(loc, ValueRange{alloc});
+    auto null = ifOp.getElseBodyBuilder().create<deallocation::NullOp>(
+        loc, alloc.getType());
+    ifOp.getElseBodyBuilder().create<scf::YieldOp>(
+        loc, ValueRange{null.getResult()});
+    deallocBuilder = ifOp.getElseBodyBuilder();
+    deallocBuilder.setInsertionPoint(null);
+
+    returnValue = ifOp.getResult(0);
+  }
+
+  Value shouldDealloc = deallocBuilder.create<arith::CmpIOp>(
+      loc, arith::CmpIPredicate::ne, allocBuffer, zero);
+  deallocBuilder.create<scf::IfOp>(
+      loc, shouldDealloc, [&](mlir::OpBuilder& thenB, mlir::Location loc) {
+        thenB.create<memref::DeallocOp>(loc, alloc);
+        thenB.create<scf::YieldOp>(loc);
+      });
+
+  if (returnValue) {
+    rewriter.replaceOp(op, returnValue);
+  } else {
     op.erase();
   }
 
-  return failure();
+  return success();
 }
 
 struct DeallocationToScfPass

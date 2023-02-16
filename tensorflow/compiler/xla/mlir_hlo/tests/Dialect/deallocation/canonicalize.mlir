@@ -135,3 +135,12 @@ func.func @retain_is_dealloc_while_permute() {
 // CHECK: memref.dealloc %[[WHILE]]
 // CHECK: memref.dealloc %[[WHILE]]
 // CHECK: memref.dealloc %[[WHILE]]
+
+func.func @split_retain(%arg0: memref<*xi32>, %arg1: memref<*xf32>) {
+  deallocation.retain() of(%arg0, %arg1) : (memref<*xi32>, memref<*xf32>) -> ()
+  return
+}
+
+// CHECK-LABEL: @split_retain
+// CHECK-DAG: deallocation.retain() of(%{{.*}}) : (memref<*xi32>) -> ()
+// CHECK-DAG: deallocation.retain() of(%{{.*}}) : (memref<*xf32>) -> ()
