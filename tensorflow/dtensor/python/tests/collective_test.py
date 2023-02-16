@@ -258,6 +258,52 @@ class CollectiveTest(test_util.DTensorBaseTest):
     dtensor_result = [t.numpy() for t in device.unpack(dtensor_result)]
     self.assertAllEqual(expected_result, dtensor_result)
 
+  def testDifferentShapesBetweenCalls(self):
+    self.skipForTfrt(
+        'b/269333905, TFRT cpu fails due to step_id not propagated.'
+    )
+    self.skipForDeviceType(
+        ['TPU'],
+        'Known failure under TPU for legalization requires a static shape.',
+    )
+
+    # The error only happens across the batch, where the value of
+    # tf.unique are differnet.
+    def produce_data(inputs, label):
+      inputs = api.relayout(
+          inputs, Layout.batch_sharded(self.mesh, _MESH_DIM_X, 1)
+      )
+      label = api.relayout(
+          label, Layout.batch_sharded(self.mesh, _MESH_DIM_X, 1)
+      )
+      return inputs, label
+
+    @polymorphic_function.function
+    def train_fn(inputs, label):
+      inputs, indices = array_ops.unique(inputs)
+      return math_ops.unsorted_segment_sum(label, indices, len(inputs))
+
+    input1, label1 = produce_data([6, 0, 6, 0], [1, 2, 3, 4])
+    input2, label2 = produce_data([2, 1, 2, 0], [1, 2, 3, 4])
+
+    result1 = train_fn(input1, label1)
+    result2 = train_fn(input2, label2)
+    self.assertAllEqual(
+        result1.numpy(),
+        [
+            4,
+            6,
+        ],
+    )
+    self.assertAllEqual(
+        result2.numpy(),
+        [
+            4,
+            2,
+            4,
+        ],
+    )
+
 
 class CollectiveTestWithCustomMesh(test_util.DTensorBaseTest):
 
