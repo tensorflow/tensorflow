@@ -105,6 +105,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_enable_latency_hiding_scheduler(false);
 
   opts.set_xla_cpu_enable_mlir_tiling_and_fusion(false);
+  opts.set_xla_cpu_enable_experimental_deallocation(false);
 
   opts.set_xla_partitioning_algorithm(
       DebugOptions::PARTITIONING_ALGORITHM_NOOP);
@@ -867,6 +868,12 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       bool_setter_for(&DebugOptions::set_xla_cpu_enable_mlir_tiling_and_fusion),
       debug_options->xla_cpu_enable_mlir_tiling_and_fusion(),
       "Enable MLIR tiling and fusion."));
+  flag_list->push_back(tsl::Flag(
+      "xla_cpu_enable_experimental_deallocation",
+      bool_setter_for(
+          &DebugOptions::set_xla_cpu_enable_experimental_deallocation),
+      debug_options->xla_cpu_enable_experimental_deallocation(),
+      "Enable experimental deallocation."));
   flag_list->push_back(
       tsl::Flag("xla_gpu_enable_latency_hiding_scheduler",
                 bool_setter_for(

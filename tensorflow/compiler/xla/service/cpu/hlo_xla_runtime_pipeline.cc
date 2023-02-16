@@ -43,6 +43,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/mlir/backends/cpu/transforms/passes.h"
 #include "tensorflow/compiler/xla/mlir/framework/transforms/passes.h"
 #include "tensorflow/compiler/xla/mlir/runtime/transforms/compiler.h"
+#include "tensorflow/compiler/xla/mlir_hlo/deallocation/transforms/passes.h"
 #include "tensorflow/compiler/xla/mlir_hlo/gml_st/interfaces/bufferizable_op_interface_impl.h"
 #include "tensorflow/compiler/xla/mlir_hlo/gml_st/transforms/passes.h"
 #include "tensorflow/compiler/xla/mlir_hlo/mhlo/interfaces/bufferizable_op_interface_impl.h"
@@ -191,6 +192,12 @@ static Status CreateHloXlaPipeline(
     // Convert Sparse tensors.
     AddSparsificationPasses(pm);
   } else {
+    if (options.experimental_deallocation) {
+      // Experimental deallocation needs input IR without any buffer reuse to
+      // work optimally. This pass ensures that's the case.
+      pm.addNestedPass<FuncOp>(
+          mlir::deallocation::createSplitAllocTensorsPass());
+    }
     pm.addPass(mlir::hlo::createOneShotBufferizePass());
   }
   pm.addNestedPass<mlir::func::FuncOp>(createRewriteReallocToAllocPass());
@@ -216,12 +223,23 @@ static Status CreateHloXlaPipeline(
     pm.addPass(mlir::xla_framework::CreateOutlineWithXLAFrameworkPass());
   }
   pm.addPass(mlir::createInlinerPass());
-  pm.addNestedPass<FuncOp>(
-      mlir::bufferization::createPromoteBuffersToStackPass(nullptr));
-  pm.addNestedPass<mlir::func::FuncOp>(
-      mlir::bufferization::createBufferDeallocationPass());
 
-  pm.addPass(mlir::createBufferizationToMemRefPass());
+  if (options.experimental_deallocation) {
+    CHECK(!options.sparse_bufferization)
+        << "Sparse bufferization and experimental deallocation are mutually "
+           "exclusive.";
+    pm.addNestedPass<FuncOp>(mlir::deallocation::createDeallocatePass());
+    pm.addNestedPass<FuncOp>(mlir::createCanonicalizerPass());
+    pm.addNestedPass<FuncOp>(mlir::deallocation::createBufferReusePass());
+    pm.addNestedPass<FuncOp>(mlir::createCanonicalizerPass());
+    pm.addNestedPass<FuncOp>(mlir::deallocation::createDeallocationToScfPass());
+  } else {
+    pm.addNestedPass<FuncOp>(
+        mlir::bufferization::createPromoteBuffersToStackPass(nullptr));
+    pm.addNestedPass<mlir::func::FuncOp>(
+        mlir::bufferization::createBufferDeallocationPass());
+    pm.addPass(mlir::createBufferizationToMemRefPass());
+  }
 
   pm.addNestedPass<mlir::func::FuncOp>(
       xla::cpu::createRemoveCopiesToOutParamsPass());
@@ -248,6 +266,8 @@ static Status CreateHloXlaPipeline(
   pm.addNestedPass<FuncOp>(xla::cpu::createLegalizeI1VectorTransferOpsPass());
   pm.addNestedPass<FuncOp>(
       xla::cpu::createConvertXlaCpuMemRefElementCastToLLVMPass());
+  pm.addNestedPass<FuncOp>(
+      mlir::deallocation::createConvertDeallocationOpsToLLVM());
   return OkStatus();
 }
 
