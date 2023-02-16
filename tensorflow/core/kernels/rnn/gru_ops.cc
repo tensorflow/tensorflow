@@ -52,9 +52,9 @@ class GRUCellBlockOp : public OpKernel {
     // Sanity checks for input shapes.
 
     // Shape of 'x' must be [batch_size, input_size]
-    OP_REQUIRES(ctx, TensorShapeUtils::IsMatrix(x_tensor->shape()),
-                errors::InvalidArgument("Rank of x must be 2", x_tensor->dims(),
-                                        " vs. 2"));
+    OP_REQUIRES(
+        ctx, TensorShapeUtils::IsMatrix(x_tensor->shape()),
+        errors::InvalidArgument("Rank of x must be 2, got ", x_tensor->dims()));
     const int64_t batch_size = x_tensor->dim_size(0);
     const int64_t input_size = x_tensor->dim_size(1);
 
