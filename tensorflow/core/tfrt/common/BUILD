@@ -146,15 +146,11 @@ tf_cc_test(
 tf_cc_test(
     name = "pjrt_util_test",
     srcs = ["pjrt_util_test.cc"],
-    tags = tf_cuda_tests_tags(),
     deps = [
         ":global_state",
         ":pjrt_state",
         ":pjrt_util",
-        "//tensorflow/compiler/tf2xla:xla_op_registry",
-        "//tensorflow/compiler/xla/pjrt:pjrt_client",
         "//tensorflow/compiler/xla/pjrt:tfrt_cpu_pjrt_client",
-        "//tensorflow/compiler/xla/service:gpu_plugin",
         "//tensorflow/core:framework",
         "//tensorflow/tsl/lib/core:status_test_util",
         "//tensorflow/tsl/platform:status_matchers",
