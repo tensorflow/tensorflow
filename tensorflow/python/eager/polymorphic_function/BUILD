@@ -40,8 +40,6 @@ py_library(
         "//tensorflow/python/eager:forwardprop_util",
         "//tensorflow/python/eager:graph_only_ops",
         "//tensorflow/python/eager:tape",
-        "//tensorflow/python/ops/numpy_ops:numpy",
-        "//third_party/py/numpy",
     ],
 )
 

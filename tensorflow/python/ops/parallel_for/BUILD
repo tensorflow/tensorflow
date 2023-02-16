@@ -94,6 +94,7 @@ py_library(
         "//tensorflow/python:util",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:function",
+        "//tensorflow/python/ops/numpy_ops:numpy",
         "//tensorflow/python/ops/signal",
     ],
 )
