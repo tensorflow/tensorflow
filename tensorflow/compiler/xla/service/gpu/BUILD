@@ -236,17 +236,18 @@ cc_library(
 
 xla_cc_test(
     name = "gpu_device_info_test",
-    srcs = ["gpu_device_info_test.cc"],
+    srcs = if_cuda_is_configured(["gpu_device_info_test.cc"]),
     tags = tf_cuda_tests_tags(),
-    deps = [
+    deps = if_cuda_is_configured([
         ":gpu_device_info_for_tests",
+        "@com_google_absl//absl/strings",
+        "@local_config_cuda//cuda:cuda_headers",
         "//tensorflow/compiler/xla/stream_executor",
         "//tensorflow/compiler/xla/stream_executor:device_description",
-        "//tensorflow/compiler/xla/stream_executor/cuda:cuda_driver",
-        "//tensorflow/tsl/platform:test_main",
-        "@com_google_googletest//:gtest_main",
-        "@local_config_cuda//cuda:cuda_headers",
-    ],
+        "//tensorflow/compiler/xla/stream_executor/cuda:cuda_gpu_executor_header",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+        "//tensorflow/tsl/platform:test",
+    ]),
 )
 
 cc_library(
