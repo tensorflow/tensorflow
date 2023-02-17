@@ -24,7 +24,6 @@ from tensorflow.dtensor.python import api
 from tensorflow.dtensor.python import d_variable
 from tensorflow.dtensor.python import dtensor_device
 from tensorflow.dtensor.python import layout as layout_lib
-from tensorflow.dtensor.python import numpy_util
 from tensorflow.dtensor.python.tests import test_util
 from tensorflow.python.eager.polymorphic_function import polymorphic_function
 from tensorflow.python.framework import constant_op
@@ -73,7 +72,7 @@ class CollectiveTest(test_util.DTensorBaseTest):
         np.array([[1, 2, 3, 4], [5.0, 6.0, 7.0, 8.0]]), dtype=dtypes.bfloat16)
     expected_result = math_ops.reduce_sum(a)
 
-    sharded_a = numpy_util.pack_numpy(a, self.first_dimension_sharded_layout_2d)
+    sharded_a = api.relayout(a, self.first_dimension_sharded_layout_2d)
     dtensor_result = math_ops.reduce_sum(sharded_a)
 
     self.assertDTensorEqual(expected_result, self.scalar_layout, dtensor_result)
@@ -84,7 +83,7 @@ class CollectiveTest(test_util.DTensorBaseTest):
 
     expected_result = math_ops.reduce_sum(a)
 
-    sharded_a = numpy_util.pack_numpy(a, self.first_dimension_sharded_layout_2d)
+    sharded_a = api.relayout(a, self.first_dimension_sharded_layout_2d)
     dtensor_result = math_ops.reduce_sum(sharded_a)
 
     self.assertDTensorEqual(expected_result, self.scalar_layout, dtensor_result)
@@ -105,8 +104,8 @@ class CollectiveTest(test_util.DTensorBaseTest):
 
     expected_result = math_ops.reduce_sum(a) * math_ops.reduce_sum(b)
 
-    sharded_a = numpy_util.pack_numpy(a, self.first_dimension_sharded_layout_2d)
-    sharded_b = numpy_util.pack_numpy(b, self.first_dimension_sharded_layout_2d)
+    sharded_a = api.relayout(a, self.first_dimension_sharded_layout_2d)
+    sharded_b = api.relayout(b, self.first_dimension_sharded_layout_2d)
     sharded_v = d_variable.DVariable(sharded_b)
 
     @polymorphic_function.function
@@ -137,7 +136,7 @@ class CollectiveTest(test_util.DTensorBaseTest):
         dtype=dtypes.bool)
     expected_result = reduction(a)
 
-    sharded_a = numpy_util.pack_numpy(a, self.first_dimension_sharded_layout_2d)
+    sharded_a = api.relayout(a, self.first_dimension_sharded_layout_2d)
     dtensor_result = reduction(sharded_a)
 
     self.assertDTensorEqual(expected_result, self.scalar_layout, dtensor_result)
@@ -153,7 +152,7 @@ class CollectiveTest(test_util.DTensorBaseTest):
     a = constant_op.constant(
         np.array([[True, False, False, True], [False, False, False, True]]),
         dtype=dtypes.bool)
-    sharded_a = numpy_util.pack_numpy(a, self.first_dimension_sharded_layout_2d)
+    sharded_a = api.relayout(a, self.first_dimension_sharded_layout_2d)
     unsharded_a = api.relayout(sharded_a, self.fully_replicated_layout_2d)
 
     self.assertDTensorEqual(a, self.fully_replicated_layout_2d, unsharded_a)
@@ -169,7 +168,7 @@ class CollectiveTest(test_util.DTensorBaseTest):
                            unless_device_count_equals_to=2)
 
     a = constant_op.constant(np.array([[1, 2], [3, 4]]), dtype=dtypes.int32)
-    sharded_a = numpy_util.pack_numpy(a, self.first_dimension_sharded_layout_2d)
+    sharded_a = api.relayout(a, self.first_dimension_sharded_layout_2d)
     unsharded_a = api.relayout(sharded_a, self.fully_replicated_layout_2d)
 
     self.assertDTensorEqual(a, self.fully_replicated_layout_2d, unsharded_a)
@@ -184,7 +183,7 @@ class CollectiveTest(test_util.DTensorBaseTest):
         dtype=dtypes.float32)
     expected_result = a
 
-    sharded_a = numpy_util.pack_numpy(a, self.first_dimension_sharded_layout_2d)
+    sharded_a = api.relayout(a, self.first_dimension_sharded_layout_2d)
     dtensor_result = api.relayout(sharded_a, self.fully_replicated_layout_2d)
 
     self.assertDTensorEqual(expected_result, self.fully_replicated_layout_2d,
@@ -340,8 +339,8 @@ class CollectiveTestWithCustomMesh(test_util.DTensorBaseTest):
     b = gen_array_ops.reverse_v2(a, axis=[1])
     expected_result = func(a, b)
 
-    a = numpy_util.pack_numpy(a, first_dimension_sharded_layout_2d)
-    b = numpy_util.pack_numpy(b, first_dimension_sharded_layout_2d)
+    a = api.relayout(a, first_dimension_sharded_layout_2d)
+    b = api.relayout(b, first_dimension_sharded_layout_2d)
     dtensor_result = func(a, b)
 
     self.assertDTensorEqual(expected_result, fully_replicated_layout_1d,
@@ -384,8 +383,8 @@ class CollectiveTestWithCustomMesh(test_util.DTensorBaseTest):
     b = gen_array_ops.reverse_v2(a, axis=[1])
     expected_result = func(a, b)
 
-    a = numpy_util.pack_numpy(a, first_dimension_sharded_layout_2d)
-    b = numpy_util.pack_numpy(b, first_dimension_sharded_layout_2d)
+    a = api.relayout(a, first_dimension_sharded_layout_2d)
+    b = api.relayout(b, first_dimension_sharded_layout_2d)
     dtensor_result = func(a, b)
 
     self.assertDTensorEqual(expected_result, fully_replicated_layout_1d,
@@ -422,8 +421,8 @@ class CollectiveTestWithCustomMesh(test_util.DTensorBaseTest):
     b = gen_array_ops.reverse_v2(a, axis=[1])
     expected_result = func(a, b)
 
-    a = numpy_util.pack_numpy(a, fully_sharded_layout_2d)
-    b = numpy_util.pack_numpy(b, fully_sharded_layout_2d)
+    a = api.relayout(a, fully_sharded_layout_2d)
+    b = api.relayout(b, fully_sharded_layout_2d)
     dtensor_result = func(a, b)
 
     self.assertDTensorEqual(expected_result, Layout([_MESH_DIM_Y], mesh),
@@ -474,7 +473,7 @@ class CollectiveTestWithCustomMesh(test_util.DTensorBaseTest):
         np.arange(48.).reshape((8, 6)), dtype=dtypes.bfloat16)
     expected_result = np.sum(inp, axis=0)
 
-    inp_dtensor = numpy_util.pack_numpy(inp, first_dim_sharded_layout_1d)
+    inp_dtensor = api.relayout(inp, first_dim_sharded_layout_1d)
     dtensor_result = func(inp_dtensor)
 
     self.assertDTensorEqual(

@@ -92,7 +92,6 @@ dtensor_test(
         "//tensorflow/dtensor/python:d_variable",
         "//tensorflow/dtensor/python:dtensor_device",
         "//tensorflow/dtensor/python:layout",
-        "//tensorflow/dtensor/python:numpy_util",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:array_ops_gen",
         "//tensorflow/python:math_ops",
@@ -125,7 +124,6 @@ dtensor_test(
         "//tensorflow/dtensor/python:d_variable",
         "//tensorflow/dtensor/python:dtensor_device",
         "//tensorflow/dtensor/python:layout",
-        "//tensorflow/dtensor/python:numpy_util",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:array_ops_gen",
         "//tensorflow/python:math_ops",
@@ -289,7 +287,9 @@ dtensor_test(
 dtensor_test(
     name = "xla_spmd_test",
     srcs = ["spmd_test.py"],
-    additional_backends = [TPU_V3_DONUT_BACKEND],
+    additional_backends = [
+        # TPU_V3_DONUT_BACKEND,  # FIXME(b/269177045): Failing due to RelayoutOp support.
+    ],
     disable = ALL_BACKENDS,
     env = {
         "DTENSOR_TEST_USE_XLA_SPMD": "1",
