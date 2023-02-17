@@ -13,10 +13,10 @@ ENV GPU_DEVICE_TARGETS=${GPU_DEVICE_TARGETS}
 
 # Install ROCM
 ARG ROCM_VERSION
-ARG INTERNAL_INSTALL
+ARG CUSTOM_INSTALL
 ARG ROCM_PATH=/opt/rocm-${ROCM_VERSION}
 ENV ROCM_PATH=${ROCM_PATH}
-COPY ${INTERNAL_INSTALL} /${INTERNAL_INSTALL}
+COPY ${CUSTOM_INSTALL} /${CUSTOM_INSTALL}
 COPY setup.packages.rocm.cs7.sh /setup.packages.rocm.cs7.sh
 COPY setup.rocm.cs7.sh /setup.rocm.cs7.sh
 COPY devel.packages.rocm.cs7.txt /devel.packages.rocm.cs7.txt
