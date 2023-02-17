@@ -83,11 +83,15 @@ static void SetupPassDebugging(MLIRContext* context, mlir::PassManager& pm) {
   // Print IR after all passes.
   if (DebugJitCompiler()) {
     context->disableMultithreading();
+    // Do not print large constants.
+    mlir::OpPrintingFlags printing_flags;
+    printing_flags.elideLargeElementsAttrs(32);
     pm.enableIRPrinting([](Pass*, Operation*) { return false; },
                         [](Pass*, Operation*) { return true; },
                         /*printModuleScope=*/true,
                         /*printAfterOnlyOnChange=*/false,
-                        /*printAfterOnlyOnFailure=*/false, llvm::errs());
+                        /*printAfterOnlyOnFailure=*/false, llvm::errs(),
+                        printing_flags);
   }
 }
 
