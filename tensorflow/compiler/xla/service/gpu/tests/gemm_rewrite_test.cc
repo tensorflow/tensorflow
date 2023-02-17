@@ -4473,15 +4473,11 @@ TEST_F(CublasLtF8GemmRewriteTest, ScaledABUnscaledDF8Parameterized) {
         << "cuBLASLt FP8 kernels require Hopper or newer architecture.";
   }
 
-  std::vector<
-      std::tuple<absl::string_view, absl::string_view, absl::string_view,
-                 absl::string_view, absl::string_view, absl::string_view,
-                 absl::string_view> >
-      combinations;
-  combinations.reserve(32);
-  for (bool d_is_col : {true, false}) {
-    for (bool a_is_col : {true, false}) {
-      for (bool b_is_col : {true, false}) {
+  std::array<std::array<absl::string_view, 7>, 32> combinations;
+  int i = 0;
+  for (bool d_is_col : {false, true}) {
+    for (bool a_is_col : {false, true}) {
+      for (bool b_is_col : {true, true}) {
         for (int lhs_contracting_dim : {0, 1}) {
           for (int rhs_contracting_dim : {0, 1}) {
             const absl::string_view lcd =
@@ -4496,9 +4492,9 @@ TEST_F(CublasLtF8GemmRewriteTest, ScaledABUnscaledDF8Parameterized) {
             const absl::string_view b_physical = b_is_col ? "{0,1}" : "{1,0}";
             const absl::string_view output_physical =
                 d_is_col ? "{0,1}" : "{1,0}";
-            combinations.emplace_back(std::tuple{lcd, rcd, a_logic, b_logic,
-                                                 a_physical, b_physical,
-                                                 output_physical});
+            combinations[i++] =
+                std::array{lcd, rcd, a_logic, b_logic, a_physical, b_physical,
+                           output_physical};
           }
         }
       }
