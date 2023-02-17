@@ -1807,7 +1807,6 @@ cc_library(
         "gpu_compiler.h",
     ],
     deps = [
-        ":gemm_algorithm_picker",
         ":alias_passthrough_params",
         ":all_reduce_blueconnect",
         ":conv_layout_normalization",
@@ -1964,6 +1963,7 @@ cc_library(
         "//tensorflow/tsl/platform:statusor",
         "//tensorflow/tsl/profiler/lib:traceme",
     ] + if_cuda_is_configured([
+        ":gemm_algorithm_picker",
         ":triton_autotuner",
     ]),
 )
