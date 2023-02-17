@@ -125,6 +125,7 @@ py_library(
         ":_pywrap_quantize_training",
         ":_pywrap_utils",
         ":array_ops",
+        ":array_ops_stack",
         ":audio_ops_gen",
         ":bincount_ops",
         ":bitwise_ops",
