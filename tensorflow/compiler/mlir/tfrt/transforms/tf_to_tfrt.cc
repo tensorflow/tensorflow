@@ -863,6 +863,12 @@ class TFRTCallOpConversion : public mlir::OpConversionPattern<CallOp> {
   LogicalResult matchAndRewrite(
       CallOp op, typename CallOp::Adaptor adaptor,
       ConversionPatternRewriter &rewriter) const override {
+    if (auto xla_must_compile =
+            op->template getAttrOfType<mlir::BoolAttr>("_XlaMustCompile");
+        xla_must_compile && xla_must_compile.getValue()) {
+      return mlir::failure();
+    }
+
     auto callee =
         op.getCallableForCallee().template dyn_cast<mlir::SymbolRefAttr>();
     if (!callee) return failure();
@@ -2167,6 +2173,8 @@ static void CreateTFExecutorToTFPipelineHelper(
       mlir::tf_executor::CreateTFExecutorIslandCoarseningPass());
 
   AddTfDeviceAssignmentPasses(pm, options);
+
+  pm.addPass(tfrt_compiler::CreateTfrtXlaRewritePass());
 
   // Here we perform TFRT specific optimization before standard TF optimization,
   // as TFRT-specific optimization may create more opportunities.

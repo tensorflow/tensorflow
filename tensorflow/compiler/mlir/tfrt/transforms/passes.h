@@ -74,6 +74,8 @@ CreateFuseTpuCompileAndExecutePass();
 std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
 CreateOptimizeTfForTfrtPass();
 
+std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>> CreateTfrtXlaRewritePass();
+
 }  // namespace tfrt_compiler
 
 class CoreRTConverter;

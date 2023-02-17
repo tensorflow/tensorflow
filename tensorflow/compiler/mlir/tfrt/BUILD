@@ -396,6 +396,7 @@ cc_library(
         "transforms/sink_in_invariant_ops.cc",
         "transforms/tf_to_tfrt.cc",
         "transforms/tpu_passes.h",
+        "transforms/xla_rewrite_pass.cc",
     ],
     hdrs = [
         "transforms/passes.h",
