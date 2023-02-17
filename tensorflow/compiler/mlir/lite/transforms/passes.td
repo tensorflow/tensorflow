@@ -191,6 +191,10 @@ def OptimizePass : Pass<"tfl-optimize", "mlir::func::FuncOp"> {
       Option<"enable_canonicalization_", "enable-canonicalization",
              "bool", "false",
              "Enable canonicalization during optimization pass.">,
+      Option<"disable_fuse_mul_and_fc_", "disable-fuse-mul-and-fc",
+             "bool", "false",
+             "Disable folding mul and fully connected ops during optimization pass.">,
+
   ];
 }
 
