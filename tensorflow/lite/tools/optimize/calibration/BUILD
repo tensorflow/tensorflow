@@ -18,7 +18,7 @@ cc_library(
     deps = [
         ":calibration_logger",
         "//tensorflow/lite:framework",
-        "//tensorflow/lite/core:headers",
+        "//tensorflow/lite/core:framework_stable",
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/kernels:kernel_util",
@@ -39,7 +39,7 @@ cc_library(
     deps = [
         ":calibration_logger",
         "//tensorflow/lite:framework",
-        "//tensorflow/lite/core:headers",
+        "//tensorflow/lite/core:framework_stable",
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/kernels:kernel_util",

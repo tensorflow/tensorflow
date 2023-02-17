@@ -202,7 +202,7 @@ cc_library(
         ":split",
         ":test_runner",
         "//tensorflow/lite:framework",
-        "//tensorflow/lite/core:headers",
+        "//tensorflow/lite/core:framework_stable",
     ],
 )
 
