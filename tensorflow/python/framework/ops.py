@@ -20,6 +20,7 @@ import re
 import sys
 import threading
 import types
+from typing import Optional
 from absl import app
 
 import numpy as np
@@ -1047,6 +1048,17 @@ class Tensor(internal.NativeObject, core_tf_types.Symbol):
       signature_context.add_handledata(id(spec), handle_data)
     return spec
 
+  def __tf_tensor__(
+      self, dtype: Optional[dtypes.DType] = None, name: Optional[str] = None
+      ) -> "Tensor":
+    if dtype is not None and not dtype.is_compatible_with(self.dtype):
+      raise ValueError(
+          _add_error_prefix(
+              f"Tensor conversion requested dtype {dtype.name} "
+              f"for Tensor with dtype {self.dtype.name}: {self!r}",
+              name=name))
+    return self
+
 
 # TODO(agarwal): consider getting rid of this.
 # TODO(mdan): This object should not subclass ops.Tensor.
@@ -1345,6 +1357,20 @@ class _EagerTensorBase(Tensor, core_tf_types.Value):
         "eval is not supported when eager execution is enabled, "
         "is .numpy() what you're looking for?")
 
+  def __tf_tensor__(
+      self, dtype: Optional[dtypes.DType] = None, name: Optional[str] = None
+      ) -> Tensor:
+    if not context.executing_eagerly():
+      graph = get_default_graph()
+      if not graph.building_function:
+        raise RuntimeError(
+            _add_error_prefix(
+                "Attempting to capture an EagerTensor without "
+                "building a function.",
+                name=name))
+      return graph.capture(self, name=name)
+    return super().__tf_tensor__(dtype, name)
+
 
 # This call creates an EagerTensor class, as a subclass of _EagerTensorBase, and
 # registers it with the current module.
@@ -1576,22 +1602,10 @@ def convert_to_tensor(value,
                       as_ref=False,
                       preferred_dtype=None,
                       dtype_hint=None,
-                      ctx=None,
+                      # TODO(b/268347915): Remove argument.
+                      ctx=None,  # pylint: disable=unused-argument
                       accepted_result_types=(Tensor,)):
   """Implementation of the public convert_to_tensor."""
-  if isinstance(value, EagerTensor):
-    if ctx is None:
-      ctx = context.context()
-    if not ctx.executing_eagerly():
-      graph = get_default_graph()
-      if not graph.building_function:
-        raise RuntimeError(
-            _add_error_prefix(
-                "Attempting to capture an EagerTensor without "
-                "building a function.",
-                name=name))
-      return graph.capture(value, name=name)
-
   # TODO(b/142518781): Fix all call-sites and remove redundant arg
   preferred_dtype = preferred_dtype or dtype_hint
   return tensor_conversion_registry.convert(
@@ -1606,7 +1620,8 @@ def internal_convert_n_to_tensor(values,
                                  name=None,
                                  as_ref=False,
                                  preferred_dtype=None,
-                                 ctx=None):
+                                 # TODO(b/268347915): Remove argument.
+                                 ctx=None):  # pylint: disable=unused-argument
   """Converts `values` to a list of `Tensor` objects.
 
   Args:
@@ -1620,7 +1635,7 @@ def internal_convert_n_to_tensor(values,
       converting to a tensor, so preferred_dtype can be used as a soft
       preference.  If the conversion to `preferred_dtype` is not possible, this
       argument has no effect.
-    ctx: The value of context.context().
+    ctx: Unused. Present for API backwards compatibility.
 
   Returns:
     A list of `Tensor` and/or `IndexedSlices` objects.
@@ -1634,8 +1649,6 @@ def internal_convert_n_to_tensor(values,
   if not isinstance(values, collections_abc.Sequence):
     raise TypeError("values must be a sequence.")
   ret = []
-  if ctx is None:
-    ctx = context.context()
   for i, value in enumerate(values):
     n = None if name is None else "%s_%d" % (name, i)
     ret.append(
@@ -1644,8 +1657,7 @@ def internal_convert_n_to_tensor(values,
             dtype=dtype,
             name=n,
             as_ref=as_ref,
-            preferred_dtype=preferred_dtype,
-            ctx=ctx))
+            preferred_dtype=preferred_dtype))
   return ret
 
 

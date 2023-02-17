@@ -838,6 +838,7 @@ py_library(
         "//tensorflow/python:variables",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:tape",
+        "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/saved_model:nested_structure_coder",
         "//tensorflow/python/saved_model:save_context",
         "//tensorflow/python/trackable:base",

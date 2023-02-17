@@ -184,23 +184,11 @@ def convert(value,
 
   if dtype is not None:
     dtype = dtypes.as_dtype(dtype)
-  if isinstance(value, core.Symbol):
-    if dtype is not None and not dtype.is_compatible_with(value.dtype):
-      raise ValueError(
-          _add_error_prefix(
-              f"Tensor conversion requested dtype {dtype.name} "
-              f"for Tensor with dtype {value.dtype.name}: {value!r}",
-              name=name))
-    return value
-
   if preferred_dtype is not None:
     preferred_dtype = dtypes.as_dtype(preferred_dtype)
 
-  # See below for the reason why it's `type(value)` and not just `value`.
-  # https://docs.python.org/3.8/reference/datamodel.html#special-lookup
-  overload = getattr(type(value), "__tf_tensor__", None)
-  if overload is not None:
-    return overload(value, dtype, name)  #  pylint: disable=not-callable
+  if isinstance(value, core.TensorProtocol):
+    return value.__tf_tensor__(dtype, name)
 
   for base_type, conversion_func in get(type(value)):
     # If dtype is None but preferred_dtype is not None, we try to
