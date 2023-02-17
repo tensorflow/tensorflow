@@ -63,6 +63,7 @@ class DeviceContextTest : public ::testing::Test {
   tensorflow::Allocator* device_allocator_;
 };
 
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 TEST_F(DeviceContextTest, TestXlaGpuRoundTripTransferWithDeviceApi) {
   SetDevice(DEVICE_XLA_GPU);
   tensorflow::Tensor origin_cpu_tensor(host_allocator_, tensorflow::DT_FLOAT,
@@ -82,6 +83,7 @@ TEST_F(DeviceContextTest, TestXlaGpuRoundTripTransferWithDeviceApi) {
 
   tensorflow::test::ExpectClose(origin_cpu_tensor, dest_cpu_tensor);
 }
+#endif
 
 }  // namespace
 }  // namespace tensorflow
