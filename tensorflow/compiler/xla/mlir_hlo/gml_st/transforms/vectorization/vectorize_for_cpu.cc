@@ -27,6 +27,7 @@ limitations under the License.
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
 #include "mlir/Dialect/Linalg/Transforms/Hoisting.h"
 #include "mlir/Dialect/Linalg/Transforms/Transforms.h"
+#include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/Dialect/Vector/IR/VectorOps.h"
 #include "mlir/IR/BuiltinAttributes.h"
@@ -56,6 +57,88 @@ using mlir::tensor::ExpandShapeOp;
 using mlir::thlo::ReverseOp;
 using mlir::vector::TransferReadOp;
 using mlir::vector::TransferWriteOp;
+
+struct VectorizeIfOpPattern : public OpRewritePattern<scf::IfOp> {
+  using OpRewritePattern<scf::IfOp>::OpRewritePattern;
+
+  VectorizeIfOpPattern(MLIRContext *ctx,
+                       llvm::function_ref<bool(scf::IfOp)> matchFn,
+                       PatternBenefit benefit = 1)
+      : OpRewritePattern<scf::IfOp>(ctx, benefit), filterFn(matchFn) {}
+
+  LogicalResult matchAndRewrite(scf::IfOp op,
+                                PatternRewriter &rewriter) const override {
+    if (!filterFn(op))
+      return rewriter.notifyMatchFailure(op, "did not match filter");
+
+    int64_t numResults = op.getNumResults();
+    if (numResults == 0) {
+      return rewriter.notifyMatchFailure(op,
+                                         "cannot vectorize if op w/o results");
+    }
+
+    // Derive vectorized types.
+    SmallVector<Type> vectorizedTypes;
+    vectorizedTypes.reserve(numResults);
+    for (Type ty : op.getResultTypes()) {
+      auto rankedTy = ty.dyn_cast<RankedTensorType>();
+      if (rankedTy && rankedTy.hasStaticShape()) {
+        vectorizedTypes.push_back(
+            VectorType::get(rankedTy.getShape(), rankedTy.getElementType()));
+      } else {
+        vectorizedTypes.push_back(ty);
+      }
+    }
+
+    // Create vectorized if op and steal bodies.
+    Location loc = op.getLoc();
+    auto vectorizedIfOp =
+        rewriter.create<scf::IfOp>(loc, vectorizedTypes, op.getCondition());
+    vectorizedIfOp.getThenRegion().takeBody(op.getThenRegion());
+    vectorizedIfOp.getElseRegion().takeBody(op.getElseRegion());
+
+    // Insert `transfer_read/write` ops for type compatibility.
+    auto zero = rewriter.create<arith::ConstantIndexOp>(loc, 0);
+    SmallVector<Value> replacements(vectorizedIfOp.getResults());
+    for (int64_t i = 0; i < numResults; ++i) {
+      // Skip non-vectorizable values.
+      auto vectorTy = vectorizedTypes[i].dyn_cast<VectorType>();
+      if (!vectorTy) continue;
+
+      // Yield vectorized value in then-case.
+      rewriter.setInsertionPoint(vectorizedIfOp.thenYield());
+      SmallVector<Value> indices(vectorTy.getRank(), zero);
+      Value unvectorizedThen = vectorizedIfOp.thenYield().getOperand(i);
+      Value vectorizedThen = rewriter.create<vector::TransferReadOp>(
+          loc, vectorTy, unvectorizedThen, indices);
+      vectorizedIfOp.thenYield().setOperand(i, vectorizedThen);
+
+      // Yield vectorized value in else-case.
+      rewriter.setInsertionPoint(vectorizedIfOp.elseYield());
+      Value unvectorizedElse = vectorizedIfOp.elseYield().getOperand(i);
+      Value vectorizedElse = rewriter.create<vector::TransferReadOp>(
+          loc, vectorTy, unvectorizedElse, indices);
+      vectorizedIfOp.elseYield().setOperand(i, vectorizedElse);
+
+      // Insert `transfer_write` op after the vectorized if op for type
+      // compatibility.
+      rewriter.setInsertionPointAfter(vectorizedIfOp);
+      Value init = rewriter.create<tensor::EmptyOp>(
+          loc, vectorTy.getShape(), vectorTy.getElementType(), ValueRange{});
+      replacements[i] = rewriter
+                            .create<vector::TransferWriteOp>(
+                                loc, vectorizedIfOp.getResult(i), init, indices)
+                            .getResult();
+    }
+
+    // Replace op.
+    rewriter.replaceOp(op, replacements);
+    return success();
+  }
+
+ private:
+  llvm::function_ref<bool(scf::IfOp)> filterFn;
+};
 
 // Rewrite `vector.transfer_read(linalg.expand_shape)` as
 // `vector.shape_cast(vector.transfer_read)`.
@@ -179,18 +262,25 @@ struct IdentityTransposeOpFoldingPattern
   }
 };
 
+bool isSmallStaticallyShapedTensorType(Type ty) {
+  auto rankedTy = ty.dyn_cast<mlir::RankedTensorType>();
+  return rankedTy && rankedTy.hasStaticShape() &&
+         rankedTy.getNumElements() < kNumElementsThreshold;
+}
+
 struct VectorizeForCPUPass
     : public impl::VectorizeForCPUPassBase<VectorizeForCPUPass> {
   void runOnOperation() override {
     auto func = getOperation();
     auto *ctx = func.getContext();
 
-    auto hasSmallStaticOutputs = [&](Operation *op) {
-      return llvm::all_of(op->getResultTypes(), [](Type type) {
-        auto outputType = type.dyn_cast<mlir::RankedTensorType>();
-        return outputType && outputType.hasStaticShape() &&
-               outputType.getNumElements() < kNumElementsThreshold;
-      });
+    auto hasAnySmallStaticallyShapedTensorResult = [&](Operation *op) {
+      return llvm::any_of(op->getResultTypes(),
+                          isSmallStaticallyShapedTensorType);
+    };
+    auto hasSmallStaticallyShapedTensorResults = [&](Operation *op) {
+      return llvm::all_of(op->getResultTypes(),
+                          isSmallStaticallyShapedTensorType);
     };
     auto isPerfectlyTiledLoop = [&](Operation *op) {
       return (isa<ParallelOp, scf::ForOp>(op)) &&
@@ -201,7 +291,8 @@ struct VectorizeForCPUPass
     };
     auto isInsidePerfectlyTiledLoopOrSmall = [&](Operation *op) {
       return !hasSingleElementOperandsAndResults(op) &&
-             (isInsidePerfectlyTiledLoop(op) || hasSmallStaticOutputs(op));
+             (isInsidePerfectlyTiledLoop(op) ||
+              hasSmallStaticallyShapedTensorResults(op));
     };
     {
       RewritePatternSet patterns = getDefaultVectorizationPatterns(ctx);
@@ -221,9 +312,13 @@ struct VectorizeForCPUPass
         VectorizationPattern<VecmatOp>
       >(ctx, isInsidePerfectlyTiledLoopOrSmall);
       // clang-format on
+      patterns.add<VectorizeIfOpPattern>(
+          ctx, hasAnySmallStaticallyShapedTensorResult);
       populateTransferReadOfOneDimExpandShapePattern(patterns);
       patterns.add<ThloReverseVectorizationPattern>(ctx);
-      (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
+      if (failed(applyPatternsAndFoldGreedily(func, std::move(patterns)))) {
+        return signalPassFailure();
+      }
     }
 
     {
@@ -231,13 +326,17 @@ struct VectorizeForCPUPass
       TransferReadOp::getCanonicalizationPatterns(patterns, ctx);
       linalg::populatePadOpVectorizationPatterns(patterns);
       patterns.add<IdentityTransposeOpFoldingPattern>(ctx);
-      (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
+      if (failed(applyPatternsAndFoldGreedily(func, std::move(patterns)))) {
+        return signalPassFailure();
+      }
     }
 
     // Hoisting transfer_read/transfer_write.
     {
       RewritePatternSet patterns(ctx);
-      (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
+      if (failed(applyPatternsAndFoldGreedily(func, std::move(patterns)))) {
+        return signalPassFailure();
+      }
 
       hoistRedundantVectorTransfersOnTensor(func);
     }
