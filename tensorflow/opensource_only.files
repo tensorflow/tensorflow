@@ -98,8 +98,11 @@ tensorflow/lite/delegates/gpu/cl/serialization_generated.h:
 tensorflow/lite/delegates/gpu/common/gpu_model_generated.h:
 tensorflow/lite/delegates/gpu/common/task/serialization_base_generated.h:
 tensorflow/lite/delegates/hexagon/hexagon_nn/BUILD:
-tensorflow/lite/experimental/acceleration/configuration/c/BUILD:
+tensorflow/lite/experimental/acceleration/configuration/c/delegate_plugin.h:
+tensorflow/lite/experimental/acceleration/configuration/c/gpu_plugin.h:
+tensorflow/lite/experimental/acceleration/configuration/c/nnapi_plugin.h:
 tensorflow/lite/experimental/acceleration/configuration/c/stable_delegate.h:
+tensorflow/lite/experimental/acceleration/configuration/c/xnnpack_plugin.h:
 tensorflow/lite/experimental/acceleration/configuration/configuration_generated.h:
 tensorflow/lite/experimental/acceleration/configuration/delegate_registry.h:
 tensorflow/lite/experimental/acceleration/mini_benchmark/libjpeg.h:
