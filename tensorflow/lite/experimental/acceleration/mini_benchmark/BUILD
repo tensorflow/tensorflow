@@ -1024,6 +1024,7 @@ cc_test(
         ":validator_runner_entrypoint",
         ":validator_runner_options",
         "//tensorflow/lite/experimental/acceleration/configuration:configuration_fbs",
+        "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest_main",
         "@flatbuffers",
     ],
