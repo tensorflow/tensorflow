@@ -37,6 +37,7 @@ package_group(
         # Allow visibility from the mlir language server.
         "//learning/brain/mlir/mlir_lsp_server/...",
         "//smartass/brain/ops/...",
+        "//third_party/mlir_edge/tpgen/...",
         "//tensorflow_serving/servables/tensorflow/google/...",
         "//third_party/tf_runtime_google/...",
     ]),
