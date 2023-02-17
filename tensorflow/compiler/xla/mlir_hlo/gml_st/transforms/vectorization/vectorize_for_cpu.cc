@@ -42,13 +42,16 @@ namespace {
 #include "gml_st/transforms/passes.h.inc"
 
 using mlir::linalg::BroadcastOp;
+using mlir::linalg::DotOp;
 using mlir::linalg::FillOp;
 using mlir::linalg::GenericOp;
 using mlir::linalg::MapOp;
 using mlir::linalg::MatmulOp;
+using mlir::linalg::MatvecOp;
 using mlir::linalg::Mmt4DOp;
 using mlir::linalg::ReduceOp;
 using mlir::linalg::TransposeOp;
+using mlir::linalg::VecmatOp;
 using mlir::tensor::ExpandShapeOp;
 using mlir::thlo::ReverseOp;
 using mlir::vector::TransferReadOp;
@@ -208,11 +211,14 @@ struct VectorizeForCPUPass
         VectorizationPattern<BroadcastOp>,
         VectorizationPattern<FillOp>,
         VectorizationPattern<GenericOp>,
+        VectorizationPattern<DotOp>,
         VectorizationPattern<MapOp>,
         VectorizationPattern<MatmulOp>,
+        VectorizationPattern<MatvecOp>,
         VectorizationPattern<Mmt4DOp>,
         VectorizationPattern<ReduceOp>,
-        VectorizationPattern<TransposeOp>
+        VectorizationPattern<TransposeOp>,
+        VectorizationPattern<VecmatOp>
       >(ctx, isInsidePerfectlyTiledLoopOrSmall);
       // clang-format on
       populateTransferReadOfOneDimExpandShapePattern(patterns);
