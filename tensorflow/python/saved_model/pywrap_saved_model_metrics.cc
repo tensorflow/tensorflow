@@ -128,6 +128,32 @@ void DefineMetricsModule(py::module main_module) {
               "gauge."));
 
   m.def(
+      "SetReadPath",
+      [](const char* saved_model_path) {
+        metrics::SavedModelReadPath().Set(saved_model_path);
+      },
+      py::kw_only(), py::arg("saved_model_path"),
+      py::doc("Set the '/tensorflow/core/saved_model/read/path' gauge "
+              "with `saved_model_path`."));
+
+  m.def(
+      "GetReadPath", []() { return metrics::SavedModelReadPath().value(); },
+      py::doc("Get value of '/tensorflow/core/saved_model/read/path' gauge."));
+
+  m.def(
+      "SetWritePath",
+      [](const char* saved_model_path) {
+        metrics::SavedModelWritePath().Set(saved_model_path);
+      },
+      py::kw_only(), py::arg("saved_model_path"),
+      py::doc("Set the '/tensorflow/core/saved_model/write/path' gauge "
+              "with `saved_model_path`."));
+
+  m.def(
+      "GetWritePath", []() { return metrics::SavedModelWritePath().value(); },
+      py::doc("Get value of '/tensorflow/core/saved_model/write/path' gauge."));
+
+  m.def(
       "AddCheckpointReadDuration",
       [](const char* api_label, double microseconds) {
         metrics::CheckpointReadDuration(api_label).Add(microseconds);

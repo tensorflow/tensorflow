@@ -127,6 +127,15 @@ class MetricsTest(test.TestCase):
     metrics.SetWriteFingerprint(saved_model_checksum="foo")
     self.assertEqual(metrics.GetWriteFingerprint(), "foo")
 
+  def test_SM_path(self):
+    self.assertEqual(metrics.GetReadPath(), "")
+    metrics.SetReadPath(saved_model_path="foo")
+    self.assertEqual(metrics.GetReadPath(), "foo")
+
+    self.assertEqual(metrics.GetWritePath(), "")
+    metrics.SetWritePath(saved_model_path="foo")
+    self.assertEqual(metrics.GetWritePath(), "foo")
+
 
 if __name__ == "__main__":
   test.main()
