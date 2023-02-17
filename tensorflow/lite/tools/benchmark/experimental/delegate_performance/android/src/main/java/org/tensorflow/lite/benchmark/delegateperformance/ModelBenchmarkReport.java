@@ -113,13 +113,18 @@ public abstract class ModelBenchmarkReport<ResultsT> implements ModelBenchmarkRe
     }
     processedDelegateMetrics.add(
         DelegateMetricsEntry.create(
-            testTarget.delegateIdentifier(), metrics, BenchmarkResultType.NOT_APPLICABLE));
+            testTarget.delegateIdentifier(),
+            metrics,
+            BenchmarkResultType.NOT_APPLICABLE,
+            testTarget.isTestTarget()));
 
     // Processes the reference delegate results. Compute the performance regressions by comparing
     // them with the results from the test target delegate.
     List<BenchmarkResultType> referenceResults = new ArrayList<>();
-    for (RawDelegateMetricsEntry entry :
-        rawDelegateMetrics.subList(0, rawDelegateMetrics.size() - 1)) {
+    // Traverses the list in reverse order, so that the exported order of items matches with the
+    // input delegate setting files order.
+    for (int reference = rawDelegateMetrics.size() - 2; reference >= 0; reference--) {
+      RawDelegateMetricsEntry entry = rawDelegateMetrics.get(reference);
       Map<String, MetricsEntry> referenceMetrics = new LinkedHashMap<>();
       List<BenchmarkResultType> metricResults = new ArrayList<>();
       for (String metricName : testTarget.metrics().keySet()) {
@@ -140,7 +145,10 @@ public abstract class ModelBenchmarkReport<ResultsT> implements ModelBenchmarkRe
       referenceResults.add(referenceDelegateResult);
       processedDelegateMetrics.add(
           DelegateMetricsEntry.create(
-              entry.delegateIdentifier(), referenceMetrics, referenceDelegateResult));
+              entry.delegateIdentifier(),
+              referenceMetrics,
+              referenceDelegateResult,
+              entry.isTestTarget()));
     }
     result = DelegatePerformanceBenchmark.aggregateResults(/* strict= */ true, referenceResults);
   }

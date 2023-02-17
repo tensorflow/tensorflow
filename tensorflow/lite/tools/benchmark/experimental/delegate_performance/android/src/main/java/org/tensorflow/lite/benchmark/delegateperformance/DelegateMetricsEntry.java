@@ -53,12 +53,17 @@ final class DelegateMetricsEntry {
   //    - PASS_WITH_WARNING: At least 1 regression threshold is not breached.
   //    - FAIL: All regression thresholds are breached.
   private final BenchmarkResultType result;
+  private final boolean isTestTarget;
 
   private DelegateMetricsEntry(
-      String delegateIdentifier, Map<String, MetricsEntry> metrics, BenchmarkResultType result) {
+      String delegateIdentifier,
+      Map<String, MetricsEntry> metrics,
+      BenchmarkResultType result,
+      boolean isTestTarget) {
     this.delegateIdentifier = delegateIdentifier;
     this.metrics = metrics;
     this.result = result;
+    this.isTestTarget = isTestTarget;
   }
 
   /** Returns an identifer to the delegate involved in the computation. */
@@ -76,6 +81,10 @@ final class DelegateMetricsEntry {
     return result;
   }
 
+  boolean isTestTarget() {
+    return isTestTarget;
+  }
+
   JSONObject toJsonObject() throws JSONException {
     JSONObject jsonObject = new JSONObject();
     jsonObject.put("delegate_identifier", delegateIdentifier);
@@ -85,11 +94,15 @@ final class DelegateMetricsEntry {
       metricsObject.put(entry.getKey(), entry.getValue().toJsonObject());
     }
     jsonObject.put("metrics", metricsObject);
+    jsonObject.put("is_test_target", isTestTarget);
     return jsonObject;
   }
 
   static DelegateMetricsEntry create(
-      String delegateIdentifier, Map<String, MetricsEntry> metrics, BenchmarkResultType result) {
-    return new DelegateMetricsEntry(delegateIdentifier, metrics, result);
+      String delegateIdentifier,
+      Map<String, MetricsEntry> metrics,
+      BenchmarkResultType result,
+      boolean isTestTarget) {
+    return new DelegateMetricsEntry(delegateIdentifier, metrics, result, isTestTarget);
   }
 }
