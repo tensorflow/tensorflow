@@ -937,6 +937,9 @@ LogicalResult DotGeneralOp::verify() {
 }
 
 namespace {
+
+constexpr char kFrontendAttributesAttr[] = "mhlo.frontend_attributes";
+
 // Handle the generic case of DotGeneral and convert to a regulat DotOp.
 struct DotGeneralToDot : public OpRewritePattern<DotGeneralOp> {
   using OpRewritePattern<DotGeneralOp>::OpRewritePattern;
@@ -977,9 +980,14 @@ struct DotGeneralToDot : public OpRewritePattern<DotGeneralOp> {
           dot, "lhs must contract the last dimension");
     }
 
-    rewriter.replaceOpWithNewOp<mhlo::DotOp>(
+    DictionaryAttr frontendAttributes =
+        dot->getAttrOfType<DictionaryAttr>(kFrontendAttributesAttr);
+    auto newDotOp = rewriter.replaceOpWithNewOp<mhlo::DotOp>(
         dot, dot.getType(), lhs, rhs,
         dot.getPrecisionConfig().value_or(nullptr));
+    if (frontendAttributes) {
+      newDotOp->setAttr(kFrontendAttributesAttr, frontendAttributes);
+    }
 
     return success();
   }
