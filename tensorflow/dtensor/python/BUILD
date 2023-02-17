@@ -144,6 +144,7 @@ pytype_strict_library(
         ":api",
         ":layout",
         "//tensorflow/python:array_ops",
+        "//tensorflow/python:array_ops_stack",
         "//tensorflow/python:sparse_ops",
         "//tensorflow/python:stateless_random_ops",
         "//tensorflow/python/eager/polymorphic_function",

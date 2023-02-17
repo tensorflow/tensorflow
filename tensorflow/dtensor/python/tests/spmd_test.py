@@ -35,6 +35,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import gen_bitwise_ops
 from tensorflow.python.ops import gen_io_ops
@@ -2720,9 +2721,9 @@ class DTensorLayoutPropSPMDTest(test_util.DTensorBaseTest):
 
   def testUnpackWithFullyReplicatedInputs(self):
     t = constant_op.constant([[1., 2., 3., 4.], [5., 6., 7., 8.]])
-    expected_result = array_ops.unstack(t, axis=0)
+    expected_result = array_ops_stack.unstack(t, axis=0)
     t = api.copy_to_mesh(t, self.replicated_layout_2d)
-    dtensor_result = array_ops.unstack(t, axis=0)
+    dtensor_result = array_ops_stack.unstack(t, axis=0)
     self.assertIsInstance(expected_result, list)
     self.assertIsInstance(dtensor_result, list)
     self.assertLen(expected_result, 2)
@@ -2734,9 +2735,9 @@ class DTensorLayoutPropSPMDTest(test_util.DTensorBaseTest):
 
   def testUnpackWithShardedInput(self):
     t = constant_op.constant([[1., 2., 3., 4.], [5., 6., 7., 8.]])
-    expected_result = array_ops.unstack(t, axis=1)
+    expected_result = array_ops_stack.unstack(t, axis=1)
     t = api.relayout(t, Layout([layout_lib.UNSHARDED, _MESH_DIM_X], self.mesh))
-    dtensor_result = array_ops.unstack(t, axis=1)
+    dtensor_result = array_ops_stack.unstack(t, axis=1)
     self.assertIsInstance(expected_result, list)
     self.assertIsInstance(dtensor_result, list)
     self.assertLen(expected_result, 4)
