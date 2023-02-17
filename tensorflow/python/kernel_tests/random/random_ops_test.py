@@ -475,6 +475,34 @@ class RandomShapeTest(test.TestCase):
     rnd3 = random_ops.random_uniform(array_ops.placeholder(dtypes.int32))
     self.assertIs(None, rnd3.get_shape().ndims)
 
+  @test_util.run_deprecated_v1
+  def testRandomUniformName(self):
+    seed = -4468
+    shape1 = [3, 1]
+    shape2 = [1, 3, 4]
+
+    rnd1 = random_ops.random_uniform(
+        shape=shape1,
+        minval=0,
+        maxval=1000,
+        dtype=dtypes.int64,
+        seed=seed,
+    )
+    self.assertEqual(rnd1.name, "random_uniform/RandomUniformInt:0")
+    rnd2 = random_ops.random_uniform(
+        shape=shape2,
+        minval=0,
+        maxval=1000,
+        dtype=dtypes.int64,
+        seed=seed,
+    )
+    self.assertEqual(rnd2.name, "random_uniform_1/RandomUniformInt:0")
+
+    rnd3 = random_ops.random_uniform(shape=shape1, seed=seed)
+    self.assertEqual(rnd3.name, "random_uniform_2/RandomUniform:0")
+    rnd4 = random_ops.random_uniform(shape=shape2, seed=seed)
+    self.assertEqual(rnd4.name, "random_uniform_3/RandomUniform:0")
+
 
 class DeterministicOpsTest(test.TestCase):
 

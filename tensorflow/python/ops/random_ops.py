@@ -293,7 +293,7 @@ def random_uniform(shape,
     if dtype.is_integer:
       raise ValueError("Must specify maxval for integer dtype %r" % dtype)
     maxval = 1
-  with ops.name_scope(name, "random_uniform", [shape, minval, maxval]) as name:
+  with ops.name_scope(name, "random_uniform", [shape, minval, maxval]):
     shape = shape_util.shape_tensor(shape)
     # In case of [0,1) floating results, minval and maxval is unused. We do an
     # `is` comparison here since this is cheaper than isinstance or  __eq__.
@@ -308,7 +308,7 @@ def random_uniform(shape,
           shape, minval, maxval, seed=seed1, seed2=seed2, name=name)
     else:
       result = gen_random_ops.random_uniform(
-          shape, dtype, seed=seed1, seed2=seed2)
+          shape, dtype, seed=seed1, seed2=seed2, name=name)
       if minval_is_zero:
         if not maxval_is_one:
           result = math_ops.multiply(result, maxval)
