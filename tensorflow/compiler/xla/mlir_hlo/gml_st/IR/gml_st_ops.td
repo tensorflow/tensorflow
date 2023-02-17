@@ -644,6 +644,11 @@ def GMLST_FusionOp : GMLST_Op<"fusion", [
 
   let hasCustomAssemblyFormat = 1;
   let hasVerifier = 0;
+
+  code extraClassDeclaration = [{
+    /// Return terminator of the region body.
+    YieldOp getTerminator();
+  }];
 }
 
 #endif // GML_ST_OPS

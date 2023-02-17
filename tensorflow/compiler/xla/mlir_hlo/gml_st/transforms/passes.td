@@ -255,7 +255,7 @@ def AddDebugInfoPass :
 def FusionPlanningForCpuPass :
     Pass<"gml-st-cpu-fusion-planning", "mlir::func::FuncOp"> {
   let summary = "Create fusion clusters.";
-  let constructor = "createFusionPlanningForCpu()";
+  let constructor = "createFusionPlanningForCpuPass()";
   let dependentDialects = [
     "::mlir::gml_st::GmlStDialect",
     "::mlir::arith::ArithDialect",
@@ -264,3 +264,11 @@ def FusionPlanningForCpuPass :
   ];
 }
 
+def InlineFusionClustersPass :
+    Pass<"gml-st-inline-fusion-clusters", "mlir::func::FuncOp"> {
+  let summary = "Replaces all gml_st.fusion op with ops from the region.";
+  let constructor = "createInlineFusionClustersPass()";
+  let dependentDialects = [
+    "::mlir::gml_st::GmlStDialect",
+  ];
+}

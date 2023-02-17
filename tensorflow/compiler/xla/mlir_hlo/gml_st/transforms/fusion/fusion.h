@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef MLIR_HLO_GML_ST_TRANSFORMS_FUSION_FUSION_H
 #define MLIR_HLO_GML_ST_TRANSFORMS_FUSION_FUSION_H
 
+#include "gml_st/IR/gml_st_ops.h"
 #include "gml_st/transforms/peeling/peeling.h"
 #include "gml_st/transforms/tiling/tiling.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
@@ -91,6 +92,9 @@ LogicalResult tilePeeledOpsToScalars(
 // the fusion op results.
 FailureOr<gml_st::FusionOp> wrapFusionCluster(
     PatternRewriter &rewriter, const FusionCluster &fusionCluster);
+
+// Replaces gml_st.fusion op with ops from the region.
+LogicalResult inlineFusionCluster(FusionOp fusionOp, PatternRewriter &rewriter);
 
 }  // namespace gml_st
 }  // namespace mlir
