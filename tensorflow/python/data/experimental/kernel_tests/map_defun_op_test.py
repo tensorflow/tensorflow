@@ -29,6 +29,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import math_ops
@@ -309,7 +310,7 @@ class MapDefunTest(test_base.DatasetTestBase, parameterized.TestCase):
         indices=[[0, 0], [1, 2]], values=[1, 2], dense_shape=[3, 4])
 
     serialized = sparse_ops.serialize_sparse_v2(st, out_type=dtypes.variant)
-    serialized = array_ops.stack([serialized, serialized])
+    serialized = array_ops_stack.stack([serialized, serialized])
     map_defun_op = map_defun.map_defun(fn, [serialized], [dtypes.variant],
                                        [None])[0]
     deserialized = sparse_ops.deserialize_sparse(map_defun_op, dtypes.int32)
@@ -355,7 +356,7 @@ class MapDefunTest(test_base.DatasetTestBase, parameterized.TestCase):
         indices=[[0, 0], [1, 2]], values=[1, 2], dense_shape=[3, 4])
 
     serialized = sparse_ops.serialize_sparse_v2(st, out_type=dtypes.string)
-    serialized = array_ops.stack([serialized, serialized])
+    serialized = array_ops_stack.stack([serialized, serialized])
     map_defun_op = map_defun.map_defun(fn, [serialized], [dtypes.string],
                                        [None])[0]
     deserialized = sparse_ops.deserialize_sparse(map_defun_op, dtypes.int32)
