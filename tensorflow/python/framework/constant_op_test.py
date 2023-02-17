@@ -58,6 +58,29 @@ class ConstantOpTest(test.TestCase, parameterized.TestCase):
     with self.assertRaises(TypeError):
       constant_op.constant("hello", dtype)
 
+  @parameterized.parameters([
+      dtypes.int32_w,
+      dtypes.int64_w,
+      dtypes.float32_w,
+      dtypes.float64_w,
+      dtypes.complex128_w,
+  ])
+  def test_weak_dtypes(self, dt):
+    res = constant_op.constant(1, dtype=dt)
+    self.assertEqual(res.dtype, dt)
+    self.assertTrue(dtypes.is_weak_type(res.dtype))
+
+  @parameterized.parameters([
+      dtypes.int32_w,
+      dtypes.int64_w,
+      dtypes.float32_w,
+      dtypes.float64_w,
+      dtypes.complex128_w,
+  ])
+  def test_weak_dtype_repr(self, dt):
+    res = constant_op.constant(1, dtype=dt)
+    self.assertIn("weak_type=True", repr(res))
+
   def _make_graph_def(self, text):
     ret = graph_pb2.GraphDef()
     text_format.Parse(text, ret)

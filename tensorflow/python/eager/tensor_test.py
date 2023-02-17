@@ -631,7 +631,8 @@ class TFETensorUtilTest(test_util.TensorFlowTestCase):
     # Monkey patched attributes should show up in dir(t)
     self.assertIn("test_attr", instance_dir)
     instance_dir.remove("test_attr")
-    self.assertEqual(instance_dir, type_dir)
+    # Attribute `_dtype` is added dynamically
+    self.assertEqual(set(instance_dir), set(type_dir + ["_dtype"]))
 
   def testNonRectangularPackAsConstant(self):
     l = [array_ops.zeros((10, 1)).numpy(), array_ops.zeros(1).numpy()]
