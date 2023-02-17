@@ -326,3 +326,30 @@ func.func @vectorize_ite_and_scalar(%pred: i1, %lhs: tensor<8x1xf32>,
 // CHECK:          %[[EMPTY:.*]] = tensor.empty
 // CHECK:          %[[TRANSFER_1:.*]] = vector.transfer_write %[[IF]]#0, %[[EMPTY]][%[[C0]], %[[C0]]]
 // CHECK:          return %[[TRANSFER_1]], %[[IF]]#1
+
+// -----
+
+func.func @vectorize_ite_w_casts(%pred: i1, %lhs: tensor<8x1xf32>,
+    %rhs: tensor<8x1xf32>) -> tensor<8x1xf32> {
+  %0 = scf.if %pred -> (tensor<?x1xf32>) {
+    %lhs_ = tensor.cast %lhs : tensor<8x1xf32> to tensor<?x1xf32>
+    scf.yield %lhs_ : tensor<?x1xf32>
+  } else {
+    %rhs_ = tensor.cast %rhs : tensor<8x1xf32> to tensor<?x1xf32>
+    scf.yield %rhs_ : tensor<?x1xf32>
+  }
+  %1 = tensor.cast %0 : tensor<?x1xf32> to tensor<8x1xf32>
+  return %1 : tensor<8x1xf32>
+}
+
+// CHECK-LABEL:  @vectorize_ite_w_casts
+// CHECK-SAME:       %[[PRED:.*]]: i1, %[[LHS:.*]]: tensor<8x1xf32>, %[[RHS:.*]]: tensor<8x1xf32>
+// CHECK:          %[[RES:.*]] = scf.if %[[PRED]]
+// CHECK-SAME:         vector<8x1xf32>
+// CHECK:            %[[LHS_:.*]] = vector.transfer_read %[[LHS]]
+// CHECK:            scf.yield %[[LHS_]]
+// CHECK:          else
+// CHECK:            %[[RHS_:.*]] = vector.transfer_read %[[RHS]]
+// CHECK:            scf.yield %[[RHS_]]
+// CHECK:          %[[RES_:.*]] = vector.transfer_write %[[RES]]
+// CHECK:          return %[[RES_]]

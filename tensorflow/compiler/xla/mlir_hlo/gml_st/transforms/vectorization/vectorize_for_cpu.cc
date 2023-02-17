@@ -140,6 +140,59 @@ struct VectorizeIfOpPattern : public OpRewritePattern<scf::IfOp> {
   llvm::function_ref<bool(scf::IfOp)> filterFn;
 };
 
+// TODO(b/269643522): Upstream this as a canonicalization for `scf.if`.
+struct InlineCastInIfOpPattern : public OpRewritePattern<tensor::CastOp> {
+  using OpRewritePattern<tensor::CastOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(tensor::CastOp op,
+                                PatternRewriter &rewriter) const override {
+    auto srcTy = op.getSource().getType().cast<RankedTensorType>();
+    auto dstTy = op.getType().cast<RankedTensorType>();
+    if (srcTy.hasStaticShape() || !dstTy.hasStaticShape()) {
+      return rewriter.notifyMatchFailure(
+          op, "not cast from dynamic to static shape");
+    }
+
+    if (!op.getSource().hasOneUse())
+      return rewriter.notifyMatchFailure(op, "source has more than one use");
+
+    auto ifOp = op.getSource().getDefiningOp<scf::IfOp>();
+    if (!ifOp || ifOp.getNumResults() != 1) {
+      return rewriter.notifyMatchFailure(
+          op, "source is not an if op with a unique result");
+    }
+
+    // Determine result types for the new if op.
+    SmallVector<Type> newResultTypes(ifOp.getResultTypes());
+    auto ifOpResult = llvm::cast<OpResult>(op.getSource());
+    int64_t resultIdx = ifOpResult.getResultNumber();
+    newResultTypes[resultIdx] = dstTy;
+
+    // Create new if op and steal bodies.
+    rewriter.setInsertionPoint(ifOp);
+    Location loc = ifOp.getLoc();
+    auto newIfOp =
+        rewriter.create<scf::IfOp>(loc, newResultTypes, ifOp.getCondition());
+    newIfOp.getThenRegion().takeBody(ifOp.getThenRegion());
+    newIfOp.getElseRegion().takeBody(ifOp.getElseRegion());
+
+    // Insert inner casts.
+    rewriter.setInsertionPoint(newIfOp.thenYield());
+    newIfOp.thenYield().setOperand(
+        resultIdx, rewriter.create<tensor::CastOp>(
+                       loc, dstTy, newIfOp.thenYield().getOperand(resultIdx)));
+    rewriter.setInsertionPoint(newIfOp.elseYield());
+    newIfOp.elseYield().setOperand(
+        resultIdx, rewriter.create<tensor::CastOp>(
+                       loc, dstTy, newIfOp.elseYield().getOperand(resultIdx)));
+
+    // Replace op.
+    rewriter.replaceOp(op, newIfOp.getResults());
+    rewriter.eraseOp(ifOp);
+    return success();
+  }
+};
+
 // Rewrite `vector.transfer_read(linalg.expand_shape)` as
 // `vector.shape_cast(vector.transfer_read)`.
 struct TransferReadOfOneDimExpandShape
@@ -315,7 +368,9 @@ struct VectorizeForCPUPass
       patterns.add<VectorizeIfOpPattern>(
           ctx, hasAnySmallStaticallyShapedTensorResult);
       populateTransferReadOfOneDimExpandShapePattern(patterns);
-      patterns.add<ThloReverseVectorizationPattern>(ctx);
+      patterns.add<InlineCastInIfOpPattern, ThloReverseVectorizationPattern>(
+          ctx);
+      tensor::CastOp::getCanonicalizationPatterns(patterns, ctx);
       if (failed(applyPatternsAndFoldGreedily(func, std::move(patterns)))) {
         return signalPassFailure();
       }
