@@ -14,4 +14,8 @@ tf_class {
     name: "run"
     argspec: "args=[\'self\', \'distributed_train_function\'], varargs=args, keywords=kwargs, defaults=None"
   }
+  member_method {
+    name: "watch_preemption_scope"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
 }
