@@ -1821,8 +1821,13 @@ static std::vector<int64_t> MajorToMinorLayout(const Shape& s) {
   return std::vector<int64_t>{minor_to_major.rbegin(), minor_to_major.rend()};
 }
 
-static std::optional<Vector3> FindTranspose021Helper(
-    const Shape& input_shape, absl::Span<int64_t const> output_to_input) {
+static std::optional<Vector3> GetNormalizedTransposeShapeHelper(
+    const Shape& input_shape, absl::Span<int64_t const> output_to_input,
+    const Vector3& permutation) {
+  // 'permutation' should not be the identity permutation.
+  if (permutation[0] == 0 && permutation[1] == 1 && permutation[2] == 2) {
+    return std::nullopt;
+  }
   std::vector<size_t> segments = ConsecutiveSegments(output_to_input);
   if (segments.size() > 3) {
     return std::nullopt;
@@ -1832,29 +1837,61 @@ static std::optional<Vector3> FindTranspose021Helper(
       ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
           input_shape);
   Shape normalized_shape = MergeDimensions(segments, normalized_input_shape);
-  absl::Span<const int64_t> normalized_dims = normalized_shape.dimensions();
+  std::vector<int64_t> normalized_dims{normalized_shape.dimensions().begin(),
+                                       normalized_shape.dimensions().end()};
   if (segments.size() == 2) {
-    return Vector3{1, normalized_dims[1], normalized_dims[0]};
-  } else if (segments.size() == 3 && output_to_input[0] == 0) {
-    return Vector3{normalized_dims[0], normalized_dims[2], normalized_dims[1]};
+    // If we have two segments, we know that at least one transpose is
+    // happening, otherwise we would have only 1 segment.
+    int64_t untransposed = 0;
+    while (untransposed < permutation.size() &&
+           permutation[untransposed] != untransposed) {
+      ++untransposed;
+    }
+    // The desired permutation may not contain any untransposed dimension. With
+    // just 2 segments, we cannot uniquely match that.
+    if (untransposed == permutation.size()) {
+      return std::nullopt;
+    }
+    // Insert a 1-dimension at the position of the untransposed dimension.
+    normalized_dims.insert(normalized_dims.begin() + untransposed, 1);
+  } else if (segments.size() == 3) {
+    // Derive the order from the segments.
+    Vector3 segment_order{output_to_input[segments[0]],
+                          output_to_input[segments[1]],
+                          output_to_input[segments[2]]};
+    // We expect the same relative order.
+    for (int64_t i = 1; i < 3; ++i) {
+      if ((segment_order[i] > segment_order[i - 1]) !=
+          (permutation[i] > permutation[i - 1])) {
+        return std::nullopt;
+      }
+    }
+  }
+  if (normalized_dims.size() == 3) {
+    return Vector3{normalized_dims[permutation[0]],
+                   normalized_dims[permutation[1]],
+                   normalized_dims[permutation[2]]};
   }
   return std::nullopt;
 }
 
-/* static */ std::optional<Vector3> ShapeUtil::FindLogicalTranspose021(
+/* static */ std::optional<Vector3>
+ShapeUtil::GetNormalizedLogicalTransposeShape(
     const Shape& input_shape, const Shape& output_shape,
-    absl::Span<int64_t const> dimensions) {
+    absl::Span<int64_t const> dimensions, const Vector3& permutation) {
   if (!LayoutUtil::IsMonotonicWithDim0Major(input_shape.layout()) ||
       !LayoutUtil::IsMonotonicWithDim0Major(output_shape.layout())) {
     // Only works on default layouts.
     return std::nullopt;
   }
 
-  return FindTranspose021Helper(input_shape, InversePermutation(dimensions));
+  return GetNormalizedTransposeShapeHelper(
+      input_shape, InversePermutation(dimensions), permutation);
 }
 
-/* static */ std::optional<Vector3> ShapeUtil::FindTranspose021(
-    const Shape& input_shape, const Shape& output_shape) {
+/* static */ std::optional<Vector3> ShapeUtil::GetNormalizedTransposeShape(
+    const Shape& input_shape, const Shape& output_shape,
+    const Vector3& permutation) {
   if (!ShapeUtil::CompatibleIgnoringElementType(input_shape, output_shape)) {
     return std::nullopt;
   }
@@ -1864,7 +1901,8 @@ static std::optional<Vector3> FindTranspose021Helper(
   std::vector<int64_t> output_to_input = ComposePermutations(
       InversePermutation(major_to_minor_output), major_to_minor_input);
 
-  return FindTranspose021Helper(input_shape, output_to_input);
+  return GetNormalizedTransposeShapeHelper(input_shape, output_to_input,
+                                           permutation);
 }
 
 Shape ShapeUtil::DeviceShapeToHostShape(Shape s) {

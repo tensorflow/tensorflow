@@ -666,8 +666,8 @@ static std::optional<Vector3> FindTiledTranspose(const HloInstruction& instr) {
     return std::nullopt;
   }
 
-  if (std::optional<Vector3> tr = ShapeUtil::FindTranspose021(
-          instr.operand(0)->shape(), instr.shape())) {
+  if (std::optional<Vector3> tr = ShapeUtil::GetNormalizedTransposeShape(
+          instr.operand(0)->shape(), instr.shape(), Vector3{0, 2, 1})) {
     if (tr->at(1) >= kMinDimensionToTransposeTiled &&
         tr->at(2) >= kMinDimensionToTransposeTiled) {
       return tr;
@@ -683,8 +683,9 @@ std::optional<Vector3> FindTiledLogicalTranspose(const HloInstruction& instr) {
   }
 
   // TODO(cheshire): avoid code duplication.
-  if (std::optional<Vector3> tr = ShapeUtil::FindLogicalTranspose021(
-          instr.operand(0)->shape(), instr.shape(), instr.dimensions())) {
+  if (std::optional<Vector3> tr = ShapeUtil::GetNormalizedLogicalTransposeShape(
+          instr.operand(0)->shape(), instr.shape(), instr.dimensions(),
+          Vector3{0, 2, 1})) {
     if (tr->at(1) >= kMinDimensionToTransposeTiled &&
         tr->at(2) >= kMinDimensionToTransposeTiled) {
       return tr;
