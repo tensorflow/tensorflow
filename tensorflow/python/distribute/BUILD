@@ -317,7 +317,7 @@ py_library(
         ":packed_distributed_variable",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python/eager:context",
-        "//tensorflow/python/tpu:tpu_py",
+        "//tensorflow/python/tpu:tpu_replication",
     ],
 )
 
