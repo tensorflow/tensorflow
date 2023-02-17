@@ -216,11 +216,11 @@ delegate.
     mobilenet_v1_1.0_224       | warmup_latency_average_us                      | 334263.5                                                       | 1666704.0                         | -79.9%    | N/A
     mobilenet_v1_1.0_224       | warmup_latency_min_us                          | 318494.0                                                       | 1666704.0                         | -80.9%    | N/A
     mobilenet_v1_1.0_224       | warmup_latency_max_us                          | 350033.0                                                       | 1666704.0                         | -79.0%    | N/A
-    mobilenet_v1_1.0_224       | warmup_latency_standard_deviation              | 15769.0                                                        | 0.0                               | Infinity% | N/A
+    mobilenet_v1_1.0_224       | warmup_latency_standard_deviation_us           | 15769.0                                                        | 0.0                               | Infinity% | N/A
     mobilenet_v1_1.0_224       | inference_latency_average_us                   | 316702.6                                                       | 630715.5                          | -49.8%    | PASS
     mobilenet_v1_1.0_224       | inference_latency_min_us                       | 308218.0                                                       | 314117.0                          | -1.9%     | N/A
     mobilenet_v1_1.0_224       | inference_latency_max_us                       | 338494.0                                                       | 1601144.0                         | -78.9%    | N/A
-    mobilenet_v1_1.0_224       | inference_latency_standard_deviation           | 4896.0                                                         | 347805.0                          | -98.6%    | N/A
+    mobilenet_v1_1.0_224       | inference_latency_standard_deviation_us        | 4896.0                                                         | 347805.0                          | -98.6%    | N/A
     mobilenet_v1_1.0_224       | initialization_memory_max_rss_mebibyte         | 0.0                                                            | 34.48828                          | -100.0%   | N/A
     mobilenet_v1_1.0_224       | initialization_memory_total_allocated_mebibyte | 0.0                                                            | 0.0                               | 0.0%      | N/A
     mobilenet_v1_1.0_224       | initialization_memory_in_use_mebibyte          | 26.140594                                                      | 21.560455                         | 21.2%     | N/A
@@ -235,11 +235,11 @@ delegate.
     mobilenet_v1_1.0_224_quant | warmup_latency_average_us                      | 189565.0                                                       | 188034.0                          | 0.8%      | N/A
     mobilenet_v1_1.0_224_quant | warmup_latency_min_us                          | 181333.0                                                       | 175592.0                          | 3.3%      | N/A
     mobilenet_v1_1.0_224_quant | warmup_latency_max_us                          | 199285.0                                                       | 199388.0                          | -0.1%     | N/A
-    mobilenet_v1_1.0_224_quant | warmup_latency_standard_deviation              | 7404.0                                                         | 9745.0                            | -24.0%    | N/A
+    mobilenet_v1_1.0_224_quant | warmup_latency_standard_deviation_us           | 7404.0                                                         | 9745.0                            | -24.0%    | N/A
     mobilenet_v1_1.0_224_quant | inference_latency_average_us                   | 178905.2                                                       | 178897.69                         | 0.0%      | PASS_WITH_WARNING
     mobilenet_v1_1.0_224_quant | inference_latency_min_us                       | 170126.0                                                       | 170102.0                          | 0.0%      | N/A
     mobilenet_v1_1.0_224_quant | inference_latency_max_us                       | 200089.0                                                       | 193949.0                          | 3.2%      | N/A
-    mobilenet_v1_1.0_224_quant | inference_latency_standard_deviation           | 6355.0                                                         | 6387.0                            | -0.5%     | N/A
+    mobilenet_v1_1.0_224_quant | inference_latency_standard_deviation_us        | 6355.0                                                         | 6387.0                            | -0.5%     | N/A
     mobilenet_v1_1.0_224_quant | initialization_memory_max_rss_mebibyte         | 0.0                                                            | 0.0                               | 0.0%      | N/A
     mobilenet_v1_1.0_224_quant | initialization_memory_total_allocated_mebibyte | 0.0                                                            | 0.0                               | 0.0%      | N/A
     mobilenet_v1_1.0_224_quant | initialization_memory_in_use_mebibyte          | 1.4762268                                                      | 1.4715118                         | 0.3%      | N/A
