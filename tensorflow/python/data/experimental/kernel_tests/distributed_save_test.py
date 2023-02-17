@@ -22,6 +22,7 @@ import time
 from absl.testing import parameterized
 
 from tensorflow.python.data.experimental.kernel_tests.service import test_base as data_service_test_base
+from tensorflow.python.data.experimental.ops import data_service_ops
 from tensorflow.python.data.experimental.ops import distributed_save_op
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
@@ -85,6 +86,23 @@ class DistributedSaveTfDataServiceTest(data_service_test_base.TestBase,
 
     dataset = dataset_ops.Dataset.load(self._test_dir)
     self.assertDatasetProduces(dataset, ["a", "b", "c"] * 5)
+
+  @combinations.generate(test_base.eager_only_combinations())
+  def testDistributedLoad(self):
+    cluster = data_service_test_base.TestCluster(num_workers=1)
+    dataset = dataset_ops.Dataset.range(10)
+    distributed_save_op.distributed_save(dataset, self._test_dir,
+                                         cluster.dispatcher_address())
+    self._wait_for_snapshot(cluster)
+
+    dataset = dataset_ops.Dataset.load(self._test_dir)
+    dataset = dataset.apply(
+        data_service_ops.distribute(
+            data_service_ops.ShardingPolicy.OFF,
+            cluster.dispatcher_address(),
+        )
+    )
+    self.assertDatasetProduces(dataset, list(range(10)))
 
   @combinations.generate(test_base.eager_only_combinations())
   def testBadDispatcherAddress(self):
