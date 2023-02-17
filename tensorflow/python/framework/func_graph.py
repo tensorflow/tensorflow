@@ -1205,10 +1205,6 @@ def func_graph_from_py_func(name,
     finally:
       current_scope.set_use_resource(default_use_resource)
 
-    # Variables in `func_args`, `func_kwargs` should be explicit inputs
-    # to the function, not captured inputs.
-    graph_variables = list(func_graph._watched_variables)  # pylint: disable=protected-access
-    arg_variables = object_identity.ObjectIdentitySet()
     inputs = []
     for arg in composite_tensor_utils.flatten_with_variables([func_args,
                                                               func_kwargs]):
@@ -1219,11 +1215,9 @@ def func_graph_from_py_func(name,
         resource_placeholder = func_graph.pop_capture(arg.handle)
         if resource_placeholder is None:
           continue
-        arg_variables.add(arg)
         inputs.append(resource_placeholder)
       elif isinstance(arg, ops.Tensor):
         inputs.append(arg)
-    variables = [v for v in graph_variables if v not in arg_variables]
     func_graph.inputs = (
         inputs + func_graph.internal_captures + nest.flatten(
             func_graph.deferred_internal_captures, expand_composites=True))
@@ -1234,7 +1228,7 @@ def func_graph_from_py_func(name,
         for x in flatten(func_graph.structured_outputs)
         if x is not None)
 
-    func_graph.variables = variables
+    func_graph.variables = func_graph._watched_variables  # pylint: disable=protected-access
 
   if add_control_dependencies:
     func_graph.control_outputs.extend(deps_control_manager.ops_which_must_run)

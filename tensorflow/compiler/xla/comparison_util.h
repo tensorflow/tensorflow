@@ -249,6 +249,18 @@ auto LessThanByKey(KeyFn&& key_fn) {
   return [=](const auto& a, const auto& b) { return key_fn(a) < key_fn(b); };
 }
 
+// Two comparisons are equivalent iff they have the same direction, precision,
+// and ordering.
+inline bool operator==(const Comparison& a, const Comparison& b) {
+  return a.GetDirection() == b.GetDirection() &&
+         a.GetPrimitiveType() == b.GetPrimitiveType() &&
+         a.GetOrder() == b.GetOrder();
+}
+
+inline bool operator!=(const Comparison& a, const Comparison& b) {
+  return !(a == b);
+}
+
 }  // namespace xla
 
 #endif  // TENSORFLOW_COMPILER_XLA_COMPARISON_UTIL_H_

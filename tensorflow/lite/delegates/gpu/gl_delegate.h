@@ -20,7 +20,7 @@ limitations under the License.
 #include <stdint.h>
 
 #include "absl/base/attributes.h"
-#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/c/common.h"
 
 #ifdef __cplusplus
 extern "C" {

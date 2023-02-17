@@ -393,6 +393,7 @@ REGISTER_SPMD(DTensorShardedPrefix, TF::DTensorShardedPrefixOp,
 
 // DTensor Virtual ops
 REGISTER_SPMD(Relayout, TF::RelayoutOp, RelayoutSPMDExpander);
+REGISTER_SPMD(RelayoutGrad, TF::RelayoutGradOp, RelayoutGradSPMDExpander);
 REGISTER_SPMD(DTensorSend, TF::DTensorSend, DTensorSendSPMDExpander);
 REGISTER_SPMD(DTensorRecv, TF::DTensorRecv, DTensorRecvSPMDExpander);
 

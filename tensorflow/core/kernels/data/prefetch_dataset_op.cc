@@ -292,7 +292,7 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
         buffer_size = static_cast<size_t>(temp);
       }
       for (size_t i = 0; i < buffer_size; i++) {
-        buffer_.emplace_back();
+        buffer_.emplace_back(ctx);
         auto& buffer_element = buffer_.back();
         TF_RETURN_IF_ERROR(ReadStatus(reader, i, &buffer_element.status));
         if (buffer_element.status.ok()) {
@@ -365,7 +365,9 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
     // A buffer element comprises a status and (if that status is
     // OK) a vector of tensors, representing an element of the input dataset.
     struct BufferElement {
-      BufferElement() : uid(tensorflow::EnvTime::NowNanos()) {}
+      explicit BufferElement(IteratorContext* ctx)
+          : uid(tensorflow::EnvTime::NowNanos()),
+            checkpoint(MemoryCheckpoint{ctx->id_registry()}) {}
 
       // The producer sets `status` if getting the input element fails.
       Status status;
@@ -434,10 +436,6 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
         *out_tensors = std::move(buffer_.front().value);
         ctx->MergeCheckpoint(&buffer_.front().checkpoint);
         RecordBufferDequeue(ctx, *out_tensors);
-        // Tells the legacy prefetch autotuner the size of an element.
-        if (legacy_autotune_ && auto_tuner_.element_size() == 0) {
-          auto_tuner_.RecordElementSize(GetAllocatedBytes(*out_tensors));
-        }
       } else {
         // If status not ok, we still record the dequeue event to make sure each
         // enqueue event is paired with a dequeue event even in the presence of
@@ -511,7 +509,7 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
         // local state that may be missed by SaveInternal.
         mutex_lock input_l(input_mu_);
         bool end_of_sequence = false;
-        BufferElement buffer_element;
+        BufferElement buffer_element(ctx.get());
         {
           profiler::TraceMe traceme(
               [&] {

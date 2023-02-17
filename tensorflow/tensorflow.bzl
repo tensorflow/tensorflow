@@ -1397,7 +1397,7 @@ def tf_gen_op_wrapper_py(
         pygen_args.append("--hidden_op_list_filename=$(location " + hidden_file + ")")
         extra_srcs.append(hidden_file)
     elif op_allowlist:
-        pygen_args.append("--op_allowlist=" + ",".join(op_allowlist))
+        pygen_args.append("--op_allowlist=" + ",".join(["'%s'" % op for op in op_allowlist]))
 
     # Prepare ApiDef directories to pass to the genrule.
     if api_def_srcs:

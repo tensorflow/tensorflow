@@ -17,6 +17,7 @@ import collections
 import copy
 import itertools
 import json
+import os
 import typing
 
 from absl import flags
@@ -50,6 +51,20 @@ v2_compat.enable_v2_behavior()
 DEFAULT_TOL = 1e-5
 
 _DEFAULT_GPU_MEMORY_LIMIT = 200  # MB
+
+
+def get_use_xla_spmd(device_type):
+  """Returns True when device_type is TPU and environment variable is set.
+
+  Args:
+    device_type: A str representing the type of device on the mesh.
+
+  Returns:
+    bool: True when device_type is TPU and environment variable is set.
+  """
+  return device_type == 'TPU' and bool(
+      os.environ.get('DTENSOR_TEST_USE_XLA_SPMD', 'False')
+  )
 
 
 def create_device_ids_array(shape):

@@ -346,7 +346,7 @@ void* TfLiteOpaqueDelegateGetData(const TfLiteOpaqueDelegate* delegate) {
   const auto* tflite_delegate =
       reinterpret_cast<const TfLiteDelegate*>(delegate);
 
-  if (!tflite_delegate->opaque_delegate_builder) return nullptr;
+  if (!tflite_delegate->opaque_delegate_builder) return tflite_delegate->data_;
 
   return tflite_delegate->opaque_delegate_builder->data;
 }

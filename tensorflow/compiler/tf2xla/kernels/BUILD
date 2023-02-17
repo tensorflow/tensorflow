@@ -245,7 +245,6 @@ tf_kernel_library(
         "//tensorflow/core/kernels:stateless_random_ops_v2_header",
         "//tensorflow/core/tpu:tpu_defs",
         "//tensorflow/core/util:overflow",
-        "//tensorflow/compiler/xla/stream_executor/lib",
     ] + if_cuda_or_rocm(
         if_false = [],
         if_true = [":light_outside_compilation"],
@@ -404,6 +403,7 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/platform:status",
+        "//tensorflow/core/tpu:tpu_defs",
         "//tensorflow/tsl/platform:regexp",
         "@com_google_absl//absl/strings",
         "@llvm-project//mlir:IR",

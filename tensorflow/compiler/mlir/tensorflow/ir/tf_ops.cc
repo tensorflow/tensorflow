@@ -162,7 +162,7 @@ struct TFInlinerInterface : public DialectInlinerInterface {
                        IRMapping &valueMapping) const final {
     // Allow inlining in regions attached to region based control flow
     // operations only if the src region is a single block region
-    return isa<IfRegionOp, WhileRegionOp>(dest->getParentOp()) &&
+    return isa<IfRegionOp, CaseRegionOp, WhileRegionOp>(dest->getParentOp()) &&
            llvm::hasSingleElement(*src);
   }
 

@@ -15,6 +15,9 @@ limitations under the License.
 
 package org.tensorflow.lite.benchmark.delegateperformance;
 
+import static org.tensorflow.lite.benchmark.delegateperformance.DelegatePerformanceBenchmark.checkNotNull;
+import static org.tensorflow.lite.benchmark.delegateperformance.DelegatePerformanceBenchmark.checkState;
+
 import android.util.Log;
 import java.util.HashMap;
 import tflite.BenchmarkEvent;
@@ -34,18 +37,17 @@ final class TfLiteSettingsListEntry {
 
   private final TFLiteSettings tfliteSettings;
   private final String filePath;
+  private final boolean isTestTarget;
 
   private HashMap<String, Float> metrics = new HashMap<>();
 
-  private TfLiteSettingsListEntry(TFLiteSettings tfliteSettings, String filePath) {
-    if (tfliteSettings == null) {
-      throw new NullPointerException("Null tfliteSettings");
-    }
+  private TfLiteSettingsListEntry(
+      TFLiteSettings tfliteSettings, String filePath, boolean isTestTarget) {
+    checkNotNull(tfliteSettings);
+    checkNotNull(filePath);
     this.tfliteSettings = tfliteSettings;
-    if (filePath == null) {
-      throw new NullPointerException("Null filePath");
-    }
     this.filePath = filePath;
+    this.isTestTarget = isTestTarget;
   }
 
   TFLiteSettings tfliteSettings() {
@@ -54,6 +56,10 @@ final class TfLiteSettingsListEntry {
 
   String filePath() {
     return filePath;
+  }
+
+  boolean isTestTarget() {
+    return isTestTarget;
   }
 
   void setLatencyResults(LatencyResults latencyResults) {
@@ -67,6 +73,14 @@ final class TfLiteSettingsListEntry {
         metrics.put(metric.getName(), metric.getValue());
       }
     }
+    checkState(metrics.containsKey("initialization_latency_us"));
+    checkState(metrics.containsKey("warmup_latency_average_us"));
+    checkState(metrics.containsKey("inference_latency_average_us"));
+    metrics.put(
+        "startup_overhead_latency_us",
+        metrics.get("initialization_latency_us")
+            + metrics.get("warmup_latency_average_us")
+            - metrics.get("inference_latency_average_us"));
   }
 
   void setAccuracyResults(BenchmarkEvent accuracyEvent) {
@@ -114,10 +128,14 @@ final class TfLiteSettingsListEntry {
         + ", "
         + "metrics="
         + metrics
+        + ", "
+        + "isTestTarget="
+        + isTestTarget
         + "}";
   }
 
-  static TfLiteSettingsListEntry create(TFLiteSettings tfliteSettings, String filePath) {
-    return new TfLiteSettingsListEntry(tfliteSettings, filePath);
+  static TfLiteSettingsListEntry create(
+      TFLiteSettings tfliteSettings, String filePath, boolean isTestTarget) {
+    return new TfLiteSettingsListEntry(tfliteSettings, filePath, isTestTarget);
   }
 }

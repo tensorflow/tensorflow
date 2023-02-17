@@ -691,7 +691,9 @@ message ConfigProto {
     // aims to negate its value.
     bool disable_optimize_for_static_graph = 24;
 
-    // Next: 25
+    reserved 25;
+
+    // Next: 26
   }
 
   Experimental experimental = 16;

@@ -85,6 +85,10 @@ const filter_action = async ({github, context, domain}) => {
       assignees.push('nitins17', 'penpornk');
     }
   }
+  if (lowercased_title.includes('tf-mot') && lowercased_title.includes('arm') &&
+      domain.includes('arm.com')) {
+    assignees.push('rino20', 'yyoon', 'lenscloth');
+  }
 
   const resp_label = await github.rest.issues.addLabels({
     issue_number: context.issue.number,

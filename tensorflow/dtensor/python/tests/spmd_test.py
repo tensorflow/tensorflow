@@ -132,11 +132,15 @@ class DTensorSPMDTest(test_util.DTensorBaseTest):
 
     global_ids = test_util.create_device_ids_array((2, 4))
     local_ids = np.ravel(global_ids).tolist()
-    mesh_dict = {
-        device: Mesh([_MESH_DIM_X, _MESH_DIM_Y], global_ids, local_ids,
-                     test_util.create_device_list((2, 4), device))
-        for device in ('CPU', 'GPU', 'TPU')
-    }
+    mesh_dict = dict()
+    for device in ('CPU', 'GPU', 'TPU'):
+      mesh_dict[device] = Mesh(
+          [_MESH_DIM_X, _MESH_DIM_Y],
+          global_ids,
+          local_ids,
+          test_util.create_device_list((2, 4), device),
+          use_xla_spmd=test_util.get_use_xla_spmd(device),
+      )
     self.mesh = self.configTestMesh(mesh_dict)
 
     # Creates a bunch of common layouts used by tests later.
@@ -1688,6 +1692,9 @@ class DTensorSPMDTest(test_util.DTensorBaseTest):
     self.assertDTensorEqual(expected, expected_layout, dtensor_result)
 
   def testResourceGather(self):
+    if self.mesh.use_xla_spmd():
+      self.skipTest('Variables not supported yet with DTensor Xla Spmd.')
+
     params = np.arange(1000 * 4).reshape((1000, 4))
     indices = np.random.randint(0, 1000, size=1000 * 3).reshape((1000, 3))
 
@@ -1704,6 +1711,9 @@ class DTensorSPMDTest(test_util.DTensorBaseTest):
     self.assertDTensorEqual(expected, expected_layout, dtensor_result)
 
   def testResourceGatherRaisesErrorWhenResourceZeroDimSharded(self):
+    if self.mesh.use_xla_spmd():
+      self.skipTest('Variables not supported yet with DTensor Xla Spmd.')
+
     sharded_tensor = numpy_util.pack_numpy(
         np.arange(1000 * 4).reshape((1000, 4)),
         layout=Layout.batch_sharded(self.mesh, _MESH_DIM_Y, 2))

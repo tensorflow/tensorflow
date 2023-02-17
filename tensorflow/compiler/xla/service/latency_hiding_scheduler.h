@@ -107,6 +107,11 @@ class ApproximateLatencyEstimator : public LatencyEstimator {
   TimeCost NodeCost(const HloInstruction* instr) const override;
   // ApproximateLatencyEstimator uses abstract units so this returns 1.
   int CyclesPerMicrosecond() const override { return 1; }
+
+ public:
+  static constexpr TimeCost kLowCost = 1.0;
+  static constexpr TimeCost kMediumCost = 1000.0;
+  static constexpr TimeCost kHighCost = 5000.0;
 };
 
 // Helper class to keep track of which instructions are to be supported and

@@ -13,9 +13,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <algorithm>
 #include <string>
 #include <vector>
 
+#include "absl/strings/str_join.h"
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
@@ -29,6 +31,7 @@ limitations under the License.
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
 #include "stablehlo/dialect/ChloOps.h"  // from @stablehlo
 #include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_dialect.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
@@ -42,6 +45,7 @@ limitations under the License.
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/op_requires.h"
 #include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/tpu/tpu_defs.h"
 #include "tensorflow/tsl/platform/regexp.h"
 
 namespace tensorflow {
@@ -49,6 +53,8 @@ namespace {
 
 // Version 1 uses MHLO, starting with version 2 use StableHLO.
 const int VERSION_START_STABLE_HLO = 2;
+// Version 3 supports platform checking and multiple platforms
+const int VERSION_START_PLATFORMS = 3;
 
 // Computes a dimension value from the dim_arg specification.
 // The specification is of the form "<arg_idx>.<arg_axis_idx>".
@@ -105,37 +111,47 @@ StatusOr<mlir::Value> ComputeDimensionValue(int version, string dim_arg_spec,
   return val;
 }
 
-// Adds a wrapper for the "main" function to compute dimension arguments.
+// Adds a wrapper for the "main" function to compute the platform index and the
+// dimension arguments.
 //
-// The input module has the following structure, e.g.:
+// The input module has the following structure:
 //
-//    func public main(%arg0: i32, %arg1: i32, %arg2: f32[?, ?, 8]) { ... }
+//    func public main(%arg_platform_index: i32, %arg_dim0: i32, %arg_dim1: i32,
+//                     %arg0: f32[?, ?, 8]) { ... }
 //
-// where %arg0 and %arg1 are dimension arguments, always first among the
-// arguments, and whose values are computed based on the static shapes of the
-// non-dimension arguments (%arg2 and following).
+// where %arg_platform_index is the index of the current compilation platform
+// among the declared `platforms` (missing if version < 3 or if platforms has
+// fewer than 2 elements), %arg_dim0 and %arg_dim1 are dimension arguments
+// (missing if dim_args_spec is empty). The value of the dimension arguments
+// are computed based on the static shapes of the actual arguments
+// (%arg0 and following).
 // In the above example, the dim_args_spec array would have two elements, one
-// for %arg0 and one for %arg1. E.g., ['0.0', '0.1'] specifies that %arg0
-// should be set to the size of axis 0 or array argument 0 (%arg2), while
-// %arg1 should be set to the size of axis 1.
-// The dimension arguments must be 0-dimensional tensors of integer type.
+// for %arg_dim0 and one for %arg_dim1. E.g., ['0.0', '0.1'] specifies that
+// %arg_dim0 should be set to the size of axis 0 or array argument 0 (%arg0),
+// while %arg_dim1 should be set to the size of axis 1.
+// The platform index argument must be a 0-dimensional 32-bit integer, and the
+// dimension arguments must be 0-dimensional tensors of integer type.
 //
 // We create a new "main" function as follows:
-//   func public main(%arg2: f32[?, ?, 8]) {
-//      %arg0 = stablehlo.get_dimension_size(%arg2) dimension=0
-//      %arg1 = stablehlo.get_dimension_size(%arg2) dimension=1
-//      %res = func.call _wrapped_main(%arg0, %arg1, %arg2)
+//   func public main(%arg0: f32[?, ?, 8]) {
+//      %arg_platform_index = stablehlo.constant <platform_index>
+//      %arg_dim0 = stablehlo.get_dimension_size(%arg0) dimension=0
+//      %arg_dim1 = stablehlo.get_dimension_size(%arg0) dimension=1
+//      %res = func.call _wrapped_main(%arg_platform_index,
+//                                     %arg_dim0, %arg_dim1, %arg0)
 //      return %res
 //   }
-//   func private _wrapped_main(%arg0: i32, %arg1: i32, %arg2: f32[?, ?, 8]) {
+//   func private _wrapped_main(%arg_platform_index: i32,
+//                              %arg_dim0: i32, %arg_dim1: i32,
+//                              %arg0: f32[?, ?, 8]) {
 //      ... the original main function ...
 //   }
 //
 // and then we run the inliner. This is important because in the
 // RefineDynamicShapes method called in Compile we refine the shape of the
 // array arguments. This would create a type error at the call to _wrapped_main
-// with the expected type of %arg2.
-Status AddMainWrapper(int version, mlir::ModuleOp module,
+// with the expected type of %arg0.
+Status AddMainWrapper(int version, mlir::ModuleOp module, int platform_index,
                       std::vector<string> dim_args_spec) {
   int nr_dim_args = dim_args_spec.size();
   // Locate the 'main' function.
@@ -145,10 +161,16 @@ Status AddMainWrapper(int version, mlir::ModuleOp module,
   if (!orig_main) {
     return errors::InvalidArgument("Cannot find 'main' in module");
   }
-  if (orig_main.getNumArguments() <= nr_dim_args) {
-    return errors::InvalidArgument(
-        "The module should have ", nr_dim_args, " dimension arguments, but it ",
-        "has only ", orig_main.getNumArguments(), " total arguments");
+  int nr_platform_args = 0;
+  if (platform_index >= 0) {
+    nr_platform_args = 1;
+  }
+  if (orig_main.getNumArguments() <= nr_platform_args + nr_dim_args) {
+    return errors::InvalidArgument("The module should have ", nr_platform_args,
+                                   " platform index arguments and ",
+                                   nr_dim_args, " dimension arguments, but it ",
+                                   "has only ", orig_main.getNumArguments(),
+                                   " total arguments");
   }
   mlir::Block &orig_main_body = orig_main.front();
 
@@ -158,7 +180,7 @@ Status AddMainWrapper(int version, mlir::ModuleOp module,
   orig_main.setName(op_builder.getStringAttr("_wrapped_main"));
   mlir::Location loc = module.getLoc();
   std::vector<mlir::Type> new_main_arg_types(
-      orig_main.getArgumentTypes().begin() + nr_dim_args,
+      orig_main.getArgumentTypes().begin() + nr_platform_args + nr_dim_args,
       orig_main.getArgumentTypes().end());
   mlir::func::FuncOp new_main = op_builder.create<mlir::func::FuncOp>(
       loc, "main",
@@ -174,24 +196,41 @@ Status AddMainWrapper(int version, mlir::ModuleOp module,
 
   std::vector<mlir::Value> call_args(orig_main_body.getNumArguments());
   for (int i = 0; i < orig_main_body.getNumArguments(); ++i) {
-    if (i < nr_dim_args) {
+    if (i < nr_platform_args + nr_dim_args) {
       mlir::Type arg_type = orig_main.getArgument(i).getType();
       mlir::RankedTensorType arg_ranked_type =
           arg_type.dyn_cast<mlir::RankedTensorType>();
       if (!arg_ranked_type ||
           !arg_ranked_type.getElementType().dyn_cast<mlir::IntegerType>() ||
           !arg_ranked_type.getShape().empty()) {
+        string argument_type =
+            (i < nr_platform_args) ? "platform index" : "dimension";
         return errors::InvalidArgument(
             "Module argument at index ", i,
-            " should be a 0-dimensional integer-tensor dimension argument",
-            " but has type ", debugString(arg_type));
+            " should be a 0-dimensional integer-tensor ", argument_type,
+            " argument but has type ", debugString(arg_type));
       }
-      TF_ASSIGN_OR_RETURN(call_args[i],
-                          ComputeDimensionValue(
-                              version, dim_args_spec[i], block_args, op_builder,
-                              orig_main.getArgument(i).getType()));
+      if (i < nr_platform_args) {
+        if (arg_ranked_type.getElementTypeBitWidth() != 32) {
+          return errors::InvalidArgument(
+              "Module argument at index ", i,
+              " should be a 0-dimensional 32-bit integer-tensor"
+              " platform index argument but has type ",
+              debugString(arg_type));
+        }
+        call_args[i] = op_builder.create<mlir::stablehlo::ConstantOp>(
+            block_args[0].getLoc(),
+            op_builder.getI32IntegerAttr(platform_index));
+      } else {
+        TF_ASSIGN_OR_RETURN(
+            call_args[i],
+            ComputeDimensionValue(version, dim_args_spec[i - nr_platform_args],
+                                  block_args, op_builder,
+                                  orig_main.getArgument(i).getType()));
+      }
     } else {
-      call_args[i] = new_main_block->getArgument(i - nr_dim_args);
+      call_args[i] =
+          new_main_block->getArgument(i - nr_platform_args - nr_dim_args);
     }
   }
   mlir::func::CallOp call_op = op_builder.create<mlir::func::CallOp>(
@@ -220,7 +259,7 @@ Status AddMainWrapper(int version, mlir::ModuleOp module,
 // e.g., to replace dynamic_broadcast_in_dim with broadcast_in_dim.
 Status RefineDynamicShapes(XlaOpKernelContext *ctx,
                            mlir::OwningOpRef<mlir::ModuleOp> *module,
-                           int nr_dim_args) {
+                           int nr_platform_args, int nr_dim_args) {
   // Locate the (wrapped) 'main' function.
   // This is the convention used by MlirToXlaComputation.
   mlir::func::FuncOp main = (*module)->lookupSymbol<mlir::func::FuncOp>("main");
@@ -233,8 +272,10 @@ Status RefineDynamicShapes(XlaOpKernelContext *ctx,
     return errors::InvalidArgument(
         "Incorrect number of arguments for XlaCallModule: ",
         non_dimension_arguments, ". The module has ",
-        main_body.getNumArguments() + nr_dim_args, " of which ", nr_dim_args,
-        " were declared to be dimension arguments.");
+        main_body.getNumArguments() + nr_platform_args + nr_dim_args,
+        " of which ", nr_platform_args, " platform index arguments and ",
+        nr_dim_args, " dimension arguments. It must be called with ",
+        main_body.getNumArguments(), " arguments.");
   }
 
   mlir::Builder builder((*module)->getContext());
@@ -346,15 +387,18 @@ Status LoadAndPreprocessModule(int version,
                                mlir::OwningOpRef<mlir::ModuleOp> *module,
                                mlir::MLIRContext *context, string module_str,
                                std::vector<string> dim_args_spec,
-                               bool *has_dynamic_shapes, int *nr_outputs) {
-  // Allow only dialects with stability guarantees.
+                               std::vector<string> platforms,
+                               int platform_index, bool *has_dynamic_shapes,
+                               int *nr_outputs) {
+  // Load a superset of dialects; we should check at serialization time that
+  // we only include allowable dialects.
   context->loadDialect<mlir::func::FuncDialect>();
-  if (version >= VERSION_START_STABLE_HLO) {
-    context->loadDialect<mlir::stablehlo::StablehloDialect>();
-  } else {
-    context->loadDialect<mlir::mhlo::MhloDialect>();
-  }
+  context->loadDialect<mlir::stablehlo::StablehloDialect>();
+  context->loadDialect<mlir::mhlo::MhloDialect>();
   context->loadDialect<mlir::chlo::ChloDialect>();
+  // Allow TF dialect for now because shape inference uses tf.Cast in
+  // intermediate stages.
+  context->loadDialect<mlir::TF::TensorFlowDialect>();
   // Parses both IR text and bytecode.
   *module = mlir::parseSourceString<mlir::ModuleOp>(llvm::StringRef(module_str),
                                                     context);
@@ -362,8 +406,9 @@ Status LoadAndPreprocessModule(int version,
     return errors::InvalidArgument("Cannot deserialize computation");
   }
   VLOG(3) << "Parsed serialized module (version " << version
-          << ", dim_args_spec = [" << absl::StrJoin(dim_args_spec, ", ")
-          << "])\n"
+          << ", platforms = [" << absl::StrJoin(platforms, ", ") << "]"
+          << ", platform_index = " << platform_index << ", dim_args_spec = ["
+          << absl::StrJoin(dim_args_spec, ", ") << "])\n"
           << debugString(**module);
 
   if (failed((*module)->verifyInvariants())) {
@@ -393,12 +438,9 @@ Status LoadAndPreprocessModule(int version,
     return errors::InvalidArgument(
         "Module main has dynamic shapes but no dim_args_spec was given");
   }
-  if (!dim_args_spec.empty()) {
-    if (!*has_dynamic_shapes) {
-      return errors::InvalidArgument(
-          "Module main has dim_args_spec but does not have dynamic shapes");
-    }
-    TF_RETURN_IF_ERROR(AddMainWrapper(version, **module, dim_args_spec));
+  if (!dim_args_spec.empty() || platform_index >= 0) {
+    TF_RETURN_IF_ERROR(
+        AddMainWrapper(version, **module, platform_index, dim_args_spec));
     main = (*module)->lookupSymbol<mlir::func::FuncOp>("main");
   }
   *nr_outputs = main.getNumResults();
@@ -422,16 +464,49 @@ class XlaCallModuleOp : public XlaOpKernel {
                                         expected_output_shapes.size(),
                                         ") must match the size of Tout (",
                                         expected_output_dtypes.size(), ")"));
+    std::vector<string> platforms;
+    platform_index_ = -1;
+    if (version_ >= VERSION_START_PLATFORMS) {
+      OP_REQUIRES_OK(ctx, ctx->GetAttr("platforms", &platforms));
+      if (!platforms.empty()) {
+        std::string current_device_type = ctx->device_type().type_string();
+        std::string current_platform = "";
+        if (current_device_type == DEVICE_CPU_XLA_JIT) {
+          current_platform = "CPU";
+        } else if (current_device_type == DEVICE_GPU_XLA_JIT) {
+          current_platform = "GPU";
+        } else if (current_device_type == DEVICE_TPU_XLA_JIT) {
+          current_platform = "TPU";
+        } else {
+          OP_REQUIRES(ctx, false,
+                      errors::Unimplemented("Unexpected device type ",
+                                            current_device_type));
+        }
+        auto found_platform =
+            std::find(platforms.begin(), platforms.end(), current_platform);
+        OP_REQUIRES(ctx, found_platform != platforms.end(),
+                    errors::NotFound(
+                        "The current platform ", current_platform,
+                        " is not among the platforms required by the module: [",
+                        absl::StrJoin(platforms, ", "), "]"));
+        // We only use a platform index arguments if we support at least 2
+        // platforms.
+        if (platforms.size() > 1) {
+          platform_index_ = found_platform - platforms.begin();
+        }
+      }
+    }
     OP_REQUIRES_OK(
         ctx, LoadAndPreprocessModule(version_, &module_, &context_, module_str,
-                                     dim_args_spec_, &has_dynamic_shapes_,
-                                     &nr_outputs_));
+                                     dim_args_spec_, platforms, platform_index_,
+                                     &has_dynamic_shapes_, &nr_outputs_));
   }
 
   void Compile(XlaOpKernelContext *ctx) override {
     if (has_dynamic_shapes_) {
-      OP_REQUIRES_OK(ctx,
-                     RefineDynamicShapes(ctx, &module_, dim_args_spec_.size()));
+      OP_REQUIRES_OK(ctx, RefineDynamicShapes(ctx, &module_,
+                                              (platform_index_ >= 0 ? 1 : 0),
+                                              dim_args_spec_.size()));
     }
 
     std::vector<xla::XlaOp> inputs(ctx->num_inputs());
@@ -479,6 +554,8 @@ class XlaCallModuleOp : public XlaOpKernel {
   int nr_outputs_;
   std::vector<string> dim_args_spec_;
   bool has_dynamic_shapes_;
+  int platform_index_;  // Index in platforms of the current platform, or -1
+                        // if module does not take a platform index arg.
   mlir::MLIRContext context_{mlir::MLIRContext::Threading::DISABLED};
   mlir::OwningOpRef<mlir::ModuleOp> module_;
 };

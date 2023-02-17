@@ -192,7 +192,6 @@ StatusOr<mlir::Operation*> ResourceSPMDExpander::ExpandOp(mlir::Operation* op) {
     if (!input_layout)
       TF_RETURN_WITH_CONTEXT(errors::Internal("input layout is missing"));
 
-    LOG(INFO) << "Infer spmd local result " << op->getNumResults();
     InferSPMDExpandedLocalShape(op);
     llvm::SmallPtrSet<mlir::Operation*, 4> newly_created_ops;
     TF_ASSIGN_OR_RETURN(

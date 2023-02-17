@@ -65,44 +65,6 @@ struct InferReturnTypesPattern : public RewritePattern {
   }
 };
 
-struct InferReturnTypeComponentsPattern : public RewritePattern {
-  InferReturnTypeComponentsPattern(MLIRContext *context)
-      : RewritePattern("mhlo_test.get_return_type_components", 1, context) {}
-  LogicalResult matchAndRewrite(Operation *op,
-                                PatternRewriter &rewriter) const override {
-    if (op->getNumOperands() != 1) return failure();
-    auto *definingOp = op->getOperand(0).getDefiningOp();
-    auto definingOpInt =
-        llvm::dyn_cast_or_null<InferShapedTypeOpInterface>(definingOp);
-    if (!definingOpInt) return failure();
-    SmallVector<ShapedTypeComponents, 4> components;
-    if (failed(definingOpInt.inferReturnTypeComponents(
-            op->getContext(), op->getLoc(), definingOp->getOperands(),
-            definingOp->getAttrDictionary(), definingOp->getRegions(),
-            components))) {
-      return failure();
-    }
-
-    // Replace the op with another pass-through op with attributes added.
-    OperationState state(op->getLoc(), "mhlo_test.return_type_components",
-                         op->getOperands(), op->getResultTypes(),
-                         op->getAttrs());
-    auto *newOp = rewriter.create(state);
-    for (const auto &it : llvm::enumerate(components)) {
-      if (it.value().hasRank()) {
-        newOp->setAttr((StringRef("dims") + Twine(it.index())).str(),
-                       rewriter.getI64ArrayAttr(it.value().getDims()));
-      }
-      if (it.value().getElementType()) {
-        newOp->setAttr((Twine("element_type") + Twine(it.index())).str(),
-                       TypeAttr::get(it.value().getElementType()));
-      }
-    }
-    rewriter.replaceOp(op, {newOp->getResults()});
-    return success();
-  }
-};
-
 struct ReifyReturnTypeShapesPattern : public RewritePattern {
   ReifyReturnTypeShapesPattern(MLIRContext *context)
       : RewritePattern("mhlo_test.reify_return_type_shapes", 1, context) {}
@@ -132,7 +94,6 @@ struct TestInferShapedTypeMethodsPass
     RewritePatternSet patterns(&getContext());
     patterns.add<InferReturnTypesPattern>(&getContext());
     patterns.add<ReifyReturnTypeShapesPattern>(&getContext());
-    patterns.add<InferReturnTypeComponentsPattern>(&getContext());
     if (failed(applyPatternsAndFoldGreedily(getOperation(),
                                             std::move(patterns)))) {
       return signalPassFailure();

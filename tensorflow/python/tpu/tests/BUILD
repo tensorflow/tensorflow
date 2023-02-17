@@ -5,9 +5,6 @@ load("//tensorflow/python/tpu:tpu.bzl", "tpu_py_test")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
-    default_visibility = [
-        "//tensorflow:__subpackages__",
-    ],
     licenses = ["notice"],
 )
 

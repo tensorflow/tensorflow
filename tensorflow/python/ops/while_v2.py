@@ -1372,12 +1372,6 @@ def _copy_handle_data(src_tensors, tgt_tensors):
     handle_data_util.copy_handle_data(src_t, tgt_t)
 
 
-def _graph_name(graph):
-  if isinstance(graph, func_graph_module.FuncGraph):
-    return graph.name
-  return "Base"
-
-
 def _pack_sequence_as(loop_vars_signature, flat_orig_loop_vars, loop_vars):
   """Like `nest.pack_sequence_as` but also replaces flows with TensorArrays."""
 

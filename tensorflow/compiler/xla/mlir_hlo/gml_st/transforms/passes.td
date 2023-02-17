@@ -90,6 +90,15 @@ def GreedyFusionPass : Pass<"gml-greedy-fusion", "mlir::func::FuncOp"> {
   ];
 }
 
+def TileByOnePass : Pass<"gml-tile-by-one", "mlir::func::FuncOp"> {
+  let summary = "Tile all tileable ops by size 1";
+  let description = [{
+    Tile all tileable ops to size 1. This is meant as a fallback for those ops
+    that were not previously tiled and vectorized.
+  }];
+  let constructor = "::mlir::gml_st::createTileByOnePass()";
+}
+
 def CollapseShapePass : Pass<"gml-collapse-shape", "mlir::func::FuncOp"> {
   let summary = "Collapse dimensions of bcasts, reductions, and cwise ops";
   let description = [{
@@ -219,6 +228,13 @@ def ScalarizationPass : Pass<"scalarize", "mlir::func::FuncOp"> {
     "tensor::TensorDialect"
   ];
   let constructor = "createScalarizationPass()";
+
+  let options = [
+    // TODO(b/268020816): Remove this flag.
+    Option<"skipFillOpScalarization", "block-fill-scalarization", "bool",
+      /*default=*/"false", "Do not scalarize `linalg.fill`. This is needed for "
+      "XLA:GPU pipeline for softmax.">,
+  ];
 }
 
 def TransformScatterForCpuPass :

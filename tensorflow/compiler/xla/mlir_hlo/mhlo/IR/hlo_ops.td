@@ -2872,9 +2872,7 @@ def MHLO_ReduceWindowOp: MHLO_Op<"reduce_window", [
   }];
 }
 
-def MHLO_ReturnOp : MHLO_Op<"return",
-      [Pure, Terminator,
-      DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
+def MHLO_ReturnOp : MHLO_Op<"return", [Pure, Terminator]> {
   let summary = [{
     The `hlo.return` operation terminates a region and returns values.
 
@@ -3014,7 +3012,6 @@ def MHLO_RngOp : MHLO_Op<"rng", [InferTensorTypeWithReify, AllElementTypesMatch<
   let results = (outs MHLO_PredIntOrFpTensor:$result);
 
   let hasCustomHLOConverter = 1;
-  let hasVerifier = 1;
 }
 
 def MHLO_RngBitGeneratorOp : MHLO_Op<"rng_bit_generator", [Pure]> {

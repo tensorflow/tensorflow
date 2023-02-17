@@ -32,3 +32,16 @@ cc_library(
         "//tensorflow/tsl/platform:statusor",
     ],
 )
+
+# Plugin should include this target to avoid linking the C API implementation.
+cc_library(
+    name = "c_api_hdrs",
+    hdrs = ["c_api.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//tensorflow/c:c_api_headers",
+        "//tensorflow/c:kernels_hdrs",
+        "//tensorflow/c:tf_buffer_internal",
+        "//tensorflow/compiler/xla/pjrt/c:pjrt_c_api_hdrs",
+    ],
+)

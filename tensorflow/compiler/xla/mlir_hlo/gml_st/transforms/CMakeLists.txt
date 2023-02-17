@@ -50,6 +50,7 @@ add_mlir_library(GmlStPasses
   rewrite_vector_ops/rewrite_vector_multi_reduction.cc
   rewrite_vector_ops/rewrite_vector_transpose.cc
   scalarization/scalarization.cc
+  tiling/tile_by_one.cc
   tiling/tiling.cc
   tiling_softmax/tiling_softmax.cc
   triton_tiling/transform_matmul_for_triton.cc

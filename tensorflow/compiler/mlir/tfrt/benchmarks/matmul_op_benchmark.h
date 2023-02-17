@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_TFRT_BENCHMARKS_MATMUL_OP_BENCHMARK_H_
 #define TENSORFLOW_COMPILER_MLIR_TFRT_BENCHMARKS_MATMUL_OP_BENCHMARK_H_
 
+#include <array>
+#include <memory>
 #include <string>
 #include <utility>
 
@@ -68,9 +70,7 @@ void RunMatMulMlirBenchmark(::testing::benchmark::State& state,
 
   TfJitRtPipelineOptions tf_jitrt_opts;
   tf_jitrt_opts.vectorize = tensorflow::GetJitRtFlags().vectorize;
-  tf_jitrt_opts.lower_to_mmt4d = tensorflow::GetJitRtFlags().pack_matmul;
-  tf_jitrt_opts.enable_xla_cpu_transformations =
-      tensorflow::GetJitRtFlags().enable_xla_cpu_transformations;
+  tf_jitrt_opts.lower_to_mmt4d = state.range(6);
   tf_jitrt_opts.matmul_tile_sizes = {state.range(3), state.range(4),
                                      state.range(5)};
 
@@ -204,28 +204,28 @@ void RunMatMulEigenBenchmark(::testing::benchmark::State& state) {
 
 #define BM_TFMlir(NAME, LHS_SHAPE, LHS_DYN_DIMS, RHS_SHAPE, RHS_DYN_DIMS,     \
                   OUT_SHAPE, OUT_DYN_DIMS, FN, TYPE)                          \
-  static void BM_mlir_##NAME##_##TYPE(::testing::benchmark::State& state) {   \
+  static void BM_mlir_##NAME(::testing::benchmark::State& state) {            \
     RunMatMulMlirBenchmark<TYPE>(                                             \
         state, #NAME,                                                         \
         GetMatmulIR({LHS_SHAPE}, {LHS_DYN_DIMS}, {RHS_SHAPE}, {RHS_DYN_DIMS}, \
                     {OUT_SHAPE}, {OUT_DYN_DIMS}, #TYPE),                      \
         FN);                                                                  \
   }                                                                           \
-  BENCHMARK(BM_mlir_##NAME##_##TYPE)
+  BENCHMARK(BM_mlir_##NAME)
 
-#define BM_TFMlir_DYNAMIC_ALL(M, N, K, T_M, T_N, T_K, FN, TYPE)       \
-  BM_TFMlir(MatmulDynamicAll_##M##_##K##_##N##_##T_M##_##T_N##_##T_K, \
-            INTS(M, K), BOOLS(kDynamicDim, kDynamicDim), INTS(K, N),  \
-            BOOLS(kDynamicDim, kDynamicDim), INTS(M, N),              \
-            BOOLS(kDynamicDim, kDynamicDim), FN, TYPE)                \
-      ->Args({M, K, N, T_M, T_N, T_K})
+#define BM_TFMlir_DYNAMIC_ALL(M, N, K, T_M, T_N, T_K, PACK, FN, TYPE)          \
+  BM_TFMlir(MatmulDynamicAll_##M##_##K##_##N##_##T_M##_##T_N##_##T_K##_##PACK, \
+            INTS(M, K), BOOLS(kDynamicDim, kDynamicDim), INTS(K, N),           \
+            BOOLS(kDynamicDim, kDynamicDim), INTS(M, N),                       \
+            BOOLS(kDynamicDim, kDynamicDim), FN, TYPE)                         \
+      ->Args({M, K, N, T_M, T_N, T_K, PACK})
 
-#define BM_TFMlir_STATIC_ALL(M, N, K, T_M, T_N, T_K, FN, TYPE)       \
-  BM_TFMlir(MatmulStaticAll_##M##_##K##_##N##_##T_M##_##T_N##_##T_K, \
-            INTS(M, K), BOOLS(kStaticDim, kStaticDim), INTS(K, N),   \
-            BOOLS(kStaticDim, kStaticDim), INTS(M, N),               \
-            BOOLS(kStaticDim, kStaticDim), FN, TYPE)                 \
-      ->Args({M, K, N, T_M, T_N, T_K})
+#define BM_TFMlir_STATIC_ALL(M, N, K, T_M, T_N, T_K, PACK, FN, TYPE)          \
+  BM_TFMlir(MatmulStaticAll_##M##_##K##_##N##_##T_M##_##T_N##_##T_K##_##PACK, \
+            INTS(M, K), BOOLS(kStaticDim, kStaticDim), INTS(K, N),            \
+            BOOLS(kStaticDim, kStaticDim), INTS(M, N),                        \
+            BOOLS(kStaticDim, kStaticDim), FN, TYPE)                          \
+      ->Args({M, K, N, T_M, T_N, T_K, PACK})
 
 #define BM_Eigen(NAME, TYPE)                                                 \
   static void BM_eigen_##NAME##_##TYPE(::testing::benchmark::State& state) { \

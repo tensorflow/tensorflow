@@ -26596,6 +26596,17 @@ func Merge(scope *Scope, inputs []tf.Output) (output tf.Output, value_index tf.O
 	return op.Output(0), op.Output(1)
 }
 
+// MergeDedupDataAttr is an optional argument to MergeDedupData.
+type MergeDedupDataAttr func(optionalAttr)
+
+// MergeDedupDataConfig sets the optional config attribute to value.
+// If not specified, defaults to ""
+func MergeDedupDataConfig(value string) MergeDedupDataAttr {
+	return func(m optionalAttr) {
+		m["config"] = value
+	}
+}
+
 // An op merges elements of integer and float tensors into deduplication data as
 // XLA tuple.
 //
@@ -26615,11 +26626,14 @@ func Merge(scope *Scope, inputs []tf.Output) (output tf.Output, value_index tf.O
 // 1]]. We expect only two types of elements: integer(0) and float(1).
 //
 // Returns An XLA tuple merging integer and float elements as deduplication data tuple.
-func MergeDedupData(scope *Scope, integer_tensor tf.Output, float_tensor tf.Output, tuple_mask string) (output tf.Output) {
+func MergeDedupData(scope *Scope, integer_tensor tf.Output, float_tensor tf.Output, tuple_mask string, optional ...MergeDedupDataAttr) (output tf.Output) {
 	if scope.Err() != nil {
 		return
 	}
 	attrs := map[string]interface{}{"tuple_mask": tuple_mask}
+	for _, a := range optional {
+		a(attrs)
+	}
 	opspec := tf.OpSpec{
 		Type: "MergeDedupData",
 		Input: []tf.Input{
@@ -47413,6 +47427,17 @@ func Split(scope *Scope, axis tf.Output, value tf.Output, num_split int64) (outp
 	return output
 }
 
+// SplitDedupDataAttr is an optional argument to SplitDedupData.
+type SplitDedupDataAttr func(optionalAttr)
+
+// SplitDedupDataConfig sets the optional config attribute to value.
+// If not specified, defaults to ""
+func SplitDedupDataConfig(value string) SplitDedupDataAttr {
+	return func(m optionalAttr) {
+		m["config"] = value
+	}
+}
+
 // An op splits input deduplication data XLA tuple into integer and floating point
 // tensors.
 //
@@ -47435,11 +47460,14 @@ func Split(scope *Scope, axis tf.Output, value tf.Output, num_split int64) (outp
 //
 //	integer_tensor: A 1-D integer tensor, includes integer elements of deduplication data tuple.
 //	float_tensor: A 1-D float tensor, includes float elements of deduplication data tuple.
-func SplitDedupData(scope *Scope, input tf.Output, integer_type tf.DataType, float_type tf.DataType, tuple_mask string) (integer_tensor tf.Output, float_tensor tf.Output) {
+func SplitDedupData(scope *Scope, input tf.Output, integer_type tf.DataType, float_type tf.DataType, tuple_mask string, optional ...SplitDedupDataAttr) (integer_tensor tf.Output, float_tensor tf.Output) {
 	if scope.Err() != nil {
 		return
 	}
 	attrs := map[string]interface{}{"integer_type": integer_type, "float_type": float_type, "tuple_mask": tuple_mask}
+	for _, a := range optional {
+		a(attrs)
+	}
 	opspec := tf.OpSpec{
 		Type: "SplitDedupData",
 		Input: []tf.Input{
@@ -52609,21 +52637,37 @@ func TensorListScatterV2(scope *Scope, tensor tf.Output, indices tf.Output, elem
 	return op.Output(0)
 }
 
+// TensorListSetItemAttr is an optional argument to TensorListSetItem.
+type TensorListSetItemAttr func(optionalAttr)
+
+// TensorListSetItemResizeIfIndexOutOfBounds sets the optional resize_if_index_out_of_bounds attribute to value.
+// If not specified, defaults to false
+func TensorListSetItemResizeIfIndexOutOfBounds(value bool) TensorListSetItemAttr {
+	return func(m optionalAttr) {
+		m["resize_if_index_out_of_bounds"] = value
+	}
+}
+
 // Sets the index-th position of the list to contain the given tensor.
 //
 // input_handle: the list
 // index: the position in the list to which the tensor will be assigned
 // item: the element to be assigned to that position
 // output_handle: the new list, with the element in the proper position
-func TensorListSetItem(scope *Scope, input_handle tf.Output, index tf.Output, item tf.Output) (output_handle tf.Output) {
+func TensorListSetItem(scope *Scope, input_handle tf.Output, index tf.Output, item tf.Output, optional ...TensorListSetItemAttr) (output_handle tf.Output) {
 	if scope.Err() != nil {
 		return
+	}
+	attrs := map[string]interface{}{}
+	for _, a := range optional {
+		a(attrs)
 	}
 	opspec := tf.OpSpec{
 		Type: "TensorListSetItem",
 		Input: []tf.Input{
 			input_handle, index, item,
 		},
+		Attrs: attrs,
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0)

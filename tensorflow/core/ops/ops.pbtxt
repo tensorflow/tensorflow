@@ -28084,6 +28084,13 @@ op {
       }
     }
   }
+  attr {
+    name: "config"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
 }
 op {
   name: "MergeSummary"
@@ -40607,6 +40614,25 @@ op {
   attr {
     name: "layout"
     type: "string"
+  }
+  attr {
+    name: "T"
+    type: "type"
+  }
+}
+op {
+  name: "RelayoutGrad"
+  input_arg {
+    name: "input"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "forward_input"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output"
+    type_attr: "T"
   }
   attr {
     name: "T"
@@ -55198,6 +55224,13 @@ op {
     name: "tuple_mask"
     type: "string"
   }
+  attr {
+    name: "config"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
 }
 op {
   name: "SplitV"
@@ -60631,6 +60664,13 @@ op {
   attr {
     name: "element_dtype"
     type: "type"
+  }
+  attr {
+    name: "resize_if_index_out_of_bounds"
+    type: "bool"
+    default_value {
+      b: false
+    }
   }
 }
 op {

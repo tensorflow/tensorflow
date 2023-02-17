@@ -335,7 +335,7 @@ def PrepareTFPass : Pass<"tfl-prepare-tf", "mlir::func::FuncOp"> {
     "mhlo::MhloDialect"
   ];
   let options = [
-      Option<"unfold_batch_matmul_", "emit-quant-adaptor-ops",
+      Option<"unfold_batch_matmul_", "unfold_batchmatmul",
              "bool", "true",
              "Unfold BatchMatMul into individual MatMul ops.">,
       Option<"allow_bf16_and_f16_type_legalization_", "allow-bf16-and-f16-type-legalization",

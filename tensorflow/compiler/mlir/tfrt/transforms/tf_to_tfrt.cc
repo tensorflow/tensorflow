@@ -2126,8 +2126,8 @@ static std::unique_ptr<Pass> CreateOutlineJitRtClustersPass() {
 
 // -------------------------------------------------------------------------- //
 
-void CreateTFExecutorToTFPipeline(mlir::OpPassManager &pm,
-                                  const TfrtPipelineOptions &options) {
+static void CreateTFExecutorToTFPipelineHelper(
+    mlir::OpPassManager &pm, const TfrtPipelineOptions &options) {
   // Due to b/191304670, functionalized while ops might not have the
   // shape_invariant attribute set correctly, which leads to failure in shape
   // inference. As a workaround, we conservatively (e.g., we place less
@@ -2301,10 +2301,8 @@ void CreateTFExecutorToTFPipeline(mlir::OpPassManager &pm,
   pm.addPass(CreateLowerTFSavedModelPass(options.hoist_invariant_ops));
 }
 
-void CreateTfExecutorToTfrtPipelineHelper(mlir::OpPassManager &pm,
-                                          const TfrtPipelineOptions &options) {
-  CreateTFExecutorToTFPipeline(pm, options);
-
+void CreateTfToTfrtPipeline(mlir::OpPassManager &pm,
+                            const TfrtPipelineOptions &options) {
   pm.addPass(CreateTfToTfrtConversionPass(options));
 
   pm.addPass(CreateRemoveDeviceAttributePass());
@@ -2317,6 +2315,12 @@ void CreateTfExecutorToTfrtPipelineHelper(mlir::OpPassManager &pm,
     pm.addNestedPass<mlir::func::FuncOp>(
         tfrt_compiler::CreateInsertFallbackTensorCopyPass());
   }
+}
+
+static void CreateTfExecutorToTfrtPipelineHelper(
+    mlir::OpPassManager &pm, const TfrtPipelineOptions &options) {
+  CreateTFExecutorToTFPipelineHelper(pm, options);
+  CreateTfToTfrtPipeline(pm, options);
 }
 
 Status ValidateTfrtPipelineOptions(const TfrtPipelineOptions &options) {
@@ -2334,6 +2338,13 @@ Status ValidateTfrtPipelineOptions(const TfrtPipelineOptions &options) {
 // export TF_DUMP_GRAPH_PREFIX=/tmp/mlir
 Status CreateTfExecutorToTfrtPipeline(mlir::PassManager &pm,
                                       const TfrtPipelineOptions &options) {
+  TF_RETURN_IF_ERROR(CreateTFExecutorToTFPipeline(pm, options));
+  CreateTfToTfrtPipeline(pm, options);
+  return OkStatus();
+}
+
+Status CreateTFExecutorToTFPipeline(mlir::PassManager &pm,
+                                    const TfrtPipelineOptions &options) {
   TF_RETURN_IF_ERROR(ValidateTfrtPipelineOptions(options));
   if (VLOG_IS_ON(1)) {
     // Print the whole module after each pass, which requires disabling
@@ -2342,7 +2353,7 @@ Status CreateTfExecutorToTfrtPipeline(mlir::PassManager &pm,
     pm.enableIRPrinting(std::make_unique<tensorflow::BridgeLoggerConfig>(
         /*print_module_scope=*/true));
   }
-  CreateTfExecutorToTfrtPipelineHelper(pm, options);
+  CreateTFExecutorToTFPipelineHelper(pm, options);
   return OkStatus();
 }
 

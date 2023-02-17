@@ -113,8 +113,9 @@ struct ThloSortOpBufferizationModel
       Operation *op, OpResult opResult, const AnalysisState & /*state*/) const {
     auto dstStyleOp = cast<DestinationStyleOpInterface>(op);
 
-    // The i-th OpResult may alias with the i-th "out" tensor.
-    return {dstStyleOp.getDpsInitOperand(opResult.getResultNumber())};
+    // The i-th OpResult aliases with the i-th "out" tensor.
+    return {{dstStyleOp.getDpsInitOperand(opResult.getResultNumber()),
+             BufferRelation::Equivalent}};
   }
 
   AliasingOpResultList getAliasingOpResults(
@@ -122,9 +123,10 @@ struct ThloSortOpBufferizationModel
       const AnalysisState & /*state*/) const {
     auto dstStyleOp = cast<DestinationStyleOpInterface>(op);
 
-    // The i-th "out" tensor may alias with the i-th OpResult.
+    // The i-th "out" tensor aliases with the i-th OpResult.
     if (dstStyleOp.isDpsInit(&opOperand))
-      return {dstStyleOp.getTiedOpResult(&opOperand)};
+      return {
+          {dstStyleOp.getTiedOpResult(&opOperand), BufferRelation::Equivalent}};
     return {};
   }
 
@@ -132,11 +134,6 @@ struct ThloSortOpBufferizationModel
                           const BufferizationOptions &options) const {
     return bufferizeDestinationStyleOpInterface(
         rewriter, cast<DestinationStyleOpInterface>(op), options);
-  }
-
-  BufferRelation bufferRelation(Operation * /*op*/, OpResult /*opResult*/,
-                                const AnalysisState & /*state*/) const {
-    return BufferRelation::Equivalent;
   }
 };
 

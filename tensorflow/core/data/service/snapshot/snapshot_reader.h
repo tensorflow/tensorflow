@@ -42,7 +42,6 @@ struct SnapshotReaderParams {
   experimental::DistributedSnapshotMetadata metadata;
 
   // Data types of the snapshot data elements.
-  // TODO(b/258691097): Parse the metadata to get the output types.
   DataTypeVector output_types;
 
   // The Tensorflow environment.

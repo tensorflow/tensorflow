@@ -1148,6 +1148,9 @@ void TfLiteOpaqueDelegateDelete(TfLiteOpaqueDelegate* delegate);
 // - Or in case of any other error.
 // - The 'delegate' has been constructed via a 'TfLiteOpaqueDelegateBuilder',
 //   but the 'data' field of the 'TfLiteOpaqueDelegateBuilder' is null.
+//
+//  The data_ field of 'delegate' will be returned if the
+//  'opaque_delegate_builder' field is null.
 void* TfLiteOpaqueDelegateGetData(const TfLiteOpaqueDelegate* delegate);
 
 #ifdef __cplusplus

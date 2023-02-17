@@ -185,6 +185,7 @@ class Mesh {
     return *std::min_element(global_device_ids_.begin(),
                              global_device_ids_.end());
   }
+  int64_t num_local_devices() const { return local_devices_.size(); }
 
   absl::Span<const int64_t> global_device_ids() const {
     return global_device_ids_;

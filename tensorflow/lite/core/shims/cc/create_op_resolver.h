@@ -15,9 +15,8 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_CORE_SHIMS_CC_CREATE_OP_RESOLVER_H_
 #define TENSORFLOW_LITE_CORE_SHIMS_CC_CREATE_OP_RESOLVER_H_
 
-#include <memory>
-
-#include "tensorflow/lite/core/create_op_resolver.h"
+/// For documentation, see third_party/tensorflow/lite/create_op_resolver.h.
+#include "tensorflow/lite/create_op_resolver.h"
 
 namespace tflite_shims {
 using ::tflite::CreateOpResolver;

@@ -548,6 +548,7 @@ cc_library_with_tflite(
 alias_with_tflite(
     name = "cc_api",
     actual = "cc_api_experimental",
+    generate_opaque_delegate_target = True,
     visibility = [
         "//tensorflow/lite/core/shims:__subpackages__",
         "//tensorflow/lite/delegates/flex:__subpackages__",
@@ -583,6 +584,7 @@ cc_library_with_tflite(
     ],
     compatible_with = get_compatible_with_portable(),
     copts = tflite_copts() + tflite_copts_warnings(),
+    generate_opaque_delegate_target = True,
     visibility = [
         "//tensorflow/lite/core/kernels:__subpackages__",
         "//tensorflow/lite/core/shims:__subpackages__",
@@ -667,6 +669,7 @@ cc_library_with_tflite(
     ],
     compatible_with = get_compatible_with_portable(),
     copts = tflite_copts() + tflite_copts_warnings(),
+    generate_opaque_delegate_target = True,
     tflite_deps = [
         ":cc_api_stable",
     ],

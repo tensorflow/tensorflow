@@ -22,6 +22,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/cleanup/cleanup.h"
 #include "absl/strings/string_view.h"
 #include "mlir/Bytecode/BytecodeWriter.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
@@ -1187,6 +1188,95 @@ PjRtFuture<Status> PjRtCApiBuffer::GetReadyFuture() {
   return PjRtFuture<Status>{*readiness_promise_};
 }
 
+// ------------------------------ Device Topology ------------------------------
+
+PjRtCApiDeviceTopology::PjRtCApiDeviceTopology(const PJRT_Api* c_api,
+                                               PJRT_DeviceTopology* c_topology)
+    : compiler_(std::make_unique<PjRtCApiCompiler>(c_api)),
+      c_api_(c_api),
+      c_topology_(c_topology, ::pjrt::MakeDeviceTopologyDeleter(c_api)) {}
+
+absl::string_view PjRtCApiDeviceTopology::platform_name() const {
+  PJRT_DeviceTopology_PlatformName_Args args;
+  args.topology = c_topology_.get();
+  args.struct_size = PJRT_DeviceTopology_PlatformName_Args_STRUCT_SIZE;
+  args.priv = nullptr;
+  pjrt::LogFatalIfPjrtError(c_api_->PJRT_DeviceTopology_PlatformName(&args),
+                            c_api_);
+  return absl::string_view(args.platform_name, args.platform_name_size);
+}
+
+absl::string_view PjRtCApiDeviceTopology::platform_version() const {
+  PJRT_DeviceTopology_PlatformVersion_Args args;
+  args.struct_size = PJRT_DeviceTopology_PlatformVersion_Args_STRUCT_SIZE;
+  args.priv = nullptr;
+  args.topology = c_topology_.get();
+  pjrt::LogFatalIfPjrtError(c_api_->PJRT_DeviceTopology_PlatformVersion(&args),
+                            c_api_);
+  return absl::string_view(args.platform_version, args.platform_version_size);
+}
+
+// Initializes `PJRT_Compile_Args`, which will be used to call
+// API PJRT_Compile().
+static StatusOr<std::unique_ptr<PjRtExecutable>> InitializeArgsAndCompileAot(
+    const PJRT_Api* c_api, PjRtClient* client, const CompileOptions& options,
+    const PjRtDeviceTopology& topology, const std::string& code,
+    const std::string& format) {
+  PJRT_Compile_Args args;
+  args.struct_size = PJRT_Compile_Args_STRUCT_SIZE;
+  args.priv = nullptr;
+  if (client == nullptr) {
+    args.client = nullptr;
+  } else {
+    args.client =
+        tensorflow::down_cast<PjRtCApiClient*>(client)->pjrt_c_client();
+  }
+  args.topology =
+      tensorflow::down_cast<const PjRtCApiDeviceTopology*>(&topology)
+          ->c_topology();
+  TF_ASSIGN_OR_RETURN(const CompileOptionsProto options_proto,
+                      options.ToProto());
+  std::string options_str = options_proto.SerializeAsString();
+  args.compile_options = options_str.c_str();
+  args.compile_options_size = options_str.size();
+
+  PJRT_Program program;
+  program.struct_size = PJRT_Program_STRUCT_SIZE;
+  program.priv = nullptr;
+  program.code = const_cast<char*>(code.c_str());
+  program.code_size = code.size();
+  program.format = format.c_str();
+  program.format_size = format.size();
+  args.program = &program;
+
+  RETURN_STATUS_IF_ERROR(c_api->PJRT_Compile(&args), c_api);
+  std::unique_ptr<PjRtExecutable> ret =
+      std::make_unique<PjRtCApiExecutable>(c_api, args.executable);
+  return ret;
+}
+
+StatusOr<std::unique_ptr<PjRtExecutable>> PjRtCApiCompiler::Compile(
+    CompileOptions options, const XlaComputation& computation,
+    const PjRtDeviceTopology& topology, PjRtClient* client) {
+  std::string module_str = computation.proto().SerializeAsString();
+  std::string format(pjrt::kHloFormat);
+  return InitializeArgsAndCompileAot(c_api_, client, options, topology,
+                                     module_str, format);
+}
+
+StatusOr<std::unique_ptr<PjRtExecutable>> PjRtCApiCompiler::Compile(
+    CompileOptions options, mlir::ModuleOp module,
+    const PjRtDeviceTopology& topology, PjRtClient* client) {
+  std::string module_bytecode;
+  {
+    llvm::raw_string_ostream os(module_bytecode);
+    mlir::writeBytecodeToFile(module, os);
+  }
+  std::string format(pjrt::kMlirFormat);
+  return InitializeArgsAndCompileAot(c_api_, client, options, topology,
+                                     module_bytecode, format);
+}
+
 // -------------------------------- API access ---------------------------------
 
 StatusOr<std::unique_ptr<PjRtClient>> GetCApiClient(
@@ -1199,7 +1289,7 @@ StatusOr<std::unique_ptr<PjRtClient>> GetCApiClient(
 #endif
   TF_ASSIGN_OR_RETURN(const PJRT_Api* c_api, pjrt::PjrtApi(device_type));
   if (c_api == nullptr) {
-    return InternalError("PJRT C API is nullptr");
+    return InternalError("PJRT C API is nullptr for %s", device_type);
   }
 
   PJRT_Client_Create_Args init_args;
@@ -1210,6 +1300,22 @@ StatusOr<std::unique_ptr<PjRtClient>> GetCApiClient(
 
   return std::unique_ptr<PjRtClient>(
       std::make_unique<PjRtCApiClient>(c_api, c_client));
+}
+
+StatusOr<std::unique_ptr<PjRtDeviceTopology>> GetCApiTopology(
+    absl::string_view device_type) {
+  TF_ASSIGN_OR_RETURN(const PJRT_Api* c_api, pjrt::PjrtApi(device_type));
+  if (c_api == nullptr) {
+    return InternalError("PJRT C API is nullptr for %s", device_type);
+  }
+
+  PJRT_DeviceTopology_Create_Args init_args;
+  init_args.struct_size = PJRT_DeviceTopology_Create_Args_STRUCT_SIZE;
+  init_args.priv = nullptr;
+  RETURN_STATUS_IF_ERROR(c_api->PJRT_DeviceTopology_Create(&init_args), c_api);
+  PJRT_DeviceTopology* c_topology = init_args.topology;
+  return std::unique_ptr<PjRtDeviceTopology>(
+      std::make_unique<PjRtCApiDeviceTopology>(c_api, c_topology));
 }
 
 }  // namespace xla

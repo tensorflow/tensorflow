@@ -23,6 +23,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/memory/memory.h"
 #include "tensorflow/c/eager/c_api.h"
 #include "tensorflow/c/eager/parallel_device/parallel_device_lib.h"
 #include "tensorflow/c/eager/tfe_context_internal.h"
@@ -40,6 +41,7 @@ limitations under the License.
 #include "tensorflow/dtensor/cc/small_constant_optimization.h"
 #include "tensorflow/dtensor/cc/tensor_layout.h"
 #include "tensorflow/dtensor/cc/tensor_with_layout.h"
+#include "tensorflow/tsl/platform/fingerprint.h"
 
 namespace tensorflow {
 namespace dtensor {
@@ -116,19 +118,6 @@ struct ExecutionFunctions {
   uint64 function_mesh_fingerprint = 0;
 };
 
-// TODO(yujingzhang): move FingerprintCat128 to tensorflow/platform.
-inline tensorflow::Fprint128 FingerprintCat128(const tensorflow::Fprint128& a,
-                                               const tensorflow::Fprint128& b) {
-  return {tensorflow::FingerprintCat64(a.low64, b.low64),
-          tensorflow::FingerprintCat64(a.high64, b.high64)};
-}
-
-inline tensorflow::Fprint128 FingerprintCat128(const tensorflow::Fprint128& a,
-                                               const int64 b) {
-  auto x = tensorflow::FingerprintCat64(a.low64, b);
-  return {x, tensorflow::FingerprintCat64(a.high64, x)};
-}
-
 struct DTensorOperation {
   // For both fields: not owned. lifetime covers the whole usage.
   const char* name;
@@ -176,18 +165,18 @@ class TensorWithLayoutTf : public TensorWithLayout {
  public:
   // Broadcast a single non-parallel tensor onto `mesh` with a fully replicated
   // sharding spec. Does not take ownership of `tensor`.
-  static std::unique_ptr<TensorWithLayout> Broadcast(
+  static std::unique_ptr<TensorWithLayoutTf> Broadcast(
       TFE_Context* context, TFE_TensorHandle* tensor,
       const MeshWithParallelDevice& mesh,
       const std::string& dtensor_device_name, TF_Status* status);
 
   // Given an already-parallel tensor, wraps it with a mesh and a layout.
-  static StatusOr<std::unique_ptr<TensorWithLayout>> Wrap(
+  static StatusOr<std::unique_ptr<TensorWithLayoutTf>> Wrap(
       std::unique_ptr<parallel_device::ParallelTensor> tensor, const Mesh& mesh,
       const Layout& layout);
 
   // Creates a dummy TensorWithLayoutTf without holding a ParallelTensor.
-  static std::unique_ptr<TensorWithLayout> Dummy(
+  static std::unique_ptr<TensorWithLayoutTf> Dummy(
       const std::vector<int64_t>& local_shape, TF_DataType dtype,
       const Mesh& mesh, const Layout& layout);
 
@@ -232,9 +221,7 @@ class TensorWithLayoutTf : public TensorWithLayout {
 
   size_t num_tensors() const override { return tensor_->num_tensors(); }
 
-  const parallel_device::TensorHandlePtr* tensor() const override {
-    return tensor_ != nullptr ? tensor_->tensor_data() : nullptr;
-  }
+  parallel_device::ParallelTensor* tensor() const { return tensor_.get(); }
 
   std::string SummarizeValue() const override;
 
@@ -261,7 +248,7 @@ class TensorWithLayoutTf : public TensorWithLayout {
  protected:
   TensorWithLayoutTf(std::unique_ptr<parallel_device::ParallelTensor> tensor,
                      const Mesh& mesh, const Layout& layout,
-                     std::vector<int64_t> local_shape,
+                     const std::vector<int64_t>& local_shape,
                      std::optional<TF_DataType> dtype = std::nullopt,
                      std::optional<NodeDef> const_value = std::nullopt)
       : tensor_(std::move(tensor)),
@@ -295,15 +282,15 @@ class TensorWithLayoutTf : public TensorWithLayout {
 // 1. The layout, shape, dtype are lazily set as they are unavailable upon
 //    creation.
 // 2. Small const optimization should be disabled.
-class ResourceHandleWithLayout : public TensorWithLayout {
+class ResourceHandleWithLayout : public TensorWithLayoutTf {
  public:
   // Similar to `Wrap` in `TensorWithLayoutTf` but for resource handle.
-  static StatusOr<std::unique_ptr<TensorWithLayout>> Wrap(
+  static StatusOr<std::unique_ptr<ResourceHandleWithLayout>> Wrap(
       std::unique_ptr<parallel_device::ParallelTensor> tensor, const Mesh& mesh,
       const Layout& layout);
 
   // Similar to `Dummy` in `TensorWithLayoutTf` but for resource handle.
-  static std::unique_ptr<TensorWithLayout> Dummy(
+  static std::unique_ptr<ResourceHandleWithLayout> Dummy(
       const std::vector<int64_t>& local_shape, const Mesh& mesh,
       const Layout& layout);
 
@@ -340,34 +327,6 @@ class ResourceHandleWithLayout : public TensorWithLayout {
   void UpdateAttrs(const EmbeddingResourceAttrs& attrs,
                    TF_Status* status) override;
 
-  TFE_TensorHandle* get_tensor(size_t index) const override {
-    return tensor_->tensor(index);
-  }
-
-  size_t num_tensors() const override { return tensor_->num_tensors(); }
-
-  const parallel_device::TensorHandlePtr* tensor() const override {
-    return tensor_ != nullptr ? tensor_->tensor_data() : nullptr;
-  }
-
-  std::string SummarizeValue() const override;
-
-  std::string DebugString() const override;
-
-  const Mesh& mesh() const override { return mesh_; }
-
-  std::vector<int64_t> global_shape() const override {
-    return layout_.GlobalShapeFromLocalShape(local_shape_);
-  }
-
-  const std::vector<int64_t>& local_shape() const override {
-    return local_shape_;
-  }
-
-  const std::optional<EmbeddingResourceAttrs>& attrs() const override {
-    return attrs_;
-  }
-
   ConstValueNode* const_value_node() const override { return nullptr; }
 
   void UpdateDirtyness(bool is_dirty, TF_Status* status) {
@@ -397,23 +356,12 @@ class ResourceHandleWithLayout : public TensorWithLayout {
     return dereferenced_dtype_;
   }
 
- public:
+ private:
   ResourceHandleWithLayout(
       std::unique_ptr<parallel_device::ParallelTensor> tensor, const Mesh& mesh,
-      const Layout& layout, std::vector<int64_t> local_shape)
-      : tensor_(std::move(tensor)),
-        layout_(layout),
-        mesh_(mesh),
-        local_shape_(local_shape),
-        dtype_(TF_RESOURCE) {}
-
- private:
-  std::unique_ptr<parallel_device::ParallelTensor> tensor_;
-  Layout layout_;
-  const Mesh& mesh_;
-  std::vector<int64_t> local_shape_;
-  std::optional<TF_DataType> dtype_;
-  std::optional<EmbeddingResourceAttrs> attrs_;  // NOLINT
+      const Layout& layout, const std::vector<int64_t>& local_shape)
+      : TensorWithLayoutTf(std::move(tensor), mesh, layout, local_shape,
+                           TF_RESOURCE) {}
 
   // The layout of the tensor pointed to by this handle, if any.
   std::optional<Layout> dereferenced_layout_;
@@ -434,17 +382,18 @@ class ResourceHandleWithLayout : public TensorWithLayout {
 // shapes.
 class SparseTensorWithLayout : public TensorWithLayoutTf {
  public:
-  static StatusOr<std::unique_ptr<TensorWithLayoutTf>> Wrap(
+  static StatusOr<std::unique_ptr<SparseTensorWithLayout>> Wrap(
       std::unique_ptr<parallel_device::ParallelTensor> indices_tensor,
       std::unique_ptr<parallel_device::ParallelTensor> values_tensor,
       std::unique_ptr<parallel_device::ParallelTensor> shapes_tensor,
-      const Mesh& mesh, const Layout& layout, std::vector<int64_t> local_shape);
+      const Mesh& mesh, const Layout& layout,
+      const std::vector<int64_t>& local_shape);
 
   // A dummy TensorWithLayout without holding a ParallelTensor.
-  static std::unique_ptr<TensorWithLayoutTf> Dummy(
+  static std::unique_ptr<SparseTensorWithLayout> Dummy(
       const std::vector<int64_t>& local_shape, const Mesh& mesh,
       const Layout& layout) {
-    return std::unique_ptr<TensorWithLayoutTf>(new SparseTensorWithLayout(
+    return absl::WrapUnique(new SparseTensorWithLayout(
         /*indices=*/nullptr, /*values=*/nullptr, /*dense_shapes=*/nullptr, mesh,
         layout, local_shape));
   }
@@ -467,32 +416,30 @@ class SparseTensorWithLayout : public TensorWithLayoutTf {
 
   TF_DataType dtype() const override;
 
-  const parallel_device::TensorHandlePtr* indices() const {
-    return indices_->tensor_data();
-  }
+  parallel_device::ParallelTensor* indices() const { return indices_.get(); }
 
-  const parallel_device::TensorHandlePtr* values() const {
-    return values_->tensor_data();
-  }
+  parallel_device::ParallelTensor* values() const { return values_.get(); }
 
-  const parallel_device::TensorHandlePtr* dense_shapes() const {
-    return dense_shapes_->tensor_data();
+  parallel_device::ParallelTensor* dense_shapes() const {
+    return dense_shapes_.get();
   }
 
   ConstValueNode* const_value_node() const override { return nullptr; }
 
- protected:
+ private:
   SparseTensorWithLayout(
       std::unique_ptr<parallel_device::ParallelTensor> indices,
       std::unique_ptr<parallel_device::ParallelTensor> values,
       std::unique_ptr<parallel_device::ParallelTensor> dense_shapes,
-      const Mesh& mesh, const Layout& layout, std::vector<int64_t> local_shape,
+      const Mesh& mesh, const Layout& layout,
+      const std::vector<int64_t>& local_shape,
       std::optional<TF_DataType> dtype = std::nullopt,
       std::optional<NodeDef> const_value = std::nullopt)
       : TensorWithLayoutTf(nullptr, mesh, layout, local_shape),
         indices_(std::move(indices)),
         values_(std::move(values)),
         dense_shapes_(std::move(dense_shapes)) {}
+
   std::unique_ptr<parallel_device::ParallelTensor> indices_;
   std::unique_ptr<parallel_device::ParallelTensor> values_;
   std::unique_ptr<parallel_device::ParallelTensor> dense_shapes_;
@@ -503,11 +450,11 @@ class SparseTensorWithLayout : public TensorWithLayoutTf {
 // `ResourceHandleWithLayout`, `SparseTensorWithLayout` and the incoming
 // `TensorWithLayoutPw`.
 
-std::unique_ptr<TensorWithLayout> CreateDummyTensorWithLayout(
+std::unique_ptr<TensorWithLayoutTf> CreateDummyTensorWithLayout(
     const std::vector<int64_t>& local_shape, TF_DataType dtype,
     const Mesh& mesh, const Layout& layout);
 
-StatusOr<std::unique_ptr<TensorWithLayout>> CreateTensorWithLayout(
+StatusOr<std::unique_ptr<TensorWithLayoutTf>> CreateTensorWithLayout(
     std::unique_ptr<parallel_device::ParallelTensor> tensor, const Mesh& mesh,
     const Layout& layout);
 
@@ -642,8 +589,8 @@ Status MaybeInsertIdentityNodes(const FunctionDef* function_def, Graph* graph);
 void AddDTensorFunctionAttr(FunctionDef& function_def);
 
 // Prepare inputs of embeddings for checkpoint functions.
-StatusOr<std::vector<const parallel_device::TensorHandlePtr*>>
-PrepareEmbeddingInputs(const std::vector<TensorWithLayout*>& inputs);
+StatusOr<std::vector<parallel_device::ParallelTensor*>> PrepareEmbeddingInputs(
+    const std::vector<TensorWithLayoutTf*>& inputs);
 
 Status InsertFunctionForTPUEmbeddingCheckpoint(
     TF_Status* status, Graph* graph,

@@ -290,6 +290,11 @@ const StatTypeMap& GetStatTypeMap() {
       {"hlo_category", kHloCategory},
       {"tf_op_name", kTfOpName},
       {"dma_stall_duration_ps", kDmaStallDurationPs},
+      {"key", kKey},
+      {"payload_size_bytes", kPayloadSizeBytes},
+      {"duration_us", kDuration},
+      {"buffer_size", kBufferSize},
+      {"transfers", kTransfers},
   });
   DCHECK_EQ(stat_type_map->size(), kNumStatTypes);
   return *stat_type_map;

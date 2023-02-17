@@ -931,6 +931,7 @@ cc_library_with_tflite(
         "register.h",
     ],
     compatible_with = get_compatible_with_portable(),
+    generate_opaque_delegate_target = True,
     tflite_deps = [
         "//tensorflow/lite:cc_api_stable",
     ],

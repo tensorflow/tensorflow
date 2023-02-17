@@ -62,7 +62,10 @@ Value materializePoint(OpBuilder &b, Location loc, Value valueToTile,
 }
 
 struct ScalarizeLinalgOp : public OpInterfaceRewritePattern<LinalgOp> {
-  using OpInterfaceRewritePattern<LinalgOp>::OpInterfaceRewritePattern;
+  explicit ScalarizeLinalgOp(MLIRContext *context, bool skipFillOpScalarization,
+                             PatternBenefit benefit = 1)
+      : OpInterfaceRewritePattern<LinalgOp>(context, benefit),
+        skipFillOpScalarization(skipFillOpScalarization) {}
 
   static LogicalResult inlinePayload(PatternRewriter &rewriter, Location loc,
                                      LinalgOp linalgOp, ValueRange argValues) {
@@ -94,11 +97,12 @@ struct ScalarizeLinalgOp : public OpInterfaceRewritePattern<LinalgOp> {
 
   LogicalResult matchAndRewrite(LinalgOp linalgOp,
                                 PatternRewriter &rewriter) const override {
+    if (skipFillOpScalarization && isa<linalg::FillOp>(&linalgOp)) {
+      return failure();
+    }
+
     // Fail if not every argument is a scalar or a single-element tensor.
     if (!hasSingleElementOperandsAndResults(linalgOp)) return failure();
-
-    // TODO(aliia): fix scalarization of FillOp.
-    if (auto *fillOp = dyn_cast<linalg::FillOp>(&linalgOp)) return failure();
 
     // Load the data corresponding to the block arguments that
     // represent input operands.
@@ -126,6 +130,9 @@ struct ScalarizeLinalgOp : public OpInterfaceRewritePattern<LinalgOp> {
     // Inline the op payload and rewrite the operation.
     return inlinePayload(rewriter, loc, linalgOp, indexedValues);
   }
+
+ private:
+  bool skipFillOpScalarization;
 };
 
 // Returns `startIndices`[0, :] for `startIndices` of shape 1xn. Returns None if
@@ -547,6 +554,89 @@ struct ScalarizeIfOp : public OpRewritePattern<scf::IfOp> {
   }
 };
 
+struct ScalarizeForOp : public OpRewritePattern<scf::ForOp> {
+  using OpRewritePattern::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(scf::ForOp forOp,
+                                PatternRewriter &rewriter) const override {
+    if (forOp.getNumIterOperands() != 1) return failure();
+    OpOperand &iterOperand = forOp.getIterOpOperands().front();
+    auto iterArgTensorTy =
+        dyn_cast<RankedTensorType>(iterOperand.get().getType());
+    if (!iterArgTensorTy || !hasSingleElement(iterArgTensorTy))
+      return failure();
+
+    Value bbArg = forOp.getRegionIterArgForOpOperand(iterOperand);
+
+    if (!bbArg.hasOneUse()) return failure();
+
+    Operation *user = *bbArg.getUsers().begin();
+    auto extractOp = dyn_cast<tensor::ExtractOp>(user);
+    if (!extractOp) return failure();
+
+    Operation *terminator = forOp.getBody()->getTerminator();
+    auto fromTensorOp =
+        terminator->getOperand(0).getDefiningOp<tensor::FromElementsOp>();
+    if (!fromTensorOp) return failure();
+
+    OpBuilder::InsertionGuard g(rewriter);
+    rewriter.setInsertionPoint(forOp);
+    Location loc = forOp.getLoc();
+    Value extractedElement = rewriter.create<tensor::ExtractOp>(
+        loc, iterOperand.get(), extractOp.getIndices());
+    auto newForOp = rewriter.create<scf::ForOp>(
+        loc, forOp.getLowerBound(), forOp.getUpperBound(), forOp.getStep(),
+        ValueRange{extractedElement});
+    newForOp->setAttrs(forOp->getAttrs());
+    Block *newLoopBody = newForOp.getBody();
+
+    // Move old body into new for loop.
+    rewriter.setInsertionPointToStart(newLoopBody);
+    SmallVector<Value> blockArgs{newForOp.getInductionVar(),
+                                 rewriter.create<tensor::FromElementsOp>(
+                                     loc, newForOp.getRegionIterArg(0))};
+    rewriter.mergeBlocks(forOp.getBody(), newLoopBody, blockArgs);
+
+    // Replace terminator that yields a tensor with the one that yields the
+    // element.
+    Operation *newTerminator = newForOp.getBody()->getTerminator();
+    rewriter.setInsertionPointAfter(newTerminator);
+    Value elemOfYieldedTensor = rewriter.create<tensor::ExtractOp>(
+        loc, terminator->getOperand(0), extractOp.getIndices());
+    rewriter.replaceOpWithNewOp<scf::YieldOp>(newTerminator,
+                                              elemOfYieldedTensor);
+
+    // Replace the old loop with the new loop result wrapped in a tensor.
+    rewriter.setInsertionPointAfter(newForOp);
+    rewriter.replaceOpWithNewOp<tensor::FromElementsOp>(
+        forOp, forOp.getResultTypes().front(), newForOp.getResult(0));
+
+    return success();
+  }
+};
+
+// Fold `tensor.insert_slice(tensor.from_elements(x), dst)` into
+//      `tensor.insert(x, dst)` for single-element tensors.
+struct FoldTensorFromElementsIntoInsertSlice
+    : public OpRewritePattern<tensor::InsertSliceOp> {
+  using OpRewritePattern::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(tensor::InsertSliceOp insertSliceOp,
+                                PatternRewriter &rewriter) const override {
+    auto fromElementsOp =
+        insertSliceOp.getSource().getDefiningOp<FromElementsOp>();
+    if (!fromElementsOp || !hasSingleElement(fromElementsOp.getType())) {
+      return failure();
+    }
+    SmallVector<Value> indices = getAsValues(rewriter, insertSliceOp.getLoc(),
+                                             insertSliceOp.getMixedOffsets());
+    rewriter.replaceOpWithNewOp<tensor::InsertOp>(
+        insertSliceOp, fromElementsOp.getElements().front(),
+        insertSliceOp.getDest(), indices);
+    return success();
+  }
+};
+
 // Fold `gml_st.set_yield(tensor.from_elements(x) -> tensor<1x1xf32>)` into
 //      `gml_st.set_yield(x)` for single-element tensors.
 struct FoldTensorFromElementsIntoSetYield
@@ -579,25 +669,34 @@ struct FoldTensorFromElementsIntoSetYield
 };
 
 void populateTensorInsertExtractFoldingPatterns(RewritePatternSet *patterns) {
-  patterns->add<FoldTensorFromElementsIntoSetYield>(patterns->getContext());
+  patterns->add<FoldTensorFromElementsIntoInsertSlice,
+                FoldTensorFromElementsIntoSetYield>(patterns->getContext());
 }
 
 struct ScalarizationPass
     : public impl::ScalarizationPassBase<ScalarizationPass> {
+  ScalarizationPass() = default;
+
+  explicit ScalarizationPass(bool skipFillScalarization) {
+    skipFillOpScalarization = skipFillScalarization;
+  }
+
   void runOnOperation() override {
     auto func = getOperation();
     auto *context = &getContext();
 
     RewritePatternSet patterns(context);
+    patterns.add<ScalarizeLinalgOp>(context, skipFillOpScalarization);
     // clang-format off
     patterns.add<
         ScalarizeConcatenateOp,
         ScalarizeDynamicBroadcastInDimOp,
+        ScalarizeForOp,
         ScalarizeGatherOp,
         ScalarizeIfOp,
-        ScalarizeLinalgOp,
         ScalarizeReverseOp,
-        ScalarizeScatterOp>(context);
+        ScalarizeScatterOp
+    >(context);
     // clang-format on
     populateTensorInsertExtractFoldingPatterns(&patterns);
     FromElementsOp::getCanonicalizationPatterns(patterns, context);
@@ -608,8 +707,9 @@ struct ScalarizationPass
 };
 }  // namespace
 
-std::unique_ptr<OperationPass<func::FuncOp>> createScalarizationPass() {
-  return std::make_unique<ScalarizationPass>();
+std::unique_ptr<OperationPass<func::FuncOp>> createScalarizationPass(
+    bool skipFillOpScalarization) {
+  return std::make_unique<ScalarizationPass>(skipFillOpScalarization);
 }
 
 }  // namespace gml_st

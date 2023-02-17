@@ -67,9 +67,10 @@ Status OptimizationPassRegistry::RunGrouping(
       VLOG(1) << "Running optimization phase " << phase.first;
       for (auto& pass : phase.second) {
         VLOG(1) << "Running optimization pass: " << pass->name();
-        VLOG(1) << "Graph #nodes " << (*options.graph)->num_nodes()
-                << " #edges " << (*options.graph)->num_edges();
-
+        if (options.graph) {
+          VLOG(1) << "Graph #nodes " << (*options.graph)->num_nodes()
+                  << " #edges " << (*options.graph)->num_edges();
+        }
         tensorflow::metrics::ScopedCounter<2> pass_timings(
             tensorflow::metrics::GetGraphOptimizationCounter(),
             {kGraphOptimizationCategory, pass->name()});
@@ -88,7 +89,7 @@ Status OptimizationPassRegistry::RunGrouping(
     group_timings.ReportAndStop();
   }
   VLOG(1) << "Finished optimization of a group " << grouping;
-  if (group != groups_.end()) {
+  if (options.graph && group != groups_.end()) {
     VLOG(1) << "Graph #nodes " << (*options.graph)->num_nodes() << " #edges "
             << (*options.graph)->num_edges();
   }

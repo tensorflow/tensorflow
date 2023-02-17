@@ -26,7 +26,6 @@ cc_library(
     deps = [
         "//tensorflow/lite:framework",
         "//tensorflow/lite:string",
-        "//tensorflow/lite/c:common",
         "//tensorflow/lite/core:framework",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/core/kernels:builtin_ops",

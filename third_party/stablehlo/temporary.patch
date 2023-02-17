@@ -1,25 +1,12 @@
-diff --ruN a/stablehlo/stablehlo/dialect/AssemblyFormat.cpp b/stablehlo/stablehlo/dialect/AssemblyFormat.cpp
---- stablehlo/stablehlo/dialect/AssemblyFormat.cpp
-+++ stablehlo/stablehlo/dialect/AssemblyFormat.cpp
-@@ -349,7 +349,7 @@
+diff --ruN a/stablehlo/stablehlo/dialect/StablehloOps.cpp b/stablehlo/stablehlo/dialect/StablehloOps.cpp
+--- stablehlo/stablehlo/dialect/StablehloOps.cpp
++++ stablehlo/stablehlo/dialect/StablehloOps.cpp
+@@ -2519,6 +2519,7 @@
+ #define GET_ATTRDEF_LIST
+ #include "stablehlo/dialect/StablehloAttrs.cpp.inc"
+       >();
++  context->loadDialect<tensor::TensorDialect>();
  }
  
- ParseResult parseDimSizes(AsmParser& parser,
--                          FailureOr<SmallVector<int64_t>>& dimSizes) {
-+                          SmallVectorImpl<int64_t>& dimSizes) {
-   auto failOrDimSizes = parseDimSizes(parser);
-   if (failed(failOrDimSizes)) {
-     return failure();
-diff --ruN a/stablehlo/stablehlo/dialect/AssemblyFormat.h b/stablehlo/stablehlo/dialect/AssemblyFormat.h
---- stablehlo/stablehlo/dialect/AssemblyFormat.h
-+++ stablehlo/stablehlo/dialect/AssemblyFormat.h
-@@ -186,7 +186,7 @@
- 
- FailureOr<SmallVector<int64_t>> parseDimSizes(AsmParser& parser);
- ParseResult parseDimSizes(AsmParser& parser,
--                          FailureOr<SmallVector<int64_t>>& dimSizes);
-+                          SmallVectorImpl<int64_t>& dimSizes);
- 
- // ExponentMantissa - Abbreviated printing of exponent and mantissa as e#m#.
- //
+ Type StablehloDialect::parseType(DialectAsmParser& parser) const {
 

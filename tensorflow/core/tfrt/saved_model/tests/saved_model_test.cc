@@ -973,6 +973,9 @@ TEST(SavedModelTest, WhileLoopV1) {
   auto options = DefaultSavedModelOptions(runtime.get());
   options.graph_execution_options.compile_options.enable_grappler = true;
 
+  // TODO(chky): Implement while op in MLRT.
+  if (options.graph_execution_options.enable_mlrt) return;
+
   auto saved_model = SavedModelImpl::LoadSavedModel(options, saved_model_dir,
                                                     /*tags=*/{"serve"});
   TF_ASSERT_OK(saved_model.status());
@@ -1021,6 +1024,9 @@ TEST(SavedModelTest, DeadlineExceeded) {
 
   auto runtime = DefaultTfrtRuntime(/*num_threads=*/1);
   auto options = DefaultSavedModelOptions(runtime.get());
+
+  // TODO(chky): Implement cancellation in MLRT.
+  if (options.graph_execution_options.enable_mlrt) return;
 
   auto saved_model = SavedModelImpl::LoadSavedModel(options, saved_model_dir,
                                                     /*tags=*/{"serve"});

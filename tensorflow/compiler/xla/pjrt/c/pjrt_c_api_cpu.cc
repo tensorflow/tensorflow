@@ -42,10 +42,17 @@ PJRT_Error* PJRT_Client_Create(PJRT_Client_Create_Args* args) {
   return nullptr;
 }
 
+PJRT_Error* PJRT_CpuDeviceTopology_Create(
+    PJRT_DeviceTopology_Create_Args* args) {
+  return new PJRT_Error{tsl::errors::Unimplemented(
+      "Topology not supported for CPU compilation.")};
+}
+
 }  // namespace cpu_plugin
 }  // namespace pjrt
 
 constexpr PJRT_Api pjrt_api =
-    pjrt::CreatePjrtApi(pjrt::cpu_plugin::PJRT_Client_Create);
+    pjrt::CreatePjrtApi(pjrt::cpu_plugin::PJRT_Client_Create,
+                        pjrt::cpu_plugin::PJRT_CpuDeviceTopology_Create);
 
 const PJRT_Api* GetPjrtApi() { return &pjrt_api; }

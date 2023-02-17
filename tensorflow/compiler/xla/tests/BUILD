@@ -231,6 +231,7 @@ xla_cc_binary(
         "//tensorflow/tsl/platform:logging",
         "//tensorflow/tsl/platform:platform_port",
         "@llvm-project//llvm:Support",
+        "@llvm-project//llvm:TargetParser",
     ],
 )
 
@@ -1297,14 +1298,15 @@ xla_test(
     srcs = ["convolution_cudnn_test.cc"],
     backend_tags = {"gpu": [
         "gpu",
-        "requires-gpu-sm70",
+        "requires-gpu-sm80",
 	"no_rocm",
     ]},
     backends = ["gpu"],
     deps = [
         ":hlo_test_base",
-        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+        ":xla_internal_test_main",
         "//tensorflow/tsl/platform:test",
+        "@com_google_absl//absl/strings",
     ],
 )
 

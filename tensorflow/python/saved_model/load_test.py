@@ -1215,7 +1215,9 @@ class LoadTest(test.TestCase, parameterized.TestCase):
 
     imported = cycle(root, cycles, use_cpp_bindings=use_cpp_bindings)
 
-    with self.assertRaisesRegex(ValueError, "Python inputs incompatible"):
+    with self.assertRaisesRegex(
+        TypeError, "Binding inputs to tf.function `f` failed"
+    ):
       # We cannot call the function with a constant of shape ().
       imported.f(constant_op.constant(2)).numpy()
 

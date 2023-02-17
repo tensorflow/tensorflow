@@ -35,7 +35,7 @@ def ConvertLmhloToCpuRuntimePass :
 
 def LegalizeXlaAbiPass :
     Pass<"xla-legalize-abi", "mlir::ModuleOp"> {
-  let summary = "Convers layouts and data formats at ABI boundaries";
+  let summary = "Converts layouts and data formats at ABI boundaries";
 
   let description = [{
       Converts layouts defined in entry_computation_layout to the default
@@ -106,6 +106,25 @@ def RemoveCopiesToOutParamsPass :
   }];
 
   let constructor = "createRemoveCopiesToOutParamsPass()";
+}
+
+def SparseCustomCallToPackPass :
+    Pass<"xla-sparse-custom-call-to-pack", "mlir::func::FuncOp"> {
+  let summary = "Converts CustomCallOp to sparse_tensor_pack/unpack";
+
+  let description = [{
+      Converts CustomCallOp to sparse_tensor_pack/unpack to the corresponding
+      sparse_tensor::PackOp and sparse_tensor::UnpackOp.
+
+      The pass only converts CustomCallOp to a specific set of targets that take
+      or return MLIR sparse tensors.
+  }];
+
+  let dependentDialects = [
+      "mlir::sparse_tensor::SparseTensorDialect"
+  ];
+
+  let constructor = "createSparseCustomCallToPackUnpackOpPass()";
 }
 
 #endif  // TENSORFLOW_COMPILER_XLA_MLIR_TRANSFORMS_CPU_PASSES_TD_

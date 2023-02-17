@@ -105,6 +105,8 @@ class KernelFallbackCompatRequestState {
     return it->second.get();
   }
 
+  tensorflow::Device* cpu_device() const { return cpu_device_; }
+
   ScopedStepContainer* step_container() const { return step_container_.get(); }
 
   const tensorflow::DeviceMgr& device_manager() const {
@@ -156,6 +158,8 @@ class KernelFallbackCompatRequestState {
   absl::flat_hash_map<const tensorflow::Device*,
                       std::unique_ptr<tensorflow::Device>>
       custom_device_;
+  std::unique_ptr<tensorflow::Device> custom_cpu_device_;
+  tensorflow::Device* cpu_device_ = nullptr;
   std::unique_ptr<CollectiveExecutor::Handle> collective_executor_handle_;
   CollectiveExecutor* collective_executor_ = nullptr;
   core::RefCountPtr<Rendezvous> rendezvous_;

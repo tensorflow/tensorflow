@@ -79,9 +79,10 @@ struct ReverseTransformPattern : public OpRewritePattern<thlo::ReverseOp> {
     if (hasLabel(reverseOp, kReverseTransformedLabel))
       return rewriter.notifyMatchFailure(reverseOp,
                                          "has already been transformed.");
-    if (isa<gml_st::ParallelOp, gml_st::ForOp>(reverseOp->getParentOp()))
+    if (isa<gml_st::ParallelOp, scf::ForOp>(reverseOp->getParentOp())) {
       return rewriter.notifyMatchFailure(
           reverseOp, "has already been tiled by another pass.");
+    }
 
     // Parallel dimension tiling. Tiling will be of the form
     // 1x1x..x1xVectorSize.
@@ -97,7 +98,7 @@ struct ReverseTransformPattern : public OpRewritePattern<thlo::ReverseOp> {
       // If last dim is to be reversed.
       if (llvm::is_contained(reverseOp.getReverseDimensions(), rank - 1)) {
         // If we have a remaining loop, we tile this to sizes of 1.
-        for (auto *remParLoop : peelingResult.tailLoops) {
+        for (ParallelOp remParLoop : peelingResult.tailLoops) {
           remParLoop->walk([&](Operation *childOp) {
             if (isa<thlo::ReverseOp>(childOp)) {
               auto innerReverseOp = dyn_cast<thlo::ReverseOp>(*childOp);

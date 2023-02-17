@@ -1089,7 +1089,9 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     TF_ASSIGN_OR_RETURN(const se::blas::DataType output_dtype,
                         AsBlasDataType(instr->shape().element_type()));
     TF_ASSIGN_OR_RETURN(const se::blas::ComputationType compute_type,
-                        GetBlasComputationType(instr->shape().element_type()));
+                        GetBlasComputationType(
+                            instr->shape().element_type(),
+                            stream_executor::blas::kDefaultComputePrecision));
     se::blas::DataType scale_type =
         cublas_lt::GetScaleType(output_dtype, compute_type);
 
@@ -1317,6 +1319,10 @@ StatusOr<bool> GemmRewriter::Run(
   bool changed = false;
   for (HloComputation *computation :
        module->MakeNonfusionComputations(execution_threads)) {
+    if (computation->IsCustomCallComputation() &&
+        IsTritonCustomCall(*computation->CustomCallInstruction())) {
+      continue;
+    }
     TF_ASSIGN_OR_RETURN(
         bool result, RunOnComputation(computation, cuda_compute_capability_));
     changed |= result;
