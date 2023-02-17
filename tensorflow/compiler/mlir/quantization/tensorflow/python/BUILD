@@ -215,6 +215,7 @@ pytype_library(
         "//tensorflow:tensorflow_py",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:array_ops",
+        "//tensorflow/python:array_ops_stack",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:io_ops",
         "//tensorflow/python:lookup_ops",
