@@ -154,6 +154,11 @@ LocalDevice::LocalDevice(const SessionOptions& options,
         options, port::kNUMANoAffinity, nullptr));
     tp_info = owned_tp_info_.get();
   }
+
+  LOG(INFO) << "LocalDevice using CPU work thread pool: "
+            << tp_info->eigen_worker_threads_.workers
+            << ", num_threads=" << tp_info->eigen_worker_threads_.num_threads;
+
   set_tensorflow_cpu_worker_threads(&tp_info->eigen_worker_threads_);
   set_eigen_cpu_device(tp_info->eigen_device_.get());
 }
