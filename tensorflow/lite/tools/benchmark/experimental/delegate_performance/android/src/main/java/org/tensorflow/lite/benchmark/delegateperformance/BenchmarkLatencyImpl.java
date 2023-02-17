@@ -39,10 +39,12 @@ import tflite.proto.benchmark.DelegatePerformance.LatencyResults;
  *
  * <ul>
  *   <li>1. delegate_performance_result/latency/report.csv: the performance of each acceleration
- *       configuration and relative performance differences in percentage values.
+ *       configuration and relative performance differences as percentages in CSV.
  *   <li>2. delegate_performance_result/latency/report.json: detailed performance results. The file
  *       contains the metric-level, delegate-level and model-level results, the latency criteria and
- *       the raw metric outputs from the native layer.
+ *       the raw metric outputs from the native layer in JSON.
+ *   <li>3. delegate_performance_result/latency/report.html: the performance of each acceleration
+ *       configuration and relative performance differences as percentages in HTML.
  * </ul>
  *
  * The metrics for generating the Pass/Pass with Warning/Fail decision:
@@ -97,6 +99,7 @@ public final class BenchmarkLatencyImpl {
               context.getFilesDir(), LATENCY_FOLDER_NAME);
       report.addWriter(JsonWriter.create(resultFolderPath));
       report.addWriter(CsvWriter.create(resultFolderPath));
+      report.addWriter(HtmlWriter.create(resultFolderPath));
     } catch (IOException e) {
       Log.e(
           TAG, "Failed to create result folder " + LATENCY_FOLDER_NAME + " in files directory.", e);

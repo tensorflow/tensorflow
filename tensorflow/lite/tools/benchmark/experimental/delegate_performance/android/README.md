@@ -201,10 +201,13 @@ delegate.
     For a summarized view, run
 
     ```
-    adb shell run-as org.tensorflow.lite.benchmark.delegateperformance "cat /data/user/0/org.tensorflow.lite.benchmark.delegateperformance/files/delegate_performance_result/latency/report.csv" | column -t -s,
+    adb shell run-as org.tensorflow.lite.benchmark.delegateperformance "cat /data/user/0/org.tensorflow.lite.benchmark.delegateperformance/files/delegate_performance_result/latency/report.html" > /tmp/dpb-latency.html && xdg-open /tmp/dpb-latency.html
     ```
 
-    It would produce output like the following:
+    It would open a page in the browser like the following:
+
+    Summary | FAIL
+    ------- | ----
 
     Model                      | Metric                                         | Delegate: NONE (/data/local/tmp/stable_delegate_settings.json) | Delegate: NONE (default_delegate) | Change    | Status
     -------------------------- | ---------------------------------------------- | -------------------------------------------------------------- | --------------------------------- | --------- | ------
@@ -246,7 +249,6 @@ delegate.
     mobilenet_v1_1.0_224_quant | startup_overhead_latency_us                    | 35977.797                                                      | 17407.312                         | 106.7%    | FAIL
     mobilenet_v1_1.0_224_quant | delegate_summary                               |                                                                |                                   |           | FAIL
     mobilenet_v1_1.0_224_quant | model_summary                                  | FAIL                                                           |                                   |           |
-    Summary                    | Summary                                        | FAIL                                                           |                                   |           |
 
 #### Accuracy benchmarking
 
@@ -281,10 +283,13 @@ delegate.
     For a summarized view, run
 
     ```
-    adb shell run-as org.tensorflow.lite.benchmark.delegateperformance "cat /data/user/0/org.tensorflow.lite.benchmark.delegateperformance/files/delegate_performance_result/accuracy/report.csv" | column -t -s,
+    adb shell run-as org.tensorflow.lite.benchmark.delegateperformance "cat /data/user/0/org.tensorflow.lite.benchmark.delegateperformance/files/delegate_performance_result/accuracy/report.html" > /tmp/dpb-accuracy.html && xdg-open /tmp/dpb-accuracy.html
     ```
 
-    It would produce output like the following:
+    It would open a page in the browser like the following:
+
+    Summary | PASS
+    ------- | ----
 
     Model                                      | Metric                           | Delegate: NONE (/data/local/tmp/stable_delegate_settings.json) | Delegate: NONE (default_delegate) | Change | Status
     ------------------------------------------ | -------------------------------- | -------------------------------------------------------------- | --------------------------------- | ------ | ------
@@ -300,4 +305,3 @@ delegate.
     mobilenet_v1_1.0_224_with_validation       | max_memory_kb                    | 0.0                                                            | 0.0                               | 0.0%   | N/A
     mobilenet_v1_1.0_224_with_validation       | delegate_summary                 |                                                                |                                   |        | PASS
     mobilenet_v1_1.0_224_with_validation       | model_summary                    | PASS                                                           |                                   |        |
-    Summary                                    | Summary                          | PASS                                                           |                                   |        |

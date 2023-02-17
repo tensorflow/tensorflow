@@ -38,10 +38,12 @@ import tflite.BenchmarkEvent;
  *
  * <ul>
  *   <li>1. delegate_performance_result/accuracy/report.csv: the performance of each acceleration
- *       configuration and relative performance differences in percentage values.
+ *       configuration and relative performance differences as percentages in CSV.
  *   <li>2. delegate_performance_result/accuracy/report.json: detailed performance results. The file
  *       contains the metric-level, delegate-level and model-level results and the raw metric
- *       outputs from the native layer.
+ *       outputs from the native layer in JSON.
+ *   <li>2. delegate_performance_result/accuracy/report.html: the performance of each acceleration
+ *       configuration and relative performance differences as percentages in HTML.
  * </ul>
  */
 public class BenchmarkAccuracyImpl {
@@ -78,6 +80,7 @@ public class BenchmarkAccuracyImpl {
               context.getFilesDir(), ACCURACY_FOLDER_NAME);
       report.addWriter(JsonWriter.create(resultFolderPath));
       report.addWriter(CsvWriter.create(resultFolderPath));
+      report.addWriter(HtmlWriter.create(resultFolderPath));
     } catch (IOException e) {
       Log.e(TAG, "Failed to create result folder", e);
       return false;
