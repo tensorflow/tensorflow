@@ -16,7 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/mlir_xla_op_kernel.h"
 
 #include "tensorflow/compiler/jit/xla_compile_util.h"
-#include "tensorflow/compiler/mlir/tensorflow/utils/compile_mlir_util.h"
+#include "tensorflow/compiler/mlir/tf2xla/api/v0/compile_mlir_util.h"
 #include "tensorflow/compiler/mlir/utils/array_container_utils.h"
 
 namespace tensorflow {
