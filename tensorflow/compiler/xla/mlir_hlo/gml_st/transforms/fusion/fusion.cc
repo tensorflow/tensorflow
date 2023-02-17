@@ -35,6 +35,7 @@ limitations under the License.
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/Interfaces/SideEffectInterfaces.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
+#include "mlir/Transforms/InliningUtils.h"
 #include "mlir/Transforms/RegionUtils.h"
 #include "mlir/Transforms/TopologicalSortUtils.h"
 #include "thlo/IR/thlo_ops.h"
@@ -617,6 +618,18 @@ FailureOr<gml_st::FusionOp> wrapFusionCluster(
   }
 
   return fusionClusterOp;
+}
+
+LogicalResult inlineFusionCluster(FusionOp fusionOp,
+                                  PatternRewriter& rewriter) {
+  InlinerInterface interface(rewriter.getContext());
+  if (failed(inlineRegion(interface, &fusionOp.getRegion(), fusionOp,
+                          fusionOp.getOperands(), fusionOp.getResults(),
+                          fusionOp.getLoc(),
+                          /*shouldCloneInlinedRegion=*/false)))
+    return failure();
+  rewriter.eraseOp(fusionOp);
+  return success();
 }
 
 FailureOr<Value> createFusedOp(PatternRewriter& rewriter,

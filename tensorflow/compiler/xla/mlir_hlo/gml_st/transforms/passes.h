@@ -132,7 +132,11 @@ createTransformSortForCpuPass();
 
 /// Pass to create fusion clusters.
 std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
-createFusionPlanningForCpu();
+createFusionPlanningForCpuPass();
+
+/// Pass to inline fusion clusters.
+std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
+createInlineFusionClustersPass();
 
 /// Pass to add debug info to be propagated into LLVM backend.
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>> createAddDebugInfoPass();

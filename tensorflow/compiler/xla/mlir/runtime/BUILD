@@ -7,6 +7,7 @@ package_group(
         # copybara:uncomment_begin(google-only)
         # "//platforms/xla/service/cpu/...",
         # "//learning/brain/experimental/tfrt/autofusion/...",
+        # "//third_party/mlir_edge/tpgen/...",
         # # TODO(ezhulenev): Clean up dependencies that are leforvers from Autofusion project.
         # "@tf_runtime//...",
         # "//third_party/tf_runtime_google/...",

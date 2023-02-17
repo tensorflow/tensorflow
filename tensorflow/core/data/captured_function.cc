@@ -592,6 +592,9 @@ Status CapturedFunction::Instantiate(
       const auto& input = captured_inputs_[i];
       DataType dtype = input.dtype();
       if (dtype == DT_RESOURCE) {
+        if (input.NumElements() == 0) {
+          return errors::InvalidArgument("Empty resouce handle");
+        }
         const auto& handles = input.flat<ResourceHandle>();
         const ResourceHandle& handle0 = handles(0);
         string composite_device;
@@ -722,6 +725,9 @@ Status CapturedFunction::IsMultiDevice(FunctionLibraryRuntime* flr,
   for (const auto& input : captured_inputs_) {
     DataType dtype = input.dtype();
     if (dtype == DT_RESOURCE) {
+      if (input.NumElements() == 0) {
+        return errors::InvalidArgument("Empty resouce handle");
+      }
       const ResourceHandle& handle = input.flat<ResourceHandle>()(0);
       DeviceNameUtils::ParsedName resource_device_name;
       if (!DeviceNameUtils::ParseFullName(handle.device(),

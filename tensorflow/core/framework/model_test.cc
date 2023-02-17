@@ -1394,15 +1394,21 @@ TEST(ModelTest, ModelCollectOptimizationMetrics) {
               AllOf(HasSubstr("key: 0"), HasSubstr("name: \"unknown0\""),
                     HasSubstr("autotune: true"), HasSubstr("num_elements: 1"),
                     HasSubstr("processing_time: 100")));
+  // Add gap times.
+  model.RecordIteratorGapTime(10);
+  model.RecordIteratorGapTime(11);
+  model.RecordIteratorGapTime(12);
   // Call optimization again. Metrics collected after the first optimization
-  // should be returned as well.
+  // and the added gap times should be returned as well.
   model.Optimize(AutotuneAlgorithm::STAGE_BASED, /*cpu_budget=*/20,
                  /*ram_budget=*/1000, /*model_input_time=*/50,
                  &cancellation_manager);
-  EXPECT_THAT(cell_reader.Read(model_id),
-              AllOf(HasSubstr("key: 0"), HasSubstr("name: \"unknown0\""),
-                    HasSubstr("autotune: true"), HasSubstr("num_elements: 2"),
-                    HasSubstr("processing_time: 200")));
+  EXPECT_THAT(
+      cell_reader.Read(model_id),
+      AllOf(HasSubstr("key: 0"), HasSubstr("name: \"unknown0\""),
+            HasSubstr("autotune: true"), HasSubstr("num_elements: 2"),
+            HasSubstr("processing_time: 200"), HasSubstr("gap_times: 10"),
+            HasSubstr("gap_times: 11"), HasSubstr("gap_times: 12")));
 }
 
 TEST(ModelTest, ModelCollectAndDestroyRaceCondition) {

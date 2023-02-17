@@ -17,7 +17,6 @@ package org.tensorflow.lite.benchmark.delegateperformance;
 
 import android.content.Context;
 import android.content.res.AssetFileDescriptor;
-import android.os.Trace;
 import android.util.Log;
 import java.io.IOException;
 import java.util.Arrays;
@@ -31,34 +30,35 @@ import tflite.BenchmarkEvent;
  * Please check the test example in
  * tensorflow/lite/tools/benchmark/experimental/delegate_performance/android/README.md.
  *
- * <p>TODO(b/250877013): Consider improving the app's I/O interfaces.
+ * <p>Generates a Pass/Fail result. The test is a Pass if the test target acceleration configuration
+ * passes the embedded metric thresholds in all models.
  *
- * <p>Generates a Pass/Fail result. The test is a Pass if the target acceleration configuration (the
- * second configuration if more than one TFLiteSettings JSON files are provided) passes the embedded
- * metric thresholds in all models.
- *
- * <p>Generates a CSV file for each model to describe the benchmark results under
+ * <p>Generates below list of files to describe the benchmark results under
  * delegate_performance_result/accuracy folder in the app files directory.
  *
  * <ul>
- *   <li>1. delegate_performance_result/accuracy/<MODEL_NAME>.csv: the performance of each
- *       acceleration configuration and relative performance differences in percentage values.
+ *   <li>1. delegate_performance_result/accuracy/report.csv: the performance of each acceleration
+ *       configuration and relative performance differences as percentages in CSV.
+ *   <li>2. delegate_performance_result/accuracy/report.json: detailed performance results. The file
+ *       contains the metric-level, delegate-level and model-level results and the raw metric
+ *       outputs from the native layer in JSON.
+ *   <li>2. delegate_performance_result/accuracy/report.html: the performance of each acceleration
+ *       configuration and relative performance differences as percentages in HTML.
  * </ul>
  */
 public class BenchmarkAccuracyImpl {
 
   private static final String TAG = "TfLiteAccuracyImpl";
   private static final String ACCURACY_FOLDER_NAME = "accuracy";
-  // The test target entry is the second item in the TfLiteSettingsListEntry list.
-  private static final int TEST_TARGET_ENTRY_INDEX = 1;
 
   private final Context context;
   private final String[] tfliteSettingsJsonFiles;
-  private String resultFolderPath;
+  private final BenchmarkReport report;
 
   public BenchmarkAccuracyImpl(Context context, String[] tfliteSettingsJsonFiles) {
     this.context = context;
     this.tfliteSettingsJsonFiles = tfliteSettingsJsonFiles;
+    this.report = BenchmarkReport.create();
   }
 
   /**
@@ -75,9 +75,12 @@ public class BenchmarkAccuracyImpl {
 
     try {
       // Creates root result folder.
-      resultFolderPath =
+      String resultFolderPath =
           DelegatePerformanceBenchmark.createResultFolder(
               context.getFilesDir(), ACCURACY_FOLDER_NAME);
+      report.addWriter(JsonWriter.create(resultFolderPath));
+      report.addWriter(CsvWriter.create(resultFolderPath));
+      report.addWriter(HtmlWriter.create(resultFolderPath));
     } catch (IOException e) {
       Log.e(TAG, "Failed to create result folder", e);
       return false;
@@ -103,8 +106,6 @@ public class BenchmarkAccuracyImpl {
       Log.e(TAG, "Failed to list files from assets folder.", e);
       return;
     }
-    boolean passed = true;
-    TfLiteSettingsListEntry targetEntry = tfliteSettingsList.get(TEST_TARGET_ENTRY_INDEX);
     for (String asset : assets) {
       if (!asset.endsWith(".tflite")) {
         Log.i(TAG, asset + " is not a model file. Skipping.");
@@ -117,14 +118,14 @@ public class BenchmarkAccuracyImpl {
             DelegatePerformanceBenchmark.createResultFolder(
                 context.getFilesDir(), ACCURACY_FOLDER_NAME + "/" + modelName);
       } catch (IOException e) {
-        Log.e(TAG, "Failed to create result folder for " + modelName, e);
-        passed = false;
-        break;
+        Log.e(TAG, "Failed to create result folder for " + modelName + ". Exiting application.", e);
+        return;
       }
       try (AssetFileDescriptor modelFileDescriptor =
           context.getAssets().openFd(ACCURACY_FOLDER_NAME + "/" + asset)) {
+        ModelBenchmarkReport<BenchmarkEvent> modelReport =
+            AccuracyBenchmarkReport.create(modelName);
         for (TfLiteSettingsListEntry tfliteSettingsListEntry : tfliteSettingsList) {
-          Trace.beginSection("Accuracy Benchmark");
           BenchmarkEvent benchmarkEvent =
               DelegatePerformanceBenchmark.runAccuracyBenchmark(
                   tfliteSettingsListEntry,
@@ -132,24 +133,21 @@ public class BenchmarkAccuracyImpl {
                   modelFileDescriptor.getStartOffset(),
                   modelFileDescriptor.getLength(),
                   modelResultPath);
-          Trace.endSection();
 
-          tfliteSettingsListEntry.setAccuracyResults(benchmarkEvent);
+          modelReport.addResults(benchmarkEvent, tfliteSettingsListEntry);
         }
-
-        passed &= targetEntry.metrics().containsKey("ok") && targetEntry.metrics().get("ok") > 0;
-        CsvWriter.writeReport(
-            tfliteSettingsList, String.format("%s/%s.csv", resultFolderPath, modelName));
+        report.addModelBenchmarkReport(modelReport);
       } catch (IOException e) {
         Log.e(TAG, "Failed to open assets file " + asset, e);
-        passed = false;
-        break;
+        return;
       }
     }
+    // Computes the aggregated results and export the report to local files.
+    report.export();
+    TfLiteSettingsListEntry testTarget = tfliteSettingsList.get(tfliteSettingsList.size() - 1);
     Log.i(
         TAG,
         String.format(
-            "Accuracy benchmark result for %s: %s.",
-            targetEntry.filePath(), passed ? "Pass" : "Fail"));
+            "Accuracy benchmark result for %s: %s.", testTarget.filePath(), report.result()));
   }
 }

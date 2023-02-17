@@ -20,6 +20,7 @@ namespace gpu {
 
 /*static*/ GpuDeviceInfo TestGpuDeviceInfo::RTXA6000DeviceInfo() {
   GpuDeviceInfo d;
+  d.name = "NVIDIA RTX A6000";
   d.threads_per_block_limit = 1024;
   d.threads_per_warp = 32;
   d.shared_memory_per_block = 49152;

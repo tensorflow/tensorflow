@@ -21,6 +21,7 @@ namespace {
 GpuDeviceInfo GetGpuDeviceInfo(
     const stream_executor::DeviceDescription& device) {
   GpuDeviceInfo device_info;
+  device_info.name = device.name();
   device_info.threads_per_block_limit = device.threads_per_block_limit();
   device_info.threads_per_warp = device.threads_per_warp();
   device_info.shared_memory_per_block = device.shared_memory_per_block();

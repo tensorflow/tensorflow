@@ -229,6 +229,7 @@ void AllocateAndParseFlags() {
   bool enable_mlir_convert_control_to_data_outputs_pass = false;
   // Dump graphs in TFG dialect.
   bool use_tfg_graph_dumper = false;
+  bool enable_mlir_generic_outside_compilation = false;
 
   flag_list = new std::vector<Flag>(
       {Flag("tf_xla_enable_lazy_compilation",
@@ -283,7 +284,11 @@ void AllocateAndParseFlags() {
             "MLIR-Based TensorFlow Compiler Bridge."),
        Flag("tf_dump_graphs_in_tfg", &use_tfg_graph_dumper,
             "When tf_dump_graphs_in_tfg is true, graphs after transformations "
-            "are dumped in MLIR TFG dialect and not in GraphDef")});
+            "are dumped in MLIR TFG dialect and not in GraphDef"),
+       Flag("tf_mlir_enable_generic_outside_compilation",
+            &enable_mlir_generic_outside_compilation,
+            "Enables OutsideCompilation passes for MLIR-Based TensorFlow "
+            "Generic Compiler Bridge.")});
 
   AppendMarkForCompilationPassFlagsInternal(flag_list);
   xla::ParseFlagsFromEnvAndDieIfUnknown("TF_XLA_FLAGS", *flag_list);
@@ -303,6 +308,8 @@ void AllocateAndParseFlags() {
       enable_mlir_merge_control_flow_pass;
   mlir_flags->tf_mlir_enable_convert_control_to_data_outputs_pass =
       enable_mlir_convert_control_to_data_outputs_pass;
+  mlir_flags->tf_mlir_enable_generic_outside_compilation =
+      enable_mlir_generic_outside_compilation;
 
   if (use_tfg_graph_dumper) {
     UseMlirForGraphDump(MlirDumpConfig{}.elide_large_attributes().emit_dialect(

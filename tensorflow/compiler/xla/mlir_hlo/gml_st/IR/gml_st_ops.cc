@@ -44,6 +44,7 @@ limitations under the License.
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/IR/TypeUtilities.h"
 #include "mlir/Interfaces/ViewLikeInterface.h"
+#include "mlir/Transforms/InliningUtils.h"
 
 namespace mlir {
 namespace {
@@ -135,6 +136,32 @@ namespace mlir {
 namespace gml_st {
 
 //===----------------------------------------------------------------------===//
+// GmlSt Dialect Interfaces
+//===----------------------------------------------------------------------===//
+
+namespace {
+
+struct GmlStInlinerInterface : public DialectInlinerInterface {
+  using DialectInlinerInterface::DialectInlinerInterface;
+  // Operations in GmlSt dialect are always legal to inline since they are
+  // pure.
+  bool isLegalToInline(Operation *, Region *, bool, IRMapping &) const final {
+    return true;
+  }
+  // Handle the given inlined terminator by replacing it with a new operation
+  // as necessary. Required when the region has only one block.
+  void handleTerminator(Operation *op,
+                        ArrayRef<Value> valuesToRepl) const final {
+    auto yieldOp = dyn_cast<gml_st::YieldOp>(op);
+    if (!yieldOp) return;
+
+    assert(valuesToRepl.size() == 1);
+    valuesToRepl[0].replaceAllUsesWith(yieldOp.getOperand());
+  }
+};
+}  // namespace
+
+//===----------------------------------------------------------------------===//
 // GmlStDialect
 //===----------------------------------------------------------------------===//
 
@@ -151,6 +178,8 @@ void GmlStDialect::initialize() {
 #define GET_ATTRDEF_LIST
 #include "gml_st/IR/gml_st_attrs.cc.inc"
       >();
+
+  addInterfaces<GmlStInlinerInterface>();
 }
 
 Operation *GmlStDialect::materializeConstant(OpBuilder &builder, Attribute attr,
@@ -1455,6 +1484,10 @@ LogicalResult YieldOp::verify() { return success(); }
 //===----------------------------------------------------------------------===//
 // FusionOp
 //===----------------------------------------------------------------------===//
+
+YieldOp FusionOp::getTerminator() {
+  return cast<YieldOp>(getBody()->getTerminator());
+}
 
 void FusionOp::print(OpAsmPrinter &p) {
   p << " (";

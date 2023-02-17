@@ -481,6 +481,13 @@ NameAttrList FunctionAttr(OpKernelConstruction* ctx) {
   return *func;
 }
 
+std::vector<int> VectorAttr(OpKernelConstruction* ctx,
+                            absl::string_view attr_name) {
+  std::vector<int> vec;
+  OP_REQUIRES_OK_RETURN(ctx, std::vector<int>(), ctx->GetAttr(attr_name, &vec));
+  return vec;
+}
+
 bool MustCompileAttr(OpKernelConstruction* ctx) {
   bool must_compile;
   OP_REQUIRES_OK_RETURN(ctx, false,
@@ -494,6 +501,14 @@ bool HasRefVars(OpKernelConstruction* ctx) {
                         ctx->GetAttr(kXlaHasReferenceVarsAttr, &has_ref_vars));
   return has_ref_vars;
 }
+
+class XlaLaunchV2Op : public XlaLocalLaunchBase {
+ public:
+  explicit XlaLaunchV2Op(OpKernelConstruction* ctx)
+      : XlaLocalLaunchBase(ctx, VectorAttr(ctx, "constants"),
+                           VectorAttr(ctx, "resources"), FunctionAttr(ctx),
+                           /*has_ref_vars=*/true) {}
+};
 
 }  // namespace
 
@@ -686,6 +701,8 @@ void XlaMergeOp::Compute(OpKernelContext* ctx) {
 }
 
 REGISTER_KERNEL_BUILDER(Name("XlaLaunch").Device(DEVICE_CPU), XlaLocalLaunchOp);
+
+REGISTER_KERNEL_BUILDER(Name("XlaLaunchV2").Device(DEVICE_CPU), XlaLaunchV2Op);
 
 REGISTER_KERNEL_BUILDER(Name("XlaLaunch")
                             .Device(DEVICE_GPU)

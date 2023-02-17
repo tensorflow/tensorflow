@@ -537,6 +537,9 @@ PYBIND11_MODULE(xla_extension, m) {
            py::call_guard<py::gil_scoped_release>())
       .def("shutdown", &DistributedRuntimeClient::Shutdown,
            py::call_guard<py::gil_scoped_release>())
+      // This method assumes that the value is a Python string. Use
+      // `blocking_key_value_get_bytes()` if key_value_set() was called with a
+      // Python bytes object as its value.
       .def(
           "blocking_key_value_get",
           [](DistributedRuntimeClient& client, std::string key,
@@ -544,6 +547,21 @@ PYBIND11_MODULE(xla_extension, m) {
             py::gil_scoped_release gil_release;
             return client.BlockingKeyValueGet(
                 key, absl::Milliseconds(timeout_in_ms));
+          },
+          py::arg("key"), py::arg("timeout_in_ms"))
+      // Same as `blocking_key_value_get()`, but retrieves the raw Python byte
+      // values explicitly.
+      .def(
+          "blocking_key_value_get_bytes",
+          [](DistributedRuntimeClient& client, std::string key,
+             int64_t timeout_in_ms) -> StatusOr<py::bytes> {
+            py::gil_scoped_release gil_release;
+            xla::StatusOr<std::string> result = client.BlockingKeyValueGet(
+                key, absl::Milliseconds(timeout_in_ms));
+            if (!result.ok()) {
+              return result.status();
+            }
+            return py::bytes(*result);
           },
           py::arg("key"), py::arg("timeout_in_ms"))
       .def(
@@ -555,6 +573,12 @@ PYBIND11_MODULE(xla_extension, m) {
                                         absl::Milliseconds(timeout_in_ms));
           },
           py::arg("barrier_id"), py::arg("timeout_in_ms"))
+      // The key must be a string, but the value can either be a Python string
+      // or bytes object.
+      // With Python string values, use `key_value_set()` and
+      // `blocking_key_value_get()`.
+      // With Python byte object values, use `key_value_set()` and
+      // `blocking_key_value_get_bytes()`.
       .def(
           "key_value_set",
           [](DistributedRuntimeClient& client, std::string key,
@@ -563,11 +587,34 @@ PYBIND11_MODULE(xla_extension, m) {
             return client.KeyValueSet(key, value);
           },
           py::arg("key"), py::arg("value"))
+      // Assumes that all values in the directory are Python strings.
       .def(
           "key_value_dir_get",
           [](DistributedRuntimeClient& client, std::string key) {
             py::gil_scoped_release gil_release;
             return client.KeyValueDirGet(key);
+          },
+          py::arg("key"))
+      // Assumes that all values in the directory are Python byte objects.
+      // Same as `key_value_dir_get()`, but retrieves Python byte values
+      // explicitly.
+      .def(
+          "key_value_dir_get_bytes",
+          [](DistributedRuntimeClient& client, std::string key)
+              -> StatusOr<std::vector<std::pair<std::string, py::bytes>>> {
+            py::gil_scoped_release gil_release;
+            xla::StatusOr<std::vector<std::pair<std::string, std::string>>>
+                result = client.KeyValueDirGet(key);
+            if (!result.ok()) {
+              return result.status();
+            }
+            // Convert std::string values to py::bytes.
+            std::vector<std::pair<std::string, py::bytes>> kvs;
+            kvs.reserve(result->size());
+            for (const auto& kv : *result) {
+              kvs.push_back(std::pair(kv.first, py::bytes(kv.second)));
+            }
+            return kvs;
           },
           py::arg("key"))
       .def(

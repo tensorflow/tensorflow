@@ -404,6 +404,13 @@ class DTensorDevice {
   // Returns whether a given mesh is a remote mesh.
   bool is_remote_mesh(const Mesh& mesh) const;
 
+  // Broadcasts `tensor` to `mesh` using replicated sharding. Returns `nullptr`
+  // if it fails.
+  // TODO(b/256016071): Unify this and the one in `TensorWithLayoutTf`.
+  std::unique_ptr<TensorWithLayout> Broadcast(TFE_TensorHandle* input,
+                                              const Mesh& mesh,
+                                              TF_Status* status);
+
   // The name of the device (the custom device)
   std::string name_;
   // Mesh configs with matching parallel devices.
@@ -606,6 +613,49 @@ bool DTensorDevice::is_remote_mesh(const Mesh& mesh) const {
   // mesh.
   return mesh.is_remote() ||
          (mesh.IsEmpty() && default_mesh_->mesh_config().is_remote());
+}
+
+std::unique_ptr<TensorWithLayout> DTensorDevice::Broadcast(
+    TFE_TensorHandle* input, const Mesh& mesh, TF_Status* status) {
+  const char* input_device = TFE_TensorHandleDeviceName(input, status);
+  if (TF_GetCode(status) != TF_OK) {
+    TF_SetStatus(status, TF_INVALID_ARGUMENT,
+                 "Failed to get a valid input device.");
+    return nullptr;
+  }
+  if (name_ == input_device) {
+    TF_SetStatus(status, TF_INVALID_ARGUMENT,
+                 "Input to Broadcast must be eager tensor.");
+    return nullptr;
+  }
+
+  TF_Tensor* tf_tensor = TFE_TensorHandleResolve(input, status);
+  if (TF_GetCode(status) != TF_OK) {
+    TF_SetStatus(status, TF_INVALID_ARGUMENT,
+                 "Failed to resolve the input to tensor.");
+    return nullptr;
+  }
+  std::unique_ptr<TF_Tensor, decltype(&TF_DeleteTensor)> resolved_tensor(
+      tf_tensor, TF_DeleteTensor);
+  Tensor tensor;
+  const auto tf_tensor_to_tensor_status =
+      TF_TensorToTensor(resolved_tensor.get(), &tensor);
+  if (!tf_tensor_to_tensor_status.ok()) {
+    TF_SetStatus(status, TF_INTERNAL,
+                 tf_tensor_to_tensor_status.ToString().c_str());
+    return nullptr;
+  }
+  if (!parallel_executor_) {
+    TF_SetStatus(status, TF_INTERNAL, "Parallel executor is null.");
+    return nullptr;
+  }
+  auto tensor_with_layout_pw = parallel_executor_->Broadcast(tensor, mesh);
+  if (!tensor_with_layout_pw.ok()) {
+    TF_SetStatus(status, TF_INTERNAL,
+                 tensor_with_layout_pw.status().ToString().c_str());
+    return nullptr;
+  }
+  return std::move(*tensor_with_layout_pw);
 }
 
 StatusOr<NameAttrList> FetchAttributes(const TFE_OpAttrs* attributes) {
@@ -1593,7 +1643,7 @@ void DTensorDevice::ExecuteRegularOperation(
   for (const TranslatedFunction& function :
        execution_functions->function_list) {
     for (const auto& entry : function.resource_input_layouts) {
-      // TODO(hthu): Add an TensorWithLayout in the inputs vector at location 0
+      // TODO(hthu): Add a TensorWithLayout in the inputs vector at location 0
       // for DeviceId. This is done as the first arg is always DeviceId, and it
       // isn't mapped to input Tensors.
       const int resource_index_to_update = entry.first - 1;
@@ -2002,6 +2052,7 @@ void DTensorDevice::Execute(const TFE_Op* original_op, int* num_outputs,
                   "No mesh has been registered to DTensor. Use copy_to_mesh to "
                   "explicit specify a mesh instead.");
   }
+  const Mesh& mesh = broadcast_mesh->mesh_config();
   for (int not_on_device_input_index : not_on_device_input_indices) {
     TFE_TensorHandle* input = inputs[not_on_device_input_index];
     // DTensor creation should be explicit, with some exceptions for usability
@@ -2038,8 +2089,18 @@ void DTensorDevice::Execute(const TFE_Op* original_op, int* num_outputs,
     // vector, whereas the input `TFE_TensorHandle`s maintain ownership for
     // inputs that already had layouts (and therefor had TensorWithLayout
     // objects).
-    std::unique_ptr<TensorWithLayout> wrapper = TensorWithLayoutTf::Broadcast(
-        context, input, *broadcast_mesh, name_, status);
+    std::unique_ptr<TensorWithLayout> wrapper;
+    if (parallel_executor_) {
+      std::unique_ptr<TensorWithLayout> tensor_with_layout =
+          Broadcast(input, mesh, status);
+      if (TF_GetCode(status) != TF_OK) {
+        return;
+      }
+      wrapper = std::move(tensor_with_layout);
+    } else {
+      wrapper = TensorWithLayoutTf::Broadcast(context, input, *broadcast_mesh,
+                                              name_, status);
+    }
     if (TF_GetCode(status) != TF_OK) return;
     if (!ShouldFoldInputArgument(dtensor_operation.name,
                                  /*input_index=*/not_on_device_input_index) &&

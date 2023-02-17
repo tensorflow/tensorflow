@@ -157,6 +157,7 @@ struct MlirCommonFlags {
 
   bool tf_mlir_enable_merge_control_flow_pass;
   bool tf_mlir_enable_convert_control_to_data_outputs_pass;
+  bool tf_mlir_enable_generic_outside_compilation;
 };
 
 // Flags for the JitRt pipeline -- see tf_jitrt_pipeline.h for details.

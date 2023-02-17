@@ -115,6 +115,7 @@ PYBIND11_MAKE_OPAQUE(TF_Status);
 
 // Helper class to move byte buffers to/from Python. This is used when working
 // with serialized protobufs.
+// TODO(b/269622008) -- Resume using this once protobuf parsing is fixed.
 struct StringBuffer {
   explicit StringBuffer(std::string&& b) : buf_(std::move(b)) {}
   std::string buf_;
@@ -137,18 +138,18 @@ class GraphHandle {
   }
   virtual ~GraphHandle() { TF_DeleteGraph(graph_); }
 
-  StringBuffer version_def() const {
+  py::bytes version_def() const {
     tsl::mutex_lock l(graph_->mu);
-    return StringBuffer(graph_->graph.versions().SerializeAsString());
+    return py::bytes(graph_->graph.versions().SerializeAsString());
   }
 
-  tsl::StatusOr<StringBuffer> _op_def_for_type(
+  tsl::StatusOr<py::bytes> _op_def_for_type(
       const std::string& type_name) const {
     tsl::mutex_lock l(graph_->mu);
     const tensorflow::OpDef* op_def;
     TF_RETURN_IF_ERROR(
         graph_->graph.op_registry()->LookUpOpDef(type_name, &op_def));
-    return StringBuffer(op_def->SerializeAsString());
+    return py::bytes(op_def->SerializeAsString());
   }
 
   void add_control_input(tensorflow::Node* src, tensorflow::Node* dst) {
@@ -202,12 +203,12 @@ class OperationHandle {
     graph_->add_control_input(&input->op_->node, &op_->node);
   }
 
-  StringBuffer node_def() {
-    return StringBuffer(op_->node.def().SerializeAsString());
+  py::bytes node_def() {
+    return py::bytes(op_->node.def().SerializeAsString());
   }
 
-  StringBuffer op_def() const {
-    return StringBuffer(op_->node.op_def().SerializeAsString());
+  py::bytes op_def() const {
+    return py::bytes(op_->node.op_def().SerializeAsString());
   }
 
   bool is_stateful() const { return op_->node.op_def().is_stateful(); }

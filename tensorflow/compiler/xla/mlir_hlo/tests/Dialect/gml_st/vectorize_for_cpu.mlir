@@ -222,3 +222,54 @@ func.func @perfectly_tiled_reverse_4d(%input: tensor<1x1x1x8xf32>,
 //       CHECK:   %[[WRITE:.*]] = vector.transfer_write %[[SHUFFLE]], %[[ARG1]]
 //  CHECK-SAME:   : vector<8xf32>, tensor<1x1x1x8xf32>
 //       CHECK:   return %[[WRITE]]
+
+// -----
+
+func.func @matvec(%lhs: tensor<33x17xf32>, %rhs: tensor<17xf32>,
+                  %output: tensor<33xf32>) -> tensor<33xf32> {
+  %2 = linalg.matvec ins(%lhs, %rhs : tensor<33x17xf32>, tensor<17xf32>)
+                     outs(%output : tensor<33xf32>) -> tensor<33xf32>
+  return %2 : tensor<33xf32>
+}
+
+// CHECK-LABEL: @matvec
+// CHECK-SAME:  %[[LHS:.*]]: tensor<33x17xf32>, %[[RHS:.*]]: tensor<17xf32>, %[[OUT:.*]]: tensor<33xf32>
+// CHECK:         %[[LHS_READ:.*]] = vector.transfer_read %[[LHS]]
+// CHECK:         %[[RHS_READ:.*]] = vector.transfer_read %[[RHS]]
+// CHECK:         %[[OUT_READ:.*]] = vector.transfer_read %[[OUT]]
+// CHECK:         %[[CONTRACT:.*]] = vector.contract {{.*}}%[[LHS_READ]], %[[RHS_READ]], %[[OUT_READ]]
+// CHECK:         vector.transfer_write %[[CONTRACT]], %[[OUT]]
+
+// -----
+
+func.func @vecmat(%lhs: tensor<17xf32>, %rhs: tensor<17x33xf32>,
+                  %output: tensor<33xf32>) -> tensor<33xf32> {
+  %2 = linalg.vecmat ins(%lhs, %rhs : tensor<17xf32>, tensor<17x33xf32>)
+                     outs(%output : tensor<33xf32>) -> tensor<33xf32>
+  return %2 : tensor<33xf32>
+}
+
+// CHECK-LABEL: @vecmat
+// CHECK-SAME:  %[[LHS:.*]]: tensor<17xf32>, %[[RHS:.*]]: tensor<17x33xf32>, %[[OUT:.*]]: tensor<33xf32>
+// CHECK:         %[[LHS_READ:.*]] = vector.transfer_read %[[LHS]]
+// CHECK:         %[[RHS_READ:.*]] = vector.transfer_read %[[RHS]]
+// CHECK:         %[[OUT_READ:.*]] = vector.transfer_read %[[OUT]]
+// CHECK:         %[[CONTRACT:.*]] = vector.contract {{.*}}%[[LHS_READ]], %[[RHS_READ]], %[[OUT_READ]]
+// CHECK:         vector.transfer_write %[[CONTRACT]], %[[OUT]]
+
+// -----
+
+func.func @dot(%lhs: tensor<17xf32>, %rhs: tensor<17xf32>,
+                  %output: tensor<f32>) -> tensor<f32> {
+  %2 = linalg.dot ins(%lhs, %rhs : tensor<17xf32>, tensor<17xf32>)
+                     outs(%output : tensor<f32>) -> tensor<f32>
+  return %2 : tensor<f32>
+}
+
+// CHECK-LABEL: @dot
+// CHECK-SAME:  %[[LHS:.*]]: tensor<17xf32>, %[[RHS:.*]]: tensor<17xf32>, %[[OUT:.*]]: tensor<f32>
+// CHECK:         %[[LHS_READ:.*]] = vector.transfer_read %[[LHS]]
+// CHECK:         %[[RHS_READ:.*]] = vector.transfer_read %[[RHS]]
+// CHECK:         %[[OUT_READ:.*]] = vector.transfer_read %[[OUT]]
+// CHECK:         %[[CONTRACT:.*]] = vector.contract {{.*}}%[[LHS_READ]], %[[RHS_READ]]
+// CHECK:         vector.transfer_write {{.*}}, %[[OUT]]

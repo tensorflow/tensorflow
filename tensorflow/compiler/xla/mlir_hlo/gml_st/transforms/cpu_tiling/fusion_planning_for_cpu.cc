@@ -33,6 +33,7 @@ namespace mlir::gml_st {
 namespace {
 
 #define GEN_PASS_DEF_FUSIONPLANNINGFORCPUPASS
+#define GEN_PASS_DEF_INLINEFUSIONCLUSTERSPASS
 #include "gml_st/transforms/passes.h.inc"
 
 // Returns true is consumer and producer should be fused and tiled together.
@@ -119,11 +120,31 @@ struct FusionPlanningForCpuPass
   }
 };
 
+struct InlineFusionClustersPass
+    : public impl::InlineFusionClustersPassBase<InlineFusionClustersPass> {
+  void runOnOperation() override {
+    func::FuncOp f = getOperation();
+    MLIRContext* context = &getContext();
+
+    RewritePatternSet patterns(context);
+    patterns.add(inlineFusionCluster);
+
+    if (failed(applyPatternsAndFoldGreedily(f, std::move(patterns)))) {
+      return signalPassFailure();
+    }
+  }
+};
+
 }  // namespace
 
 std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
-createFusionPlanningForCpu() {
+createFusionPlanningForCpuPass() {
   return std::make_unique<mlir::gml_st::FusionPlanningForCpuPass>();
+}
+
+std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
+createInlineFusionClustersPass() {
+  return std::make_unique<mlir::gml_st::InlineFusionClustersPass>();
 }
 
 }  // namespace mlir::gml_st

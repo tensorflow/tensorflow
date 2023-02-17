@@ -119,6 +119,7 @@ void CreateTfJitRtPipeline(OpPassManager& pm,
 
   pm.addNestedPass<FuncOp>(mlir::mhlo::createGroupReductionDimensionsPass());
   pm.addNestedPass<FuncOp>(mlir::mhlo::createHloCanonicalizeScatterPass());
+  pm.addNestedPass<FuncOp>(mlir::mhlo::createHloCanonicalizeDotPass());
 
   // Also, try to simplify reshape operations.
   pm.addNestedPass<FuncOp>(mlir::mhlo::createSymbolicShapeOptimizationPass());

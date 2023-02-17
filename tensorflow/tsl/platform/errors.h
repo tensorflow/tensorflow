@@ -19,6 +19,7 @@ limitations under the License.
 #include <sstream>
 #include <string>
 #include <type_traits>
+#include <unordered_map>
 #include <utility>
 
 #include "absl/base/attributes.h"
@@ -92,7 +93,7 @@ inline std::unordered_map<std::string, std::string> GetPayloads(
     const ::tsl::Status& status) {
   std::unordered_map<std::string, std::string> payloads;
   status.ForEachPayload(
-      [&payloads](tsl::StringPiece key, tsl::StringPiece value) {
+      [&payloads](tsl::StringPiece key, const absl::Cord& value) {
         payloads[std::string(key)] = std::string(value);
       });
   return payloads;
@@ -111,8 +112,8 @@ inline void InsertPayloads(
 // Copies all payloads from one Status to another. Will overwrite existing
 // payloads in the destination if they exist with the same key.
 inline void CopyPayloads(const ::tsl::Status& from, ::tsl::Status& to) {
-  from.ForEachPayload([&to](tsl::StringPiece key, tsl::StringPiece value) {
-    to.SetPayload(key, absl::Cord(value));
+  from.ForEachPayload([&to](tsl::StringPiece key, const absl::Cord& value) {
+    to.SetPayload(key, value);
   });
 }
 

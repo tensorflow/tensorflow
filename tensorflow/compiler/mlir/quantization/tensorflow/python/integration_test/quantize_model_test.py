@@ -4140,7 +4140,7 @@ class WeightOnlyQuantizationTest(quantize_model_test_base.QuantizedModelTest):
     self.assertSizeRatioLessThan(
         self._output_saved_model_path,
         self._input_saved_model_path,
-        threshold=0.3
+        threshold=0.3,
     )
 
   @parameterized.named_parameters(
@@ -4196,7 +4196,7 @@ class WeightOnlyQuantizationTest(quantize_model_test_base.QuantizedModelTest):
     self.assertSizeRatioLessThan(
         self._output_saved_model_path,
         self._input_saved_model_path,
-        threshold=0.3
+        threshold=0.3,
     )
 
   @parameterized.named_parameters(
@@ -4252,7 +4252,7 @@ class WeightOnlyQuantizationTest(quantize_model_test_base.QuantizedModelTest):
     self.assertSizeRatioLessThan(
         self._output_saved_model_path,
         self._input_saved_model_path,
-        threshold=0.3
+        threshold=0.3,
     )
 
   @parameterized.named_parameters(
