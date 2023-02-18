@@ -20640,7 +20640,7 @@ array([[5, 5, 5, 5],
 
   let arguments = (ins
     TF_NumberTensor:$data,
-    Arg<TF_I32OrI64Tensor, [{A tensor whose shape is a prefix of `data.shape`.
+    Arg<TensorOf<[TF_Int16, TF_Int32, TF_Int64]>, [{A tensor whose shape is a prefix of `data.shape`.
 The values must be less than `num_segments`.
 
 Caution: The values are always validated to be in range on CPU, never validated
