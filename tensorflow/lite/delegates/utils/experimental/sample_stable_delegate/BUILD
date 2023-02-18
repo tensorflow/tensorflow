@@ -84,7 +84,7 @@ cc_library_with_tflite(
         "//tensorflow/lite/core/shims:common",
         "//tensorflow/lite/core/shims:delegate_plugin",
         "//tensorflow/lite/delegates/utils:simple_opaque_delegate",
-        "//tensorflow/lite/delegates/utils/experimental/stable_delegate:stable_delegate_inferface",
+        "//tensorflow/lite/delegates/utils/experimental/stable_delegate:stable_delegate_interface",
         "//tensorflow/lite/experimental/acceleration/configuration/c:stable_delegate",
     ],
 )
