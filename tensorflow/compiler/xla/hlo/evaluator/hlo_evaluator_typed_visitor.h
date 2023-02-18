@@ -1451,14 +1451,6 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
     const Literal& operand_literal = parent_->GetEvaluatedLiteralFor(operand);
 
     switch (start_indices->shape().element_type()) {
-      case S16: {
-        TF_ASSIGN_OR_RETURN(
-            parent_->evaluated_[dynamic_slice],
-            DynamicSlice<int16_t>(
-                operand_literal,
-                absl::MakeConstSpan(dynamic_slice->operands()).subspan(1),
-                result_shape));
-      } break;
       case S32: {
         TF_ASSIGN_OR_RETURN(
             parent_->evaluated_[dynamic_slice],
@@ -1471,14 +1463,6 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
         TF_ASSIGN_OR_RETURN(
             parent_->evaluated_[dynamic_slice],
             DynamicSlice<int64_t>(
-                operand_literal,
-                absl::MakeConstSpan(dynamic_slice->operands()).subspan(1),
-                result_shape));
-      } break;
-      case U16: {
-        TF_ASSIGN_OR_RETURN(
-            parent_->evaluated_[dynamic_slice],
-            DynamicSlice<uint16_t>(
                 operand_literal,
                 absl::MakeConstSpan(dynamic_slice->operands()).subspan(1),
                 result_shape));
@@ -1532,14 +1516,6 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
     const Literal& update_literal = parent_->GetEvaluatedLiteralFor(update);
 
     switch (start_indices->shape().element_type()) {
-      case S16: {
-        TF_ASSIGN_OR_RETURN(
-            parent_->evaluated_[dynamic_update_slice],
-            DynamicUpdateSlice<int16_t>(
-                operand_literal, update_literal,
-                absl::MakeConstSpan(dynamic_update_slice->operands())
-                    .subspan(2)));
-      } break;
       case S32: {
         TF_ASSIGN_OR_RETURN(
             parent_->evaluated_[dynamic_update_slice],
@@ -1552,14 +1528,6 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
         TF_ASSIGN_OR_RETURN(
             parent_->evaluated_[dynamic_update_slice],
             DynamicUpdateSlice<int64_t>(
-                operand_literal, update_literal,
-                absl::MakeConstSpan(dynamic_update_slice->operands())
-                    .subspan(2)));
-      } break;
-      case U16: {
-        TF_ASSIGN_OR_RETURN(
-            parent_->evaluated_[dynamic_update_slice],
-            DynamicUpdateSlice<uint16_t>(
                 operand_literal, update_literal,
                 absl::MakeConstSpan(dynamic_update_slice->operands())
                     .subspan(2)));
