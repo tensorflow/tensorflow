@@ -706,8 +706,8 @@ class DTensorSPMDTest(test_util.DTensorBaseTest):
     b = constant_op.constant([[10., 20.], [30., 40.]])
     expected_result = op(a, b)
 
-    a = api.copy_to_mesh(a, self.scalar_replicated_layout)
-    b = api.copy_to_mesh(b, self.replicated_layout_2d)
+    a = api.copy_to_mesh(a, Layout.replicated(self.mesh, rank=a.ndim))
+    b = api.copy_to_mesh(b, Layout.replicated(self.mesh, rank=b.ndim))
     dtensor_result = op(a, b)
 
     self.assertDTensorEqual(
@@ -724,8 +724,8 @@ class DTensorSPMDTest(test_util.DTensorBaseTest):
     a, b = order_broadcastable_operands(op, a, b)
     expected_result = op(a, b)
 
-    a = api.copy_to_mesh(a, self.scalar_replicated_layout)
-    b = api.copy_to_mesh(b, self.replicated_layout_2d)
+    a = api.copy_to_mesh(a, Layout.replicated(self.mesh, rank=a.ndim))
+    b = api.copy_to_mesh(b, Layout.replicated(self.mesh, rank=b.ndim))
     dtensor_result = op(a, b)
 
     self.assertDTensorEqual(
