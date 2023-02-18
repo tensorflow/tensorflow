@@ -16,8 +16,6 @@ limitations under the License.
 #ifndef MLIR_HLO_TOOLS_MLIR_INTERPRETER_FRAMEWORK_TENSOR_OR_MEMREF_H_
 #define MLIR_HLO_TOOLS_MLIR_INTERPRETER_FRAMEWORK_TENSOR_OR_MEMREF_H_
 
-#include <math.h>
-
 #include <cstddef>
 #include <cstdint>
 #include <iterator>
@@ -280,8 +278,8 @@ struct TensorOrMemref {
     for (const auto& indices : view.indices(true)) {
       // Treat NaNs as equal.
       if constexpr (std::is_floating_point_v<T>) {
-        bool thisnan = std::isnan(at(indices));
-        bool othernan = std::isnan(other.at(indices));
+        bool thisnan = isnan(at(indices));
+        bool othernan = isnan(other.at(indices));
         if (thisnan || othernan) {
           if (thisnan && othernan) continue;
           return false;
