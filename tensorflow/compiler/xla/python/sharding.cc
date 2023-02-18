@@ -32,8 +32,8 @@ size_t ShardingHash(const pybind11::object& sharding) {
     return absl::Hash<void*>()(mesh_sharding->mesh().ptr());
   }
 
-  if (type.is(OpShardingSharding::type())) {
-    auto* op_sharding = xla::fast_cast<OpShardingSharding>(sharding);
+  if (type.is(GSPMDSharding::type())) {
+    auto* op_sharding = xla::fast_cast<GSPMDSharding>(sharding);
     return op_sharding->Hash();
   }
 
@@ -62,9 +62,9 @@ bool ShardingEqual(const pybind11::object& a, const pybind11::object& b) {
            a_mesh_sharding->spec().equal(b_mesh_sharding->spec());
   }
 
-  if (a_type.is(OpShardingSharding::type())) {
-    auto* a_op_sharding_sharding = xla::fast_cast<const OpShardingSharding>(a);
-    auto* b_op_sharding_sharding = xla::fast_cast<const OpShardingSharding>(b);
+  if (a_type.is(GSPMDSharding::type())) {
+    auto* a_op_sharding_sharding = xla::fast_cast<const GSPMDSharding>(a);
+    auto* b_op_sharding_sharding = xla::fast_cast<const GSPMDSharding>(b);
 
     return a_op_sharding_sharding == b_op_sharding_sharding;
   }
@@ -129,14 +129,14 @@ void RegisterSharding(py::module& m) {
       .def_property_readonly("devices", &PmapSharding::devices)
       .def_property_readonly("sharding_spec", &PmapSharding::sharding_spec);
 
-  py::class_<OpShardingSharding, XLACompatibleSharding>(m, "OpShardingSharding",
-                                                        py::dynamic_attr())
+  py::class_<GSPMDSharding, XLACompatibleSharding>(m, "GSPMDSharding",
+                                                   py::dynamic_attr())
       .def(py::init<py::list, xla::OpSharding>(), py::arg("devices"),
            py::arg("op_sharding"))
       .def(py::init<py::tuple, xla::OpSharding>(), py::arg("devices"),
            py::arg("op_sharding"))
-      .def_property_readonly("_devices", &OpShardingSharding::devices)
-      .def_property_readonly("_op_sharding", &OpShardingSharding::op_sharding);
+      .def_property_readonly("_devices", &GSPMDSharding::devices)
+      .def_property_readonly("_op_sharding", &GSPMDSharding::op_sharding);
 }
 
 }  // namespace jax
