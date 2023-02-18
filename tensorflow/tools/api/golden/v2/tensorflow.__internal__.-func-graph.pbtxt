@@ -117,10 +117,6 @@ tf_class {
     argspec: "args=[\'self\', \'closure\', \'spec\', \'key\', \'default_value\', \'placeholder\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\'], "
   }
   member_method {
-    name: "capture_eager_tensor"
-    argspec: "args=[\'self\', \'tensor\', \'name\'], varargs=None, keywords=None, defaults=None"
-  }
-  member_method {
     name: "clear_collection"
     argspec: "args=[\'self\', \'name\'], varargs=None, keywords=None, defaults=None"
   }

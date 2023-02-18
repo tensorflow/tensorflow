@@ -19,16 +19,13 @@ See the [constants guide](https://tensorflow.org/api_guides/python/constant_op).
 
 # Must be separate from array_ops to avoid a cyclic dependency.
 
-from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.framework import types_pb2
 from tensorflow.python.eager import context
 from tensorflow.python.eager import execute
 from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import op_callbacks
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_conversion_registry
 from tensorflow.python.framework import tensor_shape
-from tensorflow.python.framework import tensor_util
 from tensorflow.python.profiler import trace
 from tensorflow.python.util.tf_export import tf_export
 
@@ -40,7 +37,7 @@ def _eager_reshape(tensor, shape, ctx):
       [shape], ctx, [dtypes.int32, dtypes.int64], dtypes.int32)
   inputs_flat = [tensor, shape]
   attrs = ("T", attr_t, "Tshape", attr_tshape)
-  result, = execute.execute(
+  [result] = execute.execute(
       b"Reshape", 1, inputs=inputs_flat, attrs=attrs, ctx=ctx)
   return result
 
@@ -51,7 +48,7 @@ def _eager_fill(dims, value, ctx):
   dims = convert_to_eager_tensor(dims, ctx, dtypes.int32)
   inputs_flat = [dims, value]
   attrs = ("T", attr_t, "index_type", types_pb2.DT_INT32)
-  result, = execute.execute(
+  [result] = execute.execute(
       b"Fill", 1, inputs=inputs_flat, attrs=attrs, ctx=ctx)
   return result
 
@@ -59,16 +56,8 @@ def _eager_fill(dims, value, ctx):
 def _eager_identity(tensor, ctx):
   """Eager-only version of Identity op; requires tensor is an eager Tensor."""
   attrs = ("T", tensor.dtype.as_datatype_enum)
-  result, = execute.execute(
+  [result] = execute.execute(
       b"Identity", 1, inputs=[tensor], attrs=attrs, ctx=ctx)
-  return result
-
-
-def _eager_const(tensor, ctx):
-  """Copy a constant to the current device."""
-  attrs = ("T", tensor.dtype.as_datatype_enum)
-  result, = execute.execute(
-      b"_EagerConst", 1, inputs=[tensor], attrs=attrs, ctx=ctx)
   return result
 
 
@@ -279,24 +268,9 @@ def _constant_impl(
         return _constant_eager_impl(ctx, value, dtype, shape, verify_shape)
     return _constant_eager_impl(ctx, value, dtype, shape, verify_shape)
 
-  g = ops.get_default_graph()
-  tensor_value = attr_value_pb2.AttrValue()
-  tensor_value.tensor.CopyFrom(
-      tensor_util.make_tensor_proto(
-          value, dtype=dtype, shape=shape, verify_shape=verify_shape,
-          allow_broadcast=allow_broadcast))
-  dtype_value = attr_value_pb2.AttrValue(type=tensor_value.tensor.dtype)
-  attrs = {"value": tensor_value, "dtype": dtype_value}
-  const_tensor = g._create_op_internal(  # pylint: disable=protected-access
-      "Const", [], [dtype_value.type], attrs=attrs, name=name).outputs[0]
-
-  if op_callbacks.should_invoke_op_callbacks():
-    # TODO(b/147670703): Once the special-op creation code paths
-    # are unified. Remove this `if` block.
-    callback_outputs = op_callbacks.invoke_op_callbacks(
-        "Const", tuple(), attrs, (const_tensor,), op_name=name, graph=g)
-    if callback_outputs is not None:
-      const_tensor, = callback_outputs
+  const_tensor = ops._create_graph_constant(  # pylint: disable=protected-access
+      value, dtype, shape, name, verify_shape, allow_broadcast
+  )
   return const_tensor
 
 

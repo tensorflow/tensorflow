@@ -51,9 +51,11 @@ from tensorflow.python.framework import cpp_shape_inference_pb2
 from tensorflow.python.framework import device as pydev
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
+from tensorflow.python.framework import op_callbacks
 from tensorflow.python.framework import registry
 from tensorflow.python.framework import tensor_conversion_registry
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.framework import tensor_util
 from tensorflow.python.framework import traceable_stack
 from tensorflow.python.framework import versions
 from tensorflow.python.ops import control_flow_util
@@ -1060,6 +1062,31 @@ class Tensor(internal.NativeObject, core_tf_types.Symbol):
     return self
 
 
+def _create_graph_constant(
+    value, dtype, shape, name, verify_shape, allow_broadcast
+):
+  """Create a graph constant and invoke constant callbacks."""
+  g = get_default_graph()
+  tensor_value = attr_value_pb2.AttrValue()
+  tensor_value.tensor.CopyFrom(
+      tensor_util.make_tensor_proto(
+          value, dtype=dtype, shape=shape, verify_shape=verify_shape,
+          allow_broadcast=allow_broadcast))
+  dtype_value = attr_value_pb2.AttrValue(type=tensor_value.tensor.dtype)
+  attrs = {"value": tensor_value, "dtype": dtype_value}
+  const_tensor = g._create_op_internal(  # pylint: disable=protected-access
+      "Const", [], [dtype_value.type], attrs=attrs, name=name).outputs[0]
+
+  if op_callbacks.should_invoke_op_callbacks():
+    # TODO(b/147670703): Once the special-op creation code paths
+    # are unified. Remove this `if` block.
+    callback_outputs = op_callbacks.invoke_op_callbacks(
+        "Const", tuple(), attrs, (const_tensor,), op_name=name, graph=g)
+    if callback_outputs is not None:
+      [const_tensor] = callback_outputs
+  return const_tensor
+
+
 # TODO(agarwal): consider getting rid of this.
 # TODO(mdan): This object should not subclass ops.Tensor.
 class _EagerTensorBase(Tensor, core_tf_types.Value):
@@ -1370,6 +1397,21 @@ class _EagerTensorBase(Tensor, core_tf_types.Value):
                 name=name))
       return graph.capture(self, name=name)
     return super().__tf_tensor__(dtype, name)
+
+  def _capture_as_const(self, name):
+    """Capture the EagerTensor to a graph constant tensor."""
+    with control_dependencies(None):
+      constant_value = tensor_util.constant_value(self)
+      if constant_value is None:
+        # Some eager tensors, e.g. parallel tensors, are not convertible to
+        # a single constant. Return None in this case and the caller graph
+        # would create a placeholder instead.
+        return None
+
+      const_tensor = _create_graph_constant(
+          constant_value, dtype=self.dtype, shape=self.shape, name=name,
+          verify_shape=False, allow_broadcast=True)
+    return const_tensor
 
 
 # This call creates an EagerTensor class, as a subclass of _EagerTensorBase, and

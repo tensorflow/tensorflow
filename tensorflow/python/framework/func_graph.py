@@ -31,13 +31,11 @@ from tensorflow.python.eager.graph_only_ops import graph_placeholder
 from tensorflow.python.eager.polymorphic_function import composite_tensor_utils
 from tensorflow.python.framework import auto_control_deps
 from tensorflow.python.framework import composite_tensor
-from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_spec
-from tensorflow.python.framework import tensor_util
 from tensorflow.python.framework import type_spec
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import handle_data_util
@@ -708,7 +706,21 @@ class FuncGraph(ops.Graph):
       # Small EagerTensors are captured with Const ops
       if (tensor.dtype in dtypes.TF_VALUE_DTYPES and
           np.prod(tensor.shape) <= _EAGER_CONST_THRESHOLD):
-        return self.capture_eager_tensor(tensor, name)
+        capture = self._function_captures.by_val_captures.get(id(tensor))
+        if capture is None:
+          graph_const = tensor._capture_as_const(name)  # pylint: disable=protected-access
+          if graph_const is None:
+            # Some eager tensors, e.g. parallel tensors, are not convertible to
+            # a single constant. We'll use a placeholder for this case.
+            graph_const = self._capture_helper(tensor, name)  # pylint: disable=protected-access
+          self.add_capture(tensor, graph_const)
+        else:
+          graph_const = capture.internal
+        tape.record_operation(
+            "captured_value", [graph_const], [tensor],
+            backward_function=lambda x: [x],
+            forward_function=lambda x: [x])
+        return graph_const
 
       # Large EagerTensors and resources are captured with Placeholder ops
       return self._capture_helper(tensor, name, shape)
@@ -898,26 +910,6 @@ class FuncGraph(ops.Graph):
         key=id(tensor),
         default_value=default_value,
         placeholder=placeholder)
-
-  def capture_eager_tensor(self, tensor, name):
-    capture = self._function_captures.by_val_captures.get(id(tensor))
-    if capture is None:
-      with ops.control_dependencies(None):
-        constant_value = tensor_util.constant_value(tensor)
-        if constant_value is None:
-          # Some eager tensors, e.g. parallel tensors, are not convertible to a
-          # single constant. We'll use a placeholder for this case.
-          return self._capture_helper(tensor, name)
-        graph_const = constant_op.constant(
-            constant_value, dtype=tensor.dtype, shape=tensor.shape, name=name)
-      self.add_capture(tensor, graph_const)
-    else:
-      graph_const = capture.internal
-    tape.record_operation(
-        "captured_value", [graph_const], [tensor],
-        backward_function=lambda x: [x],
-        forward_function=lambda x: [x])
-    return graph_const
 
   @property
   def external_captures(self):
