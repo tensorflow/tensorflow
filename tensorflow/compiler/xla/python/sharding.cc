@@ -28,13 +28,13 @@ size_t ShardingHash(const pybind11::object& sharding) {
   auto type = sharding.get_type();
 
   if (type.is(NamedSharding::type())) {
-    const auto* mesh_sharding = xla::fast_cast<jax::NamedSharding>(sharding);
-    return absl::Hash<void*>()(mesh_sharding->mesh().ptr());
+    const auto* named_sharding = xla::fast_cast<jax::NamedSharding>(sharding);
+    return absl::Hash<void*>()(named_sharding->mesh().ptr());
   }
 
   if (type.is(GSPMDSharding::type())) {
-    auto* op_sharding = xla::fast_cast<GSPMDSharding>(sharding);
-    return op_sharding->Hash();
+    auto* gspmd_sharding = xla::fast_cast<GSPMDSharding>(sharding);
+    return gspmd_sharding->Hash();
   }
 
   if (type.is(SingleDeviceSharding::type())) {
@@ -55,18 +55,18 @@ bool ShardingEqual(const pybind11::object& a, const pybind11::object& b) {
   if (!a_type.is(b_type)) return false;
 
   if (a_type.is(NamedSharding::type())) {
-    auto* a_mesh_sharding = xla::fast_cast<const NamedSharding>(a);
-    auto* b_mesh_sharding = xla::fast_cast<const NamedSharding>(b);
+    auto* a_named_sharding = xla::fast_cast<const NamedSharding>(a);
+    auto* b_named_sharding = xla::fast_cast<const NamedSharding>(b);
 
-    return a_mesh_sharding->mesh().ptr() == b_mesh_sharding->mesh().ptr() &&
-           a_mesh_sharding->spec().equal(b_mesh_sharding->spec());
+    return a_named_sharding->mesh().ptr() == b_named_sharding->mesh().ptr() &&
+           a_named_sharding->spec().equal(b_named_sharding->spec());
   }
 
   if (a_type.is(GSPMDSharding::type())) {
-    auto* a_op_sharding_sharding = xla::fast_cast<const GSPMDSharding>(a);
-    auto* b_op_sharding_sharding = xla::fast_cast<const GSPMDSharding>(b);
+    auto* a_gspmd_sharding = xla::fast_cast<const GSPMDSharding>(a);
+    auto* b_gspmd_sharding = xla::fast_cast<const GSPMDSharding>(b);
 
-    return a_op_sharding_sharding == b_op_sharding_sharding;
+    return a_gspmd_sharding == b_gspmd_sharding;
   }
 
   if (a_type.is(SingleDeviceSharding::type())) {
