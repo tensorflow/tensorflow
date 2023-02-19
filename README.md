@@ -61,7 +61,7 @@ commands.
 *Nightly binaries are available for testing using the
 [tf-nightly](https://pypi.python.org/pypi/tf-nightly) and
 [tf-nightly-cpu](https://pypi.python.org/pypi/tf-nightly-cpu) packages on PyPi.*
-
+@@ Yoloy Achievments
 #### *Try your first TensorFlow program*
 
 ```shell
