@@ -1073,7 +1073,7 @@ is smaller than desired.}]>:$drop_remainder,
   );
 }
 
-def TF_BatchFunctionOp : TF_Op<"BatchFunction", [AttrSizedOperandSegments, DeclareOpInterfaceMethods<SymbolUserOpInterface>, Pure]> {
+def TF_BatchFunctionOp : TF_Op<"BatchFunction", [AttrSizedOperandSegments, CallOpInterface, DeclareOpInterfaceMethods<SymbolUserOpInterface>, Pure]> {
   let summary = [{
 Batches all the inputs tensors to the computation done by the function.
   }];
@@ -1142,6 +1142,21 @@ to be batched.}]>:$captured_tensors,
   TF_DerivedOperandTypeListAttr Tcaptured = TF_DerivedOperandTypeListAttr<1>;
   TF_DerivedOperandTypeListAttr Tin = TF_DerivedOperandTypeListAttr<0>;
   TF_DerivedResultTypeListAttr Tout = TF_DerivedResultTypeListAttr<0>;
+
+  let extraClassDeclaration = [{
+    // Gets the argument operands to the called function.
+    operand_range getArgOperands() {
+      // Merge `in_tensors` and `captured_tensors`. `operand_segment_sizes`
+      // has two elements, so it will be merging two operand ranges (the two
+      // variadic arguments). Attributes like `batch_timeout_micros` will not
+      // make it to the return array.
+      auto segment_sizes = getOperation()->getAttrOfType<DenseI32ArrayAttr>(getOperandSegmentSizeAttr());
+      return OperandRangeRange(getOperands(), segment_sizes).join();
+    }
+
+    // Returns the callee of this operation.
+    CallInterfaceCallable getCallableForCallee() { return getFAttr(); }
+  }];
 }
 
 def TF_BatchMatMulOp : TF_Op<"BatchMatMul", [Pure, TF_SameOperandsAndResultElementTypeResolveRef]> {
