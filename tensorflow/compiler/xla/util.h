@@ -676,6 +676,7 @@ class HloInstruction;
 // A predicate over HLO instruction.
 using HloPredicate = std::function<bool(const HloInstruction*)>;
 
+using Vector2 = std::array<int64_t, 2>;
 using Vector3 = std::array<int64_t, 3>;
 
 }  // namespace xla

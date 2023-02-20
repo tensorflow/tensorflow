@@ -228,9 +228,11 @@ const HloInstruction& FindNonTrivialHero(const HloInstruction& instr);
 // Whether there is a fusion root triggering transposition emitter.
 bool HasAnyTiledTransposeRoot(HloComputation* computation);
 
-std::optional<Vector3> FindTiledLogicalTranspose(const HloInstruction& instr);
+std::optional<Vector3> FindTiledLogicalTranspose(const HloInstruction& instr,
+                                                 Vector3& permutation);
 
-std::optional<Vector3> FindAnyTiledTranspose(const HloInstruction& instr);
+std::optional<std::pair<Vector3, Vector3>> FindAnyTiledTranspose(
+    const HloInstruction& instr);
 
 // Log and verify an LLVM module.
 void LogAndVerify(const llvm::Module* m);
