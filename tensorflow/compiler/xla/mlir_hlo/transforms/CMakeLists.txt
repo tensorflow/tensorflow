@@ -33,6 +33,7 @@ add_mlir_library(MLIRBufferTransforms
   detensorize_scf_ops.cc
   generic_host_to_llvm.cc
   lower_index_cast_pass.cc
+  math_legalization.cc
   propagate_static_shapes_to_kernel.cc
   test_hlo_transform_dialect_interpreter.cc
   tile_loops_pass.cc
@@ -48,14 +49,17 @@ add_mlir_library(MLIRBufferTransforms
   LINK_LIBS PUBLIC
   ChloOps
   GmlStDialect
-  MhloDialect
   MLIRGPUOps
   MLIRHLOAnalysis
   MLIRIR
+  MLIRLinalgToLLVM
+  MLIRMathTransforms
   MLIRPass
+  MLIRReconcileUnrealizedCasts
   MLIRShapeDialect
-  MLIRTransforms
   MLIRTransformDialectTransforms
+  MLIRTransforms
+  MhloDialect
   THLODialect
   ThloBufferizableOpInterface
 )

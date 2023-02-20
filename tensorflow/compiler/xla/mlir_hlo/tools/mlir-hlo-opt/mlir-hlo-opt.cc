@@ -55,6 +55,11 @@ int main(int argc, char** argv) {
       "Tiles, fuses, vectorizes tileable ops for CPU with default parameters",
       gml_st::addDefaultCPUTilingPipeline);
 
+  PassPipelineRegistration<> genericHostToLLVMPass(
+      "generic-host-to-llvm",
+      "Pipeline to lower common dialects resulting from HLO to LLVM",
+      hlo::createGenericHostToLLVMPipeline);
+
   DialectRegistry registry;
   registerAllDialects(registry);
   mhlo::registerAllMhloDialects(registry);

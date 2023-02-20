@@ -112,12 +112,14 @@ void registerTestHloTransformDialectEraseSchedulePass();
 void registerTestHloTransformDialectInterpreterPass();
 
 namespace hlo {
-std::unique_ptr<OperationPass<ModuleOp>> createOneShotBufferizePass();
 
-std::unique_ptr<OperationPass<ModuleOp>> createGenericHostToLLVMPass();
+void createGenericHostToLLVMPipeline(OpPassManager& pm);
+
+std::unique_ptr<OperationPass<ModuleOp>> createOneShotBufferizePass();
 
 std::unique_ptr<OperationPass<func::FuncOp>> createUnbufferizePass();
 std::unique_ptr<OperationPass<func::FuncOp>> createAllocToArgPass();
+std::unique_ptr<OperationPass<func::FuncOp>> createMathLegalizationPass();
 
 // Unrolls scf.for loops with static iteration count no larger than 8.
 std::unique_ptr<Pass> createUnrollLoopsPass();
