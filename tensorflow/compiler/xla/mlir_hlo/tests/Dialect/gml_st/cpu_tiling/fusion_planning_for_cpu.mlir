@@ -184,3 +184,43 @@ func.func @reduce(%input: tensor<100x10xf32>,
 // CHECK:         gml_st.fusion
 // CHECK:           linalg.reduce
 // CHECK:           gml_st.yield
+
+// -----
+
+func.func @fused_matmul(%arg0: tensor<1x32xf32>, %arg1: tensor<32x10xf32>,
+                        %arg2: tensor<10xf32>) -> tensor<1x10xf32> {
+  %cst = arith.constant 0.000000e+00 : f32
+  %0 = tensor.empty() : tensor<1x10xf32>
+  %1 = linalg.fill ins(%cst : f32) outs(%0 : tensor<1x10xf32>) -> tensor<1x10xf32>
+  %2 = linalg.matmul
+         ins(%arg0, %arg1 : tensor<1x32xf32>, tensor<32x10xf32>)
+         outs(%1 : tensor<1x10xf32>) -> tensor<1x10xf32>
+  %expanded = tensor.expand_shape %arg2 [[0, 1]] : tensor<10xf32> into tensor<1x10xf32>
+  %mapped = linalg.map { arith.addf }
+              ins(%2, %expanded : tensor<1x10xf32>, tensor<1x10xf32>)
+              outs(%0 : tensor<1x10xf32>)
+  return %mapped : tensor<1x10xf32>
+}
+
+// CHECK-LABEL: func @fused_matmul
+// CHECK-SAME:      (%[[ARG0:.*]]: tensor<1x32xf32>, %[[ARG1:.*]]: tensor<32x10xf32>
+// CHECK-SAME:      %[[ARG2:.*]]: tensor<10xf32>
+// CHECK:         %[[C0:.*]] = arith.constant 0
+// CHECK:         %[[EMPTY:.*]] = tensor.empty()
+// CHECK:         gml_st.fusion
+// CHECK-SAME:        (%[[EMPTY_:.*]] = %[[EMPTY]]: tensor<1x10xf32>,
+// CHECK-SAME:        %[[ARG2_:.*]] = %[[ARG2]]: tensor<10xf32>
+// CHECK-SAME:        %[[ARG0_:.*]] = %[[ARG0]]: tensor<1x32xf32>
+// CHECK-SAME:        %[[ARG1_:.*]] = %[[ARG1]]: tensor<32x10xf32>
+// CHECK-SAME:        %[[C0_:.*]] = %[[C0]]: f32
+// CHECK:           %[[EXPANDED:.*]] = tensor.expand_shape %[[ARG2_]]
+// CHECK:           %[[FILLED:.*]] = linalg.fill
+// CHECK-SAME:        ins(%[[C0_]] : f32)
+// CHECK-SAME:        outs(%[[EMPTY_]] : tensor<1x10xf32>
+// CHECK:           %[[MATMUL:.*]] = linalg.matmul
+// CHECK-SAME:        ins(%[[ARG0_]], %[[ARG1_]]
+// CHECK-SAME:        outs(%[[FILLED]]
+// CHECK:           %[[MAP:.*]] = linalg.map
+// CHECK-SAME:        ins(%[[MATMUL]], %[[EXPANDED]]
+// CHECK-SAME:        outs(%[[EMPTY_]]
+// CHECK:           gml_st.yield %[[MAP]]

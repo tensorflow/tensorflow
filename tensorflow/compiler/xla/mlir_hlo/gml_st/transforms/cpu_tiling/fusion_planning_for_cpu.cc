@@ -25,6 +25,7 @@ limitations under the License.
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/IR/PatternMatch.h"
+#include "mlir/Interfaces/DestinationStyleOpInterface.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 #include "thlo/IR/thlo_ops.h"
@@ -39,6 +40,18 @@ namespace {
 // Returns true is consumer and producer should be fused and tiled together.
 bool allowedToFuse(Operation* consumerOp, Operation* producerOp) {
   if (isa<thlo::ScatterOp, thlo::SortOp>(producerOp)) return false;
+
+  if (isa<linalg::FillOp>(producerOp)) {
+    auto dstStyleOp = dyn_cast<DestinationStyleOpInterface>(consumerOp);
+    if (!dstStyleOp) return false;
+
+    return llvm::any_of(dstStyleOp.getDpsInitOperands(),
+                        [&](OpOperand* operand) {
+                          return operand->get().getDefiningOp() == producerOp;
+                        });
+
+    return false;
+  }
 
   if (isa<linalg::MapOp, thlo::ReverseOp>(consumerOp)) return true;
   if (isa<linalg::BroadcastOp>(consumerOp)) return false;
