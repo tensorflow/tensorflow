@@ -145,14 +145,18 @@ std::vector<std::string> ParseArgumentsFromTfLiteSettings(
                                    tflite_settings_path));
     return args;
   }
-  if (tflite_settings.delegate() == Delegate_XNNPACK) {
-    args.push_back("--use_xnnpack=true");
-    if (tflite_settings.xnnpack_settings() &&
-        tflite_settings.xnnpack_settings()->num_threads()) {
-      args.push_back(
-          absl::StrFormat("--num_threads=%d",
-                          tflite_settings.xnnpack_settings()->num_threads()));
-    } else if (tflite_settings.delegate() == Delegate_GPU) {
+  switch (tflite_settings.delegate()) {
+    case Delegate_XNNPACK: {
+      args.push_back("--use_xnnpack=true");
+      if (tflite_settings.xnnpack_settings() &&
+          tflite_settings.xnnpack_settings()->num_threads()) {
+        args.push_back(
+            absl::StrFormat("--num_threads=%d",
+                            tflite_settings.xnnpack_settings()->num_threads()));
+      }
+      return args;
+    }
+    case Delegate_GPU: {
       args.push_back("--use_gpu=true");
       const tflite::GPUSettings* gpu_settings = tflite_settings.gpu_settings();
       if (gpu_settings) {
@@ -181,15 +185,22 @@ std::vector<std::string> ParseArgumentsFromTfLiteSettings(
                                          gpu_settings->model_token()->c_str()));
         }
       }
-    } else if (tflite_settings.disable_default_delegates()) {
-      // Currently TFLite Benchmark Tool doesn't support handling the case with
-      // applying XNNPack delegate explicitly and disabling the XNNPack delegate
-      // as the default delegate at the same time. When the
-      // "disable_default_delegates" configuration is set to true, it only takes
-      // effect if the delegate is not set to XNNPack. Otherwise, the default
-      // delegates will still be enabled.
-      args.push_back("--use_xnnpack=false");
+      break;
     }
+    default:
+      TFLITE_LOG_PROD(TFLITE_LOG_WARNING,
+                      "Delegate type %s is not enabled by the latency module.",
+                      EnumNameDelegate(tflite_settings.delegate()));
+      break;
+  }
+  if (tflite_settings.disable_default_delegates()) {
+    // Currently TFLite Benchmark Tool doesn't support handling the case with
+    // applying XNNPack delegate explicitly and disabling the XNNPack delegate
+    // as the default delegate at the same time. When the
+    // "disable_default_delegates" configuration is set to true, it only takes
+    // effect if the delegate is not set to XNNPack. Otherwise, the default
+    // delegates will still be enabled.
+    args.push_back("--use_xnnpack=false");
   }
   return args;
 }
