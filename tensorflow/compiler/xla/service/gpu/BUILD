@@ -236,15 +236,9 @@ cc_library(
 
 xla_cc_test(
     name = "gpu_device_info_test",
-<<<<<<< HEAD
-    srcs = ["gpu_device_info_test.cc"],
-    tags = tf_cuda_tests_tags() + ["no_rocm"],
-    deps = [
-=======
     srcs = if_cuda_is_configured(["gpu_device_info_test.cc"]),
-    tags = tf_cuda_tests_tags(),
+    tags = tf_cuda_tests_tags() + ["no_rocm"],
     deps = if_cuda_is_configured([
->>>>>>> google_upstream/master
         ":gpu_device_info_for_tests",
         "@com_google_absl//absl/strings",
         "@local_config_cuda//cuda:cuda_headers",
@@ -1476,51 +1470,6 @@ xla_cc_test(
 )
 
 cc_library(
-<<<<<<< HEAD
-    name = "softmax_fusion",
-    srcs = ["softmax_fusion.cc"],
-    hdrs = ["softmax_fusion.h"],
-    deps = [
-        ":ir_emission_utils",
-        "//tensorflow/compiler/xla:shape_util",
-        "//tensorflow/compiler/xla:statusor",
-        "//tensorflow/compiler/xla:util",
-        "//tensorflow/compiler/xla:xla_data_proto_cc",
-        "//tensorflow/compiler/xla/hlo/ir:hlo",
-        "//tensorflow/compiler/xla/service:hlo_pass",
-        "//tensorflow/compiler/xla/service:pattern_matcher",
-        "//tensorflow/tsl/platform:errors",
-        "//tensorflow/tsl/platform:statusor",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/container:flat_hash_set",
-        "@com_google_absl//absl/strings",
-    ],
-)
-
-xla_cc_test(
-    name = "softmax_fusion_test",
-    srcs = ["softmax_fusion_test.cc"],
-    tags = tf_cuda_tests_tags() + ["no_rocm"],
-    deps = [
-        ":softmax_fusion",
-        "//tensorflow/compiler/xla:status_macros",
-        "//tensorflow/compiler/xla:test",
-        "//tensorflow/compiler/xla:util",
-        "//tensorflow/compiler/xla/service:gpu_plugin",
-        "//tensorflow/compiler/xla/service:pattern_matcher",
-        "//tensorflow/compiler/xla/service:pattern_matcher_gmock",
-        "//tensorflow/compiler/xla/tests:hlo_test_base",
-        "//tensorflow/compiler/xla/tests:xla_internal_test_main",  # build_cleaner: keep
-        "//tensorflow/tsl/lib/core:status_test_util",
-        "//tensorflow/tsl/platform:statusor",
-        "//tensorflow/tsl/platform:test",
-        "@com_google_absl//absl/strings",
-    ],
-)
-
-cc_library(
-=======
->>>>>>> google_upstream/master
     name = "gpu_sanitize_constant_names",
     srcs = ["gpu_sanitize_constant_names.cc"],
     hdrs = ["gpu_sanitize_constant_names.h"],

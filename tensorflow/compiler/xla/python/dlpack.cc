@@ -28,11 +28,7 @@ limitations under the License.
 #include "pybind11/pytypes.h"
 #include "tensorflow/compiler/xla/pjrt/gpu/se_gpu_pjrt_client.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
-<<<<<<< HEAD
-#include "tensorflow/compiler/xla/pjrt/gpu/se_gpu_pjrt_client.h"
-=======
 #include "tensorflow/compiler/xla/python/py_array.h"
->>>>>>> google_upstream/master
 #include "tensorflow/compiler/xla/python/python_ref_manager.h"
 #include "tensorflow/compiler/xla/python/traceback.h"
 #include "tensorflow/compiler/xla/python/util.h"
