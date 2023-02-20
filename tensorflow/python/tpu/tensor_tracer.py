@@ -53,7 +53,7 @@ from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.summary import summary_iterator
 from tensorflow.python.tpu import tensor_tracer_flags
 from tensorflow.python.tpu import tensor_tracer_report
-from tensorflow.python.tpu import tpu
+from tensorflow.python.tpu import tpu_replication
 from tensorflow.python.tpu.ops import tpu_ops
 from tensorflow.python.training import training_util
 
@@ -520,7 +520,7 @@ class TensorTracer:
   def device_mismatch(device_type, op):
     if device_type == _DEVICE_TYPE_TPU:
       # pylint: disable=protected-access
-      return tpu._TPU_REPLICATE_ATTR not in op.node_def.attr
+      return tpu_replication._TPU_REPLICATE_ATTR not in op.node_def.attr
       # pylint: enable=protected-access
     return False
 
@@ -1679,7 +1679,7 @@ class TensorTracer:
         cache_val = self.merge_caches_on_tpu(cache_val)
         cache_val = self.aggregate_global_cache(cache_val)[0]
 
-      flush_op = tpu.outside_compilation(
+      flush_op = tpu_replication.outside_compilation(
           _flush_fun, cache_val, self._replica_id,
           array_ops.identity(training_util.get_or_create_global_step()))
     else:
@@ -2106,7 +2106,8 @@ class TensorTracer:
             tensor_trace_fn = self._make_tensor_trace_fun(out_tensor_name,
                                                           tensor_trace_order)
             if on_tpu:
-              return tpu.outside_compilation(tensor_trace_fn, tensor)
+              return tpu_replication.outside_compilation(
+                  tensor_trace_fn, tensor)
             else:
               return tensor_trace_fn(tensor)
 
@@ -2177,9 +2178,11 @@ class TensorTracer:
                                       tensor_tracer_summary=tt_summary),
                   control_flow_ops.no_op)
 
-            write_op = tpu.outside_compilation(write_if_core_0, step=step,
-                                               replica_id=self._replica_id,
-                                               tt_summary=tt_core_summary)
+            write_op = tpu_replication.outside_compilation(
+                write_if_core_0,
+                step=step,
+                replica_id=self._replica_id,
+                tt_summary=tt_core_summary)
             processed_t_fetches = control_flow_ops.tuple(
                 processed_t_fetches, control_inputs=[write_op])
             del self._host_call_fn[_TT_HOSTCALL_KEY]

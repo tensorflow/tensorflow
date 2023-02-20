@@ -33,6 +33,7 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 # 'Constant' gets imported in the module 'array_ops'.
 from tensorflow.python.framework.constant_op import constant
+from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import shape_util
@@ -1087,8 +1088,10 @@ def _slice_helper(tensor, slice_spec, var=None):
       "strided_slice", [tensor] + begin + end + strides,
       skip_on_eager=False) as name:
     if begin:
-      packed_begin, packed_end, packed_strides = (stack(begin), stack(end),
-                                                  stack(strides))
+      packed_begin, packed_end, packed_strides = (
+          array_ops_stack.stack(begin),
+          array_ops_stack.stack(end),
+          array_ops_stack.stack(strides))
       # TODO(mdan): Instead of implicitly casting, it's better to enforce the
       # same dtypes.
       if (packed_begin.dtype == dtypes.int64 or
@@ -1432,6 +1435,8 @@ def parallel_stack(values, name="parallel_stack"):
         [expand_dims(value, 0) for value in values], shape=output_shape)
 
 
+# This function is deprecated. Use the one in array_ops_stack.py instead.
+# TODO(b/269481974): Delete this function when all references have been moved.
 @tf_export("stack")
 @dispatch.add_dispatch_support
 def stack(values, axis=0, name="stack"):
@@ -1616,6 +1621,8 @@ tensor_conversion_registry.register_tensor_conversion_function(
     (list, tuple), _autopacking_conversion_function, 99)
 
 
+# This function is deprecated. Use the one in array_ops_stack.py instead.
+# TODO(b/269481974): Delete this function when all references have been moved.
 @tf_export("unstack")
 @dispatch.add_dispatch_support
 def unstack(value, num=None, axis=0, name="unstack"):
@@ -3774,7 +3781,8 @@ def meshgrid(*args, **kwargs):
     # Prepare reshape by inserting dimensions with size 1 where needed
     output = []
     for i, x in enumerate(args):
-      output.append(reshape(stack(x), (s0[:i] + (-1,) + s0[i + 1::])))
+      output.append(
+          reshape(array_ops_stack.stack(x), (s0[:i] + (-1,) + s0[i + 1::])))
     # Create parameters for broadcasting each tensor to the full size
     shapes = [size(x) for x in args]
 
@@ -4083,11 +4091,11 @@ def required_space_to_batch_paddings(input_shape,
     pad_end_extra = (block_shape - full_input_shape % block_shape) % block_shape
     pad_end = orig_pad_end + pad_end_extra
 
-    result_paddings = stack(
+    result_paddings = array_ops_stack.stack(
         [[pad_start[i], pad_end[i]] for i in range(num_block_dims)],
         name="paddings")
-    result_crops = stack([[0, pad_end_extra[i]] for i in range(num_block_dims)],
-                         name="crops")
+    result_crops = array_ops_stack.stack(
+        [[0, pad_end_extra[i]] for i in range(num_block_dims)], name="crops")
     return result_paddings, result_crops
 
 
@@ -5465,7 +5473,7 @@ def _batch_gather(params, indices, batch_dims, axis=None):
     step = ones((), dtype=indices_dtype)
     dim_indices = gen_math_ops._range(start, dim_value, step)
     dim_indices *= accum_dim_value
-    dim_shape = stack(
+    dim_shape = array_ops_stack.stack(
         [1] * (dim - 1) + [dim_value] + [1] * (indices_ndims - dim), axis=0)
     batch_indices += reshape(dim_indices, dim_shape)
 
@@ -5795,7 +5803,7 @@ def batch_gather_nd(params, indices, batch_dims, name=None):
     # to the entire 'params' tensor.
     # Assuming we have a batch of shape [B1, B2], we use meshgrid to create a
     # grid of size B1 x B2.
-    batch_dim_list = unstack(batch_shape, axis=0)
+    batch_dim_list = array_ops_stack.unstack(batch_shape, axis=0)
     dim_ranges = [
         gen_math_ops.cast(gen_math_ops._range(0, x, 1), indices.dtype)
         for x in batch_dim_list
@@ -5803,7 +5811,7 @@ def batch_gather_nd(params, indices, batch_dims, name=None):
     mesh_list = meshgrid(*dim_ranges, indexing="ij") if dim_ranges else []
     # Then we flatten and stack the tensors to form a (B1.B2) by 2 matrix.
     flat_list = [reshape(x, shape=(-1,)) for x in mesh_list]
-    index_grid = transpose(stack(flat_list, axis=0))
+    index_grid = transpose(array_ops_stack.stack(flat_list, axis=0))
     # We need to concatenate these batch coordinates with the internal indices.
     # concat -> index_grid [B1.B2, 2] with indices [i1, ..., iK, C]
     # So we reshape them both to [(B1.B2), i1, ..., iK, *]
@@ -6940,7 +6948,7 @@ def _with_nonzero_rank(data):
   """If `data` is scalar, then add a dimension; otherwise return as-is."""
   if data.shape.ndims is not None:
     if data.shape.ndims == 0:
-      return stack([data])
+      return array_ops_stack.stack([data])
     else:
       return data
   else:

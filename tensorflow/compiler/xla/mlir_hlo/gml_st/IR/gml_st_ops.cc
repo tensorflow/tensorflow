@@ -44,6 +44,7 @@ limitations under the License.
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/IR/TypeUtilities.h"
 #include "mlir/Interfaces/ViewLikeInterface.h"
+#include "mlir/Transforms/InliningUtils.h"
 
 namespace mlir {
 namespace {
@@ -135,6 +136,32 @@ namespace mlir {
 namespace gml_st {
 
 //===----------------------------------------------------------------------===//
+// GmlSt Dialect Interfaces
+//===----------------------------------------------------------------------===//
+
+namespace {
+
+struct GmlStInlinerInterface : public DialectInlinerInterface {
+  using DialectInlinerInterface::DialectInlinerInterface;
+  // Operations in GmlSt dialect are always legal to inline since they are
+  // pure.
+  bool isLegalToInline(Operation *, Region *, bool, IRMapping &) const final {
+    return true;
+  }
+  // Handle the given inlined terminator by replacing it with a new operation
+  // as necessary. Required when the region has only one block.
+  void handleTerminator(Operation *op,
+                        ArrayRef<Value> valuesToRepl) const final {
+    auto yieldOp = dyn_cast<gml_st::YieldOp>(op);
+    if (!yieldOp) return;
+
+    assert(valuesToRepl.size() == 1);
+    valuesToRepl[0].replaceAllUsesWith(yieldOp.getOperand());
+  }
+};
+}  // namespace
+
+//===----------------------------------------------------------------------===//
 // GmlStDialect
 //===----------------------------------------------------------------------===//
 
@@ -151,6 +178,8 @@ void GmlStDialect::initialize() {
 #define GET_ATTRDEF_LIST
 #include "gml_st/IR/gml_st_attrs.cc.inc"
       >();
+
+  addInterfaces<GmlStInlinerInterface>();
 }
 
 Operation *GmlStDialect::materializeConstant(OpBuilder &builder, Attribute attr,
@@ -1451,6 +1480,77 @@ void SetYieldOp::getCanonicalizationPatterns(RewritePatternSet &results,
 //===----------------------------------------------------------------------===//
 
 LogicalResult YieldOp::verify() { return success(); }
+
+//===----------------------------------------------------------------------===//
+// FusionOp
+//===----------------------------------------------------------------------===//
+
+YieldOp FusionOp::getTerminator() {
+  return cast<YieldOp>(getBody()->getTerminator());
+}
+
+void FusionOp::print(OpAsmPrinter &p) {
+  p << " (";
+  llvm::interleaveComma(
+      llvm::zip(getBody()->getArguments(), getInputs()), p, [&](auto it) {
+        Value inputRegionArg, input;
+        std::tie(inputRegionArg, input) = it;
+        p << inputRegionArg << " = " << input << ": " << input.getType();
+      });
+  p << ") ";
+
+  p.printRegion(getRegion(), /*printEntryBlockArgs=*/false);
+
+  p.printOptionalAttrDict(getOperation()->getAttrs());
+
+  if (!getResultTypes().empty()) {
+    p << " : ";
+    llvm::interleave(getResultTypes(), p, ", ");
+  }
+}
+
+ParseResult FusionOp::parse(OpAsmParser &parser, OperationState &result) {
+  SmallVector<OpAsmParser::UnresolvedOperand, 4> operands, regionOperands;
+  SmallVector<Type, 4> operandTypes;
+
+  auto parseElt = [&]() -> ParseResult {
+    if (parser.parseOperand(regionOperands.emplace_back(),
+                            /*allowResultNumber=*/false) ||
+        parser.parseEqual()) {
+      return failure();
+    }
+    if (parser.parseOperand(operands.emplace_back()) || parser.parseColon() ||
+        parser.parseType(operandTypes.emplace_back())) {
+      return failure();
+    }
+    return success();
+  };
+
+  // Parse argument list.
+  if (parser.parseCommaSeparatedList(AsmParser::Delimiter::Paren, parseElt))
+    return failure();
+
+  SMLoc loc = parser.getCurrentLocation();
+  if (parser.resolveOperands(operands, operandTypes, loc, result.operands))
+    return failure();
+
+  // Parse region.
+  SmallVector<OpAsmParser::Argument, 4> regionArgs;
+  for (auto argAndType : llvm::zip(regionOperands, operandTypes)) {
+    auto &arg = regionArgs.emplace_back();
+    std::tie(arg.ssaName, arg.type) = argAndType;
+  }
+  Region *body = result.addRegion();
+  if (parser.parseRegion(*body, regionArgs)) return failure();
+
+  // Parse attributes.
+  if (parser.parseOptionalAttrDict(result.attributes)) return failure();
+
+  // Parser result types.
+  if (parser.parseOptionalColonTypeList(result.types)) return failure();
+
+  return success();
+}
 
 }  // namespace gml_st
 }  // namespace mlir

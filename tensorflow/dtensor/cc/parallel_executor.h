@@ -38,6 +38,12 @@ class ParallelExecutor {
 
   virtual ~ParallelExecutor() = default;
 
+  // Broadcasts `tensor` to `mesh` using replicated sharding and returns a
+  // DTensor representation.
+  virtual tsl::StatusOr<std::unique_ptr<tensorflow::dtensor::TensorWithLayout>>
+  Broadcast(const tensorflow::Tensor& tensor,
+            const tensorflow::dtensor::Mesh& mesh) = 0;
+
   // Takes input TensorWithLayouts, a MLIR module and the entry function name.
   // Attributes are forwarded to executed operations unmodified.
   // The execute is non-blocking and returns a Future of output TensorWithLayout

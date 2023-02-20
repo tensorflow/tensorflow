@@ -42,7 +42,7 @@ from tensorflow.python.ops import summary_ops_v2 as summary_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import flags
 from tensorflow.python.tpu import device_assignment as device_assignment_lib
-from tensorflow.python.tpu import tpu
+from tensorflow.python.tpu import tpu_replication
 from tensorflow.python.tpu import tpu_strategy_util
 
 FLAGS = flags.FLAGS
@@ -416,7 +416,7 @@ class TPUStrategyModelParallelismTest(
       if split:
         x = strategy.experimental_split_to_logical_devices(x, [1, 2])
       y = x + 1
-      z = tpu.outside_compilation(host_inc, y)
+      z = tpu_replication.outside_compilation(host_inc, y)
       a = z + 1
       return a
 

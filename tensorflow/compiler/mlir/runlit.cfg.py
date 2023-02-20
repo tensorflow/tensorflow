@@ -108,7 +108,6 @@ tool_names = [
     'xla-cpu-opt',
     'xla-gpu-opt',
     'xla-mlir-gpu-opt',
-    'xla-opt',
     'xla-runtime-opt',
     'xla-translate',
     'xla-translate-gpu-opt',

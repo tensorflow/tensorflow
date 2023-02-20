@@ -22,6 +22,7 @@ import time
 from absl.testing import parameterized
 
 from tensorflow.python.data.experimental.kernel_tests.service import test_base as data_service_test_base
+from tensorflow.python.data.experimental.ops import data_service_ops
 from tensorflow.python.data.experimental.ops import distributed_save_op
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
@@ -36,7 +37,9 @@ from tensorflow.python.platform import test
 _DONE = 4
 
 
-class DistributedSaveTest(test_base.DatasetTestBase, parameterized.TestCase):
+class DistributedSaveTfDataServiceTest(
+    data_service_test_base.TestBase, parameterized.TestCase
+):
 
   def setUp(self):
     super().setUp()
@@ -52,30 +55,23 @@ class DistributedSaveTest(test_base.DatasetTestBase, parameterized.TestCase):
     except FileNotFoundError:
       pass
 
-
-class DistributedSaveTfDataServiceTest(data_service_test_base.TestBase,
-                                       DistributedSaveTest):
-
-  def save(self, dataset, num_workers=1):
-    cluster = data_service_test_base.TestCluster(num_workers=num_workers)
-    distributed_save_op.distributed_save(dataset, self._test_dir,
-                                         cluster.dispatcher_address())
-    return cluster
-
   @combinations.generate(test_base.eager_only_combinations())
   def testSimple(self):
+    cluster = data_service_test_base.TestCluster(num_workers=1)
     dataset = dataset_ops.Dataset.range(10)
-    cluster = self.save(dataset)
-    streams = lambda: cluster.snapshot_streams(self._test_dir)
-    while len(streams()) != 1 or streams()[0].state != _DONE:
-      time.sleep(0.1)
-    self.assertTrue(os.path.exists(os.path.join(self._test_dir, "DONE")))
-    self.assertDatasetsEqual(dataset, dataset_ops.Dataset.load(self._test_dir))
+    distributed_save_op.distributed_save(
+        dataset, self._test_dir, cluster.dispatcher_address()
+    )
+    self._wait_for_snapshot(cluster)
+
+    dataset = dataset_ops.Dataset.load(self._test_dir)
+    self.assertDatasetProduces(dataset, list(range(10)))
 
   # TODO(mpcallanan): Add test for multiple workers.
 
   @combinations.generate(test_base.eager_only_combinations())
   def testChooseFromDatasets(self):
+    cluster = data_service_test_base.TestCluster(num_workers=1)
     datasets = [
         dataset_ops.Dataset.from_tensor_slices(["a", "a", "a", "a", "a"]),
         dataset_ops.Dataset.from_tensor_slices(["b", "b", "b", "b", "b"]),
@@ -83,11 +79,31 @@ class DistributedSaveTfDataServiceTest(data_service_test_base.TestBase,
     ]
     choice_dataset = dataset_ops.Dataset.range(3).repeat()
     dataset = dataset_ops.Dataset.choose_from_datasets(datasets, choice_dataset)
-    self.save(dataset)
-    # TODO(b/250921378) Test loading.
-    self.assertTrue(
-        os.path.exists(os.path.join(self._test_dir, "snapshot.metadata"))
+    distributed_save_op.distributed_save(
+        dataset, self._test_dir, cluster.dispatcher_address()
     )
+    self._wait_for_snapshot(cluster)
+
+    dataset = dataset_ops.Dataset.load(self._test_dir)
+    self.assertDatasetProduces(dataset, ["a", "b", "c"] * 5)
+
+  @combinations.generate(test_base.eager_only_combinations())
+  def testDistributedLoad(self):
+    cluster = data_service_test_base.TestCluster(num_workers=1)
+    dataset = dataset_ops.Dataset.range(10)
+    distributed_save_op.distributed_save(
+        dataset, self._test_dir, cluster.dispatcher_address()
+    )
+    self._wait_for_snapshot(cluster)
+
+    dataset = dataset_ops.Dataset.load(self._test_dir)
+    dataset = dataset.apply(
+        data_service_ops.distribute(
+            data_service_ops.ShardingPolicy.OFF,
+            cluster.dispatcher_address(),
+        )
+    )
+    self.assertDatasetProduces(dataset, list(range(10)))
 
   @combinations.generate(test_base.eager_only_combinations())
   def testBadDispatcherAddress(self):
@@ -99,12 +115,20 @@ class DistributedSaveTfDataServiceTest(data_service_test_base.TestBase,
 
   @combinations.generate(test_base.eager_only_combinations())
   def testBadCardinality(self):
+    cluster = data_service_test_base.TestCluster(num_workers=1)
     dataset = dataset_ops.Dataset.range(10).repeat()
     with self.assertRaisesRegex(
         errors.InvalidArgumentError,
         "Saving an infinite dataset is not allowed",
     ):
-      self.save(dataset)
+      distributed_save_op.distributed_save(
+          dataset, self._test_dir, cluster.dispatcher_address()
+      )
+
+  def _wait_for_snapshot(self, cluster):
+    streams = lambda: cluster.snapshot_streams(self._test_dir)
+    while len(streams()) != 1 or streams()[0].state != _DONE:
+      time.sleep(0.1)
 
 
 if __name__ == "__main__":

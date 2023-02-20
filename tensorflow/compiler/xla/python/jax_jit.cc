@@ -1547,8 +1547,14 @@ void BuildJaxjitSubmodule(py::module& m) {
           throw xla::XlaRuntimeError(results.status().error_message());
         }
         if (results->ifrt_array) {
+          auto traceback = xla::Traceback::Get();
+          if (GetEnableJaxArray()) {
+            return xla::PyArray::MakeFromSingleDevice(
+                pyclient, traceback, std::move(results->ifrt_array),
+                results->weak_type, false);
+          }
           auto buffer = xla::PyBuffer::Make(
-              pyclient, std::move(results->ifrt_array), xla::Traceback::Get());
+              pyclient, std::move(results->ifrt_array), traceback);
 
           static const auto* jax_core =
               new py::module(py::module::import("jax.core"));

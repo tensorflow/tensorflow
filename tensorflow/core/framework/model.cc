@@ -2157,6 +2157,9 @@ Model::Model()
             Status s = ModelToProtoHelper(snapshot_, &model_proto);
             if (s.ok()) {
               *model_proto.mutable_optimization_params() = optimization_params_;
+              tf_shared_lock l(gap_mu_);
+              *model_proto.mutable_gap_times() = {gap_times_usec_.begin(),
+                                                  gap_times_usec_.end()};
               return model_proto.DebugString();
             }
             LOG(WARNING) << s.error_message();

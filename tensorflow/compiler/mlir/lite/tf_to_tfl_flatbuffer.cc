@@ -231,15 +231,14 @@ Status ConvertTFExecutorToStablehloFlatbuffer(
   }
 
   pass_manager.clear();
-  mlir::odml::AddTFToStablehloPasses(pass_manager, false, false);
+  mlir::odml::AddTFToStablehloPasses(pass_manager, /*skip_resize*/ true,
+                                     /*smuggle_disallowed_ops*/ true);
   // Print out a detailed report of non-converted stats.
   pass_manager.addPass(mlir::odml::createPrintOpStatsPass());
   mlir::odml::AddStablehloOptimizationPasses(pass_manager);
   if (failed(pass_manager.run(module))) {
     return statusHandler.ConsumeStatus();
   }
-
-  // return to avoid adding TFL converter path
 
   if (export_to_mlir) {
     llvm::raw_string_ostream os(*result);
@@ -291,6 +290,7 @@ Status ConvertTFExecutorToTFLOrFlatbuffer(
           pass_manager.getContext()));
 
   if (pass_config.enable_stablehlo_conversion) {
+    // return to avoid adding TFL converter path
     return ConvertTFExecutorToStablehloFlatbuffer(
         pass_manager, module, export_to_mlir, statusHandler, toco_flags,
         pass_config, session, result);

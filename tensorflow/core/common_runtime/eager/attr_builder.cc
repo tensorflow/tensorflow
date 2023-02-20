@@ -174,8 +174,8 @@ Status AttrBuilder::Get(StringPiece attr_name,
 }
 
 AttrBuilder& AttrBuilder::NumInputs(int n) {
-  DCHECK(!node_def_finalized_) << "Calling NumInputs after BuildNodeDef.";
   num_inputs_ = n;
+  node_def_finalized_ = false;
   return *this;
 }
 
@@ -240,9 +240,10 @@ void AttrBuilder::AddAttrIfNotPresent(StringPiece attr_name,
 
 const NodeDef& AttrBuilder::BuildNodeDef() {
   if (node_def_finalized_) return node_def_;
-  if (!node_def_initialized_) {
-    InitializeNodeDef();
-  }
+  node_def_.Clear();
+  node_def_.set_name(op_name_);
+  node_def_.set_op(op_name_);
+
   for (int i = 0; i < num_inputs_; ++i) {
     node_def_.add_input("dummy_input");
   }
@@ -310,14 +311,6 @@ tensorflow::Fprint128 AttrBuilder::BuildCacheKeyForDevice(
         CacheKeyHelper(p.first, tensorflow::Fingerprint128(p.second)), &f);
   }
   return f;
-}
-
-void AttrBuilder::InitializeNodeDef() {
-  DCHECK(!node_def_initialized_);
-  node_def_.Clear();
-  node_def_.set_name(op_name_);
-  node_def_.set_op(op_name_);
-  node_def_initialized_ = true;
 }
 
 void AttrBuilder::GetNameAttrList(

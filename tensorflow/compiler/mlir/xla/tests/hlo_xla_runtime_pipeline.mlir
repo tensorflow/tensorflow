@@ -1,4 +1,4 @@
-// RUN: xla-opt -split-input-file -hlo-xla-runtime-pipeline %s | FileCheck %s
+// RUN: tf-opt -split-input-file -hlo-xla-runtime-pipeline %s | FileCheck %s
 
 // CHECK-LABEL: func.func @simple_add(
 func.func @simple_add(%arg0: tensor<f64>) -> tensor<f64> {

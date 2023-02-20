@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <optional>
 #include <string>
+#include <tuple>
 #include <vector>
 
 #include "tensorflow/compiler/xla/client/xla_builder.h"
@@ -295,7 +296,8 @@ Status ReorderInt8NchwVect(HloCustomCallInstruction* conv, XlaOp* operands) {
 // the convolutions' dnums.)
 static StatusOr<bool> TryRevectorizeConv(
     const se::CudaComputeCapability& compute_capability,
-    HloCustomCallInstruction* conv, int vect_size) {
+    const se::dnn::VersionInfo& cudnn_version, HloCustomCallInstruction* conv,
+    int vect_size) {
   const Shape& input_shape = conv->operand(0)->shape();
   const Shape& kernel_shape = conv->operand(1)->shape();
   const Shape& output_shape = conv->shape().tuple_shapes(0);
@@ -371,10 +373,14 @@ static StatusOr<bool> TryRevectorizeConv(
         conv->ToString());
   }
 
-  // Reorder filter and bias for the int8x32 convolutions.
+  // Reorder filter and bias for the int8x32 convolutions.  This requires cudnn
+  // >= 8.3.0.
+  //
+  // TODO(jlebar): Remove this guard once JAX no longer supports cudnn 8.3.
   const auto& debug_options = conv->GetModule()->config().debug_options();
   if (input_shape.element_type() == xla::S8 && vect_size == 32 &&
-      debug_options.xla_gpu_enable_cudnn_int8x32_convolution_reordering()) {
+      debug_options.xla_gpu_enable_cudnn_int8x32_convolution_reordering() &&
+      cudnn_version >= se::dnn::VersionInfo{8, 3, 0}) {
     TF_RETURN_IF_ERROR(ReorderInt8NchwVect(conv, new_operands.data()));
   }
 
@@ -440,7 +446,8 @@ static StatusOr<bool> TryRevectorizeConv(
 // add padding to make this true.
 static StatusOr<bool> TryVectorizeConv(
     const se::CudaComputeCapability& compute_capability,
-    HloCustomCallInstruction* conv, int64_t vect_size) {
+    const se::dnn::VersionInfo& cudnn_version, HloCustomCallInstruction* conv,
+    int64_t vect_size) {
   const Shape& input_shape = conv->operand(0)->shape();
   const Shape& output_shape = conv->shape().tuple_shapes(0);
   const auto& dnums = conv->convolution_dimension_numbers();
@@ -502,10 +509,14 @@ static StatusOr<bool> TryVectorizeConv(
         conv->ToString());
   }
 
-  // Reorder filter and bias for the int8x32 convolutions.
+  // Reorder filter and bias for the int8x32 convolutions.  This requires cudnn
+  // >= 8.3.0.
+  //
+  // TODO(jlebar): Remove this guard once JAX no longer supports cudnn 8.3.
   const auto& debug_options = conv->GetModule()->config().debug_options();
   if (input_shape.element_type() == xla::S8 && vect_size == 32 &&
-      debug_options.xla_gpu_enable_cudnn_int8x32_convolution_reordering()) {
+      debug_options.xla_gpu_enable_cudnn_int8x32_convolution_reordering() &&
+      cudnn_version >= se::dnn::VersionInfo{8, 3, 0}) {
     TF_RETURN_IF_ERROR(ReorderInt8NchwVect(conv, new_operands.data()));
   }
 
@@ -558,16 +569,19 @@ StatusOr<bool> CudnnVectorizeConvolutions::Run(
       // fall back to int8x4.
       bool local_changed = false;
       if (compute_capability_.IsAtLeast(7, 5)) {
-        TF_ASSIGN_OR_RETURN(local_changed,
-                            TryRevectorizeConv(compute_capability_, conv, 32));
+        TF_ASSIGN_OR_RETURN(
+            local_changed,
+            TryRevectorizeConv(compute_capability_, cudnn_version_, conv, 32));
         if (!local_changed) {
-          TF_ASSIGN_OR_RETURN(local_changed,
-                              TryVectorizeConv(compute_capability_, conv, 32));
+          TF_ASSIGN_OR_RETURN(
+              local_changed,
+              TryVectorizeConv(compute_capability_, cudnn_version_, conv, 32));
         }
       }
       if (!local_changed) {
-        TF_ASSIGN_OR_RETURN(local_changed,
-                            TryVectorizeConv(compute_capability_, conv, 4));
+        TF_ASSIGN_OR_RETURN(
+            local_changed,
+            TryVectorizeConv(compute_capability_, cudnn_version_, conv, 4));
       }
       changed |= local_changed;
     }

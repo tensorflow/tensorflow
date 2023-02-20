@@ -127,6 +127,17 @@ class MetricsTests(test.TestCase):
         metrics.GetWriteFingerprint(),
         str(fingerprinting.MaybeReadSavedModelChecksum(exported_dir)))
 
+  def test_save_sets_write_path_metric(self):
+    exported_dir = self._create_save_v2_model()
+
+    self.assertEqual(metrics.GetWritePath(), exported_dir)
+
+  def test_load_sets_read_path_metric(self):
+    exported_dir = self._create_save_v2_model()
+    load.load(exported_dir)
+
+    self.assertEqual(metrics.GetReadPath(), exported_dir)
+
 
 if __name__ == "__main__":
   test.main()

@@ -328,19 +328,27 @@ struct GeluGrad<GPUDevice, T> {
 
 }  // namespace functor
 
-#if !defined(MLIR_GENERATED_GPU_KERNELS_ENABLED)
 #define DEFINE_GPU_NO_MLIR_KERNELS(T)          \
   template struct functor::Relu<GPUDevice, T>; \
   template struct functor::Elu<GPUDevice, T>;  \
   template struct functor::Selu<GPUDevice, T>;
 
+<<<<<<< HEAD
 TF_CALL_GPU_NUMBER_TYPES_NO_BF16(DEFINE_GPU_NO_MLIR_KERNELS);
 #if GOOGLE_CUDA
 TF_CALL_bfloat16(DEFINE_GPU_NO_MLIR_KERNELS);
 #endif
 
 #undef DEFINE_RELU_KERNELS
+=======
+#if !defined(MLIR_GENERATED_GPU_KERNELS_ENABLED)
+TF_CALL_half(DEFINE_GPU_NO_MLIR_KERNELS);
+TF_CALL_float(DEFINE_GPU_NO_MLIR_KERNELS);
+TF_CALL_double(DEFINE_GPU_NO_MLIR_KERNELS);
+>>>>>>> google_upstream/master
 #endif
+TF_CALL_bfloat16(DEFINE_GPU_NO_MLIR_KERNELS);
+#undef DEFINE_GPU_NO_MLIR_KERNELS
 
 // Definition of the GPU implementations declared in relu_op.cc.
 #define DEFINE_GPU_KERNELS(T)                           \

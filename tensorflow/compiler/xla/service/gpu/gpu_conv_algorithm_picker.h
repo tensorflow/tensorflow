@@ -50,16 +50,13 @@ namespace gpu {
 // In deviceless mode, we pass in some information related to the device and
 // use stored autotune results to rewrite convolutions. If the required autotune
 // result is not stored, then the performance of convolution will be suboptimal.
-class GpuConvAlgorithmPicker : public GpuSerializableAutotuner {
+class GpuConvAlgorithmPicker : public HloModulePass {
  public:
   static void ClearAutotuneResults();
   static Status WriteAutotuneResults(AutotuneResults* results);
   static Status LoadAutotuneResults(const AutotuneResults& results);
 
-  explicit GpuConvAlgorithmPicker(DeviceConfig device_config)
-      : GpuSerializableAutotuner(device_config) {}
-  explicit GpuConvAlgorithmPicker(DevicelessConfig deviceless_config)
-      : GpuSerializableAutotuner(deviceless_config) {}
+  explicit GpuConvAlgorithmPicker(AutotuningConfig config) : config_(config) {}
 
   absl::string_view name() const override {
     return "gpu-conv-algorithm-picker";
@@ -131,6 +128,9 @@ class GpuConvAlgorithmPicker : public GpuSerializableAutotuner {
   StatusOr<tensorflow::AutotuneResult> PickBestAlgorithmNoCacheRocm(
       const HloCustomCallInstruction* instr,
       se::DeviceMemoryAllocator* allocator, se::Stream* stream);
+
+ private:
+  AutotuningConfig config_;
 };
 
 }  // namespace gpu

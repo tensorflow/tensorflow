@@ -134,6 +134,25 @@ MaliGpu GetMaliGpuVersion(const std::string& gpu_description) {
   return MaliGpu::kUnknown;
 }
 
+PowerVRGpu GetPowerVRGpuVersion(const std::string& gpu_description) {
+  // Order must be preserved
+  const std::vector<std::pair<std::string, PowerVRGpu>> kMapping = {
+      {"rogue", PowerVRGpu::kRogue},     {"axe", PowerVRGpu::kAXE},
+      {"axm", PowerVRGpu::kAXM},         {"axt", PowerVRGpu::kAXT},
+      {"bxe", PowerVRGpu::kBXE},         {"bxm", PowerVRGpu::kBXM},
+      {"bxs", PowerVRGpu::kBXS},         {"bxt", PowerVRGpu::kBXT},
+      {"cxt", PowerVRGpu::kCXT},         {"dxt", PowerVRGpu::kDXT},
+      {"powervr g", PowerVRGpu::kRogue},
+  };
+  for (const auto& v : kMapping) {
+    if (gpu_description.find(v.first) != std::string::npos) {
+      return v.second;
+    }
+  }
+
+  return PowerVRGpu::kUnknown;
+}
+
 }  // namespace
 
 AdrenoInfo::AdrenoInfo(const std::string& device_version)
@@ -549,6 +568,25 @@ int MaliInfo::GetApproximateComputeUnitsCount() const {
   return 4;
 }
 
+PowerVRInfo::PowerVRInfo(const std::string& gpu_description)
+    : gpu_version(GetPowerVRGpuVersion(gpu_description)) {}
+
+bool PowerVRInfo::IsRogue() const { return gpu_version == PowerVRGpu::kRogue; }
+
+bool PowerVRInfo::IsImgAxx() const {
+  return gpu_version == PowerVRGpu::kAXE || gpu_version == PowerVRGpu::kAXM ||
+         gpu_version == PowerVRGpu::kAXT;
+}
+
+bool PowerVRInfo::IsImgBxx() const {
+  return gpu_version == PowerVRGpu::kBXE || gpu_version == PowerVRGpu::kBXM ||
+         gpu_version == PowerVRGpu::kBXS || gpu_version == PowerVRGpu::kBXT;
+}
+
+bool PowerVRInfo::IsImgCxx() const { return gpu_version == PowerVRGpu::kCXT; }
+
+bool PowerVRInfo::IsImgDxx() const { return gpu_version == PowerVRGpu::kDXT; }
+
 void GetGpuInfoFromDeviceDescription(const std::string& gpu_description,
                                      GpuApi gpu_api, GpuInfo* gpu_info) {
   gpu_info->gpu_api = gpu_api;
@@ -570,6 +608,8 @@ void GetGpuInfoFromDeviceDescription(const std::string& gpu_description,
     gpu_info->supported_subgroup_sizes = {32};
   } else if (gpu_info->IsMali()) {
     gpu_info->mali_info = MaliInfo(lowered);
+  } else if (gpu_info->IsPowerVR()) {
+    gpu_info->powervr_info = PowerVRInfo(lowered);
   }
 }
 

@@ -32,6 +32,7 @@ from tensorflow.python.framework import tensor_spec
 from tensorflow.python.lib.io import file_io
 from tensorflow.python.module import module
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import array_ops_stack  # pylint: disable=g-direct-tensorflow-import
 from tensorflow.python.ops import io_ops
 from tensorflow.python.ops import lookup_ops
 from tensorflow.python.ops import math_ops
@@ -476,14 +477,16 @@ class QuantizedModelTest(test.TestCase, parameterized.TestCase):
         table.lookup(input_vocabs_placeholder), dtypes.float32
     )
     # shape: (2, ?)
-    matmul_input = array_ops.stack([lookup_vals, lookup_vals])
+    matmul_input = array_ops_stack.stack([lookup_vals, lookup_vals])
 
     # Create a dummy weight matrix filled with ones.
     weight_row = array_ops.ones(
         shape=array_ops.shape(input_vocabs_placeholder), dtype=dtypes.float32
     )
     # shape: (?, 2)
-    weight = array_ops.transpose_v2(array_ops.stack([weight_row, weight_row]))
+    weight = array_ops.transpose_v2(
+        array_ops_stack.stack([weight_row, weight_row])
+    )
     # shape: (2, 2)
     output_tensor = math_ops.matmul(matmul_input, weight)
 
@@ -584,7 +587,7 @@ class QuantizedModelTest(test.TestCase, parameterized.TestCase):
     )
 
     # shape: (2, ?)
-    matmul_input = array_ops.stack([lookup_vals, lookup_vals])
+    matmul_input = array_ops_stack.stack([lookup_vals, lookup_vals])
     # Insert fake quant to simulate a QAT model.
     matmul_input = array_ops.fake_quant_with_min_max_args(
         matmul_input, min=-0.3, max=0.3, num_bits=8, narrow_range=False
@@ -596,7 +599,9 @@ class QuantizedModelTest(test.TestCase, parameterized.TestCase):
     )
 
     # shape: (?, 2)
-    weight = array_ops.transpose_v2(array_ops.stack([weight_row, weight_row]))
+    weight = array_ops.transpose_v2(
+        array_ops_stack.stack([weight_row, weight_row])
+    )
     # Insert fake quant to simulate a QAT model.
     weight = array_ops.fake_quant_with_min_max_args(
         weight, min=-0.1, max=0.2, num_bits=8, narrow_range=False

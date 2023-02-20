@@ -54,6 +54,7 @@ add_mlir_library(MhloPasses
   materialize_broadcasts/materialize_broadcasts.cc
   materialize_broadcasts/materialize_broadcasts_pass.cc
   merge_assuming_ops/merge_assuming_ops.cc
+  mhlo_canonicalize_dot/mhlo_canonicalize_dot.cc
   mhlo_canonicalize_gather/mhlo_canonicalize_gather.cc
   mhlo_canonicalize_reduction/mhlo_canonicalize_reduction.cc
   mhlo_canonicalize_scatter/mhlo_canonicalize_scatter.cc

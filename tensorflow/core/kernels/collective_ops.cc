@@ -585,7 +585,7 @@ class CollectiveOpV2Kernel : public AsyncOpKernel {
   // Fills common parts of CollectiveParams according to the Op, *excluding
   // output_shape*. Kernels should further work on the CollectiveParams if they
   // need to set additional fields.
-  Status FillCollectiveParams(CollectiveParams* col_params,
+  Status FillCollectiveParams(CollectiveParams* col_params, OpKernelContext* c,
                               CollectiveType collective_type,
                               const Tensor& group_size, const Tensor& group_key,
                               const Tensor& instance_key) {
@@ -613,9 +613,19 @@ class CollectiveOpV2Kernel : public AsyncOpKernel {
           col_params->group.group_size);
     }
     col_params->group.group_key = group_key.unaligned_flat<int32>()(0);
+    // FIXME(b/269333905): TFRT hostruntime doesn't forward node names.
+    // A more proper way of checking DTensor provenance is to add a new attr
+    // to all V2 ops. Or perhaps use an ordering_token based heuristics
+    // (DTensor never emits an ordering_token, but MWMS always do).
+    if (absl::StrContains(name_, "DTensor")) {
+      VLOG(1) << "Setting instance step_id under DTensor: " << c->step_id();
+      col_params->instance.step_id = c->step_id();
+    } else {
+      col_params->instance.step_id = 0;
+    }
     col_params->instance.type = collective_type;
-    col_params->instance.instance_key = instance_key.unaligned_flat<int32>()(0);
     col_params->instance.data_type = data_type_;
+    col_params->instance.instance_key = instance_key.unaligned_flat<int32>()(0);
     col_params->instance.impl_details.communication_hint = communication_hint_;
     col_params->instance.impl_details.timeout_seconds = timeout_seconds_;
     return OkStatus();
@@ -718,12 +728,13 @@ class CollectiveReduceV2OpKernel : public CollectiveOpV2Kernel {
       done();
       col_params->Unref();
     };
-    OP_REQUIRES_OK_ASYNC(c,
-                         FillCollectiveParams(col_params, REDUCTION_COLLECTIVE,
-                                              /*group_size*/ c->input(1),
-                                              /*group_key*/ c->input(2),
-                                              /*instance_key*/ c->input(3)),
-                         done_with_cleanup);
+    OP_REQUIRES_OK_ASYNC(
+        c,
+        FillCollectiveParams(col_params, c, REDUCTION_COLLECTIVE,
+                             /*group_size*/ c->input(1),
+                             /*group_key*/ c->input(2),
+                             /*instance_key*/ c->input(3)),
+        done_with_cleanup);
     col_params->instance.impl_details.max_subdivs_per_device =
         max_subdivs_per_device_;
     col_params->instance.shape = c->input(0).shape();
@@ -731,7 +742,10 @@ class CollectiveReduceV2OpKernel : public CollectiveOpV2Kernel {
     col_params->final_op = final_op_.get();
     VLOG(1) << "CollectiveReduceV2 group_size " << col_params->group.group_size
             << " group_key " << col_params->group.group_key << " instance_key "
-            << col_params->instance.instance_key;
+            << col_params->instance.instance_key << " step id "
+            << col_params->instance.step_id << " shape "
+            << c->input(0).shape().DebugString() << " device "
+            << c->device()->name();
     // Allocate the output tensor.
     Tensor* output = nullptr;
     OP_REQUIRES_OK_ASYNC(c,
@@ -772,7 +786,7 @@ class CollectiveGatherV2OpKernel : public CollectiveOpV2Kernel {
       col_params->Unref();
     };
     OP_REQUIRES_OK_ASYNC(c,
-                         FillCollectiveParams(col_params, GATHER_COLLECTIVE,
+                         FillCollectiveParams(col_params, c, GATHER_COLLECTIVE,
                                               /*group_size*/ c->input(1),
                                               /*group_key*/ c->input(2),
                                               /*instance_key*/
@@ -817,12 +831,13 @@ class CollectiveBcastSendV2OpKernel : public CollectiveOpV2Kernel {
       done();
       col_params->Unref();
     };
-    OP_REQUIRES_OK_ASYNC(c,
-                         FillCollectiveParams(col_params, BROADCAST_COLLECTIVE,
-                                              /*group_size*/ c->input(1),
-                                              /*group_key*/ c->input(2),
-                                              /*instance_key*/ c->input(3)),
-                         done_with_cleanup);
+    OP_REQUIRES_OK_ASYNC(
+        c,
+        FillCollectiveParams(col_params, c, BROADCAST_COLLECTIVE,
+                             /*group_size*/ c->input(1),
+                             /*group_key*/ c->input(2),
+                             /*instance_key*/ c->input(3)),
+        done_with_cleanup);
     col_params->is_source = true;
     col_params->instance.shape = c->input(0).shape();
     // Add a default value for subdiv offsets, which is the same as the default
@@ -866,12 +881,13 @@ class CollectiveBcastRecvV2OpKernel : public CollectiveOpV2Kernel {
       done();
       col_params->Unref();
     };
-    OP_REQUIRES_OK_ASYNC(c,
-                         FillCollectiveParams(col_params, BROADCAST_COLLECTIVE,
-                                              /*group_size*/ c->input(0),
-                                              /*group_key*/ c->input(1),
-                                              /*instance_key*/ c->input(2)),
-                         done_with_cleanup);
+    OP_REQUIRES_OK_ASYNC(
+        c,
+        FillCollectiveParams(col_params, c, BROADCAST_COLLECTIVE,
+                             /*group_size*/ c->input(0),
+                             /*group_key*/ c->input(1),
+                             /*instance_key*/ c->input(2)),
+        done_with_cleanup);
     col_params->is_source = false;
     TensorShape output_shape;
     OP_REQUIRES_OK_ASYNC(c, tensor::MakeShape(c->input(3), &output_shape),
@@ -1240,6 +1256,52 @@ REGISTER_KERNEL_BUILDER(Name("CollectiveReduceV3").Device(DEVICE_CPU),
 REGISTER_KERNEL_BUILDER(Name("CollectiveReduceV3").Device(DEVICE_GPU),
                         CollectiveReduceV3OpKernel);
 
+class CollectiveAllToAllV2OpKernel : public CollectiveOpV2Kernel {
+ public:
+  explicit CollectiveAllToAllV2OpKernel(OpKernelConstruction* c)
+      : CollectiveOpV2Kernel(c) {
+    name_ = strings::StrCat(c->def().name(), ": AllToAllV2");
+    VLOG(2) << "CollectiveAllToAllV2 " << this << " name " << name_
+            << " communication_hint " << communication_hint_;
+  }
+
+  void ComputeAsync(OpKernelContext* c, DoneCallback done) override {
+    auto col_params = new CollectiveParams();
+    auto done_with_cleanup = [col_params, done = std::move(done)]() {
+      done();
+      col_params->Unref();
+    };
+    OP_REQUIRES_OK_ASYNC(
+        c,
+        FillCollectiveParams(col_params, c, ALL_TO_ALL_COLLECTIVE,
+                             /*group_size*/ c->input(1),
+                             /*group_key*/ c->input(2),
+                             /*instance_key*/ c->input(3)),
+        done_with_cleanup);
+    col_params->instance.shape = c->input(0).shape();
+    VLOG(1) << "CollectiveAllToAllV2 group_size "
+            << col_params->group.group_size << " group_key "
+            << col_params->group.group_key << " instance_key "
+            << col_params->instance.instance_key;
+    // Allocate the output tensor.
+    Tensor* output = nullptr;
+    OP_REQUIRES_OK_ASYNC(c,
+                         c->forward_input_or_allocate_output(
+                             {0}, 0, col_params->instance.shape, &output),
+                         done_with_cleanup);
+    Run(c, col_params, std::move(done_with_cleanup));
+  }
+};
+
+REGISTER_KERNEL_BUILDER(Name("CollectiveAllToAllV2").Device(DEVICE_CPU),
+                        CollectiveAllToAllV2OpKernel);
+REGISTER_KERNEL_BUILDER(Name("CollectiveAllToAllV2")
+                            .Device(DEVICE_DEFAULT)
+                            .HostMemory("group_size")
+                            .HostMemory("group_key")
+                            .HostMemory("instance_key"),
+                        CollectiveAllToAllV2OpKernel);
+
 class CollectiveAllToAllV3OpKernel : public CollectiveOpV3Kernel {
  public:
   explicit CollectiveAllToAllV3OpKernel(OpKernelConstruction* c)
@@ -1322,7 +1384,7 @@ class CollectiveReduceScatterV2OpKernel : public CollectiveOpV2Kernel {
     };
     OP_REQUIRES_OK_ASYNC(
         c,
-        FillCollectiveParams(col_params, REDUCE_SCATTER_COLLECTIVE,
+        FillCollectiveParams(col_params, c, REDUCE_SCATTER_COLLECTIVE,
                              /*group_size*/ c->input(1),
                              /*group_key*/ c->input(2),
                              /*instance_key*/ c->input(3)),

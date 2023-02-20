@@ -49,12 +49,15 @@ const TfLiteOpaqueDelegatePlugin sample_stable_delegate_plugin = {
     SampleStableDelegateCreateFunc, SampleStableDelegateDestroyFunc,
     SampleStableDelegateErrnoFunc};
 
+const TfLiteStableDelegate sample_stable_delegate = {
+    TFL_STABLE_DELEGATE_ABI_VERSION, tflite::example::kSampleStableDelegateName,
+    tflite::example::kSampleStableDelegateVersion,
+    &sample_stable_delegate_plugin};
+
 }  // namespace
 
 /**
  * A super simple test delegate for testing.
  */
-extern "C" const TfLiteStableDelegate TFL_TheStableDelegate = {
-    TFL_STABLE_DELEGATE_ABI_VERSION, tflite::example::kSampleStableDelegateName,
-    tflite::example::kSampleStableDelegateVersion,
-    &sample_stable_delegate_plugin};
+extern "C" const TfLiteStableDelegate TFL_TheStableDelegate =
+    sample_stable_delegate;

@@ -881,17 +881,6 @@ func.func @dynamic_iota_is_static(%arg0 : tensor<1xindex>) -> tensor<4xi32> {
   func.return %0 : tensor<4xi32>
 }
 
-// CHECK-LABEL: @dynamic_iota_is_static_constant_arg
-func.func @dynamic_iota_is_static_constant_arg(%arg0: tensor<5xi32>) -> tensor<?xi32> {
-  // CHECK-NOT: mhlo.dynamic_iota
-  // CHECK: [[RESULT:%.*]] = "mhlo.iota"
-  // CHECK: [[CAST:%.*]] = tensor.cast [[RESULT]]
-  // CHECK: return [[CAST]]
-  %0 = mhlo.constant dense<5> : tensor<1xi32>
-  %1 = "mhlo.dynamic_iota"(%0) {iota_dimension = 0 : i64} : (tensor<1xi32>) -> tensor<?xi32>
-  func.return %1 : tensor<?xi32>
-}
-
 // CHECK-LABEL: @dynamic_iota_broadcast
 func.func @dynamic_iota_broadcast(%arg0 : tensor<2xindex>) -> tensor<5x?xi32> {
   // CHECK: [[IOTA:%.+]] = "mhlo.iota"() {iota_dimension = 0 : i64} : () -> tensor<5xi32>

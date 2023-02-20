@@ -119,6 +119,7 @@ void CreateTfJitRtPipeline(OpPassManager& pm,
 
   pm.addNestedPass<FuncOp>(mlir::mhlo::createGroupReductionDimensionsPass());
   pm.addNestedPass<FuncOp>(mlir::mhlo::createHloCanonicalizeScatterPass());
+  pm.addNestedPass<FuncOp>(mlir::mhlo::createHloCanonicalizeDotPass());
 
   // Also, try to simplify reshape operations.
   pm.addNestedPass<FuncOp>(mlir::mhlo::createSymbolicShapeOptimizationPass());
@@ -185,6 +186,7 @@ void CreateTfJitRtPipeline(OpPassManager& pm,
   if (options.vectorize) {
     pm.addNestedPass<FuncOp>(mlir::gml_st::createVectorizeCopyPass());
     pm.addNestedPass<FuncOp>(mlir::gml_st::createSimplifyDeadCopyPass());
+    pm.addNestedPass<FuncOp>(mlir::gml_st::createOptimizeVectorTransferPass());
   }
 
   // Deallocate all temporary buffers.

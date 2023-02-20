@@ -46,6 +46,11 @@ constexpr int kEndTensor = 2;
 constexpr int kStridesTensor = 3;
 constexpr int kOutputTensor = 0;
 
+struct OpData {
+  // Indicates that 'Eval' is a noop as the output as written during 'Prepare'.
+  bool noop;
+};
+
 struct StridedSliceContext {
   StridedSliceContext(TfLiteContext* context, TfLiteNode* node) {
     params = reinterpret_cast<TfLiteStridedSliceParams*>(node->builtin_data);
@@ -291,6 +296,8 @@ TfLiteStatus EvalImpl(TfLiteContext* context, TfLiteNode* node) {
 }
 
 TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
+  OpData* op_data = reinterpret_cast<OpData*>(node->user_data);
+  op_data->noop = false;
   TF_LITE_ENSURE_EQ(context, NumInputs(node), 4);
   TF_LITE_ENSURE_EQ(context, NumOutputs(node), 1);
 
@@ -314,15 +321,16 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 
   // Postpone allocation of output if any of the indexing tensors is not
   // constant
-  if (!(IsConstantTensor(op_context.begin) &&
-        IsConstantTensor(op_context.end) &&
-        IsConstantTensor(op_context.strides))) {
+  if (!(IsConstantOrPersistentTensor(op_context.begin) &&
+        IsConstantOrPersistentTensor(op_context.end) &&
+        IsConstantOrPersistentTensor(op_context.strides))) {
     SetTensorToDynamic(op_context.output);
     return kTfLiteOk;
   }
   if (IsConstantOrPersistentTensor(op_context.input)) {
     SetTensorToPersistentRo(op_context.output);
     ResizeOutputTensor(context, &op_context);
+    op_data->noop = true;
     return EvalImpl<kGenericOptimized>(context, node);
   }
   return ResizeOutputTensor(context, &op_context);
@@ -331,24 +339,32 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 template <KernelType kernel_type>
 TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   StridedSliceContext op_context(context, node);
-  if (IsConstantOrPersistentTensor(op_context.output)) {
+  OpData* op_data = reinterpret_cast<OpData*>(node->user_data);
+  if (op_data->noop) {
     return kTfLiteOk;
   }
   return EvalImpl<kernel_type>(context, node);
 }
 
+void* Init(TfLiteContext* context, const char* buffer, size_t length) {
+  return new OpData;
+}
+
+void Free(TfLiteContext* context, void* buffer) {
+  delete reinterpret_cast<OpData*>(buffer);
+}
 }  // namespace strided_slice
 
 TfLiteRegistration* Register_STRIDED_SLICE_REF() {
   static TfLiteRegistration r = {
-      nullptr, nullptr, strided_slice::Prepare,
+      strided_slice::Init, strided_slice::Free, strided_slice::Prepare,
       strided_slice::Eval<strided_slice::kReference>};
   return &r;
 }
 
 TfLiteRegistration* Register_STRIDED_SLICE() {
   static TfLiteRegistration r = {
-      nullptr, nullptr, strided_slice::Prepare,
+      strided_slice::Init, strided_slice::Free, strided_slice::Prepare,
       strided_slice::Eval<strided_slice::kGenericOptimized>};
   return &r;
 }

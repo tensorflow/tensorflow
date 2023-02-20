@@ -594,6 +594,7 @@ py_strict_library(
     deps = [
         ":nested_structure_coder",
         "//tensorflow/core:protos_all_py",
+        "//tensorflow/core/function/capture:capture_container",
         "//tensorflow/python:func_graph",
         "//tensorflow/python:util",
         "//tensorflow/python/eager:function",

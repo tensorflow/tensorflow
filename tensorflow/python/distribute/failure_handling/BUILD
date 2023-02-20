@@ -31,6 +31,7 @@ py_library(
         "//tensorflow/python/platform",
         "//tensorflow/python/util:tf_decorator",
         "//tensorflow/python/util:tf_export",
+        "//tensorflow/tools/docs:doc_controls",
     ],
 )
 
@@ -51,6 +52,8 @@ py_library(
     deps = [
         ":failure_handling_util",
         "//tensorflow/python/eager:context",
+        "//tensorflow/python/eager:monitoring",
+        "//tensorflow/python/framework:errors",
         "//tensorflow/python/util:tf_export",
         "@absl_py//absl/logging",
     ],

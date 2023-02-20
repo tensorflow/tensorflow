@@ -236,17 +236,24 @@ cc_library(
 
 xla_cc_test(
     name = "gpu_device_info_test",
+<<<<<<< HEAD
     srcs = ["gpu_device_info_test.cc"],
     tags = tf_cuda_tests_tags() + ["no_rocm"],
     deps = [
+=======
+    srcs = if_cuda_is_configured(["gpu_device_info_test.cc"]),
+    tags = tf_cuda_tests_tags(),
+    deps = if_cuda_is_configured([
+>>>>>>> google_upstream/master
         ":gpu_device_info_for_tests",
+        "@com_google_absl//absl/strings",
+        "@local_config_cuda//cuda:cuda_headers",
         "//tensorflow/compiler/xla/stream_executor",
         "//tensorflow/compiler/xla/stream_executor:device_description",
-        "//tensorflow/compiler/xla/stream_executor/cuda:cuda_driver",
-        "//tensorflow/tsl/platform:test_main",
-        "@com_google_googletest//:gtest_main",
-        "@local_config_cuda//cuda:cuda_headers",
-    ],
+        "//tensorflow/compiler/xla/stream_executor/cuda:cuda_gpu_executor_header",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+        "//tensorflow/tsl/platform:test",
+    ]),
 )
 
 cc_library(
@@ -370,6 +377,7 @@ cc_library(
     hdrs = if_cuda_is_configured(["ir_emitter_triton.h"]),
     deps = [
         ":gpu_device_info",
+        ":gemm_rewriter_triton",
         ":ir_emission_utils",
         ":launch_dimensions",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -656,6 +664,27 @@ tsl_gpu_library(
 bool_flag(
     name = "enable_xlir",
     build_setting_default = if_google(True, False),
+)
+
+cc_library(
+    name = "non_atomically_upgradeable_rw_lock",
+    srcs = [],
+    hdrs = [
+        "non_atomically_upgradeable_rw_lock.h",
+    ],
+    deps = [
+        "@com_google_absl//absl/synchronization",
+    ],
+)
+
+xla_cc_test(
+    name = "non_atomically_upgradeable_rw_lock_test",
+    srcs = ["non_atomically_upgradeable_rw_lock_test.cc"],
+    deps = [
+        ":non_atomically_upgradeable_rw_lock",
+        "//tensorflow/tsl/platform:test",
+        "@com_google_googletest//:gtest_main",
+    ],
 )
 
 cc_library(
@@ -955,9 +984,28 @@ cc_library(
     hdrs = ["gemm_rewriter_triton.h"],
     deps = [
         ":ir_emission_utils",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:status",
+        "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla/hlo/ir:hlo",
         "//tensorflow/compiler/xla/service:hlo_pass",
         "//tensorflow/compiler/xla/stream_executor:device_description",
+        "//tensorflow/tsl/platform:errors",
+        "//tensorflow/tsl/platform:statusor",
+        "@com_google_absl//absl/container:flat_hash_map",
+    ],
+)
+
+xla_cc_test(
+    name = "gemm_rewriter_triton_test",
+    srcs = ["gemm_rewriter_triton_test.cc"],
+    deps = [
+        ":gemm_rewriter_triton",
+        "//tensorflow/compiler/xla/hlo/ir:hlo",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/compiler/xla/tests:test_utils",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",  # fixdeps: keep
+        "//tensorflow/tsl/platform:test",
     ],
 )
 
@@ -1033,7 +1081,9 @@ cc_library(
     srcs = [],
     hdrs = ["gpu_serializable_autotuner.h"],
     deps = [
-        "//tensorflow/compiler/xla/service:hlo_pass",
+        "//tensorflow/compiler/xla:types",
+        "//tensorflow/compiler/xla/hlo/ir:hlo",
+        "//tensorflow/compiler/xla/stream_executor",
     ],
 )
 
@@ -1426,6 +1476,7 @@ xla_cc_test(
 )
 
 cc_library(
+<<<<<<< HEAD
     name = "softmax_fusion",
     srcs = ["softmax_fusion.cc"],
     hdrs = ["softmax_fusion.h"],
@@ -1468,6 +1519,8 @@ xla_cc_test(
 )
 
 cc_library(
+=======
+>>>>>>> google_upstream/master
     name = "gpu_sanitize_constant_names",
     srcs = ["gpu_sanitize_constant_names.cc"],
     hdrs = ["gpu_sanitize_constant_names.h"],
@@ -1670,8 +1723,8 @@ cc_library(
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla/client:xla_builder",
         "//tensorflow/compiler/xla/hlo/ir:hlo",
-        "//tensorflow/compiler/xla/service:call_inliner",
         "//tensorflow/compiler/xla/service:hlo_pass",
+        "//tensorflow/compiler/xla/stream_executor:stream_executor_headers",
     ],
 )
 
@@ -1737,6 +1790,7 @@ cc_library(
     srcs = ["cublas_pad_for_gemms.cc"],
     hdrs = ["cublas_pad_for_gemms.h"],
     deps = [
+        ":gemm_rewriter_triton",
         ":ir_emission_utils",
         "//tensorflow/compiler/xla:literal_util",
         "//tensorflow/compiler/xla:util",
@@ -1851,6 +1905,7 @@ cc_library(
         ":gpu_sanitize_constant_names",
         ":gpu_scatter_expander",
         ":gpu_shape_verifier",
+        ":gpu_serializable_autotuner",
         ":hlo_fusion_stats",
         ":horizontal_input_fusion",
         ":horizontal_loop_fusion",
@@ -1867,7 +1922,6 @@ cc_library(
         ":reduction_splitter",
         ":runtime_intrinsics",
         ":scatter_slice_simplifier",
-        ":softmax_fusion",
         ":tree_reduction_rewriter",
         ":variadic_op_splitter",
         "@com_google_absl//absl/strings",
@@ -1986,6 +2040,7 @@ cc_library(
         "//tensorflow/tsl/platform:statusor",
         "//tensorflow/tsl/profiler/lib:traceme",
     ] + if_cuda_is_configured([
+        ":gemm_algorithm_picker",
         ":triton_autotuner",
     ]),
 )
@@ -2032,7 +2087,6 @@ cc_library(
         ":cudnn_simplify_padding",
         ":cudnn_vectorize_convolutions",
         ":cusolver_rewriter",
-        ":gemm_algorithm_picker",
         ":gpu_asm_opts_util",
         ":gpu_compiler",
         ":gpu_conv_padding_legalization",
@@ -2043,6 +2097,7 @@ cc_library(
         ":metrics",
         ":target_constants",
         ":triangular_solve_rewriter",
+        ":gpu_serializable_autotuner",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/container:node_hash_map",
         "@com_google_absl//absl/strings:str_format",

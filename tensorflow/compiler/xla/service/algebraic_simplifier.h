@@ -16,9 +16,15 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_ALGEBRAIC_SIMPLIFIER_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_ALGEBRAIC_SIMPLIFIER_H_
 
+#include <array>
 #include <cstdint>
 #include <functional>
+#include <memory>
+#include <optional>
+#include <string>
+#include <tuple>
 #include <utility>
+#include <vector>
 
 #include "absl/container/inlined_vector.h"
 #include "tensorflow/compiler/xla/hlo/ir/dfs_hlo_visitor_with_default.h"
@@ -89,6 +95,14 @@ class AlgebraicSimplifierOptions {
 
   bool enable_dot_to_multiply_rewrite() const {
     return enable_dot_to_multiply_rewrite_;
+  }
+
+  // This platform will not run the DotDecomposer to canonicalize dots.
+  void set_supports_non_canonical_dots(bool supports_non_canonical_dots) {
+    supports_non_canonical_dots_ = supports_non_canonical_dots;
+  }
+  bool supports_non_canonical_dots() const {
+    return supports_non_canonical_dots_;
   }
 
   // Enable convolution simplification on platforms where it is profitable.
@@ -196,6 +210,7 @@ class AlgebraicSimplifierOptions {
   ConvIsLowerableCallback conv_is_lowerable_callback_;
   bool is_layout_sensitive_{false};
   bool enable_dot_strength_reduction_{true};
+  bool supports_non_canonical_dots_{true};
   bool enable_dot_to_multiply_rewrite_{true};
   bool enable_conv_simplification_{true};
   bool enable_conv_operand_swap_{true};

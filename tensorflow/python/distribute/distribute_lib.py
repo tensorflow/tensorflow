@@ -1437,12 +1437,8 @@ class StrategyBase(object):
         # run from eager mode. Cache the tf.function by `axis` to avoid the
         # same function to be traced again.
         if axis not in self._reduce_sum_fns:
-
-          def reduce_sum_fn(v):
-            return self.run(reduce_sum, args=(v,))
-
-          self._reduce_sum_fns[axis] = def_function.function(reduce_sum_fn)
-        value = self._reduce_sum_fns[axis](value)
+          self._reduce_sum_fns[axis] = def_function.function(reduce_sum)
+        value = self.run(self._reduce_sum_fns[axis], args=(value,))
       else:
         value = self.run(reduce_sum, args=(value,))
 
@@ -1503,13 +1499,9 @@ class StrategyBase(object):
       # be run from eager mode. Cache the tf.function by `axis` to avoid the
       # same function to be traced again.
       if axis not in self._mean_reduce_helper_fns:
-
-        def mean_reduce_fn(v):
-          return self.run(mean_reduce_helper, args=(v,))
-
         self._mean_reduce_helper_fns[axis] = def_function.function(
-            mean_reduce_fn)
-      numer, denom = self._mean_reduce_helper_fns[axis](value)
+            mean_reduce_helper)
+      numer, denom = self.run(self._mean_reduce_helper_fns[axis], args=(value,))
     else:
       numer, denom = self.run(mean_reduce_helper, args=(value,))
 

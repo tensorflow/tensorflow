@@ -219,9 +219,7 @@ cc_library(
     name = "delegate_options",
     srcs = ["delegate_options.cc"],
     hdrs = ["delegate_options.h"],
-    deps = [
-        "//tensorflow/lite/core/c:common",
-    ],
+    deps = ["//tensorflow/lite/core/c:common"],
 )
 
 cc_library(

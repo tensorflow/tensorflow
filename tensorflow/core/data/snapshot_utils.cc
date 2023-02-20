@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <functional>
+#include <optional>
 #include <queue>
 #include <string>
 #include <utility>
@@ -708,18 +709,25 @@ Status Reader::MakeNestedDataset(Env* env,
 
 TFRecordReader::TFRecordReader(const std::string& filename,
                                const string& compression_type,
-                               const DataTypeVector& dtypes)
+                               const DataTypeVector& dtypes,
+                               std::optional<int64_t> output_buffer_size)
     : filename_(filename),
       offset_(0),
       compression_type_(compression_type),
-      dtypes_(dtypes) {}
+      dtypes_(dtypes),
+      output_buffer_size_(output_buffer_size) {}
 
 Status TFRecordReader::Initialize(Env* env) {
   TF_RETURN_IF_ERROR(env->NewRandomAccessFile(filename_, &file_));
-
-  record_reader_ = std::make_unique<io::RecordReader>(
-      file_.get(), io::RecordReaderOptions::CreateRecordReaderOptions(
-                       /*compression_type=*/compression_type_));
+  auto options = io::RecordReaderOptions::CreateRecordReaderOptions(
+      /*compression_type=*/compression_type_);
+#if !defined(IS_SLIM_BUILD)
+  if (output_buffer_size_.has_value()) {
+    options.snappy_options.output_buffer_size = *output_buffer_size_;
+    options.zlib_options.output_buffer_size = *output_buffer_size_;
+  }
+#endif  // IS_SLIM_BUILD
+  record_reader_ = std::make_unique<io::RecordReader>(file_.get(), options);
   return OkStatus();
 }
 

@@ -33,6 +33,15 @@ def DeallocationDialect : Dialect {
 class DeallocationOp<string mnemonic, list<Trait> traits = []>
     : Op<DeallocationDialect, mnemonic, traits>;
 
+def GetBufferOp : DeallocationOp<"get_buffer", [Pure]> {
+  let summary = "extracts the data pointer as an index";
+
+  let arguments = (ins AnyRankedOrUnrankedMemRef:$memref);
+  let results = (outs Index:$result);
+
+  let assemblyFormat = "attr-dict $memref `:` type($memref)";
+}
+
 def NullOp : DeallocationOp<"null", [Pure]> {
   let summary = "null pointer";
 
@@ -50,7 +59,7 @@ def RetainOp : DeallocationOp<"retain", [AttrSizedOperandSegments]> {
 
     Any allocs that are not in the result are deallocated.
 
-    `allocs` may contain `null`s.
+    `allocs` may contain `null`s. Otherwise, all allocs must be distinct.
   }];
 
   let arguments = (ins Variadic<AnyRankedOrUnrankedMemRef>:$retained,

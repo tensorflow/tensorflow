@@ -26,7 +26,6 @@ from tensorflow.core.protobuf import struct_pb2
 from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import tensor_shape
-from tensorflow.python.framework import type_spec_registry
 from tensorflow.python.platform import tf_logging as logging
 # TODO(b/238903802): Remove dependency on nested_structure_coder.
 from tensorflow.python.saved_model import nested_structure_coder
@@ -1016,12 +1015,3 @@ def register_type_spec_from_value_converter(type_object,
 
 
 _pywrap_utils.RegisterType("TypeSpec", TypeSpec)
-
-# TODO(flang) delete type_spec.py's dependency on type_spec_registry.py once
-# all legacy references type_spec's registry functions below have migrated
-_TYPE_SPEC_TO_NAME = type_spec_registry._TYPE_SPEC_TO_NAME  # pylint: disable=protected-access
-_NAME_TO_TYPE_SPEC = type_spec_registry._NAME_TO_TYPE_SPEC  # pylint: disable=protected-access
-lookup = type_spec_registry.lookup
-get_name = type_spec_registry.get_name
-register = type_spec_registry.register
-_REGISTERED_NAME_RE = type_spec_registry._REGISTERED_NAME_RE  # pylint: disable=protected-access

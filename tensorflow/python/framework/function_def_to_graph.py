@@ -253,7 +253,7 @@ def function_def_to_graph_def(fdef, input_shapes=None):
           grad_def.gradient_func = f.grad_func_name
           graph_def.library.gradient.extend([grad_def])
     else:
-      op_def = default_graph._get_op_def(node_def.op)  # pylint: disable=protected-access
+      op_def = default_graph.op_def_for_type(node_def.op)  # pylint: disable=protected-access
 
     for attr in op_def.attr:
       if attr.type == "func":

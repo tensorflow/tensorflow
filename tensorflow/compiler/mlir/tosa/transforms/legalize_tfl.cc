@@ -2736,13 +2736,18 @@ LogicalResult ConvertTFLBucketizeOp::matchAndRewrite(
       rewriter, loc, boundaries_type,
       DenseElementsAttr::get(boundaries_type, boundaries));
 
+  auto boundaries_input_type =
+      boundaries_type.clone(input_type.getElementType());
+  auto boundaries_op_casted = CreateOpAndInfer<tosa::CastOp>(
+      rewriter, loc, boundaries_input_type, boundaries_op);
+
   auto reshaped_input = CreateOpAndInfer<tosa::ReshapeOp>(
       rewriter, loc, input_type.clone(new_input_shape), input,
       rewriter.getDenseI64ArrayAttr(new_input_shape));
 
   auto ge = CreateOpAndInfer<tosa::GreaterEqualOp>(
       rewriter, loc, UnrankedTensorType::get(rewriter.getIntegerType(1)),
-      reshaped_input, boundaries_op);
+      reshaped_input, boundaries_op_casted);
 
   auto casted = CreateOpAndInfer<tosa::CastOp>(
       rewriter, loc, UnrankedTensorType::get(rewriter.getIntegerType(32)), ge);

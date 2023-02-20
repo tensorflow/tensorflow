@@ -638,11 +638,17 @@ def GMLST_FusionOp : GMLST_Op<"fusion", [
     ]> {
   let summary = "A cluster of operations to be tiled and fused.";
 
-  let arguments = (ins Variadic<AnyRankedTensor>:$inputs);
+  let arguments = (ins Variadic<AnyType>:$inputs);
   let results = (outs Variadic<AnyRankedTensor>:$results);
   let regions = (region SizedRegion<1>:$region);
 
+  let hasCustomAssemblyFormat = 1;
   let hasVerifier = 0;
+
+  code extraClassDeclaration = [{
+    /// Return terminator of the region body.
+    YieldOp getTerminator();
+  }];
 }
 
 #endif // GML_ST_OPS

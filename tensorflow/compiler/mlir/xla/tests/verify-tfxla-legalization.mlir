@@ -1,4 +1,4 @@
-// RUN: xla-opt "-tfxla-verify-legalization=legalize-chlo=true" -verify-diagnostics -split-input-file %s | FileCheck -dump-input=fail %s
+// RUN: tf-opt "-tfxla-verify-legalization=legalize-chlo=true" -verify-diagnostics -split-input-file %s | FileCheck -dump-input=fail %s
 // Tests the VerifyTFXLALegalization Pass, that just ensures we don't have
 // any illegal ops at the end of the pipeline.
 

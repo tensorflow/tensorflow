@@ -1499,7 +1499,7 @@ ENTRY test {
   bias = f32[2,2] broadcast(f32[2] constant({0, 0})), dimensions={0}
 
   dot1 = f32[2,2] dot(x, y), lhs_contracting_dims={1}, rhs_contracting_dims={0}
-  bias1 = f32[2,2] broadcast(f32[2] constant({0, 0})), dimensions={0}
+  bias1 = f32[2,2] parameter(2)
   sum1 = add(dot1, bias1)
 
   dot2 = f32[2,2] dot(x, y), lhs_contracting_dims={1}, rhs_contracting_dims={0}
@@ -1526,7 +1526,7 @@ ENTRY test {
   EXPECT_THAT(
       module->entry_computation()->root_instruction(),
       GmockMatch(m::Tuple(
-          m::CustomCall(m::Parameter(0), m::Parameter(1), m::Constant()),
+          m::CustomCall(m::Parameter(0), m::Parameter(1), m::Parameter()),
           m::CustomCall(m::Parameter(0), m::Parameter(1), m::Constant()),
           m::CustomCall(m::Parameter(0), m::Parameter(1), m::Constant()),
           m::CustomCall(m::Parameter(0), m::Parameter(1), m::Constant()))));
@@ -2252,7 +2252,7 @@ ENTRY test {
   y = f32[3,4] parameter(1)
   z = f32[2] parameter(2)
   dot_a = f32[2,4] dot(x, y), lhs_contracting_dims={1}, rhs_contracting_dims={0}
-  z_bcast = f32[2,4] broadcast(z), dimensions={0}
+  z_bcast = f32[2,4] parameter(3)
   ROOT out = f32[2,4] add(dot_a, z_bcast)
 }
 
@@ -2261,11 +2261,9 @@ ENTRY test {
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-5, 1e-5}));
   MatchOptimizedHlo(hlo_text,
                     R"(
-; CHECK-LABEL: ENTRY %test (x: f32[2,3], y: f32[3,4], z: f32[2]) -> f32[2,4] {
-; CHECK-NEXT:    [[P0:%[^ ]+]] = f32[2,3]{1,0} parameter(0)
+; CHECK:    [[P0:%[^ ]+]] = f32[2,3]{1,0} parameter(0)
 ; CHECK-NEXT:    [[P1:%[^ ]+]] = f32[3,4]{1,0} parameter(1)
-; CHECK-NEXT:    [[P2:%[^ ]+]] = f32[2]{0} parameter(2)
-; CHECK-NEXT:    [[P2_BCAST:%[^ ]+]] = f32[2,4]{1,0} broadcast([[P2]]), dimensions={0}
+; CHECK-NEXT:    [[P2_BCAST:%[^ ]+]] = f32[2,4]{1,0} parameter(3)
 ; CHECK-NEXT:    ROOT [[OUT:%[^ ]+]] = f32[2,4]{1,0} custom-call([[P0]], [[P1]], [[P2_BCAST]]),
 ; CHECK:           custom_call_target="__cublas$lt$matmul",
 ; CHECK:           backend_config="{
@@ -3958,7 +3956,7 @@ ENTRY test {
   bias = f32[2,2] broadcast(f32[2] constant({0, 0})), dimensions={0}
 
   dot1 = f32[2,2] dot(x, y), lhs_contracting_dims={1}, rhs_contracting_dims={0}
-  bias1 = f32[2,2] broadcast(f32[2] constant({0, 0})), dimensions={0}
+  bias1 = f32[2,2] parameter(2)
   sum1 = add(dot1, bias1)
 
   dot2 = f32[2,2] dot(x, y), lhs_contracting_dims={1}, rhs_contracting_dims={0}
@@ -3985,7 +3983,7 @@ ENTRY test {
   EXPECT_THAT(
       module->entry_computation()->root_instruction(),
       GmockMatch(m::Tuple(
-          m::CustomCall(m::Parameter(0), m::Parameter(1), m::Constant()),
+          m::CustomCall(m::Parameter(0), m::Parameter(1), m::Parameter()),
           m::CustomCall(m::Parameter(0), m::Parameter(1), m::Constant()),
           m::CustomCall(m::Parameter(0), m::Parameter(1), m::Constant()),
           m::CustomCall(m::Parameter(0), m::Parameter(1), m::Constant()))));
@@ -4464,6 +4462,28 @@ TEST_F(CublasLtF8GemmRewriteTest, ScaledABScaledDWithDAmaxF8) {
 ; CHECK-DAG:         \"epilogue\":\"DEFAULT\"
 ; CHECK:           }"
       )");
+}
+
+TEST_F(GemmRewriteTest, NoFuseBiasBroadcast) {
+  const char* hlo = R"(
+
+HloModule module
+
+ENTRY main.10 {
+  Arg_0.1 = f16[384,128]{1,0} parameter(0)
+  Arg_1.2 = f16[128,256]{1,0} parameter(1)
+  dot.4 = f16[384,256]{1,0} dot(Arg_0.1, Arg_1.2), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  Arg_2.3 = f16[256]{0} parameter(2)
+  reshape.5 = f16[1,256]{1,0} reshape(Arg_2.3)
+  broadcast.6 = f16[1,256]{1,0} broadcast(reshape.5), dimensions={0,1}
+  reshape.7 = f16[256]{0} reshape(broadcast.6)
+  broadcast.8 = f16[384,256]{1,0} broadcast(reshape.7), dimensions={1}
+  ROOT add.9 = f16[384,256]{1,0} add(dot.4, broadcast.8)
+})";
+
+  MatchOptimizedHlo(hlo, R"(
+// CHECK: \"beta\":0
+  )");
 }
 
 class GemmRewriteAllocationTest : public GpuCodegenTest {

@@ -50,6 +50,9 @@ createRemoveCopiesToOutParamsPass();
 std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
 createSparseCustomCallToPackUnpackOpPass();
 
+std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
+createRewriteReallocToAllocPass();
+
 //===-----------------------------------------------------------------------===/
 
 #define GEN_PASS_REGISTRATION

@@ -20,7 +20,7 @@ public enum BenchmarkResultType {
   // Unknown benchmark result, possibly due to internal failures.
   UNKNOWN("UNKNOWN"),
   // The benchmark results are not involved in the Pass/Pass with Warning/Fail result generation.
-  NOT_APPLICABLE("NOT_APPLICABLE"),
+  NOT_APPLICABLE("N/A"),
   // The benchmark activity skips the Pass/Pass with Warning/Fail result generation.
   SKIP("SKIP"),
 

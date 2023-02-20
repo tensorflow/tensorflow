@@ -21,6 +21,8 @@ limitations under the License.
 
 #include "tensorflow/c/tf_status_helper.h"
 #include "tensorflow/compiler/jit/device_compiler_client.h"
+#include "tensorflow/compiler/jit/variable_info.h"
+#include "tensorflow/compiler/jit/variable_info_util.h"
 #include "tensorflow/compiler/jit/xla_device.h"
 #include "tensorflow/compiler/jit/xla_launch_util.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
@@ -30,7 +32,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/next_pluggable_device/utils.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/tfrt/common/async_value_tensor.h"
-#include "tensorflow/core/tfrt/common/pjrt_util.h"
+#include "tensorflow/core/tfrt/common/create_pjrt_client_util.h"
 #include "tensorflow/core/tpu/tpu_defs.h"
 #include "tensorflow/tsl/platform/errors.h"
 #include "tensorflow/tsl/platform/statusor.h"

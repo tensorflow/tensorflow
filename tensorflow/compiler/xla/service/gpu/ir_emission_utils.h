@@ -41,14 +41,6 @@ inline constexpr int64_t kMinDimensionToTransposeTiled = 16;
 // GemmRewriter pass has finished.
 bool IsMatrixMultiplication(const HloInstruction& dot);
 
-// Filters data type conversions which should be fused into Triton GEMM.
-bool IsTritonFusibleConvert(const HloInstruction*,
-                            se::CudaComputeCapability cuda_compute_capability);
-
-// Filters GEMMs which are better to handle using Triton.
-bool IsTritonHandledGEMM(const HloInstruction&,
-                         se::CudaComputeCapability cuda_compute_capability);
-
 inline constexpr int64_t WarpSize() { return 32; }
 
 // Need at least 1024 threads/block for reasonable tree reduction
@@ -236,9 +228,11 @@ const HloInstruction& FindNonTrivialHero(const HloInstruction& instr);
 // Whether there is a fusion root triggering transposition emitter.
 bool HasAnyTiledTransposeRoot(HloComputation* computation);
 
-std::optional<Vector3> FindTiledLogicalTranspose(const HloInstruction& instr);
+std::optional<Vector3> FindTiledLogicalTranspose(const HloInstruction& instr,
+                                                 Vector3& permutation);
 
-std::optional<Vector3> FindAnyTiledTranspose(const HloInstruction& instr);
+std::optional<std::pair<Vector3, Vector3>> FindAnyTiledTranspose(
+    const HloInstruction& instr);
 
 // Log and verify an LLVM module.
 void LogAndVerify(const llvm::Module* m);

@@ -105,6 +105,12 @@ std::unique_ptr<OperationPass<func::FuncOp>> createTileLoopsPass(
 // and scf.if.
 std::unique_ptr<OperationPass<func::FuncOp>> createDetensorizeScfOpsPass();
 
+/// Registers the test pass for erasing transform dialect ops.
+void registerTestHloTransformDialectEraseSchedulePass();
+
+/// Registers the test pass for applying transform dialect ops.
+void registerTestHloTransformDialectInterpreterPass();
+
 namespace hlo {
 std::unique_ptr<OperationPass<ModuleOp>> createOneShotBufferizePass();
 

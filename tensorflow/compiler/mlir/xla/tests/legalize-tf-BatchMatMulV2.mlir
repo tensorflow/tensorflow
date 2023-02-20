@@ -1,4 +1,4 @@
-// RUN: xla-opt -xla-legalize-tf=allow-partial-conversion %s | FileCheck %s
+// RUN: tf-opt -xla-legalize-tf=allow-partial-conversion %s | FileCheck %s
 
 //===----------------------------------------------------------------------===//
 // tf.BatchMatMulV2 op legalizations.
