@@ -35,34 +35,35 @@ limitations under the License.
 using namespace mlir;
 
 int main(int argc, char** argv) {
-  mlir::registerAllPasses();
-  mlir::deallocation::registerDeallocationPasses();
-  mlir::gml_st::registerGmlStPasses();
-  mlir::gml_st::registerGmlStTestPasses();
-  mlir::hlo::registerLMHLOTransformsPasses();
-  mlir::lmhlo::registerAllLmhloPasses();
-  mlir::mhlo::registerAllMhloPasses();
-  mlir::registerLMHLOGPUTransformsPasses();
-  mlir::thlo::registerAllThloPasses();
+  registerAllPasses();
+  deallocation::registerDeallocationPasses();
+  gml_st::registerGmlStPasses();
+  gml_st::registerGmlStTestPasses();
+  hlo::registerLMHLOTransformsPasses();
+  lmhlo::registerAllLmhloPasses();
+  mhlo::registerAllMhloPasses();
+  registerLMHLOGPUTransformsPasses();
+  thlo::registerAllThloPasses();
 
-  mlir::PassPipelineRegistration<gml_st::GmlStCPUTilingOptions>
+  PassPipelineRegistration<gml_st::GmlStCPUTilingOptions>
       gmlStCpuTilingPipeline("gml-st-cpu-tiling-pipeline",
                              "Tiles, fuses, vectorizes tileable ops for CPU",
                              gml_st::addCPUTilingPipeline);
 
-  mlir::PassPipelineRegistration<> defaultGmlStCpuTilingPipeline(
+  PassPipelineRegistration<> defaultGmlStCpuTilingPipeline(
       "default-gml-st-cpu-tiling-pipeline",
       "Tiles, fuses, vectorizes tileable ops for CPU with default parameters",
       gml_st::addDefaultCPUTilingPipeline);
 
-  mlir::DialectRegistry registry;
-  mlir::registerAllDialects(registry);
-  mlir::mhlo::registerAllMhloDialects(registry);
-  mlir::stablehlo::registerAllDialects(registry);
-  registry.insert<mlir::deallocation::DeallocationDialect,
-                  mlir::lmhlo::LmhloDialect, mlir::lmhlo_gpu::LmhloGpuDialect,
-                  mlir::gml_st::GmlStDialect, mlir::thlo::THLODialect>();
+  DialectRegistry registry;
+  registerAllDialects(registry);
+  mhlo::registerAllMhloDialects(registry);
+  stablehlo::registerAllDialects(registry);
+  registry.insert<deallocation::DeallocationDialect, lmhlo::LmhloDialect,
+                  lmhlo_gpu::LmhloGpuDialect, gml_st::GmlStDialect,
+                  thlo::THLODialect>();
 
-  return failed(
-      mlir::MlirOptMain(argc, argv, "MLIR HLO pass driver\n", registry));
+  registerTestHloTransformDialectEraseSchedulePass();
+  registerTestHloTransformDialectInterpreterPass();
+  return failed(MlirOptMain(argc, argv, "MLIR HLO pass driver\n", registry));
 }

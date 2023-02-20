@@ -168,7 +168,7 @@ struct ScalarizeScatterOp : public OpRewritePattern<thlo::ScatterOp> {
     Value updates = scatterOp.getUpdates();
     auto updatesType = updates.getType().dyn_cast<RankedTensorType>();
     if (!updatesType) return failure();
-    int64_t updatesRank = updatesType.getRank();
+    unsigned updatesRank = updatesType.getRank();
 
     SmallVector<OpFoldResult> updatesDimSizes =
         tensor::getMixedSizes(b, loc, updates);
