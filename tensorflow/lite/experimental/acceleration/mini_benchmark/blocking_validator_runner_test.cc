@@ -106,6 +106,40 @@ TEST_F(BlockingValidatorRunnerTest, SucceedWithEmbeddedValidation) {
   }
 }
 
+TEST_F(BlockingValidatorRunnerTest, SucceedWithFdCloexecEmbeddedValidation) {
+  if (!should_perform_test_) {
+    std::cerr << "Skipping test";
+    return;
+  }
+
+  options_.model_fd = open(options_.model_path.c_str(), O_RDONLY | O_CLOEXEC);
+  ASSERT_GE(options_.model_fd, 0);
+  struct stat stat_buf = {0};
+  ASSERT_EQ(fstat(options_.model_fd, &stat_buf), 0);
+  options_.model_size = stat_buf.st_size;
+  options_.model_offset = 0;
+  options_.model_path.clear();
+
+  BlockingValidatorRunner runner(options_);
+  ASSERT_EQ(runner.Init(), kMinibenchmarkSuccess);
+  FlatBufferBuilder fbb;
+#ifdef __ANDROID__
+  fbb.Finish(CreateTFLiteSettings(fbb, Delegate_GPU));
+#else
+  fbb.Finish(CreateTFLiteSettings(fbb));
+#endif  // __ANDROID__
+
+  std::vector<FlatBufferBuilder> results = runner.TriggerValidation(
+      {flatbuffers::GetRoot<TFLiteSettings>(fbb.GetBufferPointer())});
+  EXPECT_THAT(results, testing::Not(testing::IsEmpty()));
+  for (auto& result : results) {
+    const BenchmarkEvent* event =
+        GetRoot<BenchmarkEvent>(result.GetBufferPointer());
+    EXPECT_EQ(event->event_type(), BenchmarkEventType_END);
+    EXPECT_TRUE(event->result()->ok());
+  }
+}
+
 TEST_F(BlockingValidatorRunnerTest, SucceedWithFdModelCustomValidation) {
   if (!should_perform_test_) {
     std::cerr << "Skipping test";
