@@ -387,15 +387,6 @@ struct VectorizeForCPUPass
     }
 
     // Hoisting transfer_read/transfer_write.
-    {
-      RewritePatternSet patterns(ctx);
-      if (failed(applyPatternsAndFoldGreedily(func, std::move(patterns)))) {
-        return signalPassFailure();
-      }
-
-      hoistRedundantVectorTransfersOnTensor(func);
-    }
-    // Hoisting transfer_read/transfer_write.
     linalg::hoistRedundantVectorTransfersOnTensor(func);
   }
 };

@@ -35,6 +35,7 @@ limitations under the License.
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
 #include "mlir/Dialect/Linalg/Transforms/TilingInterfaceImpl.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
+#include "mlir/Dialect/SCF/Transforms/TileUsingInterface.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 
@@ -89,10 +90,10 @@ OpFoldResult computeTileSizeInDim(OpBuilder &builder, Location loc,
 /// - `tileSizeVals` is the tile sizes to use. Zero represent untiled loops.
 /// - In `offsets` and `sizes` return the multi-dimensional offset and size of
 /// the tile processed within the inner most loop.
-Operation *generateTileLoopNest(OpBuilder &builder, Location loc,
+ParallelOp generateTileLoopNest(OpBuilder &builder, Location loc,
                                 ArrayRef<Range> loopRanges,
                                 ArrayRef<Value> tileSizeVals,
-                                ArrayRef<Value> dstOperands, bool distribute,
+                                ArrayRef<Value> dstOperands,
                                 StringRef distributionLabel,
                                 SmallVector<OpFoldResult> &offsets,
                                 SmallVector<OpFoldResult> &sizes) {
@@ -132,32 +133,14 @@ Operation *generateTileLoopNest(OpBuilder &builder, Location loc,
     distributionLabelAttr =
         StringAttr::get(builder.getContext(), distributionLabel);
   }
-  Operation *loop =
-      distribute ? builder
-                       .create<gml_st::ParallelOp>(
-                           loc, TypeRange(ValueRange{dstOperands}),
-                           getValueOrCreateConstantIndexOp(builder, loc, lbs),
-                           getValueOrCreateConstantIndexOp(builder, loc, ubs),
-                           getValueOrCreateConstantIndexOp(builder, loc, steps),
-                           dstOperands, distributionLabelAttr,
-                           [&](OpBuilder &nestedBuilder, Location bodyLoc,
-                               ValueRange ivs, ValueRange /*outputs*/) {
-                             buildBody(nestedBuilder, bodyLoc, ivs);
-                           })
-                       .getOperation()
-                 : builder
-                       .create<gml_st::ForOp>(
-                           loc, TypeRange(ValueRange{dstOperands}),
-                           getValueOrCreateConstantIndexOp(builder, loc, lbs),
-                           getValueOrCreateConstantIndexOp(builder, loc, ubs),
-                           getValueOrCreateConstantIndexOp(builder, loc, steps),
-                           dstOperands,
-                           [&](OpBuilder &nestedBuilder, Location bodyLoc,
-                               ValueRange ivs, ValueRange /*inits*/) {
-                             buildBody(nestedBuilder, bodyLoc, ivs);
-                           })
-                       .getOperation();
-  return loop;
+  return builder.create<gml_st::ParallelOp>(
+      loc, TypeRange(ValueRange{dstOperands}),
+      getValueOrCreateConstantIndexOp(builder, loc, lbs),
+      getValueOrCreateConstantIndexOp(builder, loc, ubs),
+      getValueOrCreateConstantIndexOp(builder, loc, steps), dstOperands,
+      distributionLabelAttr,
+      [&](OpBuilder &nestedBuilder, Location bodyLoc, ValueRange ivs,
+          ValueRange /*outputs*/) { buildBody(nestedBuilder, bodyLoc, ivs); });
 }
 
 /// Pattern to tile an op that implements the `TilingInterface` using
@@ -175,15 +158,24 @@ struct TilingPattern : public OpInterfaceRewritePattern<TilingInterface> {
     if (!filterFn || failed(filterFn(op)) || hasLabel(op, kTileAppliedLabel))
       return failure();
 
-    auto tilingResult = tileUsingGmlSt(options, rewriter, op);
-    if (failed(tilingResult)) return failure();
+    if (options.distribute) {
+      auto tilingResult = tileUsingGmlSt(options, rewriter, op);
+      if (failed(tilingResult)) return failure();
 
-    // If we did not tile (e.g. when all tile sizes are 0), do not replace
-    // original op and just mark it as transformed then return.
-    if (tilingResult->loop != nullptr) {
-      rewriter.replaceOp(op, tilingResult->loop->getResults());
+      if (tilingResult->loop != nullptr) {
+        rewriter.replaceOp(op, tilingResult->loop->getResults());
+      }
+      setLabel(tilingResult->tiledOps.front(), kTileAppliedLabel);
+    } else {
+      scf::SCFTilingOptions opts;
+      opts.setTileSizeComputationFunction(options.tileSizeComputationFn);
+      auto tilingResult = scf::tileUsingSCFForOp(rewriter, op, opts);
+      if (failed(tilingResult)) return failure();
+      if (!tilingResult->loops.empty()) {
+        rewriter.replaceOp(op, tilingResult->replacements);
+      }
+      setLabel(tilingResult->tiledOps.front(), kTileAppliedLabel);
     }
-    setLabel(tilingResult->tiledOps.front(), kTileAppliedLabel);
     return success();
   }
 
@@ -309,7 +301,7 @@ FailureOr<TilingResult> tileUsingGmlSt(const TilingOptions &options,
   TilingResult tilingResult;
   tilingResult.loop = generateTileLoopNest(
       rewriter, loc, iterationDomain, tileSizeVector, dstOperands,
-      options.distribute, options.distributionLabel, offsets, sizes);
+      options.distributionLabel, offsets, sizes);
   Block *loopBody = &tilingResult.loop->getRegion(0).front();
   auto terminator = cast<SetYieldOp>(loopBody->getTerminator());
   rewriter.setInsertionPoint(terminator);
@@ -337,13 +329,8 @@ FailureOr<TilingResult> tileUsingGmlSt(const TilingOptions &options,
 
   // 6. Add a `set_yield` terminator, update the uses of `outputs` with the
   // output bbArgs.
-  if (options.distribute) {
-    insertTerminatorAndUpdateOutputs<ParallelOp>(
-        rewriter, tilingResult, terminator, dstOperands, outputTiles);
-  } else {
-    insertTerminatorAndUpdateOutputs<ForOp>(rewriter, tilingResult, terminator,
-                                            dstOperands, outputTiles);
-  }
+  insertTerminatorAndUpdateOutputs<ParallelOp>(
+      rewriter, tilingResult, terminator, dstOperands, outputTiles);
   return tilingResult;
 }
 

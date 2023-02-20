@@ -157,13 +157,6 @@ def ScalarizationPass : Pass<"scalarize", "mlir::func::FuncOp"> {
     "tensor::TensorDialect"
   ];
   let constructor = "createScalarizationPass()";
-
-  let options = [
-    // TODO(b/268020816): Remove this flag.
-    Option<"skipFillOpScalarization", "block-fill-scalarization", "bool",
-      /*default=*/"false", "Do not scalarize `linalg.fill`. This is needed for "
-      "XLA:GPU pipeline for softmax.">,
-  ];
 }
 
 def TransformScatterForCpuPass :

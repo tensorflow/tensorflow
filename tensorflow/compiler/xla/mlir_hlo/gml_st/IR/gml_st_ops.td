@@ -418,86 +418,6 @@ def GMLST_ParallelOp : GMLST_LoopLikeOp<"parallel", []> {
   let hasCanonicalizer = 1;
 }
 
-def GMLST_ForOp : GMLST_LoopLikeOp<"for", []> {
-  let summary = "Loop-like operation for sequential loops";
-  let description = [{
-    This is a multi-dimensional loop-like operation with sequential semantics.
-    The arguments also include the loop-carried tensor or vector variables.
-    The loop can have variadic number of results.
-
-    The body region contains exactly one block that terminates with
-    `gml_st.set_yield` which specifies how to update a subset of the
-    loop-carried variable on every iteration.
-
-    Example:
-
-    ```mlir
-    %add = gml_st.for (%i) = (%c0, %c0) to (%c8, %c16) step (%c4, %c4)
-        outs(%out_ = %out: tensor<8x16xf32>) {
-      %tile = gml_st.tile [%i, %j] [4, 4] [1, 1]
-        : !gml_st.tile<8x16> to !gml_st.tile<4x4>
-
-      %lhs_sub = gml_st.materialize %lhs[%tile]
-        : tensor<8x16xf32>[!gml_st.tile<4x4>]
-      %rhs_sub = gml_st.materialize %rhs[%tile]
-        : tensor<8x16xf32>[!gml_st.tile<4x4>]
-      %out_sub = gml_st.materialize %out_[%tile]
-        : tensor<8x16xf32>[!gml_st.tile<4x4>]
-
-      %add_sub = linalg.map
-        ins(%lhs_sub: tensor<4x4xf32>, %rhs_sub: tensor<4x4xf32>)
-        outs(%out_sub: tensor<4x4xf32>)
-        (%lhs_elem: f32, %rhs_elem: f32) {
-          %0 = arith.addf %lhs_elem, %rhs_elem : f32
-          linalg.yield %0 : f32
-        }
-
-      gml_st.set_yield %add_sub into %out_[%tile]
-        : tensor<4x4xf32> into tensor<16x64xf32>[!gml_st.tile<4x4>]
-    }
-    ```
-
-    After bufferization the `outs` argument list becomes empty and the loop
-    does not produce any results.
-
-    ```mlir
-    gml_st.for (%i, %j) = (%c0, %c0) to (%c8, %c16) step (%c4, %c4) {
-      %lhs_sub = memref.subview %lhs[%tile]
-        : memref<8x16xf32> to memref<4x4xf32, #map>
-      %rhs_sub = memref.subview %rhs[%tile]
-        : memref<8x16xf32> to memref<4x4xf32, #map>
-      %out_sub = memref.subview %out[%tile]
-        : memref<8x16xf32> to memref<4x4xf32, #map>
-
-      linalg.map
-        ins(%lhs_sub: memref<4x4xf32>, %rhs_sub: memref<4x4xf32>)
-        outs(%out_sub: memref<4x4xf32>)
-        (%lhs_elem: f32, %rhs_elem: f32) {
-          %0 = arith.addf %lhs_elem, %rhs_elem : f32
-          linalg.yield %0 : f32
-        }
-
-      gml_st.set_yield
-    }
-    ```
-  }];
-
-  let arguments = (ins Variadic<Index>:$lowerBound,
-                       Variadic<Index>:$upperBound,
-                       Variadic<Index>:$step,
-                       Variadic<AnyShaped>:$outputs);
-
-  let builders = [
-    OpBuilder<(ins "TypeRange":$resultTypes, "ValueRange":$lowerBounds,
-      "ValueRange":$upperBounds, "ValueRange":$steps, "ValueRange":$outputs,
-      CArg<"function_ref<void (OpBuilder &, Location, /*ivs=*/ValueRange,"
-        "/*outputs=*/ValueRange)>", "nullptr">:$bodyBuilderFn)>,
-  ];
-
-  let extraClassDeclaration = extraBaseClassDeclaration;
-  let hasCanonicalizer = 1;
-}
-
 def GMLST_SetYieldOp : GMLST_Op<"set_yield", [
       Pure,
       ReturnLike,
@@ -565,7 +485,7 @@ def GMLST_SetYieldOp : GMLST_Op<"set_yield", [
       if (!isDstOperand(opOperand)) return failure();
 
       auto parent = getOperation()->getBlock()->getParentOp();
-      if (isa<ParallelOp>(parent) || isa<ForOp>(parent)) {
+      if (isa<ParallelOp>(parent)) {
         return parent->getResult(opOperand.getOperandNumber() -
                                  getNumUpdates());
       }
@@ -598,38 +518,6 @@ def GMLST_YieldOp : GMLST_Op<"yield", [Pure, ReturnLike, Terminator,
     ```
   }];
   let assemblyFormat = "attr-dict $value `:` type($value)";
-}
-
-// TODO(b/253560795): Figure out where this operation shoud live, and how to
-// model it properly.
-def GMLST_DistributeOp : GMLST_Op<"distribute", [
-      Pure,
-      AllElementTypesMatch<["source", "result"]>
-    ]> {
-  let summary = "Tile combining operation";
-  let description = [{
-    `gml_st.distribute` is in a sense an inverse operation to
-    `gml_st.materialize`, and a non-terminator version of `gml_st.set_yield`.
-    It takes one tile of a vector per parallel iteration, and returns a larger
-    vector composed of these tiles.
-
-    It is only needed as an intermediate step when flattening gml_st.parallel
-    operations during SIMTfication for GPU, where one `gml_st.distribute`
-    replaces each output of `gml_st.set_yield`. It only works on vectors, since
-    tensor arguments have been bufferized into memrefs by that point in the
-    pipeline. This is also the reason why it does not need a destination
-    argument.
-  }];
-
-  let arguments = (ins AnyVectorOfAnyRank:$source, AnySet:$set);
-  let results = (outs AnyVectorOfAnyRank:$result);
-
-  let assemblyFormat = [{
-    $source `into` `[` $set `]` attr-dict `:` type($source)
-      `into` type($result) `[` type($set) `]`
-  }];
-
-  let hasVerifier = 0;
 }
 
 def GMLST_FusionOp : GMLST_Op<"fusion", [

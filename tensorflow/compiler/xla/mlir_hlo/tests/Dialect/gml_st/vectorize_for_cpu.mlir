@@ -8,8 +8,8 @@ func.func @vectorize_tiled_matmul(%lhs: tensor<8x16xf32>,
   %c2 = arith.constant 2 : index
   %c16 = arith.constant 16 : index
 
-  %7 = gml_st.for (%i) =
-              (%c0) to (%c16) step (%c2) outs (%arg6 = %fill: tensor<8x4xf32>) {
+  %7 = scf.for %i = %c0 to %c16 step %c2
+      iter_args (%arg6 = %fill) -> (tensor<8x4xf32>) {
     %9 = tensor.extract_slice %lhs[0, %i] [8, 2] [1, 1]  :
               tensor<8x16xf32> to tensor<8x2xf32>
 
@@ -22,24 +22,25 @@ func.func @vectorize_tiled_matmul(%lhs: tensor<8x16xf32>,
     %14 = linalg.matmul ins(%9, %11 : tensor<8x2xf32>, tensor<2x4xf32>)
                         outs(%13 : tensor<8x4xf32>) -> tensor<8x4xf32>
 
-    %12 = gml_st.tile [0, 0] [8, 4] [1, 1] : !gml_st.tile<8x4>
-    gml_st.set_yield %14 into %arg6[%12] :
-              tensor<8x4xf32> into tensor<8x4xf32>[!gml_st.tile<8x4>]
-  } {__perfectly_tileable_loop_label__} : tensor<8x4xf32>
+    %12 = tensor.insert_slice %14 into %arg6 [0, 0] [8, 4] [1, 1]
+      : tensor<8x4xf32> into tensor<8x4xf32>
+
+    scf.yield %14 : tensor<8x4xf32>
+  } {__perfectly_tileable_loop_label__}
   return %7 : tensor<8x4xf32>
 }
 
 // CHECK-LABEL: func @vectorize_tiled_matmul
 
 // CHECK:         %[[OUT_READ:.*]] = vector.transfer_read %[[OUT:.*]]
-// CHECK:         %[[FOR:.*]] = gml_st.for {{.*}} outs (%[[ARG:.*]] =
+// CHECK:         %[[FOR:.*]] = scf.for {{.*}} iter_args(%[[ARG:.*]] =
 // CHECK:           %[[LHS:.*]] = vector.transfer_read
 // CHECK-SAME:        : tensor<8x16xf32>, vector<8x2xf32>
 // CHECK:           %[[RHS:.*]] = vector.transfer_read
 // CHECK-SAME:        : tensor<16x4xf32>, vector<2x4xf32>
 // CHECK:           %[[CONTRACT:.*]] = vector.contract
 // CHECK-SAME:        %[[LHS]], %[[RHS]], %[[ARG]]
-// CHECK:           gml_st.set_yield %[[CONTRACT]] into %[[ARG]]
+// CHECK:           scf.yield %[[CONTRACT]]
 // CHECK:         vector.transfer_write %[[FOR]]
 
 // -----
@@ -61,8 +62,7 @@ func.func @vectorize_static_matmul(%lhs: tensor<128x16xf32>,
             tensor<16x64xf32> to tensor<16x4xf32>
     %6 = tensor.extract_slice %fill[%i, %j] [8, 4] [1, 1] :
             tensor<128x64xf32> to tensor<8x4xf32>
-    %7 = gml_st.for (%k) =
-                (%c0) to (%c16) step (%c2) outs (%arg6 = %6: tensor<8x4xf32>) {
+    %7 = scf.for %k = %c0 to %c16 step %c2 iter_args (%arg6 = %6) -> (tensor<8x4xf32>) {
       %9 = tensor.extract_slice %2[0, %k] [8, 2] [1, 1] :
                 tensor<8x16xf32> to tensor<8x2xf32>
       %11 = tensor.extract_slice %4[%k, 0] [2, 4] [1, 1] :
@@ -71,10 +71,8 @@ func.func @vectorize_static_matmul(%lhs: tensor<128x16xf32>,
                 tensor<8x4xf32> to tensor<8x4xf32>
       %14 = linalg.matmul ins(%9, %11 : tensor<8x2xf32>, tensor<2x4xf32>)
                           outs(%13 : tensor<8x4xf32>) -> tensor<8x4xf32>
-      %12 = gml_st.tile [0, 0] [8, 4] [1, 1] : !gml_st.tile<8x4>
-      gml_st.set_yield %14 into %arg6[%12] :
-                tensor<8x4xf32> into tensor<8x4xf32>[!gml_st.tile<8x4>]
-    } : tensor<8x4xf32>
+      scf.yield %14 : tensor<8x4xf32>
+    }
     %5 = gml_st.tile [%i, %j] [8, 4] [1, 1] : !gml_st.tile<8x4>
     gml_st.set_yield %7 into %out_[%5] :
             tensor<8x4xf32> into tensor<128x64xf32>[!gml_st.tile<8x4>]
@@ -84,13 +82,13 @@ func.func @vectorize_static_matmul(%lhs: tensor<128x16xf32>,
 // CHECK-LABEL: func @vectorize_static_matmul
 
 // CHECK:         %[[OUT_READ:.*]] = vector.transfer_read {{.*}} : tensor<8x4xf32>, vector<8x4xf32>
-// CHECK:         %[[FOR:.*]] = gml_st.for {{.*}} outs (%[[ARG:.*]] = %[[OUT_READ]]
+// CHECK:         %[[FOR:.*]] = scf.for {{.*}} iter_args(%[[ARG:.*]] = %[[OUT_READ]]
 // CHECK-NOT:       linalg.matmul
 // CHECK:           %[[LHS:.*]] = vector.transfer_read {{.*}} : tensor<128x16xf32>, vector<8x2xf32>
 // CHECK:           %[[RHS:.*]] = vector.transfer_read {{.*}} : tensor<16x64xf32>, vector<2x4xf32>
 // CHECK-NOT:       vector.transfer_read
 // CHECK:           %[[CONTRACT:.*]] = vector.contract {{{.*}}} %[[LHS]], %[[RHS]], %[[ARG]]
-// CHECK:           gml_st.set_yield %[[CONTRACT]] into %[[ARG]]
+// CHECK:           scf.yield %[[CONTRACT]]
 // CHECK:         vector.transfer_write %[[FOR]]
 
 // -----

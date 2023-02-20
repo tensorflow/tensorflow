@@ -303,14 +303,13 @@ func.func @gather(%indices: tensor<1x2xindex>,
 //   CHECK-DAG:   %[[CLAMPED_INDEX0_:.*]] = arith.maxsi %[[CLAMPED_INDEX0]], %[[C0]]
 //   CHECK-DAG:   %[[CLAMPED_INDEX1:.*]] = arith.minsi %[[INDEX1]], %[[C5]]
 //   CHECK-DAG:   %[[CLAMPED_INDEX1_:.*]] = arith.maxsi %[[CLAMPED_INDEX1]], %[[C0]]
-//       CHECK:    gml_st.for (%[[J:.*]]) = (%[[C0]]) to (%[[C3]])
-//   CHECK-DAG:      %[[OFFSET_J:.*]] = arith.addi %[[J]], %[[CLAMPED_INDEX0_]]
-//       CHECK:      %[[INIT_TILE:.*]] = gml_st.tile [%[[C0]], %[[J]]]
+//       CHECK:    scf.for %[[J:.*]] = %[[C0]] to %[[C3]]
+//       CHECK:      %[[OFFSET_J:.*]] = arith.addi %[[J]], %[[CLAMPED_INDEX0_]]
 
-//       CHECK:      %[[SLICE:.*]] = tensor.extract_slice %[[OPERAND]]
-//       CHECK-SAME:   [%[[OFFSET_J]], %[[CLAMPED_INDEX1_]], 0]
-//       CHECK-NEXT: %[[VAL:.*]] = tensor.extract %[[SLICE]]
-//       CHECK:      gml_st.set_yield %[[VAL]] into {{.*}}[%[[INIT_TILE]]]
+//       CHECK:      %[[VAL:.*]] = tensor.extract %[[OPERAND]]
+//       CHECK-SAME:   [%[[OFFSET_J]], %[[CLAMPED_INDEX1_]], %[[C0]]]
+//       CHECK-NEXT: %[[UPDATED:.*]] = tensor.insert %[[VAL]]
+//       CHECK:      scf.yield %[[UPDATED]]
 
 // -----
 
