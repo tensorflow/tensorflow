@@ -56,6 +56,7 @@ limitations under the License.
 #include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/tsl/platform/env.h"
 #include "tensorflow/tsl/platform/status.h"
+#include "tensorflow/tsl/platform/statusor.h"
 
 namespace tensorflow {
 namespace quantization {
@@ -205,11 +206,8 @@ absl::Status RunPasses(const absl::string_view name, FuncT add_passes_func,
   add_passes_func(pm);
 
   mlir::StatusScopedDiagnosticHandler diagnostic_handler{&ctx};
-  const absl::StatusOr<std::unique_ptr<llvm::raw_ostream>> out_dump_file =
-      MaybeEnableIrPrinting(pm, name);
-  if (!out_dump_file.ok()) {
-    return absl::InternalError(out_dump_file.status().message());
-  }
+  TF_ASSIGN_OR_RETURN(const std::unique_ptr<llvm::raw_ostream> out_dump_file,
+                      MaybeEnableIrPrinting(pm, name));
 
   if (failed(pm.run(module_op))) {
     return absl::InternalError(
@@ -336,7 +334,6 @@ absl::StatusOr<ExportedModel> QuantizeQatModel(
                                           absl::MakeSpan(exported_names),
                                           &context, import_options,
                                           /*lift_variables=*/false, &bundle);
-
   if (!module.status().ok()) {
     return absl::InternalError("Failed to import SavedModel: " +
                                module.status().error_message());
@@ -363,15 +360,12 @@ absl::StatusOr<ExportedModel> QuantizeQatModel(
 
   const bool unfreeze_constants =
       !quantization_options.freeze_all_variables().enabled();
-  const absl::StatusOr<std::string> checkpoint_dir = GetLocalTempFilename();
-  if (!checkpoint_dir.ok()) {
-    LOG(ERROR) << "Failed to get checkpoint directory name.";
-    return checkpoint_dir.status();
-  }
+
+  TF_ASSIGN_OR_RETURN(const std::string checkpoint_dir, GetLocalTempFilename());
 
   const auto export_opts = ExportOptions{
       /*duplicate_shape_determining_constants=*/true, unfreeze_constants,
-      *checkpoint_dir,
+      checkpoint_dir,
       /*debug_name=*/absl::StrCat(kTfQuantQatStepName, kExportStepSuffix)};
 
   if (const absl::Status export_status =
@@ -380,7 +374,7 @@ absl::StatusOr<ExportedModel> QuantizeQatModel(
     return export_status;
   }
 
-  return ConvertMlirModuleToExportedModel(*module_ref, *checkpoint_dir,
+  return ConvertMlirModuleToExportedModel(*module_ref, checkpoint_dir,
                                           /*function_aliases=*/{});
 }
 
@@ -476,15 +470,13 @@ absl::StatusOr<ExportedModel> QuantizePtqModelPreCalibration(
 
   const bool unfreeze_constants =
       !quantization_options.freeze_all_variables().enabled();
-  const absl::StatusOr<std::string> checkpoint_dir = GetLocalTempFilename();
-  if (!checkpoint_dir.ok()) {
-    return checkpoint_dir.status();
-  }
+  TF_ASSIGN_OR_RETURN(const std::string checkpoint_dir, GetLocalTempFilename());
+
   // `duplicate_shape_determining_constants = false` because the
   // resulting graph of this step is not expected to be loaded on TPU.
   const auto export_opts = ExportOptions{
       /*duplicate_shape_determining_constants=*/false, unfreeze_constants,
-      *checkpoint_dir,
+      checkpoint_dir,
       /*debug_name=*/
       absl::StrCat(kTfQuantPtqPreCalibrationStepName, kExportStepSuffix)};
 
@@ -494,7 +486,7 @@ absl::StatusOr<ExportedModel> QuantizePtqModelPreCalibration(
     return export_status;
   }
 
-  return ConvertMlirModuleToExportedModel(*module_ref, *checkpoint_dir,
+  return ConvertMlirModuleToExportedModel(*module_ref, checkpoint_dir,
                                           updated_function_aliases);
 }
 
@@ -561,13 +553,11 @@ absl::StatusOr<ExportedModel> QuantizePtqModelPostCalibration(
 
   const bool unfreeze_constants =
       !quantization_options.freeze_all_variables().enabled();
-  const absl::StatusOr<std::string> checkpoint_dir = GetLocalTempFilename();
-  if (!checkpoint_dir.ok()) {
-    return checkpoint_dir.status();
-  }
+  TF_ASSIGN_OR_RETURN(const std::string checkpoint_dir, GetLocalTempFilename());
+
   const auto export_opts = ExportOptions{
       /*duplicate_shape_determining_constants=*/true, unfreeze_constants,
-      *checkpoint_dir,
+      checkpoint_dir,
       /*debug_name=*/
       absl::StrCat(kTfQuantPtqPostCalibrationStepName, kExportStepSuffix)};
 
@@ -577,7 +567,7 @@ absl::StatusOr<ExportedModel> QuantizePtqModelPostCalibration(
     return export_status;
   }
 
-  return ConvertMlirModuleToExportedModel(*module_ref, *checkpoint_dir,
+  return ConvertMlirModuleToExportedModel(*module_ref, checkpoint_dir,
                                           updated_function_aliases);
 }
 
@@ -627,13 +617,11 @@ absl::StatusOr<ExportedModel> QuantizePtqDynamicRange(
 
   const bool unfreeze_constants =
       !quantization_options.freeze_all_variables().enabled();
-  const absl::StatusOr<std::string> checkpoint_dir = GetLocalTempFilename();
-  if (!checkpoint_dir.ok()) {
-    return checkpoint_dir.status();
-  }
+  TF_ASSIGN_OR_RETURN(const std::string checkpoint_dir, GetLocalTempFilename());
+
   const auto export_opts = ExportOptions{
       /*duplicate_shape_determining_constants=*/true, unfreeze_constants,
-      *checkpoint_dir,
+      checkpoint_dir,
       /*debug_name=*/
       absl::StrCat(kTfQuantPtqDynamicRangeStepName, kExportStepSuffix)};
   if (const absl::Status export_status =
@@ -642,7 +630,7 @@ absl::StatusOr<ExportedModel> QuantizePtqDynamicRange(
     return export_status;
   }
 
-  return ConvertMlirModuleToExportedModel(*module_ref, *checkpoint_dir,
+  return ConvertMlirModuleToExportedModel(*module_ref, checkpoint_dir,
                                           /*function_aliases=*/{});
 }
 
