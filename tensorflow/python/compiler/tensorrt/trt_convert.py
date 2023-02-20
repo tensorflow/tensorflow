@@ -983,9 +983,11 @@ def _annotate_variable_ops(func, graph_def):
   Raises:
     RuntimeError: if some shapes cannot be annotated.
   """
+  resource_names = [ph.name for ph in func.graph.internal_captures if ph.dtype == dtypes.resource]
+
   ph_shape_map = {}
-  for ph, var in zip(func.graph.internal_captures, func.variables):
-    ph_shape_map[ph.name] = var.shape
+  for ph, var in zip(resource_names, func.variables):
+    ph_shape_map[ph] = var.shape
   # Construct a mapping of node names to nodes
   name_to_node = {node.name: node for node in graph_def.node}
   # Go through all the ReadVariableOp nodes in the graph def
