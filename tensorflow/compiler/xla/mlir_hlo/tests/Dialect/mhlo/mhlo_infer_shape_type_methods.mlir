@@ -1485,3 +1485,20 @@ func.func @select(%pred : tensor<i1>,
   %1 = "mhlo_test.get_return_types"(%0) : (tensor<*xf32>) -> tensor<*xindex>
   func.return %1 : tensor<*xindex>
 }
+
+// -----
+
+// CHECK-LABEL: func @dynamic_gather
+func.func @dynamic_gather(%arg0: tensor<?x4xf32>, %arg1: tensor<1xi64>) -> tensor<*xindex> {
+  %0 = mhlo.constant dense<[1, 2]> : tensor<2xi32>
+  %1 = "mhlo.dynamic_gather"(%arg0, %arg1, %0) {
+    dimension_numbers = #mhlo.gather<
+      offset_dims = [0, 1],
+      start_index_map = [1]
+    >,
+    indices_are_sorted = true
+  } : (tensor<?x4xf32>, tensor<1xi64>, tensor<2xi32>) -> tensor<*xf32>
+  // CHECK: types0 = tensor<1x2xf32>
+  %2 = "mhlo_test.get_return_types"(%1) : (tensor<*xf32>) -> tensor<*xindex>
+  func.return %2 : tensor<*xindex>
+}
