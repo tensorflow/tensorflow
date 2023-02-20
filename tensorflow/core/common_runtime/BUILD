@@ -283,7 +283,6 @@ filegroup(
         "lower_if_op.h",
         "lower_case_op.h",
         "lower_functional_ops.h",
-        "control_flow_deps_to_chains.h",
         "lower_while_op.h",
         "memory_types.h",
         "mkl_cpu_allocator.h",
@@ -1180,26 +1179,6 @@ cc_library(
 )
 
 cc_library(
-    name = "control_flow_deps_to_chains",
-    srcs = ["control_flow_deps_to_chains.cc"],
-    hdrs = ["control_flow_deps_to_chains.h"],
-    copts = tf_copts(),
-    visibility = default_package_visibility + [
-        "//platforms/performance/autograppler:__subpackages__",
-        "//platforms/performance/tf_sim:__subpackages__",
-    ],
-    deps = [
-        ":optimization_registry",
-        "//tensorflow/core:framework",
-        "//tensorflow/core/framework:attr_value_proto_cc",
-        "//tensorflow/core/framework:node_def_proto_cc",
-        "//tensorflow/core/framework:tensor_proto_cc",
-        "//tensorflow/core/platform:errors",
-    ],
-    alwayslink = 1,
-)
-
-cc_library(
     name = "int32_fulltype",
     srcs = ["int32_fulltype.cc"],
     hdrs = [
@@ -1893,7 +1872,6 @@ tf_cuda_library(
         ":collective_rma_local",
         ":collective_util",
         ":composite_device",
-        ":control_flow_deps_to_chains",
         ":copy_tensor",
         ":costmodel_manager",
         ":debugger_state_interface",
