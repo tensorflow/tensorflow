@@ -70,3 +70,21 @@ def CastBFloat16AvgPoolToFloat32 : Pat<
     /*truncate=*/ConstBoolAttrFalse),
   [(IsBF16ElementType $input)],
   (addBenefit 1)>;
+
+def CastBFloat16MatMulToFloat32 : Pat<
+  (TF_MatMulOp:$res
+    $input, $filter, $transpose_a, $transpose_b),
+  (TF_CastOp
+    (TF_MatMulOp
+      (TF_CastOp
+        $input, /*truncate=*/ConstBoolAttrFalse,
+        (returnType (CloneTypeWithF32ElementType $input))),
+      (TF_CastOp
+        $filter, /*truncate=*/ConstBoolAttrFalse,
+        (returnType (CloneTypeWithF32ElementType $filter))),
+      $transpose_a, $transpose_b,
+      (returnType (CloneTypeWithF32ElementType $res))),
+    /*truncate=*/ConstBoolAttrFalse),
+  [(IsBF16ElementType $input),
+   (IsBF16ElementType $filter)],
+  (addBenefit 1)>;
