@@ -4628,7 +4628,7 @@ static int GetPrimitiveBitwidth(mlir::Value i) {
 static int CalculateVirtualThreadScalingFactorForReduction(
     const ReductionDimensions& reduction_dimensions,
     const se::CudaComputeCapability& cc) {
-  int dimx = reduction_dimensions.dimensions[kDimX];
+  int64_t dimx = reduction_dimensions.dimensions[kDimX];
   if (reduction_dimensions.is_row_reduction && dimx <= 128) {
     int rows_per_warp = RowReductionGetRowsPerWarp(dimx);
     if (cc.IsAtLeast(se::CudaComputeCapability::AMPERE)) {
