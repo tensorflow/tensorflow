@@ -187,6 +187,16 @@ int32_t GetCollectiveKeyBase(
   return key_base;
 }
 
+mlir::Value GetRelativeDeviceId(mlir::Operation* op, const Layout& output_layout,
+    mlir::OpBuilder& builder, const mlir::Location& loc) {
+  // TODO(tmorris): Should this be using op.getResult()?
+  mlir::Value device_id = ops_util::ReshapeScalarToSizeType(
+      builder, DeviceId(op).value(), loc);
+  mlir::Value start_device_id = ops_util::GetR1Const(
+      {output_layout.mesh().min_global_device_id()}, builder, loc);
+  return builder.create<mlir::TF::SubOp>(loc, device_id, start_device_id);
+}
+
 void CreateGroupAndInstanceKey(
     mlir::OpBuilder& builder, const mlir::Location& loc,
     const mlir::DenseIntElementsAttr& group_assignment, int32 key_base,
@@ -443,14 +453,7 @@ mlir::LogicalResult LowerAllReduceOpImpl(
     // deterministic, and moreover if we have multiple distinct reductions
     // groups in one program reducing over all hosts and reducing over pairs
     // of hosts, we need unique ids for each case.
-    mlir::Value device_id = ops_util::ReshapeScalarToSizeType(
-        builder, DeviceId(all_reduce.getResult()).value(), loc);
-    // TODO(b/188076080): Clean up device id.
-    mlir::Value start_device_id = ops_util::GetR1Const(
-        {(*output_layout).mesh().min_global_device_id()}, builder, loc);
-    mlir::Value relative_device_id =
-        builder.create<mlir::TF::SubOp>(loc, device_id, start_device_id);
-
+    mlir::Value relative_device_id = GetRelativeDeviceId(all_reduce, *output_layout, builder, loc);
     final_op = internal::EmitCollectiveReduce(
         builder, loc, all_reduce.getInput(), all_reduce.getReduceOp().str(),
         group_assignment_attr, key_base, relative_device_id,
@@ -569,13 +572,7 @@ mlir::LogicalResult LowerReduceScatterOp(
   } else if (reduce_scatter.getDeviceType().endswith("GPU") &&
              UseNcclCommunicationOnGpu()) {
     // Use CollectiveReduceScatterV2 which has a NCCL GPU implementation.
-    mlir::Value device_id = ops_util::ReshapeScalarToSizeType(
-        builder, DeviceId(reduce_scatter.getResult()).value(), loc);
-    // TODO(b/188076080): Clean up device id.
-    mlir::Value start_device_id = ops_util::GetR1Const(
-        {(*output_layout).mesh().min_global_device_id()}, builder, loc);
-    mlir::Value relative_device_id =
-        builder.create<mlir::TF::SubOp>(loc, device_id, start_device_id);
+    mlir::Value relative_device_id = GetRelativeDeviceId(reduce_scatter, *output_layout, builder, loc);
 
     int32 group_size = group_assignment_attr.getType().getShape()[1];
     const int32_t key_base =
@@ -715,12 +712,7 @@ mlir::LogicalResult LowerAllGatherOpToCollective(
 
   const mlir::Location loc = DT_LOC(all_gather.getLoc());
 
-  mlir::Value device_id = ops_util::ReshapeScalarToSizeType(
-      builder, DeviceId(all_gather.getResult()).value(), loc);
-  mlir::Value start_device_id = ops_util::GetR1Const(
-      {(tgt_layout).mesh().min_global_device_id()}, builder, loc);
-  mlir::Value relative_device_id =
-      builder.create<mlir::TF::SubOp>(loc, device_id, start_device_id);
+  mlir::Value relative_device_id = GetRelativeDeviceId(all_gather, tgt_layout, builder, loc);
 
   StatusOr<std::string> device_type_or_status =
       DeviceTypeFromMesh(src_layout.mesh());
@@ -948,19 +940,7 @@ mlir::LogicalResult LowerAllGatherOp(mlir::TF::DTensorAllGatherOp all_gather) {
 
   // Resize three flat lists to 2D matrices and select one vertical vector out
   // of every matrix based on device ID.
-  StatusOr<mlir::Value> device_id_scalar_or_status =
-      DeviceId(all_gather.getInput());
-  if (!device_id_scalar_or_status.ok())
-    return all_gather.emitOpError()
-           << device_id_scalar_or_status.status().error_message();
-  const mlir::Value device_id_scalar = device_id_scalar_or_status.value();
-  const mlir::Value device_id =
-      ops_util::ReshapeScalarToSizeType(builder, device_id_scalar, loc);
-  // TODO(b/188076080): Clean up device id.
-  const mlir::Value start_device_id = ops_util::GetR1Const(
-      {src_layout.mesh().min_global_device_id()}, builder, loc);
-  const mlir::Value relative_device_id =
-      builder.create<mlir::TF::SubOp>(loc, device_id, start_device_id);
+  mlir::Value relative_device_id = GetRelativeDeviceId(all_gather, src_layout, builder, loc);
   const mlir::Value begin = SelectElementsBasedOnId(
       builder, loc, relative_device_id, device_id_to_begin_flat, num_devices,
       output_shape_size);
