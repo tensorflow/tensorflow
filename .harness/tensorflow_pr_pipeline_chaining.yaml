@@ -6,6 +6,31 @@ pipeline:
   tags: {}
   stages:
     - stage:
+        name: Testing
+        identifier: Testing
+        description: ""
+        type: CI
+        spec:
+          cloneCodebase: false
+          platform:
+            os: Linux
+            arch: Amd64
+          runtime:
+            type: Cloud
+            spec: {}
+          execution:
+            steps:
+              - step:
+                  type: Run
+                  name: Run_1
+                  identifier: Run_1
+                  spec:
+                    shell: Sh
+                    command: |
+                      echo "trigger.prNumber: <+trigger.prNumber>"
+                      echo "trigger.branch: <+trigger.branch>"
+                      echo "pipeline var: <+variablepipeline.variables.triggerPrNumber>"
+    - stage:
         name: Child 1
         identifier: Child_1
         description: ""
