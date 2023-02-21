@@ -2704,6 +2704,7 @@ class InstructionVerifier : public DfsHloVisitorWithDefault {
         instruction->opcode() != HloOpcode::kTuple &&
         instruction->opcode() != HloOpcode::kGetTupleElement &&
         instruction->opcode() != HloOpcode::kTranspose &&
+        instruction->opcode() != HloOpcode::kConvolution &&
         instruction->opcode() != HloOpcode::kDot &&
         instruction->opcode() != HloOpcode::kFusion &&
         instruction->opcode() != HloOpcode::kReshape &&
@@ -2711,9 +2712,9 @@ class InstructionVerifier : public DfsHloVisitorWithDefault {
         instruction->opcode() != HloOpcode::kCustomCall) {
       return InvalidArgument(
           "FP8 is currently only supported in convert, bitcast, tuple, "
-          "get-tuple-element, transpose, dot, fusion, reshape and copy "
-          "instructions as well as Custom Calls, but got instruction with FP8 "
-          "input: %s",
+          "get-tuple-element, transpose, convolution, dot, fusion, reshape and "
+          "copy instructions as well as Custom Calls, but got instruction with "
+          "FP8 input: %s",
           instruction->ToString());
     }
     return OkStatus();
