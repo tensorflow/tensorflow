@@ -135,13 +135,6 @@ class PyLoadedExecutable
           args,
       bool returns_jax_array = false);
 
-  StatusOr<std::vector<PyShardedBuffer>> ExecuteShardedOnLocalDevices(
-      absl::Span<PyShardedBuffer* const> args);
-
-  StatusOr<std::pair<std::vector<PyShardedBuffer>, PyShardedToken>>
-  ExecuteShardedOnLocalDevicesWithTokens(
-      absl::Span<PyShardedBuffer* const> args);
-
   StatusOr<std::vector<std::shared_ptr<HloModule>>> HloModules() const;
 
   std::optional<std::vector<OpSharding>> GetParameterShardings() const;

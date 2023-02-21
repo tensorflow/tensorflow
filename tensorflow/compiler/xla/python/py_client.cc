@@ -508,15 +508,6 @@ StatusOr<py::bytes> PyClient::HeapProfile() {
     }
   }
 
-  for (auto* sharded_buffer = sharded_buffers_; sharded_buffer;
-       sharded_buffer = sharded_buffer->next_) {
-    for (int i = 0; i < sharded_buffer->num_devices(); ++i) {
-      auto* buffer = sharded_buffer->pjrt_buffer(i);
-      TF_RETURN_IF_ERROR(
-          add_buffer_to_profile(buffer, sharded_buffer->traceback().get()));
-    }
-  }
-
   for (PyLoadedExecutable* executable = executables_; executable;
        executable = executable->next_) {
     if (!executable->is_deleted()) {

@@ -467,10 +467,6 @@ PYBIND11_MODULE(xla_extension, m) {
                                                      jax::GetEnableJaxArray());
           },
           py::arg("arguments"))
-      .def("execute_sharded_on_local_devices",
-           py::overload_cast<absl::Span<PyShardedBuffer* const>>(
-               &PyLoadedExecutable::ExecuteShardedOnLocalDevices),
-           py::arg("arguments"))
       .def(
           "execute_sharded_on_local_devices_with_tokens",
           [](PyLoadedExecutable& exec,
@@ -483,10 +479,6 @@ PYBIND11_MODULE(xla_extension, m) {
                 args, jax::GetEnableJaxArray());
           },
           py::arg("arguments"))
-      .def("execute_sharded_on_local_devices_with_tokens",
-           py::overload_cast<absl::Span<PyShardedBuffer* const>>(
-               &PyLoadedExecutable::ExecuteShardedOnLocalDevicesWithTokens),
-           py::arg("arguments"))
       .def("hlo_modules", &PyLoadedExecutable::HloModules)
       .def("get_output_shardings", &PyLoadedExecutable::GetOutputShardings)
       .def("get_parameter_shardings",

@@ -209,25 +209,9 @@ StatusOr<std::vector<pybind11::object>> PyLoadedExecutable::Execute(
 
 namespace {
 
-// Traits classes of common methods for std::vector<PyBuffer::object> and
-// PyShardedBuffer.
+// Traits classes of common methods for std::vector<PyBuffer::object>.
 template <typename ShardedBufferT>
 struct ShardedBufferAdapter;
-
-template <>
-struct ShardedBufferAdapter<PyShardedBuffer*> {
-  using ResultT = PyShardedBuffer;
-  static int num_devices(const PyShardedBuffer* arg) {
-    DCHECK(arg);
-    return arg->num_devices();
-  }
-  static tsl::RCReference<ifrt::Array> GetIfRtArray(
-      const PyShardedBuffer* arg) {
-    DCHECK(arg);
-    DCHECK(arg->ifrt_array());
-    return tsl::FormRef(arg->ifrt_array());
-  }
-};
 
 template <>
 struct ShardedBufferAdapter<
@@ -280,20 +264,6 @@ struct ShardedBufferAdapter<
     return *ifrt_array;
   }
 };
-
-void PopulateExecuteShardedResults(
-    const std::shared_ptr<PyClient>& client,
-    std::vector<tsl::RCReference<ifrt::Array>> ifrt_arrays,
-    int num_computations, std::vector<PyShardedBuffer>& outputs,
-    bool returns_jax_array) {
-  CHECK(!returns_jax_array);
-  auto traceback = Traceback::Get();
-  int num_output_buffers = ifrt_arrays.size();
-  outputs.reserve(num_output_buffers);
-  for (auto& array : ifrt_arrays) {
-    outputs.emplace_back(client, std::move(array), traceback);
-  }
-}
 
 void PopulateExecuteShardedResults(
     const std::shared_ptr<PyClient>& client,
@@ -418,27 +388,6 @@ ExecuteShardedOnLocalDevicesInternal(
 }
 
 }  // namespace
-
-StatusOr<std::vector<PyShardedBuffer>>
-PyLoadedExecutable::ExecuteShardedOnLocalDevices(
-    absl::Span<PyShardedBuffer* const> args) {
-  std::optional<std::vector<PjRtFuture<Status>>> returned_futures;
-  TF_ASSIGN_OR_RETURN(auto outputs_and_tokens,
-                      ExecuteShardedOnLocalDevicesInternal(
-                          options_, client_, ifrt_loaded_executable_.get(),
-                          host_callbacks_, args, returned_futures));
-  return std::move(outputs_and_tokens.first);
-}
-
-StatusOr<std::pair<std::vector<PyShardedBuffer>, PyShardedToken>>
-PyLoadedExecutable::ExecuteShardedOnLocalDevicesWithTokens(
-    absl::Span<PyShardedBuffer* const> args) {
-  std::optional<std::vector<PjRtFuture<Status>>> returned_futures;
-  returned_futures.emplace();
-  return ExecuteShardedOnLocalDevicesInternal(
-      options_, client_, ifrt_loaded_executable_.get(), host_callbacks_, args,
-      returned_futures);
-}
 
 StatusOr<std::vector<std::vector<pybind11::object>>>
 PyLoadedExecutable::ExecuteShardedOnLocalDevices(
