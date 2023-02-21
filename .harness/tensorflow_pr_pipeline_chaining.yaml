@@ -19,3 +19,8 @@ pipeline:
             - default
         tags: {}
         variables: []
+  variables:
+    - name: triggerPrNumber
+      type: String
+      description: ""
+      value: <+input>
