@@ -29,6 +29,7 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_utils.h"
+#include "tensorflow/compiler/mlir/quantization/tensorflow/passes/remove_identity_op_pattern.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/passes/utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_dialect.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
@@ -251,36 +252,6 @@ Value MultiplyFakeQuantValue(OpBuilder& builder, Location loc, Value value,
   return ConstantFoldOpIfPossible(dequantize).front();
 }
 
-// Copied from tensorflow/compiler/mlir/lite/transforms/prepare_tf.cc.
-// By removing identity ops, constant operands with dynamic shapes have static
-// shape information which is necessary for correct pattern matching in this
-// pass.
-struct RemoveIdentity : public OpRewritePattern<TF::IdentityOp> {
-  using OpRewritePattern<TF::IdentityOp>::OpRewritePattern;
-
-  LogicalResult matchAndRewrite(TF::IdentityOp identity,
-                                PatternRewriter& rewriter) const override {
-    for (Operation* user : identity->getUsers()) {
-      // Replace the op with the input if output is only used by TF ops.
-      // Currently this is more on the conservative side since we need to ensure
-      // every consumer op to be a TF op before applying this pattern. We can
-      // consider to revisit this in the future if this turns out to be too
-      // restrictive.
-      if (user->getDialect()->getNamespace() != "tf") {
-        return failure();
-      }
-      // Identity ops of returning values might be helpful for some other
-      // compilers, so avoid removing these Identity ops.
-      if (user->hasTrait<OpTrait::IsTerminator>()) {
-        return failure();
-      }
-    }
-
-    rewriter.replaceOp(identity, identity.getInput());
-    return success();
-  }
-};
-
 #include "tensorflow/compiler/mlir/quantization/tensorflow/passes/prepare_lifting.inc"
 
 void PrepareLiftingPass::runOnOperation() {
@@ -292,7 +263,10 @@ void PrepareLiftingPass::runOnOperation() {
   RewritePatternSet patterns(ctx);
   populateWithGenerated(patterns);
   patterns.add<TF::ConvertTFEinsumOp, RemoveIdentity>(ctx);
-  (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
+  if (failed(applyPatternsAndFoldGreedily(func, std::move(patterns)))) {
+    func.emitError() << "quant-internal-prepare-lifting failed.";
+    signalPassFailure();
+  }
 }
 
 }  // namespace

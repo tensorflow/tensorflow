@@ -492,6 +492,8 @@ CreateTPUPartitionedOpConversionPass();
 // `_replication_info` attribute.
 std::unique_ptr<OperationPass<ModuleOp>> CreateTPUClusterFormationPass();
 
+std::unique_ptr<OperationPass<ModuleOp>> CreateTPUValidateInputsPass();
+
 // Creates a pass that cleans up `_replication_info` attribute on operations
 // that are inside a cluster.
 std::unique_ptr<OperationPass<ModuleOp>>
@@ -688,6 +690,7 @@ enum MoveTransposeDirection { kBegin, kEnd };
 #define GEN_PASS_DECL_TPUSHARDINGIDENTIFICATIONPASS
 #define GEN_PASS_DECL_TPUSPACETODEPTHPASS
 #define GEN_PASS_DECL_TPUUPDATEEMBEDDINGENQUEUEOPINPUTSPASS
+#define GEN_PASS_DECL_TPUVALIDATEINPUTSPASS
 #define GEN_PASS_DECL_TPUVARIABLERUNTIMEREFORMATTINGPASS
 #define GEN_PASS_DECL_TENSORARRAYOPSDECOMPOSITIONPASS
 #define GEN_PASS_DECL_TENSORDEVICECOPYCONVERSIONPASS

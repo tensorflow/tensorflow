@@ -180,6 +180,7 @@ DECL_CONVERT_OP(GatherNd);
 DECL_CONVERT_OP(SparseToDense);
 DECL_CONVERT_OP(OneHot);
 DECL_CONVERT_OP(ArgMax);
+DECL_CONVERT_OP(ArgMin);
 DECL_CONVERT_OP(FakeQuant);
 DECL_CONVERT_OP(While);
 
@@ -2276,9 +2277,9 @@ LogicalResult ConvertTFLL2NormalizationOp::matchAndRewrite(
                                                  min_val);
     auto rsqrt = CreateOpAndInfer<tosa::RsqrtOp>(rewriter, loc, result_ty, max)
                      .getResult();
-    auto result = CreateOpAndInfer<tosa::MulOp>(rewriter, loc, result_ty, rsqrt,
-                                                input, shift)
-                      .getResult();
+    Value result = CreateOpAndInfer<tosa::MulOp>(rewriter, loc, result_ty,
+                                                 rsqrt, input, shift)
+                       .getResult();
 
     auto fused_activation_fn = tfl_l2norm_op.getFusedActivationFunctionAttr();
 
@@ -2735,13 +2736,18 @@ LogicalResult ConvertTFLBucketizeOp::matchAndRewrite(
       rewriter, loc, boundaries_type,
       DenseElementsAttr::get(boundaries_type, boundaries));
 
+  auto boundaries_input_type =
+      boundaries_type.clone(input_type.getElementType());
+  auto boundaries_op_casted = CreateOpAndInfer<tosa::CastOp>(
+      rewriter, loc, boundaries_input_type, boundaries_op);
+
   auto reshaped_input = CreateOpAndInfer<tosa::ReshapeOp>(
       rewriter, loc, input_type.clone(new_input_shape), input,
       rewriter.getDenseI64ArrayAttr(new_input_shape));
 
   auto ge = CreateOpAndInfer<tosa::GreaterEqualOp>(
       rewriter, loc, UnrankedTensorType::get(rewriter.getIntegerType(1)),
-      reshaped_input, boundaries_op);
+      reshaped_input, boundaries_op_casted);
 
   auto casted = CreateOpAndInfer<tosa::CastOp>(
       rewriter, loc, UnrankedTensorType::get(rewriter.getIntegerType(32)), ge);
@@ -3741,6 +3747,49 @@ LogicalResult ConvertTFLArgMaxOp::matchAndRewrite(
   return success();
 }
 
+LogicalResult ConvertTFLArgMinOp::matchAndRewrite(
+    Operation* op, PatternRewriter& rewriter) const {
+  auto arg_max_op = cast<TFL::ArgMinOp>(op);
+  auto loc = arg_max_op.getLoc();
+  auto input = arg_max_op.getInput();
+  auto input_ty = input.getType().cast<ShapedType>();
+  Type input_ety = input_ty.getElementType();
+
+  if (auto quantized_ty = input_ety.dyn_cast<QuantizedType>()) {
+    input_ety = rewriter.getIntegerType(
+        quantized_ty.getStorageTypeIntegralWidth(), quantized_ty.isSigned());
+  }
+
+  if (!input_ety.isIntOrFloat())
+    return rewriter.notifyMatchFailure(op, "unsupported element type");
+
+  ElementsAttr dim_elems;
+  if (!matchPattern(arg_max_op.getDim(), m_Constant(&dim_elems)))
+    return rewriter.notifyMatchFailure(op, "Non-constant dim");
+
+  // When negative dim is measured from the back of the array.
+  int32_t dim = dim_elems.getValues<APInt>()[0].getSExtValue();
+  if (dim < 0) dim += input_ty.getRank();
+
+  if (input_ety.isa<FloatType>()) {
+    input = CreateOpAndInfer<tosa::NegateOp>(rewriter, loc, input_ty, input);
+  } else if (input_ety.isa<IntegerType>()) {
+    auto reverse_ty = RankedTensorType::get({}, input_ety);
+    Value reverse_val = rewriter.create<tosa::ConstOp>(
+        loc, reverse_ty,
+        DenseElementsAttr::get(reverse_ty,
+                               rewriter.getIntegerAttr(input_ety, -1)));
+    input = CreateOpAndInfer<tosa::SubOp>(
+        rewriter, loc, input_ty.clone(input_ety), reverse_val, input);
+  }
+
+  CreateReplaceOpAndInfer<tosa::ArgMaxOp>(
+      rewriter, op, arg_max_op.getType(), input,
+      rewriter.getIntegerAttr(rewriter.getI64Type(), dim));
+
+  return success();
+}
+
 LogicalResult ConvertTFLFakeQuantOp::matchAndRewrite(
     Operation* op, PatternRewriter& rewriter) const {
   auto fakequant_op = cast<TFL::FakeQuantOp>(op);
@@ -3925,6 +3974,7 @@ void populateLegalizeTFLPatterns(MLIRContext* ctx,
   DEF_PATTERN_INSERT(Constant);
   DEF_PATTERN_INSERT(TFLOneHot);
   DEF_PATTERN_INSERT(TFLArgMax);
+  DEF_PATTERN_INSERT(TFLArgMin);
   DEF_PATTERN_INSERT(TFLFakeQuant);
   DEF_PATTERN_INSERT(TFLWhile);
 }

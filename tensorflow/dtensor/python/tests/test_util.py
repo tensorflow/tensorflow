@@ -17,6 +17,7 @@ import collections
 import copy
 import itertools
 import json
+import os
 import typing
 
 from absl import flags
@@ -50,6 +51,20 @@ v2_compat.enable_v2_behavior()
 DEFAULT_TOL = 1e-5
 
 _DEFAULT_GPU_MEMORY_LIMIT = 200  # MB
+
+
+def get_use_xla_spmd(device_type):
+  """Returns True when device_type is TPU and environment variable is set.
+
+  Args:
+    device_type: A str representing the type of device on the mesh.
+
+  Returns:
+    bool: True when device_type is TPU and environment variable is set.
+  """
+  return device_type == 'TPU' and '0' != os.environ.get(
+      'DTENSOR_TEST_USE_XLA_SPMD', '0'
+  )
 
 
 def create_device_ids_array(shape):
@@ -94,8 +109,8 @@ def reset_logical_devices(device_type, count):
                      '%s' % device_type)
 
   if count < len(devices):
-    raise ValueError(f'Cannot set {count} logical devices, which is '
-                     f'less than ({len(devices)}) physical devices.')
+    devices = devices[:count]
+    tf_config.set_visible_devices(devices, device_type=device_type.upper())
 
   for i, device in enumerate(devices):
     n = (i + 1) * count // len(devices) - i * count // len(devices)

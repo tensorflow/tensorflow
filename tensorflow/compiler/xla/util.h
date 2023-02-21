@@ -539,7 +539,7 @@ constexpr uint64_t QuietNanWithoutPayload() {
   static_assert(!std::is_same<T, tsl::float8_e4m3fn>::value,
                 "E4M3FN does not have payload");
   if (const int bits = NanPayloadBits<T>()) {
-    return uint64_t{1} << (bits - 1);
+    return uint64_t{1} << (bits > 0 ? (bits - 1) : 0);
   }
   return 0;
 }
@@ -676,6 +676,7 @@ class HloInstruction;
 // A predicate over HLO instruction.
 using HloPredicate = std::function<bool(const HloInstruction*)>;
 
+using Vector2 = std::array<int64_t, 2>;
 using Vector3 = std::array<int64_t, 3>;
 
 }  // namespace xla

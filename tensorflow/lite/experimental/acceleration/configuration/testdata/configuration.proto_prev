@@ -37,6 +37,10 @@
 // compatibility, new fields MUST ONLY be added at the END of messages,
 // and fields should NEVER be deleted, but instead can only be deprecated.
 //
+// WARNING: before modifying this file, you should copy the previous contents
+// of this file to 'testdata/configuration.proto_prev'.  This is used to test
+// that your changes will preserve binary backwards compatibility.
+//
 // WARNING: you need to manually generate and update the generated flatbuffer
 // code (configuration_generated.h) when modifying this file. See BUILD for
 // more information.
@@ -222,7 +226,7 @@ enum GPUInferenceUsage {
 // See
 // https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/delegates/gpu/delegate.h
 message GPUSettings {
-  // Ignored if inference_priority1/2/3 are set.
+  // Obsolete: Ignored if inference_priority1/2/3 are set.
   optional bool is_precision_loss_allowed = 1;
   optional bool enable_quantized_inference = 2 [default = true];
   optional GPUBackend force_backend = 3;
@@ -602,6 +606,7 @@ message BenchmarkMetric {
 // well as sent to server for monitoring.
 //
 // Used with event type END.
+// Next ID: 7
 message BenchmarkResult {
   // Time to load model and apply acceleration. Initialization may get run
   // multiple times to get information on variance.
@@ -618,6 +623,16 @@ message BenchmarkResult {
   optional bool ok = 4;
   // Metrics that were used to determine the 'ok' status.
   repeated BenchmarkMetric metrics = 5;
+
+  message InferenceOutput {
+    // The matching Flatbuffer type is ubyte.
+    optional bytes value = 1;
+  }
+  // Model output in byte format. Each InferenceOutput comes from one output
+  // tensor. It is ordered the same as tflite::Interpreter::output_tensor(),
+  // i.e. the value of output_tensor(i) is stored in actual_output[i]. Only
+  // populated in custom validation case.
+  repeated InferenceOutput actual_output = 6;
 }
 
 // A handled error.

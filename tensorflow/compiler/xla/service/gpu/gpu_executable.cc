@@ -81,6 +81,7 @@ bool IsXlaRuntimeExecutableEnabled(const HloModuleConfig& config) {
 namespace {
 
 using ::tsl::profiler::ScopedAnnotation;
+using ::tsl::profiler::ScopedAnnotationAlways;
 
 bool NeedsAsyncCommsStream(Thunk& thunk) {
   switch (thunk.kind()) {
@@ -192,7 +193,7 @@ Status ExecuteThunks(const std::string& module_name, ModuleIdentifier module_id,
       [&] { return absl::StrCat(module_name, ":XLA GPU module"); },
       tsl::profiler::TraceMeLevel::kInfo);
 
-  ScopedAnnotation annotation([&] {
+  ScopedAnnotationAlways annotation([&] {
     std::string module_id_str;
     if (module_id >= 0) {
       module_id_str = absl::StrFormat(",program_id=%d", module_id);
@@ -464,7 +465,7 @@ static Status ExecuteXlaRuntime(const std::string& module_name,
       [&] { return absl::StrCat(module_name, ":XLA GPU module"); },
       tsl::profiler::TraceMeLevel::kInfo);
 
-  ScopedAnnotation annotation([&] {
+  ScopedAnnotationAlways annotation([&] {
     std::string module_id_str;
     if (module_id >= 0) {
       module_id_str = absl::StrFormat(",program_id=%d", module_id);

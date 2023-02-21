@@ -30,8 +30,8 @@ namespace gml_st {
 constexpr llvm::StringRef kPeelingAppliedLabel = "__peeling_applied_label__";
 
 struct GmlStPeelingResult {
-  Operation *mainLoop = nullptr;
-  SmallVector<Operation *> tailLoops = {};
+  ParallelOp mainLoop = nullptr;
+  SmallVector<ParallelOp> tailLoops = {};
 };
 
 /// Rewrite a gml_st::ParallelOp with bounds/step that potentially do not divide

@@ -23,5 +23,5 @@ export OUTDIR=~/onednn_benchmarks
 mkdir -p ${OUTDIR}
 bash run_models.sh 2>&1 | tee ${OUTDIR}/verbose.log
 grep -v 'profiler_session\|xplane' ${OUTDIR}/verbose.log > ${OUTDIR}/run.log
-grep "\+ ${BUILDER}-bin\|no stats:\|'BATCH=" ${OUTDIR}/run.log > ${OUTDIR}/to_parse.log
+grep "\+ ${BUILDER} run\|no stats:\|'BATCH=" ${OUTDIR}/run.log > ${OUTDIR}/to_parse.log
 python3 parse_onednn_benchmarks.py ${OUTDIR}/to_parse.log | tee ${OUTDIR}/results.csv

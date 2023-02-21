@@ -16,90 +16,57 @@ limitations under the License.
 #include <utility>
 
 #include "mlir/Conversion/AffineToStandard/AffineToStandard.h"
-#include "mlir/Conversion/ArithToLLVM/ArithToLLVM.h"
 #include "mlir/Conversion/ComplexToLLVM/ComplexToLLVM.h"
-#include "mlir/Conversion/ControlFlowToLLVM/ControlFlowToLLVM.h"
-#include "mlir/Conversion/FuncToLLVM/ConvertFuncToLLVM.h"
-#include "mlir/Conversion/LLVMCommon/TypeConverter.h"
-#include "mlir/Conversion/MathToLLVM/MathToLLVM.h"
+#include "mlir/Conversion/FuncToLLVM/ConvertFuncToLLVMPass.h"
+#include "mlir/Conversion/LinalgToLLVM/LinalgToLLVM.h"
 #include "mlir/Conversion/MathToLibm/MathToLibm.h"
 #include "mlir/Conversion/MemRefToLLVM/MemRefToLLVM.h"
+#include "mlir/Conversion/ReconcileUnrealizedCasts/ReconcileUnrealizedCasts.h"
 #include "mlir/Conversion/SCFToControlFlow/SCFToControlFlow.h"
 #include "mlir/Conversion/VectorToLLVM/ConvertVectorToLLVM.h"
-#include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Arith/Transforms/Passes.h"
-#include "mlir/Dialect/Complex/IR/Complex.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
-#include "mlir/Dialect/LLVMIR/LLVMTypes.h"
+#include "mlir/Dialect/Linalg/Passes.h"
 #include "mlir/Dialect/Math/IR/Math.h"
 #include "mlir/Dialect/MemRef/Transforms/Passes.h"
+#include "mlir/IR/MLIRContext.h"
+#include "mlir/Pass/PassManager.h"
+#include "mlir/Transforms/Passes.h"
 #include "transforms/passes.h"
 
 namespace mlir {
-
-#define GEN_PASS_DEF_GENERICHOSTTOLLVMPASS
-#include "transforms/passes.h.inc"
-
-namespace {
-
-class GenericHostToLLVMPass
-    : public impl::GenericHostToLLVMPassBase<GenericHostToLLVMPass> {
-  void getDependentDialects(DialectRegistry &registry) const override {
-    registry.insert<LLVM::LLVMDialect>();
-  }
-
- public:
-  explicit GenericHostToLLVMPass() = default;
-
-  void runOnOperation() override {
-    ModuleOp m = getOperation();
-
-    // Populate type conversions.
-    MLIRContext *ctx = m.getContext();
-    LLVMTypeConverter typeConverter(ctx);
-
-    // Populate patterns.
-    RewritePatternSet patterns(&getContext());
-    populateAffineToStdConversionPatterns(patterns);
-    arith::populateArithExpandOpsPatterns(patterns);
-    memref::populateExpandOpsPatterns(patterns);
-    memref::populateExpandStridedMetadataPatterns(patterns);
-    arith::populateArithToLLVMConversionPatterns(typeConverter, patterns);
-    populateFinalizeMemRefToLLVMConversionPatterns(typeConverter, patterns);
-    populateMathToLLVMConversionPatterns(typeConverter, patterns);
-    populateFuncToLLVMConversionPatterns(typeConverter, patterns);
-    cf::populateControlFlowToLLVMConversionPatterns(typeConverter, patterns);
-    populateSCFToControlFlowConversionPatterns(patterns);
-    populateComplexToLLVMConversionPatterns(typeConverter, patterns);
-    populateVectorToLLVMConversionPatterns(typeConverter, patterns);
-    // MathToLibm patterns are a last resort, so they have a 0 benefit (except
-    // for log1p, which has accuracy issues near 0 if implemented naively).
-    populateMathToLibmConversionPatterns(patterns, 0,
-                                         /*log1pBenefit=*/{2});
-
-    //  Set target.
-    ConversionTarget target(*ctx);
-    target.addLegalDialect<LLVM::LLVMDialect>();
-    target.addIllegalDialect<arith::ArithDialect, func::FuncDialect,
-                             complex::ComplexDialect, math::MathDialect>();
-    // Mark modules as legal.
-    target.addLegalOp<ModuleOp>();
-    // Unrealized conversion casts are cleaned up by a separate pass.
-    target.addLegalOp<UnrealizedConversionCastOp>();
-
-    if (failed(applyFullConversion(m, target, std::move(patterns)))) {
-      signalPassFailure();
-    }
-  }
-};
-
-}  // namespace
-
 namespace hlo {
 
-std::unique_ptr<OperationPass<ModuleOp> > createGenericHostToLLVMPass() {
-  return std::make_unique<GenericHostToLLVMPass>();
+using func::FuncOp;
+
+void createGenericHostToLLVMPipeline(OpPassManager& pm) {
+  // Convert all linalg operations to parallel loops.
+  pm.addNestedPass<FuncOp>(createConvertLinalgToParallelLoopsPass());
+  // Canonicalize generated scf.parallel operations to remove single iterations.
+  pm.addPass(createCanonicalizerPass());
+
+  // Expand math operations into std/arith dialect operations.
+  pm.addNestedPass<FuncOp>(arith::createArithExpandOpsPass());
+  pm.addNestedPass<FuncOp>(memref::createExpandOpsPass());
+  pm.addNestedPass<FuncOp>(memref::createExpandStridedMetadataPass());
+  pm.addPass(createLowerAffinePass());
+
+  pm.addPass(createConvertLinalgToLLVMPass());
+  pm.addPass(createConvertSCFToCFPass());
+  pm.addPass(hlo::createMathLegalizationPass());
+
+  // Convert everything else to LLVM dialect.
+  ConvertVectorToLLVMPassOptions vectorOpts;
+  pm.addPass(createConvertVectorToLLVMPass(vectorOpts));
+  pm.addPass(createFinalizeMemRefToLLVMConversionPass());
+  pm.addPass(createConvertFuncToLLVMPass());
+  pm.addPass(createConvertComplexToLLVMPass());
+  pm.addPass(createReconcileUnrealizedCastsPass());
+
+  // Prepare module for translation to LLVM.
+  pm.addPass(createCanonicalizerPass());
+  pm.addPass(createCSEPass());
 }
 
 }  // namespace hlo

@@ -24,13 +24,14 @@ metric evaluations could potentially cost development effort unnecessarily.
 
 To those ends, this app offers a more faithful view of runtime performance
 (accuracy and latency) that developers can expect when using TensorFlow Lite
-delegates with Android apps, and the app provides a single entrypoint to
-various performance metrics to avoid the need to switch between different
-benchmarking apps.
+delegates with Android apps, and the app provides a single entrypoint to various
+performance metrics to avoid the need to switch between different benchmarking
+apps.
 
 ## To build/install/run
 
 ### Build
+
 1.  Clone the TensorFlow repo with
 
     ```
@@ -50,13 +51,22 @@ benchmarking apps.
         `sudo apt update && sudo apt install bazel-5.3.0` if prompted.
     -   When installing Android NDK and SDK, using Android Studio's SDK Manager
         may be the easiest way.
-    -   The versions which we have verified are working:
-        -   Android NDK API level: 21
-        -   Android SDK API level: 33
-        -   Android build tools version: 30.0.0
     -   Run the `./configure` script in the root TensorFlow checkout directory,
         and answer "Yes" when the script asks to interactively configure the
         `./WORKSPACE` for Android builds.
+    -   The versions which we have verified are working:
+        -   Android NDK version: 21.4.7075529
+            -   Provide the value as part of a path when the `./configure`
+                script asks to specify the home path of the Android NDK.
+        -   Android NDK API level: 26
+            -   Provide the value when the `./configure` script asks to specify
+                the Android NDK API level.
+        -   Android SDK API level: 33
+            -   Provide the value when the `./configure` script asks to specify
+                the Android SDK API level.
+        -   Android build tools version: 30.0.0
+            -   Provide the value when the `./configure` script asks to specify
+                the Android build tools version.
 
 1.  Build for your specific platform, e.g.:
 
@@ -83,15 +93,14 @@ benchmarking apps.
 
 The delegate-under-test must implement the
 [stable_delegate_interface](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/delegates/utils/experimental/stable_delegate/stable_delegate_interface.h)
-API. The stable delegate provider dynamically loads stable delegate symbols
-from the provided binary (shared object) file. In order to use Delegate
-Performance Benchmark with a stable delegate, you would need to push the shared
-object file to the file directory of Delegate Performance Benchmark:
+API. The stable delegate provider dynamically loads stable delegate symbols from
+the provided binary (shared object) file. In order to use Delegate Performance
+Benchmark with a stable delegate, you would need to push the shared object file
+to the file directory of Delegate Performance Benchmark:
 `/data/data/org.tensorflow.lite.benchmark.delegateperformance/files/`.
 
-
-1.  Build and push the stable delegate binary that you want to test.
-    Here we use the
+1.  Build and push the stable delegate binary that you want to test. Here we use
+    the
     [sample stable delegate](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/delegates/utils/experimental/sample_stable_delegate)
     as an example.
 
@@ -115,7 +124,7 @@ object file to the file directory of Delegate Performance Benchmark:
         /data/data/org.tensorflow.lite.benchmark.delegateperformance/files/
     ```
 
-1. Dump the test sample delegate settings file on device. Example command:
+1.  Dump the test sample delegate settings file on device. Example command:
 
     ```
     adb shell 'echo "{
@@ -137,14 +146,21 @@ to expand the supported models based on future use cases.
 Note: The sample stable delegate provided here only supports ADD and SUB
 operations thus aforementioned mobilenet models would not actually be delegated.
 To test your own delegate against the models, please update
-`stable_delegate_loader_settings` with your delegate path.
+`stable_delegate_loader_settings` with your delegate path. To get feedback early
+in the development process, e.g. while working towards supporting more OPs, you
+can run the `benchmark_model` tool, which supports stable delegates and can be
+supplied with arbitrary models via the `--graph` CLI parameter. See
+[this document](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/delegates/utils/experimental/sample_stable_delegate/README.md#tf-lite-benchmark-tool)
+which shows how to run a model with ADD operations through the sample stable
+delegate.
 
 #### Latency benchmarking
 
 ##### Options
 
 -   `tflite_settings_files`: `str` (required) the comma-delimited paths to the
-    JSON-encoded delegate `TFLiteSettings` file(s), which is defined in [configuration.proto](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/experimental/acceleration/configuration/configuration.proto).
+    JSON-encoded delegate `TFLiteSettings` file(s), which is defined in
+    [configuration.proto](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/experimental/acceleration/configuration/configuration.proto).
 -   Additional optional command-line flags are documented
     [here](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/tools/benchmark/README.md)
     and can be appended to the `args` string (note that all args must be nested
@@ -157,8 +173,8 @@ To test your own delegate against the models, please update
 
     ```
     adb shell "am start -S \
-  -n org.tensorflow.lite.benchmark.delegateperformance/org.tensorflow.lite.benchmark.delegateperformance.BenchmarkLatencyActivity \
-  --esa --tflite_settings_files '/data/local/tmp/stable_delegate_settings.json'"
+    -n org.tensorflow.lite.benchmark.delegateperformance/org.tensorflow.lite.benchmark.delegateperformance.BenchmarkLatencyActivity \
+    --esa --tflite_settings_files '/data/local/tmp/stable_delegate_settings.json'"
     ```
 
 1.  The results will be available in Android logcat as well as the app's file
@@ -185,36 +201,65 @@ To test your own delegate against the models, please update
     For a summarized view, run
 
     ```
-    adb shell run-as org.tensorflow.lite.benchmark.delegateperformance "cat /data/user/0/org.tensorflow.lite.benchmark.delegateperformance/files/delegate_performance_result/latency/mobilenet_v1_1.0_224.csv" | column -t -s,
+    adb shell run-as org.tensorflow.lite.benchmark.delegateperformance "cat /data/user/0/org.tensorflow.lite.benchmark.delegateperformance/files/delegate_performance_result/latency/report.html" > /tmp/dpb-latency.html && xdg-open /tmp/dpb-latency.html
     ```
 
-    It would produce output like the following:
+    It would open a page in the browser like the following:
 
-    |Metric|0 (default_delegate)|0 (/data/local/tmp/stable_delegate_settings.json)|%|
-    |---|---|---|---|
-    |inference_latency_average_us|97936.44|97963.66|0.0%|
-    |initialization_memory_total_allocated_mebibyte|0.0|0.0|0%|
-    |overall_memory_max_rss_mebibyte|43.246094|0.65625|-98.5%|
-    |model_size_megabyte|-1.0E-6|-1.0E-6|0%|
-    |initialization_latency_us|39640.0|40155.0|1.3%|
-    |warmup_latency_standard_deviation|1644.0|1463.0|-11.0%|
-    |initialization_memory_in_use_mebibyte|23.091217|27.671188|19.8%|
-    |overall_memory_in_use_mebibyte|25.15126|29.752167|18.3%|
-    |warmup_latency_max_us|102423.0|101935.0|-0.5%|
-    |warmup_latency_min_us|97855.0|97868.0|0.0%|
-    |inference_latency_min_us|97597.0|97657.0|0.1%|
-    |overall_memory_total_allocated_mebibyte|0.0|0.0|0%|
-    |inference_latency_max_us|98295.0|98370.0|0.1%|
-    |initialization_memory_max_rss_mebibyte|34.39453|0.0|-100.0%|
-    |warmup_latency_average_us|98752.836|98672.164|-0.1%|
-    |inference_latency_standard_deviation|146.0|143.0|-2.1%|
+    Summary | FAIL
+    ------- | ----
+
+    Model                      | Metric                                         | Delegate: NONE (/data/local/tmp/stable_delegate_settings.json) | Delegate: NONE (default_delegate) | Change    | Status
+    -------------------------- | ---------------------------------------------- | -------------------------------------------------------------- | --------------------------------- | --------- | ------
+    mobilenet_v1_1.0_224       | model_size_megabyte                            | -1.0E-6                                                        | -1.0E-6                           | 0.0%      | N/A
+    mobilenet_v1_1.0_224       | initialization_latency_us                      | 515667.0                                                       | 844938.0                          | -39.0%    | N/A
+    mobilenet_v1_1.0_224       | warmup_latency_average_us                      | 334263.5                                                       | 1666704.0                         | -79.9%    | N/A
+    mobilenet_v1_1.0_224       | warmup_latency_min_us                          | 318494.0                                                       | 1666704.0                         | -80.9%    | N/A
+    mobilenet_v1_1.0_224       | warmup_latency_max_us                          | 350033.0                                                       | 1666704.0                         | -79.0%    | N/A
+    mobilenet_v1_1.0_224       | warmup_latency_standard_deviation_us           | 15769.0                                                        | 0.0                               | Infinity% | N/A
+    mobilenet_v1_1.0_224       | inference_latency_average_us                   | 316702.6                                                       | 630715.5                          | -49.8%    | PASS
+    mobilenet_v1_1.0_224       | inference_latency_min_us                       | 308218.0                                                       | 314117.0                          | -1.9%     | N/A
+    mobilenet_v1_1.0_224       | inference_latency_max_us                       | 338494.0                                                       | 1601144.0                         | -78.9%    | N/A
+    mobilenet_v1_1.0_224       | inference_latency_standard_deviation_us        | 4896.0                                                         | 347805.0                          | -98.6%    | N/A
+    mobilenet_v1_1.0_224       | initialization_memory_max_rss_mebibyte         | 0.0                                                            | 34.48828                          | -100.0%   | N/A
+    mobilenet_v1_1.0_224       | initialization_memory_total_allocated_mebibyte | 0.0                                                            | 0.0                               | 0.0%      | N/A
+    mobilenet_v1_1.0_224       | initialization_memory_in_use_mebibyte          | 26.140594                                                      | 21.560455                         | 21.2%     | N/A
+    mobilenet_v1_1.0_224       | overall_memory_max_rss_mebibyte                | 0.0                                                            | 50.371094                         | -100.0%   | N/A
+    mobilenet_v1_1.0_224       | overall_memory_total_allocated_mebibyte        | 0.0                                                            | 0.0                               | 0.0%      | N/A
+    mobilenet_v1_1.0_224       | overall_memory_in_use_mebibyte                 | 28.22168                                                       | 23.295578                         | 21.1%     | N/A
+    mobilenet_v1_1.0_224       | startup_overhead_latency_us                    | 533227.9                                                       | 1880926.5                         | -71.7%    | PASS
+    mobilenet_v1_1.0_224       | delegate_summary                               |                                                                |                                   |           | PASS
+    mobilenet_v1_1.0_224       | model_summary                                  | PASS                                                           |                                   |           |
+    mobilenet_v1_1.0_224_quant | model_size_megabyte                            | -1.0E-6                                                        | -1.0E-6                           | 0.0%      | N/A
+    mobilenet_v1_1.0_224_quant | initialization_latency_us                      | 25318.0                                                        | 8271.0                            | 206.1%    | N/A
+    mobilenet_v1_1.0_224_quant | warmup_latency_average_us                      | 189565.0                                                       | 188034.0                          | 0.8%      | N/A
+    mobilenet_v1_1.0_224_quant | warmup_latency_min_us                          | 181333.0                                                       | 175592.0                          | 3.3%      | N/A
+    mobilenet_v1_1.0_224_quant | warmup_latency_max_us                          | 199285.0                                                       | 199388.0                          | -0.1%     | N/A
+    mobilenet_v1_1.0_224_quant | warmup_latency_standard_deviation_us           | 7404.0                                                         | 9745.0                            | -24.0%    | N/A
+    mobilenet_v1_1.0_224_quant | inference_latency_average_us                   | 178905.2                                                       | 178897.69                         | 0.0%      | PASS_WITH_WARNING
+    mobilenet_v1_1.0_224_quant | inference_latency_min_us                       | 170126.0                                                       | 170102.0                          | 0.0%      | N/A
+    mobilenet_v1_1.0_224_quant | inference_latency_max_us                       | 200089.0                                                       | 193949.0                          | 3.2%      | N/A
+    mobilenet_v1_1.0_224_quant | inference_latency_standard_deviation_us        | 6355.0                                                         | 6387.0                            | -0.5%     | N/A
+    mobilenet_v1_1.0_224_quant | initialization_memory_max_rss_mebibyte         | 0.0                                                            | 0.0                               | 0.0%      | N/A
+    mobilenet_v1_1.0_224_quant | initialization_memory_total_allocated_mebibyte | 0.0                                                            | 0.0                               | 0.0%      | N/A
+    mobilenet_v1_1.0_224_quant | initialization_memory_in_use_mebibyte          | 1.4762268                                                      | 1.4715118                         | 0.3%      | N/A
+    mobilenet_v1_1.0_224_quant | overall_memory_max_rss_mebibyte                | 0.0                                                            | 0.0                               | 0.0%      | N/A
+    mobilenet_v1_1.0_224_quant | overall_memory_total_allocated_mebibyte        | 0.0                                                            | 0.0                               | 0.0%      | N/A
+    mobilenet_v1_1.0_224_quant | overall_memory_in_use_mebibyte                 | 3.3774261                                                      | 3.38266                           | -0.2%     | N/A
+    mobilenet_v1_1.0_224_quant | startup_overhead_latency_us                    | 35977.797                                                      | 17407.312                         | 106.7%    | FAIL
+    mobilenet_v1_1.0_224_quant | delegate_summary                               |                                                                |                                   |           | FAIL
+    mobilenet_v1_1.0_224_quant | model_summary                                  | FAIL                                                           |                                   |           |
 
 #### Accuracy benchmarking
 
 ##### Options
 
 -   `tflite_settings_files`: `str` (required) the comma-delimited paths to the
-    JSON-encoded delegate `TFLiteSettings` file(s), which is defined in [configuration.proto](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/experimental/acceleration/configuration/configuration.proto).
+    JSON-encoded delegate `TFLiteSettings` file(s), which is defined in
+    [configuration.proto](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/experimental/acceleration/configuration/configuration.proto).
+    The first path is the test target delegate and all other paths are treated
+    as reference delegates. The test target delegate will be compared against
+    each reference delegate.
 
 ##### Steps
 
@@ -223,8 +268,8 @@ To test your own delegate against the models, please update
 
     ```
     adb shell "am start -S \
-  -n org.tensorflow.lite.benchmark.delegateperformance/org.tensorflow.lite.benchmark.delegateperformance.BenchmarkAccuracyActivity \
-  --esa --tflite_settings_files '/data/local/tmp/stable_delegate_settings.json'"
+    -n org.tensorflow.lite.benchmark.delegateperformance/org.tensorflow.lite.benchmark.delegateperformance.BenchmarkAccuracyActivity \
+    --esa --tflite_settings_files '/data/local/tmp/stable_delegate_settings.json'"
     ```
 
 1.  The results will be available in Android logcat, e.g.:
@@ -236,16 +281,27 @@ To test your own delegate against the models, please update
     ```
 
     For a summarized view, run
-    
+
     ```
-    adb shell run-as org.tensorflow.lite.benchmark.delegateperformance "cat /data/user/0/org.tensorflow.lite.benchmark.delegateperformance/files/delegate_performance_result/accuracy/mobilenet_v1_1.0_224_with_validation.csv" | column -t -s,
+    adb shell run-as org.tensorflow.lite.benchmark.delegateperformance "cat /data/user/0/org.tensorflow.lite.benchmark.delegateperformance/files/delegate_performance_result/accuracy/report.html" > /tmp/dpb-accuracy.html && xdg-open /tmp/dpb-accuracy.html
     ```
 
-    It would produce output like the following:
+    It would open a page in the browser like the following:
 
-    |Metric|0 (default_delegate)|0 (/data/local/tmp/stable_delegate_settings.json)|%|
-    |---|---|---|---|
-    |max_memory_kb|0.0|0.0|0%|
-    |symmetric_kl_divergence(average)|3.5098449E-9|3.5098449E-9|0%|
-    |mse(average)|1.0153732E-16|1.0153732E-16|0%|
-    |ok|1.0|1.0|0%|
+    Summary | PASS
+    ------- | ----
+
+    Model                                      | Metric                           | Delegate: NONE (/data/local/tmp/stable_delegate_settings.json) | Delegate: NONE (default_delegate) | Change | Status
+    ------------------------------------------ | -------------------------------- | -------------------------------------------------------------- | --------------------------------- | ------ | ------
+    mobilenet_v1_1.0_224_quant_with_validation | mse(average)                     | 1.917638E-6                                                    | 1.917638E-6                       | 0.0%   | N/A
+    mobilenet_v1_1.0_224_quant_with_validation | symmetric_kl_divergence(average) | 0.049423933                                                    | 0.049423933                       | 0.0%   | N/A
+    mobilenet_v1_1.0_224_quant_with_validation | ok                               | 0.0                                                            | 0.0                               | N/A    | PASS
+    mobilenet_v1_1.0_224_quant_with_validation | max_memory_kb                    | 0.0                                                            | 0.0                               | 0.0%   | N/A
+    mobilenet_v1_1.0_224_quant_with_validation | delegate_summary                 |                                                                |                                   |        | PASS
+    mobilenet_v1_1.0_224_quant_with_validation | model_summary                    | PASS                                                           |                                   |        |
+    mobilenet_v1_1.0_224_with_validation       | mse(average)                     | 1.0577066E-16                                                  | 1.0577066E-16                     | 0.0%   | N/A
+    mobilenet_v1_1.0_224_with_validation       | symmetric_kl_divergence(average) | 7.2540787E-9                                                   | 7.2540787E-9                      | 0.0%   | N/A
+    mobilenet_v1_1.0_224_with_validation       | ok                               | 0.0                                                            | 0.0                               | N/A    | PASS
+    mobilenet_v1_1.0_224_with_validation       | max_memory_kb                    | 0.0                                                            | 0.0                               | 0.0%   | N/A
+    mobilenet_v1_1.0_224_with_validation       | delegate_summary                 |                                                                |                                   |        | PASS
+    mobilenet_v1_1.0_224_with_validation       | model_summary                    | PASS                                                           |                                   |        |

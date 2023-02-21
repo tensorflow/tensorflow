@@ -226,6 +226,12 @@ void UpdateTfMlirBridgeGraphAnalysisPerOp(
     const std::string& use_spmd_for_xla_partitioning,
     const std::string& unsupported_reason, bool has_unsupported_features);
 
+// Records whether a graph contains any of the TF1 features
+void RecordTFVersionByGraphFeatures(const std::string& device_name,
+                                    bool hasControlFlowV1,
+                                    bool hasReferenceVariables,
+                                    bool hasManualControlDeps);
+
 // Convenience class allowing RAII style of reporting for a monitoring::Counter.
 template <int NumLabels>
 class ScopedCounter final {

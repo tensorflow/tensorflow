@@ -1664,11 +1664,24 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     signature = [tensor_spec.TensorSpec(shape=(2,), dtype=dtypes.float32)]
     defined = polymorphic_function.function(foo, input_signature=signature)
 
+    # Valid call
+    defined(array_ops.ones([2]))
+
     # Invalid shapes.
-    with self.assertRaisesRegex(ValueError, 'Python inputs incompatible.*'):
+    with self.assertRaisesRegex(
+        TypeError,
+        (
+            'Tensor conversion requested dtype float32 for Tensor with dtype'
+            ' int32.*'
+        ),
+    ):
+      defined(array_ops.ones([3], dtype=dtypes.int32))
+
+    # Invalid shapes.
+    with self.assertRaisesRegex(TypeError, 'Can not cast.*'):
       defined(array_ops.ones([3]))
 
-    with self.assertRaisesRegex(ValueError, 'Python inputs incompatible.*'):
+    with self.assertRaisesRegex(TypeError, 'Can not cast.*'):
       defined(array_ops.ones([2, 1]))
 
     # Wrong number of arguments.
@@ -3720,10 +3733,19 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     signature_args, _ = conc.structured_input_signature
     self.assertEqual('y', signature_args[0].name)
 
+    # If name is not specified, the previously named one will be returned.
     conc = f.get_concrete_function(tensor_spec.TensorSpec(None, dtypes.float32))
     conc(x=constant_op.constant(3.0))
     signature_args, _ = conc.structured_input_signature
-    self.assertEqual('x', signature_args[0].name)
+    self.assertEqual('y', signature_args[0].name)
+
+    # New name will return updated signature.
+    conc = f.get_concrete_function(
+        tensor_spec.TensorSpec(None, dtypes.float32, 'z')
+    )
+    conc(x=constant_op.constant(3.0))
+    signature_args, _ = conc.structured_input_signature
+    self.assertEqual('z', signature_args[0].name)
 
     @polymorphic_function.function
     def g(x):
@@ -4400,6 +4422,22 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     self.assertAllEqual(obj2.testDouble.experimental_get_tracing_count(), 3)
     self.assertAllEqual(obj1.testDouble.experimental_get_tracing_count(), 2)
 
+  def test_tensor_shape_casted_to_specific(self):
+    @polymorphic_function.function(
+        input_signature=[tensor_spec.TensorSpec([1])]
+    )
+    def specific(x):
+      self.assertEqual(x.shape, [1])
+      return x
+
+    @polymorphic_function.function(
+        input_signature=[tensor_spec.TensorSpec(None)]
+    )
+    def general(x):
+      return specific(x)
+
+    self.assertEqual(general(constant_op.constant([1.0])).numpy(), 1.0)
+
   def test_recursive_tf_function(self):
 
     @polymorphic_function.function
@@ -4781,12 +4819,12 @@ class MultiDeviceTest(test.TestCase, parameterized.TestCase):
 
     # dtype mismatch
     value = constant_op.constant(1)
-    with self.assertRaisesRegex(ValueError, 'Value .* to a tensor with dtype'):
+    with self.assertRaisesRegex(ValueError, 'Tensor conversion requested'):
       lazy_capture(2.0)
 
     # shape mismatch
     value = constant_op.constant([1.0])
-    with self.assertRaisesRegex(ValueError, 'Value .* shape'):
+    with self.assertRaisesRegex(AssertionError, 'Can not cast'):
       lazy_capture(2.0)
 
   def testDeferredCaptureReturnNestWithCompositeTensor(self):

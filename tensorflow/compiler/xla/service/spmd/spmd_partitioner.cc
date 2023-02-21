@@ -1804,8 +1804,9 @@ std::optional<HloSharding> PatternMatchPartiallyReplicateDim(
           : 1;
   CHECK_NE(target_replicated_dim, -1) << "Expected replicated dim";
   for (int i = 0; i < source.TiledDataRank(); ++i) {
-    if (source.tile_assignment().dim(i) * source_replicated_size !=
-        target.tile_assignment().dim(target_replicated_dim)) {
+    if (source.tile_assignment().dim(i) == 1 ||
+        source.tile_assignment().dim(i) * source_replicated_size !=
+            target.tile_assignment().dim(target_replicated_dim)) {
       continue;
     }
     auto replicated_sharding =
@@ -4752,7 +4753,9 @@ Status SpmdPartitioner::PreprocessSharding(
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   for (HloComputation* computation : module->computations(execution_threads)) {
     for (HloInstruction* hlo : computation->instructions()) {
-      if (hlo->HasSideEffectNoRecurse() && hlo->opcode() != HloOpcode::kRng) {
+      if (hlo->HasSideEffectNoRecurse() && hlo->opcode() != HloOpcode::kRng &&
+          (hlo->opcode() != HloOpcode::kCustomCall ||
+           GetCustomCallPartitioner(hlo->custom_call_target()) == nullptr)) {
         TF_RET_CHECK(hlo->has_sharding())
             << "Side-effect HLO must have sharding: " << hlo->ToString();
         TF_RET_CHECK(!HasReplicatedSharding(hlo->sharding()) ||

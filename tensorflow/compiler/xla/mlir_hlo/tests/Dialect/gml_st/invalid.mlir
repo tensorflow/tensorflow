@@ -48,33 +48,6 @@ func.func @tile_op_negative_static_offset(%i: index)  -> !gml_st.tile<?x8> {
 
 // -----
 
-func.func @for_loop_wrong_yield_target(
-    %arg: tensor<8xf32>, %output: tensor<f32>) -> tensor<f32> {
-  %c0 = arith.constant 0 : index
-  %c4 = arith.constant 4 : index
-  %c8 = arith.constant 8 : index
-
-  %sum = gml_st.for (%i) = (%c0) to (%c8) step (%c4)
-      outs(%out_ = %output : tensor<f32>) {
-    %arg_sub = tensor.extract_slice %arg[%i] [4] [1]
-      : tensor<8xf32> to tensor<4xf32>
-    %out_sub = tensor.extract_slice %out_[][][]
-      : tensor<f32> to tensor<f32>
-
-    %result_sub = linalg.dot
-        ins(%arg_sub, %arg_sub : tensor<4xf32>, tensor<4xf32>)
-        outs(%out_sub : tensor<f32>) -> tensor<f32>
-
-    %identity = gml_st.tile[][][] : !gml_st.tile<>
-    // expected-error@+1 {{'gml_st.set_yield' op expected output block argument 0 to match set_yield destination}}
-    gml_st.set_yield %result_sub into %output[%identity]
-      : tensor<f32> into tensor<f32>[!gml_st.tile<>]
-  } : tensor<f32>
-  func.return %sum : tensor<f32>
-}
-
-// -----
-
 func.func @yield_with_accumulator_mismatched_type(
     %arg: tensor<8xf32>, %output: tensor<f32>) -> tensor<f32> {
   %c0 = arith.constant 0 : index
@@ -98,31 +71,6 @@ func.func @yield_with_accumulator_mismatched_type(
       acc (%in, %out: memref<f32>) {
         gml_st.yield %in : memref<f32>
       }: tensor<f32> into tensor<f32>[!gml_st.tile<>]
-  } : tensor<f32>
-  func.return %sum : tensor<f32>
-}
-
-// -----
-
-func.func @for_loop_wrong_yield_operands(
-    %arg: tensor<8xf32>, %output: tensor<f32>) -> tensor<f32> {
-  %c0 = arith.constant 0 : index
-  %c4 = arith.constant 4 : index
-  %c8 = arith.constant 8 : index
-
-  %sum = gml_st.for (%i) = (%c0) to (%c8) step (%c4)
-      outs(%out_ = %output : tensor<f32>) {
-    %arg_sub = tensor.extract_slice %arg[%i] [4] [1]
-      : tensor<8xf32> to tensor<4xf32>
-    %out_sub = tensor.extract_slice %out_[][][]
-      : tensor<f32> to tensor<f32>
-
-    %result_sub = linalg.dot
-        ins(%arg_sub, %arg_sub : tensor<4xf32>, tensor<4xf32>)
-        outs(%out_sub : tensor<f32>) -> tensor<f32>
-
-    // expected-error@+1 {{'gml_st.set_yield' op expected to have at least 1 destination operand (currently 0)}}
-    gml_st.set_yield
   } : tensor<f32>
   func.return %sum : tensor<f32>
 }

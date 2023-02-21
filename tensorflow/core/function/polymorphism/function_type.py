@@ -229,6 +229,14 @@ class FunctionType(inspect.Signature):
         with_default_args[name] = default_values[name]
       else:
         with_default_args[name] = value
+
+    for arg_name in with_default_args:
+      constraint = self.parameters[arg_name].type_constraint
+      if constraint:
+        with_default_args[arg_name] = constraint._cast(  # pylint: disable=protected-access
+            with_default_args[arg_name],
+            trace_type.InternalCastContext(allow_specs=True),
+        )
     bound_arguments = inspect.BoundArguments(self, with_default_args)
     return bound_arguments
 
@@ -339,7 +347,7 @@ def sanitize_arg_name(name: str) -> str:
   Returns:
     A string that meets Python parameter conventions.
   """
-  # Lower case and replace non-alphanumeric chars with '_'
+  # Replace non-alphanumeric chars with '_'
   swapped = "".join([c if c.isalnum() else "_" for c in name])
   result = swapped if swapped[0].isalpha() else "arg_" + swapped
 

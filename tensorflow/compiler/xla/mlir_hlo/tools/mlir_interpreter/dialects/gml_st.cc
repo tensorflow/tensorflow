@@ -43,10 +43,9 @@ llvm::SmallVector<InterpreterValue> gmlStLoop(
     MutableArrayRef<InterpreterValue> args, mlir::Operation* op,
     InterpreterState& state) {
   bool isBufferized = op->getNumResults() == 0;
-  auto forOp = llvm::dyn_cast<gml_st::ForOp>(op);
-  auto parallelOp = llvm::dyn_cast<gml_st::ParallelOp>(op);
+  auto parallelOp = llvm::cast<gml_st::ParallelOp>(op);
 
-  auto terminator = forOp ? forOp.getTerminator() : parallelOp.getTerminator();
+  auto terminator = parallelOp.getTerminator();
 
   int64_t numOutputs = terminator.getDsts().size();
   assert((args.size() - numOutputs) % 3 == 0 &&
@@ -60,14 +59,8 @@ llvm::SmallVector<InterpreterValue> gmlStLoop(
   auto steps = unpackInterpreterValues<int64_t>(boundArgs.take_back(numLoops));
 
   SmallVector<InterpreterValue> outputs;
-  if (forOp) {
-    for (size_t i = args.size() - numOutputs; i < args.size(); ++i) {
-      outputs.push_back(getInitOperand(op, i, args));
-    }
-  } else {
-    for (size_t i = args.size() - numOutputs; i < args.size(); ++i) {
-      outputs.push_back(getInitOperand(op, static_cast<int64_t>(i), args));
-    }
+  for (size_t i = args.size() - numOutputs; i < args.size(); ++i) {
+    outputs.push_back(getInitOperand(op, static_cast<int64_t>(i), args));
   }
 
   SmallVector<int64_t> iterSizes;
@@ -166,7 +159,6 @@ llvm::SmallVector<InterpreterValue> materialize(
   return {out.extractElement({})};
 }
 
-REGISTER_MLIR_INTERPRETER_OP("gml_st.for", gmlStLoop);
 REGISTER_MLIR_INTERPRETER_OP("gml_st.parallel", gmlStLoop);
 REGISTER_MLIR_INTERPRETER_OP("gml_st.set_yield", noOpTerminator);
 REGISTER_MLIR_INTERPRETER_OP("gml_st.yield", noOpTerminator);

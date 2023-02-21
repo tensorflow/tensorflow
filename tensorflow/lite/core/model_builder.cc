@@ -21,7 +21,6 @@ limitations under the License.
 #include <string>
 #include <utility>
 
-#include "flatbuffers/flatbuffers.h"  // from @flatbuffers
 #include "tensorflow/lite/allocation.h"
 #include "tensorflow/lite/core/api/error_reporter.h"
 #include "tensorflow/lite/core/api/verifier.h"
@@ -95,12 +94,31 @@ std::unique_ptr<FlatBufferModel> FlatBufferModel::VerifyAndBuildFromBuffer(
                                       error_reporter);
 }
 
+void FlatBufferModel::ValidateModelBuffers(ErrorReporter* error_reporter) {
+  auto buffers = model_->buffers();
+  if (buffers && buffers->size() > 0) {
+    auto first_buffer = buffers->Get(0);
+    if (first_buffer && first_buffer->data()) {
+      if (first_buffer->data()->size() != 0) {
+        // Note the 0th entry of this array must be an empty buffer (sentinel).
+        // This is a convention so that tensors without a buffer can provide 0
+        // as their buffer.
+        TF_LITE_REPORT_ERROR(
+            error_reporter,
+            "The 0th entry of the model buffer must be an empty buffer.");
+      }
+    }
+  }
+}
+
 std::unique_ptr<FlatBufferModel> FlatBufferModel::BuildFromAllocation(
     std::unique_ptr<Allocation> allocation, ErrorReporter* error_reporter) {
   std::unique_ptr<FlatBufferModel> model(new FlatBufferModel(
       std::move(allocation), ValidateErrorReporter(error_reporter)));
   if (!model->initialized()) {
     model.reset();
+  } else {
+    model->ValidateModelBuffers(error_reporter);
   }
   return model;
 }
@@ -142,6 +160,8 @@ std::unique_ptr<FlatBufferModel> FlatBufferModel::BuildFromModel(
       new FlatBufferModel(caller_owned_model_spec, error_reporter));
   if (!model->initialized()) {
     model.reset();
+  } else {
+    model->ValidateModelBuffers(error_reporter);
   }
   return model;
 }

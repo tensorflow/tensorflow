@@ -22,6 +22,7 @@ limitations under the License.
 
 #include "absl/strings/string_view.h"
 #include "tensorflow/c/eager/c_api_experimental.h"
+#include "tensorflow/c/tf_status.h"
 
 namespace tensorflow {
 namespace dtensor {
@@ -34,8 +35,10 @@ namespace dtensor {
 // `device_name` arg should match the `device_name` argument to
 // TFE_RegisterCustomDevice, and is the name of the custom device itself
 // (e.g. pass it to `tf.device` to place operations on it from Python).
+// TODO(b/268241383): Remove the `status = nullptr` overload.
 void AllocateDTensorDevice(absl::string_view device_name,
-                           TFE_CustomDevice* device, void** device_info);
+                           TFE_CustomDevice* device, void** device_info,
+                           TF_Status* status = nullptr);
 
 // Add a mesh to the `DTensorDevice` indicated by `device_info`.
 //

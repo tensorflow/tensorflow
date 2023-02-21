@@ -1349,9 +1349,12 @@ Status MutableLiteralBase::SetFromDouble(absl::Span<const int64_t> multi_index,
 
 namespace {
 
-std::string ShapeToString(bool print_layout, const Shape& shape) {
-  return print_layout ? ShapeUtil::HumanStringWithLayout(shape)
-                      : ShapeUtil::HumanString(shape);
+void PrintShape(bool print_layout, const Shape& shape, Printer* printer) {
+  if (print_layout) {
+    ShapeUtil::PrintHumanStringWithLayout(printer, shape);
+  } else {
+    ShapeUtil::PrintHumanString(printer, shape);
+  }
 }
 
 void PrintHelper(const LiteralBase& literal, const ShapeIndex& shape_index,
@@ -1443,11 +1446,11 @@ void DenseArrayPrintHelper(const LiteralBase& literal,
       };
 
   if (print_shape) {
-    printer->Append(ShapeToString(print_layout, subshape));
+    PrintShape(print_layout, subshape, printer);
     if (subshape.is_dynamic()) {
       printer->Append("(");
       for (int64_t i = 0; i < subshape.dimensions_size(); ++i) {
-        printer->Append(StrCat(literal.GetDynamicSize(i, shape_index)));
+        printer->Append(literal.GetDynamicSize(i, shape_index));
         if (i < subshape.dimensions_size() - 1) {
           printer->Append(",");
         }
@@ -1482,7 +1485,7 @@ void PrintHelper(const LiteralBase& literal, const ShapeIndex& shape_index,
       DenseArrayPrintHelper(literal, shape_index, print_shape, print_layout,
                             oneline, printer);
     } else {
-      printer->Append(ShapeToString(print_layout, subshape));
+      PrintShape(print_layout, subshape, printer);
       printer->Append(" ");
       if (literal.IsDetermined(shape_index)) {
         printer->Append("unknown");
@@ -1492,7 +1495,6 @@ void PrintHelper(const LiteralBase& literal, const ShapeIndex& shape_index,
     }
   }
 }
-
 }  // namespace
 
 void LiteralBase::Print(Printer* printer) const {

@@ -161,7 +161,8 @@ Status ConvertGraphDefToEngine(
     const bool use_implicit_batch, bool* convert_successfully,
     TrtShapeOptimizationProfile* profiles, absl::string_view engine_name,
     bool use_explicit_precision,
-    tensorflow::grappler::Cluster* cluster = nullptr);
+    tensorflow::grappler::Cluster* cluster = nullptr,
+    const string& device = "");
 
 // Helper class for the segmenter to determine whether an output edge from the
 // TRT segment is valid.

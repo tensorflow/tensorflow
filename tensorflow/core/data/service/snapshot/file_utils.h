@@ -15,6 +15,9 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_DATA_SERVICE_SNAPSHOT_FILE_UTILS_H_
 #define TENSORFLOW_CORE_DATA_SERVICE_SNAPSHOT_FILE_UTILS_H_
 
+#include <string>
+#include <vector>
+
 #include "absl/strings/string_view.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/tsl/platform/env.h"
@@ -44,7 +47,14 @@ tsl::Status AtomicallyWriteTextProto(absl::string_view filename,
 // Atomically writes `tensor` to `filename` in TFRecord format. Overwrites
 // existing contents if the file already exists.
 tsl::Status AtomicallyWriteTFRecord(absl::string_view filename,
-                                    const Tensor& tensor, tsl::Env* env);
+                                    const Tensor& tensor,
+                                    absl::string_view compression,
+                                    tsl::Env* env);
+
+// Returns the relative paths of the children of `directory`, ignoring temporary
+// files. Returns an empty vector if the directory does not have any children.
+tsl::StatusOr<std::vector<std::string>> GetChildren(absl::string_view directory,
+                                                    tsl::Env* env);
 
 }  // namespace data
 }  // namespace tensorflow

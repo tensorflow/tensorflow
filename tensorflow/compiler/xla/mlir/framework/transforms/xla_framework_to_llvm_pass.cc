@@ -39,7 +39,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/mlir/framework/transforms/passes.h"
 
 namespace mlir {
-namespace mhlo {
+namespace xla_framework {
 namespace {
 
 // Create a memref descriptor given a pointer and memref type information.
@@ -270,5 +270,5 @@ CreateLegalizeXLAFrameworkToLLVMPass() {
   return std::make_unique<LegalizeXLAFrameworkToLLVMPass>();
 }
 
-}  // namespace mhlo
+}  // namespace xla_framework
 }  // namespace mlir

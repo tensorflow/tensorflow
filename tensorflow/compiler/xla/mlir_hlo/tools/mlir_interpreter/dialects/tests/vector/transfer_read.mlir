@@ -14,7 +14,7 @@ func.func @transfer_read_1d() -> vector<13xi32> {
 
 // CHECK-LABEL: @transfer_read_1d
 // CHECK-NEXT: Results
-// CHECK-NEXT: [2, 3, 4, -42, -42, -42, -42, -42, -42, -42, -42, -42, -42]
+// CHECK-NEXT: vector<13xi32>: [2, 3, 4, -42, -42, -42, -42, -42, -42, -42, -42, -42, -42]
 
 func.func @transfer_read_mask_1d() -> vector<13xi32> {
   %a = arith.constant dense<[0, 1, 2, 3, 4]> : memref<5xi32>
@@ -27,7 +27,7 @@ func.func @transfer_read_mask_1d() -> vector<13xi32> {
 
 // CHECK-LABEL: @transfer_read_mask_1d
 // CHECK-NEXT: Results
-// CHECK-NEXT: [-42, -42, 4, -42, -42, -42, -42, -42, -42, -42, -42, -42, -42]
+// CHECK-NEXT: vector<13xi32>: [-42, -42, 4, -42, -42, -42, -42, -42, -42, -42, -42, -42, -42]
 
 func.func @transfer_read_vector_mask() -> vector<6xi32> {
   %a = arith.constant dense<[0, 1, 2, 3, 4]> : memref<5xi32>
@@ -43,7 +43,7 @@ func.func @transfer_read_vector_mask() -> vector<6xi32> {
 
 // CHECK-LABEL: @transfer_read_vector_mask
 // CHECK-NEXT: Results
-// CHECK-NEXT: [-1, -2, 4, -42, -42, -42]
+// CHECK-NEXT: vector<6xi32>: [-1, -2, 4, -42, -42, -42]
 
 func.func @transfer_read_inbounds_4() -> vector<4xi32> {
   %a = arith.constant dense<[0, 1, 2, 0, 0]> : memref<5xi32>
@@ -57,7 +57,7 @@ func.func @transfer_read_inbounds_4() -> vector<4xi32> {
 
 // CHECK-LABEL: @transfer_read_inbounds_4
 // CHECK-NEXT: Results
-// CHECK-NEXT: [1, 2, 0, 0]
+// CHECK-NEXT: vector<4xi32>: [1, 2, 0, 0]
 
 func.func @transfer_read_mask_inbounds_4() -> vector<4xi32> {
   %a = arith.constant dense<[0, 1, 2, 0, 0]> : memref<5xi32>
@@ -71,7 +71,7 @@ func.func @transfer_read_mask_inbounds_4() -> vector<4xi32> {
 
 // CHECK-LABEL: @transfer_read_mask_inbounds_4
 // CHECK-NEXT: Results
-// CHECK-NEXT: [-42, 2, -42, 0]
+// CHECK-NEXT: vector<4xi32>: [-42, 2, -42, 0]
 
 func.func @transfer_read_2d()-> vector<2x2xi32> {
   %a = arith.constant dense<[[0, 1, 2, 3], [4, 5, 6, 7], [8, 9, 10, 11]]>
@@ -86,7 +86,7 @@ func.func @transfer_read_2d()-> vector<2x2xi32> {
 
 // CHECK-LABEL: @transfer_read_2d
 // CHECK-NEXT: Results
-// CHECK-NEXT{LITERAL}: [[4, 5], [8, 9]]
+// CHECK-NEXT{LITERAL}: vector<2x2xi32>: [[4, 5], [8, 9]]
 
 func.func @transfer_read_2d_1d()-> vector<2xi32> {
   %a = arith.constant dense<[[0, 1, 2, 3], [4, 5, 6, 7]]> : memref<2x4xi32>
@@ -100,4 +100,4 @@ func.func @transfer_read_2d_1d()-> vector<2xi32> {
 
 // CHECK-LABEL: @transfer_read_2d_1d
 // CHECK-NEXT: Results
-// CHECK-NEXT{LITERAL}: [4, 5]
+// CHECK-NEXT{LITERAL}: vector<2xi32>: [4, 5]

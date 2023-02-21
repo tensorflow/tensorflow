@@ -514,6 +514,7 @@ def build_conversion_flags(inference_type=dtypes.float32,
                            preserve_assert_op=False,
                            guarantee_all_funcs_one_use=False,
                            enable_mlir_variable_quantization=False,
+                           disable_fuse_mul_and_fc=False,
                            **_):
   """Builds protocol buffer describing a conversion of a model.
 
@@ -602,6 +603,8 @@ def build_conversion_flags(inference_type=dtypes.float32,
       is a variable freezing pass, but some variables may not be fully frozen by
       it. This flag enables quantization of those residual variables in the MLIR
       graph.
+    disable_fuse_mul_and_fc: Disable fusing input multiplication with
+      fullyconnected operations. Useful when quantizing weights.
 
   Returns:
     conversion_flags: protocol buffer describing the conversion process.
@@ -671,6 +674,7 @@ def build_conversion_flags(inference_type=dtypes.float32,
   conversion_flags.use_fake_quant_num_bits = use_fake_quant_num_bits
   conversion_flags.enable_mlir_variable_quantization = (
       enable_mlir_variable_quantization)
+  conversion_flags.disable_fuse_mul_and_fc = disable_fuse_mul_and_fc
   return conversion_flags
 
 

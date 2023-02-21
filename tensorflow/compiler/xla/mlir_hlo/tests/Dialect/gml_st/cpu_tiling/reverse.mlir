@@ -1,5 +1,5 @@
 // RUN: mlir-hlo-opt %s --split-input-file --gml-st-cpu-tiling-pipeline \
-// RUN: | FileCheck %s --dump-input=always
+// RUN: | FileCheck %s
 
 func.func @reverse_static_perfect_tiles(
   %input: tensor<64xf32>, %init: tensor<64xf32>) -> tensor<64xf32> {

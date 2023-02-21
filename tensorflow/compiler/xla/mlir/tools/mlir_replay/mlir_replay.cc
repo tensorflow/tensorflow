@@ -125,21 +125,21 @@ int main(int argc, char* argv[]) {
 
   ReplayOptions opts;
   std::vector<tsl::Flag> flag_list = {
-      tsl::Flag("hlo_snapshot", &opts.hlo_snapshot,
+      tsl::Flag("hlo-snapshot", &opts.hlo_snapshot,
                 "Filename of an HloSnapshot proto. Only used to read inputs."),
-      tsl::Flag("mlir_compilation_trace", &opts.mlir_compilation_trace,
+      tsl::Flag("mlir-compilation-trace", &opts.mlir_compilation_trace,
                 "Filename of an MlirCompilerTrace proto."),
-      tsl::Flag("mlir_compilation_trace_dir", &opts.mlir_compilation_trace_dir,
+      tsl::Flag("mlir-compilation-trace-dir", &opts.mlir_compilation_trace_dir,
                 "Directory from which to load MlirCompilerTrace and "
                 "HloSnapshot protos. The tool will run all snapshots and "
                 "report the ones with bugs."),
-      tsl::Flag("execution_trace_dir", &opts.execution_trace_dir,
+      tsl::Flag("execution-trace-dir", &opts.execution_trace_dir,
                 "Directory where to store the execution traces (optional)."),
-      tsl::Flag("entry_point", &opts.entry_point,
+      tsl::Flag("entry-point", &opts.entry_point,
                 "Program entry function (optional, defaults to 'main')."),
-      tsl::Flag("print_changes_only", &opts.print_changes_only,
+      tsl::Flag("print-changes-only", &opts.print_changes_only,
                 "If set, only print changed values"),
-      tsl::Flag("stop_after_first_failure", &opts.stop_after_first_failure,
+      tsl::Flag("stop-after-first-failure", &opts.stop_after_first_failure,
                 "If set, stop after the first failed invocation."),
   };
   xla::AppendDebugOptionsFlags(&flag_list);

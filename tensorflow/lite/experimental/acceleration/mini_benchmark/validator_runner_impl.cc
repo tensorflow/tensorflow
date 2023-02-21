@@ -23,6 +23,10 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/strings/match.h"
+#include "absl/strings/numbers.h"
+#include "absl/strings/str_join.h"
+#include "absl/strings/str_split.h"
 #include "flatbuffers/flatbuffer_builder.h"  // from @flatbuffers
 #include "tensorflow/lite/experimental/acceleration/configuration/configuration_generated.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/benchmark_result_evaluator.h"
@@ -52,6 +56,56 @@ std::unique_ptr<FlatBufferBuilder> CopyModel(
   copy->Finish(CreateModel(*copy, &model_obj));
 
   return copy;
+}
+
+// A simple holder for file descriptor that will close the file descriptor at
+// destruction time.
+class FdHolder {
+ public:
+  explicit FdHolder(int fd) : fd_(fd) {}
+
+  // Move only.
+  FdHolder(FdHolder&& other) = default;
+  FdHolder& operator=(FdHolder&& other) = default;
+
+  ~FdHolder() {
+    if (fd_ > 0) {
+      close(fd_);
+    }
+  }
+
+ private:
+  int fd_;
+};
+
+// Returns a FdHolder that will close the duped file descriptor when going out
+// of scope. If the model is passed in as a file descriptor, update the
+// model_path with a duped file descriptor. The original file descriptor may be
+// opened with FD_CLOEXEC, and cannot be read from the child process.
+std::unique_ptr<FdHolder> UpdateModelPathIfUsingFd(std::string& model_path) {
+  if (!absl::StartsWith(model_path, "fd:")) {
+    return nullptr;
+  }
+  std::vector<std::string> parts = absl::StrSplit(model_path, ':');
+  int model_fd;
+  if (!absl::SimpleAtoi(parts[1], &model_fd)) {
+    TFLITE_LOG_PROD(TFLITE_LOG_ERROR,
+                    "Failed to parse file descriptor %s from model_path %s",
+                    parts[1].c_str(), model_path.c_str());
+    return nullptr;
+  }
+  int new_fd = dup(model_fd);
+  if (new_fd < 0) {
+    TFLITE_LOG_PROD(
+        TFLITE_LOG_ERROR,
+        "Failed to dup() file descriptor. Original fd: %d errno: %d", model_fd,
+        errno);
+    return nullptr;
+  }
+
+  parts[1] = std::to_string(new_fd);
+  model_path = absl::StrJoin(parts, ":");
+  return std::make_unique<FdHolder>(new_fd);
 }
 
 }  // namespace
@@ -143,7 +197,7 @@ void ValidatorRunnerImpl::TriggerValidationAsync(
   // error_reporter is not passed in because the ownership cannot be passed to
   // the thread.
   std::thread detached_thread(
-      [model_path = fd_or_model_path_, storage_path = storage_path_,
+      [original_model_path = fd_or_model_path_, storage_path = storage_path_,
        data_directory_path = data_directory_path_,
        tflite_settings = std::move(tflite_settings),
        validation_entrypoint_name =
@@ -157,6 +211,10 @@ void ValidatorRunnerImpl::TriggerValidationAsync(
         if (!lock.TryLock()) {
           return;
         }
+
+        std::string model_path = original_model_path;
+        std::unique_ptr<FdHolder> fd_holder =
+            UpdateModelPathIfUsingFd(model_path);
         for (auto& one_setting : *tflite_settings) {
           FlatbufferStorage<BenchmarkEvent> storage(storage_path);
           TFLiteSettingsT tflite_settings_obj;

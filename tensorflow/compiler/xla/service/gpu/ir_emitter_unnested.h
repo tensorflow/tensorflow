@@ -194,6 +194,7 @@ class IrEmitterUnnested : public IrEmitter {
 #if GOOGLE_CUDA
   Status EmitCublasLtMatmulThunk(mlir::Operation* op);
   Status EmitCublasLtMatmulThunkF8(mlir::Operation* op);
+  Status EmitConvolutionReorderThunk(mlir::Operation* op);
 #endif  // GOOGLE_CUDA
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
   Status EmitCholeskyThunk(mlir::Operation* op);
@@ -202,6 +203,7 @@ class IrEmitterUnnested : public IrEmitter {
   Status EmitFftThunk(mlir::Operation* op);
   Status EmitFusion(mlir::Operation* op);
   Status EmitLaunchFunc(mlir::Operation* op);
+  Status EmitTritonCustomCall(mlir::Operation* op);
   Status EmitLoopFusion(mlir::Operation* op);
   Status EmitReduce(mlir::Operation* op);
   Status EmitSelectAndScatter(mlir::Operation* op);
@@ -531,12 +533,12 @@ class IrEmitterUnnested : public IrEmitter {
   Status EmitScatter(const ScatterDescriptor& desc,
                      const LaunchDimensions& launch_dimensions);
 
-  Status EmitTranspose021Tile(mlir::lmhlo::FusionOp fusion,
-                              HloComputation* fusion_hlo,
-                              absl::Span<const llvm_ir::IrArray> operand_arrays,
-                              absl::Span<const llvm_ir::IrArray> output_arrays,
-                              const TilingScheme& tiling_scheme,
-                              const LaunchDimensions& launch_dimensions);
+  Status EmitTransposeTile(mlir::lmhlo::FusionOp fusion,
+                           HloComputation* fusion_hlo,
+                           absl::Span<const llvm_ir::IrArray> operand_arrays,
+                           absl::Span<const llvm_ir::IrArray> output_arrays,
+                           const TilingScheme& tiling_scheme,
+                           const LaunchDimensions& launch_dimensions);
 
   Status EmitScatter(mlir::lmhlo::FusionOp fusion_op,
                      const HloComputation* fused_computation);
@@ -799,6 +801,11 @@ class IrEmitterUnnested : public IrEmitter {
       mlir::Operation::operand_range operands);
 
   GpuElementalIrEmitter elemental_emitter_;
+
+  // Cache of already compiled Triton GEMMs keyed by
+  // HLO computation fingerprint.
+  absl::flat_hash_map<std::string, std::pair<llvm::Function*, LaunchDimensions>>
+      triton_cache_;
 };
 
 }  // namespace gpu

@@ -72,6 +72,20 @@ cc_library(
 )
 
 cc_library(
+    name = "conv_reorder",
+    srcs = ["conv_reorder.cc"],
+    hdrs = ["conv_reorder.h"],
+    deps = [
+        ":support",
+        "//tensorflow/compiler/xla:xla_proto_cc",
+        "//tensorflow/compiler/xla/runtime:custom_call",
+        "//tensorflow/compiler/xla/runtime:custom_call_registry",
+        "//tensorflow/compiler/xla/runtime:executable",
+        "//tensorflow/compiler/xla/service:executable",
+    ],
+)
+
+cc_library(
     name = "custom_call",
     srcs = ["custom_call.cc"],
     hdrs = ["custom_call.h"],
@@ -99,6 +113,7 @@ cc_library(
         ":cholesky",
         ":collectives",
         ":conv",
+        ":conv_reorder",
         ":cublas_lt_matmul",
         ":custom_call",
         ":fft",

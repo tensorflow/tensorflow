@@ -18,7 +18,9 @@ limitations under the License.
 
 #include <optional>
 #include <string>
+#include <string_view>
 #include <variant>
+#include <vector>
 
 #include "absl/time/time.h"
 #include "tensorflow/compiler/xla/autotune_results.pb.h"
@@ -26,6 +28,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/service/compiler.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_conv_runner.h"
+#include "tensorflow/compiler/xla/service/gpu/gpu_serializable_autotuner.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
 #include "tensorflow/compiler/xla/stream_executor/device_memory_allocator.h"
 #include "tensorflow/compiler/xla/stream_executor/stream_executor.h"
@@ -53,25 +56,7 @@ class GpuConvAlgorithmPicker : public HloModulePass {
   static Status WriteAutotuneResults(AutotuneResults* results);
   static Status LoadAutotuneResults(const AutotuneResults& results);
 
-  struct DeviceConfig {
-    se::StreamExecutor* stream_exec;  // never null
-
-    // If the `allocator` parameter is not null, we will use it to allocate temp
-    // memory while timing the various convolution algorithms.  If it's null,
-    // we'll use the default allocator on the StreamExecutor.
-    se::DeviceMemoryAllocator* allocator;  // may be null
-  };
-
-  struct DevicelessConfig {
-    // Used as the key to search for autotune result for the device. Can be
-    // found by stream_exec->GetDeviceDescription()->model_str().
-    std::string device_description_str;
-  };
-
-  explicit GpuConvAlgorithmPicker(DeviceConfig device_config)
-      : config_(device_config) {}
-  explicit GpuConvAlgorithmPicker(DevicelessConfig deviceless_config)
-      : config_(deviceless_config) {}
+  explicit GpuConvAlgorithmPicker(AutotuningConfig config) : config_(config) {}
 
   absl::string_view name() const override {
     return "gpu-conv-algorithm-picker";
@@ -96,25 +81,56 @@ class GpuConvAlgorithmPicker : public HloModulePass {
     stream_executor::DeviceMemoryBase buffer;
   };
 
+  // Debug information about the instruction we are autotuning.
+  struct AutotuneInstructionInfo {
+    std::string instr_str;
+    std::string module_str;
+
+    explicit AutotuneInstructionInfo(const HloCustomCallInstruction* instr)
+        : instr_str(instr->ToString()),
+          module_str(instr->GetModule()->ToString()) {}
+  };
+
+  // Execution environment for autotuning. Runtime autotuning requires runtime
+  // information such as input/output buffers in order to run. It can be
+  // constructed from the autotuned instruction by FromInstruction.
+  struct AutotuneRuntimeArguments {
+    const Shape result_shape;
+    const HloModuleConfig hlo_module_config;
+    std::vector<se::DeviceMemoryBase> operand_buffers;
+    se::DeviceMemoryBase result_buffer;
+    se::RedzoneAllocator* input_output_allocator;
+    const GpuConvConfig gpu_conv_config;
+    std::string canonical_hlo;
+
+    static StatusOr<AutotuneRuntimeArguments> FromInstruction(
+        const HloCustomCallInstruction* instr,
+        se::DeviceMemoryAllocator* allocator, se::StreamExecutor* stream,
+        se::RedzoneAllocator* input_output_allocator);
+  };
+
   StatusOr<tensorflow::AutotuneResult> AutotuneOneConvRunner(
-      const GpuConvConfig& config, const HloCustomCallInstruction* instr,
-      se::DeviceMemoryAllocator* allocator,
-      se::RedzoneAllocator* input_output_allocator, se::Stream* stream,
+      se::DeviceMemoryAllocator* allocator, se::Stream* stream,
       MaybeFusedConvRunner* const runner,
-      absl::Span<const stream_executor::DeviceMemoryBase> operand_buffers,
-      stream_executor::DeviceMemoryBase result_buffer,
       std::optional<ReferenceResult>* reference_result,
-      absl::Span<const stream_executor::dnn::AlgorithmDesc> disabled_algos);
+      absl::Span<const stream_executor::dnn::AlgorithmDesc> disabled_algos,
+      std::optional<AutotuneInstructionInfo> instruction_info,
+      const AutotuneRuntimeArguments& runtime_arguments);
+
+  // Pick the best algorithm for CUDA platform.
   StatusOr<tensorflow::AutotuneResult> PickBestAlgorithmNoCacheCuda(
       const HloCustomCallInstruction* instr,
-      se::DeviceMemoryAllocator* allocator, se::Stream* stream);
+      se::DeviceMemoryAllocator* allocator, se::Stream* stream,
+      std::optional<AutotuneInstructionInfo> instruction_info,
+      const AutotuneRuntimeArguments& runtime_arguments);
 #endif
 
   StatusOr<tensorflow::AutotuneResult> PickBestAlgorithmNoCacheRocm(
       const HloCustomCallInstruction* instr,
       se::DeviceMemoryAllocator* allocator, se::Stream* stream);
 
-  std::variant<DeviceConfig, DevicelessConfig> config_;
+ private:
+  AutotuningConfig config_;
 };
 
 }  // namespace gpu

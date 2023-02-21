@@ -19,7 +19,7 @@ import weakref
 from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
-from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import gen_control_flow_ops
 from tensorflow.python.trackable import constants
 from tensorflow.python.training.saving import saveable_object
 from tensorflow.python.util import tf_contextlib
@@ -166,7 +166,7 @@ class NoRestoreSaveable(saveable_object.SaveableObject):
     super(NoRestoreSaveable, self).__init__(tensor, [spec], name)
 
   def restore(self, restored_tensors, restored_shapes):
-    return control_flow_ops.no_op()
+    return gen_control_flow_ops.no_op()
 
 
 _SlotVariableRestoration = collections.namedtuple(

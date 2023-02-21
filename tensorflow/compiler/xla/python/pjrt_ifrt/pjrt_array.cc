@@ -276,6 +276,13 @@ StatusOr<tsl::RCReference<Array>> PjRtArray::Reshard(
           break;
       }
     } else {
+      if (new_sharding->devices()[i]->client() == nullptr) {
+        return InvalidArgument(
+            "The destination device is owned by a non-PjRt-compatible client. "
+            "To use this Array on the destination device, the Array must be "
+            "first fetched to the host and then sent to the destination "
+            "device.");
+      }
       TF_ASSIGN_OR_RETURN(
           std::unique_ptr<xla::PjRtBuffer> copied_buffer,
           pjrt_buffers_[i]->CopyToDevice(new_sharding->devices()[i]));

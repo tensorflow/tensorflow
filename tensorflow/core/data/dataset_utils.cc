@@ -96,6 +96,7 @@ constexpr char kSlackOpt[] = "slack";
 constexpr char kSlackPeriodOpt[] = "slack_period";
 constexpr char kMakeDeterministicOpt[] = "make_deterministic";
 constexpr char kFilterParallelizationOpt[] = "filter_parallelization";
+constexpr char kWarmStartOpt[] = "warm_start";
 
 void DefaultOptimizationGraphRewrites(
     const Options& options, absl::flat_hash_set<tstring>* optimization_enabled,
@@ -211,6 +212,14 @@ void DefaultOptimizationGraphRewrites(
       optimization_enabled->insert(kInjectPrefetchOpt);
     } else {
       optimization_disabled->insert(kInjectPrefetchOpt);
+    }
+  }
+  if (optimization_options.optional_warm_start_case() ==
+      OptimizationOptions::kWarmStart) {
+    if (optimization_options.warm_start()) {
+      optimization_enabled->insert(kWarmStartOpt);
+    } else {
+      optimization_disabled->insert(kWarmStartOpt);
     }
   }
 }
@@ -943,7 +952,7 @@ bool IndependentHostTasks(int64_t task_id) { return (task_id & 0x2) == 0x2; }
 REGISTER_DATASET_EXPERIMENT("allow_small_function_optimizations",
                             RandomJobSamplePercentage<0>, AllTasks);
 REGISTER_DATASET_EXPERIMENT("autotune_buffer_optimization",
-                            RandomJobSamplePercentage<0>, AllTasks);
+                            RandomJobSamplePercentage<10>, AllTasks);
 REGISTER_DATASET_EXPERIMENT(kFilterParallelizationOpt,
                             RandomJobSamplePercentage<0>, AllTasks);
 REGISTER_DATASET_EXPERIMENT("min_outer_interleave_parallelism",
@@ -954,6 +963,9 @@ REGISTER_DATASET_EXPERIMENT("serialize_input_cycle_length",
                             RandomJobSamplePercentage<0>, AllTasks);
 REGISTER_DATASET_EXPERIMENT("stage_based_autotune",
                             RandomJobSamplePercentage<0>, IndependentHostTasks);
+REGISTER_DATASET_EXPERIMENT("stage_based_autotune_v2",
+                            RandomJobSamplePercentage<10>,
+                            IndependentHostTasks);
 }  // namespace
 }  // namespace data
 }  // namespace tensorflow

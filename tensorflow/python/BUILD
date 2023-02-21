@@ -47,6 +47,7 @@ visibility = [
     "//third_party/py/tensorflow_numerics:__subpackages__",
     "//third_party/py/tensorflow_privacy:__subpackages__",
     "//third_party/reverb:__subpackages__",
+    "//tensorflow_minigo:__subpackages__",
     "//research/graph/fairness/inproc_fair_reg:__subpackages__",
 ]
 
@@ -125,6 +126,7 @@ py_library(
         ":_pywrap_quantize_training",
         ":_pywrap_utils",
         ":array_ops",
+        ":array_ops_stack",
         ":audio_ops_gen",
         ":bincount_ops",
         ":bitwise_ops",
@@ -178,9 +180,6 @@ py_library(
         ":weights_broadcast_ops",
         ":while_v2",
         "//tensorflow/core:protos_all_py",
-        "//tensorflow/lite/python:analyzer",
-        "//tensorflow/lite/python:lite",
-        "//tensorflow/lite/python/authoring",
         "//tensorflow/python/client",
         "//tensorflow/python/client:_pywrap_events_writer",
         "//tensorflow/python/client:pywrap_tf_session",
@@ -612,6 +611,7 @@ tf_gen_op_wrapper_private_py(
     name = "control_flow_ops_gen",
     visibility = [
         "//learning/brain/python/ops:__pkg__",
+        "//tensorflow:__subpackages__",
         "//tensorflow/python/kernel_tests:__pkg__",
         "//tensorflow/python/kernel_tests/control_flow:__pkg__",
     ],
@@ -1060,8 +1060,10 @@ py_library(
     visibility = visibility,
     deps = [
         ":array_ops_gen",
+        ":array_ops_stack",
         ":control_flow_util",
         ":math_ops_gen",
+        ":shape_util",
         "//tensorflow/python/compat",
         "//tensorflow/python/framework:common_shapes",
         "//tensorflow/python/framework:config",
@@ -1074,6 +1076,17 @@ py_library(
         "//tensorflow/python/framework:tensor_util",
         "//tensorflow/python/util",
         "//third_party/py/numpy",
+    ],
+)
+
+py_library(
+    name = "array_ops_stack",
+    srcs = ["ops/array_ops_stack.py"],
+    srcs_version = "PY3",
+    deps = [
+        ":array_ops_gen",
+        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/util",
     ],
 )
 
@@ -1468,6 +1481,7 @@ py_library(
         ":list_ops",
         ":map_ops",
         ":tensor_array_ops",
+        "//tensorflow/core/function/capture:capture_container",
         "//tensorflow/python/client:pywrap_tf_session",
         "//tensorflow/python/eager:function",
         "//tensorflow/python/framework:auto_control_deps_utils",
@@ -1661,7 +1675,7 @@ py_library(
         ":control_flow_state",
         ":control_flow_util",
         ":default_gradient",
-        ":functional_ops",
+        ":functional_ops_gen",
         ":math_ops",
         ":platform",
         ":resource_variable_ops",
@@ -2025,6 +2039,7 @@ py_library(
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:tensor_conversion_registry",
         "//tensorflow/python/framework:tensor_shape",
+        "//tensorflow/python/saved_model:nested_structure_coder",
         "//tensorflow/python/util",
     ],
 )
@@ -2201,6 +2216,7 @@ py_library(
         ":control_flow_ops",
         ":math_ops",
         ":random_ops_gen",
+        ":shape_util",
         ":stateless_random_ops",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:ops",
@@ -2232,6 +2248,7 @@ py_library(
         ":array_ops",
         ":math_ops",
         ":random_index_shuffle_ops_gen",
+        ":shape_util",
         ":stateless_random_ops_gen",
         ":stateless_random_ops_v2_gen",
         "//tensorflow/python/framework:dtypes",
@@ -2306,6 +2323,19 @@ py_library(
         ":data_flow_ops_gen",
         "//tensorflow/python/framework:for_generated_wrappers",
         "//tensorflow/python/util",
+    ],
+)
+
+py_library(
+    name = "shape_util",
+    srcs = ["ops/shape_util.py"],
+    srcs_version = "PY3",
+    deps = [
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/framework:tensor_shape",
+        "//tensorflow/python/framework:tensor_util",
     ],
 )
 
@@ -2660,6 +2690,7 @@ py_library(
         ":list_ops",
         ":math_ops",
         ":tf2",
+        "//tensorflow/core:protos_all_py",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:dtypes",
@@ -2668,6 +2699,7 @@ py_library(
         "//tensorflow/python/framework:tensor_shape",
         "//tensorflow/python/framework:tensor_util",
         "//tensorflow/python/framework:type_spec_registry",
+        "//tensorflow/python/saved_model:nested_structure_coder",
         "//tensorflow/python/util:tf_should_use",
     ],
 )
@@ -2756,9 +2788,11 @@ cuda_py_test(
     tags = ["no_windows"],
     deps = [
         ":bitwise_ops",
+        ":bitwise_ops_gen",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:test_lib",
+        "//tensorflow/python/platform:test",
     ],
 )
 
@@ -4292,6 +4326,7 @@ tf_python_pybind_extension(
         "//tensorflow/python/lib/core:pybind11_status_headers",
         "//third_party/python_runtime:headers",  # buildcleaner: keep
         "@pybind11",
+        "@pybind11_abseil//pybind11_abseil:absl_casters",
     ],
 )
 

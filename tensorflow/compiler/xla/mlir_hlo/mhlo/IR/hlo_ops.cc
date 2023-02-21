@@ -232,45 +232,6 @@ static void replaceOpWithRegion(PatternRewriter& rewriter, Operation* op,
 
 #include "mhlo/IR/mhlo_canonicalize.inc"
 
-// Common shape function helper for RngNormal and RngUniform.
-static LogicalResult rngInferReturnTypeComponents(
-    MLIRContext* context, Optional<Location> location, ValueRange operands,
-    DictionaryAttr attributes, RegionRange regions,
-    SmallVectorImpl<ShapedTypeComponents>& inferredReturnShapes) {
-  if (operands.size() != 3)
-    return emitOptionalError(location, "expected 3 operands");
-
-  SmallVector<int64_t> shapeVector;
-  Value shapeOperand = operands[2];
-  auto shapeOperandType = shapeOperand.getType().cast<ShapedType>();
-  Type elementType = getElementTypeOrSelf(operands[1]);
-
-  // Operand `shape` (1D by ODS) may be a constant or not, if `shape` is:
-  // 1, not constant and have dynimic dim (tensor<?x>): infer tensor<*x>.
-  // 2. not constant nor dynimic (e.g. tensor<3xi64>): infer tensor<?x?x?x>.
-  // 3. constant (e.g. dense<[2, 3, 5]>): infer tensor<2x3x5x>.
-
-  // Match to check whether the `shape` operand is a constant.
-  DenseIntElementsAttr shape;
-  if (!matchPattern(shapeOperand, m_Constant(&shape))) {
-    int size = shapeOperandType.getDimSize(0);
-    if (hlo::isDynamicDimSize(size)) {
-      inferredReturnShapes.emplace_back(elementType);
-      return success();
-    }
-    shapeVector.resize(size, ShapedType::kDynamic);
-    inferredReturnShapes.emplace_back(shapeVector, elementType);
-    return success();
-  }
-
-  // `shape` operand is a constant.
-  shapeVector.reserve(shape.size());
-  for (const APInt& fp : shape.getValues<APInt>())
-    shapeVector.push_back(fp.getSExtValue());
-  inferredReturnShapes.emplace_back(shapeVector, elementType);
-  return success();
-}
-
 // Returns a new scalar integer value having type `type`. Here `type` must be
 // an integer or index type.
 Value maybeCastTo(OpBuilder& b, Location loc, Value value, Type type) {
@@ -976,6 +937,9 @@ LogicalResult DotGeneralOp::verify() {
 }
 
 namespace {
+
+constexpr char kFrontendAttributesAttr[] = "mhlo.frontend_attributes";
+
 // Handle the generic case of DotGeneral and convert to a regulat DotOp.
 struct DotGeneralToDot : public OpRewritePattern<DotGeneralOp> {
   using OpRewritePattern<DotGeneralOp>::OpRewritePattern;
@@ -1016,9 +980,14 @@ struct DotGeneralToDot : public OpRewritePattern<DotGeneralOp> {
           dot, "lhs must contract the last dimension");
     }
 
-    rewriter.replaceOpWithNewOp<mhlo::DotOp>(
+    DictionaryAttr frontendAttributes =
+        dot->getAttrOfType<DictionaryAttr>(kFrontendAttributesAttr);
+    auto newDotOp = rewriter.replaceOpWithNewOp<mhlo::DotOp>(
         dot, dot.getType(), lhs, rhs,
         dot.getPrecisionConfig().value_or(nullptr));
+    if (frontendAttributes) {
+      newDotOp->setAttr(kFrontendAttributesAttr, frontendAttributes);
+    }
 
     return success();
   }
@@ -1403,40 +1372,6 @@ OpFoldResult IotaOp::fold(FoldAdaptor /*adaptor*/) {
 // DynamicIotaOp
 //===----------------------------------------------------------------------===//
 
-// Does the same as PatternRewriter::replaceOpWithNewOp, but with a twist.
-//
-// Sometimes, we want to replace an op with a new op and simultaneously refine
-// the result type from a dynamically-shaped type to a statically-shaped type.
-// (Search for usages of this function for examples).
-//
-// Oftentimes, this works just fine because MHLO is designed to accommodate
-// this kind of type refinements. But sometimes, this doesn't work - when
-// the op is used outside of the MHLO dialect (e.g. in func.return). In these
-// cases, we insert a tensor.cast to smooth things out.
-template <typename OpTy, typename... Args>
-OpTy refineOpWithNewOp(PatternRewriter& rewriter, Operation* op,
-                       Args&&... args) {
-  auto newOp = rewriter.create<OpTy>(op->getLoc(), std::forward<Args>(args)...);
-
-  llvm::SmallVector<Value> replacementResults;
-  assert(op->getNumResults() == newOp->getNumResults() &&
-         "replacement op doesn't match results of original op");
-  for (auto [opResult, newOpResult] :
-       llvm::zip(op->getResults(), newOp->getResults())) {
-    Value replacementResult = newOpResult;
-    if (llvm::any_of(opResult.getUsers(), [&](Operation* user) {
-          return user->getDialect() != op->getDialect();
-        })) {
-      replacementResult = rewriter.create<tensor::CastOp>(
-          op->getLoc(), opResult.getType(), newOpResult);
-    }
-    replacementResults.push_back(replacementResult);
-  }
-
-  rewriter.replaceOp(op, replacementResults);
-  return newOp;
-}
-
 namespace {
 
 struct DynamicIotaIsStatic : public OpRewritePattern<DynamicIotaOp> {
@@ -1452,22 +1387,7 @@ struct DynamicIotaIsStatic : public OpRewritePattern<DynamicIotaOp> {
       return success();
     }
 
-    // Output shape is constant, compute result type with static shape, then
-    // replace with iota.
-    DenseIntElementsAttr outputShapeAttr;
-    if (matchPattern(iota.getOutputShape(), m_Constant(&outputShapeAttr))) {
-      SmallVector<int64_t> outputShape;
-      for (APInt dim : outputShapeAttr.getValues<APInt>()) {
-        outputShape.push_back(dim.getSExtValue());
-      }
-      resultTy = RankedTensorType::get(outputShape, resultTy.getElementType());
-      refineOpWithNewOp<IotaOp>(rewriter, iota, resultTy,
-                                iota.getIotaDimension());
-      return success();
-    }
-
-    return rewriter.notifyMatchFailure(
-        iota, "requires static shape or constant output shape");
+    return rewriter.notifyMatchFailure(iota, "requires output static shape");
   }
 };
 
@@ -2417,6 +2337,40 @@ LogicalResult DynamicBroadcastInDimOp::verify() {
 }
 
 namespace {
+// Does the same as PatternRewriter::replaceOpWithNewOp, but with a twist.
+//
+// Sometimes, we want to replace an op with a new op and simultaneously refine
+// the result type from a dynamically-shaped type to a statically-shaped type.
+// (Search for usages of this function for examples).
+//
+// Oftentimes, this works just fine because MHLO is designed to accommodate
+// this kind of type refinements. But sometimes, this doesn't work - when
+// the op is used outside of the MHLO dialect (e.g. in func.return). In these
+// cases, we insert a tensor.cast to smooth things out.
+template <typename OpTy, typename... Args>
+OpTy refineOpWithNewOp(PatternRewriter& rewriter, Operation* op,
+                       Args&&... args) {
+  auto newOp = rewriter.create<OpTy>(op->getLoc(), std::forward<Args>(args)...);
+
+  llvm::SmallVector<Value> replacementResults;
+  assert(op->getNumResults() == newOp->getNumResults() &&
+         "replacement op doesn't match results of original op");
+  for (auto [opResult, newOpResult] :
+       llvm::zip(op->getResults(), newOp->getResults())) {
+    Value replacementResult = newOpResult;
+    if (llvm::any_of(opResult.getUsers(), [&](Operation* user) {
+          return user->getDialect() != op->getDialect();
+        })) {
+      replacementResult = rewriter.create<tensor::CastOp>(
+          op->getLoc(), opResult.getType(), newOpResult);
+    }
+    replacementResults.push_back(replacementResult);
+  }
+
+  rewriter.replaceOp(op, replacementResults);
+  return newOp;
+}
+
 // If a DynamicBroadCastInDimOp is not actually dynamic, use an ordinary
 // BroadcastInDimOp.
 class DynamicBroadcastInDimOpNotActuallyDynamic
@@ -2691,7 +2645,7 @@ LogicalResult ConcatenateOp::inferReturnTypes(
     DictionaryAttr attributes, RegionRange regions,
     SmallVectorImpl<Type>& inferredReturnTypes) {
   ConcatenateOp::Adaptor adaptor(operands, attributes, regions);
-  return hlo::inferConcatenateOp(location, adaptor.getVal(),
+  return hlo::inferConcatenateOp(location, adaptor.getVal().getTypes(),
                                  adaptor.getDimension(), inferredReturnTypes);
 }
 
@@ -3005,9 +2959,10 @@ LogicalResult DynamicSliceOp::inferReturnTypeComponents(
     DictionaryAttr attributes, RegionRange regions,
     SmallVectorImpl<ShapedTypeComponents>& inferredReturnShapes) {
   DynamicSliceOp::Adaptor adaptor(operands, attributes, regions);
-  return hlo::inferDynamicSliceOp(
-      location, adaptor.getOperand(), adaptor.getStartIndices(),
-      adaptor.getSliceSizes(), inferredReturnShapes);
+  return hlo::inferDynamicSliceOp(location, adaptor.getOperand().getType(),
+                                  adaptor.getStartIndices().getTypes(),
+                                  adaptor.getSliceSizes(),
+                                  inferredReturnShapes);
 }
 
 //===----------------------------------------------------------------------===//
@@ -3822,9 +3777,9 @@ LogicalResult ReduceOp::inferReturnTypeComponents(
     DictionaryAttr attributes, RegionRange regions,
     SmallVectorImpl<ShapedTypeComponents>& inferredReturnShapes) {
   ReduceOp::Adaptor adaptor(operands, attributes, regions);
-  return hlo::inferReduceOp(location, adaptor.getInputs(),
-                            adaptor.getInitValues(), adaptor.getDimensions(),
-                            inferredReturnShapes);
+  return hlo::inferReduceOp(location, adaptor.getInputs().getTypes(),
+                            adaptor.getInitValues().getTypes(),
+                            adaptor.getDimensions(), inferredReturnShapes);
 }
 
 LogicalResult ReduceOp::verify() {
@@ -3884,9 +3839,43 @@ struct LowerBoolSplatConstantsIntoRegion : public OpRewritePattern<ReduceOp> {
   }
 };
 
+static LogicalResult convertEmptyReduces(ReduceOp op,
+                                         PatternRewriter& rewriter) {
+  // We require all reduce shapes to be the same, up to the element types, so we
+  // can just the first operand and the first result as a representative.
+  RankedTensorType t =
+      dyn_cast<RankedTensorType>(op.getInputs().getType().front());
+  if (!t)
+    return rewriter.notifyMatchFailure(op.getLoc(),
+                                       "unranked input unsupported");
+  bool zeroExtent = any_of(t.getShape(), [](int64_t d) { return d == 0; });
+  if (zeroExtent) {
+    auto empty = rewriter.getI64TensorAttr({});
+    if (t.hasStaticShape()) {
+      for (auto [init, out] : llvm::zip(op.getInitValues(), op.getResults())) {
+        out.replaceAllUsesWith(rewriter.create<BroadcastInDimOp>(
+            op.getLoc(), out.getType(), init, empty));
+      }
+      return success();
+    }
+
+    SmallVector<Value, 4> shapes;
+    if (failed(op.reifyReturnTypeShapes(rewriter, op.getOperands(), shapes)))
+      return failure();
+    for (auto [init, shape, out] :
+         llvm::zip(op.getInitValues(), shapes, op.getResults())) {
+      out.replaceAllUsesWith(rewriter.create<DynamicBroadcastInDimOp>(
+          op.getLoc(), out.getType(), init, shape, empty));
+    }
+    return success();
+  }
+  return rewriter.notifyMatchFailure(op.getLoc(), "non-empty input");
+}
+
 void ReduceOp::getCanonicalizationPatterns(RewritePatternSet& results,
                                            MLIRContext* context) {
   results.add<LowerBoolSplatConstantsIntoRegion>(context);
+  results.add(convertEmptyReduces);
 }
 
 LogicalResult ReduceOp::reifyReturnTypeShapes(
@@ -3945,17 +3934,6 @@ LogicalResult OptimizationBarrierOp::inferReturnTypes(
 }
 
 //===----------------------------------------------------------------------===//
-// ReturnOp
-//===----------------------------------------------------------------------===//
-LogicalResult ReturnOp::inferReturnTypes(
-    MLIRContext*, Optional<Location> location, ValueRange operands,
-    DictionaryAttr attributes, RegionRange,
-    SmallVectorImpl<Type>& inferredReturnTypes) {
-  ReturnOp::Adaptor adaptor(operands, attributes);
-  return hlo::inferReturnOp(location, inferredReturnTypes);
-}
-
-//===----------------------------------------------------------------------===//
 // ReverseOp
 //===----------------------------------------------------------------------===//
 LogicalResult ReverseOp::verify() {
@@ -3976,17 +3954,15 @@ LogicalResult RngBitGeneratorOp::verify() {
 // RngOp
 //===----------------------------------------------------------------------===//
 
-LogicalResult RngOp::verify() {
-  return hlo::verifyRngOp(getLoc(), getA(), getB(),
-                          getRngDistribution() == RngDistribution::UNIFORM);
-}
-
 LogicalResult RngOp::inferReturnTypeComponents(
     MLIRContext* context, Optional<Location> location, ValueShapeRange operands,
     DictionaryAttr attributes, RegionRange regions,
     SmallVectorImpl<ShapedTypeComponents>& inferredReturnShapes) {
-  return rngInferReturnTypeComponents(context, location, operands, attributes,
-                                      regions, inferredReturnShapes);
+  RngOp::Adaptor adaptor(operands, attributes, regions);
+  return hlo::inferRngOp(
+      location, adaptor.getA(), adaptor.getB(), adaptor.getShape(),
+      adaptor.getRngDistribution() == RngDistribution::UNIFORM,
+      inferredReturnShapes);
 }
 
 LogicalResult RngOp::reifyReturnTypeShapes(
@@ -4551,7 +4527,8 @@ LogicalResult IfOp::inferReturnTypes(
     DictionaryAttr attributes, RegionRange regions,
     SmallVectorImpl<Type>& inferredReturnTypes) {
   IfOp::Adaptor adaptor(operands, attributes, regions);
-  return hlo::inferIfOp(location, adaptor.getRegions(), inferredReturnTypes);
+  return hlo::inferIfOp(location, adaptor.getPred(), adaptor.getRegions(),
+                        inferredReturnTypes);
 }
 
 static LogicalResult inlineIfConstantCondition(IfOp ifOp,
@@ -4581,7 +4558,8 @@ LogicalResult CaseOp::inferReturnTypes(
     DictionaryAttr attributes, RegionRange regions,
     SmallVectorImpl<Type>& inferredReturnTypes) {
   CaseOp::Adaptor adaptor(operands, attributes, regions);
-  return hlo::inferCaseOp(location, adaptor.getRegions(), inferredReturnTypes);
+  return hlo::inferCaseOp(location, adaptor.getIndex(), adaptor.getRegions(),
+                          inferredReturnTypes);
 }
 
 static LogicalResult inlineCaseConstantCondition(CaseOp caseOp,
@@ -4996,21 +4974,21 @@ OpFoldResult AndOp::fold(FoldAdaptor adaptor) {
   auto rhsVal = operands[1].dyn_cast_or_null<DenseElementsAttr>();
 
   if (lhsVal && lhsVal.isSplat()) {
-    if (lhsVal.getSplatValue<IntegerAttr>().getValue().isAllOnesValue()) {
+    if (lhsVal.getSplatValue<IntegerAttr>().getValue().isAllOnes()) {
       return getRhs();
     }
 
-    if (lhsVal.getSplatValue<IntegerAttr>().getValue().isNullValue()) {
+    if (lhsVal.getSplatValue<IntegerAttr>().getValue().isZero()) {
       return lhsVal;
     }
   }
 
   if (rhsVal && rhsVal.isSplat()) {
-    if (rhsVal.getSplatValue<IntegerAttr>().getValue().isAllOnesValue()) {
+    if (rhsVal.getSplatValue<IntegerAttr>().getValue().isAllOnes()) {
       return getLhs();
     }
 
-    if (rhsVal.getSplatValue<IntegerAttr>().getValue().isNullValue()) {
+    if (rhsVal.getSplatValue<IntegerAttr>().getValue().isZero()) {
       return rhsVal;
     }
   }
@@ -5028,21 +5006,21 @@ OpFoldResult OrOp::fold(FoldAdaptor adaptor) {
   auto rhsVal = operands[1].dyn_cast_or_null<DenseElementsAttr>();
 
   if (lhsVal && lhsVal.isSplat()) {
-    if (lhsVal.getSplatValue<IntegerAttr>().getValue().isAllOnesValue()) {
+    if (lhsVal.getSplatValue<IntegerAttr>().getValue().isAllOnes()) {
       return lhsVal;
     }
 
-    if (lhsVal.getSplatValue<IntegerAttr>().getValue().isNullValue()) {
+    if (lhsVal.getSplatValue<IntegerAttr>().getValue().isZero()) {
       return getRhs();
     }
   }
 
   if (rhsVal && rhsVal.isSplat()) {
-    if (rhsVal.getSplatValue<IntegerAttr>().getValue().isAllOnesValue()) {
+    if (rhsVal.getSplatValue<IntegerAttr>().getValue().isAllOnes()) {
       return rhsVal;
     }
 
-    if (rhsVal.getSplatValue<IntegerAttr>().getValue().isNullValue()) {
+    if (rhsVal.getSplatValue<IntegerAttr>().getValue().isZero()) {
       return getLhs();
     }
   }
@@ -5065,13 +5043,13 @@ OpFoldResult XorOp::fold(FoldAdaptor adaptor) {
   auto rhsVal = operands[1].dyn_cast_or_null<DenseElementsAttr>();
 
   if (lhsVal && lhsVal.isSplat()) {
-    if (lhsVal.getSplatValue<IntegerAttr>().getValue().isNullValue()) {
+    if (lhsVal.getSplatValue<IntegerAttr>().getValue().isZero()) {
       return getRhs();
     }
   }
 
   if (rhsVal && rhsVal.isSplat()) {
-    if (rhsVal.getSplatValue<IntegerAttr>().getValue().isNullValue()) {
+    if (rhsVal.getSplatValue<IntegerAttr>().getValue().isZero()) {
       return getLhs();
     }
   }
@@ -5145,7 +5123,7 @@ LogicalResult SliceOp::inferReturnTypes(
     DictionaryAttr attributes, RegionRange /*regions*/,
     SmallVectorImpl<Type>& inferredReturnTypes) {
   SliceOpAdaptor adaptor(operands, attributes);
-  return hlo::inferSliceOp(location, adaptor.getOperand(),
+  return hlo::inferSliceOp(location, adaptor.getOperand().getType(),
                            adaptor.getStartIndices(), adaptor.getLimitIndices(),
                            adaptor.getStrides(), inferredReturnTypes);
 }

@@ -405,10 +405,11 @@ class VariableHolder {
                                                const TfLiteTensor* tensor,
                                                TfLiteContext* logging_context) {
     if (tensor->type != kTfLiteFloat32) {
-      TF_LITE_KERNEL_LOG(logging_context,
-                         "failed to associate variable tensors with tensor %d: "
-                         "only kTfLiteFloat32 variable tensors are supported",
-                         local_id);
+      TF_LITE_MAYBE_KERNEL_LOG(
+          logging_context,
+          "failed to associate variable tensors with tensor %d: "
+          "only kTfLiteFloat32 variable tensors are supported",
+          local_id);
       return kTfLiteError;
     }
     const uint32_t global_id = GetGlobalId(local_id);
@@ -420,19 +421,19 @@ class VariableHolder {
       // Not inserted.
       if (it.first->second.type != tensor->type) {
         // Make sure that existing type matches.
-        TF_LITE_KERNEL_LOG(logging_context,
-                           "mismatch between existing type of "
-                           "variable tensor id %d: expected %d, got %d",
-                           local_id, tensor->type, it.first->second.type);
+        TF_LITE_MAYBE_KERNEL_LOG(logging_context,
+                                 "mismatch between existing type of "
+                                 "variable tensor id %d: expected %d, got %d",
+                                 local_id, tensor->type, it.first->second.type);
         return kTfLiteError;
       }
       auto const& dims = it.first->second.dims;
       for (size_t i = 0; i < dims.size(); i++) {
         if (dims[i] != tensor->dims->data[i]) {
-          TF_LITE_KERNEL_LOG(logging_context,
-                             "mismatch between dimension %d of "
-                             "variable tensor id %d: expected %d, got %d",
-                             i, local_id, dims[i], tensor->dims->data[i]);
+          TF_LITE_MAYBE_KERNEL_LOG(logging_context,
+                                   "mismatch between dimension %d of "
+                                   "variable tensor id %d: expected %d, got %d",
+                                   i, local_id, dims[i], tensor->dims->data[i]);
           return kTfLiteError;
         }
       }

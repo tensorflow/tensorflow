@@ -404,12 +404,10 @@ class TracingCompiler:
           captures = graph_capture_container.get_by_ref_snapshot()
 
           # Create a cache_key with args and captures
-          traced_func_deletion_observer = lookup_func_context.deletion_observer
           traced_func_type = _insert_capture_type(
               target_func_type, captures, lookup_func_context)
 
           self._function_cache.add(current_func_context, traced_func_type,
-                                   traced_func_deletion_observer,
                                    concrete_function)
 
           return concrete_function, filtered_flat_args

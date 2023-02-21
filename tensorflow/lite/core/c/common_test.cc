@@ -364,7 +364,8 @@ TEST(TestTensorRealloc, TensorReallocLargeBytesFails) {
   tensor->dims_signature = TfLiteIntArrayCopy(dims);
   tensor->quantization.type = kTfLiteNoQuantization;
 
-  const size_t large_bytes = std::numeric_limits<size_t>::max();
+  const size_t large_bytes = std::numeric_limits<size_t>::max() - 16;
+  // Subtract 16 to account for adding 16 for XNN_EXTRA_BYTES
   EXPECT_EQ(TfLiteTensorRealloc(large_bytes, tensor), kTfLiteError);
 
   TfLiteTensorFree(tensor);
@@ -397,13 +398,10 @@ TEST(TestTfLiteOpaqueDelegate,
   auto* opaque_delegate =
       reinterpret_cast<TfLiteOpaqueDelegate*>(&non_opaque_delegate);
 
-  // The accessor returns 'nullptr', because the 'data' field inside the opaque
-  // delegate builder was not set.  Note that we deliberately don't fall back
-  // to returning the 'TfLiteDelegate's 'data_' field.  The fact that the
-  // 'TfLiteDelegate' is the internal representation of the
-  // 'TfLiteOpaqueDelegate' is an implementation detail that could
-  // theoretically change in the future.
-  EXPECT_EQ(nullptr, TfLiteOpaqueDelegateGetData(opaque_delegate));
+  // The accessor returns '&delegate_data', because the
+  // 'opaque_delegate_builder' field inside the delegate was not set so it falls
+  // back to returning the data_ field of TfLiteDelegate.
+  EXPECT_EQ(&delegate_data, TfLiteOpaqueDelegateGetData(opaque_delegate));
 }
 
 TEST(TestTfLiteOpaqueDelegate, GetData_NoDataSetViaOpaqueDelegateBuilder) {

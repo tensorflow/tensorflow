@@ -15,6 +15,5 @@
 # proto-file: third_party/tensorflow/lite/tools/benchmark/experimental/delegate_performance/android/proto/delegate_performance.proto
 # proto-message: LatencyCriteria
 
-initialization_max_regression_percentage_allowed: 5  # 5%
-average_warm_up_max_regression_percentage_allowed: 5  # 5%
+startup_overhead_max_regression_percentage_allowed: 5  # 5%
 average_inference_max_regression_percentage_allowed: 5  # 5%

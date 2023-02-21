@@ -405,6 +405,12 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
       instr = new_add;
     }
 
+    // Do not fuse broadcast unless we can fuse its input, as it will cause
+    // broadcast materialization.
+    auto is_not_broadcast = [](const HloInstruction *instr) {
+      return instr->opcode() != HloOpcode::kBroadcast;
+    };
+
     // add(bitcast(gemm(a, b)), bias) ->
     //   bitcast(add(gemm(a, b), bitcast(bias))) ->
     //   bitcast(gemm(a, b, bitcast(bias))) (later down in this function).
@@ -420,7 +426,7 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
               m::AddAnyOrder(
                   m::Bitcast(GemmOrCublasLtMatmul(&existing_gemm).WithOneUser())
                       .WithOneUser(),
-                  m::Op(&bias)))) {
+                  m::Op(&bias).WithPredicate(is_not_broadcast)))) {
       HloInstruction *new_bitcast =
           MakeBitcastHlo(bias, existing_gemm->shape(), &bias->metadata());
       TF_ASSIGN_OR_RETURN(HloInstruction * new_add,
@@ -435,7 +441,7 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
 
     if (Match(instr,
               m::AddAnyOrder(GemmOrCublasLtMatmul(&existing_gemm).WithOneUser(),
-                             m::Op(&bias)))) {
+                             m::Op(&bias).WithPredicate(is_not_broadcast)))) {
       return FuseMatrixBiasAdd(instr, bias, existing_gemm);
     }
 
@@ -1089,7 +1095,9 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     TF_ASSIGN_OR_RETURN(const se::blas::DataType output_dtype,
                         AsBlasDataType(instr->shape().element_type()));
     TF_ASSIGN_OR_RETURN(const se::blas::ComputationType compute_type,
-                        GetBlasComputationType(instr->shape().element_type()));
+                        GetBlasComputationType(
+                            instr->shape().element_type(),
+                            stream_executor::blas::kDefaultComputePrecision));
     se::blas::DataType scale_type =
         cublas_lt::GetScaleType(output_dtype, compute_type);
 
@@ -1317,6 +1325,10 @@ StatusOr<bool> GemmRewriter::Run(
   bool changed = false;
   for (HloComputation *computation :
        module->MakeNonfusionComputations(execution_threads)) {
+    if (computation->IsCustomCallComputation() &&
+        IsTritonCustomCall(*computation->CustomCallInstruction())) {
+      continue;
+    }
     TF_ASSIGN_OR_RETURN(
         bool result, RunOnComputation(computation, cuda_compute_capability_));
     changed |= result;

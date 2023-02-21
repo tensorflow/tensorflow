@@ -1085,7 +1085,13 @@ def _fallback_converter(pfor_input, root_cause="", warn=False):
   else:
     logging.debug(msg)
   output_dtypes = [x.dtype for x in pfor_input.outputs]
-  iters = pfor_input.pfor.loop_len_vector[0]
+  iter_vec = pfor_input.pfor.loop_len_vector
+  # Use constant value if available, so that output shapes are static.
+  iter_vec_value = tensor_util.constant_value(iter_vec)
+  if iter_vec_value is not None:
+    iters = iter_vec_value[0].item()
+  else:
+    iters = iter_vec[0]
 
   def while_body(i, *ta_list):
     """Body of while loop."""
@@ -1103,14 +1109,14 @@ def _fallback_converter(pfor_input, root_cause="", warn=False):
     # the different iterations are the same.
     for out, ta in zip(op_outputs, ta_list):
       assert isinstance(out, ops.Tensor)
-      outputs.append(ta.write(i, array_ops.expand_dims(out, 0)))
+      outputs.append(ta.write(i, out))
     return tuple([i + 1] + outputs)
 
   ta_list = control_flow_ops.while_loop(
       lambda i, *ta: i < iters, while_body, [0] +
       [tensor_array_ops.TensorArray(dtype, iters) for dtype in output_dtypes
       ])[1:]
-  return tuple([wrap(ta.concat(), True) for ta in ta_list])
+  return tuple([wrap(ta.stack(), True) for ta in ta_list])
 
 
 class PForConfig:
@@ -1308,7 +1314,9 @@ class PFor:
     loop_len_value = tensor_util.constant_value(loop_len)
     if loop_len_value is not None:
       loop_len = loop_len_value
-    self._loop_len_vector = array_ops.reshape(loop_len, [1])
+      self._loop_len_vector = ops.convert_to_tensor([loop_len])
+    else:
+      self._loop_len_vector = array_ops.reshape(loop_len, [1])
     self._all_indices_partitioned = all_indices_partitioned
     if all_indices_partitioned:
       assert all_indices is not None
@@ -2029,13 +2037,13 @@ def _convert_conv2d_backprop_filter(pfor_input):
           use_cudnn_on_gpu=use_cudnn_on_gpu,
           data_format=data_format,
           dilations=dilations)
-      return i + 1, ta.write(i, array_ops.expand_dims(output, 0))
+      return i + 1, ta.write(i, output)
 
     n = array_ops.reshape(pfor_input.pfor.loop_len_vector, [])
     _, ta = control_flow_ops.while_loop(
         lambda i, ta: i < n, while_body,
         (0, tensor_array_ops.TensorArray(inputs.dtype, n)))
-    output = ta.concat()
+    output = ta.stack()
     return wrap(output, True)
   else:
     # We merge the stack dimension with the channel dimension of the gradients
@@ -3923,8 +3931,10 @@ def _convert_optional_get_value(pfor_input):
   output_shapes = []
   for shape in original_output_shapes:
     shape = tensor_shape.TensorShape(shape)
+    loop_len_value = tensor_util.constant_value(pfor_input.pfor.loop_len_vector)
     loop_len_shape = tensor_shape.TensorShape(
-        [tensor_util.constant_value(pfor_input.pfor.loop_len_vector)])
+        [loop_len_value[0] if loop_len_value is not None else None]
+    )
     shape = loop_len_shape.concatenate(shape)
     output_shapes.append(shape.as_proto())
   results = gen_optional_ops.optional_get_value(

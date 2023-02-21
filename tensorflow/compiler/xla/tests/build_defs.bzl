@@ -112,6 +112,7 @@ def xla_test(
     native.cc_library(
         name = "%s_lib" % name,
         srcs = srcs,
+        tags = tags,
         copts = copts,
         testonly = True,
         deps = deps,

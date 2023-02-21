@@ -1095,7 +1095,7 @@ std::string ElementwiseOperationString(ElementwiseOperation op);
 // See PR#16309 and issue #18402 for links discussing the issue.
 class VersionInfo {
  public:
-  VersionInfo(int major = 0, int minor = 0, int patch = 0)
+  explicit VersionInfo(int major = 0, int minor = 0, int patch = 0)
       : major_(major), minor_(minor), patch_(patch) {}
   explicit VersionInfo(DnnVersionInfoProto proto)
       : major_(proto.major()), minor_(proto.minor()), patch_(proto.patch()) {}
@@ -1111,6 +1111,29 @@ class VersionInfo {
   int major_version() const { return major_; }
   int minor_version() const { return minor_; }
   int patch() const { return patch_; }
+
+  std::tuple<int, int, int> as_tuple() const {
+    return std::make_tuple(major_, minor_, patch_);
+  }
+
+  friend bool operator<(const VersionInfo& a, const VersionInfo& b) {
+    return a.as_tuple() < b.as_tuple();
+  }
+  friend bool operator>(const VersionInfo& a, const VersionInfo& b) {
+    return a.as_tuple() > b.as_tuple();
+  }
+  friend bool operator<=(const VersionInfo& a, const VersionInfo& b) {
+    return a.as_tuple() <= b.as_tuple();
+  }
+  friend bool operator>=(const VersionInfo& a, const VersionInfo& b) {
+    return a.as_tuple() >= b.as_tuple();
+  }
+  friend bool operator==(const VersionInfo& a, const VersionInfo& b) {
+    return a.as_tuple() == b.as_tuple();
+  }
+  friend bool operator!=(const VersionInfo& a, const VersionInfo& b) {
+    return a.as_tuple() != b.as_tuple();
+  }
 
  private:
   int major_;
@@ -1392,6 +1415,19 @@ class DnnSupport {
         input_data, filter_descriptor, filter_data, output_descriptor,
         output_data, convolution_descriptor, algorithm_config,
         scratch_allocator, algorithm_desc, scratch_memory);
+  }
+
+  // cuDNN-specific input transformation that allows running int8x32
+  // convolutions faster using Tensor Core IMMA instruction.
+  virtual tsl::Status CudnnReorderConvolutionFilterAndBias(
+      Stream* stream, const FilterDescriptor& filter_descriptor,
+      const DeviceMemory<int8_t>& filter_input,
+      DeviceMemory<int8_t>* filter_output,
+      std::optional<const DeviceMemory<float>> bias_input,
+      std::optional<DeviceMemory<float>> bias_output) {
+    return tsl::errors::Unimplemented(
+        "DnnSupport::CudnnReorderConvolutionFilterAndBias is specific to CUDA "
+        "convolution implementation.");
   }
 
   // Enqueues a single-precision convolution operation onto the stream.

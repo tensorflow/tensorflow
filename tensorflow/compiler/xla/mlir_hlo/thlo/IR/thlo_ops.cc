@@ -40,6 +40,7 @@ limitations under the License.
 #include "mlir/IR/OpImplementation.h"
 #include "mlir/Interfaces/DestinationStyleOpInterface.h"
 #include "mlir/Interfaces/TilingInterface.h"
+#include "mlir/Transforms/InliningUtils.h"
 
 namespace mlir {
 namespace {
@@ -184,6 +185,33 @@ SmallVector<Range> getIterationDomainForTensor(OpBuilder &b, Location loc,
 }  // namespace
 }  // namespace mlir
 
+//===----------------------------------------------------------------------===//
+// THLO Dialect Interfaces
+//===----------------------------------------------------------------------===//
+
+namespace mlir {
+namespace {
+
+struct THLOInlinerInterface : public mlir::DialectInlinerInterface {
+  using DialectInlinerInterface::DialectInlinerInterface;
+
+  // Operations in THLO dialect are always legal to inline.
+  bool isLegalToInline(Operation *, Region *, bool, IRMapping &) const final {
+    return true;
+  }
+  // Handle the given inlined terminator by replacing it with a new operation
+  // as necessary. Required when the region has only one block.
+  void handleTerminator(Operation *op,
+                        ArrayRef<Value> valuesToRepl) const final {}
+};
+
+}  // namespace
+}  // namespace mlir
+
+//===----------------------------------------------------------------------===//
+// THLODialect
+//===----------------------------------------------------------------------===//
+
 // Generated dialect definitions.
 #include "thlo/IR/thlo_dialect.cc.inc"
 
@@ -195,6 +223,8 @@ void THLODialect::initialize() {
 #define GET_OP_LIST
 #include "thlo/IR/thlo_ops.cc.inc"
       >();
+
+  addInterfaces<THLOInlinerInterface>();
 }
 
 //===----------------------------------------------------------------------===//
@@ -1149,7 +1179,8 @@ void ReverseOp::getAsmResultNames(
 }
 
 SmallVector<utils::IteratorType> ReverseOp::getLoopIteratorTypes() {
-  return getParallelIteratorTypes(getType().cast<ShapedType>().getRank() - 1);
+  int64_t rank = getType().cast<ShapedType>().getRank();
+  return getParallelIteratorTypes(rank);
 }
 
 SmallVector<Range> ReverseOp::getIterationDomain(OpBuilder &b) {

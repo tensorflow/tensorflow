@@ -32,6 +32,7 @@ from tensorflow.python.framework import tensor_spec
 from tensorflow.python.lib.io import file_io
 from tensorflow.python.module import module
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import array_ops_stack  # pylint: disable=g-direct-tensorflow-import
 from tensorflow.python.ops import io_ops
 from tensorflow.python.ops import lookup_ops
 from tensorflow.python.ops import math_ops
@@ -239,6 +240,7 @@ class QuantizedModelTest(test.TestCase, parameterized.TestCase):
       op_names: Collection[str],
       attr_name: str = '',
       attr_val: _AttrValType = None,
+      get_op_name: bool = False,
   ) -> int:
     """Returns the number of given ops in a graph def.
 
@@ -247,6 +249,7 @@ class QuantizedModelTest(test.TestCase, parameterized.TestCase):
       op_names: Names of the operations to find within the graph.
       attr_name: Name of the attribute of the ops to match.
       attr_val: Value of the attr_name to check.
+      get_op_name: If set True, checks node.name rather than node.op.
 
     Returns:
       The number of occurrences of the given ops in a graph. The ops will be
@@ -261,6 +264,7 @@ class QuantizedModelTest(test.TestCase, parameterized.TestCase):
           op_name=op_name,
           attr_name=attr_name,
           attr_val=attr_val,
+          get_op_name=get_op_name,
       )
 
       # Check the graph genederated from user defined functions
@@ -270,6 +274,7 @@ class QuantizedModelTest(test.TestCase, parameterized.TestCase):
             op_name=op_name,
             attr_name=attr_name,
             attr_val=attr_val,
+            get_op_name=get_op_name,
         )
     return op_count
 
@@ -279,6 +284,7 @@ class QuantizedModelTest(test.TestCase, parameterized.TestCase):
       op_name: str,
       attr_name: str,
       attr_val: _AttrValType,
+      get_op_name: bool = False,
   ) -> int:
     """Determine the number of nodes whose operation name matches `op_name`.
 
@@ -290,18 +296,28 @@ class QuantizedModelTest(test.TestCase, parameterized.TestCase):
       op_name: Name of the op to match.
       attr_name: Name of the attribute of the op to match.
       attr_val: Value of the attr_name to check.
+      get_op_name: If set True, checks node.name rather than node.op.
 
     Returns:
       The number of occurrences of nodes whose name match `op_name` and
       'attr_val' if 'attr_name' is given.
     """
-    return len(
-        [
-            node.attr.get(attr_name) == attr_val
-            for node in nodes
-            if node.op == op_name
-        ]
-    )
+    if get_op_name:
+      return len(
+          [
+              node.attr.get(attr_name) == attr_val
+              for node in nodes
+              if node.name == op_name
+          ]
+      )
+    else:
+      return len(
+          [
+              node.attr.get(attr_name) == attr_val
+              for node in nodes
+              if node.op == op_name
+          ]
+      )
 
   def _create_simple_tf1_conv_model(
       self,
@@ -461,14 +477,16 @@ class QuantizedModelTest(test.TestCase, parameterized.TestCase):
         table.lookup(input_vocabs_placeholder), dtypes.float32
     )
     # shape: (2, ?)
-    matmul_input = array_ops.stack([lookup_vals, lookup_vals])
+    matmul_input = array_ops_stack.stack([lookup_vals, lookup_vals])
 
     # Create a dummy weight matrix filled with ones.
     weight_row = array_ops.ones(
         shape=array_ops.shape(input_vocabs_placeholder), dtype=dtypes.float32
     )
     # shape: (?, 2)
-    weight = array_ops.transpose_v2(array_ops.stack([weight_row, weight_row]))
+    weight = array_ops.transpose_v2(
+        array_ops_stack.stack([weight_row, weight_row])
+    )
     # shape: (2, 2)
     output_tensor = math_ops.matmul(matmul_input, weight)
 
@@ -569,7 +587,7 @@ class QuantizedModelTest(test.TestCase, parameterized.TestCase):
     )
 
     # shape: (2, ?)
-    matmul_input = array_ops.stack([lookup_vals, lookup_vals])
+    matmul_input = array_ops_stack.stack([lookup_vals, lookup_vals])
     # Insert fake quant to simulate a QAT model.
     matmul_input = array_ops.fake_quant_with_min_max_args(
         matmul_input, min=-0.3, max=0.3, num_bits=8, narrow_range=False
@@ -581,7 +599,9 @@ class QuantizedModelTest(test.TestCase, parameterized.TestCase):
     )
 
     # shape: (?, 2)
-    weight = array_ops.transpose_v2(array_ops.stack([weight_row, weight_row]))
+    weight = array_ops.transpose_v2(
+        array_ops_stack.stack([weight_row, weight_row])
+    )
     # Insert fake quant to simulate a QAT model.
     weight = array_ops.fake_quant_with_min_max_args(
         weight, min=-0.1, max=0.2, num_bits=8, narrow_range=False

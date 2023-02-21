@@ -202,7 +202,7 @@ AsyncValuePtr<Executable> JitExecutable::DefaultExecutable() const {
 }
 
 // Combines `hash` with a hash value computed from a value constrained operands.
-static llvm::hash_code CombineWithValueConstraineOperands(
+static llvm::hash_code CombineWithValueConstrainedOperands(
     llvm::hash_code hash, ArgumentsRef arguments,
     Span<const ArgumentConstraint> constraints) {
   for (int i = 0; i < constraints.size(); ++i) {
@@ -286,7 +286,7 @@ StatusOr<AsyncValuePtr<Executable>> JitExecutable::GetExecutable(
   // Combine with a hash value computed from the value constrained operands.
   if (LLVM_UNLIKELY(fn.has_value_constraints))
     *hash =
-        CombineWithValueConstraineOperands(*hash, arguments, fn.constraints);
+        CombineWithValueConstrainedOperands(*hash, arguments, fn.constraints);
 
   // Maybe return Executable from the cache.
   if (auto cached = specializations_->Find(*hash)) {

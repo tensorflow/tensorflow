@@ -31,7 +31,6 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import type_spec
 from tensorflow.python.ops import resource_variable_ops
-from tensorflow.python.util import _pywrap_utils
 from tensorflow.python.util import nest
 
 # Sentinel value used by with ConcreteFunction's structured signature to
@@ -331,7 +330,7 @@ class FunctionSpec(object):
       kwargs: Any,
       captures: Any = None,
   ) -> Tuple[function_type_lib.FunctionType,
-             trace_type.WeakrefDeletionObserver]:
+             trace_type.InternalTracingContext]:
     """Generates function type given the function arguments."""
     if captures is None:
       captures = dict()
@@ -426,7 +425,7 @@ class FunctionSpec(object):
           args, sanitized_kwargs, self.default_values)
     except Exception as e:
       raise TypeError(
-          f"Binding inputs to tf.function `{self._name}` failed due to `{e}`."
+          f"Binding inputs to tf.function `{self._name}` failed due to `{e}`. "
           f"Received args: {args} and kwargs: {sanitized_kwargs} for signature:"
           f" {self.function_type}."
       ) from e
@@ -478,8 +477,7 @@ def cast_inputs(args, kwargs, input_signature):
   """Casts args, kwargs to TF values based on an optional input_signature."""
   if input_signature is None:
     args = cast_numpy_inputs(args)
-  else:
-    args = cast_inputs_to_signature(args, input_signature)
+
   kwargs = cast_numpy_inputs(kwargs)
 
   return args, kwargs
@@ -517,58 +515,6 @@ def cast_numpy_inputs(inputs):
         expand_composites=True)
   else:
     return inputs
-
-
-def cast_inputs_to_signature(inputs, input_signature):
-  """Converts inputs to pass into a function with an explicit signature."""
-
-  flat_input_signature = tuple(
-      nest.flatten(input_signature, expand_composites=True))
-
-  def format_error_message(inputs, input_signature):
-    return ("  inputs: (\n" + "    " + ",\n    ".join(str(i) for i in inputs) +
-            ")\n" + "  input_signature: (\n" + "    " +
-            ",\n    ".join(str(i) for i in input_signature) + ")")
-
-  try:
-    flatten_inputs = nest.flatten_up_to(
-        input_signature,
-        inputs[:len(input_signature)],
-        expand_composites=True,
-        check_types=False)  # lists are convert to tuples for `tf.data`.
-  except ValueError:
-    raise ValueError("Structure of Python function inputs does not match "
-                     "input_signature:\n"
-                     f"{format_error_message(inputs, input_signature)}.")
-
-  need_packing = False
-  for index, (value,
-              spec) in enumerate(zip(flatten_inputs, flat_input_signature)):
-    if (isinstance(spec, tensor_spec.TensorSpec) and
-        not isinstance(value, tensor_spec.TensorSpec) and
-        not _pywrap_utils.IsTensor(value)):
-      try:
-        flatten_inputs[index] = ops.convert_to_tensor(
-            value, dtype_hint=spec.dtype)
-        need_packing = True
-      except ValueError:
-        raise ValueError("When input_signature is provided, all inputs to "
-                         "the Python function must be convertible to "
-                         "tensors:\n"
-                         f"{format_error_message(inputs, input_signature)}.")
-
-  if any(not spec.is_compatible_with(other)
-         for spec, other in zip(flat_input_signature, flatten_inputs)):
-    raise ValueError("Python inputs incompatible with input_signature:\n"
-                     f"{format_error_message(inputs, input_signature)}.")
-
-  if need_packing:
-    inputs = nest.pack_sequence_as(
-        structure=input_signature,
-        flat_sequence=flatten_inputs,
-        expand_composites=True)
-
-  return inputs
 
 
 def filter_function_inputs(args, kwargs):

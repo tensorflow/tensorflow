@@ -23,13 +23,13 @@ limitations under the License.
 
 namespace xla {
 
-void StringPrinter::Append(absl::string_view s) {
-  absl::StrAppend(&result_, s);
+void StringPrinter::Append(const absl::AlphaNum& a) {
+  absl::StrAppend(&result_, a);
 }
 
 std::string StringPrinter::ToString() && { return std::move(result_); }
 
-void CordPrinter::Append(absl::string_view s) { result_.Append(s); }
+void CordPrinter::Append(const absl::AlphaNum& a) { result_.Append(a.Piece()); }
 
 absl::Cord CordPrinter::ToCord() && { return std::move(result_); }
 

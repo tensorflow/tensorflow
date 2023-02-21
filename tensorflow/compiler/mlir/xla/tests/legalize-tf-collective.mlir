@@ -1,4 +1,4 @@
-// RUN: xla-opt -split-input-file -verify-diagnostics -xla-legalize-tf-collective -xla-legalize-tf=allow-partial-conversion %s | FileCheck %s
+// RUN: tf-opt -split-input-file -verify-diagnostics -xla-legalize-tf-collective -xla-legalize-tf=allow-partial-conversion %s | FileCheck %s
 
 
 // CHECK: module attributes

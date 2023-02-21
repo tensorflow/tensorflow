@@ -39,7 +39,6 @@ cc_library(
         "@com_google_absl//absl/types:span",
         "//tensorflow/lite:kernel_api",
         "//tensorflow/lite:minimal_logging",
-        "//tensorflow/lite/c:common",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/delegates/gpu/common:convert",
         "//tensorflow/lite/delegates/gpu/common:model",
@@ -82,7 +81,6 @@ objc_library(
     deps = [
         "//tensorflow/lite:kernel_api",
         "//tensorflow/lite:minimal_logging",
-        "//tensorflow/lite/c:common",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/delegates/gpu/common:convert",
         "//tensorflow/lite/delegates/gpu/common:gpu_info",
@@ -221,10 +219,7 @@ cc_library(
     name = "delegate_options",
     srcs = ["delegate_options.cc"],
     hdrs = ["delegate_options.h"],
-    deps = [
-        "//tensorflow/lite/c:common",
-        "//tensorflow/lite/core/c:common",
-    ],
+    deps = ["//tensorflow/lite/core/c:common"],
 )
 
 cc_library(
@@ -250,7 +245,6 @@ cc_library(
         "//tensorflow/lite/profiling/telemetry:telemetry_status",
         "//tensorflow/lite:kernel_api",
         "//tensorflow/lite:minimal_logging",
-        "//tensorflow/lite/c:common",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/delegates:serialization",
         "//tensorflow/lite/delegates/gpu/cl:api",

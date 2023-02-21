@@ -16,6 +16,7 @@ limitations under the License.
 #include "mlir/Dialect/Arith/IR/Arith.h"
 
 #include <type_traits>  // NOLINT
+#include <variant>      // NOLINT
 
 #include "llvm/Support/ErrorHandling.h"
 #include "tools/mlir_interpreter/dialects/comparators.h"
@@ -66,8 +67,7 @@ InterpreterValue intCast(InterpreterState&, Op op,
   if (arg.isTensor()) {
     return dispatchScalarType(
         op->getResultTypes()[0], [&](auto dummy) -> InterpreterValue {
-          auto result =
-              TensorOrMemref<decltype(dummy)>::empty(arg.view().sizes);
+          auto result = TensorOrMemref<decltype(dummy)>::emptyLike(arg.view());
           for (const auto& index : result.view.indices()) {
             result.at(index) =
                 static_cast<decltype(dummy)>(arg.extractElement(index).asInt());
@@ -89,7 +89,8 @@ llvm::SmallVector<InterpreterValue> uiToFP(
     auto ty = op->getResultTypes()[0].cast<ShapedType>();
     return {dispatchScalarType(
         ty.getElementType(), [&](auto dummy) -> InterpreterValue {
-          auto result = TensorOrMemref<decltype(dummy)>::empty(ty.getShape());
+          auto result =
+              TensorOrMemref<decltype(dummy)>::emptyLike(args[0].view());
           for (const auto& index : result.view.indices()) {
             result.at(index) = static_cast<decltype(dummy)>(
                 args[0].extractElement(index).asUInt());
@@ -178,11 +179,27 @@ InterpreterValue cmpF(InterpreterState&, arith::CmpFOp compare,
   }
 }
 
-InterpreterValue select(InterpreterState&, arith::SelectOp,
+InterpreterValue select(InterpreterState& state, arith::SelectOp,
                         const InterpreterValue& cond,
                         const InterpreterValue& trueValue,
                         const InterpreterValue& falseValue) {
-  return std::get<bool>(cond.storage) ? trueValue : falseValue;
+  if (std::holds_alternative<bool>(cond.storage)) {
+    return std::get<bool>(cond.storage) ? trueValue : falseValue;
+  }
+
+  if (!cond.isTensor() || !cond.view().isVector) {
+    llvm::errs() << cond.toString();
+    state.addFailure("select requires a scalar or vector argument");
+    return {};
+  }
+
+  auto ret = trueValue.clone();
+  for (const auto& index : cond.view().indices()) {
+    if (cond.extractElement(index).asInt() == 0) {
+      ret.insertElement(index, falseValue.extractElement(index));
+    }
+  }
+  return ret;
 }
 
 template <typename R>
@@ -208,7 +225,9 @@ REGISTER_MLIR_INTERPRETER_OP("arith.extui", uiToFP);
 REGISTER_MLIR_INTERPRETER_OP("arith.maxf", applyCwiseBinaryMap<Max>);
 REGISTER_MLIR_INTERPRETER_OP("arith.minf", applyCwiseBinaryMap<Min>);
 REGISTER_MLIR_INTERPRETER_OP("arith.mulf", applyCwiseBinaryMap<Multiply>);
+REGISTER_MLIR_INTERPRETER_OP("arith.negf", applyCwiseMap<Neg>);
 REGISTER_MLIR_INTERPRETER_OP("arith.ori", applyCwiseBinaryMap<BitOr>);
+REGISTER_MLIR_INTERPRETER_OP("arith.remf", applyCwiseBinaryMap<Remainder>);
 REGISTER_MLIR_INTERPRETER_OP("arith.subf", applyCwiseBinaryMap<Minus>);
 REGISTER_MLIR_INTERPRETER_OP("arith.uitofp", uiToFP);
 REGISTER_MLIR_INTERPRETER_OP("arith.xori", applyCwiseBinaryMap<BitXor>);

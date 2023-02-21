@@ -214,7 +214,8 @@ class VariableMetaclass(abc.ABCMeta):
                         use_resource=None,
                         synchronization=VariableSynchronization.AUTO,
                         aggregation=VariableAggregation.NONE,
-                        shape=None):
+                        shape=None,
+                        experimental_enable_variable_lifting=None):
     """Call on Variable class. Useful to force the signature."""
     previous_getter = lambda **kwargs: default_variable_creator(None, **kwargs)
     for _, getter in ops.get_default_graph()._variable_creator_stack:  # pylint: disable=protected-access
@@ -238,7 +239,9 @@ class VariableMetaclass(abc.ABCMeta):
         use_resource=use_resource,
         synchronization=synchronization,
         aggregation=aggregation,
-        shape=shape)
+        shape=shape,
+        experimental_enable_variable_lifting=experimental_enable_variable_lifting,
+        )
 
   def _variable_v2_call(cls,
                         initial_value=None,

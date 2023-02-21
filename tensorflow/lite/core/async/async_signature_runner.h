@@ -16,16 +16,15 @@ limitations under the License.
 #define TENSORFLOW_LITE_CORE_ASYNC_ASYNC_SIGNATURE_RUNNER_H_
 
 #include <memory>
+#include <string>
 #include <vector>
 
-#include "tensorflow/lite/core/c/c_api.h"
-#include "tensorflow/lite/core/c/common.h"
-#include "tensorflow/lite/core/subgraph.h"
 #include "tensorflow/lite/core/async/async_kernel_internal.h"
 #include "tensorflow/lite/core/async/async_subgraph.h"
 #include "tensorflow/lite/core/async/common.h"
+#include "tensorflow/lite/core/c/common.h"
+#include "tensorflow/lite/core/subgraph.h"
 #include "tensorflow/lite/internal/signature_def.h"
-#include "tensorflow/lite/signature_runner.h"
 
 namespace tflite {
 namespace async {
@@ -39,20 +38,8 @@ class AsyncSignatureRunnerTest;
 // SignatureDef.
 class AsyncSignatureRunner {
  public:
-  // TODO(b/191883048): Move ctor to private and use `Create` function as
-  // factory method.
-  // Currently we don't have way to expose signature def from interpreter
-  // without changes to interpreter.
-  //
-  // static AsyncSignatureRunner* Create(const TfLiteInterpreter* interpreter,
-  //                                     const char* signature_key);
-  // WARNING: This is a temporary constructor before we stablize the API.
-  // This if for avoiding making intrusive changes to non experimental code.
-  // For now, users can construct AsyncSignatureRunner as follows:
-  //  std::unique_ptr<tflite::Interpreter> interpreter;
-  //  InterpreterBuilder(model, resolver)(&interpreter);
-  //  AsyncSignatureRunner runner(interpreter->GetSignatureRunner("func"));
-  explicit AsyncSignatureRunner(SignatureRunner* signature_runner);
+  // Builds the AsyncSignatureRunner given the provided signature_def and
+  // subgraph.
   AsyncSignatureRunner(const internal::SignatureDef* signature_def,
                        Subgraph* subgraph);
 
@@ -89,10 +76,11 @@ class AsyncSignatureRunner {
   TfLiteStatus UnregisterBuffer(TfLiteBufferHandle handle);
 
   // Returns a list of names of supported buffer types.
-  std::vector<const char*> SupportedBufferTypes(TfLiteIoType io_type) const;
+  const std::vector<const char*>& SupportedBufferTypes(
+      TfLiteIoType io_type) const;
 
   // Returns a list of names of supported synchronization types.
-  std::vector<const char*> SupportedSynchronizations(
+  const std::vector<const char*>& SupportedSynchronizations(
       TfLiteIoType io_type) const;
 
   // Reconciles registrations with all backends depending on I/O tensor `name`
@@ -157,10 +145,44 @@ class AsyncSignatureRunner {
   // destroyed regardless of error or not.
   TfLiteStatus Finish(TfLiteExecutionTask* task);
 
+  /// Returns the key for the corresponding signature.
+  const std::string& signature_key() { return signature_def_->signature_key; }
+
+  /// Returns the number of inputs.
+  size_t input_size() const { return subgraph_->inputs().size(); }
+
+  /// Returns the number of outputs.
+  size_t output_size() const { return subgraph_->outputs().size(); }
+
+  /// Read-only access to list of signature input names.
+  const std::vector<const char*>& input_names() { return input_names_; }
+
+  /// Read-only access to list of signature output names.
+  const std::vector<const char*>& output_names() { return output_names_; }
+
+  /// Returns the input tensor information identified by 'input_name' in the
+  /// given signature. Returns nullptr if the given name is not valid.
+  /// Note: The returned `TfLiteTensor` should only be used to retrieve
+  /// tensor metadata (dimension, data type, etc.). Tensor data should only be
+  /// accessed via hardware buffer directly.
+  const TfLiteTensor* input_tensor(const char* input_name) const;
+
+  /// Returns the output tensor information identified by 'output_name' in the
+  /// given signature. Returns nullptr if the given name is not valid.
+  /// Note: The returned `TfLiteTensor` should only be used to retrieve
+  /// tensor metadata (dimension, data type, etc.). Tensor data should only be
+  /// accessed via hardware buffer directly.
+  const TfLiteTensor* output_tensor(const char* output_name) const;
+
  private:
   friend class AsyncSignatureRunnerTest;
 
   int GetTensorIndex(TfLiteIoType io_type, const char* name) const;
+
+  // The list of input tensor names.
+  std::vector<const char*> input_names_;
+  // The list of output tensor names.
+  std::vector<const char*> output_names_;
 
   // Not owned.
   const internal::SignatureDef* signature_def_ = nullptr;

@@ -53,7 +53,12 @@ inline constexpr int64_t BatchedReductionRaceFreeBound() { return 8; }
 // Returns true if `hlo` is a matched softmax fusion.
 bool IsSoftmaxCustomCall(const HloInstruction& hlo);
 
+// Identifies Triton GEMM fusions.
+bool IsTritonCustomCall(const HloInstruction& hlo);
+
 extern const char* const kSoftmaxCallTarget;
+
+inline constexpr absl::string_view kTritonCallTarget = "__triton";
 
 // Returns true if `hlo` will be implemented as a call to a cuSolver routine.
 //
@@ -223,9 +228,14 @@ const HloInstruction& FindNonTrivialHero(const HloInstruction& instr);
 // Whether there is a fusion root triggering transposition emitter.
 bool HasAnyTiledTransposeRoot(HloComputation* computation);
 
-std::optional<Vector3> FindTiledLogicalTranspose(const HloInstruction& instr);
+std::optional<Vector3> FindTiledLogicalTranspose(const HloInstruction& instr,
+                                                 Vector3& permutation);
 
-std::optional<Vector3> FindAnyTiledTranspose(const HloInstruction& instr);
+std::optional<std::pair<Vector3, Vector3>> FindAnyTiledTranspose(
+    const HloInstruction& instr);
+
+// Log and verify an LLVM module.
+void LogAndVerify(const llvm::Module* m);
 
 }  // namespace gpu
 }  // namespace xla

@@ -19,13 +19,14 @@ limitations under the License.
 #include <memory>
 #include <stdexcept>
 #include <string>
+#include <vector>
 
 #include "absl/container/inlined_vector.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "pybind11/pybind11.h"
-#include "tensorflow/compiler/xla/python/ifrt/array.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
+#include "tensorflow/compiler/xla/python/ifrt/array.h"
 #include "tensorflow/compiler/xla/python/py_client.h"
 #include "tensorflow/compiler/xla/python/py_values.h"
 #include "tensorflow/compiler/xla/python/python_ref_manager.h"
@@ -129,6 +130,10 @@ struct CallSignature {
   xla::PjRtDevice* device = nullptr;
   bool jax_enable_x64;
   bool jax_array = false;
+
+  // For JIT on PJIT, we need to fallback to python whenever default_device
+  // changes.
+  std::optional<pybind11::object> default_device;
 
   // Opaque additional context that should be included as part of the cache key.
   std::optional<pybind11::object> global_extra_jit_context;

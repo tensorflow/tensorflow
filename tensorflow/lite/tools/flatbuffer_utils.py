@@ -287,6 +287,8 @@ def count_resource_variables(model):
     model = convert_bytearray_to_object(model)
   unique_shared_names = set()
   for subgraph in model.subgraphs:
+    if subgraph.operators is None:
+      continue
     for op in subgraph.operators:
       builtin_code = schema_util.get_builtin_code_from_operator_code(
           model.operatorCodes[op.opcodeIndex])

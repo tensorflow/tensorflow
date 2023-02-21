@@ -24,6 +24,11 @@ py_library(
 )
 
 py_library(
+    name = "test_mode",
+    srcs = ["test_mode.py"],
+)
+
+py_library(
     name = "batch_op",
     srcs = ["batch_op.py"],
 )
@@ -269,6 +274,7 @@ py_library(
         "//tensorflow/python/data/util:sparse",
         "//tensorflow/python/data/util:structure",
         "//tensorflow/python/eager:context",
+        "//tensorflow/python/framework:type_utils",
         "//tensorflow/python/saved_model:nested_structure_coder",
         "//tensorflow/python/trackable:base",
     ],
@@ -282,6 +288,7 @@ py_library(
         "//tensorflow/python:experimental_dataset_ops_gen",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/platform",
+        "//tensorflow/python/saved_model:nested_structure_coder",
         "//tensorflow/python/util",
     ],
 )
@@ -331,6 +338,7 @@ py_library(
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/platform",
+        "//tensorflow/python/saved_model:nested_structure_coder",
         "//tensorflow/python/util",
     ],
 )
@@ -413,6 +421,7 @@ py_library(
     srcs_version = "PY3",
     deps = [
         "//tensorflow/python:util",
+        "//tensorflow/python/data/ops:test_mode",
         "//tensorflow/python/data/util:options",
     ],
 )

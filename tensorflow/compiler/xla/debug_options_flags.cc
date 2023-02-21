@@ -98,16 +98,21 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_redzone_scratch_max_megabytes(1LL << 12);
   opts.set_xla_gpu_shape_checks(DebugOptions::RUNTIME);
   opts.set_xla_gpu_enable_mlir_lowering(true);
-  opts.set_xla_gpu_enable_softmax_fusion(true);
+  opts.set_xla_gpu_enable_softmax_fusion(false);
   opts.set_xla_gpu_normalize_layouts(true);
   opts.set_xla_gpu_simplify_all_fp_conversions(true);
   opts.set_xla_dump_latency_hiding_schedule(false);
   opts.set_xla_gpu_enable_latency_hiding_scheduler(false);
 
   opts.set_xla_cpu_enable_mlir_tiling_and_fusion(false);
+  opts.set_xla_cpu_enable_experimental_deallocation(false);
 
   opts.set_xla_partitioning_algorithm(
       DebugOptions::PARTITIONING_ALGORITHM_NOOP);
+
+  opts.set_xla_gpu_enable_triton_gemm(false);
+  opts.set_xla_gpu_enable_cudnn_int8x32_convolution_reordering(false);
+  opts.set_xla_gpu_triton_gemm_any(false);
   return opts;
 }
 
@@ -863,6 +868,12 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       bool_setter_for(&DebugOptions::set_xla_cpu_enable_mlir_tiling_and_fusion),
       debug_options->xla_cpu_enable_mlir_tiling_and_fusion(),
       "Enable MLIR tiling and fusion."));
+  flag_list->push_back(tsl::Flag(
+      "xla_cpu_enable_experimental_deallocation",
+      bool_setter_for(
+          &DebugOptions::set_xla_cpu_enable_experimental_deallocation),
+      debug_options->xla_cpu_enable_experimental_deallocation(),
+      "Enable experimental deallocation."));
   flag_list->push_back(
       tsl::Flag("xla_gpu_enable_latency_hiding_scheduler",
                 bool_setter_for(
@@ -874,6 +885,18 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       DebugOptions::PartitioningAlgorithm_Name(
           debug_options->xla_partitioning_algorithm()),
       "The partitioning algorithm to be used in the PartitionAssignment pass"));
+  flag_list->push_back(
+      tsl::Flag("xla_gpu_enable_triton_gemm",
+                bool_setter_for(&DebugOptions::set_xla_gpu_enable_triton_gemm),
+                debug_options->xla_gpu_enable_triton_gemm(),
+                "Use Triton-based matrix multiplication."));
+  flag_list->push_back(tsl::Flag(
+      "xla_gpu_enable_cudnn_int8x32_convolution_reordering",
+      bool_setter_for(
+          &DebugOptions::
+              set_xla_gpu_enable_cudnn_int8x32_convolution_reordering),
+      debug_options->xla_gpu_enable_cudnn_int8x32_convolution_reordering(),
+      "Enable cuDNN frontend for int8x32 convolutions with reordered filter."));
 }  // NOLINT(readability/fn_size)
 
 // Allocates flag_values and flag_objects; this function must not be called more

@@ -343,10 +343,18 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
     }
 
     case BuiltinOperator_LSTM: {
-      // If the input tensor is float and a weight is int8, this is a version
-      // 3 hybrid operation.
       auto lstm_params =
           reinterpret_cast<TfLiteLSTMParams*>(op_sig.builtin_data);
+      // If the input activation and output tensor are int16 and a weight is
+      // int8, this is a version 5.
+      if (lstm_params->kernel_type == kTfLiteLSTMFullKernel &&
+          op_sig.inputs.at(0).type == kTfLiteInt16 &&
+          op_sig.inputs.at(2).type == kTfLiteInt8 &&
+          op_sig.outputs.at(0).type == kTfLiteInt16) {
+        return 5;
+      }
+      // If the input tensor is float and a weight is int8, this is a version
+      // 3 hybrid operation.
       TFLITE_DCHECK(lstm_params != nullptr);
       if (lstm_params->kernel_type == kTfLiteLSTMFullKernel &&
           op_sig.inputs.at(0).type == kTfLiteFloat32 &&
@@ -812,6 +820,13 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
       auto unidirectional_sequence_lstm_params =
           reinterpret_cast<TfLiteUnidirectionalSequenceLSTMParams*>(
               op_sig.builtin_data);
+      // If the input activation and output tensor are int16 and a weight is
+      // int8, this is a version 5.
+      if (op_sig.inputs.at(0).type == kTfLiteInt16 &&
+          op_sig.inputs.at(2).type == kTfLiteInt8 &&
+          op_sig.outputs.at(0).type == kTfLiteInt16) {
+        return 5;
+      }
       if (unidirectional_sequence_lstm_params &&
           unidirectional_sequence_lstm_params->diagonal_recurrent_tensors) {
         return 4;
@@ -886,8 +901,13 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
       }
       return 2;
     case BuiltinOperator_CAST:
-      if (op_sig.inputs.at(0).type == kTfLiteUInt16 ||
-          op_sig.outputs.at(0).type == kTfLiteUInt16) {
+      if (op_sig.inputs.at(0).type == kTfLiteFloat64 ||
+          op_sig.outputs.at(0).type == kTfLiteFloat64 ||
+          op_sig.inputs.at(0).type == kTfLiteFloat16 ||
+          op_sig.outputs.at(0).type == kTfLiteFloat16) {
+        return 5;
+      } else if (op_sig.inputs.at(0).type == kTfLiteUInt16 ||
+                 op_sig.outputs.at(0).type == kTfLiteUInt16) {
         return 4;
       } else if (op_sig.inputs.at(0).type == kTfLiteInt8 ||
                  op_sig.outputs.at(0).type == kTfLiteInt8) {

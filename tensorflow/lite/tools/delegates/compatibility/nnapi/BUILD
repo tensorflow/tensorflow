@@ -18,7 +18,6 @@ cc_library(
     deps = [
         "//tensorflow/lite:framework_stable",
         "//tensorflow/lite:minimal_logging",
-        "//tensorflow/lite/c:common",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/delegates/nnapi:nnapi_delegate",
     ],

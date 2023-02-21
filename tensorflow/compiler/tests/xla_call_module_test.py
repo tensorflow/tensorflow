@@ -47,6 +47,17 @@ class XlaCallModuleOpTest(xla_test.XLATestCase):
         equality_fn = self.assertAllClose
       equality_fn(result, expected, rtol=1e-3)
 
+  def testing_platform(self):
+    """Current testing platform, one of CPU, GPU, TPU."""
+    if self.device in ['CPU', 'XLA_CPU']:
+      return 'CPU'
+    elif self.device in ['GPU', 'XLA_GPU']:
+      return 'GPU'
+    elif self.device in ['TPU', 'XLA_TPU']:
+      return 'TPU'
+    else:
+      assert False, f'Unexpected {self.device=}'
+
   def test_basic(self):
     x = np.array([1., 2., 3.], dtype=np.float32)
 
@@ -65,47 +76,6 @@ module @jit_f.0 {
                              module=module, Tout=[x.dtype], Sout=[x.shape])
 
     self._assertOpOutputMatchesExpected(f, (x,), (np.sin(np.cos(x)),))
-
-  def test_basic_mhlo(self):
-    x = np.array([1., 2., 3.], dtype=np.float32)
-
-    def f(x):
-      # sin(cos(x))
-      module = """
-module @jit_f.0 {
-  func.func public @main(%arg0: tensor<3xf32>) -> tensor<3xf32> {
-    %0 = mhlo.cosine %arg0 : tensor<3xf32>
-    %1 = mhlo.sine %0 : tensor<3xf32>
-    return %1 : tensor<3xf32>
-  }
-}
-"""
-      return xla.call_module([x], version=1,
-                             module=module, Tout=[x.dtype], Sout=[x.shape])
-
-    self._assertOpOutputMatchesExpected(f, (x,), (np.sin(np.cos(x)),))
-
-  def test_basic_disalow_mhlo(self):
-    """Disallows MHLO in newer versions of the op."""
-    x = np.array([1., 2., 3.], dtype=np.float32)
-
-    def f(x):
-      # sin(cos(x))
-      module = """
-module @jit_f.0 {
-  func.func public @main(%arg0: tensor<3xf32>) -> tensor<3xf32> {
-    %0 = mhlo.cosine %arg0 : tensor<3xf32>
-    %1 = mhlo.sine %0 : tensor<3xf32>
-    return %1 : tensor<3xf32>
-  }
-}
-"""
-      return xla.call_module([x], version=2,
-                             module=module, Tout=[x.dtype], Sout=[x.shape])
-
-    with self.assertRaisesRegex(
-        errors.InvalidArgumentError, 'Cannot deserialize computation'):
-      self._assertOpOutputMatchesExpected(f, (x,), (np.sin(np.cos(x)),))
 
   def test_compare(self):
     x = np.uint32(2)
@@ -256,7 +226,8 @@ module @jit_f.0 {
     dim_args_spec = ['0.0', '0.0', '0.0', '0.0']  # Too many dim_args_spec
     with self.assertRaisesRegex(
         errors.InvalidArgumentError,
-        'The module should have 4 dimension arguments, '
+        'The module should have 0 platform index arguments and '
+        '4 dimension arguments, '
         'but it has only 4 total arguments'):
       self._assertOpOutputMatchesExpected(f, (x, y),
                                           (np.sin(x + y), x.shape[1]))
@@ -280,7 +251,8 @@ module @jit_f.0 {
     with self.assertRaisesRegex(
         errors.InvalidArgumentError,
         'Incorrect number of arguments for XlaCallModule: 2. '
-        'The module has 4 of which 1 were declared to be dimension arguments.'):
+        'The module has 4 of which 0 platform index arguments '
+        'and 1 dimension arguments.'):
       self._assertOpOutputMatchesExpected(f, (x, y),
                                           (np.sin(x + y), x.shape[1]))
 
@@ -307,7 +279,155 @@ module @jit_f.0 {
       self._assertOpOutputMatchesExpected(f, (x, y),
                                           (np.sin(x + y), x.shape[1]))
 
-  @unittest.skip('TODO(burmako): Re-enable this after shape refinement is done')
+  def test_platforms_basic(self):
+    x = np.float32(0.)
+
+    #  returns x + 2. on CPU, x + 3. on GPU and x + 4. on TPU
+    module = """
+module @jit_f.0 {
+  func.func public @main(%arg_platform_idx: tensor<i32>, %arg0: tensor<f32>) -> tensor<f32> {
+    %to_add = "stablehlo.case"(%arg_platform_idx) ({
+      %cpu_val = stablehlo.constant dense<2.> : tensor<f32>
+      stablehlo.return %cpu_val : tensor<f32>
+    }, {
+      %gpu_val = stablehlo.constant dense<3.> : tensor<f32>
+      stablehlo.return %gpu_val : tensor<f32>
+    }, {
+      %tpu_val = stablehlo.constant dense<4.> : tensor<f32>
+      stablehlo.return %tpu_val : tensor<f32>
+    }) : (tensor<i32>) -> tensor<f32>
+    %0 = stablehlo.add %arg0, %to_add : tensor<f32>
+    return %0 : tensor<f32>
+  }
+}
+"""
+    platforms = ['CPU', 'GPU', 'TPU']
+    def f(x):
+      return xla.call_module([x],
+                             version=3,
+                             module=module,
+                             Tout=[np.float32],
+                             Sout=[()],
+                             platforms=platforms)
+
+    expected_value = x + dict(CPU=2., GPU=3., TPU=4.)[self.testing_platform()]
+    self._assertOpOutputMatchesExpected(f, (x,), (expected_value,))
+
+  def test_platforms_with_dim_vars(self):
+    x = np.ones((3,), dtype=np.float32)
+    y = np.arange(3., dtype=np.float32)
+
+    #  returns x + x on CPU and x - x on TPU
+    module = """
+module @jit_f.0 {
+  func.func public @main(%arg_platform_idx: tensor<i32>, %arg_dim0: tensor<i32>, %arg0: tensor<?xf32>, %arg1: tensor<?xf32>) -> tensor<?xf32> {
+    %res = "stablehlo.case"(%arg_platform_idx) ({
+      %0 = stablehlo.add %arg0, %arg1 : tensor<?xf32>
+      stablehlo.return %0 : tensor<?xf32>
+    }, {
+      %1 = stablehlo.subtract %arg0, %arg1 : tensor<?xf32>
+      stablehlo.return %1 : tensor<?xf32>
+    }) : (tensor<i32>) -> tensor<?xf32>
+    return %res : tensor<?xf32>
+  }
+}
+"""
+    def f(x, y):
+      return xla.call_module([x, y],
+                             version=3,
+                             module=module,
+                             Tout=[np.float32],
+                             Sout=[(None,)],
+                             platforms=['CPU', 'TPU'],
+                             dim_args_spec=['0.0'])
+
+    expected_value = x + (y if self.testing_platform() == 'CPU' else -y)
+    if self.testing_platform() in ['CPU', 'TPU']:
+      self._assertOpOutputMatchesExpected(f, (x, y), (expected_value,))
+
+  def test_platforms_errors(self):
+    """Error reporting for the platforms attribute."""
+    x = np.float32(0.)
+
+    module = """
+module @jit_f.0 {
+  func.func public @main(%arg_platform_idx: tensor<i32>, %arg0: tensor<f32>) -> tensor<f32> {
+    return %arg0 : tensor<f32>
+  }
+}
+"""
+    platforms = []
+    version = 3
+    def f(x):
+      return xla.call_module([x],
+                             version=version,
+                             module=module,
+                             Tout=[np.float32],
+                             Sout=[()],
+                             platforms=platforms)
+
+    # With empty platforms, there should be no platform_index argument
+    with self.assertRaisesRegex(
+        errors.InvalidArgumentError,
+        'Call applied function arity must match number of arguments'):
+      self._assertOpOutputMatchesExpected(f, (x,), (x,))
+
+    # Same with a single platform
+    platforms = ['CPU']
+    if self.testing_platform() == 'CPU':
+      with self.assertRaisesRegex(
+          errors.InvalidArgumentError,
+          'Call applied function arity must match number of arguments'):
+        self._assertOpOutputMatchesExpected(f, (x,), (x,))
+
+    #  Same if the version is 2
+    platforms = ['CPU', 'GPU', 'TPU']
+    version = 2
+    with self.assertRaisesRegex(
+        errors.InvalidArgumentError,
+        'Call applied function arity must match number of arguments'):
+      self._assertOpOutputMatchesExpected(f, (x,), (x,))
+
+    version = 3
+    platforms = ['RANDOM_PLATFORM_1', 'RANDOM_PLATFORM_2']
+    with self.assertRaisesRegex(
+        errors.NotFoundError,
+        'The current platform .* is not among the platforms'):
+      self._assertOpOutputMatchesExpected(f, (x,), (x,))
+
+    platforms = ['CPU', 'GPU']
+    if self.testing_platform() not in platforms:
+      with self.assertRaisesRegex(
+          errors.NotFoundError,
+          'The current platform .* is not among the platforms'):
+        self._assertOpOutputMatchesExpected(f, (x,), (x,))
+    else:
+      self._assertOpOutputMatchesExpected(f, (x,), (x,))
+
+    # The module cannot have i64 %arg_platform_idx
+    module = module.replace('i32', 'i64')
+    platforms = ['CPU', 'GPU', 'TPU']
+    with self.assertRaisesRegex(
+        errors.InvalidArgumentError,
+        'Module argument at index 0 should be a 0-dimensional '
+        '32-bit integer-tensor platform index argument .* has type '
+        'tensor<i64>'):
+      self._assertOpOutputMatchesExpected(f, (x,), (x,))
+
+    # A module without the platform index argument
+    module = """
+module @jit_f.0 {
+  func.func public @main(%arg0: tensor<i32>) -> tensor<i32> {
+    return %arg0 : tensor<i32>
+  }
+}
+"""
+    with self.assertRaisesRegex(
+        errors.InvalidArgumentError,
+        'The module should have 1 platform index arguments and 0 dimension '
+        'arguments, but it has only 1 total arguments'):
+      self._assertOpOutputMatchesExpected(f, (x,), (x,))
+
   def test_dynamic_iota(self):
     x = np.ones((3, 5), dtype=np.int32)
     res = np.arange(x.shape[0], dtype=np.int32)
@@ -331,7 +451,6 @@ module @jit_fun.1 {
 
     self._assertOpOutputMatchesExpected(f, (x,), (res,))
 
-  @unittest.skip('TODO(burmako): Shape inference leaves dynamic_reshape')
   def test_dynamic_reshape(self):
     x = np.ones((4, 3), dtype=np.float32)
     res = x.reshape((-1,))
@@ -356,37 +475,9 @@ module @jit_fun_flat_jax {
 
     self._assertOpOutputMatchesExpected(f, (x,), (res,))
 
-  @unittest.skip('TODO(burmako): Shape inference adds tf.Cast')
-  def test_dynamic_reshape_cast(self):
-    x = np.ones((4, 2, 3), dtype=np.float32)
-    res = np.sin(x).reshape((4, -1))
-
-    def f(x):  # x: f32[b, 2, 3]
-      module = """
-module @jit_fun_flat_jax {
-  func.func public @main(%arg0: tensor<i32>, %arg1: tensor<?x2x3xf32>) -> tensor<?x6xf32> {
-    %0 = stablehlo.sine %arg1 : tensor<?x2x3xf32>
-    %1 = stablehlo.reshape %arg0 : (tensor<i32>) -> tensor<1xi32>
-    %2 = stablehlo.constant dense<6> : tensor<1xi32>
-    %3 = stablehlo.concatenate %1, %2, dim = 0 : (tensor<1xi32>, tensor<1xi32>) -> tensor<2xi32>
-    %4 = stablehlo.dynamic_reshape %0, %3 : (tensor<?x2x3xf32>, tensor<2xi32>) -> tensor<?x6xf32>
-    return %4 : tensor<?x6xf32>
-  }
-}
-"""
-      return xla.call_module([x],
-                             module=module,
-                             Tout=[res.dtype],
-                             Sout=[(None, 6)],
-                             dim_args_spec=['0.0'])
-
-    self._assertOpOutputMatchesExpected(f, (x,), (res,))
-
-  @unittest.skip('TODO(burmako): Crash in simplifyDynamicGatherToGather()')
   def test_dynamic_gather(self):
     x = np.ones((3, 4), dtype=np.float32)
-    idx = np.array([2, 2], np.int32)
-    res = x[idx]
+    res = np.ones((3, 2), dtype=np.float32)
 
     def f(x):  # x: f32[b, 4]
       module = """
@@ -410,10 +501,9 @@ module @jit_fun_flat_jax {
 
     self._assertOpOutputMatchesExpected(f, (x,), (res,))
 
-  @unittest.skip('TODO(burmako): Shape inference leaves real_dynamic_slice')
   def test_real_dynamic_slice(self):
     x = np.ones((3, 4), dtype=np.float32)
-    res = x[-1, :]  # TODO(necula): adjust this, if not the right result
+    res = x[-1, :]
 
     def f(x):  # x: f32[b, 4]
       module = """
@@ -442,7 +532,6 @@ module @jit_fun_flat_jax {
 
     self._assertOpOutputMatchesExpected(f, (x,), (res,))
 
-  @unittest.skip('TODO(burmako): Module verification with dynamic_update_slice')
   def test_dynamic_update_slice(self):
     x = np.ones((3, 4), dtype=np.float32)
     idx = np.int32(-2)
@@ -470,7 +559,6 @@ module @jit_fun_flat_jax {
 
     self._assertOpOutputMatchesExpected(f, (x, idx), (res,))
 
-  @unittest.skip('TODO(burmako): Re-enable this after shape refinement is done')
   def test_dynamic_broadcast_in_dim(self):
     x = np.ones((3, 4), dtype=np.float32)
     y = np.ones((2, 3, 4), dtype=np.float32)
@@ -527,10 +615,9 @@ module @jit_fun{
 
     self._assertOpOutputMatchesExpected(f, (x,), (res,))
 
-  @unittest.skip('TODO(burmako): tf.Cast added after reduce')
   def test_reduce_broadcast(self):
     x = np.broadcast_to(np.arange(3, dtype=np.float32).reshape(3, 1), (3, 5))
-    res = np.any(x, axis=1)   # TODO(necula): not sure this should be the result
+    res = np.arange(3, dtype=np.float32).reshape(3, 1) * 5
 
     def f(x):  # x: f32[b, 5]
       module = """
@@ -558,7 +645,6 @@ module @jit_fun_flat_jax {
 
     self._assertOpOutputMatchesExpected(f, (x,), (res,))
 
-  @unittest.skip('TODO(burmako): Re-enable this after shape refinement is done')
   def test_call(self):
     """A chain of calls."""
     x = np.ones((5,), dtype=np.float32)
@@ -607,34 +693,34 @@ module @jit_fun_3 {
 
     self._assertOpOutputMatchesExpected(f, (x,), (res,))
 
-  @unittest.skip('TODO(burmako): Shape inference failure for while')
   def test_while(self):
     """A while loop with carryied dynamic shapes."""
     x = np.ones((5,), dtype=np.float32)
     # Compute the result in Pyton first
-    res0 = x
-    for i in range(5):
+    res0 = np.copy(x)
+    for _ in range(5):
       res0 += np.arange(x.shape[0], dtype=np.float32)
-    res1 = np.int64(i)
+    res1 = np.int64(5)
 
     def f(x):  # x: f32[b]
       module = """
 module @jit_fun_flat_jax {
   func.func public @main(%arg0: tensor<i32>, %arg1: tensor<?xf32>) -> (tensor<?xf32>, tensor<i64>) {
     %0 = stablehlo.constant dense<0> : tensor<i64>
-    %1:2 = stablehlo.while(%iterArg = %arg1, %iterArg_0 = %0) : tensor<?xf32>, tensor<i64>
-     cond {
+    %1:2 = "stablehlo.while"(%arg1, %0) ({
+    ^bb0(%arg2: tensor<?xf32>, %arg3: tensor<i64>):
       %2 = stablehlo.constant dense<5> : tensor<i64>
-      %3 = stablehlo.compare  LT, %iterArg_0, %2,  SIGNED : (tensor<i64>, tensor<i64>) -> tensor<i1>
+      %3 = stablehlo.compare  LT, %arg3, %2,  SIGNED : (tensor<i64>, tensor<i64>) -> tensor<i1>
       stablehlo.return %3 : tensor<i1>
-    } do {
+    }, {
+    ^bb0(%arg2: tensor<?xf32>, %arg3: tensor<i64>):
       %2 = stablehlo.reshape %arg0 : (tensor<i32>) -> tensor<1xi32>
       %3 = stablehlo.dynamic_iota %2, dim = 0 : (tensor<1xi32>) -> tensor<?xf32>
-      %4 = stablehlo.add %iterArg, %3 : tensor<?xf32>
+      %4 = stablehlo.add %arg2, %3 : tensor<?xf32>
       %5 = stablehlo.constant dense<1> : tensor<i64>
-      %6 = stablehlo.add %iterArg_0, %5 : tensor<i64>
+      %6 = stablehlo.add %arg3, %5 : tensor<i64>
       stablehlo.return %4, %6 : tensor<?xf32>, tensor<i64>
-    }
+    }) : (tensor<?xf32>, tensor<i64>) -> (tensor<?xf32>, tensor<i64>)
     return %1#0, %1#1 : tensor<?xf32>, tensor<i64>
   }
 }

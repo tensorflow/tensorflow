@@ -462,7 +462,8 @@ LogicalResult PadOp::FoldOperandsPermutation(ArrayRef<int64_t> permutation) {
 
   // Change the result type.
   getResult().setType(ShuffleRankedTensorType(getResult().getType(),
-                                              ReversePermutation(permutation)));
+                                              ReversePermutation(permutation))
+                          .cast<TensorType>());
 
   return success();
 }
@@ -3972,6 +3973,27 @@ LogicalResult VerifyScalesAndZeroPoints(UniformQuantizedOp op, Value scales,
   return success();
 }
 
+template <typename UniformQuantizedOp>
+LogicalResult VerifyLhsRhsBothUniformQuantizedOp(UniformQuantizedOp op) {
+  auto verify_lhs_params =
+      VerifyScalesAndZeroPoints(op, op.getLhsScales(), op.getLhsZeroPoints(),
+                                op.getLhsQuantizationAxis());
+  if (failed(verify_lhs_params)) {
+    return failure();
+  }
+
+  auto verify_rhs_params =
+      VerifyScalesAndZeroPoints(op, op.getRhsScales(), op.getRhsZeroPoints(),
+                                op.getRhsQuantizationAxis());
+  if (failed(verify_rhs_params)) {
+    return failure();
+  }
+
+  return VerifyScalesAndZeroPoints(op, op.getOutputScales(),
+                                   op.getOutputZeroPoints(),
+                                   op.getOutputQuantizationAxis());
+}
+
 }  // namespace
 
 //===----------------------------------------------------------------------===//
@@ -4042,25 +4064,16 @@ LogicalResult UniformDequantizeOp::verify() {
 //
 
 LogicalResult UniformQuantizedDotOp::verify() {
-  UniformQuantizedDotOp op = *this;
+  return VerifyLhsRhsBothUniformQuantizedOp(*this);
+}
 
-  auto verify_lhs_params =
-      VerifyScalesAndZeroPoints(op, op.getLhsScales(), op.getLhsZeroPoints(),
-                                op.getLhsQuantizationAxis());
-  if (failed(verify_lhs_params)) {
-    return failure();
-  }
+//===----------------------------------------------------------------------===//
+// UniformQuantizedConvolutionOp
+//===----------------------------------------------------------------------===//
+//
 
-  auto verify_rhs_params =
-      VerifyScalesAndZeroPoints(op, op.getRhsScales(), op.getRhsZeroPoints(),
-                                op.getRhsQuantizationAxis());
-  if (failed(verify_rhs_params)) {
-    return failure();
-  }
-
-  return VerifyScalesAndZeroPoints(op, op.getOutputScales(),
-                                   op.getOutputZeroPoints(),
-                                   op.getOutputQuantizationAxis());
+LogicalResult UniformQuantizedConvolutionOp::verify() {
+  return VerifyLhsRhsBothUniformQuantizedOp(*this);
 }
 
 }  // namespace TF

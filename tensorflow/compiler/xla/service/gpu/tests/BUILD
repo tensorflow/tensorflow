@@ -122,10 +122,16 @@ xla_cc_test(
     ],
 )
 
-xla_cc_test(
+xla_test(
     name = "mlir_gemm_test",
     srcs = ["mlir_gemm_test.cc"],
-    tags = tf_cuda_tests_tags(),
+    backend_tags = {"gpu": [
+        "requires-gpu-nvidia",
+        "requires-gpu-sm80-only",
+    ]},
+    backends = [
+        "gpu",
+    ],
     deps = [
         ":mlir_gpu_test_base",
         "//tensorflow/tsl/lib/core:status_test_util",
@@ -697,25 +703,6 @@ xla_cc_test(
     name = "gpu_atomic_test",
     srcs = ["gpu_atomic_test.cc"],
     tags = tf_cuda_tests_tags(),
-    deps = [
-        ":gpu_codegen_test",
-        "//tensorflow/compiler/xla/tests:filecheck",
-        "//tensorflow/tsl/platform:test",
-        "//tensorflow/tsl/platform:test_main",
-    ],
-)
-
-xla_test(
-    name = "elemental_ir_emitter_test",
-    srcs = ["elemental_ir_emitter_test.cc"],
-    backend_tags = {"gpu": [
-        "requires-gpu-nvidia",
-        "requires-gpu-sm70-only",
-        "requires-gpu-sm80-only",
-    ]},
-    backends = [
-        "gpu",
-    ],
     deps = [
         ":gpu_codegen_test",
         "//tensorflow/compiler/xla/tests:filecheck",

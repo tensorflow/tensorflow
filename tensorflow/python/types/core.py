@@ -56,6 +56,13 @@ class Tensor(object):
     pass
 
 
+# `ops.EagerTensor` subclasses `Symbol` by way of subclassing `ops.Tensor`;
+# care should be taken when performing `isinstance` checks on `Value`, e.g.:
+#
+# ```
+# if isinstance(core.Symbol) and not isinstance(core.Value):
+#   ...
+# ```
 class Symbol(Tensor):
   """Symbolic "graph" Tensor.
 

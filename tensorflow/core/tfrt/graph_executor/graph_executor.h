@@ -75,7 +75,8 @@ StatusOr<std::unique_ptr<RequestInfo>> CreateRequestInfo(
 tensorflow::Status GraphExecutionRunOnFunction(
     const GraphExecutionOptions& options,
     const GraphExecutionRunOptions& run_options,
-    absl::string_view signature_name, const tfrt::Function& func,
+    absl::string_view signature_name, const tfrt::Function* func,
+    const mlrt::LoadedExecutable* loaded_executable,
     absl::Span<const tensorflow::Tensor> inputs,
     std::vector<tensorflow::Tensor>* outputs,
     tfrt::ResourceContext* resource_context, const Runtime& runtime,
@@ -91,6 +92,19 @@ tensorflow::Status GraphExecutionRunOnFunction(
 std::unique_ptr<tfrt::ResourceContext> CreateResourceContext(
     const Runtime& runtime, tfrt::tpu::TpuModelResource* tpu_model_resource,
     tensorflow::TfrtDeviceInfraTarget tpu_target);
+
+// Compiles MLIR in TF executor dialect to MLRT bytecode executable.
+StatusOr<mlrt::bc::Buffer> CompileMlirModuleToByteCode(
+    const TfrtCompileOptions& options, mlir::ModuleOp module);
+
+// Runs a MLRT function for executing tensorflow graphs.
+tensorflow::Status RunMlrtFunction(
+    mlrt::bc::Function function,
+    const mlrt::LoadedExecutable& loaded_executable,
+    const tsl::RCReference<tfrt::RequestContext>& request_context,
+    tfrt::ConcurrentWorkQueue& work_queue,
+    absl::Span<const tensorflow::Tensor> inputs,
+    std::vector<tensorflow::Tensor>* outputs);
 
 // Loads (if not yet) and runs a subgraph in a graph as per each request.
 class GraphExecutor {

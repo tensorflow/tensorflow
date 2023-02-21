@@ -219,6 +219,8 @@ class SavedModelImpl final : public SavedModel {
   SavedModelImpl(
       Options options, tensorflow::MetaGraphDef meta_graph_def,
       tfrt::BefBuffer bef, tfrt::RCReference<tfrt::BEFFile> bef_file,
+      mlrt::bc::Buffer bytecode,
+      std::optional<mlrt::LoadedExecutable> loaded_executable,
       absl::flat_hash_map<std::string, internal::Signature> signatures,
       std::unique_ptr<FallbackState> fallback_state,
       std::unique_ptr<tfrt::tpu::TpuModelResource> tpu_model_resource,
@@ -293,6 +295,10 @@ class SavedModelImpl final : public SavedModel {
   tensorflow::MetaGraphDef meta_graph_def_;
   tfrt::BefBuffer bef_;
   tfrt::RCReference<tfrt::BEFFile> bef_file_;
+
+  mlrt::bc::Buffer bytecode_;
+  std::optional<mlrt::LoadedExecutable> loaded_executable_;
+
   tfrt::RequestDeadlineTracker req_deadline_tracker_;
   absl::flat_hash_map<std::string, internal::Signature> signatures_;
   std::unique_ptr<FallbackState> fallback_state_;

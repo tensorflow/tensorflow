@@ -65,13 +65,21 @@ std::vector<::testing::Matcher<std::complex<float>>> ArrayComplex64Near(
 
 template <typename T>
 inline std::vector<T> Quantize(const std::vector<float>& data, float scale,
-                               int32_t zero_point) {
+                               int32_t zero_point,
+                               TfLiteType type = kTfLiteNoType) {
   std::vector<T> q;
+
+  T min = std::numeric_limits<T>::min();
+  T max = std::numeric_limits<T>::max();
+
+  if (type == kTfLiteInt4) {
+    min = -7;
+    max = 7;
+  }
+
   for (const auto& f : data) {
     q.push_back(static_cast<T>(std::max<float>(
-        std::numeric_limits<T>::min(),
-        std::min<float>(std::numeric_limits<T>::max(),
-                        std::round(zero_point + (f / scale))))));
+        min, std::min<float>(max, std::round(zero_point + (f / scale))))));
   }
   return q;
 }
@@ -457,8 +465,17 @@ class SingleOpModel {
   template <typename T>
   void QuantizeAndPopulate(int index, const std::vector<float>& data) {
     TfLiteTensor* t = interpreter_->tensor(index);
-    auto q = Quantize<T>(data, t->params.scale, t->params.zero_point);
+    auto q = Quantize<T>(data, t->params.scale, t->params.zero_point, t->type);
     PopulateTensor(index, 0, q.data(), q.data() + q.size());
+  }
+
+  void QuantizeAndPopulate4bit(int index, const std::vector<float>& data) {
+    TfLiteTensor* t = interpreter_->tensor(index);
+    t->type = kTfLiteInt4;
+    std::vector<int8_t> quantized_output =
+        Quantize<int8_t>(data, t->params.scale, t->params.zero_point, t->type);
+    PopulateTensor4bit(index, /*offset=*/0, quantized_output.data(),
+                       quantized_output.data() + quantized_output.size());
   }
 
   void SymmetricQuantizeAndPopulate(int index, const std::vector<float>& data) {
@@ -705,6 +722,9 @@ class SingleOpModel {
         } else if (t.type == TensorType_INT16) {
           std::tie(t.scale, t.zero_point) =
               QuantizationParams<int16_t>(t.min, t.max);
+        } else if (t.type == TensorType_INT4) {
+          std::tie(t.scale, t.zero_point) =
+              QuantizationParams<int8_t>(t.min, t.max, kTfLiteInt4);
         } else {
           LOG(FATAL) << "No support for the requested quantized type";
         }

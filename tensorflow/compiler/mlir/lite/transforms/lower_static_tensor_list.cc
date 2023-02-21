@@ -35,6 +35,7 @@ limitations under the License.
 #include "llvm/ADT/StringSwitch.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/Debug.h"
+#include "llvm/Support/raw_ostream.h"
 #include "mlir/Dialect/Affine/Analysis/LoopAnalysis.h"  // from @llvm-project
 #include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
@@ -55,6 +56,7 @@ limitations under the License.
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/IR/UseDefLists.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
+#include "mlir/IR/Visitors.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassRegistry.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
@@ -1518,18 +1520,26 @@ void LowerStaticTensorListPass::runOnOperation() {
            llvm::all_of(op->getResultTypes(), is_not_variant);
   };
 
+  auto is_set_item_legal = [](Operation *op) {
+    return op->hasAttr("resize_if_index_out_of_bounds") &&
+           op->getAttr("resize_if_index_out_of_bounds")
+               .cast<mlir::BoolAttr>()
+               .getValue();
+  };
+
   ConversionTarget target(*context);
   target.addDynamicallyLegalDialect<TF::TensorFlowDialect>(is_legal);
   target.addIllegalOp<TF::EmptyTensorListOp, TF::TensorListFromTensorOp,
                       TF::TensorListGetItemOp, TF::TensorListLengthOp,
                       TF::TensorListPushBackOp, TF::TensorListReserveOp,
-                      TF::TensorListSetItemOp, TF::TensorListStackOp,
-                      TF::TensorListResizeOp, TF::TensorListConcatV2Op>();
+                      TF::TensorListStackOp, TF::TensorListResizeOp,
+                      TF::TensorListConcatV2Op>();
   // TODO(hinsu): Use TFLite constant op for constants.
   target.addLegalOp<arith::ConstantOp>();
   target.addLegalOp<func::FuncOp>();
   target.addDynamicallyLegalOp<func::ReturnOp>(is_legal);
   target.addDynamicallyLegalOp<TF::YieldOp>(is_legal);
+  target.addDynamicallyLegalOp<TF::TensorListSetItemOp>(is_set_item_legal);
   target.addLegalOp<TFL::CustomOp>();
   // Register fused LSTM/RNN ops as legal.
   target.addLegalOp<TFL::LSTMOp>();

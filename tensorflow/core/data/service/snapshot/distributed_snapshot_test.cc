@@ -41,6 +41,7 @@ namespace tensorflow {
 namespace data {
 namespace {
 
+using testing::ChooseFromDatasets;
 using testing::CreateDummyDistributedSnapshotMetadata;
 using ::testing::ElementsAre;
 using ::testing::IsEmpty;
@@ -72,7 +73,7 @@ class TestSnapshotCluster {
   std::unique_ptr<DataServiceDispatcherClient> dispatcher_client_;
 };
 
-tsl::Status WaitUntilFileExists(const std::string& file_path) {
+tsl::Status WaitForFileExists(const std::string& file_path) {
   while (true) {
     tsl::Status status = Env::Default()->FileExists(file_path);
     if (!errors::IsNotFound(status)) {
@@ -87,19 +88,8 @@ tsl::Status WaitUntilFileExists(const std::string& file_path) {
   return tsl::OkStatus();
 }
 
-tsl::Status WaitUntilSnapshotComplete(const std::string& base_path) {
-  // TODO(b/258691097): Wait for the DONE in the snapshot base directory.
-  TF_RETURN_IF_ERROR(
-      WaitUntilFileExists(StreamDoneFilePath(base_path, /*stream_index=*/0)));
-  std::string streams_directory = StreamsDirectory(base_path);
-  std::vector<std::string> streams;
-  TF_RETURN_IF_ERROR(Env::Default()->GetChildren(streams_directory, &streams));
-  for (const std::string& stream : streams) {
-    std::string done_file =
-        tsl::io::JoinPath(streams_directory, stream, "DONE");
-    TF_RETURN_IF_ERROR(WaitUntilFileExists(done_file));
-  }
-  return tsl::OkStatus();
+tsl::Status WaitForSnapshotComplete(const std::string& base_path) {
+  return WaitForFileExists(SnapshotDoneFilePath(base_path));
 }
 
 class DistributedSnapshotTest : public ::testing::TestWithParam<int64_t> {
@@ -115,7 +105,7 @@ TEST_P(DistributedSnapshotTest, WriteSnapshot) {
   std::string snapshot_path = LocalTempFilename();
   TF_ASSERT_OK(
       data_service.dispatcher().Snapshot(dataset, snapshot_path, metadata));
-  TF_ASSERT_OK(WaitUntilSnapshotComplete(snapshot_path));
+  TF_ASSERT_OK(WaitForSnapshotComplete(snapshot_path));
   if (NumWorkers() == 1) {
     EXPECT_THAT(testing::ReadSnapshot<int64_t>(snapshot_path,
                                                tsl::io::compression::kNone),
@@ -140,9 +130,9 @@ TEST_P(DistributedSnapshotTest, WriteMultipleSnapshots) {
                                                   snapshots[1], metadata));
   TF_ASSERT_OK(data_service.dispatcher().Snapshot(RangeDataset(20),
                                                   snapshots[2], metadata));
-  TF_ASSERT_OK(WaitUntilSnapshotComplete(snapshots[0]));
-  TF_ASSERT_OK(WaitUntilSnapshotComplete(snapshots[1]));
-  TF_ASSERT_OK(WaitUntilSnapshotComplete(snapshots[2]));
+  TF_ASSERT_OK(WaitForSnapshotComplete(snapshots[0]));
+  TF_ASSERT_OK(WaitForSnapshotComplete(snapshots[1]));
+  TF_ASSERT_OK(WaitForSnapshotComplete(snapshots[2]));
   EXPECT_THAT(
       testing::ReadSnapshot<int64_t>(snapshots[0], tsl::io::compression::kNone),
       IsOkAndHolds(IsEmpty()));
@@ -155,6 +145,28 @@ TEST_P(DistributedSnapshotTest, WriteMultipleSnapshots) {
                                         12, 13, 14, 15, 16, 17, 18, 19)));
 }
 
+TEST_P(DistributedSnapshotTest, ChooseFromDatasets) {
+  // Tests snapshotting this dataset:
+  // datasets = [tf.data.Dataset.from_tensor_slices(["a", "a", "a", "a", "a"]),
+  //             tf.data.Dataset.from_tensor_slices(["b", "b", "b", "b", "b"]),
+  //             tf.data.Dataset.from_tensor_slices(["c", "c", "c", "c", "c"])]
+  // choice_dataset = tf.data.Dataset.range(3).repeat()
+  // dataset = tf.data.Dataset.choose_from_datasets(datasets, choice_dataset)
+  TestSnapshotCluster data_service(NumWorkers());
+  TF_ASSERT_OK_AND_ASSIGN(DatasetDef dataset, ChooseFromDatasets());
+  experimental::DistributedSnapshotMetadata metadata =
+      CreateDummyDistributedSnapshotMetadata();
+  std::string snapshot_path = LocalTempFilename();
+  TF_ASSERT_OK(
+      data_service.dispatcher().Snapshot(dataset, snapshot_path, metadata));
+  TF_ASSERT_OK(WaitForSnapshotComplete(snapshot_path));
+  EXPECT_THAT(
+      testing::ReadSnapshot<tstring>(snapshot_path,
+                                     tsl::io::compression::kNone),
+      IsOkAndHolds(UnorderedElementsAre("a", "b", "c", "a", "b", "c", "a", "b",
+                                        "c", "a", "b", "c", "a", "b", "c")));
+}
+
 TEST_P(DistributedSnapshotTest, EmptyDataset) {
   TestSnapshotCluster data_service(NumWorkers());
   DatasetDef dataset = RangeDataset(0);
@@ -163,7 +175,7 @@ TEST_P(DistributedSnapshotTest, EmptyDataset) {
   std::string snapshot_path = LocalTempFilename();
   TF_ASSERT_OK(
       data_service.dispatcher().Snapshot(dataset, snapshot_path, metadata));
-  TF_ASSERT_OK(WaitUntilSnapshotComplete(snapshot_path));
+  TF_ASSERT_OK(WaitForSnapshotComplete(snapshot_path));
   EXPECT_THAT(testing::ReadSnapshot<int64_t>(snapshot_path,
                                              tsl::io::compression::kNone),
               IsOkAndHolds(IsEmpty()));
@@ -188,7 +200,7 @@ TEST_P(DistributedSnapshotCompressionTest, Compression) {
   std::string snapshot_path = LocalTempFilename();
   TF_ASSERT_OK(
       data_service.dispatcher().Snapshot(dataset, snapshot_path, metadata));
-  TF_ASSERT_OK(WaitUntilSnapshotComplete(snapshot_path));
+  TF_ASSERT_OK(WaitForSnapshotComplete(snapshot_path));
   EXPECT_THAT(
       testing::ReadSnapshot<int64_t>(snapshot_path, Compression()),
       IsOkAndHolds(UnorderedElementsAre(0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11,

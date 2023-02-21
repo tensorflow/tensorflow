@@ -21,7 +21,7 @@ import gzip
 import inspect
 import logging
 import os
-from typing import Dict, List, Sequence, Tuple, Union
+from typing import List, Sequence, Tuple, Union
 
 from . import xla_extension as _xla
 import numpy as np
@@ -43,7 +43,7 @@ profiler = _xla.profiler
 
 # Just an internal arbitrary increasing number to help with backward-compatible
 # changes.
-_version = 122
+_version = 129
 
 # Version number for MLIR:Python components.
 mlir_api_version = 43
@@ -101,6 +101,25 @@ def make_tfrt_tpu_c_api_client():
   return _xla.get_c_api_client('tpu')
 
 
+def load_pjrt_plugin_dynamically(plugin_name: str, library_path: str) -> None:
+  _xla.load_pjrt_plugin(plugin_name, library_path)
+
+
+def make_c_api_client(plugin_name: str):
+  """Creates a PJRT C API client for a PJRT plugin.
+
+  It is required that load_pjrt_plugin_dynamically is called once with the same
+  plugin_name before this method is called.
+
+  Args:
+     plugin_name: the name of the PJRT plugin.
+
+  Returns:
+     A PJRT C API client for plugin_name.
+  """
+  return _xla.get_c_api_client(plugin_name)
+
+
 def _use_pjrt_c_api() -> bool:
   use_pjrt_c_api = os.getenv('JAX_USE_PJRT_C_API_ON_TPU', 'false')
   if use_pjrt_c_api not in ('1', '0', 'true', 'false'):
@@ -113,6 +132,8 @@ def _use_pjrt_c_api() -> bool:
 def make_tpu_client(use_pjrt_c_api: bool = False):
   """Returns a TPU client. Defaults to allowing 32 in-flight computations."""
   if use_pjrt_c_api or _use_pjrt_c_api():
+    library_path = os.getenv('TPU_LIBRARY_PATH', 'libtpu.so')
+    load_pjrt_plugin_dynamically('tpu', library_path)
     return make_tfrt_tpu_c_api_client()
 
   max_inflight_computations = os.getenv(
@@ -137,46 +158,6 @@ def make_plugin_device_client():
         'Compile TensorFlow with '
         '//tensorflow/compiler/xla/python:enable_plugin_device set to true '
         '(defaults to false) to enable this.') from e
-
-
-def _get_pjrt_plugin_names_and_library_paths() -> Dict[str, str]:
-  """Gets the names and library paths of PJRT plugins to load from ENV.
-
-  By default, TPU with path set in 'TPU_LIBRARY_PATH' will be loaded. Set
-  PJRT_NAMES_AND_LIBRARY_PATHS='name1:path1,name2:path2' to load other PJRT
-  plugins as well.
-
-  Returns:
-    A dict of {plugin_name: library path} for the PJRT plugins to load.
-  """
-  pjrt_plugins = {'tpu': os.getenv('TPU_LIBRARY_PATH', 'libtpu.so')}
-  plugins_from_env = os.getenv('PJRT_NAMES_AND_LIBRARY_PATHS', '')
-  if not plugins_from_env:
-    return pjrt_plugins
-
-  for plugin in plugins_from_env.split(','):
-    try:
-      name, library_path = plugin.split(':')
-      pjrt_plugins[name] = library_path
-    except ValueError:
-      logger.warning('invalid value in env PJRT_NAMES_AND_LIBRARY_PATHS: %s',
-                     plugin)
-  return pjrt_plugins
-
-
-# TODO(b/237099479): Move to xla_bridge.py when ready.
-def maybe_load_pjrt_plugins() -> None:
-  """Tries to load PJRT plugin for platform."""
-  if not _use_pjrt_c_api():
-    return
-  # TODO(b/261345120): implement plugin discovery.
-  pjrt_plugins = _get_pjrt_plugin_names_and_library_paths()
-  for plugin_name, library_path in pjrt_plugins.items():
-    try:
-      _xla.load_pjrt_plugin(plugin_name, library_path)
-    except Exception as e:  # pylint: disable=broad-except
-      logger.error("Error loading '%s' plugin from '%s': %s", plugin_name,
-                   library_path, e)
 
 
 class OpMetadata:
@@ -474,7 +455,7 @@ XLACompatibleSharding = _xla.XLACompatibleSharding
 NamedSharding = _xla.NamedSharding
 SingleDeviceSharding = _xla.SingleDeviceSharding
 PmapSharding = _xla.PmapSharding
-OpShardingSharding = _xla.OpShardingSharding
+GSPMDSharding = _xla.GSPMDSharding
 
 
 def register_custom_call_target(name, fn, platform='cpu'):

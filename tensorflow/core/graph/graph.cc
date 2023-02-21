@@ -39,8 +39,6 @@ limitations under the License.
 
 namespace tensorflow {
 
-const int Graph::kControlSlot = -1;
-
 // Node
 Node::NodeClass Node::GetNodeClassForOp(const std::string& ts) {
   static const absl::flat_hash_map<std::string, Node::NodeClass>*

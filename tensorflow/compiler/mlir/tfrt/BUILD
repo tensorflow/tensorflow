@@ -37,6 +37,7 @@ package_group(
         # Allow visibility from the mlir language server.
         "//learning/brain/mlir/mlir_lsp_server/...",
         "//smartass/brain/ops/...",
+        "//third_party/mlir_edge/tpgen/...",
         "//tensorflow_serving/servables/tensorflow/google/...",
         "//third_party/tf_runtime_google/...",
     ]),
@@ -329,6 +330,7 @@ cc_library(
     ],
     deps = [
         ":attr_lowering_utils",
+        ":transform_utils",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_analysis",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_types",
@@ -394,6 +396,7 @@ cc_library(
         "transforms/sink_in_invariant_ops.cc",
         "transforms/tf_to_tfrt.cc",
         "transforms/tpu_passes.h",
+        "transforms/xla_rewrite_pass.cc",
     ],
     hdrs = [
         "transforms/passes.h",
@@ -406,6 +409,7 @@ cc_library(
         ":tensor_array_side_effect_analysis",
         ":tf_jitrt_opdefs",
         ":tf_jitrt_pipeline",
+        ":tfrt_compile_options",
         ":transforms/gpu_passes",
         ":transforms/set_shape_invariant_in_while_ops",
         "@llvm-project//llvm:Support",
@@ -436,7 +440,7 @@ cc_library(
         "@tf_runtime//backends/jitrt:jitrt_opdefs",
         "@tf_runtime//:stream_analysis",
         "@tf_runtime//:test_kernels_opdefs",
-        "//tensorflow/compiler/mlir/tfrt:transform_utils",
+        ":transform_utils",
         "//tensorflow/tsl/platform:status",
     ] + if_google([
         "//learning/brain/tfrt/tpu/compiler/mlir:tf_to_tfrt_tpu",
@@ -543,6 +547,7 @@ cc_library(
         ":tfrt_compile_options",
         "@com_google_absl//absl/strings",
         "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Support",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:import_model",
@@ -812,15 +817,11 @@ cc_library(
     deps = [
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_ops",
-        "@llvm-project//llvm:Support",
+        "@com_google_absl//absl/strings",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:Support",
-        "@llvm-project//mlir:TransformUtils",
-        "@llvm-project//mlir:Transforms",
         "@tf_runtime//:basic_kernels_opdefs",
         "@tf_runtime//:core_runtime_opdefs",
-        "@tf_runtime//:support",
     ],
 )
 
@@ -829,6 +830,7 @@ cc_library(
     srcs = ["transforms/update_op_cost_in_tfrt_mlir.cc"],
     hdrs = ["transforms/update_op_cost_in_tfrt_mlir.h"],
     deps = [
+        ":cost_analysis",
         "//tensorflow/core/tfrt/fallback:cost_recorder",
         "@llvm-project//mlir:IR",
     ],

@@ -653,8 +653,8 @@ def _run_static_range_ptq(
       tags,
       exported_model.init_node_name,
       exported_model.restore_node_name,
+      exported_model.save_node_name,
       exported_model.checkpoint_dir,
-      exported_model.variable_shared_names,
       exported_model.function_aliases,
   )
 
@@ -675,8 +675,8 @@ def _run_static_range_ptq(
       tags,
       exported_model.init_node_name,
       exported_model.restore_node_name,
+      exported_model.save_node_name,
       exported_model.checkpoint_dir,
-      exported_model.variable_shared_names,
   )
 
   logging.info('Running post-training quantization post-calibration step.')
@@ -783,9 +783,9 @@ def _static_range_quantize(
       signature_def_map,
       tags,
       init_op_name=exported_model.init_node_name,
+      save_op_name=exported_model.save_node_name,
       restore_op_name=exported_model.restore_node_name,
       checkpoint_dir=exported_model.checkpoint_dir,
-      variable_shared_names=exported_model.variable_shared_names,
       function_aliases=exported_model.function_aliases,
   )
 
@@ -945,9 +945,12 @@ def _populate_quantization_options_default_values(
   if (
       quantization_options.quantization_method.experimental_method
       == _ExperimentalMethod.WEIGHT_ONLY
-      and quantization_options.op_set == quant_opts_pb2.OpSet.UNIFORM_QUANTIZED
+      and (
+          quantization_options.op_set == quant_opts_pb2.OpSet.UNIFORM_QUANTIZED
+          or quantization_options.op_set == quant_opts_pb2.OpSet.TF
+      )
   ):
-    raise ValueError('Uniform quantized opset does not support weight-only.')
+    raise ValueError('TF/Uniform quantized opset does not support weight-only.')
 
   # Converter assumes options are specified. So set SRQ explicitly.
   if (

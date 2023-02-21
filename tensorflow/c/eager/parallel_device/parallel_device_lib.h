@@ -121,20 +121,8 @@ class ParallelDevice {
   //
   // Set step_id to configure the step id used for rendezvous creation. step id
   // of value -1 is reserved for global rendezvous and should not be set here.
-  //
-  // This function is overloaded so that if the inputs are constructed from
-  // `TensorWithLayout` we can use the one with `TensorHandlePtr` but
-  // if the inputs are directly `ParallelTensor` (for example, in the case of
-  // custom device execution) we can use the one with `ParallelTensor`.
   void StartExecute(TFE_Context* context,
                     const std::vector<ParallelTensor*>& inputs,
-                    const char* operation_name, const TFE_OpAttrs* attributes,
-                    int expected_max_outputs,
-                    CancellationManager& cancellation_manager,
-                    std::optional<int64_t> step_id = std::nullopt) const;
-
-  void StartExecute(TFE_Context* context,
-                    const std::vector<const TensorHandlePtr*>& inputs,
                     const char* operation_name, const TFE_OpAttrs* attributes,
                     int expected_max_outputs,
                     CancellationManager& cancellation_manager,
@@ -204,7 +192,6 @@ class ParallelTensor {
 
   size_t num_tensors() const { return tensors_.size(); }
   TFE_TensorHandle* tensor(size_t index) const { return tensors_[index].get(); }
-  const TensorHandlePtr* tensor_data() const { return tensors_.data(); }
 
   // If the `shape` argument to `FromTensorHandles` is specified, returns that.
   //
