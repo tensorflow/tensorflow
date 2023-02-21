@@ -897,6 +897,12 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
               set_xla_gpu_enable_cudnn_int8x32_convolution_reordering),
       debug_options->xla_gpu_enable_cudnn_int8x32_convolution_reordering(),
       "Enable cuDNN frontend for int8x32 convolutions with reordered filter."));
+  flag_list->push_back(
+      tsl::Flag("xla_gpu_triton_gemm_any",
+                bool_setter_for(&DebugOptions::set_xla_gpu_triton_gemm_any),
+                debug_options->xla_gpu_triton_gemm_any(),
+                "Use Triton-based matrix multiplication for any GEMM it "
+                "supports without filtering only faster ones."));
 }  // NOLINT(readability/fn_size)
 
 // Allocates flag_values and flag_objects; this function must not be called more
