@@ -29,7 +29,6 @@ pipeline:
                     command: |
                       echo "trigger.prNumber: <+trigger.prNumber>"
                       echo "trigger.branch: <+trigger.branch>"
-                      echo "pipeline var: <+variablepipeline.variables.triggerPrNumber>"
     - stage:
         name: Child 1
         identifier: Child_1
