@@ -562,15 +562,19 @@ FailureOr<gml_st::FusionOp> wrapFusionCluster(
   // 1. Find operands and results of the cluster op.
   SetVector<Value> clusterOperands;
   SmallVector<Value> clusterResults;
+  auto visitOpOperand = [&](OpOperand* operand) {
+    auto* definingOp = operand->get().getDefiningOp();
+
+    if (fusionCluster.operations.contains(definingOp)) return;
+
+    if (!isa_and_nonnull<arith::ConstantOp>(definingOp))
+      clusterOperands.insert(operand->get());
+  };
+
   for (Operation* op : fusionCluster.operations) {
-    for (Value operand : op->getOperands()) {
-      auto* definingOp = operand.getDefiningOp();
+    for (OpOperand& operand : op->getOpOperands()) visitOpOperand(&operand);
 
-      if (fusionCluster.operations.contains(definingOp)) continue;
-
-      if (!isa_and_nonnull<arith::ConstantOp>(definingOp))
-        clusterOperands.insert(operand);
-    }
+    visitUsedValuesDefinedAbove(op->getRegions(), visitOpOperand);
 
     for (Value result : op->getResults()) {
       if (llvm::any_of(result.getUsers(), [&](Operation* user) {
@@ -603,23 +607,18 @@ FailureOr<gml_st::FusionOp> wrapFusionCluster(
   IRMapping mapper;
   mapper.map(clusterOperands, block->getArguments());
 
-  auto yieldOp = rewriter.create<gml_st::YieldOp>(loc, clusterResults[0]);
-
-  // 4. Move ops into the cluster region.
+  // 4. Copy ops into the cluster region in topoligical order to avoid swapping
+  // depending ops.
   SmallVector<Operation*> clusterOps(fusionCluster.operations.begin(),
                                      fusionCluster.operations.end());
 
-  // Move ops in reverse topoligical order to avoid swapping depending ops.
   mlir::computeTopologicalSorting(clusterOps);
-  for (Operation* op : llvm::reverse(clusterOps)) {
-    op->moveBefore(block, block->begin());
-
-    for (OpOperand& opOperand : op->getOpOperands()) {
-      if (mapper.contains(opOperand.get())) {
-        opOperand.set(mapper.lookup(opOperand.get()));
-      }
-    }
+  for (Operation* op : clusterOps) {
+    rewriter.clone(*op, mapper);
   }
+
+  auto yieldOp = rewriter.create<gml_st::YieldOp>(
+      loc, mapper.lookupOrDefault(clusterResults[0]));
 
   // 5. Replace all uses of ops in the cluster with results of the new fusion
   // cluster op.
