@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#if defined(INTEL_MKL)
+#if defined(INTEL_MKL) && defined(ENABLE_MKL)
 
 #include "tensorflow/core/framework/fake_input.h"
 #include "tensorflow/core/framework/node_def_builder.h"
@@ -96,4 +96,4 @@ TEST_F(MklDequantizeOpTest, MKLInput) {
 
 }  // namespace tensorflow
 
-#endif  // INTEL_MKL
+#endif  // INTEL_MKL && ENABLE_MKL
