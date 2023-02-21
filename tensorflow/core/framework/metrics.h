@@ -125,6 +125,11 @@ void RecordTFDataServiceClientIterators(
     int64_t worker_uid, data::DeploymentMode deployment_mode,
     const data::ProcessingModeDef& processing_mode, bool is_coordinated_read);
 
+// Records that a tf.data service worker client has been created that will use
+// `data_transfer_protocol` to get data from the worker server.
+void RecordTFDataServiceDataTransferProtocolUsed(
+    const string& data_transfer_protocol);
+
 // Records tf.data service cross-trainer cache queries.
 void RecordTFDataServiceCrossTrainerCacheQuery(bool cache_hit);
 
