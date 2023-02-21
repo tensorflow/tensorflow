@@ -39,15 +39,8 @@ pipeline:
           pipeline: tensorflow_chained_child_pipeline_1
           project: parson
           outputs: []
-          inputs:
-            identifier: tensorflow_chained_child_pipeline_1
-            properties:
-              ci:
-                codebase:
-                  build:
-                    type: PR
-                    spec:
-                      number: <+trigger.prNumber>
+          inputSetReferences:
+            - childinputsetprnumber
         tags: {}
         variables: []
   variables: []
