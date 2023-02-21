@@ -1014,7 +1014,7 @@ def split(ary, indices_or_sections, axis=0):
 def _split_on_axis(np_fun_name, axis):
 
   @np_utils.np_doc(np_fun_name)
-    def f(ary, indices_or_sections):
+  def f(ary, indices_or_sections):
     # for 1-D array, hsplit becomes vsplit
     new_axis = np_utils.cond(
       math_ops.equal(axis, 1),
