@@ -27,7 +27,7 @@ pipeline:
                     shell: Sh
                     command: |-
                       echo "this chained pipeline worked"
-                      echo "input:"<+pipeline.variables.input>
+                      echo "prNumber:"<+trigger.prNumber>
   properties:
     ci:
       codebase:
