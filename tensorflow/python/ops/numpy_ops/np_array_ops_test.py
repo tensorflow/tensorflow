@@ -1156,6 +1156,27 @@ class ArrayMethodsTest(test.TestCase):
     x = np_array_ops.arange(8)
     y = np_array_ops.split(x, [3, 5, 6, 10])
     self.assertListEqual([([0, 1, 2]), ([3, 4]), ([5]), ([6, 7]), ([])], y)
+    
+  def testHVDSplit(self):
+    @def_function.function(input_signature=[
+        tensor_spec.TensorSpec(dtype=dtypes.int64, shape=None),
+        tensor_spec.TensorSpec(dtype=dtypes.int32, shape=None)
+    ])
+    def f(arr, axis):
+      if axis == 0:
+        return np_array_ops.vsplit(arr, 2)
+      elif axis == 1:
+        return np_array_ops.hsplit(arr, 2)
+      else:
+        return np_array_ops.dsplit(arr, 2)
+
+    x = np_array_ops.arange(4)
+    self.assertListEqual([([0, 1]), ([2, 3])], f(x, constant_op.constant(0)))
+    self.assertListEqual([([0, 1]), ([2, 3])], f(x, constant_op.constant(1)))
+    self.assertListEqual([([[0, 1]]), ([[2, 3]])],
+                         f(x.reshape(1, 4), constant_op.constant(1)))
+    self.assertListEqual([([[[0, 1]]]), ([[[2, 3]]])],
+                         f(x.reshape(1, 1, 4), constant_op.constant(2)))
 
   def testSign(self):
     state = np.random.RandomState(0)
