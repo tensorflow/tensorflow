@@ -50,13 +50,8 @@ inline constexpr int64_t MinThreadsXRowReduction() { return 1024; }
 // When doing batched row reduction, how big the batch dimension could be.
 inline constexpr int64_t BatchedReductionRaceFreeBound() { return 8; }
 
-// Returns true if `hlo` is a matched softmax fusion.
-bool IsSoftmaxCustomCall(const HloInstruction& hlo);
-
 // Identifies Triton GEMM fusions.
 bool IsTritonCustomCall(const HloInstruction& hlo);
-
-extern const char* const kSoftmaxCallTarget;
 
 inline constexpr absl::string_view kTritonCallTarget = "__triton";
 
