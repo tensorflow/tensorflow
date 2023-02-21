@@ -4253,22 +4253,14 @@ IrEmitterUnnested::EmitTilingKernel(
 
   int64_t non_tiling_dimension =
       tiling_scheme.GetTilingDimension(0) == 1 ? kDimZ : kDimY;
-  const IrArray::Index block_coords = [&] {
-    IrArray::Index starting_block(
-        thread_id_info.block_id,
-        ShapeUtil::MakeShapeWithDenseLayout(
-            PRED /*arbitrary*/, dims_in_blocks,
-            // This layout determines the iteration order. We want the
-            // non-tiling dimension to be the slowest varying dimension.
-            {2, 1 - non_tiling_dimension, non_tiling_dimension}),
-        &b_);
-    std::vector<llvm::Value*> multidim = starting_block.multidim();
-    multidim[non_tiling_dimension] = b_.CreateMul(
-        multidim[non_tiling_dimension],
-        constant(tiling_scheme.GetBlockTileSizeFor(non_tiling_dimension)),
-        "block_origin." + std::to_string(non_tiling_dimension));
-    return IrArray::Index(multidim, dims_in_blocks, index_ty);
-  }();
+  const IrArray::Index block_coords(
+      thread_id_info.block_id,
+      ShapeUtil::MakeShapeWithDenseLayout(
+          PRED /*arbitrary*/, dims_in_blocks,
+          // This layout determines the iteration order. We want the
+          // non-tiling dimension to be the slowest varying dimension.
+          {2, 1 - non_tiling_dimension, non_tiling_dimension}),
+      &b_);
 
   ValueVector2 tile_dimensions;
   // Coordinate access is shifted: 0 corresponds to the first non-tiling
@@ -4293,9 +4285,6 @@ IrEmitterUnnested::EmitTilingKernel(
     std::vector<llvm::Value*> elem_multi_index = block_coords.multidim();
     llvm::Type* index_ty = block_coords.GetType();
     for (int i = 0; i < kDimTot; ++i) {
-      if (i == non_tiling_dimension) {
-        continue;
-      }
       elem_multi_index[i] =
           b_.CreateMul(block_coords[i],
                        llvm::ConstantInt::get(
