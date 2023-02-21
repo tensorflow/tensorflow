@@ -10,9 +10,9 @@ inputSet:
       ci:
         codebase:
           build:
-            type: branch
+            type: PR
             spec:
-              branch: <+pipeline.variables.input>
+              number: <+trigger.prNumber>
     variables:
       - name: input
         type: String
