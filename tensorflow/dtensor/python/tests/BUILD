@@ -196,7 +196,6 @@ dtensor_test(
     env = {
         "DTENSOR_GPU_USE_NCCL_COMMUNICATION": "1",
         "NCCL_P2P_DISABLE": "1",  # FIXME(b/251183104): p2p detection in cuda 10.1+ is broken.
-        "DTENSOR_DO_NOT_FUSE_REDUCE_SCATTER": "1",  # FIXME(b/266609048): timeout if fused.
     },
     tags = [
         "no_windows",
@@ -241,7 +240,6 @@ dtensor_test(
     env = {
         "DTENSOR_GPU_USE_NCCL_COMMUNICATION": "1",
         "NCCL_P2P_DISABLE": "1",  # FIXME(b/251183104): p2p detection in cuda 10.1+ is broken.
-        "DTENSOR_DO_NOT_FUSE_REDUCE_SCATTER": "1",  # FIXME(b/266609048): timeout if fused.
     },
     tags = [
         "no_windows",
