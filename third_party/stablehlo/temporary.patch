@@ -1,17 +1,3 @@
-diff --ruN a/stablehlo/stablehlo/reference/Ops.h b/stablehlo/stablehlo/reference/Ops.h
---- stablehlo/stablehlo/reference/Ops.h
-+++ stablehlo/stablehlo/reference/Ops.h
-@@ -34,8 +34,8 @@
- Tensor evalConstantOp(ElementsAttr value);
- Tensor evalConvertOp(const Tensor &operand, Type resultType);
- Tensor evalCosineOp(const Tensor &operand, Type resultType);
--Tensor evalDynamicSliceOp(const Tensor &operand, ArrayRef<Tensor> start_indices,
--                          ArrayRef<int64_t> slice_sizes, Type resultType);
-+Tensor evalDynamicSliceOp(const Tensor &operand, ArrayRef<Tensor> startIndices,
-+                          ArrayRef<int64_t> sliceSizes, Type resultType);
- Tensor evalDynamicUpdateSliceOp(const Tensor &operand, const Tensor &update,
-                                 ArrayRef<Tensor> startIndices, Type resultType);
- Tensor evalFloorOp(const Tensor &operand, Type resultType);
 diff --ruN a/stablehlo/stablehlo/tests/stablehlo_refine_shapes.mlir b/stablehlo/stablehlo/tests/stablehlo_refine_shapes.mlir
 --- stablehlo/stablehlo/tests/stablehlo_refine_shapes.mlir
 +++ stablehlo/stablehlo/tests/stablehlo_refine_shapes.mlir
