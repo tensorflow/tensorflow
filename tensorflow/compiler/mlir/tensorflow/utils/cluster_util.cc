@@ -41,10 +41,7 @@ llvm::SetVector<Operation*> GetAllOpsDependOnCluster(
     const llvm::DenseMap<Operation*, Cluster*>& op_to_cluster_map) {
   llvm::SetVector<Operation*> ops_depend_on_cluster;
   for (Operation& op : *c.ops.front()->getBlock()) {
-    if (op.isBeforeInBlock(c.ops.front())) {
-      continue;
-    }
-    if (std::find(c.ops.begin(), c.ops.end(), &op) != c.ops.end()) {
+    if (op.isBeforeInBlock(c.ops.front()) || c.ops.contains(&op)) {
       continue;
     }
     // Gets the live in values of the `op`
@@ -56,8 +53,7 @@ llvm::SetVector<Operation*> GetAllOpsDependOnCluster(
           if (!defining_op) {
             return false;
           }
-          return std::find(c.ops.begin(), c.ops.end(), defining_op) !=
-                     c.ops.end() ||
+          return c.ops.contains(defining_op) ||
                  ops_depend_on_cluster.contains(defining_op);
         })) {
       ops_depend_on_cluster.insert(&op);
@@ -69,10 +65,11 @@ llvm::SetVector<Operation*> GetAllOpsDependOnCluster(
   llvm::SetVector<Operation*> same_cluster_ops_with_dependency(
       ops_depend_on_cluster.begin(), ops_depend_on_cluster.end());
   for (Operation* op : ops_depend_on_cluster) {
-    if (op_to_cluster_map.count(op) == 0) {
+    Cluster* cluster = op_to_cluster_map.lookup(op);
+    if (cluster == nullptr) {
       continue;
     }
-    for (auto ops_in_same_cluster : op_to_cluster_map.lookup(op)->ops) {
+    for (Operation* ops_in_same_cluster : cluster->ops) {
       same_cluster_ops_with_dependency.insert(ops_in_same_cluster);
     }
   }
@@ -145,7 +142,9 @@ llvm::StringMap<SmallVector<Cluster>> BuildAllClusters(
     // with op alone.
     auto it = nearest_clusters.find(target_name);
     if (it == nearest_clusters.end()) {
-      nearest_clusters[target_name] = Cluster{{&op}, target_name};
+      SetVector<Operation*> new_cluster_op_set;
+      new_cluster_op_set.insert(&op);
+      nearest_clusters[target_name] = Cluster{new_cluster_op_set, target_name};
       op_to_cluster_map[&op] = &nearest_clusters[target_name];
       continue;
     }
@@ -155,7 +154,7 @@ llvm::StringMap<SmallVector<Cluster>> BuildAllClusters(
     Cluster& nearest_cluster = it->second;
     if (CanMergeIntoCluster(nearest_cluster, &op, side_effect_analysis,
                             get_target, op_to_cluster_map)) {
-      nearest_cluster.ops.emplace_back(&op);
+      nearest_cluster.ops.insert(&op);
       op_to_cluster_map[&op] = &nearest_cluster;
       continue;
     }
@@ -166,7 +165,9 @@ llvm::StringMap<SmallVector<Cluster>> BuildAllClusters(
     all_clusters[target_name].push_back(nearest_cluster);
 
     // Create a new cluster to hold op alone and update nearest_clusters.
-    nearest_clusters[target_name] = Cluster{{&op}, target_name};
+    SetVector<Operation*> new_cluster_op_set;
+    new_cluster_op_set.insert(&op);
+    nearest_clusters[target_name] = Cluster{new_cluster_op_set, target_name};
     op_to_cluster_map[&op] = &nearest_clusters[target_name];
   }
 
