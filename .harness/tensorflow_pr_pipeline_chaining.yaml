@@ -16,7 +16,7 @@ pipeline:
           project: parson
           outputs: []
           inputSetReferences:
-            - default
+            - childinputsetprnumber
         tags: {}
         variables: []
   variables:
