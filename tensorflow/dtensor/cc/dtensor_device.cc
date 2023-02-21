@@ -1453,8 +1453,8 @@ DTensorDevice::DTensorOperationToModule(
                           device_set, doperation.is_func(), *flib_def,
                           *result.graph, result.doperation_cache_key));
 
-  cached_mlir_module = module_manager_.AddCachedExecutable(
-      doperation, cache_key, mlir_module_ref.release());
+  cached_mlir_module =
+      module_manager_.AddCachedExecutable(cache_key, mlir_module_ref.release());
   result.module = **cached_mlir_module;
   return result;
 }
@@ -1544,7 +1544,7 @@ void DTensorDevice::ModuleToExecutionFunctions(
   }
 
   *execution_functions = function_manager_.AddCachedExecutable(
-      doperation, lowering_context.doperation_cache_key, std::move(functions));
+      lowering_context.doperation_cache_key, std::move(functions));
 }
 
 void DTensorDevice::ExecuteFunctionAndWait(
