@@ -93,26 +93,6 @@ func.func @vectorize_static_matmul(%lhs: tensor<128x16xf32>,
 
 // -----
 
-func.func @pad(%arg0: tensor<10x10xf32>) -> tensor<16x10xf32> {
-  %cst = arith.constant 0.000000e+00 : f32
-  %padded = tensor.pad %arg0 low[0, 0] high[6, 0] {
-  ^bb0(%arg3: index, %arg4: index):
-    tensor.yield %cst : f32
-  } : tensor<10x10xf32> to tensor<16x10xf32>
-
-  return %padded : tensor<16x10xf32>
-}
-
-// CHECK-LABEL: func @pad(
-
-// CHECK:         %[[EMPTY:.*]] = tensor.empty() : tensor<16x10xf32>
-// CHECK:         %[[FILL:.*]] = linalg.fill {{.*}} outs(%[[EMPTY]]
-// CHECK:         %[[READ:.*]] = vector.transfer_read
-// CHECK:         %[[WRITE:.*]] = vector.transfer_write %[[READ]], %[[FILL]]
-// CHECK:         return %[[WRITE]]
-
-// -----
-
 func.func @transpose(%input: tensor<4x5x6xf32>,
     %init: tensor<5x6x4xf32>) -> tensor<5x6x4xf32> {
   %transpose = linalg.transpose

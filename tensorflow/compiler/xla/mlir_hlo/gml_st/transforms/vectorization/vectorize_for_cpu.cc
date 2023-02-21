@@ -374,7 +374,6 @@ struct VectorizeForCPUPass
     {
       RewritePatternSet patterns = getDefaultVectorizationPatterns(ctx);
       TransferReadOp::getCanonicalizationPatterns(patterns, ctx);
-      linalg::populatePadOpVectorizationPatterns(patterns);
       patterns.add<IdentityTransposeOpFoldingPattern>(ctx);
       if (failed(applyPatternsAndFoldGreedily(func, std::move(patterns)))) {
         return signalPassFailure();
