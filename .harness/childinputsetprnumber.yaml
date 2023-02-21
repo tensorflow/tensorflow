@@ -1,0 +1,14 @@
+inputSet:
+  pipeline:
+    identifier: tensorflow_chained_child_pipeline_1
+    properties:
+      ci:
+        codebase:
+          build:
+            type: PR
+            spec:
+              number: <+trigger.prNumber>
+  name: child-inputset-prnumber
+  identifier: childinputsetprnumber
+  orgIdentifier: SE_Sandbox
+  projectIdentifier: parson
