@@ -137,6 +137,9 @@ createTransformSortForCpuPass();
 std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
 createFusionPlanningForCpuPass();
 
+/// Pass to outline fusion regions into functions.
+std::unique_ptr<OperationPass<ModuleOp>> createFusionOutliningPass();
+
 /// Pass to inline fusion clusters.
 std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
 createInlineFusionClustersPass();

@@ -269,6 +269,11 @@ def FusionPlanningForCpuPass :
   ];
 }
 
+def FusionOutliningPass : Pass<"gml-fusion-outlining", "mlir::ModuleOp"> {
+  let summary = "Pass to outline fusion regions into functions.";
+  let constructor = "createFusionOutliningPass()";
+}
+
 def InlineFusionClustersPass :
     Pass<"gml-st-inline-fusion-clusters", "mlir::func::FuncOp"> {
   let summary = "Replaces all gml_st.fusion op with ops from the region.";
