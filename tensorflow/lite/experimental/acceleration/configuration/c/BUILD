@@ -18,7 +18,6 @@
 load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
 load(
     "//tensorflow/lite/core/shims:cc_library_with_tflite.bzl",
-    "cc_library_with_tflite",
     "cc_library_with_tflite_with_c_headers_test",
 )
 load("//tensorflow/lite:build_def.bzl", "tflite_copts", "tflite_copts_warnings")
@@ -86,7 +85,7 @@ test_suite(
     ],
 )
 
-cc_library_with_tflite(
+cc_library_with_tflite_with_c_headers_test(
     name = "stable_delegate",
     hdrs = ["stable_delegate.h"],
     generate_opaque_delegate_target = True,
