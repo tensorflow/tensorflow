@@ -1233,7 +1233,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     o = Dummy()
     wr = weakref.ref(o)
 
-    with self.assertRaisesRegex(ValueError, 'weakref'):
+    with self.assertRaisesRegex(TypeError, 'weakref'):
       f(wr)
 
   def testTensorConversionWithDefun(self):
@@ -1706,14 +1706,13 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
         return x
 
       with self.assertRaisesRegex(
-          TypeError, 'ConcreteFunction .* was constructed .* but was called'):
+          TypeError, 'Binding inputs to tf.function `f` failed .*'):
         f.get_concrete_function(1)(constant_op.constant(1))
 
-      with self.assertRaisesRegex(TypeError, r'f\(x\) expected .* but got .*'):
-        f.get_concrete_function(constant_op.constant(1))(1)
+      f.get_concrete_function(constant_op.constant(1))(1)
 
       with self.assertRaisesRegex(
-          TypeError, 'ConcreteFunction .* was constructed .* but was called'):
+          TypeError, 'Binding inputs to tf.function `f` failed .*'):
         f.get_concrete_function(1)(2)
 
     run_test()
@@ -2394,7 +2393,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
         f.get_concrete_function(a, y=b),
         f.get_concrete_function(x=a, y=b)
     ]:
-      for output in [cf(a), cf(x=a), cf(a, b), cf(x=a, y=b)]:
+      for output in [cf(a, b), cf(x=a, y=b)]:
         self.assertAllEqual(output[0] + output[1], 1253)
 
   @test_util.run_in_graph_and_eager_modes
@@ -2426,7 +2425,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
         f.get_concrete_function(a, y=b),
         f.get_concrete_function(x=a, y=b)
     ]:
-      for output in [cf(a, b), cf(a, y=b), cf(y=b), cf(x=a, y=b)]:
+      for output in [cf(a, b), cf(a, y=b), cf(x=a, y=b)]:
         self.assertAllEqual(output[0] + output[1], 3234)
 
   @test_util.run_in_graph_and_eager_modes
@@ -2440,7 +2439,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     b = (50, 5)
 
     cf = f.get_concrete_function(a, b)
-    for output in [cf(), cf(a), cf(y=b)]:
+    for output in [cf(), cf(a, b), cf(x=a, y=b)]:
       self.assertAllEqual(output[0] + output[1], 5555)
 
   @test_util.run_in_graph_and_eager_modes
@@ -2521,94 +2520,107 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
           testcase_name='MissingArg',
           conc_args=lambda: (1, constant_op.constant(2)),
           call_args=lambda: (1,),
-          error=r'func\(x, y\) missing required arguments: y'),
+          error=r'missing a required argument: \'y\'',
+      ),
       dict(
           testcase_name='MissingVararg',
           conc_args=lambda: (1, 2, constant_op.constant(1.0)),
           call_args=lambda: (1, 2),
-          error=r'func\(x, y, arg3\) missing required arguments: arg3'),
+          error=r'missing a required argument: \'varargs_0\'',
+      ),
       dict(
           testcase_name='ExtraPositionalArg',
           conc_args=lambda: (1, 2),
           call_args=lambda: (1, 2, 3),
-          error=r'too many positional arguments'),
+          error=r'too many positional arguments',
+      ),
       dict(
           testcase_name='MissingKeywordOnlyArg',
           conc_args=lambda: (1, 2),
           conc_kwargs=lambda: {'c': constant_op.constant(1.0)},
           call_args=lambda: (1, 2),
-          error=r'func\(x, y, \*, c\) missing required arguments: c'),
+          error=r'missing a required argument: \'c\'',
+      ),
       dict(
           testcase_name='ExtraKeywordArg',
           conc_args=lambda: (1, 2),
           call_args=lambda: (1, 2),
           call_kwargs=lambda: {'c': constant_op.constant(1.0)},
-          error=r'got an unexpected keyword argument'),
+          error=r'got an unexpected keyword argument',
+      ),
       dict(
           testcase_name='ExpectedRaggedGotNest',
           conc_args=lambda: (ragged_factory_ops.constant([[1, 2], [3]]),),
-          call_args=lambda: ({
-              'a': constant_op.constant([1, 2, 3])
-          },),
-          error=r'func\(x, y\): argument x had incorrect type\n'
-          r'  expected: RaggedTensor\n'
-          r"       got: {'a': (Eager)?Tensor}"),
+          call_args=lambda: ({'a': constant_op.constant([1, 2, 3])}, 5),
+          error=(
+              r'Binding inputs .* failed .* don\'t have the same nested'
+              r' structure'
+          ),
+      ),
       dict(
           testcase_name='WrongRaggedRank',
           conc_args=lambda: (ragged_factory_ops.constant([[1, 2], [3]]),),
-          call_args=lambda: (ragged_factory_ops.constant([[[1]]]),),
-          error=r'func\(x, y\): argument x had incorrect type\n'),
+          call_args=lambda: (ragged_factory_ops.constant([[[1]]]), 5),
+          error=(
+              r'Binding inputs .* failed .* don\'t have the same nested'
+              r' structure'
+          ),
+      ),
       dict(
           testcase_name='WrongRaggedDType',
           conc_args=lambda: (ragged_factory_ops.constant([[1]]),),
-          call_args=lambda: (ragged_factory_ops.constant([[1.0]]),),
-          error=r'func\(x, y\): argument x had incorrect type\n'),
+          call_args=lambda: (ragged_factory_ops.constant([[1.0]]), 5),
+          error=(
+              r'Binding inputs .* failed .* dtype int32 for Tensor with dtype'
+              r' float32:'
+          ),
+      ),
       dict(
           testcase_name='ExpectedDictGotTensor',
-          conc_args=lambda: ({
-              'a': constant_op.constant(1),
-              'b': constant_op.constant(1)
-          },),
-          call_args=lambda: (constant_op.constant(1),),
-          error=r'func\(x, y\): argument x had incorrect type\n'),
+          conc_args=lambda: (
+              {'a': constant_op.constant(1), 'b': constant_op.constant(1)},
+          ),
+          call_args=lambda: (constant_op.constant(1), 5),
+          error=r'Binding inputs .* failed .*Can not cast .*Tensor.* to a Dict',
+      ),
       dict(
           testcase_name='ExpectedTupleGotTensor',
-          conc_args=lambda:
-          ((constant_op.constant(1), constant_op.constant(2)),),
-          call_args=lambda: (constant_op.constant(1),),
-          error=r'func\(x, y\): argument x had incorrect type\n'),
+          conc_args=lambda: (
+              (constant_op.constant(1), constant_op.constant(2)),
+          ),
+          call_args=lambda: (constant_op.constant(1), 5),
+          error=r'Binding inputs .* failed .*Can not cast .*Tensor.* to tuple',
+      ),
       dict(
           testcase_name='WrongDType',
           conc_args=lambda: (constant_op.constant(1),),
-          call_args=lambda: (constant_op.constant(1.0),),
+          call_args=lambda: (constant_op.constant(1.0), 5),
           exception=(
-              ValueError,
+              TypeError,
               errors.InvalidArgumentError,
               # on xla_gpu, we get InternalError instead.
-              errors.InternalError)),
-      dict(
-          testcase_name='ExpectedTensorGotInt',
-          conc_args=lambda: (constant_op.constant(1),),
-          call_args=lambda: (5,),
-          error=r'func\(x, y\) expected a Tensor in x, but got int value 5'),
+              errors.InternalError,
+          ),
+      ),
       dict(
           testcase_name='ExpectedIntGotDifferentInt',
           conc_args=lambda: (5,),
-          call_args=lambda: (8,),
-          error=r'ConcreteFunction func\(x, y\) was constructed with int '
-          r'value 5 in x, but was called with int value 8'),
+          call_args=lambda: (8, 5),
+          error=r'Binding inputs .* failed .*Can not cast 8 to .*5',
+      ),
       dict(
           testcase_name='ExpectedIntGotTensor',
           conc_args=lambda: (5,),
-          call_args=lambda: (constant_op.constant(6),),
-          error=r'ConcreteFunction func\(x, y\) was constructed with int '
-          'value 5 in x, but was called with (Eager)?Tensor value .*'),
+          call_args=lambda: (constant_op.constant(6), 5),
+          error=r'Binding inputs .* failed .*Can not cast .*Tensor.* to .*5',
+      ),
       dict(
           testcase_name='TwoValuesForArgument',
           conc_args=lambda: (1, 2),
           call_args=lambda: (1, 2),
           call_kwargs=lambda: {'x': 3},
-          error=r'multiple values for argument'),
+          error=r'got an unexpected keyword argument \'x\'',
+      ),
   ])
   # pylint: enable=g-long-lambda
   @test_util.run_in_graph_and_eager_modes
@@ -2830,7 +2842,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
       return (x, y, args, kwargs)
 
     c4 = func2.get_concrete_function(scalar, 4, 5, a=scalar)
-    c4_summary = 'func2(x, y=4, arg3=5, *, a)'
+    c4_summary = 'func2(x, y=4, args_0=5, *, a)'
     self.assertEqual(c4.pretty_printed_signature(verbose=False), c4_summary)
 
     c5 = func2.get_concrete_function(8, vector)

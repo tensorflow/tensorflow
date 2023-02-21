@@ -25,6 +25,7 @@ See also: tf.types.experimental.TraceType
 Other implementations of TraceType include tf.TypeSpec and its subclasses.
 """
 
+from tensorflow.core.function.trace_type.default_types import register_tensor_type
 from tensorflow.core.function.trace_type.default_types import Weakref
 from tensorflow.core.function.trace_type.serialization import deserialize
 from tensorflow.core.function.trace_type.serialization import register_serializable

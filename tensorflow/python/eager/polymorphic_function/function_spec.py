@@ -17,7 +17,6 @@
 import functools
 import inspect
 from typing import Any, Dict, Tuple
-import weakref
 
 import numpy as np
 import six
@@ -404,7 +403,6 @@ class FunctionSpec(object):
     if self.is_pure:
       args, kwargs = _convert_variables_to_tensors(args, kwargs)
     args, kwargs = self.bind_function_inputs(args, kwargs)
-    args, kwargs = cast_inputs(args, kwargs, self.input_signature)
     filtered_flat_args = filter_function_inputs(args, kwargs)
 
     return args, kwargs, filtered_flat_args
@@ -463,69 +461,37 @@ def _to_tensor_or_tensor_spec(x):
           ops.convert_to_tensor(x))
 
 
-def _deterministic_dict_values(dictionary):
-  return tuple(dictionary[key] for key in sorted(dictionary))
-
-
 def _convert_variables_to_tensors(args, kwargs):
   args = [_to_tensor_or_tensor_spec(x) for x in args]
   kwargs = {kw: _to_tensor_or_tensor_spec(x) for kw, x in kwargs.items()}
   return tuple(args), kwargs
 
 
-def cast_inputs(args, kwargs, input_signature):
-  """Casts args, kwargs to TF values based on an optional input_signature."""
-  if input_signature is None:
-    args = cast_numpy_inputs(args)
-
-  kwargs = cast_numpy_inputs(kwargs)
-
-  return args, kwargs
-
-
-def cast_numpy_inputs(inputs):
-  """Converts numpy array inputs to tensors."""
-  flat_inputs = composite_tensor_utils.flatten_with_variables(inputs)
-
-  # Check for NumPy arrays in arguments and convert them to Tensors.
-  # TODO(nareshmodi): Skip ndarray conversion to tensor altogether, perhaps
-  # finding a way to store them directly in the cache key (currently not
-  # possible since ndarrays are not hashable).
-  need_packing = False
-  filtered_flat_inputs = []
-  for index, value in enumerate(flat_inputs):
-    if isinstance(value,
-                  (ops.Tensor, resource_variable_ops.BaseResourceVariable)):
-      filtered_flat_inputs.append(value)
-    elif hasattr(value, "__array__") and not (
-        hasattr(value, "_should_act_as_resource_variable") or
-        isinstance(value, (np.str_, type, composite_tensor.CompositeTensor))):
-      # This case is equivalent to _is_ndarray(value) == True
-      a = value.__array__()
-      if not isinstance(a, np.ndarray):
-        raise TypeError(f"The output of __array__ must be an np.ndarray, "
-                        f"got {type(a)} from {value}.")
-      flat_inputs[index] = constant_op.constant(a)
-      filtered_flat_inputs.append(flat_inputs[index])
-      need_packing = True
-  if need_packing:
-    return nest.pack_sequence_as(
-        structure=inputs,
-        flat_sequence=nest.flatten(flat_inputs, expand_composites=True),
-        expand_composites=True)
-  else:
-    return inputs
-
-
+# TODO(fmuham): Migrate to use TraceType/FunctionType _to_tensors.
 def filter_function_inputs(args, kwargs):
   """Filters and flattens args and kwargs."""
   flat_inputs = composite_tensor_utils.flatten_with_variables(
       args) + composite_tensor_utils.flatten_with_variables(kwargs)
 
-  for inp in flat_inputs:
-    # TODO(b/183107079): Allow these once they're handled properly.
-    if isinstance(inp, weakref.ref):
-      raise ValueError(f"weakref input {inp} not supported for tf.function.")
+  for index, flat_input in enumerate(flat_inputs):
+    if hasattr(flat_input, "__array__") and not (
+        hasattr(flat_input, "_should_act_as_resource_variable")
+        or isinstance(
+            flat_input,
+            (
+                ops.Tensor,
+                resource_variable_ops.BaseResourceVariable,
+                np.str_,
+                type,
+                composite_tensor.CompositeTensor,
+            ),
+        )
+    ):
+      ndarray = flat_input.__array__()
+      if not isinstance(ndarray, np.ndarray):
+        raise TypeError(f"The output of __array__ must be an np.ndarray, "
+                        f"got {type(ndarray)} from {flat_input}.")
+      flat_inputs[index] = constant_op.constant(ndarray)
 
   filtered_flat_inputs = [
       t for t in flat_inputs
