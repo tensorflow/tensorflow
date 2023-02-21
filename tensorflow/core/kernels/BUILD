@@ -4569,7 +4569,9 @@ tf_kernel_library(
 tf_kernel_library(
     name = "parse_tensor_op",
     prefix = "parse_tensor_op",
-    deps = PARSING_DEPS,
+    deps = [
+       "//tensorflow/core/util/tensor_bundle:byteswaptensor",
+    ] + PARSING_DEPS,
 )
 
 tf_cc_test(
