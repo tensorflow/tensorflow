@@ -51,8 +51,4 @@ pipeline:
                       number: <+trigger.prNumber>
         tags: {}
         variables: []
-  variables:
-    - name: triggerPrNumber
-      type: String
-      description: ""
-      value: <+input>
+  variables: []
