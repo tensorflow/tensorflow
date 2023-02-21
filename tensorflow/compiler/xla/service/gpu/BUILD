@@ -602,6 +602,7 @@ cc_library(
         "while_thunk.h",
     ],
     deps = [
+        ":non_atomically_upgradeable_rw_lock",
         ":backend_configs_cc",
         ":buffer_allocations",
         ":cusolver_context",
