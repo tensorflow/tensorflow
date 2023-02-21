@@ -28,6 +28,7 @@ limitations under the License.
 #include <limits>
 #include <map>
 #include <memory>
+#include <ostream>
 #include <string>
 #include <tuple>
 #include <type_traits>
@@ -41,15 +42,19 @@ limitations under the License.
 #include "flatbuffers/flatbuffers.h"  // from @flatbuffers
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/lite/core/api/op_resolver.h"
+#include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/core/interpreter.h"
 #include "tensorflow/lite/kernels/internal/tensor_utils.h"
 #include "tensorflow/lite/kernels/internal/utils/sparsity_format_converter.h"
+#include "tensorflow/lite/kernels/kernel_util.h"
+#include "tensorflow/lite/portable_type_to_tflitetype.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/string_type.h"
 #include "tensorflow/lite/string_util.h"
 #include "tensorflow/lite/testing/util.h"  // IWYU pragma: keep
 #include "tensorflow/lite/tools/optimize/quantization_utils.h"
 #include "tensorflow/lite/type_to_tflitetype.h"
+#include "tensorflow/lite/util.h"
 
 namespace tflite {
 
@@ -1178,6 +1183,60 @@ class MultiOpModel : public SingleOpModel {
     return AddTensor<T>(t, {}, false);
   }
 };
+
+// This Matcher can be used to check the dimensions of a `TfLiteTensor`
+// in a readable way. It will print a helpful error message in the
+// case of a failure.
+//
+// EXAMPLE:
+// TfLiteTensor* t = (TfLiteTensor*)malloc(sizeof(TfLiteTensor*));
+// t->dims = ConvertVectorToTfLiteIntArray({2, 2});
+// EXPECT_EQ(t, DimsAre({2, 2}));
+//
+// To check for scalar, simply pass empty initializer list: `DimsAre({})`.
+class DimsAreMatcher {
+ public:
+  using is_gtest_matcher = void;
+  explicit DimsAreMatcher(const std::vector<int>& dims) {
+    dims_ = std::shared_ptr<TfLiteIntArray>(ConvertVectorToTfLiteIntArray(dims),
+                                            TfLiteIntArrayFree);
+  }
+
+  bool MatchAndExplain(TfLiteTensor* arg,
+                       testing::MatchResultListener* result_listener) const {
+    TfLiteIntArray* tensor_dims = arg->dims;
+    if (tensor_dims == nullptr) {
+      *result_listener << "dims are null";
+      return false;
+    }
+    if (TfLiteIntArrayEqual(tensor_dims, dims_.get())) {
+      return true;
+    }
+    *result_listener << "has dims " << tflite::GetShapeDebugString(tensor_dims);
+    return false;
+  }
+
+  void DescribeTo(std::ostream* os) const {
+    *os << "dims equal to ";
+    *os << tflite::GetShapeDebugString(dims_.get());
+  }
+
+  void DescribeNegationTo(std::ostream* os) const {
+    *os << "dims not equal to ";
+    *os << tflite::GetShapeDebugString(dims_.get());
+  }
+
+ private:
+  // gUnit uses the implicit copy constructor of `DimsAreMatcher`. Use
+  // `std::shared_ptr` here so copies of `DimsAreMatcher` can share the
+  // same `TfLiteIntArray`.
+  std::shared_ptr<TfLiteIntArray> dims_;
+};
+
+inline DimsAreMatcher DimsAre(std::initializer_list<int> dims_list) {
+  return DimsAreMatcher(dims_list);
+}
+
 }  // namespace tflite
 
 #endif  // TENSORFLOW_LITE_KERNELS_TEST_UTIL_H_
