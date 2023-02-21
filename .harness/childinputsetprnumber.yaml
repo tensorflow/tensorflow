@@ -1,7 +1,7 @@
 inputSet:
-  name: default
+  name: child-inputset-prnumber
   tags: {}
-  identifier: default
+  identifier: childinputsetprnumber
   orgIdentifier: SE_Sandbox
   projectIdentifier: parson
   pipeline:
@@ -13,7 +13,3 @@ inputSet:
             type: PR
             spec:
               number: <+trigger.prNumber>
-    variables:
-      - name: input
-        type: String
-        value: povtesting
