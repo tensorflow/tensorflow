@@ -10,23 +10,15 @@ func.func @matvec(%lhs: tensor<33x17xf32>, %rhs: tensor<17xf32>,
 // CHECK-LABEL: @matvec
 // CHECK:         scf.for
 // CHECK:           scf.for
-// CHECK:             vector.extract {{.*}}[0] : vector<8xf32>
-// CHECK:             vector.outerproduct {{.*}} vector<8xf32>, f32
-// CHECK:             vector.extract {{.*}}[1] : vector<8xf32>
-// CHECK:             vector.outerproduct {{.*}} vector<8xf32>, f32
-// CHECK:             vector.extract {{.*}}[2] : vector<8xf32>
-// CHECK:             vector.outerproduct {{.*}} vector<8xf32>, f32
-// CHECK:             vector.extract {{.*}}[3] : vector<8xf32>
-// CHECK:             vector.outerproduct {{.*}} vector<8xf32>, f32
-// CHECK:             vector.extract {{.*}}[4] : vector<8xf32>
-// CHECK:             vector.outerproduct {{.*}} vector<8xf32>, f32
-// CHECK:             vector.extract {{.*}}[5] : vector<8xf32>
-// CHECK:             vector.outerproduct {{.*}} vector<8xf32>, f32
-// CHECK:             vector.extract {{.*}}[6] : vector<8xf32>
-// CHECK:             vector.outerproduct {{.*}} vector<8xf32>, f32
-// CHECK:             vector.extract {{.*}}[7] : vector<8xf32>
-// CHECK:             vector.outerproduct {{.*}} vector<8xf32>, f32
-// CHECK:           vector.outerproduct {{.*}} vector<8xf32>, f32
+// CHECK:             vector.extract {{.*}}[0] : vector<4xf32>
+// CHECK:             vector.outerproduct {{.*}} vector<4xf32>, f32
+// CHECK:             vector.extract {{.*}}[1] : vector<4xf32>
+// CHECK:             vector.outerproduct {{.*}} vector<4xf32>, f32
+// CHECK:             vector.extract {{.*}}[2] : vector<4xf32>
+// CHECK:             vector.outerproduct {{.*}} vector<4xf32>, f32
+// CHECK:             vector.extract {{.*}}[3] : vector<4xf32>
+// CHECK:             vector.outerproduct {{.*}} vector<4xf32>, f32
+// CHECK:           vector.outerproduct {{.*}} vector<4xf32>, f32
 // CHECK:         scf.for
 // CHECK:           linalg.matvec
 
@@ -42,23 +34,15 @@ func.func @vecmat(%lhs: tensor<17xf32>, %rhs: tensor<17x33xf32>,
 // CHECK-LABEL: @vecmat
 // CHECK:         scf.for
 // CHECK:           scf.for
-// CHECK:             vector.extract {{.*}}[0] : vector<8xf32>
-// CHECK:             vector.outerproduct {{.*}} vector<8xf32>, f32
-// CHECK:             vector.extract {{.*}}[1] : vector<8xf32>
-// CHECK:             vector.outerproduct {{.*}} vector<8xf32>, f32
-// CHECK:             vector.extract {{.*}}[2] : vector<8xf32>
-// CHECK:             vector.outerproduct {{.*}} vector<8xf32>, f32
-// CHECK:             vector.extract {{.*}}[3] : vector<8xf32>
-// CHECK:             vector.outerproduct {{.*}} vector<8xf32>, f32
-// CHECK:             vector.extract {{.*}}[4] : vector<8xf32>
-// CHECK:             vector.outerproduct {{.*}} vector<8xf32>, f32
-// CHECK:             vector.extract {{.*}}[5] : vector<8xf32>
-// CHECK:             vector.outerproduct {{.*}} vector<8xf32>, f32
-// CHECK:             vector.extract {{.*}}[6] : vector<8xf32>
-// CHECK:             vector.outerproduct {{.*}} vector<8xf32>, f32
-// CHECK:             vector.extract {{.*}}[7] : vector<8xf32>
-// CHECK:             vector.outerproduct {{.*}} vector<8xf32>, f32
-// CHECK:           vector.outerproduct {{.*}} vector<8xf32>, f32
+// CHECK:             vector.extract {{.*}}[0] : vector<4xf32>
+// CHECK:             vector.outerproduct {{.*}} vector<4xf32>, f32
+// CHECK:             vector.extract {{.*}}[1] : vector<4xf32>
+// CHECK:             vector.outerproduct {{.*}} vector<4xf32>, f32
+// CHECK:             vector.extract {{.*}}[2] : vector<4xf32>
+// CHECK:             vector.outerproduct {{.*}} vector<4xf32>, f32
+// CHECK:             vector.extract {{.*}}[3] : vector<4xf32>
+// CHECK:             vector.outerproduct {{.*}} vector<4xf32>, f32
+// CHECK:           vector.outerproduct {{.*}} vector<4xf32>, f32
 // CHECK:         scf.for
 // CHECK:           linalg.vecmat
 
@@ -74,7 +58,7 @@ func.func @dot(%lhs: tensor<17xf32>, %rhs: tensor<17xf32>,
 // CHECK-LABEL: @dot
 // CHECK:         scf.for
 // CHECK:           %[[REDUCTION:.*]] = vector.reduction <add>
-// CHECK-SAME:        vector<8xf32> into f32
+// CHECK-SAME:        vector<4xf32> into f32
 // CHECK:           vector.broadcast %[[REDUCTION]] : f32 to vector<f32>
 // CHECK:         arith.mulf
 // CHECK:         arith.addf
