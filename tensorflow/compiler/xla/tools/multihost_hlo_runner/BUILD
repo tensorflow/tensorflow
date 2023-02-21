@@ -87,6 +87,7 @@ xla_test(
     data = [
         "data/sharded_2_devices.hlo",
         "data/single_device.hlo",
+        "data/single_device_tupled.hlo",
     ],
     tags = ["nomac"],
     deps = [

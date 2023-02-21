@@ -139,5 +139,27 @@ TEST_F(FunctionalHloRunnerTest, UseUninitializedInputs) {
       {GetHloPath("sharded_2_devices.hlo")}, InputFormat::kText));
 }
 
+TEST_F(FunctionalHloRunnerTest, UseUninitializedInputsWithTupledArguments) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::PjRtClient> client,
+                          xla::FunctionalHloRunner::CreateGpuClient());
+
+  // Options corresponding to:
+  // --num_replicas=1 --num_partitions=1
+  // --hlo_argument_mode=uninitialized
+  FunctionalHloRunner::PreprocessingOptions preproc_options;
+  FunctionalHloRunner::RawCompileOptions raw_compile_options;
+  raw_compile_options.spmd_mode =
+      FunctionalHloRunner::SpmdMode::kUseSpmdPartitioning;
+  raw_compile_options.num_replicas = 1;
+  raw_compile_options.num_partitions = 1;
+  FunctionalHloRunner::RunningOptions running_options;
+  running_options.module_argument_mode =
+      FunctionalHloRunner::ModuleArgumentMode::kUninitialized;
+
+  TF_EXPECT_OK(FunctionalHloRunner::LoadAndRunAndDump(
+      *client, preproc_options, raw_compile_options, running_options,
+      {GetHloPath("single_device_tupled.hlo")}, InputFormat::kText));
+}
+
 }  // namespace
 }  // namespace xla

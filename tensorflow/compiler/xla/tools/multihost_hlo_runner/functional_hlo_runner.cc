@@ -1145,10 +1145,11 @@ FunctionalHloRunner::CreateUninitializedArgumentsOnDevice(
     if (flatten_arguments) {
       TF_RETURN_IF_ERROR(EnsureSingleTupleForFlattening(hlo_module));
 
-      argument_shapes = GetArgumentShapes(hlo_module);
-      CHECK_EQ(argument_shapes.size(), 1);
-      CHECK(argument_shapes.front().IsTuple());
-      argument_shapes = argument_shapes.front().tuple_shapes();
+      std::vector<Shape> original_argument_shapes =
+          GetArgumentShapes(hlo_module);
+      CHECK_EQ(original_argument_shapes.size(), 1);
+      CHECK(original_argument_shapes.front().IsTuple());
+      argument_shapes = original_argument_shapes.front().tuple_shapes();
     } else {
       argument_shapes = GetArgumentShapes(hlo_module);
     }
