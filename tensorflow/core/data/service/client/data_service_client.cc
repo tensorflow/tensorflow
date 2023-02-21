@@ -175,15 +175,20 @@ StatusOr<GetNextResult> DataServiceClient::GetNext(
       return GetNextResult::EndOfSequence();
     }
     if (!ResultReady()) {
+      VLOG(3) << "Returning from GetNext with internal error";
       return errors::Internal("Expected a result to be ready, but none were.");
     }
     result = PopNextResult();
     worker_thread_cv_.notify_one();
+    if (result->skip) {
+      VLOG(3) << "Skipping result from task " << result->task_id;
+    }
   } while (result->skip);
 
   GetNextResult next;
   next.end_of_sequence = result->end_of_sequence;
   if (next.end_of_sequence) {
+    VLOG(1) << "Returning end_of_sequence";
     return next;
   }
   VLOG(1) << "Returning the next element from data service dataset's "
