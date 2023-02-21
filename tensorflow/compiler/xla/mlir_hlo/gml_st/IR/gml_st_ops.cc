@@ -45,6 +45,7 @@ limitations under the License.
 #include "mlir/IR/TypeUtilities.h"
 #include "mlir/Interfaces/ViewLikeInterface.h"
 #include "mlir/Transforms/InliningUtils.h"
+#include "mlir/Transforms/RegionUtils.h"
 
 namespace mlir {
 namespace {
@@ -1256,6 +1257,21 @@ ParseResult FusionOp::parse(OpAsmParser &parser, OperationState &result) {
 
   // Parser result types.
   if (parser.parseOptionalColonTypeList(result.types)) return failure();
+
+  return success();
+}
+
+LogicalResult FusionOp::verify() {
+  llvm::SetVector<Value> valuesDefinedAbove;
+  getUsedValuesDefinedAbove(getRegion(), getRegion(), valuesDefinedAbove);
+
+  for (Value v : valuesDefinedAbove) {
+    auto *definingOp = v.getDefiningOp();
+
+    if (!isa_and_nonnull<arith::ConstantOp>(definingOp))
+      return emitOpError() << "using value defined outside the region that is "
+                              "not 'arith.constant'.";
+  }
 
   return success();
 }

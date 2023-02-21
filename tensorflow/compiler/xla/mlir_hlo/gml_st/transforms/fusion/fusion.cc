@@ -564,9 +564,12 @@ FailureOr<gml_st::FusionOp> wrapFusionCluster(
   SmallVector<Value> clusterResults;
   for (Operation* op : fusionCluster.operations) {
     for (Value operand : op->getOperands()) {
-      if (fusionCluster.operations.contains(operand.getDefiningOp())) continue;
+      auto* definingOp = operand.getDefiningOp();
 
-      clusterOperands.insert(operand);
+      if (fusionCluster.operations.contains(definingOp)) continue;
+
+      if (!isa_and_nonnull<arith::ConstantOp>(definingOp))
+        clusterOperands.insert(operand);
     }
 
     for (Value result : op->getResults()) {

@@ -212,10 +212,9 @@ func.func @fused_matmul(%arg0: tensor<1x32xf32>, %arg1: tensor<32x10xf32>,
 // CHECK-SAME:        %[[ARG2_:.*]] = %[[ARG2]]: tensor<10xf32>
 // CHECK-SAME:        %[[ARG0_:.*]] = %[[ARG0]]: tensor<1x32xf32>
 // CHECK-SAME:        %[[ARG1_:.*]] = %[[ARG1]]: tensor<32x10xf32>
-// CHECK-SAME:        %[[C0_:.*]] = %[[C0]]: f32
 // CHECK:           %[[EXPANDED:.*]] = tensor.expand_shape %[[ARG2_]]
 // CHECK:           %[[FILLED:.*]] = linalg.fill
-// CHECK-SAME:        ins(%[[C0_]] : f32)
+// CHECK-SAME:        ins(%[[C0]] : f32)
 // CHECK-SAME:        outs(%[[EMPTY_]] : tensor<1x10xf32>
 // CHECK:           %[[MATMUL:.*]] = linalg.matmul
 // CHECK-SAME:        ins(%[[ARG0_]], %[[ARG1_]]

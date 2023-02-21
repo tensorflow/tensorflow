@@ -521,7 +521,6 @@ def GMLST_YieldOp : GMLST_Op<"yield", [Pure, ReturnLike, Terminator,
 }
 
 def GMLST_FusionOp : GMLST_Op<"fusion", [
-      IsolatedFromAbove,
       SingleBlockImplicitTerminator<"gml_st::YieldOp">
     ]> {
   let summary = "A cluster of operations to be tiled and fused.";
@@ -531,7 +530,7 @@ def GMLST_FusionOp : GMLST_Op<"fusion", [
   let regions = (region SizedRegion<1>:$region);
 
   let hasCustomAssemblyFormat = 1;
-  let hasVerifier = 0;
+  let hasVerifier = 1;
 
   code extraClassDeclaration = [{
     /// Return terminator of the region body.
