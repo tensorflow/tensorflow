@@ -484,6 +484,9 @@ message GoogleEdgeTpuSettings {
   // Specifies the execution priority. The priority is global. Requests from
   // different clients are prioritized relative to one another.
   optional Priority priority = 3;
+
+  // Reserved.
+  optional bytes extension_data = 4;
 }
 
 // Coral Dev Board / USB accelerator delegate settings.
