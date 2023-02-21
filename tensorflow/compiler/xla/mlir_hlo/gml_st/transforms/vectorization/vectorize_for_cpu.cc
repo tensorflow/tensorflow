@@ -315,10 +315,12 @@ struct IdentityTransposeOpFoldingPattern
   }
 };
 
-bool isSmallStaticallyShapedTensorType(Type ty) {
+bool isSmallTensorOrScalar(Type ty) {
   auto rankedTy = ty.dyn_cast<mlir::RankedTensorType>();
-  return rankedTy && rankedTy.hasStaticShape() &&
-         rankedTy.getNumElements() < kNumElementsThreshold;
+  bool isSmallTensor = rankedTy && rankedTy.hasStaticShape() &&
+                       rankedTy.getNumElements() < kNumElementsThreshold;
+  bool isScalar = !isa<ShapedType>(ty);
+  return isSmallTensor || isScalar;
 }
 
 struct VectorizeForCPUPass
@@ -327,20 +329,14 @@ struct VectorizeForCPUPass
     auto func = getOperation();
     auto *ctx = func.getContext();
 
-    auto hasAnySmallStaticallyShapedTensorResult = [&](Operation *op) {
-      return llvm::any_of(op->getResultTypes(),
-                          isSmallStaticallyShapedTensorType);
-    };
     auto hasSmallStaticallyShapedTensorResults = [&](Operation *op) {
-      return llvm::all_of(op->getResultTypes(),
-                          isSmallStaticallyShapedTensorType);
-    };
-    auto isPerfectlyTiledLoop = [&](Operation *op) {
-      return (isa<ParallelOp, scf::ForOp>(op)) &&
-             hasLabel(op, kPerfectlyTiledLoopLabel);
+      return llvm::all_of(op->getOperandTypes(), isSmallTensorOrScalar) &&
+             llvm::all_of(op->getResultTypes(), isSmallTensorOrScalar);
     };
     auto isInsidePerfectlyTiledLoop = [&](Operation *op) {
-      return isPerfectlyTiledLoop(op->getParentOp());
+      Operation *parent = op->getParentOp();
+      return (isa<ParallelOp, scf::ForOp>(parent)) &&
+             hasLabel(parent, kPerfectlyTiledLoopLabel);
     };
     auto isInsidePerfectlyTiledLoopOrSmall = [&](Operation *op) {
       return !hasSingleElementOperandsAndResults(op) &&
@@ -352,6 +348,7 @@ struct VectorizeForCPUPass
       TransferReadOp::getCanonicalizationPatterns(patterns, ctx);
       // clang-format off
       patterns.add<
+        VectorizeIfOpPattern,
         VectorizationPattern<BroadcastOp>,
         VectorizationPattern<FillOp>,
         VectorizationPattern<GenericOp>,
@@ -365,8 +362,6 @@ struct VectorizeForCPUPass
         VectorizationPattern<VecmatOp>
       >(ctx, isInsidePerfectlyTiledLoopOrSmall);
       // clang-format on
-      patterns.add<VectorizeIfOpPattern>(
-          ctx, hasAnySmallStaticallyShapedTensorResult);
       populateTransferReadOfOneDimExpandShapePattern(patterns);
       patterns.add<InlineCastInIfOpPattern, ThloReverseVectorizationPattern>(
           ctx);
