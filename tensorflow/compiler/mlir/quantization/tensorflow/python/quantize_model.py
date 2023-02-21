@@ -13,23 +13,19 @@
 # limitations under the License.
 # ==============================================================================
 """Defines TF Quantization API from SavedModel to SavedModel."""
-
 import collections.abc
 import tempfile
-from typing import Callable, Collection, Dict, Mapping, Optional, Sequence, Tuple
+from typing import Callable, Collection, Dict, Mapping, Optional, Sequence
 import uuid
 from absl import logging
 
 import numpy as np
 
-# pylint: disable=invalid-import-order,g-bad-import-order
-from tensorflow.python import pywrap_tensorflow  # pylint: disable=unused-import
-
+from tensorflow.compiler.mlir.quantization.tensorflow import exported_model_pb2
+from tensorflow.compiler.mlir.quantization.tensorflow import quantization_options_pb2 as quant_opts_pb2
 from tensorflow.compiler.mlir.quantization.tensorflow.python import pywrap_quantize_model
 from tensorflow.compiler.mlir.quantization.tensorflow.python import representative_dataset as repr_dataset
 from tensorflow.compiler.mlir.quantization.tensorflow.python import save_model
-from tensorflow.compiler.mlir.quantization.tensorflow import exported_model_pb2
-from tensorflow.compiler.mlir.quantization.tensorflow import quantization_options_pb2 as quant_opts_pb2
 from tensorflow.core.framework import graph_pb2
 from tensorflow.core.protobuf import meta_graph_pb2
 from tensorflow.python.client import session
@@ -515,29 +511,29 @@ def _run_graph_for_calibration(
 
 
 def _run_static_range_qat(
-    saved_model_path: str,
+    src_saved_model_path: str,
+    dst_saved_model_path: str,
     signature_def_keys: Sequence[str],
     tags: Collection[str],
     quant_opts: quant_opts_pb2.QuantizationOptions,
-) -> exported_model_pb2.ExportedModel:
+    signature_def_map: _SignatureDefMap,
+) -> None:
   """Runs static-range quantization for a Quantization-Aware Trained model.
 
   Runs the quantization for a model trained using QAT.
 
   Args:
-    saved_model_path: Path to SavedModel.
+    src_saved_model_path: Path to the source SavedModel directory.
+    dst_saved_model_path: Path to the destination SavedModel directory.
     signature_def_keys: Keys of the signatures of the functions that are the
       target for quantization.
     tags: Tags identifying the MetaGraphDef.
     quant_opts: Quantization options.
-
-  Returns:
-    exported_model: Contains the GraphDef and extra metadata required for saving
-      the quantized graph to SavedModel.
+    signature_def_map: Signature def key -> SignatureDef mapping.
   """
   logging.info('Running static-range quantization for QAT model.')
   exported_model_serialized = pywrap_quantize_model.quantize_qat_model(
-      saved_model_path,
+      src_saved_model_path,
       list(signature_def_keys),
       set(tags),
       quant_opts.SerializeToString(),
@@ -547,7 +543,17 @@ def _run_static_range_qat(
       exported_model_serialized
   )
 
-  return exported_model
+  save_model.save_model_v1(
+      exported_model.graph_def,
+      dst_saved_model_path,
+      signature_def_map,
+      tags,
+      init_op_name=exported_model.init_node_name,
+      save_op_name=exported_model.save_node_name,
+      restore_op_name=exported_model.restore_node_name,
+      checkpoint_dir=exported_model.checkpoint_dir,
+      function_aliases=exported_model.function_aliases,
+  )
 
 
 def _add_calibration_statistics(graph_def: graph_pb2.GraphDef) -> None:
@@ -584,13 +590,14 @@ def _add_calibration_statistics(graph_def: graph_pb2.GraphDef) -> None:
 
 
 def _run_static_range_ptq(
-    saved_model_path: str,
+    src_saved_model_path: str,
+    dst_saved_model_path: str,
     signature_def_keys: Sequence[str],
     tags: Collection[str],
     quant_opts: quant_opts_pb2.QuantizationOptions,
     representative_dataset: repr_dataset.RepresentativeDatasetOrMapping,
     signature_def_map: _SignatureDefMap,
-) -> Tuple[exported_model_pb2.ExportedModel, _SignatureDefMap]:
+) -> None:
   """Runs static-range Post-Training Quantization.
 
   Runs static-range PTQ for the model. Runs the calibration step with
@@ -599,7 +606,8 @@ def _run_static_range_ptq(
   been modified according to the changes in the graph.
 
   Args:
-    saved_model_path: Path to SavedModel.
+    src_saved_model_path: Path to the source SavedModel directory.
+    dst_saved_model_path: Path to the destination SavedModel directory.
     signature_def_keys: Keys of the signature defs of the functions that are the
       target for quantization.
     tags: Tags to identify the MetaGraphDef to be used for quantization.
@@ -611,23 +619,17 @@ def _run_static_range_ptq(
 
   Raises:
     ValueError if the graph doesn't contain a valid signature.
-
-  Returns:
-    exported_model: Contains the GraphDef and extra metadata required for saving
-      the quantized graph to SavedModel.
-    signature_def_map: Contains the SignatureDefs, possibly modified
-      according to the quantized graph to match the original signature defs.
   """
   logging.info('Running post-training quantization pre-calibration step.')
 
-  loader = saved_model_loader.SavedModelLoader(saved_model_path)
+  loader = saved_model_loader.SavedModelLoader(src_saved_model_path)
   function_aliases = loader.get_meta_graph_def_from_tags(
       tags
   ).meta_info_def.function_aliases
 
   exported_model_serialized = (
       pywrap_quantize_model.quantize_ptq_model_pre_calibration(
-          saved_model_path,
+          src_saved_model_path,
           list(signature_def_keys),
           set(tags),
           quant_opts.SerializeToString(),
@@ -645,10 +647,10 @@ def _run_static_range_ptq(
       if node_def.op == 'CustomAggregator':
         node_def.attr['id'].s = uuid.uuid4().hex.encode('ascii')
 
-  float_model_dir = tempfile.mkdtemp()
+  pre_calib_output_model_path = tempfile.mkdtemp()
   save_model.save_model_v1(
       graph_def,
-      float_model_dir,
+      pre_calib_output_model_path,
       signature_def_map,
       tags,
       exported_model.init_node_name,
@@ -663,14 +665,17 @@ def _run_static_range_ptq(
   # eager execution is disabled. The min & max values are stored separately
   # in a global CalibratorSingleton instance.
   _run_graph_for_calibration(
-      float_model_dir, signature_def_keys, tags, representative_dataset
+      pre_calib_output_model_path,
+      signature_def_keys,
+      tags,
+      representative_dataset,
   )
   _add_calibration_statistics(graph_def)
 
-  calibrated_model_dir = tempfile.mkdtemp()
+  calibrated_model_path = tempfile.mkdtemp()
   save_model.save_model_v1(
       graph_def,
-      calibrated_model_dir,
+      calibrated_model_path,
       signature_def_map,
       tags,
       exported_model.init_node_name,
@@ -682,7 +687,7 @@ def _run_static_range_ptq(
   logging.info('Running post-training quantization post-calibration step.')
   exported_model_serialized = (
       pywrap_quantize_model.quantize_ptq_model_post_calibration(
-          calibrated_model_dir,
+          calibrated_model_path,
           list(signature_def_keys),
           set(tags),
           quant_opts.SerializeToString(),
@@ -694,7 +699,17 @@ def _run_static_range_ptq(
       exported_model_serialized
   )
 
-  return exported_model, signature_def_map
+  save_model.save_model_v1(
+      exported_model.graph_def,
+      dst_saved_model_path,
+      signature_def_map,
+      tags,
+      init_op_name=exported_model.init_node_name,
+      save_op_name=exported_model.save_node_name,
+      restore_op_name=exported_model.restore_node_name,
+      checkpoint_dir=exported_model.checkpoint_dir,
+      function_aliases=exported_model.function_aliases,
+  )
 
 
 def _static_range_quantize(
@@ -764,30 +779,24 @@ def _static_range_quantize(
     )
 
   if is_qat_saved_model:
-    exported_model = _run_static_range_qat(
-        saved_model_path, signature_keys, tags, quantization_options
+    _run_static_range_qat(
+        saved_model_path,
+        output_directory,
+        signature_keys,
+        tags,
+        quantization_options,
+        signature_def_map,
     )
   else:
-    exported_model, signature_def_map = _run_static_range_ptq(
+    _run_static_range_ptq(
         saved_model_path,
+        output_directory,
         signature_keys,
         tags,
         quantization_options,
         representative_dataset,
         signature_def_map,
     )
-
-  save_model.save_model_v1(
-      exported_model.graph_def,
-      output_directory,
-      signature_def_map,
-      tags,
-      init_op_name=exported_model.init_node_name,
-      save_op_name=exported_model.save_node_name,
-      restore_op_name=exported_model.restore_node_name,
-      checkpoint_dir=exported_model.checkpoint_dir,
-      function_aliases=exported_model.function_aliases,
-  )
 
   return saved_model_load(output_directory)
 
