@@ -21,6 +21,7 @@ include "mlir/IR/OpBase.td"
 include "mlir/Interfaces/ControlFlowInterfaces.td"
 include "mlir/Interfaces/DestinationStyleOpInterface.td"
 include "mlir/Interfaces/SideEffectInterfaces.td"
+include "mlir/Interfaces/InferTypeOpInterface.td"
 include "mlir/Interfaces/TilingInterface.td"
 
 def TensorOrMemref :
@@ -53,7 +54,8 @@ def THLO_ConcatenateOp : THLO_DstStyleOp<"concatenate", [
       "getLoopIteratorTypes",
       "getResultTilePosition",
       "getTiledImplementation"
-    ]>
+    ]>,
+    DeclareOpInterfaceMethods<ReifyRankedShapedTypeOpInterface>
   ]> {
   let summary = "Destination-style twin for `mhlo.concatenate`";
   let description = [{
