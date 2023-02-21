@@ -208,6 +208,10 @@ bool AbslParseFlag(absl::string_view text,
     *argument_mode = FunctionalHloRunner::ModuleArgumentMode::kUseZerosAsInput;
     return true;
   }
+  if (text == "uninitialized") {
+    *argument_mode = FunctionalHloRunner::ModuleArgumentMode::kUninitialized;
+    return true;
+  }
   *error =
       "Unrecognized module argument mode specified. Expect "
       "\"use_device_id_as_input\", \"use_random_inputs\", or "
@@ -226,6 +230,8 @@ std::string AbslUnparseFlag(
       return "use_shared_random_inputs";
     case FunctionalHloRunner::ModuleArgumentMode::kUseZerosAsInput:
       return "use_zeros_as_input";
+    case FunctionalHloRunner::ModuleArgumentMode::kUninitialized:
+      return "uninitialized";
     default:
       LOG(FATAL) << "Unexpected argument mode.";
   }
@@ -847,6 +853,50 @@ std::vector<std::vector<PjRtBuffer*>> CreateArgumentPointersBasedOnAliasing(
   return argument_ptrs;
 }
 
+std::vector<Shape> GetArgumentShapes(const HloModule& module) {
+  const std::vector<HloInstruction*>& params =
+      module.entry_computation()->parameter_instructions();
+  std::vector<Shape> argument_shapes;
+  argument_shapes.reserve(params.size());
+  for (int i = 0; i < static_cast<int>(params.size()); ++i) {
+    const HloModuleConfig& module_config = module.config();
+    argument_shapes.push_back((module_config.has_entry_computation_layout() &&
+                               module_config.entry_computation_layout()
+                                   .parameter_layout(i)
+                                   .shape()
+                                   .is_static())
+                                  ? module_config.entry_computation_layout()
+                                        .parameter_layout(i)
+                                        .shape()
+                                  : params[i]->shape());
+  }
+  return argument_shapes;
+}
+
+Status EnsureSingleTupleForFlattening(const HloModule& module) {
+  if (module.entry_computation()->num_parameters() != 1) {
+    return InvalidArgument(
+        "Flattening arguments requires the number of parameters to be 1. "
+        "The actual number of parameters is %d",
+        module.entry_computation()->num_parameters());
+  }
+  if (!module.entry_computation()
+           ->parameter_instructions()
+           .front()
+           ->shape()
+           .IsTuple()) {
+    return InvalidArgument(
+        "Flattening arguments requires the module parameter to be a single "
+        "tuple. But the actual parameter shape is %s",
+        module.entry_computation()
+            ->parameter_instructions()
+            .front()
+            ->shape()
+            .ToString());
+  }
+  return OkStatus();
+}
+
 }  // namespace
 
 StatusOr<FunctionalHloRunner::PerDeviceLiteralVecType>
@@ -923,7 +973,7 @@ FunctionalHloRunner::RunInternal(
       break;
   }
   for (int repeat = 0; repeat < running_options.num_repeats; ++repeat) {
-    VLOG(1) << "MultiHostHloRunner: ExecuteOnDevices started (repeat = "
+    VLOG(1) << "FunctionalHloRunner: ExecuteOnDevices started (repeat = "
             << repeat << ").";
     if (repeat == running_options.num_repeats - 1) {
       execute_options.untuple_result = default_untuple_result;
@@ -962,6 +1012,12 @@ StatusOr<std::vector<std::vector<std::unique_ptr<PjRtBuffer>>>>
 FunctionalHloRunner::CreateArgumentsOnDevice(
     PjRtClient& client, const PjRtLoadedExecutable* executable,
     const RunningOptions& running_options, bool flatten_arguments) {
+  if (running_options.module_argument_mode ==
+      ModuleArgumentMode::kUninitialized) {
+    return CreateUninitializedArgumentsOnDevice(
+        client, executable, running_options, flatten_arguments);
+  }
+
   absl::Span<PjRtDevice* const> addressable_devices =
       executable->addressable_devices();
   size_t num_addressable_devices = addressable_devices.size();
@@ -994,26 +1050,7 @@ FunctionalHloRunner::CreateArgumentsOnDevice(
                              : addressable_device_logical_ids[i].partition;
     HloModule* my_hlo_module = hlo_modules[executable_idx].get();
     if (flatten_arguments) {
-      if (my_hlo_module->entry_computation()->num_parameters() != 1) {
-        return InvalidArgument(
-            "Flattening arguments requires the number of parameters to be 1. "
-            "The actual number of parameters is %d",
-            my_hlo_module->entry_computation()->num_parameters());
-      }
-      if (!my_hlo_module->entry_computation()
-               ->parameter_instructions()
-               .front()
-               ->shape()
-               .IsTuple()) {
-        return InvalidArgument(
-            "Flattening arguments requires the module parameter to be a single "
-            "tuple. But the acutal parameter shape is %s",
-            my_hlo_module->entry_computation()
-                ->parameter_instructions()
-                .front()
-                ->shape()
-                .ToString());
-      }
+      TF_RETURN_IF_ERROR(EnsureSingleTupleForFlattening(*my_hlo_module));
     }
     if (running_options.module_argument_mode ==
         ModuleArgumentMode::kUseDeviceIdAsInput) {
@@ -1075,6 +1112,89 @@ FunctionalHloRunner::CreateArgumentsOnDevice(
   return CopyArgumentsToDevice(client, addressable_devices,
                                per_device_argument_literals,
                                running_options.log_input_output());
+}
+
+StatusOr<std::vector<std::vector<std::unique_ptr<PjRtBuffer>>>>
+FunctionalHloRunner::CreateUninitializedArgumentsOnDevice(
+    PjRtClient& client, const PjRtLoadedExecutable* executable,
+    const RunningOptions& running_options, bool flatten_arguments) {
+  absl::Span<PjRtDevice* const> addressable_devices =
+      executable->addressable_devices();
+  absl::Span<const PjRtLoadedExecutable::LogicalDeviceIds>
+      addressable_device_logical_ids =
+          executable->addressable_device_logical_ids();
+  TF_ASSIGN_OR_RETURN(std::vector<std::shared_ptr<HloModule>> hlo_modules,
+                      executable->GetHloModules());
+  VLOG(1) << "FunctionalHloRunner: local_executable count = "
+          << hlo_modules.size();
+
+  LOG(INFO) << "Starting argument buffer shape calculation.";
+  PerDeviceShapeVecType argument_shapes_per_device;
+  // This must be true, based on the comment on
+  // PjRtLoadedExecutable::addressable_devices().
+  CHECK_EQ(addressable_devices.size(), addressable_device_logical_ids.size());
+  for (int i = 0; i < static_cast<int>(addressable_devices.size()); ++i) {
+    VLOG(3) << "Calculating fake argument shapes for device " << i;
+    PjRtDevice* device = addressable_devices[i];
+    int executable_idx = hlo_modules.size() == 1
+                             ? 0
+                             : addressable_device_logical_ids[i].partition;
+    const HloModule& hlo_module = *hlo_modules[executable_idx];
+
+    std::vector<Shape> argument_shapes;
+    if (flatten_arguments) {
+      TF_RETURN_IF_ERROR(EnsureSingleTupleForFlattening(hlo_module));
+
+      argument_shapes = GetArgumentShapes(hlo_module);
+      CHECK_EQ(argument_shapes.size(), 1);
+      CHECK(argument_shapes.front().IsTuple());
+      argument_shapes = argument_shapes.front().tuple_shapes();
+    } else {
+      argument_shapes = GetArgumentShapes(hlo_module);
+    }
+
+    argument_shapes_per_device[device->id()] = std::move(argument_shapes);
+  }
+
+  LOG(INFO) << "Starting argument buffer allocation.";
+  int buffer_count = 0;
+  std::vector<std::vector<std::unique_ptr<PjRtBuffer>>>
+      argument_buffers_per_device;
+  argument_buffers_per_device.reserve(addressable_devices.size());
+  for (int i = 0; i < static_cast<int>(addressable_devices.size()); ++i) {
+    VLOG(3) << "Allocating fake arguments for device " << i;
+    PjRtDevice* device = addressable_devices[i];
+
+    CHECK(argument_shapes_per_device.contains(device->id()));
+    const std::vector<Shape>& argument_shapes =
+        argument_shapes_per_device.at(device->id());
+    std::vector<std::unique_ptr<PjRtBuffer>> argument_buffers;
+    argument_buffers.reserve(argument_shapes.size());
+
+    for (const Shape& shape : argument_shapes) {
+      if (running_options.log_input_output()) {
+        LOG(INFO) << "device_id=" << device->id()
+                  << ", input = " << shape.ToString();
+      }
+
+      TF_ASSIGN_OR_RETURN(std::unique_ptr<PjRtBuffer> argument_buffer,
+                          client.CreateUninitializedBuffer(shape, device));
+      argument_buffers.push_back(std::move(argument_buffer));
+      buffer_count += 1;
+    }
+
+    argument_buffers_per_device.push_back(std::move(argument_buffers));
+  }
+  LOG(INFO) << "Allocated argument buffers: " << buffer_count;
+
+  for (const auto& argument_buffers : argument_buffers_per_device) {
+    for (const auto& buffer : argument_buffers) {
+      TF_RETURN_IF_ERROR(buffer->BlockHostUntilReady());
+    }
+  }
+  LOG(INFO) << "Argument buffers are ready.";
+
+  return argument_buffers_per_device;
 }
 
 StatusOr<std::vector<std::vector<std::unique_ptr<PjRtBuffer>>>>
