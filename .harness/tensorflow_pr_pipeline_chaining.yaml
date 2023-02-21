@@ -40,8 +40,15 @@ pipeline:
           pipeline: tensorflow_chained_child_pipeline_1
           project: parson
           outputs: []
-          inputSetReferences:
-            - childinputsetprnumber
+          inputs:
+            identifier: tensorflow_chained_child_pipeline_1
+            properties:
+              ci:
+                codebase:
+                  build:
+                    type: PR
+                    spec:
+                      number: <+trigger.prNumber>
         tags: {}
         variables: []
   variables:
