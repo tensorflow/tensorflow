@@ -40,8 +40,6 @@ py_library(
         "//tensorflow/python/eager:forwardprop_util",
         "//tensorflow/python/eager:graph_only_ops",
         "//tensorflow/python/eager:tape",
-        "//tensorflow/python/ops/numpy_ops:numpy",
-        "//third_party/py/numpy",
     ],
 )
 
@@ -72,7 +70,6 @@ py_library(
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python:util",
-        "//tensorflow/python:variable_scope",
         "//tensorflow/python:while_v2",  # TODO(b/118513001): Imported via control_flow_ops; remove.
         "//tensorflow/python/distribute/parallel_device",
         "//tensorflow/python/eager:context",

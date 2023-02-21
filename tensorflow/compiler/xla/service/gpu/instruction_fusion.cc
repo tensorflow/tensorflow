@@ -139,13 +139,11 @@ std::vector<HloComputation*> GpuInstructionFusion::GetFusionComputations(
   std::vector<HloComputation*> computations =
       InstructionFusion::GetFusionComputations(module, execution_threads);
   computations.erase(
-      std::remove_if(
-          computations.begin(), computations.end(),
-          [](const HloComputation* c) {
-            return c->IsCustomCallComputation() &&
-                   (IsSoftmaxCustomCall(*c->CustomCallInstruction()) ||
-                    IsTritonCustomCall(*c->CustomCallInstruction()));
-          }),
+      std::remove_if(computations.begin(), computations.end(),
+                     [](const HloComputation* c) {
+                       return c->IsCustomCallComputation() &&
+                              IsTritonCustomCall(*c->CustomCallInstruction());
+                     }),
       computations.end());
   return computations;
 }

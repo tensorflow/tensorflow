@@ -260,7 +260,7 @@ template <typename OpType>
 OpType LhloDialectEmitter::CreateOpWithoutAttrs(const HloInstruction* instr,
                                                 ValueRange operands) {
   Location loc = getLocation(instr);
-  return builder_.create<OpType>(loc, llvm::None, operands,
+  return builder_.create<OpType>(loc, std::nullopt, operands,
                                  llvm::ArrayRef<NamedAttribute>{});
 }
 
@@ -716,10 +716,6 @@ tsl::StatusOr<mlir::Operation*> LhloDialectEmitter::EmitCustomCallOp(
     const HloInstruction* instr) {
   auto* custom_call_instr = xla::Cast<xla::HloCustomCallInstruction>(instr);
 
-  if (xla::gpu::IsSoftmaxCustomCall(*instr)) {
-    return EmitSoftmax(instr);
-  }
-
   if (xla::gpu::IsCustomCallToCusolver(*instr)) {
     return EmitCholesky(custom_call_instr);
   }
@@ -831,42 +827,6 @@ tsl::StatusOr<mlir::Operation*> LhloDialectEmitter::EmitCustomCallOp(
   }
 
   return custom_call.getOperation();
-}
-
-tsl::StatusOr<lmhlo::FusionOp> LhloDialectEmitter::EmitSoftmax(
-    const HloInstruction* instr) {
-  Location loc = getLocation(instr);
-
-  NamedAttribute attr(builder_.getStringAttr("fusion_type"),
-                      builder_.getStringAttr("softmax_fusion"));
-  auto fusion = builder_.create<lmhlo::FusionOp>(
-      loc, llvm::SmallVector<NamedAttribute>{attr});
-  auto after_fusion = builder_.saveInsertionPoint();
-  auto reverter = absl::MakeCleanup(
-      [this, after_fusion] { builder_.restoreInsertionPoint(after_fusion); });
-  builder_ = mlir::OpBuilder(fusion);
-
-  auto region_builder = OpBuilder::atBlockBegin(&fusion.getRegion().front());
-
-  llvm::SmallVector<Value, 8> arguments;
-  for (int i = 0; i < instr->operands().size(); ++i) {
-    const HloInstruction* operand = instr->operand(i);
-    xla::ShapeIndex shape_index;
-    TF_ASSIGN_OR_RETURN(
-        auto arg, RewriteFusionOperand(operand, operand->shape(), &shape_index,
-                                       &region_builder, loc));
-    arguments.push_back(arg);
-  }
-
-  TF_ASSIGN_OR_RETURN(
-      Value result,
-      xla::HloFunctionImporter::ImportInstructions(
-          *instr->to_apply(), arguments, symbol_table_, &region_builder));
-  llvm::SmallVector<Value, 4> output;
-  TF_RETURN_IF_ERROR(GetOrCreateView(instr, &output));
-  region_builder.create<memref::TensorStoreOp>(loc, result, output[0]);
-
-  return fusion;
 }
 
 tsl::StatusOr<lmhlo_gpu::CholeskyOp> LhloDialectEmitter::EmitCholesky(
@@ -1419,7 +1379,7 @@ LhloDialectEmitter::EmitAllReduceDoneOp(const HloInstruction* instr) {
   auto token = ret_tokens_.extract(instr->operand(0));
   TF_RET_CHECK(token) << "didn't find all-reduce-start token";
   return builder_.create<lmhlo_gpu::AllReduceDoneOp>(
-      getLocation(instr), /*resultTypes=*/llvm::None, token.mapped());
+      getLocation(instr), /*resultTypes=*/std::nullopt, token.mapped());
 }
 
 tsl::StatusOr<lmhlo::ReduceScatterOp> LhloDialectEmitter::EmitReduceScatterOp(
@@ -1487,7 +1447,7 @@ LhloDialectEmitter::EmitCollectivePermuteDoneOp(const HloInstruction* instr) {
   auto token = ret_tokens_.extract(instr->operand(0));
   TF_RET_CHECK(token) << "didn't find collective-permute-start token";
   return builder_.create<lmhlo_gpu::CollectivePermuteDoneOp>(
-      getLocation(instr), /*resultTypes=*/llvm::None, token.mapped());
+      getLocation(instr), /*resultTypes=*/std::nullopt, token.mapped());
 }
 
 tsl::StatusOr<lmhlo::InfeedOp> LhloDialectEmitter::EmitInfeedOp(
@@ -1701,7 +1661,7 @@ tsl::StatusOr<lmhlo::SendDoneOp> LhloDialectEmitter::EmitSendDoneOp(
   TF_RET_CHECK(token) << "didn't find send-done token";
 
   auto send_done_op = builder_.create<lmhlo::SendDoneOp>(
-      getLocation(instr), /*resultTypes=*/llvm::None, token.mapped());
+      getLocation(instr), /*resultTypes=*/std::nullopt, token.mapped());
 
   // Copy send-done attributes.
   auto* send_done = xla::Cast<xla::HloSendDoneInstruction>(instr);
@@ -1736,7 +1696,7 @@ tsl::StatusOr<lmhlo::RecvDoneOp> LhloDialectEmitter::EmitRecvDoneOp(
   TF_RET_CHECK(token) << "didn't find recv-done token";
 
   auto recv_done_op = builder_.create<lmhlo::RecvDoneOp>(
-      getLocation(instr), /*resultTypes=*/llvm::None, token.mapped());
+      getLocation(instr), /*resultTypes=*/std::nullopt, token.mapped());
 
   // Copy recv-done attributes.
   auto* recv_done = xla::Cast<xla::HloRecvDoneInstruction>(instr);

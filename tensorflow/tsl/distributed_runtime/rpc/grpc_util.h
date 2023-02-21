@@ -21,6 +21,7 @@ limitations under the License.
 
 #include "grpcpp/grpcpp.h"
 #include "grpcpp/support/byte_buffer.h"
+#include "absl/strings/cord.h"
 #include "tensorflow/tsl/platform/protobuf.h"
 #include "tensorflow/tsl/platform/status.h"
 #include "tensorflow/tsl/platform/stringpiece.h"
@@ -61,7 +62,7 @@ inline bool IsStreamRemovedError(const ::grpc::Status& s) {
 
 inline std::string SerializePayloads(const Status& s) {
   tensorflow::distributed_runtime::GrpcPayloadContainer container;
-  s.ForEachPayload([&container](StringPiece key, StringPiece value) {
+  s.ForEachPayload([&container](StringPiece key, const absl::Cord& value) {
     (*container.mutable_payloads())[std::string(key)] = std::string(value);
   });
   return container.SerializeAsString();

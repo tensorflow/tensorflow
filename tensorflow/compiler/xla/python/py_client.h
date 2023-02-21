@@ -180,7 +180,8 @@ class PyClient : public std::enable_shared_from_this<PyClient> {
 
   StatusOr<pybind11::object> BufferFromPyval(
       pybind11::handle argument, PjRtDevice* device, bool force_copy,
-      ifrt::Client::HostBufferSemantics host_buffer_semantics);
+      ifrt::Client::HostBufferSemantics host_buffer_semantics,
+      bool use_jax_array = false);
 
   StatusOr<std::shared_ptr<PyLoadedExecutable>> Compile(
       std::string mlir_module, CompileOptions options,

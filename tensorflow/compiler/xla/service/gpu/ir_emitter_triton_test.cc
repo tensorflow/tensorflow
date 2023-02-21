@@ -13,15 +13,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/xla/service/gpu/ir_emitter_triton.h"
-
 #include <cstdint>
 #include <string>
 
 #include "absl/strings/substitute.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/service/gpu/tests/gpu_codegen_test.h"
-#include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/tsl/platform/test.h"
 
@@ -79,6 +76,231 @@ ENTRY e {
 ; CHECK: custom_call_target="__triton",
 ; CHECK-NOT: pad(
 ; CHECK-NOT: slice(
+)");
+
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-3, 1e-3}));
+}
+
+TEST_F(TritonGemmTest, SplitLhsNoncontractingTransposeRhs) {
+  const std::string hlo_text = R"(
+HloModule t
+
+ENTRY e {
+  p0 = s8[3,122,96,12]{3,2,1,0} parameter(0)
+  cp0 = f16[3,122,96,12]{3,2,1,0} convert(p0)
+  p1 = f16[1,5,122]{2,1,0} parameter(1)
+  ROOT _ = f16[3,96,12,1,5]{4,3,2,1,0} dot(cp0, p1),
+    lhs_contracting_dims={1}, rhs_contracting_dims={2}
+})";
+
+  MatchOptimizedHlo(hlo_text, R"(
+; CHECK: custom-call(%p1, %p0), custom_call_target="__triton",
+)");
+
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-2, 1e-2}));
+}
+
+TEST_F(TritonGemmTest, SplitLhsNoncontracting) {
+  const std::string hlo_text = R"(
+HloModule t
+
+ENTRY e {
+  p0 = f32[72,72] parameter(0)
+  bc1 = f32[4,3,3,2,4,3,3,2] reshape(p0)
+  tr = f32[4,3,3,2,2,4,3,3] transpose(bc1), dimensions={0,1,2,3,7,4,5,6}
+  bc2 = f32[144,36] reshape(tr)
+  p1 = f16[36,3] parameter(1)
+  c7 = f32[36,3] convert(p1)
+  ROOT _ = f32[144,3] dot(bc2, c7),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0}
+})";
+
+  MatchOptimizedHlo(hlo_text, R"(
+; CHECK: custom-call(%p1, %p0), custom_call_target="__triton",
+)");
+
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-3, 1e-3}));
+}
+
+TEST_F(TritonGemmTest, DoNotFuseSplitRhsContractingTranspose) {
+  const std::string hlo_text = R"(
+HloModule t
+
+ENTRY e {
+  p0 = f16[5,8] parameter(0)
+  p1 = s8[2,3,4] parameter(1)
+  c0 = f16[2,3,4] convert(p1)
+  t1 = f16[3,2,4] transpose(c0), dimensions={1,0,2}
+  r1 = f16[3,8] reshape(t1)
+  ROOT _ = f16[5,3] dot(p0, r1),
+    lhs_contracting_dims={1}, rhs_contracting_dims={1}
+})";
+
+  MatchOptimizedHlo(hlo_text, R"(
+; CHECK: custom-call(%transpose.2, %p0), custom_call_target="__triton"
+)");
+
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-3, 1e-3}));
+}
+
+TEST_F(TritonGemmTest, DoNotFuseSplitLhsContractingTranspose) {
+  const std::string hlo_text = R"(
+HloModule t
+
+ENTRY e {
+  p0 = f16[3,16,25]{2,1,0} parameter(0)
+  p0t = f16[16,3,25]{2,1,0} transpose(p0), dimensions={1,0,2}
+  p0tr = f16[16,75]{1,0} reshape(p0t)
+  p1 = s8[128,75]{1,0} parameter(1)
+  cp1 = f16[128,75]{1,0} convert(p1)
+  ROOT dot.126 = f16[16,128]{1,0} dot(p0tr, cp1),
+    lhs_contracting_dims={1}, rhs_contracting_dims={1}
+})";
+
+  MatchOptimizedHlo(hlo_text, R"(
+; CHECK: custom-call(%p1, %transpose), custom_call_target="__triton"
+)");
+
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-3, 1e-3}));
+}
+
+TEST_F(TritonGemmTest, BatchF32F16) {
+  const std::string hlo_text = R"(
+HloModule t
+
+ENTRY e {
+  x = f32[5,2,3] parameter(0)
+  y = f16[5,3,4] parameter(1)
+  cy = f32[5,3,4] convert(y)
+  ROOT dot_a = f32[5,2,4] dot(x, cy),
+    lhs_contracting_dims={2}, rhs_contracting_dims={1},
+    lhs_batch_dims={0}, rhs_batch_dims={0}
+})";
+
+  MatchOptimizedHlo(hlo_text, R"(
+; CHECK: custom_call_target="__triton",
+)");
+
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-4, 1e-2}));
+}
+
+TEST_F(TritonGemmTest, BatchTransposeF32F16) {
+  const std::string hlo_text = R"(
+HloModule t
+
+ENTRY e {
+  x = f32[5,3,2] parameter(0)
+  y = f16[5,3,4] parameter(1)
+  cy = f32[5,3,4] convert(y)
+  x_transposed = f32[5,2,3] transpose(x), dimensions={0, 2, 1}
+  ROOT dot_a = f32[5,2,4] dot(x_transposed, cy),
+    lhs_contracting_dims={2}, rhs_contracting_dims={1},
+    lhs_batch_dims={0}, rhs_batch_dims={0}
+})";
+
+  MatchOptimizedHlo(hlo_text, R"(
+; CHECK: custom_call_target="__triton",
+)");
+
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-4, 1e-2}));
+}
+
+TEST_F(TritonGemmTest, DoNotFuseArbitraryReshape) {
+  const std::string hlo_text = R"(
+HloModule m
+
+ENTRY e {
+  Arg_0.1 = f16[2,2,3]{2,1,0} parameter(0)
+  c = f32[2,2,3]{2,1,0} convert(Arg_0.1)
+  Arg_1.2 = f32[4,3]{1,0} parameter(1)
+  reshape.4 = f32[3,2,2]{2,1,0} reshape(Arg_1.2)
+  ROOT dot.5 = f32[2,2,2]{2,1,0} dot(c, reshape.4),
+    lhs_batch_dims={1}, lhs_contracting_dims={2},
+    rhs_batch_dims={1}, rhs_contracting_dims={0}
+})";
+
+  MatchOptimizedHlo(hlo_text, R"(
+; CHECK: f32[3,2,2]{2,1,0} bitcast(%Arg_1.2)
+; CHECK: custom-call(%Arg_0.1, %bitcast
+; CHECK-SAME: custom_call_target="__triton"
+)");
+
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-4, 1e-4}));
+}
+
+TEST_F(TritonGemmTest, SkipMultipleBatch) {
+  const std::string hlo_text = R"(
+HloModule m
+
+ENTRY e {
+  Arg_0 = f16[3,4,2,5,4] parameter(0)
+  c = f32[3,4,2,5,4] convert(Arg_0)
+  Arg_1 = f32[5,3,4,3,2] parameter(1)
+  ROOT dot.3 = f32[5,3,4,4,3] dot(c, Arg_1),
+    lhs_batch_dims={3,0,1}, lhs_contracting_dims={2},
+    rhs_batch_dims={0,1,2}, rhs_contracting_dims={4}
+})";
+
+  MatchOptimizedHlo(hlo_text, R"(
+; CHECK-NOT: __triton
+)");
+}
+
+TEST_F(TritonGemmTest, SkipU8) {
+  const std::string hlo_text = R"(
+HloModule t
+
+ENTRY e {
+  p0 = f32[3,3]{1,0} parameter(0)
+  p1 = u8[3,3]{1,0} parameter(1)
+  c = f32[3,3]{1,0} convert(p1)
+  ROOT r = f32[3,3]{1,0} dot(p0, c),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0}
+})";
+
+  MatchOptimizedHlo(hlo_text, R"(
+; CHECK-NOT: __triton
+)");
+}
+
+TEST_F(TritonGemmTest, SkipF32F32) {
+  const std::string hlo_text = R"(
+HloModule t
+
+ENTRY e {
+  p0 = f32[3,5] parameter(0)
+  p1 = f32[5,7] parameter(1)
+  ROOT _ = f32[3,7] dot(p0, p1),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0}
+})";
+
+  MatchOptimizedHlo(hlo_text, R"(
+; CHECK-NOT: __triton
+)");
+}
+
+class TritonGemmTestAny : public TritonGemmTest {
+ public:
+  DebugOptions GetDebugOptionsForTest() override {
+    DebugOptions debug_options = TritonGemmTest::GetDebugOptionsForTest();
+    debug_options.set_xla_gpu_triton_gemm_any(true);
+    return debug_options;
+  }
+};
+
+TEST_F(TritonGemmTestAny, DoF32F32) {
+  const std::string hlo_text = R"(
+HloModule t
+
+ENTRY e {
+  p0 = f32[3,5] parameter(0)
+  p1 = f32[5,7] parameter(1)
+  ROOT _ = f32[3,7] dot(p0, p1),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0}
+})";
+
+  MatchOptimizedHlo(hlo_text, R"(
+; CHECK: custom_call_target="__triton",
 )");
 
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-3, 1e-3}));
@@ -171,7 +393,7 @@ INSTANTIATE_TEST_SUITE_P(RewriteTestSuite, ParametrizedRewriteTest,
 
 // This group of tests compares GPU results of dots already rewritten
 // into Triton custom calls.
-class CompareTest : public TritonGemmTest {};
+using CompareTest = TritonGemmTest;
 
 TEST_F(CompareTest, DifferentTilings) {
   const char* hlo_text_ref = R"(

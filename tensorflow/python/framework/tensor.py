@@ -29,6 +29,7 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.framework import type_spec
 from tensorflow.python.framework import type_spec_registry
+from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import handle_data_util
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.saved_model import nested_structure_coder
@@ -297,16 +298,14 @@ class TensorSpec(DenseSpec, type_spec.BatchableTypeSpec,
       return self
 
     value = ops.convert_to_tensor(value, self.dtype)
-    value_spec = self.from_tensor(value, self.name)
-    if self.name is None:
-      value_spec._name = None  # pylint: disable=protected-access
+    value_spec = TensorSpec(value.shape, value.dtype, self.name)
 
-    if casting_context.allow_supertype_tensors:
-      check_fn = lambda v: v.is_subtype_of(self) or self.is_subtype_of(v)
-    else:
-      check_fn = lambda v: v.is_subtype_of(self)
+    if not value_spec.is_subtype_of(self):
+      if self.is_subtype_of(value_spec):
+        gen_array_ops.ensure_shape(value, self.shape)
+      else:
+        raise AssertionError(f"Can not cast {value_spec!r} to {self!r}")
 
-    assert check_fn(value_spec), f"Can not cast {value_spec!r} to {self!r}"
     return value
 
   @classmethod

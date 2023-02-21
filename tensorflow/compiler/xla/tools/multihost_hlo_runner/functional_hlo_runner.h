@@ -57,7 +57,9 @@ class FunctionalHloRunner {
   FunctionalHloRunner() = delete;
 
   using LiteralVec = std::vector<Literal>;
+  using ShapeVec = std::vector<Shape>;
   using PerDeviceLiteralVecType = absl::btree_map<int, LiteralVec>;
+  using PerDeviceShapeVecType = absl::btree_map<int, ShapeVec>;
   using PerDeviceIndexVecType = absl::btree_map<int, std::vector<int>>;
 
   enum class LogOutputMode { kLogOutput, kNotLogOutput };
@@ -94,8 +96,13 @@ class FunctionalHloRunner {
     // Use random values as arguments, and different local devices share the
     // same argument values.
     kUseSharedRandomInputs,
-    // Use arguments which have all of their bytes set to 0.
+    // Use arguments which have all of their bytes set to 0 (not respecting any
+    // constraints on the range).
     kUseZerosAsInput,
+    // Use uninitialized device buffers as arguments (not respecting any
+    // constraints on the range). This drastically reduces
+    // the host memory usage and the startup time.
+    kUninitialized,
   };
 
   enum class ModuleOutputMode {
@@ -336,6 +343,13 @@ class FunctionalHloRunner {
                           const PjRtLoadedExecutable* executable,
                           const RunningOptions& running_options,
                           bool flatten_arguments = false);
+
+  // Creates uninitialized arguments to run the given executable.
+  static StatusOr<std::vector<std::vector<std::unique_ptr<PjRtBuffer>>>>
+  CreateUninitializedArgumentsOnDevice(PjRtClient& client,
+                                       const PjRtLoadedExecutable* executable,
+                                       const RunningOptions& running_options,
+                                       bool flatten_arguments = false);
 
   // Creates argument buffers based on the given arguments map. Note that the
   // arguments might be invalid when arguments are destructed.

@@ -213,7 +213,7 @@ class DType(
     return self if all(self == other for other in types) else None
 
   @doc_controls.do_not_doc_inheritable
-  def placeholder_value(self, placeholder_context=None):
+  def placeholder_value(self, placeholder_context):
     """TensorShape does not support placeholder values."""
     raise NotImplementedError
 

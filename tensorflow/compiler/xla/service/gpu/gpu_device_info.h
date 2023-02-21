@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_GPU_GPU_DEVICE_INFO_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_GPU_DEVICE_INFO_H_
 
+#include <string>
+
 #include "tensorflow/compiler/xla/stream_executor/device_description.pb.h"
 #include "tensorflow/compiler/xla/stream_executor/stream_executor.h"
 
@@ -26,6 +28,7 @@ namespace gpu {
 // se::DeviceDescription, but separating these out lets us write code that does
 // not depend on stream executor.
 struct GpuDeviceInfo {
+  std::string name;
   int threads_per_block_limit;
   int threads_per_warp;
   int shared_memory_per_block;

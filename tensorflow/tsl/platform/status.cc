@@ -26,6 +26,7 @@ limitations under the License.
 #include <utility>
 
 #include "absl/base/call_once.h"
+#include "absl/functional/function_ref.h"
 #include "absl/strings/cord.h"
 #include "absl/strings/escaping.h"
 #include "absl/strings/match.h"
@@ -308,11 +309,11 @@ bool Status::ErasePayload(absl::string_view type_url) {
 }
 
 void Status::ForEachPayload(
-    const std::function<void(absl::string_view, absl::string_view)>& visitor)
+    absl::FunctionRef<void(absl::string_view, const absl::Cord&)> visitor)
     const {
   if (ok()) return;
   for (const auto& payload : state_->payloads) {
-    visitor(payload.first, std::string(payload.second));
+    visitor(payload.first, payload.second);
   }
 }
 
@@ -348,8 +349,8 @@ absl::Status ToAbslStatus(const ::tsl::Status& s, SourceLocation loc) {
 
   absl::Status converted = internal::MakeAbslStatus(
       s.code(), s.error_message(), s.GetSourceLocations(), loc);
-  s.ForEachPayload([&converted](tsl::StringPiece key, tsl::StringPiece value) {
-    converted.SetPayload(key, absl::Cord(value));
+  s.ForEachPayload([&converted](tsl::StringPiece key, const absl::Cord& value) {
+    converted.SetPayload(key, value);
   });
 
   return converted;
@@ -415,8 +416,8 @@ static constexpr int kMaxAttachedLogMessageSize = 512;
 std::unordered_map<std::string, absl::Cord> StatusGroup::GetPayloads() const {
   std::unordered_map<std::string, absl::Cord> payloads;
   auto capture_payload = [&payloads](absl::string_view key,
-                                     absl::string_view value) {
-    payloads[std::string(key)] = absl::Cord(value);
+                                     const absl::Cord& value) {
+    payloads[std::string(key)] = value;
   };
   for (const auto& status : derived_) {
     status.ForEachPayload(capture_payload);

@@ -37,6 +37,7 @@ package_group(
         # Allow visibility from the mlir language server.
         "//learning/brain/mlir/mlir_lsp_server/...",
         "//smartass/brain/ops/...",
+        "//third_party/mlir_edge/tpgen/...",
         "//tensorflow_serving/servables/tensorflow/google/...",
         "//third_party/tf_runtime_google/...",
     ]),
@@ -395,6 +396,7 @@ cc_library(
         "transforms/sink_in_invariant_ops.cc",
         "transforms/tf_to_tfrt.cc",
         "transforms/tpu_passes.h",
+        "transforms/xla_rewrite_pass.cc",
     ],
     hdrs = [
         "transforms/passes.h",
@@ -828,6 +830,7 @@ cc_library(
     srcs = ["transforms/update_op_cost_in_tfrt_mlir.cc"],
     hdrs = ["transforms/update_op_cost_in_tfrt_mlir.h"],
     deps = [
+        ":cost_analysis",
         "//tensorflow/core/tfrt/fallback:cost_recorder",
         "@llvm-project//mlir:IR",
     ],

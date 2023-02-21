@@ -44,6 +44,8 @@ limitations under the License.
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/IR/TypeUtilities.h"
 #include "mlir/Interfaces/ViewLikeInterface.h"
+#include "mlir/Transforms/InliningUtils.h"
+#include "mlir/Transforms/RegionUtils.h"
 
 namespace mlir {
 namespace {
@@ -135,6 +137,32 @@ namespace mlir {
 namespace gml_st {
 
 //===----------------------------------------------------------------------===//
+// GmlSt Dialect Interfaces
+//===----------------------------------------------------------------------===//
+
+namespace {
+
+struct GmlStInlinerInterface : public DialectInlinerInterface {
+  using DialectInlinerInterface::DialectInlinerInterface;
+  // Operations in GmlSt dialect are always legal to inline since they are
+  // pure.
+  bool isLegalToInline(Operation *, Region *, bool, IRMapping &) const final {
+    return true;
+  }
+  // Handle the given inlined terminator by replacing it with a new operation
+  // as necessary. Required when the region has only one block.
+  void handleTerminator(Operation *op,
+                        ArrayRef<Value> valuesToRepl) const final {
+    auto yieldOp = dyn_cast<gml_st::YieldOp>(op);
+    if (!yieldOp) return;
+
+    assert(valuesToRepl.size() == 1);
+    valuesToRepl[0].replaceAllUsesWith(yieldOp.getOperand());
+  }
+};
+}  // namespace
+
+//===----------------------------------------------------------------------===//
 // GmlStDialect
 //===----------------------------------------------------------------------===//
 
@@ -151,6 +179,8 @@ void GmlStDialect::initialize() {
 #define GET_ATTRDEF_LIST
 #include "gml_st/IR/gml_st_attrs.cc.inc"
       >();
+
+  addInterfaces<GmlStInlinerInterface>();
 }
 
 Operation *GmlStDialect::materializeConstant(OpBuilder &builder, Attribute attr,
@@ -448,15 +478,14 @@ void buildLoopLikeOp(
   }
 }
 
-template <typename LoopLikeOp>
-struct CollapseSingleIterationLoops : public OpRewritePattern<LoopLikeOp> {
+struct CollapseSingleIterationLoops : public OpRewritePattern<ParallelOp> {
   explicit CollapseSingleIterationLoops(
       MLIRContext *context,
-      llvm::function_ref<bool(LoopLikeOp)> filterFn = nullptr,
+      llvm::function_ref<bool(ParallelOp)> filterFn = nullptr,
       PatternBenefit benefit = 1)
-      : OpRewritePattern<LoopLikeOp>(context, benefit), filterFn(filterFn) {}
+      : OpRewritePattern<ParallelOp>(context, benefit), filterFn(filterFn) {}
 
-  LogicalResult matchAndRewrite(LoopLikeOp op,
+  LogicalResult matchAndRewrite(ParallelOp op,
                                 PatternRewriter &rewriter) const override {
     if (filterFn && !filterFn(op))
       return rewriter.notifyMatchFailure(op, "did not match filter");
@@ -569,22 +598,16 @@ struct CollapseSingleIterationLoops : public OpRewritePattern<LoopLikeOp> {
     }
 
     // Replace the loop by a lower-dimensional loop.
-    LoopLikeOp newOp;
-    if constexpr (std::is_same_v<LoopLikeOp, ParallelOp>) {
-      auto parallelLoop = cast<ParallelOp>(op);
-      newOp = rewriter.create<ParallelOp>(op.getLoc(), op.getResultTypes(),
-                                          newLowerBounds, newUpperBounds,
-                                          newSteps, parallelLoop.getOutputs());
-    } else {
-      newOp = rewriter.create<ForOp>(op.getLoc(), op.getResultTypes(),
-                                     newLowerBounds, newUpperBounds, newSteps,
-                                     op.getOutputs(), nullptr);
-    }
+    ParallelOp newOp;
+    auto parallelLoop = cast<ParallelOp>(op);
+    newOp = rewriter.create<ParallelOp>(op.getLoc(), op.getResultTypes(),
+                                        newLowerBounds, newUpperBounds,
+                                        newSteps, parallelLoop.getOutputs());
     // The new loop needs to keep all attributes from the old one, except for
     // "operand_segment_sizes" which captures the outdated information of the
     // old iteration domain.
     for (const auto &namedAttr : op->getAttrs()) {
-      if (namedAttr.getName() == LoopLikeOp::getOperandSegmentSizeAttr())
+      if (namedAttr.getName() == ParallelOp::getOperandSegmentSizeAttr())
         continue;
       newOp->setAttr(namedAttr.getName(), namedAttr.getValue());
     }
@@ -598,7 +621,7 @@ struct CollapseSingleIterationLoops : public OpRewritePattern<LoopLikeOp> {
   }
 
  private:
-  llvm::function_ref<bool(LoopLikeOp)> filterFn;
+  llvm::function_ref<bool(ParallelOp)> filterFn;
 };
 
 //===----------------------------------------------------------------------===//
@@ -800,295 +823,10 @@ struct FoldTensorCastIntoParallelOp
 
 void ParallelOp::getCanonicalizationPatterns(RewritePatternSet &results,
                                              MLIRContext *context) {
-  results.add<CollapseSingleIterationLoops<ParallelOp>>(
-      context,
-      [&](ParallelOp op) { return !op.getDistributionType().has_value(); });
+  results.add<CollapseSingleIterationLoops>(context, [&](ParallelOp op) {
+    return !op.getDistributionType().has_value();
+  });
   results.add<DimOfParallelOp, FoldTensorCastIntoParallelOp>(context);
-}
-
-//===----------------------------------------------------------------------===//
-// ForOp
-//===----------------------------------------------------------------------===//
-
-Region &ForOp::getLoopBody() { return getRegion(); }
-
-SetYieldOp ForOp::getTerminator() {
-  return cast<SetYieldOp>(getBody()->getTerminator());
-}
-
-LogicalResult ForOp::verify() {
-  if (getNumResults() != getNumOutputs()) {
-    return emitOpError() << "expected the number of output arguments to match "
-                            "the number of results";
-  }
-
-  // Check if types of output arguments match region args types.
-  for (auto &item : llvm::enumerate(
-           llvm::zip(getOutputs(), getRegionOutputArgs(), getResultTypes()))) {
-    Value output, outputRegionArg;
-    Type resultType;
-    unsigned index = item.index();
-    std::tie(output, outputRegionArg, resultType) = item.value();
-    if (output.getType() != outputRegionArg.getType()) {
-      return emitOpError("expected output arg ")
-             << index << " with type = " << output.getType()
-             << " to match region arg " << index + getNumLoops()
-             << " type = " << outputRegionArg.getType();
-    }
-    if (output.getType() != resultType) {
-      return emitOpError("expected output arg ")
-             << index << " with type = " << output.getType()
-             << " to match resultType " << index << " type = " << resultType;
-    }
-    auto terminator = getTerminator();
-    auto numDstOperands = terminator.getNumDstOperands();
-    if (index >= numDstOperands) {
-      const auto *s = index ? "s" : "";
-      return terminator.emitOpError("expected to have at least ")
-             << index + 1 << " destination operand" << s << " (currently "
-             << numDstOperands << ")";
-    }
-
-    if (terminator.getDstOperand(index)->get() != outputRegionArg) {
-      return terminator.emitOpError("expected output block argument ")
-             << index << " to match set_yield destination";
-    }
-  }
-  return success();
-}
-
-void ForOp::build(
-    OpBuilder &builder, OperationState &result, TypeRange resultTypes,
-    ValueRange lowerBounds, ValueRange upperBounds, ValueRange steps,
-    ValueRange outputs,
-    function_ref<void(OpBuilder &, Location, ValueRange, ValueRange)>
-        bodyBuilderFn) {
-  buildLoopLikeOp<ForOp>(builder, result, resultTypes, lowerBounds, upperBounds,
-                         steps, outputs, bodyBuilderFn);
-}
-
-void ForOp::print(OpAsmPrinter &p) {
-  p << " (" << getInductionVars() << ") = (" << getLowerBound() << ") to ("
-    << getUpperBound() << ") step (" << getStep() << ")";
-
-  if (!getOutputs().empty()) {
-    p << " outs (";
-    llvm::interleaveComma(
-        llvm::zip(getRegionOutputArgs(), getOutputs()), p, [&](auto it) {
-          Value outputRegionArg, output;
-          std::tie(outputRegionArg, output) = it;
-          p << outputRegionArg << " = " << output << ": " << output.getType();
-        });
-    p << ")";
-  }
-
-  p << ' ';
-  p.printRegion(getRegion(), /*printEntryBlockArgs=*/false);
-  p.printOptionalAttrDict(getOperation()->getAttrs(),
-                          /*elidedAttrs=*/{ForOp::getOperandSegmentSizeAttr()});
-
-  if (!getResultTypes().empty()) {
-    p << " : ";
-    llvm::interleave(getResultTypes(), p, ", ");
-  }
-}
-
-ParseResult ForOp::parse(OpAsmParser &parser, OperationState &result) {
-  return parseLoopLikeOp<ForOp>(parser, result);
-}
-
-namespace {
-/// Folds CastOp of loop outputs into ForOp
-struct RefineForOpShape : public OpRewritePattern<ForOp> {
-  using OpRewritePattern<ForOp>::OpRewritePattern;
-
-  LogicalResult matchAndRewrite(ForOp op,
-                                PatternRewriter &rewriter) const override {
-    if (llvm::all_of(op.getOutputs(), [](auto out) {
-          return out.template getDefiningOp<tensor::CastOp>() == nullptr;
-        }))
-      return failure();
-
-    Location loc = op.getLoc();
-    // Scans through output args to find what args are produced by `tensor.cast`
-    // ops. Also cache the info since we are gonna reuse it a lot.
-    SmallVector<Value> newOutputs{op.getOutputs()};
-    SmallVector<Type> newTypes{op.getResultTypes()};
-    SmallVector<tensor::CastOp> castOutputs;
-    for (auto &&[out, type] : llvm::zip(newOutputs, newTypes)) {
-      if (auto cast =
-              castOutputs.emplace_back(out.getDefiningOp<tensor::CastOp>())) {
-        out = cast.getSource();
-        type = out.getType();
-      }
-    }
-
-    auto newFor = rewriter.create<ForOp>(loc, newTypes, op.getLowerBound(),
-                                         op.getUpperBound(), op.getStep(),
-                                         newOutputs, nullptr);
-    // The new loop needs to keep all attributes from the old one.
-    newFor->setAttrs(op->getAttrs());
-
-    // Map outputs, insert `tensor.cast` if necessary.
-    IRMapping bvm;
-    bvm.map(op.getInductionVars(), newFor.getInductionVars());
-
-    auto innerBuilder = ImplicitLocOpBuilder::atBlockEnd(loc, newFor.getBody());
-    rewriter.setInsertionPointAfter(newFor);
-
-    for (const auto &[oldArg, newArg, cast] :
-         llvm::zip(op.getRegionOutputArgs(), newFor.getRegionOutputArgs(),
-                   castOutputs)) {
-      bvm.map(oldArg,
-              cast ? innerBuilder.create<tensor::CastOp>(cast.getType(), newArg)
-                   : Value(newArg));
-    }
-    // Cast the loop results for downstream uses of the loop if necessary.
-    SmallVector<Value> newResults{newFor.getResults()};
-    for (auto &&[res, cast] : llvm::zip(newResults, castOutputs)) {
-      if (cast) res = rewriter.create<tensor::CastOp>(loc, cast.getType(), res);
-    }
-
-    // Clone loop body.
-    for (auto &o : *(op.getBody())) innerBuilder.clone(o, bvm);
-
-    // Update set_yield destinations to the new type.
-    auto term = cast<SetYieldOp>(newFor.getTerminator());
-    rewriter.updateRootInPlace(term, [&]() {
-      term.getDstsMutable().assign(newFor.getRegionOutputArgs());
-    });
-
-    // Update the original loop by the new loop + CastOp.
-    rewriter.replaceOp(op, newResults);
-    return success();
-  }
-};
-
-// Fold away ForOp iter arguments when:
-// 1) The op yields the iter arguments.
-// 2) The iter arguments have no use and the corresponding outer region
-// iterators (inputs) are yielded.
-// 3) The iter arguments have no use and the corresponding (operation) results
-// have no use.
-//
-// These arguments must be defined outside of the ForOp region and can just be
-// forwarded after simplifying the op inits, yields and returns.
-//
-// The implementation uses `mergeBlockBefore` to steal the content of the
-// original ForOp and avoid cloning.
-struct ForOpIterArgsFolder : public OpRewritePattern<ForOp> {
-  using OpRewritePattern<ForOp>::OpRewritePattern;
-
-  LogicalResult matchAndRewrite(ForOp forOp,
-                                PatternRewriter &rewriter) const final {
-    bool canonicalize = false;
-    auto yieldOp = forOp.getTerminator();
-
-    // An internal flat vector of block transfer
-    // arguments `newBlockTransferArgs` keeps the 1-1 mapping of original to
-    // transformed block argument mappings. This plays the role of a
-    // IRMapping for the particular use case of calling into
-    // `mergeBlockBefore`.
-    SmallVector<bool, 4> keepMask;
-    keepMask.reserve(yieldOp.getNumUpdates());
-    SmallVector<Value, 4> newBlockTransferArgs, newOutputArgs, newResultValues;
-    newBlockTransferArgs.reserve(1 + forOp.getNumOutputs());
-    newBlockTransferArgs.push_back(Value());  // iv placeholder with null value
-    newOutputArgs.reserve(forOp.getNumOutputs());
-    newResultValues.reserve(forOp.getNumResults());
-    // [iter from outside, iter inside region, op results, yield sources]
-    for (auto [out, arg, res, yieldSrc] :
-         llvm::zip(forOp.getOutputs(), forOp.getRegionOutputArgs(),
-                   forOp.getResults(), yieldOp.getSrcs())) {
-      // Forwarded is `true` when:
-      // 1) The region `iter` argument is yielded.
-      // 2) The region `iter` argument has no use, and the corresponding iter
-      // operand (input) is yielded.
-      // 3) The region `iter` argument has no use, and the corresponding op
-      // result has no use.
-      bool forwarded =
-          ((arg == yieldSrc) ||
-           (arg.use_empty() && (out == yieldSrc || res.use_empty())));
-      keepMask.push_back(!forwarded);
-      canonicalize |= forwarded;
-      if (forwarded) {
-        newBlockTransferArgs.push_back(out);
-        newResultValues.push_back(out);
-        continue;
-      }
-      newOutputArgs.push_back(out);
-      newBlockTransferArgs.push_back(Value());  // placeholder with null value
-      newResultValues.push_back(Value());       // placeholder with null value
-    }
-
-    if (!canonicalize) return failure();
-
-    auto newForOp = rewriter.create<ForOp>(
-        forOp.getLoc(),
-        llvm::to_vector<1>(llvm::map_range(
-            newOutputArgs, [&](Value v) -> Type { return v.getType(); })),
-        forOp.getLowerBound(), forOp.getUpperBound(), forOp.getStep(),
-        newOutputArgs, nullptr);
-    // The new loop needs to keep all attributes from the old one, except for
-    // "operand_segment_sizes" which captures the outdated information of the
-    // old iteration domain.
-    for (const auto &namedAttr : forOp->getAttrs()) {
-      if (namedAttr.getName() == ForOp::getOperandSegmentSizeAttr()) continue;
-      newForOp->setAttr(namedAttr.getName(), namedAttr.getValue());
-    }
-    Block &newBlock = newForOp.getRegion().front();
-
-    // Replace the null placeholders with newly constructed values.
-    newBlockTransferArgs[0] = newBlock.getArgument(0);  // iv
-    for (unsigned idx = 0, collapsedIdx = 0, e = newResultValues.size();
-         idx != e; ++idx) {
-      Value &blockTransferArg = newBlockTransferArgs[1 + idx];
-      Value &newResultVal = newResultValues[idx];
-      assert((blockTransferArg && newResultVal) ||
-             (!blockTransferArg && !newResultVal));
-      if (!blockTransferArg) {
-        blockTransferArg = newForOp.getRegionOutputArgs()[collapsedIdx];
-        newResultVal = newForOp.getResult(collapsedIdx++);
-      }
-    }
-
-    Block &oldBlock = forOp.getRegion().front();
-    assert(oldBlock.getNumArguments() == newBlockTransferArgs.size() &&
-           "unexpected argument size mismatch");
-
-    // No terminator case: merge and rewrite the merged terminator.
-    auto cloneFilteredTerminator = [&](SetYieldOp mergedTerminator) {
-      OpBuilder::InsertionGuard g(rewriter);
-      rewriter.setInsertionPoint(mergedTerminator);
-      SmallVector<Value, 4> filteredSrcs, filteredDsts, filteredSets;
-      filteredSrcs.reserve(newResultValues.size());
-      filteredDsts.reserve(newResultValues.size());
-      filteredSets.reserve(newResultValues.size());
-      for (unsigned idx = 0, e = keepMask.size(); idx < e; ++idx) {
-        if (keepMask[idx]) {
-          filteredSrcs.push_back(mergedTerminator.getSrcs()[idx]);
-          filteredDsts.push_back(mergedTerminator.getDsts()[idx]);
-          filteredSets.push_back(mergedTerminator.getSets()[idx]);
-        }
-      }
-      rewriter.create<SetYieldOp>(mergedTerminator.getLoc(), filteredSrcs,
-                                  filteredDsts, filteredSets);
-    };
-
-    rewriter.mergeBlocks(&oldBlock, &newBlock, newBlockTransferArgs);
-    auto mergedYieldOp = newForOp.getTerminator();
-    cloneFilteredTerminator(mergedYieldOp);
-    rewriter.eraseOp(mergedYieldOp);
-    rewriter.replaceOp(forOp, newResultValues);
-    return success();
-  }
-};
-}  // namespace
-
-void ForOp::getCanonicalizationPatterns(RewritePatternSet &results,
-                                        MLIRContext *context) {
-  results.add<CollapseSingleIterationLoops<ForOp>, RefineForOpShape,
-              ForOpIterArgsFolder>(context);
 }
 
 //===----------------------------------------------------------------------===//
@@ -1451,6 +1189,92 @@ void SetYieldOp::getCanonicalizationPatterns(RewritePatternSet &results,
 //===----------------------------------------------------------------------===//
 
 LogicalResult YieldOp::verify() { return success(); }
+
+//===----------------------------------------------------------------------===//
+// FusionOp
+//===----------------------------------------------------------------------===//
+
+YieldOp FusionOp::getTerminator() {
+  return cast<YieldOp>(getBody()->getTerminator());
+}
+
+void FusionOp::print(OpAsmPrinter &p) {
+  p << " (";
+  llvm::interleaveComma(
+      llvm::zip(getBody()->getArguments(), getInputs()), p, [&](auto it) {
+        Value inputRegionArg, input;
+        std::tie(inputRegionArg, input) = it;
+        p << inputRegionArg << " = " << input << ": " << input.getType();
+      });
+  p << ") ";
+
+  p.printRegion(getRegion(), /*printEntryBlockArgs=*/false);
+
+  p.printOptionalAttrDict(getOperation()->getAttrs());
+
+  if (!getResultTypes().empty()) {
+    p << " : ";
+    llvm::interleave(getResultTypes(), p, ", ");
+  }
+}
+
+ParseResult FusionOp::parse(OpAsmParser &parser, OperationState &result) {
+  SmallVector<OpAsmParser::UnresolvedOperand, 4> operands, regionOperands;
+  SmallVector<Type, 4> operandTypes;
+
+  auto parseElt = [&]() -> ParseResult {
+    if (parser.parseOperand(regionOperands.emplace_back(),
+                            /*allowResultNumber=*/false) ||
+        parser.parseEqual()) {
+      return failure();
+    }
+    if (parser.parseOperand(operands.emplace_back()) || parser.parseColon() ||
+        parser.parseType(operandTypes.emplace_back())) {
+      return failure();
+    }
+    return success();
+  };
+
+  // Parse argument list.
+  if (parser.parseCommaSeparatedList(AsmParser::Delimiter::Paren, parseElt))
+    return failure();
+
+  SMLoc loc = parser.getCurrentLocation();
+  if (parser.resolveOperands(operands, operandTypes, loc, result.operands))
+    return failure();
+
+  // Parse region.
+  SmallVector<OpAsmParser::Argument, 4> regionArgs;
+  for (auto argAndType : llvm::zip(regionOperands, operandTypes)) {
+    auto &arg = regionArgs.emplace_back();
+    std::tie(arg.ssaName, arg.type) = argAndType;
+  }
+  Region *body = result.addRegion();
+  if (parser.parseRegion(*body, regionArgs)) return failure();
+
+  // Parse attributes.
+  if (parser.parseOptionalAttrDict(result.attributes)) return failure();
+
+  // Parser result types.
+  if (parser.parseOptionalColonTypeList(result.types)) return failure();
+
+  return success();
+}
+
+LogicalResult FusionOp::verify() {
+  llvm::SetVector<Value> valuesDefinedAbove;
+  getUsedValuesDefinedAbove(getRegion(), getRegion(), valuesDefinedAbove);
+
+  for (Value v : valuesDefinedAbove) {
+    auto *definingOp = v.getDefiningOp();
+
+    if (!isa_and_nonnull<arith::ConstantOp>(definingOp))
+      return emitOpError() << "using value defined outside the region that is "
+                              "not 'arith.constant'.";
+  }
+
+  return success();
+}
 
 }  // namespace gml_st
 }  // namespace mlir

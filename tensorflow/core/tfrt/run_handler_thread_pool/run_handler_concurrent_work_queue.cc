@@ -15,6 +15,7 @@ limitations under the License.
 #include "tensorflow/core/tfrt/run_handler_thread_pool/run_handler_concurrent_work_queue.h"
 
 #include <memory>
+#include <optional>
 #include <ostream>
 #include <utility>
 
@@ -83,7 +84,7 @@ Optional<TaskFunction> RunHandlerThreadWorkQueue::AddBlockingTask(
   } else {
     return blocking_work_queue_.RunBlockingTask(std::move(work));
   }
-  return llvm::None;
+  return std::nullopt;
 }
 
 void RunHandlerThreadWorkQueue::Quiesce() {

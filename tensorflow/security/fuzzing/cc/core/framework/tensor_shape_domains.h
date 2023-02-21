@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_SECURITY_FUZZING_CC_CORE_FRAMEWORK_TENSOR_SHAPE_DOMAINS_H_
 #define TENSORFLOW_SECURITY_FUZZING_CC_CORE_FRAMEWORK_TENSOR_SHAPE_DOMAINS_H_
 
+#include <limits>
 #include <tuple>
 #include <utility>
 
@@ -24,7 +25,13 @@ limitations under the License.
 
 namespace tensorflow::fuzzing {
 
-fuzztest::Domain<TensorShape> AnyValidTensorShape();
+/// Returns a fuzztest domain with valid TensorShapes.
+/// The domain can be customized by setting the maximum rank,
+/// and the minimum and maximum size of all dimensions.
+fuzztest::Domain<TensorShape> AnyValidTensorShape(
+    size_t max_rank = std::numeric_limits<int>::max(),
+    int64_t dim_lower_bound = std::numeric_limits<int64_t>::min(),
+    int64_t dim_upper_bound = std::numeric_limits<int64_t>::max());
 
 }  // namespace tensorflow::fuzzing
 

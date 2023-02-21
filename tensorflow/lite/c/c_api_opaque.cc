@@ -99,16 +99,6 @@ TfLiteStatus TfLiteOpaqueTensorGetDimSignature(
   return kTfLiteOk;
 }
 
-const TfLiteIntArray* TfLiteOpaqueTensorDims(
-    const TfLiteOpaqueTensor* opaque_tensor) {
-  return Convert(opaque_tensor)->dims;
-}
-
-const TfLiteIntArray* TfLiteOpaqueTensorDimsSignature(
-    const TfLiteOpaqueTensor* opaque_tensor) {
-  return Convert(opaque_tensor)->dims_signature;
-}
-
 int TfLiteOpaqueTensorIsVariable(const TfLiteOpaqueTensor* opaque_tensor) {
   return Convert(opaque_tensor)->is_variable ? 1 : 0;
 }
@@ -263,7 +253,7 @@ TfLiteStatus TfLiteOpaqueContextGetNodeAndRegistration(
   // to the 'TfLiteRegistration' object.
   auto derived_registration =
       tflite::internal::CommonOpaqueConversionUtil::ObtainRegistrationExternal(
-          context, registration);
+          context, registration, node_index);
 
   if (derived_registration == nullptr) return kTfLiteError;
 

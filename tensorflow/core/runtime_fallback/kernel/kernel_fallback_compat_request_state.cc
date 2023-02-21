@@ -73,7 +73,8 @@ KernelFallbackCompatRequestState::KernelFallbackCompatRequestState(
     tensorflow::thread::ThreadPoolInterface* user_intra_op_threadpool,
     const absl::optional<SessionMetadata>& model_metadata,
     const tensorflow::ProcessFunctionLibraryRuntime* pflr)
-    : runner_(runner),
+    : step_id_(step_id),
+      runner_(runner),
       step_container_(std::move(step_container)),
       collective_executor_handle_(std::move(collective_executor_handle)),
       collective_executor_(collective_executor_handle_

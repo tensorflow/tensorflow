@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 
@@ -71,7 +72,7 @@ llvm::Optional<SmallVector<int64_t, 2>> vectorShape(Type type,
     return llvm::to_vector<2>(vectorType.getShape());
   }
 
-  return llvm::None;
+  return std::nullopt;
 }
 
 bool isF32(Type type) { return type.isF32(); }
@@ -128,8 +129,8 @@ Value f32FromBits(ImplicitLocOpBuilder &builder, uint32_t bits) {
 Value ClampWithNormals(ImplicitLocOpBuilder &builder,
                        const llvm::SmallVector<int64_t, 2> &shape, Value value,
                        float lower_bound, float upper_bound) {
-  assert(!isnan(lower_bound));
-  assert(!isnan(upper_bound));
+  assert(!std::isnan(lower_bound));
+  assert(!std::isnan(upper_bound));
 
   auto bcast = [&](Value value) -> Value {
     return broadcast(builder, value, shape);

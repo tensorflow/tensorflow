@@ -71,6 +71,9 @@ SmallVector<RegionEdge> getSuccessorRegions(RegionBranchOpInterface op,
 RegionBranchOpInterface moveRegionsToNewOpButKeepOldOp(
     RegionBranchOpInterface op);
 
+Type getUnrankedMemrefType(Type ty);
+Type getUnrankedMemrefType(Value v);
+
 namespace detail {
 // An arbitrary deterministic Value order.
 struct ValueComparator {

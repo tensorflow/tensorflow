@@ -15,93 +15,99 @@ limitations under the License.
 
 package org.tensorflow.lite.benchmark.delegateperformance;
 
+import static org.tensorflow.lite.benchmark.delegateperformance.DelegatePerformanceBenchmark.checkState;
+
 import android.util.Log;
 import java.io.IOException;
 import java.io.PrintWriter;
 import java.util.List;
-import java.util.Locale;
-import java.util.Map;
 
 /** Helper class for writing the final report in CSV format. */
-final class CsvWriter {
+final class CsvWriter implements ReportWriter {
   private static final String TAG = "TfLiteCsvWriter";
 
-  /**
-   * Writes the benchmark results into a CSV file.
-   *
-   * <p>Example output file:
-   *
-   * <p>| Metric | DELEGATE_TYPE_1 (PATH_1) | DELEGATE_TYPE_2 (PATH_2) | % | ...
-   *
-   * <p>| METRIC_1 | 1000 | 1200 | 20% | ...
-   *
-   * <p>...
-   */
-  public static void writeReport(
-      List<TfLiteSettingsListEntry> tfliteSettingsList, String filePath) {
-    if (tfliteSettingsList.isEmpty()) {
-      Log.e(TAG, "Invalid input to generate a CSV report.");
-      return;
-    }
+  private final String destinationFolderPath;
 
+  private CsvWriter(String destinationFolderPath) {
+    this.destinationFolderPath = destinationFolderPath;
+  }
+
+  /** Writes the benchmark results into a CSV file. */
+  @Override
+  public void writeReport(BenchmarkReport report) {
+    // Example output file:
+    // Model, Metric, DELEGATE_TYPE (PATH), DELEGATE_TYPE (PATH), Change, Status,...
+    // model_1, metric_1, 900 , 1000, -10%, PASS, ...
+    // model_1, metric_2, ...
+    // model_1, delegate_summary,,,, PASS, ...
+    // model_1, model_summary, PASS,
+    // model_2, ...
+    // ...
+    // Summary, Summary, PASS
+    StringBuilder sb = new StringBuilder();
+    sb.append(destinationFolderPath).append("/").append(report.name()).append(".csv");
+    String filePath = sb.toString();
     Log.i(TAG, "Generating CSV report to " + filePath);
-    TfLiteSettingsListEntry reference = tfliteSettingsList.get(0);
+
+    List<ModelBenchmarkReportInterface> modelReports = report.modelBenchmarkReports();
+    checkState(!modelReports.isEmpty());
+    sb = new StringBuilder();
+    // Heading row. It is structured as below:
+    // Model, Metric, DELEGATE_TYPE (PATH), DELEGATE_TYPE (PATH), Change, Status, ...
+    sb.append("Model, Metric");
+    for (DelegateMetricsEntry entry : modelReports.get(0).processedDelegateMetrics()) {
+      sb.append(", Delegate: ").append(entry.delegateIdentifier());
+      if (!entry.isTestTarget()) {
+        sb.append(", Change, Status");
+      }
+    }
+    sb.append('\n');
+    for (ModelBenchmarkReportInterface modelReport : modelReports) {
+      writerModelReport(modelReport, sb);
+    }
+    sb.append("Summary").append(", Summary,").append(report.result());
+    sb.append('\n');
     try (PrintWriter writer = new PrintWriter(filePath)) {
-      StringBuilder sb = new StringBuilder();
-      // Heading row. It is structured as below:
-      // Metric, <REFERENCE_DELEGATE> (<PATH>), <CANDIDATE_DELEGATE> (<PATH>), %,...
-      sb.append("Metric,")
-          .append(reference.tfliteSettings().delegate())
-          .append(" (")
-          .append(reference.filePath())
-          .append(")");
-      for (int i = 1; i < tfliteSettingsList.size(); i++) {
-        TfLiteSettingsListEntry entry = tfliteSettingsList.get(i);
-        sb.append(",")
-            .append(entry.tfliteSettings().delegate())
-            .append(" (")
-            .append(entry.filePath())
-            .append("),%");
-      }
-      sb.append('\n');
-
-      // Metric rows.
-      for (Map.Entry<String, Float> referenceEntry : reference.metrics().entrySet()) {
-        String metricName = referenceEntry.getKey();
-        float referenceValue = referenceEntry.getValue();
-        sb.append(metricName).append(",").append(referenceValue);
-        for (int i = 1; i < tfliteSettingsList.size(); i++) {
-          sb.append(compareValues(metricName, referenceValue, tfliteSettingsList.get(i)));
-        }
-        sb.append('\n');
-      }
-
       writer.write(sb.toString());
     } catch (IOException e) {
       Log.e(TAG, "Failed to open report file " + filePath);
     }
   }
 
-  private static String compareValues(
-      String metricName, float referenceValue, TfLiteSettingsListEntry entry) {
-    StringBuilder sb = new StringBuilder();
-    sb.append(",N/A,N/A");
-    if (entry.metrics().containsKey(metricName)) {
-      float value = entry.metrics().get(metricName);
-      sb.setLength(0);
-      sb.append(",").append(value);
-      if (value == referenceValue) {
-        sb.append(",0%");
-      } else if (referenceValue == 0) {
-        sb.append(",N/A");
-      } else {
-        sb.append(",").append(toPercentage((value - referenceValue) / referenceValue));
+  private void writerModelReport(ModelBenchmarkReportInterface modelReport, StringBuilder sb) {
+    String modelName = modelReport.modelName();
+    if (modelReport.processedDelegateMetrics().isEmpty()) {
+      Log.w(TAG, "The computed metric is empty.");
+    } else {
+      for (String metricName : modelReport.processedDelegateMetrics().get(0).metrics().keySet()) {
+        sb.append(modelName).append(",").append(metricName);
+        for (DelegateMetricsEntry delegateMetricsEntry : modelReport.processedDelegateMetrics()) {
+          MetricsEntry metricEntry = delegateMetricsEntry.metrics().get(metricName);
+          sb.append(",").append(metricEntry.value());
+          if (!delegateMetricsEntry.isTestTarget()) {
+            sb.append(",")
+                .append(metricEntry.regression())
+                .append(",")
+                .append(metricEntry.result());
+          }
+        }
+        sb.append('\n');
       }
     }
-    return sb.toString();
+    sb.append(modelName).append(",delegate_summary");
+    for (DelegateMetricsEntry delegateMetricsEntry : modelReport.processedDelegateMetrics()) {
+      sb.append(",");
+      if (!delegateMetricsEntry.isTestTarget()) {
+        // Position the delegate-level result correctly.
+        sb.append(",,").append(delegateMetricsEntry.result());
+      }
+    }
+    sb.append('\n');
+    sb.append(modelName).append(",model_summary,").append(modelReport.result());
+    sb.append('\n');
   }
 
-  private static String toPercentage(float n) {
-    return String.format(Locale.ENGLISH, "%.1f", n * 100) + "%";
+  static ReportWriter create(String destinationFolderPath) {
+    return new CsvWriter(destinationFolderPath);
   }
 }

@@ -21,6 +21,7 @@ limitations under the License.
 #include <iterator>
 #include <limits>
 #include <numeric>
+#include <optional>
 
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/Optional.h"
@@ -159,7 +160,7 @@ static llvm::Optional<int64_t> GetIntegerHLOAxisFromTFAxis(Value value,
   DenseIntElementsAttr attrs;
   if (!matchPattern(value, m_Constant(&attrs)) ||
       attrs.getType().getRank() != 0) {
-    return llvm::None;
+    return std::nullopt;
   }
   int64_t axis = attrs.getValues<IntegerAttr>()[0].getInt();
   return axis < 0 ? axis + rank : axis;
@@ -5820,11 +5821,11 @@ class ConvertRandomShuffleOp : public OpRewritePattern<TF::RandomShuffleOp> {
 
       auto scalar_i32_type =
           tensorflow::GetTypeFromTFTensorShape({}, builder->getIntegerType(32));
-      auto scalar_i64_type =
-          tensorflow::GetTypeFromTFTensorShape({}, builder->getIntegerType(64));
+      auto one_cross_i64_type = tensorflow::GetTypeFromTFTensorShape(
+          {1}, builder->getIntegerType(64));
 
       auto scalar_one =
-          DenseIntElementsAttr::get(scalar_i64_type, ArrayRef<int64_t>(1));
+          DenseIntElementsAttr::get(one_cross_i64_type, ArrayRef<int64_t>(1));
 
       // We need to swap the indices[i] with indices[swaps[i]]. First get
       // these index values.
@@ -6577,7 +6578,7 @@ inline llvm::Optional<xla::RandomAlgorithm> TensorFlowRngAlgToXla(
   } else if (alg == tensorflow::RNG_ALG_AUTO_SELECT) {
     return xla::RandomAlgorithm::RNG_DEFAULT;
   }
-  return llvm::None;
+  return std::nullopt;
 }
 
 // Converts tf.XlaRngBitGenerator op to mhlo.RngBitGenerator op.

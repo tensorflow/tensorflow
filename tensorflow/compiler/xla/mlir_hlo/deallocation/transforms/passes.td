@@ -58,3 +58,21 @@ def BufferReusePass : Pass<"hlo-buffer-reuse", "mlir::func::FuncOp"> {
   let constructor = "::mlir::deallocation::createBufferReusePass()";
   let dependentDialects = ["::mlir::memref::MemRefDialect"];
 }
+
+def ConvertDeallocationOpsToLLVMPass
+    : Pass<"hlo-convert-deallocation-ops-to-llvm", "mlir::func::FuncOp"> {
+  let summary = "Convert `deallocation` ops to LLVM";
+  let constructor = "::mlir::deallocation::createConvertDeallocationOpsToLLVM()";
+  let dependentDialects = ["mlir::LLVM::LLVMDialect"];
+}
+
+def DeallocationToScfPass : Pass<"hlo-deallocation-to-scf",
+                                 "mlir::func::FuncOp"> {
+  let summary = "Lowers retain to scf.";
+  let constructor = "::mlir::deallocation::createDeallocationToScfPass()";
+  let dependentDialects = [
+    "::mlir::arith::ArithDialect",
+    "::mlir::scf::SCFDialect",
+    "::mlir::memref::MemRefDialect",
+  ];
+}

@@ -23,6 +23,7 @@ from tensorflow.python.data.experimental.kernel_tests.service import test_base a
 from tensorflow.python.data.experimental.ops import distributed_save_op
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.data.ops import test_mode
 from tensorflow.python.framework import combinations
 from tensorflow.python.platform import test
 
@@ -62,6 +63,8 @@ class SnapshotFtTest(data_service_test_base.TestBase, parameterized.TestCase):
         tempfile.mkdtemp(dir=self.get_temp_dir()),
         "snapshot_ft_test",
     )
+    # TODO(b/268586560): Enable `warm_start` for `snapshot_ft_test`.
+    test_mode.toggle_test_mode(False)
 
   # This "manual" setup function is needed due to some bad interaction between
   # `setUp` and `combinations` that causes the dataset to be out-of-scope.

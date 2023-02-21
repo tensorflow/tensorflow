@@ -34,6 +34,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
+#include "tensorflow/compiler/xla/service/gpu/gemm_rewriter_triton.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_device_info.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
@@ -164,49 +165,76 @@ std::optional<LaunchDimensions> MatMul(
     ir::builder& b, const HloDotInstruction* dot_instr, ir::function* fn,
     tensorflow::AutotuneResult::TritonGemmKey& config, int shmem_budget) {
   const DotDimensionNumbers& dims = dot_instr->dot_dimension_numbers();
-  const HloInstruction* hlo_lhs_op = dot_instr->operand(0);
-  const HloInstruction* hlo_rhs_op = dot_instr->operand(1);
-
-  const HloInstruction* hlo_lhs_param = hlo_lhs_op;
-  while (hlo_lhs_param->opcode() != HloOpcode::kParameter) {
-    hlo_lhs_param = hlo_lhs_param->operand(0);
-  }
-  const int lhs_param_nr = hlo_lhs_param->parameter_number();
-
-  const HloInstruction* hlo_rhs_param = hlo_rhs_op;
-  while (hlo_rhs_param->opcode() != HloOpcode::kParameter) {
-    hlo_rhs_param = hlo_rhs_param->operand(0);
-  }
-  const int rhs_param_nr = hlo_rhs_param->parameter_number();
+  const DotFusionAnalysis analysis(dot_instr);
+  const HloInstruction* hlo_lhs_param = analysis.OperandToParameter(0);
+  const HloInstruction* hlo_rhs_param = analysis.OperandToParameter(1);
 
   ir::type* lhs_ty = TritonType(b, hlo_lhs_param->shape().element_type());
   ir::type* rhs_ty = TritonType(b, hlo_rhs_param->shape().element_type());
 
   // Rely on dot decomposer: there is just one contracting and one
-  // non-contracting dimension on each side.
-  CHECK_EQ(hlo_lhs_op->shape().rank(), 2);
-  CHECK_EQ(hlo_rhs_op->shape().rank(), 2);
-  const int lhs_noncontracting_dim_idx = 1 - dims.lhs_contracting_dimensions(0);
-  const int rhs_noncontracting_dim_idx = 1 - dims.rhs_contracting_dimensions(0);
+  // non-contracting dimension on each side + one batch optionally.
+  CHECK_EQ(dims.lhs_contracting_dimensions_size(), 1);
+  CHECK_EQ(dims.rhs_contracting_dimensions_size(), 1);
+  CHECK_LE(dims.lhs_batch_dimensions_size(), 1);
+  const bool batch = !dims.lhs_batch_dimensions().empty();
+  CHECK_EQ(dot_instr->operand(0)->shape().rank(), 2 + batch);
+  const int lhs_noncontracting_dim_idx =
+      NoncontractingDimensionIndex(dims.lhs_contracting_dimensions(0),
+                                   batch ? dims.lhs_batch_dimensions(0) : -1);
+  const int rhs_noncontracting_dim_idx =
+      NoncontractingDimensionIndex(dims.rhs_contracting_dimensions(0),
+                                   batch ? dims.rhs_batch_dimensions(0) : -1);
 
   // Non-contracting dimension lengths.
-  const int m = hlo_lhs_op->shape().dimensions(lhs_noncontracting_dim_idx);
-  const int n = hlo_rhs_op->shape().dimensions(rhs_noncontracting_dim_idx);
+  // Just the fastest-varying part of it if the dimension is split.
+  const int m = analysis.IterSpec(0, lhs_noncontracting_dim_idx)[0].count;
+  const int n = analysis.IterSpec(1, rhs_noncontracting_dim_idx)[0].count;
 
   // Contracting dimension length.
-  const int k =
-      hlo_lhs_op->shape().dimensions(dims.lhs_contracting_dimensions(0));
+  const int k = dot_instr->operand(0)->shape().dimensions(
+      dims.lhs_contracting_dimensions(0));
 
-  const bool lhs_contracting_is_minor =
-      (dims.lhs_contracting_dimensions(0) ==
-       hlo_lhs_op->shape().layout().minor_to_major().front());
-  const bool rhs_contracting_is_major =
-      (dims.rhs_contracting_dimensions(0) ==
-       hlo_rhs_op->shape().layout().minor_to_major().back());
-  const int stride_lhs_m = lhs_contracting_is_minor ? k : 1;
-  const int stride_lhs_k = lhs_contracting_is_minor ? 1 : m;
-  const int stride_rhs_k = rhs_contracting_is_major ? n : 1;
-  const int stride_rhs_n = rhs_contracting_is_major ? 1 : k;
+  // LHS non-contracting can be split into two.
+  const bool lhs_nc_split =
+      (analysis.IterSpec(0, lhs_noncontracting_dim_idx).size() > 1);
+  CHECK_EQ(analysis.IterSpec(0, lhs_noncontracting_dim_idx).size(),
+           1 + lhs_nc_split);
+  // For now split and batch are not supported simultaneously because they
+  // are implemented via same mechanism.
+  CHECK_LE(batch + lhs_nc_split, 1);
+  // Splitting of the other ones is not supported yet.
+  CHECK_EQ(analysis.IterSpec(1, rhs_noncontracting_dim_idx).size(), 1);
+  CHECK_EQ(analysis.IterSpec(0, dims.lhs_contracting_dimensions(0)).size(), 1);
+
+  const int stride_lhs_m =
+      analysis.IterSpec(0, lhs_noncontracting_dim_idx)[0].stride;
+  const int stride_lhs_k =
+      analysis.IterSpec(0, dims.lhs_contracting_dimensions(0))[0].stride;
+  const int stride_rhs_k =
+      analysis.IterSpec(1, dims.rhs_contracting_dimensions(0))[0].stride;
+  const int stride_rhs_n =
+      analysis.IterSpec(1, rhs_noncontracting_dim_idx)[0].stride;
+
+  // Either batch size or upper part of the length of a split nc dimension.
+  int batch_size = 1;
+  int stride_batch_lhs = 0;
+  int stride_batch_rhs = 0;
+  if (lhs_nc_split) {
+    batch_size = analysis.IterSpec(0, lhs_noncontracting_dim_idx)[1].count;
+    stride_batch_lhs =
+        analysis.IterSpec(0, lhs_noncontracting_dim_idx)[1].stride;
+    stride_batch_rhs = 0;
+  } else if (batch) {
+    // Batch dimension should have same length left and right.
+    CHECK_EQ(analysis.IterSpec(0, dims.lhs_batch_dimensions(0))[0].count,
+             analysis.IterSpec(1, dims.rhs_batch_dimensions(0))[0].count);
+    batch_size = analysis.IterSpec(0, dims.lhs_batch_dimensions(0))[0].count;
+    stride_batch_lhs =
+        analysis.IterSpec(0, dims.lhs_batch_dimensions(0))[0].stride;
+    stride_batch_rhs =
+        analysis.IterSpec(1, dims.rhs_batch_dimensions(0))[0].stride;
+  }
 
   constexpr int64_t group_m = 8;
 
@@ -234,7 +262,8 @@ std::optional<LaunchDimensions> MatMul(
   const unsigned int split_k = config.split_k();
   CHECK_EQ(split_k, 1);
   const LaunchDimensions launch_dimensions{
-      {grid_m * grid_n, split_k, 1}, {config.num_warps() * WarpSize(), 1, 1}};
+      {grid_m * grid_n, split_k, batch_size},
+      {config.num_warps() * WarpSize(), 1, 1}};
   ir::type* root_ty = TritonType(b, dot_instr->shape().element_type());
   // Data type to which dot() inputs are converted.
   ir::type* dot_ty = b.get_float_ty();
@@ -262,8 +291,8 @@ std::optional<LaunchDimensions> MatMul(
   ir::type* acc_ty = (root_ty->is_fp64_ty() && dot_ty->is_fp64_ty())
                          ? b.get_double_ty()
                          : b.get_float_ty();
-  ir::value* lhs = fn->args()[lhs_param_nr];
-  ir::value* rhs = fn->args()[rhs_param_nr];
+  ir::value* lhs = fn->args()[hlo_lhs_param->parameter_number()];
+  ir::value* rhs = fn->args()[hlo_rhs_param->parameter_number()];
   ir::value* out = fn->args().back();
 
   ir::value* pid0 = b.create_get_program_id(0);
@@ -311,8 +340,9 @@ std::optional<LaunchDimensions> MatMul(
   ir::value* lhs_offset =
       b.create_add(b.create_broadcast(lhs_offset_m, shape_m_k),
                    b.create_broadcast(lhs_offset_k, shape_m_k));
-  ir::value* lhs_offset_m_batch = b.create_mul(pid2, b.get_int32(1));
-  ir::value* lhs_ptrs_base = b.create_gep(lhs, {lhs_offset_m_batch});
+  ir::value* lhs_offset_batch =
+      b.create_mul(pid2, b.get_int32(stride_batch_lhs));
+  ir::value* lhs_ptrs_base = b.create_gep(lhs, {lhs_offset_batch});
   lhs_ptrs_base =
       b.create_gep(b.create_splat(lhs_ptrs_base, shape_m_k), {lhs_offset});
 
@@ -332,8 +362,9 @@ std::optional<LaunchDimensions> MatMul(
   ir::value* rhs_offset =
       b.create_add(b.create_broadcast(rhs_off_k, shape_k_n),
                    b.create_broadcast(rhs_offset_n, shape_k_n));
-  ir::value* rhs_offset_n_batch = b.create_mul(pid2, b.get_int32(1));
-  ir::value* rhs_ptrs_base = b.create_gep(rhs, {rhs_offset_n_batch});
+  ir::value* rhs_offset_batch =
+      b.create_mul(pid2, b.get_int32(stride_batch_rhs));
+  ir::value* rhs_ptrs_base = b.create_gep(rhs, {rhs_offset_batch});
   rhs_ptrs_base =
       b.create_gep(b.create_splat(rhs_ptrs_base, shape_k_n), {rhs_offset});
 
@@ -366,7 +397,8 @@ std::optional<LaunchDimensions> MatMul(
   rhs_ptrs->add_incoming(rhs_ptrs_base, entry_bb);
   acc->add_incoming(acc_init, entry_bb);
 
-  ir::value *lhs_tile, *rhs_tile;
+  ir::value* lhs_tile;
+  ir::value* rhs_tile;
   ir::value* zeros_like_lhs =
       b.create_splat(ScalarConst(b, lhs_ty, 0), shape_m_k);
   ir::value* zeros_like_rhs =
@@ -436,13 +468,12 @@ std::optional<LaunchDimensions> MatMul(
   acc_final->add_incoming(acc_init, entry_bb);
 
   // Output tile offsets.
+  ir::value* out_offset_batch = b.create_mul(pid2, b.get_int32(m * n));
+  ir::value* out_ptrs = b.create_gep(out, {out_offset_batch});
   ir::value* out_offset_m =
       b.create_mul(b.create_reshape(range_m(), shape_m_1),
                    b.create_splat(b.get_int32(stride_out_m), shape_m_1));
-  ir::value* out_offset_m_batch = b.create_mul(pid2, b.get_int32(m * n));
-  ir::value* out_ptrs = b.create_gep(out, {out_offset_m_batch});
   out_ptrs = b.create_gep(b.create_splat(out_ptrs, shape_m_1), {out_offset_m});
-
   ir::value* out_offset_n =
       b.create_mul(b.create_reshape(range_n(), shape_1_n),
                    b.create_splat(b.get_int32(stride_out_n), shape_1_n));
@@ -476,6 +507,13 @@ std::optional<LaunchDimensions> TritonWrapper(
   ir::builder b(triton_context);
   ir::module triton_module("", b);
 
+  const HloInstruction* root =
+      (hlo_computation->root_instruction()->opcode() == HloOpcode::kBitcast)
+          ? hlo_computation->root_instruction()->operand(0)
+          : hlo_computation->root_instruction();
+  CHECK_EQ(root->opcode(), HloOpcode::kDot);
+  VLOG(3) << root->parent()->ToString();
+
   VLOG(2) << config.DebugString();
 
   ir::type* root_ty = TritonType(
@@ -496,12 +534,6 @@ std::optional<LaunchDimensions> TritonWrapper(
   fn->set_is_kernel(true);
   b.set_insert_point(ir::basic_block::create(triton_context, "entry", fn));
 
-  const HloInstruction* root =
-      (hlo_computation->root_instruction()->opcode() == HloOpcode::kBitcast)
-          ? hlo_computation->root_instruction()->operand(0)
-          : hlo_computation->root_instruction();
-  CHECK_EQ(root->opcode(), HloOpcode::kDot);
-  VLOG(3) << root->parent()->ToString();
   std::optional<LaunchDimensions> launch_dimensions =
       MatMul(b, ::xla::Cast<HloDotInstruction>(root), fn, config,
              device_info.shared_memory_per_block);
@@ -532,7 +564,10 @@ std::optional<LaunchDimensions> TritonWrapper(
 
   LogAndVerify(ll_triton_module.get());
 
-  ll_triton_module->getNamedMDList().clear();
+  for (auto& metadata :
+       llvm::make_early_inc_range(ll_triton_module->named_metadata())) {
+    ll_triton_module->eraseNamedMDNode(&metadata);
+  }
   ll_triton_module->setDataLayout(llvm_module->getDataLayout());
   CHECK(!llvm::Linker::linkModules(*llvm_module, std::move(ll_triton_module)));
 

@@ -56,6 +56,10 @@ class CordPrinter : public Printer {
   absl::Cord ToCord() &&;
 
  private:
+  void AppendImpl(const absl::AlphaNum& a);
+  void AppendBuffer();
+
+  absl::CordBuffer buffer_;
   absl::Cord result_;
 };
 

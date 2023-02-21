@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/eager/kernel_and_device.h"
 
 #include <memory>
+#include <optional>
 
 #include "absl/strings/match.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
@@ -44,6 +45,7 @@ limitations under the License.
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/public/version.h"
 #include "tensorflow/core/util/tensor_slice_reader_cache.h"
+#include "tensorflow/tsl/profiler/lib/connected_traceme.h"
 #if !defined(IS_MOBILE_PLATFORM)
 #include "tensorflow/core/grappler/grappler_item.h"
 #include "tensorflow/core/grappler/optimizers/meta_optimizer.h"
@@ -466,19 +468,28 @@ void KernelAndDeviceFunc::RunAsync(
     const absl::optional<EagerFunctionParams>& eager_func_params,
     tsl::CoordinationServiceAgent* coordination_service_agent,
     std::function<void(const Status&)> done) {
-  profiler::TraceMe activity(
+  tsl::profiler::TraceMeProducer activity(
       [] {
         return profiler::TraceMeEncode("KernelAndDeviceFunc::RunAsync",
                                        {{"_r", 1}});
       },
-      profiler::TraceMeLevel::kInfo);
+      tsl::profiler::ContextType::kTfExecutor,
+      /*context_id=*/std::nullopt, profiler::TraceMeLevel::kInfo);
   std::shared_ptr<FunctionLibraryRuntime::Options> opts = PrepareForRun(
       step_container, outputs, cancellation_manager, eager_func_params,
       absl::nullopt, coordination_service_agent);
 
   pflr_->Run(*opts, handle_, inputs, outputs,
-             [this, opts, cancellation_manager,
-              done = std::move(done)](const Status& s) {
+             [this, opts, cancellation_manager, done = std::move(done),
+              trace_context_id = activity.GetContextId()](const Status& s) {
+               tsl::profiler::TraceMeConsumer activity(
+                   [] {
+                     return profiler::TraceMeEncode(
+                         "KernelAndDeviceFunc::RunAsync::DoneCallback",
+                         {{"_r", 1}});
+                   },
+                   tsl::profiler::ContextType::kTfExecutor, trace_context_id,
+                   profiler::TraceMeLevel::kInfo);
                if (cancellation_manager == nullptr) {
                  delete opts->cancellation_manager;
                }

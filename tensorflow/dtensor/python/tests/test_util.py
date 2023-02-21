@@ -62,8 +62,8 @@ def get_use_xla_spmd(device_type):
   Returns:
     bool: True when device_type is TPU and environment variable is set.
   """
-  return device_type == 'TPU' and bool(
-      os.environ.get('DTENSOR_TEST_USE_XLA_SPMD', 'False')
+  return device_type == 'TPU' and '0' != os.environ.get(
+      'DTENSOR_TEST_USE_XLA_SPMD', '0'
   )
 
 

@@ -27,9 +27,9 @@ limitations under the License.
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/raw_ostream.h"
-#include "mlir/IR/IRMapping.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/DialectRegistry.h"  // from @llvm-project
+#include "mlir/IR/IRMapping.h"  // from @llvm-project
 #include "mlir/IR/SymbolTable.h"  // from @llvm-project
 #include "mlir/IR/TypeRange.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
@@ -152,26 +152,8 @@ std::string GetInitializerType(func::FuncOp init_func_op) {
 }
 
 // An initializer function should satisfy the follwing conditions:
-// 1. The arguments should not be used if the type is "init_op" (it assumes
-//    non-variable resources like tables aren't being initialized by the asset
-//    files passed as arguments).
-// 2. Its GraphOp should only have control outputs.
+// * Its GraphOp should only have control outputs.
 LogicalResult ValidateInitFunc(func::FuncOp init_func_op) {
-  if (GetInitializerType(init_func_op) == kTfSavedModelInitializerInitType) {
-    for (BlockArgument arg : init_func_op.getArguments()) {
-      if (!arg.use_empty()) {
-        const int arg_idx = arg.getArgNumber();
-        const int num_uses = absl::c_distance(arg.getUses());
-        init_func_op.emitError(absl::StrFormat(
-            "Validation failed for the initializer function: %s. "
-            "The initializer function's arguments should have no "
-            "usages. Instead, argument index: %d has number of usages: %d.",
-            init_func_op.getName().str(), arg_idx, num_uses));
-        return failure();
-      }
-    }
-  }
-
   GraphOp graph_op = GetGraphOpFromFuncOp(init_func_op);
   if (!graph_op) return success();  // Consider empty FuncOp valid.
 
@@ -255,8 +237,8 @@ void MaybeAddEntryFunctionInput(const StringRef input_name,
 // Creates new arguments to the main function that corresponds to the source
 // function's arguments. Returns the `IRMapping` that contains the
 // relationship.
-IRMapping CloneSrcFuncArgumentsToMainFunc(
-    func::FuncOp src_func_op, func::FuncOp main_func_op) {
+IRMapping CloneSrcFuncArgumentsToMainFunc(func::FuncOp src_func_op,
+                                          func::FuncOp main_func_op) {
   IRMapping mapper{};
 
   for (auto [src_arg_idx, src_arg] :
@@ -310,8 +292,7 @@ SmallVector<Value> CopyOpsToMainFunction(func::FuncOp src_func_op,
   };
 
   // TODO(b/245473863): Handle when assets are actually used in the body.
-  IRMapping mapper =
-      CloneSrcFuncArgumentsToMainFunc(src_func_op, main_func_op);
+  IRMapping mapper = CloneSrcFuncArgumentsToMainFunc(src_func_op, main_func_op);
 
   // Clones each op from src to main_body.
   Block& main_body = main_graph_op.GetBody();

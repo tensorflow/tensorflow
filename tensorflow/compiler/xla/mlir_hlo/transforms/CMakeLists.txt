@@ -33,7 +33,9 @@ add_mlir_library(MLIRBufferTransforms
   detensorize_scf_ops.cc
   generic_host_to_llvm.cc
   lower_index_cast_pass.cc
+  math_legalization.cc
   propagate_static_shapes_to_kernel.cc
+  test_hlo_transform_dialect_interpreter.cc
   tile_loops_pass.cc
   unbufferize_pass.cc
   unroll_loops.cc
@@ -47,22 +49,24 @@ add_mlir_library(MLIRBufferTransforms
   LINK_LIBS PUBLIC
   ChloOps
   GmlStDialect
-  MhloDialect
   MLIRGPUOps
   MLIRHLOAnalysis
   MLIRIR
+  MLIRLinalgToLLVM
+  MLIRMathTransforms
   MLIRPass
+  MLIRReconcileUnrealizedCasts
   MLIRShapeDialect
+  MLIRTransformDialectTransforms
   MLIRTransforms
+  MhloDialect
   THLODialect
   ThloBufferizableOpInterface
 )
 
 add_mlir_library(MLIRHLOGPUTransforms
   gpu_kernel_lowering_passes.cc
-  gpu_fusion_rewrite.cc
-  hlo_to_gpu_pipeline.cc
-  hlo_to_triton_pipeline.cc
+  gpu_passes.cc
 
   DEPENDS
   LMHLOGPUTransformsPassIncGen

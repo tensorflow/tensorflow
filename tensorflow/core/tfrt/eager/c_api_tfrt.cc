@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <cstddef>
 #include <memory>
+#include <optional>
 #include <vector>
 
 #include "tensorflow/c/eager/abstract_function.h"
@@ -565,7 +566,7 @@ llvm::Optional<const TensorMetadata*> TensorHandleInterface::Metadata() const {
     context_.GetHostContext()->Await(th.GetAsyncMetadata().CopyRCRef());
   }
   if (th.IsMetadataError()) {
-    return llvm::None;
+    return std::nullopt;
   }
   return &th.GetAvailableMetadata();
 }

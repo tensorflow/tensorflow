@@ -15,19 +15,15 @@ limitations under the License.
 
 package org.tensorflow.lite.benchmark.delegateperformance;
 
-import static org.tensorflow.lite.benchmark.delegateperformance.DelegatePerformanceBenchmark.checkArgument;
-import static org.tensorflow.lite.benchmark.delegateperformance.DelegatePerformanceBenchmark.checkNotNull;
 import static org.tensorflow.lite.benchmark.delegateperformance.DelegatePerformanceBenchmark.checkState;
 
 import android.content.Context;
 import android.content.res.AssetFileDescriptor;
-import android.os.Trace;
 import android.util.Log;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.Arrays;
 import java.util.List;
-import tflite.StableDelegateLoaderSettings;
 import tflite.proto.benchmark.DelegatePerformance.LatencyCriteria;
 import tflite.proto.benchmark.DelegatePerformance.LatencyResults;
 
@@ -38,29 +34,20 @@ import tflite.proto.benchmark.DelegatePerformance.LatencyResults;
  * Please check the test example in
  * tensorflow/lite/tools/benchmark/experimental/delegate_performance/android/README.md.
  *
- * <p>Generates a CSV file under delegate_performance_result/latency folder to describe the
- * benchmark results for each model.
+ * <p>Generates below list of files under delegate_performance_result/latency folder to describe the
+ * benchmark results.
  *
  * <ul>
- *   <li>1. delegate_performance_result/latency/<MODEL_NAME>.csv: the performance of each
- *       acceleration configuration and relative performance differences in percentage values.
+ *   <li>1. delegate_performance_result/latency/report.csv: the performance of each acceleration
+ *       configuration and relative performance differences as percentages in CSV.
+ *   <li>2. delegate_performance_result/latency/report.json: detailed performance results. The file
+ *       contains the metric-level, delegate-level and model-level results, the latency criteria and
+ *       the raw metric outputs from the native layer in JSON.
+ *   <li>3. delegate_performance_result/latency/report.html: the performance of each acceleration
+ *       configuration and relative performance differences as percentages in HTML.
  * </ul>
  *
- * <p>Generates a Pass/Fail decision in the below two cases:
- *
- * <ul>
- *   <li>1. the caller provides one TFLite Settings file. The Activity compares the latency
- *       performance of the provided acceleration configuration against the default acceleration
- *       configuation (blank TFLiteSettings). If the regression on the average inference latency
- *       metric is within the corresponding threshold specified in the LatencyCriteria file for all
- *       models, the Activity logs Pass. Otherwise, it logs Fail.
- *   <li>2. the caller provides two TFLite Settings file with stable delegate loader settings. The
- *       activity uses the first one as reference and the other as the test target. If any
- *       regressions on latency metrics are within the thresholds specified in the LatencyCriteria
- *       file, the Activity logs Pass. Otherwise, it logs Fail.
- * </ul>
- *
- * The metrics for generating the Pass/Fail decision:
+ * The metrics for generating the Pass/Pass with Warning/Fail decision:
  *
  * <ul>
  *   <li>1. startup overhead latency: it is equal to (initialization time + average warmup latency -
@@ -75,26 +62,12 @@ public final class BenchmarkLatencyImpl {
   private static final String TAG = "TfLiteLatencyImpl";
   private static final String DEFAULT_LATENCY_CRITERIA_FILENAME = "default_latency_criteria";
   private static final String LATENCY_CRITERIA_FILE_EXT = ".binarypb";
-  // Reference entry is the first item in the TfLiteSettingsListEntry list.
-  private static final int REFERENCE_ENTRY_INDEX = 0;
-  // The test target entry is the second item in the TfLiteSettingsListEntry list.
-  private static final int TEST_TARGET_ENTRY_INDEX = 1;
 
   private final Context context;
   private final String[] tfliteSettingsJsonFiles;
   private final String[] args;
+  private final BenchmarkReport report;
   private LatencyCriteria defaultLatencyCriteria;
-  private String resultFolderPath;
-  /**
-   * {@code true} if the caller provides one delegate to this activity. If the flag is {@code true},
-   * the activity generates a PASS/FAIL result in the logs.
-   */
-  private boolean numberOfInputTfLiteSettingsIsOne;
-  /**
-   * {@code true} if the caller provides two stable delegates to this activity. If the flag is
-   * {@code true}, the activity generates a PASS/FAIL result in the logs.
-   */
-  private boolean compareTwoStableDelegates;
 
   public BenchmarkLatencyImpl(Context context, String[] tfliteSettingsJsonFiles, String[] args) {
     this.context = context;
@@ -105,6 +78,7 @@ public final class BenchmarkLatencyImpl {
     } else {
       this.args = args;
     }
+    this.report = BenchmarkReport.create();
   }
 
   /**
@@ -118,13 +92,14 @@ public final class BenchmarkLatencyImpl {
       Log.e(TAG, "No TFLiteSettings file provided.");
       return false;
     }
-    numberOfInputTfLiteSettingsIsOne = tfliteSettingsJsonFiles.length == 1;
-
     try {
       // Creates root result folder.
-      resultFolderPath =
+      String resultFolderPath =
           DelegatePerformanceBenchmark.createResultFolder(
               context.getFilesDir(), LATENCY_FOLDER_NAME);
+      report.addWriter(JsonWriter.create(resultFolderPath));
+      report.addWriter(CsvWriter.create(resultFolderPath));
+      report.addWriter(HtmlWriter.create(resultFolderPath));
     } catch (IOException e) {
       Log.e(
           TAG, "Failed to create result folder " + LATENCY_FOLDER_NAME + " in files directory.", e);
@@ -149,13 +124,7 @@ public final class BenchmarkLatencyImpl {
       Log.e(TAG, "Failed to load the TFLiteSettings JSON file.");
       return;
     }
-    TfLiteSettingsListEntry target = tfliteSettingsList.get(TEST_TARGET_ENTRY_INDEX);
-    compareTwoStableDelegates =
-        tfliteSettingsList.size() == 2
-            && isStableDelegate(tfliteSettingsList.get(REFERENCE_ENTRY_INDEX))
-            && isStableDelegate(target);
 
-    boolean passed = true;
     String[] assets;
     try {
       assets = context.getAssets().list(LATENCY_FOLDER_NAME);
@@ -165,39 +134,33 @@ public final class BenchmarkLatencyImpl {
     }
     for (String asset : assets) {
       if (asset.endsWith(".tflite")) {
-        passed &= benchmarkModel(asset, tfliteSettingsList, args) == BenchmarkResultType.PASS;
+        report.addModelBenchmarkReport(benchmarkModel(asset, tfliteSettingsList, args));
       }
     }
-    // TODO(b/250877013): Improve the result reporting.
-    if (shouldGeneratePassFailDecision()) {
-      Log.i(
-          TAG,
-          String.format(
-              "Latency benchmark result for %s: %s",
-              target.filePath(), passed ? BenchmarkResultType.PASS : BenchmarkResultType.FAIL));
-    } else {
-      Log.i(
-          TAG,
-          "Skipping the Pass/Fail result generation because the activity receives 2 TFLiteSettings"
-              + " JSON files and at least one of the files is not using the stable delegate.");
-    }
+    // Computes the aggregated results and export the report to local files.
+    report.export();
+    TfLiteSettingsListEntry testTarget = tfliteSettingsList.get(tfliteSettingsList.size() - 1);
+    checkState(testTarget.isTestTarget());
+    Log.i(
+        TAG,
+        String.format(
+            "Latency benchmark result for %s: %s", testTarget.filePath(), report.result()));
   }
 
   /**
    * Benchmarks a model file with the TfLiteSettingsListEntry list.
    *
-   * <p>Returns {@code BenchmarkResultType.SKIP} is the latency module shouldn't produce a Pass/Fail
-   * result. Otherwise, returns {@code BenchmarkResultType.PASS} if the test target acceleration
-   * configuration doesn't breach the thresholds in the or {@code BenchmarkResultType.FAIL} if not.
-   * latency criteria file. Returns {@code BenchmarkResultType.UNKNOWN} if the benchmark task
-   * encounters errors.
+   * <p>Returns {@link ModelBenchmarkReportInterface}, which is the model level benchmark report
+   * that has the delegate information and the raw metric results from the native layer.
    */
-  private BenchmarkResultType benchmarkModel(
+  private ModelBenchmarkReportInterface benchmarkModel(
       String modelFilename, List<TfLiteSettingsListEntry> tfliteSettingsList, String[] args) {
     String modelName = DelegatePerformanceBenchmark.getModelName(modelFilename);
+    LatencyCriteria latencyCriteria = tryLoadLatencyCriteria(modelName);
+    ModelBenchmarkReport<LatencyResults> report =
+        LatencyBenchmarkReport.create(modelName, latencyCriteria);
     try (AssetFileDescriptor modelFileDescriptor =
         context.getAssets().openFd(LATENCY_FOLDER_NAME + "/" + modelFilename)) {
-
       for (TfLiteSettingsListEntry tfliteSettingsListEntry : tfliteSettingsList) {
         Log.i(
             TAG,
@@ -207,7 +170,6 @@ public final class BenchmarkLatencyImpl {
                 + tfliteSettingsListEntry.filePath()
                 + ", args: "
                 + Arrays.toString(args));
-        Trace.beginSection("Latency Benchmark");
         LatencyResults results =
             DelegatePerformanceBenchmark.runLatencyBenchmark(
                 args,
@@ -215,21 +177,12 @@ public final class BenchmarkLatencyImpl {
                 modelFileDescriptor.getParcelFileDescriptor().getFd(),
                 modelFileDescriptor.getStartOffset(),
                 modelFileDescriptor.getLength());
-        Trace.endSection();
-        tfliteSettingsListEntry.setLatencyResults(results);
+        report.addResults(results, tfliteSettingsListEntry);
       }
-
-      CsvWriter.writeReport(tfliteSettingsList, resultFolderPath + "/" + modelName + ".csv");
-      if (!shouldGeneratePassFailDecision()) {
-        return BenchmarkResultType.SKIP;
-      }
-      return checkLatencyCriteria(tfliteSettingsList, tryLoadLatencyCriteria(modelName))
-          ? BenchmarkResultType.PASS
-          : BenchmarkResultType.FAIL;
     } catch (IOException e) {
       Log.e(TAG, "Failed to open asset file " + LATENCY_FOLDER_NAME + "/" + modelFilename);
     }
-    return BenchmarkResultType.UNKNOWN;
+    return report;
   }
 
   /**
@@ -257,100 +210,5 @@ public final class BenchmarkLatencyImpl {
         PROTO_FOLDER_NAME + "/" + fileBasename + LATENCY_CRITERIA_FILE_EXT;
     InputStream latencyCriteriaFile = context.getAssets().open(latencyCriteriaFileAssetPath);
     return LatencyCriteria.parseFrom(latencyCriteriaFile);
-  }
-
-  /**
-   * Uses the latency criteria to check the benchmark results.
-   *
-   * <p>Returns true if the results meet any of the follow conditions:
-   *
-   * <ul>
-   *   <li>1. the caller provides one TFLite Settings file. The average latency time regression is
-   *       within the threshold specified in the latency criteria file after comparing the test
-   *       target accleration configuration against the default acceleration configuration.
-   *   <li>2. the caller provides two TFLite Settings file with stable delegate loader settings. The
-   *       method uses the first acceleration configuratin as reference configuration. The
-   *       initialization, average warmup and average inference latency regression are within the
-   *       thresholds specified in the latency criteria file after comparing the second
-   *       configuration against the reference configuration.
-   * </ul>
-   *
-   * TODO(b/250877013): Consider improving the result aggregation logic.
-   */
-  private boolean checkLatencyCriteria(
-      List<TfLiteSettingsListEntry> tfliteSettingsList, LatencyCriteria latencyCriteria) {
-    checkState(shouldGeneratePassFailDecision());
-    checkNotNull(latencyCriteria);
-    // This method checks the latency criteria when the number of entries is two.
-    checkArgument(tfliteSettingsList.size() == 2);
-
-    TfLiteSettingsListEntry reference = tfliteSettingsList.get(REFERENCE_ENTRY_INDEX);
-    TfLiteSettingsListEntry target = tfliteSettingsList.get(TEST_TARGET_ENTRY_INDEX);
-    boolean checkInferenceRegression =
-        checkLatencyThreshold(
-            reference,
-            target,
-            "inference_latency_average_us",
-            latencyCriteria.getAverageInferenceMaxRegressionPercentageAllowed());
-    if (numberOfInputTfLiteSettingsIsOne) {
-      // Check for inference latency regression only when the number of input files is one.
-      return checkInferenceRegression;
-    }
-    boolean checkStartupRegression =
-        checkLatencyThreshold(
-            reference,
-            target,
-            "startup_overhead_latency_us",
-            latencyCriteria.getStartupOverheadMaxRegressionPercentageAllowed());
-    return checkInferenceRegression && checkStartupRegression;
-  }
-
-  /**
-   * Currently this Activity generates a Pass/Fail result when it receives two stable delegate
-   * acceleration configurations or one acceleration configuration. Because the result is generated
-   * by comparing the same metrics between 2 delegates. So the comparison is fair if the two
-   * delegates are with the same delegate type or it is comparing with the default delegate, which
-   * is used when no acceleration configuration is provided.
-   *
-   * <p>TODO(b/250877013): Consider improving the I/O of this activity.
-   *
-   * <p>Returns true if the latency module receives two stable delegate acceleration configurations
-   * or one acceleration configuration. Otherwise, returns false.
-   */
-  private boolean shouldGeneratePassFailDecision() {
-    return compareTwoStableDelegates || numberOfInputTfLiteSettingsIsOne;
-  }
-
-  /**
-   * Returns true if the {@code TfLiteSettingsListEntry} refers to a stable delegate. Otherwise,
-   * returns false.
-   *
-   * <p>This Activity generates a Pass/Fail result if both of the two input TFLiteSettings JSON
-   * files refer to stable delegates. This method a helper function to know if a {@code
-   * TfLiteSettingsListEntry} refers to a stable delegate.
-   */
-  private boolean isStableDelegate(TfLiteSettingsListEntry entry) {
-    StableDelegateLoaderSettings settings = entry.tfliteSettings().stableDelegateLoaderSettings();
-    return settings != null
-        && settings.delegatePath() != null
-        && !settings.delegatePath().isEmpty();
-  }
-
-  /** Checks if the regression metric is within the thresholds provided. */
-  private boolean checkLatencyThreshold(
-      TfLiteSettingsListEntry reference,
-      TfLiteSettingsListEntry target,
-      String metricName,
-      float percentageThreshold) {
-    if (reference.metrics().containsKey(metricName) && target.metrics().containsKey(metricName)) {
-      float referenceMetricValue = reference.metrics().get(metricName);
-      float targetMetricValue = target.metrics().get(metricName);
-      if (referenceMetricValue == 0) {
-        return targetMetricValue == referenceMetricValue;
-      }
-      return (targetMetricValue - referenceMetricValue) / referenceMetricValue
-          <= percentageThreshold / 100f;
-    }
-    return false;
   }
 }

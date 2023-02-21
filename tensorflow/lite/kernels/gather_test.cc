@@ -198,118 +198,32 @@ TEST(FloatGatherOpTest, LastAxis0DIndex) {
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 2}));
 }
 
-TEST(TypesGatherOpTest, Float32Int32) {
-  GatherOpModel m({TensorType_FLOAT32, {2, 2}}, {TensorType_INT32, {2}});
-  m.SetInput<float>({13.3, -13.4, -1.4, 1.5});
+using TestTypes =
+    testing::Types<int8_t, uint8_t, int16_t, int32_t, int64_t, float>;
+
+template <typename T>
+struct TypedGatherOpTest : public testing::Test {};
+
+TYPED_TEST_CASE(TypedGatherOpTest, TestTypes);
+
+TYPED_TEST(TypedGatherOpTest, Int32Indices) {
+  TensorType tensor_type = GetTensorType<TypeParam>();
+  GatherOpModel m({tensor_type, {2, 2}}, {TensorType_INT32, {2}});
+  m.SetInput<TypeParam>({13, 120, 14, 15});
   m.SetPositions<int32_t>({1, 0});
   ASSERT_EQ(m.Invoke(), kTfLiteOk);
 
-  EXPECT_THAT(m.GetOutput<float>(), ElementsAreArray({-1.4, 1.5, 13.3, -13.4}));
+  EXPECT_THAT(m.GetOutput<TypeParam>(), ElementsAreArray({14, 15, 13, 120}));
 }
 
-TEST(TypesGatherOpTest, Float32Int64) {
-  GatherOpModel m({TensorType_FLOAT32, {2, 2}}, {TensorType_INT64, {2}});
-  m.SetInput<float>({13.3, -13.4, -1.4, 1.5});
-  m.SetPositions<int64_t>({1LL, 0LL});
+TYPED_TEST(TypedGatherOpTest, Int64Indices) {
+  TensorType tensor_type = GetTensorType<TypeParam>();
+  GatherOpModel m({tensor_type, {2, 2}}, {TensorType_INT64, {2}});
+  m.SetInput<TypeParam>({13, 120, 14, 15});
+  m.SetPositions<int64_t>({1, 0});
   ASSERT_EQ(m.Invoke(), kTfLiteOk);
 
-  EXPECT_THAT(m.GetOutput<float>(), ElementsAreArray({-1.4, 1.5, 13.3, -13.4}));
-}
-
-TEST(TypesGatherOpTest, Int32Int32) {
-  GatherOpModel m({TensorType_INT32, {2, 2}}, {TensorType_INT32, {2}});
-  m.SetInput<int32_t>({-1330, 1340, 140, -150});
-  m.SetPositions<int32_t>({1, 0});
-  ASSERT_EQ(m.Invoke(), kTfLiteOk);
-
-  EXPECT_THAT(m.GetOutput<int32_t>(),
-              ElementsAreArray({140, -150, -1330, 1340}));
-}
-
-TEST(TypesGatherOpTest, Int32Int64) {
-  GatherOpModel m({TensorType_INT32, {2, 2}}, {TensorType_INT64, {2}});
-  m.SetInput<int32_t>({-1330, 1340, 140, -150});
-  m.SetPositions<int64_t>({1LL, 0LL});
-  ASSERT_EQ(m.Invoke(), kTfLiteOk);
-
-  EXPECT_THAT(m.GetOutput<int32_t>(),
-              ElementsAreArray({140, -150, -1330, 1340}));
-}
-
-TEST(TypesGatherOpTest, Uint8Int32) {
-  GatherOpModel m({TensorType_UINT8, {2, 2}}, {TensorType_INT32, {2}});
-  m.SetInput<uint8_t>({133, 134, 14, 15});
-  m.SetPositions<int32_t>({1, 0});
-  ASSERT_EQ(m.Invoke(), kTfLiteOk);
-
-  EXPECT_THAT(m.GetOutput<uint8_t>(), ElementsAreArray({14, 15, 133, 134}));
-}
-
-TEST(TypesGatherOpTest, Uint8Int64) {
-  GatherOpModel m({TensorType_UINT8, {2, 2}}, {TensorType_INT64, {2}});
-  m.SetInput<uint8_t>({133, 134, 14, 15});
-  m.SetPositions<int64_t>({1LL, 0LL});
-  ASSERT_EQ(m.Invoke(), kTfLiteOk);
-
-  EXPECT_THAT(m.GetOutput<uint8_t>(), ElementsAreArray({14, 15, 133, 134}));
-}
-
-TEST(TypesGatherOpTest, Int8Int32) {
-  GatherOpModel m({TensorType_INT8, {2, 2}}, {TensorType_INT32, {2}});
-  m.SetInput<int8_t>({-13, -120, 14, 15});
-  m.SetPositions<int32_t>({1, 0});
-  ASSERT_EQ(m.Invoke(), kTfLiteOk);
-
-  EXPECT_THAT(m.GetOutput<int8_t>(), ElementsAreArray({14, 15, -13, -120}));
-}
-
-TEST(TypesGatherOpTest, Int8Int64) {
-  GatherOpModel m({TensorType_INT8, {2, 2}}, {TensorType_INT64, {2}});
-  m.SetInput<int8_t>({-13, -120, 14, 15});
-  m.SetPositions<int64_t>({1LL, 0LL});
-  ASSERT_EQ(m.Invoke(), kTfLiteOk);
-
-  EXPECT_THAT(m.GetOutput<int8_t>(), ElementsAreArray({14, 15, -13, -120}));
-}
-
-TEST(TypesGatherOpTest, Int16Int32) {
-  GatherOpModel m({TensorType_INT16, {2, 2}}, {TensorType_INT32, {2}});
-  m.SetInput<int16_t>({-13, -32000, 0, 32500});
-  m.SetPositions<int32_t>({1, 0});
-  ASSERT_EQ(m.Invoke(), kTfLiteOk);
-
-  EXPECT_THAT(m.GetOutput<int16_t>(),
-              ElementsAreArray({0, 32500, -13, -32000}));
-}
-
-TEST(TypesGatherOpTest, Int16Int64) {
-  GatherOpModel m({TensorType_INT16, {2, 2}}, {TensorType_INT64, {2}});
-  m.SetInput<int16_t>({-13, -32000, 0, 32500});
-  m.SetPositions<int64_t>({1LL, 0LL});
-  ASSERT_EQ(m.Invoke(), kTfLiteOk);
-
-  EXPECT_THAT(m.GetOutput<int16_t>(),
-              ElementsAreArray({0, 32500, -13, -32000}));
-}
-
-TEST(TypesGatherOpTest, Int64Int32) {
-  GatherOpModel m({TensorType_INT64, {2, 2}}, {TensorType_INT32, {2}});
-  m.SetInput<int64_t>({-(1LL << 34), 134LL, 14LL, 15LL});
-  m.SetPositions<int32_t>({1, 0});
-  ASSERT_EQ(m.Invoke(), kTfLiteOk);
-
-  EXPECT_THAT(m.GetOutput<int64_t>(),
-              ElementsAreArray({14LL, 15LL, -(1LL << 34), 134LL}));
-}
-
-TEST(TypesGatherOpTest, Int64Int64) {
-  GatherOpModel m({TensorType_INT64, {2, 2}}, {TensorType_INT64, {2}});
-  m.SetInput<int64_t>({-(1LL << 34), 134LL, 14LL, 15LL});
-  m.SetPositions<int64_t>({1LL, 0LL});
-  ASSERT_EQ(m.Invoke(), kTfLiteOk);
-
-  EXPECT_THAT(m.GetOutput<int64_t>(),
-              ElementsAreArray({14LL, 15LL, -(1LL << 34), 134LL}));
+  EXPECT_THAT(m.GetOutput<TypeParam>(), ElementsAreArray({14, 15, 13, 120}));
 }
 
 TEST(GatherOpTest, SimpleString) {

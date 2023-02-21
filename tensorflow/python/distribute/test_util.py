@@ -292,3 +292,8 @@ def is_tpu_strategy(strategy):
   return isinstance(strategy,
                     (tpu_strategy.TPUStrategy, tpu_strategy.TPUStrategyV1,
                      tpu_strategy.TPUStrategyV2))
+
+
+def reset_context():
+  """Resets eager context."""
+  context._reset_context()  # pylint: disable=protected-access

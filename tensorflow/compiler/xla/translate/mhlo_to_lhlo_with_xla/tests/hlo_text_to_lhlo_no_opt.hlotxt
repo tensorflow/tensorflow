@@ -109,47 +109,6 @@ ENTRY main {
 
 // -----
 
-HloModule Softmax
-
-// CHECK-LABEL: func @main
-// CHECK: "lmhlo.fusion"()
-// CHECK: %[[ARG:.*]] = bufferization.to_tensor %{{.*}} : memref<32x8x128x128xf32>
-// CHECK: %[[NEG_INF:.*]] = mhlo.constant dense<0xFF800000> : tensor<f32>
-// CHECK: %[[REDUCE:.*]] = mhlo.reduce(%[[ARG]] init: %[[NEG_INF]]) across dimensions = [3] : (tensor<32x8x128x128xf32>, tensor<f32>) -> tensor<32x8x128xf32>
-// CHECK:    reducer(%[[INIT:.*]]: tensor<f32>, %[[ARG1:.*]]: tensor<f32>) {
-// CHECK:    %[[MAX:.*]] = mhlo.maximum %[[INIT]], %[[ARG1]] : tensor<f32>
-// CHECK:    mhlo.return %[[MAX]] : tensor<f32>
-// CHECK: %[[BROADCAST:.*]] = "mhlo.broadcast_in_dim"(%[[REDUCE]]) {broadcast_dimensions = dense<[0, 1, 2]> : tensor<3xi64>} : (tensor<32x8x128xf32>) -> tensor<32x8x128x128xf32>
-// CHECK: %[[SUBTRACT:.*]] = mhlo.subtract %[[ARG]], %[[BROADCAST]] : tensor<32x8x128x128xf32>
-// CHECK: memref.tensor_store %[[SUBTRACT]], %{{.*}} : memref<32x8x128x128xf32>
-// CHECK: "lmhlo.terminator"() : () -> ()
-// CHECK: {fusion_type = "softmax_fusion"}
-
-max_computation {
-  arg_0 = f32[] parameter(0)
-  arg_1 = f32[] parameter(1)
-  ROOT maximum = f32[] maximum(arg_0, arg_1)
-}
-
-softmax_computation {
-  param_0 = f32[32,8,128,128]{3,2,1,0} parameter(0)
-  constant_neg_inf = f32[] constant(-inf)
-  reduce = f32[32,8,128]{2,1,0} reduce(param_0, constant_neg_inf),
-                                    dimensions={3}, to_apply=max_computation
-  broadcast = f32[32,8,128,128]{3,2,1,0} broadcast(reduce), dimensions={0,1,2}
-  ROOT subtract = f32[32,8,128,128]{3,2,1,0} subtract(param_0, broadcast)
-}
-
-ENTRY main {
-  param = f32[32,8,128,128]{3,2,1,0} parameter(0)
-  ROOT softmax = f32[32,8,128,128]{3,2,1,0} custom-call(param),
-                                      custom_call_target="__softmax_fusion",
-                                      to_apply=softmax_computation,
-                                      backend_config=""
-}
-
-// -----
-
 HloModule Cholesky
 
 // CHECK-LABEL: func @main

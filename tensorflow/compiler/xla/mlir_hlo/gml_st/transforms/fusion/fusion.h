@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef MLIR_HLO_GML_ST_TRANSFORMS_FUSION_FUSION_H
 #define MLIR_HLO_GML_ST_TRANSFORMS_FUSION_FUSION_H
 
+#include "gml_st/IR/gml_st_ops.h"
 #include "gml_st/transforms/peeling/peeling.h"
 #include "gml_st/transforms/tiling/tiling.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
@@ -47,7 +48,7 @@ void populateFusionPatterns(
     RewritePatternSet *patterns);
 
 struct FusionCluster {
-  DenseSet<Operation *> operations;
+  SetVector<Operation *> operations;
   Operation *root;
 };
 
@@ -84,6 +85,16 @@ FailureOr<scf::SCFTilingResult> tileUsingSCFForOpAndFuseGreedily(
 LogicalResult tilePeeledOpsToScalars(
     PatternRewriter &rewriter, const GmlStPeelingResult &peelingResult,
     StringRef label, llvm::function_ref<bool(Operation *)> fuseFilterFn);
+
+// Creates gml_st.fusion op with a region with ops from the fusion cluster.
+// Operands of the ops in the region are replaced with region arguments to
+// isolate the fusion cluster form above. Usages of the ops are replaces with
+// the fusion op results.
+FailureOr<gml_st::FusionOp> wrapFusionCluster(
+    PatternRewriter &rewriter, const FusionCluster &fusionCluster);
+
+// Replaces gml_st.fusion op with ops from the region.
+LogicalResult inlineFusionCluster(FusionOp fusionOp, PatternRewriter &rewriter);
 
 }  // namespace gml_st
 }  // namespace mlir

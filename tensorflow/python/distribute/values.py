@@ -15,6 +15,7 @@
 """Various classes representing distributed values."""
 
 import copy
+from typing import Optional
 import weakref
 
 from tensorflow.core.protobuf import struct_pb2
@@ -27,6 +28,7 @@ from tensorflow.python.distribute import values_util
 from tensorflow.python.eager import context
 from tensorflow.python.eager import tape
 from tensorflow.python.framework import composite_tensor
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_conversion_registry
 from tensorflow.python.framework import tensor_util
@@ -1011,6 +1013,11 @@ class DistributedVariable(DistributedDelegate, variables_lib.Variable,
     with ds_context.enter_or_assert_strategy(self._distribute_strategy):
       return ops.convert_to_tensor(
           self._get(), dtype=dtype, name=name, as_ref=as_ref)
+
+  def __tf_tensor__(self,
+                    dtype: Optional[dtypes.DType] = None,
+                    name: Optional[str] = None) -> ops.Tensor:
+    return self._dense_var_to_tensor(dtype, name)
 
   def _export_to_saved_model_graph(self,
                                    object_map=None,

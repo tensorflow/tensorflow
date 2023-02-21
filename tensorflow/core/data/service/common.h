@@ -32,7 +32,7 @@ namespace data {
 
 // Increment this when making backwards-incompatible changes to communication
 // between tf.data clients and servers.
-constexpr int kDataServiceVersion = 6;
+constexpr int kDataServiceVersion = 7;
 
 // If the user starts a colocated tf.data worker on each TF host, the worker
 // will be applied a "COLOCATED" tag. This is used to avoid reading from tf.data

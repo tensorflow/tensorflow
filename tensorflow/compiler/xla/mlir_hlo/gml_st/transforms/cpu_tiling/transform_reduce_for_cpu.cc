@@ -429,7 +429,7 @@ struct Reduce2DTransformPattern : public OpRewritePattern<linalg::ReduceOp> {
       linalg::ReduceOp reduceOp,
       llvm::function_ref<bool(Operation *)> filterFn) const {
     // Find a chain of MapOp users and use the last one as a root of cluster.
-    DenseSet<Operation *> resultOps;
+    SetVector<Operation *> resultOps;
     Operation *rootOp = reduceOp.getOperation();
 
     while (true) {

@@ -4422,6 +4422,22 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     self.assertAllEqual(obj2.testDouble.experimental_get_tracing_count(), 3)
     self.assertAllEqual(obj1.testDouble.experimental_get_tracing_count(), 2)
 
+  def test_tensor_shape_casted_to_specific(self):
+    @polymorphic_function.function(
+        input_signature=[tensor_spec.TensorSpec([1])]
+    )
+    def specific(x):
+      self.assertEqual(x.shape, [1])
+      return x
+
+    @polymorphic_function.function(
+        input_signature=[tensor_spec.TensorSpec(None)]
+    )
+    def general(x):
+      return specific(x)
+
+    self.assertEqual(general(constant_op.constant([1.0])).numpy(), 1.0)
+
   def test_recursive_tf_function(self):
 
     @polymorphic_function.function
