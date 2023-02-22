@@ -181,9 +181,15 @@ auto OptionalSlice(HloInstruction **optional_slice, Pattern pattern) {
 }
 
 template <typename Pattern>
-auto OptionalBitcast(HloInstruction **optional_bitcast, Pattern pattern) {
-  return m::AnyOf<HloInstruction>(m::Bitcast(optional_bitcast, pattern),
-                                  std::move(pattern));
+auto OptionalBitcastPreservingElementType(HloInstruction **optional_bitcast,
+                                          Pattern pattern) {
+  return m::AnyOf<HloInstruction>(
+      m::Bitcast(optional_bitcast, pattern)
+          .WithPredicate([](const HloInstruction *instr) {
+            return ShapeUtil::SameElementType(instr->shape(),
+                                              instr->operand(0)->shape());
+          }),
+      std::move(pattern));
 }
 
 // The rewriting proceeds in a bottom-up way:
@@ -255,26 +261,41 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
 
     // Attempt to elide an FP8 GEMM with scaled inputs as described by steps 1
     // through 3 detailed above and rewrite into a Custom Call.
+    auto f8_type = [](const HloInstruction *instr) -> bool {
+      if (instr->shape().element_type() == F8E4M3FN ||
+          instr->shape().element_type() == F8E5M2) {
+        return true;
+      } else {
+        return false;
+      }
+    };
     if (Match(
             instr,
             m::CustomCall(
                 {kCublasLtMatmulCallTarget},
                 m::AnyOf<HloInstruction>(
-                    OptionalBitcast(
+                    OptionalBitcastPreservingElementType(
                         &a_bitcast,
-                        m::MultiplyAnyOrder(&a_binary, m::Convert(m::Op(&a)),
-                                            m::Broadcast(m::Op(&a_scale)))),
-                    OptionalBitcast(&a_bitcast,
-                                    m::Divide(&a_binary, m::Convert(m::Op(&a)),
-                                              m::Broadcast(m::Op(&a_scale))))),
+                        m::MultiplyAnyOrder(
+                            &a_binary,
+                            m::Convert(m::Op(&a).WithPredicate(f8_type)),
+                            m::Broadcast(m::Op(&a_scale)))),
+                    OptionalBitcastPreservingElementType(
+                        &a_bitcast,
+                        m::Divide(&a_binary,
+                                  m::Convert(m::Op(&a).WithPredicate(f8_type)),
+                                  m::Broadcast(m::Op(&a_scale))))),
                 m::AnyOf<HloInstruction>(
-                    OptionalBitcast(
+                    OptionalBitcastPreservingElementType(
                         &b_bitcast,
-                        m::MultiplyAnyOrder(&b_binary, m::Convert(m::Op(&b)),
-                                            m::Broadcast(m::Op(&b_scale)))),
-                    OptionalBitcast(
+                        m::MultiplyAnyOrder(
+                            &b_binary,
+                            m::Convert(m::Op(&b).WithPredicate(f8_type)),
+                            m::Broadcast(m::Op(&b_scale)))),
+                    OptionalBitcastPreservingElementType(
                         &b_bitcast,
-                        m::Divide(&b_binary, m::Convert(m::Op(&b)),
+                        m::Divide(&b_binary,
+                                  m::Convert(m::Op(&b).WithPredicate(f8_type)),
                                   m::Broadcast(m::Op(&b_scale)))))))) {
       TF_ASSIGN_OR_RETURN(
           bool created_call,
@@ -292,14 +313,49 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     if (Match(instr,
               m::AnyOf<HloInstruction>(
                   m::CustomCall({kCublasLtMatmulCallTarget},
-                                m::Convert(m::Op(&a)), m::Convert(m::Op(&b))),
-                  m::CustomCall({kCublasLtMatmulCallTarget}, m::Op(&a),
-                                m::Op(&b))))) {
+                                m::Convert(m::Op(&a).WithPredicate(f8_type)),
+                                m::Convert(m::Op(&b).WithPredicate(f8_type))),
+                  m::CustomCall({kCublasLtMatmulCallTarget},
+                                m::Op(&a).WithPredicate(f8_type),
+                                m::Op(&b).WithPredicate(f8_type))))) {
       TF_ASSIGN_OR_RETURN(bool created_call, CreateF8CustomCall(instr, a, b));
       if (created_call) {
         return OkStatus();
       }
     }
+
+    // Recursively identify FP8 operands of unary, multiply, divide and pad ops.
+    auto f8_type_recur_impl = [&f8_type](const HloInstruction *instr,
+                                 auto&& f8_type_recur_impl) -> bool {
+      if (f8_type(instr)) {
+        return true;
+      } else {
+        if (instr->operand_count() == 1 ||
+            instr->opcode() == HloOpcode::kDivide ||
+            instr->opcode() == HloOpcode::kPad) {
+          return f8_type_recur_impl(instr->operand(0), f8_type_recur_impl);
+        } else if (instr->opcode() == HloOpcode::kMultiply) {
+          return f8_type_recur_impl(instr->operand(0), f8_type_recur_impl) ||
+                 f8_type_recur_impl(instr->operand(1), f8_type_recur_impl);
+        } else {
+          return false;
+        }
+      }
+    };
+    auto f8_type_recur =
+        [&f8_type_recur_impl](const HloInstruction *instr) -> bool {
+      return f8_type_recur_impl(instr, f8_type_recur_impl);
+    };
+
+    // Warn when GEMM (indirectly) operating on FP8 operands is not pattern
+    // matched.
+    if (Match(instr, m::CustomCall({kCublasLtMatmulCallTarget},
+                                   m::Op().WithPredicate(f8_type_recur),
+                                   m::Op().WithPredicate(f8_type_recur)))) {
+      VLOG(1) << "Possible intended FP8 GEMM " << instr->ToShortString()
+              << " not rewritten into FP8 Custom Call.";
+    }
+
     return OkStatus();
   }
 
@@ -501,22 +557,24 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     // FP8 GEMM kernels are only available on Hopper and newer architectures.
     if (!cuda_compute_capability_.IsAtLeast(
             se::CudaComputeCapability::HOPPER)) {
+      VLOG(1) << "FP8 Custom Calls require Hopper or newer architecture.";
       return false;
     }
 
 #if CUDA_VERSION < 11080
     // FP8 GEMM kernels are only available with CUDA 11.8 and above
+    VLOG(1) << "FP8 Custom Calls require CUDA 11.8 or newer.";
     return false;
 #endif
 
     // cuBLASLt FP8 GEMM kernels require one of the two operands to be in
     // F8E4M3FN format.
-    if (!((a->shape().element_type() == F8E4M3FN &&
-           b->shape().element_type() == F8E4M3FN) ||
-          (a->shape().element_type() == F8E4M3FN &&
-           b->shape().element_type() == F8E5M2) ||
-          (a->shape().element_type() == F8E5M2 &&
-           b->shape().element_type() == F8E4M3FN))) {
+    if (a->shape().element_type() == F8E5M2 &&
+        b->shape().element_type() == F8E5M2) {
+      VLOG(1)
+          << "Failed to rewrite " << instr->ToShortString()
+          << " into FP8 Custom Call. The element type of one of the operands "
+             "must be F8E4M3FN.";
       return false;
     }
 
@@ -534,11 +592,17 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
         gemm_backend_config.dot_dimension_numbers().rhs_batch_dimensions();
     for (int i = 0; i < a_dims.size(); ++i) {
       if (a_dims[i] % 16 && !absl::c_linear_search(a_batch_dims, i)) {
+        VLOG(1) << "Failed to rewrite " << instr->ToShortString()
+                << " into FP8 Custom Call. The non-batch dimensions of A must "
+                   "be multiples of 16.";
         return false;
       }
     }
     for (int i = 0; i < b_dims.size(); ++i) {
       if (b_dims[i] % 16 && !absl::c_linear_search(b_batch_dims, i)) {
+        VLOG(1) << "Failed to rewrite " << instr->ToShortString()
+                << " into FP8 Custom Call. The non-batch dimensions of B must "
+                   "be multiples of 16.";
         return false;
       }
     }
@@ -554,6 +618,9 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     for (int i = 0; i < scales.size(); ++i) {
       if (scales[i]) {
         if (!ShapeUtil::IsScalar(scales[i]->shape())) {
+          VLOG(1) << "Failed to rewrite " << instr->ToShortString()
+                  << " into FP8 Custom Call. The scaling factors must be "
+                     "scalars.";
           return false;
         }
         if (!mult_scale[i]) {
@@ -582,6 +649,10 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
         c_type = F32;
         break;
       default:
+        VLOG(1) << "Failed to rewrite " << instr->ToShortString()
+                << " into FP8 Custom Call. Output element type must be "
+                   "F8E4M3FN, F8E5M2, BF16, F16 or F32. Actual element type is "
+                << PrimitiveType_Name(instr->shape().element_type());
         return false;
     }
 
@@ -602,6 +673,9 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
         gemm_backend_config.dot_dimension_numbers()
             .rhs_contracting_dimensions();
     if (a_contracting_dims.size() != 1 || b_contracting_dims.size() != 1) {
+      VLOG(1) << "Failed to rewrite " << instr->ToShortString()
+              << " into FP8 Custom Call. A and B must have one contracting "
+                 "dimension.";
       return false;
     }
     if ((a_bitcast ? a_bitcast : a)->shape().dimensions_size() -
@@ -614,16 +688,9 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
                     .rhs_batch_dimensions()
                     .size() !=
             2) {
-      return false;
-    }
-
-    // Verify that bitcasts preserve the element types.
-    if (a_bitcast && !ShapeUtil::SameElementType(
-                         a_bitcast->shape(), a_bitcast->operand(0)->shape())) {
-      return false;
-    }
-    if (b_bitcast && !ShapeUtil::SameElementType(
-                         b_bitcast->shape(), b_bitcast->operand(0)->shape())) {
+      VLOG(1) << "Failed to rewrite " << instr->ToShortString()
+              << "into FP8 Custom Call. A and B must have one non-contracting "
+                 "dimension.";
       return false;
     }
 
