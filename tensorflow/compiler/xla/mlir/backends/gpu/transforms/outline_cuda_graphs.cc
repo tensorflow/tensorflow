@@ -100,6 +100,7 @@ using CloneOp = OpCapture<kClone, T, Ts...>;
 // Capture gpu operations by moving them intp graph capture function.
 struct LaunchFuncOpCapture : public MoveOp<LaunchFuncOp> {};
 struct ConvOpCapture : public MoveOp<lmhlo_gpu::ConvForwardFusedOp> {};
+struct GemmOpCapture : public MoveOp<lmhlo_gpu::GEMMOp> {};
 
 // Capture pure operations by cloning them into graph capture function.
 struct ConstantOpCapture : public CloneOp<arith::ConstantOp> {};
@@ -337,6 +338,7 @@ void OutlineCudaGraphsPass::runOnOperation() {
   patterns.emplace_back(new LaunchFuncOpCapture());
   patterns.emplace_back(new ConvOpCapture());
   patterns.emplace_back(new ConstantOpCapture());
+  patterns.emplace_back(new GemmOpCapture());
   patterns.emplace_back(new ViewOpCapture());
 
   unsigned ordinal = 1;  // entry point will be exported with ordinal 0

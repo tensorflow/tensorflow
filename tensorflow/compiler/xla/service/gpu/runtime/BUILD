@@ -189,10 +189,12 @@ cc_library(
     hdrs = ["graph_launch.h"],
     deps = [
         ":conv",
+        ":gemm",
         ":kernel_launch",
         ":support",
         "@com_google_absl//absl/container:node_hash_map",
         "@com_google_absl//absl/synchronization",
+        "//tensorflow/compiler/xla/runtime:state",
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla/runtime:custom_call",
         "//tensorflow/compiler/xla/runtime:custom_call_registry",
