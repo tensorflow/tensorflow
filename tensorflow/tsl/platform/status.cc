@@ -27,6 +27,7 @@ limitations under the License.
 
 #include "absl/base/call_once.h"
 #include "absl/functional/function_ref.h"
+#include "absl/status/status.h"
 #include "absl/strings/cord.h"
 #include "absl/strings/escaping.h"
 #include "absl/strings/match.h"
@@ -170,11 +171,22 @@ void Status::MaybeAddSourceLocation(SourceLocation loc) {
   state_->source_locations.push_back(loc);
 }
 
-Status::Status(tsl::error::Code code, absl::string_view msg,
+Status::Status(tsl::errors::Code code, absl::string_view msg,
                SourceLocation loc) {
-  assert(code != tsl::error::OK);
+  assert(code != tsl::errors::Code::OK);
   state_ = std::make_unique<State>();
-  state_->code = code;
+  state_->code = static_cast<tsl::error::Code>(code);
+  state_->msg = std::string(msg);
+  MaybeAddSourceLocation(loc);
+  VLOG(5) << "Generated non-OK status: \"" << *this << "\". "
+          << CurrentStackTrace();
+}
+
+Status::Status(absl::StatusCode code, absl::string_view msg,
+               SourceLocation loc) {
+  assert(code != absl::StatusCode::kOk);
+  state_ = std::make_unique<State>();
+  state_->code = static_cast<tsl::error::Code>(code);
   state_->msg = std::string(msg);
   MaybeAddSourceLocation(loc);
   VLOG(5) << "Generated non-OK status: \"" << *this << "\". "
