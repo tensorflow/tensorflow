@@ -632,13 +632,19 @@ FailureOr<gml_st::FusionOp> wrapFusionCluster(
 
 LogicalResult inlineFusionCluster(FusionOp fusionOp,
                                   PatternRewriter& rewriter) {
-  InlinerInterface interface(rewriter.getContext());
-  if (failed(inlineRegion(interface, &fusionOp.getRegion(), fusionOp,
-                          fusionOp.getOperands(), fusionOp.getResults(),
-                          fusionOp.getLoc(),
-                          /*shouldCloneInlinedRegion=*/false)))
-    return failure();
-  rewriter.eraseOp(fusionOp);
+  OpBuilder::InsertionGuard guard(rewriter);
+  rewriter.setInsertionPointAfter(fusionOp);
+
+  IRMapping mapper;
+  mapper.map(fusionOp.getRegion().getArguments(), fusionOp.getOperands());
+
+  for (auto& op : fusionOp.getBody()->without_terminator()) {
+    rewriter.clone(op, mapper);
+  }
+
+  rewriter.replaceOp(
+      fusionOp, mapper.lookupOrDefault(fusionOp.getTerminator().getOperand()));
+
   return success();
 }
 
