@@ -91,7 +91,6 @@ cc_library_with_tflite_with_c_headers_test(
     generate_opaque_delegate_target = True,
     visibility = [
         "//tensorflow/lite:__subpackages__",
-        "//tensorflow/lite/core/shims:tflite_shims_c_api_visibility",
         "@org_tensorflow_lite_support//tensorflow_lite_support:__subpackages__",
     ],
     deps = ["//tensorflow/lite/core/experimental/acceleration/configuration/c:stable_delegate"],
