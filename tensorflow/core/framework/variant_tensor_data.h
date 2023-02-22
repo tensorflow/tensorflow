@@ -109,6 +109,17 @@ class VariantTensorData {
     return true;
   }
 
+  // Specialize for bool, it is undefined behvaior to assign a non 0/1 value to
+  // a bool. Now we coerce a non-zero value to true.
+  template <typename T>
+  bool GetMetadata(bool* value, PODResolver<bool, true /* is_pod */>) const {
+    if (metadata_.size() != sizeof(bool)) return false;
+    *value = false;
+    for (size_t i = 0; i < sizeof(bool); ++i)
+      *value = *value || (metadata_.data()[i] != 0);
+    return true;
+  }
+
   template <typename T>
   void SetMetadata(const T& value, PODResolver<T, true /* is_pod */>) {
     metadata_.assign(reinterpret_cast<const char*>(&value), sizeof(T));
