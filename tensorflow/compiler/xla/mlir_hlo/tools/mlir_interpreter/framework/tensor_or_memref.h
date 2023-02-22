@@ -23,6 +23,7 @@ limitations under the License.
 #include <optional>
 #include <type_traits>
 #include <utility>
+#include <math.h>
 
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/StringRef.h"
