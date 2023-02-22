@@ -1014,6 +1014,7 @@ cc_test(
 
 cc_test(
     name = "blocking_validator_runner_test",
+    timeout = "moderate",
     srcs = ["blocking_validator_runner_test.cc"],
     deps = [
         ":benchmark_result_evaluator",
