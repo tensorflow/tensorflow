@@ -31,6 +31,7 @@ tensorflow/examples/custom_ops_doc/multiplex_3/BUILD:
 tensorflow/examples/custom_ops_doc/multiplex_3/README.md:
 tensorflow/examples/custom_ops_doc/multiplex_3/multiplex_3_op.py:
 tensorflow/examples/custom_ops_doc/multiplex_4/BUILD:
+tensorflow/examples/custom_ops_doc/multiplex_4/README.md:
 tensorflow/examples/custom_ops_doc/multiplex_4/multiplex_4_op.py:
 tensorflow/examples/custom_ops_doc/simple_hash_table/BUILD:
 tensorflow/examples/custom_ops_doc/simple_hash_table/simple_hash_table_op.py:
