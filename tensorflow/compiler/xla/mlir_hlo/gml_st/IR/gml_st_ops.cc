@@ -156,8 +156,10 @@ struct GmlStInlinerInterface : public DialectInlinerInterface {
     auto yieldOp = dyn_cast<gml_st::YieldOp>(op);
     if (!yieldOp) return;
 
-    assert(valuesToRepl.size() == 1);
-    valuesToRepl[0].replaceAllUsesWith(yieldOp.getOperand());
+    for (auto [valueToRepl, operand] :
+         llvm::zip(valuesToRepl, yieldOp.getOperands())) {
+      valueToRepl.replaceAllUsesWith(operand);
+    }
   }
 };
 }  // namespace

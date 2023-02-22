@@ -37,6 +37,9 @@ namespace {
 #define GEN_PASS_DEF_INLINEFUSIONCLUSTERSPASS
 #include "gml_st/transforms/passes.h.inc"
 
+static constexpr llvm::StringRef kFusionPlanningLabel =
+    "__fusion_planning_label__";
+
 // Returns true is consumer and producer should be fused and tiled together.
 bool allowedToFuse(Operation* consumerOp, Operation* producerOp) {
   if (isa<thlo::ScatterOp, thlo::SortOp>(producerOp)) return false;
@@ -68,6 +71,9 @@ template <typename OpTy>
 LogicalResult fusionPattern(OpTy op, PatternRewriter& rewriter) {
   // The op is already in a fusion cluster.
   if (isa<gml_st::FusionOp>(op.getOperation()->getParentOp())) return failure();
+
+  // The op was already processed.
+  if (hasLabel(op, kFusionPlanningLabel)) return failure();
 
   for (auto& use : op->getUses()) {
     auto* useOp = use.getOwner();
@@ -108,6 +114,9 @@ LogicalResult fusionPattern(OpTy op, PatternRewriter& rewriter) {
   fusionCluster.root = op;
   fusionCluster.operations = resultOps;
   if (failed(wrapFusionCluster(rewriter, fusionCluster))) return failure();
+
+  // Mark all ops as processed.
+  for (auto* op : resultOps) setLabel(op, kFusionPlanningLabel);
 
   return success();
 }

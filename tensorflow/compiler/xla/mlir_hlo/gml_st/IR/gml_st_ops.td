@@ -505,7 +505,7 @@ def GMLST_SetYieldOp : GMLST_Op<"set_yield", [
 
 def GMLST_YieldOp : GMLST_Op<"yield", [Pure, ReturnLike, Terminator,
     HasParent<"::mlir::gml_st::SetYieldOp, ::mlir::gml_st::FusionOp">]>,
-    Arguments<(ins AnyType:$value)> {
+    Arguments<(ins Variadic<AnyType>:$values)> {
   let summary = "Yield operation";
   let description = [{
     `gml_st.yield` is a special terminator operation for accumulator regions of
@@ -517,7 +517,7 @@ def GMLST_YieldOp : GMLST_Op<"yield", [Pure, ReturnLike, Terminator,
     gml_st.yield %f0: tensor<f32>
     ```
   }];
-  let assemblyFormat = "attr-dict $value `:` type($value)";
+  let assemblyFormat = "attr-dict $values `:` type($values)";
 }
 
 def GMLST_FusionOp : GMLST_Op<"fusion", [
