@@ -19,6 +19,7 @@ limitations under the License.
 #include "mlir/Conversion/ComplexToLLVM/ComplexToLLVM.h"
 #include "mlir/Conversion/FuncToLLVM/ConvertFuncToLLVMPass.h"
 #include "mlir/Conversion/LinalgToLLVM/LinalgToLLVM.h"
+#include "mlir/Conversion/MathToLLVM/MathToLLVM.h"
 #include "mlir/Conversion/MathToLibm/MathToLibm.h"
 #include "mlir/Conversion/MemRefToLLVM/MemRefToLLVM.h"
 #include "mlir/Conversion/ReconcileUnrealizedCasts/ReconcileUnrealizedCasts.h"
@@ -26,11 +27,8 @@ limitations under the License.
 #include "mlir/Conversion/VectorToLLVM/ConvertVectorToLLVM.h"
 #include "mlir/Dialect/Arith/Transforms/Passes.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
-#include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "mlir/Dialect/Linalg/Passes.h"
-#include "mlir/Dialect/Math/IR/Math.h"
 #include "mlir/Dialect/MemRef/Transforms/Passes.h"
-#include "mlir/IR/MLIRContext.h"
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Transforms/Passes.h"
 #include "transforms/passes.h"
@@ -54,7 +52,11 @@ void createGenericHostToLLVMPipeline(OpPassManager& pm) {
 
   pm.addPass(createConvertLinalgToLLVMPass());
   pm.addPass(createConvertSCFToCFPass());
-  pm.addPass(hlo::createMathLegalizationPass());
+
+  ConvertMathToLLVMPassOptions mathOpts;
+  mathOpts.approximateLog1p = false;
+  pm.addPass(createConvertMathToLLVMPass(mathOpts));
+  pm.addPass(createConvertMathToLibmPass());
 
   // Convert everything else to LLVM dialect.
   ConvertVectorToLLVMPassOptions vectorOpts;

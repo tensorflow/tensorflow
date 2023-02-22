@@ -168,10 +168,4 @@ def AllocToArgPass : Pass<"alloc-to-arg", "mlir::func::FuncOp"> {
   let constructor = "hlo::createAllocToArgPass()";
 }
 
-def HloMathLegalizationPass
-    : Pass<"hlo-math-legalization", "mlir::func::FuncOp"> {
-  let summary = "Legalize operations from the `math` dialect.";
-  let constructor = "hlo::createMathLegalizationPass()";
-}
-
 #endif // TENSORFLOW_COMPILER_MLIR_HLO_TRANSFORMS_PASSES

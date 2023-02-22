@@ -1205,7 +1205,6 @@ cc_library(
         "transforms/detensorize_scf_ops.cc",
         "transforms/generic_host_to_llvm.cc",
         "transforms/lower_index_cast_pass.cc",
-        "transforms/math_legalization.cc",
         "transforms/propagate_static_shapes_to_kernel.cc",
         "transforms/test_hlo_transform_dialect_interpreter.cc",
         "transforms/tile_loops_pass.cc",

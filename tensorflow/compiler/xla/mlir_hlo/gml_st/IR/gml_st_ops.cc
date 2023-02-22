@@ -256,20 +256,15 @@ struct FoldConstantsIntoMaterializeOp : public OpRewritePattern<MaterializeOp> {
 
   LogicalResult matchAndRewrite(MaterializeOp op,
                                 PatternRewriter &rewriter) const override {
-    // No constant operand, just return;
-    if (llvm::none_of(op.getOperands(), [](Value operand) {
-          return matchPattern(operand, matchConstantIndex());
-        }))
-      return failure();
-
-    // At least one of offsets/sizes/strides is a new constant.
-    // Form the new list of operands and constant attributes from the existing.
     SmallVector<OpFoldResult> mixedOffsets(op.getMixedOffsets());
     SmallVector<OpFoldResult> mixedSizes(op.getMixedSizes());
     SmallVector<OpFoldResult> mixedStrides(op.getMixedStrides());
-    canonicalizeSubViewPart(mixedOffsets, ShapedType::isDynamic);
-    canonicalizeSubViewPart(mixedSizes, ShapedType::isDynamic);
-    canonicalizeSubViewPart(mixedStrides, ShapedType::isDynamic);
+
+    // No constant operands were folded, just return;
+    if (failed(foldDynamicIndexList(rewriter, mixedOffsets)) &&
+        failed(foldDynamicIndexList(rewriter, mixedSizes)) &&
+        failed(foldDynamicIndexList(rewriter, mixedStrides)))
+      return failure();
 
     SmallVector<int64_t> staticSizes;
     SmallVector<Value> dynamicSizes;
@@ -842,20 +837,15 @@ struct FoldConstantsIntoTileType : public OpRewritePattern<TileOp> {
 
   LogicalResult matchAndRewrite(TileOp op,
                                 PatternRewriter &rewriter) const override {
-    // No constant operand, just return;
-    if (llvm::none_of(op.getOperands(), [](Value operand) {
-          return matchPattern(operand, matchConstantIndex());
-        }))
-      return failure();
-
-    // At least one of offsets/sizes/strides is a new constant.
-    // Form the new list of operands and constant attributes from the existing.
     SmallVector<OpFoldResult> mixedOffsets(op.getMixedOffsets());
     SmallVector<OpFoldResult> mixedSizes(op.getMixedSizes());
     SmallVector<OpFoldResult> mixedStrides(op.getMixedStrides());
-    canonicalizeSubViewPart(mixedOffsets, ShapedType::isDynamic);
-    canonicalizeSubViewPart(mixedSizes, ShapedType::isDynamic);
-    canonicalizeSubViewPart(mixedStrides, ShapedType::isDynamic);
+
+    // No constant operands were folded, just return;
+    if (failed(foldDynamicIndexList(rewriter, mixedOffsets)) &&
+        failed(foldDynamicIndexList(rewriter, mixedSizes)) &&
+        failed(foldDynamicIndexList(rewriter, mixedStrides)))
+      return failure();
 
     // Create the new tile in canonical form.
     TileOp newOp = rewriter.create<TileOp>(op.getLoc(), mixedOffsets,
