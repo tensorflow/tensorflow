@@ -4477,7 +4477,7 @@ TEST_F(CublasLtF8GemmRewriteTest, ScaledABUnscaledDF8Parameterized) {
   int i = 0;
   for (bool d_is_col : {false, true}) {
     for (bool a_is_col : {false, true}) {
-      for (bool b_is_col : {true, true}) {
+      for (bool b_is_col : {false, true}) {
         for (int lhs_contracting_dim : {0, 1}) {
           for (int rhs_contracting_dim : {0, 1}) {
             const absl::string_view lcd =
