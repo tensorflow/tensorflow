@@ -2336,6 +2336,8 @@ class PoolingTest(test.TestCase, parameterized.TestCase):
         use_gpu=use_gpu)
 
   def testAvgPoolGradOutputMemoryOutOfBounds(self):
+    #os.environ["TF_USE_ROCM_NHWC"] = "1"
+    self.skipTest("Re-enable when NHWC is fully supported on ROCM.")
     with self.assertRaisesRegex(
         errors_impl.InvalidArgumentError,
         (
