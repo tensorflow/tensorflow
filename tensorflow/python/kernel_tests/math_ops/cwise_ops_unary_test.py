@@ -92,8 +92,7 @@ class UnaryOpTest(test.TestCase):
       if x.dtype in (np.complex64, np.complex128) and tf_func == math_ops.sign:
         return  # Return early
 
-      if (x.dtype in (np.float16, dtypes_lib.bfloat16.as_numpy_dtype)
-        and tf_func == math_ops.round):
+      if tf_func == math_ops.round:
         return  # Return early
 
       if x.dtype in (np.float16, dtypes_lib.bfloat16.as_numpy_dtype):
