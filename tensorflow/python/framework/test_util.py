@@ -2108,7 +2108,7 @@ def disable_cudnn_autotune(func):
 
       return result
 
-    return decorated
+    return tf_decorator.make_decorator(func, decorated)
 
   if func is not None:
     return decorator(func)
