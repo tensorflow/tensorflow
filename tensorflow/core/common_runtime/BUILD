@@ -3354,10 +3354,12 @@ tf_cc_test(
     ],
     deps = [
         ":core",
+        ":int32_fulltype",
         "//tensorflow/core:framework",
         "//tensorflow/core:ops",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+        "//tensorflow/tsl/lib/core:status_test_util",
     ],
 )
 
