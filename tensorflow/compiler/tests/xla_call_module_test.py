@@ -19,6 +19,7 @@ import numpy as np
 
 from tensorflow.compiler.tests import xla_test
 from tensorflow.compiler.tf2xla.python import xla
+from tensorflow.python.eager import def_function
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
@@ -450,6 +451,28 @@ module @jit_fun.1 {
                              dim_args_spec=['0.0'])
 
     self._assertOpOutputMatchesExpected(f, (x,), (res,))
+
+  def test_build_graph_with_any_platform(self):
+    """We can construct the tf.Graph on all platforms."""
+    x = np.float32(0.)
+
+    module = """
+module @jit_f.0 {
+  func.func public @main(%arg_platform_idx: tensor<i32>, %arg0: tensor<f32>) -> tensor<f32> {
+    return %arg0 : tensor<f32>
+  }
+}
+"""
+    platforms = ['TPU']  # the module is compileable only on TPU
+    def f(x):
+      return xla.call_module([x],
+                             version=3,
+                             module=module,
+                             Tout=[np.float32],
+                             Sout=[()],
+                             platforms=platforms)
+    tf_graph = def_function.function(f).get_concrete_function(x).graph
+    self.assertIn('XlaCallModule', str(tf_graph.as_graph_def()))
 
   def test_dynamic_reshape(self):
     x = np.ones((4, 3), dtype=np.float32)
