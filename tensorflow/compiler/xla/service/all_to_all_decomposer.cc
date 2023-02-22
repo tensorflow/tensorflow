@@ -20,18 +20,18 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/strings/str_join.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_casting_utils.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/literal_util.h"
-#include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
-#include "tensorflow/compiler/xla/service/hlo_computation.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/compiler/xla/service/hlo_instructions.h"
-#include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/core/platform/logging.h"
+#include "tensorflow/tsl/platform/logging.h"
 
 namespace xla {
 bool AllToAllDecomposer::InstructionMatchesPattern(
@@ -58,7 +58,7 @@ StatusOr<HloInstruction*> AllToAllDecomposer::ExpandInstruction(
   int64_t split_dim = *all_to_all->split_dimension();
   int64_t all_to_all_group_size =
       all_to_all->replica_groups().empty()
-          ? instruction->parent()->parent()->config().replica_count()
+          ? instruction->GetModule()->config().replica_count()
           : all_to_all->replica_groups()[0].replica_ids_size();
   int64_t split_size =
       all_to_all->shape().dimensions(split_dim) / all_to_all_group_size;

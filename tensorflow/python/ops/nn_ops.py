@@ -3717,13 +3717,16 @@ def gelu(features, approximate=False, name=None):
       dtype=float32)
 
   Args:
-    features: A `Tensor` representing preactivation values.
+    features: A `float Tensor` representing preactivation values.
     approximate: An optional `bool`. Defaults to `False`. Whether to enable
       approximation.
     name: A name for the operation (optional).
 
   Returns:
     A `Tensor` with the same type as `features`.
+
+  Raises:
+    ValueError: if `features` is not a floating point `Tensor`.
 
   References:
     [Gaussian Error Linear Units (GELUs)](https://arxiv.org/abs/1606.08415).
@@ -3971,14 +3974,9 @@ def log_softmax_v2(logits, axis=None, name=None):
   return _wrap_2d_function(logits, gen_nn_ops.log_softmax, axis, name)
 
 
-def _ensure_xent_args(name, sentinel, labels, logits):
-  # Make sure that all arguments were passed as named arguments.
-  if sentinel is not None:
-    raise ValueError(
-        f"Only call {name} with named arguments (labels=..., logits=..., ...). "
-        f"Received unnamed argument: {sentinel}")
+def _ensure_xent_args(name, labels, logits):
   if labels is None or logits is None:
-    raise ValueError("Both `labels` and `logits` must be provided. "
+    raise ValueError(f"Both `labels` and `logits` must be provided for {name}"
                      f"Received: labels={labels} and logits={logits}")
 
 
@@ -4181,7 +4179,6 @@ See `tf.nn.softmax_cross_entropy_with_logits_v2`.
 @dispatch.add_dispatch_support
 @deprecation.deprecated(date=None, instructions=_XENT_DEPRECATION)
 def softmax_cross_entropy_with_logits(
-    _sentinel=None,  # pylint: disable=invalid-name
     labels=None,
     logits=None,
     dim=-1,
@@ -4218,7 +4215,6 @@ def softmax_cross_entropy_with_logits(
   this function.**
 
   Args:
-    _sentinel: Used to prevent positional parameters. Internal, do not use.
     labels: Each vector along the class dimension should hold a valid
       probability distribution e.g. for the case in which labels are of shape
       `[batch_size, num_classes]`, each row of `labels[i]` must be a valid
@@ -4235,8 +4231,7 @@ def softmax_cross_entropy_with_logits(
     not have the last dimension of `labels`.
   """
   dim = deprecated_argument_lookup("axis", axis, "dim", dim)
-  _ensure_xent_args("softmax_cross_entropy_with_logits", _sentinel, labels,
-                    logits)
+  _ensure_xent_args("softmax_cross_entropy_with_logits", labels, logits)
 
   with ops.name_scope(name, "softmax_cross_entropy_with_logits_sg",
                       [logits, labels]) as name:
@@ -4278,7 +4273,6 @@ def _sparse_softmax_cross_entropy_with_rank_2_logits(logits, labels, name):
 @tf_export(v1=["nn.sparse_softmax_cross_entropy_with_logits"])
 @dispatch.add_dispatch_support
 def sparse_softmax_cross_entropy_with_logits(
-    _sentinel=None,  # pylint: disable=invalid-name
     labels=None,
     logits=None,
     name=None):
@@ -4311,7 +4305,6 @@ def sparse_softmax_cross_entropy_with_logits(
   this function.**
 
   Args:
-    _sentinel: Used to prevent positional parameters. Internal, do not use.
     labels: `Tensor` of shape `[d_0, d_1, ..., d_{r-1}]` (where `r` is rank of
       `labels` and result) and dtype `int32` or `int64`. Each entry in `labels`
       must be an index in `[0, num_classes)`. Other values will raise an
@@ -4331,8 +4324,7 @@ def sparse_softmax_cross_entropy_with_logits(
     ValueError: If logits are scalars (need to have rank >= 1) or if the rank
       of the labels is not equal to the rank of the logits minus one.
   """
-  _ensure_xent_args("sparse_softmax_cross_entropy_with_logits", _sentinel,
-                    labels, logits)
+  _ensure_xent_args("sparse_softmax_cross_entropy_with_logits", labels, logits)
 
   # TODO(pcmurray) Raise an error when the label is not an index in
   # [0, num_classes). Note: This could break users who call this with bad
@@ -4796,6 +4788,11 @@ def max_pool_v2(input, ksize, strides, padding, data_format=None, name=None):
   Returns:
     A `Tensor` of format specified by `data_format`.
     The max pooled output tensor.
+
+  Raises:
+    ValueError: If
+      - explicit padding is used with an input tensor of rank 5.
+      - explicit padding is used with data_format='NCHW_VECT_C'.
   """
   if input.shape is not None:
     n = len(input.shape) - 2
@@ -5050,6 +5047,9 @@ def max_pool2d(input, ksize, strides, padding, data_format="NHWC", name=None):
   Returns:
     A `Tensor` of format specified by `data_format`.
     The max pooled output tensor.
+
+  Raises:
+    ValueError: If explicit padding is used with data_format='NCHW_VECT_C'.
   """
   with ops.name_scope(name, "MaxPool2d", [input]) as name:
     if data_format is None:
@@ -5655,6 +5655,77 @@ def stateless_dropout(x, rate, seed, rng_alg=None, noise_shape=None, name=None):
                   default_name="stateless_dropout")
 
 
+@tf_export("nn.experimental.general_dropout")
+@dispatch.add_dispatch_support
+def general_dropout(x, rate, uniform_sampler, noise_shape=None, name=None):
+  """Computes dropout: randomly sets elements to zero to prevent overfitting.
+
+  Please see `tf.nn.experimental.stateless_dropout` for an overview
+  of dropout.
+
+  Unlike `tf.nn.experimental.stateless_dropout`, here you can supply a
+  custom sampler function `uniform_sampler` that (given a shape and a
+  dtype) generates a random, `Uniform[0, 1)`-distributed tensor (of
+  that shape and dtype).  `uniform_sampler` can be
+  e.g. `tf.random.stateless_random_uniform` or
+  `tf.random.Generator.uniform`.
+
+  For example, if you are using `tf.random.Generator` to generate
+  random numbers, you can use this code to do dropouts:
+
+  >>> g = tf.random.Generator.from_seed(7)
+  >>> sampler = g.uniform
+  >>> x = tf.constant([1.1, 2.2, 3.3, 4.4, 5.5])
+  >>> rate = 0.5
+  >>> tf.nn.experimental.general_dropout(x, rate, sampler)
+  <tf.Tensor: shape=(5,), ..., numpy=array([ 0. ,  4.4,  6.6,  8.8, 11. ], ...)>
+  >>> tf.nn.experimental.general_dropout(x, rate, sampler)
+  <tf.Tensor: shape=(5,), ..., numpy=array([2.2, 0. , 0. , 8.8, 0. ], ...)>
+
+  It has better performance than using
+  `tf.nn.experimental.stateless_dropout` and
+  `tf.random.Generator.make_seeds`:
+
+  >>> g = tf.random.Generator.from_seed(7)
+  >>> x = tf.constant([1.1, 2.2, 3.3, 4.4, 5.5])
+  >>> rate = 0.5
+  >>> tf.nn.experimental.stateless_dropout(x, rate, g.make_seeds(1)[:, 0])
+  <tf.Tensor: shape=(5,), ..., numpy=array([ 2.2,  4.4,  6.6,  0. , 11. ], ...)>
+  >>> tf.nn.experimental.stateless_dropout(x, rate, g.make_seeds(1)[:, 0])
+  <tf.Tensor: shape=(5,), ..., numpy=array([2.2, 0. , 6.6, 8.8, 0. ], ...>
+
+  because generating and consuming seeds cost extra
+  computation. `tf.nn.experimental.general_dropout` can let you avoid
+  them.
+
+  Args:
+    x: A floating point tensor.
+    rate: A scalar `Tensor` with the same type as x. The probability
+      that each element is dropped. For example, setting rate=0.1 would drop
+      10% of input elements.
+    uniform_sampler: a callable of signature `(shape, dtype) ->
+      Tensor[shape, dtype]`, used to generate a tensor of uniformly-distributed
+      random numbers in the range `[0, 1)`, of the given shape and dtype.
+    noise_shape: A 1-D integer `Tensor`, representing the
+      shape for randomly generated keep/drop flags.
+    name: A name for this operation.
+
+  Returns:
+    A Tensor of the same shape and dtype of `x`.
+
+  Raises:
+    ValueError: If `rate` is not in `[0, 1)` or if `x` is not a floating point
+      tensor. `rate=1` is disallowed, because the output would be all zeros,
+      which is likely not what was intended.
+  """
+  def dummy_rng_step():
+    pass
+  return _dropout(x=x, rate=rate, noise_shape=noise_shape,
+                  uniform_sampler=uniform_sampler,
+                  dummy_rng_step=dummy_rng_step, name=name,
+                  default_name="general_dropout")
+
+
 def _dropout(x, rate, noise_shape, uniform_sampler, dummy_rng_step, name,
              default_name):
   """Shared implementation of the various dropout functions.
@@ -5665,7 +5736,7 @@ def _dropout(x, rate, noise_shape, uniform_sampler, dummy_rng_step, name,
     noise_shape: same as the namesake in `dropout_v2`.
     uniform_sampler: a callable of signature `(shape, dtype) ->
       Tensor`, used to generate a tensor of uniformly-distributed
-      random numbers, of the given shape and dtype.
+      random numbers in the range `[0, 1)`, of the given shape and dtype.
     dummy_rng_step: a callable of signature `() -> None`, to make a
       dummy RNG call in the fast path. In the fast path where rate is
       0, we don't need to generate random numbers, but some samplers
@@ -5728,7 +5799,8 @@ def _dropout(x, rate, noise_shape, uniform_sampler, dummy_rng_step, name,
     # than or equal to `rate`.
     random_tensor = uniform_sampler(shape=noise_shape, dtype=x_dtype)
     keep_mask = random_tensor >= rate
-    ret = gen_math_ops.mul(ret, gen_math_ops.cast(keep_mask, x_dtype))
+    zero_tensor = constant_op.constant(0, dtype=x_dtype)
+    ret = array_ops.where_v2(keep_mask, ret, zero_tensor)
     if not is_executing_eagerly:
       ret.set_shape(x.get_shape())
     return ret
@@ -6478,10 +6550,37 @@ def in_top_k(predictions, targets, k, name=None):
 @tf_export("math.in_top_k", "nn.in_top_k", v1=[])
 @dispatch.add_dispatch_support
 def in_top_k_v2(targets, predictions, k, name=None):
+  """Outputs whether the targets are in the top `K` predictions.
+
+  This outputs a `batch_size` bool array, an entry `out[i]` is `true` if the
+  prediction for the target class is finite (not inf, -inf, or nan) and among
+  the top `k` predictions among all predictions for example `i`.
+  `predictions` does not have to be normalized.
+
+  Note that the behavior of `InTopK` differs from the `TopK` op in its handling
+  of ties; if multiple classes have the same prediction value and straddle the
+  top-`k` boundary, all of those classes are considered to be in the top `k`.
+
+  >>> target = tf.constant([0, 1, 3])
+  >>> pred = tf.constant([
+  ...  [1.2, -0.3, 2.8, 5.2],
+  ...  [0.1, 0.0, 0.0, 0.0],
+  ...  [0.0, 0.5, 0.3, 0.3]],
+  ...  dtype=tf.float32)
+  >>> print(tf.math.in_top_k(target, pred, 2))
+  tf.Tensor([False  True  True], shape=(3,), dtype=bool)
+
+  Args:
+    targets: A `batch_size` vector of class ids. Must be `int32` or `int64`.
+    predictions: A `batch_size` x `classes` tensor of type `float32`.
+    k: An `int`. The parameter to specify search space.
+    name: A name for the operation (optional).
+
+  Returns:
+    A `Tensor` with the same shape of `targets` with type of `bool`. Each
+      element specifies if the target falls into top-k predictions.
+  """
   return in_top_k(predictions, targets, k, name)
-
-
-in_top_k_v2.__doc__ = in_top_k.__doc__
 
 
 tf_export(v1=["nn.quantized_avg_pool"])(

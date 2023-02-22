@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <functional>
+#include <optional>
 #include <queue>
 #include <string>
 #include <utility>
@@ -30,8 +31,6 @@ limitations under the License.
 #include "tensorflow/core/lib/io/buffered_inputstream.h"
 #include "tensorflow/core/lib/io/random_inputstream.h"
 #include "tensorflow/core/lib/io/record_writer.h"
-#include "tensorflow/core/lib/io/snappy/snappy_inputbuffer.h"
-#include "tensorflow/core/lib/io/snappy/snappy_outputbuffer.h"
 #include "tensorflow/core/lib/io/zlib_compression_options.h"
 #include "tensorflow/core/lib/io/zlib_inputstream.h"
 #include "tensorflow/core/lib/io/zlib_outputbuffer.h"
@@ -44,6 +43,8 @@ limitations under the License.
 #include "tensorflow/core/platform/stringprintf.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/protobuf/snapshot.pb.h"
+#include "tensorflow/tsl/lib/io/snappy/snappy_inputbuffer.h"
+#include "tensorflow/tsl/lib/io/snappy/snappy_outputbuffer.h"
 
 namespace tensorflow {
 namespace data {
@@ -279,7 +280,7 @@ Status CustomWriter::WriteTensors(const std::vector<Tensor>& tensors) {
   DCHECK_EQ(position, uncompressed.data() + total_size);
 
   string output;
-  if (!port::Snappy_Compress(uncompressed.data(), total_size, &output)) {
+  if (!tsl::port::Snappy_Compress(uncompressed.data(), total_size, &output)) {
     return errors::Internal("Failed to compress using snappy.");
   }
 
@@ -708,18 +709,25 @@ Status Reader::MakeNestedDataset(Env* env,
 
 TFRecordReader::TFRecordReader(const std::string& filename,
                                const string& compression_type,
-                               const DataTypeVector& dtypes)
+                               const DataTypeVector& dtypes,
+                               std::optional<int64_t> output_buffer_size)
     : filename_(filename),
       offset_(0),
       compression_type_(compression_type),
-      dtypes_(dtypes) {}
+      dtypes_(dtypes),
+      output_buffer_size_(output_buffer_size) {}
 
 Status TFRecordReader::Initialize(Env* env) {
   TF_RETURN_IF_ERROR(env->NewRandomAccessFile(filename_, &file_));
-
-  record_reader_ = std::make_unique<io::RecordReader>(
-      file_.get(), io::RecordReaderOptions::CreateRecordReaderOptions(
-                       /*compression_type=*/compression_type_));
+  auto options = io::RecordReaderOptions::CreateRecordReaderOptions(
+      /*compression_type=*/compression_type_);
+#if !defined(IS_SLIM_BUILD)
+  if (output_buffer_size_.has_value()) {
+    options.snappy_options.output_buffer_size = *output_buffer_size_;
+    options.zlib_options.output_buffer_size = *output_buffer_size_;
+  }
+#endif  // IS_SLIM_BUILD
+  record_reader_ = std::make_unique<io::RecordReader>(file_.get(), options);
   return OkStatus();
 }
 
@@ -769,7 +777,7 @@ Status CustomReader::Initialize(Env* env) {
         zlib_options.output_buffer_size, zlib_options, true);
   } else if (compression_type_ == io::compression::kSnappy) {
     if (version_ == 0) {
-      input_stream_ = std::make_unique<io::SnappyInputBuffer>(
+      input_stream_ = std::make_unique<tsl::io::SnappyInputBuffer>(
           file_.get(), /*input_buffer_bytes=*/kSnappyReaderInputBufferSizeBytes,
           /*output_buffer_bytes=*/kSnappyReaderOutputBufferSizeBytes);
     } else {
@@ -875,13 +883,13 @@ Status CustomReader::SnappyUncompress(
   tstring compressed;
   TF_RETURN_IF_ERROR(ReadRecord(&compressed));
   size_t size;
-  if (!port::Snappy_GetUncompressedLength(compressed.data(), compressed.size(),
-                                          &size)) {
+  if (!tsl::port::Snappy_GetUncompressedLength(compressed.data(),
+                                               compressed.size(), &size)) {
     return errors::Internal("Could not get snappy uncompressed length");
   }
 
   int num_tensors = metadata->tensor_metadata_size();
-  std::vector<struct iovec> iov(num_tensors);
+  std::vector<tsl::iovec> iov(num_tensors);
   int index = 0;
   int64_t total_size = 0;
   for (int i = 0, end = simple_tensor_mask_.size(); i < end; ++i) {
@@ -910,8 +918,8 @@ Status CustomReader::SnappyUncompress(
                             " whereas the tensor metadata suggests ",
                             total_size);
   }
-  if (!port::Snappy_UncompressToIOVec(compressed.data(), compressed.size(),
-                                      iov.data(), num_tensors)) {
+  if (!tsl::port::Snappy_UncompressToIOVec(compressed.data(), compressed.size(),
+                                           iov.data(), num_tensors)) {
     return errors::Internal("Failed to perform snappy decompression.");
   }
   return OkStatus();
@@ -952,8 +960,33 @@ Status WriteMetadataFile(Env* env, const string& dir,
   return env->RenameFile(tmp_filename, metadata_filename);
 }
 
+Status WriteMetadataFile(
+    Env* env, const string& dir,
+    const experimental::DistributedSnapshotMetadata* metadata) {
+  string metadata_filename = io::JoinPath(dir, kMetadataFilename);
+  TF_RETURN_IF_ERROR(env->RecursivelyCreateDir(dir));
+  std::string tmp_filename =
+      absl::StrCat(metadata_filename, "-tmp-", random::New64());
+  TF_RETURN_IF_ERROR(WriteBinaryProto(env, tmp_filename, *metadata));
+  return env->RenameFile(tmp_filename, metadata_filename);
+}
+
 Status ReadMetadataFile(Env* env, const string& dir,
                         experimental::SnapshotMetadataRecord* metadata,
+                        bool* file_exists) {
+  string metadata_filename = io::JoinPath(dir, kMetadataFilename);
+  Status s = env->FileExists(metadata_filename);
+  *file_exists = s.ok();
+
+  if (*file_exists) {
+    return ReadBinaryProto(env, metadata_filename, metadata);
+  } else {
+    return OkStatus();
+  }
+}
+
+Status ReadMetadataFile(Env* env, const string& dir,
+                        experimental::DistributedSnapshotMetadata* metadata,
                         bool* file_exists) {
   string metadata_filename = io::JoinPath(dir, kMetadataFilename);
   Status s = env->FileExists(metadata_filename);

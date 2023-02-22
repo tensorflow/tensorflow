@@ -14,6 +14,7 @@
 # ==============================================================================
 """Variable class."""
 
+import abc
 import enum
 import functools
 import itertools
@@ -26,6 +27,7 @@ from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_conversion_registry
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
@@ -99,10 +101,10 @@ class VariableAggregationV2(enum.Enum):
   """Indicates how a distributed variable will be aggregated.
 
   `tf.distribute.Strategy` distributes a model by making multiple copies
-  (called "replicas") acting data-parallel on different elements of the input
-  batch. When performing some variable-update operation, say
-  `var.assign_add(x)`, in a model, we need to resolve how to combine the
-  different values for `x` computed in the different replicas.
+  (called "replicas") acting on different elements of the input batch in a
+  data parallel model. When performing some variable-update operation,
+  for example `var.assign_add(x)`, in a model, we need to resolve how to combine
+  the different values for `x` computed in the different replicas.
 
   * `NONE`: This is the default, giving an error if you use a
     variable-update operation with multiple replicas.
@@ -111,6 +113,21 @@ class VariableAggregationV2(enum.Enum):
   * `ONLY_FIRST_REPLICA`: This is for when every replica is performing the same
     update, but we only want to perform the update once. Used, e.g., for the
     global step counter.
+
+  For example:
+
+  >>> strategy = tf.distribute.MirroredStrategy(["GPU:0", "GPU:1"])
+  >>> with strategy.scope():
+  ...   v = tf.Variable(5.0, aggregation=tf.VariableAggregation.MEAN)
+  >>> @tf.function
+  ... def update_fn():
+  ...   return v.assign_add(1.0)
+  >>> strategy.run(update_fn)
+  PerReplica:{
+    0: <tf.Tensor: shape=(), dtype=float32, numpy=6.0>,
+    1: <tf.Tensor: shape=(), dtype=float32, numpy=6.0>
+  }
+
   """
   NONE = 0
   SUM = 1
@@ -179,7 +196,7 @@ def validate_synchronization_aggregation_trainable(synchronization, aggregation,
   return synchronization, aggregation, trainable
 
 
-class VariableMetaclass(type):
+class VariableMetaclass(abc.ABCMeta):
   """Metaclass to allow construction of tf.Variable to be overridden."""
 
   def _variable_v1_call(cls,
@@ -197,7 +214,8 @@ class VariableMetaclass(type):
                         use_resource=None,
                         synchronization=VariableSynchronization.AUTO,
                         aggregation=VariableAggregation.NONE,
-                        shape=None):
+                        shape=None,
+                        experimental_enable_variable_lifting=None):
     """Call on Variable class. Useful to force the signature."""
     previous_getter = lambda **kwargs: default_variable_creator(None, **kwargs)
     for _, getter in ops.get_default_graph()._variable_creator_stack:  # pylint: disable=protected-access
@@ -221,7 +239,9 @@ class VariableMetaclass(type):
         use_resource=use_resource,
         synchronization=synchronization,
         aggregation=aggregation,
-        shape=shape)
+        shape=shape,
+        experimental_enable_variable_lifting=experimental_enable_variable_lifting,
+        )
 
   def _variable_v2_call(cls,
                         initial_value=None,
@@ -235,7 +255,9 @@ class VariableMetaclass(type):
                         constraint=None,
                         synchronization=VariableSynchronization.AUTO,
                         aggregation=VariableAggregation.NONE,
-                        shape=None):
+                        shape=None,
+                        experimental_enable_variable_lifting=None,
+                        ):
     """Call on Variable class. Useful to force the signature."""
     previous_getter = lambda **kws: default_variable_creator_v2(None, **kws)
     for _, getter in ops.get_default_graph()._variable_creator_stack:  # pylint: disable=protected-access
@@ -256,7 +278,9 @@ class VariableMetaclass(type):
         constraint=constraint,
         synchronization=synchronization,
         aggregation=aggregation,
-        shape=shape)
+        shape=shape,
+        experimental_enable_variable_lifting=experimental_enable_variable_lifting,
+        )
 
   @traceback_utils.filter_traceback
   def __call__(cls, *args, **kwargs):
@@ -380,7 +404,9 @@ class Variable(trackable.Trackable, metaclass=VariableMetaclass):
                constraint=None,
                synchronization=VariableSynchronization.AUTO,
                aggregation=VariableAggregation.NONE,
-               shape=None):
+               shape=None,
+               experimental_enable_variable_lifting=True,
+               ):
     """Creates a new variable with value `initial_value`.
 
     Args:
@@ -432,6 +458,15 @@ class Variable(trackable.Trackable, metaclass=VariableMetaclass):
         `initial_value` will be used. When setting this argument to
         `tf.TensorShape(None)` (representing an unspecified shape), the variable
         can be assigned with values of different shapes.
+      experimental_enable_variable_lifting: Whether to lift the variable out if
+        it's in a `tf.function`. Default is `True`. When this argument
+        is `True`, variable creation will follow the behavior and
+        restrictions described
+        [here](https://www.tensorflow.org/guide/function#creating_tfvariables).
+        If this argument is `False`, that description doesn't apply,
+        and you can freely create and use the variable in the
+        `tf.function`, as if it's a "mutable `tf.Tensor`". You can't
+        return the variable though.
 
     Raises:
       ValueError: If both `variable_def` and initial_value are specified.
@@ -2723,6 +2758,18 @@ class RefVariable(VariableV1, core.Tensor):
         " if you want a new python Tensor object.", 1)
     return self**other
 
+  def _serialize_to_tensors(self):
+    """Implements Trackable._serialize_to_tensors."""
+    return {trackable.VARIABLE_VALUE_KEY: self}
+
+  def _restore_from_tensors(self, restored_tensors):
+    """Implements Trackable._restore_from_tensors."""
+    restored_tensor = restored_tensors[trackable.VARIABLE_VALUE_KEY]
+    return state_ops.assign(
+        self,
+        restored_tensor,
+        validate_shape=self.get_shape().is_fully_defined())
+
 
 def _try_guard_against_uninitialized_dependencies(name, initial_value):
   """Attempt to guard against dependencies on uninitialized variables.
@@ -3096,8 +3143,8 @@ class PartitionedVariable:
 
 # Register a conversion function which reads the value of the variable,
 # allowing instances of the class to be used as tensors.
-ops.register_tensor_conversion_function(RefVariable,
-                                        RefVariable._TensorConversionFunction)  # pylint: disable=protected-access
+tensor_conversion_registry.register_tensor_conversion_function(
+    RefVariable, RefVariable._TensorConversionFunction)  # pylint: disable=protected-access
 
 
 @tf_export(v1=["global_variables"])
@@ -3456,5 +3503,5 @@ def report_uninitialized_variables(var_list=None,
         return array_ops.boolean_mask(variable_names_tensor, variables_mask)
 
 
-ops.register_tensor_conversion_function(
+tensor_conversion_registry.register_tensor_conversion_function(
     PartitionedVariable, PartitionedVariable._TensorConversionFunction)  # pylint: disable=protected-access

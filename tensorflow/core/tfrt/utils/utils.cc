@@ -14,7 +14,10 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/tfrt/utils/utils.h"
 
+#include <memory>
+#include <string>
 #include <utility>
+#include <vector>
 
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/core/common_runtime/eager/context.h"
@@ -84,7 +87,7 @@ tensorflow::Status RunRuntimeInitializer(const tfrt::ExecutionContext& exec_ctx,
     host->Await(results);
 
     if (auto* error = results[0]->GetErrorIfPresent()) {
-      return CreateTfErrorStatus(*error);
+      return CreateTfErrorStatus(DecodedDiagnostic(*error));
     }
   } else {
     DCHECK_EQ(func->result_types().size(), 0);

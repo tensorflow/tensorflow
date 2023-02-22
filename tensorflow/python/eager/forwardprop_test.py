@@ -15,6 +15,7 @@
 
 import functools
 import gc
+import sys
 import weakref
 
 from absl.testing import parameterized
@@ -781,6 +782,10 @@ class ForwardpropTest(test.TestCase, parameterized.TestCase):
 
   @test_util.assert_no_new_pyobjects_executing_eagerly
   def testOpWithNoTrainableOutputs(self):
+    if sys.version_info.major == 3 and sys.version_info.minor == 11:
+      # TODO(b/264947738)
+      self.skipTest("Not working in Python 3.11")
+
     v = variables.Variable(1.)
     with forwardprop.ForwardAccumulator(v, 11.):
       v.assign_sub(0.5)
@@ -878,6 +883,9 @@ class ForwardpropTest(test.TestCase, parameterized.TestCase):
 
   @test_util.assert_no_new_pyobjects_executing_eagerly
   def testVariableWatched(self):
+    if sys.version_info.major == 3 and sys.version_info.minor == 11:
+      # TODO(b/264947738)
+      self.skipTest("Not working in Python 3.11")
     v = variables.Variable([1., 2., 3.])
     with forwardprop.ForwardAccumulator(v, constant_op.constant([.1, -.2,
                                                                  .3])) as acc:

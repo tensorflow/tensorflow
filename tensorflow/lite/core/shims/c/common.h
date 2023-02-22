@@ -15,7 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_CORE_SHIMS_C_COMMON_H_
 #define TENSORFLOW_LITE_CORE_SHIMS_C_COMMON_H_
 
-#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/c/common.h"
 
 // TfLiteOpaqueDelegate: allows delegation of nodes to alternative backends.
 // TfLiteOpaqueDelegate is an abstract type that is intended to have the same

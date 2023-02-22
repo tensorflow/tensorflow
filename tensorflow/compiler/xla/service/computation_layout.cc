@@ -17,9 +17,11 @@ limitations under the License.
 
 #include <algorithm>
 #include <string>
+#include <utility>
 
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
+#include "tensorflow/compiler/xla/printer.h"
 #include "tensorflow/compiler/xla/types.h"
 
 namespace xla {
@@ -61,14 +63,21 @@ bool ComputationLayout::LayoutIsSet() const {
          result_layout_.LayoutIsSet();
 }
 
-std::string ComputationLayout::ToString() const {
-  std::vector<std::string> params;
-  params.reserve(parameter_layouts_.size());
-  for (auto& param_layout : parameter_layouts_) {
-    params.push_back(param_layout.ToString());
+void ComputationLayout::Print(Printer* printer) const {
+  printer->Append("(");
+  for (int i = 0; i < parameter_layouts_.size(); ++i) {
+    const auto& param_layout = parameter_layouts_[i];
+    if (i != 0) printer->Append(",");
+    param_layout.Print(printer);
   }
-  return absl::StrCat("(", absl::StrJoin(params, ","), ")->",
-                      result_layout_.ToString());
+  printer->Append(")->");
+  result_layout_.Print(printer);
+}
+
+std::string ComputationLayout::ToString() const {
+  StringPrinter printer;
+  Print(&printer);
+  return std::move(printer).ToString();
 }
 
 ProgramShape ComputationLayout::ComputeProgramShape() const {

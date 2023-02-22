@@ -1,4 +1,4 @@
-// RUN: tf-opt %s -pass-pipeline='func.func(canonicalize)' | FileCheck %s
+// RUN: tf-opt %s -pass-pipeline='builtin.module(func.func(canonicalize{test-convergence}))' | FileCheck %s
 
 // CHECK-LABEL: func @tfAssertTrue
 func.func @tfAssertTrue(%arg0: tensor<1x1x6x2xf32>) {
@@ -506,6 +506,26 @@ func.func @testAddV2IdentityTensor(%arg0: tensor<f32>, %arg1: tensor<4xf32>) -> 
   // CHECK-DAG: %[[ADD2:.*]] = "tf.AddV2"(%arg0, %[[CONST]])
   // CHECK: return %[[ADD1]], %[[ADD2]], %arg1, %arg1
   func.return %1, %2, %3, %4: tensor<4xf32>, tensor<4xf32>, tensor<4xf32>, tensor<4xf32>
+}
+
+// CHECK-LABEL: testAddV2IdentityBroadcastTensor
+func.func @testAddV2IdentityBroadcastTensor(%arg0: tensor<4x1xf32>, %arg1: tensor<4x2xf32>) -> (tensor<4x2xf32>, tensor<4x2xf32>, tensor<4x2xf32>, tensor<4x2xf32>) {
+  %0 = "tf.Const"() {value = dense<0.0> : tensor<1x2xf32>} : () -> tensor<1x2xf32>
+
+  // Operand and identity shapes are broadcastable. However, we cannot fold
+  // because the operand does not match the result shape.
+  %1 = "tf.AddV2"(%arg0, %0) : (tensor<4x1xf32>, tensor<1x2xf32>) -> tensor<4x2xf32>
+  %2 = "tf.AddV2"(%0, %arg0) : (tensor<1x2xf32>, tensor<4x1xf32>) -> tensor<4x2xf32>
+
+  // If operand has the same shape as a result, we can fold it.
+  %3 = "tf.AddV2"(%arg1, %0) : (tensor<4x2xf32>, tensor<1x2xf32>) -> tensor<4x2xf32>
+  %4 = "tf.AddV2"(%0, %arg1) : (tensor<1x2xf32>, tensor<4x2xf32>) -> tensor<4x2xf32>
+
+  // CHECK: %[[CONST:.*]] = "tf.Const"()
+  // CHECK-DAG: %[[ADD1:.*]] = "tf.AddV2"(%arg0, %[[CONST]])
+  // CHECK-DAG: %[[ADD2:.*]] = "tf.AddV2"(%arg0, %[[CONST]])
+  // CHECK: return %[[ADD1]], %[[ADD2]], %arg1, %arg1
+  func.return %1, %2, %3, %4: tensor<4x2xf32>, tensor<4x2xf32>, tensor<4x2xf32>, tensor<4x2xf32>
 }
 
 // CHECK-LABEL: testDoubleConj
@@ -1472,6 +1492,57 @@ func.func @testWhileRegionUnusedValue(%arg0 : tensor<*xf32>, %arg1 : tensor<i32>
   func.return %0#0 : tensor<*xf32>
 }
 
+// Check that a Cast is inserted when there is an implicit cast from
+// WhileRegion operands to iteration variables.
+// CHECK-LABEL: testWhileRegionExplicitCast
+func.func @testWhileRegionExplicitCast(%arg0 : tensor<i32>, %arg1 : tensor<*xi32>) -> tensor<i32> {
+  // CHECK: [[CAST1:%.*]] = "tf.Cast"(%arg1)
+  // CHECK: "tf.WhileRegion"(%arg0, [[CAST1]])
+  %0:2 = "tf.WhileRegion"(%arg0, %arg1) (
+    {
+      // condition, check if count has reached 0
+      ^bb0(%carg0: tensor<i32>, %carg1: tensor<i32>):
+      %ne = "tf.NotEqual"(%carg0, %carg1) : (tensor<i32>, tensor<i32>) -> tensor<i1>
+      "tf.Yield"(%ne) : (tensor<i1>) -> ()
+    },
+    {
+      // loop body
+      ^bb0(%barg0: tensor<i32>, %barg1: tensor<i32>):
+      %one = arith.constant dense<1> : tensor<i32>
+      %sub0 = "tf.Sub"(%barg0, %one) : (tensor<i32>, tensor<i32>) -> tensor<i32>
+      %sub1 = "tf.Sub"(%barg1, %one) : (tensor<i32>, tensor<i32>) -> tensor<i32>
+      "tf.Yield"(%sub0, %sub1) : (tensor<i32>, tensor<i32>) -> ()
+    }
+  ) { is_stateless = false } : (tensor<i32>, tensor<*xi32>) -> (tensor<i32>, tensor<i32>)
+  return %0#0 : tensor<i32>
+}
+
+// Check that an iteration variable that requires an explicit Cast to be pass
+// through is actually made pass through.
+// CHECK-LABEL: testWhileRegionPassThroughExplicitCast
+func.func @testWhileRegionPassThroughExplicitCast(%arg0 : tensor<i32>, %arg1 : tensor<*xi32>) -> tensor<i32> {
+  // CHECK: [[CAST1:%.*]] = "tf.Cast"(%arg1)
+  // CHECK: "tf.WhileRegion"(%arg0)
+  %0:2 = "tf.WhileRegion"(%arg0, %arg1) (
+    {
+      // condition, check if count has reached 0
+      ^bb0(%carg0: tensor<i32>, %carg1: tensor<i32>):
+      %zero = arith.constant dense<0> : tensor<i32>
+      %ne = "tf.NotEqual"(%carg0, %zero) : (tensor<i32>, tensor<i32>) -> tensor<i1>
+      "tf.Yield"(%ne) : (tensor<i1>) -> ()
+    },
+    {
+      // loop body
+      ^bb0(%barg0: tensor<i32>, %barg1: tensor<i32>):
+      %one = arith.constant dense<1> : tensor<i32>
+      %sub = "tf.Sub"(%barg0, %one) : (tensor<i32>, tensor<i32>) -> tensor<i32>
+      "tf.Yield"(%sub, %barg1) : (tensor<i32>, tensor<i32>) -> ()
+    }
+  ) { is_stateless = false } : (tensor<i32>, tensor<*xi32>) -> (tensor<i32>, tensor<i32>)
+  // CHECK: return [[CAST1]]
+  func.return %0#1 : tensor<i32>
+}
+
 // Check that output_shapes attribute is removed for tf.If
 func.func private @testIfThen(tensor<*xf32>) -> tensor<*xf32>
 func.func private @testIfElse(tensor<*xf32>) -> tensor<*xf32>
@@ -1993,7 +2064,7 @@ func.func @testXlaConvToV2(%lhs: tensor<8x4x16x16x16xf32>, %rhs: tensor<4x3x3x16
 
 // CHECK-LABEL: testXlaReduceToXlaVariadicReduceV2
 func.func @testXlaReduceToXlaVariadicReduceV2(%arg0: tensor<*xbf16>, %arg1: tensor<*xbf16>) -> tensor<*xbf16> {
-  // CHECK: "tf.XlaVariadicReduceV2"(%arg0, %arg1) {dimensions_to_reduce = [], operand_segment_sizes = dense<1> : vector<2xi32>, reducer = @sum1} : (tensor<*xbf16>, tensor<*xbf16>) -> tensor<*xbf16>
+  // CHECK: "tf.XlaVariadicReduceV2"(%arg0, %arg1) {dimensions_to_reduce = [], operand_segment_sizes = array<i32: 1, 1>, reducer = @sum1} : (tensor<*xbf16>, tensor<*xbf16>) -> tensor<*xbf16>
   %0 = "tf.XlaReduce"(%arg0, %arg1) {dimensions_to_reduce = [], reducer = @sum1} : (tensor<*xbf16>, tensor<*xbf16>) -> tensor<*xbf16>
   func.return %0 : tensor<*xbf16>
 }
@@ -2005,7 +2076,7 @@ func.func private @sum1(%arg0: tensor<*xbf16>, %arg1: tensor<*xbf16>) -> tensor<
 
 // CHECK-LABEL: testXlaVariadicReduceToV2
 func.func @testXlaVariadicReduceToV2(%arg0: tensor<3x4xf32>, %arg1: tensor<f32>) -> tensor<?x?xf32> {
-  // CHECK:  "tf.XlaVariadicReduceV2"(%arg0, %arg1) {dimensions_to_reduce = [], operand_segment_sizes = dense<1> : vector<2xi32>, reducer = @sum2} : (tensor<3x4xf32>, tensor<f32>) -> tensor<?x?xf32>
+  // CHECK:  "tf.XlaVariadicReduceV2"(%arg0, %arg1) {dimensions_to_reduce = [], operand_segment_sizes = array<i32: 1, 1>, reducer = @sum2} : (tensor<3x4xf32>, tensor<f32>) -> tensor<?x?xf32>
   %0 = "tf.XlaVariadicReduce"(%arg0, %arg1) {dimensions_to_reduce = [], reducer = @sum2} : (tensor<3x4xf32>, tensor<f32>) -> tensor<?x?xf32>
   func.return %0 : tensor<?x?xf32>
 }
@@ -2100,4 +2171,21 @@ func.func @testTensorListGetItemMultipleUsers(%arg0: tensor<1600x1x32xf32>, %arg
   // CHECK: %[[CST:.*]] = "tf.Const"() {value = dense<0> : tensor<i32>} : () -> tensor<i32>
   // CHECK: %[[RES0:.*]] = "tf.GatherV2"(%arg0, %arg2, %cst) {batch_dims = 0 : i64} : (tensor<1600x1x32xf32>, tensor<i32>, tensor<i32>) -> tensor<1x32xf32>
   // CHECK: %[[RES1:.*]] = "tf.GatherV2"(%arg0, %arg3, %cst) {batch_dims = 0 : i64} : (tensor<1600x1x32xf32>, tensor<i32>, tensor<i32>) -> tensor<1x32xf32>
+}
+
+// CHECK-LABEL: testUnaryIdempotent
+func.func @testUnaryIdempotent(%arg0: tensor<4xf32>) -> (tensor<4xf32>) {
+  // CHECK: tf.Abs
+  // CHECK-NOT: tf.Abs
+  %0 = "tf.Abs"(%arg0) : (tensor<4xf32>) -> tensor<4xf32>
+  %1 = "tf.Abs"(%0) : (tensor<4xf32>) -> tensor<4xf32>
+  func.return %1 : tensor<4xf32>
+}
+
+// CHECK-LABEL: testInvolution
+func.func @testInvolution(%arg0: tensor<4xi32>) -> (tensor<4xi32>) {
+  // CHECK-NOT: tf.Invert
+  %0 = "tf.Invert"(%arg0) : (tensor<4xi32>) -> tensor<4xi32>
+  %1 = "tf.Invert"(%0) : (tensor<4xi32>) -> tensor<4xi32>
+  func.return %1 : tensor<4xi32>
 }

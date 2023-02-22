@@ -13,16 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_PLATFORM_REGEXP_H_
-#define TENSORFLOW_PLATFORM_REGEXP_H_
+#ifndef TENSORFLOW_CORE_PLATFORM_REGEXP_H_
+#define TENSORFLOW_CORE_PLATFORM_REGEXP_H_
+#include "tensorflow/tsl/platform/regexp.h"
 
-#include "tensorflow/core/platform/platform.h"
-
-#if defined(PLATFORM_GOOGLE) || defined(PLATFORM_GOOGLE_ANDROID) || \
-    defined(PLATFORM_GOOGLE_IOS) || defined(PLATFORM_PORTABLE_GOOGLE)
-#include "third_party/re2/re2.h"
-#else
-#include "re2/re2.h"
-#endif
-
-#endif  // TENSORFLOW_PLATFORM_REGEXP_H_
+#endif  // TENSORFLOW_CORE_PLATFORM_REGEXP_H_

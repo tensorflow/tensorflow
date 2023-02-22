@@ -1,8 +1,9 @@
-load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
-load("//tensorflow/core/platform:build_config.bzl", "tf_stream_executor_deps")
-load("//tensorflow/stream_executor:build_defs.bzl", "stream_executor_friends")
+load("//tensorflow/tsl/platform:rules_cc.bzl", "cc_library")
+load("//tensorflow/tsl/platform:build_config.bzl", "tf_stream_executor_deps")
+load("//tensorflow/compiler/xla/stream_executor:build_defs.bzl", "stream_executor_friends")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [":friends"],
     licenses = ["notice"],
 )
@@ -21,9 +22,9 @@ cc_library(
         "port.h",
     ],
     deps = [
-        "//tensorflow/core/platform:macros",
-        "//tensorflow/core/platform:types",
-        "//tensorflow/core/platform:logging",
+        "//tensorflow/tsl/platform:macros",
+        "//tensorflow/tsl/platform:types",
+        "//tensorflow/tsl/platform:logging",
     ] + tf_stream_executor_deps("platform", "//tensorflow/compiler/xla/stream_executor/platform/"),
 )
 

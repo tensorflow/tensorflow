@@ -166,5 +166,40 @@ absl::Status FullyConnectedExtraLargeTest(TestExecutionEnvironment* env) {
   return absl::OkStatus();
 }
 
+absl::Status FullyConnectedInt8Test(TestExecutionEnvironment* env) {
+  TensorFloat32 src_tensor;
+  src_tensor.shape = BHWC(1, 1, 1, 4);
+  src_tensor.data = {0.0f, 1.0f, 2.0f, 3.0f};
+
+  FullyConnectedInt8Attributes attr;
+  attr.weights.shape = OHWI(2, 1, 1, 4);
+  attr.weights.data = {2,  4,  6,   8,  //
+                       10, 12, -14, 16};
+  attr.bias.shape = Linear(2);
+  attr.bias.data = {0.5f, -0.5f};
+  attr.scale = 0.5f;
+  attr.zero_point = 0;
+
+  for (auto precision : env->GetSupportedPrecisions()) {
+    auto data_type = DeduceDataTypeFromPrecision(precision);
+    for (auto storage : env->GetSupportedStorages(data_type)) {
+      const float eps = precision == CalculationsPrecision::F32 ? 1e-6f : 1e-3f;
+      OperationDef op_def;
+      op_def.precision = precision;
+      op_def.src_tensors.push_back({data_type, storage, Layout::HWC});
+      op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
+      TensorFloat32 dst_tensor;
+      FullyConnected operation =
+          CreateFullyConnected(env->GetGpuInfo(), op_def, attr);
+      RETURN_IF_ERROR(env->ExecuteGPUOperation(
+          src_tensor, std::make_unique<FullyConnected>(std::move(operation)),
+          BHWC(1, 1, 1, 2), &dst_tensor));
+      RETURN_IF_ERROR(PointWiseNear({20.5f, 15.5f}, dst_tensor.data, eps))
+          << "Failed using precision " << ToString(precision);
+    }
+  }
+  return absl::OkStatus();
+}
+
 }  // namespace gpu
 }  // namespace tflite

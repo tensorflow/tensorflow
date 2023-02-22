@@ -18,7 +18,6 @@ TODO(martinz): make this suitable for output for tf.shape
 TODO(martinz): replace ragged_tensor_shape with this.
 """
 
-
 import abc
 from typing import Any, Iterable, Optional, Sequence, Tuple, Union
 
@@ -60,13 +59,15 @@ class _DynamicRaggedShapeBatchEncoder(extension_type.ExtensionTypeBatchEncoder):
           dtype=spec.dtype)
     elif batch_size is None:
       if spec.inner_rank == 0:
-        return DynamicRaggedShape.Spec._from_tensor_shape([None],  # pylint:disable=protected-access
-                                                          0,
-                                                          dtype=spec.dtype)
+        return DynamicRaggedShape.Spec._from_tensor_shape(  # pylint:disable=protected-access
+            [None],
+            0,
+            dtype=spec.dtype)
       else:
         # Might be None
-        new_head = RowPartitionSpec(uniform_row_length=spec._dimension(0),  # pylint:disable=protected-access
-                                    dtype=spec.dtype)
+        new_head = RowPartitionSpec(
+            uniform_row_length=spec._dimension(0),  # pylint:disable=protected-access
+            dtype=spec.dtype)
         new_static_inner_shape = _batch_static_inner_shape(
             spec._static_inner_shape, batch_size)  # pylint:disable=protected-access
         return DynamicRaggedShape.Spec(
@@ -77,8 +78,9 @@ class _DynamicRaggedShapeBatchEncoder(extension_type.ExtensionTypeBatchEncoder):
 
       return DynamicRaggedShape.Spec(
           row_partitions=[],
-          static_inner_shape=_batch_tensor_shape(spec._static_inner_shape,  # pylint:disable=protected-access
-                                                 batch_size),
+          static_inner_shape=_batch_tensor_shape(
+              spec._static_inner_shape,  # pylint:disable=protected-access
+              batch_size),
           dtype=spec.dtype)
 
   def unbatch(self,
@@ -97,13 +99,15 @@ class _DynamicRaggedShapeBatchEncoder(extension_type.ExtensionTypeBatchEncoder):
                   uniform_row_length=rp.uniform_row_length,
                   dtype=spec.dtype))
         else:
-          nrows = None if rp.nrows is None else rp.nrows//scale
+          nrows = None if rp.nrows is None else rp.nrows // scale
           if rp.uniform_row_length is None:
             scale = None
-            result.append(RowPartitionSpec(nrows=nrows,
-                                           nvals=None,
-                                           uniform_row_length=None,
-                                           dtype=spec.dtype))
+            result.append(
+                RowPartitionSpec(
+                    nrows=nrows,
+                    nvals=None,
+                    uniform_row_length=None,
+                    dtype=spec.dtype))
           else:
             result.append(
                 RowPartitionSpec(
@@ -122,18 +126,19 @@ class _DynamicRaggedShapeBatchEncoder(extension_type.ExtensionTypeBatchEncoder):
           static_inner_shape=spec._static_inner_shape[1:],  # pylint:disable=protected-access
           dtype=spec.dtype)
 
-  def decode(self, spec: "DynamicRaggedShape.Spec", encoding
-             ) -> "DynamicRaggedShape":
+  def decode(self, spec: "DynamicRaggedShape.Spec",
+             encoding) -> "DynamicRaggedShape":
     return DynamicRaggedShape.from_tensor(encoding, dtype=spec.dtype)
 
-  def encode(self, spec: "DynamicRaggedShape.Spec", value, minimum_rank=0
-             ) -> Union[ragged_tensor.RaggedTensor, ops.Tensor]:
+  def encode(self,
+             spec: "DynamicRaggedShape.Spec",
+             value,
+             minimum_rank=0) -> Union[ragged_tensor.RaggedTensor, ops.Tensor]:
     return ones(value, dtype=dtypes.bool)
 
   def encoding_specs(
-      self,
-      spec: "DynamicRaggedShape.Spec"
-      ) -> Union[ragged_tensor.RaggedTensorSpec, tensor_spec.TensorSpec]:
+      self, spec: "DynamicRaggedShape.Spec"
+  ) -> Union[ragged_tensor.RaggedTensorSpec, tensor_spec.TensorSpec]:
     if spec.rank != 0:
       ragged_rank = spec.num_row_partitions
     else:
@@ -223,8 +228,8 @@ class DynamicRaggedShape(extension_type.BatchableExtensionType):
       dtype: tf.int64, tf.int32, or None representing the preferred dtype.
       validate: if true, dynamic validation is applied to the shape.
       static_inner_shape: if len(row_partitions) > 0, the static shape of the
-        flat_values. Otherwise, the static shape of the tensor.
-        Should be convertible to a TensorShape.
+        flat_values. Otherwise, the static shape of the tensor. Should be
+        convertible to a TensorShape.
     """
     if not isinstance(row_partitions, Iterable):
       raise TypeError(
@@ -266,9 +271,7 @@ class DynamicRaggedShape(extension_type.BatchableExtensionType):
           if validate:
             checks.append(
                 check_ops.assert_equal(
-                    previous_row_partition.nvals(),
-                    rp.nrows(),
-                    message=msg))
+                    previous_row_partition.nvals(), rp.nrows(), message=msg))
 
     self._inner_shape.shape.assert_has_rank(1)
 
@@ -357,7 +360,7 @@ class DynamicRaggedShape(extension_type.BatchableExtensionType):
     Args:
       lengths: the lengths of sublists along each axis.
       num_row_partitions: the num_row_partitions of the result or None
-      indicating the minimum number of row_partitions.
+        indicating the minimum number of row_partitions.
       dtype: the dtype of the shape (tf.int32 or tf.int64).
 
     Returns:
@@ -389,17 +392,14 @@ class DynamicRaggedShape(extension_type.BatchableExtensionType):
       return DynamicRaggedShape([], [], dtype=dtype)
 
     if not num_row_partitions < len(lengths):
-      raise ValueError(
-          "num_row_partitions should be less than `len(lengths)` "
-          "if shape is not scalar."
-      )
+      raise ValueError("num_row_partitions should be less than `len(lengths)` "
+                       "if shape is not scalar.")
 
     if num_row_partitions > 0:
       (row_partitions, nvals) = _to_row_partitions_and_nvals_from_lengths(
           lengths[:num_row_partitions + 1])
       inner_shape = [nvals] + lengths[num_row_partitions + 1:]
-      return DynamicRaggedShape(
-          row_partitions, inner_shape, dtype=dtype)
+      return DynamicRaggedShape(row_partitions, inner_shape, dtype=dtype)
     else:
       return DynamicRaggedShape([], lengths, dtype=dtype)
 
@@ -417,8 +417,7 @@ class DynamicRaggedShape(extension_type.BatchableExtensionType):
     if not row_partitions:
       raise ValueError("row_partitions cannot be empty")
     inner_shape = [row_partitions[-1].nvals()]
-    return DynamicRaggedShape(
-        row_partitions, inner_shape, dtype=dtype)
+    return DynamicRaggedShape(row_partitions, inner_shape, dtype=dtype)
 
   @classmethod
   def _from_inner_shape(cls, inner_shape, dtype=None):
@@ -551,8 +550,8 @@ class DynamicRaggedShape(extension_type.BatchableExtensionType):
         return DynamicRaggedShape(
             row_partitions=self.row_partitions,
             inner_shape=new_inner_shape,
-            static_inner_shape=tensor_shape.TensorShape([None]
-                                                        * new_inner_rank),
+            static_inner_shape=tensor_shape.TensorShape([None] *
+                                                        new_inner_rank),
             validate=False)
     else:
       if self.rank is None or stop < self.rank:
@@ -864,8 +863,7 @@ class DynamicRaggedShape(extension_type.BatchableExtensionType):
             row_length, nrows=nrows, dtype=self.dtype)
         more_rp.append(rp)
       alt_inner = self._alt_inner_shape(new_inner_rank)
-      return DynamicRaggedShape(
-          list(self.row_partitions) + more_rp, alt_inner)
+      return DynamicRaggedShape(list(self.row_partitions) + more_rp, alt_inner)
     else:
       assert num_row_partitions < self.num_row_partitions
       return DynamicRaggedShape(
@@ -881,11 +879,14 @@ class DynamicRaggedShape(extension_type.BatchableExtensionType):
 
     #### Examples:
 
-    >>> tf.experimental.DynamicRaggedShape.from_lengths([2, (2,1), (1,2,3)])._merge_dims(0, 1)  # pylint: disable=line-too-long
+    >>> tf.experimental.DynamicRaggedShape.from_lengths([2, (2,1),
+    ...     (1,2,3)])._merge_dims(0, 1)
     <DynamicRaggedShape lengths=[3, (1, 2, 3)] num_row_partitions=1>
-    >>> tf.experimental.DynamicRaggedShape.from_lengths([2, (2,1), (1,2,3)])._merge_dims(1, 2)  # pylint: disable=line-too-long
+    >>> tf.experimental.DynamicRaggedShape.from_lengths([2, (2,1),
+    ...     (1,2,3)])._merge_dims(1, 2)
     <DynamicRaggedShape lengths=[2, (3, 3)] num_row_partitions=1>
-    >>> tf.experimental.DynamicRaggedShape.from_lengths([2, (2,1), (1,2,3)])._merge_dims(0, 2)  # pylint: disable=line-too-long
+    >>> tf.experimental.DynamicRaggedShape.from_lengths([2, (2,1),
+    ...     (1,2,3)])._merge_dims(0, 2)
     <DynamicRaggedShape lengths=[6] num_row_partitions=0>
 
     To mimic the behavior of `np.flatten` (which flattens all dimensions), use
@@ -906,15 +907,9 @@ class DynamicRaggedShape(extension_type.BatchableExtensionType):
       is the total number of slices in the merged dimensions.
     """
     outer_axis = array_ops.get_positive_axis(
-        outer_axis,
-        self.rank,
-        axis_name="outer_axis",
-        ndims_name="rank(self)")
+        outer_axis, self.rank, axis_name="outer_axis", ndims_name="rank(self)")
     inner_axis = array_ops.get_positive_axis(
-        inner_axis,
-        self.rank,
-        axis_name="inner_axis",
-        ndims_name="rank(self)")
+        inner_axis, self.rank, axis_name="inner_axis", ndims_name="rank(self)")
     if not outer_axis <= inner_axis:
       raise ValueError(f"Expected outer_axis ({outer_axis}) to be less than or "
                        f"equal to inner_axis ({inner_axis}).")
@@ -922,8 +917,10 @@ class DynamicRaggedShape(extension_type.BatchableExtensionType):
       return self
     if self.num_row_partitions == 0:
       # A dense tensor.
-      (new_inner_shape, new_static_inner_shape) = _merge_inner_shape(
-          self._inner_shape, self._static_inner_shape, outer_axis, inner_axis)
+      (new_inner_shape,
+       new_static_inner_shape) = _merge_inner_shape(self._inner_shape,
+                                                    self._static_inner_shape,
+                                                    outer_axis, inner_axis)
       return DynamicRaggedShape([],
                                 new_inner_shape,
                                 dtype=self.dtype,
@@ -944,7 +941,9 @@ class DynamicRaggedShape(extension_type.BatchableExtensionType):
       new_rp = prefix_rp + (_merge_row_partitions(internal_rp),) + suffix_rp
 
       return DynamicRaggedShape(
-          new_rp, self.inner_shape, dtype=self.dtype,
+          new_rp,
+          self.inner_shape,
+          dtype=self.dtype,
           static_inner_shape=self._static_inner_shape)
     elif outer_axis > self.num_row_partitions:
       # In this scenario, only the inner_shape is changed.
@@ -954,11 +953,12 @@ class DynamicRaggedShape(extension_type.BatchableExtensionType):
       #     inner_axis=3.
       (new_inner_shape, new_static_inner_shape) = _merge_inner_shape(
           self._inner_shape, self._static_inner_shape,
-          outer_axis-self.num_row_partitions,
-          inner_axis-self.num_row_partitions)
+          outer_axis - self.num_row_partitions,
+          inner_axis - self.num_row_partitions)
       return DynamicRaggedShape(
           self._row_partitions,
-          new_inner_shape, dtype=self.dtype,
+          new_inner_shape,
+          dtype=self.dtype,
           static_inner_shape=new_static_inner_shape)
     else:
       # Here, both inner_shape and row_partitions are changed.
@@ -970,8 +970,8 @@ class DynamicRaggedShape(extension_type.BatchableExtensionType):
         new_inner_shape = self._alt_inner_shape(rank - inner_axis)
         return DynamicRaggedShape._from_inner_shape(new_inner_shape)
       else:
-        prefix = self._row_partitions[:outer_axis-1]
-        suffix = _merge_row_partitions(self._row_partitions[outer_axis-1:])
+        prefix = self._row_partitions[:outer_axis - 1]
+        suffix = _merge_row_partitions(self._row_partitions[outer_axis - 1:])
         new_inner_shape = self._alt_inner_shape(rank - inner_axis)
         num_merged_inner = inner_axis - self.num_row_partitions
         prod = _reduce_prod_patch(self._inner_shape[1:num_merged_inner + 1])
@@ -994,7 +994,7 @@ class DynamicRaggedShape(extension_type.BatchableExtensionType):
 
     Args:
       other: a DynamicRaggedShape representing the same shape with a possibly
-      different number of row partitions.
+        different number of row partitions.
 
     Returns:
       A DynamicRaggedShape with the same shape and the maximum of the
@@ -1024,19 +1024,17 @@ class DynamicRaggedShape(extension_type.BatchableExtensionType):
                                  other.num_row_partitions)
     a = self._with_num_row_partitions(max_num_row_partitions)
     b = other._with_num_row_partitions(max_num_row_partitions)
-    new_row_partitions = [rp_a._merge_with_spec(rp_b) for (rp_a, rp_b) in
-                          zip(a._row_partitions, b._row_partitions)]
+    new_row_partitions = [
+        rp_a._merge_with_spec(rp_b)
+        for (rp_a, rp_b) in zip(a._row_partitions, b._row_partitions)
+    ]
     new_dtype = b.dtype if a.dtype == dtypes.int32 else dtypes.int64
 
     new_static_inner_shape = a._static_inner_shape.merge_with(
         b._static_inner_shape)
     new_inner_shape = a._inner_shape
-    return DynamicRaggedShape(
-        new_row_partitions,
-        new_inner_shape,
-        new_dtype,
-        True,
-        new_static_inner_shape)
+    return DynamicRaggedShape(new_row_partitions, new_inner_shape, new_dtype,
+                              True, new_static_inner_shape)
 
   def _as_row_partitions(self):
     """Returns row partitions representing this shape.
@@ -1121,7 +1119,7 @@ class DynamicRaggedShape(extension_type.BatchableExtensionType):
 
       Args:
         row_partitions: A sequence of `RowPartitionSpec`s describing how the
-            ragged shape is partitioned.
+          ragged shape is partitioned.
         static_inner_shape: The static shape of the flat_values.
         dtype: The DType used to encode the shape (tf.int64 or tf.int32).
       """
@@ -1157,7 +1155,7 @@ class DynamicRaggedShape(extension_type.BatchableExtensionType):
           raise ValueError(
               "If row_partitions are provided, must have inner_rank > 0")
       else:
-        num_slices_in_dimension = []   # type: Sequence[tensor_shape.Dimension]
+        num_slices_in_dimension = []  # type: Sequence[tensor_shape.Dimension]
 
         # We first attempt to calculate num_slices_in_dimension through a
         # forward pass, using nrows[k] = nrows[k-1] * uniform_row_length
@@ -1200,8 +1198,7 @@ class DynamicRaggedShape(extension_type.BatchableExtensionType):
         ]
 
       self._static_inner_shape = static_inner_shape
-      self._inner_shape = tensor_spec.TensorSpec(
-          [inner_rank], dtype=dtype)
+      self._inner_shape = tensor_spec.TensorSpec([inner_rank], dtype=dtype)
       self._row_partitions = row_partitions
 
     def __repr__(self):
@@ -1234,9 +1231,7 @@ class DynamicRaggedShape(extension_type.BatchableExtensionType):
     # proper Tensor instead of a RaggedTensor, this is also subject to
     # interpretation.
     @classmethod
-    def _from_tensor_shape(cls,
-                           shape: Any,
-                           num_row_partitions: int,
+    def _from_tensor_shape(cls, shape: Any, num_row_partitions: int,
                            dtype: dtypes.DType) -> "DynamicRaggedShape.Spec":
       """Creates a `DynamicRaggedShape.Spec` corresponding to a `tf.TensorShape`.
 
@@ -1289,11 +1284,12 @@ class DynamicRaggedShape(extension_type.BatchableExtensionType):
           nvals = None
         else:
           nvals = num_elements_so_far * current_dim
-        rp_specs.append(RowPartitionSpec(
-            nrows=num_elements_so_far,
-            nvals=nvals,
-            uniform_row_length=current_dim,
-            dtype=dtype))
+        rp_specs.append(
+            RowPartitionSpec(
+                nrows=num_elements_so_far,
+                nvals=nvals,
+                uniform_row_length=current_dim,
+                dtype=dtype))
         num_elements_so_far = nvals
 
       static_inner_shape = tensor_shape.TensorShape(
@@ -1335,13 +1331,11 @@ class DynamicRaggedShape(extension_type.BatchableExtensionType):
       if isinstance(spec, DynamicRaggedShape.Spec):
         return spec
       elif isinstance(spec, ragged_tensor.RaggedTensorSpec):
-        return cls._from_tensor_shape(spec.shape,
-                                      spec.ragged_rank,
+        return cls._from_tensor_shape(spec.shape, spec.ragged_rank,
                                       spec.row_splits_dtype)
       elif isinstance(spec, tensor_spec.TensorSpec):
-        return cls._from_tensor_shape(shape=spec.shape,
-                                      num_row_partitions=0,
-                                      dtype=dtype)
+        return cls._from_tensor_shape(
+            shape=spec.shape, num_row_partitions=0, dtype=dtype)
 
     @property
     def dtype(self) -> dtypes.DType:
@@ -1440,8 +1434,7 @@ class DynamicRaggedShape(extension_type.BatchableExtensionType):
           dtype=dtype)
 
     def _merge_with(
-        self,
-        other: "DynamicRaggedShape.Spec") -> "DynamicRaggedShape.Spec":
+        self, other: "DynamicRaggedShape.Spec") -> "DynamicRaggedShape.Spec":
       """Merges all information between two specs.
 
       Specs are expected to represent the same information modulo
@@ -1474,8 +1467,7 @@ class DynamicRaggedShape(extension_type.BatchableExtensionType):
           new_rp, new_static_inner_shape, dtype=dtype)
 
     def _with_num_row_partitions(
-        self,
-        new_num_row_partitions: int) -> "DynamicRaggedShape.Spec":
+        self, new_num_row_partitions: int) -> "DynamicRaggedShape.Spec":
       """Change the number of row partitions in the spec."""
       rank = self.rank
       if rank is None:
@@ -1506,8 +1498,8 @@ class DynamicRaggedShape(extension_type.BatchableExtensionType):
                 [last_row_partition.nvals] +
                 [x.uniform_row_length for x in old_row_partitions]) +
             self._static_inner_shape[1:])
-        return DynamicRaggedShape.Spec(
-            new_row_partitions, new_static_inner_shape, self.dtype)
+        return DynamicRaggedShape.Spec(new_row_partitions,
+                                       new_static_inner_shape, self.dtype)
 
     def _set_rank_if_unknown(self, new_rank: int) -> "DynamicRaggedShape.Spec":
       """Ensures this has a known rank at least new_rank."""
@@ -1527,8 +1519,8 @@ class DynamicRaggedShape(extension_type.BatchableExtensionType):
       if self._row_partitions:
         new_inner_rank = max(new_rank - self.num_row_partitions, 1)
         first_dim = self._row_partitions[-1].nvals
-        static_inner_shape = tensor_shape.TensorShape(
-            [first_dim] + [None] * (new_inner_rank - 1))
+        static_inner_shape = tensor_shape.TensorShape([first_dim] + [None] *
+                                                      (new_inner_rank - 1))
       else:
         static_inner_shape = tensor_shape.TensorShape([None] * new_rank)
 
@@ -1650,8 +1642,8 @@ def broadcast_to(rt_input, shape: DynamicRaggedShape):
     if shape.num_row_partitions != 0:
       origin_shape = DynamicRaggedShape.from_tensor(rt_input, dtype=shape.dtype)
     else:
-      origin_shape = DynamicRaggedShape.from_tensor(rt_input,
-                                                    dtype=dtypes.int64)
+      origin_shape = DynamicRaggedShape.from_tensor(
+          rt_input, dtype=dtypes.int64)
       shape = shape.with_dtype(dtype=dtypes.int64)
 
   broadcaster = _get_broadcaster(origin_shape, shape)
@@ -1752,7 +1744,8 @@ def ragged_binary_elementwise_op_impl(op, x, y):
     if _row_partitions_identical(shape_x, shape_y):
       # At this point, both x and y must be ragged.
       return shape_x._add_row_partitions(  # pylint: disable=protected-access
-          op(x.flat_values, y.flat_values), validate=False)
+          op(x.flat_values, y.flat_values),
+          validate=False)
 
     (shape_z, bcast_xz,
      bcast_yz) = broadcast_dynamic_shape_extended(shape_x, shape_y)
@@ -1971,6 +1964,7 @@ class _LayerBroadcaster(abc.ABC):
     Args:
       nvals: the number of values for the broadcaster.
       dtype: the dtype of the broadcaster, or None to use the dtype of nvals.
+
     Returns:
       an identity broadcaster from [0....nvals-1] to [0...nvals-1]
     """
@@ -2431,6 +2425,7 @@ def _broadcast_dynamic_shape_first_layer(a_0, b_0):
     layer_a is a _LayerBroadcaster from a to the target.
     layer_b is a _LayerBroadcaster from b to the target.
   """
+
   def broadcast_from_a():
     # Assumes a_0 == 1
     a_layer = array_ops.zeros(b_0, dtype=b_0.dtype)
@@ -2647,16 +2642,14 @@ def _broadcast_dynamic_shape_next_layer_both_uniform(
       [ac_1, _] = _broadcast_half(ac_0, a_1)
       [bc_1, _] = _broadcast_half(bc_0, b_1)
       c_1 = RowPartition.from_uniform_row_length(
-          static_a_1,
-          nrows=ac_0.dest_nrows())
+          static_a_1, nrows=ac_0.dest_nrows())
       return [c_1, ac_1, bc_1]
     elif static_a_1 == 1:
       [bc_1, c_1b] = _broadcast_half(bc_0, b_1)
       ac_1 = _LayerBroadcaster.from_gather_index(
           array_ops.gather(ac_0.gather_index, c_1b.value_rowids()))
       c_1 = RowPartition.from_uniform_row_length(
-          b_1.uniform_row_length(),
-          nrows=bc_0.dest_nrows())
+          b_1.uniform_row_length(), nrows=bc_0.dest_nrows())
       return [c_1, ac_1, bc_1]
 
   if static_b_1 == 1:
@@ -2664,8 +2657,7 @@ def _broadcast_dynamic_shape_next_layer_both_uniform(
     bc_1 = _LayerBroadcaster.from_gather_index(
         array_ops.gather(bc_0.gather_index, c_1a.value_rowids()))
     c_1 = RowPartition.from_uniform_row_length(
-        a_1.uniform_row_length(),
-        nrows=ac_0.dest_nrows())
+        a_1.uniform_row_length(), nrows=ac_0.dest_nrows())
     return [c_1, ac_1, bc_1]
 
   def broadcast_noop():
@@ -2774,9 +2766,10 @@ def _broadcast_dynamic_shape_next_layer(
       check_valid = [
           check_ops.assert_equal(c_1a.row_splits(), c_1b.row_splits())
       ]
-      return (c_1a._with_dependencies(check_valid),  # pylint: disable=protected-access
-              ac_1.with_dependencies(check_valid),
-              bc_1.with_dependencies(check_valid))
+      return (
+          c_1a._with_dependencies(check_valid),  # pylint: disable=protected-access
+          ac_1.with_dependencies(check_valid),
+          bc_1.with_dependencies(check_valid))
 
 
 def _broadcast_dynamic_shape_from_rps(
@@ -3187,8 +3180,7 @@ def _merge_row_partitions(
 
 
 def _merge_inner_shape(
-    inner_shape: ops.Tensor,
-    static_inner_shape: tensor_shape.TensorShape,
+    inner_shape: ops.Tensor, static_inner_shape: tensor_shape.TensorShape,
     outer_axis: int,
     inner_axis: int) -> Tuple[ops.Tensor, tensor_shape.TensorShape]:
   """Merge the inner shape of a DynamicRaggedShape."""
@@ -3199,8 +3191,8 @@ def _merge_inner_shape(
   internal_value = [_reduce_prod_patch(internal)]
   new_internal = array_ops.concat([prefix, internal_value, suffix], axis=0)
   prefix_static = static_inner_shape[:outer_axis]
-  suffix_static = static_inner_shape[inner_axis+1:]
-  internal_static = static_inner_shape[outer_axis:inner_axis+1]
+  suffix_static = static_inner_shape[inner_axis + 1:]
+  internal_static = static_inner_shape[outer_axis:inner_axis + 1]
   internal_value_static = tensor_shape.TensorShape(
       [internal_static.num_elements()])
   new_internal_static = prefix_static + internal_value_static + suffix_static
@@ -3226,16 +3218,19 @@ def _batch_rp_spec(rp_spec: RowPartitionSpec,
   Args:
     rp_spec: a RowPartitionSpec for all the RowPartitions to be concatenated.
     batch_size: the number of rp_specs to be concatenated.
+
   Returns:
     a batched RowPartitionSpec.
   """
   if batch_size is None:
-    return RowPartitionSpec(uniform_row_length=rp_spec.uniform_row_length,
-                            dtype=rp_spec.dtype)
+    return RowPartitionSpec(
+        uniform_row_length=rp_spec.uniform_row_length, dtype=rp_spec.dtype)
   nrows = None if rp_spec.nrows is None else rp_spec.nrows * batch_size
   nvals = None if rp_spec.nvals is None else rp_spec.nvals * batch_size
   return RowPartitionSpec(
-      nrows=nrows, nvals=nvals, uniform_row_length=rp_spec.uniform_row_length,
+      nrows=nrows,
+      nvals=nvals,
+      uniform_row_length=rp_spec.uniform_row_length,
       dtype=rp_spec.dtype)
 
 
@@ -3245,7 +3240,9 @@ def _batch_rp_spec_head(old_head: RowPartitionSpec,
   nvals = None if (old_head.nrows is None or
                    batch_size is None) else batch_size * old_head.nrows
   return RowPartitionSpec(
-      nrows=batch_size, nvals=nvals, uniform_row_length=old_head.nrows,
+      nrows=batch_size,
+      nvals=nvals,
+      uniform_row_length=old_head.nrows,
       dtype=old_head.dtype)
 
 

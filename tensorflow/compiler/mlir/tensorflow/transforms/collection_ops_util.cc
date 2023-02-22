@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/tensorflow/transforms/collection_ops_util.h"
 
+#include <optional>
+
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/Optional.h"
@@ -35,6 +37,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/dynamic_shape_utils.h"
 
 namespace mlir {
 namespace TF {
@@ -42,7 +45,7 @@ namespace collection_ops_util {
 
 Value CreateScalarConst(int32_t value, OpBuilder builder, Location loc) {
   auto attr = DenseIntElementsAttr::get(
-      RankedTensorType::get({}, builder.getI32Type()), value);
+      tensorflow::GetTypeFromTFTensorShape({}, builder.getI32Type()), value);
   return builder.create<TF::ConstOp>(loc, attr);
 }
 
@@ -52,7 +55,7 @@ Value GetR1Const(ArrayRef<int64_t> r1, OpBuilder builder, Location loc,
   int64_t rank = r1.size();
   values.reserve(rank);
   for (int i = 0; i < rank; ++i) values.push_back(APInt(bitwidth, r1[i]));
-  auto result_type = RankedTensorType::get(
+  auto result_type = tensorflow::GetTypeFromTFTensorShape(
       {rank}, IntegerType::get(builder.getContext(), bitwidth));
   return builder.create<TF::ConstOp>(
       loc, DenseElementsAttr::get(result_type, values));
@@ -67,7 +70,7 @@ Value GetIndicesForElement(Value index, Value buffer, OpBuilder builder,
   auto zeros_tensor = GetR1Const(zeros, builder, loc);
   return builder.create<TF::ConcatV2Op>(
       loc,
-      ArrayRef<Type>{RankedTensorType::get(
+      ArrayRef<Type>{tensorflow::GetTypeFromTFTensorShape(
           {static_cast<int64_t>(buffer_type.getShape().size())},
           getElementTypeOrSelf(index.getType()))},
       ArrayRef<Value>{index, zeros_tensor, CreateScalarConst(0, builder, loc)});
@@ -82,20 +85,20 @@ Value GetElement(Value index, Value buffer, OpBuilder builder, Location loc,
       llvm::to_vector<8>(buffer_type.getShape());
   slice_size[0] = 1;
   auto size_const = GetR1Const(slice_size, builder, loc);
-  auto slice_type =
-      RankedTensorType::get(slice_size, buffer_type.getElementType());
+  auto slice_type = tensorflow::GetTypeFromTFTensorShape(
+      slice_size, buffer_type.getElementType());
   auto slice = builder.create<TF::SliceOp>(
       loc, ArrayRef<Type>{slice_type},
       ArrayRef<Value>{buffer, GetIndicesForElement(index, buffer, builder, loc),
                       size_const});
   if (keep_slice_shape) return slice;
-  auto element_type = RankedTensorType::get(buffer_type.getShape().drop_front(),
-                                            buffer_type.getElementType());
+  auto element_type = tensorflow::GetTypeFromTFTensorShape(
+      buffer_type.getShape().drop_front(), buffer_type.getElementType());
   auto reshape = builder.create<TF::ReshapeOp>(
       loc, ArrayRef<Type>{element_type},
       ArrayRef<Value>{slice,
                       GetR1Const(element_type.getShape(), builder, loc)});
-  return reshape.output();
+  return reshape.getOutput();
 }
 
 Value SetElement(Value index, Value buffer, Value element, OpBuilder builder,
@@ -105,8 +108,8 @@ Value SetElement(Value index, Value buffer, Value element, OpBuilder builder,
   // not have that dimension, then perform a dynamic update slice.
   auto slice_shape = llvm::to_vector<8>(buffer_type.getShape());
   slice_shape[0] = 1;
-  auto slice_type =
-      RankedTensorType::get(slice_shape, buffer_type.getElementType());
+  auto slice_type = tensorflow::GetTypeFromTFTensorShape(
+      slice_shape, buffer_type.getElementType());
   auto update_slice = element;
   if (element.getType() != slice_type) {
     update_slice = builder.create<TF::ReshapeOp>(
@@ -118,11 +121,11 @@ Value SetElement(Value index, Value buffer, Value element, OpBuilder builder,
           loc, ArrayRef<Type>{buffer.getType()},
           ArrayRef<Value>{buffer, update_slice,
                           GetIndicesForElement(index, buffer, builder, loc)})
-      .output();
+      .getOutput();
 }
 
 TensorType GetSizeType(OpBuilder builder) {
-  return RankedTensorType::get({1}, builder.getIntegerType(32));
+  return tensorflow::GetTypeFromTFTensorShape({1}, builder.getIntegerType(32));
 }
 
 Value ReshapeScalarToSizeType(OpBuilder builder, Value scalar, Location loc) {
@@ -141,7 +144,8 @@ LogicalResult CreateInitBufferValue(ArrayRef<int64_t> element_shape,
   auto max_count_const_op = llvm::dyn_cast<TF::ConstOp>(max_count_op);
   if (!max_count_const_op) return op->emitOpError("unknown max element count");
   int64_t max_size_const =
-      (*max_count_const_op.value().getValues<APInt>().begin()).getSExtValue();
+      (*max_count_const_op.getValue().getValues<APInt>().begin())
+          .getSExtValue();
   return CreateInitBufferValue(element_shape, max_size_const, op, element_dtype,
                                builder, buffer);
 }
@@ -158,14 +162,16 @@ LogicalResult CreateInitBufferValue(ArrayRef<int64_t> element_shape,
   auto zero = CreateScalarConst(0, builder, op->getLoc());
   if (getElementTypeOrSelf(zero.getType()) != element_dtype) {
     zero = builder.create<TF::CastOp>(
-        op->getLoc(), ArrayRef<Type>{RankedTensorType::get({}, element_dtype)},
+        op->getLoc(),
+        ArrayRef<Type>{tensorflow::GetTypeFromTFTensorShape({}, element_dtype)},
         ArrayRef<Value>{zero});
   }
-  auto buffer_type = RankedTensorType::get(buffer_shape, element_dtype);
+  auto buffer_type =
+      tensorflow::GetTypeFromTFTensorShape(buffer_shape, element_dtype);
   auto broadcast = builder.create<TF::BroadcastToOp>(
       op->getLoc(), ArrayRef<Type>{buffer_type},
       ArrayRef<Value>{zero, GetR1Const(buffer_shape, builder, op->getLoc())});
-  *buffer = broadcast.output();
+  *buffer = broadcast.getOutput();
   return success();
 }
 
@@ -207,7 +213,7 @@ llvm::Optional<RankedTensorType> GetElementTypeFromAccess(
       if (elem_type && elem_type.hasStaticShape()) return elem_type;
     }
   }
-  return llvm::None;
+  return std::nullopt;
 }
 
 // Creates a ReadVariableOp on a local variable.
@@ -219,7 +225,7 @@ Value ReadLocalVariable(Value local_var, OpBuilder builder, Location loc) {
                              .cast<TF::ResourceType>()
                              .getSubtypes()[0]},
           ArrayRef<Value>{local_var})
-      .value();
+      .getValue();
 }
 
 // Creates an AssignVariableOp on a local variable.
@@ -249,7 +255,7 @@ int64_t GetFirstIfIndicesAreContiguous(Value indices) {
   if (!const_op) return -1;
   int64_t last_index = -1;
   int64_t first_index = -1;
-  for (const auto& ind : const_op.value().getValues<APInt>()) {
+  for (const auto& ind : const_op.getValue().getValues<APInt>()) {
     if (last_index == -1) {
       last_index = ind.getSExtValue();
       first_index = last_index;
@@ -272,15 +278,15 @@ Value GatherElements(Value indices, Value buffer, OpBuilder builder,
   if (maybe_contiguous_start >= 0) {
     llvm::SmallVector<int64_t, 8> slice_starts(result_shape.size(), 0);
     slice_starts[0] = maybe_contiguous_start;
-    auto slice_type =
-        RankedTensorType::get(result_shape, buffer_type.getElementType());
+    auto slice_type = tensorflow::GetTypeFromTFTensorShape(
+        result_shape, buffer_type.getElementType());
     return builder.create<TF::SliceOp>(
         loc, ArrayRef<Type>{slice_type},
         ArrayRef<Value>{buffer, GetR1Const(slice_starts, builder, loc),
                         GetR1Const(result_shape, builder, loc)});
   }
-  auto result_type =
-      RankedTensorType::get(result_shape, buffer_type.getElementType());
+  auto result_type = tensorflow::GetTypeFromTFTensorShape(
+      result_shape, buffer_type.getElementType());
   return builder.create<TF::GatherV2Op>(
       loc, ArrayRef<Type>{result_type},
       ArrayRef<Value>{buffer, indices, CreateScalarConst(0, builder, loc)});
@@ -311,12 +317,12 @@ Value ScatterAccumulateElements(Value indices, Value updates, Value buffer,
         GetElement(index, buffer, builder, loc, /*keep_slice_shape=*/true);
     starts_in_update[0] = i;
     auto update_slice_starts = GetR1Const(starts_in_update, builder, loc);
-    auto slice =
+    Value slice =
         builder
             .create<TF::SliceOp>(
                 loc, ArrayRef<Type>{old_slice.getType()},
                 ArrayRef<Value>{updates, update_slice_starts, slice_sizes})
-            .output();
+            .getOutput();
     slice = AccumulateBuffers(old_slice, slice, builder, loc);
     buffer = SetElement(index, buffer, slice, builder, loc);
   }

@@ -1,8 +1,8 @@
 # RUN: tf-mlir-translate -graphdef-to-mlir -tf-enable-shape-inference-on-import=false -tf-output-arrays=result %s | FileCheck %s
 
 # CHECK: %[[output:.*]], %[[control:.*]]tf_executor.island wraps "tf.ParseExample"
-# CHECK: operand_segment_sizes = dense<[1, 1, 0, 1, 1]> : vector<5xi32>
-# CHECK: result_segment_sizes = dense<[0, 0, 0, 1]> : vector<4xi32>
+# CHECK: operand_segment_sizes = array<i32: 1, 1, 0, 1, 1>
+# CHECK: result_segment_sizes = array<i32: 0, 0, 0, 1>
 # CHECK: tf_executor.fetch %[[output]] : tensor<*xi64>
 
 node {

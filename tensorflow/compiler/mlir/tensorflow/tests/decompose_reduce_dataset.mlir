@@ -41,12 +41,13 @@ func.func @single_state_single_dataset_type_no_arguments(
     // CHECK-NEXT:       %[[GET_VALUE:[0-9]*]] = "tf.OptionalGetValue"(%[[GET_NEXT]])
     // CHECK-NEXT:       %[[FUNC_CALL:[0-9]*]] = func.call @__reduce_func_1(%[[ARG_5]], %[[GET_VALUE]])
     // CHECK-SAME:       _xla_compile_device_type = "TPU"
+    // CHECK-SAME:       device = "/job:localhost/replica:0/task:0/device:TPU:1"
     // CHECK:            "tf.Yield"(%[[FUNC_CALL]])
     // CHECK:            "tf.Yield"(%[[ARG_5]])
     // CHECK:          "tf.Yield"(%[[HAS_VALUE]], %[[IF]])
     %1 = "tf.ReduceDataset"(%arg0, %arg1) {
       Targuments = [],
-      Tstate = [i64], device = "",
+      Tstate = [i64], device = "/job:localhost/replica:0/task:0/device:TPU:1",
       f = @__reduce_func_1, f._tf_data_function = true,
       output_shapes = [#tf_type.shape<>],
       output_types = [i64], use_inter_op_parallelism = true, _xla_compile_device_type="TPU"} : (tensor<!tf_type.variant>, tensor<i64>) -> (tensor<i64>)

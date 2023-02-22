@@ -813,26 +813,32 @@ class CheckpointManager(object):
       checkpoint_number = training_util.global_step(
           sess=session, global_step_tensor=checkpoint_number)
     prefix = "%s-%d" % (self._prefix, checkpoint_number)
+
+    def _record_and_sweep_state(save_path):
+      timestamp = time.time()
+      # If this is an overwritten checkpoint we were previously tracking, delete
+      # and reinsert it to make sure it goes to the end of the queue.
+      if save_path in self._maybe_delete:
+        del self._maybe_delete[save_path]
+      self._maybe_delete[save_path] = timestamp
+      self._latest_checkpoint = save_path
+      # Before deleting anything we update the Checkpoint proto with the new
+      # checkpoint. We'll go back and correct it after cleaning up old files,
+      # but a preemption while deleting will be more likely to see the new
+      # checkpoint this way.
+      self._record_state()
+      self._sweep()
+      # Write out the Checkpoint proto a second time, now without the deleted
+      # checkpoints.
+      self._record_state()
+
     if options is None:
-      save_path = self._checkpoint.write(prefix)
+      save_path = self._checkpoint._write(  # pylint: disable=protected-access
+          prefix, write_done_callback=_record_and_sweep_state)
     else:
-      save_path = self._checkpoint.write(prefix, options=options)
-    timestamp = time.time()
-    # If this is an overwritten checkpoint we were previously tracking, delete
-    # and reinsert it to make sure it goes to the end of the queue.
-    if save_path in self._maybe_delete:
-      del self._maybe_delete[save_path]
-    self._maybe_delete[save_path] = timestamp
-    self._latest_checkpoint = save_path
-    # Before deleting anything we update the Checkpoint proto with the new
-    # checkpoint. We'll go back and correct it after cleaning up old files, but
-    # a preemption while deleting will be more likely to see the new checkpoint
-    # this way.
-    self._record_state()
-    self._sweep()
-    # Write out the Checkpoint proto a second time, now without the deleted
-    # checkpoints.
-    self._record_state()
+      save_path = self._checkpoint._write(  # pylint: disable=protected-access
+          prefix, options=options, write_done_callback=_record_and_sweep_state)
+
     return save_path
 
   def restore_or_initialize(self):
@@ -853,6 +859,13 @@ class CheckpointManager(object):
       The restored checkpoint path if the lastest checkpoint is found and
       restored. Otherwise None.
     """
+    # TODO(chienchunh): When AsyncCheckpoint is used, we may need to force to
+    # sync until any ongoing async save is done. Otherwise, if this is the first
+    # checkpoint and _latest_checkpoint has not been updated due to async write,
+    # this would resort to init_fn instead of restoring from the checkpoin file.
+    # This should be fixed once AsyncCheckpoint is integrated with the public
+    # API so that we can rely on CheckpointOptions to tell whether we should
+    # sync for AsyncCheckpoint.
     if self._latest_checkpoint is not None:
       self._checkpoint.restore(self._latest_checkpoint)
       if self._checkpoint_interval is not None:
@@ -861,4 +874,6 @@ class CheckpointManager(object):
 
     if self._init_fn is not None:
       self._init_fn()
+      logging.info(
+          "Customized initialization is done through the passed `init_fn`.")
     return None

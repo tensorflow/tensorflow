@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/core/grappler/optimizers/data/auto_shard.h"
 
+#include <array>
+
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/match.h"
@@ -73,7 +75,8 @@ constexpr char kOutputShapes[] = "output_shapes";
 constexpr char kOutputTypes[] = "output_types";
 
 // clang-format off
-constexpr std::array<const char*, 5> kReaderDatasetOps = {
+constexpr std::array<const char*, 6> kReaderDatasetOps = {
+    "ArrayRecordDataset",
     "FixedLengthRecordDataset",
     "RecordIODataset",
     "SSTableDataset",
@@ -346,12 +349,13 @@ Status AddShuffleDatasetV3(MutableGraphView* graph, const NodeDef& add_before,
 
 bool ReaderOpInFunction(const NodeDef& node,
                         const FunctionLibraryDefinition& flib) {
-  const FunctionDef* func = flib.Find(node.attr().at("f").func().name());
+  auto f_attr_it = node.attr().find("f");
+  if (f_attr_it == node.attr().end()) return false;
+  const FunctionDef* func = flib.Find(f_attr_it->second.func().name());
   for (int i = 0; i < func->node_def_size(); i++) {
     NodeDef node_in_func = func->node_def(i);
     if (IsDatasetNodeOfType(node_in_func, kReaderDatasetOps) &&
-        node_in_func.input_size() > 0 &&
-        absl::StartsWith(node_in_func.input(0), "args_0")) {
+        node_in_func.input_size() > 0) {
       return true;
     }
     if (IsDatasetNodeOfType(func->node_def(i), kFuncDatasetOps) &&
@@ -601,14 +605,19 @@ Status RecursivelyHandleOp(const NodeDef& node, int64_t num_workers,
   }
 
   // This handles the case where a reader Dataset is contained within a
-  // FuncDataset (e.g. FlatMap, ParallelInterleave, etc...). For example:
+  // FuncDataset (e.g. FlatMap, ParallelInterleave, etc...) or within a
+  // PassThrough input to a FuncDataset. For example:
   //
-  // dataset = Dataset.list_files("/path/to/data")
+  // dataset = Dataset.list_files(...)
   // dataset = dataset.flat_map(core_readers.TFRecordDataset)
   //
-  // where the list of files is passed in one-by-one as an argument to the
-  // function in flat_map.
-  if (IsDatasetNodeOfType(node, kFuncDatasetOps) &&
+  // or
+  //
+  // dataset = Dataset.list_files(...)
+  // dataset = dataset.map(core_readers.TFRecordDataset)
+  // dataset = dataset.interleave(lambda x: x, cycle_length=3)
+  if ((IsDatasetNodeOfType(node, kFuncDatasetOps) ||
+       IsDatasetNodeOfType(node, kPassThroughOps)) &&
       ReaderOpInFunction(node, *flib)) {
     return ProcessDatasetSourceNode(graph, node, nodes_to_delete, num_workers,
                                     index);
@@ -620,7 +629,8 @@ Status RecursivelyHandleOp(const NodeDef& node, int64_t num_workers,
                                     index);
   }
 
-  if (!IsDatasetNodeOfType(node, kPassThroughOps)) {
+  if (!IsDatasetNodeOfType(node, kFuncDatasetOps) &&
+      !IsDatasetNodeOfType(node, kPassThroughOps)) {
     return errors::NotFound(
         "Did not find a shardable source, walked to ",
         "a node which is not a dataset: ", node.DebugString(),

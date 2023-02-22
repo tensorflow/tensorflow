@@ -13,12 +13,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
+#include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/QuantTypes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Matchers.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/lite/quantization/ir/PassDetail.h"
 #include "tensorflow/compiler/mlir/lite/quantization/ir/Passes.h"
 #include "tensorflow/compiler/mlir/lite/quantization/ir/QuantOps.h"
 #include "tensorflow/compiler/mlir/lite/quantization/ir/QuantizeUtils.h"
@@ -30,7 +30,10 @@ using namespace mlir::quantfork;
 using mlir::quant::QuantizedType;
 
 namespace {
-struct ConvertConstPass : public QuantConvertConstBase<ConvertConstPass> {
+#define GEN_PASS_DEF_QUANTCONVERTCONST
+#include "tensorflow/compiler/mlir/lite/quantization/ir/Passes.h.inc"
+
+struct ConvertConstPass : public impl::QuantConvertConstBase<ConvertConstPass> {
   void runOnOperation() override;
 };
 

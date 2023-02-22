@@ -1,8 +1,8 @@
 // Note that binary elementwise tests are run with chlo legalization enabled
 // (unlike the rest), since this is the primary use case for such ops and
 // verification of shapes and broadcasts is desired.
-// RUN: xla-opt "-xla-legalize-tf=allow-partial-conversion legalize-chlo=true" -canonicalize %s | FileCheck %s
-// RUN: xla-opt "-xla-legalize-tf=allow-partial-conversion legalize-chlo=false" %s | FileCheck --check-prefix CHLO %s
+// RUN: tf-opt "-xla-legalize-tf=allow-partial-conversion legalize-chlo=true" -canonicalize %s | FileCheck %s
+// RUN: tf-opt "-xla-legalize-tf=allow-partial-conversion legalize-chlo=false" %s | FileCheck --check-prefix CHLO %s
 
 //===----------------------------------------------------------------------===//
 // Binary op legalizations.
@@ -233,7 +233,7 @@ func.func @pow(%arg0: tensor<2xf32>) -> tensor<2xf32> {
 
 // CHECK-LABEL: func @equal
 func.func @equal(%arg0: tensor<2xi32>, %arg1: tensor<2xi32>) -> tensor<2xi1> {
-  // CHECK-NEXT:  "mhlo.compare"(%arg0, %arg1) {comparison_direction = #mhlo<comparison_direction EQ>}
+  // CHECK-NEXT:  mhlo.compare EQ, %arg0, %arg1
   %0 = "tf.Equal"(%arg0, %arg1) : (tensor<2xi32>, tensor<2xi32>) -> tensor<2xi1>
   func.return %0: tensor<2xi1>
 }
@@ -250,7 +250,7 @@ func.func @equal_dynamic(%arg0: tensor<?xi32>, %arg1: tensor<1xi32>) -> tensor<?
   // NOT-CHECK-NEXT:   %[[RESULT_EXTENTS:.+]] = tensor.cast %[[RESULT_SHAPE]] : tensor<?xindex> to tensor<1xindex>
   // NOT-CHECK-DAG:    %[[LHS_BCAST:.+]] = "mhlo.dynamic_broadcast_in_dim"(%arg0, %[[RESULT_EXTENTS]]) {broadcast_dimensions = dense<0> : tensor<1xi64>}
   // NOT-CHECK-DAG:    %[[RHS_BCAST:.+]] = "mhlo.dynamic_broadcast_in_dim"(%arg1, %[[RESULT_EXTENTS]]) {broadcast_dimensions = dense<0> : tensor<1xi64>}
-  // NOT-CHECK-NEXT:   %[[RESULT:.+]] = "mhlo.compare"(%[[LHS_BCAST]], %[[RHS_BCAST]]) {comparison_direction = #mhlo<comparison_direction EQ>}
+  // NOT-CHECK-NEXT:   %[[RESULT:.+]] = mhlo.compare EQ, %[[LHS_BCAST]], %[[RHS_BCAST]]
   // NOT-CHECK-NEXT:   shape.assuming_yield %[[RESULT]]
   %0 = "tf.Equal"(%arg0, %arg1) : (tensor<?xi32>, tensor<1xi32>) -> tensor<?xi1>
   func.return %0: tensor<?xi1>
@@ -259,7 +259,7 @@ func.func @equal_dynamic(%arg0: tensor<?xi32>, %arg1: tensor<1xi32>) -> tensor<?
 // CHECK-LABEL: func @equal_broadcast
 func.func @equal_broadcast(%arg0: tensor<1xi32>, %arg1: tensor<1x2xi32>) -> tensor<1x2xi1> {
   // CHECK-DAG: %[[LHS_BCAST:.+]] = "mhlo.broadcast_in_dim"(%arg0) {broadcast_dimensions = dense<1> : tensor<1xi64>}
-  // CHECK-NEXT: "mhlo.compare"(%[[LHS_BCAST]], %arg1) {comparison_direction = #mhlo<comparison_direction EQ>}
+  // CHECK-NEXT: mhlo.compare EQ, %[[LHS_BCAST]], %arg1
   %0 = "tf.Equal"(%arg0, %arg1) : (tensor<1xi32>, tensor<1x2xi32>) -> tensor<1x2xi1>
   func.return %0: tensor<1x2xi1>
 }
@@ -295,7 +295,7 @@ func.func @equal_incompatible_shape_both_dynamic(%arg0: tensor<?xi32>, %arg1: te
 // CHECK-LABEL: func @equal_unranked
 func.func @equal_unranked(%arg0: tensor<*xi32>, %arg1: tensor<*xi32>) -> tensor<*xi1> {
   // CHECK: "tf.Equal"
-  // CHLO: chlo.broadcast_compare %arg0, %arg1 {comparison_direction = #mhlo<comparison_direction EQ>}
+  // CHLO: chlo.broadcast_compare %arg0, %arg1 {comparison_direction = #chlo<comparison_direction EQ>}
   %0 = "tf.Equal"(%arg0, %arg1) { incompatible_shape_error = false } : (tensor<*xi32>, tensor<*xi32>) -> tensor<*xi1>
   func.return %0: tensor<*xi1>
 }
@@ -309,7 +309,7 @@ func.func @equal_unsupported_type(%arg0: tensor<*x!tf_type.string>, %arg1: tenso
 
 // CHECK-LABEL: func @notequal
 func.func @notequal(%arg0: tensor<2xi32>, %arg1: tensor<2xi32>) -> tensor<2xi1> {
-  // CHECK-NEXT:  "mhlo.compare"(%arg0, %arg1) {comparison_direction = #mhlo<comparison_direction NE>}
+  // CHECK-NEXT:  mhlo.compare NE, %arg0, %arg1
   %0 = "tf.NotEqual"(%arg0, %arg1) : (tensor<2xi32>, tensor<2xi32>) -> tensor<2xi1>
   func.return %0: tensor<2xi1>
 }
@@ -322,7 +322,7 @@ func.func @notequal(%arg0: tensor<2xi32>, %arg1: tensor<2xi32>) -> tensor<2xi1> 
 
 // CHECK-LABEL: func @greater
 func.func @greater(%arg0: tensor<2xi32>, %arg1: tensor<2xi32>) -> tensor<2xi1> {
-  // CHECK: "mhlo.compare"(%arg0, %arg1) {comparison_direction = #mhlo<comparison_direction GT>}
+  // CHECK: mhlo.compare GT, %arg0, %arg1
   %0 = "tf.Greater"(%arg0, %arg1) : (tensor<2xi32>, tensor<2xi32>) -> tensor<2xi1>
   func.return %0: tensor<2xi1>
 }
@@ -330,7 +330,7 @@ func.func @greater(%arg0: tensor<2xi32>, %arg1: tensor<2xi32>) -> tensor<2xi1> {
 // CHECK-LABEL: func @broadcast_greater
 func.func @broadcast_greater(%arg0: tensor<1xi32>, %arg1: tensor<1x2xi32>) -> tensor<1x2xi1> {
   // CHECK-NEXT: %[[LHS_BCAST:.+]] = "mhlo.broadcast_in_dim"(%arg0) {broadcast_dimensions = dense<1> : tensor<1xi64>}
-  // CHECK-NEXT: "mhlo.compare"(%[[LHS_BCAST]], %arg1) {comparison_direction = #mhlo<comparison_direction GT>}
+  // CHECK-NEXT: mhlo.compare GT, %[[LHS_BCAST]], %arg1
   %0 = "tf.Greater"(%arg0, %arg1) : (tensor<1xi32>, tensor<1x2xi32>) -> tensor<1x2xi1>
   func.return %0: tensor<1x2xi1>
 }
@@ -346,7 +346,7 @@ func.func @greater_dynamic(%arg0: tensor<?xi32>, %arg1: tensor<?xi32>) -> tensor
   // CHECK-NEXT:   %[[RESULT_EXTENTS:.+]] = shape.broadcast %[[LHS_SHAPE1]], %[[RHS_SHAPE1]] : tensor<1xindex>, tensor<1xindex> -> tensor<1xindex>
   // CHECK-DAG:    %[[LHS_BCAST:.+]] = "mhlo.dynamic_broadcast_in_dim"(%arg0, %[[RESULT_EXTENTS]]) {broadcast_dimensions = dense<0> : tensor<1xi64>}
   // CHECK-DAG:    %[[RHS_BCAST:.+]] = "mhlo.dynamic_broadcast_in_dim"(%arg1, %[[RESULT_EXTENTS]]) {broadcast_dimensions = dense<0> : tensor<1xi64>}
-  // CHECK-NEXT:   "mhlo.compare"(%[[LHS_BCAST]], %[[RHS_BCAST]]) {comparison_direction = #mhlo<comparison_direction GT>}
+  // CHECK-NEXT:   mhlo.compare GT, %[[LHS_BCAST]], %[[RHS_BCAST]]
   %0 = "tf.Greater"(%arg0, %arg1) : (tensor<?xi32>, tensor<?xi32>) -> tensor<?xi1>
   func.return %0: tensor<?xi1>
 }
@@ -354,28 +354,28 @@ func.func @greater_dynamic(%arg0: tensor<?xi32>, %arg1: tensor<?xi32>) -> tensor
 // CHECK-LABEL: func @greater_uranked
 func.func @greater_uranked(%arg0: tensor<*xi32>, %arg1: tensor<*xi32>) -> tensor<*xi1> {
   // CHECK:  "tf.Greater"
-  // CHLO: chlo.broadcast_compare %arg0, %arg1 {comparison_direction = #mhlo<comparison_direction GT>}
+  // CHLO: chlo.broadcast_compare %arg0, %arg1 {comparison_direction = #chlo<comparison_direction GT>}
   %0 = "tf.Greater"(%arg0, %arg1) : (tensor<*xi32>, tensor<*xi32>) -> tensor<*xi1>
   func.return %0: tensor<*xi1>
 }
 
 // CHECK-LABEL: func @greater_equal
 func.func @greater_equal(%arg0: tensor<2xi32>, %arg1: tensor<2xi32>) -> tensor<2xi1> {
-  // CHECK-NEXT:  "mhlo.compare"(%arg0, %arg1) {comparison_direction = #mhlo<comparison_direction GE>}
+  // CHECK-NEXT:  mhlo.compare GE, %arg0, %arg1
   %0 = "tf.GreaterEqual"(%arg0, %arg1) : (tensor<2xi32>, tensor<2xi32>) -> tensor<2xi1>
   func.return %0: tensor<2xi1>
 }
 
 // CHECK-LABEL: func @less
 func.func @less(%arg0: tensor<2xi32>, %arg1: tensor<2xi32>) -> tensor<2xi1> {
-  // CHECK-NEXT:  "mhlo.compare"(%arg0, %arg1) {comparison_direction = #mhlo<comparison_direction LT>}
+  // CHECK-NEXT:  mhlo.compare LT, %arg0, %arg1
   %0 = "tf.Less"(%arg0, %arg1) : (tensor<2xi32>, tensor<2xi32>) -> tensor<2xi1>
   func.return %0: tensor<2xi1>
 }
 
 // CHECK-LABEL: func @less_equal
 func.func @less_equal(%arg0: tensor<2xi32>, %arg1: tensor<2xi32>) -> tensor<2xi1> {
-  // CHECK-NEXT:  "mhlo.compare"(%arg0, %arg1) {comparison_direction = #mhlo<comparison_direction LE>}
+  // CHECK-NEXT:  mhlo.compare LE, %arg0, %arg1
   %0 = "tf.LessEqual"(%arg0, %arg1) : (tensor<2xi32>, tensor<2xi32>) -> tensor<2xi1>
   func.return %0: tensor<2xi1>
 }

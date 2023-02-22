@@ -42,11 +42,17 @@ message DeviceProto {
   // passed to EnumerateDevices(). In other words, the coordinator node
   // determines the global device IDs during EnumerateDevices().
   int32 global_device_id = 4;  // Globally unique ID number.
+  // Devices with the same slice_index are connected by fast network, e.g.
+  // NVLink on GPUs.
+  int32 slice_index = 5;
 }
 
 message LocalTopologyProto {
   int32 node_id = 1;
-  repeated DeviceProto devices = 2;
+  // Unique per OS kernel restart to uniquely identify a host.
+  // See /proc/sys/kernel/random/boot_id.
+  string boot_id = 2;
+  repeated DeviceProto devices = 3;
 }
 
 message GlobalTopologyProto {

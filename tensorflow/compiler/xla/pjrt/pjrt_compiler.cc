@@ -45,14 +45,37 @@ void PjRtRegisterCompiler(absl::string_view platform_name,
 StatusOr<std::unique_ptr<PjRtExecutable>> PjRtCompile(
     CompileOptions options, const XlaComputation& computation,
     const PjRtDeviceTopology& topology, PjRtClient* client) {
+  auto topology_compiler = topology.compiler();
+  if (topology_compiler.has_value()) {
+    return (*topology_compiler)
+        ->Compile(std::move(options), computation, topology, client);
+  }
   absl::ReaderMutexLock l(&registry_mutex);
   const auto* compiler_registry = CompilerRegistry();
   auto it = compiler_registry->find(topology.platform_name());
   if (it == compiler_registry->end()) {
-    return tensorflow::errors::NotFound(absl::StrCat(
+    return tsl::errors::NotFound(absl::StrCat(
         "No compiler registered for platform ", topology.platform_name()));
   }
-  return it->second->Compile(options, computation, topology, client);
+  return it->second->Compile(std::move(options), computation, topology, client);
+}
+
+StatusOr<std::unique_ptr<PjRtExecutable>> PjRtCompile(
+    CompileOptions options, mlir::ModuleOp module,
+    const PjRtDeviceTopology& topology, PjRtClient* client) {
+  auto topology_compiler = topology.compiler();
+  if (topology_compiler.has_value()) {
+    return (*topology_compiler)
+        ->Compile(std::move(options), module, topology, client);
+  }
+  absl::ReaderMutexLock l(&registry_mutex);
+  const auto* compiler_registry = CompilerRegistry();
+  auto it = compiler_registry->find(topology.platform_name());
+  if (it == compiler_registry->end()) {
+    return tsl::errors::NotFound(absl::StrCat(
+        "No compiler registered for platform ", topology.platform_name()));
+  }
+  return it->second->Compile(std::move(options), module, topology, client);
 }
 
 }  // namespace xla

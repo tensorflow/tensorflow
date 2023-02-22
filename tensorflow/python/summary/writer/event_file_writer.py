@@ -20,15 +20,13 @@ import sys
 import threading
 import time
 
-import six
-
 from tensorflow.python.client import _pywrap_events_writer
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import compat
 
 
-class EventFileWriter(object):
+class EventFileWriter:
   """Writes `Event` protocol buffers to an event file.
 
   The `EventFileWriter` class creates an event file in the specified directory,
@@ -129,7 +127,8 @@ class EventFileWriter(object):
     except QueueClosedError:
       self._internal_close()
       if self._worker.failure_exc_info:
-        six.reraise(*self._worker.failure_exc_info)  # pylint: disable=no-value-for-parameter
+        _, exception, _ = self._worker.failure_exc_info
+        raise exception from None
 
   def flush(self):
     """Flushes the event file to disk.
@@ -145,7 +144,8 @@ class EventFileWriter(object):
       self._flush_complete.wait()
       if self._worker.failure_exc_info:
         self._internal_close()
-        six.reraise(*self._worker.failure_exc_info)  # pylint: disable=no-value-for-parameter
+        _, exception, _ = self._worker.failure_exc_info
+        raise exception
 
   def close(self):
     """Flushes the event file to disk and close the file.
@@ -227,7 +227,7 @@ class _EventLoggerThread(threading.Thread):
       self._queue.close()
 
 
-class CloseableQueue(object):
+class CloseableQueue:
   """Stripped-down fork of the standard library Queue that is closeable."""
 
   def __init__(self, maxsize=0):

@@ -82,7 +82,7 @@ allocate and deallocate buffers.
 
 `GpuCompiler` takes the optimized HLO and `BufferAssignment`, and convert them
 to the MLIR dialect
-[`LMHLO`](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/lhlo/IR/lhlo_ops.td).
+[`LMHLO`](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/compiler/xla/mlir_hlo/lhlo/IR/lhlo_ops.td).
 
 The `LMHLO` dialect is a graph consists of `LMHLO` ops. `LMHLO` ops are
 buffer-based and sequentially ordered. The sequential order reflects the
@@ -92,12 +92,12 @@ In `LMHLO`, direct operand-user information is stripped away, as each op is only
 connected with its buffers, not ops which generate those buffers.
 
 Notice that some `LMHLO` ops, e.g. `lmhlo.fusion` or `lmhlo.reduce`, contain
-[`MHLO`](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.td)-based
+[`MHLO`](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/compiler/xla/mlir_hlo/mhlo/IR/hlo_ops.td)-based
 regions. They are tensor-based `MHLO` regions because ops in them don't have
 buffers associated.
 
 The code that converts XLA HLO to `LMHLO` is
-[here](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/compiler/mlir/xla/transforms/mhlo_to_lhlo_with_xla.h).
+[here](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/compiler/xla/translate/mhlo_to_lhlo_with_xla/mhlo_to_lhlo_with_xla.h).
 
 Currently, lowering of those `MHLO` regions takes a twist:
 
@@ -133,7 +133,7 @@ Besides emitting LLVM IR, `IrEmitter` also generates a sequence of
 Each thunk contains metadata for `GpuExecutable` to invoke an HLO instruction at
 runtime. For HLO instructions implemented as cuBLAS gemms, `IrEmitter` generates
 `GemmThunk`s whose `ExecuteOnStream` interface calls a cuBLAS gemm via
-[StreamExecutor](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/stream_executor)
+[StreamExecutor](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/compiler/xla/stream_executor)
 APIs. For instructions implemented as customized kernels, `IrEmitter` generates
 `KernelThunk`s which contain necessary arguments for launching kernels.
 

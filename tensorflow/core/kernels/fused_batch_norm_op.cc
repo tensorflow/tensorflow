@@ -33,11 +33,12 @@ limitations under the License.
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_types.h"
+#include "tensorflow/core/kernels/cast_op.h"
 #include "tensorflow/core/kernels/fill_functor.h"
 #include "tensorflow/core/kernels/fused_batch_norm_op.h"
 #include "tensorflow/core/kernels/redux_functor.h"
 #include "tensorflow/core/kernels/transpose_functor.h"
-#include "tensorflow/core/lib/core/blocking_counter.h"
+#include "tensorflow/core/platform/blocking_counter.h"
 #include "tensorflow/core/util/env_var.h"
 #include "tensorflow/core/util/tensor_format.h"
 
@@ -51,7 +52,7 @@ namespace functor {
 using se::DeviceMemory;
 using se::ScratchAllocator;
 using se::Stream;
-using se::port::StatusOr;
+using tsl::StatusOr;
 #endif
 
 string ToString(FusedBatchNormActivationMode activation_mode) {
@@ -132,16 +133,20 @@ struct FusedBatchNorm<CPUDevice, T, U, /* is_training= */ true> {
       const int64_t in_rows = GetTensorDim(x_input, tensor_format, 'H');
       const int64_t in_cols = GetTensorDim(x_input, tensor_format, 'W');
       const int64_t in_depths = GetTensorDim(x_input, tensor_format, 'C');
-      OP_REQUIRES_OK(context, context->allocate_temp(
-                                  DataTypeToEnum<T>::value,
-                                  ShapeFromFormat(FORMAT_NHWC, in_batch,
-                                                  in_rows, in_cols, in_depths),
-                                  &transformed_x));
-      OP_REQUIRES_OK(context, context->allocate_temp(
-                                  DataTypeToEnum<T>::value,
-                                  ShapeFromFormat(FORMAT_NHWC, in_batch,
-                                                  in_rows, in_cols, in_depths),
-                                  &transformed_y));
+      TensorShape transformed_x_shape;
+      OP_REQUIRES_OK(context, ShapeFromFormatWithStatus(
+                                  FORMAT_NHWC, in_batch, in_rows, in_cols,
+                                  in_depths, &transformed_x_shape));
+      OP_REQUIRES_OK(
+          context, context->allocate_temp(DataTypeToEnum<T>::value,
+                                          transformed_x_shape, &transformed_x));
+      TensorShape transformed_y_shape;
+      OP_REQUIRES_OK(context, ShapeFromFormatWithStatus(
+                                  FORMAT_NHWC, in_batch, in_rows, in_cols,
+                                  in_depths, &transformed_y_shape));
+      OP_REQUIRES_OK(
+          context, context->allocate_temp(DataTypeToEnum<T>::value,
+                                          transformed_y_shape, &transformed_y));
       // Perform NCHW to NHWC
       std::vector<int32> perm = {0, 2, 3, 1};
       OP_REQUIRES_OK(
@@ -273,16 +278,20 @@ struct FusedBatchNorm<CPUDevice, T, U, /* is_training= */ false> {
       const int64_t in_rows = GetTensorDim(x_input, tensor_format, 'H');
       const int64_t in_cols = GetTensorDim(x_input, tensor_format, 'W');
       const int64_t in_depths = GetTensorDim(x_input, tensor_format, 'C');
-      OP_REQUIRES_OK(context, context->allocate_temp(
-                                  DataTypeToEnum<T>::value,
-                                  ShapeFromFormat(FORMAT_NHWC, in_batch,
-                                                  in_rows, in_cols, in_depths),
-                                  &transformed_x));
-      OP_REQUIRES_OK(context, context->allocate_temp(
-                                  DataTypeToEnum<T>::value,
-                                  ShapeFromFormat(FORMAT_NHWC, in_batch,
-                                                  in_rows, in_cols, in_depths),
-                                  &transformed_y));
+      TensorShape transformed_x_shape;
+      OP_REQUIRES_OK(context, ShapeFromFormatWithStatus(
+                                  FORMAT_NHWC, in_batch, in_rows, in_cols,
+                                  in_depths, &transformed_x_shape));
+      OP_REQUIRES_OK(
+          context, context->allocate_temp(DataTypeToEnum<T>::value,
+                                          transformed_x_shape, &transformed_x));
+      TensorShape transformed_y_shape;
+      OP_REQUIRES_OK(context, ShapeFromFormatWithStatus(
+                                  FORMAT_NHWC, in_batch, in_rows, in_cols,
+                                  in_depths, &transformed_y_shape));
+      OP_REQUIRES_OK(
+          context, context->allocate_temp(DataTypeToEnum<T>::value,
+                                          transformed_y_shape, &transformed_y));
       // Perform NCHW to NHWC
       std::vector<int32> perm = {0, 2, 3, 1};
       OP_REQUIRES_OK(
@@ -374,21 +383,31 @@ struct FusedBatchNormGrad<CPUDevice, T, U> {
       const int64_t in_rows = GetTensorDim(x_input, tensor_format, 'H');
       const int64_t in_cols = GetTensorDim(x_input, tensor_format, 'W');
       const int64_t in_depths = GetTensorDim(x_input, tensor_format, 'C');
-      OP_REQUIRES_OK(context, context->allocate_temp(
-                                  DataTypeToEnum<T>::value,
-                                  ShapeFromFormat(FORMAT_NHWC, in_batch,
-                                                  in_rows, in_cols, in_depths),
-                                  &transformed_y_backprop_input));
-      OP_REQUIRES_OK(context, context->allocate_temp(
-                                  DataTypeToEnum<T>::value,
-                                  ShapeFromFormat(FORMAT_NHWC, in_batch,
-                                                  in_rows, in_cols, in_depths),
-                                  &transformed_x_input));
-      OP_REQUIRES_OK(context, context->allocate_temp(
-                                  DataTypeToEnum<T>::value,
-                                  ShapeFromFormat(FORMAT_NHWC, in_batch,
-                                                  in_rows, in_cols, in_depths),
-                                  &transformed_x_backprop_output));
+      TensorShape transformed_y_backprop_input_shape;
+      OP_REQUIRES_OK(context,
+                     ShapeFromFormatWithStatus(
+                         FORMAT_NHWC, in_batch, in_rows, in_cols, in_depths,
+                         &transformed_y_backprop_input_shape));
+      OP_REQUIRES_OK(context,
+                     context->allocate_temp(DataTypeToEnum<T>::value,
+                                            transformed_y_backprop_input_shape,
+                                            &transformed_y_backprop_input));
+      TensorShape transformed_x_input_shape;
+      OP_REQUIRES_OK(context, ShapeFromFormatWithStatus(
+                                  FORMAT_NHWC, in_batch, in_rows, in_cols,
+                                  in_depths, &transformed_x_input_shape));
+      OP_REQUIRES_OK(context, context->allocate_temp(DataTypeToEnum<T>::value,
+                                                     transformed_x_input_shape,
+                                                     &transformed_x_input));
+      TensorShape transformed_x_backprop_output_shape;
+      OP_REQUIRES_OK(context,
+                     ShapeFromFormatWithStatus(
+                         FORMAT_NHWC, in_batch, in_rows, in_cols, in_depths,
+                         &transformed_x_backprop_output_shape));
+      OP_REQUIRES_OK(context,
+                     context->allocate_temp(DataTypeToEnum<T>::value,
+                                            transformed_x_backprop_output_shape,
+                                            &transformed_x_backprop_output));
       // Perform NCHW to NHWC
       std::vector<int32> perm = {0, 2, 3, 1};
       OP_REQUIRES_OK(
@@ -765,7 +784,7 @@ class CudnnBatchNormAllocatorInOutput : public ScratchAllocator {
 };
 
 template <typename T, typename U, bool is_training>
-struct FusedBatchNorm<GPUDevice, T, U, is_training> {
+struct FusedBatchNormImplGPU {
   void operator()(OpKernelContext* context, const Tensor& x,
                   const Tensor& scale, const Tensor& offset,
                   const Tensor& estimated_mean,
@@ -793,9 +812,10 @@ struct FusedBatchNorm<GPUDevice, T, U, is_training> {
     //   from
     //       FusedBatchNormV3, i.e. use_reserved_space is true.
     const bool fast_nhwc_batch_norm =
-        !is_training ||
-        (BatchnormSpatialPersistentEnabled() &&
-         DataTypeToEnum<T>::value == DT_HALF && use_reserved_space);
+        !is_training || (BatchnormSpatialPersistentEnabled() &&
+                         (DataTypeToEnum<T>::value == DT_HALF ||
+                          DataTypeToEnum<T>::value == DT_BFLOAT16) &&
+                         use_reserved_space);
 #else
     // fast NHWC implementation is a CUDA only feature
     const bool fast_nhwc_batch_norm = false;
@@ -869,22 +889,26 @@ struct FusedBatchNorm<GPUDevice, T, U, is_training> {
     if (tensor_format == compute_format) {
       y_ptr = StreamExecutorUtil::AsDeviceMemory<T>(*y);
     } else if (tensor_format == FORMAT_NHWC && compute_format == FORMAT_NCHW) {
-      OP_REQUIRES_OK(context, context->allocate_temp(
-                                  DataTypeToEnum<T>::value,
-                                  ShapeFromFormat(compute_format, batch_size,
-                                                  height, width, channels),
-                                  &x_transformed));
+      TensorShape x_transformed_shape;
+      OP_REQUIRES_OK(context, ShapeFromFormatWithStatus(
+                                  compute_format, batch_size, height, width,
+                                  channels, &x_transformed_shape));
+      OP_REQUIRES_OK(
+          context, context->allocate_temp(DataTypeToEnum<T>::value,
+                                          x_transformed_shape, &x_transformed));
       functor::NHWCToNCHW<GPUDevice, T, 4>()(
           context->eigen_device<GPUDevice>(),
           const_cast<const Tensor&>(x_maybe_transformed).tensor<T, 4>(),
           x_transformed.tensor<T, 4>());
       x_maybe_transformed = x_transformed;
 
-      OP_REQUIRES_OK(context, context->allocate_temp(
-                                  DataTypeToEnum<T>::value,
-                                  ShapeFromFormat(compute_format, batch_size,
-                                                  height, width, channels),
-                                  &y_transformed));
+      TensorShape y_transformed_shape;
+      OP_REQUIRES_OK(context, ShapeFromFormatWithStatus(
+                                  compute_format, batch_size, height, width,
+                                  channels, &y_transformed_shape));
+      OP_REQUIRES_OK(
+          context, context->allocate_temp(DataTypeToEnum<T>::value,
+                                          y_transformed_shape, &y_transformed));
       y_ptr = StreamExecutorUtil::AsDeviceMemory<T>(y_transformed);
     } else {
       context->SetStatus(errors::Internal(
@@ -990,8 +1014,85 @@ struct FusedBatchNorm<GPUDevice, T, U, is_training> {
   }
 };
 
+template <typename T, typename U, bool is_training>
+struct FusedBatchNorm<GPUDevice, T, U, is_training> {
+  void operator()(OpKernelContext* context, const Tensor& x,
+                  const Tensor& scale, const Tensor& offset,
+                  const Tensor& estimated_mean,
+                  const Tensor& estimated_variance, const Tensor* side_input,
+                  U epsilon, U exponential_avg_factor,
+                  FusedBatchNormActivationMode activation_mode, Tensor* y,
+                  Tensor* batch_mean, Tensor* batch_var, Tensor* saved_mean,
+                  Tensor* saved_inv_var, TensorFormat tensor_format,
+                  bool use_reserved_space) {
+    FusedBatchNormImplGPU<T, U, is_training>()(
+        context, x, scale, offset, estimated_mean, estimated_variance,
+        side_input, epsilon, exponential_avg_factor, activation_mode, y,
+        batch_mean, batch_var, saved_mean, saved_inv_var, tensor_format,
+        use_reserved_space);
+  }
+};
+
+template <bool is_training>
+struct FusedBatchNorm<GPUDevice, Eigen::bfloat16, float, is_training> {
+  void operator()(OpKernelContext* context, const Tensor& x,
+                  const Tensor& scale, const Tensor& offset,
+                  const Tensor& estimated_mean,
+                  const Tensor& estimated_variance, const Tensor* side_input,
+                  float epsilon, float exponential_avg_factor,
+                  FusedBatchNormActivationMode activation_mode, Tensor* y,
+                  Tensor* batch_mean, Tensor* batch_var, Tensor* saved_mean,
+                  Tensor* saved_inv_var, TensorFormat tensor_format,
+                  bool use_reserved_space) {
+    // Performant bfloat16 operations are supported for Ampere+ GPUs. For
+    // pre-Ampere GPUs, we cast inputs to float and outputs back to bfloat16.
+    auto* stream = context->op_device_context()->stream();
+    const bool cast_to_float = !stream->GetCudaComputeCapability().IsAtLeast(
+        se::CudaComputeCapability::AMPERE);
+    if (cast_to_float) {
+      Tensor casted_x = x;
+      Tensor casted_side_input;
+      Tensor casted_y = *y;
+
+      const GPUDevice& device = context->eigen_device<GPUDevice>();
+      functor::CastFunctor<GPUDevice, float, Eigen::bfloat16> cast;
+      OP_REQUIRES_OK(context,
+                     context->allocate_temp(DT_FLOAT, x.shape(), &casted_x));
+      cast(device, casted_x.template flat<float>(),
+           x.template flat<Eigen::bfloat16>());
+      if (side_input != nullptr) {
+        OP_REQUIRES_OK(context,
+                       context->allocate_temp(DT_FLOAT, side_input->shape(),
+                                              &casted_side_input));
+        cast(device, casted_side_input.template flat<float>(),
+             side_input->template flat<Eigen::bfloat16>());
+      }
+      OP_REQUIRES_OK(context,
+                     context->allocate_temp(DT_FLOAT, y->shape(), &casted_y));
+
+      FusedBatchNormImplGPU<float, float, is_training>()(
+          context, casted_x, scale, offset, estimated_mean, estimated_variance,
+          (side_input != nullptr) ? &casted_side_input : nullptr, epsilon,
+          exponential_avg_factor, activation_mode, &casted_y, batch_mean,
+          batch_var, saved_mean, saved_inv_var, tensor_format,
+          use_reserved_space);
+      functor::CastFunctor<GPUDevice, Eigen::bfloat16, float> cast_back;
+      const Tensor& casted_y_const = casted_y;
+      cast_back(device, y->template flat<Eigen::bfloat16>(),
+                casted_y_const.template flat<float>());
+      return;
+    }
+
+    FusedBatchNormImplGPU<Eigen::bfloat16, float, is_training>()(
+        context, x, scale, offset, estimated_mean, estimated_variance,
+        side_input, epsilon, exponential_avg_factor, activation_mode, y,
+        batch_mean, batch_var, saved_mean, saved_inv_var, tensor_format,
+        use_reserved_space);
+  }
+};
+
 template <typename T, typename U>
-struct FusedBatchNormGrad<GPUDevice, T, U> {
+struct FusedBatchNormGradImplGPU {
   void operator()(OpKernelContext* context, const Tensor& y_backprop,
                   const Tensor& x, const Tensor& scale, const Tensor* offset,
                   const Tensor& mean, const Tensor& inv_variance,
@@ -1012,9 +1113,11 @@ struct FusedBatchNormGrad<GPUDevice, T, U> {
     // Check if cuDNN batch normalization has a fast NHWC implementation:
     //   (1) Tensorflow enabled batchnorm spatial persistence, and
     //       FusedBatchNormGradV3 passed non-null reserve space and allocator.
-    const bool fast_nhwc_batch_norm = BatchnormSpatialPersistentEnabled() &&
-                                      DataTypeToEnum<T>::value == DT_HALF &&
-                                      use_reserved_space;
+    const bool fast_nhwc_batch_norm =
+        BatchnormSpatialPersistentEnabled() &&
+        (DataTypeToEnum<T>::value == DT_HALF ||
+         DataTypeToEnum<T>::value == DT_BFLOAT16) &&
+        use_reserved_space;
 #else
     // fast NHWC implementation is a CUDA only feature
     const bool fast_nhwc_batch_norm = false;
@@ -1050,11 +1153,14 @@ struct FusedBatchNormGrad<GPUDevice, T, U> {
       x_backprop_ptr = StreamExecutorUtil::AsDeviceMemory<T>(*x_backprop);
     } else if (tensor_format == FORMAT_NHWC && compute_format == FORMAT_NCHW) {
       // Transform inputs from 'NHWC' to 'NCHW'
-      OP_REQUIRES_OK(context, context->allocate_temp(
-                                  DataTypeToEnum<T>::value,
-                                  ShapeFromFormat(FORMAT_NCHW, batch_size,
-                                                  height, width, channels),
-                                  &y_backprop_transformed));
+      TensorShape y_backprop_transformed_shape;
+      OP_REQUIRES_OK(context, ShapeFromFormatWithStatus(
+                                  FORMAT_NCHW, batch_size, height, width,
+                                  channels, &y_backprop_transformed_shape));
+      OP_REQUIRES_OK(context,
+                     context->allocate_temp(DataTypeToEnum<T>::value,
+                                            y_backprop_transformed_shape,
+                                            &y_backprop_transformed));
       functor::NHWCToNCHW<GPUDevice, T, 4>()(
           context->eigen_device<GPUDevice>(),
           const_cast<const Tensor&>(y_backprop_maybe_transformed)
@@ -1062,11 +1168,13 @@ struct FusedBatchNormGrad<GPUDevice, T, U> {
           y_backprop_transformed.tensor<T, 4>());
       y_backprop_maybe_transformed = y_backprop_transformed;
 
-      OP_REQUIRES_OK(context, context->allocate_temp(
-                                  DataTypeToEnum<T>::value,
-                                  ShapeFromFormat(FORMAT_NCHW, batch_size,
-                                                  height, width, channels),
-                                  &x_transformed));
+      TensorShape x_transformed_shape;
+      OP_REQUIRES_OK(context, ShapeFromFormatWithStatus(FORMAT_NCHW, batch_size,
+                                                        height, width, channels,
+                                                        &x_transformed_shape));
+      OP_REQUIRES_OK(
+          context, context->allocate_temp(DataTypeToEnum<T>::value,
+                                          x_transformed_shape, &x_transformed));
       functor::NHWCToNCHW<GPUDevice, T, 4>()(
           context->eigen_device<GPUDevice>(),
           const_cast<const Tensor&>(x_maybe_transformed).tensor<T, 4>(),
@@ -1074,11 +1182,14 @@ struct FusedBatchNormGrad<GPUDevice, T, U> {
       x_maybe_transformed = x_transformed;
 
       // Allocate memory for transformed outputs in 'NCHW'
-      OP_REQUIRES_OK(context, context->allocate_temp(
-                                  DataTypeToEnum<T>::value,
-                                  ShapeFromFormat(FORMAT_NCHW, batch_size,
-                                                  height, width, channels),
-                                  &x_backprop_transformed));
+      TensorShape x_backprop_transformed_shape;
+      OP_REQUIRES_OK(context, ShapeFromFormatWithStatus(
+                                  FORMAT_NCHW, batch_size, height, width,
+                                  channels, &x_backprop_transformed_shape));
+      OP_REQUIRES_OK(context,
+                     context->allocate_temp(DataTypeToEnum<T>::value,
+                                            x_backprop_transformed_shape,
+                                            &x_backprop_transformed));
       x_backprop_ptr =
           StreamExecutorUtil::AsDeviceMemory<T>(x_backprop_transformed);
     } else {
@@ -1172,6 +1283,100 @@ struct FusedBatchNormGrad<GPUDevice, T, U> {
   }
 };
 
+template <typename T, typename U>
+struct FusedBatchNormGrad<GPUDevice, T, U> {
+  void operator()(OpKernelContext* context, const Tensor& y_backprop,
+                  const Tensor& x, const Tensor& scale, const Tensor* offset,
+                  const Tensor& mean, const Tensor& inv_variance,
+                  const Tensor* y, U epsilon,
+                  FusedBatchNormActivationMode activation_mode,
+                  Tensor* x_backprop, Tensor* scale_backprop,
+                  Tensor* offset_backprop, Tensor* side_input_backprop,
+                  bool use_reserved_space, TensorFormat tensor_format) {
+    FusedBatchNormGradImplGPU<T, U>()(
+        context, y_backprop, x, scale, offset, mean, inv_variance, y, epsilon,
+        activation_mode, x_backprop, scale_backprop, offset_backprop,
+        side_input_backprop, use_reserved_space, tensor_format);
+  }
+};
+
+template <>
+struct FusedBatchNormGrad<GPUDevice, Eigen::bfloat16, float> {
+  void operator()(OpKernelContext* context, const Tensor& y_backprop,
+                  const Tensor& x, const Tensor& scale, const Tensor* offset,
+                  const Tensor& mean, const Tensor& inv_variance,
+                  const Tensor* y, float epsilon,
+                  FusedBatchNormActivationMode activation_mode,
+                  Tensor* x_backprop, Tensor* scale_backprop,
+                  Tensor* offset_backprop, Tensor* side_input_backprop,
+                  bool use_reserved_space, TensorFormat tensor_format) {
+    // Performant bfloat16 operations are supported for Ampere+ GPUs. For
+    // pre-Ampere GPUs, we cast inputs to float and outputs back to bfloat16.
+    auto* stream = context->op_device_context()->stream();
+    const bool cast_to_float = !stream->GetCudaComputeCapability().IsAtLeast(
+        se::CudaComputeCapability::AMPERE);
+    if (cast_to_float) {
+      Tensor casted_y_backprop = y_backprop;
+      Tensor casted_x = x;
+      Tensor casted_y;
+      Tensor casted_x_backprop = *x_backprop;
+      Tensor casted_side_input_backprop;
+
+      const GPUDevice& device = context->eigen_device<GPUDevice>();
+      functor::CastFunctor<GPUDevice, float, Eigen::bfloat16> cast;
+      OP_REQUIRES_OK(context,
+                     context->allocate_temp(DT_FLOAT, y_backprop.shape(),
+                                            &casted_y_backprop));
+      cast(device, casted_y_backprop.template flat<float>(),
+           y_backprop.template flat<Eigen::bfloat16>());
+      OP_REQUIRES_OK(context,
+                     context->allocate_temp(DT_FLOAT, x.shape(), &casted_x));
+      cast(device, casted_x.template flat<float>(),
+           x.template flat<Eigen::bfloat16>());
+      if (y != nullptr) {
+        OP_REQUIRES_OK(context,
+                       context->allocate_temp(DT_FLOAT, y->shape(), &casted_y));
+        cast(device, casted_y.template flat<float>(),
+             y->template flat<Eigen::bfloat16>());
+      }
+
+      OP_REQUIRES_OK(context,
+                     context->allocate_temp(DT_FLOAT, x_backprop->shape(),
+                                            &casted_x_backprop));
+      if (side_input_backprop != nullptr) {
+        OP_REQUIRES_OK(context, context->allocate_temp(
+                                    DT_FLOAT, side_input_backprop->shape(),
+                                    &casted_side_input_backprop));
+      }
+
+      FusedBatchNormGradImplGPU<float, float>()(
+          context, casted_y_backprop, casted_x, scale, offset, mean,
+          inv_variance, (y != nullptr) ? &casted_y : nullptr, epsilon,
+          activation_mode, &casted_x_backprop, scale_backprop, offset_backprop,
+          (side_input_backprop != nullptr) ? &casted_side_input_backprop
+                                           : nullptr,
+          use_reserved_space, tensor_format);
+
+      functor::CastFunctor<GPUDevice, Eigen::bfloat16, float> cast_back;
+      const Tensor& casted_x_backprop_const = casted_x_backprop;
+      cast_back(device, x_backprop->template flat<Eigen::bfloat16>(),
+                casted_x_backprop_const.template flat<float>());
+      if (side_input_backprop != nullptr) {
+        const Tensor& casted_side_input_backprop_const =
+            casted_side_input_backprop;
+        cast_back(device, side_input_backprop->template flat<Eigen::bfloat16>(),
+                  casted_side_input_backprop_const.template flat<float>());
+      }
+      return;
+    }
+
+    FusedBatchNormGradImplGPU<Eigen::bfloat16, float>()(
+        context, y_backprop, x, scale, offset, mean, inv_variance, y, epsilon,
+        activation_mode, x_backprop, scale_backprop, offset_backprop,
+        side_input_backprop, use_reserved_space, tensor_format);
+  }
+};
+
 // Forward declarations of the functor specializations for GPU.
 #define DECLARE_GPU_SPEC(T, U)                                                 \
   template <>                                                                  \
@@ -1196,6 +1401,7 @@ struct FusedBatchNormGrad<GPUDevice, T, U> {
 
 DECLARE_GPU_SPEC(float, float);
 DECLARE_GPU_SPEC(Eigen::half, float);
+DECLARE_GPU_SPEC(Eigen::bfloat16, float);
 
 #undef DECLARE_GPU_SPEC
 
@@ -1299,8 +1505,10 @@ class FusedBatchNormOpBase : public OpKernel {
       int64_t in_rows = GetTensorDim(x, tensor_format_, '1');
       int64_t in_cols = GetTensorDim(x, tensor_format_, '2');
       const int64_t in_depth = GetTensorDim(x, tensor_format_, 'C');
-      dest_shape = ShapeFromFormat(tensor_format_, in_batch,
-                                   {{in_planes, in_rows * in_cols}}, in_depth);
+      OP_REQUIRES_OK(context,
+                     ShapeFromFormatWithStatus(tensor_format_, in_batch,
+                                               {{in_planes, in_rows * in_cols}},
+                                               in_depth, &dest_shape));
       OP_REQUIRES(context, x.CopyFrom(x, dest_shape),
                   errors::InvalidArgument("Error during tensor copy."));
     }
@@ -1544,8 +1752,10 @@ class FusedBatchNormGradOpBase : public OpKernel {
       int64_t in_rows = GetTensorDim(x, tensor_format_, '1');
       int64_t in_cols = GetTensorDim(x, tensor_format_, '2');
       const int64_t in_depth = GetTensorDim(x, tensor_format_, 'C');
-      dest_shape = ShapeFromFormat(tensor_format_, in_batch,
-                                   {{in_planes, in_rows * in_cols}}, in_depth);
+      OP_REQUIRES_OK(context,
+                     ShapeFromFormatWithStatus(tensor_format_, in_batch,
+                                               {{in_planes, in_rows * in_cols}},
+                                               in_depth, &dest_shape));
       OP_REQUIRES(context, x.CopyFrom(x, dest_shape),
                   errors::InvalidArgument("Error during tensor copy."));
       OP_REQUIRES(context, y_backprop.CopyFrom(y_backprop, dest_shape),
@@ -1716,6 +1926,18 @@ REGISTER_KERNEL_BUILDER(Name("FusedBatchNormGradV2")
                             .TypeConstraint<float>("U"),
                         FusedBatchNormGradOp<CPUDevice, Eigen::half, float>);
 
+REGISTER_KERNEL_BUILDER(Name("FusedBatchNormV2")
+                            .Device(DEVICE_CPU)
+                            .TypeConstraint<bfloat16>("T")
+                            .TypeConstraint<float>("U"),
+                        FusedBatchNormOp<CPUDevice, bfloat16, float>);
+
+REGISTER_KERNEL_BUILDER(Name("FusedBatchNormGradV2")
+                            .Device(DEVICE_CPU)
+                            .TypeConstraint<bfloat16>("T")
+                            .TypeConstraint<float>("U"),
+                        FusedBatchNormGradOp<CPUDevice, bfloat16, float>);
+
 REGISTER_KERNEL_BUILDER(Name("FusedBatchNormV3")
                             .Device(DEVICE_CPU)
                             .TypeConstraint<float>("T")
@@ -1768,11 +1990,24 @@ REGISTER_KERNEL_BUILDER(Name("FusedBatchNormV2")
                             .TypeConstraint<float>("U"),
                         FusedBatchNormOp<GPUDevice, Eigen::half, float>);
 
+REGISTER_KERNEL_BUILDER(Name("FusedBatchNormV2")
+                            .Device(DEVICE_GPU)
+                            .TypeConstraint<Eigen::bfloat16>("T")
+                            .TypeConstraint<float>("U"),
+                        FusedBatchNormOp<GPUDevice, Eigen::bfloat16, float>);
+
 REGISTER_KERNEL_BUILDER(Name("FusedBatchNormGradV2")
                             .Device(DEVICE_GPU)
                             .TypeConstraint<Eigen::half>("T")
                             .TypeConstraint<float>("U"),
                         FusedBatchNormGradOp<GPUDevice, Eigen::half, float>);
+
+REGISTER_KERNEL_BUILDER(
+    Name("FusedBatchNormGradV2")
+        .Device(DEVICE_GPU)
+        .TypeConstraint<Eigen::bfloat16>("T")
+        .TypeConstraint<float>("U"),
+    FusedBatchNormGradOp<GPUDevice, Eigen::bfloat16, float>);
 
 REGISTER_KERNEL_BUILDER(Name("FusedBatchNormV3")
                             .Device(DEVICE_GPU)
@@ -1804,11 +2039,23 @@ REGISTER_KERNEL_BUILDER(Name("FusedBatchNormV3")
                             .TypeConstraint<float>("U"),
                         FusedBatchNormOpV3<GPUDevice, Eigen::half, float>);
 
+REGISTER_KERNEL_BUILDER(Name("FusedBatchNormV3")
+                            .Device(DEVICE_GPU)
+                            .TypeConstraint<Eigen::bfloat16>("T")
+                            .TypeConstraint<float>("U"),
+                        FusedBatchNormOpV3<GPUDevice, Eigen::bfloat16, float>);
+
 REGISTER_KERNEL_BUILDER(Name("_FusedBatchNormEx")
                             .Device(DEVICE_GPU)
                             .TypeConstraint<Eigen::half>("T")
                             .TypeConstraint<float>("U"),
                         FusedBatchNormOpEx<GPUDevice, Eigen::half, float>);
+
+REGISTER_KERNEL_BUILDER(Name("_FusedBatchNormEx")
+                            .Device(DEVICE_GPU)
+                            .TypeConstraint<Eigen::bfloat16>("T")
+                            .TypeConstraint<float>("U"),
+                        FusedBatchNormOpEx<GPUDevice, Eigen::bfloat16, float>);
 
 REGISTER_KERNEL_BUILDER(Name("FusedBatchNormGradV3")
                             .Device(DEVICE_GPU)
@@ -1816,11 +2063,25 @@ REGISTER_KERNEL_BUILDER(Name("FusedBatchNormGradV3")
                             .TypeConstraint<float>("U"),
                         FusedBatchNormGradOpV3<GPUDevice, Eigen::half, float>);
 
+REGISTER_KERNEL_BUILDER(
+    Name("FusedBatchNormGradV3")
+        .Device(DEVICE_GPU)
+        .TypeConstraint<Eigen::bfloat16>("T")
+        .TypeConstraint<float>("U"),
+    FusedBatchNormGradOpV3<GPUDevice, Eigen::bfloat16, float>);
+
 REGISTER_KERNEL_BUILDER(Name("_FusedBatchNormGradEx")
                             .Device(DEVICE_GPU)
                             .TypeConstraint<Eigen::half>("T")
                             .TypeConstraint<float>("U"),
                         FusedBatchNormGradOpEx<GPUDevice, Eigen::half, float>);
+
+REGISTER_KERNEL_BUILDER(
+    Name("_FusedBatchNormGradEx")
+        .Device(DEVICE_GPU)
+        .TypeConstraint<Eigen::bfloat16>("T")
+        .TypeConstraint<float>("U"),
+    FusedBatchNormGradOpEx<GPUDevice, Eigen::bfloat16, float>);
 
 #endif
 

@@ -20,19 +20,15 @@ limitations under the License.
 // `tensorflow/core/distributed_runtime/` into Status instances.
 
 namespace tensorflow {
-
-// Proto: tensorflow::distributed_runtime::GrpcPayloadsLost
-// Location: tensorflow/core/protobuf/distributed_runtime_payloads.proto
-// Usage: Flags the Status to have lost payloads during GRPC conversion.
-constexpr char kGrpcPayloadsLost[] =
-    "type.googleapis.com/tensorflow.distributed_runtime.GrpcPayloadsLost";
-
 // Proto: tensorflow::distributed_runtime::WorkerPossiblyRestarted
 // Location: tensorflow/core/protobuf/distributed_runtime_payloads.proto
 // Usage: Flags the Status to be a possible outcome of a worker restart.
 constexpr char kWorkerPossiblyRestarted[] =
     "type.googleapis.com/"
     "tensorflow.distributed_runtime.WorkerPossiblyRestarted";
+
+constexpr char kWorkerPreemption[] =
+    "type.googleapis.com/tensorflow.distributed_runtime.WorkerPreemption";
 
 }  // namespace tensorflow
 #endif  // TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_ERROR_PAYLOADS_H_

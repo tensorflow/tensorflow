@@ -13,11 +13,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_CORE_IR_TYPE_DIALECT_H_
-#define TENSORFLOW_CORE_IR_TYPE_DIALECT_H_
+#ifndef TENSORFLOW_CORE_IR_TYPES_DIALECT_H_
+#define TENSORFLOW_CORE_IR_TYPES_DIALECT_H_
 
 #include <string>
 
+#include "mlir/Dialect/Quant/QuantTypes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Diagnostics.h"  // from @llvm-project
 #include "mlir/IR/Dialect.h"  // from @llvm-project
@@ -50,7 +51,8 @@ class TensorFlowType : public Type {
 
 // Returns true if the specified type is a valid TensorFlow element type.
 inline bool IsValidTFElementType(Type type) {
-  return type.isa<ComplexType, FloatType, IntegerType, TensorFlowType>();
+  return type.isa<ComplexType, FloatType, IntegerType, TensorFlowType,
+                  quant::QuantizedType>();
 }
 
 // Returns true if this is a valid TensorFlow tensor type.
@@ -287,8 +289,8 @@ Type DropRefAndSubTypes(Type ty);
 //===----------------------------------------------------------------------===//
 
 // An iterator for the tensor shapes of an op's operands of shaped types.
-// Returns llvm::None if a operand is unranked; returns ArrayRef<int64_t> as the
-// shape otherwise.
+// Returns std::nullopt if a operand is unranked; returns ArrayRef<int64_t> as
+// the shape otherwise.
 class OperandShapeIterator final
     : public llvm::mapped_iterator<Operation::operand_iterator,
                                    llvm::Optional<ArrayRef<int64_t>> (*)(
@@ -303,8 +305,8 @@ class OperandShapeIterator final
 using OperandShapeRange = iterator_range<OperandShapeIterator>;
 
 // An iterator for the tensor shapes of an op's results of shaped types.
-// Returns llvm::None if a result is unranked; returns ArrayRef<int64_t> as the
-// shape otherwise.
+// Returns std::nullopt if a result is unranked; returns ArrayRef<int64_t> as
+// the shape otherwise.
 class ResultShapeIterator final
     : public llvm::mapped_iterator<Operation::result_iterator,
                                    llvm::Optional<ArrayRef<int64_t>> (*)(
@@ -349,4 +351,4 @@ inline Type GetElementTypeOrSelfResolveRef(Type type) {
 #include "tensorflow/core/ir/types/attributes.h.inc"
 #include "tensorflow/core/ir/types/attributes_enum.h.inc"
 
-#endif  // TENSORFLOW_CORE_IR_TYPE_DIALECT_H_
+#endif  // TENSORFLOW_CORE_IR_TYPES_DIALECT_H_

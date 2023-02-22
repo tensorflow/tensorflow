@@ -50,7 +50,7 @@ _GPU_DEVICE_NAME = "GPU"
 
 
 def _get_context_device_type():
-  """Parse the current context and return the device type, eg CPU/GPU."""
+  """Parses the current context and returns the device type, eg CPU/GPU."""
   current_device = context.context().device_name
   if current_device is None:
     return None
@@ -498,7 +498,7 @@ ops.NotDifferentiable("CTCBeamSearchDecoder")
 
 
 def _ctc_state_trans(label_seq):
-  """Compute CTC alignment model transition matrix.
+  """Computes CTC alignment model transition matrix.
 
   Args:
     label_seq: tensor of shape [batch_size, max_seq_length]
@@ -889,54 +889,99 @@ def ctc_loss_v3(labels,
                 name=None):
   """Computes CTC (Connectionist Temporal Classification) loss.
 
-  This op implements the CTC loss as presented in (Graves et al., 2006).
+  This op implements the CTC loss as presented in
+  [Graves et al., 2006](https://www.cs.toronto.edu/~graves/icml_2006.pdf)
+
+  Connectionist temporal classification (CTC) is a type of neural network output
+  and associated scoring function, for training recurrent neural networks (RNNs)
+  such as LSTM networks to tackle sequence problems where the timing is
+  variable. It can be used for tasks like on-line handwriting recognition or
+  recognizing phones in speech audio. CTC refers to the outputs and scoring, and
+  is independent of the underlying neural network structure.
 
   Notes:
 
-  - Same as the "Classic CTC" in TensorFlow 1.x's tf.compat.v1.nn.ctc_loss
-    setting of preprocess_collapse_repeated=False, ctc_merge_repeated=True
-  - Labels may be supplied as either a dense, zero-padded tensor with a
-    vector of label sequence lengths OR as a SparseTensor.
-  - On TPU and GPU: Only dense padded labels are supported.
-  - On CPU: Caller may use SparseTensor or dense padded labels but calling with
-    a SparseTensor will be significantly faster.
-  - Default blank label is 0 rather num_classes - 1, unless overridden by
-    blank_index.
+  - This class performs the softmax operation for you, so `logits` should be
+    e.g. linear projections of outputs by an LSTM.
+  - Outputs true repeated classes with blanks in between, and can also output
+    repeated classes with no blanks in between that need to be collapsed by the
+    decoder.
+  - `labels` may be supplied as either a dense, zero-padded `Tensor` with a
+    vector of label sequence lengths OR as a `SparseTensor`.
+  - On TPU: Only dense padded `labels` are supported.
+  - On CPU and GPU: Caller may use `SparseTensor` or dense padded `labels`
+    but calling with a `SparseTensor` will be significantly faster.
+  - Default blank label is `0` instead of `num_labels - 1` (where `num_labels`
+    is the innermost dimension size of `logits`), unless overridden by
+    `blank_index`.
+
+  >>> tf.random.set_seed(50)
+  >>> batch_size = 8
+  >>> num_labels = 6
+  >>> max_label_length = 5
+  >>> num_frames = 12
+  >>> labels = tf.random.uniform([batch_size, max_label_length],
+  ...                            minval=1, maxval=num_labels, dtype=tf.int64)
+  >>> logits = tf.random.uniform([num_frames, batch_size, num_labels])
+  >>> label_length = tf.random.uniform([batch_size], minval=2,
+  ...                                  maxval=max_label_length, dtype=tf.int64)
+  >>> label_mask = tf.sequence_mask(label_length, maxlen=max_label_length,
+  ...                               dtype=label_length.dtype)
+  >>> labels *= label_mask
+  >>> logit_length = [num_frames] * batch_size
+  >>> with tf.GradientTape() as t:
+  ...   t.watch(logits)
+  ...   ref_loss = tf.nn.ctc_loss(
+  ...       labels=labels,
+  ...       logits=logits,
+  ...       label_length=label_length,
+  ...       logit_length=logit_length,
+  ...       blank_index=0)
+  >>> ref_grad = t.gradient(ref_loss, logits)
 
   Args:
-    labels: tensor of shape [batch_size, max_label_seq_length] or SparseTensor
-    logits: tensor of shape [frames, batch_size, num_labels], if
-      logits_time_major == False, shape is [batch_size, frames, num_labels].
-    label_length: tensor of shape [batch_size], None if labels is SparseTensor
-      Length of reference label sequence in labels.
-    logit_length: tensor of shape [batch_size] Length of input sequence in
-      logits.
-    logits_time_major: (optional) If True (default), logits is shaped [time,
-      batch, logits]. If False, shape is [batch, time, logits]
+    labels: `Tensor` of shape `[batch_size, max_label_seq_length]` or
+      `SparseTensor`.
+    logits: `Tensor` of shape `[frames, batch_size, num_labels]`. If
+      `logits_time_major == False`, shape is `[batch_size, frames, num_labels]`.
+    label_length: `Tensor` of shape `[batch_size]`. None, if `labels` is a
+      `SparseTensor`. Length of reference label sequence in `labels`.
+    logit_length: `Tensor` of shape `[batch_size]`. Length of input sequence in
+      `logits`.
+    logits_time_major: (optional) If True (default), `logits` is shaped [frames,
+      batch_size, num_labels]. If False, shape is
+      `[batch_size, frames, num_labels]`.
     unique: (optional) Unique label indices as computed by
-      ctc_unique_labels(labels).  If supplied, enable a faster, memory efficient
-      implementation on TPU.
+      `ctc_unique_labels(labels)`.  If supplied, enable a faster, memory
+      efficient implementation on TPU.
     blank_index: (optional) Set the class index to use for the blank label.
-      Negative values will start from num_classes, ie, -1 will reproduce the
-      ctc_loss behavior of using num_classes - 1 for the blank symbol. There is
+      Negative values will start from `num_labels`, ie, `-1` will reproduce the
+      ctc_loss behavior of using `num_labels - 1` for the blank symbol. There is
       some memory/performance overhead to switching from the default of 0 as an
-      additional shifted copy of the logits may be created.
+      additional shifted copy of `logits` may be created.
     name: A name for this `Op`. Defaults to "ctc_loss_dense".
 
   Returns:
-    loss: tensor of shape [batch_size], negative log probabilities.
+    loss: A 1-D `float Tensor` of shape `[batch_size]`, containing negative log
+    probabilities.
+
+  Raises:
+    ValueError: Argument `blank_index` must be provided when `labels` is a
+    `SparseTensor`.
 
   References:
       Connectionist Temporal Classification - Labeling Unsegmented Sequence Data
       with Recurrent Neural Networks:
         [Graves et al., 2006](https://dl.acm.org/citation.cfm?id=1143891)
         ([pdf](http://www.cs.toronto.edu/~graves/icml_2006.pdf))
+
+      https://en.wikipedia.org/wiki/Connectionist_temporal_classification
   """
   if isinstance(labels, sparse_tensor.SparseTensor):
     if blank_index is None:
       raise ValueError(
-          "Argument `blank_index` must be provided when labels is a "
-          "SparseTensor.")
+          "Argument `blank_index` must be provided when `labels` is a "
+          "`SparseTensor`.")
 
     if blank_index < 0:
       blank_index += _get_dim(logits, 2)
@@ -969,7 +1014,9 @@ def ctc_loss_v3(labels,
       ctc_loss_op_cudnn = _generate_defun_backend(api_name, _GPU_DEVICE_NAME,
                                                   _ctc_loss_op_cudnn)
       res = ctc_loss_op_standard(**params)
-      function_eager.register(ctc_loss_op_cudnn, **params)
+      concrete_func = ctc_loss_op_cudnn.get_concrete_function(**params)
+      concrete_func.add_to_graph()
+      concrete_func.add_gradient_functions_to_graph()
     return res
 
   if blank_index is None:
@@ -1000,10 +1047,10 @@ def ctc_loss_dense(labels,
   using the batched forward backward algorithm described in (Sim et al., 2017).
 
   Notes:
-    Significant differences from tf.compat.v1.nn.ctc_loss:
-      Supports GPU and TPU (tf.compat.v1.nn.ctc_loss supports CPU only):
+    Significant differences from `tf.compat.v1.nn.ctc_loss`:
+      Supports GPU and TPU (`tf.compat.v1.nn.ctc_loss` supports CPU only):
         For batched operations, GPU and TPU are significantly faster than using
-        ctc_loss on CPU.
+        `ctc_loss` on CPU.
         This implementation runs on CPU, but significantly slower than ctc_loss.
       Blank label is 0 rather num_classes - 1, unless overridden by blank_index.
       Logits and labels are dense arrays with padding rather than SparseTensor.

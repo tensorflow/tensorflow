@@ -36,7 +36,7 @@ limitations under the License.
 namespace mlir {
 namespace TFL {
 namespace {
-#define GEN_PASS_CLASSES
+#define GEN_PASS_DEF_LEGALIZEHASHTABLESPASS
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h.inc"
 
 // This file has Legalize hash tables pass which is responsible for:
@@ -59,9 +59,9 @@ class LegalizeHashTableOpPattern : public OpRewritePattern<TF::HashTableV2Op> {
     // native resource design is based on integer keys to identify the
     // corresponding resource objects.
     auto table_id =
-        static_cast<int32_t>(::llvm::hash_value(hashtable_op.shared_name()));
-    auto key_dtype = hashtable_op.key_dtype();
-    auto value_dtype = hashtable_op.value_dtype();
+        static_cast<int32_t>(::llvm::hash_value(hashtable_op.getSharedName()));
+    auto key_dtype = hashtable_op.getKeyDtype();
+    auto value_dtype = hashtable_op.getValueDtype();
 
     rewriter.replaceOpWithNewOp<TFL::HashtableOp>(
         hashtable_op, output_type, table_id, key_dtype, value_dtype);
@@ -76,13 +76,13 @@ class LegalizeHashTableFindOpPattern
 
   LogicalResult matchAndRewrite(TF::LookupTableFindV2Op find_op,
                                 PatternRewriter& rewriter) const override {
-    auto handle_op = find_op.table_handle().getDefiningOp();
+    auto handle_op = find_op.getTableHandle().getDefiningOp();
     if (handle_op == nullptr) return failure();
     auto hashtable_op = llvm::dyn_cast<TFL::HashtableOp>(handle_op);
     if (hashtable_op == nullptr) return failure();
     rewriter.replaceOpWithNewOp<TFL::HashtableFindOp>(
-        find_op, find_op->getResultTypes(), find_op.table_handle(),
-        find_op.keys(), find_op.default_value());
+        find_op, find_op->getResultTypes(), find_op.getTableHandle(),
+        find_op.getKeys(), find_op.getDefaultValue());
     return success();
   }
 };
@@ -94,13 +94,13 @@ class LegalizeHashTableImportOpPattern
 
   LogicalResult matchAndRewrite(TF::LookupTableImportV2Op import_op,
                                 PatternRewriter& rewriter) const override {
-    auto handle_op = import_op.table_handle().getDefiningOp();
+    auto handle_op = import_op.getTableHandle().getDefiningOp();
     if (handle_op == nullptr) return failure();
     auto hashtable_op = llvm::dyn_cast<TFL::HashtableOp>(handle_op);
     if (hashtable_op == nullptr) return failure();
     rewriter.replaceOpWithNewOp<TFL::HashtableImportOp>(
-        import_op, import_op->getResultTypes(), import_op.table_handle(),
-        import_op.keys(), import_op.values());
+        import_op, import_op->getResultTypes(), import_op.getTableHandle(),
+        import_op.getKeys(), import_op.getValues());
     return success();
   }
 };
@@ -112,12 +112,12 @@ class LegalizeHashTableSizeOpPattern
 
   LogicalResult matchAndRewrite(TF::LookupTableSizeV2Op size_op,
                                 PatternRewriter& rewriter) const override {
-    auto handle_op = size_op.table_handle().getDefiningOp();
+    auto handle_op = size_op.getTableHandle().getDefiningOp();
     if (handle_op == nullptr) return failure();
     auto hashtable_op = llvm::dyn_cast<TFL::HashtableOp>(handle_op);
     if (hashtable_op == nullptr) return failure();
     rewriter.replaceOpWithNewOp<TFL::HashtableSizeOp>(
-        size_op, size_op->getResultTypes(), size_op.table_handle());
+        size_op, size_op->getResultTypes(), size_op.getTableHandle());
     return success();
   }
 };
@@ -137,8 +137,8 @@ bool checkWhetherGraphHasValidStaticLookupTables(ModuleOp module) {
   }
 
   for (auto hashtable : hashtables) {
-    auto key_dtype = hashtable.key_dtype();
-    auto value_dtype = hashtable.value_dtype();
+    auto key_dtype = hashtable.getKeyDtype();
+    auto value_dtype = hashtable.getValueDtype();
 
     // Only allow string -> int64 and int64 -> string mappings due to kernel
     // capability.
@@ -170,7 +170,7 @@ bool checkWhetherGraphHasValidStaticLookupTables(ModuleOp module) {
 // Pass which legalizes TF hash tables only when they are covered by the
 // TensorFlow Lite hash table kernels.
 class LegalizeHashTablesPass
-    : public LegalizeHashTablesPassBase<LegalizeHashTablesPass> {
+    : public impl::LegalizeHashTablesPassBase<LegalizeHashTablesPass> {
  public:
   MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(LegalizeHashTablesPass)
 

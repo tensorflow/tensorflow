@@ -277,6 +277,12 @@ func.func @testLogicalNot(tensor<? x i1>) -> tensor<? x i1> {
   func.return %0 : tensor<? x i1>
 }
 
+// CHECK-LABEL: testSign
+func.func @testSign(%arg0: tensor<? x f32>) -> tensor<? x f32> {
+  %0 = "tfl.sign"(%arg0): (tensor<? x f32>) -> tensor<? x f32>
+  func.return %0 : tensor<? x f32>
+}
+
 // -----
 
 func.func @testLogicalNotWrongOperandType(tensor<? x i32>) -> tensor<? x i32> {
@@ -320,6 +326,14 @@ func.func @testMul(tensor<? x i32>, tensor<? x i32>) -> tensor<? x i32> {
   // CHECK: tfl.mul %arg0, %arg1 {fused_activation_function = "RELU6"}
   %0 = tfl.mul %arg0, %arg1 {fused_activation_function = "RELU6"} : tensor<? x i32>
   func.return %0#0 : tensor<? x i32>
+}
+
+// CHECK-LABEL: testMulComplex
+func.func @testMulComplex(tensor<? x complex<f32>>, tensor<? x complex<f32>>) -> tensor<? x complex<f32>> {
+^bb0(%arg0: tensor<? x complex<f32>>, %arg1: tensor<? x complex<f32>>):
+  // CHECK: tfl.mul %arg0, %arg1 {fused_activation_function = "NONE"}
+  %0 = tfl.mul %arg0, %arg1 {fused_activation_function = "NONE"}: tensor<? x complex<f32>>
+  func.return %0#0 : tensor<? x complex<f32>>
 }
 
 // CHECK-LABEL: testAddWithI64Broadcasting
@@ -464,6 +478,15 @@ func.func @testPow(tensor<? x i32>, tensor<? x i32>) -> tensor<? x i32> {
   %0 = tfl.pow %arg0, %arg1 : tensor<? x i32>
   func.return %0#0 : tensor<? x i32>
 }
+
+// CHECK-LABEL: testAtan2
+func.func @testAtan2(%arg0: tensor<?xf32>, %arg1: tensor<?xf32>) -> tensor<?xf32> {
+  // CHECK: "tfl.atan2"(%arg0, %arg1)
+  %0 = "tfl.atan2"(%arg0, %arg1): (tensor<?xf32>, tensor<?xf32>) -> tensor<?xf32>
+  func.return %0 : tensor<?xf32>
+}
+
+// -----
 
 // CHECK-LABEL: testConv2D
 func.func @testConv2D(tensor<256x32x32x3xf32>, tensor<16x3x3x3xf32>, tensor<16xf32>) -> tensor<256x32x32x16xf32> {
@@ -668,7 +691,7 @@ func.func @testTFLiteDetectionPostProcess(%arg0: tensor<1x64x64x32xf32>, %arg1: 
 
 func.func @testMaxPoolingWithArgMax2D(%arg0: tensor<1x64x64x32xf32>) -> (tensor<1x32x32x32xf32>, tensor<1x32x32x32xf32>) {
   // custom op for "tfl.max_pooling_with_argmax_2d"(%arg0) {filter_h = 2 : i32, filter_w = 2 : i32, padding = "SAME", stride_h = 2 : i32, stride_w = 2 : i32} : (tensor<1x64x64x32xf32>) -> (tensor<1x32x32x32xf32>, tensor<1x32x32x32xf32>)
-  %0, %1 = "tfl.custom"(%arg0) {custom_option = opaque<"tfl", "0x01000000020000000200000002000000020000000000000000000000000000000000000000000000"> : tensor<40xi8>, custom_code = "MaxPoolingWithArgmax2D"} : (tensor<1x64x64x32xf32>) -> (tensor<1x32x32x32xf32>, tensor<1x32x32x32xf32>)
+  %0, %1 = "tfl.custom"(%arg0) {custom_option = #tfl<const_bytes : "0x01000000020000000200000002000000020000000000000000000000000000000000000000000000">, custom_code = "MaxPoolingWithArgmax2D"} : (tensor<1x64x64x32xf32>) -> (tensor<1x32x32x32xf32>, tensor<1x32x32x32xf32>)
   func.return %0, %1 : tensor<1x32x32x32xf32>, tensor<1x32x32x32xf32>
 }
 
@@ -676,7 +699,7 @@ func.func @testMaxPoolingWithArgMax2D(%arg0: tensor<1x64x64x32xf32>) -> (tensor<
 
 func.func @testMaxUnpooling2D(%arg0: tensor<1x8x8x128xf32>, %arg1: tensor<1x8x8x128xf32>) -> tensor<1x8x8x128xf32> {
   // custom op for "tfl.max_unpooling_2d"(%arg0, %arg1) {filter_h = 2 : i32, filter_w = 2 : i32, padding = "SAME", stride_h = 2 : i32, stride_w = 2 : i32} : (tensor<1x8x8x128xf32>, tensor<1x8x8x128xf32>) -> (tensor<1x8x8x128xf32>)
-  %0 = "tfl.custom"(%arg0, %arg1) {custom_option = opaque<"tfl", "0x01000000020000000200000002000000020000000000000000000000000000000000000000000000"> : tensor<40xi8>, custom_code = "MaxUnpooling2D"} : (tensor<1x8x8x128xf32>, tensor<1x8x8x128xf32>) -> (tensor<1x8x8x128xf32>)
+  %0 = "tfl.custom"(%arg0, %arg1) {custom_option = #tfl<const_bytes : "0x01000000020000000200000002000000020000000000000000000000000000000000000000000000">, custom_code = "MaxUnpooling2D"} : (tensor<1x8x8x128xf32>, tensor<1x8x8x128xf32>) -> (tensor<1x8x8x128xf32>)
   func.return %0 : tensor<1x8x8x128xf32>
 }
 
@@ -1882,6 +1905,13 @@ func.func @testRelu6WithQuantizedTypes(%arg0 : tensor<10x!quant.uniform<u8:f32, 
 
 // -----
 
+func.func @testRelu0To1WithQuantizedTypes(%arg0 : tensor<10x!quant.uniform<u8:f32, 1.0>>) -> tensor<10x!quant.uniform<u8:f32, 1.0>> {
+  %0 = "tfl.relu_0_to_1"(%arg0) : (tensor<10x!quant.uniform<u8:f32, 1.0>>) -> tensor<10x!quant.uniform<u8:f32, 1.0>>
+  func.return %0 : tensor<10x!quant.uniform<u8:f32, 1.0>>
+}
+
+// -----
+
 func.func @testReluWithDifferentScales(%arg0 : tensor<10x!quant.uniform<u8:f32, 1.0>>) -> tensor<10x!quant.uniform<u8:f32, 4.0>> {
   %0 = "tfl.relu"(%arg0) : (tensor<10x!quant.uniform<u8:f32, 1.0>>) -> tensor<10x!quant.uniform<u8:f32, 2.0>>
   %1 = "tfl.relu_n1_to_1"(%0) : (tensor<10x!quant.uniform<u8:f32, 2.0>>) -> tensor<10x!quant.uniform<u8:f32, 3.0>>
@@ -2481,7 +2511,7 @@ func.func @testFullyConnectedWithBadOutputShape(%arg0: tensor<1x37xf32>, %arg1: 
 
 func.func @testTransposeConv(%arg0: tensor<4xi32>, %arg1: tensor<32x4x4x128xf32>, %arg2: tensor<1x32x42x128xf32>) -> tensor<1x64x84x32xf32> {
   %cst = "tfl.no_value"() {value = unit} : () -> none
-  %0 = "tfl.transpose_conv"(%arg0, %arg1, %arg2, %cst) {padding = "SAME", stride_h = 2 : i32, stride_w = 2 : i32} : (tensor<4xi32>, tensor<32x4x4x128xf32>, tensor<1x32x42x128xf32>, none) -> tensor<1x64x84x32xf32>
+  %0 = "tfl.transpose_conv"(%arg0, %arg1, %arg2, %cst) {padding = "SAME", stride_h = 2 : i32, stride_w = 2 : i32, fused_activation_function = "NONE"} : (tensor<4xi32>, tensor<32x4x4x128xf32>, tensor<1x32x42x128xf32>, none) -> tensor<1x64x84x32xf32>
   func.return %0 : tensor<1x64x84x32xf32>
 }
 
@@ -2492,7 +2522,7 @@ func.func @testTransposeConvWithOutputThatHasDynamicSizes(%arg0: tensor<4xi32>, 
   // CHECK: %[[NONE:.*]] = "tfl.no_value"() {value} : () -> none
   // CHECK: "tfl.transpose_conv"(%arg0, %arg1, %arg2, %[[NONE]])
   %cst = "tfl.no_value"() {value = unit} : () -> none
-  %0 = "tfl.transpose_conv"(%arg0, %arg1, %arg2, %cst) {padding = "SAME", stride_h = 2 : i32, stride_w = 2 : i32} : (tensor<4xi32>, tensor<32x4x4x128xf32>, tensor<1x32x42x128xf32>, none) -> tensor<?x?x?x?xf32>
+  %0 = "tfl.transpose_conv"(%arg0, %arg1, %arg2, %cst) {padding = "SAME", stride_h = 2 : i32, stride_w = 2 : i32, fused_activation_function = "NONE"} : (tensor<4xi32>, tensor<32x4x4x128xf32>, tensor<1x32x42x128xf32>, none) -> tensor<?x?x?x?xf32>
   func.return %0 : tensor<?x?x?x?xf32>
 }
 
@@ -2500,7 +2530,7 @@ func.func @testTransposeConvWithOutputThatHasDynamicSizes(%arg0: tensor<4xi32>, 
 
 func.func @testConvolution2DTransposeBias(%arg0: tensor<32x4x4x128xf32>, %arg1: tensor<1x32x42x128xf32>, %arg2: tensor<4xi32>) -> tensor<1x64x84x32xf32> {
   // custom op for "tfl.convolution_2d_transpose_bias"(%arg0, %arg1, %arg2) {padding = "SAME", stride_h = 2 : i32, stride_w = 2 : i32} : (tensor<32x4x4x128xf32>, tensor<1x32x42x128xf32>, tensor<4xi32>) -> tensor<1x64x84x32xf32>
-  %0 = "tfl.custom"(%arg0, %arg1, %arg2) {custom_option = opaque<"tfl", "0x010000000200000002000000"> : tensor<12xi8>, custom_code = "Convolution2DTransposeBias"} : (tensor<32x4x4x128xf32>, tensor<1x32x42x128xf32>, tensor<4xi32>) -> tensor<1x64x84x32xf32>
+  %0 = "tfl.custom"(%arg0, %arg1, %arg2) {custom_option = #tfl<const_bytes : "0x010000000200000002000000">, custom_code = "Convolution2DTransposeBias"} : (tensor<32x4x4x128xf32>, tensor<1x32x42x128xf32>, tensor<4xi32>) -> tensor<1x64x84x32xf32>
   func.return %0 : tensor<1x64x84x32xf32>
 }
 
@@ -2509,7 +2539,7 @@ func.func @testConvolution2DTransposeBias(%arg0: tensor<32x4x4x128xf32>, %arg1: 
 func.func @testConvolution2DTransposeNoBias(%arg0: tensor<32x4x4x128xf32>, %arg1: tensor<1x32x42x128xf32>) -> tensor<1x64x84x32xf32> {
   %cst = "tfl.no_value"() {value = unit} : () -> none
   // custom op for "tfl.convolution_2d_transpose_bias"(%arg0, %arg1, %cst) {padding = "SAME", stride_h = 2 : i32, stride_w = 2 : i32} : (tensor<32x4x4x128xf32>, tensor<1x32x42x128xf32>, none) -> tensor<1x64x84x32xf32>
-  %0 = "tfl.custom"(%arg0, %arg1, %cst) {custom_option = opaque<"tfl", "0x010000000200000002000000"> : tensor<12xi8>, custom_code = "Convolution2DTransposeBias"} : (tensor<32x4x4x128xf32>, tensor<1x32x42x128xf32>, none) -> tensor<1x64x84x32xf32>
+  %0 = "tfl.custom"(%arg0, %arg1, %cst) {custom_option = #tfl<const_bytes : "0x010000000200000002000000">, custom_code = "Convolution2DTransposeBias"} : (tensor<32x4x4x128xf32>, tensor<1x32x42x128xf32>, none) -> tensor<1x64x84x32xf32>
   func.return %0 : tensor<1x64x84x32xf32>
 }
 
@@ -2518,7 +2548,7 @@ func.func @testConvolution2DTransposeNoBias(%arg0: tensor<32x4x4x128xf32>, %arg1
 func.func @testTransposeConvBadOutputRank(%arg0: tensor<4xi32>, %arg1: tensor<32x4x4x128xf32>, %arg2: tensor<1x32x42x128xf32>) -> tensor<64x84x32xf32> {
   %cst = "tfl.no_value"() {value = unit} : () -> none
   // expected-error @+1 {{expect output type has rank = 4, got output type tensor<64x84x32xf32>}}
-  %0 = "tfl.transpose_conv"(%arg0, %arg1, %arg2, %cst) {padding = "SAME", stride_h = 2 : i32, stride_w = 2 : i32} : (tensor<4xi32>, tensor<32x4x4x128xf32>, tensor<1x32x42x128xf32>, none) -> tensor<64x84x32xf32>
+  %0 = "tfl.transpose_conv"(%arg0, %arg1, %arg2, %cst) {padding = "SAME", stride_h = 2 : i32, stride_w = 2 : i32, fused_activation_function = "NONE"} : (tensor<4xi32>, tensor<32x4x4x128xf32>, tensor<1x32x42x128xf32>, none) -> tensor<64x84x32xf32>
   func.return %0 : tensor<64x84x32xf32>
 }
 
@@ -2528,7 +2558,7 @@ func.func @testTransposeConvBadOutputShape(%arg1: tensor<32x4x4x128xf32>, %arg2:
   %cst = arith.constant dense<[1, 64, 84, 32]> : tensor<4xi32>
   %cst_1 = "tfl.no_value"() {value = unit} : () -> none
   // expected-error @+1 {{expect output type tensor<1x64x84x32xf32>, got tensor<1x64x84x31xf32>}}
-  %0 = "tfl.transpose_conv"(%cst, %arg1, %arg2, %cst_1) {padding = "SAME", stride_h = 2 : i32, stride_w = 2 : i32} : (tensor<4xi32>, tensor<32x4x4x128xf32>, tensor<1x32x42x128xf32>, none) -> tensor<1x64x84x31xf32>
+  %0 = "tfl.transpose_conv"(%cst, %arg1, %arg2, %cst_1) {padding = "SAME", stride_h = 2 : i32, stride_w = 2 : i32, fused_activation_function = "NONE"} : (tensor<4xi32>, tensor<32x4x4x128xf32>, tensor<1x32x42x128xf32>, none) -> tensor<1x64x84x31xf32>
   func.return %0 : tensor<1x64x84x31xf32>
 }
 
@@ -3035,3 +3065,13 @@ func.func @testControlNodeShortForm(%arg0: tensor<8xf32>, %arg1: tensor<8xf32>)-
   func.return %0 : tensor<8xf32>
 }
 
+
+// -----
+
+// CHECK-LABEL: testUnsortedSegmentMin
+func.func @testUnsortedSegmentMin(%arg0: tensor<8xf32>, %arg1: tensor<8xi32>,  %arg2: tensor<i32>) -> tensor<8xf32> {
+  // CHECK: "tfl.unsorted_segment_min"(%arg0, %arg1, %arg2)
+  %0 = "tfl.unsorted_segment_min"(%arg0, %arg1, %arg2) : (tensor<8xf32>, tensor<8xi32>, tensor<i32>) -> tensor<8xf32>
+  func.return %0 : tensor<8xf32>
+  // CHECK: return %0 : tensor<8xf32>
+}

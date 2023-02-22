@@ -93,8 +93,7 @@ RUN python3 -m pip --no-cache-dir install \
     pandas \
     future \
     portpicker \
-    enum34 \
-    'protobuf < 4'
+    enum34
 
 # Installs bazelisk
 RUN mkdir /bazel && \

@@ -12,9 +12,9 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-
 #include "tensorflow/core/tfrt/fallback/cost_recorder.h"
 
+#include <limits>
 #include <string>
 
 #include <gtest/gtest.h>
@@ -26,21 +26,39 @@ namespace tensorflow {
 namespace tfrt_stub {
 namespace {
 
-constexpr absl::string_view kTestOpName = "test_op_name";
+constexpr int64_t kTestOpKey = 1;
 constexpr uint64_t kTestCost = 1234;
 constexpr uint64_t kTestAvgCost = 1851;
 
 TEST(CostRecorderTest, RecordCostTest) {
-  CostRecorder recorder = CostRecorder(nullptr);
+  CostRecorder recorder;
 
-  recorder.RecordCost(kTestOpName, kTestCost);
-  recorder.RecordCost(kTestOpName, kTestCost);
+  recorder.RecordCostNanosecond(kTestOpKey, kTestCost);
+  recorder.RecordCostNanosecond(kTestOpKey, kTestCost);
 
   EXPECT_EQ(recorder.size(), 1);
 }
 
+TEST(CostRecorderTest, GetCostTest) {
+  CostRecorder recorder;
+
+  recorder.RecordCostNanosecond(kTestOpKey, kTestCost);
+  recorder.RecordCostNanosecond(kTestOpKey, 2 * kTestCost);
+
+  EXPECT_EQ(recorder.size(), 1);
+  EXPECT_EQ(recorder.GetCostNanosecond(kTestOpKey), kTestAvgCost);
+}
+
+TEST(CostRecorderTest, GetCostDefaultValueTest) {
+  CostRecorder recorder;
+  ASSERT_EQ(recorder.size(), 0);
+
+  EXPECT_EQ(recorder.GetCostNanosecond(kTestOpKey),
+            std::numeric_limits<uint32_t>::max());
+}
+
 TEST(CostRecorderTest, WriteToFileTest) {
-  CostRecorder recorder = CostRecorder(nullptr);
+  CostRecorder recorder;
   ASSERT_EQ(recorder.size(), 0);
 
   std::string measured_cost_path;
@@ -57,17 +75,18 @@ TEST(CostRecorderTest, WriteToFileTest) {
 }
 
 TEST(CostRecorderTest, ProtoRecordsTest) {
-  CostRecorder recorder = CostRecorder(nullptr);
+  CostRecorder recorder;
 
   // Records the cost of op.
-  recorder.RecordCost(kTestOpName, kTestCost);
-  recorder.RecordCost(kTestOpName, 2 * kTestCost);
+  recorder.RecordCostNanosecond(kTestOpKey, kTestCost);
+  recorder.RecordCostNanosecond(kTestOpKey, 2 * kTestCost);
   ASSERT_EQ(recorder.size(), 1);
 
   // Writes op's cost to the disk.
   std::string measured_cost_path;
   tensorflow::Env::Default()->LocalTempFilename(&measured_cost_path);
-  ASSERT_EQ(setenv("TF_TFRT_MEASURED_COST_PATH", measured_cost_path.c_str(), 1),
+  ASSERT_EQ(setenv(CostRecorder::MesuredCostPathEnvVarName(),
+                   measured_cost_path.c_str(), 1),
             0);
   TF_CHECK_OK(recorder.WriteToFile());
 
@@ -76,9 +95,8 @@ TEST(CostRecorderTest, ProtoRecordsTest) {
   TF_CHECK_OK(tensorflow::ReadTextProto(
       tensorflow::Env::Default(), measured_cost_path, &op_cost_map_proto));
 
-  EXPECT_EQ(
-      op_cost_map_proto.op_cost_map().find(std::string(kTestOpName))->second,
-      kTestAvgCost);
+  EXPECT_EQ(op_cost_map_proto.op_cost_map().find(kTestOpKey)->second,
+            kTestAvgCost);
 }
 
 }  // namespace

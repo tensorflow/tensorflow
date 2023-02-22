@@ -28,12 +28,12 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tools/kernel_gen/ir/tf_framework_ops.h"
 #include "tensorflow/compiler/mlir/tools/kernel_gen/kernel_creator.h"
 #include "tensorflow/compiler/mlir/tools/kernel_gen/tf_jit_cache.h"
+#include "tensorflow/compiler/xla/stream_executor/stream.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/statusor.h"
-#include "tensorflow/stream_executor/stream.h"
 
 #if defined(GOOGLE_CUDA) || defined(TENSORFLOW_USE_ROCM)
 #include "tensorflow/compiler/mlir/tools/kernel_gen/tf_gpu_runtime_wrappers.h"
@@ -107,7 +107,7 @@ extern "C" void _mlir_ciface_tf_report_error(void* op_kernel_ctx,
   }
   auto* ctx = static_cast<tensorflow::OpKernelContext*>(op_kernel_ctx);
   ctx->CtxFailureWithWarning(
-      tensorflow::Status{ConvertAttrToEnumValue(symbol.getValue()), msg});
+      tensorflow::Status{ConvertAttrToEnumValue(symbol.value()), msg});
 }
 
 static void ReportError(void* op_kernel_ctx, ErrorCode error_code,
@@ -182,14 +182,14 @@ llvm::Expected<std::unique_ptr<ExecutionEngine>> Compile(
     tensorflow::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> status_or_module =
         tensorflow::kernel_gen::GenerateKernelForTfCode(
             context, code, architectures, tile_sizes, unroll_factors,
-            max_supported_rank, /*embed_memref_prints=*/false,
+            max_supported_rank,
             /*print_ptx=*/false, /*print_llvmir=*/false, enable_ftz,
             index_64bit,
             /*jit_compile=*/false,
             /*jit_i64_indexed_for_large_tensors=*/false,
             /*apply_cl_options=*/false);
     if (!status_or_module.ok()) return nullptr;
-    module = std::move(status_or_module.ValueOrDie());
+    module = std::move(status_or_module.value());
 
     if (!cache_dir.empty() && tenv->RecursivelyCreateDir(cache_dir).ok()) {
       // Save the compilation result here for future processes to use.
@@ -205,7 +205,7 @@ llvm::Expected<std::unique_ptr<ExecutionEngine>> Compile(
   } else {
     module = tensorflow::kernel_gen::SetupContextAndParseModule(
                  context, item.result_module())
-                 .ValueOrDie();
+                 .value();
   }
 
   // Initialize LLVM targets.

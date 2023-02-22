@@ -15,17 +15,22 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/literal_comparison.h"
 
+#ifndef _WIN32
 #include <unistd.h>
+#endif
 
 #include <cmath>
+#include <string>
 #include <vector>
 
 #include "absl/base/casts.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "tensorflow/compiler/xla/literal_util.h"
+#include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/core/platform/env.h"
+#include "tensorflow/tsl/platform/env.h"
+#include "tensorflow/tsl/platform/float8.h"
 
 using absl::StrAppend;
 using absl::StrAppendFormat;
@@ -67,6 +72,19 @@ bool CompareEqual(NativeT lhs, NativeT rhs,
 
 // Specializations for floating types that do bitwise comparisons when equality
 // comparison is requested.
+template <>
+bool CompareEqual<tsl::float8_e5m2>(tsl::float8_e5m2 lhs, tsl::float8_e5m2 rhs,
+                                    absl::Span<const int64_t> multi_index) {
+  return CompareFloatsBitwiseEqual<tsl::float8_e5m2, uint8_t>(lhs, rhs,
+                                                              multi_index);
+}
+template <>
+bool CompareEqual<tsl::float8_e4m3fn>(tsl::float8_e4m3fn lhs,
+                                      tsl::float8_e4m3fn rhs,
+                                      absl::Span<const int64_t> multi_index) {
+  return CompareFloatsBitwiseEqual<tsl::float8_e4m3fn, uint8_t>(lhs, rhs,
+                                                                multi_index);
+}
 template <>
 bool CompareEqual<bfloat16>(bfloat16 lhs, bfloat16 rhs,
                             absl::Span<const int64_t> multi_index) {
@@ -125,6 +143,18 @@ Status MakeErrorStatus(NativeT lhs, NativeT rhs,
       LiteralUtil::MultiIndexAsString(multi_index), StrCat(lhs), StrCat(rhs));
 }
 
+template <>
+Status MakeErrorStatus(tsl::float8_e5m2 lhs, tsl::float8_e5m2 rhs,
+                       absl::Span<const int64_t> multi_index) {
+  return MakeBitwiseErrorStatus<tsl::float8_e5m2, uint8_t>(lhs, rhs,
+                                                           multi_index);
+}
+template <>
+Status MakeErrorStatus(tsl::float8_e4m3fn lhs, tsl::float8_e4m3fn rhs,
+                       absl::Span<const int64_t> multi_index) {
+  return MakeBitwiseErrorStatus<tsl::float8_e4m3fn, uint8_t>(lhs, rhs,
+                                                             multi_index);
+}
 template <>
 Status MakeErrorStatus(bfloat16 lhs, bfloat16 rhs,
                        absl::Span<const int64_t> multi_index) {
@@ -188,7 +218,14 @@ Status Equal(LiteralSlice expected, LiteralSlice actual,
   }
 
   Status result;
-  for (int64_t i = 0; i < expected.shape().dimensions(dimension); ++i) {
+  int64_t upper_bound = expected.shape().dimensions(dimension);
+  if (expected.shape().is_dynamic_dimension(dimension)) {
+    // If the dimension is dynamic, we only want to check up until the actual
+    // dynamic size specified by the literal.
+    upper_bound = expected.GetDynamicSize(dimension);
+  }
+
+  for (int64_t i = 0; i < upper_bound; ++i) {
     multi_index[dimension] = i;
     if (mismatched != nullptr) {
       result.Update(Equal<NativeT>(expected, actual, multi_index, dimension + 1,
@@ -230,6 +267,14 @@ bool IsNan(NativeT value) {
 }
 
 // Converts the given floating-point value to a string.
+std::string FpValueToString(tsl::float8_e5m2 value) {
+  return absl::StrFormat("%5.3g", static_cast<double>(value));
+}
+
+std::string FpValueToString(tsl::float8_e4m3fn value) {
+  return absl::StrFormat("%5.3g", static_cast<double>(value));
+}
+
 std::string FpValueToString(bfloat16 value) {
   return absl::StrFormat("%10.4g", static_cast<double>(value));
 }
@@ -257,7 +302,7 @@ std::string FpValueToString(complex128 value) {
 }
 
 // A wrapper of std::abs to include data types that are not supported by
-// std::abs, in particular, bfloat16 and half.
+// std::abs, such as bfloat16 and half.
 template <typename NativeT>
 double FpAbsoluteValue(NativeT value) {
   return std::abs(value);
@@ -270,6 +315,16 @@ double FpAbsoluteValue(bfloat16 value) {
 
 template <>
 double FpAbsoluteValue(half value) {
+  return FpAbsoluteValue<float>(static_cast<float>(value));
+}
+
+template <>
+double FpAbsoluteValue(tsl::float8_e5m2 value) {
+  return FpAbsoluteValue<float>(static_cast<float>(value));
+}
+
+template <>
+double FpAbsoluteValue(tsl::float8_e4m3fn value) {
   return FpAbsoluteValue<float>(static_cast<float>(value));
 }
 
@@ -510,9 +565,11 @@ class NearComparator {
 
   // Compares the two literals elementwise.
   void CompareLiterals() {
-    // Fast path optimization for the case were layouts match.
+    // Fast path optimization for the case were layouts match and the shapes are
+    // static.
     if (LayoutUtil::Equal(actual_.shape().layout(),
-                          expected_.shape().layout())) {
+                          expected_.shape().layout()) &&
+        expected_.shape().is_static() && actual_.shape().is_static()) {
       absl::Span<const NativeT> expected_data = expected_.data<NativeT>();
       absl::Span<const NativeT> actual_data = actual_.data<NativeT>();
       const int64_t len = expected_data.size();
@@ -525,9 +582,9 @@ class NearComparator {
     CompareLiteralsSlow(0, &multi_index);
   }
 
-  // Slow path for CompareLiterals when 'actual' and 'expected' literals have
-  // different layouts. In this case, multidimensional indices are constructed
-  // and indexed for each element.
+  // Slow path for CompareLiterals when 'actual' and 'expected' literals are
+  // dynamic or have different layouts. In this case, multidimensional indices
+  // are constructed and indexed for each element.
   void CompareLiteralsSlow(int64_t dimension,
                            std::vector<int64_t>* multi_index) {
     if (dimension == multi_index->size()) {
@@ -536,7 +593,13 @@ class NearComparator {
                     IndexUtil::MultidimensionalIndexToLinearIndex(
                         actual_.shape(), *multi_index));
     } else {
-      for (int64_t i = 0; i < expected_.shape().dimensions(dimension); ++i) {
+      int64_t upper_bound = expected_.shape().dimensions(dimension);
+      if (expected_.shape().is_dynamic_dimension(dimension)) {
+        // If the dimension is dynamic, we only want to check up until the
+        // actual dynamic size specified by the literal.
+        upper_bound = expected_.GetDynamicSize(dimension);
+      }
+      for (int64_t i = 0; i < upper_bound; ++i) {
         (*multi_index)[dimension] = i;
         CompareLiteralsSlow(dimension + 1, multi_index);
       }
@@ -684,7 +747,11 @@ constexpr std::array<float, 5> NearComparator<NativeT>::kErrorBucketBounds;
 Status EqualHelper(const LiteralSlice& expected, const LiteralSlice& actual,
                    const ShapeIndex& shape_index,
                    const MiscompareCallback& miscompare_callback) {
-  TF_RETURN_IF_ERROR(EqualShapes(expected.shape(), actual.shape()));
+  if (expected.shape().is_static() && actual.shape().is_static()) {
+    TF_RETURN_IF_ERROR(EqualShapes(expected.shape(), actual.shape()));
+  } else {
+    TF_RETURN_IF_ERROR(EqualDynamicShapesAndDimensions(expected, actual));
+  }
 
   Status result;
   if (expected.shape().IsTuple()) {
@@ -739,6 +806,14 @@ Status EqualHelper(const LiteralSlice& expected, const LiteralSlice& actual,
       case U64:
         result = Equal<uint64_t>(expected, actual, index, 0, miscompared_ptr);
         break;
+      case F8E5M2:
+        result = Equal<tsl::float8_e5m2>(expected, actual, index, 0,
+                                         miscompared_ptr);
+        break;
+      case F8E4M3FN:
+        result = Equal<tsl::float8_e4m3fn>(expected, actual, index, 0,
+                                           miscompared_ptr);
+        break;
       case BF16:
         result = Equal<bfloat16>(expected, actual, index, 0, miscompared_ptr);
         break;
@@ -781,7 +856,11 @@ Status NearHelper(const LiteralSlice& expected, const LiteralSlice& actual,
                   const ShapeIndex& shape_index, const ErrorSpec& error,
                   std::optional<bool> detailed_message,
                   const MiscompareCallback& miscompare_callback) {
-  TF_RETURN_IF_ERROR(EqualShapes(expected.shape(), actual.shape()));
+  if (expected.shape().is_static() && actual.shape().is_static()) {
+    TF_RETURN_IF_ERROR(EqualShapes(expected.shape(), actual.shape()));
+  } else {
+    TF_RETURN_IF_ERROR(EqualDynamicShapesAndDimensions(expected, actual));
+  }
 
   if (expected.shape().IsTuple()) {
     Status return_status;
@@ -823,6 +902,16 @@ Status NearHelper(const LiteralSlice& expected, const LiteralSlice& actual,
     bool use_detailed_message = detailed_message.value_or(
         ShapeUtil::ElementsIn(expected.shape()) >= 64);
     switch (expected.shape().element_type()) {
+      case F8E5M2:
+        return NearComparator<tsl::float8_e5m2>::Compare(
+            expected, actual, shape_index, error, use_detailed_message,
+            miscompare_callback);
+        break;
+      case F8E4M3FN:
+        return NearComparator<tsl::float8_e4m3fn>::Compare(
+            expected, actual, shape_index, error, use_detailed_message,
+            miscompare_callback);
+        break;
       case BF16:
         return NearComparator<bfloat16>::Compare(expected, actual, shape_index,
                                                  error, use_detailed_message,
@@ -913,6 +1002,53 @@ Status EqualShapes(const Shape& expected, const Shape& actual) {
   }
   // Non-array, non-tuple shapes are trivially equivalent.
   return OkStatus();
+}
+
+Status EqualDynamicShapesAndDimensions(const LiteralSlice& expected,
+                                       const LiteralSlice& actual) {
+  TF_RETURN_IF_ERROR(EqualShapes(expected.shape(), actual.shape()));
+  return ShapeUtil::ForEachSubshapeWithStatus(
+      expected.shape(), [&expected, &actual](const Shape& expected_shape,
+                                             const ShapeIndex& index) {
+        auto actual_shape = ShapeUtil::GetSubshape(actual.shape(), index);
+        for (int i = 0; i < expected_shape.dimensions().size(); ++i) {
+          if (!expected_shape.is_dynamic_dimension(i) &&
+              !actual_shape.is_dynamic_dimension(i)) {
+            // We're only interested in dynamic dimensions.
+            continue;
+          }
+          if (expected_shape.is_dynamic_dimension(i) &&
+              !actual_shape.is_dynamic_dimension(i)) {
+            return InvalidArgument(
+                "mismatch at dimension %d. the expected shape %s is dynamic "
+                "while "
+                "the actual shape %s is not.",
+                i, ShapeUtil::HumanString(expected.shape()),
+                ShapeUtil::HumanString(actual.shape()));
+          }
+          if (!expected_shape.is_dynamic_dimension(i) &&
+              actual_shape.is_dynamic_dimension(i)) {
+            return InvalidArgument(
+                "mismatch at dimension %d. the expected shape %s is not "
+                "dynamic "
+                "while the actual shape %s is dynamic.",
+                i, ShapeUtil::HumanString(expected.shape()),
+                ShapeUtil::HumanString(actual.shape()));
+          }
+          // Both dimensions are dynamic. Check that they are equal.
+          int64_t expected_dynamic_size = expected.GetDynamicSize(i, index);
+          int64_t actual_dynamic_size = actual.GetDynamicSize(i, index);
+          if (expected_dynamic_size != actual_dynamic_size) {
+            return InvalidArgument(
+                "mismatch at dimension %d. The expected dynamic size does not "
+                "match "
+                "the actual dynamic size. %d vs. %d",
+                i, expected_dynamic_size, actual_dynamic_size);
+          }
+        }
+
+        return OkStatus();
+      });
 }
 
 namespace {

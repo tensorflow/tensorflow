@@ -118,7 +118,7 @@ class PadOp : public XlaOpKernel {
                 total_size, xla::ValueInferenceMode::kUpperBound);
         OP_REQUIRES_OK(ctx, size_upper_bound_status_or.status());
         auto size_upper_bound =
-            size_upper_bound_status_or.ValueOrDie().Get<int32>({});
+            size_upper_bound_status_or.value().Get<int32>({});
         OP_REQUIRES(
             ctx, size_upper_bound.has_value(),
             errors::InvalidArgument(

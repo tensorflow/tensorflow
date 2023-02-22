@@ -22,6 +22,8 @@ from tensorflow.tools.compatibility import renames_v2
 # function_reorders or function_keyword_renames in tf_upgrade_v2.py,
 # use the OLD function name.
 # These renames happen after the arguments have been processed.
+# After modifying this dict, run the following to update reorders_v2.py:
+# bazel run tensorflow/tools/compatibility/update:generate_v2_reorders_map
 manual_symbol_renames = {
     "tf.batch_to_space_nd":
         "tf.batch_to_space",
@@ -281,18 +283,8 @@ manual_symbol_renames = {
         "tf.batch_to_space",
     "tf.quantize_v2":
         "tf.quantization.quantize",
-    "tf.sparse_add":
-        "tf.sparse.add",
-    "tf.sparse_concat":
-        "tf.sparse.concat",
-    "tf.sparse_split":
-        "tf.sparse.split",
     "tf.sparse_matmul":
         "tf.linalg.matmul",
-    "tf.sparse_reduce_sum":
-        "tf.sparse.reduce_sum",
-    "tf.sparse_reduce_max":
-        "tf.sparse.reduce_max",
     "tf.random.stateless_multinomial":
         "tf.random.stateless_categorical",
     "tf.substr":
@@ -358,10 +350,16 @@ manual_symbol_renames = {
         "tf.compat.v1.losses.Reduction.SUM_OVER_NONZERO_WEIGHTS",
     "tf.lite.constants.FLOAT":
         "tf.float32",
+    "tf.lite.constants.FLOAT16":
+        "tf.float16",
+    "tf.lite.constants.INT16":
+        "tf.int16",
     "tf.lite.constants.INT32":
         "tf.int32",
     "tf.lite.constants.INT64":
         "tf.int64",
+    "tf.lite.constants.INT8":
+        "tf.int8",
     "tf.lite.constants.STRING":
         "tf.string",
     "tf.lite.constants.QUANTIZED_UINT8":
@@ -378,16 +376,56 @@ manual_symbol_renames = {
     # symbol with the same name.
     "tf.saved_model.load":
         "tf.compat.v1.saved_model.load",
+    "tf.saved_model.loader.load":
+        "tf.compat.v1.saved_model.load",
     "tf.saved_model.load_v2":
         "tf.compat.v2.saved_model.load",
     "tf.image.resize_images":
         "tf.image.resize",
-    "tf.random_poisson":
-        "tf.random.poisson",
+    "tf.assert_equal":
+        "tf.compat.v1.assert_equal",
+    "tf.assert_greater":
+        "tf.compat.v1.assert_greater",
+    "tf.assert_greater_equal":
+        "tf.compat.v1.assert_greater_equal",
+    "tf.assert_integer":
+        "tf.compat.v1.assert_integer",
+    "tf.assert_less":
+        "tf.compat.v1.assert_less",
+    "tf.assert_less_equal":
+        "tf.compat.v1.assert_less_equal",
+    "tf.assert_near":
+        "tf.compat.v1.assert_near",
+    "tf.assert_negative":
+        "tf.compat.v1.assert_negative",
+    "tf.assert_non_negative":
+        "tf.compat.v1.assert_non_negative",
+    "tf.assert_non_positive":
+        "tf.compat.v1.assert_non_positive",
+    "tf.assert_none_equal":
+        "tf.compat.v1.assert_none_equal",
+    "tf.assert_positive":
+        "tf.compat.v1.assert_positive",
+    "tf.assert_rank":
+        "tf.compat.v1.assert_rank",
+    "tf.assert_rank_at_least":
+        "tf.compat.v1.assert_rank_at_least",
+    "tf.assert_rank_in":
+        "tf.compat.v1.assert_rank_in",
+    "tf.assert_scalar":
+        "tf.compat.v1.assert_scalar",
+    "tf.assert_type":
+        "tf.compat.v1.assert_type",
+    "tf.assert_variables_initialized":
+        "tf.compat.v1.assert_variables_initialized",
+    "tf.debugging.assert_equal":
+        "tf.compat.v1.debugging.assert_equal",
     "tf.debugging.assert_greater":
         "tf.compat.v1.debugging.assert_greater",
     "tf.debugging.assert_greater_equal":
         "tf.compat.v1.debugging.assert_greater_equal",
+    "tf.debugging.assert_integer":
+        "tf.compat.v1.debugging.assert_integer",
     "tf.debugging.assert_less":
         "tf.compat.v1.debugging.assert_less",
     "tf.debugging.assert_less_equal":
@@ -404,30 +442,22 @@ manual_symbol_renames = {
         "tf.compat.v1.debugging.assert_none_equal",
     "tf.debugging.assert_positive":
         "tf.compat.v1.debugging.assert_positive",
-    "tf.debugging.assert_equal":
-        "tf.compat.v1.debugging.assert_equal",
-    "tf.debugging.assert_scalar":
-        "tf.compat.v1.debugging.assert_scalar",
-    "tf.assert_equal":
-        "tf.compat.v1.assert_equal",
-    "tf.assert_less":
-        "tf.compat.v1.assert_less",
-    "tf.assert_greater":
-        "tf.compat.v1.assert_greater",
     "tf.debugging.assert_rank":
         "tf.compat.v1.debugging.assert_rank",
     "tf.debugging.assert_rank_at_least":
         "tf.compat.v1.debugging.assert_rank_at_least",
     "tf.debugging.assert_rank_in":
         "tf.compat.v1.debugging.assert_rank_in",
+    "tf.debugging.assert_scalar":
+        "tf.compat.v1.debugging.assert_scalar",
+    "tf.debugging.assert_type":
+        "tf.compat.v1.debugging.assert_type",
     "tf.errors.exception_type_from_error_code":
         "tf.compat.v1.errors.exception_type_from_error_code",
     "tf.errors.error_code_from_exception_type":
         "tf.compat.v1.errors.error_code_from_exception_type",
     "tf.errors.raise_exception_on_not_ok_status":
         "tf.compat.v1.errors.raise_exception_on_not_ok_status",
-    "tf.assert_rank":
-        "tf.compat.v1.assert_rank",
     "tf.nn.max_pool":
         "tf.nn.max_pool2d",
     "tf.nn.avg_pool":

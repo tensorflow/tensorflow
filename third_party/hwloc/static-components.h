@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef THIRD_PARTY_HWLOC_STATIC_COMPONENTS_H_
-#define THIRD_PARTY_HWLOC_STATIC_COMPONENTS_H_
+#ifndef TENSORFLOW_THIRD_PARTY_HWLOC_STATIC_COMPONENTS_H_
+#define TENSORFLOW_THIRD_PARTY_HWLOC_STATIC_COMPONENTS_H_
 
 #include <private/internal-components.h>
 static const struct hwloc_component* hwloc_static_components[] = {
@@ -35,4 +35,4 @@ static const struct hwloc_component* hwloc_static_components[] = {
 #endif
     NULL};
 
-#endif  // THIRD_PARTY_HWLOC_STATIC_COMPONENTS_H_
+#endif  // TENSORFLOW_THIRD_PARTY_HWLOC_STATIC_COMPONENTS_H_

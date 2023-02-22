@@ -44,7 +44,7 @@ class DenseBincountOp : public XlaOpKernel {
     StatusOr<xla::Shape> output_shape_or =
         ctx->builder()->GetShape(output_size_param);
     OP_REQUIRES_OK(ctx, output_shape_or.status());
-    auto output_shape_param = output_shape_or.ValueOrDie();
+    auto output_shape_param = output_shape_or.value();
     auto output_rank = output_shape_param.rank();
     OP_REQUIRES(ctx, output_rank == 0,
                 errors::InvalidArgument("Shape must be rank 0 but is rank ",
@@ -61,25 +61,19 @@ class DenseBincountOp : public XlaOpKernel {
     auto one = xla::One(ctx->builder(), dtype);
     StatusOr<xla::Shape> input_shape_or = ctx->builder()->GetShape(input);
     OP_REQUIRES_OK(ctx, input_shape_or.status());
-    auto input_shape = input_shape_or.ValueOrDie();
-    auto size = input_shape.dimensions(0);
+    auto input_shape = input_shape_or.value();
 
-    if (!size) {
-      output = xla::Broadcast(zero, {output_size});
-      ctx->SetOutput(0, output);
-      return;
-    }
     auto rank = input_shape.rank();
 
     OP_REQUIRES(ctx, rank <= 2,
                 errors::InvalidArgument(
                     "Shape must be at most rank 2 but is rank ", rank));
-
     xla::XlaOp weights = ctx->Input(2);
     StatusOr<xla::Shape> weights_shape_or = ctx->builder()->GetShape(weights);
+
     OP_REQUIRES_OK(ctx, weights_shape_or.status());
 
-    auto weights_shape = weights_shape_or.ValueOrDie();
+    auto weights_shape = weights_shape_or.value();
     OP_REQUIRES(ctx,
                 xla::ShapeUtil::CompatibleIgnoringElementType(weights_shape,
                                                               input_shape) ||
@@ -91,11 +85,20 @@ class DenseBincountOp : public XlaOpKernel {
                     "1. Received ",
                     weights_shape.DebugString()));
 
+    auto size = input_shape.dimensions(0);
+
+    if (!size) {
+      output = xla::Broadcast(zero, {output_size});
+      ctx->SetOutput(0, output);
+      return;
+    }
+
     auto weights_size = weights_shape.dimensions(0);
     bool has_weights = false;
     if (weights_size) {
       has_weights = true;
     }
+
     xla::Shape output_shape = xla::ShapeUtil::MakeShape(dtype, {output_size});
     xla::ScatterDimensionNumbers scatter_dnums;
     scatter_dnums.set_index_vector_dim(1);

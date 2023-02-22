@@ -80,7 +80,7 @@ CudaPtxInMemory::CudaPtxInMemory(
 
 std::string CudaPtxInMemory::DecompressPtx(const char *ptx) {
   // Get the length of the PTX string from the beginning of the buffer.
-  uint64_t ptx_length = *reinterpret_cast<const uint64 *>(ptx);
+  uint64_t ptx_length = *reinterpret_cast<const uint64_t *>(ptx);
   // Get the PTX string from the buffer with offset and length.
   std::string compressed_ptx(ptx + sizeof(uint64_t),
                              ptx + sizeof(uint64_t) + ptx_length);

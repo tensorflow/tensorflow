@@ -31,7 +31,7 @@ limitations under the License.
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/raw_ostream.h"
-#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
+#include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/SCF/IR/SCF.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
@@ -198,7 +198,7 @@ LogicalResult DecomposeTFOpsPass::RewriteUnregisteredTFOps() {
         }
         auto build_list_op = builder.create<BuildListOp>(
             op->getLoc(), list_type, variadic_operands);
-        new_operands.push_back(build_list_op.out());
+        new_operands.push_back(build_list_op.getOut());
       } else {
         auto attr_name = compose_func.getArgAttrOfType<StringAttr>(
             arg.index(), kAttrArgumentNameAttr);
@@ -252,14 +252,14 @@ LogicalResult DecomposeTFOpsPass::RewriteUnregisteredTFOps() {
           auto element_op = builder.create<GetElementOp>(
               op->getLoc(), unconstrainted_tensor_type,
               new_op.getResult(res.index()), index.getResult());
-          new_results.push_back(element_op.out());
+          new_results.push_back(element_op.getOut());
         }
       }
     }
     for (auto res : llvm::zip(op->getResults(), new_results)) {
       auto casted = builder.create<CastOp>(
           op->getLoc(), std::get<0>(res).getType(), std::get<1>(res));
-      std::get<0>(res).replaceAllUsesWith(casted.out());
+      std::get<0>(res).replaceAllUsesWith(casted.getOut());
     }
 
     // Copy all the unregisted attributes to the new op.
@@ -288,7 +288,7 @@ LogicalResult DecomposeTFOpsPass::InlineTFRFuncCalls() {
   // The inliner only inlines the TFR call op.
   bool changed = false;
   auto walk_result = func.walk([&](CallOp call_op) {
-    auto callee = table.lookup<TFRFuncOp>(call_op.callee());
+    auto callee = table.lookup<TFRFuncOp>(call_op.getCallee());
     if (!callee || callee.isExternal()) return WalkResult::advance();
 
     // Record the boundary of the inlined operations. The inlined operation will

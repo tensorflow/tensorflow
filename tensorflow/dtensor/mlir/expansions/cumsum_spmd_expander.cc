@@ -43,8 +43,8 @@ StatusOr<int64_t> GetAxisDimension(mlir::Operation* op) {
         absl::StrCat("Expected Cumsum op but got : ", OpName(op)).c_str());
   }
   TF_ASSIGN_OR_RETURN(int64_t axis_dim,
-                      ExtractConstIntFromValue(cumsum.axis()));
-  int64_t tensor_rank = ValueRank(cumsum.x());
+                      ExtractConstIntFromValue(cumsum.getAxis()));
+  int64_t tensor_rank = ValueRank(cumsum.getX());
   // Axis can be in range [-tensor_rank, tensor_rank), so we add tensor_rank
   // to wrap it around.
   if (axis_dim >= -tensor_rank && axis_dim < 0) {
@@ -69,7 +69,7 @@ StatusOr<mlir::Operation*> CumsumSPMDExpander::ExpandOp(mlir::Operation* op) {
   // the axis dimension replicated. So set both the operand and output layout
   // to this intermediate layout.
   Layout intermediate_layout = output_layout->GetLayoutWithReducedDims(
-      {axis_dim.ValueOrDie()}, /*keep_dims=*/true);
+      {axis_dim.value()}, /*keep_dims=*/true);
 
   // Relayout operand to intermediate layout.
   mlir::OpBuilder builder(op);

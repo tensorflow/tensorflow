@@ -17,11 +17,11 @@ limitations under the License.
 #include <utility>
 
 #include "tensorflow/compiler/xla/status_macros.h"
+#include "tensorflow/compiler/xla/stream_executor/cuda/cuda_blas_lt.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/tensor_float_32_utils.h"
 #include "tensorflow/core/util/env_var.h"
 #include "tensorflow/core/util/matmul_autotune.h"
-#include "tensorflow/stream_executor/cuda/cuda_blas_lt.h"
 
 namespace tensorflow {
 
@@ -103,6 +103,14 @@ StatusOr<se::blas::ComputationType> GetBlasComputationType(
   }
 }
 
+se::blas::DataType GetScaleType(se::blas::DataType c_type,
+                                se::blas::ComputationType computation_type) {
+  return ((computation_type == se::blas::ComputationType::kF32) &&
+          (c_type != se::blas::DataType::kComplexFloat))
+             ? se::blas::DataType::kFloat
+             : c_type;
+}
+
 }  // namespace
 
 StatusOr<const PlanAndAlgorithms*> GetPlanAndAlgorithms(
@@ -126,7 +134,7 @@ StatusOr<const PlanAndAlgorithms*> GetPlanAndAlgorithms(
                         GetBlasComputationType(params.dtype));
 
     se::blas::DataType scale_type =
-        se::cuda::BlasLt::GetScaleType(params.dtype, computation_type);
+        GetScaleType(params.dtype, computation_type);
 
     // cublas_lt's output is column-major. We want row-major so use identity:
     // C^T = (A @ B)^T = B^T @ A^T.

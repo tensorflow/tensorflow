@@ -20,7 +20,7 @@ limitations under the License.
 #if GOOGLE_CUDA && GOOGLE_TENSORRT
 #include "tensorflow/compiler/tf2tensorrt/common/utils.h"
 #include "tensorflow/compiler/tf2tensorrt/convert/op_converter_registry.h"
-#include "tensorflow/stream_executor/platform/dso_loader.h"
+#include "tensorflow/compiler/xla/stream_executor/platform/dso_loader.h"
 #include "third_party/tensorrt/NvInfer.h"
 #endif
 
@@ -35,10 +35,7 @@ bool IsGoogleTensorRTEnabled() {
 #else   // TF_USE_TENSORRT_STATIC
   auto handle_or = se::internal::DsoLoader::TryDlopenTensorRTLibraries();
   if (!handle_or.ok()) {
-    LOG_WARNING_WITH_PREFIX
-        << "Cannot dlopen some TensorRT libraries. If you would like "
-           "to use Nvidia GPU with TensorRT, please make sure the "
-           "missing libraries mentioned above are installed properly.";
+    LOG_WARNING_WITH_PREFIX << "Could not find TensorRT";
   }
   return handle_or.ok();
 #endif  // TF_USE_TENSORRT_STATIC

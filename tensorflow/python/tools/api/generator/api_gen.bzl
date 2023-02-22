@@ -1,7 +1,25 @@
 """Targets for generating TensorFlow Python API __init__.py files."""
 
-load("//tensorflow:tensorflow.bzl", "if_indexing_source_code")
+load("//tensorflow:tensorflow.default.bzl", "if_indexing_source_code")
 load("//tensorflow/python/tools/api/generator:api_init_files.bzl", "TENSORFLOW_API_INIT_FILES")
+
+TENSORFLOW_API_GEN_PACKAGES = [
+    "tensorflow.python",
+    "tensorflow.dtensor.python.accelerator_util",
+    "tensorflow.dtensor.python.api",
+    "tensorflow.dtensor.python.config",
+    "tensorflow.dtensor.python.d_checkpoint",
+    "tensorflow.dtensor.python.d_variable",
+    "tensorflow.dtensor.python.input_util",
+    "tensorflow.dtensor.python.layout",
+    "tensorflow.dtensor.python.mesh_util",
+    "tensorflow.dtensor.python.tpu_util",
+    "tensorflow.dtensor.python.save_restore",
+    "tensorflow.lite.python.analyzer",
+    "tensorflow.lite.python.lite",
+    "tensorflow.lite.python.authoring.authoring",
+    "tensorflow.python.modules_with_exports",
+]
 
 def get_compat_files(
         file_paths,
@@ -43,28 +61,18 @@ def gen_api_init_files(
         api_version = 2,
         compat_api_versions = [],
         compat_init_templates = [],
-        packages = [
-            "tensorflow.python",
-            "tensorflow.dtensor.python.api",
-            "tensorflow.dtensor.python.d_checkpoint",
-            "tensorflow.dtensor.python.d_variable",
-            "tensorflow.dtensor.python.input_util",
-            "tensorflow.dtensor.python.layout",
-            "tensorflow.dtensor.python.mesh_util",
-            "tensorflow.dtensor.python.save_restore",
-            "tensorflow.dtensor.python.tpu_util",
-            "tensorflow.lite.python.analyzer",
-            "tensorflow.lite.python.lite",
-            "tensorflow.lite.python.authoring.authoring",
-            "tensorflow.python.modules_with_exports",
-        ],
+        packages = TENSORFLOW_API_GEN_PACKAGES,
         package_deps = [
             "//tensorflow/python:no_contrib",
             "//tensorflow/python:modules_with_exports",
+            "//tensorflow/lite/python:analyzer",
+            "//tensorflow/lite/python:lite",
+            "//tensorflow/lite/python/authoring",
         ],
         output_package = "tensorflow",
         output_dir = "",
-        root_file_name = "__init__.py"):
+        root_file_name = "__init__.py",
+        proxy_module_root = None):
     """Creates API directory structure and __init__.py files.
 
     Creates a genrule that generates a directory structure with __init__.py
@@ -99,6 +107,9 @@ def gen_api_init_files(
       output_dir: Subdirectory to output API to.
         If non-empty, must end with '/'.
       root_file_name: Name of the root file with all the root imports.
+      proxy_module_root: Module root for proxy-import format. If specified, proxy files with content
+        like `from proxy_module_root.proxy_module import *` will be created to enable import
+        resolution under TensorFlow.
     """
     root_init_template_flag = ""
     if root_init_template:
@@ -118,6 +129,9 @@ def gen_api_init_files(
             "//tensorflow/python/tools/api/generator:doc_srcs",
         ],
     )
+    if proxy_module_root != None:
+        # Avoid conflicts between the __init__.py file of TensorFlow and proxy module.
+        output_files = [f for f in output_files if f != "__init__.py"]
 
     # Replace name of root file with root_file_name.
     output_files = [
@@ -146,6 +160,8 @@ def gen_api_init_files(
         "--output_package=" + output_package,
         "--use_relative_imports=True",
     ]
+    if proxy_module_root != None:
+        flags.append("--proxy_module_root=" + proxy_module_root)
 
     # copybara:uncomment_begin(configurable API loading)
     # native.vardef("TF_API_INIT_LOADING", "default")

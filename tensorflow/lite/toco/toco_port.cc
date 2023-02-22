@@ -183,7 +183,7 @@ tensorflow::Status Writable(const string& filename) {
   FILE* f = fopen(filename.c_str(), "w");
   if (f) {
     fclose(f);
-    return tensorflow::Status::OK();
+    return tensorflow::OkStatus();
   }
   return tensorflow::errors::NotFound("not writable");
 }
@@ -193,7 +193,7 @@ tensorflow::Status Readable(const string& filename,
   FILE* f = fopen(filename.c_str(), "r");
   if (f) {
     fclose(f);
-    return tensorflow::Status::OK();
+    return tensorflow::OkStatus();
   }
   return tensorflow::errors::NotFound("not readable");
 }
@@ -205,7 +205,7 @@ tensorflow::Status Exists(const string& filename,
   if (ret == -1) {
     return tensorflow::errors::NotFound("file doesn't exist");
   }
-  return tensorflow::Status::OK();
+  return tensorflow::OkStatus();
 }
 
 tensorflow::Status GetContents(const string& path, string* output,
@@ -225,7 +225,7 @@ tensorflow::Status GetContents(const string& path, string* output,
     if (size == 0) {
       // Done.
       close(fd);
-      return tensorflow::Status::OK();
+      return tensorflow::OkStatus();
     } else if (size == -1) {
       // Error.
       close(fd);
@@ -258,7 +258,7 @@ tensorflow::Status SetContents(const string& filename, const string& contents,
   }
   close(fd);
 
-  return tensorflow::Status::OK();
+  return tensorflow::OkStatus();
 }
 
 string JoinPath(const string& base, const string& filename) {

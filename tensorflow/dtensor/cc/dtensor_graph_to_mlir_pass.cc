@@ -15,9 +15,13 @@ limitations under the License.
 
 #include "tensorflow/dtensor/cc/dtensor_graph_to_mlir_pass.h"
 
+#include <memory>
+#include <utility>
+
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Dialect.h"  // from @llvm-project
 #include "mlir/IR/SymbolTable.h"  // from @llvm-project
@@ -28,10 +32,10 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/export_graphdef.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/import_model.h"
-#include "tensorflow/compiler/mlir/tensorflow/utils/compile_mlir_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_type.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/device_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
+#include "tensorflow/compiler/mlir/tf2xla/api/v0/compile_mlir_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/core/common_runtime/optimization_registry.h"
 #include "tensorflow/core/framework/function.h"
@@ -44,6 +48,8 @@ limitations under the License.
 #include "tensorflow/dtensor/mlir/dtensor_dialect/ir/dialect.h"
 #include "tensorflow/dtensor/mlir/dtensor_mlir_passes.h"
 #include "tensorflow/dtensor/mlir/ir/tf_dtensor.h"
+#include "tensorflow/tsl/platform/status.h"
+#include "tensorflow/tsl/platform/statusor.h"
 
 namespace tensorflow {
 
@@ -64,11 +70,11 @@ DTensorMlirPassRunner::DTensorMlirPassRunner()
   dtensor::CreateDTensorMLIRPass(pipeline_options, &pass_manager_);
 }
 
-Status DTensorMlirPassRunner::RunOnGraph(
+StatusOr<mlir::OwningOpRef<mlir::ModuleOp>>
+DTensorMlirPassRunner::ImportGraphToMlir(
     const DeviceSet& device_set, bool is_func,
-    FunctionLibraryDefinition* flib_def, std::unique_ptr<Graph>* graph,
-    absl::flat_hash_set<Node*>& control_ret_nodes, Fprint128 cache_key) {
-  Graph* input_graph = graph->get();
+    const FunctionLibraryDefinition& flib_def, const Graph& graph,
+    Fprint128 cache_key) {
   GraphDebugInfo debug_info;
   GraphImportConfig import_config;
   import_config.graph_as_function = true;
@@ -83,19 +89,12 @@ Status DTensorMlirPassRunner::RunOnGraph(
   // target/control ret.
   import_config.control_outputs = {"eager_operation"};
 
-  // Import GraphDef to TF MLIR.
-  stream_executor::port::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>>
-      module_ref = ConvertGraphToMlir(*input_graph, debug_info, *flib_def,
-                                      import_config, &context_);
-  if (!module_ref.ok())
-    return errors::InvalidArgument(
-        absl::StrCat(
-            "Can not convert the graph to MLIR, errors from MLIR converter : ",
-            module_ref.status().error_message())
-            .c_str());
+  // Imports GraphDef to TF MLIR.
+  StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> module_ref =
+      ConvertGraphToMlir(graph, debug_info, flib_def, import_config, &context_);
 
-  mlir::ModuleOp module = module_ref.ValueOrDie().get();
-
+  // Adds DTensor attributes to ModuleOp.
+  mlir::ModuleOp module = module_ref.value().get();
   AddDevicesToOp(module, &device_set);
 
   // Tag the module for logging or not depending on flag.
@@ -110,6 +109,10 @@ Status DTensorMlirPassRunner::RunOnGraph(
       mlir::StringAttr::get(&context_, absl::StrCat("_", cache_key.low64, "_",
                                                     cache_key.high64)));
 
+  return module_ref;
+}
+
+Status DTensorMlirPassRunner::Run(mlir::ModuleOp module) {
   // Executes and collects results from the passes.
   mlir::StatusScopedDiagnosticHandler diag_handler(&context_);
 
@@ -120,16 +123,6 @@ Status DTensorMlirPassRunner::RunOnGraph(
   TF_RETURN_IF_ERROR(diag_handler.ConsumeStatus());
 
   if (logging_enabled_) pass_manager_.getContext()->enableMultithreading();
-
-  // Convert MLIR to graphdef for execution.
-  GraphExportConfig export_config;
-  TF_RETURN_WITH_CONTEXT_IF_ERROR(
-      ConvertMlirToGraph(module, export_config, graph, flib_def,
-                         &control_ret_nodes),
-      "Error converting MLIR module back to graph");
-  Graph* output_graph = graph->get();
-  VLOG(4) << DumpGraphToFile("dtensor_mlir_pass_after", *output_graph,
-                             flib_def);
   return OkStatus();
 }
 

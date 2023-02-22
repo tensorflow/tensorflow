@@ -38,7 +38,7 @@ limitations under the License.
 namespace mlir {
 namespace TFL {
 namespace {
-#define GEN_PASS_CLASSES
+#define GEN_PASS_DEF_LEGALIZEVARIABLESPASS
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h.inc"
 
 // Attribute name to identify whether variables should be legalized to TFLite or
@@ -58,7 +58,7 @@ bool IsSupportedElementType(ShapedType type) {
 // Pass which legalizes TF variables which are already passed as bounded
 // arguments to functions, to TFLite variables.
 class LegalizeVariablesPass
-    : public LegalizeVariablesPassBase<LegalizeVariablesPass> {
+    : public impl::LegalizeVariablesPassBase<LegalizeVariablesPass> {
  public:
   MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(LegalizeVariablesPass)
 

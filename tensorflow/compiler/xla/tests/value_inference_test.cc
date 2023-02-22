@@ -37,9 +37,9 @@ limitations under the License.
 #include "tensorflow/compiler/xla/tests/test_macros.h"
 #include "tensorflow/compiler/xla/tests/test_utils.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/core/status_test_util.h"
-#include "tensorflow/core/platform/status.h"
-#include "tensorflow/core/platform/statusor.h"
+#include "tensorflow/tsl/lib/core/status_test_util.h"
+#include "tensorflow/tsl/platform/status.h"
+#include "tensorflow/tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
@@ -82,7 +82,7 @@ TEST_F(DynamismInferenceTest, ScalarInt32Literal) {
   auto value = ComputeDynamismScalar(computation, &b);
   ASSERT_TRUE(value.ok()) << value.status();
   // A constant is not dynamic.
-  EXPECT_EQ(value.ValueOrDie(), false);
+  EXPECT_EQ(value.value(), false);
 }
 
 TEST_F(DynamismInferenceTest, Iota) {
@@ -90,8 +90,7 @@ TEST_F(DynamismInferenceTest, Iota) {
   XlaBuilder b(TestName());
   auto computation = Iota(&b, S32, 2);
   // Iota is not dynamic.
-  EXPECT_FALSE(
-      ComputeDynamismLiteral(computation, &b).ValueOrDie().Get<bool>({0}));
+  EXPECT_FALSE(ComputeDynamismLiteral(computation, &b).value().Get<bool>({0}));
 }
 
 TEST_F(DynamismInferenceTest, TupleSimple) {
@@ -100,8 +99,8 @@ TEST_F(DynamismInferenceTest, TupleSimple) {
   auto p = Parameter(&b, 0, ShapeUtil::MakeScalarShape(S32), "p0");
 
   auto tuple = Tuple(&b, {c, p});
-  EXPECT_EQ(ComputeDynamismScalar(tuple, &b, {0}).ValueOrDie(), false);
-  EXPECT_EQ(ComputeDynamismScalar(tuple, &b, {1}).ValueOrDie(), true);
+  EXPECT_EQ(ComputeDynamismScalar(tuple, &b, {0}).value(), false);
+  EXPECT_EQ(ComputeDynamismScalar(tuple, &b, {1}).value(), true);
 }
 
 TEST_F(DynamismInferenceTest, TupleGteKeepsDynamism) {
@@ -113,8 +112,8 @@ TEST_F(DynamismInferenceTest, TupleGteKeepsDynamism) {
   auto gte0 = GetTupleElement(tuple, 0);
   auto gte1 = GetTupleElement(tuple, 1);
   auto tuple_2 = Tuple(&b, {gte0, gte1});
-  EXPECT_EQ(ComputeDynamismScalar(tuple_2, &b, {0}).ValueOrDie(), false);
-  EXPECT_EQ(ComputeDynamismScalar(tuple_2, &b, {1}).ValueOrDie(), true);
+  EXPECT_EQ(ComputeDynamismScalar(tuple_2, &b, {0}).value(), false);
+  EXPECT_EQ(ComputeDynamismScalar(tuple_2, &b, {1}).value(), true);
 }
 
 TEST_F(DynamismInferenceTest, PredValueUsedTwice) {
@@ -123,7 +122,7 @@ TEST_F(DynamismInferenceTest, PredValueUsedTwice) {
   auto p = Parameter(&b, 0, ShapeUtil::MakeScalarShape(S32), "p0");
   auto pred = Eq(c, p);
   auto result = Select(pred, p, c);
-  EXPECT_EQ(ComputeDynamismScalar(result, &b, {}).ValueOrDie(), true);
+  EXPECT_EQ(ComputeDynamismScalar(result, &b, {}).value(), true);
 }
 
 TEST_F(DynamismInferenceTest, ReduceUsedTwice) {
@@ -135,7 +134,7 @@ TEST_F(DynamismInferenceTest, ReduceUsedTwice) {
   auto reduce = Reduce(p, zero, add_s32, {0});
   auto pred = Eq(c, reduce);
   auto result = Select(pred, reduce, c);
-  EXPECT_EQ(ComputeDynamismScalar(result, &b, {}).ValueOrDie(), true);
+  EXPECT_EQ(ComputeDynamismScalar(result, &b, {}).value(), true);
 }
 
 TEST_F(DynamismInferenceTest, VariadicReduce) {
@@ -160,8 +159,8 @@ TEST_F(DynamismInferenceTest, VariadicReduce) {
   auto result = GetTupleElement(variadic_reduce, 0);
 
   // result[0] should be static; result[1] should be dynamic.
-  EXPECT_FALSE(ComputeDynamismLiteral(result, &b).ValueOrDie().Get<bool>({0}));
-  EXPECT_TRUE(ComputeDynamismLiteral(result, &b).ValueOrDie().Get<bool>({1}));
+  EXPECT_FALSE(ComputeDynamismLiteral(result, &b).value().Get<bool>({0}));
+  EXPECT_TRUE(ComputeDynamismLiteral(result, &b).value().Get<bool>({1}));
 }
 
 TEST_F(DynamismInferenceTest, DynamicSelectorWithMixedValues) {
@@ -173,9 +172,9 @@ TEST_F(DynamismInferenceTest, DynamicSelectorWithMixedValues) {
   auto result = Select(concat, constant_values, constant_values);
   // First result is static (selector is constant, both values are constant).
   // Iota is not dynamic.
-  EXPECT_FALSE(ComputeDynamismLiteral(result, &b).ValueOrDie().Get<bool>({0}));
+  EXPECT_FALSE(ComputeDynamismLiteral(result, &b).value().Get<bool>({0}));
   // Second result is dynamic (selector is dynamic).
-  EXPECT_TRUE(ComputeDynamismLiteral(result, &b).ValueOrDie().Get<bool>({1}));
+  EXPECT_TRUE(ComputeDynamismLiteral(result, &b).value().Get<bool>({1}));
 }
 
 TEST_F(DynamismInferenceTest, ConcatSliceReshapeKeepsDynamism) {
@@ -189,8 +188,8 @@ TEST_F(DynamismInferenceTest, ConcatSliceReshapeKeepsDynamism) {
   auto slice1 = SliceInDim(concat, 1, 2, 1, 0);
   auto reshape1 = Reshape(slice1, {});
   auto tuple_2 = Tuple(&b, {reshape0, reshape1});
-  EXPECT_EQ(ComputeDynamismScalar(tuple_2, &b, {0}).ValueOrDie(), false);
-  EXPECT_EQ(ComputeDynamismScalar(tuple_2, &b, {1}).ValueOrDie(), true);
+  EXPECT_EQ(ComputeDynamismScalar(tuple_2, &b, {0}).value(), false);
+  EXPECT_EQ(ComputeDynamismScalar(tuple_2, &b, {1}).value(), true);
 }
 
 TEST_F(DynamismInferenceTest, ParameterIsDynamic) {
@@ -200,7 +199,7 @@ TEST_F(DynamismInferenceTest, ParameterIsDynamic) {
   auto value = ComputeDynamismScalar(computation, &b);
   ASSERT_TRUE(value.ok()) << value.status();
   // A parameter is considered dynamic.
-  EXPECT_EQ(value.ValueOrDie(), true);
+  EXPECT_EQ(value.value(), true);
 }
 
 TEST_F(DynamismInferenceTest, UnaryOpKeepsDynamism) {
@@ -211,8 +210,8 @@ TEST_F(DynamismInferenceTest, UnaryOpKeepsDynamism) {
   auto neg0 = Neg(c);
   auto neg1 = Neg(p);
   auto tuple_2 = Tuple(&b, {neg0, neg1});
-  EXPECT_EQ(ComputeDynamismScalar(tuple_2, &b, {0}).ValueOrDie(), false);
-  EXPECT_EQ(ComputeDynamismScalar(tuple_2, &b, {1}).ValueOrDie(), true);
+  EXPECT_EQ(ComputeDynamismScalar(tuple_2, &b, {0}).value(), false);
+  EXPECT_EQ(ComputeDynamismScalar(tuple_2, &b, {1}).value(), true);
 }
 
 TEST_F(DynamismInferenceTest, ParameterWithToken) {
@@ -223,8 +222,8 @@ TEST_F(DynamismInferenceTest, ParameterWithToken) {
                 ShapeUtil::MakeTupleShape({ShapeUtil::MakeTokenShape(),
                                            ShapeUtil::MakeScalarShape(S32)}),
                 "p0");
-  EXPECT_EQ(ComputeDynamismScalar(p, &b, {0}).ValueOrDie(), true);
-  EXPECT_EQ(ComputeDynamismScalar(p, &b, {1}).ValueOrDie(), true);
+  EXPECT_EQ(ComputeDynamismScalar(p, &b, {0}).value(), true);
+  EXPECT_EQ(ComputeDynamismScalar(p, &b, {1}).value(), true);
 }
 
 TEST_F(DynamismInferenceTest, BinaryOpsOrsDynamism) {
@@ -237,8 +236,8 @@ TEST_F(DynamismInferenceTest, BinaryOpsOrsDynamism) {
   // Dynamic value + dynamic value = dynamic
   auto add2 = Add(p, c);
   auto tuple_2 = Tuple(&b, {add1, add2});
-  EXPECT_EQ(ComputeDynamismScalar(tuple_2, &b, {0}).ValueOrDie(), false);
-  EXPECT_EQ(ComputeDynamismScalar(tuple_2, &b, {1}).ValueOrDie(), true);
+  EXPECT_EQ(ComputeDynamismScalar(tuple_2, &b, {0}).value(), false);
+  EXPECT_EQ(ComputeDynamismScalar(tuple_2, &b, {1}).value(), true);
 }
 
 TEST_F(DynamismInferenceTest, GetDimensionSize) {
@@ -252,8 +251,8 @@ TEST_F(DynamismInferenceTest, GetDimensionSize) {
   auto gds0 = GetDimensionSize(p, 0);
   auto gds1 = GetDimensionSize(p, 1);
   auto tuple_2 = Tuple(&b, {gds0, gds1});
-  EXPECT_EQ(ComputeDynamismScalar(tuple_2, &b, {0}).ValueOrDie(), true);
-  EXPECT_EQ(ComputeDynamismScalar(tuple_2, &b, {1}).ValueOrDie(), false);
+  EXPECT_EQ(ComputeDynamismScalar(tuple_2, &b, {0}).value(), true);
+  EXPECT_EQ(ComputeDynamismScalar(tuple_2, &b, {1}).value(), false);
 }
 
 TEST_F(DynamismInferenceTest, DynamicSliceWithConstantOperands) {
@@ -263,7 +262,7 @@ TEST_F(DynamismInferenceTest, DynamicSliceWithConstantOperands) {
   auto slice_start = ConstantR0(&b, 1);
   auto dynamic_slice = DynamicSlice(constant, {slice_start}, {1});
   EXPECT_FALSE(
-      ComputeDynamismLiteral(dynamic_slice, &b).ValueOrDie().Get<bool>({0}));
+      ComputeDynamismLiteral(dynamic_slice, &b).value().Get<bool>({0}));
 }
 
 TEST_F(DynamismInferenceTest, GatherWithCommonParent) {
@@ -281,8 +280,7 @@ TEST_F(DynamismInferenceTest, GatherWithCommonParent) {
   dim_numbers.set_index_vector_dim(1);
   auto gather = Gather(operand1, indices, dim_numbers, {1});
   ASSERT_TRUE(b.first_error().ok()) << b.first_error().error_message();
-  EXPECT_TRUE(
-      ComputeDynamismLiteral(gather, &b).ValueOrDie().Get<bool>({0, 0}));
+  EXPECT_TRUE(ComputeDynamismLiteral(gather, &b).value().Get<bool>({0, 0}));
 }
 
 TEST_F(DynamismInferenceTest, GatherWithConstantParent) {
@@ -298,8 +296,7 @@ TEST_F(DynamismInferenceTest, GatherWithConstantParent) {
   auto gather = Gather(data_operand, indices, dim_numbers, {1});
   ASSERT_TRUE(b.first_error().ok()) << b.first_error().error_message();
   // Everything is constant, result is also contant.
-  EXPECT_FALSE(
-      ComputeDynamismLiteral(gather, &b).ValueOrDie().Get<bool>({0, 0}));
+  EXPECT_FALSE(ComputeDynamismLiteral(gather, &b).value().Get<bool>({0, 0}));
 }
 
 TEST_F(DynamismInferenceTest, GatherWithSharedConstantParent) {
@@ -316,8 +313,7 @@ TEST_F(DynamismInferenceTest, GatherWithSharedConstantParent) {
   auto gather = Gather(operand1, indices, dim_numbers, {1});
   ASSERT_TRUE(b.first_error().ok()) << b.first_error().error_message();
   // Everything is constant, result is also contant.
-  EXPECT_FALSE(
-      ComputeDynamismLiteral(gather, &b).ValueOrDie().Get<bool>({0, 0}));
+  EXPECT_FALSE(ComputeDynamismLiteral(gather, &b).value().Get<bool>({0, 0}));
 }
 
 TEST_F(DynamismInferenceTest, InferThroughPad) {
@@ -331,9 +327,9 @@ TEST_F(DynamismInferenceTest, InferThroughPad) {
   auto pad = Pad(operand1, parameter, padding_config);
   ASSERT_TRUE(b.first_error().ok()) << b.first_error().error_message();
   // Everything is constant, result is also contant.
-  EXPECT_FALSE(ComputeDynamismLiteral(pad, &b).ValueOrDie().Get<bool>({0}));
-  EXPECT_FALSE(ComputeDynamismLiteral(pad, &b).ValueOrDie().Get<bool>({1}));
-  EXPECT_TRUE(ComputeDynamismLiteral(pad, &b).ValueOrDie().Get<bool>({2}));
+  EXPECT_FALSE(ComputeDynamismLiteral(pad, &b).value().Get<bool>({0}));
+  EXPECT_FALSE(ComputeDynamismLiteral(pad, &b).value().Get<bool>({1}));
+  EXPECT_TRUE(ComputeDynamismLiteral(pad, &b).value().Get<bool>({2}));
 }
 
 TEST_F(DynamismInferenceTest, InferThroughConditionalBranchesAreSame) {
@@ -351,12 +347,12 @@ TEST_F(DynamismInferenceTest, InferThroughConditionalBranchesAreSame) {
   XlaBuilder true_builder("true");
   Parameter(&true_builder, 0, s32_shape, "cond_param");
   Tuple(&true_builder, {ConstantR0<int32_t>(&true_builder, 1)});
-  auto true_computation = true_builder.Build().ValueOrDie();
+  auto true_computation = true_builder.Build().value();
 
   XlaBuilder false_builder("false");
   Parameter(&false_builder, 0, s32_shape, "cond_param");
   Tuple(&false_builder, {ConstantR0<int32_t>(&false_builder, 1)});
-  auto false_computation = false_builder.Build().ValueOrDie();
+  auto false_computation = false_builder.Build().value();
 
   XlaBuilder b(TestName());
   auto parameter = Parameter(&b, 0, ShapeUtil::MakeShape(PRED, {}), "p0");
@@ -366,7 +362,7 @@ TEST_F(DynamismInferenceTest, InferThroughConditionalBranchesAreSame) {
   auto gte = GetTupleElement(cond, 0);
   ASSERT_TRUE(b.first_error().ok()) << b.first_error().error_message();
   // Result is not dynamic.
-  EXPECT_FALSE(ComputeDynamismLiteral(gte, &b).ValueOrDie().Get<bool>({}));
+  EXPECT_FALSE(ComputeDynamismLiteral(gte, &b).value().Get<bool>({}));
 }
 
 TEST_F(DynamismInferenceTest, InferThroughCall) {
@@ -385,14 +381,14 @@ TEST_F(DynamismInferenceTest, InferThroughCall) {
   auto s32_shape = ShapeUtil::MakeShape(S32, {});
   XlaBuilder call_builder("call");
   Parameter(&call_builder, 0, s32_shape, "call_param");
-  auto call_computation = call_builder.Build().ValueOrDie();
+  auto call_computation = call_builder.Build().value();
 
   XlaBuilder b(TestName());
   auto constant = ConstantR0<int32_t>(&b, 3);
   auto call = Call(&b, call_computation, {constant});
   ASSERT_TRUE(b.first_error().ok()) << b.first_error().error_message();
   // Result is static.
-  EXPECT_EQ(ComputeDynamismScalar(call, &b, {}).ValueOrDie(), false);
+  EXPECT_EQ(ComputeDynamismScalar(call, &b, {}).value(), false);
 }
 
 TEST_F(DynamismInferenceTest, InferThroughConditionalBranchesAreNotSame) {
@@ -410,12 +406,12 @@ TEST_F(DynamismInferenceTest, InferThroughConditionalBranchesAreNotSame) {
   XlaBuilder true_builder("true");
   Parameter(&true_builder, 0, s32_shape, "cond_param");
   Tuple(&true_builder, {ConstantR0<int32_t>(&true_builder, 1)});
-  auto true_computation = true_builder.Build().ValueOrDie();
+  auto true_computation = true_builder.Build().value();
 
   XlaBuilder false_builder("false");
   Parameter(&false_builder, 0, s32_shape, "cond_param");
   Tuple(&false_builder, {ConstantR0<int32_t>(&false_builder, 2)});
-  auto false_computation = false_builder.Build().ValueOrDie();
+  auto false_computation = false_builder.Build().value();
 
   XlaBuilder b(TestName());
   auto parameter = Parameter(&b, 0, ShapeUtil::MakeShape(PRED, {}), "p0");
@@ -425,7 +421,7 @@ TEST_F(DynamismInferenceTest, InferThroughConditionalBranchesAreNotSame) {
   auto gte = GetTupleElement(cond, 0);
   ASSERT_TRUE(b.first_error().ok()) << b.first_error().error_message();
   // Result is dynamic.
-  EXPECT_TRUE(ComputeDynamismLiteral(gte, &b).ValueOrDie().Get<bool>({}));
+  EXPECT_TRUE(ComputeDynamismLiteral(gte, &b).value().Get<bool>({}));
 }
 
 TEST_F(DynamismInferenceTest, InferThroughConditionalPredIsConstantTrueBranch) {
@@ -443,12 +439,12 @@ TEST_F(DynamismInferenceTest, InferThroughConditionalPredIsConstantTrueBranch) {
   XlaBuilder true_builder("true");
   Parameter(&true_builder, 0, s32_shape, "cond_param");
   Tuple(&true_builder, {ConstantR0<int32_t>(&true_builder, 0)});
-  auto true_computation = true_builder.Build().ValueOrDie();
+  auto true_computation = true_builder.Build().value();
 
   XlaBuilder false_builder("false");
   Tuple(&false_builder,
         {Parameter(&false_builder, 0, s32_shape, "cond_param")});
-  auto false_computation = false_builder.Build().ValueOrDie();
+  auto false_computation = false_builder.Build().value();
 
   XlaBuilder b(TestName());
   auto pred = ConstantR0<bool>(&b, true);
@@ -458,7 +454,7 @@ TEST_F(DynamismInferenceTest, InferThroughConditionalPredIsConstantTrueBranch) {
   auto gte = GetTupleElement(cond, 0);
   ASSERT_TRUE(b.first_error().ok()) << b.first_error().error_message();
   // Result is not dynamic.
-  EXPECT_FALSE(ComputeDynamismLiteral(gte, &b).ValueOrDie().Get<bool>({}));
+  EXPECT_FALSE(ComputeDynamismLiteral(gte, &b).value().Get<bool>({}));
 }
 
 TEST_F(DynamismInferenceTest,
@@ -477,12 +473,12 @@ TEST_F(DynamismInferenceTest,
   XlaBuilder true_builder("true");
   Parameter(&true_builder, 0, s32_shape, "cond_param");
   Tuple(&true_builder, {ConstantR0<int32_t>(&true_builder, 0)});
-  auto true_computation = true_builder.Build().ValueOrDie();
+  auto true_computation = true_builder.Build().value();
 
   XlaBuilder false_builder("false");
   Tuple(&false_builder,
         {Parameter(&false_builder, 0, s32_shape, "cond_param")});
-  auto false_computation = false_builder.Build().ValueOrDie();
+  auto false_computation = false_builder.Build().value();
 
   XlaBuilder b(TestName());
   auto param = Parameter(&b, 0, s32_shape, "param");
@@ -493,7 +489,7 @@ TEST_F(DynamismInferenceTest,
   auto gte = GetTupleElement(cond, 0);
   ASSERT_TRUE(b.first_error().ok()) << b.first_error().error_message();
   // Result is dynamic.
-  EXPECT_TRUE(ComputeDynamismLiteral(gte, &b).ValueOrDie().Get<bool>({}));
+  EXPECT_TRUE(ComputeDynamismLiteral(gte, &b).value().Get<bool>({}));
 }
 
 TEST_F(DynamismInferenceTest, ArgumentForwardingNestedTuple) {
@@ -522,12 +518,12 @@ TEST_F(DynamismInferenceTest, ArgumentForwardingNestedTuple) {
   XlaBuilder inner_true_builder("inner_true");
   Parameter(&inner_true_builder, 0, s32_shape, "cond_param");
   Tuple(&inner_true_builder, {ConstantR0<int32_t>(&inner_true_builder, 0)});
-  auto inner_true_computation = inner_true_builder.Build().ValueOrDie();
+  auto inner_true_computation = inner_true_builder.Build().value();
 
   XlaBuilder inner_false_builder("inner_false");
   Tuple(&inner_false_builder,
         {Parameter(&inner_false_builder, 0, s32_shape, "cond_param")});
-  auto inner_false_computation = inner_false_builder.Build().ValueOrDie();
+  auto inner_false_computation = inner_false_builder.Build().value();
 
   XlaBuilder true_builder("true");
   {
@@ -536,7 +532,7 @@ TEST_F(DynamismInferenceTest, ArgumentForwardingNestedTuple) {
     auto pred = GetTupleElement(param, 0);
     Conditional(pred, op, inner_true_computation, op, inner_false_computation);
   }
-  auto true_computation = true_builder.Build().ValueOrDie();
+  auto true_computation = true_builder.Build().value();
   XlaBuilder false_builder("false");
   {
     auto param = Parameter(&false_builder, 0, tuple_shape, "param");
@@ -544,7 +540,7 @@ TEST_F(DynamismInferenceTest, ArgumentForwardingNestedTuple) {
     auto pred = GetTupleElement(param, 0);
     Conditional(pred, op, inner_true_computation, op, inner_false_computation);
   }
-  auto false_computation = false_builder.Build().ValueOrDie();
+  auto false_computation = false_builder.Build().value();
   XlaBuilder b(TestName());
   auto constant = ConstantR0<int32_t>(&b, 0);
   auto pred = Parameter(&b, 0, pred_shape, "param");
@@ -554,7 +550,7 @@ TEST_F(DynamismInferenceTest, ArgumentForwardingNestedTuple) {
   auto gte = GetTupleElement(cond, 0);
   ASSERT_TRUE(b.first_error().ok()) << b.first_error().error_message();
   // Result is static.
-  EXPECT_FALSE(ComputeDynamismLiteral(gte, &b).ValueOrDie().Get<bool>({}));
+  EXPECT_FALSE(ComputeDynamismLiteral(gte, &b).value().Get<bool>({}));
 }
 
 class UpperBoundInferenceTest : public ValueInferenceTest {
@@ -582,12 +578,10 @@ TEST_F(UpperBoundInferenceTest, GetDimensionSize) {
   auto gds0 = GetDimensionSize(p, 0);
   auto gds1 = GetDimensionSize(p, 1);
   auto tuple_2 = Tuple(&b, {gds0, gds1});
-  EXPECT_EQ(
-      ComputeUpperBoundLiteral(tuple_2, &b).ValueOrDie().Get<int32_t>({}, {0}),
-      2);
-  EXPECT_EQ(
-      ComputeUpperBoundLiteral(tuple_2, &b).ValueOrDie().Get<int32_t>({}, {1}),
-      3);
+  EXPECT_EQ(ComputeUpperBoundLiteral(tuple_2, &b).value().Get<int32_t>({}, {0}),
+            2);
+  EXPECT_EQ(ComputeUpperBoundLiteral(tuple_2, &b).value().Get<int32_t>({}, {1}),
+            3);
 }
 
 TEST_F(UpperBoundInferenceTest, GetDimensionSizeSub) {
@@ -601,7 +595,7 @@ TEST_F(UpperBoundInferenceTest, GetDimensionSizeSub) {
   auto gds1 = GetDimensionSize(p, 1);
   // Upper bound of `second_dimension - first_dimension` is 3 - 0 = 3
   auto sub = Sub(gds1, gds0);
-  EXPECT_EQ(ComputeUpperBoundLiteral(sub, &b).ValueOrDie().Get<int32_t>({}), 3);
+  EXPECT_EQ(ComputeUpperBoundLiteral(sub, &b).value().Get<int32_t>({}), 3);
 }
 
 TEST_F(UpperBoundInferenceTest, GetDimensionSizeDiv) {
@@ -615,7 +609,7 @@ TEST_F(UpperBoundInferenceTest, GetDimensionSizeDiv) {
   // Upper bound of `second_dimension / first_dimension` is 3 / 1 = 3. Notice we
   // don't use 0 as the lower bound as it would create divide-by-zero error.
   auto div = Div(gds1, gds0);
-  EXPECT_EQ(ComputeUpperBoundLiteral(div, &b).ValueOrDie().Get<int32_t>({}), 3);
+  EXPECT_EQ(ComputeUpperBoundLiteral(div, &b).value().Get<int32_t>({}), 3);
 }
 
 TEST_F(UpperBoundInferenceTest, SumSubtract) {
@@ -630,12 +624,11 @@ TEST_F(UpperBoundInferenceTest, SumSubtract) {
   auto gds1 = GetDimensionSize(p, 1);
   auto sub = Sub(gds1, gds0);
   auto add = Add(sub, gds0);
-  EXPECT_EQ(ComputeUpperBoundLiteral(add, &b).ValueOrDie().Get<int32_t>({}), 3);
+  EXPECT_EQ(ComputeUpperBoundLiteral(add, &b).value().Get<int32_t>({}), 3);
   auto add2 = Add(gds1, gds0);
   // upperbound(gds1 - gds0 + gds1 + gds0) ==> upperbound(2 * gds1)
   auto add3 = Add(sub, add2);
-  EXPECT_EQ(ComputeUpperBoundLiteral(add3, &b).ValueOrDie().Get<int32_t>({}),
-            6);
+  EXPECT_EQ(ComputeUpperBoundLiteral(add3, &b).value().Get<int32_t>({}), 6);
 }
 
 TEST_F(UpperBoundInferenceTest, SumSubtractWithDataShuffling) {
@@ -655,12 +648,11 @@ TEST_F(UpperBoundInferenceTest, SumSubtractWithDataShuffling) {
   gds0 = Reshape(slice, {});
   auto sub = Sub(gds1, gds0);
   auto add = Add(sub, gds0);
-  EXPECT_EQ(ComputeUpperBoundLiteral(add, &b).ValueOrDie().Get<int32_t>({}), 3);
+  EXPECT_EQ(ComputeUpperBoundLiteral(add, &b).value().Get<int32_t>({}), 3);
   auto add2 = Add(gds1, gds0);
   // upperbound(gds1 - gds0 + gds1 + gds0) ==> upperbound(2 * gds1)
   auto add3 = Add(sub, add2);
-  EXPECT_EQ(ComputeUpperBoundLiteral(add3, &b).ValueOrDie().Get<int32_t>({}),
-            6);
+  EXPECT_EQ(ComputeUpperBoundLiteral(add3, &b).value().Get<int32_t>({}), 6);
 }
 
 TEST_F(UpperBoundInferenceTest, SumSubtractEquivalentGetDimensionSize) {
@@ -677,7 +669,7 @@ TEST_F(UpperBoundInferenceTest, SumSubtractEquivalentGetDimensionSize) {
   auto add = Add(sub, gds0);
   // upperbound(gds0 + gds1 - gds2) is equal to upperbound(gds1) if gds0 ==
   // gds2.
-  EXPECT_EQ(ComputeUpperBoundLiteral(add, &b).ValueOrDie().Get<int32_t>({}), 3);
+  EXPECT_EQ(ComputeUpperBoundLiteral(add, &b).value().Get<int32_t>({}), 3);
 }
 
 TEST_F(UpperBoundInferenceTest, ParamCantInferBound) {
@@ -688,10 +680,8 @@ TEST_F(UpperBoundInferenceTest, ParamCantInferBound) {
   auto p1 = Parameter(&b, 1, ShapeUtil::MakeShape(S32, {}, {}), "p1");
   auto gds = GetDimensionSize(p0, 0);
   auto sub = Div(gds, p1);
-  EXPECT_FALSE(ComputeUpperBoundLiteral(sub, &b)
-                   .ValueOrDie()
-                   .Get<int32_t>({})
-                   .has_value());
+  EXPECT_FALSE(
+      ComputeUpperBoundLiteral(sub, &b).value().Get<int32_t>({}).has_value());
 }
 
 TEST_F(UpperBoundInferenceTest, KeyValueSort) {
@@ -712,7 +702,7 @@ TEST_F(UpperBoundInferenceTest, KeyValueSort) {
 
   for (int64_t i = 0; i < elem_count; ++i) {
     auto result_first_elem =
-        ComputeUpperBoundLiteral(gte, &b).ValueOrDie().Get<int32_t>({i});
+        ComputeUpperBoundLiteral(gte, &b).value().Get<int32_t>({i});
     // We can infer the bound of sort.
     EXPECT_TRUE(result_first_elem.has_value());
     // The bound of the sort result is the max value in the input.
@@ -747,7 +737,7 @@ TEST_F(ConstValueInferenceTest, ConstValuePassThroughSetBound) {
   auto set_bound =
       CustomCall(&b, "SetBound", {p0}, shape, "", false, {}, &tuple);
   auto result =
-      ComputeConstantValueLiteral(set_bound, &b).ValueOrDie().Get<int32_t>({});
+      ComputeConstantValueLiteral(set_bound, &b).value().Get<int32_t>({});
   EXPECT_TRUE(result.has_value());
   EXPECT_EQ(result.value(), 32);
 }

@@ -17,31 +17,13 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PLATFORM_TEST_BENCHMARK_H_
 #define TENSORFLOW_CORE_PLATFORM_TEST_BENCHMARK_H_
 
-#include "benchmark/benchmark.h"  // from @com_google_benchmark  // IWYU pragma: export
-#include "tensorflow/core/platform/platform.h"
-
-// FIXME(vyng): Remove this.
-// Background: During the benchmark-migration projects, all benchmarks were made
-// to use "testing::benchmark::" prefix because that is what the internal
-// Google benchmark library use.
-namespace testing {
-namespace benchmark {
-using ::benchmark::State;  // NOLINT
-}  // namespace benchmark
-}  // namespace testing
+#include "tensorflow/tsl/platform/test_benchmark.h"
 
 namespace tensorflow {
 namespace testing {
-
-inline void RunBenchmarks() { benchmark::RunSpecifiedBenchmarks(); }
-inline void InitializeBenchmarks(int* argc, char** argv) {
-  benchmark::Initialize(argc, argv);
-}
-
-template <class T>
-void DoNotOptimize(const T& var) {
-  ::benchmark::DoNotOptimize(var);
-}
+using tsl::testing::DoNotOptimize;         // NOLINT
+using tsl::testing::InitializeBenchmarks;  // NOLINT
+using tsl::testing::RunBenchmarks;         // NOLINT
 }  // namespace testing
 }  // namespace tensorflow
 

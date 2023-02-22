@@ -20,13 +20,16 @@ limitations under the License.
 #include <unordered_map>
 #include <vector>
 
+#include "absl/container/flat_hash_set.h"
 #include "tensorflow/core/framework/device.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/strings/strcat.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/public/session_options.h"
+#include "tensorflow/core/util/device_name_utils.h"
 #include "tensorflow/core/util/env_var.h"
 
 namespace tensorflow {
@@ -230,10 +233,26 @@ Status DeviceFactory::AddDevices(
   // TODO(b/183974121): Consider merge the logic into the loop below.
   TF_RETURN_IF_ERROR(AddCpuDevices(options, name_prefix, devices));
 
+  absl::flat_hash_set<std::string> allowed_device_types;
+  for (const auto& device_filter : options.config.device_filters()) {
+    DeviceNameUtils::ParsedName parsed;
+    if (!DeviceNameUtils::ParseFullOrLocalName(device_filter, &parsed)) {
+      return errors::InvalidArgument(
+          absl::StrCat("Invalid device filter: ", device_filter));
+    }
+    if (parsed.has_type) {
+      allowed_device_types.insert(parsed.type);
+    }
+  }
+
   auto cpu_factory = GetFactory("CPU");
   // Then the rest (including GPU).
   mutex_lock l(*get_device_factory_lock());
   for (auto& p : device_factories()) {
+    if (!allowed_device_types.empty() &&
+        !allowed_device_types.contains(p.first)) {
+      continue;  // Skip if the device type is not found from the device filter.
+    }
     auto factory = p.second.factory.get();
     if (factory != cpu_factory) {
       TF_RETURN_IF_ERROR(factory->CreateDevices(options, name_prefix, devices));

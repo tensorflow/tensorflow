@@ -10,6 +10,7 @@ load("@build_bazel_rules_android//android:rules.bzl", "android_library")
 load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//visibility:public"],
     licenses = ["notice"],
 )
@@ -40,6 +41,7 @@ exports_files([
 
 JAVA_SRCS = glob([
     "src/main/java/org/tensorflow/lite/*.java",
+    "src/main/java/org/tensorflow/lite/acceleration/*.java",
     "src/main/java/org/tensorflow/lite/annotations/*.java",
 ]) + [
     "//tensorflow/lite/delegates/nnapi/java/src/main/java/org/tensorflow/lite/nnapi:nnapi_delegate_api_src",
@@ -63,6 +65,7 @@ JAVA_API_SRCS = [
     "src/main/java/org/tensorflow/lite/Tensor.java",
     "src/main/java/org/tensorflow/lite/TensorFlowLite.java",
     "src/main/java/org/tensorflow/lite/annotations/UsedByReflection.java",
+    "src/main/java/org/tensorflow/lite/acceleration/ValidatedAccelerationConfig.java",
     "//tensorflow/lite/delegates/nnapi/java/src/main/java/org/tensorflow/lite/nnapi:nnapi_delegate_api_src",
 ]
 
@@ -97,6 +100,7 @@ filegroup(
         "src/main/java/org/tensorflow/lite/Tensor.java",
         "src/main/java/org/tensorflow/lite/TensorFlowLite.java",
         "src/main/java/org/tensorflow/lite/TensorImpl.java",
+        "src/main/java/org/tensorflow/lite/acceleration/ValidatedAccelerationConfig.java",
         "src/main/java/org/tensorflow/lite/annotations/UsedByReflection.java",
         "src/main/java/org/tensorflow/lite/package-info.java",
         "//tensorflow/lite/delegates/nnapi/java/src/main/java/org/tensorflow/lite/nnapi:nnapi_delegate_src",
@@ -126,6 +130,8 @@ filegroup(
 # Building tensorflow-lite.aar including 4 variants of .so
 # To build an aar for release, run below command:
 # bazel build -c opt --fat_apk_cpu=x86,x86_64,arm64-v8a,armeabi-v7a \
+# --define=android_dexmerger_tool=d8_dexmerger \
+# --define=android_incremental_dexing_tool=d8_dexbuilder \
 #   tensorflow/lite/java:tensorflow-lite
 aar_with_jni(
     name = "tensorflow-lite",
@@ -133,7 +139,7 @@ aar_with_jni(
     headers = [
         "//tensorflow/lite:builtin_ops.h",
         "//tensorflow/lite/c:c_api.h",
-        "//tensorflow/lite/c:c_api_types.h",
+        "//tensorflow/lite/core/c:c_api_types.h",
         "//tensorflow/lite/c:c_api_experimental.h",
         # TODO(b/175298345): Clean up and if possible remove common.h here.
         "//tensorflow/lite/c:common.h",
@@ -154,7 +160,7 @@ aar_with_jni(
     headers = [
         "//tensorflow/lite:builtin_ops.h",
         "//tensorflow/lite/c:c_api.h",
-        "//tensorflow/lite/c:c_api_types.h",
+        "//tensorflow/lite/core/c:c_api_types.h",
         # TODO(b/175298345): move the stable parts of common.h into
         # a separate header file that contains no experimental APIs
         # (perhaps also replacing concrete struct types with opaque types
@@ -185,6 +191,7 @@ aar_with_jni(
     android_library = ":tensorflowlite_gpu_impl",
     headers = [
         "//tensorflow/lite/delegates/gpu:delegate.h",
+        "//tensorflow/lite/delegates/gpu:delegate_options.h",
     ],
 )
 
@@ -302,6 +309,7 @@ android_library(
     deps = [
         ":tensorflowlite_gpu_api",
         "//tensorflow/lite/java:tensorflowlite_api",
+        "@maven//:androidx_annotation_annotation",
     ],
 )
 
@@ -313,6 +321,7 @@ android_library(
     deps = [
         ":tensorflowlite_api",
         ":tensorflowlite_gpu_api",
+        "@maven//:androidx_annotation_annotation",
     ],
 )
 
@@ -632,6 +641,7 @@ java_test_with_tflite(
     visibility = ["//visibility:private"],
     deps = [
         ":tensorflowlite_javalib_stable",
+        "//third_party/java/mockito",
         "@com_google_truth",
         "@junit",
     ],
@@ -940,7 +950,7 @@ jni_binary_with_tflite(
 # client code, using System.LoadLibrary, before TensorFlowLite.init() is called.
 jni_binary_with_tflite(
     name = "libtensorflowlite_gpu_jni.so",
-    linkopts = tflite_jni_linkopts() + tflite_linkopts_no_undefined(),
+    linkopts = tflite_jni_linkopts(),
     linkscript = ":gpu_version_script.lds",
     tflite_deps = [
         "//tensorflow/lite/delegates/gpu/java/src/main/native",

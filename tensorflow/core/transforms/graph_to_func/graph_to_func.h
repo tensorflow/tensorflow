@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_CORE_TRANSFORMS_GRAPH_TO_FUNC_H_
-#define TENSORFLOW_CORE_TRANSFORMS_GRAPH_TO_FUNC_H_
+#ifndef TENSORFLOW_CORE_TRANSFORMS_GRAPH_TO_FUNC_GRAPH_TO_FUNC_H_
+#define TENSORFLOW_CORE_TRANSFORMS_GRAPH_TO_FUNC_GRAPH_TO_FUNC_H_
 
 #include "tensorflow/core/ir/ops.h"
 #include "tensorflow/core/platform/status.h"
@@ -41,4 +41,4 @@ tensorflow::Status GraphToFunc(GraphOp graph, ArrayRef<std::string> feeds_names,
 }  // namespace tfg
 }  // namespace mlir
 
-#endif  // TENSORFLOW_CORE_TRANSFORMS_GRAPH_TO_FUNC_H_
+#endif  // TENSORFLOW_CORE_TRANSFORMS_GRAPH_TO_FUNC_GRAPH_TO_FUNC_H_

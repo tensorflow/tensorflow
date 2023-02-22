@@ -32,19 +32,20 @@ import org.tensorflow.lite.annotations.UsedByReflection;
 public class GpuDelegate implements Delegate {
 
   private static final long INVALID_DELEGATE_HANDLE = 0;
-  private static final String TFLITE_GPU_LIB = "tensorflowlite_gpu_jni";
 
   private long delegateHandle;
 
   @UsedByReflection("GpuDelegateFactory")
   public GpuDelegate(GpuDelegateFactory.Options options) {
+    GpuDelegateNative.init();
     delegateHandle =
         createDelegate(
             options.isPrecisionLossAllowed(),
             options.areQuantizedModelsAllowed(),
             options.getInferencePreference(),
             options.getSerializationDir(),
-            options.getModelToken());
+            options.getModelToken(),
+            options.getForceBackend().value());
   }
 
   @UsedByReflection("TFLiteSupport/model/GpuDelegateProxy")
@@ -78,16 +79,13 @@ public class GpuDelegate implements Delegate {
     }
   }
 
-  static {
-    System.loadLibrary(TFLITE_GPU_LIB);
-  }
-
   private static native long createDelegate(
       boolean precisionLossAllowed,
       boolean quantizedModelsAllowed,
       int preference,
       String serializationDir,
-      String modelToken);
+      String modelToken,
+      int forceBackend);
 
   private static native void deleteDelegate(long delegateHandle);
 }

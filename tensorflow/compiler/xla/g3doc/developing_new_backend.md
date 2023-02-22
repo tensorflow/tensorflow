@@ -61,7 +61,7 @@ If it is not possible to utilize LLVM, then the best option is to implement a
 new backend for XLA for the desired hardware. This option requires the most
 effort. The classes that need to be implemented are as follows:
 
-*   [`StreamExecutor`](https://www.tensorflow.org/code/tensorflow/stream_executor/stream_executor.h):
+*   [`StreamExecutor`](https://www.tensorflow.org/code/tensorflow/compiler/xla/stream_executor/stream_executor.h):
     For many devices not all methods of `StreamExecutor` are needed. See
     existing `StreamExecutor` implementations for details.
 *   [`xla::Compiler`](https://www.tensorflow.org/code/tensorflow/compiler/xla/service/compiler.h):

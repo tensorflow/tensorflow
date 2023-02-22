@@ -22,6 +22,7 @@ limitations under the License.
 #endif
 #endif
 
+#include <cmath>
 #include <functional>
 
 #include "fixedpoint/fixedpoint.h"
@@ -376,55 +377,94 @@ inline Integer FloorLog2(Integer n) {
   }
 }
 
-// The size of the LUT depends on the type of input. For int8 inputs a simple
-// 256 entries LUT is used. For int16 inputs the high 9 bits are used for
-// indexing and the 7 remaining bits are used for interpolation. We thus use a
-// 513-entries LUT for int16 cases, 512 for the 9-bit indexing and 1 extra entry
-// to interpolate the last value.
-template <typename LutInT>
-constexpr int lut_size() {
-  static_assert(std::is_same<LutInT, int8_t>::value ||
-                    std::is_same<LutInT, int16_t>::value,
-                "Only LUTs with int8 or int16 inputs are supported.");
-  return std::is_same<LutInT, int8_t>::value ? 256 : 513;
-}
+namespace detail {
 
-// Generate a LUT for 'func' which can be used to approximate functions like
-// exp, log, ...
-//
-// - func: the function to build the LUT for (e.g exp(x))
-// - input_min, input_max: range of the func inputs
-// - output_min, output_max: range of the func outputs
-// - lut: pointer to the LUT table to fill, the table must be of size
-// lut_size<LutInT>()
-template <typename FloatT, typename LutInT, typename LutOutT>
-inline void gen_lut(FloatT (*func)(FloatT), FloatT input_min, FloatT input_max,
-                    FloatT output_min, FloatT output_max, LutOutT* lut) {
-  static_assert(std::is_same<LutInT, int8_t>::value ||
-                    std::is_same<LutInT, int16_t>::value,
-                "Only LUTs with int8 or int16 inputs are supported.");
-  static_assert(std::is_same<LutOutT, int8_t>::value ||
-                    std::is_same<LutOutT, int16_t>::value,
-                "Only LUTs with int8 or int16 outputs are supported.");
+// LUTPopulate takes an optional type-erased transform_params to allow passing
+// extra parameters to the transform function pointer. const void* is used
+// instead of std::function to be compatible with TFLite Micro
+template <typename FloatT, typename Func>
+inline typename std::enable_if<std::is_same<Func, FloatT (*)(FloatT)>::value,
+                               FloatT>::type
+LUTTransform(Func transform, const void* /*transform_params*/, FloatT value) {
   static_assert(std::is_floating_point<FloatT>::value,
                 "FloatT must be a floating-point type.");
+  return transform(value);
+}
 
-  const int nb_steps = std::is_same<LutInT, int8_t>::value ? 256 : 512;
+template <typename FloatT, typename Func>
+inline typename std::enable_if<
+    std::is_same<Func, FloatT (*)(FloatT, const void*)>::value, FloatT>::type
+LUTTransform(Func transform, const void* transform_params, FloatT value) {
+  static_assert(std::is_floating_point<FloatT>::value,
+                "FloatT must be a floating-point type.");
+  return transform(value, transform_params);
+}
+
+// Use the same LUT generation code for both uint8_t and int8_t. Int8_t indexes
+// will be directly casted to uint8_t, the int8 LUT will thus be ordered as [0,
+// 1, ..., 127, -128, ..., -2, -1] instead of [-128, -127, ..., -1, 0, 1, ...,
+// 126, 127].
+template <typename T, typename Func>
+inline void LUTPopulateInt8(float input_scale, int32_t input_zero_point,
+                            float output_scale, int32_t output_zero_point,
+                            Func transform, const void* transform_params,
+                            T* lut) {
+  static_assert(
+      std::is_same<T, uint8_t>::value || std::is_same<T, int8_t>::value,
+      "T must be an uint8 or int8 type.");
+  uint8_t* lut_uint8 = reinterpret_cast<uint8_t*>(lut);
+  const float inverse_scale = 1 / output_scale;
+  int32_t maxval = std::numeric_limits<T>::max();
+  int32_t minval = std::numeric_limits<T>::min();
+  for (int32_t val = minval; val <= maxval; ++val) {
+    const float dequantized = input_scale * (val - input_zero_point);
+    const float transformed =
+        LUTTransform(transform, transform_params, dequantized);
+    const float rescaled = TfLiteRound(transformed * inverse_scale);
+    const int32_t quantized =
+        static_cast<int32_t>(rescaled + output_zero_point);
+    lut_uint8[static_cast<uint8_t>(static_cast<T>(val))] = static_cast<uint8_t>(
+        static_cast<T>(std::max(std::min(maxval, quantized), minval)));
+  }
+}
+
+// Keep floating-point type configurable for backward compatibility. float
+// should be used for FloatT by default.
+template <typename FloatT, typename Func>
+inline void LUTPopulateInt16(FloatT input_scale, int32_t input_zero_point,
+                             FloatT output_scale, int32_t output_zero_point,
+                             Func transform, const void* transform_params,
+                             int16_t* lut) {
+  static_assert(std::is_floating_point<FloatT>::value,
+                "FloatT must be a floating-point type.");
+  const FloatT input_min =
+      input_scale * (std::numeric_limits<int16_t>::min() - input_zero_point);
+  const FloatT input_max =
+      input_scale * (std::numeric_limits<int16_t>::max() - input_zero_point);
+  const FloatT output_min =
+      output_scale * (std::numeric_limits<int16_t>::min() - output_zero_point);
+  const FloatT output_max =
+      output_scale * (std::numeric_limits<int16_t>::max() - output_zero_point);
+
+  const int nb_steps = 512;
   const FloatT step = (input_max - input_min) / nb_steps;
   const FloatT half_step = step / 2;
   const FloatT output_scaling_inv =
-      static_cast<FloatT>(std::numeric_limits<LutOutT>::max() -
-                          std::numeric_limits<LutOutT>::min() + 1) /
+      static_cast<FloatT>(std::numeric_limits<int16_t>::max() -
+                          std::numeric_limits<int16_t>::min() + 1) /
       (output_max - output_min);
   const FloatT table_min =
-      static_cast<FloatT>(std::numeric_limits<LutOutT>::min());
+      static_cast<FloatT>(std::numeric_limits<int16_t>::min());
   const FloatT table_max =
-      static_cast<FloatT>(std::numeric_limits<LutOutT>::max());
+      static_cast<FloatT>(std::numeric_limits<int16_t>::max());
 
   for (int i = 0; i < nb_steps; i++) {
-    const FloatT val = func(input_min + i * step);
-    const FloatT val_midpoint = func(input_min + i * step + half_step);
-    const FloatT val_next = func(input_min + (i + 1) * step);
+    const FloatT val =
+        LUTTransform<FloatT>(transform, transform_params, input_min + i * step);
+    const FloatT val_midpoint = LUTTransform<FloatT>(
+        transform, transform_params, input_min + i * step + half_step);
+    const FloatT val_next = LUTTransform<FloatT>(transform, transform_params,
+                                                 input_min + (i + 1) * step);
 
     const FloatT sample_val = TfLiteRound(val * output_scaling_inv);
     const FloatT midpoint_interp_val =
@@ -435,66 +475,118 @@ inline void gen_lut(FloatT (*func)(FloatT), FloatT input_min, FloatT input_max,
     const FloatT midpoint_err = midpoint_interp_val - midpoint_val;
     const FloatT bias = TfLiteRound(midpoint_err / 2);
 
-    lut[i] = static_cast<LutOutT>(std::min<FloatT>(
+    lut[i] = static_cast<int16_t>(std::min<FloatT>(
         std::max<FloatT>(sample_val - bias, table_min), table_max));
   }
 
-  const bool with_extra_interpolation_value =
-      std::is_same<LutInT, int16_t>::value;
-  if (with_extra_interpolation_value) {
-    lut[nb_steps] = static_cast<LutOutT>(std::min<FloatT>(
-        std::max<FloatT>(TfLiteRound(func(input_max) * output_scaling_inv),
-                         table_min),
-        table_max));
-  }
+  lut[nb_steps] = static_cast<int16_t>(std::min<FloatT>(
+      std::max<FloatT>(TfLiteRound(LUTTransform<FloatT>(
+                                       transform, transform_params, input_max) *
+                                   output_scaling_inv),
+                       table_min),
+      table_max));
 }
 
+}  // namespace detail
+
+template <typename T>
+inline typename std::enable_if<std::is_same<T, uint8_t>::value ||
+                                   std::is_same<T, int8_t>::value,
+                               void>::type
+LUTPopulate(float input_scale, int32_t input_zero_point, float output_scale,
+            int32_t output_zero_point, float (*transform)(float), T* lut) {
+  detail::LUTPopulateInt8(input_scale, input_zero_point, output_scale,
+                          output_zero_point, transform, nullptr, lut);
+}
+
+template <typename T>
+inline typename std::enable_if<std::is_same<T, uint8_t>::value ||
+                                   std::is_same<T, int8_t>::value,
+                               void>::type
+LUTPopulate(float input_scale, int32_t input_zero_point, float output_scale,
+            int32_t output_zero_point, float (*transform)(float, const void*),
+            const void* transform_params, T* lut) {
+  detail::LUTPopulateInt8(input_scale, input_zero_point, output_scale,
+                          output_zero_point, transform, transform_params, lut);
+}
+
+template <typename T>
+inline typename std::enable_if<std::is_same<T, int16_t>::value, void>::type
+LUTPopulate(float input_scale, int32_t input_zero_point, float output_scale,
+            int32_t output_zero_point, float (*transform)(float), T* lut) {
+  detail::LUTPopulateInt16<float>(input_scale, input_zero_point, output_scale,
+                                  output_zero_point, transform, nullptr, lut);
+}
+
+template <typename T>
+inline typename std::enable_if<std::is_same<T, int16_t>::value, void>::type
+LUTPopulate(float input_scale, int32_t input_zero_point, float output_scale,
+            int32_t output_zero_point, float (*transform)(float, const void*),
+            const void* transform_params, T* lut) {
+  detail::LUTPopulateInt16<float>(input_scale, input_zero_point, output_scale,
+                                  output_zero_point, transform,
+                                  transform_params, lut);
+}
+
+// Deprecated, avoid usage and prefer the float version. Kept for
+// backward-compatiblity.
+template <typename T>
+inline typename std::enable_if<std::is_same<T, int16_t>::value, void>::type
+LUTPopulate(double input_scale, int32_t input_zero_point, double output_scale,
+            int32_t output_zero_point, double (*transform)(double), T* lut) {
+  detail::LUTPopulateInt16<double>(input_scale, input_zero_point, output_scale,
+                                   output_zero_point, transform, nullptr, lut);
+}
+
+// The size of the LUT depends on the type of input. For uint8 and int8 inputs a
+// simple 256 entries LUT is used. For int16 inputs the high 9 bits are used for
+// indexing and the 7 remaining bits are used for interpolation. We thus use a
+// 513-entries LUT for int16 cases, 512 for the 9-bit indexing and 1 extra entry
+// to interpolate the last value.
+template <typename T>
+constexpr int LUTSize() {
+  static_assert(std::is_same<T, uint8_t>::value ||
+                    std::is_same<T, int8_t>::value ||
+                    std::is_same<T, int16_t>::value,
+                "Only LUTs with uint8, int8 or int16 inputs are supported.");
+  // As per c++11: constexpr methods cannot have more than one return statement.
+  return (std::is_same<T, uint8_t>::value || std::is_same<T, int8_t>::value)
+             ? 256
+             : 513;
+}
+
+// int16_t -> int16_t table lookup with interpolation
 // LUT must have 513 values
-template <typename LutOutT>
-inline LutOutT lut_lookup_with_interpolation(int16_t value,
-                                             const LutOutT* lut) {
-  static_assert(std::is_same<LutOutT, int8_t>::value ||
-                    std::is_same<LutOutT, int16_t>::value,
-                "Only LUTs with int8 or int16 outputs are supported.");
+inline int16_t LUTLookup(int16_t value, const int16_t* lut) {
   // 512 base values, lut[513] is only used to calculate the slope
   const uint16_t index = static_cast<uint16_t>(256 + (value >> 7));
   assert(index < 512 && "LUT index out of range.");
   const int16_t offset = value & 0x7f;
 
   // Base and slope are Q0.x
-  const LutOutT base = lut[index];
-  const LutOutT slope = lut[index + 1] - lut[index];
+  const int16_t base = lut[index];
+  const int16_t slope = lut[index + 1] - lut[index];
 
   // Q0.x * Q0.7 = Q0.(x + 7)
   // Round and convert from Q0.(x + 7) to Q0.x
   const int delta = (slope * offset + 64) >> 7;
 
   // Q0.15 + Q0.15
-  return static_cast<LutOutT>(base + delta);
-}
-
-// int16_t -> int16_t table lookup with interpolation
-// LUT must have 513 values
-inline int16_t lut_lookup(int16_t value, const int16_t* lut) {
-  return lut_lookup_with_interpolation(value, lut);
-}
-
-// int16_t -> int8_t table lookup with interpolation
-// LUT must have 513 values
-inline int8_t lut_lookup(int16_t value, const int8_t* lut) {
-  return lut_lookup_with_interpolation(value, lut);
+  return static_cast<int16_t>(base + delta);
 }
 
 // int8_t -> int8_t table lookup without interpolation
 // LUT must have 256 values
-inline int8_t lut_lookup(int8_t value, const int8_t* lut) {
-  return lut[128 + value];
+// LUTPopulate<int8_t> has ordered the LUT so that indexing it with an
+// int8_t is just done by casting it to an uint8_t.
+inline int8_t LUTLookup(int8_t value, const int8_t* lut) {
+  return lut[static_cast<uint8_t>(value)];
 }
 
-// int8_t -> int16_t table lookup without interpolation
+// uint8_t -> uint8_t table lookup without interpolation
 // LUT must have 256 values
-inline int16_t lut_lookup(int8_t value, const int16_t* lut) {
-  return lut[128 + value];
+inline uint8_t LUTLookup(uint8_t value, const uint8_t* lut) {
+  return lut[value];
 }
 
 // Table of sigmoid(i/24) at 0.16 format - 256 elements.

@@ -70,6 +70,46 @@ Status PartitionFunctionGraph(
   return Partition(partition_options, graph, partitions);
 }
 
+// A pair of matching Send/Recv ops.
+struct SendRecvPair {
+  Node* send_node = nullptr;
+  Node* recv_node = nullptr;
+};
+constexpr char kTensorNameAttr[] = "tensor_name";
+
+// Adds a dependency to each pair of matching Send/Recv ops to make the
+// dependency explicit.
+Status MakeSendRecvDependencyExplicit(Graph* graph) {
+  // Find all matching Send/Recv pairs.
+  absl::flat_hash_map<std::string, SendRecvPair> send_recv_pairs;
+  for (Node* node : graph->op_nodes()) {
+    if (node->IsSend() || node->IsRecv()) {
+      auto tensor_name_it = node->def().attr().find(kTensorNameAttr);
+      if (tensor_name_it == node->def().attr().end()) {
+        return errors::Internal(
+            "'", kTensorNameAttr,
+            "' attribute is not found from node: ", node->DebugString());
+      }
+      if (node->IsSend()) {
+        send_recv_pairs[tensor_name_it->second.s()].send_node = node;
+      } else {
+        send_recv_pairs[tensor_name_it->second.s()].recv_node = node;
+      }
+    }
+  }
+
+  // Add a control dependency to each pair of matching Send/Recv.
+  for (const auto& [tensor_name, send_recv_pair] : send_recv_pairs) {
+    if (send_recv_pair.send_node == nullptr ||
+        send_recv_pair.recv_node == nullptr) {
+      return errors::Internal(
+          "No matching Send/Recv nodes found for tensor_name = ", tensor_name);
+    }
+    graph->AddControlEdge(send_recv_pair.send_node, send_recv_pair.recv_node);
+  }
+  return OkStatus();
+}
+
 }  // namespace
 
 Status PartitionFunctionGraph(
@@ -148,6 +188,9 @@ StatusOr<std::unique_ptr<Graph>> InsertTransferOps(
   opts.expect_device_spec = true;
   TF_RETURN_IF_ERROR(ConvertGraphDefToGraph(opts, std::move(merged_graph_def),
                                             new_graph.get()));
+
+  TF_RETURN_IF_ERROR(MakeSendRecvDependencyExplicit(new_graph.get()));
+
   return std::move(new_graph);
 }
 

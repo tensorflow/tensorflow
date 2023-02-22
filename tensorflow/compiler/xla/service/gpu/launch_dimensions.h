@@ -72,9 +72,18 @@ class LaunchDimensions {
                         thread_counts_per_block_.z, "}");
   }
 
+  void SetSharedMemBytes(uint32_t shared_mem_bytes) {
+    shared_mem_bytes_ = shared_mem_bytes;
+  }
+
+  uint32_t SharedMemBytes() const { return shared_mem_bytes_; }
+
  private:
   Dim3D block_counts_;
   Dim3D thread_counts_per_block_;
+
+  // Dynamic shared memory size.
+  uint32_t shared_mem_bytes_ = 0;
 };
 
 std::ostream& operator<<(std::ostream& out,
@@ -95,14 +104,11 @@ struct LaunchDimensionsConfig {
   // `hlo.shape().dimensions().back()/unroll_factor`.
   // Currently few_waves and row_vectorized do not work together.
   bool row_vectorized = false;
-  // If 'logical_order' is true, then adjacent threads will write to
-  // logically adjacent indices in output buffer.
-  bool logical_order = false;
 
   std::string ToString() {
-    return absl::StrCat(
-        "unroll_factor=", unroll_factor, ", few_waves=", few_waves,
-        ", row_vectorized=", row_vectorized, ", logical_order", logical_order);
+    return absl::StrCat("unroll_factor=", unroll_factor,
+                        ", few_waves=", few_waves,
+                        ", row_vectorized=", row_vectorized);
   }
 };
 

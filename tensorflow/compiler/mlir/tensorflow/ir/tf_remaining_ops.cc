@@ -20,6 +20,7 @@ limitations under the License.
 #include <functional>
 #include <limits>
 #include <numeric>
+#include <optional>
 #include <string>
 #include <tuple>
 #include <type_traits>
@@ -85,7 +86,7 @@ namespace {
 LogicalResult _XlaHostComputeMlirOp::verify() {
   _XlaHostComputeMlirOp op = *this;
   // Extract the module and function.
-  StringRef host_module = op.host_mlir_module();
+  StringRef host_module = op.getHostMlirModule();
 
   if (host_module.empty()) return success();
 
@@ -122,7 +123,7 @@ LogicalResult _XlaHostComputeMlirOp::verify() {
 
 func::FuncOp _XlaHostComputeMlirOp::GetHostFunc(
     mlir::OwningOpRef<mlir::ModuleOp>* mlir_module) {
-  if (!tensorflow::DeserializeMlirModule(host_mlir_module().str(),
+  if (!tensorflow::DeserializeMlirModule(getHostMlirModule().str(),
                                          this->getContext(), mlir_module)
            .ok())
     return nullptr;
@@ -135,14 +136,20 @@ func::FuncOp _XlaHostComputeMlirOp::GetHostFunc(
 
 // For XLA Send/Recv ops the key corresponds to the resource instance.
 
-std::string _XlaRecvAtHostOp::GetResourceInstanceStr() { return key().str(); }
+std::optional<std::string> _XlaRecvAtHostOp::GetResourceInstanceStr() {
+  return getKey().str();
+}
 
-std::string _XlaRecvAtHostV2Op::GetResourceInstanceStr() { return key().str(); }
+std::optional<std::string> _XlaRecvAtHostV2Op::GetResourceInstanceStr() {
+  return getKey().str();
+}
 
-std::string _XlaSendFromHostOp::GetResourceInstanceStr() { return key().str(); }
+std::optional<std::string> _XlaSendFromHostOp::GetResourceInstanceStr() {
+  return getKey().str();
+}
 
-std::string _XlaSendFromHostV2Op::GetResourceInstanceStr() {
-  return key().str();
+std::optional<std::string> _XlaSendFromHostV2Op::GetResourceInstanceStr() {
+  return getKey().str();
 }
 
 namespace {
@@ -155,24 +162,24 @@ std::string GetRendezvousKey(const std::string& send_device,
 }
 }  // namespace
 
-std::string _HostRecvOp::GetResourceInstanceStr() {
-  return GetRendezvousKey(send_device().str(), send_device_incarnation(),
-                          recv_device().str(), tensor_name().str());
+std::optional<std::string> _HostRecvOp::GetResourceInstanceStr() {
+  return GetRendezvousKey(getSendDevice().str(), getSendDeviceIncarnation(),
+                          getRecvDevice().str(), getTensorName().str());
 }
 
-std::string _HostSendOp::GetResourceInstanceStr() {
-  return GetRendezvousKey(send_device().str(), send_device_incarnation(),
-                          recv_device().str(), tensor_name().str());
+std::optional<std::string> _HostSendOp::GetResourceInstanceStr() {
+  return GetRendezvousKey(getSendDevice().str(), getSendDeviceIncarnation(),
+                          getRecvDevice().str(), getTensorName().str());
 }
 
-std::string _RecvOp::GetResourceInstanceStr() {
-  return GetRendezvousKey(send_device().str(), send_device_incarnation(),
-                          recv_device().str(), tensor_name().str());
+std::optional<std::string> _RecvOp::GetResourceInstanceStr() {
+  return GetRendezvousKey(getSendDevice().str(), getSendDeviceIncarnation(),
+                          getRecvDevice().str(), getTensorName().str());
 }
 
-std::string _SendOp::GetResourceInstanceStr() {
-  return GetRendezvousKey(send_device().str(), send_device_incarnation(),
-                          recv_device().str(), tensor_name().str());
+std::optional<std::string> _SendOp::GetResourceInstanceStr() {
+  return GetRendezvousKey(getSendDevice().str(), getSendDeviceIncarnation(),
+                          getRecvDevice().str(), getTensorName().str());
 }
 
 }  // namespace TF

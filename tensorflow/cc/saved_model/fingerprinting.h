@@ -17,32 +17,29 @@ limitations under the License.
 #define TENSORFLOW_CC_SAVED_MODEL_FINGERPRINTING_H_
 
 #include <string>
+#include <unordered_map>
 
-#include "google/protobuf/map.h"
-#include "tensorflow/core/framework/graph.pb.h"
-#include "tensorflow/core/platform/types.h"
+#include "absl/strings/string_view.h"
+#include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/protobuf/fingerprint.pb.h"
-#include "tensorflow/core/protobuf/meta_graph.pb.h"
+#include "tensorflow/core/protobuf/saved_model.pb.h"
 
-namespace tensorflow::fingerprinting {
+namespace tensorflow::saved_model::fingerprinting {
 
-// Computes the Fingerprint64 hash of the GraphDef.
-uint64 ComputeHash(const GraphDef& graph_def);
+// Creates a FingerprintDef proto from a SavedModel and the checkpoint meta file
+// (.index) in `export_dir`.
+FingerprintDef CreateFingerprintDef(const SavedModel& saved_model,
+                                    absl::string_view export_dir);
 
-// Sorts and computes the Fingerprint64 hash of the SignatureDefs.
-uint64 RegularizeAndHashSignatureDefs(
-    const google::protobuf::Map<std::string, SignatureDef>& signature_def_map);
+// Loads the `fingerprint.pb` from `export_dir`, returns an error if there is
+// none.
+StatusOr<FingerprintDef> ReadSavedModelFingerprint(
+    absl::string_view export_dir);
 
-// Canonicalizes and computes the Fingerprint64 hash of the SavedObjectGraph.
-uint64 RegularizeAndHashSavedObjectGraph(
-    const SavedObjectGraph& object_graph_def);
+// Converts the fingerprint into a dictionary mapping field names to values.
+std::unordered_map<std::string, uint64_t> MakeFingerprintMap(
+    const FingerprintDef& fingerprint);
 
-// Creates a FingerprintDef proto from a MetaGraph.
-FingerprintDef CreateFingerprintDef(const MetaGraphDef& metagraph);
-
-// Canonicalizes the GraphDef in order to remove sources of non-determinism.
-void CanonicalizeGraphDef(GraphDef& graph_def);
-
-}  // namespace tensorflow::fingerprinting
+}  // namespace tensorflow::saved_model::fingerprinting
 
 #endif  // TENSORFLOW_CC_SAVED_MODEL_FINGERPRINTING_H_

@@ -29,7 +29,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/platform/logging.h"
+#include "tensorflow/tsl/platform/logging.h"
 
 namespace xla {
 namespace llvm_ir {
@@ -123,8 +123,8 @@ class IrArray {
     }
 
     Shape AsShapeWithType(PrimitiveType element_type) const {
-      return ShapeUtil::MakeShapeWithLayout(element_type, dims_,
-                                            layout_.minor_to_major());
+      return ShapeUtil::MakeShapeWithDenseLayout(element_type, dims_,
+                                                 layout_.minor_to_major());
     }
 
     // Given that "this" is the target index of a reshape from `input_shape`

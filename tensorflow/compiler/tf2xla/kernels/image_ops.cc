@@ -386,6 +386,13 @@ struct SuppressBodyFn {
         num_outputs_so_far);
     // Slice out the row_idx.
     auto row_iou = xla::DynamicSlice(iou_mask, {row_idx, zero}, {1, num_boxes});
+
+    TF_ASSIGN_OR_RETURN(auto iou_shape, builder->GetShape(iou_mask));
+    auto boxes_runtime_size = xla::GetDimensionSize(row_iou, 1);
+    if (iou_shape.is_dynamic_dimension(1)) {
+      row_iou = xla::SetDimensionSize(row_iou, boxes_runtime_size, 1);
+    }
+
     // Remove the diagonal from consideration. An elem cannot suppress
     // itself.
     row_iou = xla::DynamicUpdateSlice(
@@ -395,8 +402,12 @@ struct SuppressBodyFn {
     row_iou = xla::Reshape(row_iou, {num_boxes});
     auto supp_mask = xla::Not(row_iou);
     // Update mask iff current elem is not suppressed.
-    included_iou = xla::Select(xla::Broadcast(active_elem, {num_boxes}),
-                               xla::And(included_iou, supp_mask), included_iou);
+    auto cond = xla::Broadcast(active_elem, {num_boxes});
+    if (iou_shape.is_dynamic_dimension(1)) {
+      cond = xla::SetDimensionSize(cond, boxes_runtime_size, 0);
+    }
+    included_iou =
+        xla::Select(cond, xla::And(included_iou, supp_mask), included_iou);
     row_idx = row_idx + xla::ConstantR0<int32>(builder, 1);
     return std::vector<xla::XlaOp>{row_idx, num_outputs_so_far, iou_mask,
                                    included_iou};
@@ -485,7 +496,7 @@ class NonMaxSuppressionOp : public XlaOpKernel {
     const xla::XlaOp indices_sorted = xla::GetTupleElement(indices_sort, 1);
     const xla::XlaOp scores = xla::GetTupleElement(indices_sort, 0);
 
-    // Shapes are henceforth [1, num_boxes]. 'c_y0' denotes 'coordinate' y0.
+    // Shapes are henceforth [1, <=num_boxes]. 'c_y0' denotes 'coordinate' y0.
     const xla::XlaOp c_y0 = xla::Reshape(xla::SliceInDim(boxes_sorted,
                                                          /*start_index=*/0,
                                                          /*limit_index=*/1,
@@ -517,14 +528,14 @@ class NonMaxSuppressionOp : public XlaOpKernel {
     xla::XlaOp x2 = xla::Select(xla::Le(c_x0, c_x1), c_x1, c_x0);
     xla::XlaOp area = (y2 - y1) * (x2 - x1);
 
-    // Shapes are henceforth [1, num_boxes].
+    // Shapes are henceforth [1, <=num_boxes].
     y1 = xla::Broadcast(y1, {1});
     y2 = xla::Broadcast(y2, {1});
     x1 = xla::Broadcast(x1, {1});
     x2 = xla::Broadcast(x2, {1});
     area = xla::Broadcast(area, {1});
 
-    // Shapes are henceforth [num_boxes, num_boxes].
+    // Shapes are henceforth [<=num_boxes, <=num_boxes].
     xla::XlaOp i_xmin = xla::Max(x1, xla::Transpose(x1, {1, 0}));
     xla::XlaOp i_ymin = xla::Max(y1, xla::Transpose(y1, {1, 0}));
     xla::XlaOp i_xmax = xla::Min(x2, xla::Transpose(x2, {1, 0}));
@@ -540,6 +551,13 @@ class NonMaxSuppressionOp : public XlaOpKernel {
     xla::XlaOp included_iou =
         xla::Broadcast(xla::ConstantR0<bool>(builder, true), {num_boxes});
 
+    auto iou_shape_or = builder->GetShape(iou_thresh_mask);
+    OP_REQUIRES_OK(context, iou_shape_or.status());
+    auto boxes_runtime_size = xla::GetDimensionSize(iou_thresh_mask, 1);
+    if (iou_shape_or.value().is_dynamic_dimension(1)) {
+      included_iou = xla::SetDimensionSize(included_iou, boxes_runtime_size, 0);
+    }
+
     std::vector<xla::XlaOp> init_values;
     init_values.reserve(4);
     init_values.push_back(xla::ConstantR0<int32>(builder, 0));  // col_idx
@@ -551,7 +569,7 @@ class NonMaxSuppressionOp : public XlaOpKernel {
         xla::WhileLoopHelper(WhileCondFn(num_boxes, output_size),
                              SuppressBodyFn(num_boxes), init_values,
                              "suppress_loop", builder)
-            .ValueOrDie();
+            .value();
 
     xla::XlaOp included_score =
         xla::Gt(scores, xla::Broadcast(score_thresh, {num_boxes}));

@@ -43,7 +43,7 @@ StatusOr<mlir::Value> ExpandIndices(mlir::OpBuilder& builder,
         "DTensor.");
   mlir::Location loc = indices.getLoc();
   auto indices_padded_type = mlir::RankedTensorType::get(
-      {-1, 3},
+      {mlir::ShapedType::kDynamic, 3},
       indices.getType().dyn_cast<mlir::RankedTensorType>().getElementType());
   // Little trick to make a rank-2 tensor of [[0,0], [0,1]] using rank 1
   // constants.
@@ -69,7 +69,7 @@ StatusOr<mlir::Operation*> DynamicEnqueueSparseExpander::ExpandOp(
   mlir::OpBuilder builder(dense_enqueue_op);
   mlir::Location location = dense_enqueue_op->getLoc();
 
-  mlir::OperandRange feature = dense_enqueue_op.embedding_indices();
+  mlir::OperandRange feature = dense_enqueue_op.getEmbeddingIndices();
   llvm::SmallVector<mlir::Value, 4> indices;
   llvm::SmallVector<mlir::Value, 4> values;
 
@@ -84,11 +84,9 @@ StatusOr<mlir::Operation*> DynamicEnqueueSparseExpander::ExpandOp(
     TF_ASSIGN_OR_RETURN(
         mlir::Value expanded_indices,
         ExpandIndices(
-            builder,
-            GetIndicesFromSparseTensor(sparse_feature_value).ValueOrDie()));
+            builder, GetIndicesFromSparseTensor(sparse_feature_value).value()));
     indices.push_back(expanded_indices);
-    values.push_back(
-        GetValuesFromSparseTensor(sparse_feature_value).ValueOrDie());
+    values.push_back(GetValuesFromSparseTensor(sparse_feature_value).value());
   }
   // Insert a new op with new sparse operands, and delete the old one.
   // This op does not have a return value so we do not need to replace any
@@ -99,11 +97,11 @@ StatusOr<mlir::Operation*> DynamicEnqueueSparseExpander::ExpandOp(
               location,
               /*sample_indices_or_row_splits_list=*/indices,
               /*embedding_indices=*/values,
-              /*aggregation_weights=*/dense_enqueue_op.aggregation_weights(),
+              /*aggregation_weights=*/dense_enqueue_op.getAggregationWeights(),
               /*mode_override=*/
-              dense_enqueue_op.mode_override(),
-              /*device_ordinal=*/dense_enqueue_op.device_ordinal(),
-              /*combiners=*/dense_enqueue_op.combiners());
+              dense_enqueue_op.getModeOverride(),
+              /*device_ordinal=*/dense_enqueue_op.getDeviceOrdinal(),
+              /*combiners=*/dense_enqueue_op.getCombiners());
   dense_enqueue_op.erase();
   return sparse_enqueue_op;
 }

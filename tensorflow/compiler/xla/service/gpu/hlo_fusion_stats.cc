@@ -18,13 +18,13 @@ limitations under the License.
 #include <string>
 
 #include "absl/strings/match.h"
-#include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
-#include "tensorflow/compiler/xla/service/hlo_computation.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/compiler/xla/service/hlo_opcode.h"
+#include "tensorflow/compiler/xla/hlo/ir/dfs_hlo_visitor_with_default.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
 #include "tensorflow/compiler/xla/status.h"
-#include "tensorflow/core/platform/errors.h"
-#include "tensorflow/core/platform/statusor.h"
+#include "tensorflow/tsl/platform/errors.h"
+#include "tensorflow/tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {
@@ -60,6 +60,7 @@ class OpcodeCollector : public ConstDfsHloVisitorWithDefault {
       case HloOpcode::kSign:
       case HloOpcode::kSin:
       case HloOpcode::kSqrt:
+      case HloOpcode::kTan:
       case HloOpcode::kTanh:
       // Binary
       case HloOpcode::kAdd:
@@ -72,7 +73,7 @@ class OpcodeCollector : public ConstDfsHloVisitorWithDefault {
       default:
         opcodes_.insert(HloOpcodeString(instr->opcode()));
     }
-    return Status::OK();
+    return OkStatus();
   }
 
  private:
@@ -81,7 +82,7 @@ class OpcodeCollector : public ConstDfsHloVisitorWithDefault {
 
 std::set<std::string> GetUniqueOpcodes(HloComputation* computation) {
   OpcodeCollector collector;
-  if (computation->Accept(&collector) != Status::OK()) {
+  if (computation->Accept(&collector) != OkStatus()) {
     return {};
   }
   return collector.GetUniqueOpcodes();
@@ -100,7 +101,7 @@ std::string HloOpcodeHistogram::ToString() {
 
 Status HloFusionStatsVisitor::RunOnModule(HloModule* module) {
   TF_RETURN_IF_ERROR(module->entry_computation()->Accept(this));
-  return Status::OK();
+  return OkStatus();
 }
 
 std::string HloFusionStatsVisitor::ToString() {
@@ -113,7 +114,7 @@ std::string HloFusionStatsVisitor::ToString() {
 }
 
 Status HloFusionStatsVisitor::DefaultAction(const xla::HloInstruction* instr) {
-  return Status::OK();
+  return OkStatus();
 }
 
 Status HloFusionStatsVisitor::HandleFusion(const HloInstruction* fusion) {
@@ -127,7 +128,7 @@ Status HloFusionStatsVisitor::HandleFusion(const HloInstruction* fusion) {
     num_input_fusions_++;
     input_fusion_opcode_histogram_[opcodes]++;
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace gpu

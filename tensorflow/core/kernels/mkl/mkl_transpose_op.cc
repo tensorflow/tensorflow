@@ -94,7 +94,7 @@ Status MKLTransposeND(OpKernelContext* context, const Tensor& in_tensor,
         {{DNNL_ARG_FROM, *in.GetUsrMem()}, {DNNL_ARG_TO, *out.GetUsrMem()}});
     execute_primitives(net, transpose_stream, net_args);
 
-    return Status::OK();
+    return OkStatus();
   } catch (dnnl::error& e) {
     string error_msg = "Status: " + std::to_string(e.status) +
                        ", message: " + std::string(e.message) + ", in file " +

@@ -23,6 +23,7 @@ from tensorflow.core.protobuf import config_pb2
 from tensorflow.python import tf2
 from tensorflow.python.autograph.core import converter_testing
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.distribute import collective_util
 from tensorflow.python.distribute import combinations
 from tensorflow.python.distribute import cross_device_ops as cross_device_ops_lib
 from tensorflow.python.distribute import device_util
@@ -40,7 +41,6 @@ from tensorflow.python.distribute.v1 import input_lib as input_lib_v1
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
-from tensorflow.python.eager import function
 from tensorflow.python.eager import test
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import device as tf_device
@@ -298,6 +298,61 @@ class MirroredTwoDeviceDistributionTest(
         tf_device.DeviceSpec.from_string(tensor.device).device_type for
         tensor in item.values}
     self.assertAllEqual(list(device_types), ["CPU"])
+
+
+@combinations.generate(
+    combinations.combine(
+        mode=["eager", "graph"], required_gpus=[2]))
+class MirroredCollectiveOpTest(strategy_test_lib.DistributionTestBase,
+                               strategy_test_lib.TwoDeviceDistributionTestBase,
+                               parameterized.TestCase):
+
+  def tearDown(self):
+    super(MirroredCollectiveOpTest, self).tearDown()
+    context._reset_context()
+
+  def testAllCpu(self):
+    @def_function.function
+    def fn():
+      strategy = mirrored_strategy.MirroredStrategy(["CPU:0", "CPU:1"])
+      self.assertEqual(
+          strategy.extended._collective_ops._options.implementation,
+          collective_util.CommunicationImplementation.RING)
+    fn()
+
+  def testMixedDevices(self):
+    @def_function.function
+    def fn():
+      strategy = mirrored_strategy.MirroredStrategy(["CPU:0", "GPU:0"])
+      self.assertIsInstance(
+          strategy.extended._collective_ops,
+          cross_device_ops_lib.ReductionToOneDevice)
+    fn()
+
+  def testAllPhysicalGpu(self):
+    @def_function.function
+    def fn():
+      strategy = mirrored_strategy.MirroredStrategy(["GPU:0", "GPU:1"])
+      self.assertEqual(
+          strategy.extended._collective_ops._options.implementation,
+          collective_util.CommunicationImplementation.NCCL)
+    fn()
+
+  def testVirtualGpu(self):
+    physical_gpus = context.context().list_physical_devices(device_type="GPU")
+    # Logical devices cannot be changed after context initialization.
+    context._reset_context()
+    context.context().set_logical_device_configuration(physical_gpus[1], [
+        context.LogicalDeviceConfiguration(memory_limit=1024),
+        context.LogicalDeviceConfiguration(memory_limit=1024)
+    ])
+    @def_function.function
+    def fn():
+      strategy = mirrored_strategy.MirroredStrategy(["GPU:0", "GPU:1", "GPU:2"])
+      self.assertEqual(
+          strategy.extended._collective_ops._options.implementation,
+          collective_util.CommunicationImplementation.RING)
+    fn()
 
 
 def one_device_combinations():
@@ -1056,119 +1111,6 @@ class MockModel(object):
     if len(self.variables) > 1:
       x += self.variables[1]
     return x
-
-
-@combinations.generate(
-    combinations.combine(
-        distribution=[
-            strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
-        ],
-        mode=["graph", "eager"]))
-class MirroredStrategyDefunTest(test.TestCase):
-
-  def _call_and_check(self, distribution, model_fn, inputs, expected_result,
-                      defuns, two_variables=False):
-    cpu_dev = device_util.canonicalize("CPU:0")
-    gpu_dev = device_util.canonicalize("GPU:0")
-    devices = [cpu_dev, gpu_dev]
-
-    with distribution.scope():
-      mock_model = MockModel(two_variables)
-      self.evaluate(variables.global_variables_initializer())
-
-      result = distribution.extended.call_for_each_replica(
-          model_fn, args=[mock_model] + inputs)
-      for r in range(len(devices)):
-        device_result = distribute_utils.select_replica(r, result)
-        device_expected_result = distribute_utils.select_replica(
-            r, expected_result)
-        self.assertAllClose(device_expected_result,
-                            self.evaluate(device_result))
-
-      for defun in defuns:
-        # `Function`s are specialized to the current device stack, so
-        # call_for_each has one trace per device. To check that the expected set
-        # of variables was accessed on each trace, we first retrieve each
-        # device-specific graph function.
-        per_replica_graph_functions = (
-            distribution.extended.call_for_each_replica(
-                defun.get_concrete_function, args=[mock_model] + inputs))
-        for i in range(len(devices)):
-          graph_function = distribution.experimental_local_results(
-              per_replica_graph_functions)[i]
-          # TODO(b/129555712): re-enable an assertion here that the two sets of
-          # variables are the same.
-          # self.assertEqual(set(graph_function.graph.variables),
-          #  set(mock_model.variables))
-          del graph_function
-
-  def testVariableInDefun(self, distribution):
-    @function.defun
-    def times_two(mock_model):
-      return mock_model()
-
-    def model_fn(mock_model):
-      return times_two(mock_model)
-
-    self._call_and_check(distribution, model_fn, [], 2.5, [times_two])
-
-  def testVariableInNestedDefun(self, distribution):
-    @function.defun
-    def times_two(mock_model):
-      return mock_model()
-
-    @function.defun
-    def two_x_plus_one(mock_model):
-      return times_two(mock_model) + 1
-
-    def model_fn(mock_model):
-      return two_x_plus_one(mock_model)
-
-    self._call_and_check(distribution, model_fn, [], 3.5,
-                         [times_two, two_x_plus_one])
-
-  def testTwoVariablesInNestedDefun(self, distribution):
-    @function.defun
-    def fn1(mock_model):
-      return mock_model()
-
-    @function.defun
-    def fn2(mock_model):
-      return fn1(mock_model) + 1
-
-    def model_fn(mock_model):
-      return fn2(mock_model)
-
-    self._call_and_check(distribution, model_fn, [], 5.5, [fn1, fn2],
-                         two_variables=True)
-
-  def testGradientTapeOverNestedDefuns(self, distribution):
-    @function.defun
-    def fn1(mock_model):
-      return mock_model()
-
-    @function.defun
-    def fn2(mock_model):
-      return fn1(mock_model) + 1
-
-    def model_fn(mock_model):
-      with backprop.GradientTape(persistent=True) as gtape:
-        result = fn2(mock_model)
-      grads = gtape.gradient(result,
-                             [v._get() for v in mock_model.variables])
-      return grads
-
-    self._call_and_check(distribution, model_fn, [], [2.0, 1.0], [fn1, fn2],
-                         two_variables=True)
-
-  def testPassPerReplica(self, distribution):
-    @function.defun
-    def fn1(mock_model, factor):
-      return mock_model(factor)
-
-    factors = values.PerReplica((5.0, 3.0))
-    expected_result = values.PerReplica((5.0 * 1.25, 3.0 * 1.25))
-    self._call_and_check(distribution, fn1, [factors], expected_result, [fn1])
 
 
 @combinations.generate(

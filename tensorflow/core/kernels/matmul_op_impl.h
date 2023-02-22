@@ -41,7 +41,7 @@ limitations under the License.
 #include "tensorflow/core/util/work_sharder.h"
 
 #if defined(TENSORFLOW_USE_CUSTOM_CONTRACTION_KERNEL)
-#include "tensorflow/core/kernels/eigen_contraction_kernel.h"
+#include "tensorflow/tsl/framework/contraction/eigen_contraction_kernel.h"
 #endif
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
@@ -50,9 +50,9 @@ limitations under the License.
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #if GOOGLE_CUDA
 #include "third_party/gpus/cuda/include/cuda.h"
+#include "tensorflow/compiler/xla/stream_executor/cuda/cuda_blas_lt.h"
+#include "tensorflow/compiler/xla/stream_executor/host_or_device_scalar.h"
 #include "tensorflow/core/kernels/matmul_util.h"
-#include "tensorflow/stream_executor/cuda/cuda_blas_lt.h"
-#include "tensorflow/stream_executor/host_or_device_scalar.h"
 #endif  // GOOGLE_CUDA
 
 namespace tensorflow {
@@ -314,13 +314,12 @@ class BlasScratchAllocator : public se::ScratchAllocator {
 
   int64_t GetMemoryLimitInBytes() override { return memory_limit_; }
 
-  se::port::StatusOr<DeviceMemoryBytes> AllocateBytes(
-      int64_t byte_size) override {
+  tsl::StatusOr<DeviceMemoryBytes> AllocateBytes(int64_t byte_size) override {
     Tensor temporary_memory;
 
     if (memory_limit_ > 0 && byte_size > memory_limit_) {
-      return se::port::Status{
-          se::port::error::UNAVAILABLE,
+      return tsl::Status{
+          tsl::error::UNAVAILABLE,
           absl::StrCat("Requested memory size (", byte_size,
                        ") exceeds the memory limit (", memory_limit_, ").")};
     }
@@ -329,19 +328,20 @@ class BlasScratchAllocator : public se::ScratchAllocator {
     Status allocation_status(context_->allocate_temp(
         DT_UINT8, TensorShape({byte_size}), &temporary_memory));
     if (!allocation_status.ok()) {
-      return se::port::Status{
-          se::port::error::UNAVAILABLE,
+      return tsl::Status{
+          tsl::error::UNAVAILABLE,
           absl::StrCat("Failed to allocate requested memory of (", byte_size,
                        ").")};
     }
     // Hold the reference of the allocated tensors until the end of the
     // allocator.
     allocated_tensors_.push_back(temporary_memory);
-    return se::port::StatusOr<DeviceMemoryBytes>(
-        DeviceMemoryBytes::MakeFromByteSize(
-            temporary_memory.flat<uint8>().data(),
-            temporary_memory.flat<uint8>().size()));
+    total_byte_size_ += byte_size;
+    return tsl::StatusOr<DeviceMemoryBytes>(DeviceMemoryBytes::MakeFromByteSize(
+        temporary_memory.flat<uint8>().data(),
+        temporary_memory.flat<uint8>().size()));
   }
+  int64 TotalByteSize() { return total_byte_size_; }
 
  private:
   int64_t memory_limit_;
@@ -355,7 +355,6 @@ struct LaunchBatchMatMul<GPUDevice, Scalar> {
   static void Launch(OpKernelContext* context, const Tensor& in_x,
                      const Tensor& in_y, bool adj_x, bool adj_y, bool trans_x,
                      bool trans_y, const MatMulBCast& bcast, Tensor* out) {
-    static const bool use_autotune = MatmulAutotuneEnable();
     se::blas::Transpose trans[] = {se::blas::Transpose::kNoTranspose,
                                    se::blas::Transpose::kTranspose,
                                    se::blas::Transpose::kConjugateTranspose};
@@ -392,13 +391,14 @@ struct LaunchBatchMatMul<GPUDevice, Scalar> {
     bool is_full_broadcast =
         std::min(bcast.x_batch_size(), bcast.y_batch_size()) == 1;
 
-    // Use float as coefficient type for half precision inputs, otherwise use
-    // the input type.
-    typedef std::conditional_t<std::is_same_v<Scalar, Eigen::half>, float,
-                               Scalar>
-        Coefficient;
+    // Use float as coefficient type for half and bfloat16 precision inputs,
+    // otherwise use the input type.
+    constexpr bool is_16bit_input = std::is_same_v<Scalar, Eigen::half> ||
+                                    std::is_same_v<Scalar, Eigen::bfloat16>;
+    using Coefficient = std::conditional_t<is_16bit_input, float, Scalar>;
 
 #if GOOGLE_CUDA
+    static const bool use_autotune = MatmulAutotuneEnable();
     if (EnableCublasLtGemm()) {
       static const int64_t max_scratch_size =
           GetWorkspaceLimit(1LL << 32);  // 4GB by default
@@ -586,7 +586,8 @@ struct LaunchBatchMatMul<GPUDevice, Scalar> {
         // This is a regular matrix*matrix or matrix*vector multiply. Avoid the
         // overhead of the scratch allocator and the batch interface.
         // TODO(benbarsdell): Use fp16 Gemv if it becomes supported by CUBLAS
-        if constexpr (!std::is_same_v<Scalar, Eigen::half>) {
+        if constexpr (!std::is_same_v<Scalar, Eigen::half> &&
+                      !std::is_same_v<Scalar, Eigen::bfloat16>) {
           if (n == 1 &&
               blas_transpose_b != se::blas::Transpose::kConjugateTranspose &&
               blas_transpose_a != se::blas::Transpose::kConjugateTranspose) {
@@ -624,13 +625,14 @@ struct LaunchBatchMatMul<GPUDevice, Scalar> {
                            adj_x || trans_x ? m : k, c_ptrs[0], n,
                            se::blas::kDefaultComputePrecision));
       } else if (use_strided_batched) {
-        OP_REQUIRES_OK(context, stream->ThenBlasGemmStridedBatched(
-                                    blas_transpose_b, blas_transpose_a, n, m, k,
-                                    static_cast<Coefficient>(1.0), *b_ptrs[0],
-                                    adj_y || trans_y ? k : n, b_stride,
-                                    *a_ptrs[0], adj_x || trans_x ? m : k,
-                                    a_stride, static_cast<Coefficient>(0.0),
-                                    c_ptrs[0], n, c_stride, batch_size));
+        OP_REQUIRES_OK(
+            context, stream->ThenBlasGemmStridedBatched(
+                         blas_transpose_b, blas_transpose_a, n, m, k,
+                         static_cast<Coefficient>(1.0), *b_ptrs[0],
+                         adj_y || trans_y ? k : n, b_stride, *a_ptrs[0],
+                         adj_x || trans_x ? m : k, a_stride,
+                         static_cast<Coefficient>(0.0), c_ptrs[0], n, c_stride,
+                         batch_size, se::blas::kDefaultComputePrecision));
       } else {
         BlasScratchAllocator scratch_allocator(context);
         bool blas_launch_status =
@@ -739,11 +741,8 @@ class BaseBatchMatMulOp : public OpKernel {
                 out_reshaped.CopyFrom(*out, TensorShape({batch_size, d0, d3})),
                 errors::Internal("Failed to reshape output from ",
                                  out->shape().DebugString()));
-    if (std::is_same<Ta, bfloat16>::value &&
-        std::is_same<Tb, bfloat16>::value) {
-      bool is_cpu = std::is_same<Device, CPUDevice>::value;
-      OP_REQUIRES(ctx, is_cpu,
-                  errors::Internal("bfloat16 matmul is not supported by GPU"));
+    if (std::is_same_v<Device, CPUDevice> && std::is_same_v<Ta, bfloat16> &&
+        std::is_same_v<Tb, bfloat16>) {
       Tensor in0_reshaped_float, in1_reshaped_float, out_reshaped_float;
       OP_REQUIRES_OK(ctx, ctx->allocate_temp(DT_FLOAT, in0_reshaped.shape(),
                                              &in0_reshaped_float));
@@ -840,7 +839,7 @@ class BatchMatMulOp : public BaseBatchMatMulOp<Device, Ta, Tb, Tout> {
         }
       }
     }
-    return Status::OK();
+    return OkStatus();
   }
 };
 
@@ -866,7 +865,7 @@ class BatchMatMulV2Op : public BaseBatchMatMulOp<Device, Ta, Tb, Tout> {
     if (in1.dims() < 2) {
       return errors::InvalidArgument("In[1] ndims must be >= 2: ", in1.dims());
     }
-    return Status::OK();
+    return OkStatus();
   }
 };
 

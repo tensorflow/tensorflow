@@ -14,7 +14,7 @@
 # ==============================================================================
 """Test configs for transpose."""
 import numpy as np
-import tensorflow.compat.v1 as tf
+import tensorflow as tf
 from tensorflow.lite.testing.zip_test_utils import create_tensor_data
 from tensorflow.lite.testing.zip_test_utils import make_zip_of_tests
 from tensorflow.lite.testing.zip_test_utils import register_make_test_function
@@ -74,11 +74,11 @@ def make_transpose_tests(options):
       perm = parameters["perm"]
       input_tensors = [input_tensor]
     else:
-      shape = [len(parameters["perm"]), 2]
+      shape = len(parameters["perm"])
       perm = tf.compat.v1.placeholder(dtype=tf.int32, name="perm", shape=shape)
       input_tensors = [input_tensor, perm]
 
-    out = tf.transpose(input_tensor, perm=perm)
+    out = tf.transpose(a=input_tensor, perm=perm)
     return input_tensors, [out]
 
   def build_inputs(parameters, sess, inputs, outputs):
@@ -94,5 +94,4 @@ def make_transpose_tests(options):
       options,
       test_parameters,
       build_graph,
-      build_inputs,
-      expected_tf_failures=9)
+      build_inputs)

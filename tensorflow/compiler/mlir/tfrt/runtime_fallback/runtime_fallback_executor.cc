@@ -147,7 +147,7 @@ void RuntimeFallbackExecutor::Prepare(llvm::StringRef mlir_input) {
   TfrtPipelineOptions pipeline_opts;
   pipeline_opts.default_device = kDefaultHostDeviceName;
   pipeline_opts.hoist_invariant_ops = true;
-  pipeline_opts.enable_native_ops = false;
+  pipeline_opts.sink_in_invariant_ops = false;
   pipeline_opts.cost_threshold = 1024;
   pipeline_opts.upper_cost_threshold = 100000;
   pipeline_opts.merge_inter_dependent_streams = true;
@@ -202,7 +202,7 @@ llvm::SmallVector<Tensor> RuntimeFallbackExecutor::Execute(
   llvm::SmallVector<Tensor> ret_values;
   for (unsigned i = 1; i < results.size(); ++i) {
     if (auto* error = results[i]->GetErrorIfPresent())
-      LOG(FATAL) << "Failed to execute a function: " << StrCat(*error);
+      LOG(FATAL) << "Failed to execute a function: " << error->message();
     ret_values.push_back(results[i]->get<tfrt_stub::FallbackTensor>().tensor());
   }
 

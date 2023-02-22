@@ -187,6 +187,11 @@ TEST_P(TrtShapeOptimizationProfileTest, Dynamic) {
   DefineNetwork(network_.get(), dims);
 
   TrtShapeOptimizationProfile profile;
+
+  // Set the input mask to true (no resource input)
+  std::vector<bool> input_mask(2, true);
+  profile.SetInputMask(input_mask);
+
   std::vector<std::vector<nvinfer1::Dims3>> input_profiles{
       {nvinfer1::Dims3(2, 2, 10), nvinfer1::Dims3(2, 2, 10)},
       {nvinfer1::Dims3(3, 3, 10), nvinfer1::Dims3(3, 3, 10)},

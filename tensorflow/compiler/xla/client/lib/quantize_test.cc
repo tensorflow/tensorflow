@@ -27,7 +27,7 @@ limitations under the License.
 namespace xla {
 namespace {
 
-using bfloat16 = tensorflow::bfloat16;
+using bfloat16 = tsl::bfloat16;
 
 template <typename NativeT>
 std::vector<NativeT> GenerateInput() {

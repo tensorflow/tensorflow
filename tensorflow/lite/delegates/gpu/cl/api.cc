@@ -664,6 +664,8 @@ CreateGpuModelInfo GetCreateInfo(const Environment& environment,
   if (options.usage == InferenceUsage::FAST_SINGLE_ANSWER) {
     create_info.hints.Add(ModelHints::kReduceKernelsCount);
     create_info.hints.Add(ModelHints::kFastTuning);
+  } else if (options.usage == InferenceUsage::BALANCED) {
+    create_info.hints.Add(ModelHints::kReduceKernelsCount);
   } else if (options.usage == InferenceUsage::SUSTAINED_SPEED) {
     create_info.hints.Add(ModelHints::kAllowSpecialKernels);
   }
@@ -880,7 +882,8 @@ class InferenceEnvironmentImpl : public InferenceEnvironment {
             "OpenCL context and EGL parameters are set in the same time.");
       }
 #endif
-      context = CLContext(options_.context, /* has_ownership = */ false);
+      context =
+          CLContext(options_.context, /* has_ownership = */ false, device);
     } else {
 #ifdef CL_DELEGATE_ALLOW_GL
       if (options_.IsGlAware() && properties_.is_gl_sharing_supported) {

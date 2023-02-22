@@ -59,7 +59,7 @@ xla::XlaComputation ReturnDynamicR1() {
                            "P2");
   auto sum = xla::Add(p0, p1);
   auto pad_sum = xla::SetDimensionSize(sum, p2, 0);
-  return builder.Build(pad_sum).ValueOrDie();
+  return builder.Build(pad_sum).value();
 }
 
 xla::XlaComputation ReturnDynamicR2() {
@@ -73,7 +73,7 @@ xla::XlaComputation ReturnDynamicR2() {
   auto sum = xla::Add(p0, p1);
   auto pad_sum_dim0 = xla::SetDimensionSize(sum, p2, 0);
   auto pad_sum_dim1 = xla::SetDimensionSize(pad_sum_dim0, p2, 1);
-  return builder.Build(pad_sum_dim1).ValueOrDie();
+  return builder.Build(pad_sum_dim1).value();
 }
 
 xla::XlaComputation AcceptDynamicR1() {
@@ -83,7 +83,7 @@ xla::XlaComputation AcceptDynamicR1() {
   auto p0 = xla::Parameter(&builder, 0, dyn_shape, "P0");
   auto p1 = xla::Parameter(&builder, 1, dyn_shape, "P1");
   auto sum = xla::Add(p0, p1);
-  return builder.Build(sum).ValueOrDie();
+  return builder.Build(sum).value();
 }
 
 xla::XlaComputation AcceptDynamicR2() {
@@ -93,7 +93,7 @@ xla::XlaComputation AcceptDynamicR2() {
   dyn_shape.set_dynamic_dimension(1, true);
   auto p0 = xla::Parameter(&builder, 0, dyn_shape, "P0");
   auto negate = xla::Neg(p0);
-  return builder.Build(negate).ValueOrDie();
+  return builder.Build(negate).value();
 }
 
 xla::XlaComputation ReturnDynamicR1Tuple() {
@@ -110,7 +110,7 @@ xla::XlaComputation ReturnDynamicR1Tuple() {
   auto pad_sum = xla::SetDimensionSize(sum, p2, 0);
   auto pad_sub = xla::SetDimensionSize(sub, p2 + one, 0);
   auto tuple = xla::Tuple(&builder, {pad_sum, sum, pad_sub});
-  return builder.Build(tuple, /*remove_dynamic_dimensions=*/true).ValueOrDie();
+  return builder.Build(tuple, /*remove_dynamic_dimensions=*/true).value();
 }
 
 xla::XlaComputation AcceptDynamicR1Tuple() {
@@ -125,7 +125,7 @@ xla::XlaComputation AcceptDynamicR1Tuple() {
   auto p0 = xla::GetTupleElement(p, 0);
   auto p1 = xla::GetTupleElement(p, 1);
   auto sum = xla::Add(p0, p1);
-  return builder.Build(sum).ValueOrDie();
+  return builder.Build(sum).value();
 }
 
 template <typename T>
@@ -134,9 +134,18 @@ xla::LiteralProto CreateR0(T v) {
   return array.ToProto();
 }
 
+tensorflow::SessionOptions GetSessionOptions() {
+  tensorflow::SessionOptions options;
+  // Disable optimizations for static graph to allow calls to Session::Extend.
+  options.config.mutable_experimental()->set_disable_optimize_for_static_graph(
+      true);
+  return options;
+}
+
 class XrtClientSession : public ClientSession {
  public:
-  explicit XrtClientSession(const Scope& scope) : ClientSession(scope) {
+  explicit XrtClientSession(const Scope& scope)
+      : ClientSession(scope, GetSessionOptions()) {
     auto clear_all = ops::XRTReleaseAllAllocations(scope);
     std::vector<Tensor> outputs;
     TF_CHECK_OK(Run(ClientSession::FeedType(), {}, {clear_all}, &outputs));
@@ -213,13 +222,13 @@ xla::LiteralProto FloatMatrix(
 xla::Literal ReadOutputLiteral(const std::vector<Tensor>& outputs, size_t idx) {
   xla::LiteralProto response;
   CHECK(ParseFromTString(outputs[idx].scalar<tstring>()(), &response));
-  return xla::Literal::CreateFromProto(response).ValueOrDie();
+  return xla::Literal::CreateFromProto(response).value();
 }
 
 bool CompareLiteralProtos(const xla::LiteralProto& a,
                           const xla::LiteralProto& b) {
-  auto l_a = xla::Literal::CreateFromProto(a).ValueOrDie();
-  auto l_b = xla::Literal::CreateFromProto(b).ValueOrDie();
+  auto l_a = xla::Literal::CreateFromProto(a).value();
+  auto l_b = xla::Literal::CreateFromProto(b).value();
   bool equal = l_a == l_b;
   if (!equal) {
     LOG(INFO) << "LiteralProtos don't match:\n"
@@ -231,7 +240,7 @@ bool CompareLiteralProtos(const xla::LiteralProto& a,
 
 bool CompareLiteralToLiteralProto(const xla::Literal& a,
                                   const xla::LiteralProto& b) {
-  auto l_b = xla::Literal::CreateFromProto(b).ValueOrDie();
+  auto l_b = xla::Literal::CreateFromProto(b).value();
   bool equal = a == l_b;
   if (!equal) {
     LOG(INFO) << "Literal and LiteralProto don't match:\n"
@@ -256,7 +265,7 @@ xla::XlaComputation OnePlusTwo() {
   auto c0 = xla::ConstantR0(&builder, 1.0f);
   auto c1 = xla::ConstantR0(&builder, 2.0f);
   xla::Add(c0, c1);
-  return builder.Build().ValueOrDie();
+  return builder.Build().value();
 }
 
 xla::XlaComputation AddAndScale() {
@@ -268,7 +277,7 @@ xla::XlaComputation AddAndScale() {
   auto sum = xla::Add(p0, p1);
   auto c = xla::ConstantR0<float>(&builder, 3.0f);
   xla::Mul(sum, c);
-  return builder.Build().ValueOrDie();
+  return builder.Build().value();
 }
 
 xla::XlaComputation SubAndScale() {
@@ -280,22 +289,22 @@ xla::XlaComputation SubAndScale() {
   auto sum = xla::Sub(p0, p1);
   auto c = xla::ConstantR0<float>(&builder, 11.0f);
   xla::Mul(sum, c);
-  return builder.Build().ValueOrDie();
+  return builder.Build().value();
 }
 
 xla::XlaComputation Dot() {
   xla::XlaBuilder builder("Dot");
   auto p0 = xla::Parameter(
       &builder, 0,
-      xla::ShapeUtil::MakeShapeWithLayout(xla::F32, {2, 2}, {0, 1}), "P0");
+      xla::ShapeUtil::MakeShapeWithDenseLayout(xla::F32, {2, 2}, {0, 1}), "P0");
   auto p1 = xla::Parameter(
       &builder, 1,
-      xla::ShapeUtil::MakeShapeWithLayout(xla::F32, {2, 1}, {0, 1}), "P1");
+      xla::ShapeUtil::MakeShapeWithDenseLayout(xla::F32, {2, 1}, {0, 1}), "P1");
   xla::DotDimensionNumbers ddn;
   ddn.add_lhs_contracting_dimensions(1);
   ddn.add_rhs_contracting_dimensions(0);
   xla::DotGeneral(p0, p1, ddn);
-  return builder.Build().ValueOrDie();
+  return builder.Build().value();
 }
 
 xla::XlaComputation AddS64() {
@@ -305,7 +314,7 @@ xla::XlaComputation AddS64() {
   auto p1 = xla::Parameter(&builder, 1, xla::ShapeUtil::MakeShape(xla::S64, {}),
                            "P1");
   xla::Add(p0, p1);
-  return builder.Build().ValueOrDie();
+  return builder.Build().value();
 }
 
 xla::XlaComputation AddAndTuple() {
@@ -316,7 +325,7 @@ xla::XlaComputation AddAndTuple() {
                            xla::ShapeUtil::MakeShape(xla::F32, {2}), "P1");
   auto sum = xla::Add(p0, p1);
   xla::Tuple(&builder, {sum});
-  return builder.Build().ValueOrDie();
+  return builder.Build().value();
 }
 
 xla::XlaComputation AddAndSubTuple() {
@@ -328,7 +337,7 @@ xla::XlaComputation AddAndSubTuple() {
   auto sum = xla::Add(p0, p1);
   auto sub = xla::Sub(p0, p1);
   xla::Tuple(&builder, {sum, sub});
-  return builder.Build().ValueOrDie();
+  return builder.Build().value();
 }
 
 xla::XlaComputation BroadcastComputation(const xla::Shape& shape,
@@ -336,7 +345,7 @@ xla::XlaComputation BroadcastComputation(const xla::Shape& shape,
   xla::XlaBuilder builder("BroadcastComputation");
   auto p0 = xla::Parameter(&builder, 0, shape, "P0");
   xla::Broadcast(p0, dimensions);
-  return builder.Build().ValueOrDie();
+  return builder.Build().value();
 }
 
 xla::XlaComputation IsEqualComputation(const xla::Shape& shape) {
@@ -348,12 +357,12 @@ xla::XlaComputation IsEqualComputation(const xla::Shape& shape) {
   auto icmp = xla::ConvertElementType(cmp, xla::S32);
   xla::ReduceAll(icmp, xla::Zero(&builder, xla::S32),
                  xla::CreateScalarAddComputation(xla::S32, &builder));
-  return builder.Build().ValueOrDie();
+  return builder.Build().value();
 }
 
 void StoreComputationSnapshot(const xla::XlaComputation& computation,
                               xla::HloSnapshot* dst) {
-  auto snapshot = computation.Snapshot().ValueOrDie();
+  auto snapshot = computation.Snapshot().value();
   *dst = *snapshot;
 }
 
@@ -361,9 +370,9 @@ xla::ProgramShape XlaCompiledProgramShape(
     const xla::XlaComputation& computation,
     const xla::ProgramShape& input_program_shape) {
   se::Platform* platform =
-      xla::PlatformUtil::GetPlatform(*xla_platform_ptr).ValueOrDie();
+      xla::PlatformUtil::GetPlatform(*xla_platform_ptr).value();
   xla::LocalClient* client =
-      xla::ClientLibrary::GetOrCreateLocalClient(platform).ValueOrDie();
+      xla::ClientLibrary::GetOrCreateLocalClient(platform).value();
   xla::ExecutableBuildOptions exec_options;
   exec_options.set_result_layout(input_program_shape.result());
   std::vector<const xla::Shape*> parameters_shapes;
@@ -441,7 +450,7 @@ TEST(RawApiTest, AllocUninitialized) {
         ParseFromTString(outputs[0].scalar<tstring>()(), &read_back_literal));
     Tensor read_back_tensor;
     TF_ASSERT_OK(LiteralToHostTensor(
-        xla::Literal::CreateFromProto(read_back_literal).ValueOrDie(), DT_FLOAT,
+        xla::Literal::CreateFromProto(read_back_literal).value(), DT_FLOAT,
         &read_back_tensor));
 
     // The shape should be the same as 'tensor', but we don't have any
@@ -485,7 +494,7 @@ TEST(RawApiTest, AllocFromTensorTuple) {
   TF_ASSERT_OK(LiteralToHostTensor(literal1, DT_FLOAT, &tensor1));
 
   Scope root = Scope::NewRootScope().WithDevice(DeviceFromFlag());
-  std::vector<int> layout = GetShapeLayoutVector(literal.shape()).ValueOrDie();
+  std::vector<int> layout = GetShapeLayoutVector(literal.shape()).value();
   ops::XRTAllocateFromTensor::Attrs alloc_attrs =
       ops::XRTAllocateFromTensor::Layouts(layout);
   auto handle = ops::XRTAllocateFromTensor(root, {tensor0, tensor1},
@@ -512,7 +521,7 @@ TEST(RawApiTest, AllocFromTensorTupleSingle) {
   TF_ASSERT_OK(LiteralToHostTensor(literal0, DT_FLOAT, &tensor0));
 
   Scope root = Scope::NewRootScope().WithDevice(DeviceFromFlag());
-  std::vector<int> layout = GetShapeLayoutVector(literal.shape()).ValueOrDie();
+  std::vector<int> layout = GetShapeLayoutVector(literal.shape()).value();
   ops::XRTAllocateFromTensor::Attrs alloc_attrs =
       ops::XRTAllocateFromTensor::Layouts(layout).MakeTuple(true);
   auto handle = ops::XRTAllocateFromTensor(root, {tensor0}, {tensor0.shape()},
@@ -790,7 +799,7 @@ TEST(RawApiTest, SubBuffer) {
   std::vector<Tensor> outputs;
   TF_EXPECT_OK(session.Run({value_0, value_1, value_00}, &outputs));
 
-  auto base_literal = xla::Literal::CreateFromProto(alloc.value()).ValueOrDie();
+  auto base_literal = xla::Literal::CreateFromProto(alloc.value()).value();
   auto base_elements = base_literal.DecomposeTuple();
   auto nested_0_elements = base_elements[0].Clone().DecomposeTuple();
   xla::LiteralProto response_0;
@@ -1521,7 +1530,7 @@ TEST(RawApiTest, CompileWithXlaReturnShapes) {
   xla::Conv(input, kernel, {1, 1}, xla::Padding::kSame);
   TF_ASSERT_OK_AND_ASSIGN(xla::XlaComputation xla_computation, builder.Build());
 
-  auto result_shape = xla_computation.GetProgramShape().ValueOrDie().result();
+  auto result_shape = xla_computation.GetProgramShape().value().result();
   // Clear the result shape layout to tell XLA we are accepting whatever are
   // coming out of the compilation process.
   xla::LayoutUtil::ClearLayout(&result_shape);
@@ -1582,11 +1591,14 @@ TEST(RawApiTest, DotGeneralWithLayoutTest) {
   auto config = c.mutable_config();
   auto shapes = config->mutable_program_shape();
   *shapes->add_parameters() =
-      xla::ShapeUtil::MakeShapeWithLayout(xla::F32, {2, 2}, {0, 1}).ToProto();
+      xla::ShapeUtil::MakeShapeWithDenseLayout(xla::F32, {2, 2}, {0, 1})
+          .ToProto();
   *shapes->add_parameters() =
-      xla::ShapeUtil::MakeShapeWithLayout(xla::F32, {2, 1}, {0, 1}).ToProto();
+      xla::ShapeUtil::MakeShapeWithDenseLayout(xla::F32, {2, 1}, {0, 1})
+          .ToProto();
   *shapes->mutable_result() =
-      xla::ShapeUtil::MakeShapeWithLayout(xla::F32, {2, 1}, {0, 1}).ToProto();
+      xla::ShapeUtil::MakeShapeWithDenseLayout(xla::F32, {2, 1}, {0, 1})
+          .ToProto();
   StoreComputationSnapshot(Dot(), c.mutable_hlo_snapshot());
 
   xrt::XRTExecutionConfig e;
@@ -1811,7 +1823,7 @@ TEST(RawApiTest, CompileAndExecuteWithReusedBuffers) {
   builder.SetUpAlias({1}, 0, {0});
   builder.SetUpAlias({0}, 0, {1});
 
-  auto computation = builder.Build().ValueOrDie();
+  auto computation = builder.Build().value();
 
   auto literal0 = xla::LiteralUtil::CreateR1<float>({1.0f, 2.0f});
   auto literal1 = xla::LiteralUtil::CreateR1<float>({5.0f, 9.0f});
@@ -1910,7 +1922,7 @@ TEST(RawApiTest, CompileAndExecuteWithReusedBuffersS64) {
   builder.SetUpAlias({1}, 0, {0});
   builder.SetUpAlias({0}, 0, {1});
 
-  auto computation = builder.Build().ValueOrDie();
+  auto computation = builder.Build().value();
 
   auto literal0 = xla::LiteralUtil::CreateR1<int64_t>({1, 2});
   auto literal1 = xla::LiteralUtil::CreateR1<int64_t>({5, 9});
@@ -2187,7 +2199,7 @@ TEST(RawApiTest, TestDeviceMemorySwap) {
 
     xla::LiteralProto response;
     EXPECT_TRUE(ParseFromTString(outputs[0].scalar<tstring>()(), &response));
-    auto literal = xla::Literal::CreateFromProto(response).ValueOrDie();
+    auto literal = xla::Literal::CreateFromProto(response).value();
     EXPECT_EQ(literal, zero_literal);
   }
 }

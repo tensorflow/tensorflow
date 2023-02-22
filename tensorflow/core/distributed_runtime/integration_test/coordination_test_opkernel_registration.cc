@@ -13,10 +13,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/distributed_runtime/coordination/coordination_service_agent.h"
 #include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/tsl/distributed_runtime/coordination/coordination_service_agent.h"
+#include "tensorflow/tsl/distributed_runtime/coordination/coordination_service_error_util.h"
 
 namespace tensorflow {
 namespace {
@@ -102,7 +103,7 @@ class TestGetConfigKeyValueOp : public OpKernel {
     OP_REQUIRES_OK(
         ctx, ctx->allocate_output("value", key_tensor->shape(), &val_tensor));
     auto value = val_tensor->scalar<tstring>()();
-    val_tensor->scalar<tstring>()() = status_or_val.ValueOrDie();
+    val_tensor->scalar<tstring>()() = status_or_val.value();
   }
 
  private:
@@ -110,6 +111,51 @@ class TestGetConfigKeyValueOp : public OpKernel {
 };
 REGISTER_KERNEL_BUILDER(Name("TestGetConfigKeyValue").Device(DEVICE_DEFAULT),
                         TestGetConfigKeyValueOp);
+
+REGISTER_OP("TestReportErrorToCluster")
+    .Input("error_code: int32")
+    .Input("error_message: string")
+    .SetIsStateful()  // side-effective op
+    .SetShapeFn(tensorflow::shape_inference::UnknownShape)
+    .Doc(R"doc(
+Test op report errors to coordination service.
+)doc");
+
+// Kernel that reports errors to coordination service.
+class TestReportErrorToClusterOp : public OpKernel {
+ public:
+  explicit TestReportErrorToClusterOp(OpKernelConstruction* ctx)
+      : OpKernel(ctx) {}
+
+  void Compute(OpKernelContext* ctx) override {
+    const Tensor* error_code_tensor;
+    OP_REQUIRES_OK(ctx, ctx->input("error_code", &error_code_tensor));
+    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(error_code_tensor->shape()),
+                errors::InvalidArgument("Error code must be scalar."));
+    const int& error_code = error_code_tensor->scalar<int32_t>()();
+    const Tensor* error_message_tensor;
+    OP_REQUIRES_OK(ctx, ctx->input("error_message", &error_message_tensor));
+    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(error_message_tensor->shape()),
+                errors::InvalidArgument("Error message must be scalar."));
+    const string& error_message = error_message_tensor->scalar<tstring>()();
+    LOG(INFO) << "TestReportErrorToClusterOp error_code=" << error_code
+              << " error_message=" << error_message;
+    auto* coord_agent = ctx->coordination_service_agent();
+    if (coord_agent == nullptr || !coord_agent->IsInitialized()) {
+      ctx->SetStatus(
+          errors::Internal("Coordination service agent is not instantiated or "
+                           "initialized properly."));
+      return;
+    }
+    tensorflow::Status s(static_cast<tensorflow::error::Code>(error_code),
+                         error_message);
+    s.SetPayload(tsl::CoordinationErrorPayloadKey(),
+                 absl::Cord("testing error payload"));
+    OP_REQUIRES_OK(ctx, coord_agent->ReportError(s));
+  }
+};
+REGISTER_KERNEL_BUILDER(Name("TestReportErrorToCluster").Device(DEVICE_DEFAULT),
+                        TestReportErrorToClusterOp);
 
 }  // namespace
 }  // namespace tensorflow

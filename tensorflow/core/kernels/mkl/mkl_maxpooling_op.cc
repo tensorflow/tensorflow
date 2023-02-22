@@ -259,6 +259,19 @@ class MklMaxPoolingGradOp : public MklPoolingBackwardOpBase<T> {
       MklPoolParameters pool_params;
       TensorShape orig_input_shape = orig_input_tensor.shape();
 
+      if (orig_input_tensor.NumElements() == 0 ||
+          grad_tensor.NumElements() == 0) {
+        Tensor* output = nullptr;
+        TensorShape output_shape;
+        auto shape_vec = orig_input_tensor.vec<int32>();
+        for (int64_t i = 0; i < orig_input_tensor.NumElements(); ++i) {
+          OP_REQUIRES_OK(context, output_shape.AddDimWithStatus(shape_vec(i)));
+        }
+        OP_REQUIRES_OK(context,
+                       context->allocate_output(0, output_shape, &output));
+        output->flat<T>().setZero();
+        return;
+      }
       bool is_pool2d = (this->ksize_.size() == 4);
       this->InitMklPoolParameters(context, &pool_params, orig_input_mkl_shape,
                                   orig_input_shape);

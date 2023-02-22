@@ -33,7 +33,6 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import variables as tf_variables
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.trackable import base as tracking
-from tensorflow.python.util import keras_deps
 from tensorflow.python.util import nest
 from tensorflow.python.util.tf_export import keras_export
 
@@ -426,11 +425,6 @@ def call_context():
     call_ctx = CallContext()
     _call_context.call_context = call_ctx
   return call_ctx
-
-
-# Inject the call_context function to keras_deps to remove the dependency
-# from TFLite to Keras.
-keras_deps.register_call_context_function(call_context)
 
 
 class CallContext(object):

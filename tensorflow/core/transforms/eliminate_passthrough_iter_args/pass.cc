@@ -28,7 +28,6 @@ limitations under the License.
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "tensorflow/core/ir/ops.h"
 #include "tensorflow/core/ir/utility.h"
-#include "tensorflow/core/transforms/pass_detail.h"
 #include "tensorflow/core/transforms/utils/utils.h"
 
 // Define the debug label used by `LLVM_DEBUG`.
@@ -36,6 +35,9 @@ limitations under the License.
 
 namespace mlir {
 namespace tfg {
+
+#define GEN_PASS_DEF_ELIMINATEPASSTHROUGHITERARGS
+#include "tensorflow/core/transforms/passes.h.inc"
 
 // Given a range of elements, this function returns a vector of elements
 // excluding the ones whose index is contained in a bit vector.
@@ -58,7 +60,7 @@ static SmallVector<unsigned> GetPassthroughIndices(Region &region) {
 
   SmallVector<unsigned> indices;
   auto yield = cast<YieldOp>(region.front().getTerminator());
-  for (auto it : llvm::zip(llvm::enumerate(yield.args()), iter_args)) {
+  for (auto it : llvm::zip(llvm::enumerate(yield.getArgs()), iter_args)) {
     if (std::get<0>(it).value() == std::get<1>(it))
       indices.push_back(std::get<0>(it).index());
   }
@@ -86,7 +88,7 @@ struct EliminatePassthroughIterArgs {
   // Eliminate the passthrough iteration arguments for the given op. Returns the
   // number of eliminated arguments.
   static size_t Run(OpT op, IRRewriter &rewriter) {
-    SmallVector<unsigned> indices = GetPassthroughIndices(op.body_region());
+    SmallVector<unsigned> indices = GetPassthroughIndices(op.getBodyRegion());
     if (indices.empty()) return 0;
 
     LLVM_DEBUG(llvm::dbgs()
@@ -95,7 +97,7 @@ struct EliminatePassthroughIterArgs {
     // 1. remove the terminator operands
     // 2. remove the operands and corresponding results (and replace them)
     // 3. remove the block arguments (and update preserved attributes)
-    llvm::BitVector remove(op.init().size());
+    llvm::BitVector remove(op.getInit().size());
     for (unsigned index : indices) remove.set(index);
 
     for (Region &region : op->getRegions())
@@ -107,15 +109,15 @@ struct EliminatePassthroughIterArgs {
     // Replace uses of each passthrough argument with the implicit capture
     // value and remove the argument. Insert the implicitly captured value into
     // the result list to replace the removed results from the original op.
-    SmallVector<Value> results = llvm::to_vector(ValueRange(new_op.outs()));
+    SmallVector<Value> results = llvm::to_vector(ValueRange(new_op.getOuts()));
     for (auto &it : llvm::enumerate(indices)) {
       unsigned idx = it.value() - it.index();
-      Value data = op.init()[it.value()];
+      Value data = op.getInit()[it.value()];
       results.insert(results.begin() + it.value(), data);
       ConcreteT::ReplaceArguments(idx, new_op, data,
                                   LookupControlDependency(data));
     }
-    results.push_back(new_op.ctl());
+    results.push_back(new_op.getCtl());
     rewriter.replaceOp(op, results);
     return indices.size();
   }
@@ -128,22 +130,23 @@ struct EliminateForPassthroughIterArgs
                                IRRewriter &rewriter) {
     rewriter.setInsertionPoint(op);
     auto new_op = rewriter.create<ForRegionOp>(
-        op.getLoc(), FilterByIndex(op.outs().getTypes(), indices),
-        op.ctl().getType(), op.start(), op.limit(), op.delta(),
-        FilterByIndex(op.init(), indices), op.ctls(), op.body_attrsAttr(),
-        op.region_attrsAttr());
-    new_op.body_region().takeBody(op.body_region());
+        op.getLoc(), FilterByIndex(op.getOuts().getTypes(), indices),
+        op.getCtl().getType(), op.getStart(), op.getLimit(), op.getDelta(),
+        FilterByIndex(op.getInit(), indices), op.getCtls(),
+        op.getBodyAttrsAttr(), op.getRegionAttrsAttr());
+    new_op.getBodyRegion().takeBody(op.getBodyRegion());
     return new_op;
   }
 
   static void ReplaceArguments(unsigned index, ForRegionOp op, Value data,
                                Value ctl) {
     // Argument indexing starts from 1 (skip the loop index argument).
-    GetLoopRegionDataArgs(op.body_region())[index + 1].replaceAllUsesWith(data);
-    GetLoopRegionControlTokens(op.body_region())[index + 1].replaceAllUsesWith(
-        ctl);
-    util::LoopRegionEraseArgument(op.body_region(), index + 1);
-    util::LoopRegionResultErased(op.body_region(), index);
+    GetLoopRegionDataArgs(op.getBodyRegion())[index + 1].replaceAllUsesWith(
+        data);
+    GetLoopRegionControlTokens(op.getBodyRegion())[index + 1]
+        .replaceAllUsesWith(ctl);
+    util::LoopRegionEraseArgument(op.getBodyRegion(), index + 1);
+    util::LoopRegionResultErased(op.getBodyRegion(), index);
   }
 };
 
@@ -157,12 +160,13 @@ struct EliminateWhileLikePassthroughIterArgs
                                      IRRewriter &rewriter) {
     rewriter.setInsertionPoint(op);
     auto new_op = rewriter.create<WhileLikeRegionOp>(
-        op.getLoc(), FilterByIndex(op.outs().getTypes(), indices),
-        op.ctl().getType(), FilterByIndex(op.init(), indices), op.ctls(),
-        op.parallel_iterationsAttr(), op.cond_attrsAttr(), op.body_attrsAttr(),
-        op.cond_region_attrsAttr(), op.body_region_attrsAttr());
-    new_op.cond_region().takeBody(op.cond_region());
-    new_op.body_region().takeBody(op.body_region());
+        op.getLoc(), FilterByIndex(op.getOuts().getTypes(), indices),
+        op.getCtl().getType(), FilterByIndex(op.getInit(), indices),
+        op.getCtls(), op.getParallelIterationsAttr(), op.getCondAttrsAttr(),
+        op.getBodyAttrsAttr(), op.getCondRegionAttrsAttr(),
+        op.getBodyRegionAttrsAttr());
+    new_op.getCondRegion().takeBody(op.getCondRegion());
+    new_op.getBodyRegion().takeBody(op.getBodyRegion());
     return new_op;
   }
 
@@ -171,19 +175,21 @@ struct EliminateWhileLikePassthroughIterArgs
     // The while loop's condition function only has one result: the condition.
     // So there are no preserved attributes to delete when removing an iteration
     // argument.
-    GetLoopRegionDataArgs(op.cond_region())[index].replaceAllUsesWith(data);
-    GetLoopRegionControlTokens(op.cond_region())[index].replaceAllUsesWith(ctl);
-    util::LoopRegionEraseArgument(op.cond_region(), index);
+    GetLoopRegionDataArgs(op.getCondRegion())[index].replaceAllUsesWith(data);
+    GetLoopRegionControlTokens(op.getCondRegion())[index].replaceAllUsesWith(
+        ctl);
+    util::LoopRegionEraseArgument(op.getCondRegion(), index);
 
-    GetLoopRegionDataArgs(op.body_region())[index].replaceAllUsesWith(data);
-    GetLoopRegionControlTokens(op.body_region())[index].replaceAllUsesWith(ctl);
-    util::LoopRegionEraseArgument(op.body_region(), index);
-    util::LoopRegionResultErased(op.body_region(), index);
+    GetLoopRegionDataArgs(op.getBodyRegion())[index].replaceAllUsesWith(data);
+    GetLoopRegionControlTokens(op.getBodyRegion())[index].replaceAllUsesWith(
+        ctl);
+    util::LoopRegionEraseArgument(op.getBodyRegion(), index);
+    util::LoopRegionResultErased(op.getBodyRegion(), index);
   }
 };
 
 struct EliminatePassthroughIterArgsPass
-    : public EliminatePassthroughIterArgsBase<
+    : public impl::EliminatePassthroughIterArgsBase<
           EliminatePassthroughIterArgsPass> {
   void runOnOperation() override {
     IRRewriter rewriter(&getContext());

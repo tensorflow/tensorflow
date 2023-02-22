@@ -51,7 +51,7 @@ class ShardingOp : public XlaOpKernel {
     ctx->SetOutput(
         0, xla::CustomCall(
                ctx->builder(), /*call_target_name=*/"Sharding", {input},
-               shape_or.ValueOrDie(),
+               shape_or.value(),
                /*opaque=*/
                xla::sharding_op_util::EncodeAttributes(unspecified_dims_)));
   }

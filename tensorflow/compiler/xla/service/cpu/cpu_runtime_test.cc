@@ -25,13 +25,14 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/local_client.h"
 #include "tensorflow/compiler/xla/service/cpu/runtime_custom_call_status.h"
 #include "tensorflow/compiler/xla/service/cpu/runtime_matmul.h"
+#include "tensorflow/compiler/xla/service/cpu/runtime_matmul_acl.h"
 #include "tensorflow/compiler/xla/service/cpu/runtime_matmul_mkl.h"
 #include "tensorflow/compiler/xla/service/cpu/runtime_single_threaded_matmul.h"
 #include "tensorflow/compiler/xla/service/custom_call_status_internal.h"
 #include "tensorflow/compiler/xla/types.h"
-#include "tensorflow/core/platform/env.h"
-#include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/test.h"
+#include "tensorflow/tsl/platform/env.h"
+#include "tensorflow/tsl/platform/logging.h"
+#include "tensorflow/tsl/platform/test.h"
 
 namespace xla {
 namespace {
@@ -99,8 +100,7 @@ std::unique_ptr<Array2D<float>> EigenMatrixMultiply(const Array2D<float>& a,
         nullptr, c_transpose->data(), a_transpose->data(), b_transpose->data(),
         m, n, k, transpose_lhs, transpose_rhs);
   } else {
-    tensorflow::thread::ThreadPool pool(tensorflow::Env::Default(), "XLAEigen",
-                                        2);
+    tsl::thread::ThreadPool pool(tsl::Env::Default(), "XLAEigen", 2);
     Eigen::ThreadPoolDevice device(pool.AsEigenThreadPool(), pool.NumThreads());
     ExecutableRunOptions run_options;
     run_options.set_intra_op_thread_pool(&device);

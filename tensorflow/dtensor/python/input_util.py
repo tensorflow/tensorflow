@@ -63,6 +63,7 @@ import dataclasses
 from typing import Any, List, Optional, Sequence, Tuple
 
 from tensorflow.dtensor.python import api
+from tensorflow.dtensor.python import config
 from tensorflow.dtensor.python import layout as layout_lib
 from tensorflow.python.data.experimental.ops import data_service_ops
 from tensorflow.python.data.ops import dataset_ops
@@ -447,7 +448,7 @@ class DTensorDataset(dataset_ops.UnaryUnchangedStructureDataset):
             (per_replica_batch_size, expected_batch_size))
       self._batched_dataset = dataset
 
-    num_global_devices_per_replica = api.num_global_devices(
+    num_global_devices_per_replica = config.num_global_devices(
         mesh.device_type()) // num_global_replicas
     self._num_local_replicas = len(self._local_replica_ids)
     self._num_local_devices_per_replica = mesh.num_local_devices(
@@ -461,9 +462,8 @@ class DTensorDataset(dataset_ops.UnaryUnchangedStructureDataset):
     # the local devices on that client can be correctly matched to slices of the
     # input tensor(s). If replicas are wholly contained within a client, then
     # this offset is always 0.
-    self._partition_offset = (
-        api.client_id() %
-        self._num_clients_per_replica) * self._num_local_devices_per_replica
+    self._partition_offset = (config.client_id() % self._num_clients_per_replica
+                             ) * self._num_local_devices_per_replica
 
     # Helper data structures used in partitioning the dataset tensors.
     self._all_shard_counts = [
@@ -480,26 +480,32 @@ class DTensorDataset(dataset_ops.UnaryUnchangedStructureDataset):
     # Start with the batched the dataset.
     local_dataset = self._batched_dataset
 
-    # If a replica is split over multiple clients then each batch needs to be
-    # repeated before distribution as many times as there are clients
-    # corresponding to that replica.
     if self._batch_dim is not None:
-      local_dataset = self._repeat_batch(local_dataset,
-                                         self._num_clients_per_replica)
+      if self._num_clients_per_replica > 1:
+        # If a replica is split over multiple clients then each batch needs to
+        # be repeated before distribution as many times as there are clients
+        # corresponding to that replica.
+        local_dataset = self._repeat_batch(local_dataset,
+                                           self._num_clients_per_replica)
+        sharding_policy = data_service_ops.ShardingPolicy.DATA
+      else:
+        # Replicas are unique to each client, so FILE based sharding can be used
+        # which is more performant since each worker does not need to read the
+        # entire dataset.
+        sharding_policy = data_service_ops.ShardingPolicy.FILE
+    else:
+      # No batch dimension sharding specified so disable dataset sharding during
+      # the distribute step.
+      sharding_policy = data_service_ops.ShardingPolicy.OFF
 
     # Apply distribution here (if specified) so all remaining transformations
     # are executed locally.
     if self._tf_data_service_config is not None:
-      if self._batch_dim is None:
-        sharding_policy = data_service_ops.ShardingPolicy.OFF
-      else:
-        sharding_policy = data_service_ops.ShardingPolicy.FILE_OR_DATA
-
       local_dataset = local_dataset.apply(
           data_service_ops.distribute(
               processing_mode=sharding_policy,
               service=self._tf_data_service_config.dispatcher_address,
-              job_name=f'{self._tf_data_service_config.job_name}_{api.client_id()}',
+              job_name=f'{self._tf_data_service_config.job_name}_{config.client_id()}',
               target_workers='LOCAL'))
 
     for local_replica_idx, replica_id in enumerate(self._local_replica_ids):

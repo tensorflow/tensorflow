@@ -126,6 +126,18 @@ tf_proto {
         label: LABEL_OPTIONAL
         type: TYPE_BOOL
       }
+      field {
+        name: "gpu_host_mem_limit_in_mb"
+        number: 13
+        label: LABEL_OPTIONAL
+        type: TYPE_FLOAT
+      }
+      field {
+        name: "gpu_host_mem_disallow_growth"
+        number: 14
+        label: LABEL_OPTIONAL
+        type: TYPE_BOOL
+      }
       nested_type {
         name: "VirtualDevices"
         field {

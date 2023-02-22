@@ -60,6 +60,24 @@ class MetricsTest(test.TestCase):
         self._get_histogram_proto(
             metrics.GetCheckpointWriteDurations(api_label="foo")).max, 200)
 
+  def test_async_checkpoint_add_write_duration(self):
+    self.assertEqual(
+        self._get_histogram_proto(
+            metrics.GetAsyncCheckpointWriteDurations(api_label="foo")).num, 0)
+
+    metrics.AddAsyncCheckpointWriteDuration(api_label="foo", microseconds=20)
+    metrics.AddAsyncCheckpointWriteDuration(api_label="foo", microseconds=50)
+
+    self.assertEqual(
+        self._get_histogram_proto(
+            metrics.GetAsyncCheckpointWriteDurations(api_label="foo")).num, 2)
+    self.assertEqual(
+        self._get_histogram_proto(
+            metrics.GetAsyncCheckpointWriteDurations(api_label="foo")).min, 20)
+    self.assertEqual(
+        self._get_histogram_proto(
+            metrics.GetAsyncCheckpointWriteDurations(api_label="foo")).max, 50)
+
   def test_checkpoint_add_read_duration(self):
     self.assertEqual(
         self._get_histogram_proto(
@@ -99,6 +117,24 @@ class MetricsTest(test.TestCase):
 
   def test_invalid_file(self):
     self.assertEqual(metrics.CalculateFileSize("not_a_file.txt"), -1)
+
+  def test_SM_fingerprint(self):
+    self.assertEqual(metrics.GetReadFingerprint(), "")
+    metrics.SetReadFingerprint(saved_model_checksum="foo")
+    self.assertEqual(metrics.GetReadFingerprint(), "foo")
+
+    self.assertEqual(metrics.GetWriteFingerprint(), "")
+    metrics.SetWriteFingerprint(saved_model_checksum="foo")
+    self.assertEqual(metrics.GetWriteFingerprint(), "foo")
+
+  def test_SM_path(self):
+    self.assertEqual(metrics.GetReadPath(), "")
+    metrics.SetReadPath(saved_model_path="foo")
+    self.assertEqual(metrics.GetReadPath(), "foo")
+
+    self.assertEqual(metrics.GetWritePath(), "")
+    metrics.SetWritePath(saved_model_path="foo")
+    self.assertEqual(metrics.GetWritePath(), "foo")
 
 
 if __name__ == "__main__":

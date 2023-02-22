@@ -18,8 +18,9 @@ import collections
 import threading
 
 import numpy as np
-import six
 
+from tensorflow.python.framework import dtypes
+from tensorflow.python.types import core
 from tensorflow.python.util import lazy_loader
 from tensorflow.python.util.tf_export import tf_export
 
@@ -36,7 +37,8 @@ _tensor_conversion_func_lock = threading.Lock()
 
 # Instances of these types are always converted using
 # `_default_conversion_function`.
-_UNCONVERTIBLE_TYPES = six.integer_types + (
+_UNCONVERTIBLE_TYPES = (
+    int,
     float,
     np.generic,
     np.ndarray,
@@ -136,3 +138,102 @@ def get(query):
               if issubclass(query, base_type))
         _tensor_conversion_func_cache[query] = conversion_funcs
   return conversion_funcs
+
+
+def _add_error_prefix(msg, *, name=None):
+  return msg if name is None else f"{name}: {msg}"
+
+
+def convert(value,
+            dtype=None,
+            name=None,
+            as_ref=False,
+            preferred_dtype=None,
+            accepted_result_types=(core.Symbol,)):
+  """Converts `value` to a `Tensor` using registered conversion functions.
+
+  Args:
+    value: An object whose type has a registered `Tensor` conversion function.
+    dtype: Optional element type for the returned tensor. If missing, the type
+      is inferred from the type of `value`.
+    name: Optional name to use if a new `Tensor` is created.
+    as_ref: Optional boolean specifying if the returned value should be a
+      reference-type `Tensor` (e.g. Variable). Pass-through to the registered
+      conversion function. Defaults to `False`.
+    preferred_dtype: Optional element type for the returned tensor.
+      Used when dtype is None. In some cases, a caller may not have a dtype
+      in mind when converting to a tensor, so `preferred_dtype` can be used
+      as a soft preference. If the conversion to `preferred_dtype` is not
+      possible, this argument has no effect.
+    accepted_result_types: Optional collection of types as an allow-list
+      for the returned value. If a conversion function returns an object
+      which is not an instance of some type in this collection, that value
+      will not be returned.
+
+  Returns:
+    A `Tensor` converted from `value`.
+
+  Raises:
+    ValueError: If `value` is a `Tensor` and conversion is requested
+      to a `Tensor` with an incompatible `dtype`.
+    TypeError: If no conversion function is registered for an element in
+      `values`.
+    RuntimeError: If a registered conversion function returns an invalid
+      value.
+  """
+
+  if dtype is not None:
+    dtype = dtypes.as_dtype(dtype)
+  if preferred_dtype is not None:
+    preferred_dtype = dtypes.as_dtype(preferred_dtype)
+
+  if isinstance(value, core.TensorProtocol):
+    return value.__tf_tensor__(dtype, name)
+
+  for base_type, conversion_func in get(type(value)):
+    # If dtype is None but preferred_dtype is not None, we try to
+    # cast to preferred_dtype first.
+    ret = None
+    if dtype is None and preferred_dtype is not None:
+      try:
+        ret = conversion_func(
+            value, dtype=preferred_dtype, name=name, as_ref=as_ref)
+      except (TypeError, ValueError):
+        # Could not coerce the conversion to use the preferred dtype.
+        pass
+      else:
+        if (ret is not NotImplemented and
+            ret.dtype.base_dtype != preferred_dtype.base_dtype):
+          raise RuntimeError(
+              _add_error_prefix(
+                  f"Conversion function {conversion_func!r} for type "
+                  f"{base_type} returned incompatible dtype: requested = "
+                  f"{preferred_dtype.base_dtype.name}, "
+                  f"actual = {ret.dtype.base_dtype.name}",
+                  name=name))
+
+    if ret is None:
+      ret = conversion_func(value, dtype=dtype, name=name, as_ref=as_ref)
+
+    if ret is NotImplemented:
+      continue
+
+    if not isinstance(ret, accepted_result_types):
+      raise RuntimeError(
+          _add_error_prefix(
+              f"Conversion function {conversion_func!r} for type "
+              f"{base_type} returned non-Tensor: {ret!r}",
+              name=name))
+    if dtype and not dtype.is_compatible_with(ret.dtype):
+      raise RuntimeError(
+          _add_error_prefix(
+              f"Conversion function {conversion_func} for type {base_type} "
+              f"returned incompatible dtype: requested = {dtype.name}, "
+              f"actual = {ret.dtype.name}",
+              name=name))
+    return ret
+  raise TypeError(
+      _add_error_prefix(
+          f"Cannot convert {value!r} with type {type(value)} to Tensor: "
+          f"no conversion function registered.",
+          name=name))

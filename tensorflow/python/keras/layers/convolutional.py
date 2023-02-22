@@ -76,6 +76,7 @@ class Conv(Layer):
       `channels_last` corresponds to inputs with shape
       `(batch_size, ..., channels)` while `channels_first` corresponds to
       inputs with shape `(batch_size, channels, ...)`.
+      Note: `channels_first` is only available on GPUs.
     dilation_rate: An integer or tuple/list of n integers, specifying
       the dilation rate to use for dilated convolution.
       Currently, specifying any `dilation_rate` value != 1 is

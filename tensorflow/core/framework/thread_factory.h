@@ -20,9 +20,11 @@ limitations under the License.
 
 #include "tensorflow/core/platform/types.h"
 
-namespace tensorflow {
-
+namespace tsl {
 class Thread;
+}  // namespace tsl
+namespace tensorflow {
+using tsl::Thread;  // NOLINT
 
 // Virtual interface for an object that creates threads.
 class ThreadFactory {

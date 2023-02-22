@@ -13,7 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 
-from typing import Any, Dict, List, Optional, Sequence, Set, Tuple, Union
+from typing import Any, Callable, Dict, List, Optional, Sequence, Set, Tuple, Union
 
 import numpy
 
@@ -24,13 +24,15 @@ from .xla_extension import ops as ops
 from .xla_extension import profiler as profiler
 
 from .xla_extension import Buffer as Buffer
+from .xla_extension import ShardedBuffer as ShardedBuffer
+from .xla_extension import ArrayImpl as ArrayImpl
 from .xla_extension import Client as Client
 from .xla_extension import CompileOptions as CompileOptions
 from .xla_extension import Device as Device
 from .xla_extension import DeviceArrayBase as DeviceArrayBase
 from .xla_extension import DeviceAssignment as DeviceAssignment
 from .xla_extension import DistributedRuntimeClient as DistributedRuntimeClient
-from .xla_extension import Executable as Executable
+from .xla_extension import LoadedExecutable as LoadedExecutable
 from .xla_extension import FftType as FftType
 from .xla_extension import Frame as Frame
 from .xla_extension import HostBufferSemantics as HostBufferSemantics
@@ -41,23 +43,31 @@ from .xla_extension import Traceback as Traceback
 from .xla_extension import XlaBuilder as XlaBuilder
 from .xla_extension import XlaComputation as XlaComputation
 from .xla_extension import XlaOp as XlaOp
+from .xla_extension import Sharding as Sharding
+from .xla_extension import XLACompatibleSharding as XLACompatibleSharding
+from .xla_extension import NamedSharding as NamedSharding
+from .xla_extension import SingleDeviceSharding as SingleDeviceSharding
+from .xla_extension import PmapSharding as PmapSharding
+from .xla_extension import GSPMDSharding as GSPMDSharding
 
 _version: int
 
 mlir_api_version: int
 
 bfloat16: numpy.dtype
+float8_e4m3fn: numpy.dtype
+float8_e5m2: numpy.dtype
 XLA_ELEMENT_TYPE_TO_DTYPE: Dict[PrimitiveType, numpy.dtype]
 
 
 def dtype_to_etype(dtype: numpy.dtype) -> PrimitiveType:
   ...
 
-def execute_with_python_values(executable: Executable, arguments: Sequence[Any],
+def execute_with_python_values(executable: LoadedExecutable, arguments: Sequence[Any],
                                backend: Client) -> Sequence[numpy.ndarray]: ...
 
 def execute_with_python_values_replicated(
-    executable: Executable, arguments: Sequence[Sequence[Any]],
+    executable: LoadedExecutable, arguments: Sequence[Sequence[Any]],
     backend: Client) -> Sequence[Sequence[numpy.ndarray]]: ...
 
 def shape_from_pyval(pyval: Any) -> Any: ...
@@ -82,9 +92,22 @@ def make_interpreter_client() -> Client:
   ...
 
 
+def make_tfrt_tpu_c_api_client() -> Client:
+  ...
+
+
 def make_tpu_client() -> Client:
   ...
 
+
+def make_c_api_client(plugin_name: str) -> Client:
+  ...
+
+def load_pjrt_plugin_dynamically(plugin_name: str, library_path: str) -> None:
+  ...
+
+def make_plugin_device_client() -> Client:
+  ...
 
 class OpMetadata:
 
@@ -180,4 +203,7 @@ class ReplicaGroup:
 
 def make_replica_groups(
     replica_groups: Optional[Sequence[Sequence[int]]]) -> List[ReplicaGroup]:
+  ...
+
+def weakref_lru_cache(cache_context_fn: Callable, call: Callable, maxsize=...):
   ...

@@ -95,8 +95,6 @@ if(MHLO_EXTERNAL_PROJECT_BUILD)
   set(MLIR_MAIN_SRC_DIR ${LLVM_MAIN_SRC_DIR}/../mlir ) # --src-root
   set(MLIR_INCLUDE_DIR ${MLIR_MAIN_SRC_DIR}/include ) # --includedir
   set(MLIR_GENERATED_INCLUDE_DIR ${LLVM_BINARY_DIR}/tools/mlir/include)
-  set(MLIR_TABLEGEN_EXE $<TARGET_FILE:mlir-tblgen>)
-  set(MLIR_PDLL_TABLEGEN_EXE $<TARGET_FILE:mlir-pdll>)
   include_directories(SYSTEM ${MLIR_INCLUDE_DIR})
   include_directories(SYSTEM ${MLIR_GENERATED_INCLUDE_DIR})
   include_directories(SYSTEM ${MLIR_TABLEGEN_OUTPUT_DIR})
@@ -127,10 +125,19 @@ include(HandleLLVMOptions)
 include_directories(${LLVM_INCLUDE_DIRS})
 include_directories(${MLIR_INCLUDE_DIRS})
 include_directories(${CMAKE_CURRENT_SOURCE_DIR}/include)
+include_directories(${CMAKE_CURRENT_SOURCE_DIR})
 include_directories(${CMAKE_CURRENT_BINARY_DIR}/include)
 include_directories(${CMAKE_CURRENT_BINARY_DIR}/)
 link_directories(${LLVM_BUILD_LIBRARY_DIR})
 add_definitions(${LLVM_DEFINITIONS})
+
+#-------------------------------------------------------------------------------
+# StableHLO configuration
+#-------------------------------------------------------------------------------
+
+include_directories(${CMAKE_CURRENT_SOURCE_DIR}/stablehlo)
+include_directories(${CMAKE_CURRENT_BINARY_DIR}/stablehlo)
+set(LLVM_TABLEGEN_FLAGS -I ${MLIR_HLO_SOURCE_DIR}/stablehlo)
 
 #-------------------------------------------------------------------------------
 # Python configuration
@@ -147,20 +154,27 @@ endif()
 
 set(MLIR_HLO_SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR})
 set(MLIR_HLO_BINARY_DIR ${CMAKE_CURRENT_BINARY_DIR})
-set(MLIR_HLO_MAIN_INCLUDE_DIR ${MLIR_HLO_SOURCE_DIR}/include )
+set(MLIR_HLO_MAIN_INCLUDE_DIR ${MLIR_HLO_SOURCE_DIR}/include)
 set(MLIR_HLO_GEN_INCLUDE_DIR ${MLIR_HLO_BINARY_DIR}/include)
+set(MLIR_HLO_TOOLS_DIR ${MLIR_HLO_BINARY_DIR}/bin)
 set(MLIR_HLO_LIB_DIR ${MLIR_HLO_BINARY_DIR}/lib)
 
 add_custom_target(check-mlir-hlo)
 
-add_subdirectory(include/mlir-hlo)
-add_subdirectory(lib)
+add_subdirectory(analysis)
+add_subdirectory(bindings)
+add_subdirectory(deallocation)
+add_subdirectory(gml_st)
+add_subdirectory(lhlo)
+add_subdirectory(lhlo_gpu)
+add_subdirectory(mhlo)
+add_subdirectory(stablehlo)
+add_subdirectory(tests)
+add_subdirectory(thlo)
 add_subdirectory(tools)
 add_subdirectory(tosa)
-add_subdirectory(tests)
+add_subdirectory(transforms)
+add_subdirectory(utils)
 
-if(MHLO_ENABLE_BINDINGS_PYTHON)
-  add_subdirectory(python)
-endif()
 
 add_subdirectory(cmake/modules)

@@ -21,14 +21,15 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/functional/function_ref.h"
 #include "absl/types/span.h"
-#include "tensorflow/compiler/xla/service/hlo_computation.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module_group_metadata.h"
 #include "tensorflow/compiler/xla/service/hlo_reachability.h"
 #include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/statusor.h"
-#include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/tsl/platform/status.h"
 
 namespace xla {
 
@@ -67,7 +68,7 @@ class HloModuleGroupUtil {
 
   // Function called on each instruction group during the DFS traversal. See the
   // comment for VisitTopologicalOrder()).
-  using VisitFunction = std::function<Status(
+  using VisitFunction = absl::FunctionRef<Status(
       HloInstruction* hlo,
       const std::vector<HloInstruction*>& instruction_group)>;
 
@@ -89,7 +90,7 @@ class HloModuleGroupUtil {
   // * root: the root instruction of the traversal.
   using VisitStates = absl::flat_hash_map<HloInstruction*, VisitState>;
   Status VisitTopologicalOrder(VisitStates* visit_state,
-                               const VisitFunction& visit_function,
+                               VisitFunction visit_function,
                                HloInstruction* root);
 
   // Verifies that the computations are well-formed (e.g., no cycles).

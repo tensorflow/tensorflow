@@ -24,7 +24,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/python/exceptions.h"
 #include "tensorflow/compiler/xla/service/custom_call_status.h"
-#include "tensorflow/core/profiler/lib/traceme.h"
+#include "tensorflow/tsl/profiler/lib/traceme.h"
 
 namespace py = pybind11;
 
@@ -68,11 +68,11 @@ Status CpuCallback::PrepareAndCallInternal(void* result, void** arg_ptrs) {
       if (!plan.ok()) {
         return std::move(plan).status();
       }
-      plan.ValueOrDie()->Execute(array.data(), outputs[i]);
+      plan.value()->Execute(array.data(), outputs[i]);
     }
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 void CpuCallback::PrepareAndCall(void* result, void** arg_ptrs,

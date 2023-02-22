@@ -38,6 +38,8 @@ enum MinibenchmarkStatus {
   //
   // Runner main status codes used to indicate inability to dynamically load and
   // execute the validation code.
+  //
+  // Next available code: 15
   // LINT.IfChange
   kMinibenchmarkRunnerMainDlopenFailed = 11,
   kMinibenchmarkRunnerMainSymbolLookupFailed = 12,
@@ -45,10 +47,14 @@ enum MinibenchmarkStatus {
   kMinibenchmarkUnsupportedPlatform = 14,
   // LINT.ThenChange(//tensorflow/lite/experimental/acceleration/mini_benchmark/runner_main.c)
   // General status codes that may be used anywhere
+  //
+  // Next available code: 121
   kMinibenchmarkPreconditionNotMet = 119,
   kMinibenchmarkSuccess = 120,
   // Storage status codes. These are used when storage can not be used to pass
   // status.
+  //
+  // Next available code: 29
   kMinibenchmarkCorruptSizePrefixedFlatbufferFile = 21,
   kMinibenchmarkCantCreateStorageFile = 22,
   kMinibenchmarkFlockingStorageFileFailed = 23,
@@ -62,6 +68,8 @@ enum MinibenchmarkStatus {
   // process or communicated through the storage mechanism. These can be > 127.
   //
   // Runner status codes.
+  //
+  // Next available code: 516
   kMinibenchmarkDladdrReturnedZero = 502,
   kMinibenchmarkDliFnameWasNull = 503,
   kMinibenchmarkDliFnameHasApkNameOnly = 504,
@@ -71,15 +79,22 @@ enum MinibenchmarkStatus {
   kMinibenchmarkCouldntChmodTemporaryFile = 508,
   kMinibenchmarkPopenFailed = 509,
   kMinibenchmarkCommandFailed = 510,
+  kMinibenchmarkCommandTimedOut = 514,
   kMiniBenchmarkCannotLoadSupportLibrary = 511,
   kMiniBenchmarkInvalidSupportLibraryConfiguration = 512,
+  kMinibenchmarkPipeFailed = 513,
+  kMinibenchmarkCannotLoadGpuModule = 515,
+
   // Validator status codes.
+  //
+  // Next available code: 1018
   kMinibenchmarkDelegateNotSupported = 1000,
   kMinibenchmarkDelegatePluginNotFound = 1001,
-  kMinibenchmarkDelegateCreateFailed = 1013,
+  kMinibenchmarkDelegateCreateFailed = 1014,
   kMinibenchmarkModelTooLarge = 1002,  // Safety limit currently set at 100M.
   kMinibenchmarkSeekToModelOffsetFailed = 1003,
   kMinibenchmarkModelReadFailed = 1004,
+  kMinibenchmarkModelInitFailed = 1017,
   kMinibenchmarkInterpreterBuilderFailed = 1005,
   kMinibenchmarkValidationSubgraphNotFound = 1006,
   kMinibenchmarkModifyGraphWithDelegateFailed = 1007,
@@ -87,16 +102,25 @@ enum MinibenchmarkStatus {
   kMinibenchmarkInvokeFailed = 1009,
   kMinibenchmarkModelBuildFailed = 1010,
   kMinibenchmarkValidationSubgraphHasTooFewInputs = 1011,
-  kMinibenchmarkValidationSubgraphHasTooFewOutputs = 1011,
-  kMinibenchmarkValidationSubgraphInputsDontMatchOutputs = 1012,
+  kMinibenchmarkValidationSubgraphHasTooFewOutputs = 1012,
+  kMinibenchmarkValidationSubgraphInputsDontMatchOutputs = 1013,
+  kMinibenchmarkValidationInputMissing = 1015,
+  kMinibenchmarkValidationSubgraphBuildFailed = 1016,
 
   // Validator runner status codes.
+  //
+  // Next available code: 1505
   kMinibenchmarkChildProcessAlreadyRunning = 1501,
   kMinibenchmarkValidationEntrypointSymbolNotFound = 1502,
   kMinibenchmarkNoValidationRequestFound = 1503,
+  kMinibenchmarkCompletionEventMissing = 1504,
 
   // Validator runner recoverable errors
+  //
+  // Next available code: 1602
   kMinibenchmarkUnableToSetCpuAffinity = 1601,
+
+  kMinibenchmarkAbiMethodNotAvailable = 1701,
 };
 }  // namespace acceleration
 }  // namespace tflite

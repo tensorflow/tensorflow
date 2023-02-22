@@ -31,7 +31,6 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
-#include "tensorflow/compiler/mlir/xla/transforms/xla_legalize_tf_passes_detail.h"
 
 #define DEBUG_TYPE "xla-legalize-tf-types"
 
@@ -147,8 +146,11 @@ class TfTypePattern : public ConversionPattern {
   }
 };
 
+#define GEN_PASS_DEF_LEGALIZETFTYPESPASS
+#include "tensorflow/compiler/mlir/xla/transforms/xla_legalize_tf_passes.h.inc"
+
 struct LegalizeTfTypesPass
-    : public LegalizeTfTypesPassBase<LegalizeTfTypesPass> {
+    : public impl::LegalizeTfTypesPassBase<LegalizeTfTypesPass> {
   void runOnOperation() override;
 };
 

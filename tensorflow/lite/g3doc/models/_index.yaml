@@ -84,27 +84,17 @@ landing_page:
             Before you start your model development process, you should be aware of the constraints
             for TensorFlow Lite models and build your model with these constraints in mind:
             <ul>
-            <li><b>Limited compute capabilities</b> - Compared to fully equipped servers with
-            multiple CPUs, high memory capacity, and specialized processors such as GPUs and TPUs,
-            mobile and edge devices are much more limited, and models and data you can effectively
-            process with them are limited.</li>
-            <li><b>Size of models</b> - The overall complexity of a model, including data
-            pre-processing logic and the number of layers in the model, increases the in-memory
-            size of a model. A large model may run unacceptably slow or simply may not fit in the
-            available memory of a mobile or edge device.</li>
-            <li><b>Size of data</b> - The size of input data that can be effectively processed with
-            a machine learning model is limited on a mobile or edge device. Models that use large
-            data libraries such language libraries, image libraries, or video clip libraries may not
-            fit on these devices, and may require off-device storage and access solutions.</li>
-            <li><b>Supported TensorFlow operations</b> - TensorFlow Lite runtime environments
-            support a smaller number of machine learning model operations compared to regular
-            TensorFlow models. As you develop a model for use with TensorFlow Lite, you should track
-            the compatibility of your model against the capabilities of TensorFlow Lite runtime
-            environments.</li>
+            <li>Limited compute capabilities</li>
+            <li>Size of models</li>
+            <li>Size of data</li>
+            <li>Supported TensorFlow operations</li>
             </ul>
             </p>
             <p>
-            For more information building effective, compatible, high performance models for
+            For more detail about each of these constraints, see
+            <a href="./build#model_design_constraints">model design contraints</a> in the
+            Model build overview.
+            For more information about building effective, compatible, high performance models for
             TensorFlow Lite, see <a href="../performance/best_practices">
             Performance best practices</a>.
             </p>

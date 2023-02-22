@@ -212,7 +212,24 @@ XLA_MAKE_BINARY(
     xla::Div(xla::Mul(rhs, XlaHelpers::FloatLiteral(b, input_type(0), 0.5)),
              lhs, extend_dimensions));
 
-XLA_MAKE_BINARY(TruncateDiv, xla::Div(lhs, rhs, extend_dimensions));
+// Implementation of TruncateDiv.
+//
+// For floating-point values, returns trunc(x / y).  For integers, simply
+// returns x / y.
+static xla::XlaOp TruncateDivImpl(xla::XlaBuilder* b, DataType dtype,
+                                  xla::XlaOp x, xla::XlaOp y,
+                                  const BCast& broadcast_helper) {
+  std::tie(x, y) = XlaBinaryOp::Broadcast(x, y, broadcast_helper);
+  if (!DataTypeIsFloating(dtype)) {
+    return xla::Div(x, y);
+  }
+  auto zero = XlaHelpers::Zero(b, dtype);
+  auto x_div_y = xla::Div(x, y);
+  auto round_up = xla::Lt(x_div_y, zero);
+  return xla::Select(round_up, xla::Ceil(x_div_y), xla::Floor(x_div_y));
+}
+XLA_MAKE_BINARY(TruncateDiv,
+                TruncateDivImpl(b, input_type(0), lhs, rhs, broadcast_helper));
 XLA_MAKE_BINARY(TruncateMod, xla::Rem(lhs, rhs, extend_dimensions));
 
 // Comparison ops
@@ -318,7 +335,7 @@ class ApproximateEqualOp : public XlaOpKernel {
     auto abs = xla::Abs(xla::Sub(ctx->Input(0), ctx->Input(1)));
     auto abs_shape = b->GetShape(abs);
     OP_REQUIRES_OK(ctx, abs_shape.status());
-    auto abs_type = abs_shape.ValueOrDie().element_type();
+    auto abs_type = abs_shape.value().element_type();
     auto result =
         xla::Lt(abs, xla::ConvertElementType(
                          xla::ConstantR0<float>(b, tolerance_), abs_type));

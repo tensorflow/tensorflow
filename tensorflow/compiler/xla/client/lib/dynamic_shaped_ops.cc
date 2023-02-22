@@ -149,14 +149,12 @@ XlaOp DynamicConditional(XlaBuilder* builder, XlaOp predicate,
     };
     TF_ASSIGN_OR_RETURN(
         auto true_computation_rewritten,
-        reconsile_branch(true_shape,
-                         builder->GetShape(true_operand).ValueOrDie(),
+        reconsile_branch(true_shape, builder->GetShape(true_operand).value(),
                          false_shape, true_computation));
 
     TF_ASSIGN_OR_RETURN(
         auto false_computation_rewritten,
-        reconsile_branch(false_shape,
-                         builder->GetShape(false_operand).ValueOrDie(),
+        reconsile_branch(false_shape, builder->GetShape(false_operand).value(),
                          true_shape, false_computation));
     return xla::Conditional(predicate, true_operand, true_computation_rewritten,
                             false_operand, false_computation_rewritten);

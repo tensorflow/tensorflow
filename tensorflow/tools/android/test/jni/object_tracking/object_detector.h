@@ -20,8 +20,8 @@ limitations under the License.
 // Defines the ObjectDetector class that is the main interface for detecting
 // ObjectModelBases in frames.
 
-#ifndef TENSORFLOW_EXAMPLES_ANDROID_JNI_OBJECT_TRACKING_OBJECT_DETECTOR_H_
-#define TENSORFLOW_EXAMPLES_ANDROID_JNI_OBJECT_TRACKING_OBJECT_DETECTOR_H_
+#ifndef TENSORFLOW_TOOLS_ANDROID_TEST_JNI_OBJECT_TRACKING_OBJECT_DETECTOR_H_
+#define TENSORFLOW_TOOLS_ANDROID_TEST_JNI_OBJECT_TRACKING_OBJECT_DETECTOR_H_
 
 #include <float.h>
 
@@ -227,4 +227,4 @@ class ObjectDetector : public ObjectDetectorBase {
 
 }  // namespace tf_tracking
 
-#endif  // TENSORFLOW_EXAMPLES_ANDROID_JNI_OBJECT_TRACKING_OBJECT_DETECTOR_H_
+#endif  // TENSORFLOW_TOOLS_ANDROID_TEST_JNI_OBJECT_TRACKING_OBJECT_DETECTOR_H_

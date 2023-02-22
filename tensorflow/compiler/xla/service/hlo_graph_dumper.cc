@@ -15,7 +15,9 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/hlo_graph_dumper.h"
 
+#ifndef _WIN32
 #include <unistd.h>
+#endif
 
 #include <algorithm>
 #include <atomic>
@@ -35,30 +37,30 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/str_replace.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_casting_utils.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/service/gpu/backend_configs.pb.h"
 #include "tensorflow/compiler/xla/service/gpu/cublas_cudnn.h"
-#include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
-#include "tensorflow/compiler/xla/service/hlo_instructions.h"
-#include "tensorflow/compiler/xla/service/hlo_module.h"
-#include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/pattern_matcher.h"
 #include "tensorflow/compiler/xla/shape_util.h"
+#include "tensorflow/compiler/xla/stream_executor/dnn.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/window_util.h"
-#include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/lib/gtl/map_util.h"
-#include "tensorflow/core/lib/io/zlib_compression_options.h"
-#include "tensorflow/core/lib/io/zlib_outputbuffer.h"
-#include "tensorflow/core/lib/strings/numbers.h"
-#include "tensorflow/core/platform/base64.h"
-#include "tensorflow/core/platform/env.h"
-#include "tensorflow/core/platform/protobuf.h"
-#include "tensorflow/core/platform/regexp.h"
-#include "tensorflow/stream_executor/dnn.h"
+#include "tensorflow/tsl/lib/gtl/map_util.h"
+#include "tensorflow/tsl/lib/io/zlib_compression_options.h"
+#include "tensorflow/tsl/lib/io/zlib_outputbuffer.h"
+#include "tensorflow/tsl/platform/base64.h"
+#include "tensorflow/tsl/platform/env.h"
+#include "tensorflow/tsl/platform/numbers.h"
+#include "tensorflow/tsl/platform/protobuf.h"
+#include "tensorflow/tsl/platform/regexp.h"
+#include "tensorflow/tsl/platform/status.h"
 
 namespace xla {
 namespace {
@@ -329,13 +331,11 @@ class HloDotDumper {
  public:
   HloDotDumper(const HloComputation* computation, absl::string_view label,
                const DebugOptions& debug_options,
-               HloRenderOptions hlo_render_options,
-               const HloExecutionProfile* profile, NodeFilter filter)
+               HloRenderOptions hlo_render_options, NodeFilter filter)
       : computation_(computation),
         label_(label),
         debug_options_(debug_options),
         hlo_render_options_(hlo_render_options),
-        profile_(profile),
         filter_(std::move(filter)) {}
 
   std::string Dump();
@@ -419,7 +419,6 @@ class HloDotDumper {
   const std::string label_;            // overall name for the graph
   const DebugOptions& debug_options_;
   const HloRenderOptions hlo_render_options_;
-  const HloExecutionProfile* profile_;  // may be null
   const NodeFilter filter_;
 
   // Each HloInstruction dumped gets a monotonically-increasing node ID.  This
@@ -500,11 +499,6 @@ stylesheet=<
     StrAppend(&graph_label, " (in fusion instruction ",
               computation_->FusionInstruction()->name(), ")");
   }
-  if (profile_ != nullptr) {
-    auto cycles = profile_->total_cycles_executed(*computation_);
-    absl::StrAppendFormat(&graph_label, "<br/>total cycles = %d (%s)", cycles,
-                          tensorflow::strings::HumanReadableNum(cycles));
-  }
 
   // Create CSS rules that say, when you hover over the given node or cluster,
   // turn the given edge the given color.
@@ -542,14 +536,13 @@ stylesheet=<
 
     // The "to_node" value may be a NULL, indicating that this points to the
     // "root" tag rather than a normal node.
-    int64_t from_node_id =
-        tensorflow::gtl::FindWithDefault(node_ids_, from_node, -1);
+    int64_t from_node_id = tsl::gtl::FindWithDefault(node_ids_, from_node, -1);
     if (from_node_id == -1) {
       LOG(FATAL) << from_node->name() << " was added to edges but not to nodes";
     }
-    int64_t to_node_id =
-        to_node ? tensorflow::gtl::FindWithDefault(node_ids_, to_node, -1)
-                : root_node_id_;
+    int64_t to_node_id = to_node
+                             ? tsl::gtl::FindWithDefault(node_ids_, to_node, -1)
+                             : root_node_id_;
     if (to_node != nullptr && to_node_id == -1) {
       LOG(FATAL) << to_node->name() << " was added to edges but not to nodes";
     }
@@ -1042,6 +1035,7 @@ ColorScheme HloDotDumper::GetInstructionColor(const HloInstruction* instr) {
     case HloOpcode::kShiftLeft:
     case HloOpcode::kShiftRightArithmetic:
     case HloOpcode::kShiftRightLogical:
+    case HloOpcode::kStochasticConvert:
     case HloOpcode::kLogistic:
     case HloOpcode::kSign:
     case HloOpcode::kSin:
@@ -1050,6 +1044,7 @@ ColorScheme HloDotDumper::GetInstructionColor(const HloInstruction* instr) {
     case HloOpcode::kSqrt:
     case HloOpcode::kCbrt:
     case HloOpcode::kSubtract:
+    case HloOpcode::kTan:
     case HloOpcode::kTanh:
       // De-emphasize scalar-shaped elementwise ops -- they're generally
       // uninteresting.
@@ -1256,6 +1251,10 @@ ExtractGemmBackendConfigProps(const gpu::GemmBackendConfig& config,
   if (config.algorithm_case() == gpu::GemmBackendConfig::kSelectedAlgorithm) {
     props.emplace_back("algorithm", StrCat(config.selected_algorithm()));
   }
+  if (config.epilogue() != gpu::GemmBackendConfig::DEFAULT) {
+    props.emplace_back(
+        "epilogue", gpu::GemmBackendConfig::Epilogue_Name(config.epilogue()));
+  }
   return props;
 }
 
@@ -1273,7 +1272,7 @@ std::string HloDotDumper::GetInstructionNodeBackendConfig(
     if (config.ok()) {
       props = ExtractCudnnConvBackendConfigProps(*config);
     }
-  } else if (instr->IsCustomCall(gpu::kGemmCallTarget)) {
+  } else if (gpu::IsCublasGemm(*instr)) {
     StatusOr<gpu::GemmBackendConfig> config =
         instr->backend_config<gpu::GemmBackendConfig>();
     if (config.ok()) {
@@ -1357,16 +1356,6 @@ std::string HloDotDumper::GetInstructionNodeExtraInfo(
   }
   if (debug_options_.xla_hlo_graph_addresses()) {
     lines.push_back(StrFormat("[%p]", instr));
-  }
-  if (profile_ != nullptr) {
-    double hlo_cycles_executed = profile_->GetCyclesTakenBy(*instr);
-    double total_cycles_executed =
-        profile_->total_cycles_executed(*instr->parent());
-    if (hlo_cycles_executed > 0 && total_cycles_executed > 0) {
-      lines.push_back(
-          StrFormat("%% of cycles executed=%.2f",
-                    100 * hlo_cycles_executed / total_cycles_executed));
-    }
   }
   return StrJoin(lines, "<br/>");
 }
@@ -1706,6 +1695,7 @@ std::string WrapDotInHtml(absl::string_view dot) {
         var panzoom = svgPanZoom(svg, {
             zoomEnabled: true,
             controlIconsEnabled: true,
+            maxZoom: 100,
         });
         document.getElementsByTagName("BODY")[0].onresize = function() {
             panzoom.resize();
@@ -1820,7 +1810,7 @@ StatusOr<std::string> WrapDotInFormat(const HloComputation& computation,
 
 // Compress with zlib + b64 encode.
 static StatusOr<std::string> CompressAndEncode(absl::string_view input) {
-  class WritableStringFile : public tensorflow::WritableFile {
+  class WritableStringFile : public tsl::WritableFile {
    public:
     explicit WritableStringFile(std::string* data) : data_(data){};
     ~WritableStringFile() override = default;
@@ -1841,15 +1831,15 @@ static StatusOr<std::string> CompressAndEncode(absl::string_view input) {
   std::string compressed;
   WritableStringFile f(&compressed);
 
-  auto gz_opts = tensorflow::io::ZlibCompressionOptions::GZIP();
-  tensorflow::io::ZlibOutputBuffer gz_file(&f, gz_opts.input_buffer_size,
-                                           gz_opts.output_buffer_size, gz_opts);
+  auto gz_opts = tsl::io::ZlibCompressionOptions::GZIP();
+  tsl::io::ZlibOutputBuffer gz_file(&f, gz_opts.input_buffer_size,
+                                    gz_opts.output_buffer_size, gz_opts);
   TF_RETURN_IF_ERROR(gz_file.Init());
   TF_RETURN_IF_ERROR(gz_file.Append(input));
   TF_RETURN_IF_ERROR(gz_file.Close());
 
   std::string encoded;
-  TF_RETURN_IF_ERROR(tensorflow::Base64Encode(compressed, &encoded));
+  TF_RETURN_IF_ERROR(tsl::Base64Encode(compressed, &encoded));
   return absl::StrReplaceAll(encoded, {{"_", "/"}, {"-", "+"}});
 }
 
@@ -2091,7 +2081,7 @@ void RegisterFusionState(const HloComputation& computation,
   HloDotDumper dumper(
       consumer.parent(),
       StrCat("Rendering of ", kRenderRadius, " nodes around fusion consumer"),
-      consumer.GetModule()->config().debug_options(), {}, /*profile=*/nullptr,
+      consumer.GetModule()->config().debug_options(), {},
       MakeNodeRadiusAroundFilter(&consumer, kRenderRadius, render_boundary));
   std::string dot_txt = dumper.Dump();
 
@@ -2106,17 +2096,15 @@ void RegisterFusionState(const HloComputation& computation,
 StatusOr<std::string> RenderGraph(
     const HloComputation& computation, absl::string_view label,
     const DebugOptions& debug_options, RenderedGraphFormat format,
-    const HloExecutionProfile* hlo_execution_profile,
     HloRenderOptions hlo_render_options) {
   absl::MutexLock lock(&url_renderer_mu);
   if (format == RenderedGraphFormat::kUrl && url_renderer == nullptr) {
     return Unavailable("Can't render as URL; no URL renderer was registered.");
   }
 
-  std::string rendered_dot =
-      HloDotDumper(&computation, label, debug_options, hlo_render_options,
-                   hlo_execution_profile, NodeFilter())
-          .Dump();
+  std::string rendered_dot = HloDotDumper(&computation, label, debug_options,
+                                          hlo_render_options, NodeFilter())
+                                 .Dump();
   return WrapDotInFormat(computation, rendered_dot, format);
 }
 
@@ -2135,7 +2123,7 @@ StatusOr<std::string> RenderNeighborhoodAround(
   std::string rendered_dot =
       HloDotDumper(node.parent(), label,
                    node.GetModule()->config().debug_options(),
-                   hlo_render_options, /*profile=*/nullptr,
+                   hlo_render_options,
                    MakeNodeRadiusAroundFilter(&node, radius, boundary))
           .Dump();
   return WrapDotInFormat(*node.parent(), rendered_dot, format);
@@ -2164,10 +2152,9 @@ StatusOr<std::string> RenderAllPathsFromTo(
                    "<br/><br/>***SHOWING ONLY A SUBSET OF ALL PATHS BETWEEN "
                    "NODES***<br/><br/>");
   }
-  std::string rendered_dot =
-      HloDotDumper(from.parent(), label, debug_options, hlo_render_options,
-                   /*profile=*/nullptr, filter)
-          .Dump();
+  std::string rendered_dot = HloDotDumper(from.parent(), label, debug_options,
+                                          hlo_render_options, filter)
+                                 .Dump();
   return WrapDotInFormat(*from.parent(), rendered_dot, format);
 }
 

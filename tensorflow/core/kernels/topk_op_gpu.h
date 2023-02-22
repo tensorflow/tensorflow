@@ -486,8 +486,9 @@ Status LaunchSortKernel(OpKernelContext* ctx, const T* input, int num_rows,
 #if GOOGLE_CUDA
     constexpr bool is_supported = true;
 #else
-    // GpuRadixSortDescending is not supported on ROCm for fp16.
-    constexpr bool is_supported = !std::is_same<T, Eigen::half>::value;
+    // GpuRadixSortDescending is not supported on ROCm for fp16/bf16.
+    constexpr bool is_supported = !std::is_same<T, Eigen::half>::value &&
+                                  !std::is_same<T, Eigen::bfloat16>::value;
 #endif
     if constexpr (is_supported) {
       // Note: DeviceSegmentedRadixSort is very slow when num_segments=1 because
@@ -561,7 +562,7 @@ Status LaunchSortKernel(OpKernelContext* ctx, const T* input, int num_rows,
     To32Bit(values).device(d) =
         To32Bit(temp_values.matrix<T>()).slice(slice_indices, slice_sizes);
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // end namespace impl
@@ -591,7 +592,7 @@ struct TopKFunctor<GPUDevice, T> {
         return errors::Internal(
             "Could not launch TopKKernel: ", cudaGetErrorString(err), ".");
       } else {
-        return Status::OK();
+        return OkStatus();
       }
     }
   }

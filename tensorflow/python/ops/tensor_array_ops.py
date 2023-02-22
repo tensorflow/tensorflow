@@ -22,6 +22,7 @@ import weakref
 
 import numpy as np
 
+from tensorflow.core.protobuf import struct_pb2
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -31,6 +32,7 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.framework import type_spec
+from tensorflow.python.framework import type_spec_registry
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_util
 from tensorflow.python.ops import gen_control_flow_ops
@@ -38,6 +40,7 @@ from tensorflow.python.ops import gen_data_flow_ops
 from tensorflow.python.ops import list_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.saved_model import nested_structure_coder
 from tensorflow.python.util import tf_should_use
 from tensorflow.python.util.tf_export import tf_export
 
@@ -319,7 +322,12 @@ class _GraphTensorArray:
         name=name,
         element_shape_except0=self.element_shape[1:])
     if self.element_shape:
-      value.set_shape([None] + self.element_shape.dims[1:])
+      dim0 = None
+      if self._infer_shape:
+        size = tensor_util.constant_value(self.size())
+        if size is not None and self.element_shape[0] is not None:
+          dim0 = size * self.element_shape[0]
+      value.set_shape([dim0] + self.element_shape.dims[1:])
     return value
 
   @tf_should_use.should_use_result
@@ -955,11 +963,18 @@ class _EagerTensorArray:
 # pylint:disable=line-too-long
 @tf_export("TensorArray")
 class TensorArray:
-  """Class wrapping dynamic-sized, per-time-step, write-once Tensor arrays.
+  """Class wrapping dynamic-sized, per-time-step, Tensor arrays.
 
   This class is meant to be used with dynamic iteration primitives such as
   `while_loop` and `map_fn`.  It supports gradient back-propagation via special
   "flow" control flow dependencies.
+
+  Note that although the array can be read multiple times and positions can be
+  overwritten, behavior may be undefined when storing multiple references to
+  the same array and clear_after_read is False. In particular, avoid using
+  methods like concat() to convert an intermediate TensorArray to a Tensor,
+  then further modifying the TensorArray, particularly if you need to backprop
+  through it later.
 
   Example 1: Plain reading and writing.
 
@@ -1175,9 +1190,9 @@ class TensorArray:
 
 
     >>> ta = tf.TensorArray(tf.int32, size=3)
-    >>> ta.write(0, tf.constant([1, 2]))
-    >>> ta.write(1, tf.constant([3, 4]))
-    >>> ta.write(2, tf.constant([5, 6]))
+    >>> ta = ta.write(0, tf.constant([1, 2]))
+    >>> ta = ta.write(1, tf.constant([3, 4]))
+    >>> ta = ta.write(2, tf.constant([5, 6]))
     >>> ta.stack()
     <tf.Tensor: shape=(3, 2), dtype=int32, numpy=
     array([[1, 2],
@@ -1336,7 +1351,7 @@ def _check_dtypes(value, dtype):
 
 
 @tf_export("TensorArraySpec")
-@type_spec.register("tf.TensorArraySpec")
+@type_spec_registry.register("tf.TensorArraySpec")
 class TensorArraySpec(type_spec.TypeSpec):
   """Type specification for a `tf.TensorArray`."""
 
@@ -1464,6 +1479,13 @@ class TensorArraySpec(type_spec.TypeSpec):
 
   def _to_legacy_output_classes(self):
     return TensorArray
+
+
+nested_structure_coder.register_codec(
+    nested_structure_coder.BuiltInTypeSpecCodec(
+        TensorArraySpec, struct_pb2.TypeSpecProto.TENSOR_ARRAY_SPEC
+    )
+)
 
 
 # Register the TypeSpec for TensorArray.  If TensorArray is updated to be a

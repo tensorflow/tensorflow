@@ -283,7 +283,6 @@ class AutoShardDatasetTest(tf_record_test_base.TFRecordTestBase,
 
   @combinations.generate(test_base.default_test_combinations())
   def testShardInputToInterleaveWithIdentityFunction(self):
-    self.skipTest("Currently fails due to b/238645949")
     file1 = self._writeFile("f0", [1, 2, 3])
     file2 = self._writeFile("f1", [4, 5, 6])
     file3 = self._writeFile("f2", [7, 8, 9])
@@ -588,14 +587,20 @@ class AutoShardDatasetTest(tf_record_test_base.TFRecordTestBase,
       combinations.times(
           test_base.default_test_combinations(),
           combinations.combine(
-              auto_shard_policy=list(options_lib.AutoShardPolicy))))
+              auto_shard_policy=list(
+                  policy.name for policy in options_lib.AutoShardPolicy
+              )
+          ),
+      )
+  )
   def testEnumerateAutoShardPolicies(self, auto_shard_policy):
     """Verifies tf.data handles every auto-shard policy with no errors."""
+    policy_enum = options_lib.AutoShardPolicy[auto_shard_policy]
     dataset = dataset_ops.Dataset.list_files(self._filenames, shuffle=False)
     dataset = dataset.flat_map(core_readers.TFRecordDataset)
     dataset = dataset.batch(5)
     options = options_lib.Options()
-    options.experimental_distribute.auto_shard_policy = auto_shard_policy
+    options.experimental_distribute.auto_shard_policy = policy_enum
     dataset = dataset.with_options(options)
     dataset = distribute._AutoShardDataset(dataset, 5, 3)
     self.getDatasetOutput(dataset, requires_initialization=True)
@@ -632,7 +637,7 @@ class AutoShardWithRebatchDatasetTest(tf_record_test_base.TFRecordTestBase,
         testing.assert_next(["Shard", "FlatMap", "Batch", "Rebatch"]))
     dataset = dataset.flat_map(core_readers.TFRecordDataset)
     dataset = dataset.batch(5)
-    dataset = distribute._RebatchDataset(dataset, batch_sizes=[2, 1, 2])
+    dataset = dataset.rebatch(batch_size=[2, 1, 2])
     dataset = distribute._AutoShardDataset(dataset, 3, 1)
     expected = [[self._record(1, 0), self._record(1, 1)], [self._record(1, 2)],
                 [self._record(1, 3), self._record(1, 4)]]
@@ -658,8 +663,7 @@ class AutoShardWithRebatchDatasetTest(tf_record_test_base.TFRecordTestBase,
     # We expect the auto-shard rewrite to rewrite RebatchDatasetV2 to
     # RebatchDataset(V1) for correctness reasons. This will modify the output
     # of the dataset.
-    worker_a_dataset = distribute._RebatchDataset(
-        dataset, batch_sizes=[2, 1, 1])
+    worker_a_dataset = dataset.rebatch(batch_size=[2, 1, 1])
     if with_prefetch:
       worker_a_dataset = worker_a_dataset.prefetch(1)
     worker_a_dataset = distribute._AutoShardDataset(
@@ -667,8 +671,7 @@ class AutoShardWithRebatchDatasetTest(tf_record_test_base.TFRecordTestBase,
     expected = [[0, 1], [4, 5]]
     self.assertDatasetProduces(worker_a_dataset, expected)
 
-    worker_b_dataset = distribute._RebatchDataset(
-        dataset, batch_sizes=[1, 1, 2])
+    worker_b_dataset = dataset.rebatch(batch_size=[1, 1, 2])
     if with_prefetch:
       worker_b_dataset = worker_b_dataset.prefetch(1)
     worker_b_dataset = distribute._AutoShardDataset(
@@ -676,8 +679,7 @@ class AutoShardWithRebatchDatasetTest(tf_record_test_base.TFRecordTestBase,
     expected = [[2, 3], [6, 7]]
     self.assertDatasetProduces(worker_b_dataset, expected)
 
-    worker_c_dataset = distribute._RebatchDataset(
-        dataset, batch_sizes=[1, 2, 1])
+    worker_c_dataset = dataset.rebatch(batch_size=[1, 2, 1])
     if with_prefetch:
       worker_c_dataset = worker_c_dataset.prefetch(1)
     worker_c_dataset = distribute._AutoShardDataset(

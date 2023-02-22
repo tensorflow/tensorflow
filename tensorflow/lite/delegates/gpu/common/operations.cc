@@ -19,10 +19,10 @@ limitations under the License.
 #include <cstdint>
 #include <set>
 #include <string>
-#include <unordered_map>
 #include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "tensorflow/lite/delegates/gpu/common/shape.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
 #include "tensorflow/lite/delegates/gpu/common/tensor.h"
@@ -36,11 +36,13 @@ Padding2D& Padding2D::operator=(const Padding2D& value) {
   return *this;
 }
 
-bool Padding2D::operator==(const Padding2D& value) {
+bool Padding2D::operator==(const Padding2D& value) const {
   return this->prepended == value.prepended && this->appended == value.appended;
 }
 
-bool Padding2D::operator!=(const Padding2D& value) { return !(*this == value); }
+bool Padding2D::operator!=(const Padding2D& value) const {
+  return !(*this == value);
+}
 
 Padding2D& Padding2D::operator-(const Padding2D& value) {
   prepended.h -= value.prepended.h;
@@ -86,6 +88,8 @@ std::string ToString(enum OperationType op) {
       return "batched_matmul";
     case OperationType::CAST:
       return "cast";
+    case OperationType::CEIL:
+      return "ceil";
     case OperationType::CONCAT:
       return "concat";
     case OperationType::CONSTANT:
@@ -138,6 +142,8 @@ std::string ToString(enum OperationType op) {
       return "less_equal";
     case OperationType::LOG:
       return "log";
+    case OperationType::LOGICAL_AND:
+      return "logical_and";
     case OperationType::LSTM:
       return "lstm";
     case OperationType::MAXIMUM:
@@ -222,8 +228,8 @@ std::string ToString(enum OperationType op) {
 }
 
 OperationType OperationTypeFromString(const std::string& name) {
-  static const auto* operations =
-      new std::unordered_map<std::string, OperationType>({
+  static const auto operations =
+      new absl::flat_hash_map<std::string, OperationType>({
           {"abs", OperationType::ABS},
           {"add", OperationType::ADD},
           {"batch_normalization", OperationType::BATCH_NORMALIZATION},
@@ -255,6 +261,7 @@ OperationType OperationTypeFromString(const std::string& name) {
           {"less", OperationType::LESS},
           {"less_equal", OperationType::LESS_EQUAL},
           {"log", OperationType::LOG},
+          {"logical_and", OperationType::LOGICAL_AND},
           {"lstm", OperationType::LSTM},
           {"maximum", OperationType::MAXIMUM},
           {"max_unpooling", OperationType::MAX_UNPOOLING_2D},

@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_DATA_SERVICE_TEST_CLUSTER_H_
 #define TENSORFLOW_CORE_DATA_SERVICE_TEST_CLUSTER_H_
 
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <string>
@@ -62,9 +63,13 @@ class TestCluster {
   // the cluster. Initialize should be called only once.
   Status Initialize();
   // Adds a new worker to the cluster.
-  Status AddWorker();
+  Status AddWorker(std::optional<int> port = std::nullopt);
   // Returns the number of workers in this cluster.
   size_t NumWorkers() const { return workers_.size(); }
+  // Returns the port number of a worker.
+  int WorkerBoundPort(size_t worker_index) const {
+    return workers_[worker_index]->BoundPort();
+  }
   // Returns the number of active iterations.
   StatusOr<size_t> NumActiveIterations() const {
     return dispatcher_->NumActiveIterations();
@@ -114,6 +119,9 @@ class DatasetClient {
   // Creates a dataset client. It will process datasets in `cluster`.
   explicit DatasetClient(const TestCluster& cluster);
 
+  // Registers the dataset and returns the dataset ID.
+  StatusOr<std::string> RegisterDataset(const DatasetDef& dataset);
+
   // Maps a worker address to the data it produces when calling `Read`.
   using WorkerResultMap = absl::flat_hash_map<std::string, std::vector<T>>;
 
@@ -127,11 +135,9 @@ class DatasetClient {
   StatusOr<int64_t> CreateIteration(const DatasetDef& dataset);
   // Gets the tasks for iteration `iteration_client_id`. The iteration has one
   // task processed by every worker.
-  StatusOr<std::vector<TaskInfo>> GetTasks(int64 iteration_client_id);
+  StatusOr<std::vector<TaskInfo>> GetTasks(int64_t iteration_client_id);
 
  private:
-  // Registers the dataset and returns the dataset ID.
-  StatusOr<std::string> RegisterDataset(const DatasetDef& dataset);
   // Creates an iteration and returns the iteration client ID.
   StatusOr<int64_t> CreateIteration(
       const std::string& dataset_id,
@@ -169,7 +175,7 @@ StatusOr<typename DatasetClient<T>::WorkerResultMap> DatasetClient<T>::Read(
     TargetWorkers target_workers) {
   TF_ASSIGN_OR_RETURN(const std::string dataset_id, RegisterDataset(dataset));
   TF_ASSIGN_OR_RETURN(
-      const int64 iteration_client_id,
+      const int64_t iteration_client_id,
       CreateIteration(dataset_id, sharding_policy, target_workers));
   TF_ASSIGN_OR_RETURN(const std::vector<TaskInfo> tasks,
                       GetTasks(iteration_client_id));
@@ -213,7 +219,7 @@ StatusOr<int64_t> DatasetClient<T>::CreateIteration(const DatasetDef& dataset) {
 
 template <class T>
 StatusOr<std::vector<TaskInfo>> DatasetClient<T>::GetTasks(
-    const int64 iteration_client_id) {
+    const int64_t iteration_client_id) {
   ClientHeartbeatRequest request;
   ClientHeartbeatResponse response;
   request.set_iteration_client_id(iteration_client_id);

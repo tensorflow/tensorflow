@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_MLIR_TOSA_TF_TFL_PASSES_H
-#define TENSORFLOW_COMPILER_MLIR_TOSA_TF_TFL_PASSES_H
+#ifndef TENSORFLOW_COMPILER_MLIR_TOSA_TF_TFL_PASSES_H_
+#define TENSORFLOW_COMPILER_MLIR_TOSA_TF_TFL_PASSES_H_
 
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Pass/PassOptions.h"  // from @llvm-project
@@ -36,4 +36,4 @@ void registerTFTFLtoTOSALegalizationPipeline();
 }  // namespace tosa
 }  // namespace mlir
 
-#endif  // TENSORFLOW_COMPILER_MLIR_TOSA_TF_TFL_PASSES_H
+#endif  // TENSORFLOW_COMPILER_MLIR_TOSA_TF_TFL_PASSES_H_

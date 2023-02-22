@@ -16,6 +16,7 @@ limitations under the License.
 #define TENSORFLOW_LITE_CORE_API_OP_RESOLVER_INTERNAL_H_
 
 /// \file
+///
 /// This header op_resolver_internal.h exists so that we can have fine-grained
 /// access control on the MayContainUserDefinedOps method.
 

@@ -1,5 +1,7 @@
-load("//tensorflow:tensorflow.bzl", "filegroup")
+load("//tensorflow:tensorflow.default.bzl", "filegroup")
 load("//tensorflow/compiler/mlir:glob_lit_test.bzl", "glob_lit_tests")
+
+# copybara:uncomment package(default_applicable_licenses = ["//tensorflow:license"])
 
 licenses(["notice"])
 
@@ -9,6 +11,9 @@ glob_lit_tests(
         ":test_utilities",
     ],
     driver = "@llvm-project//mlir:run_lit.sh",
+    size_override = {
+        "quant_stats.pbtxt": "medium",
+    },
     tags_override = {
         "add.pbtxt": ["no_rocm"],
         "conv_2d.pbtxt": ["no_rocm"],

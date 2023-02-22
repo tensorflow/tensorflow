@@ -19,7 +19,7 @@ limitations under the License.
 
 #include <vector>
 
-#include "tensorflow/core/platform/logging.h"
+#include "tensorflow/tsl/platform/logging.h"
 // IWYU pragma: no_include "llvm/IR/Attributes.gen.inc"
 // IWYU pragma: no_include "llvm/IR/Intrinsics.gen.inc"
 #include "absl/strings/str_cat.h"
@@ -31,11 +31,12 @@ limitations under the License.
 #include "llvm/IR/Intrinsics.h"
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Type.h"
+#include "llvm/Support/ModRef.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/service/gpu/backend_configs.pb.h"
 #include "tensorflow/compiler/xla/service/gpu/target_util.h"
-#include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/ir_array.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_loop.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
@@ -110,7 +111,7 @@ StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitDeviceMathCall(
       ObtainDeviceFunctionName(funcid, output_type, b());
   llvm::Value* result = EmitMathCall(munged_callee, converted_operands,
                                      converted_input_types, output_type, name)
-                            .ValueOrDie();
+                            .value();
   if (cast_result_to_fp16) {
     result = FPCast(result, b()->getHalfTy());
   }
@@ -153,9 +154,11 @@ StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitMathCall(
     }
   }
 
-  return EmitDeviceFunctionCall(
-      callee_name, operands, input_types, output_type,
-      {llvm::Attribute::ReadNone, llvm::Attribute::NoUnwind}, b(), name);
+  return EmitDeviceFunctionCall(callee_name, operands, input_types, output_type,
+                                llvm::AttrBuilder(b()->getContext())
+                                    .addMemoryAttr(llvm::MemoryEffects::none())
+                                    .addAttribute(llvm::Attribute::NoUnwind),
+                                b(), name);
 }
 
 llvm_ir::IrArray::Index GpuElementalIrEmitter::GetSourceIndexOfBitcast(
@@ -236,6 +239,12 @@ StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitSin(PrimitiveType prim_type,
 StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitCos(PrimitiveType prim_type,
                                                       llvm::Value* value) {
   return EmitDeviceMathCall(TargetDeviceFunctionID::kCos, {value}, {prim_type},
+                            prim_type);
+}
+
+StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitTan(PrimitiveType prim_type,
+                                                      llvm::Value* value) {
+  return EmitDeviceMathCall(TargetDeviceFunctionID::kTan, {value}, {prim_type},
                             prim_type);
 }
 

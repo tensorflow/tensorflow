@@ -18,8 +18,10 @@ limitations under the License.
 
 #include <functional>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "absl/base/thread_annotations.h"
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
@@ -28,6 +30,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/layout.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
+#include "tensorflow/compiler/xla/pjrt/pjrt_executable.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_future.h"
 #include "tensorflow/compiler/xla/pjrt/semaphore.h"
 #include "tensorflow/compiler/xla/pjrt/tracked_tfrt_cpu_device_buffer.h"
@@ -38,13 +41,13 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/cpu/cpu_compiler.h"
 #include "tensorflow/compiler/xla/service/cpu/cpu_executable.h"
 #include "tensorflow/compiler/xla/service/executable.h"
+#include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/compiler/xla/service/hlo_cost_analysis.h"
 #include "tensorflow/compiler/xla/service/hlo_module_util.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/profiler/lib/traceme.h"
+#include "tensorflow/tsl/profiler/lib/traceme.h"
 #include "tfrt/host_context/async_value_ref.h"  // from @tf_runtime
-#include "tfrt/host_context/host_context.h"  // from @tf_runtime
 
 namespace xla {
 
@@ -114,8 +117,8 @@ class TfrtCpuClient final : public PjRtClient {
  public:
   TfrtCpuClient(int process_index,
                 std::vector<std::unique_ptr<TfrtCpuDevice>> devices,
-                std::unique_ptr<tfrt::HostContext> host_ctx);
-  ~TfrtCpuClient();
+                size_t num_threads);
+  ~TfrtCpuClient() override;
 
   int process_index() const override { return process_index_; }
 
@@ -137,7 +140,7 @@ class TfrtCpuClient final : public PjRtClient {
       int local_hardware_id) const override;
 
   PjRtPlatformId platform_id() const override {
-    return tensorflow::Fingerprint64(CpuName());
+    return tsl::Fingerprint64(CpuName());
   }
 
   absl::string_view platform_name() const override { return CpuName(); }
@@ -149,7 +152,8 @@ class TfrtCpuClient final : public PjRtClient {
   StatusOr<DeviceAssignment> GetDefaultDeviceAssignment(
       int num_replicas, int num_partitions) const override;
 
-  StatusOr<std::unique_ptr<HloCostAnalysis>> GetHloCostAnalysis() override;
+  StatusOr<std::unique_ptr<HloCostAnalysis>> GetHloCostAnalysis()
+      const override;
 
   StatusOr<std::unique_ptr<PjRtLoadedExecutable>> Compile(
       const XlaComputation& computation, CompileOptions options) override;
@@ -159,24 +163,19 @@ class TfrtCpuClient final : public PjRtClient {
   StatusOr<std::optional<std::string>> ExecutableFingerprint(
       const PjRtLoadedExecutable& executable) const override;
 
-  StatusOr<std::string> SerializeExecutable(
-      const PjRtLoadedExecutable& executable) const override {
-    return Unimplemented("SerializeExecutable not implemented on %s",
-                         platform_name());
-  }
-
+  // For TfrtCpuClient, `options` is mandatory.
+  // This function returns an InvalidArgument error if `std::nullopt` is passed.
+  // TODO(b/237720161): make it actually optional
   StatusOr<std::unique_ptr<PjRtLoadedExecutable>> DeserializeExecutable(
-      absl::string_view serialized, CompileOptions options) override {
-    return Unimplemented("DeserializeExecutable not implemented on %s",
-                         platform_name());
-  }
+      absl::string_view serialized,
+      std::optional<CompileOptions> options) override;
 
   StatusOr<std::unique_ptr<PjRtBuffer>> CreateUninitializedBuffer(
       const Shape& shape, PjRtDevice* device) override;
 
-  StatusOr<std::unique_ptr<PjRtClient::AsyncBufferTransferManager>>
-  CreateBuffersForAsyncTransfer(absl::Span<const Shape> shapes,
-                                PjRtDevice* device) override {
+  StatusOr<std::unique_ptr<PjRtClient::AsyncHostToDeviceTransferManager>>
+  CreateBuffersForAsyncHostToDevice(absl::Span<const Shape> shapes,
+                                    PjRtDevice* device) override {
     return Unimplemented("Async transfer to buffers not implemented");
   };
 
@@ -223,7 +222,9 @@ class TfrtCpuClient final : public PjRtClient {
     return Unimplemented("Defragment not implemented.");
   }
 
-  tfrt::HostContext* GetHostContext() const { return host_ctx_.get(); }
+  tsl::thread::ThreadPool* pjrt_client_thread_pool() const {
+    return pjrt_client_thread_pool_.get();
+  }
 
   Eigen::ThreadPoolDevice* eigen_intraop_device() const {
     return eigen_intraop_device_.get();
@@ -249,11 +250,13 @@ class TfrtCpuClient final : public PjRtClient {
   absl::flat_hash_map<int, TfrtCpuDevice*> id_to_device_;
   // Addressable devices indexed by core_id.
   std::vector<PjRtDevice*> addressable_devices_;
-  std::unique_ptr<tfrt::HostContext> host_ctx_;
   std::unique_ptr<ComputationPlacer> computation_placer_;
 
+  // Thread pool for running PjRtClient tasks.
+  std::unique_ptr<tsl::thread::ThreadPool> pjrt_client_thread_pool_;
+
   // TODO(zhangqiaorjc): Use tfrt::compat::EigenHostContextThreadPool.
-  std::unique_ptr<tensorflow::thread::ThreadPool> eigen_intraop_pool_;
+  std::unique_ptr<tsl::thread::ThreadPool> eigen_intraop_pool_;
   std::unique_ptr<Eigen::ThreadPoolDevice> eigen_intraop_device_;
 
   // Launching collectives are prone to deadlock when we use fixed-sized
@@ -319,20 +322,20 @@ class TfrtCpuBuffer final : public PjRtBuffer {
   StatusOr<std::unique_ptr<PjRtBuffer>> CopyToDevice(
       PjRtDevice* dst_device) override;
 
-  void CopyToRemoteDevice(absl::string_view serialized_descriptor,
-                          RemoteSendCallback on_done) override {
+  void CopyToRemoteDevice(
+      PjRtFuture<StatusOr<std::string>> serialized_descriptor,
+      RemoteSendCallback on_done) override {
     on_done(Unimplemented("CopyToRemoteDevice not implemented."),
             /*sends_were_enqueued=*/false);
   }
 
   void CopyToRemoteDeviceScattered(
-      absl::Span<const std::pair<std::string, RemoteSendCallback>>
-          serialized_descriptors_and_callbacks,
-      const ScatterDetails& scatter_details) override {
-    for (const auto& d_and_cb : serialized_descriptors_and_callbacks) {
-      d_and_cb.second(
-          Unimplemented("CopyToRemoteDeviceScattered not implemented."),
-          /*sends_were_enqueued=*/false);
+      PjRtFuture<StatusOr<std::vector<std::string>>> serialized_descriptors,
+      std::vector<RemoteSendCallback> callbacks,
+      const xla::PjRtBuffer::ScatterDetails& scatter_details) override {
+    for (const auto& on_done : callbacks) {
+      on_done(Unimplemented("Implement CopyToRemoteDeviceScattered."),
+              /*sends_were_enqueued=*/false);
     }
   }
 
@@ -512,6 +515,18 @@ class TfrtCpuExecutable final : public PjRtLoadedExecutable {
         cpu_executable_->shared_module()};
   }
 
+  StatusOr<CompiledMemoryStats> GetCompiledMemoryStats() const override {
+    CompiledMemoryStats memory_stats = CompiledMemoryStats();
+    memory_stats.generated_code_size_in_bytes = SizeOfGeneratedCodeInBytes();
+    const HloProto* proto = cpu_executable_->hlo_proto();
+    if (!proto) {
+      return tsl::errors::FailedPrecondition(
+          "cpu_executable_ has no hlo_proto.");
+    }
+    memory_stats.serialized_hlo_proto = proto->SerializeAsString();
+    return memory_stats;
+  }
+
   using PjRtLoadedExecutable::Execute;
   StatusOr<std::vector<std::vector<std::unique_ptr<PjRtBuffer>>>> Execute(
       absl::Span<const std::vector<PjRtBuffer*>> argument_handles,
@@ -537,7 +552,13 @@ class TfrtCpuExecutable final : public PjRtLoadedExecutable {
 
   bool IsDeleted() override;
 
+  StatusOr<std::string> SerializeExecutable() const override;
+
+  bool IsReturnedFutureSupported() const override { return true; }
+
   StatusOr<std::optional<std::string>> Fingerprint() const;
+
+  std::shared_ptr<Executable> cpu_executable() const { return cpu_executable_; }
 
  private:
   friend class TfrtCpuClient;
@@ -547,7 +568,8 @@ class TfrtCpuExecutable final : public PjRtLoadedExecutable {
   // Checks that the input buffers passed in by the user have the correct size
   // on device for the compiled program.
   Status CheckBufferCompatibilities(
-      absl::Span<TrackedTfrtCpuDeviceBuffer* const> input_buffers) const;
+      absl::Span<std::pair<bool, TrackedTfrtCpuDeviceBuffer*> const>
+          input_buffers) const;
 
   StatusOr<Result> ExecuteHelper(
       absl::Span<PjRtBuffer* const> argument_handles, int replica,

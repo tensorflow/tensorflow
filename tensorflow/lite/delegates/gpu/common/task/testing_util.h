@@ -22,6 +22,7 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/common/data_type.h"
 #include "tensorflow/lite/delegates/gpu/common/gpu_info.h"
+#include "tensorflow/lite/delegates/gpu/common/gpu_model.h"
 #include "tensorflow/lite/delegates/gpu/common/precision.h"
 #include "tensorflow/lite/delegates/gpu/common/shape.h"
 #include "tensorflow/lite/delegates/gpu/common/task/gpu_operation.h"
@@ -30,7 +31,7 @@ limitations under the License.
 
 namespace tflite {
 namespace gpu {
-
+using TensorInt32 = Tensor<BHWC, DataType::INT32>;
 class TestExecutionEnvironment {
  public:
   TestExecutionEnvironment() = default;
@@ -42,15 +43,30 @@ class TestExecutionEnvironment {
 
   virtual const GpuInfo& GetGpuInfo() const = 0;
 
-  virtual absl::Status ExecuteGPUOperation(
+  absl::Status ExecuteGPUOperation(
       const std::vector<TensorDescriptor*>& src_cpu,
       const std::vector<TensorDescriptor*>& dst_cpu,
-      std::unique_ptr<GPUOperation>&& operation) = 0;
+      std::unique_ptr<GPUOperation>&& operation);
 
+  template <typename DstTensorType>
+  absl::Status ExecuteGpuModel(const std::vector<TensorFloat32>& src_cpu,
+                               const std::vector<DstTensorType*>& dst_cpu,
+                               GpuModel* gpu_model);
+
+  template <typename DstTensorType>
   absl::Status ExecuteGPUOperation(const std::vector<TensorFloat32>& src_cpu,
                                    std::unique_ptr<GPUOperation>&& operation,
                                    const std::vector<BHWC>& dst_sizes,
-                                   const std::vector<TensorFloat32*>& dst_cpu);
+                                   const std::vector<DstTensorType*>& dst_cpu);
+
+  absl::Status ExecuteGPUOperation(
+      const std::vector<TensorFloat32>& src_cpu,
+      std::unique_ptr<GPUOperation>&& operation,
+      const std::vector<BHWC>& dst_sizes,
+      const std::initializer_list<TensorFloat32*>& dst_cpu) {
+    return ExecuteGPUOperation(src_cpu, std::move(operation), dst_sizes,
+                               std::vector<TensorFloat32*>(dst_cpu));
+  }
 
   absl::Status ExecuteGPUOperation(
       const std::vector<Tensor5DFloat32>& src_cpu,
@@ -91,6 +107,12 @@ class TestExecutionEnvironment {
         std::vector<Tensor5DFloat32>{src_cpu}, std::move(operation),
         std::vector<BHWDC>{dst_size}, std::vector<Tensor5DFloat32*>{result});
   }
+
+ protected:
+  virtual absl::Status ExecuteGpuOperationInternal(
+      const std::vector<TensorDescriptor*>& src_cpu,
+      const std::vector<TensorDescriptor*>& dst_cpu,
+      std::unique_ptr<GPUOperation>&& operation) = 0;
 };
 
 absl::Status PointWiseNear(const std::vector<float>& ref,

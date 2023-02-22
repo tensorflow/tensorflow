@@ -16,16 +16,20 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_LAYOUT_H_
 #define TENSORFLOW_COMPILER_XLA_LAYOUT_H_
 
+#include <limits>
+#include <memory>
+#include <ostream>
 #include <string>
 #include <vector>
 
 #include "absl/container/inlined_vector.h"
-#include "absl/types/span.h"
-#include "tensorflow/compiler/xla/types.h"
+#include "tensorflow/compiler/xla/printer.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 
 namespace xla {
+
+class Shape;
 
 // Describes a tile used in tiling-based layout. Refer to
 // g3doc/third_party/tensorflow/compiler/xla/g3doc/tiled_layout.md for
@@ -46,6 +50,8 @@ class Tile {
     return dimensions() == other.dimensions();
   }
   bool operator!=(const Tile& other) const { return !(*this == other); }
+
+  void Print(Printer* printer) const;
 
   std::string ToString() const;
 
@@ -82,28 +88,38 @@ class Tile {
 
 class Layout {
  public:
-  Layout() = default;
+  Layout();
+  Layout(const Layout& other);
+  Layout(Layout&& other);
+  ~Layout();
 
   // Constructs a dense layout with the given minor-to-major order.
-  explicit Layout(absl::Span<const int64_t> minor_to_major)
-      : format_(DENSE),
-        minor_to_major_(minor_to_major.begin(), minor_to_major.end()) {}
+  explicit Layout(absl::Span<const int64_t> minor_to_major);
 
-  // Constructs a dense tiled layout with the given minor-to-major order and
-  // tiles.
-  Layout(absl::Span<const int64_t> minor_to_major, absl::Span<const Tile> tiles,
-         int64_t element_size_in_bits = 0, int64_t memory_space = 0)
-      : format_(DENSE),
-        minor_to_major_(minor_to_major.begin(), minor_to_major.end()),
-        tiles_(tiles.begin(), tiles.end()),
-        element_size_in_bits_(element_size_in_bits),
-        memory_space_(memory_space) {}
+  // Constructs a dense tiled layout with the given minor-to-major order, dim
+  // level types, and tiles.
+  explicit Layout(absl::Span<const int64_t> minor_to_major,
+                  absl::Span<const DimLevelType> dim_level_types,
+                  absl::Span<const bool> dim_unique,
+                  absl::Span<const bool> dim_ordered,
+                  absl::Span<const Tile> tiles,
+                  PrimitiveType index_primitive_type = PRIMITIVE_TYPE_INVALID,
+                  PrimitiveType element_primitive_type = PRIMITIVE_TYPE_INVALID,
+                  int64_t memory_space = 0,
+                  std::unique_ptr<Shape> physical_shape = nullptr,
+                  int64_t dynamic_shape_metadata_prefix_bytes = 0);
+
+  Layout& operator=(const Layout& other);
+  Layout& operator=(Layout&& other);
 
   // Construct a shape from a LayoutProto.
   static Layout CreateFromProto(const LayoutProto& proto);
 
   // Returns a LayoutProto representation of the Layout.
   LayoutProto ToProto() const;
+
+  // Prints a human-readable string that represents this layout.
+  void Print(Printer* printer) const;
 
   // Returns a human-readable string that represents this layout.
   std::string ToString() const;
@@ -114,10 +130,6 @@ class Layout {
   //
   // - Comparing two layouts ignoring their difference in tiles:
   //   Equal().IgnoreTiles()(layout1, layout2);
-  //
-  // - Comparing two layouts ignoring their difference in tiles and element
-  //   size:
-  //   Equal().IgnoreTiles().IgnoreElementSize()(layout1, layout2);
   class Equal {
    public:
     Equal() = default;
@@ -129,15 +141,13 @@ class Layout {
       return *this;
     }
 
-    Equal& IgnoreElementSize() {
-      ignore_element_size_ = true;
+    Equal& IgnoreIndexPrimitiveType() {
+      ignore_index_primitive_type_ = true;
       return *this;
     }
 
-    Equal& MinorToMajorOnly() {
-      ignore_tiles_ = true;
-      ignore_element_size_ = true;
-      ignore_memory_space_ = true;
+    Equal& IgnorePointerPrimitiveType() {
+      ignore_pointer_primitive_type_ = true;
       return *this;
     }
 
@@ -146,10 +156,25 @@ class Layout {
       return *this;
     }
 
+    Equal& IgnorePhysicalShape() {
+      ignore_physical_shape_ = true;
+      return *this;
+    }
+
+    Equal& MinorToMajorOnly() {
+      return IgnoreTiles()
+          .IgnoreIndexPrimitiveType()
+          .IgnorePointerPrimitiveType()
+          .IgnoreMemorySpace()
+          .IgnorePhysicalShape();
+    }
+
    private:
     bool ignore_tiles_ = false;
-    bool ignore_element_size_ = false;
+    bool ignore_index_primitive_type_ = false;
+    bool ignore_pointer_primitive_type_ = false;
     bool ignore_memory_space_ = false;
+    bool ignore_physical_shape_ = false;
   };
 
   bool operator==(const Layout& other) const;
@@ -162,11 +187,66 @@ class Layout {
   // TODO(b/29771030): Replace or augment these methods with a more ergonomic
   // interface.
 
-  // Methods for accessing the format.
-  Format format() const { return format_; }
-  Layout& set_format(Format value) {
-    format_ = value;
+  // Methods for accessing the DimLevelType array.
+  int dim_level_types_size() const { return dim_level_types_.size(); }
+  DimLevelType dim_level_type(int index) const {
+    return dim_level_types_.at(index);
+  }
+  Layout& set_dim_level_type(int index, DimLevelType dim_level_type) {
+    dim_level_types_.at(index) = dim_level_type;
     return *this;
+  }
+  Layout& add_dim_level_type(DimLevelType dim_level_type) {
+    dim_level_types_.push_back(dim_level_type);
+    return *this;
+  }
+  Layout& clear_dim_level_types() {
+    dim_level_types_.clear();
+    return *this;
+  }
+  absl::Span<const DimLevelType> dim_level_types() const {
+    return dim_level_types_;
+  }
+  DimLevelTypeVector* mutable_dim_level_types() { return &dim_level_types_; }
+
+  // Methods for accessing the dim_unique array.
+  int dim_unique_size() const { return dim_unique_.size(); }
+  bool dim_unique(int index) const { return dim_unique_.at(index); }
+  Layout& set_dim_unique(int index, bool unique) {
+    dim_unique_.at(index) = unique;
+    return *this;
+  }
+  Layout& add_dim_unique(bool unique) {
+    dim_unique_.push_back(unique);
+    return *this;
+  }
+  Layout& clear_dim_unique() {
+    dim_unique_.clear();
+    return *this;
+  }
+  absl::Span<const bool> dim_unique() const { return dim_unique_; }
+  absl::InlinedVector<bool, InlineRank()>* mutable_dim_unique() {
+    return &dim_unique_;
+  }
+
+  // Methods for accessing the dim_ordered array.
+  int dim_ordered_size() const { return dim_ordered_.size(); }
+  bool dim_ordered(int index) const { return dim_ordered_.at(index); }
+  Layout& set_dim_ordered(int index, bool ordered) {
+    dim_ordered_.at(index) = ordered;
+    return *this;
+  }
+  Layout& add_dim_ordered(bool ordered) {
+    dim_ordered_.push_back(ordered);
+    return *this;
+  }
+  Layout& clear_dim_ordered() {
+    dim_ordered_.clear();
+    return *this;
+  }
+  absl::Span<const bool> dim_ordered() const { return dim_ordered_; }
+  absl::InlinedVector<bool, InlineRank()>* mutable_dim_ordered() {
+    return &dim_ordered_;
   }
 
   // Methods for accessing the minor-to-major array.
@@ -188,7 +268,7 @@ class Layout {
   DimensionVector* mutable_minor_to_major() { return &minor_to_major_; }
 
   // Methods for accessing the tile field.
-  int tiles_size() const { return tiles_.size(); }
+  int64_t tiles_size() const { return tiles_.size(); }
   const Tile& tiles(int index) const { return tiles_.at(index); }
   Tile* mutable_tiles(int index) { return &tiles_.at(index); }
   Tile* add_tiles() {
@@ -202,11 +282,20 @@ class Layout {
   absl::Span<const Tile> tiles() const { return tiles_; }
   absl::InlinedVector<Tile, 2>* mutable_tiles() { return &tiles_; }
 
-  int64_t element_size_in_bits() const { return element_size_in_bits_; }
-  Layout& set_element_size_in_bits(int64_t value) {
-    element_size_in_bits_ = value;
+  PrimitiveType index_primitive_type() const { return index_primitive_type_; }
+  Layout& set_index_primitive_type(PrimitiveType value) {
+    index_primitive_type_ = value;
     return *this;
   }
+
+  PrimitiveType pointer_primitive_type() const {
+    return pointer_primitive_type_;
+  }
+  Layout& set_pointer_primitive_type(PrimitiveType value) {
+    pointer_primitive_type_ = value;
+    return *this;
+  }
+
   static constexpr int64_t kDefaultMemorySpace = 0;
   static constexpr int64_t kGenericFastMemorySpace = 1;
   int64_t memory_space() const { return memory_space_; }
@@ -215,25 +304,44 @@ class Layout {
     return *this;
   }
 
+  // Methods for accessing the physical shape.
+  bool has_physical_shape() const { return physical_shape_ != nullptr; }
+  const Shape& physical_shape() const {
+    CHECK(has_physical_shape());
+    return *physical_shape_;
+  }
+  Shape* mutable_physical_shape();
+  void clear_physical_shape();
+
+  int64_t dynamic_shape_metadata_prefix_bytes() const {
+    return dynamic_shape_metadata_prefix_bytes_;
+  }
+  void set_dynamic_shape_metadata_prefix_bytes(int64_t bytes) {
+    dynamic_shape_metadata_prefix_bytes_ = bytes;
+  }
+
   void Swap(Layout* other) {
     using std::swap;
     swap(*this, *other);
   }
 
-  void Clear() {
-    *this = Layout();
-    format_ = INVALID_FORMAT;
-  }
+  void Clear() { *this = Layout(); }
 
   template <typename H>
   friend H AbslHashValue(H h, const Layout& l) {
-    return H::combine(std::move(h), l.format_, l.minor_to_major_, l.tiles_,
-                      l.element_size_in_bits_, l.memory_space_);
+    return H::combine(std::move(h), l.minor_to_major_, l.tiles_,
+                      l.index_primitive_type_, l.pointer_primitive_type_,
+                      l.memory_space_);
   }
 
  private:
-  // The format of this layout.
-  Format format_ = INVALID_FORMAT;
+  // The list of dimension level types, indicating the method that will be used
+  // to represent each dimension of the array.
+  DimLevelTypeVector dim_level_types_;
+
+  // Whether each DimLevelType is unique and ordered.
+  absl::InlinedVector<bool, InlineRank()> dim_unique_;
+  absl::InlinedVector<bool, InlineRank()> dim_ordered_;
 
   // A map from physical dimension numbers to logical dimension numbers.
   // The first element is the most minor physical dimension (fastest varying
@@ -251,11 +359,21 @@ class Layout {
   // The tiles used in tiling-based layout.
   absl::InlinedVector<Tile, 2> tiles_;
 
-  // The number of bits used to store an individual array element.
-  int64_t element_size_in_bits_ = 0;
+  // The primitive type to use for sparse array indices and pointers.  Each of
+  // these must either be INVALID, or an unsigned integer type.
+  PrimitiveType index_primitive_type_ = PRIMITIVE_TYPE_INVALID;
+  PrimitiveType pointer_primitive_type_ = PRIMITIVE_TYPE_INVALID;
 
   // The assigned memory space.
   int64_t memory_space_ = 0;
+
+  // The physical on-device shape used to represent a sparse array.
+  std::unique_ptr<Shape> physical_shape_;
+
+  // The dynamic shape metadata size in bytes in front of the shape data. The
+  // field may be non-zero for a static shape whose associated buffer is for a
+  // dynamic shape, e.g. a result of SliceToDynamic.
+  int64_t dynamic_shape_metadata_prefix_bytes_ = 0;
 };
 
 std::ostream& operator<<(std::ostream& out, const Tile& Tile);

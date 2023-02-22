@@ -17,6 +17,7 @@
 import itertools
 import json
 from typing import Any, Callable, Optional, Sequence, Tuple, Union
+from collections import namedtuple
 
 import numpy as np
 
@@ -128,24 +129,46 @@ def analyze_test_latency(test_results: model_handler.TestResultCollection,
   if base_result is None:
     raise ValueError(
         f"No {'CPU' if use_cpu_baseline else 'GPU'} baseline found!")
-  base_mean_time = np.asscalar(np.mean(base_result.model_latency))
+  base_mean_time = np.mean(base_result.model_latency).item()
   column_names = ["time(ms)", "speedup"]
   rows = []
   for result in test_results.results:
-    mean_time = np.asscalar(np.mean(result.model_latency))
+    mean_time = np.mean(result.model_latency).item()
     rows.append([mean_time * 1000.0, base_mean_time / mean_time])
   return DataFrame(column_names=column_names, rows=rows)
 
 
+def str_histogram(buffer, desc):
+  hist, bin_edges = np.histogram(buffer)
+  max_num_elems = np.amax(hist)
+  bin_edges = ["{:.3g}".format(bin) for bin in bin_edges]
+  max_start_bin_width = max(len(bin) for bin in bin_edges)
+  max_end_bin_width = max(len(bin) for bin in bin_edges[1:])
+  MAX_WIDTH = 40
+  ret = "\n========================================================\n"
+  ret += "**** Output " + desc + " ****\n"
+  ret += "---- Histogram ----\n"
+  ret += "{:{width}}|  Num Elems | Visualization\n".format(
+      "Bin Range", width=max_start_bin_width + max_end_bin_width + 5)
+  for num, bin_start, bin_end in zip(hist, bin_edges, bin_edges[1:]):
+    bar = "#" * int(MAX_WIDTH * float(num) / float(max_num_elems))
+    ret += ("({:<{max_start_bin_width}}, {:<{max_end_bin_width}}) | {:10} | "
+            "{:}\n").format(
+        bin_start,
+        bin_end,
+        num,
+        bar,
+        max_start_bin_width=max_start_bin_width,
+        max_end_bin_width=max_end_bin_width,
+    )
+  return ret
+
+
 def analyze_test_numerics(test_results: model_handler.TestResultCollection,
-                          use_cpu_baseline: bool) -> DataFrame:
+                          use_cpu_baseline: bool) -> (DataFrame, str):
   """Analyzes test numerics."""
-  preprocess_funcs = {
-      "diff": lambda x, y: np.fabs(x - y),
-      # Ensures dividends are not zero to avoid exceptions/NaNs.
-      "rel_diff": lambda x, y: np.fabs(x - y) / np.fmax(np.fabs(y), 1.0e-6)
-  }
-  postprocess_funcs = {"mean": np.mean, "std": np.std}
+  preprocess_funcs = {"abs_diff": lambda x, y: np.fabs(x - y)}
+  postprocess_funcs = {"mean": np.mean}
   column_names = []
   columns = []
   base_result = (
@@ -163,18 +186,25 @@ def analyze_test_numerics(test_results: model_handler.TestResultCollection,
       for idx, tensor in enumerate(result.output_tensors):
         name = base_result.output_names[idx]
         cpu_tensor = base_result.output_tensors[idx]
-        metric_value = np.asscalar(func1(func0(tensor, cpu_tensor)))
+        absdiff = func0(tensor, cpu_tensor)
+        metric_value = func1(absdiff).item()
+        cpu_tensor_hist = str_histogram(cpu_tensor, "cpu_tensor")
+        gpu_tensor_hist = str_histogram(tensor, "gpu_tensor")
+        abs_diff_hist = str_histogram(absdiff, "abs_diff")
+        hist_data = (cpu_tensor_hist, gpu_tensor_hist, abs_diff_hist)
         columns[-1][-1][name] = metric_value
-  return DataFrame(column_names=column_names, columns=columns)
+  return DataFrame(column_names=column_names, columns=columns), hist_data
 
 
-def check_column(df: DataFrame, name: str, fn: Callable[[float], bool]) -> bool:
+def check_column(df: DataFrame, row: int, name: str,
+                 fn: Callable[[float], bool]) -> bool:
   """Checks the values of a column using a custom function and logs abnormals.
 
   The check is only performed on TensorRT models, not native CPU/GPU models.
 
   Args:
     df: The DataFrame to be checked.
+    row: The row in the DataFrame
     name: The name of the column to be checked.
     fn: The function that takes a value of at the specified column and returns
       if the value statisfies the check.
@@ -183,11 +213,10 @@ def check_column(df: DataFrame, name: str, fn: Callable[[float], bool]) -> bool:
     Whether all the values of the specified column satisfies the provided check.
   """
   is_ok = True
-  for r in range(df.n_rows):
-    if df(r, "trt_model"):
-      if not fn(df(r, name)):
-        logging.error("Unsatisfied %s found at: %s", name, df(r))
-        is_ok = False
+  if df(row, "trt_model"):
+    if not fn(df(row, name)):
+      logging.error("Unsatisfied %s found at: %s", name, df(row))
+      is_ok = False
   return is_ok
 
 
@@ -198,17 +227,35 @@ class ResultAnalyzer:
       self,
       use_cpu_latency_baseline: bool,
       use_cpu_numerics_baseline: bool,
-      checkers: Sequence[Callable[[DataFrame], bool]],
+      perf_checkers: Sequence[Callable[[DataFrame], bool]],
+      acc_checkers: Sequence[Callable[[DataFrame], bool]],
   ):
     self._use_cpu_latency_baseline = use_cpu_latency_baseline
     self._use_cpu_numerics_baseline = use_cpu_numerics_baseline
-    self._checkers = checkers
+    self._perf_checkers = perf_checkers
+    self._acc_checkers = acc_checkers
+
 
   def analysis(
       self, test_results: model_handler.TestResultCollection
   ) -> Tuple[DataFrame, Sequence[bool]]:
     df = extract_test_info(test_results)
     df += analyze_test_latency(test_results, self._use_cpu_latency_baseline)
-    df += analyze_test_numerics(test_results, self._use_cpu_numerics_baseline)
-    checks = [c(df) for c in self._checkers]
-    return df, checks
+    df_acc, acc_hist = analyze_test_numerics(test_results,
+                                             self._use_cpu_numerics_baseline)
+    df += df_acc
+    # Index 0 and 1 are non trt_model results, so ignore them here.
+    df_analysis_config = namedtuple("df_analysis_config",
+                                    "precision df_row_index")
+    checker_config = [
+        df_analysis_config("FP32", df.n_rows - 3),
+        df_analysis_config("FP16", df.n_rows - 2),
+        df_analysis_config("INT8", df.n_rows - 1)
+    ]
+
+    checks = []
+    for cc in checker_config:
+      checks.append(self._perf_checkers[cc.precision](df, cc.df_row_index))
+      checks.append(self._acc_checkers[cc.precision](df, cc.df_row_index))
+
+    return df, checks, acc_hist

@@ -106,7 +106,7 @@ void GetOpCostPass::runOnOperation() {
         !llvm::isa<func::ReturnOp, func::FuncOp, CallOpInterface>(op)) {
       auto hardware = GetTargetAnnotation(op);
       if (!hardware) return;
-      float cost = GetCostForOp(op, hardware.getValue());
+      float cost = GetCostForOp(op, *hardware);
       UpdateCost(op, cost, &builder);
     }
   });

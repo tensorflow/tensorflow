@@ -45,7 +45,8 @@ struct PassConfig {
         guarantee_all_funcs_one_use(false),
         enable_hlo_to_tf_conversion(false),
         enable_dynamic_update_slice(false),
-        preserve_assert_op(false) {}
+        preserve_assert_op(false),
+        enable_stablehlo_conversion(false) {}
 
   // If `emit_builtin_tflite_ops` is true, TF Lite legalization passes will be
   // added, which produces TF Lite ops.
@@ -88,6 +89,8 @@ struct PassConfig {
   bool enable_dynamic_update_slice;
   // Whether to preserve AssertOp during legalization.
   bool preserve_assert_op;
+  // Whether to enable TF->stablehlo passes.
+  bool enable_stablehlo_conversion;
 };
 
 inline llvm::raw_ostream& operator<<(llvm::raw_ostream& os,
@@ -111,7 +114,9 @@ inline llvm::raw_ostream& operator<<(llvm::raw_ostream& os,
             << "\nguarantee_all_funcs_one_use: "
             << pass_config.guarantee_all_funcs_one_use
             << "\nenable_hlo_to_tf_conversion: "
-            << pass_config.enable_hlo_to_tf_conversion << "\n";
+            << pass_config.enable_hlo_to_tf_conversion
+            << "\nenable_stablehlo_conversion: "
+            << pass_config.enable_stablehlo_conversion << "\n";
 }
 
 }  // namespace TFL

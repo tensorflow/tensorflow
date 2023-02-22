@@ -20,7 +20,7 @@ limitations under the License.
 #include <map>
 #include <memory>
 
-#include "tensorflow/lite/c/c_api_types.h"
+#include "tensorflow/lite/core/c/c_api_types.h"
 
 namespace tflite {
 namespace resource {
@@ -54,6 +54,7 @@ TfLiteStatus ResourceVariable::AssignFrom(const TfLiteTensor* tensor) {
 
   // Copy primitive parameters.
   memset(&tensor_, 0, sizeof(tensor_));
+  tensor_.name = "ResourceVariable";
   tensor_.allocation_type = kTfLiteDynamic;
   tensor_.type = tensor->type;
   tensor_.params = tensor->params;

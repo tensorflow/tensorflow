@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_MLIR_TOOLS_KERNEL_GEN_TESTS_TF_FRAMEWORK_C_INTERFACE_H_
-#define TENSORFLOW_COMPILER_MLIR_TOOLS_KERNEL_GEN_TESTS_TF_FRAMEWORK_C_INTERFACE_H_
+#ifndef TENSORFLOW_COMPILER_MLIR_TOOLS_KERNEL_GEN_TF_FRAMEWORK_C_INTERFACE_H_
+#define TENSORFLOW_COMPILER_MLIR_TOOLS_KERNEL_GEN_TF_FRAMEWORK_C_INTERFACE_H_
 
 #include "mlir/ExecutionEngine/RunnerUtils.h"  // from @llvm-project
 
@@ -47,4 +47,4 @@ extern "C" MLIR_RUNNERUTILS_EXPORT void _mlir_ciface_tf_jit_execute(
 }  // namespace kernel_gen
 }  // namespace mlir
 
-#endif  // TENSORFLOW_COMPILER_MLIR_TOOLS_KERNEL_GEN_TESTS_TF_FRAMEWORK_C_INTERFACE_H_
+#endif  // TENSORFLOW_COMPILER_MLIR_TOOLS_KERNEL_GEN_TF_FRAMEWORK_C_INTERFACE_H_

@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_CORE_UTIL_ABSTRACT_STACK_TRACE_H_
-#define TENSORFLOW_CORE_UTIL_ABSTRACT_STACK_TRACE_H_
+#ifndef TENSORFLOW_CORE_UTIL_MANAGED_STACK_TRACE_H_
+#define TENSORFLOW_CORE_UTIL_MANAGED_STACK_TRACE_H_
 
 #include <functional>
 #include <string>
@@ -100,4 +100,4 @@ inline std::string DefinitionLocationMsg(
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_CORE_UTIL_ABSTRACT_STACK_TRACE_H_
+#endif  // TENSORFLOW_CORE_UTIL_MANAGED_STACK_TRACE_H_

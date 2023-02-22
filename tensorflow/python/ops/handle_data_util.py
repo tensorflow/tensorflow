@@ -15,6 +15,7 @@
 """Decorator to overrides the gradient for a function."""
 
 from tensorflow.python.client import pywrap_tf_session
+from tensorflow.python.framework import cpp_shape_inference_pb2
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 
@@ -39,10 +40,7 @@ def copy_handle_data(source_t, target_t):
   """
   if (target_t.dtype == dtypes.resource or
       target_t.dtype == dtypes.variant):
-    if isinstance(source_t, ops.EagerTensor):
-      handle_data = source_t._handle_data  # pylint: disable=protected-access
-    else:
-      handle_data = get_resource_handle_data(source_t)
+    handle_data = ops.get_handle_data(source_t)
     if (handle_data is not None
         and handle_data.is_set
         and handle_data.shape_and_type):
@@ -58,3 +56,12 @@ def set_handle_data(target_t, handle_data):
     pywrap_tf_session.SetHandleShapeAndType(c_graph, target_t._as_tf_output(),
                                             handle_data.SerializeToString())
   # pylint: enable=protected-access
+
+
+def create_handle_data(shape, dtype):
+  handle_data = cpp_shape_inference_pb2.CppShapeInferenceResult.HandleData()
+  handle_data.is_set = True
+  handle_data.shape_and_type.append(
+      cpp_shape_inference_pb2.CppShapeInferenceResult.HandleShapeAndType(
+          shape=shape.as_proto(), dtype=dtype.as_datatype_enum))
+  return handle_data

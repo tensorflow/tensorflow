@@ -15,17 +15,17 @@ limitations under the License.
 
 #include <utility>
 
+#include "absl/strings/str_replace.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_executable.h"
 #include "tensorflow/compiler/xla/service/gpu/tests/gpu_codegen_test.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module_config.h"
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/tests/filecheck.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
-#include "tensorflow/core/lib/core/status_test_util.h"
-#include "tensorflow/core/platform/test.h"
-#include "tensorflow/stream_executor/lib/statusor.h"
+#include "tensorflow/tsl/lib/core/status_test_util.h"
+#include "tensorflow/tsl/platform/test.h"
 
 namespace xla {
 namespace gpu {
@@ -42,9 +42,21 @@ class ReductionVectorizationNoOptTest : public GpuCodegenTest {
     debug_options.set_xla_disable_all_hlo_passes(true);
     return debug_options;
   }
+
+ public:
+  se::CudaComputeCapability GetCudaComputeCapability() {
+    return backend()
+        .default_stream_executor()
+        ->GetDeviceDescription()
+        .cuda_compute_capability();
+  }
 };
 
 TEST_F(ReductionVectorizationNoOptTest, MultiOutputStore) {
+  if (!GetCudaComputeCapability().IsAtLeast(
+          se::CudaComputeCapability::PASCAL_)) {
+    GTEST_SKIP() << "Maxwell GPUs are less vectorized";
+  }
   const char* hlo_text = R"(
 HloModule MultiOutputStore
 
@@ -113,8 +125,8 @@ ENTRY %fused_computation.371 (param_0: f32[6400,4,8,32]) -> f32[6400,4,8] {
 }
 )";
 
-  const char* expected_optimized_llvm_ir = R"(
-CHECK:  %[[thread_id:.*]] = tail call i32 @llvm.nvvm.read.ptx.sreg.tid.x()
+  std::string expected_optimized_llvm_ir = R"(
+CHECK:  %[[thread_id:.*]] = tail call i32 X_THREAD
 CHECK:  %[[masked_thread_id:.*]] = and i32 %[[thread_id]], 31
 // Verify that there is no comparison masking half the warp.
 CHECK-NOT: icmp ult i32 %[[masked_thread_id]], 16
@@ -122,9 +134,16 @@ CHECK-NOT: icmp ult i32 %[[masked_thread_id]], 16
 // shfl.sync corresponding to 1 declaration and 5 shuffle instructions.  The
 // second warp reduction was originally produced for inter-warp reduction
 // which we have now optimized away.
-CHECK-COUNT-6: llvm.nvvm.shfl.sync.down.f32
-CHECK-NOT: llvm.nvvm.shfl.sync.down.f32
+CHECK-COUNT-6: SHUFFLE
+CHECK-NOT: SHUFFLE
 )";
+
+  expected_optimized_llvm_ir = absl::StrReplaceAll(
+      expected_optimized_llvm_ir,
+      {{"X_THREAD", is_built_with_rocm_ ? "@llvm.amdgcn.workitem.id.x"
+                                        : "@llvm.nvvm.read.ptx.sreg.tid.x"},
+       {"SHUFFLE", is_built_with_rocm_ ? "llvm.amdgcn.ds.bpermute"
+                                       : "llvm.nvvm.shfl.sync.down.f32"}});
 
   CompileAndVerifyIr(hlo_text, expected_optimized_llvm_ir, true);
 

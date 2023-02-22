@@ -49,7 +49,7 @@ func.func @tanh_f32(%arg0 : f32) -> f32 {
   // CHECK-DAG: %[[TMP18:.*]] = arith.mulf %[[TMP0]], %[[TMP17]] : f32
   // CHECK-DAG: %[[TMP19:.*]] = arith.addf %[[TMP18]], %[[C9]] : f32
   // CHECK-DAG: %[[TMP20:.*]] = arith.divf %[[TMP13]], %[[TMP19]] : f32
-  // CHECK-DAG: %[[TMP21:.*]] = math.abs %[[ARG]] : f32
+  // CHECK-DAG: %[[TMP21:.*]] = math.absf %[[ARG]] : f32
   // CHECK-DAG: %[[TMP22:.*]] = arith.cmpf olt, %[[TMP21]], %[[C10]] : f32
   // CHECK-DAG: %[[TMP23:.*]] = arith.select %[[TMP22]], %[[ARG]], %[[TMP20]] : f32
   // CHECK-DAG: %[[TMP24:.*]] = arith.cmpf ugt, %[[ARG]], %[[C11]] : f32

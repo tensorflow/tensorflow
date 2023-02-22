@@ -12,6 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include <limits>
+#include <vector>
 
 #include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/framework/numeric_op.h"
@@ -131,8 +133,8 @@ REGISTER_OP("BatchMatMulV2")
     .Input("y: T")
     .Output("output: T")
     .Attr(
-        "T: {bfloat16, half, float, double, int16, int32, int64, complex64, "
-        "complex128}")
+        "T: {bfloat16, half, float, double, int16, int32, int64, uint8, "
+        "uint16, uint32, uint64, complex64, complex128}")
     .Attr("adj_x: bool = false")
     .Attr("adj_y: bool = false")
     .SetShapeFn(shape_inference::BatchMatMulV2Shape);
@@ -318,13 +320,13 @@ REGISTER_OP("Sin").UNARY_COMPLEX();
 
 REGISTER_OP("Cos").UNARY_COMPLEX();
 
-REGISTER_OP("Tan").UNARY();
+REGISTER_OP("Tan").UNARY_COMPLEX();
 
-REGISTER_OP("Asin").UNARY();
+REGISTER_OP("Asin").UNARY_COMPLEX();
 
-REGISTER_OP("Acos").UNARY();
+REGISTER_OP("Acos").UNARY_COMPLEX();
 
-REGISTER_OP("Atan").UNARY();
+REGISTER_OP("Atan").UNARY_COMPLEX();
 
 REGISTER_OP("_UnaryOpsComposition")
     .Input("x: T")
@@ -547,21 +549,21 @@ REGISTER_OP("Xlogy")
     .Input("x: T")
     .Input("y: T")
     .Output("z: T")
-    .Attr("T: {half, float, double, complex64, complex128}")
+    .Attr("T: {half, bfloat16, float, double, complex64, complex128}")
     .SetShapeFn(shape_inference::BroadcastBinaryOpShapeFn);
 
 REGISTER_OP("Xlog1py")
     .Input("x: T")
     .Input("y: T")
     .Output("z: T")
-    .Attr("T: {half, float, double, complex64, complex128}")
+    .Attr("T: {half, bfloat16, float, double, complex64, complex128}")
     .SetShapeFn(shape_inference::BroadcastBinaryOpShapeFn);
 
 REGISTER_OP("Xdivy")
     .Input("x: T")
     .Input("y: T")
     .Output("z: T")
-    .Attr("T: {half, float, double, complex64, complex128}")
+    .Attr("T: {half, bfloat16, float, double, complex64, complex128}")
     .SetShapeFn(shape_inference::BroadcastBinaryOpShapeFn);
 
 #undef BINARY_FEWER
@@ -950,8 +952,8 @@ REGISTER_OP("MatMul")
     .Attr("transpose_a: bool = false")
     .Attr("transpose_b: bool = false")
     .Attr(
-        "T: {bfloat16, half, float, double, int32, int64, complex64, "
-        "complex128}")
+        "T: {bfloat16, half, float, double, int32, int64, uint8, "
+        "uint16, uint32, uint64, complex64, complex128}")
     .SetShapeFn(shape_inference::MatMulShape);
 
 #ifdef INTEL_MKL
@@ -1136,7 +1138,7 @@ REGISTER_OP("ArgMax")
     .Input("input: T")
     .Input("dimension: Tidx")
     .Output("output: output_type")
-    .Attr("T: {numbertype, bool}")
+    .Attr("T: {realnumbertype, quantizedtype, bool}")
     .Attr("Tidx: {int16, int32, int64} = DT_INT32")
     .Attr("output_type: {int16, uint16, int32, int64} = DT_INT64")
     .SetShapeFn(ArgOpShape);
@@ -1145,7 +1147,7 @@ REGISTER_OP("ArgMin")
     .Input("input: T")
     .Input("dimension: Tidx")
     .Output("output: output_type")
-    .Attr("T: {numbertype, bool}")
+    .Attr("T: {realnumbertype, quantizedtype, bool}")
     .Attr("Tidx: {int32, int64} = DT_INT32")
     .Attr("output_type: {int32, int64} = DT_INT64")
     .SetShapeFn(ArgOpShape);
@@ -1278,6 +1280,17 @@ REGISTER_OP("SegmentSum")
     .Attr("Tindices: {int32,int64}")
     .SetShapeFn(SegmentReductionShapeFn);
 
+// TODO(hinsu): Introduce Segment{Min,Max}V2 ops, similarly.
+REGISTER_OP("SegmentSumV2")
+    .Input("data: T")
+    .Input("segment_ids: Tindices")
+    .Input("num_segments: Tnumsegments")
+    .Output("output: T")
+    .Attr("T: numbertype")
+    .Attr("Tindices: {int32,int64}")
+    .Attr("Tnumsegments: {int32,int64} = DT_INT32")
+    .SetShapeFn(shape_inference::SegmentReductionWithNumSegmentsShapeFn);
+
 REGISTER_OP("SegmentMean")
     .Input("data: T")
     .Input("segment_ids: Tindices")
@@ -1293,6 +1306,16 @@ REGISTER_OP("SegmentProd")
     .Attr("T: numbertype")
     .Attr("Tindices: {int32,int64}")
     .SetShapeFn(SegmentReductionShapeFn);
+
+REGISTER_OP("SegmentProdV2")
+    .Input("data: T")
+    .Input("segment_ids: Tindices")
+    .Input("num_segments: Tnumsegments")
+    .Output("output: T")
+    .Attr("T: numbertype")
+    .Attr("Tindices: {int32,int64}")
+    .Attr("Tnumsegments: {int32,int64} = DT_INT32")
+    .SetShapeFn(shape_inference::SegmentReductionWithNumSegmentsShapeFn);
 
 REGISTER_OP("SegmentMin")
     .Input("data: T")
@@ -1318,7 +1341,7 @@ REGISTER_OP("UnsortedSegmentSum")
     .Attr("T: numbertype")
     .Attr("Tindices: {int32,int64}")
     .Attr("Tnumsegments: {int32,int64} = DT_INT32")
-    .SetShapeFn(shape_inference::UnsortedSegmentReductionShapeFn);
+    .SetShapeFn(shape_inference::SegmentReductionWithNumSegmentsShapeFn);
 
 REGISTER_OP("UnsortedSegmentMax")
     .Input("data: T")
@@ -1328,7 +1351,7 @@ REGISTER_OP("UnsortedSegmentMax")
     .Attr("T: realnumbertype")
     .Attr("Tindices: {int32,int64}")
     .Attr("Tnumsegments: {int32,int64} = DT_INT32")
-    .SetShapeFn(shape_inference::UnsortedSegmentReductionShapeFn);
+    .SetShapeFn(shape_inference::SegmentReductionWithNumSegmentsShapeFn);
 
 REGISTER_OP("UnsortedSegmentMin")
     .Input("data: T")
@@ -1338,7 +1361,7 @@ REGISTER_OP("UnsortedSegmentMin")
     .Attr("T: realnumbertype")
     .Attr("Tindices: {int32,int64}")
     .Attr("Tnumsegments: {int32,int64} = DT_INT32")
-    .SetShapeFn(shape_inference::UnsortedSegmentReductionShapeFn);
+    .SetShapeFn(shape_inference::SegmentReductionWithNumSegmentsShapeFn);
 
 REGISTER_OP("UnsortedSegmentProd")
     .Input("data: T")
@@ -1348,7 +1371,7 @@ REGISTER_OP("UnsortedSegmentProd")
     .Attr("T: numbertype")
     .Attr("Tindices: {int32,int64}")
     .Attr("Tnumsegments: {int32,int64} = DT_INT32")
-    .SetShapeFn(shape_inference::UnsortedSegmentReductionShapeFn);
+    .SetShapeFn(shape_inference::SegmentReductionWithNumSegmentsShapeFn);
 
 REGISTER_OP("SparseSegmentSum")
     .Input("data: T")
@@ -1873,7 +1896,7 @@ REGISTER_OP("CumulativeLogsumexp")
     .Attr("exclusive: bool = false")
     .Attr("reverse: bool = false")
     .Output("out: T")
-    .Attr("T: {float16, float32, float64}")
+    .Attr("T: {bfloat16, float16, float32, float64}")
     .Attr("Tidx: {int32, int64} = DT_INT32")
     .SetShapeFn(shape_inference::UnchangedShape);
 
@@ -2047,7 +2070,7 @@ REGISTER_OP("_MklAddN")
                                         " with other shapes.");
       }
       c->set_output(0, cur);
-      return Status::OK();
+      return OkStatus();
     })
     .Doc(R"doc(
 Add two input tensors element wise using mkl kernel sum.

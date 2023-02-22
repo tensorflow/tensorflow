@@ -1,4 +1,4 @@
-// RUN: mlir-hlo-opt %s -split-input-file -pass-pipeline='func.func(canonicalize)' | FileCheck %s
+// RUN: mlir-hlo-opt %s -split-input-file -pass-pipeline='builtin.module(func.func(canonicalize))' | FileCheck %s
 
 // CHECK-LABEL: func @transpose_splat_constant
 func.func @transpose_splat_constant() -> tensor<5x10xf32> {
@@ -58,7 +58,7 @@ func.func @eliminate_redundant_transpose(%arg : tensor<3x4x16x2xf32>) -> tensor<
 // CHECK-SAME: [[ARG:%[a-zA-Z0-9]+]]
 func.func @simplify_transpose_case1(%arg : tensor<10x1x512xf32>) -> tensor<1x10x512xf32> {
   %0 = "mhlo.transpose"(%arg) {permutation = dense<[1, 0, 2]> : tensor<3xi64>}: (tensor<10x1x512xf32>) -> tensor<1x10x512xf32>
-  // CHECK-NEXT: "mhlo.reshape"([[ARG]])
+  // CHECK-NEXT: mhlo.reshape [[ARG]]
   func.return %0 : tensor<1x10x512xf32>
 }
 
@@ -68,7 +68,7 @@ func.func @simplify_transpose_case1(%arg : tensor<10x1x512xf32>) -> tensor<1x10x
 // CHECK-SAME: [[ARG:%[a-zA-Z0-9]+]]
 func.func @simplify_transpose_case2(%arg : tensor<10x1x512x1xf32>) -> tensor<1x1x10x512xf32> {
   %0 = "mhlo.transpose"(%arg) {permutation = dense<[1, 3, 0, 2]> : tensor<4xi64>}: (tensor<10x1x512x1xf32>) -> tensor<1x1x10x512xf32>
-  // CHECK-NEXT: "mhlo.reshape"([[ARG]])
+  // CHECK-NEXT: mhlo.reshape [[ARG]]
   func.return %0 : tensor<1x1x10x512xf32>
 }
 

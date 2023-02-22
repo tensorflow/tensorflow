@@ -23,7 +23,6 @@ limitations under the License.
 #include "absl/strings/substitute.h"
 #include "tensorflow/lite/delegates/gpu/common/shape.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
-#include "tensorflow/lite/delegates/gpu/common/task/storage_type_util.h"
 #include "tensorflow/lite/delegates/gpu/common/task/weights_layout.h"
 #include "tensorflow/lite/delegates/gpu/common/task/work_group_picking.h"
 
@@ -146,10 +145,8 @@ std::string ConvolutionTransposed::GenerateConvolutionTransposedCode(
       AddSrcBuffer("weights", desc);
     } else {
       for (int i = 0; i < 4; ++i) {
-        Texture2DDescriptor desc;
-        desc.element_type = op_def.src_tensors[1 + i].GetDataType();
         const std::string name = "weights" + std::to_string(i);
-        AddSrcTexture2D("weights" + std::to_string(i), desc);
+        AddSrcTensor(name, definition_.src_tensors[1 + i]);
       }
     }
   }
@@ -649,13 +646,13 @@ ConvolutionTransposed CreateConvolutionTransposedDynamicWeights(
   } else {
     // add 4 src_tensors(4X textures 2d) for weights
     new_def.src_tensors.push_back(
-        {weights_type, TensorStorageType::TEXTURE_2D, Layout::HWC});
+        {weights_type, TensorStorageType::TEXTURE_2D, Layout::HW});
     new_def.src_tensors.push_back(
-        {weights_type, TensorStorageType::TEXTURE_2D, Layout::HWC});
+        {weights_type, TensorStorageType::TEXTURE_2D, Layout::HW});
     new_def.src_tensors.push_back(
-        {weights_type, TensorStorageType::TEXTURE_2D, Layout::HWC});
+        {weights_type, TensorStorageType::TEXTURE_2D, Layout::HW});
     new_def.src_tensors.push_back(
-        {weights_type, TensorStorageType::TEXTURE_2D, Layout::HWC});
+        {weights_type, TensorStorageType::TEXTURE_2D, Layout::HW});
   }
   ConvolutionTransposed result(new_def, attr, gpu_info);
 

@@ -15,6 +15,7 @@
 """Tracing utilities used by SavedModel."""
 
 from tensorflow.python.checkpoint import saveable_compat
+from tensorflow.python.checkpoint import tensor_callable
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import function as defun
 
@@ -39,6 +40,13 @@ def trace_save_and_restore(obj):
     @def_function.function
     def save_fn():
       tensor_dict = obj_save_fn()
+      if any(isinstance(v, tensor_callable.Callable)
+             for v in tensor_dict.values()):
+        raise NotImplementedError(
+            f"Unable to export SavedModel with object of type {type(obj)} "
+            "because it returns a Callable in `_serialize_to_tensors`. "
+            "If you need this functionality please file a feature request.")
+
       if legacy_name:
         # If there is a legacy decorator, append the name to the keys.
         return {f"{legacy_name}{key}": value

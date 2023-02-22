@@ -1,12 +1,12 @@
 # Tests of TensorFlow array ops kernels written using the Python API.
 
-load("//tensorflow:tensorflow.bzl", "cuda_py_test")
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "tf_py_test")
+load("//tensorflow:tensorflow.default.bzl", "cuda_py_test", "tf_py_test")
 load("//tensorflow/core/platform:build_config_root.bzl", "tf_additional_xla_deps_py")
 
-package(licenses = ["notice"])
+package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    licenses = ["notice"],
+)
 
 cuda_py_test(
     name = "array_ops_test",
@@ -443,7 +443,8 @@ cuda_py_test(
 
 cuda_py_test(
     name = "pad_op_test",
-    size = "small",
+    size = "medium",
+    timeout = "moderate",
     srcs = ["pad_op_test.py"],
     tags = ["no_mac"],  # test is times out on mac b/186262388
     xla_tags = [

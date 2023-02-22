@@ -86,11 +86,11 @@ class ValueMapManager {
     return ::tensorflow::OkStatus();
   }
 
-  Value GetValueOrCreatePlaceholder(StringRef full_name) {
+  tensorflow::StatusOr<Value> GetValueOrCreatePlaceholder(StringRef full_name) {
     StringRef node_name;
     StringRef output_name = "";
     bool is_control_dep = full_name[0] == '^';
-    int output_num = 0;
+    size_t output_num = 0;
     if (is_control_dep) full_name = full_name.drop_front();
     {
       size_t colon_sep = full_name.find_first_of(':');
@@ -105,8 +105,16 @@ class ValueMapManager {
         // NOLINTNEXTLINE: type matching the API taking a reference.
         unsigned long long value;
         if (!llvm::getAsUnsignedInteger(output_name.drop_front(colon_sep + 1),
-                                        10, value))
-          output_num = value;
+                                        10, value)) {
+          if (LLVM_LIKELY(
+                  value <=
+                  std::numeric_limits<llvm::SmallVectorSizeType<Value>>::max() -
+                      1))
+            output_num = value;
+          else
+            return InvalidArgument("Output index ", value,
+                                   " is invalid (too large)");
+        }
         output_name = output_name.take_front(colon_sep);
       }
     }
@@ -171,8 +179,9 @@ Status ImportNodes(ValueMapManager value_manager,
     for (const std::string& input : node.input()) {
       if (input.empty())
         return InvalidArgument("Node '", node.name(), "' has an empty input");
-      state.operands.push_back(
-          value_manager.GetValueOrCreatePlaceholder(input));
+      TF_ASSIGN_OR_RETURN(Value value,
+                          value_manager.GetValueOrCreatePlaceholder(input));
+      state.operands.push_back(value);
     }
     // Retrieve the entry in the nodes_map for this node and infer the result
     // count from what was inferred during the first traversal above.
@@ -183,7 +192,7 @@ Status ImportNodes(ValueMapManager value_manager,
       const std::string& name = namedAttr.first;
       const AttrValue& tf_attr = namedAttr.second;
       TF_ASSIGN_OR_RETURN(Attribute attr,
-                          ConvertAttributeValue(tf_attr, builder, tfgDialect));
+                          ConvertAttributeValue(tf_attr, builder));
       state.addAttribute(name, attr);
     }
     if (!node.device().empty())
@@ -191,9 +200,8 @@ Status ImportNodes(ValueMapManager value_manager,
     if (!node.name().empty())
       state.addAttribute(name_attr, StringAttr::get(context, node.name()));
     if (node.has_experimental_type()) {
-      TF_ASSIGN_OR_RETURN(
-          tf_type::FullTypeAttr type,
-          ConvertAttribute(node.experimental_type(), builder, tfgDialect));
+      TF_ASSIGN_OR_RETURN(tf_type::FullTypeAttr type,
+                          ConvertAttribute(node.experimental_type(), builder));
       state.addAttribute(fulltype_attr, type);
     }
 
@@ -219,7 +227,7 @@ Status ImportNodes(ValueMapManager value_manager,
 }
 
 tensorflow::StatusOr<NamedAttrList> ConvertArgDefAttributes(
-    const OpDef::ArgDef& arg, TFGraphDialect* tfgDialect, Builder builder) {
+    const OpDef::ArgDef& arg, Builder builder) {
   NamedAttrList input_attrs;
   StringAttr arg_name = builder.getStringAttr(arg.name());
   input_attrs.set("tfg.name", arg_name);
@@ -249,7 +257,7 @@ tensorflow::StatusOr<NamedAttrList> ConvertArgDefAttributes(
   if (arg.has_experimental_full_type()) {
     TF_ASSIGN_OR_RETURN(
         tf_type::FullTypeAttr type,
-        ConvertAttribute(arg.experimental_full_type(), builder, tfgDialect));
+        ConvertAttribute(arg.experimental_full_type(), builder));
     input_attrs.append("tfg.experimental_full_type", type);
   }
   return input_attrs;
@@ -267,7 +275,6 @@ Status ImportGenericFunction(
   Location unknown_loc = builder.getUnknownLoc();
   MLIRContext* context = builder.getContext();
 
-  TFGraphDialect* tfgDialect = cast<TFGraphDialect>(func_op->getDialect());
   NamedAttrList attrs;
   DictionaryAttr func_attrs = builder.getDictionaryAttr({});
   if (signature.name().empty())
@@ -294,9 +301,8 @@ Status ImportGenericFunction(
         attr_def.append(builder.getNamedAttr(
             "function_type", builder.getStringAttr(attr.type())));
       if (attr.has_default_value()) {
-        TF_ASSIGN_OR_RETURN(
-            Attribute attr,
-            ConvertAttributeValue(attr.default_value(), builder, tfgDialect));
+        TF_ASSIGN_OR_RETURN(Attribute attr, ConvertAttributeValue(
+                                                attr.default_value(), builder));
         attr_def.append(builder.getNamedAttr("default_value", attr));
       }
       if (!attr.description().empty())
@@ -308,7 +314,7 @@ Status ImportGenericFunction(
       if (attr.has_allowed_values()) {
         TF_ASSIGN_OR_RETURN(
             Attribute attr,
-            ConvertAttributeValue(attr.allowed_values(), builder, tfgDialect));
+            ConvertAttributeValue(attr.allowed_values(), builder));
         attr_def.append(builder.getNamedAttr("allowed_values", attr));
       }
       attr_defs.append(builder.getNamedAttr(
@@ -343,7 +349,7 @@ Status ImportGenericFunction(
     const std::string& name = "tf." + namedAttr.first;
     const AttrValue& tf_attr = namedAttr.second;
     TF_ASSIGN_OR_RETURN(Attribute attr,
-                        ConvertAttributeValue(tf_attr, builder, tfgDialect));
+                        ConvertAttributeValue(tf_attr, builder));
     attrs.append(name, attr);
   }
   SmallString<8> arg_or_res_attr_name;
@@ -361,14 +367,13 @@ Status ImportGenericFunction(
   for (const auto& enumerated_input : llvm::enumerate(signature.input_arg())) {
     const OpDef::ArgDef& input = enumerated_input.value();
     TF_ASSIGN_OR_RETURN(NamedAttrList input_attrs,
-                        ConvertArgDefAttributes(input, tfgDialect, builder));
+                        ConvertArgDefAttributes(input, builder));
     auto it = func.arg_attr().find(enumerated_input.index());
     if (it != func.arg_attr().end()) {
       NamedAttrList arg_attr;
       for (const auto& named_attr : it->second.attr()) {
-        TF_ASSIGN_OR_RETURN(
-            Attribute attr,
-            ConvertAttributeValue(named_attr.second, builder, tfgDialect));
+        TF_ASSIGN_OR_RETURN(Attribute attr,
+                            ConvertAttributeValue(named_attr.second, builder));
         arg_attr.append(named_attr.first, attr);
       }
       input_attrs.append("tfg.arg_attrs",
@@ -380,15 +385,14 @@ Status ImportGenericFunction(
     args_attrs.push_back(NamedAttrList{}.getDictionary(context));
     arg_num++;
   }
-  attrs.push_back(
-      builder.getNamedAttr(function_interface_impl::getArgDictAttrName(),
-                           builder.getArrayAttr(args_attrs)));
+  attrs.push_back(builder.getNamedAttr(func_op.getArgAttrsAttrName(),
+                                       builder.getArrayAttr(args_attrs)));
 
   // Process the results attributes now.
   int res_num = 0;
   for (const OpDef::ArgDef& output : signature.output_arg()) {
     TF_ASSIGN_OR_RETURN(NamedAttrList output_attrs,
-                        ConvertArgDefAttributes(output, tfgDialect, builder));
+                        ConvertArgDefAttributes(output, builder));
     res_attrs.push_back(output_attrs.getDictionary(context));
     ++res_num;
   }
@@ -399,13 +403,12 @@ Status ImportGenericFunction(
     res_attrs.push_back(output_attrs.getDictionary(context));
     ++res_num;
   }
-  attrs.push_back(
-      builder.getNamedAttr(function_interface_impl::getResultDictAttrName(),
-                           builder.getArrayAttr(res_attrs)));
+  attrs.push_back(builder.getNamedAttr(func_op.getResAttrsAttrName(),
+                                       builder.getArrayAttr(res_attrs)));
 
   values_map.clear();
   Block* body = new Block();
-  func_op.body().push_back(body);
+  func_op.getBody().push_back(body);
   Type control_ty = ControlType::get(context);
   // Create the block arguments and populate the `values_map` with the matching
   // input names.
@@ -476,8 +479,9 @@ Status ImportGenericFunction(
       return InvalidArgument("Function '", func.signature().name(),
                              "' has empty result name");
     }
-    ret_vals[position->second] =
-        value_manager.GetValueOrCreatePlaceholder(ret_val.second);
+    TF_ASSIGN_OR_RETURN(
+        ret_vals[position->second],
+        value_manager.GetValueOrCreatePlaceholder(ret_val.second));
   }
   for (const auto& ret_val : func.control_ret()) {
     auto position = control_output_to_position.find(ret_val.first);
@@ -491,8 +495,8 @@ Status ImportGenericFunction(
       return InvalidArgument("Function '", func.signature().name(),
                              "' has empty control result name");
     }
-    Value result = value_manager.GetValueOrCreatePlaceholder(
-        (Twine("^") + ret_val.second).str());
+    TF_ASSIGN_OR_RETURN(Value result, value_manager.GetValueOrCreatePlaceholder(
+                                          (Twine("^") + ret_val.second).str()));
     if (!result.getType().isa<ControlType>())
       return InvalidArgument("failed to map returned value ", ret_val.second,
                              ", isn't a control output");

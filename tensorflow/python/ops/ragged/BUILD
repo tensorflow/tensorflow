@@ -1,9 +1,10 @@
-load("//tensorflow:tensorflow.bzl", "py_strict_test")
+load("//tensorflow:strict.default.bzl", "py_strict_test")
 load("//tensorflow:tensorflow.bzl", "py_test")
-load("//tensorflow:tensorflow.bzl", "cuda_py_test")
+load("//tensorflow:tensorflow.default.bzl", "cuda_py_test")
 load("//tensorflow/tools/test:performance.bzl", "tf_py_logged_benchmark")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//tensorflow:internal"],
     licenses = ["notice"],
 )
@@ -321,6 +322,7 @@ py_library(
     srcs_version = "PY3",
     deps = [
         ":segment_id_ops",
+        "//tensorflow/core:protos_all_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:bincount_ops",
         "//tensorflow/python:check_ops",
@@ -333,6 +335,8 @@ py_library(
         "//tensorflow/python:tensor_spec",
         "//tensorflow/python:tensor_util",
         "//tensorflow/python:util",
+        "//tensorflow/python/framework:type_spec_registry",
+        "//tensorflow/python/saved_model:nested_structure_coder",
         "//third_party/py/numpy",
     ],
 )
@@ -346,6 +350,7 @@ py_library(
         ":ragged_tensor_value",
         ":ragged_util",
         ":row_partition",
+        "//tensorflow/core:protos_all_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:check_ops",
         "//tensorflow/python:constant_op",
@@ -364,6 +369,8 @@ py_library(
         "//tensorflow/python:util",
         "//tensorflow/python/framework:composite_tensor",
         "//tensorflow/python/framework:composite_tensor_gradient",
+        "//tensorflow/python/framework:type_spec_registry",
+        "//tensorflow/python/saved_model:nested_structure_coder",
         "//third_party/py/numpy",
     ],
 )
@@ -404,6 +411,7 @@ py_library(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:tensor_shape",
         "//tensorflow/python:tensor_util",
+        "//tensorflow/python/framework:extension_type",
         "//tensorflow/python/types",
         "//third_party/py/numpy",
     ],
@@ -428,8 +436,7 @@ py_library(
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:check_ops",
-        "//tensorflow/python:dtypes",
-        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:ragged_math_ops_gen",
     ],
@@ -1322,7 +1329,7 @@ py_test(
     ],
 )
 
-py_test(
+cuda_py_test(
     name = "ragged_dynamic_partition_op_test",
     srcs = ["ragged_dynamic_partition_op_test.py"],
     python_version = "PY3",
@@ -1443,6 +1450,7 @@ py_test(
     name = "ragged_tensor_supported_values_test",
     srcs = ["ragged_tensor_supported_values_test.py"],
     python_version = "PY3",
+    shard_count = 10,
     srcs_version = "PY3",
     deps = [
         ":ragged_factory_ops",
@@ -1507,11 +1515,7 @@ py_test(
 
 cuda_py_test(
     name = "ragged_factory_ops_test",
-    size = "small",
     srcs = ["ragged_factory_ops_test.py"],
-    tags = [
-        "no_gpu",  # TODO(b/213596871): times out
-    ],
     deps = [
         ":ragged_functional_ops",
         "//tensorflow/python:map_fn",

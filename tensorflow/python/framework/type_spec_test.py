@@ -20,7 +20,6 @@ import collections
 from absl.testing import parameterized
 
 import numpy as np
-import six
 
 from tensorflow.core.framework import full_type_pb2
 from tensorflow.core.function import trace_type
@@ -30,6 +29,7 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
 from tensorflow.python.framework import type_spec
+from tensorflow.python.framework import type_spec_registry
 from tensorflow.python.framework.type_utils import fulltypes_for_flat_tensors
 from tensorflow.python.ops.ragged import ragged_factory_ops
 from tensorflow.python.ops.ragged import ragged_tensor
@@ -38,7 +38,7 @@ from tensorflow.python.util import nest
 from tensorflow.python.util.compat import collections_abc
 
 
-class TwoTensors(object):
+class TwoTensors:
   """A simple value type to test TypeSpec.
 
   Contains two tensors (x, y) and a string (color).  The color value is a
@@ -52,7 +52,7 @@ class TwoTensors(object):
     self.color = color
 
 
-@type_spec.register("tf.TwoTensorsSpec")
+@type_spec_registry.register("tf.TwoTensorsSpec")
 class TwoTensorsSpec(type_spec.TypeSpec):
   """A TypeSpec for the TwoTensors value type."""
 
@@ -86,12 +86,12 @@ class TwoTensorsSpec(type_spec.TypeSpec):
                value.color)
 
 
-@type_spec.register("tf.TwoTensorsSpecTwin")
+@type_spec_registry.register("tf.TwoTensorsSpecTwin")
 class TwoTensorsSpecTwin(TwoTensorsSpec):
   pass
 
 
-@type_spec.register("tf.TwoTensorsSpecVariableSerialize")
+@type_spec_registry.register("tf.TwoTensorsSpecVariableSerialize")
 class TwoTensorsSpecVariableSerialize(TwoTensorsSpec):
 
   def _serialize(self):
@@ -108,7 +108,7 @@ type_spec.register_type_spec_from_value_converter(
     TwoTensors, TwoTensorsSpec.from_value)
 
 
-class TwoComposites(object):
+class TwoComposites:
   """A simple value type to test TypeSpec.
 
   Contains two composite tensorstensors (x, y) and a string (color).
@@ -121,7 +121,7 @@ class TwoComposites(object):
     self.color = color
 
 
-@type_spec.register("tf.TwoCompositesSpec")
+@type_spec_registry.register("tf.TwoCompositesSpec")
 class TwoCompositesSpec(type_spec.BatchableTypeSpec):
   """A TypeSpec for the TwoTensors value type."""
 
@@ -166,14 +166,14 @@ type_spec.register_type_spec_from_value_converter(
     TwoComposites, TwoCompositesSpec.from_value)
 
 
-class NestOfTensors(object):
+class NestOfTensors:
   """CompositeTensor containing a nest of tensors."""
 
   def __init__(self, x):
     self.nest = x
 
 
-@type_spec.register("tf.NestOfTensorsSpec")
+@type_spec_registry.register("tf.NestOfTensorsSpec")
 class NestOfTensorsSpec(type_spec.TypeSpec):
   """A TypeSpec for the NestOfTensors value type."""
 
@@ -195,9 +195,9 @@ class NestOfTensorsSpec(type_spec.TypeSpec):
   def __repr__(self):
     if hasattr(self.spec, "_fields") and isinstance(
         self.spec._fields, collections_abc.Sequence) and all(
-            isinstance(f, six.string_types) for f in self.spec._fields):
+            isinstance(f, str) for f in self.spec._fields):
       return "%s(%r)" % (type(self).__name__, self._serialize())
-    return super(type_spec.TypeSpec, self).__repr__()  # pylint: disable=bad-super-call
+    return super().__repr__()
 
   @classmethod
   def from_value(cls, value):
@@ -649,6 +649,25 @@ class TypeSpecTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     spec = type_spec.type_spec_from_value(value)
     self.assertEqual(spec, TwoTensorsSpec.from_value(value))
 
+  def testCast(self):
+    spec = TwoTensorsSpec([], dtypes.int32, [], dtypes.float32)
+    foo = spec._from_components([1, 2.3])
+    ctx = trace_type.InternalCastContext()
+    value = spec._cast(foo, ctx)
+    tensor_type = type(ops.convert_to_tensor([1, 2, 3]))
+    self.assertIsInstance(value.x, tensor_type)
+    self.assertIsInstance(value.y, tensor_type)
+    self.assertEqual(value.x.dtype, dtypes.int32)
+    self.assertEqual(value.y.dtype, dtypes.float32)
+
+    bar = TwoComposites(
+        ragged_factory_ops.constant([[1, 2], [3]], dtypes.int32),
+        ragged_factory_ops.constant([[5], [6, 7, 8]], dtypes.float32))
+    bar_spec = type_spec.type_spec_from_value(bar)
+    value = bar_spec._cast(bar, ctx)
+    self.assertEqual(value.x.dtype, dtypes.int32)
+    self.assertEqual(value.y.dtype, dtypes.float32)
+
   def testNestedRagged(self):
     # Check that TwoCompositeSpecs are compatible if one has a nested
     # RaggedTensorSpec w/ ragged_rank=0 and the other has a corresponding
@@ -667,61 +686,63 @@ class TypeSpecTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 
   def testRegistry(self):
     self.assertEqual("tf.TwoCompositesSpec",
-                     type_spec.get_name(TwoCompositesSpec))
-    self.assertEqual("tf.TwoTensorsSpec", type_spec.get_name(TwoTensorsSpec))
+                     type_spec_registry.get_name(TwoCompositesSpec))
+    self.assertEqual("tf.TwoTensorsSpec",
+                     type_spec_registry.get_name(TwoTensorsSpec))
     self.assertEqual(TwoCompositesSpec,
-                     type_spec.lookup("tf.TwoCompositesSpec"))
-    self.assertEqual(TwoTensorsSpec, type_spec.lookup("tf.TwoTensorsSpec"))
+                     type_spec_registry.lookup("tf.TwoCompositesSpec"))
+    self.assertEqual(TwoTensorsSpec,
+                     type_spec_registry.lookup("tf.TwoTensorsSpec"))
 
   def testRegistryTypeErrors(self):
     with self.assertRaisesRegex(TypeError, "Expected `name` to be a string"):
-      type_spec.register(None)
+      type_spec_registry.register(None)
 
     with self.assertRaisesRegex(TypeError, "Expected `name` to be a string"):
-      type_spec.register(TwoTensorsSpec)
+      type_spec_registry.register(TwoTensorsSpec)
 
     with self.assertRaisesRegex(TypeError, "Expected `cls` to be a TypeSpec"):
-      type_spec.register("tf.foo")(None)
+      type_spec_registry.register("tf.foo")(None)
 
     with self.assertRaisesRegex(TypeError, "Expected `cls` to be a TypeSpec"):
-      type_spec.register("tf.foo")(ragged_tensor.RaggedTensor)
+      type_spec_registry.register("tf.foo")(ragged_tensor.RaggedTensor)
 
   def testRegistryDuplicateErrors(self):
     with self.assertRaisesRegex(
         ValueError, "Name tf.TwoCompositesSpec has already been registered "
         "for class __main__.TwoCompositesSpec."):
 
-      @type_spec.register("tf.TwoCompositesSpec")  # pylint: disable=unused-variable
+      @type_spec_registry.register("tf.TwoCompositesSpec")  # pylint: disable=unused-variable
       class NewTypeSpec(TwoCompositesSpec):
         pass
 
     with self.assertRaisesRegex(
         ValueError, "Class __main__.TwoCompositesSpec has already been "
         "registered with name tf.TwoCompositesSpec"):
-      type_spec.register("tf.NewName")(TwoCompositesSpec)
+      type_spec_registry.register("tf.NewName")(TwoCompositesSpec)
 
   def testRegistryNameErrors(self):
     for bad_name in ["foo", "", "hello world"]:
       with self.assertRaises(ValueError):
-        type_spec.register(bad_name)
+        type_spec_registry.register(bad_name)
 
   def testRegistryLookupErrors(self):
     with self.assertRaises(TypeError):
-      type_spec.lookup(None)
+      type_spec_registry.lookup(None)
     with self.assertRaisesRegex(
         ValueError, "No TypeSpec has been registered with name 'foo.bar'"):
-      type_spec.lookup("foo.bar")
+      type_spec_registry.lookup("foo.bar")
 
   def testRegistryGetNameErrors(self):
     with self.assertRaises(TypeError):
-      type_spec.get_name(None)
+      type_spec_registry.get_name(None)
 
     class Foo(TwoCompositesSpec):
       pass
 
     with self.assertRaisesRegex(
         ValueError, "TypeSpec __main__.Foo has not been registered."):
-      type_spec.get_name(Foo)
+      type_spec_registry.get_name(Foo)
 
   def testSerialization(self):
     spec = TwoTensorsSpec([5, 3], dtypes.int32, [None], dtypes.bool)

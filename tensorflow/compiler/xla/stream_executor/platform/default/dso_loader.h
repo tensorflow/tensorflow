@@ -16,83 +16,72 @@ limitations under the License.
 // Common DSO loading functionality: exposes callables that dlopen DSOs
 // in either the runfiles directories
 
-#ifndef TENSORFLOW_COMPILER_XLA_STREAM_EXECUTOR_DSO_LOADER_H_
-#define TENSORFLOW_COMPILER_XLA_STREAM_EXECUTOR_DSO_LOADER_H_
+#ifndef TENSORFLOW_COMPILER_XLA_STREAM_EXECUTOR_PLATFORM_DEFAULT_DSO_LOADER_H_
+#define TENSORFLOW_COMPILER_XLA_STREAM_EXECUTOR_PLATFORM_DEFAULT_DSO_LOADER_H_
 
 #include <vector>
 
 #include "absl/strings/string_view.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/status.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/statusor.h"
+#include "tensorflow/tsl/platform/dso_loader.h"
+#include "tensorflow/tsl/platform/status.h"
+#include "tensorflow/tsl/platform/statusor.h"
 
 namespace stream_executor {
 namespace internal {
 
 namespace DsoLoader {
-// The following methods either load the DSO of interest and return a dlopen
-// handle or error status.
-port::StatusOr<void*> GetCudaDriverDsoHandle();
-port::StatusOr<void*> GetCudaRuntimeDsoHandle();
-port::StatusOr<void*> GetCublasDsoHandle();
-port::StatusOr<void*> GetCublasLtDsoHandle();
-port::StatusOr<void*> GetCufftDsoHandle();
-port::StatusOr<void*> GetCurandDsoHandle();
-port::StatusOr<void*> GetCusolverDsoHandle();
-port::StatusOr<void*> GetCusparseDsoHandle();
-port::StatusOr<void*> GetCuptiDsoHandle();
-port::StatusOr<void*> GetCudnnDsoHandle();
-port::StatusOr<void*> GetNvInferDsoHandle();
-port::StatusOr<void*> GetNvInferPluginDsoHandle();
-
-port::StatusOr<void*> GetRocblasDsoHandle();
-port::StatusOr<void*> GetMiopenDsoHandle();
-port::StatusOr<void*> GetHipfftDsoHandle();
-port::StatusOr<void*> GetRocrandDsoHandle();
-port::StatusOr<void*> GetRoctracerDsoHandle();
-port::StatusOr<void*> GetRocsolverDsoHandle();
-port::StatusOr<void*> GetHipsolverDsoHandle();
-port::StatusOr<void*> GetHipsparseDsoHandle();
-port::StatusOr<void*> GetHipDsoHandle();
-
-// The following method tries to dlopen all necessary GPU libraries for the GPU
-// platform TF is built with (CUDA or ROCm) only when these libraries should be
-// dynamically loaded. Error status is returned when any of the libraries cannot
-// be dlopened.
-port::Status MaybeTryDlopenGPULibraries();
-
-// The following method tries to dlopen all necessary TensorRT libraries when
-// these libraries should be dynamically loaded. Error status is returned when
-// any of the libraries cannot be dlopened.
-port::Status TryDlopenTensorRTLibraries();
+// NOLINTBEGIN(misc-unused-using-decls)
+using tsl::internal::DsoLoader::GetCublasDsoHandle;
+using tsl::internal::DsoLoader::GetCublasLtDsoHandle;
+using tsl::internal::DsoLoader::GetCudaDriverDsoHandle;
+using tsl::internal::DsoLoader::GetCudaRuntimeDsoHandle;
+using tsl::internal::DsoLoader::GetCudnnDsoHandle;
+using tsl::internal::DsoLoader::GetCufftDsoHandle;
+using tsl::internal::DsoLoader::GetCuptiDsoHandle;
+using tsl::internal::DsoLoader::GetCurandDsoHandle;
+using tsl::internal::DsoLoader::GetCusolverDsoHandle;
+using tsl::internal::DsoLoader::GetCusparseDsoHandle;
+using tsl::internal::DsoLoader::GetHipDsoHandle;
+using tsl::internal::DsoLoader::GetHipfftDsoHandle;
+using tsl::internal::DsoLoader::GetHipsolverDsoHandle;
+using tsl::internal::DsoLoader::GetHipsparseDsoHandle;
+using tsl::internal::DsoLoader::GetMiopenDsoHandle;
+using tsl::internal::DsoLoader::GetNvInferDsoHandle;
+using tsl::internal::DsoLoader::GetNvInferPluginDsoHandle;
+using tsl::internal::DsoLoader::GetRocblasDsoHandle;
+using tsl::internal::DsoLoader::GetRocrandDsoHandle;
+using tsl::internal::DsoLoader::GetRocsolverDsoHandle;
+using tsl::internal::DsoLoader::GetRoctracerDsoHandle;
+using tsl::internal::DsoLoader::MaybeTryDlopenGPULibraries;
+using tsl::internal::DsoLoader::TryDlopenTensorRTLibraries;
+// NOLINTEND(misc-unused-using-decls)
 }  // namespace DsoLoader
 
-// Wrapper around the DsoLoader that prevents us from dlopen'ing any of the DSOs
-// more than once.
 namespace CachedDsoLoader {
-// Cached versions of the corresponding DsoLoader methods above.
-port::StatusOr<void*> GetCudaDriverDsoHandle();
-port::StatusOr<void*> GetCudaRuntimeDsoHandle();
-port::StatusOr<void*> GetCublasDsoHandle();
-port::StatusOr<void*> GetCublasLtDsoHandle();
-port::StatusOr<void*> GetCufftDsoHandle();
-port::StatusOr<void*> GetCurandDsoHandle();
-port::StatusOr<void*> GetCusolverDsoHandle();
-port::StatusOr<void*> GetCusparseDsoHandle();
-port::StatusOr<void*> GetCuptiDsoHandle();
-port::StatusOr<void*> GetCudnnDsoHandle();
-
-port::StatusOr<void*> GetRocblasDsoHandle();
-port::StatusOr<void*> GetMiopenDsoHandle();
-port::StatusOr<void*> GetHipfftDsoHandle();
-port::StatusOr<void*> GetRocrandDsoHandle();
-port::StatusOr<void*> GetRocsolverDsoHandle();
-port::StatusOr<void*> GetHipsolverDsoHandle();
-port::StatusOr<void*> GetRoctracerDsoHandle();
-port::StatusOr<void*> GetHipsparseDsoHandle();
-port::StatusOr<void*> GetHipDsoHandle();
+// NOLINTBEGIN(misc-unused-using-decls)
+using tsl::internal::CachedDsoLoader::GetCublasDsoHandle;
+using tsl::internal::CachedDsoLoader::GetCublasLtDsoHandle;
+using tsl::internal::CachedDsoLoader::GetCudaDriverDsoHandle;
+using tsl::internal::CachedDsoLoader::GetCudaRuntimeDsoHandle;
+using tsl::internal::CachedDsoLoader::GetCudnnDsoHandle;
+using tsl::internal::CachedDsoLoader::GetCufftDsoHandle;
+using tsl::internal::CachedDsoLoader::GetCuptiDsoHandle;
+using tsl::internal::CachedDsoLoader::GetCurandDsoHandle;
+using tsl::internal::CachedDsoLoader::GetCusolverDsoHandle;
+using tsl::internal::CachedDsoLoader::GetCusparseDsoHandle;
+using tsl::internal::CachedDsoLoader::GetHipDsoHandle;
+using tsl::internal::CachedDsoLoader::GetHipfftDsoHandle;
+using tsl::internal::CachedDsoLoader::GetHipsolverDsoHandle;
+using tsl::internal::CachedDsoLoader::GetHipsparseDsoHandle;
+using tsl::internal::CachedDsoLoader::GetMiopenDsoHandle;
+using tsl::internal::CachedDsoLoader::GetRocblasDsoHandle;
+using tsl::internal::CachedDsoLoader::GetRocrandDsoHandle;
+using tsl::internal::CachedDsoLoader::GetRocsolverDsoHandle;
+using tsl::internal::CachedDsoLoader::GetRoctracerDsoHandle;
+// NOLINTEND(misc-unused-using-decls)
 }  // namespace CachedDsoLoader
 
 }  // namespace internal
 }  // namespace stream_executor
 
-#endif  // TENSORFLOW_COMPILER_XLA_STREAM_EXECUTOR_DSO_LOADER_H_
+#endif  // TENSORFLOW_COMPILER_XLA_STREAM_EXECUTOR_PLATFORM_DEFAULT_DSO_LOADER_H_

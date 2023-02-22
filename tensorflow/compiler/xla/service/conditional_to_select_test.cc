@@ -18,11 +18,11 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
+#include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
 #include "tensorflow/compiler/xla/literal.h"
-#include "tensorflow/compiler/xla/service/hlo_computation.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_matchers.h"
-#include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 
@@ -64,9 +64,9 @@ ENTRY comp {
 }
 )";
 
-  auto module = ParseAndReturnVerifiedModule(hlo_text).ValueOrDie();
+  auto module = ParseAndReturnVerifiedModule(hlo_text).value();
   ConditionalToSelect pass;
-  ASSERT_TRUE(pass.Run(&*module).ValueOrDie());
+  ASSERT_TRUE(pass.Run(&*module).value());
 
   HloInstruction* root = module->entry_computation()->root_instruction();
   ASSERT_EQ(root->opcode(), HloOpcode::kMap);
@@ -117,9 +117,9 @@ ENTRY comp {
 }
 )";
 
-  auto module = ParseAndReturnVerifiedModule(hlo_text).ValueOrDie();
+  auto module = ParseAndReturnVerifiedModule(hlo_text).value();
   ConditionalToSelect pass;
-  ASSERT_TRUE(pass.Run(&*module).ValueOrDie());
+  ASSERT_TRUE(pass.Run(&*module).value());
 
   HloInstruction* root = module->entry_computation()->root_instruction();
   ASSERT_EQ(root->opcode(), HloOpcode::kMap);

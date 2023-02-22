@@ -20,15 +20,7 @@ load(
     "tf_cc_test",
     "tf_copts",
 )
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "tfcompile_target_cpu")
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "tfcompile_dfsan_enabled")
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "tfcompile_dfsan_abilists")
+load("//tensorflow:tensorflow.default.bzl", "tfcompile_dfsan_abilists", "tfcompile_dfsan_enabled", "tfcompile_target_cpu")
 
 def _tfcompile_model_library_rule_impl(ctx):
     header_file = ctx.outputs.header_out
@@ -92,11 +84,9 @@ def _tfcompile_model_library_rule_impl(ctx):
         mnemonic = "TensorflowCompile",
     )
     out_files = [header_file, metadata_object_file, function_object_file, session_module_pb]
-    dep_files = [ctx.executable.tfcompile_tool]
     return [
         DefaultInfo(
             files = depset(out_files),
-            runfiles = ctx.runfiles(files = dep_files, transitive_files = depset(dep_files)),
         ),
         OutputGroupInfo(**output_dict),
     ]
@@ -146,7 +136,8 @@ def tf_library(
         enable_tracemes = False,
         mlir_components = "None",
         deps = None,
-        tags = []):
+        tags = [],
+        copts = []):
     """Runs tfcompile to compile a TensorFlow graph into executable code with fast
     math enabled on cpu.
 
@@ -204,6 +195,7 @@ def tf_library(
       deps: a list of deps to include on the build rules for the generated
         library, added to the standard deps if standard_runtime_deps is True.
       tags: tags to apply to subsidiary build rules.
+      copts: list of copts to pass to cc rules.
     """
     if not cpp_class:
         fail("cpp_class must be specified")
@@ -381,6 +373,7 @@ def tf_library(
             ] or []
         ) + (deps or []),
         tags = tags,
+        copts = copts,
     )
 
     # Variables used for gen_test and gen_benchmark.
@@ -433,6 +426,7 @@ def tf_library(
                 "//tensorflow/core:test",
             ],
             tags = tags,
+            extra_copts = copts,
         )
 
     if gen_benchmark:
@@ -468,7 +462,7 @@ def tf_library(
             name = benchmark_name,
             srcs = [benchmark_file],
             testonly = testonly,
-            copts = tf_copts(),
+            copts = copts + tf_copts(),
             linkopts = if_android(["-pie", "-s"]),
             deps = [
                 ":" + name,

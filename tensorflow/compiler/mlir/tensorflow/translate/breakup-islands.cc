@@ -65,6 +65,38 @@ class BreakUpIslands : public TF::PerFunctionAggregateAnalysisConsumerPass<
                          new_control_inputs);
 };
 
+// Returns true if the operation is a stateful If, Case, or While op.
+bool IsStatefulFunctionalControlFlowOp(Operation* op) {
+  if (!isa<TF::IfOp, TF::CaseOp, TF::WhileOp>(op)) {
+    return false;
+  }
+
+  if (auto is_stateless = op->getAttrOfType<BoolAttr>("is_stateless")) {
+    return !is_stateless.getValue();
+  }
+  return false;
+}
+
+// Add control dependencies from stateful control-flow ops to graph fetch op.
+// This is needed to avoid that such control-flow ops get pruned because of a
+// bug in common runtime (see b/185483669).
+void AddStatefulControlFlowDependencies(tf_executor::GraphOp graph_op) {
+  llvm::SmallDenseSet<Value, 8> graph_fetches;
+  for (Value value : graph_op.GetFetch().getFetches()) {
+    graph_fetches.insert(value);
+  }
+  for (Operation& op : graph_op.GetBody().without_terminator()) {
+    auto island = dyn_cast<tf_executor::IslandOp>(&op);
+    if (!island) continue;
+    if (!island.WrapsSingleOp()) continue;
+    Operation& wrapped_op = island.GetBody().front();
+    if (!IsStatefulFunctionalControlFlowOp(&wrapped_op)) continue;
+    if (graph_fetches.contains(island.getControl())) continue;
+
+    graph_op.GetFetch().getFetchesMutable().append(island.getControl());
+  }
+}
+
 void BreakUpIslands::runOnFunction(
     func::FuncOp func,
     const TF::SideEffectAnalysis::Info& side_effect_analysis) {
@@ -131,6 +163,7 @@ void BreakUpIslands::runOnFunction(
     new_op->setAttrs(item.getAttrDictionary());
     item.erase();
   }
+  AddStatefulControlFlowDependencies(graph_op);
 }
 
 // Populates an empty IslandOp and with a NoOp or Identity/IdentityN depending
@@ -144,7 +177,7 @@ void PopulateEmptyIsland(tf_executor::IslandOp island) {
     Value operand = yield.getOperand(0);
     auto identity = builder.create<TF::IdentityOp>(island.getLoc(),
                                                    operand.getType(), operand);
-    yield.setOperand(0, identity.output());
+    yield.setOperand(0, identity.getOutput());
   } else {
     auto identity_n = builder.create<TF::IdentityNOp>(
         island.getLoc(), yield.getOperandTypes(), yield.getOperands());
@@ -163,12 +196,12 @@ tf_executor::IslandOp CreateIsland(TypeRange result_types,
   OpBuilder builder(original_island);
   auto island = builder.create<tf_executor::IslandOp>(
       loc, result_types, control_type, control_inputs);
-  island.body().push_back(new Block);
-  Block* block = &island.body().back();
+  island.getBody().push_back(new Block);
+  Block* block = &island.getBody().back();
   OpBuilder island_builder(original_island);
   island_builder.setInsertionPointToEnd(block);
   if (sub_op) {
-    sub_op->replaceAllUsesWith(island.outputs());
+    sub_op->replaceAllUsesWith(island.getOutputs());
     sub_op->moveBefore(block, block->begin());
     island_builder.create<tf_executor::YieldOp>(loc, sub_op->getResults());
   } else {
@@ -195,18 +228,6 @@ struct IslandSourcesAndSinks {
   // executing.
   llvm::SmallPtrSet<Operation*, 4> sinks;
 };
-
-// Returns true if the operation is a stateful If, Case, or While op.
-bool IsStatefulFunctionalControlFlowOp(Operation* op) {
-  if (!isa<TF::IfOp, TF::CaseOp, TF::WhileOp>(op)) {
-    return false;
-  }
-
-  if (auto is_stateless = op->getAttrOfType<BoolAttr>("is_stateless")) {
-    return !is_stateless.getValue();
-  }
-  return false;
-}
 
 // Finds IslandSourcesAndSinks for an unmodified island.
 IslandSourcesAndSinks FindSourcesAndSinksInIsland(
@@ -260,10 +281,10 @@ void BreakUpIslands::BreakUpIsland(
   if (island_op.WrapsSingleOp()) return;
 
   auto control_type = tf_executor::ControlType::get(&getContext());
-  auto island_control_inputs = llvm::to_vector<4>(island_op.controlInputs());
+  auto island_control_inputs = llvm::to_vector<4>(island_op.getControlInputs());
   // Add control dependencies for yields of values defined by other islands to
   // the island that defines that fetched value.
-  for (auto fetch : island_op.GetYield().fetches()) {
+  for (auto fetch : island_op.GetYield().getFetches()) {
     if (!fetch.getDefiningOp()) {
       // Skip, because there is no op to add control to (eg: function args).
       continue;
@@ -272,7 +293,7 @@ void BreakUpIslands::BreakUpIsland(
       continue;
     } else if (auto other_island_op = llvm::dyn_cast<tf_executor::IslandOp>(
                    fetch.getDefiningOp())) {
-      island_control_inputs.push_back(other_island_op.control());
+      island_control_inputs.push_back(other_island_op.getControl());
     } else {
       // TODO(parkers): Any defining op that has a control output can be handled
       // just like an island.
@@ -285,7 +306,7 @@ void BreakUpIslands::BreakUpIsland(
     auto new_island = CreateIsland({}, island_control_inputs, control_type,
                                    island_op.getLoc(), nullptr, island_op);
     island_control_inputs.clear();
-    island_control_inputs.push_back(new_island.control());
+    island_control_inputs.push_back(new_island.getControl());
   }
   // Find sources and sinks inside the original island.
   IslandSourcesAndSinks sources_and_sinks =
@@ -316,9 +337,9 @@ void BreakUpIslands::BreakUpIsland(
     auto new_island =
         CreateIsland(sub_op.getResultTypes(), control, control_type,
                      sub_op.getLoc(), &sub_op, island_op);
-    new_control_for_sub_ops[&sub_op] = new_island.control();
+    new_control_for_sub_ops[&sub_op] = new_island.getControl();
     if (sources_and_sinks.sinks.count(&sub_op)) {
-      sink_island_controls.push_back(new_island.control());
+      sink_island_controls.push_back(new_island.getControl());
     }
   }
   // Create control outputs for the sinks.
@@ -329,24 +350,29 @@ void BreakUpIslands::BreakUpIsland(
     auto new_island = CreateIsland({}, sink_island_controls, control_type,
                                    island_op.getLoc(), nullptr, island_op);
     sink_island_controls.clear();
-    sink_island_controls.push_back(new_island.control());
+    sink_island_controls.push_back(new_island.getControl());
   }
   assert(sink_island_controls.size() == 1);
   auto& sink_island_control = sink_island_controls[0];
-  island_op.control().replaceAllUsesWith(sink_island_control);
+  island_op.getControl().replaceAllUsesWith(sink_island_control);
   // All existing outputs need to add sink_island_control as control input.
   // GraphOp, YieldOp and NextIterationSourceOp don't have control inputs so
   // exclude them below.
-  for (Value out : island_op.outputs()) {
+  for (Value out : island_op.getOutputs()) {
     for (auto& use : out.getUses()) {
       Operation* owner = use.getOwner();
-      if (auto other_island_op =
-              llvm::dyn_cast<tf_executor::IslandOp>(owner->getParentOp())) {
-        (*new_control_inputs)[other_island_op].push_back(sink_island_control);
-      } else if (owner->getDialect() == island_op->getDialect() &&
-                 !llvm::isa<tf_executor::GraphOp, tf_executor::YieldOp,
-                            tf_executor::NextIterationSourceOp>(owner)) {
+      if (owner->getDialect() == island_op->getDialect() &&
+          !llvm::isa<tf_executor::GraphOp, tf_executor::YieldOp,
+                     tf_executor::NextIterationSourceOp>(owner)) {
         (*new_control_inputs)[owner].push_back(sink_island_control);
+        // Note that we cannot assume that the island containing `owner` is a
+        // direct parent:
+        // For example, ops with regions usually don't expose values used in a
+        // region to the op's interface which means that the usage of a value
+        // can be 2 or more levels below an island (see b/242920486).
+      } else if (auto other_island_op =
+                     owner->getParentOfType<tf_executor::IslandOp>()) {
+        (*new_control_inputs)[other_island_op].push_back(sink_island_control);
       } else {
         owner->emitOpError("adding control dependency not supported");
         return signalPassFailure();
@@ -354,7 +380,7 @@ void BreakUpIslands::BreakUpIsland(
     }
   }
   for (auto item :
-       llvm::zip(island_op.outputs(), island_op.GetYield().fetches()))
+       llvm::zip(island_op.getOutputs(), island_op.GetYield().getFetches()))
     std::get<0>(item).replaceAllUsesWith(std::get<1>(item));
   island_op.erase();
 }
@@ -366,4 +392,3 @@ std::unique_ptr<OperationPass<ModuleOp>> CreateBreakUpIslandsPass() {
 }
 
 }  // namespace mlir
-

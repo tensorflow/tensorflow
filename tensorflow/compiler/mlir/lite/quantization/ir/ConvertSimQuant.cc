@@ -13,10 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/quantization/ir/FakeQuantSupport.h"
-#include "tensorflow/compiler/mlir/lite/quantization/ir/PassDetail.h"
 #include "tensorflow/compiler/mlir/lite/quantization/ir/Passes.h"
 #include "tensorflow/compiler/mlir/lite/quantization/ir/QuantOps.h"
 #include "tensorflow/compiler/mlir/lite/quantization/ir/UniformSupport.h"
@@ -25,8 +25,12 @@ using namespace mlir;
 using namespace mlir::quantfork;
 
 namespace {
+
+#define GEN_PASS_DEF_QUANTCONVERTSIMULATEDQUANT
+#include "tensorflow/compiler/mlir/lite/quantization/ir/Passes.h.inc"
+
 struct ConvertSimulatedQuantPass
-    : public QuantConvertSimulatedQuantBase<ConvertSimulatedQuantPass> {
+    : public impl::QuantConvertSimulatedQuantBase<ConvertSimulatedQuantPass> {
   void runOnOperation() override;
 };
 

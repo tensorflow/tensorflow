@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_PYTHON_SHARDED_DEVICE_ARRAY_H_
 #define TENSORFLOW_COMPILER_XLA_PYTHON_SHARDED_DEVICE_ARRAY_H_
 
+#include <memory>
 #include <optional>
 #include <utility>
 #include <vector>
@@ -241,8 +242,12 @@ class ShardedDeviceArray {
   // The Numpy value on the host, if it exists, will also be deleted.
   void Delete();
   const ShardingSpec& GetShardingSpec() const { return sharding_spec_; }
+
   // Returns an error status iff the object has been deleted.
-  xla::StatusOr<absl::Span<xla::PjRtBuffer* const>> GetPjRtBuffers();
+  xla::StatusOr<xla::ifrt::Array*> ifrt_array();
+
+  // Returns an error status iff the object has been deleted.
+  xla::StatusOr<absl::Span<xla::PjRtBuffer* const>> pjrt_buffers();
 
   bool is_deleted() const { return is_deleted_; }
   bool weak_type() const { return weak_type_; }
@@ -294,6 +299,9 @@ class ShardedDeviceArray {
   static object Make(pybind11::object aval, ShardingSpec sharding_spec,
                      pybind11::list device_buffers, pybind11::object indices,
                      bool weak_type);
+  static object Make(pybind11::object aval, ShardingSpec sharding_spec,
+                     const xla::PyShardedBuffer& sharded_buffer,
+                     pybind11::object indices, bool weak_type);
 
   static xla::Status RegisterTypes(pybind11::module& m);
   static PyObject* base_type() { return base_type_; }
@@ -329,6 +337,8 @@ class ShardedDeviceArray {
 
   std::optional<pybind11::object> npy_value_ = std::nullopt;
   std::optional<pybind11::object> one_replica_buffer_indices_ = std::nullopt;
+
+  std::optional<tsl::RCReference<xla::ifrt::Array>> ifrt_array_ = std::nullopt;
 
   // The device_buffers as a C++ object. As this is what we consume from C++
   // and this is also what we generate from C++, cache the result so that

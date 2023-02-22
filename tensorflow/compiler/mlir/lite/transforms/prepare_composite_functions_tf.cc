@@ -50,7 +50,7 @@ limitations under the License.
 namespace mlir {
 namespace TFL {
 namespace {
-#define GEN_PASS_CLASSES
+#define GEN_PASS_DEF_PREPARECOMPOSITEFUNCTIONSPASS
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h.inc"
 
 constexpr char kTFAPIImplements[] = "tf.api_implements";
@@ -63,13 +63,10 @@ constexpr char kTFLFusableOp[] = "tfl_fusable_op";
 
 using mlir::TF::FuncAttr;
 
-inline OpaqueElementsAttr CustomOption(OpBuilder* builder,
-                                       const std::string& content) {
-  ShapedType type = RankedTensorType::get(
-      {static_cast<int64_t>(content.size())}, builder->getIntegerType(8));
-  return OpaqueElementsAttr::get(builder->getContext()->getLoadedDialect("tfl"),
-                                 type,
-                                 StringRef(content.data(), content.size()));
+inline ConstBytesAttr CustomOption(OpBuilder* builder,
+                                   const std::string& content) {
+  return ConstBytesAttr::get(builder->getContext(),
+                             StringRef(content.data(), content.size()));
 }
 
 LogicalResult CreateTflFusableOpCustomOptions(
@@ -159,7 +156,8 @@ class ConvertEmbeddedLookupFunc {
 };
 
 class PrepareCompositeFunctionsPass
-    : public PrepareCompositeFunctionsPassBase<PrepareCompositeFunctionsPass> {
+    : public impl::PrepareCompositeFunctionsPassBase<
+          PrepareCompositeFunctionsPass> {
   void getDependentDialects(DialectRegistry& registry) const override {
     registry.insert<TFL::TensorFlowLiteDialect>();
   }
@@ -399,6 +397,21 @@ void PrepareCompositeFunctionsPass::ConvertTFAPIImplements(func::FuncOp func,
     func.addEntryBlock();
     OpBuilder builder(func.getBody());
     if (failed(ConvertKerasLSTMLayer(func, &builder)))
+      return signalPassFailure();
+  }
+
+  // LSTM `func::FuncOps` with indy behavior always have the `tf.api_implements`
+  // function attribute prefixed with `"indy_lstm_"`.
+  // IndyLSTMs have diagonal recurrent weight matrices and can benefit from
+  // more efficent operations in TFLite with the correct conversion (i.e. when
+  // the diagonal recurrent weight matrices are provided as vectors).
+  if (attr.getValue().startswith("indy_lstm_")) {
+    // Check if the keras lstm can be fused, if not, we just don't do anything.
+    if (failed(CheckFusableKerasLstm(func, module))) return;
+    func.eraseBody();
+    func.addEntryBlock();
+    OpBuilder builder(func.getBody());
+    if (failed(ConvertKerasLSTMLayer(func, &builder, true)))
       return signalPassFailure();
   }
 }

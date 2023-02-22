@@ -15,7 +15,7 @@ limitations under the License.
 
 #include <stdint.h>
 
-#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/kernels/internal/optimized/optimized_ops.h"
 #include "tensorflow/lite/kernels/internal/reference/reference_ops.h"
 #include "tensorflow/lite/kernels/internal/tensor.h"
@@ -105,7 +105,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
                     GetOutputSafe(context, node, kOutputTensor, &output));
   output->type = updates->type;
 
-  if (IsConstantTensor(shape)) {
+  if (IsConstantOrPersistentTensor(shape)) {
     switch (indices->type) {
       case kTfLiteInt32:
         TF_LITE_ENSURE_OK(

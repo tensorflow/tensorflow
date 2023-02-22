@@ -172,7 +172,7 @@ TEST(TFOpWrapper, ValueControlRet) {
   GraphFuncOp func = module->lookupSymbol<GraphFuncOp>("test");
   ASSERT_TRUE(func);
 
-  auto iterator = func.body().begin()->begin();
+  auto iterator = func.getBody().begin()->begin();
   TFOp const_op = &(*iterator++);
   TFOp add_op = &(*iterator);
 
@@ -180,7 +180,7 @@ TEST(TFOpWrapper, ValueControlRet) {
 
   EXPECT_EQ(ret_range[0], const_op.controlRet());
   // The control token of an argument is the argument next to itself.
-  EXPECT_EQ(ret_range[1], func.body().begin()->getArguments()[1]);
+  EXPECT_EQ(ret_range[1], func.getBody().begin()->getArguments()[1]);
   // Value with ControlType will be the same.
   EXPECT_EQ(ret_range[2], const_op.controlRet());
 

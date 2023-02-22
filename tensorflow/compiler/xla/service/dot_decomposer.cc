@@ -19,14 +19,14 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/strings/str_join.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
 #include "tensorflow/compiler/xla/permutation_util.h"
-#include "tensorflow/compiler/xla/service/hlo_computation.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/types.h"
-#include "tensorflow/core/platform/logging.h"
+#include "tensorflow/tsl/platform/logging.h"
 
 namespace xla {
 
@@ -80,20 +80,24 @@ Status CanonicalizeDot(HloInstruction* original_dot) {
   lhs_transpose.insert(lhs_transpose.end(),
                        original_dnums.lhs_contracting_dimensions().begin(),
                        original_dnums.lhs_contracting_dimensions().end());
-  HloInstruction* transposed_lhs =
-      computation->AddInstruction(HloInstruction::CreateTranspose(
-          ShapeUtil::PermuteDimensions(lhs_transpose, lhs_shape),
-          original_dot->mutable_operand(0), lhs_transpose));
+  HloInstruction* lhs_operand = original_dot->mutable_operand(0);
+  HloInstruction* transposed_lhs = computation->AddInstruction(
+      HloInstruction::CreateTranspose(
+          ShapeUtil::PermuteDimensions(lhs_transpose, lhs_shape), lhs_operand,
+          lhs_transpose),
+      &lhs_operand->metadata());
+
   std::vector<int64_t> lhs_reshape_dims = batch_dim_sizes;
   if (lhs_non_contracting_size > 1) {
     lhs_reshape_dims.push_back(lhs_non_contracting_size);
   }
   lhs_reshape_dims.push_back(lhs_contracting_size);
   // Reshape the contracting and non-contracting dimensions together.
-  HloInstruction* reshaped_lhs =
-      computation->AddInstruction(HloInstruction::CreateReshape(
+  HloInstruction* reshaped_lhs = computation->AddInstruction(
+      HloInstruction::CreateReshape(
           ShapeUtil::MakeShape(lhs_shape.element_type(), lhs_reshape_dims),
-          transposed_lhs));
+          transposed_lhs),
+      &transposed_lhs->metadata());
 
   const auto& rhs_shape = original_dot->operand(1)->shape();
   const int64_t rhs_rank = rhs_shape.rank();
@@ -126,10 +130,12 @@ Status CanonicalizeDot(HloInstruction* original_dot) {
                        original_dnums.rhs_contracting_dimensions().end());
   rhs_transpose.insert(rhs_transpose.end(), rhs_non_contracting_dims.begin(),
                        rhs_non_contracting_dims.end());
-  HloInstruction* transposed_rhs =
-      computation->AddInstruction(HloInstruction::CreateTranspose(
-          ShapeUtil::PermuteDimensions(rhs_transpose, rhs_shape),
-          original_dot->mutable_operand(1), rhs_transpose));
+  HloInstruction* rhs_operand = original_dot->mutable_operand(1);
+  HloInstruction* transposed_rhs = computation->AddInstruction(
+      HloInstruction::CreateTranspose(
+          ShapeUtil::PermuteDimensions(rhs_transpose, rhs_shape), rhs_operand,
+          rhs_transpose),
+      &rhs_operand->metadata());
 
   std::vector<int64_t> rhs_reshape_dims = batch_dim_sizes;
   rhs_reshape_dims.push_back(rhs_contracting_size);
@@ -137,10 +143,11 @@ Status CanonicalizeDot(HloInstruction* original_dot) {
     rhs_reshape_dims.push_back(rhs_non_contracting_size);
   }
   // Reshape the contracting and non-contracting dimensions together.
-  HloInstruction* reshaped_rhs =
-      computation->AddInstruction(HloInstruction::CreateReshape(
+  HloInstruction* reshaped_rhs = computation->AddInstruction(
+      HloInstruction::CreateReshape(
           ShapeUtil::MakeShape(rhs_shape.element_type(), rhs_reshape_dims),
-          transposed_rhs));
+          transposed_rhs),
+      &transposed_rhs->metadata());
 
   std::vector<int64_t> dot_dims = batch_dim_sizes;
   if (lhs_non_contracting_size > 1) {

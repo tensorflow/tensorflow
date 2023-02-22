@@ -17,21 +17,18 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 #include <string>
+#include <vector>
 
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
 #include "tensorflow/core/data/service/common.pb.h"
-#include "tensorflow/core/data/service/journal.h"
 #include "tensorflow/core/data/service/journal.pb.h"
-#include "tensorflow/core/lib/core/status_test_util.h"
-#include "tensorflow/core/platform/errors.h"
-#include "tensorflow/core/platform/path.h"
 #include "tensorflow/core/platform/random.h"
-#include "tensorflow/core/platform/status_matchers.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/protobuf/data_service.pb.h"
-#include "tensorflow/core/protobuf/error_codes.pb.h"
 #include "tensorflow/core/protobuf/service_config.pb.h"
+#include "tensorflow/tsl/lib/core/status_test_util.h"
+#include "tensorflow/tsl/platform/status_matchers.h"
 
 namespace tensorflow {
 namespace data {
@@ -43,11 +40,11 @@ using IterationKey = DispatcherState::IterationKey;
 using Job = DispatcherState::Job;
 using Iteration = DispatcherState::Iteration;
 using Task = DispatcherState::Task;
-using ::tensorflow::testing::StatusIs;
 using ::testing::HasSubstr;
 using ::testing::IsEmpty;
 using ::testing::SizeIs;
 using ::testing::UnorderedElementsAre;
+using ::tsl::testing::StatusIs;
 
 Status RegisterDataset(const std::string& dataset_id, uint64 fingerprint,
                        DispatcherState& state) {
@@ -144,6 +141,13 @@ Status FinishTask(int64_t task_id, DispatcherState& state) {
   Update update;
   FinishTaskUpdate* finish_task = update.mutable_finish_task();
   finish_task->set_task_id(task_id);
+  return state.Apply(update);
+}
+
+Status Snapshot(const std::string& path, DispatcherState& state) {
+  Update update;
+  SnapshotUpdate* snapshot = update.mutable_snapshot();
+  snapshot->set_path(path);
   return state.Apply(update);
 }
 
@@ -689,6 +693,15 @@ TEST(DispatcherState, ListActiveClients) {
   TF_EXPECT_OK(
       AcquireIterationClientId(iteration_id, iteration_client_id_3, state));
   EXPECT_THAT(state.ListActiveClientIds(), UnorderedElementsAre(6, 8));
+}
+
+TEST(DispatcherState, ListSnapshotPaths) {
+  DispatcherState state;
+  absl::flat_hash_set<std::string> snapshot_paths = {"p1", "p2"};
+  for (const auto& snapshot_path : snapshot_paths) {
+    TF_EXPECT_OK(Snapshot(snapshot_path, state));
+  }
+  EXPECT_EQ(state.ListSnapshotPaths(), snapshot_paths);
 }
 
 }  // namespace data

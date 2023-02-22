@@ -6,5 +6,6 @@ package tensorflow.tfrt_stub;
 // details.
 // NEXT_ID: 2
 message OpCostMapProto {
-  map<string, uint64> op_cost_map = 1;
+  // Maps an op_key to a cost measured in nanoseconds.
+  map<int64, uint64> op_cost_map = 1;
 }

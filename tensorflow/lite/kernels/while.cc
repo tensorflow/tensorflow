@@ -18,9 +18,9 @@ limitations under the License.
 #include <cstring>
 #include <vector>
 
-#include "tensorflow/lite/c/builtin_op_data.h"
-#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/context_util.h"
+#include "tensorflow/lite/core/c/builtin_op_data.h"
+#include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/core/subgraph.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 
@@ -35,7 +35,6 @@ struct OpData {
   bool cond_has_dynamic_output_tensors;
   bool body_has_dynamic_output_tensors;
   bool body_use_shallow_copy;
-  bool subgraphs_allocated;
   // set when Prepare_impl() is called.
   bool subgraphs_prepared;
 };
@@ -212,7 +211,6 @@ void* Init(TfLiteContext* context, const char* buffer, size_t length) {
   op_data->cond_has_dynamic_output_tensors = false;
   op_data->body_has_dynamic_output_tensors = false;
   op_data->body_use_shallow_copy = false;
-  op_data->subgraphs_allocated = false;
   op_data->subgraphs_prepared = false;
   return op_data;
 }
@@ -298,7 +296,6 @@ TfLiteStatus Prepare_impl(TfLiteContext* context, TfLiteNode* node) {
   }
 
   TF_LITE_ENSURE_OK(context, body_subgraph->AllocateTensors());
-  op_data->subgraphs_allocated = true;
   if (body_subgraph->HasDynamicTensors()) {
     op_data->body_has_dynamic_output_tensors = true;
   } else {
@@ -502,12 +499,12 @@ TfLiteStatus Eval_static(TfLiteContext* context, TfLiteNode* node) {
   // |           |------------------------------->|            |
   // |           |         |            | <----   |            |
   // +-----------+         +------------+      \  +------------+
-  //                             |              \       |     ^
-  //                             | (2)       (5) \      | (4) | (3-2)
-  //                             v                \     v     |
+  //      |                      |              \       |     ^
+  //      | (6-1)                | (2)       (5) \      | (4) | (3-2)
+  //      v                      v                \     v     |
   // +-----------+         +------------+         +------------+
   // |   WHILE   |         |  SUBGRAPH  |         |  SUBGRAPH  |
-  // |   OUTPUT  |    (6)  |   OUTPUT   |         |   OUTPUT   |
+  // |   OUTPUT  |  (6-2)  |   OUTPUT   |         |   OUTPUT   |
   // |           |<-------------------------------|            |
   // +-----------+         +------------+         +------------+
   //
@@ -520,7 +517,9 @@ TfLiteStatus Eval_static(TfLiteContext* context, TfLiteNode* node) {
   // (4) Invoke body subgraph.
   // (5) Copy the outputs of body subgraph to the inputs condition subgraph.
   //     Jump back to step 2!
-  // (6) Copy the outputs of body subgraph to the outputs of WHILE op.
+  // (6) If body is never invoked, run the step 6-1, else run the step 6-2.
+  // (6-1) Copy the inputs of WHILE op to the outputs of WHILE op.
+  // (6-2) Copy the outputs of body subgraph to the outputs of WHILE op.
   //
   // The body subgraph shouldn't have dynamic sized outputs.
 
@@ -543,7 +542,7 @@ TfLiteStatus Eval_static(TfLiteContext* context, TfLiteNode* node) {
     }
 
     if (body_invoked) {
-      // Step 3-2. body->output -> body->inputs
+      // Step 3-2. body->outputs -> body->inputs
       TF_LITE_ENSURE_OK(
           context,
           CopyTensorsData(context, body_subgraph, body_subgraph->outputs(),
@@ -563,7 +562,7 @@ TfLiteStatus Eval_static(TfLiteContext* context, TfLiteNode* node) {
       body_subgraph->EnsureTensorDataIsReadable(tensor_index);
     }
 
-    // Step 5. body->output -> cond->inputs (fast)
+    // Step 5. body->outputs -> cond->inputs (fast)
     TF_LITE_ENSURE_OK(
         context,
         CopyTensorsData(context, body_subgraph, body_subgraph->outputs(),
@@ -571,7 +570,7 @@ TfLiteStatus Eval_static(TfLiteContext* context, TfLiteNode* node) {
   }
 
   if (body_invoked) {
-    // Step 6. Copy body->output -> node->outputs
+    // Step 6. Copy body->outputs -> node->outputs
     TF_LITE_ENSURE_OK(
         context,
         CopyTensorsData(context, body_subgraph, body_subgraph->outputs(),
@@ -596,7 +595,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 
   if (op_data->subgraphs_prepared == false) {
     TF_LITE_ENSURE_OK(context, Prepare_lazy(context, node));
-  } else if (op_data->subgraphs_allocated == false) {
+  } else {
     TF_LITE_ENSURE_OK(context, cond_subgraph->AllocateTensors());
     TF_LITE_ENSURE_OK(context, body_subgraph->AllocateTensors());
   }
@@ -608,9 +607,8 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   }
 
   if (!this_subgraph->ShouldPreserveAllTensors()) {
-    TF_LITE_ENSURE_OK(context, cond_subgraph->ReleaseNonPersistentMemory());
-    TF_LITE_ENSURE_OK(context, body_subgraph->ReleaseNonPersistentMemory());
-    op_data->subgraphs_allocated = false;
+    TF_LITE_ENSURE_OK(context, cond_subgraph->ReleaseMemory());
+    TF_LITE_ENSURE_OK(context, body_subgraph->ReleaseMemory());
   }
 
   return kTfLiteOk;

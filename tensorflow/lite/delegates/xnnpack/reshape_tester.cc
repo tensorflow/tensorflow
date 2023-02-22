@@ -19,15 +19,16 @@ limitations under the License.
 #include <array>
 #include <cstdint>
 #include <functional>
+#include <memory>
 #include <numeric>
 #include <random>
 #include <vector>
 
 #include <gtest/gtest.h>
 #include "flatbuffers/flatbuffers.h"  // from @flatbuffers
+#include "tensorflow/lite/core/kernels/register.h"
+#include "tensorflow/lite/core/model.h"
 #include "tensorflow/lite/interpreter.h"
-#include "tensorflow/lite/kernels/register.h"
-#include "tensorflow/lite/model.h"
 #include "tensorflow/lite/schema/schema_conversion_utils.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/version.h"
@@ -35,15 +36,71 @@ limitations under the License.
 namespace tflite {
 namespace xnnpack {
 
-void ReshapeTester::Test(TfLiteDelegate* delegate) const {
+template <class T>
+void ReshapeTester::Test(TensorType tensor_type,
+                         Interpreter* delegate_interpreter,
+                         Interpreter* default_interpreter) const {
   std::random_device random_device;
   auto rng = std::mt19937(random_device());
-  auto f32rng =
+  std::uniform_int_distribution<int32_t> input_distribution(
+      std::numeric_limits<T>::min(), std::numeric_limits<T>::max());
+  auto input_rng = std::bind(input_distribution, std::ref(rng));
+
+  T* default_input_data = default_interpreter->typed_input_tensor<T>(0);
+  std::generate(default_input_data, default_input_data + InputSize(),
+                std::ref(input_rng));
+
+  T* delegate_input_data = delegate_interpreter->typed_input_tensor<T>(0);
+  std::copy(default_input_data, default_input_data + InputSize(),
+            delegate_input_data);
+
+  ASSERT_EQ(default_interpreter->Invoke(), kTfLiteOk);
+  ASSERT_EQ(delegate_interpreter->Invoke(), kTfLiteOk);
+
+  T* default_output_data = default_interpreter->typed_output_tensor<T>(0);
+  T* delegate_output_data = delegate_interpreter->typed_output_tensor<T>(0);
+
+  for (size_t i = 0; i < OutputSize(); i++) {
+    ASSERT_EQ(delegate_output_data[i], default_output_data[i]);
+  }
+}
+
+template <>
+void ReshapeTester::Test<float>(TensorType tensor_type,
+                                Interpreter* delegate_interpreter,
+                                Interpreter* default_interpreter) const {
+  std::random_device random_device;
+  auto rng = std::mt19937(random_device());
+  auto input_rng =
       std::bind(std::uniform_real_distribution<float>(), std::ref(rng));
 
+  float* default_input_data = default_interpreter->typed_input_tensor<float>(0);
+  std::generate(default_input_data, default_input_data + InputSize(),
+                std::ref(input_rng));
+
+  float* delegate_input_data =
+      delegate_interpreter->typed_input_tensor<float>(0);
+  std::copy(default_input_data, default_input_data + InputSize(),
+            delegate_input_data);
+
+  ASSERT_EQ(default_interpreter->Invoke(), kTfLiteOk);
+  ASSERT_EQ(delegate_interpreter->Invoke(), kTfLiteOk);
+
+  float* default_output_data =
+      default_interpreter->typed_output_tensor<float>(0);
+  float* delegate_output_data =
+      delegate_interpreter->typed_output_tensor<float>(0);
+
+  for (size_t i = 0; i < OutputSize(); i++) {
+    ASSERT_EQ(delegate_output_data[i], default_output_data[i]);
+  }
+}
+
+void ReshapeTester::Test(TensorType tensor_type,
+                         TfLiteDelegate* delegate) const {
   ASSERT_EQ(InputSize(), OutputSize());
 
-  std::vector<char> buffer = CreateTfLiteModel();
+  std::vector<char> buffer = CreateTfLiteModel(tensor_type);
   const Model* model = GetModel(buffer.data());
 
   std::unique_ptr<Interpreter> delegate_interpreter;
@@ -75,29 +132,26 @@ void ReshapeTester::Test(TfLiteDelegate* delegate) const {
 
   ASSERT_EQ(delegate_interpreter->ModifyGraphWithDelegate(delegate), kTfLiteOk);
 
-  float* default_input_data = default_interpreter->typed_input_tensor<float>(0);
-  std::generate(default_input_data, default_input_data + InputSize(),
-                std::ref(f32rng));
-
-  float* delegate_input_data =
-      delegate_interpreter->typed_input_tensor<float>(0);
-  std::copy(default_input_data, default_input_data + InputSize(),
-            delegate_input_data);
-
-  ASSERT_EQ(default_interpreter->Invoke(), kTfLiteOk);
-  ASSERT_EQ(delegate_interpreter->Invoke(), kTfLiteOk);
-
-  float* default_output_data =
-      default_interpreter->typed_output_tensor<float>(0);
-  float* delegate_output_data =
-      delegate_interpreter->typed_output_tensor<float>(0);
-
-  for (size_t i = 0; i < OutputSize(); i++) {
-    ASSERT_EQ(delegate_output_data[i], default_output_data[i]);
+  switch (tensor_type) {
+    case TensorType_FLOAT32:
+      Test<float>(TensorType_FLOAT32, delegate_interpreter.get(),
+                  default_interpreter.get());
+      break;
+    case TensorType_INT8:
+      Test<int8_t>(TensorType_INT8, delegate_interpreter.get(),
+                   default_interpreter.get());
+      break;
+    case TensorType_UINT8:
+      Test<uint8_t>(TensorType_UINT8, delegate_interpreter.get(),
+                    default_interpreter.get());
+      break;
+    default:
+      GTEST_FAIL();
   }
 }
 
-std::vector<char> ReshapeTester::CreateTfLiteModel() const {
+std::vector<char> ReshapeTester::CreateTfLiteModel(
+    TensorType tensor_type) const {
   flatbuffers::FlatBufferBuilder builder;
   flatbuffers::Offset<OperatorCode> operator_code =
       CreateOperatorCode(builder, BuiltinOperator_RESHAPE, 0);
@@ -116,11 +170,21 @@ std::vector<char> ReshapeTester::CreateTfLiteModel() const {
       CreateTensor(builder,
                    builder.CreateVector<int32_t>(InputShape().data(),
                                                  InputShape().size()),
-                   TensorType_FLOAT32),
+                   tensor_type,
+                   /*buffer=*/0, /*name=*/0,
+                   CreateQuantizationParameters(
+                       builder, /*min=*/0, /*max=*/0,
+                       builder.CreateVector<float>({/*scale=*/1.0f}),
+                       builder.CreateVector<int64_t>({/*zero_point=*/0}))),
       CreateTensor(builder,
                    builder.CreateVector<int32_t>(OutputShape().data(),
                                                  OutputShape().size()),
-                   TensorType_FLOAT32),
+                   tensor_type,
+                   /*buffer=*/0, /*name=*/0,
+                   CreateQuantizationParameters(
+                       builder, /*min=*/0, /*max=*/0,
+                       builder.CreateVector<float>({/*scale=*/1.0f}),
+                       builder.CreateVector<int64_t>({/*zero_point=*/0}))),
   }};
 
   if (OutputShapeAsInput()) {

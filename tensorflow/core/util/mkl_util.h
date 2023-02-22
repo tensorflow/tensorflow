@@ -631,7 +631,7 @@ inline Status ConvertMklToTF(OpKernelContext* context,
     if (!input_mkl_shape.IsMklTensor()) {
       // Return input as is since it is already a TF tensor
       *output_tf_tensor = input_mkl_tensor;
-      return Status::OK();
+      return OkStatus();
     }
 
     // Allocate output tensor.
@@ -667,7 +667,7 @@ inline Status ConvertMklToTF(OpKernelContext* context,
             "ConvertMklToTF(): Failed to forward input tensor to output");
       }
     }
-    return Status::OK();
+    return OkStatus();
   } catch (dnnl::error& e) {
     string error_msg = "Status: " + std::to_string(e.status) +
                        ", message: " + string(e.message) + ", in file " +
@@ -1260,7 +1260,7 @@ inline Status CreateBlockedMemDescHelper(const memory::dims& dim,
                       "Failed to create blocked memory descriptor.",
                       "Status: ", e.status, ", message: ", e.message));
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 inline void CreateAndExecuteReorder(const ReorderPd& reorder_desc,
@@ -1947,10 +1947,14 @@ class MklPrimitiveFactory {
   /// For those legacy device(w/o AVX512 and AVX2),
   /// MKL-DNN GEMM will be used.
   static inline bool IsLegacyPlatform() {
+#ifdef DNNL_AARCH64_USE_ACL
+    return false;
+#else
     static const bool is_legacy_platform =
         (!port::TestCPUFeature(port::CPUFeature::AVX512F) &&
          !port::TestCPUFeature(port::CPUFeature::AVX2));
     return is_legacy_platform;
+#endif  // DNNL_AARCH64_USE_ACL
   }
 
   /// Function to check whether primitive memory optimization is enabled
@@ -1978,7 +1982,6 @@ class MklPrimitiveFactory {
     static thread_local LRUCache<MklPrimitive> lru_cache_(kCapacity);
 #else
     static LRUCache<MklPrimitive> lru_cache_(kCapacity);
-    TF_GUARDED_BY(lru_mu_)
 #endif
     return lru_cache_;
   }

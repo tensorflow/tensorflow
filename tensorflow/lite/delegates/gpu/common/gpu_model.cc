@@ -30,7 +30,6 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/selectors/special_selector.h"
 #include "tensorflow/lite/delegates/gpu/common/selectors/subgraph.h"
 #include "tensorflow/lite/delegates/gpu/common/task/serialization_base.h"
-#include "tensorflow/lite/delegates/gpu/common/task/storage_type_util.h"
 #include "tensorflow/lite/delegates/gpu/common/transformations/add_bias.h"
 #include "tensorflow/lite/delegates/gpu/common/transformations/global_pooling_to_reduce_op.h"
 #include "tensorflow/lite/delegates/gpu/common/transformations/merge_padding_with.h"
@@ -249,7 +248,11 @@ absl::Status ReserveGraphTensors(const CreateGpuModelInfo& create_info,
           tensor_desc.UpdateToSupportedStorageType(gpu_info, shape));
       if (gpu_info.IsApiMetal() &&
           storage_type == TensorStorageType::TEXTURE_2D) {
-        tensor_desc.SetUseBufferForWriteOnlyTexture2d(true);
+        const bool a7_gen_gpu =
+            gpu_info.IsApple() && gpu_info.apple_info.IsA7GenerationGpu();
+        if (!a7_gen_gpu) {
+          tensor_desc.SetUseBufferForWriteOnlyTexture2d(true);
+        }
       }
     }
     tensor_desc.SetBHWCShape(shape);
@@ -299,9 +302,9 @@ absl::Status ConvertOperations(const GpuInfo& gpu_info,
       continue;
     }
     GPUOperationsSubgraph gpu_subgraph;
-    if (create_info.hints.Check(ModelHints::kAllowSpecialKernels) &&
-        GPUSubgraphFromGraph(gpu_info, create_info.precision, graph, node.id,
-                             tensor_descriptors, &consumed_nodes, &gpu_subgraph)
+    if (GPUSubgraphFromGraph(create_info.hints, gpu_info, create_info.precision,
+                             graph, node.id, tensor_descriptors,
+                             &consumed_nodes, &gpu_subgraph)
             .ok()) {
       // Mapping of subgraph (set of nodes) to GPU operations. Should happen
       // before straigtforward mapping.
@@ -379,6 +382,285 @@ absl::Status ConvertOperations(const GpuInfo& gpu_info,
     }
   }
 
+  return absl::OkStatus();
+}
+
+absl::Status MergeElementwiseNodes(const GpuInfo& gpu_info,
+                                   GpuModel* gpu_model) {
+  auto& nodes = gpu_model->nodes;
+  for (int elem_root_index = 1; elem_root_index < nodes.size();
+       ++elem_root_index) {
+    auto& elem_root = nodes[elem_root_index];
+    if (!(elem_root.inputs.size() == 1 || elem_root.inputs.size() == 2) ||
+        elem_root.outputs.size() != 1 ||
+        !elem_root.gpu_operation->IsLinkable()) {
+      continue;
+    }
+    // key is elem_root input index, value is node index
+    std::map<int, int> prev_nodes;
+    for (int j = elem_root_index - 1; j >= 0; --j) {
+      for (int k = 0; k < elem_root.inputs.size(); ++k) {
+        if (elem_root.inputs[k] == nodes[j].outputs[0]) {
+          prev_nodes[k] = j;
+          break;
+        }
+      }
+    }
+    // TYPE_0
+    //    input       input
+    //      |           |
+    //    elem0         |
+    //      |    -->  elem
+    //  elem_root       |
+    //      |           |
+    //    output      output
+    if (prev_nodes.size() == 1) {
+      if (elem_root.inputs.size() != 1) {
+        continue;
+      }
+      const int prev_first_node_index = prev_nodes[0];
+      auto& prev_node = nodes[prev_first_node_index];
+      if (prev_node.inputs.size() != 1 || prev_node.outputs.size() != 1 ||
+          !prev_node.gpu_operation->IsLinkable()) {
+        continue;
+      }
+      int consumers_count = 0;
+      for (const auto& node : nodes) {
+        for (const auto& input : node.inputs) {
+          if (input == elem_root.inputs[0]) {
+            consumers_count++;
+          }
+        }
+      }
+      if (consumers_count != 1) {
+        continue;
+      }
+      GPUOperation new_operation;
+      RETURN_IF_ERROR(FuseSimpleElemWithSimpleElem(
+          gpu_info, std::move(*prev_node.gpu_operation.get()),
+          std::move(*elem_root.gpu_operation.get()), &new_operation));
+
+      GpuNode new_node;
+      new_node.inputs.push_back(prev_node.inputs[0]);
+      new_node.outputs.push_back(elem_root.outputs[0]);
+      new_node.name = prev_node.name + " -> " + elem_root.name;
+      new_node.gpu_operation =
+          std::make_unique<GPUOperation>(std::move(new_operation));
+
+      nodes.erase(nodes.begin() + elem_root_index);
+      nodes[prev_first_node_index] = std::move(new_node);
+      elem_root_index = prev_first_node_index;
+      continue;
+    }
+
+    // check TYPE_1/2/3
+    if (prev_nodes.size() == 2) {
+      if (elem_root.inputs.size() != 2 ||
+          elem_root.gpu_operation->GetElementwiseInputsCount() != 2) {
+        continue;
+      }
+      const int prev_first_node_index = prev_nodes[0];
+      const int prev_second_node_index = prev_nodes[1];
+      auto& prev_first_node = nodes[prev_first_node_index];
+      auto& prev_second_node = nodes[prev_second_node_index];
+
+      // check TYPE_1
+      // TYPE_1
+      //      input           input
+      //     /    \             |
+      //   elem0   |            |
+      //     \    /      -->  elem
+      //   elem_root            |
+      //       |                |
+      //     output           output
+      if (prev_first_node.gpu_operation->IsLinkable() &&
+          !prev_second_node.gpu_operation->IsLinkable() &&
+          prev_second_node.outputs.size() == 1 &&
+          prev_first_node.inputs.size() == 1 &&
+          prev_first_node.outputs.size() == 1) {
+        int first_node_parent_index = -1;
+        for (int j = prev_first_node_index - 1; j >= 0; --j) {
+          if (nodes[j].outputs[0] == prev_first_node.inputs[0]) {
+            first_node_parent_index = j;
+            break;
+          }
+        }
+        if (first_node_parent_index == -1 ||
+            first_node_parent_index != prev_second_node_index) {
+          continue;
+        }
+        int consumers_count = 0;
+        for (const auto& node : nodes) {
+          for (const auto& input : node.inputs) {
+            if (input == elem_root.inputs[0]) {
+              consumers_count++;
+            }
+          }
+        }
+        if (consumers_count != 1) {
+          continue;
+        }
+
+        GPUOperation new_operation;
+        RETURN_IF_ERROR(Fuse2InputElemWithSimpleElemAsFirstInput(
+            gpu_info, std::move(*prev_first_node.gpu_operation.get()),
+            std::move(*elem_root.gpu_operation.get()), &new_operation));
+
+        GpuNode new_node;
+        new_node.inputs.push_back(prev_first_node.inputs[0]);
+        new_node.outputs.push_back(elem_root.outputs[0]);
+        new_node.name = prev_first_node.name + " -> " + elem_root.name;
+        new_node.gpu_operation =
+            std::make_unique<GPUOperation>(std::move(new_operation));
+
+        nodes.erase(nodes.begin() + elem_root_index);
+        nodes[prev_first_node_index] = std::move(new_node);
+        elem_root_index = prev_first_node_index;
+        continue;
+      }
+
+      // check TYPE_2
+      // TYPE_2
+      //      input           input
+      //     /    \             |
+      //    |    elem0          |
+      //     \    /      -->  elem
+      //   elem_root            |
+      //       |                |
+      //     output           output
+      if (!prev_first_node.gpu_operation->IsLinkable() &&
+          prev_second_node.gpu_operation->IsLinkable() &&
+          prev_first_node.outputs.size() == 1 &&
+          prev_second_node.inputs.size() == 1 &&
+          prev_second_node.outputs.size() == 1) {
+        int second_node_parent_index = -1;
+        for (int j = prev_second_node_index - 1; j >= 0; --j) {
+          if (nodes[j].outputs[0] == prev_second_node.inputs[0]) {
+            second_node_parent_index = j;
+            break;
+          }
+        }
+        if (second_node_parent_index == -1 ||
+            second_node_parent_index != prev_first_node_index) {
+          continue;
+        }
+        int consumers_count = 0;
+        for (const auto& node : nodes) {
+          for (const auto& input : node.inputs) {
+            if (input == elem_root.inputs[1]) {
+              consumers_count++;
+            }
+          }
+        }
+        if (consumers_count != 1) {
+          continue;
+        }
+
+        GPUOperation new_operation;
+        RETURN_IF_ERROR(Fuse2InputElemWithSimpleElemAsSecondInput(
+            gpu_info, std::move(*prev_second_node.gpu_operation.get()),
+            std::move(*elem_root.gpu_operation.get()), &new_operation));
+
+        GpuNode new_node;
+        new_node.inputs.push_back(prev_second_node.inputs[0]);
+        new_node.outputs.push_back(elem_root.outputs[0]);
+        new_node.name = prev_second_node.name + " -> " + elem_root.name;
+        new_node.gpu_operation =
+            std::make_unique<GPUOperation>(std::move(new_operation));
+
+        nodes.erase(nodes.begin() + elem_root_index);
+        nodes[prev_second_node_index] = std::move(new_node);
+        elem_root_index = prev_second_node_index;
+        continue;
+      }
+
+      // check TYPE_3
+      // TYPE_3
+      //      input           input
+      //     /    \             |
+      //  elem0  elem1          |
+      //     \    /      -->  elem
+      //   elem_root            |
+      //       |                |
+      //     output           output
+      if (prev_first_node.gpu_operation->IsLinkable() &&
+          prev_second_node.gpu_operation->IsLinkable() &&
+          prev_first_node.inputs.size() == 1 &&
+          prev_first_node.outputs.size() == 1 &&
+          prev_second_node.inputs.size() == 1 &&
+          prev_second_node.outputs.size() == 1) {
+        int first_node_parent_index = -1;
+        for (int j = prev_first_node_index - 1; j >= 0; --j) {
+          if (nodes[j].outputs[0] == prev_first_node.inputs[0]) {
+            first_node_parent_index = j;
+            break;
+          }
+        }
+        int second_node_parent_index = -1;
+        for (int j = prev_second_node_index - 1; j >= 0; --j) {
+          if (nodes[j].outputs[0] == prev_second_node.inputs[0]) {
+            second_node_parent_index = j;
+            break;
+          }
+        }
+        if (first_node_parent_index == -1 || second_node_parent_index == -1 ||
+            first_node_parent_index != second_node_parent_index) {
+          continue;
+        }
+
+        int consumers_count = 0;
+        for (const auto& node : nodes) {
+          for (const auto& input : node.inputs) {
+            if (input == elem_root.inputs[1]) {
+              consumers_count++;
+            }
+          }
+        }
+        if (consumers_count != 1) {
+          continue;
+        }
+
+        consumers_count = 0;
+        for (const auto& node : nodes) {
+          for (const auto& input : node.inputs) {
+            if (input == elem_root.inputs[0]) {
+              consumers_count++;
+            }
+          }
+        }
+        if (consumers_count != 1) {
+          continue;
+        }
+
+        GPUOperation new_operation;
+        RETURN_IF_ERROR(Fuse2InputElemWith2SimpleElem(
+            gpu_info, std::move(*prev_first_node.gpu_operation.get()),
+            std::move(*prev_second_node.gpu_operation.get()),
+            std::move(*elem_root.gpu_operation.get()), &new_operation));
+        GpuNode new_node;
+        new_node.inputs.push_back(prev_first_node.inputs[0]);
+        new_node.outputs.push_back(elem_root.outputs[0]);
+        new_node.name = prev_first_node.name + " -> " + prev_second_node.name +
+                        " -> " + elem_root.name;
+        new_node.gpu_operation =
+            std::make_unique<GPUOperation>(std::move(new_operation));
+
+        // prev_first_node_index and prev_second_node_index ordered relative to
+        // elem_root inputs.
+        // first_prev_node_index and second_prev_node_index ordered relative to
+        // nodes.
+        int first_prev_node_index =
+            std::min(prev_first_node_index, prev_second_node_index);
+        int second_prev_node_index =
+            std::max(prev_first_node_index, prev_second_node_index);
+        nodes.erase(nodes.begin() + elem_root_index);
+        nodes.erase(nodes.begin() + second_prev_node_index);
+        nodes[first_prev_node_index] = std::move(new_node);
+        elem_root_index = first_prev_node_index - 1;
+        continue;
+      }
+    }
+  }
   return absl::OkStatus();
 }
 
@@ -525,6 +807,9 @@ absl::Status GraphToGpuModel(const GraphFloat32& graph,
   CopyExternals(graph, gpu_model);
   RETURN_IF_ERROR(ConvertOperations(gpu_info, graph, create_info,
                                     &tensor_reserver, gpu_model));
+  // MergeElementwise fuse only elemntwise nodes, MergeNodes fuse elementwise to
+  // usual nodes
+  RETURN_IF_ERROR(MergeElementwiseNodes(gpu_info, gpu_model));
   RETURN_IF_ERROR(MergeNodes(gpu_info, gpu_model));
   gpu_model->tensors = std::move(tensor_reserver.reservations_);
   RemoveUnusedTensors(gpu_model);

@@ -60,6 +60,12 @@ class TestCustomDevice : public CustomDevice {
     return errors::Unimplemented("Packing is not implemented");
   }
 
+  // Pins `op` to `device`.
+  StatusOr<bool> ShallPinToThisDevice(
+      const ImmediateExecutionOperation* op) override {
+    return errors::Unimplemented("No preference in custom device pinning.");
+  }
+
  private:
   std::string name_;
 };
@@ -100,7 +106,8 @@ TEST(CustomDevice, TestTensorHandle) {
   core::RefCountPtr<EagerContext> ctx(new EagerContext(
       SessionOptions(),
       tensorflow::ContextDevicePlacementPolicy::DEVICE_PLACEMENT_SILENT, false,
-      &device_mgr, false, nullptr, nullptr));
+      &device_mgr, false, nullptr, nullptr, nullptr,
+      /*run_eager_op_as_function=*/true));
   std::string device_name = "/job:localhost/replica:0/task:0/device:CUSTOM:15";
   TestCustomDevice device(device_name);
   core::RefCountPtr<TestCustomDeviceTensorHandle> tensor(
@@ -129,7 +136,8 @@ TEST(CustomDevice, TestTensorHandleUnknownDimNumElements) {
   core::RefCountPtr<EagerContext> ctx(new EagerContext(
       SessionOptions(),
       tensorflow::ContextDevicePlacementPolicy::DEVICE_PLACEMENT_SILENT, false,
-      &device_mgr, false, nullptr, nullptr));
+      &device_mgr, false, nullptr, nullptr, nullptr,
+      /*run_eager_op_as_function=*/true));
   std::string device_name = "/job:localhost/replica:0/task:0/device:CUSTOM:15";
   TestCustomDevice device(device_name);
   core::RefCountPtr<TestCustomDeviceTensorHandle> tensor(
@@ -147,7 +155,8 @@ TEST(CustomDevice, TestResourcePlacement) {
   core::RefCountPtr<EagerContext> ctx(new EagerContext(
       SessionOptions(),
       tensorflow::ContextDevicePlacementPolicy::DEVICE_PLACEMENT_SILENT, false,
-      &device_mgr, false, nullptr, nullptr));
+      &device_mgr, false, nullptr, nullptr, nullptr,
+      /*run_eager_op_as_function=*/true));
   std::string custom_device_name =
       "/job:localhost/replica:0/task:0/device:CUSTOM:15";
   TestCustomDevice custom_device(custom_device_name);

@@ -17,7 +17,6 @@ import collections
 import functools
 import itertools
 
-import six
 import wrapt
 
 from tensorflow.python.data.util import nest
@@ -27,9 +26,12 @@ from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import type_spec
+from tensorflow.python.framework import type_spec_registry
+from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.types import internal
 from tensorflow.python.util import deprecation
 from tensorflow.python.util.compat import collections_abc
 from tensorflow.python.util.tf_export import tf_export
@@ -69,6 +71,7 @@ def normalize_element(element, element_signature=None):
 
   * Components matching `SparseTensorSpec` are converted to `SparseTensor`.
   * Components matching `RaggedTensorSpec` are converted to `RaggedTensor`.
+  * Components matching `VariableSpec` are converted to `Tensor`.
   * Components matching `DatasetSpec` or `TensorArraySpec` are passed through.
   * `CompositeTensor` components are passed through.
   * All other components are converted to `Tensor`.
@@ -82,8 +85,8 @@ def normalize_element(element, element_signature=None):
       python types, etc.)
 
   Returns:
-    A nested structure of `Tensor`, `Dataset`, `SparseTensor`, `RaggedTensor`,
-    or `TensorArray` objects.
+    A nested structure of `Tensor`, `Variable`, `Dataset`, `SparseTensor`,
+    `RaggedTensor`, or `TensorArray` objects.
   """
   normalized_components = []
   if element_signature is None:
@@ -95,8 +98,6 @@ def normalize_element(element, element_signature=None):
     components = nest.flatten_up_to(element_signature, element)
     pack_as = element_signature
   with ops.name_scope("normalize_element"):
-    # Imported here to avoid circular dependency.
-    from tensorflow.python.data.ops import dataset_ops  # pylint: disable=g-import-not-at-top
     for i, (t, spec) in enumerate(zip(components, flattened_signature)):
       try:
         if spec is None:
@@ -107,17 +108,23 @@ def normalize_element(element, element_signature=None):
         normalized_components.append(
             ops.convert_to_tensor(t, name="component_%d" % i))
       else:
-        if isinstance(spec, sparse_tensor.SparseTensorSpec):
+        # To avoid a circular dependency between dataset_ops and structure,
+        # we check the class name instead of using `isinstance`.
+        if spec.__class__.__name__ == "DatasetSpec":
+          normalized_components.append(t)
+        elif isinstance(spec, sparse_tensor.SparseTensorSpec):
           normalized_components.append(sparse_tensor.SparseTensor.from_value(t))
         elif isinstance(spec, ragged_tensor.RaggedTensorSpec):
           normalized_components.append(
               ragged_tensor.convert_to_tensor_or_ragged_tensor(
                   t, name="component_%d" % i))
-        elif isinstance(
-            spec, (tensor_array_ops.TensorArraySpec, dataset_ops.DatasetSpec)):
+        elif isinstance(spec, (tensor_array_ops.TensorArraySpec)):
           normalized_components.append(t)
         elif isinstance(spec, NoneTensorSpec):
           normalized_components.append(NoneTensor())
+        elif isinstance(spec, resource_variable_ops.VariableSpec):
+          normalized_components.append(
+              ops.convert_to_tensor(t, name=f"component_{i}", dtype=spec.dtype))
         elif isinstance(t, composite_tensor.CompositeTensor):
           normalized_components.append(t)
         else:
@@ -335,6 +342,19 @@ def _to_tensor_list_helper(encode_fn, element_spec, element):
 
   def reduce_fn(state, value):
     spec, component = value
+    if isinstance(spec, internal.TensorSpec):
+      try:
+        component = ops.convert_to_tensor(component, spec.dtype)
+      except (TypeError, ValueError):
+        raise ValueError(
+            f"Value {component} is not convertible to a tensor with "
+            f"dtype {spec.dtype} and shape {spec.shape}."
+        )
+      if not component.shape.is_compatible_with(spec.shape):
+        raise ValueError(
+            f"Value {component} is not convertible to a tensor with "
+            f"dtype {spec.dtype} and shape {spec.shape}."
+        )
     return encode_fn(state, spec, component)
 
   return functools.reduce(
@@ -456,7 +476,7 @@ def type_spec_from_value(element, use_fallback=True):
   if isinstance(element, tuple):
     if hasattr(element, "_fields") and isinstance(
         element._fields, collections_abc.Sequence) and all(
-            isinstance(f, six.string_types) for f in element._fields):
+            isinstance(f, str) for f in element._fields):
       if isinstance(element, wrapt.ObjectProxy):
         element_type = type(element.__wrapped__)
       else:
@@ -501,7 +521,7 @@ class NoneTensor(composite_tensor.CompositeTensor):
 
 # TODO(b/149584798): Move this to framework and add tests for non-tf.data
 # functionality.
-@type_spec.register("tf.NoneTensorSpec")
+@type_spec_registry.register("tf.NoneTensorSpec")
 class NoneTensorSpec(type_spec.BatchableTypeSpec):
   """Type specification for `None` value."""
 

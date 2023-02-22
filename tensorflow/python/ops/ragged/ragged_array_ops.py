@@ -646,11 +646,14 @@ def stack_dynamic_partitions(data, partitions, num_partitions, name=None):
       permutation = sort_ops.argsort(partitions, stable=True)
       value_rowids = array_ops.gather(partitions, permutation)
       values = array_ops.gather(data, permutation)
-      check = check_ops.assert_less(
-          value_rowids[-1:],
-          num_partitions,
-          message='partitions must be less than num_partitions')
-      with ops.control_dependencies([check]):
+      checks = [
+          check_ops.assert_less(
+              value_rowids[-1:], num_partitions,
+              message='partitions must be less than num_partitions'),
+          check_ops.assert_non_negative(
+              partitions, message='partitions must be non-negative.')
+      ]
+      with ops.control_dependencies(checks):
         return ragged_tensor.RaggedTensor.from_value_rowids(
             values, value_rowids, nrows=num_partitions, validate=False)
 

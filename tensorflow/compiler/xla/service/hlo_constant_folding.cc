@@ -15,23 +15,24 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/hlo_constant_folding.h"
 
+#include <algorithm>
 #include <memory>
 #include <string>
 #include <utility>
 #include <vector>
 
+#include "tensorflow/compiler/xla/hlo/evaluator/hlo_evaluator.h"
+#include "tensorflow/compiler/xla/hlo/ir/dfs_hlo_visitor_with_default.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/literal.h"
-#include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
-#include "tensorflow/compiler/xla/service/hlo_computation.h"
-#include "tensorflow/compiler/xla/service/hlo_evaluator.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/hlo_query.h"
 #include "tensorflow/compiler/xla/service/slow_operation_alarm.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/types.h"
-#include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/tsl/platform/errors.h"
 
 namespace xla {
 
@@ -137,6 +138,14 @@ StatusOr<bool> HloConstantFolding::Run(
         continue;
       }
 
+      // Don't fold across async execution thread if it's not supposed to be
+      // changed by this pass.
+      if (instruction->IsAsynchronous() &&
+          instruction->async_execution_thread() !=
+              instruction->parent()->execution_thread()) {
+        continue;
+      }
+
       // Do not fold FFT. Evaluating it may significantly increase compile time.
       if (instruction->opcode() == HloOpcode::kFft) {
         continue;
@@ -167,8 +176,8 @@ StatusOr<bool> HloConstantFolding::Run(
             ShapeUtil::ElementsIn(instruction->shape());
 
         static const int64_t kMaximumConstantSizeElements = 45 * 1000 * 1000;
-        if (elements_in_constant > elements_in_removed_operands &&
-            elements_in_constant > kMaximumConstantSizeElements) {
+        if (std::max(elements_in_constant, elements_in_removed_operands) >
+            kMaximumConstantSizeElements) {
           continue;
         }
       }

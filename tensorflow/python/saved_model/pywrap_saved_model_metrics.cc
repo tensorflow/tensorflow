@@ -98,6 +98,62 @@ void DefineMetricsModule(py::module main_module) {
               "counter for `api_label` cell."));
 
   m.def(
+      "SetReadFingerprint",
+      [](const char* saved_model_checksum) {
+        metrics::SavedModelReadFingerprint().Set(saved_model_checksum);
+      },
+      py::kw_only(), py::arg("saved_model_checksum"),
+      py::doc("Set the '/tensorflow/core/saved_model/read/fingerprint' gauge "
+              "with `saved_model_checksum`."));
+
+  m.def(
+      "GetReadFingerprint",
+      []() { return metrics::SavedModelReadFingerprint().value(); },
+      py::doc("Get value of '/tensorflow/core/saved_model/read/fingerprint' "
+              "gauge."));
+
+  m.def(
+      "SetWriteFingerprint",
+      [](const char* saved_model_checksum) {
+        metrics::SavedModelWriteFingerprint().Set(saved_model_checksum);
+      },
+      py::kw_only(), py::arg("saved_model_checksum"),
+      py::doc("Set the '/tensorflow/core/saved_model/write/fingerprint' gauge "
+              "with `saved_model_checksum`."));
+
+  m.def(
+      "GetWriteFingerprint",
+      []() { return metrics::SavedModelWriteFingerprint().value(); },
+      py::doc("Get value of '/tensorflow/core/saved_model/write/fingerprint' "
+              "gauge."));
+
+  m.def(
+      "SetReadPath",
+      [](const char* saved_model_path) {
+        metrics::SavedModelReadPath().Set(saved_model_path);
+      },
+      py::kw_only(), py::arg("saved_model_path"),
+      py::doc("Set the '/tensorflow/core/saved_model/read/path' gauge "
+              "with `saved_model_path`."));
+
+  m.def(
+      "GetReadPath", []() { return metrics::SavedModelReadPath().value(); },
+      py::doc("Get value of '/tensorflow/core/saved_model/read/path' gauge."));
+
+  m.def(
+      "SetWritePath",
+      [](const char* saved_model_path) {
+        metrics::SavedModelWritePath().Set(saved_model_path);
+      },
+      py::kw_only(), py::arg("saved_model_path"),
+      py::doc("Set the '/tensorflow/core/saved_model/write/path' gauge "
+              "with `saved_model_path`."));
+
+  m.def(
+      "GetWritePath", []() { return metrics::SavedModelWritePath().value(); },
+      py::doc("Get value of '/tensorflow/core/saved_model/write/path' gauge."));
+
+  m.def(
       "AddCheckpointReadDuration",
       [](const char* api_label, double microseconds) {
         metrics::CheckpointReadDuration(api_label).Add(microseconds);
@@ -140,6 +196,28 @@ void DefineMetricsModule(py::module main_module) {
       py::kw_only(), py::arg("api_label"),
       py::doc("Get serialized HistogramProto of `api_label` cell for "
               "'/tensorflow/core/checkpoint/write/write_durations'."));
+
+  m.def(
+      "AddAsyncCheckpointWriteDuration",
+      [](const char* api_label, double microseconds) {
+        metrics::AsyncCheckpointWriteDuration(api_label).Add(microseconds);
+      },
+      py::kw_only(), py::arg("api_label"), py::arg("microseconds"),
+      py::doc("Add `microseconds` to the cell `api_label` for "
+              "'/tensorflow/core/checkpoint/write/async_write_durations'."));
+
+  m.def(
+      "GetAsyncCheckpointWriteDurations",
+      [](const char* api_label) {
+        // This function is called sparingly, so protobuf (de)-serialization
+        // round trip is not an issue.
+        return py::bytes(metrics::AsyncCheckpointWriteDuration(api_label)
+                             .value()
+                             .SerializeAsString());
+      },
+      py::kw_only(), py::arg("api_label"),
+      py::doc("Get serialized HistogramProto of `api_label` cell for "
+              "'/tensorflow/core/checkpoint/write/async_write_durations'."));
 
   m.def(
       "AddTrainingTimeSaved",

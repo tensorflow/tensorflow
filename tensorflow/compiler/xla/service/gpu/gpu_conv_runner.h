@@ -18,17 +18,17 @@ limitations under the License.
 
 #include <optional>
 
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"
 #include "tensorflow/compiler/xla/service/gpu/backend_configs.pb.h"
 #include "tensorflow/compiler/xla/service/gpu/cublas_cudnn.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/statusor.h"
+#include "tensorflow/compiler/xla/stream_executor/dnn.h"
+#include "tensorflow/compiler/xla/stream_executor/lazy_op_runner.h"
+#include "tensorflow/compiler/xla/stream_executor/stream_executor.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/platform/stream_executor_no_cuda.h"
-#include "tensorflow/stream_executor/dnn.h"
-#include "tensorflow/stream_executor/lazy_op_runner.h"
 
 namespace xla {
 namespace gpu {
@@ -62,6 +62,7 @@ struct GpuConvConfig {
   se::dnn::FilterDescriptor filter_descriptor;
   se::dnn::BatchDescriptor output_descriptor;
   se::dnn::ConvolutionDescriptor conv_desc;
+  se::dnn::BatchDescriptor bias_descriptor;
 
   Shape input_shape;
   Shape filter_shape;
@@ -211,8 +212,6 @@ StatusOr<GpuConvParams> GetGpuConvParams(
     const GpuConvConfig& conv_config,
     absl::Span<const se::DeviceMemoryBase> operand_buffers,
     se::DeviceMemoryBase result_buffer);
-
-se::dnn::BatchDescriptor GetBiasDescriptor(const GpuConvConfig& config);
 
 inline se::dnn::DataType BiasTypeForInputType(se::dnn::DataType input_type) {
   switch (input_type) {

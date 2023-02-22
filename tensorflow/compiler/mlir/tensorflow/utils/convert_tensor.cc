@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <cstdint>
 #include <limits>
+#include <optional>
 
 #include "absl/base/casts.h"
 #include "absl/container/inlined_vector.h"
@@ -27,11 +28,13 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypeInterfaces.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_attributes.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_type.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/dynamic_shape_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/mangling_util.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor.pb.h"
@@ -43,7 +46,7 @@ limitations under the License.
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/tstring.h"
-#include "tensorflow/stream_executor/lib/statusor.h"
+#include "tensorflow/tsl/platform/float8.h"
 
 namespace tensorflow {
 
@@ -83,19 +86,13 @@ StatusOr<ElementsAttr> ConvertFlatTensor(const Tensor& input_tensor,
                                          ShapedType type) {
   auto arr = input_tensor.flat<T>();
   return ElementsAttr(mlir::DenseElementsAttr::get(
-      type, llvm::makeArrayRef(arr.data(), arr.size())));
+      type, llvm::ArrayRef(arr.data(), arr.size())));
 }
 
-ElementsAttr ConvertBf16Tensor(const Tensor& input_tensor,
-                               RankedTensorType type) {
-  auto buffer = llvm::makeArrayRef(static_cast<char*>(input_tensor.data()),
-                                   input_tensor.TotalBytes());
-  return mlir::DenseElementsAttr::getFromRawBuffer(type, buffer);
-}
-
-ElementsAttr ConvertHalfTensor(const Tensor& tensor, RankedTensorType type) {
-  auto buffer = llvm::makeArrayRef(static_cast<char*>(tensor.data()),
-                                   tensor.TotalBytes());
+ElementsAttr ConvertTensorOfCustomFloatType(const Tensor& tensor,
+                                            RankedTensorType type) {
+  auto buffer =
+      llvm::ArrayRef(static_cast<char*>(tensor.data()), tensor.TotalBytes());
   return mlir::DenseElementsAttr::getFromRawBuffer(type, buffer);
 }
 
@@ -143,12 +140,11 @@ StatusOr<ElementsAttr> ConvertTensor(const Tensor& input_tensor,
     CONVERT_FLAT(DT_COMPLEX64, std::complex<float>)
     CONVERT_FLAT(DT_COMPLEX128, std::complex<double>)
 
-    // BFLOAT16 is a special case that it needs to be cast to double type to
-    // match its storage type.
     case DT_BFLOAT16:
-      return ConvertBf16Tensor(input_tensor, type);
     case DT_HALF:
-      return ConvertHalfTensor(input_tensor, type);
+    case DT_FLOAT8_E5M2:
+    case DT_FLOAT8_E4M3FN:
+      return ConvertTensorOfCustomFloatType(input_tensor, type);
     case DT_STRING:
       return ConvertStringTensor(input_tensor, type);
     default:
@@ -236,7 +232,8 @@ StatusOr<ElementsAttr> ConvertTensorProto(const TensorProto& input_tensor,
 void ConvertToTensorShapeProto(ArrayRef<int64_t> shape,
                                TensorShapeProto* output_shape) {
   for (auto d : shape) {
-    output_shape->add_dim()->set_size(d);
+    output_shape->add_dim()->set_size(ShapedType::isDynamic(d) ? kTFDynamicSize
+                                                               : d);
   }
 }
 
@@ -259,7 +256,7 @@ PartialTensorShape ConvertTypeToTensorShape(const mlir::Type& type) {
 
 mlir::TF::ShapeAttr ConvertTypeToTensorShapeAttr(const mlir::Type& type) {
   if (type.isa<mlir::UnrankedTensorType>()) {
-    return mlir::TF::ShapeAttr::get(type.getContext(), llvm::None);
+    return mlir::TF::ShapeAttr::get(type.getContext(), std::nullopt);
   }
 
   if (auto tensor_type = type.dyn_cast<mlir::RankedTensorType>()) {
@@ -275,14 +272,15 @@ mlir::TF::ShapeAttr ConvertTypeToTensorShapeAttr(const mlir::Type& type) {
 StatusOr<mlir::Attribute> ConvertTensorShapeProto(const TensorShapeProto& shape,
                                                   mlir::MLIRContext* context) {
   if (shape.unknown_rank())
-    return mlir::TF::ShapeAttr::get(context, llvm::None);
+    return mlir::TF::ShapeAttr::get(context, std::nullopt);
 
   llvm::SmallVector<int64_t, 4> dims;
   dims.reserve(shape.dim().size());
   for (const auto& dim : shape.dim()) {
-    dims.push_back(dim.size());
+    dims.push_back(dim.size() == kTFDynamicSize ? ShapedType::kDynamic
+                                                : dim.size());
   }
-  return mlir::TF::ShapeAttr::get(context, llvm::makeArrayRef(dims));
+  return mlir::TF::ShapeAttr::get(context, llvm::ArrayRef(dims));
 }
 
 // Converts an MLIR dense string elements attribute to a TensorFlow tensor
@@ -391,6 +389,20 @@ void ConvertBfloat16ElementsAttr(const mlir::DenseElementsAttr attr,
   }
 }
 
+template <typename T>
+void ConvertFloat8ElementsAttr(const mlir::DenseElementsAttr attr,
+                               std::string* output) {
+  if (attr.isSplat()) {
+    if (attr.getSplatValue<T>() != T(0))
+      output->push_back(
+          Eigen::numext::bit_cast<uint8_t>(attr.getSplatValue<T>()));
+  } else {
+    output->reserve(attr.getNumElements());
+    for (const T value : attr.getValues<T>())
+      output->push_back(Eigen::numext::bit_cast<uint8_t>(value));
+  }
+}
+
 Status ConvertToTensorProto(const ElementsAttr attr, TensorProto* output) {
   auto type = attr.getType();
   auto shape = type.getShape();
@@ -428,6 +440,14 @@ Status ConvertToTensorProto(const ElementsAttr attr, TensorProto* output) {
     case DT_FLOAT:
       ConvertFloatElementsAttr(dense_attr, output->mutable_float_val(),
                                output->mutable_tensor_content());
+      break;
+    case DT_FLOAT8_E5M2:
+      ConvertFloat8ElementsAttr<tsl::float8_e5m2>(dense_attr,
+                                                  output->mutable_float8_val());
+      break;
+    case DT_FLOAT8_E4M3FN:
+      ConvertFloat8ElementsAttr<tsl::float8_e4m3fn>(
+          dense_attr, output->mutable_float8_val());
       break;
     case DT_QUINT8:
     case DT_INT8:

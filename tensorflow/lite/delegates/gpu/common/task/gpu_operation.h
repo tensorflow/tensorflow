@@ -31,7 +31,6 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/task/gpu_tensor.h"
 #include "tensorflow/lite/delegates/gpu/common/task/serialization_base_generated.h"
 #include "tensorflow/lite/delegates/gpu/common/task/tensor_desc.h"
-#include "tensorflow/lite/delegates/gpu/common/task/texture2d_desc.h"
 #include "tensorflow/lite/delegates/gpu/common/task/tuning_type.h"
 #include "tensorflow/lite/delegates/gpu/common/types.h"
 
@@ -95,6 +94,8 @@ class GPUOperation {
 
   absl::Status AddOperation(const GpuInfo& gpu_info, GPUOperation* operation);
 
+  int GetElementwiseInputsCount() const { return elementwise_inputs_; }
+
   void SetSrc(GpuSpatialTensor* ptr, int index = 0);
   void SetDst(GpuSpatialTensor* ptr, int index = 0);
 
@@ -124,13 +125,12 @@ class GPUOperation {
   }
 
   const OperationDef& GetDefinition() const { return definition_; }
+  CalculationsPrecision GetPrecision() const { return definition_.precision; }
 
   void AddSrcTensor(const std::string& tensor_name,
                     const TensorDescriptor& desc);
   void AddSrcBuffer(const std::string& buffer_name,
                     const BufferDescriptor& desc);
-  void AddSrcTexture2D(const std::string& texture_name,
-                       const Texture2DDescriptor& desc);
   void AddDstTensor(const std::string& tensor_name,
                     const TensorDescriptor& desc);
 
@@ -168,6 +168,26 @@ class GPUOperation {
                                          ElementwiseDescriptor&& descriptor,
                                          const BHWC& second_shape);
 
+  friend absl::Status FuseElemWithElemInternal(
+      const GpuInfo& gpu_info, GPUOperation&& elem0, GPUOperation&& elem1,
+      const std::vector<std::pair<std::string, std::string>>& replacements,
+      GPUOperation* result);
+  friend absl::Status FuseSimpleElemWithSimpleElem(const GpuInfo& gpu_info,
+                                                   GPUOperation&& elem0,
+                                                   GPUOperation&& elem1,
+                                                   GPUOperation* result);
+  friend absl::Status Fuse2InputElemWithSimpleElemAsFirstInput(
+      const GpuInfo& gpu_info, GPUOperation&& elem0, GPUOperation&& elem1,
+      GPUOperation* result);
+  friend absl::Status Fuse2InputElemWithSimpleElemAsSecondInput(
+      const GpuInfo& gpu_info, GPUOperation&& elem0, GPUOperation&& elem1,
+      GPUOperation* result);
+  friend absl::Status Fuse2InputElemWith2SimpleElem(const GpuInfo& gpu_info,
+                                                    GPUOperation&& elem0,
+                                                    GPUOperation&& elem1,
+                                                    GPUOperation&& elem_root,
+                                                    GPUOperation* result);
+
   virtual int3 GetGridSize() const;
   virtual void GetPossibleKernelWorkGroups(
       TuningType tuning_type, const GpuInfo& gpu_info,
@@ -184,8 +204,14 @@ class GPUOperation {
   std::vector<std::string> dst_tensors_names_;
 
  private:
+  absl::Status GetTensorDescriptor(const std::string& tensor_name,
+                                   TensorDescriptor** resutl);
+  absl::Status ResolveSecondElementwiseInput();
   int3 work_groups_count_ = int3(0, 0, 0);
   bool elementwise_ = false;      // temporary, used during op construction
+  int elementwise_inputs_ = 0;    // can be {0, 1, 2}
+  std::string
+      second_elementwise_tensor_name_;  // used with elementwise_inputs_ = 2
   int linkable_count_ = 0;        // temporary, used during op construction
   std::string elementwise_code_;  // temporary, used during op construction
 };
@@ -197,6 +223,60 @@ GPUOperation CreateGpuOperation(const OperationDef& definition,
 GPUOperation CreateGpuOperation(const OperationDef& definition,
                                 ElementwiseDescriptor&& descriptor,
                                 const BHWC& second_shape);
+
+absl::Status FuseElemWithElemInternal(
+    const GpuInfo& gpu_info, GPUOperation&& elem0, GPUOperation&& elem1,
+    const std::vector<std::pair<std::string, std::string>>& replacements,
+    GPUOperation* result);
+
+//    input       input
+//      |           |
+//    elem0         |
+//      |    -->  elem
+//    elem1         |
+//      |           |
+//    output      output
+absl::Status FuseSimpleElemWithSimpleElem(const GpuInfo& gpu_info,
+                                          GPUOperation&& elem0,
+                                          GPUOperation&& elem1,
+                                          GPUOperation* result);
+
+//      input           input
+//     /    \             |
+//  elem0    |            |
+//     \    /      -->  elem
+//     elem1              |
+//       |                |
+//     output           output
+absl::Status Fuse2InputElemWithSimpleElemAsFirstInput(const GpuInfo& gpu_info,
+                                                      GPUOperation&& elem0,
+                                                      GPUOperation&& elem1,
+                                                      GPUOperation* result);
+
+//      input           input
+//     /    \             |
+//    |    elem0          |
+//     \    /      -->  elem
+//     elem1              |
+//       |                |
+//     output           output
+absl::Status Fuse2InputElemWithSimpleElemAsSecondInput(const GpuInfo& gpu_info,
+                                                       GPUOperation&& elem0,
+                                                       GPUOperation&& elem1,
+                                                       GPUOperation* result);
+
+//      input           input
+//     /    \             |
+//  elem0  elem1          |
+//     \    /      -->  elem
+//   elem_root            |
+//       |                |
+//     output           output
+absl::Status Fuse2InputElemWith2SimpleElem(const GpuInfo& gpu_info,
+                                           GPUOperation&& elem0,
+                                           GPUOperation&& elem1,
+                                           GPUOperation&& elem_root,
+                                           GPUOperation* result);
 }  // namespace gpu
 }  // namespace tflite
 

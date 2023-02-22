@@ -73,11 +73,10 @@ Status MaybeInitializeTensorArray(xla::XlaBuilder* builder,
       return shape_or_status.status();
     }
     TensorShape shape;
-    TF_RETURN_IF_ERROR(
-        XLAShapeToTensorShape(shape_or_status.ValueOrDie(), &shape));
+    TF_RETURN_IF_ERROR(XLAShapeToTensorShape(shape_or_status.value(), &shape));
 
     TensorShape ta_shape;
-    ta_shape.AddDim(resource->max_array_size());
+    TF_RETURN_IF_ERROR(ta_shape.AddDimWithStatus(resource->max_array_size()));
     ta_shape.AppendShape(elem_shape);
     if (ta_shape != shape) {
       return errors::InvalidArgument(

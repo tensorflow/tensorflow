@@ -27,14 +27,17 @@ limitations under the License.
 // automatically move <Python.h> before <locale>.
 #include <Python.h>
 
-#include "tensorflow/lite/interpreter.h"
+#include "tensorflow/lite/core/interpreter.h"
 
 struct TfLiteDelegate;
 
 // We forward declare TFLite classes here to avoid exposing them to SWIG.
 namespace tflite {
 class MutableOpResolver;
+
+namespace impl {
 class FlatBufferModel;
+}
 
 namespace interpreter_wrapper {
 
@@ -42,29 +45,31 @@ class PythonErrorReporter;
 
 class InterpreterWrapper {
  public:
-  using Model = FlatBufferModel;
+  using Model = impl::FlatBufferModel;
 
   // SWIG caller takes ownership of pointer.
   static InterpreterWrapper* CreateWrapperCPPFromFile(
       const char* model_path, int op_resolver_id,
       const std::vector<std::string>& registerers, std::string* error_msg,
-      bool preserve_all_tensors);
+      bool preserve_all_tensors, bool disable_delegate_clustering);
   static InterpreterWrapper* CreateWrapperCPPFromFile(
       const char* model_path, int op_resolver_id,
       const std::vector<std::string>& registerers_by_name,
       const std::vector<std::function<void(uintptr_t)>>& registerers_by_func,
-      std::string* error_msg, bool preserve_all_tensors);
+      std::string* error_msg, bool preserve_all_tensors,
+      bool disable_delegate_clustering);
 
   // SWIG caller takes ownership of pointer.
   static InterpreterWrapper* CreateWrapperCPPFromBuffer(
       PyObject* data, int op_resolver_id,
       const std::vector<std::string>& registerers, std::string* error_msg,
-      bool preserve_all_tensors);
+      bool preserve_all_tensors, bool disable_delegate_clustering);
   static InterpreterWrapper* CreateWrapperCPPFromBuffer(
       PyObject* data, int op_resolver_id,
       const std::vector<std::string>& registerers_by_name,
       const std::vector<std::function<void(uintptr_t)>>& registerers_by_func,
-      std::string* error_msg, bool preserve_all_tensors);
+      std::string* error_msg, bool preserve_all_tensors,
+      bool disable_delegate_clustering);
 
   ~InterpreterWrapper();
   PyObject* AllocateTensors(int subgraph_index);
@@ -75,17 +80,19 @@ class InterpreterWrapper {
   PyObject* ResizeInputTensor(int i, PyObject* value, bool strict,
                               int subgraph_index);
 
-  int NumTensors() const;
-  std::string TensorName(int i) const;
-  PyObject* TensorType(int i) const;
-  PyObject* TensorSize(int i) const;
-  PyObject* TensorSizeSignature(int i) const;
-  PyObject* TensorSparsityParameters(int i) const;
+  int NumTensors(int subgraph_index) const;
+  std::string TensorName(int tensor_index, int subgraph_index) const;
+  PyObject* TensorType(int tensor_index, int subgraph_index) const;
+  PyObject* TensorSize(int tensor_index, int subgraph_index) const;
+  PyObject* TensorSizeSignature(int tensor_index, int subgraph_index) const;
+  PyObject* TensorSparsityParameters(int tensor_index,
+                                     int subgraph_index) const;
   // Deprecated in favor of TensorQuantizationScales, below.
-  PyObject* TensorQuantization(int i) const;
-  PyObject* TensorQuantizationParameters(int i) const;
-  PyObject* SetTensor(int i, PyObject* value, int subgraph_index);
-  PyObject* GetTensor(int i, int subgraph_index) const;
+  PyObject* TensorQuantization(int tensor_index, int subgraph_index) const;
+  PyObject* TensorQuantizationParameters(int tensor_index,
+                                         int subgraph_index) const;
+  PyObject* SetTensor(int tensor_index, PyObject* value, int subgraph_index);
+  PyObject* GetTensor(int tensor_index, int subgraph_index) const;
   PyObject* GetSubgraphIndexFromSignature(const char* signature_key);
   PyObject* GetSignatureDefs() const;
   PyObject* ResetVariableTensors();
@@ -118,7 +125,8 @@ class InterpreterWrapper {
       std::unique_ptr<PythonErrorReporter> error_reporter,
       const std::vector<std::string>& registerers_by_name,
       const std::vector<std::function<void(uintptr_t)>>& registerers_by_func,
-      std::string* error_msg, bool preserve_all_tensors);
+      std::string* error_msg, bool preserve_all_tensors,
+      bool disable_delegate_clustering);
 
   InterpreterWrapper(std::unique_ptr<Model> model,
                      std::unique_ptr<PythonErrorReporter> error_reporter,

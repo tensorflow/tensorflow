@@ -16,19 +16,17 @@
 
 # pylint: disable=wildcard-import,undefined-variable
 
-from mlir.dialects.chlo import *
 from mlir.dialects.mhlo import *
 from mlir.ir import *
 
 ASM = """
-func.func @dynamicBroadcast(%arg0: tensor<?xf32>, %arg1: tensor<?x?xf32>) -> tensor<?x?xf32> {
-  %0 = chlo.broadcast_add %arg0, %arg1 : (tensor<?xf32>, tensor<?x?xf32>) -> tensor<?x?xf32>
+func.func @dynamicAdd(%arg0: tensor<?x?xf32>, %arg1: tensor<?x?xf32>) -> tensor<?x?xf32> {
+  %0 = mhlo.add %arg0, %arg1 : tensor<?x?xf32>
   func.return %0 : tensor<?x?xf32>
 }
 """
 
 with Context() as context:
-  register_chlo_dialect(context)
   register_mhlo_dialect(context)
 
   m = Module.parse(ASM)

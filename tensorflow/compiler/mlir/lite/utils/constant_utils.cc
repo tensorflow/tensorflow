@@ -17,7 +17,7 @@ limitations under the License.
 
 #include <string>
 
-#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
+#include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_attributes.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/mangling_util.h"
@@ -28,7 +28,7 @@ limitations under the License.
 namespace mlir {
 namespace TFL {
 
-stream_executor::port::StatusOr<arith::ConstantOp> CreateConstOpWithSingleValue(
+tsl::StatusOr<arith::ConstantOp> CreateConstOpWithSingleValue(
     PatternRewriter* rewriter, Location loc, ShapedType shaped_type,
     int value) {
   Type element_type = shaped_type.getElementType();

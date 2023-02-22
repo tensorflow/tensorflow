@@ -108,16 +108,16 @@ PYBIND11_MODULE(_pywrap_debug_events_writer, m) {
   m.def("FlushNonExecutionFiles", [](const std::string& dump_root) {
     DebugEventsWriter* writer = nullptr;
     TF_CHECK_OK(DebugEventsWriter::LookUpDebugEventsWriter(dump_root, &writer));
-    writer->FlushNonExecutionFiles();
+    (void)writer->FlushNonExecutionFiles();
   });
   m.def("FlushExecutionFiles", [](const std::string& dump_root) {
     DebugEventsWriter* writer = nullptr;
     TF_CHECK_OK(DebugEventsWriter::LookUpDebugEventsWriter(dump_root, &writer));
-    writer->FlushExecutionFiles();
+    (void)writer->FlushExecutionFiles();
   });
   m.def("Close", [](const std::string& dump_root) {
     DebugEventsWriter* writer = nullptr;
     TF_CHECK_OK(DebugEventsWriter::LookUpDebugEventsWriter(dump_root, &writer));
-    writer->Close();
+    (void)writer->Close();
   });
 };

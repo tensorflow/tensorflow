@@ -4,9 +4,10 @@ load(
     "tf_cc_test",  # @unused
     "tf_copts",  # @unused
 )
-load("//tensorflow:tensorflow.bzl", "get_compatible_with_portable")
+load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
         "//learning/brain/testing/tf2_migration_tools:__pkg__",
         "//tensorflow:internal",
@@ -256,7 +257,7 @@ genrule(
 
 py_test(
     name = "test_file_v1_12",
-    size = "small",
+    size = "medium",
     srcs = ["testdata/test_file_v1_12.py"],
     python_version = "PY3",
     srcs_version = "PY3",
@@ -271,7 +272,7 @@ py_test(
 
 py_test(
     name = "test_file_v2_0",
-    size = "small",
+    size = "medium",
     srcs = ["test_file_v2_0.py"],
     python_version = "PY3",
     srcs_version = "PY3",

@@ -16,17 +16,17 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_GPU_NCCL_COLLECTIVE_THUNK_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_NCCL_COLLECTIVE_THUNK_H_
 
+#include <optional>
 #include <string>
+#include <utility>
+#include <vector>
 
-#include "absl/synchronization/mutex.h"
-#include "mlir/IR/Attributes.h"  // from @llvm-project
+#include "absl/functional/function_ref.h"
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/xla/attribute_exporter.h"
-#include "tensorflow/compiler/mlir/xla/type_to_shape.h"
 #include "tensorflow/compiler/xla/service/collective_ops_utils.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/service/gpu/thunk.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
+#include "tensorflow/compiler/xla/translate/mhlo_to_hlo/attribute_exporter.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 
 #if XLA_ENABLE_XCCL
@@ -84,12 +84,11 @@ NcclCollectiveConfig GetNcclCollectiveConfigForMlir(
     const Shape shape = GetShape(op.getInputs()[i]);
     config.operand_element_type.push_back(shape.element_type());
   }
-  config.replica_groups =
-      ConvertReplicaGroups(op.getReplicaGroups()).ValueOrDie();
+  config.replica_groups = ConvertReplicaGroups(op.getReplicaGroups()).value();
   config.SetCollectiveOpKindAndID(op);
   config.group_mode = GetCollectiveOpGroupMode(op.getChannelId().has_value(),
                                                use_global_device_ids)
-                          .ValueOrDie();
+                          .value();
   return config;
 }
 
@@ -102,6 +101,25 @@ class NcclCollectiveThunk : public Thunk {
     int64_t element_count;
     BufferAllocation::Slice source_buffer;
     BufferAllocation::Slice destination_buffer;
+    mlir::Value source_value;
+    mlir::Value destination_value;
+  };
+
+  class AsyncExecutor {
+   public:
+    // Executes the function on the async communications stream and records a
+    // completion event.
+    Status Execute(
+        absl::FunctionRef<Status(const ExecuteParams&, se::Stream&, ncclComm_t)>
+            fn,
+        const ExecuteParams& params, ncclComm_t comm);
+    // Blocks the compute stream until async communication is complete.
+    Status Await(const ExecuteParams& params);
+
+   private:
+    absl::Mutex mu_;
+    // Store done events (by device ordinal) for the done thunk to wait on.
+    absl::flat_hash_map<int, se::Event> done_events_ ABSL_GUARDED_BY(mu_);
   };
 
   // Returns whether NCCL operations appear possible to perform; e.g. if we
@@ -128,9 +146,21 @@ class NcclCollectiveThunk : public Thunk {
 #endif  // XLA_ENABLE_XCCL
 };
 
+class NcclCollectiveDoneThunk : public Thunk {
+ public:
+  NcclCollectiveDoneThunk(Thunk::Kind kind, ThunkInfo thunk_info,
+                          NcclCollectiveThunk::AsyncExecutor& async);
+
+  Status ExecuteOnStream(const ExecuteParams& params) override;
+
+ private:
+  NcclCollectiveThunk::AsyncExecutor& async_;
+};
+
 // Returns if the given data type is supported by NCCL.
 // Note: Keep this in sync with ToNcclDataType().
-bool IsTypeSupportedByNccl(PrimitiveType element_type);
+bool IsTypeSupportedByNccl(PrimitiveType element_type,
+                           Thunk::Kind reduction_op);
 
 #if XLA_ENABLE_XCCL
 // TODO(hanbinyoon): Consider moving to nccl_utils.h when deprecating Thunks.

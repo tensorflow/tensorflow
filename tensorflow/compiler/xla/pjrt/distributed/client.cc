@@ -17,9 +17,12 @@ limitations under the License.
 
 #include <algorithm>
 #include <chrono>  // NOLINT
+#include <memory>
+#include <optional>
 #include <random>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "absl/synchronization/mutex.h"
 #include "absl/synchronization/notification.h"
@@ -28,14 +31,14 @@ limitations under the License.
 #include "tensorflow/compiler/xla/pjrt/distributed/protocol.h"
 #include "tensorflow/compiler/xla/pjrt/distributed/util.h"
 #include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/core/distributed_runtime/coordination/coordination_client.h"
-#include "tensorflow/core/distributed_runtime/coordination/coordination_service_agent.h"
-#include "tensorflow/core/distributed_runtime/coordination/coordination_service_error_util.h"
-#include "tensorflow/core/distributed_runtime/rpc/coordination/grpc_coordination_client.h"
-#include "tensorflow/core/platform/errors.h"
-#include "tensorflow/core/platform/random.h"
-#include "tensorflow/core/protobuf/coordination_config.pb.h"
-#include "tensorflow/core/protobuf/coordination_service.pb.h"
+#include "tensorflow/tsl/distributed_runtime/coordination/coordination_client.h"
+#include "tensorflow/tsl/distributed_runtime/coordination/coordination_service_agent.h"
+#include "tensorflow/tsl/distributed_runtime/coordination/coordination_service_error_util.h"
+#include "tensorflow/tsl/distributed_runtime/rpc/coordination/grpc_coordination_client.h"
+#include "tensorflow/tsl/platform/errors.h"
+#include "tensorflow/tsl/platform/random.h"
+#include "tensorflow/tsl/protobuf/coordination_config.pb.h"
+#include "tensorflow/tsl/protobuf/coordination_service.pb.h"
 
 namespace xla {
 class DistributedRuntimeClientImpl : public DistributedRuntimeClient {
@@ -53,11 +56,14 @@ class DistributedRuntimeClientImpl : public DistributedRuntimeClient {
                                GlobalTopologyProto* global_topology) override;
   xla::StatusOr<std::string> BlockingKeyValueGet(
       std::string key, absl::Duration timeout) override;
+  xla::StatusOr<std::vector<std::pair<std::string, std::string>>>
+  KeyValueDirGet(absl::string_view key) override;
   xla::Status KeyValueSet(std::string key, std::string value) override;
+  xla::Status KeyValueDelete(std::string key) override;
   xla::Status WaitAtBarrier(std::string barrier_id,
                             absl::Duration timeout) override;
-  xla::StatusOr<tensorflow::CoordinationServiceAgent*>
-  GetCoordinationServiceAgent() override;
+  xla::StatusOr<tsl::CoordinationServiceAgent*> GetCoordinationServiceAgent()
+      override;
 
  private:
   // Entry point for the heartbeat thread.
@@ -101,7 +107,7 @@ class DistributedRuntimeClientImpl : public DistributedRuntimeClient {
   absl::Notification stop_heartbeats_;
 
   // Thread responsible for performing heartbeats.
-  std::unique_ptr<tensorflow::Thread> heartbeat_thread_;
+  std::unique_ptr<tsl::Thread> heartbeat_thread_;
 };
 
 class DistributedRuntimeCoordinationServiceClient
@@ -120,15 +126,19 @@ class DistributedRuntimeCoordinationServiceClient
                                GlobalTopologyProto* global_topology) override;
   xla::StatusOr<std::string> BlockingKeyValueGet(
       std::string key, absl::Duration timeout) override;
+  xla::StatusOr<std::vector<std::pair<std::string, std::string>>>
+  KeyValueDirGet(absl::string_view key) override;
   xla::Status KeyValueSet(std::string key, std::string value) override;
+  xla::Status KeyValueDelete(std::string key) override;
   xla::Status WaitAtBarrier(std::string barrier_id,
                             absl::Duration timeout) override;
-  xla::StatusOr<tensorflow::CoordinationServiceAgent*>
-  GetCoordinationServiceAgent() override;
+  xla::StatusOr<tsl::CoordinationServiceAgent*> GetCoordinationServiceAgent()
+      override;
 
  private:
-  std::unique_ptr<tensorflow::CoordinationServiceAgent> coord_agent_;
+  std::unique_ptr<tsl::CoordinationServiceAgent> coord_agent_;
   tensorflow::CoordinationServiceConfig config_;
+  absl::Duration min_connect_barrier_timeout_;
   int task_id_;
 };
 
@@ -195,7 +205,7 @@ xla::Status DistributedRuntimeClientImpl::Connect() {
     ::grpc::ClientContext ctx;
     ctx.set_fail_fast(false);
     ctx.set_deadline(absl::ToChronoTime(absl::Now() + options_.rpc_timeout));
-    request.set_client_id(tensorflow::random::New64());
+    request.set_client_id(tsl::random::New64());
     response.Clear();
     status = stub_->Connect(&ctx, request, &response);
     if (!status.ok()) {
@@ -215,7 +225,7 @@ xla::Status DistributedRuntimeClientImpl::Connect() {
     LOG(ERROR) << "Connect() failed after " << attempt << " retries in "
                << options_.init_timeout
                << "; most recent failure status: " << FromGrpcStatus(status);
-    return tensorflow::errors::DeadlineExceeded(
+    return tsl::errors::DeadlineExceeded(
         absl::StrFormat("Connect() timed out after %s with %d attempts. Most "
                         "recent failure was: %s",
                         absl::FormatDuration(options_.init_timeout), attempt,
@@ -229,7 +239,7 @@ xla::Status DistributedRuntimeClientImpl::Connect() {
   session_id_ = response.session_id();
 
   heartbeat_thread_.reset(options_.env->StartThread(
-      tensorflow::ThreadOptions(), "pjrt_distributed_heartbeat",
+      tsl::ThreadOptions(), "pjrt_distributed_heartbeat",
       [this]() { HeartbeatLoop(); }));
   LOG(INFO) << "Connected to distributed JAX controller";
   return OkStatus();
@@ -355,7 +365,10 @@ xla::Status DistributedRuntimeClientImpl::WaitAtBarrier(
   }
   ::grpc::ClientContext ctx;
   ctx.set_fail_fast(false);
-  ctx.set_deadline(absl::ToChronoTime(absl::Now() + timeout));
+  // Set timeout to be at least 5 seconds so that there is time for service-side
+  // timeout logic to execute.
+  ctx.set_deadline(
+      absl::ToChronoTime(absl::Now() + std::max(timeout, absl::Seconds(5))));
   WaitAtBarrierRequest request;
   request.set_session_id(session_id_);
   request.set_barrier_id(std::move(barrier_id));
@@ -370,7 +383,20 @@ xla::Status DistributedRuntimeClientImpl::WaitAtBarrier(
   return FromGrpcStatus(status);
 }
 
-xla::StatusOr<tensorflow::CoordinationServiceAgent*>
+xla::StatusOr<std::vector<std::pair<std::string, std::string>>>
+DistributedRuntimeClientImpl::KeyValueDirGet(absl::string_view key) {
+  return xla::Unimplemented(
+      "KeyValueDirGet() is unimplemented. Enable coordination service to use "
+      "this method.");
+}
+
+xla::Status DistributedRuntimeClientImpl::KeyValueDelete(std::string key) {
+  return xla::Unimplemented(
+      "KeyValueDelete() is unimplemented. Enable coordination service to use "
+      "this method.");
+}
+
+xla::StatusOr<tsl::CoordinationServiceAgent*>
 DistributedRuntimeClientImpl::GetCoordinationServiceAgent() {
   return xla::Internal(
       "Invoking GetCoordinationServiceAgent() while coordination service is "
@@ -434,6 +460,7 @@ DistributedRuntimeCoordinationServiceClient::
   config.set_service_leader("/job:jax_worker/task:0");
   config.set_cluster_register_timeout_in_ms(
       absl::ToInt64Milliseconds(options.init_timeout));
+  min_connect_barrier_timeout_ = options.rpc_timeout;
   config.set_heartbeat_timeout_in_ms(absl::ToInt64Milliseconds(
       options.heartbeat_interval * options.max_missing_heartbeats));
   config.set_shutdown_barrier_timeout_in_ms(
@@ -446,9 +473,9 @@ DistributedRuntimeCoordinationServiceClient::
         timeout_fn(status, /*coordinator_reported_failure=*/true);
       };
 
-  std::unique_ptr<tensorflow::CoordinationClient> leader_client;
-  leader_client.reset(tensorflow::NewGrpcCoordinationClient(channel));
-  coord_agent_ = tensorflow::CreateCoordinationServiceAgent();
+  std::unique_ptr<tsl::CoordinationClient> leader_client;
+  leader_client.reset(tsl::NewGrpcCoordinationClient(channel));
+  coord_agent_ = tsl::CreateCoordinationServiceAgent();
   const Status status =
       coord_agent_->Initialize(options.env, "jax_worker", options.node_id,
                                config, std::move(leader_client), error_fn);
@@ -460,35 +487,23 @@ DistributedRuntimeCoordinationServiceClient::
 }
 
 DistributedRuntimeCoordinationServiceClient::
-    ~DistributedRuntimeCoordinationServiceClient() {}
+    ~DistributedRuntimeCoordinationServiceClient() = default;
 
 xla::Status DistributedRuntimeCoordinationServiceClient::Connect() {
-  Status s = tensorflow::errors::Unknown("Connection not attempted yet.");
-  absl::Duration timeout =
+  const absl::Time deadline =
+      absl::Now() +
       absl::Milliseconds(config_.cluster_register_timeout_in_ms());
-  absl::Time deadline = absl::Now() + timeout;
-  int attempt = 0;
-  std::default_random_engine generator;
-  std::uniform_real_distribution<double> distribution(0.0, 1.0);
 
-  do {
-    ++attempt;
-    s = coord_agent_->Connect();
-    if (s.ok()) {
-      s = coord_agent_->WaitAtBarrier("PjRT_Client_Connect", timeout,
-                                      /*tasks=*/{});
-    }
-    // Exponential backoff with jitter. Note we will retry for `init_timeout`
-    // time in total; the `14` here corresponds to an ~16s maximum interval
-    // between connection attempts.
-
-    int backoff = 1 << std::min(14, attempt);
-    absl::SleepFor(absl::Milliseconds(backoff * distribution(generator)));
-  } while (!s.ok() && absl::Now() < deadline &&
-           // Retries are only made for RPC errors. If a valid service error is
-           // returned, fail immediately.
-           s.GetPayload(tensorflow::CoordinationErrorPayloadKey()) ==
-               std::nullopt);
+  Status s = coord_agent_->Connect();
+  if (s.ok()) {
+    absl::Duration barrier_timeout = deadline - absl::Now();
+    // Note: `init_timeout` in client options may be set to 0 so that the
+    // client only attempts to connect once. In that case, we provide some
+    // buffer time to wait for all tasks.
+    barrier_timeout = std::max(barrier_timeout, min_connect_barrier_timeout_);
+    s = coord_agent_->WaitAtBarrier("PjRT_Client_Connect", barrier_timeout,
+                                    /*tasks=*/{});
+  }
   if (s.ok()) {
     LOG(INFO) << "Connected to distributed JAX controller";
   } else {
@@ -507,14 +522,20 @@ xla::Status DistributedRuntimeCoordinationServiceClient::Shutdown() {
 xla::Status DistributedRuntimeCoordinationServiceClient::EnumerateDevices(
     const LocalTopologyProto& local_topology,
     GlobalTopologyProto* global_topology) {
-  tensorflow::CoordinationServiceDeviceInfo devices;
-  LocalTopologyProto* device =
-      devices.mutable_xla()->mutable_devices()->add_nodes();
-  *device = local_topology;
-  device->set_node_id(task_id_);
+  LocalTopologyProto local_device = local_topology;
+  local_device.set_node_id(task_id_);
+  tensorflow::DeviceInfo devices;
+  devices.mutable_device()->Add()->PackFrom(local_device);
+  // Client sends LocalTopologyProto.
   Status s = coord_agent_->WaitForAllTasks(devices);
   if (!s.ok()) return s;
-  *global_topology = coord_agent_->GetClusterDeviceInfo().xla().devices();
+  // Server responds with GlobalTopologyProto (refer to service.cc for details).
+  tensorflow::DeviceInfo global_devices = coord_agent_->GetClusterDeviceInfo();
+  if (global_devices.device_size() != 1) {
+    return tsl::errors::Internal(
+        "Unexpected cluster device response from EnumerateDevices().");
+  }
+  global_devices.device().Get(0).UnpackTo(global_topology);
   return OkStatus();
 }
 
@@ -522,6 +543,30 @@ xla::StatusOr<std::string>
 DistributedRuntimeCoordinationServiceClient::BlockingKeyValueGet(
     std::string key, absl::Duration timeout) {
   return coord_agent_->GetKeyValue(key, timeout);
+}
+
+xla::StatusOr<std::vector<std::pair<std::string, std::string>>>
+DistributedRuntimeCoordinationServiceClient::KeyValueDirGet(
+    absl::string_view key) {
+  // TODO(hanyangtay): Migrate to string_view for both client and coordination
+  // agent APIs.
+  TF_ASSIGN_OR_RETURN(const auto results,
+                      coord_agent_->GetKeyValueDir(std::string(key)));
+
+  std::vector<std::pair<std::string, std::string>> kvs;
+  kvs.reserve(results.size());
+
+  // Convert tensorflow::KeyValueEntry to std::pair<std::string,
+  // string>.
+  for (const auto& kv : results) {
+    kvs.push_back(std::make_pair(kv.key(), kv.value()));
+  }
+  return kvs;
+}
+
+xla::Status DistributedRuntimeCoordinationServiceClient::KeyValueDelete(
+    std::string key) {
+  return coord_agent_->DeleteKeyValue(key);
 }
 
 xla::Status DistributedRuntimeCoordinationServiceClient::KeyValueSet(
@@ -534,7 +579,7 @@ xla::Status DistributedRuntimeCoordinationServiceClient::WaitAtBarrier(
   return coord_agent_->WaitAtBarrier(barrier_id, timeout, /*tasks=*/{});
 }
 
-xla::StatusOr<tensorflow::CoordinationServiceAgent*>
+xla::StatusOr<tsl::CoordinationServiceAgent*>
 DistributedRuntimeCoordinationServiceClient::GetCoordinationServiceAgent() {
   return coord_agent_.get();
 }

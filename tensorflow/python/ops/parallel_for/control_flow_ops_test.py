@@ -23,7 +23,6 @@ from absl.testing import parameterized
 import numpy as np
 
 from google.protobuf import text_format
-
 from tensorflow.core.example import example_pb2
 from tensorflow.core.example import feature_pb2
 from tensorflow.core.framework import graph_pb2
@@ -50,9 +49,9 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import control_flow_v2_toggles
 from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import functional_ops
-from tensorflow.python.ops import gen_dataset_ops
 from tensorflow.python.ops import gen_list_ops
 from tensorflow.python.ops import gen_nn_ops
+from tensorflow.python.ops import gen_optional_ops
 from tensorflow.python.ops import gradient_checker_v2
 from tensorflow.python.ops import gradients as gradient_ops
 from tensorflow.python.ops import image_ops
@@ -434,6 +433,7 @@ class NNTest(PForTestCase):
     self._test_loop_fn(loop_fn, 3)
 
   def test_conv2d_backprop_input(self):
+    self.skipTest("b/262851489: Fix nightly build for GPU.")
     x_shape = [2, 12, 12, 3]
     filt = random_ops.random_uniform([3, 3, 3, 7])
     grad = random_ops.random_uniform([3, 2, 5, 5, 7])
@@ -1555,12 +1555,13 @@ class OptionalTest(PForTestCase):
   def test_optional_from_value(self):
 
     def loop_fn(i):
-      o = gen_dataset_ops.optional_from_value(
-          [i, i + 1, constant_op.constant(3)])
-      gen_dataset_ops.optional_none()
-      return gen_dataset_ops.optional_get_value(
-          o, [dtypes.int32, dtypes.int32, dtypes.int32],
-          [[], [], []])
+      o = gen_optional_ops.optional_from_value(
+          [i, i + 1, constant_op.constant(3)]
+      )
+      gen_optional_ops.optional_none()
+      return gen_optional_ops.optional_get_value(
+          o, [dtypes.int32, dtypes.int32, dtypes.int32], [[], [], []]
+      )
 
     self._test_loop_fn(loop_fn, 2)
 
@@ -2841,6 +2842,52 @@ class VariableTest(PForTestCase):
     expected_result = [2, 3]
     self.assertAllEqual(result, expected_result)
 
+  @test_util.run_all_in_graph_and_eager_modes
+  def testStatelessCase(self):
+
+    def branch1(x):
+      return x
+
+    def branch2(x):
+      return x + 1
+
+    def branch3(x):
+      return x + 2
+
+    x = constant_op.constant(10)
+    elems = constant_op.constant([1, 0, 0, 0, 2, 1, 0, 2, 0, 1])
+    def loop_fn(z_i):
+      return cond_v2.indexed_case(
+          z_i, [lambda: branch1(x), lambda: branch2(x), lambda: branch3(x)])
+
+    result = pfor_control_flow_ops.vectorized_map(
+        loop_fn, elems, fallback_to_while_loop=False)
+
+    expected_result = [11, 10, 10, 10, 12, 11, 10, 12, 10, 11]
+    self.assertAllEqual(result, expected_result)
+
+  @test_util.run_all_in_graph_and_eager_modes
+  def testStatelessCaseUnstacked(self):
+
+    def branch1(x):
+      return x + 1
+
+    def branch2(x):
+      return x + 2
+
+    # Unstacked case input
+    case_input = constant_op.constant(1)
+    @def_function.function
+    def function(z_i):
+      return cond_v2.indexed_case(case_input,
+                                  [lambda: branch1(z_i), lambda: branch2(z_i)])
+
+    inputs = constant_op.constant([0, 1, 1, 0, 1, 0, 1, 0, 0])
+
+    result = pfor_control_flow_ops.vectorized_map(
+        function, inputs, fallback_to_while_loop=False)
+    expected_result = [2, 3, 3, 2, 3, 2, 3, 2, 2]
+    self.assertAllEqual(result, expected_result)
 
 if __name__ == "__main__":
   test.main()

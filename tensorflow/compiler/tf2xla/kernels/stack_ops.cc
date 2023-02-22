@@ -43,7 +43,7 @@ Status GetStackShape(xla::XlaBuilder* builder, XlaResource* resource,
   if (!shape_or_status.ok()) {
     return shape_or_status.status();
   }
-  xla::Shape shape = shape_or_status.ValueOrDie();
+  xla::Shape shape = shape_or_status.value();
   TF_RET_CHECK(shape.IsTuple());
   return XLAShapeToTensorShape(xla::ShapeUtil::GetTupleElementShape(shape, 0),
                                stack_shape);
@@ -68,7 +68,7 @@ Status MaybeInitializeStack(xla::XlaBuilder* builder, XlaResource* resource,
   }
 
   TensorShape stack_shape;
-  stack_shape.AddDim(resource->max_array_size());
+  TF_RETURN_IF_ERROR(stack_shape.AddDimWithStatus(resource->max_array_size()));
   stack_shape.AppendShape(elem_shape);
 
   if (!resource->initialized()) {

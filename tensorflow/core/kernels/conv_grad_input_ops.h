@@ -38,9 +38,6 @@ limitations under the License.
 #include "tensorflow/core/kernels/conv_grad_ops.h"
 #include "tensorflow/core/kernels/conv_grad_shape_utils.h"
 #include "tensorflow/core/kernels/fill_functor.h"
-#ifdef TENSORFLOW_USE_LIBXSMM_CONVOLUTIONS
-#include "tensorflow/core/kernels/xsmm_conv2d.h"
-#endif
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/platform/logging.h"
@@ -51,7 +48,7 @@ limitations under the License.
 #include "tensorflow/core/util/work_sharder.h"
 
 #if defined(TENSORFLOW_USE_CUSTOM_CONTRACTION_KERNEL)
-#include "tensorflow/core/kernels/eigen_contraction_kernel.h"
+#include "tensorflow/tsl/framework/contraction/eigen_contraction_kernel.h"
 #endif
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
@@ -60,9 +57,9 @@ limitations under the License.
 #include "tensorflow/core/util/proto/proto_utils.h"
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #if GOOGLE_CUDA
-#include "tensorflow/stream_executor/gpu/gpu_asm_opts.h"
-#include "tensorflow/stream_executor/gpu/redzone_allocator.h"
-#include "tensorflow/stream_executor/tf_allocator_adapter.h"
+#include "tensorflow/compiler/xla/stream_executor/gpu/gpu_asm_opts.h"
+#include "tensorflow/compiler/xla/stream_executor/gpu/redzone_allocator.h"
+#include "tensorflow/compiler/xla/stream_executor/tf_allocator_adapter.h"
 #endif  // GOOGLE_CUDA
 
 namespace tensorflow {
@@ -216,73 +213,6 @@ struct LaunchConv2DBackpropInputOp<CPUDevice, T> {
              explicit_paddings, in_backprop, data_format);
   }
 };
-
-#ifdef TENSORFLOW_USE_LIBXSMM_CONVOLUTIONS
-template <typename Device, class T>
-struct LaunchXsmmBackwardInputConvolution {
-  bool operator()(OpKernelContext* context, const Device& d,
-                  typename TTypes<T, 4>::Tensor input_backward,
-                  typename TTypes<T, 4>::ConstTensor kernel,
-                  typename TTypes<T, 4>::ConstTensor output_backward,
-                  int input_rows, int input_cols, int row_stride,
-                  int col_stride, int pad_h, int pad_w,
-                  TensorFormat data_format) const {
-    return false;
-  }
-};
-
-template <>
-struct LaunchXsmmBackwardInputConvolution<CPUDevice, float> {
-  bool operator()(OpKernelContext* context, const CPUDevice& d,
-                  typename TTypes<float, 4>::Tensor input_backward,
-                  typename TTypes<float, 4>::ConstTensor kernel,
-                  typename TTypes<float, 4>::ConstTensor output_backward,
-                  int input_rows, int input_cols, int row_stride,
-                  int col_stride, int pad_h, int pad_w,
-                  TensorFormat data_format) const {
-    auto batch = input_backward.dimension(0);
-    auto in_depth = input_backward.dimension(3);
-    auto out_depth = output_backward.dimension(3);
-    auto filter_rows = kernel.dimension(0);
-    auto filter_cols = kernel.dimension(1);
-    auto num_threads =
-        context->device()->tensorflow_cpu_worker_threads()->num_threads;
-    // See libxsmm_dnn.h for this struct definition.
-    libxsmm_dnn_conv_desc desc;
-    desc.N = batch;
-    desc.C = in_depth;
-    desc.H = input_rows;
-    desc.W = input_cols;
-    desc.K = out_depth;
-    desc.R = filter_rows;
-    desc.S = filter_cols;
-    desc.u = row_stride;
-    desc.v = col_stride;
-    desc.pad_h = pad_h;
-    desc.pad_w = pad_w;
-    desc.pad_h_in = 0;
-    desc.pad_w_in = 0;
-    desc.pad_h_out = 0;
-    desc.pad_w_out = 0;
-    desc.threads = num_threads;
-    desc.algo = LIBXSMM_DNN_CONV_ALGO_DIRECT;
-    desc.buffer_format = LIBXSMM_DNN_TENSOR_FORMAT_NHWC;
-    desc.filter_format =
-        LIBXSMM_DNN_TENSOR_FORMAT_LIBXSMM;  // LIBXSMM_DNN_TENSOR_FORMAT_RSCK;
-    desc.fuse_ops = LIBXSMM_DNN_CONV_FUSE_NONE;
-    desc.options = LIBXSMM_DNN_CONV_OPTION_OVERWRITE;
-    desc.datatype_out = LIBXSMM_DNN_DATATYPE_F32;
-    desc.datatype_in = LIBXSMM_DNN_DATATYPE_F32;
-    auto input_ptr = input_backward.data();
-    auto filter_ptr = kernel.data();
-    auto output_ptr = output_backward.data();
-
-    bool success = functor::XsmmBkwInputConv2D<CPUDevice, float>()(
-        context, desc, input_ptr, filter_ptr, output_ptr);
-    return success;
-  }
-};
-#endif
 
 template <typename T>
 struct Conv2DCustomBackpropInputMatMulFunctor {
@@ -518,10 +448,10 @@ class Conv2DCustomBackpropInputOp : public OpKernel {
         errors::Unimplemented("Current implementation does not yet support "
                               "dilations in the batch and depth dimensions."));
     // TODO(yangzihao): Add a CPU implementation for dilated convolution.
-    OP_REQUIRES(context, (dilations_[1] == 1 && dilations_[2] == 1),
-                errors::InvalidArgument(
-                    "Current libxsmm and customized CPU implementations do "
-                    "not yet support dilation rates larger than 1."));
+    OP_REQUIRES(
+        context, (dilations_[1] == 1 && dilations_[2] == 1),
+        errors::InvalidArgument("Current CPU implementations do not yet "
+                                "support dilation rates larger than 1."));
     OP_REQUIRES_OK(context,
                    context->GetAttr("explicit_paddings", &explicit_paddings_));
     OP_REQUIRES_OK(context, CheckValidPadding(padding_, explicit_paddings_,
@@ -582,42 +512,9 @@ class Conv2DCustomBackpropInputOp : public OpKernel {
       return;
     }
 
-// TODO(ezhulenev): Remove custom kernel and move XSMM support to
-// LaunchConv2DBackpropInputOp functor.
-#if defined TENSORFLOW_USE_LIBXSMM_CONVOLUTIONS && \
-    defined TENSORFLOW_USE_LIBXSMM_BACKWARD_CONVOLUTIONS
-    int64 pad_top, pad_bottom;
-    int64 pad_left, pad_right;
-    OP_REQUIRES_OK(
-        context,
-        GetWindowedOutputSizeVerbose(
-            dims.spatial_dims[0].input_size, dims.spatial_dims[0].filter_size,
-            dims.spatial_dims[0].stride, padding_,
-            &dims.spatial_dims[0].output_size, &pad_top, &pad_bottom));
-    OP_REQUIRES_OK(
-        context,
-        GetWindowedOutputSizeVerbose(
-            dims.spatial_dims[1].input_size, dims.spatial_dims[1].filter_size,
-            dims.spatial_dims[1].stride, padding_,
-            &dims.spatial_dims[1].output_size, &pad_left, &pad_right));
-
-    if (pad_left == pad_right && pad_top == pad_bottom) {
-      if (LaunchXsmmBackwardInputConvolution<Device, T>()(
-              context, context->eigen_device<Device>(),
-              in_backprop->tensor<T, 4>(), filter.tensor<T, 4>(),
-              out_backprop.tensor<T, 4>(), dims.spatial_dims[0].input_size,
-              dims.spatial_dims[1].input_size,
-              static_cast<int>(dims.spatial_dims[0].stride),
-              static_cast<int>(dims.spatial_dims[1].stride),
-              static_cast<int>(pad_top), static_cast<int>(pad_left),
-              data_format_)) {
-        return;
-      }
-    }
-#else
     int64_t pad_top, pad_bottom;
     int64_t pad_left, pad_right;
-#endif
+
     if (padding_ == Padding::EXPLICIT) {
       pad_top = explicit_paddings_[2];
       pad_bottom = explicit_paddings_[3];

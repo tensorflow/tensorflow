@@ -103,8 +103,6 @@ _major_api_version = 2
 
 # Load all plugin libraries from site-packages/tensorflow-plugins if we are
 # running under pip.
-# TODO(gunan): Enable setting an environment variable to define arbitrary plugin
-# directories.
 # TODO(gunan): Find a better location for this code snippet.
 from tensorflow.python.framework import load_library as _ll
 from tensorflow.python.lib.io import file_io as _fi
@@ -145,6 +143,11 @@ if _running_from_pip_package():
       _ll.load_library(_plugin_dir)
       # Load Pluggable Device Library
       _ll.load_pluggable_device_library(_plugin_dir)
+
+if _os.getenv("TF_PLUGGABLE_DEVICE_LIBRARY_PATH", ""):
+  _ll.load_pluggable_device_library(
+      _os.getenv("TF_PLUGGABLE_DEVICE_LIBRARY_PATH")
+  )
 
 # Add module aliases
 if hasattr(_current_module, 'keras'):

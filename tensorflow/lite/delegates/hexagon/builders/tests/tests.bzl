@@ -38,5 +38,5 @@ def hexagon_op_tests(
             "notap",
         ],
     )
-    # Re-enable after b/195062187 is fixed.
-    # tflite_hexagon_mobile_test(all_ops_test_name)
+
+    tflite_hexagon_mobile_test(all_ops_test_name)

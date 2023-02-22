@@ -22,20 +22,26 @@ limitations under the License.
 #include <vector>
 
 #include "absl/time/time.h"
-#include "tensorflow/core/distributed_runtime/coordination/coordination_service_agent.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/threadpool.h"
-#include "tensorflow/core/protobuf/coordination_config.pb.h"
-#include "tensorflow/core/protobuf/coordination_service.pb.h"
-#include "tensorflow/core/protobuf/tensorflow_server.pb.h"
+#include "tensorflow/tsl/distributed_runtime/call_options.h"
+#include "tensorflow/tsl/distributed_runtime/coordination/coordination_client.h"
+#include "tensorflow/tsl/distributed_runtime/coordination/coordination_service_agent.h"
+#include "tensorflow/tsl/protobuf/coordination_config.pb.h"
+#include "tensorflow/tsl/protobuf/coordination_service.pb.h"
 
 namespace tensorflow {
 namespace {
 
 using ::testing::_;
 using ::testing::Return;
+using tsl::CallOptions;
+using tsl::CoordinationClient;
+using tsl::CoordinationClientCache;
+using tsl::CoordinationServiceAgent;
 
 class MockCoordinationServiceAgent : public CoordinationServiceAgent {
  public:
@@ -48,7 +54,7 @@ class MockCoordinationServiceAgent : public CoordinationServiceAgent {
 
   // All the following member functions are not needed for testing.
   MOCK_METHOD4(Initialize,
-               Status(Env* env, const ServerDef& server_def,
+               Status(Env* env, const CoordinationServiceConfig& config,
                       std::unique_ptr<CoordinationClientCache> client_cache,
                       StatusCallback error_fn));
   MOCK_METHOD6(Initialize,
@@ -62,12 +68,14 @@ class MockCoordinationServiceAgent : public CoordinationServiceAgent {
                       std::unique_ptr<CoordinationClient> leader_client,
                       StatusCallback error_fn));
   MOCK_METHOD0(IsInitialized, bool());
+  MOCK_METHOD0(IsConnected, bool());
+  MOCK_METHOD0(IsError, bool());
   MOCK_METHOD0(Connect, Status());
-  MOCK_METHOD1(WaitForAllTasks,
-               Status(const CoordinationServiceDeviceInfo& local_devices));
-  MOCK_METHOD0(GetClusterDeviceInfo, const CoordinationServiceDeviceInfo&());
+  MOCK_METHOD1(WaitForAllTasks, Status(const DeviceInfo& local_devices));
+  MOCK_METHOD0(GetClusterDeviceInfo, const DeviceInfo&());
   MOCK_METHOD0(GetOwnTask, StatusOr<CoordinatedTask>());
-  MOCK_METHOD1(GetTaskStatus, StatusOr<TaskState>(const CoordinatedTask& task));
+  MOCK_METHOD1(GetTaskState, StatusOr<std::vector<CoordinatedTaskStateInfo>>(
+                                 const std::vector<CoordinatedTask>& task));
   MOCK_METHOD1(ReportError, Status(const Status& error));
   MOCK_METHOD0(Shutdown, Status());
   MOCK_METHOD0(Reset, Status());

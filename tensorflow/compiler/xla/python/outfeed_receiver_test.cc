@@ -21,9 +21,9 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/client_library.h"
 #include "tensorflow/compiler/xla/client/executable_build_options.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
-#include "tensorflow/compiler/xla/pjrt/cpu_device.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_stream_executor_client.h"
+#include "tensorflow/compiler/xla/pjrt/tfrt_cpu_pjrt_client.h"
 #include "tensorflow/compiler/xla/service/platform_util.h"
 #include "tensorflow/compiler/xla/test.h"
 
@@ -33,7 +33,7 @@ namespace {
 
 Status CompileAndExecute(XlaBuilder* builder, XlaOp root, int device_id,
                          PjRtClient* client) {
-  XlaComputation computation = builder->Build(root).ValueOrDie();
+  XlaComputation computation = builder->Build(root).value();
 
   CompileOptions compile_options;
   compile_options.executable_build_options.set_num_replicas(1);
@@ -75,39 +75,42 @@ class Accumulator {
   std::vector<Data> received_ ABSL_GUARDED_BY(mutex_);
 };
 
-StatusOr<std::unique_ptr<PjRtClient>> GetCpuClientWithNonLocalDevice() {
-  TF_ASSIGN_OR_RETURN(se::Platform * platform,
-                      PlatformUtil::GetPlatform("Host"));
-  if (platform->VisibleDeviceCount() <= 0) {
-    return FailedPrecondition("CPU platform has no visible devices.");
-  }
-  LocalClientOptions options;
-  options.set_platform(platform);
-  TF_ASSIGN_OR_RETURN(LocalClient * client,
-                      ClientLibrary::GetOrCreateLocalClient(options));
+// TODO(necula): update this test for the TFRT CPU client, which current does
+// not support non-local devices.
+// StatusOr<std::unique_ptr<PjRtClient>> GetCpuClientWithNonLocalDevice() {
+//   TF_ASSIGN_OR_RETURN(se::Platform * platform,
+//                       PlatformUtil::GetPlatform("Host"));
+//   if (platform->VisibleDeviceCount() <= 0) {
+//     return FailedPrecondition("CPU platform has no visible devices.");
+//   }
+//   LocalClientOptions options;
+//   options.set_platform(platform);
+//   TF_ASSIGN_OR_RETURN(LocalClient * client,
+//                       ClientLibrary::GetOrCreateLocalClient(options));
 
-  se::StreamExecutorConfig config(0);
-  TF_ASSIGN_OR_RETURN(se::StreamExecutor * executor,
-                      platform->GetExecutor(config));
-  auto device_state = std::make_unique<LocalDeviceState>(
-      executor, client, LocalDeviceState::kSynchronous,
-      /*max_inflight_computations=*/32,
-      /*allow_event_reuse=*/false, /*use_callback_stream=*/false);
+//   se::StreamExecutorConfig config(0);
+//   TF_ASSIGN_OR_RETURN(se::StreamExecutor * executor,
+//                       platform->GetExecutor(config));
+//   auto device_state = std::make_unique<LocalDeviceState>(
+//       executor, client, LocalDeviceState::kSynchronous,
+//       /*max_inflight_computations=*/32,
+//       /*allow_event_reuse=*/false, /*use_callback_stream=*/false);
 
-  std::vector<std::unique_ptr<PjRtStreamExecutorDevice>> devices;
-  devices.push_back(std::make_unique<CpuDevice>(0, std::move(device_state)));
-  devices.push_back(std::make_unique<CpuDevice>(1, nullptr));
+//   std::vector<std::unique_ptr<PjRtStreamExecutorDevice>> devices;
+//   devices.push_back(std::make_unique<CpuDevice>(0, std::move(device_state)));
+//   devices.push_back(std::make_unique<CpuDevice>(1, nullptr));
 
-  return std::unique_ptr<PjRtClient>(std::make_unique<PjRtStreamExecutorClient>(
-      CpuName(), client, std::move(devices), /*process_index=*/0,
-      /*allocator=*/nullptr, /*host_memory_allocator=*/nullptr,
-      /*should_stage_host_to_device_transfers=*/false,
-      /*gpu_run_options=*/nullptr));
-}
+//   return
+//   std::unique_ptr<PjRtClient>(std::make_unique<PjRtStreamExecutorClient>(
+//       CpuName(), client, std::move(devices), /*process_index=*/0,
+//       /*allocator=*/nullptr, /*host_memory_allocator=*/nullptr,
+//       /*should_stage_host_to_device_transfers=*/false,
+//       /*gpu_run_options=*/nullptr));
+// }
 
 TEST(OutfeedReceiverTest, ReceiveOutfeedSimple) {
   TF_ASSERT_OK_AND_ASSIGN(std::shared_ptr<PjRtClient> cpu_client,
-                          GetCpuClient(true));
+                          GetTfrtCpuClient(true));
   std::vector<PjRtClient*> clients{cpu_client.get()};
 
   auto receiver = std::make_unique<Accumulator>();
@@ -126,8 +129,8 @@ TEST(OutfeedReceiverTest, ReceiveOutfeedSimple) {
   XlaOp data = Iota(&builder, shape0, 0);
   XlaOp send = outfeed_receiver
                    ->AddOutfeedToBuilder(&builder, CreateToken(&builder),
-                                         consumer_id0, {data})
-                   .ValueOrDie();
+                                         consumer_id0, {data}, 0)
+                   .value();
   EXPECT_TRUE(CompileAndExecute(&builder, send, 0, cpu_client.get()).ok());
 
   // Shutdown the receiver, to force it to wait to deliver the callbacks.
@@ -140,7 +143,7 @@ TEST(OutfeedReceiverTest, ReceiveOutfeedSimple) {
 
 TEST(OutfeedReceiverTest, ReceiveOutfeedTwoComputations) {
   TF_ASSERT_OK_AND_ASSIGN(std::shared_ptr<PjRtClient> cpu_client,
-                          GetCpuClient(true));
+                          GetTfrtCpuClient(true));
   std::vector<PjRtClient*> clients{cpu_client.get()};
 
   auto receiver = std::make_unique<Accumulator>();
@@ -159,8 +162,8 @@ TEST(OutfeedReceiverTest, ReceiveOutfeedTwoComputations) {
   XlaOp data0 = Iota(&builder0, shape0, 0);
   XlaOp send0 = outfeed_receiver
                     ->AddOutfeedToBuilder(&builder0, CreateToken(&builder0),
-                                          consumer_id0, {data0})
-                    .ValueOrDie();
+                                          consumer_id0, {data0}, 0)
+                    .value();
   EXPECT_TRUE(CompileAndExecute(&builder0, send0, 0, cpu_client.get()).ok());
 
   XlaBuilder builder1("execute_test_outfeed_1");
@@ -169,8 +172,8 @@ TEST(OutfeedReceiverTest, ReceiveOutfeedTwoComputations) {
   XlaOp data1 = Iota(&builder1, shape1, 0);
   XlaOp send1 = outfeed_receiver
                     ->AddOutfeedToBuilder(&builder1, CreateToken(&builder1),
-                                          consumer_id1, {data1})
-                    .ValueOrDie();
+                                          consumer_id1, {data1}, 0)
+                    .value();
   EXPECT_TRUE(CompileAndExecute(&builder1, send1, 0, cpu_client.get()).ok());
 
   // Shutdown the receiver, to force it to wait to deliver the callbacks.
@@ -185,7 +188,7 @@ TEST(OutfeedReceiverTest, ReceiveOutfeedTwoComputations) {
 
 TEST(OutfeedReceiverTest, ReceiveOutfeedTwoOutfeed) {
   TF_ASSERT_OK_AND_ASSIGN(std::shared_ptr<PjRtClient> cpu_client,
-                          GetCpuClient(true));
+                          GetTfrtCpuClient(true));
   std::vector<PjRtClient*> clients{cpu_client.get()};
 
   auto receiver = std::make_unique<Accumulator>();
@@ -204,16 +207,16 @@ TEST(OutfeedReceiverTest, ReceiveOutfeedTwoOutfeed) {
   XlaOp data0 = Iota(&builder, shape0, 0);
   XlaOp send0 = outfeed_receiver
                     ->AddOutfeedToBuilder(&builder, CreateToken(&builder),
-                                          consumer_id0, {data0})
-                    .ValueOrDie();
+                                          consumer_id0, {data0}, 0)
+                    .value();
 
   constexpr int consumer_id1 = 6;
   const Shape shape1 = ShapeUtil::MakeShape(U32, {128});
   XlaOp data1 = Iota(&builder, shape1, 0);
   XlaOp send1 =
       outfeed_receiver
-          ->AddOutfeedToBuilder(&builder, send0, consumer_id1, {data1})
-          .ValueOrDie();
+          ->AddOutfeedToBuilder(&builder, send0, consumer_id1, {data1}, 0)
+          .value();
   EXPECT_TRUE(CompileAndExecute(&builder, send1, 0, cpu_client.get()).ok());
 
   // Shutdown the receiver, to force it to wait to deliver the callbacks.
@@ -228,7 +231,7 @@ TEST(OutfeedReceiverTest, ReceiveOutfeedTwoOutfeed) {
 
 TEST(OutfeedReceiverTest, DifferentShapeForConsumerIdError) {
   TF_ASSERT_OK_AND_ASSIGN(std::shared_ptr<PjRtClient> cpu_client,
-                          GetCpuClient(true));
+                          GetTfrtCpuClient(true));
   std::vector<PjRtClient*> clients{cpu_client.get()};
 
   auto receiver = std::make_unique<Accumulator>();
@@ -247,14 +250,14 @@ TEST(OutfeedReceiverTest, DifferentShapeForConsumerIdError) {
   XlaOp data0 = Iota(&builder, shape0, 0);
   XlaOp send0 = outfeed_receiver
                     ->AddOutfeedToBuilder(&builder, CreateToken(&builder),
-                                          consumer_id0, {data0})
-                    .ValueOrDie();
+                                          consumer_id0, {data0}, 0)
+                    .value();
 
   const Shape shape1 = ShapeUtil::MakeShape(U32, {128});
   XlaOp data1 = Iota(&builder, shape1, 0);
   // A different shape for the same consumer ID.
   StatusOr<XlaOp> send1 = outfeed_receiver->AddOutfeedToBuilder(
-      &builder, send0, consumer_id0, {data1});
+      &builder, send0, consumer_id0, {data1}, 0);
   EXPECT_FALSE(send1.ok());
   EXPECT_THAT(send1.status().ToString(),
               testing::HasSubstr("does not match previous shape element_type"));
@@ -262,7 +265,7 @@ TEST(OutfeedReceiverTest, DifferentShapeForConsumerIdError) {
 
 TEST(OutfeedReceiverTest, InvalidConsumerIdError) {
   TF_ASSERT_OK_AND_ASSIGN(std::shared_ptr<PjRtClient> cpu_client,
-                          GetCpuClient(true));
+                          GetTfrtCpuClient(true));
   std::vector<PjRtClient*> clients{cpu_client.get()};
 
   auto receiver = std::make_unique<Accumulator>();
@@ -279,45 +282,45 @@ TEST(OutfeedReceiverTest, InvalidConsumerIdError) {
   const Shape shape0 = ShapeUtil::MakeShape(U32, {16});
   XlaOp data0 = Iota(&builder, shape0, 0);
   StatusOr<XlaOp> send0 = outfeed_receiver->AddOutfeedToBuilder(
-      &builder, CreateToken(&builder), 0, {data0});
+      &builder, CreateToken(&builder), 0, {data0}, 0);
 
   EXPECT_FALSE(send0.ok());
   EXPECT_THAT(send0.status().ToString(),
               testing::HasSubstr("Consumer ID cannot be a reserved value"));
 }
 
-TEST(OutfeedReceiverTest, NonLocalDevicesIgnored) {
-  TF_ASSERT_OK_AND_ASSIGN(std::shared_ptr<PjRtClient> cpu_client,
-                          GetCpuClientWithNonLocalDevice());
-  std::vector<PjRtClient*> clients{cpu_client.get()};
+// TEST(OutfeedReceiverTest, NonLocalDevicesIgnored) {
+//   TF_ASSERT_OK_AND_ASSIGN(std::shared_ptr<PjRtClient> cpu_client,
+//                           GetCpuClientWithNonLocalDevice());
+//   std::vector<PjRtClient*> clients{cpu_client.get()};
 
-  auto receiver = std::make_unique<Accumulator>();
-  OutfeedReceiver::Callback callback =
-      [&receiver](PjRtDevice* device, uint32_t consumer_id,
-                  std::shared_ptr<Literal> data) {
-        receiver->Receive(consumer_id, data);
-      };
-  auto outfeed_receiver =
-      std::make_shared<OutfeedReceiver>(callback, clients, 128);
-  outfeed_receiver->Start();
+//   auto receiver = std::make_unique<Accumulator>();
+//   OutfeedReceiver::Callback callback =
+//       [&receiver](PjRtDevice* device, uint32_t consumer_id,
+//                   std::shared_ptr<Literal> data) {
+//         receiver->Receive(consumer_id, data);
+//       };
+//   auto outfeed_receiver =
+//       std::make_shared<OutfeedReceiver>(callback, clients, 128);
+//   outfeed_receiver->Start();
 
-  XlaBuilder builder("execute_test_outfeed");
-  constexpr int consumer_id0 = 5;
-  const Shape shape0 = ShapeUtil::MakeShape(U32, {16});
-  XlaOp data = Iota(&builder, shape0, 0);
-  XlaOp send = outfeed_receiver
-                   ->AddOutfeedToBuilder(&builder, CreateToken(&builder),
-                                         consumer_id0, {data})
-                   .ValueOrDie();
-  EXPECT_TRUE(CompileAndExecute(&builder, send, 0, cpu_client.get()).ok());
+//   XlaBuilder builder("execute_test_outfeed");
+//   constexpr int consumer_id0 = 5;
+//   const Shape shape0 = ShapeUtil::MakeShape(U32, {16});
+//   XlaOp data = Iota(&builder, shape0, 0);
+//   XlaOp send = outfeed_receiver
+//                    ->AddOutfeedToBuilder(&builder, CreateToken(&builder),
+//                                          consumer_id0, {data})
+//                    .value();
+//   EXPECT_TRUE(CompileAndExecute(&builder, send, 0, cpu_client.get()).ok());
 
-  // Shutdown the receiver, to force it to wait to deliver the callbacks.
-  outfeed_receiver = nullptr;
-  std::vector<Accumulator::Data> received = receiver->received();
-  EXPECT_EQ(1, received.size());
-  EXPECT_EQ(consumer_id0, received[0].consumer_id);
-  EXPECT_EQ(ShapeUtil::MakeTupleShape({shape0}), received[0].data->shape());
-}
+//   // Shutdown the receiver, to force it to wait to deliver the callbacks.
+//   outfeed_receiver = nullptr;
+//   std::vector<Accumulator::Data> received = receiver->received();
+//   EXPECT_EQ(1, received.size());
+//   EXPECT_EQ(consumer_id0, received[0].consumer_id);
+//   EXPECT_EQ(ShapeUtil::MakeTupleShape({shape0}), received[0].data->shape());
+// }
 
 }  // namespace
 

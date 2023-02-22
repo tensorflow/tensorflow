@@ -15,6 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_RUNTIME_FALLBACK_KERNEL_KERNEL_FALLBACK_EXECUTE_COMPAT_H_
 #define TENSORFLOW_CORE_RUNTIME_FALLBACK_KERNEL_KERNEL_FALLBACK_EXECUTE_COMPAT_H_
 
+#include <functional>
 #include <optional>
 #include <string>
 
@@ -51,7 +52,8 @@ Status SetUpKernelFallbackCompatRequestContext(
     const tensorflow::ProcessFunctionLibraryRuntime* pflr,
     tensorflow::thread::ThreadPoolInterface* user_intra_op_threadpool = nullptr,
     const absl::optional<SessionMetadata>& model_metadata = absl::nullopt,
-    std::function<void(std::function<void()>)>* runner = nullptr);
+    std::function<void(std::function<void()>)>* runner = nullptr,
+    tfrt_stub::CostRecorder* cost_recorder = nullptr);
 
 // Runner_table can be nullptr. In that case, kernel_fallback will use
 // the default runner_table.

@@ -16,15 +16,18 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_BASE_RENDEZVOUS_MGR_H_
 #define TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_BASE_RENDEZVOUS_MGR_H_
 
+#include <memory>
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
+#include <utility>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "tensorflow/core/distributed_runtime/rendezvous_mgr_interface.h"
 #include "tensorflow/core/distributed_runtime/worker_env.h"
 #include "tensorflow/core/distributed_runtime/worker_session.h"
+#include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/framework/control_flow.h"
 #include "tensorflow/core/framework/rendezvous.h"
 #include "tensorflow/core/lib/core/status.h"
@@ -39,7 +42,6 @@ namespace tensorflow {
 
 class BaseRemoteRendezvous;
 class BaseRecvTensorCall;
-class CancellationManager;
 
 // RendezvousMgr keeps track of a set of local rendezvous instances.
 // All tensors sent by this worker are buffered in a RendezvousMgr
@@ -184,6 +186,7 @@ class BaseRemoteRendezvous : public RemoteRendezvous {
   const int64_t step_id_;
 
  private:
+  int num_shards_;
   Rendezvous* local_;  // Owns a Ref on this object.
   // Indicates whether this remote rendezvous instance is used as the default
   // rendezvous for remote eager op-by-op execution. Errors in eager op-by-op
@@ -209,15 +212,32 @@ class BaseRemoteRendezvous : public RemoteRendezvous {
   };
   std::vector<DeferredCall> deferred_calls_ TF_GUARDED_BY(mu_);
 
+  struct CallBucket {
+    mutex mu;
+
+    absl::flat_hash_set<BaseRecvTensorCall*> calls TF_GUARDED_BY(mu);
+  };
+
+  struct PendingCalls {
+    PendingCalls(CancellationToken token, int num_calls, int num_buckets)
+        : token(token), num_calls(num_calls), buckets(num_buckets) {}
+    CancellationToken token = CancellationManager::kInvalidToken;
+    std::atomic<int> num_calls = 0;
+    std::vector<CallBucket> buckets;
+  };
+
   // "CancellationToken" is stored here so that when there's no active
   // RecvTensorCalls, we can de-register the callback in the cancellation
-  // manager.
+  // manager. RecvTensorCalls are managed in multiple buckets since in large
+  // scaled distributed training, lots of Send/Recv may be triggered
+  // concurrently.
   //
   // Note: pointer to CancellationManager can be nullptr in certain use cases.
-  absl::flat_hash_map<
-      CancellationManager*,
-      std::pair<CancellationToken, absl::flat_hash_set<BaseRecvTensorCall*>>>
+  absl::flat_hash_map<CancellationManager*, std::unique_ptr<PendingCalls>>
       calls_ TF_GUARDED_BY(calls_mu_);
+
+  // Callback for CancellationManager.
+  void CancelledByManager(CancellationManager* cm);
 
   bool is_initialized_locked() TF_SHARED_LOCKS_REQUIRED(mu_) {
     return session_ != nullptr;

@@ -28,7 +28,6 @@ limitations under the License.
 #include "mlir/Transforms/RegionUtils.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
-#include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
 
 namespace mlir {
 namespace TFDevice {
@@ -37,15 +36,18 @@ namespace {
 
 constexpr char kDeviceAttr[] = "device";
 
+#define GEN_PASS_DEF_REPLICATEINVARIANTOPHOISTINGPASS
+#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_passes.h.inc"
+
 struct ReplicateInvariantOpHoistingPass
-    : public TF::ReplicateInvariantOpHoistingPassBase<
+    : public impl::ReplicateInvariantOpHoistingPassBase<
           ReplicateInvariantOpHoistingPass> {
   void runOnOperation() override;
 };
 
 void MakeShapeOpInvariant(tf_device::ReplicateOp replicate_op, int num_replicas,
                           Block* replicate_block, TF::ShapeOp shape_op) {
-  Value input = shape_op.input();
+  Value input = shape_op.getInput();
   // If ShapeOp operand is replicate tensor block argument, replace with the
   // associated first replica operand.
   if (auto block_arg = input.dyn_cast<BlockArgument>()) {
@@ -70,7 +72,7 @@ void MakeShapeOpInvariant(tf_device::ReplicateOp replicate_op, int num_replicas,
   // shape has not changed in replicate prior to read. Currently after both
   // ResourceOpLiftingPass and TPURewritePass, there should not be any updates
   // to resources prior to their respective ReadVariableOp.
-  if (auto block_arg = read_var_op.resource().dyn_cast<BlockArgument>()) {
+  if (auto block_arg = read_var_op.getResource().dyn_cast<BlockArgument>()) {
     if (block_arg.getOwner() != replicate_block) return;
 
     OpBuilder builder(shape_op);
@@ -84,7 +86,7 @@ void MakeShapeOpInvariant(tf_device::ReplicateOp replicate_op, int num_replicas,
 }
 
 // Check if op uses a device from a list of virtual devices.
-bool UsesVirtualDevice(const Optional<DictionaryAttr>& virtual_devices,
+bool UsesVirtualDevice(const std::optional<DictionaryAttr>& virtual_devices,
                        Operation* operation) {
   if (!virtual_devices.has_value()) return false;
 
@@ -92,7 +94,7 @@ bool UsesVirtualDevice(const Optional<DictionaryAttr>& virtual_devices,
     StringAttr op_device = op->getAttrOfType<StringAttr>(kDeviceAttr);
     if (!op_device) return WalkResult::advance();
 
-    if (virtual_devices.getValue().get(op_device.getValue()))
+    if (virtual_devices.value().get(op_device.getValue()))
       return WalkResult::interrupt();
     return WalkResult::advance();
   });
@@ -122,15 +124,15 @@ bool IsOpReplicateInvariant(Region* replicate_region, Operation* op) {
 // invariant. Shape ops are rewritten to be invariant when possible, prior to
 // hoisting ops.
 void HoistReplicateInvariantOps(tf_device::ReplicateOp replicate_op) {
-  const int num_replicas = replicate_op.n();
+  const int num_replicas = replicate_op.getN();
   Block* replicate_block = &replicate_op.GetBody();
 
   replicate_op.walk([&](TF::ShapeOp shape_op) {
     MakeShapeOpInvariant(replicate_op, num_replicas, replicate_block, shape_op);
   });
 
-  Region* replicate_region = &replicate_op.body();
-  Optional<DictionaryAttr> virtual_device_list = replicate_op.devices();
+  Region* replicate_region = &replicate_op.getBody();
+  std::optional<DictionaryAttr> virtual_device_list = replicate_op.getDevices();
   for (Operation& inner_op :
        llvm::make_early_inc_range(replicate_op.GetBody())) {
     if (llvm::isa<tf_device::ReturnOp>(inner_op)) continue;

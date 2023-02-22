@@ -18,6 +18,7 @@ limitations under the License.
 #include <memory>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
@@ -26,6 +27,7 @@ limitations under the License.
 #include "tensorflow/core/protobuf/error_codes.pb.h"
 #include "tensorflow/lite/kernels/shim/status_macros.h"
 #include "tensorflow/lite/kernels/shim/tensor_view.h"
+#include "tensorflow/lite/kernels/shim/tf_tensor_view.h"
 
 namespace tflite {
 namespace shim {
@@ -164,18 +166,6 @@ int TfShapeInferenceContext::NumInputs() const {
 
 int TfShapeInferenceContext::NumOutputs() const {
   return context_->num_outputs();
-}
-
-::tensorflow::Status FromAbslStatus(const absl::Status& s) {
-  if (s.ok()) return ::tensorflow::Status();
-  return ::tensorflow::Status(static_cast<::tensorflow::error::Code>(s.code()),
-                              s.message());
-}
-
-absl::Status ToAbslStatus(const ::tensorflow::Status& s) {
-  return s.ok() ? absl::OkStatus()
-                : absl::Status(static_cast<absl::StatusCode>(s.code()),
-                               s.error_message());
 }
 
 }  // namespace shim

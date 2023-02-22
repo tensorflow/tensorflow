@@ -16,8 +16,9 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "tensorflow/compiler/xla/stream_executor/cuda/cuda_blas_lt.h"
+#include "tensorflow/compiler/xla/stream_executor/device_memory.h"
 #include "tensorflow/core/framework/types.h"
-#include "tensorflow/stream_executor/cuda/cuda_blas_lt.h"
 
 namespace tensorflow {
 
@@ -95,19 +96,22 @@ Status DoBlasLtMatmul(se::Stream* stream,
   se::cuda::BlasLt* blas_lt = se::cuda::GetBlasLt(stream);
   // TF_RET_CHECK(blas_lt != nullptr);
 
+  se::DeviceMemory<T> aux{};  // We don't use the auxilary buffers.
+
   // The scale type may be f32 if the data type is f16 and bf16.
   if constexpr (std::is_same_v<T, Eigen::half> ||
                 std::is_same_v<T, Eigen::bfloat16>) {
     if (plan.op_desc.scale_type() == CUDA_R_32F) {
       return blas_lt->DoMatmul(stream, plan, se::HostOrDeviceScalar<float>(1.0),
                                b, a, se::HostOrDeviceScalar<float>(0.0), c, c,
-                               algorithm, scratch_allocator, bias,
+                               algorithm, scratch_allocator, bias, aux,
                                profile_result);
     }
   }
   return blas_lt->DoMatmul(stream, plan, se::HostOrDeviceScalar<T>(T(1.0)), b,
                            a, se::HostOrDeviceScalar<T>(T(0.0)), c, c,
-                           algorithm, scratch_allocator, bias, profile_result);
+                           algorithm, scratch_allocator, bias, aux,
+                           profile_result);
 }
 
 }  // namespace tensorflow

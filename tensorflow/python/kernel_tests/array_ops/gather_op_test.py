@@ -35,8 +35,8 @@ from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 
-_TEST_TYPES = (dtypes.int64, dtypes.float32,
-               dtypes.complex64, dtypes.complex128)
+_TEST_TYPES = (dtypes.int64, dtypes.bfloat16, dtypes.float32, dtypes.complex64,
+               dtypes.complex128)
 
 # TODO(virimia): Add a benchmark for gather_v2, with batch_dims and axis set.
 
@@ -169,11 +169,12 @@ class GatherTest(test.TestCase, parameterized.TestCase):
                 source_slice = ((slice(None),) * outer_dims + (source_index,) +
                                 (slice(None),) * inner_dims)
                 correct_params_grad[dest_slice] += gather_grad[source_slice]
-              self.assertAllClose(
+              self.assertAllCloseAccordingToType(
                   correct_params_grad,
                   self.evaluate(params_grad),
                   atol=2e-6,
-                  rtol=2e-6)
+                  rtol=2e-6,
+              )
 
   def testHigherRankGradientTape(self):
     # We check that scalar and empty indices shapes work as well
@@ -238,11 +239,12 @@ class GatherTest(test.TestCase, parameterized.TestCase):
               source_slice = ((slice(None),) * outer_dims + (source_index,) +
                               (slice(None),) * inner_dims)
               correct_params_grad[dest_slice] += gather_grad[source_slice]
-            self.assertAllClose(
+            self.assertAllCloseAccordingToType(
                 correct_params_grad,
                 self.evaluate(params_grad),
                 atol=2e-6,
-                rtol=2e-6)
+                rtol=2e-6,
+            )
 
   def testString(self):
     params = np.array([[b"asdf", b"zxcv"], [b"qwer", b"uiop"]])

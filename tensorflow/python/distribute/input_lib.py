@@ -20,6 +20,7 @@ import time
 
 import six
 
+from tensorflow.python.autograph.operators import py_builtins
 from tensorflow.python.data.experimental.ops import batching
 from tensorflow.python.data.experimental.ops import cardinality as cardinality_lib
 from tensorflow.python.data.experimental.ops import distribute
@@ -1128,7 +1129,7 @@ class DistributedDataset(_IterableInput, composite_tensor.CompositeTensor):
     # `num_replicas_in_sync` smaller batches to be distributed among that
     # worker's replicas, so that the batch size for a global step (across all
     # workers and replicas) adds up to the original dataset's batch size.
-    if num_replicas_in_sync is not None:
+    if num_replicas_in_sync is not None and num_replicas_in_sync > 1:
       num_workers = input_context.num_input_pipelines if input_context else len(
           input_workers.worker_devices)
       rebatch_fn = self._make_rebatch_fn(dataset, num_workers,
@@ -1182,13 +1183,13 @@ class DistributedDataset(_IterableInput, composite_tensor.CompositeTensor):
 
     def rebatch_fn(dataset, worker_index):
       try:
-        # pylint: disable=protected-access
+
         def apply_rebatch():
           batch_sizes = distribute.batch_sizes_for_worker(
               batch_size, num_workers, num_replicas_per_worker, worker_index)
-          return distribute._RebatchDataset(
-              dataset, batch_sizes).prefetch(num_replicas_per_worker)
+          return dataset.rebatch(batch_sizes).prefetch(num_replicas_per_worker)
 
+        # pylint: disable=protected-access
         def apply_legacy_rebatch():
           return distribute._LegacyRebatchDataset(
               dataset, num_replicas_in_sync).prefetch(num_replicas_per_worker)
@@ -2170,3 +2171,20 @@ def _rebatch_as_dynamic(per_replica_spec):
   return values.PerReplicaSpec(
       *nest.map_structure(_rebatch, per_replica_spec._value_specs))
   # pylint: enable=protected-access
+
+
+def _ag_enumerate_not_implemented(s, unused_start):
+  msg = (
+      f"enumerate not supported with {s.__class__.__name__} types within "
+      "tf.functions. Use a for loop over the dataset and keep a separate "
+      "counter instead."
+  )
+  raise NotImplementedError(msg)
+
+
+py_builtins.enumerate_registry.register(
+    DistributedIterator, _ag_enumerate_not_implemented
+)
+py_builtins.enumerate_registry.register(
+    DistributedDataset, _ag_enumerate_not_implemented
+)

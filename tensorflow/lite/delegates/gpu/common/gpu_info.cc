@@ -134,6 +134,25 @@ MaliGpu GetMaliGpuVersion(const std::string& gpu_description) {
   return MaliGpu::kUnknown;
 }
 
+PowerVRGpu GetPowerVRGpuVersion(const std::string& gpu_description) {
+  // Order must be preserved
+  const std::vector<std::pair<std::string, PowerVRGpu>> kMapping = {
+      {"rogue", PowerVRGpu::kRogue},     {"axe", PowerVRGpu::kAXE},
+      {"axm", PowerVRGpu::kAXM},         {"axt", PowerVRGpu::kAXT},
+      {"bxe", PowerVRGpu::kBXE},         {"bxm", PowerVRGpu::kBXM},
+      {"bxs", PowerVRGpu::kBXS},         {"bxt", PowerVRGpu::kBXT},
+      {"cxt", PowerVRGpu::kCXT},         {"dxt", PowerVRGpu::kDXT},
+      {"powervr g", PowerVRGpu::kRogue},
+  };
+  for (const auto& v : kMapping) {
+    if (gpu_description.find(v.first) != std::string::npos) {
+      return v.second;
+    }
+  }
+
+  return PowerVRGpu::kUnknown;
+}
+
 }  // namespace
 
 AdrenoInfo::AdrenoInfo(const std::string& device_version)
@@ -357,6 +376,7 @@ AppleInfo::AppleInfo(const std::string& gpu_description) {
       {"apple a13 gpu", AppleGpu::kA13},
       {"apple a14 gpu", AppleGpu::kA14},
       {"apple a15 gpu", AppleGpu::kA15},
+      {"apple a16 gpu", AppleGpu::kA16},
       // on tablets we have metal device name "apple m1 gpu"
       // and on notebooks "apple m1"
       {"apple m1 gpu", AppleGpu::kM1},
@@ -387,20 +407,22 @@ bool AppleInfo::IsBionic() const {
   return gpu_type == AppleGpu::kA11 || gpu_type == AppleGpu::kA12 ||
          gpu_type == AppleGpu::kA12X || gpu_type == AppleGpu::kA12Z ||
          gpu_type == AppleGpu::kA13 || gpu_type == AppleGpu::kA14 ||
-         gpu_type == AppleGpu::kA15 || gpu_type == AppleGpu::kM1 ||
-         gpu_type == AppleGpu::kM1Pro || gpu_type == AppleGpu::kM1Max ||
-         gpu_type == AppleGpu::kM1Ultra || gpu_type == AppleGpu::kM2;
-}
-
-bool AppleInfo::IsSIMDMatMulSupported() const {
-  return gpu_type == AppleGpu::kA14 || gpu_type == AppleGpu::kA15 ||
+         gpu_type == AppleGpu::kA15 || gpu_type == AppleGpu::kA16 ||
          gpu_type == AppleGpu::kM1 || gpu_type == AppleGpu::kM1Pro ||
          gpu_type == AppleGpu::kM1Max || gpu_type == AppleGpu::kM1Ultra ||
          gpu_type == AppleGpu::kM2;
 }
 
+bool AppleInfo::IsSIMDMatMulSupported() const {
+  return gpu_type == AppleGpu::kA14 || gpu_type == AppleGpu::kA15 ||
+         gpu_type == AppleGpu::kA16 || gpu_type == AppleGpu::kM1 ||
+         gpu_type == AppleGpu::kM1Pro || gpu_type == AppleGpu::kM1Max ||
+         gpu_type == AppleGpu::kM1Ultra || gpu_type == AppleGpu::kM2;
+}
+
 bool AppleInfo::IsSIMDMatMulFp32Perf2x() const {
-  return gpu_type == AppleGpu::kA15 || gpu_type == AppleGpu::kM2;
+  return gpu_type == AppleGpu::kA15 || gpu_type == AppleGpu::kA16 ||
+         gpu_type == AppleGpu::kM2;
 }
 
 bool AppleInfo::IsRoundToNearestSupported() const { return IsBionic(); }
@@ -439,6 +461,8 @@ int AppleInfo::GetComputeUnitsCount() const {
       if (compute_units != -1) {
         return compute_units;
       }
+      return 5;
+    case AppleGpu::kA16:
       return 5;
     case AppleGpu::kM1:
       // approximate, can be 7 or 8
@@ -544,12 +568,39 @@ int MaliInfo::GetApproximateComputeUnitsCount() const {
   return 4;
 }
 
+PowerVRInfo::PowerVRInfo(const std::string& gpu_description)
+    : gpu_version(GetPowerVRGpuVersion(gpu_description)) {}
+
+bool PowerVRInfo::IsRogue() const { return gpu_version == PowerVRGpu::kRogue; }
+
+bool PowerVRInfo::IsImgAxx() const {
+  return gpu_version == PowerVRGpu::kAXE || gpu_version == PowerVRGpu::kAXM ||
+         gpu_version == PowerVRGpu::kAXT;
+}
+
+bool PowerVRInfo::IsImgBxx() const {
+  return gpu_version == PowerVRGpu::kBXE || gpu_version == PowerVRGpu::kBXM ||
+         gpu_version == PowerVRGpu::kBXS || gpu_version == PowerVRGpu::kBXT;
+}
+
+bool PowerVRInfo::IsImgCxx() const { return gpu_version == PowerVRGpu::kCXT; }
+
+bool PowerVRInfo::IsImgDxx() const { return gpu_version == PowerVRGpu::kDXT; }
+
 void GetGpuInfoFromDeviceDescription(const std::string& gpu_description,
                                      GpuApi gpu_api, GpuInfo* gpu_info) {
   gpu_info->gpu_api = gpu_api;
   std::string lowered = gpu_description;
   absl::AsciiStrToLower(&lowered);
   gpu_info->vendor = GetGpuVendor(lowered);
+
+  // Because clvk is an OpenCL layer on top of vulkan, it does not react to CL
+  // optimisation as native CL implementation does. For the time being, let's
+  // manage it manually with explicit conditions in the code.
+  if (gpu_info->IsApiOpenCl() && gpu_info->opencl_info.IsCLVK()) {
+    gpu_info->vendor = GpuVendor::kUnknown;
+  }
+
   if (gpu_info->IsAdreno()) {
     gpu_info->adreno_info = AdrenoInfo(lowered);
   } else if (gpu_info->IsApple()) {
@@ -557,6 +608,8 @@ void GetGpuInfoFromDeviceDescription(const std::string& gpu_description,
     gpu_info->supported_subgroup_sizes = {32};
   } else if (gpu_info->IsMali()) {
     gpu_info->mali_info = MaliInfo(lowered);
+  } else if (gpu_info->IsPowerVR()) {
+    gpu_info->powervr_info = PowerVRInfo(lowered);
   }
 }
 
@@ -854,7 +907,7 @@ int GpuInfo::GetComputeUnitsCount() const {
     return adreno_info.GetComputeUnitsCount();
   }
   if (IsMali()) {
-    mali_info.GetApproximateComputeUnitsCount();
+    return mali_info.GetApproximateComputeUnitsCount();
   }
   return 4;
 }

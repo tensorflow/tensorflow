@@ -1,18 +1,4 @@
-// Copyright 2022 The TensorFlow Runtime Authors
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//      http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-
-// RUN: tf-quant-opt %s -split-input-file -quant-prepare-quantize -quant-test-post-training-quantize | FileCheck %s
+// RUN: tf-quant-opt %s -split-input-file -quant-prepare-quantize='post-training-quantize=true' | FileCheck %s
 
 // -----
 
@@ -105,14 +91,15 @@ module {
   }
 
 // CHECK-LABEL: conv_with_bias_and_relu
-// CHECK: %[[cst:.*]] = arith.constant dense<[7.11401462, 7.05456924]> : tensor<2xf32>
+// CHECK-DAG: %[[cst:.*]] = arith.constant dense<[7.11401462, 7.05456924]> : tensor<2xf32>
+// CHECK-DAG: %[[cst_1:.*]] = arith.constant dense<{{.*}}> : tensor<2x3x3x2xf32>
+
 // CHECK: %[[q0:.*]] = "quantfork.qcast"(%[[cst]]) {volatile}
-// CHECK-SAME: tensor<2x!quant.uniform<i32:f32:0, {0.044169864606680966,0.042867627733627671}>>
+// CHECK-SAME: tensor<2x!quant.uniform<i32:f32, 0.044169864606680966>>
 // CHECK: %[[dq0:.*]] = "quantfork.dcast"(%[[q0]])
 
-// CHECK: %[[cst_1:.*]] = arith.constant
 // CHECK: %[[q1:.*]] = "quantfork.qcast"(%[[cst_1]]) {volatile}
-// CHECK-SAME: tensor<2x3x3x2x!quant.uniform<i8<-127:127>:f32:3, {0.075176584439014829,0.072960192762960605}
+// CHECK-SAME: tensor<2x3x3x2x!quant.uniform<i8<-127:127>:f32, 0.075176584439014829>>
 // CHECK: %[[dq1:.*]] = "quantfork.dcast"(%[[q1]])
 
 // CHECK: %[[q2:.*]] = "quantfork.qcast"(%arg0)
@@ -124,4 +111,33 @@ module {
 // CHECK: %[[q3:.*]] = "quantfork.qcast"(%[[call]]) {volatile}
 // CHECK-SAME: tensor<*x!quant.uniform<i8:f32, 0.023529411764705882:-128>>
 // CHECK: %[[dq3:.*]] = "quantfork.dcast"(%[[q3]])
+}
+
+// -----
+
+module {
+  func.func @value_used_in_multiple_same_scale_ops(%arg0: tensor<*xf32>, %arg1: tensor<*xf32>, %arg2: tensor<*xf32>, %arg3: tensor<*xf32>) -> (tensor<*xf32>, tensor<*xf32>) {
+    %cst = "tf.Const"() {device = "", value = dense<2> : tensor<i32>} : () -> tensor<i32>
+    %0 = "quantfork.stats"(%arg0) {layerStats = dense<[-0.83811146, 62.4960899]> : tensor<2xf32>} : (tensor<*xf32>) -> tensor<*xf32>
+    %1 = "quantfork.stats"(%arg1) {layerStats = dense<[-0.835039615, 1.000000e+00]> : tensor<2xf32>} : (tensor<*xf32>) -> tensor<*xf32>
+    %2 = "tf.ConcatV2"(%0, %1, %cst) {device = ""} : (tensor<*xf32>, tensor<*xf32>, tensor<i32>) -> tensor<*xf32>
+    %3 = "quantfork.stats"(%2) {layerStats = dense<[-0.83811146, 62.4960899]> : tensor<2xf32>} : (tensor<*xf32>) -> tensor<*xf32>
+
+    %4 = "quantfork.stats"(%arg2) {layerStats = dense<[-1.5726943, 1.07351148]> : tensor<2xf32>} : (tensor<*xf32>) -> tensor<*xf32>
+    %5 = "quantfork.stats"(%arg3) {layerStats = dense<[0.000000e+00, 10.6875381]> : tensor<2xf32>} : (tensor<*xf32>) -> tensor<*xf32>
+    %6 = "tf.ConcatV2"(%4, %5, %1, %cst) {device = ""} : (tensor<*xf32>, tensor<*xf32>, tensor<*xf32>, tensor<i32>) -> tensor<*xf32>
+    %7 = "quantfork.stats"(%6) {layerStats = dense<[-1.5726943, 10.6875381]> : tensor<2xf32>} : (tensor<*xf32>) -> tensor<*xf32>
+    func.return  %3, %7 : tensor<*xf32>, tensor<*xf32>
+  }
+// CHECK-LABEL: value_used_in_multiple_same_scale_ops
+
+// Check if operands of concat ops are quantized separately.
+// CHECK-DAG: %[[cst:.*]] = arith.constant dense<2> : tensor<i32>
+// CHECK-DAG: %[[q1:.*]] = "quantfork.qcast"(%arg1) {volatile} : (tensor<*xf32>) -> tensor<*x!quant.uniform<i8:f32, 0.048079342935599532:-95>>
+// CHECK-DAG: %[[q2:.*]] = "quantfork.qcast"(%arg1) {volatile} : (tensor<*xf32>) -> tensor<*x!quant.uniform<i8:f32, 0.24836941723730049:-125>>
+// CHECK-DAG: %[[dq1:.*]] = "quantfork.dcast"(%[[q1]])
+// CHECK-DAG: %[[dq2:.*]] = "quantfork.dcast"(%[[q2]])
+
+// CHECK-DAG: %[[concat1:.*]] = "tf.ConcatV2"({{.*}}, %[[dq2]], %[[cst]])
+// CHECK-DAG: %[[concat2:.*]] = "tf.ConcatV2"({{.*}}, {{.*}}, %[[dq1]], %[[cst]])
 }

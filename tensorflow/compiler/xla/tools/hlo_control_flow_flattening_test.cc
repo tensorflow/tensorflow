@@ -21,7 +21,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_matchers.h"
 #include "tensorflow/compiler/xla/service/hlo_verifier.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
-#include "tensorflow/core/lib/core/status_test_util.h"
+#include "tensorflow/tsl/lib/core/status_test_util.h"
 
 namespace xla {
 namespace {
@@ -61,7 +61,7 @@ TEST_F(HloControlFlowFlatteningTest, WhileRoot) {
                           ParseAndReturnVerifiedModule(hlo_string));
   HloControlFlowFlattening flattening(
       HloControlFlowFlattening::Options{/*while_execution_count=*/3});
-  EXPECT_TRUE(flattening.Run(module.get()).ValueOrDie());
+  EXPECT_TRUE(flattening.Run(module.get()).value());
   TF_ASSERT_OK(HloVerifier(/*layout_sensitive=*/true,
                            /*allow_mixed_precision=*/true)
                    .Run(module.get())
@@ -121,7 +121,7 @@ TEST_F(HloControlFlowFlatteningTest, WhileConditionCallComputation) {
                           ParseAndReturnVerifiedModule(hlo_string));
   HloControlFlowFlattening flattening(
       HloControlFlowFlattening::Options{/*while_execution_count=*/3});
-  EXPECT_TRUE(flattening.Run(module.get()).ValueOrDie());
+  EXPECT_TRUE(flattening.Run(module.get()).value());
   XLA_VLOG_LINES(3, "Loaded HLO module: " + module->ToString());
   TF_ASSERT_OK(HloVerifier(/*layout_sensitive=*/true,
                            /*allow_mixed_precision=*/true)
@@ -176,7 +176,7 @@ TEST_F(HloControlFlowFlatteningTest, WhileRootScheduled) {
                           ParseAndReturnVerifiedModule(hlo_string));
   HloControlFlowFlattening flattening(
       HloControlFlowFlattening::Options{/*while_execution_count=*/3});
-  EXPECT_TRUE(flattening.Run(module.get()).ValueOrDie());
+  EXPECT_TRUE(flattening.Run(module.get()).value());
   TF_ASSERT_OK(HloVerifier(/*layout_sensitive=*/true,
                            /*allow_mixed_precision=*/true)
                    .Run(module.get())
@@ -232,7 +232,7 @@ TEST_F(HloControlFlowFlatteningTest, WhileUser) {
                           ParseAndReturnVerifiedModule(hlo_string));
   HloControlFlowFlattening flattening(
       HloControlFlowFlattening::Options{/*while_execution_count=*/3});
-  EXPECT_TRUE(flattening.Run(module.get()).ValueOrDie());
+  EXPECT_TRUE(flattening.Run(module.get()).value());
   TF_ASSERT_OK(HloVerifier(/*layout_sensitive=*/true,
                            /*allow_mixed_precision=*/true)
                    .Run(module.get())
@@ -249,20 +249,23 @@ TEST_F(HloControlFlowFlatteningTest, Infeed) {
   HloModule Infeed
   ENTRY Infeed {
     after-all = token[] after-all()
-    ROOT infeed = ((bf16[3]{0}, s32[12,5]{0,1}), token[]) infeed(after-all)
+    ROOT infeed.23 = ((bf16[3]{0}, s32[12,5]{0,1}), token[]) infeed(after-all)
   }
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
   HloControlFlowFlattening flattening(
       HloControlFlowFlattening::Options{/*while_execution_count=*/3});
-  EXPECT_TRUE(flattening.Run(module.get()).ValueOrDie());
+  EXPECT_TRUE(flattening.Run(module.get()).value());
   TF_ASSERT_OK(HloVerifier(/*layout_sensitive=*/true,
                            /*allow_mixed_precision=*/true)
                    .Run(module.get())
                    .status());
+  auto custom_call =
+      module->entry_computation()->GetInstructionWithName("infeed.23");
+  EXPECT_THAT(custom_call, op::CustomCall());
   auto tuple = module->entry_computation()->root_instruction();
-  EXPECT_THAT(tuple, op::Tuple(op::CustomCall(), op::AfterAll()));
+  EXPECT_THAT(tuple, op::Tuple(custom_call, op::AfterAll()));
 }
 
 TEST_F(HloControlFlowFlatteningTest, InfeedPreserveLayout) {
@@ -278,7 +281,7 @@ TEST_F(HloControlFlowFlatteningTest, InfeedPreserveLayout) {
   Shape root_shape = module->entry_computation()->root_instruction()->shape();
   HloControlFlowFlattening flattening(
       HloControlFlowFlattening::Options{/*while_execution_count=*/3});
-  EXPECT_TRUE(flattening.Run(module.get()).ValueOrDie());
+  EXPECT_TRUE(flattening.Run(module.get()).value());
   TF_ASSERT_OK(HloVerifier(/*layout_sensitive=*/true,
                            /*allow_mixed_precision=*/true)
                    .Run(module.get())
@@ -294,19 +297,20 @@ TEST_F(HloControlFlowFlatteningTest, Outfeed) {
   ENTRY Outfeed {
     param = (bf16[3]{0}, s32[12,5]{0,1}) parameter(0)
     after-all = token[] after-all()
-    ROOT outfeed = token[] outfeed(param, after-all)
+    ROOT outfeed.23 = token[] outfeed(param, after-all)
   }
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
   HloControlFlowFlattening flattening(
       HloControlFlowFlattening::Options{/*while_execution_count=*/3});
-  EXPECT_TRUE(flattening.Run(module.get()).ValueOrDie());
+  EXPECT_TRUE(flattening.Run(module.get()).value());
   TF_ASSERT_OK(HloVerifier(/*layout_sensitive=*/true,
                            /*allow_mixed_precision=*/true)
                    .Run(module.get())
                    .status());
   auto custom_call = module->entry_computation()->root_instruction();
+  EXPECT_EQ(custom_call->name(), "outfeed.23");
   EXPECT_THAT(custom_call, op::CustomCall(op::Parameter(0), op::AfterAll()));
 }
 
@@ -329,14 +333,15 @@ TEST_F(HloControlFlowFlatteningTest, AllReduce) {
                           ParseAndReturnVerifiedModule(hlo_string));
   HloControlFlowFlattening flattening(
       HloControlFlowFlattening::Options{/*while_execution_count=*/3});
-  EXPECT_TRUE(flattening.Run(module.get()).ValueOrDie());
+  EXPECT_TRUE(flattening.Run(module.get()).value());
   TF_ASSERT_OK(HloVerifier(/*layout_sensitive=*/true,
                            /*allow_mixed_precision=*/true)
                    .Run(module.get())
                    .status());
-  LOG(INFO) << module->ToString();
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               op::CustomCall(op::Parameter(0), op::Parameter(1)));
+  EXPECT_EQ(module->entry_computation()->root_instruction()->name(),
+            "all-reduce");
 }
 
 TEST_F(HloControlFlowFlatteningTest, AllReduceStartAndDone) {
@@ -359,14 +364,16 @@ TEST_F(HloControlFlowFlatteningTest, AllReduceStartAndDone) {
                           ParseAndReturnVerifiedModule(hlo_string));
   HloControlFlowFlattening flattening(
       HloControlFlowFlattening::Options{/*while_execution_count=*/3});
-  EXPECT_TRUE(flattening.Run(module.get()).ValueOrDie());
+  EXPECT_TRUE(flattening.Run(module.get()).value());
   TF_ASSERT_OK(HloVerifier(/*layout_sensitive=*/true,
                            /*allow_mixed_precision=*/true)
                    .Run(module.get())
                    .status());
-  LOG(INFO) << module->ToString();
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               op::CustomCall(op::CustomCall(op::Parameter(0))));
+  EXPECT_EQ(module->entry_computation()->root_instruction()->name(), "done");
+  EXPECT_EQ(module->entry_computation()->root_instruction()->operand(0)->name(),
+            "crs");
 }
 
 TEST_F(HloControlFlowFlatteningTest, AllGather) {
@@ -382,14 +389,14 @@ TEST_F(HloControlFlowFlatteningTest, AllGather) {
                           ParseAndReturnVerifiedModule(hlo_string));
   HloControlFlowFlattening flattening(
       HloControlFlowFlattening::Options{/*while_execution_count=*/3});
-  EXPECT_TRUE(flattening.Run(module.get()).ValueOrDie());
+  EXPECT_TRUE(flattening.Run(module.get()).value());
   TF_ASSERT_OK(HloVerifier(/*layout_sensitive=*/true,
                            /*allow_mixed_precision=*/true)
                    .Run(module.get())
                    .status());
-  LOG(INFO) << module->ToString();
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               op::CustomCall(op::Parameter(0)));
+  EXPECT_EQ(module->entry_computation()->root_instruction()->name(), "ag");
 }
 
 TEST_F(HloControlFlowFlatteningTest, AllToAll) {
@@ -405,14 +412,14 @@ TEST_F(HloControlFlowFlatteningTest, AllToAll) {
                           ParseAndReturnVerifiedModule(hlo_string));
   HloControlFlowFlattening flattening(
       HloControlFlowFlattening::Options{/*while_execution_count=*/3});
-  EXPECT_TRUE(flattening.Run(module.get()).ValueOrDie());
+  EXPECT_TRUE(flattening.Run(module.get()).value());
   TF_ASSERT_OK(HloVerifier(/*layout_sensitive=*/true,
                            /*allow_mixed_precision=*/true)
                    .Run(module.get())
                    .status());
-  LOG(INFO) << module->ToString();
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               op::CustomCall(op::Parameter(0)));
+  EXPECT_EQ(module->entry_computation()->root_instruction()->name(), "a2a");
 }
 
 TEST_F(HloControlFlowFlatteningTest, CollectivePermute) {
@@ -421,21 +428,22 @@ TEST_F(HloControlFlowFlatteningTest, CollectivePermute) {
 
   ENTRY CollectivePermute {
     input = f32[128,32]{0,1} parameter(0)
-    ROOT root = f32[128,32]{0,1} collective-permute(input), source_target_pairs={{0,1},{1,2},{2,3}}
+    ROOT collective-permute = f32[128,32]{0,1} collective-permute(input), source_target_pairs={{0,1},{1,2},{2,3}}
   }
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
   HloControlFlowFlattening flattening(
       HloControlFlowFlattening::Options{/*while_execution_count=*/3});
-  EXPECT_TRUE(flattening.Run(module.get()).ValueOrDie());
+  EXPECT_TRUE(flattening.Run(module.get()).value());
   TF_ASSERT_OK(HloVerifier(/*layout_sensitive=*/true,
                            /*allow_mixed_precision=*/true)
                    .Run(module.get())
                    .status());
-  LOG(INFO) << module->ToString();
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               op::CustomCall(op::Parameter(0)));
+  EXPECT_EQ(module->entry_computation()->root_instruction()->name(),
+            "collective-permute");
 }
 
 TEST_F(HloControlFlowFlatteningTest, CollectivePermuteInPlaceUpdate) {
@@ -450,23 +458,24 @@ TEST_F(HloControlFlowFlatteningTest, CollectivePermuteInPlaceUpdate) {
     tuple.1 = (s32[], s32[]) tuple(constant.1, constant.1)
     constant.2 = s32[] constant(64)
     tuple.2 = (s32[], s32[]) tuple(constant.1, constant.2)
-    ROOT root = f32[128,128]{0,1} collective-permute(input, output, tuple.1, tuple.2), source_target_pairs={{0,1},{1,2},{2,3}}, slice_sizes={{128,32}}
+    ROOT collective-permute = f32[128,128]{0,1} collective-permute(input, output, tuple.1, tuple.2), source_target_pairs={{0,1},{1,2},{2,3}}, slice_sizes={{128,32}}
   }
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
   HloControlFlowFlattening flattening(
       HloControlFlowFlattening::Options{/*while_execution_count=*/3});
-  EXPECT_TRUE(flattening.Run(module.get()).ValueOrDie());
+  EXPECT_TRUE(flattening.Run(module.get()).value());
   TF_ASSERT_OK(HloVerifier(/*layout_sensitive=*/true,
                            /*allow_mixed_precision=*/true)
                    .Run(module.get())
                    .status());
-  LOG(INFO) << module->ToString();
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               op::CustomCall(op::Parameter(0), op::Broadcast(op::Constant()),
                              op::Tuple(op::Constant(), op::Constant()),
                              op::Tuple(op::Constant(), op::Constant())));
+  EXPECT_EQ(module->entry_computation()->root_instruction()->name(),
+            "collective-permute");
 }
 
 TEST_F(HloControlFlowFlatteningTest, CollectivePermuteStartAndDone) {
@@ -483,14 +492,17 @@ TEST_F(HloControlFlowFlatteningTest, CollectivePermuteStartAndDone) {
                           ParseAndReturnVerifiedModule(hlo_string));
   HloControlFlowFlattening flattening(
       HloControlFlowFlattening::Options{/*while_execution_count=*/3});
-  EXPECT_TRUE(flattening.Run(module.get()).ValueOrDie());
+  EXPECT_TRUE(flattening.Run(module.get()).value());
   TF_ASSERT_OK(HloVerifier(/*layout_sensitive=*/true,
                            /*allow_mixed_precision=*/true)
                    .Run(module.get())
                    .status());
-  LOG(INFO) << module->ToString();
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               op::CustomCall(op::CustomCall(op::Parameter(0))));
+  EXPECT_EQ(module->entry_computation()->root_instruction()->name(),
+            "collective-permute-done.1");
+  EXPECT_EQ(module->entry_computation()->root_instruction()->operand(0)->name(),
+            "collective-permute-start.1");
 }
 
 TEST_F(HloControlFlowFlatteningTest, Recv) {
@@ -499,11 +511,12 @@ TEST_F(HloControlFlowFlatteningTest, Recv) {
 
   ENTRY %Recv () -> (f32[], token[]) {
     %token0 = token[] after-all()
-    %recv = (f32[], u32[], token[]) recv(token[] %token0), channel_id=15, sharding={maximal device=1}
-    ROOT %recv-done = (f32[], token[]) recv-done((f32[], u32[], token[]) %recv), channel_id=15, sharding={maximal device=1}
-    %constant = f32[] constant(2.1), sharding={maximal device=0}
-    %send = (f32[], u32[], token[]) send(f32[] %constant, token[] %token0), channel_id=16, sharding={maximal device=0}, control-predecessors={%recv}
-    %send-done = token[] send-done((f32[], u32[], token[]) %send), channel_id=16, sharding={maximal device=0}  }
+    %recv = (f32[], u32[], token[]) recv(token[] %token0), channel_id=15
+    ROOT %recv-done = (f32[], token[]) recv-done((f32[], u32[], token[]) %recv), channel_id=15
+    %constant = f32[] constant(2.1)
+    %send = (f32[], u32[], token[]) send(f32[] %constant, token[] %token0), channel_id=16, control-predecessors={%recv}
+    %send-done = token[] send-done((f32[], u32[], token[]) %send), channel_id=16
+  }
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
@@ -511,14 +524,17 @@ TEST_F(HloControlFlowFlatteningTest, Recv) {
   HloControlFlowFlattening flattening(
       HloControlFlowFlattening::Options{/*while_execution_count=*/3});
   TF_ASSERT_OK(control_remover.Run(module.get()).status());
-  EXPECT_TRUE(flattening.Run(module.get()).ValueOrDie());
+  EXPECT_TRUE(flattening.Run(module.get()).value());
   TF_ASSERT_OK(HloVerifier(/*layout_sensitive=*/true,
                            /*allow_mixed_precision=*/true)
                    .Run(module.get())
                    .status());
-  LOG(INFO) << module->ToString();
   EXPECT_THAT(module->entry_computation()->root_instruction(),
-              op::Tuple(op::CustomCall(), op::AfterAll()));
+              op::CustomCall(op::CustomCall()));
+  EXPECT_EQ(module->entry_computation()->root_instruction()->name(),
+            "recv-done");
+  EXPECT_EQ(module->entry_computation()->root_instruction()->operand(0)->name(),
+            "recv");
 }
 
 TEST_F(HloControlFlowFlatteningTest, RecvHostTransfer) {
@@ -527,11 +543,12 @@ TEST_F(HloControlFlowFlatteningTest, RecvHostTransfer) {
 
   ENTRY %Recv () -> (f32[], token[]) {
     %token0 = token[] after-all()
-    %recv = (f32[], u32[], token[]) recv(token[] %token0), channel_id=15, is_host_transfer=true, sharding={maximal device=1}
-    ROOT %recv-done = (f32[], token[]) recv-done((f32[], u32[], token[]) %recv), channel_id=15, is_host_transfer=true, sharding={maximal device=1}
-    %constant = f32[] constant(2.1), sharding={maximal device=0}
-    %send = (f32[], u32[], token[]) send(f32[] %constant, token[] %token0), channel_id=16, sharding={maximal device=0}, control-predecessors={%recv}
-    %send-done = token[] send-done((f32[], u32[], token[]) %send), channel_id=16, sharding={maximal device=0}  }
+    %recv = (f32[], u32[], token[]) recv(token[] %token0), channel_id=15, is_host_transfer=true
+    ROOT %recv-done = (f32[], token[]) recv-done((f32[], u32[], token[]) %recv), channel_id=15, is_host_transfer=true
+    %constant = f32[] constant(2.1)
+    %send = (f32[], u32[], token[]) send(f32[] %constant, token[] %token0), channel_id=16, control-predecessors={%recv}
+    %send-done = token[] send-done((f32[], u32[], token[]) %send), channel_id=16
+  }
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
@@ -542,14 +559,17 @@ TEST_F(HloControlFlowFlatteningTest, RecvHostTransfer) {
       /*flatten_while_loop=*/true, /*remove_comm=*/false,
       /*remove_host_transfer=*/true});
   TF_ASSERT_OK(control_remover.Run(module.get()).status());
-  EXPECT_TRUE(flattening.Run(module.get()).ValueOrDie());
+  EXPECT_TRUE(flattening.Run(module.get()).value());
   TF_ASSERT_OK(HloVerifier(/*layout_sensitive=*/true,
                            /*allow_mixed_precision=*/true)
                    .Run(module.get())
                    .status());
-  LOG(INFO) << module->ToString();
   EXPECT_THAT(module->entry_computation()->root_instruction(),
-              op::Tuple(op::CustomCall(), op::AfterAll()));
+              op::CustomCall(op::CustomCall()));
+  EXPECT_EQ(module->entry_computation()->root_instruction()->name(),
+            "recv-done");
+  EXPECT_EQ(module->entry_computation()->root_instruction()->operand(0)->name(),
+            "recv");
 }
 
 TEST_F(HloControlFlowFlatteningTest, Send) {
@@ -558,11 +578,11 @@ TEST_F(HloControlFlowFlatteningTest, Send) {
 
   ENTRY %Send () -> token[] {
     %token0 = token[] after-all()
-    %recv = (f32[], u32[], token[]) recv(token[] %token0), channel_id=15, sharding={maximal device=1}
-    %recv-done = (f32[], token[]) recv-done((f32[], u32[], token[]) %recv), channel_id=15, sharding={maximal device=1}
-    %constant = f32[] constant(2.1), sharding={maximal device=0}
-    %send = (f32[], u32[], token[]) send(f32[] %constant, token[] %token0), channel_id=16, sharding={maximal device=0}, control-predecessors={%recv}
-    ROOT %send-done = token[] send-done((f32[], u32[], token[]) %send), channel_id=16, sharding={maximal device=0}
+    %recv = (f32[], u32[], token[]) recv(token[] %token0), channel_id=15
+    %recv-done = (f32[], token[]) recv-done((f32[], u32[], token[]) %recv), channel_id=15
+    %constant = f32[] constant(2.1)
+    %send = (f32[], u32[], token[]) send(f32[] %constant, token[] %token0), channel_id=16, control-predecessors={%recv}
+    ROOT %send-done = token[] send-done((f32[], u32[], token[]) %send), channel_id=16
   }
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
@@ -571,14 +591,17 @@ TEST_F(HloControlFlowFlatteningTest, Send) {
   HloControlFlowFlattening flattening(
       HloControlFlowFlattening::Options{/*while_execution_count=*/3});
   TF_ASSERT_OK(control_remover.Run(module.get()).status());
-  EXPECT_TRUE(flattening.Run(module.get()).ValueOrDie());
+  EXPECT_TRUE(flattening.Run(module.get()).value());
   TF_ASSERT_OK(HloVerifier(/*layout_sensitive=*/true,
                            /*allow_mixed_precision=*/true)
                    .Run(module.get())
                    .status());
-  LOG(INFO) << module->ToString();
   EXPECT_THAT(module->entry_computation()->root_instruction(),
-              op::CustomCall(op::Constant(), op::AfterAll()));
+              op::CustomCall(op::CustomCall()));
+  EXPECT_EQ(module->entry_computation()->root_instruction()->name(),
+            "send-done");
+  EXPECT_EQ(module->entry_computation()->root_instruction()->operand(0)->name(),
+            "send");
 }
 
 TEST_F(HloControlFlowFlatteningTest, SendHostTransfer) {
@@ -587,11 +610,11 @@ TEST_F(HloControlFlowFlatteningTest, SendHostTransfer) {
 
   ENTRY %Send () -> token[] {
     %token0 = token[] after-all()
-    %recv = (f32[], u32[], token[]) recv(token[] %token0), channel_id=15, sharding={maximal device=1}
-    %recv-done = (f32[], token[]) recv-done((f32[], u32[], token[]) %recv), channel_id=15, sharding={maximal device=1}
-    %constant = f32[] constant(2.1), sharding={maximal device=0}
-    %send = (f32[], u32[], token[]) send(f32[] %constant, token[] %token0), channel_id=16, is_host_transfer=true, sharding={maximal device=0}, control-predecessors={%recv}
-    ROOT %send-done = token[] send-done((f32[], u32[], token[]) %send), channel_id=16, is_host_transfer=true, sharding={maximal device=0}
+    %recv = (f32[], u32[], token[]) recv(token[] %token0), channel_id=15
+    %recv-done = (f32[], token[]) recv-done((f32[], u32[], token[]) %recv), channel_id=15
+    %constant = f32[] constant(2.1)
+    %send = (f32[], u32[], token[]) send(f32[] %constant, token[] %token0), channel_id=16, is_host_transfer=true, control-predecessors={%recv}
+    ROOT %send-done = token[] send-done((f32[], u32[], token[]) %send), channel_id=16, is_host_transfer=true
   }
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
@@ -603,14 +626,17 @@ TEST_F(HloControlFlowFlatteningTest, SendHostTransfer) {
       /*flatten_while_loop=*/true, /*remove_comm=*/false,
       /*remove_host_transfer=*/true});
   TF_ASSERT_OK(control_remover.Run(module.get()).status());
-  EXPECT_TRUE(flattening.Run(module.get()).ValueOrDie());
+  EXPECT_TRUE(flattening.Run(module.get()).value());
   TF_ASSERT_OK(HloVerifier(/*layout_sensitive=*/true,
                            /*allow_mixed_precision=*/true)
                    .Run(module.get())
                    .status());
-  LOG(INFO) << module->ToString();
   EXPECT_THAT(module->entry_computation()->root_instruction(),
-              op::CustomCall(op::Constant(), op::AfterAll()));
+              op::CustomCall(op::CustomCall()));
+  EXPECT_EQ(module->entry_computation()->root_instruction()->name(),
+            "send-done");
+  EXPECT_EQ(module->entry_computation()->root_instruction()->operand(0)->name(),
+            "send");
 }
 
 TEST_F(HloControlFlowFlatteningTest, AllGatherStartAndDone) {
@@ -631,14 +657,16 @@ TEST_F(HloControlFlowFlatteningTest, AllGatherStartAndDone) {
                           ParseAndReturnVerifiedModule(hlo_string));
   HloControlFlowFlattening flattening(
       HloControlFlowFlattening::Options{/*while_execution_count=*/3});
-  EXPECT_TRUE(flattening.Run(module.get()).ValueOrDie());
+  EXPECT_TRUE(flattening.Run(module.get()).value());
   TF_ASSERT_OK(HloVerifier(/*layout_sensitive=*/true,
                            /*allow_mixed_precision=*/true)
                    .Run(module.get())
                    .status());
-  LOG(INFO) << module->ToString();
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               op::CustomCall(op::CustomCall(op::Parameter(0))));
+  EXPECT_EQ(module->entry_computation()->root_instruction()->name(), "ag-done");
+  EXPECT_EQ(module->entry_computation()->root_instruction()->operand(0)->name(),
+            "ag-start");
 }
 
 TEST_F(HloControlFlowFlatteningTest, CollectiveFusion) {
@@ -685,14 +713,14 @@ ENTRY main {
   EXPECT_TRUE(IsCollective(module->entry_computation()->root_instruction()));
 
   HloControlFlowFlattening flattening({});
-  EXPECT_TRUE(flattening.Run(module.get()).ValueOrDie());
+  EXPECT_TRUE(flattening.Run(module.get()).value());
   TF_ASSERT_OK(HloVerifier(/*layout_sensitive=*/true,
                            /*allow_mixed_precision=*/true)
                    .Run(module.get())
                    .status());
-  LOG(INFO) << module->ToString();
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               op::CustomCall(op::Parameter(0), op::Parameter(1)));
+  EXPECT_EQ(module->entry_computation()->root_instruction()->name(), "fusion");
 }
 
 void CheckWhileBound(HloInstruction* while_op, int expected_bound) {
@@ -773,7 +801,7 @@ TEST_F(HloControlFlowFlatteningTest, MaxOuterLoopCount) {
   HloControlFlowFlattening flattening(HloControlFlowFlattening::Options{
       /*while_execution_count=*/kWhileExecutionCount,
       /*max_outer_loop_count=*/kMaxLoopCount});
-  EXPECT_TRUE(flattening.Run(module.get()).ValueOrDie());
+  EXPECT_TRUE(flattening.Run(module.get()).value());
   TF_ASSERT_OK(HloVerifier(/*layout_sensitive=*/true,
                            /*allow_mixed_precision=*/true)
                    .Run(module.get())

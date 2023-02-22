@@ -37,7 +37,6 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/shape.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
 #include "tensorflow/lite/delegates/gpu/common/task/serialization_base.h"
-#include "tensorflow/lite/delegates/gpu/common/task/storage_type_util.h"
 #include "tensorflow/lite/delegates/gpu/common/util.h"
 #include "tensorflow/lite/delegates/gpu/metal/compute_task.h"
 #include "tensorflow/lite/delegates/gpu/metal/metal_spatial_tensor.h"
@@ -48,11 +47,15 @@ namespace metal {
 namespace {
 
 // returns true if actual memory for this storage type is buffer
-bool IsBufferBased(const TensorStorageType& type) {
+bool IsBufferBased(const GpuInfo& gpu_info, const TensorStorageType& type) {
+  const bool a7_gen_gpu =
+      gpu_info.IsApple() && gpu_info.apple_info.IsA7GenerationGpu();
+  if (!a7_gen_gpu && (type == TensorStorageType::TEXTURE_2D ||
+                      type == TensorStorageType::SINGLE_TEXTURE_2D)) {
+    return true;
+  }
   return type == TensorStorageType::BUFFER ||
-         type == TensorStorageType::IMAGE_BUFFER ||
-         type == TensorStorageType::TEXTURE_2D ||
-         type == TensorStorageType::SINGLE_TEXTURE_2D;
+         type == TensorStorageType::IMAGE_BUFFER;
 }
 
 void AddUsage(ValueId id, int task_index,
@@ -397,7 +400,7 @@ absl::Status InferenceContext::UpdateParams(const GpuInfo& gpu_info) {
 }
 
 InferenceContext::TensorMemoryType InferenceContext::GetTensorMemoryType(
-    ValueId id) {
+    const GpuInfo& gpu_info, ValueId id) {
   if (external_immutable_tensors_.find(id) !=
       external_immutable_tensors_.end()) {
     return TensorMemoryType::kExternal;
@@ -406,7 +409,7 @@ InferenceContext::TensorMemoryType InferenceContext::GetTensorMemoryType(
     return TensorMemoryType::kExternal;
   } else if (const_tensors_.find(id) != const_tensors_.end()) {
     return TensorMemoryType::kConst;
-  } else if (IsBufferBased(tensors_descs_[id].GetStorageType())) {
+  } else if (IsBufferBased(gpu_info, tensors_descs_[id].GetStorageType())) {
     return TensorMemoryType::kBuffer;
   } else {
     return TensorMemoryType::kStrongShape;
@@ -452,8 +455,9 @@ absl::Status InferenceContext::AllocateMemoryForConstTensors(
 absl::Status InferenceContext::AllocateMemoryForBuffers(MetalDevice* device) {
   std::map<ValueId, int2> buffer_usages;
   GetUsages(
-      [this](ValueId id) {
-        return GetTensorMemoryType(id) == TensorMemoryType::kBuffer;
+      [this, device](ValueId id) {
+        return GetTensorMemoryType(device->GetInfo(), id) ==
+               TensorMemoryType::kBuffer;
       },
       &buffer_usages);
 
@@ -560,7 +564,8 @@ absl::Status InferenceContext::AllocateMemoryForBuffers(MetalDevice* device) {
     std::vector<ValueId> all_ids = node.inputs;
     all_ids.insert(all_ids.end(), node.outputs.begin(), node.outputs.end());
     for (auto& tensor_id : all_ids) {
-      if (GetTensorMemoryType(tensor_id) != TensorMemoryType::kBuffer) {
+      if (GetTensorMemoryType(device->GetInfo(), tensor_id) !=
+          TensorMemoryType::kBuffer) {
         continue;
       }
       const int tensor_index = graph_ids_to_shared_buffer_tensors_[tensor_id];
@@ -600,8 +605,9 @@ absl::Status InferenceContext::AllocateMemoryForStrongShapes(
     MetalDevice* device) {
   std::map<ValueId, int2> usages;
   GetUsages(
-      [this](ValueId id) {
-        return GetTensorMemoryType(id) == TensorMemoryType::kStrongShape;
+      [this, device](ValueId id) {
+        return GetTensorMemoryType(device->GetInfo(), id) ==
+               TensorMemoryType::kStrongShape;
       },
       &usages);
 
@@ -632,7 +638,8 @@ absl::Status InferenceContext::AllocateMemoryForStrongShapes(
     all_ids.insert(all_ids.end(), node.outputs.begin(), node.outputs.end());
     for (auto& tensor_id : all_ids) {
       const auto& tensor_dummy = tensors_descs_[tensor_id];
-      if (GetTensorMemoryType(tensor_id) != TensorMemoryType::kStrongShape) {
+      if (GetTensorMemoryType(device->GetInfo(), tensor_id) !=
+          TensorMemoryType::kStrongShape) {
         continue;
       }
       const auto id = assignment.object_ids[remap_from_graph_ids[tensor_id]];

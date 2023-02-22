@@ -69,7 +69,7 @@ class ContextInterface : public tensorflow::ImmediateExecutionContext {
   ContextInterface(
       const tensorflow::SessionOptions& opts,
       tensorflow::ContextDevicePlacementPolicy default_device_placement_policy,
-      bool is_async, bool use_tfrt_distributed_runtime);
+      bool is_async);
   ~ContextInterface() override;
 
   void Release() override { delete this; }
@@ -116,6 +116,8 @@ class ContextInterface : public tensorflow::ImmediateExecutionContext {
   tensorflow::Status RegisterFunction(tensorflow::AbstractFunction*) override;
 
   tensorflow::CustomDeviceOpHandler& GetCustomDeviceOpHandler() override;
+
+  bool IsCustomDevice(const std::string& device_name) override;
 
   tensorflow::Status RegisterCustomDevice(
       const std::string& name,
@@ -263,22 +265,16 @@ class ContextInterface : public tensorflow::ImmediateExecutionContext {
 
   std::vector<std::string> GetLoggedOpsTestonly() override;
 
-  bool UseTfrtDistributedRuntime() { return use_tfrt_distributed_runtime_; }
-
 #if !defined(IS_MOBILE_PLATFORM)
   void SetDistributedManager(
       std::unique_ptr<tensorflow::ImmediateExecutionDistributedManager>
           distributed) override {
-    distributed_manager_ = std::move(distributed);
+    llvm_unreachable("unimplemented method.");
   }
 
   tensorflow::ImmediateExecutionDistributedManager* GetDistributedManager()
       override {
-    if (use_tfrt_distributed_runtime_) {
-      return distributed_manager_.get();
-    } else {
-      return context_.GetEagerContext()->GetDistributedManager();
-    }
+    return context_.GetEagerContext()->GetDistributedManager();
   }
 #endif  // !IS_MOBILE_PLATFORM
 
@@ -309,14 +305,6 @@ class ContextInterface : public tensorflow::ImmediateExecutionContext {
   mutex run_metadata_mu_;
   std::unique_ptr<tensorflow::RunMetadata> run_metadata_
       TFRT_GUARDED_BY(run_metadata_mu_);
-
-  // Use TFRT's implementation of distributed manager.
-  bool use_tfrt_distributed_runtime_ = false;
-
-  // A distributed manager that helps setup, update, and check liveness of
-  // member tasks in the cluster.
-  std::unique_ptr<tensorflow::ImmediateExecutionDistributedManager>
-      distributed_manager_;
 };
 
 class TensorInterface : public tensorflow::AbstractTensorInterface {

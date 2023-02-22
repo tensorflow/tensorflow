@@ -178,11 +178,11 @@ static bool ConvertBoolAttrForOptionWriter(
   return b;
 }
 
-// Overloading of ConvertBoolAttrForOptionWriter which takes Optional<bool> as
-// an input. If value is not specified, false is set for the attribute.
+// Overloading of ConvertBoolAttrForOptionWriter which takes std::optional<bool>
+// as an input. If value is not specified, false is set for the attribute.
 static bool ConvertBoolAttrForOptionWriter(
-    mlir::Optional<bool> b, flatbuffers::FlatBufferBuilder* builder) {
-  return b.has_value() ? b.getValue() : false;
+    std::optional<bool> b, flatbuffers::FlatBufferBuilder* builder) {
+  return b.has_value() ? b.value() : false;
 }
 
 static flatbuffers::Offset<flatbuffers::String> ConvertStrAttrForOptionWriter(
@@ -323,12 +323,9 @@ Status mlir::CustomOptionsToAttributes(
   std::string content;
   content.assign(reinterpret_cast<const char*>(custom_options.data()),
                  custom_options.size());
-  ShapedType type = RankedTensorType::get(
-      {static_cast<int64_t>(custom_options.size())}, builder.getIntegerType(8));
   attributes->emplace_back(builder.getNamedAttr(
       "custom_option",
-      OpaqueElementsAttr::get(builder.getContext()->getLoadedDialect("tfl"),
-                              type, content)));
+      mlir::TFL::ConstBytesAttr::get(builder.getContext(), content)));
 
   return ::tensorflow::OkStatus();
 }

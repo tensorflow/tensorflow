@@ -38,11 +38,11 @@ PYBIND11_MODULE(_pywrap_tensorflow_interpreter_wrapper, m) {
   m.def("CreateWrapperFromFile",
         [](const std::string& model_path, int op_resolver_id,
            const std::vector<std::string>& registerers,
-           bool preserve_all_tensors) {
+           bool preserve_all_tensors, bool disable_delegate_clustering) {
           std::string error;
           auto* wrapper = ::InterpreterWrapper::CreateWrapperCPPFromFile(
               model_path.c_str(), op_resolver_id, registerers, &error,
-              preserve_all_tensors);
+              preserve_all_tensors, disable_delegate_clustering);
           if (!wrapper) {
             throw std::invalid_argument(error);
           }
@@ -53,11 +53,12 @@ PYBIND11_MODULE(_pywrap_tensorflow_interpreter_wrapper, m) {
       [](const std::string& model_path, int op_resolver_id,
          const std::vector<std::string>& registerers_by_name,
          const std::vector<std::function<void(uintptr_t)>>& registerers_by_func,
-         bool preserve_all_tensors) {
+         bool preserve_all_tensors, bool disable_delegate_clustering) {
         std::string error;
         auto* wrapper = ::InterpreterWrapper::CreateWrapperCPPFromFile(
             model_path.c_str(), op_resolver_id, registerers_by_name,
-            registerers_by_func, &error, preserve_all_tensors);
+            registerers_by_func, &error, preserve_all_tensors,
+            disable_delegate_clustering);
         if (!wrapper) {
           throw std::invalid_argument(error);
         }
@@ -66,11 +67,11 @@ PYBIND11_MODULE(_pywrap_tensorflow_interpreter_wrapper, m) {
   m.def("CreateWrapperFromBuffer",
         [](const py::bytes& data, int op_resolver_id,
            const std::vector<std::string>& registerers,
-           bool preserve_all_tensors) {
+           bool preserve_all_tensors, bool disable_delegate_clustering) {
           std::string error;
           auto* wrapper = ::InterpreterWrapper::CreateWrapperCPPFromBuffer(
               data.ptr(), op_resolver_id, registerers, &error,
-              preserve_all_tensors);
+              preserve_all_tensors, disable_delegate_clustering);
           if (!wrapper) {
             throw std::invalid_argument(error);
           }
@@ -81,11 +82,12 @@ PYBIND11_MODULE(_pywrap_tensorflow_interpreter_wrapper, m) {
       [](const py::bytes& data, int op_resolver_id,
          const std::vector<std::string>& registerers_by_name,
          const std::vector<std::function<void(uintptr_t)>>& registerers_by_func,
-         bool preserve_all_tensors) {
+         bool preserve_all_tensors, bool disable_delegate_clustering) {
         std::string error;
         auto* wrapper = ::InterpreterWrapper::CreateWrapperCPPFromBuffer(
             data.ptr(), op_resolver_id, registerers_by_name,
-            registerers_by_func, &error, preserve_all_tensors);
+            registerers_by_func, &error, preserve_all_tensors,
+            disable_delegate_clustering);
         if (!wrapper) {
           throw std::invalid_argument(error);
         }
@@ -99,7 +101,7 @@ PYBIND11_MODULE(_pywrap_tensorflow_interpreter_wrapper, m) {
           },
           // LINT.IfChange
           py::arg("subgraph_index") = -1)
-          // LINT.ThenChange(//tensorflow/lite/python/interpreter_wrapper/interpreter_wrapper.cc)
+      // LINT.ThenChange(//tensorflow/lite/python/interpreter_wrapper/interpreter_wrapper.cc)
       .def(
           "Invoke",
           [](InterpreterWrapper& self, int subgraph_index) {
@@ -126,40 +128,50 @@ PYBIND11_MODULE(_pywrap_tensorflow_interpreter_wrapper, m) {
       .def("NumTensors", &InterpreterWrapper::NumTensors)
       .def("TensorName", &InterpreterWrapper::TensorName)
       .def("TensorType",
-           [](const InterpreterWrapper& self, int i) {
-             return tensorflow::PyoOrThrow(self.TensorType(i));
+           [](const InterpreterWrapper& self, int tensor_index,
+              int subgraph_index) {
+             return tensorflow::PyoOrThrow(
+                 self.TensorType(tensor_index, subgraph_index));
            })
       .def("TensorSize",
-           [](const InterpreterWrapper& self, int i) {
-             return tensorflow::PyoOrThrow(self.TensorSize(i));
+           [](const InterpreterWrapper& self, int tensor_index,
+              int subgraph_index) {
+             return tensorflow::PyoOrThrow(
+                 self.TensorSize(tensor_index, subgraph_index));
            })
       .def("TensorSizeSignature",
-           [](const InterpreterWrapper& self, int i) {
-             return tensorflow::PyoOrThrow(self.TensorSizeSignature(i));
+           [](const InterpreterWrapper& self, int tensor_index,
+              int subgraph_index) {
+             return tensorflow::PyoOrThrow(
+                 self.TensorSizeSignature(tensor_index, subgraph_index));
            })
       .def("TensorSparsityParameters",
-           [](const InterpreterWrapper& self, int i) {
-             return tensorflow::PyoOrThrow(self.TensorSparsityParameters(i));
+           [](const InterpreterWrapper& self, int tensor_index,
+              int subgraph_index) {
+             return tensorflow::PyoOrThrow(
+                 self.TensorSparsityParameters(tensor_index, subgraph_index));
            })
       .def(
           "TensorQuantization",
-          [](const InterpreterWrapper& self, int i) {
-            return tensorflow::PyoOrThrow(self.TensorQuantization(i));
+          [](const InterpreterWrapper& self, int tensor_index,
+             int subgraph_index) {
+            return tensorflow::PyoOrThrow(
+                self.TensorQuantization(tensor_index, subgraph_index));
           },
           R"pbdoc(
             Deprecated in favor of TensorQuantizationParameters.
           )pbdoc")
-      .def(
-          "TensorQuantizationParameters",
-          [](InterpreterWrapper& self, int i) {
-            return tensorflow::PyoOrThrow(self.TensorQuantizationParameters(i));
-          })
+      .def("TensorQuantizationParameters",
+           [](InterpreterWrapper& self, int tensor_index, int subgraph_index) {
+             return tensorflow::PyoOrThrow(self.TensorQuantizationParameters(
+                 tensor_index, subgraph_index));
+           })
       .def(
           "SetTensor",
-          [](InterpreterWrapper& self, int i, py::handle& value,
+          [](InterpreterWrapper& self, int tensor_index, py::handle& value,
              int subgraph_index) {
             return tensorflow::PyoOrThrow(
-                self.SetTensor(i, value.ptr(), subgraph_index));
+                self.SetTensor(tensor_index, value.ptr(), subgraph_index));
           },
           py::arg("i"), py::arg("value"), py::arg("subgraph_index") = 0)
       .def(

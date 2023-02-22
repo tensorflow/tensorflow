@@ -45,9 +45,15 @@ class FractionalMaxPoolOp : public OpKernel {
     OP_REQUIRES(context, pooling_ratio_.size() == 4,
                 errors::InvalidArgument("pooling_ratio field must "
                                         "specify 4 dimensions"));
+    for (std::size_t i = 0; i < pooling_ratio_.size(); ++i) {
+      OP_REQUIRES(context, pooling_ratio_[i] >= 1,
+                  errors::InvalidArgument(
+                      "pooling_ratio cannot be smaller than 1, got: ",
+                      pooling_ratio_[i]));
+    }
 
     OP_REQUIRES(
-        context, pooling_ratio_[0] == 1 || pooling_ratio_[3] == 1,
+        context, pooling_ratio_[0] == 1 && pooling_ratio_[3] == 1,
         errors::Unimplemented("Fractional max pooling is not yet "
                               "supported on the batch nor channel dimension."));
 
@@ -258,6 +264,27 @@ class FractionalMaxPoolGradOp : public OpKernel {
     OP_REQUIRES(context, tensor_out.NumElements() > 0,
                 errors::InvalidArgument("orig_output must not be empty, got ",
                                         tensor_out.DebugString()));
+    OP_REQUIRES(
+        context,
+        height_seq_tensor.NumElements() * width_seq_tensor.NumElements() <=
+            tensor_in.NumElements(),
+        errors::InvalidArgument(
+            "Pooling region has more elements than the input tensor. "
+            "row_pooling_sequence: ",
+            height_seq_tensor.DebugString(),
+            "col_pooling_sequence: ", width_seq_tensor.DebugString(),
+            "orig_input: ", tensor_in.DebugString()));
+    OP_REQUIRES(context, TensorShapeUtils::IsVector(height_seq_tensor.shape()),
+                errors::InvalidArgument(
+                    "row_pooling_sequence must be a vector, received shape ",
+                    height_seq_tensor.shape().DebugString()));
+
+    OP_REQUIRES(context, TensorShapeUtils::IsVector(width_seq_tensor.shape()),
+                errors::InvalidArgument(
+                    "col_pooling_sequence must be a vector, received shape ",
+                    width_seq_tensor.shape().DebugString()));
+
+    //
     std::vector<int64_t> input_size(tensor_in_and_out_dims);
     std::vector<int64_t> output_size(tensor_in_and_out_dims);
     for (int i = 0; i < tensor_in_and_out_dims; ++i) {

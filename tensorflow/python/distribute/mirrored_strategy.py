@@ -273,7 +273,7 @@ class MirroredStrategy(distribute_lib.Strategy):
   Args:
     devices: a list of device strings such as `['/gpu:0', '/gpu:1']`.  If
       `None`, all available GPUs are used. If no GPUs are found, CPU is used.
-    cross_device_ops: optional, a descedant of `CrossDeviceOps`. If this is not
+    cross_device_ops: optional, a descendant of `CrossDeviceOps`. If this is not
       set, `NcclAllReduce()` will be used by default.  One would customize this
       if NCCL isn't available or if a special implementation that exploits
       the particular hardware is available.
@@ -364,7 +364,7 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
         "No duplicates allowed in `devices` argument: %s" % (devices,))
     if _is_device_list_single_worker(devices):
       self._initialize_single_worker(devices)
-      self._collective_ops = self._make_collective_ops(devices)
+      self._collective_ops = self._make_collective_ops_with_fallbacks()
       if self._prefer_collective_ops and (
           isinstance(self._cross_device_ops, cross_device_ops_lib.NcclAllReduce)
           or isinstance(self._inferred_cross_device_ops,
@@ -375,9 +375,29 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
     else:
       self._initialize_multi_worker(devices)
 
-  def _make_collective_ops(self, devices):
+  def _make_collective_ops_with_fallbacks(self):
     self._collective_keys = cross_device_utils.CollectiveKeys(
         group_key_start=1 + self._collective_key_base)
+
+    # Use ReductionToOneDevice() if mixed devices are used.
+    if any("cpu" in d.lower() for d in self._devices) and any(
+        "gpu" in d.lower() for d in self._devices):
+      return cross_device_ops_lib.ReductionToOneDevice()
+
+    if all("cpu" in d.lower() for d in self._devices):
+      # Use RING collective ops if all devices are CPU.
+      self._communication_options = collective_util.Options(
+          implementation=collective_util.CommunicationImplementation.RING)
+
+    else:
+      physical_gpus = context.context().list_physical_devices(device_type="GPU")
+      logical_gpus = context.context().list_logical_devices(device_type="GPU")
+      # Use RING collective ops if virtual devices are used.
+      if len(physical_gpus) != len(logical_gpus):
+        self._communication_options = collective_util.Options(
+            implementation=collective_util.CommunicationImplementation.RING)
+
+    # If all devices are physical GPU, use NCCL implementation.
     return cross_device_ops_lib.CollectiveAllReduce(
         devices=self._devices,
         group_size=len(self._devices),

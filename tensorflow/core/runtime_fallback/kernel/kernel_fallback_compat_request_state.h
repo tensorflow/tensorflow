@@ -18,17 +18,18 @@ limitations under the License.
 #include <functional>
 #include <memory>
 #include <string>
+#include <vector>
 
-#include "tensorflow/core/common_runtime/eager/context.h"
+#include "tensorflow/core/framework/collective.h"
 #include "tensorflow/core/framework/device.h"
-#include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/platform/refcount.h"
 #include "tensorflow/core/platform/threadpool_interface.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/tfrt/fallback/cost_recorder.h"
 #include "tensorflow/core/tfrt/fallback/op_kernel_runner.h"
 #include "tensorflow/core/tfrt/utils/fallback_tensor.h"
-#include "tfrt/host_context/async_value.h"  // from @tf_runtime
+#include "tfrt/host_context/async_value_ref.h"  // from @tf_runtime
 #include "tfrt/support/pointer_util.h"  // from @tf_runtime
 
 namespace tensorflow {
@@ -40,30 +41,33 @@ class FallbackResourceArray {
  public:
   // Sets `tensor` in the array at `index`. `index` should be dense and
   // duplicate indices are not allowed.
-  void SetResource(int index, tensorflow::tfrt_stub::ImmutableTensor tensor);
+  void SetResource(int index, tfrt_stub::ImmutableTensor tensor);
 
   // Returns the resource tensor wrapped in AsyncValue value at `index`.
-  tfrt::UnRefCountedAsyncValue<tensorflow::tfrt_stub::FallbackTensor>*
-  GetResource(int index) const {
-    return resource_async_values_.at(index).get();
+  tfrt::AsyncValuePtr<tfrt_stub::FallbackTensor> GetResource(int index) const {
+    return resource_async_values_.at(index).AsPtr();
   }
 
   // Returns the resource tensor at `index`.
-  const tensorflow::tfrt_stub::FallbackTensor& GetResourceAsFallbackTensor(
+  const tfrt_stub::FallbackTensor& GetResourceAsFallbackTensor(
       int index) const {
-    return resource_async_values_.at(index)->get();
+    return GetResource(index).get();
   }
 
  private:
   // `resources_` holds the ownership of all the resource tensors. Note that it
   // may not be a one-to-one mapping between `resources_` and
   // `resource_async_values_`.
-  std::vector<std::unique_ptr<tensorflow::tfrt_stub::ImmutableTensor>>
-      resources_;
+  std::vector<std::unique_ptr<tfrt_stub::ImmutableTensor>> resources_;
+
+  // Storage for async values with manually managed lifetime.
+  std::vector<std::unique_ptr<
+      tfrt::internal::AsyncValueStorage<tfrt_stub::FallbackTensor>>>
+      resource_storage_;
+
   // `resource_async_values_` holds the UnRefCountedAsyncValue of the fallback
   // tensors that can be directly used by fallback kernels in the graph.
-  std::vector<std::unique_ptr<
-      tfrt::UnRefCountedAsyncValue<tensorflow::tfrt_stub::FallbackTensor>>>
+  std::vector<tfrt::AsyncValueOwningRef<tfrt_stub::FallbackTensor>>
       resource_async_values_;
 };
 
@@ -93,6 +97,8 @@ class KernelFallbackCompatRequestState {
       const absl::optional<SessionMetadata>& model_metadata,
       const tensorflow::ProcessFunctionLibraryRuntime* pflr);
 
+  int64_t step_id() const { return step_id_; }
+
   // Returns the user-specified custom device corresponding to the given device.
   // It is currently only used for configure per-request intra op threadpool.
   tensorflow::Device* custom_device(const tensorflow::Device* device) const {
@@ -100,6 +106,8 @@ class KernelFallbackCompatRequestState {
     if (it == custom_device_.end()) return nullptr;
     return it->second.get();
   }
+
+  tensorflow::Device* cpu_device() const { return cpu_device_; }
 
   ScopedStepContainer* step_container() const { return step_container_.get(); }
 
@@ -137,13 +145,24 @@ class KernelFallbackCompatRequestState {
 
   const SessionMetadata& session_metadata() const { return session_metadata_; }
 
+  // Nullable.
+  tensorflow::tfrt_stub::CostRecorder* cost_recorder() const {
+    return cost_recorder_;
+  }
+  void set_cost_recorder(tensorflow::tfrt_stub::CostRecorder* cost_recorder) {
+    cost_recorder_ = cost_recorder;
+  }
+
  private:
+  int64_t step_id_ = 0;
   // Below are resources needed by current tensorflow.
   std::function<void(std::function<void()>)>* runner_ = nullptr;
   ::tfrt::OwnedOrUnownedPtr<ScopedStepContainer> step_container_;
   absl::flat_hash_map<const tensorflow::Device*,
                       std::unique_ptr<tensorflow::Device>>
       custom_device_;
+  std::unique_ptr<tensorflow::Device> custom_cpu_device_;
+  tensorflow::Device* cpu_device_ = nullptr;
   std::unique_ptr<CollectiveExecutor::Handle> collective_executor_handle_;
   CollectiveExecutor* collective_executor_ = nullptr;
   core::RefCountPtr<Rendezvous> rendezvous_;
@@ -168,6 +187,9 @@ class KernelFallbackCompatRequestState {
   const tensorflow::ProcessFunctionLibraryRuntime* pflr_ = nullptr;
 
   bool log_device_placement_ = false;
+
+  // Records the cost per op.
+  tensorflow::tfrt_stub::CostRecorder* cost_recorder_ = nullptr;
 };
 
 }  // namespace tfd

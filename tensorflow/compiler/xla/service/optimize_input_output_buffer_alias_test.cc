@@ -22,7 +22,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/test_helpers.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/compiler/xla/tests/test_utils.h"
-#include "tensorflow/core/platform/test.h"
+#include "tensorflow/tsl/platform/test.h"
 
 namespace xla {
 
@@ -55,7 +55,7 @@ class OptimizeInputOutputBufferAliasTest : public HloTestBase {
     auto changed = optimize_pass_->Build(input_shape, output_shape, &config_);
     TF_CHECK_OK(changed.status());
 
-    return changed.ValueOrDie();
+    return changed.value();
   }
 
   std::unique_ptr<OptimizeInputOutputBufferAlias> optimize_pass_;

@@ -19,9 +19,10 @@ limited to:
 *   Hexagon 682
     *   SoC examples: Snapdragon 835
 *   Hexagon 685
-    *   SoC examples: Snapdragon 845, Snapdragon 710, QCS605, QCS603
+    *   SoC examples: Snapdragon 845, Snapdragon 710, QCS410, QCS610, QCS605,
+        QCS603
 *   Hexagon 690
-    *   SoC examples: Snapdragon 855, QCS610, QCS410, RB5
+    *   SoC examples: Snapdragon 855, RB5
 
 **Supported models:**
 

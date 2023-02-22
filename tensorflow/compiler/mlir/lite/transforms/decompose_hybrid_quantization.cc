@@ -40,11 +40,11 @@ namespace TFL {
 
 namespace {
 
-#define GEN_PASS_CLASSES
+#define GEN_PASS_DEF_DECOMPOSEHYBRIDQUANTIZATIONPASS
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h.inc"
 
 class DecomposeHybridQuantizationPass
-    : public DecomposeHybridQuantizationPassBase<
+    : public impl::DecomposeHybridQuantizationPassBase<
           DecomposeHybridQuantizationPass> {
  public:
   explicit DecomposeHybridQuantizationPass() {}

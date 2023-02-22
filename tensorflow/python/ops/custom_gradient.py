@@ -17,6 +17,7 @@
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.eager import tape as tape_lib
+from tensorflow.python.framework import composite_tensor_gradient
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
@@ -31,6 +32,7 @@ from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_decorator
 from tensorflow.python.util import tf_inspect
+from tensorflow.python.util import variable_utils
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -60,9 +62,10 @@ def custom_gradient(f=None):
   is NaN.  For example:
 
   ```python
-  x = tf.constant(100.)
-  y = log1pexp(x)
-  dy_dx = tf.gradients(y, x) # Will be NaN when evaluated.
+  with tf.GradientTape() as tape:
+    tape.watch(x)
+    y=log1pexp(x)
+  dy_dx = tape.gradient(y, x) # Will be NaN when evaluated.
   ```
 
   The gradient expression can be analytically simplified to provide numerical
@@ -248,7 +251,7 @@ def custom_gradient(f=None):
   operations.
 
   Note that if the decorated function uses `Variable`s, the enclosing variable
-  scope must be using 
+  scope must be using
   [ResourceVariables](https://www.tensorflow.org/guide/migrate/tf1_vs_tf2#resourcevariables_instead_of_referencevariables).
 
   Args:
@@ -408,7 +411,8 @@ def _graph_mode_decorator(f, args, kwargs):
         "The custom_gradient decorator currently supports keywords "
         "arguments only when eager execution is enabled.")
   name = generate_name()
-  args = nest.map_structure(ops.convert_to_tensor, args)
+  args = variable_utils.convert_variables_to_tensors(args)
+  args = nest.map_structure(ops.convert_to_tensor, args, expand_composites=True)
 
   # Checking global and local variables attempts to ensure that no non-resource
   # Variables are added to the graph.
@@ -420,8 +424,10 @@ def _graph_mode_decorator(f, args, kwargs):
   with tape_lib.VariableWatcher() as variable_watcher:
     result, grad_fn = f(*args)
 
-  args = nest.flatten(args)
-  flat_result = nest.flatten(result)
+  flat_args = composite_tensor_gradient.get_flat_tensors_for_gradients(
+      nest.flatten(args))
+  flat_result = composite_tensor_gradient.get_flat_tensors_for_gradients(
+      nest.flatten(result))
   flat_result_len = len(flat_result)
 
   after_vars = set([
@@ -454,11 +460,11 @@ def _graph_mode_decorator(f, args, kwargs):
           "All custom_gradient outputs should be from the same graph")
     output_graph = graphs.pop()
     filtered_input_tensors = []
-    for i in args:
+    for i in flat_args:
       if i.graph == output_graph:
         filtered_input_tensors.append(i)
   else:
-    filtered_input_tensors = args
+    filtered_input_tensors = flat_args
 
   variables_in_subgraph = frozenset([
       v.ref() for v in _get_dependent_variables(
@@ -482,11 +488,15 @@ def _graph_mode_decorator(f, args, kwargs):
         1, "@custom_gradient grad_fn has 'variables' in signature, "
         "but no ResourceVariables were used on the forward pass.")
 
-  all_tensors = flat_result + args + variables
+  all_tensors = flat_result + flat_args + variables
 
-  def tape_grad_fn(*result_grads):
+  def tape_grad_fn(*result_grad_components):
     """Custom grad fn wrapper."""
-    result_grads = result_grads[:flat_result_len]
+    result_grads = composite_tensor_gradient.replace_flat_tensors_for_gradients(
+        nest.flatten(result), result_grad_components[:flat_result_len])
+    if not isinstance(result_grads, (list, tuple)):
+      result_grads = [result_grads]
+
     if variables:
       input_grads, variable_grads = grad_fn(*result_grads, variables=variables)
       if len(variable_grads) != len(variables):
@@ -499,7 +509,8 @@ def _graph_mode_decorator(f, args, kwargs):
     # Need to return one value per input to the IdentityN, so pad the
     # gradients of the inputs of the custom_gradient function with the
     # gradients of the outputs as well.
-    input_grads = nest.flatten(input_grads)
+    input_grads = composite_tensor_gradient.get_flat_tensors_for_gradients(
+        nest.flatten(input_grads))
     return ([None] * flat_result_len) + input_grads + variable_grads
 
   @ops.RegisterGradient(name)
@@ -521,16 +532,20 @@ def _graph_mode_decorator(f, args, kwargs):
       f.__name__, all_tensors, original_tensors, tape_grad_fn)
   for ot, t in zip(original_tensors, all_tensors):
     handle_data_util.copy_handle_data(ot, t)
-  return nest.pack_sequence_as(
-      structure=result, flat_sequence=all_tensors[:flat_result_len])
+  flat_result = composite_tensor_gradient.replace_flat_tensors_for_gradients(
+      nest.flatten(result), all_tensors[:flat_result_len])
+  return nest.pack_sequence_as(result, flat_result)
 
 
 def _eager_mode_decorator(f, args, kwargs):
   """Implement custom gradient decorator for eager mode."""
   with tape_lib.VariableWatcher() as variable_watcher:
     result, grad_fn = f(*args, **kwargs)
-  args = nest.flatten(args)
-  all_inputs = list(args) + list(kwargs.values())
+  flat_args = composite_tensor_gradient.get_flat_tensors_for_gradients(
+      nest.flatten(args))
+  flat_kwargs = composite_tensor_gradient.get_flat_tensors_for_gradients(
+      nest.flatten(kwargs))
+  all_inputs = flat_args + flat_kwargs
   # The variables that grad_fn needs to return gradients for are the set of
   # variables used that are *not* part of the inputs.
   variables = [
@@ -545,18 +560,24 @@ def _eager_mode_decorator(f, args, kwargs):
     raise TypeError(
         "@tf.custom_gradient grad_fn must accept keyword argument 'variables', "
         "since function uses variables: {}".format(variables))
-  flat_result = nest.flatten(result)
+  flat_result = composite_tensor_gradient.get_flat_tensors_for_gradients(
+      nest.flatten(result))
   # TODO(apassos) consider removing the identity below.
   flat_result = [gen_array_ops.identity(x) for x in flat_result]
 
-  input_tensors = [ops.convert_to_tensor(x) for x
-                   in list(args) + list(variables)]
+  input_tensors = [
+      ops.convert_to_tensor(x) for x in flat_args + list(variables)]
 
   recorded_inputs = input_tensors
-  arg_count = len(args)
+  arg_count = len(flat_args)
 
-  def actual_grad_fn(*result_grads):
+  def actual_grad_fn(*result_grad_components):
     """Custom grad fn wrapper."""
+    result_grads = composite_tensor_gradient.replace_flat_tensors_for_gradients(
+        nest.flatten(result), result_grad_components)
+    if not isinstance(result_grads, (list, tuple)):
+      result_grads = [result_grads]
+
     if variables:
       input_grads, variable_grads = grad_fn(*result_grads, variables=variables)
       if len(variable_grads) != len(variables):
@@ -565,16 +586,18 @@ def _eager_mode_decorator(f, args, kwargs):
     else:
       input_grads = grad_fn(*result_grads)
       variable_grads = []
-    flat_grads = nest.flatten(input_grads)
+    flat_grads = composite_tensor_gradient.get_flat_tensors_for_gradients(
+        nest.flatten(input_grads))
     if len(flat_grads) != arg_count:
       raise ValueError(
-          "custom_gradient function expected to return", arg_count,
-          "gradients but returned", len(flat_grads), "instead.")
+          f"custom_gradient function expected to return {arg_count} "
+          f"gradients, but returned {len(flat_grads)} instead.")
     return flat_grads + variable_grads
 
   tape_lib.record_operation(f.__name__, flat_result, recorded_inputs,
                             actual_grad_fn)
-  flat_result = list(flat_result)
+  flat_result = composite_tensor_gradient.replace_flat_tensors_for_gradients(
+      nest.flatten(result), flat_result)
   return nest.pack_sequence_as(result, flat_result)
 
 

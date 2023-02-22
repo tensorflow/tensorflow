@@ -254,6 +254,12 @@ tf_proto {
         type: TYPE_MESSAGE
         type_name: ".tensorflow.CoordinationServiceConfig"
       }
+      field {
+        name: "disable_optimize_for_static_graph"
+        number: 24
+        label: LABEL_OPTIONAL
+        type: TYPE_BOOL
+      }
       enum_type {
         name: "MlirBridgeRollout"
         value {
@@ -268,14 +274,16 @@ tf_proto {
           name: "MLIR_BRIDGE_ROLLOUT_DISABLED"
           number: 2
         }
-        value {
-          name: "MLIR_BRIDGE_ROLLOUT_SAFE_MODE_ENABLED"
-          number: 3
+        reserved_range {
+          start: 3
+          end: 3
         }
-        value {
-          name: "MLIR_BRIDGE_ROLLOUT_SAFE_MODE_FALLBACK_ENABLED"
-          number: 4
+        reserved_range {
+          start: 4
+          end: 4
         }
+        reserved_name: "MLIR_BRIDGE_ROLLOUT_SAFE_MODE_ENABLED"
+        reserved_name: "MLIR_BRIDGE_ROLLOUT_SAFE_MODE_FALLBACK_ENABLED"
       }
       reserved_range {
         start: 2
@@ -288,6 +296,10 @@ tf_proto {
       reserved_range {
         start: 20
         end: 21
+      }
+      reserved_range {
+        start: 25
+        end: 26
       }
     }
   }

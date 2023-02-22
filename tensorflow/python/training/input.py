@@ -24,6 +24,7 @@ for context.
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
@@ -356,7 +357,8 @@ def slice_input_producer(tensor_list, num_epochs=None, shuffle=True, seed=None,
   @end_compatibility
   """
   with ops.name_scope(name, "input_producer", tensor_list):
-    tensor_list = ops.convert_n_to_tensor_or_indexed_slices(tensor_list)
+    tensor_list = indexed_slices.convert_n_to_tensor_or_indexed_slices(
+        tensor_list)
     if not tensor_list:
       raise ValueError(
           "Expected at least one tensor in slice_input_producer().")
@@ -378,7 +380,7 @@ def _flatten(tensor_list_list):
   return [tensor for tensor_list in tensor_list_list for tensor in tensor_list]
 
 
-class _SparseMetaData(object):
+class _SparseMetaData:
   """Store information about the Tensor: Is it sparse?, map_op, and rank."""
 
   def __init__(self, sparse, map_op, rank):
@@ -623,15 +625,18 @@ def _restore_sparse_tensors(stored_list, sparse_info_list):
 
 
 def _validate(tensor_list):
-  tensor_list = ops.convert_n_to_tensor_or_indexed_slices(tensor_list)
+  tensor_list = indexed_slices.convert_n_to_tensor_or_indexed_slices(
+      tensor_list)
   if not tensor_list:
     raise ValueError("Expected at least one tensor in batch().")
   return tensor_list
 
 
 def _validate_join(tensor_list_list):
-  tensor_list_list = [ops.convert_n_to_tensor_or_indexed_slices(tl)
-                      for tl in tensor_list_list]
+  tensor_list_list = [
+      indexed_slices.convert_n_to_tensor_or_indexed_slices(tl)
+      for tl in tensor_list_list
+  ]
   if not tensor_list_list:
     raise ValueError("Expected at least one input in batch_join().")
   return tensor_list_list

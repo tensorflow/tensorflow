@@ -191,7 +191,7 @@ std::string GetMaxPoolingKernelCode(const OperationDef& op_def,
   c += "  } \n";
   c += "  FLT4 maximum = INIT_FLT4(-10000.0f);\n";
   if (output_indices) {
-    c += "  int4 indexes = INIT_INT4v4(0, 0, 0, 0);\n";
+    c += "  args.dst_indices::type indexes = args.dst_indices::zero_value;\n";
   }
   c += "  int xs = X * args.stride_x + args.padding_x;\n";
   c += "  int ys = Y * args.stride_y + args.padding_y;\n";
@@ -241,7 +241,7 @@ std::string GetMaxPoolingKernelCode(const OperationDef& op_def,
   c += "  }\n";
   c += "  args.dst_tensor.Write(maximum, " + dst_coord + ");\n";
   if (output_indices) {
-    c += "  args.dst_indices.Write<int>(indexes, " + dst_coord + ");\n";
+    c += "  args.dst_indices.Write(indexes, " + dst_coord + ");\n";
   }
   c += "}\n";
 

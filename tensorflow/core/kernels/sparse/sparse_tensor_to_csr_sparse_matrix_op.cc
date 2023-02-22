@@ -38,10 +38,10 @@ limitations under the License.
 #endif
 
 #if GOOGLE_CUDA
-#include "tensorflow/stream_executor/cuda/cuda_activation.h"
+#include "tensorflow/compiler/xla/stream_executor/cuda/cuda_activation.h"
 using ::perftools::gputools::cuda::ScopedActivateExecutorContext;
 #elif TENSORFLOW_USE_ROCM
-#include "tensorflow/stream_executor/rocm/rocm_activation.h"
+#include "tensorflow/compiler/xla/stream_executor/rocm/rocm_activation.h"
 using ::perftools::gputools::rocm::ScopedActivateExecutorContext;
 #endif
 
@@ -80,6 +80,7 @@ class SparseTensorToCSRSparseMatrixCPUOp : public OpKernel {
     auto dense_shape_vec = dense_shape.vec<int64_t>();
     const int64_t batch_size = (rank == 2) ? 1 : dense_shape_vec(0);
     const int64_t num_rows = dense_shape_vec((rank == 2) ? 0 : 1);
+    const int64_t num_cols = dense_shape_vec((rank == 2) ? 1 : 2);
     const int64_t total_nnz = values.NumElements();
 
     // Allocate output Tensors.
@@ -104,9 +105,9 @@ class SparseTensorToCSRSparseMatrixCPUOp : public OpKernel {
     functor::SparseTensorToCSRSparseMatrixCPUFunctor coo_to_csr;
     OP_REQUIRES_OK(
         ctx,
-        coo_to_csr(batch_size, num_rows, indices.template matrix<int64_t>(),
-                   batch_ptr.vec<int32>(), csr_row_ptr.vec<int32>(),
-                   csr_col_ind.vec<int32>()));
+        coo_to_csr(batch_size, num_rows, num_cols,
+                   indices.template matrix<int64_t>(), batch_ptr.vec<int32>(),
+                   csr_row_ptr.vec<int32>(), csr_col_ind.vec<int32>()));
 
     // Create the CSRSparseMatrix object from its component Tensors and prepare
     // the Variant output Tensor.

@@ -416,17 +416,17 @@ class UnaryOpTest(test.TestCase):
     y = (x + .5).astype(bfloat16)  # no zero
     z = (x + 15.5).astype(bfloat16)  # all positive
     k = np.arange(-0.90, 0.90, 0.05).astype(bfloat16)  # between -1 and 1
-    self._compareCpu(x, np.abs, math_ops.abs)
-    self._compareCpu(x, np.abs, _ABS)
-    self._compareCpu(x, np.round, math_ops.round)
+    self._compareBoth(x, np.abs, math_ops.abs)
+    self._compareBoth(x, np.abs, _ABS)
     self._compareBoth(x, np.negative, math_ops.negative)
     self._compareBoth(x, np.negative, _NEG)
-    self._compareCpu(y, compute_f32(self._inv), math_ops.reciprocal)
+    self._compareBoth(y, compute_f32(self._inv), math_ops.reciprocal)
+    self._compareCpu(x, np.round, math_ops.round)
     self._compareCpu(x, np.exp, math_ops.exp)
     self._compareCpu(x, np.expm1, math_ops.expm1)
     self._compareCpu(z, compute_f32(np.log), math_ops.log)
     self._compareCpu(z, compute_f32(np.log1p), math_ops.log1p)
-    self._compareCpu(y, np.sign, math_ops.sign)
+    self._compareBoth(y, np.sign, math_ops.sign)
     self._compareCpu(z, self._rsqrt, math_ops.rsqrt)
     self._compareBoth(x, compute_f32(np.sin), math_ops.sin)
     self._compareBoth(x, compute_f32(np.cos), math_ops.cos)
@@ -443,6 +443,7 @@ class UnaryOpTest(test.TestCase):
                       grad_tol=1e-2)
     self._compareBoth(x, compute_f32(np.vectorize(math.erf)), math_ops.erf)
     self._compareBoth(x, compute_f32(np.vectorize(math.erfc)), math_ops.erfc)
+    self._compareBoth(x, compute_f32(np.square), math_ops.square)
 
   @test.disable_with_predicate(
       pred=test.is_built_with_rocm, skip_message="On ROCm this test fails")

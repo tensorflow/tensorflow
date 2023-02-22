@@ -7,6 +7,7 @@ tf_class {
   is_instance: "<class \'tensorflow.python.ops.variables.Variable\'>"
   is_instance: "<class \'tensorflow.python.trackable.base.Trackable\'>"
   is_instance: "<class \'tensorflow.python.types.core.Tensor\'>"
+  is_instance: "<class \'tensorflow.python.framework.composite_tensor.CompositeTensor\'>"
   is_instance: "<type \'object\'>"
   member {
     name: "SaveSliceInfo"

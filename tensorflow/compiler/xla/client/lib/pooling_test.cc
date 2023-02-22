@@ -36,7 +36,7 @@ std::vector<std::pair<int64_t, int64_t>> MakeGeneralPadding(
     absl::Span<const int64_t> stride, Padding padding,
     const xla::TensorFormat& data_format) {
   XlaBuilder* b = input.builder();
-  Shape operand_shape = b->GetShape(input).ValueOrDie();
+  Shape operand_shape = b->GetShape(input).value();
   std::vector<int64_t> input_size(operand_shape.dimensions().begin(),
                                   operand_shape.dimensions().end());
   return MakeSpatialPadding(input_size, kernel_size, stride, padding,

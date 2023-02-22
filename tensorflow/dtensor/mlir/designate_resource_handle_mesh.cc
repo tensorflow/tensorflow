@@ -26,12 +26,14 @@ limitations under the License.
 #include "tensorflow/dtensor/cc/constants.h"
 #include "tensorflow/dtensor/cc/tensor_layout.h"
 #include "tensorflow/dtensor/mlir/dtensor_mlir_passes.h"
-#include "tensorflow/dtensor/mlir/dtensor_mlir_passes_classes.h"
 #include "tensorflow/dtensor/mlir/ir/tf_dtensor.h"
 
 namespace tensorflow {
 namespace dtensor {
+
 namespace {
+#define GEN_PASS_DEF_DTENSORDESIGNATERESOURCEHANDLEMESH
+#include "tensorflow/dtensor/mlir/dtensor_passes.h.inc"
 
 mlir::LogicalResult SetMeshForResourceCreatingCluster(
     mlir::tf_device::ClusterOp cluster, mlir::OpBuilder* builder) {
@@ -43,19 +45,6 @@ mlir::LogicalResult SetMeshForResourceCreatingCluster(
 
   if (!result.wasInterrupted()) return mlir::success();
 
-  const auto& cluster_ops = cluster.GetBody().without_terminator();
-
-  bool has_single_tf_op =
-      llvm::count_if(cluster_ops, [](auto& operation) {
-        return !llvm::isa<mlir::TF::DTensorLayout>(&operation);
-      }) == 1;
-
-  if (!has_single_tf_op) {
-    return cluster.emitOpError(
-        "cluster containing tf.VarHandleOp/DestroyResourceOp must contain "
-        "single operation and a terminator");
-  }
-
   if (!cluster->hasAttr(kMeshAttr)) {
     cluster->setAttr(kMeshAttr, builder->getStringAttr(Mesh::kEmptyMeshString));
   }
@@ -63,7 +52,7 @@ mlir::LogicalResult SetMeshForResourceCreatingCluster(
 }
 
 struct DTensorDesignateResourceHandleMesh
-    : public DTensorDesignateResourceHandleMeshBase<
+    : public impl::DTensorDesignateResourceHandleMeshBase<
           DTensorDesignateResourceHandleMesh> {
   void runOnOperation() override {
     mlir::MLIRContext& context = getContext();

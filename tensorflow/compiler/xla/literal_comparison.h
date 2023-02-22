@@ -21,7 +21,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/error_spec.h"
 #include "tensorflow/compiler/xla/literal.h"
-#include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/tsl/platform/status.h"
 
 namespace xla {
 namespace literal_comparison {
@@ -29,6 +29,11 @@ namespace literal_comparison {
 // Returns ok if the given shapes have the same rank, dimension sizes, and
 // primitive types.
 Status EqualShapes(const Shape& expected, const Shape& actual);
+
+// Returns ok if the given literals share identical dynamic shapes and
+// dimension sizes.
+Status EqualDynamicShapesAndDimensions(const LiteralSlice& expected,
+                                       const LiteralSlice& actual);
 
 // Returns ok if the expected and actual literals are (bitwise) equal for all
 // elements in the literal. Also, asserts that the rank, dimensions sizes, and

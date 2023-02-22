@@ -66,10 +66,7 @@ from tensorflow.python.autograph.operators import variables
 from tensorflow.python.autograph.utils import ag_logging
 from tensorflow.python.autograph.utils import misc
 from tensorflow.python.autograph.utils import tensors
-from tensorflow.python.data.experimental.ops import take_while_ops
-from tensorflow.python.data.ops import dataset_ops
-from tensorflow.python.data.ops import iterator_ops
-from tensorflow.python.framework import constant_op
+from tensorflow.python.autograph.utils import type_registry
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import func_graph
@@ -96,6 +93,8 @@ INEFFICIENT_UNROLL_MIN_OPS = 1
 # TODO(mdan): Use the custom operator pattern instead of type dispatch.
 # An example of this pattern is found in the implementation of distributed
 # datasets. Before it can be used though, we need to standardize the interface.
+
+for_loop_registry = type_registry.TypeRegistry()
 
 
 def _is_none_or_undef(value):
@@ -142,10 +141,9 @@ def _verify_tf_condition(cond, tag):
   return cond
 
 
-def _verify_loop_init_vars(init_vars,
-                           symbol_names,
-                           first_iter_vars=None,
-                           extra_message=None):
+def verify_loop_init_vars(
+    init_vars, symbol_names, first_iter_vars=None, extra_message=None
+):
   """Ensures that all values in the state are valid to use in a TF loop.
 
   The init_vars may contain placeholder values derived from first_iter_vars.
@@ -179,7 +177,7 @@ def _verify_loop_init_vars(init_vars,
 
     error_msg = None
     if val is None:
-      error_msg = "'{}' may not be None before the loop".format(name)
+      error_msg = "'{}' is not allowed to be None before the loop".format(name)
     elif isinstance(val, variables.Undefined):
       error_msg = "'{}' must be defined before the loop".format(name)
       if extra_message:
@@ -259,16 +257,18 @@ def _verify_single_loop_var(
       if not _is_subshape(exit_shape, shape_invariant):
         raise ValueError(
             "'{}' has shape {} after one iteration, which does not conform with"
-            ' the shape invariant {}.'.format(
-                name, exit_shape, shape_invariant))
+            ' the shape invariant {}.'.format(name, exit_shape, shape_invariant)
+        )
 
 
-def _verify_tf_loop_vars(init_vars,
-                         iter_entry_vars,
-                         iter_exit_vars,
-                         symbol_names,
-                         opts,
-                         check_shapes=True):
+def verify_tf_loop_vars(
+    init_vars,
+    iter_entry_vars,
+    iter_exit_vars,
+    symbol_names,
+    opts,
+    check_shapes=True,
+):
   """Verifies loop variables for consistency."""
   if check_shapes and 'shape_invariants' in opts:
     shape_invariants = opts['shape_invariants']
@@ -405,7 +405,7 @@ def for_stmt(iter_, extra_test, body, get_state, set_state, symbol_names, opts):
       arith_mean += a
   ```
 
-  The state is represented by the variables geo_mean and arith_mean. The
+  The state is represented by the variables named geo_mean and arith_mean. The
   `extra_test`, `body`, `get_state` and `set_state` functions must bind to the
   original `geo_mean` and `arith_mean` symbols, using `nonlocal`.
 
@@ -427,45 +427,35 @@ def for_stmt(iter_, extra_test, body, get_state, set_state, symbol_names, opts):
       get_state.
     opts: Optional dict of extra loop parameters.
   """
+
+  try:
+    for_fn = for_loop_registry.lookup(iter_)
+  except LookupError:
+    for_fn = _py_for_stmt
+
+  # TODO(bwieder): Refactor isinstance(iter_, ragged_tensor.RaggedTensor) to use
+  # the registry once python/autograph/utils does not depend on dataset_ops.
   if tensor_util.is_tf_type(iter_):
     if tensors.is_range_tensor(iter_):
-      _tf_range_for_stmt(iter_, extra_test, body, get_state, set_state,
-                         symbol_names, opts)
+      for_fn = _tf_range_for_stmt
     elif isinstance(iter_, ragged_tensor.RaggedTensor):
-      _tf_ragged_for_stmt(iter_, extra_test, body, get_state, set_state,
-                          symbol_names, opts)
+      for_fn = _tf_ragged_for_stmt
     else:
-      _known_len_tf_for_stmt(
-          iter_, extra_test, body, get_state, set_state, symbol_names, opts)
-
-  elif isinstance(iter_, dataset_ops.DatasetV2):
-    _tf_dataset_for_stmt(
-        iter_, extra_test, body, get_state, set_state, symbol_names, opts)
-
-  elif isinstance(iter_, iterator_ops.OwnedIterator):
-    _tf_iterator_for_stmt(
-        iter_, extra_test, body, get_state, set_state, symbol_names, opts)
-
-  elif isinstance(iter_, ragged_tensor.RaggedTensor):
-    _tf_ragged_for_stmt(
-        iter_, extra_test, body, get_state, set_state, symbol_names, opts)
-
+      for_fn = _known_len_tf_for_stmt
   elif isinstance(iter_, distribute.Iterator):
-    _tf_iterator_for_stmt(
-        iter_, extra_test, body, get_state, set_state, symbol_names, opts)
-
+    for_fn = _tf_iterator_for_stmt
   elif isinstance(iter_, distribute.Iterable):
     # TODO(b/162250181): Use _tf_iterator_for_stmt(iter(iter_)...
-    _tf_distributed_iterable_for_stmt(
-        iter_, extra_test, body, get_state, set_state, symbol_names, opts)
+    for_fn = _tf_distributed_iterable_for_stmt
 
-  else:
-    _py_for_stmt(iter_, extra_test, body, None, None)
+  for_fn(iter_, extra_test, body, get_state, set_state, symbol_names, opts)
 
 
-def _py_for_stmt(iter_, extra_test, body, get_state, set_state):
+def _py_for_stmt(
+    iter_, extra_test, body, get_state, set_state, symbol_names, opts
+):
   """Overload of for_stmt that executes a Python for loop."""
-  del get_state, set_state
+  del get_state, set_state, symbol_names, opts
 
   if __debug__:
     checker = _PythonLoopChecker()
@@ -538,7 +528,7 @@ def _known_len_tf_for_stmt(
     nonlocal iterate_index
     # TODO(b/171479293): Drop the lint override.
     iterate_index, *loop_vars = aug_loop_vars  # pylint:disable=unused-variable
-    # The iteration index is not "output" by the for loop. If the iterate
+    # The iteration index is not "output" by the for loop. If the iteration index
     # is used outside the loop, it will appear in the loop vars separately.
     set_state(loop_vars)
 
@@ -569,7 +559,7 @@ def _tf_ragged_for_stmt(
     iter_, extra_test, body, get_state, set_state, symbol_names, opts):
   """Overload of for_stmt that iterates over TF ragged tensors."""
   init_vars = get_state()
-  _verify_loop_init_vars(init_vars, symbol_names)
+  verify_loop_init_vars(init_vars, symbol_names)
 
   # TODO(mdan): Move this into len()? Requires eager support.
   if iter_.shape and iter_.shape[0] is not None:
@@ -586,7 +576,7 @@ def _tf_ragged_for_stmt(
     nonlocal iterate_index
     # TODO(b/171479293): Drop the lint override.
     iterate_index, *loop_vars = aug_loop_vars  # pylint:disable=unused-variable
-    # The iteration index is not "output" by the for loop. If the iterate
+    # The iteration index is not "output" by the for loop. If the iteration index
     # is used outside the loop, it will appear in the loop vars separately.
     set_state(loop_vars)
 
@@ -690,7 +680,7 @@ def _tf_iterator_for_stmt(
     set_state(loop_vars)
 
   init_vars = aug_get_state()
-  _verify_loop_init_vars(init_vars, symbol_names)
+  verify_loop_init_vars(init_vars, symbol_names)
 
   def aug_body():
     """Main body passed to _tf_while_stmt."""
@@ -705,7 +695,7 @@ def _tf_iterator_for_stmt(
       # Note: this verification duplicates the one performed in tf_while_stmt,
       # but needs to be done earlier to prevent the tf.cond from blowing up
       # first.
-      _verify_tf_loop_vars(
+      verify_tf_loop_vars(
           init_vars, loop_vars, new_loop_vars, symbol_names, opts)
       return new_loop_vars
 
@@ -736,93 +726,6 @@ def _tf_iterator_for_stmt(
       opts)
 
 
-def _general_purpose_scan(ds, init_state, body):
-  """Variant of Dataset.scan with semantics of general-purpose computation."""
-  # Datasets are typically intended for data preprocessing. However, in
-  # autograph loops they usually appear as general-purpose computations (for
-  # example, a custom training loop). These two use cases require significantly
-  # different optimization policies, the most important of which is the device
-  # placement. The flag override for use_default_device below instructs the
-  # runtime to treat the computation as general-purpose, rather than data
-  # preprocessing.
-  # TODO(mdan): s/use_default_device/specialize_for_input_pipeline.
-  # TODO(mdan): Don't use private symbols.
-  # pylint:disable=protected-access
-  return dataset_ops._ScanDataset(
-      ds, init_state, body, use_default_device=False)
-
-
-def _tf_dataset_for_stmt(
-    ds, extra_test, body, get_state, set_state, symbol_names, opts):
-  """Overload of _dataset_for_stmt with early stopping. See for_stmt."""
-  # Note: This is easier to follow with the insight that the computations in
-  # a dataset pipeline are transposed (aka fused).
-  # For example, given a pipeline input -> scan -> take_while -> reduce,
-  # and a dataset with input [1, 2, 3], the computations occur in the following
-  # order:
-  #  reduce(take_while(scan(1)))
-  #  reduce(take_while(scan(2)))
-  #  reduce(take_while(scan(3)))
-
-  init_vars = get_state()
-  _verify_loop_init_vars(init_vars, symbol_names)
-
-  # Workaround for Dataset.reduce not allowing empty state tensors - create
-  # a dummy state variable that remains unused.
-  # TODO(mdan): reduce should allow and match empty structures.
-  if not init_vars:
-    init_vars = (constant_op.constant(0),)
-    symbol_names = ('<internal dummy>',)
-
-    def dummy_set_state(unused_dummy):
-      pass
-
-    def dummy_get_state():
-      return (constant_op.constant(0),)
-
-    get_state, set_state = dummy_get_state, dummy_set_state
-
-  def scan_body(scan_state, scan_inputs):
-    """Main body of the Dataset.scan."""
-    loop_vars, iterate = scan_state, scan_inputs
-    set_state(loop_vars)
-
-    def main_path():
-      body(iterate)
-      new_loop_vars = get_state()
-      _verify_tf_loop_vars(
-          init_vars, loop_vars, new_loop_vars, symbol_names, opts,
-          check_shapes=False)
-      return new_loop_vars
-
-    if extra_test is not None:
-      extra_cond = extra_test()
-      new_loop_vars = control_flow_ops.cond(
-          extra_cond, main_path, lambda: loop_vars)
-    else:
-      # TODO(mdan): the optimizer should be able to remove an invariant cond?
-      extra_cond = (constant_op.constant(True),)  # dummy value, unused
-      new_loop_vars = main_path()
-
-    scan_outputs = new_loop_vars, extra_cond
-    new_scan_state = new_loop_vars
-    return new_scan_state, scan_outputs
-
-  def take_while_predicate(unused_loop_vars, extra_cond):
-    return extra_cond
-
-  def reduce_body(unused_reduce_state, scan_outputs):
-    output_loop_vars, unused_extra_cond = scan_outputs
-    new_reduce_state = output_loop_vars
-    return new_reduce_state
-
-  ds = _general_purpose_scan(ds, init_vars, scan_body)
-  if extra_test is not None:
-    ds = ds.apply(take_while_ops.take_while(take_while_predicate))
-  final_loop_vars = ds.reduce(init_vars, reduce_body)
-  set_state(final_loop_vars)
-
-
 def _tf_distributed_iterable_for_stmt(
     iter_, extra_test, body, get_state, set_state, symbol_names, opts):
   """Overload of for_stmt that iterates over TF distributed datasets."""
@@ -833,7 +736,7 @@ def _tf_distributed_iterable_for_stmt(
         'for ... in distributed input loops.')
 
   init_vars = get_state()
-  _verify_loop_init_vars(init_vars, symbol_names)
+  verify_loop_init_vars(init_vars, symbol_names)
 
   if 'shape_invariants' in opts:
     opts['shape_invariants'] = _shape_invariants_mapping_to_positional_list(
@@ -843,7 +746,7 @@ def _tf_distributed_iterable_for_stmt(
     set_state(loop_vars)
     body(iterate)
     new_loop_vars = get_state()
-    _verify_tf_loop_vars(
+    verify_tf_loop_vars(
         init_vars, loop_vars, new_loop_vars, symbol_names, opts)
     return new_loop_vars
 
@@ -1127,7 +1030,7 @@ def _try_handling_undefineds(body, get_state, set_state, init_vars, nulls,
    1. the types of loop variables could be inferred (usually by staging one
        iteration)
    2. these types could be replaced by placeholders (e.g. zero values, for
-       tensors.
+       tensors).
 
   Args:
     body: a function representing the loop body. See while_stmt.
@@ -1198,7 +1101,7 @@ def _try_handling_undefineds(body, get_state, set_state, init_vars, nulls,
       set_state(init_vars)
 
   # This check runs regardless, in case we captured non-Tensor inputs.
-  _verify_loop_init_vars(
+  verify_loop_init_vars(
       init_vars, symbol_names, first_iter_vars, extra_message=failure_message)
 
   return success, init_vars, extra_shape_invariants
@@ -1243,7 +1146,7 @@ def _tf_while_stmt(test, body, get_state, set_state, symbol_names, opts):
     # This has two roles:
     #  1. Shape invariants are remapped from the old init vars to the new ones.
     #  2. Any new shape invariants created by the init vars are kept, but only
-    #     if the user didn't already specified some.
+    #     if the user didn't already specify some.
     for v, nv, ni in zip(orig_init_vars, init_vars, extra_shape_invariants):
       merged_invariant = merged_shape_invariants.get(id(v), ni)
       if merged_invariant is not None:
@@ -1269,7 +1172,7 @@ def _tf_while_stmt(test, body, get_state, set_state, symbol_names, opts):
     set_state(loop_vars)
     body()
     new_loop_vars = get_state()
-    _verify_tf_loop_vars(
+    verify_tf_loop_vars(
         init_vars, loop_vars, new_loop_vars, symbol_names, opts)
 
     if require_one_iteration:

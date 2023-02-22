@@ -20,8 +20,10 @@ limitations under the License.
 #include <memory>
 #include <string>
 
-#include "tensorflow/compiler/xla/service/hlo_module.h"
+#include "absl/strings/string_view.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/statusor.h"
+#include "tensorflow/compiler/xla/tools/run_hlo_module.pb.h"
 
 namespace xla {
 namespace hlo_module_loader_details {
@@ -75,6 +77,22 @@ StatusOr<std::unique_ptr<HloModule>> LoadModuleFromFile(
         hlo_module_loader_details::Config(),
     std::string format = "",
     const std::function<void(HloModuleConfig*)>& config_modifier_hook = {});
+
+// Loads an HLO snapshot from a string, only for its inputs
+// The data format must be one of the following:
+// 1) A binary proto (format "pb")
+// 2) A text proto (format "pbtxt")
+StatusOr<std::unique_ptr<RunHloModuleIterationLiterals>> LoadInputFromData(
+    const std::string& data, absl::string_view format);
+
+// Loads an HLO snapshot from file, only for its inputs
+// The file must be one of the following:
+// 1) A binary proto (with .pb extension)
+// 2) A text proto (with a .pbtxt extension)
+// If the format is specified (not empty), it overrides the one guessed from the
+// file extension.
+StatusOr<std::unique_ptr<RunHloModuleIterationLiterals>> LoadInputFromFile(
+    const std::string& path, std::string format = "");
 
 }  // namespace xla
 

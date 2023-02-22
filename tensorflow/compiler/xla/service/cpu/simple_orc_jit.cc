@@ -30,7 +30,7 @@ limitations under the License.
 #include "llvm/IR/Mangler.h"
 #include "llvm/IR/Operator.h"
 #include "llvm/Support/CodeGen.h"
-#include "llvm/Support/Host.h"
+#include "llvm/TargetParser/Host.h"
 #include "mlir/ExecutionEngine/CRunnerUtils.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/service/cpu/cpu_runtime.h"
 #include "tensorflow/compiler/xla/service/cpu/orc_jit_memory_mapper.h"
@@ -55,7 +55,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/cpu/windows_compatibility.h"
 #include "tensorflow/compiler/xla/service/custom_call_target_registry.h"
 #include "tensorflow/compiler/xla/types.h"
-#include "tensorflow/core/platform/logging.h"
+#include "tensorflow/tsl/platform/logging.h"
 
 // Provided by compiler-rt and MLIR.
 // Converts an F32 value to a BF16.
@@ -79,14 +79,6 @@ llvm::SmallVector<std::string, 0> DetectMachineAttributes() {
   return result;
 }
 
-llvm::StringRef DetectHostCpuName() {
-  auto cpu = llvm::sys::getHostCPUName();
-  // TODO(b/238469947): Targeting znver3 triggers a very deep recursion in LLVM.
-  // Fall back to zen 2 until https://reviews.llvm.org/D129745 lands to avoid
-  // running out of stack.
-  return cpu == "znver3" ? "znver2" : cpu;
-}
-
 }  // namespace
 
 /*static*/ std::unique_ptr<llvm::TargetMachine>
@@ -99,7 +91,7 @@ SimpleOrcJIT::InferTargetMachineForJIT(
           .setOptLevel(opt_level)
           .selectTarget(
               /*TargetTriple=*/llvm::Triple(), /*MArch=*/"",
-              /*MCPU=*/DetectHostCpuName(),
+              /*MCPU=*/llvm::sys::getHostCPUName(),
               /*MAttrs=*/DetectMachineAttributes()));
   CHECK(target_machine != nullptr);
   return target_machine;
@@ -133,7 +125,9 @@ SimpleOrcJIT::SimpleOrcJIT(
               std::move(post_optimization_hook), std::move(post_codegen_hook))),
       main_jit_dylib_(&execution_session_->createBareJITDylib("<main>")),
       gdb_jit_event_listener_(
-          llvm::JITEventListener::createGDBRegistrationListener()) {
+          llvm::JITEventListener::createGDBRegistrationListener()),
+      perf_jit_event_listener_(
+          llvm::JITEventListener::createPerfJITEventListener()) {
   VLOG(1) << "CPU target: " << target_machine_->getTargetCPU().str()
           << " features: " << target_machine_->getTargetFeatureString().str();
 
@@ -164,6 +158,9 @@ SimpleOrcJIT::SimpleOrcJIT(
   main_jit_dylib_->addGenerator(
       std::make_unique<RuntimeSymbolGenerator>(*this));
   object_layer_.registerJITEventListener(*this);
+  if (perf_jit_event_listener_) {
+    object_layer_.registerJITEventListener(*perf_jit_event_listener_);
+  }
 
   // Copied from LLJIT, required to find symbols on Windows.
   if (target_triple_.isOSBinFormatCOFF()) {
@@ -433,7 +430,7 @@ bool RegisterKnownJITSymbols() {
   registry->Register("calloc", reinterpret_cast<void*>(calloc), "Host");
   registry->Register("free", reinterpret_cast<void*>(free), "Host");
 #ifndef _WIN32
-  // TODO(kramerb): This fails to link on windows because it's marked dllimport.
+  // TODO(b/246980307): fails to link on windows because it's marked dllimport.
   registry->Register("memrefCopy", reinterpret_cast<void*>(memrefCopy), "Host");
 #endif
 

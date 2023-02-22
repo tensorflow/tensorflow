@@ -14,12 +14,13 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/xla/service/bfloat16_normalization.h"
+
+#include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/bfloat16_support.h"
-#include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_creation_utils.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/compiler/xla/service/hlo_module.h"
-#include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/hlo_verifier.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/test.h"
@@ -87,7 +88,7 @@ class BFloat16NormalizationTest : public HloTestBase {
                          /*allow_mixed_precision=*/true);
     EXPECT_IS_OK(verifier.Run(module).status());
 
-    return result.ValueOrDie();
+    return result.value();
   }
 };
 

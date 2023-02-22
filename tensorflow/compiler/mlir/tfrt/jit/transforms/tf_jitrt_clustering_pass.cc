@@ -27,7 +27,7 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 
-#define GEN_PASS_CLASSES
+#define GEN_PASS_DEF_CLUSTERING
 #include "tensorflow/compiler/mlir/tfrt/jit/transforms/tf_jitrt_passes.h.inc"
 
 using llvm::ArrayRef;
@@ -44,7 +44,7 @@ using mlir::TFDevice::FindClustersInTheBlock;
 // -------------------------------------------------------------------------- //
 // Cluster operations based on the TF JitRt clustering policy.
 // -------------------------------------------------------------------------- //
-struct ClusteringPass : public ClusteringBase<ClusteringPass> {
+struct ClusteringPass : public impl::ClusteringBase<ClusteringPass> {
   ClusteringPass() = default;
   ClusteringPass(ArrayRef<std::string> cluster_oplist, int cluster_min_size) {
     oplist = cluster_oplist;
@@ -80,8 +80,8 @@ struct ClusteringPass : public ClusteringBase<ClusteringPass> {
 
     // If the clustering tier is not defined, it means that the opset will later
     // filter supported operations, so it's ok to use `all` tier.
-    populateTfJitRtClusteringPolicies(
-        policies, tier.getValueOr(JitRtClusteringTier::kAll));
+    populateTfJitRtClusteringPolicies(policies,
+                                      tier.value_or(JitRtClusteringTier::kAll));
 
     // If opset is not empty restrict operations that are enabled for
     // clustering.

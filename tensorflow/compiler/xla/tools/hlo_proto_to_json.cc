@@ -31,44 +31,43 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/platform/env.h"
-#include "tensorflow/core/platform/init_main.h"
-#include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/util/command_line_flags.h"
+#include "tensorflow/tsl/platform/env.h"
+#include "tensorflow/tsl/platform/init_main.h"
+#include "tensorflow/tsl/platform/logging.h"
+#include "tensorflow/tsl/platform/status.h"
+#include "tensorflow/tsl/util/command_line_flags.h"
 
 using std::string;
-using tensorflow::Env;
+using tsl::Env;
 
 namespace xla {
 namespace tools {
 
-StatusOr<std::string> ToJson(const tensorflow::protobuf::Message& message) {
+StatusOr<std::string> ToJson(const tsl::protobuf::Message& message) {
   std::string json_output;
-  tensorflow::protobuf::util::JsonPrintOptions json_options;
+  tsl::protobuf::util::JsonPrintOptions json_options;
   json_options.add_whitespace = true;
   json_options.always_print_primitive_fields = true;
-  auto status = tensorflow::protobuf::util::MessageToJsonString(
-      message, &json_output, json_options);
+  auto status = tsl::protobuf::util::MessageToJsonString(message, &json_output,
+                                                         json_options);
   if (!status.ok()) {
     return InternalError("MessageToJsonString failed: %s",
-                         status.error_message().data());
+                         std::string{status.message()});
   }
   return json_output;
 }
 
 void RealMain(const std::string& input, const std::string& output) {
   HloProto hlo_proto;
-  TF_CHECK_OK(tensorflow::ReadBinaryProto(tensorflow::Env::Default(), input,
-                                          &hlo_proto))
+  TF_CHECK_OK(tsl::ReadBinaryProto(tsl::Env::Default(), input, &hlo_proto))
       << "Can't open, read, or parse input file " << input;
 
   auto statusor = ToJson(hlo_proto);
   QCHECK(statusor.ok()) << "Error converting " << input << " to JSON."
                         << statusor.status();
 
-  TF_CHECK_OK(tensorflow::WriteStringToFile(tensorflow::Env::Default(), output,
-                                            statusor.ValueOrDie()));
+  TF_CHECK_OK(
+      tsl::WriteStringToFile(tsl::Env::Default(), output, statusor.value()));
 }
 
 }  // namespace tools
@@ -76,13 +75,13 @@ void RealMain(const std::string& input, const std::string& output) {
 
 int main(int argc, char** argv) {
   std::string input_file, output_file;
-  const std::vector<tensorflow::Flag> flag_list = {
-      tensorflow::Flag("input_file", &input_file, "file to convert."),
-      tensorflow::Flag("output_file", &output_file, "converted file"),
+  const std::vector<tsl::Flag> flag_list = {
+      tsl::Flag("input_file", &input_file, "file to convert."),
+      tsl::Flag("output_file", &output_file, "converted file"),
   };
-  const std::string usage = tensorflow::Flags::Usage(argv[0], flag_list);
-  bool parse_ok = tensorflow::Flags::Parse(&argc, argv, flag_list);
-  tensorflow::port::InitMain(usage.c_str(), &argc, &argv);
+  const std::string usage = tsl::Flags::Usage(argv[0], flag_list);
+  bool parse_ok = tsl::Flags::Parse(&argc, argv, flag_list);
+  tsl::port::InitMain(usage.c_str(), &argc, &argv);
   QCHECK(parse_ok && argc == 1) << "\n" << usage;
 
   QCHECK(!input_file.empty()) << "--input_file is required";

@@ -408,5 +408,29 @@ TEST(TypesGatherOpTest, BatchDimsEqualIndiceDims) {
               ElementsAreArray({1, 5, 10, 16, 21, 25, 30, 36}));
 }
 
+TEST(GatherOpTest, ErrorOnOutOfBoundsTooLarge) {
+  GatherOpModel m({TensorType_FLOAT32, {2, 2}}, {TensorType_INT32, {2}});
+  m.SetInput<float>({
+      -2.0, 0.2,  //
+      0.7, 0.8    //
+  });
+  m.SetPositions<int32_t>({3, 1});
+  ASSERT_EQ(m.Invoke(), kTfLiteError);
+  m.SetPositions<int32_t>({1, 2});
+  EXPECT_EQ(m.Invoke(), kTfLiteError);
+}
+
+TEST(GatherOpTest, ErrorOnOutOfBoundsNegative) {
+  GatherOpModel m({TensorType_FLOAT32, {2, 2}}, {TensorType_INT32, {2}});
+  m.SetInput<float>({
+      -2.0, 0.2,  //
+      0.7, 0.8    //
+  });
+  m.SetPositions<int32_t>({-1, 0});
+  ASSERT_EQ(m.Invoke(), kTfLiteError);
+  m.SetPositions<int32_t>({-1, 0});
+  EXPECT_EQ(m.Invoke(), kTfLiteError);
+}
+
 }  // namespace
 }  // namespace tflite

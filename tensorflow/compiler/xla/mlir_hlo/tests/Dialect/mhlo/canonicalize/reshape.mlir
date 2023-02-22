@@ -1,4 +1,4 @@
-// RUN: mlir-hlo-opt %s -split-input-file -pass-pipeline='func.func(canonicalize)' | FileCheck %s
+// RUN: mlir-hlo-opt %s -split-input-file -pass-pipeline='builtin.module(func.func(canonicalize))' | FileCheck %s
 
 // CHECK-LABEL: func @const_fold_collapse_to_scalar
 func.func @const_fold_collapse_to_scalar() -> tensor<i32> {
@@ -103,8 +103,8 @@ func.func @non_const_same_shape(%arg : tensor<2x3xi32>) -> tensor<2x3xi32> {
 // CHECK-LABEL: func @non_const_chained_reshape
 // CHECK-SAME: [[ARG:%[a-zA-Z0-9]+]]
 func.func @non_const_chained_reshape(%arg : tensor<2x3xi32>) -> (tensor<3x2xi32>, tensor<6xi32>) {
-  // CHECK-NEXT: "mhlo.reshape"([[ARG]]) : (tensor<2x3xi32>) -> tensor<3x2xi32>
-  // CHECK-NEXT: "mhlo.reshape"([[ARG]]) : (tensor<2x3xi32>) -> tensor<6xi32>
+  // CHECK-NEXT: mhlo.reshape [[ARG]] : (tensor<2x3xi32>) -> tensor<3x2xi32>
+  // CHECK-NEXT: mhlo.reshape [[ARG]] : (tensor<2x3xi32>) -> tensor<6xi32>
   %0 = "mhlo.reshape"(%arg) : (tensor<2x3xi32>) -> tensor<3x2xi32>
   %1 = "mhlo.reshape"(%0) : (tensor<3x2xi32>) -> tensor<6xi32>
   func.return %0, %1 : tensor<3x2xi32>, tensor<6xi32> // return both so nothing is removed
@@ -115,7 +115,7 @@ func.func @non_const_chained_reshape(%arg : tensor<2x3xi32>) -> (tensor<3x2xi32>
 // CHECK-LABEL: func @non_const_chained_reshape_unused_parent
 // CHECK-SAME: [[ARG:%[a-zA-Z0-9]+]]
 func.func @non_const_chained_reshape_unused_parent(%arg : tensor<2x3xi32>) -> tensor<6xi32> {
-  // CHECK-NEXT: [[RES:%.+]] = "mhlo.reshape"([[ARG]]) : (tensor<2x3xi32>) -> tensor<6xi32>
+  // CHECK-NEXT: [[RES:%.+]] = mhlo.reshape [[ARG]] : (tensor<2x3xi32>) -> tensor<6xi32>
   %0 = "mhlo.reshape"(%arg) : (tensor<2x3xi32>) -> tensor<3x2xi32>
   %1 = "mhlo.reshape"(%0) : (tensor<3x2xi32>) -> tensor<6xi32>
   // CHECK-NEXT: return [[RES]]
@@ -138,7 +138,7 @@ func.func @non_const_chained_reshape_becomes_noop(%arg : tensor<2x3xi32>) -> ten
 // CHECK-LABEL: func @non_const_many_chained_reshapes
 // CHECK-SAME: [[ARG:%[a-zA-Z0-9]+]]
 func.func @non_const_many_chained_reshapes(%arg : tensor<2x3x4xi32>) -> tensor<1x2x4x3xi32> {
-  // CHECK-NEXT: [[RES:%.+]] = "mhlo.reshape"([[ARG]]) : (tensor<2x3x4xi32>) -> tensor<1x2x4x3xi32>
+  // CHECK-NEXT: [[RES:%.+]] = mhlo.reshape [[ARG]] : (tensor<2x3x4xi32>) -> tensor<1x2x4x3xi32>
   %0 = "mhlo.reshape"(%arg) : (tensor<2x3x4xi32>) -> tensor<4x3x2xi32>
   %1 = "mhlo.reshape"(%0) : (tensor<4x3x2xi32>) -> tensor<12x2xi32>
   %2 = "mhlo.reshape"(%1) : (tensor<12x2xi32>) -> tensor<2x12xi32>

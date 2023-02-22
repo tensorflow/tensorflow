@@ -41,10 +41,7 @@ from tensorflow.python.platform import test
 g_seeded = None
 g_unseeded = None
 
-
-GPU_FLOATS = [dtypes.float16, dtypes.float32, dtypes.float64]
-CPU_FLOATS = GPU_FLOATS + [dtypes.bfloat16]
-FLOATS = GPU_FLOATS
+FLOATS = [dtypes.bfloat16, dtypes.float16, dtypes.float32, dtypes.float64]
 INTS = [dtypes.int32, dtypes.int64]
 
 
@@ -94,13 +91,21 @@ class StatefulRandomOpsTest(test.TestCase, parameterized.TestCase):
     b = random.non_deterministic_ints(shape, dtype=dtype)
     self.assertAllDifferent([a, b])
 
+  def assertRegex(self, pattern, text):
+    self.assertTrue(
+        re.search(pattern, text),
+        "Can't find pattern '%s' in text '%s'" % (pattern, text))
+
+  @parameterized.parameters(list(random.Algorithm))
   @test_util.run_v2_only
-  def testBatchSeeds(self):
-    """Test for batch seeds.
-    """
+  def testBatchSeeds(self, alg):
+    """Test for batch seeds."""
     shape = [2, 3]
     count = 6
-    gen = random.Generator.from_seed(1234)
+    gen = random.Generator.from_seed(1234, alg=alg)
+    if alg == random.Algorithm.THREEFRY:
+      # We don't have CPU/GPU kernels for ThreeFry yet.
+      return
     keys1 = gen._make_int64_keys(shape=shape)
     keys2 = gen._make_int64_keys(shape=shape)
     self.assertAllDifferent([keys1, keys2])
@@ -119,26 +124,28 @@ class StatefulRandomOpsTest(test.TestCase, parameterized.TestCase):
     for _ in range(3):
       f()
 
-  def assertRegex(self, pattern, text):
-    self.assertTrue(
-        re.search(pattern, text),
-        "Can't find pattern '%s' in text '%s'" % (pattern, text))
-
+  @parameterized.parameters(list(random.Algorithm))
   @test_util.run_v2_only
   @test_util.run_cuda_only
-  def testCrossDeviceSplit(self):
-    """Tests that a CPU RNG can split into RNGs on GPU.
-    """
+  def testCrossDeviceSplit(self, alg):
+    """Tests that a CPU RNG can split into RNGs on GPU."""
     with ops.device("/device:CPU:0"):
-      gen = random.Generator.from_seed(1234)  # gen is on CPU
+      gen = random.Generator.from_seed(1234, alg=alg)  # gen is on CPU
       self.assertRegex("CPU", gen.state.device)
+    if alg == random.Algorithm.THREEFRY:
+      # We don't have CPU/GPU kernels for ThreeFry yet.
+      return
     with ops.device(test_util.gpu_device_name()):
       gens = gen.split(count=10)  # gens are on GPU
       self.assertRegex("GPU", gens[0].state.device)
 
+  @parameterized.parameters(list(random.Algorithm))
   @test_util.run_v2_only
-  def testSplitInFunction(self):
-    g = random.Generator.from_seed(1)
+  def testSplitInFunction(self, alg):
+    g = random.Generator.from_seed(1, alg=alg)
+    if alg == random.Algorithm.THREEFRY:
+      # We don't have CPU/GPU kernels for ThreeFry yet.
+      return
     new_g = [None]  # using list as mutable cells
     @def_function.function
     def f():
@@ -229,8 +236,11 @@ class StatefulRandomOpsTest(test.TestCase, parameterized.TestCase):
     f(*args)
 
   @parameterized.parameters([
-      ("philox", random.RNG_ALG_PHILOX, random.Algorithm.PHILOX),
-      ("threefry", random.RNG_ALG_THREEFRY, random.Algorithm.THREEFRY)])
+      ("philox", random.Algorithm.PHILOX.value, random.Algorithm.PHILOX),
+      ("threefry", random.Algorithm.THREEFRY.value, random.Algorithm.THREEFRY),
+      ("auto_select", random.Algorithm.AUTO_SELECT.value,
+       random.Algorithm.AUTO_SELECT),
+  ])
   @test_util.run_v2_only
   def testAlg(self, name, int_id, enum_id):
     g_by_name = random.Generator.from_seed(1234, name)
@@ -238,6 +248,15 @@ class StatefulRandomOpsTest(test.TestCase, parameterized.TestCase):
     g_by_enum = random.Generator.from_seed(1234, enum_id)
     self.assertEqual(g_by_name.algorithm, g_by_int.algorithm)
     self.assertEqual(g_by_name.algorithm, g_by_enum.algorithm)
+    if enum_id == random.Algorithm.THREEFRY:
+      # We don't have CPU/GPU kernels for ThreeFry yet.
+      return
+    shape = [3]
+    output_by_name = g_by_name.normal(shape)
+    output_by_int = g_by_int.normal(shape)
+    output_by_enum = g_by_enum.normal(shape)
+    self.assertAllEqual(output_by_name, output_by_int)
+    self.assertAllEqual(output_by_name, output_by_enum)
 
   @test_util.run_v2_only
   def testGeneratorCreationWithVar(self):
@@ -383,10 +402,12 @@ class StatefulRandomOpsTest(test.TestCase, parameterized.TestCase):
     compare(True, True)
     compare(True, False)
 
+  @parameterized.parameters(list(random.Algorithm))
   @test_util.run_v2_only
-  def testKey(self):
+  def testKey(self, alg):
     key = 1234
-    gen = random.Generator(state=[0, 0, key], alg=random.RNG_ALG_PHILOX)
+    gen = random.Generator(
+        state=[0] * random._get_counter_size(alg.value) + [key], alg=alg)
     got = gen.key
     self.assertAllEqual(key, got)
     @def_function.function
@@ -469,7 +490,7 @@ class StatefulRandomOpsTest(test.TestCase, parameterized.TestCase):
 
     The CPU version.
     """
-    self._sameAsOldRandomOps("/device:CPU:0", CPU_FLOATS)
+    self._sameAsOldRandomOps("/device:CPU:0", FLOATS)
 
   @test_util.run_v2_only
   @test_util.run_cuda_only
@@ -478,7 +499,11 @@ class StatefulRandomOpsTest(test.TestCase, parameterized.TestCase):
 
     The GPU version.
     """
-    self._sameAsOldRandomOps(test_util.gpu_device_name(), GPU_FLOATS)
+    floats = [dtypes.float16, dtypes.float32, dtypes.float64]
+    if test_util.is_gpu_available(
+        cuda_only=True, min_cuda_compute_capability=(8, 0)):
+      floats += [dtypes.bfloat16]
+    self._sameAsOldRandomOps(test_util.gpu_device_name(), floats)
 
   @parameterized.parameters(INTS + [dtypes.uint32, dtypes.uint64])
   @test_util.run_v2_only
@@ -498,6 +523,9 @@ class StatefulRandomOpsTest(test.TestCase, parameterized.TestCase):
   @parameterized.parameters(FLOATS + INTS)
   @test_util.run_v2_only
   def testUniformIsInRange(self, dtype):
+    if dtype == dtypes.bfloat16 and not test_util.is_gpu_available(
+        cuda_only=True, min_cuda_compute_capability=(8, 0)):
+      self.skipTest("Bfloat16 requires compute capability 8.0")
     minval = 2
     maxval = 33
     size = 1000
@@ -510,6 +538,9 @@ class StatefulRandomOpsTest(test.TestCase, parameterized.TestCase):
   @parameterized.parameters(FLOATS)
   @test_util.run_v2_only
   def testNormalIsFinite(self, dtype):
+    if dtype == dtypes.bfloat16 and not test_util.is_gpu_available(
+        cuda_only=True, min_cuda_compute_capability=(8, 0)):
+      self.skipTest("Bfloat16 requires compute capability 8.0")
     gen = random.Generator.from_seed(1234)
     x = gen.normal(shape=[10000], dtype=dtype).numpy()
     self.assertTrue(np.all(np.isfinite(x)))
@@ -518,8 +549,11 @@ class StatefulRandomOpsTest(test.TestCase, parameterized.TestCase):
   @test_util.run_v2_only
   def testDistributionOfUniform(self, dtype):
     """Use Pearson's Chi-squared test to test for uniformity."""
+    if dtype == dtypes.bfloat16 and not test_util.is_gpu_available(
+        cuda_only=True, min_cuda_compute_capability=(8, 0)):
+      self.skipTest("Bfloat16 requires compute capability 8.0")
     n = 1000
-    seed = 12
+    seed = 123
     gen = random.Generator.from_seed(seed)
     maxval = 1
     if dtype.is_integer:
@@ -539,6 +573,9 @@ class StatefulRandomOpsTest(test.TestCase, parameterized.TestCase):
   @test_util.run_v2_only
   def testDistributionOfNormal(self, dtype):
     """Use Anderson-Darling test to test distribution appears normal."""
+    if dtype == dtypes.bfloat16 and not test_util.is_gpu_available(
+        cuda_only=True, min_cuda_compute_capability=(8, 0)):
+      self.skipTest("Bfloat16 requires compute capability 8.0")
     n = 1000
     gen = random.Generator.from_seed(1234)
     x = gen.normal(shape=[n], dtype=dtype).numpy()
@@ -573,6 +610,10 @@ class StatefulRandomOpsTest(test.TestCase, parameterized.TestCase):
         "Unsupported algorithm id"):
       gen_stateful_random_ops.stateful_standard_normal_v2(
           gen.state.handle, 123, shape)
+    with self.assertRaisesWithPredicateMatch(errors.InvalidArgumentError,
+                                             "Unsupported algorithm id"):
+      gen_stateful_random_ops.rng_read_and_skip(
+          gen.state.handle, alg=123, delta=10)
     var = variables.Variable([0, 0], dtype=dtypes.int32)
     with self.assertRaisesWithPredicateMatch(
         errors.InvalidArgumentError,

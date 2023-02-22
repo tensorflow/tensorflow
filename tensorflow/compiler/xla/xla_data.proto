@@ -57,6 +57,22 @@ enum PrimitiveType {
 
   F64 = 12;
 
+  // FP8 dtypes, as described in this paper: https://arxiv.org/abs/2209.05433
+  //
+  // F8E5M2 has 5 exponent bits and 2 mantissa bits, and is similar to the
+  // existing IEEE types.
+  //
+  // F8E4M3FN has 4 exponent bits and 3 mantissa bits. The "FN" means only
+  // Finite and NaN values are supported. Unlike IEEE types, infinities are not
+  // supported.  NaN is represented when the exponent and mantissa bits are all
+  // 1s. All other values are finite.
+  //
+  // Support for these dtypes is under development. They do not yet work
+  // properly in most cases.
+  // TODO(b/259609697): Fully support FP8.
+  F8E5M2 = 19;
+  F8E4M3FN = 20;
+
   // Complex values of fixed width.
   C64 = 15;   // Paired F32 (real, imag), as in std::complex<float>.
   C128 = 18;  // Paired F64 (real, imag), as in std::complex<double>.
@@ -82,7 +98,7 @@ enum PrimitiveType {
   // primitive type will have empty dimensions and tuple_shapes fields.
   TOKEN = 17;
 
-  // Next = 19
+  // Next = 21
 }
 // LINT.ThenChange(
 //   https://www.tensorflow.org/code/tensorflow/compiler/xla/shape_util.cc,
@@ -109,15 +125,19 @@ message PaddingConfig {
   repeated PaddingConfigDimension dimensions = 1;
 }
 
-// A format specifies the method used by a layout to store an array in memory.
-enum Format {
-  // TODO(b/120869032): Rename this to FORMAT_NONE or something else which
-  // better corresponds to its meaning.
-  INVALID_FORMAT = 0;
-  // The default layout, with exactly one storage location per element.
-  DENSE = 1;
-  reserved 2;
-  reserved "SPARSE";
+// A DimLevelType indicates the encoding method for a dimension in an array.
+// The semantics of this field are identical to those of the MLIR SparseTensor
+// dialect.
+// This should be kept in sync with the SparseTensor DimLevelType enum:
+// https://github.com/llvm/llvm-project/blob/5674a3c88088e668b684326c2194a6282e8270ff/mlir/include/mlir/Dialect/SparseTensor/IR/SparseTensorAttrDefs.td#L86
+enum DimLevelType {
+  // The corresponding dimension is Dense, every entry is stored.
+  DIM_DENSE = 0;
+  // The corresponding dimension is Compressed, only nonzeros are stored.
+  DIM_COMPRESSED = 1;
+  // The corresponding dimension contains a single coordinate, no sibling
+  // elements for each parent.
+  DIM_SINGLETON = 2;
 }
 
 // Describes a tile used in tiling-based layout. Refer to
@@ -142,22 +162,22 @@ message TileProto {
 //
 // LINT.IfChange
 message LayoutProto {
-  // The method used to store the data in memory. The format determines which of
-  // the other fields are used by the layout.
-  Format format = 4;
+  // The dimension level type list for this array, specifying the way in which
+  // each array dimension is represented in memory. If this list is empty, the
+  // array is assumed to be dense.
+  repeated DimLevelType dim_level_types = 9;
+
+  // Whether each dimension is unique or ordered.  Each of the following lists
+  // must be empty, or have one entry for each entry of dim_level_types.  If
+  // either list is empty, all dimensions are assumed to be unique and ordered,
+  // respectively.  Entries in this list may not be false for some DimLevelType
+  // values (such as DIM_DENSE in particular).
+  repeated bool dim_unique = 13;
+  repeated bool dim_ordered = 14;
 
   // Sequence of dimension numbers, from minor (fastest varying index) to major
   // (slowest varying index). This field is required.
   repeated int64 minor_to_major = 1;
-
-  reserved 2;
-  reserved "padded_dimensions";
-
-  reserved 3;
-  reserved "padding_value";
-
-  reserved 5;
-  reserved "max_sparse_elements";
 
   // A sequence of tiles, starting from the tile that's applied first to the
   // Shape.
@@ -166,19 +186,43 @@ message LayoutProto {
   // error.
   repeated TileProto tiles = 6;
 
-  // Bit size of each element. If the size is bigger than what the element
-  // type requires, the value is stored in the least significant
-  // bits and the additional most significant bits are filled with 0's.
-  //
-  // TODO(b/119839262): implement in each backend or add Unimplemented error.
-  int64 element_size_in_bits = 7;
-
   // Memory space where this array resides. The integer field is interpreted in
   // a backend-specific manner.
   int64 memory_space = 8;
 
+  // The integer types to be used for indices and pointers.  These fields must
+  // not be used unless the layout represents a sparse array.  The PrimitiveType
+  // must correspond to an unsigned integer (U8, U16, U32, or U64).
+  // If not provided, the compiler will use the largest unsigned integer
+  // that is naturally supported by the target device (U32 or U64 in currently
+  // supported devices).
+  PrimitiveType index_primitive_type = 11;
+  PrimitiveType pointer_primitive_type = 12;
+
+  // The physical, on-device shape used to represent the shape this layout
+  // belongs to. Only used for sparse arrays.
+  // The layout(s) contained within the physical shape should not also contain
+  // a physical shape.
+  ShapeProto physical_shape = 10;
+
+  // The dynamic shape metadata size in bytes in front of the shape data. The
+  // field may be non-zero for a static shape whose associated buffer is for a
+  // dynamic shape, e.g. a result of SliceToDynamic.
+  int64 dynamic_shape_metadata_prefix_bytes = 15;
+
   // Important: if any field is added, be sure to modify ShapeUtil::Equal() and
   // LayoutUtil::Hash appropriately to account for the new field.
+
+  reserved 2;
+  reserved "padded_dimensions";
+  reserved 3;
+  reserved "padding_value";
+  reserved 4;
+  reserved "format";
+  reserved 5;
+  reserved "max_sparse_elements";
+  reserved 7;
+  reserved "element_size_in_bits";
 }
 // LINT.ThenChange( \
 //     https://www.tensorflow.org/code/tensorflow/compiler/xla/shape_util.cc,      \
@@ -328,11 +372,7 @@ message OpMetadata {
   // Profile information for the Op.
   ProfileInfo profile_info = 10;
 
-  // Information about the replaced operation. We store the HLO canonical text,
-  // which contains canonicalized instruction name, operand shape, and full
-  // bodies of the subcomputations besides the HLO itself. This is set
-  // independently of other fields.
-  string replaced_op = 11;
+  reserved 11;
 }
 
 // Profile data from the execution of a computation.
@@ -454,8 +494,10 @@ message LiteralProto {
   bytes bf16s = 13;
   bytes u16s = 16;
   bytes s16s = 17;
+  bytes f8e5m2s = 19;
+  bytes f8e4m3fns = 20;
   repeated int64 sparse_indices = 14;
-  // Next = 19
+  // Next = 21
 }
 
 message WindowDimension {
@@ -744,8 +786,10 @@ message PrecisionConfig {
     DEFAULT = 0;
     HIGH = 1;
     HIGHEST = 2;
+    // Each U8/S8 value in a tensor actually represents 2 nibble values.
+    PACKED_NIBBLE = 3;
 
-    // Next: 3
+    // Next: 4
   }
   repeated Precision operand_precision = 1;
 
@@ -781,9 +825,9 @@ message WhileLoopBackendConfig {
   KnownTripCount known_trip_count = 1;
 }
 
-// Specifies a pair of output/operand buffers for kCustomCall that alias each
-// other.
-message CustomCallOutputOperandAliasing {
+// Specifies a pair of output/operand buffers that alias each other for
+// kCustomCall and kFusion
+message OutputOperandAliasing {
   repeated int64 output_shape_index = 1;
   int64 operand_index = 2;
   repeated int64 operand_shape_index = 3;

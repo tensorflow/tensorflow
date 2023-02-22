@@ -13,7 +13,7 @@ limitations under the License.
 
 #include <string>
 
-#include "tensorflow/core/common_runtime/forward_type_inference.h"
+#include "tensorflow/core/common_runtime/type_inference.h"
 #include "tensorflow/core/data/dataset_test_base.h"
 #include "tensorflow/core/graph/node_builder.h"
 #include "tensorflow/core/kernels/data/shard_dataset_op.h"
@@ -221,7 +221,7 @@ static Status type_inference(Graph& graph) {
   graph_ptr->Copy(graph);
   opt_options.graph = &graph_ptr;
   opt_options.flib_def = graph.mutable_flib_def();
-  ForwardTypeInferencePass pass;
+  TypeInferencePass pass;
   return pass.Run(opt_options);
 }
 

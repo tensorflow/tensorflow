@@ -17,15 +17,15 @@ limitations under the License.
 
 #include "absl/strings/str_replace.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/service/dynamic_dimension_inference.h"
 #include "tensorflow/compiler/xla/service/dynamic_dimension_simplifier.h"
-#include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_dce.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_matchers.h"
-#include "tensorflow/compiler/xla/service/hlo_module.h"
-#include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/service/pattern_matcher.h"
 #include "tensorflow/compiler/xla/service/pattern_matcher_gmock.h"
@@ -41,9 +41,9 @@ limitations under the License.
 #include "tensorflow/compiler/xla/tests/test_macros.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/core/status_test_util.h"
-#include "tensorflow/core/platform/test_benchmark.h"
-#include "tensorflow/core/protobuf/error_codes.pb.h"
+#include "tensorflow/tsl/lib/core/status_test_util.h"
+#include "tensorflow/tsl/platform/test_benchmark.h"
+#include "tensorflow/tsl/protobuf/error_codes.pb.h"
 
 namespace xla {
 namespace {
@@ -86,7 +86,7 @@ class DynamicPadderTest : public HloTestBase {
 
   std::unique_ptr<HloModule> GetHloModule(const std::string& hlo_text) {
     std::unique_ptr<HloModule> module =
-        ParseAndReturnVerifiedModule(hlo_text).ValueOrDie();
+        ParseAndReturnVerifiedModule(hlo_text).value();
     return module;
   }
 
@@ -283,19 +283,19 @@ ENTRY main {
 
   auto* root = module_->entry_computation()->root_instruction();
   EXPECT_THAT(root,
-              op::CustomCall("SliceToDynamic", op::Negate(), op::Constant()));
+              op::CustomCall({"SliceToDynamic"}, op::Negate(), op::Constant()));
   HloInstruction* negate = root->mutable_operand(0);
   EXPECT_THAT(
       negate,
       op::Negate(op::GetTupleElement(op::CustomCall(
-          "PadToStatic", op::GetTupleElement(op::CustomCall(
-                             "OpWithDynamicLowering", ::testing::_))))));
+          {"PadToStatic"}, op::GetTupleElement(op::CustomCall(
+                               {"OpWithDynamicLowering"}, ::testing::_))))));
   auto custom_call_1 =
       module_->entry_computation()->GetInstructionWithName("custom-call.1");
   EXPECT_THAT(custom_call_1,
-              op::CustomCall("OpWithDynamicLowering",
+              op::CustomCall({"OpWithDynamicLowering"},
                              op::Tuple(op::GetTupleElement(),
-                                       op::CustomCall("SliceToDynamic"))));
+                                       op::CustomCall({"SliceToDynamic"}))));
 }
 
 TEST_F(DynamicPadderTest, DynamicOutputNestedTuple) {
@@ -324,7 +324,7 @@ ENTRY main {
   EXPECT_THAT(root, op::Tuple(op::Constant(), op::Tuple()));
   HloInstruction* nested_tuple = root->mutable_operand(1);
   EXPECT_THAT(nested_tuple,
-              op::Tuple(op::Constant(), op::CustomCall("SliceToDynamic")));
+              op::Tuple(op::Constant(), op::CustomCall({"SliceToDynamic"})));
 }
 
 TEST_F(DynamicPadderTest, ConvolutionTest) {
@@ -466,7 +466,7 @@ ENTRY main {
 )";
 
   const int kNumParams = 2;
-  module_ = ParseAndReturnVerifiedModule(hlo_text).ValueOrDie();
+  module_ = ParseAndReturnVerifiedModule(hlo_text).value();
   // Set up dynamic parameter binding.
   for (int i = 0; i < kNumParams; ++i) {
     TF_CHECK_OK(module_->dynamic_parameter_binding().Bind(
@@ -495,7 +495,7 @@ ENTRY test {
   TF_ASSERT_OK(RunPadder(/*slice_dynamic_output=*/true).status());
 
   EXPECT_THAT(module_->entry_computation()->root_instruction(),
-              GmockMatch(m::CustomCall("SliceToDynamic",
+              GmockMatch(m::CustomCall({"SliceToDynamic"},
                                        m::Dot(m::Op().WithShape(S8, {16, 32}),
                                               m::Op().WithShape(S8, {32, 64}))
                                            .WithShape(S32, {16, 64}),
@@ -515,12 +515,81 @@ ENTRY test {
   module_ = GetHloModule(hlo_text);
   TF_ASSERT_OK(RunPadder(/*slice_dynamic_output=*/true).status());
 
-  EXPECT_THAT(
-      module_->entry_computation()->root_instruction(),
-      GmockMatch(m::CustomCall("SliceToDynamic",
-                               m::GetTupleElement(m::CustomCall(
-                                   "PadToStatic", m::CustomCall("UnknownOp"))),
-                               m::Op())));
+  EXPECT_THAT(module_->entry_computation()->root_instruction(),
+              GmockMatch(m::CustomCall(
+                  {"SliceToDynamic"},
+                  m::GetTupleElement(m::CustomCall(
+                      {"PadToStatic"}, m::CustomCall({"UnknownOp"}))),
+                  m::Op())));
+}
+
+TEST_F(DynamicPadderTest, WhileLoopDynamicShapeChangeToStatic) {
+  const std::string hlo_text = R"(
+HloModule WhileLoopDynamicShapeChangeToStatic
+
+ %cond_wrapper.19447 {
+  param = (s32[], s32[], f32[], f32[<=32,216]{1,0}) parameter(0)
+  %get-tuple-element.184 = s32[] get-tuple-element(param), index=0
+  %get-tuple-element.185 = s32[] get-tuple-element(param), index=1
+  ROOT %compare.28 = pred[] compare(s32[] %get-tuple-element.184, s32[] %get-tuple-element.185), direction=LT
+ }
+
+%while_body_78894_grad_83711__.18882 {
+  param = (s32[], s32[], f32[], f32[<=32,216]{1,0}) parameter(0)
+  %get-tuple-element.184 = s32[] get-tuple-element(param), index=0
+  %get-tuple-element.185 = s32[] get-tuple-element(param), index=1
+  %add.1 = s32[] add(get-tuple-element.184, get-tuple-element.184)
+  %gte.2 = f32[] get-tuple-element(param), index=2
+  %broadcast.19389 = f32[32,216]{1,0} broadcast(f32[] %gte.2), dimensions={}
+  ROOT tuple = (s32[], s32[], f32[], f32[<=32,216]{1,0}) tuple(add.1, %get-tuple-element.185, %gte.2, %broadcast.19389)
+}
+
+ENTRY main {
+  param = f32[] parameter(0)
+  param.1 = f32[<=32,216]{1,0} parameter(1)
+  const = s32[] constant(3)
+  const2 = s32[] constant(4)
+  %tuple.18877 = (s32[], s32[], f32[], f32[<=32,216]{1,0}) tuple(const, const2, param, param.1)
+  %while.19451 = (s32[], s32[], f32[], f32[<=32,216]{1,0})
+    while((s32[], s32[], f32[], f32[<=32,216]{1,0})
+     %tuple.18877), condition=%cond_wrapper.19447, body=%while_body_78894_grad_83711__.18882
+  ROOT result = f32[<=32,216]{1,0} get-tuple-element(while.19451), index=3
+ }
+)";
+
+  module_ = GetHloModule(hlo_text);
+
+  TF_ASSERT_OK(RunPadder(/*slice_dynamic_output=*/true).status());
+  XLA_LOG_LINES(0, module_->ToString());
+  auto* root = module_->entry_computation()->root_instruction();
+  EXPECT_EQ(root->operand(0)->shape(), ShapeUtil::MakeShape(F32, {32, 216}));
+}
+
+TEST_F(DynamicPadderTest, HandleReshapeCheckPastReshape) {
+  // Two different sizes.
+  auto hlo_text = R"(
+HloModule ReshapeDynamicDimension
+ENTRY main {
+  p0 = f32[4,511,432]{2,1,0} parameter(0)
+  p1 = s32[] parameter(1)
+  p2 = f32[432,337]{1,0:T(8,128)} parameter(2)
+  reshape.4179 = f32[2044,432]{1,0} reshape(p0)
+   dot.4180 = f32[2044,337]{1,0} dot(reshape.4179, p2), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  transpose.4181 = f32[2044,337]{1,0} transpose(dot.4180), dimensions={0,1}
+  ROOT reshape.4183 = f32[4,511,337]{2,1,0} reshape(transpose.4181)
+})";
+  module_ = GetHloModule(hlo_text);
+  // Set up dynamic parameter binding.
+  TF_CHECK_OK(module_->dynamic_parameter_binding().Bind(
+      DynamicParameterBinding::DynamicParameter{1, {}},
+      DynamicParameterBinding::DynamicDimension{0, {}, 0}));
+  TF_ASSERT_OK(RunPadder(/*slice_dynamic_output=*/true).status());
+  VLOG(3) << module_->ToString();
+  CHECK(module_->is_dynamic());
+  CHECK(module_->entry_computation()
+            ->root_instruction()
+            ->shape()
+            .is_dynamic_dimension(0));
 }
 
 // Test that dynamic padder has the same result as if not padded.
@@ -528,7 +597,7 @@ class ExecutionTest : public HloTestBase {
  protected:
   std::unique_ptr<HloModule> GetHloModule(const std::string& hlo_text) {
     std::unique_ptr<HloModule> module =
-        ParseAndReturnVerifiedModule(hlo_text).ValueOrDie();
+        ParseAndReturnVerifiedModule(hlo_text).value();
     return module;
   }
   Literal PadAndExecute(std::unique_ptr<HloModule> module,
@@ -1615,7 +1684,7 @@ condition {
   stack_buffer = s32[<=4,2] get-tuple-element(stack), index=0
   stack_size = s32[] get-dimension-size(stack_buffer), dimensions={0}
   two = s32[] constant(2)
-  ROOT greater-than = pred[] compare(s32[] stack_size, s32[] two), direction=GE
+  ROOT greater-than = pred[] compare(s32[] stack_size, s32[] two), direction=GT
 }
 
 ENTRY entry {
@@ -1641,7 +1710,7 @@ ENTRY entry {
   //  [P, P],
   //  [P, P]]
   // Reducing them gives us [2, 2]
-  Literal expected = LiteralUtil::CreateR1<int32_t>({{1, 1}});
+  Literal expected = LiteralUtil::CreateR1<int32_t>({{2, 2}});
 
   EXPECT_EQ(result, expected);
 }
@@ -2057,9 +2126,9 @@ ENTRY gds {
   size1 = s32[] get-dimension-size(p), dimensions={1}
   ROOT mul = s32[] multiply(size0, size1)
 })")
-                    .ValueOrDie();
+                    .value();
   DynamicPadder pass;
-  EXPECT_TRUE(pass.Run(module.get()).ValueOrDie());
+  EXPECT_TRUE(pass.Run(module.get()).value());
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               op::Multiply(op::Constant(), op::Constant()));
 }
@@ -2075,9 +2144,9 @@ ENTRY gds {
   size1 = s32[] get-dimension-size(p_copy_dynamic), dimensions={0}
   ROOT mul = s32[] multiply(size0, size1)
 })")
-                    .ValueOrDie();
+                    .value();
   DynamicPadder pass;
-  EXPECT_TRUE(pass.Run(module.get()).ValueOrDie());
+  EXPECT_TRUE(pass.Run(module.get()).value());
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               op::Multiply(op::Constant(), op::Constant()));
 }
@@ -2089,7 +2158,7 @@ ENTRY gds {
   p = s32[3]{0} parameter(0)
   ROOT gds = s64[] get-dimension-size(p), dimensions={0}
 })")
-                    .ValueOrDie();
+                    .value();
   DynamicPadder pass;
   EXPECT_FALSE(pass.Run(module.get()).ok());
 }
@@ -2101,7 +2170,7 @@ ENTRY gds {
   p = f32[2,5] parameter(0)
   ROOT gds = s32[] get-dimension-size(p), dimensions={2}
 })")
-                    .ValueOrDie();
+                    .value();
   DynamicPadder pass;
   EXPECT_FALSE(pass.Run(module.get()).ok());
 }
@@ -2122,13 +2191,13 @@ ENTRY gds {
   dynamic_arg_1 = s32[<=4] set-dimension-size(arg, size_1), dimensions={0}
   ROOT add = s32[<=4] add(dynamic_arg_0, dynamic_arg_1)
 })")
-                    .ValueOrDie();
+                    .value();
   auto options = DynamicPadderOptions();
   options.shape_check_mode =
       DynamicDimensionInference::ShapeCheckMode::kCompileTime;
   DynamicPadder pass(options);
   auto status = pass.Run(module.get()).status();
-  EXPECT_THAT(status.code(), tensorflow::error::INVALID_ARGUMENT);
+  EXPECT_THAT(status.code(), tsl::error::INVALID_ARGUMENT);
 }
 
 TEST_F(SizeCheckTest, CompileTimeCheckBinaryOpPass) {
@@ -2144,7 +2213,7 @@ ENTRY gds {
   dynamic_arg_1 = s32[<=4] set-dimension-size(arg, size_1), dimensions={0}
   ROOT add = s32[<=4] add(dynamic_arg_0, dynamic_arg_1)
 })")
-                    .ValueOrDie();
+                    .value();
   auto options = DynamicPadderOptions();
   options.shape_check_mode =
       DynamicDimensionInference::ShapeCheckMode::kCompileTime;

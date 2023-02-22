@@ -18,12 +18,12 @@ limitations under the License.
 #include "tensorflow/cc/client/client_session.h"
 #include "tensorflow/cc/framework/scope.h"
 #include "tensorflow/cc/ops/standard_ops.h"
+#include "tensorflow/compiler/xla/stream_executor/event.h"
+#include "tensorflow/compiler/xla/stream_executor/multi_platform_manager.h"
 #include "tensorflow/core/common_runtime/pluggable_device/pluggable_device_factory.h"
 #include "tensorflow/core/framework/function_testlib.h"
 #include "tensorflow/core/graph/node_builder.h"
 #include "tensorflow/core/kernels/ops_testutil.h"
-#include "tensorflow/stream_executor/event.h"
-#include "tensorflow/stream_executor/multi_platform_manager.h"
 
 namespace tensorflow {
 namespace {
@@ -166,7 +166,7 @@ TEST_F(WhileOpTest, WhileOpCPUBuildWithPluggableDevice) {
           std::move(platform_fns_),
           stream_executor::test_util::DestroyPlatformFns,
           std::move(device_fns_), std::move(se_), std::move(timer_fns_)));
-  SE_CHECK_OK(stream_executor::MultiPlatformManager::RegisterPlatform(
+  TF_CHECK_OK(stream_executor::MultiPlatformManager::RegisterPlatform(
       std::move(cplatform)));
 
   DeviceFactory::Register(

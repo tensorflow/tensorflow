@@ -17,77 +17,13 @@ limitations under the License.
 
 #include <algorithm>
 #include <string>
+#include <vector>
 
 #include "absl/strings/str_join.h"
 #include "tensorflow/compiler/xla/shape_util.h"
-#include "tensorflow/compiler/xla/types.h"
-#include "tensorflow/core/platform/logging.h"
+#include "tensorflow/tsl/platform/logging.h"
 
 namespace xla {
-
-/* static */ int64_t IndexUtil::MultidimensionalIndexToLinearIndex(
-    const Shape& shape, absl::Span<const int64_t> multi_index) {
-  DCHECK_EQ(shape.dimensions_size(), multi_index.size());
-
-  for (size_t i = 0; i < multi_index.size(); ++i) {
-    DCHECK_GE(multi_index[i], 0);
-    DCHECK_LT(multi_index[i], shape.dimensions(i))
-        << "indexing beyond extent in dimension " << i << ":"
-        << "\n\tindex: " << absl::StrJoin(multi_index, ",")
-        << "\n\tshape: " << ShapeUtil::HumanString(shape);
-  }
-
-  // Let the array be sized like so for dimensions i from 0 to n-1:
-  //
-  //   [D{n-1} x D{n-2} x .. x D{0}]
-  //
-  // Let the order of the dimensions in the minor_to_major field in
-  // Layout be:
-  //
-  //   L(0), L(1), ... , L(n-1)
-  //
-  // where L(0) is the most-minor dimension and L(n-1) the most-major. The
-  // multidimensional index:
-  //
-  //   [I{0}, I{1}, ... , I{n-1}]
-  //
-  // then corresponds to the following linear index:
-  //
-  // linear_index =
-  //   (((  ... + I{L(2)}) * D{L(1)} + I{L(1)}) * D{L(0)} + I{L(0)}
-  //
-  // or equivalently:
-  //
-  // linear_index =
-  //   I{L(n-1)} * (D{L(n-2)} * D{L(n-3)} * D{L(n-4)} *     ....    D{L(0)}) +
-  //   I{L(n-2)} *             (D{L(n-3)} * D{L(n-4)} *     ....    D{L(0)}) +
-  //   I{L(n-3)} *                         (D{L(n-4)} *     ....    D{L(0)}) +
-  //                                   ...                                   +
-  //   I{L(2)} *                                         (D{L(1)} * D{L(0)}) +
-  //   I{L(1)} *                                                    D{L(0)}  +
-  //   I{L(0)}
-  //
-  // We compute the linear index value by accumulating the terms above from
-  // I{L(0)} up to I{L(n-1)}. Scale accumulates the product term D{L(0}} *
-  // D{L(1)} * ...
-
-  // Scale factor holding the growing product of D{L(i)} terms.
-  int64_t scale = 1;
-  int64_t linear_index = 0;
-  bool first = true;
-  for (auto dimension : LayoutUtil::MinorToMajor(shape)) {
-    if (first) {
-      // Avoid two multiplies on the first loop iteration
-      linear_index = multi_index[dimension];
-      scale = shape.dimensions(dimension);
-      first = false;
-    } else {
-      linear_index += scale * multi_index[dimension];
-      scale *= shape.dimensions(dimension);
-    }
-  }
-  return linear_index;
-}
 
 /* static */ std::vector<int64_t> IndexUtil::LinearIndexToMultidimensionalIndex(
     const Shape& shape, int64_t linear_index) {

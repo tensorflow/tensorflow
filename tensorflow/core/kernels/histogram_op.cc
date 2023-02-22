@@ -18,6 +18,7 @@ limitations under the License.
 #define EIGEN_USE_THREADS
 
 #include "tensorflow/core/kernels/histogram_op.h"
+
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/types.h"
@@ -39,18 +40,24 @@ struct HistogramFixedWidthFunctor<CPUDevice, T, Tout> {
                         int32_t nbins, typename TTypes<Tout, 1>::Tensor& out) {
     const CPUDevice& d = context->eigen_device<CPUDevice>();
 
-    Tensor index_to_bin_tensor;
+    if (nbins == 1) {
+      out(0) = static_cast<Tout>(values.size());
+      return OkStatus();
+    }
 
+    Tensor index_to_bin_tensor;
     TF_RETURN_IF_ERROR(context->forward_input_or_allocate_temp(
         {0}, DataTypeToEnum<int32>::value, TensorShape({values.size()}),
         &index_to_bin_tensor));
     auto index_to_bin = index_to_bin_tensor.flat<int32>();
 
-    const double step = static_cast<double>(value_range(1) - value_range(0)) /
-                        static_cast<double>(nbins);
+    // Avoid overflow in step computation.
+    const double step =
+        static_cast<double>(value_range(1)) / static_cast<double>(nbins) -
+        static_cast<double>(value_range(0)) / static_cast<double>(nbins);
     const double nbins_minus_1 = static_cast<double>(nbins - 1);
 
-    // We cannot handle NANs in the algorithm below (due to the case to int32)
+    // We cannot handle NANs in the algorithm below (due to the cast to int32)
     const Eigen::Tensor<int32, 1, 1> nans_tensor =
         values.isnan().template cast<int32>();
     const Eigen::Tensor<int32, 0, 1> reduced_tensor = nans_tensor.sum();
@@ -64,15 +71,17 @@ struct HistogramFixedWidthFunctor<CPUDevice, T, Tout> {
     //   step = (b - a) / nbins
     //   (x - a) / step
     // , then the entries are mapped to output.
-
-    // Bug fix: Switch the order of cwiseMin and int32-casting to avoid
-    // producing a negative index when casting an big int64 number to int32
-    index_to_bin.device(d) =
-        ((values.cwiseMax(value_range(0)) - values.constant(value_range(0)))
-             .template cast<double>() /
-         step)
-            .cwiseMin(nbins_minus_1)
-            .template cast<int32>();
+    //
+    // Bound range and cast to double _before_ subtracting the lower-bound to
+    // avoid overflow.  Otherwise the difference may not fit within the type
+    // (e.g. int32).
+    index_to_bin.device(d) = ((values.cwiseMax(value_range(0))
+                                   .cwiseMin(value_range(1))
+                                   .template cast<double>() -
+                               static_cast<double>(value_range(0))) /
+                              step)
+                                 .cwiseMin(nbins_minus_1)
+                                 .template cast<int32>();
 
     out.setZero();
     for (int32_t i = 0; i < index_to_bin.size(); i++) {

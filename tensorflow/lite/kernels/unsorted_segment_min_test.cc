@@ -20,6 +20,7 @@ limitations under the License.
 
 #include <gtest/gtest.h>
 #include "tensorflow/lite/kernels/test_util.h"
+#include "tensorflow/lite/kernels/unsorted_segment_test.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 
 namespace tflite {
@@ -28,53 +29,32 @@ namespace {
 using ::testing::ElementsAreArray;
 
 template <typename T>
-class UnsortedSegmentMinOpModel : public SingleOpModel {
+class UnsortedSegmentMinModel : public UnsortedSegmentModel<T> {
  public:
-  UnsortedSegmentMinOpModel(const TensorData& data,
-                            const TensorData& segment_ids,
-                            const TensorData& num_segments) {
-    data_id_ = AddInput(data);
-    segment_ids_id_ = AddInput(segment_ids);
-    num_segments_id_ = AddInput(num_segments);
-    output_id_ = AddOutput(data.type);
-    SetBuiltinOp(BuiltinOperator_UNSORTED_SEGMENT_MIN, BuiltinOptions_NONE, 0);
-    BuildInterpreter({GetShape(data_id_), GetShape(segment_ids_id_),
-                      GetShape(num_segments_id_)});
-  }
+  UnsortedSegmentMinModel(const TensorData& data, const TensorData& segment_ids,
+                          const TensorData& num_segments)
+      : UnsortedSegmentModel<T>(data, segment_ids, num_segments,
+                                BuiltinOperator_UNSORTED_SEGMENT_MIN,
+                                BuiltinOptions_NONE) {}
 
-  explicit UnsortedSegmentMinOpModel(
+  explicit UnsortedSegmentMinModel(
       const TensorData& data, const std::initializer_list<int>& segment_id_data,
       const std::initializer_list<int>& segment_id_shape,
       const std::initializer_list<int>& num_segments_data,
-      const std::initializer_list<int>& num_segments_shape) {
-    data_id_ = AddInput(data);
-    segment_ids_id_ =
-        AddConstInput(TensorType_INT32, segment_id_data, segment_id_shape);
-    num_segments_id_ =
-        AddConstInput(TensorType_INT32, num_segments_data, num_segments_shape);
-    output_id_ = AddOutput(data.type);
-    SetBuiltinOp(BuiltinOperator_UNSORTED_SEGMENT_MIN, BuiltinOptions_NONE, 0);
-    BuildInterpreter({GetShape(data_id_), GetShape(segment_ids_id_),
-                      GetShape(num_segments_id_)});
-  }
-
-  int data() const { return data_id_; }
-  int segment_ids() const { return segment_ids_id_; }
-  int num_segments() const { return num_segments_id_; }
-  std::vector<T> GetOutput() { return ExtractVector<T>(output_id_); }
-  std::vector<int32_t> GetOutputShape() { return GetTensorShape(output_id_); }
-
- protected:
-  int data_id_;
-  int segment_ids_id_;
-  int num_segments_id_;
-  int output_id_;
+      const std::initializer_list<int>& num_segments_shape)
+      : UnsortedSegmentModel<T>(data, segment_id_data, segment_id_shape,
+                                num_segments_data, num_segments_shape,
+                                BuiltinOperator_UNSORTED_SEGMENT_MIN,
+                                BuiltinOptions_NONE) {}
 };
 
-TEST(UnsortedSegmentMinOpModelTest, Int32Test_Simple) {
-  UnsortedSegmentMinOpModel<int32_t> model({TensorType_INT32, {6}},
-                                           {TensorType_INT32, {6}},
-                                           {TensorType_INT32, {1}});
+INSTANTIATE_TEST_SUITE_P(UnsortedSegmentMinTestP, UnsortedSegmentTest,
+                         testing::Values(BuiltinOperator_UNSORTED_SEGMENT_MIN));
+
+TEST(UnsortedSegmentMinModelTest, Int32Test_Simple) {
+  UnsortedSegmentMinModel<int32_t> model({TensorType_INT32, {6}},
+                                         {TensorType_INT32, {6}},
+                                         {TensorType_INT32, {1}});
   model.PopulateTensor<int32_t>(model.data(), {5, 3, 7, 8, 6, 4});
   model.PopulateTensor<int32_t>(model.segment_ids(), {0, 0, 1, 1, 0, 1});
   model.PopulateTensor<int32_t>(model.num_segments(), {2});
@@ -83,10 +63,10 @@ TEST(UnsortedSegmentMinOpModelTest, Int32Test_Simple) {
   EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({2}));
 }
 
-TEST(UnsortedSegmentMinOpModelTest, Int32Test_Simple2D) {
-  UnsortedSegmentMinOpModel<int32_t> model({TensorType_INT32, {3, 4}},
-                                           {TensorType_INT32, {3}},
-                                           {TensorType_INT32, {1}});
+TEST(UnsortedSegmentMinModelTest, Int32Test_Simple2D) {
+  UnsortedSegmentMinModel<int32_t> model({TensorType_INT32, {3, 4}},
+                                         {TensorType_INT32, {3}},
+                                         {TensorType_INT32, {1}});
   model.PopulateTensor<int32_t>(model.data(),
                                 {1, 2, 3, 4, 5, 6, 7, 8, 4, 3, 2, 1});
   model.PopulateTensor<int32_t>(model.segment_ids(), {0, 1, 0});
@@ -96,10 +76,10 @@ TEST(UnsortedSegmentMinOpModelTest, Int32Test_Simple2D) {
   EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({2, 4}));
 }
 
-TEST(UnsortedSegmentMinOpModelTest, FloatTest_Simple) {
-  UnsortedSegmentMinOpModel<float> model({TensorType_FLOAT32, {8}},
-                                         {TensorType_INT32, {8}},
-                                         {TensorType_INT32, {1}});
+TEST(UnsortedSegmentMinModelTest, FloatTest_Simple) {
+  UnsortedSegmentMinModel<float> model({TensorType_FLOAT32, {8}},
+                                       {TensorType_INT32, {8}},
+                                       {TensorType_INT32, {1}});
   model.PopulateTensor<float>(model.data(),
                               {1.0, 2.0, 3.0, 4.0, 4.0, 3.0, 2.0, 1.0});
   model.PopulateTensor<int32_t>(model.segment_ids(), {1, 0, 1, 7, 7, 7, 7, 7});
@@ -115,10 +95,10 @@ TEST(UnsortedSegmentMinOpModelTest, FloatTest_Simple) {
   EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({8}));
 }
 
-TEST(UnsortedSegmentMinOpModelTest, FloatTest_Simple2D) {
-  UnsortedSegmentMinOpModel<float> model({TensorType_FLOAT32, {3, 4}},
-                                         {TensorType_INT32, {3}},
-                                         {TensorType_INT32, {1}});
+TEST(UnsortedSegmentMinModelTest, FloatTest_Simple2D) {
+  UnsortedSegmentMinModel<float> model({TensorType_FLOAT32, {3, 4}},
+                                       {TensorType_INT32, {3}},
+                                       {TensorType_INT32, {1}});
   model.PopulateTensor<float>(model.data(), {1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0,
                                              8.0, 4.0, 3.0, 2.0, 1.0});
   model.PopulateTensor<int32_t>(model.segment_ids(), {0, 1, 0});
@@ -130,21 +110,10 @@ TEST(UnsortedSegmentMinOpModelTest, FloatTest_Simple2D) {
   EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({2, 4}));
 }
 
-TEST(UnsortedSegmentMinOpModelTest,
-     TestFailIfSegmentsAreNotTheRightCardinality) {
-  UnsortedSegmentMinOpModel<int32_t> model({TensorType_INT32, {3, 2}},
-                                           {TensorType_INT32, {2}},
-                                           {TensorType_INT32, {1}});
-  model.PopulateTensor<int32_t>(model.data(), {1, 2, 3, 4, 5, 6});
-  model.PopulateTensor<int32_t>(model.segment_ids(), {0, 1});
-  model.PopulateTensor<int32_t>(model.num_segments(), {2});
-  ASSERT_EQ(model.Invoke(), kTfLiteError);
-}
-
-TEST(UnsortedSegmentMinOpModelTest, SegmentsAreNegative) {
-  UnsortedSegmentMinOpModel<int32_t> model({TensorType_INT32, {2, 2}},
-                                           {TensorType_INT32, {2}},
-                                           {TensorType_INT32, {1}});
+TEST(UnsortedSegmentMinModelTest, SegmentsAreNegative) {
+  UnsortedSegmentMinModel<int32_t> model({TensorType_INT32, {2, 2}},
+                                         {TensorType_INT32, {2}},
+                                         {TensorType_INT32, {1}});
   model.PopulateTensor<int32_t>(model.data(), {1, 2, 3, 4});
   model.PopulateTensor<int32_t>(model.segment_ids(), {-1, -1});
   model.PopulateTensor<int32_t>(model.num_segments(), {1});
@@ -155,30 +124,9 @@ TEST(UnsortedSegmentMinOpModelTest, SegmentsAreNegative) {
   EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({1, 2}));
 }
 
-TEST(UnsortedSegmentMinOpModelTest, TestFailIfSegmentIDGreaterThanNumSegments) {
-  UnsortedSegmentMinOpModel<int32_t> model({TensorType_INT32, {2, 2}},
-                                           {TensorType_INT32, {2}},
-                                           {TensorType_INT32, {1}});
-  model.PopulateTensor<int32_t>(model.data(), {1, 2, 3, 4});
-  model.PopulateTensor<int32_t>(model.segment_ids(), {0, 1});
-  model.PopulateTensor<int32_t>(model.num_segments(), {1});
-  ASSERT_EQ(model.Invoke(), kTfLiteError);
-}
-
-TEST(UnsortedSegmentMinOpModelTest,
-     TestFailIfNumSegmentsAreNotTheRightCardinality) {
-  UnsortedSegmentMinOpModel<int32_t> model({TensorType_INT32, {3, 2}},
-                                           {TensorType_INT32, {3}},
-                                           {TensorType_INT32, {2}});
-  model.PopulateTensor<int32_t>(model.data(), {1, 2, 3, 4, 5, 6});
-  model.PopulateTensor<int32_t>(model.segment_ids(), {0, 1, 0});
-  model.PopulateTensor<int32_t>(model.num_segments(), {2, 1});
-  ASSERT_EQ(model.Invoke(), kTfLiteError);
-}
-
-TEST(UnsortedSegmentMinOpModelTest, ConstParamenterTest) {
-  UnsortedSegmentMinOpModel<int32_t> model({TensorType_INT32, {3, 2}},
-                                           {0, 1, 0}, {3}, {2}, {1});
+TEST(UnsortedSegmentMinModelTest, ConstParamenterTest) {
+  UnsortedSegmentMinModel<int32_t> model({TensorType_INT32, {3, 2}}, {0, 1, 0},
+                                         {3}, {2}, {1});
   model.PopulateTensor<int32_t>(model.data(), {1, 2, 3, 4, 5, 6});
   ASSERT_EQ(model.Invoke(), kTfLiteOk);
   EXPECT_THAT(model.GetOutput(), ElementsAreArray({1, 2, 3, 4}));

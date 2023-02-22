@@ -21,11 +21,12 @@ limitations under the License.
 #include <vector>
 
 #include "absl/strings/str_join.h"
+#include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/test_helpers.h"
-#include "tensorflow/core/platform/env.h"
-#include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/path.h"
-#include "tensorflow/core/platform/test.h"
+#include "tensorflow/tsl/platform/env.h"
+#include "tensorflow/tsl/platform/logging.h"
+#include "tensorflow/tsl/platform/path.h"
+#include "tensorflow/tsl/platform/test.h"
 
 namespace xla {
 namespace {
@@ -126,13 +127,13 @@ TEST(LiteralTestUtilTest, ExpectNearFailurePlacesResultsInTemporaryDirectory) {
     CHECK(LiteralTestUtil::Near(two, four, error)) << "two is not near four";
   };
 
-  tensorflow::Env* env = tensorflow::Env::Default();
+  tsl::Env* env = tsl::Env::Default();
 
   std::string outdir;
-  if (!tensorflow::io::GetTestUndeclaredOutputsDir(&outdir)) {
-    outdir = tensorflow::testing::TmpDir();
+  if (!tsl::io::GetTestUndeclaredOutputsDir(&outdir)) {
+    outdir = tsl::testing::TmpDir();
   }
-  std::string pattern = tensorflow::io::JoinPath(outdir, "tempfile-*.pb");
+  std::string pattern = tsl::io::JoinPath(outdir, "tempfile-*.pb");
   std::vector<std::string> files;
   TF_CHECK_OK(env->GetMatchingPaths(pattern, &files));
   for (const auto& f : files) {
@@ -150,8 +151,8 @@ TEST(LiteralTestUtilTest, ExpectNearFailurePlacesResultsInTemporaryDirectory) {
   EXPECT_EQ(3, results.size());
   for (const std::string& result : results) {
     LiteralProto literal_proto;
-    TF_CHECK_OK(tensorflow::ReadBinaryProto(tensorflow::Env::Default(), result,
-                                            &literal_proto));
+    TF_CHECK_OK(
+        tsl::ReadBinaryProto(tsl::Env::Default(), result, &literal_proto));
     Literal literal = Literal::CreateFromProto(literal_proto).value();
     if (result.find("expected") != std::string::npos) {
       EXPECT_EQ("f32[] 2", literal.ToString());
@@ -294,5 +295,341 @@ TEST(LiteralTestUtilTest, ExpectNearDoubleOutsideFloatValueRange) {
       LiteralTestUtil::Near(two_times_float_max, two_times_float_max, error));
 }
 
+TEST(LiteralTestUtilTest, DynamicEqualityR1) {
+  auto literal1 = Literal(ShapeUtil::MakeShape(U32, {10}));
+  literal1.PopulateR1<uint32_t>({1, 2, 3, 4, 5, 6, 7, 8, 9, 10});
+  literal1.SetDynamicSize(0, 5);
+  auto literal2 = Literal(ShapeUtil::MakeShape(U32, {10}));
+  literal2.PopulateR1<uint32_t>({1, 2, 3, 4, 5, 99, 99, 99, 99, 99});
+  literal2.SetDynamicSize(0, 5);
+  EXPECT_TRUE(LiteralTestUtil::Equal(literal1, literal2));
+}
+
+TEST(LiteralTestUtilTest, DynamicEqualityR2Dim) {
+  auto literal1 = Literal(ShapeUtil::MakeShape(U32, {3, 3}));
+  literal1.PopulateR2<uint32_t>({{1, 2, 3}, {4, 5, 6}, {7, 8, 9}});
+  literal1.SetDynamicSize(0, 2);
+  auto literal2 = Literal(ShapeUtil::MakeShape(U32, {3, 3}));
+  literal2.PopulateR2<uint32_t>({{1, 2, 3}, {4, 5, 6}, {99, 99, 99}});
+  literal2.SetDynamicSize(0, 2);
+  EXPECT_TRUE(LiteralTestUtil::Equal(literal1, literal2));
+}
+
+TEST(LiteralTestUtilTest, DynamicEqualityR2Dim1) {
+  auto literal1 = Literal(ShapeUtil::MakeShape(U32, {3, 3}));
+  literal1.PopulateR2<uint32_t>({{1, 2, 3}, {4, 5, 6}, {7, 8, 9}});
+  literal1.SetDynamicSize(1, 2);
+  auto literal2 = Literal(ShapeUtil::MakeShape(U32, {3, 3}));
+  literal2.PopulateR2<uint32_t>({{1, 2, 99}, {4, 5, 99}, {7, 8, 99}});
+  literal2.SetDynamicSize(1, 2);
+  EXPECT_TRUE(LiteralTestUtil::Equal(literal1, literal2));
+}
+
+TEST(LiteralTestUtilTest, DynamicNearEqualityR1) {
+  auto literal1 = Literal(ShapeUtil::MakeShape(F32, {10}));
+  literal1.PopulateR1<float>({1, 2, 3, 4, 5, 6, 7, 8, 9, 10});
+  literal1.SetDynamicSize(0, 5);
+  auto literal2 = Literal(ShapeUtil::MakeShape(F32, {10}));
+  literal2.PopulateR1<float>({1, 2, 3, 4, 5, 99, 99, 99, 99, 99});
+  literal2.SetDynamicSize(0, 5);
+  ErrorSpec error(0.001);
+  EXPECT_TRUE(LiteralTestUtil::Near(literal1, literal2, error));
+}
+
+TEST(LiteralTestUtilTest, DynamicNearEqualityR2Dim) {
+  auto literal1 = Literal(ShapeUtil::MakeShape(F32, {3, 3}));
+  literal1.PopulateR2<float>({{1, 2, 3}, {4, 5, 6}, {7, 8, 9}});
+  literal1.SetDynamicSize(0, 2);
+  auto literal2 = Literal(ShapeUtil::MakeShape(F32, {3, 3}));
+  literal2.PopulateR2<float>({{1, 2, 3}, {4, 5, 6}, {99, 99, 99}});
+  literal2.SetDynamicSize(0, 2);
+  ErrorSpec error(0.001);
+  EXPECT_TRUE(LiteralTestUtil::Near(literal1, literal2, error));
+}
+
+TEST(LiteralTestUtilTest, DynamicNearEqualityR2Dim1) {
+  auto literal1 = Literal(ShapeUtil::MakeShape(F32, {3, 3}));
+  literal1.PopulateR2<float>({{1, 2, 3}, {4, 5, 6}, {7, 8, 9}});
+  literal1.SetDynamicSize(1, 2);
+  auto literal2 = Literal(ShapeUtil::MakeShape(F32, {3, 3}));
+  literal2.PopulateR2<float>({{1, 2, 99}, {4, 5, 99}, {7, 8, 99}});
+  literal2.SetDynamicSize(1, 2);
+  ErrorSpec error(0.001);
+  EXPECT_TRUE(LiteralTestUtil::Near(literal1, literal2, error));
+}
+
+TEST(LiteralTestUtilTest, UnequalDynamicDimensionsR1) {
+  auto literal1 = Literal(ShapeUtil::MakeShape(U32, {10}));
+  literal1.PopulateR1<uint32_t>({1, 2, 3, 4, 5, 6, 7, 8, 9, 10});
+  literal1.SetDynamicSize(0, 5);
+  auto literal2 = Literal(ShapeUtil::MakeShape(U32, {10}));
+  literal2.PopulateR1<uint32_t>({1, 2, 3, 4, 5, 6, 7, 8, 9, 10});
+  literal2.SetDynamicSize(0, 6);
+  // Dynamic sizes do not match.
+  EXPECT_FALSE(LiteralTestUtil::Equal(literal1, literal2));
+}
+
+TEST(LiteralTestUtilTest, UnequalDynamicDimensionsR1_F32) {
+  auto literal1 = Literal(ShapeUtil::MakeShape(F32, {10}));
+  literal1.PopulateR1<float>({1, 2, 3, 4, 5, 6, 7, 8, 9, 10});
+  literal1.SetDynamicSize(0, 5);
+  auto literal2 = Literal(ShapeUtil::MakeShape(F32, {10}));
+  literal2.PopulateR1<float>({1, 2, 3, 4, 5, 6, 7, 8, 9, 10});
+  literal2.SetDynamicSize(0, 6);
+  // Dynamic sizes do not match.
+  EXPECT_FALSE(LiteralTestUtil::Near(literal1, literal2, ErrorSpec{0.0001}));
+}
+
+TEST(LiteralTestUtilTest, ExpectedIsDynamicActualIsNotR1) {
+  auto literal1 = Literal(ShapeUtil::MakeShape(U32, {10}));
+  literal1.PopulateR1<uint32_t>({1, 2, 3, 4, 5, 6, 7, 8, 9, 10});
+  literal1.SetDynamicSize(0, 5);
+  auto literal2 = Literal(ShapeUtil::MakeShape(U32, {10}));
+  literal2.PopulateR1<uint32_t>({1, 2, 3, 4, 5, 6, 7, 8, 9, 10});
+  // Only literal1 is dynamic.
+  EXPECT_FALSE(LiteralTestUtil::Equal(literal1, literal2));
+}
+
+TEST(LiteralTestUtilTest, ExpectedIsDynamicActualIsNotR1_F32) {
+  auto literal1 = Literal(ShapeUtil::MakeShape(F32, {10}));
+  literal1.PopulateR1<float>({1, 2, 3, 4, 5, 6, 7, 8, 9, 10});
+  literal1.SetDynamicSize(0, 5);
+  auto literal2 = Literal(ShapeUtil::MakeShape(F32, {10}));
+  literal2.PopulateR1<float>({1, 2, 3, 4, 5, 6, 7, 8, 9, 10});
+  // Only literal1 is dynamic.
+  EXPECT_FALSE(LiteralTestUtil::Near(literal1, literal2, ErrorSpec{0.0001}));
+}
+
+TEST(LiteralTestUtilTest, ActualIsDynamicExpectedIsNotR1) {
+  auto literal1 = Literal(ShapeUtil::MakeShape(U32, {10}));
+  literal1.PopulateR1<uint32_t>({1, 2, 3, 4, 5, 6, 7, 8, 9, 10});
+  auto literal2 = Literal(ShapeUtil::MakeShape(U32, {10}));
+  literal2.PopulateR1<uint32_t>({1, 2, 3, 4, 5, 6, 7, 8, 9, 10});
+  literal2.SetDynamicSize(0, 5);
+  // Only literal2 is dynamic.
+  EXPECT_FALSE(LiteralTestUtil::Equal(literal1, literal2));
+}
+
+TEST(LiteralTestUtilTest, ActualIsDynamicExpectedIsNotR1_F32) {
+  auto literal1 = Literal(ShapeUtil::MakeShape(F32, {10}));
+  literal1.PopulateR1<float>({1, 2, 3, 4, 5, 6, 7, 8, 9, 10});
+  auto literal2 = Literal(ShapeUtil::MakeShape(F32, {10}));
+  literal2.PopulateR1<float>({1, 2, 3, 4, 5, 6, 7, 8, 9, 10});
+  literal2.SetDynamicSize(0, 5);
+  // Only literal2 is dynamic.
+  EXPECT_FALSE(LiteralTestUtil::Near(literal1, literal2, ErrorSpec{0.0001}));
+}
+
+TEST(LiteralTestUtilTest, UnequalDynamicDimensionsR2Dim0) {
+  auto literal1 = Literal(ShapeUtil::MakeShape(U32, {3, 3}));
+  literal1.PopulateR2<uint32_t>({{1, 2, 3}, {4, 5, 6}, {7, 8, 9}});
+  literal1.SetDynamicSize(0, 2);
+  auto literal2 = Literal(ShapeUtil::MakeShape(U32, {3, 3}));
+  literal2.PopulateR2<uint32_t>({{1, 2, 3}, {4, 5, 6}, {7, 8, 9}});
+  literal2.SetDynamicSize(0, 3);
+  // Dynamic sizes do not match.
+  EXPECT_FALSE(LiteralTestUtil::Equal(literal1, literal2));
+}
+
+TEST(LiteralTestUtilTest, UnequalDynamicDimensionsR2Dim0_F32) {
+  auto literal1 = Literal(ShapeUtil::MakeShape(F32, {3, 3}));
+  literal1.PopulateR2<float>({{1, 2, 3}, {4, 5, 6}, {7, 8, 9}});
+  literal1.SetDynamicSize(0, 2);
+  auto literal2 = Literal(ShapeUtil::MakeShape(F32, {3, 3}));
+  literal2.PopulateR2<float>({{1, 2, 3}, {4, 5, 6}, {7, 8, 9}});
+  literal2.SetDynamicSize(0, 3);
+  // Dynamic sizes do not match.
+  EXPECT_FALSE(LiteralTestUtil::Near(literal1, literal2, ErrorSpec{0.0001}));
+}
+
+TEST(LiteralTestUtilTest, UnequalDynamicDimensionsR2Dim1) {
+  auto literal1 = Literal(ShapeUtil::MakeShape(U32, {3, 3}));
+  literal1.PopulateR2<uint32_t>({{1, 2, 3}, {4, 5, 6}, {7, 8, 9}});
+  literal1.SetDynamicSize(1, 2);
+  auto literal2 = Literal(ShapeUtil::MakeShape(U32, {3, 3}));
+  literal2.PopulateR2<uint32_t>({{1, 2, 3}, {4, 5, 6}, {7, 8, 9}});
+  literal2.SetDynamicSize(1, 3);
+  // Dynamic sizes do not match.
+  EXPECT_FALSE(LiteralTestUtil::Equal(literal1, literal2));
+}
+
+TEST(LiteralTestUtilTest, UnequalDynamicDimensionsR2Dim1_F32) {
+  auto literal1 = Literal(ShapeUtil::MakeShape(F32, {3, 3}));
+  literal1.PopulateR2<float>({{1, 2, 3}, {4, 5, 6}, {7, 8, 9}});
+  literal1.SetDynamicSize(1, 2);
+  auto literal2 = Literal(ShapeUtil::MakeShape(F32, {3, 3}));
+  literal2.PopulateR2<float>({{1, 2, 3}, {4, 5, 6}, {7, 8, 9}});
+  literal2.SetDynamicSize(1, 3);
+  // Dynamic sizes do not match.
+  EXPECT_FALSE(LiteralTestUtil::Near(literal1, literal2, ErrorSpec{0.0001}));
+}
+
+TEST(LiteralTestUtilTest, UnequalDynamicDimensionsR2DifferentDimensions) {
+  auto literal1 = Literal(ShapeUtil::MakeShape(U32, {3, 3}));
+  literal1.PopulateR2<uint32_t>({{1, 2, 3}, {4, 5, 6}, {7, 8, 9}});
+  literal1.SetDynamicSize(1, 2);
+  auto literal2 = Literal(ShapeUtil::MakeShape(U32, {3, 3}));
+  literal2.PopulateR2<uint32_t>({{1, 2, 3}, {4, 5, 6}, {7, 8, 9}});
+  literal2.SetDynamicSize(0, 2);
+  // Different dimensions were set as dynamic.
+  EXPECT_FALSE(LiteralTestUtil::Equal(literal1, literal2));
+}
+
+TEST(LiteralTestUtilTest, UnequalDynamicDimensionsR2DifferentDimensions_F32) {
+  auto literal1 = Literal(ShapeUtil::MakeShape(F32, {3, 3}));
+  literal1.PopulateR2<float>({{1, 2, 3}, {4, 5, 6}, {7, 8, 9}});
+  literal1.SetDynamicSize(1, 2);
+  auto literal2 = Literal(ShapeUtil::MakeShape(F32, {3, 3}));
+  literal2.PopulateR2<float>({{1, 2, 3}, {4, 5, 6}, {7, 8, 9}});
+  literal2.SetDynamicSize(0, 2);
+  // Different dimensions were set as dynamic.
+  EXPECT_FALSE(LiteralTestUtil::Near(literal1, literal2, ErrorSpec{0.0001}));
+}
+
+TEST(LiteralTestUtilTest, DynamicTuplesAreEqual) {
+  auto literal1 = Literal(ShapeUtil::MakeTupleShape(
+      {ShapeUtil::MakeShape(U32, {5}), ShapeUtil::MakeShape(U32, {5})}));
+  auto literal2 = Literal(ShapeUtil::MakeTupleShape(
+      {ShapeUtil::MakeShape(U32, {5}), ShapeUtil::MakeShape(U32, {5})}));
+  MutableBorrowingLiteral(&literal1, /*view_root=*/{0})
+      .PopulateR1<uint32_t>({1, 2, 3, 4, 5});
+  MutableBorrowingLiteral(&literal1, /*view_root=*/{1})
+      .PopulateR1<uint32_t>({1, 2, 3, 4, 5});
+  literal1.SetDynamicSize(0, {0}, 5);
+  MutableBorrowingLiteral(&literal2, /*view_root=*/{0})
+      .PopulateR1<uint32_t>({1, 2, 3, 4, 5});
+  MutableBorrowingLiteral(&literal2, /*view_root=*/{1})
+      .PopulateR1<uint32_t>({1, 2, 3, 4, 5});
+  literal2.SetDynamicSize(0, {0}, 5);
+  EXPECT_TRUE(LiteralTestUtil::Equal(literal1, literal2));
+}
+
+TEST(LiteralTestUtilTest, DynamicTuplesAreNear) {
+  auto literal1 = Literal(ShapeUtil::MakeTupleShape(
+      {ShapeUtil::MakeShape(F32, {5}), ShapeUtil::MakeShape(F32, {5})}));
+  auto literal2 = Literal(ShapeUtil::MakeTupleShape(
+      {ShapeUtil::MakeShape(F32, {5}), ShapeUtil::MakeShape(F32, {5})}));
+  MutableBorrowingLiteral(&literal1, /*view_root=*/{0})
+      .PopulateR1<float>({1, 2, 3, 4, 5});
+  MutableBorrowingLiteral(&literal1, /*view_root=*/{1})
+      .PopulateR1<float>({1, 2, 3, 4, 5});
+  literal1.SetDynamicSize(0, {0}, 5);
+  MutableBorrowingLiteral(&literal2, /*view_root=*/{0})
+      .PopulateR1<float>({1, 2, 3, 4, 5});
+  MutableBorrowingLiteral(&literal2, /*view_root=*/{1})
+      .PopulateR1<float>({1, 2, 3, 4, 5});
+  literal2.SetDynamicSize(0, {0}, 5);
+  EXPECT_TRUE(LiteralTestUtil::Near(literal1, literal2, ErrorSpec{0.0001}));
+}
+
+TEST(LiteralTestUtilTest, DynamicTuplesAreEqualWithinDynamicBounds) {
+  auto literal1 = Literal(ShapeUtil::MakeTupleShape(
+      {ShapeUtil::MakeShape(U32, {5}), ShapeUtil::MakeShape(U32, {5})}));
+  auto literal2 = Literal(ShapeUtil::MakeTupleShape(
+      {ShapeUtil::MakeShape(U32, {5}), ShapeUtil::MakeShape(U32, {5})}));
+  MutableBorrowingLiteral(&literal1, /*view_root=*/{0})
+      .PopulateR1<uint32_t>({1, 2, 3, 4, 5});
+  MutableBorrowingLiteral(&literal1, /*view_root=*/{1})
+      .PopulateR1<uint32_t>({1, 2, 3, 4, 5});
+  literal1.SetDynamicSize(0, {0}, 3);
+  MutableBorrowingLiteral(&literal2, /*view_root=*/{0})
+      .PopulateR1<uint32_t>({1, 2, 3, 99, 99});
+  MutableBorrowingLiteral(&literal2, /*view_root=*/{1})
+      .PopulateR1<uint32_t>({1, 2, 3, 4, 5});
+  literal2.SetDynamicSize(0, {0}, 3);
+  EXPECT_TRUE(LiteralTestUtil::Equal(literal1, literal2));
+}
+
+TEST(LiteralTestUtilTest, DynamicTuplesAreNearWithinDynamicBounds) {
+  auto literal1 = Literal(ShapeUtil::MakeTupleShape(
+      {ShapeUtil::MakeShape(F32, {5}), ShapeUtil::MakeShape(F32, {5})}));
+  auto literal2 = Literal(ShapeUtil::MakeTupleShape(
+      {ShapeUtil::MakeShape(F32, {5}), ShapeUtil::MakeShape(F32, {5})}));
+  MutableBorrowingLiteral(&literal1, /*view_root=*/{0})
+      .PopulateR1<float>({1, 2, 3, 4, 5});
+  MutableBorrowingLiteral(&literal1, /*view_root=*/{1})
+      .PopulateR1<float>({1, 2, 3, 4, 5});
+  literal1.SetDynamicSize(0, {0}, 3);
+  MutableBorrowingLiteral(&literal2, /*view_root=*/{0})
+      .PopulateR1<float>({1, 2, 3, 99, 99});
+  MutableBorrowingLiteral(&literal2, /*view_root=*/{1})
+      .PopulateR1<float>({1, 2, 3, 4, 5});
+  literal2.SetDynamicSize(0, {0}, 3);
+  EXPECT_TRUE(LiteralTestUtil::Near(literal1, literal2, ErrorSpec{0.0001}));
+}
+
+TEST(LiteralTestUtilTest, DynamicTuplesHaveDifferentDynamicSizes) {
+  auto literal1 = Literal(ShapeUtil::MakeTupleShape(
+      {ShapeUtil::MakeShape(U32, {5}), ShapeUtil::MakeShape(U32, {5})}));
+  auto literal2 = Literal(ShapeUtil::MakeTupleShape(
+      {ShapeUtil::MakeShape(U32, {5}), ShapeUtil::MakeShape(U32, {5})}));
+  MutableBorrowingLiteral(&literal1, /*view_root=*/{0})
+      .PopulateR1<uint32_t>({1, 2, 3, 4, 5});
+  MutableBorrowingLiteral(&literal1, /*view_root=*/{1})
+      .PopulateR1<uint32_t>({1, 2, 3, 4, 5});
+  literal1.SetDynamicSize(0, {0}, 5);
+  MutableBorrowingLiteral(&literal2, /*view_root=*/{0})
+      .PopulateR1<uint32_t>({1, 2, 3, 4, 5});
+  MutableBorrowingLiteral(&literal2, /*view_root=*/{1})
+      .PopulateR1<uint32_t>({1, 2, 3, 4, 5});
+  literal2.SetDynamicSize(0, {0}, 4);
+  // Dynamic sizes are not equal.
+  EXPECT_FALSE(LiteralTestUtil::Equal(literal1, literal2));
+}
+
+TEST(LiteralTestUtilTest, DynamicTuplesHaveDifferentDynamicSizes_F32) {
+  auto literal1 = Literal(ShapeUtil::MakeTupleShape(
+      {ShapeUtil::MakeShape(F32, {5}), ShapeUtil::MakeShape(F32, {5})}));
+  auto literal2 = Literal(ShapeUtil::MakeTupleShape(
+      {ShapeUtil::MakeShape(F32, {5}), ShapeUtil::MakeShape(F32, {5})}));
+  MutableBorrowingLiteral(&literal1, /*view_root=*/{0})
+      .PopulateR1<float>({1, 2, 3, 4, 5});
+  MutableBorrowingLiteral(&literal1, /*view_root=*/{1})
+      .PopulateR1<float>({1, 2, 3, 4, 5});
+  literal1.SetDynamicSize(0, {0}, 5);
+  MutableBorrowingLiteral(&literal2, /*view_root=*/{0})
+      .PopulateR1<float>({1, 2, 3, 4, 5});
+  MutableBorrowingLiteral(&literal2, /*view_root=*/{1})
+      .PopulateR1<float>({1, 2, 3, 4, 5});
+  literal2.SetDynamicSize(0, {0}, 4);
+  // Dynamic sizes are not equal.
+  EXPECT_FALSE(LiteralTestUtil::Near(literal1, literal2, ErrorSpec{0.0001}));
+}
+
+TEST(LiteralTestUtilTest, OneTupleDynamicOneIsNot) {
+  auto literal1 = Literal(ShapeUtil::MakeTupleShape(
+      {ShapeUtil::MakeShape(U32, {5}), ShapeUtil::MakeShape(U32, {5})}));
+  auto literal2 = Literal(ShapeUtil::MakeTupleShape(
+      {ShapeUtil::MakeShape(U32, {5}), ShapeUtil::MakeShape(U32, {5})}));
+  MutableBorrowingLiteral(&literal1, /*view_root=*/{0})
+      .PopulateR1<uint32_t>({1, 2, 3, 4, 5});
+  MutableBorrowingLiteral(&literal1, /*view_root=*/{1})
+      .PopulateR1<uint32_t>({1, 2, 3, 4, 5});
+  literal1.SetDynamicSize(0, {0}, 5);
+  MutableBorrowingLiteral(&literal2, /*view_root=*/{0})
+      .PopulateR1<uint32_t>({1, 2, 3, 4, 5});
+  MutableBorrowingLiteral(&literal2, /*view_root=*/{1})
+      .PopulateR1<uint32_t>({1, 2, 3, 4, 5});
+  // Only one of the tuples is dynamic.
+  EXPECT_FALSE(LiteralTestUtil::Equal(literal1, literal2));
+}
+
+TEST(LiteralTestUtilTest, OneTupleDynamicOneIsNot_F32) {
+  auto literal1 = Literal(ShapeUtil::MakeTupleShape(
+      {ShapeUtil::MakeShape(F32, {5}), ShapeUtil::MakeShape(F32, {5})}));
+  auto literal2 = Literal(ShapeUtil::MakeTupleShape(
+      {ShapeUtil::MakeShape(F32, {5}), ShapeUtil::MakeShape(F32, {5})}));
+  MutableBorrowingLiteral(&literal1, /*view_root=*/{0})
+      .PopulateR1<float>({1, 2, 3, 4, 5});
+  MutableBorrowingLiteral(&literal1, /*view_root=*/{1})
+      .PopulateR1<float>({1, 2, 3, 4, 5});
+  literal1.SetDynamicSize(0, {0}, 5);
+  MutableBorrowingLiteral(&literal2, /*view_root=*/{0})
+      .PopulateR1<float>({1, 2, 3, 4, 5});
+  MutableBorrowingLiteral(&literal2, /*view_root=*/{1})
+      .PopulateR1<float>({1, 2, 3, 4, 5});
+  // Only one of the tuples is dynamic.
+  EXPECT_FALSE(LiteralTestUtil::Near(literal1, literal2, ErrorSpec{0.0001}));
+}
 }  // namespace
 }  // namespace xla

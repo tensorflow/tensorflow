@@ -22,14 +22,14 @@ limitations under the License.
 #include "google/protobuf/any.pb.h"
 #include "absl/algorithm/container.h"
 #include "absl/base/call_once.h"
+#include "tensorflow/compiler/xla/stream_executor/gpu/asm_compiler.h"
+#include "tensorflow/compiler/xla/stream_executor/gpu/redzone_allocator.h"
 #include "tensorflow/core/platform/logger.h"
 #include "tensorflow/core/protobuf/autotuning.pb.h"
 #include "tensorflow/core/protobuf/conv_autotuning.pb.h"
 #include "tensorflow/core/util/determinism.h"
 #include "tensorflow/core/util/env_var.h"
 #include "tensorflow/core/util/proto/proto_utils.h"
-#include "tensorflow/stream_executor/gpu/asm_compiler.h"
-#include "tensorflow/stream_executor/gpu/redzone_allocator.h"
 
 namespace tensorflow {
 
@@ -54,7 +54,7 @@ se::DeviceMemoryBase WrapRedzoneBestEffort(se::RedzoneAllocator* rz_allocator,
     });
     return buffer;
   }
-  return se::DeviceMemoryBase(output_rz_or.ValueOrDie());
+  return se::DeviceMemoryBase(output_rz_or.value());
 }
 
 void CheckRedzones(const se::RedzoneAllocator& rz_allocator,
@@ -62,7 +62,7 @@ void CheckRedzones(const se::RedzoneAllocator& rz_allocator,
   if (RedzoneCheckDisabled()) {
     return;
   }
-  se::port::StatusOr<se::RedzoneAllocator::RedzoneCheckStatus> rz_status =
+  tsl::StatusOr<se::RedzoneAllocator::RedzoneCheckStatus> rz_status =
       rz_allocator.CheckRedzones();
   if (!rz_status.ok()) {
     static absl::once_flag failure_logged;
@@ -76,7 +76,7 @@ void CheckRedzones(const se::RedzoneAllocator& rz_allocator,
     });
     return;
   }
-  auto rz_check_status = rz_status.ValueOrDie();
+  auto rz_check_status = rz_status.value();
   if (!rz_check_status.ok()) {
     auto* fail = autotune_result->mutable_failure();
     fail->set_msg(rz_check_status.RedzoneFailureMsg());
@@ -111,9 +111,9 @@ namespace {
 tensorflow::CudnnVersion GetCudnnVersion(se::StreamExecutor* stream_executor) {
   tensorflow::CudnnVersion cudnn_version;
   if (auto* dnn = stream_executor->AsDnn()) {
-    se::port::StatusOr<se::dnn::VersionInfo> version_or = dnn->GetVersion();
+    tsl::StatusOr<se::dnn::VersionInfo> version_or = dnn->GetVersion();
     if (version_or.ok()) {
-      const auto& version = version_or.ValueOrDie();
+      const auto& version = version_or.value();
       cudnn_version.set_major(version.major_version());
       cudnn_version.set_minor(version.minor_version());
       cudnn_version.set_patch(version.patch());
@@ -205,6 +205,51 @@ void LogFusedConvForwardAutotuneResults(
     instr.set_bias_address(reinterpret_cast<uint64>(bias_buffer.opaque()));
     instr.set_side_input_address(
         reinterpret_cast<uint64>(side_input_buffer.opaque()));
+    log.mutable_instr()->PackFrom(std::move(instr));
+  }
+  *log.mutable_cudnn_version() = GetCudnnVersion(stream_exec);
+  *log.mutable_compute_capability() = GetComputeCapability(stream_exec);
+  log.set_device_pci_bus_id(stream_exec->GetDeviceDescription().pci_bus_id());
+  {
+    string blas_version;
+    if (auto* blas = stream_exec->AsBlas()) {
+      if (blas->GetVersion(&blas_version).ok()) {
+        log.set_blas_version(blas_version);
+      }
+    }
+  }
+  for (const auto& result : results) {
+    *log.add_results() = result;
+  }
+  VLOG(2) << log.DebugString();
+  Logger::GetSingleton()->LogProto(log);
+}
+
+void LogFusedMatmulAutotuneResults(
+    se::dnn::DataType ab_dtype, se::dnn::DataType c_dtype,
+    se::DeviceMemoryBase a_buffer, se::DeviceMemoryBase b_buffer,
+    se::DeviceMemoryBase c_buffer, se::DeviceMemoryBase bias_buffer,
+    bool trans_a, bool trans_b, uint32_t m, uint32_t n, uint32_t k, int32_t lda,
+    int32_t ldb, int32_t ldc, se::dnn::ActivationMode activation_mode,
+    se::StreamExecutor* stream_exec, absl::Span<const AutotuneResult> results) {
+  AutotuningLog log;
+  {
+    MatmulProto instr;
+    instr.set_ab_dtype(ab_dtype);
+    instr.set_c_dtype(c_dtype);
+    instr.set_trans_a(trans_a);
+    instr.set_trans_b(trans_b);
+    instr.set_m(m);
+    instr.set_n(n);
+    instr.set_k(k);
+    instr.set_lda(lda);
+    instr.set_ldb(ldb);
+    instr.set_ldc(ldc);
+    instr.set_activation(activation_mode);
+    instr.set_a_address(reinterpret_cast<uint64>(a_buffer.opaque()));
+    instr.set_b_address(reinterpret_cast<uint64>(b_buffer.opaque()));
+    instr.set_c_address(reinterpret_cast<uint64>(c_buffer.opaque()));
+    instr.set_bias_address(reinterpret_cast<uint64>(bias_buffer.opaque()));
     log.mutable_instr()->PackFrom(std::move(instr));
   }
   *log.mutable_cudnn_version() = GetCudnnVersion(stream_exec);
@@ -326,6 +371,13 @@ BestCudnnConvAlgorithm<se::dnn::FusedConvOp>(
     absl::Span<const AutotuneResult> results,
     std::vector<
         std::unique_ptr<const se::dnn::OpRunner<se::dnn::FusedConvSignature>>>
+        runners);
+
+template StatusOr<AutotuneEntry<se::dnn::FusedMatmulOp>>
+BestCudnnConvAlgorithm<se::dnn::FusedMatmulOp>(
+    absl::Span<const AutotuneResult> results,
+    std::vector<
+        std::unique_ptr<const se::dnn::OpRunner<se::dnn::FusedMatmulSignature>>>
         runners);
 
 }  // namespace tensorflow

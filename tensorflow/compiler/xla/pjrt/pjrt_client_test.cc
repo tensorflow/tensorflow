@@ -13,8 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
+#include "tensorflow/compiler/xla/pjrt/pjrt_client_test.h"
 
+#include <functional>
 #include <memory>
 #include <utility>
 #include <vector>
@@ -24,23 +25,45 @@ limitations under the License.
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/tests/literal_test_util.h"
 
-#if defined(PJRT_CLIENT_TEST_CPU)
-#include "tensorflow/compiler/xla/pjrt/tfrt_cpu_pjrt_client.h"
-
-static xla::StatusOr<std::unique_ptr<xla::PjRtClient>> GetClient() {
-  return xla::GetTfrtCpuClient(/*asynchronous=*/true, /*cpu_device_count=*/4);
-}
-#elif defined(PJRT_CLIENT_TEST_GPU)
-#include "tensorflow/compiler/xla/pjrt/gpu_device.h"
-
-static xla::StatusOr<std::unique_ptr<xla::PjRtClient>> GetClient() {
-  return xla::GetGpuClient(/*asynchronous=*/true, xla::GpuAllocatorConfig{},
-                           /*distributed_client=*/nullptr,
-                           /*node_id=*/0);
-}
-#endif
-
 namespace xla {
+namespace {
+
+class TestClientFactory {
+ public:
+  void Register(
+      std::function<StatusOr<std::unique_ptr<PjRtClient>>()> factory) {
+    absl::MutexLock lock(&mu_);
+    CHECK(!factory_);
+    factory_ = std::move(factory);
+  }
+
+  std::function<StatusOr<std::unique_ptr<PjRtClient>>()> Get() const {
+    absl::MutexLock lock(&mu_);
+    return factory_;
+  }
+
+ private:
+  mutable absl::Mutex mu_;
+  std::function<StatusOr<std::unique_ptr<PjRtClient>>()> factory_
+      ABSL_GUARDED_BY(mu_);
+};
+
+TestClientFactory& GetGlobalTestClientFactory() {
+  static auto* const factory = new TestClientFactory;
+  return *factory;
+}
+
+StatusOr<std::unique_ptr<PjRtClient>> GetClient() {
+  return GetGlobalTestClientFactory().Get()();
+}
+
+}  // namespace
+
+void RegisterTestClientFactory(
+    std::function<StatusOr<std::unique_ptr<PjRtClient>>()> factory) {
+  GetGlobalTestClientFactory().Register(std::move(factory));
+}
+
 namespace {
 
 std::unique_ptr<PjRtLoadedExecutable> MakeIncrementProgram(
@@ -85,6 +108,35 @@ TEST_P(PjRtClientTest, Execute) {
           /*byte_strides=*/std::nullopt,
           PjRtClient::HostBufferSemantics::kImmutableOnlyDuringCall, nullptr,
           client->addressable_devices()[0]));
+
+  ExecuteOptions options;
+  options.execution_mode = GetParam();
+
+  TF_ASSERT_OK_AND_ASSIGN(auto results,
+                          executable->Execute({{buffer.get()}}, options));
+  ASSERT_EQ(results.size(), 1);
+  ASSERT_EQ(results[0].size(), 1);
+  TF_ASSERT_OK_AND_ASSIGN(auto literal, results[0][0]->ToLiteralSync());
+
+  std::vector<int32_t> expected(4, 1);
+  EXPECT_TRUE(LiteralTestUtil::Equal(LiteralUtil::CreateR1<int32_t>(expected),
+                                     *literal));
+}
+
+TEST_P(PjRtClientTest, ExecuteWithImmutableUntilTransferCompletes) {
+  TF_ASSERT_OK_AND_ASSIGN(auto client, GetClient());
+  auto executable =
+      MakeIncrementProgram(client.get(), /*alias=*/false, /*device=*/0);
+
+  std::vector<int32_t> data(4, 0);
+  Shape shape = ShapeUtil::MakeShape(S32, {4});
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto buffer,
+      client->BufferFromHostBuffer(
+          data.data(), shape.element_type(), shape.dimensions(),
+          /*byte_strides=*/std::nullopt,
+          PjRtClient::HostBufferSemantics::kImmutableUntilTransferCompletes,
+          nullptr, client->addressable_devices()[0]));
 
   ExecuteOptions options;
   options.execution_mode = GetParam();
@@ -172,6 +224,11 @@ TEST_P(PjRtClientTest, ExecuteWithDonation) {
 
 TEST_P(PjRtClientTest, ExecuteWithDonationAbort) {
   TF_ASSERT_OK_AND_ASSIGN(auto client, GetClient());
+  if (client->platform_id() == CpuId()) {
+    // The CPU platform currently copies donated buffers if there is an
+    // external reference.
+    return;
+  }
   auto executable =
       MakeIncrementProgram(client.get(), /*alias=*/true, /*device=*/0);
 
@@ -215,8 +272,8 @@ TEST_P(PjRtClientTest, ExecuteWithConcurrentUsage) {
   options.execution_mode = GetParam();
 
   constexpr int kNumThreads = 4;
-  tensorflow::thread::ThreadPool thread_pool(
-      tensorflow::Env::Default(), "ExecuteWithConcurrentUsage", kNumThreads);
+  tsl::thread::ThreadPool thread_pool(
+      tsl::Env::Default(), "ExecuteWithConcurrentUsage", kNumThreads);
 
   constexpr int kConcurrency = 16;
   absl::BlockingCounter blocking_counter(kConcurrency);
@@ -262,9 +319,9 @@ TEST_P(PjRtClientTest, ExecuteWithConcurrentUsageAndDonation) {
   options.execution_mode = GetParam();
 
   constexpr int kNumThreads = 4;
-  tensorflow::thread::ThreadPool thread_pool(
-      tensorflow::Env::Default(), "ExecuteWithConcurrentUsageAndDonation",
-      kNumThreads);
+  tsl::thread::ThreadPool thread_pool(tsl::Env::Default(),
+                                      "ExecuteWithConcurrentUsageAndDonation",
+                                      kNumThreads);
 
   constexpr int kConcurrentUsage = 16;
   absl::BlockingCounter blocking_counter(kConcurrentUsage + 1);
@@ -352,8 +409,8 @@ TEST(PjRtClientTest, CopyToDeviceAsync) {
   auto* device_1 = client->addressable_devices()[1];
 
   constexpr int kNumThreads = 4;
-  tensorflow::thread::ThreadPool thread_pool(tensorflow::Env::Default(),
-                                             "CopyToDeviceAsync", kNumThreads);
+  tsl::thread::ThreadPool thread_pool(tsl::Env::Default(), "CopyToDeviceAsync",
+                                      kNumThreads);
 
   constexpr int kConcurrentCopy = 16;
   std::vector<std::unique_ptr<PjRtBuffer>> results(kConcurrentCopy);
@@ -375,11 +432,11 @@ TEST(PjRtClientTest, CopyToDeviceAsync) {
 }
 
 TEST(PjRtClientTest, CopyToDeviceAsyncExternalCpuOnly) {
-#if defined(PJRT_CLIENT_TEST_GPU)
-  return;
-#endif
   TF_ASSERT_OK_AND_ASSIGN(auto client, GetClient());
   ASSERT_GT(client->addressable_devices().size(), 1);
+
+  // Skip non-CPU platforms.
+  if (client->platform_id() != CpuId()) return;
 
   std::vector<int32_t> data(4, 0);
   auto* data_ptr = data.data();
@@ -396,8 +453,8 @@ TEST(PjRtClientTest, CopyToDeviceAsyncExternalCpuOnly) {
   auto* device_1 = client->addressable_devices()[1];
 
   constexpr int kNumThreads = 4;
-  tensorflow::thread::ThreadPool thread_pool(
-      tensorflow::Env::Default(), "CopyToDeviceAsyncExternal", kNumThreads);
+  tsl::thread::ThreadPool thread_pool(tsl::Env::Default(),
+                                      "CopyToDeviceAsyncExternal", kNumThreads);
 
   constexpr int kConcurrentCopy = 16;
   std::vector<std::unique_ptr<PjRtBuffer>> results(kConcurrentCopy);

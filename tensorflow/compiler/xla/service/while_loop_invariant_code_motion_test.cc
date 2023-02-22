@@ -19,7 +19,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
-#include "tensorflow/core/lib/core/status_test_util.h"
+#include "tensorflow/tsl/lib/core/status_test_util.h"
 
 namespace xla {
 namespace {
@@ -491,7 +491,7 @@ ENTRY entry {
 )";
 
 TEST_F(WhileLoopInvariantCodeMotionTest, HoistsConstantWhenAsked) {
-  auto m = ParseAndReturnVerifiedModule(kConstantHoistingTestCase).ValueOrDie();
+  auto m = ParseAndReturnVerifiedModule(kConstantHoistingTestCase).value();
 
   TF_ASSERT_OK_AND_ASSIGN(
       bool simplified_loop,
@@ -532,7 +532,7 @@ TEST_F(WhileLoopInvariantCodeMotionTest, HoistsConstantWhenAsked) {
 }
 
 TEST_F(WhileLoopInvariantCodeMotionTest, DoesNotHoistConstantByDefault) {
-  auto m = ParseAndReturnVerifiedModule(kConstantHoistingTestCase).ValueOrDie();
+  auto m = ParseAndReturnVerifiedModule(kConstantHoistingTestCase).value();
 
   TF_ASSERT_OK_AND_ASSIGN(bool simplified_loop,
                           WhileLoopInvariantCodeMotion{}.Run(m.get()));
@@ -604,7 +604,7 @@ ENTRY entry {
 )";
 
 TEST_F(WhileLoopInvariantCodeMotionTest, HoistsInflatingByDefault) {
-  auto m = ParseAndReturnVerifiedModule(kInflatingTestCase).ValueOrDie();
+  auto m = ParseAndReturnVerifiedModule(kInflatingTestCase).value();
 
   TF_ASSERT_OK_AND_ASSIGN(
       bool simplified_loop,
@@ -617,7 +617,7 @@ TEST_F(WhileLoopInvariantCodeMotionTest, HoistsInflatingByDefault) {
 }
 
 TEST_F(WhileLoopInvariantCodeMotionTest, NoHoistInflating) {
-  auto m = ParseAndReturnVerifiedModule(kInflatingTestCase).ValueOrDie();
+  auto m = ParseAndReturnVerifiedModule(kInflatingTestCase).value();
 
   TF_ASSERT_OK_AND_ASSIGN(
       bool simplified_loop,
@@ -625,6 +625,57 @@ TEST_F(WhileLoopInvariantCodeMotionTest, NoHoistInflating) {
                                    /*hoist_non_constants=*/true,
                                    /*hoist_size_inflation_ratio=*/1.0)
           .Run(m.get()));
+  EXPECT_FALSE(simplified_loop);
+}
+
+TEST_F(WhileLoopInvariantCodeMotionTest, DoesNotHoistShardingCustomCalls) {
+  auto m = CreateNewVerifiedModule();
+  auto array_s32 = ShapeUtil::MakeShape(S32, {4});
+  Shape while_shape =
+      ShapeUtil::MakeTupleShape({array_s32, array_s32, array_s32});
+
+  HloComputation* while_body = [&]() {
+    HloComputation::Builder builder(TestName() + ".while_body");
+    HloInstruction* param = builder.AddInstruction(
+        HloInstruction::CreateParameter(0, while_shape, "param"));
+    HloInstruction* gte_0 = builder.AddInstruction(
+        HloInstruction::CreateGetTupleElement(array_s32, param, 0));
+    HloInstruction* gte_1 = builder.AddInstruction(
+        HloInstruction::CreateGetTupleElement(array_s32, param, 1));
+    HloInstruction* sharded_gte_1 = builder.AddInstruction(
+        HloInstruction::CreateCustomCall(array_s32, {gte_1}, "Sharding"));
+    sharded_gte_1->set_sharding(HloSharding::Tile1D(array_s32, 4));
+    HloInstruction* manually_sharded_gte_1 =
+        builder.AddInstruction(HloInstruction::CreateCustomCall(
+            array_s32, {sharded_gte_1}, "SPMDFullToShardShape"));
+
+    manually_sharded_gte_1->set_sharding(HloSharding::Manual());
+    HloInstruction* add_result =
+        builder.AddInstruction(HloInstruction::CreateBinary(
+            array_s32, HloOpcode::kAdd, gte_0, manually_sharded_gte_1));
+    HloInstruction* manually_sharded_add_result = builder.AddInstruction(
+        HloInstruction::CreateCustomCall(array_s32, {add_result}, "Sharding"));
+    manually_sharded_add_result->set_sharding(HloSharding::Manual());
+    HloInstruction* sharded_add_result =
+        builder.AddInstruction(HloInstruction::CreateCustomCall(
+            array_s32, {manually_sharded_add_result}, "SPMDShardShapeToFull"));
+    sharded_add_result->set_sharding(HloSharding::Tile1D(array_s32, 4));
+    builder.AddInstruction(
+        HloInstruction::CreateTuple({gte_0, gte_1, sharded_add_result}));
+
+    return m->AddEmbeddedComputation(builder.Build());
+  }();
+
+  HloComputation::Builder builder(TestName());
+  auto* init_value = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, while_shape, "init_value"));
+  builder.AddInstruction(HloInstruction::CreateWhile(
+      while_shape, MakeAlwaysTrueComputation(while_shape, m.get()), while_body,
+      init_value));
+  m->AddEntryComputation(builder.Build());
+  LOG(INFO) << "my_test: " << m->ToString();
+  TF_ASSERT_OK_AND_ASSIGN(bool simplified_loop,
+                          WhileLoopInvariantCodeMotion{}.Run(m.get()));
   EXPECT_FALSE(simplified_loop);
 }
 

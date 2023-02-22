@@ -31,7 +31,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
 #include "tensorflow/compiler/mlir/lite/transforms/prepare_quantize_helper.h"
 #include "tensorflow/core/framework/types.pb.h"
-#include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/types.h"
 
 // NOLINTNEXTLINE
 //===----------------------------------------------------------------------===//
@@ -41,7 +41,7 @@ namespace mlir {
 namespace TFL {
 
 namespace {
-#define GEN_PASS_CLASSES
+#define GEN_PASS_DEF_PREPAREDYNAMICRANGEQUANTIZEPASS
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h.inc"
 
 // A boolean attribute used to describe whether input activations need to be
@@ -54,7 +54,7 @@ using QuantizationUnits = llvm::SetVector<std::pair<Operation*, int>>;
 // This pass runs before the quantization pass and apply preprocess if
 // applicable.
 class PrepareDynamicRangeQuantizePass
-    : public PrepareDynamicRangeQuantizePassBase<
+    : public impl::PrepareDynamicRangeQuantizePassBase<
           PrepareDynamicRangeQuantizePass> {
  public:
   MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(PrepareDynamicRangeQuantizePass)
@@ -143,7 +143,7 @@ class PrepareDynamicRangeQuantizableOp
   // provided map.
   bool hasInt8QuantizableOperandAt(Operation* op, int operand_index) const {
     if (auto custom_op = llvm::dyn_cast_or_null<CustomOp>(op)) {
-      std::string op_name = custom_op.custom_code().str();
+      std::string op_name = custom_op.getCustomCode().str();
       auto custom_map_iter = quant_specs_.custom_map.find(op_name);
       if (custom_map_iter != quant_specs_.custom_map.end())
         return isQuantizableIndex(
@@ -419,7 +419,7 @@ void PrepareDynamicRangeQuantizePass::runOnOperation() {
 
   if (!enable_custom_op_quantization_.empty()) {
     ParseCustomOpSpecs(enable_custom_op_quantization_,
-                       quant::CustomOpUpdateOptions::kINputIndices,
+                       quant::CustomOpUpdateOptions::kInputIndices,
                        quant_specs_.custom_map);
   }
 

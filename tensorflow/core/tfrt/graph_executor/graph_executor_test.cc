@@ -14,56 +14,74 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/tfrt/graph_executor/graph_executor.h"
 
+#include <memory>
 #include <string>
 #include <utility>
 #include <vector>
 
+#include "learning/brain/experimental/tfrt/mlrt/application/tensorflow/kernel/kernel.h"
+#include "learning/brain/experimental/tfrt/native_lowering/kernels/math_kernels.h"
+#include "learning/brain/experimental/tfrt/native_lowering/kernels/sync_fallback_kernels.h"
+#include "learning/infra/mira/mlrt/interpreter/context.h"
+#include "learning/infra/mira/mlrt/interpreter/value.h"
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "tensorflow/cc/ops/array_ops.h"
 #include "tensorflow/cc/ops/const_op.h"
-#include "tensorflow/cc/ops/functional_ops.h"
-#include "tensorflow/cc/ops/standard_ops.h"
-#include "tensorflow/cc/ops/while_loop.h"
 #include "tensorflow/core/framework/graph.pb.h"
-#include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/grappler/utils/grappler_test.h"
-#include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/protobuf/rewriter_config.pb.h"
 #include "tensorflow/core/tfrt/saved_model/saved_model_testutil.h"
+#include "tensorflow/core/tfrt/tpu/tpu_resources.h"  // NOLINT(unused-includes): For tfrt::tpu::TpuModelResource
+#include "tensorflow/tsl/lib/core/status_test_util.h"
+#include "tensorflow/tsl/platform/statusor.h"
+#include "tfrt/cpp_tests/test_util.h""  // from @tf_runtime
+#include "tfrt/tensor/dense_host_tensor.h"  // from @tf_runtime
 
 namespace tensorflow {
 namespace tfrt_stub {
 namespace {
 
-class GraphExecutorTest : public grappler::GrapplerTest {};
+class GraphExecutorTest : public ::testing::TestWithParam<bool> {};
 
-TEST_F(GraphExecutorTest, Vanilla) {
+tensorflow::Status GetSimpleGraphDef(GraphDef& graph_def) {
+  auto scope = tensorflow::Scope::NewRootScope().WithDevice("/device:CPU:0");
+
+  auto input = ops::Placeholder(scope.WithOpName("input"), DT_INT32);
+  auto rank = ops::Rank(scope.WithOpName("rank"), input);
+
+  return scope.ToGraphDef(&graph_def);
+}
+
+std::unique_ptr<mlrt::KernelRegistry> GetKernelRegistry() {
+  auto kernel_registry = std::make_unique<mlrt::KernelRegistry>();
+  tensorflow::tf_mlrt::RegisterTfMlrtKernels(*kernel_registry);
+  tfrt::cpu::RegisterMlrtMathKernels(kernel_registry.get());
+  tfrt::cpu::RegisterMlrtFallbackCompatKernels(kernel_registry.get());
+
+  return kernel_registry;
+}
+
+TEST_P(GraphExecutorTest, Vanilla) {
   GraphDef graph_def;
-  {
-    auto scope = tensorflow::Scope::NewRootScope().WithDevice("/device:CPU:0");
-
-    auto input = ops::Placeholder(scope.WithOpName("input"), DT_INT32);
-    auto rank = ops::Rank(scope.WithOpName("rank"), input);
-
-    TF_ASSERT_OK(scope.ToGraphDef(&graph_def));
-  }
+  TF_ASSERT_OK(GetSimpleGraphDef(graph_def));
 
   auto runtime = DefaultTfrtRuntime(/*num_threads=*/1);
   GraphExecutor::Options options(runtime.get());
-  auto statusor_fallback_state = tensorflow::tfrt_stub::FallbackState::Create(
-      CreateDefaultSessionOptions(options), graph_def.library());
-  ASSERT_TRUE(statusor_fallback_state.ok());
-  tensorflow::tfrt_stub::FallbackState* fallback_state =
-      statusor_fallback_state.ValueOrDie().get();
-  auto tpu_model_resource = std::make_unique<tfrt::tpu::TpuModelResource>();
+  options.enable_mlrt = GetParam();
 
-  auto status_or_graph_executor = GraphExecutor::Create(
-      std::move(options), *fallback_state, tpu_model_resource.get(), graph_def);
-  ASSERT_TRUE(status_or_graph_executor.ok());
-  GraphExecutor* graph_executor = status_or_graph_executor.ValueOrDie().get();
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto fallback_state,
+      tensorflow::tfrt_stub::FallbackState::Create(
+          CreateDefaultSessionOptions(options), graph_def.library()))
+  auto tpu_model_resource = std::make_unique<tfrt::tpu::TpuModelResource>();
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto graph_executor,
+      GraphExecutor::Create(std::move(options), *fallback_state,
+                            tpu_model_resource.get(), graph_def,
+                            GetKernelRegistry()));
 
   // Set input 'x' to [[1, 1, 1]]
   std::vector<std::pair<std::string, tensorflow::Tensor>> inputs;
@@ -79,6 +97,72 @@ TEST_F(GraphExecutorTest, Vanilla) {
 
   EXPECT_THAT(GetTfTensorData<int32_t>(outputs[0]),
               ::testing::ElementsAreArray({2}));
+}
+
+INSTANTIATE_TEST_SUITE_P(GraphExecutorTestSuite, GraphExecutorTest,
+                         ::testing::Bool());
+
+TEST_F(GraphExecutorTest, BasicWithOnlineCostAnalysis) {
+  GraphDef graph_def;
+  TF_ASSERT_OK(GetSimpleGraphDef(graph_def));
+
+  auto runtime = DefaultTfrtRuntime(/*num_threads=*/1);
+  GraphExecutor::Options options(runtime.get());
+  options.enable_online_cost_analysis = true;
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto fallback_state,
+      tensorflow::tfrt_stub::FallbackState::Create(
+          CreateDefaultSessionOptions(options), graph_def.library()));
+  auto tpu_model_resource = std::make_unique<tfrt::tpu::TpuModelResource>();
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto graph_executor,
+      GraphExecutor::Create(std::move(options), *fallback_state,
+                            tpu_model_resource.get(), graph_def,
+                            GetKernelRegistry()));
+
+  // Set input 'x' to [[1, 1, 1]]
+  std::vector<std::pair<std::string, tensorflow::Tensor>> inputs;
+  inputs.push_back({"input", CreateTfTensor<int32_t>(
+                                 /*shape=*/{1, 3}, /*data=*/{1, 1, 1})});
+
+  std::vector<tensorflow::Tensor> outputs;
+
+  // A first run should trigger online cost analysis.
+  TF_ASSERT_OK(graph_executor->Run(/*run_options=*/{}, inputs,
+                                   /*output_tensor_names=*/{"rank"},
+                                   /*target_tensor_names=*/{}, &outputs));
+  ASSERT_EQ(outputs.size(), 1);
+
+  EXPECT_THAT(GetTfTensorData<int32_t>(outputs[0]),
+              ::testing::ElementsAreArray({2}));
+
+  // A second run should use re-compiled graph with online profiled costs.
+  TF_ASSERT_OK(graph_executor->Run(/*run_options=*/{}, inputs,
+                                   /*output_tensor_names=*/{"rank"},
+                                   /*target_tensor_names=*/{}, &outputs));
+  ASSERT_EQ(outputs.size(), 1);
+
+  EXPECT_THAT(GetTfTensorData<int32_t>(outputs[0]),
+              ::testing::ElementsAreArray({2}));
+}
+
+TEST_F(GraphExecutorTest, DoOnlineCostAnalysisExactlyOnce) {
+  GraphExecutor::LoadedClientGraph loaded_client_graph_0(
+      "name0", /*resource_context=*/nullptr, /*mlir_context=*/nullptr,
+      /*tfrt_mlir=*/{}, /*bef_context=*/nullptr, /*bytecode_buffer=*/{},
+      /*bytecode_executable=*/nullptr);
+  GraphExecutor::LoadedClientGraph loaded_client_graph_1(
+      "name1", /*resource_context=*/nullptr, /*mlir_context=*/nullptr,
+      /*tfrt_mlir=*/{}, /*bef_context=*/nullptr, /*bytecode_buffer=*/{},
+      /*bytecode_executable=*/nullptr);
+
+  // For each `LoadedClientGraph`, `MaybeCreateCostRecorder()` only returns a
+  // cost recorder for once.
+  EXPECT_TRUE(loaded_client_graph_0.MaybeCreateCostRecorder() != nullptr);
+  EXPECT_TRUE(loaded_client_graph_1.MaybeCreateCostRecorder() != nullptr);
+  EXPECT_TRUE(loaded_client_graph_0.MaybeCreateCostRecorder() == nullptr);
+  EXPECT_TRUE(loaded_client_graph_1.MaybeCreateCostRecorder() == nullptr);
 }
 
 TEST_F(GraphExecutorTest, Extend) {
@@ -97,15 +181,19 @@ TEST_F(GraphExecutorTest, Extend) {
 
   auto runtime = DefaultTfrtRuntime(/*num_threads=*/1);
   GraphExecutor::Options options(runtime.get());
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto fallback_state,
-      tensorflow::tfrt_stub::FallbackState::Create(
-          CreateDefaultSessionOptions(options), graph_def.library()));
+  auto session_options = CreateDefaultSessionOptions(options);
+  // Disable optimizations for static graph to allow calls to Session::Extend.
+  session_options.config.mutable_experimental()
+      ->set_disable_optimize_for_static_graph(true);
+  TF_ASSERT_OK_AND_ASSIGN(auto fallback_state,
+                          tensorflow::tfrt_stub::FallbackState::Create(
+                              session_options, graph_def.library()));
   auto tpu_model_resource = std::make_unique<tfrt::tpu::TpuModelResource>();
   TF_ASSERT_OK_AND_ASSIGN(
       auto graph_executor,
       GraphExecutor::Create(std::move(options), *fallback_state,
-                            tpu_model_resource.get(), graph_def));
+                            tpu_model_resource.get(), graph_def,
+                            GetKernelRegistry()));
 
   GraphDef extension;
   {
@@ -133,6 +221,87 @@ TEST_F(GraphExecutorTest, Extend) {
 
   EXPECT_THAT(GetTfTensorData<int32_t>(outputs[0]),
               ::testing::ElementsAreArray({2}));
+}
+
+TEST_F(GraphExecutorTest, DisableCompilation) {
+  GraphDef graph_def;
+  TF_ASSERT_OK(GetSimpleGraphDef(graph_def));
+
+  auto runtime = DefaultTfrtRuntime(/*num_threads=*/1);
+  GraphExecutor::Options options(runtime.get());
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto fallback_state,
+      tensorflow::tfrt_stub::FallbackState::Create(
+          CreateDefaultSessionOptions(options), graph_def.library()));
+  tfrt::tpu::TpuModelResource tpu_model_resource;
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto graph_executor,
+      GraphExecutor::Create(std::move(options), *fallback_state,
+                            &tpu_model_resource, graph_def,
+                            GetKernelRegistry()));
+
+  // Set input 'x' to [[1, 1, 1]]
+  std::vector<std::pair<std::string, tensorflow::Tensor>> inputs;
+  inputs.push_back({"input", CreateTfTensor<int32_t>(
+                                 /*shape=*/{1, 3}, /*data=*/{1, 1, 1})});
+
+  std::vector<tensorflow::Tensor> outputs;
+
+  GraphExecutor::RunOptions run_options;
+  run_options.disable_compilation = true;
+
+  auto status = graph_executor->Run(run_options, inputs,
+                                    /*output_tensor_names=*/{"rank"},
+                                    /*target_tensor_names=*/{}, &outputs);
+  ASSERT_FALSE(status.ok());
+  EXPECT_THAT(
+      status.error_message(),
+      ::testing::HasSubstr("GraphExecutor: compilation is disabled in "
+                           "execution but the compiled graph is not found"));
+
+  run_options.disable_compilation = false;
+  TF_ASSERT_OK(graph_executor->Run(run_options, inputs,
+                                   /*output_tensor_names=*/{"rank"},
+                                   /*target_tensor_names=*/{}, &outputs));
+  ASSERT_EQ(outputs.size(), 1);
+
+  EXPECT_THAT(GetTfTensorData<int32_t>(outputs[0]),
+              ::testing::ElementsAreArray({2}));
+}
+
+TEST_F(GraphExecutorTest, SyncExecute) {
+  GraphDef graph_def;
+  TF_ASSERT_OK(GetSimpleGraphDef(graph_def));
+  auto runtime = DefaultTfrtRuntime(/*num_threads=*/1);
+  GraphExecutor::Options options(runtime.get());
+  options.compile_options.compile_to_sync_tfrt_dialect = true;
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto fallback_state,
+      tensorflow::tfrt_stub::FallbackState::Create(
+          CreateDefaultSessionOptions(options), graph_def.library()));
+  auto tpu_model_resource = std::make_unique<tfrt::tpu::TpuModelResource>();
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto graph_executor,
+      GraphExecutor::Create(std::move(options), *fallback_state,
+                            tpu_model_resource.get(), graph_def,
+                            GetKernelRegistry()));
+
+  std::vector<mlrt::Value> inputs;
+  tfrt::DenseHostTensor dht =
+      tfrt::CreateTensorFromValues<int32_t>({1, 3}, {1, 1, 1});
+  inputs.emplace_back(std::move(dht));
+  std::vector<mlrt::Value> results;
+  results.resize(1);
+
+  TF_ASSERT_OK(graph_executor->RunWithSyncInterpreter(
+      "test_graph", absl::Span<mlrt::Value>(inputs),
+      /*input_names=*/{"input"}, /*input_dtypes=*/{DT_INT32},
+      /*output_tensor_names=*/{"rank"},
+      /*target_tensor_names=*/{}, absl::Span<mlrt::Value>(results)));
+  tfrt::DenseHostTensor expected =
+      tfrt::CreateTensorFromValues<int32_t>({}, {2});
+
+  EXPECT_EQ(expected, results[0].Get<tfrt::DenseHostTensor>());
 }
 
 }  // namespace

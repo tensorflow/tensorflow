@@ -1,18 +1,4 @@
-// Copyright 2022 The TensorFlow Runtime Authors
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//      http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-
-// RUN: tf-quant-opt %s -split-input-file -quant-insert-quantized-functions -quant-quantize-composite-functions -symbol-dce | FileCheck %s
+// RUN: tf-quant-opt %s -split-input-file -quant-insert-quantized-functions -quant-quantize-composite-functions | FileCheck %s
 
 module {
   func.func @conv(%arg0: tensor<1x2x2x3xf32>) -> (tensor<*xf32>, tensor<*xf32>) {
@@ -80,6 +66,17 @@ module {
 // CHECK-SAME: (%arg0: tensor<1x2x2x3xi8>, %arg1: tensor<2x2x3x2xi8>, %arg2: tensor<2xi32>, %arg3: tensor<f32>, %arg4: tensor<i32>, %arg5: tensor<2xf32>, %arg6: tensor<2xi32>, %arg7: tensor<2xf32>, %arg8: tensor<2xi32>, %arg9: tensor<f32>, %arg10: tensor<i32>) -> tensor<*xi8>
 // CHECK:      %[[CONV2D_0:.*]] = "tf.Conv2D"
 // CHECK-SAME: {dilations = [1, 1, 1, 1], explicit_paddings = [], padding = "VALID", strides = [1, 1, 2, 1], use_cudnn_on_gpu = true}
+
+// CHECK: -------- Quantization Summary --------
+// CHECK: Number of quantized layers in the model
+// CHECK: --------------------------------
+// CHECK: Name    Count/Total
+// CHECK: ================================
+// CHECK: Conv2D  1/2
+
+// CHECK: Number of quantized layers with quantized outputs: 1/1
+// CHECK: Number of quantize layers added: 1
+// CHECK: Number of dequantize layers added: 1
 }
 
 // -----
@@ -119,12 +116,23 @@ module {
 // CHECK-SAME: (%arg0: tensor<1x2x2x3xi8>, %arg1: tensor<2x2x3x2xi8>, %arg2: tensor<2xi32>, %arg3: tensor<f32>, %arg4: tensor<i32>, %arg5: tensor<2xf32>, %arg6: tensor<2xi32>, %arg7: tensor<2xf32>, %arg8: tensor<2xi32>, %arg9: tensor<f32>, %arg10: tensor<i32>) -> tensor<*xi8>
 // CHECK:      %[[CONV2D_0:.*]] = "tf.Conv2D"
 // CHECK-SAME: {dilations = [1, 1, 1, 1], explicit_paddings = [], padding = "VALID", strides = [1, 1, 2, 1], use_cudnn_on_gpu = true}
+
+// CHECK: -------- Quantization Summary --------
+// CHECK: Number of quantized layers in the model
+// CHECK: --------------------------------
+// CHECK: Name    Count/Total
+// CHECK: ================================
+// CHECK: Conv2D  1/1
+
+// CHECK: Number of quantized layers with quantized outputs: 1/1
+// CHECK: Number of quantize layers added: 1
+// CHECK: Number of dequantize layers added: 1
 }
 
 // -----
 
 module {
-  func.func @conv_with_maxpool(%arg0: tensor<1x2x2x3xf32>) -> (tensor<*xf32>) {
+  func.func @conv_with_avgpool(%arg0: tensor<1x2x2x3xf32>) -> (tensor<*xf32>) {
     %cst = "tf.Const"() {value = dense<[[[[1.600000e-01, 1.000000e-01], [5.100000e-01, 5.400000e-01], [-5.000000e-01, 4.100000e-01]], [[-3.500000e-01, 5.000000e-02], [-0.00999999977, 1.600000e-01], [-4.800000e-01, -2.400000e-01]]], [[[-3.500000e-01, -2.100000e-01], [-1.400000e-01, -2.000000e-02], [4.800000e-01, 3.500000e-01]], [[-1.900000e-01, 3.200000e-01], [0.00999999977, -7.000000e-02], [2.000000e-01, -4.000000e-02]]]]> : tensor<2x2x3x2xf32>} : () -> tensor<2x2x3x2xf32>
     %cst_0 = "tf.Const"() {value = dense<[-2.000000e+00, 3.000000e+00]> : tensor<2xf32>} : () -> tensor<2xf32>
     %0 = "quantfork.qcast"(%cst) : (tensor<2x2x3x2xf32>) -> tensor<2x2x3x2x!quant.uniform<i8<-127:127>:f32:3, {4.000000e-03,5.000000e-03}>>
@@ -144,7 +152,7 @@ module {
     func.return %2 : tensor<*xf32>
   }
 
-// CHECK-LABEL: func @conv_with_maxpool
+// CHECK-LABEL: func @conv_with_avgpool
 // CHECK: %[[quantize:.*]] = "tf.PartitionedCall"(%arg0
 // CHECK-SAME: f = @quantize_i8
 // CHECK: %[[conv_quant:.*]] = "tf.PartitionedCall"(%[[quantize]]
@@ -158,4 +166,36 @@ module {
 // CHECK-SAME: f = @dequantize_i8
 // CHECK: return %[[dequantize]]
 
+// CHECK: -------- Quantization Summary --------
+// CHECK: Number of quantized layers in the model
+// CHECK: --------------------------------
+// CHECK: Name    Count/Total
+// CHECK: ================================
+// CHECK: Conv2D  1/1
+
+// CHECK: Number of quantized layers with quantized outputs: 1/1
+// CHECK: Number of quantize layers added: 1
+// CHECK: Number of dequantize layers added: 1
+}
+
+
+// -----
+
+module {
+  func.func @float_einsum(%arg0: tensor<?x64x32xf32>, %arg1: tensor<32x2x16xf32>) -> (tensor<?x64x2x16xf32>) {
+    %0 = "tf.Einsum"(%arg0, %arg1) {equation = "abc,cde->abde"} : (tensor<?x64x32xf32>, tensor<32x2x16xf32>) -> tensor<?x64x2x16xf32>
+    func.return %0 : tensor<?x64x2x16xf32>
+  }
+
+// CHECK-LABEL: func @float_einsum
+// CHECK: -------- Quantization Summary --------
+// CHECK: Number of quantized layers in the model
+// CHECK: --------------------------------
+// CHECK: Name    Count/Total
+// CHECK: ================================
+// CHECK: Einsum  0/1
+
+// CHECK: Number of quantized layers with quantized outputs: 0/0
+// CHECK: Number of quantize layers added: 0
+// CHECK: Number of dequantize layers added: 0
 }

@@ -50,29 +50,26 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_dialect.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
-#include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
+#include "tensorflow/compiler/xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 
 namespace mlir {
 namespace TFL {
 namespace {
-#define GEN_PASS_CLASSES
+#define GEN_PASS_DEF_LEGALIZEJAXRANDOMPASS
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h.inc"
 
 struct LegalizeJaxRandomPass
-    : public LegalizeJaxRandomPassBase<LegalizeJaxRandomPass> {
+    : public impl::LegalizeJaxRandomPassBase<LegalizeJaxRandomPass> {
  public:
   MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(LegalizeJaxRandomPass)
 
   void runOnOperation() override;
 };
 
-inline OpaqueElementsAttr CustomOption(ImplicitLocOpBuilder *builder,
-                                       const std::string &content) {
-  ShapedType type = RankedTensorType::get(
-      {static_cast<int64_t>(content.size())}, builder->getIntegerType(8));
-  return OpaqueElementsAttr::get(builder->getContext()->getLoadedDialect("tfl"),
-                                 type,
-                                 StringRef(content.data(), content.size()));
+inline ConstBytesAttr CustomOption(ImplicitLocOpBuilder *builder,
+                                   const std::string &content) {
+  return ConstBytesAttr::get(builder->getContext(),
+                             StringRef(content.data(), content.size()));
 }
 
 inline bool IsJaxRandomUniform(mlir::func::FuncOp func) {

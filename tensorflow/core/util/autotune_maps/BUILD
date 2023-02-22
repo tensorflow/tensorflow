@@ -9,13 +9,17 @@ load(
     "tf_proto_library",
 )
 load(
+    "//tensorflow/core/platform:rules_cc.bzl",
+    "cc_library",
+)
+load(
     "//tensorflow:tensorflow.bzl",
-    "if_cuda_or_rocm",
     "tf_cuda_library",
     "tf_cuda_only_cc_test",
 )
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//tensorflow:__subpackages__"],
     features = ["-layering_check"],
     licenses = ["notice"],
@@ -53,6 +57,26 @@ cc_library(
     ],
 )
 
+# For a more maintainable build this target should not exist and the headers
+# should  be split into the existing cc_library targets, but this change was
+# automatically  done so that we can remove long standing issues and complexity
+# in the build system. It's up to the OWNERS of this package to get rid of it or
+# not. The use of the textual_hdrs attribute is discouraged, use hdrs instead.
+# Here it is used to avoid header parsing errors in packages where the feature
+# parse_headers was enabled since loose headers were not being parsed. See
+# go/loose-lsc-one-target-approach for more details.
+cc_library(
+    name = "loose_headers",
+    tags = ["avoid_dep"],
+    textual_hdrs = [
+        "conv_autotune_maps.h",
+        "conv_parameters.h",
+    ],
+    visibility = [
+        "//visibility:private",  # Only private by automation, not intent. Owner may accept CLs adding visibility. See go/scheuklappen#explicit-private.
+    ],
+)
+
 tf_cuda_library(
     name = "conv_parameters",
     srcs = ["conv_parameters.cc"],
@@ -60,7 +84,6 @@ tf_cuda_library(
         "conv_parameters.h",
     ],
     deps = [
-        ":autotune_maps_utils",
         ":conv_parameters_proto_cc",
         "//tensorflow/core/platform:hash",
         "//tensorflow/core/platform:protobuf",
@@ -68,23 +91,6 @@ tf_cuda_library(
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/types:optional",
     ],
-)
-
-tf_cuda_library(
-    name = "autotune_maps_utils",
-    srcs = ["autotune_maps_utils.cc"],
-    hdrs = ["autotune_maps_utils.h"],
-    visibility = ["//tensorflow/core/utils:__subpackages__"],
-    deps = [
-        "@com_google_absl//absl/strings:str_format",
-        "//tensorflow/core/platform:protobuf",
-        "//tensorflow/core/platform:hash",
-        "//tensorflow/core/platform:errors",
-    ] + if_cuda_or_rocm(
-        [
-            "//tensorflow/stream_executor/gpu:gpu_driver_header",
-        ],
-    ),
 )
 
 tf_proto_library(
@@ -121,16 +127,17 @@ tf_cuda_library(
     visibility = ["//visibility:public"],
     deps = [
         ":autotune_map_proto_cc",
-        ":autotune_maps_utils",
         ":conv_autotune_maps",
         ":conv_parameters",
         ":conv_parameters_proto_cc",
+        "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla/stream_executor:dnn_proto_cc",
+        "//tensorflow/compiler/xla/stream_executor:lazy_op_runner",
+        "//tensorflow/compiler/xla/stream_executor:stream_executor_headers",
+        "//tensorflow/compiler/xla/stream_executor/gpu:gpu_init",
         "//tensorflow/core:framework",
         "//tensorflow/core/platform:status",
         "//tensorflow/core/platform:stream_executor",
-        "//tensorflow/stream_executor:lazy_op_runner",
-        "//tensorflow/stream_executor:stream_header",
     ],
 )
 
@@ -144,9 +151,10 @@ tf_cuda_only_cc_test(
         ":conv_autotune_maps",
         ":conv_parameters",
         ":conv_parameters_proto_cc",
+        "//tensorflow/compiler/xla/stream_executor/gpu:gpu_driver_header",
+        "//tensorflow/compiler/xla/stream_executor/gpu:gpu_init",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core/platform:status_matchers",
-        "//tensorflow/stream_executor/gpu:gpu_driver_header",
     ],
 )

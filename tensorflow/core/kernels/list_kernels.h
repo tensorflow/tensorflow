@@ -39,17 +39,17 @@ limitations under the License.
 #include "tensorflow/core/util/tensor_ops_util.h"
 #include "tensorflow/core/util/util.h"
 
-// stream.h isn't available in some platforms such as Android, iOS, and
-// ChromiumOS. Only include it for platforms that PluggableDevice is tested on.
+// stream.h isn't available in some platforms such as Android, iOS, ChromiumOS,
+// and Fuchsia. Only include it for platforms that PluggableDevice is tested on.
 #if !defined(PLUGGABLE_DEVICE_SUPPORTED) &&                              \
     (__x86_64__ || __i386__ || defined(__APPLE__) || defined(_WIN32)) && \
     !defined(ANDROID) && !defined(__ANDROID__) && !TARGET_OS_IOS &&      \
-    !defined(PLATFORM_CHROMIUMOS)
+    !defined(PLATFORM_CHROMIUMOS) && !defined(__Fuchsia__)
 #define PLUGGABLE_DEVICE_SUPPORTED
 #endif
 
 #ifdef PLUGGABLE_DEVICE_SUPPORTED
-#include "tensorflow/stream_executor/stream.h"
+#include "tensorflow/compiler/xla/stream_executor/stream.h"
 #endif
 
 namespace tensorflow {
@@ -395,8 +395,11 @@ class TensorListConcat : public OpKernel {
   void Compute(OpKernelContext* c) override {
     PartialTensorShape element_shape_except_first_dim;
     if (!element_shape_.unknown_rank()) {
-      element_shape_except_first_dim = PartialTensorShape(
-          gtl::ArraySlice<int64_t>(element_shape_.dim_sizes()).subspan(1));
+      auto dim_sizes = element_shape_.dim_sizes();
+      OP_REQUIRES(c, !dim_sizes.empty(),
+                  errors::InvalidArgument("element_shape must not be empty"));
+      element_shape_except_first_dim =
+          PartialTensorShape(gtl::ArraySlice<int64_t>(dim_sizes).subspan(1));
     }
     // Check that the input Variant tensor is indeed a TensorList and has the
     // correct element type.
@@ -909,7 +912,12 @@ class TensorListScatter : public OpKernel {
     OP_REQUIRES_OK(c, TensorShapeFromTensor(c->input(2), &element_shape));
     // TensorListScatterV2 passes the num_elements input, TensorListScatter does
     // not.
-    int num_elements = c->num_inputs() >= 4 ? c->input(3).scalar<int>()() : -1;
+    int num_elements = -1;
+    if (c->num_inputs() >= 4) {
+      OP_REQUIRES(c, TensorShapeUtils::IsScalar(c->input(3).shape()),
+                  errors::InvalidArgument("num_elements must be a scalar"));
+      num_elements = c->input(3).scalar<int>()();
+    }
     OP_REQUIRES(c, num_elements >= -1,
                 errors::InvalidArgument(
                     "TensorListScatter expects num_elements >= -1, found: ",

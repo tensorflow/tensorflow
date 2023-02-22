@@ -24,14 +24,14 @@ limitations under the License.
 #include <vector>
 
 #include <gtest/gtest.h>
+#include "tensorflow/lite/core/interpreter.h"
 #include "tensorflow/lite/internal/signature_def.h"
-#include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/kernels/internal/compatibility.h"
 #include "tensorflow/lite/string_util.h"
 
 namespace tflite {
 
-// Test helper for accessing private Intrepreter members and methods.
+// Test helper for accessing private Interpreter members and methods.
 class InterpreterTest : public ::testing::Test {
  public:
   InterpreterTest() : interpreter_(new Interpreter) {}

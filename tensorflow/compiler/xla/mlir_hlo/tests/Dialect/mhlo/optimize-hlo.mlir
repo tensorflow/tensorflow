@@ -1,10 +1,10 @@
-// RUN: mlir-hlo-opt %s -pass-pipeline='func.func(mhlo-test-optimize)' | FileCheck %s --dump-input-context=30
+// RUN: mlir-hlo-opt %s -pass-pipeline='builtin.module(func.func(mhlo-test-optimize))' | FileCheck %s --dump-input-context=30
 
 // CHECK-LABEL: @gather_is_slice_no_rank
 func.func @gather_is_slice_no_rank(%arg0: tensor<2x1x2xi32>, %arg1: tensor<i64>) -> tensor<1x2xi32> {
   // CHECK: [[CST:%.+]] = mhlo.constant dense<0> : tensor<i64>
   // CHECK: [[SLICE:%.+]] = "mhlo.dynamic_slice"(%arg0, %arg1, [[CST]], [[CST]]) {slice_sizes = dense<[1, 1, 2]> : tensor<3xi64>}
-  // CHECK: [[RESHAPE:%.+]] = "mhlo.reshape"([[SLICE]])
+  // CHECK: [[RESHAPE:%.+]] = mhlo.reshape [[SLICE]]
    %res = "mhlo.gather"(%arg0, %arg1) {
     dimension_numbers = #mhlo.gather<
       collapsed_slice_dims = [0],
@@ -22,9 +22,9 @@ func.func @gather_is_slice_no_rank(%arg0: tensor<2x1x2xi32>, %arg1: tensor<i64>)
 // CHECK-LABEL: @gather_is_slice
 func.func @gather_is_slice(%arg0: tensor<2x1x2xi32>, %arg1: tensor<1xi64>) -> tensor<1x2xi32> {
    // CHECK: [[CST:%.+]] = mhlo.constant dense<0> : tensor<i64>
-   // CHECK: [[RESHAPE:%.+]] = "mhlo.reshape"(%arg1)
+   // CHECK: [[RESHAPE:%.+]] = mhlo.reshape %arg1
    // CHECK: [[SLICE:%.+]] = "mhlo.dynamic_slice"(%arg0, [[RESHAPE]], [[CST]], [[CST]]) {slice_sizes = dense<[1, 1, 2]> : tensor<3xi64>}
-   // CHECK: [[RES:%.+]] = "mhlo.reshape"([[SLICE]])
+   // CHECK: [[RES:%.+]] = mhlo.reshape [[SLICE]]
 
    %res = "mhlo.gather"(%arg0, %arg1) {
     dimension_numbers = #mhlo.gather<

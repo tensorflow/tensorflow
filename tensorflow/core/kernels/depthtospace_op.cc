@@ -103,12 +103,13 @@ class DepthToSpaceOp : public OpKernel {
 
     // Allocate output tensor.
     Tensor* outputs_tensor = nullptr;
+    TensorShape outputs_tensor_shape;
     OP_REQUIRES_OK(context,
-                   context->allocate_output(
-                       0,
-                       ShapeFromFormat(data_format_, batch_size, output_height,
-                                       output_width, output_depth),
-                       &outputs_tensor));
+                   ShapeFromFormatWithStatus(
+                       data_format_, batch_size, output_height, output_width,
+                       output_depth, &outputs_tensor_shape));
+    OP_REQUIRES_OK(context, context->allocate_output(0, outputs_tensor_shape,
+                                                     &outputs_tensor));
     auto Tinput = input.tensor<T, kDims>();
     auto Toutput = outputs_tensor->tensor<T, kDims>();
 
@@ -191,6 +192,10 @@ REGISTER_KERNEL_BUILDER(
 REGISTER_KERNEL_BUILDER(
     Name("DepthToSpace").Device(DEVICE_GPU).TypeConstraint<Eigen::half>("T"),
     DepthToSpaceOp<GPUDevice, Eigen::half>);
+REGISTER_KERNEL_BUILDER(Name("DepthToSpace")
+                            .Device(DEVICE_GPU)
+                            .TypeConstraint<Eigen::bfloat16>("T"),
+                        DepthToSpaceOp<GPUDevice, Eigen::bfloat16>);
 REGISTER_KERNEL_BUILDER(
     Name("DepthToSpace").Device(DEVICE_GPU).TypeConstraint<qint8>("T"),
     DepthToSpaceOp<GPUDevice, qint8>);

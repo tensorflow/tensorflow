@@ -17,12 +17,13 @@
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/strings/string_view.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_schedule.h"
 #include "tensorflow/compiler/xla/service/call_graph.h"
-#include "tensorflow/compiler/xla/service/hlo_computation.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_memory_scheduler.h"
-#include "tensorflow/compiler/xla/service/hlo_module.h"
-#include "tensorflow/compiler/xla/service/hlo_schedule.h"
 #include "tensorflow/compiler/xla/service/tuple_points_to_analysis.h"
 #include "tensorflow/compiler/xla/shape.h"
 #include "tensorflow/compiler/xla/statusor.h"
@@ -126,23 +127,38 @@ class HloRematerialization : public HloModulePass {
   // order in which the computation's instructions will be emitted in the
   // backend. Rematerialized instructions will be added to the HLO computation
   // and inserted into 'order'.
-  virtual StatusOr<bool> RematerializeComputation(HloComputation* computation,
-                                                  HloSchedule* schedule,
-                                                  int64_t memory_limit_bytes,
-                                                  int64_t min_remat_size);
+  StatusOr<bool> RematerializeComputation(HloComputation* computation,
+                                          HloSchedule* schedule,
+                                          int64_t memory_limit_bytes,
+                                          int64_t min_remat_size) {
+    return RematerializeComputation(computation, schedule, memory_limit_bytes,
+                                    min_remat_size, /*execution_threads=*/{});
+  }
+
+  virtual StatusOr<bool> RematerializeComputation(
+      HloComputation* computation, HloSchedule* schedule,
+      int64_t memory_limit_bytes, int64_t min_remat_size,
+      const absl::flat_hash_set<absl::string_view>& execution_threads);
 
   // Computes and returns the peak memory used by the given computation. The
   // peak memory is the maximum total size of all live HLO instruction values at
   // any program point. 'order' is the order in which the HLO instructions will
   // be emitted which is used to determine lifespans of HLO values.
   StatusOr<int64_t> ComputePeakMemory(
-      const HloComputation* computation,
-      const HloInstructionSequence& order) const;
+      const HloComputation* computation, const HloInstructionSequence& order,
+      const absl::flat_hash_set<absl::string_view>& execution_threads) const;
 
   // Returns the peak memory usage of the called computations for the given
   // instruction. Zero is returned if the instruction calls no computations.
   StatusOr<int64_t> CalledComputationsMemoryUsage(
-      const HloInstruction* instruction) const;
+      const HloInstruction* instruction,
+      const absl::flat_hash_set<absl::string_view>& execution_threads) const;
+
+  // Returns true if `thread` is considered included within given
+  // `execution_threads`.
+  bool IsExecutionThreadIncluded(
+      const absl::flat_hash_set<absl::string_view>& execution_threads,
+      absl::string_view thread) const;
 
   // Selects an algorithm to use for HLO scheduling.
   MemorySchedulerAlgorithm scheduler_algorithm_;

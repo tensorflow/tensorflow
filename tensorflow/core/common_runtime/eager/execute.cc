@@ -94,6 +94,19 @@ namespace tensorflow {
 
 namespace {
 
+constexpr char kCpuDevice[] = "CPU";
+constexpr char kGpuDevice[] = "GPU";
+constexpr char kTpuDevice[] = "TPU";
+
+constexpr char kEnabled[] = "enabled";
+constexpr char kDisabled[] = "disabled";
+
+auto* function_compile_counter =
+    monitoring::Counter<2>::New("/tensorflow/core/tf_function_compile",
+                                "The number of times that TF function is "
+                                "called for different compilation options.",
+                                "device", "compilation_option");
+
 const string& DeviceNameOrUnspecified(Device* device) {
   static string* unspecified_string = new string("<unspecified>");
   return (device == nullptr) ? *unspecified_string : device->name();
@@ -281,18 +294,6 @@ Status GetOutputDTypes(EagerOperation* op, DataTypeVector* output_dtypes) {
   return OkStatus();
 }
 
-inline tensorflow::Fprint128 FingerprintCat128(const tensorflow::Fprint128& a,
-                                               const tensorflow::Fprint128& b) {
-  return {tensorflow::FingerprintCat64(a.low64, b.low64),
-          tensorflow::FingerprintCat64(a.high64, b.high64)};
-}
-
-inline tensorflow::Fprint128 FingerprintCat128(const tensorflow::Fprint128& a,
-                                               const int64_t b) {
-  auto x = tensorflow::FingerprintCat64(a.low64, b);
-  return {x, tensorflow::FingerprintCat64(a.high64, x)};
-}
-
 const KernelDef* GetKernelDef(const EagerOperation& op, const NodeDef* node_def,
                               const Device* op_device) {
   if (node_def == nullptr || op_device == nullptr) return nullptr;
@@ -313,6 +314,10 @@ bool IsHostMemoryArg(const EagerOperation& op, const NodeDef* node_def,
   const auto& host_memory_args = kernel_def->host_memory_arg();
   const OpDef& op_def = OpRegistry::Global()->LookUp(op.Name())->op_def;
   const int arg_id = OpPortIdToArgId(*node_def, op_def.input_arg(), port_id);
+  // Fail if argument ID not found.
+  if (arg_id < 0) {
+    return false;
+  }
   return std::find(host_memory_args.begin(), host_memory_args.end(),
                    op_def.input_arg(arg_id).name()) != host_memory_args.end();
 }
@@ -376,11 +381,11 @@ void AppendTensorShapeToFingerprint(const PartialTensorShape& shape,
                                     Fprint128* fingerprint) {
   if (shape.unknown_rank()) {
     char c = '?';
-    *fingerprint = FingerprintCat128(*fingerprint, c);
+    *fingerprint = tsl::FingerprintCat128(*fingerprint, c);
   } else {
     for (int i = 0; i < shape.dims(); i++) {
       int64_t dim = shape.dim_size(i);
-      *fingerprint = FingerprintCat128(*fingerprint, dim);
+      *fingerprint = tsl::FingerprintCat128(*fingerprint, dim);
     }
   }
 }
@@ -389,8 +394,8 @@ Status GetFuncAttr(const EagerOperation* op, const EagerContext& ctx,
                    const char* attr_name, bool* value) {
   Status status = op->Attrs().Get(attr_name, value);
   if (status.ok()) {
-    VLOG(2) << "Caller explicitly specifies "
-            << (attr_name ? "=true " : "=false, ") << op->DebugString();
+    VLOG(2) << "Caller explicitly specifies " << attr_name
+            << (value ? "=true " : "=false, ") << op->DebugString();
     return OkStatus();
   }
 
@@ -402,15 +407,42 @@ Status GetFuncAttr(const EagerOperation* op, const EagerContext& ctx,
 
   status = GetNodeAttr(AttrSlice(&function_def->attr()), attr_name, value);
   if (status.ok()) {
-    VLOG(2) << "Function definition explicitly specifies "
-            << (attr_name ? "=true" : "=false");
+    VLOG(2) << "Function definition explicitly specifies " << attr_name
+            << (value ? "=true" : "=false");
     return OkStatus();
   }
   return status;
 }
 
+// Checks if `op` is a function and contains TPU replication ops.  If `op` does,
+// then `has_tpu_replication` is set to true.  Other `has_tpu_replication` is
+// set to false.
+Status HasTPUReplication(const EagerOperation& op, const EagerContext& ctx,
+                         bool* has_tpu_replication) {
+  *has_tpu_replication = false;
+  if (!op.is_function()) {
+    return OkStatus();
+  }
+
+  const FunctionDef* function_def =
+      ctx.pflr()->GetFunctionLibraryDefinition()->Find(op.Name());
+  if (function_def == nullptr) {
+    return errors::NotFound("Failed to find function '", op.Name(), "'");
+  }
+  for (const NodeDef& node : function_def->node_def()) {
+    if (node.op() == "TPUReplicateMetadata") {
+      *has_tpu_replication = true;
+      return OkStatus();
+    }
+  }
+  return OkStatus();
+}
+
 Status MustCompileWithXLA(const EagerOperation* op, const EagerContext& ctx,
                           bool* compile_with_xla) {
+#if defined(PLUGGABLE_DEVICE_SUPPORTED_MACOS)
+  *compile_with_xla = false;
+#else
   if (!op->is_function()) {
     *compile_with_xla = false;
     return OkStatus();
@@ -440,8 +472,39 @@ Status MustCompileWithXLA(const EagerOperation* op, const EagerContext& ctx,
   } else {
     *compile_with_xla = false;
   }
+#endif
 
   return OkStatus();
+}
+
+void UpdateCompileCounter(const EagerOperation* op, bool compile_with_xla,
+                          bool has_tpu_replication) {
+  if (has_tpu_replication) {
+    function_compile_counter->GetCell(kTpuDevice, kEnabled)->IncrementBy(1);
+    return;
+  }
+
+  string device_type = "Unknown";
+  string compilation_option = kDisabled;
+  if (op->GetDeviceParsedName().type == "XLA_CPU" ||
+      op->GetDeviceParsedName().type == "CPU") {
+    device_type = kCpuDevice;
+  }
+  if (op->GetDeviceParsedName().type == "XLA_GPU" ||
+      op->GetDeviceParsedName().type == "GPU") {
+    device_type = kGpuDevice;
+  }
+  if (op->GetDeviceParsedName().type == "TPU") {
+    device_type = kTpuDevice;
+    compilation_option = kEnabled;
+  }
+
+  if (compile_with_xla) {
+    compilation_option = kEnabled;
+  }
+
+  function_compile_counter->GetCell(device_type, compilation_option)
+      ->IncrementBy(1);
 }
 
 Status VerifyWrappableInCallOp(const OpDef& opdef, EagerOperation* op) {
@@ -904,7 +967,7 @@ bool IntArgsAndRetvalsOnDevice(EagerOperation* op,
 
 StatusOr<Fprint128> GetKernelCacheKey(
     const EagerOperation& op, const Fprint128& op_cache_key,
-    const std::vector<Device*>& input_dev_ptrs,
+    const std::vector<Device*>& input_device_ptrs,
     const std::unordered_map<int, DtypeAndPartialTensorShape>&
         input_resource_variable_dtypes_and_shapes) {
   EagerContext& ctx = op.EagerContext();
@@ -912,12 +975,12 @@ StatusOr<Fprint128> GetKernelCacheKey(
   Fprint128 cache_key = op_cache_key;
   /// Include soft placement policy in cache key since the placement strategy
   // can change and thus affect which kernel is picked.
-  cache_key = FingerprintCat128(cache_key, ctx.AllowSoftPlacement());
+  cache_key = tsl::FingerprintCat128(cache_key, ctx.AllowSoftPlacement());
 
   // Include run_eager_op_as_function policy in cache key since the execution
   // strategy can change and affect which kernel is picked.
   VLOG(3) << "ctx.RunEagerOpAsFunction(): " << ctx.RunEagerOpAsFunction();
-  cache_key = FingerprintCat128(cache_key, ctx.RunEagerOpAsFunction());
+  cache_key = tsl::FingerprintCat128(cache_key, ctx.RunEagerOpAsFunction());
 
   // When running in eager_op_as_function mode Send/Recv ops need to be
   // placed on the same rendezvous to match the behaviour of eager mode.
@@ -926,11 +989,11 @@ StatusOr<Fprint128> GetKernelCacheKey(
       ctx.GetReuseRendezvousForFunctions();
   // The launch-time rendezvous reuse setting is bundled with the kernel, so we
   // need to include it in the cache key.
-  cache_key = FingerprintCat128(cache_key, reuse_rendezvous_for_functions);
+  cache_key = tsl::FingerprintCat128(cache_key, reuse_rendezvous_for_functions);
 
-  for (int i = 0, end = input_dev_ptrs.size(); i < end; ++i) {
-    cache_key =
-        FingerprintCat128(cache_key, Fingerprint128(input_dev_ptrs[i]->name()));
+  for (int i = 0, end = input_device_ptrs.size(); i < end; ++i) {
+    cache_key = tsl::FingerprintCat128(
+        cache_key, Fingerprint128(input_device_ptrs[i]->name()));
 
     auto input_resource = input_resource_variable_dtypes_and_shapes.find(i);
     if (input_resource != input_resource_variable_dtypes_and_shapes.end()) {
@@ -938,13 +1001,73 @@ StatusOr<Fprint128> GetKernelCacheKey(
       const DtypeAndPartialTensorShape& dtype_and_shape =
           input_resource->second;
       // Add _Arg index, dtype and shape to "cache_key".
-      cache_key = FingerprintCat128(cache_key, i);
-      cache_key = FingerprintCat128(cache_key, dtype_and_shape.dtype);
+      cache_key = tsl::FingerprintCat128(cache_key, i);
+      cache_key = tsl::FingerprintCat128(cache_key, dtype_and_shape.dtype);
       AppendTensorShapeToFingerprint(dtype_and_shape.shape, &cache_key);
     }
   }
 
   return cache_key;
+}
+
+// Extracts function input info for `op` with `kernel_def`.
+// The following are extracted:
+//   `input_device_ptrs` - The input devices of `op`.
+//   `composite_devices` - Maps from a CompositeDevice name to a list of
+//     physical device names.
+//   `input_resource_variable_dtypes_shape` - A map from input index
+//     to dtype and shapes for resource inputs.
+Status ExtractFunctionInputInfo(
+    EagerOperation* op, const KernelDef* kernel_def,
+    std::vector<Device*>& input_device_ptrs,
+    absl::flat_hash_map<string, const std::vector<string>*>& composite_devices,
+    std::unordered_map<int, DtypeAndPartialTensorShape>&
+        input_resource_variable_dtypes_and_shapes) {
+  profiler::TraceMe activity("EagerCopyToDevice",
+                             profiler::TraceMeLevel::kInfo);
+  EagerContext& ctx = op->EagerContext();
+  input_device_ptrs.reserve(op->Inputs().size());
+  const absl::InlinedVector<TensorHandle*, 4>* inputs;
+  TF_RETURN_IF_ERROR(op->TensorHandleInputs(&inputs));
+  Device* op_device = nullptr;
+  const NodeDef* node_def = nullptr;
+  if (!op->is_function()) {
+    op_device = absl::get<Device*>(op->Device());
+    node_def = &op->MutableAttrs()->BuildNodeDef();
+  }
+  for (int i = 0, end = inputs->size(); i < end; ++i) {
+    TensorHandle* input = (*inputs)[i];
+
+    Device* input_device;
+    bool is_host_memory_arg =
+        IsHostMemoryArg(*op, node_def, op_device, kernel_def, i);
+    TF_RETURN_IF_ERROR(
+        GetDeviceForInput(*op, ctx, is_host_memory_arg, input, &input_device));
+    VLOG(1) << op->Name() << ":input:" << i << " " << input_device->name();
+    input_device_ptrs.push_back(input_device);
+    CompositeDevice* composite_device = nullptr;
+    if (ctx.FindCompositeDeviceFromName(input_device->name(), &composite_device)
+            .ok()) {
+      composite_devices[input_device->name()] =
+          composite_device->underlying_devices();
+    }
+    if (input->dtype == DT_RESOURCE) {
+      // We only care about data type and shape for resource variable inputs.
+      // But we have no way to tell if input is resource variable (other than
+      // looking it up in ResourceMgr, which is slow). So we just get
+      // resource_dtypes_and_shapes for all DT_RESOURCE inputs. If
+      // resource_dtypes_and_shapes is not empty, take the first element.
+      std::vector<DtypeAndPartialTensorShape> resource_dtypes_and_shapes;
+      TF_RETURN_IF_ERROR(
+          input->GetResourceHandleDtypesAndShapes(&resource_dtypes_and_shapes));
+      if (!resource_dtypes_and_shapes.empty()) {
+        const DtypeAndPartialTensorShape& dtype_and_shape =
+            resource_dtypes_and_shapes.at(0);
+        input_resource_variable_dtypes_and_shapes[i] = dtype_and_shape;
+      }
+    }
+  }
+  return OkStatus();
 }
 
 Status SetOpDevice(EagerContext& ctx, EagerOperation* op, Device** device) {
@@ -981,7 +1104,7 @@ Status SetOpDevice(EagerContext& ctx, EagerOperation* op, Device** device) {
 Fprint128 GetDeviceCacheKey(EagerOperation* op, const EagerContext& ctx) {
   Fprint128 device_cache_key = op->MutableAttrs()->CacheKey(op->DeviceName());
   device_cache_key =
-      FingerprintCat128(device_cache_key, ctx.AllowSoftPlacement());
+      tsl::FingerprintCat128(device_cache_key, ctx.AllowSoftPlacement());
   return device_cache_key;
 }
 
@@ -990,10 +1113,9 @@ Status GetOrCreateKernelAndDevice(
     core::RefCountPtr<KernelAndDevice>* out_kernel) {
   EagerContext& ctx = op->EagerContext();
   Device* device = absl::get<Device*>(op->Device());
-  const KernelDef* kernel_def = nullptr;
 
-  // Set the EagerOperation's device prior to extracting the input_dev_ptrs to
-  // avoid any redundant H2D/D2H copies.
+  // Set the EagerOperation's device prior to extracting the input_device_ptrs
+  // to avoid any redundant H2D/D2H copies.
   if (device == nullptr && !op->is_function()) {
     Fprint128 device_cache_key = GetDeviceCacheKey(op, ctx);
     device = ctx.GetCachedDevice(device_cache_key);
@@ -1014,62 +1136,25 @@ Status GetOrCreateKernelAndDevice(
       (ctx.RunEagerOpAsFunction() && !op->is_function()) ||
       reuse_rendezvous_for_functions_original_value;
 
-  std::vector<Device*> input_dev_ptrs;
+  std::vector<Device*> input_device_ptrs;
   absl::flat_hash_map<string, const std::vector<string>*> composite_devices;
   std::unordered_map<int, DtypeAndPartialTensorShape>
       input_resource_variable_dtypes_and_shapes;
+  const KernelDef* kernel_def = nullptr;
+  if (!op->is_function()) {
+    const NodeDef* node_def = &op->MutableAttrs()->BuildNodeDef();
+    kernel_def = GetKernelDef(*op, node_def, device);
+  }
   if (op->is_function() || ctx.RunEagerOpAsFunction()) {
-    profiler::TraceMe activity("EagerCopyToDevice",
-                               profiler::TraceMeLevel::kInfo);
-    input_dev_ptrs.reserve(op->Inputs().size());
-    const absl::InlinedVector<TensorHandle*, 4>* inputs;
-    TF_RETURN_IF_ERROR(op->TensorHandleInputs(&inputs));
-    Device* op_device = nullptr;
-    const NodeDef* node_def = nullptr;
-    if (!op->is_function()) {
-      op_device = absl::get<Device*>(op->Device());
-      node_def = &op->MutableAttrs()->BuildNodeDef();
-      kernel_def = GetKernelDef(*op, node_def, op_device);
-    }
-    for (int i = 0, end = inputs->size(); i < end; ++i) {
-      TensorHandle* input = (*inputs)[i];
-
-      Device* input_device;
-      bool is_host_memory_arg =
-          IsHostMemoryArg(*op, node_def, op_device, kernel_def, i);
-      TF_RETURN_IF_ERROR(GetDeviceForInput(*op, ctx, is_host_memory_arg, input,
-                                           &input_device));
-      VLOG(1) << op->Name() << ":input:" << i << " " << input_device->name();
-      input_dev_ptrs.push_back(input_device);
-      CompositeDevice* composite_device = nullptr;
-      if (ctx.FindCompositeDeviceFromName(input_device->name(),
-                                          &composite_device)
-              .ok()) {
-        composite_devices[input_device->name()] =
-            composite_device->underlying_devices();
-      }
-      if (input->dtype == DT_RESOURCE) {
-        // We only care about data type and shape for resource variable inputs.
-        // But we have no way to tell if input is resource variable (other than
-        // looking it up in ResourceMgr, which is slow). So we just get
-        // resource_dtypes_and_shapes for all DT_RESOURCE inputs. If
-        // resource_dtypes_and_shapes is not empty, take the first element.
-        std::vector<DtypeAndPartialTensorShape> resource_dtypes_and_shapes;
-        TF_RETURN_IF_ERROR(input->GetResourceHandleDtypesAndShapes(
-            &resource_dtypes_and_shapes));
-        if (!resource_dtypes_and_shapes.empty()) {
-          const DtypeAndPartialTensorShape& dtype_and_shape =
-              resource_dtypes_and_shapes.at(0);
-          input_resource_variable_dtypes_and_shapes[i] = dtype_and_shape;
-        }
-      }
-    }
+    TF_RETURN_IF_ERROR(ExtractFunctionInputInfo(
+        op, kernel_def, input_device_ptrs, composite_devices,
+        input_resource_variable_dtypes_and_shapes));
   }
 
   TF_ASSIGN_OR_RETURN(
       Fprint128 cache_key,
       GetKernelCacheKey(*op, op->MutableAttrs()->CacheKey(op->DeviceName()),
-                        input_dev_ptrs,
+                        input_device_ptrs,
                         input_resource_variable_dtypes_and_shapes));
   core::RefCountPtr<KernelAndDevice> kernel = ctx.GetCachedKernel(cache_key);
   AbstractOperationPtr wrapped_op_releaser;
@@ -1091,37 +1176,48 @@ Status GetOrCreateKernelAndDevice(
   if (kernel == nullptr) {
     VLOG(2) << "Creating new kernel for " << op->Name() << " on device "
             << DeviceNameOrUnspecified(absl::get<Device*>(op->Device()));
-    bool run_function_with_flr = false;
-    bool function_outputs_on_op_device = false;
-    absl::optional<string> xla_compile_device_type;
-    if (op->is_function()) {
-      bool compile_with_xla;
-      TF_RETURN_IF_ERROR(MustCompileWithXLA(op, ctx, &compile_with_xla));
-      if (compile_with_xla) {
-        if (ctx.JitCompileRewrite()) {
-          xla_compile_device_type = op->GetDeviceParsedName().type;
-          run_function_with_flr = true;
-        } else {
-          // Note that it is not ideal, but currently correct, to set this
-          // attribute after computing the kernel cache key above.
-          // Note: If the attribute is already set to true, this is a noop.
-          op->MutableAttrs()->Set(kXlaMustCompileAttr, true);
-        }
-      } else {
-        run_function_with_flr = true;
-      }
-      GetFuncAttr(op, ctx, kOutputsOnOpDevice, &function_outputs_on_op_device)
-          .IgnoreError();
-    }
 
-    VLOG(2) << op->Name() << " function_outputs_on_op_device: "
-            << function_outputs_on_op_device;
     if (device == nullptr) {
       TF_RETURN_IF_ERROR(SetOpDevice(ctx, op, &device));
     } else {
       VLOG(1) << "Device for [" << op->Name()
               << "] already set to: " << device->name();
     }
+
+    bool run_function_with_flr = false;
+    absl::optional<string> xla_compile_device_type;
+    if (op->is_function()) {
+      bool compile_with_xla;
+      // By default we should run functions with FunctionLibraryRuntime.
+      run_function_with_flr = true;
+      // TODO(b/222338429): We can remove checking this once all accelerator
+      // jit_compile runs through flr.
+      bool has_tpu_replication = false;
+      TF_RETURN_IF_ERROR(MustCompileWithXLA(op, ctx, &compile_with_xla));
+      TF_RETURN_IF_ERROR(HasTPUReplication(*op, ctx, &has_tpu_replication));
+      VLOG(1) << "Compilation Device Type: " << op->GetDeviceParsedName().type;
+      UpdateCompileCounter(op, compile_with_xla, has_tpu_replication);
+
+      if (compile_with_xla && !has_tpu_replication) {
+        if (ctx.JitCompileRewrite()) {
+          xla_compile_device_type = op->GetDeviceParsedName().type;
+        } else {
+          // Note that it is not ideal, but currently correct, to set this
+          // attribute after computing the kernel cache key above.
+          // Note: If the attribute is already set to true, this is a noop.
+          run_function_with_flr = false;
+          op->MutableAttrs()->Set(kXlaMustCompileAttr, true);
+        }
+      }
+    }
+
+    bool function_outputs_on_op_device = false;
+    if (op->is_function()) {
+      GetFuncAttr(op, ctx, kOutputsOnOpDevice, &function_outputs_on_op_device)
+          .IgnoreError();
+    }
+    VLOG(2) << op->Name() << " function_outputs_on_op_device: "
+            << function_outputs_on_op_device;
 
     // Note: We wrap the eager op AFTER the device has been inferred to ensure
     // that placement of the NodeDef in the function is exactly the same as in
@@ -1194,12 +1290,12 @@ Status GetOrCreateKernelAndDevice(
 
       ctx.reuse_rendezvous_for_functions_mu()->lock();
       ctx.SetReuseRendezvousForFunctions(reuse_rendezvous_for_functions);
-      auto rendezvous_creator = ctx.RendezvousCreator();
+      auto rendezvous_creator = ctx.RendezvousFactory();
       ctx.SetReuseRendezvousForFunctions(
           reuse_rendezvous_for_functions_original_value);
       ctx.reuse_rendezvous_for_functions_mu()->unlock();
       kernel.reset(new KernelAndDeviceFunc(
-          flr, ctx.pflr(), std::move(input_dev_ptrs),
+          flr, ctx.pflr(), std::move(input_device_ptrs),
           std::move(composite_devices),
           std::move(input_resource_variable_dtypes_and_shapes), runner,
           ctx.GetCollectiveExecutorHandle(), ctx.HostCPU(), op->Name(),
@@ -1822,7 +1918,7 @@ Status EagerKernelExecute(
   // device. We don't call it now because it is an unneeded overhead (it
   // acquires a lock) and we can't recover from errors anyway.
   ScopedStepContainer* container = ctx->StepContainer();
-  CoordinationServiceAgent* coord_agent = nullptr;
+  tsl::CoordinationServiceAgent* coord_agent = nullptr;
 #if !defined(IS_MOBILE_PLATFORM)
   if (ctx->GetDistributedManager() != nullptr)
     coord_agent = ctx->GetDistributedManager()->GetCoordinationServiceAgent();
@@ -2030,7 +2126,7 @@ void EagerKernelExecuteAsync(
     done(s);
     return;
   }
-  CoordinationServiceAgent* coord_agent = nullptr;
+  tsl::CoordinationServiceAgent* coord_agent = nullptr;
 #if !defined(IS_MOBILE_PLATFORM)
   if (ctx->GetDistributedManager() != nullptr)
     coord_agent = ctx->GetDistributedManager()->GetCoordinationServiceAgent();

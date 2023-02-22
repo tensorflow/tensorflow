@@ -23,9 +23,9 @@ limitations under the License.
 
 #include "absl/strings/string_view.h"
 #include "absl/types/optional.h"
-#include "tensorflow/core/data/dataset.pb.h"
 #include "tensorflow/core/data/service/worker.pb.h"
 #include "tensorflow/core/framework/dataset.h"
+#include "tensorflow/core/framework/dataset.pb.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/status.h"
@@ -69,7 +69,7 @@ class DataTransferClient {
     absl::string_view protocol;
     std::string address;
   };
-  using FactoryT =
+  using ClientFactoryT =
       std::function<Status(Config, std::unique_ptr<DataTransferClient>*)>;
   virtual ~DataTransferClient() = default;
 
@@ -82,7 +82,7 @@ class DataTransferClient {
   virtual void TryCancel() = 0;
 
   // Registers a DataTransferClient factory under `name`.
-  static void Register(std::string name, FactoryT factory);
+  static void Register(std::string name, ClientFactoryT factory);
 
   // Builds a DataTransferClient from the factory registered under `name`.
   static Status Build(std::string name, Config config,
@@ -94,6 +94,8 @@ class DataTransferServer {
  public:
   using GetElementT =
       std::function<Status(const GetElementRequest*, GetElementResult*)>;
+  using ServerFactoryT =
+      std::function<Status(GetElementT, std::shared_ptr<DataTransferServer>*)>;
   virtual ~DataTransferServer() = default;
 
   // Starts DataTransferServer, it should be available for requests afterwards.
@@ -103,9 +105,7 @@ class DataTransferServer {
   virtual int get_port() = 0;
 
   // Register a DataTransferServer factory under `name`.
-  static void Register(
-      std::string name,
-      std::function<std::shared_ptr<DataTransferServer>(GetElementT)> factory);
+  static void Register(std::string name, ServerFactoryT factory);
 
   // Builds a DataTransferServer from the factory registered with `name`.
   static Status Build(std::string name, GetElementT get_element,

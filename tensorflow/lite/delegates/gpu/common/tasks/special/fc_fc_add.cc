@@ -24,7 +24,6 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/common/operations.h"
 #include "tensorflow/lite/delegates/gpu/common/task/gpu_operation.h"
-#include "tensorflow/lite/delegates/gpu/common/task/tensor_linear_desc.h"
 #include "tensorflow/lite/delegates/gpu/common/types.h"
 
 namespace tflite {
@@ -141,11 +140,16 @@ std::string FCFCAdd::GetFCFCAddKernelCode(const OperationDef& op_def,
       s += TO_ACCUM_TYPE(partial);
 )";
   } else {
-    c += R"(FLT4 w0 = args.weights0.Read(c * 4 + 0, gid);
-      FLT4 w1 = args.weights0.Read(c * 4 + 1, gid);
-      FLT4 w2 = args.weights0.Read(c * 4 + 2, gid);
-      FLT4 w3 = args.weights0.Read(c * 4 + 3, gid);
-      )";
+    const std::string read_as_type =
+        op_def.precision == CalculationsPrecision::F32 ? "float" : "half";
+    c += "      FLT4 w0 = args.weights0.Read<" + read_as_type +
+         ">(c * 4 + 0, gid);\n";
+    c += "      FLT4 w1 = args.weights0.Read<" + read_as_type +
+         ">(c * 4 + 1, gid);\n";
+    c += "      FLT4 w2 = args.weights0.Read<" + read_as_type +
+         ">(c * 4 + 2, gid);\n";
+    c += "      FLT4 w3 = args.weights0.Read<" + read_as_type +
+         ">(c * 4 + 3, gid);\n";
     if (quantized_0) {
       c += R"(w0 = w0 * args.q0_m + args.q0_a;
       w1 = w1 * args.q0_m + args.q0_a;
@@ -173,11 +177,16 @@ std::string FCFCAdd::GetFCFCAddKernelCode(const OperationDef& op_def,
       s += TO_ACCUM_TYPE(partial);
 )";
   } else {
-    c += R"(FLT4 w0 = args.weights1.Read(c * 4 + 0, gid);
-      FLT4 w1 = args.weights1.Read(c * 4 + 1, gid);
-      FLT4 w2 = args.weights1.Read(c * 4 + 2, gid);
-      FLT4 w3 = args.weights1.Read(c * 4 + 3, gid);
-      )";
+    const std::string read_as_type =
+        op_def.precision == CalculationsPrecision::F32 ? "float" : "half";
+    c += "      FLT4 w0 = args.weights1.Read<" + read_as_type +
+         ">(c * 4 + 0, gid);\n";
+    c += "      FLT4 w1 = args.weights1.Read<" + read_as_type +
+         ">(c * 4 + 1, gid);\n";
+    c += "      FLT4 w2 = args.weights1.Read<" + read_as_type +
+         ">(c * 4 + 2, gid);\n";
+    c += "      FLT4 w3 = args.weights1.Read<" + read_as_type +
+         ">(c * 4 + 3, gid);\n";
     if (quantized_1) {
       c += R"(w0 = w0 * args.q1_m + args.q1_a;
       w1 = w1 * args.q1_m + args.q1_a;
@@ -219,27 +228,25 @@ int3 FCFCAdd::GetGridSize() const { return int3(dst_[0]->Slices(), 1, 1); }
 void FCFCAdd::UploadQuantizedWeights(
     const tflite::gpu::Tensor<OHWI, DataType::INT8>& weights, float scale,
     float zero_point, int index) {
-  const bool f32_weights = definition_.precision == CalculationsPrecision::F32;
   const int src_depth = DivideRoundUp(weights.shape.i, 4);
   const int dst_depth = DivideRoundUp(weights.shape.o, 4);
-  Texture2DDescriptor desc;
-  desc.element_type = DataType::UINT8;
-  desc.normalized = true;
-  desc.normalized_type = f32_weights ? DataType::FLOAT32 : DataType::FLOAT16;
-  desc.size = int2(src_depth * 4, dst_depth);
-  desc.data.resize(src_depth * 4 * dst_depth * 4);
-  RearrangeFCWeightsToOIO4I4(weights, desc.data.data());
+
+  std::vector<uint8_t> data(src_depth * 4 * dst_depth * 4);
+  RearrangeFCWeightsToOIO4I4(weights, data.data());
+  TensorDescriptor desc = CreateConstantHWVec4TensorDescriptor(
+      DataType::UINT8, TensorStorageType::TEXTURE_2D, src_depth * 4, dst_depth,
+      data.data());
 
   std::string q_name = "q" + std::to_string(index) + "_";
   if (definition_.precision == CalculationsPrecision::F32) {
-    args_.AddFloat(q_name + "m", scale * 255.0f);
+    args_.AddFloat(q_name + "m", scale);
     args_.AddFloat(q_name + "a", -scale * (127.0 + zero_point));
   } else {
-    args_.AddHalf(q_name + "m", half(scale * 255.0f));
+    args_.AddHalf(q_name + "m", half(scale));
     args_.AddHalf(q_name + "a", half(-scale * (127.0 + zero_point)));
   }
   args_.AddObject("weights" + std::to_string(index),
-                  std::make_unique<Texture2DDescriptor>(std::move(desc)));
+                  std::make_unique<TensorDescriptor>(std::move(desc)));
 }
 
 FCFCAdd CreateFCFCAdd(const GpuInfo& gpu_info, const OperationDef& definition,

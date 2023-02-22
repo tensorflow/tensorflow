@@ -16,6 +16,9 @@ limitations under the License.
 #define TENSORFLOW_CORE_FRAMEWORK_MODEL_H_
 
 #include <algorithm>
+#include <deque>
+#include <functional>
+#include <limits>
 #include <list>
 #include <memory>
 #include <string>
@@ -25,6 +28,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/framework/metrics.h"
 #include "tensorflow/core/framework/model.pb.h"
@@ -172,6 +176,7 @@ class Node {
         name_(std::move(args.name)),
         autotune_(true),
         buffered_bytes_(0),
+        peak_buffered_bytes_(0),
         buffered_elements_(0),
         buffered_elements_low_(std::numeric_limits<int64_t>::max()),
         buffered_elements_high_(std::numeric_limits<int64_t>::min()),
@@ -189,7 +194,7 @@ class Node {
     std::deque<std::shared_ptr<Node>> queue;
     {
       mutex_lock l(mu_);
-      while (inputs_.size() > 0) {
+      while (!inputs_.empty()) {
         queue.push_back(inputs_.front());
         inputs_.pop_front();
       }
@@ -199,7 +204,7 @@ class Node {
       queue.pop_back();
       {
         mutex_lock l(node->mu_);
-        while (node->inputs_.size() > 0) {
+        while (!node->inputs_.empty()) {
           queue.push_back(node->inputs_.front());
           node->inputs_.pop_front();
         }
@@ -226,6 +231,11 @@ class Node {
   // Returns the number of bytes stored in this node's buffer.
   int64_t buffered_bytes() const TF_LOCKS_EXCLUDED(mu_) {
     return buffered_bytes_;
+  }
+
+  // Returns the peak number of bytes stored in this node's buffer.
+  int64_t peak_buffered_bytes() const TF_LOCKS_EXCLUDED(mu_) {
+    return peak_buffered_bytes_;
   }
 
   // Returns the number of elements stored in this node's buffer.
@@ -311,13 +321,18 @@ class Node {
   // Records the change in this node's buffer.
   void record_buffer_event(int64_t bytes_delta, int64_t elements_delta) {
     buffered_bytes_ += bytes_delta;
+    peak_buffered_bytes_.store(std::max(peak_buffered_bytes_, buffered_bytes_));
     buffered_elements_ += elements_delta;
-    int64_t low_watermark =
-        std::min(buffered_elements_low_, buffered_elements_);
-    buffered_elements_low_ = low_watermark;
-    int64_t high_watermark =
-        std::max(buffered_elements_high_, buffered_elements_);
-    buffered_elements_high_ = high_watermark;
+    // There is no need to maintain watermarks for synchronous ops because we
+    // will not upsize or downsize the buffers of synchronous ops.
+    if (IsAsync()) {
+      int64_t low_watermark =
+          std::min(buffered_elements_low_, buffered_elements_);
+      buffered_elements_low_ = low_watermark;
+      int64_t high_watermark =
+          std::max(buffered_elements_high_, buffered_elements_);
+      buffered_elements_high_ = high_watermark;
+    }
   }
 
   // Records that the node produced an element.
@@ -361,8 +376,11 @@ class Node {
     autotune_.store(autotune);
   }
 
-  // Resets buffer watermarks to the current buffer size.
+  // Resets buffer watermarks to the current buffered elements.
   void ResetBufferWatermarks() {
+    if (!IsAsync()) {
+      return;
+    }
     int64_t current_buffer_size = buffered_elements_;
     buffered_elements_low_ = current_buffer_size;
     buffered_elements_high_ = current_buffer_size;
@@ -473,8 +491,9 @@ class Node {
                           bool collect_node(const std::shared_ptr<Node>)) const
       TF_LOCKS_EXCLUDED(mu_);
 
-  // Downsizes buffer parameters of this node.
-  void TryDownsizeBuffer();
+  // Downsizes buffer parameters of this node. Returns true if any buffer is
+  // downsized.
+  bool TryDownsizeBuffer();
 
   // Collects buffer parameters of this node that should be upsized.
   void CollectBufferParametersToUpsize(
@@ -529,8 +548,9 @@ class Node {
   void UpdateProcessingTimeEma() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
     if (previous_processing_time_ == 0) {
       if (num_elements_ > 0) {
-        processing_time_ema_ = static_cast<double>(processing_time_) /
-                               static_cast<double>(num_elements_);
+        processing_time_ema_ =
+            static_cast<double>(processing_time_) /
+            static_cast<double>(num_elements_ + buffered_elements_);
       } else {
         processing_time_ema_ = static_cast<double>(processing_time_);
       }
@@ -672,6 +692,7 @@ class Node {
   // from computation of output time and processing time.
   std::atomic<bool> autotune_;
   std::atomic<int64_t> buffered_bytes_;
+  std::atomic<int64_t> peak_buffered_bytes_;
   std::atomic<int64_t> buffered_elements_;
   std::atomic<int64_t> buffered_elements_low_;
   std::atomic<int64_t> buffered_elements_high_;
@@ -775,7 +796,9 @@ class Model {
   }
 
   // Set the experiment that this job is part of.
-  void SetExperiment(const string& experiment) { experiment_ = experiment; }
+  void AddExperiment(const std::string& experiment) {
+    experiments_.insert(experiment);
+  }
 
   // Adds a node with the given name and given parent.
   void AddNode(Node::Factory factory, const string& name,
@@ -804,7 +827,8 @@ class Model {
 
   // Optimizes buffers in the pipeline rooted at `snapshot`. It downsizes
   // buffers that are too large and upsizes buffers that are too small while
-  // respecting the ram budget.
+  // respecting the ram budget. If any node is downsized or upsized, the
+  // watermarks of all nodes are reset to the buffered elements.
   void OptimizeBuffers(std::shared_ptr<Node> snapshot, int64_t ram_budget);
 
   // Collects the output time and if `gradients` is not `nullptr`, the output
@@ -854,12 +878,17 @@ class Model {
   // a vector which contains pairs of node names and tunable parameters.
   ModelParameters CollectTunableParameters(std::shared_ptr<Node> node);
 
-  // Downsizes buffers that are too large for all nodes rooted at `snapshot.
-  void DownsizeBuffers(std::shared_ptr<Node> snapshot);
+  // Downsizes buffers that are too large for all nodes rooted at `snapshot`.
+  // Returns true if any buffer is downsized.
+  bool DownsizeBuffers(std::shared_ptr<Node> snapshot);
 
   // Upsizes buffers that are too small for all nodes rooted at `snapshot` while
-  // respecting the ram budget.
-  void UpsizeBuffers(std::shared_ptr<Node> snapshot, int64_t ram_budget);
+  // respecting the ram budget. Returns true if any buffer is upsized.
+  bool UpsizeBuffers(std::shared_ptr<Node> snapshot, int64_t ram_budget);
+
+  // Reset buffer watermarks of all asynchronous nodes to their buffered
+  // elements.
+  void ResetBufferWatermarks();
 
   // Collects buffer parameters of all nodes in the model that should be
   // upsized.
@@ -959,6 +988,15 @@ class Model {
   // Gauge cell that can be used to collect the state of the model.
   monitoring::GaugeCell<std::function<std::string()>>* model_gauge_cell_ =
       nullptr;
+  // Used to synchronize metrics collection attempts against the model's
+  // destruction.
+  struct GuardedBool {
+    explicit GuardedBool(bool val) : val(val) {}
+    bool val TF_GUARDED_BY(mu);
+    mutex mu;
+  };
+  std::shared_ptr<GuardedBool> safe_to_collect_metrics_;
+
   // Time use for rate limitting the recomputation of human-readable string
   // represention of the model.
   absl::Time cache_until_ = absl::InfinitePast();
@@ -972,7 +1010,11 @@ class Model {
   // Stores the latest gap times between consecutive `GetNext()`.
   std::deque<uint64_t> gap_times_usec_ TF_GUARDED_BY(gap_mu_);
   // The experiment that this job is part of.
-  std::string experiment_ = "";
+  absl::flat_hash_set<std::string> experiments_;
+  // Stores the optimization snapshot of the Model.
+  std::shared_ptr<Node> snapshot_ TF_GUARDED_BY(mu_);
+  // Stores the optimization parameters used by autotune.
+  OptimizationParams optimization_params_ TF_GUARDED_BY(mu_);
 };
 
 // Class to compute timing information for a model.
@@ -1019,6 +1061,10 @@ class ModelTiming {
 
   // Computes the total time of an async interleave node.
   void ComputeAsyncInterleaveManyTotalTime(const Node& node);
+  // Computes the first input total time of an async interleave node.
+  double ComputeAsyncInterleaveManyFirstInputTotalTime(const Node& node);
+  // Computes the interleaved inputs' total time of an async interleave node.
+  double ComputeAsyncInterleaveManyInterleavedInputsTotalTime(const Node& node);
 
   // Returns a vector of all nodes in the model. The nodes are either in
   // breadth-first search or reverse breadth-first search order depending on the

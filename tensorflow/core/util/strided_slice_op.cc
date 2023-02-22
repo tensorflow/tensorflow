@@ -80,6 +80,18 @@ struct StridedSliceDenseSpec {
 template <class T>
 static Status TF_MUST_USE_RESULT BuildDenseSpec(
     const StridedSliceSparseSpec& sparse, StridedSliceDenseSpec* dense) {
+  if (dense->dims < 0) {
+    return errors::InvalidArgument("Unexpected negative dense.dims: %d",
+                                   dense->dims);
+  }
+
+  if (dense->dims >= 1024) {
+    // We do not expect to see tensors with rank >= 1024, it must mean that
+    // there is a bug somewhere.
+    return errors::InvalidArgument("Unexpected large dense.dims: %d",
+                                   dense->dims);
+  }
+
   // Build expanded begin, end, strides, begin_mask, end_mask
   // to remove any ellipsis
   dense->begin.resize(dense->dims);
@@ -177,6 +189,11 @@ Status ValidateStridedSliceOp(
     gtl::InlinedVector<int64_t, 4>* begin, gtl::InlinedVector<int64_t, 4>* end,
     gtl::InlinedVector<int64_t, 4>* strides,
     StridedSliceShapeSpec* shape_spec) {
+  if (input_shape.unknown_rank()) {
+    // Note: If the rank is unknown, "input_shape.dims()" is -1.
+    return errors::InvalidArgument("Unexpected input_shape with unknown rank");
+  }
+
   const bool begin_is_wrong =
       begin_tensor != nullptr &&
       !(TensorShapeUtils::IsVector(begin_tensor->shape()) &&

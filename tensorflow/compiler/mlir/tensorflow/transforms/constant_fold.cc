@@ -89,7 +89,7 @@ LogicalResult ConstantFoldFallbackHook(
   // TensorFlow folding hook.
   if (inst->getNumResults() == 0 ||
       inst->hasTrait<OpTrait::TF::NoConstantFold>() ||
-      inst->getNumRegions() != 0 || !MemoryEffectOpInterface::hasNoEffect(inst))
+      inst->getNumRegions() != 0 || !isMemoryEffectFree(inst))
     return failure();
 
   // If any of the result types are variants, don't try to constant fold them.
@@ -148,9 +148,13 @@ LogicalResult ConstantFoldFallbackHook(
     // Only initialize single CPU.
     tensorflow::ConfigProto config_proto;
     // This is conceptually equal to what we do in python/eager/context.py but
-    // with all GPU devices ignored and CPU only set to 1.
+    // with all GPU/TPU devices ignored and CPU only set to 1.
     (*config_proto.mutable_device_count())["CPU"] = 1;
-    (*config_proto.mutable_device_count())["GPU"] = 0;
+    config_proto.add_device_filters("/device:CPU:*");
+    // Limit the thread pool size. Without this, TF by default creates as many
+    // threads as the number of CPUs (`port::MaxParallelism()`). This can be
+    // expensive since this TFE context persists the entire program execution.
+    config_proto.set_inter_op_parallelism_threads(2);
     std::unique_ptr<TF_Buffer, decltype(&TF_DeleteBuffer)> config(
         TF_NewBuffer(), TF_DeleteBuffer);
     DCHECK(config->data == nullptr);

@@ -24,6 +24,13 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/tf2xla_util.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/c_api_conversions.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/status_helper.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_api.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_node_context.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_platform.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_platform_interface.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_stream_interface.h"
 #include "tensorflow/core/common_runtime/copy_tensor.h"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
@@ -32,16 +39,9 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_reference.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/public/session_options.h"
-#include "tensorflow/core/tpu/tpu_api.h"
 #include "tensorflow/core/tpu/tpu_defs.h"
 #include "tensorflow/core/tpu/tpu_node_device_util.h"
 #include "tensorflow/core/tpu/virtual_device.h"
-#include "tensorflow/stream_executor/tpu/c_api_conversions.h"
-#include "tensorflow/stream_executor/tpu/status_helper.h"
-#include "tensorflow/stream_executor/tpu/tpu_node_context.h"
-#include "tensorflow/stream_executor/tpu/tpu_platform.h"
-#include "tensorflow/stream_executor/tpu/tpu_platform_interface.h"
-#include "tensorflow/stream_executor/tpu/tpu_stream_interface.h"
 
 namespace tensorflow {
 namespace {
@@ -62,7 +62,7 @@ StatusOr<xla::Shape> TpuShapeRepresentation(
   ApiConverter::StackHelper<XLA_Shape> se_shape(xla_shape);
   ApiConverter::StackHelper<XLA_Shape> tpu_shape;
   StatusHelper status;
-  tpu::ExecutorApiFn()->XlaShapeToTpuShapeRepresentationFn(
+  stream_executor::tpu::ExecutorApiFn()->XlaShapeToTpuShapeRepresentationFn(
       &se_shape.value, type, use_fast_memory, &tpu_shape.value,
       status.c_status);
   if (!status.status().ok()) {
@@ -93,7 +93,7 @@ Status TpuPaddedShapeFn(const Tensor& tensor, xla::Shape* shape) {
   StatusHelper status;
   ApiConverter::StackHelper<XLA_Shape> se_shape(on_device_shape);
   ApiConverter::StackHelper<XLA_Shape> tpu_shape;
-  tpu::ExecutorApiFn()->XlaShapeToTpuPaddedShapeFn(
+  stream_executor::tpu::ExecutorApiFn()->XlaShapeToTpuPaddedShapeFn(
       &se_shape.value, &tpu_shape.value, status.c_status);
   if (!status.ok()) {
     return status.status();

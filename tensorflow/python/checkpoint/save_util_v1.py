@@ -20,6 +20,7 @@ soon be deprecated.
 
 import collections
 
+from tensorflow.core.protobuf import trackable_object_graph_pb2
 from tensorflow.python.checkpoint import saveable_compat
 from tensorflow.python.checkpoint import util
 from tensorflow.python.framework import constant_op
@@ -46,9 +47,10 @@ def get_checkpoint_factories_and_keys(object_names, object_map=None):
     object_names: a dictionary that maps `Trackable` objects to auto-generated
       string names.
     object_map: a dictionary mapping `Trackable` to copied `Trackable` objects.
-      The copied objects are generated from `Trackable._map_resources()` which
-      copies the object into another graph. Generally only resource objects
-      (e.g. Variables, Tables) will be in this map.
+      The copied objects are generated from `Trackable.
+      _export_to_saved_model_graph()` which copies the object into another
+      graph. Generally only resource objects (e.g. Variables, Tables) will be
+      in this map.
 
   Returns:
     A tuple of (
@@ -106,18 +108,36 @@ def _add_attributes_to_object_graph(trackable_objects, object_graph_proto,
 
   # Add attributes, which describe what values are saved in checkpoint for
   # this trackable.
-  registered_savers = util.add_attributes_to_object_graph_for_registered_savers(
+  registered_savers = _add_attributes_to_object_graph_for_registered_savers(
       unmapped_registered_savers, object_graph_proto, node_ids, object_map)
   named_saveable_objects, feed_additions = (
-      _add_attributes_to_object_graph_for_saveable_objects(
-          checkpoint_factory_map, object_graph_proto, node_ids, object_map,
-          call_with_mapped_captures, saveables_cache))
+      generate_saveable_objects(checkpoint_factory_map, object_graph_proto,
+                                node_ids, object_map, call_with_mapped_captures,
+                                saveables_cache))
   return named_saveable_objects, feed_additions, registered_savers
 
 
-def _add_attributes_to_object_graph_for_saveable_objects(
-    checkpoint_factory_map, object_graph_proto, node_ids, object_map,
-    call_with_mapped_captures, saveables_cache):
+def _add_attributes_to_object_graph_for_registered_savers(
+    unmapped_registered_savers, object_graph_proto, node_ids, object_map):
+  """Fills the object graph proto with data about the registered savers."""
+  registered_savers = collections.defaultdict(dict)
+  for saver_name, trackables in unmapped_registered_savers.items():
+    for object_name, trackable in trackables.items():
+      object_proto = object_graph_proto.nodes[node_ids[trackable]]
+      object_proto.registered_saver.name = saver_name
+      object_proto.registered_saver.object_name = object_name
+
+      object_to_save = util.get_mapped_trackable(trackable, object_map)
+      registered_savers[saver_name][object_name] = object_to_save
+  return registered_savers
+
+
+def generate_saveable_objects(checkpoint_factory_map,
+                              object_graph_proto=None,
+                              node_ids=None,
+                              object_map=None,
+                              call_with_mapped_captures=None,
+                              saveables_cache=None):
   """Create SaveableObjects and corresponding SerializedTensor protos."""
   named_saveable_objects = []
   if saveables_cache is None:
@@ -130,7 +150,9 @@ def _add_attributes_to_object_graph_for_saveable_objects(
     # checkpoint.
     feed_additions = {}
   for trackable, factory_data_list in checkpoint_factory_map.items():
-    object_proto = object_graph_proto.nodes[node_ids[trackable]]
+    fill_object_proto = object_graph_proto is not None and node_ids is not None
+    if fill_object_proto:
+      object_proto = object_graph_proto.nodes[node_ids[trackable]]
     object_to_save = util.get_mapped_trackable(trackable, object_map)
     if saveables_cache is not None:
       cached_attributes = saveables_cache.setdefault(object_to_save, {})
@@ -194,6 +216,8 @@ def _add_attributes_to_object_graph_for_saveable_objects(
       # attribute for each tensor that is serialized.
       # For Trackables that have SaveableObjects or a legacy saveable name,
       # add a single attribute to the proto.
+      if not fill_object_proto:
+        continue
       if (isinstance(saveables[0], saveable_object_util.TrackableSaveable) and
           (saveable_compat.force_checkpoint_conversion_enabled() or
            saveable_compat.get_saveable_name(object_to_save) is None)):
@@ -212,6 +236,24 @@ def _add_attributes_to_object_graph_for_saveable_objects(
   return named_saveable_objects, feed_additions
 
 
+def _fill_object_graph_proto(graph_view,
+                             trackable_objects,
+                             node_ids,
+                             slot_variables):
+  """Name non-slot `Trackable`s and add them to `object_graph_proto`."""
+  object_graph_proto = trackable_object_graph_pb2.TrackableObjectGraph()
+  for checkpoint_id, trackable in enumerate(trackable_objects):
+    assert node_ids[trackable] == checkpoint_id
+    object_proto = object_graph_proto.nodes.add(
+        slot_variables=slot_variables.get(trackable, ())
+    )
+    for child in graph_view.list_children(trackable):
+      object_proto.children.add(
+          node_id=node_ids[child.ref],
+          local_name=child.name)
+  return object_graph_proto
+
+
 def serialize_gathered_objects(graph_view,
                                object_map=None,
                                call_with_mapped_captures=None,
@@ -228,7 +270,7 @@ def serialize_gathered_objects(graph_view,
       trackable_objects=trackable_objects,
       node_ids=node_ids,
       object_names=object_names)
-  object_graph_proto = util.fill_object_graph_proto(
+  object_graph_proto = _fill_object_graph_proto(
       graph_view=graph_view,
       trackable_objects=trackable_objects,
       node_ids=node_ids,
@@ -244,7 +286,7 @@ def serialize_gathered_objects(graph_view,
           saveables_cache=saveables_cache))
   # Gather all trackables that have checkpoint values or descendants with
   # checkpoint values, and add that info to the proto.
-  util.add_checkpoint_values_check(trackable_objects, object_graph_proto)
+  util.add_checkpoint_values_check(object_graph_proto)
   return (named_saveable_objects, object_graph_proto, feed_additions,
           registered_savers)
 

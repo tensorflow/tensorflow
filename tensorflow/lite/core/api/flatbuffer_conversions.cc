@@ -20,9 +20,9 @@ limitations under the License.
 #include <memory>
 
 #include "flatbuffers/flatbuffers.h"  // from @flatbuffers
-#include "tensorflow/lite/c/builtin_op_data.h"
-#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/core/api/error_reporter.h"
+#include "tensorflow/lite/core/c/builtin_op_data.h"
+#include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/kernels/internal/compatibility.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 
@@ -457,6 +457,10 @@ TfLiteStatus ParseOpDataTfLite(const Operator* op, BuiltinOperator op_type,
       return ParseRsqrt(op, error_reporter, allocator, builtin_data);
     }
 
+    case BuiltinOperator_SELECT_V2: {
+      return ParseSelectV2(op, error_reporter, allocator, builtin_data);
+    }
+
     case BuiltinOperator_SHAPE: {
       return ParseShape(op, error_reporter, allocator, builtin_data);
     }
@@ -865,7 +869,6 @@ TfLiteStatus ParseOpDataTfLite(const Operator* op, BuiltinOperator op_type,
     case BuiltinOperator_RELU_0_TO_1:
     case BuiltinOperator_SCATTER_ND:
     case BuiltinOperator_SELECT:
-    case BuiltinOperator_SELECT_V2:
     case BuiltinOperator_SLICE:
     case BuiltinOperator_TILE:
     case BuiltinOperator_TOPK_V2:
@@ -945,6 +948,9 @@ TfLiteStatus ConvertTensorType(TensorType tensor_type, TfLiteType* type,
       return kTfLiteOk;
     case TensorType_VARIANT:
       *type = kTfLiteVariant;
+      return kTfLiteOk;
+    case TensorType_INT4:
+      *type = kTfLiteInt4;
       return kTfLiteOk;
     default:
       *type = kTfLiteNoType;
@@ -1983,6 +1989,14 @@ TfLiteStatus ParseRsqrt(const Operator*, ErrorReporter*, BuiltinDataAllocator*,
   return kTfLiteOk;
 }
 
+// We have this parse function instead of directly returning kTfLiteOk from the
+// switch-case in ParseOpData because this function is used as part of the
+// selective registration for the OpResolver implementation in micro.
+TfLiteStatus ParseSelectV2(const Operator*, ErrorReporter*,
+                           BuiltinDataAllocator*, void**) {
+  return kTfLiteOk;
+}
+
 TfLiteStatus ParseShape(const Operator* op, ErrorReporter* error_reporter,
                         BuiltinDataAllocator* allocator, void** builtin_data) {
   SafeBuiltinDataAllocator safe_allocator(allocator);
@@ -2146,6 +2160,8 @@ TfLiteStatus ParseUnidirectionalSequenceLSTM(const Operator* op,
     params->time_major = seq_lstm_params->time_major();
     params->asymmetric_quantize_inputs =
         seq_lstm_params->asymmetric_quantize_inputs();
+    params->diagonal_recurrent_tensors =
+        seq_lstm_params->diagonal_recurrent_tensors();
   }
   *builtin_data = params.release();
   return kTfLiteOk;
@@ -2324,6 +2340,9 @@ TfLiteStatus ParseTransposeConv(const Operator* op,
     params->padding = ConvertPadding(transpose_conv_params->padding());
     params->stride_width = transpose_conv_params->stride_w();
     params->stride_height = transpose_conv_params->stride_h();
+
+    params->activation =
+        ConvertActivation(transpose_conv_params->fused_activation_function());
   } else {
     // TODO(b/157480169): We should either return kTfLiteError or fill in some
     // reasonable defaults in the params struct. We are not doing so until we

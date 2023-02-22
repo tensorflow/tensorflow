@@ -20,6 +20,7 @@ import numpy as np
 
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.data.ops import from_generator_op
 from tensorflow.python.framework import combinations
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -337,7 +338,7 @@ class FromGeneratorTest(test_base.DatasetTestBase, parameterized.TestCase):
     # Use an `Event` to signal that the generator has been deleted.
     event = threading.Event()
 
-    class GeneratorWrapper(object):
+    class GeneratorWrapper:
 
       def __iter__(self):
         return self
@@ -422,7 +423,7 @@ class FromGeneratorTest(test_base.DatasetTestBase, parameterized.TestCase):
 
     dummy = constant_op.constant(37)
 
-    dataset = dataset_ops._GeneratorDataset(
+    dataset = from_generator_op._GeneratorDataset(
         dummy, lambda x: x, lambda x: x, finalize_fn,
         tensor_spec.TensorSpec((), dtypes.int32))
 

@@ -19,7 +19,7 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "tensorflow/compiler/xla/service/buffer_value.h"
 #include "tensorflow/compiler/xla/service/logical_buffer.h"
-#include "tensorflow/core/lib/gtl/compactptrset.h"
+#include "tensorflow/tsl/lib/gtl/compactptrset.h"
 
 namespace xla {
 
@@ -27,7 +27,7 @@ namespace xla {
 // containers of LogicalBuffers to containers of BufferValues.
 
 using BufferValueCompactPointerSet =
-    tensorflow::gtl::CompactPointerSet<const BufferValue*>;
+    tsl::gtl::CompactPointerSet<const BufferValue*>;
 template <class LogicalBufferContainerT>
 BufferValueCompactPointerSet ToBufferValueCompactPointerSet(
     const LogicalBufferContainerT& logical_buffer_container) {

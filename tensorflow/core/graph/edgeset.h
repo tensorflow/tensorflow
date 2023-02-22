@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_GRAPH_EDGESET_H_
-#define TENSORFLOW_GRAPH_EDGESET_H_
+#ifndef TENSORFLOW_CORE_GRAPH_EDGESET_H_
+#define TENSORFLOW_CORE_GRAPH_EDGESET_H_
 
 #include <stddef.h>
 
@@ -242,4 +242,4 @@ inline bool EdgeSet::const_iterator::operator==(
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_GRAPH_EDGESET_H_
+#endif  // TENSORFLOW_CORE_GRAPH_EDGESET_H_

@@ -557,27 +557,27 @@ class ValueContext(object):
 
   Example usage:
 
-  1. Directly constructed.
+  1.  Directly constructed.
 
-  >>> def value_fn(context):
-  ...   return context.replica_id_in_sync_group/context.num_replicas_in_sync
-  >>> context = tf.distribute.experimental.ValueContext(
-  ...   replica_id_in_sync_group=2, num_replicas_in_sync=4)
-  >>> per_replica_value = value_fn(context)
-  >>> per_replica_value
-  0.5
+      >>> def value_fn(context):
+      ...   return context.replica_id_in_sync_group/context.num_replicas_in_sync
+      >>> context = tf.distribute.experimental.ValueContext(
+      ...   replica_id_in_sync_group=2, num_replicas_in_sync=4)
+      >>> per_replica_value = value_fn(context)
+      >>> per_replica_value
+      0.5
 
-  2. Passed in by `experimental_distribute_values_from_function`.
+  2.  Passed in by `experimental_distribute_values_from_function`.  {: value=2}
 
-  >>> strategy = tf.distribute.MirroredStrategy(["GPU:0", "GPU:1"])
-  >>> def value_fn(value_context):
-  ...   return value_context.num_replicas_in_sync
-  >>> distributed_values = (
-  ...      strategy.experimental_distribute_values_from_function(
-  ...        value_fn))
-  >>> local_result = strategy.experimental_local_results(distributed_values)
-  >>> local_result
-  (2, 2)
+      >>> strategy = tf.distribute.MirroredStrategy(["GPU:0", "GPU:1"])
+      >>> def value_fn(value_context):
+      ...   return value_context.num_replicas_in_sync
+      >>> distributed_values = (
+      ...      strategy.experimental_distribute_values_from_function(
+      ...        value_fn))
+      >>> local_result = strategy.experimental_local_results(distributed_values)
+      >>> local_result
+      (2, 2)
 
   """
 
@@ -1235,56 +1235,57 @@ class StrategyBase(object):
 
     Example usage:
 
-    1. Constant tensor input.
+    1.  Constant tensor input.
 
-    >>> strategy = tf.distribute.MirroredStrategy(["GPU:0", "GPU:1"])
-    >>> tensor_input = tf.constant(3.0)
-    >>> @tf.function
-    ... def replica_fn(input):
-    ...   return input*2.0
-    >>> result = strategy.run(replica_fn, args=(tensor_input,))
-    >>> result
-    PerReplica:{
-      0: <tf.Tensor: shape=(), dtype=float32, numpy=6.0>,
-      1: <tf.Tensor: shape=(), dtype=float32, numpy=6.0>
-    }
+        >>> strategy = tf.distribute.MirroredStrategy(["GPU:0", "GPU:1"])
+        >>> tensor_input = tf.constant(3.0)
+        >>> @tf.function
+        ... def replica_fn(input):
+        ...   return input*2.0
+        >>> result = strategy.run(replica_fn, args=(tensor_input,))
+        >>> result
+        PerReplica:{
+          0: <tf.Tensor: shape=(), dtype=float32, numpy=6.0>,
+          1: <tf.Tensor: shape=(), dtype=float32, numpy=6.0>
+        }
 
-    2. DistributedValues input.
+    2.  DistributedValues input.  {: value=2}
 
-    >>> strategy = tf.distribute.MirroredStrategy(["GPU:0", "GPU:1"])
-    >>> @tf.function
-    ... def run():
-    ...   def value_fn(value_context):
-    ...     return value_context.num_replicas_in_sync
-    ...   distributed_values = (
-    ...     strategy.experimental_distribute_values_from_function(
-    ...       value_fn))
-    ...   def replica_fn2(input):
-    ...     return input*2
-    ...   return strategy.run(replica_fn2, args=(distributed_values,))
-    >>> result = run()
-    >>> result
-    <tf.Tensor: shape=(), dtype=int32, numpy=4>
+        >>> strategy = tf.distribute.MirroredStrategy(["GPU:0", "GPU:1"])
+        >>> @tf.function
+        ... def run():
+        ...   def value_fn(value_context):
+        ...     return value_context.num_replicas_in_sync
+        ...   distributed_values = (
+        ...     strategy.experimental_distribute_values_from_function(
+        ...       value_fn))
+        ...   def replica_fn2(input):
+        ...     return input*2
+        ...   return strategy.run(replica_fn2, args=(distributed_values,))
+        >>> result = run()
+        >>> result
+        <tf.Tensor: shape=(), dtype=int32, numpy=4>
 
-    3. Use `tf.distribute.ReplicaContext` to allreduce values.
+    3.  Use `tf.distribute.ReplicaContext` to allreduce values. {: value=3}
 
-    >>> strategy = tf.distribute.MirroredStrategy(["gpu:0", "gpu:1"])
-    >>> @tf.function
-    ... def run():
-    ...    def value_fn(value_context):
-    ...      return tf.constant(value_context.replica_id_in_sync_group)
-    ...    distributed_values = (
-    ...        strategy.experimental_distribute_values_from_function(
-    ...            value_fn))
-    ...    def replica_fn(input):
-    ...      return tf.distribute.get_replica_context().all_reduce("sum", input)
-    ...    return strategy.run(replica_fn, args=(distributed_values,))
-    >>> result = run()
-    >>> result
-    PerReplica:{
-      0: <tf.Tensor: shape=(), dtype=int32, numpy=1>,
-      1: <tf.Tensor: shape=(), dtype=int32, numpy=1>
-    }
+        >>> strategy = tf.distribute.MirroredStrategy(["gpu:0", "gpu:1"])
+        >>> @tf.function
+        ... def run():
+        ...    def value_fn(value_context):
+        ...      return tf.constant(value_context.replica_id_in_sync_group)
+        ...    distributed_values = (
+        ...        strategy.experimental_distribute_values_from_function(
+        ...            value_fn))
+        ...    def replica_fn(input):
+        ...      return tf.distribute.get_replica_context().all_reduce(
+        ...          "sum", input)
+        ...    return strategy.run(replica_fn, args=(distributed_values,))
+        >>> result = run()
+        >>> result
+        PerReplica:{
+          0: <tf.Tensor: shape=(), dtype=int32, numpy=1>,
+          1: <tf.Tensor: shape=(), dtype=int32, numpy=1>
+        }
 
     Args:
       fn: The function to run on each replica.
@@ -1436,12 +1437,8 @@ class StrategyBase(object):
         # run from eager mode. Cache the tf.function by `axis` to avoid the
         # same function to be traced again.
         if axis not in self._reduce_sum_fns:
-
-          def reduce_sum_fn(v):
-            return self.run(reduce_sum, args=(v,))
-
-          self._reduce_sum_fns[axis] = def_function.function(reduce_sum_fn)
-        value = self._reduce_sum_fns[axis](value)
+          self._reduce_sum_fns[axis] = def_function.function(reduce_sum)
+        value = self.run(self._reduce_sum_fns[axis], args=(value,))
       else:
         value = self.run(reduce_sum, args=(value,))
 
@@ -1502,13 +1499,9 @@ class StrategyBase(object):
       # be run from eager mode. Cache the tf.function by `axis` to avoid the
       # same function to be traced again.
       if axis not in self._mean_reduce_helper_fns:
-
-        def mean_reduce_fn(v):
-          return self.run(mean_reduce_helper, args=(v,))
-
         self._mean_reduce_helper_fns[axis] = def_function.function(
-            mean_reduce_fn)
-      numer, denom = self._mean_reduce_helper_fns[axis](value)
+            mean_reduce_helper)
+      numer, denom = self.run(self._mean_reduce_helper_fns[axis], args=(value,))
     else:
       numer, denom = self.run(mean_reduce_helper, args=(value,))
 
@@ -1693,61 +1686,64 @@ class Strategy(StrategyBase):
 
     Example usage:
 
-    1. Return constant value per replica:
+    1.  Return constant value per replica:
 
-    >>> strategy = tf.distribute.MirroredStrategy(["GPU:0", "GPU:1"])
-    >>> def value_fn(ctx):
-    ...   return tf.constant(1.)
-    >>> distributed_values = (
-    ...      strategy.experimental_distribute_values_from_function(
-    ...        value_fn))
-    >>> local_result = strategy.experimental_local_results(distributed_values)
-    >>> local_result
-    (<tf.Tensor: shape=(), dtype=float32, numpy=1.0>,
-     <tf.Tensor: shape=(), dtype=float32, numpy=1.0>)
+        >>> strategy = tf.distribute.MirroredStrategy(["GPU:0", "GPU:1"])
+        >>> def value_fn(ctx):
+        ...   return tf.constant(1.)
+        >>> distributed_values = (
+        ...     strategy.experimental_distribute_values_from_function(
+        ...        value_fn))
+        >>> local_result = strategy.experimental_local_results(
+        ...     distributed_values)
+        >>> local_result
+        (<tf.Tensor: shape=(), dtype=float32, numpy=1.0>,
+        <tf.Tensor: shape=(), dtype=float32, numpy=1.0>)
 
-    2. Distribute values in array based on replica_id:
+    2.  Distribute values in array based on replica_id: {: value=2}
 
-    >>> strategy = tf.distribute.MirroredStrategy(["GPU:0", "GPU:1"])
-    >>> array_value = np.array([3., 2., 1.])
-    >>> def value_fn(ctx):
-    ...   return array_value[ctx.replica_id_in_sync_group]
-    >>> distributed_values = (
-    ...      strategy.experimental_distribute_values_from_function(
-    ...        value_fn))
-    >>> local_result = strategy.experimental_local_results(distributed_values)
-    >>> local_result
-    (3.0, 2.0)
+        >>> strategy = tf.distribute.MirroredStrategy(["GPU:0", "GPU:1"])
+        >>> array_value = np.array([3., 2., 1.])
+        >>> def value_fn(ctx):
+        ...   return array_value[ctx.replica_id_in_sync_group]
+        >>> distributed_values = (
+        ...     strategy.experimental_distribute_values_from_function(
+        ...         value_fn))
+        >>> local_result = strategy.experimental_local_results(
+        ...     distributed_values)
+        >>> local_result
+        (3.0, 2.0)
 
-    3. Specify values using num_replicas_in_sync:
+    3.  Specify values using num_replicas_in_sync:  {: value=3}
 
-    >>> strategy = tf.distribute.MirroredStrategy(["GPU:0", "GPU:1"])
-    >>> def value_fn(ctx):
-    ...   return ctx.num_replicas_in_sync
-    >>> distributed_values = (
-    ...      strategy.experimental_distribute_values_from_function(
-    ...        value_fn))
-    >>> local_result = strategy.experimental_local_results(distributed_values)
-    >>> local_result
-    (2, 2)
+        >>> strategy = tf.distribute.MirroredStrategy(["GPU:0", "GPU:1"])
+        >>> def value_fn(ctx):
+        ...   return ctx.num_replicas_in_sync
+        >>> distributed_values = (
+        ...     strategy.experimental_distribute_values_from_function(
+        ...         value_fn))
+        >>> local_result = strategy.experimental_local_results(
+        ...     distributed_values)
+        >>> local_result
+        (2, 2)
 
-    4. Place values on devices and distribute:
+    4.  Place values on devices and distribute: {: value=4}
 
-    ```
-    strategy = tf.distribute.TPUStrategy()
-    worker_devices = strategy.extended.worker_devices
-    multiple_values = []
-    for i in range(strategy.num_replicas_in_sync):
-      with tf.device(worker_devices[i]):
-        multiple_values.append(tf.constant(1.0))
+        ```
+        strategy = tf.distribute.TPUStrategy()
+        worker_devices = strategy.extended.worker_devices
+        multiple_values = []
+        for i in range(strategy.num_replicas_in_sync):
+          with tf.device(worker_devices[i]):
+            multiple_values.append(tf.constant(1.0))
 
-    def value_fn(ctx):
-      return multiple_values[ctx.replica_id_in_sync_group]
+        def value_fn(ctx):
+          return multiple_values[ctx.replica_id_in_sync_group]
 
-    distributed_values = strategy.
-      experimental_distribute_values_from_function(
-      value_fn)
-    ```
+        distributed_values = strategy.
+          experimental_distribute_values_from_function(
+          value_fn)
+        ```
 
     """
     return self._extended._experimental_distribute_values_from_function(  # pylint: disable=protected-access

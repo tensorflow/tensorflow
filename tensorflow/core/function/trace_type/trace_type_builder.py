@@ -15,7 +15,7 @@
 """Utitiles for Cache Key generation based on Function Trace Type."""
 
 import collections.abc
-from typing import Any, Callable, Hashable
+from typing import Any, Hashable, Optional, Dict
 import weakref
 
 from tensorflow.core.function.trace_type import default_types
@@ -23,114 +23,174 @@ from tensorflow.core.function.trace_type import util
 from tensorflow.python.types import trace
 
 
-class WeakrefDeletionObserver:
-  """An observer for the event of deleting a weakref.
-
-  This allows users of FunctionTraceType to be notified when an instance which
-  depends on a weakref becomes invalid by the deletion of the weakref. In
-  particular, tf.function caches can use this mechanism to clear the cache of
-  keys that are no longer valid.
-
-  We use the observer pattern and not just basic callbacks because the keys
-  are typically created before they are used by the cache.
-  """
-
-  def __init__(self):
-    self._triggered = False
-    self._callables = []
-
-  def add_listener(self, on_delete: Callable[[], None]):
-    if self._triggered:
-      on_delete()
-    else:
-      self._callables.append(on_delete)
-
-  def weakref_deleted(self):
-    self._triggered = True
-    for c in self._callables:
-      c()
-
-  def __call__(self, _):
-    """Call handler for convenience of use with weakref."""
-    self.weakref_deleted()
-
-
 class InternalTracingContext(trace.TracingContext):
   """Container for variables and flags shared across TraceType generation."""
 
-  def __init__(self):
-    self._deletion_observer = WeakrefDeletionObserver()
+  def __init__(self, is_legacy_signature: bool = False):
     self._global_to_local_id = {}
+    self._alias_id_to_placeholder = {}
+    self._spec_id_to_handledata = {}
+    self._is_legacy_signature = is_legacy_signature
 
-  # TODO(b/202772221): Consider dropping after alias pattern matching is
-  # supported.
-  def make_reference_type(self, base_type: trace.TraceType,
-                          local_id: Hashable) -> trace.TraceType:
-    if local_id not in self._global_to_local_id:
-      self._global_to_local_id[local_id] = len(self._global_to_local_id)
+  def alias_global_id(self, global_id: Hashable) -> Hashable:
+    if global_id not in self._global_to_local_id:
+      self._global_to_local_id[global_id] = len(self._global_to_local_id)
 
-    return default_types.Reference(base_type,
-                                   self._global_to_local_id[local_id])
+    return self._global_to_local_id[global_id]
+
+  def add_placeholder(self, alias_id: Hashable, variable) -> None:
+    self._alias_id_to_placeholder[alias_id] = variable
+
+  def get_placeholder_mapping(self) -> Dict[Hashable, Any]:
+    return self._alias_id_to_placeholder
+
+  def add_handledata(self, spec_id: Hashable, handledata: Any) -> None:
+    self._spec_id_to_handledata[spec_id] = handledata
+
+  def get_handledata_mapping(self) -> Dict[Hashable, Any]:
+    return self._spec_id_to_handledata
 
   @property
-  def deletion_observer(self):
-    """Returns a functor which invalidates the current key when called."""
-    return self._deletion_observer
+  def is_legacy_signature(self) -> bool:
+    """If the value is from a legacy signature representation.
+
+    Legacy signature representations include tf.function.input_signature and
+    ConcreteFunction.structured_input_signature.
+    """
+    return self._is_legacy_signature
 
 
-def from_object(obj: Any,
-                context: trace.TracingContext = None) -> trace.TraceType:
-  """Returns a TraceType corresponding to the object based on the context.
+class InternalPlaceholderContext(trace.PlaceholderContext):
+  """Container with mappings shared across TraceTypes for placeholder values."""
+
+  def __init__(self,
+               context_graph=None,
+               placeholder_mapping=None,
+               handledata_mapping=None,
+               unnest_only=False):
+    self._alias_id_to_placeholder = placeholder_mapping or {}
+    self._spec_id_to_handledata = handledata_mapping or {}
+    self._naming_scope = None
+    self._context_graph = context_graph
+    self._unnest_only = unnest_only
+
+  def has_placeholder(self, alias_id: Hashable) -> bool:
+    return alias_id in self._alias_id_to_placeholder
+
+  def get_placeholder(self, alias_id: Hashable) -> Hashable:
+    if not self.has_placeholder(alias_id):
+      raise KeyError(f"alias_id: {alias_id} not found in this instance of "
+                     "placeholder context.")
+    return self._alias_id_to_placeholder[alias_id]
+
+  def add_placeholder(self, alias_id: Hashable, placeholder: Hashable) -> None:
+    if alias_id in self._alias_id_to_placeholder:
+      raise KeyError(f"alias id: {alias_id} is already stored in this "
+                     "instance of placeholder context.")
+    self._alias_id_to_placeholder[alias_id] = placeholder
+
+  def has_handledata(self, spec_id: Hashable) -> bool:
+    return spec_id in self._spec_id_to_handledata
+
+  def get_handledata(self, spec_id: Hashable) -> Any:
+    if not self.has_handledata(spec_id):
+      raise KeyError("Could not find handle data for TraceType with "
+                     f"id: {spec_id} in this instance of placeholder context.")
+    return self._spec_id_to_handledata[spec_id]
+
+  def update_naming_scope(self, naming_scope: Optional[str]) -> None:
+    self._naming_scope = naming_scope
+
+  @property
+  def naming_scope(self) -> Optional[str]:
+    return self._naming_scope
+
+  @property
+  def context_graph(self):
+    return self._context_graph
+
+  @property
+  def unnest_only(self) -> bool:
+    return self._unnest_only
+
+
+class InternalCastContext(trace.CastContext):
+  """Default casting behaviors."""
+
+  def __init__(self, allow_specs=False):
+    self._allow_specs = allow_specs
+
+  @property
+  def allow_specs(self) -> bool:
+    """Allow TypeSpecs to be casted (instead of the actual CompositeTensors)."""
+    # Public APIs like get_concrete_function allow users to pass in specs
+    # instead which need to pass through input binding etc.
+    return self._allow_specs
+
+
+def from_value(value: Any,
+               context: trace.TracingContext = None) -> trace.TraceType:
+  """Returns a TraceType corresponding to the value based on the context.
 
   Args:
-    obj: The object to generate a TraceType for.
+    value: The value to generate a TraceType for.
     context: The TracingContext to be shared during protocol calls.
 
   Returns:
-    A TraceType object representing the given object.
+    A TraceType object representing the given value.
   """
 
   if context is None:
     context = InternalTracingContext()
 
-  if isinstance(obj, trace.SupportsTracingProtocol):
-    return obj.__tf_tracing_type__(context)
+  if context.is_legacy_signature and isinstance(value, trace.TraceType):
+    return value
+  elif isinstance(value, trace.SupportsTracingProtocol):
+    generated_type = value.__tf_tracing_type__(context)
+    if not isinstance(generated_type, trace.TraceType):
+      raise TypeError(
+          "Expected an instance of TraceType for Tracing Protocol call to " +
+          str(value) + " but got " + str(generated_type))
+    return generated_type
 
-  if hasattr(obj, "__wrapped__"):
-    return from_object(obj.__wrapped__, context)
+  if hasattr(value, "__wrapped__"):
+    return from_value(value.__wrapped__, context)
 
-  if isinstance(obj, list):
-    return default_types.List(*(from_object(c, context) for c in obj))
+  if isinstance(value, list):
+    return default_types.List(*(from_value(c, context) for c in value))
 
-  if isinstance(obj, tuple):
-    if util.is_namedtuple(obj):
-      named_tuple_type = type(obj)
+  if isinstance(value, tuple):
+    if util.is_namedtuple(value):
+      named_tuple_type = type(value)
       return default_types.NamedTuple.from_type_and_attributes(
-          named_tuple_type, tuple(from_object(c, context) for c in obj))
+          named_tuple_type, tuple(from_value(c, context) for c in value))
     else:
-      return default_types.Tuple(*(from_object(c, context) for c in obj))
+      return default_types.Tuple(*(from_value(c, context) for c in value))
 
-  if isinstance(obj, collections.abc.Mapping):
-    return default_types.Dict({k: from_object(obj[k], context) for k in obj})
+  if isinstance(value, collections.abc.Mapping):
+    mapping_type = type(value)
+    return default_types.Dict(
+        {k: from_value(value[k], context) for k in value}, mapping_type)
 
-  if util.is_attrs(obj):
+  if util.is_attrs(value):
     return default_types.Attrs.from_type_and_attributes(
-        type(obj),
+        type(value),
         tuple(
-            from_object(getattr(obj, a.name), context)
-            for a in obj.__attrs_attrs__))
+            from_value(getattr(value, a.name), context)
+            for a in value.__attrs_attrs__))
 
   try:
-    ref = weakref.ref(obj, context.deletion_observer)
+    ref = weakref.ref(value)
     if ref is None:
       raise TypeError(
-          f"Deleted objects are not valid tf.function arguments, Got {obj!r}")
+          f"Deleted objects are not valid tf.function arguments, Got {value!r}")
     else:
       return default_types.Weakref(ref)
   except TypeError:
     try:
-      return default_types.Literal(obj)
+      return default_types.Literal(value)
     except:
-      raise TypeError(
-          f"Python object could not be represented through the generic tracing "
-          f"type. Consider implementing the Tracing Protocol for it: {obj!r}")
+      raise TypeError(  # pylint: disable=raise-missing-from
+          f"Could not generate a generic TraceType for {value!r}."
+          f"Please verify that it is immutable/hashable. Otheriwse, consider "
+          f"implementing the Tracing Protocol for it.")

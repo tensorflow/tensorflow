@@ -27,6 +27,7 @@ from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import gradient_checker_v2
+from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
 
 
@@ -82,8 +83,9 @@ class StackOpTest(test.TestCase):
       y = gen_array_ops.parallel_concat(values=[["tf"]], shape=0)
       return y
 
-    with self.assertRaisesRegex(errors.InvalidArgumentError,
-                                r"0th dimension of value .* is less than"):
+    with self.assertRaisesRegex(
+        errors.InvalidArgumentError, r"0th dimension .* must be greater than"
+    ):
       f()
 
   def testSimpleParallelGPU(self):
@@ -297,6 +299,20 @@ class StackOpTest(test.TestCase):
       with self.session():
         t = [array_ops.zeros([0, 3]), array_ops.zeros([1, 3])]
         self.evaluate(array_ops.stack(t))
+
+  def testQTypes(self):
+    np.random.seed(7)
+    with self.session(use_gpu=True):
+      shape = [2]
+      for dtype in [
+          dtypes.quint8, dtypes.quint16, dtypes.qint8, dtypes.qint16,
+          dtypes.qint32
+      ]:
+        with self.subTest(shape=shape, dtype=dtype):
+          data = self.randn(shape, dtype.as_numpy_dtype)
+          xs = list(map(constant_op.constant, data))
+          c = math_ops.equal(array_ops.stack(xs), data)
+          self.assertAllEqual(self.evaluate(c), [True, True])
 
 
 class AutomaticStackingTest(test.TestCase):

@@ -34,6 +34,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/common_runtime/lower_functional_ops.h"
 #include "tensorflow/core/common_runtime/optimization_registry.h"
+#include "tensorflow/core/common_runtime/partitioning_utils.h"
 #include "tensorflow/core/common_runtime/placer.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/function.h"
@@ -52,7 +53,6 @@ limitations under the License.
 #include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/tfrt/fallback/fallback_state.h"
-#include "tensorflow/core/tfrt/utils/graph_partition.h"
 #include "tensorflow/core/util/dump_graph.h"
 
 namespace tensorflow {
@@ -311,7 +311,7 @@ Status AdjustDeviceAssignment(const std::vector<std::string>& inputs,
 
   TF_RETURN_IF_ERROR(
       PlaceInputOutputNodesOnHost(inputs, outputs, cpu_device, graph));
-  return Status::OK();
+  return OkStatus();
 }
 
 bool IsTpuGraph(const Graph* graph) {
@@ -388,9 +388,7 @@ StatusOr<std::unique_ptr<Graph>> BuildXlaOpsAndMaybeInsertTransferOps(
   // Insert send/recv ops to the graph.
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<Graph> new_graph,
-      InsertTransferOps(graph_func_name, fallback_state.device_set(),
-                        cpu_device, inputs, outputs, control_outputs,
-                        std::move(graph)));
+      InsertTransferOps(fallback_state.device_set(), std::move(graph)));
   if (VLOG_IS_ON(1)) {
     DumpGraphToFile("after_transfer_ops_insertion", *new_graph);
   }
@@ -453,7 +451,7 @@ TfrtGraphExecutionState::CreateOptimizedGraph(
   auto status_or_optimized_graph =
       OptimizeGraph(*result.graph, build_graph_options);
   if (status_or_optimized_graph.ok()) {
-    result.graph = std::move(status_or_optimized_graph.ValueOrDie());
+    result.graph = std::move(status_or_optimized_graph.value());
   } else {
     LOG(WARNING) << "TFRT failed to optimize graph: "
                  << status_or_optimized_graph.status();
@@ -465,7 +463,7 @@ TfrtGraphExecutionState::CreateOptimizedGraph(
 
   result.grappler_duration = absl::Now() - grappler_start_time;
 
-  if (options_.enable_tfrt_gpu) {
+  if (options_.enable_tfrt_gpu && !options_.use_bridge_for_gpu) {
     TF_ASSIGN_OR_RETURN(
         result.graph,
         BuildXlaOpsAndMaybeInsertTransferOps(

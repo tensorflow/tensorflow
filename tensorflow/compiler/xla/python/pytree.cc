@@ -19,7 +19,9 @@ limitations under the License.
 #include "tensorflow/compiler/xla/python/pytree.h"
 
 #include <algorithm>
+#include <iterator>
 #include <memory>
+#include <optional>
 #include <stdexcept>
 #include <string>
 #include <utility>
@@ -36,7 +38,7 @@ limitations under the License.
 #include "pybind11/stl.h"
 #include "pybind11_abseil/absl_casters.h"  // from @pybind11_abseil
 #include "tensorflow/compiler/xla/python/exceptions.h"
-#include "tensorflow/core/platform/logging.h"
+#include "tensorflow/tsl/platform/logging.h"
 
 namespace xla {
 
@@ -88,6 +90,42 @@ namespace py = pybind11;
   return it == registry->registrations_.end() ? nullptr : it->second.get();
 }
 
+/*static*/ std::vector<py::object> GetSortedPyDictKeys(PyObject* py_dict) {
+  std::vector<py::object> keys;
+  keys.reserve(PyDict_Size(py_dict));
+  PyObject* key;
+  Py_ssize_t pos = 0;
+  while (PyDict_Next(py_dict, &pos, &key, /*value=*/nullptr)) {
+    keys.push_back(py::reinterpret_borrow<py::object>(key));
+  }
+
+  int ret = 0;
+  std::stable_sort(keys.begin(), keys.end(),
+                   [&ret](const py::object& a, const py::object& b) {
+                     int cmp =
+                         PyObject_RichCompareBool(a.ptr(), b.ptr(), Py_LT);
+                     if (cmp == -1) ret = -1;
+                     return cmp;
+                   });
+  if (ret == -1) {
+    throw py::error_already_set();
+  }
+  return keys;
+}
+
+/*static*/ bool IsSortedPyDictKeysEqual(absl::Span<const py::object> lhs,
+                                        absl::Span<const py::object> rhs) {
+  if (lhs.size() != rhs.size()) {
+    return false;
+  }
+  for (int i = 0; i < lhs.size(); ++i) {
+    if (lhs[i].not_equal(rhs[i])) {
+      return false;
+    }
+  }
+  return true;
+}
+
 bool PyTreeDef::operator==(const PyTreeDef& other) const {
   if (traversal_.size() != other.traversal_.size()) {
     return false;
@@ -97,10 +135,14 @@ bool PyTreeDef::operator==(const PyTreeDef& other) const {
     const Node& b = other.traversal_[i];
     if (a.kind != b.kind || a.arity != b.arity ||
         (a.node_data.ptr() == nullptr) != (b.node_data.ptr() == nullptr) ||
+        (a.sorted_dict_keys.size() != b.sorted_dict_keys.size()) ||
         a.custom != b.custom) {
       return false;
     }
     if (a.node_data && a.node_data.not_equal(b.node_data)) {
+      return false;
+    }
+    if (!IsSortedPyDictKeysEqual(a.sorted_dict_keys, b.sorted_dict_keys)) {
       return false;
     }
     // We don't need to test equality of num_leaves and num_nodes since they
@@ -134,8 +176,8 @@ void PyTreeDef::FlattenIntoImpl(
     py::handle handle, T& leaves,
     const std::optional<py::function>& leaf_predicate) {
   Node node;
-  int start_num_nodes = traversal_.size();
-  int start_num_leaves = leaves.size();
+  const int start_num_nodes = traversal_.size();
+  const int start_num_leaves = leaves.size();
   if (leaf_predicate && (*leaf_predicate)(handle).cast<bool>()) {
     leaves.push_back(py::reinterpret_borrow<py::object>(handle));
   } else {
@@ -163,16 +205,13 @@ void PyTreeDef::FlattenIntoImpl(
       }
       case PyTreeKind::kDict: {
         py::dict dict = py::reinterpret_borrow<py::dict>(handle);
-        py::list keys =
-            py::reinterpret_steal<py::list>(PyDict_Keys(dict.ptr()));
-        if (PyList_Sort(keys.ptr())) {
-          throw py::error_already_set();
-        }
+
+        std::vector<py::object> keys = GetSortedPyDictKeys(dict.ptr());
         for (py::handle key : keys) {
           recurse(dict[key]);
         }
         node.arity = dict.size();
-        node.node_data = std::move(keys);
+        node.sorted_dict_keys = std::move(keys);
         break;
       }
       case PyTreeKind::kCustom: {
@@ -327,9 +366,8 @@ py::object PyTreeDef::Unflatten(absl::Span<const py::object> leaves) const {
 
     case PyTreeKind::kDict: {
       py::dict dict;
-      py::list keys = py::reinterpret_borrow<py::list>(node.node_data);
       for (int i = 0; i < node.arity; ++i) {
-        dict[keys[i]] = std::move(children[i]);
+        dict[node.sorted_dict_keys[i]] = std::move(children[i]);
       }
       return std::move(dict);
       break;
@@ -413,15 +451,13 @@ py::list PyTreeDef::FlattenUpTo(py::handle xs) const {
               absl::StrFormat("Expected dict, got %s.", py::repr(object)));
         }
         py::dict dict = py::reinterpret_borrow<py::dict>(object);
-        py::list keys =
-            py::reinterpret_steal<py::list>(PyDict_Keys(dict.ptr()));
-        if (PyList_Sort(keys.ptr())) {
-          throw xla::XlaRuntimeError("Dictionary key sort failed.");
-        }
-        if (keys.not_equal(node.node_data)) {
-          throw std::invalid_argument(
-              absl::StrFormat("Dict key mismatch; expected keys: %s; dict: %s.",
-                              py::repr(node.node_data), py::repr(object)));
+        std::vector<py::object> keys = GetSortedPyDictKeys(dict.ptr());
+        if (!IsSortedPyDictKeysEqual(keys, node.sorted_dict_keys)) {
+          // Convert to a py::list for py::repr to avoid having to stringify a
+          // vector. This is error path so it is fine to pay conversion cost.
+          throw std::invalid_argument(absl::StrFormat(
+              "Dict key mismatch; expected keys: %s; dict: %s.",
+              py::repr(py::cast(node.sorted_dict_keys)), py::repr(object)));
         }
         for (py::handle key : keys) {
           agenda.push_back(dict[key]);
@@ -522,8 +558,12 @@ py::object PyTreeDef::Walk(const py::function& f_node, py::handle f_leaf,
           tuple[i] = agenda.back();
           agenda.pop_back();
         }
-        agenda.push_back(
-            f_node(tuple, node.node_data ? node.node_data : py::none()));
+        py::object node_data = node.node_data;
+        if (node.kind == PyTreeKind::kDict) {
+          // Convert to a py::list for f_node invocation.
+          node_data = py::cast(node.sorted_dict_keys);
+        }
+        agenda.push_back(f_node(tuple, node_data ? node_data : py::none()));
       }
     }
   }
@@ -659,13 +699,13 @@ std::string PyTreeDef::ToString() const {
         representation = absl::StrCat("[", children, "]");
         break;
       case PyTreeKind::kDict: {
-        if (py::len(node.node_data) != node.arity) {
+        if (node.sorted_dict_keys.size() != node.arity) {
           throw std::logic_error("Number of keys and entries does not match.");
         }
         representation = "{";
         std::string separator;
         auto child_iter = agenda.end() - node.arity;
-        for (const py::handle& key : node.node_data) {
+        for (const py::handle& key : node.sorted_dict_keys) {
           absl::StrAppendFormat(&representation, "%s%s: %s", separator,
                                 py::repr(key), *child_iter);
           child_iter++;
@@ -711,9 +751,16 @@ std::string PyTreeDef::ToString() const {
 py::object PyTreeDef::ToPickleable() const {
   py::list traversal;
   for (const auto& node : traversal_) {
+    py::object node_data = node.node_data;
+    if (node.kind == PyTreeKind::kDict) {
+      // Convert to a py::list for pickling to avoid having to pickle a vector.
+      // Pickle should be a rare operation so this conversion cost is hopefully
+      // on non-critical path.
+      node_data = py::cast(node.sorted_dict_keys);
+    }
     traversal.append(
         py::make_tuple(static_cast<int>(node.kind), node.arity,
-                       node.node_data ? node.node_data : py::none(),
+                       node_data ? node_data : py::none(),
                        node.custom != nullptr ? node.custom->type : py::none(),
                        node.num_leaves, node.num_nodes));
   }
@@ -735,7 +782,7 @@ PyTreeDef PyTreeDef::FromPickleable(py::object pickleable) {
         node.node_data = t[2].cast<py::type>();
         break;
       case PyTreeKind::kDict:
-        node.node_data = t[2].cast<py::list>();
+        node.sorted_dict_keys = t[2].cast<std::vector<py::object>>();
         break;
       case PyTreeKind::kCustom:
         node.node_data = t[2];

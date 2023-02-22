@@ -23,6 +23,7 @@ from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import combinations
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import sparse_tensor
+from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops.ragged import ragged_factory_ops
 from tensorflow.python.platform import test
 
@@ -74,7 +75,11 @@ class AsNumpyIteratorTest(test_base.DatasetTestBase, parameterized.TestCase):
 
   @combinations.generate(test_base.eager_only_combinations())
   def testSparseElement(self):
-    self._testInvalidElement(sparse_tensor.SparseTensorValue([[0]], [0], [1]))
+    st = sparse_tensor.SparseTensor(
+        indices=[(0, 0), (1, 1), (2, 2)], values=[1, 2, 3], dense_shape=(3, 3))
+    ds = dataset_ops.Dataset.from_tensor_slices(st)
+    dt = sparse_ops.sparse_tensor_to_dense(st)
+    self.assertAllEqual(list(ds.as_numpy_iterator()), dt.numpy())
 
   @combinations.generate(test_base.eager_only_combinations())
   def testRaggedElement(self):

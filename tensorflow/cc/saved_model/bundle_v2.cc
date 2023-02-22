@@ -19,19 +19,22 @@ limitations under the License.
 #include <utility>
 
 #include "tensorflow/cc/saved_model/constants.h"
+#include "tensorflow/cc/saved_model/fingerprinting.h"
 #include "tensorflow/cc/saved_model/metrics.h"
 #include "tensorflow/cc/saved_model/reader.h"
 #include "tensorflow/cc/saved_model/util.h"
-#include "tensorflow/core/lib/io/path.h"
-#include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/path.h"
 #include "tensorflow/core/platform/strcat.h"
 #include "tensorflow/core/protobuf/saved_model.pb.h"
 #include "tensorflow/core/protobuf/trackable_object_graph.pb.h"
-#include "tensorflow/core/util/tensor_bundle/byte_swap.h"
+#include "tensorflow/core/util/tensor_bundle/byte_swap_tensor.h"
 
 namespace tensorflow {
 namespace {
+
+using error::Code::NOT_FOUND;
+using strings::StrCat;
 
 // `tensorflow::SavedModelV2Bundle::Load` API label.
 constexpr char kCCLoadBundleV2Label[] = "cc_load_bundle_v2";
@@ -42,8 +45,8 @@ Status ReadSavedModelProto(const string& export_dir,
 
   const string saved_model_pb_path =
       io::JoinPath(export_dir, kSavedModelFilenamePb);
-
-  if (Env::Default()->FileExists(saved_model_pb_path).ok()) {
+  Status found_pb = Env::Default()->FileExists(saved_model_pb_path);
+  if (found_pb.ok()) {
     Status result =
         ReadBinaryProto(Env::Default(), saved_model_pb_path, saved_model_proto);
     if (result.ok()) {
@@ -52,9 +55,11 @@ Status ReadSavedModelProto(const string& export_dir,
     }
     return result;
   }
+
   const string saved_model_pbtxt_path =
       io::JoinPath(export_dir, kSavedModelFilenamePbTxt);
-  if (Env::Default()->FileExists(saved_model_pbtxt_path).ok()) {
+  Status found_pbtxt = Env::Default()->FileExists(saved_model_pbtxt_path);
+  if (found_pbtxt.ok()) {
     Status result = ReadTextProto(Env::Default(), saved_model_pbtxt_path,
                                   saved_model_proto);
     if (result.ok()) {
@@ -64,10 +69,26 @@ Status ReadSavedModelProto(const string& export_dir,
     return result;
   }
 
-  return Status(error::Code::NOT_FOUND,
-                "Could not find SavedModel .pb or .pbtxt at supplied export "
-                "directory path: " +
-                    export_dir);
+  Status err;
+  if (found_pb.code() == found_pbtxt.code()) {
+    err = Status(found_pb.code(), StrCat(found_pb.error_message(), "\n",
+                                         found_pbtxt.error_message()));
+  } else if (found_pb.code() == NOT_FOUND) {
+    err = found_pbtxt;
+  } else if (found_pbtxt.code() == NOT_FOUND) {
+    err = found_pb;
+  } else {
+    // found_pb and found_pbtxt both errored, w/ different codes, neither being
+    // NOT_FOUND.
+    err = Status(
+        error::Code::INTERNAL,
+        StrCat("Different errors encountered while looking for saved_model.pb "
+               "and saved_model.pbtxt in the export directory path \"",
+               export_dir, "\": \n", found_pb.ToString(), "\n",
+               found_pbtxt.ToString()));
+  }
+
+  return err;
 }
 
 Status ReadCheckpointObjectGraph(BundleReader* bundle_reader,
@@ -101,6 +122,7 @@ Status SavedModelV2Bundle::Load(const std::string& export_dir,
   metrics::SavedModelReadApi(kCCLoadBundleV2Label).IncrementBy(1);
   SavedModel saved_model_proto;
   TF_RETURN_IF_ERROR(ReadSavedModelProto(export_dir, &saved_model_proto));
+  metrics::SavedModelReadPath().Set(export_dir);
 
   // Load MetaGraphDef.
   // In version 2 SavedModels, there is only one MetaGraphDef.
@@ -116,7 +138,8 @@ Status SavedModelV2Bundle::Load(const std::string& export_dir,
 
   // Correct the endiness of Tensor content on big-endian system
   if (!port::kLittleEndian) {
-    TF_RETURN_IF_ERROR(ByteSwapTensorContent(&(bundle->meta_graph_def_)));
+    TF_RETURN_IF_ERROR(
+        ByteSwapTensorContentInMetaGraphDef(&(bundle->meta_graph_def_)));
   }
 
   // Load GraphDebugInfo.
@@ -142,6 +165,14 @@ Status SavedModelV2Bundle::Load(const std::string& export_dir,
     // Deserialize the object graph proto from the tensor bundle.
     TF_RETURN_IF_ERROR(ReadCheckpointObjectGraph(
         bundle->variable_reader_.get(), &bundle->trackable_object_graph_));
+  }
+  // Read the fingerprint.
+  auto fingerprint_proto =
+      saved_model::fingerprinting::ReadSavedModelFingerprint(export_dir);
+  if (fingerprint_proto.ok()) {
+    // Set gauge cell with saved_model_checksum.
+    metrics::SavedModelReadFingerprint().Set(
+        std::to_string(fingerprint_proto->saved_model_checksum()));
   }
   return OkStatus();
 }

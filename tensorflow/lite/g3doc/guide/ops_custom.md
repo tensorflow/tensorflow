@@ -30,25 +30,30 @@ Using custom operators consists of four steps.
     program.
 
 Let’s walk through an end-to-end example of running a model with a custom
-operator `tf.sin` (named as `Sin`, refer to #create-a-tensorflow-model) which is
-supported in TensorFlow, but unsupported in TensorFlow Lite.
+operator `tf.atan` (named as `Atan`, refer to #create-a-tensorflow-model) which
+is supported in TensorFlow, but unsupported in TensorFlow Lite.
 
-Note: In reality, `tf.sin` is **not** a custom operator. It is regular operator
+Note: The `tf.atan` function is **not** a custom operator. It is a regular
+operator
 which is supported by both TensorFlow and TensorFlow Lite. But we **assume**
 that it is a custom operator in the following example in order to demonstrate a
 simple workflow.
 
-## Example: Custom `Sin` operator
+The TensorFlow Text operator is an example of a custom operator. See the
+<a href="https://tensorflow.org/text/guide/text_tf_lite" class="external">
+  Convert TF Text to TF Lite</a> tutorial for a code example.
+
+## Example: Custom `Atan` operator
 
 Let’s walk through an example of supporting a TensorFlow operator that
-TensorFlow Lite does not have. Assume we are using the `Sin` operator and that
-we are building a very simple model for a function `y = sin(x + offset)`, where
+TensorFlow Lite does not have. Assume we are using the `Atan` operator and that
+we are building a very simple model for a function `y = atan(x + offset)`, where
 `offset` is trainable.
 
 ### Create a TensorFlow Model
 
 The following code snippet trains a simple TensorFlow model. This model just
-contains a custom operator named `Sin`, which is a function `y = sin(x +
+contains a custom operator named `Atan`, which is a function `y = atan(x +
 offset)`, where `offset` is trainable.
 
 ```python
@@ -56,19 +61,19 @@ import tensorflow as tf
 
 # Define training dataset and variables
 x = [-8, 0.5, 2, 2.2, 201]
-y = [-0.6569866 ,  0.99749499,  0.14112001, -0.05837414,  0.80641841]
+y = [-1.4288993, 0.98279375, 1.2490457, 1.2679114, 1.5658458]
 offset = tf.Variable(0.0)
 
-# Define a simple model which just contains a custom operator named `Sin`
-@tf.function
-def sin(x):
-  return tf.sin(x + offset, name="Sin")
+# Define a simple model which just contains a custom operator named `Atan`
+@tf.function(input_signature=[tf.TensorSpec.from_tensor(tf.constant(x))])
+def atan(x):
+  return tf.atan(x + offset, name="Atan")
 
 # Train model
 optimizer = tf.optimizers.Adam(0.01)
 def train(x, y):
     with tf.GradientTape() as t:
-      predicted_y = sin(x)
+      predicted_y = atan(x)
       loss = tf.reduce_sum(tf.square(predicted_y - y))
     grads = t.gradient(loss, [offset])
     optimizer.apply_gradients(zip(grads, [offset]))
@@ -82,7 +87,7 @@ print("The predicted offset is:", offset.numpy())
 
 ```python
 The actual offset is: 1.0
-The predicted offset is: 1.0000001
+The predicted offset is: 0.99999905
 ```
 
 At this point, if you try to generate a TensorFlow Lite model with the default
@@ -90,9 +95,7 @@ converter flags, you will get the following error message:
 
 ```none
 Error:
-Some of the operators in the model are not supported by the standard TensorFlow
-Lite runtime...... Here is
-a list of operators for which you will need custom implementations: Sin.
+error: 'tf.Atan' op is neither a custom op nor a flex op.
 ```
 
 ### Convert to a TensorFlow Lite Model
@@ -101,18 +104,23 @@ Create a TensorFlow Lite model with custom operators, by setting the converter
 attribute `allow_custom_ops` as shown below:
 
 <pre>
-converter = tf.lite.TFLiteConverter.from_concrete_functions([sin.get_concrete_function(x)], sin)
+converter = tf.lite.TFLiteConverter.from_concrete_functions([atan.get_concrete_function()], atan)
 <b>converter.allow_custom_ops = True</b>
 tflite_model = converter.convert()
 </pre>
 
-At this point, if you run it with the default interpreter, you will get the
-following error messages:
+At this point, if you run it with the default interpreter using commands such as
+follows:
+
+```python
+interpreter = tf.lite.Interpreter(model_content=tflite_model)
+interpreter.allocate_tensors()
+```
+
+You will still get the error:
 
 ```none
-Error:
-Didn't find custom operator for name 'Sin'
-Registration failed.
+Encountered unresolved custom op: Atan.
 ```
 
 ### Create and register the operator.
@@ -185,7 +193,7 @@ All we need to do to use the op in TensorFlow Lite is define two functions
 (`Prepare` and `Eval`), and construct a `TfLiteRegistration`:
 
 ```cpp
-TfLiteStatus SinPrepare(TfLiteContext* context, TfLiteNode* node) {
+TfLiteStatus AtanPrepare(TfLiteContext* context, TfLiteNode* node) {
   using namespace tflite;
   TF_LITE_ENSURE_EQ(context, NumInputs(node), 1);
   TF_LITE_ENSURE_EQ(context, NumOutputs(node), 1);
@@ -203,13 +211,13 @@ TfLiteStatus SinPrepare(TfLiteContext* context, TfLiteNode* node) {
   return context->ResizeTensor(context, output, output_size);
 }
 
-TfLiteStatus SinEval(TfLiteContext* context, TfLiteNode* node) {
+TfLiteStatus AtanEval(TfLiteContext* context, TfLiteNode* node) {
   using namespace tflite;
-  const TfLiteTensor* input = GetInput(context, node,0);
-  TfLiteTensor* output = GetOutput(context, node,0);
+  const TfLiteTensor* input = GetInput(context, node, 0);
+  TfLiteTensor* output = GetOutput(context, node, 0);
 
-  float* input_data = input->data.f;
-  float* output_data = output->data.f;
+  float* input_data = GetTensorData<float>(input);
+  float* output_data = GetTensorData<float>(output);
 
   size_t count = 1;
   int num_dims = NumDimensions(input);
@@ -218,13 +226,13 @@ TfLiteStatus SinEval(TfLiteContext* context, TfLiteNode* node) {
   }
 
   for (size_t i=0; i<count; ++i) {
-    output_data[i] = sin(input_data[i]);
+    output_data[i] = atan(input_data[i]);
   }
   return kTfLiteOk;
 }
 
-TfLiteRegistration* Register_SIN() {
-  static TfLiteRegistration r = {nullptr, nullptr, SinPrepare, SinEval};
+TfLiteRegistration* Register_ATAN() {
+  static TfLiteRegistration r = {nullptr, nullptr, AtanPrepare, AtanEval};
   return &r;
 }
 ```
@@ -232,8 +240,8 @@ TfLiteRegistration* Register_SIN() {
 When initializing the `OpResolver`, add the custom op into the resolver (see
 below for an example). This will register the operator with Tensorflow Lite so
 that TensorFlow Lite can use the new implementation. Note that the last two
-arguments in `TfLiteRegistration` correspond to the `SinPrepare` and `SinEval`
-functions you defined for the custom op. If you used `SinInit` and `SinFree`
+arguments in `TfLiteRegistration` correspond to the `AtanPrepare` and `AtanEval`
+functions you defined for the custom op. If you used `AtanInit` and `AtanFree`
 functions to initialize variables used in the op and to free up space,
 respectively, then they would be added to the first two arguments of
 `TfLiteRegistration`; those arguments are set to `nullptr` in this example.
@@ -268,7 +276,7 @@ To add the custom op created above, you call `AddOp` (before you pass the
 resolver to the `InterpreterBuilder`):
 
 ```c++
-resolver.AddCustom("Sin", Register_SIN());
+resolver.AddCustom("Atan", Register_ATAN());
 ```
 
 If the set of builtin ops is deemed to be too large, a new `OpResolver` could be
@@ -295,7 +303,7 @@ To profile your op with the TensorFlow Lite benchmark tool, you can use the
 for TensorFlow Lite. For testing purposes, you can make your local build of
 TensorFlow Lite aware of your custom op by adding the appropriate `AddCustom`
 call (as show above) to
-[register.cc](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/kernels/register.cc)
+[register.cc](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/core/kernels/register.cc)
 
 ## Best practices
 

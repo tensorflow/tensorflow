@@ -11,6 +11,7 @@ load(
 )
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//visibility:public"],
     licenses = ["notice"],
 )
@@ -47,7 +48,6 @@ objc_library(
         ":test_util",
         "//tensorflow/lite/delegates/gpu/common:status",
         "//tensorflow/lite/delegates/gpu/common/tasks:cast_test_util",
-        "//third_party/apple_frameworks:XCTest",
     ],
 )
 
@@ -105,7 +105,6 @@ objc_library(
         "//tensorflow/lite/delegates/gpu/common/tasks:winograd",
         "//tensorflow/lite/delegates/gpu/metal:compute_task",
         "//tensorflow/lite/delegates/gpu/metal:metal_spatial_tensor",
-        "//third_party/apple_frameworks:XCTest",
     ],
 )
 
@@ -153,7 +152,6 @@ objc_library(
         ":test_util",
         "//tensorflow/lite/delegates/gpu/common:status",
         "//tensorflow/lite/delegates/gpu/common/tasks:cumsum_test_util",
-        "//third_party/apple_frameworks:XCTest",
     ],
 )
 
@@ -201,6 +199,7 @@ objc_library(
     sdk_frameworks = ["XCTest"],
     deps = [
         ":test_util",
+        "//tensorflow/lite/delegates/gpu/common:status",
         "//tensorflow/lite/delegates/gpu/common/tasks:elementwise_test_util",
     ],
 )
@@ -341,7 +340,6 @@ objc_library(
         ":test_util",
         "//tensorflow/lite/delegates/gpu/common:status",
         "//tensorflow/lite/delegates/gpu/common/tasks:one_hot_test_util",
-        "//third_party/apple_frameworks:XCTest",
     ],
 )
 
@@ -581,7 +579,6 @@ objc_library(
     deps = [
         ":test_util",
         "//tensorflow/lite/delegates/gpu/common/tasks:select_v2_test_util",
-        "//third_party/apple_frameworks:XCTest",
     ],
 )
 
@@ -772,9 +769,7 @@ objc_library(
     copts = [
         "-ObjC++",
     ],
-    sdk_frameworks = [
-        "Metal",
-    ],
+    sdk_frameworks = ["Metal"],
     deps = [
         "//tensorflow/lite/delegates/gpu/common:convert",
         "//tensorflow/lite/delegates/gpu/common:gpu_info",
@@ -908,7 +903,6 @@ objc_library(
         "//tensorflow/lite/delegates/gpu/common/tasks:winograd_test_util",
         "//tensorflow/lite/delegates/gpu/metal:compute_task",
         "//tensorflow/lite/delegates/gpu/metal:metal_spatial_tensor",
-        "//third_party/apple_frameworks:XCTest",
     ],
 )
 

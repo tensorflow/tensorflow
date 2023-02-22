@@ -188,9 +188,8 @@ ENTRY main {
       .IgnoreError();
 
   ErrorSpec no_error(0, 0);
-  EXPECT_TRUE(
-      RunAndCompare(ParseAndReturnVerifiedModule(kModuleStr).ValueOrDie(),
-                    {&indices, &updates}, no_error));
+  EXPECT_TRUE(RunAndCompare(ParseAndReturnVerifiedModule(kModuleStr).value(),
+                            {&indices, &updates}, no_error));
 }
 
 }  // anonymous namespace

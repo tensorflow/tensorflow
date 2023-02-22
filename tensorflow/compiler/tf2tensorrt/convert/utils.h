@@ -245,7 +245,7 @@ class DimsAdapter {
     TF_RETURN_IF_ERROR(TensorShapeUtils::MakeShape(
         static_cast<const int64_t*>(storage_.data()), storage_.size(), shape));
     if (batch_size) shape->InsertDim(0, *batch_size);
-    return Status::OK();
+    return OkStatus();
   }
 
   // Converts to a PartialTensorShape and assigns the result to the object
@@ -256,7 +256,7 @@ class DimsAdapter {
     TF_RETURN_IF_ERROR(TensorShapeUtils::MakeShape(
         static_cast<const int64_t*>(storage_.data()), storage_.size(), shape));
     if (batch_size) shape->InsertDim(0, *batch_size);
-    return Status::OK();
+    return OkStatus();
   }
 
   // Copies the dimension values to the vector passed in via the shape pointer.
@@ -264,7 +264,7 @@ class DimsAdapter {
   Status Vector(std::vector<T>* shape) const {
     shape->clear();
     absl::c_copy(storage_, std::back_inserter(*shape));
-    return Status::OK();
+    return OkStatus();
   }
 
   //----- Property Accessors ------
@@ -337,7 +337,7 @@ class DimsAdapter {
           "attempted to remove batch dim from scalar");
     num_dims_ -= 1;
     storage_.erase(storage_.begin());
-    return Status::OK();
+    return OkStatus();
   }
 
   //----- Comparison Operators ------
@@ -391,8 +391,6 @@ std::optional<DeviceNameUtils::ParsedName> MergeIfCompatible(
 // by a string_view.
 std::optional<DeviceNameUtils::ParsedName> MergeIfCompatible(
     const DeviceNameUtils::ParsedName& a, absl::string_view b);
-
-bool isExperimentalFeatureActivated(string feature_name);
 
 }  // namespace tensorrt
 }  // namespace tensorflow

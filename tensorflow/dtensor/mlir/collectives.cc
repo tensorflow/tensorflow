@@ -99,7 +99,7 @@ StatusOr<mlir::Value> EmitAllGather(
 
   if (newly_created_ops != nullptr) newly_created_ops->insert(all_gather);
 
-  return all_gather.output();
+  return all_gather.getOutput();
 }
 
 StatusOr<const mlir::Value> EmitAllScatter(
@@ -143,7 +143,7 @@ StatusOr<const mlir::Value> EmitAllScatter(
 
   if (newly_created_ops != nullptr) newly_created_ops->insert(all_scatter);
 
-  return all_scatter.output();
+  return all_scatter.getOutput();
 }
 
 StatusOr<mlir::Value> EmitDenseToSparseToDense(
@@ -163,7 +163,7 @@ StatusOr<mlir::Value> EmitDenseToSparseToDense(
 
   mlir::TF::WhereOp indices = builder.create<mlir::TF::WhereOp>(
       not_equal.getLoc(),
-      mlir::RankedTensorType::get(GetShapeOfValue(not_equal).ValueOrDie(),
+      mlir::RankedTensorType::get(GetShapeOfValue(not_equal).value(),
                                   builder.getI64Type()),
       not_equal);
 
@@ -174,15 +174,15 @@ StatusOr<mlir::Value> EmitDenseToSparseToDense(
 
   // Emit a SparseToDenseOp and replace the SparseTensor with the result of
   // this new op.
-  auto zero_scalar = CreateZeroScalarConst(
-      builder, input.getLoc(),
-      input.getType().cast<mlir::TensorType>().getElementType());
-  if (!zero_scalar.has_value())
-    return errors::Internal("Failure in creating a zero scalar const");
+  TF_ASSIGN_OR_RETURN(
+      mlir::Value zero_scalar,
+      CreateZeroScalarConst(
+          builder, input.getLoc(),
+          input.getType().cast<mlir::TensorType>().getElementType()));
 
   auto dense = builder.create<mlir::TF::SparseToDenseOp>(
       input.getLoc(), input.getType(),
-      mlir::ValueRange({indices, shape, values, zero_scalar.value()}));
+      mlir::ValueRange({indices, shape, values, zero_scalar}));
 
   if (newly_created_ops != nullptr) {
     for (auto new_op : {dense.getOperation(), shape.getOperation(),
@@ -277,8 +277,22 @@ StatusOr<mlir::Value> EmitRelayout(
 
   if (!is_sparse) return all_scatter;
   if (!all_scatter.ok()) return all_scatter;
-  return EmitDenseToSparseToDense(builder, all_scatter.ValueOrDie(),
+  return EmitDenseToSparseToDense(builder, all_scatter.value(),
                                   newly_created_ops);
+}
+
+StatusOr<mlir::Operation*> EmitBarrierWithConstValue(mlir::OpBuilder& builder,
+                                                     mlir::Location loc,
+                                                     const Mesh& mesh,
+                                                     int32 value) {
+  absl::flat_hash_set<std::string> reduce_dims;
+  for (const MeshDimension& mesh_dim : mesh.dims()) {
+    reduce_dims.insert(mesh_dim.name);
+  }
+  return EmitAllReduce(
+      builder, Layout::ReplicatedOnMesh(mesh, /*rank=*/1), reduce_dims,
+      IntConst(builder, loc, std::vector<int32>{value}).getDefiningOp(),
+      kReduceOpAdd);
 }
 
 StatusOr<mlir::Operation*> EmitAllReduce(
@@ -321,7 +335,8 @@ StatusOr<mlir::Operation*> EmitAllReduce(
   mlir::Location loc = DT_LOC2(input->getLoc(), "DTensorAllReduceOp");
   auto all_reduce = builder.create<mlir::TF::DTensorAllReduceOp>(
       loc, input->getResultTypes()[0], input->getOpResult(0),
-      builder.create<mlir::TF::ConstOp>(loc, group_assignment),
+      builder.create<mlir::TF::ConstOp>(DT_LOC2(loc, "group_assignment"),
+                                        group_assignment),
       builder.getStringAttr(std::string(reduce_op)),
       builder.getStringAttr(device_type));
   SetSingleLayoutOnOp(all_reduce, output_layout);
@@ -443,7 +458,7 @@ StatusOr<mlir::Value> EmitHaloExchange(mlir::OpBuilder& builder, int halo_size,
     return errors::InvalidArgument(
         "Requested halo exchange on unknown mesh dim");
 
-  // TODO(hongjunchoi): Add support fof halo exchange for GPU/CPU.
+  // TODO(b/261485237): Add support for halo exchange for GPU/CPU.
   if (!mesh.is_tpu_mesh())
     return errors::InvalidArgument("Halo exchange is only supported on TPU.");
 

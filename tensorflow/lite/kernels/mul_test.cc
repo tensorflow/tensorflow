@@ -15,6 +15,7 @@ limitations under the License.
 #include <stddef.h>
 #include <stdint.h>
 
+#include <complex>
 #include <vector>
 
 #include <gmock/gmock.h>
@@ -55,6 +56,15 @@ class FloatMulOpModel : public BaseMulOpModel {
   using BaseMulOpModel::BaseMulOpModel;
 
   std::vector<float> GetOutput() { return ExtractVector<float>(output_); }
+};
+
+class ComplexMulOpModel : public BaseMulOpModel {
+ public:
+  using BaseMulOpModel::BaseMulOpModel;
+
+  std::vector<std::complex<float>> GetOutput() {
+    return ExtractVector<std::complex<float>>(output_);
+  }
 };
 
 class IntegerMulOpModel : public BaseMulOpModel {
@@ -246,6 +256,42 @@ TEST(IntegerMulOpTest, NoActivation) {
   m.PopulateTensor<int32_t>(m.input2(), {1, 2, 3, 5});
   ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({-20, 4, 21, 40}));
+}
+
+TEST(ComplexMulOpTest, BaseTest) {
+  ComplexMulOpModel m({TensorType_COMPLEX64, {1, 2, 2, 1}},
+                      {TensorType_COMPLEX64, {1, 2, 2, 1}},
+                      {TensorType_COMPLEX64, {}}, ActivationFunctionType_NONE);
+  m.PopulateTensor<std::complex<float>>(m.input1(), {-20, {2, 3}, {7, 2}, 8});
+  m.PopulateTensor<std::complex<float>>(m.input2(), {1, {2, -3}, {3, -4}, 5});
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  std::complex<float> expected_result[4] = {-20, 13, {29, -22}, 40};
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray(expected_result));
+}
+
+TEST(ComplexMulOpTest, WithBroadcast) {
+  const std::vector<std::vector<int>> test_shapes = {
+      {6}, {2, 3}, {2, 1, 3}, {1, 3, 1, 2}};
+  for (int i = 0; i < test_shapes.size(); ++i) {
+    ComplexMulOpModel m({TensorType_COMPLEX64, test_shapes[i]},
+                        {TensorType_COMPLEX64, {}}, {TensorType_COMPLEX64, {}},
+                        ActivationFunctionType_NONE);
+    m.PopulateTensor<std::complex<float>>(m.input1(), {-20, 2, 7, 8, 11, 20});
+    m.PopulateTensor<std::complex<float>>(m.input2(), {1});
+    ASSERT_EQ(m.Invoke(), kTfLiteOk);
+    EXPECT_THAT(m.GetOutput(), ElementsAreArray({-20, 2, 7, 8, 11, 20}))
+        << "With shape number " << i;
+  }
+}
+
+TEST(ComplexMulOpTest, IncompatibleActivation) {
+  ComplexMulOpModel m({TensorType_COMPLEX64, {1, 2, 2, 1}},
+                      {TensorType_COMPLEX64, {1, 2, 2, 1}},
+                      {TensorType_COMPLEX64, {}},
+                      ActivationFunctionType_RELU_N1_TO_1);
+  m.PopulateTensor<std::complex<float>>(m.input1(), {-20, {2, 3}, {7, 2}, 8});
+  m.PopulateTensor<std::complex<float>>(m.input2(), {1, {2, -3}, {3, -4}, 5});
+  ASSERT_EQ(m.Invoke(), kTfLiteError);
 }
 
 TEST(IntegerMulOpTest, ActivationRELU_N1_TO_1) {

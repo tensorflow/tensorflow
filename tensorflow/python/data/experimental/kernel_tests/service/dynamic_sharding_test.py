@@ -99,7 +99,7 @@ class DynamicShardingTest(data_service_test_base.TestBase,
 
     ds = ds.group_by_window(lambda x: 0, reduce_fn, window_size=3)
     ds = self._make_dynamic_sharding_dataset(ds, cluster)
-    # This will fail if the tensor_slices split provider ispropagated into the
+    # This will fail if the tensor_slices split provider is propagated into the
     # `reduce_fn`, since the `zip` requires either 0 or 2 split providers.
     self.getDatasetOutput(ds)
 
@@ -265,7 +265,7 @@ class DynamicShardingTest(data_service_test_base.TestBase,
     ds = ds.take(num_samples)
 
     freqs = np.zeros([classes])
-    for v in self.getDatasetOutput(ds):
+    for v in self.getDatasetOutput(ds, requires_initialization=True):
       freqs[v] += 1
 
     self.assertGreater(freqs[0], freqs[1])

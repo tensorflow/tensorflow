@@ -23,8 +23,8 @@
 #include "tensorflow/compiler/xla/python/tpu_driver/tpu_driver.h"
 #include "tensorflow/compiler/xla/python/tpu_driver/tpu_driver.pb.h"
 #include "tensorflow/compiler/xla/python/tpu_driver/tpu_service.grpc.pb.h"
-#include "tensorflow/core/platform/file_system.h"
-#include "tensorflow/core/platform/threadpool.h"
+#include "tensorflow/tsl/platform/file_system.h"
+#include "tensorflow/tsl/platform/threadpool.h"
 
 /*
  * The ReplayDriver wraps a concrete TpuDriver implementation and records the
@@ -131,8 +131,8 @@ class RecordingTpuDriver : public TpuDriver {
       : driver_(std::move(driver)),
         recording_path_(recording_path),
         flush_(flush) {
-    auto file_status = tensorflow::Env::Default()->NewAppendableFile(
-        recording_path_, &log_file_);
+    auto file_status =
+        tsl::Env::Default()->NewAppendableFile(recording_path_, &log_file_);
     if (!file_status.ok()) {
       LOG(FATAL) << "Unable to open " << recording_path_
                  << " for appending. Error: " << file_status.ToString();
@@ -342,12 +342,14 @@ class RecordingTpuDriver : public TpuDriver {
 
   std::unique_ptr<CompiledProgramHandle> CompileProgram(
       const xla::HloProto& source, int32_t num_replicas,
-      absl::Span<Event* const> wait_for) override {
+      absl::Span<Event* const> wait_for,
+      const xla::DebugOptions& debug_options) override {
     auto unwrapped_wait_for = UnwrapWaitFor(wait_for);
 
     auto thread_id = GetCurrentThreadId();
     auto recording_handle = std::make_unique<RecordingCompiledProgramHandle>(
-        driver_->CompileProgram(source, num_replicas, unwrapped_wait_for));
+        driver_->CompileProgram(source, num_replicas, unwrapped_wait_for,
+                                debug_options));
     auto handle_id = recording_handle->id_;
 
     {
@@ -479,7 +481,7 @@ class RecordingTpuDriver : public TpuDriver {
   const std::string recording_path_;
   const bool flush_;
 
-  std::unique_ptr<tensorflow::WritableFile> log_file_;
+  std::unique_ptr<tsl::WritableFile> log_file_;
 
   void PopulateAndSaveEntry(StreamRequest::Entry* r,
                             absl::Span<Event* const> wait_for,

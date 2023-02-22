@@ -59,7 +59,7 @@ def save(dataset,
   ```python
   dataset = make_dataset()
   def custom_shard_func(element):
-    return 0
+    return np.int64(0)
   dataset = tf.data.experimental.save(
       path="/path/to/data", ..., shard_func=custom_shard_func)
   ```

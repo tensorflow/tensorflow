@@ -74,15 +74,16 @@ TEST(RecentRequestIds, Unordered) {
 }
 
 // Check that the oldest request_id is evicted.
-void TestOrdered(int num_request_ids) {
-  RecentRequestIds recent_request_ids(num_request_ids);
+void TestOrdered(int num_request_ids, int num_shards) {
+  RecentRequestIds recent_request_ids(num_request_ids, num_shards);
 
   // Insert [1..101). The current number and the (num_request_ids - 1) preceding
   // numbers should still be in the set.
   for (int i = 1; i < 101; ++i) {
     TF_EXPECT_OK(TrackUnique(i, &recent_request_ids));
 
-    for (int j = std::max(1, i - num_request_ids + 1); j <= i; ++j) {
+    for (int j = std::max(1, i - num_request_ids % num_shards + 1); j <= i;
+         ++j) {
       EXPECT_FALSE(TrackUnique(j, &recent_request_ids).ok())
           << "i=" << i << " j=" << j;
     }
@@ -90,10 +91,14 @@ void TestOrdered(int num_request_ids) {
 }
 
 // Test eviction with various numbers of buckets.
-TEST(RecentRequestIds, Ordered2) { TestOrdered(2); }
-TEST(RecentRequestIds, Ordered3) { TestOrdered(3); }
-TEST(RecentRequestIds, Ordered4) { TestOrdered(4); }
-TEST(RecentRequestIds, Ordered5) { TestOrdered(5); }
+TEST(RecentRequestIds, Ordered2Shard1) { TestOrdered(2, 1); }
+TEST(RecentRequestIds, Ordered3Shard1) { TestOrdered(3, 1); }
+TEST(RecentRequestIds, Ordered4Shard1) { TestOrdered(4, 1); }
+TEST(RecentRequestIds, Ordered5Shard1) { TestOrdered(5, 1); }
+TEST(RecentRequestIds, Ordered10Shard3) { TestOrdered(10, 3); }
+TEST(RecentRequestIds, Ordered11Shard3) { TestOrdered(11, 3); }
+TEST(RecentRequestIds, Ordered12Shard4) { TestOrdered(12, 4); }
+TEST(RecentRequestIds, Ordered100Shard8) { TestOrdered(100, 8); }
 
 static void BM_TrackUnique(::testing::benchmark::State& state) {
   RecentRequestIds recent_request_ids(100000);

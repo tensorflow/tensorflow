@@ -24,6 +24,7 @@ limitations under the License.
 #include <iostream>
 #include <string>
 
+#include "tensorflow/core/platform/ctstring_internal.h"
 #include "tensorflow/lite/examples/label_image/log.h"
 
 namespace tflite {
@@ -92,11 +93,13 @@ std::vector<uint8_t> read_bmp(const std::string& input_bmp_name, int* width,
   file.seekg(0, std::ios::beg);
   file.read(reinterpret_cast<char*>(img_bytes.data()), len);
   const int32_t header_size =
-      *(reinterpret_cast<const int32_t*>(img_bytes.data() + 10));
-  *width = *(reinterpret_cast<const int32_t*>(img_bytes.data() + 18));
-  *height = *(reinterpret_cast<const int32_t*>(img_bytes.data() + 22));
+      TF_le32toh(*(reinterpret_cast<const int32_t*>(img_bytes.data() + 10)));
+  *width =
+      TF_le32toh(*(reinterpret_cast<const int32_t*>(img_bytes.data() + 18)));
+  *height =
+      TF_le32toh(*(reinterpret_cast<const int32_t*>(img_bytes.data() + 22)));
   const int32_t bpp =
-      *(reinterpret_cast<const int32_t*>(img_bytes.data() + 28));
+      TF_le32toh(*(reinterpret_cast<const int32_t*>(img_bytes.data() + 28)));
   *channels = bpp / 8;
 
   if (s->verbose)

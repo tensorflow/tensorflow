@@ -1,0 +1,142 @@
+# This bazelrc can build a GPU-supporting TF package.
+
+# Convenient cache configurations
+# Use a cache directory mounted to /tf/cache. Very useful!
+build:sigbuild_local_cache --disk_cache=/tf/cache
+# Use the public-access TF DevInfra cache (read only)
+build:sigbuild_remote_cache --remote_cache="https://storage.googleapis.com/tensorflow-devinfra-bazel-cache/september2022" --remote_upload_local_results=false
+# Write to the TF DevInfra cache (only works for internal TF CI)
+build:sigbuild_remote_cache_push --remote_cache="https://storage.googleapis.com/tensorflow-devinfra-bazel-cache/september2022" --google_default_credentials
+# Change the value of CACHEBUSTER when upgrading the toolchain, or when testing
+# different compilation methods. E.g. for a PR to test a new CUDA version, set
+# the CACHEBUSTER to the PR number.
+build --action_env=CACHEBUSTER=501872366
+
+# Use Python 3.X as installed in container image
+build --action_env PYTHON_BIN_PATH="/usr/bin/python3"
+build --action_env PYTHON_LIB_PATH="/usr/lib/tf_python"
+build --python_path="/usr/bin/python3"
+
+# Build TensorFlow v2
+build --define=tf_api_version=2 --action_env=TF2_BEHAVIOR=1
+
+# Prevent double-compilation of some TF code, ref. b/183279666 (internal)
+# > TF's gen_api_init_files has a genrule to run the core TensorFlow code
+# > on the host machine. If we don't have --distinct_host_configuration=false,
+# > the core TensorFlow code will be built once for the host and once for the
+# > target platform.
+# See also https://docs.bazel.build/versions/master/guide.html#build-configurations-and-cross-compilation
+build --distinct_host_configuration=false
+
+# Target the AVX instruction set
+build --copt=-mavx --host_copt=-mavx
+
+# Store performance profiling log in the mounted artifact directory.
+# The profile can be viewed by visiting chrome://tracing in a Chrome browser.
+# See https://docs.bazel.build/versions/main/skylark/performance.html#performance-profiling
+build --profile=/tf/pkg/profile.json.gz
+
+# CUDA: Set up compilation CUDA version and paths
+build --@local_config_cuda//:enable_cuda
+build --repo_env TF_NEED_CUDA=1
+build --action_env=TF_CUDA_VERSION="11"
+build --action_env=TF_CUDNN_VERSION="8"
+build --action_env=CUDA_TOOLKIT_PATH="/usr/local/cuda-11.8"
+build --action_env=GCC_HOST_COMPILER_PATH="/dt9/usr/bin/gcc"
+build --action_env=LD_LIBRARY_PATH="/usr/local/cuda/lib64:/usr/local/cuda/extras/CUPTI/lib64:/usr/local/tensorrt/lib"
+build --crosstool_top="@sigbuild-r2.12_config_cuda//crosstool:toolchain"
+
+# CUDA: Enable TensorRT optimizations
+# https://developer.nvidia.com/tensorrt
+build --repo_env TF_NEED_TENSORRT=1
+
+# CUDA: Select supported compute capabilities (supported graphics cards).
+# This is the same as the official TensorFlow builds.
+# See https://developer.nvidia.com/cuda-gpus#compute
+# TODO(angerson, perfinion): What does sm_ vs compute_ mean?
+# TODO(angerson, perfinion): How can users select a good value for this?
+build --repo_env=TF_CUDA_COMPUTE_CAPABILITIES="sm_35,sm_50,sm_60,sm_70,sm_75,compute_80"
+
+# Test-related settings below this point.
+test --build_tests_only --keep_going --test_output=errors --verbose_failures=true
+test --test_env=LD_LIBRARY_PATH="/usr/local/cuda/lib64:/usr/local/cuda/extras/CUPTI/lib64"
+# Local test jobs has to be 4 because parallel_gpu_execute is fragile, I think
+test --test_timeout=300,450,1200,3600 --local_test_jobs=4 --run_under=//tensorflow/tools/ci_build/gpu_build:parallel_gpu_execute
+# Give only the list of failed tests at the end of the log
+test --test_summary=short
+
+# "nonpip" tests are regular py_test tests.
+# Pass --config=nonpip to run the same suite of tests. If you want to run just
+# one test for investigation, you don't need --config=nonpip; just run the
+# bazel test invocation as normal.
+test:nonpip_filters --test_tag_filters=gpu,requires-gpu,-no_gpu,-no_oss,-oss_serial,-no_cuda11,-no_oss_py38,-no_oss_py39,-no_oss_py310
+test:nonpip_filters --build_tag_filters=gpu,requires-gpu,-no_gpu,-no_oss,-oss_serial,-no_cuda11,-no_oss_py38,-no_oss_py39,-no_oss_py310
+test:nonpip_filters --test_lang_filters=py --flaky_test_attempts=3 --test_size_filters=small,medium
+test:nonpip --config=nonpip_filters -- //tensorflow/... -//tensorflow/python/integration_testing/... -//tensorflow/compiler/tf2tensorrt/... -//tensorflow/compiler/xrt/... -//tensorflow/core/tpu/... -//tensorflow/lite/... -//tensorflow/tools/toolchains/...
+
+# "pip tests" run a similar suite of tests the "nonpip" tests, but do something
+# odd to attempt to validate the quality of the pip package. The wheel is
+# installed into a virtual environment, and then that venv is used to run all
+# bazel tests with a special flag "--define=no_tensorflow_py_deps=true", which
+# drops all the bazel dependencies for each py_test; this makes all the tests
+# use the wheel's TensorFlow installation instead of the one made available
+# through bazel. This must be done in a different root directory, //bazel_pip/...,
+# because "import tensorflow" run from the root directory would instead import
+# the folder instead of the venv package.
+# 
+# Pass --config=pip to run the same suite of tests. If you want to run just one
+# test for investigation, you'll need --config=pip_venv instead, and then you
+# can specify whichever target you want.
+test:pip_venv --action_env PYTHON_BIN_PATH="/bazel_pip/bin/python3"
+test:pip_venv --action_env PYTHON_LIB_PATH="/bazel_pip/lib/python3/site-packages"
+test:pip_venv --python_path="/bazel_pip/bin/python3"
+test:pip_venv --define=no_tensorflow_py_deps=true
+# Yes, we don't exclude the gpu tests on pip for some reason.
+test:pip_filters --test_tag_filters=gpu,requires-gpu,-no_gpu,-no_oss,-oss_serial,-no_cuda11,-no_pip,-nopip,-no_oss_py38,-no_oss_py39,-no_oss_py310
+test:pip_filters --build_tag_filters=gpu,requires-gpu,-no_gpu,-no_oss,-oss_serial,-no_cuda11,-no_pip,-nopip,-no_oss_py38,-no_oss_py39,-no_oss_py310
+test:pip_filters --test_lang_filters=py --flaky_test_attempts=3 --test_size_filters=small,medium
+test:pip --config=pip_venv --config=pip_filters -- //bazel_pip/tensorflow/... -//bazel_pip/tensorflow/python/integration_testing/... -//bazel_pip/tensorflow/compiler/tf2tensorrt/... -//bazel_pip/tensorflow/compiler/xrt/... -//bazel_pip/tensorflow/core/tpu/... -//bazel_pip/tensorflow/lite/... -//tensorflow/tools/toolchains/...
+
+# For building libtensorflow archives
+test:libtensorflow_test -- //tensorflow/tools/lib_package:libtensorflow_test //tensorflow/tools/lib_package:libtensorflow_java_test
+build:libtensorflow_build -- //tensorflow/tools/lib_package:libtensorflow.tar.gz //tensorflow/tools/lib_package:libtensorflow_jni.tar.gz //tensorflow/java:libtensorflow.jar //tensorflow/java:libtensorflow-src.jar //tensorflow/tools/lib_package:libtensorflow_proto.zip
+
+# For Remote Build Execution.
+build:rbe --google_default_credentials
+build:rbe --bes_backend=buildeventservice.googleapis.com
+build:rbe --bes_results_url="https://source.cloud.google.com/results/invocations"
+build:rbe --bes_timeout=600s
+build:rbe --define=EXECUTOR=remote
+build:rbe --distinct_host_configuration=false
+build:rbe --flaky_test_attempts=3
+build:rbe --jobs=800
+build:rbe --remote_executor=grpcs://remotebuildexecution.googleapis.com
+build:rbe --remote_timeout=3600
+build:rbe --spawn_strategy=remote,worker,standalone,local
+build:rbe --remote_download_toplevel
+build:rbe --action_env=PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/local/go/bin"
+build:rbe --linkopt=-lrt --host_linkopt=-lrt --linkopt=-lm --host_linkopt=-lm  # Unclear why this is here
+build:rbe --host_crosstool_top="@sigbuild-r2.12_config_cuda//crosstool:toolchain"
+build:rbe --crosstool_top="@sigbuild-r2.12_config_cuda//crosstool:toolchain"
+build:rbe --extra_toolchains="@sigbuild-r2.12_config_cuda//crosstool:toolchain-linux-x86_64"
+build:rbe --extra_execution_platforms="@sigbuild-r2.12_config_platform//:platform"
+build:rbe --host_platform="@sigbuild-r2.12_config_platform//:platform"
+build:rbe --platforms="@sigbuild-r2.12_config_platform//:platform"
+# Python config is the same across all containers because the binary is the same
+build:rbe --repo_env=TF_PYTHON_CONFIG_REPO="@sigbuild-r2.12_config_python"
+build:rbe --remote_instance_name=projects/tensorflow-testing/instances/default_instance
+build:rbe --project_id="tensorflow-testing"
+
+# For Remote build execution -- GPU configuration
+build:rbe --repo_env=REMOTE_GPU_TESTING=1
+test:rbe --test_env=LD_LIBRARY_PATH="/usr/local/cuda/lib64:/usr/local/cuda/extras/CUPTI/lib64"
+build:rbe --repo_env=TF_CUDA_CONFIG_REPO="@sigbuild-r2.12_config_cuda"
+build:rbe --repo_env=TF_TENSORRT_CONFIG_REPO="@sigbuild-r2.12_config_tensorrt"
+build:rbe --repo_env=TF_NCCL_CONFIG_REPO="@sigbuild-r2.12_config_nccl"
+build:rbe --repo_env=TF_PYTHON_CONFIG_REPO="@sigbuild-r2.12_config_python"
+
+# For continuous builds
+test:pycpp_filters --test_tag_filters=-no_oss,-oss_serial,-benchmark-test,-v1only,gpu,-no_gpu,-no_gpu_presubmit,-no_cuda11
+test:pycpp_filters --build_tag_filters=-no_oss,-oss_serial,-benchmark-test,-v1only,gpu,-no_gpu,-no_gpu_presubmit,-no_cuda11
+test:pycpp_filters --test_lang_filters=cc,py --flaky_test_attempts=3 --test_size_filters=small,medium
+test:pycpp --config=pycpp_filters -- //tensorflow/... -//tensorflow/python/integration_testing/... -//tensorflow/compiler/tf2tensorrt/... -//tensorflow/compiler/xrt/... -//tensorflow/core/tpu/... -//tensorflow/lite/... -//tensorflow/tools/toolchains/...

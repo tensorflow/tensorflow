@@ -32,7 +32,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/tsl/platform/errors.h"
 
 namespace xla {
 
@@ -467,8 +467,8 @@ StatusOr<XlaOp> QrExpander::ProductOfElementaryHouseholderReflectors(
     batch_dims[i] = ShapeUtil::GetDimension(a_shape, i);
   }
 
-  auto q = Broadcast(IdentityMatrix(builder, type, m, m), batch_dims);
-  for (int64_t i = 0; i < p; i += block_size) {
+  auto q = Broadcast(IdentityMatrix(builder, type, m, n), batch_dims);
+  for (int64_t i = RoundDownTo(p - 1, block_size); i >= 0; i -= block_size) {
     int64_t k = std::min(block_size, p - i);
 
     auto a_block = SliceInMinorDims(a, {i, i}, {m, i + k});
@@ -483,18 +483,14 @@ StatusOr<XlaOp> QrExpander::ProductOfElementaryHouseholderReflectors(
     TF_ASSIGN_OR_RETURN(
         auto t, CompactWYRepresentation(type, batch_dims, y, taus_block, m - i,
                                         k, precision));
-    // q[:, i:] += (q[:, i:] @ y) @ np.conj((y @ np.conj(t.T)).T)
-    auto yt = BatchDot(y, /*transpose_x=*/false, MaybeConjugate(t, true),
-                       /*transpose_y=*/true, precision);
-    auto q_panel = SliceInMinorDims(q, {0, i}, {m, m});
-    auto q_update = BatchDot(q_panel, y, precision);
-    q_update =
-        BatchDot(q_update, /*transpose_x=*/false, MaybeConjugate(yt, true),
-                 /*transpose_y=*/true, precision);
+    // q[i:, i:] += y @ t @ (np.conj(y.T) @ q[i:, i:])
+    auto q_panel = SliceInMinorDims(q, {i, i}, {m, n});
+    auto ytq = BatchDot(MaybeConjugate(y, true), /*transpose_x=*/true, q_panel,
+                        /*transpose_y=*/false, precision);
+    auto q_update = BatchDot(y, BatchDot(t, ytq, precision), precision);
     q_panel = q_panel + q_update;
-    q = UpdateSliceInMinorDims(q, q_panel, {0, i});
+    q = UpdateSliceInMinorDims(q, q_panel, {i, i});
   }
-  q = SliceInMinorDims(q, {0, 0}, {m, n});
   return q;
 }
 
@@ -515,7 +511,7 @@ StatusOr<HloInstruction*> QrExpander::ExpandInstruction(
       absl::StrFormat("xla.%s_%s", instruction->custom_call_target(),
                       instruction->operand(0)->shape().ToString());
 
-  HloModule* module = instruction->parent()->parent();
+  HloModule* module = instruction->GetModule();
 
   HloComputation*& computation =
       computation_cache_.emplace(name, nullptr).first->second;

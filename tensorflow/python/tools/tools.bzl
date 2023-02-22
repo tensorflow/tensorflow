@@ -1,7 +1,7 @@
 """Definitions for using tools like saved_model_cli."""
 
 load("//tensorflow:tensorflow.bzl", "clean_dep", "if_xla_available")
-load("//tensorflow:tensorflow.bzl", "tfcompile_target_cpu")
+load("//tensorflow:tensorflow.default.bzl", "tfcompile_target_cpu")
 load("//tensorflow/compiler/aot:tfcompile.bzl", "target_llvm_triple")
 
 def _maybe_force_compile(args, force_compile):

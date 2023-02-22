@@ -145,6 +145,24 @@ def checkpoint_key(object_path, local_name):
   return f"{object_path}/{OBJECT_ATTRIBUTES_NAME}/{key_suffix}"
 
 
+def extract_object_name(key):
+  """Substrings the checkpoint key to the start of "/.ATTRIBUTES"."""
+  search_key = "/" + OBJECT_ATTRIBUTES_NAME
+  return key[:key.index(search_key)]
+
+
+def extract_local_name(key, prefix=None):
+  """Returns the substring after the "/.ATTIBUTES/" in the checkpoint key."""
+  # "local name" refers to the the keys of `Trackable._serialize_to_tensors.`
+  prefix = prefix or ""
+  search_key = OBJECT_ATTRIBUTES_NAME + "/" + prefix
+  # If checkpoint is saved from TF1, return key as is.
+  try:
+    return key[key.index(search_key) + len(search_key):]
+  except ValueError:
+    return key
+
+
 def slot_variable_key(variable_path, optimizer_path, slot_name):
   """Returns checkpoint key for a slot variable."""
   # Name slot variables:

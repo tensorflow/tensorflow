@@ -4,6 +4,7 @@ load(
 )
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [":friends"],
     features = ["-layering_check"],
     licenses = ["notice"],
@@ -23,6 +24,7 @@ tf_cuda_library(
     ],
     compatible_with = [],
     tags = [
+        "manual",
         "no_oss",
         "requires_cuda",
     ],  # Only build this library with --config=cuda.

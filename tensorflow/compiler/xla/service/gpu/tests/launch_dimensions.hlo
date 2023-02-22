@@ -1,4 +1,6 @@
-// RUN: hlo_to_llvm_ir %s | FileCheck %s
+// Disable the MLIR lowering path to test the ir emitter block size logic.
+// RUN: XLA_FLAGS="--xla_gpu_enable_softmax_fusion=false --xla_gpu_enable_mlir_lowering=false" \
+// RUN:   hlo_to_llvm_ir %s | FileCheck %s
 // This tests that we do not increase the grid launch size when
 // few_waves is enabled.
 
@@ -6,7 +8,7 @@
 // CHECK-DAG:   call i32 @llvm.nvvm.read.ptx.sreg.ctaid.x(), !range ![[ctaid_range:[0-9]+]]
 // CHECK-DAG:   call i32 @llvm.nvvm.read.ptx.sreg.tid.x(), !range ![[tid_range:[0-9]+]]
 // CHECK-DAG:   ![[ctaid_range]] = !{i32 0, i32 2}
-// CHECK-DAG:   ![[tid_range]] = !{i32 0, i32 256}
+// CHECK-DAG:   ![[tid_range]] = !{i32 0, i32 1024}
 
 HloModule Test
 

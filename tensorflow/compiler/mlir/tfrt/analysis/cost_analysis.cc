@@ -18,6 +18,7 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
+#include "tensorflow/core/tfrt/fallback/cost_recorder.h"
 
 namespace tensorflow {
 namespace tfrt_compiler {
@@ -54,8 +55,8 @@ int64_t InferLookupTableFindV2Cost(const CostContext& context,
   constexpr int64_t kLookupTableFindCostScale = 8;
   constexpr int64_t kLookupTableFindStringKeyCostScale = 16;
 
-  auto value_type = op.values().getType().cast<mlir::TensorType>();
-  auto key_type = op.keys().getType().cast<mlir::TensorType>();
+  auto value_type = op.getValues().getType().cast<mlir::TensorType>();
+  auto key_type = op.getKeys().getType().cast<mlir::TensorType>();
 
   int64_t output_size = InferTensorSize(context, value_type);
 
@@ -70,14 +71,14 @@ int64_t InferLookupTableFindV2Cost(const CostContext& context,
 // The cost function for tf.GatherV2.
 int64_t InferGatherV2Cost(const CostContext& context, mlir::TF::GatherV2Op op) {
   return InferTensorSize(context,
-                         op.output().getType().cast<mlir::TensorType>());
+                         op.getOutput().getType().cast<mlir::TensorType>());
 }
 
 // The cost function for tf.SparseSegmentSumOp.
 template <typename OpType>
 int64_t InferSparseSegmentOpCost(const CostContext& context, OpType op) {
   return InferTensorSize(
-      context, op.output().getType().template cast<mlir::TensorType>());
+      context, op.getOutput().getType().template cast<mlir::TensorType>());
 }
 
 // CostFunctionRegistry is a map from op names to their cost functions.
@@ -127,6 +128,15 @@ void RegisterCostFunction(absl::string_view op_name,
                        std::move(cost_function));
 }
 
+bool HasCostFunctionRegistered(absl::string_view op_name) {
+  return GetCostFunctionRegistry().contains(op_name);
+}
+
+int64_t CostAnalysis::GetCost(mlir::Operation* op) const {
+  assert(cost_map_.count(op) > 0);
+  return cost_map_.lookup(op);
+}
+
 void CostAnalysis::AnalyzeArguments(mlir::func::FuncOp func_op) {
   // Use the max size among function inputs as the default size of dynamic
   // shaped tensors in the function.
@@ -170,16 +180,6 @@ void CostAnalysis::EvaluateCost(mlir::Operation* op) {
     return;
   }
 
-  // Try to use its measured cost.
-  if (is_cost_measured_) {
-    const auto& measured_cost_map = op_cost_map_proto_.op_cost_map();
-    if (const auto op_cost = measured_cost_map.find(op_name);
-        op_cost != measured_cost_map.end()) {
-      cost_map_[op] = op_cost->second;
-      return;
-    }
-  }
-
   // For other ops, use the sum of input sizes as its cost.
   int64_t cost = kDefaultCheapCost;
   for (auto operand : op->getOperands()) {
@@ -196,18 +196,6 @@ void CostAnalysis::EvaluateCost(mlir::Operation* op) {
   }
 
   cost_map_[op] = cost;
-}
-
-Status CostAnalysis::ReadMeasuredCosts() {
-  const char* env_var = getenv("TF_TFRT_MEASURED_COST_PATH");
-  // No need to read because the cost measurement is disabled.
-  if (env_var == nullptr) return Status::OK();
-
-  tensorflow::Env* env = Env::Default();
-  const std::string measured_cost_path(env_var);
-  TF_RETURN_IF_ERROR(env->FileExists(measured_cost_path));
-  is_cost_measured_ = true;
-  return ReadTextProto(env, measured_cost_path, &op_cost_map_proto_);
 }
 
 }  // namespace tfrt_compiler

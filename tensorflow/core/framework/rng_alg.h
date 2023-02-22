@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_FRAMEWORK_RNG_ALG_H_
 #define TENSORFLOW_CORE_FRAMEWORK_RNG_ALG_H_
 
+#include "tensorflow/core/platform/logging.h"
+
 namespace tensorflow {
 
 enum Algorithm {
@@ -31,19 +33,30 @@ enum Algorithm {
   RNG_ALG_AUTO_SELECT = 3
 };
 
-static constexpr int RNG_KEY_SIZE = 1;
-static constexpr int RNG_MAX_COUNTER_SIZE = 2;
+// Same as `Algorithm`, but without AUTO_SELECT. We use C++ compiler's -Wswitch
+// and -Werror to check that `switch` covers all cases. When the algorithm
+// auto-selection has been resolved, we use this type so that
+// we don't need to (unnecessarily) handle the AUTO_SELECT case.
+enum class ConcreteRngAlgorithm {
+  RNG_ALG_PHILOX = 1,
+  RNG_ALG_THREEFRY = 2,
+};
+
 // Gets the counter size (in unit of uint64) for a counter-based RNG
-// algorithm `alg`. In the case of RNG_ALG_AUTO_SELECT, gets the minimal
-// counter size among all algorithms.
-inline int GetCounterSize(Algorithm alg) {
-  if (alg == RNG_ALG_PHILOX) {
-    return 2;
-  } else if (alg == RNG_ALG_THREEFRY) {
-    return 1;
+// algorithm `alg`. Callers of this function must ensure that `alg` doesn't have
+// non-enumerator values.
+inline int GetCounterSize(ConcreteRngAlgorithm alg) {
+  switch (alg) {
+    case ConcreteRngAlgorithm::RNG_ALG_PHILOX:
+      return 2;
+    case ConcreteRngAlgorithm::RNG_ALG_THREEFRY:
+      return 1;
   }
-  return 1;
+  LOG(ERROR) << "This point shouldn't have been reached.";
 }
+static constexpr int RNG_MAX_COUNTER_SIZE = 2;
+
+static constexpr int RNG_KEY_SIZE = 1;
 
 }  // end namespace tensorflow
 

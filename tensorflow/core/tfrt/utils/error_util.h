@@ -17,9 +17,9 @@ limitations under the License.
 
 #include "tensorflow/core/platform/status.h"
 #include "tfrt/support/error_util.h"  // from @tf_runtime
+#include "tfrt/support/forward_decls.h"  // from @tf_runtime
 
 namespace tfrt {
-class AsyncValue;
 class DecodedDiagnostic;
 
 tfrt::ErrorCode ConvertTfErrorCodeToTfrtErrorCode(
@@ -74,7 +74,7 @@ inline llvm::Error MakeStatusError(tensorflow::Status status) {
   return MakeStringError(MakeStatusString(status));
 }
 
-tensorflow::Status TfStatusFromAbslStatus(absl::Status status);
+absl::Status AbslStatusFromTfStatus(tensorflow::Status status);
 
 }  // namespace tfrt
 

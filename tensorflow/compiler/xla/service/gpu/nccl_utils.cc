@@ -15,9 +15,13 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/gpu/nccl_utils.h"
 
+#include <cstdlib>
 #include <memory>
+#include <string>
 #include <string_view>
+#include <tuple>
 #include <utility>
+#include <vector>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/strings/str_format.h"
@@ -29,7 +33,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/rendezvous.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/statusor.h"
-#include "tensorflow/core/platform/env.h"
+#include "tensorflow/tsl/platform/env.h"
 
 namespace xla {
 namespace gpu {
@@ -52,7 +56,7 @@ Status ToStatus(ncclResult_t s, const char* file, int64_t line,
   if (s == ncclSuccess) {
     return OkStatus();
   }
-  return tensorflow::errors::Internal(
+  return tsl::errors::Internal(
       absl::StrFormat("%s:%d: NCCL operation %s failed: %s", file, line, expr,
                       ncclGetErrorString(s)));
 }
@@ -72,7 +76,8 @@ ncclRedOp_t ToNcclReduction(ReductionKind kind) {
 
 namespace {
 
-StatusOr<ncclDataType_t> ToNcclDataType(PrimitiveType element_type) {
+StatusOr<ncclDataType_t> ToNcclDataType(PrimitiveType element_type,
+                                        Thunk::Kind reduction_op) {
   switch (element_type) {
     case S8:
       return ncclInt8;
@@ -95,12 +100,25 @@ StatusOr<ncclDataType_t> ToNcclDataType(PrimitiveType element_type) {
     case F64:
     case C128:
       return ncclFloat64;
+    case S16:
+    case U16:
+      // For all-reduce and reduce-scatter, we expect 16 bit integer types to be
+      // promoted to 32-bit.
+      if (reduction_op == Thunk::kNcclAllReduce ||
+          reduction_op == Thunk::kNcclAllReduceStart ||
+          reduction_op == Thunk::kNcclReduceScatter) {
+        return tsl::errors::InvalidArgument(absl::StrFormat(
+            "Unsupported data type: %s", PrimitiveType_Name(element_type)));
+      }
+      // For collectives that just move data around, we can use ncclFloat16 for
+      // 16-bit integer data types.
+      return ncclFloat16;
 #if defined(__CUDA_BF16_TYPES_EXIST__)
     case BF16:
       return ncclBfloat16;
 #endif
     default:
-      return tensorflow::errors::InvalidArgument(absl::StrFormat(
+      return tsl::errors::InvalidArgument(absl::StrFormat(
           "Unsupported data type: %s", PrimitiveType_Name(element_type)));
   }
 }
@@ -125,8 +143,8 @@ struct NcclCliqueState {
   ncclUniqueId unique_id;
   int64_t run_id = -1;
 
-  // mu guards ready, status, and communicators during initialization.
-  // Once 'ready' has been notified, the communicators may be accessed without
+  // `mu` guards `communicators` and `status` during initialization.
+  // Once `ready` has been notified, the communicators may be accessed without
   // synchronization.
   absl::Mutex mu;
   absl::Notification ready;
@@ -192,8 +210,9 @@ void CheckNcclAsyncError(NcclComm& lockable_comm) {
 }  // namespace
 
 StatusOr<std::pair<ncclDataType_t, int>> ToNcclDataTypeAndCountMultiplier(
-    PrimitiveType element_type) {
-  TF_ASSIGN_OR_RETURN(ncclDataType_t dtype, ToNcclDataType(element_type));
+    PrimitiveType element_type, Thunk::Kind reduction_op) {
+  TF_ASSIGN_OR_RETURN(ncclDataType_t dtype,
+                      ToNcclDataType(element_type, reduction_op));
   bool is_complex = primitive_util::IsComplexType(element_type);
   return std::make_pair(dtype, is_complex ? 2 : 1);
 }
@@ -216,8 +235,9 @@ StatusOr<const NcclUniqueIdCallback*> GetNcclUniqueIdCallback(
       << "If non-local devices are taking part of a collective API on "
          "GPU, the nccl_unique_id_callback must be provided by the client.";
 
-  static NcclUniqueIdCallback local_callback(LocalNcclUniqueIdCallback);
-  return &local_callback;
+  static auto* local_callback =
+      new NcclUniqueIdCallback(LocalNcclUniqueIdCallback);
+  return local_callback;
 }
 
 StatusOr<NcclComm::Lock> AcquireNcclComm(
@@ -231,7 +251,6 @@ StatusOr<NcclComm::Lock> AcquireNcclComm(
       run_id, op_id, clique_key, unique_id_callback, num_local_participants);
 
   if (!clique->ok()) return clique->status();
-  NcclCliqueState& state = ***clique;
 
   struct AllCommunicators {
     absl::Mutex mu;
@@ -242,58 +261,51 @@ StatusOr<NcclComm::Lock> AcquireNcclComm(
   // Launch a thread that periodically checks all NCCL communicators for
   // asynchronous errors. If an asynchronous error is observed, the communicator
   // is aborted and an error message logged.
-  static auto check_async_error_thread =
-      tensorflow::Env::Default()->StartThread(
-          tensorflow::ThreadOptions(), "nccl_async_error_thread", [&] {
-            while (true) {
-              absl::SleepFor(absl::Seconds(30));
-              absl::MutexLock lock(&all_communicators.mu);
-              for (NcclComm* comm : all_communicators.communicators) {
-                CheckNcclAsyncError(*comm);
-              }
-            }
-          });
+  static auto check_async_error_thread = tsl::Env::Default()->StartThread(
+      tsl::ThreadOptions(), "nccl_async_error_thread", [&] {
+        while (true) {
+          absl::SleepFor(absl::Seconds(30));
+          absl::MutexLock lock(&all_communicators.mu);
+          for (NcclComm* comm : all_communicators.communicators) {
+            CheckNcclAsyncError(*comm);
+          }
+        }
+      });
   (void)check_async_error_thread;  // Silence unused variable warning.
 
-  NcclComm::Lock comm;
-  if (state.ready.HasBeenNotified()) {
-    comm = state.communicators[rank]->Acquire();
-  } else {
-    auto comm_ptr = std::make_unique<NcclComm>();
-    comm = comm_ptr->Acquire();
+  NcclCliqueState& state = ***clique;
+  if (!state.ready.HasBeenNotified()) {
     int nranks = clique_key.devices().size();
     const ncclUniqueId& id = state.unique_id;
-    Status status =
-        XLA_CUDA_STATUS(ncclCommInitRank(comm.get(), nranks, id, rank));
 
-    // Add the communicator to the all_communicators list.
-    {
-      absl::MutexLock lock(&all_communicators.mu);
-      all_communicators.communicators.push_back(comm_ptr.get());
-    }
+    ncclComm_t comm = nullptr;
+    Status status = XLA_CUDA_STATUS(ncclCommInitRank(&comm, nranks, id, rank));
 
-    absl::MutexLock lock(&state.mu);
-    state.status.Update(status);
-    state.communicators[rank] = std::move(comm_ptr);
+    size_t num_initialized = [&] {
+      absl::MutexLock lock(&state.mu);
+      state.status.Update(status);
+      state.communicators[rank] = std::make_unique<NcclComm>(comm);
+      return state.communicators.size();
+    }();
 
     // Wait for all communicators to initialize before allowing any progress.
     // Otherwise we may get deadlocks, because ncclCommInitRank may allocate,
     // which may block on the completion of device activity on a peer device,
     // which may depend on the completion of this collective if we do not have a
     // barrier to prevent it.
-    auto all_initialized = [&]() ABSL_EXCLUSIVE_LOCKS_REQUIRED(state.mu) {
-      return state.communicators.size() == num_local_participants;
-    };
-    state.mu.Await(absl::Condition(&all_initialized));
-    status = state.status;
-    if (!state.ready.HasBeenNotified()) {
+    if (num_initialized == num_local_participants) {
       state.ready.Notify();
+    } else {
+      TF_RETURN_IF_ERROR(status);
+      state.ready.WaitForNotification();
     }
+
+    absl::MutexLock lock(&all_communicators.mu);
+    all_communicators.communicators.push_back(state.communicators[rank].get());
   }
-  if (!state.status.ok()) {
-    return state.status;
-  }
-  return comm;
+
+  TF_RETURN_IF_ERROR(state.status);
+  return state.communicators[rank]->Acquire();
 }
 }  // namespace gpu
 }  // namespace xla

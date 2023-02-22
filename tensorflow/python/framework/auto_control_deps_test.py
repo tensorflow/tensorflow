@@ -18,7 +18,6 @@ import itertools
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
-from tensorflow.python.eager import function
 from tensorflow.python.framework import auto_control_deps as acd
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -798,11 +797,11 @@ class AutomaticControlDependenciesTest(test.TestCase):
       self.assertAllEqual(val.eval(feed_dict={p: False}), 10.0)
       self.assertAllEqual(val.eval(feed_dict={p: True}), 20.0)
 
-  def testDefunWhileLoopWithCapturedLoopVars(self):
+  def testFunctionWhileLoopWithCapturedLoopVars(self):
     n = 3
     x = constant_op.constant(list(range(n)))
 
-    @function.defun
+    @def_function.function
     def loop():
       c = lambda i, x: i < n
       b = lambda i, x: (i + 1, x + 1)
@@ -826,25 +825,25 @@ class AutomaticControlDependenciesTest(test.TestCase):
 
       self.assertAllEqual(f(), 4.0)
 
-  def testOptimizerInDefun(self):
+  def testOptimizerInFunction(self):
     def loss(v):
       return v**2
 
     optimizer = momentum.MomentumOptimizer(learning_rate=1.0, momentum=1.0)
 
-    @function.defun
+    @def_function.function
     def train():
-      self.v = resource_variable_ops.ResourceVariable(1.0)
       grad = backprop.implicit_grad(loss)(self.v)
       optimizer.apply_gradients(grad)
       return self.v.read_value()
 
+    self.v = resource_variable_ops.ResourceVariable(1.0)
     value = train()
     self.assertEqual(value.numpy(), -1.0)
 
   def testReturningNonTensorRaisesError(self):
     optimizer = momentum.MomentumOptimizer(learning_rate=1.0, momentum=1.0)
-    optimizer.apply_gradients = function.defun(optimizer.apply_gradients)
+    optimizer.apply_gradients = def_function.function(optimizer.apply_gradients)
     v = resource_variable_ops.ResourceVariable(1.0)
     grad = backprop.implicit_grad(lambda v: v**2)(v)
 
@@ -856,29 +855,29 @@ class AutomaticControlDependenciesTest(test.TestCase):
 
   # TODO(b/111663004): This should work when the outer context is graph
   # building.
-  def testOptimizerNonSlotVarsInDefunNoError(self):
+  def testOptimizerNonSlotVarsInFunctionNoError(self):
     def loss(v):
       return v**2
 
     optimizer = adam.AdamOptimizer(learning_rate=1.0)
 
-    @function.defun
+    @def_function.function
     def train():
-      self.v = resource_variable_ops.ResourceVariable(1.0)
       grad = backprop.implicit_grad(loss)(self.v)
       optimizer.apply_gradients(grad)
       return self.v.read_value()
 
+    self.v = resource_variable_ops.ResourceVariable(1.0)
     train()
 
-  def testOptimizerInDefunWithCapturedVariable(self):
+  def testOptimizerInFunctionWithCapturedVariable(self):
     v = resource_variable_ops.ResourceVariable(1.0)
     def loss():
       return v**2
 
     optimizer = momentum.MomentumOptimizer(learning_rate=1.0, momentum=1.0)
 
-    @function.defun
+    @def_function.function
     def train():
       grad = backprop.implicit_grad(loss)()
       optimizer.apply_gradients(grad)
@@ -899,6 +898,29 @@ class AutomaticControlDependenciesTest(test.TestCase):
       return inner(var.handle, var.handle)
 
     self.assertEqual(self.evaluate(outer()), 2.0)
+
+  def testManualControlDepMonitoringAttrNotAdded(self):
+    with context.graph_mode(), self.cached_session():
+      v = resource_variable_ops.ResourceVariable(1.0)
+      self.evaluate(variables.global_variables_initializer())
+      with acd.AutomaticControlDependencies():
+        read_op1 = gen_resource_variable_ops.read_variable_op(
+            v.handle, v.dtype).op
+        read_op2 = gen_resource_variable_ops.read_variable_op(
+            v.handle, v.dtype).op
+        assign_op = gen_resource_variable_ops.assign_variable_op(
+            v.handle, v + 1)
+      # Writes should have control deps automatically added from "all" reads
+      # since last write or start of the code block.
+      self.assertIn(read_op1, assign_op.control_inputs)
+      self.assertIn(read_op2, assign_op.control_inputs)
+      # But, we shouldn't add the monitoring attribute in this case.
+      with self.assertRaises(ValueError):
+        assign_op.get_attr("_has_manual_control_dependencies")
+      with self.assertRaises(ValueError):
+        read_op1.get_attr("_has_manual_control_dependencies")
+      with self.assertRaises(ValueError):
+        read_op2.get_attr("_has_manual_control_dependencies")
 
 
 if __name__ == "__main__":

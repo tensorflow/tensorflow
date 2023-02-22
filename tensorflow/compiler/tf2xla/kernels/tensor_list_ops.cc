@@ -115,7 +115,7 @@ Status TryGetElementShapeFromInput(XlaOpKernelContext* ctx, xla::XlaOp input,
   auto is_compile_time_constant_or = input.builder()->IsConstant(input);
   TF_RETURN_IF_ERROR(is_compile_time_constant_or.status());
 
-  bool is_compile_time_constant = is_compile_time_constant_or.ValueOrDie();
+  bool is_compile_time_constant = is_compile_time_constant_or.value();
   if (!is_compile_time_constant) {
     *got_shape = false;
     return OkStatus();
@@ -183,7 +183,7 @@ class TensorListReserveOp : public XlaOpKernel {
       xla::XlaOp new_list;
       OP_REQUIRES_OK(ctx, CreateZerosTensorListWithShape(
                               ctx->builder(), list_shape,
-                              list_dynamic_dims_or.ValueOrDie(), &new_list));
+                              list_dynamic_dims_or.value(), &new_list));
       xla::XlaOp result;
       OP_REQUIRES_OK(
           ctx,
@@ -258,7 +258,7 @@ class EmptyTensorListOp : public XlaOpKernel {
         xla::XlaOp result;
         OP_REQUIRES_OK(ctx, CreateZerosTensorListWithShape(
                                 ctx->builder(), list_shape,
-                                list_dynamic_dims_or.ValueOrDie(), &result));
+                                list_dynamic_dims_or.value(), &result));
 
         ctx->SetTensorListOutput(0, result);
         return;
@@ -553,6 +553,8 @@ class TensorListSplitOp : public XlaOpKernel {
       OP_REQUIRES(ctx, len == length,
                   errors::Unimplemented("All lengths have to be the same"));
     }
+    OP_REQUIRES(ctx, length,
+                errors::Unimplemented("All lengths must be positive"));
     OP_REQUIRES(
         ctx, element_dims[0] % length == 0,
         errors::Unimplemented("Buffer size has to be a multiple of length"));

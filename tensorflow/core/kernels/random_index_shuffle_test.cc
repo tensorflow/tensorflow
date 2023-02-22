@@ -36,7 +36,8 @@ TEST_P(RandomIndexShuffleTest, Bijection) {
   const uint64_t max_value = GetMaxValue();
   std::vector<bool> seen(max_value + 1, false);
   for (uint64_t value = 0; value <= max_value; ++value) {
-    const uint64 output_value = index_shuffle(value, key, max_value);
+    const uint64 output_value =
+        index_shuffle(value, key, max_value, /* rounds= */ 4);
     EXPECT_GE(output_value, 0);
     EXPECT_LE(output_value, max_value);
     EXPECT_FALSE(seen[output_value]);

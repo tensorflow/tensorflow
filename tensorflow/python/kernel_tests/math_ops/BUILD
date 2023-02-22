@@ -1,11 +1,9 @@
 # Tests of TensorFlow math kernels written using the Python API.
 
-load("//tensorflow:tensorflow.bzl", "cuda_py_test")
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "tf_py_test")
+load("//tensorflow:tensorflow.default.bzl", "cuda_py_test", "tf_py_test")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//tensorflow:internal"],
     licenses = ["notice"],
 )
@@ -30,6 +28,7 @@ cuda_py_test(
 cuda_py_test(
     name = "approx_topk_test",
     srcs = ["approx_topk_test.py"],
+    tags = ["no_oss"],
     xla_enable_strict_auto_jit = True,
     xla_enabled = True,
     deps = [
@@ -92,6 +91,7 @@ cuda_py_test(
     size = "medium",
     srcs = ["batch_matmul_op_test.py"],
     shard_count = 20,
+    tags = ["no_mac_arm64"],
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
@@ -295,6 +295,7 @@ cuda_py_test(
     size = "medium",
     srcs = ["matmul_op_test.py"],
     shard_count = 20,
+    tags = ["no_mac_arm64"],
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
@@ -380,6 +381,7 @@ cuda_py_test(
     size = "medium",
     srcs = ["segment_reduction_ops_test.py"],
     shard_count = 10,
+    tags = ["noasan"],  # TODO(b/249297398): enable the test for asan.
     # TODO (b/173835746): the test fails with XLA.
     xla_enable_strict_auto_jit = False,
     deps = [
@@ -415,7 +417,10 @@ cuda_py_test(
     size = "medium",
     srcs = ["tensordot_op_test.py"],
     shard_count = 20,
-    tags = ["no_rocm"],
+    tags = [
+        "no_mac_arm64",
+        "no_rocm",
+    ],
     xla_enable_strict_auto_jit = False,  # b/161856380
     deps = [
         "//tensorflow/python:array_ops",

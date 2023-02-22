@@ -50,7 +50,7 @@ func.func @cluster_with_transpose(%arg0: tensor<?x?xf32>,
 // CHECK-SAME: }
 // CHECK:      func @compute(
 // CHECK-SAME:   %arg0: tensor<?x?xf32>
-// CHECK-SAME:   %arg1: tensor<2xi32> {jitrt.constraint = "value"}
+// CHECK-SAME:   %arg1: tensor<2xi32> {rt.constraint = "value"}
 // CHECK-SAME: ) -> tensor<?x?xf32> {
 // CHECK:        %[[RET:.*]] = "tf.Transpose"(%arg0, %arg1)
 // CHECK:        return %[[RET]]

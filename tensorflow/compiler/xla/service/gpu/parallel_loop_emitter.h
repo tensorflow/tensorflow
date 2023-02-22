@@ -56,14 +56,6 @@ class ParallelLoopEmitter {
       absl::string_view loop_name, llvm::Type* index_type,
       llvm::Value* base_index);
 
-  // This is similar to EmitIndexAndSetExitBasicBlock except that we
-  // change the mapping of threads to output buffer index such that adjacent
-  // threads write to logically adjacent index in output buffer instead of
-  // physically adjacent index.
-  std::vector<llvm_ir::IrArray::Index> EmitLogicalIndexAndSetExitBasicBlock(
-      absl::string_view loop_name, llvm::Type* index_type,
-      llvm::Value* base_index);
-
   Status EmitLoop(absl::string_view loop_name = "",
                   llvm::Type* index_type = nullptr);
 

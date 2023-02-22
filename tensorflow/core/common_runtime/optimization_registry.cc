@@ -52,8 +52,9 @@ Status OptimizationPassRegistry::RunGrouping(
   };
 
   VLOG(1) << "Starting optimization of a group " << grouping;
-  if (VLOG_IS_ON(2)) {
-    std::string prefix = strings::StrCat("before_grouping_", grouping);
+  if (VLOG_IS_ON(3)) {
+    std::string prefix = strings::StrCat(options.debug_filename_prefix,
+                                         "before_grouping_", grouping);
     dump_graph(prefix);
   }
   auto group = groups_.find(grouping);
@@ -66,7 +67,10 @@ Status OptimizationPassRegistry::RunGrouping(
       VLOG(1) << "Running optimization phase " << phase.first;
       for (auto& pass : phase.second) {
         VLOG(1) << "Running optimization pass: " << pass->name();
-
+        if (options.graph) {
+          VLOG(1) << "Graph #nodes " << (*options.graph)->num_nodes()
+                  << " #edges " << (*options.graph)->num_edges();
+        }
         tensorflow::metrics::ScopedCounter<2> pass_timings(
             tensorflow::metrics::GetGraphOptimizationCounter(),
             {kGraphOptimizationCategory, pass->name()});
@@ -75,9 +79,9 @@ Status OptimizationPassRegistry::RunGrouping(
         if (!s.ok()) return s;
         pass_timings.ReportAndStop();
         if (VLOG_IS_ON(5)) {
-          std::string prefix =
-              strings::StrCat("after_group_", grouping, "_phase_", phase.first,
-                              "_", pass->name());
+          std::string prefix = strings::StrCat(
+              options.debug_filename_prefix, "after_group_", grouping,
+              "_phase_", phase.first, "_", pass->name());
           dump_graph(prefix);
         }
       }
@@ -85,8 +89,14 @@ Status OptimizationPassRegistry::RunGrouping(
     group_timings.ReportAndStop();
   }
   VLOG(1) << "Finished optimization of a group " << grouping;
-  if (VLOG_IS_ON(2)) {
-    std::string prefix = strings::StrCat("after_grouping_", grouping);
+  if (options.graph && group != groups_.end()) {
+    VLOG(1) << "Graph #nodes " << (*options.graph)->num_nodes() << " #edges "
+            << (*options.graph)->num_edges();
+  }
+  if (VLOG_IS_ON(3) ||
+      (VLOG_IS_ON(2) && grouping == Grouping::POST_REWRITE_FOR_EXEC)) {
+    std::string prefix = strings::StrCat(options.debug_filename_prefix,
+                                         "after_grouping_", grouping);
     dump_graph(prefix);
   }
   return OkStatus();

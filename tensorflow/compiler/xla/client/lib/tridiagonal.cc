@@ -157,7 +157,7 @@ Status ValidateTridiagonalMatMulDiagonal(const Shape& diagonal_shape,
         "but got %d and %d.",
         diagonal_name, digonal_last_dimension, rhs_second_last_dimension);
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 StatusOr<TridiagonalMatMulShapeParams> CheckMatMulSystemAndReturnShapeParams(

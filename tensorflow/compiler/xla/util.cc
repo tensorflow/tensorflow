@@ -22,6 +22,9 @@ limitations under the License.
 #include <numeric>
 #include <optional>
 #include <string>
+#include <tuple>
+#include <utility>
+#include <vector>
 
 #include "absl/algorithm/container.h"
 #include "absl/base/casts.h"
@@ -33,12 +36,9 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "absl/strings/str_split.h"
 #include "tensorflow/compiler/xla/types.h"
-#include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/math/math_util.h"
-#include "tensorflow/core/platform/bfloat16.h"
-#include "tensorflow/core/platform/env.h"
-#include "tensorflow/core/platform/numbers.h"
-#include "tensorflow/core/platform/stacktrace.h"
+#include "tensorflow/tsl/platform/env.h"
+#include "tensorflow/tsl/platform/numbers.h"
+#include "tensorflow/tsl/platform/stacktrace.h"
 
 namespace xla {
 
@@ -68,7 +68,7 @@ std::vector<int64_t> ToMixedRadix(const int64_t n,
 Status WithLogBacktrace(const Status& status) {
   CHECK(!status.ok());
   VLOG(1) << status.ToString();
-  VLOG(2) << tensorflow::CurrentStackTrace();
+  VLOG(2) << tsl::CurrentStackTrace();
   return status;
 }
 
@@ -81,13 +81,13 @@ ScopedLoggingTimer::ScopedLoggingTimer(absl::string_view label, bool enabled,
       timer_stats_(timer_stats),
       enabled_(enabled) {
   if (enabled_) {
-    start_micros_ = tensorflow::Env::Default()->NowMicros();
+    start_micros_ = tsl::Env::Default()->NowMicros();
   }
 }
 
 void ScopedLoggingTimer::StopAndLog() {
   if (enabled_) {
-    uint64_t end_micros = tensorflow::Env::Default()->NowMicros();
+    uint64_t end_micros = tsl::Env::Default()->NowMicros();
     double secs = (end_micros - start_micros_) / 1000000.0;
 
     TimerStats& stats = *timer_stats_;
@@ -99,12 +99,10 @@ void ScopedLoggingTimer::StopAndLog() {
     stats.times_called++;
 
     LOG(INFO).AtLocation(file_, line_)
-        << label_
-        << " time: " << tensorflow::strings::HumanReadableElapsedTime(secs)
+        << label_ << " time: " << tsl::strings::HumanReadableElapsedTime(secs)
         << " (cumulative: "
-        << tensorflow::strings::HumanReadableElapsedTime(stats.cumulative_secs)
-        << ", max: "
-        << tensorflow::strings::HumanReadableElapsedTime(stats.max_secs)
+        << tsl::strings::HumanReadableElapsedTime(stats.cumulative_secs)
+        << ", max: " << tsl::strings::HumanReadableElapsedTime(stats.max_secs)
         << ", #called: " << stats.times_called << ")";
     enabled_ = false;
   }
@@ -136,8 +134,10 @@ std::string Reindent(absl::string_view original,
 
 template <typename FloatT>
 static void RoundTripNanPayload(FloatT value, std::string* result) {
+  static_assert(!std::is_same<FloatT, tsl::float8_e4m3fn>::value,
+                "RoundTripNanPayload does not support E4M3");
   const int kPayloadBits = NanPayloadBits<FloatT>();
-  if (std::isnan(value) && kPayloadBits > 0) {
+  if (Eigen::numext::isnan(value) && kPayloadBits > 0) {
     auto rep = absl::bit_cast<
         typename UnsignedIntegerTypeForSize<sizeof(FloatT)>::type>(value);
     auto payload = rep & NanPayloadBitMask<FloatT>();
@@ -154,6 +154,17 @@ static std::string GenericRoundTripFpToString(FloatT value) {
   int max_decimal_digits = std::numeric_limits<FloatT>::max_digits10;
   return absl::StrFormat("%.*g", max_decimal_digits,
                          static_cast<double>(value));
+}
+
+std::string RoundTripFpToString(tsl::float8_e5m2 value) {
+  std::string result = GenericRoundTripFpToString(value);
+  RoundTripNanPayload(value, &result);
+  return result;
+}
+
+std::string RoundTripFpToString(tsl::float8_e4m3fn value) {
+  std::string result = GenericRoundTripFpToString(value);
+  return result;
 }
 
 std::string RoundTripFpToString(bfloat16 value) {
@@ -229,8 +240,8 @@ std::string HumanReadableNumOps(double flops, double nanoseconds,
     return absl::StrCat("NaN ", op_prefix, "OP/s");
   }
   double nano_flops = flops / nanoseconds;
-  std::string throughput = tensorflow::strings::HumanReadableNum(
-      static_cast<int64_t>(nano_flops * 1e9));
+  std::string throughput =
+      tsl::strings::HumanReadableNum(static_cast<int64_t>(nano_flops * 1e9));
   absl::string_view sp(throughput);
   // Use the more common "G(FLOPS)", rather than "B(FLOPS)"
   if (absl::EndsWith(sp, "B") ||  // Ends in 'B', ignoring case
@@ -253,8 +264,8 @@ std::string HumanReadableNumTranscendentalOps(double trops,
 
 void LogLines(int sev, absl::string_view text, const char* fname, int lineno) {
   const int orig_sev = sev;
-  if (sev == tensorflow::FATAL) {
-    sev = tensorflow::ERROR;
+  if (sev == tsl::FATAL) {
+    sev = tsl::ERROR;
   }
 
   // Protect calls with a mutex so we don't interleave calls to LogLines from
@@ -269,14 +280,14 @@ void LogLines(int sev, absl::string_view text, const char* fname, int lineno) {
       eol = text.size();
     }
     auto msg = text.substr(cur, eol - cur);
-    tensorflow::internal::LogString(fname, lineno, sev,
-                                    std::string(msg.data(), msg.size()));
+    tsl::internal::LogString(fname, lineno, sev,
+                             std::string(msg.data(), msg.size()));
     cur = eol + 1;
   }
 
-  if (orig_sev == tensorflow::FATAL) {
-    tensorflow::internal::LogString(fname, lineno, orig_sev,
-                                    "Aborting due to errors.");
+  if (orig_sev == tsl::FATAL) {
+    tsl::internal::LogString(fname, lineno, orig_sev,
+                             "Aborting due to errors.");
   }
 }
 
@@ -377,7 +388,7 @@ ConvertedDimensionNumbers ConvertDimensionNumbers(
       }
     } else if (any_present) {
       // Try to find if there is a to dimension that is like (from) [2,32] ->
-      // (to) [4,4,4] to detect that from dimensoin 1 can be partially mapped
+      // (to) [4,4,4] to detect that from dimension 1 can be partially mapped
       // into dimension 1 and 2 of the to sizes with a partial size of 2.
       if (common_factors[i].first + 2 == common_factors[i + 1].first &&
           absl::c_linear_search(from_dimensions, common_factors[i].first + 1)) {

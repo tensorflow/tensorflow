@@ -13,24 +13,25 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/core/common_runtime/gpu/gpu_cudamalloc_allocator.h"
+
 #ifdef GOOGLE_CUDA
 #include "third_party/gpus/cuda/include/cuda.h"
-#include "tensorflow/stream_executor/cuda/cuda_activation.h"
+#include "tensorflow/compiler/xla/stream_executor/cuda/cuda_activation.h"
 #endif  // GOOGLE_CUDA
 
-#include "tensorflow/core/common_runtime/device/device_id_utils.h"
-#include "tensorflow/core/common_runtime/gpu/gpu_cudamalloc_allocator.h"
-#include "tensorflow/core/common_runtime/gpu/gpu_id.h"
-#include "tensorflow/core/common_runtime/gpu/gpu_init.h"
-#include "tensorflow/core/platform/stream_executor.h"
+#include "tensorflow/compiler/xla/stream_executor/device_id_utils.h"
+#include "tensorflow/compiler/xla/stream_executor/gpu/gpu_init.h"
+#include "tensorflow/tsl/framework/device_id.h"
+#include "tensorflow/tsl/platform/logging.h"
 
 namespace tensorflow {
 
 GPUcudaMallocAllocator::GPUcudaMallocAllocator(
-    PlatformDeviceId platform_device_id) {
-  stream_exec_ = DeviceIdUtil::ExecutorForPlatformDeviceId(GPUMachineManager(),
-                                                           platform_device_id)
-                     .ValueOrDie();
+    tsl::PlatformDeviceId platform_device_id) {
+  stream_exec_ = se::DeviceIdUtil::ExecutorForPlatformDeviceId(
+                     se::GPUMachineManager(), platform_device_id)
+                     .value();
 }
 
 void* GPUcudaMallocAllocator::AllocateRaw(size_t alignment, size_t num_bytes) {

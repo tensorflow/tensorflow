@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <atomic>
+#include <cmath>
 #include <deque>
 #include <memory>
 #include <utility>
@@ -124,6 +125,29 @@ inline int64_t CeilDiv(int64_t numerator, int64_t denominator) {
   return (numerator + denominator - 1) / denominator;
 }
 
+// Returns the `cycle_length` computed using the `input_cycle_length` and the
+// `num_parallel_calls`. If `cycle_length` is not to be autotuned, we set it to
+// the `input_cycle_length`. If parallelism is not to be autotuned, we set the
+// cycle length to match the `num_parallel_calls` or the number of schedulable
+// cores, whichever is smaller. If it is to be autotuned, we set it so that the
+// number of threads created for the current and future cycle elements roughly
+// matches the number of schedulable cores.
+int64_t ComputeCycleLength(int64_t input_cycle_length,
+                           int64_t num_parallel_calls) {
+  int64_t cycle_length = input_cycle_length;
+  if (cycle_length == model::kAutotune) {
+    if (num_parallel_calls != model::kAutotune) {
+      cycle_length = std::min(num_parallel_calls,
+                              static_cast<int64_t>(port::MaxParallelism()));
+    } else {
+      const int num_threads_per_cycle_length = kDefaultCyclePrefetchFactor + 1;
+      cycle_length =
+          CeilDiv(port::MaxParallelism(), num_threads_per_cycle_length);
+    }
+  }
+  return cycle_length;
+}
+
 int64_t ComputeBufferOutputElements(int64_t configured_buffer_output_elements,
                                     int64_t block_length) {
   if (configured_buffer_output_elements != model::kAutotune) {
@@ -180,12 +204,13 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
       : DatasetBase(DatasetContext(ctx)),
         input_(input),
         captured_func_(std::move(captured_func)),
-        cycle_length_(cycle_length),
+        input_cycle_length_(cycle_length),
+        cycle_length_(ComputeCycleLength(cycle_length, num_parallel_calls)),
         block_length_(block_length),
         buffer_output_elements_(
             ComputeBufferOutputElements(buffer_output_elements, block_length)),
         prefetch_input_elements_(ComputePrefetchInputElements(
-            prefetch_input_elements, cycle_length)),
+            prefetch_input_elements, cycle_length_)),
         num_parallel_calls_(num_parallel_calls),
         deterministic_(deterministic),
         output_types_(output_types),
@@ -269,7 +294,11 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
     list_inputs.emplace_back(input_index++, other_arguments);
 
     Node* cycle_length_node;
-    TF_RETURN_IF_ERROR(b->AddScalar(cycle_length_, &cycle_length_node));
+    if (GetExperiments().contains("serialize_input_cycle_length")) {
+      TF_RETURN_IF_ERROR(b->AddScalar(input_cycle_length_, &cycle_length_node));
+    } else {
+      TF_RETURN_IF_ERROR(b->AddScalar(cycle_length_, &cycle_length_node));
+    }
     inputs.emplace_back(input_index++, cycle_length_node);
 
     Node* block_length_node;
@@ -366,8 +395,13 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
       params.cancellation_manager = cancellation_manager_.get();
       TF_RETURN_IF_ERROR(dataset()->input_->MakeIterator(
           IteratorContext(params), this, prefix(), &input_impl_));
-      return dataset()->captured_func_->Instantiate(
-          ctx, &instantiated_captured_func_);
+      TF_RETURN_IF_ERROR(dataset()->captured_func_->Instantiate(
+          ctx, &instantiated_captured_func_));
+      if (ctx->warm_start() && !ctx->is_restoring()) {
+        EnsureInitialElementsCreated();
+        EnsureThreadsStarted();
+      }
+      return OkStatus();
     }
 
     Status GetNextInternal(IteratorContext* ctx,
@@ -486,7 +520,7 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
                            IteratorStateReader* reader) override {
       {
         mutex_lock l(*mu_);
-        DCHECK(!threads_initialized_);
+        DCHECK(!threads_started_);
         DCHECK(!initial_elements_created_);
         TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, input_impl_));
         TF_RETURN_IF_ERROR(
@@ -518,6 +552,10 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
       while (last_valid_current_element_ >= 0 &&
              !current_elements_[last_valid_current_element_]) {
         last_valid_current_element_--;
+      }
+      if (ctx->warm_start()) {
+        EnsureInitialElementsCreated();
+        EnsureThreadsStarted();
       }
       VLOG(2) << "Parallel interleave iterator restored";
       VLOG(4) << "State after restore:\n" << DebugString();
@@ -661,14 +699,14 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
     }
 
     void EnsureThreadsStarted() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-      if (!threads_initialized_) {
+      if (!threads_started_) {
         IncrementOutstandingThreads();
         thread_pool_->Schedule([this]() { WorkerManagerThread(); });
         if (ctx_->stats_aggregator()) {
           IncrementOutstandingThreads();
           thread_pool_->Schedule([this]() { StatsThread(); });
         }
-        threads_initialized_ = true;
+        threads_started_ = true;
       }
     }
 
@@ -1525,8 +1563,8 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
     // Identifies whether the current_elements_ vector has been initialized.
     bool initial_elements_created_ TF_GUARDED_BY(mu_) = false;
 
-    // Identifies whether the element threads have been initialized.
-    bool threads_initialized_ TF_GUARDED_BY(mu_) = false;
+    // Identifies whether the element threads have been started.
+    bool threads_started_ TF_GUARDED_BY(mu_) = false;
 
     // Used for coordination between the main thread, the manager threads, and
     // the worker threads.
@@ -1634,6 +1672,7 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
 
   const DatasetBase* const input_;
   const std::unique_ptr<CapturedFunction> captured_func_;
+  const int64_t input_cycle_length_;
   const int64_t cycle_length_;
   const int64_t block_length_;
   const int64_t buffer_output_elements_;
@@ -1688,8 +1727,8 @@ void ParallelInterleaveDatasetOp::MakeDataset(OpKernelContext* ctx,
     OP_REQUIRES(ctx,
                 buffer_output_elements == model::kAutotune ||
                     buffer_output_elements > 0,
-                errors::InvalidArgument("`buffer_output_elements` must be ",
-                                        model::kAutotune, " or > 0 but is ",
+                errors::InvalidArgument("`buffer_output_elements` must be "
+                                        "`tf.data.AUTOTUNE` or > 0 but is ",
                                         buffer_output_elements));
 
     OP_REQUIRES_OK(ctx, ParseScalarArgument(ctx, kPrefetchInputElements,
@@ -1697,8 +1736,8 @@ void ParallelInterleaveDatasetOp::MakeDataset(OpKernelContext* ctx,
     OP_REQUIRES(ctx,
                 prefetch_input_elements == model::kAutotune ||
                     prefetch_input_elements >= 0,
-                errors::InvalidArgument("`prefetch_input_elements` must be ",
-                                        model::kAutotune, " or >= 0 but is ",
+                errors::InvalidArgument("`prefetch_input_elements` must be "
+                                        "`tf.data.AUTOTUNE` or >= 0 but is ",
                                         prefetch_input_elements));
   }
 
@@ -1710,26 +1749,19 @@ void ParallelInterleaveDatasetOp::MakeDataset(OpKernelContext* ctx,
       errors::InvalidArgument("num_parallel_calls must be greater than zero."));
   int64_t cycle_length = 0;
   OP_REQUIRES_OK(ctx, ParseScalarArgument(ctx, kCycleLength, &cycle_length));
-  if (cycle_length == model::kAutotune) {
-    if (num_parallel_calls != model::kAutotune) {
-      cycle_length = std::min(num_parallel_calls,
-                              static_cast<int64_t>(port::MaxParallelism()));
-    } else {
-      // If parallelism is to be autotuned, we set the cycle length so that
-      // the number of thread created for the current and future cycle elements
-      // roughly matches the number of schedulable cores.
-      const int num_threads_per_cycle_length = kDefaultCyclePrefetchFactor + 1;
-      cycle_length =
-          CeilDiv(port::MaxParallelism(), num_threads_per_cycle_length);
-    }
-  }
-  OP_REQUIRES(ctx, cycle_length > 0,
-              errors::InvalidArgument("`cycle_length` must be > 0"));
-
   OP_REQUIRES(
-      ctx, num_parallel_calls <= cycle_length,
+      ctx, cycle_length > 0 || cycle_length == model::kAutotune,
       errors::InvalidArgument(
-          "num_parallel_calls must less than or equal to cycle_length."));
+          "`cycle_length` must be `tf.data.AUTOTUNE` or greater than 0 but is ",
+          cycle_length));
+  OP_REQUIRES(
+      ctx,
+      num_parallel_calls <= cycle_length || cycle_length == model::kAutotune,
+      errors::InvalidArgument(
+          "If `cycle_length` is set to a fixed value, `num_parallel_calls` "
+          "must be either `tf.data.AUTOTUNE` or a value less than or equal "
+          "to `cycle_length`. However, `num_parallel_calls` is ",
+          num_parallel_calls, " and `cycle_length` is ", cycle_length));
 
   std::unique_ptr<CapturedFunction> captured_func;
   OP_REQUIRES_OK(ctx,

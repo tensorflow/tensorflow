@@ -31,7 +31,6 @@ e.g. --benchmarks=".*matmul*." will run all matmul related benchmarks.
 import time
 
 import numpy as np
-import six
 
 from tensorflow.python import pywrap_tfe
 from tensorflow.python.eager import backprop  # pylint: disable=unused-import
@@ -40,7 +39,6 @@ from tensorflow.python.eager import context
 from tensorflow.python.eager import core
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import forwardprop
-from tensorflow.python.eager import function
 from tensorflow.python.eager import test
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -80,7 +78,7 @@ def c_tfe_py_fastpath_execute(a,
   except core._NotOkStatusException as e:
     if name is not None:
       e.message += " name: " + name
-    six.raise_from(core._status_to_exception(e), None)
+    raise core._status_to_exception(e) from None
 
 
 def run_benchmark(func, num_iters, execution_mode=None):
@@ -448,7 +446,7 @@ class MicroBenchmarks(benchmarks_test_base.MicroBenchmarksBase):
                               transpose_b,
                               num_iters,
                               execution_mode=None):
-    f = function.defun(math_ops.matmul)
+    f = def_function.function(math_ops.matmul)
     func = lambda: f(m, m, transpose_b=transpose_b)
     self._run(func, num_iters, execution_mode=execution_mode)
 
@@ -489,9 +487,9 @@ class MicroBenchmarks(benchmarks_test_base.MicroBenchmarksBase):
     self._run(func, num_iters, execution_mode=execution_mode)
 
   def _benchmark_nested_defun_matmul(self, m, transpose_b, num_iters):
-    inner = function.defun(math_ops.matmul)
+    inner = def_function.function(math_ops.matmul)
 
-    @function.defun
+    @def_function.function
     def outer(a, b, c, transpose_b):
       return math_ops.matmul(inner(a, b, transpose_b=transpose_b), c)
 
@@ -1155,7 +1153,7 @@ class MicroBenchmarks(benchmarks_test_base.MicroBenchmarksBase):
       del t1, t2, t3, t4, t5, t6, t7, t8
       return None
 
-    defined = function.defun(func)
+    defined = def_function.function(func)
     t = constant_op.constant(0.0)
     cache_computation = lambda: defined(t, t, t, t, t, t, t, t)
     self._run(cache_computation, 30000)
@@ -1166,7 +1164,7 @@ class MicroBenchmarks(benchmarks_test_base.MicroBenchmarksBase):
       del t1, t2, t3, t4, t5, t6, t7, t8
       return None
 
-    defined = function.defun(func)
+    defined = def_function.function(func)
     t = constant_op.constant(0.0)
 
     def cache_computation():
@@ -1180,7 +1178,7 @@ class MicroBenchmarks(benchmarks_test_base.MicroBenchmarksBase):
       del t1, t2, t3, t4, t5, t6, t7, t8
       return None
 
-    defined = function.defun(
+    defined = def_function.function(
         func, input_signature=[tensor_spec.TensorSpec([], dtypes.float32)] * 8)
     t = constant_op.constant(0.0)
     signature_computation = lambda: defined(t, t, t, t, t, t, t, t)
@@ -1192,7 +1190,7 @@ class MicroBenchmarks(benchmarks_test_base.MicroBenchmarksBase):
       del t1, t2, t3, t4, t5, t6, t7, t8
       return None
 
-    defined = function.defun(
+    defined = def_function.function(
         func, input_signature=[tensor_spec.TensorSpec([], dtypes.float32)] * 8)
     t = constant_op.constant(0.0)
 
@@ -1251,7 +1249,7 @@ class MicroBenchmarks(benchmarks_test_base.MicroBenchmarksBase):
   def benchmarkScanDefun(self):
     elems = math_ops.range(1600)
 
-    @function.defun
+    @def_function.function
     def scan():
       return functional_ops.scan(
           lambda a, x: a + x, elems, parallel_iterations=1)

@@ -18,7 +18,7 @@ limitations under the License.
 #include <functional>
 #include <string>
 
-#include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
+#include "tensorflow/compiler/xla/hlo/ir/dfs_hlo_visitor_with_default.h"
 #include "tensorflow/compiler/xla/service/graphcycles/graphcycles.h"
 #include "tensorflow/compiler/xla/service/shape_inference.h"
 
@@ -41,7 +41,7 @@ bool IsCanonicalDot(HloInstruction* dot) {
 
   // Checks that the given list is a permutation of [0, 1, ..., n].
   auto is_permutation_of_iota =
-      [](const tensorflow::protobuf::RepeatedField<int64_t>& vals) {
+      [](const tsl::protobuf::RepeatedField<int64_t>& vals) {
         DimensionVector copy(vals.begin(), vals.end());
         absl::c_sort(copy);
         for (int i = 0; i < copy.size(); i++) {
@@ -266,10 +266,6 @@ StatusOr<bool> MergeDots(HloComputation* comp, int64_t max_size_to_merge) {
   }
 
   // Build a dependency graph representing the whole computation.
-  //
-  // TODO(jlebar): If this is slow to create or use, could we make it faster by
-  // collapsing elements of the graph that don't correspond to dots, or
-  // otherwise not adding them to the graph in the first place?
   tensorflow::GraphCycles graph;
 
   absl::flat_hash_map<HloInstruction*, int32_t> graph_ids_map;
@@ -283,7 +279,9 @@ StatusOr<bool> MergeDots(HloComputation* comp, int64_t max_size_to_merge) {
     return it->second;
   };
 
-  for (HloInstruction* instr : comp->instructions()) {
+  // Iteration order doesn't matter for correctness, but graph.InsertEdge() is
+  // *much* faster if we iterate in topological order.
+  for (HloInstruction* instr : comp->MakeInstructionPostOrder()) {
     int32_t id = graph_id(instr);
     for (HloInstruction* operand : instr->operands()) {
       CHECK(graph.InsertEdge(graph_id(operand), id));

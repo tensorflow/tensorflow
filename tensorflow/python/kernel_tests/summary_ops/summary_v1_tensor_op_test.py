@@ -15,7 +15,6 @@
 """Tests for summary V1 tensor op."""
 
 import numpy as np
-import six
 
 from tensorflow.core.framework import summary_pb2
 from tensorflow.python.framework import constant_op
@@ -71,7 +70,7 @@ class SummaryV1TensorOpTest(test.TestCase):
     self._AssertNumpyEq(n, 10)
 
   def testStringSummary(self):
-    s = six.b("foobar")
+    s = b"foobar"
     with self.cached_session() as sess:
       const = constant_op.constant(s)
       summ = summary_lib.tensor_summary("foo", const)
@@ -91,7 +90,7 @@ class SummaryV1TensorOpTest(test.TestCase):
     self._AssertNumpyEq(n, np.ones([5, 5, 5]))
 
   def testManyStringSummary(self):
-    strings = [[six.b("foo bar"), six.b("baz")], [six.b("zoink"), six.b("zod")]]
+    strings = [[b"foo bar", b"baz"], [b"zoink", b"zod"]]
     with self.cached_session() as sess:
       const = constant_op.constant(strings)
       summ = summary_lib.tensor_summary("foo", const)

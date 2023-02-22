@@ -570,7 +570,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
     // CHECK-NEXT:   tf_device.return
     "tf_device.cluster"() ({
       %0 = "tf.RecvTPUEmbeddingActivations"() {config = "test_config_recv_embedding"} : () -> tensor<512x256xf32>
-      "tf.SendTPUEmbeddingGradients"(%0) {N = 1 : i64, NN = 0 : i64, config = "test_config_send_embedding", operand_segment_sizes = dense<[1, 0]> : vector<2xi32>} : (tensor<512x256xf32>) -> ()
+      "tf.SendTPUEmbeddingGradients"(%0) {N = 1 : i64, NN = 0 : i64, config = "test_config_send_embedding", operand_segment_sizes = array<i32: 1, 0>} : (tensor<512x256xf32>) -> ()
       "tf.A"() {_xla_outside_compilation = "cluster1"} : () -> ()
       tf_device.return
     }) {num_cores_per_replica = 1, step_marker_location = "", topology = "", device_assignment = []} : () -> ()
@@ -595,44 +595,9 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
       "tf.UnknownOp"() : () -> ()
       "tf.A"() {_xla_outside_compilation = "cluster1"} : () -> ()
       %0 = "tf.RecvTPUEmbeddingActivations"() {config = "test_config_recv_embedding"} : () -> tensor<512x256xf32>
-      "tf.SendTPUEmbeddingGradients"(%0) {N = 1 : i64, NN = 0 : i64, config = "test_config_send_embedding", operand_segment_sizes = dense<[1, 0]> : vector<2xi32>} : (tensor<512x256xf32>) -> ()
+      "tf.SendTPUEmbeddingGradients"(%0) {N = 1 : i64, NN = 0 : i64, config = "test_config_send_embedding", operand_segment_sizes = array<i32: 1, 0>} : (tensor<512x256xf32>) -> ()
       tf_device.return
     }) {num_cores_per_replica = 1, step_marker_location = "", topology = "", device_assignment = []} : () -> ()
-    func.return
-  }
-}
-
-// -----
-
-// Tests that a an error is reported when the pass results in a cluster output
-// with a non-XLA type. The simplest way this can happen is if the inputting op
-// is not marked for outside compilation. In general control, data, and side
-// effect dependencies that are not marked for outside compilation can cause
-// this.
-
-module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:worker/replica:0/task:0/device:CPU:0", "/job:worker/replica:0/task:0/device:TPU_SYSTEM:0", "/job:worker/replica:0/task:0/device:TPU:0"]} {
-  // expected-error @+2 {{result with a non-XLA type}}
-  func.func @non_XLA_result() {
-    %cluster = "tf_device.cluster"() ({
-      %a = "tf.A"() : () -> tensor<!tf_type.string>
-      tf_device.return %a : tensor<!tf_type.string>
-    }) {num_cores_per_replica = 1, step_marker_location = "", topology = "", device_assignment = []} : () -> tensor<!tf_type.string>
-    func.return
-  }
-}
-
-// -----
-
-// Tests that a an error is reported when the pass results in a cluster output
-// with a non-XLA type, specifically a resource type.
-
-module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:worker/replica:0/task:0/device:CPU:0", "/job:worker/replica:0/task:0/device:TPU_SYSTEM:0", "/job:worker/replica:0/task:0/device:TPU:0"]} {
-  // expected-error @+2 {{result with a non-XLA type}}
-  func.func @resource_result() {
-    %cluster = "tf_device.cluster"() ({
-      %a = "tf.A"() : () -> tensor<!tf_type.resource<tensor<f32>>>
-      tf_device.return %a : tensor<!tf_type.resource<tensor<f32>>>
-    }) {num_cores_per_replica = 1, step_marker_location = "", topology = "", device_assignment = []} : () -> tensor<!tf_type.resource<tensor<f32>>>
     func.return
   }
 }

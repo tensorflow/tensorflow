@@ -15,23 +15,20 @@ limitations under the License.
 
 #include "tensorflow/core/profiler/convert/xplane_to_op_stats.h"
 
+#include <memory>
 #include <string>
 #include <vector>
 
-#include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/match.h"
 #include "absl/strings/string_view.h"
-#include "tensorflow/core/platform/env.h"
-#include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/convert/op_metrics_db_combiner.h"
-#include "tensorflow/core/profiler/convert/op_stats_combiner.h"
+#include "tensorflow/core/profiler/convert/repository.h"
 #include "tensorflow/core/profiler/convert/step_events_to_steps_db.h"
 #include "tensorflow/core/profiler/convert/xplane_to_kernel_stats_db.h"
 #include "tensorflow/core/profiler/convert/xplane_to_op_metrics_db.h"
 #include "tensorflow/core/profiler/convert/xplane_to_step_events.h"
-#include "tensorflow/core/profiler/convert/xplane_to_tf_functions.h"
 #include "tensorflow/core/profiler/protobuf/diagnostics.pb.h"
 #include "tensorflow/core/profiler/protobuf/kernel_stats.pb.h"
 #include "tensorflow/core/profiler/protobuf/op_metrics.pb.h"
@@ -45,7 +42,6 @@ limitations under the License.
 #include "tensorflow/core/profiler/utils/kernel_stats_utils.h"
 #include "tensorflow/core/profiler/utils/math_utils.h"
 #include "tensorflow/core/profiler/utils/step_intersection.h"
-#include "tensorflow/core/profiler/utils/tf_op_utils.h"
 #include "tensorflow/core/profiler/utils/tf_xplane_visitor.h"
 #include "tensorflow/core/profiler/utils/tpu_xplane_utils.h"
 #include "tensorflow/core/profiler/utils/xplane_schema.h"
@@ -68,13 +64,15 @@ std::string Hostname(const XSpace& space) {
 }  // namespace
 
 PerfEnv MakePerfEnv(double peak_tera_flops_per_second,
-                    double peak_hbm_bw_giga_bytes_per_second) {
+                    std::vector<double> peak_bws) {
   PerfEnv result;
   result.set_peak_tera_flops_per_second(peak_tera_flops_per_second);
-  result.set_peak_hbm_bw_giga_bytes_per_second(
-      peak_hbm_bw_giga_bytes_per_second);
+
+  for (const auto bw : peak_bws) {
+    result.add_peak_bws_giga_bytes_per_second(bw);
+  }
   result.set_ridge_point(TeraToGiga(peak_tera_flops_per_second) /
-                         peak_hbm_bw_giga_bytes_per_second);
+                         peak_bws[MemBwType::MEM_BW_TYPE_HBM_RW]);
   return result;
 }
 
@@ -83,15 +81,39 @@ PerfEnv GetPerfEnvFromXPlane(const XPlane& device_plane) {
   if (!absl::StartsWith(device_plane.name(), kTpuPlanePrefix)) {
     return MakePerfEnv(
         GigaToTera(GetFlopMaxThroughputPerSM(cap)) * cap.num_cores(),
-        UniToGiga(cap.memory_bandwidth()));
+        // Ideally, the cap should report separate hbm BW, for now set to same.
+        {UniToGiga(cap.memory_bandwidth()), UniToGiga(cap.memory_bandwidth()),
+         UniToGiga(cap.memory_bandwidth()), UniToGiga(cap.memory_bandwidth())});
   } else {
     XPlaneVisitor visitor = CreateTfXPlaneVisitor(&device_plane);
     auto peak_tera_flops_per_second =
         visitor.GetStat(StatType::kDevCapPeakTeraflopsPerSecond);
+    auto peak_tera_flops_per_second_val =
+        peak_tera_flops_per_second.has_value()
+            ? peak_tera_flops_per_second->DoubleValue()
+            : 0.0;
     auto peak_hbm_bw_giga_bytes_per_second =
         visitor.GetStat(StatType::kDevCapPeakHbmBwGigabytesPerSecond);
-    return MakePerfEnv(peak_tera_flops_per_second->DoubleValue(),
-                       peak_hbm_bw_giga_bytes_per_second->DoubleValue());
+    auto peak_hbm_bw_giga_bytes_per_second_val =
+        peak_hbm_bw_giga_bytes_per_second.has_value()
+            ? peak_hbm_bw_giga_bytes_per_second->DoubleValue()
+            : 0.0;
+    auto peak_sram_rd_bw_giga_bytes_per_second =
+        visitor.GetStat(StatType::kDevCapPeakSramRdBwGigabytesPerSecond);
+    auto peak_sram_rd_bw_giga_bytes_per_second_val =
+        peak_sram_rd_bw_giga_bytes_per_second.has_value()
+            ? peak_sram_rd_bw_giga_bytes_per_second->DoubleValue()
+            : 0.0;
+    auto peak_sram_wr_bw_giga_bytes_per_second =
+        visitor.GetStat(StatType::kDevCapPeakSramWrBwGigabytesPerSecond);
+    auto peak_sram_wr_bw_giga_bytes_per_second_val =
+        peak_sram_wr_bw_giga_bytes_per_second.has_value()
+            ? peak_sram_wr_bw_giga_bytes_per_second->DoubleValue()
+            : 0.0;
+    return MakePerfEnv(peak_tera_flops_per_second_val,
+                       {peak_hbm_bw_giga_bytes_per_second_val,
+                        peak_sram_rd_bw_giga_bytes_per_second_val,
+                        peak_sram_wr_bw_giga_bytes_per_second_val});
   }
 }
 
@@ -145,7 +167,6 @@ void PropagateXSpaceDiagnosticsToOpStats(const XSpace& space,
 
 OpStats ConvertXSpaceToOpStats(const XSpace& space,
                                const OpStatsOptions& options) {
-  const XPlane* host_plane = FindPlaneWithName(space, kHostThreadsPlaneName);
   std::vector<const XPlane*> device_planes = FindTensorCorePlanes(space);
   bool is_gpu = device_planes.empty();
   if (is_gpu) {
@@ -199,6 +220,7 @@ OpStats ConvertXSpaceToOpStats(const XSpace& space,
 
   bool has_device = !device_planes.empty();
   // Convert a host plane.
+  const XPlane* host_plane = FindPlaneWithName(space, kHostThreadsPlaneName);
   if (host_plane) {
     if (options.generate_op_metrics_db) {
       *op_stats.mutable_host_op_metrics_db() =
@@ -210,6 +232,12 @@ OpStats ConvertXSpaceToOpStats(const XSpace& space,
       StepEvents host_step_events =
           ConvertHostThreadsXPlaneToStepEvents(*host_plane, device_step_events);
       CombineStepEvents(host_step_events, &step_events);
+    }
+    XPlaneVisitor visitor = CreateTfXPlaneVisitor(host_plane);
+    auto stat = visitor.GetStat(StatType::kMatrixUnitUtilizationPercent);
+    if (stat.has_value()) {
+      op_stats.mutable_performance_counter_result()
+          ->set_matrix_unit_utilization_percent(stat->DoubleValue());
     }
   }
   if (options.generate_step_db) {
@@ -229,40 +257,6 @@ OpStats ConvertXSpaceToOpStats(const XSpace& space,
     details.set_hostname(Hostname(space));
   }
   return op_stats;
-}
-
-Status ConvertMultiXSpacesToCombinedOpStats(const std::vector<XSpace>& xspaces,
-                                            const OpStatsOptions& options,
-                                            OpStats* combined_op_stats) {
-  // A shortcut code path for a single XSpace. There is no need to merge OpStats
-  // if there is only a single XSpace.
-  if (xspaces.size() == 1) {
-    *combined_op_stats = ConvertXSpaceToOpStats(xspaces[0], options);
-    return OkStatus();
-  }
-
-  // Read multiple XSpaces and convert to multiple OpStats.
-  std::vector<OpStats> all_op_stats;
-  all_op_stats.reserve(xspaces.size());
-  for (const XSpace& xspace : xspaces) {
-    all_op_stats.push_back(ConvertXSpaceToOpStats(xspace, options));
-  }
-
-  // Combine OpStats.
-  std::vector<OpStatsInfo> all_op_stats_info;
-  all_op_stats_info.reserve(all_op_stats.size());
-  for (int i = 0; i < all_op_stats.size(); i++) {
-    all_op_stats_info.emplace_back(
-        &all_op_stats[i],
-        ParseHardwareType(all_op_stats[i].run_environment().device_type()), i);
-  }
-
-  // Do not limit the maximum number of steps during the merge of OpStats.
-  StepIntersection step_intersection =
-      ComputeStepIntersectionToMergeOpStats(all_op_stats_info, kuint32max);
-  CombineAllOpStats(all_op_stats_info, step_intersection, combined_op_stats);
-
-  return OkStatus();
 }
 
 }  // namespace profiler

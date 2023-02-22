@@ -18,13 +18,13 @@ limitations under the License.
 
 #include <gtest/gtest.h>
 #include "flatbuffers/flatbuffers.h"  // from @flatbuffers
-#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/c/common.h"
+#include "tensorflow/lite/core/experimental/acceleration/configuration/delegate_registry.h"
+#include "tensorflow/lite/core/interpreter.h"
 #include "tensorflow/lite/delegates/nnapi/nnapi_delegate.h"
 #include "tensorflow/lite/delegates/nnapi/nnapi_delegate_kernel.h"
 #include "tensorflow/lite/delegates/nnapi/nnapi_delegate_mock_test.h"
 #include "tensorflow/lite/experimental/acceleration/configuration/configuration_generated.h"
-#include "tensorflow/lite/experimental/acceleration/configuration/delegate_registry.h"
-#include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/kernels/test_util.h"
 
 // Tests for checking that the NNAPI Delegate plugin correctly handles all the
@@ -284,7 +284,9 @@ class NNAPIMultiOpPluginTest : public ::testing::Test {
                              /* hexagon_settings */ 0,
                              /* xnnpack_settings */ 0,
                              /* coreml_settings */ 0,
-                             /* cpu_settings */ 0, max_delegated_partitions));
+                             /* cpu_settings */ 0, max_delegated_partitions,
+                             /* disable_default_delegates */ false,
+                             /* stable_delegate_loader_settings */ 0));
 
     plugin_ = delegates::DelegatePluginRegistry::CreateByName(
         "NnapiPlugin", *tflite_settings_);

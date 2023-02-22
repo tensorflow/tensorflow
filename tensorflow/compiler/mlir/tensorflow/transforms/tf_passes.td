@@ -49,9 +49,21 @@ def CanonicalizeCompileAndReplicateAttributesPass : Pass<"tf-canonicalize-compil
     ```mlir
     %control = tf_executor.island wraps "tf.TPUReplicateMetadata"() {_replication_info = "cluster", _xla_compile_device_type = "TPU", allow_soft_placement = false, computation_shape = [], device = "", device_assignment = [], host_compute_core = [], name = "TPUReplicateMetadata", num_cores_per_replica = 1 : i64, num_replicas = 1 : i64, step_marker_location = "STEP_MARK_AT_ENTRY", topology = "", use_spmd_for_xla_partitioning = false, use_tpu = true} : () -> ()
     ```
+
+    `_XlaMustCompile=true` in the following code
+
+    ```mlir
+    %outputs_67, %control_68 = tf_executor.island wraps "tf.PartitionedCall"(%arg0, %outputs_0) {_XlaMustCompile = true, _collective_manager_ids = [], _read_only_resource_inputs = [], config = "", config_proto = "\0A\07\0A\03CPU\10\01\0A\07\0A\03GPU\10\00\0A\07\0A\03TPU\10\02\0A\0E\0A\0ATPU_SYSTEM\10\012\02J\008\01\82\01\05h\01\88\01\01", device = "", executor_type = "", f = @__inference__jit_compiled_convolution_op_1510} : (tensor<4x32x32x8xf32>, tensor<*xf32>) -> tensor<*xf32>
+    ```
+
+    will be replaced by `_xla_compile_device_type`, with its value set to the value of `device`.
+
+    ```mlir
+    %outputs_67, %control_68 = tf_executor.island wraps "tf.PartitionedCall"(%arg0, %outputs_0) {_collective_manager_ids = [], _read_only_resource_inputs = [], _xla_compile_device_type = "", config = "", config_proto = "\0A\07\0A\03CPU\10\01\0A\07\0A\03GPU\10\00\0A\07\0A\03TPU\10\02\0A\0E\0A\0ATPU_SYSTEM\10\012\02J\008\01\82\01\05h\01\88\01\01", device = "", executor_type = "", f = @__inference__jit_compiled_convolution_op_1510} : (tensor<4x32x32x8xf32>, tensor<*xf32>) -> tensor<*xf32>
+    ```
   }];
 
-  let constructor = "TFTPU::CreateCanonicalizeCompileAndReplicateAttributesPass()";
+  let constructor = "TF::CreateCanonicalizeCompileAndReplicateAttributesPass()";
 }
 
 def ClusterTFOpsByHostPass : Pass<"cluster-tf-ops-by-host", "ModuleOp"> {
@@ -294,7 +306,7 @@ def UnrollBatchMatMulPass : Pass<"tf-unroll-batch-matmul", "mlir::func::FuncOp">
   let constructor = "TF::CreateUnrollBatchMatMulPassPass()";
 }
 
-def ClusterFormationPass : Pass<"tf-device-cluster-formation", "mlir::func::FuncOp"> {
+def ClusterFormationPass : Pass<"tf-device-cluster-formation", "mlir::ModuleOp"> {
   let summary = "Form clusters from instructions assigned to same device";
   let constructor = "TFDevice::CreateClusterFormationPass()";
   let dependentDialects = ["tf_device::TensorFlowDeviceDialect"];
@@ -356,6 +368,17 @@ def LegalizeTFGToTFPass : Pass<"tfe-legalize-tfg", "ModuleOp"> {
 def ReplicateToIslandPass : Pass<"tf-replicate-to-island", "mlir::func::FuncOp"> {
   let summary = "Lowers device replicate to executor islands";
   let constructor = "TFDevice::CreateReplicateToIslandPass()";
+  let options = [
+    Option<"legacy_graph_export_", "legacy-graph-export", "bool",
+           /*default=*/"true",
+           "Determines whether or not this pass should execute logic that is "
+           "reserved for the legacy graph export pipeline to maintain expected "
+           "invariants. In the case of this pass, that means manually propagating "
+           "controls to lifted parallel execute regions to the graph fetch to "
+           "ensure the ops execute, as well as determining whether or not the "
+           "islands created by this pass should be split after the replicated "
+           "ops have been lifted.">
+  ];
 }
 
 def ReplicaIDToDeviceOrdinalPass : Pass<"tf-replica-id-to-device-ordinal", "mlir::func::FuncOp"> {
@@ -374,6 +397,27 @@ def ConvertReadonlyReferenceVariablesToResourceVariablesPass :
   Pass<"tf-readonly-references-to-resources", "mlir::func::FuncOp"> {
   let summary = "Convert readonly reference variables to resource variables.";
   let constructor = "TF::CreateConvertReadonlyReferenceVariablesToResourceVariablesPass()";
+}
+
+def ReplicateTensorListInitOpsPass : Pass<"tf-replicate-tensor-list-init-ops", "mlir::func::FuncOp"> {
+  let summary =
+    "Replicate TensorList init ops for correct shape assignments in shape inference";
+
+  let description = [{
+    If we pass same TensorList to a while op as multiple arguments or just use
+    the same TensorList at multiple places and assign different
+    TensorListSetItem to elements of TensorList, the shape inference is then
+    unable to identify the Shape of these args and thus the input TensorList
+    shape is unidentifiable.
+    All of these args are supposed to be independent and not related to original
+    creation of TensorList.
+
+    This pass will create multiple instances of TensorList for each arg of the
+    while op and each use and thus there will be not a conflict in resolving the
+    shape of these different inputs.
+  }];
+
+  let constructor = "TF::CreateReplicateTensorListInitOpsPass()";
 }
 
 def TensorFlowShapeInferencePass : Pass<"tf-shape-inference", "ModuleOp"> {
@@ -469,6 +513,105 @@ def ExecutorConvertControlToDataOutputsPass : Pass<"tf-executor-convert-control-
   }];
 
   let constructor = "tf_executor::CreateTFExecutorConvertControlToDataOutputsPass()";
+}
+
+def ExecutorUpdateControlDependenciesPass : Pass<"tf-executor-update-control-dependencies", "ModuleOp"> {
+  let summary = "Computes and applies all necessary control dependencies based on side effect analysis.";
+  let description = [{
+    This pass is intended to run after the split_into_island_per_op
+    pass. That pass splits up multi-op islands into multiple individual islands
+    wrapping a single op without applying any control deps between the new
+    islands. So, this pass is needed in order to make preservation of the
+    semantic ordering relationships between ops as determined by side effect
+    analysis explicit in the IR.
+
+    Example: original program:
+
+    ```mlir
+        func.func @example(%arg0: tensor<*x!tf_type.resource<tensor<32xf32>>>, %arg1: tensor<32xf32>) -> (tensor<32xf32>) {
+          %graph = tf_executor.graph {
+            %read0, %read0_control = tf_executor.island wraps "tf.ReadVariableOp"(%arg0) : (tensor<*x!tf_type.resource<tensor<32xf32>>>) -> tensor<32xf32>
+            %assign0_control = tf_executor.island wraps "tf.AssignVariableOp"(%arg0, %arg1) : (tensor<*x!tf_type.resource<tensor<32xf32>>>, tensor<32xf32>) -> ()
+            %read1, %read1_control = tf_executor.island wraps "tf.ReadVariableOp"(%arg0) : (tensor<*x!tf_type.resource<tensor<32xf32>>>) -> tensor<32xf32>
+            %print, %print_control = tf_executor.island wraps "tf.Print"(%read1) { message = "read1 value" } : (tensor<32xf32>) -> (tensor<32xf32>)
+            tf_executor.fetch %read1#0 : tensor<32xf32>
+          }
+          func.return %graph : tensor<32xf32>
+        }
+    ```
+
+    will be converted by this pass into:
+
+    ```mlir
+        func.func @example(%arg0: tensor<*x!tf_type.resource<tensor<32xf32>>>, %arg1: tensor<32xf32>) -> tensor<32xf32> {
+          %0 = tf_executor.graph {
+            %read0, %read0_control = tf_executor.island wraps "tf.ReadVariableOp"(%arg0) : (tensor<*x!tf_type.resource<tensor<32xf32>>>) -> tensor<32xf32>
+            %assign0_control = tf_executor.island(%read0_control) wraps "tf.AssignVariableOp"(%arg0, %arg1) : (tensor<*x!tf_type.resource<tensor<32xf32>>>, tensor<32xf32>) -> ()
+            %read1, %read1_control = tf_executor.island(%assign0_control) wraps "tf.ReadVariableOp"(%arg0) : (tensor<*x!tf_type.resource<tensor<32xf32>>>) -> tensor<32xf32>
+            %print, %print_control = tf_executor.island(%read1_control) wraps "tf.Print"(%read1) {message = "read1 value"} : (tensor<32xf32>) -> tensor<32xf32>
+            tf_executor.fetch %read1, %print_control : tensor<32xf32>, !tf_executor.control
+          }
+          return %0 : tensor<32xf32>
+        }
+    ```
+  }];
+  let constructor = "tf_executor::CreateTFExecutorUpdateControlDependenciesPass()";
+}
+
+def ExecutorCheckControlDependenciesPass : Pass<"tf-executor-check-control-dependencies", "ModuleOp"> {
+  let summary = "Checks control dependencies";
+
+  let description = [{
+    This pass analyzes control dependencies between islands and warns about
+    dependencies that are not explainable by side effects of the involved ops.
+    More precisely, for every minimal unexplainable control dependency path
+    we emit op warnings for all involved ops. The pass does not report
+    intermediate dummy ops for grouping control dependencies (Identity, NoOp),
+    unless they are part of an unexplainable path between other ops.
+    This pass is useful to understand control dependency conservatism for a
+    given MLIR module.
+
+    For example, the following function
+    ```mlir
+    func.func @path_with_intermediate_ops(
+      %arg0: tensor<!tf_type.resource<tensor<f32>>>,
+      %arg1: tensor<!tf_type.resource<tensor<f32>>>,
+      %arg2: tensor<f32>) -> () {
+      tf_executor.graph {
+        %island1 = tf_executor.island wraps "tf.AssignVariableOp"(%arg0, %arg2) : (tensor<!tf_type.resource<tensor<f32>>>, tensor<f32>) -> ()
+        %island2 = tf_executor.island(%island1) wraps "tf.NoOp"() : () -> ()
+        %island3 = tf_executor.island(%island2) wraps "tf.NoOp"() : () -> ()
+        %island4 = tf_executor.island(%island3) wraps "tf.AssignVariableOp"(%arg1, %arg2) : (tensor<!tf_type.resource<tensor<f32>>>, tensor<f32>) -> ()
+        tf_executor.fetch
+      }
+      func.return
+    }
+    ```
+    produces the following warnings
+    ```mlir
+      6:45: warning: unexpected control dependency path: path 0, node 0 (source)
+      %island1 = tf_executor.island wraps "tf.AssignVariableOp"(%arg0, %arg2) : (tensor<!tf_type.resource<tensor<f32>>>, tensor<f32>) -> ()
+                                          ^
+      6:45: note: see current operation: %control = tf_executor.island wraps "tf.AssignVariableOp"(%arg0, %arg2) : (tensor<!tf_type.resource<tensor<f32>>>, tensor<f32>) -> ()
+      7:55: warning: unexpected control dependency path: path 0, node 1 (intermediate)
+      %island2 = tf_executor.island(%island1) wraps "tf.NoOp"() : () -> ()
+                                                    ^
+      7:55: note: see current operation: %control_0 = tf_executor.island(%control) wraps "tf.NoOp"() : () -> ()
+      8:55: warning: unexpected control dependency path: path 0, node 2 (intermediate)
+      %island3 = tf_executor.island(%island2) wraps "tf.NoOp"() : () -> ()
+                                                    ^
+      8:55: note: see current operation: %control_1 = tf_executor.island(%control_0) wraps "tf.NoOp"() : () -> ()
+      9:55: warning: unexpected control dependency path: path 0, node 3 (target)
+      %island4 = tf_executor.island(%island3) wraps "tf.AssignVariableOp"(%arg1, %arg2) : (tensor<!tf_type.resource<tensor<f32>>>, tensor<f32>) -> ()
+                                                    ^
+      9:55: note: see current operation: %control_2 = tf_executor.island(%control_1) wraps "tf.AssignVariableOp"(%arg1, %arg2) : (tensor<!tf_type.resource<tensor<f32>>>, tensor<f32>) -> ()
+    ```
+    because the first and last `AssignVariableOp`s access different resources
+    and therefore should be independent. Note that the `NoOp`s are considered
+    as intermediate ops for control dependency grouping.
+  }];
+
+  let constructor = "tf_executor::CreateTFExecutorCheckControlDependenciesPass()";
 }
 
 def ExecutorGraphPruningPass : Pass<"tf-executor-graph-pruning", "mlir::func::FuncOp"> {
@@ -791,6 +934,24 @@ def ExecutorTPUV1IslandInliningPass : Pass<"tf-executor-tpu-v1-island-inlining",
   }];
 
   let constructor = "tf_executor::CreateTFExecutorTPUV1IslandInliningPass()";
+}
+
+def TPUPartitionedOpConversionPass : Pass<"tf-tpu-partitioned-op-conversion", "mlir::func::FuncOp"> {
+  let summary = "Rewrite all TPU Partitioned ops into their V2 counterparts.";
+
+  let constructor = "TFTPU::CreateTPUPartitionedOpConversionPass()";
+}
+
+def TPUValidateInputsPass : Pass<"tf-tpu-validate-inputs", "ModuleOp"> {
+  let summary = "Validates inputs to the TPU TF/XLA bridge";
+
+  let description = [{
+    This pass checks that the IR has valid input to TPU TF/XLA bridge.
+    It checks the relations of multiple ops. Properties of single ops are
+    checked by the 'verify' method of ops.
+  }];
+
+  let constructor = "TFTPU::CreateTPUValidateInputsPass()";
 }
 
 def TPUClusterFormationPass : Pass<"tf-tpu-cluster-formation", "ModuleOp"> {
@@ -2030,6 +2191,50 @@ def BreakUpIslandsPass : Pass<"tf-executor-break-up-islands", "mlir::func::FuncO
   let dependentDialects = ["mlir::tf_executor::TensorFlowExecutorDialect"];
 }
 
+def SplitIntoIslandPerOpPass : Pass<"tf-executor-split-into-island-per-op", "mlir::func::FuncOp"> {
+  let summary = "Transform from TF control dialect to TF executor dialect.";
+  let description = [{
+    Splits an island with multiple ops into multiple islands (one per op). Does
+    not create any control dependencies between new islands, and does not
+    propagate control dependencies that potentially existed between the old
+    islands into the new islands. Maintains existing data dependencies between
+    ops wrapped by the new islands.
+
+    Example: original program:
+
+    ```mlir
+        func.func @dangling_print(%arg0: tensor<*xi32>, %arg1: tensor<i32>) -> (tensor<*xi32>, tensor<*xi32>) {
+          %graph:2 = tf_executor.graph {
+            %island1:3 = tf_executor.island {
+              %add1 = "tf.Add"(%arg0, %arg1) : (tensor<*xi32>, tensor<i32>) -> tensor<*xi32>
+              %add2 = "tf.Add"(%add1, %arg1) : (tensor<*xi32>, tensor<i32>) -> tensor<*xi32>
+              %res = "tf.Print"(%add2) { message = "add result" } : (tensor<*xi32>) -> (tensor<*xi32>)
+              tf_executor.yield %add1, %add2 : tensor<*xi32>, tensor<*xi32>
+            }
+            tf_executor.fetch %island1#0, %island1#1 : tensor<*xi32>, tensor<*xi32>
+          }
+          func.return %graph#0, %graph#1 : tensor<*xi32>, tensor<*xi32>
+        }
+    ```
+
+    will be converted by this pass into:
+
+    ```mlir
+        func.func @dangling_print(%arg0: tensor<*xi32>, %arg1: tensor<i32>) -> (tensor<*xi32>, tensor<*xi32>) {
+          %0:2 = tf_executor.graph {
+            %outputs, %control = tf_executor.island wraps "tf.Add"(%arg0, %arg1) : (tensor<*xi32>, tensor<i32>) -> tensor<*xi32>
+            %outputs_0, %control_1 = tf_executor.island wraps "tf.Add"(%outputs, %arg1) : (tensor<*xi32>, tensor<i32>) -> tensor<*xi32>
+            %outputs_2, %control_3 = tf_executor.island wraps "tf.Print"(%outputs_0) {message = "add result"} : (tensor<*xi32>) -> tensor<*xi32>
+            tf_executor.fetch %outputs, %outputs_0 : tensor<*xi32>, tensor<*xi32>
+          }
+          return %0#0, %0#1 : tensor<*xi32>, tensor<*xi32>
+        }
+    ```
+  }];
+  let constructor = "mlir::TF::CreateSplitIntoIslandPerOpPass()";
+  let dependentDialects = ["mlir::tf_executor::TensorFlowExecutorDialect"];
+}
+
 def FunctionalToExecutorDialectConversionPass : Pass<"tf-functional-to-executor-conversion", "mlir::func::FuncOp"> {
   let summary = "Transform from func op to TF executor dialect.";
   let constructor = "CreateFunctionalToExecutorDialectConversionPass()";
@@ -2102,6 +2307,15 @@ def BroadcastFoldPass : Pass<"tf-broadcast-fold", "mlir::func::FuncOp"> {
 def ParallelExecuteToIslandsPass : Pass<"tf-parallel-execute-to-islands", "mlir::func::FuncOp"> {
   let summary = "Lowers device parallel_execute to executor islands";
   let constructor = "TFDevice::CreateParallelExecuteToIslandsPass()";
+  let options = [
+    Option<"legacy_graph_export_", "legacy-graph-export", "bool",
+           /*default=*/"true",
+           "Determines whether or not this pass should execute logic that is "
+           "reserved for the legacy graph export pipeline to maintain expected "
+           "invariants. In the case of this pass, that means manually propagating "
+           "controls to lifted parallel execute regions to the graph fetch to "
+           "ensure the ops execute.">
+  ];
 }
 
 def ConstantOpDeviceAssignmentPass : Pass<"constant-op-device-assignment", "ModuleOp"> {
@@ -2188,4 +2402,229 @@ def TPUDynamicLayoutPass : Pass<"tf-tpu-dynamic-layout-pass", "ModuleOp"> {
 def DeviceIndexSelectorPass : Pass<"tf-device-index-selector", "mlir::func::FuncOp"> {
   let summary = "Fold tf.DeviceIndex to constant.";
   let constructor = "TF::CreateDeviceIndexSelectorPass()";
+}
+
+def OrderByDialectPass : Pass<"tf-order-by-dialect", "mlir::ModuleOp"> {
+  let summary = "Reorders ops so ops of the same dialect are next to each other.";
+  let description = [{
+      Performs a reordering of ops so that
+        (a) ops of the same dialect are next to each other
+        (b) order within a dialect is preserved
+      .
+      For example, this would transform
+        %a = "x.f"()
+        %b = "y.f"(%a)
+        %c = "x.f"(%a)
+      to
+        %a = "x.f"()
+        %c = "x.f"(%a)
+        %b = "y.f"(%a)
+      so that the two "x" dialect instructions are next to each other.
+  }];
+  let constructor = "TF::CreateOrderByDialectPass()";
+}
+
+def GroupByDialectPass : Pass<"tf-group-by-dialect", "mlir::ModuleOp"> {
+  let summary = "Groups ops into functions that only contain one dialect.";
+  let description = [{
+      Factors operations into subroutines such that all functions only
+      contain a single dialect. Which of the dialects are allowed in the
+      "top" function is configurable.
+
+      For example, the code
+        x.a()
+        x.b()
+        %c = y.c()
+        x.d(%c)
+      would be transformed into something like
+        call @x_1()
+        %c = call @y_1()
+        call @x_2(%c)
+      with @x_1, @x_2 and @y_1 filled in.
+  }];
+  let constructor = "TF::CreateGroupByDialectPass()";
+}
+
+def RemoveUnusedArgumentsPass : Pass<"tf-remove-unused-arguments", "ModuleOp"> {
+  let summary = "Removes unused args from private functions & their callers.";
+  let description = [{
+      Removes arguments from functions that aren't used in the function
+      body, outside of returns. Also adjusts the callers of said functions.
+
+      For example, the code
+        func.func @f(%arg0, %arg1) {
+          SomeOpThatUsesArg0(%arg0)
+          return %arg0
+        }
+        ...
+        call @x_1(x, y)
+
+      would be transformed into
+        func.func @f(%arg0) {
+          return %arg0
+        }
+        ...
+        call @x_1(x)
+
+      Note that, in the above example, both args would be removed if there
+      wasn't the "SomeOpThatUsesArg0(%arg0)" line.
+  }];
+  let constructor = "TF::CreateRemoveUnusedArgumentsPass()";
+}
+
+def RemoveUnusedWhileResultsPass : Pass<"tf-remove-unused-while-results", "mlir::func::FuncOp"> {
+  let summary = "Removes unused results from tf.WhileRegion ops";
+   let description = [{
+      Removes unused results from `tf.WhileRegion` ops along with the defining
+      ops in the body, if it is safe to do so.
+      Currently, the pass detects results with following properties:
+      - the result is unused outside of the `tf.WhileRegion` op
+      - the defining op of the result in the body can be safely removed
+      - the operand corresponding to the result is not used by any other op in
+        the condition or body (in particular, there must not be intermediate
+        pass-through ops like `tf.Identity`)
+
+
+      For example, the following pseudo MLIR code (types are left out for
+      brevity)
+      ```mlir
+        func.func @remove_first_result(%arg0, %arg1) {
+          %0:2 = "tf.WhileRegion"(%arg0, %arg1) ({
+          ^bb0(%arg2, %arg3):
+            %1 = "tf.OpA"() {is_stateless = true}
+            "tf.Yield"(%1)
+          }, {
+          ^bb0(%arg2, %arg3):
+            %1 = "tf.OpB"(%arg2) {is_stateless = true}
+            %2 = "tf.OpC"(%arg3) {is_stateless = true}
+            "tf.Yield"(%1, %2)
+          }) {is_stateless = true}
+          return %0#1
+        }
+      ```
+      would be transformed to
+      ```mlir
+        func.func @remove_first_result(%arg0, %arg1) {
+          %0 = "tf.WhileRegion"(%arg1) ({
+          ^bb0(%arg3):
+            %1 = "tf.OpA"() {is_stateless = true}
+            "tf.Yield"(%1)
+          }, {
+          ^bb0(%arg3):
+            %1 = "tf.OpC"(%arg3) {is_stateless = true}
+            "tf.Yield"(%1)
+          }) {is_stateless = true}
+          return %0
+        }
+      ```
+      (the first result can be removed along with its defining op `tf.OpB`).
+
+  }];
+  let constructor = "TF::CreateRemoveUnusedWhileResultsPass()";
+}
+
+def HoistLoopInvariantPass : Pass<"tf-hoist-loop-invariant", "mlir::func::FuncOp"> {
+  let summary = "Hoists loop invariant ops to the outside of the loop";
+   let description = [{
+      Hoists loop invariant to the outside of the loop. The pass is similar to
+      LoopInvariantCodeMotion pass, but it also hoists ReadVariableOps,
+      if the variable is read only.
+
+      For example, the following pseudo MLIR code (types are left out for
+      brevity)
+      ```mlir
+        func.func @hoist_loop_invariant(%arg0, %arg1) {
+	  %var = "tf.VarHandleOp"() {container="", shared_name="var_name", device = "/device:CPU:0"}
+          %results:2 = "tf.WhileRegion"(%arg0, %arg1) ({
+          ^bb0(%arg2, %arg3):
+            %0 = "tf.OpA"() {is_stateless = true}
+            "tf.Yield"(%0)
+          }, {
+          ^bb0(%arg2, %arg3):
+	    %1 = "tf.ReadVariableOp"(%var)
+            %2 = "tf.OpB"(%1) {is_stateless = true}
+            %3 = "tf.OpC"(%arg2, %2) {is_stateless = true}
+            %4 = "tf.OpD"(%arg3, %2) {is_stateless = true}
+            "tf.Yield"(%3, %4)
+          }) {is_stateless = true}
+          return %results#0, %results#1
+        }
+      ```
+      would be transformed to
+      ```mlir
+       func.func @hoist_loop_invariant(%arg0, %arg1) {
+	  %var = "tf.VarHandleOp"() {container="", shared_name="var_name", device = "/device:CPU:0"}
+	  %1 = "tf.ReadVariableOp"(%var)
+          %2 = "tf.OpB"(%1) {is_stateless = true}
+          %results:2 = "tf.WhileRegion"(%arg0, %arg1) ({
+          ^bb0(%arg2, %arg3):
+            %0 = "tf.OpA"() {is_stateless = true}
+            "tf.Yield"(%0)
+          }, {
+          ^bb0(%arg2, %arg3):
+            %3 = "tf.OpC"(%arg2, %2) {is_stateless = true}
+            %4 = "tf.OpD"(%arg3, %2) {is_stateless = true}
+            "tf.Yield"(%3, %4)
+          }) {is_stateless = true}
+          return %results#0, %results#1
+        }
+      ```
+      The `tf.ReadVariableOp` and `tf.OpB` can be hoisted to the outside of
+      the loop.
+
+  }];
+  let constructor = "TF::CreateHoistLoopInvariantPass()";
+}
+
+def LocalizeVarHandlesPass : Pass<"tf-localize-var-handles", "ModuleOp"> {
+  let summary = "Creates VarHandleOps next to the operations that use them.";
+  let description = [{
+      Creates VarHandleOps right next to the operations that use them, one
+      per operation.
+      This is useful for transformations that only end up with a few small
+      snippets of remaining TF code, and wish for those snippets to be
+      self-contained.
+      For example, this would transform
+
+      "tf_saved_model.global_tensor"() { sym_name = "v" ... }
+      func @f(%arg0 {tf_saved_model.bound_input = @v}) {
+        %1 = "tf.ReadVariableOp"(%arg0)
+        ...
+      }
+
+      to
+
+      func @f(%arg0 {tf_saved_model.bound_input = @v}) {
+        %0 = "tf.VarHandleOp"(sym_name = "v")
+        %1 = "tf.ReadVariableOp"(%0)
+        ...
+      }
+
+      Note that this pass might leave behind unused values
+      (like e.g. %arg0 in the example above), which can later be
+      pruned using DCE.
+  }];
+  let constructor = "TF::CreateLocalizeVarHandlesPass()";
+}
+
+def StripTfAttributesPass : Pass<"tf-strip-tf-attributes", "ModuleOp"> {
+  let summary = "Removes TF specific attributes";
+  let description = [{
+      Removes attributes that are TF specific (start with "tf.") or that
+      have a value from the TF dialect. Useful after legalizing TF graphs
+      to other dialects, to remove any TF remnants.
+  }];
+  let constructor = "TF::CreateStripTfAttributesPass()";
+}
+
+def NameAnonymousIteratorsPass : Pass<"tf-name-anonymous-iterators", "ModuleOp"> {
+  let summary = "Converts anonymous iterators to named iterators";
+  let description = [{
+      This converts AnonymousIterator ops to Iterator, thus giving them a name.
+      For example, this will convert
+        %0 = "tf.AnonymousIteratorV3"() {...}
+      to
+        %0 = "tf.Iterator"() {shared_name = "_iterator1", ...}
+  }];
+  let constructor = "TF::CreateNameAnonymousIteratorsPass()";
 }

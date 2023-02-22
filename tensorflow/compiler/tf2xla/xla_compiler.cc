@@ -15,17 +15,19 @@ limitations under the License.
 
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
 
+#include <memory>
 #include <numeric>
 #include <vector>
 
-#include "tensorflow/compiler/mlir/mlir_bridge_rollout_policy.h"
+#include "tensorflow/compiler/mlir/tf2xla/mlir_bridge_rollout_policy.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/memory/memory.h"
 #include "absl/types/variant.h"
 #include "tensorflow/compiler/jit/defs.h"
 #include "tensorflow/compiler/jit/flags.h"
 #include "tensorflow/compiler/jit/shape_inference.h"
-#include "tensorflow/compiler/mlir/tensorflow/utils/compile_mlir_util.h"
+#include "tensorflow/compiler/jit/xla_compile_util.h"
+#include "tensorflow/compiler/mlir/tf2xla/api/v0/compile_mlir_util.h"
 #include "tensorflow/compiler/mlir/utils/array_container_utils.h"
 #include "tensorflow/compiler/tf2xla/graph_compiler.h"
 #include "tensorflow/compiler/tf2xla/layout_util.h"
@@ -60,6 +62,7 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
 #include "tensorflow/core/protobuf/graph_debug_info.pb.h"
+#include "tensorflow/core/tpu/tpu_defs.h"
 #include "tensorflow/core/util/dump_graph.h"
 
 namespace tensorflow {
@@ -726,6 +729,62 @@ std::vector<std::string> GetValidControlRets(
   return valid_control_rets;
 }
 
+Status XlaCompiler::CompileSingleOp(
+    const XlaCompiler::CompileOptions& compile_options,
+    const XlaCompiler::SingleOpCompileArgument& single_op_compile_argument,
+    absl::Span<const Argument> args, XlaCompiler::CompilationResult* result) {
+  const std::vector<DataType>& result_dtypes =
+      single_op_compile_argument.output_dtypes;
+  const NodeDef& node_def = single_op_compile_argument.node_def;
+  TF_ASSIGN_OR_RETURN(
+      auto graph,
+      CreateSingleOpGraph(node_def, args,
+                          single_op_compile_argument.output_dtypes));
+
+  auto compile_with_old_bridge = [&]() {
+    *result = {};
+    return CompileGraph(compile_options, node_def.name(), std::move(graph),
+                        args, result);
+  };
+
+  const ConfigProto* config = &(single_op_compile_argument.config_proto);
+  auto bridge_rollout = GetMlirBridgeRolloutState(
+      config ? std::optional<ConfigProto>(*config) : std::nullopt);
+  if (bridge_rollout ==
+          ConfigProto::Experimental::MLIR_BRIDGE_ROLLOUT_DISABLED ||
+      node_def.op() == "VarIsInitializedOp" ||
+      (bridge_rollout !=
+           ConfigProto::Experimental::MLIR_BRIDGE_ROLLOUT_ENABLED &&
+       options_.device_type.type_string() != DEVICE_TPU_XLA_JIT)) {
+    return compile_with_old_bridge();
+  }
+
+  GraphDebugInfo debug_info;
+  std::vector<std::string> control_rets;
+  if (result_dtypes.empty()) {
+    control_rets.push_back(node_def.name());
+  }
+
+  bool mlir_enabled = (bridge_rollout ==
+                       ConfigProto::Experimental::MLIR_BRIDGE_ROLLOUT_ENABLED);
+  VLOG(1) << "Attempting MLIR bridge."
+          << (mlir_enabled ? " MLIR is explicitly enabled." : "");
+  auto mlir_result = CompileGraphToXlaHlo(
+      *graph, mlir::SpanToArrayRef<XlaCompiler::Argument>(args), control_rets,
+      options_.device_type.type_string(), compile_options.use_tuple_arg,
+      /*analyse_graph=*/!mlir_enabled, *options_.flib_def, debug_info,
+      options_.shape_determination_fns, result);
+
+  if (mlir_result.ok() || mlir_enabled) {
+    return mlir_result;
+  }
+
+  VLOG(2) << "Failed second phase of the MLIR bridge. Will "
+             "retry with the old bridge. MLIR bridge compilation status: "
+          << mlir_result;
+  return compile_with_old_bridge();
+}
+
 Status XlaCompiler::CompileFunction(
     const XlaCompiler::CompileOptions& options,
     const NameAttrList& fn_name_attrs,
@@ -916,7 +975,7 @@ Status XlaCompiler::XLAShapeForArgument(
           }
           TF_RET_CHECK(absl::holds_alternative<TensorShape>(arg.shape));
           TensorShape shape;
-          shape.AddDim(arg.max_array_size);
+          TF_RETURN_IF_ERROR(shape.AddDimWithStatus(arg.max_array_size));
           shape.AppendShape(std::get<TensorShape>(arg.shape));
           TF_RETURN_IF_ERROR(TensorShapeToXLAShape(arg.type, shape, xla_shape));
 
@@ -934,7 +993,7 @@ Status XlaCompiler::XLAShapeForArgument(
           }
           TF_RET_CHECK(absl::holds_alternative<TensorShape>(arg.shape));
           TensorShape shape;
-          shape.AddDim(arg.max_array_size);
+          TF_RETURN_IF_ERROR(shape.AddDimWithStatus(arg.max_array_size));
           shape.AppendShape(std::get<TensorShape>(arg.shape));
           xla::Shape buffer_shape;
           TF_RETURN_IF_ERROR(
@@ -972,6 +1031,20 @@ void XlaCompiler::PopulateArgumentFromResource(const XlaResource& resource,
     arg->tensor_array_gradients.insert(gradient.first);
   }
   arg->name = resource.name();
+}
+
+XlaCompiler::SingleOpCompileArgument::SingleOpCompileArgument(
+    const OpKernelContext& ctx) {
+  std::vector<DataType> output_dtypes(ctx.num_outputs());
+  for (int i = 0; i < output_dtypes.size(); ++i) {
+    output_dtypes[i] = ctx.expected_output_dtype(i);
+  }
+  this->output_dtypes = output_dtypes;
+  this->node_def = ctx.op_kernel().def();
+  auto* config_proto = ctx.function_library()->config_proto();
+  if (config_proto != nullptr) {
+    this->config_proto = *config_proto;
+  }
 }
 
 // Builds XLA computations for each of the arguments to the computation.
@@ -1402,7 +1475,7 @@ Status XlaCompiler::CompileGraph(
     for (const auto& node_name : output_node_token_inputs) {
       auto token_or = GetNodeToken(node_name);
       TF_RETURN_IF_ERROR(token_or.status());
-      token_inputs.push_back(token_or.ValueOrDie());
+      token_inputs.push_back(token_or.value());
     }
     token_output.reset(new xla::XlaOp(xla::AfterAll(&builder, token_inputs)));
   }
@@ -1428,6 +1501,13 @@ Status XlaCompiler::CompileGraph(
       &num_computation_outputs, &num_nonconst_outputs, &result->outputs,
       &result->resource_updates, &result->xla_output_shape,
       result->input_mapping));
+
+  for (const auto& [key, send] : host_compute_sends_) {
+    *result->host_compute_metadata.add_device_to_host() = send;
+  }
+  for (const auto& [key, recv] : host_compute_recvs_) {
+    *result->host_compute_metadata.add_host_to_device() = recv;
+  }
 
   VLOG(2) << "Outputs: total: " << context->retvals().size()
           << " nonconstant: " << num_nonconst_outputs;

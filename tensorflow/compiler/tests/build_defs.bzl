@@ -108,6 +108,7 @@ def tf_xla_py_test(
 
         for mlir_option in enable_mlir_bridge_options:
             extra_dep = []
+            extra_tag = []
             updated_name = test_name
 
             mlir_bridge_dep = "//tensorflow/python:is_mlir_bridge_test_true"
@@ -117,6 +118,12 @@ def tf_xla_py_test(
                     updated_name = updated_name[:-5]
                 updated_name += "_mlir_bridge_test"
                 extra_dep = [] if has_mlir_dep else [mlir_bridge_dep]
+
+                # Mark gpu mlir_bridge tests as ondemand
+                #
+                # This is for testing book keeping because the bridge does not have any gpu specific
+                # logic at this time, so CPU testing is good enough and cheaper.
+                extra_tag = ["ondemand"] if backend == "gpu" else []
             elif has_mlir_dep:
                 # Some tests run only with mlir_bridge by explicitly adding the MLIR
                 # bridge dep so if the dep is already present skip non MLIR
@@ -131,7 +138,7 @@ def tf_xla_py_test(
                 main = "{}.py".format(name) if main == None else main,
                 data = data + backend_data,
                 deps = deps + backend_deps + extra_dep,
-                tags = test_tags,
+                tags = test_tags + extra_tag,
                 exec_properties = tf_exec_properties({"tags": test_tags}),
                 **kwargs
             )

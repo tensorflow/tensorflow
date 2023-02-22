@@ -2845,7 +2845,10 @@ def concat(tensors, axis=0):
   """Concats `tensor`s along `axis`."""
   if isinstance(tensors[0], sparse_tensor.SparseTensor):
     return sparse_ops.sparse_concat_v2(axis=axis, sp_inputs=tensors)
-  return array_ops.concat(tensors, axis=axis)
+  elif _is_scalar(tensors[0]):
+    return array_ops.stack(tensors, axis=axis)
+  else:
+    return array_ops.concat(tensors, axis=axis)
 
 
 def _is_tpu_multi_host(strategy):

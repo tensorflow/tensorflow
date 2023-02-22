@@ -81,34 +81,56 @@ struct OptimizationProfileConfig {
   // Parameters:
   // network - TensorRT network, used to enumerate all the input tensors
   // profile - on exit the profile information will be set for each input tensor
+  // input_mask - 1 for TRT inputs, 0 for TF inputs that are not TRT inputs
   Status SetDimensions(const nvinfer1::INetworkDefinition* network,
-                       nvinfer1::IOptimizationProfile* profile) const {
-    int n_inputs = network->getNbInputs();
-    if (min.size() != 2 * n_inputs || opt.size() != 2 * n_inputs ||
-        max.size() != 2 * n_inputs) {
-      return errors::Internal("Incorrect number of profile config parameters");
+                       nvinfer1::IOptimizationProfile* profile,
+                       const std::vector<bool>& input_mask) const {
+    int n_inputs_trt = network->getNbInputs();
+    int n_inputs_tf = opt.size() / 2;
+    /// TODO(lsugy): check that the sum of the mask equals n_inputs.
+    if (input_mask.size() != n_inputs_tf) {
+      return errors::Internal("Incorrect input mask size: ", input_mask.size());
     }
-    for (int i = 0; i < n_inputs; i++) {
-      const ITensorProxyPtr input = network->getInput(i);
-      const char* name = input->getName();
-      if (input->isShapeTensor()) {
-        int idx = i + n_inputs;
-        VLOG(2) << "Setting shape values for " << name << ", "
-                << ::tensorflow::tensorrt::DebugString(opt[idx]);
-        profile->setShapeValues(name, nvinfer1::OptProfileSelector::kMIN,
-                                min[idx].d, min[idx].nbDims);
-        profile->setShapeValues(name, nvinfer1::OptProfileSelector::kOPT,
-                                opt[idx].d, opt[idx].nbDims);
-        profile->setShapeValues(name, nvinfer1::OptProfileSelector::kMAX,
-                                max[idx].d, max[idx].nbDims);
+    int n_mask_true = 0;
+    for (bool mask_val : input_mask) {
+      if (mask_val) {
+        n_mask_true++;
       }
-      VLOG(2) << "Setting input dimensions for " << name << ", "
-              << ::tensorflow::tensorrt::DebugString(opt[i]);
-      profile->setDimensions(name, nvinfer1::OptProfileSelector::kMIN, min[i]);
-      profile->setDimensions(name, nvinfer1::OptProfileSelector::kOPT, opt[i]);
-      profile->setDimensions(name, nvinfer1::OptProfileSelector::kMAX, max[i]);
     }
-    return Status::OK();
+    if (n_mask_true != n_inputs_trt) {
+      return errors::Internal(
+          "Number of true elements in input_mask (", n_mask_true,
+          ") doesn't match expected TRT inputs (", n_inputs_trt, ")");
+    }
+    int j = 0;
+    for (int i = 0; i < n_inputs_tf; i++) {
+      if (input_mask[i]) {
+        const ITensorProxyPtr input = network->getInput(j);
+        const char* name = input->getName();
+        if (input->isShapeTensor()) {
+          int idx = i + n_inputs_tf;
+          VLOG(2) << "Setting shape values for " << name << ", "
+                  << ::tensorflow::tensorrt::DebugString(opt[idx]);
+          profile->setShapeValues(name, nvinfer1::OptProfileSelector::kMIN,
+                                  min[idx].d, min[idx].nbDims);
+          profile->setShapeValues(name, nvinfer1::OptProfileSelector::kOPT,
+                                  opt[idx].d, opt[idx].nbDims);
+          profile->setShapeValues(name, nvinfer1::OptProfileSelector::kMAX,
+                                  max[idx].d, max[idx].nbDims);
+        }
+        VLOG(2) << "Setting input dimensions for " << name << ", "
+                << ::tensorflow::tensorrt::DebugString(opt[i]);
+        profile->setDimensions(name, nvinfer1::OptProfileSelector::kMIN,
+                               min[i]);
+        profile->setDimensions(name, nvinfer1::OptProfileSelector::kOPT,
+                               opt[i]);
+        profile->setDimensions(name, nvinfer1::OptProfileSelector::kMAX,
+                               max[i]);
+
+        j++;
+      }
+    }
+    return OkStatus();
   }
 
   // Returns true if profile range completely includes the given shapes.
@@ -190,6 +212,11 @@ class TrtShapeOptimizationProfile {
     VLOG(1) << "Collected shape(s) " << DebugString(shapes) << " for profiles.";
   }
 
+  // Stores the input mask.
+  void SetInputMask(const std::vector<bool>& input_mask) {
+    input_mask_ = input_mask;
+  }
+
   // Collects ShapeTensorCompatible tensor values. This is needed both during
   // profile_generation_mode and during normal inference calls.
   Status CollectShapeValues(OpKernelContext* ctx);
@@ -244,8 +271,11 @@ class TrtShapeOptimizationProfile {
   // Whether the optimization profiles describe input that can be handled with
   // a static engine (only 1 profile with min=max).
   bool IsStaticCompatible() {
-    return strategy_ == ProfileStrategy::kOptimal && profiles_.size() == 1 &&
-           !HasShapeTensor();
+    return strategy_ == ProfileStrategy::kOptimal && profiles_.size() == 1
+#if !IS_TRT_VERSION_GE(8, 0, 0, 0)
+           && !HasShapeTensor()
+#endif
+        ;
     // TODO(tfeher): remove !HasShapeTensor() condition once the
     // FixShapeValueProfile workaround is turned off.
   }
@@ -267,6 +297,14 @@ class TrtShapeOptimizationProfile {
 
   // The optimization profile for calibration.
   OptimizationProfileConfig calib_profiles_;
+
+  // A TRTEngineOp can have resource inputs. These are treated as constants:
+  // their value is read during conversion and stored as weights in the TRT
+  // engine. This means that resource inputs have no corresponding TRT engine
+  // input, and we do not need to provide profile information for these. The
+  // input mask helps to identify the TRT inputs, where we need to define
+  // optimization profiles.
+  std::vector<bool> input_mask_;
 
   // Whether the network has any shape tensors. Initially we assume that the
   // network might have a shape value input. This will be updated when the

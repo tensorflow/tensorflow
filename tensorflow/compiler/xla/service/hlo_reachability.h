@@ -16,19 +16,17 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_HLO_REACHABILITY_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_HLO_REACHABILITY_H_
 
-#include <cstdio>
-#include <list>
+#include <memory>
+#include <utility>
 #include <vector>
 
-#include "absl/base/casts.h"
+#include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/types/span.h"
-#include "tensorflow/compiler/xla/map_util.h"
-#include "tensorflow/compiler/xla/service/hlo_computation.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/compiler/xla/service/hlo_module.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/types.h"
-#include "tensorflow/core/lib/core/status.h"
 
 namespace xla {
 
@@ -41,22 +39,8 @@ namespace xla {
 // sense.
 class HloReachabilityMap {
  public:
-  // An opaque index that clients can use to make repeated operations for the
-  // same instruction faster, by calling GetIndex once for the instruction,
-  // and then calling the variants of other interfaces that take Index arguments
-  // rather than HloInstruction* arguments.
-  struct Index {
-   public:
-    bool operator==(Index other) const { return v == other.v; }
-    bool operator!=(Index other) const { return v != other.v; }
+  using Index = size_t;
 
-   private:
-    friend class HloReachabilityMap;
-
-    // Index assigned for a particular instruction.  The value is used to index
-    // into the vector of BitVectors and the BitVectors themselves.
-    int v;
-  };
   // Sets up a graph with no edges and where the nodes correspond to the given
   // instructions.
   explicit HloReachabilityMap(
@@ -106,9 +90,7 @@ class HloReachabilityMap {
                                   Index index);
 
   Index GetIndex(const HloInstruction* instruction) const {
-    Index i;
-    i.v = FindOrDie(indices_, GetKey(instruction));
-    return i;
+    return indices_.at(GetKey(instruction));
   }
 
   // Sets entry so that IsReachable(a, b) will return true
@@ -120,7 +102,7 @@ class HloReachabilityMap {
   void SetReachable(const HloInstruction* a, const HloInstruction* b) {
     SetReachable(GetIndex(a), GetIndex(b));
   }
-  void SetReachable(Index a, Index b);
+  void SetReachable(Index a, Index b) { bit_sets_[b].Set(a); }
 
   // Updates the given reachability map after the immediate predecessor set
   // (operands and control predecessors) of 'instruction' has changed.
@@ -133,7 +115,7 @@ class HloReachabilityMap {
   bool IsReachable(const HloInstruction* a, const HloInstruction* b) const {
     return IsReachable(GetIndex(a), GetIndex(b));
   }
-  bool IsReachable(Index a, Index b) const { return GetBitVector(b).Get(a.v); }
+  bool IsReachable(Index a, Index b) const { return bit_sets_[b].Get(a); }
 
   // Returns true if "b" is reachable from "a" or "a" is reachable from "b"
   //
@@ -147,8 +129,8 @@ class HloReachabilityMap {
   }
 
   // Checks if an instruction is in the Reachability map.
-  bool IsPresent(const HloInstruction* a) const {
-    return indices_.contains(GetKey(a));
+  bool IsPresent(const HloInstruction* instruction) const {
+    return indices_.contains(GetKey(instruction));
   }
 
   // Replace the instruction "original" with "replacement" in the reachability
@@ -157,65 +139,53 @@ class HloReachabilityMap {
                const HloInstruction* replacement);
 
  private:
-  // A bit-vector implementation specialized for this use case which provides a
-  // fast bitwise OR operation not available in tensorflow::gtl::BitMap.
-  class BitVector {
+  // A dynamically sized bit-set implementation specialized for this use case
+  // providing fast bitwise OR (not available in tsl::gtl::BitMap).
+  class BitSet {
    public:
-    BitVector() = default;
-    BitVector(size_t size)
+    BitSet() = default;
+    explicit BitSet(size_t size)
         : size_(size), vector_((size + kBits - 1) / kBits, 0) {}
 
-    // Return the bit at the given index.
-    bool Get(size_t index) const {
+    // Returns the bit at the given index.
+    bool Get(Index index) const {
       DCHECK(index >= 0 && index < size_);
       return vector_[index / kBits] & (1ull << (index % kBits));
     }
 
-    // Set the bit at the given index.
-    void Set(size_t index) {
+    // Sets the bit at the given index.
+    void Set(Index index) {
       DCHECK(index >= 0 && index < size_);
       vector_[index / kBits] |= 1ull << (index % kBits);
     }
 
-    // Set this bitvector to the Logical OR of this bitvector and 'other'.
-    void OrWith(const BitVector& other) {
+    // Sets this bit-set to union of this bit-set and `other`.
+    void operator|=(const BitSet& other) {
       for (size_t i = 0; i < vector_.size(); ++i) {
         vector_[i] |= other.vector_[i];
       }
     }
 
-    // Set the bitvector to all zeros.
-    void SetToZero() { std::fill(vector_.begin(), vector_.end(), 0); }
+    // Sets the bitvector to all zeros.
+    void SetToZero() { absl::c_fill(vector_, 0); }
 
-    bool operator==(const BitVector& other) const {
+    bool operator==(const BitSet& other) const {
       return vector_ == other.vector_;
     }
-    bool operator!=(const BitVector& other) const {
-      return vector_ != other.vector_;
-    }
+    bool operator!=(const BitSet& other) const { return !(*this == other); }
 
    private:
     using Word = uint64_t;
     static constexpr size_t kBits = 64;
 
-    // Number of bits in the bitvector.
-    size_t size_;
-
+    size_t size_;  // Number of bits in the set.
     std::vector<Word> vector_;
   };
 
-  // Return the bitvector storing the reachability-to of the given instruction.
-  const BitVector& GetBitVector(const HloInstruction* instruction) const {
-    return GetBitVector(GetIndex(instruction));
+  using Key = std::pair<int, int>;  // module ID, instruction ID.
+  static Key GetKey(const HloInstruction* instruction) {
+    return {instruction->GetModule()->unique_id(), instruction->unique_id()};
   }
-  BitVector& GetBitVector(const HloInstruction* instruction) {
-    return GetBitVector(GetIndex(instruction));
-  }
-
-  const BitVector& GetBitVector(Index index) const {
-    return bit_vectors_[index.v];
-  }
-  BitVector& GetBitVector(Index index) { return bit_vectors_[index.v]; }
 
   // Helper for SetReachabilityToUnion/FastSetReachabilityToUnion.
   void SetReachabilityToUnionHelper(
@@ -223,31 +193,17 @@ class HloReachabilityMap {
   void SetReachabilityToUnionHelper(absl::Span<const Index> input_indices,
                                     Index index);
 
-  uint64_t GetKey(const HloInstruction* instruction) const {
-    uint64_t unique_id = absl::bit_cast<uint32_t>(instruction->unique_id());
-    uint64_t module_id =
-        absl::bit_cast<uint32_t>(instruction->parent()->parent()->unique_id());
-    return (module_id << 32) | unique_id;
-  }
-  // Return the index of the given instruction.
-  int GetIndexInternal(const HloInstruction* instruction) const {
-    return FindOrDie(indices_, GetKey(instruction));
-  }
+  // Map from instruction to index. The index is used for bit_set_ and the bits
+  // within a BitSet.
+  absl::flat_hash_map<Key, Index> indices_;
 
-  // The number of instructions in the reachability map.
-  const size_t size_;
-
-  // Dense assignment from HloInstruction::unique_id to number. These numbers
-  // index into the bit_vectors_ vector and into the bits within a BitVector.
-  absl::flat_hash_map<uint64_t, int> indices_;
-
-  // Bitvectors holding the reachability to each instruction. The bit vector for
+  // Bit-sets holding the reachability to each instruction. The bit-set for
   // instruction X includes ones for each instruction which X is reachable from.
-  std::vector<BitVector> bit_vectors_;
+  std::vector<BitSet> bit_sets_;
 
   // A temporary used by SetReachabilityToUnion to avoid an allocation with each
   // call to the method.
-  BitVector tmp_bit_vector_;
+  BitSet tmp_bit_set_;
 };
 
 }  // namespace xla

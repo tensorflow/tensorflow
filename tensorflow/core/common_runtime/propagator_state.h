@@ -107,6 +107,7 @@ class PropagatorState {
       }
     }
     bool empty() const { return ready_.empty(); }
+    int size() const { return ready_.size() - front_index_; }
 
    private:
     // TODO(b/152925936): Re-evaluate these constants with current usage
@@ -168,6 +169,31 @@ class PropagatorState {
     int dead_count(PendingCounts::Handle h) { return counts.dead_count(h); }
     void increment_dead_count(PendingCounts::Handle h) {
       counts.increment_dead_count(h);
+    }
+    // REQUIRES: Node corresponding to "h" is a merge node
+    PendingCounts::AdjustResult adjust_for_mark_live(PendingCounts::Handle h) {
+      return counts.adjust_for_mark_live(h);
+    }
+    // REQUIRES: Node corresponding to "h" is a merge node
+    PendingCounts::AdjustResult adjust_for_mark_live_atomic(
+        PendingCounts::Handle h) {
+      return counts.adjust_for_mark_live_atomic(h);
+    }
+    PendingCounts::AdjustResult adjust_for_decrement_pending(
+        PendingCounts::Handle h, int decrement_pending) {
+      return counts.adjust_for_decrement_pending(h, decrement_pending);
+    }
+    PendingCounts::AdjustResult adjust_for_decrement_pending_atomic(
+        PendingCounts::Handle h, int decrement_pending) {
+      return counts.adjust_for_decrement_pending_atomic(h, decrement_pending);
+    }
+    PendingCounts::AdjustResult adjust_for_increment_dead(
+        PendingCounts::Handle h) {
+      return counts.adjust_for_increment_dead(h);
+    }
+    PendingCounts::AdjustResult adjust_for_increment_dead_atomic(
+        PendingCounts::Handle h) {
+      return counts.adjust_for_increment_dead_atomic(h);
     }
     PendingCounts::AdjustResult adjust_for_activation(PendingCounts::Handle h,
                                                       bool increment_dead) {
@@ -272,20 +298,24 @@ class PropagatorState {
     // we make it available to all active iterations. When the frame starts
     // a new iteration, we make all the current loop invariants available
     // to the new iteration.
-    std::vector<std::pair<const NodeItem*, Entry>> inv_values TF_GUARDED_BY(mu);
+    std::vector<std::pair<const NodeItem*, Entry>> inv_values
+        TF_GUARDED_BY(iter_mu);
 
     // The list of dead exit node items for the current highest iteration. We
     // will only "execute" the dead exits of the final iteration.
-    std::vector<const NodeItem*> dead_exits TF_GUARDED_BY(mu);
+    std::vector<const NodeItem*> dead_exits TF_GUARDED_BY(iter_mu);
 
     // Static information specific to this frame.
     PendingCounts* pending_counts = nullptr;
     int total_input_tensors = 0;
     std::vector<const NodeItem*>* nodes = nullptr;
 
-    // Lock ordering: ExecutorState.mu_ < mu;
+    // Lock ordering: ExecutorState.mu_ < mu < iter_mu;
     // during structured traversal: parent_frame->mu < mu.
     mutex mu;
+
+    // This mutex lock should only be held when entering next iteration.
+    mutex iter_mu;
 
     void InitializeFrameInfo(const ImmutableExecutorState::FrameInfo& finfo);
 
@@ -358,11 +388,9 @@ class PropagatorState {
     // invocations.
     //
     // Return true if the frame is done after activation.
-    bool ActivateNodesAndAdjustOutstanding(const NodeItem* item,
-                                           const bool is_dead,
-                                           IterationState* iter_state,
-                                           EntryVector* outputs,
-                                           TaggedNodeSeq* ready);
+    bool ActivateNodesAndAdjustOutstanding(
+        const NodeItem* item, const bool is_dead, IterationState* iter_state,
+        EntryVector* outputs, TaggedNodeSeq* ready, int decrement_activation);
 
     // Same as the above, but requires 'mu' already held in exclusive mode.
     int ActivateNodesLocked(const NodeItem* item, const bool is_dead,
@@ -395,34 +423,39 @@ class PropagatorState {
     // REQUIRES: `!item->is_any_consumer_merge_or_control_trigger`.
     // This variant does not use atomic operations to modify the pending counts
     // and thus must hold the exclusive lock.
-    int ActivateNodesFastPathLocked(const NodeItem* item, const bool is_dead,
+    int ActivateNodesFastPathLocked(const NodeItem* item, bool is_dead,
                                     IterationState* iter_state,
                                     EntryVector* outputs, TaggedNodeSeq* ready)
-        TF_EXCLUSIVE_LOCKS_REQUIRED(mu) {
-      return ActivateNodesFastPathInternal<false>(item, is_dead, iter_state,
-                                                  outputs, ready);
-    }
+        TF_EXCLUSIVE_LOCKS_REQUIRED(mu);
 
     // REQUIRES: `!item->is_any_consumer_merge_or_control_trigger`.
     // This variant uses atomic operations to modify the pending counts.
-    int ActivateNodesFastPathShared(const NodeItem* item, const bool is_dead,
+    int ActivateNodesFastPathShared(const NodeItem* item, bool is_dead,
                                     IterationState* iter_state,
                                     EntryVector* outputs, TaggedNodeSeq* ready)
-        TF_SHARED_LOCKS_REQUIRED(mu) {
-      return ActivateNodesFastPathInternal<true>(item, is_dead, iter_state,
-                                                 outputs, ready);
-    }
+        TF_SHARED_LOCKS_REQUIRED(mu);
 
+    int ActivateNodesSlowPathLocked(const NodeItem* item, bool is_dead,
+                                    IterationState* iter_state,
+                                    EntryVector* outputs, TaggedNodeSeq* ready)
+        TF_EXCLUSIVE_LOCKS_REQUIRED(mu);
+
+    int ActivateNodesSlowPathShared(const NodeItem* item, bool is_dead,
+                                    IterationState* iter_state,
+                                    EntryVector* outputs, TaggedNodeSeq* ready)
+        TF_SHARED_LOCKS_REQUIRED(mu);
+
+    // Implementation templates. Not for public use.
     template <bool atomic>
-    int ActivateNodesFastPathInternal(const NodeItem* item, const bool is_dead,
+    int ActivateNodesFastPathInternal(const NodeItem* item, bool is_dead,
                                       IterationState* iter_state,
                                       EntryVector* outputs,
                                       TaggedNodeSeq* ready);
-
-    int ActivateNodesSlowPath(const NodeItem* item, const bool is_dead,
-                              IterationState* iter_state, EntryVector* outputs,
-                              TaggedNodeSeq* ready)
-        TF_EXCLUSIVE_LOCKS_REQUIRED(mu);
+    template <bool atomic>
+    int ActivateNodesSlowPathInternal(const NodeItem* item, bool is_dead,
+                                      IterationState* iter_state,
+                                      EntryVector* outputs,
+                                      TaggedNodeSeq* ready);
   };
 
  public:
@@ -539,6 +572,7 @@ class OrderedPropagatorState : public PropagatorState {
     TaggedNode front() const { return readyp_.top(); }
     void pop_front() { readyp_.pop(); }
     bool empty() const { return readyp_.empty(); }
+    int size() const { return readyp_.size(); }
 
    private:
     static bool compare(TaggedNode const& lhs, TaggedNode const& rhs) {

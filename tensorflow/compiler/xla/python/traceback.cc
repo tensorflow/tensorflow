@@ -25,7 +25,7 @@ limitations under the License.
 #include "pybind11/pytypes.h"
 #include "tensorflow/compiler/xla/python/exceptions.h"
 #include "tensorflow/compiler/xla/python/python_ref_manager.h"
-#include "tensorflow/core/platform/logging.h"
+#include "tensorflow/tsl/platform/logging.h"
 
 namespace xla {
 
@@ -35,12 +35,23 @@ bool Traceback::enabled_ = true;
 
 Traceback::Traceback() {
   DCHECK(PyGILState_Check());
-  const PyThreadState* thread_state = PyThreadState_GET();
+  PyThreadState* thread_state = PyThreadState_GET();
+
+#if PY_VERSION_HEX < 0x030b0000
   for (PyFrameObject* py_frame = thread_state->frame; py_frame != nullptr;
        py_frame = py_frame->f_back) {
     Py_INCREF(py_frame->f_code);
     frames_.emplace_back(py_frame->f_code, py_frame->f_lasti);
   }
+#else   // PY_VERSION_HEX < 0x030b0000
+  PyFrameObject* next;
+  for (PyFrameObject* py_frame = PyThreadState_GetFrame(thread_state);
+       py_frame != nullptr; py_frame = next) {
+    frames_.emplace_back(PyFrame_GetCode(py_frame), PyFrame_GetLasti(py_frame));
+    next = PyFrame_GetBack(py_frame);
+    Py_XDECREF(py_frame);
+  }
+#endif  // PY_VERSION_HEX < 0x030b0000
 }
 
 Traceback::~Traceback() {
@@ -80,7 +91,7 @@ std::vector<Traceback::Frame> Traceback::Frames() const {
         std::string(py::reinterpret_borrow<py::str>(frame.first->co_filename)),
         std::string(py::reinterpret_borrow<py::str>(frame.first->co_name)),
         frame.first->co_firstlineno,
-        PyCode_Addr2Line(frame.first, frame.second)});
+        PyCode_Addr2Line(frame.first, frame.second * kLastiWordBytes)});
   }
   return frames;
 }
@@ -116,7 +127,8 @@ py::object Traceback::AsPythonTraceback() const {
         py::reinterpret_steal<py::object>(
             reinterpret_cast<PyObject*>(py_frame)),
         /*tb_lasti=*/frame.second,
-        /*tb_lineno=*/PyCode_Addr2Line(frame.first, frame.second));
+        /*tb_lineno=*/
+        PyCode_Addr2Line(frame.first, frame.second * kLastiWordBytes));
   }
   return traceback;
 }
@@ -179,10 +191,29 @@ void BuildTracebackSubmodule(py::module& m) {
           throw xla::XlaRuntimeError("code argument must be a code object");
         }
         return PyCode_Addr2Line(reinterpret_cast<PyCodeObject*>(code.ptr()),
-                                lasti);
+                                lasti * kLastiWordBytes);
       },
       "Python wrapper around the Python C API function PyCode_Addr2Line");
 
+#if PY_VERSION_HEX >= 0x030b0000
+  traceback.def_static(
+      "code_addr2location",
+      [](py::handle code, int lasti) {
+        if (!PyCode_Check(code.ptr())) {
+          throw xla::XlaRuntimeError("code argument must be a code object");
+        }
+        int start_line, start_column, end_line, end_column;
+        if (!PyCode_Addr2Location(reinterpret_cast<PyCodeObject*>(code.ptr()),
+                                  lasti, &start_line, &start_column, &end_line,
+                                  &end_column)) {
+          throw py::error_already_set();
+        }
+        return py::make_tuple(start_line, start_column, end_line, end_column);
+      },
+      "Python wrapper around the Python C API function PyCode_Addr2Location");
+#endif  // PY_VERSION_HEX >= 0x030b0000
+
+#if PY_VERSION_HEX < 0x030b0000
   // This function replaces the exception traceback associated with the current
   // Python thread.
   m.def(
@@ -204,6 +235,6 @@ void BuildTracebackSubmodule(py::module& m) {
         Py_XDECREF(old_exc_traceback);
       },
       py::arg("traceback"));
+#endif  // PY_VERSION_HEX < 0x30b0000
 }
-
 }  // namespace xla

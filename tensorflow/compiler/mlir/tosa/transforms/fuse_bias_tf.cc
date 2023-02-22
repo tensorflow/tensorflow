@@ -38,7 +38,10 @@ namespace mlir {
 namespace tosa {
 namespace {
 
-class FuseBiasTF : public TosaFusebiasTFPassBase<FuseBiasTF> {
+#define GEN_PASS_DEF_TOSAFUSEBIASTFPASS
+#include "tensorflow/compiler/mlir/tosa/transforms/passes.h.inc"
+
+class FuseBiasTF : public impl::TosaFusebiasTFPassBase<FuseBiasTF> {
  public:
   explicit FuseBiasTF() {}
   void runOnOperation() override;
@@ -51,7 +54,7 @@ struct ConvertTFBiasAddOp : public RewritePattern {
                                 PatternRewriter& rewriter) const override;
 };
 
-// Replaces the following pattern:
+// Replaces the following pattern, take conv2d as an example:
 //   %1 = tf.Conv2D (%ifm, %filter)
 //   %2 = tf.BiasAdd(%1, %bias)
 //   with
@@ -65,46 +68,71 @@ struct ConvertTFBiasAddOp : public RewritePattern {
 LogicalResult ConvertTFBiasAddOp::matchAndRewrite(
     Operation* op, PatternRewriter& rewriter) const {
   auto tf_biasadd_op = cast<TF::BiasAddOp>(op);
-
   auto output_type =
       tf_biasadd_op.getResult().getType().dyn_cast<RankedTensorType>();
-  // Not a ranked tensor output
-  if (!output_type) return failure();
 
-  auto value = tf_biasadd_op.value();
-  auto bias = tf_biasadd_op.bias();
-
-  TF::Conv2DOp tf_conv2d_op =
-      dyn_cast_or_null<TF::Conv2DOp>(value.getDefiningOp());
-
-  if (!tf_conv2d_op) {
-    return failure();
+  if (!output_type) {
+    return rewriter.notifyMatchFailure(op, "output not a ranked tensor");
   }
 
-  // Sanity check to confirm rhs() has the expected shape of bias
-  auto filter_shape =
-      tf_conv2d_op.filter().getType().dyn_cast<RankedTensorType>().getShape();
+  auto value = tf_biasadd_op.getValue();
+  auto bias = tf_biasadd_op.getBias();
+  auto bias_shape = bias.getType().cast<RankedTensorType>().getShape();
+  if (bias_shape.size() != 1) {
+    return rewriter.notifyMatchFailure(op, "bias tensor must be rank 1");
+  }
 
-  auto bias_shape = bias.getType().dyn_cast<RankedTensorType>().getShape();
+  if (TF::Conv2DOp tf_conv2d_op =
+          llvm::dyn_cast_if_present<TF::Conv2DOp>(value.getDefiningOp())) {
+    // Sanity check to confirm rhs() has the expected shape of bias
+    auto filter_shape =
+        tf_conv2d_op.getFilter().getType().cast<RankedTensorType>().getShape();
 
-  // Bias dimension must match filter output channels, where tf.conv2d's filter
-  // is [H, W, I, O]
-  if (filter_shape.back() != bias_shape.back()) return failure();
+    // Assume the filter shape is [H, W, I, O]
+    if (filter_shape.back() != bias_shape.back()) {
+      return rewriter.notifyMatchFailure(
+          op, "bias dimension must match filter output channels");
+    }
 
-  // Bias tensor that feeds into tosa.conv2d must be rank 1
-  if (bias_shape.size() != 1) return failure();
+    auto result = convertTFConv2DCommon(
+        rewriter, op, output_type, tf_conv2d_op.getInput(),
+        tf_conv2d_op.getFilter(), bias, tf_conv2d_op.getStrides(),
+        tf_conv2d_op.getDilations(), tf_conv2d_op.getExplicitPaddings(),
+        tf_conv2d_op.getPadding(), tf_conv2d_op.getDataFormat());
 
-  auto result = convertTFConv2DCommon(
-      rewriter, op, output_type, tf_conv2d_op.input(), tf_conv2d_op.filter(),
-      bias, tf_conv2d_op.strides(), tf_conv2d_op.dilations(),
-      tf_conv2d_op.explicit_paddings(), tf_conv2d_op.padding(),
-      tf_conv2d_op.data_format());
+    if (!result) return failure();
 
-  if (!result) return failure();
+    rewriter.replaceOp(op, {result.value()});
 
-  rewriter.replaceOp(op, {result.getValue()});
+    return success();
+  }
 
-  return success();
+  if (TF::Conv3DOp tf_conv3d_op =
+          llvm::dyn_cast_if_present<TF::Conv3DOp>(value.getDefiningOp())) {
+    // Sanity check to confirm rhs() has the expected shape of bias
+    auto filter_shape =
+        tf_conv3d_op.getFilter().getType().cast<RankedTensorType>().getShape();
+
+    // Assume the filter shape is [D, H, W, I, O]
+    if (filter_shape.back() != bias_shape.back()) {
+      return rewriter.notifyMatchFailure(
+          op, "bias dimension must match filter output channels");
+    }
+
+    llvm::Optional<Value> result = convertTFConv3DCommon(
+        rewriter, op, output_type, tf_conv3d_op.getInput(),
+        tf_conv3d_op.getFilter(), bias, tf_conv3d_op.getStrides(),
+        tf_conv3d_op.getDilations(), tf_conv3d_op.getPadding(),
+        tf_conv3d_op.getDataFormat());
+
+    if (!result) return failure();
+
+    rewriter.replaceOp(op, {result.value()});
+
+    return success();
+  }
+
+  return failure();
 }
 
 void FuseBiasTF::runOnOperation() {

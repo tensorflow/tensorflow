@@ -24,20 +24,20 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/comparison_util.h"
+#include "tensorflow/compiler/xla/hlo/ir/dfs_hlo_visitor.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
-#include "tensorflow/compiler/xla/service/dfs_hlo_visitor.h"
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
-#include "tensorflow/compiler/xla/service/hlo_computation.h"
-#include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/platform/errors.h"
-#include "tensorflow/stream_executor/lib/statusor.h"
+#include "tensorflow/tsl/platform/errors.h"
+#include "tensorflow/tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
@@ -58,7 +58,7 @@ Literal CreatePredLiteral(bool pred, const Shape& reference_shape) {
   Literal literal = LiteralUtil::CreateR0(pred);
   Literal literal_broadcast =
       literal.Broadcast(ShapeUtil::ChangeElementType(reference_shape, PRED), {})
-          .ValueOrDie();
+          .value();
   return literal_broadcast;
 }
 
@@ -79,7 +79,7 @@ Literal CreateS64Literal(int64_t value, const Shape& reference_shape) {
   Literal literal = LiteralUtil::CreateR0<int64_t>(value);
   return literal
       .Broadcast(ShapeUtil::ChangeElementType(reference_shape, S64), {})
-      .ValueOrDie();
+      .value();
 }
 
 // Create a literal with garbage data. The data inside is undefined and
@@ -97,7 +97,7 @@ Literal CreateGarbageLiteral(const Shape& reference_shape) {
     return LiteralUtil::CreateToken();
   }
   Literal literal = LiteralUtil::One(element_type);
-  return literal.Broadcast(reference_shape, {}).ValueOrDie();
+  return literal.Broadcast(reference_shape, {}).value();
 }
 
 // HloProtoEvaluator evaluates an hlo proto and returns a literal. The user has
@@ -366,18 +366,17 @@ struct PostorderDFSVisitor {
   // compile time, except for its type.
   bool IsValueEffectiveInteger(int64_t handle) {
     // handle_to_instruction's failure status should be checked by parent.
-    const HloInstructionProto* instr =
-        handle_to_instruction(handle).ValueOrDie();
+    const HloInstructionProto* instr = handle_to_instruction(handle).value();
     if (primitive_util::IsIntegralType(instr->shape().element_type())) {
       return true;
     }
     // Also returns true if this is a convert that converts an integer to float.
-    HloOpcode opcode = StringToHloOpcode(instr->opcode()).ValueOrDie();
+    HloOpcode opcode = StringToHloOpcode(instr->opcode()).value();
     if (opcode != HloOpcode::kConvert) {
       return false;
     }
     const HloInstructionProto* parent =
-        handle_to_instruction(instr->operand_ids(0)).ValueOrDie();
+        handle_to_instruction(instr->operand_ids(0)).value();
     if (primitive_util::IsIntegralType(parent->shape().element_type())) {
       return true;
     }
@@ -396,10 +395,10 @@ struct PostorderDFSVisitor {
         ShapeUtil::ElementsIn(subshape) > kLargeShapeElementLimit) {
       return true;
     }
-    HloOpcode opcode = StringToHloOpcode(proto->opcode()).ValueOrDie();
+    HloOpcode opcode = StringToHloOpcode(proto->opcode()).value();
     for (int64_t operand_id : proto->operand_ids()) {
       const HloInstructionProto* operand =
-          handle_to_instruction(operand_id).ValueOrDie();
+          handle_to_instruction(operand_id).value();
       Shape operand_shape = Shape(operand->shape());
 
       if (operand_shape.IsArray() &&
@@ -511,6 +510,7 @@ StatusOr<PostorderDFSNode> PostorderDFSVisitor::AnalyzeConstantValueFallback(
     case HloOpcode::kSubtract:
     case HloOpcode::kCos:
     case HloOpcode::kSin:
+    case HloOpcode::kTan:
     case HloOpcode::kNegate:
     case HloOpcode::kAbs:
     case HloOpcode::kDivide:
@@ -654,7 +654,7 @@ StatusOr<PostorderDFSNode> PostorderDFSVisitor::AnalyzeUpperBound(
       int64_t dimension = root->dimensions(0);
       int64_t operand_handle = root->operand_ids(0);
       const HloInstructionProto* operand_proto =
-          handle_to_instruction(operand_handle).ValueOrDie();
+          handle_to_instruction(operand_handle).value();
       return PostorderDFSNode().AddVisit(
           [operand_proto, dimension]() -> StatusOr<Literal> {
             return LiteralUtil::CreateR0<int32_t>(
@@ -707,7 +707,7 @@ StatusOr<PostorderDFSNode> PostorderDFSVisitor::AnalyzeUpperBound(
             for (int64_t i = 0; i < operands.size(); ++i) {
               auto max = LiteralUtil::MaxElement(operands[i]);
               results.emplace_back(
-                  max.Broadcast(operands[i].shape(), {}).ValueOrDie());
+                  max.Broadcast(operands[i].shape(), {}).value());
             }
             if (ShapeUtil::GetSubshape(Shape(root->shape()),
                                        context.shape_index)
@@ -747,14 +747,14 @@ StatusOr<PostorderDFSNode> PostorderDFSVisitor::AnalyzeUpperBound(
               // runtime. In those cases we use the upper-bound of
               // first operand as a placeholder.
               auto zero = LiteralUtil::Zero(lower_bound.shape().element_type());
-              zero = zero.Broadcast(lower_bound.shape(), {}).ValueOrDie();
+              zero = zero.Broadcast(lower_bound.shape(), {}).value();
               TF_ASSIGN_OR_RETURN(
                   auto lower_bound_is_zero,
                   evaluator.EvaluateElementwiseCompareOp(
                       ComparisonDirection::kEq, lower_bound, zero));
 
               auto one = LiteralUtil::One(lower_bound.shape().element_type());
-              one = one.Broadcast(lower_bound.shape(), {}).ValueOrDie();
+              one = one.Broadcast(lower_bound.shape(), {}).value();
               TF_ASSIGN_OR_RETURN(
                   lower_bound, evaluator.EvaluateElementwiseTernaryOp(
                                    HloOpcode::kSelect, lower_bound_is_zero, one,
@@ -901,7 +901,7 @@ StatusOr<PostorderDFSNode> PostorderDFSVisitor::AnalyzeConstant(
     int64_t handle, InferenceContext context) {
   TF_ASSIGN_OR_RETURN(const HloInstructionProto* root,
                       handle_to_instruction(handle));
-  HloOpcode opcode = StringToHloOpcode(root->opcode()).ValueOrDie();
+  HloOpcode opcode = StringToHloOpcode(root->opcode()).value();
   Shape subshape =
       ShapeUtil::GetSubshape(Shape(root->shape()), context.shape_index);
   if (IsInstructionOverLimit(root, context)) {
@@ -1126,6 +1126,7 @@ StatusOr<PostorderDFSNode> PostorderDFSVisitor::AnalyzeIsDynamic(
     case HloOpcode::kConvert:
     case HloOpcode::kSqrt:
     case HloOpcode::kCbrt:
+    case HloOpcode::kTan:
     case HloOpcode::kTanh: {
       // Forward operand as they don't change if a value is dynamic or static.
       return result.AddVisit([](Literal operand) { return operand; });
@@ -1525,7 +1526,7 @@ StatusOr<Literal> PostorderDFSVisitor::PostOrderDFSVisit(
     if (VLOG_IS_ON(1)) {
       TF_RETURN_IF_ERROR(handle_to_instruction(item.handle).status());
       VLOG(1) << "stack top "
-              << handle_to_instruction(item.handle).ValueOrDie()->DebugString();
+              << handle_to_instruction(item.handle).value()->DebugString();
     }
     if (item.state == kVisiting) {
       VLOG(1) << "visiting";
@@ -1673,8 +1674,8 @@ StatusOr<Literal> ValueInference::SimplifyOp(int64_t handle) {
     }
     case HloOpcode::kConvert: {
       // Only identity kConvert can be optimized away.
-      auto operand = builder_->LookUpInstructionByHandle(inst->operand_ids(0))
-                         .ValueOrDie();
+      auto operand =
+          builder_->LookUpInstructionByHandle(inst->operand_ids(0)).value();
       if (Shape::Equal()(output_shape, Shape(operand->shape()))) {
         // Forward operand handle as result.
         return SimplifyOp(inst->operand_ids(0));
@@ -1699,16 +1700,13 @@ StatusOr<Literal> ValueInference::SimplifyOp(int64_t handle) {
         can_be_optimized = [this, &can_be_optimized](
                                int64_t lhs,
                                int64_t rhs) -> std::optional<int64_t> {
-          auto rhs_inst = builder_->LookUpInstructionByHandle(rhs).ValueOrDie();
-          HloOpcode rhs_opcode =
-              StringToHloOpcode(rhs_inst->opcode()).ValueOrDie();
+          auto rhs_inst = builder_->LookUpInstructionByHandle(rhs).value();
+          HloOpcode rhs_opcode = StringToHloOpcode(rhs_inst->opcode()).value();
           if (rhs_opcode == HloOpcode::kSubtract) {
-            auto sub_lhs_handle = SimplifyOp(rhs_inst->operand_ids(0))
-                                      .ValueOrDie()
-                                      .Get<int64_t>({});
-            auto sub_rhs_handle = SimplifyOp(rhs_inst->operand_ids(1))
-                                      .ValueOrDie()
-                                      .Get<int64_t>({});
+            auto sub_lhs_handle =
+                SimplifyOp(rhs_inst->operand_ids(0)).value().Get<int64_t>({});
+            auto sub_rhs_handle =
+                SimplifyOp(rhs_inst->operand_ids(1)).value().Get<int64_t>({});
             if (sub_rhs_handle == lhs) {
               // lhs + (sub_lhs - sub_rhs) = sub_lhs if lhs == sub_rhs
               return sub_lhs_handle;
@@ -1716,16 +1714,13 @@ StatusOr<Literal> ValueInference::SimplifyOp(int64_t handle) {
           }
 
           // Check the case for a + b + (c - a) => b + c
-          auto lhs_inst = builder_->LookUpInstructionByHandle(lhs).ValueOrDie();
-          HloOpcode lhs_opcode =
-              StringToHloOpcode(lhs_inst->opcode()).ValueOrDie();
+          auto lhs_inst = builder_->LookUpInstructionByHandle(lhs).value();
+          HloOpcode lhs_opcode = StringToHloOpcode(lhs_inst->opcode()).value();
           if (lhs_opcode == HloOpcode::kAdd) {
-            auto add_lhs_handle = SimplifyOp(lhs_inst->operand_ids(0))
-                                      .ValueOrDie()
-                                      .Get<int64_t>({});
-            auto add_rhs_handle = SimplifyOp(lhs_inst->operand_ids(1))
-                                      .ValueOrDie()
-                                      .Get<int64_t>({});
+            auto add_lhs_handle =
+                SimplifyOp(lhs_inst->operand_ids(0)).value().Get<int64_t>({});
+            auto add_rhs_handle =
+                SimplifyOp(lhs_inst->operand_ids(1)).value().Get<int64_t>({});
             if (auto optimized = can_be_optimized(add_lhs_handle, rhs)) {
               return Add(XlaOp(add_rhs_handle, builder_),
                          XlaOp(optimized.value(), builder_))
@@ -1778,7 +1773,7 @@ StatusOr<OptionalLiteral> ValueInference::AnalyzeConstant(
       [&](int64_t handle) { return &(builder_->embedded_[handle]); });
   TF_ASSIGN_OR_RETURN(Shape op_shape, builder_->GetShape(op));
   int64_t handle = op.handle();
-  if (ShapeUtil::IsScalar(builder_->GetShape(op).ValueOrDie())) {
+  if (ShapeUtil::IsScalar(builder_->GetShape(op).value())) {
     TF_ASSIGN_OR_RETURN(auto result, SimplifyOp(handle));
     auto optimized_handle = result.Get<int64_t>({});
     if (optimized_handle != -1) {

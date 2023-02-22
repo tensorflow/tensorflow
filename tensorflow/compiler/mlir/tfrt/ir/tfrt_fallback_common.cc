@@ -15,6 +15,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tfrt/ir/tfrt_fallback_common.h"
 
 #include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 
 namespace tfrt {
 namespace fallback_common {
@@ -46,6 +47,7 @@ mlir::ParseResult ParseExecuteOpCommon(mlir::OpAsmParser &parser,
   mlir::IntegerAttr cost;
   mlir::StringAttr device;
   mlir::StringAttr op_name;
+  mlir::SymbolRefAttr f;
   llvm::SmallVector<mlir::OpAsmParser::UnresolvedOperand, 4> in_chains;
   llvm::SmallVector<mlir::OpAsmParser::UnresolvedOperand, 4> operands;
   mlir::NamedAttrList op_attrs;
@@ -76,8 +78,15 @@ mlir::ParseResult ParseExecuteOpCommon(mlir::OpAsmParser &parser,
        parser.parseRParen()))
     return mlir::failure();
 
-  if (parser.parseAttribute(op_name, "op_name", result.attributes) ||
-      parser.parseOperandList(operands, mlir::OpAsmParser::Delimiter::Paren) ||
+  if (options.has_op_name &&
+      parser.parseAttribute(op_name, "op_name", result.attributes))
+    return mlir::failure();
+
+  if (options.has_symbol_ref &&
+      parser.parseAttribute(f, "f", result.attributes))
+    return mlir::failure();
+
+  if (parser.parseOperandList(operands, mlir::OpAsmParser::Delimiter::Paren) ||
       parser.parseOptionalAttrDict(op_attrs) ||
       parser.parseOptionalAttrDict(op_func_attrs))
     return mlir::failure();

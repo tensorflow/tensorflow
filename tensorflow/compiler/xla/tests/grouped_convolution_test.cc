@@ -268,7 +268,7 @@ ENTRY convolution {
   ROOT convolution = f32[2,4,4,1]{3,2,1,0} convolution(p1, reverse), window={size=4x4 pad=3_3x3_3}, dim_labels=fb01_o01i->f01b, feature_group_count=2
 }
 )")
-                    .ValueOrDie();
+                    .value();
   TF_ASSERT_OK_AND_ASSIGN(auto fake_arguments, MakeFakeArguments(module.get()));
   std::vector<Literal*> fake_argument_ptrs;
   absl::c_transform(
@@ -276,6 +276,19 @@ ENTRY convolution {
       [](const Literal& literal) { return &const_cast<Literal&>(literal); });
   EXPECT_TRUE(RunAndCompare(std::move(module), fake_argument_ptrs,
                             ErrorSpec{0.01, 0.01}));
+}
+
+TEST_F(GroupedConvolutionTest, TestBatchGroupedStridedConv) {
+  EXPECT_TRUE(RunAndCompare(R"(
+    HloModule xla_computation_f.9, entry_computation_layout={()->(f32[2,1,3]{2,1,0})}
+
+ENTRY main.5 {
+  constant.1 = f32[] constant(1)
+  broadcast.2 = f32[1,2,3]{2,1,0} broadcast(constant.1), dimensions={}
+  convolution.3 = f32[2,1,3]{2,1,0} convolution(broadcast.2, broadcast.2), window={size=1 pad=0_1 lhs_dilate=2}, dim_labels=0fb_0io->0bf, batch_group_count=3
+  ROOT tuple.4 = (f32[2,1,3]{2,1,0}) tuple(convolution.3)
+})",
+                            ErrorSpec{0.01}));
 }
 
 }  // namespace

@@ -20,9 +20,16 @@ limitations under the License.
 #include <memory>
 
 #include "tensorflow/compiler/xla/pjrt/c/pjrt_c_api.h"
+#include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
+#include "tensorflow/compiler/xla/pjrt/pjrt_future.h"
 #include "tensorflow/compiler/xla/status.h"
+#include "tensorflow/compiler/xla/xla_data.pb.h"
 
 namespace pjrt {
+
+ABSL_CONST_INIT extern const absl::string_view kHloFormat;
+ABSL_CONST_INIT extern const absl::string_view kMlirFormat;
+ABSL_CONST_INIT extern const absl::string_view kHloWithConfigFormat;
 
 using PJRT_ClientDeleter = std::function<void(PJRT_Client*)>;
 
@@ -36,6 +43,48 @@ using PJRT_ErrorDeleter = std::function<void(PJRT_Error*)>;
 // The lifetime of the Api pointed to must be longer than the error.
 PJRT_ErrorDeleter MakeErrorDeleter(const PJRT_Api* api);
 
+using PJRT_BufferDeleter = std::function<void(PJRT_Buffer*)>;
+
+// Pass in an API pointer; receive a custom deleter for smart pointers.
+// The lifetime of the Api pointed to must be longer than the buffer.
+PJRT_BufferDeleter MakeBufferDeleter(const PJRT_Api* api);
+
+using PJRT_ExecutableDeleter = std::function<void(PJRT_Executable*)>;
+
+// Creates a custom deleter for smart pointers.
+// Pass in pointer `api` to the PJRT C API.
+// The lifetime of the Api pointed to must be longer than the executable.
+PJRT_ExecutableDeleter MakeExecutableDeleter(const PJRT_Api* api);
+
+using PJRT_LoadedExecutableDeleter =
+    std::function<void(PJRT_LoadedExecutable*)>;
+
+// Creates a custom deleter for smart pointers.
+// Pass in pointer `api` to the PJRT C API.
+// The lifetime of the Api pointed to must be longer than the executable.
+PJRT_LoadedExecutableDeleter MakeLoadedExecutableDeleter(const PJRT_Api* api);
+
+using PJRT_EventDeleter = std::function<void(PJRT_Event*)>;
+
+// Pass in an API pointer; receive a custom deleter for smart pointers.
+// The lifetime of the Api pointed to must be longer than the event.
+PJRT_EventDeleter MakeEventDeleter(const PJRT_Api* api);
+
+using PJRT_SerializedExecutableDeleter =
+    std::function<void(PJRT_SerializedExecutable*)>;
+
+// Pass in an API pointer; receive a custom deleter for smart pointers.
+// The lifetime of the Api pointed to must be longer than the serialized
+// executable.
+PJRT_SerializedExecutableDeleter MakeSerializedExecutableDeleter(
+    const PJRT_Api* api);
+
+using PJRT_DeviceTopologyDeleter = std::function<void(PJRT_DeviceTopology*)>;
+
+// Pass in an API pointer; receive a custom deleter for smart pointers.
+// The lifetime of the Api pointed to must be longer than the client.
+PJRT_DeviceTopologyDeleter MakeDeviceTopologyDeleter(const PJRT_Api* api);
+
 // Fatal error logging if status is not success. This terminates the process
 // and frees the PJRT_Error passed in.
 void LogFatalIfPjrtError(PJRT_Error* error, const PJRT_Api* api);
@@ -44,6 +93,40 @@ absl::string_view GetPjrtErrorMessage(const PJRT_Error* error,
                                       const PJRT_Api* api);
 
 xla::Status PjrtErrorToStatus(const PJRT_Error* error, const PJRT_Api* api);
+
+tsl::error::Code PjrtErrorToStatusCode(const PJRT_Error* error,
+                                       const PJRT_Api* api);
+
+PJRT_Error_Code StatusCodeToPjrtErrorCode(tsl::error::Code code);
+
+// Conversion helper from xla::PrimitiveType to PJRT_Buffer_Type.
+PJRT_Buffer_Type ConvertToPjRtBufferType(xla::PrimitiveType type);
+
+// Conversion helper from PJRT_Buffer_type to xla::PrimitiveType.
+xla::PrimitiveType ConvertFromPjRtBufferType(PJRT_Buffer_Type type);
+
+// Conversion helper from xla::PjRtClient::HostBufferSemantics to
+// PJRT_HostBufferSemantics.
+PJRT_HostBufferSemantics ConvertToPjRtHostBufferSemantics(
+    xla::PjRtClient::HostBufferSemantics buffer_semantics);
+
+// Conversion helper to xla::PjRtClient::HostBufferSemantics from
+// PJRT_HostBufferSemantics.
+xla::PjRtClient::HostBufferSemantics ConvertFromPjRtHostBufferSemantics(
+    PJRT_HostBufferSemantics buffer_semantics);
+
+// Create and return a `PjRtFuture`  which will be set when `c_event` is ready.
+// This also deletes `c_event` when the `PjRtFuture` is set.
+xla::PjRtFuture<xla::Status> ConvertCEventToCppFuture(PJRT_Event* c_event,
+                                                      const PJRT_Api* c_api);
+
+// Helper function for checking C API argument struct sizes. Returns a non-OK
+// status if the expected and actual sizes aren't equal (i.e. no ABI
+// compatibility guarantees).
+xla::Status CheckMatchingStructSizes(absl::string_view struct_name,
+                                     size_t expected_size, size_t actual_size);
+
+absl::string_view GetPlatformVersion(PJRT_Client* client, const PJRT_Api* api);
 
 }  // namespace pjrt
 

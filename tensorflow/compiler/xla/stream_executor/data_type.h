@@ -17,11 +17,14 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_STREAM_EXECUTOR_DATA_TYPE_H_
 
 #include <complex>
+#include <cstdint>
 
 #include "tensorflow/compiler/xla/stream_executor/dnn.pb.h"
-#include "tensorflow/compiler/xla/stream_executor/platform/port.h"
+#include "tensorflow/tsl/platform/float8.h"
+#include "tensorflow/tsl/protobuf/dnn.pb.h"
 
 namespace Eigen {
+struct bfloat16;
 struct half;
 }  // namespace Eigen
 
@@ -34,6 +37,14 @@ struct ToDataType;
 
 // Note: If you add a new specialization below, make sure to add the
 // corresponding definition in stream_executor/dnn.cc.
+template <>
+struct ToDataType<tsl::float8_e4m3fn> {
+  static constexpr DataType value = DataType::kF8E4M3FN;
+};
+template <>
+struct ToDataType<tsl::float8_e5m2> {
+  static constexpr DataType value = DataType::kF8E5M2;
+};
 template <>
 struct ToDataType<float> {
   static constexpr DataType value = DataType::kFloat;
@@ -51,11 +62,11 @@ struct ToDataType<Eigen::bfloat16> {
   static constexpr DataType value = DataType::kBF16;
 };
 template <>
-struct ToDataType<tensorflow::int8> {
+struct ToDataType<int8_t> {
   static constexpr DataType value = DataType::kInt8;
 };
 template <>
-struct ToDataType<tensorflow::int32> {
+struct ToDataType<int32_t> {
   static constexpr DataType value = DataType::kInt32;
 };
 template <>

@@ -12,8 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef TENSORFLOW_PYTHON_UTIL_PYTHON_API_PARAMETER_CONVERTER_H_
-#define TENSORFLOW_PYTHON_UTIL_PYTHON_API_PARAMETER_CONVERTER_H_
+#ifndef TENSORFLOW_PYTHON_FRAMEWORK_PYTHON_API_PARAMETER_CONVERTER_H_
+#define TENSORFLOW_PYTHON_FRAMEWORK_PYTHON_API_PARAMETER_CONVERTER_H_
 
 #include <Python.h>
 
@@ -71,4 +71,4 @@ bool CopyPythonAPITensorLists(const PythonAPIInfo& api_info,
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_PYTHON_UTIL_PYTHON_API_PARAMETER_CONVERTER_H_
+#endif  // TENSORFLOW_PYTHON_FRAMEWORK_PYTHON_API_PARAMETER_CONVERTER_H_

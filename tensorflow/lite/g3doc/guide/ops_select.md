@@ -157,6 +157,14 @@ After running `pod install`, you need to provide an additional linker flag to
 force load the select TF ops framework into your project. In your Xcode project,
 go to `Build Settings` -> `Other Linker Flags`, and add:
 
+For versions >= 2.9.0:
+
+```text
+-force_load $(SRCROOT)/Pods/TensorFlowLiteSelectTfOps/Frameworks/TensorFlowLiteSelectTfOps.xcframework/ios-arm64/TensorFlowLiteSelectTfOps.framework/TensorFlowLiteSelectTfOps
+```
+
+For versions < 2.9.0:
+
 ```text
 -force_load $(SRCROOT)/Pods/TensorFlowLiteSelectTfOps/Frameworks/TensorFlowLiteSelectTfOps.framework/TensorFlowLiteSelectTfOps
 ```

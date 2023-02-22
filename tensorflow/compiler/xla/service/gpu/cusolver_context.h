@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_CUSOLVER_CONTEXT_H_
 
 #include <complex>
+#include <memory>
 
 #define TENSORFLOW_USE_HIPSOLVER \
   (TENSORFLOW_USE_ROCM && (TF_ROCM_VERSION >= 40500))
@@ -32,59 +33,30 @@ using gpusolverHandle_t = cusolverDnHandle_t;
 #include "rocm/rocm_config.h"
 // Macros to ease the transition from rocsolver to hipsolver.
 #if TENSORFLOW_USE_HIPSOLVER
-#include "tensorflow/stream_executor/rocm/hipsolver_wrapper.h"
+#include "tensorflow/compiler/xla/stream_executor/rocm/hipsolver_wrapper.h"
 using gpusolverHandle_t = hipsolverHandle_t;
 #else  // TENSORFLOW_USE_ROCSOLVER
-#include "tensorflow/stream_executor/rocm/rocblas_wrapper.h"
-#include "tensorflow/stream_executor/rocm/rocsolver_wrapper.h"
+#include "tensorflow/compiler/xla/stream_executor/rocm/rocblas_wrapper.h"
+#include "tensorflow/compiler/xla/stream_executor/rocm/rocsolver_wrapper.h"
 using gpusolverHandle_t = rocblas_handle;
 #endif  // TF_ROCM_VERSION >= 40500
 #endif  // TENSORFLOW_USE_ROCM
 
 #include "tensorflow/compiler/xla/statusor.h"
-#include "tensorflow/compiler/xla/types.h"
-#include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/platform/stream_executor_no_cuda.h"
-#include "tensorflow/stream_executor/blas.h"
+#include "tensorflow/compiler/xla/stream_executor/blas.h"
+#include "tensorflow/compiler/xla/stream_executor/stream_executor.h"
+#include "tensorflow/compiler/xla/xla_data.pb.h"
 
 namespace xla {
 namespace gpu {
 
+namespace se = ::stream_executor;
+
 class GpuSolverContext {
  public:
-  // stream may be nullptr, in which case the context can only be used for
-  // buffer size queries.
-  static StatusOr<GpuSolverContext> Create(se::Stream* stream);
-  GpuSolverContext() = default;
-  ~GpuSolverContext();
+  static StatusOr<GpuSolverContext> Create();
 
-  GpuSolverContext(const GpuSolverContext&) = delete;
-  GpuSolverContext(GpuSolverContext&&);
-  GpuSolverContext& operator=(const GpuSolverContext&) = delete;
-  GpuSolverContext& operator=(GpuSolverContext&&);
-
-  bool SupportsPotrfBatched() const {
-    return true;
-  }
-
-  // Computes the Cholesky factorization A = L * L^T for a single matrix.
-  // Returns Status::OK() if the kernel was launched successfully. See:
-  // http://docs.nvidia.com/cuda/cusolver/#cuds-lt-t-gt-potrf
-  Status Potrf(se::blas::UpperLower uplo, int n, se::DeviceMemory<float> a,
-               int lda, se::DeviceMemory<int> lapack_info,
-               se::DeviceMemoryBase workspace);
-  Status Potrf(se::blas::UpperLower uplo, int n, se::DeviceMemory<double> a,
-               int lda, se::DeviceMemory<int> lapack_info,
-               se::DeviceMemoryBase workspace);
-  Status Potrf(se::blas::UpperLower uplo, int n,
-               se::DeviceMemory<std::complex<float>> a, int lda,
-               se::DeviceMemory<int> lapack_info,
-               se::DeviceMemoryBase workspace);
-  Status Potrf(se::blas::UpperLower uplo, int n,
-               se::DeviceMemory<std::complex<double>> a, int lda,
-               se::DeviceMemory<int> lapack_info,
-               se::DeviceMemoryBase workspace);
+  Status SetStream(se::Stream* stream);
 
   // Computes the Cholesky factorization of multiple matrices.  See
   // https://docs.nvidia.com/cuda/cusolver/index.html#cuSolverDN-lt-t-gt-batchpotrf
@@ -123,12 +95,13 @@ class GpuSolverContext {
                                     int batch_size);
 
  private:
-  GpuSolverContext(se::Stream* stream, gpusolverHandle_t handle);
+  explicit GpuSolverContext(gpusolverHandle_t handle);
 
-  gpusolverHandle_t handle() const { return handle_; }
+  struct Deleter {
+    void operator()(gpusolverHandle_t handle);
+  };
 
-  se::Stream* stream_ = nullptr;
-  gpusolverHandle_t handle_ = nullptr;
+  std::unique_ptr<std::remove_pointer_t<gpusolverHandle_t>, Deleter> handle_;
 };
 
 }  // namespace gpu

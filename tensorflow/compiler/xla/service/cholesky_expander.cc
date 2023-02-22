@@ -31,7 +31,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/tsl/platform/errors.h"
 
 namespace xla {
 
@@ -224,7 +224,7 @@ StatusOr<HloInstruction*> CholeskyExpander::ExpandInstruction(
       "xla.cholesky_%s_%s", instruction->operand(0)->shape().ToString(),
       options.lower() ? "lower" : "upper");
 
-  HloModule* module = instruction->parent()->parent();
+  HloModule* module = instruction->GetModule();
 
   HloComputation*& computation =
       computation_cache_.emplace(name, nullptr).first->second;

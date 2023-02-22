@@ -190,6 +190,11 @@ TF_CAPI_EXPORT extern void TF_InputRange(TF_OpKernelContext* ctx,
                                          const char* name,
                                          TF_InputRange_Args* args);
 
+// Returns the data type of the index-th input. If index < 0 or index >=
+// TF_NumInputs(ctx), the program aborts.
+TF_CAPI_EXPORT extern TF_DataType TF_InputDatatype(TF_OpKernelContext* ctx,
+                                                   int index);
+
 // Sets the ith output of ctx to tensor. If TF_GetCode(status) is anything but
 // TF_OK, ctx is left unmodified.
 //
@@ -197,6 +202,14 @@ TF_CAPI_EXPORT extern void TF_InputRange(TF_OpKernelContext* ctx,
 TF_CAPI_EXPORT extern void TF_SetOutput(TF_OpKernelContext* ctx, int i,
                                         const TF_Tensor* tensor,
                                         TF_Status* status);
+
+// Retrieves the ith output from ctx. If TF_GetCode(status) is TF_OK, *tensor is
+// populated and its ownership is passed to the caller. In any other case,
+// *tensor is not modified.
+//
+// If i < 0 or i >= TF_NumOutputs(ctx), *status is set to TF_OUT_OF_RANGE.
+TF_CAPI_EXPORT extern TF_Tensor* TF_GetMutableOutput(TF_OpKernelContext* ctx,
+                                                     int i, TF_Status* status);
 
 // Retrieves a serialized FunctionDefLibrary. Status will be set.
 TF_CAPI_EXPORT extern void TF_GetSerializedFunctionDefLibrary(
@@ -206,6 +219,11 @@ TF_CAPI_EXPORT extern void TF_GetSerializedFunctionDefLibrary(
 // Retrieves a serialized ConfigProto. Status will be set.
 TF_CAPI_EXPORT extern void TF_GetSerializedConfigProto(
     TF_OpKernelContext* ctx, TF_Buffer* serialized_config_proto,
+    TF_Status* status);
+
+// Retrieves a serialized ResourceHandleProto. Status will be set.
+TF_CAPI_EXPORT extern void TF_GetSerializedResourceHandleProto(
+    TF_OpKernelContext* ctx, int i, TF_Buffer* serialized_resource_handle_proto,
     TF_Status* status);
 
 // Notifies the given OpKernelConstruction that kernel construction has failed.
@@ -235,17 +253,37 @@ TF_CAPI_EXPORT extern bool TF_IsHostMemoryOutput(TF_OpKernelContext* ctx, int i,
 // Returns the step ID of the given context.
 TF_CAPI_EXPORT extern int64_t TF_StepId(TF_OpKernelContext* ctx);
 
+// Returns the serialized NodeDef protocol buffer for the kernel
+TF_CAPI_EXPORT extern TF_Buffer* TF_OpKernelConstruction_GetNodeDef(
+    TF_OpKernelConstruction* ctx, TF_Status* status);
+
 // Returns the frame ID of the given context.
 TF_CAPI_EXPORT extern uint64_t TF_GetFrameId(TF_OpKernelContext* ctx);
 
 // Returns the Iter ID of the given context.
 TF_CAPI_EXPORT extern int64_t TF_GetIterId(TF_OpKernelContext* ctx);
 
+// Returns the Step ID of the given context.
+TF_CAPI_EXPORT extern int64_t TF_GetStepId(TF_OpKernelContext* ctx);
+
+// Returns the Device ID of the device that the context possesses.
+TF_CAPI_EXPORT extern int TF_GetDeviceId(TF_OpKernelContext* ctx);
+
+// Returns the graph def version of the given context.
+TF_CAPI_EXPORT extern int TF_GetGraphDefVersion(TF_OpKernelContext* ctx);
+
 // Returns the name of the OpKernel.
 //
 // The returned TF_StringView's underlying string is owned by the OpKernel and
 // has the same lifetime as the OpKernel.
 TF_CAPI_EXPORT extern TF_StringView TF_GetOpKernelName(TF_OpKernelContext* ctx);
+
+// Returns the default container of the resource manager in OpKernelContext.
+//
+// The returned TF_StringView's underlying string is owned by the OpKernel and
+// has the same lifetime as the OpKernel.
+TF_CAPI_EXPORT extern TF_StringView TF_GetResourceMgrDefaultContainerName(
+    TF_OpKernelContext* ctx);
 
 // Returns the name of the requested input at `index` from the OpKernel.
 //

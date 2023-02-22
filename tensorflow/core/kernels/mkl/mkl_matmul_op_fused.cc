@@ -81,8 +81,13 @@ class MklFusedMatMulOp : public MklDnnMatMulOpBase<T, T> {
                 errors::InvalidArgument("In[0] is not a matrix"));
     OP_REQUIRES(ctx, TensorShapeUtils::IsMatrix(weight_tf_shape),
                 errors::InvalidArgument("In[1] is not a matrix"));
-    OP_REQUIRES(ctx, TensorShapeUtils::IsVector(bias_tensor.shape()),
-                errors::InvalidArgument("Biases must be 1D"));
+    for (int i = 0; i < bias_tensor.dims() - 1; i++) {
+      OP_REQUIRES(
+          ctx, bias_tensor.dim_size(i) == 1,
+          errors::InvalidArgument("For bias_dims > 1, all except the "
+                                  "last dimension (channel) must be 1, got: ",
+                                  bias_tensor.shape().DebugString()));
+    }
 
     // Expression: [batch, k] * [k, channel] + [channel] = [batch, channel]
     //
@@ -99,7 +104,7 @@ class MklFusedMatMulOp : public MklDnnMatMulOpBase<T, T> {
         errors::InvalidArgument(
             "Matrix size-incompatible: In[0]: ", src_tf_shape.DebugString(),
             ", In[1]: ", weight_tf_shape.DebugString()));
-    OP_REQUIRES(ctx, bias_tensor.shape().dim_size(0) == channel,
+    OP_REQUIRES(ctx, bias_tensor.dim_size(bias_tensor.dims() - 1) == channel,
                 errors::InvalidArgument(
                     "Must provide as many biases as the channel size: ",
                     bias_tensor.shape().DebugString(), " vs. ", channel));
@@ -124,14 +129,7 @@ class MklFusedMatMulOp : public MklDnnMatMulOpBase<T, T> {
         memory::format_tag::nc, this->is_weight_const_);
     // Extend the basic parameters for data types and fusions.
     ExtendMklDnnMatMulFwdParams(ctx, matmul_params);
-#ifdef DNNL_AARCH64_USE_ACL
-    // TODO(milpuz01): Remove once Arm Compute Library provides support for
-    // in-place updates
-    matmul_params.weight_hash =
-        Hash64(weight_tensor.tensor_data().data(),
-               std::min(kWeightTensorHashLength,
-                        static_cast<int>(weight_tensor.tensor_data().size())));
-#endif
+
     MklDnnMatMulFwdPrimitive<T, T, T, T, T>* matmul_prim =
         MklDnnMatMulFwdPrimitiveFactory<T, T, T, T, T>::Get(matmul_params, 0);
 
@@ -317,9 +315,6 @@ class MklFusedMatMulOp : public MklDnnMatMulOpBase<T, T> {
   std::vector<string> fused_ops_;
   const int kInputIndex_Add = 3;
   const int kOutputIndex_Dst = 0;
-#ifdef DNNL_AARCH64_USE_ACL
-  const int kWeightTensorHashLength = 1024;
-#endif
 };  // namespace tensorflow
 
 // Register mkl kernels for supported operations and types.

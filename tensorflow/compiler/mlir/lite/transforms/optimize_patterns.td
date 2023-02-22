@@ -17,7 +17,7 @@ limitations under the License.
 
 include "mlir/IR/OpBase.td"
 include "mlir/IR/PatternBase.td"
-include "mlir/Dialect/Arithmetic/IR/ArithmeticOps.td"
+include "mlir/Dialect/Arith/IR/ArithOps.td"
 include "mlir/Dialect/Func/IR/FuncOps.td"
 include "tensorflow/compiler/mlir/lite/ir/tfl_ops.td"
 include "tensorflow/compiler/mlir/lite/utils/utils.td"
@@ -129,25 +129,25 @@ multiclass FuseBinaryOpToPrecedingAffine<Op binaryOp> {
      (HasRank<1> $value),
      (HasOneUse $output)]>;
    def FuseBinaryOpWithTransposeConv#binaryOp : Pat<
-    (binaryOp (TFL_TransposeConvOp:$output $output_shape, $weights, $inputs,
+    (binaryOp (TFL_TransposeConvOp:$output $output_shape, $weights, $input,
                 (Arith_ConstantOp FloatElementsAttr:$bias), $padding,
-                $stride_h, $stride_w),
-              (Arith_ConstantOp FloatElementsAttr:$value), TFL_AF_None),
-    (TFL_TransposeConvOp $output_shape, $weights, $inputs,
+                $stride_h, $stride_w, TFL_AF_None),
+              (Arith_ConstantOp FloatElementsAttr:$value), $act_fn),
+    (TFL_TransposeConvOp $output_shape, $weights, $input,
       (binaryOp (Arith_ConstantOp $bias),
          (Arith_ConstantOp $value), TFL_AF_None),
-      $padding, $stride_h, $stride_w),
+      $padding, $stride_h, $stride_w, $act_fn),
     [(CanFuseConvOrDepthwiseConv<"false"> $weights, $value),
      (HasOneUse $output)]>;
   // Fuse for TransposeConv with no bias
   def FuseBinaryOpWithTransposeConvNoneBias#binaryOp : Pat<
-    (binaryOp (TFL_TransposeConvOp:$output $output_shape, $weights, $inputs,
+    (binaryOp (TFL_TransposeConvOp:$output $output_shape, $weights, $input,
                 $bias, $padding,
-                $stride_h, $stride_w),
-              (Arith_ConstantOp FloatElementsAttr:$value), TFL_AF_None),
-    (TFL_TransposeConvOp $output_shape, $weights, $inputs,
+                $stride_h, $stride_w, TFL_AF_None),
+              (Arith_ConstantOp FloatElementsAttr:$value), $act_fn),
+    (TFL_TransposeConvOp $output_shape, $weights, $input,
       (Arith_ConstantOp $value),
-      $padding, $stride_h, $stride_w),
+      $padding, $stride_h, $stride_w, $act_fn),
     [(CanFuseConvOrDepthwiseConv<"false"> $weights, $value),
      (IsNoneType $bias),
      (HasOneUse $output)]>;
@@ -209,8 +209,8 @@ multiclass FuseMulOrDivWithConv2dOrDepthwiseConv2d<Op BinaryOp> {
     (BinaryOp (TFL_TransposeConvOp:$output $output_shape,
                 (Arith_ConstantOp FloatElementsAttr:$weights), $input,
                 (Arith_ConstantOp FloatElementsAttr:$bias),
-                $padding, $stride_h, $stride_w),
-              (Arith_ConstantOp $value), TFL_AF_None),
+                $padding, $stride_h, $stride_w, TFL_AF_None),
+              (Arith_ConstantOp $value), $act_fn),
     (TFL_TransposeConvOp $output_shape,
       (BinaryOp (Arith_ConstantOp $weights),
         (Arith_ConstantOp (ExpandTo4DForConv $value)),
@@ -219,22 +219,22 @@ multiclass FuseMulOrDivWithConv2dOrDepthwiseConv2d<Op BinaryOp> {
       (BinaryOp (Arith_ConstantOp $bias),
         (Arith_ConstantOp $value),
         TFL_AF_None),
-      $padding, $stride_h, $stride_w),
+      $padding, $stride_h, $stride_w, $act_fn),
     [(CanFuseConvOrDepthwiseConv<"false"> $weights, $value),
      (HasOneUse $output)]>;
   def FuseMulOrDivWithTransposeConvWithNoneBias#BinaryOp : Pat<
     (BinaryOp (TFL_TransposeConvOp:$output $output_shape,
                 (Arith_ConstantOp FloatElementsAttr:$weights), $input,
                 $bias,
-                $padding, $stride_h, $stride_w),
-              (Arith_ConstantOp $value), TFL_AF_None),
+                $padding, $stride_h, $stride_w, TFL_AF_None),
+              (Arith_ConstantOp $value), $act_fn),
     (TFL_TransposeConvOp $output_shape,
       (BinaryOp (Arith_ConstantOp $weights),
         (Arith_ConstantOp (ExpandTo4DForConv $value)),
         TFL_AF_None),
       $input,
       $bias,
-      $padding, $stride_h, $stride_w),
+      $padding, $stride_h, $stride_w, $act_fn),
     [(CanFuseConvOrDepthwiseConv<"false"> $weights, $value),
      (IsNoneType $bias),
      (HasOneUse $output)]>;

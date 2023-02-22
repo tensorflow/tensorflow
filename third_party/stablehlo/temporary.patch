@@ -1,0 +1,155 @@
+diff --ruN a/stablehlo/stablehlo/reference/Ops.h b/stablehlo/stablehlo/reference/Ops.h
+--- stablehlo/stablehlo/reference/Ops.h
++++ stablehlo/stablehlo/reference/Ops.h
+@@ -34,8 +34,8 @@
+ Tensor evalConstantOp(ElementsAttr value);
+ Tensor evalConvertOp(const Tensor &operand, Type resultType);
+ Tensor evalCosineOp(const Tensor &operand, Type resultType);
+-Tensor evalDynamicSliceOp(const Tensor &operand, ArrayRef<Tensor> start_indices,
+-                          ArrayRef<int64_t> slice_sizes, Type resultType);
++Tensor evalDynamicSliceOp(const Tensor &operand, ArrayRef<Tensor> startIndices,
++                          ArrayRef<int64_t> sliceSizes, Type resultType);
+ Tensor evalDynamicUpdateSliceOp(const Tensor &operand, const Tensor &update,
+                                 ArrayRef<Tensor> startIndices, Type resultType);
+ Tensor evalFloorOp(const Tensor &operand, Type resultType);
+diff --ruN a/stablehlo/stablehlo/tests/stablehlo_refine_shapes.mlir b/stablehlo/stablehlo/tests/stablehlo_refine_shapes.mlir
+--- stablehlo/stablehlo/tests/stablehlo_refine_shapes.mlir
++++ stablehlo/stablehlo/tests/stablehlo_refine_shapes.mlir
+@@ -280,6 +280,18 @@
+   %2 = stablehlo.constant dense<[3, 4]> : tensor<2xi64>
+   %3 = stablehlo.select %0, %1, %2 : tensor<2xi1>, tensor<2xi64>
+   func.return %3 : tensor<2xi64>
++}
++
++// -----
++
++// CHECK-LABEL: func @eval_sign
++func.func @eval_sign() -> tensor<3xi64> {
++  // CHECK-NOT: stablehlo.sign
++  // CHECK: [[RESULT:%.*]] = stablehlo.constant dense<[-1, 0, 1]> : tensor<3xi64>
++  // CHECK: return [[RESULT]]
++  %0 = stablehlo.constant dense<[-1, 0, 1]> : tensor<3xi64>
++  %1 = stablehlo.sign %0 : (tensor<3xi64>) -> tensor<3xi64>
++  func.return %1 : tensor<3xi64>
+ }
+ 
+ // -----
+diff --ruN a/stablehlo/stablehlo/transforms/StablehloRefineShapes.cpp b/stablehlo/stablehlo/transforms/StablehloRefineShapes.cpp
+--- stablehlo/stablehlo/transforms/StablehloRefineShapes.cpp
++++ stablehlo/stablehlo/transforms/StablehloRefineShapes.cpp
+@@ -74,9 +74,36 @@
+ }
+ 
+ template <typename OpType, typename FuncType>
++LogicalResult evalUnary(PatternRewriter& rewriter, OpType op, FuncType fn) {
++  if (op->getNumOperands() != 1)
++    llvm::report_fatal_error("expected one operand");
++
++  auto resultType = op.getResult().getType().template cast<ShapedType>();
++  if (!resultType.hasRank() || !resultType.getElementType().isIntOrIndex())
++    return rewriter.notifyMatchFailure(
++        op, "expected integer or index result tensor type");
++
++  SmallVector<APInt> operand, result;
++  if (failed(matchInts(op.getOperand(), operand)))
++    return rewriter.notifyMatchFailure(op, "expected constant operand");
++  for (const auto& operandEl : operand) {
++    result.push_back(fn(operandEl));
++  }
++
++  rewriter.replaceOpWithNewOp<ConstantOp>(
++      op, DenseIntElementsAttr::get(resultType, result));
++  return success();
++}
++
++template <typename OpType, typename FuncType>
+ LogicalResult evalBinary(PatternRewriter& rewriter, OpType op, FuncType fn) {
+   if (op->getNumOperands() != 2)
+-    return rewriter.notifyMatchFailure(op, "expected two operands");
++    llvm::report_fatal_error("expected two operands");
++
++  auto resultType = op.getResult().getType().template cast<ShapedType>();
++  if (!resultType.hasRank() || !resultType.getElementType().isIntOrIndex())
++    return rewriter.notifyMatchFailure(
++        op, "expected integer or index result tensor type");
+ 
+   SmallVector<APInt> lhs, rhs, result;
+   if (failed(matchInts(op.getLhs(), lhs)) ||
+@@ -87,7 +114,7 @@
+   }
+ 
+   rewriter.replaceOpWithNewOp<ConstantOp>(
+-      op, DenseIntElementsAttr::get(op.getResult().getType(), result));
++      op, DenseIntElementsAttr::get(resultType, result));
+   return success();
+ }
+ 
+@@ -191,27 +218,13 @@
+   using OpRewritePattern::OpRewritePattern;
+   LogicalResult matchAndRewrite(ConvertOp op,
+                                 PatternRewriter& rewriter) const override {
+-    auto operandType = op.getOperand().getType().dyn_cast<RankedTensorType>();
++    auto operandType = op.getOperand().getType().cast<ShapedType>();
+     auto isOperandUnsigned = operandType.getElementType().isUnsignedInteger();
+-
+-    auto resultType = op.getResult().getType().dyn_cast<RankedTensorType>();
+-    if (!resultType || !resultType.getElementType().isIntOrIndex())
+-      return rewriter.notifyMatchFailure(
+-          op, "expected integer or index result element type");
+-
+-    SmallVector<APInt> operand, result;
+-    if (failed(matchInts(op.getOperand(), operand)))
+-      return rewriter.notifyMatchFailure(op, "expected constant operand");
+-    for (const auto& operandEl : operand) {
+-      auto resultBitwidth = resultType.getElementType().getIntOrFloatBitWidth();
+-      auto resultEl =
+-          APSInt(operandEl, isOperandUnsigned).extOrTrunc(resultBitwidth);
+-      result.push_back(resultEl);
+-    }
+-
+-    rewriter.replaceOpWithNewOp<ConstantOp>(
+-        op, DenseIntElementsAttr::get(resultType, result));
+-    return success();
++    auto resultType = op.getResult().getType().cast<ShapedType>();
++    auto resultBitwidth = resultType.getElementType().getIntOrFloatBitWidth();
++    return evalUnary(rewriter, op, [&](APInt operand) {
++      return APSInt(operand, isOperandUnsigned).extOrTrunc(resultBitwidth);
++    });
+   }
+ };
+ 
+@@ -311,6 +324,25 @@
+     rewriter.replaceOpWithNewOp<ConstantOp>(
+         op, DenseIntElementsAttr::get(op.getResult().getType(), result));
+     return success();
++  }
++};
++
++struct EvalSignOpPattern : public OpRewritePattern<SignOp> {
++  using OpRewritePattern::OpRewritePattern;
++  LogicalResult matchAndRewrite(SignOp op,
++                                PatternRewriter& rewriter) const override {
++    auto resultType = op.getResult().getType().cast<ShapedType>();
++    auto resultBitwidth = resultType.getElementType().getIntOrFloatBitWidth();
++    return evalUnary(rewriter, op, [&](APInt operand) {
++      int64_t result;
++      if (operand.slt(0))
++        result = -1;
++      else if (operand.getSExtValue() == 0)
++        result = 0;
++      else
++        result = 1;
++      return APInt(resultBitwidth, result, /*isSigned=*/true);
++    });
+   }
+ };
+ 
+@@ -983,6 +1015,7 @@
+     patterns.add<EvalRemOpPattern>(&getContext());
+     patterns.add<EvalReshapeOpPattern>(&getContext());
+     patterns.add<EvalSelectOpPattern>(&getContext());
++    patterns.add<EvalSignOpPattern>(&getContext());
+     patterns.add<EvalSliceOpPattern>(&getContext());
+     patterns.add<EvalSubtractOpPattern>(&getContext());
+     patterns.add<RefineBitcastConvertOpPattern>(&getContext());
+

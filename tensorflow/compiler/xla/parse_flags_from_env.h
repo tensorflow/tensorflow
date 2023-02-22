@@ -17,7 +17,7 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_PARSE_FLAGS_FROM_ENV_H_
 
 // This module exports ParseFlagsFromEnvAndDieIfUnknown(), which allows other
-// modules to parse flags from an environtment variable, or (if the first
+// modules to parse flags from an environment variable, or (if the first
 // non-whitespace in the variable value is not '-'), a file named by that
 // environment variable.
 //
@@ -52,17 +52,17 @@ limitations under the License.
 
 #include "absl/strings/string_view.h"
 #include "tensorflow/compiler/xla/types.h"
-#include "tensorflow/core/util/command_line_flags.h"
+#include "tensorflow/tsl/util/command_line_flags.h"
 
 namespace xla {
 
-// Calls tensorflow::Flags::Parse(argc, argv, flag_list) against any as yet
+// Calls tsl::Flags::Parse(argc, argv, flag_list) against any as yet
 // unrecognized flags passed in the environment variable `envvar`, and returns
 // its return value.
 //
 // Raises a fatal error if any flags in `envvar` were not recognized.
-bool ParseFlagsFromEnvAndDieIfUnknown(
-    absl::string_view envvar, const std::vector<tensorflow::Flag>& flag_list);
+bool ParseFlagsFromEnvAndDieIfUnknown(absl::string_view envvar,
+                                      const std::vector<tsl::Flag>& flag_list);
 
 // Used only for testing.  Not to be used by clients.
 void ResetFlagsFromEnvForTesting(absl::string_view envvar, int** pargc,

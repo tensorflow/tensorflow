@@ -20,7 +20,7 @@ limitations under the License.
 
 #include <gtest/gtest.h>
 #include "flatbuffers/flatbuffers.h"  // from @flatbuffers
-#include "tensorflow/lite/interpreter.h"
+#include "tensorflow/lite/core/interpreter.h"
 #include "tensorflow/lite/kernels/test_util.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 
@@ -199,7 +199,7 @@ TEST(BatchToSpaceNDOpTest, SimpleDynamicTestInt8EmptyOutput) {
   EXPECT_THAT(m.GetOutput<int8_t>(), ::testing::IsEmpty());
 }
 
-#ifdef GTEST_HAS_DEATH_TEST
+#if GTEST_HAS_DEATH_TEST
 TEST(BatchToSpaceNDOpTest, InvalidShapeTest) {
   EXPECT_DEATH(BatchToSpaceNDOpConstModel({3, 2, 2, 1}, {2, 2}, {0, 0, 0, 0}),
                "Cannot allocate tensors");

@@ -17,7 +17,9 @@ limitations under the License.
 #define EIGEN_USE_THREADS
 
 #include "tensorflow/core/kernels/reverse_op.h"
+
 #include <memory>
+
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -85,6 +87,7 @@ struct data_type_can_memcpy {
       std::is_same<T, uint8>::value || std::is_same<T, int8>::value ||
       std::is_same<T, bool>::value || std::is_same<T, uint16>::value ||
       std::is_same<T, int16>::value || std::is_same<T, Eigen::half>::value ||
+      std::is_same<T, Eigen::bfloat16>::value ||
       std::is_same<T, int32>::value || std::is_same<T, float>::value ||
       std::is_same<T, int64_t>::value || std::is_same<T, double>::value ||
       std::is_same<T, complex64>::value || std::is_same<T, complex128>::value;

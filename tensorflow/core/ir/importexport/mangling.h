@@ -28,6 +28,14 @@ namespace mangling_util {
 // The type of a mangled string.
 enum class MangledKind { kUnknown, kDataType, kTensorShape, kTensor };
 
+// Print proto in TextFormat in the single-line mode.
+std::string PrintShortTextProto(const ::tensorflow::protobuf::Message& message);
+// The MessageLite interface does not support reflection so this API
+// will only print a summary of the proto. This API is needed for code
+// that may work with both Message and MessageLite.
+std::string PrintShortTextProto(
+    const ::tensorflow::protobuf::MessageLite& message);
+
 // Mangles an attribute name, marking the attribute as a TensorFlow attribute.
 std::string MangleAttributeName(absl::string_view str);
 

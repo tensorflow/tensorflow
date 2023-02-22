@@ -1,8 +1,8 @@
 path: "tensorflow.optimizers.experimental.Adamax"
 tf_class {
-  is_instance: "<class \'keras.optimizers.optimizer_experimental.adamax.Adamax\'>"
-  is_instance: "<class \'keras.optimizers.optimizer_experimental.optimizer.Optimizer\'>"
-  is_instance: "<class \'keras.optimizers.optimizer_experimental.optimizer._BaseOptimizer\'>"
+  is_instance: "<class \'keras.optimizers.adamax.Adamax\'>"
+  is_instance: "<class \'keras.optimizers.optimizer.Optimizer\'>"
+  is_instance: "<class \'keras.optimizers.optimizer._BaseOptimizer\'>"
   is_instance: "<class \'tensorflow.python.trackable.autotrackable.AutoTrackable\'>"
   is_instance: "<class \'tensorflow.python.trackable.base.Trackable\'>"
   is_instance: "<type \'object\'>"
@@ -18,9 +18,13 @@ tf_class {
     name: "lr"
     mtype: "<type \'property\'>"
   }
+  member {
+    name: "variables"
+    mtype: "<type \'property\'>"
+  }
   member_method {
     name: "__init__"
-    argspec: "args=[\'self\', \'learning_rate\', \'beta_1\', \'beta_2\', \'epsilon\', \'clipnorm\', \'clipvalue\', \'global_clipnorm\', \'use_ema\', \'ema_momentum\', \'ema_overwrite_frequency\', \'jit_compile\', \'name\'], varargs=None, keywords=kwargs, defaults=[\'0.001\', \'0.9\', \'0.999\', \'1e-07\', \'None\', \'None\', \'None\', \'False\', \'0.99\', \'None\', \'True\', \'Adamax\'], "
+    argspec: "args=[\'self\', \'learning_rate\', \'beta_1\', \'beta_2\', \'epsilon\', \'weight_decay\', \'clipnorm\', \'clipvalue\', \'global_clipnorm\', \'use_ema\', \'ema_momentum\', \'ema_overwrite_frequency\', \'jit_compile\', \'name\'], varargs=None, keywords=kwargs, defaults=[\'0.001\', \'0.9\', \'0.999\', \'1e-07\', \'None\', \'None\', \'None\', \'None\', \'False\', \'0.99\', \'None\', \'True\', \'Adamax\'], "
   }
   member_method {
     name: "add_variable"
@@ -36,7 +40,7 @@ tf_class {
   }
   member_method {
     name: "apply_gradients"
-    argspec: "args=[\'self\', \'grads_and_vars\', \'skip_gradients_aggregation\'], varargs=None, keywords=None, defaults=[\'False\'], "
+    argspec: "args=[\'self\', \'grads_and_vars\', \'name\', \'skip_gradients_aggregation\'], varargs=None, keywords=kwargs, defaults=[\'None\', \'False\'], "
   }
   member_method {
     name: "build"
@@ -47,12 +51,16 @@ tf_class {
     argspec: "args=[\'self\', \'loss\', \'var_list\', \'tape\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
+    name: "exclude_from_weight_decay"
+    argspec: "args=[\'self\', \'var_list\', \'var_names\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
+  }
+  member_method {
     name: "finalize_variable_values"
     argspec: "args=[\'self\', \'var_list\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "from_config"
-    argspec: "args=[\'cls\', \'config\'], varargs=None, keywords=None, defaults=None"
+    argspec: "args=[\'cls\', \'config\', \'custom_objects\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "get_config"
@@ -63,11 +71,11 @@ tf_class {
     argspec: "args=[\'self\', \'loss\', \'var_list\', \'tape\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
-    name: "update_step"
-    argspec: "args=[\'self\', \'gradient\', \'variable\'], varargs=None, keywords=None, defaults=None"
+    name: "set_weights"
+    argspec: "args=[\'self\', \'weights\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
-    name: "variables"
-    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+    name: "update_step"
+    argspec: "args=[\'self\', \'gradient\', \'variable\'], varargs=None, keywords=None, defaults=None"
   }
 }
