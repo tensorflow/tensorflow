@@ -8,6 +8,14 @@ load(
 )
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 load(
+    "//tensorflow/tsl/platform/default:cuda_build_defs.bzl",
+    "if_cuda_is_configured",
+)
+load(
+    "@local_config_rocm//rocm:build_defs.bzl",
+    "if_rocm_is_configured",
+)
+load(
     "//tensorflow/compiler/xla:xla.bzl",
     "xla_cc_binary",
     "xla_cc_test",
@@ -138,8 +146,11 @@ xla_cc_binary(
     deps = [
         ":replay_computation_library",
         "//tensorflow/compiler/xla/service:gpu_plugin",
+    ] + if_cuda_is_configured([
         "//tensorflow/compiler/xla/stream_executor:cuda_platform",
-    ],
+    ]) + if_rocm_is_configured([
+        "//tensorflow/compiler/xla/stream_executor:rocm_platform",
+    ]),
 )
 
 xla_cc_test(
