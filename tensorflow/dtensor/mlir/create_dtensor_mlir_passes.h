@@ -113,6 +113,9 @@ std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
 CreateDTensorAllReduceLoweringPass();
 
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
+CreateDTensorAllToAllLoweringPass();
+
+std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
 CreateDTensorReduceScatterLoweringPass();
 
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>

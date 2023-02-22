@@ -67,6 +67,7 @@ namespace {
 #define GEN_PASS_DEF_DTENSORREDUCESCATTERLOWERING
 #define GEN_PASS_DEF_DTENSORALLGATHERLOWERING
 #define GEN_PASS_DEF_DTENSORALLSCATTERLOWERING
+#define GEN_PASS_DEF_DTENSORALLTOALLLOWERING
 #include "tensorflow/dtensor/mlir/dtensor_passes.h.inc"
 }  // namespace
 
@@ -377,6 +378,143 @@ mlir::Operation* EmitCollectiveReduceScatter(
   }
   return collective_reduce_scatter;
 }
+
+mlir::Operation* EmitCollectiveAllToAll(
+    mlir::OpBuilder& builder, const mlir::Location& loc, mlir::Value input,
+    const mlir::DenseIntElementsAttr& group_assignment, int32 concat_dimension,
+    int32 split_dimension, int32 key_base, mlir::Value device_id,
+    int32 host_group_size, const mlir::StringRef device_type) {
+  // This function implements an all-to-all with variable split and concat
+  // dimensions using the CollectiveAllToAllV2 which treats the input as a flat
+  // buffer. This requires permuting the data before or after the all-to-all
+  // using a reshape from rank N to rank N+1 followed by a transpose.
+  // Additionally, if neither the split or concat dimensions are rank 0, a pair
+  // of transpose, one before and one after all-to-all is needed to split the
+  // data correctly. An example relayout that requires this is [y, unsharded, x]
+  // -> [y, x, unsharded].
+  const mlir::TensorType input_type =
+    input.getType().dyn_cast<mlir::TensorType>();
+  auto input_shape = input_type.dyn_cast<mlir::TensorType>().getShape();
+  
+  // TODO(trevor-m): One of the transpose pairs created when requires_transpose
+  // is true can be combined with the transpose in permute_data() that lies on
+  // the same side of all-to-all.
+  const bool permute_before = concat_dimension < split_dimension;
+  const bool requires_transpose = concat_dimension != 0 && split_dimension != 0;
+  std::vector<int64> transposed_shape(input_shape.begin(), input_shape.end());
+  std::vector<int64> original_shape(input_shape);
+  int move_dims = std::min(concat_dimension, split_dimension);
+  if (requires_transpose) {
+    std::vector<int64> perm_for_transpose;
+    perm_for_transpose.reserve(input_shape.size());
+    // Move all dims before concat/split to end. This will be undone after the
+    // all-to-all.
+    for (int i = move_dims; i < input_shape.size(); ++i) {
+      perm_for_transpose.push_back(i);
+    }
+    for (int i = 0; i < move_dims; ++i) {
+      perm_for_transpose.push_back(i);
+    }
+    input = EmitTransposeOp(builder, loc, input, perm_for_transpose)->getResult(0);
+    for (int i = 0; i < input_shape.size(); i++) {
+      transposed_shape[i] = input_shape[perm_for_transpose[i]];
+    }
+    if (permute_before) {
+      concat_dimension -= move_dims;
+      split_dimension -= move_dims;
+      input_shape = transposed_shape;
+    }
+  }
+  
+  auto permute_data = [&](mlir::Value data) {
+    // Reshape
+    std::vector<int64> new_shape;
+    new_shape.reserve(input_shape.size() + 1);
+    for (int i = 0; i < input_shape.size(); ++i) {
+      if (i == split_dimension) {
+        new_shape.push_back(host_group_size);
+        new_shape.push_back(input_shape[i] / host_group_size);
+      } else {
+        new_shape.push_back(input_shape[i]);
+      }
+    }
+    auto reshape_op = builder.create<mlir::TF::ReshapeOp>(
+      loc, data, ops_util::GetR1Const(new_shape, builder, loc));
+
+    std::vector<int64> perm_for_permute_transpose;
+    perm_for_permute_transpose.reserve(input_shape.size() + 1);
+    for (int i = 0; i < input_shape.size(); ++i) {
+      if (i == concat_dimension) {
+        perm_for_permute_transpose.push_back(split_dimension);
+      }
+      int dim_after_reshape = i >= split_dimension ? i + 1 : i;
+      perm_for_permute_transpose.push_back(dim_after_reshape);
+    }
+    return EmitTransposeOp(builder, loc, reshape_op->getResult(0), perm_for_permute_transpose);
+  };
+
+  if (permute_before) {
+    input = permute_data(input)->getResult(0);
+  }
+
+  // Flatten input. CPU implementation requires first dim to equal the group size.
+  int64 num_elements = std::accumulate(input_shape.begin(), input_shape.end(), 1LL, std::multiplies<int64>());
+  std::vector<int64> flatten_shape = {host_group_size, num_elements / host_group_size};
+  auto flatten_reshape_op = builder.create<mlir::TF::ReshapeOp>(
+      loc, input, ops_util::GetR1Const(flatten_shape, builder, loc));
+  mlir::TensorType output_type = mlir::RankedTensorType::get(flatten_shape, input_type.getElementType());
+
+  // All-to-all
+  mlir::Value group_key_scalar;
+  mlir::Value instance_key_scalar;
+  CreateGroupAndInstanceKey(builder, loc, group_assignment, key_base, device_id,
+                            &group_key_scalar, &instance_key_scalar);
+  mlir::Value group_size_scalar =
+      ops_util::CreateScalarConst(host_group_size, builder, loc);
+  auto collective_alltoall = builder.create<mlir::TF::CollectiveAllToAllV2Op>(
+      loc, /*output_type=*/output_type, flatten_reshape_op->getResult(0), group_size_scalar,
+      group_key_scalar, instance_key_scalar,
+      /*ordering_token=*/mlir::ValueRange({}),
+      /*communication_hint=*/builder.getStringAttr(""),
+      /*timeout_seconds=*/builder.getF32FloatAttr(0.));
+  SetSingleLayoutOnOp(collective_alltoall, Layout::Empty());
+  mlir::Value prev_op = collective_alltoall->getResult(0);
+
+  if (requires_transpose) {
+    // Unflatten after all-to-all.
+    auto reshape_op = builder.create<mlir::TF::ReshapeOp>(
+      loc, prev_op, ops_util::GetR1Const(transposed_shape, builder, loc));
+    // Undo earlier transpose which moved split or concat dim to rank 0.
+    std::vector<int64> perm_for_transpose;
+    perm_for_transpose.reserve(input_shape.size());
+    for (int i = move_dims + 1; i < input_shape.size(); ++i) {
+      perm_for_transpose.push_back(i);
+    }
+    for (int i = 0; i <= move_dims; ++i) {
+      perm_for_transpose.push_back(i);
+    }
+    prev_op = EmitTransposeOp(builder, loc, reshape_op->getResult(0), perm_for_transpose)->getResult(0);
+    if (permute_before) {
+      concat_dimension += move_dims;
+      split_dimension += move_dims;
+      input_shape = original_shape;
+    }
+  }
+
+  if (!permute_before) {
+    prev_op = permute_data(prev_op)->getResult(0);
+  }
+
+  // Reshape
+  std::vector<int64> output_shape(input_shape.begin(), input_shape.end());
+  output_shape[concat_dimension] *= host_group_size;
+  output_shape[split_dimension] /= host_group_size;
+  auto post_reshape_op = builder.create<mlir::TF::ReshapeOp>(
+    loc, prev_op, ops_util::GetR1Const(output_shape, builder, loc));
+
+  return post_reshape_op;
+}
+
 
 mlir::Operation* EmitCollectiveGather(
     mlir::OpBuilder& builder, const mlir::Location& loc, mlir::Value input,
@@ -1133,6 +1271,83 @@ mlir::LogicalResult LowerAllScatterOp(
   return mlir::LogicalResult::success();
 }
 
+mlir::LogicalResult LowerAllToAllOp(
+    mlir::TF::DTensorAllToAllOp all_to_all) {
+  mlir::OpBuilder builder(all_to_all);
+  mlir::Location loc = all_to_all.getLoc();
+  const Layout src_layout = all_to_all.getInputLayout();
+  const Layout tgt_layout = all_to_all.getOutputLayout();
+
+  absl::flat_hash_set<std::string> dims_to_gather;
+  for (int i = 0; i < src_layout.rank(); i++) {
+    if (src_layout.num_shards_for_dim(src_layout.dim(i)) ==
+            tgt_layout.num_shards_for_dim(tgt_layout.dim(i)) ||
+        src_layout.num_shards_for_dim(src_layout.dim(i)) == 1) {
+      continue;
+    }
+    dims_to_gather.insert(src_layout.sharding_spec(i));
+  }
+
+  auto group_assignment_or =
+      GetGroupAssignment(builder, src_layout, dims_to_gather);
+  if (!group_assignment_or.ok()) {
+    return all_to_all.emitOpError()
+           << group_assignment_or.status().error_message();
+  }
+  auto group_assignment = group_assignment_or.value();
+  int32 group_size = group_assignment.getType().getShape()[1];
+
+  StatusOr<std::string> device_type_or_status =
+      DeviceTypeFromMesh(src_layout.mesh());
+  if (!device_type_or_status.ok())
+    return all_to_all.emitOpError()
+           << device_type_or_status.status().error_message();
+  const std::string device_type = device_type_or_status.value();
+
+  // Find concat and split dimensions
+  int32 split_dimension = -1;
+  int32 concat_dimension = -1;
+  for (int i = 0; i < src_layout.rank(); ++i) {
+    if (src_layout.sharding_spec(i) != tgt_layout.sharding_spec(i)) {
+      if (Layout::IsUnshardedDimension(src_layout.sharding_spec(i)) &&
+          Layout::IsShardedDimension(tgt_layout.sharding_spec(i))) {
+        split_dimension = i;
+      } else if (Layout::IsShardedDimension(src_layout.sharding_spec(i)) &&
+                 Layout::IsUnshardedDimension(tgt_layout.sharding_spec(i))) {
+        concat_dimension = i; 
+      }
+    }
+  }
+  if (split_dimension == -1 || concat_dimension == -1) {
+    return all_to_all.emitOpError();
+  }
+
+  if (mlir::StringRef(device_type).endswith("TPU")) {
+    // For TPUs, lower to XlaAllToAll.
+    mlir::Operation* xla_all_to_all =
+        builder.create<mlir::TF::AllToAllOp>(
+            loc, all_to_all.getResult().getType(),
+            all_to_all.getInput(), builder.create<mlir::TF::ConstOp>(loc, group_assignment),
+            concat_dimension, split_dimension, group_size);
+    SetSingleLayoutOnOp(xla_all_to_all, tgt_layout);
+    all_to_all.replaceAllUsesWith(xla_all_to_all);
+  } else {
+    // Use CollectiveAllToAllV2
+    mlir::Value relative_device_id = GetRelativeDeviceId(all_to_all, tgt_layout, builder, loc);
+    int32 key_base = GetCollectiveKeyBase(tgt_layout.mesh(), group_assignment);
+
+    mlir::Operation* collective_op = EmitCollectiveAllToAll(
+        builder, loc, all_to_all.getInput(),
+        group_assignment, concat_dimension, split_dimension,
+        key_base, relative_device_id,
+        group_size, device_type);
+    SetSingleLayoutOnOp(collective_op, tgt_layout);
+    all_to_all.replaceAllUsesWith(collective_op);
+  } 
+  all_to_all.erase();
+  return mlir::LogicalResult::success();
+}
+
 }  // namespace internal
 
 namespace {
@@ -1212,6 +1427,29 @@ struct DTensorAllScatterLowering
   }
 };
 
+struct DTensorAllToAllLowering
+    : public impl::DTensorAllToAllLoweringBase<
+          DTensorAllToAllLowering> {
+  void getDependentDialects(mlir::DialectRegistry& registry) const override {
+    registry.insert<mlir::dtensor::DTensorDialect>();
+  }
+
+  void runOnOperation() override {
+    mlir::ModuleOp module = getOperation();
+
+    // Find all DTensorAllToAll ops.
+    llvm::SmallVector<mlir::TF::DTensorAllToAllOp, 4> all_to_alls;
+    module.walk([&](mlir::TF::DTensorAllToAllOp all_to_all) {
+      all_to_alls.emplace_back(all_to_all);
+    });
+
+    // Replace every DTensorAllToAll op with device-specific implementations.
+    for (auto& all_to_all : all_to_alls)
+      if (mlir::failed(internal::LowerAllToAllOp(all_to_all)))
+        return signalPassFailure();
+  }
+};
+
 }  // namespace
 
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
@@ -1232,6 +1470,11 @@ CreateDTensorAllGatherLoweringPass() {
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
 CreateDTensorAllScatterLoweringPass() {
   return std::make_unique<DTensorAllScatterLowering>();
+}
+
+std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
+CreateDTensorAllToAllLoweringPass() {
+  return std::make_unique<DTensorAllToAllLowering>();
 }
 
 }  // namespace dtensor

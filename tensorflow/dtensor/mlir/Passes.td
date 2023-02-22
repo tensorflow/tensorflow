@@ -194,6 +194,14 @@ def DTensorAllScatterLowering
   ];
 }
 
+def DTensorAllToAllLowering
+    : Pass<"dtensor-all-to-all-lowering", "mlir::ModuleOp"> {
+  let summary = "Converts logical AllToAll ops into physical AllToAll ops.";
+  let constructor = "CreateDTensorAllToAllLoweringPass()";
+  let dependentDialects = [
+  ];
+}
+
 def DTensorClusterFunctionConversion
     : Pass<"dtensor-cluster-function-conversion", "mlir::ModuleOp"> {
   let summary = "Converts tf_device.cluster_func ops into TF StatefulPartitioned call op with mesh attribute.";
