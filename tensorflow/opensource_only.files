@@ -37,6 +37,7 @@ tensorflow/examples/custom_ops_doc/simple_hash_table/BUILD:
 tensorflow/examples/custom_ops_doc/simple_hash_table/README.md:
 tensorflow/examples/custom_ops_doc/simple_hash_table/simple_hash_table_op.py:
 tensorflow/examples/custom_ops_doc/sleep/BUILD:
+tensorflow/examples/custom_ops_doc/sleep/README.md:
 tensorflow/examples/custom_ops_doc/sleep/sleep_op.py:
 tensorflow/go/BUILD:
 tensorflow/go/README.md:
