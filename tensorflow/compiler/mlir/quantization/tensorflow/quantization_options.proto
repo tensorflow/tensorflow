@@ -132,7 +132,7 @@ message FreezeAllVariables {
 // 2) A set of supported operations.
 // 3) Unit wise quantization precision.
 // 4) Target hardware name.
-// NEXT ID: 9
+// NEXT ID: 10
 message QuantizationOptions {
   // The default quantization configuration for the model. If the below
   // unit-wise configuration does not exist, we use this default quantization
@@ -172,4 +172,9 @@ message QuantizationOptions {
   // Currently supports MatMul and BatchMatMul ops for XLA.
   // TODO(b/263528090): Check the condition when this feature is beneficial.
   bool enable_two_input_tensors = 8;
+
+  // Supports TPU model quantization. If the target model for the quantization
+  // is already converted for TPU, this flag may be helpful. Note that this
+  // feature may be unstable as it is under the experimental stage.
+  bool experimental_enable_tpu_model_support = 9;
 }
