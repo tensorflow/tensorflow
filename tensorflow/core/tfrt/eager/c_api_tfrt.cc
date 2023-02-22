@@ -1011,11 +1011,10 @@ tensorflow::Status ContextInterface::EnableCollectiveOps(
 }
 
 tensorflow::Status ContextInterface::BuildFunctionRequestContext(
-    tensorflow::tfrt_stub::OpKernelRunnerTable* runner_table,
+    tensorflow::tfrt_stub::OpKernelRunnerTable* runner_table, int64_t step_id,
     RCReference<tfrt::RequestContext>* request_context) {
-  auto* step_container = GetEagerContext()->StepContainer();
-  RequestContextBuilder request_context_builder(
-      GetHostContext(), GetResourceContext(), step_container->StepId());
+  RequestContextBuilder request_context_builder(GetHostContext(),
+                                                GetResourceContext(), step_id);
 
   TF_RETURN_IF_ERROR(tensorflow::tfd::SetUpKernelFallbackCompatRequestContext(
       &request_context_builder, runner_table, GetEagerContext()));
@@ -1030,7 +1029,8 @@ tensorflow::Status ContextInterface::BuildFunctionRequestContext(
 
 tensorflow::Status ContextInterface::BuildOpRequestContext(
     RCReference<tfrt::RequestContext>* request_context) {
-  return BuildFunctionRequestContext(/*runner_table=*/nullptr, request_context);
+  return BuildFunctionRequestContext(/*runner_table=*/nullptr, /*step_id=*/0,
+                                     request_context);
 }
 
 tensorflow::ImmediateExecutionTensorHandle*
@@ -1353,7 +1353,7 @@ tensorflow::Status OperationInterface::Execute(
 
     RCReference<RequestContext> request_ctx;
     TF_RETURN_IF_ERROR(context_->BuildFunctionRequestContext(
-        function_state_->GetRunnerTable(), &request_ctx));
+        function_state_->GetRunnerTable(), step_id(), &request_ctx));
 
     ExecutionContext exec_ctx{std::move(request_ctx),
                               abort_location_handler_.GetCurrentLocation()};
@@ -1527,7 +1527,8 @@ tensorflow::Status OperationInterface::Initialize() {
       /*request_ctx_fn=*/
       [this](tensorflow::tfrt_stub::OpKernelRunnerTable* runner_table,
              RCReference<RequestContext>* request_ctx) {
-        return context_->BuildFunctionRequestContext(runner_table, request_ctx);
+        return context_->BuildFunctionRequestContext(runner_table, step_id(),
+                                                     request_ctx);
       },
       abort_location_handler_.GetCurrentLocation(), compile_options,
       input_devices, &result));
