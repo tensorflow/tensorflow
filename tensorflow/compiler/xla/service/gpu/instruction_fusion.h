@@ -52,12 +52,6 @@ class GpuInstructionFusion : public InstructionFusion {
   HloInstruction::FusionKind ChooseKind(
       const HloInstruction* producer, const HloInstruction* consumer) override;
 
-  // Return computations on which to run Fusion. We explicitly filter out
-  // softmax custom-call computations.
-  std::vector<HloComputation*> GetFusionComputations(
-      HloModule* module,
-      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
-
  private:
   // This method is called by ShouldFuse() to do all the computationally
   // inexpensive checks whether we should fuse the operand into 'consumer'.

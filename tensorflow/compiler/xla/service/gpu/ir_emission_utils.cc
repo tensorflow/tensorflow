@@ -143,13 +143,6 @@ Vector3 GetReductionTiling(const ReductionDimensions& reduction_dimensions) {
   return {1, 128, 1};
 }
 
-bool IsTritonCustomCall(const HloInstruction& hlo) {
-  if (hlo.opcode() != HloOpcode::kCustomCall) {
-    return false;
-  }
-  return hlo.custom_call_target() == kTritonCallTarget;
-}
-
 const char* const kCusolverCholeskyCallTarget = "__cusolver$cholesky";
 
 bool IsCustomCallToCusolver(const HloInstruction& hlo) {

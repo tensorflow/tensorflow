@@ -1459,6 +1459,9 @@ def FusionOp : LHLO_Op<"fusion", [
     The XLA runtime expects this hint to be followed, as it expects a single
     kernel per HLO instruction. This restriction might be lifted in the future.
   }];
+  let arguments = (ins
+    OptionalAttr<AnyAttrOf<[StrAttr, DictionaryAttr]>>:$backend_config
+  );
   let regions = (region SizedRegion<1>:$region);
 
   let skipDefaultBuilders = 1;

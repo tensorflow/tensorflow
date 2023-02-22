@@ -602,6 +602,9 @@ tsl::StatusOr<lmhlo::FusionOp> LhloDialectEmitter::EmitFusionOp(
     }
   }
 
+  fusion.setBackendConfigAttr(
+      builder_.getStringAttr(instr->raw_backend_config_string()));
+
   // Fold GTE/Tuple pairs.
   //
   // Since the fused region refers to values in its parent region, we can't

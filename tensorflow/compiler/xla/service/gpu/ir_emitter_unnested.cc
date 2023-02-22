@@ -1723,13 +1723,14 @@ Status IrEmitterUnnested::EmitLaunchFunc(mlir::Operation* op) {
 }
 
 #if GOOGLE_CUDA
-Status IrEmitterUnnested::EmitTritonCustomCall(mlir::Operation* op) {
+Status IrEmitterUnnested::EmitTritonFusion(
+    mlir::Operation* op, tensorflow::AutotuneResult::TritonGemmKey& config) {
   VLOG(3) << MlirToString(op);
-  auto custom_call = mlir::cast<mlir::lmhlo::CustomCallOp>(op);
+  auto fusion_op = mlir::cast<mlir::lmhlo::FusionOp>(op);
 
   TF_ASSIGN_OR_RETURN(
       const HloComputation* hlo_computation,
-      GetOrCreateSubComputationFromRegion(&custom_call->getRegion(0),
+      GetOrCreateSubComputationFromRegion(&fusion_op->getRegion(0),
                                           /*is_fusion=*/false));
 
   const std::string fingerprint =
@@ -1738,31 +1739,14 @@ Status IrEmitterUnnested::EmitTritonCustomCall(mlir::Operation* op) {
   auto cache_it = triton_cache_.find(fingerprint);
   llvm::Function* impl_fn;
   if (cache_it == triton_cache_.end()) {
-    tensorflow::AutotuneResult::TritonGemmKey autotune_result;
-    if (!tsl::HumanReadableJsonToProto(custom_call.getBackendConfig()
-                                           .value_or(mlir::Attribute())
-                                           .dyn_cast_or_null<mlir::StringAttr>()
-                                           .str(),
-                                       &autotune_result)
-             .ok()) {
-      LOG(WARNING) << "Using fallback triton GEMM config";
-      autotune_result.set_block_m(64);
-      autotune_result.set_block_k(64);
-      autotune_result.set_block_n(64);
-      autotune_result.set_split_k(1);
-      autotune_result.set_num_stages(1);
-      autotune_result.set_num_warps(2);
-    }
-
     const std::string fn_name =
         ir_emitter_context_->name_uniquer()->GetUniqueName(
             llvm_ir::SanitizeFunctionName(
-                custom_call->getName().getStringRef().str()));
-    const std::optional<LaunchDimensions> launch_dimensions =
-        TritonWrapper(fn_name, hlo_computation,
-                      ir_emitter_context_->cuda_compute_capability(),
-                      ir_emitter_context_->gpu_device_info(), autotune_result,
-                      module_, &MatMul);
+                fusion_op->getName().getStringRef().str()));
+    const std::optional<LaunchDimensions> launch_dimensions = TritonWrapper(
+        fn_name, hlo_computation,
+        ir_emitter_context_->cuda_compute_capability(),
+        ir_emitter_context_->gpu_device_info(), config, module_, &MatMul);
     TF_RET_CHECK(launch_dimensions.has_value());
     impl_fn = module_->getFunction(fn_name);
     TF_RET_CHECK(impl_fn);
@@ -1776,7 +1760,7 @@ Status IrEmitterUnnested::EmitTritonCustomCall(mlir::Operation* op) {
   // Call the (cached) impl_fn from the wrapper_fn corresponding to this thunk.
   TF_ASSIGN_OR_RETURN(
       std::vector<llvm_ir::IrArray> ir_arrays,
-      BuildKernelThunk(custom_call, triton_cache_[fingerprint].second));
+      BuildKernelThunk(fusion_op, triton_cache_[fingerprint].second));
   std::vector<llvm::Value*> args;
   args.reserve(ir_arrays.size());
   for (const llvm_ir::IrArray& a : ir_arrays) {
@@ -1966,6 +1950,28 @@ Status IrEmitterUnnested::EmitFusion(mlir::Operation* op) {
   if (HasAnyTiledTransposeRoot(fused_computation)) {
     return EmitUnnestedTranspose(fusion_op, fused_computation);
   }
+
+#if GOOGLE_CUDA
+  if (auto backend_config = fusion_op.getBackendConfig()
+                                .value_or(mlir::Attribute())
+                                .dyn_cast_or_null<mlir::StringAttr>()) {
+    tensorflow::AutotuneResult::TritonGemmKey triton_config;
+    if (backend_config == kTritonGemmBackendConfig) {
+      LOG(WARNING) << "Using fallback triton GEMM config";
+      triton_config.set_block_m(64);
+      triton_config.set_block_k(64);
+      triton_config.set_block_n(64);
+      triton_config.set_split_k(1);
+      triton_config.set_num_stages(1);
+      triton_config.set_num_warps(2);
+      return EmitTritonFusion(fusion_op, triton_config);
+    } else if (tsl::HumanReadableJsonToProto(backend_config.str(),
+                                             &triton_config)
+                   .ok()) {
+      return EmitTritonFusion(fusion_op, triton_config);
+    }
+  }
+#endif  // GOOGLE_CUDA
 
   auto fusion_results = fusion_op.getFusionResults();
   TF_RET_CHECK(!fusion_results.empty());
@@ -5473,11 +5479,6 @@ Status IrEmitterUnnested::EmitOp(mlir::Operation* op) {
       return EmitTriangularSolveCustomCall(op);
     }
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-#if GOOGLE_CUDA
-    if (!call_target.compare(kTritonCallTarget)) {
-      return EmitTritonCustomCall(op);
-    }
-#endif  // GOOGLE_CUDA
 
     return EmitCustomCallThunk(op);
   }
