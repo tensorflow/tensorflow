@@ -90,6 +90,50 @@ bool SupportsEpilogueFusion(PrimitiveType type) {
   }
 }
 
+bool IsF8Type(const HloInstruction *instr) {
+  if (instr->shape().element_type() == F8E4M3FN ||
+      instr->shape().element_type() == F8E5M2) {
+    return true;
+  } else {
+    return false;
+  }
+}
+
+bool IsF8TypeRecursiveImpl(const HloInstruction *instr,
+                           absl::flat_hash_set<int> &visited_instrs) {
+  // Avoid visiting the same instruction more than once.
+  if (!visited_instrs.emplace(instr->unique_id()).second) {
+    return false;
+  }
+  if (IsF8Type(instr)) {
+    return true;
+  } else {
+    if (instr->operand_count() == 1 || instr->opcode() == HloOpcode::kDivide ||
+        instr->opcode() == HloOpcode::kPad) {
+      return IsF8TypeRecursiveImpl(instr->operand(0), visited_instrs);
+    } else if (instr->opcode() == HloOpcode::kMultiply) {
+      return IsF8TypeRecursiveImpl(instr->operand(0), visited_instrs) ||
+             IsF8TypeRecursiveImpl(instr->operand(1), visited_instrs);
+    } else {
+      return false;
+    }
+  }
+}
+
+bool IsF8TypeRecursive(const HloInstruction *instr) {
+  absl::flat_hash_set<int> visited_instrs;
+  return IsF8TypeRecursiveImpl(instr, visited_instrs);
+}
+
+void VlogF8PatternMiss(const HloInstruction *instr) {
+  if (Match(instr, m::CustomCall({kCublasLtMatmulCallTarget},
+                                 m::Op().WithPredicate(IsF8TypeRecursive),
+                                 m::Op().WithPredicate(IsF8TypeRecursive)))) {
+    VLOG(1) << "Possible intended FP8 GEMM " << instr->ToShortString()
+            << " not rewritten into FP8 Custom Call.";
+  }
+}
+
 // If the bias is a sequence of ops that depend only on broadcasts of
 // constants, materialize the bias if it's small.
 //
@@ -192,6 +236,10 @@ auto OptionalBitcastPreservingElementType(HloInstruction **optional_bitcast,
       std::move(pattern));
 }
 
+auto ConvertToF8(HloInstruction **instr) {
+  return m::Convert(m::Op(instr).WithPredicate(IsF8Type));
+}
+
 // The rewriting proceeds in a bottom-up way:
 //
 // (kDot A B) is rewritten into a (kCustomCall:gemm A B)
@@ -261,14 +309,6 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
 
     // Attempt to elide an FP8 GEMM with scaled inputs as described by steps 1
     // through 3 detailed above and rewrite into a Custom Call.
-    auto f8_type = [](const HloInstruction *instr) -> bool {
-      if (instr->shape().element_type() == F8E4M3FN ||
-          instr->shape().element_type() == F8E5M2) {
-        return true;
-      } else {
-        return false;
-      }
-    };
     if (Match(
             instr,
             m::CustomCall(
@@ -276,26 +316,19 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
                 m::AnyOf<HloInstruction>(
                     OptionalBitcastPreservingElementType(
                         &a_bitcast,
-                        m::MultiplyAnyOrder(
-                            &a_binary,
-                            m::Convert(m::Op(&a).WithPredicate(f8_type)),
-                            m::Broadcast(m::Op(&a_scale)))),
+                        m::MultiplyAnyOrder(&a_binary, ConvertToF8(&a),
+                                            m::Broadcast(m::Op(&a_scale)))),
                     OptionalBitcastPreservingElementType(
-                        &a_bitcast,
-                        m::Divide(&a_binary,
-                                  m::Convert(m::Op(&a).WithPredicate(f8_type)),
-                                  m::Broadcast(m::Op(&a_scale))))),
+                        &a_bitcast, m::Divide(&a_binary, ConvertToF8(&a),
+                                              m::Broadcast(m::Op(&a_scale))))),
                 m::AnyOf<HloInstruction>(
                     OptionalBitcastPreservingElementType(
                         &b_bitcast,
-                        m::MultiplyAnyOrder(
-                            &b_binary,
-                            m::Convert(m::Op(&b).WithPredicate(f8_type)),
-                            m::Broadcast(m::Op(&b_scale)))),
+                        m::MultiplyAnyOrder(&b_binary, ConvertToF8(&b),
+                                            m::Broadcast(m::Op(&b_scale)))),
                     OptionalBitcastPreservingElementType(
                         &b_bitcast,
-                        m::Divide(&b_binary,
-                                  m::Convert(m::Op(&b).WithPredicate(f8_type)),
+                        m::Divide(&b_binary, ConvertToF8(&b),
                                   m::Broadcast(m::Op(&b_scale)))))))) {
       TF_ASSIGN_OR_RETURN(
           bool created_call,
@@ -310,50 +343,22 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
 
     // Attempt to rewrite an FP8 GEMM directly operating on the unscaled but
     // possibly type converted FP8 operands into a Custom Call.
-    if (Match(instr,
-              m::AnyOf<HloInstruction>(
-                  m::CustomCall({kCublasLtMatmulCallTarget},
-                                m::Convert(m::Op(&a).WithPredicate(f8_type)),
-                                m::Convert(m::Op(&b).WithPredicate(f8_type))),
-                  m::CustomCall({kCublasLtMatmulCallTarget},
-                                m::Op(&a).WithPredicate(f8_type),
-                                m::Op(&b).WithPredicate(f8_type))))) {
+    if (Match(instr, m::AnyOf<HloInstruction>(
+                         m::CustomCall({kCublasLtMatmulCallTarget},
+                                       ConvertToF8(&a), ConvertToF8(&b)),
+                         m::CustomCall({kCublasLtMatmulCallTarget},
+                                       m::Op(&a).WithPredicate(IsF8Type),
+                                       m::Op(&b).WithPredicate(IsF8Type))))) {
       TF_ASSIGN_OR_RETURN(bool created_call, CreateF8CustomCall(instr, a, b));
       if (created_call) {
         return OkStatus();
       }
     }
 
-    // Recursively identify FP8 operands of unary, multiply, divide and pad ops.
-    auto f8_type_recur_impl = [&f8_type](const HloInstruction *instr,
-                                 auto&& f8_type_recur_impl) -> bool {
-      if (f8_type(instr)) {
-        return true;
-      } else {
-        if (instr->operand_count() == 1 ||
-            instr->opcode() == HloOpcode::kDivide ||
-            instr->opcode() == HloOpcode::kPad) {
-          return f8_type_recur_impl(instr->operand(0), f8_type_recur_impl);
-        } else if (instr->opcode() == HloOpcode::kMultiply) {
-          return f8_type_recur_impl(instr->operand(0), f8_type_recur_impl) ||
-                 f8_type_recur_impl(instr->operand(1), f8_type_recur_impl);
-        } else {
-          return false;
-        }
-      }
-    };
-    auto f8_type_recur =
-        [&f8_type_recur_impl](const HloInstruction *instr) -> bool {
-      return f8_type_recur_impl(instr, f8_type_recur_impl);
-    };
-
-    // Warn when GEMM (indirectly) operating on FP8 operands is not pattern
-    // matched.
-    if (Match(instr, m::CustomCall({kCublasLtMatmulCallTarget},
-                                   m::Op().WithPredicate(f8_type_recur),
-                                   m::Op().WithPredicate(f8_type_recur)))) {
-      VLOG(1) << "Possible intended FP8 GEMM " << instr->ToShortString()
-              << " not rewritten into FP8 Custom Call.";
+    // Warn when a GEMM (indirectly) operating on FP8 operands and possibly
+    // intended to be rewritten into an FP8 Custom Call is not pattern matched.
+    if (VLOG_IS_ON(1)) {
+      VlogF8PatternMiss(instr);
     }
 
     return OkStatus();
