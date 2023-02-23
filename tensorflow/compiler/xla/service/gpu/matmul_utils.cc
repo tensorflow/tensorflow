@@ -806,13 +806,10 @@ StatusOr<se::cuda::BlasLt::Epilogue> AsBlasLtEpilogue(
   lhs_layout.batch_size = batch_size;
   rhs_layout.batch_size = batch_size;
 
-  // cuBLASLt FP8 GEMM kernels require A (i.e. lhs) to be transposed.
-  se::blas::Transpose trans_a;
-  if (lhs_layout.dtype == F8E4M3FN || lhs_layout.dtype == F8E5M2) {
-    trans_a = se::blas::Transpose::kTranspose;
-  } else {
-    trans_a = se::blas::Transpose::kNoTranspose;
-  }
+  // cuBLASLt FP8 GEMM kernels require A (i.e. lhs) to be transposed and this
+  // equivalents to A being row major stored if no transpose is explicitly 
+  // applied on A.
+  se::blas::Transpose trans_a = se::blas::Transpose::kNoTranspose;
 
   bool must_swap_operands =
       MakeOutputColumnMajor(lhs_layout, rhs_layout, c_layout, output_layout);

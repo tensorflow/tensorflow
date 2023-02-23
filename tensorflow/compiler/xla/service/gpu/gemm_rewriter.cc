@@ -503,7 +503,6 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
             se::CudaComputeCapability::HOPPER)) {
       return false;
     }
-
 #if CUDA_VERSION < 11080
     // FP8 GEMM kernels are only available with CUDA 11.8 and above
     return false;
@@ -637,43 +636,6 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
           {b}));
     }
 
-    // cuBLASLt FP8 GEMM kernels currently require the first operand, i.e. A, to
-    // be transposed. If the result of the GEMM is not in column major order, A
-    // and B are later exchanged, and B is transposed here instead.
-    // TODO(philipphack): Remove once cuBLASLt supports the NN configuration.
-    TF_ASSIGN_OR_RETURN(bool is_col_major,
-                        MatrixIsColumnMajor(instr, gemm_backend_config, "d"));
-    TF_ASSIGN_OR_RETURN(bool a_is_col_major,
-                        MatrixIsColumnMajor(instr, gemm_backend_config, "a"));
-    TF_ASSIGN_OR_RETURN(bool b_is_col_major,                        
-                        MatrixIsColumnMajor(instr, gemm_backend_config, "b"));
-    // Bitcast the operands so that the layout is monotonic and dim 0 is major.
-    std::vector<int64_t> a_dim_order;
-    a_dim_order.reserve(a_dims.size());
-    absl::Span<const int64_t> a_minor_to_major =
-        a->shape().layout().minor_to_major();
-    for (int i = 0; i < a_dims.size(); ++i) {
-      a_dim_order.emplace_back(
-          absl::c_find(a_minor_to_major,
-                       is_col_major ? i : a_dims.size() - i - 1) -
-          a_minor_to_major.begin());
-    }
-    a = instr->AddInstruction(HloInstruction::CreateTranspose(
-        ShapeUtil::PermuteDimensions(a_dim_order, a->shape()), a, a_dim_order));
-
-    std::vector<int64_t> b_dim_order;
-    b_dim_order.reserve(b_dims.size());
-    absl::Span<const int64_t> b_minor_to_major =
-        b->shape().layout().minor_to_major();
-    for (int i = 0; i < b_dims.size(); ++i) {
-      b_dim_order.emplace_back(
-          absl::c_find(b_minor_to_major,
-                       is_col_major ? i : b_dims.size() - i - 1) -
-          b_minor_to_major.begin());
-    }
-    b = instr->AddInstruction(HloInstruction::CreateTranspose(
-        ShapeUtil::PermuteDimensions(b_dim_order, b->shape()), b, b_dim_order));
-
     // Identify the dimensional order which describes a transpose of the
     // contracting and non-contracting dimensions of the GEMM.
     auto transp_dim_order =
@@ -706,7 +668,6 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
       }
       return transp_dims;
     };
-
     // Plain transpose on a or b. Plain transposes a matrix by permuting its
     // dimension without changing storage order.
     auto plain_transpose =
@@ -720,32 +681,49 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
                   (*x)->shape().element_type(), transp_dims(*x, new_dim_order),
                   (*x)->shape().layout().minor_to_major()),
               *x, new_dim_order));
-    };
+        };
 
-    DotDimensionNumbers *dim_nums =
-        gemm_backend_config.mutable_dot_dimension_numbers();
-    int a_batch_dim_offset = a_batch_dims.size();
-    int b_batch_dim_offset = b_batch_dims.size();
+    // cuBLASLt FP8 GEMM kernels currently require the first operand, i.e. A, to
+    // be transposed. If the result of the GEMM is not in column major order, A
+    // and B are later exchanged, and B is transposed here instead.
+    // TODO(philipphack): Remove once cuBLASLt supports the NN configuration.
+    TF_ASSIGN_OR_RETURN(bool a_is_col_major,
+                        MatrixIsColumnMajor(instr, gemm_backend_config, "a"));
+    TF_ASSIGN_OR_RETURN(bool b_is_col_major,
+                        MatrixIsColumnMajor(instr, gemm_backend_config, "b"));
+
     // Apply necessary transposes to accommodate canonicalize matmul(lhs and rhs
     // contracting dims are 1 and 0). Also assuming transpose folding pass later
     // will remove duplcated transposes. The last transpose is required by
     // cublas fp8 matmul restriction.
-    if (a_contracting_dims[0] == a_batch_dim_offset) {
-      dim_nums->set_lhs_contracting_dimensions(0, a_batch_dim_offset + 1);
-    }
-    if (b_contracting_dims[0] == 1 + b_batch_dim_offset) {
-      dim_nums->set_rhs_contracting_dimensions(0, b_batch_dim_offset);
+    DotDimensionNumbers *dim_nums =
+        gemm_backend_config.mutable_dot_dimension_numbers();
+    int a_batch_dim_offset = a_batch_dims.size();
+    int b_batch_dim_offset = b_batch_dims.size();
+
+    if (a_is_col_major) {
+      // Swap contracting dimensions and convert a to row major
+      CHECK(a_contracting_dims[0] == a_batch_dim_offset ||
+            a_contracting_dims[0] == a_batch_dim_offset + 1);
+      if (a_contracting_dims[0] == a_batch_dim_offset) {
+        dim_nums->set_lhs_contracting_dimensions(0, a_batch_dim_offset + 1);
+      } else {
+        dim_nums->set_lhs_contracting_dimensions(0, a_batch_dim_offset);
+      }
+      plain_transpose(&a, a_contracting_dims, a_batch_dims);
     }
 
-    if (a_is_col_major && b_is_col_major) {
-      plain_transpose(&a, a_contracting_dims, a_batch_dims);
-    } else if (!a_is_col_major && !b_is_col_major) {
-      plain_transpose(&b, b_contracting_dims, b_batch_dims);
-    } else if (a_is_col_major && !b_is_col_major) {
-      plain_transpose(&a, a_contracting_dims, a_batch_dims);
+    if (!b_is_col_major) {
+      // Swap contracting dimensions and convert b to col major
+      CHECK(b_contracting_dims[0] == b_batch_dim_offset ||
+            b_contracting_dims[0] == b_batch_dim_offset + 1);
+      if (b_contracting_dims[0] == b_batch_dim_offset) {
+        dim_nums->set_rhs_contracting_dimensions(0, b_batch_dim_offset + 1);
+      } else {
+        dim_nums->set_rhs_contracting_dimensions(0, b_batch_dim_offset);
+      }
       plain_transpose(&b, b_contracting_dims, b_batch_dims);
     }
-
     std::unique_ptr<HloInstruction> new_custom_call =
         HloInstruction::CreateCustomCall(
             instr->shape(),
@@ -757,7 +735,6 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     TF_RETURN_IF_ERROR(SetName(instr->GetModule(), new_custom_call.get()));
     TF_RETURN_IF_ERROR(
         ReplaceWithNewInstruction(instr, std::move(new_custom_call)));
-
     return true;
   }
 

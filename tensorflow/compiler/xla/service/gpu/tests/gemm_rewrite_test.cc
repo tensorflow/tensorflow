@@ -4484,48 +4484,134 @@ TEST_F(CublasLtF8GemmRewriteTest, ScaledABUnscaledDF8Parameterized) {
                 lhs_contracting_dim == 1 ? "{1}" : "{0}";
             const absl::string_view rcd =
                 rhs_contracting_dim == 1 ? "{1}" : "{0}";
-            const absl::string_view a_logic =
+            const absl::string_view a_shape =
                 lhs_contracting_dim == 1 ? "[64,32]" : "[32,64]";
-            const absl::string_view b_logic =
+            const absl::string_view b_shape =
                 rhs_contracting_dim == 0 ? "[32,16]" : "[16,32]";
-            const absl::string_view a_physical = a_is_col ? "{0,1}" : "{1,0}";
-            const absl::string_view b_physical = b_is_col ? "{0,1}" : "{1,0}";
-            const absl::string_view output_physical =
+            const absl::string_view a_layout = a_is_col ? "{0,1}" : "{1,0}";
+            const absl::string_view b_layout = b_is_col ? "{0,1}" : "{1,0}";
+            const absl::string_view output_layout =
                 d_is_col ? "{0,1}" : "{1,0}";
-            combinations[i++] =
-                std::array{lcd, rcd, a_logic, b_logic, a_physical, b_physical,
-                           output_physical};
+            combinations[i++] = std::array{
+                lcd, rcd, a_shape, b_shape, a_layout, b_layout, output_layout};
           }
         }
       }
     }
   }
+  const char* hlo_template = R"(
+      HloModule test
+    ENTRY test {
+      x = f8e4m3fn<<Ashape>><<Alayout>> parameter(0)
+      x_f32 = f32<<Ashape>><<Alayout>> convert(x)
+      x_scale = f32[] parameter(2)
+      x_scale_bcast = f32<<Ashape>> broadcast(x_scale), dimensions={}
+      x_unscaled = f32<<Ashape>> multiply(x_f32, x_scale_bcast)
+      y = f8e4m3fn<<Bshape>><<Blayout>> parameter(1)
+      y_f32 = f32<<Bshape>><<Blayout>> convert(y)
+      y_scale = f32[] parameter(3)
+      y_scale_bcast = f32<<Bshape>> broadcast(y_scale), dimensions={}
+      y_unscaled = f32<<Bshape>> multiply(y_f32, y_scale_bcast)
+      ROOT out = f32[64,16]<<Olayout>> dot(x_unscaled, y_unscaled), lhs_contracting_dims=<<Lcd>>, rhs_contracting_dims=<<Rcd>>
+    }
+      )";
   for (const auto& combination : combinations) {
     absl::flat_hash_map<absl::string_view, absl::string_view> replacements;
     replacements["<<Lcd>>"] = std::get<0>(combination);
     replacements["<<Rcd>>"] = std::get<1>(combination);
-    replacements["<<ALog>>"] = std::get<2>(combination);
-    replacements["<<BLog>>"] = std::get<3>(combination);
-    replacements["<<APhy>>"] = std::get<4>(combination);
-    replacements["<<BPhy>>"] = std::get<5>(combination);
-    replacements["<<OPhy>>"] = std::get<6>(combination);
-    const char* hlo_template = R"(
-      HloModule test
+    replacements["<<Ashape>>"] = std::get<2>(combination);
+    replacements["<<Bshape>>"] = std::get<3>(combination);
+    replacements["<<Alayout>>"] = std::get<4>(combination);
+    replacements["<<Blayout>>"] = std::get<5>(combination);
+    replacements["<<Olayout>>"] = std::get<6>(combination);
+    const auto hlo_text = absl::StrReplaceAll(hlo_template, replacements);
+    EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-4, 0.}));
 
-    ENTRY test {
-      x = f8e4m3fn<<ALog>><<APhy>> parameter(0)
-      x_f32 = f32<<ALog>><<APhy>> convert(x)
-      x_scale = f32[] parameter(2)
-      x_scale_bcast = f32<<ALog>> broadcast(x_scale), dimensions={}
-      x_unscaled = f32<<ALog>> multiply(x_f32, x_scale_bcast)
-      y = f8e4m3fn<<BLog>><<BPhy>> parameter(1)
-      y_f32 = f32<<BLog>><<BPhy>> convert(y)
-      y_scale = f32[] parameter(3)
-      y_scale_bcast = f32<<BLog>> broadcast(y_scale), dimensions={}
-      y_unscaled = f32<<BLog>> multiply(y_f32, y_scale_bcast)
-      ROOT out = f32[64,16]<<OPhy>> dot(x_unscaled, y_unscaled), lhs_contracting_dims=<<Lcd>>, rhs_contracting_dims=<<Rcd>>
+    MatchOptimizedHlo(hlo_text,
+                      R"(
+    ; CHECK:           custom_call_target="__cublas$lt$matmul$f8",
+          )");
+  }
+};
+
+TEST_F(CublasLtF8GemmRewriteTest, ScaledABUnscaledDF8ParameterizedBatched) {
+  // TODO(wenscarl): For batched matmaul, not all combinations of A, B and
+  // output layouts get pattern matched successfully to FP8 custom call. Only
+  // a handful of cases are tested here.
+  if (!GetCudaComputeCapability().IsAtLeast(
+          se::CudaComputeCapability::HOPPER)) {
+    GTEST_SKIP()
+        << "cuBLASLt FP8 kernels require Hopper or newer architecture.";
+  }
+
+  auto assemble_layout = [](std::vector<int>& layout_v) {
+    return "{" +
+           std::accumulate(++layout_v.begin(), layout_v.end(),
+                           std::to_string(layout_v[0]),
+                           [](const std::string& a, int b) {
+                             return a + "," + std::to_string(b);
+                           }) +
+           "}";
+  };
+  std::array<std::array<std::string, 7>, 384> combinations;
+  std::string lcd, rcd, a_shape, b_shape, a_layout, b_layout, o_layout;
+  int i = 0;
+  for (bool o_is_col : {false, true}) {
+    for (bool a_is_col : {false, true}) {
+      for (bool b_is_col : {false, true}) {
+        for (int lhs_contracting_dim : {2, 1}) {
+          for (int rhs_contracting_dim : {2, 1}) {
+            lcd = lhs_contracting_dim == 2 ? "{2}" : "{1}";
+            rcd = rhs_contracting_dim == 2 ? "{2}" : "{1}";
+            a_shape = lhs_contracting_dim == 2 ? "[2,64,32]" : "[2,32,64]";
+            b_shape = rhs_contracting_dim == 1 ? "[2,32,16]" : "[2,16,32]";
+            for (std::string a_layout : {"{2,1,0}", "{1,2,0}"}) {
+              for (std::string b_layout : {"{2,1,0}", "{1,2,0}"}) {
+                for (int o_batch_dim_pos : {0, 1, 2}) {
+                  std::vector<int> o_layout_v = o_is_col
+                                                    ? std::vector<int>{0, 1}
+                                                    : std::vector<int>{1, 0};
+                  o_layout_v.insert(o_layout_v.begin() + o_batch_dim_pos, 2);
+                  o_layout = assemble_layout(o_layout_v);
+                  combinations[i++] = std::array{
+                      lcd, rcd, a_shape, b_shape, a_layout, b_layout, o_layout};
+                }
+              }
+            }
+          }
+        }
+      }
     }
-      )";
+  }
+
+  const char* hlo_template = R"(
+      HloModule m
+ENTRY f {
+  x_q = f8e4m3fn<<Ashape>><<Alayout>> parameter(0)
+  x_scale = f32[] parameter(2)
+  x_scale_broadcast = f32<<Ashape>><<Alayout>> broadcast(x_scale), dimensions={}
+  x_q_convert = f32<<Ashape>><<Alayout>> convert(x_q)
+  x_qdq = f32<<Ashape>><<Alayout>> multiply(x_q_convert, x_scale_broadcast)
+  
+  y_q = f8e4m3fn<<Bshape>><<Blayout>> parameter(1)
+  y_scale = f32[] parameter(3)
+  y_scale_broadcast = f32<<Bshape>><<Blayout>> broadcast(y_scale), dimensions={}
+  y_q_convert = f32<<Bshape>><<Blayout>> convert(y_q)
+  y_qdq = f32<<Bshape>><<Blayout>> multiply(y_q_convert, y_scale_broadcast)
+
+  ROOT out = f32[2,64,16]<<Olayout>> dot(x_qdq, y_qdq), lhs_batch_dims={0}, lhs_contracting_dims=<<Lcd>>, rhs_batch_dims={0}, rhs_contracting_dims=<<Rcd>>
+}
+     )";
+  for (const auto& combination : combinations) {
+    absl::flat_hash_map<std::string, std::string> replacements;
+    replacements["<<Lcd>>"] = std::get<0>(combination);
+    replacements["<<Rcd>>"] = std::get<1>(combination);
+    replacements["<<Ashape>>"] = std::get<2>(combination);
+    replacements["<<Bshape>>"] = std::get<3>(combination);
+    replacements["<<Alayout>>"] = std::get<4>(combination);
+    replacements["<<Blayout>>"] = std::get<5>(combination);
+    replacements["<<Olayout>>"] = std::get<6>(combination);
+
     const auto hlo_text = absl::StrReplaceAll(hlo_template, replacements);
     EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-4, 0.}));
 
