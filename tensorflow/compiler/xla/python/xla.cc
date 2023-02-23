@@ -261,8 +261,7 @@ PYBIND11_MODULE(xla_extension, m) {
                                      ? nullptr
                                      : fast_cast<PjRtDevice>(py_device);
             return client->BufferFromPyval(argument, device, force_copy,
-                                           host_buffer_semantics,
-                                           jax::GetEnableJaxArray());
+                                           host_buffer_semantics);
           },
           py::arg("argument"), py::arg("device") = nullptr,
           py::arg("force_copy") = false,
@@ -438,47 +437,22 @@ PYBIND11_MODULE(xla_extension, m) {
       .def("get_compiled_memory_stats",
            &PyLoadedExecutable::GetCompiledMemoryStats)
       .def("delete", &PyLoadedExecutable::Delete)
-      .def(
-          "execute",
-          [](PyLoadedExecutable& exec,
-             absl::Span<const std::variant<PyBuffer::object, PyArray>> args,
-             PjRtDevice* device) {
-            return exec.Execute(args, device, jax::GetEnableJaxArray());
-          },
-          py::arg("arguments"), py::arg("device") = std::nullopt)
+      .def("execute", &PyLoadedExecutable::Execute, py::arg("arguments"),
+           py::arg("device") = std::nullopt)
       // TODO(chky): Change execute() to always return token rather than hanving
       // two API entry points.
-      .def(
-          "execute_with_token",
-          [](PyLoadedExecutable& exec,
-             absl::Span<const std::variant<PyBuffer::object, PyArray>> args,
-             PjRtDevice* device) {
-            return exec.ExecuteWithToken(args, device,
-                                         jax::GetEnableJaxArray());
-          },
-          py::arg("arguments"), py::arg("device") = std::nullopt)
-      .def(
-          "execute_sharded_on_local_devices",
-          [](PyLoadedExecutable& exec,
-             absl::Span<
-                 const std::vector<std::variant<PyBuffer::object, PyArray>>>
-                 args) -> StatusOr<std::vector<std::vector<py::object>>> {
-            return exec.ExecuteShardedOnLocalDevices(args,
-                                                     jax::GetEnableJaxArray());
-          },
-          py::arg("arguments"))
-      .def(
-          "execute_sharded_on_local_devices_with_tokens",
-          [](PyLoadedExecutable& exec,
-             absl::Span<
-                 const std::vector<std::variant<PyBuffer::object, PyArray>>>
-                 args)
-              -> StatusOr<std::pair<std::vector<std::vector<py::object>>,
-                                    PyShardedToken>> {
-            return exec.ExecuteShardedOnLocalDevicesWithTokens(
-                args, jax::GetEnableJaxArray());
-          },
-          py::arg("arguments"))
+      .def("execute_with_token", &PyLoadedExecutable::ExecuteWithToken,
+           py::arg("arguments"), py::arg("device") = std::nullopt)
+      .def("execute_sharded_on_local_devices",
+           py::overload_cast<absl::Span<
+               const std::vector<std::variant<PyBuffer::object, PyArray>>>>(
+               &PyLoadedExecutable::ExecuteShardedOnLocalDevices),
+           py::arg("arguments"))
+      .def("execute_sharded_on_local_devices_with_tokens",
+           py::overload_cast<absl::Span<
+               const std::vector<std::variant<PyBuffer::object, PyArray>>>>(
+               &PyLoadedExecutable::ExecuteShardedOnLocalDevicesWithTokens),
+           py::arg("arguments"))
       .def("hlo_modules", &PyLoadedExecutable::HloModules)
       .def("get_output_shardings", &PyLoadedExecutable::GetOutputShardings)
       .def("get_parameter_shardings",
@@ -505,16 +479,9 @@ PYBIND11_MODULE(xla_extension, m) {
 
   m.def("buffer_to_dlpack_managed_tensor", BufferToDLPackManagedTensor,
         py::arg("buffer"), py::arg("take_ownership") = true);
-  m.def(
-      "dlpack_managed_tensor_to_buffer",
-      [](const pybind11::capsule& tensor, std::shared_ptr<PyClient> cpu_client,
-         std::shared_ptr<PyClient> gpu_client) {
-        return DLPackManagedTensorToBuffer(tensor, std::move(cpu_client),
-                                           std::move(gpu_client),
-                                           jax::GetEnableJaxArray());
-      },
-      py::arg("dlpack"), py::arg("cpu_backend") = nullptr,
-      py::arg("gpu_backend") = nullptr);
+  m.def("dlpack_managed_tensor_to_buffer", DLPackManagedTensorToBuffer,
+        py::arg("dlpack"), py::arg("cpu_backend") = nullptr,
+        py::arg("gpu_backend") = nullptr);
 
   BuildProfilerSubmodule(&m);
   BuildOpsSubmodule(&m);
